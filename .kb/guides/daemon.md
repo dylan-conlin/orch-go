@@ -83,7 +83,6 @@ Daemon infers skill from issue type (NOT labels):
 | `investigation` | `investigation` | Understand how something works |
 | `feature` | `feature-impl` | Build new capability |
 | `task` | `feature-impl` | Generic implementation work |
-| `question` | `investigation` | Answer a specific question |
 | `epic` | (not spawnable) | Container for child issues |
 | `chore` | (not spawnable) | Non-agent maintenance work |
 
@@ -92,7 +91,6 @@ Daemon infers skill from issue type (NOT labels):
 bd create "fix login bug" --type bug          # → systematic-debugging
 bd create "add dark mode" --type feature      # → feature-impl
 bd create "how does auth work" --type investigation  # → investigation
-bd create "what is the db schema" --type question    # → investigation
 ```
 
 **Common mistake:** Missing or null type causes spawn failure. Always specify `--type`.
@@ -326,10 +324,8 @@ The daemon polls beads for `Phase: Complete` comments instead of relying on sess
 
 The daemon skips issues with:
 - Status `blocked`
-- Status `in_progress` WITH an active OpenCode session (already being worked on)
+- Status `in_progress` (already being worked)
 - Unresolved blocking dependencies
-
-**Note (Jan 2026):** Issues with status `in_progress` but NO active session are spawnable. This allows users to mark issues `in_progress` to release them to the daemon (e.g., after abandoning work or when no agent is attached).
 
 ---
 
@@ -400,135 +396,27 @@ orch daemon run --reflect  # Run kb reflect when daemon exits (default: true)
 
 ---
 
-## Periodic Cleanup
-
-**From 2026-01-31 implementation:** The daemon runs comprehensive cleanup operations every 6 hours (configurable).
-
-### What Gets Cleaned
-
-| Operation | Default | Flag | Description |
-|-----------|---------|------|-------------|
-| **Sessions** | Enabled | `--cleanup-sessions` | Delete OpenCode sessions older than N days |
-| **Workspaces** | Enabled | `--cleanup-workspaces` | Archive completed workspaces older than N days |
-| **Investigations** | Enabled | `--cleanup-investigations` | Archive empty investigation files (unfilled templates) |
-
-### Configuration
-
-```bash
-# Enable/disable cleanup
-orch daemon run --cleanup-enabled=false  # Disable all cleanup
-
-# Set cleanup interval
-orch daemon run --cleanup-interval 180  # Run every 3 hours (minutes)
-
-# Configure session cleanup
-orch daemon run --cleanup-sessions=false           # Disable session cleanup
-orch daemon run --cleanup-sessions-age 14          # Delete sessions >14 days old
-
-# Configure workspace cleanup
-orch daemon run --cleanup-workspaces=false         # Disable workspace archival
-orch daemon run --cleanup-workspaces-age 14        # Archive workspaces >14 days old
-
-# Configure investigation cleanup
-orch daemon run --cleanup-investigations=false     # Disable investigation archival
-
-# Preserve orchestrator sessions/workspaces
-orch daemon run --cleanup-preserve-orchestrator=false  # Clean orchestrator workspaces too
-```
-
-### Cleanup Criteria
-
-**Sessions (age-based):**
-- Older than N days (default: 7)
-- Not currently processing
-- Skips orchestrator sessions by default
-
-**Workspaces (age-based + completion):**
-- Older than N days (default: 7) AND completed
-- Completed = SYNTHESIS.md exists OR light tier OR has .beads_id
-- Skips orchestrator workspaces by default
-- Archives to `.orch/workspace/archived/`
-
-**Investigations (content-based):**
-- Contains 2+ template placeholders (e.g., `[Brief, descriptive title]`)
-- Indicates agent died before filling in investigation
-- Archives to `.kb/investigations/archived/`
-
-### Why This Matters
-
-**From 2026-01-07 investigation:** 132 stale workspaces accumulated because cleanup was manual only. Periodic daemon cleanup prevents this accumulation automatically.
-
----
-
 ## Cross-Project Daemon
 
-**From 2026-01-06 investigation + 2026-01-21 implementation:** A single daemon can poll all registered projects.
+**From 2026-01-06 investigation:** A single daemon can poll all registered projects:
 
 ### How It Works
 
-1. Daemon calls `kb projects list --json` to get registered projects (sorted alphabetically)
-2. For each project: calls `ListReadyIssuesForProject(projectPath)`
-3. Collects all triage:ready issues across projects, sorted by priority
-4. Spawns highest priority issue with `orch work <id> --workdir <projectPath>`
-5. Maintains single global capacity pool across all projects
-
-### Implementation (pkg/daemon/)
-
-| File | Function | Purpose |
-|------|----------|---------|
-| `projects.go` | `ListProjects()` | Parse `kb projects list --json` |
-| `issue_adapter.go` | `ListReadyIssuesForProject()` | Get issues from specific project |
-| `issue_adapter.go` | `SpawnWorkForProject()` | Spawn with `--workdir` |
-| `daemon.go` | `CrossProjectOnce()` | Process one issue from any project |
-| `daemon.go` | `CrossProjectPreview()` | Preview issues across all projects |
+1. Daemon calls `kb projects list` to get registered projects
+2. Iterates over each project's beads issues
+3. Spawns with `--workdir` to target correct project
+4. Maintains single capacity pool across all projects
 
 ### Enabling Cross-Project
 
 ```bash
-orch daemon run --cross-project       # Poll all kb-registered projects
-orch daemon preview --cross-project   # Preview what would spawn across projects
-orch daemon once --cross-project      # Process one issue from any project
+orch daemon run --cross-project  # Poll all kb-registered projects
 ```
 
-### launchd Configuration
-
-```xml
-<key>ProgramArguments</key>
-<array>
-    <string>/path/to/orch</string>
-    <string>daemon</string>
-    <string>run</string>
-    <string>--verbose</string>
-    <string>--cross-project</string>
-</array>
-```
-
-### Error Handling
-
-**Design principle:** One project failing should not crash daemon or block other projects.
-
-- If `kb projects list` fails: Returns empty list (graceful degradation)
-- If a project's beads fails: Logs warning, continues to next project
-- If spawn fails: Issue marked "failed to spawn this cycle", skipped until next poll
-
-### Constraints
-
+**Constraints:**
 - Projects must be registered with `kb projects add`
 - Issues in unregistered projects won't be seen
-- Capacity is shared globally across all projects (prevents runaway spawning)
-- Flag defaults to false (backward compatible with single-project mode)
-- Projects without beads initialized will log warnings but not crash
-
-### Common Issues
-
-**"warning: failed to get ready issues for project X"**
-- Project may not have beads initialized (`bd init`)
-- Project's `.beads/` directory may be missing or corrupt
-- Recovery: `cd <project> && rm -f .beads/beads.db* && bd init`
-
-**Issues not spawning cross-project**
-- Verify issue has `triage:ready` label in correct project
-- Check daemon log for rejection reasons: `[project-name] Skipping <id> (reason)`
+- Capacity is shared across all projects
 
 ---
 
@@ -655,9 +543,6 @@ From investigations, these design decisions were made:
 | Auto-completion via CompletionOnce | Free capacity slots without orchestrator | Jan 2026 |
 | Two-tier reflection (synthesis+open) | Only high-signal types auto-create issues | Jan 2026 |
 | No beads daemon auto-start | Caching solves API latency; daemons are per-project | Jan 2026 |
-| Cross-project uses global capacity | Prevents runaway spawning (N projects × M agents) | Jan 2026 |
-| Cross-project uses kb projects registry | Reuses existing infrastructure, no new config file | Jan 2026 |
-| in_progress + no session = spawnable | Allows releasing issues to daemon without changing status | Jan 2026 |
 
 ---
 
@@ -699,4 +584,3 @@ This guide consolidates learnings from 33 investigations:
 - 2026-01-04: Structure analysis, rejection reason visibility
 - 2026-01-06: Parent-child deps, periodic reflect, cross-project design, auto-completion integration, duplicate spawn prevention, --limit 0 fix, two-tier reflection
 - 2026-01-07: Beads daemon auto-start analysis, synthesis update
-- 2026-01-21: Cross-project daemon implementation, workdir fix for resolveShortBeadsID

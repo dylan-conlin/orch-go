@@ -15,52 +15,21 @@ func TestResolve_Aliases(t *testing.T) {
 		expected ModelSpec
 	}{
 		// Anthropic aliases
-		{"opus", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}},
-		{"Opus", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}},
-		{"OPUS", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}},
+		{"opus", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}},
+		{"Opus", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}},
+		{"OPUS", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}},
 		{"sonnet", ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}},
 		{"haiku", ModelSpec{Provider: "anthropic", ModelID: "claude-haiku-4-5-20251001"}},
-		{"opus-4.6", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}},
-		{"opus-4-6", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}},
-		{"opus-4.5", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}}, // Legacy
+		{"opus-4.5", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}},
 
 		// Google aliases
-		{"flash", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
+		{"flash", ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}},
 		{"flash-2.5", ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}},
 		{"flash3", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
 		{"FLASH3", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
 		{"flash-3", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
+		{"flash-3.0", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
 		{"pro", ModelSpec{Provider: "google", ModelID: "gemini-2.5-pro"}},
-
-		// OpenAI aliases
-		{"gpt", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
-		{"GPT", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
-		{"gpt5", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
-		{"gpt-5", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
-		{"gpt-5.3", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
-		{"gpt-5.3-codex", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
-		{"codex", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
-		{"gpt-5.2", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
-		{"gpt-5.2-codex", ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}},
-		{"gpt5-mini", ModelSpec{Provider: "openai", ModelID: "gpt-5-mini-20251130"}},
-		{"gpt4o", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
-		{"gpt-4o", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
-		{"GPT-4o", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
-		{"gpt-mini", ModelSpec{Provider: "openai", ModelID: "gpt-4o-mini"}},
-		{"gpt4o-mini", ModelSpec{Provider: "openai", ModelID: "gpt-4o-mini"}},
-		{"gpt-4o-mini", ModelSpec{Provider: "openai", ModelID: "gpt-4o-mini"}},
-
-		// DeepSeek aliases
-		{"deepseek-v3", ModelSpec{Provider: "deepseek", ModelID: "deepseek-v3.2"}},
-		{"reasoning", ModelSpec{Provider: "deepseek", ModelID: "deepseek-r1"}},
-
-		// Alibaba (Qwen) aliases
-		{"qwen", ModelSpec{Provider: "alibaba", ModelID: "qwen3-max"}},
-		{"QWEN", ModelSpec{Provider: "alibaba", ModelID: "qwen3-max"}},
-		{"qwen-max", ModelSpec{Provider: "alibaba", ModelID: "qwen3-max"}},
-		{"qwen3", ModelSpec{Provider: "alibaba", ModelID: "qwen3-max"}},
-		{"qwen3-max", ModelSpec{Provider: "alibaba", ModelID: "qwen3-max"}},
-		{"qwen-thinking", ModelSpec{Provider: "alibaba", ModelID: "qwen3-max-2026-01-23"}},
 	}
 
 	for _, tt := range tests {
@@ -78,8 +47,7 @@ func TestResolve_ProviderModelFormat(t *testing.T) {
 		input    string
 		expected ModelSpec
 	}{
-		{"anthropic/claude-opus-4-6", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}},
-		{"anthropic/claude-opus-4-5-20251101", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}}, // Legacy
+		{"anthropic/claude-opus-4-5-20251101", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}},
 		{"google/gemini-2.5-flash", ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}},
 		{"openai/gpt-4o", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
 	}
@@ -100,22 +68,12 @@ func TestResolve_ModelIDOnly(t *testing.T) {
 		expected ModelSpec
 	}{
 		// Claude models default to anthropic
-		{"claude-opus-4-6", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}},
-		{"claude-opus-4-5-20251101", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}}, // Legacy
+		{"claude-opus-4-5-20251101", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}},
 		{"claude-sonnet-4-5-20250929", ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}},
 
 		// Gemini models default to google
 		{"gemini-2.5-flash", ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}},
 		{"gemini-3-flash-preview", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
-
-		// GPT models default to openai
-		{"gpt-5-20251215", ModelSpec{Provider: "openai", ModelID: "gpt-5-20251215"}},
-
-		// DeepSeek models default to deepseek
-		{"deepseek-v3.2", ModelSpec{Provider: "deepseek", ModelID: "deepseek-v3.2"}},
-
-		// Qwen models default to alibaba
-		{"qwen3-max-2026-01-23", ModelSpec{Provider: "alibaba", ModelID: "qwen3-max-2026-01-23"}},
 	}
 
 	for _, tt := range tests {
@@ -129,23 +87,8 @@ func TestResolve_ModelIDOnly(t *testing.T) {
 }
 
 func TestModelSpec_Format(t *testing.T) {
-	spec := ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}
-	if spec.Format() != "anthropic/claude-opus-4-6" {
-		t.Errorf("Format() = %q, want %q", spec.Format(), "anthropic/claude-opus-4-6")
-	}
-}
-
-func TestModelSpec_IsAnthropic(t *testing.T) {
-	if !Resolve("opus").IsAnthropic() {
-		t.Error("opus should be Anthropic")
-	}
-	if Resolve("gpt").IsAnthropic() {
-		t.Error("gpt should not be Anthropic")
-	}
-	if Resolve("codex").IsAnthropic() {
-		t.Error("codex should not be Anthropic")
-	}
-	if Resolve("deepseek").IsAnthropic() {
-		t.Error("deepseek should not be Anthropic")
+	spec := ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}
+	if spec.Format() != "anthropic/claude-opus-4-5-20251101" {
+		t.Errorf("Format() = %q, want %q", spec.Format(), "anthropic/claude-opus-4-5-20251101")
 	}
 }

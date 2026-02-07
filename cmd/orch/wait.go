@@ -25,8 +25,8 @@ var (
 	waitQuiet    bool
 
 	// Pre-compiled regex patterns for wait.go
-	regexTimeoutPattern      = regexp.MustCompile(`(\d+)([smhSMH])`)
-	regexBeadsIDFromSpawnCtx = regexp.MustCompile(`spawned from beads issue:\s*\*\*([a-z0-9-]+)\*\*`)
+	regexTimeoutPattern       = regexp.MustCompile(`(\d+)([smhSMH])`)
+	regexBeadsIDFromSpawnCtx  = regexp.MustCompile(`spawned from beads issue:\s*\*\*([a-z0-9-]+)\*\*`)
 )
 
 var waitCmd = &cobra.Command{
@@ -141,10 +141,6 @@ func formatDuration(d time.Duration) string {
 // resolveBeadsID resolves an identifier (session ID, beads ID, or workspace name) to a beads ID.
 // Returns the beads ID and an error if resolution fails.
 func resolveBeadsID(serverURL, identifier string) (string, error) {
-	return resolveBeadsIDWithClient(opencode.NewClient(serverURL), identifier)
-}
-
-func resolveBeadsIDWithClient(client opencode.ClientInterface, identifier string) (string, error) {
 	// Strategy 1: If it looks like a beads ID (contains hyphen but not a session ID), verify it exists
 	if strings.Contains(identifier, "-") && !strings.HasPrefix(identifier, "ses_") {
 		// Try to verify it exists
@@ -156,10 +152,11 @@ func resolveBeadsIDWithClient(client opencode.ClientInterface, identifier string
 		// Continue to other strategies - might be a workspace name
 	}
 
-	projectDir, _ := currentProjectDir()
+	projectDir, _ := os.Getwd()
 
 	// Strategy 2: If it's a session ID, find workspace and extract beads ID from SPAWN_CONTEXT.md
 	if strings.HasPrefix(identifier, "ses_") {
+		client := opencode.NewClient(serverURL)
 		session, err := client.GetSession(identifier)
 		if err != nil {
 			return "", fmt.Errorf("session not found: %s", identifier)
@@ -217,6 +214,7 @@ func resolveBeadsIDWithClient(client opencode.ClientInterface, identifier string
 	}
 
 	// Strategy 4: Search OpenCode sessions by title (workspace name)
+	client := opencode.NewClient(serverURL)
 	sessions, err := client.ListSessions(projectDir)
 	if err == nil {
 		for _, s := range sessions {

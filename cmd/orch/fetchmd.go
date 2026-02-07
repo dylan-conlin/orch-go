@@ -16,18 +16,17 @@ import (
 // ============================================================================
 
 var (
-	fetchmdWait        int    // Wait time in milliseconds
-	fetchmdSelector    string // CSS selector for content targeting
-	fetchmdTimeout     int    // Timeout in seconds
-	fetchmdFrontmatter bool   // Include YAML frontmatter
-	fetchmdOutput      string // Output file path (default: stdout)
-	fetchmdQuiet       bool   // Suppress status messages
+	fetchmdWait       int    // Wait time in milliseconds
+	fetchmdSelector   string // CSS selector for content targeting
+	fetchmdTimeout    int    // Timeout in seconds
+	fetchmdFrontmatter bool  // Include YAML frontmatter
+	fetchmdOutput     string // Output file path (default: stdout)
+	fetchmdQuiet      bool   // Suppress status messages
 )
 
 var fetchmdCmd = &cobra.Command{
-	Use:    "fetch-md [url]",
-	Short:  "Fetch a URL and convert it to Markdown",
-	Hidden: true,
+	Use:   "fetch-md [url]",
+	Short: "Fetch a URL and convert it to Markdown",
 	Long: `Fetch a web page and convert it to Markdown.
 
 Uses headless Chrome to render JavaScript before extracting content,

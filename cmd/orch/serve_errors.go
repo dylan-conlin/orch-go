@@ -27,28 +27,28 @@ type ErrorEvent struct {
 
 // ErrorPattern represents a recurring error pattern.
 type ErrorPattern struct {
-	Pattern    string   `json:"pattern"`    // Error message pattern (may be truncated/normalized)
-	Count      int      `json:"count"`      // Number of occurrences
-	LastSeen   string   `json:"last_seen"`  // ISO 8601 timestamp of most recent occurrence
-	BeadsIDs   []string `json:"beads_ids"`  // Affected beads issues
-	Suggestion string   `json:"suggestion"` // Remediation suggestion
+	Pattern    string   `json:"pattern"`     // Error message pattern (may be truncated/normalized)
+	Count      int      `json:"count"`       // Number of occurrences
+	LastSeen   string   `json:"last_seen"`   // ISO 8601 timestamp of most recent occurrence
+	BeadsIDs   []string `json:"beads_ids"`   // Affected beads issues
+	Suggestion string   `json:"suggestion"`  // Remediation suggestion
 }
 
 // ErrorsAPIResponse is the JSON structure returned by /api/errors.
 type ErrorsAPIResponse struct {
-	TotalErrors    int            `json:"total_errors"`            // Total error events
-	ErrorsLast24h  int            `json:"errors_last_24h"`         // Errors in last 24 hours
-	ErrorsLast7d   int            `json:"errors_last_7d"`          // Errors in last 7 days
-	AbandonedCount int            `json:"abandoned_count"`         // Total agent.abandoned events
-	SessionErrors  int            `json:"session_errors"`          // Total session.error events
-	RecentErrors   []ErrorEvent   `json:"recent_errors,omitempty"` // Last 20 error events
-	Patterns       []ErrorPattern `json:"patterns,omitempty"`      // Recurring error patterns
-	ByType         map[string]int `json:"by_type"`                 // Breakdown by error type
-	Error          string         `json:"error,omitempty"`         // Error message if any
+	TotalErrors     int            `json:"total_errors"`               // Total error events
+	ErrorsLast24h   int            `json:"errors_last_24h"`            // Errors in last 24 hours
+	ErrorsLast7d    int            `json:"errors_last_7d"`             // Errors in last 7 days
+	AbandonedCount  int            `json:"abandoned_count"`            // Total agent.abandoned events
+	SessionErrors   int            `json:"session_errors"`             // Total session.error events
+	RecentErrors    []ErrorEvent   `json:"recent_errors,omitempty"`    // Last 20 error events
+	Patterns        []ErrorPattern `json:"patterns,omitempty"`         // Recurring error patterns
+	ByType          map[string]int `json:"by_type"`                    // Breakdown by error type
+	Error           string         `json:"error,omitempty"`            // Error message if any
 }
 
 // handleErrors returns error pattern analysis from ~/.orch/events.jsonl.
-func (s *Server) handleErrors(w http.ResponseWriter, r *http.Request) {
+func handleErrors(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

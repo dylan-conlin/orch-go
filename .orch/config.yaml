@@ -1,10 +1,3 @@
-spawn_mode: docker
-claude:
-    model: opus
-    tmux_session: workers-orch-go
-opencode:
-    model: deepseek
-    server: http://localhost:4096
 servers:
-    api: 3348
-    web: 5188
+  web: 5188
+  api: 3348

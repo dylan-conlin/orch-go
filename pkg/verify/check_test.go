@@ -846,9 +846,9 @@ func TestReadTierFromWorkspaceOrchestrator(t *testing.T) {
 	})
 }
 
-func TestVerifySynthesis(t *testing.T) {
+func TestVerifySessionHandoff(t *testing.T) {
 	t.Run("returns false for empty workspace path", func(t *testing.T) {
-		ok, err := VerifySynthesis("")
+		ok, err := VerifySessionHandoff("")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -857,37 +857,37 @@ func TestVerifySynthesis(t *testing.T) {
 		}
 	})
 
-	t.Run("returns false for missing SYNTHESIS.md", func(t *testing.T) {
+	t.Run("returns false for missing SESSION_HANDOFF.md", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		ok, err := VerifySynthesis(tmpDir)
+		ok, err := VerifySessionHandoff(tmpDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if ok {
-			t.Error("expected false for missing SYNTHESIS.md")
+			t.Error("expected false for missing SESSION_HANDOFF.md")
 		}
 	})
 
-	t.Run("returns false for empty SYNTHESIS.md", func(t *testing.T) {
+	t.Run("returns false for empty SESSION_HANDOFF.md", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
 		if err := os.WriteFile(handoffPath, []byte(""), 0644); err != nil {
 			t.Fatalf("failed to write handoff file: %v", err)
 		}
 
-		ok, err := VerifySynthesis(tmpDir)
+		ok, err := VerifySessionHandoff(tmpDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if ok {
-			t.Error("expected false for empty SYNTHESIS.md")
+			t.Error("expected false for empty SESSION_HANDOFF.md")
 		}
 	})
 
-	t.Run("returns true for non-empty SYNTHESIS.md", func(t *testing.T) {
+	t.Run("returns true for non-empty SESSION_HANDOFF.md", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
-		content := `# Synthesis
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		content := `# Session Handoff
 
 ## Session Summary
 Completed orchestrator session for feature X.
@@ -899,12 +899,12 @@ Completed orchestrator session for feature X.
 			t.Fatalf("failed to write handoff file: %v", err)
 		}
 
-		ok, err := VerifySynthesis(tmpDir)
+		ok, err := VerifySessionHandoff(tmpDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if !ok {
-			t.Error("expected true for non-empty SYNTHESIS.md")
+			t.Error("expected true for non-empty SESSION_HANDOFF.md")
 		}
 	})
 }
@@ -923,7 +923,7 @@ func TestVerifyOrchestratorCompletion(t *testing.T) {
 		}
 	})
 
-	t.Run("fails without SYNTHESIS.md", func(t *testing.T) {
+	t.Run("fails without SESSION_HANDOFF.md", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		// Write .tier file to indicate orchestrator tier
 		tierPath := filepath.Join(tmpDir, ".tier")
@@ -936,16 +936,16 @@ func TestVerifyOrchestratorCompletion(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if result.Passed {
-			t.Error("expected verification to fail without SYNTHESIS.md")
+			t.Error("expected verification to fail without SESSION_HANDOFF.md")
 		}
 		if len(result.Errors) == 0 {
-			t.Error("expected error about missing SYNTHESIS.md")
+			t.Error("expected error about missing SESSION_HANDOFF.md")
 		}
 	})
 
-	t.Run("fails with minimal SYNTHESIS.md (no session end markers)", func(t *testing.T) {
+	t.Run("fails with minimal SESSION_HANDOFF.md (no session end markers)", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
 		// Very short content without end markers
 		if err := os.WriteFile(handoffPath, []byte("Short"), 0644); err != nil {
 			t.Fatalf("failed to write handoff file: %v", err)
@@ -960,20 +960,10 @@ func TestVerifyOrchestratorCompletion(t *testing.T) {
 		}
 	})
 
-	t.Run("passes with proper SYNTHESIS.md", func(t *testing.T) {
+	t.Run("passes with proper SESSION_HANDOFF.md", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
-		content := `# Synthesis
-
-**Outcome:** success
-
----
-
-## TLDR
-
-Completed orchestrator session for feature X. Made significant progress on the implementation.
-
----
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		content := `# Session Handoff
 
 ## Session Summary
 Completed orchestrator session for feature X.
@@ -998,19 +988,12 @@ Made significant progress on the implementation.
 
 	t.Run("passes with Status: Complete marker", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
-		content := `# Synthesis
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		content := `# Session Handoff
 
 **Status:** Complete
-**Outcome:** success
 
----
-
-## TLDR
-
-Brief session summary that completed all required work.
-
----
+Brief session summary.
 `
 		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
 			t.Fatalf("failed to write handoff file: %v", err)
@@ -1027,18 +1010,8 @@ Brief session summary that completed all required work.
 
 	t.Run("passes with Handoff section", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
 		content := `# Session
-
-**Outcome:** partial
-
----
-
-## TLDR
-
-Session completed with partial results. Some work remains for next session.
-
----
 
 ## Handoff
 
@@ -1063,18 +1036,8 @@ func TestOrchestratorTierSkipsBeadsChecks(t *testing.T) {
 	// does not require beadsID (unlike worker verification)
 	t.Run("orchestrator tier does not require beadsID", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
-		content := `# Synthesis
-
-**Outcome:** success
-
----
-
-## TLDR
-
-Completed session without needing beads tracking.
-
----
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		content := `# Session Handoff
 
 ## Session Summary
 Completed session.
@@ -1098,726 +1061,4 @@ func TestTierOrchestratorConstant(t *testing.T) {
 	if TierOrchestrator != "orchestrator" {
 		t.Errorf("TierOrchestrator = %q, want %q", TierOrchestrator, "orchestrator")
 	}
-}
-
-func TestValidateHandoffContent(t *testing.T) {
-	t.Run("valid handoff with filled TLDR and Outcome", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
-
-		content := `# Synthesis
-
-**Orchestrator:** test-session
-**Focus:** Implement feature X
-**Duration:** 2026-01-15 10:00 → 2026-01-15 14:00
-**Outcome:** success
-
----
-
-## TLDR
-
-Implemented feature X successfully. All tests passing and documentation updated.
-
----
-
-## Session Summary
-Done.
-`
-		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
-			t.Fatalf("failed to write handoff file: %v", err)
-		}
-
-		result, err := ValidateHandoffContent(tmpDir)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !result.Valid {
-			t.Errorf("expected valid handoff, got errors: %v", result.Errors)
-		}
-		if !result.TLDRFilled {
-			t.Error("expected TLDRFilled to be true")
-		}
-		if !result.OutcomeFilled {
-			t.Error("expected OutcomeFilled to be true")
-		}
-	})
-
-	t.Run("invalid handoff with placeholder TLDR", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
-
-		content := `# Synthesis
-
-**Orchestrator:** test-session
-**Focus:** Implement feature X
-**Duration:** 2026-01-15 10:00 → 2026-01-15 14:00
-**Outcome:** success
-
----
-
-## TLDR
-
-[1-2 sentence summary. What was the focus? What was achieved?]
-
----
-`
-		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
-			t.Fatalf("failed to write handoff file: %v", err)
-		}
-
-		result, err := ValidateHandoffContent(tmpDir)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result.Valid {
-			t.Error("expected invalid handoff due to placeholder TLDR")
-		}
-		if result.TLDRFilled {
-			t.Error("expected TLDRFilled to be false for placeholder")
-		}
-	})
-
-	t.Run("invalid handoff with placeholder Outcome", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
-
-		content := `# Synthesis
-
-**Orchestrator:** test-session
-**Focus:** Implement feature X
-**Duration:** 2026-01-15 10:00 → 2026-01-15 14:00
-**Outcome:** {success | partial | blocked | failed}
-
----
-
-## TLDR
-
-Did something useful this session that should be captured.
-
----
-`
-		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
-			t.Fatalf("failed to write handoff file: %v", err)
-		}
-
-		result, err := ValidateHandoffContent(tmpDir)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result.Valid {
-			t.Error("expected invalid handoff due to placeholder Outcome")
-		}
-		if result.OutcomeFilled {
-			t.Error("expected OutcomeFilled to be false for placeholder")
-		}
-		if !result.TLDRFilled {
-			t.Error("expected TLDRFilled to be true")
-		}
-	})
-
-	t.Run("invalid handoff with empty TLDR", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
-
-		content := `# Synthesis
-
-**Outcome:** success
-
----
-
-## TLDR
-
----
-`
-		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
-			t.Fatalf("failed to write handoff file: %v", err)
-		}
-
-		result, err := ValidateHandoffContent(tmpDir)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result.Valid {
-			t.Error("expected invalid handoff due to empty TLDR")
-		}
-		if result.TLDRFilled {
-			t.Error("expected TLDRFilled to be false for empty section")
-		}
-	})
-
-	t.Run("valid outcomes", func(t *testing.T) {
-		validOutcomes := []string{"success", "partial", "blocked", "failed"}
-		for _, outcome := range validOutcomes {
-			t.Run(outcome, func(t *testing.T) {
-				tmpDir := t.TempDir()
-				handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
-
-				content := `# Synthesis
-
-**Outcome:** ` + outcome + `
-
----
-
-## TLDR
-
-Completed some meaningful work in this session.
-
----
-`
-				if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
-					t.Fatalf("failed to write handoff file: %v", err)
-				}
-
-				result, err := ValidateHandoffContent(tmpDir)
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-				if !result.OutcomeFilled {
-					t.Errorf("expected OutcomeFilled to be true for %q", outcome)
-				}
-			})
-		}
-	})
-
-	t.Run("missing file", func(t *testing.T) {
-		tmpDir := t.TempDir()
-
-		result, err := ValidateHandoffContent(tmpDir)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result.Valid {
-			t.Error("expected invalid result for missing file")
-		}
-		if len(result.Errors) == 0 {
-			t.Error("expected error message for missing file")
-		}
-	})
-
-	t.Run("empty workspace path", func(t *testing.T) {
-		result, err := ValidateHandoffContent("")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result.Valid {
-			t.Error("expected invalid result for empty path")
-		}
-	})
-}
-
-func TestValidateTLDRContent(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-		want    bool
-	}{
-		{
-			name: "valid TLDR with content",
-			content: `## TLDR
-
-Implemented the handoff enforcement gate successfully.
-
----`,
-			want: true,
-		},
-		{
-			name: "placeholder TLDR",
-			content: `## TLDR
-
-[1-2 sentence summary. What was the focus? What was achieved?]
-
----`,
-			want: false,
-		},
-		{
-			name: "fill instruction placeholder",
-			content: `## TLDR
-
-[Fill within first 5 tool calls: What is this session trying to accomplish?]
-
----`,
-			want: false,
-		},
-		{
-			name: "TLDR too short",
-			content: `## TLDR
-
-Short.
-
----`,
-			want: false,
-		},
-		{
-			name: "missing TLDR section",
-			content: `## Summary
-
-Some content here.`,
-			want: false,
-		},
-		{
-			name: "TLDR with session-goal placeholder",
-			content: `## TLDR
-
-{session-goal}
-
----`,
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := validateTLDRContent(tt.content)
-			if got != tt.want {
-				t.Errorf("validateTLDRContent() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestValidateOutcomeField(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-		want    bool
-	}{
-		{
-			name:    "success outcome",
-			content: "**Outcome:** success",
-			want:    true,
-		},
-		{
-			name:    "partial outcome",
-			content: "**Outcome:** partial",
-			want:    true,
-		},
-		{
-			name:    "blocked outcome",
-			content: "**Outcome:** blocked",
-			want:    true,
-		},
-		{
-			name:    "failed outcome",
-			content: "**Outcome:** failed",
-			want:    true,
-		},
-		{
-			name:    "outcome with extra text",
-			content: "**Outcome:** success - all tests passing",
-			want:    true,
-		},
-		{
-			name:    "placeholder outcome",
-			content: "**Outcome:** {success | partial | blocked | failed}",
-			want:    false,
-		},
-		{
-			name:    "missing outcome",
-			content: "**Focus:** something\n**Duration:** 1h",
-			want:    false,
-		},
-		{
-			name:    "invalid outcome value",
-			content: "**Outcome:** done",
-			want:    false,
-		},
-		{
-			name:    "empty outcome",
-			content: "**Outcome:**",
-			want:    false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := validateOutcomeField(tt.content)
-			if got != tt.want {
-				t.Errorf("validateOutcomeField() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestVerifyOrchestratorCompletion_ContentValidation(t *testing.T) {
-	t.Run("fails with placeholder TLDR and Outcome", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
-
-		// Write handoff with placeholders (simulating empty template)
-		content := `# Synthesis
-
-**Orchestrator:** test-session
-**Focus:** Something
-**Duration:** 2026-01-15 10:00 → 2026-01-15 14:00
-**Outcome:** {success | partial | blocked | failed}
-
----
-
-## TLDR
-
-[1-2 sentence summary. What was the focus? What was achieved?]
-
----
-
-## Session Summary
-Done.
-`
-		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
-			t.Fatalf("failed to write handoff file: %v", err)
-		}
-
-		result := VerifyOrchestratorCompletion(tmpDir)
-		if result.Passed {
-			t.Error("expected verification to fail with placeholder content")
-		}
-		// Should have handoff_content gate failed
-		found := false
-		for _, gate := range result.GatesFailed {
-			if gate == GateHandoffContent {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("expected GateHandoffContent in failed gates, got: %v", result.GatesFailed)
-		}
-	})
-
-	t.Run("passes with filled content", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
-
-		content := `# Synthesis
-
-**Orchestrator:** test-session
-**Focus:** Implement handoff enforcement
-**Duration:** 2026-01-15 10:00 → 2026-01-15 14:00
-**Outcome:** success
-
----
-
-## TLDR
-
-Implemented handoff enforcement gate in orch complete. Now validates that TLDR and Outcome are filled before allowing orchestrator completion.
-
----
-
-## Session Summary
-Done.
-`
-		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
-			t.Fatalf("failed to write handoff file: %v", err)
-		}
-
-		result := VerifyOrchestratorCompletion(tmpDir)
-		if !result.Passed {
-			t.Errorf("expected verification to pass, got errors: %v", result.Errors)
-		}
-	})
-}
-
-// TestPhaseCompleteRecoveryFromActivity tests the ACTIVITY.json fallback
-// when Phase: Complete fails to persist to beads.
-// This addresses bug orch-go-21112 where bd comment reports success but
-// the comment silently fails to persist.
-func TestPhaseCompleteRecoveryFromActivity(t *testing.T) {
-	t.Run("recovers Phase: Complete from ACTIVITY.json when missing from beads", func(t *testing.T) {
-		tmpDir := t.TempDir()
-
-		// Write a .tier file so we can test with light tier (no SYNTHESIS.md required)
-		tierPath := filepath.Join(tmpDir, ".tier")
-		if err := os.WriteFile(tierPath, []byte("light\n"), 0644); err != nil {
-			t.Fatalf("failed to write tier file: %v", err)
-		}
-
-		// Write ACTIVITY.json with a successful bd comment Phase: Complete
-		activityJSON := `{
-			"version": 1,
-			"session_id": "ses_test123",
-			"exported_at": "2026-01-30T18:00:00Z",
-			"events": [
-				{
-					"id": "part_1",
-					"type": "message.part",
-					"properties": {
-						"sessionID": "ses_test123",
-						"messageID": "msg_1",
-						"part": {
-							"id": "part_1",
-							"type": "tool",
-							"tool": "bash",
-							"sessionID": "ses_test123",
-							"state": {
-								"title": "Report Phase: Complete",
-								"status": "completed",
-								"input": {"command": "bd comment test-123 \"Phase: Complete - All done\""},
-								"output": "Command \"comment\" is deprecated, use 'bd comments add' instead\nComment added to test-123\n"
-							}
-						}
-					},
-					"timestamp": 1737146700000
-				}
-			]
-		}`
-		activityPath := filepath.Join(tmpDir, "ACTIVITY.json")
-		if err := os.WriteFile(activityPath, []byte(activityJSON), 0644); err != nil {
-			t.Fatalf("failed to write activity file: %v", err)
-		}
-
-		// Verify with empty comments (simulating bd comment not persisting)
-		// The function should recover Phase: Complete from ACTIVITY.json
-		result, err := VerifyCompletionWithTierAndComments("test-123", tmpDir, "light", []Comment{})
-		if err != nil {
-			t.Fatalf("verification failed: %v", err)
-		}
-
-		// Should pass because ACTIVITY.json shows the agent attempted to report Phase: Complete
-		if !result.Passed {
-			t.Errorf("expected verification to pass with ACTIVITY.json fallback, got errors: %v", result.Errors)
-		}
-
-		// Should have a warning about the recovery
-		if len(result.Warnings) == 0 {
-			t.Error("expected warning about Phase: Complete recovery from ACTIVITY.json")
-		}
-
-		warningFound := false
-		for _, w := range result.Warnings {
-			if contains(w, "recovered from ACTIVITY.json") {
-				warningFound = true
-				break
-			}
-		}
-		if !warningFound {
-			t.Errorf("expected warning about recovery, got warnings: %v", result.Warnings)
-		}
-
-		// Phase should show as Complete
-		if result.Phase.Phase != "Complete" {
-			t.Errorf("expected Phase = Complete, got %s", result.Phase.Phase)
-		}
-	})
-
-	t.Run("does not recover when bd comment failed", func(t *testing.T) {
-		tmpDir := t.TempDir()
-
-		// Write a .tier file
-		tierPath := filepath.Join(tmpDir, ".tier")
-		if err := os.WriteFile(tierPath, []byte("light\n"), 0644); err != nil {
-			t.Fatalf("failed to write tier file: %v", err)
-		}
-
-		// Write ACTIVITY.json with a FAILED bd comment Phase: Complete
-		// (no "Comment added" in output)
-		activityJSON := `{
-			"version": 1,
-			"session_id": "ses_test123",
-			"exported_at": "2026-01-30T18:00:00Z",
-			"events": [
-				{
-					"id": "part_1",
-					"type": "message.part",
-					"properties": {
-						"sessionID": "ses_test123",
-						"messageID": "msg_1",
-						"part": {
-							"id": "part_1",
-							"type": "tool",
-							"tool": "bash",
-							"sessionID": "ses_test123",
-							"state": {
-								"title": "Report Phase: Complete",
-								"status": "completed",
-								"input": {"command": "bd comment test-123 \"Phase: Complete - All done\""},
-								"output": "error: database locked\n"
-							}
-						}
-					},
-					"timestamp": 1737146700000
-				}
-			]
-		}`
-		activityPath := filepath.Join(tmpDir, "ACTIVITY.json")
-		if err := os.WriteFile(activityPath, []byte(activityJSON), 0644); err != nil {
-			t.Fatalf("failed to write activity file: %v", err)
-		}
-
-		// Verify with empty comments
-		// Should NOT recover because bd reported failure (no "Comment added")
-		result, err := VerifyCompletionWithTierAndComments("test-123", tmpDir, "light", []Comment{})
-		if err != nil {
-			t.Fatalf("verification failed: %v", err)
-		}
-
-		// Should NOT pass - bd command failed
-		if result.Passed {
-			t.Error("expected verification to fail when bd comment reported error")
-		}
-
-		// Should have phase_complete in failed gates
-		gateFound := false
-		for _, g := range result.GatesFailed {
-			if g == GatePhaseComplete {
-				gateFound = true
-				break
-			}
-		}
-		if !gateFound {
-			t.Errorf("expected phase_complete gate to fail, got gates: %v", result.GatesFailed)
-		}
-	})
-
-	t.Run("normal verification still works when Phase: Complete is in beads", func(t *testing.T) {
-		tmpDir := t.TempDir()
-
-		// Write a .tier file
-		tierPath := filepath.Join(tmpDir, ".tier")
-		if err := os.WriteFile(tierPath, []byte("light\n"), 0644); err != nil {
-			t.Fatalf("failed to write tier file: %v", err)
-		}
-
-		// Verify with Phase: Complete in comments (normal case)
-		comments := []Comment{
-			{Text: "Phase: Complete - All done"},
-		}
-		result, err := VerifyCompletionWithTierAndComments("test-123", tmpDir, "light", comments)
-		if err != nil {
-			t.Fatalf("verification failed: %v", err)
-		}
-
-		// Should pass normally
-		if !result.Passed {
-			t.Errorf("expected verification to pass, got errors: %v", result.Errors)
-		}
-
-		// Should NOT have recovery warning (normal path, no recovery needed)
-		for _, w := range result.Warnings {
-			if contains(w, "recovered from ACTIVITY.json") {
-				t.Errorf("unexpected recovery warning in normal case: %s", w)
-			}
-		}
-	})
-}
-
-func TestMergeGateResult(t *testing.T) {
-	t.Run("passing gate adds to GateResults only", func(t *testing.T) {
-		result := VerificationResult{Passed: true}
-		mergeGateResult(&result, gateCheckResult{
-			gate:   GateBuild,
-			passed: true,
-		})
-
-		if !result.Passed {
-			t.Error("expected result to remain passed")
-		}
-		if len(result.Errors) != 0 {
-			t.Errorf("expected no errors, got %v", result.Errors)
-		}
-		if len(result.GatesFailed) != 0 {
-			t.Errorf("expected no failed gates, got %v", result.GatesFailed)
-		}
-		if len(result.GateResults) != 1 {
-			t.Fatalf("expected 1 gate result, got %d", len(result.GateResults))
-		}
-		if result.GateResults[0].Gate != GateBuild || !result.GateResults[0].Passed {
-			t.Errorf("gate result = %+v, want passed build gate", result.GateResults[0])
-		}
-	})
-
-	t.Run("failing gate sets Passed=false and records errors", func(t *testing.T) {
-		result := VerificationResult{Passed: true}
-		mergeGateResult(&result, gateCheckResult{
-			gate:   GateTestEvidence,
-			passed: false,
-			errors: []string{"no test evidence found", "code changes require tests"},
-		})
-
-		if result.Passed {
-			t.Error("expected result to be failed")
-		}
-		if len(result.Errors) != 2 {
-			t.Errorf("expected 2 errors, got %d: %v", len(result.Errors), result.Errors)
-		}
-		if len(result.GatesFailed) != 1 || result.GatesFailed[0] != GateTestEvidence {
-			t.Errorf("expected [test_evidence] in failed gates, got %v", result.GatesFailed)
-		}
-		if len(result.GateResults) != 1 {
-			t.Fatalf("expected 1 gate result, got %d", len(result.GateResults))
-		}
-		if result.GateResults[0].Passed {
-			t.Error("expected gate result to be failed")
-		}
-		if result.GateResults[0].Error != "no test evidence found; code changes require tests" {
-			t.Errorf("gate error = %q", result.GateResults[0].Error)
-		}
-	})
-
-	t.Run("warnings are always merged regardless of pass/fail", func(t *testing.T) {
-		result := VerificationResult{Passed: true}
-		mergeGateResult(&result, gateCheckResult{
-			gate:     GateConstraint,
-			passed:   true,
-			warnings: []string{"optional constraint not matched"},
-		})
-
-		if !result.Passed {
-			t.Error("expected result to remain passed")
-		}
-		if len(result.Warnings) != 1 {
-			t.Errorf("expected 1 warning, got %d: %v", len(result.Warnings), result.Warnings)
-		}
-	})
-
-	t.Run("multiple gate results accumulate correctly", func(t *testing.T) {
-		result := VerificationResult{Passed: true}
-		mergeGateResult(&result, gateCheckResult{gate: GateBuild, passed: true})
-		mergeGateResult(&result, gateCheckResult{gate: GateTestEvidence, passed: false, errors: []string{"missing tests"}})
-		mergeGateResult(&result, gateCheckResult{gate: GateGitDiff, passed: true, warnings: []string{"extra files in diff"}})
-
-		if result.Passed {
-			t.Error("expected overall result to be failed")
-		}
-		if len(result.GateResults) != 3 {
-			t.Errorf("expected 3 gate results, got %d", len(result.GateResults))
-		}
-		if len(result.GatesFailed) != 1 {
-			t.Errorf("expected 1 failed gate, got %d", len(result.GatesFailed))
-		}
-		if len(result.Errors) != 1 {
-			t.Errorf("expected 1 error, got %d", len(result.Errors))
-		}
-		if len(result.Warnings) != 1 {
-			t.Errorf("expected 1 warning, got %d", len(result.Warnings))
-		}
-	})
-}
-
-func TestMergeBackendResult(t *testing.T) {
-	t.Run("nil backend result is a no-op", func(t *testing.T) {
-		result := VerificationResult{Passed: true}
-		mergeBackendResult(&result, nil)
-
-		if !result.Passed {
-			t.Error("expected result to remain passed")
-		}
-		if len(result.Warnings) != 0 {
-			t.Errorf("expected no warnings, got %v", result.Warnings)
-		}
-	})
-
-	t.Run("backend warnings are merged without blocking", func(t *testing.T) {
-		result := VerificationResult{Passed: true}
-		mergeBackendResult(&result, &BackendResult{
-			Passed:   false,
-			Warnings: []string{"transcript not found"},
-		})
-
-		// Backend failures don't block completion
-		if !result.Passed {
-			t.Error("expected result to remain passed (backend doesn't block)")
-		}
-		if len(result.Warnings) != 1 {
-			t.Errorf("expected 1 warning, got %d: %v", len(result.Warnings), result.Warnings)
-		}
-	})
 }

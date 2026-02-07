@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/dylan-conlin/orch-go/pkg/cleanup"
 )
 
 // TestGetProjectNameFromWorkdir verifies project name extraction.
@@ -178,9 +176,9 @@ func TestIsOrchestratorSessionTitle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.title, func(t *testing.T) {
-			result := cleanup.IsOrchestratorSessionTitle(tt.title)
+			result := isOrchestratorSessionTitle(tt.title)
 			if result != tt.expected {
-				t.Errorf("cleanup.IsOrchestratorSessionTitle(%q) = %v, want %v", tt.title, result, tt.expected)
+				t.Errorf("isOrchestratorSessionTitle(%q) = %v, want %v", tt.title, result, tt.expected)
 			}
 		})
 	}
@@ -387,65 +385,6 @@ func TestArchiveStaleWorkspacesHandlesDuplicateDestination(t *testing.T) {
 	if !foundNewArchive {
 		t.Error("Expected a new archive with timestamp suffix to be created")
 		t.Logf("Archives found: %v", entries)
-	}
-}
-
-// TestCleanAllFlagLogic verifies that --all flag enables all cleanup flags.
-func TestCleanAllFlagLogic(t *testing.T) {
-	// This test verifies the flag preprocessing logic by simulating what happens
-	// in the RunE function when cleanAll is set to true.
-
-	// Start with all flags false (default state)
-	windows := false
-	phantoms := false
-	verifyOpenCode := false
-	investigations := false
-	stale := false
-	sessions := false
-	all := false
-
-	// Test 1: When all=false, individual flags should remain unchanged
-	if all {
-		windows = true
-		phantoms = true
-		verifyOpenCode = true
-		investigations = true
-		stale = true
-		sessions = true
-	}
-
-	if windows || phantoms || verifyOpenCode || investigations || stale || sessions {
-		t.Error("Expected all flags to remain false when all=false")
-	}
-
-	// Test 2: When all=true, all individual flags should be set to true
-	all = true
-	if all {
-		windows = true
-		phantoms = true
-		verifyOpenCode = true
-		investigations = true
-		stale = true
-		sessions = true
-	}
-
-	if !windows {
-		t.Error("Expected windows to be true when all=true")
-	}
-	if !phantoms {
-		t.Error("Expected phantoms to be true when all=true")
-	}
-	if !verifyOpenCode {
-		t.Error("Expected verifyOpenCode to be true when all=true")
-	}
-	if !investigations {
-		t.Error("Expected investigations to be true when all=true")
-	}
-	if !stale {
-		t.Error("Expected stale to be true when all=true")
-	}
-	if !sessions {
-		t.Error("Expected sessions to be true when all=true")
 	}
 }
 

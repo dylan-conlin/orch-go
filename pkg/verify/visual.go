@@ -4,6 +4,7 @@ package verify
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -141,21 +142,6 @@ var visualEvidencePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)playwright`),
 	regexp.MustCompile(`(?i)browser_take_screenshot`),
 	regexp.MustCompile(`(?i)browser_navigate`),
-	// Glass browser automation tool mentions
-	regexp.MustCompile(`(?i)glass_page_state`),
-	regexp.MustCompile(`(?i)glass_elements`),
-	regexp.MustCompile(`(?i)glass_click`),
-	regexp.MustCompile(`(?i)glass_type`),
-	regexp.MustCompile(`(?i)glass_navigate`),
-	regexp.MustCompile(`(?i)glass_screenshot`),
-	regexp.MustCompile(`(?i)glass_scroll`),
-	regexp.MustCompile(`(?i)glass_hover`),
-	regexp.MustCompile(`(?i)glass_tabs`),
-	regexp.MustCompile(`(?i)glass_focus`),
-	regexp.MustCompile(`(?i)glass_enable_user_tracking`),
-	regexp.MustCompile(`(?i)glass_recent_actions`),
-	regexp.MustCompile(`(?i)glass assert`),
-	regexp.MustCompile(`(?i)glass\s+tool`),
 	// Smoke test with UI context
 	regexp.MustCompile(`(?i)smoke\s*test.*ui`),
 	regexp.MustCompile(`(?i)ui.*smoke\s*test`),
@@ -189,12 +175,21 @@ var humanApprovalPatterns = []*regexp.Regexp{
 // commits from other agents or prior work. Use HasWebChangesForAgent instead,
 // which scopes to commits made since the agent was spawned.
 func HasWebChangesInRecentCommits(projectDir string) bool {
-	files, err := getChangedFiles(projectDir, "")
+	// Get changed files from last 5 commits
+	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
 	if err != nil {
-		return false
+		// If git command fails (e.g., not enough commits), try last 1 commit
+		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
+		cmd.Dir = projectDir
+		output, err = cmd.Output()
+		if err != nil {
+			return false
+		}
 	}
 
-	return hasWebChangesInFiles(strings.Join(files, "\n"))
+	return hasWebChangesInFiles(string(output))
 }
 
 // HasWebChangesForAgent checks if any commits since the agent's spawn time
@@ -233,13 +228,17 @@ func hasWebChangesSinceTime(projectDir string, since time.Time) bool {
 	// Format time for git --since flag (ISO 8601 format works well)
 	sinceStr := since.UTC().Format("2006-01-02T15:04:05Z")
 
-	files, err := getChangedFiles(projectDir, sinceStr)
+	// Get all files changed in commits since spawn time
+	// Using git log with --name-only to get file paths
+	cmd := exec.Command("git", "log", "--since="+sinceStr, "--name-only", "--format=")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
 	if err != nil {
 		// If git command fails, return false (no web changes detectable)
 		return false
 	}
 
-	return hasWebChangesInFiles(strings.Join(files, "\n"))
+	return hasWebChangesInFiles(string(output))
 }
 
 // hasWebChangesSinceTimeForWorkspace checks if any commits since the given time
@@ -259,20 +258,40 @@ func hasWebChangesSinceTimeForWorkspace(projectDir string, since time.Time, work
 
 	sinceStr := since.UTC().Format("2006-01-02T15:04:05Z")
 
+	// Convert workspace path to relative path from project dir for git matching
+	relWorkspace := workspacePath
+	if filepath.IsAbs(workspacePath) && filepath.IsAbs(projectDir) {
+		rel, err := filepath.Rel(projectDir, workspacePath)
+		if err == nil {
+			relWorkspace = rel
+		}
+	}
+
 	// Get commit hashes since spawn time that touch the workspace
-	commitHashes, err := getCommitHashes(projectDir, workspacePath, sinceStr)
-	if err != nil || len(commitHashes) == 0 {
+	cmd := exec.Command("git", "log", "--since="+sinceStr, "--format=%H", "--", relWorkspace)
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil || len(strings.TrimSpace(string(output))) == 0 {
 		// No commits touching workspace, or error - no web changes
 		return false
 	}
 
+	// Get the commit hashes
+	commitHashes := strings.Split(strings.TrimSpace(string(output)), "\n")
+
 	// For each commit that touched the workspace, get all changed files
 	var allChangedFiles []string
 	for _, hash := range commitHashes {
-		files, err := getFileChangesForCommit(projectDir, hash)
+		if hash == "" {
+			continue
+		}
+		cmd := exec.Command("git", "show", "--name-only", "--format=", hash)
+		cmd.Dir = projectDir
+		output, err := cmd.Output()
 		if err != nil {
 			continue
 		}
+		files := strings.Split(string(output), "\n")
 		allChangedFiles = append(allChangedFiles, files...)
 	}
 
@@ -465,12 +484,21 @@ func GetWebChangesWithStats(projectDir, workspacePath string) ([]WebFileChange, 
 
 // getWebChangesFromRecentCommits gets web file changes from the last 5 commits.
 func getWebChangesFromRecentCommits(projectDir string) ([]WebFileChange, error) {
-	output, err := getChangedNumstat(projectDir)
+	// Get files changed in last 5 commits with stats
+	cmd := exec.Command("git", "diff", "--numstat", "HEAD~5..HEAD")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
 	if err != nil {
-		return nil, err
+		// Try with fewer commits
+		cmd = exec.Command("git", "diff", "--numstat", "HEAD~1..HEAD")
+		cmd.Dir = projectDir
+		output, err = cmd.Output()
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return parseNumstatOutput(output, projectDir)
+	return parseNumstatOutput(string(output), projectDir)
 }
 
 // getWebChangesSinceTimeForWorkspace gets web file changes since spawn time for this workspace.
@@ -482,24 +510,43 @@ func getWebChangesSinceTimeForWorkspace(projectDir string, since time.Time, work
 
 	sinceStr := since.UTC().Format("2006-01-02T15:04:05Z")
 
+	// Convert workspace path to relative path
+	relWorkspace := workspacePath
+	if filepath.IsAbs(workspacePath) && filepath.IsAbs(projectDir) {
+		rel, err := filepath.Rel(projectDir, workspacePath)
+		if err == nil {
+			relWorkspace = rel
+		}
+	}
+
 	// Get commit hashes that touch the workspace
-	commitHashes, err := getCommitHashes(projectDir, workspacePath, sinceStr)
-	if err != nil || len(commitHashes) == 0 {
+	cmd := exec.Command("git", "log", "--since="+sinceStr, "--format=%H", "--", relWorkspace)
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil || len(strings.TrimSpace(string(output))) == 0 {
 		return nil, nil // No commits touching workspace
 	}
+
+	commitHashes := strings.Split(strings.TrimSpace(string(output)), "\n")
 
 	// Collect all changes from commits that touched workspace
 	var allChanges []WebFileChange
 	seen := make(map[string]bool)
 
 	for _, hash := range commitHashes {
+		if hash == "" {
+			continue
+		}
+
 		// Get numstat for this commit
-		output, err := getNumstatForCommit(projectDir, hash)
+		cmd := exec.Command("git", "show", "--numstat", "--format=", hash)
+		cmd.Dir = projectDir
+		output, err := cmd.Output()
 		if err != nil {
 			continue
 		}
 
-		changes, err := parseNumstatOutput(output, projectDir)
+		changes, err := parseNumstatOutput(string(output), projectDir)
 		if err != nil {
 			continue
 		}
@@ -530,21 +577,31 @@ func getWebChangesSinceTime(projectDir string, since time.Time) ([]WebFileChange
 	sinceStr := since.UTC().Format("2006-01-02T15:04:05Z")
 
 	// Get commit hashes since spawn time
-	commitHashes, err := getCommitHashes(projectDir, "", sinceStr)
-	if err != nil || len(commitHashes) == 0 {
+	cmd := exec.Command("git", "log", "--since="+sinceStr, "--format=%H")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil || len(strings.TrimSpace(string(output))) == 0 {
 		return nil, nil
 	}
+
+	commitHashes := strings.Split(strings.TrimSpace(string(output)), "\n")
 
 	var allChanges []WebFileChange
 	seen := make(map[string]bool)
 
 	for _, hash := range commitHashes {
-		output, err := getNumstatForCommit(projectDir, hash)
+		if hash == "" {
+			continue
+		}
+
+		cmd := exec.Command("git", "show", "--numstat", "--format=", hash)
+		cmd.Dir = projectDir
+		output, err := cmd.Output()
 		if err != nil {
 			continue
 		}
 
-		changes, err := parseNumstatOutput(output, projectDir)
+		changes, err := parseNumstatOutput(string(output), projectDir)
 		if err != nil {
 			continue
 		}
@@ -617,7 +674,12 @@ func parseNumstatOutput(output string, projectDir string) ([]WebFileChange, erro
 
 // isNewFile checks if a file was created (not modified) by checking git status.
 func isNewFile(projectDir, filePath string) bool {
-	return !fileExistsInPreviousCommit(projectDir, filePath)
+	// Check if file exists in HEAD~1
+	cmd := exec.Command("git", "cat-file", "-e", "HEAD~1:"+filePath)
+	cmd.Dir = projectDir
+	err := cmd.Run()
+	// If error, file didn't exist before → it's new
+	return err != nil
 }
 
 // HasVisualVerificationEvidence checks beads comments for evidence of visual verification.

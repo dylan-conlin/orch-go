@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Create decision: Should screenshots have a formal storage convention (e.g., `.orch/workspace/{name}/screenshots/`)? Currently they're ephemeral or external references with no artifact lifecycle.
 
-**Promote to Decision:** Actioned - decision exists (template-ownership-model)
+**Promote to Decision:** recommend-yes (screenshots need architectural decision on storage, referencing, and lifecycle)
 
 ---
 

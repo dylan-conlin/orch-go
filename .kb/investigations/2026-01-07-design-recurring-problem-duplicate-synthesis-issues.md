@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Fix dedup to return `true` (assume exists) on any error, and add logging for diagnosis.
 
-**Promote to Decision:** Actioned - patterns in kb reflect tool
+**Promote to Decision:** recommend-yes - This establishes a pattern for error handling in idempotency checks.
 
 ---
 

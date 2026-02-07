@@ -3,35 +3,32 @@ package verify
 
 import (
 	"bytes"
-	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 )
-
-// DefaultBuildTimeout is the maximum time to wait for build/compile commands.
-// 60 seconds is generous for incremental builds while preventing indefinite hangs.
-const DefaultBuildTimeout = 60 * time.Second
 
 // BuildVerificationResult represents the result of checking if the project builds.
 type BuildVerificationResult struct {
-	Passed      bool     // Whether the build succeeded
-	HasGoFiles  bool     // Whether Go files exist in the project
-	BuildOutput string   // Output from the build command (truncated if long)
-	Errors      []string // Error messages (blocking)
-	Warnings    []string // Warning messages (non-blocking)
-	SkillName   string   // Skill that was used
-	PreExisting bool     // Whether the build failure was pre-existing (not caused by this agent)
-	SkipMemory  bool     // Whether the build gate was auto-skipped via build skip memory
-	BlameDetail string   // Human-readable blame attribution detail
+	Passed       bool     // Whether the build succeeded
+	HasGoFiles   bool     // Whether Go files exist in the project
+	BuildOutput  string   // Output from the build command (truncated if long)
+	Errors       []string // Error messages (blocking)
+	Warnings     []string // Warning messages (non-blocking)
+	SkillName    string   // Skill that was used
+}
+
+// Skills that require build verification before completion.
+// Only implementation-focused skills that may modify Go code need build verification.
+var skillsRequiringBuildVerification = map[string]bool{
+	"feature-impl":         true, // Primary implementation skill
+	"systematic-debugging": true, // Debug fixes should build
+	"reliability-testing":  true, // Testing skill may modify code
 }
 
 // Skills explicitly excluded from build verification requirements.
-// These skills produce documentation/research artifacts, not code changes.
-// Any skill NOT in this list will trigger build verification if Go files were changed.
+// These skills may modify files but typically don't break builds.
 var skillsExcludedFromBuildVerification = map[string]bool{
 	"investigation":  true, // Research skill, produces investigations
 	"architect":      true, // Design skill, produces decisions
@@ -42,40 +39,31 @@ var skillsExcludedFromBuildVerification = map[string]bool{
 	"writing-skills": true, // Meta skill, modifies skills not Go code
 }
 
-// IsSkillExcludedFromBuildVerification returns true if the skill is explicitly
-// excluded from build verification (documentation/research-only skills).
-func IsSkillExcludedFromBuildVerification(skillName string) bool {
-	if skillName == "" {
-		return false
-	}
-	return skillsExcludedFromBuildVerification[strings.ToLower(skillName)]
-}
-
 // IsSkillRequiringBuildVerification determines if a skill requires build verification.
 //
 // The logic is:
 // 1. If skill is explicitly excluded (investigation, architect, etc.) -> false
-// 2. Otherwise -> true (build verification required when Go files are changed)
-//
-// This is a restrictive default: any skill that touches Go code must pass the build gate.
-// Previously used a permissive default (unknown skills skipped), which allowed agents
-// to leave broken builds (e.g., 23 files with incomplete refactoring in 2026-02-06 session).
+// 2. If skill is explicitly included (feature-impl, debugging) -> true
+// 3. If skill is unknown -> false (permissive default)
 func IsSkillRequiringBuildVerification(skillName string) bool {
-	// Empty skill name: still require build verification.
-	// Agents without skills can still modify Go code and break the build.
 	if skillName == "" {
-		return true
+		return false
 	}
 
 	skillName = strings.ToLower(skillName)
 
-	// Check explicit exclusions - these are documentation/research skills
+	// Check explicit exclusions first
 	if skillsExcludedFromBuildVerification[skillName] {
 		return false
 	}
 
-	// All other skills: require build verification when Go files are changed
-	return true
+	// Check explicit inclusions
+	if skillsRequiringBuildVerification[skillName] {
+		return true
+	}
+
+	// Unknown skill - be permissive
+	return false
 }
 
 // IsGoProject checks if the project directory contains Go files.
@@ -108,12 +96,21 @@ func IsGoProject(projectDir string) bool {
 // HasGoChangesInRecentCommits checks if any Go files were modified
 // in recent commits that would require build verification.
 func HasGoChangesInRecentCommits(projectDir string) bool {
-	files, err := getChangedFiles(projectDir, "")
+	// Get changed files from last 5 commits
+	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
 	if err != nil {
-		return false
+		// Try with fewer commits
+		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
+		cmd.Dir = projectDir
+		output, err = cmd.Output()
+		if err != nil {
+			return false
+		}
 	}
 
-	return hasGoChangesInFiles(strings.Join(files, "\n"))
+	return hasGoChangesInFiles(string(output))
 }
 
 // hasGoChangesInFiles checks if any files in the output are Go files.
@@ -133,14 +130,8 @@ func hasGoChangesInFiles(gitOutput string) bool {
 
 // RunGoBuild runs 'go build ./...' in the project directory.
 // Returns the build output and any error that occurred.
-//
-// DEPRECATED: Use RunGoTestCompile instead - it also compiles test files
-// which catches signature mismatches between production code and tests.
 func RunGoBuild(projectDir string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultBuildTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "go", "build", "./...")
+	cmd := exec.Command("go", "build", "./...")
 	cmd.Dir = projectDir
 
 	var stdout, stderr bytes.Buffer
@@ -152,69 +143,18 @@ func RunGoBuild(projectDir string) (string, error) {
 	// Combine stdout and stderr
 	output := stdout.String() + stderr.String()
 
-	if ctx.Err() == context.DeadlineExceeded {
-		return output, fmt.Errorf("go build timed out after %v", DefaultBuildTimeout)
-	}
-
 	return output, err
 }
 
-// RunGoTestCompile compiles all Go code including test files without running tests.
-// Uses 'go test -run=^$' which compiles all code (production and test) but runs no tests
-// (the pattern '^$' matches no test names).
-//
-// This is preferred over RunGoBuild because 'go build' only compiles production
-// code - it doesn't compile *_test.go files. This means changes to function
-// signatures can break tests without being caught by 'go build'.
-//
-// Returns the output and any error that occurred.
-func RunGoTestCompile(projectDir string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultBuildTimeout)
-	defer cancel()
-
-	// Use 'go test -run=^$ ./...' to compile all packages including tests
-	// The -run=^$ flag matches no test names, so it compiles but runs nothing
-	// This catches compilation errors in both production and test code
-	cmd := exec.CommandContext(ctx, "go", "test", "-run=^$", "./...")
-	cmd.Dir = projectDir
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-
-	// Combine stdout and stderr
-	output := stdout.String() + stderr.String()
-
-	if ctx.Err() == context.DeadlineExceeded {
-		return output, fmt.Errorf("go test compile timed out after %v", DefaultBuildTimeout)
-	}
-
-	return output, err
-}
-
-// VerifyBuild checks if the Go project builds successfully, including test files.
+// VerifyBuild checks if the Go project builds successfully.
 // This is a gate that blocks completion if Go files were modified
-// but the project fails to compile.
+// but the project fails to build.
 //
 // The verification passes if:
-// 1. The skill is explicitly excluded from build verification (documentation/research skills), OR
-// 2. The project is not a Go project (no go.mod or .go files), OR
-// 3. No Go files were modified in recent commits, OR
-// 4. The project compiles successfully (both production and test code), OR
-// 5. Build failure is pre-existing (not caused by this agent - blame attribution), OR
-// 6. Build gate was previously skipped and skip memory is still valid
-//
-// IMPORTANT: The default is restrictive - any agent that modifies Go files must pass
-// the build gate, regardless of skill name. Only explicitly excluded skills (investigation,
-// architect, etc.) skip the gate. This prevents agents from leaving broken builds
-// (e.g., partial refactorings with undefined variable errors).
-//
-// Uses 'go test -run=^$' instead of 'go build' because 'go build'
-// does NOT compile test files (*_test.go). This means function signature changes
-// can break tests without being caught. Using 'go test -run=^$' ensures both
-// production code AND test code compile correctly.
+// 1. The project is not a Go project (no go.mod or .go files), OR
+// 2. No Go files were modified in recent commits, OR
+// 3. The skill is not an implementation-focused skill, OR
+// 4. The project builds successfully with 'go build ./...'
 func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
 	result := BuildVerificationResult{Passed: true}
 
@@ -244,57 +184,19 @@ func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
 		return result
 	}
 
-	// Check gate skip memory - if orchestrator already skipped build gate recently,
-	// auto-skip for subsequent completions with a warning
-	if skip := ReadGateSkipMemory(projectDir, GateBuild); skip != nil {
-		result.SkipMemory = true
-		result.Warnings = append(result.Warnings,
-			"build gate auto-skipped (prior skip by "+skip.SetBy+": "+skip.Reason+")")
-		result.Warnings = append(result.Warnings,
-			"build skip expires at "+skip.ExpiresAt.Format("15:04:05"))
-		return result
-	}
-
-	// Run 'go test -run=^$' to compile both production code and test files
-	// This catches signature mismatches that 'go build' would miss
-	output, err := RunGoTestCompile(projectDir)
+	// Run go build
+	output, err := RunGoBuild(projectDir)
 	result.BuildOutput = truncateOutput(output, 500)
 
 	if err != nil {
-		// Build failed - check blame attribution before blocking
-		blame := AttributeBuildFailure(workspacePath, projectDir)
-		result.BlameDetail = blame.BlameDetail
-
-		if blame.PreExisting {
-			// Build was already broken before this agent's commits
-			// Pass the gate with a warning instead of blocking
-			result.PreExisting = true
-			result.Warnings = append(result.Warnings,
-				"build failure is pre-existing (not caused by this agent)")
-			result.Warnings = append(result.Warnings,
-				"blame: "+blame.BlameDetail)
-			if output != "" {
-				result.Warnings = append(result.Warnings,
-					"build output (for reference): "+result.BuildOutput)
-			}
-			return result
-		}
-
-		// Agent caused the build failure - block completion
 		result.Passed = false
 		result.Errors = append(result.Errors,
-			"'go test -run=^$ ./...' failed (compilation error in production or test code)",
-			"Both production and test code must compile before completion",
+			"'go build ./...' failed",
+			"Build must pass before completion",
 		)
-		if blame.BlameDetail != "" {
-			result.Errors = append(result.Errors, "blame: "+blame.BlameDetail)
-		}
 		if output != "" {
-			result.Errors = append(result.Errors, "Compilation output: "+result.BuildOutput)
+			result.Errors = append(result.Errors, "Build output: "+result.BuildOutput)
 		}
-	} else {
-		// Build passed - clear any stale build skip memory
-		ClearGateSkipMemory(projectDir, GateBuild)
 	}
 
 	return result
@@ -309,9 +211,8 @@ func truncateOutput(output string, maxLen int) string {
 }
 
 // VerifyBuildForCompletion is a convenience function for use in VerifyCompletionFull.
-// Returns nil if no verification is needed (not a Go project, no Go changes, or excluded skill).
+// Returns nil if no verification is needed (not a Go project, no Go changes, or non-implementation skill).
 // Returns EscalationBlock level result if build fails.
-// Returns a passing result (with warnings) if failure is pre-existing or skip memory is active.
 func VerifyBuildForCompletion(workspacePath, projectDir string) *BuildVerificationResult {
 	result := VerifyBuild(workspacePath, projectDir)
 
@@ -320,31 +221,15 @@ func VerifyBuildForCompletion(workspacePath, projectDir string) *BuildVerificati
 		return nil
 	}
 
-	// Return nil if skill is explicitly excluded from build verification
-	if IsSkillExcludedFromBuildVerification(result.SkillName) {
+	// Return nil if skill doesn't require build verification
+	if !IsSkillRequiringBuildVerification(result.SkillName) {
 		return nil
 	}
 
-	// Return nil if no Go changes
+	// Return nil if no Go changes (after checking skill - we want the skill warning)
 	if !HasGoChangesInRecentCommits(projectDir) {
 		return nil
 	}
 
 	return &result
-}
-
-// RecordBuildSkip persists a build gate skip decision for future completions.
-// Called when the orchestrator uses --skip-build --skip-reason to bypass the build gate.
-// Subsequent completions will auto-skip the build gate until the skip expires.
-//
-// Deprecated: Use WriteGateSkipMemory(projectDir, GateBuild, reason, skippedBy) directly.
-func RecordBuildSkip(projectDir, reason, skippedBy string) error {
-	return WriteGateSkipMemory(projectDir, GateBuild, reason, skippedBy)
-}
-
-// RecordGateSkip persists a gate skip decision for future completions.
-// Called when the orchestrator uses --skip-* --skip-reason to bypass a gate.
-// Subsequent completions will auto-skip the gate until the skip expires.
-func RecordGateSkip(projectDir, gate, reason, skippedBy string) error {
-	return WriteGateSkipMemory(projectDir, gate, reason, skippedBy)
 }

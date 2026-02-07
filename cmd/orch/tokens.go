@@ -16,9 +16,8 @@ var (
 )
 
 var tokensCmd = &cobra.Command{
-	Use:    "tokens [session-id|beads-id]",
-	Short:  "Show token usage for sessions",
-	Hidden: true,
+	Use:   "tokens [session-id|beads-id]",
+	Short: "Show token usage for sessions",
 	Long: `Show detailed token usage for OpenCode sessions.
 
 Without arguments, shows token usage for all active sessions.
@@ -37,11 +36,10 @@ Examples:
   orch tokens ses_abc123           # Show specific session
   orch tokens orch-go-3anf         # Show by beads ID`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client := opencode.NewClient(serverURL)
 		if len(args) > 0 {
-			return runTokensDetail(client, args[0])
+			return runTokensDetail(args[0])
 		}
-		return runTokensSummary(client)
+		return runTokensSummary()
 	},
 }
 
@@ -59,12 +57,12 @@ type TokensSummaryOutput struct {
 
 // TokensSessionInfo represents token info for a single session.
 type TokensSessionInfo struct {
-	SessionID string               `json:"session_id"`
-	BeadsID   string               `json:"beads_id,omitempty"`
-	Title     string               `json:"title"`
-	Status    string               `json:"status"` // active, idle, completed
-	Runtime   string               `json:"runtime"`
-	Tokens    *opencode.TokenStats `json:"tokens"`
+	SessionID    string               `json:"session_id"`
+	BeadsID      string               `json:"beads_id,omitempty"`
+	Title        string               `json:"title"`
+	Status       string               `json:"status"` // active, idle, completed
+	Runtime      string               `json:"runtime"`
+	Tokens       *opencode.TokenStats `json:"tokens"`
 }
 
 // TokensTotal represents aggregate token totals.
@@ -77,7 +75,8 @@ type TokensTotal struct {
 	TotalTokens     int `json:"total_tokens"`
 }
 
-func runTokensSummary(client opencode.ClientInterface) error {
+func runTokensSummary() error {
+	client := opencode.NewClient(serverURL)
 	now := time.Now()
 
 	// List all sessions
@@ -232,12 +231,14 @@ func printTokensSummary(output TokensSummaryOutput) {
 	}
 }
 
-func runTokensDetail(client opencode.ClientInterface, identifier string) error {
+func runTokensDetail(identifier string) error {
 	// Resolve identifier to session ID
 	sessionID, err := resolveSessionID(serverURL, identifier)
 	if err != nil {
 		return fmt.Errorf("failed to resolve session: %w", err)
 	}
+
+	client := opencode.NewClient(serverURL)
 
 	// Get session info
 	session, err := client.GetSession(sessionID)
@@ -256,9 +257,9 @@ func runTokensDetail(client opencode.ClientInterface, identifier string) error {
 
 	if tokensJSON {
 		output := struct {
-			Session  *opencode.Session   `json:"session"`
-			Messages int                 `json:"message_count"`
-			Tokens   opencode.TokenStats `json:"tokens"`
+			Session  *opencode.Session    `json:"session"`
+			Messages int                  `json:"message_count"`
+			Tokens   opencode.TokenStats  `json:"tokens"`
 		}{
 			Session:  session,
 			Messages: len(messages),

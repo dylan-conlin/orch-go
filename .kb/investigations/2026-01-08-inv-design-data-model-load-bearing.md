@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Create decision record with data model, implement in Feature: orch-go-lv3yx.4
 
-**Promote to Decision:** Actioned - patterns documented in load-bearing guidance model
+**Promote to Decision:** recommend-yes - This establishes the data model for an entire feature epic
 
 <!--
 Example D.E.K.N.:

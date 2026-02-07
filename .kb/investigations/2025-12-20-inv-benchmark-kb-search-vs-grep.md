@@ -1,7 +1,3 @@
----
-linked_issues:
-  - orch-go-2or
----
 ## Summary (D.E.K.N.)
 
 **Delta:** `kb search` and `rg` serve different purposes - kb searches knowledge artifacts (.kb/), rg searches code/codebase - agents should use both strategically.

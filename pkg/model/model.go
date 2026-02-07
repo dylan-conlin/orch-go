@@ -15,22 +15,19 @@ func (m ModelSpec) Format() string {
 }
 
 // DefaultModel is used when no model is specified.
-// Opus is the default (Max subscription covers unlimited Claude CLI usage).
-// Sonnet requires pay-per-token API which needs explicit opt-in.
+// Opus is the default (covered by Max subscription, best quality).
 var DefaultModel = ModelSpec{
 	Provider: "anthropic",
-	ModelID:  "claude-opus-4-6",
+	ModelID:  "claude-opus-4-5-20251101",
 }
 
 // Aliases maps short names to full model specs.
 // Designed for quick switching between common models.
 var Aliases = map[string]ModelSpec{
 	// Anthropic models (Claude)
-	"opus":       {Provider: "anthropic", ModelID: "claude-opus-4-6"},
-	"opus-4.6":   {Provider: "anthropic", ModelID: "claude-opus-4-6"},
-	"opus-4-6":   {Provider: "anthropic", ModelID: "claude-opus-4-6"},
-	"opus-4.5":   {Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}, // Legacy
-	"opus-4-5":   {Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}, // Legacy
+	"opus":       {Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"},
+	"opus-4.5":   {Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"},
+	"opus-4-5":   {Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"},
 	"sonnet":     {Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"},
 	"sonnet-4.5": {Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"},
 	"sonnet-4-5": {Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"},
@@ -39,46 +36,13 @@ var Aliases = map[string]ModelSpec{
 	"haiku-4-5":  {Provider: "anthropic", ModelID: "claude-haiku-4-5-20251001"},
 
 	// Google models (Gemini)
-	"flash":     {Provider: "google", ModelID: "gemini-3-flash-preview"},
+	"flash":     {Provider: "google", ModelID: "gemini-2.5-flash"},
 	"flash-2.5": {Provider: "google", ModelID: "gemini-2.5-flash"},
 	"flash3":    {Provider: "google", ModelID: "gemini-3-flash-preview"},
 	"flash-3":   {Provider: "google", ModelID: "gemini-3-flash-preview"},
+	"flash-3.0": {Provider: "google", ModelID: "gemini-3-flash-preview"},
 	"pro":       {Provider: "google", ModelID: "gemini-2.5-pro"},
 	"pro-2.5":   {Provider: "google", ModelID: "gemini-2.5-pro"},
-
-	// OpenAI models (GPT) - IDs from models.dev
-	"gpt":           {Provider: "openai", ModelID: "gpt-5.3-codex"}, // Short alias for latest GPT
-	"gpt5":          {Provider: "openai", ModelID: "gpt-5.3-codex"}, // Updated to latest (5.3-codex)
-	"gpt-5":         {Provider: "openai", ModelID: "gpt-5.3-codex"}, // Updated to latest (5.3-codex)
-	"gpt5-latest":   {Provider: "openai", ModelID: "gpt-5.3-codex"},
-	"gpt-5.3":       {Provider: "openai", ModelID: "gpt-5.3-codex"},
-	"gpt-5.3-codex": {Provider: "openai", ModelID: "gpt-5.3-codex"},
-	"codex":         {Provider: "openai", ModelID: "gpt-5.3-codex"},
-	"gpt-5.2":       {Provider: "openai", ModelID: "gpt-5.2"}, // Previous latest
-	"gpt-5.2-codex": {Provider: "openai", ModelID: "gpt-5.2-codex"},
-	"gpt5-mini":     {Provider: "openai", ModelID: "gpt-5-mini-20251130"},
-	"gpt-5-mini":    {Provider: "openai", ModelID: "gpt-5-mini-20251130"},
-	"gpt4o":         {Provider: "openai", ModelID: "gpt-4o"},
-	"gpt-4o":        {Provider: "openai", ModelID: "gpt-4o"},
-	"gpt-mini":      {Provider: "openai", ModelID: "gpt-4o-mini"},
-	"gpt4o-mini":    {Provider: "openai", ModelID: "gpt-4o-mini"},
-	"gpt-4o-mini":   {Provider: "openai", ModelID: "gpt-4o-mini"},
-	"o3":            {Provider: "openai", ModelID: "o3"},
-	"o3-mini":       {Provider: "openai", ModelID: "o3-mini"},
-
-	// DeepSeek models (IDs from models.dev: deepseek-chat, deepseek-reasoner)
-	"deepseek":      {Provider: "deepseek", ModelID: "deepseek-chat"},
-	"deepseek-chat": {Provider: "deepseek", ModelID: "deepseek-chat"},
-	"deepseek-v3":   {Provider: "deepseek", ModelID: "deepseek-v3.2"},
-	"deepseek-r1":   {Provider: "deepseek", ModelID: "deepseek-r1"},
-	"reasoning":     {Provider: "deepseek", ModelID: "deepseek-r1"},
-
-	// Alibaba models (Qwen) - uses dashscope-intl.aliyuncs.com endpoint
-	"qwen":          {Provider: "alibaba", ModelID: "qwen3-max"},
-	"qwen-max":      {Provider: "alibaba", ModelID: "qwen3-max"},
-	"qwen3":         {Provider: "alibaba", ModelID: "qwen3-max"},
-	"qwen3-max":     {Provider: "alibaba", ModelID: "qwen3-max"},
-	"qwen-thinking": {Provider: "alibaba", ModelID: "qwen3-max-2026-01-23"},
 }
 
 // Resolve resolves a model specification to a full ModelSpec.
@@ -115,32 +79,27 @@ func Resolve(spec string) ModelSpec {
 	if strings.Contains(specLower, "gemini") {
 		return ModelSpec{Provider: "google", ModelID: spec}
 	}
-	if strings.Contains(specLower, "gpt") {
-		return ModelSpec{Provider: "openai", ModelID: spec}
-	}
-	if strings.Contains(specLower, "deepseek") {
-		return ModelSpec{Provider: "deepseek", ModelID: spec}
-	}
-	if strings.Contains(specLower, "qwen") {
-		return ModelSpec{Provider: "alibaba", ModelID: spec}
-	}
 
 	// Default to anthropic for unknown models
 	return ModelSpec{Provider: "anthropic", ModelID: spec}
 }
 
-// IsAnthropic returns true if the model spec is an Anthropic model.
-func (m ModelSpec) IsAnthropic() bool {
-	return m.Provider == "anthropic"
-}
-
 // ListAliases returns a formatted list of available model aliases.
 func ListAliases() []string {
-	return []string{
-		"Anthropic: opus, sonnet, haiku (also -4.5 variants)",
-		"Google: flash, flash-2.5, flash3, flash-3, pro, pro-2.5",
-		"OpenAI: gpt/codex (latest 5.3-codex), gpt-5.2, gpt-5.2-codex, gpt-5-mini, gpt4o, gpt-4o, o3, o3-mini",
-		"DeepSeek: deepseek, deepseek-chat, deepseek-r1, reasoning (alias for reasoner)",
-		"Alibaba: qwen, qwen-max, qwen3, qwen3-max, qwen-thinking (thinking mode snapshot)",
+	// Group by provider
+	anthropic := []string{}
+	google := []string{}
+
+	for alias, spec := range Aliases {
+		if spec.Provider == "anthropic" {
+			anthropic = append(anthropic, alias)
+		} else if spec.Provider == "google" {
+			google = append(google, alias)
+		}
 	}
+
+	return append(
+		[]string{"Anthropic: opus, sonnet, haiku (also -4.5 variants)"},
+		"Google: flash, flash-2.5, flash3, flash-3, pro, pro-2.5",
+	)
 }

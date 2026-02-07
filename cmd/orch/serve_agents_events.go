@@ -14,8 +14,8 @@ import (
 )
 
 // handleEvents proxies the OpenCode SSE stream to the client.
-// It connects to http://127.0.0.1:4096/event and forwards events.
-func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+// It connects to http://localhost:4096/event and forwards events.
+func handleEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -34,7 +34,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Connect to OpenCode SSE stream
-	opencodeURL := s.ServerURL + "/event"
+	opencodeURL := serverURL + "/event"
 	resp, err := http.Get(opencodeURL)
 	if err != nil {
 		// Send error as SSE event
@@ -93,7 +93,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 // handleAgentlog returns agent lifecycle events from ~/.orch/events.jsonl.
 // Without query params: returns last 100 events as JSON array.
 // With ?follow=true: streams new events via SSE.
-func (s *Server) handleAgentlog(w http.ResponseWriter, r *http.Request) {
+func handleAgentlog(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -102,14 +102,14 @@ func (s *Server) handleAgentlog(w http.ResponseWriter, r *http.Request) {
 	follow := r.URL.Query().Get("follow") == "true"
 
 	if follow {
-		s.handleAgentlogSSE(w, r)
+		handleAgentlogSSE(w, r)
 	} else {
-		s.handleAgentlogJSON(w, r)
+		handleAgentlogJSON(w, r)
 	}
 }
 
 // handleAgentlogJSON returns the last 100 events as JSON array.
-func (s *Server) handleAgentlogJSON(w http.ResponseWriter, r *http.Request) {
+func handleAgentlogJSON(w http.ResponseWriter, r *http.Request) {
 	logPath := events.DefaultLogPath()
 
 	eventList, err := readLastNEvents(logPath, 100)
@@ -132,7 +132,7 @@ func (s *Server) handleAgentlogJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAgentlogSSE streams new events via SSE as they are appended to events.jsonl.
-func (s *Server) handleAgentlogSSE(w http.ResponseWriter, r *http.Request) {
+func handleAgentlogSSE(w http.ResponseWriter, r *http.Request) {
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -234,9 +234,6 @@ func readLastNEvents(path string, n int) ([]events.Event, error) {
 
 	var allEvents []events.Event
 	scanner := bufio.NewScanner(file)
-	// Increase buffer size to handle large event lines (e.g., events with
-	// embedded transcripts can exceed the default 64KB scanner buffer).
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // up to 1MB per line
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {

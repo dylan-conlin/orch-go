@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Implement workspace-scoped screenshot storage with metadata; add verification to check files exist at `orch complete`.
 
-**Promote to Decision:** Actioned - patterns documented in artifact management
+**Promote to Decision:** recommend-yes - Establishes artifact storage pattern applicable beyond screenshots.
 
 ---
 

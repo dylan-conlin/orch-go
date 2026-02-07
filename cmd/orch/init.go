@@ -99,7 +99,7 @@ type InitResult struct {
 
 // runInit initializes orch scaffolding in the current directory.
 func runInit() error {
-	projectDir, err := currentProjectDir()
+	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}

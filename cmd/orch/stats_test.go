@@ -32,8 +32,8 @@ func TestParseEvents(t *testing.T) {
 		t.Fatalf("failed to write test events: %v", err)
 	}
 
-	// Parse events (parseEvents now returns all events, filtering happens in aggregateStats)
-	parsed, err := parseEvents(eventsPath)
+	// Parse events
+	parsed, err := parseEvents(eventsPath, 7)
 	if err != nil {
 		t.Fatalf("parseEvents failed: %v", err)
 	}
@@ -51,8 +51,8 @@ func TestParseEventsTimeFiltering(t *testing.T) {
 	oldTimestamp := now - (10 * 24 * 60 * 60) // 10 days ago
 
 	events := []string{
-		`{"type":"session.spawned","session_id":"ses_1","timestamp":` + itoa(now-3600) + `,"data":{"skill":"feature-impl","beads_id":"test-1"}}`,
-		`{"type":"session.spawned","session_id":"ses_2","timestamp":` + itoa(oldTimestamp) + `,"data":{"skill":"investigation","beads_id":"test-2"}}`,
+		`{"type":"session.spawned","session_id":"ses_1","timestamp":` + itoa(now-3600) + `,"data":{"skill":"feature-impl"}}`,
+		`{"type":"session.spawned","session_id":"ses_2","timestamp":` + itoa(oldTimestamp) + `,"data":{"skill":"investigation"}}`,
 	}
 
 	content := ""
@@ -64,21 +64,14 @@ func TestParseEventsTimeFiltering(t *testing.T) {
 		t.Fatalf("failed to write test events: %v", err)
 	}
 
-	// parseEvents now returns all events (time filtering happens in aggregateStats)
-	parsed, err := parseEvents(eventsPath)
+	// Parse with 7 day window - should only get 1 event
+	parsed, err := parseEvents(eventsPath, 7)
 	if err != nil {
 		t.Fatalf("parseEvents failed: %v", err)
 	}
 
-	// parseEvents returns ALL events now
-	if len(parsed) != 2 {
-		t.Errorf("expected 2 events (all events), got %d", len(parsed))
-	}
-
-	// Time filtering happens in aggregateStats - verify that only recent events are counted
-	report := aggregateStats(parsed, 7, true)
-	if report.Summary.TotalSpawns != 1 {
-		t.Errorf("expected 1 spawn in 7-day window, got %d", report.Summary.TotalSpawns)
+	if len(parsed) != 1 {
+		t.Errorf("expected 1 event (recent only), got %d", len(parsed))
 	}
 }
 
@@ -172,82 +165,6 @@ func TestAggregateStatsEmptyEvents(t *testing.T) {
 	}
 }
 
-func TestAggregateStatsEscapeHatch(t *testing.T) {
-	now := time.Now().Unix()
-	sevenDaysAgo := now - (7 * 24 * 60 * 60) + 3600   // 7 days ago + 1 hour (within 7d window)
-	thirtyDaysAgo := now - (25 * 24 * 60 * 60)        // 25 days ago (within 30d, outside 7d)
-	veryOld := now - (60 * 24 * 60 * 60)              // 60 days ago (outside 30d)
-
-	events := []StatsEvent{
-		// Recent escape hatch spawn with account (within 7d)
-		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 3600, Data: map[string]interface{}{
-			"skill": "feature-impl", "beads_id": "test-1", "spawn_mode": "claude", "usage_account": "account1@example.com",
-		}},
-		// Older escape hatch spawn with different account (within 30d, outside 7d)
-		{Type: "session.spawned", SessionID: "ses_2", Timestamp: thirtyDaysAgo, Data: map[string]interface{}{
-			"skill": "feature-impl", "beads_id": "test-2", "spawn_mode": "claude", "usage_account": "account2@example.com",
-		}},
-		// Very old escape hatch spawn (outside 30d)
-		{Type: "session.spawned", SessionID: "ses_3", Timestamp: veryOld, Data: map[string]interface{}{
-			"skill": "feature-impl", "beads_id": "test-3", "spawn_mode": "claude", "usage_account": "account1@example.com",
-		}},
-		// Recent regular spawn (not escape hatch)
-		{Type: "session.spawned", SessionID: "ses_4", Timestamp: now - 1800, Data: map[string]interface{}{
-			"skill": "feature-impl", "beads_id": "test-4", "spawn_mode": "headless",
-		}},
-		// Escape hatch without account info
-		{Type: "session.spawned", SessionID: "ses_5", Timestamp: sevenDaysAgo, Data: map[string]interface{}{
-			"skill": "investigation", "beads_id": "test-5", "spawn_mode": "claude",
-		}},
-	}
-
-	report := aggregateStats(events, 7, true)
-
-	// Test escape hatch totals
-	if report.EscapeHatchStats.TotalSpawns != 4 { // All 4 escape hatch spawns
-		t.Errorf("expected 4 total escape hatch spawns, got %d", report.EscapeHatchStats.TotalSpawns)
-	}
-
-	if report.EscapeHatchStats.Last7DaySpawns != 2 { // ses_1 and ses_5
-		t.Errorf("expected 2 escape hatch spawns in last 7d, got %d", report.EscapeHatchStats.Last7DaySpawns)
-	}
-
-	if report.EscapeHatchStats.Last30DaySpawns != 3 { // ses_1, ses_2, ses_5
-		t.Errorf("expected 3 escape hatch spawns in last 30d, got %d", report.EscapeHatchStats.Last30DaySpawns)
-	}
-
-	// Test escape hatch rate (in 7-day window: 2 escape hatch out of 3 spawns)
-	// Note: ses_2, ses_3, ses_5 are outside the 7d window but escape hatch still counts them for rate
-	// Actually: within 7d window we have ses_1, ses_4, ses_5 (3 total), with ses_1 and ses_5 being escape hatch
-	// So rate should be 2/3 = 66.67%
-	expectedRate := (2.0 / 3.0) * 100
-	if report.EscapeHatchStats.EscapeHatchRate < expectedRate-1 || report.EscapeHatchStats.EscapeHatchRate > expectedRate+1 {
-		t.Errorf("expected escape hatch rate ~%.1f%%, got %.1f%%", expectedRate, report.EscapeHatchStats.EscapeHatchRate)
-	}
-
-	// Test account breakdown
-	if len(report.EscapeHatchStats.ByAccount) < 2 {
-		t.Errorf("expected at least 2 accounts in breakdown, got %d", len(report.EscapeHatchStats.ByAccount))
-	}
-
-	// Verify account1 has 2 spawns total (ses_1 in 7d, ses_3 outside 30d)
-	var account1Found bool
-	for _, acct := range report.EscapeHatchStats.ByAccount {
-		if acct.Account == "account1@example.com" {
-			account1Found = true
-			if acct.TotalSpawns != 2 {
-				t.Errorf("expected account1 to have 2 total spawns, got %d", acct.TotalSpawns)
-			}
-			if acct.Last7Days != 1 {
-				t.Errorf("expected account1 to have 1 spawn in last 7d, got %d", acct.Last7Days)
-			}
-		}
-	}
-	if !account1Found {
-		t.Error("account1@example.com not found in breakdown")
-	}
-}
-
 func TestTruncateSkill(t *testing.T) {
 	tests := []struct {
 		skill  string
@@ -268,7 +185,7 @@ func TestTruncateSkill(t *testing.T) {
 }
 
 func TestParseEventsFileNotFound(t *testing.T) {
-	_, err := parseEvents("/nonexistent/path/events.jsonl")
+	_, err := parseEvents("/nonexistent/path/events.jsonl", 7)
 	if err == nil {
 		t.Error("expected error for nonexistent file")
 	}
@@ -727,337 +644,5 @@ func TestAggregateStatsDeduplicationMixedEventTypes(t *testing.T) {
 	// Should have 1 completion (deduplicated across event types)
 	if report.Summary.TotalCompletions != 1 {
 		t.Errorf("expected 1 completion (deduplicated across event types), got %d", report.Summary.TotalCompletions)
-	}
-}
-
-func TestAggregateStatsVerification(t *testing.T) {
-	now := time.Now().Unix()
-
-	events := []StatsEvent{
-		// Spawn for 3 agents
-		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
-			"skill": "feature-impl", "beads_id": "test-1",
-		}},
-		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 6200, Data: map[string]interface{}{
-			"skill": "feature-impl", "beads_id": "test-2",
-		}},
-		{Type: "session.spawned", SessionID: "ses_3", Timestamp: now - 5200, Data: map[string]interface{}{
-			"skill": "investigation", "beads_id": "test-3",
-		}},
-		// Verification failures (these don't create attempts, just track gate failures)
-		{Type: "verification.failed", Timestamp: now - 4000, Data: map[string]interface{}{
-			"beads_id":     "test-1",
-			"gates_failed": []interface{}{"test_evidence", "git_diff"},
-			"skill":        "feature-impl",
-		}},
-		{Type: "verification.failed", Timestamp: now - 3000, Data: map[string]interface{}{
-			"beads_id":     "test-2",
-			"gates_failed": []interface{}{"test_evidence"},
-			"skill":        "feature-impl",
-		}},
-		// Completions - test-1 passed first try, test-2 was forced, test-3 passed
-		{Type: "agent.completed", Timestamp: now - 2000, Data: map[string]interface{}{
-			"beads_id":            "test-1",
-			"verification_passed": true,
-			"forced":              false,
-			"skill":               "feature-impl",
-		}},
-		{Type: "agent.completed", Timestamp: now - 1500, Data: map[string]interface{}{
-			"beads_id":            "test-2",
-			"verification_passed": false,
-			"forced":              true,
-			"gates_bypassed":      []interface{}{"test_evidence"},
-			"skill":               "feature-impl",
-		}},
-		{Type: "agent.completed", Timestamp: now - 1000, Data: map[string]interface{}{
-			"beads_id":            "test-3",
-			"verification_passed": true,
-			"forced":              false,
-			"skill":               "investigation",
-		}},
-	}
-
-	report := aggregateStats(events, 7, true)
-
-	// Test verification stats
-	if report.VerificationStats.TotalAttempts != 3 {
-		t.Errorf("expected 3 verification attempts, got %d", report.VerificationStats.TotalAttempts)
-	}
-
-	if report.VerificationStats.PassedFirstTry != 2 {
-		t.Errorf("expected 2 passed first try, got %d", report.VerificationStats.PassedFirstTry)
-	}
-
-	if report.VerificationStats.Bypassed != 1 {
-		t.Errorf("expected 1 bypassed, got %d", report.VerificationStats.Bypassed)
-	}
-
-	// Check pass rate (2/3 = 66.67%)
-	expectedPassRate := (2.0 / 3.0) * 100
-	if report.VerificationStats.PassRate < expectedPassRate-0.1 || report.VerificationStats.PassRate > expectedPassRate+0.1 {
-		t.Errorf("expected pass rate ~%.1f%%, got %.1f%%", expectedPassRate, report.VerificationStats.PassRate)
-	}
-
-	// Check bypass rate (1/3 = 33.33%)
-	expectedBypassRate := (1.0 / 3.0) * 100
-	if report.VerificationStats.BypassRate < expectedBypassRate-0.1 || report.VerificationStats.BypassRate > expectedBypassRate+0.1 {
-		t.Errorf("expected bypass rate ~%.1f%%, got %.1f%%", expectedBypassRate, report.VerificationStats.BypassRate)
-	}
-}
-
-func TestAggregateStatsVerificationGateBreakdown(t *testing.T) {
-	now := time.Now().Unix()
-
-	events := []StatsEvent{
-		// Spawns
-		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
-			"skill": "feature-impl", "beads_id": "test-1",
-		}},
-		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 6200, Data: map[string]interface{}{
-			"skill": "feature-impl", "beads_id": "test-2",
-		}},
-		// Verification failures - test_evidence fails twice, git_diff once, visual_verification once
-		{Type: "verification.failed", Timestamp: now - 4000, Data: map[string]interface{}{
-			"beads_id":     "test-1",
-			"gates_failed": []interface{}{"test_evidence", "git_diff"},
-			"skill":        "feature-impl",
-		}},
-		{Type: "verification.failed", Timestamp: now - 3500, Data: map[string]interface{}{
-			"beads_id":     "test-2",
-			"gates_failed": []interface{}{"test_evidence", "visual_verification"},
-			"skill":        "feature-impl",
-		}},
-		// Completions - both bypassed with different gates
-		{Type: "agent.completed", Timestamp: now - 2000, Data: map[string]interface{}{
-			"beads_id":            "test-1",
-			"verification_passed": false,
-			"forced":              true,
-			"gates_bypassed":      []interface{}{"test_evidence", "git_diff"},
-			"skill":               "feature-impl",
-		}},
-		{Type: "agent.completed", Timestamp: now - 1000, Data: map[string]interface{}{
-			"beads_id":            "test-2",
-			"verification_passed": false,
-			"forced":              true,
-			"gates_bypassed":      []interface{}{"test_evidence"},
-			"skill":               "feature-impl",
-		}},
-	}
-
-	report := aggregateStats(events, 7, true)
-
-	// Check gate breakdown
-	if len(report.VerificationStats.FailuresByGate) == 0 {
-		t.Fatal("expected gate breakdown, got none")
-	}
-
-	// Find test_evidence gate stats
-	var testEvidenceStats *GateFailureStats
-	var gitDiffStats *GateFailureStats
-	for i := range report.VerificationStats.FailuresByGate {
-		gate := &report.VerificationStats.FailuresByGate[i]
-		if gate.Gate == "test_evidence" {
-			testEvidenceStats = gate
-		}
-		if gate.Gate == "git_diff" {
-			gitDiffStats = gate
-		}
-	}
-
-	if testEvidenceStats == nil {
-		t.Fatal("test_evidence gate not found in breakdown")
-	}
-
-	// test_evidence: failed 2 times, bypassed 2 times (both completions bypassed it)
-	if testEvidenceStats.FailCount != 2 {
-		t.Errorf("expected test_evidence to have 2 failures, got %d", testEvidenceStats.FailCount)
-	}
-	if testEvidenceStats.BypassCount != 2 {
-		t.Errorf("expected test_evidence to have 2 bypasses, got %d", testEvidenceStats.BypassCount)
-	}
-
-	if gitDiffStats == nil {
-		t.Fatal("git_diff gate not found in breakdown")
-	}
-
-	// git_diff: failed 1 time, bypassed 1 time
-	if gitDiffStats.FailCount != 1 {
-		t.Errorf("expected git_diff to have 1 failure, got %d", gitDiffStats.FailCount)
-	}
-	if gitDiffStats.BypassCount != 1 {
-		t.Errorf("expected git_diff to have 1 bypass, got %d", gitDiffStats.BypassCount)
-	}
-}
-
-func TestAggregateStatsVerificationBySkill(t *testing.T) {
-	now := time.Now().Unix()
-
-	events := []StatsEvent{
-		// Spawns for different skills
-		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
-			"skill": "feature-impl", "beads_id": "test-1",
-		}},
-		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 6200, Data: map[string]interface{}{
-			"skill": "feature-impl", "beads_id": "test-2",
-		}},
-		{Type: "session.spawned", SessionID: "ses_3", Timestamp: now - 5200, Data: map[string]interface{}{
-			"skill": "investigation", "beads_id": "test-3",
-		}},
-		// Completions
-		{Type: "agent.completed", Timestamp: now - 2000, Data: map[string]interface{}{
-			"beads_id":            "test-1",
-			"verification_passed": true,
-			"forced":              false,
-			"skill":               "feature-impl",
-		}},
-		{Type: "agent.completed", Timestamp: now - 1500, Data: map[string]interface{}{
-			"beads_id":            "test-2",
-			"verification_passed": false,
-			"forced":              true,
-			"skill":               "feature-impl",
-		}},
-		{Type: "agent.completed", Timestamp: now - 1000, Data: map[string]interface{}{
-			"beads_id":            "test-3",
-			"verification_passed": true,
-			"forced":              false,
-			"skill":               "investigation",
-		}},
-	}
-
-	report := aggregateStats(events, 7, true)
-
-	// Check skill breakdown
-	if len(report.VerificationStats.BySkill) != 2 {
-		t.Errorf("expected 2 skills in verification breakdown, got %d", len(report.VerificationStats.BySkill))
-	}
-
-	// Find feature-impl stats
-	var featureImplStats *SkillVerificationStats
-	var invStats *SkillVerificationStats
-	for i := range report.VerificationStats.BySkill {
-		sv := &report.VerificationStats.BySkill[i]
-		if sv.Skill == "feature-impl" {
-			featureImplStats = sv
-		}
-		if sv.Skill == "investigation" {
-			invStats = sv
-		}
-	}
-
-	if featureImplStats == nil {
-		t.Fatal("feature-impl not found in skill breakdown")
-	}
-	if featureImplStats.TotalAttempts != 2 {
-		t.Errorf("expected feature-impl to have 2 attempts, got %d", featureImplStats.TotalAttempts)
-	}
-	if featureImplStats.PassedFirstTry != 1 {
-		t.Errorf("expected feature-impl to have 1 passed first try, got %d", featureImplStats.PassedFirstTry)
-	}
-	if featureImplStats.Bypassed != 1 {
-		t.Errorf("expected feature-impl to have 1 bypassed, got %d", featureImplStats.Bypassed)
-	}
-	// Pass rate should be 50%
-	if featureImplStats.PassRate < 49.9 || featureImplStats.PassRate > 50.1 {
-		t.Errorf("expected feature-impl pass rate 50%%, got %.1f%%", featureImplStats.PassRate)
-	}
-
-	if invStats == nil {
-		t.Fatal("investigation not found in skill breakdown")
-	}
-	if invStats.TotalAttempts != 1 {
-		t.Errorf("expected investigation to have 1 attempt, got %d", invStats.TotalAttempts)
-	}
-	if invStats.PassedFirstTry != 1 {
-		t.Errorf("expected investigation to have 1 passed first try, got %d", invStats.PassedFirstTry)
-	}
-	// Pass rate should be 100%
-	if invStats.PassRate < 99.9 {
-		t.Errorf("expected investigation pass rate 100%%, got %.1f%%", invStats.PassRate)
-	}
-}
-
-func TestAggregateStatsReopenedCount(t *testing.T) {
-	now := time.Now().Unix()
-
-	events := []StatsEvent{
-		// Initial spawns
-		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
-			"skill": "feature-impl", "beads_id": "test-1",
-		}},
-		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 6200, Data: map[string]interface{}{
-			"skill": "feature-impl", "beads_id": "test-2",
-		}},
-		// First completions
-		{Type: "agent.completed", Timestamp: now - 5000, Data: map[string]interface{}{"beads_id": "test-1"}},
-		{Type: "agent.completed", Timestamp: now - 4500, Data: map[string]interface{}{"beads_id": "test-2"}},
-		// Issue reopened events (issues were closed and reopened for another attempt)
-		{Type: "issue.reopened", Timestamp: now - 4000, Data: map[string]interface{}{
-			"beads_id":        "test-1",
-			"previous_status": "closed",
-			"attempt_number":  2,
-		}},
-		{Type: "issue.reopened", Timestamp: now - 3000, Data: map[string]interface{}{
-			"beads_id":        "test-1",
-			"previous_status": "closed",
-			"attempt_number":  3,
-		}},
-		{Type: "issue.reopened", Timestamp: now - 2000, Data: map[string]interface{}{
-			"beads_id":        "test-2",
-			"previous_status": "closed",
-			"attempt_number":  2,
-		}},
-	}
-
-	report := aggregateStats(events, 7, true)
-
-	// Should have 3 reopened events
-	if report.AttemptStats.ReopenedCount != 3 {
-		t.Errorf("expected 3 reopened events, got %d", report.AttemptStats.ReopenedCount)
-	}
-}
-
-func TestAggregateStatsReopenedCountTimeFiltering(t *testing.T) {
-	now := time.Now().Unix()
-	oldTimestamp := now - (10 * 24 * 60 * 60) // 10 days ago (outside 7-day window)
-
-	events := []StatsEvent{
-		// Reopen within 7-day window
-		{Type: "issue.reopened", Timestamp: now - 3600, Data: map[string]interface{}{
-			"beads_id":        "test-1",
-			"previous_status": "closed",
-			"attempt_number":  2,
-		}},
-		// Reopen outside 7-day window (should not be counted)
-		{Type: "issue.reopened", Timestamp: oldTimestamp, Data: map[string]interface{}{
-			"beads_id":        "test-2",
-			"previous_status": "closed",
-			"attempt_number":  2,
-		}},
-	}
-
-	report := aggregateStats(events, 7, true)
-
-	// Should only count the reopen within the time window
-	if report.AttemptStats.ReopenedCount != 1 {
-		t.Errorf("expected 1 reopened event in 7-day window, got %d", report.AttemptStats.ReopenedCount)
-	}
-}
-
-func TestAggregateStatsReopenedCountEmpty(t *testing.T) {
-	now := time.Now().Unix()
-
-	events := []StatsEvent{
-		// Only spawns and completions, no reopens
-		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
-			"skill": "feature-impl", "beads_id": "test-1",
-		}},
-		{Type: "agent.completed", Timestamp: now - 5000, Data: map[string]interface{}{"beads_id": "test-1"}},
-	}
-
-	report := aggregateStats(events, 7, true)
-
-	// Should have 0 reopened events
-	if report.AttemptStats.ReopenedCount != 0 {
-		t.Errorf("expected 0 reopened events, got %d", report.AttemptStats.ReopenedCount)
 	}
 }

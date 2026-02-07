@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -305,17 +304,12 @@ func (t *GapTracker) countGapsForQuery(query string) int {
 
 // FindRecurringGaps identifies gaps that have occurred RecurrenceThreshold+ times.
 // Only counts UNRESOLVED events - resolved gaps are excluded from suggestions.
-// Also filters task-specific noise (issue IDs, phase names) from suggestions.
 func (t *GapTracker) FindRecurringGaps() []LearningSuggestion {
 	// Group UNRESOLVED events by normalized query
 	queryGroups := make(map[string][]GapEvent)
 	for _, e := range t.Events {
 		// Skip resolved events - they shouldn't count toward recurrence
 		if e.Resolution != "" {
-			continue
-		}
-		// Skip task-specific noise (issue IDs, phase announcements)
-		if isTaskNoise(e.Query) {
 			continue
 		}
 		normalized := normalizeQuery(e.Query)
@@ -455,28 +449,6 @@ func matchPattern(query string, pattern queryPattern) string {
 
 	// Prefix and suffix match - wildcard covers the middle
 	return pattern.Canonical
-}
-
-// isTaskNoise checks if a query appears to be task-specific noise.
-// Task noise includes:
-// - Issue IDs (e.g., "orch-go-0vscq", "og-feat-implement-xyz")
-// - Phase announcements (e.g., "Phase: Planning", "Phase: Complete")
-//
-// These patterns appear in gap queries due to task descriptions but
-// don't represent genuine knowledge gaps worth acting on.
-func isTaskNoise(query string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(query))
-
-	// Check for phase announcements (e.g., "Phase: Planning")
-	if strings.HasPrefix(normalized, "phase:") {
-		return true
-	}
-
-	// Check for issue ID patterns (e.g., "orch-go-0vscq", "og-feat-xyz")
-	// Pattern matches: project-identifier format common in beads issue IDs
-	// Examples: orch-go-0vscq.5, og-feat-implement-task-noise-17jan-8344
-	matched, _ := regexp.MatchString(`^[a-z]+-[a-z]+-\w+`, normalized)
-	return matched
 }
 
 // normalizeQuery normalizes a query for grouping similar queries.

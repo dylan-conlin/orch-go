@@ -2,7 +2,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -46,7 +45,7 @@ sessions, and monitoring session events via SSE.`,
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&serverURL, "server", "http://127.0.0.1:4096", "OpenCode server URL")
+	rootCmd.PersistentFlags().StringVar(&serverURL, "server", "http://localhost:4096", "OpenCode server URL")
 
 	rootCmd.AddCommand(spawnCmd)
 	rootCmd.AddCommand(sendCmd)
@@ -56,7 +55,6 @@ func init() {
 	rootCmd.AddCommand(workCmd)
 	rootCmd.AddCommand(daemonCmd)
 	rootCmd.AddCommand(tailCmd)
-	rootCmd.AddCommand(claimCmd)
 	rootCmd.AddCommand(questionCmd)
 	rootCmd.AddCommand(abandonCmd)
 	rootCmd.AddCommand(cleanCmd)
@@ -70,13 +68,10 @@ func init() {
 	rootCmd.AddCommand(portCmd)
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(retriesCmd)
-	rootCmd.AddCommand(frontierCmd)
-	rootCmd.AddCommand(reworkCmd)
 }
 
 var (
 	versionSource bool // Show source info and staleness check
-	versionJSON   bool // Output as JSON
 )
 
 var versionCmd = &cobra.Command{
@@ -84,13 +79,8 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version information",
 	Long: `Print version information.
 
-Use --source to see where the binary was built from and check if it's stale.
-Use --json to output version information in JSON format.`,
+Use --source to see where the binary was built from and check if it's stale.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if versionJSON {
-			runVersionJSON()
-			return
-		}
 		if versionSource {
 			runVersionSource()
 			return
@@ -102,33 +92,6 @@ Use --json to output version information in JSON format.`,
 
 func init() {
 	versionCmd.Flags().BoolVar(&versionSource, "source", false, "Show source location and staleness check")
-	versionCmd.Flags().BoolVar(&versionJSON, "json", false, "Output as JSON")
-}
-
-// VersionInfo represents version information in JSON format.
-type VersionInfo struct {
-	Version   string `json:"version"`
-	BuildTime string `json:"build_time"`
-	SourceDir string `json:"source_dir"`
-	GitHash   string `json:"git_hash"`
-}
-
-// runVersionJSON outputs version information in JSON format.
-func runVersionJSON() {
-	info := VersionInfo{
-		Version:   version,
-		BuildTime: buildTime,
-		SourceDir: sourceDir,
-		GitHash:   gitHash,
-	}
-
-	output, err := json.MarshalIndent(info, "", "  ")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Println(string(output))
 }
 
 // runVersionSource shows where the binary was built from and checks staleness.

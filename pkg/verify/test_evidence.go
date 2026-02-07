@@ -2,7 +2,7 @@
 package verify
 
 import (
-	"fmt"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -13,15 +13,13 @@ import (
 
 // TestEvidenceResult represents the result of checking for test execution evidence.
 type TestEvidenceResult struct {
-	Passed               bool     // Whether verification passed
-	HasCodeChanges       bool     // Whether code files were changed (requires test evidence)
-	HasTestEvidence      bool     // Whether test execution evidence was found
-	MarkdownOnlyExempt   bool     // Whether exempted due to markdown-only changes
-	OutsideProjectExempt bool     // Whether exempted due to files outside project
-	Errors               []string // Error messages (blocking)
-	Warnings             []string // Warning messages (non-blocking)
-	Evidence             []string // Evidence found (for debugging)
-	SkillName            string   // Skill that was used
+	Passed          bool     // Whether verification passed
+	HasCodeChanges  bool     // Whether code files were changed (requires test evidence)
+	HasTestEvidence bool     // Whether test execution evidence was found
+	Errors          []string // Error messages (blocking)
+	Warnings        []string // Warning messages (non-blocking)
+	Evidence        []string // Evidence found (for debugging)
+	SkillName       string   // Skill that was used
 }
 
 // Skills that require test execution evidence before completion.
@@ -181,12 +179,21 @@ var codeFileExtensions = []string{
 // DEPRECATED: Use HasCodeChangesSinceSpawn for accurate per-agent change detection.
 // This function uses HEAD~5 which includes changes from OTHER agents' commits.
 func HasCodeChangesInRecentCommits(projectDir string) bool {
-	files, err := getChangedFiles(projectDir, "")
+	// Get changed files from last 5 commits
+	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
 	if err != nil {
-		return false
+		// Try with fewer commits
+		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
+		cmd.Dir = projectDir
+		output, err = cmd.Output()
+		if err != nil {
+			return false
+		}
 	}
 
-	return hasCodeChangesInFiles(strings.Join(files, "\n"))
+	return hasCodeChangesInFiles(string(output))
 }
 
 // HasCodeChangesSinceSpawn checks if any code files were modified
@@ -221,32 +228,56 @@ func HasCodeChangesSinceSpawnForWorkspace(projectDir string, spawnTime time.Time
 		return hasCodeChangesInWorkspaceCommits(projectDir, sinceStr, workspacePath)
 	}
 
-	files, err := getChangedFiles(projectDir, sinceStr)
+	// Get changed files from ALL commits since spawn time
+	cmd := exec.Command("git", "log", "--name-only", "--since="+sinceStr, "--format=")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
 	if err != nil {
 		// Fall back to recent commits if git log fails
 		return HasCodeChangesInRecentCommits(projectDir)
 	}
 
-	return hasCodeChangesInFiles(strings.Join(files, "\n"))
+	return hasCodeChangesInFiles(string(output))
 }
 
 // hasCodeChangesInWorkspaceCommits checks for code changes in commits that modified
 // files within the given workspace directory. This filters out commits from concurrent
 // agents that happened to occur after the spawn time but weren't made by this agent.
 func hasCodeChangesInWorkspaceCommits(projectDir, sinceStr, workspacePath string) bool {
-	commitHashes, err := getCommitHashes(projectDir, workspacePath, sinceStr)
-	if err != nil || len(commitHashes) == 0 {
+	// Convert workspace path to relative path from project dir for git matching
+	relWorkspace := workspacePath
+	if filepath.IsAbs(workspacePath) && filepath.IsAbs(projectDir) {
+		rel, err := filepath.Rel(projectDir, workspacePath)
+		if err == nil {
+			relWorkspace = rel
+		}
+	}
+
+	// Get commit hashes since spawn time that touch the workspace
+	cmd := exec.Command("git", "log", "--since="+sinceStr, "--format=%H", "--", relWorkspace)
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil || len(strings.TrimSpace(string(output))) == 0 {
 		// No commits touching workspace, or error - no code changes
 		return false
 	}
 
+	// Get the commit hashes
+	commitHashes := strings.Split(strings.TrimSpace(string(output)), "\n")
+
 	// For each commit that touched the workspace, get all changed files
 	var allChangedFiles []string
 	for _, hash := range commitHashes {
-		files, err := getFileChangesForCommit(projectDir, hash)
+		if hash == "" {
+			continue
+		}
+		cmd := exec.Command("git", "show", "--name-only", "--format=", hash)
+		cmd.Dir = projectDir
+		output, err := cmd.Output()
 		if err != nil {
 			continue
 		}
+		files := strings.Split(string(output), "\n")
 		allChangedFiles = append(allChangedFiles, files...)
 	}
 
@@ -293,121 +324,6 @@ func isCodeFile(filePath string) bool {
 	return false
 }
 
-// isMarkdownFile checks if a file path is a markdown file.
-func isMarkdownFile(filePath string) bool {
-	return strings.HasSuffix(strings.ToLower(filePath), ".md")
-}
-
-// isFileOutsideProject checks if a file path is outside the project directory.
-// Returns true for absolute paths not under projectDir, or relative paths starting with "../".
-func isFileOutsideProject(filePath, projectDir string) bool {
-	if projectDir == "" {
-		return false
-	}
-
-	// Handle absolute paths
-	if filepath.IsAbs(filePath) {
-		// Check if file is under project dir
-		rel, err := filepath.Rel(projectDir, filePath)
-		if err != nil {
-			return true // Can't determine relationship, treat as outside
-		}
-		// If relative path starts with "..", it's outside the project
-		return strings.HasPrefix(rel, "..")
-	}
-
-	// For relative paths, check if they start with ".."
-	return strings.HasPrefix(filePath, "..")
-}
-
-// getChangedFilesSinceSpawn returns all files changed since spawn time that are
-// associated with the given workspace. Returns empty slice on error.
-func getChangedFilesSinceSpawn(projectDir string, spawnTime time.Time, workspacePath string) []string {
-	if spawnTime.IsZero() || projectDir == "" {
-		return nil
-	}
-
-	sinceStr := spawnTime.Format(time.RFC3339)
-
-	// If workspacePath provided, filter to commits that touch the workspace
-	if workspacePath != "" {
-		return getChangedFilesInWorkspaceCommits(projectDir, sinceStr, workspacePath)
-	}
-
-	files, err := getChangedFiles(projectDir, sinceStr)
-	if err != nil {
-		return nil
-	}
-
-	return files
-}
-
-// getChangedFilesInWorkspaceCommits returns files changed in commits that modified
-// files within the given workspace directory.
-func getChangedFilesInWorkspaceCommits(projectDir, sinceStr, workspacePath string) []string {
-	commitHashes, err := getCommitHashes(projectDir, workspacePath, sinceStr)
-	if err != nil || len(commitHashes) == 0 {
-		return nil
-	}
-
-	// For each commit that touched the workspace, get all changed files
-	var allChangedFiles []string
-	for _, hash := range commitHashes {
-		files, err := getFileChangesForCommit(projectDir, hash)
-		if err != nil {
-			continue
-		}
-		allChangedFiles = append(allChangedFiles, files...)
-	}
-
-	return allChangedFiles
-}
-
-// parseFileList parses git output into a list of file paths.
-func parseFileList(gitOutput string) []string {
-	var files []string
-	lines := strings.Split(gitOutput, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			files = append(files, line)
-		}
-	}
-	return files
-}
-
-// areAllFilesMarkdown checks if all files in the list are markdown files.
-// Returns (true, count) if all files are .md, (false, count) otherwise.
-// Returns (true, 0) for empty list.
-func areAllFilesMarkdown(files []string) (bool, int) {
-	if len(files) == 0 {
-		return true, 0
-	}
-
-	for _, f := range files {
-		if !isMarkdownFile(f) {
-			return false, len(files)
-		}
-	}
-	return true, len(files)
-}
-
-// areAllFilesOutsideProject checks if all files are outside the project directory.
-// Returns (true, count) if all files are outside, (false, count) otherwise.
-// Returns (true, 0) for empty list.
-func areAllFilesOutsideProject(files []string, projectDir string) (bool, int) {
-	if len(files) == 0 || projectDir == "" {
-		return true, 0
-	}
-
-	for _, f := range files {
-		if !isFileOutsideProject(f, projectDir) {
-			return false, len(files)
-		}
-	}
-	return true, len(files)
-}
-
 // VerifyTestEvidence checks if test execution evidence exists for code changes.
 // This is a gate that blocks completion if code files were modified without
 // test execution evidence in beads comments.
@@ -439,35 +355,11 @@ func VerifyTestEvidenceWithComments(beadsID, workspacePath, projectDir string, c
 		return result
 	}
 
-	// Get spawn time for change detection
-	spawnTime := spawn.ReadSpawnTime(workspacePath)
-
-	// Get all changed files for exemption checks
-	changedFiles := getChangedFilesSinceSpawn(projectDir, spawnTime, workspacePath)
-
-	// Exemption 1: Markdown-only changes
-	// If ALL modified files are .md files, no test harness applies
-	if allMd, count := areAllFilesMarkdown(changedFiles); allMd && count > 0 {
-		result.MarkdownOnlyExempt = true
-		result.Warnings = append(result.Warnings,
-			fmt.Sprintf("markdown-only changes (%d .md files) - test evidence not required", count))
-		return result
-	}
-
-	// Exemption 2: Files outside project directory
-	// If ALL modified files are outside projectDir (e.g., ~/.claude/skills/...),
-	// there's no test harness to run
-	if allOutside, count := areAllFilesOutsideProject(changedFiles, projectDir); allOutside && count > 0 {
-		result.OutsideProjectExempt = true
-		result.Warnings = append(result.Warnings,
-			fmt.Sprintf("all changes outside project dir (%d files) - no test harness available", count))
-		return result
-	}
-
 	// Check if code files were modified since this agent was spawned
 	// Using workspace-filtered commits ensures we only look at THIS agent's commits,
 	// not concurrent agents. This prevents false positives where markdown-only
 	// changes trigger the gate because concurrent agents' commits had code changes.
+	spawnTime := spawn.ReadSpawnTime(workspacePath)
 	result.HasCodeChanges = HasCodeChangesSinceSpawnForWorkspace(projectDir, spawnTime, workspacePath)
 
 	// No code changes = no test evidence needed
@@ -526,16 +418,6 @@ func VerifyTestEvidenceForCompletionWithComments(beadsID, workspacePath, project
 
 	// Return nil if skill doesn't require test evidence
 	if !IsSkillRequiringTestEvidence(result.SkillName) {
-		return nil
-	}
-
-	// Return nil if exempted due to markdown-only changes
-	if result.MarkdownOnlyExempt {
-		return nil
-	}
-
-	// Return nil if exempted due to files outside project
-	if result.OutsideProjectExempt {
 		return nil
 	}
 

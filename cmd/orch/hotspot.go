@@ -16,12 +16,11 @@ import (
 )
 
 var (
-	hotspotFormatJSON     bool
-	hotspotFixThreshold   int
-	hotspotInvThreshold   int
-	hotspotBloatThreshold int
-	hotspotDaysBack       int
-	hotspotExclude        []string
+	hotspotFormatJSON    bool
+	hotspotFixThreshold  int
+	hotspotInvThreshold  int
+	hotspotDaysBack      int
+	hotspotExclude       []string
 )
 
 // defaultExclusions are file patterns excluded by default from hotspot analysis.
@@ -41,21 +40,18 @@ var hotspotCmd = &cobra.Command{
 Detection signals:
   1. Fix commit density: Files with many "fix:" commits (high churn, recurring bugs)
   2. Investigation clustering: Topics with many investigations (unclear design)
-  3. Bloat size: Files exceeding line count threshold (coherence degradation)
 
 A hotspot is flagged when:
   - A file has 5+ fix commits in the analysis period, OR
-  - A topic has 3+ investigations in the knowledge base, OR
-  - A file exceeds 800 lines (bloat threshold)
+  - A topic has 3+ investigations in the knowledge base
 
 Use --format json for machine-readable output that can be piped to other tools.
 
 Examples:
-  orch hotspot                       # Analyze with defaults (4 weeks, 5+ fixes, 3+ investigations, 800+ lines)
+  orch hotspot                       # Analyze with defaults (4 weeks, 5+ fixes, 3+ investigations)
   orch hotspot --days 14             # Analyze last 2 weeks only
   orch hotspot --threshold 3         # Flag files with 3+ fix commits
   orch hotspot --inv-threshold 5     # Flag topics with 5+ investigations
-  orch hotspot --bloat-threshold 1000 # Flag files with 1000+ lines
   orch hotspot --format json         # Output as JSON for scripting
   orch hotspot --exclude ""          # Include all files (disable default exclusions)
   orch hotspot --exclude "*.yaml"    # Exclude only YAML files`,
@@ -68,7 +64,6 @@ func init() {
 	hotspotCmd.Flags().BoolVar(&hotspotFormatJSON, "json", false, "Output as JSON")
 	hotspotCmd.Flags().IntVar(&hotspotFixThreshold, "threshold", 5, "Minimum fix commits to flag as hotspot")
 	hotspotCmd.Flags().IntVar(&hotspotInvThreshold, "inv-threshold", 3, "Minimum investigations to flag as hotspot")
-	hotspotCmd.Flags().IntVar(&hotspotBloatThreshold, "bloat-threshold", 800, "Minimum lines to flag file as bloated")
 	hotspotCmd.Flags().IntVar(&hotspotDaysBack, "days", 28, "Days of git history to analyze")
 	hotspotCmd.Flags().StringSliceVar(&hotspotExclude, "exclude", defaultExclusions, "File patterns to exclude (e.g., *.json, go.sum)")
 	rootCmd.AddCommand(hotspotCmd)
@@ -76,30 +71,28 @@ func init() {
 
 // Hotspot represents a detected area needing architect attention.
 type Hotspot struct {
-	Path           string   `json:"path"`                    // File path or topic name
-	Type           string   `json:"type"`                    // "fix-density" or "investigation-cluster"
-	Score          int      `json:"score"`                   // Number of occurrences
-	Details        string   `json:"details,omitempty"`       // Additional context
-	RelatedFiles   []string `json:"related_files,omitempty"` // Files affected (for investigation clusters)
-	Recommendation string   `json:"recommendation"`          // Suggested action
+	Path             string   `json:"path"`                        // File path or topic name
+	Type             string   `json:"type"`                        // "fix-density" or "investigation-cluster"
+	Score            int      `json:"score"`                       // Number of occurrences
+	Details          string   `json:"details,omitempty"`           // Additional context
+	RelatedFiles     []string `json:"related_files,omitempty"`     // Files affected (for investigation clusters)
+	Recommendation   string   `json:"recommendation"`              // Suggested action
 }
 
 // HotspotReport is the complete analysis output.
 type HotspotReport struct {
-	GeneratedAt         string    `json:"generated_at"`
-	AnalysisPeriod      string    `json:"analysis_period"`
-	FixThreshold        int       `json:"fix_threshold"`
-	InvThreshold        int       `json:"inv_threshold"`
-	BloatThreshold      int       `json:"bloat_threshold"`
-	Hotspots            []Hotspot `json:"hotspots"`
-	TotalFixCommits     int       `json:"total_fix_commits"`
-	TotalInvestigations int       `json:"total_investigations"`
-	TotalBloatedFiles   int       `json:"total_bloated_files"`
-	HasArchitectWork    bool      `json:"has_architect_work"`
+	GeneratedAt      string    `json:"generated_at"`
+	AnalysisPeriod   string    `json:"analysis_period"`
+	FixThreshold     int       `json:"fix_threshold"`
+	InvThreshold     int       `json:"inv_threshold"`
+	Hotspots         []Hotspot `json:"hotspots"`
+	TotalFixCommits  int       `json:"total_fix_commits"`
+	TotalInvestigations int   `json:"total_investigations"`
+	HasArchitectWork bool      `json:"has_architect_work"`
 }
 
 func runHotspot() error {
-	projectDir, err := currentProjectDir()
+	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
@@ -109,7 +102,6 @@ func runHotspot() error {
 		AnalysisPeriod: fmt.Sprintf("Last %d days", hotspotDaysBack),
 		FixThreshold:   hotspotFixThreshold,
 		InvThreshold:   hotspotInvThreshold,
-		BloatThreshold: hotspotBloatThreshold,
 		Hotspots:       []Hotspot{},
 	}
 
@@ -129,15 +121,6 @@ func runHotspot() error {
 	} else {
 		report.TotalInvestigations = totalInv
 		report.Hotspots = append(report.Hotspots, invHotspots...)
-	}
-
-	// 3. Analyze file sizes for bloat detection
-	bloatHotspots, totalBloat, err := analyzeBloatFiles(projectDir, hotspotBloatThreshold)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to analyze file sizes: %v\n", err)
-	} else {
-		report.TotalBloatedFiles = totalBloat
-		report.Hotspots = append(report.Hotspots, bloatHotspots...)
 	}
 
 	// Sort hotspots by score (descending)
@@ -280,25 +263,6 @@ func shouldCountFile(path string) bool {
 	return shouldCountFileWithExclusions(path, hotspotExclude)
 }
 
-// isSourceFile returns true if the file is a recognized source code file type.
-func isSourceFile(path string) bool {
-	ext := filepath.Ext(path)
-	sourceExts := []string{
-		".go", ".js", ".ts", ".jsx", ".tsx", ".svelte",
-		".py", ".rb", ".java", ".c", ".cpp", ".h", ".hpp",
-		".rs", ".swift", ".kt", ".scala", ".sh", ".bash",
-		".css", ".scss", ".sass", ".less", ".html", ".vue",
-	}
-
-	for _, sourceExt := range sourceExts {
-		if ext == sourceExt {
-			return true
-		}
-	}
-
-	return false
-}
-
 // generateFixRecommendation creates a recommendation based on fix patterns.
 func generateFixRecommendation(file string, count int) string {
 	if count >= 10 {
@@ -325,10 +289,10 @@ func analyzeInvestigationClusters(projectDir string, threshold int) ([]Hotspot, 
 	// Parse JSON output
 	var reflectResult struct {
 		Synthesis []struct {
-			Topic   string   `json:"topic"`
-			Count   int      `json:"count"`
-			Files   []string `json:"files"`
-			Urgency string   `json:"urgency"`
+			Topic       string   `json:"topic"`
+			Count       int      `json:"count"`
+			Files       []string `json:"files"`
+			Urgency     string   `json:"urgency"`
 		} `json:"synthesis"`
 	}
 
@@ -378,113 +342,6 @@ func generateInvestigationRecommendation(topic string, count int, urgency string
 	return fmt.Sprintf("MODERATE: '%s' has accumulated investigations - may need synthesis", topic)
 }
 
-// analyzeBloatFiles scans source files and flags files exceeding the bloat threshold.
-func analyzeBloatFiles(projectDir string, threshold int) ([]Hotspot, int, error) {
-	var hotspots []Hotspot
-	totalBloat := 0
-
-	// Walk the project directory to count lines in source files
-	err := filepath.Walk(projectDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip directories
-		if info.IsDir() {
-			// Skip common non-source directories
-			if info.Name() == ".git" || info.Name() == "node_modules" || info.Name() == "vendor" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		// Get relative path from project directory
-		relPath, err := filepath.Rel(projectDir, path)
-		if err != nil {
-			return nil // Skip files we can't get relative path for
-		}
-
-		// Only count files that pass the exclusion filter
-		if !shouldCountFile(relPath) {
-			return nil
-		}
-
-		// Only count recognized source file types for bloat detection
-		if !isSourceFile(relPath) {
-			return nil
-		}
-
-		// Count lines in the file
-		lineCount, err := countLines(path)
-		if err != nil {
-			return nil // Skip files we can't count (permissions, etc.)
-		}
-
-		// Check if file exceeds threshold
-		if lineCount >= threshold {
-			totalBloat++
-			hotspots = append(hotspots, Hotspot{
-				Path:           relPath,
-				Type:           "bloat-size",
-				Score:          lineCount,
-				Details:        fmt.Sprintf("%d lines (threshold: %d)", lineCount, threshold),
-				Recommendation: generateBloatRecommendation(relPath, lineCount),
-			})
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to walk directory: %w", err)
-	}
-
-	// Sort by line count descending
-	sort.Slice(hotspots, func(i, j int) bool {
-		return hotspots[i].Score > hotspots[j].Score
-	})
-
-	return hotspots, totalBloat, nil
-}
-
-// countLines counts the number of lines in a file.
-func countLines(path string) (int, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return 0, err
-	}
-	defer file.Close()
-
-	count := 0
-	buf := make([]byte, 32*1024) // 32KB buffer
-	lineSep := []byte{'\n'}
-
-	for {
-		c, err := file.Read(buf)
-		count += strings.Count(string(buf[:c]), string(lineSep))
-
-		if err != nil {
-			if err == os.ErrClosed || strings.Contains(err.Error(), "EOF") {
-				break
-			}
-			return 0, err
-		}
-	}
-
-	return count, nil
-}
-
-// generateBloatRecommendation creates a recommendation based on file size.
-func generateBloatRecommendation(file string, lines int) string {
-	if lines > 1500 {
-		return fmt.Sprintf("CRITICAL: %s (%d lines) - Recommend architect session for structural redesign", filepath.Base(file), lines)
-	}
-	if lines >= 800 {
-		return fmt.Sprintf("MODERATE: %s (%d lines) - See .kb/guides/code-extraction-patterns.md for extraction workflow", filepath.Base(file), lines)
-	}
-	return fmt.Sprintf("INFO: %s (%d lines)", filepath.Base(file), lines)
-}
-
 // outputJSON prints the report as JSON.
 func outputJSON(report HotspotReport) error {
 	data, err := json.MarshalIndent(report, "", "  ")
@@ -503,7 +360,6 @@ func outputText(report HotspotReport) error {
 	fmt.Printf("║  Period: %-66s ║\n", report.AnalysisPeriod)
 	fmt.Printf("║  Fix Commits Analyzed: %-53d ║\n", report.TotalFixCommits)
 	fmt.Printf("║  Investigations Analyzed: %-50d ║\n", report.TotalInvestigations)
-	fmt.Printf("║  Bloated Files (>%d lines): %-48d ║\n", report.BloatThreshold, report.TotalBloatedFiles)
 	fmt.Println("╠══════════════════════════════════════════════════════════════════════════════╣")
 
 	if len(report.Hotspots) == 0 {
@@ -525,8 +381,6 @@ func outputText(report HotspotReport) error {
 		typeIcon := "🔧"
 		if h.Type == "investigation-cluster" {
 			typeIcon = "📚"
-		} else if h.Type == "bloat-size" {
-			typeIcon = "📏"
 		}
 
 		// Truncate path for display
@@ -536,7 +390,7 @@ func outputText(report HotspotReport) error {
 		}
 
 		fmt.Printf("║  %s [%2d] %-50s            ║\n", typeIcon, h.Score, displayPath)
-
+		
 		// Format recommendation (may need wrapping)
 		rec := h.Recommendation
 		if len(rec) > 72 {
@@ -665,21 +519,6 @@ func matchPathToHotspots(path string, hotspots []Hotspot) (bool, int) {
 					maxScore = h.Score
 				}
 			}
-		case "bloat-size":
-			// For bloat-size, check for exact file match or directory containment
-			if path == h.Path {
-				// Exact match
-				matched = true
-			} else if strings.HasSuffix(path, "/") && strings.HasPrefix(h.Path, path) {
-				// Path is a directory containing the hotspot file
-				matched = true
-			} else if strings.HasSuffix(h.Path, "/") && strings.HasPrefix(path, h.Path) {
-				// Hotspot is a directory containing the path
-				matched = true
-			}
-			if matched && h.Score > maxScore {
-				maxScore = h.Score
-			}
 		}
 	}
 
@@ -748,8 +587,6 @@ func formatHotspotWarning(result *SpawnHotspotResult) string {
 		typeIcon := "🔧"
 		if h.Type == "investigation-cluster" {
 			typeIcon = "📚"
-		} else if h.Type == "bloat-size" {
-			typeIcon = "📏"
 		}
 		line := fmt.Sprintf("│  %s [%d] %s", typeIcon, h.Score, h.Path)
 		// Pad to box width

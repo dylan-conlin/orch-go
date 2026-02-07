@@ -8,7 +8,7 @@
 
 **Next:** Close issue. Consider future enhancement: automated checkpoint reminders via daemon or event hooks.
 
-**Promote to Decision:** Actioned - patterns in orchestrator skill (session hygiene)
+**Promote to Decision:** recommend-yes - Establishes session duration discipline pattern (2h warning, 3h strong, 4h max).
 
 ---
 

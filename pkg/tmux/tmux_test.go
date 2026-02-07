@@ -46,8 +46,14 @@ func TestSessionNameConstants(t *testing.T) {
 	if OrchestratorSessionName != "orchestrator" {
 		t.Errorf("OrchestratorSessionName = %q, want %q", OrchestratorSessionName, "orchestrator")
 	}
-	// Note: MetaOrchestratorSessionName exists for backwards compatibility but
-	// both meta-orchestrators and orchestrators now spawn into OrchestratorSessionName
+	if MetaOrchestratorSessionName != "meta-orchestrator" {
+		t.Errorf("MetaOrchestratorSessionName = %q, want %q", MetaOrchestratorSessionName, "meta-orchestrator")
+	}
+
+	// Verify they are different (for clarity)
+	if OrchestratorSessionName == MetaOrchestratorSessionName {
+		t.Error("OrchestratorSessionName and MetaOrchestratorSessionName should be different")
+	}
 }
 
 func TestBuildWindowName(t *testing.T) {
@@ -110,6 +116,7 @@ func TestBuildOpencodeAttachCommand(t *testing.T) {
 	cfg := &OpencodeAttachConfig{
 		ServerURL:  "http://localhost:4096",
 		ProjectDir: "/home/user/project",
+		Model:      "anthropic/claude-opus",
 		SessionID:  "ses_123",
 	}
 
@@ -119,6 +126,8 @@ func TestBuildOpencodeAttachCommand(t *testing.T) {
 		"http://localhost:4096",
 		"--dir",
 		"/home/user/project",
+		"--model",
+		"anthropic/claude-opus",
 		"--session",
 		"ses_123",
 	}
@@ -127,11 +136,6 @@ func TestBuildOpencodeAttachCommand(t *testing.T) {
 		if !strings.Contains(got, part) {
 			t.Errorf("BuildOpencodeAttachCommand() = %q, want to contain %q", got, part)
 		}
-	}
-
-	// Verify --model is NOT passed (opencode attach doesn't accept it)
-	if strings.Contains(got, "--model") {
-		t.Errorf("BuildOpencodeAttachCommand() should not contain --model, got %q", got)
 	}
 }
 
@@ -341,36 +345,25 @@ func TestBuildAttachCommand(t *testing.T) {
 			name:         "outside tmux",
 			windowTarget: "session:1",
 			insideTmux:   false,
-			wantArgs:     []string{"tmux", "select-window", "-t", "session:1"},
+			wantArgs:     []string{"tmux", "attach-session", "-t", "session:1"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd, err := BuildAttachCommand(tt.windowTarget, tt.insideTmux)
-			if err != nil {
-				t.Fatalf("BuildAttachCommand failed: %v", err)
-			}
+			cmd := BuildAttachCommand(tt.windowTarget, tt.insideTmux)
 			if cmd.Path == "" {
 				t.Error("Expected command path to be set")
 			}
-			// Check that args contain the expected subcommand and target
-			// Note: args may include -S flag when inside overmind
-			foundSubcmd := false
-			foundTarget := false
-			for i, arg := range cmd.Args {
-				if arg == tt.wantArgs[1] { // "switch-client" or "attach-session"
-					foundSubcmd = true
+			// Check args
+			for i, arg := range tt.wantArgs {
+				if i >= len(cmd.Args) {
+					t.Errorf("Missing arg at index %d: want %s", i, arg)
+					continue
 				}
-				if i > 0 && cmd.Args[i-1] == "-t" && arg == tt.windowTarget {
-					foundTarget = true
+				if cmd.Args[i] != arg {
+					t.Errorf("Arg at index %d = %q, want %q", i, cmd.Args[i], arg)
 				}
-			}
-			if !foundSubcmd {
-				t.Errorf("Expected subcommand %q in args %v", tt.wantArgs[1], cmd.Args)
-			}
-			if !foundTarget {
-				t.Errorf("Expected target %q in args %v", tt.windowTarget, cmd.Args)
 			}
 		})
 	}
@@ -583,6 +576,7 @@ func TestBuildOpencodeAttachCommandEnv(t *testing.T) {
 	cfg := &OpencodeAttachConfig{
 		ServerURL:  "http://localhost:4096",
 		ProjectDir: "/home/user/project",
+		Model:      "anthropic/claude-opus",
 	}
 
 	cmd := BuildOpencodeAttachCommand(cfg)
@@ -688,88 +682,5 @@ func TestGetTmuxCwdNonExistentSession(t *testing.T) {
 	_, err := GetTmuxCwd("nonexistent-session-12345")
 	if err == nil {
 		t.Error("Expected error when getting cwd for non-existent session")
-	}
-}
-
-// TestGetCurrentWindowName tests getting the current tmux window name.
-func TestGetCurrentWindowName(t *testing.T) {
-	tests := []struct {
-		name        string
-		inTmux      bool
-		expectedErr bool
-		wantDefault bool
-	}{
-		{
-			name:        "not in tmux",
-			inTmux:      false,
-			expectedErr: false,
-			wantDefault: true,
-		},
-		{
-			name:        "in tmux",
-			inTmux:      true,
-			expectedErr: false,
-			wantDefault: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.inTmux && !IsAvailable() {
-				t.Skip("tmux not available")
-			}
-
-			// Save original TMUX env
-			originalTmux := os.Getenv("TMUX")
-			defer func() {
-				if originalTmux != "" {
-					os.Setenv("TMUX", originalTmux)
-				} else {
-					os.Unsetenv("TMUX")
-				}
-			}()
-
-			if !tt.inTmux {
-				// Simulate not being in tmux
-				os.Unsetenv("TMUX")
-			} else {
-				// For in-tmux test, we need an actual tmux session
-				// Create a test session
-				sessionName := "test-window-name-session"
-				windowName := "test-window"
-
-				cmd, err := tmuxCommand("new-session", "-d", "-s", sessionName, "-n", windowName)
-				if err != nil {
-					t.Fatalf("Failed to create tmux command: %v", err)
-				}
-				if err := cmd.Run(); err != nil {
-					t.Skipf("Could not create test tmux session: %v", err)
-				}
-				defer func() {
-					killCmd, _ := tmuxCommand("kill-session", "-t", sessionName)
-					_ = killCmd.Run()
-				}()
-
-				// Note: We can't actually test GetCurrentWindowName from inside the test
-				// because the test isn't running in that tmux session.
-				// We'll just test the "not in tmux" case properly.
-				t.Skip("Cannot test in-tmux case without running test inside tmux")
-			}
-
-			result, err := GetCurrentWindowName()
-
-			if (err != nil) != tt.expectedErr {
-				t.Errorf("GetCurrentWindowName() error = %v, wantErr %v", err, tt.expectedErr)
-				return
-			}
-
-			if tt.wantDefault && result != "default" {
-				t.Errorf("GetCurrentWindowName() = %q, want %q (not in tmux)", result, "default")
-			}
-
-			if !tt.wantDefault && result == "default" {
-				t.Errorf("GetCurrentWindowName() = %q, should not be default when in tmux", result)
-			}
-		})
 	}
 }

@@ -97,11 +97,6 @@ incomplete sections, and the cognitive load of reconstructing what happened.
 - `.kb/investigations/YYYY-MM-DD-*.md` - {brief description}
 - `.kb/decisions/YYYY-MM-DD-*.md` - {brief description}
 
-### Model Impact
-- Did any work this session change system architecture? (not just implementation)
-- If yes, which models in `.kb/models/` need updating?
-- If unsure, check: would an agent reading the model tomorrow be misled?
-
 ---
 
 ## Friction (What Was Harder Than It Should Be)

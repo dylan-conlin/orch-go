@@ -23,9 +23,8 @@ var (
 )
 
 var changelogCmd = &cobra.Command{
-	Use:    "changelog",
-	Short:  "Show aggregated changelog across ecosystem repos",
-	Hidden: true,
+	Use:   "changelog",
+	Short: "Show aggregated changelog across ecosystem repos",
 	Long: `Show aggregated changelog across ecosystem repos.
 
 Aggregates git commits from all repos in Dylan's orchestration ecosystem
@@ -77,8 +76,8 @@ type SemanticInfo struct {
 	ChangeType    ChangeType  `json:"change_type"`
 	BlastRadius   BlastRadius `json:"blast_radius"`
 	IsBreaking    bool        `json:"is_breaking"`
-	CommitType    string      `json:"commit_type"`    // feat, fix, docs, etc.
-	SemanticLabel string      `json:"semantic_label"` // Human-readable badge
+	CommitType    string      `json:"commit_type"`      // feat, fix, docs, etc.
+	SemanticLabel string      `json:"semantic_label"`   // Human-readable badge
 }
 
 // CommitInfo represents a single git commit.
@@ -96,13 +95,13 @@ type CommitInfo struct {
 
 // ChangelogResult represents the aggregated changelog.
 type ChangelogResult struct {
-	DateRange         DateRange               `json:"date_range"`
-	TotalCommits      int                     `json:"total_commits"`
-	RepoCount         int                     `json:"repo_count"`
-	MissingRepos      []string                `json:"missing_repos,omitempty"`
-	CommitsByDate     map[string][]CommitInfo `json:"commits_by_date"`
-	CommitsByCategory map[string]int          `json:"commits_by_category"`
-	RepoStats         map[string]int          `json:"repo_stats"`
+	DateRange    DateRange               `json:"date_range"`
+	TotalCommits int                     `json:"total_commits"`
+	RepoCount    int                     `json:"repo_count"`
+	MissingRepos []string                `json:"missing_repos,omitempty"`
+	CommitsByDate map[string][]CommitInfo `json:"commits_by_date"`
+	CommitsByCategory map[string]int     `json:"commits_by_category"`
+	RepoStats    map[string]int          `json:"repo_stats"`
 }
 
 // getEcosystemRepos returns the list of ecosystem repos to scan.
@@ -112,7 +111,7 @@ func getEcosystemRepos() []string {
 		// Single project requested
 		return []string{changelogProject}
 	}
-
+	
 	// All ecosystem repos
 	var repos []string
 	for repo := range spawn.ExpandedOrchEcosystemRepos {
@@ -129,7 +128,7 @@ func findRepoPath(repoName string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-
+	
 	// Common paths to check
 	paths := []string{
 		filepath.Join(home, "Documents", "personal", repoName),
@@ -137,7 +136,7 @@ func findRepoPath(repoName string) (string, bool) {
 		filepath.Join(home, "projects", repoName),
 		filepath.Join(home, "code", repoName),
 	}
-
+	
 	for _, path := range paths {
 		if stat, err := os.Stat(path); err == nil && stat.IsDir() {
 			// Verify it's a git repo
@@ -147,7 +146,7 @@ func findRepoPath(repoName string) (string, bool) {
 			}
 		}
 	}
-
+	
 	return "", false
 }
 
@@ -157,15 +156,15 @@ func getGitLog(repoPath string, days int) ([]CommitInfo, error) {
 	// Format: hash|subject|author|date
 	format := "--format=%H|%s|%an|%aI"
 	since := fmt.Sprintf("--since=%d days ago", days)
-
+	
 	cmd := exec.Command("git", "log", format, since, "--name-only")
 	cmd.Dir = repoPath
-
+	
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, err
 	}
-
+	
 	return parseGitLog(string(output), filepath.Base(repoPath))
 }
 
@@ -243,7 +242,7 @@ func categorizeCommitByFiles(files []string) string {
 		"config": 0,
 		"other":  0,
 	}
-
+	
 	for _, file := range files {
 		switch {
 		case strings.HasPrefix(file, "skills/") || strings.Contains(file, "/skills/"):
@@ -258,19 +257,19 @@ func categorizeCommitByFiles(files []string) string {
 			categories["web"]++
 		case strings.HasPrefix(file, "docs/"):
 			categories["docs"]++
-		case strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".json") ||
-			strings.HasSuffix(file, ".toml") || file == "Makefile" ||
+		case strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".json") || 
+			strings.HasSuffix(file, ".toml") || file == "Makefile" || 
 			file == "go.mod" || file == "go.sum" || file == "package.json":
 			categories["config"]++
 		default:
 			categories["other"]++
 		}
 	}
-
+	
 	// Return the category with most files
 	// Priority order ensures deterministic tie-breaking (more specific wins over "other")
 	categoryPriority := []string{"skills", "kb", "cmd", "pkg", "web", "docs", "config", "other"}
-
+	
 	maxCategory := "other"
 	maxCount := 0
 	for _, cat := range categoryPriority {
@@ -280,7 +279,7 @@ func categorizeCommitByFiles(files []string) string {
 			maxCount = count
 		}
 	}
-
+	
 	return maxCategory
 }
 
@@ -541,33 +540,33 @@ func inferSemanticCategory(files []string) string {
 // This is the core logic reused by both the CLI and API.
 func GetChangelog(days int, project string) (*ChangelogResult, error) {
 	repos := getEcosystemReposFor(project)
-
+	
 	var allCommits []CommitInfo
 	var missingRepos []string
 	repoStats := make(map[string]int)
-
+	
 	for _, repoName := range repos {
 		repoPath, found := findRepoPath(repoName)
 		if !found {
 			missingRepos = append(missingRepos, repoName)
 			continue
 		}
-
+		
 		commits, err := getGitLog(repoPath, days)
 		if err != nil {
 			// Skip repos with errors (non-fatal)
 			continue
 		}
-
+		
 		repoStats[repoName] = len(commits)
 		allCommits = append(allCommits, commits...)
 	}
-
+	
 	// Sort commits by date (newest first)
 	sort.Slice(allCommits, func(i, j int) bool {
 		return allCommits[i].Date.After(allCommits[j].Date)
 	})
-
+	
 	// Group by date
 	commitsByDate := make(map[string][]CommitInfo)
 	commitsByCategory := make(map[string]int)
@@ -575,7 +574,7 @@ func GetChangelog(days int, project string) (*ChangelogResult, error) {
 		commitsByDate[commit.DateStr] = append(commitsByDate[commit.DateStr], commit)
 		commitsByCategory[commit.Category]++
 	}
-
+	
 	// Build result
 	result := &ChangelogResult{
 		DateRange: DateRange{
@@ -589,7 +588,7 @@ func GetChangelog(days int, project string) (*ChangelogResult, error) {
 		CommitsByCategory: commitsByCategory,
 		RepoStats:         repoStats,
 	}
-
+	
 	return result, nil
 }
 
@@ -600,7 +599,7 @@ func getEcosystemReposFor(project string) []string {
 		// Single project requested
 		return []string{project}
 	}
-
+	
 	// All ecosystem repos
 	var repos []string
 	for repo := range spawn.ExpandedOrchEcosystemRepos {
@@ -615,7 +614,7 @@ func runChangelog() error {
 	if err != nil {
 		return err
 	}
-
+	
 	if changelogJSON {
 		data, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
@@ -624,7 +623,7 @@ func runChangelog() error {
 		fmt.Println(string(data))
 		return nil
 	}
-
+	
 	// Format human-readable output
 	output := formatChangelog(*result)
 	fmt.Println(output)
@@ -634,23 +633,23 @@ func runChangelog() error {
 // formatChangelog formats the changelog for human-readable output.
 func formatChangelog(result ChangelogResult) string {
 	var lines []string
-
+	
 	// Header
 	lines = append(lines, "")
 	lines = append(lines, strings.Repeat("=", 70))
 	lines = append(lines, fmt.Sprintf("📋 ECOSYSTEM CHANGELOG (%s to %s)", result.DateRange.Start, result.DateRange.End))
 	lines = append(lines, strings.Repeat("=", 70))
-
+	
 	// Summary
 	lines = append(lines, "")
 	lines = append(lines, fmt.Sprintf("📊 Summary: %d commits across %d repos", result.TotalCommits, result.RepoCount))
-
+	
 	// Missing repos warning
 	if len(result.MissingRepos) > 0 {
 		lines = append(lines, "")
 		lines = append(lines, fmt.Sprintf("⚠️  Missing repos (not found locally): %s", strings.Join(result.MissingRepos, ", ")))
 	}
-
+	
 	// Category breakdown
 	if len(result.CommitsByCategory) > 0 {
 		lines = append(lines, "")
@@ -671,7 +670,7 @@ func formatChangelog(result ChangelogResult) string {
 			lines = append(lines, fmt.Sprintf("   %s: %d", cc.cat, cc.count))
 		}
 	}
-
+	
 	// Repo breakdown
 	if len(result.RepoStats) > 1 {
 		lines = append(lines, "")
@@ -692,25 +691,25 @@ func formatChangelog(result ChangelogResult) string {
 			lines = append(lines, fmt.Sprintf("   %s: %d", rc.repo, rc.count))
 		}
 	}
-
+	
 	// Commits by date
 	if len(result.CommitsByDate) > 0 {
 		lines = append(lines, "")
 		lines = append(lines, strings.Repeat("-", 70))
 		lines = append(lines, "")
-
+		
 		// Sort dates (newest first)
 		var dates []string
 		for date := range result.CommitsByDate {
 			dates = append(dates, date)
 		}
 		sort.Sort(sort.Reverse(sort.StringSlice(dates)))
-
+		
 		for _, date := range dates {
 			commits := result.CommitsByDate[date]
 			lines = append(lines, fmt.Sprintf("📅 %s (%d commits)", date, len(commits)))
 			lines = append(lines, "")
-
+			
 			for _, commit := range commits {
 				// Format: [repo] subject (category) - author
 				categoryIcon := getCategoryIcon(commit.Category)
@@ -733,9 +732,9 @@ func formatChangelog(result ChangelogResult) string {
 		lines = append(lines, "")
 		lines = append(lines, "No commits found in the specified time range.")
 	}
-
+	
 	lines = append(lines, strings.Repeat("=", 70))
-
+	
 	return strings.Join(lines, "\n")
 }
 

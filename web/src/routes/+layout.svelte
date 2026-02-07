@@ -1,22 +1,14 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
 	import { connectionStatus } from '$lib/stores/agents';
 	import { usage } from '$lib/stores/usage';
-	import { cost, formatCostBrief, getBudgetColor, getBudgetEmoji } from '$lib/stores/cost';
 	import { theme, mode, getEffective } from '$lib/stores/theme';
 	import { ThemeToggle } from '$lib/components/theme-toggle';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
-
-	// Navigation items
-	const navItems = [
-		{ href: '/', label: 'Dashboard' },
-		{ href: '/work-graph', label: 'Work Graph' }
-	];
 
 	function getUsageColor(percent: number | null): 'green' | 'yellow' | 'red' | 'unavailable' {
 		if (percent === null) return 'unavailable';
@@ -51,8 +43,6 @@
 		} else {
 			document.documentElement.classList.remove('dark');
 		}
-		// Fetch cost data
-		cost.fetch();
 	});
 </script>
 
@@ -61,21 +51,11 @@
 		<!-- Compact Header -->
 		<header class="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
 			<div class="container flex h-10 items-center">
-				<div class="flex items-center gap-4">
+				<div class="flex items-center gap-2">
 					<a href="/" class="flex items-center gap-1.5">
 						<span class="text-base">🐝</span>
 						<span class="text-sm font-semibold">Swarm</span>
 					</a>
-					<nav class="flex items-center gap-1">
-						{#each navItems as item}
-							<a
-								href={item.href}
-								class="rounded px-2 py-1 text-xs transition-colors hover:bg-accent {$page.url.pathname === item.href ? 'bg-accent font-medium' : 'text-muted-foreground'}"
-							>
-								{item.label}
-							</a>
-						{/each}
-					</nav>
 				</div>
 				<div class="flex flex-1 items-center justify-end gap-3">
 					{#if $usage && !$usage.error}
@@ -119,41 +99,6 @@
 							</Tooltip.Content>
 						</Tooltip.Root>
 					{/if}
-					{#if $cost && !$cost.error}
-						<Tooltip.Root>
-							<Tooltip.Trigger>
-								{#snippet child({ props })}
-									<span {...props} class="inline-flex items-center gap-2 text-xs cursor-default">
-										<span
-											class="font-medium"
-											class:text-green-600={$cost.budget_color === 'green'}
-											class:text-yellow-600={$cost.budget_color === 'yellow'}
-											class:text-red-600={$cost.budget_color === 'red'}
-										>
-											{$cost.budget_emoji} {formatCostBrief($cost.current_month_cost)}
-										</span>
-									</span>
-								{/snippet}
-							</Tooltip.Trigger>
-							<Tooltip.Content>
-								<p class="font-medium">Sonnet API Cost</p>
-								<p class="text-xs text-muted-foreground mt-1">
-									Month: {formatCostBrief($cost.current_month_cost)} ({$cost.current_month_date})
-								</p>
-								<p class="text-xs text-muted-foreground">
-									Budget: {$cost.budget_color} ({$cost.budget_emoji})
-								</p>
-								{#if $cost.daily_costs.length > 0}
-									<p class="text-xs text-muted-foreground mt-2 font-medium">Last 7 days:</p>
-									{#each $cost.daily_costs.slice(-7) as daily}
-										<p class="text-xs text-muted-foreground">
-											{daily.date}: {formatCostBrief(daily.total_cost)} ({daily.count} sessions)
-										</p>
-									{/each}
-								{/if}
-							</Tooltip.Content>
-						</Tooltip.Root>
-					{/if}
 					<Tooltip.Root>
 						<Tooltip.Trigger>
 							{#snippet child({ props })}
@@ -180,8 +125,8 @@
 			</div>
 		</header>
 
-		<!-- Main content -->
-		<main>
+		<!-- Main content with reduced padding -->
+		<main class="container py-3">
 			{@render children()}
 		</main>
 	</div>

@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement hybrid architecture: SSE for real-time updates, API fetch for historical events when activity tab opens.
 
-**Promote to Decision:** Actioned - dashboard patterns documented in dashboard guide
+**Promote to Decision:** recommend-yes - This establishes the pattern that OpenCode is the authoritative source for session data, and dashboard should be a thin presentation layer.
 
 ---
 

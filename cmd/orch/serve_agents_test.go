@@ -15,14 +15,17 @@ import (
 )
 
 func TestHandleAgents(t *testing.T) {
-	srv := newTestServer()
+	// Initialize the global caches that handleAgents depends on
+	if globalBeadsCache == nil {
+		globalBeadsCache = newBeadsCache()
+	}
 
 	// Create a test request
 	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
 	w := httptest.NewRecorder()
 
 	// Call the handler
-	srv.handleAgents(w, req)
+	handleAgents(w, req)
 
 	// Check the response
 	resp := w.Result()
@@ -44,12 +47,11 @@ func TestHandleAgents(t *testing.T) {
 }
 
 func TestHandleAgentsMethodNotAllowed(t *testing.T) {
-	srv := newTestServer()
 	// Test POST method is not allowed
 	req := httptest.NewRequest(http.MethodPost, "/api/agents", nil)
 	w := httptest.NewRecorder()
 
-	srv.handleAgents(w, req)
+	handleAgents(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
@@ -58,12 +60,11 @@ func TestHandleAgentsMethodNotAllowed(t *testing.T) {
 }
 
 func TestHandleEventsMethodNotAllowed(t *testing.T) {
-	srv := newTestServer()
 	// Test POST method is not allowed
 	req := httptest.NewRequest(http.MethodPost, "/api/events", nil)
 	w := httptest.NewRecorder()
 
-	srv.handleEvents(w, req)
+	handleEvents(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
@@ -113,12 +114,11 @@ func TestAgentAPIResponseJSONFormat(t *testing.T) {
 }
 
 func TestHandleAgentlogMethodNotAllowed(t *testing.T) {
-	srv := newTestServer()
 	// Test POST method is not allowed
 	req := httptest.NewRequest(http.MethodPost, "/api/agentlog", nil)
 	w := httptest.NewRecorder()
 
-	srv.handleAgentlog(w, req)
+	handleAgentlog(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
@@ -200,14 +200,13 @@ func TestReadLastNEvents(t *testing.T) {
 }
 
 func TestHandleAgentlogJSONResponse(t *testing.T) {
-	srv := newTestServer()
 	// Note: This test uses the default log path which may or may not exist
 	// In production, we'd want to inject the path, but for now we just verify
 	// the endpoint returns valid JSON
 	req := httptest.NewRequest(http.MethodGet, "/api/agentlog", nil)
 	w := httptest.NewRecorder()
 
-	srv.handleAgentlog(w, req)
+	handleAgentlog(w, req)
 
 	resp := w.Result()
 	// Should be 200 even if file doesn't exist (returns empty array)
@@ -225,6 +224,89 @@ func TestHandleAgentlogJSONResponse(t *testing.T) {
 	var eventList []events.Event
 	if err := json.NewDecoder(resp.Body).Decode(&eventList); err != nil {
 		t.Errorf("Expected valid JSON response, got error: %v", err)
+	}
+}
+
+func TestCheckWorkspaceSynthesisForCompletion(t *testing.T) {
+	// Create a temporary project directory with workspace
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+
+	// Test 1: Workspace with SYNTHESIS.md should indicate completion
+	t.Run("workspace with SYNTHESIS.md", func(t *testing.T) {
+		workspaceName := "og-feat-test-25dec"
+		workspacePath := filepath.Join(workspaceDir, workspaceName)
+		if err := os.MkdirAll(workspacePath, 0755); err != nil {
+			t.Fatalf("Failed to create workspace dir: %v", err)
+		}
+
+		// Create SYNTHESIS.md
+		synthesisContent := `# Session Synthesis
+TLDR: Test completed successfully
+`
+		if err := os.WriteFile(filepath.Join(workspacePath, "SYNTHESIS.md"), []byte(synthesisContent), 0644); err != nil {
+			t.Fatalf("Failed to create SYNTHESIS.md: %v", err)
+		}
+
+		// Check if synthesis exists
+		synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+		if _, err := os.Stat(synthesisPath); err != nil {
+			t.Errorf("Expected SYNTHESIS.md to exist, got error: %v", err)
+		}
+	})
+
+	// Test 2: Workspace without SYNTHESIS.md should not indicate completion
+	t.Run("workspace without SYNTHESIS.md", func(t *testing.T) {
+		workspaceName := "og-feat-no-synthesis-25dec"
+		workspacePath := filepath.Join(workspaceDir, workspaceName)
+		if err := os.MkdirAll(workspacePath, 0755); err != nil {
+			t.Fatalf("Failed to create workspace dir: %v", err)
+		}
+
+		// Create only SPAWN_CONTEXT.md (no SYNTHESIS.md)
+		spawnContextContent := `TASK: Test task
+`
+		if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte(spawnContextContent), 0644); err != nil {
+			t.Fatalf("Failed to create SPAWN_CONTEXT.md: %v", err)
+		}
+
+		// Check that synthesis does NOT exist
+		synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+		if _, err := os.Stat(synthesisPath); err == nil {
+			t.Errorf("Expected SYNTHESIS.md to NOT exist")
+		}
+	})
+}
+
+func TestCheckWorkspaceSynthesis(t *testing.T) {
+	// Create a temporary workspace
+	tmpDir := t.TempDir()
+
+	// Test case 1: No SYNTHESIS.md
+	exists := checkWorkspaceSynthesis(tmpDir)
+	if exists {
+		t.Error("Expected checkWorkspaceSynthesis to return false for empty workspace")
+	}
+
+	// Test case 2: With SYNTHESIS.md
+	synthesisPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+	if err := os.WriteFile(synthesisPath, []byte("# Synthesis\nTLDR: Test\n"), 0644); err != nil {
+		t.Fatalf("Failed to write SYNTHESIS.md: %v", err)
+	}
+
+	exists = checkWorkspaceSynthesis(tmpDir)
+	if !exists {
+		t.Error("Expected checkWorkspaceSynthesis to return true when SYNTHESIS.md exists")
+	}
+
+	// Test case 3: With empty SYNTHESIS.md
+	if err := os.WriteFile(synthesisPath, []byte(""), 0644); err != nil {
+		t.Fatalf("Failed to write empty SYNTHESIS.md: %v", err)
+	}
+
+	exists = checkWorkspaceSynthesis(tmpDir)
+	if exists {
+		t.Error("Expected checkWorkspaceSynthesis to return false for empty SYNTHESIS.md")
 	}
 }
 
@@ -399,66 +481,6 @@ AUTHORITY: Standard
 	// Verify workspaceEntryToPath
 	if len(cache.workspaceEntryToPath) != 2 {
 		t.Errorf("Expected 2 entries in workspaceEntryToPath, got %d", len(cache.workspaceEntryToPath))
-	}
-}
-
-// TestBuildWorkspaceCacheWithTemplatePlaceholders verifies that template placeholders
-// like `<beads-id>` in SPAWN_CONTEXT.md don't overwrite the correct beads ID.
-// This regression test prevents the bug documented in:
-// .kb/investigations/2026-01-29-inv-dashboard-follow-mode-doesn-show.md
-func TestBuildWorkspaceCacheWithTemplatePlaceholders(t *testing.T) {
-	tmpDir := t.TempDir()
-	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
-	wsPath := filepath.Join(workspaceDir, "sp-feat-test-29jan")
-	if err := os.MkdirAll(wsPath, 0755); err != nil {
-		t.Fatalf("Failed to create workspace dir: %v", err)
-	}
-
-	// SPAWN_CONTEXT.md with the authoritative beads ID followed by template examples
-	// that contain `<beads-id>` placeholders. The authoritative line should be used.
-	spawnContext := `TASK: Test task
-
-PROJECT_DIR: /home/user/specs-platform
-
-## BEADS PROGRESS TRACKING
-
-You were spawned from beads issue: **specs-platform-36**
-
-**Use bd comment for progress updates:**
-
-` + "```bash" + `
-# Report progress at phase transitions
-bd comment <beads-id> "Phase: Planning - Analyzing codebase structure"
-bd comment <beads-id> "Phase: Implementing - Adding authentication middleware"
-bd comment <beads-id> "Phase: Complete - All tests passing, ready for review"
-` + "```" + `
-`
-	if err := os.WriteFile(filepath.Join(wsPath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
-		t.Fatalf("Failed to create SPAWN_CONTEXT.md: %v", err)
-	}
-
-	// Build the cache
-	cache := buildWorkspaceCache(tmpDir)
-
-	// Verify that the correct beads ID was extracted (not the template placeholder)
-	if beadsID, ok := cache.beadsToWorkspace["specs-platform-36"]; !ok {
-		// Check what was actually cached
-		for key := range cache.beadsToWorkspace {
-			t.Errorf("Unexpected beads ID in cache: %s", key)
-		}
-		t.Errorf("Expected specs-platform-36 in beadsToWorkspace, but it was not found. Cache has %d entries.", len(cache.beadsToWorkspace))
-	} else {
-		t.Logf("Correctly cached specs-platform-36 -> %s", beadsID)
-	}
-
-	// Verify template placeholder was NOT cached
-	if _, ok := cache.beadsToWorkspace["<beads-id>"]; ok {
-		t.Error("Template placeholder <beads-id> should NOT be in beadsToWorkspace")
-	}
-
-	// Verify PROJECT_DIR was extracted correctly
-	if projDir := cache.beadsToProjectDir["specs-platform-36"]; projDir != "/home/user/specs-platform" {
-		t.Errorf("Expected projectDir /home/user/specs-platform, got %s", projDir)
 	}
 }
 
@@ -684,5 +706,468 @@ func TestBeadsCacheInvalidate(t *testing.T) {
 	}
 }
 
-// Tests moved to serve_agents_status_test.go: TestDetermineAgentStatus*, TestCheckWorkspaceSynthesis*
-// Tests moved to serve_agents_investigation_test.go: TestDiscoverInvestigationPath
+func TestGlobalWorkspaceCacheInvalidate(t *testing.T) {
+	// Setup the global cache with some data
+	globalWorkspaceCacheInstance.mu.Lock()
+	globalWorkspaceCacheInstance.cache = &workspaceCache{
+		beadsToWorkspace: map[string]string{"test-id": "/path/to/workspace"},
+	}
+	globalWorkspaceCacheInstance.fetchedAt = time.Now()
+	globalWorkspaceCacheInstance.mu.Unlock()
+
+	// Verify cache has data
+	globalWorkspaceCacheInstance.mu.RLock()
+	if globalWorkspaceCacheInstance.cache == nil {
+		t.Errorf("Expected cache to be set before invalidate")
+	}
+	globalWorkspaceCacheInstance.mu.RUnlock()
+
+	// Invalidate the cache
+	globalWorkspaceCacheInstance.invalidate()
+
+	// Verify cache is cleared
+	globalWorkspaceCacheInstance.mu.RLock()
+	defer globalWorkspaceCacheInstance.mu.RUnlock()
+
+	if globalWorkspaceCacheInstance.cache != nil {
+		t.Errorf("Expected cache to be nil after invalidate")
+	}
+	if !globalWorkspaceCacheInstance.fetchedAt.IsZero() {
+		t.Errorf("Expected zero fetchedAt after invalidate")
+	}
+}
+
+func TestHandleCacheInvalidate(t *testing.T) {
+	// Initialize the global cache
+	if globalBeadsCache == nil {
+		globalBeadsCache = newBeadsCache()
+	}
+
+	// Populate with some test data
+	globalBeadsCache.mu.Lock()
+	globalBeadsCache.openIssues["test"] = nil
+	globalBeadsCache.openIssuesFetchedAt = time.Now()
+	globalBeadsCache.mu.Unlock()
+
+	// Test that POST works
+	req := httptest.NewRequest(http.MethodPost, "/api/cache/invalidate", nil)
+	w := httptest.NewRecorder()
+
+	handleCacheInvalidate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Verify JSON response
+	var result map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Errorf("Expected valid JSON response, got error: %v", err)
+	}
+	if result["status"] != "ok" {
+		t.Errorf("Expected status 'ok', got '%s'", result["status"])
+	}
+
+	// Verify cache was invalidated
+	globalBeadsCache.mu.RLock()
+	if len(globalBeadsCache.openIssues) != 0 {
+		t.Errorf("Expected cache to be empty after invalidate")
+	}
+	globalBeadsCache.mu.RUnlock()
+}
+
+func TestHandleCacheInvalidateMethodNotAllowed(t *testing.T) {
+	// Test GET method is not allowed
+	req := httptest.NewRequest(http.MethodGet, "/api/cache/invalidate", nil)
+	w := httptest.NewRecorder()
+
+	handleCacheInvalidate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status 405, got %d", resp.StatusCode)
+	}
+}
+
+// TestDetermineAgentStatus tests the Priority Cascade model for agent status determination.
+// Priority order:
+//  1. Beads issue closed → "completed"
+//  2. Phase: Complete reported AND dead → "awaiting-cleanup"
+//  3. Phase: Complete reported → "completed"
+//  4. SYNTHESIS.md exists AND dead → "awaiting-cleanup"
+//  5. SYNTHESIS.md exists → "completed"
+//  6. Session activity → "active", "idle", or "dead"
+func TestDetermineAgentStatus(t *testing.T) {
+	// Create a temporary workspace with SYNTHESIS.md for testing
+	tmpDir := t.TempDir()
+	synthesisPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+
+	tests := []struct {
+		name           string
+		issueClosed    bool
+		phaseComplete  bool
+		hasSynthesis   bool
+		sessionStatus  string // "active", "idle", or "dead" based on activity
+		expectedStatus string
+	}{
+		// Priority 1: Beads closed overrides everything
+		{
+			name:           "beads_closed_overrides_all",
+			issueClosed:    true,
+			phaseComplete:  false,
+			hasSynthesis:   false,
+			sessionStatus:  "active",
+			expectedStatus: "completed",
+		},
+		{
+			name:           "beads_closed_even_if_idle",
+			issueClosed:    true,
+			phaseComplete:  false,
+			hasSynthesis:   false,
+			sessionStatus:  "idle",
+			expectedStatus: "completed",
+		},
+		{
+			name:           "beads_closed_even_if_dead",
+			issueClosed:    true,
+			phaseComplete:  true,
+			hasSynthesis:   true,
+			sessionStatus:  "dead",
+			expectedStatus: "completed",
+		},
+		// Priority 2: Phase: Complete + dead → awaiting-cleanup
+		{
+			name:           "phase_complete_dead_awaiting_cleanup",
+			issueClosed:    false,
+			phaseComplete:  true,
+			hasSynthesis:   false,
+			sessionStatus:  "dead",
+			expectedStatus: "awaiting-cleanup",
+		},
+		// Priority 3: Phase: Complete + active/idle → completed
+		{
+			name:           "phase_complete_overrides_session",
+			issueClosed:    false,
+			phaseComplete:  true,
+			hasSynthesis:   false,
+			sessionStatus:  "active",
+			expectedStatus: "completed",
+		},
+		{
+			name:           "phase_complete_overrides_idle",
+			issueClosed:    false,
+			phaseComplete:  true,
+			hasSynthesis:   false,
+			sessionStatus:  "idle",
+			expectedStatus: "completed",
+		},
+		// Priority 4: SYNTHESIS.md + dead → awaiting-cleanup
+		{
+			name:           "synthesis_dead_awaiting_cleanup",
+			issueClosed:    false,
+			phaseComplete:  false,
+			hasSynthesis:   true,
+			sessionStatus:  "dead",
+			expectedStatus: "awaiting-cleanup",
+		},
+		// Priority 5: SYNTHESIS.md + active/idle → completed
+		{
+			name:           "synthesis_overrides_session",
+			issueClosed:    false,
+			phaseComplete:  false,
+			hasSynthesis:   true,
+			sessionStatus:  "active",
+			expectedStatus: "completed",
+		},
+		{
+			name:           "synthesis_overrides_idle",
+			issueClosed:    false,
+			phaseComplete:  false,
+			hasSynthesis:   true,
+			sessionStatus:  "idle",
+			expectedStatus: "completed",
+		},
+		// Priority 6: Session activity is the fallback
+		{
+			name:           "active_session",
+			issueClosed:    false,
+			phaseComplete:  false,
+			hasSynthesis:   false,
+			sessionStatus:  "active",
+			expectedStatus: "active",
+		},
+		{
+			name:           "idle_session",
+			issueClosed:    false,
+			phaseComplete:  false,
+			hasSynthesis:   false,
+			sessionStatus:  "idle",
+			expectedStatus: "idle",
+		},
+		{
+			name:           "dead_session_no_completion",
+			issueClosed:    false,
+			phaseComplete:  false,
+			hasSynthesis:   false,
+			sessionStatus:  "dead",
+			expectedStatus: "dead",
+		},
+		// Combined scenarios - higher priority wins
+		{
+			name:           "beads_closed_with_phase_complete",
+			issueClosed:    true,
+			phaseComplete:  true,
+			hasSynthesis:   true,
+			sessionStatus:  "idle",
+			expectedStatus: "completed",
+		},
+		{
+			name:           "phase_complete_with_synthesis",
+			issueClosed:    false,
+			phaseComplete:  true,
+			hasSynthesis:   true,
+			sessionStatus:  "active",
+			expectedStatus: "completed",
+		},
+		{
+			name:           "phase_complete_with_synthesis_dead",
+			issueClosed:    false,
+			phaseComplete:  true,
+			hasSynthesis:   true,
+			sessionStatus:  "dead",
+			expectedStatus: "awaiting-cleanup",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up or remove SYNTHESIS.md based on test case
+			if tt.hasSynthesis {
+				if err := os.WriteFile(synthesisPath, []byte("# Synthesis\nTLDR: Test"), 0644); err != nil {
+					t.Fatalf("Failed to write SYNTHESIS.md: %v", err)
+				}
+			} else {
+				os.Remove(synthesisPath)
+			}
+
+			result := determineAgentStatus(tt.issueClosed, tt.phaseComplete, tmpDir, tt.sessionStatus)
+
+			if result != tt.expectedStatus {
+				t.Errorf("determineAgentStatus() = %q, want %q", result, tt.expectedStatus)
+			}
+		})
+	}
+}
+
+// TestDetermineAgentStatusEmptyWorkspace tests that empty workspace path is handled correctly.
+func TestDetermineAgentStatusEmptyWorkspace(t *testing.T) {
+	// With empty workspace, SYNTHESIS.md check should be skipped
+	result := determineAgentStatus(false, false, "", "idle")
+	if result != "idle" {
+		t.Errorf("Expected 'idle' for empty workspace, got %q", result)
+	}
+}
+
+// TestDetermineAgentStatusNonExistentWorkspace tests non-existent workspace path.
+func TestDetermineAgentStatusNonExistentWorkspace(t *testing.T) {
+	// With non-existent workspace, SYNTHESIS.md check should return false
+	result := determineAgentStatus(false, false, "/nonexistent/path/workspace", "active")
+	if result != "active" {
+		t.Errorf("Expected 'active' for non-existent workspace, got %q", result)
+	}
+}
+
+// TestExtractWorkspaceKeywords tests keyword extraction from workspace names.
+func TestExtractWorkspaceKeywords(t *testing.T) {
+	tests := []struct {
+		name          string
+		workspaceName string
+		wantKeywords  []string
+	}{
+		{
+			name:          "standard_investigation_workspace",
+			workspaceName: "og-inv-skillc-deploy-06jan-ed96",
+			wantKeywords:  []string{"skillc", "deploy"},
+		},
+		{
+			name:          "feature_workspace",
+			workspaceName: "og-feat-dashboard-auto-discover-06jan-dfc6",
+			wantKeywords:  []string{"dashboard", "auto", "discover"},
+		},
+		{
+			name:          "debug_workspace",
+			workspaceName: "og-debug-status-polling-05dec-ab12",
+			wantKeywords:  []string{"status", "polling"},
+		},
+		{
+			name:          "short_workspace_name",
+			workspaceName: "og-inv",
+			wantKeywords:  nil,
+		},
+		{
+			name:          "empty_workspace_name",
+			workspaceName: "",
+			wantKeywords:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractWorkspaceKeywords(tt.workspaceName)
+			if len(got) != len(tt.wantKeywords) {
+				t.Errorf("extractWorkspaceKeywords(%q) = %v, want %v", tt.workspaceName, got, tt.wantKeywords)
+				return
+			}
+			for i := range got {
+				if got[i] != tt.wantKeywords[i] {
+					t.Errorf("extractWorkspaceKeywords(%q)[%d] = %q, want %q", tt.workspaceName, i, got[i], tt.wantKeywords[i])
+				}
+			}
+		})
+	}
+}
+
+// TestIsHexLike tests the hex-like string detection.
+func TestIsHexLike(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"abcd", true},
+		{"1234", true},
+		{"a1b2", true},
+		{"ed96", true},
+		{"dfc6", true},
+		{"ABCD", false}, // uppercase not allowed
+		{"ghij", false}, // g-z not allowed
+		{"test", false}, // contains non-hex chars
+		{"", true},      // empty is trivially hex-like
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := isHexLike(tt.input); got != tt.expected {
+				t.Errorf("isHexLike(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestDiscoverInvestigationPath tests auto-discovery of investigation files.
+func TestDiscoverInvestigationPath(t *testing.T) {
+	// Create a temporary project directory structure
+	tmpDir := t.TempDir()
+
+	// Create .kb/investigations/ directory with some investigation files
+	invDir := filepath.Join(tmpDir, ".kb", "investigations")
+	if err := os.MkdirAll(invDir, 0755); err != nil {
+		t.Fatalf("Failed to create investigations dir: %v", err)
+	}
+
+	// Create some investigation files
+	invFiles := []string{
+		"2026-01-06-inv-dashboard-auto-discover.md",
+		"2026-01-05-inv-status-polling.md",
+		"2026-01-04-inv-skillc-deploy-structure.md",
+	}
+	for _, name := range invFiles {
+		if err := os.WriteFile(filepath.Join(invDir, name), []byte("# Investigation"), 0644); err != nil {
+			t.Fatalf("Failed to create investigation file: %v", err)
+		}
+	}
+
+	// Create .kb/investigations/simple/ directory
+	simpleDir := filepath.Join(invDir, "simple")
+	if err := os.MkdirAll(simpleDir, 0755); err != nil {
+		t.Fatalf("Failed to create simple dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(simpleDir, "2026-01-06-simple-test.md"), []byte("# Simple"), 0644); err != nil {
+		t.Fatalf("Failed to create simple investigation: %v", err)
+	}
+
+	// Create workspace directory with .md files
+	wsDir := filepath.Join(tmpDir, ".orch", "workspace", "og-inv-my-workspace-06jan-1234")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir: %v", err)
+	}
+	// Create standard workspace files that should be skipped
+	if err := os.WriteFile(filepath.Join(wsDir, "SPAWN_CONTEXT.md"), []byte("# Context"), 0644); err != nil {
+		t.Fatalf("Failed to create SPAWN_CONTEXT.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wsDir, "SYNTHESIS.md"), []byte("# Synthesis"), 0644); err != nil {
+		t.Fatalf("Failed to create SYNTHESIS.md: %v", err)
+	}
+	// Create an investigation file in workspace
+	if err := os.WriteFile(filepath.Join(wsDir, "inv-local-findings.md"), []byte("# Findings"), 0644); err != nil {
+		t.Fatalf("Failed to create local investigation: %v", err)
+	}
+
+	tests := []struct {
+		name          string
+		workspaceName string
+		beadsID       string
+		projectDir    string
+		wantFound     bool
+		wantContains  string // substring that should be in the result
+	}{
+		{
+			name:          "match_by_workspace_keywords",
+			workspaceName: "og-feat-dashboard-auto-discover-06jan-dfc6",
+			beadsID:       "orch-go-wrrks",
+			projectDir:    tmpDir,
+			wantFound:     true,
+			wantContains:  "dashboard-auto-discover",
+		},
+		{
+			name:          "match_by_workspace_keywords_skillc",
+			workspaceName: "og-inv-skillc-deploy-structure-06jan-ed96",
+			beadsID:       "orch-go-xyz",
+			projectDir:    tmpDir,
+			wantFound:     true,
+			wantContains:  "skillc-deploy-structure",
+		},
+		{
+			name:          "no_project_dir",
+			workspaceName: "og-inv-test",
+			beadsID:       "test-123",
+			projectDir:    "",
+			wantFound:     false,
+			wantContains:  "",
+		},
+		{
+			name:          "no_matching_investigation",
+			workspaceName: "og-inv-nonexistent-topic-06jan-1234",
+			beadsID:       "orch-go-nomatch",
+			projectDir:    tmpDir,
+			wantFound:     false,
+			wantContains:  "",
+		},
+		{
+			name:          "workspace_with_local_inv_file",
+			workspaceName: "og-inv-my-workspace-06jan-1234",
+			beadsID:       "orch-go-local",
+			projectDir:    tmpDir,
+			wantFound:     true,
+			wantContains:  "inv-local-findings.md",
+		},
+	}
+
+	// Build cache for the test project directory
+	cache := buildInvestigationDirCache([]string{tmpDir})
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := discoverInvestigationPath(tt.workspaceName, tt.beadsID, tt.projectDir, cache)
+			if tt.wantFound && got == "" {
+				t.Errorf("discoverInvestigationPath() = empty, want path containing %q", tt.wantContains)
+			}
+			if !tt.wantFound && got != "" {
+				t.Errorf("discoverInvestigationPath() = %q, want empty", got)
+			}
+			if tt.wantFound && tt.wantContains != "" && !filepath.IsAbs(got) {
+				t.Errorf("discoverInvestigationPath() = %q, want absolute path", got)
+			}
+		})
+	}
+}

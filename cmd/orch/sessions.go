@@ -59,8 +59,7 @@ Examples:
   orch sessions list --after 2025-12-20 # Sessions after date
   orch sessions list --directory /path/to/project  # Filter by project`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client := opencode.NewClient(serverURL)
-		return runSessionsList(client)
+		return runSessionsList()
 	},
 }
 
@@ -85,8 +84,7 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		query := args[0]
-		client := opencode.NewClient(serverURL)
-		return runSessionsSearch(client, query)
+		return runSessionsSearch(query)
 	},
 }
 
@@ -104,8 +102,7 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sessionID := args[0]
-		client := opencode.NewClient(serverURL)
-		return runSessionsShow(client, sessionID)
+		return runSessionsShow(sessionID)
 	},
 }
 
@@ -133,7 +130,8 @@ func init() {
 	rootCmd.AddCommand(sessionsCmd)
 }
 
-func runSessionsList(client opencode.ClientInterface) error {
+func runSessionsList() error {
+	client := opencode.NewClient(serverURL)
 	store := sessions.NewStore("", client)
 
 	opts := sessions.ListOptions{
@@ -213,7 +211,8 @@ func runSessionsList(client opencode.ClientInterface) error {
 	return nil
 }
 
-func runSessionsSearch(client opencode.ClientInterface, query string) error {
+func runSessionsSearch(query string) error {
+	client := opencode.NewClient(serverURL)
 	store := sessions.NewStore("", client)
 
 	opts := sessions.SearchOptions{
@@ -293,7 +292,8 @@ func runSessionsSearch(client opencode.ClientInterface, query string) error {
 	return nil
 }
 
-func runSessionsShow(client opencode.ClientInterface, sessionID string) error {
+func runSessionsShow(sessionID string) error {
+	client := opencode.NewClient(serverURL)
 	store := sessions.NewStore("", client)
 
 	session, messages, err := store.Show(sessionID)

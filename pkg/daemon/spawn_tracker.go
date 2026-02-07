@@ -26,19 +26,15 @@ type SpawnedIssueTracker struct {
 	spawned map[string]time.Time
 
 	// TTL is how long to keep entries before considering them stale.
-	// Default is 6 hours - matching typical agent work duration.
-	// This provides backup protection when session-level dedup fails.
+	// Default is 5 minutes - enough time for spawn to complete and status to update.
 	TTL time.Duration
 }
 
-// NewSpawnedIssueTracker creates a new tracker with the default 6 hour TTL.
-// The TTL was increased from 5 minutes to 6 hours to provide backup protection
-// for long-running agents when session-level dedup fails (e.g., OpenCode API down).
-// Primary dedup is done via session-level checking in daemon.Once().
+// NewSpawnedIssueTracker creates a new tracker with the default 5 minute TTL.
 func NewSpawnedIssueTracker() *SpawnedIssueTracker {
 	return &SpawnedIssueTracker{
 		spawned: make(map[string]time.Time),
-		TTL:     6 * time.Hour,
+		TTL:     5 * time.Minute,
 	}
 }
 
@@ -147,25 +143,4 @@ func (t *SpawnedIssueTracker) TrackedIDs() []string {
 		ids = append(ids, id)
 	}
 	return ids
-}
-
-// ClearAbandoned removes issues from the tracker that have been abandoned.
-// This allows the daemon to respawn an issue after it was abandoned via `orch abandon`.
-// Returns the number of issues cleared.
-func (t *SpawnedIssueTracker) ClearAbandoned(abandonedIDs []string) int {
-	if len(abandonedIDs) == 0 {
-		return 0
-	}
-
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	cleared := 0
-	for _, id := range abandonedIDs {
-		if _, exists := t.spawned[id]; exists {
-			delete(t.spawned, id)
-			cleared++
-		}
-	}
-	return cleared
 }

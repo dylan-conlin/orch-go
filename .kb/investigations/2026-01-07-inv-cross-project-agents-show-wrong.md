@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement Option C (kb projects + fallback) - augment extractUniqueProjectDirs to include registered kb projects, ensuring all known project workspaces are scanned regardless of OpenCode session state.
 
-**Promote to Decision:** Actioned - decision exists (cross-project-daemon-architecture)
+**Promote to Decision:** recommend-yes (architectural choice affecting cross-project visibility)
 
 ---
 

@@ -68,14 +68,13 @@ requiring a workspace.`,
 			return fmt.Errorf("provide only one of: beads-id argument, --workspace, or --session")
 		}
 
-		client := opencode.NewClient(serverURL)
 		switch {
 		case hasBeadsID:
-			return runResumeByBeadsID(client, args[0])
+			return runResumeByBeadsID(args[0])
 		case hasWorkspace:
-			return runResumeByWorkspace(client, resumeWorkspace)
+			return runResumeByWorkspace(resumeWorkspace)
 		case hasSession:
-			return runResumeBySession(client, resumeSession)
+			return runResumeBySession(resumeSession)
 		default:
 			return fmt.Errorf("no identifier provided")
 		}
@@ -138,9 +137,9 @@ func GenerateSessionResumePrompt() string {
 }
 
 // runResumeByBeadsID resumes an agent by beads ID (original behavior).
-func runResumeByBeadsID(client opencode.ClientInterface, beadsID string) error {
+func runResumeByBeadsID(beadsID string) error {
 	// Get current directory to determine project
-	projectDir, err := currentProjectDir()
+	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
@@ -162,6 +161,7 @@ func runResumeByBeadsID(client opencode.ClientInterface, beadsID string) error {
 
 	// If workspace file doesn't have session_id, try to find via OpenCode API
 	if sessionID == "" {
+		client := opencode.NewClient(serverURL)
 		allSessions, err := client.ListSessions(projectDir)
 		if err == nil {
 			for _, s := range allSessions {
@@ -186,6 +186,7 @@ func runResumeByBeadsID(client opencode.ClientInterface, beadsID string) error {
 	prompt := GenerateResumePrompt(agentID, projectDir, beadsID)
 
 	// Send the resume message via OpenCode API (no model for resume)
+	client := opencode.NewClient(serverURL)
 	if err := client.SendMessageAsync(sessionID, prompt, ""); err != nil {
 		return fmt.Errorf("failed to send resume prompt: %w", err)
 	}
@@ -217,9 +218,9 @@ func runResumeByBeadsID(client opencode.ClientInterface, beadsID string) error {
 
 // runResumeByWorkspace resumes an agent by workspace name.
 // This is particularly useful for orchestrators which don't have beads IDs.
-func runResumeByWorkspace(client opencode.ClientInterface, workspaceName string) error {
+func runResumeByWorkspace(workspaceName string) error {
 	// Get current directory to determine project
-	projectDir, err := currentProjectDir()
+	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
@@ -252,6 +253,7 @@ func runResumeByWorkspace(client opencode.ClientInterface, workspaceName string)
 	sessionID := spawn.ReadSessionID(workspacePath)
 	if sessionID == "" {
 		// Try to find via OpenCode API by workspace name in title
+		client := opencode.NewClient(serverURL)
 		allSessions, err := client.ListSessions(projectDir)
 		if err == nil {
 			for _, s := range allSessions {
@@ -281,6 +283,7 @@ func runResumeByWorkspace(client opencode.ClientInterface, workspaceName string)
 	}
 
 	// Send the resume message via OpenCode API
+	client := opencode.NewClient(serverURL)
 	if err := client.SendMessageAsync(sessionID, prompt, ""); err != nil {
 		return fmt.Errorf("failed to send resume prompt: %w", err)
 	}
@@ -317,15 +320,16 @@ func runResumeByWorkspace(client opencode.ClientInterface, workspaceName string)
 
 // runResumeBySession resumes an agent directly by session ID.
 // This is useful when you have the session ID but not the workspace.
-func runResumeBySession(client opencode.ClientInterface, sessionID string) error {
+func runResumeBySession(sessionID string) error {
 	// Get current directory to determine project
-	projectDir, err := currentProjectDir()
+	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 	projectName := filepath.Base(projectDir)
 
 	// Verify session exists
+	client := opencode.NewClient(serverURL)
 	if !client.SessionExists(sessionID) {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}

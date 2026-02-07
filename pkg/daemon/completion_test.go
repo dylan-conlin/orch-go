@@ -341,8 +341,8 @@ func TestCompletionService_ConcurrentTracking(t *testing.T) {
 func TestDefaultCompletionServiceConfig(t *testing.T) {
 	cfg := DefaultCompletionServiceConfig()
 
-	if cfg.ServerURL != "http://127.0.0.1:4096" {
-		t.Errorf("expected default server URL 'http://127.0.0.1:4096', got '%s'", cfg.ServerURL)
+	if cfg.ServerURL != "http://localhost:4096" {
+		t.Errorf("expected default server URL 'http://localhost:4096', got '%s'", cfg.ServerURL)
 	}
 
 	if cfg.ReconnectBackoff != 5*time.Second {

@@ -7,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/dylan-conlin/orch-go/pkg/atomicwrite"
 )
 
 // DaemonStatus represents the current state of the daemon.
@@ -65,15 +63,31 @@ func StatusFilePath() string {
 func WriteStatusFile(status DaemonStatus) error {
 	statusPath := StatusFilePath()
 
+	// Ensure directory exists
+	dir := filepath.Dir(statusPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create status directory: %w", err)
+	}
+
 	// Marshal status to JSON with indentation for readability
 	data, err := json.MarshalIndent(status, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal status: %w", err)
 	}
 
-	if err := atomicwrite.WriteFileWithDir(statusPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write status file: %w", err)
+	// Write to temp file first (atomic write pattern)
+	tempPath := statusPath + ".tmp"
+	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write temp status file: %w", err)
 	}
+
+	// Rename temp file to final path (atomic on most filesystems)
+	if err := os.Rename(tempPath, statusPath); err != nil {
+		// Clean up temp file on rename failure
+		os.Remove(tempPath)
+		return fmt.Errorf("failed to rename status file: %w", err)
+	}
+
 	return nil
 }
 

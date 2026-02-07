@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for the orch-go CLI. Read this before debugging CLI issues or adding new commands.
 
-**Last verified:** Jan 20, 2026
+**Last verified:** Jan 6, 2026
 
 **Supersedes:** 16 CLI investigations from Dec 19 - Jan 4 (see History section)
 
@@ -26,7 +26,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 
 | Command | Purpose | Common Flags |
 |---------|---------|--------------|
-| `orch spawn` | Create new agent session | `--issue`, `--model`, `--mcp`, `--tmux`, `--backend` |
+| `orch spawn` | Create new agent session | `--issue`, `--model`, `--mcp`, `--tmux` |
 | `orch complete` | Verify and close agent work | `--force`, `--reason` |
 | `orch abandon` | Abandon stuck agents | - |
 | `orch clean` | Remove completed agents | `--stale`, `--all` |
@@ -82,25 +82,6 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | **Headless** (default) | none | HTTP API, returns immediately | Automation, batch work |
 | **Tmux** | `--tmux` | Creates tmux window with TUI | Visual monitoring |
 | **Inline** | `--inline` | Runs in current terminal, blocking | Quick tests |
-
-### Backend Selection
-
-| Backend | Flag | Behavior | Use When |
-|---------|------|----------|----------|
-| **opencode** (default) | `--backend opencode` | HTTP API via OpenCode server | Dashboard visibility, high concurrency |
-| **claude** | `--backend claude` | Direct Claude CLI in tmux | Infrastructure work, Opus access |
-| **docker** | `--backend docker` | Claude CLI in Docker container | Rate limit escape hatch, fresh fingerprint |
-
-**Backend Priority Chain:**
-1. `--backend` flag (explicit)
-2. `--opus` flag (implies claude)
-3. Project config `spawn_mode`
-4. Global config `backend`
-5. Default: opencode
-
-**Docker Prerequisites:**
-- Docker image `claude-code-mcp` built from `~/.claude/docker-workaround/`
-- Uses `~/.claude-docker/` for fingerprint isolation
 
 ### Model Selection
 

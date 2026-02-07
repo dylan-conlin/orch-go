@@ -19,23 +19,7 @@ import (
 
 // Config represents the project configuration.
 type Config struct {
-	SpawnMode string         `yaml:"spawn_mode"`         // "claude" | "opencode"
-	Domain    string         `yaml:"domain,omitempty"`   // "personal" | "work" - overrides auto-detection
-	Claude    ClaudeConfig   `yaml:"claude,omitempty"`   // Claude mode settings
-	OpenCode  OpenCodeConfig `yaml:"opencode,omitempty"` // OpenCode mode settings
-	Servers   map[string]int `yaml:"servers,omitempty"`
-}
-
-// ClaudeConfig holds settings for Claude mode spawning.
-type ClaudeConfig struct {
-	Model       string `yaml:"model"`        // "opus" | "sonnet" | "haiku"
-	TmuxSession string `yaml:"tmux_session"` // tmux session name
-}
-
-// OpenCodeConfig holds settings for OpenCode mode spawning.
-type OpenCodeConfig struct {
-	Model  string `yaml:"model"`  // default model for spawns
-	Server string `yaml:"server"` // HTTP server URL
+	Servers map[string]int `yaml:"servers"`
 }
 
 // DefaultPath returns the default config file path for a project directory.
@@ -57,8 +41,10 @@ func Load(projectDir string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// Apply defaults for backward compatibility
-	cfg.ApplyDefaults()
+	// Initialize servers map if nil
+	if cfg.Servers == nil {
+		cfg.Servers = make(map[string]int)
+	}
 
 	return &cfg, nil
 }
@@ -84,34 +70,6 @@ func Save(projectDir string, cfg *Config) error {
 	}
 
 	return nil
-}
-
-// ApplyDefaults sets default values for unspecified config fields.
-func (c *Config) ApplyDefaults() {
-	// NOTE: Do NOT default SpawnMode here - let it stay empty so global config is respected
-	// The backend priority chain is: --backend flag > project config > global config > code default
-	// Setting a default here would prevent global config from being used
-
-	// Default Claude settings
-	if c.Claude.Model == "" {
-		c.Claude.Model = "opus"
-	}
-	if c.Claude.TmuxSession == "" {
-		c.Claude.TmuxSession = "workers-orch-go"
-	}
-
-	// Default OpenCode settings
-	if c.OpenCode.Model == "" {
-		c.OpenCode.Model = "flash"
-	}
-	if c.OpenCode.Server == "" {
-		c.OpenCode.Server = "http://127.0.0.1:4096"
-	}
-
-	// Initialize servers map if nil
-	if c.Servers == nil {
-		c.Servers = make(map[string]int)
-	}
 }
 
 // GetServerPort returns the port for a service, or 0 and false if not found.

@@ -4,20 +4,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"time"
 )
 
 // handleHotspot returns hotspot analysis data for the dashboard.
 // This reuses the same logic as the orch hotspot CLI command.
-func (s *Server) handleHotspot(w http.ResponseWriter, r *http.Request) {
+func handleHotspot(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	// Use sourceDir since serve may run from any working directory
-	projectDir, _ := s.currentProjectDir()
+	projectDir := sourceDir
+	if projectDir == "" || projectDir == "unknown" {
+		projectDir, _ = os.Getwd()
+	}
 
 	// Use default thresholds from hotspot.go
 	daysBack := 28

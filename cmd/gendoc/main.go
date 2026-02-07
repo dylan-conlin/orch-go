@@ -90,7 +90,7 @@ sessions, and monitoring session events via SSE.`,
 	}
 
 	// Global flags
-	rootCmd.PersistentFlags().String("server", "http://127.0.0.1:4096", "OpenCode server URL")
+	rootCmd.PersistentFlags().String("server", "http://localhost:4096", "OpenCode server URL")
 
 	// Add all commands
 	rootCmd.AddCommand(buildSpawnCmd())

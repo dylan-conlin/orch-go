@@ -13,20 +13,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 )
 
-// newTestServer creates a Server with minimal dependencies for unit testing.
-// Tests that need specific fields can override them after creation.
-func newTestServer() *Server {
-	return &Server{
-		ServerURL:       "http://127.0.0.1:4096",
-		SourceDir:       os.TempDir(),
-		Version:         "test",
-		BeadsCache:      newBeadsCache(),
-		BeadsStatsCache: newBeadsStatsCache(),
-		KBHealthCache:   newKBHealthCache(),
-		WorkspaceCache:  &globalWorkspaceCacheType{ttl: 30 * time.Second},
-	}
-}
-
 func TestServeStatusWithMockServer(t *testing.T) {
 	// Create a mock server that responds to /health
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +66,7 @@ func TestHandleErrorsMethodNotAllowed(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/errors", nil)
 	w := httptest.NewRecorder()
 
-	newTestServer().handleErrors(w, req)
+	handleErrors(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
@@ -93,7 +79,7 @@ func TestHandleErrorsJSONResponse(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/errors", nil)
 	w := httptest.NewRecorder()
 
-	newTestServer().handleErrors(w, req)
+	handleErrors(w, req)
 
 	resp := w.Result()
 	// Should be 200 even if events file doesn't exist

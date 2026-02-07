@@ -70,7 +70,7 @@ func init() {
 }
 
 func runReconcile() error {
-	projectDir, _ := currentProjectDir()
+	projectDir, _ := os.Getwd()
 	zombies, err := findZombieIssues(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to find zombie issues: %w", err)
@@ -129,18 +129,18 @@ func runReconcile() error {
 }
 
 func findZombieIssues(projectDir string) ([]ZombieIssue, error) {
-	inProgress := "in_progress"
-	var issues []beads.Issue
-	err := beads.Do("", func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
+	socketPath, err := beads.FindSocketPath("")
+	if err != nil {
+		return findZombieIssuesFallback(projectDir)
+	}
+	client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+	if err := client.Connect(); err != nil {
+		return findZombieIssuesFallback(projectDir)
+	}
+	defer client.Close()
 
-		var rpcErr error
-		issues, rpcErr = client.List(&beads.ListArgs{Status: inProgress})
-		return rpcErr
-	}, beads.WithAutoReconnect(3))
+	inProgress := "in_progress"
+	issues, err := client.List(&beads.ListArgs{Status: inProgress})
 	if err != nil {
 		return findZombieIssuesFallback(projectDir)
 	}
@@ -156,12 +156,9 @@ func findZombieIssuesFallback(projectDir string) ([]ZombieIssue, error) {
 }
 
 func filterZombies(projectDir string, issues []beads.Issue) ([]ZombieIssue, error) {
-	return filterZombiesWithClient(opencode.NewClient(serverURL), projectDir, issues)
-}
-
-func filterZombiesWithClient(ocClient opencode.ClientInterface, projectDir string, issues []beads.Issue) ([]ZombieIssue, error) {
 	now := time.Now()
 	var zombies []ZombieIssue
+	ocClient := opencode.NewClient(serverURL)
 
 	var activeSessions []opencode.Session
 	seenSessionIDs := make(map[string]bool)
@@ -243,21 +240,16 @@ func filterZombiesWithClient(ocClient opencode.ClientInterface, projectDir strin
 }
 
 func getLastPhase(beadsID string) string {
-	var comments []beads.Comment
-	err := beads.Do("", func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
-
-		var rpcErr error
-		comments, rpcErr = client.Comments(beadsID)
-		return rpcErr
-	}, beads.WithAutoReconnect(1))
+	socketPath, err := beads.FindSocketPath("")
 	if err != nil {
 		return ""
 	}
-
+	client := beads.NewClient(socketPath, beads.WithAutoReconnect(1))
+	if err := client.Connect(); err != nil {
+		return ""
+	}
+	defer client.Close()
+	comments, _ := client.Comments(beadsID)
 	for i := len(comments) - 1; i >= 0; i-- {
 		if strings.HasPrefix(comments[i].Text, "Phase:") {
 			return strings.TrimPrefix(comments[i].Text, "Phase: ")

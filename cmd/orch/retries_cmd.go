@@ -12,9 +12,8 @@ import (
 )
 
 var retriesCmd = &cobra.Command{
-	Use:    "retries",
-	Short:  "Show issues with retry patterns (failed attempts)",
-	Hidden: true,
+	Use:   "retries",
+	Short: "Show issues with retry patterns (failed attempts)",
 	Long: `Show beads issues that have been retried after failures.
 
 This helps surface flaky issues that may need reliability-testing instead

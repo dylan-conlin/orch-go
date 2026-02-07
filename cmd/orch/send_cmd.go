@@ -40,8 +40,7 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		identifier := args[0]
 		message := strings.Join(args[1:], " ")
-		client := opencode.NewClient(serverURL)
-		return runSend(client, identifier, message)
+		return runSend(serverURL, identifier, message)
 	},
 }
 
@@ -49,9 +48,11 @@ func init() {
 	sendCmd.Flags().BoolVar(&sendAsync, "async", true, "Send message asynchronously (non-blocking)")
 }
 
-func runSend(client opencode.ClientInterface, identifier, message string) error {
+func runSend(serverURL, identifier, message string) error {
 	// First, try to resolve identifier to OpenCode session ID
 	sessionID, resolveErr := resolveSessionID(serverURL, identifier)
+
+	client := opencode.NewClient(serverURL)
 
 	// If resolution succeeded, use OpenCode API
 	if resolveErr == nil && sessionID != "" {
@@ -74,7 +75,7 @@ func runSend(client opencode.ClientInterface, identifier, message string) error 
 }
 
 // sendViaOpenCodeAPI sends a message using the OpenCode HTTP API.
-func sendViaOpenCodeAPI(client opencode.ClientInterface, sessionID, identifier, message string) error {
+func sendViaOpenCodeAPI(client *opencode.Client, sessionID, identifier, message string) error {
 	// Log the send event first (before streaming starts)
 	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{

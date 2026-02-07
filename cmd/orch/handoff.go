@@ -21,13 +21,13 @@ import (
 )
 
 // ============================================================================
-// Handoff Command - Generate synthesis document
+// Handoff Command - Generate session handoff document
 // ============================================================================
 
 var handoffCmd = &cobra.Command{
 	Use:   "handoff",
-	Short: "Generate a synthesis document",
-	Long: `Generate a synthesis document capturing the current orchestration state.
+	Short: "Generate a session handoff document",
+	Long: `Generate a session handoff document capturing the current orchestration state.
 
 The handoff document is useful for:
 - Ending a work session and resuming later
@@ -43,7 +43,7 @@ The command aggregates:
 
 Examples:
   orch-go handoff                    # Generate handoff to stdout
-  orch-go handoff -o .orch/          # Write to .orch/SYNTHESIS.md
+  orch-go handoff -o .orch/          # Write to .orch/SESSION_HANDOFF.md
   orch-go handoff --json             # Output data as JSON (for scripting)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runHandoff()
@@ -56,7 +56,7 @@ var (
 )
 
 func init() {
-	handoffCmd.Flags().StringVarP(&handoffOutput, "output", "o", "", "Output directory (writes SYNTHESIS.md) or file path")
+	handoffCmd.Flags().StringVarP(&handoffOutput, "output", "o", "", "Output directory (writes SESSION_HANDOFF.md) or file path")
 	handoffCmd.Flags().BoolVar(&handoffJSON, "json", false, "Output as JSON for scripting")
 	rootCmd.AddCommand(handoffCmd)
 }
@@ -166,7 +166,7 @@ func runHandoff() error {
 		outputPath := handoffOutput
 		// If output is a directory, append filename
 		if info, err := os.Stat(handoffOutput); err == nil && info.IsDir() {
-			outputPath = filepath.Join(handoffOutput, "SYNTHESIS.md")
+			outputPath = filepath.Join(handoffOutput, "SESSION_HANDOFF.md")
 		}
 
 		if err := os.WriteFile(outputPath, []byte(markdown), 0644); err != nil {
@@ -269,7 +269,7 @@ func gatherHandoffData() (*HandoffData, error) {
 	}
 
 	// Get current project directory
-	projectDir, _ := currentProjectDir()
+	projectDir, _ := os.Getwd()
 	projectName := filepath.Base(projectDir)
 
 	// Get focus info
@@ -313,10 +313,6 @@ func gatherHandoffData() (*HandoffData, error) {
 }
 
 func gatherActiveAgents(projectDir string) []ActiveAgent {
-	return gatherActiveAgentsWithClient(opencode.NewClient(serverURL), projectDir)
-}
-
-func gatherActiveAgentsWithClient(client opencode.ClientInterface, projectDir string) []ActiveAgent {
 	var agents []ActiveAgent
 	projectName := filepath.Base(projectDir)
 
@@ -365,6 +361,7 @@ func gatherActiveAgentsWithClient(client opencode.ClientInterface, projectDir st
 	}
 
 	// Also check OpenCode sessions for headless agents
+	client := opencode.NewClient(serverURL)
 	sessions, _ := client.ListSessions("")
 	sessionSet := make(map[string]bool)
 	for _, a := range agents {
@@ -406,23 +403,22 @@ func gatherActiveAgentsWithClient(client opencode.ClientInterface, projectDir st
 func getInProgressBeadsIDs() map[string]bool {
 	result := make(map[string]bool)
 
-	err := beads.Do("", func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
-
-		issues, rpcErr := client.List(&beads.ListArgs{Status: "in_progress"})
-		if rpcErr != nil {
-			return rpcErr
-		}
-		for _, issue := range issues {
-			result[issue.ID] = true
-		}
-		return nil
-	})
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		return result
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+
+			issues, err := client.List(&beads.ListArgs{Status: "in_progress"})
+			if err == nil {
+				for _, issue := range issues {
+					result[issue.ID] = true
+				}
+				return result
+			}
+			// Fall through to CLI fallback on RPC error
+		}
 	}
 
 	// Fallback to CLI
@@ -441,28 +437,27 @@ func getInProgressBeadsIDs() map[string]bool {
 func gatherPendingIssues() []PendingIssue {
 	var issues []PendingIssue
 
-	err := beads.Do("", func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
-
-		readyIssues, rpcErr := client.Ready(nil)
-		if rpcErr != nil {
-			return rpcErr
-		}
-		for _, issue := range readyIssues {
-			priority := fmt.Sprintf("P%d", issue.Priority)
-			issues = append(issues, PendingIssue{
-				ID:       issue.ID,
-				Title:    issue.Title,
-				Priority: priority,
-			})
-		}
-		return nil
-	})
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		return issues
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+
+			readyIssues, err := client.Ready(nil)
+			if err == nil {
+				for _, issue := range readyIssues {
+					priority := fmt.Sprintf("P%d", issue.Priority)
+					issues = append(issues, PendingIssue{
+						ID:       issue.ID,
+						Title:    issue.Title,
+						Priority: priority,
+					})
+				}
+				return issues
+			}
+			// Fall through to CLI fallback on RPC error
+		}
 	}
 
 	// Fallback to CLI
@@ -486,33 +481,32 @@ func gatherPendingIssues() []PendingIssue {
 func gatherRecentWork() []RecentWorkItem {
 	var work []RecentWorkItem
 
-	err := beads.Do("", func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
-
-		issues, rpcErr := client.List(&beads.ListArgs{Status: "closed"})
-		if rpcErr != nil {
-			return rpcErr
-		}
-		// Limit to most recent 5
-		count := 0
-		for _, issue := range issues {
-			if count >= 5 {
-				break
-			}
-			description := fmt.Sprintf("[%s] %s", issue.ID, issue.Title)
-			work = append(work, RecentWorkItem{
-				Type:        "completed",
-				Description: description,
-			})
-			count++
-		}
-		return nil
-	})
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		return work
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+
+			issues, err := client.List(&beads.ListArgs{Status: "closed"})
+			if err == nil {
+				// Limit to most recent 5
+				count := 0
+				for _, issue := range issues {
+					if count >= 5 {
+						break
+					}
+					description := fmt.Sprintf("[%s] %s", issue.ID, issue.Title)
+					work = append(work, RecentWorkItem{
+						Type:        "completed",
+						Description: description,
+					})
+					count++
+				}
+				return work
+			}
+			// Fall through to CLI fallback on RPC error
+		}
 	}
 
 	// Fallback to CLI

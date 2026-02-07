@@ -127,7 +127,7 @@ func GatherRequiredContext(requires *RequiresContext, task, beadsID, projectDir 
 
 	// Gather kb-context if required
 	if requires.KBContext {
-		kbContext := gatherKBContext(task, projectDir)
+		kbContext := gatherKBContext(task)
 		if kbContext != "" {
 			sections = append(sections, kbContext)
 		}
@@ -159,8 +159,7 @@ func GatherRequiredContext(requires *RequiresContext, task, beadsID, projectDir 
 // gatherKBContext runs kb context query with task keywords.
 // Returns formatted context string or empty string if no matches.
 // Also performs gap analysis and includes gap summary in the context if significant.
-// projectDir sets the working directory for kb context queries; if empty, uses CWD.
-func gatherKBContext(task, projectDir string) string {
+func gatherKBContext(task string) string {
 	// Extract keywords from task description
 	keywords := ExtractKeywords(task, 3)
 	if keywords == "" {
@@ -172,13 +171,13 @@ func gatherKBContext(task, projectDir string) string {
 		return ""
 	}
 
-	// Run kb context check with projectDir to ensure kb searches the target project
-	result, err := RunKBContextCheckWithDomain(keywords, DomainPersonal, projectDir)
+	// Run kb context check
+	result, err := RunKBContextCheck(keywords)
 	if err != nil || result == nil || !result.HasMatches {
 		// Try with broader search (single keyword)
 		broadKeywords := ExtractKeywords(task, 1)
 		if broadKeywords != "" && broadKeywords != keywords {
-			result, err = RunKBContextCheckWithDomain(broadKeywords, DomainPersonal, projectDir)
+			result, err = RunKBContextCheck(broadKeywords)
 		}
 	}
 

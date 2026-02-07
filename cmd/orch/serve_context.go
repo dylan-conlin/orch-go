@@ -66,7 +66,7 @@ func (c *contextCache) getCachedCwd() (string, error) {
 // handleContext returns the current orchestrator context for dashboard filtering.
 // This enables "follow the orchestrator" mode where the dashboard auto-filters
 // to show only agents from the project the orchestrator is currently working in.
-func (s *Server) handleContext(w http.ResponseWriter, r *http.Request) {
+func handleContext(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

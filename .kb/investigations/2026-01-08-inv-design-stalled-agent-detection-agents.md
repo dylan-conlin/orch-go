@@ -16,7 +16,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Implement - add `isStalled` field to AgentAPIResponse, surface in Needs Attention component with orange indicator, single 15-minute threshold.
 
-**Promote to Decision:** Actioned - patterns documented in agent lifecycle guide
+**Promote to Decision:** recommend-yes - Establishes the principle "one threshold, one signal, advisory only" for agent health monitoring.
 
 ---
 

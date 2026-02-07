@@ -36,19 +36,6 @@ type ReviewState struct {
 	// Light-tier agents don't produce SYNTHESIS.md, so this field tracks acknowledgment
 	// of the completion itself rather than synthesis recommendations.
 	LightTierAcknowledged bool `json:"light_tier_acknowledged,omitempty"`
-
-	// Approved is true when the orchestrator has explicitly approved this agent's work.
-	// Used for ui-design-session workflow where Dylan approves mockups before implementation.
-	Approved bool `json:"approved,omitempty"`
-
-	// ApprovedAt is when the orchestrator approved this agent's work.
-	ApprovedAt time.Time `json:"approved_at,omitempty"`
-
-	// ApprovedBy identifies who approved (typically "orchestrator").
-	ApprovedBy string `json:"approved_by,omitempty"`
-
-	// ApprovalDescription is an optional description of what was approved.
-	ApprovalDescription string `json:"approval_description,omitempty"`
 }
 
 // IsReviewed returns true if this synthesis has been reviewed.
@@ -84,19 +71,6 @@ func (rs *ReviewState) UnreviewedCount() int {
 		return 0
 	}
 	return rs.TotalRecommendations - reviewed
-}
-
-// IsApproved returns true if this agent's work has been approved.
-func (rs *ReviewState) IsApproved() bool {
-	return rs.Approved && !rs.ApprovedAt.IsZero()
-}
-
-// SetApproval marks this agent's work as approved.
-func (rs *ReviewState) SetApproval(approvedBy, description string) {
-	rs.Approved = true
-	rs.ApprovedAt = time.Now()
-	rs.ApprovedBy = approvedBy
-	rs.ApprovalDescription = description
 }
 
 // LoadReviewState loads the review state from a workspace directory.

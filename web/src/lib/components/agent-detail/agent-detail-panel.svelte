@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
-	import { TabButton, InvestigationTab, ActivityTab, SynthesisTab, ScreenshotsTab } from '$lib/components/agent-detail';
+	import { TabButton, InvestigationTab, ActivityTab, SynthesisTab } from '$lib/components/agent-detail';
 	import { selectedAgent, selectedAgentId } from '$lib/stores/agents';
 	import type { Agent } from '$lib/stores/agents';
 	import { onMount } from 'svelte';
@@ -9,54 +9,29 @@
 	import { browser } from '$app/environment';
 	
 	// Tab types based on agent state
-	type TabType = 'activity' | 'investigation' | 'synthesis' | 'screenshots';
+	type TabType = 'activity' | 'investigation' | 'synthesis';
 	
 	// Active tab state - will be determined by agent status
 	let activeTab: TabType = $state('activity');
 	
-	// Screenshot count state - fetched asynchronously to determine tab visibility
-	let screenshotCount: number = $state(0);
-	let screenshotsLoading: boolean = $state(true);
-	
-	// Determine which tabs are visible based on agent status AND content availability
+	// Determine which tabs are visible based on agent status
 	function getVisibleTabs(agent: Agent | null): TabType[] {
 		if (!agent) return [];
-		
-		const tabs: TabType[] = [];
-		
-		// Activity tab - only for active agents
-		if (agent.status === 'active') {
-			tabs.push('activity');
+		switch (agent.status) {
+			case 'active':
+				return ['activity'];
+			case 'completed':
+				return ['synthesis', 'investigation'];
+			case 'abandoned':
+				return ['investigation'];
+			default:
+				return ['activity'];
 		}
-		
-		// Synthesis tab - only show if content exists
-		if (agent.synthesis_content) {
-			tabs.push('synthesis');
-		}
-		
-		// Investigation tab - only show if content exists
-		if (agent.investigation_content) {
-			tabs.push('investigation');
-		}
-		
-		// Screenshots tab - only show if screenshots exist (and not loading)
-		if (!screenshotsLoading && screenshotCount > 0) {
-			tabs.push('screenshots');
-		}
-		
-		return tabs;
 	}
 	
-	// Get default tab - prioritize first available tab with content
+	// Get default tab for agent status
 	function getDefaultTab(agent: Agent | null): TabType {
 		if (!agent) return 'activity';
-		
-		const visibleTabs = getVisibleTabs(agent);
-		if (visibleTabs.length > 0) {
-			return visibleTabs[0];
-		}
-		
-		// Fallback based on status (should rarely happen)
 		switch (agent.status) {
 			case 'active':
 				return 'activity';
@@ -69,44 +44,7 @@
 		}
 	}
 	
-	// Fetch screenshot count for visibility determination
-	async function fetchScreenshotCount(agent: Agent) {
-		if (!agent.project_dir || !agent.id) {
-			screenshotCount = 0;
-			screenshotsLoading = false;
-			return;
-		}
-
-		try {
-			const response = await fetch(
-				`https://localhost:3348/api/screenshots?agent_id=${encodeURIComponent(agent.id)}&project_dir=${encodeURIComponent(agent.project_dir)}`
-			);
-
-			if (!response.ok) {
-				screenshotCount = 0;
-				screenshotsLoading = false;
-				return;
-			}
-
-			const data = await response.json();
-			screenshotCount = data.screenshots?.length || 0;
-		} catch (err) {
-			console.error('Failed to fetch screenshot count:', err);
-			screenshotCount = 0;
-		} finally {
-			screenshotsLoading = false;
-		}
-	}
-
-	// Load screenshot count when agent changes
-	$effect(() => {
-		if ($selectedAgent) {
-			screenshotsLoading = true;
-			fetchScreenshotCount($selectedAgent);
-		}
-	});
-
-	// Visible tabs derived from agent - reset to default tab if current isn't visible
+	// Visible tabs derived from agent
 	$effect(() => {
 		if ($selectedAgent) {
 			const visibleTabs = getVisibleTabs($selectedAgent);
@@ -116,49 +54,10 @@
 			}
 		}
 	});
-
-	// Load approval status when agent changes
-	$effect(() => {
-		if ($selectedAgent) {
-			// Reset approval state
-			isApproved = false;
-			approvalTimestamp = null;
-
-			// Check if agent has workspace_path and load review state
-			if ($selectedAgent.workspace_path) {
-				loadApprovalStatus($selectedAgent.workspace_path);
-			}
-		}
-	});
-
-	// Load approval status from review state
-	async function loadApprovalStatus(workspacePath: string) {
-		try {
-			const response = await fetch(`https://localhost:3348/api/file?path=${encodeURIComponent(workspacePath + '/.review-state.json')}`);
-			if (!response.ok) {
-				// File doesn't exist or error - no approval yet
-				return;
-			}
-
-			const data = await response.json();
-			if (data.approved && data.approved_at) {
-				isApproved = true;
-				approvalTimestamp = data.approved_at;
-			}
-		} catch (err) {
-			// Ignore errors - just means no approval status available
-			console.log('No approval status found:', err);
-		}
-	}
 	
 	// Track which items were recently copied
 	let copiedItem: string | null = $state(null);
 	let copyTimeout: ReturnType<typeof setTimeout> | null = null;
-
-	// Approval state
-	let isApproving = $state(false);
-	let isApproved = $state(false);
-	let approvalTimestamp: string | null = $state(null);
 
 	// Close panel handler
 	function closePanel() {
@@ -191,48 +90,6 @@
 			}, 2000);
 		} catch (err) {
 			console.error('Failed to copy:', err);
-		}
-	}
-
-	// Approve agent's work
-	async function approveAgent() {
-		if (!$selectedAgent || isApproving || isApproved) return;
-
-		// Prompt for optional description
-		const description = prompt('Approval description (optional):');
-		if (description === null) return; // User cancelled
-
-		isApproving = true;
-
-		try {
-			const response = await fetch('https://localhost:3348/api/approve', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({
-					agent_id: $selectedAgent.id,
-					description: description.trim(),
-				}),
-			});
-
-			if (!response.ok) {
-				const errorData = await response.json();
-				throw new Error(errorData.error || 'Failed to approve agent');
-			}
-
-			const data = await response.json();
-			
-			// Update approval state
-			isApproved = true;
-			approvalTimestamp = new Date().toISOString();
-
-			console.log('Agent approved:', data.message);
-		} catch (err) {
-			console.error('Failed to approve agent:', err);
-			alert(`Failed to approve: ${err instanceof Error ? err.message : 'Unknown error'}`);
-		} finally {
-			isApproving = false;
 		}
 	}
 
@@ -355,24 +212,6 @@
 						Processing
 					</Badge>
 				{/if}
-				
-				<!-- Approval Status/Action -->
-				{#if isApproved}
-					<Badge variant="default" class="bg-green-600">
-						✅ Approved
-					</Badge>
-				{:else if $selectedAgent.status === 'completed'}
-					<Button 
-						variant="outline" 
-						size="sm" 
-						onclick={approveAgent}
-						disabled={isApproving}
-						class="ml-2"
-					>
-						{isApproving ? 'Approving...' : 'Approve'}
-					</Button>
-				{/if}
-
 				<span class="ml-auto text-sm text-muted-foreground">
 					{$selectedAgent.runtime || formatDuration($selectedAgent.spawned_at)}
 				</span>
@@ -397,11 +236,6 @@
 						Investigation
 					</TabButton>
 				{/if}
-				{#if getVisibleTabs($selectedAgent).includes('screenshots')}
-					<TabButton active={activeTab === 'screenshots'} onclick={() => activeTab = 'screenshots'}>
-						Screenshots
-					</TabButton>
-				{/if}
 			</div>
 		</div>
 
@@ -423,13 +257,6 @@
 			{#if activeTab === 'investigation'}
 				<div class="flex-1 overflow-y-auto p-4">
 					<InvestigationTab agent={$selectedAgent} />
-				</div>
-			{/if}
-
-			<!-- Screenshots Tab (for all agents) -->
-			{#if activeTab === 'screenshots'}
-				<div class="flex-1 overflow-y-auto">
-					<ScreenshotsTab agent={$selectedAgent} />
 				</div>
 			{/if}
 		</div>

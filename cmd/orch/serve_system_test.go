@@ -13,7 +13,7 @@ func TestHandleUsageMethodNotAllowed(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/usage", nil)
 	w := httptest.NewRecorder()
 
-	newTestServer().handleUsage(w, req)
+	handleUsage(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
@@ -26,7 +26,7 @@ func TestHandleUsageJSONResponse(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/usage", nil)
 	w := httptest.NewRecorder()
 
-	newTestServer().handleUsage(w, req)
+	handleUsage(w, req)
 
 	resp := w.Result()
 	// Should be 200 even if auth fails (returns error in JSON)

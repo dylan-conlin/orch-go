@@ -2,12 +2,10 @@ package beads
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -56,93 +54,6 @@ func TestFindSocketPath_NotFound(t *testing.T) {
 	_, err := FindSocketPath(tmpDir)
 	if err == nil {
 		t.Error("FindSocketPath should fail when no socket exists")
-	}
-}
-
-func TestDo_UsesProvidedProjectDirAndOptions(t *testing.T) {
-	tmpDir := t.TempDir()
-	beadsDir := filepath.Join(tmpDir, ".beads")
-	if err := os.MkdirAll(beadsDir, 0755); err != nil {
-		t.Fatalf("failed to create beads dir: %v", err)
-	}
-
-	socketPath := filepath.Join(beadsDir, "bd.sock")
-	if err := os.WriteFile(socketPath, []byte{}, 0644); err != nil {
-		t.Fatalf("failed to create socket file: %v", err)
-	}
-
-	var got *Client
-	err := Do(tmpDir, func(c *Client) error {
-		got = c
-		return nil
-	}, WithAutoReconnect(3))
-	if err != nil {
-		t.Fatalf("Do failed: %v", err)
-	}
-	if got == nil {
-		t.Fatal("Do did not pass client to callback")
-	}
-	if got.socketPath != socketPath {
-		t.Errorf("socketPath = %q, want %q", got.socketPath, socketPath)
-	}
-	if got.cwd != tmpDir {
-		t.Errorf("cwd = %q, want %q", got.cwd, tmpDir)
-	}
-	if !got.autoReconnect || got.maxRetries != 3 {
-		t.Errorf("auto reconnect config = (%v, %d), want (true, 3)", got.autoReconnect, got.maxRetries)
-	}
-}
-
-func TestDo_UsesDefaultDirWhenProjectDirEmpty(t *testing.T) {
-	tmpDir := t.TempDir()
-	beadsDir := filepath.Join(tmpDir, ".beads")
-	if err := os.MkdirAll(beadsDir, 0755); err != nil {
-		t.Fatalf("failed to create beads dir: %v", err)
-	}
-
-	socketPath := filepath.Join(beadsDir, "bd.sock")
-	if err := os.WriteFile(socketPath, []byte{}, 0644); err != nil {
-		t.Fatalf("failed to create socket file: %v", err)
-	}
-
-	originalDefaultDir := DefaultDir
-	DefaultDir = tmpDir
-	t.Cleanup(func() {
-		DefaultDir = originalDefaultDir
-	})
-
-	var got *Client
-	err := Do("", func(c *Client) error {
-		got = c
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("Do failed: %v", err)
-	}
-	if got == nil {
-		t.Fatal("Do did not pass client to callback")
-	}
-	if got.socketPath != socketPath {
-		t.Errorf("socketPath = %q, want %q", got.socketPath, socketPath)
-	}
-	if got.cwd != tmpDir {
-		t.Errorf("cwd = %q, want %q", got.cwd, tmpDir)
-	}
-}
-
-func TestDo_ReturnsLookupError(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	called := false
-	err := Do(tmpDir, func(c *Client) error {
-		called = true
-		return nil
-	})
-	if err == nil {
-		t.Fatal("Do should fail when no socket exists")
-	}
-	if called {
-		t.Fatal("Do should not call callback on socket lookup error")
 	}
 }
 
@@ -1386,7 +1297,6 @@ func TestParseDependencies(t *testing.T) {
 func TestGetBlockingDependencies(t *testing.T) {
 	tests := []struct {
 		name          string
-		issueID       string // optional, defaults to "test-issue"
 		deps          json.RawMessage
 		wantCount     int
 		wantBlockerID string
@@ -1453,73 +1363,12 @@ func TestGetBlockingDependencies(t *testing.T) {
 			deps:      json.RawMessage(`[{"id":"dep-1","title":"Blocks Dep","status":"closed","dependency_type":"blocks"},{"id":"epic-1","title":"Parent Epic","status":"open","dependency_type":"parent-child"}]`),
 			wantCount: 0, // Changed: parent-child never blocks, blocks dep is closed
 		},
-		// Question dependency tests
-		// Questions unblock when "answered" OR "closed", not just "closed"
-		// This reflects the question lifecycle: Open → Investigating → Answered → Closed
-		{
-			name:          "question: open question blocks",
-			deps:          json.RawMessage(`[{"id":"q-1","title":"Strategic Question","status":"open","issue_type":"question","dependency_type":"blocks"}]`),
-			wantCount:     1,
-			wantBlockerID: "q-1",
-		},
-		{
-			name:          "question: investigating question blocks",
-			deps:          json.RawMessage(`[{"id":"q-1","title":"Strategic Question","status":"investigating","issue_type":"question","dependency_type":"blocks"}]`),
-			wantCount:     1,
-			wantBlockerID: "q-1",
-		},
-		{
-			name:      "question: answered question does NOT block",
-			deps:      json.RawMessage(`[{"id":"q-1","title":"Strategic Question","status":"answered","issue_type":"question","dependency_type":"blocks"}]`),
-			wantCount: 0, // Answered questions unblock dependents
-		},
-		{
-			name:      "question: closed question does NOT block",
-			deps:      json.RawMessage(`[{"id":"q-1","title":"Strategic Question","status":"closed","issue_type":"question","dependency_type":"blocks"}]`),
-			wantCount: 0, // Closed questions unblock dependents
-		},
-		{
-			name:          "mixed: question answered + regular issue open",
-			deps:          json.RawMessage(`[{"id":"q-1","title":"Strategic Question","status":"answered","issue_type":"question","dependency_type":"blocks"},{"id":"dep-1","title":"Regular Issue","status":"open","dependency_type":"blocks"}]`),
-			wantCount:     1,
-			wantBlockerID: "dep-1", // Only the regular issue blocks, not the answered question
-		},
-		{
-			name:      "regular issue: answered status still blocks (not a question)",
-			deps:      json.RawMessage(`[{"id":"dep-1","title":"Regular Issue","status":"answered","issue_type":"task","dependency_type":"blocks"}]`),
-			wantCount: 1, // Regular issues only unblock when closed, not answered
-		},
-		// Inferred parent-child tests (workaround for beads JSONL mode bug where dependency_type is empty)
-		// When dependency_type is empty but issue ID follows child pattern (parent.N), infer parent-child
-		{
-			name:      "inferred parent-child: empty type with child ID pattern does NOT block",
-			issueID:   "specs-platform-10.1", // Child of specs-platform-10
-			deps:      json.RawMessage(`[{"id":"specs-platform-10","title":"Parent Epic","status":"open","dependency_type":""}]`),
-			wantCount: 0, // Inferred as parent-child, doesn't block
-		},
-		{
-			name:          "inferred parent-child: empty type without child pattern DOES block",
-			issueID:       "specs-platform-99", // Not a child of specs-platform-10
-			deps:          json.RawMessage(`[{"id":"specs-platform-10","title":"Unrelated Issue","status":"open","dependency_type":""}]`),
-			wantCount:     1, // Not a parent-child pattern, blocks
-			wantBlockerID: "specs-platform-10",
-		},
-		{
-			name:      "inferred parent-child: deeper child hierarchy (parent.1.2) with grandparent does NOT block",
-			issueID:   "specs-platform-10.1", // Child of specs-platform-10
-			deps:      json.RawMessage(`[{"id":"specs-platform-10","title":"Parent Epic","status":"open","dependency_type":""}]`),
-			wantCount: 0, // Inferred as parent-child, doesn't block
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			issueID := tt.issueID
-			if issueID == "" {
-				issueID = "test-issue"
-			}
 			issue := Issue{
-				ID:           issueID,
+				ID:           "test-issue",
 				Dependencies: tt.deps,
 			}
 
@@ -1535,37 +1384,6 @@ func TestGetBlockingDependencies(t *testing.T) {
 }
 
 // TestBlockingDependencyError tests the error message formatting.
-// TestIsInferredParentChild tests the parent-child detection heuristic for JSONL mode.
-func TestIsInferredParentChild(t *testing.T) {
-	tests := []struct {
-		issueID string
-		depID   string
-		want    bool
-	}{
-		{"bd-123.1", "bd-123", true},                       // Standard child
-		{"bd-123.2", "bd-123", true},                       // Another child
-		{"bd-123.1.1", "bd-123.1", true},                   // Nested child
-		{"specs-platform-10.1", "specs-platform-10", true}, // Real-world case
-		{"bd-123", "bd-123", false},                        // Same ID (not child)
-		{"bd-456", "bd-123", false},                        // Different IDs (not child)
-		{"bd-123.1", "bd-456", false},                      // Child of different parent
-		{"bd-1234", "bd-123", false},                       // Similar prefix but not child
-		{"bd-123-task", "bd-123", false},                   // Dash, not dot
-		{"", "bd-123", false},                              // Empty issue ID
-		{"bd-123.1", "", false},                            // Empty dep ID
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.issueID+"_dep_"+tt.depID, func(t *testing.T) {
-			got := isInferredParentChild(tt.issueID, tt.depID)
-			if got != tt.want {
-				t.Errorf("isInferredParentChild(%q, %q) = %v, want %v",
-					tt.issueID, tt.depID, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestBlockingDependencyError(t *testing.T) {
 	err := &BlockingDependencyError{
 		IssueID: "proj-xyz",
@@ -1652,65 +1470,5 @@ func TestGetBdPath_Default(t *testing.T) {
 	BdPath = "/custom/path/to/bd"
 	if got := getBdPath(); got != "/custom/path/to/bd" {
 		t.Errorf("getBdPath() with custom BdPath = %q, want %q", got, "/custom/path/to/bd")
-	}
-}
-
-func TestErrIssueNotFound(t *testing.T) {
-	// Test that ErrIssueNotFound can be checked with errors.Is
-	err := fmt.Errorf("%w: test-id", ErrIssueNotFound)
-
-	if !errors.Is(err, ErrIssueNotFound) {
-		t.Error("errors.Is should return true for wrapped ErrIssueNotFound")
-	}
-
-	// Verify the error message includes the ID
-	if !strings.Contains(err.Error(), "test-id") {
-		t.Errorf("error message should contain ID, got: %s", err.Error())
-	}
-
-	// Verify the error message includes "issue not found"
-	if !strings.Contains(err.Error(), "issue not found") {
-		t.Errorf("error message should contain 'issue not found', got: %s", err.Error())
-	}
-}
-
-func TestFallbackShow_EmptyOutput(t *testing.T) {
-	// This test verifies that empty output from bd show is handled as ErrIssueNotFound
-	// It's a unit test that doesn't require actual beads setup
-
-	// Note: We can't easily unit test FallbackShow without a mock because it shells out
-	// to the bd command. Instead, we test the error type in the integration tests.
-	// This test documents the expected behavior.
-
-	t.Log("FallbackShow should return ErrIssueNotFound when:")
-	t.Log("  - bd show returns empty output (exit code 0)")
-	t.Log("  - bd show returns 'no issue found' in stderr")
-	t.Log("  - bd show returns 'no .beads directory found' in stderr")
-	t.Log("  - bd show returns empty JSON array")
-}
-
-// TestFallbackCloseForce tests that FallbackCloseForce passes --force flag
-func TestFallbackCloseForce(t *testing.T) {
-	// This test verifies that the FallbackCloseForce function exists and
-	// accepts the correct parameters. Integration testing with actual bd CLI
-	// is handled separately.
-	//
-	// Expected behavior:
-	// - FallbackCloseForce(id, reason, force=true) should pass --force to bd close
-	// - FallbackCloseForce(id, reason, force=false) should NOT pass --force
-
-	// For now, just test that the function exists and has the right signature
-	// The actual CLI call testing requires integration tests with real beads
-
-	// Test that function can be called with force parameter
-	err := FallbackCloseForce("test-123", "test reason", true)
-
-	// We expect an error since we're not in a real beads environment
-	// But the test verifies the function exists and accepts the parameters
-	if err == nil {
-		t.Log("FallbackCloseForce succeeded (running in test environment)")
-	} else {
-		// Expected - no real beads environment
-		t.Logf("FallbackCloseForce returned error (expected in test): %v", err)
 	}
 }

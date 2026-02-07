@@ -14,82 +14,23 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/dylan-conlin/orch-go/pkg/anthropic"
 )
 
-// API configuration - uses shared constants from pkg/anthropic.
-// Local aliases for backward compatibility with any external consumers.
+// API configuration
 const (
-	UsageEndpoint   = anthropic.UsageEndpoint
-	ProfileEndpoint = anthropic.ProfileEndpoint
-	UserAgent       = anthropic.UserAgent
+	UsageEndpoint   = "https://api.anthropic.com/api/oauth/usage"
+	ProfileEndpoint = "https://api.anthropic.com/api/oauth/profile"
+	UserAgent       = "claude-code/2.0.32"
 )
 
-// usageCacheEntry represents a cached usage info with timestamp.
-type usageCacheEntry struct {
-	data      *UsageInfo
-	timestamp time.Time
-}
-
-// usageCache provides thread-safe caching of usage API responses.
-type usageCache struct {
-	mu      sync.Mutex
-	entries map[string]*usageCacheEntry
-	ttl     time.Duration
-}
-
-// newUsageCache creates a new usage cache with the specified TTL.
-func newUsageCache(ttl time.Duration) *usageCache {
-	return &usageCache{
-		entries: make(map[string]*usageCacheEntry),
-		ttl:     ttl,
-	}
-}
-
-// get retrieves cached usage info if available and not expired.
-// Returns (data, true) on cache hit, (nil, false) on cache miss.
-func (c *usageCache) get(token string) (*UsageInfo, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	entry, exists := c.entries[token]
-	if !exists {
-		return nil, false
-	}
-
-	// Check if expired
-	if time.Since(entry.timestamp) > c.ttl {
-		delete(c.entries, token)
-		return nil, false
-	}
-
-	return entry.data, true
-}
-
-// set stores usage info in the cache for the given token.
-func (c *usageCache) set(token string, data *UsageInfo) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.entries[token] = &usageCacheEntry{
-		data:      data,
-		timestamp: time.Now(),
-	}
-}
-
-// invalidate clears all cached entries.
-func (c *usageCache) invalidate() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.entries = make(map[string]*usageCacheEntry)
-}
-
-// globalUsageCache is the package-level cache instance with 60s TTL.
-var globalUsageCache = newUsageCache(60 * time.Second)
+// AnthropicBetaHeaders are required for OAuth tokens to work with Claude Code credentials
+var AnthropicBetaHeaders = strings.Join([]string{
+	"oauth-2025-04-20",
+	"claude-code-20250219",
+	"interleaved-thinking-2025-05-14",
+	"fine-grained-tool-streaming-2025-05-14",
+}, ",")
 
 // UsageLimit represents a single usage limit (5-hour or 7-day).
 type UsageLimit struct {
@@ -256,10 +197,16 @@ func parseLimit(resp *limitResponse) *UsageLimit {
 
 // fetchProfileEmail fetches the account email from the profile API.
 func fetchProfileEmail(token string, client *http.Client) string {
-	req, err := anthropic.NewAPIRequest("GET", ProfileEndpoint, token)
+	req, err := http.NewRequest("GET", ProfileEndpoint, nil)
 	if err != nil {
 		return ""
 	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("anthropic-beta", AnthropicBetaHeaders)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", UserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -279,42 +226,29 @@ func fetchProfileEmail(token string, client *http.Client) string {
 	return profile.Account.Email
 }
 
-// FetchUsage fetches Claude Max usage information from the API with caching.
-// Results are cached for 60 seconds to reduce API overhead during high-frequency operations.
+// FetchUsage fetches Claude Max usage information from the API.
 func FetchUsage() *UsageInfo {
 	token, err := GetOAuthToken()
 	if err != nil {
 		return &UsageInfo{Error: err.Error()}
 	}
 
-	// Check cache first
-	if cached, ok := globalUsageCache.get(token); ok {
-		return cached
-	}
-
-	// Cache miss - fetch from API
-	info := fetchUsageFromAPI(token)
-
-	// Only cache successful responses (not errors)
-	if info.Error == "" {
-		globalUsageCache.set(token, info)
-	}
-
-	return info
-}
-
-// fetchUsageFromAPI performs the actual API call without caching.
-func fetchUsageFromAPI(token string) *UsageInfo {
 	client := &http.Client{Timeout: 30 * time.Second}
 
 	// Fetch email from profile (optional, non-blocking failure)
 	email := fetchProfileEmail(token, client)
 
 	// Fetch usage data
-	req, err := anthropic.NewAPIRequest("GET", UsageEndpoint, token)
+	req, err := http.NewRequest("GET", UsageEndpoint, nil)
 	if err != nil {
 		return &UsageInfo{Error: fmt.Sprintf("Failed to create request: %v", err)}
 	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("anthropic-beta", AnthropicBetaHeaders)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", UserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -351,12 +285,6 @@ func fetchUsageFromAPI(token string) *UsageInfo {
 		SevenDayOAuthApps: parseLimit(apiResp.SevenDayOAuthApps),
 		Email:             email,
 	}
-}
-
-// InvalidateUsageCache clears the usage cache.
-// This should be called after account switching to ensure fresh data.
-func InvalidateUsageCache() {
-	globalUsageCache.invalidate()
 }
 
 // FormatDisplay formats usage info for terminal display.

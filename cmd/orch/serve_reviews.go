@@ -47,9 +47,9 @@ type PendingReviewsAPIResponse struct {
 // that have completed (Phase: Complete) but have no synthesis by design.
 //
 // Performance optimization:
-//  1. Light-tier processing is disabled - the PendingReviewsSection was removed from the
-//     dashboard, and processing 200+ light-tier workspaces causes 15+ second API latency.
-//  2. Recency filter: Workspaces older than 7 days are skipped to avoid stale data.
+// 1. Light-tier processing is disabled - the PendingReviewsSection was removed from the
+//    dashboard, and processing 200+ light-tier workspaces causes 15+ second API latency.
+// 2. Recency filter: Workspaces older than 7 days are skipped to avoid stale data.
 //
 // Previously, each light-tier workspace would call isLightTierComplete which called
 // GetComments individually. Even with batch fetching, 200+ beads API calls is too slow.
@@ -59,14 +59,14 @@ const pendingReviewsMaxAge = 7 * 24 * time.Hour
 // Set to false to re-enable light-tier processing (not recommended due to performance).
 const skipLightTierProcessing = true
 
-func (s *Server) handlePendingReviews(w http.ResponseWriter, r *http.Request) {
+func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	// Scan workspaces for SYNTHESIS.md and review state
-	workspaceDir := filepath.Join(s.SourceDir, ".orch", "workspace")
+	workspaceDir := filepath.Join(sourceDir, ".orch", "workspace")
 	entries, err := os.ReadDir(workspaceDir)
 	if err != nil {
 		// No workspace directory is fine - just return empty response
@@ -350,7 +350,7 @@ type DismissReviewResponse struct {
 }
 
 // handleDismissReview dismisses a synthesis recommendation.
-func (s *Server) handleDismissReview(w http.ResponseWriter, r *http.Request) {
+func handleDismissReview(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -376,7 +376,7 @@ func (s *Server) handleDismissReview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build workspace path
-	workspacePath := filepath.Join(s.SourceDir, ".orch", "workspace", req.WorkspaceID)
+	workspacePath := filepath.Join(sourceDir, ".orch", "workspace", req.WorkspaceID)
 
 	// Check for light-tier workspace - these don't have SYNTHESIS.md by design.
 	// Light-tier dismissals set LightTierAcknowledged instead of tracking individual recommendations.

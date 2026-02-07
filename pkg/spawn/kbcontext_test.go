@@ -45,41 +45,6 @@ func TestExtractKeywords(t *testing.T) {
 			wantWords: []string{"spawn", "context", "generation"},
 			notWords:  []string{"fix", "the", "to"}, // "include" is not a stop word
 		},
-		{
-			name:      "strips Investigation: prefix",
-			task:      "Investigation: Server Crash Patterns",
-			maxWords:  6,
-			wantWords: []string{"server", "crash", "patterns"},
-			notWords:  []string{"investigation"}, // Should be stripped
-		},
-		{
-			name:      "strips Design: prefix",
-			task:      "Design: Authentication Flow",
-			maxWords:  6,
-			wantWords: []string{"authentication", "flow"},
-			notWords:  []string{"design"}, // Should be stripped
-		},
-		{
-			name:      "strips ## Investigation: prefix",
-			task:      "## Investigation: Performance Issues in Dashboard",
-			maxWords:  6,
-			wantWords: []string{"performance", "issues", "dashboard"},
-			notWords:  []string{"investigation"}, // Should be stripped
-		},
-		{
-			name:      "strips ## Design: prefix",
-			task:      "## Design: Database Schema Migration",
-			maxWords:  6,
-			wantWords: []string{"database", "schema", "migration"},
-			notWords:  []string{"design"}, // Should be stripped
-		},
-		{
-			name:      "does not strip investigation when not a prefix",
-			task:      "Root cause investigation of memory leaks",
-			maxWords:  6,
-			wantWords: []string{"investigation", "memory", "leaks"},
-			notWords:  []string{}, // investigation should be included since it's not a prefix
-		},
 	}
 
 	for _, tt := range tests {
@@ -141,49 +106,16 @@ func TestParseKBContextOutput(t *testing.T) {
 			wantSources: []string{"kn", "kb"},
 		},
 		{
-			name: "parses investigations and guides",
+			name: "parses investigations",
 			output: `Context for "auth":
 
 ## INVESTIGATIONS (from kb)
 
 - Authentication Flow Analysis
-  Path: /path/to/investigation.md
-
-## GUIDES (from kb)
-
-- Auth Implementation Guide
-  Path: /path/to/guide.md`,
-			wantCount:   2,
-			wantTypes:   []string{"investigation", "guide"},
-			wantSources: []string{"kb", "kb"},
-		},
-		{
-			name: "parses models",
-			output: `Context for "model":
-
-## MODELS (from kb)
-
-- Session Lifecycle Model
-  Path: /path/to/model.md`,
+  Path: /path/to/investigation.md`,
 			wantCount:   1,
-			wantTypes:   []string{"model"},
+			wantTypes:   []string{"investigation"},
 			wantSources: []string{"kb"},
-		},
-		{
-			name: "parses failed attempts and open questions",
-			output: `Context for "failed":
-
-## FAILED ATTEMPTS (from kn)
-
-- Tried using Redis
-  Reason: Too complex for this scale
-
-## OPEN QUESTIONS (from kn)
-
-- Should we use SQLite?`,
-			wantCount:   2,
-			wantTypes:   []string{"failed-attempt", "open-question"},
-			wantSources: []string{"kn", "kn"},
 		},
 		{
 			name:      "handles empty output",
@@ -242,8 +174,6 @@ func TestParseKBContextOutput(t *testing.T) {
 }
 
 func TestFormatContextForSpawn(t *testing.T) {
-	evidenceHierarchy := "Evidence Hierarchy: Prior investigations are claims to verify, not truth. Before building on findings, check against primary sources (code, test output, observed behavior)."
-
 	tests := []struct {
 		name         string
 		result       *KBContextResult
@@ -297,43 +227,6 @@ func TestFormatContextForSpawn(t *testing.T) {
 				"See: /path/to/decision.md",
 			},
 		},
-		{
-			name: "formats models and guides",
-			result: &KBContextResult{
-				Query:      "model",
-				HasMatches: true,
-				Matches: []KBContextMatch{
-					{Type: "model", Source: "kb", Title: "State Model", Path: "/path/to/model.md"},
-					{Type: "guide", Source: "kb", Title: "Step Guide", Path: "/path/to/guide.md"},
-				},
-			},
-			wantEmpty: false,
-			wantContains: []string{
-				"### Models",
-				"State Model",
-				"### Guides",
-				"Step Guide",
-			},
-		},
-		{
-			name: "formats failed attempts and open questions",
-			result: &KBContextResult{
-				Query:      "retry",
-				HasMatches: true,
-				Matches: []KBContextMatch{
-					{Type: "failed-attempt", Source: "kn", Title: "Manual retry", Reason: "Timed out"},
-					{Type: "open-question", Source: "kn", Title: "Auto retry?"},
-				},
-			},
-			wantEmpty: false,
-			wantContains: []string{
-				"### Failed Attempts",
-				"Manual retry",
-				"Result: Timed out",
-				"### Open Questions",
-				"Auto retry?",
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -349,10 +242,6 @@ func TestFormatContextForSpawn(t *testing.T) {
 					if !strings.Contains(result, want) {
 						t.Errorf("FormatContextForSpawn() missing %q in output:\n%s", want, result)
 					}
-				}
-
-				if !strings.Contains(result, evidenceHierarchy) {
-					t.Errorf("FormatContextForSpawn() missing evidence hierarchy warning in output:\n%s", result)
 				}
 			}
 		})
@@ -551,115 +440,6 @@ func TestMergeResults(t *testing.T) {
 	}
 }
 
-func TestFilterToEcosystem(t *testing.T) {
-	tests := []struct {
-		name          string
-		domain        string
-		matches       []KBContextMatch
-		expectedCount int
-		wantTitles    []string
-		noTitles      []string
-	}{
-		{
-			name:   "personal domain filters to orch ecosystem",
-			domain: DomainPersonal,
-			matches: []KBContextMatch{
-				{Type: "constraint", Title: "[orch-go] Agents must not spawn recursively"},
-				{Type: "constraint", Title: "[price-watch] Max retries per product"},
-				{Type: "decision", Title: "[kb-cli] Use YAML for config"},
-				{Type: "constraint", Title: "Local constraint without prefix"},
-			},
-			expectedCount: 3,
-			wantTitles: []string{
-				"[orch-go] Agents must not spawn recursively",
-				"[kb-cli] Use YAML for config",
-				"Local constraint without prefix",
-			},
-			noTitles: []string{
-				"[price-watch] Max retries per product",
-			},
-		},
-		{
-			name:   "work domain filters to work ecosystem",
-			domain: DomainWork,
-			matches: []KBContextMatch{
-				{Type: "constraint", Title: "[orch-go] Agents must not spawn recursively"},
-				{Type: "decision", Title: "[scs-special-projects] API rate limits"},
-				{Type: "constraint", Title: "Local constraint without prefix"},
-			},
-			expectedCount: 2,
-			wantTitles: []string{
-				"[scs-special-projects] API rate limits",
-				"Local constraint without prefix",
-			},
-			noTitles: []string{
-				"[orch-go] Agents must not spawn recursively",
-			},
-		},
-		{
-			name:   "unknown domain falls back to personal",
-			domain: "unknown",
-			matches: []KBContextMatch{
-				{Type: "constraint", Title: "[orch-go] Constraint from orch ecosystem"},
-				{Type: "constraint", Title: "[unknown-repo] Some other constraint"},
-			},
-			expectedCount: 1,
-			wantTitles: []string{
-				"[orch-go] Constraint from orch ecosystem",
-			},
-			noTitles: []string{
-				"[unknown-repo] Some other constraint",
-			},
-		},
-		{
-			name:   "local matches always included",
-			domain: DomainWork,
-			matches: []KBContextMatch{
-				{Type: "constraint", Title: "Local constraint one"},
-				{Type: "constraint", Title: "Local constraint two"},
-			},
-			expectedCount: 2,
-			wantTitles: []string{
-				"Local constraint one",
-				"Local constraint two",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			filtered := filterToEcosystem(tt.matches, tt.domain)
-
-			if len(filtered) != tt.expectedCount {
-				t.Errorf("filterToEcosystem() returned %d matches, want %d", len(filtered), tt.expectedCount)
-			}
-
-			// Check wanted titles are present
-			for _, wantTitle := range tt.wantTitles {
-				found := false
-				for _, m := range filtered {
-					if m.Title == wantTitle {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Errorf("filterToEcosystem() missing expected title: %q", wantTitle)
-				}
-			}
-
-			// Check unwanted titles are NOT present
-			for _, noTitle := range tt.noTitles {
-				for _, m := range filtered {
-					if m.Title == noTitle {
-						t.Errorf("filterToEcosystem() should have filtered out: %q", noTitle)
-					}
-				}
-			}
-		})
-	}
-}
-
 func TestMergeResults_NilInputs(t *testing.T) {
 	local := &KBContextResult{
 		Query:   "test",
@@ -775,7 +555,7 @@ func TestFormatContextForSpawnWithLimit(t *testing.T) {
 		}
 
 		// Use a small limit to force truncation
-		result := FormatContextForSpawnWithLimit(kbResult, 700)
+		result := FormatContextForSpawnWithLimit(kbResult, 500)
 
 		if !result.WasTruncated {
 			t.Error("expected WasTruncated=true for small limit")

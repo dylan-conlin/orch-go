@@ -107,13 +107,13 @@ func projectDirsMatch(a, b []string) bool {
 }
 
 // Default TTLs for cached data
-// These TTLs balance freshness with performance. With singleflight dedup protecting
-// cache misses, TTLs can be shorter without causing subprocess stampede.
+// These TTLs balance freshness with performance. With 600+ sessions, even cached
+// data fetches are expensive when TTL expires. Longer TTLs reduce fetch frequency.
 // Use /api/cache/invalidate to force refresh when needed (e.g., after orch complete).
 const (
-	defaultOpenIssuesTTL = 10 * time.Second // Open issues — singleflight prevents stampede on cache miss
-	defaultAllIssuesTTL  = 30 * time.Second // Closed issues change even less
-	defaultCommentsTTL   = 10 * time.Second // Comments change more often (phase updates)
+	defaultOpenIssuesTTL = 30 * time.Second // Open issues change infrequently
+	defaultAllIssuesTTL  = 60 * time.Second // Closed issues change even less
+	defaultCommentsTTL   = 15 * time.Second // Comments change more often (phase updates)
 )
 
 // invalidate clears all cached data, forcing fresh fetches on next request.
@@ -145,6 +145,9 @@ func (c *globalWorkspaceCacheType) invalidate() {
 	c.fetchedAt = time.Time{}
 	c.projectDirs = nil
 }
+
+// Global beads cache instance, initialized in runServe
+var globalBeadsCache *beadsCache
 
 // newBeadsCache creates a new beads cache with default TTLs.
 func newBeadsCache() *beadsCache {
@@ -195,7 +198,7 @@ func (c *beadsCache) getAllIssues(beadsIDs []string) (map[string]*verify.Issue, 
 	c.mu.RUnlock()
 
 	// Fetch fresh data
-	issues, err := verify.GetIssuesBatch(beadsIDs, nil)
+	issues, err := verify.GetIssuesBatch(beadsIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -460,12 +463,8 @@ func buildWorkspaceCache(projectDir string) *workspaceCache {
 		for _, line := range strings.Split(contentStr, "\n") {
 			lineTrimmed := strings.TrimSpace(line)
 
-			// Extract beads ID from "spawned from beads issue: **xxx**" (authoritative source)
-			// This line is the authoritative declaration of the agent's beads ID.
-			// IMPORTANT: We must stop parsing beads ID after finding this line to prevent
-			// template examples like "bd comment <beads-id>" from overwriting the correct value.
-			// See .kb/investigations/2026-01-29-inv-dashboard-follow-mode-doesn-show.md
-			if beadsID == "" && strings.Contains(strings.ToLower(line), "spawned from beads issue:") {
+			// Extract beads ID from "spawned from beads issue: **xxx**" or "bd comment xxx"
+			if strings.Contains(strings.ToLower(line), "spawned from beads issue:") {
 				// Pattern: "spawned from beads issue: **orch-go-xxxx**"
 				// Extract the beads ID between ** markers or after the colon
 				if idx := strings.Index(line, "**"); idx != -1 {
@@ -473,6 +472,12 @@ func buildWorkspaceCache(projectDir string) *workspaceCache {
 					if endIdx := strings.Index(rest, "**"); endIdx != -1 {
 						beadsID = rest[:endIdx]
 					}
+				}
+			} else if strings.HasPrefix(lineTrimmed, "bd comment ") {
+				// Pattern: "bd comment orch-go-xxxx ..."
+				parts := strings.Fields(lineTrimmed)
+				if len(parts) >= 3 {
+					beadsID = parts[2]
 				}
 			}
 

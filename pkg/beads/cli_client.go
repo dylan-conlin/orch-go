@@ -129,14 +129,8 @@ func (c *CLIClient) List(args *ListArgs) ([]Issue, error) {
 		if args.Status != "" {
 			cmdArgs = append(cmdArgs, "--status", args.Status)
 		}
-		if args.IssueType != "" {
-			cmdArgs = append(cmdArgs, "--type", args.IssueType)
-		}
 		if args.Parent != "" {
 			cmdArgs = append(cmdArgs, "--parent", args.Parent)
-		}
-		if args.ClosedAfter != "" {
-			cmdArgs = append(cmdArgs, "--closed-after", args.ClosedAfter)
 		}
 		if args.Limit > 0 {
 			cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", args.Limit))
@@ -198,9 +192,8 @@ func (c *CLIClient) AddComment(id, _, text string) error {
 }
 
 // CloseIssue closes an issue with an optional reason.
-// Uses --force to bypass the 'Phase: Complete' requirement for UI-based closes.
 func (c *CLIClient) CloseIssue(id, reason string) error {
-	args := []string{"close", id, "--force"}
+	args := []string{"close", id}
 	if reason != "" {
 		args = append(args, "--reason", reason)
 	}

@@ -7,26 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
-
-// currentProjectDir returns the project directory for the current process.
-// It prefers sourceDir (embedded at build time via ldflags) over os.Getwd(),
-// since the serve command may run from a different directory than the project.
-// Returns the directory and any error from os.Getwd() if sourceDir is unavailable.
-func currentProjectDir() (string, error) {
-	if sourceDir != "" && sourceDir != "unknown" {
-		return sourceDir, nil
-	}
-	return os.Getwd()
-}
 
 // truncate truncates a string to maxLen characters.
 func truncate(s string, maxLen int) string {
@@ -103,37 +90,6 @@ func extractSkillFromWindowName(name string) string {
 // Untracked agents have IDs like "orch-go-untracked-1766695797".
 func isUntrackedBeadsID(beadsID string) bool {
 	return strings.Contains(beadsID, "-untracked-")
-}
-
-// formatBeadsIDForDisplay formats untracked beads IDs to be human-readable.
-// Converts "orch-go-untracked-1768090360" to "untracked-Jan15-1823".
-// Regular beads IDs are returned unchanged.
-func formatBeadsIDForDisplay(beadsID string) string {
-	if !isUntrackedBeadsID(beadsID) {
-		return beadsID
-	}
-
-	// Extract timestamp from ID (format: project-untracked-TIMESTAMP)
-	parts := strings.Split(beadsID, "-")
-	if len(parts) < 3 {
-		return beadsID // Malformed ID, return as-is
-	}
-
-	// Last part should be the Unix timestamp
-	timestampStr := parts[len(parts)-1]
-	timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
-	if err != nil {
-		return beadsID // Not a valid timestamp, return as-is
-	}
-
-	// Convert to human-readable format: MonDD-HHMM (e.g., Jan15-1823)
-	t := time.Unix(timestamp, 0)
-	month := t.Format("Jan")
-	day := t.Format("02")
-	hour := t.Format("15")
-	minute := t.Format("04")
-
-	return fmt.Sprintf("untracked-%s%s-%s%s", month, day, hour, minute)
 }
 
 // extractProjectFromBeadsID extracts the project name from a beads ID.
@@ -218,12 +174,6 @@ func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentNam
 //
 // Returns the resolved session ID or an error if resolution fails.
 func resolveSessionID(serverURL, identifier string) (string, error) {
-	client := opencode.NewClient(serverURL)
-	return resolveSessionIDWithClient(client, identifier)
-}
-
-// resolveSessionIDWithClient resolves an identifier to an OpenCode session ID using a provided client.
-func resolveSessionIDWithClient(client opencode.ClientInterface, identifier string) (string, error) {
 	// If it looks like a full session ID, verify it exists
 	if strings.HasPrefix(identifier, "ses_") {
 		// Validate the session ID has content after the prefix
@@ -232,6 +182,7 @@ func resolveSessionIDWithClient(client opencode.ClientInterface, identifier stri
 			return "", fmt.Errorf("invalid session ID format: %s (too short)", identifier)
 		}
 		// Verify the session exists in OpenCode
+		client := opencode.NewClient(serverURL)
 		_, err := client.GetSession(identifier)
 		if err != nil {
 			return "", fmt.Errorf("session not found in OpenCode: %s", identifier)
@@ -239,7 +190,8 @@ func resolveSessionIDWithClient(client opencode.ClientInterface, identifier stri
 		return identifier, nil
 	}
 
-	projectDir, _ := currentProjectDir()
+	client := opencode.NewClient(serverURL)
+	projectDir, _ := os.Getwd()
 
 	// Strategy 1: Use findWorkspaceByBeadsID which scans SPAWN_CONTEXT.md
 	// This is the authoritative way to find workspace by beads ID
@@ -359,9 +311,9 @@ func isOrchestratorWorkspace(workspacePath string) bool {
 	return false
 }
 
-// hasSynthesis checks if SYNTHESIS.md exists in the workspace.
-func hasSynthesis(workspacePath string) bool {
-	handoffPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+// hasSessionHandoff checks if SESSION_HANDOFF.md exists in the workspace.
+func hasSessionHandoff(workspacePath string) bool {
+	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
 	_, err := os.Stat(handoffPath)
 	return err == nil
 }
@@ -372,137 +324,24 @@ func hasSynthesis(workspacePath string) bool {
 // Returns an error if the issue doesn't exist - this prevents spawning
 // agents with invalid beads IDs that can never be closed.
 func resolveShortBeadsID(id string) (string, error) {
-	return resolveShortBeadsIDWithDir(id, "")
-}
-
-// ProjectDirResult contains the result of resolving a project directory.
-type ProjectDirResult struct {
-	// ProjectDir is the resolved project directory path.
-	ProjectDir string
-	// IsCrossProject indicates whether the resolved directory differs from currentDir.
-	IsCrossProject bool
-	// Source indicates how the project directory was resolved:
-	// "workdir" (explicit flag), "workspace" (auto-detected from SPAWN_CONTEXT.md), "current" (fallback)
-	Source string
-}
-
-// resolveProjectDir resolves the project directory for beads operations.
-//
-// Resolution order:
-//  1. If workdir is provided (explicit --workdir flag), use that
-//  2. If workspacePath is provided, try to extract PROJECT_DIR from SPAWN_CONTEXT.md
-//  3. Fall back to currentDir
-//
-// Returns the resolved project directory and metadata about how it was resolved.
-// Call SetBeadsDefaultDir() on the result if you need to configure beads.DefaultDir.
-func resolveProjectDir(workdir, workspacePath, currentDir string) (*ProjectDirResult, error) {
-	result := &ProjectDirResult{
-		ProjectDir: currentDir,
-		Source:     "current",
-	}
-
-	if workdir != "" {
-		// Explicit --workdir flag provided
-		absPath, err := filepath.Abs(workdir)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve workdir path: %w", err)
-		}
-		// Verify directory exists
-		stat, err := os.Stat(absPath)
-		if err != nil {
-			return nil, fmt.Errorf("workdir does not exist: %s", absPath)
-		}
-		if !stat.IsDir() {
-			return nil, fmt.Errorf("workdir is not a directory: %s", absPath)
-		}
-		result.ProjectDir = absPath
-		result.IsCrossProject = absPath != currentDir
-		result.Source = "workdir"
-		return result, nil
-	}
-
-	if workspacePath != "" {
-		// Try to extract PROJECT_DIR from workspace SPAWN_CONTEXT.md
-		projectDirFromWorkspace := extractProjectDirFromWorkspace(workspacePath)
-		if projectDirFromWorkspace != "" && projectDirFromWorkspace != currentDir {
-			result.ProjectDir = projectDirFromWorkspace
-			result.IsCrossProject = true
-			result.Source = "workspace"
-			return result, nil
-		}
-	}
-
-	// Fall back to current directory
-	return result, nil
-}
-
-// SetBeadsDefaultDir sets beads.DefaultDir if this result indicates a cross-project directory.
-// Returns true if beads.DefaultDir was set.
-func (r *ProjectDirResult) SetBeadsDefaultDir() bool {
-	if r.IsCrossProject {
-		beads.DefaultDir = r.ProjectDir
-		return true
-	}
-	return false
-}
-
-// extractProjectDirFromWorkspace extracts the PROJECT_DIR from SPAWN_CONTEXT.md.
-// This is used to determine which project's beads database to query for cross-project agents.
-func extractProjectDirFromWorkspace(workspacePath string) string {
-	spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
-	content, err := os.ReadFile(spawnContextPath)
-	if err != nil {
-		return ""
-	}
-
-	// Look for "PROJECT_DIR: /path/to/project" pattern
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "PROJECT_DIR:") {
-			// Extract path after "PROJECT_DIR:"
-			path := strings.TrimPrefix(line, "PROJECT_DIR:")
-			path = strings.TrimSpace(path)
-			return path
-		}
-	}
-	return ""
-}
-
-// resolveShortBeadsIDWithDir resolves a beads ID in a specific project directory.
-// This is used for cross-project operations where the issue belongs to a different
-// project than the current working directory.
-func resolveShortBeadsIDWithDir(id, workdir string) (string, error) {
 	// Try RPC client first for ID resolution
-	var resolvedID string
-	err := beads.Do(workdir, func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
-
-		var rpcErr error
-		resolvedID, rpcErr = client.ResolveID(id)
-		if rpcErr != nil {
-			return rpcErr
-		}
-		if resolvedID == "" {
-			return fmt.Errorf("empty resolved id")
-		}
-		return nil
-	})
+	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		return resolvedID, nil
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+
+			resolvedID, err := client.ResolveID(id)
+			if err == nil && resolvedID != "" {
+				return resolvedID, nil
+			}
+			// Fall through to CLI fallback on RPC error
+		}
 	}
 
 	// Fallback: Use bd show to resolve the ID
 	// bd show handles short ID resolution and returns the full ID
-	var issue *beads.Issue
-	if workdir != "" {
-		issue, err = beads.FallbackShowWithDir(id, workdir)
-	} else {
-		issue, err = beads.FallbackShow(id)
-	}
+	issue, err := beads.FallbackShow(id)
 	if err != nil {
 		// Issue doesn't exist - return error with helpful hint for cross-project issues
 		// Extract project prefix from ID if present (e.g., "kb-cli" from "kb-cli-xyz123")

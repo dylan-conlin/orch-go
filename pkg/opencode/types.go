@@ -117,21 +117,9 @@ type MessageTime struct {
 
 // MessagePart represents a part of a message (text, reasoning, tool call, etc.).
 type MessagePart struct {
-	ID        string     `json:"id"`
-	SessionID string     `json:"sessionID"`
-	MessageID string     `json:"messageID"`
-	Type      string     `json:"type"` // "text", "reasoning", "step-start", "step-finish", "tool-invocation", "tool", etc.
-	Text      string     `json:"text,omitempty"`
-	Tool      string     `json:"tool,omitempty"`   // Tool name (e.g., "read", "bash", "edit")
-	CallID    string     `json:"callID,omitempty"` // Unique tool call ID
-	State     *ToolState `json:"state,omitempty"`  // Tool execution state (input, output, status, etc.)
-}
-
-// ToolState represents the state of a tool invocation.
-type ToolState struct {
-	Status   string                 `json:"status,omitempty"`   // "running", "completed", "failed"
-	Input    map[string]interface{} `json:"input,omitempty"`    // Tool input parameters
-	Output   string                 `json:"output,omitempty"`   // Tool output/result
-	Title    string                 `json:"title,omitempty"`    // Human-readable title (often from description parameter)
-	Metadata map[string]interface{} `json:"metadata,omitempty"` // Additional metadata (exit codes, truncation flags, etc.)
+	ID        string `json:"id"`
+	SessionID string `json:"sessionID"`
+	MessageID string `json:"messageID"`
+	Type      string `json:"type"` // "text", "reasoning", "step-start", "step-finish", "tool-invocation", etc.
+	Text      string `json:"text,omitempty"`
 }

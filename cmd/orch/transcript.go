@@ -21,9 +21,8 @@ var (
 )
 
 var transcriptCmd = &cobra.Command{
-	Use:    "transcript",
-	Short:  "Work with session transcripts",
-	Hidden: true,
+	Use:   "transcript",
+	Short: "Work with session transcripts",
 	Long: `Work with OpenCode session transcripts.
 
 Commands for formatting and managing transcripts.`,
