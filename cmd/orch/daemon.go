@@ -135,6 +135,7 @@ var (
 	daemonMaxDeadSessionRetries        int    // Max dead session retries before escalation
 	daemonOrphanReapEnabled            bool   // Enable periodic orphan process reaping
 	daemonOrphanReapInterval           int    // Orphan reap interval in minutes (0 = disabled)
+	daemonSortMode                     string // Sort strategy for issue prioritization
 )
 
 func init() {
@@ -182,11 +183,16 @@ func init() {
 	daemonRunCmd.Flags().BoolVar(&daemonOrphanReapEnabled, "orphan-reap", true, "Enable periodic orphan process reaping (default: true)")
 	daemonRunCmd.Flags().IntVar(&daemonOrphanReapInterval, "orphan-reap-interval", 5, "Orphan reap interval in minutes (0 = disabled, default: 5)")
 
+	// Sort mode for issue prioritization
+	daemonRunCmd.Flags().StringVar(&daemonSortMode, "sort-mode", "priority", "Sort strategy for issue prioritization (priority, unblock)")
+
 	// Add label filter to preview and once commands (share the same variable)
 	daemonPreviewCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
 	daemonPreviewCmd.Flags().BoolVar(&daemonCrossProject, "cross-project", false, "Preview issues from all kb-registered projects")
+	daemonPreviewCmd.Flags().StringVar(&daemonSortMode, "sort-mode", "priority", "Sort strategy for issue prioritization (priority, unblock)")
 	daemonOnceCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
 	daemonOnceCmd.Flags().BoolVar(&daemonCrossProject, "cross-project", false, "Process one issue from all kb-registered projects")
+	daemonOnceCmd.Flags().StringVar(&daemonSortMode, "sort-mode", "priority", "Sort strategy for issue prioritization (priority, unblock)")
 }
 
 func runDaemonLoop() error {
@@ -280,6 +286,20 @@ func runDaemonLoop() error {
 			}
 		}
 
+		// Refresh frontier cache for sort strategies that need leverage data.
+		// Runs once per poll cycle (~60s), which is acceptable staleness for batch daemon.
+		if rt.config.SortMode == "unblock" {
+			rt.d.RefreshFrontierCache()
+			if daemonVerbose {
+				if rt.d.CachedFrontier != nil {
+					fmt.Printf("[%s] Frontier cache refreshed: %d ready, %d blocked\n",
+						timestamp, len(rt.d.CachedFrontier.Ready), len(rt.d.CachedFrontier.Blocked))
+				} else {
+					fmt.Printf("[%s] Frontier cache: unavailable (sort will use priority fallback)\n", timestamp)
+				}
+			}
+		}
+
 		if daemonVerbose {
 			fmt.Printf("[%s] Polling for issues...\n", timestamp)
 		}
@@ -325,6 +345,7 @@ func runDaemonDryRun() error {
 	config := daemon.Config{
 		Label:        daemonLabel,
 		CrossProject: daemonCrossProject,
+		SortMode:     daemonSortMode,
 	}
 	d := daemon.NewWithConfig(config)
 
@@ -389,6 +410,7 @@ func runDaemonOnce() error {
 	config := daemon.Config{
 		Label:        daemonLabel,
 		CrossProject: daemonCrossProject,
+		SortMode:     daemonSortMode,
 	}
 	d := daemon.NewWithConfig(config)
 
@@ -453,6 +475,7 @@ func runDaemonPreview() error {
 	config := daemon.Config{
 		Label:        daemonLabel,
 		CrossProject: daemonCrossProject,
+		SortMode:     daemonSortMode,
 	}
 	d := daemon.NewWithConfig(config)
 

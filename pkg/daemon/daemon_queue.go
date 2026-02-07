@@ -3,7 +3,6 @@ package daemon
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -45,10 +44,8 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 	// This allows "label the epic" to mean "process the entire epic".
 	issues, epicChildIDs := d.expandTriageReadyEpics(issues)
 
-	// Sort by priority (lower number = higher priority)
-	sort.Slice(issues, func(i, j int) bool {
-		return issues[i].Priority < issues[j].Priority
-	})
+	// Apply the active sort strategy (priority, unblock, etc.)
+	issues = d.SortIssues(issues)
 
 	for _, issue := range issues {
 		// Skip issues in the skip set (failed to spawn this cycle)
@@ -250,10 +247,8 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 	// Expand triage:ready epics by including their children
 	issues, epicChildIDs := d.expandTriageReadyEpics(issues)
 
-	// Sort by priority (lower number = higher priority)
-	sort.Slice(issues, func(i, j int) bool {
-		return issues[i].Priority < issues[j].Priority
-	})
+	// Apply the active sort strategy
+	issues = d.SortIssues(issues)
 
 	var spawnable *Issue
 	for _, issue := range issues {

@@ -3,7 +3,6 @@ package daemon
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 )
 
@@ -54,10 +53,8 @@ func (d *Daemon) ListCrossProjectIssues() ([]CrossProjectIssue, error) {
 		}
 	}
 
-	// Sort by priority (lower number = higher priority)
-	sort.Slice(allIssues, func(i, j int) bool {
-		return allIssues[i].Issue.Priority < allIssues[j].Issue.Priority
-	})
+	// Apply the active sort strategy
+	allIssues = d.SortCrossProjectIssues(allIssues)
 
 	return allIssues, nil
 }
@@ -115,10 +112,8 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 		}, nil
 	}
 
-	// Sort by priority (lower number = higher priority)
-	sort.Slice(allIssues, func(i, j int) bool {
-		return allIssues[i].Issue.Priority < allIssues[j].Issue.Priority
-	})
+	// Apply the active sort strategy
+	allIssues = d.SortCrossProjectIssues(allIssues)
 
 	// Select the best candidate that passes dedup and completion checks
 	selected, skill := d.selectCrossProjectCandidate(allIssues)
@@ -446,10 +441,8 @@ func (d *Daemon) CrossProjectPreview() (*CrossProjectPreviewResult, error) {
 		}
 	}
 
-	// Sort spawnable by priority
-	sort.Slice(result.SpawnableIssues, func(i, j int) bool {
-		return result.SpawnableIssues[i].Issue.Priority < result.SpawnableIssues[j].Issue.Priority
-	})
+	// Apply the active sort strategy to spawnable issues
+	result.SpawnableIssues = d.SortCrossProjectIssues(result.SpawnableIssues)
 
 	// Select the first spawnable issue (if any) for preview
 	if len(result.SpawnableIssues) > 0 {

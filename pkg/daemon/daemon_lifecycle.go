@@ -3,6 +3,9 @@ package daemon
 
 import (
 	"time"
+
+	daemonsort "github.com/dylan-conlin/orch-go/pkg/daemon/sort"
+	"github.com/dylan-conlin/orch-go/pkg/frontier"
 )
 
 // EventLogger is an interface for logging deduplication events.
@@ -173,6 +176,11 @@ type Config struct {
 	// OrphanReapInterval is how often to scan for and kill orphan processes.
 	// Default is 5 minutes.
 	OrphanReapInterval time.Duration
+
+	// SortMode selects the sort strategy for issue prioritization.
+	// Available modes: "priority" (default), "unblock".
+	// See pkg/daemon/sort/ for strategy details.
+	SortMode string
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -262,6 +270,15 @@ type OnceResult struct {
 type Daemon struct {
 	// Config holds the daemon configuration.
 	Config Config
+
+	// SortStrategy is the active sort strategy for issue prioritization.
+	// Initialized from Config.SortMode. Defaults to PriorityStrategy.
+	SortStrategy daemonsort.Strategy
+
+	// CachedFrontier holds the most recently computed frontier state.
+	// Updated once per poll cycle and shared with sort strategies via SortContext.
+	// May be nil if frontier computation fails or hasn't run yet.
+	CachedFrontier *frontier.FrontierState
 
 	// Pool is the worker pool for concurrency control.
 	// If set, it is used instead of activeCountFunc.
@@ -353,8 +370,16 @@ func NewWithConfig(config Config) *Daemon {
 		activeCount = DockerActiveCount
 	}
 
+	// Initialize sort strategy from config
+	sortStrategy, err := daemonsort.Get(config.SortMode)
+	if err != nil {
+		// Fall back to priority sort if mode is invalid
+		sortStrategy = &daemonsort.PriorityStrategy{}
+	}
+
 	d := &Daemon{
 		Config:                   config,
+		SortStrategy:             sortStrategy,
 		SpawnedIssues:            NewSpawnedIssueTracker(),
 		EventLogger:              nil, // Set via SetEventLogger() to avoid circular deps
 		resumeAttempts:           make(map[string]time.Time),
@@ -396,8 +421,15 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		activeCount = DockerActiveCount
 	}
 
+	// Initialize sort strategy from config
+	sortStrategy, err := daemonsort.Get(config.SortMode)
+	if err != nil {
+		sortStrategy = &daemonsort.PriorityStrategy{}
+	}
+
 	d := &Daemon{
 		Config:                   config,
+		SortStrategy:             sortStrategy,
 		Pool:                     pool,
 		SpawnedIssues:            NewSpawnedIssueTracker(),
 		EventLogger:              nil, // Set via SetEventLogger() to avoid circular deps

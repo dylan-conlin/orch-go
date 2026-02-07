@@ -75,6 +75,7 @@ func buildDaemonConfig() (daemon.Config, error) {
 	}
 	config.OrphanReapEnabled = daemonOrphanReapEnabled && daemonOrphanReapInterval > 0
 	config.OrphanReapInterval = time.Duration(daemonOrphanReapInterval) * time.Minute
+	config.SortMode = daemonSortMode
 
 	return config, nil
 }
@@ -128,6 +129,11 @@ func printDaemonBanner(config daemon.Config) {
 	}
 	fmt.Printf("  Backend:          %s (counting %s)\n", config.Backend, countMode)
 	fmt.Printf("  Required label:   %s\n", config.Label)
+	sortMode := config.SortMode
+	if sortMode == "" {
+		sortMode = "priority"
+	}
+	fmt.Printf("  Sort mode:        %s\n", sortMode)
 	fmt.Printf("  Spawn delay:      %s\n", formatDaemonDuration(config.SpawnDelay))
 	if config.CrossProject {
 		fmt.Println("  Cross-project:    enabled (polling all kb-registered projects)")
