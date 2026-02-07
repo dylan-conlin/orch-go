@@ -2,7 +2,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
-	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -191,86 +189,27 @@ func runDaemonLoop() error {
 		return runDaemonDryRun()
 	}
 
-	// Get current directory for completion processing
-	projectDir, err := os.Getwd()
+	// Phase 1: Build configuration from CLI flags
+	config, err := buildDaemonConfig()
 	if err != nil {
-		return fmt.Errorf("failed to get current directory: %w", err)
+		return err
 	}
 
-	// Load user config to get backend setting
-	cfg, err := userconfig.Load()
+	// Phase 2: Initialize runtime (daemon, cache, logger, signal handler)
+	rt, err := initDaemonRuntime(config)
 	if err != nil {
-		// Non-fatal: use default (opencode) if config can't be loaded
-		cfg = userconfig.DefaultConfig()
+		return err
 	}
-
-	// Build configuration from defaults, then override with flags.
-	// This ensures recovery settings (RecoveryEnabled, ServerRecoveryEnabled, etc.)
-	// get their default values even when not explicitly set via flags.
-	config := daemon.DefaultConfig()
-	config.PollInterval = time.Duration(daemonPollInterval) * time.Second
-	config.MaxAgents = daemonMaxAgents
-	config.Label = daemonLabel
-	config.SpawnDelay = time.Duration(daemonDelay) * time.Second
-	config.DryRun = daemonDryRun
-	config.Verbose = daemonVerbose
-	config.CrossProject = daemonCrossProject
-	config.Backend = cfg.Backend // Use backend from user config
-	config.ReflectEnabled = daemonReflectInterval > 0
-	config.ReflectInterval = time.Duration(daemonReflectInterval) * time.Minute
-	config.ReflectCreateIssues = daemonReflectIssues
-	config.CleanupEnabled = daemonCleanupEnabled && daemonCleanupInterval > 0
-	config.CleanupInterval = time.Duration(daemonCleanupInterval) * time.Minute
-	config.CleanupSessions = daemonCleanupSessions
-	config.CleanupSessionsAgeDays = daemonCleanupSessionsAge
-	config.CleanupWorkspaces = daemonCleanupWorkspaces
-	config.CleanupWorkspacesAgeDays = daemonCleanupWorkspacesAge
-	config.CleanupInvestigations = daemonCleanupInvestigations
-	config.CleanupPreserveOrchestrator = daemonCleanupPreserveOrch
-	config.CleanupServerURL = serverURL // Use global serverURL from root command
-	config.SpawnFactualQuestions = daemonSpawnFactualQuestions
-	config.DeadSessionDetectionEnabled = daemonDeadSessionDetectionEnabled && daemonDeadSessionDetectionInterval > 0
-	config.DeadSessionDetectionInterval = time.Duration(daemonDeadSessionDetectionInterval) * time.Minute
-	if daemonMaxDeadSessionRetries > 0 {
-		config.MaxDeadSessionRetries = daemonMaxDeadSessionRetries
-	}
-
-	d := daemon.NewWithConfig(config)
-
-	// Initialize ProcessedIssueCache for unified dedup (survives daemon restart)
-	homeDir, err := os.UserHomeDir()
-	if err == nil {
-		cachePath := filepath.Join(homeDir, ".orch", "processed-issues.jsonl")
-		cache, cacheErr := daemon.NewProcessedIssueCache(cachePath)
-		if cacheErr != nil {
-			fmt.Printf("Warning: failed to initialize ProcessedIssueCache: %v\n", cacheErr)
-			fmt.Println("  Falling back to in-memory dedup only")
-		} else {
-			d.ProcessedCache = cache
-		}
-	}
+	defer rt.cancel()
 
 	// Set up signal handling for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
 	go func() {
 		<-sigChan
 		fmt.Println("\nReceived interrupt, stopping daemon...")
-		cancel()
+		rt.cancel()
 	}()
-
-	logger := events.NewLogger(events.DefaultLogPath())
-	// Inject event logger into daemon for dedup telemetry
-	d.SetEventLogger(logger)
-	processed := 0
-	completed := 0 // Track auto-completed agents
-	cycles := 0
-	var lastSpawn time.Time      // Track last successful spawn
-	var lastCompletion time.Time // Track last auto-completion
 
 	// Ensure reflection runs on exit if enabled
 	if daemonReflect {
@@ -280,298 +219,55 @@ func runDaemonLoop() error {
 	// Clean up status file on shutdown
 	defer daemon.RemoveStatusFile()
 
-	fmt.Println("Starting daemon...")
-	fmt.Printf("  Poll interval:    %s\n", formatDaemonDuration(config.PollInterval))
-	fmt.Printf("  Concurrency:      %d (worker pool)\n", config.MaxAgents)
-	countMode := "OpenCode sessions"
-	if config.Backend == "docker" {
-		countMode = "Docker containers"
-	}
-	fmt.Printf("  Backend:          %s (counting %s)\n", config.Backend, countMode)
-	fmt.Printf("  Required label:   %s\n", config.Label)
-	fmt.Printf("  Spawn delay:      %s\n", formatDaemonDuration(config.SpawnDelay))
-	if config.CrossProject {
-		fmt.Println("  Cross-project:    enabled (polling all kb-registered projects)")
-	}
-	if config.ReflectEnabled {
-		fmt.Printf("  Reflect interval:  %s\n", formatDaemonDuration(config.ReflectInterval))
-		fmt.Printf("  Reflect issues:    %v\n", config.ReflectCreateIssues)
-	} else {
-		fmt.Println("  Reflect interval:  disabled")
-	}
-	if config.CleanupEnabled {
-		fmt.Printf("  Cleanup interval:  %s\n", formatDaemonDuration(config.CleanupInterval))
-		if config.CleanupSessions {
-			fmt.Printf("  Cleanup sessions:  enabled (age: %d days)\n", config.CleanupSessionsAgeDays)
-		}
-		if config.CleanupWorkspaces {
-			fmt.Printf("  Cleanup workspaces: enabled (age: %d days)\n", config.CleanupWorkspacesAgeDays)
-		}
-		if config.CleanupInvestigations {
-			fmt.Printf("  Cleanup investigations: enabled\n")
-		}
-		fmt.Printf("  Cleanup preserve:  %v (orchestrator sessions/workspaces)\n", config.CleanupPreserveOrchestrator)
-	} else {
-		fmt.Println("  Cleanup interval:  disabled")
-	}
-	if config.RecoveryEnabled {
-		fmt.Printf("  Recovery interval: %s\n", formatDaemonDuration(config.RecoveryInterval))
-		fmt.Printf("  Recovery idle:     %s\n", formatDaemonDuration(config.RecoveryIdleThreshold))
-		fmt.Printf("  Recovery rate:     %s (per agent)\n", formatDaemonDuration(config.RecoveryRateLimit))
-	} else {
-		fmt.Println("  Recovery interval: disabled")
-	}
-	if config.ServerRecoveryEnabled {
-		fmt.Printf("  Server recovery:   enabled\n")
-		fmt.Printf("  Server stab delay: %s\n", formatDaemonDuration(config.ServerRecoveryStabilizationDelay))
-		fmt.Printf("  Server resume gap: %s\n", formatDaemonDuration(config.ServerRecoveryResumeDelay))
-	} else {
-		fmt.Println("  Server recovery:   disabled")
-	}
-	if config.SpawnFactualQuestions {
-		fmt.Println("  Factual questions: enabled (spawning investigations for subtype:factual)")
-	} else {
-		fmt.Println("  Factual questions: disabled")
-	}
-	if config.DeadSessionDetectionEnabled {
-		fmt.Printf("  Dead session det:  %s\n", formatDaemonDuration(config.DeadSessionDetectionInterval))
-	} else {
-		fmt.Println("  Dead session det:  disabled")
-	}
-	fmt.Println()
+	// Phase 3: Print startup banner
+	printDaemonBanner(config)
 
-	// Main polling loop
+	// Phase 4: Main polling loop
 	for {
 		select {
-		case <-ctx.Done():
-			fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
+		case <-rt.ctx.Done():
+			fmt.Printf("\n%s\n", rt.stopMessage())
 			return nil
 		default:
 		}
 
-		cycles++
+		rt.cycles++
 		timestamp := time.Now().Format("15:04:05")
 		pollTime := time.Now()
 
 		// Check server health and update recovery state FIRST.
-		// This enables detection of server restarts (down -> up transitions).
-		serverAvailable := d.CheckServerHealth()
+		serverAvailable := rt.d.CheckServerHealth()
 		if daemonVerbose {
 			fmt.Printf("[%s] Server health: available=%v\n", timestamp, serverAvailable)
 		}
 
 		// Reconcile pool with actual OpenCode sessions.
-		// This prevents stale capacity counts when agents complete without
-		// the daemon knowing (overnight runs, crashes, manual kills).
-		// Must happen before status write so status shows accurate counts.
-		if freed := d.ReconcileWithOpenCode(); freed > 0 && daemonVerbose {
+		if freed := rt.d.ReconcileWithOpenCode(); freed > 0 && daemonVerbose {
 			fmt.Printf("[%s] Reconciled: freed %d stale slots\n", timestamp, freed)
 		}
 
-		// Run periodic reflection if due
-		if result := d.RunPeriodicReflection(); result != nil {
-			if result.Error != nil {
-				fmt.Fprintf(os.Stderr, "[%s] Reflection error: %v\n", timestamp, result.Error)
-			} else if result.Suggestions != nil && result.Suggestions.HasSuggestions() {
-				fmt.Printf("[%s] Reflection: %s\n", timestamp, result.Suggestions.Summary())
-			} else if daemonVerbose {
-				fmt.Printf("[%s] Reflection: no suggestions found\n", timestamp)
-			}
-		}
-
-		// Run periodic cleanup if due
-		if result := d.RunPeriodicCleanup(); result != nil {
-			data := map[string]interface{}{
-				"sessions_deleted":        result.SessionsDeleted,
-				"workspaces_archived":     result.WorkspacesArchived,
-				"investigations_archived": result.InvestigationsArchived,
-				"message":                 result.Message,
-			}
-			if result.Error != nil {
-				data["error"] = result.Error.Error()
-			}
-			logSubsystemResult(logger, timestamp, daemonVerbose, subsystemResult{
-				Name:        "Cleanup",
-				EventType:   "daemon.cleanup",
-				Error:       result.Error,
-				Message:     result.Message,
-				HasActivity: result.SessionsDeleted > 0 || result.WorkspacesArchived > 0 || result.InvestigationsArchived > 0,
-				Data:        data,
-			})
-		}
-
-		// Run periodic stuck agent recovery if due
-		if result := d.RunPeriodicRecovery(); result != nil {
-			data := map[string]interface{}{
-				"resumed": result.ResumedCount,
-				"skipped": result.SkippedCount,
-				"message": result.Message,
-			}
-			if result.Error != nil {
-				data["resumed"] = 0
-				data["error"] = result.Error.Error()
-			}
-			logSubsystemResult(logger, timestamp, daemonVerbose, subsystemResult{
-				Name:        "Recovery",
-				EventType:   "daemon.recovery",
-				Error:       result.Error,
-				Message:     result.Message,
-				HasActivity: result.ResumedCount > 0,
-				Data:        data,
-			})
-		}
-
-		// Run server restart recovery if due (runs once after daemon startup)
-		// This handles the case where OpenCode server was restarted and sessions
-		// were lost from memory but persist on disk.
-		serverRecoveryResult := d.RunServerRecovery()
-		if daemonVerbose {
-			if serverRecoveryResult == nil {
-				fmt.Printf("[%s] [DEBUG] Server recovery: ShouldRunServerRecovery returned false (recovery not due)\n", timestamp)
-			} else {
-				fmt.Printf("[%s] [DEBUG] Server recovery: result=%+v\n", timestamp, serverRecoveryResult)
-			}
-		}
-		if serverRecoveryResult != nil {
-			data := map[string]interface{}{
-				"orphaned": serverRecoveryResult.OrphanedCount,
-				"resumed":  serverRecoveryResult.ResumedCount,
-				"skipped":  serverRecoveryResult.SkippedCount,
-				"message":  serverRecoveryResult.Message,
-			}
-			if serverRecoveryResult.Error != nil {
-				data["orphaned"] = 0
-				data["resumed"] = 0
-				data["error"] = serverRecoveryResult.Error.Error()
-			}
-			logSubsystemResult(logger, timestamp, daemonVerbose, subsystemResult{
-				Name:        "Server recovery",
-				EventType:   "daemon.server_recovery",
-				Error:       serverRecoveryResult.Error,
-				Message:     serverRecoveryResult.Message,
-				HasActivity: serverRecoveryResult.OrphanedCount > 0,
-				Data:        data,
-			})
-		}
-
-		// Run periodic dead session detection if due
-		if result := d.RunPeriodicDeadSessionDetection(); result != nil {
-			data := map[string]interface{}{
-				"detected":  result.DetectedCount,
-				"marked":    result.MarkedCount,
-				"escalated": result.EscalatedCount,
-				"skipped":   result.SkippedCount,
-				"message":   result.Message,
-			}
-			if result.Error != nil {
-				data["detected"] = 0
-				data["marked"] = 0
-				data["error"] = result.Error.Error()
-			}
-			logSubsystemResult(logger, timestamp, daemonVerbose, subsystemResult{
-				Name:        "Dead session detection",
-				EventType:   "daemon.dead_session_detection",
-				Error:       result.Error,
-				Message:     result.Message,
-				HasActivity: result.MarkedCount > 0 || result.EscalatedCount > 0,
-				Data:        data,
-			})
-		}
+		// Run periodic subsystems (reflection, cleanup, recovery, dead sessions)
+		rt.runSubsystems(timestamp)
 
 		// Process completions: auto-close agents that report Phase: Complete
-		// This frees capacity slots for new work. Uses the escalation model:
-		// - None/Info/Review: Auto-complete (closes issue)
-		// - Block/Failed: Requires human review (issue stays open)
-		completionConfig := daemon.CompletionConfig{
-			ProjectDir: projectDir,
-			ServerURL:  serverURL,
-			DryRun:     false,
-			Verbose:    daemonVerbose,
-		}
-		completionResult, err := d.CompletionOnce(completionConfig)
-		if err != nil && daemonVerbose {
-			fmt.Fprintf(os.Stderr, "[%s] Completion processing error: %v\n", timestamp, err)
-		} else if completionResult != nil {
-			completedThisCycle := 0
-			for _, cr := range completionResult.Processed {
-				if cr.Processed {
-					completedThisCycle++
-					completed++
-					lastCompletion = time.Now()
-					fmt.Printf("[%s] Auto-completed: %s (escalation=%s)\n",
-						timestamp, cr.BeadsID, cr.Escalation)
-
-					// Release the pool slot immediately on completion.
-					// This provides active slot release without waiting for reconciliation,
-					// fixing the capacity leak where beads lookup errors cause stuck counters.
-					if d.Pool != nil && d.Pool.ReleaseByBeadsID(cr.BeadsID) {
-						if daemonVerbose {
-							fmt.Printf("[%s] Released pool slot for %s\n", timestamp, cr.BeadsID)
-						}
-					}
-
-					// Log the completion
-					logDaemonEvent(logger, "daemon.complete", map[string]interface{}{
-						"beads_id":   cr.BeadsID,
-						"reason":     cr.CloseReason,
-						"escalation": cr.Escalation.String(),
-						"source":     "daemon_auto_complete",
-					})
-				} else if cr.Error != nil && daemonVerbose {
-					fmt.Printf("[%s] Completion blocked: %s - %v (escalation=%s)\n",
-						timestamp, cr.BeadsID, cr.Error, cr.Escalation)
-				}
-			}
-			if completedThisCycle > 0 && daemonVerbose {
-				fmt.Printf("[%s] Auto-completed %d agent(s) this cycle\n", timestamp, completedThisCycle)
-			}
-		}
+		rt.processCompletions(timestamp)
 
 		// Process factual questions if enabled
-		// This happens after completions free up capacity but before regular issue polling
-		if config.SpawnFactualQuestions {
-			factualSpawned := d.ProcessFactualQuestions()
-			if factualSpawned > 0 {
-				processed += factualSpawned
-				lastSpawn = time.Now()
-				fmt.Printf("[%s] Spawned %d investigation(s) for factual questions\n", timestamp, factualSpawned)
-			} else if daemonVerbose && !d.AtCapacity() {
-				fmt.Printf("[%s] No factual questions to spawn\n", timestamp)
-			}
-		}
+		rt.processFactualQuestions(timestamp)
 
-		// Get ready issues count for status (filtered by configured label)
-		readyIssues, _ := daemon.ListReadyIssuesWithLabel(config.Label)
-		readyCount := len(readyIssues)
-
-		// Write daemon status file AFTER reconciliation and completions so counts are accurate
-		status := daemon.DaemonStatus{
-			Capacity: daemon.CapacityStatus{
-				Max:       config.MaxAgents,
-				Active:    d.ActiveCount(),
-				Available: d.AvailableSlots(),
-			},
-			LastPoll:       pollTime,
-			LastSpawn:      lastSpawn,
-			LastCompletion: lastCompletion,
-			ReadyCount:     readyCount,
-			Status:         daemon.DetermineStatus(pollTime, config.PollInterval),
-		}
-		if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
-			fmt.Fprintf(os.Stderr, "Warning: failed to write status file: %v\n", err)
-		}
+		// Write daemon status file AFTER reconciliation and completions
+		rt.writeStatus(timestamp, pollTime)
 
 		// Check capacity before polling
-		if d.AtCapacity() {
-			activeCount := d.ActiveCount()
+		if rt.d.AtCapacity() {
+			activeCount := rt.d.ActiveCount()
 			if daemonVerbose {
 				fmt.Printf("[%s] At capacity (%d/%d agents active), waiting...\n",
 					timestamp, activeCount, daemonMaxAgents)
 			}
-			// Wait for poll interval before checking again
 			select {
-			case <-ctx.Done():
-				fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
+			case <-rt.ctx.Done():
+				fmt.Printf("\n%s\n", rt.stopMessage())
 				return nil
 			case <-time.After(config.PollInterval):
 				continue
@@ -583,128 +279,11 @@ func runDaemonLoop() error {
 		}
 
 		// Process issues until queue is empty or at capacity
-		// Track issues that failed to spawn this cycle (e.g., failure report gate)
-		// to skip them and continue with other issues.
-		spawnedThisCycle := 0
-		skippedThisCycle := make(map[string]bool)
-		for {
-			// Check for interrupt
-			select {
-			case <-ctx.Done():
-				fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
-				return nil
-			default:
-			}
-
-			// Check capacity
-			if d.AtCapacity() {
-				if daemonVerbose {
-					fmt.Printf("[%s] At capacity, stopping this cycle\n", timestamp)
-				}
-				break
-			}
-
-			// Use cross-project or single-project polling based on config
-			if config.CrossProject {
-				// Cross-project polling: iterate over all kb-registered projects
-				cpResult, err := d.CrossProjectOnceExcluding(skippedThisCycle)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-					break
-				}
-
-				if !cpResult.Processed {
-					// Check if this is a spawn failure
-					if cpResult.Issue != nil && cpResult.Error != nil {
-						// For cross-project, skip key is "projectPath:issueID"
-						skipKey := fmt.Sprintf("%s:%s", cpResult.Project.Path, cpResult.Issue.ID)
-						skippedThisCycle[skipKey] = true
-						fmt.Fprintf(os.Stderr, "[%s] [%s] Skipping %s: %v\n",
-							timestamp, cpResult.ProjectName, cpResult.Issue.ID, cpResult.Error)
-						continue
-					}
-
-					// No more issues across all projects
-					if daemonVerbose && spawnedThisCycle == 0 {
-						fmt.Printf("[%s] %s\n", timestamp, cpResult.Message)
-					}
-					break
-				}
-
-				processed++
-				spawnedThisCycle++
-				lastSpawn = time.Now()
-				fmt.Printf("[%s] [%s] Spawned: %s (%s) - %s\n",
-					timestamp,
-					cpResult.ProjectName,
-					cpResult.Issue.ID,
-					cpResult.Skill,
-					cpResult.Issue.Title,
-				)
-
-				// Log the spawn with project context
-				logDaemonEvent(logger, "daemon.spawn", map[string]interface{}{
-					"beads_id": cpResult.Issue.ID,
-					"skill":    cpResult.Skill,
-					"title":    cpResult.Issue.Title,
-					"project":  cpResult.ProjectName,
-					"count":    processed,
-				})
-			} else {
-				// Single-project polling (original behavior)
-				result, err := d.OnceExcluding(skippedThisCycle)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-					break
-				}
-
-				if !result.Processed {
-					// Check if this is a spawn failure (not queue empty or capacity)
-					if result.Issue != nil && result.Error != nil {
-						skippedThisCycle[result.Issue.ID] = true
-						fmt.Fprintf(os.Stderr, "[%s] Skipping %s: %v\n",
-							timestamp, result.Issue.ID, result.Error)
-						continue
-					}
-
-					// No more issues or non-issue-specific error
-					if daemonVerbose && spawnedThisCycle == 0 {
-						fmt.Printf("[%s] %s\n", timestamp, result.Message)
-					}
-					break
-				}
-
-				processed++
-				spawnedThisCycle++
-				lastSpawn = time.Now()
-				fmt.Printf("[%s] Spawned: %s (%s) - %s\n",
-					timestamp,
-					result.Issue.ID,
-					result.Skill,
-					result.Issue.Title,
-				)
-
-				// Log the spawn
-				logDaemonEvent(logger, "daemon.spawn", map[string]interface{}{
-					"beads_id": result.Issue.ID,
-					"skill":    result.Skill,
-					"title":    result.Issue.Title,
-					"count":    processed,
-				})
-			}
-
-			// Delay before next spawn to avoid rate limits
-			select {
-			case <-ctx.Done():
-				fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
-				return nil
-			case <-time.After(config.SpawnDelay):
-			}
-		}
+		spawnedThisCycle := rt.processSpawns(timestamp)
 
 		// If poll interval is 0, run once and exit
 		if config.PollInterval == 0 {
-			fmt.Printf("Run-once mode. Spawned %d, completed %d.\n", processed, completed)
+			fmt.Printf("Run-once mode. Spawned %d, completed %d.\n", rt.processed, rt.completed)
 			return nil
 		}
 
@@ -714,8 +293,8 @@ func runDaemonLoop() error {
 				timestamp, spawnedThisCycle, formatDaemonDuration(config.PollInterval))
 		}
 		select {
-		case <-ctx.Done():
-			fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
+		case <-rt.ctx.Done():
+			fmt.Printf("\n%s\n", rt.stopMessage())
 			return nil
 		case <-time.After(config.PollInterval):
 		}
