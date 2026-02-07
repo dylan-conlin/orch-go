@@ -180,17 +180,24 @@ func logSkipEvents(skipConfig SkipConfig, beadsID, workspace, skill string) {
 	}
 }
 
-// recordGateSkipMemory persists gate skip decisions for future completions.
-// When the orchestrator uses --skip-* flags, this records each skip reason so
-// subsequent completions auto-skip those gates without requiring --skip-* again.
-func recordGateSkipMemory(skipConfig SkipConfig, projectDir, identifier string) {
-	for _, gate := range skipConfig.skippedGates() {
-		if err := verify.RecordGateSkip(projectDir, gate, skipConfig.Reason, identifier); err != nil {
+// persistGateSkipMemory records skip decisions for the given gates.
+// This is the single implementation for gate skip memory persistence,
+// used by both recordGateSkipMemory (skip-flag path) and applySkipFiltering (pipeline path).
+func persistGateSkipMemory(gates []string, reason, projectDir, identifier string) {
+	for _, gate := range gates {
+		if err := verify.RecordGateSkip(projectDir, gate, reason, identifier); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to persist gate skip memory for %s: %v\n", gate, err)
 		} else {
 			fmt.Printf("Gate skip memory saved for %s (expires in %v)\n", gate, verify.GateSkipDuration)
 		}
 	}
+}
+
+// recordGateSkipMemory persists gate skip decisions for future completions.
+// When the orchestrator uses --skip-* flags, this records each skip reason so
+// subsequent completions auto-skip those gates without requiring --skip-* again.
+func recordGateSkipMemory(skipConfig SkipConfig, projectDir, identifier string) {
+	persistGateSkipMemory(skipConfig.skippedGates(), skipConfig.Reason, projectDir, identifier)
 }
 
 // printGateResults prints a formatted summary of gate results showing which passed and failed,

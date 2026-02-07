@@ -378,16 +378,12 @@ func applySkipFiltering(gatesFailed *[]string, errors *[]string, skipConfig Skip
 	}
 
 	// Persist gate skip memory
-	for _, gate := range skippedGatesFound {
+	if len(skippedGatesFound) > 0 {
 		skippedByID := target.BeadsID
 		if skippedByID == "" {
 			skippedByID = target.AgentName
 		}
-		if err := verify.RecordGateSkip(target.BeadsProjectDir, gate, skipConfig.Reason, skippedByID); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to persist gate skip memory for %s: %v\n", gate, err)
-		} else {
-			fmt.Printf("Gate skip memory saved for %s (auto-skips for subsequent completions, expires in %v)\n", gate, verify.GateSkipDuration)
-		}
+		persistGateSkipMemory(skippedGatesFound, skipConfig.Reason, target.BeadsProjectDir, skippedByID)
 	}
 
 	*gatesFailed = filteredGates
