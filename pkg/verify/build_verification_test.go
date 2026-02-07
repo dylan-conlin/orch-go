@@ -12,12 +12,12 @@ func TestIsSkillRequiringBuildVerification(t *testing.T) {
 		skillName string
 		want      bool
 	}{
-		// Skills requiring build verification
+		// Implementation skills require build verification
 		{"feature-impl requires", "feature-impl", true},
 		{"systematic-debugging requires", "systematic-debugging", true},
 		{"reliability-testing requires", "reliability-testing", true},
 
-		// Skills excluded from build verification
+		// Documentation/research skills excluded from build verification
 		{"investigation excluded", "investigation", false},
 		{"architect excluded", "architect", false},
 		{"research excluded", "research", false},
@@ -26,11 +26,13 @@ func TestIsSkillRequiringBuildVerification(t *testing.T) {
 		{"issue-creation excluded", "issue-creation", false},
 		{"writing-skills excluded", "writing-skills", false},
 
-		// Edge cases
-		{"empty skill", "", false},
-		{"unknown skill", "unknown-skill", false},
+		// Edge cases: restrictive default - unknown/empty skills REQUIRE build verification
+		// This prevents agents from leaving broken builds (2026-02-06 incident: 23 files with incomplete refactoring)
+		{"empty skill requires (restrictive default)", "", true},
+		{"unknown skill requires (restrictive default)", "unknown-skill", true},
 		{"case insensitive", "Feature-Impl", true},
 		{"case insensitive lower", "FEATURE-IMPL", true},
+		{"case insensitive excluded", "INVESTIGATION", false},
 	}
 
 	for _, tt := range tests {
@@ -38,6 +40,31 @@ func TestIsSkillRequiringBuildVerification(t *testing.T) {
 			got := IsSkillRequiringBuildVerification(tt.skillName)
 			if got != tt.want {
 				t.Errorf("IsSkillRequiringBuildVerification(%q) = %v, want %v", tt.skillName, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsSkillExcludedFromBuildVerification(t *testing.T) {
+	tests := []struct {
+		name      string
+		skillName string
+		want      bool
+	}{
+		{"investigation excluded", "investigation", true},
+		{"architect excluded", "architect", true},
+		{"research excluded", "research", true},
+		{"feature-impl not excluded", "feature-impl", false},
+		{"unknown not excluded", "unknown-skill", false},
+		{"empty not excluded", "", false},
+		{"case insensitive", "INVESTIGATION", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsSkillExcludedFromBuildVerification(tt.skillName)
+			if got != tt.want {
+				t.Errorf("IsSkillExcludedFromBuildVerification(%q) = %v, want %v", tt.skillName, got, tt.want)
 			}
 		})
 	}

@@ -29,16 +29,9 @@ type BuildVerificationResult struct {
 	BlameDetail string   // Human-readable blame attribution detail
 }
 
-// Skills that require build verification before completion.
-// Only implementation-focused skills that may modify Go code need build verification.
-var skillsRequiringBuildVerification = map[string]bool{
-	"feature-impl":         true, // Primary implementation skill
-	"systematic-debugging": true, // Debug fixes should build
-	"reliability-testing":  true, // Testing skill may modify code
-}
-
 // Skills explicitly excluded from build verification requirements.
-// These skills may modify files but typically don't break builds.
+// These skills produce documentation/research artifacts, not code changes.
+// Any skill NOT in this list will trigger build verification if Go files were changed.
 var skillsExcludedFromBuildVerification = map[string]bool{
 	"investigation":  true, // Research skill, produces investigations
 	"architect":      true, // Design skill, produces decisions
@@ -49,31 +42,40 @@ var skillsExcludedFromBuildVerification = map[string]bool{
 	"writing-skills": true, // Meta skill, modifies skills not Go code
 }
 
+// IsSkillExcludedFromBuildVerification returns true if the skill is explicitly
+// excluded from build verification (documentation/research-only skills).
+func IsSkillExcludedFromBuildVerification(skillName string) bool {
+	if skillName == "" {
+		return false
+	}
+	return skillsExcludedFromBuildVerification[strings.ToLower(skillName)]
+}
+
 // IsSkillRequiringBuildVerification determines if a skill requires build verification.
 //
 // The logic is:
 // 1. If skill is explicitly excluded (investigation, architect, etc.) -> false
-// 2. If skill is explicitly included (feature-impl, debugging) -> true
-// 3. If skill is unknown -> false (permissive default)
+// 2. Otherwise -> true (build verification required when Go files are changed)
+//
+// This is a restrictive default: any skill that touches Go code must pass the build gate.
+// Previously used a permissive default (unknown skills skipped), which allowed agents
+// to leave broken builds (e.g., 23 files with incomplete refactoring in 2026-02-06 session).
 func IsSkillRequiringBuildVerification(skillName string) bool {
+	// Empty skill name: still require build verification.
+	// Agents without skills can still modify Go code and break the build.
 	if skillName == "" {
-		return false
+		return true
 	}
 
 	skillName = strings.ToLower(skillName)
 
-	// Check explicit exclusions first
+	// Check explicit exclusions - these are documentation/research skills
 	if skillsExcludedFromBuildVerification[skillName] {
 		return false
 	}
 
-	// Check explicit inclusions
-	if skillsRequiringBuildVerification[skillName] {
-		return true
-	}
-
-	// Unknown skill - be permissive
-	return false
+	// All other skills: require build verification when Go files are changed
+	return true
 }
 
 // IsGoProject checks if the project directory contains Go files.
@@ -197,14 +199,19 @@ func RunGoTestCompile(projectDir string) (string, error) {
 // but the project fails to compile.
 //
 // The verification passes if:
-// 1. The project is not a Go project (no go.mod or .go files), OR
-// 2. No Go files were modified in recent commits, OR
-// 3. The skill is not an implementation-focused skill, OR
+// 1. The skill is explicitly excluded from build verification (documentation/research skills), OR
+// 2. The project is not a Go project (no go.mod or .go files), OR
+// 3. No Go files were modified in recent commits, OR
 // 4. The project compiles successfully (both production and test code), OR
 // 5. Build failure is pre-existing (not caused by this agent - blame attribution), OR
 // 6. Build gate was previously skipped and skip memory is still valid
 //
-// IMPORTANT: This uses 'go test -run=^$' instead of 'go build' because 'go build'
+// IMPORTANT: The default is restrictive - any agent that modifies Go files must pass
+// the build gate, regardless of skill name. Only explicitly excluded skills (investigation,
+// architect, etc.) skip the gate. This prevents agents from leaving broken builds
+// (e.g., partial refactorings with undefined variable errors).
+//
+// Uses 'go test -run=^$' instead of 'go build' because 'go build'
 // does NOT compile test files (*_test.go). This means function signature changes
 // can break tests without being caught. Using 'go test -run=^$' ensures both
 // production code AND test code compile correctly.
@@ -302,7 +309,7 @@ func truncateOutput(output string, maxLen int) string {
 }
 
 // VerifyBuildForCompletion is a convenience function for use in VerifyCompletionFull.
-// Returns nil if no verification is needed (not a Go project, no Go changes, or non-implementation skill).
+// Returns nil if no verification is needed (not a Go project, no Go changes, or excluded skill).
 // Returns EscalationBlock level result if build fails.
 // Returns a passing result (with warnings) if failure is pre-existing or skip memory is active.
 func VerifyBuildForCompletion(workspacePath, projectDir string) *BuildVerificationResult {
@@ -313,12 +320,12 @@ func VerifyBuildForCompletion(workspacePath, projectDir string) *BuildVerificati
 		return nil
 	}
 
-	// Return nil if skill doesn't require build verification
-	if !IsSkillRequiringBuildVerification(result.SkillName) {
+	// Return nil if skill is explicitly excluded from build verification
+	if IsSkillExcludedFromBuildVerification(result.SkillName) {
 		return nil
 	}
 
-	// Return nil if no Go changes (after checking skill - we want the skill warning)
+	// Return nil if no Go changes
 	if !HasGoChangesInRecentCommits(projectDir) {
 		return nil
 	}
