@@ -164,6 +164,15 @@ type Config struct {
 	// reset to open before escalating to needs:human. Derived from DEAD SESSION comment count.
 	// Default is 2 (escalate after dying twice).
 	MaxDeadSessionRetries int
+
+	// OrphanReapEnabled controls whether periodic orphan process reaping is enabled.
+	// When enabled, the daemon periodically scans for bun agent processes that are
+	// not associated with any active OpenCode session and terminates them.
+	OrphanReapEnabled bool
+
+	// OrphanReapInterval is how often to scan for and kill orphan processes.
+	// Default is 5 minutes.
+	OrphanReapInterval time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -203,6 +212,8 @@ func DefaultConfig() Config {
 		DeadSessionDetectionInterval:     10 * time.Minute,             // Check every 10 minutes
 		MaxDeadSessionRetries:            DefaultMaxDeadSessionRetries, // Escalate after N dead sessions
 		GracePeriod:                      30 * time.Second,             // 30s grace period for triage corrections
+		OrphanReapEnabled:                true,                         // Enabled by default
+		OrphanReapInterval:               5 * time.Minute,              // Check every 5 minutes
 	}
 }
 
@@ -292,6 +303,9 @@ type Daemon struct {
 
 	// lastDeadSessionDetection tracks when dead session detection was last run.
 	lastDeadSessionDetection time.Time
+
+	// lastOrphanReap tracks when orphan process reaping was last run.
+	lastOrphanReap time.Time
 
 	// resumeAttempts tracks when we last attempted to resume each agent (by beads ID).
 	// Prevents infinite resume loops by rate-limiting to 1 attempt per hour per agent.

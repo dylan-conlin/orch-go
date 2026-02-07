@@ -73,6 +73,8 @@ func buildDaemonConfig() (daemon.Config, error) {
 	if daemonMaxDeadSessionRetries > 0 {
 		config.MaxDeadSessionRetries = daemonMaxDeadSessionRetries
 	}
+	config.OrphanReapEnabled = daemonOrphanReapEnabled && daemonOrphanReapInterval > 0
+	config.OrphanReapInterval = time.Duration(daemonOrphanReapInterval) * time.Minute
 
 	return config, nil
 }
@@ -170,6 +172,11 @@ func printDaemonBanner(config daemon.Config) {
 	} else {
 		fmt.Println("  Factual questions: disabled")
 	}
+	if config.OrphanReapEnabled {
+		fmt.Printf("  Orphan reaper:     %s\n", formatDaemonDuration(config.OrphanReapInterval))
+	} else {
+		fmt.Println("  Orphan reaper:     disabled")
+	}
 	if config.DeadSessionDetectionEnabled {
 		fmt.Printf("  Dead session det:  %s\n", formatDaemonDuration(config.DeadSessionDetectionInterval))
 	} else {
@@ -262,6 +269,28 @@ func (rt *daemonRuntime) runSubsystems(timestamp string) {
 			Error:       serverRecoveryResult.Error,
 			Message:     serverRecoveryResult.Message,
 			HasActivity: serverRecoveryResult.OrphanedCount > 0,
+			Data:        data,
+		})
+	}
+
+	// Run periodic orphan process reaping if due
+	if result := rt.d.ReapOrphanProcesses(); result != nil {
+		data := map[string]interface{}{
+			"found":   result.Found,
+			"killed":  result.Killed,
+			"message": result.Message,
+		}
+		if result.Error != nil {
+			data["found"] = 0
+			data["killed"] = 0
+			data["error"] = result.Error.Error()
+		}
+		logSubsystemResult(rt.logger, timestamp, daemonVerbose, subsystemResult{
+			Name:        "Orphan reaper",
+			EventType:   "daemon.orphan_reap",
+			Error:       result.Error,
+			Message:     result.Message,
+			HasActivity: result.Killed > 0,
 			Data:        data,
 		})
 	}

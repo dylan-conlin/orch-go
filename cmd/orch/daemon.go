@@ -133,6 +133,8 @@ var (
 	daemonDeadSessionDetectionEnabled  bool   // Enable dead session detection
 	daemonDeadSessionDetectionInterval int    // Dead session detection interval in minutes (0 = disabled)
 	daemonMaxDeadSessionRetries        int    // Max dead session retries before escalation
+	daemonOrphanReapEnabled            bool   // Enable periodic orphan process reaping
+	daemonOrphanReapInterval           int    // Orphan reap interval in minutes (0 = disabled)
 )
 
 func init() {
@@ -175,6 +177,10 @@ func init() {
 	daemonRunCmd.Flags().BoolVar(&daemonDeadSessionDetectionEnabled, "dead-session-detection", true, "Enable dead session detection (default: true)")
 	daemonRunCmd.Flags().IntVar(&daemonDeadSessionDetectionInterval, "dead-session-interval", 10, "Dead session detection interval in minutes (0 = disabled, default: 10)")
 	daemonRunCmd.Flags().IntVar(&daemonMaxDeadSessionRetries, "max-dead-session-retries", 2, "Max times a dead session is retried before escalating to needs:human (default: 2)")
+
+	// Orphan process reaping
+	daemonRunCmd.Flags().BoolVar(&daemonOrphanReapEnabled, "orphan-reap", true, "Enable periodic orphan process reaping (default: true)")
+	daemonRunCmd.Flags().IntVar(&daemonOrphanReapInterval, "orphan-reap-interval", 5, "Orphan reap interval in minutes (0 = disabled, default: 5)")
 
 	// Add label filter to preview and once commands (share the same variable)
 	daemonPreviewCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
