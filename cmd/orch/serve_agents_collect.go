@@ -33,14 +33,15 @@ type agentCollectionContext struct {
 	beadsFetchThreshold time.Duration
 
 	// Dependencies
-	wsCache    *workspaceCache
-	beadsCache *beadsCache
-	client     opencode.ClientInterface
-	now        time.Time
+	wsCache         *workspaceCache
+	beadsCache      *beadsCache
+	client          opencode.ClientInterface
+	now             time.Time
+	serverStartTime time.Time // When orch serve started (for death reason diagnostics)
 }
 
 // newAgentCollectionContext creates a new context with default thresholds and dependencies.
-func newAgentCollectionContext(client opencode.ClientInterface, wsCache *workspaceCache, bc *beadsCache, sinceDuration time.Duration) *agentCollectionContext {
+func newAgentCollectionContext(client opencode.ClientInterface, wsCache *workspaceCache, bc *beadsCache, sinceDuration time.Duration, srvStartTime time.Time) *agentCollectionContext {
 	// Active threshold (10min): determines "running" vs "idle" status
 	activeThreshold := 10 * time.Minute
 	// Display threshold (4h): filters ghosts from default view (unless Phase: Complete)
@@ -79,6 +80,7 @@ func newAgentCollectionContext(client opencode.ClientInterface, wsCache *workspa
 		beadsCache:          bc,
 		client:              client,
 		now:                 time.Now(),
+		serverStartTime:     srvStartTime,
 	}
 }
 
@@ -117,7 +119,7 @@ func (ctx *agentCollectionContext) collectOpenCodeSessions(sessions []opencode.S
 		var deathReason string
 		if timeSinceUpdate > ctx.deadThreshold {
 			status = "dead"
-			deathReason = determineDeathReason(s.ID, createdAt, ctx.client)
+			deathReason = determineDeathReason(s.ID, createdAt, ctx.client, ctx.serverStartTime)
 		} else if timeSinceUpdate > ctx.activeThreshold {
 			status = "idle"
 		}

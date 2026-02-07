@@ -49,9 +49,6 @@ type bdLimiter struct {
 	dedupCalls atomic.Int64 // Calls served from singleflight dedup (avoided subprocess)
 }
 
-// Global bd limiter, initialized in runServe
-var globalBdLimiter *bdLimiter
-
 const (
 	// maxBdConcurrent is the hard cap on concurrent bd subprocesses from serve.
 	// With 12+ agents and 5s polling, even cache misses should never exceed this.
@@ -185,14 +182,14 @@ type bdLimiterStatsResponse struct {
 }
 
 // getLimiterStats returns current limiter stats for API response.
-func getLimiterStats() *bdLimiterStatsResponse {
-	if globalBdLimiter == nil {
+func (s *Server) getLimiterStats() *bdLimiterStatsResponse {
+	if s.BdLimiter == nil {
 		return nil
 	}
-	inflight, total, deduped := globalBdLimiter.stats()
+	inflight, total, deduped := s.BdLimiter.stats()
 	return &bdLimiterStatsResponse{
 		Inflight:      inflight,
-		MaxConcurrent: globalBdLimiter.maxConcurrent,
+		MaxConcurrent: s.BdLimiter.maxConcurrent,
 		TotalCalls:    total,
 		DedupedCalls:  deduped,
 		DedupPct:      safePct(deduped, total),
@@ -205,111 +202,111 @@ func getLimiterStats() *bdLimiterStatsResponse {
 
 // bdLimitedStats wraps a bd stats call with singleflight + concurrency limiter.
 // key should identify the project (e.g., "" for default or the projectDir).
-func bdLimitedStats(key string, f func() (interface{}, error)) (interface{}, error, bool) {
-	if globalBdLimiter == nil {
+func (s *Server) bdLimitedStats(key string, f func() (interface{}, error)) (interface{}, error, bool) {
+	if s.BdLimiter == nil {
 		result, err := f()
 		return result, err, false
 	}
-	return bdSingleflightDo(globalBdLimiter, &globalBdLimiter.statsGroup, "stats:"+key, func() (interface{}, error) {
+	return bdSingleflightDo(s.BdLimiter, &s.BdLimiter.statsGroup, "stats:"+key, func() (interface{}, error) {
 		return f()
 	})
 }
 
 // bdLimitedReady wraps a bd ready call with singleflight + concurrency limiter.
-func bdLimitedReady(key string, f func() (interface{}, error)) (interface{}, error, bool) {
-	if globalBdLimiter == nil {
+func (s *Server) bdLimitedReady(key string, f func() (interface{}, error)) (interface{}, error, bool) {
+	if s.BdLimiter == nil {
 		result, err := f()
 		return result, err, false
 	}
-	return bdSingleflightDo(globalBdLimiter, &globalBdLimiter.readyGroup, "ready:"+key, func() (interface{}, error) {
+	return bdSingleflightDo(s.BdLimiter, &s.BdLimiter.readyGroup, "ready:"+key, func() (interface{}, error) {
 		return f()
 	})
 }
 
 // bdLimitedList wraps a bd list call with singleflight + concurrency limiter.
-func bdLimitedList(key string, f func() (interface{}, error)) (interface{}, error, bool) {
-	if globalBdLimiter == nil {
+func (s *Server) bdLimitedList(key string, f func() (interface{}, error)) (interface{}, error, bool) {
+	if s.BdLimiter == nil {
 		result, err := f()
 		return result, err, false
 	}
-	return bdSingleflightDo(globalBdLimiter, &globalBdLimiter.listGroup, "list:"+key, func() (interface{}, error) {
+	return bdSingleflightDo(s.BdLimiter, &s.BdLimiter.listGroup, "list:"+key, func() (interface{}, error) {
 		return f()
 	})
 }
 
 // bdLimitedShow wraps a bd show call with singleflight + concurrency limiter.
-func bdLimitedShow(key string, f func() (interface{}, error)) (interface{}, error, bool) {
-	if globalBdLimiter == nil {
+func (s *Server) bdLimitedShow(key string, f func() (interface{}, error)) (interface{}, error, bool) {
+	if s.BdLimiter == nil {
 		result, err := f()
 		return result, err, false
 	}
-	return bdSingleflightDo(globalBdLimiter, &globalBdLimiter.showGroup, "show:"+key, func() (interface{}, error) {
+	return bdSingleflightDo(s.BdLimiter, &s.BdLimiter.showGroup, "show:"+key, func() (interface{}, error) {
 		return f()
 	})
 }
 
 // bdLimitedDep wraps a bd dep list call with singleflight + concurrency limiter.
-func bdLimitedDep(key string, f func() (interface{}, error)) (interface{}, error, bool) {
-	if globalBdLimiter == nil {
+func (s *Server) bdLimitedDep(key string, f func() (interface{}, error)) (interface{}, error, bool) {
+	if s.BdLimiter == nil {
 		result, err := f()
 		return result, err, false
 	}
-	return bdSingleflightDo(globalBdLimiter, &globalBdLimiter.depGroup, "dep:"+key, func() (interface{}, error) {
+	return bdSingleflightDo(s.BdLimiter, &s.BdLimiter.depGroup, "dep:"+key, func() (interface{}, error) {
 		return f()
 	})
 }
 
 // bdLimitedComments wraps a bd comments call with singleflight + concurrency limiter.
-func bdLimitedComments(key string, f func() (interface{}, error)) (interface{}, error, bool) {
-	if globalBdLimiter == nil {
+func (s *Server) bdLimitedComments(key string, f func() (interface{}, error)) (interface{}, error, bool) {
+	if s.BdLimiter == nil {
 		result, err := f()
 		return result, err, false
 	}
-	return bdSingleflightDo(globalBdLimiter, &globalBdLimiter.commentsGroup, "comments:"+key, func() (interface{}, error) {
+	return bdSingleflightDo(s.BdLimiter, &s.BdLimiter.commentsGroup, "comments:"+key, func() (interface{}, error) {
 		return f()
 	})
 }
 
 // bdLimitedFrontier wraps a frontier calculation with singleflight + concurrency limiter.
-func bdLimitedFrontier(f func() (interface{}, error)) (interface{}, error, bool) {
-	if globalBdLimiter == nil {
+func (s *Server) bdLimitedFrontier(f func() (interface{}, error)) (interface{}, error, bool) {
+	if s.BdLimiter == nil {
 		result, err := f()
 		return result, err, false
 	}
-	return bdSingleflightDo(globalBdLimiter, &globalBdLimiter.frontierGroup, "frontier", func() (interface{}, error) {
+	return bdSingleflightDo(s.BdLimiter, &s.BdLimiter.frontierGroup, "frontier", func() (interface{}, error) {
 		return f()
 	})
 }
 
 // bdLimitedQuestions wraps a questions fetch with singleflight + concurrency limiter.
-func bdLimitedQuestions(f func() (interface{}, error)) (interface{}, error, bool) {
-	if globalBdLimiter == nil {
+func (s *Server) bdLimitedQuestions(f func() (interface{}, error)) (interface{}, error, bool) {
+	if s.BdLimiter == nil {
 		result, err := f()
 		return result, err, false
 	}
-	return bdSingleflightDo(globalBdLimiter, &globalBdLimiter.questionsGroup, "questions", func() (interface{}, error) {
+	return bdSingleflightDo(s.BdLimiter, &s.BdLimiter.questionsGroup, "questions", func() (interface{}, error) {
 		return f()
 	})
 }
 
 // bdLimitedAttempts wraps attempt history collection with singleflight + concurrency limiter.
-func bdLimitedAttempts(key string, f func() (interface{}, error)) (interface{}, error, bool) {
-	if globalBdLimiter == nil {
+func (s *Server) bdLimitedAttempts(key string, f func() (interface{}, error)) (interface{}, error, bool) {
+	if s.BdLimiter == nil {
 		result, err := f()
 		return result, err, false
 	}
-	return bdSingleflightDo(globalBdLimiter, &globalBdLimiter.attemptsGroup, "attempts:"+key, func() (interface{}, error) {
+	return bdSingleflightDo(s.BdLimiter, &s.BdLimiter.attemptsGroup, "attempts:"+key, func() (interface{}, error) {
 		return f()
 	})
 }
 
 // bdLimitedCreate wraps a bd create call with ONLY the concurrency limiter (no singleflight).
 // Creates are unique operations — we never want to deduplicate them.
-func bdLimitedCreate(f func() (interface{}, error)) (interface{}, error) {
-	if globalBdLimiter == nil {
+func (s *Server) bdLimitedCreate(f func() (interface{}, error)) (interface{}, error) {
+	if s.BdLimiter == nil {
 		return f()
 	}
-	return bdLimitedFunc(globalBdLimiter, func() (interface{}, error) {
+	return bdLimitedFunc(s.BdLimiter, func() (interface{}, error) {
 		return f()
 	})
 }

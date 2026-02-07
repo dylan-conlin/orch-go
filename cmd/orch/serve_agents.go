@@ -115,7 +115,7 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	wsCache := s.WorkspaceCache.getCachedWorkspace(projectDirs)
 
 	// Create collection context with thresholds and dependencies
-	ctx := newAgentCollectionContext(client, wsCache, s.BeadsCache, sinceDuration)
+	ctx := newAgentCollectionContext(client, wsCache, s.BeadsCache, sinceDuration, s.ServerStartTime)
 
 	// Phase 1: Collect agents from all sources
 	ctx.collectOpenCodeSessions(sessions)

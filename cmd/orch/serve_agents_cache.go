@@ -146,9 +146,6 @@ func (c *globalWorkspaceCacheType) invalidate() {
 	c.projectDirs = nil
 }
 
-// Global beads cache instance, initialized in runServe
-var globalBeadsCache *beadsCache
-
 // newBeadsCache creates a new beads cache with default TTLs.
 func newBeadsCache() *beadsCache {
 	return &beadsCache{

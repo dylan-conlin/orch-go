@@ -52,9 +52,6 @@ type beadsStatsCache struct {
 	graphTTL time.Duration
 }
 
-// Global beads stats cache, initialized in runServe
-var globalBeadsStatsCache *beadsStatsCache
-
 func newBeadsStatsCache() *beadsStatsCache {
 	return &beadsStatsCache{
 		projects: make(map[string]*projectCacheEntry),
@@ -83,7 +80,8 @@ func (c *beadsStatsCache) getOrCreateEntry(projectDir string) *projectCacheEntry
 
 // getStats returns cached stats or fetches fresh if stale.
 // projectDir specifies which project's beads to query. Empty string uses default.
-func (c *beadsStatsCache) getStats(projectDir string) (*beads.Stats, error) {
+// srv provides access to the bd limiter and beads client (replacing former globals).
+func (c *beadsStatsCache) getStats(srv *Server, projectDir string) (*beads.Stats, error) {
 	entry := c.getOrCreateEntry(projectDir)
 
 	c.mu.RLock()
@@ -103,7 +101,7 @@ func (c *beadsStatsCache) getStats(projectDir string) (*beads.Stats, error) {
 	// Fetch fresh stats — wrapped in singleflight to deduplicate concurrent cache misses.
 	// Without this, multiple dashboard polls hitting expired cache simultaneously would
 	// each spawn a bd subprocess. With singleflight, only ONE subprocess runs.
-	result, err, _ := bdLimitedStats(workDir, func() (interface{}, error) {
+	result, err, _ := srv.bdLimitedStats(workDir, func() (interface{}, error) {
 		// Check if socket exists before attempting RPC to avoid slow timeout on dead daemon.
 		socketPath, findErr := beads.FindSocketPath(workDir)
 		socketExists := findErr == nil && socketPath != ""
@@ -114,19 +112,19 @@ func (c *beadsStatsCache) getStats(projectDir string) (*beads.Stats, error) {
 		}
 
 		// Thread-safe cleanup of stale beadsClient when socket disappears.
-		beadsClientMu.Lock()
-		if !socketExists && beadsClient != nil {
-			beadsClient.Close()
-			beadsClient = nil
+		srv.BeadsClientMu.Lock()
+		if !socketExists && srv.BeadsClient != nil {
+			srv.BeadsClient.Close()
+			srv.BeadsClient = nil
 		}
-		if socketExists && beadsClient == nil && socketPath != "" {
-			beadsClient = beads.NewClient(socketPath,
+		if socketExists && srv.BeadsClient == nil && socketPath != "" {
+			srv.BeadsClient = beads.NewClient(socketPath,
 				beads.WithAutoReconnect(3),
 				beads.WithTimeout(5*time.Second),
 			)
 		}
-		currentClient := beadsClient
-		beadsClientMu.Unlock()
+		currentClient := srv.BeadsClient
+		srv.BeadsClientMu.Unlock()
 
 		var stats *beads.Stats
 		var fetchErr error
@@ -160,7 +158,8 @@ func (c *beadsStatsCache) getStats(projectDir string) (*beads.Stats, error) {
 
 // getReadyIssues returns cached ready issues or fetches fresh if stale.
 // projectDir specifies which project's beads to query. Empty string uses default.
-func (c *beadsStatsCache) getReadyIssues(projectDir string) ([]beads.Issue, error) {
+// srv provides access to the bd limiter and beads client (replacing former globals).
+func (c *beadsStatsCache) getReadyIssues(srv *Server, projectDir string) ([]beads.Issue, error) {
 	entry := c.getOrCreateEntry(projectDir)
 
 	c.mu.RLock()
@@ -178,7 +177,7 @@ func (c *beadsStatsCache) getReadyIssues(projectDir string) ([]beads.Issue, erro
 	}
 
 	// Fetch fresh ready issues — wrapped in singleflight to deduplicate concurrent cache misses.
-	result, err, _ := bdLimitedReady(workDir, func() (interface{}, error) {
+	result, err, _ := srv.bdLimitedReady(workDir, func() (interface{}, error) {
 		socketPath, findErr := beads.FindSocketPath(workDir)
 		socketExists := findErr == nil && socketPath != ""
 		if socketExists {
@@ -187,19 +186,19 @@ func (c *beadsStatsCache) getReadyIssues(projectDir string) ([]beads.Issue, erro
 			}
 		}
 
-		beadsClientMu.Lock()
-		if !socketExists && beadsClient != nil {
-			beadsClient.Close()
-			beadsClient = nil
+		srv.BeadsClientMu.Lock()
+		if !socketExists && srv.BeadsClient != nil {
+			srv.BeadsClient.Close()
+			srv.BeadsClient = nil
 		}
-		if socketExists && beadsClient == nil && socketPath != "" {
-			beadsClient = beads.NewClient(socketPath,
+		if socketExists && srv.BeadsClient == nil && socketPath != "" {
+			srv.BeadsClient = beads.NewClient(socketPath,
 				beads.WithAutoReconnect(3),
 				beads.WithTimeout(5*time.Second),
 			)
 		}
-		currentClient := beadsClient
-		beadsClientMu.Unlock()
+		currentClient := srv.BeadsClient
+		srv.BeadsClientMu.Unlock()
 
 		var issues []beads.Issue
 		var fetchErr error
@@ -307,7 +306,7 @@ func (s *Server) handleBeads(w http.ResponseWriter, r *http.Request) {
 	projectDir := r.URL.Query().Get("project_dir")
 
 	// Use cached stats when available
-	stats, err := s.BeadsStatsCache.getStats(projectDir)
+	stats, err := s.BeadsStatsCache.getStats(s, projectDir)
 	if err != nil {
 		resp := BeadsAPIResponse{
 			Error:      fmt.Sprintf("Failed to get bd stats: %v", err),
@@ -391,7 +390,7 @@ func (s *Server) handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 	projectDir := r.URL.Query().Get("project_dir")
 
 	// Use cached ready issues when available
-	issues, err := s.BeadsStatsCache.getReadyIssues(projectDir)
+	issues, err := s.BeadsStatsCache.getReadyIssues(s, projectDir)
 	if err != nil {
 		resp := BeadsReadyAPIResponse{
 			Issues:     []ReadyIssueResponse{},
@@ -483,7 +482,7 @@ func (s *Server) handleIssues(w http.ResponseWriter, r *http.Request) {
 
 	// Use persistent RPC client (with auto-reconnect), fallback to CLI if unavailable.
 	// Creates use ONLY the concurrency limiter (not singleflight) because each create is unique.
-	createResult, err := bdLimitedCreate(func() (interface{}, error) {
+	createResult, err := s.bdLimitedCreate(func() (interface{}, error) {
 		s.BeadsClientMu.RLock()
 		currentClient := s.BeadsClient
 		s.BeadsClientMu.RUnlock()
@@ -571,7 +570,7 @@ func (s *Server) handleQuestions(w http.ResponseWriter, r *http.Request) {
 	// Fetch questions using singleflight to deduplicate concurrent dashboard polls.
 	// handleQuestions is expensive: it calls bd list + bd show for EACH question.
 	// Without singleflight, 10 concurrent polls = 10× the subprocess spawning.
-	result, err, _ := bdLimitedQuestions(func() (interface{}, error) {
+	result, err, _ := s.bdLimitedQuestions(func() (interface{}, error) {
 		cliClient := beads.NewCLIClient()
 
 		allQuestions, listErr := cliClient.List(&beads.ListArgs{
@@ -858,11 +857,11 @@ func (s *Server) handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 		var buildErr error
 
 		if scope == "focus" {
-			nodes, edges, buildErr = buildFocusGraph(workDir)
+			nodes, edges, buildErr = s.buildFocusGraph(workDir)
 		} else {
 			// scope=open or scope=all
 			includeAll := scope == "all"
-			nodes, edges, buildErr = buildFullGraph(workDir, includeAll)
+			nodes, edges, buildErr = s.buildFullGraph(workDir, includeAll)
 		}
 
 		if buildErr != nil {
@@ -941,9 +940,9 @@ func filterToParentAndDescendants(nodes []GraphNode, edges []GraphEdge, parentID
 // - their blockers (recursive)
 // - their immediate dependents
 // - P0/P1 issues
-func buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, error) {
+func (s *Server) buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, error) {
 	// First get all open issues to have the full picture
-	allIssues, err := listBeadsIssues(workDir, false)
+	allIssues, err := s.listBeadsIssues(workDir, false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -983,7 +982,7 @@ func buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, error) {
 		}
 		processedForDeps[id] = true
 
-		showIssue, err := showBeadsIssue(workDir, id)
+		showIssue, err := s.showBeadsIssue(workDir, id)
 		if err != nil {
 			continue
 		}
@@ -999,7 +998,7 @@ func buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, error) {
 		}
 
 		// Build edges with proper types from bd dep list
-		deps, depErr := listIssueDependencies(workDir, id)
+		deps, depErr := s.listIssueDependencies(workDir, id)
 		if depErr == nil {
 			for _, dep := range deps {
 				edges = append(edges, GraphEdge{
@@ -1009,7 +1008,7 @@ func buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, error) {
 				})
 			}
 		}
-		dependents, depErr := listIssueDependents(workDir, id)
+		dependents, depErr := s.listIssueDependents(workDir, id)
 		if depErr == nil {
 			for _, dep := range dependents {
 				edges = append(edges, GraphEdge{
@@ -1038,7 +1037,7 @@ func buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, error) {
 			})
 		} else {
 			// Issue might be closed but still a blocker - fetch it
-			showIssue, err := showBeadsIssue(workDir, id)
+			showIssue, err := s.showBeadsIssue(workDir, id)
 			if err == nil {
 				nodes = append(nodes, GraphNode{
 					ID:          showIssue.ID,
@@ -1091,8 +1090,8 @@ func buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, error) {
 }
 
 // buildFullGraph builds the full graph with optional status filtering
-func buildFullGraph(workDir string, includeAll bool) ([]GraphNode, []GraphEdge, error) {
-	issues, err := listBeadsIssues(workDir, includeAll)
+func (s *Server) buildFullGraph(workDir string, includeAll bool) ([]GraphNode, []GraphEdge, error) {
+	issues, err := s.listBeadsIssues(workDir, includeAll)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1124,7 +1123,7 @@ func buildFullGraph(workDir string, includeAll bool) ([]GraphNode, []GraphEdge, 
 	// Fetch dependencies with proper types
 	edges := make([]GraphEdge, 0)
 	for _, id := range idsWithDeps {
-		deps, err := listIssueDependencies(workDir, id)
+		deps, err := s.listIssueDependencies(workDir, id)
 		if err != nil {
 			continue
 		}
@@ -1142,14 +1141,14 @@ func buildFullGraph(workDir string, includeAll bool) ([]GraphNode, []GraphEdge, 
 
 // listBeadsIssues calls bd list and returns parsed issues.
 // Wrapped in singleflight + concurrency limiter to prevent subprocess stampede.
-func listBeadsIssues(workDir string, includeAll bool) ([]beadsIssue, error) {
+func (s *Server) listBeadsIssues(workDir string, includeAll bool) ([]beadsIssue, error) {
 	scope := "open"
 	if includeAll {
 		scope = "all"
 	}
 	key := workDir + ":" + scope
 
-	result, err, _ := bdLimitedList(key, func() (interface{}, error) {
+	result, err, _ := s.bdLimitedList(key, func() (interface{}, error) {
 		if includeAll {
 			args := []string{"list", "--json", "--limit", "0", "--all"}
 			cmd := exec.Command(getBdPath(), args...)
@@ -1208,10 +1207,10 @@ func listBeadsIssues(workDir string, includeAll bool) ([]beadsIssue, error) {
 
 // showBeadsIssue calls bd show and returns the parsed issue with dependencies.
 // Wrapped in singleflight + concurrency limiter to prevent subprocess stampede.
-func showBeadsIssue(workDir, id string) (*beadsShowIssue, error) {
+func (s *Server) showBeadsIssue(workDir, id string) (*beadsShowIssue, error) {
 	key := workDir + ":" + id
 
-	result, err, _ := bdLimitedShow(key, func() (interface{}, error) {
+	result, err, _ := s.bdLimitedShow(key, func() (interface{}, error) {
 		cmd := exec.Command(getBdPath(), "show", id, "--json")
 		if workDir != "" {
 			cmd.Dir = workDir
@@ -1253,10 +1252,10 @@ type depEntry struct {
 
 // listIssueDependencies returns dependencies for an issue with proper types using bd dep list.
 // Wrapped in singleflight + concurrency limiter to prevent subprocess stampede.
-func listIssueDependencies(workDir, id string) ([]depEntry, error) {
+func (s *Server) listIssueDependencies(workDir, id string) ([]depEntry, error) {
 	key := workDir + ":deps:" + id
 
-	result, err, _ := bdLimitedDep(key, func() (interface{}, error) {
+	result, err, _ := s.bdLimitedDep(key, func() (interface{}, error) {
 		cmd := exec.Command(getBdPath(), "dep", "list", id, "--json")
 		if workDir != "" {
 			cmd.Dir = workDir
@@ -1284,10 +1283,10 @@ func listIssueDependencies(workDir, id string) ([]depEntry, error) {
 
 // listIssueDependents returns dependents for an issue with proper types using bd dep list --direction up.
 // Wrapped in singleflight + concurrency limiter to prevent subprocess stampede.
-func listIssueDependents(workDir, id string) ([]depEntry, error) {
+func (s *Server) listIssueDependents(workDir, id string) ([]depEntry, error) {
 	key := workDir + ":dependents:" + id
 
-	result, err, _ := bdLimitedDep(key, func() (interface{}, error) {
+	result, err, _ := s.bdLimitedDep(key, func() (interface{}, error) {
 		cmd := exec.Command(getBdPath(), "dep", "list", id, "--direction", "up", "--json")
 		if workDir != "" {
 			cmd.Dir = workDir
@@ -1367,8 +1366,8 @@ func (s *Server) handleBeadsAttempts(w http.ResponseWriter, r *http.Request) {
 
 	// Scan workspaces for this beads ID — wrapped in singleflight to deduplicate.
 	// collectAttemptHistory spawns bd comments and other bd subprocesses.
-	attemptsResult, attemptsErr, _ := bdLimitedAttempts(beadsID, func() (interface{}, error) {
-		return collectAttemptHistory(beadsID)
+	attemptsResult, attemptsErr, _ := s.bdLimitedAttempts(beadsID, func() (interface{}, error) {
+		return s.collectAttemptHistory(beadsID)
 	})
 	var attempts []AttemptHistoryEntry
 	var err error
@@ -1403,8 +1402,8 @@ func (s *Server) handleBeadsAttempts(w http.ResponseWriter, r *http.Request) {
 
 // collectAttemptHistory scans all workspaces (including archived) for a given beads ID
 // and builds the attempt history.
-func collectAttemptHistory(beadsID string) ([]AttemptHistoryEntry, error) {
-	workspaceDir := filepath.Join(sourceDir, ".orch", "workspace")
+func (s *Server) collectAttemptHistory(beadsID string) ([]AttemptHistoryEntry, error) {
+	workspaceDir := filepath.Join(s.SourceDir, ".orch", "workspace")
 	if _, err := os.Stat(workspaceDir); os.IsNotExist(err) {
 		return []AttemptHistoryEntry{}, nil // No workspaces exist yet
 	}
@@ -1525,7 +1524,7 @@ func collectAttemptHistory(beadsID string) ([]AttemptHistoryEntry, error) {
 		entry.Outcome = determineOutcome(ws.path)
 
 		// Find artifacts
-		entry.Artifacts = findArtifacts(ws.path)
+		entry.Artifacts = s.findArtifacts(ws.path)
 
 		attempts = append(attempts, entry)
 	}
@@ -1535,7 +1534,7 @@ func collectAttemptHistory(beadsID string) ([]AttemptHistoryEntry, error) {
 	if len(attempts) > 0 {
 		// Get comments for this issue
 		var comments []beads.Comment
-		err := beads.Do(sourceDir, func(client *beads.Client) error {
+		err := beads.Do(s.SourceDir, func(client *beads.Client) error {
 			var rpcErr error
 			comments, rpcErr = client.Comments(beadsID)
 			return rpcErr
@@ -1546,7 +1545,7 @@ func collectAttemptHistory(beadsID string) ([]AttemptHistoryEntry, error) {
 		if err != nil {
 			// Use CLI directly
 			cmd := exec.Command(getBdPath(), "comments", beadsID, "--json")
-			cmd.Dir = sourceDir
+			cmd.Dir = s.SourceDir
 			cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
 			if output, cmdErr := cmd.Output(); cmdErr == nil {
 				json.Unmarshal(output, &comments)
@@ -1610,7 +1609,7 @@ func determineOutcome(workspacePath string) string {
 }
 
 // findArtifacts scans the workspace for produced artifacts.
-func findArtifacts(workspacePath string) []string {
+func (s *Server) findArtifacts(workspacePath string) []string {
 	artifacts := []string{}
 
 	// Check for SYNTHESIS.md
@@ -1620,7 +1619,7 @@ func findArtifacts(workspacePath string) []string {
 	}
 
 	// Check for investigation files in .kb/investigations/
-	kbDir := filepath.Join(sourceDir, ".kb", "investigations")
+	kbDir := filepath.Join(s.SourceDir, ".kb", "investigations")
 	if entries, err := os.ReadDir(kbDir); err == nil {
 		for _, entry := range entries {
 			if entry.IsDir() {
@@ -1728,7 +1727,7 @@ func (s *Server) handleBeadsClose(w http.ResponseWriter, r *http.Request) {
 
 	// Use CLI client to close the issue — wrapped in concurrency limiter (no singleflight for mutations).
 	// Set BEADS_NO_DAEMON=1 to use direct storage mode, matching the read operations.
-	_, closeErr := bdLimitedCreate(func() (interface{}, error) {
+	_, closeErr := s.bdLimitedCreate(func() (interface{}, error) {
 		cliClient := beads.NewCLIClient(
 			beads.WithWorkDir(workDir),
 			beads.WithEnv(append(os.Environ(), "BEADS_NO_DAEMON=1")),

@@ -34,33 +34,7 @@ func tlsConfigSkipVerify() *tls.Config {
 // This is infrastructure, not a project dev server.
 const DefaultServePort = 3348
 
-var (
-	servePort int
-
-	// serverStartTime tracks when the orch serve process started.
-	// Used to distinguish agent death reasons (server restart vs other failures).
-	serverStartTime time.Time
-
-	// beadsClient is a persistent RPC client for beads operations.
-	// Initialized at startup with auto-reconnect enabled.
-	// Protected by beadsClientMu for thread-safe access across HTTP handlers.
-	beadsClient   *beads.Client
-	beadsClientMu sync.RWMutex
-
-	// serviceMonitor is the global service monitor instance for accessing service state.
-	// Initialized at startup and used by /api/services endpoint.
-	// Protected by serviceMonitorMu for thread-safe access across HTTP handlers.
-	serviceMonitor   *service.ServiceMonitor
-	serviceMonitorMu sync.RWMutex
-
-	// likelyDoneCache caches LIKELY_DONE attention signals.
-	// Initialized at startup with 5-minute TTL to avoid slow git/workspace scans.
-	globalLikelyDoneCache *attention.LikelyDoneCache
-
-	// globalMaterializer is the SSE materializer that keeps state.db fresh
-	// from OpenCode session events in real-time.
-	globalMaterializer *materializer.Materializer
-)
+var servePort int
 
 // Server holds all dependencies for HTTP handlers, enabling unit testing
 // without global state. Created in runServe and passed to registerRoutes.
@@ -232,7 +206,7 @@ func runServeStatus(portNum int) error {
 
 func runServe(portNum int) error {
 	// Record server start time for agent death diagnostics
-	serverStartTime = time.Now()
+	srvStartTime := time.Now()
 
 	// Set default directory for beads socket discovery
 	// This is needed because serve may run from any working directory
@@ -252,70 +226,71 @@ func runServe(portNum int) error {
 	// Initialize persistent beads client with auto-reconnect.
 	// This avoids per-request connection overhead and handles daemon restarts.
 	// Use 5s timeout (not 30s default) to fail fast when daemon dies.
+	var initBeadsClient *beads.Client
 	err := beads.Do(sourceDir, func(client *beads.Client) error {
-		beadsClient = client
+		initBeadsClient = client
 		return nil
 	},
 		beads.WithAutoReconnect(3),
 		beads.WithTimeout(5*time.Second),
 	)
 	if err == nil {
-		if connErr := beadsClient.Connect(); connErr != nil {
+		if connErr := initBeadsClient.Connect(); connErr != nil {
 			// Non-fatal: handlers will fallback to CLI if client is nil
 			fmt.Printf("Warning: beads daemon not available, using CLI fallback: %v\n", connErr)
-			beadsClient = nil
+			initBeadsClient = nil
 		}
 	}
 
 	// Initialize bd subprocess limiter to prevent stampede under load.
 	// Two-layer protection: singleflight deduplication + hard concurrency cap (max 5).
 	// Without this, dashboard polling can spawn hundreds of concurrent bd subprocesses.
-	globalBdLimiter = newBdLimiter()
+	bdLim := newBdLimiter()
 	fmt.Printf("Initialized bd subprocess limiter (max %d concurrent)\n", maxBdConcurrent)
 
 	// Start limiter stats logging in background (every 60s)
 	limiterStop := make(chan struct{})
-	go logLimiterStats(globalBdLimiter, 60*time.Second, limiterStop)
+	go logLimiterStats(bdLim, 60*time.Second, limiterStop)
 	defer close(limiterStop)
 
 	// Initialize beads cache to prevent CPU spikes from excessive bd spawning.
 	// Without caching, each /api/agents request spawns 20+ bd processes for 600+ workspaces.
-	globalBeadsCache = newBeadsCache()
+	bCache := newBeadsCache()
 
 	// Initialize beads stats cache to prevent slow API responses.
 	// Without caching, /api/beads spawns bd stats (~1.5s) on every request.
-	globalBeadsStatsCache = newBeadsStatsCache()
+	bsCache := newBeadsStatsCache()
 
 	// Initialize kb health cache to prevent slow API responses.
 	// kb reflect can be slow with many artifacts, so we cache with 5-minute TTL.
-	globalKBHealthCache = newKBHealthCache()
+	kbCache := newKBHealthCache()
 
 	// Initialize likely done cache to prevent slow API responses.
 	// Git log scanning and workspace checks can be slow, so we cache with 5-minute TTL.
-	globalLikelyDoneCache = attention.NewLikelyDoneCache()
+	ldCache := attention.NewLikelyDoneCache()
 
 	// Start service monitoring daemon (Phase 1 MVP: crash detection + auto-restart)
 	// Polls overmind status every 10s, tracks PIDs, emits crash notifications, auto-restarts services
 	notifier := notify.Default()
 	eventLogger := events.NewDefaultLogger()
 	eventAdapter := service.NewEventLoggerAdapter(eventLogger)
-	serviceMonitor = service.NewMonitor(sourceDir, notifier, eventAdapter, 10*time.Second, true)
-	serviceMonitor.Start()
+	svcMonitor := service.NewMonitor(sourceDir, notifier, eventAdapter, 10*time.Second, true)
+	svcMonitor.Start()
 	fmt.Println("Started service monitor (polling every 10s, auto-restart enabled)")
 
 	// Start SSE materializer to keep state.db fresh from OpenCode events.
 	// Subscribes to SSE stream and writes is_processing, session_updated_at,
 	// and token counts to state.db in real-time (~2s freshness target).
-	globalMaterializer = materializer.New(materializer.Config{
+	mat := materializer.New(materializer.Config{
 		ServerURL: serverURL,
 	})
 	ctx := context.Background()
-	if err := globalMaterializer.Start(ctx); err != nil {
+	if err := mat.Start(ctx); err != nil {
 		fmt.Printf("Warning: failed to start SSE materializer: %v\n", err)
-		globalMaterializer = nil
+		mat = nil
 	} else {
 		fmt.Println("Started SSE materializer (state.db real-time sync)")
-		defer globalMaterializer.Stop()
+		defer mat.Stop()
 	}
 
 	// Create the Server with all dependencies.
@@ -324,15 +299,15 @@ func runServe(portNum int) error {
 		ServerURL:       serverURL,
 		SourceDir:       sourceDir,
 		Version:         version,
-		ServerStartTime: serverStartTime,
-		BeadsClient:     beadsClient,
-		ServiceMonitor:  serviceMonitor,
-		LikelyDoneCache: globalLikelyDoneCache,
-		Materializer:    globalMaterializer,
-		BdLimiter:       globalBdLimiter,
-		BeadsCache:      globalBeadsCache,
-		BeadsStatsCache: globalBeadsStatsCache,
-		KBHealthCache:   globalKBHealthCache,
+		ServerStartTime: srvStartTime,
+		BeadsClient:     initBeadsClient,
+		ServiceMonitor:  svcMonitor,
+		LikelyDoneCache: ldCache,
+		Materializer:    mat,
+		BdLimiter:       bdLim,
+		BeadsCache:      bCache,
+		BeadsStatsCache: bsCache,
+		KBHealthCache:   kbCache,
 		WorkspaceCache:  globalWorkspaceCacheInstance,
 	}
 
@@ -507,7 +482,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		response := map[string]interface{}{"status": "ok"}
-		if limiterStats := getLimiterStats(); limiterStats != nil {
+		if limiterStats := s.getLimiterStats(); limiterStats != nil {
 			response["bd_limiter"] = limiterStats
 		}
 		if s.Materializer != nil {

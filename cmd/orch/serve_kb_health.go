@@ -38,9 +38,6 @@ type kbHealthCache struct {
 	ttl       time.Duration
 }
 
-// Global kb health cache, initialized in runServe
-var globalKBHealthCache *kbHealthCache
-
 func newKBHealthCache() *kbHealthCache {
 	return &kbHealthCache{
 		ttl: 5 * time.Minute, // Knowledge changes slowly

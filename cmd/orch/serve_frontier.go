@@ -32,7 +32,7 @@ func (s *Server) handleFrontier(w http.ResponseWriter, r *http.Request) {
 	// Calculate frontier state from beads — wrapped in singleflight to deduplicate.
 	// CalculateFrontier spawns multiple bd subprocesses (bd ready, bd list, bd dep).
 	// Without singleflight, concurrent dashboard polls multiply these subprocess calls.
-	result, err, _ := bdLimitedFrontier(func() (interface{}, error) {
+	result, err, _ := s.bdLimitedFrontier(func() (interface{}, error) {
 		return frontier.CalculateFrontier()
 	})
 	if err != nil {
