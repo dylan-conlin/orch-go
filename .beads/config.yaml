@@ -3,3 +3,5 @@ repos:
   primary: "."
 sqlite: true
 no-daemon: true
+sqlite: true
+no-daemon: true
