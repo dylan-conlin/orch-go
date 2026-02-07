@@ -720,29 +720,13 @@ func runReviewDone(project, workdir string) error {
 		return err
 	}
 
-	// Filter by project
-	var projectCompletions []CompletionInfo
-	for _, c := range completions {
-		if c.Project == project {
-			projectCompletions = append(projectCompletions, c)
-		}
-	}
-
+	projectCompletions := filterCompletionsByProject(completions, project)
 	if len(projectCompletions) == 0 {
 		fmt.Printf("No pending completions for project: %s\n", project)
 		return nil
 	}
 
-	// Count by verification status
-	var canComplete []CompletionInfo
-	var needsReview []CompletionInfo
-	for _, c := range projectCompletions {
-		if c.VerifyOK && c.BeadsID != "" {
-			canComplete = append(canComplete, c)
-		} else {
-			needsReview = append(needsReview, c)
-		}
-	}
+	canComplete, needsReview := categorizeCompletions(projectCompletions)
 
 	// Show summary before proceeding
 	fmt.Printf("Project: %s\n", project)
@@ -750,52 +734,12 @@ func runReviewDone(project, workdir string) error {
 	fmt.Printf("  Needs manual review: %d\n", len(needsReview))
 
 	if len(canComplete) == 0 {
-		fmt.Println("\nNo agents ready to complete (need Phase: Complete and valid beads ID)")
-		if len(needsReview) > 0 {
-			fmt.Println("\nAgents needing manual review:")
-			for _, c := range needsReview {
-				reason := "missing beads ID"
-				if c.BeadsID != "" {
-					reason = "verification failed"
-					if c.VerifyError != "" {
-						reason = c.VerifyError
-					}
-				}
-				fmt.Printf("  - %s: %s\n", c.WorkspaceID, reason)
-			}
-		}
+		printNoneReady(needsReview)
 		return nil
 	}
 
-	// Confirmation prompt unless --yes flag is set or stdin is not a terminal
-	if !reviewDoneYes {
-		// Auto-skip confirmation when stdin is not a terminal (e.g., daemon, scripts)
-		if !term.IsTerminal(int(os.Stdin.Fd())) {
-			fmt.Printf("\nThis will close %d beads issues and clean up resources.\n", len(canComplete))
-			fmt.Println("(Skipping confirmation - stdin is not a terminal)")
-		} else {
-			fmt.Printf("\nThis will close %d beads issues and clean up resources.\n", len(canComplete))
-			fmt.Print("Continue? [y/N]: ")
-			reader := bufio.NewReader(os.Stdin)
-			response, err := reader.ReadString('\n')
-			if err != nil {
-				return fmt.Errorf("failed to read response: %w", err)
-			}
-
-			response = strings.TrimSpace(strings.ToLower(response))
-			if response != "y" && response != "yes" {
-				return fmt.Errorf("aborted")
-			}
-		}
-	}
-
-	// Process each completion
-	completed := 0
-	var completionErrors []string
-	// Auto-skip prompts when stdin is not a terminal (e.g., daemon, scripts)
-	skipAllPrompts := reviewNoPrompt || !term.IsTerminal(int(os.Stdin.Fd()))
-	if !reviewNoPrompt && skipAllPrompts {
-		fmt.Println("(Skipping recommendation prompts - stdin is not a terminal)")
+	if err := confirmReviewDone(len(canComplete)); err != nil {
+		return err
 	}
 
 	currentDir, err := os.Getwd()
@@ -803,15 +747,105 @@ func runReviewDone(project, workdir string) error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	// Resolve project directory using shared helper
 	projectResult, err := resolveProjectDir(workdir, "", currentDir)
 	if err != nil {
 		return err
 	}
-	projectDir := projectResult.ProjectDir
-
-	// Set beads.DefaultDir for cross-project operations
 	projectResult.SetBeadsDefaultDir()
+
+	completed, completionErrors := processCompletions(canComplete, projectResult.ProjectDir)
+
+	printReviewDoneSummary(completed, len(canComplete), completionErrors, needsReview)
+
+	return nil
+}
+
+// filterCompletionsByProject returns only completions matching the given project name.
+func filterCompletionsByProject(completions []CompletionInfo, project string) []CompletionInfo {
+	var result []CompletionInfo
+	for _, c := range completions {
+		if c.Project == project {
+			result = append(result, c)
+		}
+	}
+	return result
+}
+
+// categorizeCompletions splits completions into those ready to complete
+// (verified OK with a beads ID) and those needing manual review.
+func categorizeCompletions(completions []CompletionInfo) (canComplete, needsReview []CompletionInfo) {
+	for _, c := range completions {
+		if c.VerifyOK && c.BeadsID != "" {
+			canComplete = append(canComplete, c)
+		} else {
+			needsReview = append(needsReview, c)
+		}
+	}
+	return
+}
+
+// printNoneReady displays messaging when no agents are ready to complete
+// and lists agents needing manual review with their failure reasons.
+func printNoneReady(needsReview []CompletionInfo) {
+	fmt.Println("\nNo agents ready to complete (need Phase: Complete and valid beads ID)")
+	if len(needsReview) > 0 {
+		fmt.Println("\nAgents needing manual review:")
+		for _, c := range needsReview {
+			fmt.Printf("  - %s: %s\n", c.WorkspaceID, reviewFailureReason(c))
+		}
+	}
+}
+
+// reviewFailureReason returns a human-readable reason why a completion needs review.
+func reviewFailureReason(c CompletionInfo) string {
+	if c.BeadsID == "" {
+		return "missing beads ID"
+	}
+	if c.VerifyError != "" {
+		return c.VerifyError
+	}
+	return "verification failed"
+}
+
+// confirmReviewDone prompts the user to confirm batch completion.
+// Respects the --yes flag and auto-skips when stdin is not a terminal.
+func confirmReviewDone(count int) error {
+	if reviewDoneYes {
+		return nil
+	}
+
+	fmt.Printf("\nThis will close %d beads issues and clean up resources.\n", count)
+
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		fmt.Println("(Skipping confirmation - stdin is not a terminal)")
+		return nil
+	}
+
+	fmt.Print("Continue? [y/N]: ")
+	reader := bufio.NewReader(os.Stdin)
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
+	response = strings.TrimSpace(strings.ToLower(response))
+	if response != "y" && response != "yes" {
+		return fmt.Errorf("aborted")
+	}
+	return nil
+}
+
+// processCompletions iterates over ready completions, handling recommendations,
+// closing beads issues, cleaning up tmux windows, and logging events.
+// Returns the count of successfully completed agents and any error messages.
+func processCompletions(canComplete []CompletionInfo, projectDir string) (int, []string) {
+	completed := 0
+	var completionErrors []string
+
+	skipAllPrompts := reviewNoPrompt || !term.IsTerminal(int(os.Stdin.Fd()))
+	if !reviewNoPrompt && skipAllPrompts {
+		fmt.Println("(Skipping recommendation prompts - stdin is not a terminal)")
+	}
 
 	logger := events.NewLogger(events.DefaultLogPath())
 	reader := bufio.NewReader(os.Stdin)
@@ -819,157 +853,172 @@ func runReviewDone(project, workdir string) error {
 	for _, c := range canComplete {
 		fmt.Printf("\nCompleting: %s (%s)\n", c.WorkspaceID, c.BeadsID)
 
-		// Track which recommendations were acted on vs dismissed for review state
-		var actedOnIndices []int
-		var dismissedIndices []int
-		totalRecommendations := 0
+		skipAllPrompts = processAgentRecommendations(c, reader, skipAllPrompts)
 
-		// Prompt for recommendations unless --no-prompt or user chose skip-all
-		if c.Synthesis != nil && len(c.Synthesis.NextActions) > 0 {
-			totalRecommendations = len(c.Synthesis.NextActions)
-
-			if !skipAllPrompts {
-				fmt.Printf("\n  Has %d recommendations:\n", totalRecommendations)
-				for i, action := range c.Synthesis.NextActions {
-					// Truncate long actions for display
-					display := action
-					if len(display) > 100 {
-						display = display[:97] + "..."
-					}
-					fmt.Printf("    %d. %s\n", i+1, display)
-				}
-				fmt.Print("\n  Create follow-up issues? [y/n/skip-all]: ")
-
-				response, err := reader.ReadString('\n')
-				if err != nil {
-					fmt.Printf("  Warning: failed to read response, skipping prompts: %v\n", err)
-					skipAllPrompts = true
-					// Mark all as dismissed when skipping due to error
-					for i := 0; i < totalRecommendations; i++ {
-						dismissedIndices = append(dismissedIndices, i)
-					}
-				} else {
-					response = strings.TrimSpace(strings.ToLower(response))
-					switch response {
-					case "y", "yes":
-						// Create beads issues for each recommendation
-						for i, action := range c.Synthesis.NextActions {
-							title := action
-							if len(title) > 80 {
-								title = title[:77] + "..."
-							}
-							fmt.Printf("  Creating issue: %s\n", title)
-							// Use bd create to create follow-up issue
-							if err := createFollowUpIssue(title, c.WorkspaceID); err != nil {
-								fmt.Printf("    Warning: failed to create issue: %v\n", err)
-								// Still count as acted on even if creation failed
-							}
-							actedOnIndices = append(actedOnIndices, i)
-						}
-					case "skip-all", "s":
-						fmt.Println("  Skipping prompts for remaining agents")
-						skipAllPrompts = true
-						// Mark all as dismissed
-						for i := 0; i < totalRecommendations; i++ {
-							dismissedIndices = append(dismissedIndices, i)
-						}
-					case "n", "no", "":
-						// Skip this agent's recommendations, continue to close
-						fmt.Println("  Skipping recommendations")
-						// Mark all as dismissed
-						for i := 0; i < totalRecommendations; i++ {
-							dismissedIndices = append(dismissedIndices, i)
-						}
-					default:
-						fmt.Printf("  Unknown response '%s', skipping recommendations\n", response)
-						// Mark all as dismissed
-						for i := 0; i < totalRecommendations; i++ {
-							dismissedIndices = append(dismissedIndices, i)
-						}
-					}
-				}
-			} else {
-				// --no-prompt flag: mark all as dismissed
-				for i := 0; i < totalRecommendations; i++ {
-					dismissedIndices = append(dismissedIndices, i)
-				}
-			}
-
-			// Persist review state to workspace
-			if c.WorkspacePath != "" {
-				reviewState := verify.ReviewStateFromCompletion(
-					c.WorkspaceID,
-					c.BeadsID,
-					totalRecommendations,
-					actedOnIndices,
-					dismissedIndices,
-				)
-				if err := verify.SaveReviewState(c.WorkspacePath, reviewState); err != nil {
-					fmt.Printf("  Warning: failed to save review state: %v\n", err)
-				}
-			}
-		}
-
-		// Check if already closed
-		issue, err := verify.GetIssue(c.BeadsID)
-		if err != nil {
-			completionErrors = append(completionErrors, fmt.Sprintf("%s: failed to get issue: %v", c.BeadsID, err))
+		if err := closeBeadsIssue(c); err != nil {
+			completionErrors = append(completionErrors, fmt.Sprintf("%s: %v", c.BeadsID, err))
 			continue
 		}
-		if issue.Status == "closed" {
-			fmt.Printf("  Already closed, skipping beads close\n")
-		} else {
-			// Determine close reason from phase summary
-			reason := "Completed via orch review done"
-			if c.Summary != "" {
-				reason = c.Summary
-			}
 
-			// Close the beads issue with force to bypass bd's Phase: Complete
-			// gate since orch review has already verified completion
-			if err := verify.CloseIssueForce(c.BeadsID, reason, true); err != nil {
-				completionErrors = append(completionErrors, fmt.Sprintf("%s: failed to close: %v", c.BeadsID, err))
-				continue
-			}
-			fmt.Printf("  Closed beads issue\n")
-		}
-
-		// Clean up tmux window if it exists
-		if window, sessionName, err := tmux.FindWindowByBeadsIDAllSessions(c.BeadsID); err == nil && window != nil {
-			if err := tmux.KillWindow(window.Target); err != nil {
-				fmt.Printf("  Warning: failed to close tmux window: %v\n", err)
-			} else {
-				fmt.Printf("  Closed tmux window: %s:%s\n", sessionName, window.Name)
-			}
-		}
-
-		// Log the completion
-		event := events.Event{
-			Type:      "agent.completed",
-			Timestamp: time.Now().Unix(),
-			Data: map[string]interface{}{
-				"beads_id":    c.BeadsID,
-				"workspace":   c.WorkspaceID,
-				"reason":      c.Summary,
-				"batch":       true,
-				"source":      "review_done",
-				"project_dir": projectDir,
-			},
-		}
-		if err := logger.Log(event); err != nil {
-			fmt.Printf("  Warning: failed to log event: %v\n", err)
-		}
-
+		cleanupAgentTmuxWindow(c)
+		logCompletionEvent(logger, c, projectDir)
 		completed++
 	}
 
-	// Summary
-	fmt.Printf("\n---\n")
-	fmt.Printf("Completed: %d/%d agents\n", completed, len(canComplete))
+	return completed, completionErrors
+}
 
-	if len(completionErrors) > 0 {
-		fmt.Fprintf(os.Stderr, "\nErrors (%d):\n", len(completionErrors))
-		for _, e := range completionErrors {
+// processAgentRecommendations handles the recommendation prompt workflow for a single agent.
+// Returns the (potentially updated) skipAllPrompts flag.
+func processAgentRecommendations(c CompletionInfo, reader *bufio.Reader, skipAllPrompts bool) bool {
+	if c.Synthesis == nil || len(c.Synthesis.NextActions) == 0 {
+		return skipAllPrompts
+	}
+
+	totalRecommendations := len(c.Synthesis.NextActions)
+	var actedOnIndices []int
+	var dismissedIndices []int
+
+	if !skipAllPrompts {
+		actedOnIndices, dismissedIndices, skipAllPrompts = promptForRecommendations(c, reader, totalRecommendations)
+	} else {
+		dismissedIndices = makeIndexRange(totalRecommendations)
+	}
+
+	// Persist review state to workspace
+	if c.WorkspacePath != "" {
+		reviewState := verify.ReviewStateFromCompletion(
+			c.WorkspaceID,
+			c.BeadsID,
+			totalRecommendations,
+			actedOnIndices,
+			dismissedIndices,
+		)
+		if err := verify.SaveReviewState(c.WorkspacePath, reviewState); err != nil {
+			fmt.Printf("  Warning: failed to save review state: %v\n", err)
+		}
+	}
+
+	return skipAllPrompts
+}
+
+// promptForRecommendations displays recommendations and prompts the user for action.
+// Returns acted-on indices, dismissed indices, and updated skipAllPrompts flag.
+func promptForRecommendations(c CompletionInfo, reader *bufio.Reader, total int) (acted, dismissed []int, skipAll bool) {
+	fmt.Printf("\n  Has %d recommendations:\n", total)
+	for i, action := range c.Synthesis.NextActions {
+		display := action
+		if len(display) > 100 {
+			display = display[:97] + "..."
+		}
+		fmt.Printf("    %d. %s\n", i+1, display)
+	}
+	fmt.Print("\n  Create follow-up issues? [y/n/skip-all]: ")
+
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Printf("  Warning: failed to read response, skipping prompts: %v\n", err)
+		return nil, makeIndexRange(total), true
+	}
+
+	response = strings.TrimSpace(strings.ToLower(response))
+	switch response {
+	case "y", "yes":
+		for i, action := range c.Synthesis.NextActions {
+			title := action
+			if len(title) > 80 {
+				title = title[:77] + "..."
+			}
+			fmt.Printf("  Creating issue: %s\n", title)
+			if err := createFollowUpIssue(title, c.WorkspaceID); err != nil {
+				fmt.Printf("    Warning: failed to create issue: %v\n", err)
+			}
+			acted = append(acted, i)
+		}
+	case "skip-all", "s":
+		fmt.Println("  Skipping prompts for remaining agents")
+		dismissed = makeIndexRange(total)
+		skipAll = true
+	case "n", "no", "":
+		fmt.Println("  Skipping recommendations")
+		dismissed = makeIndexRange(total)
+	default:
+		fmt.Printf("  Unknown response '%s', skipping recommendations\n", response)
+		dismissed = makeIndexRange(total)
+	}
+	return
+}
+
+// makeIndexRange returns a slice [0, 1, ..., n-1].
+func makeIndexRange(n int) []int {
+	indices := make([]int, n)
+	for i := range indices {
+		indices[i] = i
+	}
+	return indices
+}
+
+// closeBeadsIssue checks if the issue is already closed and closes it if needed.
+func closeBeadsIssue(c CompletionInfo) error {
+	issue, err := verify.GetIssue(c.BeadsID)
+	if err != nil {
+		return fmt.Errorf("failed to get issue: %v", err)
+	}
+	if issue.Status == "closed" {
+		fmt.Printf("  Already closed, skipping beads close\n")
+		return nil
+	}
+
+	reason := "Completed via orch review done"
+	if c.Summary != "" {
+		reason = c.Summary
+	}
+
+	if err := verify.CloseIssueForce(c.BeadsID, reason, true); err != nil {
+		return fmt.Errorf("failed to close: %v", err)
+	}
+	fmt.Printf("  Closed beads issue\n")
+	return nil
+}
+
+// cleanupAgentTmuxWindow kills the tmux window associated with a completion's beads ID.
+func cleanupAgentTmuxWindow(c CompletionInfo) {
+	if window, sessionName, err := tmux.FindWindowByBeadsIDAllSessions(c.BeadsID); err == nil && window != nil {
+		if err := tmux.KillWindow(window.Target); err != nil {
+			fmt.Printf("  Warning: failed to close tmux window: %v\n", err)
+		} else {
+			fmt.Printf("  Closed tmux window: %s:%s\n", sessionName, window.Name)
+		}
+	}
+}
+
+// logCompletionEvent records an agent.completed event for the given completion.
+func logCompletionEvent(logger *events.Logger, c CompletionInfo, projectDir string) {
+	event := events.Event{
+		Type:      "agent.completed",
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"beads_id":    c.BeadsID,
+			"workspace":   c.WorkspaceID,
+			"reason":      c.Summary,
+			"batch":       true,
+			"source":      "review_done",
+			"project_dir": projectDir,
+		},
+	}
+	if err := logger.Log(event); err != nil {
+		fmt.Printf("  Warning: failed to log event: %v\n", err)
+	}
+}
+
+// printReviewDoneSummary displays the final summary of the review done operation.
+func printReviewDoneSummary(completed, total int, errors []string, needsReview []CompletionInfo) {
+	fmt.Printf("\n---\n")
+	fmt.Printf("Completed: %d/%d agents\n", completed, total)
+
+	if len(errors) > 0 {
+		fmt.Fprintf(os.Stderr, "\nErrors (%d):\n", len(errors))
+		for _, e := range errors {
 			fmt.Fprintf(os.Stderr, "  - %s\n", e)
 		}
 	}
@@ -984,8 +1033,6 @@ func runReviewDone(project, workdir string) error {
 			fmt.Printf("  - %s: %s\n", c.WorkspaceID, reason)
 		}
 	}
-
-	return nil
 }
 
 // printSynthesisCard displays a condensed Synthesis Card for an agent.

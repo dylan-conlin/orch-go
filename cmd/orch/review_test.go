@@ -299,16 +299,8 @@ func TestReviewDoneCategorizesCompletions(t *testing.T) {
 		{WorkspaceID: "ws-5", BeadsID: "", VerifyOK: false, Project: "project"},
 	}
 
-	// Categorize using the same logic as runReviewDone
-	var canComplete []CompletionInfo
-	var needsReview []CompletionInfo
-	for _, c := range completions {
-		if c.VerifyOK && c.BeadsID != "" {
-			canComplete = append(canComplete, c)
-		} else {
-			needsReview = append(needsReview, c)
-		}
-	}
+	// Use the extracted categorizeCompletions function
+	canComplete, needsReview := categorizeCompletions(completions)
 
 	if len(canComplete) != 2 {
 		t.Errorf("Expected 2 completions in canComplete, got %d", len(canComplete))
