@@ -106,21 +106,12 @@ func IsGoProject(projectDir string) bool {
 // HasGoChangesInRecentCommits checks if any Go files were modified
 // in recent commits that would require build verification.
 func HasGoChangesInRecentCommits(projectDir string) bool {
-	// Get changed files from last 5 commits
-	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
+	files, err := getChangedFiles(projectDir, "")
 	if err != nil {
-		// Try with fewer commits
-		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
-		cmd.Dir = projectDir
-		output, err = cmd.Output()
-		if err != nil {
-			return false
-		}
+		return false
 	}
 
-	return hasGoChangesInFiles(string(output))
+	return hasGoChangesInFiles(strings.Join(files, "\n"))
 }
 
 // hasGoChangesInFiles checks if any files in the output are Go files.

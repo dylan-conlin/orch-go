@@ -24,26 +24,12 @@ const DefaultMakeInstallTimeout = 120 * time.Second
 // hasGoChangesInRecentCommits checks if any of the last 5 commits contain changes
 // to cmd/orch/*.go or pkg/*.go files.
 func hasGoChangesInRecentCommits(projectDir string) bool {
-	// Get changed files from last 5 commits
-	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
+	files, err := verify.GetChangedFiles(projectDir, "")
 	if err != nil {
-		// If git command fails (e.g., not enough commits), try last 1 commit
-		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
-		cmd.Dir = projectDir
-		output, err = cmd.Output()
-		if err != nil {
-			return false
-		}
+		return false
 	}
 
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
+	for _, line := range files {
 		// Check if file matches cmd/orch/*.go or pkg/*.go or pkg/**/*.go
 		if strings.HasPrefix(line, "cmd/orch/") && strings.HasSuffix(line, ".go") {
 			return true
@@ -64,27 +50,14 @@ func hasGoChangesInRecentCommits(projectDir string) bool {
 func detectNewCLICommands(projectDir string) []string {
 	var newCommands []string
 
-	// Get files added (not modified) in last 5 commits
-	// The 'A' status means added
-	cmd := exec.Command("git", "diff", "--name-status", "HEAD~5..HEAD")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
+	// Get files added (not modified) in last 5 commits.
+	// The 'A' status means added.
+	lines, err := verify.GetChangedNameStatus(projectDir)
 	if err != nil {
-		// If git command fails (e.g., not enough commits), try last 1 commit
-		cmd = exec.Command("git", "diff", "--name-status", "HEAD~1..HEAD")
-		cmd.Dir = projectDir
-		output, err = cmd.Output()
-		if err != nil {
-			return nil
-		}
+		return nil
 	}
 
-	lines := strings.Split(string(output), "\n")
 	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
 		// Parse status line: "A\tcmd/orch/newcmd.go" or "M\tcmd/orch/main.go"
 		parts := strings.Fields(line)
 		if len(parts) < 2 {
@@ -361,16 +334,13 @@ func isBinaryUpToDate(projectDir string) (bool, error) {
 
 	// Get the timestamp of the most recent commit that modified Go files
 	// Using: git log -1 --format=%ct -- "*.go" "**/*.go"
-	cmd := exec.Command("git", "log", "-1", "--format=%ct", "--", "*.go", "**/*.go")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
+	timestampStr, err := verify.GetLatestCommitUnixTimestamp(projectDir, "*.go", "**/*.go")
 	if err != nil {
 		// If git command fails, assume rebuild is needed
 		return false, nil
 	}
 
 	// Parse the Unix timestamp
-	timestampStr := strings.TrimSpace(string(output))
 	if timestampStr == "" {
 		// No Go files in history, no rebuild needed
 		return true, nil

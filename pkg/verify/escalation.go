@@ -3,7 +3,6 @@ package verify
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 )
 
@@ -235,22 +234,14 @@ func DetermineEscalationFromCompletion(
 
 // countRecentFileChanges counts the number of files changed in recent commits.
 func countRecentFileChanges(projectDir string) int {
-	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
+	files, err := getChangedFiles(projectDir, "")
 	if err != nil {
-		// If git command fails (e.g., not enough commits), try last 1 commit
-		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
-		cmd.Dir = projectDir
-		output, err = cmd.Output()
-		if err != nil {
-			return 0
-		}
+		return 0
 	}
 
 	count := 0
-	for _, line := range strings.Split(string(output), "\n") {
-		if strings.TrimSpace(line) != "" {
+	for _, file := range files {
+		if strings.TrimSpace(file) != "" {
 			count++
 		}
 	}

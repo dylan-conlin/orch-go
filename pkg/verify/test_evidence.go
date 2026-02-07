@@ -3,7 +3,6 @@ package verify
 
 import (
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -14,15 +13,15 @@ import (
 
 // TestEvidenceResult represents the result of checking for test execution evidence.
 type TestEvidenceResult struct {
-	Passed              bool     // Whether verification passed
-	HasCodeChanges      bool     // Whether code files were changed (requires test evidence)
-	HasTestEvidence     bool     // Whether test execution evidence was found
-	MarkdownOnlyExempt  bool     // Whether exempted due to markdown-only changes
-	OutsideProjectExempt bool    // Whether exempted due to files outside project
-	Errors              []string // Error messages (blocking)
-	Warnings            []string // Warning messages (non-blocking)
-	Evidence            []string // Evidence found (for debugging)
-	SkillName           string   // Skill that was used
+	Passed               bool     // Whether verification passed
+	HasCodeChanges       bool     // Whether code files were changed (requires test evidence)
+	HasTestEvidence      bool     // Whether test execution evidence was found
+	MarkdownOnlyExempt   bool     // Whether exempted due to markdown-only changes
+	OutsideProjectExempt bool     // Whether exempted due to files outside project
+	Errors               []string // Error messages (blocking)
+	Warnings             []string // Warning messages (non-blocking)
+	Evidence             []string // Evidence found (for debugging)
+	SkillName            string   // Skill that was used
 }
 
 // Skills that require test execution evidence before completion.
@@ -182,21 +181,12 @@ var codeFileExtensions = []string{
 // DEPRECATED: Use HasCodeChangesSinceSpawn for accurate per-agent change detection.
 // This function uses HEAD~5 which includes changes from OTHER agents' commits.
 func HasCodeChangesInRecentCommits(projectDir string) bool {
-	// Get changed files from last 5 commits
-	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
+	files, err := getChangedFiles(projectDir, "")
 	if err != nil {
-		// Try with fewer commits
-		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
-		cmd.Dir = projectDir
-		output, err = cmd.Output()
-		if err != nil {
-			return false
-		}
+		return false
 	}
 
-	return hasCodeChangesInFiles(string(output))
+	return hasCodeChangesInFiles(strings.Join(files, "\n"))
 }
 
 // HasCodeChangesSinceSpawn checks if any code files were modified
@@ -231,56 +221,32 @@ func HasCodeChangesSinceSpawnForWorkspace(projectDir string, spawnTime time.Time
 		return hasCodeChangesInWorkspaceCommits(projectDir, sinceStr, workspacePath)
 	}
 
-	// Get changed files from ALL commits since spawn time
-	cmd := exec.Command("git", "log", "--name-only", "--since="+sinceStr, "--format=")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
+	files, err := getChangedFiles(projectDir, sinceStr)
 	if err != nil {
 		// Fall back to recent commits if git log fails
 		return HasCodeChangesInRecentCommits(projectDir)
 	}
 
-	return hasCodeChangesInFiles(string(output))
+	return hasCodeChangesInFiles(strings.Join(files, "\n"))
 }
 
 // hasCodeChangesInWorkspaceCommits checks for code changes in commits that modified
 // files within the given workspace directory. This filters out commits from concurrent
 // agents that happened to occur after the spawn time but weren't made by this agent.
 func hasCodeChangesInWorkspaceCommits(projectDir, sinceStr, workspacePath string) bool {
-	// Convert workspace path to relative path from project dir for git matching
-	relWorkspace := workspacePath
-	if filepath.IsAbs(workspacePath) && filepath.IsAbs(projectDir) {
-		rel, err := filepath.Rel(projectDir, workspacePath)
-		if err == nil {
-			relWorkspace = rel
-		}
-	}
-
-	// Get commit hashes since spawn time that touch the workspace
-	cmd := exec.Command("git", "log", "--since="+sinceStr, "--format=%H", "--", relWorkspace)
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
-	if err != nil || len(strings.TrimSpace(string(output))) == 0 {
+	commitHashes, err := getCommitHashes(projectDir, workspacePath, sinceStr)
+	if err != nil || len(commitHashes) == 0 {
 		// No commits touching workspace, or error - no code changes
 		return false
 	}
 
-	// Get the commit hashes
-	commitHashes := strings.Split(strings.TrimSpace(string(output)), "\n")
-
 	// For each commit that touched the workspace, get all changed files
 	var allChangedFiles []string
 	for _, hash := range commitHashes {
-		if hash == "" {
-			continue
-		}
-		cmd := exec.Command("git", "show", "--name-only", "--format=", hash)
-		cmd.Dir = projectDir
-		output, err := cmd.Output()
+		files, err := getFileChangesForCommit(projectDir, hash)
 		if err != nil {
 			continue
 		}
-		files := strings.Split(string(output), "\n")
 		allChangedFiles = append(allChangedFiles, files...)
 	}
 
@@ -368,53 +334,29 @@ func getChangedFilesSinceSpawn(projectDir string, spawnTime time.Time, workspace
 		return getChangedFilesInWorkspaceCommits(projectDir, sinceStr, workspacePath)
 	}
 
-	// Get all changed files since spawn time
-	cmd := exec.Command("git", "log", "--name-only", "--since="+sinceStr, "--format=")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
+	files, err := getChangedFiles(projectDir, sinceStr)
 	if err != nil {
 		return nil
 	}
 
-	return parseFileList(string(output))
+	return files
 }
 
 // getChangedFilesInWorkspaceCommits returns files changed in commits that modified
 // files within the given workspace directory.
 func getChangedFilesInWorkspaceCommits(projectDir, sinceStr, workspacePath string) []string {
-	// Convert workspace path to relative path from project dir
-	relWorkspace := workspacePath
-	if filepath.IsAbs(workspacePath) && filepath.IsAbs(projectDir) {
-		rel, err := filepath.Rel(projectDir, workspacePath)
-		if err == nil {
-			relWorkspace = rel
-		}
-	}
-
-	// Get commit hashes since spawn time that touch the workspace
-	cmd := exec.Command("git", "log", "--since="+sinceStr, "--format=%H", "--", relWorkspace)
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
-	if err != nil || len(strings.TrimSpace(string(output))) == 0 {
+	commitHashes, err := getCommitHashes(projectDir, workspacePath, sinceStr)
+	if err != nil || len(commitHashes) == 0 {
 		return nil
 	}
-
-	// Get the commit hashes
-	commitHashes := strings.Split(strings.TrimSpace(string(output)), "\n")
 
 	// For each commit that touched the workspace, get all changed files
 	var allChangedFiles []string
 	for _, hash := range commitHashes {
-		if hash == "" {
-			continue
-		}
-		cmd := exec.Command("git", "show", "--name-only", "--format=", hash)
-		cmd.Dir = projectDir
-		output, err := cmd.Output()
+		files, err := getFileChangesForCommit(projectDir, hash)
 		if err != nil {
 			continue
 		}
-		files := parseFileList(string(output))
 		allChangedFiles = append(allChangedFiles, files...)
 	}
 

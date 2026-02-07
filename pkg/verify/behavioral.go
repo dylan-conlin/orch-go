@@ -2,7 +2,6 @@
 package verify
 
 import (
-	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -59,20 +58,20 @@ type BehavioralValidationResult struct {
 // behavioralEvidencePatterns match actual behavior demonstration in comments.
 // These patterns indicate the agent observed the behavior working, not just tests passing.
 var behavioralEvidencePatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)behavior\s+verified:\s*.+`),         // "Behavior verified: X → Y"
-	regexp.MustCompile(`(?i)ran\s+locally:\s*.+→.+`),            // "Ran locally: X → Y"
-	regexp.MustCompile(`(?i)observed\s+expected\s+behavior`),    // "Observed expected behavior"
-	regexp.MustCompile(`(?i)demonstrated:\s*.+working`),         // "Demonstrated: X working"
-	regexp.MustCompile(`(?i)manual\s+test:\s*.+passed`),         // "Manual test: X passed"
-	regexp.MustCompile(`(?i)verified\s+in\s+browser`),           // "Verified in browser"
-	regexp.MustCompile(`(?i)tested\s+endpoint:\s*.+`),           // "Tested endpoint: /api/..."
-	regexp.MustCompile(`(?i)curl\s+test:\s*.+`),                 // "curl test: ..."
-	regexp.MustCompile(`(?i)confirmed\s+behavior:\s*.+`),        // "Confirmed behavior: ..."
-	regexp.MustCompile(`(?i)visual\s+verification:\s*.+`),       // "Visual verification: ..."
-	regexp.MustCompile(`(?i)smoke\s+test:\s*.+`),                // "Smoke test: ..."
-	regexp.MustCompile(`(?i)e2e\s+(test|verification):\s*.+`),   // "E2E test: ..."
-	regexp.MustCompile(`(?i)integration\s+test:\s*.+working`),   // "Integration test: X working"
-	regexp.MustCompile(`(?i)lock\s+(acquired|released|works)`),  // Concurrency verification
+	regexp.MustCompile(`(?i)behavior\s+verified:\s*.+`),          // "Behavior verified: X → Y"
+	regexp.MustCompile(`(?i)ran\s+locally:\s*.+→.+`),             // "Ran locally: X → Y"
+	regexp.MustCompile(`(?i)observed\s+expected\s+behavior`),     // "Observed expected behavior"
+	regexp.MustCompile(`(?i)demonstrated:\s*.+working`),          // "Demonstrated: X working"
+	regexp.MustCompile(`(?i)manual\s+test:\s*.+passed`),          // "Manual test: X passed"
+	regexp.MustCompile(`(?i)verified\s+in\s+browser`),            // "Verified in browser"
+	regexp.MustCompile(`(?i)tested\s+endpoint:\s*.+`),            // "Tested endpoint: /api/..."
+	regexp.MustCompile(`(?i)curl\s+test:\s*.+`),                  // "curl test: ..."
+	regexp.MustCompile(`(?i)confirmed\s+behavior:\s*.+`),         // "Confirmed behavior: ..."
+	regexp.MustCompile(`(?i)visual\s+verification:\s*.+`),        // "Visual verification: ..."
+	regexp.MustCompile(`(?i)smoke\s+test:\s*.+`),                 // "Smoke test: ..."
+	regexp.MustCompile(`(?i)e2e\s+(test|verification):\s*.+`),    // "E2E test: ..."
+	regexp.MustCompile(`(?i)integration\s+test:\s*.+working`),    // "Integration test: X working"
+	regexp.MustCompile(`(?i)lock\s+(acquired|released|works)`),   // Concurrency verification
 	regexp.MustCompile(`(?i)redis\s+(connected|working|tested)`), // Redis verification
 }
 
@@ -301,41 +300,31 @@ func getChangedFilesSinceSpawnForBehavioral(projectDir string, spawnTime time.Ti
 
 // getRecentChangedFiles gets files changed in recent commits (fallback).
 func getRecentChangedFiles(projectDir string) []string {
-	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
+	files, err := getChangedFiles(projectDir, "")
 	if err != nil {
-		// Try with fewer commits
-		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
-		cmd.Dir = projectDir
-		output, err = cmd.Output()
-		if err != nil {
-			return nil
-		}
+		return nil
 	}
 
-	return parseFileList(string(output))
+	return files
 }
 
 // getRecentCommitMessages gets commit messages from recent commits.
 func getRecentCommitMessages(projectDir string, spawnTime time.Time) []string {
-	var cmd *exec.Cmd
-
+	var output string
+	var err error
 	if !spawnTime.IsZero() {
 		sinceStr := spawnTime.Format(time.RFC3339)
-		cmd = exec.Command("git", "log", "--since="+sinceStr, "--format=%s")
+		output, err = runGitOutput(projectDir, "log", "--since="+sinceStr, "--format=%s")
 	} else {
-		cmd = exec.Command("git", "log", "-5", "--format=%s")
+		output, err = runGitOutput(projectDir, "log", "-5", "--format=%s")
 	}
 
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
 	if err != nil {
 		return nil
 	}
 
 	var messages []string
-	lines := strings.Split(string(output), "\n")
+	lines := strings.Split(output, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line != "" {
