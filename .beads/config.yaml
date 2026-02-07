@@ -1,3 +1,4 @@
 issue-prefix: orch-go
 repos:
   primary: "."
+sqlite: true
