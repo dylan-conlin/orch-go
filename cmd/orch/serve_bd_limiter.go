@@ -28,15 +28,16 @@ import (
 type bdLimiter struct {
 	// Singleflight groups — one per operation category.
 	// Using separate groups ensures that a bd stats call doesn't block a bd ready call.
-	statsGroup     singleflight.Group // bd stats
-	readyGroup     singleflight.Group // bd ready
-	listGroup      singleflight.Group // bd list (for graph)
-	showGroup      singleflight.Group // bd show <id>
-	depGroup       singleflight.Group // bd dep list <id>
-	commentsGroup  singleflight.Group // bd comments <id>
-	frontierGroup  singleflight.Group // frontier.CalculateFrontier
-	questionsGroup singleflight.Group // handleQuestions (bd list --type question)
-	attemptsGroup  singleflight.Group // collectAttemptHistory
+	statsGroup      singleflight.Group // bd stats
+	readyGroup      singleflight.Group // bd ready
+	listGroup       singleflight.Group // bd list (for graph)
+	showGroup       singleflight.Group // bd show <id>
+	depGroup        singleflight.Group // bd dep list <id>
+	commentsGroup   singleflight.Group // bd comments <id>
+	frontierGroup   singleflight.Group // frontier.CalculateFrontier
+	questionsGroup  singleflight.Group // handleQuestions (bd list --type question)
+	attemptsGroup   singleflight.Group // collectAttemptHistory
+	completionGroup singleflight.Group // collectCompletionDetails
 
 	// Hard concurrency limit — semaphore pattern.
 	// No more than maxConcurrent bd subprocesses at any time from serve.
@@ -296,6 +297,17 @@ func (s *Server) bdLimitedAttempts(key string, f func() (interface{}, error)) (i
 		return result, err, false
 	}
 	return bdSingleflightDo(s.BdLimiter, &s.BdLimiter.attemptsGroup, "attempts:"+key, func() (interface{}, error) {
+		return f()
+	})
+}
+
+// bdLimitedCompletion wraps completion details collection with singleflight + concurrency limiter.
+func (s *Server) bdLimitedCompletion(key string, f func() (interface{}, error)) (interface{}, error, bool) {
+	if s.BdLimiter == nil {
+		result, err := f()
+		return result, err, false
+	}
+	return bdSingleflightDo(s.BdLimiter, &s.BdLimiter.completionGroup, "completion:"+key, func() (interface{}, error) {
 		return f()
 	})
 }

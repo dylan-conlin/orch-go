@@ -2,6 +2,7 @@
 	import { createEventDispatcher } from 'svelte';
 	import type { TreeNode } from '$lib/stores/work-graph';
 	import { AttemptHistory } from '$lib/components/attempt-history';
+	import { CompletionDetails } from '$lib/components/completion-details';
 	import { DeliverableChecklist } from '$lib/components/deliverable-checklist';
 	import { MarkdownContent } from '$lib/components/markdown-content';
 	import { Badge } from '$lib/components/ui/badge';
@@ -9,6 +10,18 @@
 	export let issue: TreeNode;
 
 	const dispatch = createEventDispatcher();
+
+	// Tab state
+	type TabId = 'details' | 'completion';
+	let activeTab: TabId = 'details';
+
+	// Determine if issue is completed (show Completion tab)
+	$: isCompleted = ['closed', 'complete'].includes(issue.status.toLowerCase());
+
+	// Reset tab when issue changes or when switching to non-completed issue
+	$: if (!isCompleted && activeTab === 'completion') {
+		activeTab = 'details';
+	}
 
 	// Get status badge variant
 	function getStatusBadge(status: string): { variant: 'default' | 'secondary' | 'destructive' | 'outline'; text: string } {
@@ -127,107 +140,142 @@
 		</button>
 	</div>
 
+	<!-- Tabs (only show when Completion tab is available) -->
+	{#if isCompleted && issue.source === 'beads'}
+		<div class="border-b border-border px-6 flex gap-0">
+			<button
+				class="px-4 py-2.5 text-sm font-medium transition-colors relative
+					{activeTab === 'details'
+						? 'text-foreground'
+						: 'text-muted-foreground hover:text-foreground'}"
+				on:click={() => activeTab = 'details'}
+			>
+				Details
+				{#if activeTab === 'details'}
+					<div class="absolute bottom-0 left-0 right-0 h-0.5 bg-foreground"></div>
+				{/if}
+			</button>
+			<button
+				class="px-4 py-2.5 text-sm font-medium transition-colors relative
+					{activeTab === 'completion'
+						? 'text-foreground'
+						: 'text-muted-foreground hover:text-foreground'}"
+				on:click={() => activeTab = 'completion'}
+			>
+				Completion
+				{#if activeTab === 'completion'}
+					<div class="absolute bottom-0 left-0 right-0 h-0.5 bg-foreground"></div>
+				{/if}
+			</button>
+		</div>
+	{/if}
+
 	<!-- Content -->
 	<div class="flex-1 overflow-auto px-6 py-4 space-y-6">
-		<!-- Description -->
-		{#if issue.description}
-			<section>
-				<h3 class="text-sm font-semibold text-foreground mb-2">Description</h3>
-				<div class="prose prose-sm dark:prose-invert max-w-none">
-					<MarkdownContent content={issue.description} />
-				</div>
-			</section>
-		{:else}
-			<section>
-				<div class="text-sm text-muted-foreground italic">
-					No description available
-				</div>
-			</section>
-		{/if}
+		{#if activeTab === 'details'}
+			<!-- Description -->
+			{#if issue.description}
+				<section>
+					<h3 class="text-sm font-semibold text-foreground mb-2">Description</h3>
+					<div class="prose prose-sm dark:prose-invert max-w-none">
+						<MarkdownContent content={issue.description} />
+					</div>
+				</section>
+			{:else}
+				<section>
+					<div class="text-sm text-muted-foreground italic">
+						No description available
+					</div>
+				</section>
+			{/if}
 
-		<!-- Metadata -->
-		<section>
-			<h3 class="text-sm font-semibold text-foreground mb-2">Metadata</h3>
-			<dl class="grid grid-cols-2 gap-2 text-sm">
-				<div>
-					<dt class="text-muted-foreground">ID</dt>
-					<dd class="font-mono text-foreground">{issue.id}</dd>
-				</div>
-				<div>
-					<dt class="text-muted-foreground">Source</dt>
-					<dd class="text-foreground">{issue.source}</dd>
-				</div>
-				{#if issue.created_at}
+			<!-- Metadata -->
+			<section>
+				<h3 class="text-sm font-semibold text-foreground mb-2">Metadata</h3>
+				<dl class="grid grid-cols-2 gap-2 text-sm">
 					<div>
-						<dt class="text-muted-foreground">Created</dt>
-						<dd class="text-foreground">{new Date(issue.created_at).toLocaleDateString()}</dd>
+						<dt class="text-muted-foreground">ID</dt>
+						<dd class="font-mono text-foreground">{issue.id}</dd>
 					</div>
-				{/if}
-				{#if issue.date}
 					<div>
-						<dt class="text-muted-foreground">Date</dt>
-						<dd class="text-foreground">{issue.date}</dd>
+						<dt class="text-muted-foreground">Source</dt>
+						<dd class="text-foreground">{issue.source}</dd>
 					</div>
-				{/if}
-			</dl>
-		</section>
-
-		<!-- Dependencies -->
-		{#if issue.blocked_by?.length > 0 || issue.blocks?.length > 0}
-			<section>
-				<h3 class="text-sm font-semibold text-foreground mb-2">Dependencies</h3>
-				{#if issue.blocked_by?.length > 0}
-					<div class="mb-2">
-						<div class="text-xs text-muted-foreground mb-1">Blocked by:</div>
-						<div class="flex flex-wrap gap-1">
-							{#each issue.blocked_by as blockerId}
-								<Badge variant="destructive">{blockerId}</Badge>
-							{/each}
-						</div>
-					</div>
-				{/if}
-				{#if issue.blocks?.length > 0}
-					<div>
-						<div class="text-xs text-muted-foreground mb-1">Blocks:</div>
-						<div class="flex flex-wrap gap-1">
-							{#each issue.blocks as blockedId}
-								<Badge variant="outline">{blockedId}</Badge>
-							{/each}
-						</div>
-					</div>
-				{/if}
-			</section>
-		{/if}
-
-		<!-- Deliverables -->
-		{#if issue.source === 'beads'}
-			<section>
-				<h3 class="text-sm font-semibold text-foreground mb-2">Deliverables</h3>
-				<DeliverableChecklist beadsId={issue.id} issueType={issue.type} compact={false} />
-			</section>
-		{/if}
-
-		<!-- Attempt History -->
-		{#if issue.source === 'beads'}
-			<section>
-				<h3 class="text-sm font-semibold text-foreground mb-2">Attempt History</h3>
-				<AttemptHistory beadsId={issue.id} />
-			</section>
-		{/if}
-
-		<!-- Attention Signal -->
-		{#if issue.attentionBadge}
-			<section>
-				<h3 class="text-sm font-semibold text-foreground mb-2">Attention</h3>
-				<div class="flex items-start gap-2 p-3 bg-muted rounded-md">
-					<Badge variant="outline">{issue.attentionBadge}</Badge>
-					{#if issue.attentionReason}
-						<div class="text-sm text-muted-foreground">
-							{issue.attentionReason}
+					{#if issue.created_at}
+						<div>
+							<dt class="text-muted-foreground">Created</dt>
+							<dd class="text-foreground">{new Date(issue.created_at).toLocaleDateString()}</dd>
 						</div>
 					{/if}
-				</div>
+					{#if issue.date}
+						<div>
+							<dt class="text-muted-foreground">Date</dt>
+							<dd class="text-foreground">{issue.date}</dd>
+						</div>
+					{/if}
+				</dl>
 			</section>
+
+			<!-- Dependencies -->
+			{#if issue.blocked_by?.length > 0 || issue.blocks?.length > 0}
+				<section>
+					<h3 class="text-sm font-semibold text-foreground mb-2">Dependencies</h3>
+					{#if issue.blocked_by?.length > 0}
+						<div class="mb-2">
+							<div class="text-xs text-muted-foreground mb-1">Blocked by:</div>
+							<div class="flex flex-wrap gap-1">
+								{#each issue.blocked_by as blockerId}
+									<Badge variant="destructive">{blockerId}</Badge>
+								{/each}
+							</div>
+						</div>
+					{/if}
+					{#if issue.blocks?.length > 0}
+						<div>
+							<div class="text-xs text-muted-foreground mb-1">Blocks:</div>
+							<div class="flex flex-wrap gap-1">
+								{#each issue.blocks as blockedId}
+									<Badge variant="outline">{blockedId}</Badge>
+								{/each}
+							</div>
+						</div>
+					{/if}
+				</section>
+			{/if}
+
+			<!-- Deliverables -->
+			{#if issue.source === 'beads'}
+				<section>
+					<h3 class="text-sm font-semibold text-foreground mb-2">Deliverables</h3>
+					<DeliverableChecklist beadsId={issue.id} issueType={issue.type} compact={false} />
+				</section>
+			{/if}
+
+			<!-- Attempt History -->
+			{#if issue.source === 'beads'}
+				<section>
+					<h3 class="text-sm font-semibold text-foreground mb-2">Attempt History</h3>
+					<AttemptHistory beadsId={issue.id} />
+				</section>
+			{/if}
+
+			<!-- Attention Signal -->
+			{#if issue.attentionBadge}
+				<section>
+					<h3 class="text-sm font-semibold text-foreground mb-2">Attention</h3>
+					<div class="flex items-start gap-2 p-3 bg-muted rounded-md">
+						<Badge variant="outline">{issue.attentionBadge}</Badge>
+						{#if issue.attentionReason}
+							<div class="text-sm text-muted-foreground">
+								{issue.attentionReason}
+							</div>
+						{/if}
+					</div>
+				</section>
+			{/if}
+		{:else if activeTab === 'completion'}
+			<!-- Completion Details Tab -->
+			<CompletionDetails beadsId={issue.id} />
 		{/if}
 	</div>
 
