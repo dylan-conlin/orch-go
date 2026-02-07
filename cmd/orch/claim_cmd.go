@@ -35,7 +35,8 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sessionID := args[0]
 		beadsID := args[1]
-		return runClaim(sessionID, beadsID)
+		client := opencode.NewClient(serverURL)
+		return runClaim(client, sessionID, beadsID)
 	},
 }
 
@@ -43,8 +44,7 @@ func init() {
 	// No additional flags needed for now
 }
 
-func runClaim(sessionID, beadsID string) error {
-	client := opencode.NewClient(serverURL)
+func runClaim(client opencode.ClientInterface, sessionID, beadsID string) error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)

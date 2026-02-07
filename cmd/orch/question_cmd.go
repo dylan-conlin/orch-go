@@ -28,12 +28,12 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
-		return runQuestion(beadsID)
+		client := opencode.NewClient(serverURL)
+		return runQuestion(client, beadsID)
 	},
 }
 
-func runQuestion(beadsID string) error {
-	client := opencode.NewClient(serverURL)
+func runQuestion(client opencode.ClientInterface, beadsID string) error {
 	projectDir, _ := os.Getwd()
 
 	// Strategy: Workspace file first (fast path), then derived lookups

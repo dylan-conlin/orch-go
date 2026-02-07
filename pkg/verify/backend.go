@@ -22,6 +22,12 @@ type BackendResult struct {
 // For opencode mode, it checks the HTTP API transcript.
 // For claude/tmux mode, it checks the tmux window capture.
 func VerifyBackendDeliverables(workspacePath, beadsID, serverURL, backend string) *BackendResult {
+	return VerifyBackendDeliverablesWithClient(nil, workspacePath, beadsID, serverURL, backend)
+}
+
+// VerifyBackendDeliverablesWithClient verifies deliverables using a provided client.
+// If client is nil and serverURL is provided, a new client is created.
+func VerifyBackendDeliverablesWithClient(client opencode.ClientInterface, workspacePath, beadsID, serverURL, backend string) *BackendResult {
 	result := &BackendResult{Passed: true}
 
 	if backend == "" {
@@ -31,7 +37,10 @@ func VerifyBackendDeliverables(workspacePath, beadsID, serverURL, backend string
 
 	switch strings.ToLower(backend) {
 	case "opencode", "headless":
-		verifyOpencodeDeliverables(workspacePath, serverURL, result)
+		if client == nil && serverURL != "" {
+			client = opencode.NewClient(serverURL)
+		}
+		verifyOpencodeDeliverables(client, workspacePath, result)
 	case "claude", "tmux":
 		verifyTmuxDeliverables(beadsID, result)
 	}
@@ -40,8 +49,8 @@ func VerifyBackendDeliverables(workspacePath, beadsID, serverURL, backend string
 }
 
 // verifyOpencodeDeliverables checks the opencode transcript for completion signals.
-func verifyOpencodeDeliverables(workspacePath, serverURL string, result *BackendResult) {
-	if serverURL == "" {
+func verifyOpencodeDeliverables(client opencode.ClientInterface, workspacePath string, result *BackendResult) {
+	if client == nil {
 		return
 	}
 
@@ -54,7 +63,6 @@ func verifyOpencodeDeliverables(workspacePath, serverURL string, result *Backend
 	}
 	sessionID := strings.TrimSpace(string(data))
 
-	client := opencode.NewClient(serverURL)
 	messages, err := client.GetMessages(sessionID)
 	if err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to fetch opencode messages: %v", err))

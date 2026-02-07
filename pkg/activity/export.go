@@ -59,6 +59,12 @@ type ToolState struct {
 // It fetches messages from the OpenCode API and transforms them to SSE-compatible format.
 // Returns the path to the exported file, or empty string if no messages found.
 func ExportToWorkspace(sessionID, workspacePath, serverURL string) (string, error) {
+	return ExportToWorkspaceWithClient(nil, sessionID, workspacePath, serverURL)
+}
+
+// ExportToWorkspaceWithClient exports session activity to a workspace using a provided client.
+// If client is nil, a new client is created using serverURL.
+func ExportToWorkspaceWithClient(client opencode.ClientInterface, sessionID, workspacePath, serverURL string) (string, error) {
 	if sessionID == "" {
 		return "", fmt.Errorf("session ID is required")
 	}
@@ -67,7 +73,9 @@ func ExportToWorkspace(sessionID, workspacePath, serverURL string) (string, erro
 	}
 
 	// Fetch messages from OpenCode API
-	client := opencode.NewClient(serverURL)
+	if client == nil {
+		client = opencode.NewClient(serverURL)
+	}
 	messages, err := client.GetMessages(sessionID)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch messages: %w", err)

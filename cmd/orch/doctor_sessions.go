@@ -27,13 +27,12 @@ type SessionsCrossReferenceReport struct {
 
 // runSessionsCrossReference performs a cross-reference between workspaces, OpenCode sessions,
 // and the orchestrator registry to detect orphaned workspaces, orphaned sessions, and zombies.
-func runSessionsCrossReference() error {
+func runSessionsCrossReference(client opencode.ClientInterface) error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	client := opencode.NewClient(serverURL)
 	report := &SessionsCrossReferenceReport{}
 
 	// Step 1: Build map of workspace → session IDs

@@ -163,6 +163,10 @@ type StatusOutput struct {
 }
 
 func runStatus(serverURL string) error {
+	return runStatusWithClient(opencode.NewClientWithTimeout(serverURL, 30*time.Second), serverURL)
+}
+
+func runStatusWithClient(client opencode.ClientInterface, serverURL string) error {
 	debugTiming := os.Getenv("ORCH_STATUS_DEBUG") != ""
 	timerStart := time.Now()
 	timer := func(label string) {
@@ -171,8 +175,6 @@ func runStatus(serverURL string) error {
 		}
 	}
 
-	// Use a longer timeout for status - with many sessions, OpenCode API can be slow
-	client := opencode.NewClientWithTimeout(serverURL, 30*time.Second)
 	now := time.Now()
 	projectDir, _ := os.Getwd()
 

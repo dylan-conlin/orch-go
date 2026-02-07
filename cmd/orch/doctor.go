@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/spf13/cobra"
 )
 
@@ -120,7 +121,7 @@ func runDoctor() error {
 
 	// Handle --sessions flag for workspace ↔ session cross-reference
 	if doctorSessions {
-		return runSessionsCrossReference()
+		return runSessionsCrossReference(opencode.NewClient(serverURL))
 	}
 
 	// Handle --config flag for config drift detection

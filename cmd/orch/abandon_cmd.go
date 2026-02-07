@@ -309,7 +309,10 @@ func discoverTmuxWindow(beadsID, workspacePath, agentName string) *tmux.WindowIn
 
 // discoverOpenCodeSession searches OpenCode API for a session matching the beads ID.
 func discoverOpenCodeSession(beadsID, projectDir string) string {
-	client := opencode.NewClient(serverURL)
+	return discoverOpenCodeSessionWithClient(opencode.NewClient(serverURL), beadsID, projectDir)
+}
+
+func discoverOpenCodeSessionWithClient(client opencode.ClientInterface, beadsID, projectDir string) string {
 	allSessions, _ := client.ListSessions(projectDir)
 	for _, s := range allSessions {
 		if strings.Contains(s.Title, beadsID) || extractBeadsIDFromTitle(s.Title) == beadsID {
@@ -347,7 +350,10 @@ func validateSessionCoherence(ctx *abandonContext) {
 // cleanupAgentResources kills the agent's runtime resources in the correct order:
 // docker container → tmux window → export transcript → delete session → terminate process.
 func cleanupAgentResources(ctx *abandonContext) {
-	client := opencode.NewClient(serverURL)
+	cleanupAgentResourcesWithClient(opencode.NewClient(serverURL), ctx)
+}
+
+func cleanupAgentResourcesWithClient(client opencode.ClientInterface, ctx *abandonContext) {
 
 	// Docker container must be cleaned up before tmux (tmux kill might orphan it)
 	cleanupDockerContainer(ctx.WorkspacePath)
@@ -387,7 +393,7 @@ func cleanupDockerContainer(workspacePath string) {
 }
 
 // exportSessionTranscript saves the session transcript to SESSION_LOG.md for post-mortem analysis.
-func exportSessionTranscript(client *opencode.Client, sessionID, workspacePath string) {
+func exportSessionTranscript(client opencode.ClientInterface, sessionID, workspacePath string) {
 	if sessionID == "" || workspacePath == "" {
 		return
 	}
@@ -408,7 +414,7 @@ func exportSessionTranscript(client *opencode.Client, sessionID, workspacePath s
 }
 
 // deleteOpenCodeSession removes the session from OpenCode so it no longer appears in `orch status`.
-func deleteOpenCodeSession(client *opencode.Client, sessionID string) {
+func deleteOpenCodeSession(client opencode.ClientInterface, sessionID string) {
 	if sessionID == "" {
 		return
 	}
@@ -517,6 +523,10 @@ func logAbandonTelemetry(logger *events.Logger, ctx *abandonContext) {
 
 // collectTelemetryFromWorkspace reads duration, token usage, and skill from workspace files.
 func collectTelemetryFromWorkspace(workspacePath string, data *events.AgentAbandonedData) {
+	collectTelemetryFromWorkspaceWithClient(opencode.NewClient("http://127.0.0.1:4096"), workspacePath, data)
+}
+
+func collectTelemetryFromWorkspaceWithClient(client opencode.ClientInterface, workspacePath string, data *events.AgentAbandonedData) {
 	// Read spawn time for duration calculation
 	spawnTimeFile := filepath.Join(workspacePath, ".spawn_time")
 	if spawnTimeBytes, err := os.ReadFile(spawnTimeFile); err == nil {
@@ -531,7 +541,6 @@ func collectTelemetryFromWorkspace(workspacePath string, data *events.AgentAband
 	if sessionIDBytes, err := os.ReadFile(sessionIDFile); err == nil {
 		sessionIDStr := strings.TrimSpace(string(sessionIDBytes))
 		if sessionIDStr != "" {
-			client := opencode.NewClient("http://127.0.0.1:4096")
 			if tokenStats, err := client.GetSessionTokens(sessionIDStr); err == nil && tokenStats != nil {
 				data.TokensInput = tokenStats.InputTokens
 				data.TokensOutput = tokenStats.OutputTokens

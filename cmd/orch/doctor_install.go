@@ -81,7 +81,7 @@ func startOpenCode() error {
 	}
 
 	// Wait for it to be ready (poll for up to 15 seconds)
-	client := opencode.NewClient(serverURL)
+	client := opencode.NewClient(serverURL) // entry-point: startOpenCode is infrastructure startup
 	var lastErr error
 	for i := 0; i < 30; i++ {
 		time.Sleep(500 * time.Millisecond)

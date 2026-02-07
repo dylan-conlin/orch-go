@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/cost"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
-	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/port"
@@ -194,7 +194,7 @@ func handleFocusGet(w http.ResponseWriter, r *http.Request) {
 		resp.SetAt = f.SetAt
 
 		// Check drift by getting active agents from current sessions
-		client := opencode.NewClient(serverURL)
+		client := opencode.NewClient(serverURL) // entry-point: HTTP handler creates its own client
 		sessions, _ := client.ListSessions("")
 
 		var activeIssues []string
@@ -622,7 +622,7 @@ func handleOrchestratorSessions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get active agents to count children per project
-	client := opencode.NewClient(serverURL)
+	client := opencode.NewClient(serverURL) // entry-point: HTTP handler creates its own client
 	opencodeSessions, _ := client.ListSessions("")
 
 	// Count active agents per project

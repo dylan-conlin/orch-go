@@ -17,6 +17,9 @@ import (
 type CleanStaleSessionsOptions struct {
 	// ServerURL is the OpenCode server URL
 	ServerURL string
+	// Client is an optional pre-created OpenCode client for dependency injection.
+	// If nil, a new client is created using ServerURL.
+	Client opencode.ClientInterface
 	// StaleDays is the number of days after which a session is considered stale
 	StaleDays int
 	// DryRun if true, only reports what would be deleted without actually deleting
@@ -36,7 +39,10 @@ func CleanStaleSessions(opts CleanStaleSessionsOptions) (int, error) {
 		fmt.Printf("\nScanning for stale OpenCode sessions (older than %d days)...\n", opts.StaleDays)
 	}
 
-	client := opencode.NewClient(opts.ServerURL)
+	client := opts.Client
+	if client == nil {
+		client = opencode.NewClient(opts.ServerURL)
+	}
 
 	// Get all in-memory sessions (without x-opencode-directory header)
 	sessions, err := client.ListSessions("")

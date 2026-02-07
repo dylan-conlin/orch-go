@@ -514,7 +514,7 @@ func synthesizeAnswer(question, context string) (string, error) {
 	}
 
 	// Create a temporary session for synthesis
-	client := opencode.NewClient(serverURL)
+	client := opencode.NewClient(serverURL) // entry-point: synthesizeAnswer is a self-contained operation
 	projectDir, _ := os.Getwd()
 
 	// Create session with title indicating kb ask

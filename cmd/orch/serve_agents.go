@@ -100,7 +100,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		projectDir, _ = os.Getwd()
 	}
 
-	client := opencode.NewClient(serverURL)
+	client := opencode.NewClient(serverURL) // entry-point: HTTP handler creates its own client
 
 	// Get active sessions from OpenCode (all projects, not filtered by directory)
 	sessions, err := client.ListSessions("")

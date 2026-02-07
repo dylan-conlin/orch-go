@@ -40,7 +40,10 @@ func getMaxAgents() int {
 // ensureOpenCodeRunning checks if OpenCode is reachable, and starts it if not.
 // Returns nil if OpenCode is running (or was successfully started), error otherwise.
 func ensureOpenCodeRunning() error {
-	client := opencode.NewClient(serverURL)
+	return ensureOpenCodeRunningWithClient(opencode.NewClient(serverURL))
+}
+
+func ensureOpenCodeRunningWithClient(client opencode.ClientInterface) error {
 	_, err := client.ListSessions("")
 	if err == nil {
 		return nil // Already running
@@ -98,7 +101,7 @@ func checkConcurrencyLimit() error {
 	}
 
 	// Check active count via OpenCode API
-	client := opencode.NewClient(serverURL)
+	client := opencode.NewClient(serverURL) // entry-point: checkConcurrencyLimit is called before spawn
 	sessions, err := client.ListSessions("")
 	if err != nil {
 		// If we can't check, log a warning but allow the spawn

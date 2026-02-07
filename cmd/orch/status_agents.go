@@ -19,7 +19,7 @@ import (
 // isSessionLikelyProcessing checks if a session might be processing based on its last update time.
 // Only makes the expensive IsSessionProcessing HTTP call for recently updated sessions.
 // For sessions not updated recently, assumes they are idle (saves ~100ms per call).
-func isSessionLikelyProcessing(client *opencode.Client, sessionID string, lastUpdated time.Time, now time.Time) bool {
+func isSessionLikelyProcessing(client opencode.ClientInterface, sessionID string, lastUpdated time.Time, now time.Time) bool {
 	// If the session hasn't been updated in the last 5 minutes, it's definitely not processing
 	if now.Sub(lastUpdated) > processingCheckMaxAge {
 		return false

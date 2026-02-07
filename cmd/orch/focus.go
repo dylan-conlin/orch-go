@@ -259,14 +259,16 @@ func runDrift() error {
 // getActiveIssues returns the beads IDs of currently active work.
 // Uses OpenCode API to list active sessions and extracts beads IDs from session titles.
 func getActiveIssues() []string {
+	return getActiveIssuesWithClient(opencode.NewClient("http://127.0.0.1:4096"))
+}
+
+func getActiveIssuesWithClient(client opencode.ClientInterface) []string {
 	// Get current directory for project context
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return nil
 	}
 
-	// Use default OpenCode server URL
-	client := opencode.NewClient("http://127.0.0.1:4096")
 	sessions, err := client.ListSessions(projectDir)
 	if err != nil {
 		return nil

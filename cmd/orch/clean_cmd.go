@@ -130,7 +130,7 @@ func init() {
 
 // DefaultLivenessChecker checks if tmux windows and OpenCode sessions exist.
 type DefaultLivenessChecker struct {
-	client *opencode.Client
+	client opencode.ClientInterface
 }
 
 // NewDefaultLivenessChecker creates a new liveness checker.
@@ -546,6 +546,10 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 // If preserveOrchestrator is true, sessions associated with orchestrator workspaces are skipped.
 // Returns the number of sessions deleted and any error encountered.
 func cleanOrphanedDiskSessions(serverURL string, dryRun bool, preserveOrchestrator bool) (int, error) {
+	return cleanOrphanedDiskSessionsWithClient(opencode.NewClient(serverURL), dryRun, preserveOrchestrator)
+}
+
+func cleanOrphanedDiskSessionsWithClient(client opencode.ClientInterface, dryRun bool, preserveOrchestrator bool) (int, error) {
 	// Get current project directory
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -553,8 +557,6 @@ func cleanOrphanedDiskSessions(serverURL string, dryRun bool, preserveOrchestrat
 	}
 
 	fmt.Printf("\nVerifying OpenCode disk sessions for %s...\n", projectDir)
-
-	client := opencode.NewClient(serverURL)
 
 	// Fetch all disk sessions for this directory
 	diskSessions, err := client.ListDiskSessions(projectDir)
@@ -680,7 +682,10 @@ func cleanOrphanedDiskSessions(serverURL string, dryRun bool, preserveOrchestrat
 // If preserveOrchestrator is true, windows in orchestrator/meta-orchestrator sessions are skipped.
 // Returns the number of windows closed and any error encountered.
 func cleanPhantomWindows(serverURL string, dryRun bool, preserveOrchestrator bool) (int, error) {
-	client := opencode.NewClient(serverURL)
+	return cleanPhantomWindowsWithClient(opencode.NewClient(serverURL), dryRun, preserveOrchestrator)
+}
+
+func cleanPhantomWindowsWithClient(client opencode.ClientInterface, dryRun bool, preserveOrchestrator bool) (int, error) {
 	now := time.Now()
 	const maxIdleTime = 30 * time.Minute
 
@@ -1243,7 +1248,10 @@ func archiveUntrackedWorkspaces(projectDir string, untrackedDays int, dryRun boo
 // cleanOrphanProcesses finds and kills bun agent processes that are not associated
 // with any active OpenCode session. Returns the number of processes killed.
 func cleanOrphanProcesses(serverURL string, dryRun bool) (int, error) {
-	client := opencode.NewClient(serverURL)
+	return cleanOrphanProcessesWithClient(opencode.NewClient(serverURL), dryRun)
+}
+
+func cleanOrphanProcessesWithClient(client opencode.ClientInterface, dryRun bool) (int, error) {
 
 	fmt.Println("\nScanning for orphan bun processes...")
 

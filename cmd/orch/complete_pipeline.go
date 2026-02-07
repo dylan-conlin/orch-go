@@ -854,6 +854,10 @@ func exportActivity(target *CompletionTarget) {
 // deleteSessionAndProcess deletes the OpenCode session and terminates the process.
 // Returns (sessionDeleted, processTerminated).
 func deleteSessionAndProcess(target *CompletionTarget) (bool, bool) {
+	return deleteSessionAndProcessWithClient(opencode.NewClient(serverURL), target)
+}
+
+func deleteSessionAndProcessWithClient(client opencode.ClientInterface, target *CompletionTarget) (bool, bool) {
 	var sessionDeleted, processTerminated bool
 
 	sessionFile := filepath.Join(target.WorkspacePath, ".session_id")
@@ -861,7 +865,6 @@ func deleteSessionAndProcess(target *CompletionTarget) (bool, bool) {
 	if err == nil {
 		sessionID := strings.TrimSpace(string(data))
 		if sessionID != "" {
-			client := opencode.NewClient(serverURL)
 			if err := client.DeleteSession(sessionID); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to delete OpenCode session %s: %v\n", sessionID[:12], err)
 			} else {

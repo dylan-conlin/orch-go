@@ -153,7 +153,7 @@ func agentInfoFromStateDB(dbAgent *state.Agent, now time.Time, currentProjectDir
 //   - Beads: phase (from comments), issue status (open/closed)
 func enrichStateDBAgentsLive(
 	result *stateDBAgentResult,
-	client *opencode.Client,
+	client opencode.ClientInterface,
 	sessions []opencode.Session,
 	now time.Time,
 	showAll bool,
@@ -540,7 +540,7 @@ func fallbackDiscoverAgents(
 // runStatusFallbackPath runs the original multi-source agent discovery and enrichment.
 // This is used when the state DB is empty or unavailable.
 func runStatusFallbackPath(
-	client *opencode.Client,
+	client opencode.ClientInterface,
 	sessions []opencode.Session,
 	now time.Time,
 	projectDir string,

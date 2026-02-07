@@ -112,10 +112,11 @@ func ResumeAgentByBeadsID(beadsID string) error {
 		serverURL = "http://127.0.0.1:4096"
 	}
 
+	client := opencode.NewClient(serverURL)
+
 	if sessionID == "" {
-		client := opencode.NewClient(serverURL)
-		allSessions, err := client.ListSessions(projectDir)
-		if err == nil {
+		allSessions, listErr := client.ListSessions(projectDir)
+		if listErr == nil {
 			for _, s := range allSessions {
 				if strings.Contains(s.Title, beadsID) {
 					sessionID = s.ID
@@ -152,7 +153,6 @@ func ResumeAgentByBeadsID(beadsID string) error {
 	}
 
 	// Send resume message via OpenCode API
-	client := opencode.NewClient(serverURL)
 	if err := client.SendMessageAsync(sessionID, prompt, ""); err != nil {
 		return fmt.Errorf("failed to send resume prompt: %w", err)
 	}
@@ -325,6 +325,11 @@ func (s *ServerRecoveryState) MarkRecovered(beadsID string) {
 // killed by server restart before it has a chance to update its beads status
 // to "in_progress". The workspace existence is the key indicator of work started.
 func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
+	return FindOrphanedSessionsWithClient(opencode.NewClient(serverURL), serverURL)
+}
+
+// FindOrphanedSessionsWithClient finds orphaned sessions using a provided client.
+func FindOrphanedSessionsWithClient(client opencode.ClientInterface, serverURL string) ([]OrphanedSession, error) {
 	fmt.Printf("[DEBUG] FindOrphanedSessions: starting with serverURL=%s\n", serverURL)
 
 	projectDir, err := os.Getwd()
@@ -363,7 +368,6 @@ func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
 	commentMap := verify.GetCommentsBatch(candidateIDs)
 
 	// Get current in-memory sessions from OpenCode
-	client := opencode.NewClient(serverURL)
 	inMemorySessions, err := client.ListSessions(projectDir)
 	if err != nil {
 		fmt.Printf("[DEBUG] FindOrphanedSessions: ListSessions error (treating as empty): %v\n", err)
@@ -486,6 +490,11 @@ func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
 // ResumeOrphanedAgent resumes an orphaned agent with recovery-specific context.
 // Unlike ResumeAgentByBeadsID, this includes context about the server restart.
 func ResumeOrphanedAgent(orphan OrphanedSession, serverURL string) error {
+	return ResumeOrphanedAgentWithClient(opencode.NewClient(serverURL), orphan, serverURL)
+}
+
+// ResumeOrphanedAgentWithClient resumes an orphaned agent using a provided client.
+func ResumeOrphanedAgentWithClient(client opencode.ClientInterface, orphan OrphanedSession, serverURL string) error {
 	projectName := filepath.Base(orphan.ProjectDir)
 
 	// Generate recovery-specific resume prompt
@@ -518,7 +527,6 @@ func ResumeOrphanedAgent(orphan OrphanedSession, serverURL string) error {
 	}
 
 	// Send resume message via OpenCode API
-	client := opencode.NewClient(serverURL)
 	if err := client.SendMessageAsync(orphan.SessionID, prompt, ""); err != nil {
 		return fmt.Errorf("failed to send recovery prompt: %w", err)
 	}

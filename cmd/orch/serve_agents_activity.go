@@ -222,7 +222,7 @@ func handleSessionMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := opencode.NewClient(serverURL)
+	client := opencode.NewClient(serverURL) // entry-point: HTTP handler creates its own client
 	messages, err := client.GetMessages(sessionID)
 	if err != nil {
 		// OpenCode API failed (session may be deleted/cleaned up).

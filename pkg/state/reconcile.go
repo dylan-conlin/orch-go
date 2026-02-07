@@ -75,6 +75,15 @@ func IsLive(beadsID, serverURL, projectDir string) (tmuxLive, opencodeLive bool)
 // GetLiveness returns detailed liveness information for an agent.
 // This is the comprehensive version that returns all state information.
 func GetLiveness(beadsID, serverURL, projectDir string) LivenessResult {
+	var client opencode.ClientInterface
+	if serverURL != "" {
+		client = opencode.NewClient(serverURL)
+	}
+	return GetLivenessWithClient(client, beadsID, projectDir)
+}
+
+// GetLivenessWithClient returns detailed liveness information using a provided client.
+func GetLivenessWithClient(client opencode.ClientInterface, beadsID, projectDir string) LivenessResult {
 	result := LivenessResult{}
 
 	if beadsID == "" {
@@ -96,10 +105,9 @@ func GetLiveness(beadsID, serverURL, projectDir string) LivenessResult {
 	}
 
 	// 3. Check OpenCode session
-	if serverURL != "" {
-		result.OpencodeLive, result.SessionID = checkOpenCodeSession(serverURL, projectDir, beadsID, workspacePath)
+	if client != nil {
+		result.OpencodeLive, result.SessionID = checkOpenCodeSessionWithClient(client, projectDir, beadsID, workspacePath)
 		if result.OpencodeLive && result.SessionID != "" {
-			client := opencode.NewClient(serverURL)
 			result.IsProcessing = client.IsSessionProcessing(result.SessionID)
 		}
 	}
@@ -122,8 +130,10 @@ const DefaultMaxIdleTime = 30 * time.Minute
 // NOTE: OpenCode persists sessions to disk, so we check activity time rather than
 // just existence. A session is considered "active" if updated within DefaultMaxIdleTime.
 func checkOpenCodeSession(serverURL, projectDir, beadsID, workspacePath string) (bool, string) {
-	client := opencode.NewClient(serverURL)
+	return checkOpenCodeSessionWithClient(opencode.NewClient(serverURL), projectDir, beadsID, workspacePath)
+}
 
+func checkOpenCodeSessionWithClient(client opencode.ClientInterface, projectDir, beadsID, workspacePath string) (bool, string) {
 	// Try 1: Read session ID from workspace file
 	if workspacePath != "" {
 		sessionFile := filepath.Join(workspacePath, ".session_id")

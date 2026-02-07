@@ -33,16 +33,17 @@ Examples:
   orch-go tail --session ses_xxx     # Capture from a specific OpenCode session (for non-orch-spawned sessions)`,
 	Args: cobra.RangeArgs(0, 1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		client := opencode.NewClient(serverURL)
 		// Direct session ID access for non-orch-spawned sessions
 		if tailSessionID != "" {
-			return runTailBySessionID(tailSessionID, tailLines)
+			return runTailBySessionID(client, tailSessionID, tailLines)
 		}
 		// Standard beads ID lookup
 		if len(args) == 0 {
 			return fmt.Errorf("beads-id required (or use --session for direct session access)")
 		}
 		beadsID := args[0]
-		return runTail(beadsID, tailLines)
+		return runTail(client, beadsID, tailLines)
 	},
 }
 
@@ -53,9 +54,7 @@ func init() {
 
 // runTailBySessionID fetches messages directly from an OpenCode session by its ID.
 // This is used for sessions that weren't spawned via orch (no beads ID association).
-func runTailBySessionID(sessionID string, lines int) error {
-	client := opencode.NewClient(serverURL)
-
+func runTailBySessionID(client opencode.ClientInterface, sessionID string, lines int) error {
 	// Verify session exists
 	session, err := client.GetSession(sessionID)
 	if err != nil {
@@ -91,8 +90,7 @@ func truncateSessionID(id string) string {
 	return id[:16] + "..."
 }
 
-func runTail(beadsID string, lines int) error {
-	client := opencode.NewClient(serverURL)
+func runTail(client opencode.ClientInterface, beadsID string, lines int) error {
 	projectDir, _ := os.Getwd()
 
 	// Strategy: Workspace file first (fast path), then derived lookups

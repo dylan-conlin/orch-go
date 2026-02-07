@@ -207,6 +207,12 @@ func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentNam
 //
 // Returns the resolved session ID or an error if resolution fails.
 func resolveSessionID(serverURL, identifier string) (string, error) {
+	client := opencode.NewClient(serverURL)
+	return resolveSessionIDWithClient(client, identifier)
+}
+
+// resolveSessionIDWithClient resolves an identifier to an OpenCode session ID using a provided client.
+func resolveSessionIDWithClient(client opencode.ClientInterface, identifier string) (string, error) {
 	// If it looks like a full session ID, verify it exists
 	if strings.HasPrefix(identifier, "ses_") {
 		// Validate the session ID has content after the prefix
@@ -215,7 +221,6 @@ func resolveSessionID(serverURL, identifier string) (string, error) {
 			return "", fmt.Errorf("invalid session ID format: %s (too short)", identifier)
 		}
 		// Verify the session exists in OpenCode
-		client := opencode.NewClient(serverURL)
 		_, err := client.GetSession(identifier)
 		if err != nil {
 			return "", fmt.Errorf("session not found in OpenCode: %s", identifier)
@@ -223,7 +228,6 @@ func resolveSessionID(serverURL, identifier string) (string, error) {
 		return identifier, nil
 	}
 
-	client := opencode.NewClient(serverURL)
 	projectDir, _ := os.Getwd()
 
 	// Strategy 1: Use findWorkspaceByBeadsID which scans SPAWN_CONTEXT.md

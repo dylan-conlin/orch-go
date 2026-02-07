@@ -139,7 +139,11 @@ func runFrontier() error {
 // getActiveAndStuckAgents discovers agents from tmux windows and OpenCode sessions,
 // then splits them into active (< 2h) and stuck (>= 2h) categories.
 // This uses authoritative sources (live runtime state) for liveness detection.
-func getActiveAndStuckAgents() (active, stuck []ActiveOutput) {
+func getActiveAndStuckAgents() ([]ActiveOutput, []ActiveOutput) {
+	return getActiveAndStuckAgentsWithClient(opencode.NewClient(serverURL))
+}
+
+func getActiveAndStuckAgentsWithClient(client opencode.ClientInterface) (active, stuck []ActiveOutput) {
 	// Initialize as empty slices (not nil) to ensure JSON encodes as [] not null
 	active = []ActiveOutput{}
 	stuck = []ActiveOutput{}
@@ -182,7 +186,6 @@ func getActiveAndStuckAgents() (active, stuck []ActiveOutput) {
 
 	// Phase 2: Discover agents from OpenCode sessions
 	// Use 3h window to catch stuck agents (beyond 2h threshold)
-	client := opencode.NewClient(serverURL)
 	sessions, err := client.ListSessions("")
 	if err != nil {
 		return active, stuck

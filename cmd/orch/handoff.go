@@ -313,6 +313,10 @@ func gatherHandoffData() (*HandoffData, error) {
 }
 
 func gatherActiveAgents(projectDir string) []ActiveAgent {
+	return gatherActiveAgentsWithClient(opencode.NewClient(serverURL), projectDir)
+}
+
+func gatherActiveAgentsWithClient(client opencode.ClientInterface, projectDir string) []ActiveAgent {
 	var agents []ActiveAgent
 	projectName := filepath.Base(projectDir)
 
@@ -361,7 +365,6 @@ func gatherActiveAgents(projectDir string) []ActiveAgent {
 	}
 
 	// Also check OpenCode sessions for headless agents
-	client := opencode.NewClient(serverURL)
 	sessions, _ := client.ListSessions("")
 	sessionSet := make(map[string]bool)
 	for _, a := range agents {

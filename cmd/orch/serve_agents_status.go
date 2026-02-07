@@ -12,7 +12,7 @@ import (
 
 // determineDeathReason analyzes why an agent died and returns a specific reason code.
 // Reasons: "server_restart", "context_exhausted", "auth_failed", "error", "timeout", "unknown"
-func determineDeathReason(sessionID string, sessionCreatedAt time.Time, client *opencode.Client) string {
+func determineDeathReason(sessionID string, sessionCreatedAt time.Time, client opencode.ClientInterface) string {
 	// Check if session existed before server restart
 	if !serverStartTime.IsZero() && sessionCreatedAt.Before(serverStartTime) {
 		return "server_restart"

@@ -359,8 +359,11 @@ func formatSessionTitle(workspaceName, beadsID string) string {
 
 // runSpawnInline spawns the agent inline (blocking) - original behavior.
 func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
+	return runSpawnInlineWithClient(opencode.NewClient(serverURL), serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+}
+
+func runSpawnInlineWithClient(client opencode.ClientInterface, serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
 	// Spawn opencode session
-	client := opencode.NewClient(serverURL)
 	// Format title with beads ID so orch status can match sessions
 	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
 	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model, cfg.Variant)
@@ -449,7 +452,10 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 // (the HTTP API ignores the model parameter).
 // Includes retry logic for transient network failures.
 func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
-	client := opencode.NewClient(serverURL)
+	return runSpawnHeadlessWithClient(opencode.NewClient(serverURL), serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+}
+
+func runSpawnHeadlessWithClient(client opencode.ClientInterface, serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
 
 	// Build opencode command using CLI (like inline mode) to support model selection
 	// The HTTP API ignores model parameter - only CLI mode honors --model flag
@@ -586,7 +592,7 @@ func stripANSI(s string) string {
 // Note: Uses CLI mode instead of HTTP API because OpenCode's HTTP API ignores the model parameter.
 // CLI mode correctly honors the --model flag.
 // See: .kb/investigations/2025-12-23-inv-model-selection-issue-architect-agent.md
-func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
+func startHeadlessSession(client opencode.ClientInterface, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
 	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model, cfg.Variant)
 	cmd.Dir = cfg.ProjectDir
 	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
@@ -637,6 +643,10 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 // runSpawnTmux spawns the agent in a tmux window (interactive, returns immediately).
 // Creates a tmux window in workers-{project} session (or orchestrator session for orchestrator skills).
 func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string, attach bool) error {
+	return runSpawnTmuxWithClient(opencode.NewClient(serverURL), serverURL, cfg, minimalPrompt, beadsID, skillName, task, attach)
+}
+
+func runSpawnTmuxWithClient(client opencode.ClientInterface, serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string, attach bool) error {
 	var sessionName string
 	var err error
 
@@ -662,7 +672,6 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 
 	// When a model is specified, create the session via API first (opencode attach
 	// doesn't accept --model). Then attach to that session by ID.
-	client := opencode.NewClient(serverURL)
 	var preCreatedSessionID string
 	if cfg.Model != "" {
 		resp, createErr := client.CreateSession(cfg.WorkspaceName, cfg.ProjectDir, cfg.Model, "", !cfg.IsOrchestrator && !cfg.IsMetaOrchestrator)

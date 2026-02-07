@@ -96,6 +96,10 @@ func archiveWorkspace(workspacePath, projectDir string) (string, error) {
 // Returns (durationSeconds, tokensInput, tokensOutput, outcome).
 // Returns zeros if telemetry collection fails (non-blocking).
 func collectCompletionTelemetry(workspacePath string, forced bool, verificationPassed bool) (int, int, int, string) {
+	return collectCompletionTelemetryWithClient(opencode.NewClient("http://127.0.0.1:4096"), workspacePath, forced, verificationPassed)
+}
+
+func collectCompletionTelemetryWithClient(client opencode.ClientInterface, workspacePath string, forced bool, verificationPassed bool) (int, int, int, string) {
 	var durationSeconds int
 	var tokensInput int
 	var tokensOutput int
@@ -125,7 +129,6 @@ func collectCompletionTelemetry(workspacePath string, forced bool, verificationP
 		sessionID := strings.TrimSpace(string(sessionIDBytes))
 		if sessionID != "" {
 			// Get token usage from OpenCode API
-			client := opencode.NewClient("http://127.0.0.1:4096")
 			if tokenStats, err := client.GetSessionTokens(sessionID); err == nil && tokenStats != nil {
 				tokensInput = tokenStats.InputTokens
 				tokensOutput = tokenStats.OutputTokens

@@ -25,6 +25,9 @@ import (
 // Each phase reads and writes to this struct, replacing the long chain
 // of local variables in the original monolithic function.
 type spawnPipeline struct {
+	// Dependencies
+	client opencode.ClientInterface
+
 	// Inputs (from caller)
 	serverURL    string
 	skillName    string
@@ -78,6 +81,7 @@ type spawnPipeline struct {
 // newSpawnPipeline creates a pipeline with inputs from the caller.
 func newSpawnPipeline(serverURL, skillName, task string, inline, headless, tmux, attach, daemonDriven bool) *spawnPipeline {
 	return &spawnPipeline{
+		client:       opencode.NewClient(serverURL),
 		serverURL:    serverURL,
 		skillName:    skillName,
 		task:         task,
@@ -270,11 +274,10 @@ func (p *spawnPipeline) setupIssueTracking() error {
 				return fmt.Errorf("issue %s has Phase: Complete but is not closed. Run 'orch complete %s' first", p.beadsID, p.beadsID)
 			}
 			if issue.Status == "in_progress" {
-				client := opencode.NewClient(p.serverURL)
-				sessions, _ := client.ListSessions("")
+				sessions, _ := p.client.ListSessions("")
 				for _, s := range sessions {
 					if strings.Contains(s.Title, p.beadsID) {
-						if client.IsSessionActive(s.ID, 30*time.Minute) {
+						if p.client.IsSessionActive(s.ID, 30*time.Minute) {
 							return fmt.Errorf("issue %s is already in_progress with active agent (session %s). Use 'orch send %s' to interact or 'orch abandon %s' to restart", p.beadsID, s.ID, s.ID, p.beadsID)
 						}
 						fmt.Fprintf(os.Stderr, "Note: found stale session %s for issue %s (no activity in 30m)\n", s.ID[:12], p.beadsID)
@@ -610,14 +613,13 @@ func (p *spawnPipeline) executeSpawn() error {
 
 	// Connect MCP servers if --mcp is specified (opencode backend only)
 	if p.cfg.MCP != "" && p.cfg.SpawnMode != "claude" && p.cfg.SpawnMode != "docker" {
-		client := opencode.NewClient(p.serverURL)
 		for _, name := range strings.Split(p.cfg.MCP, ",") {
 			name = strings.TrimSpace(name)
 			if name == "" {
 				continue
 			}
 			fmt.Printf("Connecting MCP server: %s\n", name)
-			if err := client.MCPConnect(name); err != nil {
+			if err := p.client.MCPConnect(name); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to connect MCP server %s: %v\n", name, err)
 			}
 		}

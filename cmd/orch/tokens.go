@@ -37,10 +37,11 @@ Examples:
   orch tokens ses_abc123           # Show specific session
   orch tokens orch-go-3anf         # Show by beads ID`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		client := opencode.NewClient(serverURL)
 		if len(args) > 0 {
-			return runTokensDetail(args[0])
+			return runTokensDetail(client, args[0])
 		}
-		return runTokensSummary()
+		return runTokensSummary(client)
 	},
 }
 
@@ -76,8 +77,7 @@ type TokensTotal struct {
 	TotalTokens     int `json:"total_tokens"`
 }
 
-func runTokensSummary() error {
-	client := opencode.NewClient(serverURL)
+func runTokensSummary(client opencode.ClientInterface) error {
 	now := time.Now()
 
 	// List all sessions
@@ -232,14 +232,12 @@ func printTokensSummary(output TokensSummaryOutput) {
 	}
 }
 
-func runTokensDetail(identifier string) error {
+func runTokensDetail(client opencode.ClientInterface, identifier string) error {
 	// Resolve identifier to session ID
 	sessionID, err := resolveSessionID(serverURL, identifier)
 	if err != nil {
 		return fmt.Errorf("failed to resolve session: %w", err)
 	}
-
-	client := opencode.NewClient(serverURL)
 
 	// Get session info
 	session, err := client.GetSession(sessionID)

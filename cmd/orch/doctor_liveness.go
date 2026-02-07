@@ -16,6 +16,10 @@ import (
 )
 
 func checkOpenCode() ServiceStatus {
+	return checkOpenCodeWithClient(opencode.NewClient(serverURL))
+}
+
+func checkOpenCodeWithClient(client opencode.ClientInterface) ServiceStatus {
 	status := ServiceStatus{
 		Name:      "OpenCode",
 		Port:      4096,
@@ -23,8 +27,6 @@ func checkOpenCode() ServiceStatus {
 		CanFix:    true,
 		FixAction: "opencode serve --port 4096",
 	}
-
-	client := opencode.NewClient(serverURL)
 	_, err := client.ListSessions("")
 	if err == nil {
 		status.Running = true
@@ -410,13 +412,15 @@ func checkAllEcosystemBinaries() EcosystemBinariesStatus {
 }
 
 func checkStalledSessions() ServiceStatus {
+	return checkStalledSessionsWithClient(opencode.NewClient(serverURL))
+}
+
+func checkStalledSessionsWithClient(client opencode.ClientInterface) ServiceStatus {
 	status := ServiceStatus{
 		Name:      "Session Health",
 		CanFix:    false,
 		FixAction: "Use 'orch status' to review stalled sessions, 'orch abandon' to clean up",
 	}
-
-	client := opencode.NewClient(serverURL)
 	now := time.Now()
 
 	// Get current project directory for session queries

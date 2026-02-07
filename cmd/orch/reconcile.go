@@ -156,9 +156,12 @@ func findZombieIssuesFallback(projectDir string) ([]ZombieIssue, error) {
 }
 
 func filterZombies(projectDir string, issues []beads.Issue) ([]ZombieIssue, error) {
+	return filterZombiesWithClient(opencode.NewClient(serverURL), projectDir, issues)
+}
+
+func filterZombiesWithClient(ocClient opencode.ClientInterface, projectDir string, issues []beads.Issue) ([]ZombieIssue, error) {
 	now := time.Now()
 	var zombies []ZombieIssue
-	ocClient := opencode.NewClient(serverURL)
 
 	var activeSessions []opencode.Session
 	seenSessionIDs := make(map[string]bool)

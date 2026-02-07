@@ -30,6 +30,53 @@ const DefaultHTTPTimeout = 10 * time.Second
 // so we use 1MB instead of the default 64KB (bufio.MaxScanTokenSize) to prevent ErrTooLong.
 const LargeScannerBufferSize = 1024 * 1024 // 1MB
 
+// ClientInterface defines the operations available on an OpenCode client.
+// Use this interface for dependency injection and testability.
+// The concrete *Client type satisfies this interface.
+type ClientInterface interface {
+	// Session CRUD
+	ListSessions(directory string) ([]Session, error)
+	ListSessionsWithOpts(directory string, opts *ListSessionsOpts) ([]Session, error)
+	ListDiskSessions(directory string) ([]Session, error)
+	GetSession(sessionID string) (*Session, error)
+	CreateSession(title, directory, model, variant string, isWorker bool) (*CreateSessionResponse, error)
+	DeleteSession(sessionID string) error
+
+	// Session queries
+	SessionExists(sessionID string) bool
+	IsSessionActive(sessionID string, maxIdleTime time.Duration) bool
+	IsSessionProcessing(sessionID string) bool
+	FindRecentSession(projectDir string) (string, error)
+	FindRecentSessionWithRetry(projectDir string, maxAttempts int, initialDelay time.Duration) (string, error)
+
+	// Messages
+	GetMessages(sessionID string) ([]Message, error)
+	GetLastMessage(sessionID string) (*Message, error)
+	SendMessageAsync(sessionID, content, model string) error
+	SendPrompt(sessionID, prompt, model string) error
+	SendMessageWithStreaming(sessionID, content string, streamTo io.Writer) error
+
+	// Session metadata
+	GetSessionModel(sessionID string) string
+	GetSessionTokens(sessionID string) (*TokenStats, error)
+	GetSessionEnrichment(sessionID string) SessionEnrichment
+	GetLastActivity(sessionID string) (*LastActivity, error)
+	UpdateSessionTitle(sessionID, newTitle string) error
+	ExportSessionTranscript(sessionID string) (string, error)
+
+	// CLI command builders
+	BuildSpawnCommand(prompt, title, model, variant string) *exec.Cmd
+	BuildAskCommand(sessionID, prompt string) *exec.Cmd
+
+	// MCP
+	MCPStatus() (map[string]MCPServerStatus, error)
+	MCPConnect(name string) error
+	MCPDisconnect(name string) error
+}
+
+// Compile-time assertion that *Client implements ClientInterface.
+var _ ClientInterface = (*Client)(nil)
+
 // Client handles OpenCode CLI interactions.
 type Client struct {
 	ServerURL  string
