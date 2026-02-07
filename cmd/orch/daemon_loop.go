@@ -76,6 +76,8 @@ func buildDaemonConfig() (daemon.Config, error) {
 	config.OrphanReapEnabled = daemonOrphanReapEnabled && daemonOrphanReapInterval > 0
 	config.OrphanReapInterval = time.Duration(daemonOrphanReapInterval) * time.Minute
 	config.SortMode = daemonSortMode
+	config.DashboardWatchdogEnabled = daemonDashboardWatchdog && daemonDashboardWatchdogInterval > 0
+	config.DashboardWatchdogInterval = time.Duration(daemonDashboardWatchdogInterval) * time.Second
 
 	return config, nil
 }
@@ -188,6 +190,14 @@ func printDaemonBanner(config daemon.Config) {
 	} else {
 		fmt.Println("  Dead session det:  disabled")
 	}
+	if config.DashboardWatchdogEnabled {
+		fmt.Printf("  Dashboard watch:   %s (restart after %d consecutive failures, %s cooldown)\n",
+			formatDaemonDuration(config.DashboardWatchdogInterval),
+			config.DashboardWatchdogFailuresBeforeRestart,
+			formatDaemonDuration(config.DashboardWatchdogRestartCooldown))
+	} else {
+		fmt.Println("  Dashboard watch:   disabled")
+	}
 	fmt.Println()
 }
 
@@ -297,6 +307,29 @@ func (rt *daemonRuntime) runSubsystems(timestamp string) {
 			Error:       result.Error,
 			Message:     result.Message,
 			HasActivity: result.Killed > 0,
+			Data:        data,
+		})
+	}
+
+	// Run dashboard health watchdog if due
+	if result := rt.d.CheckDashboardHealth(); result != nil {
+		data := map[string]interface{}{
+			"healthy":   result.Healthy,
+			"restarted": result.Restarted,
+			"message":   result.Message,
+		}
+		if len(result.DownServices) > 0 {
+			data["down_services"] = result.DownServices
+		}
+		if result.Error != nil {
+			data["error"] = result.Error.Error()
+		}
+		logSubsystemResult(rt.logger, timestamp, daemonVerbose, subsystemResult{
+			Name:        "Dashboard watchdog",
+			EventType:   "daemon.dashboard_watchdog",
+			Error:       result.Error,
+			Message:     result.Message,
+			HasActivity: !result.Healthy,
 			Data:        data,
 		})
 	}

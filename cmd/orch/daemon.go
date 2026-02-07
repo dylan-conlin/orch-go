@@ -136,6 +136,8 @@ var (
 	daemonOrphanReapEnabled            bool   // Enable periodic orphan process reaping
 	daemonOrphanReapInterval           int    // Orphan reap interval in minutes (0 = disabled)
 	daemonSortMode                     string // Sort strategy for issue prioritization
+	daemonDashboardWatchdog            bool   // Enable dashboard health watchdog
+	daemonDashboardWatchdogInterval    int    // Dashboard watchdog check interval in seconds
 )
 
 func init() {
@@ -185,6 +187,10 @@ func init() {
 
 	// Sort mode for issue prioritization
 	daemonRunCmd.Flags().StringVar(&daemonSortMode, "sort-mode", "priority", "Sort strategy for issue prioritization (priority, unblock)")
+
+	// Dashboard health watchdog
+	daemonRunCmd.Flags().BoolVar(&daemonDashboardWatchdog, "dashboard-watchdog", true, "Enable dashboard health monitoring and auto-restart (default: true)")
+	daemonRunCmd.Flags().IntVar(&daemonDashboardWatchdogInterval, "dashboard-watchdog-interval", 30, "Dashboard health check interval in seconds (default: 30)")
 
 	// Add label filter to preview and once commands (share the same variable)
 	daemonPreviewCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")

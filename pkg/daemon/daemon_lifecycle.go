@@ -181,47 +181,71 @@ type Config struct {
 	// Available modes: "priority" (default), "unblock".
 	// See pkg/daemon/sort/ for strategy details.
 	SortMode string
+
+	// DashboardWatchdogEnabled controls whether dashboard health monitoring is enabled.
+	// When enabled, the daemon periodically checks if dashboard services (api on 3348,
+	// web on 5188) are responding and automatically restarts them via `orch-dashboard restart`.
+	DashboardWatchdogEnabled bool
+
+	// DashboardWatchdogInterval is how often to check dashboard health.
+	// Default is 30 seconds (matches daemon poll interval for responsive detection).
+	DashboardWatchdogInterval time.Duration
+
+	// DashboardWatchdogFailuresBeforeRestart is how many consecutive health check
+	// failures are required before triggering a restart. This prevents flapping
+	// on transient network issues.
+	// Default is 2 (restart after ~1 minute of consecutive failures at 30s interval).
+	DashboardWatchdogFailuresBeforeRestart int
+
+	// DashboardWatchdogRestartCooldown is the minimum time between restart attempts.
+	// Prevents infinite restart loops when the underlying issue persists.
+	// Default is 5 minutes.
+	DashboardWatchdogRestartCooldown time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
 func DefaultConfig() Config {
 	return Config{
-		PollInterval:                     time.Minute,
-		MaxAgents:                        3,
-		MaxSpawnsPerHour:                 20, // Prevents runaway spawning
-		Label:                            "triage:ready",
-		SpawnDelay:                       10 * time.Second,
-		DryRun:                           false,
-		Verbose:                          false,
-		ReflectEnabled:                   true,
-		ReflectInterval:                  time.Hour, // Hourly by default
-		ReflectCreateIssues:              true,
-		CleanupEnabled:                   true,
-		CleanupInterval:                  6 * time.Hour, // Every 6 hours by default
-		CleanupSessions:                  true,          // Clean sessions by default
-		CleanupSessionsAgeDays:           7,             // 7 days threshold for sessions
-		CleanupWorkspaces:                true,          // Archive stale workspaces by default
-		CleanupWorkspacesAgeDays:         7,             // 7 days threshold for workspaces
-		CleanupInvestigations:            true,          // Archive empty investigations by default
-		CleanupPreserveOrchestrator:      true,          // Preserve orchestrator sessions
-		CleanupServerURL:                 "http://127.0.0.1:4096",
-		RecoveryEnabled:                  true,
-		RecoveryInterval:                 5 * time.Minute,  // Check every 5 minutes
-		RecoveryIdleThreshold:            10 * time.Minute, // Idle >10min triggers recovery
-		RecoveryRateLimit:                time.Hour,        // 1 resume per agent per hour
-		ServerRecoveryEnabled:            true,
-		ServerRecoveryStabilizationDelay: 30 * time.Second,             // Wait 30s for server stability
-		ServerRecoveryResumeDelay:        10 * time.Second,             // 10s between each resume
-		ServerRecoveryRateLimit:          time.Hour,                    // 1 recovery per agent per hour
-		MaxResumeAttempts:                3,                            // Escalate after 3 failed attempts
-		AutoAbandonAfterHours:            24,                           // Auto-abandon after 24h dead
-		SpawnFactualQuestions:            false,                        // Opt-in feature
-		DeadSessionDetectionEnabled:      true,                         // Enabled by default
-		DeadSessionDetectionInterval:     10 * time.Minute,             // Check every 10 minutes
-		MaxDeadSessionRetries:            DefaultMaxDeadSessionRetries, // Escalate after N dead sessions
-		GracePeriod:                      30 * time.Second,             // 30s grace period for triage corrections
-		OrphanReapEnabled:                true,                         // Enabled by default
-		OrphanReapInterval:               5 * time.Minute,              // Check every 5 minutes
+		PollInterval:                           time.Minute,
+		MaxAgents:                              3,
+		MaxSpawnsPerHour:                       20, // Prevents runaway spawning
+		Label:                                  "triage:ready",
+		SpawnDelay:                             10 * time.Second,
+		DryRun:                                 false,
+		Verbose:                                false,
+		ReflectEnabled:                         true,
+		ReflectInterval:                        time.Hour, // Hourly by default
+		ReflectCreateIssues:                    true,
+		CleanupEnabled:                         true,
+		CleanupInterval:                        6 * time.Hour, // Every 6 hours by default
+		CleanupSessions:                        true,          // Clean sessions by default
+		CleanupSessionsAgeDays:                 7,             // 7 days threshold for sessions
+		CleanupWorkspaces:                      true,          // Archive stale workspaces by default
+		CleanupWorkspacesAgeDays:               7,             // 7 days threshold for workspaces
+		CleanupInvestigations:                  true,          // Archive empty investigations by default
+		CleanupPreserveOrchestrator:            true,          // Preserve orchestrator sessions
+		CleanupServerURL:                       "http://127.0.0.1:4096",
+		RecoveryEnabled:                        true,
+		RecoveryInterval:                       5 * time.Minute,  // Check every 5 minutes
+		RecoveryIdleThreshold:                  10 * time.Minute, // Idle >10min triggers recovery
+		RecoveryRateLimit:                      time.Hour,        // 1 resume per agent per hour
+		ServerRecoveryEnabled:                  true,
+		ServerRecoveryStabilizationDelay:       30 * time.Second,             // Wait 30s for server stability
+		ServerRecoveryResumeDelay:              10 * time.Second,             // 10s between each resume
+		ServerRecoveryRateLimit:                time.Hour,                    // 1 recovery per agent per hour
+		MaxResumeAttempts:                      3,                            // Escalate after 3 failed attempts
+		AutoAbandonAfterHours:                  24,                           // Auto-abandon after 24h dead
+		SpawnFactualQuestions:                  false,                        // Opt-in feature
+		DeadSessionDetectionEnabled:            true,                         // Enabled by default
+		DeadSessionDetectionInterval:           10 * time.Minute,             // Check every 10 minutes
+		MaxDeadSessionRetries:                  DefaultMaxDeadSessionRetries, // Escalate after N dead sessions
+		GracePeriod:                            30 * time.Second,             // 30s grace period for triage corrections
+		OrphanReapEnabled:                      true,                         // Enabled by default
+		OrphanReapInterval:                     5 * time.Minute,              // Check every 5 minutes
+		DashboardWatchdogEnabled:               true,                         // Enabled by default
+		DashboardWatchdogInterval:              30 * time.Second,             // Check every 30s
+		DashboardWatchdogFailuresBeforeRestart: 2,                            // Restart after 2 consecutive failures (~1min)
+		DashboardWatchdogRestartCooldown:       5 * time.Minute,              // 5min between restarts
 	}
 }
 
@@ -324,6 +348,21 @@ type Daemon struct {
 	// lastOrphanReap tracks when orphan process reaping was last run.
 	lastOrphanReap time.Time
 
+	// lastDashboardCheck tracks when dashboard health was last checked.
+	lastDashboardCheck time.Time
+
+	// lastDashboardRestart tracks when dashboard was last restarted (for cooldown).
+	lastDashboardRestart time.Time
+
+	// dashboardConsecutiveFailures counts consecutive health check failures.
+	// Reset to 0 when services are healthy.
+	dashboardConsecutiveFailures int
+
+	// restartDashboardFunc is the function that performs the actual restart.
+	// Defaults to restartDashboard() which runs `orch-dashboard restart`.
+	// Can be overridden for testing.
+	restartDashboardFunc func() error
+
 	// resumeAttempts tracks when we last attempted to resume each agent (by beads ID).
 	// Prevents infinite resume loops by rate-limiting to 1 attempt per hour per agent.
 	resumeAttempts map[string]time.Time
@@ -385,6 +424,7 @@ func NewWithConfig(config Config) *Daemon {
 		resumeAttempts:           make(map[string]time.Time),
 		resumeAttemptCounts:      make(map[string]int),
 		serverRecoveryState:      NewServerRecoveryState(),
+		restartDashboardFunc:     restartDashboard,
 		listIssuesFunc:           ListReadyIssues,
 		spawnFunc:                SpawnWork,
 		activeCountFunc:          activeCount,
@@ -435,6 +475,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		EventLogger:              nil, // Set via SetEventLogger() to avoid circular deps
 		resumeAttempts:           make(map[string]time.Time),
 		serverRecoveryState:      NewServerRecoveryState(),
+		restartDashboardFunc:     restartDashboard,
 		listIssuesFunc:           ListReadyIssues,
 		spawnFunc:                SpawnWork,
 		activeCountFunc:          activeCount,
