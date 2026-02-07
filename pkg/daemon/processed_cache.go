@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/atomicwrite"
 )
 
 // ProcessedIssueCache provides unified deduplication for spawned issues.
@@ -130,6 +132,9 @@ func (c *ProcessedIssueCache) Unmark(beadsID string) error {
 
 // save persists the cache to disk as JSONL.
 // Each line is a separate JSON object representing a cache entry.
+// Uses atomic write (temp file + rename) to prevent partial reads.
+// Previous implementation used streaming encoder with os.Create + defer Close,
+// which leaked the temp file on encode errors.
 func (c *ProcessedIssueCache) save() error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -140,33 +145,23 @@ func (c *ProcessedIssueCache) save() error {
 		return fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	// Write atomically using temp file + rename
-	tmpPath := c.filePath + ".tmp"
-	f, err := os.Create(tmpPath)
-	if err != nil {
-		return fmt.Errorf("failed to create temp cache file: %w", err)
-	}
-	defer f.Close()
-
-	// Write each entry as a JSON line
-	encoder := json.NewEncoder(f)
+	// Build JSONL content in memory, then use atomic write
+	var data []byte
 	for beadsID, timestamp := range c.entries {
 		entry := cacheEntry{
 			BeadsID:   beadsID,
 			Timestamp: timestamp,
 		}
-		if err := encoder.Encode(entry); err != nil {
+		line, err := json.Marshal(entry)
+		if err != nil {
 			return fmt.Errorf("failed to encode cache entry: %w", err)
 		}
+		data = append(data, line...)
+		data = append(data, '\n')
 	}
 
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("failed to close temp cache file: %w", err)
-	}
-
-	// Atomic rename
-	if err := os.Rename(tmpPath, c.filePath); err != nil {
-		return fmt.Errorf("failed to rename temp cache file: %w", err)
+	if err := atomicwrite.WriteFile(c.filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write cache file: %w", err)
 	}
 
 	return nil

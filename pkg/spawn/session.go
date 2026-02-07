@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/atomicwrite"
 )
 
 // SessionIDFilename is the name of the file storing the session ID in the workspace.
@@ -23,19 +25,9 @@ func WriteSessionID(workspacePath, sessionID string) error {
 	}
 
 	sessionFile := filepath.Join(workspacePath, SessionIDFilename)
-	tmpFile := sessionFile + ".tmp"
-
-	// Write to temp file first
-	if err := os.WriteFile(tmpFile, []byte(sessionID+"\n"), 0644); err != nil {
-		return fmt.Errorf("failed to write session ID temp file: %w", err)
+	if err := atomicwrite.WriteFile(sessionFile, []byte(sessionID+"\n"), 0644); err != nil {
+		return fmt.Errorf("failed to write session ID: %w", err)
 	}
-
-	// Atomic rename
-	if err := os.Rename(tmpFile, sessionFile); err != nil {
-		os.Remove(tmpFile) // Clean up temp file on error
-		return fmt.Errorf("failed to rename session ID file: %w", err)
-	}
-
 	return nil
 }
 
@@ -86,19 +78,9 @@ func WriteTier(workspacePath, tier string) error {
 	}
 
 	tierFile := filepath.Join(workspacePath, TierFilename)
-	tmpFile := tierFile + ".tmp"
-
-	// Write to temp file first
-	if err := os.WriteFile(tmpFile, []byte(tier+"\n"), 0644); err != nil {
-		return fmt.Errorf("failed to write tier temp file: %w", err)
+	if err := atomicwrite.WriteFile(tierFile, []byte(tier+"\n"), 0644); err != nil {
+		return fmt.Errorf("failed to write tier: %w", err)
 	}
-
-	// Atomic rename
-	if err := os.Rename(tmpFile, tierFile); err != nil {
-		os.Remove(tmpFile) // Clean up temp file on error
-		return fmt.Errorf("failed to rename tier file: %w", err)
-	}
-
 	return nil
 }
 
@@ -133,22 +115,11 @@ const SpawnTimeFilename = ".spawn_time"
 // The workspace directory must already exist.
 func WriteSpawnTime(workspacePath string, t time.Time) error {
 	spawnTimeFile := filepath.Join(workspacePath, SpawnTimeFilename)
-	tmpFile := spawnTimeFile + ".tmp"
-
-	// Store as Unix nanoseconds for precision
 	content := strconv.FormatInt(t.UnixNano(), 10) + "\n"
 
-	// Write to temp file first
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
-		return fmt.Errorf("failed to write spawn time temp file: %w", err)
+	if err := atomicwrite.WriteFile(spawnTimeFile, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write spawn time: %w", err)
 	}
-
-	// Atomic rename
-	if err := os.Rename(tmpFile, spawnTimeFile); err != nil {
-		os.Remove(tmpFile) // Clean up temp file on error
-		return fmt.Errorf("failed to rename spawn time file: %w", err)
-	}
-
 	return nil
 }
 
@@ -220,7 +191,6 @@ type AgentManifest struct {
 // The workspace directory must already exist.
 func WriteAgentManifest(workspacePath string, manifest AgentManifest) error {
 	manifestFile := filepath.Join(workspacePath, AgentManifestFilename)
-	tmpFile := manifestFile + ".tmp"
 
 	// Marshal to JSON with indentation for human readability
 	data, err := json.MarshalIndent(manifest, "", "  ")
@@ -231,17 +201,9 @@ func WriteAgentManifest(workspacePath string, manifest AgentManifest) error {
 	// Add trailing newline for POSIX compliance
 	data = append(data, '\n')
 
-	// Write to temp file first
-	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
-		return fmt.Errorf("failed to write manifest temp file: %w", err)
+	if err := atomicwrite.WriteFile(manifestFile, data, 0644); err != nil {
+		return fmt.Errorf("failed to write manifest: %w", err)
 	}
-
-	// Atomic rename
-	if err := os.Rename(tmpFile, manifestFile); err != nil {
-		os.Remove(tmpFile) // Clean up temp file on error
-		return fmt.Errorf("failed to rename manifest file: %w", err)
-	}
-
 	return nil
 }
 
@@ -281,22 +243,11 @@ func WriteProcessID(workspacePath string, pid int) error {
 	}
 
 	processFile := filepath.Join(workspacePath, ProcessIDFilename)
-	tmpFile := processFile + ".tmp"
-
-	// Write PID as string
 	content := strconv.Itoa(pid) + "\n"
 
-	// Write to temp file first
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
-		return fmt.Errorf("failed to write process ID temp file: %w", err)
+	if err := atomicwrite.WriteFile(processFile, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write process ID: %w", err)
 	}
-
-	// Atomic rename
-	if err := os.Rename(tmpFile, processFile); err != nil {
-		os.Remove(tmpFile) // Clean up temp file on error
-		return fmt.Errorf("failed to rename process ID file: %w", err)
-	}
-
 	return nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/atomicwrite"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
@@ -102,6 +103,30 @@ func initDaemonRuntime(config daemon.Config) (*daemonRuntime, error) {
 			fmt.Println("  Falling back to in-memory dedup only")
 		} else {
 			d.ProcessedCache = cache
+		}
+	}
+
+	// Clean up stale .tmp files from previous crashes.
+	// These are left behind when atomic writes are interrupted (process kill, crash).
+	cleanupDirs := []string{}
+	if homeDir != "" {
+		cleanupDirs = append(cleanupDirs, filepath.Join(homeDir, ".orch"))
+	}
+	workspaceRoot := filepath.Join(projectDir, ".orch", "workspace")
+	cleaned, cleanupErrs := atomicwrite.CleanupStaleTempFilesInWorkspaces(workspaceRoot)
+	if cleaned > 0 {
+		fmt.Printf("Cleaned %d stale temp files from workspaces\n", cleaned)
+	}
+	for _, e := range cleanupErrs {
+		fmt.Printf("Warning: temp file cleanup: %v\n", e)
+	}
+	if len(cleanupDirs) > 0 {
+		homeCleaned, homeErrs := atomicwrite.CleanupStaleTempFiles(cleanupDirs...)
+		if homeCleaned > 0 {
+			fmt.Printf("Cleaned %d stale temp files from ~/.orch\n", homeCleaned)
+		}
+		for _, e := range homeErrs {
+			fmt.Printf("Warning: temp file cleanup: %v\n", e)
 		}
 	}
 
