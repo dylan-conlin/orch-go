@@ -62,6 +62,30 @@ var (
 	globalMaterializer *materializer.Materializer
 )
 
+// Server holds all dependencies for HTTP handlers, enabling unit testing
+// without global state. Created in runServe and passed to registerRoutes.
+type Server struct {
+	ServerURL       string
+	SourceDir       string
+	Version         string
+	ServerStartTime time.Time
+
+	BeadsClient   *beads.Client
+	BeadsClientMu sync.RWMutex
+
+	ServiceMonitor   *service.ServiceMonitor
+	ServiceMonitorMu sync.RWMutex
+
+	LikelyDoneCache *attention.LikelyDoneCache
+	Materializer    *materializer.Materializer
+
+	BdLimiter       *bdLimiter
+	BeadsCache      *beadsCache
+	BeadsStatsCache *beadsStatsCache
+	KBHealthCache   *kbHealthCache
+	WorkspaceCache  *globalWorkspaceCacheType
+}
+
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the HTTP API server for the beads-ui dashboard",
@@ -294,233 +318,26 @@ func runServe(portNum int) error {
 		defer globalMaterializer.Stop()
 	}
 
-	mux := http.NewServeMux()
-
-	// CORS middleware wrapper
-	corsHandler := func(h http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			// Allow requests from SvelteKit dev server and any localhost (http or https)
-			origin := r.Header.Get("Origin")
-			if origin == "" ||
-				strings.HasPrefix(origin, "http://localhost") ||
-				strings.HasPrefix(origin, "https://localhost") ||
-				strings.HasPrefix(origin, "http://127.0.0.1") ||
-				strings.HasPrefix(origin, "https://127.0.0.1") {
-				if origin != "" {
-					w.Header().Set("Access-Control-Allow-Origin", origin)
-				} else {
-					w.Header().Set("Access-Control-Allow-Origin", "*")
-				}
-			}
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept")
-
-			// Cache invalidation headers (Phase 4: Dashboard Reliability)
-			// Enable dashboard to detect stale data and prompt reload when binary updates
-			w.Header().Set("X-Orch-Version", version)
-			w.Header().Set("X-Cache-Time", time.Now().Format(time.RFC3339))
-
-			// Handle preflight
-			if r.Method == http.MethodOptions {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-
-			h(w, r)
-		}
+	// Create the Server with all dependencies.
+	// Handlers access these via the receiver instead of globals.
+	s := &Server{
+		ServerURL:       serverURL,
+		SourceDir:       sourceDir,
+		Version:         version,
+		ServerStartTime: serverStartTime,
+		BeadsClient:     beadsClient,
+		ServiceMonitor:  serviceMonitor,
+		LikelyDoneCache: globalLikelyDoneCache,
+		Materializer:    globalMaterializer,
+		BdLimiter:       globalBdLimiter,
+		BeadsCache:      globalBeadsCache,
+		BeadsStatsCache: globalBeadsStatsCache,
+		KBHealthCache:   globalKBHealthCache,
+		WorkspaceCache:  globalWorkspaceCacheInstance,
 	}
 
-	// GET /api/agents - returns JSON list of agents from OpenCode/tmux
-	mux.HandleFunc("/api/agents", corsHandler(handleAgents))
-
-	// GET /api/events - proxies OpenCode SSE stream
-	mux.HandleFunc("/api/events", corsHandler(handleEvents))
-
-	// GET /api/agentlog - returns agent lifecycle events from events.jsonl
-	mux.HandleFunc("/api/agentlog", corsHandler(handleAgentlog))
-
-	// GET /api/usage - returns Claude Max usage stats
-	mux.HandleFunc("/api/usage", corsHandler(handleUsage))
-
-	// GET /api/usage/cost - returns API cost tracking data
-	mux.HandleFunc("/api/usage/cost", corsHandler(handleUsageCost))
-
-	// GET /api/focus - returns current focus and drift status
-	mux.HandleFunc("/api/focus", corsHandler(handleFocus))
-
-	// GET /api/beads - returns beads stats (ready, blocked, open issues)
-	mux.HandleFunc("/api/beads", corsHandler(handleBeads))
-
-	// GET /api/beads/ready - returns list of ready issues for dashboard queue visibility
-	mux.HandleFunc("/api/beads/ready", corsHandler(handleBeadsReady))
-
-	// GET /api/beads/graph - returns full dependency graph (nodes + edges) for visualization
-	mux.HandleFunc("/api/beads/graph", corsHandler(handleBeadsGraph))
-
-	// GET /api/beads/{id}/attempts - returns attempt history for a specific beads issue
-	// POST /api/beads/close - closes a beads issue
-	mux.HandleFunc("/api/beads/", corsHandler(func(w http.ResponseWriter, r *http.Request) {
-		// Route /api/beads/close to handleBeadsClose
-		if r.URL.Path == "/api/beads/close" && r.Method == http.MethodPost {
-			handleBeadsClose(w, r)
-			return
-		}
-		// Route /api/beads/{id}/attempts to handleBeadsAttempts
-		if strings.HasSuffix(r.URL.Path, "/attempts") {
-			handleBeadsAttempts(w, r)
-		} else {
-			http.NotFound(w, r)
-		}
-	}))
-
-	// GET /api/questions - returns questions grouped by status for dashboard
-	mux.HandleFunc("/api/questions", corsHandler(handleQuestions))
-
-	// GET /api/servers - returns servers status across projects
-	mux.HandleFunc("/api/servers", corsHandler(handleServers))
-
-	// GET /api/services - returns service health from overmind monitor
-	// GET /api/services/{name}/logs - returns logs for a specific service from overmind echo
-	mux.HandleFunc("/api/services", corsHandler(handleServices))
-	mux.HandleFunc("/api/services/", corsHandler(func(w http.ResponseWriter, r *http.Request) {
-		// Route /api/services/{name}/logs to handleServiceLogs
-		if strings.HasSuffix(r.URL.Path, "/logs") {
-			handleServiceLogs(w, r)
-		} else if r.URL.Path == "/api/services" || r.URL.Path == "/api/services/" {
-			handleServices(w, r)
-		} else {
-			http.NotFound(w, r)
-		}
-	}))
-
-	// GET /api/events/services - returns service lifecycle events (supports ?follow=true for SSE)
-	mux.HandleFunc("/api/events/services", corsHandler(handleServiceEvents))
-
-	// POST /api/issues - creates a new beads issue (for follow-up from synthesis)
-	mux.HandleFunc("/api/issues", corsHandler(handleIssues))
-
-	// GET /api/daemon - returns daemon status (running, capacity, last poll)
-	mux.HandleFunc("/api/daemon", corsHandler(handleDaemon))
-
-	// GET /api/gaps - returns gap tracker statistics
-	mux.HandleFunc("/api/gaps", corsHandler(handleGaps))
-
-	// GET /api/reflect - returns reflect suggestions for kb reflect UI
-	mux.HandleFunc("/api/reflect", corsHandler(handleReflect))
-
-	// GET /api/kb-health - returns knowledge hygiene signals (synthesis, promote, stale, investigation-promotion)
-	mux.HandleFunc("/api/kb-health", corsHandler(handleKBHealth))
-
-	// GET /api/kb/artifacts - returns knowledge base artifacts for Work Graph Artifact Feed
-	mux.HandleFunc("/api/kb/artifacts", corsHandler(handleKBArtifacts))
-
-	// GET /api/attention - unified attention API composing multiple collectors
-	mux.HandleFunc("/api/attention", corsHandler(handleAttention))
-
-	// GET /api/attention/likely-done - returns issues with commits but no active workspace
-	mux.HandleFunc("/api/attention/likely-done", corsHandler(handleLikelyDone))
-
-	// POST /api/attention/verify - mark issue as verified or needs_fix
-	mux.HandleFunc("/api/attention/verify", corsHandler(handleAttentionVerify))
-
-	// POST /api/attention/verify-failed/clear - Clear a verification failure entry
-	mux.HandleFunc("/api/attention/verify-failed/clear", corsHandler(handleVerifyFailedClear))
-
-	// POST /api/attention/verify-failed/reset-status - Reset issue to open for re-spawn
-	mux.HandleFunc("/api/attention/verify-failed/reset-status", corsHandler(handleVerifyFailedResetStatus))
-
-	// GET /api/kb/artifact/content - returns full content of a specific artifact
-	mux.HandleFunc("/api/kb/artifact/content", corsHandler(handleKBArtifactContent))
-
-	// GET /api/errors - returns error pattern analysis
-	mux.HandleFunc("/api/errors", corsHandler(handleErrors))
-
-	// GET /api/pending-reviews - returns agents with unreviewed synthesis recommendations
-	mux.HandleFunc("/api/pending-reviews", corsHandler(handlePendingReviews))
-
-	// POST /api/dismiss-review - dismiss a specific recommendation
-	mux.HandleFunc("/api/dismiss-review", corsHandler(handleDismissReview))
-
-	// GET/PUT /api/config - user configuration settings
-	mux.HandleFunc("/api/config", corsHandler(handleConfig))
-
-	// GET/PUT /api/config/daemon - daemon-specific configuration
-	mux.HandleFunc("/api/config/daemon", corsHandler(handleDaemonConfig))
-
-	// GET /api/config/drift - check if plist matches config
-	mux.HandleFunc("/api/config/drift", corsHandler(handleConfigDrift))
-
-	// POST /api/config/regenerate - regenerate plist from config
-	mux.HandleFunc("/api/config/regenerate", corsHandler(handleConfigRegenerate))
-
-	// GET /api/changelog - aggregated changelog across ecosystem repos
-	mux.HandleFunc("/api/changelog", corsHandler(handleChangelog))
-
-	// POST /api/cache/invalidate - invalidate caches to force fresh data
-	// Called by orch complete to ensure dashboard shows updated status
-	mux.HandleFunc("/api/cache/invalidate", corsHandler(handleCacheInvalidate))
-
-	// GET /api/hotspot - returns hotspot analysis (fix density, investigation clusters)
-	mux.HandleFunc("/api/hotspot", corsHandler(handleHotspot))
-
-	// GET /api/orchestrator-sessions - returns active orchestrator sessions from registry
-	mux.HandleFunc("/api/orchestrator-sessions", corsHandler(handleOrchestratorSessions))
-
-	// GET /api/file - returns file contents for investigation/workspace files
-	mux.HandleFunc("/api/file", corsHandler(handleFile))
-
-	// GET /api/screenshots - returns list of screenshots for an agent
-	mux.HandleFunc("/api/screenshots", corsHandler(handleScreenshots))
-
-	// GET /api/context - returns current tmux cwd and resolved projects for "follow orchestrator" filtering
-	mux.HandleFunc("/api/context", corsHandler(handleContext))
-
-	// GET /api/coaching - returns orchestrator behavioral coaching metrics
-	mux.HandleFunc("/api/coaching", corsHandler(handleCoaching))
-
-	// GET /api/frontier - returns decidability frontier (ready, blocked, active, stuck)
-	mux.HandleFunc("/api/frontier", corsHandler(handleFrontier))
-
-	// GET /api/decisions - returns decision center items grouped by action type
-	mux.HandleFunc("/api/decisions", corsHandler(handleDecisions))
-
-	// GET /api/session/{sessionID}/messages - proxies OpenCode session messages for activity feed history
-	// Uses prefix matching to extract sessionID from path
-	mux.HandleFunc("/api/session/", corsHandler(handleSessionMessages))
-
-	// POST /api/approve - approve an agent's work (creates beads comment + updates workspace manifest)
-	mux.HandleFunc("/api/approve", corsHandler(handleApprove))
-
-	// GET /api/deliverables/{beads-id} - returns deliverables status for an issue
-	// POST /api/deliverables/override - logs an override when closing with missing deliverables
-	mux.HandleFunc("/api/deliverables/", corsHandler(func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/api/deliverables/")
-		if path == "override" && r.Method == http.MethodPost {
-			handleDeliverablesOverride(w, r)
-		} else if path != "" && !strings.Contains(path, "/") {
-			handleDeliverablesStatus(w, r)
-		} else {
-			http.NotFound(w, r)
-		}
-	}))
-
-	// Health check — includes bd limiter stats and materializer status for observability
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		response := map[string]interface{}{"status": "ok"}
-		if limiterStats := getLimiterStats(); limiterStats != nil {
-			response["bd_limiter"] = limiterStats
-		}
-		if globalMaterializer != nil {
-			response["materializer"] = globalMaterializer.Status()
-		}
-		json.NewEncoder(w).Encode(response)
-	})
-
-	// pprof handlers for CPU profiling (useful for debugging CPU runaway)
-	// Access at: https://localhost:3348/debug/pprof/
-	mux.HandleFunc("/debug/pprof/", http.DefaultServeMux.ServeHTTP)
+	mux := http.NewServeMux()
+	s.registerRoutes(mux)
 
 	// Load TLS certificate from embedded bytes
 	cert, err := tls.X509KeyPair(certs.CertPEM, certs.KeyPEM)
@@ -572,11 +389,142 @@ func runServe(portNum int) error {
 	return server.ListenAndServeTLS("", "")
 }
 
+// corsHandler wraps an HTTP handler with CORS headers and version info.
+func (s *Server) corsHandler(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Allow requests from SvelteKit dev server and any localhost (http or https)
+		origin := r.Header.Get("Origin")
+		if origin == "" ||
+			strings.HasPrefix(origin, "http://localhost") ||
+			strings.HasPrefix(origin, "https://localhost") ||
+			strings.HasPrefix(origin, "http://127.0.0.1") ||
+			strings.HasPrefix(origin, "https://127.0.0.1") {
+			if origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+			} else {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			}
+		}
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept")
+
+		// Cache invalidation headers (Phase 4: Dashboard Reliability)
+		// Enable dashboard to detect stale data and prompt reload when binary updates
+		w.Header().Set("X-Orch-Version", s.Version)
+		w.Header().Set("X-Cache-Time", time.Now().Format(time.RFC3339))
+
+		// Handle preflight
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		h(w, r)
+	}
+}
+
+// registerRoutes wires all HTTP handlers onto the given mux.
+func (s *Server) registerRoutes(mux *http.ServeMux) {
+	c := s.corsHandler
+
+	mux.HandleFunc("/api/agents", c(s.handleAgents))
+	mux.HandleFunc("/api/events", c(s.handleEvents))
+	mux.HandleFunc("/api/agentlog", c(s.handleAgentlog))
+	mux.HandleFunc("/api/usage", c(s.handleUsage))
+	mux.HandleFunc("/api/usage/cost", c(s.handleUsageCost))
+	mux.HandleFunc("/api/focus", c(s.handleFocus))
+	mux.HandleFunc("/api/beads", c(s.handleBeads))
+	mux.HandleFunc("/api/beads/ready", c(s.handleBeadsReady))
+	mux.HandleFunc("/api/beads/graph", c(s.handleBeadsGraph))
+	mux.HandleFunc("/api/beads/", c(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/beads/close" && r.Method == http.MethodPost {
+			s.handleBeadsClose(w, r)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/attempts") {
+			s.handleBeadsAttempts(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
+	}))
+	mux.HandleFunc("/api/questions", c(s.handleQuestions))
+	mux.HandleFunc("/api/servers", c(s.handleServers))
+	mux.HandleFunc("/api/services", c(s.handleServices))
+	mux.HandleFunc("/api/services/", c(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/logs") {
+			s.handleServiceLogs(w, r)
+		} else if r.URL.Path == "/api/services" || r.URL.Path == "/api/services/" {
+			s.handleServices(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
+	}))
+	mux.HandleFunc("/api/events/services", c(s.handleServiceEvents))
+	mux.HandleFunc("/api/issues", c(s.handleIssues))
+	mux.HandleFunc("/api/daemon", c(s.handleDaemon))
+	mux.HandleFunc("/api/gaps", c(s.handleGaps))
+	mux.HandleFunc("/api/reflect", c(s.handleReflect))
+	mux.HandleFunc("/api/kb-health", c(s.handleKBHealth))
+	mux.HandleFunc("/api/kb/artifacts", c(s.handleKBArtifacts))
+	mux.HandleFunc("/api/attention", c(s.handleAttention))
+	mux.HandleFunc("/api/attention/likely-done", c(s.handleLikelyDone))
+	mux.HandleFunc("/api/attention/verify", c(s.handleAttentionVerify))
+	mux.HandleFunc("/api/attention/verify-failed/clear", c(s.handleVerifyFailedClear))
+	mux.HandleFunc("/api/attention/verify-failed/reset-status", c(s.handleVerifyFailedResetStatus))
+	mux.HandleFunc("/api/kb/artifact/content", c(s.handleKBArtifactContent))
+	mux.HandleFunc("/api/errors", c(s.handleErrors))
+	mux.HandleFunc("/api/pending-reviews", c(s.handlePendingReviews))
+	mux.HandleFunc("/api/dismiss-review", c(s.handleDismissReview))
+	mux.HandleFunc("/api/config", c(s.handleConfig))
+	mux.HandleFunc("/api/config/daemon", c(s.handleDaemonConfig))
+	mux.HandleFunc("/api/config/drift", c(s.handleConfigDrift))
+	mux.HandleFunc("/api/config/regenerate", c(s.handleConfigRegenerate))
+	mux.HandleFunc("/api/changelog", c(s.handleChangelog))
+	mux.HandleFunc("/api/cache/invalidate", c(s.handleCacheInvalidate))
+	mux.HandleFunc("/api/hotspot", c(s.handleHotspot))
+	mux.HandleFunc("/api/orchestrator-sessions", c(s.handleOrchestratorSessions))
+	mux.HandleFunc("/api/file", c(s.handleFile))
+	mux.HandleFunc("/api/screenshots", c(s.handleScreenshots))
+	mux.HandleFunc("/api/context", c(s.handleContext))
+	mux.HandleFunc("/api/coaching", c(s.handleCoaching))
+	mux.HandleFunc("/api/frontier", c(s.handleFrontier))
+	mux.HandleFunc("/api/decisions", c(s.handleDecisions))
+	mux.HandleFunc("/api/session/", c(s.handleSessionMessages))
+	mux.HandleFunc("/api/approve", c(s.handleApprove))
+	mux.HandleFunc("/api/deliverables/", c(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/deliverables/")
+		if path == "override" && r.Method == http.MethodPost {
+			s.handleDeliverablesOverride(w, r)
+		} else if path != "" && !strings.Contains(path, "/") {
+			s.handleDeliverablesStatus(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
+	}))
+
+	// Health check — includes bd limiter stats and materializer status
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		response := map[string]interface{}{"status": "ok"}
+		if limiterStats := getLimiterStats(); limiterStats != nil {
+			response["bd_limiter"] = limiterStats
+		}
+		if s.Materializer != nil {
+			response["materializer"] = s.Materializer.Status()
+		}
+		json.NewEncoder(w).Encode(response)
+	})
+
+	// pprof handlers for CPU profiling
+	mux.HandleFunc("/debug/pprof/", http.DefaultServeMux.ServeHTTP)
+}
+
 // handleChangelog returns aggregated changelog data across ecosystem repos.
 // Query parameters:
 //   - days: Number of days to include (default: 7)
 //   - project: Project to filter (default: "all" for all repos)
-func handleChangelog(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleChangelog(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

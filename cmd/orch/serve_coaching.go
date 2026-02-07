@@ -300,7 +300,7 @@ func aggregateMetrics(metrics []CoachingMetric) CoachingResponse {
 }
 
 // handleCoaching serves the /api/coaching endpoint.
-func handleCoaching(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCoaching(w http.ResponseWriter, r *http.Request) {
 	// Read last 100 metrics
 	metrics, err := readCoachingMetrics(100)
 	if err != nil {

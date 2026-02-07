@@ -15,7 +15,7 @@ func TestHandleAttentionMethodNotAllowed(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/attention", nil)
 	w := httptest.NewRecorder()
 
-	handleAttention(w, req)
+	newTestServer().handleAttention(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
@@ -28,7 +28,7 @@ func TestHandleAttentionJSONResponse(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/attention", nil)
 	w := httptest.NewRecorder()
 
-	handleAttention(w, req)
+	newTestServer().handleAttention(w, req)
 
 	resp := w.Result()
 	// Should be 200 even if collectors fail
@@ -107,7 +107,7 @@ func TestHandleAttentionRoleParameter(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, url, nil)
 			w := httptest.NewRecorder()
 
-			handleAttention(w, req)
+			newTestServer().handleAttention(w, req)
 
 			resp := w.Result()
 			if resp.StatusCode != http.StatusOK {
@@ -134,7 +134,7 @@ func TestHandleAttentionComposesMultipleSources(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/attention", nil)
 	w := httptest.NewRecorder()
 
-	handleAttention(w, req)
+	newTestServer().handleAttention(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
@@ -163,7 +163,7 @@ func TestHandleAttentionPrioritySorting(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/attention", nil)
 	w := httptest.NewRecorder()
 
-	handleAttention(w, req)
+	newTestServer().handleAttention(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
@@ -209,7 +209,7 @@ func TestHandleAttentionVerifyMethodNotAllowed(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/attention/verify", nil)
 	w := httptest.NewRecorder()
 
-	handleAttentionVerify(w, req)
+	newTestServer().handleAttentionVerify(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
@@ -223,7 +223,7 @@ func TestHandleAttentionVerifyRequiresIssueID(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	handleAttentionVerify(w, req)
+	newTestServer().handleAttentionVerify(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -237,7 +237,7 @@ func TestHandleAttentionVerifyRequiresStatus(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	handleAttentionVerify(w, req)
+	newTestServer().handleAttentionVerify(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -251,7 +251,7 @@ func TestHandleAttentionVerifyInvalidStatus(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	handleAttentionVerify(w, req)
+	newTestServer().handleAttentionVerify(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -283,7 +283,7 @@ func TestHandleAttentionVerifySuccess(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
-			handleAttentionVerify(w, req)
+			newTestServer().handleAttentionVerify(w, req)
 
 			resp := w.Result()
 			if resp.StatusCode != http.StatusOK {
@@ -330,7 +330,7 @@ func TestHandleAttentionVerifyPersistsToJSONL(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	handleAttentionVerify(w, req)
+	newTestServer().handleAttentionVerify(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {

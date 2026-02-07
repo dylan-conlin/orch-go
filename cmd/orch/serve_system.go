@@ -52,7 +52,7 @@ type CostAPIResponse struct {
 }
 
 // handleUsage returns Claude Max usage stats.
-func handleUsage(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -93,7 +93,7 @@ func handleUsage(w http.ResponseWriter, r *http.Request) {
 
 // handleUsageCost returns API cost tracking data.
 // Currently returns placeholder data since we need to implement agent cost aggregation.
-func handleUsageCost(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleUsageCost(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -163,21 +163,21 @@ type SetFocusResponse struct {
 // GET: returns current focus and drift status
 // POST: sets a new focus
 // DELETE: clears the current focus
-func handleFocus(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleFocus(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		handleFocusGet(w, r)
+		s.handleFocusGet(w, r)
 	case http.MethodPost:
-		handleFocusSet(w, r)
+		s.handleFocusSet(w, r)
 	case http.MethodDelete:
-		handleFocusClear(w, r)
+		s.handleFocusClear(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
 // handleFocusGet returns current focus and drift status.
-func handleFocusGet(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleFocusGet(w http.ResponseWriter, r *http.Request) {
 	store, err := focus.New("")
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to load focus: %v", err), http.StatusInternalServerError)
@@ -194,7 +194,7 @@ func handleFocusGet(w http.ResponseWriter, r *http.Request) {
 		resp.SetAt = f.SetAt
 
 		// Check drift by getting active agents from current sessions
-		client := opencode.NewClient(serverURL) // entry-point: HTTP handler creates its own client
+		client := opencode.NewClient(s.ServerURL)
 		sessions, _ := client.ListSessions("")
 
 		var activeIssues []string
@@ -216,7 +216,7 @@ func handleFocusGet(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleFocusSet sets a new focus.
-func handleFocusSet(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleFocusSet(w http.ResponseWriter, r *http.Request) {
 	var req SetFocusRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		resp := SetFocusResponse{Success: false, Error: fmt.Sprintf("Invalid request body: %v", err)}
@@ -275,7 +275,7 @@ func handleFocusSet(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleFocusClear clears the current focus.
-func handleFocusClear(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleFocusClear(w http.ResponseWriter, r *http.Request) {
 	store, err := focus.New("")
 	if err != nil {
 		resp := SetFocusResponse{Success: false, Error: fmt.Sprintf("Failed to load focus store: %v", err)}
@@ -322,7 +322,7 @@ type ServersAPIResponse struct {
 }
 
 // handleServers returns servers status across projects.
-func handleServers(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleServers(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -413,15 +413,15 @@ type ServicesAPIResponse struct {
 }
 
 // handleServices returns service health from the overmind monitor.
-func handleServices(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	serviceMonitorMu.RLock()
-	monitor := serviceMonitor
-	serviceMonitorMu.RUnlock()
+	s.ServiceMonitorMu.RLock()
+	monitor := s.ServiceMonitor
+	s.ServiceMonitorMu.RUnlock()
 
 	if monitor == nil {
 		// Service monitor not initialized (shouldn't happen but handle gracefully)
@@ -464,7 +464,7 @@ func handleServices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract project name from source directory
-	projectName := filepath.Base(sourceDir)
+	projectName := filepath.Base(s.SourceDir)
 
 	resp := ServicesAPIResponse{
 		Project:      projectName,
@@ -516,7 +516,7 @@ type DaemonUtilizationMetrics struct {
 // handleDaemon returns the daemon status from ~/.orch/daemon-status.json.
 // If the daemon is not running (file doesn't exist), returns running: false.
 // Also includes utilization metrics computed from events.jsonl.
-func handleDaemon(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDaemon(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -601,7 +601,7 @@ type OrchestratorSessionAPIItem struct {
 // handleOrchestratorSessions returns active orchestrator sessions from the registry.
 // Query parameters:
 //   - project: Filter by project name (optional)
-func handleOrchestratorSessions(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleOrchestratorSessions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -622,7 +622,7 @@ func handleOrchestratorSessions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get active agents to count children per project
-	client := opencode.NewClient(serverURL) // entry-point: HTTP handler creates its own client
+	client := opencode.NewClient(s.ServerURL)
 	opencodeSessions, _ := client.ListSessions("")
 
 	// Count active agents per project
@@ -724,19 +724,19 @@ type ConfigUpdateRequest struct {
 // handleConfig handles GET and PUT requests for user configuration.
 // GET returns current config from ~/.orch/config.yaml
 // PUT updates specified fields in the config
-func handleConfig(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		handleConfigGet(w, r)
+		s.handleConfigGet(w, r)
 	case http.MethodPut:
-		handleConfigPut(w, r)
+		s.handleConfigPut(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
 // handleConfigGet returns the current user configuration.
-func handleConfigGet(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 	cfg, err := userconfig.Load()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to load config: %v", err), http.StatusInternalServerError)
@@ -758,7 +758,7 @@ func handleConfigGet(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleConfigPut updates the user configuration with the provided values.
-func handleConfigPut(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 	var req ConfigUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
@@ -828,19 +828,19 @@ type DaemonConfigUpdateRequest struct {
 // handleDaemonConfig handles GET and PUT requests for daemon configuration.
 // GET returns current daemon config from ~/.orch/config.yaml
 // PUT updates daemon config, writes to config.yaml, regenerates plist, and kicks daemon
-func handleDaemonConfig(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDaemonConfig(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		handleDaemonConfigGet(w, r)
+		s.handleDaemonConfigGet(w, r)
 	case http.MethodPut:
-		handleDaemonConfigPut(w, r)
+		s.handleDaemonConfigPut(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
 // handleDaemonConfigGet returns the current daemon configuration.
-func handleDaemonConfigGet(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDaemonConfigGet(w http.ResponseWriter, r *http.Request) {
 	cfg, err := userconfig.Load()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to load config: %v", err), http.StatusInternalServerError)
@@ -866,7 +866,7 @@ func handleDaemonConfigGet(w http.ResponseWriter, r *http.Request) {
 
 // handleDaemonConfigPut updates the daemon configuration.
 // After saving config, it regenerates the plist and kicks the daemon.
-func handleDaemonConfigPut(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDaemonConfigPut(w http.ResponseWriter, r *http.Request) {
 	var req DaemonConfigUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
@@ -964,7 +964,7 @@ type DriftStatusAPIResponse struct {
 }
 
 // handleConfigDrift checks if the plist file matches the current config.
-func handleConfigDrift(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleConfigDrift(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1024,7 +1024,7 @@ type RegenerateAPIResponse struct {
 }
 
 // handleConfigRegenerate regenerates the plist from config and kicks the daemon.
-func handleConfigRegenerate(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleConfigRegenerate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1264,7 +1264,7 @@ type ScreenshotsAPIResponse struct {
 //
 // Security: Only lists files in {project_dir}/.orch/workspace/{agent_id}/screenshots/
 // Returns filenames only (not full paths) to prevent path traversal.
-func handleScreenshots(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleScreenshots(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1353,7 +1353,7 @@ func handleScreenshots(w http.ResponseWriter, r *http.Request) {
 //
 // Security: Only allows reading files in allowed directories (.kb/, .orch/workspace/).
 // This prevents arbitrary file reads while enabling investigation and workspace file viewing.
-func handleFile(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

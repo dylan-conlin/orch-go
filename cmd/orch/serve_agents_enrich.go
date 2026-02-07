@@ -22,13 +22,13 @@ func (ctx *agentCollectionContext) enrichAgentsWithBeadsData() {
 	}
 
 	// Fetch all open issues in one call (cached with TTL)
-	openIssues, _ := globalBeadsCache.getOpenIssues()
+	openIssues, _ := ctx.beadsCache.getOpenIssues()
 
 	// Batch fetch all issues (including closed) for close_reason (cached with TTL)
-	allIssues, _ := globalBeadsCache.getAllIssues(ctx.beadsIDsToFetch)
+	allIssues, _ := ctx.beadsCache.getAllIssues(ctx.beadsIDsToFetch)
 
 	// Batch fetch comments for all beads IDs (cached with TTL)
-	commentsMap := globalBeadsCache.getComments(ctx.beadsIDsToFetch, ctx.beadsProjectDirs)
+	commentsMap := ctx.beadsCache.getComments(ctx.beadsIDsToFetch, ctx.beadsProjectDirs)
 
 	// Build investigation directory cache ONCE before the agent loop.
 	// Prevents O(n²) behavior: without this, discoverInvestigationPath would call

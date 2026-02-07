@@ -12,7 +12,7 @@ func TestHandleKBHealthMethodNotAllowed(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/kb-health", nil)
 	rec := httptest.NewRecorder()
 
-	handleKBHealth(rec, req)
+	newTestServer().handleKBHealth(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected status 405, got %d", rec.Code)
@@ -102,12 +102,7 @@ func TestHandleKBHealthGracefulDegradation(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/kb-health?project=/nonexistent", nil)
 	rec := httptest.NewRecorder()
 
-	// Initialize cache for test (normally done in runServe)
-	if globalKBHealthCache == nil {
-		globalKBHealthCache = newKBHealthCache()
-	}
-
-	handleKBHealth(rec, req)
+	newTestServer().handleKBHealth(rec, req)
 
 	// Should return 200 with valid JSON even if kb CLI fails
 	if rec.Code != http.StatusOK {

@@ -33,13 +33,14 @@ type agentCollectionContext struct {
 	beadsFetchThreshold time.Duration
 
 	// Dependencies
-	wsCache *workspaceCache
-	client  opencode.ClientInterface
-	now     time.Time
+	wsCache    *workspaceCache
+	beadsCache *beadsCache
+	client     opencode.ClientInterface
+	now        time.Time
 }
 
 // newAgentCollectionContext creates a new context with default thresholds and dependencies.
-func newAgentCollectionContext(client opencode.ClientInterface, wsCache *workspaceCache, sinceDuration time.Duration) *agentCollectionContext {
+func newAgentCollectionContext(client opencode.ClientInterface, wsCache *workspaceCache, bc *beadsCache, sinceDuration time.Duration) *agentCollectionContext {
 	// Active threshold (10min): determines "running" vs "idle" status
 	activeThreshold := 10 * time.Minute
 	// Display threshold (4h): filters ghosts from default view (unless Phase: Complete)
@@ -75,6 +76,7 @@ func newAgentCollectionContext(client opencode.ClientInterface, wsCache *workspa
 		stalledThreshold:    stalledThreshold,
 		beadsFetchThreshold: beadsFetchThreshold,
 		wsCache:             wsCache,
+		beadsCache:          bc,
 		client:              client,
 		now:                 time.Now(),
 	}

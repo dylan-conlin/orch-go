@@ -15,17 +15,14 @@ import (
 )
 
 func TestHandleAgents(t *testing.T) {
-	// Initialize the global caches that handleAgents depends on
-	if globalBeadsCache == nil {
-		globalBeadsCache = newBeadsCache()
-	}
+	srv := newTestServer()
 
 	// Create a test request
 	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
 	w := httptest.NewRecorder()
 
 	// Call the handler
-	handleAgents(w, req)
+	srv.handleAgents(w, req)
 
 	// Check the response
 	resp := w.Result()
@@ -47,11 +44,12 @@ func TestHandleAgents(t *testing.T) {
 }
 
 func TestHandleAgentsMethodNotAllowed(t *testing.T) {
+	srv := newTestServer()
 	// Test POST method is not allowed
 	req := httptest.NewRequest(http.MethodPost, "/api/agents", nil)
 	w := httptest.NewRecorder()
 
-	handleAgents(w, req)
+	srv.handleAgents(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
@@ -60,11 +58,12 @@ func TestHandleAgentsMethodNotAllowed(t *testing.T) {
 }
 
 func TestHandleEventsMethodNotAllowed(t *testing.T) {
+	srv := newTestServer()
 	// Test POST method is not allowed
 	req := httptest.NewRequest(http.MethodPost, "/api/events", nil)
 	w := httptest.NewRecorder()
 
-	handleEvents(w, req)
+	srv.handleEvents(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
@@ -114,11 +113,12 @@ func TestAgentAPIResponseJSONFormat(t *testing.T) {
 }
 
 func TestHandleAgentlogMethodNotAllowed(t *testing.T) {
+	srv := newTestServer()
 	// Test POST method is not allowed
 	req := httptest.NewRequest(http.MethodPost, "/api/agentlog", nil)
 	w := httptest.NewRecorder()
 
-	handleAgentlog(w, req)
+	srv.handleAgentlog(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
@@ -200,13 +200,14 @@ func TestReadLastNEvents(t *testing.T) {
 }
 
 func TestHandleAgentlogJSONResponse(t *testing.T) {
+	srv := newTestServer()
 	// Note: This test uses the default log path which may or may not exist
 	// In production, we'd want to inject the path, but for now we just verify
 	// the endpoint returns valid JSON
 	req := httptest.NewRequest(http.MethodGet, "/api/agentlog", nil)
 	w := httptest.NewRecorder()
 
-	handleAgentlog(w, req)
+	srv.handleAgentlog(w, req)
 
 	resp := w.Result()
 	// Should be 200 even if file doesn't exist (returns empty array)

@@ -205,7 +205,7 @@ func (s *Server) handleKBHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if cache is initialized
-	if globalKBHealthCache == nil {
+	if s.KBHealthCache == nil {
 		// Fallback: fetch without cache if not initialized
 		data, err := fetchKBHealth(projectDir)
 		if err != nil {
@@ -222,7 +222,7 @@ func (s *Server) handleKBHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get cached or fresh data
-	data, err := globalKBHealthCache.get(projectDir)
+	data, err := s.KBHealthCache.get(projectDir)
 	if err != nil {
 		resp := &KBHealthResponse{
 			Error: fmt.Sprintf("Failed to fetch kb health: %v", err),

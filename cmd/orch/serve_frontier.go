@@ -23,7 +23,7 @@ type FrontierAPIResponse struct {
 
 // handleFrontier returns the decidability frontier state.
 // This endpoint provides the same data as `orch frontier --json` but via HTTP.
-func handleFrontier(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleFrontier(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

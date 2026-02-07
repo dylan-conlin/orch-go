@@ -17,7 +17,7 @@ import (
 // handleServiceEvents returns service lifecycle events from ~/.orch/events.jsonl.
 // Without query params: returns last 100 service events as JSON array.
 // With ?follow=true: streams new service events via SSE.
-func handleServiceEvents(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleServiceEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -26,14 +26,14 @@ func handleServiceEvents(w http.ResponseWriter, r *http.Request) {
 	follow := r.URL.Query().Get("follow") == "true"
 
 	if follow {
-		handleServiceEventsSSE(w, r)
+		s.handleServiceEventsSSE(w, r)
 	} else {
-		handleServiceEventsJSON(w, r)
+		s.handleServiceEventsJSON(w, r)
 	}
 }
 
 // handleServiceEventsJSON returns the last 100 service events as JSON array.
-func handleServiceEventsJSON(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleServiceEventsJSON(w http.ResponseWriter, r *http.Request) {
 	logPath := events.DefaultLogPath()
 
 	allEvents, err := readLastNEvents(logPath, 1000) // Read more to filter
@@ -64,7 +64,7 @@ func handleServiceEventsJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleServiceEventsSSE streams new service events via SSE as they are appended to events.jsonl.
-func handleServiceEventsSSE(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleServiceEventsSSE(w http.ResponseWriter, r *http.Request) {
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -174,7 +174,7 @@ func filterServiceEvents(allEvents []events.Event) []events.Event {
 
 // handleServiceLogs returns logs for a specific service from overmind echo.
 // URL pattern: /api/services/{name}/logs
-func handleServiceLogs(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleServiceLogs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -191,7 +191,7 @@ func handleServiceLogs(w http.ResponseWriter, r *http.Request) {
 	serviceName := parts[0]
 
 	// Get logs from overmind echo
-	logs, err := getServiceLogs(serviceName, sourceDir)
+	logs, err := getServiceLogs(serviceName, s.SourceDir)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get logs: %v", err), http.StatusInternalServerError)
 		return

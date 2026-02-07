@@ -34,9 +34,9 @@ func (s *Server) handleLikelyDone(w http.ResponseWriter, r *http.Request) {
 	// Get beads client (RPC or CLI fallback)
 	// Note: Must check beadsClient before assigning to interface to avoid
 	// Go's nil interface gotcha (interface with nil data is not == nil)
-	beadsClientMu.RLock()
-	rpcClient := beadsClient
-	beadsClientMu.RUnlock()
+	s.BeadsClientMu.RLock()
+	rpcClient := s.BeadsClient
+	s.BeadsClientMu.RUnlock()
 
 	var client beads.BeadsClient
 	if rpcClient != nil {
@@ -46,7 +46,7 @@ func (s *Server) handleLikelyDone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if cache is initialized
-	if globalLikelyDoneCache == nil {
+	if s.LikelyDoneCache == nil {
 		// Fallback: fetch without cache if not initialized
 		data, err := attention.CollectLikelyDoneSignals(projectDir, client)
 		if err != nil {
@@ -63,7 +63,7 @@ func (s *Server) handleLikelyDone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get cached or fresh data
-	data, err := globalLikelyDoneCache.Get(projectDir, client)
+	data, err := s.LikelyDoneCache.Get(projectDir, client)
 	if err != nil {
 		resp := &attention.LikelyDoneResponse{
 			Error: fmt.Sprintf("Failed to collect likely done signals: %v", err),
@@ -154,9 +154,9 @@ func (s *Server) handleAttention(w http.ResponseWriter, r *http.Request) {
 	// Get beads client (RPC or CLI fallback)
 	// Note: Must check beadsClient before assigning to interface to avoid
 	// Go's nil interface gotcha (interface with nil data is not == nil)
-	beadsClientMu.RLock()
-	rpcClient := beadsClient
-	beadsClientMu.RUnlock()
+	s.BeadsClientMu.RLock()
+	rpcClient := s.BeadsClient
+	s.BeadsClientMu.RUnlock()
 
 	var client beads.BeadsClient
 	if rpcClient != nil {
@@ -606,9 +606,9 @@ func (s *Server) handleVerifyFailedResetStatus(w http.ResponseWriter, r *http.Re
 	}
 
 	// Get beads client
-	beadsClientMu.RLock()
-	rpcClient := beadsClient
-	beadsClientMu.RUnlock()
+	s.BeadsClientMu.RLock()
+	rpcClient := s.BeadsClient
+	s.BeadsClientMu.RUnlock()
 
 	var client beads.BeadsClient
 	if rpcClient != nil {
