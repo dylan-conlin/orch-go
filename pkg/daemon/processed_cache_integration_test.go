@@ -56,8 +56,9 @@ func TestProcessedCache_IntegrationWithDaemon(t *testing.T) {
 
 	// Create daemon with cache
 	config := DefaultConfig()
-	config.Verbose = true // Enable verbose to see filtering reasons
-	config.Label = ""     // Disable label filtering for this test
+	config.Verbose = true  // Enable verbose to see filtering reasons
+	config.Label = ""      // Disable label filtering for this test
+	config.GracePeriod = 0 // Disable grace period for deterministic test behavior
 	d := NewWithConfig(config)
 
 	// Replace cache with test cache

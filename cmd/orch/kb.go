@@ -983,7 +983,7 @@ func parseInvestigationDate(filename string) (time.Time, error) {
 	}
 
 	dateStr := basename[:10]
-	date, err := time.Parse("2006-01-02", dateStr)
+	date, err := time.ParseInLocation("2006-01-02", dateStr, time.Local)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to parse date from filename: %w", err)
 	}

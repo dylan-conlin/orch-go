@@ -1,7 +1,7 @@
 package main
 
 import (
-	"strings"
+	"regexp"
 	"testing"
 )
 
@@ -32,10 +32,16 @@ func TestHiddenCommands(t *testing.T) {
 		cmd := rootCmd
 		helpOutput := cmd.UsageString()
 
-		// Verify each hidden command is NOT in help output
+		// Verify each hidden command is NOT in help output as a command entry.
+		// We match against the cobra help format: "  <command>  " (command name
+		// at the start of a line, followed by spaces). Simple substring matching
+		// produces false positives when command names appear in descriptions
+		// of other visible commands (e.g., "config" in "configuration").
 		for _, cmdName := range hiddenCommands {
-			if strings.Contains(helpOutput, cmdName) {
-				t.Errorf("Hidden command %q should not appear in help output", cmdName)
+			// Match command name as a word at the start of a help line
+			re := regexp.MustCompile(`(?m)^\s+` + regexp.QuoteMeta(cmdName) + `\s`)
+			if re.MatchString(helpOutput) {
+				t.Errorf("Hidden command %q should not appear as a command entry in help output", cmdName)
 			}
 		}
 	})
@@ -70,8 +76,9 @@ func TestHiddenCommands(t *testing.T) {
 		helpOutput := rootCmd.UsageString()
 
 		for _, cmdName := range visibleCommands {
-			if !strings.Contains(helpOutput, cmdName) {
-				t.Errorf("Visible command %q should appear in help output", cmdName)
+			re := regexp.MustCompile(`(?m)^\s+` + regexp.QuoteMeta(cmdName) + `\s`)
+			if !re.MatchString(helpOutput) {
+				t.Errorf("Visible command %q should appear as a command entry in help output", cmdName)
 			}
 
 			// Also verify Hidden=false

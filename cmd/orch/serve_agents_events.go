@@ -234,6 +234,9 @@ func readLastNEvents(path string, n int) ([]events.Event, error) {
 
 	var allEvents []events.Event
 	scanner := bufio.NewScanner(file)
+	// Increase buffer size to handle large event lines (e.g., events with
+	// embedded transcripts can exceed the default 64KB scanner buffer).
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // up to 1MB per line
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {

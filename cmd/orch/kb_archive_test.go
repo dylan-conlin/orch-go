@@ -18,13 +18,13 @@ func TestParseInvestigationDate(t *testing.T) {
 		{
 			name:        "valid investigation filename",
 			filename:    "2025-12-19-inv-test-investigation.md",
-			expectDate:  time.Date(2025, 12, 19, 0, 0, 0, 0, time.UTC),
+			expectDate:  time.Date(2025, 12, 19, 0, 0, 0, 0, time.Local),
 			expectError: false,
 		},
 		{
 			name:        "valid design filename",
 			filename:    "2026-01-15-design-feature-planning.md",
-			expectDate:  time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC),
+			expectDate:  time.Date(2026, 1, 15, 0, 0, 0, 0, time.Local),
 			expectError: false,
 		},
 		{
@@ -42,7 +42,7 @@ func TestParseInvestigationDate(t *testing.T) {
 		{
 			name:        "full path should work",
 			filename:    "/path/to/.kb/investigations/2025-12-20-inv-test.md",
-			expectDate:  time.Date(2025, 12, 20, 0, 0, 0, 0, time.UTC),
+			expectDate:  time.Date(2025, 12, 20, 0, 0, 0, 0, time.Local),
 			expectError: false,
 		},
 	}
@@ -80,19 +80,19 @@ func TestCalculateInvestigationAge(t *testing.T) {
 			name:      "60 days old",
 			filename:  now.AddDate(0, 0, -60).Format("2006-01-02") + "-inv-test.md",
 			expectAge: 60 * 24 * time.Hour,
-			tolerance: 1 * time.Hour,
+			tolerance: 24 * time.Hour, // Day-precision dates can be off by up to a day
 		},
 		{
 			name:      "30 days old",
 			filename:  now.AddDate(0, 0, -30).Format("2006-01-02") + "-inv-test.md",
 			expectAge: 30 * 24 * time.Hour,
-			tolerance: 1 * time.Hour,
+			tolerance: 24 * time.Hour,
 		},
 		{
 			name:      "today (0 days old)",
 			filename:  now.Format("2006-01-02") + "-inv-test.md",
 			expectAge: 0,
-			tolerance: 1 * time.Hour,
+			tolerance: 24 * time.Hour,
 		},
 	}
 

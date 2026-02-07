@@ -4,9 +4,9 @@ package main
 import (
 	"crypto/tls"
 	"encoding/json"
-	"net/http"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -516,10 +516,21 @@ func findBlockingDecisions(task, projectDir string) ([]DecisionConflict, error) 
 				}
 			}
 
-			// Check patterns (file patterns)
+			// Check patterns (file/path patterns like "**/api/**")
+			// Extract meaningful path segments from glob patterns and check
+			// if any appear in the task description.
 			for _, pattern := range block.Patterns {
-				if strings.Contains(taskLower, pattern) {
-					matchedOn = append(matchedOn, "pattern: "+pattern)
+				// Extract non-wildcard path segments from the pattern
+				segments := strings.Split(pattern, "/")
+				for _, seg := range segments {
+					seg = strings.TrimSpace(seg)
+					if seg == "" || seg == "*" || seg == "**" || strings.Contains(seg, "*") {
+						continue
+					}
+					if strings.Contains(taskLower, strings.ToLower(seg)) {
+						matchedOn = append(matchedOn, "pattern: "+pattern)
+						break
+					}
 				}
 			}
 		}
@@ -551,13 +562,19 @@ func parseDecisionFrontmatter(content string) (*DecisionFrontmatter, error) {
 	}
 
 	// Find the closing ---
-	endIdx := strings.Index(content[4:], "\n---\n")
+	// Handle both "---\n<yaml>\n---\n" and empty frontmatter "---\n---\n"
+	rest := content[4:]
+	endIdx := strings.Index(rest, "\n---\n")
 	if endIdx == -1 {
+		// Check for empty frontmatter: "---\n---\n..."
+		if strings.HasPrefix(rest, "---\n") || rest == "---" {
+			return &DecisionFrontmatter{}, nil
+		}
 		return nil, nil
 	}
 
 	// Extract YAML content
-	yamlContent := content[4 : 4+endIdx]
+	yamlContent := rest[:endIdx]
 
 	// Parse YAML
 	var frontmatter DecisionFrontmatter
