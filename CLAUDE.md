@@ -56,6 +56,28 @@ pkg/
     └── question.go     # Parse pending questions from agent output
 ```
 
+## Forked Dependencies
+
+orch-go depends on Dylan's forks of two upstream projects. Changes to these components must be made in the fork repos, not upstream.
+
+| Dependency | Fork Location | Upstream | Why Forked |
+|------------|--------------|----------|------------|
+| **OpenCode** | `~/Documents/personal/opencode` | `sst/opencode` | Instance eviction (LRU/TTL), SSE cleanup, memory leak fixes, custom plugins |
+| **Beads (bd)** | `~/Documents/personal/beads` | `steveyegge/beads` | Sandbox detection, JSONL-only default, rapid-restart prevention, SQLite corruption fixes |
+
+**Push targets:**
+- OpenCode: `git push fork dev` (remote `fork` → `dylan-conlin/opencode`)
+- Beads: check remote config (`git remote -v`)
+
+**Rebuild after fork changes:**
+- OpenCode: `orch-dashboard restart` auto-detects newer commits and rebuilds
+- Beads: `cd ~/Documents/personal/beads && go install ./cmd/bd/`
+
+**Key context:**
+- OpenCode fork stays diverged from upstream (custom features needed for orch-go)
+- Beads fork stays diverged from upstream — see `.kb/decisions/2026-02-05-beads-fork-stay-diverged.md`
+- Both forks have reliability fixes not present upstream (instance eviction, WAL corruption prevention)
+
 ## Tool Restrictions
 
 ### Task Tool Disabled
