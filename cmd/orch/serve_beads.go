@@ -24,11 +24,20 @@ type projectCacheEntry struct {
 
 	readyIssues    []beads.Issue
 	readyFetchedAt time.Time
+
+	// Graph cache keyed by "scope:parent" (e.g., "focus:", "open:", "focus:orch-go-123")
+	graphCache map[string]*graphCacheEntry
 }
 
-// beadsStatsCache provides TTL-based caching for /api/beads and /api/beads/ready.
+// graphCacheEntry holds a cached graph response.
+type graphCacheEntry struct {
+	response  *BeadsGraphAPIResponse
+	fetchedAt time.Time
+}
+
+// beadsStatsCache provides TTL-based caching for /api/beads, /api/beads/ready, and /api/beads/graph.
 // Without caching, each request spawns a bd process which takes ~1.5s for stats.
-// With 30s TTL, most dashboard polls hit cache (instant) while data stays fresh.
+// With 5s TTL, most dashboard polls hit cache (instant) while data stays fresh.
 // Cache is project-aware: each project_dir has its own cache entry.
 type beadsStatsCache struct {
 	mu sync.RWMutex
@@ -37,9 +46,10 @@ type beadsStatsCache struct {
 	// Empty string key is used for default project (sourceDir)
 	projects map[string]*projectCacheEntry
 
-	// TTL for stats and ready issues
+	// TTL for stats, ready issues, and graph
 	statsTTL time.Duration
 	readyTTL time.Duration
+	graphTTL time.Duration
 }
 
 // Global beads stats cache, initialized in runServe
@@ -50,6 +60,7 @@ func newBeadsStatsCache() *beadsStatsCache {
 		projects: make(map[string]*projectCacheEntry),
 		statsTTL: 5 * time.Second, // Dashboard can tolerate 5s stale data; singleflight prevents stampede on cache miss
 		readyTTL: 5 * time.Second, // Same TTL — singleflight dedup means cache misses are cheap (only 1 subprocess)
+		graphTTL: 5 * time.Second, // Graph is the heaviest endpoint (N*3+1 bd calls for N focus issues); caching prevents limiter saturation
 	}
 }
 
@@ -220,6 +231,40 @@ func (c *beadsStatsCache) getReadyIssues(projectDir string) ([]beads.Issue, erro
 	return issues, nil
 }
 
+// getGraph returns a cached graph response or builds fresh if stale.
+// cacheKey distinguishes different graph queries (scope + parent filter).
+func (c *beadsStatsCache) getGraph(projectDir, cacheKey string, buildFn func() (*BeadsGraphAPIResponse, error)) (*BeadsGraphAPIResponse, error) {
+	entry := c.getOrCreateEntry(projectDir)
+
+	c.mu.RLock()
+	if entry.graphCache != nil {
+		if ge, ok := entry.graphCache[cacheKey]; ok && time.Since(ge.fetchedAt) < c.graphTTL {
+			result := ge.response
+			c.mu.RUnlock()
+			return result, nil
+		}
+	}
+	c.mu.RUnlock()
+
+	// Build fresh graph
+	resp, err := buildFn()
+	if err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	if entry.graphCache == nil {
+		entry.graphCache = make(map[string]*graphCacheEntry)
+	}
+	entry.graphCache[cacheKey] = &graphCacheEntry{
+		response:  resp,
+		fetchedAt: time.Now(),
+	}
+	c.mu.Unlock()
+
+	return resp, nil
+}
+
 // invalidate clears cached data, forcing fresh fetches on next request.
 // If projectDir is empty, clears all projects.
 func (c *beadsStatsCache) invalidate(projectDir string) {
@@ -252,7 +297,7 @@ type BeadsAPIResponse struct {
 // Without caching, each request spawns a bd process (~1.5s overhead).
 // Query params:
 //   - project_dir: Optional project directory to query. If not provided, uses default.
-func handleBeads(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleBeads(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -262,7 +307,7 @@ func handleBeads(w http.ResponseWriter, r *http.Request) {
 	projectDir := r.URL.Query().Get("project_dir")
 
 	// Use cached stats when available
-	stats, err := globalBeadsStatsCache.getStats(projectDir)
+	stats, err := s.BeadsStatsCache.getStats(projectDir)
 	if err != nil {
 		resp := BeadsAPIResponse{
 			Error:      fmt.Sprintf("Failed to get bd stats: %v", err),
@@ -336,7 +381,7 @@ func filterTriageReadyIssues(issues []ReadyIssueResponse) []ReadyIssueResponse {
 // Without caching, each request spawns a bd process (~80ms overhead).
 // Query params:
 //   - project_dir: Optional project directory to query. If not provided, uses default.
-func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -346,7 +391,7 @@ func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 	projectDir := r.URL.Query().Get("project_dir")
 
 	// Use cached ready issues when available
-	issues, err := globalBeadsStatsCache.getReadyIssues(projectDir)
+	issues, err := s.BeadsStatsCache.getReadyIssues(projectDir)
 	if err != nil {
 		resp := BeadsReadyAPIResponse{
 			Issues:     []ReadyIssueResponse{},
@@ -411,7 +456,7 @@ type CreateIssueResponse struct {
 
 // handleIssues handles POST /api/issues - creates a new beads issue.
 // This is used by the dashboard to create follow-up issues from synthesis recommendations.
-func handleIssues(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleIssues(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -439,9 +484,9 @@ func handleIssues(w http.ResponseWriter, r *http.Request) {
 	// Use persistent RPC client (with auto-reconnect), fallback to CLI if unavailable.
 	// Creates use ONLY the concurrency limiter (not singleflight) because each create is unique.
 	createResult, err := bdLimitedCreate(func() (interface{}, error) {
-		beadsClientMu.RLock()
-		currentClient := beadsClient
-		beadsClientMu.RUnlock()
+		s.BeadsClientMu.RLock()
+		currentClient := s.BeadsClient
+		s.BeadsClientMu.RUnlock()
 
 		if currentClient != nil {
 			issue, createErr := currentClient.Create(&beads.CreateArgs{
@@ -517,7 +562,7 @@ type QuestionsAPIResponse struct {
 //   - open: Questions needing answers (status=open)
 //   - investigating: Questions with active investigation (status=in_progress)
 //   - answered: Recently closed questions (status=closed, last 7 days)
-func handleQuestions(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleQuestions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -779,7 +824,7 @@ type beadsShowIssue struct {
 //   - Their blockers (what's preventing completion)
 //   - Their immediate dependents (what's waiting)
 //   - Any P0/P1 issues (urgent items regardless of status)
-func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -799,43 +844,55 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 		workDir = beads.DefaultDir
 	}
 
-	var nodes []GraphNode
-	var edges []GraphEdge
-	var err error
+	// Build cache key from query params that affect the result.
+	// Parent filtering is done post-fetch, so include it in the cache key.
+	cacheKey := scope + ":" + parentID
 
-	if scope == "focus" {
-		nodes, edges, err = buildFocusGraph(workDir)
-	} else {
-		// scope=open or scope=all
-		includeAll := scope == "all"
-		nodes, edges, err = buildFullGraph(workDir, includeAll)
-	}
+	// Use TTL cache to prevent bd limiter saturation.
+	// The graph endpoint is the heaviest: buildFocusGraph makes N*3+1 bd subprocess
+	// calls (show + dep list + dep list per focus issue). Without caching, concurrent
+	// dashboard polls easily saturate the 5-slot semaphore, causing timeout errors.
+	resp, err := s.BeadsStatsCache.getGraph(projectDir, cacheKey, func() (*BeadsGraphAPIResponse, error) {
+		var nodes []GraphNode
+		var edges []GraphEdge
+		var buildErr error
+
+		if scope == "focus" {
+			nodes, edges, buildErr = buildFocusGraph(workDir)
+		} else {
+			// scope=open or scope=all
+			includeAll := scope == "all"
+			nodes, edges, buildErr = buildFullGraph(workDir, includeAll)
+		}
+
+		if buildErr != nil {
+			return &BeadsGraphAPIResponse{
+				Nodes:      []GraphNode{},
+				Edges:      []GraphEdge{},
+				ProjectDir: projectDir,
+				Error:      buildErr.Error(),
+			}, nil // Return the error response as a cached value, not as an error
+		}
+
+		// Filter to parent and descendants if parent ID specified
+		if parentID != "" {
+			nodes, edges = filterToParentAndDescendants(nodes, edges, parentID)
+		}
+
+		// Compute execution layers for all nodes
+		nodes = computeLayers(nodes, edges)
+		return &BeadsGraphAPIResponse{
+			Nodes:      nodes,
+			Edges:      edges,
+			NodeCount:  len(nodes),
+			EdgeCount:  len(edges),
+			ProjectDir: projectDir,
+		}, nil
+	})
 
 	if err != nil {
-		resp := BeadsGraphAPIResponse{
-			Nodes:      []GraphNode{},
-			Edges:      []GraphEdge{},
-			ProjectDir: projectDir,
-			Error:      err.Error(),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		http.Error(w, fmt.Sprintf("Failed to build graph: %v", err), http.StatusInternalServerError)
 		return
-	}
-
-	// Filter to parent and descendants if parent ID specified
-	if parentID != "" {
-		nodes, edges = filterToParentAndDescendants(nodes, edges, parentID)
-	}
-
-	// Compute execution layers for all nodes
-	nodes = computeLayers(nodes, edges)
-	resp := BeadsGraphAPIResponse{
-		Nodes:      nodes,
-		Edges:      edges,
-		NodeCount:  len(nodes),
-		EdgeCount:  len(edges),
-		ProjectDir: projectDir,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1282,7 +1339,7 @@ type AttemptHistoryAPIResponse struct {
 // - Outcome (derived from workspace state and beads comments)
 // - Phase (last reported phase from beads comments)
 // - Artifacts (files produced: SYNTHESIS.md, investigations, etc.)
-func handleBeadsAttempts(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleBeadsAttempts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1638,7 +1695,7 @@ type CloseIssueResponse struct {
 
 // handleBeadsClose handles POST /api/beads/close - closes a beads issue.
 // This is used by the work graph to close issues via keyboard shortcut.
-func handleBeadsClose(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleBeadsClose(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1691,8 +1748,8 @@ func handleBeadsClose(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Invalidate cache to reflect the change
-	if globalBeadsStatsCache != nil {
-		globalBeadsStatsCache.invalidate(req.ProjectDir)
+	if s.BeadsStatsCache != nil {
+		s.BeadsStatsCache.invalidate(req.ProjectDir)
 	}
 
 	resp := CloseIssueResponse{

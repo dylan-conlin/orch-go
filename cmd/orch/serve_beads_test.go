@@ -10,15 +10,12 @@ import (
 )
 
 func TestHandleBeadsMethodNotAllowed(t *testing.T) {
-	// Ensure cache is initialized
-	if globalBeadsStatsCache == nil {
-		globalBeadsStatsCache = newBeadsStatsCache()
-	}
+	srv := newTestServer()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/beads", nil)
 	w := httptest.NewRecorder()
 
-	handleBeads(w, req)
+	srv.handleBeads(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
@@ -40,16 +37,13 @@ func TestHandleBeadsWithProjectParam(t *testing.T) {
 		t.Fatalf("Failed to create issues.jsonl: %v", err)
 	}
 
-	// Ensure cache is initialized
-	if globalBeadsStatsCache == nil {
-		globalBeadsStatsCache = newBeadsStatsCache()
-	}
+	srv := newTestServer()
 
 	// Test with project_dir parameter
 	req := httptest.NewRequest(http.MethodGet, "/api/beads?project_dir="+tmpDir, nil)
 	w := httptest.NewRecorder()
 
-	handleBeads(w, req)
+	srv.handleBeads(w, req)
 
 	resp := w.Result()
 	// Should return 200 even if bd returns error (empty beads directory)
@@ -85,16 +79,13 @@ func TestHandleBeadsReadyWithProjectParam(t *testing.T) {
 		t.Fatalf("Failed to create issues.jsonl: %v", err)
 	}
 
-	// Ensure cache is initialized
-	if globalBeadsStatsCache == nil {
-		globalBeadsStatsCache = newBeadsStatsCache()
-	}
+	srv := newTestServer()
 
 	// Test with project_dir parameter
 	req := httptest.NewRequest(http.MethodGet, "/api/beads/ready?project_dir="+tmpDir, nil)
 	w := httptest.NewRecorder()
 
-	handleBeadsReady(w, req)
+	srv.handleBeadsReady(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
@@ -131,18 +122,108 @@ func TestBeadsStatsCacheProjectAwareness(t *testing.T) {
 	if cache.readyTTL <= 0 {
 		t.Error("Expected positive ready TTL")
 	}
+	if cache.graphTTL <= 0 {
+		t.Error("Expected positive graph TTL")
+	}
+}
+
+func TestGraphCacheTTL(t *testing.T) {
+	cache := newBeadsStatsCache()
+	callCount := 0
+
+	buildFn := func() (*BeadsGraphAPIResponse, error) {
+		callCount++
+		return &BeadsGraphAPIResponse{
+			Nodes:     []GraphNode{{ID: "test-1", Title: "Test"}},
+			Edges:     []GraphEdge{},
+			NodeCount: 1,
+		}, nil
+	}
+
+	// First call should invoke buildFn
+	resp1, err := cache.getGraph("", "focus:", buildFn)
+	if err != nil {
+		t.Fatalf("First getGraph failed: %v", err)
+	}
+	if callCount != 1 {
+		t.Errorf("Expected 1 build call, got %d", callCount)
+	}
+	if resp1.NodeCount != 1 {
+		t.Errorf("Expected 1 node, got %d", resp1.NodeCount)
+	}
+
+	// Second call within TTL should use cache (buildFn not called again)
+	resp2, err := cache.getGraph("", "focus:", buildFn)
+	if err != nil {
+		t.Fatalf("Second getGraph failed: %v", err)
+	}
+	if callCount != 1 {
+		t.Errorf("Expected still 1 build call (cached), got %d", callCount)
+	}
+	if resp2.NodeCount != 1 {
+		t.Errorf("Expected 1 node from cache, got %d", resp2.NodeCount)
+	}
+
+	// Different cache key should trigger a new build
+	_, err = cache.getGraph("", "open:", buildFn)
+	if err != nil {
+		t.Fatalf("Third getGraph (different key) failed: %v", err)
+	}
+	if callCount != 2 {
+		t.Errorf("Expected 2 build calls (different key), got %d", callCount)
+	}
+
+	// Different project should trigger a new build
+	_, err = cache.getGraph("/other/project", "focus:", buildFn)
+	if err != nil {
+		t.Fatalf("Fourth getGraph (different project) failed: %v", err)
+	}
+	if callCount != 3 {
+		t.Errorf("Expected 3 build calls (different project), got %d", callCount)
+	}
+}
+
+func TestGraphCacheInvalidation(t *testing.T) {
+	cache := newBeadsStatsCache()
+	callCount := 0
+
+	buildFn := func() (*BeadsGraphAPIResponse, error) {
+		callCount++
+		return &BeadsGraphAPIResponse{
+			Nodes:     []GraphNode{{ID: "test-1", Title: "Test"}},
+			NodeCount: 1,
+		}, nil
+	}
+
+	// First call - builds
+	_, err := cache.getGraph("proj1", "focus:", buildFn)
+	if err != nil {
+		t.Fatalf("First getGraph failed: %v", err)
+	}
+	if callCount != 1 {
+		t.Errorf("Expected 1 call, got %d", callCount)
+	}
+
+	// Invalidate the project
+	cache.invalidate("proj1")
+
+	// After invalidation, should rebuild
+	_, err = cache.getGraph("proj1", "focus:", buildFn)
+	if err != nil {
+		t.Fatalf("Post-invalidation getGraph failed: %v", err)
+	}
+	if callCount != 2 {
+		t.Errorf("Expected 2 calls after invalidation, got %d", callCount)
+	}
 }
 
 func TestHandleBeadsReadyMethodNotAllowed(t *testing.T) {
-	// Ensure cache is initialized
-	if globalBeadsStatsCache == nil {
-		globalBeadsStatsCache = newBeadsStatsCache()
-	}
+	srv := newTestServer()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/beads/ready", nil)
 	w := httptest.NewRecorder()
 
-	handleBeadsReady(w, req)
+	srv.handleBeadsReady(w, req)
 
 	resp := w.Result()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
