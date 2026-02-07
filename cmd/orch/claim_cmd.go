@@ -188,10 +188,10 @@ func sanitizeForWorkspaceName(s string, maxLen int) string {
 // extractHashFromBeadsID extracts the hash suffix from a beads ID.
 // Example: "orch-go-21029" -> "21029" (last segment)
 func extractHashFromBeadsID(beadsID string) string {
-	parts := strings.Split(beadsID, "-")
-	if len(parts) < 2 {
+	if beadsID == "" {
 		return "unkn"
 	}
+	parts := strings.Split(beadsID, "-")
 	return parts[len(parts)-1]
 }
 
