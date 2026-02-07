@@ -15,6 +15,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/process"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	"github.com/dylan-conlin/orch-go/pkg/stability"
 	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -470,6 +471,14 @@ func logAbandonmentEvent(ctx *abandonContext) {
 
 	// Log telemetry for model performance tracking
 	logAbandonTelemetry(logger, ctx)
+
+	// Record stability intervention (agent abandonment breaks the clean-session streak)
+	recorder := stability.NewRecorder(stability.DefaultPath())
+	detail := fmt.Sprintf("%s abandoned", ctx.BeadsID)
+	if ctx.Reason != "" {
+		detail = fmt.Sprintf("%s abandoned (%s)", ctx.BeadsID, ctx.Reason)
+	}
+	recorder.RecordIntervention(stability.SourceAgentAbandoned, detail, nil, ctx.BeadsID)
 }
 
 // logStructuredEvent writes the agent.abandoned event with all available context.

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/notify"
+	"github.com/dylan-conlin/orch-go/pkg/stability"
 )
 
 func runDoctorWatch() error {
@@ -241,12 +242,14 @@ func runDoctorDaemon() error {
 	config := DefaultDoctorDaemonConfig()
 	logger := NewDoctorDaemonLogger(config.LogPath, config.Verbose)
 	notifier := notify.Default()
+	stabilityRecorder := stability.NewRecorder(stability.DefaultPath())
 
 	fmt.Println("orch doctor --daemon")
 	fmt.Println("Self-Healing Background Daemon")
 	fmt.Println("==============================")
 	fmt.Printf("Poll interval: %s\n", config.PollInterval)
 	fmt.Printf("Log file:      %s\n", config.LogPath)
+	fmt.Printf("Stability log: %s\n", stability.DefaultPath())
 	fmt.Println("Press Ctrl+C to stop")
 	fmt.Println()
 
@@ -258,14 +261,15 @@ func runDoctorDaemon() error {
 
 	previousHealth := make(map[string]bool)
 	totalInterventions := 0
+	lastSnapshotTime := time.Time{} // Track when we last wrote a stability snapshot
 
-	interventions := runDaemonHealthCycle(config, logger, notifier, previousHealth)
+	interventions := runDaemonHealthCycle(config, logger, notifier, previousHealth, stabilityRecorder, &lastSnapshotTime)
 	totalInterventions += interventions
 
 	for {
 		select {
 		case <-ticker.C:
-			interventions := runDaemonHealthCycle(config, logger, notifier, previousHealth)
+			interventions := runDaemonHealthCycle(config, logger, notifier, previousHealth, stabilityRecorder, &lastSnapshotTime)
 			totalInterventions += interventions
 		case <-sigChan:
 			fmt.Printf("\nDaemon stopped. Total interventions: %d\n", totalInterventions)
@@ -275,7 +279,7 @@ func runDoctorDaemon() error {
 }
 
 // runDaemonHealthCycle runs one cycle of health checks and self-healing.
-func runDaemonHealthCycle(config DoctorDaemonConfig, logger *DoctorDaemonLogger, notifier *notify.Notifier, previousHealth map[string]bool) int {
+func runDaemonHealthCycle(config DoctorDaemonConfig, logger *DoctorDaemonLogger, notifier *notify.Notifier, previousHealth map[string]bool, stabilityRecorder *stability.Recorder, lastSnapshotTime *time.Time) int {
 	interventions := 0
 	timestamp := time.Now()
 	timeStr := timestamp.Format("15:04:05")
@@ -288,6 +292,13 @@ func runDaemonHealthCycle(config DoctorDaemonConfig, logger *DoctorDaemonLogger,
 
 	restarted := restartCrashedServices(config, logger)
 	interventions += restarted
+
+	// Track which services the daemon fixed this cycle for manual recovery detection
+	daemonFixedServices := make(map[string]bool)
+	if restarted > 0 {
+		// restartCrashedServices only restarts OpenCode currently
+		daemonFixedServices["OpenCode"] = true
+	}
 
 	report := &DoctorReport{Healthy: true, Services: make([]ServiceStatus, 0)}
 	// Liveness checks
@@ -323,6 +334,30 @@ func runDaemonHealthCycle(config DoctorDaemonConfig, logger *DoctorDaemonLogger,
 				Timestamp: timestamp, Type: "service_down", Target: svc.Name, Reason: svc.Details, Success: true,
 			})
 		}
+
+		// Detect manual recovery: service was unhealthy, now healthy, daemon didn't fix it
+		if exists && !wasHealthy && isHealthy && !daemonFixedServices[svc.Name] {
+			stabilityRecorder.RecordIntervention(
+				stability.SourceManualRecovery,
+				fmt.Sprintf("%s recovered without daemon action", svc.Name),
+				[]string{svc.Name},
+				"",
+			)
+			if config.Verbose {
+				fmt.Printf("[%s] Stability: manual recovery detected for %s\n", timeStr, svc.Name)
+			}
+		}
+	}
+
+	// Record stability snapshot every 5 minutes
+	const snapshotInterval = 5 * time.Minute
+	if lastSnapshotTime.IsZero() || timestamp.Sub(*lastSnapshotTime) >= snapshotInterval {
+		serviceStates := make(map[string]bool)
+		for _, svc := range report.Services {
+			serviceStates[svc.Name] = svc.Running
+		}
+		stabilityRecorder.RecordSnapshot(report.Healthy, serviceStates)
+		*lastSnapshotTime = timestamp
 	}
 
 	return interventions

@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/stability"
 	"github.com/spf13/cobra"
 )
 
@@ -266,6 +267,16 @@ func runDoctor() error {
 		}
 
 		if fixed {
+			// Record stability intervention: manual fix via orch doctor --fix
+			recorder := stability.NewRecorder(stability.DefaultPath())
+			var fixedServices []string
+			for _, svc := range report.Services {
+				if !svc.Running && svc.CanFix {
+					fixedServices = append(fixedServices, svc.Name)
+				}
+			}
+			recorder.RecordIntervention(stability.SourceDoctorFix, "orch doctor --fix", fixedServices, "")
+
 			fmt.Println()
 			fmt.Println("Services started. Run 'orch doctor' again to verify.")
 		}
