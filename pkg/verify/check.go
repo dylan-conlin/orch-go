@@ -293,6 +293,30 @@ func VerifyCompletionForReview(beadsID, workspacePath, tier, serverURL string, c
 	return result, nil
 }
 
+// gateCheckResult represents the outcome of a single verification gate check.
+// This provides a uniform interface for merging results from the various
+// verification functions, each of which has its own result type.
+type gateCheckResult struct {
+	gate     string   // Gate constant (e.g., GateBuild)
+	passed   bool     // Whether the gate passed
+	errors   []string // Error messages (blocking)
+	warnings []string // Warning messages (non-blocking)
+}
+
+// mergeGateResult merges a single gate check result into the overall VerificationResult.
+// This eliminates the repetitive 10-line merge pattern used by each gate check.
+func mergeGateResult(result *VerificationResult, gr gateCheckResult) {
+	if !gr.passed {
+		result.Passed = false
+		result.Errors = append(result.Errors, gr.errors...)
+		result.GatesFailed = append(result.GatesFailed, gr.gate)
+		result.GateResults = append(result.GateResults, GateResult{Gate: gr.gate, Passed: false, Error: joinErrors(gr.errors)})
+	} else {
+		result.GateResults = append(result.GateResults, GateResult{Gate: gr.gate, Passed: true})
+	}
+	result.Warnings = append(result.Warnings, gr.warnings...)
+}
+
 // VerifyCompletionFullWithComments is like VerifyCompletionFull but accepts pre-fetched comments.
 // This avoids O(n) beads API calls when verifying multiple completions in batch.
 // If comments is nil, comments will be fetched from beads API.
@@ -313,196 +337,201 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 		return result, nil
 	}
 
-	// Verify backend deliverables (opencode transcript or tmux capture)
-	if !isOrchestrator(tier) && workspacePath != "" {
-		backendResult := VerifyBackendDeliverables(workspacePath, beadsID, serverURL, "")
-		if backendResult != nil {
-			// Merge warnings (backend checks currently don't block unless we decide otherwise)
-			result.Warnings = append(result.Warnings, backendResult.Warnings...)
-			if !backendResult.Passed {
-				// For now, we don't block completion on backend check failures
-				// to avoid breaking existing workflows, but we log the warnings.
-				// If we want to block, we would set result.Passed = false here.
-			}
-		}
-	}
-
-	// Skip constraint verification if no workspace
-	if workspacePath == "" {
-		return result, nil
-	}
-
-	// Skip constraint verification if no project dir
-	if projectDir == "" {
-		return result, nil
-	}
-
-	// Check if this is an orchestrator tier spawn
 	isOrch := isOrchestrator(tier)
 
+	// Verify backend deliverables (opencode transcript or tmux capture)
+	if !isOrch && workspacePath != "" {
+		mergeBackendResult(&result, VerifyBackendDeliverables(workspacePath, beadsID, serverURL, ""))
+	}
+
+	// Skip constraint/gate verification if no workspace or project dir
+	if workspacePath == "" || projectDir == "" {
+		return result, nil
+	}
+
+	// Run worker-specific gates (skip for orchestrator tier)
+	if !isOrch {
+		verifyWorkerGates(&result, beadsID, workspacePath, projectDir, serverURL, comments)
+	}
+
+	// Run gates that apply to all tiers
+	verifyCommonGates(&result, workspacePath, projectDir)
+
+	return result, nil
+}
+
+// mergeBackendResult merges backend deliverable warnings into the overall result.
+// Backend checks currently don't block completion to avoid breaking existing workflows.
+func mergeBackendResult(result *VerificationResult, backendResult *BackendResult) {
+	if backendResult != nil {
+		result.Warnings = append(result.Warnings, backendResult.Warnings...)
+	}
+}
+
+// verifyWorkerGates runs verification gates specific to worker (non-orchestrator) spawns.
+// These gates are skipped for orchestrator tier since they depend on beads or are
+// worker-specific (constraints, phase gates, visual verification, test evidence, etc.).
+func verifyWorkerGates(result *VerificationResult, beadsID, workspacePath, projectDir, serverURL string, comments []Comment) {
 	// Verify skill constraints from SPAWN_CONTEXT.md
-	// Skip for orchestrator tier since they use ORCHESTRATOR_CONTEXT.md
-	if !isOrch {
-		constraintResult, err := VerifyConstraintsForCompletion(workspacePath, projectDir)
-		if err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify constraints: %v", err))
-			// Continue to phase gate verification even if constraints failed to parse
-		} else {
-			// Merge constraint results
-			if !constraintResult.Passed {
-				result.Passed = false
-				result.Errors = append(result.Errors, constraintResult.Errors...)
-				result.GatesFailed = append(result.GatesFailed, GateConstraint)
-				result.GateResults = append(result.GateResults, GateResult{Gate: GateConstraint, Passed: false, Error: joinErrors(constraintResult.Errors)})
-			} else {
-				result.GateResults = append(result.GateResults, GateResult{Gate: GateConstraint, Passed: true})
-			}
-			result.Warnings = append(result.Warnings, constraintResult.Warnings...)
-		}
-	}
+	checkConstraints(result, workspacePath, projectDir)
 
-	// Verify phase gates from SPAWN_CONTEXT.md
-	// This checks that required phases were reported in beads comments
-	// Skip for orchestrator tier (beads-dependent)
-	if !isOrch {
-		phaseGateResult, err := VerifyPhaseGatesForCompletionWithComments(workspacePath, beadsID, comments)
-		if err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify phase gates: %v", err))
-		} else if !phaseGateResult.Passed {
-			result.Passed = false
-			result.Errors = append(result.Errors, phaseGateResult.Errors...)
-			result.GatesFailed = append(result.GatesFailed, GatePhaseGate)
-			result.GateResults = append(result.GateResults, GateResult{Gate: GatePhaseGate, Passed: false, Error: joinErrors(phaseGateResult.Errors)})
-		} else {
-			result.GateResults = append(result.GateResults, GateResult{Gate: GatePhaseGate, Passed: true})
-		}
-	}
+	// Verify phase gates (required phases reported in beads comments)
+	checkPhaseGates(result, workspacePath, beadsID, comments)
 
+	// Verify visual verification for web/ changes
+	checkVisualVerification(result, beadsID, workspacePath, projectDir, comments)
+
+	// Verify test execution evidence for code changes
+	checkTestEvidence(result, beadsID, workspacePath, projectDir, comments)
+
+	// Verify git diff against SYNTHESIS claims
+	checkGitDiff(result, workspacePath, projectDir)
+
+	// Verify dashboard health for dashboard-touching changes
+	verifyDashboardHealthGate(result, workspacePath, projectDir, serverURL)
+
+	// Verify decision patch count (prevent patch accumulation)
+	checkDecisionPatchCount(result, workspacePath, projectDir)
+}
+
+// verifyCommonGates runs verification gates that apply to all tiers (including orchestrator).
+func verifyCommonGates(result *VerificationResult, workspacePath, projectDir string) {
 	// Verify skill outputs from skill.yaml outputs.required section
-	// This is the "skillc verify" integration - checks that required skill outputs exist
+	checkSkillOutputs(result, workspacePath, projectDir)
+
+	// Verify build for Go projects (relevant for all tiers if code changes)
+	checkBuild(result, workspacePath, projectDir)
+}
+
+// checkConstraints verifies skill constraints from SPAWN_CONTEXT.md.
+func checkConstraints(result *VerificationResult, workspacePath, projectDir string) {
+	constraintResult, err := VerifyConstraintsForCompletion(workspacePath, projectDir)
+	if err != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify constraints: %v", err))
+		return
+	}
+	mergeGateResult(result, gateCheckResult{
+		gate:     GateConstraint,
+		passed:   constraintResult.Passed,
+		errors:   constraintResult.Errors,
+		warnings: constraintResult.Warnings,
+	})
+}
+
+// checkPhaseGates verifies that required phases were reported in beads comments.
+func checkPhaseGates(result *VerificationResult, workspacePath, beadsID string, comments []Comment) {
+	phaseGateResult, err := VerifyPhaseGatesForCompletionWithComments(workspacePath, beadsID, comments)
+	if err != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify phase gates: %v", err))
+		return
+	}
+	mergeGateResult(result, gateCheckResult{
+		gate:   GatePhaseGate,
+		passed: phaseGateResult.Passed,
+		errors: phaseGateResult.Errors,
+	})
+}
+
+// checkVisualVerification verifies visual verification evidence for web/ changes.
+func checkVisualVerification(result *VerificationResult, beadsID, workspacePath, projectDir string, comments []Comment) {
+	visualResult := VerifyVisualVerificationForCompletionWithComments(beadsID, workspacePath, projectDir, comments)
+	if visualResult == nil {
+		return
+	}
+	mergeGateResult(result, gateCheckResult{
+		gate:     GateVisualVerify,
+		passed:   visualResult.Passed,
+		errors:   visualResult.Errors,
+		warnings: visualResult.Warnings,
+	})
+}
+
+// checkTestEvidence verifies test execution evidence for code changes.
+func checkTestEvidence(result *VerificationResult, beadsID, workspacePath, projectDir string, comments []Comment) {
+	testResult := VerifyTestEvidenceForCompletionWithComments(beadsID, workspacePath, projectDir, comments)
+	if testResult == nil {
+		return
+	}
+	mergeGateResult(result, gateCheckResult{
+		gate:     GateTestEvidence,
+		passed:   testResult.Passed,
+		errors:   testResult.Errors,
+		warnings: testResult.Warnings,
+	})
+}
+
+// checkGitDiff verifies git diff against SYNTHESIS claims.
+func checkGitDiff(result *VerificationResult, workspacePath, projectDir string) {
+	gitDiffResult := VerifyGitDiffForCompletion(workspacePath, projectDir)
+	if gitDiffResult == nil {
+		return
+	}
+	mergeGateResult(result, gateCheckResult{
+		gate:     GateGitDiff,
+		passed:   gitDiffResult.Passed,
+		errors:   gitDiffResult.Errors,
+		warnings: gitDiffResult.Warnings,
+	})
+}
+
+// verifyDashboardHealthGate verifies dashboard API health for dashboard-touching changes.
+func verifyDashboardHealthGate(result *VerificationResult, workspacePath, projectDir, serverURL string) {
+	dashboardResult := VerifyDashboardHealth(workspacePath, projectDir, serverURL)
+	if dashboardResult == nil {
+		return
+	}
+	mergeGateResult(result, gateCheckResult{
+		gate:     GateDashboardHealth,
+		passed:   dashboardResult.Passed,
+		errors:   dashboardResult.Errors,
+		warnings: dashboardResult.Warnings,
+	})
+}
+
+// checkDecisionPatchCount verifies decision patch count limits.
+func checkDecisionPatchCount(result *VerificationResult, workspacePath, projectDir string) {
+	patchResult := VerifyDecisionPatchCount(workspacePath, projectDir)
+	if patchResult == nil {
+		return
+	}
+	mergeGateResult(result, gateCheckResult{
+		gate:     GateDecisionPatchLimit,
+		passed:   patchResult.Passed,
+		errors:   patchResult.Errors,
+		warnings: patchResult.Warnings,
+	})
+}
+
+// checkSkillOutputs verifies skill outputs from skill.yaml outputs.required section.
+func checkSkillOutputs(result *VerificationResult, workspacePath, projectDir string) {
 	skillOutputResult, err := VerifySkillOutputsForCompletion(workspacePath, projectDir)
 	if err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify skill outputs: %v", err))
-	} else if skillOutputResult != nil {
-		// Only add results if skill had outputs.required defined
-		if !skillOutputResult.Passed {
-			result.Passed = false
-			result.Errors = append(result.Errors, skillOutputResult.Errors...)
-			result.GatesFailed = append(result.GatesFailed, GateSkillOutput)
-			result.GateResults = append(result.GateResults, GateResult{Gate: GateSkillOutput, Passed: false, Error: joinErrors(skillOutputResult.Errors)})
-		} else {
-			result.GateResults = append(result.GateResults, GateResult{Gate: GateSkillOutput, Passed: true})
-		}
-		result.Warnings = append(result.Warnings, skillOutputResult.Warnings...)
+		return
 	}
-
-	// Verify visual verification for web/ changes
-	// This gates completion when web files are modified without visual verification evidence
-	// Skip for orchestrator tier (beads-dependent)
-	if !isOrch {
-		visualResult := VerifyVisualVerificationForCompletionWithComments(beadsID, workspacePath, projectDir, comments)
-		if visualResult != nil {
-			if !visualResult.Passed {
-				result.Passed = false
-				result.Errors = append(result.Errors, visualResult.Errors...)
-				result.GatesFailed = append(result.GatesFailed, GateVisualVerify)
-				result.GateResults = append(result.GateResults, GateResult{Gate: GateVisualVerify, Passed: false, Error: joinErrors(visualResult.Errors)})
-			} else {
-				result.GateResults = append(result.GateResults, GateResult{Gate: GateVisualVerify, Passed: true})
-			}
-			result.Warnings = append(result.Warnings, visualResult.Warnings...)
-		}
+	if skillOutputResult == nil {
+		return
 	}
+	mergeGateResult(result, gateCheckResult{
+		gate:     GateSkillOutput,
+		passed:   skillOutputResult.Passed,
+		errors:   skillOutputResult.Errors,
+		warnings: skillOutputResult.Warnings,
+	})
+}
 
-	// Verify test execution evidence for code changes
-	// This gates completion when code files are modified without test execution evidence
-	// Skip for orchestrator tier (beads-dependent)
-	if !isOrch {
-		testEvidenceResult := VerifyTestEvidenceForCompletionWithComments(beadsID, workspacePath, projectDir, comments)
-		if testEvidenceResult != nil {
-			if !testEvidenceResult.Passed {
-				result.Passed = false
-				result.Errors = append(result.Errors, testEvidenceResult.Errors...)
-				result.GatesFailed = append(result.GatesFailed, GateTestEvidence)
-				result.GateResults = append(result.GateResults, GateResult{Gate: GateTestEvidence, Passed: false, Error: joinErrors(testEvidenceResult.Errors)})
-			} else {
-				result.GateResults = append(result.GateResults, GateResult{Gate: GateTestEvidence, Passed: true})
-			}
-			result.Warnings = append(result.Warnings, testEvidenceResult.Warnings...)
-		}
-	}
-
-	// Verify git diff against SYNTHESIS claims
-	// This detects false positives where agent claims to modify files but didn't
-	// Skip for orchestrator tier (they produce SYNTHESIS.md, not SYNTHESIS.md)
-	if !isOrch {
-		gitDiffResult := VerifyGitDiffForCompletion(workspacePath, projectDir)
-		if gitDiffResult != nil {
-			if !gitDiffResult.Passed {
-				result.Passed = false
-				result.Errors = append(result.Errors, gitDiffResult.Errors...)
-				result.GatesFailed = append(result.GatesFailed, GateGitDiff)
-				result.GateResults = append(result.GateResults, GateResult{Gate: GateGitDiff, Passed: false, Error: joinErrors(gitDiffResult.Errors)})
-			} else {
-				result.GateResults = append(result.GateResults, GateResult{Gate: GateGitDiff, Passed: true})
-			}
-			result.Warnings = append(result.Warnings, gitDiffResult.Warnings...)
-		}
-	}
-
-	// Verify build for Go projects
-	// This gates completion when Go files are modified but the project doesn't build
-	// Note: This check is still relevant for orchestrators if they make code changes
+// checkBuild verifies the Go project builds successfully.
+func checkBuild(result *VerificationResult, workspacePath, projectDir string) {
 	buildResult := VerifyBuildForCompletion(workspacePath, projectDir)
-	if buildResult != nil {
-		if !buildResult.Passed {
-			result.Passed = false
-			result.Errors = append(result.Errors, buildResult.Errors...)
-			result.GatesFailed = append(result.GatesFailed, GateBuild)
-			result.GateResults = append(result.GateResults, GateResult{Gate: GateBuild, Passed: false, Error: joinErrors(buildResult.Errors)})
-		} else {
-			result.GateResults = append(result.GateResults, GateResult{Gate: GateBuild, Passed: true})
-		}
-		result.Warnings = append(result.Warnings, buildResult.Warnings...)
+	if buildResult == nil {
+		return
 	}
-
-	// Verify dashboard health for dashboard-touching changes
-	// This gates completion when web/ or serve_*.go files are modified
-	// Skip for orchestrator tier (they typically don't make dashboard changes)
-	if !isOrch {
-		dashboardResult := VerifyDashboardHealth(workspacePath, projectDir, serverURL)
-		if dashboardResult != nil {
-			if !dashboardResult.Passed {
-				result.Passed = false
-				result.Errors = append(result.Errors, dashboardResult.Errors...)
-				result.GatesFailed = append(result.GatesFailed, GateDashboardHealth)
-				result.GateResults = append(result.GateResults, GateResult{Gate: GateDashboardHealth, Passed: false, Error: joinErrors(dashboardResult.Errors)})
-			} else {
-				result.GateResults = append(result.GateResults, GateResult{Gate: GateDashboardHealth, Passed: true})
-			}
-			result.Warnings = append(result.Warnings, dashboardResult.Warnings...)
-		}
-	}
-
-	// Verify decision patch count (prevent launchd-style patch accumulation)
-	// After N patches to same decision, require architect review before more patches
-	// Skip for orchestrator tier (they don't produce investigation patches)
-	if !isOrch {
-		decisionPatchResult := VerifyDecisionPatchCount(workspacePath, projectDir)
-		if decisionPatchResult != nil {
-			if !decisionPatchResult.Passed {
-				result.Passed = false
-				result.Errors = append(result.Errors, decisionPatchResult.Errors...)
-				result.GatesFailed = append(result.GatesFailed, GateDecisionPatchLimit)
-				result.GateResults = append(result.GateResults, GateResult{Gate: GateDecisionPatchLimit, Passed: false, Error: joinErrors(decisionPatchResult.Errors)})
-			} else {
-				result.GateResults = append(result.GateResults, GateResult{Gate: GateDecisionPatchLimit, Passed: true})
-			}
-			result.Warnings = append(result.Warnings, decisionPatchResult.Warnings...)
-		}
-	}
-
-	return result, nil
+	mergeGateResult(result, gateCheckResult{
+		gate:     GateBuild,
+		passed:   buildResult.Passed,
+		errors:   buildResult.Errors,
+		warnings: buildResult.Warnings,
+	})
 }
 
 // VerifyCompletionWithTier checks if an agent is ready for completion.

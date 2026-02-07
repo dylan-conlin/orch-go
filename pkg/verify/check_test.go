@@ -1698,3 +1698,126 @@ func TestPhaseCompleteRecoveryFromActivity(t *testing.T) {
 		}
 	})
 }
+
+func TestMergeGateResult(t *testing.T) {
+	t.Run("passing gate adds to GateResults only", func(t *testing.T) {
+		result := VerificationResult{Passed: true}
+		mergeGateResult(&result, gateCheckResult{
+			gate:   GateBuild,
+			passed: true,
+		})
+
+		if !result.Passed {
+			t.Error("expected result to remain passed")
+		}
+		if len(result.Errors) != 0 {
+			t.Errorf("expected no errors, got %v", result.Errors)
+		}
+		if len(result.GatesFailed) != 0 {
+			t.Errorf("expected no failed gates, got %v", result.GatesFailed)
+		}
+		if len(result.GateResults) != 1 {
+			t.Fatalf("expected 1 gate result, got %d", len(result.GateResults))
+		}
+		if result.GateResults[0].Gate != GateBuild || !result.GateResults[0].Passed {
+			t.Errorf("gate result = %+v, want passed build gate", result.GateResults[0])
+		}
+	})
+
+	t.Run("failing gate sets Passed=false and records errors", func(t *testing.T) {
+		result := VerificationResult{Passed: true}
+		mergeGateResult(&result, gateCheckResult{
+			gate:   GateTestEvidence,
+			passed: false,
+			errors: []string{"no test evidence found", "code changes require tests"},
+		})
+
+		if result.Passed {
+			t.Error("expected result to be failed")
+		}
+		if len(result.Errors) != 2 {
+			t.Errorf("expected 2 errors, got %d: %v", len(result.Errors), result.Errors)
+		}
+		if len(result.GatesFailed) != 1 || result.GatesFailed[0] != GateTestEvidence {
+			t.Errorf("expected [test_evidence] in failed gates, got %v", result.GatesFailed)
+		}
+		if len(result.GateResults) != 1 {
+			t.Fatalf("expected 1 gate result, got %d", len(result.GateResults))
+		}
+		if result.GateResults[0].Passed {
+			t.Error("expected gate result to be failed")
+		}
+		if result.GateResults[0].Error != "no test evidence found; code changes require tests" {
+			t.Errorf("gate error = %q", result.GateResults[0].Error)
+		}
+	})
+
+	t.Run("warnings are always merged regardless of pass/fail", func(t *testing.T) {
+		result := VerificationResult{Passed: true}
+		mergeGateResult(&result, gateCheckResult{
+			gate:     GateConstraint,
+			passed:   true,
+			warnings: []string{"optional constraint not matched"},
+		})
+
+		if !result.Passed {
+			t.Error("expected result to remain passed")
+		}
+		if len(result.Warnings) != 1 {
+			t.Errorf("expected 1 warning, got %d: %v", len(result.Warnings), result.Warnings)
+		}
+	})
+
+	t.Run("multiple gate results accumulate correctly", func(t *testing.T) {
+		result := VerificationResult{Passed: true}
+		mergeGateResult(&result, gateCheckResult{gate: GateBuild, passed: true})
+		mergeGateResult(&result, gateCheckResult{gate: GateTestEvidence, passed: false, errors: []string{"missing tests"}})
+		mergeGateResult(&result, gateCheckResult{gate: GateGitDiff, passed: true, warnings: []string{"extra files in diff"}})
+
+		if result.Passed {
+			t.Error("expected overall result to be failed")
+		}
+		if len(result.GateResults) != 3 {
+			t.Errorf("expected 3 gate results, got %d", len(result.GateResults))
+		}
+		if len(result.GatesFailed) != 1 {
+			t.Errorf("expected 1 failed gate, got %d", len(result.GatesFailed))
+		}
+		if len(result.Errors) != 1 {
+			t.Errorf("expected 1 error, got %d", len(result.Errors))
+		}
+		if len(result.Warnings) != 1 {
+			t.Errorf("expected 1 warning, got %d", len(result.Warnings))
+		}
+	})
+}
+
+func TestMergeBackendResult(t *testing.T) {
+	t.Run("nil backend result is a no-op", func(t *testing.T) {
+		result := VerificationResult{Passed: true}
+		mergeBackendResult(&result, nil)
+
+		if !result.Passed {
+			t.Error("expected result to remain passed")
+		}
+		if len(result.Warnings) != 0 {
+			t.Errorf("expected no warnings, got %v", result.Warnings)
+		}
+	})
+
+	t.Run("backend warnings are merged without blocking", func(t *testing.T) {
+		result := VerificationResult{Passed: true}
+		mergeBackendResult(&result, &BackendResult{
+			Passed:   false,
+			Warnings: []string{"transcript not found"},
+		})
+
+		// Backend failures don't block completion
+		if !result.Passed {
+			t.Error("expected result to remain passed (backend doesn't block)")
+		}
+		if len(result.Warnings) != 1 {
+			t.Errorf("expected 1 warning, got %d: %v", len(result.Warnings), result.Warnings)
+		}
+	})
+}
