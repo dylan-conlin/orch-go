@@ -5,8 +5,61 @@
 	import type { Agent } from '$lib/stores/agents';
 	import { selectedAgentId, computeDisplayState, type DisplayState } from '$lib/stores/agents';
 	import { hotspots, getHotspotForAgent, type Hotspot } from '$lib/stores/hotspot';
+	import { coaching, type WorkerHealthMetrics } from '$lib/stores/coaching';
 
 	export let agent: Agent;
+
+	// Worker health metrics for this agent (derived from session_id)
+	$: workerHealth = agent.session_id && $coaching.worker_health ? $coaching.worker_health[agent.session_id] : null;
+
+	// Health indicator for the agent card
+	$: healthIndicator = getHealthIndicator(workerHealth);
+
+	/**
+	 * Get health indicator based on worker health metrics
+	 */
+	function getHealthIndicator(health: WorkerHealthMetrics | null): { emoji: string; colorClass: string; label: string; details: string[] } | null {
+		if (!health || health.health_status === 'good') return null;
+
+		const details: string[] = [];
+		let emoji = '⚠️';
+		let colorClass = 'text-yellow-500';
+
+		// Collect all issues
+		if (health.tool_failure_rate >= 5) {
+			details.push(`${health.tool_failure_rate} consecutive tool failures`);
+		} else if (health.tool_failure_rate >= 3) {
+			details.push(`${health.tool_failure_rate} tool failures`);
+		}
+
+		if (health.context_usage >= 90) {
+			details.push(`${health.context_usage}% context used`);
+		} else if (health.context_usage >= 80) {
+			details.push(`${health.context_usage}% context`);
+		}
+
+		if (health.time_in_phase >= 30) {
+			details.push(`${health.time_in_phase}m in current phase`);
+		} else if (health.time_in_phase >= 15) {
+			details.push(`${health.time_in_phase}m in phase`);
+		}
+
+		if (health.commit_gap >= 60) {
+			details.push(`${health.commit_gap}m since last commit`);
+		} else if (health.commit_gap >= 30) {
+			details.push(`${health.commit_gap}m since commit`);
+		}
+
+		// Set severity indicators
+		if (health.health_status === 'critical') {
+			emoji = '🚨';
+			colorClass = 'text-red-500';
+		}
+
+		const label = health.health_status === 'critical' ? 'Critical health issues' : 'Health warnings';
+
+		return details.length > 0 ? { emoji, colorClass, label, details } : null;
+	}
 
 	// Track beads ID copy state
 	let copiedBeadsId = false;
@@ -32,6 +85,70 @@
 
 	function handleClick() {
 		selectedAgentId.set(agent.id);
+	}
+
+	/**
+	 * Get user-friendly death reason message and icon
+	 */
+	function getDeathReasonInfo(reason?: string): { message: string; icon: string; color: string } {
+		switch (reason) {
+			case 'server_restart':
+				return {
+					message: 'Server restarted while agent was running.',
+					icon: '🔄',
+					color: 'text-blue-500'
+				};
+			case 'context_exhausted':
+				return {
+					message: 'Agent exhausted context/token limit.',
+					icon: '📊',
+					color: 'text-purple-500'
+				};
+			case 'auth_failed':
+				return {
+					message: 'Authentication failed (Claude Max limit?).',
+					icon: '🔒',
+					color: 'text-yellow-500'
+				};
+			case 'error':
+				return {
+					message: 'Agent encountered an unrecoverable error.',
+					icon: '❌',
+					color: 'text-red-500'
+				};
+			case 'timeout':
+				return {
+					message: 'No activity for 3+ minutes (timeout).',
+					icon: '⏱️',
+					color: 'text-orange-500'
+				};
+			default:
+				return {
+					message: 'Unknown cause (check logs).',
+					icon: '💀',
+					color: 'text-red-500'
+				};
+		}
+	}
+
+	/**
+	 * Get short label for death reason (for status footer display)
+	 */
+	function getDeathReasonLabel(reason?: string): string {
+		switch (reason) {
+			case 'server_restart':
+				return 'server restart';
+			case 'context_exhausted':
+				return 'context limit';
+			case 'auth_failed':
+				return 'auth failed';
+			case 'error':
+				return 'error';
+			case 'timeout':
+				return 'timeout';
+			default:
+				return 'crashed/stuck';
+		}
 	}
 
 	function getStatusVariant(status: Agent['status']) {
@@ -138,6 +255,50 @@
 		if (minutes < 60) return `${minutes}m ago`;
 		const hours = Math.floor(minutes / 60);
 		return `${hours}h ago`;
+	}
+
+	/**
+	 * Get expressive status text based on current activity
+	 * Returns text like "Hatching... (thought for 8s)" or "Running Bash..." or "Reading files..."
+	 */
+	function getExpressiveStatus(activity?: Agent['current_activity']): string {
+		if (!activity) return 'Starting up';
+		
+		const elapsedSeconds = activity.timestamp ? Math.floor((Date.now() - activity.timestamp) / 1000) : 0;
+		
+		switch (activity.type) {
+			case 'reasoning':
+				// "Hatching..." with thinking duration
+				return `Hatching... (thought for ${elapsedSeconds}s)`;
+			case 'tool':
+			case 'tool-invocation':
+				// Extract tool name from text like "Using bash" -> "Running Bash..."
+				if (activity.text?.toLowerCase().includes('bash')) {
+					return 'Running Bash...';
+				}
+				if (activity.text?.toLowerCase().includes('read') || activity.text?.toLowerCase().includes('reading')) {
+					return 'Reading files...';
+				}
+				if (activity.text?.toLowerCase().includes('edit') || activity.text?.toLowerCase().includes('editing')) {
+					return 'Editing files...';
+				}
+				if (activity.text?.toLowerCase().includes('write') || activity.text?.toLowerCase().includes('writing')) {
+					return 'Writing files...';
+				}
+				if (activity.text?.toLowerCase().includes('grep') || activity.text?.toLowerCase().includes('search')) {
+					return 'Searching code...';
+				}
+				// Fallback: use the activity text as-is or generic tool message
+				return activity.text || 'Using tool...';
+			case 'text':
+				return 'Responding...';
+			case 'step-start':
+				return 'Starting step...';
+			case 'step-finish':
+				return 'Finishing step...';
+			default:
+				return activity.text || 'Processing...';
+		}
 	}
 
 	/**
@@ -254,6 +415,29 @@
 	function hasOutcomeDetails(outcome: string): boolean {
 		return outcome.includes('(') || outcome.length > 20;
 	}
+
+	/**
+	 * Format model name for badge display (shortened versions)
+	 */
+	function formatModelBadge(model: string): string {
+		const modelAbbreviations: Record<string, string> = {
+			'gemini-3-flash-preview': 'flash3',
+			'gemini-2.5-flash': 'flash-2.5',
+			'gemini-2.5-pro': 'pro-2.5',
+			'claude-opus-4-5-20251101': 'opus-4.5',
+			'claude-sonnet-4-5-20250929': 'sonnet-4.5',
+			'claude-haiku-4-5-20251001': 'haiku-4.5',
+			'gpt-5': 'gpt5',
+			'gpt-5.2': 'gpt5-latest',
+			'gpt-5-mini': 'gpt5-mini',
+			'o3': 'o3',
+			'o3-mini': 'o3-mini',
+			'deepseek-chat': 'deepseek',
+			'deepseek-reasoner': 'deepseek-r1'
+		};
+		
+		return modelAbbreviations[model] || model.substring(0, 12);
+	}
 </script>
 
 <button
@@ -292,6 +476,19 @@
 			{/if}
 		</div>
 		<span class="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+			{#if healthIndicator}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<span class={healthIndicator.colorClass}>{healthIndicator.emoji}</span>
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p class={`font-medium ${healthIndicator.colorClass}`}>{healthIndicator.label}</p>
+						{#each healthIndicator.details as detail}
+							<p class="text-xs text-muted-foreground">{detail}</p>
+						{/each}
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{/if}
 			{#if agentHotspot}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
@@ -301,8 +498,8 @@
 						<p class="font-medium text-orange-500">Hotspot Area</p>
 						<p class="text-xs">{agentHotspot.path}</p>
 						<p class="text-xs text-muted-foreground mt-1">
-							{agentHotspot.type === 'fix-density' 
-								? `${agentHotspot.score} fix commits` 
+							{agentHotspot.type === 'fix-density'
+								? `${agentHotspot.score} fix commits`
 								: `${agentHotspot.score} investigations`}
 						</p>
 						<p class="text-xs text-orange-400 mt-1">{agentHotspot.recommendation}</p>
@@ -328,16 +525,21 @@
 				</Tooltip.Root>
 			{/if}
 		{#if displayState === 'dead'}
+			{@const deathInfo = getDeathReasonInfo(agent.death_reason)}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<span class="text-red-500">💀</span>
+					<span class={deathInfo.color}>{deathInfo.icon}</span>
 				</Tooltip.Trigger>
 				<Tooltip.Content>
-					<p class="font-medium text-red-500">Dead Agent</p>
-					<p class="text-xs text-muted-foreground">
-						No activity for 3+ minutes.<br />
-						Agent may have crashed, been killed, or is completely stuck.
+					<p class="font-medium {deathInfo.color}">Dead Agent</p>
+					<p class="text-xs text-muted-foreground mb-1">
+						{deathInfo.message}
 					</p>
+					{#if agent.death_reason === 'timeout'}
+						<p class="text-xs text-muted-foreground opacity-70">
+							Agent may have crashed, been killed, or is stuck.
+						</p>
+					{/if}
 				</Tooltip.Content>
 			</Tooltip.Root>
 		{:else if displayState === 'awaiting-cleanup'}
@@ -372,7 +574,7 @@
 					<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-500"></span>
 				</Tooltip.Trigger>
 				<Tooltip.Content>
-					<p class="font-medium text-yellow-500">Processing</p>
+					<p class="font-medium text-yellow-500">{getExpressiveStatus(agent.current_activity)}</p>
 					<p class="text-xs text-muted-foreground">Agent is actively generating a response</p>
 				</Tooltip.Content>
 			</Tooltip.Root>
@@ -457,7 +659,7 @@
 		</Tooltip.Root>
 	{/if}
 
-	<!-- Project + Skill + Beads -->
+	<!-- Project + Skill + Model + Beads -->
 	<div class="mt-1 flex flex-wrap items-center gap-1">
 		{#if agent.project}
 			<Badge variant="secondary" class="h-4 px-1 text-[10px]">
@@ -468,6 +670,18 @@
 			<Badge variant="outline" class="h-4 px-1 text-[10px]">
 				{agent.skill}
 			</Badge>
+		{/if}
+		{#if agent.model}
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					<Badge variant="outline" class="h-4 px-1 text-[10px] text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-700">
+						{formatModelBadge(agent.model)}
+					</Badge>
+				</Tooltip.Trigger>
+				<Tooltip.Content>
+					<p class="text-xs">Model: {agent.model}</p>
+				</Tooltip.Content>
+			</Tooltip.Root>
 		{/if}
 		{#if agent.beads_id}
 			<Tooltip.Root>
@@ -492,24 +706,28 @@
 		<div class="mt-1.5 border-t border-border/50 pt-1.5">
 			{#if displayState === 'dead' || agent.status === 'dead'}
 				<!-- Agent is dead - no heartbeat for 3+ minutes -->
+				{@const deathInfo = getDeathReasonInfo(agent.death_reason)}
 				<div class="flex items-center gap-1">
-					<span class="text-[10px]">💀</span>
+					<span class="text-[10px]">{deathInfo.icon}</span>
 					<p class="flex-1 truncate text-[10px] text-red-400 font-medium">
 						No activity for {formatElapsedTime(agent.updated_at)}
 					</p>
 					<Tooltip.Root>
 						<Tooltip.Trigger>
 							<span class="text-[9px] text-red-400/70 shrink-0">
-								crashed/stuck
+								{getDeathReasonLabel(agent.death_reason)}
 							</span>
 						</Tooltip.Trigger>
 						<Tooltip.Content>
 							<p class="font-medium text-red-500">Agent Unresponsive</p>
-							<p class="text-xs text-muted-foreground">
-								No heartbeat for 3+ minutes.<br />
-								The agent may have crashed, been killed,<br />
-								or is completely stuck.
+							<p class="text-xs text-muted-foreground mb-1">
+								{deathInfo.message}
 							</p>
+							{#if agent.death_reason === 'timeout'}
+								<p class="text-xs text-muted-foreground opacity-70">
+									Agent may have crashed, been killed, or is stuck.
+								</p>
+							{/if}
 							<p class="text-xs text-muted-foreground mt-1">
 								Consider running <code class="bg-muted px-1 rounded">orch abandon</code>
 							</p>
@@ -541,12 +759,13 @@
 						</Tooltip.Content>
 					</Tooltip.Root>
 				</div>
-			{:else if displayState === 'ready-for-review'}
-				<!-- Agent reported Phase: Complete, waiting for orchestrator to close -->
+		{:else if displayState === 'ready-for-review'}
+			<!-- Agent reported Phase: Complete, waiting for orchestrator to close -->
+				{@const rec = agent.synthesis?.recommendation?.toLowerCase()}
 				<div class="flex items-center gap-1">
-					<span class="text-[10px]">✅</span>
-					<p class="flex-1 truncate text-[10px] text-blue-400 font-medium">
-						Done - pending review
+					<span class="text-[10px]">{rec === 'escalate' ? '🔴' : rec === 'continue' || rec === 'resume' ? '🟡' : rec === 'spawn-follow-up' ? '🔵' : rec === 'close' ? '✅' : '⏳'}</span>
+					<p class="flex-1 truncate text-[10px] font-medium {rec === 'escalate' ? 'text-orange-400' : rec === 'continue' || rec === 'resume' ? 'text-yellow-400' : rec === 'spawn-follow-up' ? 'text-blue-400' : rec === 'close' ? 'text-green-400' : 'text-blue-400'}">
+						{rec === 'escalate' ? 'Needs decision' : rec === 'continue' || rec === 'resume' ? 'Partial - continue' : rec === 'spawn-follow-up' ? 'Spawn follow-up' : rec === 'close' ? 'Ready to close' : 'Pending review'}
 					</p>
 					<Tooltip.Root>
 						<Tooltip.Trigger>
@@ -556,6 +775,9 @@
 						</Tooltip.Trigger>
 						<Tooltip.Content>
 							<p>Agent reported Phase: Complete</p>
+							{#if rec}
+								<p class="text-xs text-muted-foreground">Recommendation: {agent.synthesis?.recommendation}</p>
+							{/if}
 							<p class="text-xs text-muted-foreground">Run <code>orch complete</code> to close</p>
 						</Tooltip.Content>
 					</Tooltip.Root>

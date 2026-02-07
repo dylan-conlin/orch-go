@@ -768,7 +768,7 @@ func TestDefaultTierForSkill(t *testing.T) {
 		{"research", TierFull},
 		{"codebase-audit", TierFull},
 		{"design-session", TierFull},
-		{"systematic-debugging", TierFull},
+		{"systematic-debugging", TierLight},
 
 		// Light tier skills (implementation-focused)
 		{"feature-impl", TierLight},
@@ -1009,6 +1009,42 @@ func TestGenerateServerContext(t *testing.T) {
 		// Should return empty string when no servers
 		if context != "" {
 			t.Errorf("expected empty string when no servers, got: %s", context)
+		}
+	})
+
+	t.Run("orch-go project uses orch-dashboard", func(t *testing.T) {
+		// Create a temp dir but we'll use a subdirectory named "orch-go"
+		tempDir := t.TempDir()
+		orchGoDir := filepath.Join(tempDir, "orch-go")
+		orchDir := filepath.Join(orchGoDir, ".orch")
+		if err := os.MkdirAll(orchDir, 0755); err != nil {
+			t.Fatalf("failed to create .orch dir: %v", err)
+		}
+
+		// Write config with servers
+		configContent := `servers:
+  api: 3348
+  web: 5188
+`
+		configPath := filepath.Join(orchDir, "config.yaml")
+		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+			t.Fatalf("failed to write config: %v", err)
+		}
+
+		context := GenerateServerContext(orchGoDir)
+
+		// Check it contains orch-dashboard guidance instead of orch servers
+		if !strings.Contains(context, "## LOCAL SERVERS") {
+			t.Error("expected server context to contain header")
+		}
+		if !strings.Contains(context, "orch-dashboard start") {
+			t.Error("expected orch-go to recommend orch-dashboard, not orch servers")
+		}
+		if strings.Contains(context, "orch servers start orch-go") {
+			t.Error("orch-go should NOT recommend 'orch servers start', should use orch-dashboard")
+		}
+		if !strings.Contains(context, "OpenCode") {
+			t.Error("expected orch-go context to mention OpenCode")
 		}
 	})
 }
@@ -1583,6 +1619,72 @@ func TestGenerateContext_BugReproduction(t *testing.T) {
 	})
 }
 
+func TestGenerateContext_NoPushGuidance(t *testing.T) {
+	t.Run("includes no-push guidance in worker spawn context", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "implement feature",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-16jan",
+			BeadsID:       "test-123",
+			Tier:          TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should contain explicit no-push guidance
+		if !strings.Contains(content, "NEVER run `git push`") {
+			t.Error("expected content to contain 'NEVER run `git push`' guidance")
+		}
+
+		// Should contain rationale about production systems
+		if !strings.Contains(content, "trigger deploys that disrupt production systems") {
+			t.Error("expected content to explain why pushing is prohibited")
+		}
+
+		// Should contain the worker rule
+		if !strings.Contains(content, "Worker rule: Commit your work, call `/exit`. Don't push") {
+			t.Error("expected content to contain worker rule statement")
+		}
+
+		// Should mention orchestrator handles pushing
+		if !strings.Contains(content, "orchestrator will handle pushing to remote") {
+			t.Error("expected content to explain orchestrator role in pushing")
+		}
+	})
+
+	t.Run("includes no-push guidance in no-track spawn", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "quick investigation",
+			SkillName:     "investigation",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-inv-test-16jan",
+			NoTrack:       true,
+			Tier:          TierFull,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should still contain no-push guidance even for no-track spawns
+		if !strings.Contains(content, "NEVER run `git push`") {
+			t.Error("expected content to contain no-push guidance for no-track spawn")
+		}
+
+		// Should contain worker rule
+		if !strings.Contains(content, "Worker rule:") {
+			t.Error("expected content to contain worker rule for no-track spawn")
+		}
+	})
+}
+
 func TestGenerateContext_NoTrack(t *testing.T) {
 	t.Run("excludes beads instructions when NoTrack is true", func(t *testing.T) {
 		cfg := &Config{
@@ -1605,9 +1707,9 @@ func TestGenerateContext_NoTrack(t *testing.T) {
 			t.Error("expected content to contain ad-hoc spawn indicator")
 		}
 
-		// Should NOT contain beads tracking section
-		if strings.Contains(content, "## BEADS PROGRESS TRACKING") {
-			t.Error("expected content to NOT contain beads tracking section for --no-track spawn")
+		// Should NOT contain progress tracking section
+		if strings.Contains(content, "## PROGRESS TRACKING") {
+			t.Error("expected content to NOT contain progress tracking section for --no-track spawn")
 		}
 
 		// Should NOT contain bd comment instructions (backtick-quoted command examples)
@@ -1654,9 +1756,9 @@ func TestGenerateContext_NoTrack(t *testing.T) {
 			t.Error("expected content to NOT contain ad-hoc spawn indicator for tracked spawn")
 		}
 
-		// Should contain beads tracking section
-		if !strings.Contains(content, "## BEADS PROGRESS TRACKING") {
-			t.Error("expected content to contain beads tracking section for tracked spawn")
+		// Should contain progress tracking section
+		if !strings.Contains(content, "## PROGRESS TRACKING") {
+			t.Error("expected content to contain progress tracking section for tracked spawn")
 		}
 
 		// Should contain bd comment instructions with correct beads ID

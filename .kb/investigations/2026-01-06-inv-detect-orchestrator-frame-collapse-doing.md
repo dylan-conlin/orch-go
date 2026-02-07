@@ -269,3 +269,71 @@ grep -n "ABSOLUTE DELEGATION RULE\|frame.*collapse" ~/.claude/skills/meta/orches
 **2026-01-06 16:05:** Investigation completed
 - Status: Complete
 - Key outcome: Recommend hybrid detection via SESSION_HANDOFF.md check at orch complete, skill guidance, and potential plugin
+
+---
+
+## Appendix: Frame Collapse Incidents (Evidence Log)
+
+**Purpose:** Document real frame collapse occurrences with transcripts to build evidence base for pattern recognition and detection improvement.
+
+### Incident 1: Price-Watch Phase 1 Implementation (2026-01-13)
+
+**Context:** Orchestrator received session handoff with completed investigation and ready issue (pw-qsj7, P2). Handoff said "Ready to start Phase 1 implementation" which triggered frame collapse.
+
+**Transcript:** `/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/price-watch/2026-01-13-frame-collapse-example.txt`
+
+**Collapse Pattern:**
+
+1. **Trigger** (line 35): User said "let's begin" → orchestrator interpreted as directive to implement
+2. **Escalation** (lines 51-271):
+   - Read controller file (1325 lines)
+   - Read view file (462 lines)
+   - Read CSS file (2521 lines)
+   - Made 4 separate `Update()` calls editing controller and view
+   - Created implementation todo list (lines 299-317)
+3. **Rationalization**: "Now I'll implement the controller changes" (line 60) - no questioning of role
+4. **Intervention** (line 273): Dylan asked "whoa, what is your role?"
+5. **Recovery** (lines 329-389):
+   - Orchestrator recognized violation
+   - Offered options (continue vs revert)
+   - Dylan chose revert (option 2)
+   - Full cleanup: `git restore`, changed beads status back to `open`
+   - Proper spawn: `orch spawn --bypass-triage feature-impl "..." --issue pw-qsj7`
+
+**Early Warning Signals Missed:**
+
+- Line 51: `Read(backend/app/controllers/price_quotes_controller.rb)` - Reading implementation code (not SYNTHESIS.md/context)
+- Line 60: **"Now I'll implement..."** - Explicit announcement of worker mode
+- Line 62: First `Update()` call - Direct file editing
+- Reading 4308 total lines across 3 files - Well beyond 5-minute context gathering threshold
+
+**Key Observations:**
+
+1. **Gradual escalation worked** - No single moment of "I'm doing worker work now", just incremental steps
+2. **Handoff ambiguity** - "Ready to start Phase 1 implementation" suggested orchestrator should implement, not spawn
+3. **Todo list as signal** - Creating implementation todos (not spawn todos) indicated worker thinking
+4. **Self-awareness emerged only after intervention** - Orchestrator couldn't detect own frame until Dylan forced perspective shift
+5. **Recovery was clean** - Once called out, orchestrator reverted fully and spawned properly
+
+**What This Example Teaches:**
+
+- **Reading code files is the first signal** - If orchestrator opens `.rb`, `.ts`, `.css` (not `.md` in `.kb/` or `.orch/`), frame collapse has begun
+- **"I'll implement" is definitive** - Any orchestrator statement like "Now I'll implement" or "Let me update" is a violation
+- **Handoff language matters** - "Ready to implement" should be "Ready to spawn implementation" to avoid ambiguity
+- **Dylan's intervention pattern** - Simple question "what is your role?" forces metacognitive shift
+- **5-minute rule violation** - 4308 lines read across 3 files took >5 minutes, should have triggered self-check
+
+**Detection Opportunities (What Could Have Caught This):**
+
+1. **Plugin tracking Edit tool** - After 2nd `Update()` call (line 116), could have warned
+2. **File type heuristic** - Reading `.rb` file (not orchestration artifact) should trigger warning
+3. **Time threshold** - Reading 4308 lines took >5 minutes, exceeding context-gathering threshold
+4. **Skill injection** - Handoff could inject reminder: "Your role: spawn agents, don't implement"
+5. **Pre-response gate** - Before first `Update()` call, skill could require: "Check delegation gate: is this spawnable work?"
+
+**Recommendations:**
+
+1. Update SESSION_HANDOFF.md template to say "Ready to spawn implementation" (not "Ready to start implementation")
+2. Add file type detection to OpenCode plugin - warn when orchestrator reads code files
+3. Strengthen skill's Pre-Response Protocol to gate on file type before Read tool
+4. Create `kb quick constrain` entry: "Orchestrators saying 'I'll implement' = immediate frame collapse"

@@ -3,7 +3,10 @@
 // and provides operations for issue management.
 package beads
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // RPC operation constants matching beads internal/rpc/protocol.go
 const (
@@ -84,6 +87,8 @@ type CreateResult struct {
 type CloseArgs struct {
 	ID     string `json:"id"`
 	Reason string `json:"reason,omitempty"`
+	// Force bypasses Phase: Complete checks on the daemon side.
+	Force bool `json:"force,omitempty"`
 }
 
 // ListArgs represents arguments for listing issues.
@@ -102,6 +107,9 @@ type ListArgs struct {
 	// Parent filters by parent issue ID (shows children of specified issue).
 	// Used for listing children of an epic.
 	Parent string `json:"parent,omitempty"`
+	// ClosedAfter filters issues closed after the given date/time (RFC3339 or YYYY-MM-DD).
+	// Used for finding recently closed issues.
+	ClosedAfter string `json:"closed_after,omitempty"`
 }
 
 // ShowArgs represents arguments for showing an issue.
@@ -160,7 +168,8 @@ type Dependency struct {
 	ID             string `json:"id"`
 	Title          string `json:"title"`
 	Status         string `json:"status"`
-	DependencyType string `json:"dependency_type"` // e.g., "blocks"
+	IssueType      string `json:"issue_type,omitempty"` // e.g., "question", "task", "bug"
+	DependencyType string `json:"dependency_type"`      // e.g., "blocks"
 }
 
 // ParseDependencies parses the raw dependencies JSON into a slice of Dependency objects.
@@ -184,14 +193,35 @@ type BlockingDependency struct {
 	Status string
 }
 
+// isInferredParentChild detects parent-child relationships when dependency_type is missing.
+// This is a workaround for a bug in beads where bd show --json doesn't return dependency_type
+// in JSONL-only mode (non-SQLite). The heuristic checks if:
+//  1. The issue ID follows child pattern (e.g., "project-123.1" is child of "project-123")
+//  2. The dependency ID matches the parent pattern
+//
+// Example: issue "specs-platform-10.1" with dependency on "specs-platform-10" is parent-child.
+func isInferredParentChild(issueID, depID string) bool {
+	// Check if issueID is a child of depID
+	// Child IDs have format: parentID.N (e.g., "bd-a3f8.1", "bd-a3f8.2")
+	if strings.HasPrefix(issueID, depID+".") {
+		return true
+	}
+	return false
+}
+
 // GetBlockingDependencies returns a list of dependencies that are blocking this issue.
-// Blocking behavior depends on dependency type:
+// Blocking behavior depends on dependency type and issue type:
 //   - "blocks": blocks if not closed (open or in_progress)
 //   - "parent-child": NEVER blocks (children are independently workable)
+//   - Questions: unblock when status is "answered" OR "closed"
 //
 // The parent-child distinction is critical for epics: an epic closes when its children
 // complete, so children must be spawnable while the parent epic is open. If children
 // were blocked by their parent, work could never begin (circular dependency).
+//
+// Questions use a different lifecycle: Open → Investigating → Answered → Closed.
+// Dependencies unblock when a question reaches "answered" status, not just "closed",
+// because the answer is the gate - closure is just administrative cleanup.
 func (i *Issue) GetBlockingDependencies() []BlockingDependency {
 	deps := i.ParseDependencies()
 	if deps == nil {
@@ -202,14 +232,28 @@ func (i *Issue) GetBlockingDependencies() []BlockingDependency {
 	for _, dep := range deps {
 		isBlocking := false
 
-		switch dep.DependencyType {
+		// Determine dependency type, using inference as fallback
+		depType := dep.DependencyType
+		if depType == "" && isInferredParentChild(i.ID, dep.ID) {
+			depType = "parent-child"
+		}
+
+		switch depType {
 		case "parent-child":
 			// Parent-child: NEVER blocks - children are independently spawnable
 			// Epic closes when children complete, so children can't wait for parent
 			isBlocking = false
 		default:
-			// "blocks" and other types: blocks unless closed
-			isBlocking = dep.Status != "closed"
+			// "blocks" and other types: blocks unless resolved
+			// Questions unblock when "answered" or "closed"
+			// Other types unblock only when "closed"
+			if dep.IssueType == "question" {
+				// Questions: unblock when answered or closed
+				isBlocking = dep.Status != "closed" && dep.Status != "answered"
+			} else {
+				// Regular issues: unblock only when closed
+				isBlocking = dep.Status != "closed"
+			}
 		}
 
 		if isBlocking {

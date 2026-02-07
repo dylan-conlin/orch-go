@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-inv-debug-coaching-plugin-28jan-b245",
+  "skill": "investigation",
+  "beads_id": "orch-go-21001",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "c6e592d0431bdcbcf4045af5a9d42b3d061f333e",
+  "spawn_time": "2026-01-28T13:37:29-08:00",
+  "tier": "full",
+  "spawn_mode": "opencode"
+}

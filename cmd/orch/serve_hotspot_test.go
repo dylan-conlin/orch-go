@@ -13,7 +13,7 @@ func TestHandleHotspot(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	// Call the handler
-	handleHotspot(rec, req)
+	newTestServer().handleHotspot(rec, req)
 
 	// Check status code
 	if rec.Code != http.StatusOK {
@@ -62,7 +62,7 @@ func TestHandleHotspotMethodNotAllowed(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/hotspot", nil)
 	rec := httptest.NewRecorder()
 
-	handleHotspot(rec, req)
+	newTestServer().handleHotspot(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected status %d, got %d", http.StatusMethodNotAllowed, rec.Code)

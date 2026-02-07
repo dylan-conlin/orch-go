@@ -2,11 +2,13 @@
 
 **Purpose:** Single authoritative reference for orch-go's OpenCode integration. Read this before debugging OpenCode issues.
 
-**Last verified:** 2026-01-08
+**Last verified:** 2026-01-29
 
-**Synthesized from:** 24 investigations (2025-12-19 to 2026-01-08)
+**Synthesized from:** 30 investigations (2025-12-19 to 2026-01-29)
 
 **Related guide:** `.kb/guides/opencode-plugins.md` - Comprehensive plugin system reference
+
+**Related model:** `.kb/models/sse-connection-management.md` - SSE reconnection and HTTP connection pool management
 
 ---
 
@@ -106,6 +108,37 @@ session.status { status: "idle" }    ← Agent finished
 
 ---
 
+## Agent System
+
+### TUI Mode Switching (Agent Selection)
+
+**What it is:** The "mode" shown in OpenCode TUI (cycling via Tab key) is actually **agent selection**, not a separate mode system.
+
+**Key insight:** The `mode` field in AssistantMessage schema is **deprecated** - it stores the agent name for backward compatibility. The actual functionality is agent selection with different permissions and prompts per agent.
+
+**Built-in agents:**
+
+| Agent | Mode | Visibility | Purpose |
+|-------|------|-----------|---------|
+| **build** | primary | Visible | Default agent, executes tools with standard permissions |
+| **plan** | primary | Visible | Disallows edit tools except for plan files |
+| **general** | subagent | Hidden | Task tool subagent |
+| **explore** | subagent | Hidden | Task tool subagent |
+
+**Tab key behavior:** Cycles through primary visible agents (build, plan by default). Shift+Tab cycles backward.
+
+**What actually changes when switching agents:**
+- **Tool permissions** - Each agent has different permission rulesets (e.g., plan denies most edit tools)
+- **Optional custom prompt** - Agents can override system prompt
+- **Optional model/temperature** - Can force specific model or tune generation parameters
+- **Does NOT change:** Base tool set, UI affordances, API routing
+
+**For orch-go:** Agent name is stored in `message.agent` field (preferred) or deprecated `message.mode` field. Both contain the same value. Observable via ListSessions API and SSE message events.
+
+**Reference:** `.kb/investigations/2026-01-29-inv-opencode-tui-mode-switch.md`
+
+---
+
 ## HTTP API Quick Reference
 
 ### Working Endpoints
@@ -146,6 +179,24 @@ These routes get proxied to `desktop.opencode.ai` and fail:
 - ❌ `/health`
 
 **NOT the fix:** This is NOT an authentication issue. Token refresh is handled automatically by OpenCode.
+
+### Auth confusion: OpenAI API key vs OAuth
+
+**Cause:** OPENAI_API_KEY environment variable takes precedence over OAuth tokens in auth.json. When both exist, OpenCode uses the API key (pay-per-token billing) instead of OAuth (ChatGPT Pro subscription).
+
+**Symptoms:** UI shows $ cost indicator instead of (oauth) for OpenAI models; sessions incur API charges despite valid OAuth tokens.
+
+**Root cause:** Provider loading order is ENV vars → Auth.all(api type only) → Plugin loaders → Config. The first to set a key "wins" unless later loaders explicitly override.
+
+**Fix:** Unset OPENAI_API_KEY environment variable to use OAuth-only:
+```bash
+unset OPENAI_API_KEY
+# Restart OpenCode server to pick up change
+```
+
+**Prevention:** Check shell config files (~/.zshrc, ~/.bashrc) for OPENAI_API_KEY exports and remove them if using OAuth.
+
+**Reference:** `.kb/investigations/2026-01-20-inv-investigate-opencode-openai-auth-confusion.md`
 
 ### Cross-project sessions show wrong directory
 
@@ -215,6 +266,26 @@ orch clean --sessions --dry-run          # Preview what would be deleted
 - Active sessions (IsSessionProcessing check) are skipped
 - 461 sessions deleted in initial test (627 → 166)
 
+### Binary resolution fails in minimal PATH environments
+
+**Cause:** Hardcoded "opencode" in shell commands relies on PATH lookup. Processes spawned by orch-go (especially via launchd daemon) inherit minimal PATH that excludes user directories like `~/.bun/bin`.
+
+**Symptoms:** `exec: 'opencode': executable file not found in $PATH` despite valid symlink at `~/.bun/bin/opencode`.
+
+**Root cause:** Inconsistent binary resolution patterns across codebase:
+- Pattern A: OPENCODE_BIN env var check (works)
+- Pattern B: Hardcoded "opencode" in shell commands (fails)
+- Pattern C: PATH-only exec.Command (fails)
+
+**Fix:** Use unified resolution following OPENCODE_BIN env var → PATH → known locations order. Similar to proven `ResolveBdPath()` pattern in beads client.
+
+**Workaround:** Set OPENCODE_BIN environment variable explicitly:
+```bash
+export OPENCODE_BIN="$HOME/.bun/bin/opencode"
+```
+
+**Permanent solution:** See design at `.kb/investigations/2026-01-18-design-opencode-binary-resolution.md`
+
 ---
 
 ## Key Decisions (from investigations)
@@ -231,6 +302,7 @@ These are settled. Don't re-investigate:
 - **session.idle is deprecated** - Prefer `session.status` event with `status.type === "idle"` check. Still functional but will be removed.
 - **OpenCode sessions share central storage** - All servers query same `~/.local/share/opencode/storage/`; `x-opencode-directory` is for filtering, not isolation.
 - **Question tool is `question`, not `AskUserQuestion`** - Skills corrected to use proper JSON interface with questions array containing question/header/options.
+- **OpenCode has native agent/spawn support** - Includes agent modes (subagent/primary/all), task tool for spawning, session hierarchy via parentID, and metadata.role for identity. orch-go uses pragmatic bolt-on (ORCH_WORKER headers + external registry) for decoupling and cross-project orchestration. Three integration levels exist: status quo (current, proven), incremental (add parentID hierarchy), deep (custom agents + task tool). No clear "best" - depends on alignment with OpenCode's task delegation paradigm.
 
 ---
 
@@ -269,22 +341,80 @@ OpenCode supports static file loading via `instructions` array:
 
 ### Plugin System (Dynamic)
 
-For dynamic context injection, use the plugin system:
+For dynamic context injection, use the plugin system.
 
-- **session.created** event - Inject context at session start
-- **experimental.chat.system.transform** hook - Modify system prompt transparently
+**Plugin API v2 (current):**
+
+Plugins must export a function that accepts `PluginInput` and returns `Hooks` object:
 
 ```typescript
-// ~/.config/opencode/plugin/session-context.ts
-export default {
-  name: "session-context",
-  hooks: {
-    "session.created": async ({ session }) => {
-      // Inject dynamic context
+// ~/.config/opencode/plugin/example.ts
+import type { Plugin } from '@opencode-ai/plugin'
+
+export const MyPlugin: Plugin = async ({ session, config, client }) => {
+  return {
+    event: async (event) => {
+      // Handle events like session.created, session.status, etc.
+    },
+    tool: {
+      // Custom tool definitions
     }
   }
 }
 ```
+
+**Common hooks:**
+- **event** - Session lifecycle events (session.created, session.status, etc.)
+- **tool.execute.before** - Intercept tool execution (gates, warnings)
+- **experimental.chat.system.transform** - Modify system prompt transparently
+- **experimental.session.compacting** - Context preservation during compaction
+
+**Plugin API v1 (deprecated):**
+
+Old plugins exported objects with custom hook names like `on_session_created`. These are incompatible with OpenCode v2 and cause "fn3 is not a function" errors.
+
+**Migration:** Wrap in function, use `event` hook instead of `on_session_created`, return `Hooks` object.
+
+**Reference:** `.kb/investigations/2026-01-14-inv-opencode-plugin-loader-crashes-fn3.md`
+
+### Context Loading: Instructions vs Injection
+
+OpenCode has two distinct mechanisms for providing context:
+
+**1. Instructions (Config-Time File Loading):**
+```typescript
+// Adds file path to config.instructions array
+config.instructions.push("/path/to/skill.md")
+```
+- File paths loaded at config initialization
+- Content read from files and included in system context
+- Similar to `"instructions": ["~/.claude/CLAUDE.md"]` in opencode.jsonc
+- Used by session-context plugin for orchestrator skill (~86KB)
+
+**2. Injection (Runtime Content Push):**
+```typescript
+// Pushes content directly into session after creation
+await client.session.prompt({
+  path: { id: sessionID },
+  body: { noReply: true, parts: [{ type: 'text', text: content }] }
+})
+```
+- Content pushed directly into session as invisible message
+- Used by session-resume, agentlog-inject, usage-warning (~4KB total)
+- Appears in conversation history
+
+**Comparison:**
+
+| Aspect | Instructions | Injection |
+|--------|-------------|-----------|
+| **Timing** | Config initialization | After session.created |
+| **Size** | Large files (86KB+) | Small snippets (4KB) |
+| **Visibility** | System context | Conversation message |
+| **Use case** | Static knowledge (skills, guides) | Dynamic state (resume, errors) |
+
+**Total session start overhead:** ~4KB direct injection (OpenCode) vs ~25KB (Claude Code which injects everything).
+
+**Reference:** `.kb/investigations/2026-01-16-inv-audit-opencode-session-start-injection.md`
 
 ### Theme System
 
@@ -365,6 +495,12 @@ If those don't answer your question, then investigate. But update this doc with 
 | 2026-01-08 | Constraint Surfacing | Enhanced guarded-files plugin with kb context |
 | 2026-01-08 | Event Reliability | file.edited reliable; session.idle deprecated |
 | 2026-01-08 | Plugin Guide | Authoritative `.kb/guides/opencode-plugins.md` created |
+| 2026-01-14 | Plugin v2 API Migration | Object exports incompatible; must use function exports |
+| 2026-01-16 | Context Injection Audit | Instructions vs injection; ~4KB session start overhead |
+| 2026-01-18 | Binary Resolution Design | Unified resolution pattern: env var → PATH → known locations |
+| 2026-01-20 | Auth Confusion | OPENAI_API_KEY precedence over OAuth tokens |
+| 2026-01-28 | Native Agent Spawn | OpenCode has comprehensive spawn support; orch uses bolt-on |
+| 2026-01-29 | TUI Mode Switch | "Mode" is deprecated agent name field; Tab cycles agents |
 
 ### Source Code
 
@@ -384,4 +520,5 @@ If those don't answer your question, then investigate. But update this doc with 
 
 - **2026-01-06:** Created by synthesizing 16 investigations spanning 2025-12-19 to 2025-12-26
 - **2026-01-08:** Updated with 8 new investigations (2026-01-06 to 2026-01-08), added plugin system decisions and new common problems
-- **Evolution:** From POC (Dec 19) → full HTTP client → SSE monitoring → session cleanup → theme system → plugin system for principle mechanization (Jan 08)
+- **2026-01-29:** Updated with 6 late-Jan investigations (2026-01-14 to 2026-01-29), added auth confusion, TUI mode switching, plugin v2 API, context loading (instructions vs injection), binary resolution, and native agent spawn support
+- **Evolution:** From POC (Dec 19) → full HTTP client → SSE monitoring → session cleanup → theme system → plugin system (Jan 08) → auth/context/binary patterns + agent system understanding (Jan 29)

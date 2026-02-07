@@ -56,7 +56,7 @@ type GapSuggestionSummary struct {
 }
 
 // handleGaps returns gap tracker statistics from ~/.orch/gap-tracker.json.
-func handleGaps(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGaps(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -116,7 +116,7 @@ func handleGaps(w http.ResponseWriter, r *http.Request) {
 
 // handleReflect returns reflect suggestions from ~/.orch/reflect-suggestions.json.
 // This exposes synthesis/promote/stale data for kb reflect UI integration.
-func handleReflect(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleReflect(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

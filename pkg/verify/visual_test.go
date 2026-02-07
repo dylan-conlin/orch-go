@@ -318,6 +318,14 @@ func TestVisualEvidencePatterns(t *testing.T) {
 		{"checked in browser", true},
 		{"UI smoke test passed", true},
 		{"ran smoke test for UI", true},
+		// Glass tool patterns
+		{"used glass_hover to inspect", true},
+		{"called glass_tabs", true},
+		{"ran glass_focus", true},
+		{"glass_enable_user_tracking invoked", true},
+		{"glass_recent_actions shows activity", true},
+		{"Glass_Hover used for verification", true}, // case insensitive
+		{"GLASS_TABS opened new tab", true},         // case insensitive
 
 		// Should not match
 		{"tests passing", false},
@@ -544,6 +552,52 @@ func TestSkillAwareVisualVerification(t *testing.T) {
 				t.Errorf("Result.Passed = %v, want %v", result.Passed, tt.wantPassed)
 			}
 		})
+	}
+}
+
+func TestGlassToolPatterns(t *testing.T) {
+	// Test that Glass browser automation tool patterns are detected
+	testCases := []struct {
+		input       string
+		shouldMatch bool
+	}{
+		// Should match - Glass tool mentions
+		{"used glass_click to verify button", true},
+		{"glass_screenshot captured the dashboard", true},
+		{"glass_navigate opened the page", true},
+		{"glass_page_state shows current state", true},
+		{"glass_elements lists interactive elements", true},
+		{"glass_type entered the form data", true},
+		{"glass_scroll scrolled to bottom", true},
+		{"glass_hover revealed the tooltip", true},
+		{"glass_tabs opened new tabs", true},
+		{"glass_focus switched to different tab", true},
+		{"glass_enable_user_tracking started tracking", true},
+		{"glass_recent_actions shows user activity", true},
+		{"used glass assert to verify", true},
+		{"glass tool was used for verification", true},
+		// Case insensitive
+		{"GLASS_CLICK was used", true},
+		{"Glass_Screenshot captured", true},
+		{"GlAsS_nAvIgAtE opened", true},
+
+		// Should not match - non-visual verification mentions
+		{"implemented glass-like interface", false},
+		{"browser automation without specific tool", false},
+		{"generic tool usage", false},
+	}
+
+	for _, tc := range testCases {
+		matched := false
+		for _, pattern := range visualEvidencePatterns {
+			if pattern.MatchString(tc.input) {
+				matched = true
+				break
+			}
+		}
+		if matched != tc.shouldMatch {
+			t.Errorf("Glass pattern matching for %q: got %v, want %v", tc.input, matched, tc.shouldMatch)
+		}
 	}
 }
 

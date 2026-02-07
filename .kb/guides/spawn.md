@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for how `orch spawn` creates and configures agents. Read this before debugging spawn issues.
 
-**Last verified:** Jan 7, 2026
+**Last verified:** Jan 29, 2026
 
 ---
 
@@ -52,7 +52,7 @@ orch spawn <skill> "task"
 
 ---
 
-## Spawn Modes
+## Spawn Modes (UI)
 
 | Mode | Flag | Behavior | Use When |
 |------|------|----------|----------|
@@ -65,6 +65,146 @@ orch spawn <skill> "task"
 - Returns immediately (non-blocking)
 - Works with daemon automation
 - Session still accessible via `orch status`, `orch send`
+
+---
+
+## Backend Architecture (Triple Spawn)
+
+orch supports three backends for redundancy and different use cases.
+
+| Backend | Flag | CLI Used | Cost Model | Dashboard | Use When |
+|---------|------|----------|------------|-----------|----------|
+| **OpenCode** (default) | `--backend opencode` | OpenCode API | Pay-per-token | Yes | Normal work, dashboard visibility, cost tracking |
+| **Claude** | `--backend claude` | `claude` CLI | $200/mo Max | No | Infrastructure work, survives crashes, Opus quality |
+| **Docker** | `--backend docker` | Docker + `claude` | $200/mo Max | No | Rate limit escape (fresh fingerprint) |
+
+### Backend Selection Priority
+
+When spawning, backend is determined by (in order):
+
+1. **Explicit `--backend` flag** (claude, opencode, or docker)
+2. **`--opus` flag** (implies claude backend)
+3. **`--infra` flag** (implies claude backend + tmux mode for infrastructure work)
+4. **Project config** (`.orch/config.yaml spawn_mode`)
+5. **Global config** (`~/.orch/config.yaml backend`)
+6. **Default:** opencode (dashboard visibility, cost tracking)
+
+**Example priority cascade:**
+```bash
+# Explicit flag wins
+orch spawn --backend claude investigation "task"     # → Claude
+
+# --opus implies claude
+orch spawn --opus investigation "task"               # → Claude
+
+# --infra implies claude + tmux
+orch spawn --infra investigation "task"              # → Claude (tmux mode)
+
+# Project config (if .orch/config.yaml has spawn_mode: claude)
+orch spawn investigation "task"                      # → Claude
+
+# Default (no config)
+orch spawn investigation "task"                      # → OpenCode
+```
+
+### Primary Path: Claude CLI
+
+```bash
+orch spawn investigation "analyze X"
+```
+
+**Characteristics:**
+- Uses `claude` CLI with Max subscription
+- Opus access (highest quality model)
+- Flat $200/mo cost
+- Tmux window for visual monitoring
+
+**Use for:** Most work, orchestration, architecture, complex reasoning
+
+### OpenCode API Path
+
+```bash
+orch spawn --backend opencode --model sonnet feature-impl "task"
+```
+
+**Characteristics:**
+- HTTP API to OpenCode server (localhost:4096)
+- Dashboard visibility
+- Pay-per-token pricing
+- Model choice: Sonnet, DeepSeek, Gemini
+
+**Use for:** Cost tracking, batch automation, when dashboard visibility needed
+
+**Constraint:** Cannot use Opus via OpenCode (Anthropic fingerprinting blocks it)
+
+**Integration depth:** orch-go uses pragmatic bolt-on approach with `ORCH_WORKER=1` environment variable (converted to `x-opencode-env-ORCH_WORKER` header). OpenCode has comprehensive native agent support (Agent.Info with mode, Session.Info with parentID, task tool for spawning), but orch-go intentionally uses external orchestration model for:
+- Decoupling from OpenCode's agent model (runtime portability)
+- Cross-project orchestration (OpenCode sessions are project-scoped)
+- Full control over worker lifecycle
+
+**Alternative:** Could use OpenCode's native session hierarchy (parentID) for better UI visibility. See `.kb/investigations/2026-01-28-inv-investigate-opencode-native-agent-spawn.md` for integration options analysis.
+
+### Docker Escape Hatch
+
+```bash
+orch spawn --backend docker investigation "task"
+```
+
+**Characteristics:**
+- Host tmux window runs Docker container
+- Fresh Statsig fingerprint per spawn
+- Uses `~/.claude-docker/` (separate from host `~/.claude/`)
+- Same lifecycle commands as claude mode (status, complete, abandon)
+
+**Use for:** Rate limit bypass when host fingerprint is throttled
+
+**Critical constraints:**
+- Docker image `claude-code-mcp` must be pre-built
+- `BEADS_NO_DAEMON=1` set automatically (Unix sockets don't work over Docker mounts)
+- Container PATH must include `/usr/local/go/bin` for auto-rebuild
+- ~2-5s startup overhead per spawn
+
+**Important:** Docker bypasses **device-level rate throttling** only. The weekly usage quota is **account-level** and cannot be bypassed with fingerprint isolation.
+
+### Infrastructure Work and the `--infra` Flag
+
+**Problem:** Infrastructure work (opencode server, daemon, spawn system) can kill its own execution path if using opencode backend (e.g., restarting OpenCode server kills OpenCode-spawned agents).
+
+**Solution:** Use `--infra` flag for critical infrastructure work.
+
+```bash
+# Infrastructure work - automatic backend selection
+orch spawn --bypass-triage --infra investigation "fix opencode server crash"
+# → Uses claude backend with tmux mode (survives service crashes)
+
+# Equivalent to:
+orch spawn --bypass-triage --backend claude --tmux investigation "fix opencode"
+```
+
+**When to use `--infra`:**
+- Work on opencode server (`pkg/opencode`, `serve.go`)
+- Work on spawn system (`cmd/orch/spawn_*.go`, `pkg/spawn`)
+- Work on daemon (`pkg/daemon`)
+- Work on registry or core infrastructure
+- Any work that may restart critical services
+
+**What `--infra` does:**
+1. Sets backend to `claude` (uses Claude CLI instead of OpenCode API)
+2. Enables tmux mode (visible TUI, survives crashes)
+3. Skips infrastructure detection warning (you already acknowledged the risk)
+
+**Advisory Detection:**
+
+When spawning work that mentions "opencode", "spawn", "daemon", "registry", "orch serve", "overmind", or "dashboard", orch warns but does NOT auto-override:
+
+```bash
+# System warns about infrastructure keywords
+orch spawn --bypass-triage investigation "fix opencode server crash"
+# Warning: Infrastructure keywords detected. Consider --infra flag
+
+# Use --infra to acknowledge and auto-select safe backend
+orch spawn --bypass-triage --infra investigation "fix opencode"
+```
 
 ---
 
@@ -167,6 +307,39 @@ Active count excludes:
 
 ---
 
+## Bloat Detection
+
+Spawn performs automatic bloat detection when generating SPAWN_CONTEXT.md.
+
+### How It Works
+
+1. **File path extraction** - Parses task description for file references (e.g., `pkg/spawn/context.go`)
+2. **Line counting** - Checks each mentioned file against 800-line threshold
+3. **Warning injection** - Adds warnings to SPAWN_CONTEXT.md for bloated files
+4. **Test file exemption** - Skips files matching `*_test.go`, `*.test.ts`, etc.
+
+### Example Warning
+
+```markdown
+⚠️ BLOAT DETECTED:
+
+The following files mentioned in your task exceed the 800-line coherence threshold:
+
+- pkg/spawn/context.go (1,247 lines)
+
+Before modifying these files, consider extraction. See .kb/guides/code-extraction-patterns.md.
+```
+
+### Why This Matters
+
+- **Coherence** - Files over 800 lines are hard to understand and modify
+- **Agent success** - Agents struggle with large files (multiple concerns, deep nesting)
+- **Technical debt** - Bloat indicates missing abstractions
+
+**Related:** `orch hotspot` shows all files over threshold across project.
+
+---
+
 ## Key Flags
 
 ### Required Flags
@@ -184,6 +357,14 @@ Active count excludes:
 | `--model <alias>` | Model selection: opus, sonnet, haiku, flash, pro |
 | `--mcp <server>` | Add MCP server (e.g., `--mcp playwright`) |
 | `--workdir <path>` | Run agent in different directory |
+
+### Backend Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--backend <name>` | Explicit backend: `claude`, `opencode`, or `docker` |
+| `--opus` | Use Opus via Claude CLI in tmux (implies `--backend claude --tmux`) |
+| `--infra` | Infrastructure work: use claude+tmux (survives service crashes) |
 
 ### Mode Flags
 
@@ -324,17 +505,51 @@ orch spawn feature-impl "add feature" --workdir ~/Documents/personal/kb-cli
 
 **Gotcha:** `bd comment` from the agent uses target directory, but issue is in orchestrator's repo. This can cause "issue not found" errors. Use `--no-track` for cross-repo work, or manually track.
 
+### Cross-Project Beads Lookup Behavior
+
+When spawning, orch checks ALL active sessions for concurrency limiting, including sessions from other projects:
+
+```bash
+# Example: Sessions from multiple projects
+og-feat-something [orch-go-21012]      # orch-go project
+sp-feat-something [specs-platform-36]  # specs-platform project
+```
+
+**Expected behavior:** When spawning from orch-go, beads lookups for `specs-platform-36` will fail with "issue not found". This is **normal and expected** - the issue exists in a different project's beads database.
+
+**Why this happens:**
+- OpenCode sessions persist across projects
+- Concurrency limiting checks all sessions
+- Cross-project beads IDs won't exist in current project's database
+
+**Impact:** You may see warnings like "beads lookup failed for specs-platform-36" - these are informational, not errors. The spawn continues normally.
+
 ---
 
-## Key Decisions (from kn)
+## Key Decisions (from kb quick)
 
-- **Headless is default** - `--tmux` is opt-in
+### Spawn Mechanics
+- **Headless is default** - `--tmux` is opt-in for visual monitoring
 - **SPAWN_CONTEXT.md is redundant** - generated from beads + kb + skill + template
 - **Tiered spawn** - `.tier` file controls SYNTHESIS.md requirement
 - **Fire-and-forget** - tmux spawn doesn't capture session ID, use `orch status` to find it
 - **Triage bypass required** - manual spawns need `--bypass-triage` to encourage daemon workflow
+
+### Backend Architecture
+- **OpenCode is default backend** - Dashboard visibility, cost tracking, headless batch work (Jan 30, 2026)
+- **Claude backend for infrastructure** - Use `--infra` flag for work that may restart services
+- **Only two viable API paths** - claude+opus or opencode+sonnet (Opus blocked via API)
+- **Docker provides fingerprint isolation** - for device-level rate limit bypass only
+- **Weekly quota is account-level** - Docker cannot bypass weekly usage limits
+- **Infrastructure detection is advisory** - warns but doesn't auto-override backend (use `--infra` to acknowledge)
+
+### Safety & Limits
 - **Proactive rate limits** - warn at 80%, block at 95% with auto-switch attempt
 - **Duplicate prevention** - checks for active agents before respawning same issue
+- **Dedup coverage is backend-dependent** - OpenCode has session dedup; Claude CLI and Docker rely on status update + Phase: Complete check only (lighter protection)
+- **Agents limited to 3 iterations** - without human review to prevent runaway loops
+- **Abandon after service crashes** - stale sessions don't reconnect, need re-triage
+- **Don't spawn multiple agents for same file** - causes merge conflicts
 
 ---
 
@@ -347,5 +562,46 @@ Before spawning an investigation about spawn issues:
 3. **Check skill exists:** `ls ~/.claude/skills/`
 4. **Check beads:** `bd show <id>` if using `--issue`
 5. **Check workspace:** `ls .orch/workspace/` for generated files
+6. **Check backend:** Is the right backend being used? (`orch spawn --help`)
+
+### Backend-Specific Debugging
+
+**"Opus auth rejected"**
+- Opus requires Claude CLI backend, not OpenCode API
+- Fix: Use `--backend claude` (or remove `--backend opencode`)
+
+**"Docker spawn failing"**
+- Check image exists: `docker images | grep claude-code-mcp`
+- Check PATH in container includes `/usr/local/go/bin`
+- Verify BEADS_NO_DAEMON=1 is being set
+
+**"Rate limited but Docker shows 0%"**
+- Weekly quota is account-level, not device-level
+- Docker only bypasses request-rate throttling, not weekly limits
+- Solution: Wait for reset or switch accounts
+
+**"Agent killed mid-work"**
+- If working on infrastructure (opencode, spawn, daemon), agent may have killed its own execution path
+- Solution: Use `--backend claude --tmux` for infrastructure work
 
 If those don't answer your question, then investigate. But update this doc with what you learn.
+
+---
+
+## Related Documentation
+
+### Guides
+- **Model Selection:** `.kb/guides/model-selection.md` - Which model for which task
+- **Triple Spawn Implementation:** `.kb/guides/dual-spawn-mode-implementation.md` - Implementation details
+- **Daemon Guide:** `.kb/guides/daemon.md` - Autonomous spawning via daemon
+
+### Models
+- **Spawn Architecture:** `.kb/models/spawn-architecture.md` - Architectural overview and evolution
+- **Context Injection:** `.kb/models/context-injection.md` - How SPAWN_CONTEXT.md is assembled
+- **Model Access & Spawn Paths:** `.kb/models/model-access-spawn-paths.md` - Detailed mechanics
+
+### Recent Investigations (Jan 2026)
+- **Bloat Detection:** `.kb/investigations/2026-01-24-inv-spawn-time-bloat-context-injection.md` - Implementation of spawn-time bloat warnings
+- **Cross-Project Beads:** `.kb/investigations/2026-01-29-inv-orch-spawn-shows-beads-lookup.md` - Expected cross-project lookup failures
+- **OpenCode Integration:** `.kb/investigations/2026-01-28-inv-investigate-opencode-native-agent-spawn.md` - Analysis of native vs bolt-on integration
+- **Reliability Patterns:** `.kb/investigations/2026-01-22-inv-analyze-spawn-reliability-pattern-multiple.md` - Backend-dependent dedup coverage

@@ -28,6 +28,7 @@ incomplete sections, and the cognitive load of reconstructing what you observed.
 | Delta | During work (as you create/modify files) |
 | Evidence | During work (as you observe things) |
 | Knowledge | After implementation (patterns noticed) |
+| Issues Created | During/after work (as you discover work) |
 | Next | After validation (what should happen) |
 | Unexplored | Anytime (capture questions as they emerge) |
 
@@ -87,6 +88,19 @@ go test ./...
 - `kn decide "X" --reason "Y"` - [if applicable]
 - `kn constraint "X" --reason "Y"` - [if applicable]
 - `kn tried "X" --failed "Y"` - [if applicable]
+
+---
+
+## Issues Created
+
+**Discovered work tracked during this session:**
+
+- `orch-go-XXXXX` - Brief description of bug/task/feature/question
+- `orch-go-YYYYY` - Brief description
+
+*(If no discovered work: "No discovered work during this session")*
+
+**Note:** Every session should either create issues for discovered work OR explicitly note that none was found. Bugs, tech debt, enhancement ideas, and strategic questions should all be tracked.
 
 ---
 

@@ -1,0 +1,553 @@
+=== RUN   TestCompletionService_Track
+--- PASS: TestCompletionService_Track (0.00s)
+=== RUN   TestCompletionService_TrackWithSlot
+--- PASS: TestCompletionService_TrackWithSlot (0.00s)
+=== RUN   TestCompletionService_Untrack
+--- PASS: TestCompletionService_Untrack (0.00s)
+=== RUN   TestCompletionService_GetTrackedSession
+--- PASS: TestCompletionService_GetTrackedSession (0.00s)
+=== RUN   TestCompletionService_TrackedSessions
+--- PASS: TestCompletionService_TrackedSessions (0.00s)
+=== RUN   TestCompletionService_Status
+--- PASS: TestCompletionService_Status (0.00s)
+=== RUN   TestCompletionService_OnCompletionHandler
+--- PASS: TestCompletionService_OnCompletionHandler (0.00s)
+=== RUN   TestCompletionService_CompletionReleasesSlot
+--- PASS: TestCompletionService_CompletionReleasesSlot (0.00s)
+=== RUN   TestCompletionService_CompletionForUntrackedSession
+--- PASS: TestCompletionService_CompletionForUntrackedSession (0.51s)
+=== RUN   TestCompletionService_ReleaseSlotNonExistent
+--- PASS: TestCompletionService_ReleaseSlotNonExistent (0.00s)
+=== RUN   TestCompletionService_MultipleHandlers
+--- PASS: TestCompletionService_MultipleHandlers (0.00s)
+=== RUN   TestCompletionService_ConcurrentTracking
+--- PASS: TestCompletionService_ConcurrentTracking (0.00s)
+=== RUN   TestDefaultCompletionServiceConfig
+--- PASS: TestDefaultCompletionServiceConfig (0.00s)
+=== RUN   TestNextIssue_EmptyQueue
+--- PASS: TestNextIssue_EmptyQueue (0.00s)
+=== RUN   TestNextIssue_ReturnsHighestPriority
+--- PASS: TestNextIssue_ReturnsHighestPriority (0.14s)
+=== RUN   TestNextIssue_SkipsNonSpawnableTypes
+--- PASS: TestNextIssue_SkipsNonSpawnableTypes (0.08s)
+=== RUN   TestNextIssue_SkipsBlockedIssues
+--- PASS: TestNextIssue_SkipsBlockedIssues (0.07s)
+=== RUN   TestNextIssue_SkipsInProgressIssues
+--- PASS: TestNextIssue_SkipsInProgressIssues (0.07s)
+=== RUN   TestNextIssueExcluding_SkipsExcludedIssues
+--- PASS: TestNextIssueExcluding_SkipsExcludedIssues (0.06s)
+=== RUN   TestNextIssueExcluding_SkipsMultipleExcludedIssues
+--- PASS: TestNextIssueExcluding_SkipsMultipleExcludedIssues (0.06s)
+=== RUN   TestNextIssueExcluding_ReturnsNilWhenAllExcluded
+--- PASS: TestNextIssueExcluding_ReturnsNilWhenAllExcluded (0.00s)
+=== RUN   TestNextIssueExcluding_NilSkipWorksLikeNextIssue
+--- PASS: TestNextIssueExcluding_NilSkipWorksLikeNextIssue (0.06s)
+=== RUN   TestIsSpawnableType
+=== RUN   TestIsSpawnableType/bug
+=== RUN   TestIsSpawnableType/feature
+=== RUN   TestIsSpawnableType/task
+=== RUN   TestIsSpawnableType/investigation
+=== RUN   TestIsSpawnableType/epic
+=== RUN   TestIsSpawnableType/chore
+=== RUN   TestIsSpawnableType/unknown
+=== RUN   TestIsSpawnableType/#00
+--- PASS: TestIsSpawnableType (0.00s)
+    --- PASS: TestIsSpawnableType/bug (0.00s)
+    --- PASS: TestIsSpawnableType/feature (0.00s)
+    --- PASS: TestIsSpawnableType/task (0.00s)
+    --- PASS: TestIsSpawnableType/investigation (0.00s)
+    --- PASS: TestIsSpawnableType/epic (0.00s)
+    --- PASS: TestIsSpawnableType/chore (0.00s)
+    --- PASS: TestIsSpawnableType/unknown (0.00s)
+    --- PASS: TestIsSpawnableType/#00 (0.00s)
+=== RUN   TestFormatPreview
+--- PASS: TestFormatPreview (0.00s)
+=== RUN   TestDaemon_Preview_NoIssues
+--- PASS: TestDaemon_Preview_NoIssues (0.00s)
+=== RUN   TestDaemon_Preview_HasIssues
+--- PASS: TestDaemon_Preview_HasIssues (0.06s)
+=== RUN   TestDaemon_Preview_ShowsRejectionReasons
+--- PASS: TestDaemon_Preview_ShowsRejectionReasons (0.06s)
+=== RUN   TestDaemon_Preview_ShowsMissingLabelRejection
+--- PASS: TestDaemon_Preview_ShowsMissingLabelRejection (0.06s)
+=== RUN   TestFormatRejectedIssues
+--- PASS: TestFormatRejectedIssues (0.00s)
+=== RUN   TestFormatRejectedIssues_Empty
+--- PASS: TestFormatRejectedIssues_Empty (0.00s)
+=== RUN   TestInferSkill
+=== RUN   TestInferSkill/bug
+=== RUN   TestInferSkill/feature
+=== RUN   TestInferSkill/task
+=== RUN   TestInferSkill/investigation
+=== RUN   TestInferSkill/epic
+=== RUN   TestInferSkill/unknown
+--- PASS: TestInferSkill (0.00s)
+    --- PASS: TestInferSkill/bug (0.00s)
+    --- PASS: TestInferSkill/feature (0.00s)
+    --- PASS: TestInferSkill/task (0.00s)
+    --- PASS: TestInferSkill/investigation (0.00s)
+    --- PASS: TestInferSkill/epic (0.00s)
+    --- PASS: TestInferSkill/unknown (0.00s)
+=== RUN   TestInferSkillFromLabels
+=== RUN   TestInferSkillFromLabels/[skill:research]
+=== RUN   TestInferSkillFromLabels/[skill:kb-reflect]
+=== RUN   TestInferSkillFromLabels/[priority:P0_skill:investigation]
+=== RUN   TestInferSkillFromLabels/[priority:P0_triage:ready]
+=== RUN   TestInferSkillFromLabels/[]
+=== RUN   TestInferSkillFromLabels/[]#01
+--- PASS: TestInferSkillFromLabels (0.00s)
+    --- PASS: TestInferSkillFromLabels/[skill:research] (0.00s)
+    --- PASS: TestInferSkillFromLabels/[skill:kb-reflect] (0.00s)
+    --- PASS: TestInferSkillFromLabels/[priority:P0_skill:investigation] (0.00s)
+    --- PASS: TestInferSkillFromLabels/[priority:P0_triage:ready] (0.00s)
+    --- PASS: TestInferSkillFromLabels/[] (0.00s)
+    --- PASS: TestInferSkillFromLabels/[]#01 (0.00s)
+=== RUN   TestInferSkillFromTitle
+=== RUN   TestInferSkillFromTitle/Synthesize_49_dashboard_investigations
+=== RUN   TestInferSkillFromTitle/Synthesize_agent_investigations_into_consolidated_findings
+=== RUN   TestInferSkillFromTitle/Fix_dashboard_bug
+=== RUN   TestInferSkillFromTitle/Add_synthesis_feature
+--- PASS: TestInferSkillFromTitle (0.00s)
+    --- PASS: TestInferSkillFromTitle/Synthesize_49_dashboard_investigations (0.00s)
+    --- PASS: TestInferSkillFromTitle/Synthesize_agent_investigations_into_consolidated_findings (0.00s)
+    --- PASS: TestInferSkillFromTitle/Fix_dashboard_bug (0.00s)
+    --- PASS: TestInferSkillFromTitle/Add_synthesis_feature (0.00s)
+=== RUN   TestInferSkillFromIssue
+=== RUN   TestInferSkillFromIssue/nil_issue
+=== RUN   TestInferSkillFromIssue/skill_label_takes_priority
+=== RUN   TestInferSkillFromIssue/title_pattern_for_synthesis
+=== RUN   TestInferSkillFromIssue/falls_back_to_issue_type
+--- PASS: TestInferSkillFromIssue (0.00s)
+    --- PASS: TestInferSkillFromIssue/nil_issue (0.00s)
+    --- PASS: TestInferSkillFromIssue/skill_label_takes_priority (0.00s)
+    --- PASS: TestInferSkillFromIssue/title_pattern_for_synthesis (0.00s)
+    --- PASS: TestInferSkillFromIssue/falls_back_to_issue_type (0.00s)
+=== RUN   TestInferMCPFromLabels
+=== RUN   TestInferMCPFromLabels/[needs:playwright]
+=== RUN   TestInferMCPFromLabels/[priority:P0_needs:playwright]
+=== RUN   TestInferMCPFromLabels/[triage:ready_needs:playwright_skill:feature-impl]
+=== RUN   TestInferMCPFromLabels/[priority:P0_triage:ready]
+=== RUN   TestInferMCPFromLabels/[skill:research]
+=== RUN   TestInferMCPFromLabels/[]
+=== RUN   TestInferMCPFromLabels/[]#01
+=== RUN   TestInferMCPFromLabels/[needs:unknown]
+=== RUN   TestInferMCPFromLabels/[needs:playwright_needs:browser]
+--- PASS: TestInferMCPFromLabels (0.00s)
+    --- PASS: TestInferMCPFromLabels/[needs:playwright] (0.00s)
+    --- PASS: TestInferMCPFromLabels/[priority:P0_needs:playwright] (0.00s)
+    --- PASS: TestInferMCPFromLabels/[triage:ready_needs:playwright_skill:feature-impl] (0.00s)
+    --- PASS: TestInferMCPFromLabels/[priority:P0_triage:ready] (0.00s)
+    --- PASS: TestInferMCPFromLabels/[skill:research] (0.00s)
+    --- PASS: TestInferMCPFromLabels/[] (0.00s)
+    --- PASS: TestInferMCPFromLabels/[]#01 (0.00s)
+    --- PASS: TestInferMCPFromLabels/[needs:unknown] (0.00s)
+    --- PASS: TestInferMCPFromLabels/[needs:playwright_needs:browser] (0.00s)
+=== RUN   TestDaemon_Once_NoIssues
+--- PASS: TestDaemon_Once_NoIssues (0.00s)
+=== RUN   TestDaemon_Once_ProcessesOneIssue
+--- PASS: TestDaemon_Once_ProcessesOneIssue (0.06s)
+=== RUN   TestDaemon_Run_EmptyQueue
+--- PASS: TestDaemon_Run_EmptyQueue (0.00s)
+=== RUN   TestDaemon_Run_ProcessesAllIssues
+--- PASS: TestDaemon_Run_ProcessesAllIssues (0.19s)
+=== RUN   TestDaemon_Run_RespectsMaxIterations
+--- PASS: TestDaemon_Run_RespectsMaxIterations (0.31s)
+=== RUN   TestIssue_HasLabel
+=== RUN   TestIssue_HasLabel/has_exact_label
+=== RUN   TestIssue_HasLabel/has_label_case_insensitive
+=== RUN   TestIssue_HasLabel/does_not_have_label
+=== RUN   TestIssue_HasLabel/empty_labels
+=== RUN   TestIssue_HasLabel/nil_labels
+--- PASS: TestIssue_HasLabel (0.00s)
+    --- PASS: TestIssue_HasLabel/has_exact_label (0.00s)
+    --- PASS: TestIssue_HasLabel/has_label_case_insensitive (0.00s)
+    --- PASS: TestIssue_HasLabel/does_not_have_label (0.00s)
+    --- PASS: TestIssue_HasLabel/empty_labels (0.00s)
+    --- PASS: TestIssue_HasLabel/nil_labels (0.00s)
+=== RUN   TestNextIssue_FiltersbyLabel
+--- PASS: TestNextIssue_FiltersbyLabel (0.06s)
+=== RUN   TestNextIssue_NoLabelFilter
+--- PASS: TestNextIssue_NoLabelFilter (0.06s)
+=== RUN   TestDaemon_AtCapacity
+=== RUN   TestDaemon_AtCapacity/below_limit
+=== RUN   TestDaemon_AtCapacity/at_limit
+=== RUN   TestDaemon_AtCapacity/above_limit
+=== RUN   TestDaemon_AtCapacity/no_limit_(0)
+--- PASS: TestDaemon_AtCapacity (0.00s)
+    --- PASS: TestDaemon_AtCapacity/below_limit (0.00s)
+    --- PASS: TestDaemon_AtCapacity/at_limit (0.00s)
+    --- PASS: TestDaemon_AtCapacity/above_limit (0.00s)
+    --- PASS: TestDaemon_AtCapacity/no_limit_(0) (0.00s)
+=== RUN   TestDaemon_AvailableSlots
+=== RUN   TestDaemon_AvailableSlots/none_active
+=== RUN   TestDaemon_AvailableSlots/some_active
+=== RUN   TestDaemon_AvailableSlots/at_capacity
+=== RUN   TestDaemon_AvailableSlots/over_capacity
+=== RUN   TestDaemon_AvailableSlots/no_limit
+--- PASS: TestDaemon_AvailableSlots (0.00s)
+    --- PASS: TestDaemon_AvailableSlots/none_active (0.00s)
+    --- PASS: TestDaemon_AvailableSlots/some_active (0.00s)
+    --- PASS: TestDaemon_AvailableSlots/at_capacity (0.00s)
+    --- PASS: TestDaemon_AvailableSlots/over_capacity (0.00s)
+    --- PASS: TestDaemon_AvailableSlots/no_limit (0.00s)
+=== RUN   TestDefaultConfig
+--- PASS: TestDefaultConfig (0.00s)
+=== RUN   TestNewWithConfig
+--- PASS: TestNewWithConfig (0.00s)
+=== RUN   TestNewWithConfig_CreatesPool
+--- PASS: TestNewWithConfig_CreatesPool (0.00s)
+=== RUN   TestNewWithConfig_NoPoolWhenNoLimit
+--- PASS: TestNewWithConfig_NoPoolWhenNoLimit (0.00s)
+=== RUN   TestNewWithPool
+--- PASS: TestNewWithPool (0.00s)
+=== RUN   TestDaemon_AtCapacity_WithPool
+--- PASS: TestDaemon_AtCapacity_WithPool (0.00s)
+=== RUN   TestDaemon_AvailableSlots_WithPool
+--- PASS: TestDaemon_AvailableSlots_WithPool (0.00s)
+=== RUN   TestDaemon_ActiveCount_WithPool
+--- PASS: TestDaemon_ActiveCount_WithPool (0.00s)
+=== RUN   TestDaemon_PoolStatus
+--- PASS: TestDaemon_PoolStatus (0.00s)
+=== RUN   TestDaemon_PoolStatus_NilPool
+--- PASS: TestDaemon_PoolStatus_NilPool (0.00s)
+=== RUN   TestDaemon_Once_WithPool_AcquiresSlot
+--- PASS: TestDaemon_Once_WithPool_AcquiresSlot (0.06s)
+=== RUN   TestDaemon_Once_WithPool_AtCapacity
+--- PASS: TestDaemon_Once_WithPool_AtCapacity (0.06s)
+=== RUN   TestDaemon_Once_WithPool_ReleasesSlotOnError
+--- PASS: TestDaemon_Once_WithPool_ReleasesSlotOnError (0.06s)
+=== RUN   TestDaemon_OnceWithSlot_ReturnsSlot
+--- PASS: TestDaemon_OnceWithSlot_ReturnsSlot (0.06s)
+=== RUN   TestDaemon_OnceWithSlot_NoPool
+--- PASS: TestDaemon_OnceWithSlot_NoPool (0.06s)
+=== RUN   TestDaemon_ReleaseSlot_Nil
+--- PASS: TestDaemon_ReleaseSlot_Nil (0.00s)
+=== RUN   TestDaemon_ReleaseSlot_NoPool
+--- PASS: TestDaemon_ReleaseSlot_NoPool (0.00s)
+=== RUN   TestDaemon_ReconcileWithOpenCode_NoPool
+--- PASS: TestDaemon_ReconcileWithOpenCode_NoPool (0.00s)
+=== RUN   TestDaemon_ReconcileWithOpenCode_WithPool
+--- PASS: TestDaemon_ReconcileWithOpenCode_WithPool (0.01s)
+=== RUN   TestConvertBeadsIssues_Empty
+--- PASS: TestConvertBeadsIssues_Empty (0.00s)
+=== RUN   TestConvertBeadsIssues_ConvertsAllFields
+--- PASS: TestConvertBeadsIssues_ConvertsAllFields (0.00s)
+=== RUN   TestConvertBeadsIssues_MultipleIssues
+--- PASS: TestConvertBeadsIssues_MultipleIssues (0.00s)
+=== RUN   TestDefaultCompletionConfig
+--- PASS: TestDefaultCompletionConfig (0.00s)
+=== RUN   TestDaemon_ListCompletedAgents_Empty
+--- PASS: TestDaemon_ListCompletedAgents_Empty (0.00s)
+=== RUN   TestDaemon_ListCompletedAgents_ReturnsAgents
+--- PASS: TestDaemon_ListCompletedAgents_ReturnsAgents (0.00s)
+=== RUN   TestDaemon_CompletionOnce_NoAgents
+--- PASS: TestDaemon_CompletionOnce_NoAgents (0.00s)
+=== RUN   TestDaemon_CompletionOnce_DryRun
+--- PASS: TestDaemon_CompletionOnce_DryRun (0.00s)
+=== RUN   TestDaemon_PreviewCompletions
+--- PASS: TestDaemon_PreviewCompletions (0.00s)
+=== RUN   TestCompletedAgent_Fields
+--- PASS: TestCompletedAgent_Fields (0.00s)
+=== RUN   TestCompletionResult_Fields
+--- PASS: TestCompletionResult_Fields (0.00s)
+=== RUN   TestCompletionLoopResult_Fields
+--- PASS: TestCompletionLoopResult_Fields (0.00s)
+=== RUN   TestFindWorkspaceForIssue_NoWorkspaceDir
+--- PASS: TestFindWorkspaceForIssue_NoWorkspaceDir (0.00s)
+=== RUN   TestExtractBeadsIDFromSessionTitle
+=== RUN   TestExtractBeadsIDFromSessionTitle/standard_format
+=== RUN   TestExtractBeadsIDFromSessionTitle/untracked_agent
+=== RUN   TestExtractBeadsIDFromSessionTitle/no_beads_ID
+=== RUN   TestExtractBeadsIDFromSessionTitle/empty_title
+=== RUN   TestExtractBeadsIDFromSessionTitle/brackets_but_no_content
+=== RUN   TestExtractBeadsIDFromSessionTitle/multiple_brackets_-_use_last
+--- PASS: TestExtractBeadsIDFromSessionTitle (0.00s)
+    --- PASS: TestExtractBeadsIDFromSessionTitle/standard_format (0.00s)
+    --- PASS: TestExtractBeadsIDFromSessionTitle/untracked_agent (0.00s)
+    --- PASS: TestExtractBeadsIDFromSessionTitle/no_beads_ID (0.00s)
+    --- PASS: TestExtractBeadsIDFromSessionTitle/empty_title (0.00s)
+    --- PASS: TestExtractBeadsIDFromSessionTitle/brackets_but_no_content (0.00s)
+    --- PASS: TestExtractBeadsIDFromSessionTitle/multiple_brackets_-_use_last (0.00s)
+=== RUN   TestIsUntrackedBeadsID
+=== RUN   TestIsUntrackedBeadsID/tracked_beads_ID
+=== RUN   TestIsUntrackedBeadsID/untracked_beads_ID
+=== RUN   TestIsUntrackedBeadsID/untracked_with_different_project
+=== RUN   TestIsUntrackedBeadsID/empty_string
+=== RUN   TestIsUntrackedBeadsID/contains_'untracked'_but_not_as_segment
+--- PASS: TestIsUntrackedBeadsID (0.00s)
+    --- PASS: TestIsUntrackedBeadsID/tracked_beads_ID (0.00s)
+    --- PASS: TestIsUntrackedBeadsID/untracked_beads_ID (0.00s)
+    --- PASS: TestIsUntrackedBeadsID/untracked_with_different_project (0.00s)
+    --- PASS: TestIsUntrackedBeadsID/empty_string (0.00s)
+    --- PASS: TestIsUntrackedBeadsID/contains_'untracked'_but_not_as_segment (0.00s)
+=== RUN   TestGetClosedIssuesBatch_EmptyInput
+--- PASS: TestGetClosedIssuesBatch_EmptyInput (0.00s)
+=== RUN   TestGetClosedIssuesBatch_Integration
+--- PASS: TestGetClosedIssuesBatch_Integration (0.01s)
+=== RUN   TestNewRateLimiter
+--- PASS: TestNewRateLimiter (0.00s)
+=== RUN   TestRateLimiter_CanSpawn_NoLimit
+--- PASS: TestRateLimiter_CanSpawn_NoLimit (0.00s)
+=== RUN   TestRateLimiter_CanSpawn_BelowLimit
+--- PASS: TestRateLimiter_CanSpawn_BelowLimit (0.00s)
+=== RUN   TestRateLimiter_CanSpawn_AtLimit
+--- PASS: TestRateLimiter_CanSpawn_AtLimit (0.00s)
+=== RUN   TestRateLimiter_CanSpawn_ExpiredHistory
+--- PASS: TestRateLimiter_CanSpawn_ExpiredHistory (0.00s)
+=== RUN   TestRateLimiter_RecordSpawn
+--- PASS: TestRateLimiter_RecordSpawn (0.00s)
+=== RUN   TestRateLimiter_SpawnsRemaining
+=== RUN   TestRateLimiter_SpawnsRemaining/no_limit
+=== RUN   TestRateLimiter_SpawnsRemaining/none_used
+=== RUN   TestRateLimiter_SpawnsRemaining/some_used
+=== RUN   TestRateLimiter_SpawnsRemaining/all_used
+=== RUN   TestRateLimiter_SpawnsRemaining/over_limit
+--- PASS: TestRateLimiter_SpawnsRemaining (0.00s)
+    --- PASS: TestRateLimiter_SpawnsRemaining/no_limit (0.00s)
+    --- PASS: TestRateLimiter_SpawnsRemaining/none_used (0.00s)
+    --- PASS: TestRateLimiter_SpawnsRemaining/some_used (0.00s)
+    --- PASS: TestRateLimiter_SpawnsRemaining/all_used (0.00s)
+    --- PASS: TestRateLimiter_SpawnsRemaining/over_limit (0.00s)
+=== RUN   TestRateLimiter_Status
+--- PASS: TestRateLimiter_Status (0.00s)
+=== RUN   TestDaemon_OnceExcluding_RateLimited
+--- PASS: TestDaemon_OnceExcluding_RateLimited (0.13s)
+=== RUN   TestDaemon_Preview_RateLimited
+--- PASS: TestDaemon_Preview_RateLimited (0.13s)
+=== RUN   TestDaemon_ShouldRunReflection_Disabled
+--- PASS: TestDaemon_ShouldRunReflection_Disabled (0.00s)
+=== RUN   TestDaemon_ShouldRunReflection_ZeroInterval
+--- PASS: TestDaemon_ShouldRunReflection_ZeroInterval (0.00s)
+=== RUN   TestDaemon_ShouldRunReflection_NeverRun
+--- PASS: TestDaemon_ShouldRunReflection_NeverRun (0.00s)
+=== RUN   TestDaemon_ShouldRunReflection_IntervalElapsed
+--- PASS: TestDaemon_ShouldRunReflection_IntervalElapsed (0.00s)
+=== RUN   TestDaemon_ShouldRunReflection_IntervalNotElapsed
+--- PASS: TestDaemon_ShouldRunReflection_IntervalNotElapsed (0.00s)
+=== RUN   TestDaemon_RunPeriodicReflection_NotDue
+--- PASS: TestDaemon_RunPeriodicReflection_NotDue (0.00s)
+=== RUN   TestDaemon_RunPeriodicReflection_Due
+--- PASS: TestDaemon_RunPeriodicReflection_Due (0.00s)
+=== RUN   TestDaemon_RunPeriodicReflection_Error
+--- PASS: TestDaemon_RunPeriodicReflection_Error (0.00s)
+=== RUN   TestDaemon_LastReflectTime
+--- PASS: TestDaemon_LastReflectTime (0.00s)
+=== RUN   TestDaemon_NextReflectTime_Disabled
+--- PASS: TestDaemon_NextReflectTime_Disabled (0.00s)
+=== RUN   TestDaemon_NextReflectTime_NeverRun
+--- PASS: TestDaemon_NextReflectTime_NeverRun (0.00s)
+=== RUN   TestDaemon_NextReflectTime_AfterRun
+--- PASS: TestDaemon_NextReflectTime_AfterRun (0.00s)
+=== RUN   TestDefaultConfig_IncludesReflect
+--- PASS: TestDefaultConfig_IncludesReflect (0.00s)
+=== RUN   TestNewWithConfig_InitializesReflectFunc
+--- PASS: TestNewWithConfig_InitializesReflectFunc (0.00s)
+=== RUN   TestExpandTriageReadyEpics_NoEpics
+--- PASS: TestExpandTriageReadyEpics_NoEpics (0.00s)
+=== RUN   TestExpandTriageReadyEpics_NoLabelFilter
+--- PASS: TestExpandTriageReadyEpics_NoLabelFilter (0.00s)
+=== RUN   TestExpandTriageReadyEpics_EpicWithoutLabel
+--- PASS: TestExpandTriageReadyEpics_EpicWithoutLabel (0.00s)
+=== RUN   TestNextIssue_EpicChildrenIncludedInSpawnQueue
+    daemon_test.go:2230: NextIssue() returned orch-go-6hhaa
+--- PASS: TestNextIssue_EpicChildrenIncludedInSpawnQueue (0.10s)
+=== RUN   TestCheckRejectionReasonWithEpicChildren_EpicChildExempt
+--- PASS: TestCheckRejectionReasonWithEpicChildren_EpicChildExempt (0.07s)
+=== RUN   TestCheckRejectionReasonWithEpicChildren_EpicWithLabelExplains
+--- PASS: TestCheckRejectionReasonWithEpicChildren_EpicWithLabelExplains (0.00s)
+=== RUN   TestPreview_EpicWithTriageReadyShowsHelpfulMessage
+--- PASS: TestPreview_EpicWithTriageReadyShowsHelpfulMessage (0.00s)
+=== RUN   TestHotspotWarning_Fields
+--- PASS: TestHotspotWarning_Fields (0.00s)
+=== RUN   TestHotspotWarning_IsCritical
+=== RUN   TestHotspotWarning_IsCritical/score_10_is_critical
+=== RUN   TestHotspotWarning_IsCritical/score_11_is_critical
+=== RUN   TestHotspotWarning_IsCritical/score_9_is_not_critical
+=== RUN   TestHotspotWarning_IsCritical/score_5_is_not_critical
+--- PASS: TestHotspotWarning_IsCritical (0.00s)
+    --- PASS: TestHotspotWarning_IsCritical/score_10_is_critical (0.00s)
+    --- PASS: TestHotspotWarning_IsCritical/score_11_is_critical (0.00s)
+    --- PASS: TestHotspotWarning_IsCritical/score_9_is_not_critical (0.00s)
+    --- PASS: TestHotspotWarning_IsCritical/score_5_is_not_critical (0.00s)
+=== RUN   TestPreviewResult_HotspotWarnings
+--- PASS: TestPreviewResult_HotspotWarnings (0.00s)
+=== RUN   TestPreviewResult_HasHotspotWarnings
+=== RUN   TestPreviewResult_HasHotspotWarnings/no_warnings
+=== RUN   TestPreviewResult_HasHotspotWarnings/empty_warnings
+=== RUN   TestPreviewResult_HasHotspotWarnings/has_warnings
+--- PASS: TestPreviewResult_HasHotspotWarnings (0.00s)
+    --- PASS: TestPreviewResult_HasHotspotWarnings/no_warnings (0.00s)
+    --- PASS: TestPreviewResult_HasHotspotWarnings/empty_warnings (0.00s)
+    --- PASS: TestPreviewResult_HasHotspotWarnings/has_warnings (0.00s)
+=== RUN   TestPreviewResult_HasCriticalHotspots
+=== RUN   TestPreviewResult_HasCriticalHotspots/no_warnings
+=== RUN   TestPreviewResult_HasCriticalHotspots/only_moderate_warnings
+=== RUN   TestPreviewResult_HasCriticalHotspots/one_critical_warning
+=== RUN   TestPreviewResult_HasCriticalHotspots/all_critical_warnings
+--- PASS: TestPreviewResult_HasCriticalHotspots (0.00s)
+    --- PASS: TestPreviewResult_HasCriticalHotspots/no_warnings (0.00s)
+    --- PASS: TestPreviewResult_HasCriticalHotspots/only_moderate_warnings (0.00s)
+    --- PASS: TestPreviewResult_HasCriticalHotspots/one_critical_warning (0.00s)
+    --- PASS: TestPreviewResult_HasCriticalHotspots/all_critical_warnings (0.00s)
+=== RUN   TestCheckHotspotsForIssue_NoHotspots
+--- PASS: TestCheckHotspotsForIssue_NoHotspots (0.00s)
+=== RUN   TestCheckHotspotsForIssue_WithHotspots
+--- PASS: TestCheckHotspotsForIssue_WithHotspots (0.00s)
+=== RUN   TestCheckHotspotsForIssue_NilChecker
+--- PASS: TestCheckHotspotsForIssue_NilChecker (0.00s)
+=== RUN   TestCheckHotspotsForIssue_NilIssue
+--- PASS: TestCheckHotspotsForIssue_NilIssue (0.00s)
+=== RUN   TestFormatHotspotWarnings_Empty
+--- PASS: TestFormatHotspotWarnings_Empty (0.00s)
+=== RUN   TestFormatHotspotWarnings_SingleWarning
+--- PASS: TestFormatHotspotWarnings_SingleWarning (0.00s)
+=== RUN   TestFormatHotspotWarnings_CriticalWarning
+--- PASS: TestFormatHotspotWarnings_CriticalWarning (0.00s)
+=== RUN   TestFormatHotspotWarnings_MultipleWarnings
+--- PASS: TestFormatHotspotWarnings_MultipleWarnings (0.00s)
+=== RUN   TestGenerateHotspotRecommendation
+=== RUN   TestGenerateHotspotRecommendation/critical_hotspots
+=== RUN   TestGenerateHotspotRecommendation/no_critical_hotspots
+--- PASS: TestGenerateHotspotRecommendation (0.00s)
+    --- PASS: TestGenerateHotspotRecommendation/critical_hotspots (0.00s)
+    --- PASS: TestGenerateHotspotRecommendation/no_critical_hotspots (0.00s)
+=== RUN   TestNewGitHotspotChecker
+--- PASS: TestNewGitHotspotChecker (0.00s)
+=== RUN   TestGitHotspotChecker_CheckHotspots_NoOrchCommand
+--- PASS: TestGitHotspotChecker_CheckHotspots_NoOrchCommand (0.00s)
+=== RUN   TestDaemon_Preview_WithHotspotChecker
+--- PASS: TestDaemon_Preview_WithHotspotChecker (0.07s)
+=== RUN   TestDaemon_Preview_NoHotspotChecker
+--- PASS: TestDaemon_Preview_NoHotspotChecker (0.07s)
+=== RUN   TestDaemon_Preview_HotspotCheckerError
+--- PASS: TestDaemon_Preview_HotspotCheckerError (0.07s)
+=== RUN   TestNewWorkerPool
+--- PASS: TestNewWorkerPool (0.00s)
+=== RUN   TestWorkerPool_AcquireRelease
+--- PASS: TestWorkerPool_AcquireRelease (0.00s)
+=== RUN   TestWorkerPool_TryAcquire
+--- PASS: TestWorkerPool_TryAcquire (0.00s)
+=== RUN   TestWorkerPool_AtCapacity
+--- PASS: TestWorkerPool_AtCapacity (0.00s)
+=== RUN   TestWorkerPool_Available
+--- PASS: TestWorkerPool_Available (0.00s)
+=== RUN   TestWorkerPool_NoLimit
+--- PASS: TestWorkerPool_NoLimit (0.00s)
+=== RUN   TestWorkerPool_AcquireBlocks
+--- PASS: TestWorkerPool_AcquireBlocks (0.05s)
+=== RUN   TestWorkerPool_WakesWaiters
+--- PASS: TestWorkerPool_WakesWaiters (0.01s)
+=== RUN   TestWorkerPool_ConcurrentAccess
+--- PASS: TestWorkerPool_ConcurrentAccess (0.02s)
+=== RUN   TestWorkerPool_Status
+--- PASS: TestWorkerPool_Status (0.00s)
+=== RUN   TestWorkerPool_ReleaseNil
+--- PASS: TestWorkerPool_ReleaseNil (0.00s)
+=== RUN   TestWorkerPool_ReleaseUnknownSlot
+--- PASS: TestWorkerPool_ReleaseUnknownSlot (0.00s)
+=== RUN   TestWorkerPool_Reconcile_FreesStaleSlots
+--- PASS: TestWorkerPool_Reconcile_FreesStaleSlots (0.00s)
+=== RUN   TestWorkerPool_Reconcile_AllSessionsGone
+--- PASS: TestWorkerPool_Reconcile_AllSessionsGone (0.00s)
+=== RUN   TestWorkerPool_Reconcile_MoreActualThanTracked
+--- PASS: TestWorkerPool_Reconcile_MoreActualThanTracked (0.00s)
+=== RUN   TestWorkerPool_Reconcile_SameCount
+--- PASS: TestWorkerPool_Reconcile_SameCount (0.00s)
+=== RUN   TestWorkerPool_Reconcile_EmptyPool
+--- PASS: TestWorkerPool_Reconcile_EmptyPool (0.00s)
+=== RUN   TestWorkerPool_Reconcile_WakesWaiters
+--- PASS: TestWorkerPool_Reconcile_WakesWaiters (0.01s)
+=== RUN   TestReflectSuggestions_HasSuggestions
+=== RUN   TestReflectSuggestions_HasSuggestions/nil
+=== RUN   TestReflectSuggestions_HasSuggestions/empty
+=== RUN   TestReflectSuggestions_HasSuggestions/synthesis_only
+=== RUN   TestReflectSuggestions_HasSuggestions/promote_only
+=== RUN   TestReflectSuggestions_HasSuggestions/stale_only
+=== RUN   TestReflectSuggestions_HasSuggestions/drift_only
+=== RUN   TestReflectSuggestions_HasSuggestions/all_types
+--- PASS: TestReflectSuggestions_HasSuggestions (0.00s)
+    --- PASS: TestReflectSuggestions_HasSuggestions/nil (0.00s)
+    --- PASS: TestReflectSuggestions_HasSuggestions/empty (0.00s)
+    --- PASS: TestReflectSuggestions_HasSuggestions/synthesis_only (0.00s)
+    --- PASS: TestReflectSuggestions_HasSuggestions/promote_only (0.00s)
+    --- PASS: TestReflectSuggestions_HasSuggestions/stale_only (0.00s)
+    --- PASS: TestReflectSuggestions_HasSuggestions/drift_only (0.00s)
+    --- PASS: TestReflectSuggestions_HasSuggestions/all_types (0.00s)
+=== RUN   TestReflectSuggestions_TotalCount
+=== RUN   TestReflectSuggestions_TotalCount/nil
+=== RUN   TestReflectSuggestions_TotalCount/empty
+=== RUN   TestReflectSuggestions_TotalCount/synthesis_only
+=== RUN   TestReflectSuggestions_TotalCount/mixed
+--- PASS: TestReflectSuggestions_TotalCount (0.00s)
+    --- PASS: TestReflectSuggestions_TotalCount/nil (0.00s)
+    --- PASS: TestReflectSuggestions_TotalCount/empty (0.00s)
+    --- PASS: TestReflectSuggestions_TotalCount/synthesis_only (0.00s)
+    --- PASS: TestReflectSuggestions_TotalCount/mixed (0.00s)
+=== RUN   TestReflectSuggestions_Summary
+=== RUN   TestReflectSuggestions_Summary/nil
+=== RUN   TestReflectSuggestions_Summary/empty
+=== RUN   TestReflectSuggestions_Summary/synthesis_only
+=== RUN   TestReflectSuggestions_Summary/multiple_types
+--- PASS: TestReflectSuggestions_Summary (0.00s)
+    --- PASS: TestReflectSuggestions_Summary/nil (0.00s)
+    --- PASS: TestReflectSuggestions_Summary/empty (0.00s)
+    --- PASS: TestReflectSuggestions_Summary/synthesis_only (0.00s)
+    --- PASS: TestReflectSuggestions_Summary/multiple_types (0.00s)
+=== RUN   TestSaveSuggestions_CreatesDirAndFile
+--- PASS: TestSaveSuggestions_CreatesDirAndFile (0.00s)
+=== RUN   TestLoadSuggestions_FileNotExists
+--- PASS: TestLoadSuggestions_FileNotExists (0.00s)
+=== RUN   TestLoadSuggestions_ValidFile
+--- PASS: TestLoadSuggestions_ValidFile (0.00s)
+=== RUN   TestSuggestionsPath
+--- PASS: TestSuggestionsPath (0.00s)
+=== RUN   TestSpawnedIssueTracker_MarkAndCheck
+--- PASS: TestSpawnedIssueTracker_MarkAndCheck (0.00s)
+=== RUN   TestSpawnedIssueTracker_Unmark
+--- PASS: TestSpawnedIssueTracker_Unmark (0.00s)
+=== RUN   TestSpawnedIssueTracker_TTL
+--- PASS: TestSpawnedIssueTracker_TTL (0.06s)
+=== RUN   TestSpawnedIssueTracker_CleanStale
+--- PASS: TestSpawnedIssueTracker_CleanStale (0.06s)
+=== RUN   TestSpawnedIssueTracker_ReconcileWithIssues
+--- PASS: TestSpawnedIssueTracker_ReconcileWithIssues (0.00s)
+=== RUN   TestSpawnedIssueTracker_TrackedIDs
+--- PASS: TestSpawnedIssueTracker_TrackedIDs (0.00s)
+=== RUN   TestSpawnedIssueTracker_ConcurrentAccess
+--- PASS: TestSpawnedIssueTracker_ConcurrentAccess (0.00s)
+=== RUN   TestDaemon_SkipsRecentlySpawnedIssues
+--- PASS: TestDaemon_SkipsRecentlySpawnedIssues (0.12s)
+=== RUN   TestDaemon_OnceMarksSpawned
+--- PASS: TestDaemon_OnceMarksSpawned (0.08s)
+=== RUN   TestDaemon_OnceUnmarksOnFailure
+--- PASS: TestDaemon_OnceUnmarksOnFailure (0.07s)
+=== RUN   TestDaemon_PreventsDuplicateSpawns
+--- PASS: TestDaemon_PreventsDuplicateSpawns (0.06s)
+=== RUN   TestStatusFilePath
+--- PASS: TestStatusFilePath (0.00s)
+=== RUN   TestWriteAndReadStatusFile
+--- PASS: TestWriteAndReadStatusFile (0.00s)
+=== RUN   TestWriteStatusFile_AtomicWrite
+--- PASS: TestWriteStatusFile_AtomicWrite (0.00s)
+=== RUN   TestWriteStatusFile_CreatesDirectory
+--- PASS: TestWriteStatusFile_CreatesDirectory (0.00s)
+=== RUN   TestRemoveStatusFile
+--- PASS: TestRemoveStatusFile (0.00s)
+=== RUN   TestRemoveStatusFile_NonExistent
+--- PASS: TestRemoveStatusFile_NonExistent (0.00s)
+=== RUN   TestDetermineStatus
+=== RUN   TestDetermineStatus/recent_poll_is_running
+=== RUN   TestDetermineStatus/exactly_at_interval_is_running
+=== RUN   TestDetermineStatus/under_2x_interval_is_running
+=== RUN   TestDetermineStatus/over_2x_interval_is_stalled
+--- PASS: TestDetermineStatus (0.00s)
+    --- PASS: TestDetermineStatus/recent_poll_is_running (0.00s)
+    --- PASS: TestDetermineStatus/exactly_at_interval_is_running (0.00s)
+    --- PASS: TestDetermineStatus/under_2x_interval_is_running (0.00s)
+    --- PASS: TestDetermineStatus/over_2x_interval_is_stalled (0.00s)
+=== RUN   TestDaemonStatus_JSONFormat
+--- PASS: TestDaemonStatus_JSONFormat (0.00s)
+=== RUN   TestDaemonStatus_ZeroLastSpawn
+--- PASS: TestDaemonStatus_ZeroLastSpawn (0.00s)
+PASS
+ok  	github.com/dylan-conlin/orch-go/pkg/daemon	3.462s

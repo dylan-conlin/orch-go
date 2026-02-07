@@ -2,9 +2,9 @@
 
 **Purpose:** Single authoritative reference for agent state management, display, and coordination in the orch-go system.
 
-**Last verified:** Jan 6, 2026
+**Last verified:** Jan 17, 2026
 
-**Synthesized from:** 17 investigations (Dec 20, 2025 - Jan 6, 2026)
+**Synthesized from:** 45+ investigations (Dec 20, 2025 - Jan 17, 2026)
 
 ---
 
@@ -73,6 +73,46 @@ Agent state exists across four independent layers:
 | Is agent processing? | SSE session.status = busy | Session exists |
 
 **Beads is the source of truth for agent status.** OpenCode sessions persist to disk indefinitely. An OpenCode session existing means nothing about whether the agent is done. Only beads matters.
+
+### Layer Cleanup on Completion
+
+When `orch complete` runs, it must clean up all four layers in the correct order:
+
+```
+1. Close beads issue (authoritative "done" signal)
+2. Delete OpenCode session (prevents ghost agents)
+3. Export transcript if needed
+4. Archive workspace to archived/
+5. Close tmux window
+6. Invalidate serve cache
+```
+
+**Critical:** Delete OpenCode session BEFORE status checks. Sessions persist to disk and appear as "running" agents in `orch status` if not deleted.
+
+**Reference:** `.kb/guides/completion.md` for full cleanup details.
+
+---
+
+## Pre-Spawn Duplicate Prevention
+
+Before spawning, check if work is already done:
+
+```go
+// Check for Phase: Complete before spawning
+comments := bd.GetComments(beadsID)
+for _, c := range comments {
+    if strings.Contains(c, "Phase: Complete") {
+        return errors.New("work already complete, not respawning")
+    }
+}
+```
+
+**Why:** Prevents duplicate spawns when:
+- Agent finished but `orch complete` wasn't run
+- Daemon retry triggers spawn for closed issue
+- Manual respawn of already-done work
+
+**Code reference:** `pkg/spawn/pre_spawn_check.go`
 
 ---
 
@@ -223,6 +263,18 @@ function computeDisplayState(agent: Agent): DisplayState {
   return 'waiting';
 }
 ```
+
+---
+
+## Health & Self-Healing
+
+Agents are equipped with a "digital nervous system" (Coaching Plugin) that monitors for behavioral degradation.
+
+### Pain as Signal
+Autonomous error correction requires that agents *feel* the friction of their own failure in real-time.
+- **Signal:** Detections (Analysis Paralysis, Frame Collapse) are injected as tool-layer messages.
+- **Action:** Agents must treat these signals as authoritative feedback from the hierarchy.
+- **Pivot:** Upon receiving a signal, the agent should stop the current loop, reason about the failure, and pivot (e.g., change tool, escalate, or request context reset).
 
 ---
 

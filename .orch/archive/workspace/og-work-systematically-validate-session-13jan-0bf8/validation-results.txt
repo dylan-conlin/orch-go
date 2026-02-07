@@ -1,0 +1,13 @@
+
+[0;34m========================================[0m
+[0;34mSession Discovery Cross-Window Validation[0m
+[0;34m========================================[0m
+Testing commit: 85a6a283
+Discovery order: current-window → active → cross-window → legacy
+
+
+[0;34m========================================[0m
+[0;34mScenario 1: Cross-Window Resume[0m
+[0;34m========================================[0m
+Expected: Fresh window discovers most recent handoff from other windows
+[0;32m✓ PASS[0m: Cross-window resume

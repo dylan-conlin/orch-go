@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/attention"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
@@ -31,6 +32,10 @@ type CompletionConfig struct {
 	// ProjectDir is the project root directory.
 	// Used to locate workspaces and verify constraints.
 	ProjectDir string
+
+	// ServerURL is the OpenCode server URL.
+	// Used for mode-aware backend verification.
+	ServerURL string
 }
 
 // DefaultCompletionConfig returns sensible defaults for completion configuration.
@@ -200,6 +205,7 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 		agent.WorkspacePath,
 		config.ProjectDir,
 		tier,
+		config.ServerURL,
 	)
 	if err != nil {
 		result.Error = fmt.Errorf("verification failed: %w", err)
@@ -229,6 +235,9 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 	// Check if verification passed
 	if !verificationResult.Passed {
 		result.Error = fmt.Errorf("verification failed: %s", strings.Join(verificationResult.Errors, "; "))
+		// Emit verify_failed attention signal for visibility
+		emitVerifyFailedSignal(agent, verificationResult.GatesFailed, verificationResult.Errors)
+
 		return result
 	}
 
@@ -240,6 +249,9 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 			NeedsVisualApproval: escalation == verify.EscalationBlock,
 		})
 		result.Error = fmt.Errorf("requires human review: %s", reason.Reason)
+		// Emit verify_failed attention signal (escalation blocked auto-completion)
+		emitVerifyFailedSignal(agent, []string{"escalation_blocked"}, []string{result.Error.Error()})
+
 		return result
 	}
 
@@ -249,9 +261,10 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 		closeReason = fmt.Sprintf("Phase: Complete - %s", agent.PhaseSummary)
 	}
 
-	// Close the issue (unless dry run)
+	// Close the issue (unless dry run), using force to bypass bd's redundant
+	// Phase: Complete gate since we already verified it via ListCompletedAgents
 	if !config.DryRun {
-		if err := verify.CloseIssue(agent.BeadsID, closeReason); err != nil {
+		if err := verify.CloseIssueForce(agent.BeadsID, closeReason, true); err != nil {
 			result.Error = fmt.Errorf("failed to close issue: %w", err)
 			return result
 		}
@@ -334,4 +347,22 @@ func (d *Daemon) CompletionLoop(ctx context.Context, config CompletionConfig) er
 // PreviewCompletions shows what agents would be completed without actually closing them.
 func (d *Daemon) PreviewCompletions(config CompletionConfig) ([]CompletedAgent, error) {
 	return d.ListCompletedAgents(config)
+}
+
+// emitVerifyFailedSignal stores a verification failure signal for attention system visibility.
+// This enables the Work Graph to show issues stuck in "verification purgatory".
+func emitVerifyFailedSignal(agent CompletedAgent, failedGates, errors []string) {
+	entry := attention.VerifyFailedEntry{
+		BeadsID:      agent.BeadsID,
+		Title:        agent.Title,
+		FailedGates:  failedGates,
+		Errors:       errors,
+		PhaseSummary: agent.PhaseSummary,
+	}
+
+	// Store the failure - errors are logged but don't block completion processing
+	if err := attention.StoreVerifyFailed(entry); err != nil {
+		// Log but don't fail - this is observability, not critical path
+		fmt.Printf("Warning: failed to store verify_failed signal for %s: %v\n", agent.BeadsID, err)
+	}
 }

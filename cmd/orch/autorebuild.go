@@ -63,9 +63,53 @@ func getAutoRebuildLockPath(srcDir string) string {
 }
 
 // isRebuildInProgress checks if another rebuild is currently in progress.
+// It reads the PID from the lock file and verifies the process is still running.
+// If the lock file exists but the process is dead, it removes the stale lock.
 func isRebuildInProgress(lockPath string) bool {
-	_, err := os.Stat(lockPath)
-	return err == nil
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		// Lock file doesn't exist or can't be read
+		return false
+	}
+
+	// Parse PID from lock file
+	pidStr := strings.TrimSpace(string(data))
+	pid := 0
+	if _, err := fmt.Sscanf(pidStr, "%d", &pid); err != nil || pid <= 0 {
+		// Invalid PID in lock file - remove stale lock
+		os.Remove(lockPath)
+		return false
+	}
+
+	// Check if process is still running
+	// On Unix, sending signal 0 checks if process exists without actually signaling it
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		// Can't find process - remove stale lock
+		os.Remove(lockPath)
+		return false
+	}
+
+	// On Unix, FindProcess always succeeds, so we need to actually check
+	err = process.Signal(syscall.Signal(0))
+	if err != nil {
+		// Process doesn't exist or we don't have permission
+		// Common errors indicating process is dead:
+		// - syscall.ESRCH: No such process (direct syscall error)
+		// - "os: process already finished" (Go's wrapper)
+		// - "operation not permitted" could mean process exists but different user
+		errStr := err.Error()
+		if err == syscall.ESRCH || strings.Contains(errStr, "process already finished") ||
+			strings.Contains(errStr, "no such process") {
+			os.Remove(lockPath)
+			return false
+		}
+		// EPERM/"operation not permitted" means process exists but we can't signal it
+		// This is conservative but safe - treat as in progress
+	}
+
+	// Process is still running
+	return true
 }
 
 // acquireRebuildLock attempts to acquire the rebuild lock.
@@ -140,6 +184,18 @@ func autoRebuildAndReexec() error {
 	return syscall.Exec(executable, os.Args, os.Environ())
 }
 
+// hasJSONFlag checks if the --json flag is present in os.Args.
+// This is used to suppress auto-rebuild warnings when JSON output is requested,
+// since warnings to stderr would break JSON parsers that capture both streams.
+func hasJSONFlag() bool {
+	for _, arg := range os.Args {
+		if arg == "--json" {
+			return true
+		}
+	}
+	return false
+}
+
 // maybeAutoRebuild checks if auto-rebuild is needed and performs it.
 // This should be called at the top of main() before rootCmd.Execute().
 // On successful rebuild, this function does not return (process is replaced).
@@ -151,9 +207,13 @@ func maybeAutoRebuild() {
 
 	// Attempt rebuild - if it fails, continue with stale binary
 	if err := autoRebuildAndReexec(); err != nil {
-		// Log the error but continue with stale binary
-		fmt.Fprintf(os.Stderr, "⚠️  Auto-rebuild failed: %v\n", err)
-		fmt.Fprintf(os.Stderr, "   Continuing with stale binary. Run 'make install' manually.\n")
+		// Suppress warning if --json flag is present to avoid breaking JSON parsers
+		// that capture both stdout and stderr (e.g., orch status --json 2>&1 | jq)
+		if !hasJSONFlag() {
+			// Log the error but continue with stale binary
+			fmt.Fprintf(os.Stderr, "⚠️  Auto-rebuild failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "   Continuing with stale binary. Run 'make install' manually.\n")
+		}
 	}
 }
 // test comment Thu Jan  8 15:56:54 PST 2026

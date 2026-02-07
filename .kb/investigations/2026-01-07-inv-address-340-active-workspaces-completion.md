@@ -15,7 +15,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Add automatic stale workspace archival to daemon poll cycle OR add to `orch complete` workflow.
 
-**Promote to Decision:** recommend-yes - This should establish a pattern for automatic workspace lifecycle management.
+**Promote to Decision:** Actioned - workspace lifecycle documented in guide
 
 ---
 

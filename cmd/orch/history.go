@@ -21,17 +21,18 @@ var (
 	historyProject    string
 
 	// Pre-compiled regex patterns for history.go
-	regexSkillGuidance   = regexp.MustCompile(`## SKILL GUIDANCE \(([a-z0-9-]+)\)`)
-	regexSkillField      = regexp.MustCompile(`(?:^|\n)(?:\*\*|\-\s+)?[Ss]kill:(?:\*\*)?\s*([a-z0-9-]+)`)
-	regexSkillUsing      = regexp.MustCompile(`(?i)Using\s+([a-z0-9-]+)\s+skill:`)
-	regexPhaseField      = regexp.MustCompile(`(?m)^\*\*Phase:\*\*\s*(\w+)`)
-	regexStartedField    = regexp.MustCompile(`(?m)^\*\*Started:\*\*\s*(\d{4}-\d{2}-\d{2})`)
-	regexLastUpdated     = regexp.MustCompile(`(?m)^\*\*Last Updated:\*\*\s*(\d{4}-\d{2}-\d{2})`)
+	regexSkillGuidance = regexp.MustCompile(`## SKILL GUIDANCE \(([a-z0-9-]+)\)`)
+	regexSkillField    = regexp.MustCompile(`(?:^|\n)(?:\*\*|\-\s+)?[Ss]kill:(?:\*\*)?\s*([a-z0-9-]+)`)
+	regexSkillUsing    = regexp.MustCompile(`(?i)Using\s+([a-z0-9-]+)\s+skill:`)
+	regexPhaseField    = regexp.MustCompile(`(?m)^\*\*Phase:\*\*\s*(\w+)`)
+	regexStartedField  = regexp.MustCompile(`(?m)^\*\*Started:\*\*\s*(\d{4}-\d{2}-\d{2})`)
+	regexLastUpdated   = regexp.MustCompile(`(?m)^\*\*Last Updated:\*\*\s*(\d{4}-\d{2}-\d{2})`)
 )
 
 var historyCmd = &cobra.Command{
-	Use:   "history",
-	Short: "Show agent history with skill usage analytics",
+	Use:    "history",
+	Short:  "Show agent history with skill usage analytics",
+	Hidden: true,
 	Long: `Show agent history with skill usage analytics.
 
 Analyzes workspace files to extract:
@@ -79,12 +80,12 @@ type SkillStats struct {
 
 // SkillAnalytics represents complete skill usage analytics.
 type SkillAnalytics struct {
-	TotalWorkspaces         int                   `json:"total_workspaces"`
-	WorkspacesWithSkills    int                   `json:"workspaces_with_skills"`
-	WorkspacesWithoutSkills int                   `json:"workspaces_without_skills"`
-	SkillAdoptionRate       float64               `json:"skill_adoption_rate"`
-	DateRange               *DateRange            `json:"date_range,omitempty"`
-	Skills                  []SkillStats          `json:"skills"`
+	TotalWorkspaces         int          `json:"total_workspaces"`
+	WorkspacesWithSkills    int          `json:"workspaces_with_skills"`
+	WorkspacesWithoutSkills int          `json:"workspaces_without_skills"`
+	SkillAdoptionRate       float64      `json:"skill_adoption_rate"`
+	DateRange               *DateRange   `json:"date_range,omitempty"`
+	Skills                  []SkillStats `json:"skills"`
 }
 
 // DateRange represents a date range.
@@ -98,7 +99,7 @@ func runHistory() error {
 	projectDir := historyProject
 	if projectDir == "" {
 		var err error
-		projectDir, err = os.Getwd()
+		projectDir, err = currentProjectDir()
 		if err != nil {
 			return fmt.Errorf("failed to get current directory: %w", err)
 		}

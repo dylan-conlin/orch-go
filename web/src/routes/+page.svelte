@@ -12,10 +12,12 @@
 	import { RecentWins } from '$lib/components/recent-wins';
 	import { NeedsAttention } from '$lib/components/needs-attention';
 	import { StatsBar } from '$lib/components/stats-bar';
+	import { CacheValidationBanner } from '$lib/components/cache-validation-banner';
 	import {
 		agents,
 		activeAgents,
 		needsReviewAgents,
+		needsReviewCounts,
 		trulyActiveAgents,
 		recentAgents,
 		archivedAgents,
@@ -34,6 +36,12 @@
 		connectAgentlogSSE,
 		disconnectAgentlogSSE
 	} from '$lib/stores/agentlog';
+	import {
+		servicelogEvents,
+		servicelogConnectionStatus,
+		connectServicelogSSE,
+		disconnectServicelogSSE
+	} from '$lib/stores/servicelog';
 	import { usage } from '$lib/stores/usage';
 	import { focus } from '$lib/stores/focus';
 	import { servers } from '$lib/stores/servers';
@@ -45,7 +53,17 @@
 	import { hotspots } from '$lib/stores/hotspot';
 	import { orchestratorSessions } from '$lib/stores/orchestrator-sessions';
 	import { OrchestratorSessionsSection } from '$lib/components/orchestrator-sessions-section';
+	import { services } from '$lib/stores/services';
+	import { ServicesSection } from '$lib/components/services-section';
 	import { filters, orchestratorContext, buildFilterQueryString } from '$lib/stores/context';
+	import { coaching, startCoachingPolling, stopCoachingPolling } from '$lib/stores/coaching';
+	import { questions } from '$lib/stores/questions';
+	import { QuestionsSection } from '$lib/components/questions-section';
+	import { FrontierSection } from '$lib/components/frontier-section';
+	import { frontier } from '$lib/stores/frontier';
+	import { DecisionCenter } from '$lib/components/decision-center';
+	import { decisions } from '$lib/stores/decisions';
+	import { kbHealth } from '$lib/stores/kb-health';
 
 	// Filter and sort state
 	let statusFilter: AgentState | 'all' = 'all';
@@ -63,9 +81,14 @@
 		archive: false, // Archive collapsed by default
 		upNext: false,  // Up Next collapsed by default (auto-expands on P0/P1)
 		readyQueue: false, // Ready queue collapsed by default
+		questions: true, // Questions expanded by default (important for blocking visibility)
 		// pendingReviews removed - not actively used
 		sseStream: false, // SSE Stream collapsed by default (low signal-to-noise for most users)
-		orchestratorSessions: true // Orchestrator sessions expanded by default (important visibility)
+		orchestratorSessions: true, // Orchestrator sessions expanded by default (important visibility)
+		services: true, // Services expanded by default (important visibility)
+		coaching: true, // Coaching metrics expanded by default
+		frontier: true, // Frontier expanded by default (shows decidability state)
+		decisionCenter: true // Decision Center expanded by default (strategic decisions)
 	};
 	
 	// Track whether component has mounted and loaded initial state
@@ -128,6 +151,9 @@
 		// Connect to primary SSE immediately - this triggers agents.fetch() on connection
 		// which is the most critical data for initial render
 		connectSSE();
+		connectAgentlogSSE();
+		connectServicelogSSE();
+		startCoachingPolling();
 
 		// Fetch critical data in parallel using Promise.all
 		// These affect the primary dashboard view and should load ASAP
@@ -148,6 +174,11 @@
 			daemon.fetch();
 			hotspots.fetch();
 			orchestratorSessions.fetch();
+			services.fetch();
+			questions.fetch();
+			frontier.fetch();
+			decisions.fetch();
+			kbHealth.fetch();
 		};
 
 		// Use requestIdleCallback for better performance, with setTimeout fallback
@@ -167,7 +198,7 @@
 		const refreshInterval = setInterval(() => {
 			// Get current project_dir from context (if following orchestrator)
 			const projectDir = $filters.followOrchestrator ? $orchestratorContext.project_dir : undefined;
-			
+
 			Promise.all([
 				usage.fetch(),
 				focus.fetch(),
@@ -176,7 +207,12 @@
 				readyIssues.fetch(projectDir),
 				daemon.fetch(),
 				hotspots.fetch(),
-				orchestratorSessions.fetch()
+				orchestratorSessions.fetch(),
+				services.fetch(),
+				questions.fetch(),
+				frontier.fetch(),
+				decisions.fetch(),
+				kbHealth.fetch()
 			]).catch(console.error);
 		}, 60000);
 
@@ -184,6 +220,7 @@
 		const handleBeforeUnload = () => {
 			disconnectSSE();
 			disconnectAgentlogSSE();
+			disconnectServicelogSSE();
 		};
 		window.addEventListener('beforeunload', handleBeforeUnload);
 
@@ -196,6 +233,8 @@
 	onDestroy(() => {
 		disconnectSSE();
 		disconnectAgentlogSSE();
+		disconnectServicelogSSE();
+		stopCoachingPolling();
 		orchestratorContext.stopPolling();
 	});
 
@@ -270,6 +309,49 @@
 	}
 
 	$: hasActiveFilters = statusFilter !== 'all' || skillFilter !== 'all' || projectFilter !== 'all' || sortBy !== 'recent-activity' || activeOnly;
+
+	// Batch close state for rec=close agents
+	let isBatchClosing = false;
+
+	async function handleBatchClose() {
+		const closeAgents = $needsReviewAgents.filter(
+			(a) => a.synthesis?.recommendation?.toLowerCase() === 'close'
+		);
+		if (closeAgents.length === 0) return;
+
+		isBatchClosing = true;
+		let succeeded = 0;
+		let failed = 0;
+
+		for (const agent of closeAgents) {
+			const agentId = agent.beads_id || agent.id;
+			try {
+				const response = await fetch('https://localhost:3348/api/approve', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						agent_id: agentId,
+						description: 'Batch approved: rec=close via dashboard',
+					}),
+				});
+				if (response.ok) {
+					succeeded++;
+				} else {
+					failed++;
+					console.error(`Failed to approve ${agentId}:`, await response.text());
+				}
+			} catch (err) {
+				failed++;
+				console.error(`Error approving ${agentId}:`, err);
+			}
+		}
+
+		isBatchClosing = false;
+
+		// Refresh agents to reflect changes
+		const queryString = buildFilterQueryString($filters);
+		agents.fetch(queryString).catch(console.error);
+	}
 
 	// Helper function to apply sorting to agent arrays
 	// useStableSort: when true, uses spawned_at (immutable) instead of updated_at (volatile) 
@@ -379,13 +461,50 @@
 	$: totalVisibleAgents = sortedActiveAgents.length + sortedNeedsReviewAgents.length + sortedDeadAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
 </script>
 
+<!-- Cache Validation Banner (fixed at top) -->
+<CacheValidationBanner />
+
 <div class="space-y-3">
 	<!-- Stats Bar Component -->
 	<StatsBar bind:readyQueueExpanded={sectionState.readyQueue} />
 
+	<!-- Orchestrator Coaching (Frame 2: Simplified Health Indicator) -->
+	{#if $coaching.overall_status}
+	<div class="rounded-lg border bg-card {
+		$coaching.overall_status === 'good' ? 'border-green-500/30' :
+		$coaching.overall_status === 'warning' ? 'border-yellow-500/30' :
+		'border-red-500/30'
+	}" data-testid="coaching-section">
+		<div class="flex items-center justify-between px-3 py-2">
+			<div class="flex items-center gap-2">
+				<span class="text-lg">
+					{#if $coaching.overall_status === 'good'}
+						🟢
+					{:else if $coaching.overall_status === 'warning'}
+						🟡
+					{:else}
+						🔴
+					{/if}
+				</span>
+				<span class="text-sm font-medium">{$coaching.status_message}</span>
+				{#if $coaching.last_coaching_time}
+					<Badge variant="outline" class="h-5 px-1.5 text-xs text-muted-foreground">
+						Last coaching: {new Date($coaching.last_coaching_time).toLocaleTimeString()}
+					</Badge>
+				{/if}
+			</div>
+		</div>
+	</div>
+	{/if}
+
 	<!-- Orchestrator Sessions (always visible at top when active) -->
 	<OrchestratorSessionsSection
 		bind:expanded={sectionState.orchestratorSessions}
+	/>
+
+	<!-- Services (overmind-managed processes) -->
+	<ServicesSection
+		bind:expanded={sectionState.services}
 	/>
 
 	{#if $dashboardMode === 'operational'}
@@ -395,7 +514,17 @@
 		<UpNextSection
 			bind:expanded={sectionState.upNext}
 		/>
-		
+
+		<!-- Frontier (decidability state) -->
+		<FrontierSection
+			bind:expanded={sectionState.frontier}
+		/>
+
+		<!-- Questions (blocking questions for visibility) -->
+		<QuestionsSection
+			bind:expanded={sectionState.questions}
+		/>
+
 		<!-- Active Agents (truly running, excludes needs-review) -->
 		<div class="rounded-lg border bg-card border-green-500/30" data-testid="active-agents-section">
 			<div class="flex items-center gap-2 px-3 py-2 border-b">
@@ -437,6 +566,30 @@
 						<Badge variant="secondary" class="h-5 px-1.5 text-xs bg-amber-500/20 text-amber-600">
 							{sortedNeedsReviewAgents.length}
 						</Badge>
+						<!-- Recommendation count summary -->
+						<span class="text-xs text-muted-foreground">
+							{#if $needsReviewCounts.escalate > 0}
+								<span class="text-orange-500">{$needsReviewCounts.escalate} need{$needsReviewCounts.escalate === 1 ? 's' : ''} decision</span>
+							{/if}
+							{#if $needsReviewCounts.escalate > 0 && ($needsReviewCounts.close > 0 || $needsReviewCounts.continue > 0 || $needsReviewCounts.spawn > 0)}
+								<span class="mx-1">·</span>
+							{/if}
+							{#if $needsReviewCounts.continue > 0}
+								<span class="text-yellow-500">{$needsReviewCounts.continue} partial</span>
+							{/if}
+							{#if $needsReviewCounts.continue > 0 && ($needsReviewCounts.close > 0 || $needsReviewCounts.spawn > 0)}
+								<span class="mx-1">·</span>
+							{/if}
+							{#if $needsReviewCounts.spawn > 0}
+								<span class="text-blue-500">{$needsReviewCounts.spawn} spawn</span>
+							{/if}
+							{#if $needsReviewCounts.spawn > 0 && $needsReviewCounts.close > 0}
+								<span class="mx-1">·</span>
+							{/if}
+							{#if $needsReviewCounts.close > 0}
+								<span class="text-green-500">{$needsReviewCounts.close} ready to close</span>
+							{/if}
+						</span>
 					</div>
 					<span class="text-muted-foreground transition-transform {sectionState.needsReview ? 'rotate-180' : ''}">
 						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -446,6 +599,25 @@
 				</button>
 				{#if sectionState.needsReview}
 					<div class="p-2">
+						<!-- Batch close button for rec=close agents -->
+						{#if $needsReviewCounts.close > 1}
+							<div class="mb-2 flex items-center justify-end">
+								<Button
+									variant="outline"
+									size="sm"
+									class="h-6 px-2 text-xs text-green-600 border-green-500/30 hover:bg-green-500/10"
+									onclick={handleBatchClose}
+									disabled={isBatchClosing}
+									data-testid="batch-close-button"
+								>
+									{#if isBatchClosing}
+										Closing...
+									{:else}
+										Close all rec=close ({$needsReviewCounts.close})
+									{/if}
+								</Button>
+							</div>
+						{/if}
 						<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
 							{#each sortedNeedsReviewAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 								<AgentCard {agent} />
@@ -459,8 +631,8 @@
 			</div>
 		{/if}
 
-		<!-- Needs Attention (consolidated errors, pending reviews, blocked) -->
-		<NeedsAttention />
+		<!-- Strategic Center (decision center with knowledge health) -->
+		<DecisionCenter bind:expanded={sectionState.decisionCenter} />
 
 		<!-- Recent Wins (completed in last 24h) -->
 		<RecentWins />
@@ -619,6 +791,48 @@
 								bind:expanded={sectionState.needsReview}
 								variant="needs-review"
 							>
+								<!-- Recommendation count summary for historical mode -->
+								<div class="mb-2 flex items-center justify-between text-xs text-muted-foreground px-1">
+									<span>
+										{#if $needsReviewCounts.escalate > 0}
+											<span class="text-orange-500">{$needsReviewCounts.escalate} need{$needsReviewCounts.escalate === 1 ? 's' : ''} decision</span>
+										{/if}
+										{#if $needsReviewCounts.escalate > 0 && ($needsReviewCounts.close > 0 || $needsReviewCounts.continue > 0 || $needsReviewCounts.spawn > 0)}
+											<span class="mx-1">·</span>
+										{/if}
+										{#if $needsReviewCounts.continue > 0}
+											<span class="text-yellow-500">{$needsReviewCounts.continue} partial</span>
+										{/if}
+										{#if $needsReviewCounts.continue > 0 && ($needsReviewCounts.close > 0 || $needsReviewCounts.spawn > 0)}
+											<span class="mx-1">·</span>
+										{/if}
+										{#if $needsReviewCounts.spawn > 0}
+											<span class="text-blue-500">{$needsReviewCounts.spawn} spawn</span>
+										{/if}
+										{#if $needsReviewCounts.spawn > 0 && $needsReviewCounts.close > 0}
+											<span class="mx-1">·</span>
+										{/if}
+										{#if $needsReviewCounts.close > 0}
+											<span class="text-green-500">{$needsReviewCounts.close} ready to close</span>
+										{/if}
+									</span>
+									{#if $needsReviewCounts.close > 1}
+										<Button
+											variant="outline"
+											size="sm"
+											class="h-6 px-2 text-xs text-green-600 border-green-500/30 hover:bg-green-500/10"
+											onclick={handleBatchClose}
+											disabled={isBatchClosing}
+											data-testid="batch-close-button-historical"
+										>
+											{#if isBatchClosing}
+												Closing...
+											{:else}
+												Close all rec=close ({$needsReviewCounts.close})
+											{/if}
+										</Button>
+									{/if}
+								</div>
 								<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
 									{#each sortedNeedsReviewAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 										<AgentCard {agent} />

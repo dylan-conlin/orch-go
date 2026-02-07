@@ -25,17 +25,17 @@ const (
 // Skills that primarily produce code changes default to "light".
 var SkillTierDefaults = map[string]string{
 	// Full tier: Investigation-type skills that produce knowledge artifacts
-	"investigation":        TierFull,
-	"architect":            TierFull,
-	"research":             TierFull,
-	"codebase-audit":       TierFull,
-	"design-session":       TierFull,
-	"systematic-debugging": TierFull, // Produces investigation file with findings
+	"investigation":  TierFull,
+	"architect":      TierFull,
+	"research":       TierFull,
+	"codebase-audit": TierFull,
+	"design-session": TierFull,
 
-	// Light tier: Implementation-focused skills
-	"feature-impl":        TierLight,
-	"reliability-testing": TierLight,
-	"issue-creation":      TierLight, // Creates beads issue, doesn't need synthesis
+	// Light tier: Implementation-focused skills (code changes auto-complete)
+	"feature-impl":         TierLight,
+	"systematic-debugging": TierLight, // Code-focused debugging, auto-completes
+	"reliability-testing":  TierLight,
+	"issue-creation":       TierLight, // Creates beads issue, doesn't need synthesis
 }
 
 // DefaultTierForSkill returns the default tier for a given skill.
@@ -45,6 +45,44 @@ func DefaultTierForSkill(skillName string) string {
 		return tier
 	}
 	return TierFull // Conservative default for unknown skills
+}
+
+// SkillVariantDefaults maps skills to their default extended thinking variant.
+// Extended thinking enables reasoning tokens for complex tasks.
+// Variants: "high" (16k tokens), "max" (32k tokens), "" (disabled).
+var SkillVariantDefaults = map[string]string{
+	// High variant (16k tokens): Complex reasoning tasks
+	"investigation":        "high",
+	"feature-impl":         "high",
+	"systematic-debugging": "high",
+	"reliability-testing":  "high",
+	"research":             "high",
+
+	// Max variant (32k tokens): Deep strategic reasoning
+	"architect":      "max",
+	"design-session": "max",
+
+	// No extended thinking: Simple tasks
+	// (unlisted skills default to empty string)
+}
+
+// DefaultVariantForSkill returns the default extended thinking variant for a skill.
+// Returns empty string for unknown skills (no extended thinking).
+func DefaultVariantForSkill(skillName string) string {
+	if variant, ok := SkillVariantDefaults[skillName]; ok {
+		return variant
+	}
+	return "" // No extended thinking for unknown skills
+}
+
+// DefaultVariantForRole returns the default extended thinking variant based on role flags.
+// Orchestrators and meta-orchestrators use "high" for strategic decisions.
+// Workers default to skill-based variant.
+func DefaultVariantForRole(isOrchestrator, isMetaOrchestrator bool, skillName string) string {
+	if isMetaOrchestrator || isOrchestrator {
+		return "high" // Orchestrators need extended thinking for strategic decisions
+	}
+	return DefaultVariantForSkill(skillName)
 }
 
 // SkillIncludesServers maps skills to whether they should include server context.
@@ -62,6 +100,35 @@ func DefaultIncludeServersForSkill(skillName string) bool {
 		return include
 	}
 	return false // Don't include for investigation-type skills by default
+}
+
+// SkillRequiresInvestigation maps skills to whether they mandate investigation files.
+// Investigation-type skills produce knowledge artifacts and require investigation files.
+// Implementation-focused skills produce code changes and do NOT require investigation files.
+var SkillRequiresInvestigation = map[string]bool{
+	// Skills that require investigation files (knowledge artifact producers)
+	"investigation":  true,
+	"architect":      true,
+	"research":       true,
+	"codebase-audit": true,
+
+	// Skills that do NOT require investigation files (implementation-focused)
+	"feature-impl":         false,
+	"systematic-debugging": false,
+	"reliability-testing":  false,
+	"issue-creation":       false,
+	"design-session":       false, // Produces design artifacts, not investigation files
+}
+
+// IsInvestigationSkill returns whether a skill requires investigation files.
+// Returns true for investigation-type skills (investigation, architect, research).
+// Returns false for implementation-focused skills (feature-impl, systematic-debugging).
+// Unknown skills default to false (conservative - don't mandate investigation files).
+func IsInvestigationSkill(skillName string) bool {
+	if requires, ok := SkillRequiresInvestigation[skillName]; ok {
+		return requires
+	}
+	return false // Conservative default: don't mandate investigation files for unknown skills
 }
 
 // Config holds configuration for spawning an agent.
@@ -93,6 +160,9 @@ type Config struct {
 
 	// Model to use for standalone spawns
 	Model string
+
+	// Variant specifies extended thinking mode: "high" (16k tokens), "max" (32k tokens), or "" (disabled)
+	Variant string
 
 	// MCP server configuration (e.g., "playwright" for browser automation)
 	MCP string
@@ -135,7 +205,7 @@ type Config struct {
 	// Orchestrator skills (skill-type: policy/orchestrator) have different defaults:
 	// - Default to tmux mode (visible interaction instead of headless)
 	// - Use ORCHESTRATOR_CONTEXT.md template instead of SPAWN_CONTEXT.md
-	// - Different completion verification (SESSION_HANDOFF.md instead of SYNTHESIS.md)
+	// - Completion verification via SYNTHESIS.md (like workers, for consistency)
 	// - No beads tracking (orchestrators manage sessions, not issues)
 	IsOrchestrator bool
 
@@ -143,7 +213,7 @@ type Config struct {
 	// Meta-orchestrators (skill-name: meta-orchestrator) have different framing:
 	// - Use META_ORCHESTRATOR_CONTEXT.md template instead of ORCHESTRATOR_CONTEXT.md
 	// - Interactive session framing ("managing orchestrator sessions" not "work toward goal")
-	// - No SESSION_HANDOFF.md requirement (stay interactive and available)
+	// - No SYNTHESIS.md requirement (stay interactive and available)
 	// - First action: check orch status for sessions to complete/review
 	IsMetaOrchestrator bool
 
@@ -152,26 +222,77 @@ type Config struct {
 	// Only applicable when IsOrchestrator is true.
 	SessionGoal string
 
-	// HasSessionHandoffTemplate indicates whether a SESSION_HANDOFF.template.md
+	// HasSynthesisTemplate indicates whether a SYNTHESIS.template.md
 	// was copied to the workspace. When true, the ORCHESTRATOR_CONTEXT.md will
-	// instruct the agent to use it as the structure for their SESSION_HANDOFF.md.
+	// instruct the agent to use it as the structure for their SYNTHESIS.md.
 	// Set by WriteOrchestratorContext based on template availability.
-	HasSessionHandoffTemplate bool
+	HasSynthesisTemplate bool
 
 	// RegisteredProjects is the formatted list of registered projects to include
 	// in orchestrator context templates. Populated by GenerateRegisteredProjectsContext()
 	// for orchestrator and meta-orchestrator spawns to enable cross-project work.
 	RegisteredProjects string
 
-	// PriorHandoffPath is the path to the most recent prior meta-orchestrator's
-	// SESSION_HANDOFF.md. When set, the new meta-orchestrator session context will
+	// PriorSynthesisPath is the path to the most recent prior orchestrator's
+	// SYNTHESIS.md. When set, the new meta-orchestrator session context will
 	// include a reference to this file so the agent can pick up context from the
 	// previous session. Only used for meta-orchestrator spawns.
-	PriorHandoffPath string
+	PriorSynthesisPath string
 
 	// UsageInfo contains the current account usage at spawn time.
 	// Used for telemetry and monitoring. May be nil if usage check failed.
 	UsageInfo *UsageInfo
+
+	// SpawnMode specifies the spawn backend: "opencode" or "claude"
+	SpawnMode string
+
+	// Design handoff fields (for ui-design-session → feature-impl handoff)
+	// DesignWorkspace is the workspace name from a prior ui-design-session spawn
+	DesignWorkspace string
+	// DesignMockupPath is the path to the approved mockup screenshot
+	DesignMockupPath string
+	// DesignPromptPath is the path to the prompt that generated the mockup
+	DesignPromptPath string
+	// DesignNotes are notes from the design session SYNTHESIS.md
+	DesignNotes string
+
+	// IssueTitle is the beads issue title (from existing issue or newly created).
+	// Populated during spawn for state DB recording.
+	IssueTitle string
+
+	// IssueType is the beads issue type (e.g., "task", "bug", "feature").
+	// Populated during spawn for state DB recording.
+	IssueType string
+
+	// IssuePriority is the beads issue priority (e.g., 1, 2, 3).
+	// Populated during spawn for state DB recording.
+	IssuePriority int
+
+	// IssueComments contains comments from the beads issue (if --issue was provided).
+	// These are orchestrator notes added after issue creation that provide additional
+	// context, clarifications, or guidance for the spawned agent.
+	IssueComments []IssueComment
+
+	// DaemonDriven indicates whether this spawn was initiated by the daemon.
+	// When true, skip focus-stealing behaviors like tmux select-window
+	// to avoid interrupting the orchestrator's workflow.
+	DaemonDriven bool
+
+	// FailureContext contains post-completion failure information when this is a rework spawn.
+	// Populated from POST-COMPLETION-FAILURE comments on the beads issue.
+	// When IsRework is true, the failure context should be prominently displayed.
+	FailureContext *FailureContext
+}
+
+// IssueComment represents a comment on a beads issue.
+// Used to pass orchestrator notes to spawned agents via SPAWN_CONTEXT.md.
+type IssueComment struct {
+	// Author is the comment author (e.g., "orchestrator", "dylan")
+	Author string
+	// Text is the comment content
+	Text string
+	// CreatedAt is when the comment was created (ISO 8601 format)
+	CreatedAt string
 }
 
 // UsageInfo contains account usage data at spawn time.
@@ -187,6 +308,61 @@ type UsageInfo struct {
 	AutoSwitched bool
 	// SwitchReason explains why account was switched.
 	SwitchReason string
+}
+
+// FailureType constants define the types of post-completion failures.
+const (
+	// FailureTypeVerification indicates agent claimed success but didnt properly verify.
+	FailureTypeVerification = "verification"
+	// FailureTypeImplementation indicates the code has a bug.
+	FailureTypeImplementation = "implementation"
+	// FailureTypeSpec indicates the spec was wrong or incomplete.
+	FailureTypeSpec = "spec"
+	// FailureTypeIntegration indicates the feature works in isolation but fails in context.
+	FailureTypeIntegration = "integration"
+)
+
+// FailureContext contains information about a post-completion failure.
+// This is extracted from POST-COMPLETION-FAILURE comments on reopened issues.
+// When present, it indicates this is a rework attempt and provides context
+// about what went wrong in the previous attempt.
+type FailureContext struct {
+	// FailureType categorizes the failure (verification, implementation, spec, integration).
+	FailureType string
+	// Description is the human-readable description of what failed.
+	Description string
+	// PriorAttemptContext is any additional context from the prior attempt.
+	PriorAttemptContext string
+	// SuggestedSkill is the recommended skill based on failure type.
+	SuggestedSkill string
+	// IsRework indicates this is a rework spawn (has POST-COMPLETION-FAILURE comment).
+	IsRework bool
+}
+
+// SuggestSkillForFailure returns the recommended skill based on failure type.
+// This helps route rework to the appropriate skill based on what went wrong.
+func SuggestSkillForFailure(failureType string) string {
+	switch failureType {
+	case FailureTypeVerification:
+		// Verification failure = agent didnt properly verify
+		// Use reliability-testing to enforce proper verification
+		return "reliability-testing"
+	case FailureTypeImplementation:
+		// Implementation bug = code doesnt work
+		// Use systematic-debugging to find and fix the bug
+		return "systematic-debugging"
+	case FailureTypeSpec:
+		// Spec was wrong = need investigation first
+		// Use investigation to refine the spec
+		return "investigation"
+	case FailureTypeIntegration:
+		// Integration failure = works in isolation
+		// Use reliability-testing to test in full context
+		return "reliability-testing"
+	default:
+		// Unknown failure type = systematic debugging as safe default
+		return "systematic-debugging"
+	}
 }
 
 // WorkspaceNameOptions provides optional configuration for workspace name generation.
@@ -379,7 +555,19 @@ func (c *Config) WorkspacePath() string {
 	return filepath.Join(c.ProjectDir, ".orch", "workspace", c.WorkspaceName)
 }
 
-// ContextFilePath returns the path to SPAWN_CONTEXT.md.
+// ContextFilePath returns the path to the context file.
+// For meta-orchestrator skills, it points to META_ORCHESTRATOR_CONTEXT.md.
+// For orchestrator skills, it points to ORCHESTRATOR_CONTEXT.md.
+// For all other skills, it points to SPAWN_CONTEXT.md.
 func (c *Config) ContextFilePath() string {
-	return filepath.Join(c.WorkspacePath(), "SPAWN_CONTEXT.md")
+	var filename string
+	switch {
+	case c.IsMetaOrchestrator:
+		filename = "META_ORCHESTRATOR_CONTEXT.md"
+	case c.IsOrchestrator:
+		filename = "ORCHESTRATOR_CONTEXT.md"
+	default:
+		filename = "SPAWN_CONTEXT.md"
+	}
+	return filepath.Join(c.WorkspacePath(), filename)
 }

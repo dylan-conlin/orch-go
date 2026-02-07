@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-arch-research-openai-potential-20jan-bea0",
+  "skill": "architect",
+  "beads_id": "orch-go-46yq2",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "3bb51069651250363f6a56359410be5cb8d55081",
+  "spawn_time": "2026-01-20T17:42:37-08:00",
+  "tier": "full",
+  "spawn_mode": "docker"
+}

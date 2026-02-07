@@ -1,0 +1,160 @@
+name: Bloat Check
+
+on:
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  bloat-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history to compare with base
+
+      - name: Check for bloated files
+        run: |
+          #!/bin/bash
+          set -e
+
+          THRESHOLD=800
+          FAILED=0
+
+          # Get modified files in this PR
+          MODIFIED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          if [ -z "$MODIFIED_FILES" ]; then
+            echo "No modified files found"
+            exit 0
+          fi
+
+          echo "Checking modified files for bloat (threshold: $THRESHOLD lines)..."
+          echo ""
+
+          # Function to check if file should be excluded
+          should_exclude() {
+            local file="$1"
+
+            # Test files
+            [[ "$file" == *_test.go ]] && return 0
+            [[ "$file" == *.test.ts ]] && return 0
+            [[ "$file" == *.test.tsx ]] && return 0
+            [[ "$file" == *.spec.ts ]] && return 0
+            [[ "$file" == *.spec.tsx ]] && return 0
+            [[ "$file" == *_test.ts ]] && return 0
+            [[ "$file" == *_test.tsx ]] && return 0
+
+            # Generated files
+            [[ "$file" == *.gen.go ]] && return 0
+            [[ "$file" == *_generated.go ]] && return 0
+            [[ "$file" == *.generated.ts ]] && return 0
+
+            # Vendored code
+            [[ "$file" == vendor/* ]] && return 0
+            [[ "$file" == node_modules/* ]] && return 0
+
+            # Lock files and generated configs
+            [[ "$file" == *lock.json ]] && return 0
+            [[ "$file" == *lock.yaml ]] && return 0
+            [[ "$file" == go.sum ]] && return 0
+
+            # Non-code files
+            [[ "$file" != *.go && "$file" != *.ts && "$file" != *.tsx && "$file" != *.svelte && "$file" != *.js && "$file" != *.jsx ]] && return 0
+
+            return 1
+          }
+
+          # Function to get line count (0 if file doesn't exist)
+          get_line_count() {
+            local ref="$1"
+            local file="$2"
+
+            if [ "$ref" == "HEAD" ]; then
+              if [ -f "$file" ]; then
+                wc -l < "$file" | tr -d ' '
+              else
+                echo "0"
+              fi
+            else
+              if git show "$ref:$file" &>/dev/null; then
+                git show "$ref:$file" 2>/dev/null | wc -l | tr -d ' '
+              else
+                echo "0"
+              fi
+            fi
+          }
+
+          BLOATED_FILES=""
+          WARNINGS=""
+
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+
+            # Skip excluded files
+            if should_exclude "$file"; then
+              echo "⏭️  Skipping (excluded): $file"
+              continue
+            fi
+
+            # Skip deleted files
+            if [ ! -f "$file" ]; then
+              echo "⏭️  Skipping (deleted): $file"
+              continue
+            fi
+
+            # Get current and base line counts
+            CURRENT_LINES=$(get_line_count "HEAD" "$file")
+            BASE_LINES=$(get_line_count "origin/${{ github.base_ref }}" "$file")
+
+            echo "📄 $file: $BASE_LINES → $CURRENT_LINES lines"
+
+            # Check if file exceeds threshold
+            if [ "$CURRENT_LINES" -gt "$THRESHOLD" ]; then
+              # File is over threshold - check if this PR made it worse
+              if [ "$BASE_LINES" -le "$THRESHOLD" ]; then
+                # This PR caused the file to cross the threshold
+                echo "   ❌ FAIL: This PR caused file to exceed $THRESHOLD lines (was $BASE_LINES)"
+                BLOATED_FILES="$BLOATED_FILES\n  - $file: $BASE_LINES → $CURRENT_LINES lines (newly bloated)"
+                FAILED=1
+              elif [ "$CURRENT_LINES" -gt "$BASE_LINES" ]; then
+                # File was already bloated, but this PR made it worse
+                echo "   ❌ FAIL: This PR increased bloat on already-bloated file"
+                BLOATED_FILES="$BLOATED_FILES\n  - $file: $BASE_LINES → $CURRENT_LINES lines (+$((CURRENT_LINES - BASE_LINES)) lines)"
+                FAILED=1
+              else
+                # File was already bloated, PR didn't make it worse (or reduced it)
+                echo "   ⚠️  WARNING: File exceeds threshold but PR did not increase it"
+                WARNINGS="$WARNINGS\n  - $file: $CURRENT_LINES lines (pre-existing)"
+              fi
+            fi
+
+          done <<< "$MODIFIED_FILES"
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          if [ -n "$WARNINGS" ]; then
+            echo ""
+            echo "⚠️  Pre-existing bloat (not blocking):"
+            echo -e "$WARNINGS"
+          fi
+
+          if [ "$FAILED" -eq 1 ]; then
+            echo ""
+            echo "❌ BLOAT CHECK FAILED"
+            echo ""
+            echo "The following files exceed the $THRESHOLD line threshold due to this PR:"
+            echo -e "$BLOATED_FILES"
+            echo ""
+            echo "To fix:"
+            echo "  1. Extract code to separate files (see .kb/guides/code-extraction-patterns.md)"
+            echo "  2. Use 'orch hotspot --type bloat' to identify extraction candidates"
+            echo "  3. Target files under $THRESHOLD lines each"
+            exit 1
+          else
+            echo ""
+            echo "✅ BLOAT CHECK PASSED"
+            echo ""
+            echo "No files were made to exceed $THRESHOLD lines by this PR."
+          fi

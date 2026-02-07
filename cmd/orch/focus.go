@@ -259,14 +259,16 @@ func runDrift() error {
 // getActiveIssues returns the beads IDs of currently active work.
 // Uses OpenCode API to list active sessions and extracts beads IDs from session titles.
 func getActiveIssues() []string {
+	return getActiveIssuesWithClient(opencode.NewClient("http://127.0.0.1:4096"))
+}
+
+func getActiveIssuesWithClient(client opencode.ClientInterface) []string {
 	// Get current directory for project context
-	projectDir, err := os.Getwd()
+	projectDir, err := currentProjectDir()
 	if err != nil {
 		return nil
 	}
 
-	// Use default OpenCode server URL
-	client := opencode.NewClient("http://localhost:4096")
 	sessions, err := client.ListSessions(projectDir)
 	if err != nil {
 		return nil
@@ -378,22 +380,23 @@ func runNext() error {
 func getReadyIssues() []string {
 	var issues []string
 
-	// Try RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-
-			readyIssues, err := client.Ready(nil)
-			if err == nil {
-				for _, issue := range readyIssues {
-					issues = append(issues, issue.ID)
-				}
-				return issues
-			}
-			// Fall through to CLI fallback on RPC error
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
+		defer client.Close()
+
+		readyIssues, rpcErr := client.Ready(nil)
+		if rpcErr != nil {
+			return rpcErr
+		}
+		for _, issue := range readyIssues {
+			issues = append(issues, issue.ID)
+		}
+		return nil
+	})
+	if err == nil {
+		return issues
 	}
 
 	// Fallback to CLI

@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement `kb archive --synthesized-into {guide}` command that moves investigations to subdirectory and optionally adds reference section to the guide.
 
-**Promote to Decision:** recommend-yes - This establishes the investigation lifecycle pattern (active → complete → synthesized → archived) that will govern knowledge management across projects.
+**Promote to Decision:** Superseded - session handoff removed, archival simplified
 
 ---
 

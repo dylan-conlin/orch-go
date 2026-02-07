@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-arch-verify-transition-deepseek-20jan-8117",
+  "skill": "architect",
+  "beads_id": "orch-go-3neqi",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "f6a9af179984093b739569e06ea60e6c0fda0b08",
+  "spawn_time": "2026-01-20T09:24:54-08:00",
+  "tier": "full",
+  "spawn_mode": "claude"
+}

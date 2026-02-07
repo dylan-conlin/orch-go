@@ -16,7 +16,7 @@ import (
 type CompletionService struct {
 	monitor   *Monitor
 	notifier  *notify.Notifier
-	client    *Client
+	client    ClientInterface
 	logger    *events.Logger
 	serverURL string
 

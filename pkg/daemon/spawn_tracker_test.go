@@ -276,6 +276,69 @@ func TestDaemon_OnceUnmarksOnFailure(t *testing.T) {
 	}
 }
 
+func TestSpawnedIssueTracker_ClearAbandoned(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+
+	// Mark some issues as spawned
+	tracker.MarkSpawned("issue-1")
+	tracker.MarkSpawned("issue-2")
+	tracker.MarkSpawned("issue-3")
+
+	if tracker.Count() != 3 {
+		t.Errorf("expected 3 tracked issues, got %d", tracker.Count())
+	}
+
+	// Clear some issues that were "abandoned"
+	abandonedIDs := []string{"issue-1", "issue-3", "issue-not-tracked"}
+	cleared := tracker.ClearAbandoned(abandonedIDs)
+
+	// Should have cleared 2 (issue-1 and issue-3), not issue-not-tracked
+	if cleared != 2 {
+		t.Errorf("expected 2 cleared, got %d", cleared)
+	}
+
+	// issue-2 should still be tracked
+	if !tracker.IsSpawned("issue-2") {
+		t.Error("issue-2 should still be tracked")
+	}
+
+	// issue-1 and issue-3 should be cleared
+	if tracker.IsSpawned("issue-1") {
+		t.Error("issue-1 should be cleared (abandoned)")
+	}
+	if tracker.IsSpawned("issue-3") {
+		t.Error("issue-3 should be cleared (abandoned)")
+	}
+
+	if tracker.Count() != 1 {
+		t.Errorf("expected 1 tracked issue after clearing, got %d", tracker.Count())
+	}
+}
+
+func TestSpawnedIssueTracker_ClearAbandoned_EmptyList(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+
+	tracker.MarkSpawned("issue-1")
+	tracker.MarkSpawned("issue-2")
+
+	// Clear with empty list should do nothing
+	cleared := tracker.ClearAbandoned([]string{})
+	if cleared != 0 {
+		t.Errorf("expected 0 cleared with empty list, got %d", cleared)
+	}
+
+	// Clear with nil should also do nothing
+	cleared = tracker.ClearAbandoned(nil)
+	if cleared != 0 {
+		t.Errorf("expected 0 cleared with nil, got %d", cleared)
+	}
+
+	// Both issues should still be tracked
+	if tracker.Count() != 2 {
+		t.Errorf("expected 2 tracked issues, got %d", tracker.Count())
+	}
+}
+
 var errSpawnFailed = &spawnError{msg: "spawn failed"}
 
 type spawnError struct {

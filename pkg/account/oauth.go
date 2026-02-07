@@ -17,6 +17,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/anthropic"
 )
 
 // OAuth authorization constants
@@ -263,16 +265,10 @@ func StartOAuthFlow(cfg *OAuthConfig) (*AuthorizationResult, error) {
 // fetchProfileEmailFromToken fetches the user's email from the profile API.
 func fetchProfileEmailFromToken(accessToken string) string {
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("GET", ProfileEndpoint, nil)
+	req, err := anthropic.NewAPIRequest("GET", ProfileEndpoint, accessToken)
 	if err != nil {
 		return ""
 	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("anthropic-beta", AnthropicBetaHeaders)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", UserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {

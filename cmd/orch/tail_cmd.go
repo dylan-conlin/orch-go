@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -15,7 +14,8 @@ import (
 
 var (
 	// Tail command flags
-	tailLines int
+	tailLines     int
+	tailSessionID string // Direct session ID for non-orch-spawned sessions
 )
 
 var tailCmd = &cobra.Command{
@@ -28,21 +28,69 @@ Fetches messages from the OpenCode API for the agent's session.
 Examples:
   orch-go tail proj-123              # Capture last 50 lines (default)
   orch-go tail proj-123 --lines 100  # Capture last 100 lines
-  orch-go tail proj-123 -n 20        # Capture last 20 lines`,
-	Args: cobra.ExactArgs(1),
+  orch-go tail proj-123 -n 20        # Capture last 20 lines
+  orch-go tail --session ses_xxx     # Capture from a specific OpenCode session (for non-orch-spawned sessions)`,
+	Args: cobra.RangeArgs(0, 1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		client := opencode.NewClient(serverURL)
+		// Direct session ID access for non-orch-spawned sessions
+		if tailSessionID != "" {
+			return runTailBySessionID(client, tailSessionID, tailLines)
+		}
+		// Standard beads ID lookup
+		if len(args) == 0 {
+			return fmt.Errorf("beads-id required (or use --session for direct session access)")
+		}
 		beadsID := args[0]
-		return runTail(beadsID, tailLines)
+		return runTail(client, beadsID, tailLines)
 	},
 }
 
 func init() {
 	tailCmd.Flags().IntVarP(&tailLines, "lines", "n", 50, "Number of lines to capture")
+	tailCmd.Flags().StringVar(&tailSessionID, "session", "", "OpenCode session ID for direct access (for non-orch-spawned sessions)")
 }
 
-func runTail(beadsID string, lines int) error {
-	client := opencode.NewClient(serverURL)
-	projectDir, _ := os.Getwd()
+// runTailBySessionID fetches messages directly from an OpenCode session by its ID.
+// This is used for sessions that weren't spawned via orch (no beads ID association).
+func runTailBySessionID(client opencode.ClientInterface, sessionID string, lines int) error {
+	// Verify session exists
+	session, err := client.GetSession(sessionID)
+	if err != nil {
+		return fmt.Errorf("session not found: %s (ensure OpenCode server is running and session exists)", sessionID)
+	}
+
+	// Fetch messages
+	messages, err := client.GetMessages(sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch messages for session %s: %w", sessionID, err)
+	}
+
+	if len(messages) == 0 {
+		fmt.Printf("=== No messages in session %s (%s) ===\n", truncateSessionID(sessionID), session.Title)
+		return nil
+	}
+
+	// Extract and display recent text
+	textLines := opencode.ExtractRecentText(messages, lines)
+	fmt.Printf("=== Output from session %s (%s, last %d lines) ===\n", truncateSessionID(sessionID), session.Title, lines)
+	for _, line := range textLines {
+		fmt.Println(line)
+	}
+	fmt.Printf("=== End of output ===\n")
+	return nil
+}
+
+// truncateSessionID shortens a session ID for display (ses_xxx... -> ses_xxx...)
+func truncateSessionID(id string) string {
+	if len(id) <= 16 {
+		return id
+	}
+	return id[:16] + "..."
+}
+
+func runTail(client opencode.ClientInterface, beadsID string, lines int) error {
+	projectDir, _ := currentProjectDir()
 
 	// Strategy: Workspace file first (fast path), then derived lookups
 	//

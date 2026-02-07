@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-inv-audit-opencode-plugins-28jan-7244",
+  "skill": "investigation",
+  "beads_id": "orch-go-21000",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "dd4e7150ac6f78ed910f4aa8a345a53887c7cb65",
+  "spawn_time": "2026-01-28T13:30:56-08:00",
+  "tier": "full",
+  "spawn_mode": "opencode"
+}

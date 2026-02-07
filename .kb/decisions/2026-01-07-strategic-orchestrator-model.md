@@ -1,3 +1,13 @@
+---
+status: active
+blocks:
+  - keywords:
+      - meta-orchestrator role
+      - orchestrator synthesis
+      - spawn architect to think
+      - delegate understanding
+---
+
 # Decision: Strategic Orchestrator Model
 
 **Date:** 2026-01-07
@@ -96,3 +106,43 @@ The orchestrator skill needs updates:
 ## Origin
 
 Session with Dylan, 2026-01-07. Started with "maybe I don't need meta-orchestrator and orchestrators - maybe just one strategic orchestrator." Evolved through exploring the duplicate synthesis issue, which revealed the deeper question about what synthesis is and who should do it.
+
+---
+
+## Refinement: Context-Scoping as Irreducible Function (2026-01-19)
+
+**Context:** While building the Decidability Graph model, questioned whether workers could answer "framing questions" if given the right context.
+
+**Discovery:** The hierarchy isn't about reasoning capability - workers can do any kind of reasoning (factual, design, even framing) IF they have the right context loaded. The irreducible orchestrator function is **deciding what context to load**, not performing synthesis itself.
+
+### What This Refines
+
+| Original Model | Refined Understanding |
+|----------------|----------------------|
+| Orchestrator *does* synthesis | Orchestrator *scopes* what gets synthesized |
+| Synthesis is not spawnable | Synthesis is spawnable once scoped |
+| "Spawn architect to think" is wrong because architect can't think strategically | "Spawn architect to think" is wrong because it abdicates the scoping decision |
+| Authority is role-based | Authority is context-scoping-based |
+
+### The Authority Chain (Refined)
+
+- **Daemon:** Executes pre-scoped work (context already defined by spawn)
+- **Orchestrator:** Scopes context for workers (decides what frames/knowledge to load)
+- **Dylan:** Scopes context for orchestrator (or overrides scoping decisions)
+
+### What Remains True
+
+The original decision's core insight holds: "spawn architect to think for me" is still an anti-pattern. The refinement clarifies *why* - not because workers can't think, but because the orchestrator is abdicating its irreducible function (scoping).
+
+### What This Enables
+
+A "frame-evaluator" worker is now conceivable: spawn with multiple frames as context, instruction to evaluate from outside. The orchestrator's contribution is *deciding those were the relevant frames to compare*.
+
+### What Remains Irreducibly Human (Dylan)
+
+- Overriding scoping decisions ("you're looking at the wrong thing")
+- Value judgments that determine which frames matter
+- Accountability for where the system points its attention
+
+**Reference:** `.kb/models/decidability-graph.md` - "The Irreducible Function: Context Scoping" section
+**Quick decision:** `kb-227b01`

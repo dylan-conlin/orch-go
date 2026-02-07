@@ -24,6 +24,10 @@ var (
 	// kb extract flags
 	kbExtractTo           string // Target project name
 	kbExtractUpdateSource bool   // Add extracted-to reference in original
+
+	// kb archive-old flags
+	kbArchiveOlderThan string // Duration threshold (e.g., "60d")
+	kbArchiveDryRun    bool   // Show what would be archived without moving
 )
 
 var kbCmd = &cobra.Command{
@@ -98,6 +102,25 @@ Examples:
 	},
 }
 
+var kbArchiveOldCmd = &cobra.Command{
+	Use:   "archive-old",
+	Short: "Archive old investigations to reduce clutter",
+	Long: `Archive investigations older than a specified threshold.
+
+Moves old investigations from .kb/investigations/ to .kb/investigations/archive/.
+Files remain discoverable via kb search and kb context (which search recursively).
+
+Examples:
+  orch kb archive-old --older-than 60d
+  orch kb archive-old --older-than 90d --dry-run`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if kbArchiveOlderThan == "" {
+			return fmt.Errorf("--older-than flag is required (e.g., --older-than 60d)")
+		}
+		return runKBArchiveOld(kbArchiveOlderThan, kbArchiveDryRun)
+	},
+}
+
 func init() {
 	kbAskCmd.Flags().BoolVar(&kbAskSave, "save", false, "Save result as investigation artifact")
 	kbAskCmd.Flags().StringVar(&kbAskModel, "model", "", "Model to use (default: sonnet for speed)")
@@ -107,8 +130,12 @@ func init() {
 	kbExtractCmd.Flags().StringVar(&kbExtractTo, "to", "", "Target project name (required)")
 	kbExtractCmd.Flags().BoolVar(&kbExtractUpdateSource, "update-source", false, "Add extracted-to reference in original file")
 
+	kbArchiveOldCmd.Flags().StringVar(&kbArchiveOlderThan, "older-than", "", "Archive investigations older than this duration (e.g., 60d, 90d)")
+	kbArchiveOldCmd.Flags().BoolVar(&kbArchiveDryRun, "dry-run", false, "Show what would be archived without moving files")
+
 	kbCmd.AddCommand(kbAskCmd)
 	kbCmd.AddCommand(kbExtractCmd)
+	kbCmd.AddCommand(kbArchiveOldCmd)
 	rootCmd.AddCommand(kbCmd)
 }
 
@@ -487,12 +514,13 @@ func synthesizeAnswer(question, context string) (string, error) {
 	}
 
 	// Create a temporary session for synthesis
-	client := opencode.NewClient(serverURL)
-	projectDir, _ := os.Getwd()
+	client := opencode.NewClient(serverURL) // entry-point: synthesizeAnswer is a self-contained operation
+	projectDir, _ := currentProjectDir()
 
 	// Create session with title indicating kb ask
 	title := fmt.Sprintf("kb-ask-%d", time.Now().Unix())
-	session, err := client.CreateSession(title, projectDir, modelSpec.Format())
+	// kb ask is not a worker spawn and doesn't need extended thinking
+	session, err := client.CreateSession(title, projectDir, modelSpec.Format(), "", false)
 	if err != nil {
 		return "", fmt.Errorf("failed to create session: %w", err)
 	}
@@ -560,7 +588,7 @@ Provide your answer:`, question, context)
 
 // saveAsInvestigation saves the Q&A as an investigation artifact.
 func saveAsInvestigation(question, answer string, context *KBContextResult) (string, error) {
-	projectDir, err := os.Getwd()
+	projectDir, err := currentProjectDir()
 	if err != nil {
 		return "", err
 	}
@@ -695,7 +723,7 @@ func resolveArtifactPath(path string) (string, error) {
 		return path, nil
 	}
 
-	cwd, err := os.Getwd()
+	cwd, err := currentProjectDir()
 	if err != nil {
 		return "", err
 	}
@@ -852,4 +880,218 @@ func generateSlug(text string) string {
 	}
 
 	return slug
+}
+
+// ArchiveResult contains the results of an archive operation
+type ArchiveResult struct {
+	Matched []string // Files that matched the age threshold
+	Moved   []string // Files that were actually moved
+	DestDir string   // Destination directory
+}
+
+// findKBDir finds the .kb directory in the project
+func findKBDir(projectDir string) (string, error) {
+	kbDir := filepath.Join(projectDir, ".kb")
+	if _, err := os.Stat(kbDir); os.IsNotExist(err) {
+		return "", fmt.Errorf("no .kb directory found in %s", projectDir)
+	}
+	return kbDir, nil
+}
+
+// runKBArchiveOld archives investigations older than the specified duration
+func runKBArchiveOld(olderThan string, dryRun bool) error {
+	projectDir, err := currentProjectDir()
+	if err != nil {
+		return err
+	}
+
+	// Parse duration
+	threshold, err := parseArchiveDuration(olderThan)
+	if err != nil {
+		return fmt.Errorf("invalid duration %q: %w", olderThan, err)
+	}
+
+	// Run archive
+	result, err := archiveOldInvestigations(projectDir, threshold, dryRun)
+	if err != nil {
+		return err
+	}
+
+	// Print results
+	if dryRun {
+		fmt.Println("Dry run - no files moved")
+		fmt.Println()
+	}
+
+	if len(result.Matched) == 0 {
+		fmt.Printf("No investigations found older than %s\n", olderThan)
+		return nil
+	}
+
+	if dryRun {
+		fmt.Printf("Would archive %d investigation(s) to:\n", len(result.Matched))
+		fmt.Printf("  %s\n\n", result.DestDir)
+		fmt.Println("Files:")
+		for _, f := range result.Matched {
+			fmt.Printf("  - %s\n", filepath.Base(f))
+		}
+	} else {
+		fmt.Printf("Archived %d investigation(s) to:\n", len(result.Moved))
+		fmt.Printf("  %s\n\n", result.DestDir)
+		fmt.Println("Files moved:")
+		for _, f := range result.Moved {
+			fmt.Printf("  - %s\n", filepath.Base(f))
+		}
+	}
+
+	return nil
+}
+
+// parseArchiveDuration parses duration strings like "60d", "90d"
+func parseArchiveDuration(s string) (time.Duration, error) {
+	if len(s) < 2 {
+		return 0, fmt.Errorf("invalid duration format (expected format: 60d, 90d, etc.)")
+	}
+
+	// Check for 'd' suffix (days)
+	if !strings.HasSuffix(s, "d") {
+		return 0, fmt.Errorf("only day units are supported (use 'd' suffix, e.g., 60d)")
+	}
+
+	// Parse number of days
+	daysStr := s[:len(s)-1]
+	var days int
+	if _, err := fmt.Sscanf(daysStr, "%d", &days); err != nil {
+		return 0, fmt.Errorf("invalid number: %w", err)
+	}
+
+	if days < 0 {
+		return 0, fmt.Errorf("duration must be positive")
+	}
+
+	return time.Duration(days) * 24 * time.Hour, nil
+}
+
+// parseInvestigationDate parses the YYYY-MM-DD date prefix from an investigation filename
+func parseInvestigationDate(filename string) (time.Time, error) {
+	// Extract basename if full path provided
+	basename := filepath.Base(filename)
+
+	// Check if filename starts with YYYY-MM-DD pattern
+	if len(basename) < 10 {
+		return time.Time{}, fmt.Errorf("filename too short to contain date prefix")
+	}
+
+	dateStr := basename[:10]
+	date, err := time.ParseInLocation("2006-01-02", dateStr, time.Local)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse date from filename: %w", err)
+	}
+
+	return date, nil
+}
+
+// calculateInvestigationAge calculates the age of an investigation based on filename date
+func calculateInvestigationAge(filename string) (time.Duration, error) {
+	date, err := parseInvestigationDate(filename)
+	if err != nil {
+		return 0, err
+	}
+
+	age := time.Since(date)
+	return age, nil
+}
+
+// findOldInvestigations finds investigations older than the threshold
+func findOldInvestigations(projectDir string, threshold time.Duration) ([]string, error) {
+	kbDir, err := findKBDir(projectDir)
+	if err != nil {
+		return nil, err
+	}
+
+	invDir := filepath.Join(kbDir, "investigations")
+	if _, err := os.Stat(invDir); os.IsNotExist(err) {
+		return []string{}, nil
+	}
+
+	var oldFiles []string
+
+	// Read entries in investigations directory (non-recursive - only top-level files)
+	entries, err := os.ReadDir(invDir)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, entry := range entries {
+		// Skip directories
+		if entry.IsDir() {
+			continue
+		}
+
+		// Skip non-markdown files
+		if !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+
+		// Calculate age
+		age, err := calculateInvestigationAge(entry.Name())
+		if err != nil {
+			// Skip files with invalid date prefixes
+			continue
+		}
+
+		// Check if older than threshold
+		if age >= threshold {
+			oldFiles = append(oldFiles, filepath.Join(invDir, entry.Name()))
+		}
+	}
+
+	return oldFiles, nil
+}
+
+// archiveOldInvestigations archives investigations older than the threshold
+func archiveOldInvestigations(projectDir string, threshold time.Duration, dryRun bool) (*ArchiveResult, error) {
+	// Find old investigations
+	matched, err := findOldInvestigations(projectDir, threshold)
+	if err != nil {
+		return nil, err
+	}
+
+	kbDir, err := findKBDir(projectDir)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &ArchiveResult{
+		Matched: matched,
+		DestDir: filepath.Join(kbDir, "investigations", "archive"),
+	}
+
+	if len(matched) == 0 || dryRun {
+		return result, nil
+	}
+
+	// Create archive directory
+	if err := os.MkdirAll(result.DestDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create archive directory: %w", err)
+	}
+
+	// Move files
+	for _, srcPath := range matched {
+		filename := filepath.Base(srcPath)
+		destPath := filepath.Join(result.DestDir, filename)
+
+		// Check if destination already exists
+		if _, err := os.Stat(destPath); err == nil {
+			// Skip if already archived
+			continue
+		}
+
+		if err := os.Rename(srcPath, destPath); err != nil {
+			return nil, fmt.Errorf("failed to move %s: %w", srcPath, err)
+		}
+		result.Moved = append(result.Moved, destPath)
+	}
+
+	return result, nil
 }

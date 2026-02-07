@@ -1074,3 +1074,127 @@ func TestLoadMissingSessionSection(t *testing.T) {
 			DefaultAgentWarningMinutes, cfg.AgentCheckpointWarning())
 	}
 }
+
+// =============================================================================
+// Tests for SkillModels - Model Selection
+// =============================================================================
+
+func TestGetModelForSkill(t *testing.T) {
+	tests := []struct {
+		name         string
+		skillModels  map[string]string
+		defaultModel string
+		skill        string
+		expected     string
+	}{
+		{
+			name: "skill has explicit model mapping",
+			skillModels: map[string]string{
+				"investigation": "sonnet",
+				"architect":     "opus",
+			},
+			defaultModel: "",
+			skill:        "investigation",
+			expected:     "sonnet",
+		},
+		{
+			name: "skill not in map, use default_model",
+			skillModels: map[string]string{
+				"investigation": "sonnet",
+			},
+			defaultModel: "opus",
+			skill:        "feature-impl",
+			expected:     "opus",
+		},
+		{
+			name:         "empty skill_models, use default_model",
+			skillModels:  map[string]string{},
+			defaultModel: "sonnet",
+			skill:        "investigation",
+			expected:     "sonnet",
+		},
+		{
+			name:         "nil skill_models, use default_model",
+			skillModels:  nil,
+			defaultModel: "opus",
+			skill:        "architect",
+			expected:     "opus",
+		},
+		{
+			name:         "no config at all, fallback to sonnet",
+			skillModels:  nil,
+			defaultModel: "",
+			skill:        "investigation",
+			expected:     "sonnet",
+		},
+		{
+			name: "empty string value in skill_models, fallback to default_model",
+			skillModels: map[string]string{
+				"investigation": "",
+			},
+			defaultModel: "opus",
+			skill:        "investigation",
+			expected:     "opus",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				SkillModels:  tt.skillModels,
+				DefaultModel: tt.defaultModel,
+			}
+			got := cfg.GetModelForSkill(tt.skill)
+			if got != tt.expected {
+				t.Errorf("GetModelForSkill(%q) = %q, want %q", tt.skill, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestLoadSkillModelsConfig(t *testing.T) {
+	// Save original home and restore after test
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create config directory and file with skill_models
+	configDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	configContent := `backend: opencode
+default_model: opus
+skill_models:
+  architect: opus
+  systematic-debugging: opus
+  investigation: sonnet
+  feature-impl: sonnet
+  research: sonnet
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	// Test skill-specific models
+	if cfg.GetModelForSkill("investigation") != "sonnet" {
+		t.Errorf("GetModelForSkill('investigation') = %q, want 'sonnet'", cfg.GetModelForSkill("investigation"))
+	}
+
+	if cfg.GetModelForSkill("architect") != "opus" {
+		t.Errorf("GetModelForSkill('architect') = %q, want 'opus'", cfg.GetModelForSkill("architect"))
+	}
+
+	// Test skill not in map, should use default_model
+	if cfg.GetModelForSkill("unknown-skill") != "opus" {
+		t.Errorf("GetModelForSkill('unknown-skill') = %q, want 'opus' (default_model)", cfg.GetModelForSkill("unknown-skill"))
+	}
+}

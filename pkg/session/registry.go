@@ -45,6 +45,10 @@ type OrchestratorSession struct {
 
 	// Status is the session state: "active", "completed", or "abandoned"
 	Status string `json:"status"`
+
+	// ArchivedPath is set when the workspace has been archived (empty if not archived).
+	// Format: absolute path to the archived workspace directory.
+	ArchivedPath string `json:"archived_path,omitempty"`
 }
 
 // RegistrySchema provides inline documentation for the registry format.

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/spf13/cobra"
 )
@@ -19,8 +20,9 @@ var (
 )
 
 var configCmd = &cobra.Command{
-	Use:   "config",
-	Short: "Config-as-code management commands",
+	Use:    "config",
+	Short:  "Config-as-code management commands",
+	Hidden: true,
 	Long: `Config-as-code management commands.
 
 Provides generation and drift detection for external configuration files
@@ -82,9 +84,100 @@ Examples:
 	},
 }
 
+var configSetCmd = &cobra.Command{
+	Use:   "set <key> <value>",
+	Short: "Set a project config value",
+	Long: `Set a configuration value in .orch/config.yaml.
+
+Supported keys:
+  spawn_mode     Set spawn backend: "claude" or "opencode"
+
+Examples:
+  orch config set spawn_mode claude    # Use Claude Code (tmux) for spawns
+  orch config set spawn_mode opencode  # Use OpenCode (HTTP API) for spawns`,
+	Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		key := args[0]
+		value := args[1]
+
+		cwd, err := currentProjectDir()
+		if err != nil {
+			return fmt.Errorf("failed to get current directory: %w", err)
+		}
+
+		// Load existing config or create new
+		cfg, err := config.Load(cwd)
+		if err != nil {
+			// If config doesn't exist, create with defaults
+			cfg = &config.Config{}
+			cfg.ApplyDefaults()
+		}
+
+		// Set the value
+		switch key {
+		case "spawn_mode":
+			if value != "claude" && value != "opencode" {
+				return fmt.Errorf("invalid spawn_mode: %s (must be 'claude' or 'opencode')", value)
+			}
+			cfg.SpawnMode = value
+		default:
+			return fmt.Errorf("unknown config key: %s", key)
+		}
+
+		// Save config
+		if err := config.Save(cwd, cfg); err != nil {
+			return fmt.Errorf("failed to save config: %w", err)
+		}
+
+		fmt.Printf("✓ Set %s = %s\n", key, value)
+		return nil
+	},
+}
+
+var configGetCmd = &cobra.Command{
+	Use:   "get <key>",
+	Short: "Get a project config value",
+	Long: `Get a configuration value from .orch/config.yaml.
+
+Supported keys:
+  spawn_mode     Current spawn backend ("claude" or "opencode")
+
+Examples:
+  orch config get spawn_mode`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		key := args[0]
+
+		cwd, err := currentProjectDir()
+		if err != nil {
+			return fmt.Errorf("failed to get current directory: %w", err)
+		}
+
+		// Load config
+		cfg, err := config.Load(cwd)
+		if err != nil {
+			// If config doesn't exist, show default
+			cfg = &config.Config{}
+			cfg.ApplyDefaults()
+		}
+
+		// Get the value
+		switch key {
+		case "spawn_mode":
+			fmt.Println(cfg.SpawnMode)
+		default:
+			return fmt.Errorf("unknown config key: %s", key)
+		}
+
+		return nil
+	},
+}
+
 func init() {
 	configCmd.AddCommand(configGenerateCmd)
 	configCmd.AddCommand(configShowCmd)
+	configCmd.AddCommand(configSetCmd)
+	configCmd.AddCommand(configGetCmd)
 
 	configGenerateCmd.Flags().BoolVar(&configDryRun, "dry-run", false, "Preview without writing files")
 
@@ -279,6 +372,14 @@ func runShowConfig() error {
 	fmt.Println("# ~/.orch/config.yaml (effective values)")
 	fmt.Println()
 	fmt.Printf("backend: %s\n", cfg.Backend)
+	if len(cfg.DisabledBackends) > 0 {
+		fmt.Println("disabled_backends:")
+		for _, b := range cfg.DisabledBackends {
+			fmt.Printf("  - %s\n", b)
+		}
+	} else {
+		fmt.Println("disabled_backends: []")
+	}
 	fmt.Printf("auto_export_transcript: %v\n", cfg.AutoExportTranscript)
 	fmt.Printf("default_tier: %s\n", cfg.DefaultTier)
 	fmt.Println()

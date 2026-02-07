@@ -209,7 +209,7 @@ func collectRetryPatterns() ([]DetectedPattern, error) {
 
 	// Batch-fetch issue statuses from beads
 	// This filters out closed issues that shouldn't be flagged as failures
-	issueMap, _ := verify.GetIssuesBatch(beadsIDs)
+	issueMap, _ := verify.GetIssuesBatch(beadsIDs, nil)
 	// Ignore error - if beads is unavailable, we'll show all patterns
 	// (better to show potential false positives than hide real issues)
 
@@ -465,12 +465,35 @@ func collectActionPatterns() ([]DetectedPattern, error) {
 			Count: ap.Count,
 		}
 
-		// Determine severity based on count and outcome type
-		if ap.Count >= 5 {
-			pattern.Severity = PatternSeverityCritical
-		} else if ap.Count >= 3 {
-			pattern.Severity = PatternSeverityWarning
-		} else {
+		// Determine severity based on outcome type AND count
+		// Errors are more serious than empty results
+		// Higher thresholds prevent noise from normal command patterns
+		switch ap.Outcome {
+		case action.OutcomeError:
+			// Errors are actionable - they indicate real failures
+			if ap.Count >= 10 {
+				pattern.Severity = PatternSeverityCritical
+			} else if ap.Count >= 5 {
+				pattern.Severity = PatternSeverityWarning
+			} else {
+				pattern.Severity = PatternSeverityInfo
+			}
+		case action.OutcomeEmpty:
+			// Empty results are often normal - be conservative with severity
+			// Only flag as warning if truly excessive
+			if ap.Count >= 15 {
+				pattern.Severity = PatternSeverityWarning
+			} else {
+				pattern.Severity = PatternSeverityInfo
+			}
+		case action.OutcomeFallback:
+			// Fallbacks indicate workarounds are needed
+			if ap.Count >= 8 {
+				pattern.Severity = PatternSeverityWarning
+			} else {
+				pattern.Severity = PatternSeverityInfo
+			}
+		default:
 			pattern.Severity = PatternSeverityInfo
 		}
 

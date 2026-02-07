@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -387,5 +388,80 @@ func TestDetermineEscalation_Precedence(t *testing.T) {
 	}
 	if got := DetermineEscalation(input); got != EscalationReview {
 		t.Errorf("Knowledge skill with recommendations should be Review: got %v", got)
+	}
+}
+
+func TestDetermineEscalation_DecisionWithoutBlocks(t *testing.T) {
+	// Test that decisions without blocks: frontmatter trigger EscalationInfo
+	input := EscalationInput{
+		VerificationPassed: true,
+		SkillName:          "feature-impl",
+		Outcome:            "success",
+		DecisionsWithoutBlocks: []DecisionWithoutBlocks{
+			{
+				Path:     "/path/to/decision.md",
+				Filename: "2026-01-28-decision.md",
+			},
+		},
+	}
+
+	got := DetermineEscalation(input)
+	if got != EscalationInfo {
+		t.Errorf("DetermineEscalation() = %v, want EscalationInfo", got)
+	}
+}
+
+func TestDetermineEscalation_MultipleDecisionsWithoutBlocks(t *testing.T) {
+	// Test with multiple decisions lacking blocks
+	input := EscalationInput{
+		VerificationPassed: true,
+		SkillName:          "feature-impl",
+		Outcome:            "success",
+		DecisionsWithoutBlocks: []DecisionWithoutBlocks{
+			{Filename: "decision-1.md"},
+			{Filename: "decision-2.md"},
+		},
+	}
+
+	got := DetermineEscalation(input)
+	if got != EscalationInfo {
+		t.Errorf("DetermineEscalation() = %v, want EscalationInfo", got)
+	}
+}
+
+func TestExplainEscalation_DecisionWithoutBlocks(t *testing.T) {
+	// Test that ExplainEscalation provides proper explanation for decision patch case
+	input := EscalationInput{
+		VerificationPassed: true,
+		SkillName:          "feature-impl",
+		Outcome:            "success",
+		DecisionsWithoutBlocks: []DecisionWithoutBlocks{
+			{
+				Path:     "/path/to/decision.md",
+				Filename: "2026-01-28-decision.md",
+			},
+		},
+	}
+
+	reason := ExplainEscalation(input)
+
+	if reason.Level != EscalationInfo {
+		t.Errorf("ExplainEscalation().Level = %v, want EscalationInfo", reason.Level)
+	}
+
+	if reason.Reason == "" {
+		t.Error("ExplainEscalation().Reason should not be empty")
+	}
+
+	// Check that details mention the decision filename
+	foundDecision := false
+	for _, detail := range reason.Details {
+		if strings.Contains(detail, "2026-01-28-decision.md") {
+			foundDecision = true
+			break
+		}
+	}
+	if !foundDecision {
+		t.Errorf("ExplainEscalation().Details should mention the decision filename, got: %v", reason.Details)
 	}
 }

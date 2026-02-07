@@ -209,6 +209,35 @@ func (p *WorkerPool) Status() PoolStatus {
 	}
 }
 
+// ReleaseByBeadsID finds and releases a slot by its BeadsID.
+// Returns true if a slot was found and released, false otherwise.
+// This is used for active slot release during completion processing,
+// providing immediate capacity recovery without waiting for reconciliation.
+func (p *WorkerPool) ReleaseByBeadsID(beadsID string) bool {
+	if beadsID == "" {
+		return false
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Find slot with matching BeadsID
+	for i, slot := range p.slots {
+		if slot.BeadsID == beadsID {
+			// Remove the slot
+			p.slots = append(p.slots[:i], p.slots[i+1:]...)
+			if p.activeCount > 0 {
+				p.activeCount--
+			}
+			// Wake up any waiters since capacity freed up
+			p.cond.Broadcast()
+			return true
+		}
+	}
+
+	return false
+}
+
 // Reconcile synchronizes the pool's internal count with the actual number of
 // active sessions. This is necessary because the pool tracks slots internally
 // but agents may complete without the daemon knowing (e.g., overnight runs,

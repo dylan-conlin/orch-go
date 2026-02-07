@@ -9,15 +9,18 @@
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"test": "playwright test",
+		"test:ui": "playwright test --ui"
 	},
 	"devDependencies": {
 		"@lucide/svelte": "^0.544.0",
+		"@playwright/test": "1.57.0",
 		"@sveltejs/adapter-static": "^3.0.0",
 		"@sveltejs/kit": "^2.48.5",
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
 		"autoprefixer": "^10.4.22",
-		"bits-ui": "^1.4.7",
+		"bits-ui": "^2.11.0",
 		"postcss": "^8.5.6",
 		"svelte": "^5.43.8",
 		"svelte-check": "^4.3.4",
@@ -28,7 +31,7 @@
 	},
 	"dependencies": {
 		"clsx": "^2.1.1",
-		"marked": "17.0.1",
+		"marked": "^15.0.0",
 		"tailwind-merge": "^3.4.0"
 	}
 }

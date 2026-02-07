@@ -11,8 +11,9 @@ import (
 )
 
 var docsCmd = &cobra.Command{
-	Use:   "docs",
-	Short: "Manage CLI documentation debt tracking",
+	Use:    "docs",
+	Short:  "Manage CLI documentation debt tracking",
+	Hidden: true,
 	Long: `Manage CLI documentation debt tracking.
 
 Doc debt is tracked automatically when new CLI commands are detected during

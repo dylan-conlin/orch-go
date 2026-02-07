@@ -17,6 +17,12 @@ var (
 	ErrNoFrontmatter = errors.New("no YAML frontmatter found")
 )
 
+// priorityDirs defines the search order for skill directories.
+// Skills in these directories are searched first, in order.
+// The "src" directory is explicitly excluded as it contains source files,
+// not deployed skills.
+var priorityDirs = []string{"worker", "shared", "meta", "utilities"}
+
 // SkillMetadata represents parsed skill YAML frontmatter.
 type SkillMetadata struct {
 	Name         string   `yaml:"name"`
@@ -51,7 +57,8 @@ func DefaultLoader() *Loader {
 // FindSkillPath finds the path to a skill's SKILL.md file.
 // It searches:
 // 1. Direct symlinks: skillsDir/skillName -> .../SKILL.md
-// 2. Subdirectories: skillsDir/*/skillName/SKILL.md
+// 2. Priority directories: skillsDir/{worker,shared,meta,utilities}/skillName/SKILL.md
+// 3. Other subdirectories (alphabetically, excluding src/)
 func (l *Loader) FindSkillPath(skillName string) (string, error) {
 	if l.skillsDir == "" {
 		return "", ErrSkillNotFound
@@ -63,22 +70,45 @@ func (l *Loader) FindSkillPath(skillName string) (string, error) {
 		return directPath, nil
 	}
 
-	// Search subdirectories: skillsDir/*/skillName/SKILL.md
+	// Check priority directories in order
+	for _, dir := range priorityDirs {
+		potentialPath := filepath.Join(l.skillsDir, dir, skillName, "SKILL.md")
+		if _, err := os.Stat(potentialPath); err == nil {
+			return potentialPath, nil
+		}
+	}
+
+	// Fall back to alphabetical search of other subdirectories
 	entries, err := os.ReadDir(l.skillsDir)
 	if err != nil {
 		return "", ErrSkillNotFound
+	}
+
+	// Build set of already-checked directories
+	checkedDirs := make(map[string]bool)
+	for _, d := range priorityDirs {
+		checkedDirs[d] = true
 	}
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
+		dirName := entry.Name()
 		// Skip hidden directories
-		if strings.HasPrefix(entry.Name(), ".") {
+		if strings.HasPrefix(dirName, ".") {
+			continue
+		}
+		// Skip src/ directory (contains source files, not deployed skills)
+		if dirName == "src" {
+			continue
+		}
+		// Skip already-checked priority directories
+		if checkedDirs[dirName] {
 			continue
 		}
 
-		potentialPath := filepath.Join(l.skillsDir, entry.Name(), skillName, "SKILL.md")
+		potentialPath := filepath.Join(l.skillsDir, dirName, skillName, "SKILL.md")
 		if _, err := os.Stat(potentialPath); err == nil {
 			return potentialPath, nil
 		}

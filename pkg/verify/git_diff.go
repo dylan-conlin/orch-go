@@ -3,7 +3,10 @@ package verify
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"os/user"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -20,6 +23,11 @@ type GitDiffResult struct {
 	ActualFiles     []string // Files in actual git diff since spawn
 	MissingFromDiff []string // Files claimed but not in diff
 	ExtraInDiff     []string // Files in diff but not claimed (info only)
+
+	// Cross-repo file verification results
+	ExternalFiles        []string             // External files claimed (~/..., /..., ../)
+	ExternalFileResults  []ExternalFileResult // Verification results for external files
+	InvalidExternalFiles []string             // External files that failed verification
 }
 
 // ParseDeltaFiles extracts file paths from the SYNTHESIS.md Delta section.
@@ -201,21 +209,22 @@ func isVersionNumber(s string) bool {
 	return numericSegments >= len(parts)-1
 }
 
-// GetGitDiffFiles returns the list of files changed since the given time.
-// Uses `git diff --name-only` to get modified files.
-// If since is zero, returns files changed vs HEAD (uncommitted changes).
-func GetGitDiffFiles(projectDir string, since time.Time) ([]string, error) {
+// GetGitDiffFiles returns the list of files changed since the given time or baseline commit.
+// If baseline is provided, it uses `git diff --name-only baseline` to get all changes (staged and unstaged) since that commit.
+// If baseline is empty and since is provided, it uses `git log --since` to get modified files.
+// If both are zero/empty, it returns files changed vs HEAD (uncommitted changes).
+func GetGitDiffFiles(projectDir string, since time.Time, baseline string) ([]string, error) {
 	var cmd *exec.Cmd
 
-	if since.IsZero() {
-		// Get uncommitted changes
+	if baseline != "" {
+		// Get all changes (staged and unstaged) since the baseline commit
+		cmd = exec.Command("git", "diff", "--name-only", baseline)
+	} else if since.IsZero() {
+		// Get uncommitted changes vs HEAD
 		cmd = exec.Command("git", "diff", "--name-only", "HEAD")
 	} else {
-		// Get all files changed since the spawn time
-		// We need to find commits since spawn time and get their changed files
+		// Get all files changed since the spawn time using git log
 		sinceStr := since.Format(time.RFC3339)
-
-		// Use git log to find all changed files since spawn time
 		cmd = exec.Command("git", "log", "--name-only", "--pretty=format:", "--since="+sinceStr)
 	}
 
@@ -249,6 +258,99 @@ func NormalizePath(path string) string {
 	return path
 }
 
+// IsExternalPath checks if a file path refers to a location outside the current repo.
+// External paths include:
+// - Paths starting with ~/ (home directory)
+// - Absolute paths starting with /
+// - Relative paths that traverse up with ../
+//
+// These paths cannot be verified via git diff since they're outside the repo.
+func IsExternalPath(path string) bool {
+	// Home directory paths
+	if strings.HasPrefix(path, "~/") {
+		return true
+	}
+
+	// Absolute paths (starts with / but not ./)
+	if strings.HasPrefix(path, "/") {
+		return true
+	}
+
+	// Relative paths that go up (../something)
+	if strings.HasPrefix(path, "../") || strings.Contains(path, "/../") {
+		return true
+	}
+
+	return false
+}
+
+// ExpandPath expands ~ to the user's home directory and resolves the path.
+// Returns the expanded path and any error.
+func ExpandPath(path string) (string, error) {
+	if strings.HasPrefix(path, "~/") {
+		usr, err := user.Current()
+		if err != nil {
+			return "", fmt.Errorf("failed to get current user: %w", err)
+		}
+		path = filepath.Join(usr.HomeDir, path[2:])
+	}
+	return path, nil
+}
+
+// ExternalFileResult contains the verification result for a single external file.
+type ExternalFileResult struct {
+	Path     string    // The original path from SYNTHESIS.md
+	Expanded string    // The expanded/resolved path
+	Exists   bool      // Whether the file exists
+	ModTime  time.Time // The file's modification time (if exists)
+	Valid    bool      // Whether the file was modified after spawn time
+	Error    string    // Any error encountered
+}
+
+// VerifyExternalFile checks if an external file exists and was modified after spawn time.
+// This is used for cross-repo file verification where git diff cannot be used.
+func VerifyExternalFile(path string, spawnTime time.Time) ExternalFileResult {
+	result := ExternalFileResult{Path: path}
+
+	// Expand the path (handle ~/)
+	expanded, err := ExpandPath(path)
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	result.Expanded = expanded
+
+	// Check if file exists and get its modification time
+	info, err := os.Stat(expanded)
+	if err != nil {
+		if os.IsNotExist(err) {
+			result.Exists = false
+			result.Error = "file does not exist"
+		} else {
+			result.Error = fmt.Sprintf("failed to stat file: %v", err)
+		}
+		return result
+	}
+
+	result.Exists = true
+	result.ModTime = info.ModTime()
+
+	// Check if file was modified after spawn time
+	// If spawn time is zero, we can't verify modification time
+	if spawnTime.IsZero() {
+		result.Valid = true // Can't verify, assume valid
+		return result
+	}
+
+	result.Valid = info.ModTime().After(spawnTime)
+	if !result.Valid {
+		result.Error = fmt.Sprintf("file not modified after spawn time (mtime=%s, spawn=%s)",
+			info.ModTime().Format(time.RFC3339), spawnTime.Format(time.RFC3339))
+	}
+
+	return result
+}
+
 // VerifyGitDiff compares claimed file changes in SYNTHESIS against actual git diff.
 // Returns a result indicating whether claimed files exist in the actual diff.
 //
@@ -256,6 +358,11 @@ func NormalizePath(path string) string {
 // - Passes if all claimed files are present in the actual git diff
 // - Fails if any claimed file is NOT in the git diff (false positive detection)
 // - Provides warnings for extra files in diff not claimed (acceptable - agent may under-report)
+//
+// For external files (cross-repo: ~/..., /..., ../):
+// - Uses file mtime check instead of git diff
+// - File must exist and have mtime > spawn time
+// - This allows verification of cross-repo changes that can't be tracked via git
 func VerifyGitDiff(workspacePath, projectDir string) GitDiffResult {
 	result := GitDiffResult{Passed: true}
 
@@ -269,10 +376,10 @@ func VerifyGitDiff(workspacePath, projectDir string) GitDiffResult {
 	}
 
 	// Extract claimed files from Delta section
-	result.ClaimedFiles = ParseDeltaFiles(synthesis)
+	allClaimedFiles := ParseDeltaFiles(synthesis)
 
 	// If no files claimed, nothing to verify
-	if len(result.ClaimedFiles) == 0 {
+	if len(allClaimedFiles) == 0 {
 		result.Warnings = append(result.Warnings,
 			"no files found in SYNTHESIS.md Delta section - skipping git diff verification")
 		return result
@@ -281,46 +388,87 @@ func VerifyGitDiff(workspacePath, projectDir string) GitDiffResult {
 	// Get spawn time from workspace
 	spawnTime := spawn.ReadSpawnTime(workspacePath)
 
-	// Get actual git diff files
-	actualFiles, err := GetGitDiffFiles(projectDir, spawnTime)
-	if err != nil {
+	// Try to load AGENT_MANIFEST.json for git baseline
+	var baseline string
+	if manifest, err := spawn.ReadAgentManifest(workspacePath); err == nil {
+		baseline = manifest.GitBaseline
+	}
+
+	// If spawn time is unavailable (zero) and we have no baseline, we cannot
+	// reliably determine what files were changed by this agent.
+	// Skip verification with a warning rather than failing - this handles
+	// old workspaces created before baseline/spawn time tracking.
+	if spawnTime.IsZero() && baseline == "" {
 		result.Warnings = append(result.Warnings,
-			fmt.Sprintf("failed to get git diff: %v - skipping verification", err))
+			"spawn time and git baseline unavailable - skipping git diff verification")
 		return result
 	}
-	result.ActualFiles = actualFiles
 
-	// Build a set of actual files for O(1) lookup
-	actualSet := make(map[string]bool)
-	for _, f := range actualFiles {
-		actualSet[NormalizePath(f)] = true
-	}
-
-	// Check each claimed file
-	for _, claimed := range result.ClaimedFiles {
-		normalized := NormalizePath(claimed)
-		if !actualSet[normalized] {
-			result.MissingFromDiff = append(result.MissingFromDiff, claimed)
+	// Separate claimed files into local and external
+	var localFiles []string
+	for _, claimed := range allClaimedFiles {
+		if IsExternalPath(claimed) {
+			result.ExternalFiles = append(result.ExternalFiles, claimed)
+		} else {
+			localFiles = append(localFiles, claimed)
 		}
 	}
 
-	// Check for extra files in diff (informational)
-	claimedSet := make(map[string]bool)
-	for _, f := range result.ClaimedFiles {
-		claimedSet[NormalizePath(f)] = true
-	}
-	for _, actual := range actualFiles {
-		normalized := NormalizePath(actual)
-		if !claimedSet[normalized] {
-			result.ExtraInDiff = append(result.ExtraInDiff, actual)
+	// Store all claimed files (both local and external)
+	result.ClaimedFiles = allClaimedFiles
+
+	// Verify external files using mtime check
+	for _, extFile := range result.ExternalFiles {
+		extResult := VerifyExternalFile(extFile, spawnTime)
+		result.ExternalFileResults = append(result.ExternalFileResults, extResult)
+		if !extResult.Valid {
+			result.InvalidExternalFiles = append(result.InvalidExternalFiles, extFile)
 		}
 	}
 
-	// Fail if claimed files are missing from diff
+	// Only check git diff for local files
+	if len(localFiles) > 0 {
+		// Get actual git diff files using baseline if available, else spawnTime
+		actualFiles, err := GetGitDiffFiles(projectDir, spawnTime, baseline)
+		if err != nil {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("failed to get git diff: %v - skipping local file verification", err))
+		} else {
+			result.ActualFiles = actualFiles
+
+			// Build a set of actual files for O(1) lookup
+			actualSet := make(map[string]bool)
+			for _, f := range actualFiles {
+				actualSet[NormalizePath(f)] = true
+			}
+
+			// Check each local claimed file
+			for _, claimed := range localFiles {
+				normalized := NormalizePath(claimed)
+				if !actualSet[normalized] {
+					result.MissingFromDiff = append(result.MissingFromDiff, claimed)
+				}
+			}
+
+			// Check for extra files in diff (informational)
+			claimedSet := make(map[string]bool)
+			for _, f := range localFiles {
+				claimedSet[NormalizePath(f)] = true
+			}
+			for _, actual := range actualFiles {
+				normalized := NormalizePath(actual)
+				if !claimedSet[normalized] {
+					result.ExtraInDiff = append(result.ExtraInDiff, actual)
+				}
+			}
+		}
+	}
+
+	// Fail if local claimed files are missing from diff
 	if len(result.MissingFromDiff) > 0 {
 		result.Passed = false
 		result.Errors = append(result.Errors,
-			fmt.Sprintf("SYNTHESIS.md claims %d file(s) not in git diff:", len(result.MissingFromDiff)))
+			fmt.Sprintf("SYNTHESIS.md claims %d local file(s) not in git diff:", len(result.MissingFromDiff)))
 		for _, f := range result.MissingFromDiff {
 			result.Errors = append(result.Errors, fmt.Sprintf("  - %s", f))
 		}
@@ -328,11 +476,33 @@ func VerifyGitDiff(workspacePath, projectDir string) GitDiffResult {
 			"Agent claimed to modify files that have no git changes - possible false positive")
 	}
 
+	// Fail if external files failed verification
+	if len(result.InvalidExternalFiles) > 0 {
+		result.Passed = false
+		result.Errors = append(result.Errors,
+			fmt.Sprintf("SYNTHESIS.md claims %d external file(s) that failed verification:", len(result.InvalidExternalFiles)))
+		for _, extResult := range result.ExternalFileResults {
+			if !extResult.Valid {
+				result.Errors = append(result.Errors,
+					fmt.Sprintf("  - %s: %s", extResult.Path, extResult.Error))
+			}
+		}
+	}
+
 	// Add informational warning about extra files
 	if len(result.ExtraInDiff) > 0 {
 		result.Warnings = append(result.Warnings,
 			fmt.Sprintf("%d file(s) in git diff but not claimed in SYNTHESIS (under-reporting is acceptable)",
 				len(result.ExtraInDiff)))
+	}
+
+	// Add informational note about verified external files
+	if len(result.ExternalFiles) > 0 {
+		validCount := len(result.ExternalFiles) - len(result.InvalidExternalFiles)
+		if validCount > 0 {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("%d external file(s) verified via mtime check (cross-repo changes)", validCount))
+		}
 	}
 
 	return result

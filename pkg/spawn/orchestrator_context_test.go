@@ -2,6 +2,7 @@ package spawn
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -39,8 +40,8 @@ Test skill content.
 		"**Skill:** orchestrator",
 		"**Project:** /Users/test/orch-go",
 		"spawned orchestrator",
-		"orch session end",
-		"SESSION_HANDOFF.md",
+
+		"SYNTHESIS.md",
 		"## Skill Guidance",
 		"# Orchestrator Skill",
 	}
@@ -56,7 +57,6 @@ Test skill content.
 	workerPatterns := []string{
 		"Phase: Complete",
 		"bd comment",
-		"SYNTHESIS.md",
 	}
 
 	for _, pattern := range workerPatterns {
@@ -279,78 +279,6 @@ func TestMinimalOrchestratorPrompt(t *testing.T) {
 	}
 }
 
-func TestEnsureSessionHandoffTemplate(t *testing.T) {
-	t.Run("creates template when missing", func(t *testing.T) {
-		tempDir := t.TempDir()
-
-		// Ensure template doesn't exist initially
-		templatePath := filepath.Join(tempDir, ".orch", "templates", "SESSION_HANDOFF.md")
-		if _, err := os.Stat(templatePath); !os.IsNotExist(err) {
-			t.Fatal("template should not exist initially")
-		}
-
-		// Call EnsureSessionHandoffTemplate
-		if err := EnsureSessionHandoffTemplate(tempDir); err != nil {
-			t.Fatalf("EnsureSessionHandoffTemplate failed: %v", err)
-		}
-
-		// Check template was created
-		if _, err := os.Stat(templatePath); os.IsNotExist(err) {
-			t.Error("template should exist after EnsureSessionHandoffTemplate")
-		}
-
-		// Check content
-		content, err := os.ReadFile(templatePath)
-		if err != nil {
-			t.Fatalf("failed to read template: %v", err)
-		}
-
-		if !strings.Contains(string(content), "# Session Handoff") {
-			t.Error("template should contain session handoff header")
-		}
-		if !strings.Contains(string(content), "## Summary") {
-			t.Error("template should contain Summary section")
-		}
-		if !strings.Contains(string(content), "## Work Completed") {
-			t.Error("template should contain Work Completed section")
-		}
-		if !strings.Contains(string(content), "## Recommendations for Next Session") {
-			t.Error("template should contain Recommendations section")
-		}
-	})
-
-	t.Run("does not overwrite existing template", func(t *testing.T) {
-		tempDir := t.TempDir()
-
-		// Create templates directory and custom template
-		templatesDir := filepath.Join(tempDir, ".orch", "templates")
-		if err := os.MkdirAll(templatesDir, 0755); err != nil {
-			t.Fatalf("failed to create templates dir: %v", err)
-		}
-
-		customContent := "# Custom Session Handoff Template\n\nThis is a custom template."
-		templatePath := filepath.Join(templatesDir, "SESSION_HANDOFF.md")
-		if err := os.WriteFile(templatePath, []byte(customContent), 0644); err != nil {
-			t.Fatalf("failed to write custom template: %v", err)
-		}
-
-		// Call EnsureSessionHandoffTemplate
-		if err := EnsureSessionHandoffTemplate(tempDir); err != nil {
-			t.Fatalf("EnsureSessionHandoffTemplate failed: %v", err)
-		}
-
-		// Check content was NOT overwritten
-		content, err := os.ReadFile(templatePath)
-		if err != nil {
-			t.Fatalf("failed to read template: %v", err)
-		}
-
-		if string(content) != customContent {
-			t.Error("existing template should not be overwritten")
-		}
-	})
-}
-
 func TestGenerateOrchestratorContext_WithKBContext(t *testing.T) {
 	cfg := &Config{
 		Task:           "Ship feature",
@@ -488,7 +416,7 @@ func TestWriteOrchestratorContext_CopiesSessionHandoffTemplate(t *testing.T) {
 ## Custom Section
 This is a project-specific template.
 `
-		templatePath := filepath.Join(templatesDir, "SESSION_HANDOFF.md")
+		templatePath := filepath.Join(templatesDir, "SYNTHESIS.md")
 		if err := os.WriteFile(templatePath, []byte(customTemplate), 0644); err != nil {
 			t.Fatalf("failed to write template: %v", err)
 		}
@@ -508,10 +436,10 @@ This is a project-specific template.
 
 		workspacePath := filepath.Join(tempDir, ".orch", "workspace", "og-orch-test-04jan")
 
-		// Check SESSION_HANDOFF.template.md was copied to workspace
-		copiedTemplatePath := filepath.Join(workspacePath, "SESSION_HANDOFF.template.md")
+		// Check SYNTHESIS.template.md was copied to workspace
+		copiedTemplatePath := filepath.Join(workspacePath, "SYNTHESIS.template.md")
 		if _, err := os.Stat(copiedTemplatePath); os.IsNotExist(err) {
-			t.Errorf("expected SESSION_HANDOFF.template.md to exist in workspace at %s", copiedTemplatePath)
+			t.Errorf("expected SYNTHESIS.template.md to exist in workspace at %s", copiedTemplatePath)
 		}
 
 		// Check content matches the source template
@@ -551,10 +479,10 @@ This is a project-specific template.
 			t.Error("expected ORCHESTRATOR_CONTEXT.md to exist even without template")
 		}
 
-		// SESSION_HANDOFF.template.md should NOT exist
-		copiedTemplatePath := filepath.Join(workspacePath, "SESSION_HANDOFF.template.md")
+		// SYNTHESIS.template.md should NOT exist
+		copiedTemplatePath := filepath.Join(workspacePath, "SYNTHESIS.template.md")
 		if _, err := os.Stat(copiedTemplatePath); !os.IsNotExist(err) {
-			t.Error("SESSION_HANDOFF.template.md should NOT exist when source template is missing")
+			t.Error("SYNTHESIS.template.md should NOT exist when source template is missing")
 		}
 	})
 }
@@ -562,13 +490,13 @@ This is a project-specific template.
 func TestGenerateOrchestratorContext_MentionsTemplateWhenCopied(t *testing.T) {
 	t.Run("context mentions template when it was copied", func(t *testing.T) {
 		cfg := &Config{
-			Task:                      "orchestrate work",
-			SessionGoal:               "Complete the feature epic",
-			SkillName:                 "orchestrator",
-			ProjectDir:                "/tmp/test",
-			WorkspaceName:             "og-orch-test-04jan",
-			IsOrchestrator:            true,
-			HasSessionHandoffTemplate: true, // This flag should be set by WriteOrchestratorContext
+			Task:                 "orchestrate work",
+			SessionGoal:          "Complete the feature epic",
+			SkillName:            "orchestrator",
+			ProjectDir:           "/tmp/test",
+			WorkspaceName:        "og-orch-test-04jan",
+			IsOrchestrator:       true,
+			HasSynthesisTemplate: true, // This flag should be set by WriteOrchestratorContext
 		}
 
 		content, err := GenerateOrchestratorContext(cfg)
@@ -577,20 +505,20 @@ func TestGenerateOrchestratorContext_MentionsTemplateWhenCopied(t *testing.T) {
 		}
 
 		// Should mention the template file
-		if !strings.Contains(content, "SESSION_HANDOFF.template.md") {
-			t.Error("expected context to mention SESSION_HANDOFF.template.md when HasSessionHandoffTemplate is true")
+		if !strings.Contains(content, "SYNTHESIS.template.md") {
+			t.Error("expected context to mention SYNTHESIS.template.md when HasSynthesisTemplate is true")
 		}
 	})
 
 	t.Run("context does not mention template when not copied", func(t *testing.T) {
 		cfg := &Config{
-			Task:                      "orchestrate work",
-			SessionGoal:               "Complete the feature epic",
-			SkillName:                 "orchestrator",
-			ProjectDir:                "/tmp/test",
-			WorkspaceName:             "og-orch-test-04jan",
-			IsOrchestrator:            true,
-			HasSessionHandoffTemplate: false,
+			Task:                 "orchestrate work",
+			SessionGoal:          "Complete the feature epic",
+			SkillName:            "orchestrator",
+			ProjectDir:           "/tmp/test",
+			WorkspaceName:        "og-orch-test-04jan",
+			IsOrchestrator:       true,
+			HasSynthesisTemplate: false,
 		}
 
 		content, err := GenerateOrchestratorContext(cfg)
@@ -599,47 +527,8 @@ func TestGenerateOrchestratorContext_MentionsTemplateWhenCopied(t *testing.T) {
 		}
 
 		// Should NOT mention template.md file (the .template.md version)
-		if strings.Contains(content, "SESSION_HANDOFF.template.md") {
-			t.Error("context should NOT mention SESSION_HANDOFF.template.md when HasSessionHandoffTemplate is false")
-		}
-	})
-}
-
-func TestEnsureSessionHandoffTemplate_PrefersProjectTemplate(t *testing.T) {
-	t.Run("uses content from project template when it exists", func(t *testing.T) {
-		tempDir := t.TempDir()
-
-		// Create project template with custom content
-		templatesDir := filepath.Join(tempDir, ".orch", "templates")
-		if err := os.MkdirAll(templatesDir, 0755); err != nil {
-			t.Fatalf("failed to create templates dir: %v", err)
-		}
-
-		customContent := `# Custom Project Handoff Template
-
-This is a project-specific template with custom sections.
-
-## Special Section
-Only this project has this section.
-`
-		templatePath := filepath.Join(templatesDir, "SESSION_HANDOFF.md")
-		if err := os.WriteFile(templatePath, []byte(customContent), 0644); err != nil {
-			t.Fatalf("failed to write template: %v", err)
-		}
-
-		// EnsureSessionHandoffTemplate should NOT overwrite
-		if err := EnsureSessionHandoffTemplate(tempDir); err != nil {
-			t.Fatalf("EnsureSessionHandoffTemplate failed: %v", err)
-		}
-
-		// Verify custom content is preserved
-		content, err := os.ReadFile(templatePath)
-		if err != nil {
-			t.Fatalf("failed to read template: %v", err)
-		}
-
-		if string(content) != customContent {
-			t.Error("EnsureSessionHandoffTemplate should preserve existing project template")
+		if strings.Contains(content, "SYNTHESIS.template.md") {
+			t.Error("context should NOT mention SYNTHESIS.template.md when HasSynthesisTemplate is false")
 		}
 	})
 }
@@ -661,75 +550,38 @@ func TestWriteOrchestratorContext_PreCreatesSessionHandoff(t *testing.T) {
 
 	workspacePath := filepath.Join(tempDir, ".orch", "workspace", "og-orch-test-05jan")
 
-	// Check SESSION_HANDOFF.md was pre-created
-	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
+	// Check SYNTHESIS.md was pre-created
+	handoffPath := filepath.Join(workspacePath, "SYNTHESIS.md")
 	if _, err := os.Stat(handoffPath); os.IsNotExist(err) {
-		t.Error("expected SESSION_HANDOFF.md to be pre-created")
+		t.Error("expected SYNTHESIS.md to be pre-created")
 	}
 
 	// Check content has metadata filled in
 	content, err := os.ReadFile(handoffPath)
 	if err != nil {
-		t.Fatalf("failed to read session handoff: %v", err)
+		t.Fatalf("failed to read synthesis: %v", err)
 	}
 
 	contentStr := string(content)
 
 	// Check workspace name is filled in
 	if !strings.Contains(contentStr, "og-orch-test-05jan") {
-		t.Error("SESSION_HANDOFF.md should contain workspace name")
+		t.Error("SYNTHESIS.md should contain workspace name")
 	}
 
 	// Check session goal is filled in
 	if !strings.Contains(contentStr, "Complete the feature epic") {
-		t.Error("SESSION_HANDOFF.md should contain session goal")
+		t.Error("SYNTHESIS.md should contain session goal")
 	}
 
 	// Check it has the progressive documentation comment
 	if !strings.Contains(contentStr, "Progressive Documentation") {
-		t.Error("SESSION_HANDOFF.md should contain progressive documentation guidance")
+		t.Error("SYNTHESIS.md should contain progressive documentation guidance")
 	}
 
 	// Check it prompts for TLDR to be filled
 	if !strings.Contains(contentStr, "Fill within first 5 tool calls") {
-		t.Error("SESSION_HANDOFF.md should prompt for early section fills")
-	}
-}
-
-func TestGeneratePreFilledSessionHandoff(t *testing.T) {
-	content, err := GeneratePreFilledSessionHandoff("og-test-workspace", "Test session goal", "2026-01-05 15:00")
-	if err != nil {
-		t.Fatalf("GeneratePreFilledSessionHandoff failed: %v", err)
-	}
-
-	// Check all metadata is present
-	if !strings.Contains(content, "og-test-workspace") {
-		t.Error("content should contain workspace name")
-	}
-	if !strings.Contains(content, "Test session goal") {
-		t.Error("content should contain session goal")
-	}
-	if !strings.Contains(content, "2026-01-05 15:00") {
-		t.Error("content should contain start time")
-	}
-
-	// Check key sections exist
-	sections := []string{
-		"## TLDR",
-		"## Spawns (Agents Managed)",
-		"## Evidence (What Was Observed)",
-		"## Knowledge (What Was Learned)",
-		"## Friction (What Was Harder Than It Should Be)",
-		"## Focus Progress",
-		"### Where We Started",
-		"## Next (What Should Happen)",
-		"## Session Metadata",
-	}
-
-	for _, section := range sections {
-		if !strings.Contains(content, section) {
-			t.Errorf("content should contain section: %s", section)
-		}
+		t.Error("SYNTHESIS.md should prompt for early section fills")
 	}
 }
 
@@ -749,8 +601,8 @@ func TestOrchestratorContext_HasProgressiveHandoffInstruction(t *testing.T) {
 	}
 
 	// Check the instruction mentions filling TLDR and Where We Started
-	if !strings.Contains(content, "Fill SESSION_HANDOFF.md sections") {
-		t.Error("context should mention filling SESSION_HANDOFF.md sections")
+	if !strings.Contains(content, "Fill SYNTHESIS.md sections") {
+		t.Error("context should mention filling SYNTHESIS.md sections")
 	}
 
 	if !strings.Contains(content, "TLDR") {
@@ -762,7 +614,165 @@ func TestOrchestratorContext_HasProgressiveHandoffInstruction(t *testing.T) {
 	}
 
 	// Check it mentions progressive handoff
-	if !strings.Contains(content, "Progressive Handoff") {
+	if !strings.Contains(content, "Progressive Documentation") {
 		t.Error("context should mention progressive handoff pattern")
+	}
+}
+
+func TestGenerateGitLogContext(t *testing.T) {
+	t.Run("generates git log context in git repository", func(t *testing.T) {
+		// Use the current project directory (orch-go) which is a git repo
+		wd, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("failed to get working directory: %v", err)
+		}
+
+		// Navigate up to project root if we're in pkg/spawn
+		projectDir := wd
+		if strings.HasSuffix(wd, "pkg/spawn") {
+			projectDir = filepath.Join(wd, "../..")
+		}
+
+		gitLogContext := GenerateGitLogContext(projectDir)
+
+		// Should return non-empty string for a git repository
+		if gitLogContext == "" {
+			t.Skip("skipping test - not in a git repository or no commits in last 7 days")
+		}
+
+		// Should contain git log output (hash + message + time)
+		// Example: "7b7b91c investigation: SPAWN_CONTEXT generation issues (2 hours ago)"
+		if !strings.Contains(gitLogContext, "(") || !strings.Contains(gitLogContext, "ago)") {
+			t.Errorf("git log context should contain relative time, got: %s", gitLogContext)
+		}
+	})
+
+	t.Run("highlights beads IDs when present", func(t *testing.T) {
+		// Use the current project directory
+		wd, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("failed to get working directory: %v", err)
+		}
+
+		projectDir := wd
+		if strings.HasSuffix(wd, "pkg/spawn") {
+			projectDir = filepath.Join(wd, "../..")
+		}
+
+		gitLogContext := GenerateGitLogContext(projectDir)
+
+		if gitLogContext == "" {
+			t.Skip("skipping test - not in a git repository or no commits in last 7 days")
+		}
+
+		// If any commits contain beads IDs (like orch-go-21074), they should be bolded
+		// We can't guarantee they exist, so we'll just check the format is reasonable
+		lines := strings.Split(gitLogContext, "\n")
+		if len(lines) == 0 {
+			t.Error("git log context should contain at least one line")
+		}
+
+		// Each line should match the expected format: hash + message + (time ago)
+		for _, line := range lines {
+			if line == "" {
+				continue
+			}
+			// Lines should contain relative time format
+			if !strings.Contains(line, "ago)") {
+				t.Errorf("each line should contain relative time, got: %s", line)
+			}
+		}
+	})
+
+	t.Run("returns empty string for non-git directory", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		gitLogContext := GenerateGitLogContext(tempDir)
+
+		// Should return empty string for non-git directory
+		if gitLogContext != "" {
+			t.Errorf("expected empty string for non-git directory, got: %s", gitLogContext)
+		}
+	})
+
+	t.Run("returns empty string for git repo with no commits", func(t *testing.T) {
+		// Create a temporary git repo with no commits at all
+		tempDir := t.TempDir()
+
+		// Initialize git repo
+		cmd := exec.Command("git", "init")
+		cmd.Dir = tempDir
+		if err := cmd.Run(); err != nil {
+			t.Skip("git not available for testing")
+		}
+
+		// Git log fails in repo with no commits, so returns empty string
+		gitLogContext := GenerateGitLogContext(tempDir)
+
+		// Git log fails in repo with no HEAD - returns empty string
+		if gitLogContext != "" {
+			t.Errorf("expected empty string for repo with no commits, got: %s", gitLogContext)
+		}
+	})
+}
+
+func TestGenerateOrchestratorContext_WithGitLogContext(t *testing.T) {
+	// Use a temporary directory that's a git repo
+	tempDir := t.TempDir()
+
+	// Initialize git repo and create a commit
+	cmd := exec.Command("git", "init")
+	cmd.Dir = tempDir
+	if err := cmd.Run(); err != nil {
+		t.Skip("git not available for testing")
+	}
+
+	// Configure git user for the test
+	exec.Command("git", "config", "user.email", "test@example.com").Dir = tempDir
+	exec.Command("git", "config", "user.name", "Test User").Dir = tempDir
+
+	// Create a commit with a beads ID
+	testFile := filepath.Join(tempDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	exec.Command("git", "add", "test.txt").Dir = tempDir
+	commitCmd := exec.Command("git", "commit", "-m", "fix: test commit for orch-go-12345")
+	commitCmd.Dir = tempDir
+	if err := commitCmd.Run(); err != nil {
+		t.Skip("failed to create test commit")
+	}
+
+	cfg := &Config{
+		Task:           "Ship feature",
+		SessionGoal:    "Ship feature end-to-end",
+		SkillName:      "orchestrator",
+		ProjectDir:     tempDir,
+		WorkspaceName:  "og-orch-test-30jan",
+		IsOrchestrator: true,
+	}
+
+	content, err := GenerateOrchestratorContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateOrchestratorContext failed: %v", err)
+	}
+
+	// Should contain git log context section
+	if !strings.Contains(content, "## Recent Activity") {
+		t.Error("expected content to contain Recent Activity section")
+	}
+	if !strings.Contains(content, "Recent commits in this project") {
+		t.Error("expected content to contain git log context header")
+	}
+
+	// Should contain the test commit message
+	if !strings.Contains(content, "test commit") {
+		t.Error("expected content to contain commit message")
+	}
+
+	// Should highlight the beads ID
+	if !strings.Contains(content, "**orch-go-12345**") {
+		t.Error("expected content to highlight beads ID in bold")
 	}
 }

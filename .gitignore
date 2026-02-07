@@ -1,6 +1,7 @@
 # Binary
 orch-go
 build/
+.autorebuild.lock
 
 # Test/dev executables at root
 /orch
@@ -8,6 +9,7 @@ build/
 /orch-test
 /orch-test-*
 /test-*
+*.test
 
 # Backup files
 *.bak
@@ -27,3 +29,9 @@ tmp/
 
 # Dev/Ops mode (local state, not committed)
 .dev-mode
+.orch/workspace/
+.orch/investigations/
+
+# Playwright outputs (generated)
+web/playwright-report/
+web/test-results/

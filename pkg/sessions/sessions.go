@@ -85,17 +85,17 @@ type SearchOptions struct {
 	After         *time.Time
 	Before        *time.Time
 	Limit         int
-	Client        *opencode.Client
+	Client        opencode.ClientInterface
 }
 
 // Store provides access to OpenCode session storage.
 type Store struct {
 	storagePath string
-	client      *opencode.Client
+	client      opencode.ClientInterface
 }
 
 // NewStore creates a new session store.
-func NewStore(storagePath string, client *opencode.Client) *Store {
+func NewStore(storagePath string, client opencode.ClientInterface) *Store {
 	if storagePath == "" {
 		storagePath = DefaultStoragePath()
 	}

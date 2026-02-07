@@ -2,7 +2,7 @@
 package verify
 
 import (
-	"os/exec"
+	"fmt"
 	"strings"
 )
 
@@ -68,12 +68,12 @@ func (e EscalationLevel) RequiresHumanReview() bool {
 // or other knowledge artifacts that need human absorption to extract value.
 // These should always surface for review regardless of verification status.
 var knowledgeProducingSkills = map[string]bool{
-	"investigation":   true,
-	"architect":       true,
-	"research":        true,
-	"design-session":  true,
-	"codebase-audit":  true,
-	"issue-creation":  true,
+	"investigation":  true,
+	"architect":      true,
+	"research":       true,
+	"design-session": true,
+	"codebase-audit": true,
+	"issue-creation": true,
 }
 
 // IsKnowledgeProducingSkill returns true if the skill produces knowledge artifacts.
@@ -94,12 +94,15 @@ type EscalationInput struct {
 	NextActions    []string // Follow-up items from synthesis
 
 	// Visual verification
-	HasWebChanges        bool // Were web/ files modified?
-	HasVisualEvidence    bool // Is there visual verification evidence?
-	NeedsVisualApproval  bool // Does visual verification need human approval?
+	HasWebChanges       bool // Were web/ files modified?
+	HasVisualEvidence   bool // Is there visual verification evidence?
+	NeedsVisualApproval bool // Does visual verification need human approval?
 
 	// File change scope
 	FileCount int // Number of files changed (0 if unknown)
+
+	// Decision patch detection
+	DecisionsWithoutBlocks []DecisionWithoutBlocks // Decisions referenced but lacking blocks: frontmatter
 
 	// Context
 	WorkspacePath string // Path to agent workspace (for additional analysis)
@@ -109,17 +112,18 @@ type EscalationInput struct {
 // DetermineEscalation analyzes completion signals and returns the appropriate escalation level.
 // The decision tree (in order of precedence):
 //
-// 1. VERIFICATION FAILED? → EscalationFailed
-// 2. SKILL IS KNOWLEDGE-PRODUCING? (investigation, architect, etc.)
-//    → Has recommendations? → EscalationReview
-//    → No recommendations? → EscalationInfo
-// 3. VISUAL VERIFICATION NEEDS APPROVAL? → EscalationBlock
-// 4. OUTCOME != "success"? → EscalationReview
-// 5. HAS RECOMMENDATIONS? (NextActions > 0 OR Recommendation = spawn-follow-up/escalate/resume)
-//    → Large scope (10+ files)? → EscalationReview
-//    → Normal scope? → EscalationInfo
-// 6. LARGE SCOPE? (10+ files) → EscalationInfo
-// 7. OTHERWISE → EscalationNone
+//  1. VERIFICATION FAILED? → EscalationFailed
+//  2. SKILL IS KNOWLEDGE-PRODUCING? (investigation, architect, etc.)
+//     → Has recommendations? → EscalationReview
+//     → No recommendations? → EscalationInfo
+//  3. VISUAL VERIFICATION NEEDS APPROVAL? → EscalationBlock
+//  4. OUTCOME != "success"? → EscalationReview
+//  5. HAS RECOMMENDATIONS? (NextActions > 0 OR Recommendation = spawn-follow-up/escalate/resume)
+//     → Large scope (10+ files)? → EscalationReview
+//     → Normal scope? → EscalationInfo
+//  6. DECISION PATCH WITHOUT BLOCKS? → EscalationInfo
+//  7. LARGE SCOPE? (10+ files) → EscalationInfo
+//  8. OTHERWISE → EscalationNone
 func DetermineEscalation(input EscalationInput) EscalationLevel {
 	// 1. Verification failed - highest priority
 	if !input.VerificationPassed {
@@ -153,12 +157,17 @@ func DetermineEscalation(input EscalationInput) EscalationLevel {
 		return EscalationInfo
 	}
 
-	// 6. Large scope without recommendations - still worth noting
+	// 6. Decision patch without blocks: frontmatter - suggest adding keywords
+	if len(input.DecisionsWithoutBlocks) > 0 {
+		return EscalationInfo
+	}
+
+	// 7. Large scope without recommendations - still worth noting
 	if input.FileCount > 10 {
 		return EscalationInfo
 	}
 
-	// 7. Clean completion - no human attention needed
+	// 8. Clean completion - no human attention needed
 	return EscalationNone
 }
 
@@ -214,27 +223,25 @@ func DetermineEscalationFromCompletion(
 		input.FileCount = countRecentFileChanges(projectDir)
 	}
 
+	// Check for decisions without blocks: frontmatter
+	if workspacePath != "" && projectDir != "" {
+		decisionsWithoutBlocks, _ := FindDecisionsWithoutBlocksFrontmatter(workspacePath, projectDir)
+		input.DecisionsWithoutBlocks = decisionsWithoutBlocks
+	}
+
 	return DetermineEscalation(input)
 }
 
 // countRecentFileChanges counts the number of files changed in recent commits.
 func countRecentFileChanges(projectDir string) int {
-	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
+	files, err := getChangedFiles(projectDir, "")
 	if err != nil {
-		// If git command fails (e.g., not enough commits), try last 1 commit
-		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
-		cmd.Dir = projectDir
-		output, err = cmd.Output()
-		if err != nil {
-			return 0
-		}
+		return 0
 	}
 
 	count := 0
-	for _, line := range strings.Split(string(output), "\n") {
-		if strings.TrimSpace(line) != "" {
+	for _, file := range files {
+		if strings.TrimSpace(file) != "" {
 			count++
 		}
 	}
@@ -244,9 +251,9 @@ func countRecentFileChanges(projectDir string) int {
 // EscalationReason provides a human-readable explanation for an escalation level.
 type EscalationReason struct {
 	Level       EscalationLevel
-	Reason      string // Primary reason for this level
+	Reason      string   // Primary reason for this level
 	Details     []string // Additional context
-	CanOverride bool    // Whether human can override (e.g., Block -> complete with --approve)
+	CanOverride bool     // Whether human can override (e.g., Block -> complete with --approve)
 }
 
 // ExplainEscalation returns a detailed explanation of why a particular
@@ -296,6 +303,13 @@ func ExplainEscalation(input EscalationInput) EscalationReason {
 		} else if hasSignificantRecommendations(input) {
 			reason.Reason = "Has recommendations (optional review)"
 			reason.Details = formatRecommendations(input)
+		} else if len(input.DecisionsWithoutBlocks) > 0 {
+			reason.Reason = "Decision patch detected - consider adding blocks: keywords"
+			reason.Details = []string{}
+			for _, decision := range input.DecisionsWithoutBlocks {
+				reason.Details = append(reason.Details,
+					fmt.Sprintf("Action: Consider adding blocks: keywords to %s", decision.Filename))
+			}
 		} else if input.FileCount > 10 {
 			reason.Reason = "Large scope (optional review)"
 			reason.Details = []string{"Files changed: " + string(rune(input.FileCount))}

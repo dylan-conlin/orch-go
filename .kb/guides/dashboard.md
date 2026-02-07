@@ -2,13 +2,15 @@
 
 **Purpose:** Single authoritative reference for the Swarm Dashboard web UI. Read this before debugging dashboard issues or implementing new features.
 
-**Last verified:** 2026-01-07
+**Last verified:** 2026-01-29
 
 ---
 
 ## Overview
 
-The Swarm Dashboard is a web-based monitoring UI for the orchestration system, served via `orch serve`. It provides real-time visibility into agent status, daemon health, and operational metrics. The dashboard evolved significantly from Dec 21, 2025 to Jan 7, 2026, addressing performance, UX, and architectural issues through 58+ investigations.
+The Swarm Dashboard is a web-based monitoring UI for the orchestration system, served via `orch serve`. It provides real-time visibility into agent status, daemon health, and operational metrics. The dashboard evolved significantly from Dec 21, 2025 to Jan 29, 2026, addressing performance, UX, and architectural issues through 80+ investigations.
+
+**Major evolution:** From Dec 2025 (status-oriented) → Jan 2026 (action-oriented Strategic Center design with Decision Center, screenshot artifacts, and multi-source agent visibility including tmux escape hatch agents).
 
 **Access:** http://localhost:5188 (default) or http://localhost:3348/api/... for API endpoints
 
@@ -98,6 +100,70 @@ The Swarm Dashboard is a web-based monitoring UI for the orchestration system, s
 | Agentlog SSE | Lifecycle events (spawn/complete) | **No** (opt-in via Follow button) |
 
 **Constraint:** Agentlog SSE was changed to opt-in to prevent connection pool exhaustion (see 2026-01-05-inv-dashboard-connection-pool-exhaustion-sse.md)
+
+### Strategic Center / Decision Center (Jan 2026 Redesign)
+
+**What:** Meta-orchestrator decision hub replacing operational NeedsAttention component
+
+**Key insight:** Dashboard should frame work as "what decision do I need to make?" rather than "what's wrong?"
+
+| Category | Purpose | Examples |
+|----------|---------|----------|
+| Absorb Knowledge | Knowledge-producing skill completions needing synthesis | investigation, architect, research completions |
+| Give Approvals | Items requiring visual verification | web/ changes with screenshot evidence |
+| Answer Questions | Strategic questions blocking work | Questions from questions store |
+| Handle Failures | Failed verifications, escalated agents | Dead agents, failed visual verification |
+| Tend Knowledge (Future) | Knowledge hygiene signals | Synthesis opportunities, pending promotions, stale decisions |
+
+**Status:** Designed (Jan 27-28, 2026). Implementation in progress as feat-052.
+
+**Reference:** `.kb/investigations/2026-01-27-design-redesign-dashboard-ops-view-meta.md`, `.kb/investigations/2026-01-28-inv-design-unified-strategic-center-dashboard.md`
+
+### Screenshot Artifacts
+
+**What:** Dashboard tab displaying screenshots from `.orch/workspace/{agent_id}/screenshots/`
+
+**Key features:**
+- Responsive thumbnail grid (2-3 columns based on width)
+- Click-to-expand modal with Escape key handling
+- Lazy loading for performance
+- Empty/loading/error states
+
+**Status:** Fully implemented (Jan 2026). Available in agent detail panel.
+
+**Integration:** `/api/screenshots` endpoint scans workspace screenshots directory, filters for image extensions (.png, .jpg, .jpeg, .gif, .webp).
+
+**Reference:** `.kb/investigations/2026-01-17-inv-dashboard-surface-screenshot-artifacts-verification.md`
+
+### Tmux Session Visibility (Escape Hatch Agents)
+
+**What:** Dashboard integration for Claude CLI agents spawned with `--backend claude --tmux`
+
+**Why it matters:** Escape hatch agents work on critical infrastructure when primary path fails - need same visibility as OpenCode agents.
+
+| Data Point | Claude CLI (tmux) | OpenCode Agents |
+|------------|-------------------|-----------------|
+| Status | From beads Phase + activity detection | From session + Phase |
+| Phase | From beads comments | From beads comments |
+| Tokens | Not available (architectural constraint) | From OpenCode API |
+| Runtime | From .spawn_time file | From session created_at |
+| Activity | Transcript file mtime or pane content | Session last_updated |
+
+**Status:** Designed (Jan 18, 2026). Partial implementation exists (beads lookup), activity detection pending.
+
+**Reference:** `.kb/investigations/2026-01-18-design-dashboard-add-tmux-session-visibility.md`
+
+### Follow Orchestrator (Multi-Project Filtering)
+
+**What:** Dashboard tracks orchestrator's project context for cross-project coordination
+
+**How:** Orchestrator context includes `included_projects` array (e.g., [orch-go, orch-cli, beads, kb-cli, orch-knowledge, opencode]). Dashboard filters agents to show only work in these projects.
+
+**Fix (Jan 14):** Frontend serializes `included_projects` as comma-separated URL param; backend splits and matches against ANY project in the array.
+
+**Key insight:** Cross-project agents have `ProjectDir=spawner-cwd` and `Project=target-project`, so filtering must use `Project` field for correct behavior.
+
+**Reference:** `.kb/investigations/2026-01-14-inv-dashboard-follow-orchestrator-broken-implemented.md`
 
 ---
 
@@ -204,6 +270,30 @@ Using any rune triggers "runes mode" which silently breaks `$:` reactive stateme
 **Fix:** Added `is_stale` boolean field. Stale agents are included in response (skip beads fetch for performance) and displayed with 📦 indicator in Archive section.
 
 **Reference:** 2026-01-07-inv-fix-dashboard-show-older-agents.md
+
+### "Dashboard not loading / Services not running" (Jan 21)
+
+**Cause:** All three dashboard services stopped (OpenCode on 4096, orch API on 3348, web UI on 5188)
+
+**Why it happens:** Claude Code runs in a Linux sandbox while service binaries are compiled for macOS ARM - agents cannot start/stop host services.
+
+**Fix:** User must run `~/bin/orch-dashboard start` from macOS terminal (not from agent)
+
+**Check:** `lsof -i :4096 -i :3348 -i :5188` - should show 3 processes
+
+**Key insight:** Dashboard services are host infrastructure - agents provide observability but can't manage lifecycle.
+
+**Reference:** 2026-01-21-inv-dashboard-not-loading-opencode-server.md
+
+### "Price-watch agents showing in orch-go dashboard" (Jan 14)
+
+**Cause:** Multi-project filtering incomplete - frontend stored `included_projects` but didn't serialize to URL params; backend only accepted single filter string
+
+**Fix:** Frontend serializes `included_projects` as comma-separated param; backend splits and matches against ANY project in array
+
+**Key insight:** Cross-project agents have `ProjectDir=spawner-cwd`, `Project=target-project` - must use `Project` field for filtering
+
+**Reference:** 2026-01-14-inv-dashboard-follow-orchestrator-broken-implemented.md
 
 ---
 
@@ -366,6 +456,8 @@ OpenCode persists all session data to `~/.local/share/opencode/storage/` and exp
 *Cross-Project Visibility:*
 - `2026-01-07-inv-dashboard-agents-filter-session-directory.md` - project_dir vs session directory
 - `2026-01-07-inv-dashboard-beads-follow-orchestrator-tmux.md` - Per-project beads cache
+- `2026-01-14-inv-dashboard-follow-orchestrator-broken-implemented.md` - Multi-project filtering fix (comma-separated params)
+- `2026-01-16-inv-dashboard-follow-mode-project-mismatch.md` - Follow mode project matching
 
 *Data Pipeline Integrity:*
 - `2026-01-07-inv-dashboard-shows-usage-anthropic-api.md` - Null handling with pointer types
@@ -381,6 +473,20 @@ OpenCode persists all session data to `~/.local/share/opencode/storage/` and exp
 - `2025-12-27-inv-dashboard-two-modes-operational-default.md` - Two-mode design
 - `2026-01-04-design-dashboard-agent-status-model.md` - Priority cascade model
 - `2025-12-26-design-web-dashboard-daemon-visibility.md` - Daemon integration
+- `2026-01-18-design-dashboard-add-tmux-session-visibility.md` - Tmux escape hatch agent visibility
+
+*Strategic Center / UX Redesign:*
+- `2026-01-27-design-redesign-dashboard-ops-view-meta.md` - Decision Center (action-oriented UX)
+- `2026-01-28-inv-design-unified-strategic-center-dashboard.md` - 5-category Strategic Center
+- `2026-01-09-inv-dashboard-add-approval-action-design.md` - Approval workflow for visual verification
+
+*Screenshot Artifacts:*
+- `2026-01-17-inv-dashboard-surface-screenshot-artifacts-verification.md` - Screenshots tab implementation
+- `2026-01-16-inv-dashboard-add-image-paste-upload.md` - Image upload design
+
+*Service Reliability:*
+- `2026-01-21-inv-dashboard-not-loading-opencode-server.md` - Services lifecycle vs agent sandbox constraint
+- `2026-01-16-inv-orch-dashboard-handle-already-running.md` - Dashboard startup handling
 
 *Bug fixes:*
 - `2025-12-22-debug-dashboard-shows-0-agents-despite-api-returning-209.md` - Svelte 5 runes
@@ -404,3 +510,11 @@ OpenCode persists all session data to `~/.local/share/opencode/storage/` and exp
 - **2026-01-05:** Connection pool exhaustion fix
 - **2026-01-06:** Guide created synthesizing 44 investigations
 - **2026-01-07:** Major performance work - O(n²) investigation discovery fix (51x improvement), early filter application, cross-project visibility fixes, null/stale handling, activity feed persistence design. Guide updated with 14 new investigations (58 total)
+- **2026-01-09:** Approval action design for visual verification workflow
+- **2026-01-14:** Follow-orchestrator multi-project filtering fix (comma-separated projects param)
+- **2026-01-17:** Screenshot artifacts feature verified complete (thumbnails, click-to-expand)
+- **2026-01-18:** Tmux session visibility design for Claude CLI escape hatch agents
+- **2026-01-21:** Service lifecycle investigation (dashboard services vs agent sandbox constraint)
+- **2026-01-27:** Strategic Center UX redesign - from status-oriented to action-oriented (Decision Center)
+- **2026-01-28:** Strategic Center expanded to 5 categories (added "Tend Knowledge" for knowledge hygiene)
+- **2026-01-29:** Guide updated synthesizing 24 new investigations (Jan 7-29), total 82+ investigations

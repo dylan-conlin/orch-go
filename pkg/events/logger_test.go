@@ -367,3 +367,206 @@ func TestLogStatusChange(t *testing.T) {
 		t.Error("LogStatusChange() should include status in data")
 	}
 }
+
+// Test LogVerificationBypassed helper
+func TestLogVerificationBypassed(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogVerificationBypassed(VerificationBypassedData{
+		BeadsID:   "orch-go-abc1",
+		Workspace: "og-feat-test-14jan",
+		Gate:      "test_evidence",
+		Reason:    "Tests run in CI pipeline",
+		Skill:     "feature-impl",
+	})
+	if err != nil {
+		t.Fatalf("LogVerificationBypassed() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	// Verify event type
+	if !strings.Contains(string(data), EventTypeVerificationBypassed) {
+		t.Error("LogVerificationBypassed() should log verification.bypassed event type")
+	}
+	// Verify gate
+	if !strings.Contains(string(data), "test_evidence") {
+		t.Error("LogVerificationBypassed() should include gate in data")
+	}
+	// Verify reason
+	if !strings.Contains(string(data), "Tests run in CI pipeline") {
+		t.Error("LogVerificationBypassed() should include reason in data")
+	}
+	// Verify beads_id
+	if !strings.Contains(string(data), "orch-go-abc1") {
+		t.Error("LogVerificationBypassed() should include beads_id in data")
+	}
+	// Verify workspace
+	if !strings.Contains(string(data), "og-feat-test-14jan") {
+		t.Error("LogVerificationBypassed() should include workspace in data")
+	}
+	// Verify skill
+	if !strings.Contains(string(data), "feature-impl") {
+		t.Error("LogVerificationBypassed() should include skill in data")
+	}
+}
+
+// Test LogVerificationBypassed with minimal data
+func TestLogVerificationBypassed_Minimal(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogVerificationBypassed(VerificationBypassedData{
+		Gate:   "git_diff",
+		Reason: "Docs-only change",
+	})
+	if err != nil {
+		t.Fatalf("LogVerificationBypassed() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	// Verify required fields
+	if !strings.Contains(string(data), "git_diff") {
+		t.Error("LogVerificationBypassed() should include gate")
+	}
+	if !strings.Contains(string(data), "Docs-only change") {
+		t.Error("LogVerificationBypassed() should include reason")
+	}
+}
+
+// Test VerificationBypassedData serialization
+func TestVerificationBypassedDataSerialization(t *testing.T) {
+	data := VerificationBypassedData{
+		BeadsID:   "orch-go-abc1",
+		Workspace: "og-feat-test",
+		Gate:      "test_evidence",
+		Reason:    "Test reason",
+		Skill:     "feature-impl",
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+
+	var parsed VerificationBypassedData
+	if err := json.Unmarshal(jsonData, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	if parsed.Gate != data.Gate {
+		t.Errorf("Gate = %v, want %v", parsed.Gate, data.Gate)
+	}
+	if parsed.Reason != data.Reason {
+		t.Errorf("Reason = %v, want %v", parsed.Reason, data.Reason)
+	}
+	if parsed.BeadsID != data.BeadsID {
+		t.Errorf("BeadsID = %v, want %v", parsed.BeadsID, data.BeadsID)
+	}
+}
+
+// Test SSE connection logging
+func TestLogSSEConnectionEstablished(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogSSEConnectionEstablished()
+	if err != nil {
+		t.Fatalf("LogSSEConnectionEstablished() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	if !strings.Contains(string(data), EventTypeSSEConnectionEstablished) {
+		t.Error("LogSSEConnectionEstablished() should log sse.connection_established event type")
+	}
+}
+
+// Test SSE connection lost logging
+func TestLogSSEConnectionLost(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogSSEConnectionLost("connection timeout")
+	if err != nil {
+		t.Fatalf("LogSSEConnectionLost() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	if !strings.Contains(string(data), EventTypeSSEConnectionLost) {
+		t.Error("LogSSEConnectionLost() should log sse.connection_lost event type")
+	}
+	if !strings.Contains(string(data), "connection timeout") {
+		t.Error("LogSSEConnectionLost() should include error in data")
+	}
+}
+
+// Test SSE reconnection attempt logging
+func TestLogSSEReconnectionAttempt(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogSSEReconnectionAttempt(3, 5000)
+	if err != nil {
+		t.Fatalf("LogSSEReconnectionAttempt() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	if !strings.Contains(string(data), EventTypeSSEReconnectionAttempt) {
+		t.Error("LogSSEReconnectionAttempt() should log sse.reconnection_attempt event type")
+	}
+	if !strings.Contains(string(data), "\"attempt\":3") {
+		t.Error("LogSSEReconnectionAttempt() should include attempt number in data")
+	}
+	if !strings.Contains(string(data), "\"delay_ms\":5000") {
+		t.Error("LogSSEReconnectionAttempt() should include delay in data")
+	}
+}
+
+// Test SSE reconnection success logging
+func TestLogSSEReconnectionSuccess(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogSSEReconnectionSuccess(2)
+	if err != nil {
+		t.Fatalf("LogSSEReconnectionSuccess() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	if !strings.Contains(string(data), EventTypeSSEReconnectionSuccess) {
+		t.Error("LogSSEReconnectionSuccess() should log sse.reconnection_success event type")
+	}
+	if !strings.Contains(string(data), "\"attempts\":2") {
+		t.Error("LogSSEReconnectionSuccess() should include attempt count in data")
+	}
+}

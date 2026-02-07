@@ -120,8 +120,9 @@ Look for instructions on how to properly modify this file.`,
 }
 
 var guardedCmd = &cobra.Command{
-	Use:   "guarded [name]",
-	Short: "List guarded files and their modification protocols",
+	Use:    "guarded [name]",
+	Short:  "List guarded files and their modification protocols",
+	Hidden: true,
 	Long: `List files that have modification protocols enforced by the guarded-files plugin.
 
 These files require following specific procedures before editing. The guarded-files
