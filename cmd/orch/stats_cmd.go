@@ -172,23 +172,23 @@ type SessionStatsSummary struct {
 // EscapeHatchStats tracks escape hatch spawn usage (--backend claude)
 // Escape hatch provides resilience when OpenCode server is unstable
 type EscapeHatchStats struct {
-	TotalSpawns    int                      `json:"total_spawns"`     // All-time escape hatch spawns
-	Last7DaySpawns int                      `json:"last_7d_spawns"`   // Last 7 days
-	Last30DaySpawns int                     `json:"last_30d_spawns"`  // Last 30 days
-	ByAccount       []AccountSpawnBreakdown `json:"by_account"`       // Breakdown by Claude Max account
+	TotalSpawns     int                     `json:"total_spawns"`      // All-time escape hatch spawns
+	Last7DaySpawns  int                     `json:"last_7d_spawns"`    // Last 7 days
+	Last30DaySpawns int                     `json:"last_30d_spawns"`   // Last 30 days
+	ByAccount       []AccountSpawnBreakdown `json:"by_account"`        // Breakdown by Claude Max account
 	EscapeHatchRate float64                 `json:"escape_hatch_rate"` // % of spawns using escape hatch (in analysis window)
 }
 
 // VerificationStats tracks completion verification metrics
 // Enables identifying miscalibrated gates (high fail + high force = false positive pattern)
 type VerificationStats struct {
-	TotalAttempts       int                     `json:"total_attempts"`       // Total completion attempts
-	PassedFirstTry      int                     `json:"passed_first_try"`     // Passed verification on first try
-	Bypassed            int                     `json:"bypassed"`             // Used --force to bypass failures
-	PassRate            float64                 `json:"pass_rate"`            // % passed first try
-	BypassRate          float64                 `json:"bypass_rate"`          // % bypassed with --force
-	FailuresByGate      []GateFailureStats      `json:"failures_by_gate"`     // Breakdown by gate type
-	BySkill             []SkillVerificationStats `json:"by_skill,omitempty"` // Optional: breakdown by skill
+	TotalAttempts  int                      `json:"total_attempts"`     // Total completion attempts
+	PassedFirstTry int                      `json:"passed_first_try"`   // Passed verification on first try
+	Bypassed       int                      `json:"bypassed"`           // Used --force to bypass failures
+	PassRate       float64                  `json:"pass_rate"`          // % passed first try
+	BypassRate     float64                  `json:"bypass_rate"`        // % bypassed with --force
+	FailuresByGate []GateFailureStats       `json:"failures_by_gate"`   // Breakdown by gate type
+	BySkill        []SkillVerificationStats `json:"by_skill,omitempty"` // Optional: breakdown by skill
 }
 
 // GateFailureStats tracks failure count for a specific verification gate
@@ -201,11 +201,11 @@ type GateFailureStats struct {
 
 // SkillVerificationStats tracks verification metrics per skill
 type SkillVerificationStats struct {
-	Skill           string  `json:"skill"`
-	TotalAttempts   int     `json:"total_attempts"`
-	PassedFirstTry  int     `json:"passed_first_try"`
-	Bypassed        int     `json:"bypassed"`
-	PassRate        float64 `json:"pass_rate"`
+	Skill          string  `json:"skill"`
+	TotalAttempts  int     `json:"total_attempts"`
+	PassedFirstTry int     `json:"passed_first_try"`
+	Bypassed       int     `json:"bypassed"`
+	PassRate       float64 `json:"pass_rate"`
 }
 
 // AccountSpawnBreakdown tracks spawns per Claude Max account
@@ -296,7 +296,54 @@ func parseEvents(path string) ([]StatsEvent, error) {
 	return events, nil
 }
 
-func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *StatsReport {
+// escapeHatchSpawn tracks a spawn that used the escape hatch (--backend claude)
+type escapeHatchSpawn struct {
+	timestamp int64
+	account   string
+}
+
+// statsAggregator holds all intermediate tracking state needed during event processing.
+// This separates the accumulation state from the final StatsReport output.
+type statsAggregator struct {
+	report           *StatsReport
+	includeUntracked bool
+
+	// Time window cutoffs
+	cutoffDays int64 // --days window for main stats
+	cutoff7d   int64 // 7 days for escape hatch
+	cutoff30d  int64 // 30 days for escape hatch
+
+	// Session tracking
+	spawnTimes         map[string]int64  // session_id -> timestamp
+	spawnSkills        map[string]string // session_id -> skill
+	spawnBeadsIDs      map[string]string // session_id -> beads_id
+	untrackedSessions  map[string]bool   // session_id -> true if untracked
+	workspaceToSession map[string]string // workspace -> session_id (pseudo)
+
+	// Completion tracking
+	beadsCompletions  map[string]int64 // beads_id -> completion timestamp
+	completedBeadsIDs map[string]bool  // beads_id -> true if already counted
+	durations         []float64
+
+	// Skill tracking
+	skillCounts map[string]*SkillStatsSummary
+
+	// Escape hatch tracking (multi-window: total, 7d, 30d)
+	escapeHatchSpawns   []escapeHatchSpawn
+	escapeHatchInWindow int // count within --days window
+
+	// Verification tracking
+	gateFailures      map[string]int                     // gate -> failure count
+	gatesBypassed     map[string]int                     // gate -> bypass count
+	skillVerification map[string]*SkillVerificationStats // skill -> verification stats
+
+	// Event counting
+	eventsInWindow int
+}
+
+// newStatsAggregator creates a new aggregator with all tracking state initialized.
+func newStatsAggregator(days int, includeUntracked bool) *statsAggregator {
+	now := time.Now().Unix()
 	report := &StatsReport{
 		GeneratedAt:    time.Now().Format(time.RFC3339),
 		AnalysisPeriod: fmt.Sprintf("Last %d days", days),
@@ -305,503 +352,436 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 	}
 	report.Summary.IncludesUntracked = includeUntracked
 
-	// Time window cutoffs
-	now := time.Now().Unix()
-	cutoffDays := now - int64(days*86400)    // --days window for main stats
-	cutoff7d := now - int64(7*86400)         // 7 days for escape hatch
-	cutoff30d := now - int64(30*86400)       // 30 days for escape hatch
+	return &statsAggregator{
+		report:           report,
+		includeUntracked: includeUntracked,
 
-	// Track spawn times for duration calculation
-	spawnTimes := make(map[string]int64)       // session_id -> timestamp
-	spawnSkills := make(map[string]string)     // session_id -> skill
-	spawnBeadsIDs := make(map[string]string)   // session_id -> beads_id
-	untrackedSessions := make(map[string]bool) // session_id -> true if untracked
-	skillCounts := make(map[string]*SkillStatsSummary)
-	var durations []float64
+		cutoffDays: now - int64(days*86400),
+		cutoff7d:   now - int64(7*86400),
+		cutoff30d:  now - int64(30*86400),
 
-	// Track beads completions to correlate with spawns
-	beadsCompletions := make(map[string]int64) // beads_id -> completion timestamp
+		spawnTimes:         make(map[string]int64),
+		spawnSkills:        make(map[string]string),
+		spawnBeadsIDs:      make(map[string]string),
+		untrackedSessions:  make(map[string]bool),
+		workspaceToSession: make(map[string]string),
 
-	// Track unique completions by beads_id to avoid double-counting
-	// When multiple agent.completed events exist for same beads_id, we:
-	// 1. Only count the completion once
-	// 2. Use the latest event for duration calculation
-	completedBeadsIDs := make(map[string]bool) // beads_id -> true if already counted
+		beadsCompletions:  make(map[string]int64),
+		completedBeadsIDs: make(map[string]bool),
 
-	// Track workspace -> session mapping for orchestrator completions
-	// (orchestrators don't have beads_id, they use workspace for correlation)
-	workspaceToSession := make(map[string]string) // workspace -> session_id (pseudo)
+		skillCounts: make(map[string]*SkillStatsSummary),
+
+		gateFailures:      make(map[string]int),
+		gatesBypassed:     make(map[string]int),
+		skillVerification: make(map[string]*SkillVerificationStats),
+	}
+}
+
+// findSessionByBeadsID looks up the session ID that was spawned with the given beads_id.
+func (a *statsAggregator) findSessionByBeadsID(beadsID string) string {
+	for sid, spawnBeadsID := range a.spawnBeadsIDs {
+		if spawnBeadsID == beadsID {
+			return sid
+		}
+	}
+	return ""
+}
+
+// handleSpawned processes a session.spawned event.
+// It tracks spawn metadata (always, regardless of time window) and counts spawns within the window.
+func (a *statsAggregator) handleSpawned(event StatsEvent) {
+	// Extract skill, beads_id, workspace, spawn_mode, and account from data
+	var beadsID, skill, workspace, spawnMode, account string
+	if data := event.Data; data != nil {
+		if s, ok := data["skill"].(string); ok && s != "" {
+			skill = s
+		}
+		if b, ok := data["beads_id"].(string); ok && b != "" {
+			beadsID = b
+		}
+		if w, ok := data["workspace"].(string); ok && w != "" {
+			workspace = w
+		}
+		if m, ok := data["spawn_mode"].(string); ok && m != "" {
+			spawnMode = m
+		}
+		if ac, ok := data["usage_account"].(string); ok && ac != "" {
+			account = ac
+		}
+	}
 
 	// Track escape hatch spawns (spawn_mode = "claude")
-	// This is tracked separately to support multi-window analysis (total, 7d, 30d)
-	type escapeHatchSpawn struct {
-		timestamp int64
-		account   string
+	// This is tracked across all time windows for comprehensive metrics
+	if spawnMode == "claude" {
+		a.escapeHatchSpawns = append(a.escapeHatchSpawns, escapeHatchSpawn{
+			timestamp: event.Timestamp,
+			account:   account,
+		})
+		if event.Timestamp >= a.cutoffDays {
+			a.escapeHatchInWindow++
+		}
 	}
-	var escapeHatchSpawns []escapeHatchSpawn
-	escapeHatchInWindow := 0 // count of escape hatch spawns within --days window
 
-	// Track verification stats
-	// gateFailures tracks how many times each gate failed across all verification.failed events
-	gateFailures := make(map[string]int)      // gate -> failure count
-	gatesBypassed := make(map[string]int)     // gate -> bypass count (from agent.completed with forced=true)
-	skillVerification := make(map[string]*SkillVerificationStats) // skill -> verification stats
+	// Determine the effective session ID
+	// For orchestrators (empty SessionID), use workspace as the key
+	effectiveSessionID := event.SessionID
+	if effectiveSessionID == "" && workspace != "" {
+		effectiveSessionID = "ws:" + workspace // prefix to avoid collision
+	}
 
-	// Count events within analysis window for EventsAnalyzed
-	eventsInWindow := 0
+	a.spawnTimes[effectiveSessionID] = event.Timestamp
+	if skill != "" {
+		a.spawnSkills[effectiveSessionID] = skill
+	}
+	if beadsID != "" {
+		a.spawnBeadsIDs[effectiveSessionID] = beadsID
+	}
+	if workspace != "" {
+		a.workspaceToSession[workspace] = effectiveSessionID
+	}
 
+	// Check if this is an untracked spawn
+	isUntracked := isUntrackedSpawn(beadsID)
+	if isUntracked {
+		a.untrackedSessions[effectiveSessionID] = true
+		if event.Timestamp >= a.cutoffDays {
+			a.report.Summary.UntrackedSpawns++
+		}
+	}
+
+	// Skip events outside the --days window for main stats
+	if event.Timestamp < a.cutoffDays {
+		return
+	}
+
+	// Coordination skills (orchestrator, meta-orchestrator) are always counted
+	// even when untracked, since they're interactive sessions not task work.
+	isCoordinationSkill := coordinationSkills[skill]
+
+	// Only count toward overall metrics if tracked OR includeUntracked OR coordination skill
+	if !isUntracked || a.includeUntracked || isCoordinationSkill {
+		a.report.Summary.TotalSpawns++
+		if skill != "" {
+			if _, exists := a.skillCounts[skill]; !exists {
+				a.skillCounts[skill] = &SkillStatsSummary{
+					Skill:    skill,
+					Category: getSkillCategory(skill),
+				}
+			}
+			a.skillCounts[skill].Spawns++
+		}
+	}
+}
+
+// handleSessionCompleted processes a session.completed event.
+func (a *statsAggregator) handleSessionCompleted(event StatsEvent) {
+	if event.Timestamp < a.cutoffDays {
+		return
+	}
+
+	// Extract beads_id for deduplication
+	var sessionBeadsID string
+	if data := event.Data; data != nil {
+		if b, ok := data["beads_id"].(string); ok && b != "" {
+			sessionBeadsID = b
+		}
+	}
+
+	// Deduplicate by beads_id (same as agent.completed)
+	deduplicationKey := sessionBeadsID
+	if sessionBeadsID == "" {
+		deduplicationKey = "session:" + event.SessionID
+	}
+
+	alreadyCounted := a.completedBeadsIDs[deduplicationKey]
+
+	// Check if this is an untracked session
+	isUntracked := a.untrackedSessions[event.SessionID] || isUntrackedSpawn(sessionBeadsID)
+	if isUntracked && !alreadyCounted {
+		a.report.Summary.UntrackedCompletions++
+	}
+	// Only count if tracked OR includeUntracked is set, AND not already counted
+	if (!isUntracked || a.includeUntracked) && !alreadyCounted {
+		a.completedBeadsIDs[deduplicationKey] = true
+		a.report.Summary.TotalCompletions++
+		// Calculate duration if we have spawn time
+		if spawnTime, ok := a.spawnTimes[event.SessionID]; ok {
+			duration := float64(event.Timestamp-spawnTime) / 60.0 // minutes
+			if duration > 0 && duration < 480 {                   // Sanity check: < 8 hours
+				a.durations = append(a.durations, duration)
+			}
+		}
+		// Update skill completions
+		if skill, ok := a.spawnSkills[event.SessionID]; ok {
+			if stats, exists := a.skillCounts[skill]; exists {
+				stats.Completions++
+			}
+		}
+	}
+}
+
+// handleAgentCompleted processes an agent.completed event.
+// This is the most complex handler due to orchestrator correlation, deduplication,
+// duration tracking, and verification metrics.
+func (a *statsAggregator) handleAgentCompleted(event StatsEvent) {
+	if event.Timestamp < a.cutoffDays {
+		return
+	}
+
+	// Extract beads_id, workspace, and flags for correlation
+	var beadsID, workspace, sessionID, eventSkill string
+	var isOrchestrator, eventMarkedUntracked, verificationPassed, wasForced bool
+	var eventGatesBypassed []string
+
+	if data := event.Data; data != nil {
+		if b, ok := data["beads_id"].(string); ok && b != "" {
+			beadsID = b
+			a.beadsCompletions[beadsID] = event.Timestamp
+			sessionID = a.findSessionByBeadsID(beadsID)
+		}
+		if orch, ok := data["orchestrator"].(bool); ok && orch {
+			isOrchestrator = true
+		}
+		if unt, ok := data["untracked"].(bool); ok && unt {
+			eventMarkedUntracked = true
+		}
+		if w, ok := data["workspace"].(string); ok && w != "" {
+			workspace = w
+			// For orchestrators, correlate via workspace if beads_id didn't work
+			if sessionID == "" && workspace != "" {
+				if sid, ok := a.workspaceToSession[workspace]; ok {
+					sessionID = sid
+				}
+			}
+		}
+		if vp, ok := data["verification_passed"].(bool); ok {
+			verificationPassed = vp
+		}
+		if f, ok := data["forced"].(bool); ok {
+			wasForced = f
+		}
+		if gb, ok := data["gates_bypassed"].([]interface{}); ok {
+			for _, g := range gb {
+				if gate, ok := g.(string); ok {
+					eventGatesBypassed = append(eventGatesBypassed, gate)
+				}
+			}
+		}
+		if s, ok := data["skill"].(string); ok && s != "" {
+			eventSkill = s
+		}
+	}
+
+	// Check if untracked:
+	// 1. Event explicitly marked untracked
+	// 2. beads_id pattern contains "untracked"
+	// 3. Session was marked untracked at spawn time
+	// 4. Orchestrator completion that couldn't be correlated
+	isUntracked := eventMarkedUntracked || isUntrackedSpawn(beadsID) || a.untrackedSessions[sessionID]
+	if isOrchestrator && sessionID == "" && !isUntracked {
+		isUntracked = true
+	}
+
+	// Deduplicate completions by beads_id
+	deduplicationKey := beadsID
+	if beadsID == "" {
+		deduplicationKey = "ws:" + workspace
+	}
+
+	alreadyCounted := a.completedBeadsIDs[deduplicationKey]
+
+	// Track untracked completions (don't double-count orchestrator completions)
+	if isUntracked && !isOrchestrator && !alreadyCounted {
+		a.report.Summary.UntrackedCompletions++
+	}
+
+	// Check if this is a coordination skill (via correlated session)
+	var isCoordinationSkill bool
+	if sessionID != "" {
+		if skill, ok := a.spawnSkills[sessionID]; ok {
+			isCoordinationSkill = coordinationSkills[skill]
+		}
+	}
+
+	shouldCount := !isUntracked || a.includeUntracked || isCoordinationSkill
+
+	// Count completion (deduplicated)
+	if shouldCount && !alreadyCounted {
+		a.completedBeadsIDs[deduplicationKey] = true
+		a.report.Summary.TotalCompletions++
+		if sessionID != "" {
+			if skill, ok := a.spawnSkills[sessionID]; ok {
+				if stats, exists := a.skillCounts[skill]; exists {
+					stats.Completions++
+				}
+			}
+		}
+	}
+
+	// Calculate duration (only on first completion for this beads_id)
+	if shouldCount && sessionID != "" && !alreadyCounted {
+		if spawnTime, ok := a.spawnTimes[sessionID]; ok {
+			duration := float64(event.Timestamp-spawnTime) / 60.0
+			if duration > 0 && duration < 480 {
+				a.durations = append(a.durations, duration)
+			}
+		}
+	}
+
+	// Track verification metrics (only for unique completions)
+	if shouldCount && !alreadyCounted {
+		a.trackVerification(eventSkill, sessionID, verificationPassed, wasForced, eventGatesBypassed)
+	}
+}
+
+// trackVerification records verification metrics for a completion event.
+func (a *statsAggregator) trackVerification(eventSkill, sessionID string, passed, forced bool, gatesBypassed []string) {
+	a.report.VerificationStats.TotalAttempts++
+	if passed {
+		a.report.VerificationStats.PassedFirstTry++
+	}
+	if forced {
+		a.report.VerificationStats.Bypassed++
+		for _, gate := range gatesBypassed {
+			a.gatesBypassed[gate]++
+		}
+	}
+
+	// Track per-skill verification stats
+	skill := eventSkill
+	if skill == "" && sessionID != "" {
+		skill = a.spawnSkills[sessionID]
+	}
+	if skill != "" {
+		if _, exists := a.skillVerification[skill]; !exists {
+			a.skillVerification[skill] = &SkillVerificationStats{Skill: skill}
+		}
+		a.skillVerification[skill].TotalAttempts++
+		if passed {
+			a.skillVerification[skill].PassedFirstTry++
+		}
+		if forced {
+			a.skillVerification[skill].Bypassed++
+		}
+	}
+}
+
+// handleAbandoned processes an agent.abandoned event.
+func (a *statsAggregator) handleAbandoned(event StatsEvent) {
+	if event.Timestamp < a.cutoffDays {
+		return
+	}
+
+	var beadsID, sessionID string
+	if data := event.Data; data != nil {
+		if b, ok := data["beads_id"].(string); ok && b != "" {
+			beadsID = b
+			sessionID = a.findSessionByBeadsID(beadsID)
+		}
+	}
+
+	isUntracked := isUntrackedSpawn(beadsID) || a.untrackedSessions[sessionID]
+
+	if !isUntracked || a.includeUntracked {
+		a.report.Summary.TotalAbandonments++
+		if sessionID != "" {
+			if skill, ok := a.spawnSkills[sessionID]; ok {
+				if stats, exists := a.skillCounts[skill]; exists {
+					stats.Abandonments++
+				}
+			}
+		}
+	}
+}
+
+// handleVerificationFailed processes a verification.failed event.
+func (a *statsAggregator) handleVerificationFailed(event StatsEvent) {
+	if event.Timestamp < a.cutoffDays {
+		return
+	}
+	if data := event.Data; data != nil {
+		if gatesFailed, ok := data["gates_failed"].([]interface{}); ok {
+			for _, g := range gatesFailed {
+				if gate, ok := g.(string); ok {
+					a.gateFailures[gate]++
+				}
+			}
+		}
+		// Track by skill for optional breakdown
+		if skill, ok := data["skill"].(string); ok && skill != "" {
+			if _, exists := a.skillVerification[skill]; !exists {
+				a.skillVerification[skill] = &SkillVerificationStats{Skill: skill}
+			}
+		}
+	}
+}
+
+// processEvents iterates through all events and dispatches to the appropriate handler.
+func (a *statsAggregator) processEvents(events []StatsEvent) {
 	for _, event := range events {
-		// Track events in analysis window
-		if event.Timestamp >= cutoffDays {
-			eventsInWindow++
+		if event.Timestamp >= a.cutoffDays {
+			a.eventsInWindow++
 		}
 
 		switch event.Type {
 		case "session.spawned":
-			// Extract skill, beads_id, workspace, spawn_mode, and account from data
-			var beadsID string
-			var skill string
-			var workspace string
-			var spawnMode string
-			var account string
-			if data := event.Data; data != nil {
-				if s, ok := data["skill"].(string); ok && s != "" {
-					skill = s
-				}
-				if b, ok := data["beads_id"].(string); ok && b != "" {
-					beadsID = b
-				}
-				if w, ok := data["workspace"].(string); ok && w != "" {
-					workspace = w
-				}
-				if m, ok := data["spawn_mode"].(string); ok && m != "" {
-					spawnMode = m
-				}
-				if a, ok := data["usage_account"].(string); ok && a != "" {
-					account = a
-				}
-			}
-
-			// Track escape hatch spawns (spawn_mode = "claude")
-			// This is tracked across all time windows for comprehensive metrics
-			if spawnMode == "claude" {
-				escapeHatchSpawns = append(escapeHatchSpawns, escapeHatchSpawn{
-					timestamp: event.Timestamp,
-					account:   account,
-				})
-				// Track if within --days window for escape hatch rate calculation
-				if event.Timestamp >= cutoffDays {
-					escapeHatchInWindow++
-				}
-			}
-
-			// Determine the effective session ID
-			// For orchestrators (empty SessionID), use workspace as the key
-			effectiveSessionID := event.SessionID
-			if effectiveSessionID == "" && workspace != "" {
-				effectiveSessionID = "ws:" + workspace // prefix to avoid collision
-			}
-
-			spawnTimes[effectiveSessionID] = event.Timestamp
-			if skill != "" {
-				spawnSkills[effectiveSessionID] = skill
-			}
-			if beadsID != "" {
-				spawnBeadsIDs[effectiveSessionID] = beadsID
-			}
-			if workspace != "" {
-				workspaceToSession[workspace] = effectiveSessionID
-			}
-
-			// Check if this is an untracked spawn
-			isUntracked := isUntrackedSpawn(beadsID)
-			if isUntracked {
-				untrackedSessions[effectiveSessionID] = true
-				// Only count untracked in window
-				if event.Timestamp >= cutoffDays {
-					report.Summary.UntrackedSpawns++
-				}
-			}
-
-			// Skip events outside the --days window for main stats
-			if event.Timestamp < cutoffDays {
-				continue
-			}
-
-			// Coordination skills (orchestrator, meta-orchestrator) are always counted
-			// even when untracked, since they're interactive sessions not task work.
-			// The --include-untracked flag affects overall metrics, not coordination skill tracking.
-			isCoordinationSkill := coordinationSkills[skill]
-
-			// Only count toward overall metrics if tracked OR includeUntracked OR coordination skill
-			if !isUntracked || includeUntracked || isCoordinationSkill {
-				report.Summary.TotalSpawns++
-				if skill != "" {
-					if _, exists := skillCounts[skill]; !exists {
-						skillCounts[skill] = &SkillStatsSummary{
-							Skill:    skill,
-							Category: getSkillCategory(skill),
-						}
-					}
-					skillCounts[skill].Spawns++
-				}
-			}
-
+			a.handleSpawned(event)
 		case "session.completed":
-			// Skip events outside the --days window
-			if event.Timestamp < cutoffDays {
-				continue
-			}
-
-			// Extract beads_id for deduplication
-			var sessionBeadsID string
-			if data := event.Data; data != nil {
-				if b, ok := data["beads_id"].(string); ok && b != "" {
-					sessionBeadsID = b
-				}
-			}
-
-			// Deduplicate by beads_id (same as agent.completed)
-			deduplicationKey := sessionBeadsID
-			if sessionBeadsID == "" {
-				// Fall back to session_id if no beads_id
-				deduplicationKey = "session:" + event.SessionID
-			}
-
-			alreadyCounted := completedBeadsIDs[deduplicationKey]
-
-			// Check if this is an untracked session
-			isUntracked := untrackedSessions[event.SessionID] || isUntrackedSpawn(sessionBeadsID)
-			if isUntracked && !alreadyCounted {
-				report.Summary.UntrackedCompletions++
-			}
-			// Only count if tracked OR includeUntracked is set, AND not already counted
-			if (!isUntracked || includeUntracked) && !alreadyCounted {
-				completedBeadsIDs[deduplicationKey] = true
-				report.Summary.TotalCompletions++
-				// Calculate duration if we have spawn time
-				if spawnTime, ok := spawnTimes[event.SessionID]; ok {
-					duration := float64(event.Timestamp-spawnTime) / 60.0 // minutes
-					if duration > 0 && duration < 480 {                   // Sanity check: < 8 hours
-						durations = append(durations, duration)
-					}
-				}
-				// Update skill completions
-				if skill, ok := spawnSkills[event.SessionID]; ok {
-					if stats, exists := skillCounts[skill]; exists {
-						stats.Completions++
-					}
-				}
-			}
-
+			a.handleSessionCompleted(event)
 		case "agent.completed":
-			// Skip events outside the --days window
-			if event.Timestamp < cutoffDays {
-				continue
-			}
-
-			// Extract beads_id, workspace, and flags for correlation
-			var beadsID string
-			var workspace string
-			var sessionID string
-			var isOrchestrator bool
-			var eventMarkedUntracked bool
-			// Verification metrics
-			var verificationPassed bool
-			var wasForced bool
-			var eventGatesBypassed []string
-			var eventSkill string
-			if data := event.Data; data != nil {
-				if b, ok := data["beads_id"].(string); ok && b != "" {
-					beadsID = b
-					beadsCompletions[beadsID] = event.Timestamp
-					// Find session with matching beads_id
-					for sid, spawnBeadsID := range spawnBeadsIDs {
-						if spawnBeadsID == beadsID {
-							sessionID = sid
-							break
-						}
-					}
-				}
-				// Check for orchestrator flag and workspace
-				if orch, ok := data["orchestrator"].(bool); ok && orch {
-					isOrchestrator = true
-				}
-				// Check if event itself is marked untracked
-				if unt, ok := data["untracked"].(bool); ok && unt {
-					eventMarkedUntracked = true
-				}
-				if w, ok := data["workspace"].(string); ok && w != "" {
-					workspace = w
-					// For orchestrators, correlate via workspace if beads_id didn't work
-					if sessionID == "" && workspace != "" {
-						if sid, ok := workspaceToSession[workspace]; ok {
-							sessionID = sid
-						}
-					}
-				}
-				// Extract verification metrics
-				if vp, ok := data["verification_passed"].(bool); ok {
-					verificationPassed = vp
-				}
-				if f, ok := data["forced"].(bool); ok {
-					wasForced = f
-				}
-				if gb, ok := data["gates_bypassed"].([]interface{}); ok {
-					for _, g := range gb {
-						if gate, ok := g.(string); ok {
-							eventGatesBypassed = append(eventGatesBypassed, gate)
-						}
-					}
-				}
-				if s, ok := data["skill"].(string); ok && s != "" {
-					eventSkill = s
-				}
-			}
-
-			// Check if untracked:
-			// 1. Event explicitly marked untracked
-			// 2. beads_id pattern contains "untracked"
-			// 3. Session was marked untracked at spawn time
-			// 4. Orchestrator completion that couldn't be correlated
-			isUntracked := eventMarkedUntracked || isUntrackedSpawn(beadsID) || untrackedSessions[sessionID]
-			if isOrchestrator && sessionID == "" && !isUntracked {
-				// Orchestrator completion that couldn't be correlated and isn't already marked
-				// Treat as untracked (most orchestrators are untracked by design)
-				isUntracked = true
-			}
-
-			// Deduplicate completions by beads_id:
-			// Multiple agent.completed events can exist for the same beads_id (e.g., from retries).
-			// We only count unique completions, but always update to use the latest event's
-			// timestamp for duration calculation.
-			deduplicationKey := beadsID
-			if beadsID == "" {
-				// For completions without beads_id (e.g., some orchestrators), use workspace
-				deduplicationKey = "ws:" + workspace
-			}
-
-			alreadyCounted := completedBeadsIDs[deduplicationKey]
-
-			// Track untracked completions (count events, not unique - for visibility)
-			if isUntracked && !isOrchestrator && !alreadyCounted {
-				// Don't double-count orchestrator completions as untracked
-				// (they're counted in their own category)
-				report.Summary.UntrackedCompletions++
-			}
-
-			// Check if this is a coordination skill (via correlated session)
-			var isCoordinationSkill bool
-			if sessionID != "" {
-				if skill, ok := spawnSkills[sessionID]; ok {
-					isCoordinationSkill = coordinationSkills[skill]
-				}
-			}
-
-			// Only count if tracked OR includeUntracked OR coordination skill
-			// Coordination skills are always counted for visibility, even when untracked
-			shouldCount := !isUntracked || includeUntracked || isCoordinationSkill
-
-			// Only count this completion if we haven't already counted this beads_id
-			if shouldCount && !alreadyCounted {
-				completedBeadsIDs[deduplicationKey] = true
-				report.Summary.TotalCompletions++
-				// Update skill completions
-				if sessionID != "" {
-					if skill, ok := spawnSkills[sessionID]; ok {
-						if stats, exists := skillCounts[skill]; exists {
-							stats.Completions++
-						}
-					}
-				}
-			}
-
-			// Always calculate/update duration using the latest event for this beads_id
-			// (even if we've already counted the completion, we want the latest timestamp)
-			if shouldCount && sessionID != "" {
-				if spawnTime, ok := spawnTimes[sessionID]; ok {
-					duration := float64(event.Timestamp-spawnTime) / 60.0
-					if duration > 0 && duration < 480 {
-						// For deduplicated completions, we need to track durations per beads_id
-						// and only add to the durations slice once (using the latest)
-						// For simplicity, we add duration on first completion only
-						// The "latest" logic would require more complex tracking
-						if !alreadyCounted {
-							durations = append(durations, duration)
-						}
-					}
-				}
-			}
-
-			// Track verification metrics (only for unique completions)
-			if shouldCount && !alreadyCounted {
-				report.VerificationStats.TotalAttempts++
-				if verificationPassed {
-					report.VerificationStats.PassedFirstTry++
-				}
-				if wasForced {
-					report.VerificationStats.Bypassed++
-					// Track gates that were bypassed
-					for _, gate := range eventGatesBypassed {
-						gatesBypassed[gate]++
-					}
-				}
-				// Track per-skill verification stats
-				skill := eventSkill
-				if skill == "" && sessionID != "" {
-					// Fall back to skill from spawn if not in event
-					skill = spawnSkills[sessionID]
-				}
-				if skill != "" {
-					if _, exists := skillVerification[skill]; !exists {
-						skillVerification[skill] = &SkillVerificationStats{Skill: skill}
-					}
-					skillVerification[skill].TotalAttempts++
-					if verificationPassed {
-						skillVerification[skill].PassedFirstTry++
-					}
-					if wasForced {
-						skillVerification[skill].Bypassed++
-					}
-				}
-			}
-
+			a.handleAgentCompleted(event)
 		case "agent.abandoned":
-			// Skip events outside the --days window
-			if event.Timestamp < cutoffDays {
-				continue
-			}
-
-			// Extract beads_id and check if untracked
-			var beadsID string
-			var sessionID string
-			if data := event.Data; data != nil {
-				if b, ok := data["beads_id"].(string); ok && b != "" {
-					beadsID = b
-					for sid, spawnBeadsID := range spawnBeadsIDs {
-						if spawnBeadsID == beadsID {
-							sessionID = sid
-							break
-						}
-					}
-				}
-			}
-
-			isUntracked := isUntrackedSpawn(beadsID) || untrackedSessions[sessionID]
-
-			// Only count if tracked OR includeUntracked is set
-			if !isUntracked || includeUntracked {
-				report.Summary.TotalAbandonments++
-				// Update skill abandonments
-				if sessionID != "" {
-					if skill, ok := spawnSkills[sessionID]; ok {
-						if stats, exists := skillCounts[skill]; exists {
-							stats.Abandonments++
-						}
-					}
-				}
-			}
-
+			a.handleAbandoned(event)
 		case "daemon.spawn":
-			// Skip events outside the --days window
-			if event.Timestamp < cutoffDays {
-				continue
+			if event.Timestamp >= a.cutoffDays {
+				a.report.DaemonStats.DaemonSpawns++
 			}
-			report.DaemonStats.DaemonSpawns++
-
 		case "session.auto_completed":
-			// Skip events outside the --days window
-			if event.Timestamp < cutoffDays {
-				continue
+			if event.Timestamp >= a.cutoffDays {
+				a.report.DaemonStats.AutoCompletions++
 			}
-			report.DaemonStats.AutoCompletions++
-
 		case "spawn.triage_bypassed":
-			// Skip events outside the --days window
-			if event.Timestamp < cutoffDays {
-				continue
+			if event.Timestamp >= a.cutoffDays {
+				a.report.DaemonStats.TriageBypassed++
 			}
-			report.DaemonStats.TriageBypassed++
-
 		case "agent.wait.complete":
-			// Skip events outside the --days window
-			if event.Timestamp < cutoffDays {
-				continue
+			if event.Timestamp >= a.cutoffDays {
+				a.report.WaitStats.WaitCompleted++
 			}
-			report.WaitStats.WaitCompleted++
-
 		case "agent.wait.timeout":
-			// Skip events outside the --days window
-			if event.Timestamp < cutoffDays {
-				continue
+			if event.Timestamp >= a.cutoffDays {
+				a.report.WaitStats.WaitTimeouts++
 			}
-			report.WaitStats.WaitTimeouts++
-
 		case "session.orchestrator.started", "session.started":
-			// Skip events outside the --days window
-			if event.Timestamp < cutoffDays {
-				continue
+			if event.Timestamp >= a.cutoffDays {
+				a.report.SessionStats.SessionsStarted++
 			}
-			report.SessionStats.SessionsStarted++
-
 		case "session.orchestrator.ended", "session.ended":
-			// Skip events outside the --days window
-			if event.Timestamp < cutoffDays {
-				continue
+			if event.Timestamp >= a.cutoffDays {
+				a.report.SessionStats.SessionsEnded++
 			}
-			report.SessionStats.SessionsEnded++
-
 		case "verification.failed":
-			// Skip events outside the --days window
-			if event.Timestamp < cutoffDays {
-				continue
-			}
-			// Extract gates_failed and skill from event data
-			if data := event.Data; data != nil {
-				// Track failed gates
-				if gatesFailed, ok := data["gates_failed"].([]interface{}); ok {
-					for _, g := range gatesFailed {
-						if gate, ok := g.(string); ok {
-							gateFailures[gate]++
-						}
-					}
-				}
-				// Track by skill for optional breakdown
-				if skill, ok := data["skill"].(string); ok && skill != "" {
-					if _, exists := skillVerification[skill]; !exists {
-						skillVerification[skill] = &SkillVerificationStats{Skill: skill}
-					}
-					// Don't count here - failures don't directly map to attempts
-					// Attempts are counted via agent.completed events
-				}
-			}
-
+			a.handleVerificationFailed(event)
 		case "issue.reopened":
-			// Skip events outside the --days window
-			if event.Timestamp < cutoffDays {
-				continue
+			if event.Timestamp >= a.cutoffDays {
+				a.report.AttemptStats.ReopenedCount++
 			}
-			// Count issue reopens for attempt tracking
-			report.AttemptStats.ReopenedCount++
 		}
 	}
+}
 
-	// Set EventsAnalyzed to events within the analysis window
-	report.EventsAnalyzed = eventsInWindow
-
-	// Calculate escape hatch stats (multi-window: total, 7d, 30d)
-	// Also calculate breakdown by account
+// calculateEscapeHatchStats computes escape hatch metrics across multiple time windows.
+func (a *statsAggregator) calculateEscapeHatchStats() {
 	accountTotals := make(map[string]*AccountSpawnBreakdown)
-	for _, eh := range escapeHatchSpawns {
-		report.EscapeHatchStats.TotalSpawns++
-		if eh.timestamp >= cutoff7d {
-			report.EscapeHatchStats.Last7DaySpawns++
+	for _, eh := range a.escapeHatchSpawns {
+		a.report.EscapeHatchStats.TotalSpawns++
+		if eh.timestamp >= a.cutoff7d {
+			a.report.EscapeHatchStats.Last7DaySpawns++
 		}
-		if eh.timestamp >= cutoff30d {
-			report.EscapeHatchStats.Last30DaySpawns++
+		if eh.timestamp >= a.cutoff30d {
+			a.report.EscapeHatchStats.Last30DaySpawns++
 		}
 
-		// Track by account (use "unknown" for spawns without account info)
 		acct := eh.account
 		if acct == "" {
 			acct = "unknown"
@@ -810,128 +790,137 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 			accountTotals[acct] = &AccountSpawnBreakdown{Account: acct}
 		}
 		accountTotals[acct].TotalSpawns++
-		if eh.timestamp >= cutoff7d {
+		if eh.timestamp >= a.cutoff7d {
 			accountTotals[acct].Last7Days++
 		}
-		if eh.timestamp >= cutoff30d {
+		if eh.timestamp >= a.cutoff30d {
 			accountTotals[acct].Last30Days++
 		}
 	}
 
-	// Convert account map to slice and sort by total spawns descending
 	for _, breakdown := range accountTotals {
-		report.EscapeHatchStats.ByAccount = append(report.EscapeHatchStats.ByAccount, *breakdown)
+		a.report.EscapeHatchStats.ByAccount = append(a.report.EscapeHatchStats.ByAccount, *breakdown)
 	}
-	sort.Slice(report.EscapeHatchStats.ByAccount, func(i, j int) bool {
-		return report.EscapeHatchStats.ByAccount[i].TotalSpawns > report.EscapeHatchStats.ByAccount[j].TotalSpawns
+	sort.Slice(a.report.EscapeHatchStats.ByAccount, func(i, j int) bool {
+		return a.report.EscapeHatchStats.ByAccount[i].TotalSpawns > a.report.EscapeHatchStats.ByAccount[j].TotalSpawns
 	})
 
-	// Calculate escape hatch rate (% of spawns within --days window using escape hatch)
-	if report.Summary.TotalSpawns > 0 {
-		report.EscapeHatchStats.EscapeHatchRate = float64(escapeHatchInWindow) / float64(report.Summary.TotalSpawns) * 100
+	if a.report.Summary.TotalSpawns > 0 {
+		a.report.EscapeHatchStats.EscapeHatchRate = float64(a.escapeHatchInWindow) / float64(a.report.Summary.TotalSpawns) * 100
 	}
+}
 
-	// Calculate verification stats
-	if report.VerificationStats.TotalAttempts > 0 {
-		report.VerificationStats.PassRate = float64(report.VerificationStats.PassedFirstTry) / float64(report.VerificationStats.TotalAttempts) * 100
-		report.VerificationStats.BypassRate = float64(report.VerificationStats.Bypassed) / float64(report.VerificationStats.TotalAttempts) * 100
+// calculateVerificationStats computes verification pass/bypass rates and gate breakdowns.
+func (a *statsAggregator) calculateVerificationStats() {
+	if a.report.VerificationStats.TotalAttempts > 0 {
+		a.report.VerificationStats.PassRate = float64(a.report.VerificationStats.PassedFirstTry) / float64(a.report.VerificationStats.TotalAttempts) * 100
+		a.report.VerificationStats.BypassRate = float64(a.report.VerificationStats.Bypassed) / float64(a.report.VerificationStats.TotalAttempts) * 100
 	}
 
 	// Build gate failure stats - combine failures and bypasses
-	// Collect all unique gates from both maps
 	allGates := make(map[string]bool)
-	for gate := range gateFailures {
+	for gate := range a.gateFailures {
 		allGates[gate] = true
 	}
-	for gate := range gatesBypassed {
+	for gate := range a.gatesBypassed {
 		allGates[gate] = true
 	}
 	for gate := range allGates {
 		gateStats := GateFailureStats{
 			Gate:        gate,
-			FailCount:   gateFailures[gate],
-			BypassCount: gatesBypassed[gate],
+			FailCount:   a.gateFailures[gate],
+			BypassCount: a.gatesBypassed[gate],
 		}
-		if report.VerificationStats.TotalAttempts > 0 {
-			gateStats.FailRate = float64(gateStats.FailCount) / float64(report.VerificationStats.TotalAttempts) * 100
+		if a.report.VerificationStats.TotalAttempts > 0 {
+			gateStats.FailRate = float64(gateStats.FailCount) / float64(a.report.VerificationStats.TotalAttempts) * 100
 		}
-		report.VerificationStats.FailuresByGate = append(report.VerificationStats.FailuresByGate, gateStats)
+		a.report.VerificationStats.FailuresByGate = append(a.report.VerificationStats.FailuresByGate, gateStats)
 	}
-	// Sort gates by fail count descending
-	sort.Slice(report.VerificationStats.FailuresByGate, func(i, j int) bool {
-		return report.VerificationStats.FailuresByGate[i].FailCount > report.VerificationStats.FailuresByGate[j].FailCount
+	sort.Slice(a.report.VerificationStats.FailuresByGate, func(i, j int) bool {
+		return a.report.VerificationStats.FailuresByGate[i].FailCount > a.report.VerificationStats.FailuresByGate[j].FailCount
 	})
 
 	// Build skill verification stats
-	for _, sv := range skillVerification {
+	for _, sv := range a.skillVerification {
 		if sv.TotalAttempts > 0 {
 			sv.PassRate = float64(sv.PassedFirstTry) / float64(sv.TotalAttempts) * 100
 		}
-		report.VerificationStats.BySkill = append(report.VerificationStats.BySkill, *sv)
+		a.report.VerificationStats.BySkill = append(a.report.VerificationStats.BySkill, *sv)
 	}
-	// Sort by total attempts descending
-	sort.Slice(report.VerificationStats.BySkill, func(i, j int) bool {
-		return report.VerificationStats.BySkill[i].TotalAttempts > report.VerificationStats.BySkill[j].TotalAttempts
+	sort.Slice(a.report.VerificationStats.BySkill, func(i, j int) bool {
+		return a.report.VerificationStats.BySkill[i].TotalAttempts > a.report.VerificationStats.BySkill[j].TotalAttempts
 	})
+}
 
-	// Calculate rates
-	if report.Summary.TotalSpawns > 0 {
-		report.Summary.CompletionRate = float64(report.Summary.TotalCompletions) / float64(report.Summary.TotalSpawns) * 100
-		report.Summary.AbandonmentRate = float64(report.Summary.TotalAbandonments) / float64(report.Summary.TotalSpawns) * 100
-		report.DaemonStats.DaemonSpawnRate = float64(report.DaemonStats.DaemonSpawns) / float64(report.Summary.TotalSpawns) * 100
+// calculateSummaryRates computes completion, abandonment, daemon, duration, wait, and session rates.
+func (a *statsAggregator) calculateSummaryRates() {
+	if a.report.Summary.TotalSpawns > 0 {
+		a.report.Summary.CompletionRate = float64(a.report.Summary.TotalCompletions) / float64(a.report.Summary.TotalSpawns) * 100
+		a.report.Summary.AbandonmentRate = float64(a.report.Summary.TotalAbandonments) / float64(a.report.Summary.TotalSpawns) * 100
+		a.report.DaemonStats.DaemonSpawnRate = float64(a.report.DaemonStats.DaemonSpawns) / float64(a.report.Summary.TotalSpawns) * 100
 	}
 
-	// Calculate average duration
-	if len(durations) > 0 {
+	// Average duration
+	if len(a.durations) > 0 {
 		var total float64
-		for _, d := range durations {
+		for _, d := range a.durations {
 			total += d
 		}
-		report.Summary.AvgDurationMinutes = total / float64(len(durations))
+		a.report.Summary.AvgDurationMinutes = total / float64(len(a.durations))
 	}
 
-	// Calculate wait timeout rate
-	totalWaits := report.WaitStats.WaitCompleted + report.WaitStats.WaitTimeouts
+	// Wait timeout rate
+	totalWaits := a.report.WaitStats.WaitCompleted + a.report.WaitStats.WaitTimeouts
 	if totalWaits > 0 {
-		report.WaitStats.TimeoutRate = float64(report.WaitStats.WaitTimeouts) / float64(totalWaits) * 100
+		a.report.WaitStats.TimeoutRate = float64(a.report.WaitStats.WaitTimeouts) / float64(totalWaits) * 100
 	}
 
-	// Calculate active sessions
-	report.SessionStats.ActiveSessions = report.SessionStats.SessionsStarted - report.SessionStats.SessionsEnded
+	// Active sessions
+	a.report.SessionStats.ActiveSessions = a.report.SessionStats.SessionsStarted - a.report.SessionStats.SessionsEnded
+}
 
-	// Calculate per-skill completion rates and aggregate by category
-	for _, stats := range skillCounts {
+// calculateSkillStats computes per-skill completion rates and aggregates by category.
+func (a *statsAggregator) calculateSkillStats() {
+	for _, stats := range a.skillCounts {
 		if stats.Spawns > 0 {
 			stats.CompletionRate = float64(stats.Completions) / float64(stats.Spawns) * 100
 		}
-		report.SkillStats = append(report.SkillStats, *stats)
+		a.report.SkillStats = append(a.report.SkillStats, *stats)
 
-		// Aggregate by category
 		if stats.Category == TaskSkill {
-			report.Summary.TaskSpawns += stats.Spawns
-			report.Summary.TaskCompletions += stats.Completions
+			a.report.Summary.TaskSpawns += stats.Spawns
+			a.report.Summary.TaskCompletions += stats.Completions
 		} else if stats.Category == CoordinationSkill {
-			report.Summary.CoordinationSpawns += stats.Spawns
-			report.Summary.CoordinationCompletions += stats.Completions
+			a.report.Summary.CoordinationSpawns += stats.Spawns
+			a.report.Summary.CoordinationCompletions += stats.Completions
 		}
 	}
 
-	// Calculate task skill completion rate
-	if report.Summary.TaskSpawns > 0 {
-		report.Summary.TaskCompletionRate = float64(report.Summary.TaskCompletions) / float64(report.Summary.TaskSpawns) * 100
+	if a.report.Summary.TaskSpawns > 0 {
+		a.report.Summary.TaskCompletionRate = float64(a.report.Summary.TaskCompletions) / float64(a.report.Summary.TaskSpawns) * 100
+	}
+	if a.report.Summary.CoordinationSpawns > 0 {
+		a.report.Summary.CoordinationCompletionRate = float64(a.report.Summary.CoordinationCompletions) / float64(a.report.Summary.CoordinationSpawns) * 100
 	}
 
-	// Calculate coordination skill completion rate
-	if report.Summary.CoordinationSpawns > 0 {
-		report.Summary.CoordinationCompletionRate = float64(report.Summary.CoordinationCompletions) / float64(report.Summary.CoordinationSpawns) * 100
-	}
-
-	// Sort skills by spawn count descending
-	sort.Slice(report.SkillStats, func(i, j int) bool {
-		return report.SkillStats[i].Spawns > report.SkillStats[j].Spawns
+	sort.Slice(a.report.SkillStats, func(i, j int) bool {
+		return a.report.SkillStats[i].Spawns > a.report.SkillStats[j].Spawns
 	})
+}
 
-	return report
+func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *StatsReport {
+	agg := newStatsAggregator(days, includeUntracked)
+
+	agg.processEvents(events)
+
+	agg.report.EventsAnalyzed = agg.eventsInWindow
+
+	agg.calculateEscapeHatchStats()
+	agg.calculateVerificationStats()
+	agg.calculateSummaryRates()
+	agg.calculateSkillStats()
+
+	return agg.report
 }
 
 func outputStatsJSON(report *StatsReport) error {
