@@ -197,15 +197,11 @@ func CloseIssue(beadsID, reason string) error {
 // It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
 // Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
 func CloseIssueForce(beadsID, reason string, force bool) error {
-	// Note: RPC client's CloseIssue doesn't support force parameter yet.
-	// If force is requested, skip RPC and go straight to CLI.
-	if !force {
-		err := beads.Do("", func(client *beads.Client) error {
-			return client.CloseIssue(beadsID, reason)
-		}, beads.WithAutoReconnect(3))
-		if err == nil {
-			return nil
-		}
+	err := beads.Do("", func(client *beads.Client) error {
+		return client.CloseIssueForce(beadsID, reason, force)
+	}, beads.WithAutoReconnect(3))
+	if err == nil {
+		return nil
 	}
 
 	// Fallback to CLI (with force support)

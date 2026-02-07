@@ -87,6 +87,8 @@ type CreateResult struct {
 type CloseArgs struct {
 	ID     string `json:"id"`
 	Reason string `json:"reason,omitempty"`
+	// Force bypasses Phase: Complete checks on the daemon side.
+	Force bool `json:"force,omitempty"`
 }
 
 // ListArgs represents arguments for listing issues.

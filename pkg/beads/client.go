@@ -540,9 +540,16 @@ func (c *Client) AddComment(id, author, text string) error {
 
 // CloseIssue closes an issue with an optional reason.
 func (c *Client) CloseIssue(id, reason string) error {
+	return c.CloseIssueForce(id, reason, false)
+}
+
+// CloseIssueForce closes an issue with an optional reason and force flag.
+// When force is true, the daemon bypasses Phase: Complete checks.
+func (c *Client) CloseIssueForce(id, reason string, force bool) error {
 	args := CloseArgs{
 		ID:     id,
 		Reason: reason,
+		Force:  force,
 	}
 
 	_, err := c.execute(OpClose, args)
