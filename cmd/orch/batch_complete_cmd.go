@@ -76,7 +76,7 @@ Examples:
 		fmt.Printf("Batch completing %d agent(s) (core gates only)\n\n", len(agents))
 
 		if batchCompleteDryRun {
-			fmt.Println("DRY RUN - no changes will be made\n")
+			fmt.Println("DRY RUN - no changes will be made")
 			for _, agent := range agents {
 				fmt.Printf("  Would complete: %s", agent.BeadsID)
 				if agent.AgentName != "" {
