@@ -1,11 +1,3 @@
 {
-  "skips": [
-    {
-      "gate": "git_diff",
-      "reason": "Investigation-only artifact completion; no code changes expected in working tree.",
-      "set_at": "2026-02-06T19:55:20.291098-08:00",
-      "set_by": "orch-go-21408",
-      "expires_at": "2026-02-06T21:55:20.291098-08:00"
-    }
-  ]
+  "skips": []
 }
