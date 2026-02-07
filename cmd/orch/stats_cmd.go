@@ -321,8 +321,7 @@ type statsAggregator struct {
 	workspaceToSession map[string]string // workspace -> session_id (pseudo)
 
 	// Completion tracking
-	beadsCompletions  map[string]int64 // beads_id -> completion timestamp
-	completedBeadsIDs map[string]bool  // beads_id -> true if already counted
+	completedBeadsIDs map[string]bool // beads_id -> true if already counted
 	durations         []float64
 
 	// Skill tracking
@@ -366,7 +365,6 @@ func newStatsAggregator(days int, includeUntracked bool) *statsAggregator {
 		untrackedSessions:  make(map[string]bool),
 		workspaceToSession: make(map[string]string),
 
-		beadsCompletions:  make(map[string]int64),
 		completedBeadsIDs: make(map[string]bool),
 
 		skillCounts: make(map[string]*SkillStatsSummary),
@@ -536,7 +534,6 @@ func (a *statsAggregator) handleAgentCompleted(event StatsEvent) {
 	if data := event.Data; data != nil {
 		if b, ok := data["beads_id"].(string); ok && b != "" {
 			beadsID = b
-			a.beadsCompletions[beadsID] = event.Timestamp
 			sessionID = a.findSessionByBeadsID(beadsID)
 		}
 		if orch, ok := data["orchestrator"].(bool); ok && orch {
