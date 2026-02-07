@@ -28,15 +28,6 @@ type GapCheckResult struct {
 	BlockReason string             // Reason for blocking (if Blocked is true)
 }
 
-// runPreSpawnKBCheck runs kb context check before spawning an agent.
-// Returns formatted context string to include in SPAWN_CONTEXT.md, or empty string if no matches.
-// Also performs gap analysis and displays warnings for sparse or missing context.
-// Uses the default personal domain (backward compatible).
-func runPreSpawnKBCheck(task string) string {
-	result := runPreSpawnKBCheckFull(task, "")
-	return result.Context
-}
-
 // runPreSpawnKBCheckFull runs kb context check with full gap analysis results.
 // This allows callers to access gap analysis for gating decisions.
 // If projectDir is provided, domain is auto-detected for ecosystem filtering.
@@ -380,16 +371,6 @@ type DecisionConflict struct {
 	MatchedOn    []string // Keywords or patterns that matched
 }
 
-// DecisionOverrideLog represents an entry in the decision override log.
-type DecisionOverrideLog struct {
-	Timestamp  int64  `json:"timestamp"`
-	Task       string `json:"task"`
-	DecisionID string `json:"decision_id"`
-	MatchedOn  string `json:"matched_on"`
-	SkillName  string `json:"skill_name,omitempty"`
-	BeadsID    string `json:"beads_id,omitempty"`
-}
-
 // DecisionCheckResult contains the result of a decision conflict check.
 type DecisionCheckResult struct {
 	ConflictFound bool
@@ -648,51 +629,6 @@ func extractDecisionInfo(content string) (title, summary string) {
 
 	summary = strings.Join(summaryLines, " ")
 	return title, summary
-}
-
-// logDecisionOverride logs a decision override to ~/.orch/decision-overrides.jsonl.
-func logDecisionOverride(task, decisionID, matchedOn, skillName, beadsID string) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to get home directory: %v\n", err)
-		return
-	}
-
-	orchDir := filepath.Join(homeDir, ".orch")
-	if err := os.MkdirAll(orchDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to create .orch directory: %v\n", err)
-		return
-	}
-
-	logPath := filepath.Join(orchDir, "decision-overrides.jsonl")
-
-	entry := DecisionOverrideLog{
-		Timestamp:  time.Now().Unix(),
-		Task:       task,
-		DecisionID: decisionID,
-		MatchedOn:  matchedOn,
-		SkillName:  skillName,
-		BeadsID:    beadsID,
-	}
-
-	data, err := json.Marshal(entry)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to marshal decision override log: %v\n", err)
-		return
-	}
-
-	// Append to log file
-	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to open decision override log: %v\n", err)
-		return
-	}
-	defer f.Close()
-
-	if _, err := f.WriteString(string(data) + "\n"); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to write decision override log: %v\n", err)
-		return
-	}
 }
 
 // ActiveAgentInfo contains information about an active agent for a beads issue.

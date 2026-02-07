@@ -1438,8 +1438,8 @@ func TestHasGoChangesDetection(t *testing.T) {
 	}
 }
 
-// TestCheckAndAutoSwitchAccountDisabled tests that auto-switch can be disabled via env var.
-func TestCheckAndAutoSwitchAccountDisabled(t *testing.T) {
+// TestAutoSwitchDisabledEnv tests auto-switch disabled env semantics.
+func TestAutoSwitchDisabledEnv(t *testing.T) {
 	// Save and restore original env var
 	origDisabled := os.Getenv("ORCH_AUTO_SWITCH_DISABLED")
 	defer func() {
@@ -1485,7 +1485,7 @@ func TestCheckAndAutoSwitchAccountDisabled(t *testing.T) {
 				os.Setenv("ORCH_AUTO_SWITCH_DISABLED", tt.envValue)
 			}
 
-			// Check the early return logic from checkAndAutoSwitchAccount
+			// Check the disabled-env early return semantics.
 			shouldSkip := os.Getenv("ORCH_AUTO_SWITCH_DISABLED") == "1" || os.Getenv("ORCH_AUTO_SWITCH_DISABLED") == "true"
 			wantSkip := !tt.wantCalled
 
@@ -1496,8 +1496,8 @@ func TestCheckAndAutoSwitchAccountDisabled(t *testing.T) {
 	}
 }
 
-// TestCheckAndAutoSwitchAccountEnvThresholds tests that thresholds can be customized via env vars.
-func TestCheckAndAutoSwitchAccountEnvThresholds(t *testing.T) {
+// TestAutoSwitchEnvThresholdParsing tests threshold env var parsing semantics.
+func TestAutoSwitchEnvThresholdParsing(t *testing.T) {
 	// Save and restore original env vars
 	origFiveHour := os.Getenv("ORCH_AUTO_SWITCH_5H_THRESHOLD")
 	origWeekly := os.Getenv("ORCH_AUTO_SWITCH_WEEKLY_THRESHOLD")
@@ -1589,7 +1589,7 @@ func TestCheckAndAutoSwitchAccountEnvThresholds(t *testing.T) {
 			setEnvIfNotEmpty("ORCH_AUTO_SWITCH_WEEKLY_THRESHOLD", tt.weeklyEnv)
 			setEnvIfNotEmpty("ORCH_AUTO_SWITCH_MIN_DELTA", tt.deltaEnv)
 
-			// Replicate the threshold parsing logic from checkAndAutoSwitchAccount
+			// Replicate threshold env parsing semantics.
 			thresholds := struct {
 				FiveHourThreshold float64
 				WeeklyThreshold   float64

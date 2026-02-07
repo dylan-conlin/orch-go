@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/port"
 )
 
 // determineDeathReason analyzes why an agent died and returns a specific reason code.
@@ -67,27 +66,6 @@ func determineDeathReason(sessionID string, sessionCreatedAt time.Time, client o
 	// If we got here, it's likely a timeout (no activity for threshold period)
 	// This is the most common death reason for agents that just stop responding
 	return "timeout"
-}
-
-// getProjectAPIPort returns the allocated API port for the current project.
-// Returns 0 if no allocation exists or on error.
-func getProjectAPIPort(projectDir string) int {
-	if projectDir == "" {
-		return 0
-	}
-	projectName := filepath.Base(projectDir)
-
-	registry, err := port.New("")
-	if err != nil {
-		return 0
-	}
-
-	alloc := registry.Find(projectName, "api")
-	if alloc == nil {
-		return 0
-	}
-
-	return alloc.Port
 }
 
 // checkWorkspaceSynthesis checks if a workspace has a non-empty SYNTHESIS.md file.

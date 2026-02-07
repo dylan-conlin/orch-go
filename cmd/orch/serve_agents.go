@@ -71,7 +71,7 @@ type SynthesisResponse struct {
 // - serve_agents_collect.go: agentCollectionContext, collectOpenCodeSessions, collectTmuxAgents, collectCompletedWorkspaces
 // - serve_agents_enrich.go: enrichAgentsWithBeadsData, enrichSingleAgent, applyGhostFilter, fetchTokensAndActivity, applyLateFilters
 // - serve_agents_status.go: determineDeathReason, determineAgentStatus, checkWorkspaceSynthesis,
-//   getWorkspaceLastActivity, getProjectAPIPort
+//   getWorkspaceLastActivity
 // - serve_agents_activity.go: handleSessionMessages, extractLastActivityFromMessages,
 //   findWorkspaceBySessionID, loadActivityFromWorkspace, MessagePartResponse types
 // - serve_agents_gap.go: getGapAnalysisFromEvents, extractGapAnalysisFromEvent

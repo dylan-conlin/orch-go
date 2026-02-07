@@ -2,7 +2,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -202,73 +201,4 @@ func tryAutoSwitchForSpawn() (*account.AutoSwitchResult, error) {
 	}
 
 	return account.AutoSwitchIfNeeded(thresholds)
-}
-
-// checkAndAutoSwitchAccount checks if the current account is over usage thresholds
-// and automatically switches to a better account if available.
-// Returns nil if no switch was needed or switch succeeded.
-// Logs the switch action if one occurs.
-func checkAndAutoSwitchAccount() error {
-	// Get thresholds from environment or use defaults
-	thresholds := account.DefaultAutoSwitchThresholds()
-
-	// Allow override via environment variables
-	if envVal := os.Getenv("ORCH_AUTO_SWITCH_5H_THRESHOLD"); envVal != "" {
-		if val, err := strconv.ParseFloat(envVal, 64); err == nil && val > 0 && val <= 100 {
-			thresholds.FiveHourThreshold = val
-		}
-	}
-	if envVal := os.Getenv("ORCH_AUTO_SWITCH_WEEKLY_THRESHOLD"); envVal != "" {
-		if val, err := strconv.ParseFloat(envVal, 64); err == nil && val > 0 && val <= 100 {
-			thresholds.WeeklyThreshold = val
-		}
-	}
-	if envVal := os.Getenv("ORCH_AUTO_SWITCH_MIN_DELTA"); envVal != "" {
-		if val, err := strconv.ParseFloat(envVal, 64); err == nil && val >= 0 {
-			thresholds.MinHeadroomDelta = val
-		}
-	}
-
-	// Check if auto-switch is explicitly disabled
-	if os.Getenv("ORCH_AUTO_SWITCH_DISABLED") == "1" || os.Getenv("ORCH_AUTO_SWITCH_DISABLED") == "true" {
-		return nil
-	}
-
-	result, err := account.AutoSwitchIfNeeded(thresholds)
-	if err != nil {
-		// Log warning but don't block spawn - continue with current account
-		fmt.Fprintf(os.Stderr, "Warning: auto-switch check failed: %v\n", err)
-
-		// Check if the underlying error is a TokenRefreshError and provide guidance
-		var tokenErr *account.TokenRefreshError
-		if errors.As(err, &tokenErr) {
-			fmt.Fprintf(os.Stderr, "  → %s\n", tokenErr.ActionableGuidance())
-		}
-		return nil
-	}
-
-	if result.Switched {
-		// Log the switch
-		logger := events.NewLogger(events.DefaultLogPath())
-		event := events.Event{
-			Type:      "account.auto_switched",
-			Timestamp: time.Now().Unix(),
-			Data: map[string]interface{}{
-				"from_account":     result.FromAccount,
-				"to_account":       result.ToAccount,
-				"reason":           result.Reason,
-				"from_5h_used":     result.FromCapacity.FiveHourUsed,
-				"from_weekly_used": result.FromCapacity.SevenDayUsed,
-				"to_5h_used":       result.ToCapacity.FiveHourUsed,
-				"to_weekly_used":   result.ToCapacity.SevenDayUsed,
-			},
-		}
-		if err := logger.Log(event); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to log account switch: %v\n", err)
-		}
-
-		fmt.Printf("🔄 Auto-switched account: %s\n", result.Reason)
-	}
-
-	return nil
 }
