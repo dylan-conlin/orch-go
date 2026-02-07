@@ -381,80 +381,44 @@ func runDaemonLoop() error {
 
 		// Run periodic cleanup if due
 		if result := d.RunPeriodicCleanup(); result != nil {
-			if result.Error != nil {
-				fmt.Fprintf(os.Stderr, "[%s] Cleanup error: %v\n", timestamp, result.Error)
-				// Log the cleanup error
-				event := events.Event{
-					Type:      "daemon.cleanup",
-					Timestamp: time.Now().Unix(),
-					Data: map[string]interface{}{
-						"sessions_deleted":        result.SessionsDeleted,
-						"workspaces_archived":     result.WorkspacesArchived,
-						"investigations_archived": result.InvestigationsArchived,
-						"error":                   result.Error.Error(),
-						"message":                 result.Message,
-					},
-				}
-				if err := logger.Log(event); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to log cleanup error event: %v\n", err)
-				}
-			} else if result.SessionsDeleted > 0 || result.WorkspacesArchived > 0 || result.InvestigationsArchived > 0 {
-				fmt.Printf("[%s] Cleanup: %s\n", timestamp, result.Message)
-				// Log the successful cleanup
-				event := events.Event{
-					Type:      "daemon.cleanup",
-					Timestamp: time.Now().Unix(),
-					Data: map[string]interface{}{
-						"sessions_deleted":        result.SessionsDeleted,
-						"workspaces_archived":     result.WorkspacesArchived,
-						"investigations_archived": result.InvestigationsArchived,
-						"message":                 result.Message,
-					},
-				}
-				if err := logger.Log(event); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to log cleanup event: %v\n", err)
-				}
-			} else if daemonVerbose {
-				fmt.Printf("[%s] Cleanup: %s\n", timestamp, result.Message)
+			data := map[string]interface{}{
+				"sessions_deleted":        result.SessionsDeleted,
+				"workspaces_archived":     result.WorkspacesArchived,
+				"investigations_archived": result.InvestigationsArchived,
+				"message":                 result.Message,
 			}
+			if result.Error != nil {
+				data["error"] = result.Error.Error()
+			}
+			logSubsystemResult(logger, timestamp, daemonVerbose, subsystemResult{
+				Name:        "Cleanup",
+				EventType:   "daemon.cleanup",
+				Error:       result.Error,
+				Message:     result.Message,
+				HasActivity: result.SessionsDeleted > 0 || result.WorkspacesArchived > 0 || result.InvestigationsArchived > 0,
+				Data:        data,
+			})
 		}
 
 		// Run periodic stuck agent recovery if due
 		if result := d.RunPeriodicRecovery(); result != nil {
-			if result.Error != nil {
-				fmt.Fprintf(os.Stderr, "[%s] Recovery error: %v\n", timestamp, result.Error)
-				// Log the recovery error
-				event := events.Event{
-					Type:      "daemon.recovery",
-					Timestamp: time.Now().Unix(),
-					Data: map[string]interface{}{
-						"resumed": 0,
-						"skipped": result.SkippedCount,
-						"error":   result.Error.Error(),
-						"message": result.Message,
-					},
-				}
-				if err := logger.Log(event); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to log recovery error event: %v\n", err)
-				}
-			} else if result.ResumedCount > 0 {
-				fmt.Printf("[%s] Recovery: %s\n", timestamp, result.Message)
-				// Log the successful recovery
-				event := events.Event{
-					Type:      "daemon.recovery",
-					Timestamp: time.Now().Unix(),
-					Data: map[string]interface{}{
-						"resumed": result.ResumedCount,
-						"skipped": result.SkippedCount,
-						"message": result.Message,
-					},
-				}
-				if err := logger.Log(event); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to log recovery event: %v\n", err)
-				}
-			} else if daemonVerbose {
-				fmt.Printf("[%s] Recovery: no stuck agents found\n", timestamp)
+			data := map[string]interface{}{
+				"resumed": result.ResumedCount,
+				"skipped": result.SkippedCount,
+				"message": result.Message,
 			}
+			if result.Error != nil {
+				data["resumed"] = 0
+				data["error"] = result.Error.Error()
+			}
+			logSubsystemResult(logger, timestamp, daemonVerbose, subsystemResult{
+				Name:        "Recovery",
+				EventType:   "daemon.recovery",
+				Error:       result.Error,
+				Message:     result.Message,
+				HasActivity: result.ResumedCount > 0,
+				Data:        data,
+			})
 		}
 
 		// Run server restart recovery if due (runs once after daemon startup)
@@ -469,82 +433,49 @@ func runDaemonLoop() error {
 			}
 		}
 		if serverRecoveryResult != nil {
-			if serverRecoveryResult.Error != nil {
-				fmt.Fprintf(os.Stderr, "[%s] Server recovery error: %v\n", timestamp, serverRecoveryResult.Error)
-				// Log the server recovery error
-				event := events.Event{
-					Type:      "daemon.server_recovery",
-					Timestamp: time.Now().Unix(),
-					Data: map[string]interface{}{
-						"orphaned": 0,
-						"resumed":  0,
-						"skipped":  serverRecoveryResult.SkippedCount,
-						"error":    serverRecoveryResult.Error.Error(),
-						"message":  serverRecoveryResult.Message,
-					},
-				}
-				if err := logger.Log(event); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to log server recovery error event: %v\n", err)
-				}
-			} else if serverRecoveryResult.OrphanedCount > 0 {
-				fmt.Printf("[%s] Server recovery: %s\n", timestamp, serverRecoveryResult.Message)
-				// Log the successful server recovery
-				event := events.Event{
-					Type:      "daemon.server_recovery",
-					Timestamp: time.Now().Unix(),
-					Data: map[string]interface{}{
-						"orphaned": serverRecoveryResult.OrphanedCount,
-						"resumed":  serverRecoveryResult.ResumedCount,
-						"skipped":  serverRecoveryResult.SkippedCount,
-						"message":  serverRecoveryResult.Message,
-					},
-				}
-				if err := logger.Log(event); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to log server recovery event: %v\n", err)
-				}
-			} else if daemonVerbose {
-				fmt.Printf("[%s] Server recovery: %s\n", timestamp, serverRecoveryResult.Message)
+			data := map[string]interface{}{
+				"orphaned": serverRecoveryResult.OrphanedCount,
+				"resumed":  serverRecoveryResult.ResumedCount,
+				"skipped":  serverRecoveryResult.SkippedCount,
+				"message":  serverRecoveryResult.Message,
 			}
+			if serverRecoveryResult.Error != nil {
+				data["orphaned"] = 0
+				data["resumed"] = 0
+				data["error"] = serverRecoveryResult.Error.Error()
+			}
+			logSubsystemResult(logger, timestamp, daemonVerbose, subsystemResult{
+				Name:        "Server recovery",
+				EventType:   "daemon.server_recovery",
+				Error:       serverRecoveryResult.Error,
+				Message:     serverRecoveryResult.Message,
+				HasActivity: serverRecoveryResult.OrphanedCount > 0,
+				Data:        data,
+			})
 		}
 
 		// Run periodic dead session detection if due
 		if result := d.RunPeriodicDeadSessionDetection(); result != nil {
-			if result.Error != nil {
-				fmt.Fprintf(os.Stderr, "[%s] Dead session detection error: %v\n", timestamp, result.Error)
-				// Log the error
-				event := events.Event{
-					Type:      "daemon.dead_session_detection",
-					Timestamp: time.Now().Unix(),
-					Data: map[string]interface{}{
-						"detected": 0,
-						"marked":   0,
-						"skipped":  result.SkippedCount,
-						"error":    result.Error.Error(),
-						"message":  result.Message,
-					},
-				}
-				if err := logger.Log(event); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to log dead session detection error event: %v\n", err)
-				}
-			} else if result.MarkedCount > 0 || result.EscalatedCount > 0 {
-				fmt.Printf("[%s] Dead session detection: %s\n", timestamp, result.Message)
-				event := events.Event{
-					Type:      "daemon.dead_session_detection",
-					Timestamp: time.Now().Unix(),
-					Data: map[string]interface{}{
-						"detected":  result.DetectedCount,
-						"marked":    result.MarkedCount,
-						"escalated": result.EscalatedCount,
-						"skipped":   result.SkippedCount,
-						"message":   result.Message,
-					},
-				}
-				if err := logger.Log(event); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to log dead session detection event: %v\n", err)
-				}
-			} else if daemonVerbose {
-				fmt.Printf("[%s] Dead session detection: no dead sessions found\n", timestamp)
+			data := map[string]interface{}{
+				"detected":  result.DetectedCount,
+				"marked":    result.MarkedCount,
+				"escalated": result.EscalatedCount,
+				"skipped":   result.SkippedCount,
+				"message":   result.Message,
 			}
+			if result.Error != nil {
+				data["detected"] = 0
+				data["marked"] = 0
+				data["error"] = result.Error.Error()
+			}
+			logSubsystemResult(logger, timestamp, daemonVerbose, subsystemResult{
+				Name:        "Dead session detection",
+				EventType:   "daemon.dead_session_detection",
+				Error:       result.Error,
+				Message:     result.Message,
+				HasActivity: result.MarkedCount > 0 || result.EscalatedCount > 0,
+				Data:        data,
+			})
 		}
 
 		// Process completions: auto-close agents that report Phase: Complete
@@ -580,19 +511,12 @@ func runDaemonLoop() error {
 					}
 
 					// Log the completion
-					event := events.Event{
-						Type:      "daemon.complete",
-						Timestamp: time.Now().Unix(),
-						Data: map[string]interface{}{
-							"beads_id":   cr.BeadsID,
-							"reason":     cr.CloseReason,
-							"escalation": cr.Escalation.String(),
-							"source":     "daemon_auto_complete",
-						},
-					}
-					if err := logger.Log(event); err != nil {
-						fmt.Fprintf(os.Stderr, "Warning: failed to log completion event: %v\n", err)
-					}
+					logDaemonEvent(logger, "daemon.complete", map[string]interface{}{
+						"beads_id":   cr.BeadsID,
+						"reason":     cr.CloseReason,
+						"escalation": cr.Escalation.String(),
+						"source":     "daemon_auto_complete",
+					})
 				} else if cr.Error != nil && daemonVerbose {
 					fmt.Printf("[%s] Completion blocked: %s - %v (escalation=%s)\n",
 						timestamp, cr.BeadsID, cr.Error, cr.Escalation)
@@ -719,20 +643,13 @@ func runDaemonLoop() error {
 				)
 
 				// Log the spawn with project context
-				event := events.Event{
-					Type:      "daemon.spawn",
-					Timestamp: time.Now().Unix(),
-					Data: map[string]interface{}{
-						"beads_id": cpResult.Issue.ID,
-						"skill":    cpResult.Skill,
-						"title":    cpResult.Issue.Title,
-						"project":  cpResult.ProjectName,
-						"count":    processed,
-					},
-				}
-				if err := logger.Log(event); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
-				}
+				logDaemonEvent(logger, "daemon.spawn", map[string]interface{}{
+					"beads_id": cpResult.Issue.ID,
+					"skill":    cpResult.Skill,
+					"title":    cpResult.Issue.Title,
+					"project":  cpResult.ProjectName,
+					"count":    processed,
+				})
 			} else {
 				// Single-project polling (original behavior)
 				result, err := d.OnceExcluding(skippedThisCycle)
@@ -768,19 +685,12 @@ func runDaemonLoop() error {
 				)
 
 				// Log the spawn
-				event := events.Event{
-					Type:      "daemon.spawn",
-					Timestamp: time.Now().Unix(),
-					Data: map[string]interface{}{
-						"beads_id": result.Issue.ID,
-						"skill":    result.Skill,
-						"title":    result.Issue.Title,
-						"count":    processed,
-					},
-				}
-				if err := logger.Log(event); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
-				}
+				logDaemonEvent(logger, "daemon.spawn", map[string]interface{}{
+					"beads_id": result.Issue.ID,
+					"skill":    result.Skill,
+					"title":    result.Issue.Title,
+					"count":    processed,
+				})
 			}
 
 			// Delay before next spawn to avoid rate limits
@@ -919,19 +829,12 @@ func runDaemonOnce() error {
 		fmt.Printf("  Skill:  %s\n", cpResult.Skill)
 
 		// Log the spawn
-		event := events.Event{
-			Type:      "daemon.once",
-			Timestamp: time.Now().Unix(),
-			Data: map[string]interface{}{
-				"beads_id": cpResult.Issue.ID,
-				"skill":    cpResult.Skill,
-				"title":    cpResult.Issue.Title,
-				"project":  cpResult.ProjectName,
-			},
-		}
-		if err := logger.Log(event); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
-		}
+		logDaemonEvent(logger, "daemon.once", map[string]interface{}{
+			"beads_id": cpResult.Issue.ID,
+			"skill":    cpResult.Skill,
+			"title":    cpResult.Issue.Title,
+			"project":  cpResult.ProjectName,
+		})
 		return nil
 	}
 
@@ -952,18 +855,11 @@ func runDaemonOnce() error {
 	fmt.Printf("  Skill:  %s\n", result.Skill)
 
 	// Log the spawn
-	event := events.Event{
-		Type:      "daemon.once",
-		Timestamp: time.Now().Unix(),
-		Data: map[string]interface{}{
-			"beads_id": result.Issue.ID,
-			"skill":    result.Skill,
-			"title":    result.Issue.Title,
-		},
-	}
-	if err := logger.Log(event); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
-	}
+	logDaemonEvent(logger, "daemon.once", map[string]interface{}{
+		"beads_id": result.Issue.ID,
+		"skill":    result.Skill,
+		"title":    result.Issue.Title,
+	})
 
 	return nil
 }
