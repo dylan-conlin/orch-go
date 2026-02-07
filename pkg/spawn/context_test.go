@@ -1024,7 +1024,6 @@ func TestGenerateServerContext(t *testing.T) {
 		// Write config with servers
 		configContent := `servers:
   api: 3348
-  web: 5188
 `
 		configPath := filepath.Join(orchDir, "config.yaml")
 		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
@@ -1045,6 +1044,9 @@ func TestGenerateServerContext(t *testing.T) {
 		}
 		if !strings.Contains(context, "OpenCode") {
 			t.Error("expected orch-go context to mention OpenCode")
+		}
+		if !strings.Contains(context, "https://localhost:3348") {
+			t.Error("expected orch-go API URL to use https://localhost:3348")
 		}
 	})
 }

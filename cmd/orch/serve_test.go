@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,6 +25,127 @@ func newTestServer() *Server {
 		BeadsStatsCache: newBeadsStatsCache(),
 		KBHealthCache:   newKBHealthCache(),
 		WorkspaceCache:  &globalWorkspaceCacheType{ttl: 30 * time.Second},
+	}
+}
+
+func writeDashboardBuild(t *testing.T, projectDir string) {
+	t.Helper()
+
+	buildDir := filepath.Join(projectDir, "web", "build")
+	if err := os.MkdirAll(filepath.Join(buildDir, "_app", "immutable"), 0755); err != nil {
+		t.Fatalf("failed to create dashboard build dir: %v", err)
+	}
+
+	indexHTML := "<!doctype html><html><body>dashboard ok</body></html>"
+	if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte(indexHTML), 0644); err != nil {
+		t.Fatalf("failed to write index.html: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(buildDir, "_app", "immutable", "app.js"), []byte("console.log('ok')"), 0644); err != nil {
+		t.Fatalf("failed to write app.js: %v", err)
+	}
+}
+
+func TestRegisterRoutesServesDashboardRoot(t *testing.T) {
+	projectDir := t.TempDir()
+	writeDashboardBuild(t, projectDir)
+
+	s := newTestServer()
+	s.SourceDir = projectDir
+
+	mux := http.NewServeMux()
+	s.registerRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "dashboard ok") {
+		t.Fatalf("expected index.html body, got: %s", w.Body.String())
+	}
+}
+
+func TestRegisterRoutesDashboardSPAFallback(t *testing.T) {
+	projectDir := t.TempDir()
+	writeDashboardBuild(t, projectDir)
+
+	s := newTestServer()
+	s.SourceDir = projectDir
+
+	mux := http.NewServeMux()
+	s.registerRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/work/graph", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "dashboard ok") {
+		t.Fatalf("expected SPA fallback to index.html, got: %s", w.Body.String())
+	}
+}
+
+func TestRegisterRoutesMissingDashboardAssetReturns404(t *testing.T) {
+	projectDir := t.TempDir()
+	writeDashboardBuild(t, projectDir)
+
+	s := newTestServer()
+	s.SourceDir = projectDir
+
+	mux := http.NewServeMux()
+	s.registerRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/_app/immutable/missing.js", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", w.Code)
+	}
+}
+
+func TestRegisterRoutesUnknownAPIRouteStays404(t *testing.T) {
+	projectDir := t.TempDir()
+	writeDashboardBuild(t, projectDir)
+
+	s := newTestServer()
+	s.SourceDir = projectDir
+
+	mux := http.NewServeMux()
+	s.registerRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/not-real", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", w.Code)
+	}
+}
+
+func TestRegisterRoutesMissingBuildReturns503(t *testing.T) {
+	projectDir := t.TempDir()
+
+	s := newTestServer()
+	s.SourceDir = projectDir
+
+	mux := http.NewServeMux()
+	s.registerRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status 503, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "bun run build") {
+		t.Fatalf("expected build hint in response, got: %s", w.Body.String())
 	}
 }
 

@@ -7,4 +7,3 @@ opencode:
     server: http://localhost:4096
 servers:
     api: 3348
-    web: 5188

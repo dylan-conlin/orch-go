@@ -8,6 +8,8 @@ import (
 	"net/http"
 	_ "net/http/pprof" // Enable pprof for CPU profiling
 	"os"
+	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -77,6 +79,7 @@ This is orchestration infrastructure (persistent monitoring), NOT a project
 dev server. Use 'orch serve status' to check if the API is running.
 
 Endpoints:
+  GET /             - Dashboard UI (static build from web/build)
   GET /api/agents    - Returns JSON list of active agents from OpenCode/tmux
   GET /api/events    - Proxies the OpenCode SSE stream for real-time updates
   GET /api/agentlog  - Agent lifecycle events
@@ -181,6 +184,7 @@ func runServeStatus(portNum int) error {
 	fmt.Printf("   URL:    https://localhost:%d\n", portNum)
 	fmt.Println()
 	fmt.Println("Endpoints:")
+	fmt.Println("  GET /             - Dashboard UI (static build from web/build)")
 	fmt.Println("  GET /api/agents    - Active agents")
 	fmt.Println("  GET /api/events    - SSE event stream")
 	fmt.Println("  GET /api/agentlog  - Agent lifecycle events")
@@ -333,6 +337,7 @@ func runServe(portNum int) error {
 	addr := fmt.Sprintf(":%d", portNum)
 	fmt.Printf("Starting orch-go API server on https://localhost%s (HTTP/2 with TLS)\n", addr)
 	fmt.Println("Endpoints:")
+	fmt.Println("  GET /             - Dashboard UI (static build from web/build)")
 	fmt.Println("  GET /api/agents    - List of active agents from OpenCode/tmux")
 	fmt.Println("  GET /api/events    - SSE proxy for OpenCode events")
 	fmt.Println("  GET /api/agentlog  - Agent lifecycle events (supports ?follow=true for SSE)")
@@ -505,6 +510,65 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// pprof handlers for CPU profiling
 	mux.HandleFunc("/debug/pprof/", http.DefaultServeMux.ServeHTTP)
+
+	// Dashboard static files and SPA fallback.
+	mux.HandleFunc("/", s.handleDashboardStatic)
+}
+
+func (s *Server) handleDashboardStatic(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.NotFound(w, r)
+		return
+	}
+
+	if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/health" || strings.HasPrefix(r.URL.Path, "/debug/") {
+		http.NotFound(w, r)
+		return
+	}
+
+	projectDir, err := s.currentProjectDir()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to resolve project directory: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	buildDir := filepath.Join(projectDir, "web", "build")
+	indexPath := filepath.Join(buildDir, "index.html")
+	if _, err := os.Stat(indexPath); err != nil {
+		if os.IsNotExist(err) {
+			http.Error(
+				w,
+				fmt.Sprintf("dashboard build not found at %s; run 'cd %s/web && bun run build'", buildDir, projectDir),
+				http.StatusServiceUnavailable,
+			)
+			return
+		}
+
+		http.Error(w, fmt.Sprintf("failed to access dashboard build: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	cleanPath := strings.TrimPrefix(path.Clean("/"+strings.TrimPrefix(r.URL.Path, "/")), "/")
+	if cleanPath == "" {
+		cleanPath = "index.html"
+	}
+
+	targetPath := filepath.Join(buildDir, filepath.FromSlash(cleanPath))
+	if info, err := os.Stat(targetPath); err == nil && !info.IsDir() {
+		http.ServeFile(w, r, targetPath)
+		return
+	} else if err != nil && !os.IsNotExist(err) {
+		http.Error(w, fmt.Sprintf("failed to access dashboard file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Missing assets (for example .js/.css) should stay 404.
+	if path.Ext(cleanPath) != "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	http.ServeFile(w, r, indexPath)
 }
 
 // handleChangelog returns aggregated changelog data across ecosystem repos.

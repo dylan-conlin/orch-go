@@ -214,9 +214,9 @@ orch-dashboard status   # Check service status
 orch-dashboard logs     # View service logs (overmind echo)
 ```
 
-**Service ports:** OpenCode (4096), orch serve (3348), Web UI (5188)
+**Service ports:** OpenCode (4096), orch serve (3348)
 
-**Dashboard URL:** http://localhost:5188
+**Dashboard URL:** https://localhost:3348
 
 **Why not raw overmind?** Direct `overmind start` can fail silently when orphan processes hold ports or stale sockets exist. The `orch-dashboard` script handles these edge cases.
 

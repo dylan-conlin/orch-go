@@ -183,8 +183,8 @@ type Config struct {
 	SortMode string
 
 	// DashboardWatchdogEnabled controls whether dashboard health monitoring is enabled.
-	// When enabled, the daemon periodically checks if dashboard services (api on 3348,
-	// web on 5188) are responding and automatically restarts them via `orch-dashboard restart`.
+	// When enabled, the daemon periodically checks if the dashboard API service
+	// (orch serve on 3348) is responding and automatically restarts it via `orch-dashboard restart`.
 	DashboardWatchdogEnabled bool
 
 	// DashboardWatchdogInterval is how often to check dashboard health.

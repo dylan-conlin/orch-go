@@ -1,11 +1,10 @@
 // dashboard_watchdog.go contains periodic dashboard health monitoring and auto-restart.
 //
-// The dashboard (orch-dashboard) runs via overmind with three services:
+// The dashboard (orch-dashboard) runs via overmind with core services:
 //   - api (orch serve) on port 3348
-//   - web (vite dev server) on port 5188
 //   - opencode on port 4096
 //
-// When any of the core services (api, web) die, this watchdog detects the failure
+// When the core API service dies, this watchdog detects the failure
 // and automatically runs `orch-dashboard restart` to recover.
 package daemon
 
@@ -36,7 +35,7 @@ type DashboardWatchdogResult struct {
 // Restart behavior:
 //   - Requires consecutive failures before restarting (avoids flapping on transient errors)
 //   - Rate-limits restarts to prevent infinite restart loops
-//   - Only restarts when core services (api on 3348, web on 5188) are down
+//   - Only restarts when core service (api on 3348) is down
 //
 // Returns nil if the watchdog is not due to run (based on interval tracking).
 func (d *Daemon) CheckDashboardHealth() *DashboardWatchdogResult {
@@ -58,7 +57,6 @@ func (d *Daemon) CheckDashboardHealth() *DashboardWatchdogResult {
 		port int
 	}{
 		{"api", 3348},
-		{"web", 5188},
 	} {
 		if !isTCPPortResponding(check.port) {
 			downServices = append(downServices, fmt.Sprintf("%s (port %d)", check.name, check.port))

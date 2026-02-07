@@ -85,7 +85,7 @@ func TestCheckDashboardHealth_ConsecutiveFailuresRequired(t *testing.T) {
 
 	// Simulate port checks failing by checking that restart is NOT called
 	// on first failure (needs 3 consecutive)
-	// Note: This test relies on ports 3348/5188 NOT being open in the test environment.
+	// Note: This test relies on port 3348 NOT being open in the test environment.
 	// If they happen to be open, the test still passes (health check succeeds, no restart needed).
 	result := d.CheckDashboardHealth()
 	if result == nil {

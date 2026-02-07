@@ -37,7 +37,11 @@ func GenerateServerContext(projectDir string) string {
 	// Build server list
 	var serverLines []string
 	for service, port := range cfg.Servers {
-		serverLines = append(serverLines, fmt.Sprintf("- **%s:** http://localhost:%d", service, port))
+		scheme := "http"
+		if projectName == "orch-go" && service == "api" {
+			scheme = "https"
+		}
+		serverLines = append(serverLines, fmt.Sprintf("- **%s:** %s://localhost:%d", service, scheme, port))
 	}
 
 	// Format the context section
@@ -59,7 +63,7 @@ func GenerateServerContext(projectDir string) string {
 		sb.WriteString("- Stop servers: `orch-dashboard stop`\n")
 		sb.WriteString("- Restart servers: `orch-dashboard restart`\n")
 		sb.WriteString("\n⚠️ **Note:** orch-go uses `orch-dashboard`, not `orch servers`. ")
-		sb.WriteString("The dashboard script manages OpenCode + API + Web UI via overmind with orphan cleanup.\n")
+		sb.WriteString("The dashboard script manages OpenCode + orch serve (API + static UI) via overmind with orphan cleanup.\n")
 		sb.WriteString("Agents cannot start/stop services (runs on macOS host, agents run in Linux sandbox).\n\n")
 	} else {
 		sb.WriteString("\n**Quick commands:**\n")
