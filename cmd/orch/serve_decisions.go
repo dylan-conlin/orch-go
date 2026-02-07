@@ -58,7 +58,7 @@ func (s *Server) handleDecisions(w http.ResponseWriter, r *http.Request) {
 	// Get project_dir from query params (for following orchestrator context)
 	projectDir := r.URL.Query().Get("project_dir")
 	if projectDir == "" {
-		projectDir, _ = currentProjectDir()
+		projectDir, _ = s.currentProjectDir()
 	}
 
 	// Initialize response with empty slices

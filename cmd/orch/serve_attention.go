@@ -28,7 +28,7 @@ func (s *Server) handleLikelyDone(w http.ResponseWriter, r *http.Request) {
 	// Get project directory from query parameter (default to sourceDir)
 	projectDir := r.URL.Query().Get("project")
 	if projectDir == "" {
-		projectDir, _ = currentProjectDir()
+		projectDir, _ = s.currentProjectDir()
 	}
 
 	// Get beads client (RPC or CLI fallback)
@@ -148,7 +148,7 @@ func (s *Server) handleAttention(w http.ResponseWriter, r *http.Request) {
 	// Get project directory from query parameter (default to sourceDir)
 	projectDir := r.URL.Query().Get("project")
 	if projectDir == "" {
-		projectDir, _ = currentProjectDir()
+		projectDir, _ = s.currentProjectDir()
 	}
 
 	// Get beads client (RPC or CLI fallback)

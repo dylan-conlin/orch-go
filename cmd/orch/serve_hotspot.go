@@ -17,7 +17,7 @@ func (s *Server) handleHotspot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Use sourceDir since serve may run from any working directory
-	projectDir, _ := currentProjectDir()
+	projectDir, _ := s.currentProjectDir()
 
 	// Use default thresholds from hotspot.go
 	daysBack := 28

@@ -48,7 +48,7 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find workspace by agent ID (could be workspace name or beads ID)
-	workspacePath, beadsID, err := findWorkspaceAndBeadsID(req.AgentID)
+	workspacePath, beadsID, err := s.findWorkspaceAndBeadsID(req.AgentID)
 	if err != nil {
 		writeApproveError(w, fmt.Sprintf("Failed to find workspace: %v", err), http.StatusNotFound)
 		return
@@ -119,9 +119,9 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 // findWorkspaceAndBeadsID finds the workspace path and beads ID for a given agent identifier.
 // The identifier can be either a workspace name or a beads ID.
 // Returns (workspacePath, beadsID, error).
-func findWorkspaceAndBeadsID(agentID string) (string, string, error) {
+func (s *Server) findWorkspaceAndBeadsID(agentID string) (string, string, error) {
 	// Get current working directory as project base
-	currentDir, err := currentProjectDir()
+	currentDir, err := s.currentProjectDir()
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get working directory: %w", err)
 	}

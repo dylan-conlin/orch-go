@@ -227,7 +227,7 @@ func (s *Server) handleSessionMessages(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// OpenCode API failed (session may be deleted/cleaned up).
 		// Fall back to ACTIVITY.json if available in the workspace.
-		projectDir, _ := currentProjectDir()
+		projectDir, _ := s.currentProjectDir()
 		workspacePath := findWorkspaceBySessionID(projectDir, sessionID)
 		if workspacePath != "" {
 			if events := loadActivityFromWorkspace(workspacePath); events != nil {

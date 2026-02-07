@@ -198,7 +198,7 @@ func (s *Server) handleKBHealth(w http.ResponseWriter, r *http.Request) {
 	// Get project directory from query parameter (default to sourceDir)
 	projectDir := r.URL.Query().Get("project")
 	if projectDir == "" {
-		projectDir, _ = currentProjectDir()
+		projectDir, _ = s.currentProjectDir()
 	}
 
 	// Check if cache is initialized

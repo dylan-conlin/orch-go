@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	_ "net/http/pprof" // Enable pprof for CPU profiling
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,6 +59,13 @@ type Server struct {
 	BeadsStatsCache *beadsStatsCache
 	KBHealthCache   *kbHealthCache
 	WorkspaceCache  *globalWorkspaceCacheType
+}
+
+func (s *Server) currentProjectDir() (string, error) {
+	if s.SourceDir != "" && s.SourceDir != "unknown" {
+		return s.SourceDir, nil
+	}
+	return os.Getwd()
 }
 
 var serveCmd = &cobra.Command{

@@ -58,7 +58,7 @@ func (s *Server) handleKBArtifacts(w http.ResponseWriter, r *http.Request) {
 	// Get query params
 	projectDir := r.URL.Query().Get("project_dir")
 	if projectDir == "" {
-		projectDir, _ = currentProjectDir()
+		projectDir, _ = s.currentProjectDir()
 	}
 
 	sinceParam := r.URL.Query().Get("since")
@@ -612,7 +612,7 @@ func (s *Server) handleKBArtifactContent(w http.ResponseWriter, r *http.Request)
 
 	projectDir := r.URL.Query().Get("project_dir")
 	if projectDir == "" {
-		projectDir, _ = currentProjectDir()
+		projectDir, _ = s.currentProjectDir()
 	}
 
 	// Construct full path and validate it's within project

@@ -51,7 +51,7 @@ func (s *Server) handleDeliverablesStatus(w http.ResponseWriter, r *http.Request
 
 	// Find workspace for this issue
 	workspacePath := ""
-	projectDir, _ := currentProjectDir()
+	projectDir, _ := s.currentProjectDir()
 
 	// Try to find workspace
 	workspaces, err := findWorkspacesForBeadsID(beadsID)
@@ -118,7 +118,7 @@ func (s *Server) handleDeliverablesOverride(w http.ResponseWriter, r *http.Reque
 
 	// Get deliverables status to capture current state
 	workspacePath := ""
-	projectDir, _ := currentProjectDir()
+	projectDir, _ := s.currentProjectDir()
 
 	workspaces, err := findWorkspacesForBeadsID(req.BeadsID)
 	if err == nil && len(workspaces) > 0 {

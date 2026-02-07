@@ -94,7 +94,7 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	projectFilterParam := parseProjectFilter(r)
 
 	// Use sourceDir (set at build time) since serve may run from any working directory
-	projectDir, _ := currentProjectDir()
+	projectDir, _ := s.currentProjectDir()
 
 	client := opencode.NewClient(s.ServerURL)
 
