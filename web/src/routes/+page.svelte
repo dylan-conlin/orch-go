@@ -17,6 +17,7 @@
 		agents,
 		activeAgents,
 		needsReviewAgents,
+		needsReviewCounts,
 		trulyActiveAgents,
 		recentAgents,
 		archivedAgents,
@@ -309,6 +310,49 @@
 
 	$: hasActiveFilters = statusFilter !== 'all' || skillFilter !== 'all' || projectFilter !== 'all' || sortBy !== 'recent-activity' || activeOnly;
 
+	// Batch close state for rec=close agents
+	let isBatchClosing = false;
+
+	async function handleBatchClose() {
+		const closeAgents = $needsReviewAgents.filter(
+			(a) => a.synthesis?.recommendation?.toLowerCase() === 'close'
+		);
+		if (closeAgents.length === 0) return;
+
+		isBatchClosing = true;
+		let succeeded = 0;
+		let failed = 0;
+
+		for (const agent of closeAgents) {
+			const agentId = agent.beads_id || agent.id;
+			try {
+				const response = await fetch('https://localhost:3348/api/approve', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						agent_id: agentId,
+						description: 'Batch approved: rec=close via dashboard',
+					}),
+				});
+				if (response.ok) {
+					succeeded++;
+				} else {
+					failed++;
+					console.error(`Failed to approve ${agentId}:`, await response.text());
+				}
+			} catch (err) {
+				failed++;
+				console.error(`Error approving ${agentId}:`, err);
+			}
+		}
+
+		isBatchClosing = false;
+
+		// Refresh agents to reflect changes
+		const queryString = buildFilterQueryString($filters);
+		agents.fetch(queryString).catch(console.error);
+	}
+
 	// Helper function to apply sorting to agent arrays
 	// useStableSort: when true, uses spawned_at (immutable) instead of updated_at (volatile) 
 	// to prevent constant reordering of active agents as they receive SSE updates
@@ -522,6 +566,30 @@
 						<Badge variant="secondary" class="h-5 px-1.5 text-xs bg-amber-500/20 text-amber-600">
 							{sortedNeedsReviewAgents.length}
 						</Badge>
+						<!-- Recommendation count summary -->
+						<span class="text-xs text-muted-foreground">
+							{#if $needsReviewCounts.escalate > 0}
+								<span class="text-orange-500">{$needsReviewCounts.escalate} need{$needsReviewCounts.escalate === 1 ? 's' : ''} decision</span>
+							{/if}
+							{#if $needsReviewCounts.escalate > 0 && ($needsReviewCounts.close > 0 || $needsReviewCounts.continue > 0 || $needsReviewCounts.spawn > 0)}
+								<span class="mx-1">·</span>
+							{/if}
+							{#if $needsReviewCounts.continue > 0}
+								<span class="text-yellow-500">{$needsReviewCounts.continue} partial</span>
+							{/if}
+							{#if $needsReviewCounts.continue > 0 && ($needsReviewCounts.close > 0 || $needsReviewCounts.spawn > 0)}
+								<span class="mx-1">·</span>
+							{/if}
+							{#if $needsReviewCounts.spawn > 0}
+								<span class="text-blue-500">{$needsReviewCounts.spawn} spawn</span>
+							{/if}
+							{#if $needsReviewCounts.spawn > 0 && $needsReviewCounts.close > 0}
+								<span class="mx-1">·</span>
+							{/if}
+							{#if $needsReviewCounts.close > 0}
+								<span class="text-green-500">{$needsReviewCounts.close} ready to close</span>
+							{/if}
+						</span>
 					</div>
 					<span class="text-muted-foreground transition-transform {sectionState.needsReview ? 'rotate-180' : ''}">
 						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -531,6 +599,25 @@
 				</button>
 				{#if sectionState.needsReview}
 					<div class="p-2">
+						<!-- Batch close button for rec=close agents -->
+						{#if $needsReviewCounts.close > 1}
+							<div class="mb-2 flex items-center justify-end">
+								<Button
+									variant="outline"
+									size="sm"
+									class="h-6 px-2 text-xs text-green-600 border-green-500/30 hover:bg-green-500/10"
+									onclick={handleBatchClose}
+									disabled={isBatchClosing}
+									data-testid="batch-close-button"
+								>
+									{#if isBatchClosing}
+										Closing...
+									{:else}
+										Close all rec=close ({$needsReviewCounts.close})
+									{/if}
+								</Button>
+							</div>
+						{/if}
 						<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
 							{#each sortedNeedsReviewAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 								<AgentCard {agent} />
@@ -704,6 +791,48 @@
 								bind:expanded={sectionState.needsReview}
 								variant="needs-review"
 							>
+								<!-- Recommendation count summary for historical mode -->
+								<div class="mb-2 flex items-center justify-between text-xs text-muted-foreground px-1">
+									<span>
+										{#if $needsReviewCounts.escalate > 0}
+											<span class="text-orange-500">{$needsReviewCounts.escalate} need{$needsReviewCounts.escalate === 1 ? 's' : ''} decision</span>
+										{/if}
+										{#if $needsReviewCounts.escalate > 0 && ($needsReviewCounts.close > 0 || $needsReviewCounts.continue > 0 || $needsReviewCounts.spawn > 0)}
+											<span class="mx-1">·</span>
+										{/if}
+										{#if $needsReviewCounts.continue > 0}
+											<span class="text-yellow-500">{$needsReviewCounts.continue} partial</span>
+										{/if}
+										{#if $needsReviewCounts.continue > 0 && ($needsReviewCounts.close > 0 || $needsReviewCounts.spawn > 0)}
+											<span class="mx-1">·</span>
+										{/if}
+										{#if $needsReviewCounts.spawn > 0}
+											<span class="text-blue-500">{$needsReviewCounts.spawn} spawn</span>
+										{/if}
+										{#if $needsReviewCounts.spawn > 0 && $needsReviewCounts.close > 0}
+											<span class="mx-1">·</span>
+										{/if}
+										{#if $needsReviewCounts.close > 0}
+											<span class="text-green-500">{$needsReviewCounts.close} ready to close</span>
+										{/if}
+									</span>
+									{#if $needsReviewCounts.close > 1}
+										<Button
+											variant="outline"
+											size="sm"
+											class="h-6 px-2 text-xs text-green-600 border-green-500/30 hover:bg-green-500/10"
+											onclick={handleBatchClose}
+											disabled={isBatchClosing}
+											data-testid="batch-close-button-historical"
+										>
+											{#if isBatchClosing}
+												Closing...
+											{:else}
+												Close all rec=close ({$needsReviewCounts.close})
+											{/if}
+										</Button>
+									{/if}
+								</div>
 								<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
 									{#each sortedNeedsReviewAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 										<AgentCard {agent} />

@@ -368,9 +368,39 @@ export const escalatedAgents = derived(agents, ($agents) =>
 
 // Needs Review: agents at Phase: Complete that haven't been closed yet
 // These are waiting for orchestrator to run `orch complete`
-export const needsReviewAgents = derived(agents, ($agents) =>
-  $agents.filter((a) => a.status === 'active' && a.phase?.toLowerCase() === 'complete'),
-)
+// Sorted by recommendation priority: escalate > continue > spawn-follow-up > (no rec) > close
+export const needsReviewAgents = derived(agents, ($agents) => {
+  const recOrder: Record<string, number> = {
+    escalate: 0,
+    continue: 1,
+    'spawn-follow-up': 2,
+    resume: 3,
+    close: 5,
+  }
+  const defaultOrder = 4 // agents without recommendation sort before 'close'
+
+  return $agents
+    .filter((a) => a.status === 'active' && a.phase?.toLowerCase() === 'complete')
+    .sort((a, b) => {
+      const aOrder = recOrder[a.synthesis?.recommendation || ''] ?? defaultOrder
+      const bOrder = recOrder[b.synthesis?.recommendation || ''] ?? defaultOrder
+      return aOrder - bOrder
+    })
+})
+
+// Recommendation counts for the needs-review section header
+export const needsReviewCounts = derived(needsReviewAgents, ($needsReviewAgents) => {
+  const counts = { escalate: 0, continue: 0, spawn: 0, close: 0, unknown: 0 }
+  for (const agent of $needsReviewAgents) {
+    const rec = agent.synthesis?.recommendation?.toLowerCase()
+    if (rec === 'escalate') counts.escalate++
+    else if (rec === 'continue' || rec === 'resume') counts.continue++
+    else if (rec === 'spawn-follow-up') counts.spawn++
+    else if (rec === 'close') counts.close++
+    else counts.unknown++
+  }
+  return counts
+})
 
 // Truly active: running agents that are NOT in needs-review state
 // These are the agents consuming capacity

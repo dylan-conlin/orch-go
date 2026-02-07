@@ -759,12 +759,13 @@
 						</Tooltip.Content>
 					</Tooltip.Root>
 				</div>
-			{:else if displayState === 'ready-for-review'}
-				<!-- Agent reported Phase: Complete, waiting for orchestrator to close -->
+		{:else if displayState === 'ready-for-review'}
+			<!-- Agent reported Phase: Complete, waiting for orchestrator to close -->
+				{@const rec = agent.synthesis?.recommendation?.toLowerCase()}
 				<div class="flex items-center gap-1">
-					<span class="text-[10px]">✅</span>
-					<p class="flex-1 truncate text-[10px] text-blue-400 font-medium">
-						Done - pending review
+					<span class="text-[10px]">{rec === 'escalate' ? '🔴' : rec === 'continue' || rec === 'resume' ? '🟡' : rec === 'spawn-follow-up' ? '🔵' : rec === 'close' ? '✅' : '⏳'}</span>
+					<p class="flex-1 truncate text-[10px] font-medium {rec === 'escalate' ? 'text-orange-400' : rec === 'continue' || rec === 'resume' ? 'text-yellow-400' : rec === 'spawn-follow-up' ? 'text-blue-400' : rec === 'close' ? 'text-green-400' : 'text-blue-400'}">
+						{rec === 'escalate' ? 'Needs decision' : rec === 'continue' || rec === 'resume' ? 'Partial - continue' : rec === 'spawn-follow-up' ? 'Spawn follow-up' : rec === 'close' ? 'Ready to close' : 'Pending review'}
 					</p>
 					<Tooltip.Root>
 						<Tooltip.Trigger>
@@ -774,6 +775,9 @@
 						</Tooltip.Trigger>
 						<Tooltip.Content>
 							<p>Agent reported Phase: Complete</p>
+							{#if rec}
+								<p class="text-xs text-muted-foreground">Recommendation: {agent.synthesis?.recommendation}</p>
+							{/if}
 							<p class="text-xs text-muted-foreground">Run <code>orch complete</code> to close</p>
 						</Tooltip.Content>
 					</Tooltip.Root>
