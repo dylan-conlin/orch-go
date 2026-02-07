@@ -12,6 +12,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/cleanup"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/process"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -33,6 +34,7 @@ var (
 	cleanSessionsDays         int
 	cleanPreserveOrchestrator bool
 	cleanAll                  bool
+	cleanProcesses            bool
 )
 
 var cleanCmd = &cobra.Command{
@@ -51,7 +53,7 @@ Protection options:
   --preserve-orchestrator  Skip orchestrator/meta-orchestrator workspaces and sessions
 
 Comprehensive cleanup:
-  --all                  Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, sessions)
+  --all                  Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, sessions, processes)
 
 Optional cleanup actions:
   --windows              Close tmux windows for completed agents
@@ -64,6 +66,13 @@ Optional cleanup actions:
   --untracked-days N     Set age threshold for --untracked (default: 7)
   --sessions             Delete stale OpenCode sessions (default: older than 7 days)
   --sessions-days N      Set age threshold for --sessions (default: 7)
+  --processes            Kill orphaned bun processes (agent processes without active sessions)
+
+Process cleanup:
+  --processes uses OS-level process discovery (ps) to find bun agent processes
+  that have no matching active OpenCode session. This catches orphans that survived
+  session deletion, workspace archival, or bd close workarounds.
+  Recommended: use --all or --processes periodically to prevent memory accumulation.
 
 Note: This command never deletes workspace directories - they are kept for 
 investigation reference. Use 'rm -rf .orch/workspace/<name>' to manually delete.
@@ -84,7 +93,8 @@ Examples:
   orch-go clean --untracked --untracked-days 14  # Archive untracked workspaces older than 14 days
   orch-go clean --sessions         # Delete OpenCode sessions older than 7 days
   orch-go clean --sessions --sessions-days 14  # Delete sessions older than 14 days
-  orch-go clean --sessions --preserve-orchestrator  # Clean sessions but protect orchestrators`,
+  orch-go clean --sessions --preserve-orchestrator  # Clean sessions but protect orchestrators
+  orch-go clean --processes                         # Kill orphaned bun processes`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// If --all is specified, enable all cleanup flags
 		if cleanAll {
@@ -95,14 +105,15 @@ Examples:
 			cleanStale = true
 			cleanUntracked = true
 			cleanSessions = true
+			cleanProcesses = true
 		}
-		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays, cleanUntracked, cleanUntrackedDays, cleanSessions, cleanSessionsDays, cleanPreserveOrchestrator)
+		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays, cleanUntracked, cleanUntrackedDays, cleanSessions, cleanSessionsDays, cleanPreserveOrchestrator, cleanProcesses)
 	},
 }
 
 func init() {
 	cleanCmd.Flags().BoolVar(&cleanDryRun, "dry-run", false, "Show what would be cleaned without making changes")
-	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, sessions)")
+	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, sessions, processes)")
 	cleanCmd.Flags().BoolVar(&cleanVerifyOpenCode, "verify-opencode", false, "Also verify OpenCode disk sessions (slower)")
 	cleanCmd.Flags().BoolVar(&cleanWindows, "windows", false, "Close tmux windows for completed agents")
 	cleanCmd.Flags().BoolVar(&cleanPhantoms, "phantoms", false, "Close all phantom tmux windows (stale agent windows)")
@@ -114,6 +125,7 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Delete stale OpenCode sessions older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanSessionsDays, "sessions-days", 7, "Age threshold in days for --sessions (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanPreserveOrchestrator, "preserve-orchestrator", false, "Skip orchestrator/meta-orchestrator workspaces and sessions")
+	cleanCmd.Flags().BoolVar(&cleanProcesses, "processes", false, "Kill orphaned bun processes (agent processes without active sessions)")
 }
 
 // DefaultLivenessChecker checks if tmux windows and OpenCode sessions exist.
@@ -295,7 +307,7 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 	return cleanable
 }
 
-func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int, archiveUntracked bool, untrackedDays int, cleanSessions bool, sessionsDays int, preserveOrchestrator bool) error {
+func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int, archiveUntracked bool, untrackedDays int, cleanSessions bool, sessionsDays int, preserveOrchestrator bool, killProcesses bool) error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -407,8 +419,17 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 	}
 
+	// Kill orphan bun processes (optional)
+	var processesKilled int
+	if killProcesses {
+		processesKilled, err = cleanOrphanProcesses(serverURL, dryRun)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clean orphan processes: %v\n", err)
+		}
+	}
+
 	// Check if any cleanup actions were taken or would be taken
-	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode || cleanInvestigations || archiveStale || archiveUntracked || cleanSessions
+	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode || cleanInvestigations || archiveStale || archiveUntracked || cleanSessions || killProcesses
 
 	if dryRun {
 		if hasCleanupActions {
@@ -443,13 +464,16 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 			if cleanSessions && staleSessionsDeleted > 0 {
 				fmt.Printf(" Would delete %d stale OpenCode sessions.", staleSessionsDeleted)
 			}
+			if killProcesses && processesKilled > 0 {
+				fmt.Printf(" Would kill %d orphan processes.", processesKilled)
+			}
 			fmt.Println()
 		}
 		return nil
 	}
 
 	// Log if any cleanup actions were taken
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 || processesKilled > 0 {
 		projectName := filepath.Base(projectDir)
 		logger := events.NewLogger(events.DefaultLogPath())
 		event := events.Event{
@@ -475,6 +499,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 				"clean_sessions":          cleanSessions,
 				"sessions_days":           sessionsDays,
 				"stale_sessions_deleted":  staleSessionsDeleted,
+				"processes_killed":        processesKilled,
 			},
 		}
 		if err := logger.Log(event); err != nil {
@@ -483,7 +508,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	}
 
 	// Print summary of actions taken (not misleading "cleaned X workspaces")
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 || processesKilled > 0 {
 		fmt.Println()
 		if windowsClosed > 0 {
 			fmt.Printf("Closed %d tmux windows\n", windowsClosed)
@@ -505,6 +530,9 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 		if staleSessionsDeleted > 0 {
 			fmt.Printf("Deleted %d stale OpenCode sessions\n", staleSessionsDeleted)
+		}
+		if processesKilled > 0 {
+			fmt.Printf("Killed %d orphan bun processes\n", processesKilled)
 		}
 	} else if !hasCleanupActions {
 		// Default: just listing completed workspaces
@@ -1210,6 +1238,76 @@ func archiveUntrackedWorkspaces(projectDir string, untrackedDays int, dryRun boo
 	}
 
 	return archived, nil
+}
+
+// cleanOrphanProcesses finds and kills bun agent processes that are not associated
+// with any active OpenCode session. Returns the number of processes killed.
+func cleanOrphanProcesses(serverURL string, dryRun bool) (int, error) {
+	client := opencode.NewClient(serverURL)
+
+	fmt.Println("\nScanning for orphan bun processes...")
+
+	// Get all active OpenCode sessions to build a set of active titles
+	sessions, err := client.ListSessions("")
+	if err != nil {
+		return 0, fmt.Errorf("failed to list sessions: %w", err)
+	}
+
+	// Build set of active session titles (workspace names and beads IDs)
+	activeTitles := make(map[string]bool)
+	for _, s := range sessions {
+		title := s.Title
+		if title == "" {
+			continue
+		}
+		activeTitles[title] = true
+		// Also extract workspace name from title (format: "workspace-name [beads-id]")
+		if idx := strings.Index(title, " ["); idx != -1 {
+			activeTitles[strings.TrimSpace(title[:idx])] = true
+		}
+	}
+
+	fmt.Printf("  Found %d active OpenCode sessions\n", len(sessions))
+
+	// Find orphan processes
+	orphans, err := process.FindOrphanProcesses(activeTitles)
+	if err != nil {
+		return 0, fmt.Errorf("failed to find orphan processes: %w", err)
+	}
+
+	if len(orphans) == 0 {
+		fmt.Println("  No orphan bun processes found")
+		return 0, nil
+	}
+
+	fmt.Printf("  Found %d orphan bun processes:\n", len(orphans))
+
+	killed := 0
+	for _, orphan := range orphans {
+		name := orphan.WorkspaceName
+		if name == "" {
+			name = "(unknown)"
+		}
+		beadsInfo := ""
+		if orphan.BeadsID != "" {
+			beadsInfo = fmt.Sprintf(" [%s]", orphan.BeadsID)
+		}
+
+		if dryRun {
+			fmt.Printf("    [DRY-RUN] Would kill: PID %d (%s%s)\n", orphan.PID, name, beadsInfo)
+			killed++
+			continue
+		}
+
+		if process.Terminate(orphan.PID, "bun (orphan)") {
+			fmt.Printf("    Killed: PID %d (%s%s)\n", orphan.PID, name, beadsInfo)
+			killed++
+		} else {
+			fmt.Printf("    Already dead: PID %d (%s%s)\n", orphan.PID, name, beadsInfo)
+		}
+	}
+
+	return killed, nil
 }
 
 // NOTE: extractBeadsIDFromWorkspace is defined in review.go
