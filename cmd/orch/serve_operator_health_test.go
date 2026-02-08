@@ -155,3 +155,93 @@ func TestCountRecentInvestigations(t *testing.T) {
 		t.Fatalf("expected 2 investigations in window, got %d", count)
 	}
 }
+
+func TestIsOrchRelatedProcess(t *testing.T) {
+	tests := []struct {
+		name    string
+		command string
+		args    string
+		want    bool
+	}{
+		// Legitimate PPID=1 processes (should return false - not orch orphans)
+		{
+			name:    "overmind should not be flagged as orch orphan",
+			command: "overmind",
+			args:    "start -f Procfile",
+			want:    false,
+		},
+		{
+			name:    "tmux should not be flagged as orch orphan",
+			command: "tmux",
+			args:    "new-session -d -s main",
+			want:    false,
+		},
+		{
+			name:    "macOS system process should not be flagged",
+			command: "/System/Library/PrivateFrameworks/CoreServicesInternal",
+			args:    "",
+			want:    false,
+		},
+		{
+			name:    "vite dev server should not be flagged as orphan",
+			command: "node",
+			args:    "/path/to/vite/bin/vite.js dev",
+			want:    false,
+		},
+
+		// Actual orch-related processes (should return true - potential orphans)
+		{
+			name:    "bun process with .orch in path should be flagged",
+			command: "bun",
+			args:    "/Users/user/project/.orch/workspace/agent/script.js",
+			want:    true,
+		},
+		{
+			name:    "opencode process should be flagged",
+			command: "opencode",
+			args:    "--port 4096",
+			want:    true,
+		},
+		{
+			name:    "orch binary should be flagged",
+			command: "orch",
+			args:    "serve --daemon",
+			want:    true,
+		},
+		{
+			name:    "node process with opencode should be flagged",
+			command: "node",
+			args:    "/path/to/opencode/server.js",
+			want:    true,
+		},
+		{
+			name:    "bun with run --attach should be flagged",
+			command: "bun",
+			args:    "run --attach session-123",
+			want:    true,
+		},
+
+		// Unrelated processes (should return false)
+		{
+			name:    "unrelated process should not be flagged",
+			command: "firefox",
+			args:    "https://example.com",
+			want:    false,
+		},
+		{
+			name:    "launchd should not be flagged",
+			command: "launchd",
+			args:    "",
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isOrchRelatedProcess(tt.command, tt.args)
+			if got != tt.want {
+				t.Errorf("isOrchRelatedProcess(%q, %q) = %v, want %v", tt.command, tt.args, got, tt.want)
+			}
+		})
+	}
+}

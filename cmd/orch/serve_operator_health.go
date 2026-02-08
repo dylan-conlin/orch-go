@@ -551,19 +551,44 @@ func listOrphanedOrchProcesses(limit int) ([]orphanProcessEntry, error) {
 }
 
 func isOrchRelatedProcess(command, args string) bool {
-	text := strings.ToLower(command + " " + args)
+	commandLower := strings.ToLower(command)
+	argsLower := strings.ToLower(args)
+	text := commandLower + " " + argsLower
 
-	keywords := []string{
+	// Whitelist: legitimate PPID=1 processes that should NOT be flagged as orphans
+	legitimateProcesses := []string{
+		"overmind", // Process manager launched by orch-dashboard
+		"tmux",     // Terminal multiplexer managed by launchd
+		"launchd",  // System init process
+	}
+
+	for _, legitimate := range legitimateProcesses {
+		if commandLower == legitimate || strings.HasPrefix(commandLower, legitimate) {
+			return false
+		}
+	}
+
+	// macOS system processes
+	if strings.HasPrefix(command, "/System/Library/") {
+		return false
+	}
+
+	// Development servers (vite, etc.) should not be flagged as orphans
+	// They are intentionally long-running processes
+	if strings.Contains(argsLower, "vite") && strings.Contains(argsLower, "dev") {
+		return false
+	}
+
+	// Orch-related keywords that indicate potential orphans
+	orchKeywords := []string{
 		"opencode",
 		"orch",
 		".orch",
 		"run --attach",
-		"overmind",
-		"vite",
 		"beads",
 	}
 
-	for _, keyword := range keywords {
+	for _, keyword := range orchKeywords {
 		if strings.Contains(text, keyword) {
 			return true
 		}
