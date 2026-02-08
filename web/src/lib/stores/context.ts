@@ -121,15 +121,23 @@ function createContextStore() {
 	let isPolling = false;
 	let pollInterval = 2000;
 	let currentBackoff = pollInterval;
+	let lastFetchAt = 0;
 	const maxBackoff = 30000; // Cap at 30s
 	let isDisconnected = false; // Track connection state for backoff
 	let currentData: OrchestratorContext = {}; // Track current data for shallow equality
 	
-	async function fetchWithRetry(): Promise<void> {
+	async function fetchWithRetry(force: boolean = false): Promise<void> {
+		const now = Date.now();
+		if (!force && lastFetchAt > 0 && now - lastFetchAt < pollInterval) {
+			return;
+		}
+
 		if (fetchInFlight) {
 			await fetchInFlight;
 			return;
 		}
+
+		lastFetchAt = now;
 
 		fetchInFlight = (async () => {
 			const abortController = new AbortController();
@@ -213,8 +221,8 @@ function createContextStore() {
 		set,
 
 		// Fetch current context from API
-		async fetch(): Promise<void> {
-			await fetchWithRetry();
+		async fetch(force: boolean = false): Promise<void> {
+			await fetchWithRetry(force);
 		},
 
 		// Start polling for context changes with exponential backoff
@@ -252,7 +260,7 @@ function createContextStore() {
 		// Manual retry - resets backoff
 		async retry(): Promise<void> {
 			currentBackoff = pollInterval;
-			await fetchWithRetry();
+			await fetchWithRetry(true);
 		}
 	};
 }
