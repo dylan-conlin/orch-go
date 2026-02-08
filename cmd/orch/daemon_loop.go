@@ -453,6 +453,7 @@ func (rt *daemonRuntime) processFactualQuestions(timestamp string) {
 func (rt *daemonRuntime) writeStatus(timestamp string, pollTime time.Time) {
 	readyIssues, _ := daemon.ListReadyIssuesWithLabelAndOverride(rt.config.Label, rt.config.AllowFeatureWorkOverride)
 	readyCount := len(readyIssues)
+	queueDiagnostics := rt.d.QueueDiagnosticsForIssues(readyIssues)
 
 	status := daemon.DaemonStatus{
 		Capacity: daemon.CapacityStatus{
@@ -460,6 +461,7 @@ func (rt *daemonRuntime) writeStatus(timestamp string, pollTime time.Time) {
 			Active:    rt.d.ActiveCount(),
 			Available: rt.d.AvailableSlots(),
 		},
+		Queue:          queueDiagnostics,
 		LastPoll:       pollTime,
 		LastSpawn:      rt.lastSpawn,
 		LastCompletion: rt.lastCompletion,

@@ -151,6 +151,41 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 	return nil, nil
 }
 
+// QueueDiagnosticsForIssues computes queued-work diagnostics for dashboard status.
+// It explains why currently ready issues are not spawning yet.
+func (d *Daemon) QueueDiagnosticsForIssues(readyIssues []Issue) QueueDiagnostics {
+	diagnostics := QueueDiagnostics{
+		Queued: len(readyIssues),
+	}
+
+	if len(readyIssues) == 0 {
+		return diagnostics
+	}
+
+	spawnable := 0
+	for _, issue := range readyIssues {
+		if d.ProcessedCache != nil && !d.ProcessedCache.ShouldProcess(issue.ID) {
+			diagnostics.ProcessedCache++
+			continue
+		}
+
+		if d.InGracePeriodWithoutRecording(issue.ID) {
+			diagnostics.GracePeriod++
+			continue
+		}
+
+		spawnable++
+	}
+
+	diagnostics.Spawnable = spawnable
+	availableSlots := d.AvailableSlots()
+	if spawnable > availableSlots {
+		diagnostics.WaitingForSlots = spawnable - availableSlots
+	}
+
+	return diagnostics
+}
+
 // expandTriageReadyEpics finds epics with the required label and includes their children.
 // Returns the expanded issue list and a map of issue IDs that are epic children
 // (for label exemption in NextIssueExcluding).

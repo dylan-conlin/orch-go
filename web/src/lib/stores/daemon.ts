@@ -4,6 +4,14 @@ import { writable } from 'svelte/store';
 const API_BASE = 'https://localhost:3348';
 
 // Daemon status response from /api/daemon
+export interface DaemonQueueDiagnostics {
+	queued: number;
+	spawnable: number;
+	waiting_for_slots: number;
+	grace_period: number;
+	processed_cache: number;
+}
+
 export interface DaemonStatus {
 	running: boolean;
 	status?: string; // "running", "stalled", or undefined if not running
@@ -16,6 +24,7 @@ export interface DaemonStatus {
 	capacity_used: number; // Currently active agents
 	capacity_free: number; // Available slots
 	issues_per_hour?: number; // Processing rate (future)
+	queue?: DaemonQueueDiagnostics;
 }
 
 // Daemon store
@@ -42,7 +51,14 @@ function createDaemonStore() {
 					ready_count: 0,
 					capacity_max: 0,
 					capacity_used: 0,
-					capacity_free: 0
+					capacity_free: 0,
+					queue: {
+						queued: 0,
+						spawnable: 0,
+						waiting_for_slots: 0,
+						grace_period: 0,
+						processed_cache: 0,
+					},
 				});
 			}
 		}

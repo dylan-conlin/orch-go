@@ -18,6 +18,9 @@ type DaemonStatus struct {
 	// Capacity holds the agent pool capacity information.
 	Capacity CapacityStatus `json:"capacity"`
 
+	// Queue holds diagnostics for why ready issues remain queued.
+	Queue QueueDiagnostics `json:"queue"`
+
 	// LastPoll is the timestamp of the last poll cycle.
 	LastPoll time.Time `json:"last_poll"`
 
@@ -35,6 +38,27 @@ type DaemonStatus struct {
 	// Status indicates the daemon's operational state.
 	// Values: "running", "stalled"
 	Status string `json:"status"`
+}
+
+// QueueDiagnostics explains why triage:ready issues remain queued.
+type QueueDiagnostics struct {
+	// Queued is the number of triage:ready issues considered this poll.
+	Queued int `json:"queued"`
+
+	// Spawnable is the number of queued issues that can spawn immediately
+	// after grace/dedup checks.
+	Spawnable int `json:"spawnable"`
+
+	// WaitingForSlots is the number of spawnable issues that cannot run yet
+	// because all daemon capacity is currently in use.
+	WaitingForSlots int `json:"waiting_for_slots"`
+
+	// GracePeriod is the number of queued issues still in daemon grace period.
+	GracePeriod int `json:"grace_period"`
+
+	// ProcessedCache is the number of queued issues blocked by processed-cache
+	// deduplication (includes active-session and Phase: Complete dedup checks).
+	ProcessedCache int `json:"processed_cache"`
 }
 
 // CapacityStatus holds agent pool capacity information.

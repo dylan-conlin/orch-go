@@ -18,20 +18,30 @@ import (
 
 // DaemonAPIResponse is the JSON structure returned by /api/daemon.
 type DaemonAPIResponse struct {
-	Running       bool   `json:"running"`                   // Whether the daemon is currently running
-	Status        string `json:"status,omitempty"`          // "running", "stalled", or empty if not running
-	LastPoll      string `json:"last_poll,omitempty"`       // ISO 8601 timestamp of last poll
-	LastPollAgo   string `json:"last_poll_ago,omitempty"`   // Human-readable time since last poll
-	LastSpawn     string `json:"last_spawn,omitempty"`      // ISO 8601 timestamp of last spawn
-	LastSpawnAgo  string `json:"last_spawn_ago,omitempty"`  // Human-readable time since last spawn
-	ReadyCount    int    `json:"ready_count"`               // Number of issues ready to process
-	CapacityMax   int    `json:"capacity_max"`              // Maximum concurrent agents
-	CapacityUsed  int    `json:"capacity_used"`             // Currently active agents
-	CapacityFree  int    `json:"capacity_free"`             // Available slots for spawning
-	IssuesPerHour int    `json:"issues_per_hour,omitempty"` // Approximate processing rate (future)
+	Running       bool                   `json:"running"`                   // Whether the daemon is currently running
+	Status        string                 `json:"status,omitempty"`          // "running", "stalled", or empty if not running
+	LastPoll      string                 `json:"last_poll,omitempty"`       // ISO 8601 timestamp of last poll
+	LastPollAgo   string                 `json:"last_poll_ago,omitempty"`   // Human-readable time since last poll
+	LastSpawn     string                 `json:"last_spawn,omitempty"`      // ISO 8601 timestamp of last spawn
+	LastSpawnAgo  string                 `json:"last_spawn_ago,omitempty"`  // Human-readable time since last spawn
+	ReadyCount    int                    `json:"ready_count"`               // Number of issues ready to process
+	CapacityMax   int                    `json:"capacity_max"`              // Maximum concurrent agents
+	CapacityUsed  int                    `json:"capacity_used"`             // Currently active agents
+	CapacityFree  int                    `json:"capacity_free"`             // Available slots for spawning
+	IssuesPerHour int                    `json:"issues_per_hour,omitempty"` // Approximate processing rate (future)
+	Queue         DaemonQueueAPIResponse `json:"queue"`
 
 	// Utilization metrics - tracks daemon vs manual spawn ratio to surface triage discipline
 	Utilization *DaemonUtilizationMetrics `json:"utilization,omitempty"`
+}
+
+// DaemonQueueAPIResponse explains why ready issues remain queued.
+type DaemonQueueAPIResponse struct {
+	Queued          int `json:"queued"`
+	Spawnable       int `json:"spawnable"`
+	WaitingForSlots int `json:"waiting_for_slots"`
+	GracePeriod     int `json:"grace_period"`
+	ProcessedCache  int `json:"processed_cache"`
 }
 
 // DaemonUtilizationMetrics tracks the ratio of daemon-spawned vs manual-spawned agents.
@@ -66,6 +76,7 @@ func (s *Server) handleDaemon(w http.ResponseWriter, r *http.Request) {
 
 	resp := DaemonAPIResponse{
 		Running: false,
+		Queue:   DaemonQueueAPIResponse{},
 	}
 
 	// Try to read daemon status file
@@ -77,6 +88,17 @@ func (s *Server) handleDaemon(w http.ResponseWriter, r *http.Request) {
 		resp.CapacityMax = status.Capacity.Max
 		resp.CapacityUsed = status.Capacity.Active
 		resp.CapacityFree = status.Capacity.Available
+
+		resp.Queue = DaemonQueueAPIResponse{
+			Queued:          status.Queue.Queued,
+			Spawnable:       status.Queue.Spawnable,
+			WaitingForSlots: status.Queue.WaitingForSlots,
+			GracePeriod:     status.Queue.GracePeriod,
+			ProcessedCache:  status.Queue.ProcessedCache,
+		}
+		if resp.Queue.Queued == 0 && resp.ReadyCount > 0 {
+			resp.Queue.Queued = resp.ReadyCount
+		}
 
 		// Format timestamps
 		if !status.LastPoll.IsZero() {

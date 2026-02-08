@@ -79,6 +79,12 @@ func (s *Server) handleServiceEventsSSE(w http.ResponseWriter, r *http.Request) 
 
 	logPath := events.DefaultLogPath()
 	ctx := r.Context()
+	var file *os.File
+	defer func() {
+		if file != nil {
+			_ = file.Close()
+		}
+	}()
 
 	// Open file for reading
 	file, err := os.Open(logPath)
@@ -92,8 +98,6 @@ func (s *Server) handleServiceEventsSSE(w http.ResponseWriter, r *http.Request) 
 			flusher.Flush()
 			return
 		}
-	} else {
-		defer file.Close()
 	}
 
 	// Send connected event

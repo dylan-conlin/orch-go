@@ -12,7 +12,7 @@
 	import { ArtifactFeed } from '$lib/components/artifact-feed';
 	import { RecentlyCompletedSection } from '$lib/components/recently-completed-section';
 	import { wip, wipItems } from '$lib/stores/wip';
-	import { daemon } from '$lib/stores/daemon';
+	import { daemon, type DaemonStatus } from '$lib/stores/daemon';
 	import { attention, type CompletedIssue } from '$lib/stores/attention';
 	import { focus, type FocusInfo } from '$lib/stores/focus';
 
@@ -542,6 +542,26 @@
 		}
 		return 'Tree view - Navigate with j/k, expand with l/enter, collapse with h/esc, close with x';
 	}
+
+	function daemonQueueSummary(status: DaemonStatus): string {
+		const queued = status.queue?.queued ?? status.ready_count ?? 0;
+		const reasons: string[] = [];
+		if ((status.queue?.waiting_for_slots ?? 0) > 0) {
+			reasons.push(`${status.queue?.waiting_for_slots} waiting for slots`);
+		}
+		if ((status.queue?.grace_period ?? 0) > 0) {
+			reasons.push(`${status.queue?.grace_period} in grace period`);
+		}
+		if ((status.queue?.processed_cache ?? 0) > 0) {
+			reasons.push(`${status.queue?.processed_cache} in processed cache`);
+		}
+
+		if (queued === 0 || reasons.length === 0) {
+			return `${queued} queued`;
+		}
+
+		return `${queued} queued (${reasons.join(', ')})`;
+	}
 </script>
 
 <svelte:window on:keydown={handleKeydown} />
@@ -591,6 +611,18 @@
 				/>
 			{/if}
 			<div class="flex items-center gap-4 text-sm text-muted-foreground ml-auto">
+				{#if currentView === 'issues' && $daemon}
+					<span class="truncate max-w-[40rem]">
+						Daemon: {$daemon.running ? ($daemon.status || 'running') : 'stopped'}
+						{#if $daemon.running}
+							· {$daemon.capacity_used}/{$daemon.capacity_max} slots
+							{#if $daemon.last_poll_ago}
+								· last poll {$daemon.last_poll_ago}
+							{/if}
+							· {daemonQueueSummary($daemon)}
+						{/if}
+					</span>
+				{/if}
 				{#if currentView === 'issues' && $workGraph}
 					<span>{labelFilter ? filteredTree.length + ' matched' : $workGraph.node_count + ' issues'}</span>
 					<span>{$workGraph.edge_count} edges</span>

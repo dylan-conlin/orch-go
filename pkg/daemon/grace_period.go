@@ -26,6 +26,22 @@ func (d *Daemon) InGracePeriod(id string) bool {
 	return time.Since(d.firstSeen[id]) < d.Config.GracePeriod
 }
 
+// InGracePeriodWithoutRecording checks grace-period status without mutating
+// firstSeen state. Unseen issues are treated as in grace period.
+func (d *Daemon) InGracePeriodWithoutRecording(id string) bool {
+	if d.Config.GracePeriod <= 0 {
+		return false
+	}
+	if d.firstSeen == nil {
+		return true
+	}
+	firstSeen, exists := d.firstSeen[id]
+	if !exists {
+		return true
+	}
+	return time.Since(firstSeen) < d.Config.GracePeriod
+}
+
 // CleanFirstSeen removes entries from firstSeen that are no longer in the issue queue.
 func (d *Daemon) CleanFirstSeen(activeIDs map[string]bool) {
 	if d.firstSeen == nil {
