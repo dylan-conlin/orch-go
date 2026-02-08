@@ -11,7 +11,7 @@
 # Investigation: Anthropic OAuth Community Workarounds
 
 **Question:** Which community workarounds for Anthropic's OAuth blocking actually work in orch-go's context?
-**Status:** In Progress
+**Status:** Complete (archived)
 **Context:** Follows up on `2026-01-08-inv-opus-auth-gate-fingerprinting.md` which correctly identified header spoofing wouldn't work. Community has since discovered tool name fingerprinting is the actual mechanism.
 
 ## Background
