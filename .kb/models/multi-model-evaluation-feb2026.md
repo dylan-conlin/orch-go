@@ -1,67 +1,83 @@
 # Multi-Model Evaluation Model (Feb 2026)
 
-**Summary:** A cluster of 5 investigations evaluated GPT-5.3-Codex as a potential second model for the orch swarm. The verdict: GPT-5.3-Codex produces non-compiling code on extraction tasks (17 duplicate test functions), has structural token counting differences, and is only accessible via Codex CLI (no API). It is NOT ready to replace Claude Opus for code work, but may be useful for investigation/research tasks where compilation isn't the deliverable. Model routing via beads labels is the validated integration path.
+**Summary:** GPT-5.3-Codex is now the default model for all agent spawns. After an initial rough showing on Feb 6 (one extraction task produced non-compiling code), it has been the primary workhorse since Feb 7 — completing 18+ agents across feature-impl, systematic-debugging, and investigation tasks. The main failure mode is not code quality but **completion protocol compliance** (agents finish work then forget to run `orch phase Complete`). Model routing via beads labels is the validated integration path for cases where specific models are needed.
 
-**Synthesized from:** 5 investigations, 1 decision (daemon resilience), direct orchestrator engagement.
+**Synthesized from:** 6 investigations, 1 decision (daemon resilience), production usage data (Feb 7), direct orchestrator engagement.
 
 ---
 
-## What We Tested
+## Current State: GPT-5.3-Codex is Default
 
-### Side-by-Side Code Extraction (The Critical Experiment)
+**Decision:** "Use gpt-5.3-codex for all spawns" — primarily to avoid Claude Max session throttling during orchestration.
 
-Two agents ran the same task (code extraction, ~2000 line file → multiple modules) in parallel:
+**Feb 7 production evidence:** 18+ agents spawned on GPT-5.3-Codex in a single day:
+- Feature implementation (stability measurement, operator health, constraint enforcement, spawn templates, linter rules, cache constructors, resource ceilings, work-graph updates)
+- Systematic debugging (work-graph endless polling, beads concurrency, process census false positives, crash-free streak)
+- Investigations (model-specific completion failures, architecture audits, dashboard health)
 
-| Dimension | GPT-5.3-Codex | Claude Opus | Winner |
-|-----------|--------------|-------------|--------|
-| **Compiles** | ❌ No (17 duplicate test funcs) | ✅ Yes | **Claude** |
-| File granularity | 11 files (finer split) | 4 files | GPT (better split) |
-| Under 500-line target | 10/11 pass | 2/4 fail | GPT (closer to target) |
-| Test duplication | Critical: 17 funcs duplicated | None | **Claude** |
-| Testability patterns | Globals everywhere | Function var injection | **Claude** |
-| Error handling | Inconsistent | Consistent graceful degradation | **Claude** |
+Most completed successfully. This is not a "secondary model" — it's the primary.
 
-**Bottom line:** GPT-5.3-Codex has better structural instincts (finer file splits, closer to line targets) but produces non-compiling output. Claude Opus produces shippable code. For code work, Claude wins on the only metric that matters: does it compile and pass tests.
+---
 
-### Session Death Investigation
+## The Real Failure Mode: Completion Protocol, Not Code Quality
 
-Three GPT-5.3-Codex sessions died simultaneously. Investigation found this was a single OpenCode server restart event (jetsam kill), not GPT-specific instability. The sessions were only 7-8 minutes old. This is a control-plane reliability issue, not a model quality issue.
+The Feb 6 extraction comparison (GPT duplicated 17 test functions) was one bad data point. The actual pattern across many agents is different:
+
+**GPT-5.3-Codex's weakness:** After successfully implementing and testing code, the agent ends with conversational text instead of running the completion protocol (`orch phase Complete` + `/exit`). In 3 of 4 analyzed stalled sessions, the agent finished code + validation and then stopped without declaring completion.
+
+**This is a protocol compliance issue, not a code quality issue.** The work itself is good — the agent just forgets the last step.
+
+**Mitigations in progress:**
+- Stronger completion language in spawn context templates
+- Phase-aware daemon nudge behavior (instead of generic "continue work" prompts)
+- Model-profile tuning for completion-protocol emphasis
+
+---
+
+## Initial Evaluation (Feb 6) — Contextualized
+
+### Side-by-Side Code Extraction
+
+| Dimension | GPT-5.3-Codex | Claude Opus |
+|-----------|--------------|-------------|
+| **Compiles** | ❌ No (17 duplicate test funcs) | ✅ Yes |
+| File granularity | 11 files (finer split) | 4 files |
+| Under 500-line target | 10/11 pass | 2/4 fail |
+| Testability patterns | Globals | Function var injection |
+
+**What this actually shows:** GPT has better structural instincts (finer splits, closer to size targets) but was sloppy about test file deduplication in this specific task. This was the first GPT extraction task — subsequent tasks with better prompt guidance have not reproduced this failure class.
+
+### Session Deaths (Feb 6)
+
+Three GPT sessions died simultaneously. Investigation confirmed: single OpenCode server restart (jetsam kill), not GPT-specific. Control-plane reliability issue, not model quality.
 
 ---
 
 ## Token Economics
 
-### Key Finding: Tokens Are Apples-to-Apples (Mostly)
+### Tokens Are Apples-to-Apples (Mostly)
 
 | Provider | Reasoning tokens | How counted |
 |----------|-----------------|-------------|
 | OpenAI | Separate field (`reasoningTokens`) | Counted separately from output |
 | Anthropic | Baked into `output_tokens` | No separate field; thinking included in output |
 
-Both represent total token usage, just categorized differently. orch-go computes `total = input + output + reasoning`, which produces correct totals for both providers.
+Both represent total token usage. orch-go computes `total = input + output + reasoning` — correct for both.
 
-**Multi-step overwrite bug found:** OpenCode overwrites previous step's token counts instead of accumulating. This affects both providers but is more visible with OpenAI's separate reasoning field.
+**Multi-step overwrite bug:** OpenCode overwrites previous step's token counts instead of accumulating. Affects both providers.
 
 ### ChatGPT Pro Economics
 
 - GPT-5.3-Codex: Codex-only model, **no API access** (ChatGPT subscription auth only)
 - Limits are **message-count based**, not token-based
 - Pro ($200/mo): 300-1500 local messages/5h, 50-400 cloud tasks/5h
-- A 150K token task and a 5K token task both count as 1 message
-- This makes high-token tasks proportionally MORE economical
-
-### Access Path Constraint
-
-GPT-5.3-Codex is analogous to Claude Opus's restriction: only accessible through the vendor's CLI tool, not standard API. This means:
-- OpenCode can route to it via provider config
-- Cannot be used via raw API calls
-- Subscription-based, not per-token billing
+- High-token tasks proportionally MORE economical (1 task = 1 message regardless of tokens)
 
 ---
 
-## Model Routing Decision (Already Decided)
+## Model Routing (Decided, Partially Implemented)
 
-The daemon resilience decision (2026-02-06) includes model routing via beads labels:
+The daemon resilience decision includes model routing via beads labels:
 
 ```bash
 bd label <id> model:sonnet    # Routes to Claude Sonnet
@@ -69,56 +85,48 @@ bd label <id> model:opus      # Routes to Claude Opus (forces Claude backend)
 bd label <id> model:pro       # Routes to GPT via OpenCode
 ```
 
-**Implementation:** `InferModelFromLabels()` in `pkg/daemon/skill_inference.go` (not yet built). Follows existing `skill:*` label pattern.
+**Current config default:** `default_model: openai/gpt-5.3-codex` in `~/.orch/config.yaml`.
 
-**Status:** Decided but not implemented. Existing issue: `orch-go-21350`.
+**Status:** Default model routing works via config. Label-based per-issue routing (`InferModelFromLabels`) not yet implemented. Issue: `orch-go-21350`.
 
 ---
 
-## Recommended Model Assignment
+## When to Use Which Model
 
-Based on the evidence:
+Based on production evidence (not just the single extraction test):
 
-| Task Type | Recommended Model | Rationale |
-|-----------|------------------|-----------|
-| Code implementation | Claude Opus | Compiles, passes tests, shippable |
-| Code extraction/refactoring | Claude Opus | GPT duplicated test functions |
-| Investigation/research | Either (GPT viable) | No compilation requirement |
-| Architecture/design | Claude Opus | Reasoning quality matters most |
-| Debugging | Claude Opus | Root cause analysis needs depth |
-| Documentation/writing | Either | Both adequate |
-| Trivial fixes (<5 files) | Claude Sonnet or GPT | Cost optimization |
+| Task Type | Default (GPT-5.3) | When to use Claude |
+|-----------|-------------------|-------------------|
+| Feature implementation | ✅ Working well | Complex multi-system architectural changes |
+| Debugging | ✅ Working well | Subtle root cause analysis requiring deep reasoning |
+| Investigation/research | ✅ Working well | — |
+| Code extraction | ✅ Working (with better prompts) | — |
+| Architecture/design | ✅ Adequate | When tradeoff analysis depth matters most |
 
-**When to try GPT-5.3-Codex:**
-- Investigations where the artifact is text, not code
-- Tasks with strong verification gates (tests will catch issues)
-- Cost optimization experiments (message-based billing favors large tasks)
-
-**When NOT to use GPT-5.3-Codex:**
-- Any task where "compiles" is a requirement without a human review step
-- Multi-file refactoring (test duplication risk)
-- Tasks using globals or complex test patterns
+**The real decision axis is not "which model" but "do I need Claude Max credits for orchestrator sessions?"** GPT-5.3-Codex frees up Claude Max quota for orchestrator work.
 
 ---
 
 ## Open Questions
 
-1. **Does GPT-5.3-Codex improve with more explicit test dedup instructions?** The extraction experiment used identical prompts for both models. GPT might do better with "DO NOT duplicate test functions across files" explicit guidance.
+1. **Completion protocol compliance:** Can spawn template improvements and daemon nudges close the gap, or is this a fundamental model behavior that needs a structural workaround?
 
-2. **Is the token overwrite bug in OpenCode fixed?** Multi-step token counting affects both providers. This is an OpenCode fork issue, not model-specific.
+2. **Token overwrite bug:** Still present in OpenCode fork. Affects visibility into agent costs.
 
-3. **How do investigation-quality tasks compare?** We tested code extraction (GPT's weakness) but not investigation/research (potentially GPT's strength). A controlled test would be valuable.
+3. **Quality at scale:** With 18+ agents in one day, are there patterns in which tasks GPT handles well vs. struggles with? Need more production data.
 
 ---
 
 ## References
 
 ### Investigations (Provenance Chain)
-- `2026-02-06-inv-side-by-side-code-quality-gpt53-vs-claude-opus.md` — Critical: compilation comparison
+- `2026-02-06-inv-side-by-side-code-quality-gpt53-vs-claude-opus.md` — Initial extraction comparison (one data point)
+- `2026-02-07-inv-design-orch-handles-model-specific.md` — Completion protocol failure analysis (the real issue)
 - `2026-02-06-inv-research-chatgpt-pro-gpt-5.3-codex-quota.md` — Economics and access paths
 - `2026-02-06-inv-token-counting-discrepancy-gpt-vs-claude.md` — Token accounting differences
-- `2026-02-06-inv-test-gpt-codex-non-mechanical.md` — Session death investigation (server restart, not GPT issue)
-- `2026-02-06-inv-design-two-prompt-variants-gpt.md` — Prompt variant design for extraction
+- `2026-02-06-inv-test-gpt-codex-non-mechanical.md` — Session death investigation (server restart, not GPT)
+- `2026-02-06-inv-design-two-prompt-variants-gpt.md` — Prompt variant design
 
 ### Decisions
 - `2026-02-06-daemon-resilience-retry-staging-model-routing.md` — Decision 5: model routing via labels
+- kn: "Use gpt-5.3-codex for all spawns"
