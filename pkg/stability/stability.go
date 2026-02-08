@@ -137,6 +137,12 @@ func isInfrastructureIntervention(source string) bool {
 	}
 }
 
+// IsInfrastructureIntervention reports whether an intervention source should be
+// treated as an infrastructure intervention.
+func IsInfrastructureIntervention(source string) bool {
+	return isInfrastructureIntervention(source)
+}
+
 // ComputeReport reads stability.jsonl and computes the stability report.
 func ComputeReport(path string, days int) (*Report, error) {
 	f, err := os.Open(path)

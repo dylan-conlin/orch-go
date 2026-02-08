@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/cache"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
@@ -44,16 +45,11 @@ const (
 var globalContextCache = newContextCache(defaultContextCacheMaxEntries, defaultContextCacheTTL)
 
 func newContextCache(maxSize int, ttl time.Duration) *contextCache {
-	if maxSize <= 0 {
-		panic("context cache maxSize must be > 0")
-	}
-	if ttl <= 0 {
-		panic("context cache ttl must be > 0")
-	}
+	bounds := cache.NewNamedCache("context cache", maxSize, ttl)
 
 	return &contextCache{
-		maxEntries: maxSize,
-		ttl:        ttl,
+		maxEntries: bounds.MaxSize(),
+		ttl:        bounds.TTL(),
 	}
 }
 

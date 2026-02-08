@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/cache"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"golang.org/x/sync/singleflight"
@@ -65,16 +66,11 @@ type globalWorkspaceCacheType struct {
 var globalWorkspaceCacheInstance = newGlobalWorkspaceCache(defaultWorkspaceCacheMaxEntries, 30*time.Second)
 
 func newGlobalWorkspaceCache(maxSize int, ttl time.Duration) *globalWorkspaceCacheType {
-	if maxSize <= 0 {
-		panic("global workspace cache maxSize must be > 0")
-	}
-	if ttl <= 0 {
-		panic("global workspace cache ttl must be > 0")
-	}
+	bounds := cache.NewNamedCache("global workspace cache", maxSize, ttl)
 
 	return &globalWorkspaceCacheType{
-		maxEntries: maxSize,
-		ttl:        ttl,
+		maxEntries: bounds.MaxSize(),
+		ttl:        bounds.TTL(),
 	}
 }
 
@@ -170,26 +166,21 @@ func (c *globalWorkspaceCacheType) invalidate() {
 
 // newBeadsCache creates a new beads cache with default TTLs.
 func newBeadsCache(maxSize int, ttl time.Duration) *beadsCache {
-	if maxSize <= 0 {
-		panic("beads cache maxSize must be > 0")
-	}
-	if ttl <= 0 {
-		panic("beads cache ttl must be > 0")
-	}
+	bounds := cache.NewNamedCache("beads cache", maxSize, ttl)
 
-	allIssuesTTL := ttl * 3
-	if allIssuesTTL < ttl {
-		allIssuesTTL = ttl
+	allIssuesTTL := bounds.TTL() * 3
+	if allIssuesTTL < bounds.TTL() {
+		allIssuesTTL = bounds.TTL()
 	}
 
 	return &beadsCache{
-		maxEntries:    maxSize,
-		openIssues:    make(map[string]*verify.Issue, maxSize),
-		allIssues:     make(map[string]*verify.Issue, maxSize),
-		comments:      make(map[string][]beads.Comment, maxSize),
-		openIssuesTTL: ttl,
+		maxEntries:    bounds.MaxSize(),
+		openIssues:    make(map[string]*verify.Issue, bounds.MaxSize()),
+		allIssues:     make(map[string]*verify.Issue, bounds.MaxSize()),
+		comments:      make(map[string][]beads.Comment, bounds.MaxSize()),
+		openIssuesTTL: bounds.TTL(),
 		allIssuesTTL:  allIssuesTTL,
-		commentsTTL:   ttl,
+		commentsTTL:   bounds.TTL(),
 	}
 }
 

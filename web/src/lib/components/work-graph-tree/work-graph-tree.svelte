@@ -3,7 +3,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { cn } from '$lib/utils';
 	import type { TreeNode, AttentionBadgeType, GroupSection, GroupByMode } from '$lib/stores/work-graph';
-	import { closeIssue } from '$lib/stores/work-graph';
+	import { closeIssue, updateIssue } from '$lib/stores/work-graph';
 	import type { WIPItem } from '$lib/stores/wip';
 	import { getExpressiveStatus, computeAgentHealth, getContextPercent, getContextColor } from '$lib/stores/wip';
 	import { ATTENTION_BADGE_CONFIG } from '$lib/stores/attention';
@@ -67,6 +67,14 @@
 	let copiedId: string | null = null;
 	let copiedTimeout: ReturnType<typeof setTimeout> | null = null;
 	
+	// Track priority mode (p key pressed, waiting for 0-4)
+	let priorityMode = false;
+	let priorityModeTimeout: ReturnType<typeof setTimeout> | null = null;
+	
+	// Track action feedback (flash on successful update)
+	let actionFeedback = new Map<string, 'priority' | 'queue'>(); // itemId -> action type
+	let actionFeedbackTimeout: ReturnType<typeof setTimeout> | null = null;
+	
 	// Copy ID to clipboard with visual feedback
 	async function copyToClipboard(id: string) {
 		try {
@@ -85,6 +93,81 @@
 		} catch (err) {
 			console.error('Failed to copy to clipboard:', err);
 		}
+	}
+	
+	// Enter priority mode (waiting for 0-4 key)
+	function enterPriorityMode() {
+		priorityMode = true;
+		// Auto-exit priority mode after 3 seconds
+		if (priorityModeTimeout) {
+			clearTimeout(priorityModeTimeout);
+		}
+		priorityModeTimeout = setTimeout(() => {
+			priorityMode = false;
+			priorityModeTimeout = null;
+		}, 3000);
+	}
+	
+	// Exit priority mode
+	function exitPriorityMode() {
+		priorityMode = false;
+		if (priorityModeTimeout) {
+			clearTimeout(priorityModeTimeout);
+			priorityModeTimeout = null;
+		}
+	}
+	
+	// Set priority for a tree node
+	async function setPriority(node: TreeNode, priority: number) {
+		const projectDir = $orchestratorContext?.project_dir;
+		const result = await updateIssue(node.id, { priority, project_dir: projectDir });
+		
+		if (result.success) {
+			// Show success feedback
+			showActionFeedback(node.id, 'priority');
+		} else {
+			console.error('Failed to update priority:', result.error);
+			// TODO: Show error toast
+		}
+	}
+	
+	// Toggle triage:ready label for a tree node
+	async function toggleTriageReady(node: TreeNode) {
+		const projectDir = $orchestratorContext?.project_dir;
+		const hasLabel = (node.labels || []).includes('triage:ready');
+		
+		const result = await updateIssue(node.id, {
+			add_labels: hasLabel ? undefined : ['triage:ready'],
+			remove_labels: hasLabel ? ['triage:ready'] : undefined,
+			project_dir: projectDir,
+		});
+		
+		if (result.success) {
+			// Show success feedback
+			showActionFeedback(node.id, 'queue');
+		} else {
+			console.error('Failed to toggle triage:ready:', result.error);
+			// TODO: Show error toast
+		}
+	}
+	
+	// Show action feedback (brief flash)
+	function showActionFeedback(itemId: string, action: 'priority' | 'queue') {
+		// Clear any existing timeout
+		if (actionFeedbackTimeout) {
+			clearTimeout(actionFeedbackTimeout);
+		}
+		
+		// Set feedback
+		actionFeedback.set(itemId, action);
+		actionFeedback = actionFeedback; // Trigger reactivity
+		
+		// Clear after 1 second
+		actionFeedbackTimeout = setTimeout(() => {
+			actionFeedback.delete(itemId);
+			actionFeedback = actionFeedback; // Trigger reactivity
+			actionFeedbackTimeout = null;
+		}, 1000);
 	}
 	
 	// Track selected issue for side panel
@@ -252,7 +335,7 @@
 	}
 
 	// Keyboard navigation handlers
-	function handleKeyDown(event: KeyboardEvent) {
+	async function handleKeyDown(event: KeyboardEvent) {
 		const current = flattenedNodes[selectedIndex];
 		if (!current) return;
 
@@ -423,12 +506,42 @@
 				}
 				break;
 			
-				case 'c':
-					event.preventDefault();
-					// Copy selected item's ID to clipboard
-					const id = getItemId(current);
-					copyToClipboard(id);
-					break;
+			case 'c':
+				event.preventDefault();
+				// Copy selected item's ID to clipboard
+				const id = getItemId(current);
+				copyToClipboard(id);
+				break;
+			
+			case 'p':
+				event.preventDefault();
+				// Enter priority mode (only for TreeNode, not WIP)
+				if (!isWIP) {
+					enterPriorityMode();
+				}
+				break;
+			
+			case '0':
+			case '1':
+			case '2':
+			case '3':
+			case '4':
+				event.preventDefault();
+				// Set priority (only when in priority mode and on TreeNode)
+				if (priorityMode && !isWIP) {
+					const priority = parseInt(event.key, 10);
+					await setPriority(current as TreeNode, priority);
+					exitPriorityMode();
+				}
+				break;
+			
+			case 'q':
+				event.preventDefault();
+				// Toggle triage:ready label (only for TreeNode, not WIP)
+				if (!isWIP) {
+					await toggleTriageReady(current as TreeNode);
+				}
+				break;
 		}
 	}
 
@@ -524,11 +637,17 @@
 
 <div
 	bind:this={containerElement}
-	class="work-graph-tree h-full overflow-y-auto px-0 py-2 focus:outline-none"
+	class="work-graph-tree h-full overflow-y-auto px-0 py-2 focus:outline-none relative"
 	role="tree"
 	tabindex="0"
 	onkeydown={handleKeyDown}
 >
+	<!-- Priority Mode Indicator -->
+	{#if priorityMode}
+		<div class="absolute top-2 right-4 z-10 bg-purple-500/90 text-white text-xs font-semibold px-3 py-1 rounded shadow-lg">
+			Priority Mode: Press 0-4
+		</div>
+	{/if}
 	{#each flattenedNodes as item, index (getItemKey(item))}
 		{@const itemId = getItemId(item)}
 		{@const isWIP = !isGroupHeader(item) && isWIPItem(item)}
@@ -724,9 +843,10 @@
 		{:else}
 			{@const node = item as TreeNode}
 			{@const dimPinned = pinnedTreeIds.has(node.id) && index !== selectedIndex}
+			{@const feedback = actionFeedback.get(node.id)}
 			<!-- Tree Node - L0: Row -->
 			<div
-			class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.absorbed_by ? 'opacity-50' : ''} {dimPinned ? 'opacity-60' : ''}"
+			class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.absorbed_by ? 'opacity-50' : ''} {dimPinned ? 'opacity-60' : ''} {feedback === 'priority' ? 'action-feedback-priority' : ''} {feedback === 'queue' ? 'action-feedback-queue' : ''}"
 			style="padding-left: {node.depth * 24}px"
 			>
 					<!-- Expansion indicator -->
@@ -884,6 +1004,36 @@
 		0% {
 			background-color: rgba(59, 130, 246, 0.3); /* blue-500 with opacity */
 			box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+		}
+		100% {
+			background-color: transparent;
+			box-shadow: 0 0 0 0 transparent;
+		}
+	}
+	
+	.action-feedback-priority {
+		animation: priority-flash 1s ease-out;
+	}
+	
+	.action-feedback-queue {
+		animation: queue-flash 1s ease-out;
+	}
+	
+	@keyframes priority-flash {
+		0% {
+			background-color: rgba(168, 85, 247, 0.4); /* purple-500 with opacity */
+			box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.6);
+		}
+		100% {
+			background-color: transparent;
+			box-shadow: 0 0 0 0 transparent;
+		}
+	}
+	
+	@keyframes queue-flash {
+		0% {
+			background-color: rgba(34, 197, 94, 0.4); /* green-500 with opacity */
+			box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.6);
 		}
 		100% {
 			background-color: transparent;

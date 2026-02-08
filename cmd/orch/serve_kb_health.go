@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/cache"
 )
 
 // KBHealthResponse is the JSON structure returned by /api/kb-health.
@@ -50,17 +52,12 @@ const (
 )
 
 func newKBHealthCache(maxSize int, ttl time.Duration) *kbHealthCache {
-	if maxSize <= 0 {
-		panic("kb health cache maxSize must be > 0")
-	}
-	if ttl <= 0 {
-		panic("kb health cache ttl must be > 0")
-	}
+	bounds := cache.NewNamedCache("kb health cache", maxSize, ttl)
 
 	return &kbHealthCache{
 		entries:    make(map[string]*kbHealthCacheEntry),
-		maxEntries: maxSize,
-		ttl:        ttl,
+		maxEntries: bounds.MaxSize(),
+		ttl:        bounds.TTL(),
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/atomicwrite"
+	"github.com/dylan-conlin/orch-go/pkg/cache"
 )
 
 // ProcessedIssueCache provides unified deduplication for spawned issues.
@@ -50,18 +51,16 @@ const (
 // If the file doesn't exist, creates an empty cache.
 // Automatically prunes entries older than ttl on load.
 func NewProcessedIssueCache(filePath string, maxSize int, ttl time.Duration) (*ProcessedIssueCache, error) {
-	if maxSize <= 0 {
-		return nil, fmt.Errorf("processed issue cache maxSize must be > 0")
-	}
-	if ttl <= 0 {
-		return nil, fmt.Errorf("processed issue cache ttl must be > 0")
+	bounds, err := cache.NewNamedCacheE("processed issue cache", maxSize, ttl)
+	if err != nil {
+		return nil, err
 	}
 
 	cache := &ProcessedIssueCache{
 		filePath:             filePath,
 		entries:              make(map[string]time.Time),
-		maxEntries:           maxSize,
-		ttl:                  ttl,
+		maxEntries:           bounds.MaxSize(),
+		ttl:                  bounds.TTL(),
 		sessionChecker:       HasExistingSessionForBeadsID,
 		phaseCompleteChecker: HasPhaseComplete,
 	}

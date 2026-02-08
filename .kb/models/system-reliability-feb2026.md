@@ -22,7 +22,7 @@ This shipped 5 times across different components because nothing in the developm
 |---|-----------|----------|-------------|----------------|--------|
 | 1 | OpenCode server | Instance cache (per-directory) | Unbounded Map<string, Context> | macOS jetsam at 8.4GB RSS | Fixed: LRU/TTL eviction |
 | 2 | Dashboard (bun) | Dev server processes | Orphaned on crash/restart (PPID=1) | CPU saturation (75%+) | **Eliminated:** Static build |
-| 3 | bd subprocesses | Shell-out processes | Dashboard → bd comments per agent, no cap | CPU spikes, system freeze | Fixed: 3-max semaphore, 10s timeout |
+| 3 | bd subprocesses | Shell-out processes | Dashboard → bd comments per agent, no cap | CPU spikes, system freeze | Fixed: 12-max semaphore, 10s timeout |
 | 4 | Beads SQLite | WAL file | Daemon rapid-restart race conditions | Database corruption | Previously fixed: JSONL migration |
 | 5 | bd sync | Memory allocation | JSONL import loads everything in-memory | OOM kill | Mitigated: bd-sync-safe.sh |
 
@@ -43,7 +43,7 @@ The 779 investigations in ~2 months were symptom-level, not pattern-level. Each 
 |-----|------|--------|
 | 1a: OpenCode Instance Eviction | LRU max 20, 30min TTL for idle instances | Prevents 8.4GB growth |
 | 1b: Bun Zombie Prevention | Wrapper script kills stale bun before restart | Superseded by Phase 2 |
-| 1c: bd Subprocess Hardening | 3-max semaphore, 10s timeout, singleflight dedup | Prevents CPU stampedes |
+| 1c: bd Subprocess Hardening | 12-max semaphore, 10s timeout, singleflight dedup | Prevents CPU stampedes |
 
 ### Phase 2: Structural Simplification
 - Eliminated bun dev server entirely
@@ -58,7 +58,7 @@ The 779 investigations in ~2 months were symptom-level, not pattern-level. Each 
 |--------|--------|-------|
 | Bun processes | 15 (13 zombies) | 1 (managed) |
 | Runtime processes | 4 | 3 |
-| bd subprocess cap | None (stampedes of 20+) | 3 max, 10s timeout |
+| bd subprocess cap | None (stampedes of 20+) | 12 max, 10s timeout |
 | OpenCode memory governance | None (8.4GB before jetsam) | LRU max 20, 30min TTL |
 | CPU (orch ecosystem) | 75% | ~12% |
 

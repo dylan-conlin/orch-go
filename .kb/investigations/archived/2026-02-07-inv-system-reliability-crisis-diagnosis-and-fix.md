@@ -72,7 +72,7 @@ The investigation count is not a sign of learning — it's a sign of fighting fi
 - **Note:** Superseded by Phase 2 (bun dev server eliminated entirely)
 
 ### Phase 1c: bd Subprocess Hardening
-- **Change:** Hard cap of 3 concurrent bd subprocesses system-wide via semaphore
+- **Change:** Hard cap of 12 concurrent bd subprocesses system-wide via semaphore
 - **Change:** 10s timeout on all bd CLI calls
 - **Change:** Singleflight dedup on `/api/agents` comments cache misses
 - **Change:** Structured logging when cap is hit (`event=bd_subprocess_cap_hit`)
@@ -96,7 +96,7 @@ The investigation count is not a sign of learning — it's a sign of fighting fi
 |--------|--------|-------|
 | Bun processes (orch-go) | 15 (13 zombies) | 1 (managed) |
 | Runtime processes | 4 (api + web + daemon + opencode) | 3 (api + daemon + opencode) |
-| bd subprocess cap | None (stampedes of 20+) | 3 max, 10s timeout |
+| bd subprocess cap | None (stampedes of 20+) | 12 max, 10s timeout |
 | OpenCode memory governance | None (grew to 8.4GB) | LRU max 20 instances, 30min TTL |
 | CPU (orch ecosystem) | 75% | ~12% |
 

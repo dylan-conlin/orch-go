@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/cache"
 )
 
 // LikelyDoneSignal represents an issue that appears to be complete
@@ -57,17 +58,12 @@ const (
 
 // NewLikelyDoneCache creates a new cache with 5-minute TTL.
 func NewLikelyDoneCache(maxSize int, ttl time.Duration) *LikelyDoneCache {
-	if maxSize <= 0 {
-		panic("likely done cache maxSize must be > 0")
-	}
-	if ttl <= 0 {
-		panic("likely done cache ttl must be > 0")
-	}
+	bounds := cache.NewNamedCache("likely done cache", maxSize, ttl)
 
 	return &LikelyDoneCache{
 		entries:    make(map[string]*likelyDoneCacheEntry),
-		maxEntries: maxSize,
-		ttl:        ttl,
+		maxEntries: bounds.MaxSize(),
+		ttl:        bounds.TTL(),
 	}
 }
 

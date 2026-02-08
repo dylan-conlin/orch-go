@@ -4,6 +4,31 @@ set -euo pipefail
 
 readonly BYPASS_VAR="ORCH_EXEC_START_CLEANUP_BYPASS"
 
+diff_base=""
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--diff-base)
+		if [[ $# -lt 2 ]]; then
+			echo "ERROR: --diff-base requires a git revision argument" >&2
+			exit 2
+		fi
+		diff_base="$2"
+		shift 2
+		;;
+	-h | --help)
+		echo "Usage: $0 [--diff-base <git-rev>]"
+		echo "  default mode: validate staged files in pre-commit"
+		echo "  --diff-base: validate added lines from <git-rev>...HEAD (CI mode)"
+		exit 0
+		;;
+	*)
+		echo "ERROR: unknown argument '$1'" >&2
+		exit 2
+		;;
+	esac
+done
+
 if [[ -n "${ORCH_EXEC_START_CLEANUP_BYPASS:-}" ]]; then
 	echo "WARNING: Skipping exec.Start cleanup check (${BYPASS_VAR} set)"
 	mkdir -p .orch
@@ -11,23 +36,37 @@ if [[ -n "${ORCH_EXEC_START_CLEANUP_BYPASS:-}" ]]; then
 	exit 0
 fi
 
-mapfile -t STAGED_GO_FILES < <(git diff --cached --name-only --diff-filter=ACMR -- '*.go')
+if [[ -n "$diff_base" ]]; then
+	mapfile -t TARGET_GO_FILES < <(git diff --name-only --diff-filter=ACMR "${diff_base}...HEAD" -- '*.go')
+else
+	mapfile -t TARGET_GO_FILES < <(git diff --cached --name-only --diff-filter=ACMR -- '*.go')
+fi
 
-if [[ ${#STAGED_GO_FILES[@]} -eq 0 ]]; then
+if [[ ${#TARGET_GO_FILES[@]} -eq 0 ]]; then
 	exit 0
 fi
 
 declare -a VIOLATIONS=()
 
-for file in "${STAGED_GO_FILES[@]}"; do
-	patch_text="$(git diff --cached -U0 -- "$file")"
+for file in "${TARGET_GO_FILES[@]}"; do
+	if [[ -n "$diff_base" ]]; then
+		patch_text="$(git diff "${diff_base}...HEAD" -U0 -- "$file")"
+		staged_content="$(git show "HEAD:$file" 2>/dev/null || true)"
+	else
+		patch_text="$(git diff --cached -U0 -- "$file")"
+		staged_content="$(git show ":$file" 2>/dev/null || true)"
+	fi
+
 	if ! grep -Eq '^\+[^+].*\.Start\(\)' <<<"$patch_text"; then
 		continue
 	fi
 
-	staged_content="$(git show ":$file" 2>/dev/null || true)"
 	if [[ -z "$staged_content" ]]; then
 		continue
+	fi
+
+	if grep -Eq '^\+[^+].*exec\.Command(Context)?\(.*\)\.Start\(\)' <<<"$patch_text"; then
+		VIOLATIONS+=("$file: direct exec.Command(...).Start() call missing process-group cleanup scaffolding")
 	fi
 
 	declare -A EXEC_VARS=()

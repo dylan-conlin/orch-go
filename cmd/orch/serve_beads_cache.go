@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/cache"
 )
 
 // projectCacheEntry holds cached data for a single project.
@@ -62,19 +63,14 @@ const (
 )
 
 func newBeadsStatsCache(maxSize int, ttl time.Duration) *beadsStatsCache {
-	if maxSize <= 0 {
-		panic("beads stats cache maxSize must be > 0")
-	}
-	if ttl <= 0 {
-		panic("beads stats cache ttl must be > 0")
-	}
+	bounds := cache.NewNamedCache("beads stats cache", maxSize, ttl)
 
 	return &beadsStatsCache{
-		maxEntries: maxSize,
+		maxEntries: bounds.MaxSize(),
 		projects:   make(map[string]*projectCacheEntry),
-		statsTTL:   ttl,
-		readyTTL:   ttl,
-		graphTTL:   ttl,
+		statsTTL:   bounds.TTL(),
+		readyTTL:   bounds.TTL(),
+		graphTTL:   bounds.TTL(),
 	}
 }
 

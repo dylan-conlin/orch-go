@@ -21,17 +21,8 @@ type SSEClient struct {
 // but do have redirect limiting to prevent redirect loops from hanging.
 func NewSSEClient(url string) *SSEClient {
 	return &SSEClient{
-		URL: url,
-		httpClient: &http.Client{
-			// No timeout - SSE is meant to be long-running
-			// But limit redirects to prevent redirect loops
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 10 {
-					return fmt.Errorf("too many redirects (max 10)")
-				}
-				return nil
-			},
-		},
+		URL:        url,
+		httpClient: newStreamingHTTPClient(),
 	}
 }
 

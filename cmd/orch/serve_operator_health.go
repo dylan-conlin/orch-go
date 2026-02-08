@@ -263,6 +263,9 @@ func readLatestStabilityIntervention(path string) (*stability.Entry, error) {
 		if entry.Type != stability.TypeIntervention {
 			continue
 		}
+		if !stability.IsInfrastructureIntervention(entry.Source) {
+			continue
+		}
 
 		if latest == nil || entry.Ts > latest.Ts {
 			entryCopy := entry
@@ -276,7 +279,6 @@ func readLatestStabilityIntervention(path string) (*stability.Entry, error) {
 
 	return latest, nil
 }
-
 func buildResourceCeilingsMetric(s *Server) resourceCeilingsMetric {
 	var report resourceHealthReport
 	if s != nil && s.ResourceMonitor != nil {
@@ -566,6 +568,17 @@ func isOrchRelatedProcess(command, args string) bool {
 		if commandLower == legitimate || strings.HasPrefix(commandLower, legitimate) {
 			return false
 		}
+	}
+
+	// Launchd-managed opencode server is intentionally PPID=1.
+	isLaunchdOpencodeServe := (strings.Contains(commandLower, "/.bun/bin/opencode") || strings.Contains(argsLower, "/.bun/bin/opencode")) && strings.Contains(" "+argsLower, " serve")
+	if isLaunchdOpencodeServe {
+		return false
+	}
+
+	// Sketchybar helper scripts poll orch status and may be PPID=1.
+	if strings.Contains(commandLower, "/.config/sketchybar/helpers/") || strings.Contains(argsLower, "/.config/sketchybar/helpers/") {
+		return false
 	}
 
 	// macOS system processes

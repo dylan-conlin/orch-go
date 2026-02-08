@@ -270,14 +270,7 @@ func (c *Client) SendMessageWithStreaming(sessionID, content string, streamTo io
 	if err := c.SendMessageAsync(sessionID, content, ""); err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
-	sseClient := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 10 {
-				return fmt.Errorf("too many redirects (max 10)")
-			}
-			return nil
-		},
-	}
+	sseClient := newStreamingHTTPClient()
 	sseURL := c.ServerURL + "/event"
 	resp, err := sseClient.Get(sseURL)
 	if err != nil {

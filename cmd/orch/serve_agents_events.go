@@ -33,9 +33,16 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Connect to OpenCode SSE stream
+	// Connect to OpenCode SSE stream using request context so upstream is canceled
+	// immediately when the dashboard client disconnects.
 	opencodeURL := s.ServerURL + "/event"
-	resp, err := http.Get(opencodeURL)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, opencodeURL, nil)
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: {\"error\": \"Failed to create OpenCode request: %s\"}\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+	resp, err := serveOpenCodeSSEHTTPClient.Do(req)
 	if err != nil {
 		// Send error as SSE event
 		fmt.Fprintf(w, "event: error\ndata: {\"error\": \"Failed to connect to OpenCode: %s\"}\n\n", err.Error())
@@ -61,32 +68,29 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	// Read and forward SSE events
 	reader := bufio.NewReader(resp.Body)
 	for {
-		select {
-		case <-ctx.Done():
-			// Client disconnected
-			return
-		default:
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				if err == io.EOF {
-					// Connection closed by OpenCode
-					fmt.Fprintf(w, "event: disconnected\ndata: {\"reason\": \"upstream closed\"}\n\n")
-					flusher.Flush()
-					return
-				}
-				// Read error
-				fmt.Fprintf(w, "event: error\ndata: {\"error\": \"Read error: %s\"}\n\n", err.Error())
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			if err == io.EOF {
+				// Connection closed by OpenCode
+				fmt.Fprintf(w, "event: disconnected\ndata: {\"reason\": \"upstream closed\"}\n\n")
 				flusher.Flush()
 				return
 			}
-
-			// Forward the line as-is (preserves SSE format)
-			if strings.HasPrefix(line, "data:") {
-				fmt.Printf("Forwarding SSE event: %s", line)
-			}
-			fmt.Fprint(w, line)
+			// Read error
+			fmt.Fprintf(w, "event: error\ndata: {\"error\": \"Read error: %s\"}\n\n", err.Error())
 			flusher.Flush()
+			return
 		}
+
+		// Forward the line as-is (preserves SSE format)
+		if strings.HasPrefix(line, "data:") {
+			fmt.Printf("Forwarding SSE event: %s", line)
+		}
+		fmt.Fprint(w, line)
+		flusher.Flush()
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/anthropic"
+	"github.com/dylan-conlin/orch-go/pkg/cache"
 )
 
 // API configuration - uses shared constants from pkg/anthropic.
@@ -44,17 +45,12 @@ type usageCache struct {
 
 // newUsageCache creates a new usage cache with the specified TTL.
 func newUsageCache(maxSize int, ttl time.Duration) *usageCache {
-	if maxSize <= 0 {
-		panic("usage cache maxSize must be > 0")
-	}
-	if ttl <= 0 {
-		panic("usage cache ttl must be > 0")
-	}
+	bounds := cache.NewNamedCache("usage cache", maxSize, ttl)
 
 	return &usageCache{
 		entries:    make(map[string]*usageCacheEntry),
-		maxEntries: maxSize,
-		ttl:        ttl,
+		maxEntries: bounds.MaxSize(),
+		ttl:        bounds.TTL(),
 	}
 }
 

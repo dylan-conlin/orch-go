@@ -197,12 +197,7 @@ func (s *Server) handleAttention(w http.ResponseWriter, r *http.Request) {
 
 	// AgentCollector - awaiting-cleanup agents as verify signals
 	// Note: Uses HTTPS to call own /api/agents endpoint (loose coupling)
-	agentHTTPClient := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfigSkipVerify(),
-		},
-	}
+	agentHTTPClient := serveLoopbackDefaultHTTPClient
 	agentAPIURL := fmt.Sprintf("https://localhost:%d", DefaultServePort)
 	agentSnapshot, agentSnapshotErr := attention.FetchAgentSnapshot(agentHTTPClient, agentAPIURL)
 	if debug {

@@ -421,3 +421,65 @@ export async function closeIssue(
     return { success: false, error: String(error) }
   }
 }
+
+// Update issue request/response types
+interface UpdateIssueRequest {
+  id: string
+  priority?: number
+  add_labels?: string[]
+  remove_labels?: string[]
+  project_dir?: string
+}
+
+interface UpdateIssueResponse {
+  id: string
+  success: boolean
+  error?: string
+}
+
+/**
+ * Update a beads issue via the API.
+ * @param id - The issue ID to update
+ * @param options - Update options (priority, add_labels, remove_labels, project_dir)
+ * @returns Promise with the result
+ */
+export async function updateIssue(
+  id: string,
+  options: {
+    priority?: number
+    add_labels?: string[]
+    remove_labels?: string[]
+    project_dir?: string
+  },
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const request: UpdateIssueRequest = {
+      id,
+      ...options,
+    }
+
+    const response = await fetch(`${API_BASE}/api/beads/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    })
+
+    if (!response.ok) {
+      const text = await response.text()
+      return { success: false, error: `HTTP ${response.status}: ${text}` }
+    }
+
+    const data: UpdateIssueResponse = await response.json()
+
+    if (!data.success) {
+      return { success: false, error: data.error || 'Unknown error' }
+    }
+
+    // Trigger a refresh of the work graph
+    workGraph.fetch(options.project_dir, 'open').catch(console.error)
+
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  }
+}

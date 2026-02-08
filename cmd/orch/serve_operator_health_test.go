@@ -12,6 +12,54 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/stability"
 )
 
+func TestBuildCrashFreeStreakMetricIgnoresAgentAbandonedForLastRecovery(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	if err := os.MkdirAll(filepath.Join(homeDir, ".orch"), 0755); err != nil {
+		t.Fatalf("failed to create .orch dir: %v", err)
+	}
+
+	now := time.Now().UTC()
+	healthy := true
+	path := stability.DefaultPath()
+	entries := []stability.Entry{
+		{
+			Type:     stability.TypeSnapshot,
+			Ts:       now.Add(-2 * time.Hour).Unix(),
+			Healthy:  &healthy,
+			Services: map[string]bool{"OpenCode": true},
+		},
+		{
+			Type:   stability.TypeIntervention,
+			Ts:     now.Add(-1 * time.Hour).Unix(),
+			Source: stability.SourceManualRecovery,
+			Detail: "OpenCode restarted manually",
+		},
+		{
+			Type:    stability.TypeIntervention,
+			Ts:      now.Add(-30 * time.Minute).Unix(),
+			Source:  stability.SourceAgentAbandoned,
+			Detail:  "orch-go-999 abandoned",
+			BeadsID: "orch-go-999",
+		},
+	}
+	writeStabilityEntries(t, path, entries)
+
+	metric, err := buildCrashFreeStreakMetric()
+	if err != nil {
+		t.Fatalf("buildCrashFreeStreakMetric returned error: %v", err)
+	}
+
+	if metric.LastIntervention == nil {
+		t.Fatal("expected last_intervention to be set")
+	}
+
+	if metric.LastIntervention.Source != stability.SourceManualRecovery {
+		t.Fatalf("expected last_intervention source %q, got %q", stability.SourceManualRecovery, metric.LastIntervention.Source)
+	}
+}
+
 func TestHandleOperatorHealthMethodNotAllowed(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/operator-health", nil)
 	rec := httptest.NewRecorder()
@@ -188,6 +236,18 @@ func TestIsOrchRelatedProcess(t *testing.T) {
 			args:    "/path/to/vite/bin/vite.js dev",
 			want:    false,
 		},
+		{
+			name:    "launchd opencode serve binary should not be flagged as orphan",
+			command: "/Users/user/.bun/bin/opencode",
+			args:    "serve --port 4096",
+			want:    false,
+		},
+		{
+			name:    "sketchybar helper script should not be flagged as orphan",
+			command: "zsh",
+			args:    "/Users/user/.config/sketchybar/helpers/orch-status.sh",
+			want:    false,
+		},
 
 		// Actual orch-related processes (should return true - potential orphans)
 		{
@@ -243,5 +303,23 @@ func TestIsOrchRelatedProcess(t *testing.T) {
 				t.Errorf("isOrchRelatedProcess(%q, %q) = %v, want %v", tt.command, tt.args, got, tt.want)
 			}
 		})
+	}
+}
+
+func writeStabilityEntries(t *testing.T, path string, entries []stability.Entry) {
+	t.Helper()
+
+	encoded := make([]byte, 0, len(entries)*128)
+	for _, entry := range entries {
+		line, err := json.Marshal(entry)
+		if err != nil {
+			t.Fatalf("failed to marshal stability entry: %v", err)
+		}
+		encoded = append(encoded, line...)
+		encoded = append(encoded, '\n')
+	}
+
+	if err := os.WriteFile(path, encoded, 0644); err != nil {
+		t.Fatalf("failed to write stability entries: %v", err)
 	}
 }

@@ -22,6 +22,13 @@ const DefaultServerURL = "http://127.0.0.1:4096"
 // This prevents hangs when OpenCode is in a bad state (e.g., redirect loop).
 const DefaultHTTPTimeout = 10 * time.Second
 
+const (
+	defaultMaxRedirects = 10
+	maxIdleConns        = 64
+	maxIdlePerHost      = 16
+	idleConnTimeout     = 30 * time.Second
+)
+
 // LargeScannerBufferSize is the buffer size for scanning JSON events from opencode output.
 // OpenCode JSON events can be very large (especially tool outputs with file contents),
 // so we use 1MB instead of the default 64KB (bufio.MaxScanTokenSize) to prevent ErrTooLong.
@@ -80,36 +87,51 @@ type Client struct {
 	httpClient *http.Client
 }
 
+var sharedHTTPTransport = newBoundedHTTPTransport()
+
+func newBoundedHTTPTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = maxIdleConns
+	transport.MaxIdleConnsPerHost = maxIdlePerHost
+	transport.IdleConnTimeout = idleConnTimeout
+	return transport
+}
+
+func checkRedirectLimit(req *http.Request, via []*http.Request) error {
+	if len(via) >= defaultMaxRedirects {
+		return fmt.Errorf("too many redirects (max %d)", defaultMaxRedirects)
+	}
+	return nil
+}
+
+func newHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout:       timeout,
+		Transport:     sharedHTTPTransport,
+		CheckRedirect: checkRedirectLimit,
+	}
+}
+
+func newStreamingHTTPClient() *http.Client {
+	return &http.Client{
+		Transport:     sharedHTTPTransport,
+		CheckRedirect: checkRedirectLimit,
+	}
+}
+
 // NewClient creates a new OpenCode client with default timeout.
 func NewClient(serverURL string) *Client {
 	return &Client{
-		ServerURL: serverURL,
-		httpClient: &http.Client{
-			Timeout: DefaultHTTPTimeout,
-			// Limit redirects to prevent redirect loops from hanging
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 10 {
-					return fmt.Errorf("too many redirects (max 10)")
-				}
-				return nil
-			},
-		},
+		ServerURL:  serverURL,
+		httpClient: newHTTPClient(DefaultHTTPTimeout),
 	}
 }
 
 // NewClientWithTimeout creates a new OpenCode client with custom timeout.
 func NewClientWithTimeout(serverURL string, timeout time.Duration) *Client {
 	return &Client{
-		ServerURL: serverURL,
-		httpClient: &http.Client{
-			Timeout: timeout,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 10 {
-					return fmt.Errorf("too many redirects (max 10)")
-				}
-				return nil
-			},
-		},
+		ServerURL:  serverURL,
+		httpClient: newHTTPClient(timeout),
 	}
 }
 

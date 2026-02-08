@@ -4,6 +4,8 @@ package daemon
 import (
 	"sync"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/cache"
 )
 
 // SpawnedIssueTracker tracks issue IDs that have been spawned to prevent
@@ -42,17 +44,12 @@ const (
 // NewSpawnedIssueTracker creates a new tracker with explicit max size and TTL.
 // Primary dedup is done via session-level checking in daemon.Once().
 func NewSpawnedIssueTracker(maxSize int, ttl time.Duration) *SpawnedIssueTracker {
-	if maxSize <= 0 {
-		panic("spawned issue tracker maxSize must be > 0")
-	}
-	if ttl <= 0 {
-		panic("spawned issue tracker ttl must be > 0")
-	}
+	bounds := cache.NewNamedCache("spawned issue tracker", maxSize, ttl)
 
 	return &SpawnedIssueTracker{
 		spawned:    make(map[string]time.Time),
-		MaxEntries: maxSize,
-		TTL:        ttl,
+		MaxEntries: bounds.MaxSize(),
+		TTL:        bounds.TTL(),
 	}
 }
 
