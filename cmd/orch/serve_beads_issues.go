@@ -285,3 +285,77 @@ func (s *Server) handleBeadsClose(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
+
+// UpdateIssueRequest is the JSON request body for POST /api/beads/update.
+type UpdateIssueRequest struct {
+	ID           string   `json:"id"`
+	Priority     *int     `json:"priority,omitempty"`
+	AddLabels    []string `json:"add_labels,omitempty"`
+	RemoveLabels []string `json:"remove_labels,omitempty"`
+	ProjectDir   string   `json:"project_dir,omitempty"`
+}
+
+// UpdateIssueResponse is the JSON response for POST /api/beads/update.
+type UpdateIssueResponse struct {
+	ID      string `json:"id"`
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}
+
+// handleBeadsUpdate handles POST /api/beads/update - updates priority and labels for a beads issue.
+func (s *Server) handleBeadsUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req UpdateIssueRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		resp := UpdateIssueResponse{Success: false, Error: fmt.Sprintf("Invalid request body: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	if req.ID == "" {
+		resp := UpdateIssueResponse{Success: false, Error: "Issue ID is required"}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	workDir := req.ProjectDir
+	if workDir == "" {
+		workDir = beads.DefaultDir
+	}
+
+	_, updateErr := s.bdLimitedCreate(func() (interface{}, error) {
+		cliClient := beads.NewCLIClient(
+			beads.WithWorkDir(workDir),
+			beads.WithEnv(append(os.Environ(), "BEADS_NO_DAEMON=1")),
+		)
+		return cliClient.Update(&beads.UpdateArgs{
+			ID:           req.ID,
+			Priority:     req.Priority,
+			AddLabels:    req.AddLabels,
+			RemoveLabels: req.RemoveLabels,
+		})
+	})
+	if err := updateErr; err != nil {
+		resp := UpdateIssueResponse{ID: req.ID, Success: false, Error: fmt.Sprintf("Failed to update issue: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	if s.BeadsStatsCache != nil {
+		s.BeadsStatsCache.invalidate(req.ProjectDir)
+	}
+
+	resp := UpdateIssueResponse{ID: req.ID, Success: true}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}

@@ -436,3 +436,75 @@ func TestListBeadsIssuesIncludesInProgress(t *testing.T) {
 	t.Log("listBeadsIssues should include both open and in_progress statuses when includeAll=false")
 	t.Log("Command: bd list --json --limit 0 --status open --status in_progress")
 }
+
+// TestHandleBeadsUpdateMethodNotAllowed verifies that non-POST requests
+// to /api/beads/update return 405 Method Not Allowed.
+func TestHandleBeadsUpdateMethodNotAllowed(t *testing.T) {
+	srv := newTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/beads/update", nil)
+	w := httptest.NewRecorder()
+
+	srv.handleBeadsUpdate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status 405, got %d", resp.StatusCode)
+	}
+}
+
+// TestHandleBeadsUpdateMissingID verifies that requests without an ID
+// return 400 Bad Request with appropriate error message.
+func TestHandleBeadsUpdateMissingID(t *testing.T) {
+	srv := newTestServer()
+
+	// Send request with empty ID
+	req := httptest.NewRequest(http.MethodPost, "/api/beads/update", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.handleBeadsUpdate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", resp.StatusCode)
+	}
+
+	var updateResp UpdateIssueResponse
+	if err := json.NewDecoder(resp.Body).Decode(&updateResp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if updateResp.Success {
+		t.Error("Expected success=false for missing ID")
+	}
+	if updateResp.Error == "" {
+		t.Error("Expected error message for missing ID")
+	}
+}
+
+// TestHandleBeadsUpdateInvalidJSON verifies that requests with invalid JSON
+// return 400 Bad Request.
+func TestHandleBeadsUpdateInvalidJSON(t *testing.T) {
+	srv := newTestServer()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/beads/update", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.handleBeadsUpdate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", resp.StatusCode)
+	}
+
+	var updateResp UpdateIssueResponse
+	if err := json.NewDecoder(resp.Body).Decode(&updateResp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if updateResp.Success {
+		t.Error("Expected success=false for invalid JSON")
+	}
+}

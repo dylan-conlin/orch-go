@@ -151,12 +151,7 @@ func runServeStatus(portNum int) error {
 	addr := fmt.Sprintf("https://localhost:%d/health", portNum)
 
 	// Skip TLS verification for self-signed localhost cert
-	client := &http.Client{
-		Timeout: 2 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfigSkipVerify(),
-		},
-	}
+	client := &http.Client{Timeout: 2 * time.Second, Transport: serveOutboundTLSTransport}
 
 	resp, err := client.Get(addr)
 	if err != nil {
@@ -196,6 +191,7 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  GET /api/beads/ready - Ready issues list")
 	fmt.Println("  GET /api/beads/graph - Full dependency graph (nodes + edges)")
 	fmt.Println("  POST /api/beads/close - Close a beads issue")
+	fmt.Println("  POST /api/beads/update - Update priority and labels for a beads issue")
 	fmt.Println("  GET /api/beads/{id}/attempts - Attempt history for a beads issue")
 	fmt.Println("  GET /api/beads/{id}/completion - Completion details (message, commits, artifacts)")
 	fmt.Println("  GET /api/questions   - Questions grouped by status")
@@ -352,6 +348,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/beads/ready - List of ready issues for queue visibility")
 	fmt.Println("  GET /api/beads/graph - Full dependency graph (nodes + edges)")
 	fmt.Println("  POST /api/beads/close - Close a beads issue")
+	fmt.Println("  POST /api/beads/update - Update priority and labels for a beads issue")
 	fmt.Println("  GET /api/beads/{id}/attempts - Attempt history for a beads issue")
 	fmt.Println("  GET /api/questions - Questions grouped by status")
 	fmt.Println("  GET /api/servers   - Servers status across projects")
@@ -434,6 +431,10 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/beads/", c(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/beads/close" && r.Method == http.MethodPost {
 			s.handleBeadsClose(w, r)
+			return
+		}
+		if r.URL.Path == "/api/beads/update" && r.Method == http.MethodPost {
+			s.handleBeadsUpdate(w, r)
 			return
 		}
 		if strings.HasSuffix(r.URL.Path, "/attempts") {
