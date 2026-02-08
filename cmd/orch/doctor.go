@@ -21,8 +21,9 @@ var (
 )
 
 const (
-	// DefaultWebPort is the port the web UI (vite dev server) runs on for orch-go.
-	DefaultWebPort = 5188
+	// DefaultWebPort is the port used for dashboard UI checks.
+	// The dashboard UI is statically served by orch serve on DefaultServePort.
+	DefaultWebPort = DefaultServePort
 )
 
 var doctorCmd = &cobra.Command{
@@ -33,9 +34,9 @@ var doctorCmd = &cobra.Command{
 Liveness checks (is it running?):
   - OpenCode server (default port 4096)
   - orch serve API server (default port 3348)
-  - Web UI (vite dev server, port 5188)
+  - Dashboard UI (static, served by orch serve on port 3348)
   - Beads daemon
-  - Overmind services (api, web, opencode)
+  - Overmind services (api, daemon, doctor, opencode)
 
 Correctness checks (is it working correctly?):
   - Beads DB integrity (PRAGMA integrity_check)

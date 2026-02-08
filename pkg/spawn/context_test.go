@@ -1621,6 +1621,56 @@ func TestGenerateContext_BugReproduction(t *testing.T) {
 	})
 }
 
+func TestGenerateContext_InfrastructureResourceAuditDirective(t *testing.T) {
+	t.Run("includes resource audit directive for infrastructure-touching spawns", func(t *testing.T) {
+		cfg := &Config{
+			Task:                     "fix opencode server restart handling",
+			SkillName:                "systematic-debugging",
+			Project:                  "test-project",
+			ProjectDir:               "/tmp/test",
+			WorkspaceName:            "og-debug-test-07feb",
+			BeadsID:                  "test-123",
+			Tier:                     TierLight,
+			IsInfrastructureTouching: true,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		if !strings.Contains(content, "## RESOURCE LIFECYCLE AUDIT (REQUIRED)") {
+			t.Error("expected content to contain infrastructure resource audit section")
+		}
+
+		directive := "Audit all resources this component creates (goroutines, subprocesses, connections, caches) and ensure each has bounded lifetime and cleanup on shutdown."
+		if !strings.Contains(content, directive) {
+			t.Error("expected content to contain resource audit directive")
+		}
+	})
+
+	t.Run("omits resource audit directive for non-infrastructure spawns", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "add user profile endpoint",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-07feb",
+			BeadsID:       "test-456",
+			Tier:          TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		if strings.Contains(content, "## RESOURCE LIFECYCLE AUDIT (REQUIRED)") {
+			t.Error("expected content to omit resource audit section for non-infrastructure spawn")
+		}
+	})
+}
+
 func TestGenerateContext_NoPushGuidance(t *testing.T) {
 	t.Run("includes no-push guidance in worker spawn context", func(t *testing.T) {
 		cfg := &Config{

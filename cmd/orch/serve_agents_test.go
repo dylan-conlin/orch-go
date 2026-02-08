@@ -373,7 +373,7 @@ AUTHORITY: Standard
 	}
 
 	// Build the cache
-	cache := buildWorkspaceCache(tmpDir)
+	cache := buildWorkspaceCache(tmpDir, defaultWorkspaceCacheMaxEntries)
 
 	// Verify cache contents
 	if len(cache.beadsToWorkspace) != 2 {
@@ -438,7 +438,7 @@ bd comment <beads-id> "Phase: Complete - All tests passing, ready for review"
 	}
 
 	// Build the cache
-	cache := buildWorkspaceCache(tmpDir)
+	cache := buildWorkspaceCache(tmpDir, defaultWorkspaceCacheMaxEntries)
 
 	// Verify that the correct beads ID was extracted (not the template placeholder)
 	if beadsID, ok := cache.beadsToWorkspace["specs-platform-36"]; !ok {
@@ -509,7 +509,7 @@ PROJECT_DIR: /home/user/project2
 
 	// Build multi-project cache
 	projectDirs := []string{tmpDir1, tmpDir2}
-	cache := buildMultiProjectWorkspaceCache(projectDirs)
+	cache := buildMultiProjectWorkspaceCache(projectDirs, defaultWorkspaceCacheMaxEntries)
 
 	// Verify merged cache contents
 	if len(cache.beadsToWorkspace) != 2 {
@@ -569,7 +569,7 @@ PROJECT_DIR: /home/user/project
 
 	// Build multi-project cache with single project (should use optimized path)
 	projectDirs := []string{tmpDir}
-	cache := buildMultiProjectWorkspaceCache(projectDirs)
+	cache := buildMultiProjectWorkspaceCache(projectDirs, defaultWorkspaceCacheMaxEntries)
 
 	// Should still work correctly
 	if len(cache.beadsToWorkspace) != 1 {
@@ -582,7 +582,7 @@ PROJECT_DIR: /home/user/project
 
 func TestBuildMultiProjectWorkspaceCacheEmpty(t *testing.T) {
 	// Build cache with empty project dirs
-	cache := buildMultiProjectWorkspaceCache([]string{})
+	cache := buildMultiProjectWorkspaceCache([]string{}, defaultWorkspaceCacheMaxEntries)
 
 	// Should return empty cache, not nil
 	if cache == nil {
@@ -630,7 +630,7 @@ func TestWorkspaceCacheLookupMethods(t *testing.T) {
 
 func TestBeadsCacheInvalidate(t *testing.T) {
 	// Create a cache with some data
-	cache := newBeadsCache()
+	cache := newBeadsCache(defaultBeadsCacheMaxEntries, defaultOpenIssuesTTL)
 
 	// Populate the cache with test data
 	cache.mu.Lock()

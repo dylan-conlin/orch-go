@@ -42,7 +42,13 @@ func TestKBHealthResponseJSONFormat(t *testing.T) {
 			Count: 0,
 			Items: []map[string]interface{}{},
 		},
-		Total:       4,
+		DefectClass: KBHealthCategory{
+			Count: 2,
+			Items: []map[string]interface{}{
+				{"defect_class": "unbounded-growth", "count": 3},
+			},
+		},
+		Total:       6,
 		LastUpdated: "2026-01-28T10:30:00Z",
 	}
 
@@ -57,7 +63,7 @@ func TestKBHealthResponseJSONFormat(t *testing.T) {
 		t.Fatalf("failed to unmarshal: %v", err)
 	}
 
-	requiredKeys := []string{"synthesis", "promote", "stale", "investigation_promotion", "total", "last_updated"}
+	requiredKeys := []string{"synthesis", "promote", "stale", "investigation_promotion", "defect_class", "total", "last_updated"}
 	for _, key := range requiredKeys {
 		if _, ok := result[key]; !ok {
 			t.Errorf("missing required key: %s", key)
@@ -122,10 +128,13 @@ func TestHandleKBHealthGracefulDegradation(t *testing.T) {
 
 // TestKBHealthCacheTTL verifies cache behavior
 func TestKBHealthCacheTTL(t *testing.T) {
-	cache := newKBHealthCache()
+	cache := newKBHealthCache(defaultKBHealthCacheMaxEntries, defaultKBHealthCacheTTL)
 
 	if cache.ttl.Minutes() != 5 {
 		t.Errorf("expected 5 minute TTL, got %v", cache.ttl)
+	}
+	if cache.maxEntries != defaultKBHealthCacheMaxEntries {
+		t.Errorf("expected max entries %d, got %d", defaultKBHealthCacheMaxEntries, cache.maxEntries)
 	}
 }
 

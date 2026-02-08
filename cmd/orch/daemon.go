@@ -138,6 +138,7 @@ var (
 	daemonSortMode                     string // Sort strategy for issue prioritization
 	daemonDashboardWatchdog            bool   // Enable dashboard health watchdog
 	daemonDashboardWatchdogInterval    int    // Dashboard watchdog check interval in seconds
+	daemonAllowFeatureWork             bool   // Override investigation circuit breaker and allow feature issues
 )
 
 func init() {
@@ -187,6 +188,7 @@ func init() {
 
 	// Sort mode for issue prioritization
 	daemonRunCmd.Flags().StringVar(&daemonSortMode, "sort-mode", "priority", "Sort strategy for issue prioritization (priority, unblock)")
+	daemonRunCmd.Flags().BoolVar(&daemonAllowFeatureWork, "allow-feature-work", false, "Override investigation circuit breaker and include feature issues in ready queue")
 
 	// Dashboard health watchdog
 	daemonRunCmd.Flags().BoolVar(&daemonDashboardWatchdog, "dashboard-watchdog", true, "Enable dashboard health monitoring and auto-restart (default: true)")
@@ -196,9 +198,11 @@ func init() {
 	daemonPreviewCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
 	daemonPreviewCmd.Flags().BoolVar(&daemonCrossProject, "cross-project", false, "Preview issues from all kb-registered projects")
 	daemonPreviewCmd.Flags().StringVar(&daemonSortMode, "sort-mode", "priority", "Sort strategy for issue prioritization (priority, unblock)")
+	daemonPreviewCmd.Flags().BoolVar(&daemonAllowFeatureWork, "allow-feature-work", false, "Override investigation circuit breaker and include feature issues in ready queue")
 	daemonOnceCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
 	daemonOnceCmd.Flags().BoolVar(&daemonCrossProject, "cross-project", false, "Process one issue from all kb-registered projects")
 	daemonOnceCmd.Flags().StringVar(&daemonSortMode, "sort-mode", "priority", "Sort strategy for issue prioritization (priority, unblock)")
+	daemonOnceCmd.Flags().BoolVar(&daemonAllowFeatureWork, "allow-feature-work", false, "Override investigation circuit breaker and include feature issues in ready queue")
 }
 
 func runDaemonLoop() error {
@@ -349,9 +353,10 @@ func formatDaemonDuration(d time.Duration) string {
 
 func runDaemonDryRun() error {
 	config := daemon.Config{
-		Label:        daemonLabel,
-		CrossProject: daemonCrossProject,
-		SortMode:     daemonSortMode,
+		Label:                    daemonLabel,
+		CrossProject:             daemonCrossProject,
+		SortMode:                 daemonSortMode,
+		AllowFeatureWorkOverride: daemonAllowFeatureWork,
 	}
 	d := daemon.NewWithConfig(config)
 
@@ -414,9 +419,10 @@ func runDaemonDryRun() error {
 
 func runDaemonOnce() error {
 	config := daemon.Config{
-		Label:        daemonLabel,
-		CrossProject: daemonCrossProject,
-		SortMode:     daemonSortMode,
+		Label:                    daemonLabel,
+		CrossProject:             daemonCrossProject,
+		SortMode:                 daemonSortMode,
+		AllowFeatureWorkOverride: daemonAllowFeatureWork,
 	}
 	d := daemon.NewWithConfig(config)
 
@@ -479,9 +485,10 @@ func runDaemonOnce() error {
 
 func runDaemonPreview() error {
 	config := daemon.Config{
-		Label:        daemonLabel,
-		CrossProject: daemonCrossProject,
-		SortMode:     daemonSortMode,
+		Label:                    daemonLabel,
+		CrossProject:             daemonCrossProject,
+		SortMode:                 daemonSortMode,
+		AllowFeatureWorkOverride: daemonAllowFeatureWork,
 	}
 	d := daemon.NewWithConfig(config)
 

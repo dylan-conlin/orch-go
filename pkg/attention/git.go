@@ -40,27 +40,53 @@ type LikelyDoneResponse struct {
 type LikelyDoneCache struct {
 	mu sync.RWMutex
 
-	data      *LikelyDoneResponse
-	fetchedAt time.Time
-	ttl       time.Duration
+	entries    map[string]*likelyDoneCacheEntry
+	maxEntries int
+	ttl        time.Duration
 }
 
+type likelyDoneCacheEntry struct {
+	data      *LikelyDoneResponse
+	fetchedAt time.Time
+}
+
+const (
+	DefaultLikelyDoneCacheTTL        = 5 * time.Minute
+	DefaultLikelyDoneCacheMaxEntries = 64
+)
+
 // NewLikelyDoneCache creates a new cache with 5-minute TTL.
-func NewLikelyDoneCache() *LikelyDoneCache {
+func NewLikelyDoneCache(maxSize int, ttl time.Duration) *LikelyDoneCache {
+	if maxSize <= 0 {
+		panic("likely done cache maxSize must be > 0")
+	}
+	if ttl <= 0 {
+		panic("likely done cache ttl must be > 0")
+	}
+
 	return &LikelyDoneCache{
-		ttl: 5 * time.Minute, // Git commits change slowly
+		entries:    make(map[string]*likelyDoneCacheEntry),
+		maxEntries: maxSize,
+		ttl:        ttl,
 	}
 }
 
 // Get returns cached data or fetches fresh if stale.
 func (c *LikelyDoneCache) Get(projectDir string, client beads.BeadsClient) (*LikelyDoneResponse, error) {
 	c.mu.RLock()
-	if c.data != nil && time.Since(c.fetchedAt) < c.ttl {
-		result := c.data
+	entry, ok := c.entries[projectDir]
+	if ok && time.Since(entry.fetchedAt) < c.ttl {
+		result := entry.data
 		c.mu.RUnlock()
 		return result, nil
 	}
 	c.mu.RUnlock()
+
+	c.mu.Lock()
+	if stale, exists := c.entries[projectDir]; exists && time.Since(stale.fetchedAt) >= c.ttl {
+		delete(c.entries, projectDir)
+	}
+	c.mu.Unlock()
 
 	// Fetch fresh data
 	data, err := CollectLikelyDoneSignals(projectDir, client)
@@ -69,8 +95,13 @@ func (c *LikelyDoneCache) Get(projectDir string, client beads.BeadsClient) (*Lik
 	}
 
 	c.mu.Lock()
-	c.data = data
-	c.fetchedAt = time.Now()
+	if _, exists := c.entries[projectDir]; !exists && len(c.entries) >= c.maxEntries {
+		c.evictOldestLocked()
+	}
+	c.entries[projectDir] = &likelyDoneCacheEntry{
+		data:      data,
+		fetchedAt: time.Now(),
+	}
 	c.mu.Unlock()
 
 	return data, nil
@@ -80,7 +111,23 @@ func (c *LikelyDoneCache) Get(projectDir string, client beads.BeadsClient) (*Lik
 func (c *LikelyDoneCache) Invalidate() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.data = nil
+	c.entries = make(map[string]*likelyDoneCacheEntry, c.maxEntries)
+}
+
+func (c *LikelyDoneCache) evictOldestLocked() {
+	var oldestProject string
+	var oldestTime time.Time
+
+	for projectDir, entry := range c.entries {
+		if oldestProject == "" || entry.fetchedAt.Before(oldestTime) {
+			oldestProject = projectDir
+			oldestTime = entry.fetchedAt
+		}
+	}
+
+	if oldestProject != "" {
+		delete(c.entries, oldestProject)
+	}
 }
 
 // commitInfo holds information about a commit.

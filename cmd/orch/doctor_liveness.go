@@ -135,15 +135,15 @@ func checkOrchServe() ServiceStatus {
 	return status
 }
 
-// checkWebUI checks if the web UI (vite dev server) is running.
-// Uses plain HTTP (not HTTPS) since vite serves over HTTP.
+// checkWebUI checks if the dashboard UI is reachable.
+// The dashboard UI is served by orch serve over HTTPS on DefaultServePort.
 func checkWebUI() ServiceStatus {
 	status := ServiceStatus{
-		Name:      "Web UI",
+		Name:      "Dashboard UI",
 		Port:      DefaultWebPort,
-		URL:       fmt.Sprintf("http://localhost:%d", DefaultWebPort),
-		CanFix:    false, // Web UI is started via overmind, not directly
-		FixAction: "Run: overmind restart web",
+		URL:       fmt.Sprintf("https://localhost:%d", DefaultWebPort),
+		CanFix:    false, // Dashboard UI is served by orch serve
+		FixAction: "Run: overmind restart api",
 	}
 
 	// Simple TCP connect check first
@@ -159,9 +159,14 @@ func checkWebUI() ServiceStatus {
 	}
 	conn.Close()
 
-	// TCP connect succeeded, try HTTP GET for more details
+	// TCP connect succeeded, try HTTPS GET for more details
 	httpClient := &http.Client{
 		Timeout: 2 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, //nolint:gosec // Self-signed localhost cert
+			},
+		},
 	}
 
 	resp, err := httpClient.Get(status.URL)
@@ -176,13 +181,12 @@ func checkWebUI() ServiceStatus {
 	}
 	defer resp.Body.Close()
 
-	// Any response from vite is good enough (could be 200 for app, or 404 for missing route)
-	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotFound {
+	if resp.StatusCode == http.StatusOK {
 		status.Running = true
 		status.Details = "Responding"
 	} else {
-		status.Running = true
-		status.Details = fmt.Sprintf("Running (status %d)", resp.StatusCode)
+		status.Running = false
+		status.Details = fmt.Sprintf("Unhealthy (status %d)", resp.StatusCode)
 	}
 
 	return status

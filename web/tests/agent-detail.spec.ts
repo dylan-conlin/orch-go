@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test';
 
 // Use existing dev server instead of building/previewing
 test.use({
-	baseURL: 'http://localhost:5188'
+	baseURL: 'https://localhost:3348',
+	ignoreHTTPSErrors: true
 });
 
 test.describe('Agent Detail Panel', () => {

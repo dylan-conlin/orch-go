@@ -12,7 +12,7 @@ func TestProcessedIssueCache_ShouldProcess_EmptyCache(t *testing.T) {
 	tmpDir := t.TempDir()
 	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
 
-	cache, err := NewProcessedIssueCache(cachePath)
+	cache, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
 	if err != nil {
 		t.Fatalf("NewProcessedIssueCache failed: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestProcessedIssueCache_MarkProcessed_PersistsToFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
 
-	cache, err := NewProcessedIssueCache(cachePath)
+	cache, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
 	if err != nil {
 		t.Fatalf("NewProcessedIssueCache failed: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestProcessedIssueCache_MarkProcessed_PersistsToFile(t *testing.T) {
 	}
 
 	// Load cache from file to verify persistence
-	cache2, err := NewProcessedIssueCache(cachePath)
+	cache2, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
 	if err != nil {
 		t.Fatalf("Failed to load cache from file: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestProcessedIssueCache_PruneOldEntries(t *testing.T) {
 	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
 
 	// Create cache with entries at different ages
-	cache, err := NewProcessedIssueCache(cachePath)
+	cache, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
 	if err != nil {
 		t.Fatalf("NewProcessedIssueCache failed: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestProcessedIssueCache_PruneOldEntries(t *testing.T) {
 	}
 
 	// Load cache again - should prune old entries
-	cache2, err := NewProcessedIssueCache(cachePath)
+	cache2, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
 	if err != nil {
 		t.Fatalf("Failed to load cache: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestProcessedIssueCache_ShouldProcess_SessionDedupBlocks(t *testing.T) {
 	tmpDir := t.TempDir()
 	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
 
-	cache, err := NewProcessedIssueCache(cachePath)
+	cache, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
 	if err != nil {
 		t.Fatalf("NewProcessedIssueCache failed: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestProcessedIssueCache_ShouldProcess_PhaseCompleteBlocks(t *testing.T) {
 	tmpDir := t.TempDir()
 	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
 
-	cache, err := NewProcessedIssueCache(cachePath)
+	cache, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
 	if err != nil {
 		t.Fatalf("NewProcessedIssueCache failed: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestProcessedIssueCache_ShouldProcess_PhaseCompleteErrorFailsSafe(t *testin
 	tmpDir := t.TempDir()
 	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
 
-	cache, err := NewProcessedIssueCache(cachePath)
+	cache, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
 	if err != nil {
 		t.Fatalf("NewProcessedIssueCache failed: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestProcessedIssueCache_ShouldProcess_AllChecksPass(t *testing.T) {
 	tmpDir := t.TempDir()
 	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
 
-	cache, err := NewProcessedIssueCache(cachePath)
+	cache, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
 	if err != nil {
 		t.Fatalf("NewProcessedIssueCache failed: %v", err)
 	}

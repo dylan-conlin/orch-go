@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,8 +29,8 @@ var deployCmd = &cobra.Command{
 
 Steps performed:
   1. Build binary (make build)
-  2. Kill orphaned processes (stale vite, bd processes)
-  3. Restart overmind services (api, web, opencode)
+  2. Kill orphaned processes (stale orch/bd and legacy vite)
+  3. Restart overmind services (api, daemon, doctor, opencode)
   4. Wait for health checks to pass
   5. Display deployment status
 
@@ -145,7 +147,7 @@ func runDeploy() error {
 	// Final status
 	fmt.Println()
 	fmt.Println("Deployment complete!")
-	fmt.Printf("Dashboard available at http://localhost:%d\n", DefaultWebPort)
+	fmt.Printf("Dashboard available at https://localhost:%d\n", DefaultServePort)
 
 	return nil
 }
@@ -216,13 +218,12 @@ func runBuildStep() error {
 	return nil
 }
 
-// killOrphanedProcesses kills orphaned vite and bd processes.
+// killOrphanedProcesses kills orphaned orchestration processes.
 // Returns the number of processes killed.
 func killOrphanedProcesses() int {
 	killed := 0
 
-	// Kill orphaned vite processes (those with PPID=1, indicating parent died)
-	// Note: We use pkill carefully to avoid killing the main vite process
+	// Kill legacy orphaned vite processes (from pre-static-UI architecture).
 	viteKilled := killOrphanedVite()
 	killed += viteKilled
 
@@ -374,20 +375,15 @@ func restartOvermind() error {
 	overmindRunning := statusCmd.Run() == nil
 
 	if !overmindRunning {
-		// Overmind not running - check if ports are blocked by orphaned processes
-		// These need to be killed before starting overmind
+		// Overmind not running - check if API port is blocked by orphaned processes.
+		// This needs to be cleared before starting overmind.
 		apiBlocked := isPortResponding(DefaultServePort)
-		webBlocked := isPortResponding(DefaultWebPort)
 
-		if apiBlocked || webBlocked {
+		if apiBlocked {
 			fmt.Println("  Detected orphaned services (overmind not running but ports in use)")
 			if apiBlocked {
 				fmt.Printf("  Killing process on port %d (api)\n", DefaultServePort)
 				killProcessOnPort(DefaultServePort)
-			}
-			if webBlocked {
-				fmt.Printf("  Killing process on port %d (web)\n", DefaultWebPort)
-				killProcessOnPort(DefaultWebPort)
 			}
 			// Give processes time to die
 			time.Sleep(1 * time.Second)
@@ -440,14 +436,14 @@ func restartOvermind() error {
 		return fmt.Errorf("cannot find Procfile")
 	}
 
-	// If OpenCode is already running externally, only restart api and web
+	// If OpenCode is already running externally, restart non-opencode processes only.
 	var restartCmd *exec.Cmd
 	if opencodeAlreadyRunning {
 		if deployVerbose {
 			fmt.Println("  Skipping opencode restart (already running externally)")
 		}
-		// Restart only api and web, leave opencode alone
-		restartCmd = exec.Command("overmind", "restart", "api", "web")
+		// Restart api/daemon/doctor and leave opencode alone.
+		restartCmd = exec.Command("overmind", "restart", "api", "daemon", "doctor")
 	} else {
 		// Restart all services
 		restartCmd = exec.Command("overmind", "restart")
@@ -512,7 +508,6 @@ func waitForHealthChecks(timeout time.Duration) error {
 	}{
 		{"OpenCode", 4096},
 		{"orch serve", DefaultServePort},
-		{"Web UI", DefaultWebPort},
 	}
 
 	for time.Now().Before(deadline) {
@@ -525,6 +520,13 @@ func waitForHealthChecks(timeout time.Duration) error {
 					fmt.Printf("  Waiting for %s (port %d)...\n", svc.name, svc.port)
 				}
 				break
+			}
+		}
+
+		if allHealthy && !isDashboardUIResponding() {
+			allHealthy = false
+			if deployVerbose {
+				fmt.Printf("  Waiting for dashboard UI (https://localhost:%d/)\n", DefaultServePort)
 			}
 		}
 
@@ -542,8 +544,31 @@ func waitForHealthChecks(timeout time.Duration) error {
 			failedServices = append(failedServices, fmt.Sprintf("%s (port %d)", svc.name, svc.port))
 		}
 	}
+	if !isDashboardUIResponding() {
+		failedServices = append(failedServices, fmt.Sprintf("Dashboard UI (https://localhost:%d/)", DefaultServePort))
+	}
 
 	return fmt.Errorf("timeout waiting for: %s", strings.Join(failedServices, ", "))
+}
+
+func isDashboardUIResponding() bool {
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, //nolint:gosec // Self-signed localhost cert
+			},
+		},
+	}
+
+	url := fmt.Sprintf("https://localhost:%d/", DefaultServePort)
+	resp, err := client.Get(url)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode == http.StatusOK
 }
 
 // isPortResponding checks if a port is accepting connections.

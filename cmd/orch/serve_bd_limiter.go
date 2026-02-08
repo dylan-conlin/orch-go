@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -20,8 +21,8 @@ import (
 // Solution: Two-layer protection:
 //  1. singleflight.Group per operation type — deduplicates concurrent identical requests.
 //     If 10 dashboard polls all want bd stats at the same time, only 1 subprocess runs.
-//  2. Semaphore (max 5 concurrent) — hard cap on total bd subprocesses from serve.
-//     Even with cache misses across different operation types, we never exceed 5.
+//  2. Semaphore (configured cap) — hard cap on total bd subprocesses from serve.
+//     Even with cache misses across different operation types, we never exceed the cap.
 //
 // This is more correct than pure rate-limiting because singleflight serves ALL
 // concurrent waiters the same result from a single subprocess call.
@@ -50,11 +51,12 @@ type bdLimiter struct {
 	dedupCalls atomic.Int64 // Calls served from singleflight dedup (avoided subprocess)
 }
 
-const (
+var (
 	// maxBdConcurrent is the hard cap on concurrent bd subprocesses from serve.
-	// With 12+ agents and 5s polling, even cache misses should never exceed this.
+	// With swarm workloads and 5s polling, this must be higher than single-operator defaults.
+	// Uses the shared beads cap (ORCH_BD_MAX_CONCURRENT, default 12).
 	// If all slots are full, new requests wait (with timeout) rather than spawning more.
-	maxBdConcurrent = 3
+	maxBdConcurrent = beads.BDSubprocessLimit()
 
 	// bdAcquireTimeout is how long to wait for a semaphore slot before giving up.
 	// Dashboard can tolerate stale data — better to return cached/error than deadlock.

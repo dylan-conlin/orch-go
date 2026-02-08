@@ -38,6 +38,9 @@ type ReflectSuggestions struct {
 	// InvestigationAuthority suggestions for investigations grouped by authority level.
 	InvestigationAuthority []InvestigationAuthoritySuggestion `json:"investigation_authority,omitempty"`
 
+	// DefectClass suggestions for recurring defect mechanisms in recent investigations.
+	DefectClass []DefectClassSuggestion `json:"defect_class,omitempty"`
+
 	// OrphanInvestigations are investigations with potential lineage gaps.
 	// These have similar-topic peers but no prior-work citations.
 	OrphanInvestigations []OrphanInvestigationSuggestion `json:"orphan_investigations,omitempty"`
@@ -99,6 +102,16 @@ type InvestigationAuthoritySuggestion struct {
 	Suggestion string `json:"suggestion"`
 }
 
+// DefectClassSuggestion represents recurring investigations sharing a defect mechanism.
+type DefectClassSuggestion struct {
+	DefectClass    string   `json:"defect_class"`
+	Count          int      `json:"count"`
+	WindowDays     int      `json:"window_days"`
+	Investigations []string `json:"investigations"`
+	Suggestion     string   `json:"suggestion"`
+	IssueCreated   bool     `json:"issue_created,omitempty"`
+}
+
 // OrphanInvestigationSuggestion represents an investigation with potential lineage gaps.
 // These are investigations that have similar-topic peers but no prior-work citations.
 type OrphanInvestigationSuggestion struct {
@@ -117,6 +130,7 @@ type kbReflectOutput struct {
 	Refine                 []kbRefineOutput                   `json:"refine,omitempty"`
 	InvestigationPromotion []InvestigationPromotionSuggestion `json:"investigation_promotion,omitempty"`
 	InvestigationAuthority []InvestigationAuthoritySuggestion `json:"investigation_authority,omitempty"`
+	DefectClass            []DefectClassSuggestion            `json:"defect_class,omitempty"`
 }
 
 // kbRefineOutput represents the raw refine entry from kb reflect.
@@ -146,13 +160,10 @@ func RunReflection() (*ReflectSuggestions, error) {
 }
 
 // RunReflectionWithOptions executes kb reflect with configurable options.
-// If createIssues is true, it passes --type synthesis --create-issue to kb reflect
-// which will automatically create beads issues for topics with 10+ investigations.
+// If createIssues is true, it additionally triggers side-effect issue creation
+// for supported reflection types (currently synthesis and defect-class).
 func RunReflectionWithOptions(createIssues bool) (*ReflectSuggestions, error) {
 	args := []string{"reflect", "--format", "json"}
-	if createIssues {
-		args = append(args, "--type", "synthesis", "--create-issue")
-	}
 
 	cmd := exec.Command("kb", args...)
 	output, err := cmd.Output()
@@ -186,9 +197,26 @@ func RunReflectionWithOptions(createIssues bool) (*ReflectSuggestions, error) {
 		Refine:                 refine,
 		InvestigationPromotion: rawOutput.InvestigationPromotion,
 		InvestigationAuthority: rawOutput.InvestigationAuthority,
+		DefectClass:            rawOutput.DefectClass,
+	}
+
+	if createIssues {
+		for _, reflectType := range []string{"synthesis", "defect-class"} {
+			if err := triggerReflectIssueCreation(reflectType); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to auto-create %s issues via kb reflect: %v\n", reflectType, err)
+			}
+		}
 	}
 
 	return suggestions, nil
+}
+
+func triggerReflectIssueCreation(reflectType string) error {
+	cmd := exec.Command("kb", "reflect", "--type", reflectType, "--create-issue", "--format", "json")
+	if _, err := cmd.Output(); err != nil {
+		return fmt.Errorf("kb reflect --type %s --create-issue failed: %w", reflectType, err)
+	}
+	return nil
 }
 
 // RunReflectionWithOrphans executes kb reflect and also detects orphan investigations.
@@ -277,7 +305,7 @@ func (s *ReflectSuggestions) HasSuggestions() bool {
 	if s == nil {
 		return false
 	}
-	return len(s.Synthesis) > 0 || len(s.Promote) > 0 || len(s.Stale) > 0 || len(s.Drift) > 0 || len(s.Refine) > 0 || len(s.InvestigationPromotion) > 0 || len(s.InvestigationAuthority) > 0 || len(s.OrphanInvestigations) > 0
+	return len(s.Synthesis) > 0 || len(s.Promote) > 0 || len(s.Stale) > 0 || len(s.Drift) > 0 || len(s.Refine) > 0 || len(s.InvestigationPromotion) > 0 || len(s.InvestigationAuthority) > 0 || len(s.DefectClass) > 0 || len(s.OrphanInvestigations) > 0
 }
 
 // TotalCount returns the total number of suggestions across all categories.
@@ -285,7 +313,7 @@ func (s *ReflectSuggestions) TotalCount() int {
 	if s == nil {
 		return 0
 	}
-	return len(s.Synthesis) + len(s.Promote) + len(s.Stale) + len(s.Drift) + len(s.Refine) + len(s.InvestigationPromotion) + len(s.InvestigationAuthority) + len(s.OrphanInvestigations)
+	return len(s.Synthesis) + len(s.Promote) + len(s.Stale) + len(s.Drift) + len(s.Refine) + len(s.InvestigationPromotion) + len(s.InvestigationAuthority) + len(s.DefectClass) + len(s.OrphanInvestigations)
 }
 
 // Summary returns a human-readable summary of suggestions.
@@ -315,6 +343,9 @@ func (s *ReflectSuggestions) Summary() string {
 	}
 	if len(s.InvestigationAuthority) > 0 {
 		parts = append(parts, fmt.Sprintf("%d recommendations by authority", len(s.InvestigationAuthority)))
+	}
+	if len(s.DefectClass) > 0 {
+		parts = append(parts, fmt.Sprintf("%d recurring defect classes", len(s.DefectClass)))
 	}
 	if len(s.OrphanInvestigations) > 0 {
 		parts = append(parts, fmt.Sprintf("%d potential lineage gaps", len(s.OrphanInvestigations)))

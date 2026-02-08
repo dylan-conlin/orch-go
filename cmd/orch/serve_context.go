@@ -29,14 +29,32 @@ type ContextAPIResponse struct {
 // contextCache caches the tmux context polling result to reduce tmux command overhead.
 // The cache has a short TTL since the context can change frequently.
 type contextCache struct {
-	mu        sync.RWMutex
-	cwd       string
-	fetchedAt time.Time
-	ttl       time.Duration
+	mu         sync.RWMutex
+	maxEntries int
+	cwd        string
+	fetchedAt  time.Time
+	ttl        time.Duration
 }
 
-var globalContextCache = &contextCache{
-	ttl: 1 * time.Second, // Short TTL - context can change frequently
+const (
+	defaultContextCacheTTL        = 1 * time.Second
+	defaultContextCacheMaxEntries = 1
+)
+
+var globalContextCache = newContextCache(defaultContextCacheMaxEntries, defaultContextCacheTTL)
+
+func newContextCache(maxSize int, ttl time.Duration) *contextCache {
+	if maxSize <= 0 {
+		panic("context cache maxSize must be > 0")
+	}
+	if ttl <= 0 {
+		panic("context cache ttl must be > 0")
+	}
+
+	return &contextCache{
+		maxEntries: maxSize,
+		ttl:        ttl,
+	}
 }
 
 // getCachedCwd returns cached cwd or fetches fresh.

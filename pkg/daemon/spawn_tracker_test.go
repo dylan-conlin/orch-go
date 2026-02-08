@@ -6,7 +6,7 @@ import (
 )
 
 func TestSpawnedIssueTracker_MarkAndCheck(t *testing.T) {
-	tracker := NewSpawnedIssueTracker()
+	tracker := NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL)
 
 	// Initially not spawned
 	if tracker.IsSpawned("issue-1") {
@@ -28,7 +28,7 @@ func TestSpawnedIssueTracker_MarkAndCheck(t *testing.T) {
 }
 
 func TestSpawnedIssueTracker_Unmark(t *testing.T) {
-	tracker := NewSpawnedIssueTracker()
+	tracker := NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL)
 
 	tracker.MarkSpawned("issue-1")
 	if !tracker.IsSpawned("issue-1") {
@@ -43,7 +43,7 @@ func TestSpawnedIssueTracker_Unmark(t *testing.T) {
 
 func TestSpawnedIssueTracker_TTL(t *testing.T) {
 	// Use short TTL for testing
-	tracker := NewSpawnedIssueTrackerWithTTL(50 * time.Millisecond)
+	tracker := NewSpawnedIssueTrackerWithTTL(DefaultSpawnedIssueTrackerMaxEntries, 50*time.Millisecond)
 
 	tracker.MarkSpawned("issue-1")
 	if !tracker.IsSpawned("issue-1") {
@@ -60,7 +60,7 @@ func TestSpawnedIssueTracker_TTL(t *testing.T) {
 }
 
 func TestSpawnedIssueTracker_CleanStale(t *testing.T) {
-	tracker := NewSpawnedIssueTrackerWithTTL(50 * time.Millisecond)
+	tracker := NewSpawnedIssueTrackerWithTTL(DefaultSpawnedIssueTrackerMaxEntries, 50*time.Millisecond)
 
 	tracker.MarkSpawned("issue-1")
 	tracker.MarkSpawned("issue-2")
@@ -91,7 +91,7 @@ func TestSpawnedIssueTracker_CleanStale(t *testing.T) {
 }
 
 func TestSpawnedIssueTracker_ReconcileWithIssues(t *testing.T) {
-	tracker := NewSpawnedIssueTracker()
+	tracker := NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL)
 
 	// Mark some issues as spawned
 	tracker.MarkSpawned("issue-1") // Will transition to in_progress
@@ -124,7 +124,7 @@ func TestSpawnedIssueTracker_ReconcileWithIssues(t *testing.T) {
 }
 
 func TestSpawnedIssueTracker_TrackedIDs(t *testing.T) {
-	tracker := NewSpawnedIssueTracker()
+	tracker := NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL)
 
 	tracker.MarkSpawned("issue-1")
 	tracker.MarkSpawned("issue-2")
@@ -148,7 +148,7 @@ func TestSpawnedIssueTracker_TrackedIDs(t *testing.T) {
 }
 
 func TestSpawnedIssueTracker_ConcurrentAccess(t *testing.T) {
-	tracker := NewSpawnedIssueTracker()
+	tracker := NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL)
 
 	// Run concurrent operations
 	done := make(chan bool)
@@ -174,7 +174,7 @@ func TestSpawnedIssueTracker_ConcurrentAccess(t *testing.T) {
 // TestDaemon_SkipsRecentlySpawnedIssues tests that NextIssue skips issues
 // that have been recently spawned but status not yet updated in beads.
 func TestDaemon_SkipsRecentlySpawnedIssues(t *testing.T) {
-	tracker := NewSpawnedIssueTracker()
+	tracker := NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL)
 	d := &Daemon{
 		SpawnedIssues: tracker,
 		listIssuesFunc: func() ([]Issue, error) {
@@ -205,7 +205,7 @@ func TestDaemon_SkipsRecentlySpawnedIssues(t *testing.T) {
 // TestDaemon_OnceMarkSpawned tests that Once marks issue as spawned before
 // calling spawnFunc and unmarks on failure.
 func TestDaemon_OnceMarksSpawned(t *testing.T) {
-	tracker := NewSpawnedIssueTracker()
+	tracker := NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL)
 	spawnCalled := false
 
 	d := &Daemon{
@@ -244,7 +244,7 @@ func TestDaemon_OnceMarksSpawned(t *testing.T) {
 
 // TestDaemon_OnceUnmarksOnFailure tests that Once unmarks issue if spawn fails.
 func TestDaemon_OnceUnmarksOnFailure(t *testing.T) {
-	tracker := NewSpawnedIssueTracker()
+	tracker := NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL)
 
 	d := &Daemon{
 		SpawnedIssues: tracker,
@@ -277,7 +277,7 @@ func TestDaemon_OnceUnmarksOnFailure(t *testing.T) {
 }
 
 func TestSpawnedIssueTracker_ClearAbandoned(t *testing.T) {
-	tracker := NewSpawnedIssueTracker()
+	tracker := NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL)
 
 	// Mark some issues as spawned
 	tracker.MarkSpawned("issue-1")
@@ -316,7 +316,7 @@ func TestSpawnedIssueTracker_ClearAbandoned(t *testing.T) {
 }
 
 func TestSpawnedIssueTracker_ClearAbandoned_EmptyList(t *testing.T) {
-	tracker := NewSpawnedIssueTracker()
+	tracker := NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL)
 
 	tracker.MarkSpawned("issue-1")
 	tracker.MarkSpawned("issue-2")
@@ -352,7 +352,7 @@ func (e *spawnError) Error() string {
 // TestDaemon_PreventsDuplicateSpawns is an integration test that verifies
 // the entire flow prevents duplicate spawns during the race window.
 func TestDaemon_PreventsDuplicateSpawns(t *testing.T) {
-	tracker := NewSpawnedIssueTracker()
+	tracker := NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL)
 	spawnCount := 0
 
 	d := &Daemon{

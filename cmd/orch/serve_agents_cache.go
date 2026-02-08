@@ -23,6 +23,8 @@ import (
 type beadsCache struct {
 	mu sync.RWMutex
 
+	maxEntries int
+
 	commentsGroup singleflight.Group
 
 	// Cached data
@@ -48,6 +50,8 @@ type beadsCache struct {
 type globalWorkspaceCacheType struct {
 	mu sync.RWMutex
 
+	maxEntries int
+
 	// Cached data
 	cache *workspaceCache
 
@@ -58,8 +62,20 @@ type globalWorkspaceCacheType struct {
 }
 
 // Global workspace cache
-var globalWorkspaceCacheInstance = &globalWorkspaceCacheType{
-	ttl: 30 * time.Second, // Workspace metadata changes infrequently
+var globalWorkspaceCacheInstance = newGlobalWorkspaceCache(defaultWorkspaceCacheMaxEntries, 30*time.Second)
+
+func newGlobalWorkspaceCache(maxSize int, ttl time.Duration) *globalWorkspaceCacheType {
+	if maxSize <= 0 {
+		panic("global workspace cache maxSize must be > 0")
+	}
+	if ttl <= 0 {
+		panic("global workspace cache ttl must be > 0")
+	}
+
+	return &globalWorkspaceCacheType{
+		maxEntries: maxSize,
+		ttl:        ttl,
+	}
 }
 
 // getCachedWorkspace returns cached workspace data or builds fresh if stale.
@@ -79,7 +95,7 @@ func (c *globalWorkspaceCacheType) getCachedWorkspace(projectDirs []string) *wor
 	c.mu.RUnlock()
 
 	// Build fresh workspace cache
-	wsCache := buildMultiProjectWorkspaceCache(projectDirs)
+	wsCache := buildMultiProjectWorkspaceCache(projectDirs, c.maxEntries)
 
 	c.mu.Lock()
 	c.cache = wsCache
@@ -115,9 +131,11 @@ func projectDirsMatch(a, b []string) bool {
 // cache misses, TTLs can be shorter without causing subprocess stampede.
 // Use /api/cache/invalidate to force refresh when needed (e.g., after orch complete).
 const (
-	defaultOpenIssuesTTL = 10 * time.Second // Open issues — singleflight prevents stampede on cache miss
-	defaultAllIssuesTTL  = 30 * time.Second // Closed issues change even less
-	defaultCommentsTTL   = 10 * time.Second // Comments change more often (phase updates)
+	defaultOpenIssuesTTL            = 10 * time.Second // Open issues — singleflight prevents stampede on cache miss
+	defaultAllIssuesTTL             = 30 * time.Second // Closed issues change even less
+	defaultCommentsTTL              = 10 * time.Second // Comments change more often (phase updates)
+	defaultBeadsCacheMaxEntries     = 5000
+	defaultWorkspaceCacheMaxEntries = 5000
 )
 
 // invalidate clears all cached data, forcing fresh fetches on next request.
@@ -127,9 +145,9 @@ func (c *beadsCache) invalidate() {
 	defer c.mu.Unlock()
 
 	// Reset all cached data
-	c.openIssues = make(map[string]*verify.Issue)
-	c.allIssues = make(map[string]*verify.Issue)
-	c.comments = make(map[string][]beads.Comment)
+	c.openIssues = make(map[string]*verify.Issue, c.maxEntries)
+	c.allIssues = make(map[string]*verify.Issue, c.maxEntries)
+	c.comments = make(map[string][]beads.Comment, c.maxEntries)
 
 	// Reset timestamps to force refetch
 	c.openIssuesFetchedAt = time.Time{}
@@ -151,14 +169,27 @@ func (c *globalWorkspaceCacheType) invalidate() {
 }
 
 // newBeadsCache creates a new beads cache with default TTLs.
-func newBeadsCache() *beadsCache {
+func newBeadsCache(maxSize int, ttl time.Duration) *beadsCache {
+	if maxSize <= 0 {
+		panic("beads cache maxSize must be > 0")
+	}
+	if ttl <= 0 {
+		panic("beads cache ttl must be > 0")
+	}
+
+	allIssuesTTL := ttl * 3
+	if allIssuesTTL < ttl {
+		allIssuesTTL = ttl
+	}
+
 	return &beadsCache{
-		openIssues:    make(map[string]*verify.Issue),
-		allIssues:     make(map[string]*verify.Issue),
-		comments:      make(map[string][]beads.Comment),
-		openIssuesTTL: defaultOpenIssuesTTL,
-		allIssuesTTL:  defaultAllIssuesTTL,
-		commentsTTL:   defaultCommentsTTL,
+		maxEntries:    maxSize,
+		openIssues:    make(map[string]*verify.Issue, maxSize),
+		allIssues:     make(map[string]*verify.Issue, maxSize),
+		comments:      make(map[string][]beads.Comment, maxSize),
+		openIssuesTTL: ttl,
+		allIssuesTTL:  allIssuesTTL,
+		commentsTTL:   ttl,
 	}
 }
 
@@ -179,7 +210,7 @@ func (c *beadsCache) getOpenIssues() (map[string]*verify.Issue, error) {
 	}
 
 	c.mu.Lock()
-	c.openIssues = issues
+	c.openIssues, _ = boundedIssueMapEntries(issues, c.maxEntries)
 	c.openIssuesFetchedAt = time.Now()
 	c.mu.Unlock()
 
@@ -205,9 +236,8 @@ func (c *beadsCache) getAllIssues(beadsIDs []string) (map[string]*verify.Issue, 
 	}
 
 	c.mu.Lock()
-	c.allIssues = issues
+	c.allIssues, c.allIssuesFetchedFor = boundedIssueMapEntries(issues, c.maxEntries)
 	c.allIssuesFetchedAt = time.Now()
-	c.allIssuesFetchedFor = beadsIDs
 	c.mu.Unlock()
 
 	return issues, nil
@@ -237,9 +267,8 @@ func (c *beadsCache) getComments(beadsIDs []string, projectDirs map[string]strin
 		comments := verify.GetCommentsBatchWithProjectDirs(beadsIDs, projectDirs)
 
 		c.mu.Lock()
-		c.comments = comments
+		c.comments, c.commentsFetchedFor = boundedCommentsMapEntries(comments, c.maxEntries)
 		c.commentsFetchedAt = time.Now()
-		c.commentsFetchedFor = beadsIDs
 		c.mu.Unlock()
 
 		return comments, nil
@@ -384,7 +413,11 @@ func extractUniqueProjectDirs(sessions []opencode.Session, currentProjectDir str
 // and merges them into a unified cache. Scans in parallel for performance.
 // This enables cross-project agent visibility by aggregating workspace metadata
 // from all projects with active OpenCode sessions.
-func buildMultiProjectWorkspaceCache(projectDirs []string) *workspaceCache {
+func buildMultiProjectWorkspaceCache(projectDirs []string, maxEntries int) *workspaceCache {
+	if maxEntries <= 0 {
+		maxEntries = defaultWorkspaceCacheMaxEntries
+	}
+
 	if len(projectDirs) == 0 {
 		return &workspaceCache{
 			beadsToWorkspace:  make(map[string]string),
@@ -394,7 +427,7 @@ func buildMultiProjectWorkspaceCache(projectDirs []string) *workspaceCache {
 
 	// If only one project directory, use the simpler single-project scan
 	if len(projectDirs) == 1 {
-		return buildWorkspaceCache(projectDirs[0])
+		return buildWorkspaceCache(projectDirs[0], maxEntries)
 	}
 
 	// Build caches in parallel using goroutines
@@ -405,7 +438,7 @@ func buildMultiProjectWorkspaceCache(projectDirs []string) *workspaceCache {
 
 	for _, dir := range projectDirs {
 		go func(projectDir string) {
-			cache := buildWorkspaceCache(projectDir)
+			cache := buildWorkspaceCache(projectDir, maxEntries)
 			results <- cacheResult{cache: cache}
 		}(dir)
 	}
@@ -422,6 +455,9 @@ func buildMultiProjectWorkspaceCache(projectDirs []string) *workspaceCache {
 
 		// Merge beadsToWorkspace map (later entries don't overwrite earlier ones)
 		for beadsID, wsPath := range result.cache.beadsToWorkspace {
+			if len(merged.beadsToWorkspace) >= maxEntries {
+				break
+			}
 			if _, exists := merged.beadsToWorkspace[beadsID]; !exists {
 				merged.beadsToWorkspace[beadsID] = wsPath
 			}
@@ -429,6 +465,9 @@ func buildMultiProjectWorkspaceCache(projectDirs []string) *workspaceCache {
 
 		// Merge beadsToProjectDir map
 		for beadsID, projDir := range result.cache.beadsToProjectDir {
+			if len(merged.beadsToProjectDir) >= maxEntries {
+				break
+			}
 			if _, exists := merged.beadsToProjectDir[beadsID]; !exists {
 				merged.beadsToProjectDir[beadsID] = projDir
 			}
@@ -436,13 +475,23 @@ func buildMultiProjectWorkspaceCache(projectDirs []string) *workspaceCache {
 
 		// Merge workspaceEntryToPath map (for multi-project workspace path resolution)
 		for entryName, wsPath := range result.cache.workspaceEntryToPath {
+			if len(merged.workspaceEntryToPath) >= maxEntries {
+				break
+			}
 			if _, exists := merged.workspaceEntryToPath[entryName]; !exists {
 				merged.workspaceEntryToPath[entryName] = wsPath
 			}
 		}
 
 		// Merge workspace entries (for completed workspace scanning)
-		merged.workspaceEntries = append(merged.workspaceEntries, result.cache.workspaceEntries...)
+		if len(merged.workspaceEntries) < maxEntries {
+			remaining := maxEntries - len(merged.workspaceEntries)
+			entriesToAdd := result.cache.workspaceEntries
+			if len(entriesToAdd) > remaining {
+				entriesToAdd = entriesToAdd[:remaining]
+			}
+			merged.workspaceEntries = append(merged.workspaceEntries, entriesToAdd...)
+		}
 
 		// Keep track of workspace dir for backward compatibility
 		// (use first non-empty workspace dir)
@@ -456,7 +505,11 @@ func buildMultiProjectWorkspaceCache(projectDirs []string) *workspaceCache {
 
 // buildWorkspaceCache scans the workspace directory once and builds lookup maps.
 // This replaces multiple calls to findWorkspaceByBeadsID which each scanned all 400+ directories.
-func buildWorkspaceCache(projectDir string) *workspaceCache {
+func buildWorkspaceCache(projectDir string, maxEntries int) *workspaceCache {
+	if maxEntries <= 0 {
+		maxEntries = defaultWorkspaceCacheMaxEntries
+	}
+
 	cache := &workspaceCache{
 		beadsToWorkspace:     make(map[string]string),
 		beadsToProjectDir:    make(map[string]string),
@@ -467,6 +520,9 @@ func buildWorkspaceCache(projectDir string) *workspaceCache {
 	entries, err := os.ReadDir(cache.workspaceDir)
 	if err != nil {
 		return cache // Empty cache if directory doesn't exist
+	}
+	if len(entries) > maxEntries {
+		entries = entries[:maxEntries]
 	}
 	cache.workspaceEntries = entries
 
@@ -528,6 +584,54 @@ func buildWorkspaceCache(projectDir string) *workspaceCache {
 	}
 
 	return cache
+}
+
+func boundedIssueMapEntries(issues map[string]*verify.Issue, maxEntries int) (map[string]*verify.Issue, []string) {
+	if maxEntries <= 0 || len(issues) <= maxEntries {
+		keys := make([]string, 0, len(issues))
+		for id := range issues {
+			keys = append(keys, id)
+		}
+		return issues, keys
+	}
+
+	keys := make([]string, 0, len(issues))
+	for id := range issues {
+		keys = append(keys, id)
+	}
+	sort.Strings(keys)
+	keys = keys[:maxEntries]
+
+	bounded := make(map[string]*verify.Issue, maxEntries)
+	for _, id := range keys {
+		bounded[id] = issues[id]
+	}
+
+	return bounded, keys
+}
+
+func boundedCommentsMapEntries(comments map[string][]beads.Comment, maxEntries int) (map[string][]beads.Comment, []string) {
+	if maxEntries <= 0 || len(comments) <= maxEntries {
+		keys := make([]string, 0, len(comments))
+		for id := range comments {
+			keys = append(keys, id)
+		}
+		return comments, keys
+	}
+
+	keys := make([]string, 0, len(comments))
+	for id := range comments {
+		keys = append(keys, id)
+	}
+	sort.Strings(keys)
+	keys = keys[:maxEntries]
+
+	bounded := make(map[string][]beads.Comment, maxEntries)
+	for _, id := range keys {
+		bounded[id] = comments[id]
+	}
+
+	return bounded, keys
 }
 
 // lookupWorkspace returns the workspace path for a beads ID (O(1) lookup).

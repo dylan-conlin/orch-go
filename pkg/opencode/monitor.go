@@ -132,7 +132,7 @@ func (m *Monitor) connectAndProcess(ctx context.Context) error {
 
 	// Start SSE connection in a goroutine
 	go func() {
-		if err := m.sseClient.Connect(events); err != nil {
+		if err := m.sseClient.ConnectContext(ctx, events); err != nil {
 			select {
 			case errChan <- err:
 			default:

@@ -287,6 +287,50 @@ func isCriticalInfrastructureWork(task string, beadsID string) bool {
 	return false
 }
 
+// requiresResourceLifecycleAudit detects infrastructure-touching work that should
+// include the resource lifecycle audit directive in SPAWN_CONTEXT.
+//
+// This is intentionally BROADER than isCriticalInfrastructureWork:
+// - It includes infrastructure packages that commonly create long-lived resources.
+// - It includes explicit resource-creation signals (exec.Command, goroutines).
+// - It is prompt guidance only; it does not drive backend selection.
+func requiresResourceLifecycleAudit(task string, beadsID string) bool {
+	auditTriggers := []string{
+		"pkg/daemon",
+		"pkg/spawn",
+		"cmd/orch/serve",
+		"exec.command",
+		"exec command",
+		"goroutine",
+		"go func(",
+	}
+
+	containsAuditTrigger := func(text string) bool {
+		textLower := strings.ToLower(text)
+		for _, trigger := range auditTriggers {
+			if strings.Contains(textLower, trigger) {
+				return true
+			}
+		}
+		return false
+	}
+
+	if containsAuditTrigger(task) {
+		return true
+	}
+
+	if beadsID == "" {
+		return false
+	}
+
+	issue, err := verify.GetIssue(beadsID)
+	if err != nil {
+		return false
+	}
+
+	return containsAuditTrigger(issue.Title) || containsAuditTrigger(issue.Description)
+}
+
 // checkWorkspaceExists verifies if a workspace already exists and has content.
 // Returns an error if the workspace contains SPAWN_CONTEXT.md or SYNTHESIS.md
 // (indicating an active or completed session), unless force is true.

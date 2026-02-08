@@ -55,6 +55,8 @@
 	import { OrchestratorSessionsSection } from '$lib/components/orchestrator-sessions-section';
 	import { services } from '$lib/stores/services';
 	import { ServicesSection } from '$lib/components/services-section';
+	import { operatorHealth } from '$lib/stores/operator-health';
+	import { OperatorHealthSection } from '$lib/components/operator-health-section';
 	import { filters, orchestratorContext, buildFilterQueryString } from '$lib/stores/context';
 	import { coaching, startCoachingPolling, stopCoachingPolling } from '$lib/stores/coaching';
 	import { questions } from '$lib/stores/questions';
@@ -86,6 +88,7 @@
 		sseStream: false, // SSE Stream collapsed by default (low signal-to-noise for most users)
 		orchestratorSessions: true, // Orchestrator sessions expanded by default (important visibility)
 		services: true, // Services expanded by default (important visibility)
+		operatorHealth: true, // Operator health expanded by default (primary verification surface)
 		coaching: true, // Coaching metrics expanded by default
 		frontier: true, // Frontier expanded by default (shows decidability state)
 		decisionCenter: true // Decision Center expanded by default (strategic decisions)
@@ -175,6 +178,7 @@
 			hotspots.fetch();
 			orchestratorSessions.fetch();
 			services.fetch();
+			operatorHealth.fetch();
 			questions.fetch();
 			frontier.fetch();
 			decisions.fetch();
@@ -209,6 +213,7 @@
 				hotspots.fetch(),
 				orchestratorSessions.fetch(),
 				services.fetch(),
+				operatorHealth.fetch(projectDir),
 				questions.fetch(),
 				frontier.fetch(),
 				decisions.fetch(),
@@ -264,6 +269,7 @@
 		if (typeof window !== 'undefined' && $filters.followOrchestrator && $orchestratorContext.project_dir) {
 			beads.fetch($orchestratorContext.project_dir).catch(console.error);
 			readyIssues.fetch($orchestratorContext.project_dir).catch(console.error);
+			operatorHealth.fetch($orchestratorContext.project_dir).catch(console.error);
 		}
 	}
 
@@ -505,6 +511,11 @@
 	<!-- Services (overmind-managed processes) -->
 	<ServicesSection
 		bind:expanded={sectionState.services}
+	/>
+
+	<!-- Operator Health (behavioral system health for operators) -->
+	<OperatorHealthSection
+		bind:expanded={sectionState.operatorHealth}
 	/>
 
 	{#if $dashboardMode === 'operational'}

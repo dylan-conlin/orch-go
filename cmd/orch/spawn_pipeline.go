@@ -63,19 +63,20 @@ type spawnPipeline struct {
 	gapAnalysis *spawn.GapAnalysis
 
 	// Phase 6: Config building
-	tier             string
-	isBug            bool
-	reproSteps       string
-	usageInfo        *spawn.UsageInfo
-	spawnBackend     string
-	variant          string
-	designMockupPath string
-	designPromptPath string
-	designNotes      string
-	issueTitle       string
-	issueType        string
-	issuePriority    int
-	cfg              *spawn.Config
+	tier                     string
+	isBug                    bool
+	reproSteps               string
+	usageInfo                *spawn.UsageInfo
+	spawnBackend             string
+	variant                  string
+	designMockupPath         string
+	designPromptPath         string
+	designNotes              string
+	issueTitle               string
+	issueType                string
+	issuePriority            int
+	isInfrastructureTouching bool
+	cfg                      *spawn.Config
 }
 
 // newSpawnPipeline creates a pipeline with inputs from the caller.
@@ -538,46 +539,84 @@ func (p *spawnPipeline) buildSpawnConfig() error {
 		}
 	}
 
+	// Include resource lifecycle audit guidance for infrastructure-touching spawns.
+	// Explicit --infra always qualifies. Otherwise, use broader infrastructure
+	// detection focused on resource-lifecycle risk areas.
+	p.isInfrastructureTouching = spawnInfra || requiresResourceLifecycleAudit(p.task, p.beadsID)
+
+	// Behavioral acceptance criteria require integration validation for feature work.
+	validationLevel, escalated, matchedCriteria := determineValidationLevel(p.skillName, spawnValidation, p.task)
+	if escalated {
+		fmt.Fprintf(os.Stderr, "⚠️  Behavioral acceptance detected - escalating validation to integration\n")
+		for _, c := range matchedCriteria {
+			fmt.Fprintf(os.Stderr, "   - %s\n", c)
+		}
+	}
+
 	// Build spawn config
 	p.cfg = &spawn.Config{
-		Task:               p.task,
-		SkillName:          p.skillName,
-		Project:            p.projectName,
-		ProjectDir:         p.projectDir,
-		WorkspaceName:      p.workspaceName,
-		SkillContent:       p.skillContent,
-		BeadsID:            p.beadsID,
-		Phases:             spawnPhases,
-		Mode:               spawnMode,
-		Validation:         spawnValidation,
-		Model:              p.resolvedModel.Format(),
-		Variant:            p.variant,
-		MCP:                spawnMCP,
-		Tier:               p.tier,
-		NoTrack:            spawnNoTrack || p.skipBeadsForOrchestrator,
-		SkipArtifactCheck:  spawnSkipArtifactCheck,
-		KBContext:          p.kbContext,
-		IncludeServers:     spawn.DefaultIncludeServersForSkill(p.skillName),
-		GapAnalysis:        p.gapAnalysis,
-		IsBug:              p.isBug,
-		ReproSteps:         p.reproSteps,
-		IsOrchestrator:     p.isOrchestrator,
-		IsMetaOrchestrator: p.isMetaOrchestrator,
-		UsageInfo:          p.usageInfo,
-		SpawnMode:          p.spawnBackend,
-		DesignWorkspace:    spawnDesignWorkspace,
-		DesignMockupPath:   p.designMockupPath,
-		DesignPromptPath:   p.designPromptPath,
-		DesignNotes:        p.designNotes,
-		DaemonDriven:       p.daemonDriven,
-		IssueComments:      fetchIssueCommentsForSpawn(p.beadsID),
-		FailureContext:     fetchFailureContextForSpawn(p.beadsID),
-		IssueTitle:         p.issueTitle,
-		IssueType:          p.issueType,
-		IssuePriority:      p.issuePriority,
+		Task:                     p.task,
+		SkillName:                p.skillName,
+		Project:                  p.projectName,
+		ProjectDir:               p.projectDir,
+		WorkspaceName:            p.workspaceName,
+		SkillContent:             p.skillContent,
+		BeadsID:                  p.beadsID,
+		Phases:                   spawnPhases,
+		Mode:                     spawnMode,
+		Validation:               validationLevel,
+		Model:                    p.resolvedModel.Format(),
+		Variant:                  p.variant,
+		MCP:                      spawnMCP,
+		Tier:                     p.tier,
+		NoTrack:                  spawnNoTrack || p.skipBeadsForOrchestrator,
+		SkipArtifactCheck:        spawnSkipArtifactCheck,
+		KBContext:                p.kbContext,
+		IncludeServers:           spawn.DefaultIncludeServersForSkill(p.skillName),
+		GapAnalysis:              p.gapAnalysis,
+		IsBug:                    p.isBug,
+		ReproSteps:               p.reproSteps,
+		IsInfrastructureTouching: p.isInfrastructureTouching,
+		IsOrchestrator:           p.isOrchestrator,
+		IsMetaOrchestrator:       p.isMetaOrchestrator,
+		UsageInfo:                p.usageInfo,
+		SpawnMode:                p.spawnBackend,
+		DesignWorkspace:          spawnDesignWorkspace,
+		DesignMockupPath:         p.designMockupPath,
+		DesignPromptPath:         p.designPromptPath,
+		DesignNotes:              p.designNotes,
+		DaemonDriven:             p.daemonDriven,
+		IssueComments:            fetchIssueCommentsForSpawn(p.beadsID),
+		FailureContext:           fetchFailureContextForSpawn(p.beadsID),
+		IssueTitle:               p.issueTitle,
+		IssueType:                p.issueType,
+		IssuePriority:            p.issuePriority,
 	}
 
 	return nil
+}
+
+// determineValidationLevel normalizes validation level and auto-escalates for behavioral criteria.
+func determineValidationLevel(skillName, requestedValidation, task string) (string, bool, []string) {
+	validation := strings.ToLower(strings.TrimSpace(requestedValidation))
+	if validation == "" {
+		validation = "tests"
+	}
+
+	if strings.ToLower(strings.TrimSpace(skillName)) != "feature-impl" {
+		return validation, false, nil
+	}
+
+	behavioral, criteria := verify.DetectBehavioralAcceptanceCriteria(task)
+	if !behavioral {
+		return validation, false, nil
+	}
+
+	if validation == "none" || validation == "tests" {
+		return "integration", true, criteria
+	}
+
+	return validation, false, criteria
 }
 
 // executeSpawn validates the config, writes context, records state, and dispatches

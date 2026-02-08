@@ -112,7 +112,7 @@ func TestHandleBeadsReadyWithProjectParam(t *testing.T) {
 
 func TestBeadsStatsCacheProjectAwareness(t *testing.T) {
 	// Create a fresh cache
-	cache := newBeadsStatsCache()
+	cache := newBeadsStatsCache(defaultBeadsStatsCacheMaxEntries, defaultBeadsStatsCacheTTL)
 
 	// Verify the cache uses per-project caching
 	// This verifies the cache structure is project-aware
@@ -128,7 +128,7 @@ func TestBeadsStatsCacheProjectAwareness(t *testing.T) {
 }
 
 func TestGraphCacheTTL(t *testing.T) {
-	cache := newBeadsStatsCache()
+	cache := newBeadsStatsCache(defaultBeadsStatsCacheMaxEntries, defaultBeadsStatsCacheTTL)
 	callCount := 0
 
 	buildFn := func() (*BeadsGraphAPIResponse, error) {
@@ -184,7 +184,7 @@ func TestGraphCacheTTL(t *testing.T) {
 }
 
 func TestGraphCacheInvalidation(t *testing.T) {
-	cache := newBeadsStatsCache()
+	cache := newBeadsStatsCache(defaultBeadsStatsCacheMaxEntries, defaultBeadsStatsCacheTTL)
 	callCount := 0
 
 	buildFn := func() (*BeadsGraphAPIResponse, error) {
@@ -218,7 +218,7 @@ func TestGraphCacheInvalidation(t *testing.T) {
 }
 
 func TestDependencyGraphCacheTTL(t *testing.T) {
-	cache := newBeadsStatsCache()
+	cache := newBeadsStatsCache(defaultBeadsStatsCacheMaxEntries, defaultBeadsStatsCacheTTL)
 	callCount := 0
 
 	buildFn := func() ([]GraphEdge, error) {
@@ -258,7 +258,7 @@ func TestDependencyGraphCacheTTL(t *testing.T) {
 }
 
 func TestDependencyGraphCacheInvalidation(t *testing.T) {
-	cache := newBeadsStatsCache()
+	cache := newBeadsStatsCache(defaultBeadsStatsCacheMaxEntries, defaultBeadsStatsCacheTTL)
 	callCount := 0
 
 	buildFn := func() ([]GraphEdge, error) {

@@ -1,0 +1,10 @@
+version: "2"
+
+linters:
+  settings:
+    custom:
+      boundedlifetime:
+        type: module
+        description: Flags unbounded goroutines, subprocesses, and cache structs.
+  enable:
+    - boundedlifetime

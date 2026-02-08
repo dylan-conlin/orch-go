@@ -231,12 +231,22 @@ func FallbackCloseForce(id, reason string, force bool) error {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackCreate(title, description, issueType string, priority int, labels []string) (*Issue, error) {
+	return FallbackCreateWithParent(title, description, issueType, priority, labels, "")
+}
+
+// FallbackCreateWithParent creates an issue via bd CLI with an optional parent link.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
+// Uses getBdPath() to resolve the bd executable location.
+func FallbackCreateWithParent(title, description, issueType string, priority int, labels []string, parent string) (*Issue, error) {
 	args := []string{"create", title, "--json"}
 	if description != "" {
 		args = append(args, "--description", description)
 	}
 	if issueType != "" {
 		args = append(args, "--type", issueType)
+	}
+	if parent != "" {
+		args = append(args, "--parent", parent)
 	}
 	if priority > 0 {
 		args = append(args, "--priority", fmt.Sprintf("%d", priority))

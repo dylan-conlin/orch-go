@@ -26,4 +26,6 @@ if [ ! -f "$local_db" ]; then
 	fi
 fi
 
-exec bd sync --no-daemon --sqlite "$@"
+# Keep sync local-only by default. Orchestrator workflow handles git pull/push
+# explicitly, and running bd sync pull in a dirty tree fails under active swarm work.
+exec bd sync --no-daemon --sqlite --no-pull --no-push "$@"

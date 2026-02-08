@@ -21,10 +21,10 @@ func newTestServer() *Server {
 		ServerURL:       "http://127.0.0.1:4096",
 		SourceDir:       os.TempDir(),
 		Version:         "test",
-		BeadsCache:      newBeadsCache(),
-		BeadsStatsCache: newBeadsStatsCache(),
-		KBHealthCache:   newKBHealthCache(),
-		WorkspaceCache:  &globalWorkspaceCacheType{ttl: 30 * time.Second},
+		BeadsCache:      newBeadsCache(defaultBeadsCacheMaxEntries, defaultOpenIssuesTTL),
+		BeadsStatsCache: newBeadsStatsCache(defaultBeadsStatsCacheMaxEntries, defaultBeadsStatsCacheTTL),
+		KBHealthCache:   newKBHealthCache(defaultKBHealthCacheMaxEntries, defaultKBHealthCacheTTL),
+		WorkspaceCache:  newGlobalWorkspaceCache(defaultWorkspaceCacheMaxEntries, 30*time.Second),
 	}
 }
 

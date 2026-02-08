@@ -127,7 +127,7 @@ func TestGetUsageSummary(t *testing.T) {
 
 func TestUsageCache(t *testing.T) {
 	t.Run("cache hit within TTL", func(t *testing.T) {
-		cache := newUsageCache(60 * time.Second)
+		cache := newUsageCache(8, 60*time.Second)
 
 		// Create test data
 		testInfo := &UsageInfo{
@@ -151,7 +151,7 @@ func TestUsageCache(t *testing.T) {
 	})
 
 	t.Run("cache miss after TTL expiration", func(t *testing.T) {
-		cache := newUsageCache(1 * time.Millisecond)
+		cache := newUsageCache(8, 1*time.Millisecond)
 
 		testInfo := &UsageInfo{
 			Email: "test@example.com",
@@ -171,7 +171,7 @@ func TestUsageCache(t *testing.T) {
 	})
 
 	t.Run("cache invalidation", func(t *testing.T) {
-		cache := newUsageCache(60 * time.Second)
+		cache := newUsageCache(8, 60*time.Second)
 
 		testInfo := &UsageInfo{
 			Email: "test@example.com",
@@ -197,7 +197,7 @@ func TestUsageCache(t *testing.T) {
 	})
 
 	t.Run("concurrent access safety", func(t *testing.T) {
-		cache := newUsageCache(60 * time.Second)
+		cache := newUsageCache(8, 60*time.Second)
 
 		// Spawn multiple goroutines doing concurrent reads/writes
 		done := make(chan bool)
@@ -227,7 +227,7 @@ func TestUsageCache(t *testing.T) {
 	})
 
 	t.Run("different tokens have separate cache entries", func(t *testing.T) {
-		cache := newUsageCache(60 * time.Second)
+		cache := newUsageCache(8, 60*time.Second)
 
 		info1 := &UsageInfo{Email: "user1@example.com"}
 		info2 := &UsageInfo{Email: "user2@example.com"}

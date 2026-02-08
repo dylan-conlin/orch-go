@@ -10,6 +10,8 @@ import (
 
 // projectCacheEntry holds cached data for a single project.
 type projectCacheEntry struct {
+	lastAccessedAt time.Time
+
 	stats          *beads.Stats
 	statsFetchedAt time.Time
 
@@ -42,6 +44,8 @@ type dependencyGraphCacheEntry struct {
 type beadsStatsCache struct {
 	mu sync.RWMutex
 
+	maxEntries int
+
 	// Per-project cache entries (keyed by project directory)
 	// Empty string key is used for default project (sourceDir)
 	projects map[string]*projectCacheEntry
@@ -52,12 +56,25 @@ type beadsStatsCache struct {
 	graphTTL time.Duration
 }
 
-func newBeadsStatsCache() *beadsStatsCache {
+const (
+	defaultBeadsStatsCacheTTL        = 5 * time.Second
+	defaultBeadsStatsCacheMaxEntries = 256
+)
+
+func newBeadsStatsCache(maxSize int, ttl time.Duration) *beadsStatsCache {
+	if maxSize <= 0 {
+		panic("beads stats cache maxSize must be > 0")
+	}
+	if ttl <= 0 {
+		panic("beads stats cache ttl must be > 0")
+	}
+
 	return &beadsStatsCache{
-		projects: make(map[string]*projectCacheEntry),
-		statsTTL: 5 * time.Second,
-		readyTTL: 5 * time.Second,
-		graphTTL: 5 * time.Second,
+		maxEntries: maxSize,
+		projects:   make(map[string]*projectCacheEntry),
+		statsTTL:   ttl,
+		readyTTL:   ttl,
+		graphTTL:   ttl,
 	}
 }
 
@@ -70,12 +87,50 @@ func (c *beadsStatsCache) getOrCreateEntry(projectDir string) *projectCacheEntry
 		c.projects = make(map[string]*projectCacheEntry)
 	}
 
+	now := time.Now()
 	entry, ok := c.projects[projectDir]
-	if !ok {
-		entry = &projectCacheEntry{}
-		c.projects[projectDir] = entry
+	if ok {
+		entry.lastAccessedAt = now
+		return entry
 	}
+
+	if len(c.projects) >= c.maxEntries {
+		c.evictOldestProjectLocked()
+	}
+
+	entry = &projectCacheEntry{
+		lastAccessedAt: now,
+	}
+	c.projects[projectDir] = entry
+
 	return entry
+}
+
+func (c *beadsStatsCache) evictOldestProjectLocked() {
+	var oldestProject string
+	var oldestTime time.Time
+
+	for projectDir, entry := range c.projects {
+		entryTime := entry.lastAccessedAt
+		if entryTime.IsZero() {
+			entryTime = entry.statsFetchedAt
+		}
+		if entryTime.IsZero() {
+			entryTime = entry.readyFetchedAt
+		}
+		if entryTime.IsZero() {
+			entryTime = time.Unix(0, 0)
+		}
+
+		if oldestProject == "" || entryTime.Before(oldestTime) {
+			oldestProject = projectDir
+			oldestTime = entryTime
+		}
+	}
+
+	if oldestProject != "" {
+		delete(c.projects, oldestProject)
+	}
 }
 
 // getStats returns cached stats or fetches fresh if stale.
@@ -241,6 +296,9 @@ func (c *beadsStatsCache) getGraph(projectDir, cacheKey string, buildFn func() (
 	if entry.graphCache == nil {
 		entry.graphCache = make(map[string]*graphCacheEntry)
 	}
+	if _, exists := entry.graphCache[cacheKey]; !exists && len(entry.graphCache) >= c.maxEntries {
+		evictOldestGraphEntry(entry.graphCache)
+	}
 	entry.graphCache[cacheKey] = &graphCacheEntry{
 		response:  resp,
 		fetchedAt: time.Now(),
@@ -273,6 +331,9 @@ func (c *beadsStatsCache) getDependencyGraph(projectDir, cacheKey string, buildF
 	if entry.dependencyGraphCache == nil {
 		entry.dependencyGraphCache = make(map[string]*dependencyGraphCacheEntry)
 	}
+	if _, exists := entry.dependencyGraphCache[cacheKey]; !exists && len(entry.dependencyGraphCache) >= c.maxEntries {
+		evictOldestDependencyGraphEntry(entry.dependencyGraphCache)
+	}
 	entry.dependencyGraphCache[cacheKey] = &dependencyGraphCacheEntry{
 		edges:     edges,
 		fetchedAt: time.Now(),
@@ -288,8 +349,42 @@ func (c *beadsStatsCache) invalidate(projectDir string) {
 	defer c.mu.Unlock()
 
 	if projectDir == "" {
-		c.projects = make(map[string]*projectCacheEntry)
+		c.projects = make(map[string]*projectCacheEntry, c.maxEntries)
 	} else {
 		delete(c.projects, projectDir)
+	}
+}
+
+func evictOldestGraphEntry(cache map[string]*graphCacheEntry) {
+	var oldestKey string
+	var oldestTime time.Time
+
+	for key, entry := range cache {
+		entryTime := entry.fetchedAt
+		if oldestKey == "" || entryTime.Before(oldestTime) {
+			oldestKey = key
+			oldestTime = entryTime
+		}
+	}
+
+	if oldestKey != "" {
+		delete(cache, oldestKey)
+	}
+}
+
+func evictOldestDependencyGraphEntry(cache map[string]*dependencyGraphCacheEntry) {
+	var oldestKey string
+	var oldestTime time.Time
+
+	for key, entry := range cache {
+		entryTime := entry.fetchedAt
+		if oldestKey == "" || entryTime.Before(oldestTime) {
+			oldestKey = key
+			oldestTime = entryTime
+		}
+	}
+
+	if oldestKey != "" {
+		delete(cache, oldestKey)
 	}
 }

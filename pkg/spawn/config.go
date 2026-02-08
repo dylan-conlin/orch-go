@@ -153,7 +153,7 @@ type Config struct {
 	// Feature-impl configuration
 	Phases     string // Comma-separated phases (e.g., "implementation,validation")
 	Mode       string // Implementation mode: "tdd" or "direct"
-	Validation string // Validation level: "none", "tests", "smoke-test", "multi-phase"
+	Validation string // Validation level: "none", "tests", "integration", "smoke-test", "multi-phase"
 
 	// Investigation configuration
 	InvestigationType string // Investigation type: "simple", "systems", "feasibility", etc.
@@ -200,6 +200,10 @@ type Config struct {
 	// ReproSteps contains reproduction steps extracted from a bug issue.
 	// Included in SPAWN_CONTEXT.md to help agents understand how to verify the fix.
 	ReproSteps string
+
+	// IsInfrastructureTouching indicates whether this spawn touches infrastructure code.
+	// When true, SPAWN_CONTEXT.md includes a required resource lifecycle audit directive.
+	IsInfrastructureTouching bool
 
 	// IsOrchestrator indicates whether the skill is an orchestrator-type skill.
 	// Orchestrator skills (skill-type: policy/orchestrator) have different defaults:

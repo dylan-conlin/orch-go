@@ -36,6 +36,7 @@ Output categories:
   - Principle refinements
   - Investigation promotions (recommend-yes)
   - Investigation authority (grouped by authority level)
+  - Defect-class clusters (recurring mechanisms)
   - Orphan investigations (lineage gaps)
 
 Examples:
@@ -201,6 +202,17 @@ func printReflectSummary(s *daemon.ReflectSuggestions) {
 			fmt.Printf("  [%s] %s (%d days)\n", item.Authority, item.Title, item.AgeDays)
 			if item.NextAction != "" {
 				fmt.Printf("    Next: %s\n", item.NextAction)
+			}
+		}
+		fmt.Println()
+	}
+
+	if len(s.DefectClass) > 0 {
+		fmt.Printf("Recurring Defect Classes (%d):\n", len(s.DefectClass))
+		for _, item := range s.DefectClass {
+			fmt.Printf("  %s (%d investigations in %d days)\n", item.DefectClass, item.Count, item.WindowDays)
+			if item.Suggestion != "" {
+				fmt.Printf("    %s\n", item.Suggestion)
 			}
 		}
 		fmt.Println()

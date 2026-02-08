@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+test.use({ ignoreHTTPSErrors: true });
+
 /**
  * Test suite for the verification flow.
  * Tests that verified items are properly hidden from the Work Graph UI.
@@ -113,7 +115,7 @@ test.describe('Verification Flow', () => {
 		};
 
 		await mockEndpoints(page, [completedIssue]);
-		await page.goto('http://localhost:5188/work-graph');
+		await page.goto('https://localhost:3348/work-graph');
 		
 		// Wait for loading to complete
 		await expect(page.locator('text=Loading work graph')).not.toBeVisible({ timeout: 10000 });
@@ -224,7 +226,7 @@ test.describe('Verification Flow', () => {
 			});
 		});
 
-		await page.goto('http://localhost:5188/work-graph');
+		await page.goto('https://localhost:3348/work-graph');
 
 		// Wait for loading to complete
 		await expect(page.locator('text=Loading work graph')).not.toBeVisible({ timeout: 10000 });
@@ -251,7 +253,7 @@ test.describe('Verification Flow', () => {
 	test('verified items should not appear in the list from backend', async ({ page }) => {
 		// Backend returns no completed items (simulating all items are verified)
 		await mockEndpoints(page, []);
-		await page.goto('http://localhost:5188/work-graph');
+		await page.goto('https://localhost:3348/work-graph');
 		
 		// Wait for loading to complete
 		await expect(page.locator('text=Loading work graph')).not.toBeVisible({ timeout: 10000 });
@@ -283,7 +285,7 @@ test.describe('Verification Flow', () => {
 		};
 
 		await mockEndpoints(page, [needsFixIssue]);
-		await page.goto('http://localhost:5188/work-graph');
+		await page.goto('https://localhost:3348/work-graph');
 
 		// Wait for loading to complete
 		await expect(page.locator('text=Loading work graph')).not.toBeVisible({ timeout: 10000 });

@@ -33,31 +33,32 @@ func CreateScreenshotsDir(workspacePath string) error {
 
 // contextData holds template data for SPAWN_CONTEXT.md.
 type contextData struct {
-	Task                 string
-	BeadsID              string
-	ProjectDir           string
-	WorkspaceName        string
-	SkillName            string
-	SkillContent         string
-	InvestigationSlug    string
-	Phases               string
-	Mode                 string
-	Validation           string
-	InvestigationType    string
-	KBContext            string
-	Tier                 string
-	ServerContext        string
-	BloatWarnings        string
-	NoTrack              bool
-	IsBug                bool
-	ReproSteps           string
-	DesignWorkspace      string
-	DesignMockupPath     string
-	DesignPromptPath     string
-	DesignNotes          string
-	IssueComments        []IssueComment
-	IsInvestigationSkill bool
-	FailureContext       *FailureContext
+	Task                     string
+	BeadsID                  string
+	ProjectDir               string
+	WorkspaceName            string
+	SkillName                string
+	SkillContent             string
+	InvestigationSlug        string
+	Phases                   string
+	Mode                     string
+	Validation               string
+	InvestigationType        string
+	KBContext                string
+	Tier                     string
+	ServerContext            string
+	BloatWarnings            string
+	NoTrack                  bool
+	IsBug                    bool
+	ReproSteps               string
+	IsInfrastructureTouching bool
+	DesignWorkspace          string
+	DesignMockupPath         string
+	DesignPromptPath         string
+	DesignNotes              string
+	IssueComments            []IssueComment
+	IsInvestigationSkill     bool
+	FailureContext           *FailureContext
 }
 
 func buildContextData(cfg *Config) contextData {
@@ -78,31 +79,32 @@ func buildContextData(cfg *Config) contextData {
 	}
 
 	return contextData{
-		Task:                 cfg.Task,
-		BeadsID:              cfg.BeadsID,
-		ProjectDir:           cfg.ProjectDir,
-		WorkspaceName:        cfg.WorkspaceName,
-		SkillName:            cfg.SkillName,
-		SkillContent:         prepareSkillContent(cfg),
-		InvestigationSlug:    slug,
-		Phases:               cfg.Phases,
-		Mode:                 cfg.Mode,
-		Validation:           cfg.Validation,
-		InvestigationType:    cfg.InvestigationType,
-		KBContext:            cfg.KBContext,
-		Tier:                 cfg.Tier,
-		ServerContext:        serverContext,
-		BloatWarnings:        bloatWarnings,
-		NoTrack:              cfg.NoTrack,
-		IsBug:                cfg.IsBug,
-		ReproSteps:           cfg.ReproSteps,
-		DesignWorkspace:      cfg.DesignWorkspace,
-		DesignMockupPath:     cfg.DesignMockupPath,
-		DesignPromptPath:     cfg.DesignPromptPath,
-		DesignNotes:          cfg.DesignNotes,
-		IssueComments:        cfg.IssueComments,
-		IsInvestigationSkill: IsInvestigationSkill(cfg.SkillName),
-		FailureContext:       cfg.FailureContext,
+		Task:                     cfg.Task,
+		BeadsID:                  cfg.BeadsID,
+		ProjectDir:               cfg.ProjectDir,
+		WorkspaceName:            cfg.WorkspaceName,
+		SkillName:                cfg.SkillName,
+		SkillContent:             prepareSkillContent(cfg),
+		InvestigationSlug:        slug,
+		Phases:                   cfg.Phases,
+		Mode:                     cfg.Mode,
+		Validation:               cfg.Validation,
+		InvestigationType:        cfg.InvestigationType,
+		KBContext:                cfg.KBContext,
+		Tier:                     cfg.Tier,
+		ServerContext:            serverContext,
+		BloatWarnings:            bloatWarnings,
+		NoTrack:                  cfg.NoTrack,
+		IsBug:                    cfg.IsBug,
+		ReproSteps:               cfg.ReproSteps,
+		IsInfrastructureTouching: cfg.IsInfrastructureTouching,
+		DesignWorkspace:          cfg.DesignWorkspace,
+		DesignMockupPath:         cfg.DesignMockupPath,
+		DesignPromptPath:         cfg.DesignPromptPath,
+		DesignNotes:              cfg.DesignNotes,
+		IssueComments:            cfg.IssueComments,
+		IsInvestigationSkill:     IsInvestigationSkill(cfg.SkillName),
+		FailureContext:           cfg.FailureContext,
 	}
 }
 

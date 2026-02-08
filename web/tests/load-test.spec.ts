@@ -17,7 +17,8 @@ import { test, expect, type Page } from '@playwright/test';
 
 // Use existing dev server
 test.use({
-	baseURL: 'http://localhost:5188'
+	baseURL: 'https://localhost:3348',
+	ignoreHTTPSErrors: true
 });
 
 // Agent type matching the dashboard store

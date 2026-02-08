@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
@@ -17,6 +18,12 @@ import (
 // It uses the beads RPC daemon if available, falling back to the bd CLI if not.
 // Uses WithAutoReconnect for resilience against transient connection issues.
 func ListReadyIssues() ([]Issue, error) {
+	return ListReadyIssuesWithOverride(false)
+}
+
+// ListReadyIssuesWithOverride retrieves ready issues and optionally bypasses
+// the investigation synthesis circuit breaker for feature issues.
+func ListReadyIssuesWithOverride(allowFeatureWork bool) ([]Issue, error) {
 	var ready []Issue
 	err := beads.Do("", func(client *beads.Client) error {
 		if connErr := client.Connect(); connErr != nil {
@@ -33,11 +40,16 @@ func ListReadyIssues() ([]Issue, error) {
 		return nil
 	}, beads.WithAutoReconnect(3))
 	if err == nil {
-		return ready, nil
+		filtered, filterErr := applyInvestigationCircuitBreaker(ready, "", allowFeatureWork, time.Now().UTC())
+		if filterErr != nil {
+			log.Printf("warning: failed to apply investigation circuit breaker (falling back to unfiltered ready queue): %v", filterErr)
+			return ready, nil
+		}
+		return filtered, nil
 	}
 
 	// Fallback to CLI if daemon unavailable
-	return listReadyIssuesCLI()
+	return listReadyIssuesCLI(allowFeatureWork)
 }
 
 // ListReadyIssuesForProject returns triage:ready issues for a specific project.
@@ -45,6 +57,12 @@ func ListReadyIssues() ([]Issue, error) {
 // On error, returns empty list with logged warning (does not crash).
 // Returns empty list (no error) for projects without .beads/ directory.
 func ListReadyIssuesForProject(projectPath string) ([]Issue, error) {
+	return ListReadyIssuesForProjectWithOverride(projectPath, false)
+}
+
+// ListReadyIssuesForProjectWithOverride returns triage:ready issues for a specific
+// project and optionally bypasses the investigation synthesis circuit breaker.
+func ListReadyIssuesForProjectWithOverride(projectPath string, allowFeatureWork bool) ([]Issue, error) {
 	if projectPath == "" {
 		return nil, fmt.Errorf("projectPath is required")
 	}
@@ -71,17 +89,22 @@ func ListReadyIssuesForProject(projectPath string) ([]Issue, error) {
 		return nil
 	}, beads.WithAutoReconnect(3))
 	if err == nil {
-		return ready, nil
+		filtered, filterErr := applyInvestigationCircuitBreaker(ready, projectPath, allowFeatureWork, time.Now().UTC())
+		if filterErr != nil {
+			log.Printf("warning: failed to apply investigation circuit breaker for project %s (falling back to unfiltered ready queue): %v", projectPath, filterErr)
+			return ready, nil
+		}
+		return filtered, nil
 	}
 
 	// Fallback to CLI if daemon unavailable
-	return listReadyIssuesForProjectCLI(projectPath)
+	return listReadyIssuesForProjectCLI(projectPath, allowFeatureWork)
 }
 
 // listReadyIssuesForProjectCLI retrieves ready issues for a project by shelling out to bd CLI.
-func listReadyIssuesForProjectCLI(projectPath string) ([]Issue, error) {
+func listReadyIssuesForProjectCLI(projectPath string, allowFeatureWork bool) ([]Issue, error) {
 	// Use --limit 0 to get ALL ready issues (bd ready defaults to limit 10)
-	cmd := exec.Command("bd", "ready", "--json", "--limit", "0")
+	cmd := exec.Command("bd", "--sandbox", "ready", "--json", "--limit", "0")
 	cmd.Dir = projectPath
 	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := bdOutput(cmd)
@@ -96,13 +119,19 @@ func listReadyIssuesForProjectCLI(projectPath string) ([]Issue, error) {
 		return []Issue{}, nil // Return empty list, not error
 	}
 
-	return issues, nil
+	filtered, filterErr := applyInvestigationCircuitBreaker(issues, projectPath, allowFeatureWork, time.Now().UTC())
+	if filterErr != nil {
+		log.Printf("warning: failed to apply investigation circuit breaker for project %s (falling back to unfiltered ready queue): %v", projectPath, filterErr)
+		return issues, nil
+	}
+
+	return filtered, nil
 }
 
 // listReadyIssuesCLI retrieves ready issues by shelling out to bd CLI.
-func listReadyIssuesCLI() ([]Issue, error) {
+func listReadyIssuesCLI(allowFeatureWork bool) ([]Issue, error) {
 	// Use --limit 0 to get ALL ready issues (bd ready defaults to limit 10)
-	cmd := exec.Command("bd", "ready", "--json", "--limit", "0")
+	cmd := exec.Command("bd", "--sandbox", "ready", "--json", "--limit", "0")
 	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := bdOutput(cmd)
 	if err != nil {
@@ -114,7 +143,13 @@ func listReadyIssuesCLI() ([]Issue, error) {
 		return nil, fmt.Errorf("failed to parse issues: %w", err)
 	}
 
-	return issues, nil
+	filtered, filterErr := applyInvestigationCircuitBreaker(issues, "", allowFeatureWork, time.Now().UTC())
+	if filterErr != nil {
+		log.Printf("warning: failed to apply investigation circuit breaker (falling back to unfiltered ready queue): %v", filterErr)
+		return issues, nil
+	}
+
+	return filtered, nil
 }
 
 // convertBeadsIssues converts beads.Issue slice to daemon.Issue slice.
@@ -144,8 +179,14 @@ func ListOpenIssues() ([]Issue, error) {
 // Uses the beads RPC daemon if available, falling back to CLI if not.
 // If label is empty, behaves like ListReadyIssues (no filter).
 func ListReadyIssuesWithLabel(label string) ([]Issue, error) {
+	return ListReadyIssuesWithLabelAndOverride(label, false)
+}
+
+// ListReadyIssuesWithLabelAndOverride returns ready issues filtered by label and
+// optionally bypasses the investigation synthesis circuit breaker.
+func ListReadyIssuesWithLabelAndOverride(label string, allowFeatureWork bool) ([]Issue, error) {
 	if label == "" {
-		return ListReadyIssues()
+		return ListReadyIssuesWithOverride(allowFeatureWork)
 	}
 
 	var ready []Issue
@@ -167,16 +208,21 @@ func ListReadyIssuesWithLabel(label string) ([]Issue, error) {
 		return nil
 	}, beads.WithAutoReconnect(3))
 	if err == nil {
-		return ready, nil
+		filtered, filterErr := applyInvestigationCircuitBreaker(ready, "", allowFeatureWork, time.Now().UTC())
+		if filterErr != nil {
+			log.Printf("warning: failed to apply investigation circuit breaker (falling back to unfiltered ready queue): %v", filterErr)
+			return ready, nil
+		}
+		return filtered, nil
 	}
 
 	// Fallback to CLI if daemon unavailable
-	return listReadyIssuesWithLabelCLI(label)
+	return listReadyIssuesWithLabelCLI(label, allowFeatureWork)
 }
 
 // listReadyIssuesWithLabelCLI retrieves ready issues with a label by shelling out to bd CLI.
-func listReadyIssuesWithLabelCLI(label string) ([]Issue, error) {
-	cmd := exec.Command("bd", "ready", "--json", "--limit", "0", "--label", label)
+func listReadyIssuesWithLabelCLI(label string, allowFeatureWork bool) ([]Issue, error) {
+	cmd := exec.Command("bd", "--sandbox", "ready", "--json", "--limit", "0", "--label", label)
 	cmd.Env = os.Environ()
 	output, err := bdOutput(cmd)
 	if err != nil {
@@ -188,7 +234,13 @@ func listReadyIssuesWithLabelCLI(label string) ([]Issue, error) {
 		return nil, fmt.Errorf("failed to parse issues: %w", err)
 	}
 
-	return issues, nil
+	filtered, filterErr := applyInvestigationCircuitBreaker(issues, "", allowFeatureWork, time.Now().UTC())
+	if filterErr != nil {
+		log.Printf("warning: failed to apply investigation circuit breaker (falling back to unfiltered ready queue): %v", filterErr)
+		return issues, nil
+	}
+
+	return filtered, nil
 }
 
 // ListEpicChildren retrieves children of an epic by its ID.
@@ -264,7 +316,7 @@ func HasPhaseCompleteForProject(beadsID, projectPath string) (bool, error) {
 
 // hasPhaseCompleteCLI checks for Phase: Complete via bd CLI.
 func hasPhaseCompleteCLI(beadsID, projectPath string) (bool, error) {
-	cmd := exec.Command("bd", "comments", beadsID, "--json")
+	cmd := exec.Command("bd", "--sandbox", "comments", beadsID, "--json")
 	if projectPath != "" {
 		cmd.Dir = projectPath
 	}
@@ -333,7 +385,7 @@ func SpawnWorkForProject(beadsID, projectPath string) error {
 	log.Printf("[%s] Spawning work for issue %s", projectName, beadsID)
 
 	// Set status to in_progress BEFORE spawning to prevent duplicate spawns.
-	updateCmd := exec.Command("bd", "update", beadsID, "--status=in_progress")
+	updateCmd := exec.Command("bd", "--sandbox", "update", beadsID, "--status=in_progress")
 	updateCmd.Dir = projectPath
 	updateCmd.Env = os.Environ()
 	if output, err := bdCombinedOutput(updateCmd); err != nil {
@@ -344,7 +396,7 @@ func SpawnWorkForProject(beadsID, projectPath string) error {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// Rollback: set status back to open so the issue can be retried
-		rollbackCmd := exec.Command("bd", "update", beadsID, "--status=open")
+		rollbackCmd := exec.Command("bd", "--sandbox", "update", beadsID, "--status=open")
 		rollbackCmd.Dir = projectPath
 		rollbackCmd.Env = os.Environ()
 		if rollbackOutput, rollbackErr := bdCombinedOutput(rollbackCmd); rollbackErr != nil {

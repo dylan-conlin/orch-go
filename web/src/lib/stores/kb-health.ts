@@ -3,7 +3,7 @@ import { writable } from 'svelte/store';
 // API configuration - HTTPS for HTTP/2 multiplexing
 const API_BASE = 'https://localhost:3348';
 
-// Knowledge health item (synthesis, promote, stale, investigation-promotion)
+// Knowledge health item (synthesis, promote, stale, investigation-, defect-class)
 export interface KBHealthItem {
 	[key: string]: unknown; // Flexible structure for different item types
 }
@@ -20,6 +20,8 @@ export interface KBHealthState {
 	promote: KBHealthCategory;
 	stale: KBHealthCategory;
 	investigation_promotion: KBHealthCategory;
+	investigation_authority: KBHealthCategory;
+	defect_class: KBHealthCategory;
 	total: number;
 	last_updated: string;
 	error?: string;
@@ -31,6 +33,8 @@ const defaultState: KBHealthState = {
 	promote: { count: 0, items: [] },
 	stale: { count: 0, items: [] },
 	investigation_promotion: { count: 0, items: [] },
+	investigation_authority: { count: 0, items: [] },
+	defect_class: { count: 0, items: [] },
 	total: 0,
 	last_updated: ''
 };

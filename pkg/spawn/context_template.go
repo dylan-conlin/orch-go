@@ -91,6 +91,11 @@ SPAWN TIER: {{.Tier}}
 {{if .KBContext}}
 {{.KBContext}}
 {{end}}
+{{if .IsInfrastructureTouching}}
+## RESOURCE LIFECYCLE AUDIT (REQUIRED)
+
+Audit all resources this component creates (goroutines, subprocesses, connections, caches) and ensure each has bounded lifetime and cleanup on shutdown.
+{{end}}
 {{if .IsBug}}
 ## REPRODUCTION (BUG FIX)
 

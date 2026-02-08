@@ -17,6 +17,7 @@ type KBHealthResponse struct {
 	Stale                  KBHealthCategory `json:"stale"`
 	InvestigationPromotion KBHealthCategory `json:"investigation_promotion"`
 	InvestigationAuthority KBHealthCategory `json:"investigation_authority"`
+	DefectClass            KBHealthCategory `json:"defect_class"`
 	Total                  int              `json:"total"`
 	LastUpdated            string           `json:"last_updated"`
 	Error                  string           `json:"error,omitempty"`
@@ -33,26 +34,52 @@ type KBHealthCategory struct {
 type kbHealthCache struct {
 	mu sync.RWMutex
 
-	data      *KBHealthResponse
-	fetchedAt time.Time
-	ttl       time.Duration
+	entries    map[string]*kbHealthCacheEntry
+	maxEntries int
+	ttl        time.Duration
 }
 
-func newKBHealthCache() *kbHealthCache {
+type kbHealthCacheEntry struct {
+	data      *KBHealthResponse
+	fetchedAt time.Time
+}
+
+const (
+	defaultKBHealthCacheTTL        = 5 * time.Minute
+	defaultKBHealthCacheMaxEntries = 64
+)
+
+func newKBHealthCache(maxSize int, ttl time.Duration) *kbHealthCache {
+	if maxSize <= 0 {
+		panic("kb health cache maxSize must be > 0")
+	}
+	if ttl <= 0 {
+		panic("kb health cache ttl must be > 0")
+	}
+
 	return &kbHealthCache{
-		ttl: 5 * time.Minute, // Knowledge changes slowly
+		entries:    make(map[string]*kbHealthCacheEntry),
+		maxEntries: maxSize,
+		ttl:        ttl,
 	}
 }
 
 // get returns cached data or fetches fresh if stale.
 func (c *kbHealthCache) get(projectDir string) (*KBHealthResponse, error) {
 	c.mu.RLock()
-	if c.data != nil && time.Since(c.fetchedAt) < c.ttl {
-		result := c.data
+	entry, ok := c.entries[projectDir]
+	if ok && time.Since(entry.fetchedAt) < c.ttl {
+		result := entry.data
 		c.mu.RUnlock()
 		return result, nil
 	}
 	c.mu.RUnlock()
+
+	c.mu.Lock()
+	if stale, exists := c.entries[projectDir]; exists && time.Since(stale.fetchedAt) >= c.ttl {
+		delete(c.entries, projectDir)
+	}
+	c.mu.Unlock()
 
 	// Fetch fresh data
 	data, err := fetchKBHealth(projectDir)
@@ -61,8 +88,13 @@ func (c *kbHealthCache) get(projectDir string) (*KBHealthResponse, error) {
 	}
 
 	c.mu.Lock()
-	c.data = data
-	c.fetchedAt = time.Now()
+	if _, exists := c.entries[projectDir]; !exists && len(c.entries) >= c.maxEntries {
+		c.evictOldestLocked()
+	}
+	c.entries[projectDir] = &kbHealthCacheEntry{
+		data:      data,
+		fetchedAt: time.Now(),
+	}
 	c.mu.Unlock()
 
 	return data, nil
@@ -72,7 +104,23 @@ func (c *kbHealthCache) get(projectDir string) (*KBHealthResponse, error) {
 func (c *kbHealthCache) invalidate() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.data = nil
+	c.entries = make(map[string]*kbHealthCacheEntry, c.maxEntries)
+}
+
+func (c *kbHealthCache) evictOldestLocked() {
+	var oldestProject string
+	var oldestTime time.Time
+
+	for projectDir, entry := range c.entries {
+		if oldestProject == "" || entry.fetchedAt.Before(oldestTime) {
+			oldestProject = projectDir
+			oldestTime = entry.fetchedAt
+		}
+	}
+
+	if oldestProject != "" {
+		delete(c.entries, oldestProject)
+	}
 }
 
 // fetchKBHealth calls kb reflect for each type and aggregates results.
@@ -98,6 +146,10 @@ func fetchKBHealth(projectDir string) (*KBHealthResponse, error) {
 			Count: 0,
 			Items: []map[string]interface{}{},
 		},
+		DefectClass: KBHealthCategory{
+			Count: 0,
+			Items: []map[string]interface{}{},
+		},
 		Total:       0,
 		LastUpdated: time.Now().Format(time.RFC3339),
 	}
@@ -113,6 +165,7 @@ func fetchKBHealth(projectDir string) (*KBHealthResponse, error) {
 		{"stale", &response.Stale},
 		{"investigation-promotion", &response.InvestigationPromotion},
 		{"investigation-authority", &response.InvestigationAuthority},
+		{"defect-class", &response.DefectClass},
 	}
 
 	for _, t := range types {
@@ -161,6 +214,9 @@ func fetchKBReflect(projectDir, reflectType string) ([]map[string]interface{}, e
 	}
 	if reflectType == "investigation-authority" {
 		jsonKey = "investigation_authority"
+	}
+	if reflectType == "defect-class" {
+		jsonKey = "defect_class"
 	}
 
 	itemsRaw, ok := result[jsonKey]

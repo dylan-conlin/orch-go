@@ -58,7 +58,7 @@ const MaxThreads = 7
 
 // LoadReadyIssues calls bd ready --json and parses the result.
 func LoadReadyIssues() ([]BeadsIssue, error) {
-	cmd := exec.Command("bd", "ready", "--json")
+	cmd := exec.Command("bd", "--sandbox", "ready", "--json")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to run bd ready: %w", err)
@@ -190,10 +190,10 @@ func generateThreadNotes(issues []BeadsIssue) string {
 
 // FocusGuidance represents the complete focus guidance output.
 type FocusGuidance struct {
-	TotalIssues  int
-	ThreadCount  int
-	Threads      []Thread
-	PromptText   string
+	TotalIssues int
+	ThreadCount int
+	Threads     []Thread
+	PromptText  string
 }
 
 // GenerateFocusGuidance loads ready issues and generates focus guidance.

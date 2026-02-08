@@ -121,7 +121,7 @@ func TestGetActiveWorkspaces(t *testing.T) {
 }
 
 func TestLikelyDoneCache(t *testing.T) {
-	cache := NewLikelyDoneCache()
+	cache := NewLikelyDoneCache(DefaultLikelyDoneCacheMaxEntries, DefaultLikelyDoneCacheTTL)
 
 	if cache == nil {
 		t.Fatal("NewLikelyDoneCache returned nil")
@@ -130,6 +130,9 @@ func TestLikelyDoneCache(t *testing.T) {
 	// Verify TTL is set
 	if cache.ttl == 0 {
 		t.Error("Cache TTL should be non-zero")
+	}
+	if cache.maxEntries != DefaultLikelyDoneCacheMaxEntries {
+		t.Errorf("Expected max entries %d, got %d", DefaultLikelyDoneCacheMaxEntries, cache.maxEntries)
 	}
 }
 

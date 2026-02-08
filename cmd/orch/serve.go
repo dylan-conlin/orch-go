@@ -55,6 +55,7 @@ type Server struct {
 
 	LikelyDoneCache *attention.LikelyDoneCache
 	Materializer    *materializer.Materializer
+	ResourceMonitor *resourceMonitor
 
 	BdLimiter       *bdLimiter
 	BeadsCache      *beadsCache
@@ -102,6 +103,7 @@ Endpoints:
   POST /api/deliverables/override - Log override when closing with missing deliverables
   POST /api/attention/verify - Mark issue as verified or needs_fix (persisted to JSONL)
   GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)
+  GET /api/operator-health - Behavioral system health dashboard metrics
   GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)
   GET /api/frontier  - Decidability frontier (ready, blocked, active, stuck)
   GET /api/decisions - Decision center items grouped by action type
@@ -210,6 +212,7 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  GET /api/deliverables/{id} - Deliverables status for an issue")
 	fmt.Println("  POST /api/deliverables/override - Log override for missing deliverables")
 	fmt.Println("  GET /api/errors    - Error pattern analysis")
+	fmt.Println("  GET /api/operator-health - Behavioral system health metrics")
 	fmt.Println("  GET /api/frontier  - Decidability frontier")
 	fmt.Println("  GET /api/decisions - Decision center items")
 	fmt.Println("  GET /api/changelog - Aggregated changelog")
@@ -269,19 +272,19 @@ func runServe(portNum int) error {
 
 	// Initialize beads cache to prevent CPU spikes from excessive bd spawning.
 	// Without caching, each /api/agents request spawns 20+ bd processes for 600+ workspaces.
-	bCache := newBeadsCache()
+	bCache := newBeadsCache(defaultBeadsCacheMaxEntries, defaultOpenIssuesTTL)
 
 	// Initialize beads stats cache to prevent slow API responses.
 	// Without caching, /api/beads spawns bd stats (~1.5s) on every request.
-	bsCache := newBeadsStatsCache()
+	bsCache := newBeadsStatsCache(defaultBeadsStatsCacheMaxEntries, defaultBeadsStatsCacheTTL)
 
 	// Initialize kb health cache to prevent slow API responses.
 	// kb reflect can be slow with many artifacts, so we cache with 5-minute TTL.
-	kbCache := newKBHealthCache()
+	kbCache := newKBHealthCache(defaultKBHealthCacheMaxEntries, defaultKBHealthCacheTTL)
 
 	// Initialize likely done cache to prevent slow API responses.
 	// Git log scanning and workspace checks can be slow, so we cache with 5-minute TTL.
-	ldCache := attention.NewLikelyDoneCache()
+	ldCache := attention.NewLikelyDoneCache(attention.DefaultLikelyDoneCacheMaxEntries, attention.DefaultLikelyDoneCacheTTL)
 
 	// Start service monitoring daemon (Phase 1 MVP: crash detection + auto-restart)
 	// Polls overmind status every 10s, tracks PIDs, emits crash notifications, auto-restarts services
@@ -318,6 +321,7 @@ func runServe(portNum int) error {
 		ServiceMonitor:  svcMonitor,
 		LikelyDoneCache: ldCache,
 		Materializer:    mat,
+		ResourceMonitor: newResourceMonitor(eventLogger),
 		BdLimiter:       bdLim,
 		BeadsCache:      bCache,
 		BeadsStatsCache: bsCache,
@@ -360,6 +364,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/attention - Unified attention API (beads + git collectors, role-aware)")
 	fmt.Println("  POST /api/attention/verify - Mark issue as verified or needs_fix (persisted to JSONL)")
 	fmt.Println("  GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)")
+	fmt.Println("  GET /api/operator-health - Behavioral system health metrics")
 	fmt.Println("  GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)")
 	fmt.Println("  GET /api/orchestrator-sessions - Active orchestrator sessions")
 	fmt.Println("  GET /api/frontier   - Decidability frontier (ready, blocked, active, stuck)")
@@ -465,6 +470,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/attention/verify-failed/reset-status", c(s.handleVerifyFailedResetStatus))
 	mux.HandleFunc("/api/kb/artifact/content", c(s.handleKBArtifactContent))
 	mux.HandleFunc("/api/errors", c(s.handleErrors))
+	mux.HandleFunc("/api/operator-health", c(s.handleOperatorHealth))
 	mux.HandleFunc("/api/pending-reviews", c(s.handlePendingReviews))
 	mux.HandleFunc("/api/dismiss-review", c(s.handleDismissReview))
 	mux.HandleFunc("/api/config", c(s.handleConfig))
@@ -499,6 +505,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		response := map[string]interface{}{"status": "ok"}
+		if s.ResourceMonitor != nil {
+			response["resources"] = s.ResourceMonitor.sampleAndCheck()
+		}
 		if limiterStats := s.getLimiterStats(); limiterStats != nil {
 			response["bd_limiter"] = limiterStats
 		}

@@ -201,7 +201,7 @@ func TestSpawnedTrackerCleanupStale(t *testing.T) {
 	d.SetEventLogger(mockLogger)
 
 	// Create a tracker with very short TTL for testing
-	d.SpawnedIssues = NewSpawnedIssueTrackerWithTTL(100 * time.Millisecond)
+	d.SpawnedIssues = NewSpawnedIssueTrackerWithTTL(DefaultSpawnedIssueTrackerMaxEntries, 100*time.Millisecond)
 
 	testIssueID := "test-stale-issue"
 	d.SpawnedIssues.MarkSpawned(testIssueID)

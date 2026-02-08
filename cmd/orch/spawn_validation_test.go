@@ -2,8 +2,8 @@ package main
 
 import (
 	"os"
-	"strings"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -403,10 +403,10 @@ This is a test decision.
 
 func TestCheckActiveAgentForBeadsID(t *testing.T) {
 	tests := []struct {
-		name     string
-		beadsID  string
-		wantNil  bool
-		wantErr  bool
+		name    string
+		beadsID string
+		wantNil bool
+		wantErr bool
 	}{
 		{
 			name:    "empty beads ID returns nil",
@@ -425,7 +425,7 @@ func TestCheckActiveAgentForBeadsID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			agent, err := checkActiveAgentForBeadsID(tt.beadsID)
-			
+
 			if tt.wantErr && err == nil {
 				t.Errorf("expected error, got nil")
 			}
@@ -473,11 +473,90 @@ func TestFormatActiveAgentError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := formatActiveAgentError(tt.beadsID, tt.agent)
 			errMsg := err.Error()
-			
+
 			for _, substr := range tt.contains {
 				if !strings.Contains(errMsg, substr) {
 					t.Errorf("error message should contain %q, got: %s", substr, errMsg)
 				}
+			}
+		})
+	}
+}
+
+func TestDetermineValidationLevel(t *testing.T) {
+	tests := []struct {
+		name       string
+		skill      string
+		requested  string
+		task       string
+		wantLevel  string
+		wantRaised bool
+	}{
+		{
+			name:      "behavioral feature impl escalates tests to integration",
+			skill:     "feature-impl",
+			requested: "tests",
+			task: `TASK: ETL behavior
+
+## Acceptance Criteria
+- System skips admin-locked fields
+`,
+			wantLevel:  "integration",
+			wantRaised: true,
+		},
+		{
+			name:      "behavioral feature impl escalates none to integration",
+			skill:     "feature-impl",
+			requested: "none",
+			task: `## Acceptance Criteria
+- User can rerun workflow and data survives update
+`,
+			wantLevel:  "integration",
+			wantRaised: true,
+		},
+		{
+			name:      "behavioral feature impl preserves stronger validation",
+			skill:     "feature-impl",
+			requested: "smoke-test",
+			task:      "When user submits, system triggers sync",
+			wantLevel: "smoke-test",
+		},
+		{
+			name:      "structural feature impl keeps tests",
+			skill:     "feature-impl",
+			requested: "tests",
+			task: `## Acceptance Criteria
+- Add parameter to merge_sources()
+- Update call sites
+`,
+			wantLevel: "tests",
+		},
+		{
+			name:      "non feature impl never escalates",
+			skill:     "investigation",
+			requested: "tests",
+			task:      "System should skip admin fields",
+			wantLevel: "tests",
+		},
+		{
+			name:      "empty validation defaults to tests",
+			skill:     "feature-impl",
+			requested: "",
+			task: `## Acceptance Criteria
+- Add helper function
+`,
+			wantLevel: "tests",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotLevel, gotRaised, _ := determineValidationLevel(tt.skill, tt.requested, tt.task)
+			if gotLevel != tt.wantLevel {
+				t.Errorf("determineValidationLevel() level = %q, want %q", gotLevel, tt.wantLevel)
+			}
+			if gotRaised != tt.wantRaised {
+				t.Errorf("determineValidationLevel() escalated = %v, want %v", gotRaised, tt.wantRaised)
 			}
 		})
 	}

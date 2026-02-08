@@ -33,7 +33,7 @@ func TestBug_CrossProjectPreviewVsOnce(t *testing.T) {
 
 	d := &Daemon{
 		Config:        config,
-		SpawnedIssues: NewSpawnedIssueTracker(),
+		SpawnedIssues: NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL),
 		listProjectsFunc: func() ([]Project, error) {
 			return projects, nil
 		},
@@ -139,7 +139,7 @@ func TestBug_SessionDedupContinuesToNextIssue(t *testing.T) {
 	spawnedID := ""
 	d := &Daemon{
 		Config:        config,
-		SpawnedIssues: NewSpawnedIssueTracker(),
+		SpawnedIssues: NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL),
 		listProjectsFunc: func() ([]Project, error) {
 			return projects, nil
 		},
@@ -199,7 +199,7 @@ func TestBug_SingleProjectSessionDedupContinuesToNextIssue(t *testing.T) {
 	spawnedID := ""
 	d := &Daemon{
 		Config:        config,
-		SpawnedIssues: NewSpawnedIssueTracker(),
+		SpawnedIssues: NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL),
 		listIssuesFunc: func() ([]Issue, error) {
 			return issues, nil
 		},
@@ -265,7 +265,7 @@ func TestBug_SpawnFailureDoesNotBlockRetry(t *testing.T) {
 	spawnAttempts := []string{}
 	d := &Daemon{
 		Config:        config,
-		SpawnedIssues: NewSpawnedIssueTracker(),
+		SpawnedIssues: NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL),
 		listProjectsFunc: func() ([]Project, error) {
 			return projects, nil
 		},

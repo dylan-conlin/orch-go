@@ -16,7 +16,7 @@ SOURCE_DIR ?= $(shell pwd)
 GIT_HASH ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.sourceDir=$(SOURCE_DIR) -X main.gitHash=$(GIT_HASH)"
 
-.PHONY: all build clean test install install-restart cross-compile-linux fmt lint docs version
+.PHONY: all build clean test install install-restart hooks-install cross-compile-linux fmt lint docs version
 
 # Default target
 all: build
@@ -55,6 +55,12 @@ install-restart: install
 	@launchctl kickstart -k gui/$$(id -u)/com.orch.daemon 2>/dev/null || echo "Note: Daemon not running or not installed"
 	@echo "Done. Daemon restarted with new binary."
 
+# Install bd git hooks and re-apply project pre-commit guards
+hooks-install:
+	@echo "Installing bd hooks..."
+	@bd hooks install
+	@./scripts/install-pre-commit-exec-start-check.sh
+
 # Cross-compile Linux binaries for Docker containers
 # Builds bd, orch, and kb for linux/amd64 to ~/.local/bin/linux-amd64/
 cross-compile-linux:
@@ -77,7 +83,8 @@ fmt:
 
 # Run linter
 lint:
-	golangci-lint run
+	golangci-lint custom
+	./bin/custom-gcl run
 
 # Run vet
 vet:
@@ -108,6 +115,7 @@ help:
 	@echo "  test                   - Run tests"
 	@echo "  install                - Install to ~/bin (symlink to build output)"
 	@echo "  install-restart        - Install and restart daemon"
+	@echo "  hooks-install          - Install bd hooks + project pre-commit guards"
 	@echo "  cross-compile-linux    - Build Linux binaries (bd, orch, kb) for Docker"
 	@echo "  cross-compile-linux-orch - Build only orch for Linux (faster)"
 	@echo "  clean                  - Clean build artifacts"

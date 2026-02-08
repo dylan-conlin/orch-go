@@ -1,18 +1,3 @@
 {
-  "skips": [
-    {
-      "gate": "build",
-      "reason": "Build broken from pre-existing decomposition conflicts",
-      "set_at": "2026-02-07T11:29:42.86826-08:00",
-      "set_by": "orch-go-21452",
-      "expires_at": "2026-02-07T13:29:42.86826-08:00"
-    },
-    {
-      "gate": "dashboard_health",
-      "reason": "Dashboard is the component being fixed — health gate irrelevant for this reliability fix",
-      "set_at": "2026-02-07T12:08:18.944195-08:00",
-      "set_by": "orch-go-mbwv3",
-      "expires_at": "2026-02-07T14:08:18.944195-08:00"
-    }
-  ]
+  "skips": []
 }

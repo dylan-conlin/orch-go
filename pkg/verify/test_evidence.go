@@ -3,6 +3,7 @@ package verify
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -13,15 +14,19 @@ import (
 
 // TestEvidenceResult represents the result of checking for test execution evidence.
 type TestEvidenceResult struct {
-	Passed               bool     // Whether verification passed
-	HasCodeChanges       bool     // Whether code files were changed (requires test evidence)
-	HasTestEvidence      bool     // Whether test execution evidence was found
-	MarkdownOnlyExempt   bool     // Whether exempted due to markdown-only changes
-	OutsideProjectExempt bool     // Whether exempted due to files outside project
-	Errors               []string // Error messages (blocking)
-	Warnings             []string // Warning messages (non-blocking)
-	Evidence             []string // Evidence found (for debugging)
-	SkillName            string   // Skill that was used
+	Passed                 bool     // Whether verification passed
+	HasCodeChanges         bool     // Whether code files were changed (requires test evidence)
+	HasTestEvidence        bool     // Whether test execution evidence was found
+	RequiresIntegration    bool     // Whether behavioral acceptance criteria require integration/E2E evidence
+	HasIntegrationEvidence bool     // Whether integration/E2E evidence was found
+	MarkdownOnlyExempt     bool     // Whether exempted due to markdown-only changes
+	OutsideProjectExempt   bool     // Whether exempted due to files outside project
+	Errors                 []string // Error messages (blocking)
+	Warnings               []string // Warning messages (non-blocking)
+	Evidence               []string // Evidence found (for debugging)
+	IntegrationEvidence    []string // Integration/E2E-specific evidence found
+	BehavioralCriteria     []string // Behavioral criteria that triggered integration requirement
+	SkillName              string   // Skill that was used
 }
 
 // Skills that require test execution evidence before completion.
@@ -133,6 +138,26 @@ var falsePositivePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^all\s+tests?\s+pass(ed|ing)?\b`),    // "all tests pass" at start of string (without count)
 }
 
+// behavioralAcceptancePatterns detect criteria that describe runtime behavior.
+// These patterns are used to separate behavioral acceptance criteria from structural tasks.
+var behavioralAcceptancePatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)\b(user|admin|agent|orchestrator|system|workflow|pipeline|etl|feature)\b.{0,50}\b(can|cannot|can't|does|doesn't|should|must|will|won't|skips?|triggers?|survives?|persists?|works?|fails?)\b`),
+	regexp.MustCompile(`(?i)\b(when|if)\b.+\b(then|should|must|will)\b`),
+	regexp.MustCompile(`(?i)\b\w+\b\s+(survives?|triggers?|skips?)\b\s+\w+`),
+	regexp.MustCompile(`(?i)\b(end[- ]to[- ]end|e2e|full\s+workflow|real[- ]world|production\s+path)\b`),
+}
+
+// integrationEvidencePatterns detect explicit integration/E2E validation output.
+// This is stricter than generic test evidence and is required for behavioral acceptance work.
+var integrationEvidencePatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)\b(integration|e2e|end[- ]to[- ]end|smoke)\s+(test|tests|verification)\b.*\b(pass|passed|passing|working|works|verified|successful|succeeded)\b`),
+	regexp.MustCompile(`(?i)\bTests?:\s*(go\s+test|npm\s+test|pytest|playwright\s+test|cargo\s+test).*(integration|e2e|end[- ]to[- ]end|smoke)`),
+	regexp.MustCompile(`(?i)\bplaywright\s+test\b.*\b(pass|passed|passing)\b`),
+	regexp.MustCompile(`(?i)\b(full\s+workflow|real\s+flow|production\s+path)\b.*\b(pass|passed|verified|working|works)\b`),
+}
+
+var numberedListPattern = regexp.MustCompile(`^\d+[\.)]\s+`)
+
 // HasTestExecutionEvidence checks beads comments for evidence of test execution.
 // Returns true if any comment contains actual test output patterns.
 // Returns false for vague claims like "tests pass" without evidence.
@@ -164,6 +189,146 @@ func HasTestExecutionEvidence(comments []Comment) (bool, []string) {
 	}
 
 	return len(evidence) > 0, evidence
+}
+
+// HasIntegrationTestEvidence checks beads comments for integration/E2E evidence.
+func HasIntegrationTestEvidence(comments []Comment) (bool, []string) {
+	var evidence []string
+
+	for _, comment := range comments {
+		for _, pattern := range integrationEvidencePatterns {
+			if pattern.MatchString(comment.Text) {
+				matches := pattern.FindString(comment.Text)
+				if matches != "" {
+					evidence = append(evidence, matches)
+				}
+			}
+		}
+	}
+
+	return len(evidence) > 0, evidence
+}
+
+// extractTaskFromSpawnContext extracts the top TASK section from SPAWN_CONTEXT.md.
+func extractTaskFromSpawnContext(workspacePath string) string {
+	if workspacePath == "" {
+		return ""
+	}
+
+	spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+	content, err := os.ReadFile(spawnContextPath)
+	if err != nil {
+		return ""
+	}
+
+	text := string(content)
+	taskIdx := strings.Index(text, "TASK:")
+	if taskIdx == -1 {
+		return ""
+	}
+
+	taskSection := text[taskIdx+len("TASK:"):]
+	markers := []string{
+		"\n## DESIGN REFERENCE",
+		"\nSPAWN TIER:",
+		"\n## REPRODUCTION (BUG FIX)",
+		"\n## ORCHESTRATOR NOTES",
+		"\nCONTEXT: [See task description]",
+		"\nPROJECT_DIR:",
+		"\nAUTHORITY:",
+	}
+
+	end := len(taskSection)
+	for _, marker := range markers {
+		if idx := strings.Index(taskSection, marker); idx != -1 && idx < end {
+			end = idx
+		}
+	}
+
+	return strings.TrimSpace(taskSection[:end])
+}
+
+// extractAcceptanceCriteria returns criterion-like lines from an acceptance criteria section.
+func extractAcceptanceCriteria(taskText string) []string {
+	lower := strings.ToLower(taskText)
+	idx := strings.Index(lower, "acceptance criteria")
+	if idx == -1 {
+		return nil
+	}
+
+	section := taskText[idx:]
+	if headingIdx := strings.Index(section, "\n## "); headingIdx != -1 {
+		section = section[:headingIdx]
+	}
+
+	lines := strings.Split(section, "\n")
+	var criteria []string
+	for i, line := range lines {
+		if i == 0 {
+			continue // heading line
+		}
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		trimmed = strings.TrimPrefix(trimmed, "- ")
+		trimmed = strings.TrimPrefix(trimmed, "* ")
+		trimmed = numberedListPattern.ReplaceAllString(trimmed, "")
+		trimmed = strings.TrimSpace(trimmed)
+		if trimmed != "" {
+			criteria = append(criteria, trimmed)
+		}
+	}
+
+	return criteria
+}
+
+// DetectBehavioralAcceptanceCriteria identifies behavioral acceptance criteria from task text.
+func DetectBehavioralAcceptanceCriteria(taskText string) (bool, []string) {
+	if strings.TrimSpace(taskText) == "" {
+		return false, nil
+	}
+
+	candidates := extractAcceptanceCriteria(taskText)
+	if len(candidates) == 0 {
+		for _, line := range strings.Split(taskText, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" {
+				candidates = append(candidates, trimmed)
+			}
+		}
+	}
+
+	matched := make([]string, 0)
+	seen := make(map[string]bool)
+	for _, candidate := range candidates {
+		for _, pattern := range behavioralAcceptancePatterns {
+			if pattern.MatchString(candidate) {
+				if !seen[candidate] {
+					matched = append(matched, candidate)
+					seen[candidate] = true
+				}
+				break
+			}
+		}
+	}
+
+	return len(matched) > 0, matched
+}
+
+// requiresIntegrationEvidenceForBehavioralAcceptance determines if integration evidence is required.
+func requiresIntegrationEvidenceForBehavioralAcceptance(skillName, workspacePath string) (bool, []string) {
+	if strings.ToLower(skillName) != "feature-impl" {
+		return false, nil
+	}
+
+	taskText := extractTaskFromSpawnContext(workspacePath)
+	if taskText == "" {
+		return false, nil
+	}
+
+	return DetectBehavioralAcceptanceCriteria(taskText)
 }
 
 // codeFileExtensions defines file extensions that are considered "code files"
@@ -431,6 +596,9 @@ func VerifyTestEvidenceWithComments(beadsID, workspacePath, projectDir string, c
 	// Extract skill name for skill-based gating
 	skillName, _ := ExtractSkillNameFromSpawnContext(workspacePath)
 	result.SkillName = skillName
+	requiresIntegration, behavioralCriteria := requiresIntegrationEvidenceForBehavioralAcceptance(skillName, workspacePath)
+	result.RequiresIntegration = requiresIntegration
+	result.BehavioralCriteria = behavioralCriteria
 
 	// Check if skill requires test evidence
 	if !IsSkillRequiringTestEvidence(skillName) {
@@ -491,10 +659,32 @@ func VerifyTestEvidenceWithComments(beadsID, workspacePath, projectDir string, c
 	}
 
 	hasEvidence, evidence := HasTestExecutionEvidence(comments)
+	hasIntegrationEvidence, integrationEvidence := HasIntegrationTestEvidence(comments)
 	result.HasTestEvidence = hasEvidence
 	result.Evidence = evidence
+	result.HasIntegrationEvidence = hasIntegrationEvidence
+	result.IntegrationEvidence = integrationEvidence
 
-	if !hasEvidence {
+	if hasIntegrationEvidence && !result.HasTestEvidence {
+		result.HasTestEvidence = true
+		result.Evidence = append(result.Evidence, integrationEvidence...)
+	}
+
+	if result.RequiresIntegration && !result.HasIntegrationEvidence {
+		result.Passed = false
+		result.Errors = append(result.Errors,
+			"behavioral acceptance criteria detected but no integration/E2E evidence found in beads comments",
+			"Behavioral work must include end-to-end proof, not only isolated unit tests",
+			"Example: bd comment <id> 'Integration test: go test ./integration/... - PASS (3 tests in 1.4s)'",
+			"Example: bd comment <id> 'E2E verification: playwright test e2e/workflow.spec.ts - 4 passed'",
+		)
+		if len(result.BehavioralCriteria) > 0 {
+			result.Errors = append(result.Errors,
+				fmt.Sprintf("Behavioral criteria matched: %s", strings.Join(result.BehavioralCriteria, "; ")))
+		}
+	}
+
+	if !result.HasTestEvidence {
 		result.Passed = false
 		result.Errors = append(result.Errors,
 			"code files modified but no test execution evidence found in beads comments",

@@ -46,10 +46,12 @@ const (
 	EventTypeSSEReconnectionAttempt = "sse.reconnection_attempt"
 	// EventTypeSSEReconnectionSuccess indicates an SSE reconnection succeeded.
 	// EventTypeEpicOrphaned indicates an epic was force-closed with open children.
-	EventTypeEpicOrphaned = "epic.orphaned"
+	EventTypeEpicOrphaned           = "epic.orphaned"
 	EventTypeSSEReconnectionSuccess = "sse.reconnection_success"
 	// EventTypeIssueReopened indicates an issue was reopened (closed → open) leading to a new attempt.
 	EventTypeIssueReopened = "issue.reopened"
+	// EventTypeResourceCeilingBreach indicates orch serve exceeded a 2x resource baseline.
+	EventTypeResourceCeilingBreach = "resource_ceiling_breach"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -503,10 +505,10 @@ func (l *Logger) LogSSEReconnectionSuccess(attempts int) error {
 
 // EpicOrphanedData contains data about an epic force-closed with open children.
 type EpicOrphanedData struct {
-	EpicID          string   `json:"epic_id"`
-	EpicTitle       string   `json:"epic_title"`
+	EpicID           string   `json:"epic_id"`
+	EpicTitle        string   `json:"epic_title"`
 	OrphanedChildren []string `json:"orphaned_children"` // IDs of orphaned children
-	Reason          string   `json:"reason,omitempty"`
+	Reason           string   `json:"reason,omitempty"`
 }
 
 // LogEpicOrphaned logs when an epic is force-closed with open children.
@@ -525,11 +527,11 @@ func (l *Logger) LogEpicOrphaned(data EpicOrphanedData) error {
 
 // IssueReopenedData contains data about an issue being reopened.
 type IssueReopenedData struct {
-	BeadsID         string `json:"beads_id"`
-	Title           string `json:"title,omitempty"`
-	PreviousStatus  string `json:"previous_status"`  // Status before reopen (e.g., "closed")
-	AttemptNumber   int    `json:"attempt_number"`   // Which attempt this reopen triggers (2, 3, etc.)
-	Reason          string `json:"reason,omitempty"` // Why it was reopened
+	BeadsID        string `json:"beads_id"`
+	Title          string `json:"title,omitempty"`
+	PreviousStatus string `json:"previous_status"`  // Status before reopen (e.g., "closed")
+	AttemptNumber  int    `json:"attempt_number"`   // Which attempt this reopen triggers (2, 3, etc.)
+	Reason         string `json:"reason,omitempty"` // Why it was reopened
 }
 
 // LogIssueReopened logs when an issue is reopened, indicating a new attempt.
@@ -559,14 +561,14 @@ const EventTypeDeliverableOverride = "deliverable.override"
 
 // DeliverableOverrideData contains data for a deliverable override event.
 type DeliverableOverrideData struct {
-	BeadsID      string   `json:"beads_id"`
-	IssueType    string   `json:"issue_type"`
-	Skill        string   `json:"skill"`
-	Missing      []string `json:"missing"`        // List of missing deliverable types
-	Reasons      []string `json:"reasons"`        // Reasons provided for each missing deliverable
-	OverrideBy   string   `json:"override_by"`    // Who overrode (orchestrator, user)
-	TotalRequired int     `json:"total_required"` // Total number of required deliverables
-	TotalSatisfied int    `json:"total_satisfied"` // Number of satisfied deliverables
+	BeadsID        string   `json:"beads_id"`
+	IssueType      string   `json:"issue_type"`
+	Skill          string   `json:"skill"`
+	Missing        []string `json:"missing"`         // List of missing deliverable types
+	Reasons        []string `json:"reasons"`         // Reasons provided for each missing deliverable
+	OverrideBy     string   `json:"override_by"`     // Who overrode (orchestrator, user)
+	TotalRequired  int      `json:"total_required"`  // Total number of required deliverables
+	TotalSatisfied int      `json:"total_satisfied"` // Number of satisfied deliverables
 }
 
 // LogDeliverableOverride logs when a completion proceeds despite missing deliverables.

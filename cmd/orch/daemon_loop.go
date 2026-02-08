@@ -77,6 +77,7 @@ func buildDaemonConfig() (daemon.Config, error) {
 	config.OrphanReapEnabled = daemonOrphanReapEnabled && daemonOrphanReapInterval > 0
 	config.OrphanReapInterval = time.Duration(daemonOrphanReapInterval) * time.Minute
 	config.SortMode = daemonSortMode
+	config.AllowFeatureWorkOverride = daemonAllowFeatureWork
 	config.DashboardWatchdogEnabled = daemonDashboardWatchdog && daemonDashboardWatchdogInterval > 0
 	config.DashboardWatchdogInterval = time.Duration(daemonDashboardWatchdogInterval) * time.Second
 
@@ -97,7 +98,7 @@ func initDaemonRuntime(config daemon.Config) (*daemonRuntime, error) {
 	homeDir, err := os.UserHomeDir()
 	if err == nil {
 		cachePath := filepath.Join(homeDir, ".orch", "processed-issues.jsonl")
-		cache, cacheErr := daemon.NewProcessedIssueCache(cachePath)
+		cache, cacheErr := daemon.NewProcessedIssueCache(cachePath, daemon.DefaultProcessedIssueCacheMaxEntries, daemon.DefaultProcessedIssueCacheTTL)
 		if cacheErr != nil {
 			fmt.Printf("Warning: failed to initialize ProcessedIssueCache: %v\n", cacheErr)
 			fmt.Println("  Falling back to in-memory dedup only")
@@ -164,6 +165,9 @@ func printDaemonBanner(config daemon.Config) {
 	fmt.Printf("  Spawn delay:      %s\n", formatDaemonDuration(config.SpawnDelay))
 	if config.CrossProject {
 		fmt.Println("  Cross-project:    enabled (polling all kb-registered projects)")
+	}
+	if config.AllowFeatureWorkOverride {
+		fmt.Println("  Feature gate:     override enabled (feature issues allowed)")
 	}
 	if config.ReflectEnabled {
 		fmt.Printf("  Reflect interval:  %s\n", formatDaemonDuration(config.ReflectInterval))
@@ -447,7 +451,7 @@ func (rt *daemonRuntime) processFactualQuestions(timestamp string) {
 
 // writeStatus writes the daemon status file with current state.
 func (rt *daemonRuntime) writeStatus(timestamp string, pollTime time.Time) {
-	readyIssues, _ := daemon.ListReadyIssuesWithLabel(rt.config.Label)
+	readyIssues, _ := daemon.ListReadyIssuesWithLabelAndOverride(rt.config.Label, rt.config.AllowFeatureWorkOverride)
 	readyCount := len(readyIssues)
 
 	status := daemon.DaemonStatus{

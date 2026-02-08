@@ -146,7 +146,7 @@ Examples:
 	cmd.Flags().String("issue", "", "Beads issue ID for tracking")
 	cmd.Flags().String("phases", "", "Feature-impl phases (e.g., implementation,validation)")
 	cmd.Flags().String("mode", "tdd", "Implementation mode: tdd or direct")
-	cmd.Flags().String("validation", "tests", "Validation level: none, tests, smoke-test")
+	cmd.Flags().String("validation", "tests", "Validation level: none, tests, integration, smoke-test")
 	cmd.Flags().Bool("inline", false, "Run inline (blocking) with TUI")
 	cmd.Flags().String("model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	cmd.Flags().Bool("no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")

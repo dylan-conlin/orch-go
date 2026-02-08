@@ -18,7 +18,7 @@ func TestProcessedCache_SurvivesDaemonRestart(t *testing.T) {
 	mockPhaseChecker := func(beadsID string) (bool, error) { return false, nil }
 
 	// Create first cache instance and mark an issue
-	cache1, err := NewProcessedIssueCache(cachePath)
+	cache1, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
 	if err != nil {
 		t.Fatalf("Failed to create first cache: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestProcessedCache_SurvivesDaemonRestart(t *testing.T) {
 	}
 
 	// Simulate daemon restart by creating a new cache instance
-	cache2, err := NewProcessedIssueCache(cachePath)
+	cache2, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
 	if err != nil {
 		t.Fatalf("Failed to create second cache: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestProcessedCache_IntegrationWithDaemon(t *testing.T) {
 	d := NewWithConfig(config)
 
 	// Replace cache with test cache
-	cache, err := NewProcessedIssueCache(cachePath)
+	cache, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
 	if err != nil {
 		t.Fatalf("Failed to create cache: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestProcessedCache_CacheFileLocation(t *testing.T) {
 	tmpDir := t.TempDir()
 	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
 
-	cache, err := NewProcessedIssueCache(cachePath)
+	cache, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
 	if err != nil {
 		t.Fatalf("Failed to create cache: %v", err)
 	}

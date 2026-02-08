@@ -285,6 +285,23 @@
 									</div>
 								{/each}
 							{/if}
+
+							<!-- Recurring Defect Classes -->
+							{#if $kbHealth.defect_class.count > 0}
+								<div class="text-[10px] text-muted-foreground mb-1 {$kbHealth.synthesis.count > 0 || $kbHealth.promote.count > 0 || $kbHealth.stale.count > 0 || $kbHealth.investigation_promotion.count > 0 ? 'mt-2' : ''}">
+									Recurring Defects ({$kbHealth.defect_class.count})
+								</div>
+								{#each $kbHealth.defect_class.items as item}
+									<div class="rounded border border-border/50 p-2 hover:bg-accent/30 transition-colors">
+										<div class="text-xs font-medium truncate">
+											{item.defect_class || 'Unknown defect class'}
+										</div>
+										<div class="text-[10px] text-muted-foreground mt-0.5">
+											{item.count} investigations in {item.window_days || 30}d
+										</div>
+									</div>
+								{/each}
+							{/if}
 						</div>
 					</div>
 				{/if}

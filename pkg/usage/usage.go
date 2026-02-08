@@ -36,16 +36,25 @@ type usageCacheEntry struct {
 
 // usageCache provides thread-safe caching of usage API responses.
 type usageCache struct {
-	mu      sync.Mutex
-	entries map[string]*usageCacheEntry
-	ttl     time.Duration
+	mu         sync.Mutex
+	entries    map[string]*usageCacheEntry
+	maxEntries int
+	ttl        time.Duration
 }
 
 // newUsageCache creates a new usage cache with the specified TTL.
-func newUsageCache(ttl time.Duration) *usageCache {
+func newUsageCache(maxSize int, ttl time.Duration) *usageCache {
+	if maxSize <= 0 {
+		panic("usage cache maxSize must be > 0")
+	}
+	if ttl <= 0 {
+		panic("usage cache ttl must be > 0")
+	}
+
 	return &usageCache{
-		entries: make(map[string]*usageCacheEntry),
-		ttl:     ttl,
+		entries:    make(map[string]*usageCacheEntry),
+		maxEntries: maxSize,
+		ttl:        ttl,
 	}
 }
 
@@ -74,6 +83,12 @@ func (c *usageCache) set(token string, data *UsageInfo) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.deleteExpiredLocked()
+
+	if _, exists := c.entries[token]; !exists && len(c.entries) >= c.maxEntries {
+		c.evictOldestLocked()
+	}
+
 	c.entries[token] = &usageCacheEntry{
 		data:      data,
 		timestamp: time.Now(),
@@ -85,11 +100,38 @@ func (c *usageCache) invalidate() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.entries = make(map[string]*usageCacheEntry)
+	c.entries = make(map[string]*usageCacheEntry, c.maxEntries)
+}
+
+func (c *usageCache) deleteExpiredLocked() {
+	now := time.Now()
+	for token, entry := range c.entries {
+		if now.Sub(entry.timestamp) > c.ttl {
+			delete(c.entries, token)
+		}
+	}
+}
+
+func (c *usageCache) evictOldestLocked() {
+	var oldestToken string
+	var oldestTime time.Time
+
+	for token, entry := range c.entries {
+		if oldestToken == "" || entry.timestamp.Before(oldestTime) {
+			oldestToken = token
+			oldestTime = entry.timestamp
+		}
+	}
+
+	if oldestToken != "" {
+		delete(c.entries, oldestToken)
+	}
 }
 
 // globalUsageCache is the package-level cache instance with 60s TTL.
-var globalUsageCache = newUsageCache(60 * time.Second)
+const defaultUsageCacheMaxEntries = 8
+
+var globalUsageCache = newUsageCache(defaultUsageCacheMaxEntries, 60*time.Second)
 
 // UsageLimit represents a single usage limit (5-hour or 7-day).
 type UsageLimit struct {

@@ -1,0 +1,8 @@
+version: v2.8.0
+name: custom-gcl
+destination: ./bin
+
+plugins:
+  - module: github.com/dylan-conlin/orch-go
+    import: github.com/dylan-conlin/orch-go/pkg/lint/boundedlifetime
+    path: .

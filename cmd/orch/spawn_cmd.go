@@ -186,7 +186,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnBackendFlag, "backend", "", "Spawn backend: claude (tmux + Claude CLI), opencode (HTTP API), or docker (containerized for fingerprint isolation). Overrides config and auto-selection.")
 	spawnCmd.Flags().BoolVar(&spawnOpus, "opus", false, "Use Opus via Claude CLI in tmux (Max subscription, implies claude backend + tmux mode)")
 	spawnCmd.Flags().BoolVar(&spawnInfra, "infra", false, "Infrastructure work: use claude+tmux backend (survives service crashes)")
-	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
+	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, integration, smoke-test")
 	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) with TUI")
 	spawnCmd.Flags().BoolVar(&spawnHeadless, "headless", false, "Run headless via HTTP API (default behavior, flag is redundant)")
 	spawnCmd.Flags().BoolVar(&spawnTmux, "tmux", false, "Run in tmux window (opt-in for visual monitoring)")

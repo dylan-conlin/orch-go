@@ -41,8 +41,9 @@ var logsServerCmd = &cobra.Command{
 	Long: `Show logs from the overmind server which manages all dashboard services.
 
 This includes output from:
-- api: orch serve (port 3348)
-- web: vite dev server (port 5188)
+- api: orch serve (API + static dashboard UI on port 3348)
+- daemon: orch daemon run
+- doctor: orch doctor --daemon
 - opencode: OpenCode server (port 4096)
 
 Examples:

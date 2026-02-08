@@ -276,6 +276,11 @@ func processGates(target *CompletionTarget, skillName string) error {
 		return err
 	}
 
+	// Design decomposition gate (design-session + architect)
+	if err := processDesignDecomposition(target, skillName); err != nil {
+		return err
+	}
+
 	// Knowledge gap detection (informational, non-blocking)
 	processKnowledgeGaps(target, skillName)
 
@@ -369,6 +374,116 @@ func processDiscoveredWork(target *CompletionTarget) error {
 
 	fmt.Println("---------------------------------")
 	return nil
+}
+
+func processDesignDecomposition(target *CompletionTarget, skillName string) error {
+	if !requiresDesignDecomposition(skillName) {
+		return nil
+	}
+
+	if target.BeadsID == "" {
+		fmt.Fprintf(os.Stderr, "Warning: skipping design decomposition gate for %s (missing beads parent ID)\n", target.AgentName)
+		return nil
+	}
+
+	pendingDocs, warnings, err := verify.FindDesignDocsRequiringDecomposition(target.WorkspacePath, target.BeadsProjectDir)
+	for _, warning := range warnings {
+		fmt.Fprintf(os.Stderr, "⚠️  %s\n", warning)
+	}
+	if err != nil {
+		return fmt.Errorf("design decomposition scan failed: %w", err)
+	}
+	if len(pendingDocs) == 0 {
+		return nil
+	}
+
+	fmt.Println("\n--- Design Decomposition Gate ---")
+	fmt.Printf("%d design artifact(s) contain actionable implementation items and must be decomposed:\n", len(pendingDocs))
+	for _, doc := range pendingDocs {
+		fmt.Printf("  - %s (%d action item(s))\n", doc.RelativePath, len(doc.ActionItems))
+	}
+
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return fmt.Errorf("design decomposition required but stdin is not interactive\n\nCompletion blocked. Re-run in a terminal so orch can create child issues and mark the design as decomposed")
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Fprint(os.Stdout, "Create decomposition issues now? [Y/n]: ")
+	response, readErr := reader.ReadString('\n')
+	if readErr != nil {
+		return fmt.Errorf("failed to read decomposition confirmation: %w", readErr)
+	}
+	response = strings.TrimSpace(strings.ToLower(response))
+	if response == "n" || response == "no" {
+		return fmt.Errorf("design decomposition was declined\n\nCompletion blocked. This design/architect run must be decomposed before closing")
+	}
+
+	createdTotal := 0
+	for _, doc := range pendingDocs {
+		issueIDs := append([]string{}, doc.DecompositionIDs...)
+		existingCount := len(doc.DecompositionIDs)
+
+		for idx, item := range doc.ActionItems {
+			if idx < existingCount {
+				continue
+			}
+
+			title := buildDesignDecompositionIssueTitle(item)
+			description := fmt.Sprintf(
+				"Generated from design decomposition during completion of %s.\n\nSource design artifact: %s\nSection: %s\nAction item: %s",
+				target.BeadsID,
+				doc.RelativePath,
+				strings.TrimSpace(item.Section),
+				strings.TrimSpace(item.Text),
+			)
+
+			labels := []string{"triage:review"}
+			if suggestedArea := beads.SuggestAreaLabel(title, description); suggestedArea != "" {
+				labels = append(labels, suggestedArea)
+			}
+
+			created, createErr := beads.FallbackCreateWithParent(title, description, "task", 2, labels, target.BeadsID)
+			if createErr != nil {
+				return fmt.Errorf("failed to create decomposition issue for %s (%s): %w", doc.RelativePath, item.Text, createErr)
+			}
+
+			issueIDs = append(issueIDs, created.ID)
+			createdTotal++
+			fmt.Printf("  Created: %s - %s\n", created.ID, title)
+		}
+
+		if len(issueIDs) < len(doc.ActionItems) {
+			return fmt.Errorf("decomposition incomplete for %s (have %d issue IDs for %d action items)", doc.RelativePath, len(issueIDs), len(doc.ActionItems))
+		}
+
+		if markErr := verify.MarkDesignDocumentDecomposed(doc.Path, target.BeadsID, issueIDs); markErr != nil {
+			return fmt.Errorf("failed to mark %s as decomposed: %w", doc.RelativePath, markErr)
+		}
+		fmt.Printf("  Marked decomposed: %s\n", doc.RelativePath)
+	}
+
+	fmt.Printf("✓ Design decomposition complete (%d issue(s) created)\n", createdTotal)
+	fmt.Println("---------------------------------")
+	return nil
+}
+
+func requiresDesignDecomposition(skillName string) bool {
+	skill := strings.TrimSpace(strings.ToLower(skillName))
+	return skill == "design-session" || skill == "architect"
+}
+
+func buildDesignDecompositionIssueTitle(item verify.DesignActionItem) string {
+	text := strings.TrimSpace(item.Text)
+	text = strings.Trim(text, "`")
+	if text == "" {
+		text = "Follow-up task"
+	}
+
+	title := "Design follow-up: " + text
+	if len(title) > 140 {
+		title = title[:137] + "..."
+	}
+	return title
 }
 
 // processKnowledgeGaps detects and logs knowledge gaps (informational, non-blocking).

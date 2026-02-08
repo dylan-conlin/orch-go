@@ -9,6 +9,7 @@ bd ready              # Find available work
 bd show <id>          # View issue details
 bd update <id> --status in_progress  # Claim work
 bd close <id>         # Complete work
+make hooks-install    # Install bd hooks + project pre-commit guardrails
 ./scripts/bd-sync-safe.sh  # Sync with git (SQLite direct mode)
 ```
 

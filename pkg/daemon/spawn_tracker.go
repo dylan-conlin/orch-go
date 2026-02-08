@@ -25,29 +25,40 @@ type SpawnedIssueTracker struct {
 	// to be in_progress or closed.
 	spawned map[string]time.Time
 
+	// MaxEntries bounds the number of tracked issues in memory.
+	MaxEntries int
+
 	// TTL is how long to keep entries before considering them stale.
 	// Default is 6 hours - matching typical agent work duration.
 	// This provides backup protection when session-level dedup fails.
 	TTL time.Duration
 }
 
-// NewSpawnedIssueTracker creates a new tracker with the default 6 hour TTL.
-// The TTL was increased from 5 minutes to 6 hours to provide backup protection
-// for long-running agents when session-level dedup fails (e.g., OpenCode API down).
+const (
+	DefaultSpawnedIssueTrackerMaxEntries = 5000
+	DefaultSpawnedIssueTrackerTTL        = 6 * time.Hour
+)
+
+// NewSpawnedIssueTracker creates a new tracker with explicit max size and TTL.
 // Primary dedup is done via session-level checking in daemon.Once().
-func NewSpawnedIssueTracker() *SpawnedIssueTracker {
+func NewSpawnedIssueTracker(maxSize int, ttl time.Duration) *SpawnedIssueTracker {
+	if maxSize <= 0 {
+		panic("spawned issue tracker maxSize must be > 0")
+	}
+	if ttl <= 0 {
+		panic("spawned issue tracker ttl must be > 0")
+	}
+
 	return &SpawnedIssueTracker{
-		spawned: make(map[string]time.Time),
-		TTL:     6 * time.Hour,
+		spawned:    make(map[string]time.Time),
+		MaxEntries: maxSize,
+		TTL:        ttl,
 	}
 }
 
 // NewSpawnedIssueTrackerWithTTL creates a tracker with a custom TTL.
-func NewSpawnedIssueTrackerWithTTL(ttl time.Duration) *SpawnedIssueTracker {
-	return &SpawnedIssueTracker{
-		spawned: make(map[string]time.Time),
-		TTL:     ttl,
-	}
+func NewSpawnedIssueTrackerWithTTL(maxSize int, ttl time.Duration) *SpawnedIssueTracker {
+	return NewSpawnedIssueTracker(maxSize, ttl)
 }
 
 // MarkSpawned records that an issue has been spawned.
@@ -55,7 +66,13 @@ func NewSpawnedIssueTrackerWithTTL(ttl time.Duration) *SpawnedIssueTracker {
 func (t *SpawnedIssueTracker) MarkSpawned(issueID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.spawned[issueID] = time.Now()
+
+	now := time.Now()
+	if _, exists := t.spawned[issueID]; !exists && len(t.spawned) >= t.MaxEntries {
+		t.evictOldestLocked()
+	}
+
+	t.spawned[issueID] = now
 }
 
 // IsSpawned returns true if the issue was recently spawned (within TTL).
@@ -91,9 +108,11 @@ func (t *SpawnedIssueTracker) Unmark(issueID string) {
 func (t *SpawnedIssueTracker) CleanStale() int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	return t.cleanStaleLocked(time.Now())
+}
 
+func (t *SpawnedIssueTracker) cleanStaleLocked(now time.Time) int {
 	removed := 0
-	now := time.Now()
 	for id, spawnTime := range t.spawned {
 		if now.Sub(spawnTime) > t.TTL {
 			delete(t.spawned, id)
@@ -101,6 +120,22 @@ func (t *SpawnedIssueTracker) CleanStale() int {
 		}
 	}
 	return removed
+}
+
+func (t *SpawnedIssueTracker) evictOldestLocked() {
+	var oldestIssueID string
+	var oldestTime time.Time
+
+	for issueID, spawnTime := range t.spawned {
+		if oldestIssueID == "" || spawnTime.Before(oldestTime) {
+			oldestIssueID = issueID
+			oldestTime = spawnTime
+		}
+	}
+
+	if oldestIssueID != "" {
+		delete(t.spawned, oldestIssueID)
+	}
 }
 
 // ReconcileWithIssues removes tracked issues that are now in_progress or closed.

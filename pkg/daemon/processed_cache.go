@@ -22,9 +22,11 @@ import (
 // The cache persists to ~/.orch/processed-issues.jsonl and automatically
 // prunes entries older than 30 days on load.
 type ProcessedIssueCache struct {
-	mu       sync.RWMutex
-	filePath string
-	entries  map[string]time.Time
+	mu         sync.RWMutex
+	filePath   string
+	entries    map[string]time.Time
+	maxEntries int
+	ttl        time.Duration
 
 	// sessionChecker is injected for testing (defaults to HasExistingSessionForBeadsID)
 	sessionChecker func(beadsID string) bool
@@ -39,13 +41,27 @@ type cacheEntry struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+const (
+	DefaultProcessedIssueCacheMaxEntries = 5000
+	DefaultProcessedIssueCacheTTL        = 30 * 24 * time.Hour
+)
+
 // NewProcessedIssueCache creates a new cache, loading from the specified file path.
 // If the file doesn't exist, creates an empty cache.
-// Automatically prunes entries older than 30 days on load.
-func NewProcessedIssueCache(filePath string) (*ProcessedIssueCache, error) {
+// Automatically prunes entries older than ttl on load.
+func NewProcessedIssueCache(filePath string, maxSize int, ttl time.Duration) (*ProcessedIssueCache, error) {
+	if maxSize <= 0 {
+		return nil, fmt.Errorf("processed issue cache maxSize must be > 0")
+	}
+	if ttl <= 0 {
+		return nil, fmt.Errorf("processed issue cache ttl must be > 0")
+	}
+
 	cache := &ProcessedIssueCache{
 		filePath:             filePath,
 		entries:              make(map[string]time.Time),
+		maxEntries:           maxSize,
+		ttl:                  ttl,
 		sessionChecker:       HasExistingSessionForBeadsID,
 		phaseCompleteChecker: HasPhaseComplete,
 	}
@@ -55,8 +71,9 @@ func NewProcessedIssueCache(filePath string) (*ProcessedIssueCache, error) {
 		return nil, fmt.Errorf("failed to load cache: %w", err)
 	}
 
-	// Prune old entries (>30 days)
+	// Prune old entries (older than ttl)
 	cache.prune()
+	cache.enforceMaxEntries()
 
 	return cache, nil
 }
@@ -112,6 +129,9 @@ func (c *ProcessedIssueCache) MarkProcessed(beadsID string) error {
 	}
 
 	c.mu.Lock()
+	if _, exists := c.entries[beadsID]; !exists && len(c.entries) >= c.maxEntries {
+		c.evictOldestLocked()
+	}
 	c.entries[beadsID] = time.Now()
 	c.mu.Unlock()
 
@@ -202,17 +222,42 @@ func (c *ProcessedIssueCache) load() error {
 	return nil
 }
 
-// prune removes entries older than 30 days.
+// prune removes entries older than the configured TTL.
 // Should be called after load() to clean up stale entries.
 func (c *ProcessedIssueCache) prune() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	cutoff := time.Now().Add(-30 * 24 * time.Hour)
+	cutoff := time.Now().Add(-c.ttl)
 	for beadsID, timestamp := range c.entries {
 		if timestamp.Before(cutoff) {
 			delete(c.entries, beadsID)
 		}
+	}
+}
+
+func (c *ProcessedIssueCache) enforceMaxEntries() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for len(c.entries) > c.maxEntries {
+		c.evictOldestLocked()
+	}
+}
+
+func (c *ProcessedIssueCache) evictOldestLocked() {
+	var oldestID string
+	var oldestTime time.Time
+
+	for beadsID, ts := range c.entries {
+		if oldestID == "" || ts.Before(oldestTime) {
+			oldestID = beadsID
+			oldestTime = ts
+		}
+	}
+
+	if oldestID != "" {
+		delete(c.entries, oldestID)
 	}
 }
 

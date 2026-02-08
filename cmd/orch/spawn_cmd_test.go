@@ -263,6 +263,67 @@ func TestIsCriticalInfrastructureWork(t *testing.T) {
 	}
 }
 
+func TestRequiresResourceLifecycleAudit(t *testing.T) {
+	tests := []struct {
+		name    string
+		task    string
+		beadsID string
+		want    bool
+	}{
+		{
+			name:    "pkg/daemon path triggers audit",
+			task:    "fix leak in pkg/daemon/scheduler.go",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "pkg/spawn path triggers audit",
+			task:    "update pkg/spawn/context.go template",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "cmd/orch/serve wildcard path triggers audit",
+			task:    "refactor cmd/orch/serve_status.go startup flow",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "exec.Command trigger",
+			task:    "audit exec.Command usage in spawn pipeline",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "goroutine trigger",
+			task:    "bound goroutine lifecycle in cleanup loop",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "go func trigger",
+			task:    "replace go func( with context-aware worker pool",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "non-infrastructure task does not trigger",
+			task:    "add user profile endpoint",
+			beadsID: "",
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := requiresResourceLifecycleAudit(tt.task, tt.beadsID)
+			if got != tt.want {
+				t.Errorf("requiresResourceLifecycleAudit(%q, %q) = %v, want %v", tt.task, tt.beadsID, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStripANSI(t *testing.T) {
 	tests := []struct {
 		name  string

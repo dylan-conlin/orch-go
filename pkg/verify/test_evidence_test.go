@@ -1,6 +1,8 @@
 package verify
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -331,6 +333,132 @@ func TestHasTestExecutionEvidence(t *testing.T) {
 				t.Errorf("HasTestExecutionEvidence() evidence count = %d, want >= %d", len(evidence), tt.wantLen)
 			}
 		})
+	}
+}
+
+func TestHasIntegrationTestEvidence(t *testing.T) {
+	tests := []struct {
+		name     string
+		comments []Comment
+		want     bool
+	}{
+		{
+			name: "explicit integration test pass",
+			comments: []Comment{
+				{Text: "Integration test: go test ./integration/... - PASS (3 tests in 1.2s)"},
+			},
+			want: true,
+		},
+		{
+			name: "playwright e2e pass",
+			comments: []Comment{
+				{Text: "E2E verification: playwright test e2e/workflow.spec.ts - 4 passed"},
+			},
+			want: true,
+		},
+		{
+			name: "generic unit test evidence only",
+			comments: []Comment{
+				{Text: "Tests: go test ./pkg/... - PASS (20 tests in 0.7s)"},
+			},
+			want: false,
+		},
+		{
+			name: "no integration result language",
+			comments: []Comment{
+				{Text: "Need integration test coverage"},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, _ := HasIntegrationTestEvidence(tt.comments)
+			if got != tt.want {
+				t.Errorf("HasIntegrationTestEvidence() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDetectBehavioralAcceptanceCriteria(t *testing.T) {
+	tests := []struct {
+		name     string
+		taskText string
+		want     bool
+	}{
+		{
+			name: "behavioral acceptance criteria",
+			taskText: `TASK: Improve ETL behavior
+
+## Acceptance Criteria
+- System skips admin-locked fields during ETL merge
+- User can rerun ETL and locked fields survive updates
+`,
+			want: true,
+		},
+		{
+			name: "structural-only acceptance criteria",
+			taskText: `TASK: Refactor merge logic
+
+## Acceptance Criteria
+- Add current_source parameter to merge_sources()
+- Update function signature in both call sites
+- Add unit tests for merge_sources helper
+`,
+			want: false,
+		},
+		{
+			name:     "behavioral without explicit acceptance section",
+			taskText: `Fix dashboard issue where user can submit form and system triggers a sync workflow.`,
+			want:     true,
+		},
+		{
+			name: "generic survives/triggers pattern",
+			taskText: `## Acceptance Criteria
+- Cache survives restart
+- Update trigger triggers downstream sync
+`,
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, matched := DetectBehavioralAcceptanceCriteria(tt.taskText)
+			if got != tt.want {
+				t.Errorf("DetectBehavioralAcceptanceCriteria() = %v, want %v (matched: %v)", got, tt.want, matched)
+			}
+		})
+	}
+}
+
+func TestRequiresIntegrationEvidenceForBehavioralAcceptance(t *testing.T) {
+	workspace := t.TempDir()
+	spawnContext := `TASK: Feature wiring fix
+
+## Acceptance Criteria
+- System skips admin-locked fields in ETL
+- Agent cannot claim Phase: Complete without E2E proof
+
+SPAWN TIER: light
+`
+	if err := os.WriteFile(filepath.Join(workspace, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+		t.Fatalf("failed to write spawn context: %v", err)
+	}
+
+	required, criteria := requiresIntegrationEvidenceForBehavioralAcceptance("feature-impl", workspace)
+	if !required {
+		t.Fatalf("expected integration evidence to be required")
+	}
+	if len(criteria) == 0 {
+		t.Fatalf("expected matched behavioral criteria")
+	}
+
+	notRequired, _ := requiresIntegrationEvidenceForBehavioralAcceptance("investigation", workspace)
+	if notRequired {
+		t.Fatalf("did not expect integration evidence for non-feature-impl skill")
 	}
 }
 

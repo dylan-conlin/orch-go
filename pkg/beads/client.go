@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,11 +23,67 @@ import (
 // to complete. This prevents orch complete from hanging indefinitely when the
 // beads daemon is unresponsive or the bd CLI gets stuck.
 // 10 seconds is long enough for normal calls while failing fast under contention.
-const DefaultCLITimeout = 10 * time.Second
+const (
+	DefaultCLITimeout       = 10 * time.Second
+	defaultMaxBDSubprocess  = 12
+	bdSubprocessLimitEnvVar = "ORCH_BD_MAX_CONCURRENT"
+	bdDisableSandboxEnvVar  = "ORCH_BD_DISABLE_SANDBOX"
+)
 
-const maxBdSubprocesses = 3
+var (
+	maxBDSubprocesses = resolveBDSubprocessLimit()
+	bdSubprocessSem   = make(chan struct{}, maxBDSubprocesses)
+	useBDSandboxMode  = resolveBDSandboxMode()
+)
 
-var bdSubprocessSem = make(chan struct{}, maxBdSubprocesses)
+// BDSubprocessLimit returns the configured hard cap for concurrent bd CLI subprocesses.
+func BDSubprocessLimit() int {
+	return maxBDSubprocesses
+}
+
+func resolveBDSubprocessLimit() int {
+	raw := strings.TrimSpace(os.Getenv(bdSubprocessLimitEnvVar))
+	if raw == "" {
+		return defaultMaxBDSubprocess
+	}
+
+	limit, err := strconv.Atoi(raw)
+	if err != nil || limit <= 0 {
+		log.Printf("event=bd_subprocess_limit_invalid component=beads env=%q value=%q default=%d", bdSubprocessLimitEnvVar, raw, defaultMaxBDSubprocess)
+		return defaultMaxBDSubprocess
+	}
+
+	return limit
+}
+
+func resolveBDSandboxMode() bool {
+	raw := strings.TrimSpace(os.Getenv(bdDisableSandboxEnvVar))
+	if raw == "" {
+		return true
+	}
+
+	disable, err := strconv.ParseBool(raw)
+	if err != nil {
+		log.Printf("event=bd_sandbox_flag_invalid component=beads env=%q value=%q default=true", bdDisableSandboxEnvVar, raw)
+		return true
+	}
+
+	return !disable
+}
+
+func prependSandboxArg(args []string) []string {
+	if !useBDSandboxMode {
+		return args
+	}
+	if len(args) > 0 && args[0] == "--sandbox" {
+		return args
+	}
+
+	cmdArgs := make([]string, 0, len(args)+1)
+	cmdArgs = append(cmdArgs, "--sandbox")
+	cmdArgs = append(cmdArgs, args...)
+	return cmdArgs
+}
 
 // acquireBdSubprocessSlot enforces a hard cap across all bd CLI subprocesses.
 // Logs when the cap is reached so stampedes are visible in server logs.
@@ -69,7 +126,7 @@ func runBDCommand(workDir, bdPath string, env []string, combined bool, args ...s
 		bdPath = getBdPath()
 	}
 
-	cmd := exec.CommandContext(ctx, bdPath, args...)
+	cmd := exec.CommandContext(ctx, bdPath, prependSandboxArg(args)...)
 	if env != nil {
 		cmd.Env = env
 	} else {

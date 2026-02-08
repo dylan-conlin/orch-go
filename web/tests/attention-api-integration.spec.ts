@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+test.use({ ignoreHTTPSErrors: true });
+
 /**
  * Test suite for attention API integration.
  * Verifies that the attention store correctly fetches and maps data from /api/attention endpoint.
@@ -67,7 +69,7 @@ test.describe('Attention API Integration', () => {
 		});
 
 		// Navigate to the page
-		await page.goto('http://localhost:5188');
+		await page.goto('https://localhost:3348');
 
 		// Wait for attention data to load
 		await page.waitForTimeout(500);
@@ -113,7 +115,7 @@ test.describe('Attention API Integration', () => {
 		});
 
 		// Navigate to the page
-		await page.goto('http://localhost:5188');
+		await page.goto('https://localhost:3348');
 
 		// Wait a bit for the page to load
 		await page.waitForTimeout(500);
@@ -197,7 +199,7 @@ test.describe('Attention API Integration', () => {
 		});
 
 		// Navigate to the page
-		await page.goto('http://localhost:5188');
+		await page.goto('https://localhost:3348');
 
 		// Wait for attention data to load
 		await page.waitForTimeout(500);
