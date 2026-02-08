@@ -4,7 +4,7 @@
 	import { workGraph, buildTree, filterTreeByLabel, groupTreeNodes, type TreeNode, type GroupSection, type GroupByMode } from '$lib/stores/work-graph';
 	import { kbArtifacts } from '$lib/stores/kb-artifacts';
 	import { orchestratorContext, connectionStatus } from '$lib/stores/context';
-	import { agents, connectSSE, disconnectSSE } from '$lib/stores/agents';
+	import { agents, connectSSE, disconnectSSE, sseEvents } from '$lib/stores/agents';
 	import { WorkGraphTree } from '$lib/components/work-graph-tree';
 	import { ViewToggle } from '$lib/components/view-toggle';
 	import { GroupByDropdown } from '$lib/components/group-by-dropdown';
@@ -16,8 +16,16 @@
 	import { attention, type CompletedIssue } from '$lib/stores/attention';
 	import { focus, type FocusInfo } from '$lib/stores/focus';
 
-	const WORK_GRAPH_POLL_INTERVAL_MS = 10000;
-	const CONTEXT_POLL_INTERVAL_MS = 10000;
+	const WORK_GRAPH_POLL_INTERVAL_MS = 30000;
+	const WORK_GRAPH_MAX_BACKOFF_MS = 120000;
+	const CONTEXT_POLL_INTERVAL_MS = 15000;
+	const EVENT_DRIVEN_REFRESH_THROTTLE_MS = 3000;
+	const EVENT_DRIVEN_REFRESH_TYPES = new Set([
+		'session.created',
+		'session.deleted',
+		'agent.completed',
+		'agent.abandoned',
+	]);
 	
 	// Derived store for project_dir to isolate reactivity
 	// Only triggers reactive blocks when project_dir changes, not other context fields
@@ -59,8 +67,12 @@
 	let loading = true;
 	let error: string | null = null;
 	let currentView: 'issues' | 'artifacts' | 'completed' = 'issues';
-	let refreshInterval: ReturnType<typeof setInterval> | null = null;
+	let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
 	let isRefreshCycleInFlight = false;
+	let isRefreshPolling = false;
+	let refreshBackoffMs = WORK_GRAPH_POLL_INTERVAL_MS;
+	let lastEventDrivenRefreshAt = 0;
+	let lastProcessedSSEEventId: string | null = null;
 	let seenIssuesState: SeenIssuesState = { byProject: {} };
 	let currentProjectDir: string | undefined = undefined;
 	let projectChangeDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -90,6 +102,86 @@
 	// Debounce timeout for tree rebuild to batch rapid store updates
 	let rebuildDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
 	let hasRenderedTree = false; // Skip debounce until first tree render completes
+
+	async function runRefreshCycle(): Promise<boolean> {
+		const projectDir = $orchestratorContext?.project_dir;
+
+		const requests: Promise<void>[] = [
+			workGraph.fetch(projectDir, 'open', focusedBeadsId),
+			wip.fetchQueued(projectDir),
+			daemon.fetch(),
+			attention.fetch(projectDir),
+		];
+
+		if (currentView === 'artifacts' && $kbArtifacts) {
+			requests.push(kbArtifacts.fetch(projectDir, '7d'));
+		}
+
+		const results = await Promise.allSettled(requests);
+		return results.every((result) => result.status === 'fulfilled');
+	}
+
+	function scheduleNextRefresh(delayMs: number): void {
+		if (!isRefreshPolling || refreshTimeout) return;
+
+		refreshTimeout = setTimeout(async () => {
+			refreshTimeout = null;
+			if (!isRefreshPolling) return;
+
+			if (isRefreshCycleInFlight) {
+				scheduleNextRefresh(refreshBackoffMs);
+				return;
+			}
+
+			isRefreshCycleInFlight = true;
+			try {
+				const ok = await runRefreshCycle();
+				if (ok) {
+					refreshBackoffMs = WORK_GRAPH_POLL_INTERVAL_MS;
+				} else {
+					refreshBackoffMs = Math.min(refreshBackoffMs * 2, WORK_GRAPH_MAX_BACKOFF_MS);
+				}
+			} finally {
+				isRefreshCycleInFlight = false;
+				scheduleNextRefresh(refreshBackoffMs);
+			}
+		}, delayMs);
+	}
+
+	function startRefreshPolling(): void {
+		if (isRefreshPolling) return;
+		isRefreshPolling = true;
+		refreshBackoffMs = WORK_GRAPH_POLL_INTERVAL_MS;
+		scheduleNextRefresh(refreshBackoffMs);
+	}
+
+	async function triggerEventDrivenRefresh(): Promise<void> {
+		if (!isRefreshPolling || isRefreshCycleInFlight) return;
+
+		const now = Date.now();
+		if (now - lastEventDrivenRefreshAt < EVENT_DRIVEN_REFRESH_THROTTLE_MS) {
+			return;
+		}
+		lastEventDrivenRefreshAt = now;
+
+		if (refreshTimeout) {
+			clearTimeout(refreshTimeout);
+			refreshTimeout = null;
+		}
+
+		isRefreshCycleInFlight = true;
+		try {
+			const ok = await runRefreshCycle();
+			if (ok) {
+				refreshBackoffMs = WORK_GRAPH_POLL_INTERVAL_MS;
+			} else {
+				refreshBackoffMs = Math.min(refreshBackoffMs * 2, WORK_GRAPH_MAX_BACKOFF_MS);
+			}
+		} finally {
+			isRefreshCycleInFlight = false;
+			scheduleNextRefresh(refreshBackoffMs);
+		}
+	}
 
 	// Fetch work graph and agents on mount, connect to SSE for real-time updates
 	onMount(async () => {
@@ -140,35 +232,20 @@
 
 		// Connect to SSE for real-time agent updates (WIP section)
 		connectSSE();
-		
-		// Poll work graph endpoints at a bounded cadence
-		refreshInterval = setInterval(async () => {
-			if (isRefreshCycleInFlight) {
-				return;
-			}
 
-			isRefreshCycleInFlight = true;
-			try {
-				const projectDir = $orchestratorContext?.project_dir;
-
-				const requests: Promise<void>[] = [
-					workGraph.fetch(projectDir, 'open', focusedBeadsId),
-					wip.fetchQueued(projectDir),
-					daemon.fetch(),
-					attention.fetch(projectDir), // Poll attention with project filter
-				];
-
-				// Also poll kbArtifacts if in artifacts view
-				if (currentView === 'artifacts' && $kbArtifacts) {
-					requests.push(kbArtifacts.fetch(projectDir, '7d'));
-				}
-
-				await Promise.allSettled(requests);
-			} finally {
-				isRefreshCycleInFlight = false;
-			}
-		}, WORK_GRAPH_POLL_INTERVAL_MS);
+		// Keep a low-frequency poll as fallback; rely on SSE for responsive refreshes
+		startRefreshPolling();
 	});
+
+	$: if ($sseEvents.length > 0 && !loading) {
+		const latestEvent = $sseEvents[$sseEvents.length - 1];
+		if (latestEvent.id !== lastProcessedSSEEventId) {
+			lastProcessedSSEEventId = latestEvent.id;
+			if (EVENT_DRIVEN_REFRESH_TYPES.has(latestEvent.type)) {
+				triggerEventDrivenRefresh().catch(console.error);
+			}
+		}
+	}
 
 	// Subscribe to focus changes and update focusedBeadsId for auto-scoping
 	$: if ($focus?.beads_id) {
@@ -184,9 +261,10 @@
 	onDestroy(() => {
 		disconnectSSE();
 		orchestratorContext.stopPolling();
-		if (refreshInterval) {
-			clearInterval(refreshInterval);
-			refreshInterval = null;
+		isRefreshPolling = false;
+		if (refreshTimeout) {
+			clearTimeout(refreshTimeout);
+			refreshTimeout = null;
 		}
 		isRefreshCycleInFlight = false;
 		if (projectChangeDebounceTimeout) {
