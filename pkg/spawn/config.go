@@ -181,6 +181,11 @@ type Config struct {
 	// KBContext is the formatted kb context to include in SPAWN_CONTEXT.md
 	KBContext string
 
+	// HasInjectedModels indicates whether model content (summary, invariants, failures)
+	// was injected into the KB context. When true, agents see probe guidance directing
+	// them to produce lightweight probes (~30-50 lines) instead of full investigations.
+	HasInjectedModels bool
+
 	// IncludeServers controls whether server context is included in SPAWN_CONTEXT.md
 	// Default is based on skill type (true for UI-focused skills)
 	IncludeServers bool

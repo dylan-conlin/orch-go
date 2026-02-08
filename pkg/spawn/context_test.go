@@ -1857,3 +1857,116 @@ func TestGenerateContext_NoTrack(t *testing.T) {
 		}
 	})
 }
+
+func TestGenerateContext_ProbeGuidance(t *testing.T) {
+	t.Run("includes probe guidance when model content is injected in KBContext", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "test model claims",
+			SkillName:     "investigation",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-inv-test-08feb",
+			BeadsID:       "test-123",
+			Tier:          TierFull,
+			KBContext: "## PRIOR KNOWLEDGE (from kb context)\n\n" +
+				"### Models (synthesized understanding)\n" +
+				"- Spawn Architecture\n" +
+				"  - Summary:\n    The system creates workspaces.\n" +
+				"  - Your findings should confirm, contradict, or extend the claims above.\n",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should contain probe guidance section
+		if !strings.Contains(content, "## PROBE GUIDANCE (Model-Scoped Work)") {
+			t.Error("expected content to contain probe guidance when models are injected")
+		}
+
+		// Should reference the probe template
+		if !strings.Contains(content, "PROBE.md") {
+			t.Error("expected content to reference PROBE.md template")
+		}
+
+		// Should contain the mandatory sections
+		for _, section := range []string{"Question", "What I Tested", "What I Observed", "Model Impact"} {
+			if !strings.Contains(content, section) {
+				t.Errorf("expected probe guidance to mention mandatory section %q", section)
+			}
+		}
+
+		// Should contain key discipline about testing vs reading
+		if !strings.Contains(content, "Reading code is not testing") {
+			t.Error("expected probe guidance to contain test-before-conclude discipline")
+		}
+	})
+
+	t.Run("excludes probe guidance when no models in KBContext", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "add feature",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-08feb",
+			BeadsID:       "test-456",
+			Tier:          TierLight,
+			KBContext: "## PRIOR KNOWLEDGE (from kb context)\n\n" +
+				"### Constraints (MUST respect)\n" +
+				"- Some constraint\n",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		if strings.Contains(content, "PROBE GUIDANCE") {
+			t.Error("expected content to NOT contain probe guidance when no models are present")
+		}
+	})
+
+	t.Run("excludes probe guidance when KBContext is empty", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "simple task",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-08feb",
+			BeadsID:       "test-789",
+			Tier:          TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		if strings.Contains(content, "PROBE GUIDANCE") {
+			t.Error("expected content to NOT contain probe guidance when KBContext is empty")
+		}
+	})
+
+	t.Run("includes probe guidance when HasInjectedModels is explicitly set", func(t *testing.T) {
+		cfg := &Config{
+			Task:              "verify model",
+			SkillName:         "investigation",
+			Project:           "test-project",
+			ProjectDir:        "/tmp/test",
+			WorkspaceName:     "og-inv-test-08feb",
+			BeadsID:           "test-explicit",
+			Tier:              TierFull,
+			HasInjectedModels: true,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		if !strings.Contains(content, "## PROBE GUIDANCE (Model-Scoped Work)") {
+			t.Error("expected content to contain probe guidance when HasInjectedModels=true")
+		}
+	})
+}

@@ -59,6 +59,7 @@ type contextData struct {
 	IssueComments            []IssueComment
 	IsInvestigationSkill     bool
 	FailureContext           *FailureContext
+	HasInjectedModels        bool
 }
 
 func buildContextData(cfg *Config) contextData {
@@ -77,6 +78,11 @@ func buildContextData(cfg *Config) contextData {
 		warnings := CheckBloatedFiles(cfg.Task, cfg.ProjectDir)
 		bloatWarnings = GenerateBloatWarningSection(warnings)
 	}
+
+	// Detect model injection from KBContext content or explicit flag.
+	// The marker line is only added by formatModelMatchForSpawn when model sections are extracted.
+	hasModels := cfg.HasInjectedModels ||
+		strings.Contains(cfg.KBContext, "Your findings should confirm, contradict, or extend the claims above.")
 
 	return contextData{
 		Task:                     cfg.Task,
@@ -105,6 +111,7 @@ func buildContextData(cfg *Config) contextData {
 		IssueComments:            cfg.IssueComments,
 		IsInvestigationSkill:     IsInvestigationSkill(cfg.SkillName),
 		FailureContext:           cfg.FailureContext,
+		HasInjectedModels:        hasModels,
 	}
 }
 

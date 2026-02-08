@@ -1,6 +1,8 @@
 package spawn
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -356,6 +358,90 @@ func TestFormatContextForSpawn(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestFormatContextForSpawn_InlinesModelSections(t *testing.T) {
+	tempDir := t.TempDir()
+	modelPath := filepath.Join(tempDir, "model.md")
+
+	modelContent := `# Model: Example
+
+## Summary (30 seconds)
+
+This model explains context injection behavior.
+
+## Core Mechanism
+
+### Critical Invariants
+
+- Every spawned worker gets SPAWN_CONTEXT.
+- KB context should be bounded.
+
+## Why This Fails
+
+- Missing model sections means workers browse instead of using surfaced context.
+`
+
+	if err := os.WriteFile(modelPath, []byte(modelContent), 0644); err != nil {
+		t.Fatalf("failed writing temp model: %v", err)
+	}
+
+	result := &KBContextResult{
+		Query:      "inject model content",
+		HasMatches: true,
+		Matches: []KBContextMatch{
+			{Type: "model", Source: "kb", Title: "Example Model", Path: modelPath},
+		},
+	}
+
+	content := FormatContextForSpawn(result)
+
+	wantContains := []string{
+		"### Models",
+		"Example Model",
+		"Summary:",
+		"This model explains context injection behavior.",
+		"Critical Invariants:",
+		"Every spawned worker gets SPAWN_CONTEXT.",
+		"Why This Fails:",
+		"Missing model sections means workers browse",
+		"Your findings should confirm, contradict, or extend the claims above.",
+	}
+
+	for _, want := range wantContains {
+		if !strings.Contains(content, want) {
+			t.Fatalf("expected formatted context to contain %q, got:\n%s", want, content)
+		}
+	}
+}
+
+func TestFormatContextForSpawn_TruncatesLargeModelSections(t *testing.T) {
+	tempDir := t.TempDir()
+	modelPath := filepath.Join(tempDir, "model-large.md")
+
+	largeSummary := strings.Repeat("summary text ", maxModelSectionChars)
+	modelContent := "# Model: Large\n\n" +
+		"## Summary (30 seconds)\n\n" + largeSummary + "\n\n" +
+		"## Core Mechanism\n\n" +
+		"### Critical Invariants\n\nAlways true.\n\n" +
+		"## Why This Fails\n\nWhen assumptions break.\n"
+
+	if err := os.WriteFile(modelPath, []byte(modelContent), 0644); err != nil {
+		t.Fatalf("failed writing temp model: %v", err)
+	}
+
+	result := &KBContextResult{
+		Query:      "large model",
+		HasMatches: true,
+		Matches: []KBContextMatch{
+			{Type: "model", Source: "kb", Title: "Large Model", Path: modelPath},
+		},
+	}
+
+	content := FormatContextForSpawn(result)
+	if !strings.Contains(content, "... [truncated]") {
+		t.Fatalf("expected large model section truncation marker, got:\n%s", content)
 	}
 }
 
@@ -868,6 +954,110 @@ func TestFormatContextForSpawnWithLimit(t *testing.T) {
 		directResult := FormatContextForSpawnWithLimit(kbResult, MaxKBContextChars)
 		if content != directResult.Content {
 			t.Error("FormatContextForSpawn should produce same output as FormatContextForSpawnWithLimit with default limit")
+		}
+	})
+
+	t.Run("HasInjectedModels true when models have extractable content", func(t *testing.T) {
+		tempDir := t.TempDir()
+		modelPath := filepath.Join(tempDir, "model-with-sections.md")
+		modelContent := "# Model: Test\n\n## Summary (30 seconds)\n\nThis is the summary.\n\n## Core Mechanism\n\n### Critical Invariants\n\n- Always true.\n"
+		if err := os.WriteFile(modelPath, []byte(modelContent), 0644); err != nil {
+			t.Fatalf("failed writing model: %v", err)
+		}
+
+		kbResult := &KBContextResult{
+			Query:      "test models",
+			HasMatches: true,
+			Matches: []KBContextMatch{
+				{Type: "model", Source: "kb", Title: "Test Model", Path: modelPath},
+			},
+		}
+
+		result := FormatContextForSpawnWithLimit(kbResult, MaxKBContextChars)
+		if !result.HasInjectedModels {
+			t.Error("expected HasInjectedModels=true when model has extractable sections")
+		}
+	})
+
+	t.Run("HasInjectedModels false when no models present", func(t *testing.T) {
+		kbResult := &KBContextResult{
+			Query:      "test no models",
+			HasMatches: true,
+			Matches: []KBContextMatch{
+				{Type: "constraint", Title: "Some constraint"},
+				{Type: "decision", Title: "Some decision"},
+			},
+		}
+
+		result := FormatContextForSpawnWithLimit(kbResult, MaxKBContextChars)
+		if result.HasInjectedModels {
+			t.Error("expected HasInjectedModels=false when no models present")
+		}
+	})
+
+	t.Run("HasInjectedModels false when model has no path", func(t *testing.T) {
+		kbResult := &KBContextResult{
+			Query:      "test model no path",
+			HasMatches: true,
+			Matches: []KBContextMatch{
+				{Type: "model", Source: "kb", Title: "Pathless Model"},
+			},
+		}
+
+		result := FormatContextForSpawnWithLimit(kbResult, MaxKBContextChars)
+		if result.HasInjectedModels {
+			t.Error("expected HasInjectedModels=false when model has no path")
+		}
+	})
+
+	t.Run("HasInjectedModels false when model file has no extractable sections", func(t *testing.T) {
+		tempDir := t.TempDir()
+		modelPath := filepath.Join(tempDir, "model-empty.md")
+		modelContent := "# Model: Empty\n\nJust a title and some text, no standard sections.\n"
+		if err := os.WriteFile(modelPath, []byte(modelContent), 0644); err != nil {
+			t.Fatalf("failed writing model: %v", err)
+		}
+
+		kbResult := &KBContextResult{
+			Query:      "test empty model",
+			HasMatches: true,
+			Matches: []KBContextMatch{
+				{Type: "model", Source: "kb", Title: "Empty Model", Path: modelPath},
+			},
+		}
+
+		result := FormatContextForSpawnWithLimit(kbResult, MaxKBContextChars)
+		if result.HasInjectedModels {
+			t.Error("expected HasInjectedModels=false when model has no extractable sections")
+		}
+	})
+
+	t.Run("never exceeds limit with large injected model", func(t *testing.T) {
+		tempDir := t.TempDir()
+		modelPath := filepath.Join(tempDir, "huge-model.md")
+
+		huge := strings.Repeat("x", maxModelSectionChars*4)
+		modelContent := "# Model: Huge\n\n" +
+			"## Summary (30 seconds)\n\n" + huge + "\n\n" +
+			"## Core Mechanism\n\n" +
+			"### Critical Invariants\n\n" + huge + "\n\n" +
+			"## Why This Fails\n\n" + huge
+
+		if err := os.WriteFile(modelPath, []byte(modelContent), 0644); err != nil {
+			t.Fatalf("failed writing huge model: %v", err)
+		}
+
+		kbResult := &KBContextResult{
+			Query:      "huge model",
+			HasMatches: true,
+			Matches: []KBContextMatch{
+				{Type: "model", Source: "kb", Title: "Huge Model", Path: modelPath},
+			},
+		}
+
+		result := FormatContextForSpawnWithLimit(kbResult, 1800)
+		if len(result.Content) > 1800 {
+			t.Fatalf("expected content length <= 1800, got %d", len(result.Content))
 		}
 	})
 }

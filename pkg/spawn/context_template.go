@@ -91,6 +91,26 @@ SPAWN TIER: {{.Tier}}
 {{if .KBContext}}
 {{.KBContext}}
 {{end}}
+{{if .HasInjectedModels}}
+## PROBE GUIDANCE (Model-Scoped Work)
+
+**Models were injected above.** When your task involves testing, validating, or extending claims from an existing model, produce a **probe** (~30-50 lines) instead of a full investigation (~300 lines).
+
+**Probe structure (all sections mandatory):**
+
+1. **Question** — The specific claim or invariant being tested
+2. **What I Tested** — Actual command run or code executed (NOT code review — you must run something)
+3. **What I Observed** — Concrete output (paste actual results)
+4. **Model Impact** — Verdict: confirms | contradicts | extends — which invariant, with 1-3 sentence explanation
+
+**Template:** See ` + "`" + `{{.ProjectDir}}/.orch/templates/PROBE.md` + "`" + `
+
+**When to use probe vs full investigation:**
+- **Probe:** Model exists, you are confirming/extending its claims with targeted tests
+- **Full investigation:** Novel exploration where no model exists, or model is fundamentally wrong
+
+**Key discipline:** "What I Tested" must contain an actual command or code you executed. Reading code is not testing.
+{{end}}
 {{if .IsInfrastructureTouching}}
 ## RESOURCE LIFECYCLE AUDIT (REQUIRED)
 
