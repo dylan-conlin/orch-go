@@ -3,9 +3,9 @@
 **Domain:** OpenCode SSE integration, HTTP connection pooling, and reconnection behavior
 **Last Updated:** 2026-01-29
 **Synthesized From:** 
-- `.kb/investigations/2026-01-28-inv-sse-reconnection-opencode-client-survive.md` (SSE reconnection)
-- `.kb/investigations/2026-01-05-design-permanent-fix-http-connection-pool.md` (HTTP/2 design)
-- `.kb/investigations/2026-01-05-inv-dashboard-connection-pool-exhaustion-sse.md` (Connection pool fix)
+- `.kb/investigations/archived/2026-01-28-inv-sse-reconnection-opencode-client-survive.md` (SSE reconnection)
+- `.kb/investigations/archived/2026-01-05-design-permanent-fix-http-connection-pool.md` (HTTP/2 design)
+- `.kb/investigations/archived/2026-01-05-inv-dashboard-connection-pool-exhaustion-sse.md` (Connection pool fix)
 
 ---
 
@@ -353,9 +353,9 @@ http.ListenAndServeTLS(addr, certFile, keyFile, mux)
 ## References
 
 **Investigations:**
-- `.kb/investigations/2026-01-28-inv-sse-reconnection-opencode-client-survive.md` - SSE reconnection fix and verification
-- `.kb/investigations/2026-01-05-design-permanent-fix-http-connection-pool.md` - HTTP/2 design and architectural analysis
-- `.kb/investigations/2026-01-05-inv-dashboard-connection-pool-exhaustion-sse.md` - Agentlog opt-in fix
+- `.kb/investigations/archived/2026-01-28-inv-sse-reconnection-opencode-client-survive.md` - SSE reconnection fix and verification
+- `.kb/investigations/archived/2026-01-05-design-permanent-fix-http-connection-pool.md` - HTTP/2 design and architectural analysis
+- `.kb/investigations/archived/2026-01-05-inv-dashboard-connection-pool-exhaustion-sse.md` - Agentlog opt-in fix
 
 **Decisions informed by this model:**
 - (Pending) HTTP/2 upgrade decision - when to implement, TLS cert strategy

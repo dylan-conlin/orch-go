@@ -1,3 +1,32 @@
 {
-  "skips": []
+  "skips": [
+    {
+      "gate": "phase_complete",
+      "reason": "pre-opencode agent, phase not in transcript",
+      "set_at": "2026-02-08T08:59:23.333615-08:00",
+      "set_by": "orch-go-rjyjs",
+      "expires_at": "2026-02-08T10:59:23.333615-08:00"
+    },
+    {
+      "gate": "constraint",
+      "reason": "Investigation file exists at .kb/investigations/archived/2026-02-08-inv-*.md - agent archived it correctly, gate glob doesnt match archived subdir",
+      "set_at": "2026-02-08T09:47:41.285186-08:00",
+      "set_by": "orch-go-5ho4r",
+      "expires_at": "2026-02-08T11:47:41.285186-08:00"
+    },
+    {
+      "gate": "git_diff",
+      "reason": "Investigation file exists at .kb/investigations/archived/2026-02-08-inv-*.md - agent archived it correctly, gate glob doesnt match archived subdir",
+      "set_at": "2026-02-08T09:47:41.285326-08:00",
+      "set_by": "orch-go-5ho4r",
+      "expires_at": "2026-02-08T11:47:41.285326-08:00"
+    },
+    {
+      "gate": "skill_output",
+      "reason": "Investigation file exists at .kb/investigations/archived/2026-02-08-inv-*.md - agent archived it correctly, gate glob doesnt match archived subdir",
+      "set_at": "2026-02-08T09:47:41.285435-08:00",
+      "set_by": "orch-go-5ho4r",
+      "expires_at": "2026-02-08T11:47:41.285435-08:00"
+    }
+  ]
 }

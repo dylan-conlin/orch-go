@@ -492,15 +492,15 @@ Evidence: GPT-5.2 works well in Codex CLI (OpenAI-tuned prompts) but fails in ou
 **Evolution history:** `.kb/models/spawn-system-evolution.md` - Timeline of spawn system changes (Jan 8-24, 2026)
 
 **Investigations:**
-- `.kb/investigations/2026-01-08-inv-opus-auth-gate-fingerprinting.md` - Initial discovery of auth gate, failed spoofing attempt, zombie agents
+- `.kb/investigations/archived/2026-01-08-inv-opus-auth-gate-fingerprinting.md` - Initial discovery of auth gate, failed spoofing attempt, zombie agents
 - `.kb/investigations/2026-01-09-debug-gemini-flash-rate-limiting.md` - Gemini Flash TPM limits (2,000 req/min), forced switch to Sonnet
-- `.kb/investigations/2026-01-09-inv-anthropic-oauth-community-workarounds.md` - Community bypass attempts, cat-and-mouse dynamics, 474+ GitHub comments
+- `.kb/investigations/archived/2026-01-09-inv-anthropic-oauth-community-workarounds.md` - Community bypass attempts, cat-and-mouse dynamics, 474+ GitHub comments
 - `.kb/investigations/2026-01-10-inv-fix-dual-mode-spawn-bug.md` - Backend flag implementation and naming fix
 - `.kb/investigations/2026-01-11-inv-add-infrastructure-work-detection-auto.md` - Keyword detection and auto-flag application
-- `.kb/investigations/2026-01-12-inv-sonnet-cost-tracking-requirements.md` - Cost visibility gap, tracking requirements, strategic questions blocked
+- `.kb/investigations/archived/2026-01-12-inv-sonnet-cost-tracking-requirements.md` - Cost visibility gap, tracking requirements, strategic questions blocked
 - `.kb/investigations/2026-01-19-inv-test-deepseek-v3-function-calling.md` - DeepSeek V3 function calling validation
-- `.kb/investigations/2026-01-20-inv-design-claude-docker-backend-integration.md` - Docker backend design, host tmux pattern, fingerprint isolation
-- `.kb/investigations/2026-01-21-inv-analyze-gpt-orchestrator-session-users.md` - GPT-5.2 orchestration test, anti-patterns discovered
+- `.kb/investigations/archived/2026-01-20-inv-design-claude-docker-backend-integration.md` - Docker backend design, host tmux pattern, fingerprint isolation
+- `.kb/investigations/archived/2026-01-21-inv-analyze-gpt-orchestrator-session-users.md` - GPT-5.2 orchestration test, anti-patterns discovered
 
 **Decisions informed by this model:**
 - Triple spawn architecture (primary Claude CLI + API secondary + Docker escape hatch)

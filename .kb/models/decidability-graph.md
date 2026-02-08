@@ -478,7 +478,7 @@ orch frontier --json    # Output as JSON for scripting
 
 **2026-01-19 (discussion):** Major refinement - discovered that hierarchy is about context-scoping, not reasoning capability. Workers can answer framing questions if given right context. The irreducible orchestrator function is deciding what context to load. See "The Irreducible Function: Context Scoping" section. Captured as `kb-227b01`.
 
-**2026-01-23:** Decidability fields exposed via CLI - `--resolution-type`, `--domain`, `--authority` flags added to beads. Authority filtering implemented in `bd ready --authority <level>`. See `.kb/investigations/2026-01-23-inv-expose-decidability-fields-beads-cli.md`.
+**2026-01-23:** Decidability fields exposed via CLI - `--resolution-type`, `--domain`, `--authority` flags added to beads. Authority filtering implemented in `bd ready --authority <level>`. See `.kb/investigations/archived/2026-01-23-inv-expose-decidability-fields-beads-cli.md`.
 
 **2026-01-29:** Frontier command implementation validated. Added stuck agent detection with beads status filtering to prevent false positives. Fixed skill inference alignment between frontier and status commands. See "Stuck Agent Detection" section and `.kb/guides/status.md` for integration details.
 

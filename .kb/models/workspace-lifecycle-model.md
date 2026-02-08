@@ -104,17 +104,17 @@ For high-performance bulk operations (like `orch clean`), completion is inferred
 * `.kb/investigations/2026-01-17-inv-synthesize-12-investigations-related-workspace.md` - Comprehensive synthesis of all workspace investigations
 
 **Source Investigations (13 total):**
-* `.kb/investigations/2025-12-21-inv-workspace-lifecycle-when-workspaces-created.md`
-* `.kb/investigations/2025-12-21-inv-beads-kb-workspace-relationships-how.md`
+* `.kb/investigations/archived/2025-12-21-inv-workspace-lifecycle-when-workspaces-created.md`
+* `.kb/investigations/archived/2025-12-21-inv-beads-kb-workspace-relationships-how.md`
 * `.kb/investigations/2025-12-26-inv-add-review-state-tracking-workspace.md`
-* `.kb/investigations/2026-01-05-inv-orchestrator-workspaces-clear-visual-distinction.md`
+* `.kb/investigations/archived/2026-01-05-inv-orchestrator-workspaces-clear-visual-distinction.md`
 * `.kb/investigations/2026-01-05-debug-orchestrator-workspace-name-collision-bug.md`
-* `.kb/investigations/2026-01-06-inv-workspace-session-architecture.md`
-* `.kb/investigations/2026-01-06-inv-define-workspace-cleanup-strategy-context.md`
+* `.kb/investigations/archived/2026-01-06-inv-workspace-session-architecture.md`
+* `.kb/investigations/archived/2026-01-06-inv-define-workspace-cleanup-strategy-context.md`
 * `.kb/investigations/2026-01-06-inv-add-orch-attach-workspace-command.md`
-* `.kb/investigations/2026-01-06-inv-extend-orch-resume-work-workspace.md`
+* `.kb/investigations/archived/2026-01-06-inv-extend-orch-resume-work-workspace.md`
 * `.kb/investigations/2026-01-06-inv-add-orch-doctor-sessions-workspace.md`
-* `.kb/investigations/2026-01-07-inv-address-340-active-workspaces-completion.md`
+* `.kb/investigations/archived/2026-01-07-inv-address-340-active-workspaces-completion.md`
 * `.kb/investigations/2026-01-09-inv-create-orchestrator-workspace-session-start.md`
 
 **Source Code:**

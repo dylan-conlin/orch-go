@@ -80,7 +80,7 @@
 - Uses `~/.claude-docker/` for fresh fingerprint per spawn
 - Same lifecycle commands (status, complete, abandon) via tmux
 - No dashboard visibility (escape hatch philosophy - use tmux)
-- See: `.kb/investigations/2026-01-20-inv-design-claude-docker-backend-integration.md`
+- See: `.kb/investigations/archived/2026-01-20-inv-design-claude-docker-backend-integration.md`
 
 **Jan 21, 2026:** GPT-5.2 tested and deemed unsuitable for orchestration
 - ChatGPT Pro subscription ($200/mo) tested as potential escape hatch

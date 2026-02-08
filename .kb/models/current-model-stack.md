@@ -199,5 +199,5 @@ When the model stack changes:
 
 **Under Investigation:**
 - `orch-go-20922` - Test CLAUDE_CONFIG_DIR fingerprint isolation for worker spawns
-- `.kb/investigations/2026-01-25-inv-investigate-claude-code-native-swarm.md` - Native swarm internals, fingerprint isolation via CLAUDE_CONFIG_DIR
+- `.kb/investigations/archived/2026-01-25-inv-investigate-claude-code-native-swarm.md` - Native swarm internals, fingerprint isolation via CLAUDE_CONFIG_DIR
 - `orch-go-20903` - Strategic question: Should we adopt native Claude orchestration over orch-ecosystem?

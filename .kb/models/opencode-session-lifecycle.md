@@ -113,7 +113,7 @@ Root Session (orchestrator)
 - **Potential:** Could set parentID on spawned sessions for UI visibility
 - **Trade-off:** Unclear if parentID works cross-project; adds tracking mechanism alongside registry
 
-**Reference:** `.kb/investigations/2026-01-28-inv-investigate-opencode-native-agent-spawn.md`
+**Reference:** `.kb/investigations/archived/2026-01-28-inv-investigate-opencode-native-agent-spawn.md`
 
 ### Critical Invariants
 

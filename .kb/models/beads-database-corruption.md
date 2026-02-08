@@ -299,9 +299,9 @@ Add to `orch doctor`:
 ## References
 
 **Investigations:**
-- `.kb/investigations/2026-01-21-inv-investigate-beads-sqlite-database-corruption.md` - Root cause (sandbox chmod)
+- `.kb/investigations/archived/2026-01-21-inv-investigate-beads-sqlite-database-corruption.md` - Root cause (sandbox chmod)
 - `.kb/investigations/2026-01-21-inv-fix-beads-sqlite-database-corruption.md` - Recovery procedure
-- `.kb/investigations/2026-01-21-urgent-beads-sqlite-corruption.md` - Incident tracking
+- `.kb/investigations/archived/2026-01-21-urgent-beads-sqlite-corruption.md` - Incident tracking
 
 **Source Code:**
 - `~/Documents/personal/beads/internal/storage/sqlite/store.go:206-217` - Close() checkpoint logic

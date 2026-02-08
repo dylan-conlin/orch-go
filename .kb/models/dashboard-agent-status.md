@@ -101,7 +101,7 @@ Claude CLI agents spawned with `--backend claude --tmux` use the same Priority C
 
 **Why token usage is unavailable:** Claude CLI (Max subscription) doesn't expose per-session token usage via API. This is an **architectural constraint, not a fixable gap**. Progress tracking via Phase comments is more valuable anyway.
 
-**Reference:** `.kb/investigations/2026-01-18-design-dashboard-add-tmux-session-visibility.md`
+**Reference:** `.kb/investigations/archived/2026-01-18-design-dashboard-add-tmux-session-visibility.md`
 
 ---
 

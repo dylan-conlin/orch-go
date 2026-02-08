@@ -16,6 +16,20 @@ make hooks-install    # Install bd hooks + project pre-commit guardrails
 `bd sync` can be OOM-killed in this repo when JSONL import runs in no-db mode.
 Use `./scripts/bd-sync-safe.sh` instead; it bootstraps SQLite if needed, then runs sync in direct mode.
 
+## Model-Scoped Probe Workflow
+
+When `SPAWN_CONTEXT.md` includes injected model content, use a **probe** instead of a full investigation.
+
+- Write probes to `.kb/models/{model-name}/probes/` (not `.kb/investigations/`)
+- Start from `.orch/templates/PROBE.md`
+- Include all 4 mandatory sections:
+  1. Question
+  2. What I Tested
+  3. What I Observed
+  4. Model Impact
+
+Reference: `.kb/decisions/2026-02-08-model-centric-probes-replace-investigations.md`
+
 ## Landing the Plane (Session Completion)
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.

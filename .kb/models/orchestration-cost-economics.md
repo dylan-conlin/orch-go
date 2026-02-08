@@ -118,7 +118,7 @@ credits_used = ceil(input_tokens × input_rate + output_tokens × output_rate)
 
 **Evidence:** All community workarounds failed within 6 hours. Anthropic iterates faster than bypasses can stabilize.
 
-**Source:** `.kb/investigations/2026-01-08-inv-opus-auth-gate-fingerprinting.md`, `.kb/investigations/2026-01-09-inv-anthropic-oauth-community-workarounds.md`
+**Source:** `.kb/investigations/archived/2026-01-08-inv-opus-auth-gate-fingerprinting.md`, `.kb/investigations/archived/2026-01-09-inv-anthropic-oauth-community-workarounds.md`
 
 #### Failed Bypass Timeline (Jan 8-9, 2026)
 
@@ -228,7 +228,7 @@ Switched from free Gemini to paid Sonnet on Jan 9 with **no cost tracking**:
 - Cache write: $3.75/MTok
 - Cache read: $0.30/MTok
 
-**Source:** `.kb/investigations/2026-01-12-inv-sonnet-cost-tracking-requirements.md`, `.kb/investigations/2026-01-18-inv-add-api-cost-tracking-widget.md`
+**Source:** `.kb/investigations/archived/2026-01-12-inv-sonnet-cost-tracking-requirements.md`, `.kb/investigations/2026-01-18-inv-add-api-cost-tracking-widget.md`
 
 ---
 
@@ -270,7 +270,7 @@ Is highest quality needed?
 - No API access included (same as Anthropic Max)
 - Viable backup if Anthropic restricts further
 
-**Source:** `.kb/investigations/2026-01-18-inv-research-compare-openai-chatgpt-pro-anthropic-max.md`
+**Source:** `.kb/investigations/archived/2026-01-18-inv-research-compare-openai-chatgpt-pro-anthropic-max.md`
 
 ### OpenCode Zen (Cooperative Buying Pool)
 
@@ -285,7 +285,7 @@ Is highest quality needed?
 - Temporary cat-and-mouse, not sustainable
 - Treat as industry drama, not strategic option
 
-**Source:** `.kb/investigations/2026-01-13-research-opencode-zen-black-architecture-economics.md`
+**Source:** `.kb/investigations/archived/2026-01-13-research-opencode-zen-black-architecture-economics.md`
 
 ---
 
@@ -342,12 +342,12 @@ The $402 surprise proves: never use pay-per-token without cost tracking. Impleme
 - `.kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md`
 
 ### Investigations
-- `.kb/investigations/2026-01-28-inv-download-analyze-https-she-llac.md` - Credit formula, free cache reads, value multipliers
-- `.kb/investigations/2026-01-08-inv-opus-auth-gate-fingerprinting.md`
-- `.kb/investigations/2026-01-09-inv-anthropic-oauth-community-workarounds.md`
-- `.kb/investigations/2026-01-12-inv-sonnet-cost-tracking-requirements.md`
+- `.kb/investigations/archived/2026-01-28-inv-download-analyze-https-she-llac.md` - Credit formula, free cache reads, value multipliers
+- `.kb/investigations/archived/2026-01-08-inv-opus-auth-gate-fingerprinting.md`
+- `.kb/investigations/archived/2026-01-09-inv-anthropic-oauth-community-workarounds.md`
+- `.kb/investigations/archived/2026-01-12-inv-sonnet-cost-tracking-requirements.md`
 - `.kb/investigations/2026-01-18-inv-add-api-cost-tracking-widget.md`
-- `.kb/investigations/2026-01-18-research-compare-deepseek-models-anthropic-models.md`
+- `.kb/investigations/archived/2026-01-18-research-compare-deepseek-models-anthropic-models.md`
 - `.kb/investigations/2026-01-21-inv-synthesize-anthropic-blocking-kb-quick.md` - kb quick entries synthesis
 - `~/.kb/investigations/2025-11-30-claude-code-cross-account-rate-limit-bug.md`
 
