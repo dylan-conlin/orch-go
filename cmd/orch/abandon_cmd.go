@@ -472,7 +472,8 @@ func logAbandonmentEvent(ctx *abandonContext) {
 	// Log telemetry for model performance tracking
 	logAbandonTelemetry(logger, ctx)
 
-	// Record stability intervention (agent abandonment breaks the clean-session streak)
+	// Record stability event (logged for tracking, but doesn't reset crash-free streak)
+	// Agent abandonment is routine hygiene, not infrastructure failure
 	recorder := stability.NewRecorder(stability.DefaultPath())
 	detail := fmt.Sprintf("%s abandoned", ctx.BeadsID)
 	if ctx.Reason != "" {

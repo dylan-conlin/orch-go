@@ -40,16 +40,16 @@ type Entry struct {
 
 // Report is the computed stability report.
 type Report struct {
-	CurrentStreak     time.Duration    `json:"current_streak_seconds"`
-	TargetDuration    time.Duration    `json:"target_duration_seconds"`
-	ProgressPercent   float64          `json:"progress_percent"`
-	Interventions     []Entry          `json:"interventions"`
-	SnapshotsTotal    int              `json:"snapshots_total"`
-	SnapshotsHealthy  int              `json:"snapshots_healthy"`
-	HealthPercent     float64          `json:"health_percent"`
-	FirstSnapshot     time.Time        `json:"first_snapshot"`
-	LastIntervention  *time.Time       `json:"last_intervention,omitempty"`
-	HasData           bool             `json:"has_data"`
+	CurrentStreak    time.Duration `json:"current_streak_seconds"`
+	TargetDuration   time.Duration `json:"target_duration_seconds"`
+	ProgressPercent  float64       `json:"progress_percent"`
+	Interventions    []Entry       `json:"interventions"`
+	SnapshotsTotal   int           `json:"snapshots_total"`
+	SnapshotsHealthy int           `json:"snapshots_healthy"`
+	HealthPercent    float64       `json:"health_percent"`
+	FirstSnapshot    time.Time     `json:"first_snapshot"`
+	LastIntervention *time.Time    `json:"last_intervention,omitempty"`
+	HasData          bool          `json:"has_data"`
 }
 
 // DefaultPath returns the default path to stability.jsonl.
@@ -119,6 +119,24 @@ func (r *Recorder) write(entry Entry) error {
 // TargetDuration is the Phase 3 success target: 1 week without manual intervention.
 const TargetDuration = 7 * 24 * time.Hour
 
+// isInfrastructureIntervention returns true if the intervention source represents
+// an infrastructure failure (vs agent-level hygiene operation).
+//
+// Infrastructure interventions reset the crash-free streak because they indicate
+// system stability problems. Agent interventions (like abandoning stuck agents)
+// are routine hygiene and don't reset the streak.
+func isInfrastructureIntervention(source string) bool {
+	switch source {
+	case SourceManualRecovery, SourceDoctorFix:
+		return true
+	case SourceAgentAbandoned:
+		return false
+	default:
+		// Unknown sources default to infrastructure (fail-safe)
+		return true
+	}
+}
+
 // ComputeReport reads stability.jsonl and computes the stability report.
 func ComputeReport(path string, days int) (*Report, error) {
 	f, err := os.Open(path)
@@ -142,7 +160,7 @@ func ComputeReport(path string, days int) (*Report, error) {
 	}
 
 	var firstSnapshotTs int64
-	var lastInterventionTs int64
+	var lastInfrastructureInterventionTs int64
 
 	scanner := bufio.NewScanner(f)
 	// Increase buffer size for safety
@@ -161,9 +179,12 @@ func ComputeReport(path string, days int) (*Report, error) {
 			firstSnapshotTs = entry.Ts
 		}
 
-		// Track last intervention regardless of cutoff (for streak calculation)
-		if entry.Type == TypeIntervention && entry.Ts > lastInterventionTs {
-			lastInterventionTs = entry.Ts
+		// Track last INFRASTRUCTURE intervention regardless of cutoff (for streak calculation)
+		// Agent interventions (like agent_abandoned) don't reset the streak
+		if entry.Type == TypeIntervention && isInfrastructureIntervention(entry.Source) {
+			if entry.Ts > lastInfrastructureInterventionTs {
+				lastInfrastructureInterventionTs = entry.Ts
+			}
 		}
 
 		// Only include in summary stats if within the reporting window
@@ -194,13 +215,13 @@ func ComputeReport(path string, days int) (*Report, error) {
 		report.FirstSnapshot = time.Unix(firstSnapshotTs, 0)
 	}
 
-	// Compute streak: time since last intervention
-	if lastInterventionTs > 0 {
-		t := time.Unix(lastInterventionTs, 0)
+	// Compute streak: time since last INFRASTRUCTURE intervention
+	if lastInfrastructureInterventionTs > 0 {
+		t := time.Unix(lastInfrastructureInterventionTs, 0)
 		report.LastIntervention = &t
 		report.CurrentStreak = now.Sub(t)
 	} else if firstSnapshotTs > 0 {
-		// No interventions ever — streak is since first snapshot
+		// No infrastructure interventions ever — streak is since first snapshot
 		report.CurrentStreak = now.Sub(time.Unix(firstSnapshotTs, 0))
 	}
 
