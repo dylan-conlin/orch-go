@@ -116,9 +116,14 @@
 
 **What's untested:**
 
-- ⚠️ OAuth tokens from Max subscription work with `/v1/messages` endpoint (not verified — only used for `/api/oauth/usage` today)
-- ⚠️ Sonnet API calls don't hit fingerprinting blocks (assumed based on Opus-only fingerprinting, not tested)
 - ⚠️ Turn-based relay latency is acceptable for natural-feeling dialogue (depends on model response time)
+
+**New test evidence (2026-02-08 probe):**
+
+- ✅ OAuth token compatibility with `/v1/messages` is now empirically validated with conditions: generic OAuth headers fail (`400`), stealth-mode identity markers + Claude Code identity system prompt succeed (`200`).
+- ✅ Sonnet API calls via `/v1/messages` do not hit a blanket fingerprinting block when stealth markers are applied.
+
+See: `.kb/investigations/2026-02-08-probe-oauth-token-v1-messages.md`
 
 **What would change this:**
 
