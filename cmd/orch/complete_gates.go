@@ -9,6 +9,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"golang.org/x/term"
@@ -281,6 +282,9 @@ func processGates(target *CompletionTarget, skillName string) error {
 		return err
 	}
 
+	// Probe merge prompt (advisory, non-blocking)
+	processProbes(target)
+
 	// Knowledge gap detection (informational, non-blocking)
 	processKnowledgeGaps(target, skillName)
 
@@ -484,6 +488,60 @@ func buildDesignDecompositionIssueTitle(item verify.DesignActionItem) string {
 		title = title[:137] + "..."
 	}
 	return title
+}
+
+// processProbes checks for probe files the agent produced against models.
+// If probes exist, displays a summary and prompts the orchestrator to merge findings.
+// This is advisory — the orchestrator can skip and merge later.
+func processProbes(target *CompletionTarget) {
+	probes := spawn.FindProjectProbes(target.BeadsProjectDir)
+	if len(probes) == 0 {
+		return
+	}
+
+	fmt.Println()
+	fmt.Println("--- Probe Merge ---")
+	fmt.Print(spawn.FormatProbeMergeSummary(probes))
+
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		fmt.Println("(Skipping probe merge — stdin is not a terminal)")
+		fmt.Println("Merge later: review .kb/models/*/probes/ and update models manually")
+		fmt.Println("-------------------")
+		return
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Fprint(os.Stdout, "Merge probe findings into model(s)? [y/N]: ")
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to read response: %v\n", err)
+		return
+	}
+	response = strings.TrimSpace(strings.ToLower(response))
+	if response != "y" && response != "yes" {
+		fmt.Println("Skipped probe merge. Merge later by reviewing probe files manually.")
+		fmt.Println("-------------------")
+		return
+	}
+
+	merged := 0
+	for _, p := range probes {
+		if p.Impact == "" {
+			fmt.Printf("  Skipping %s (no Model Impact section)\n", p.Probe.Name)
+			continue
+		}
+		if err := spawn.MergeProbeIntoModel(p.ModelPath, p); err != nil {
+			fmt.Fprintf(os.Stderr, "  Warning: failed to merge %s into %s: %v\n", p.Probe.Name, p.ModelName, err)
+			continue
+		}
+		fmt.Printf("  Merged: %s → %s\n", p.Probe.Name, p.ModelName)
+		merged++
+	}
+
+	if merged > 0 {
+		fmt.Printf("✓ Merged %d probe(s) into model(s)\n", merged)
+	}
+	fmt.Println("-------------------")
 }
 
 // processKnowledgeGaps detects and logs knowledge gaps (informational, non-blocking).
