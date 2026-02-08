@@ -8,9 +8,76 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 )
+
+func TestResourceMonitorCalibratesBaselineAfterWarmupWindow(t *testing.T) {
+	samples := []resourceSample{
+		{metrics: resourceMetrics{Goroutines: 5, HeapBytes: 100, ChildProcesses: 0, OpenFileDescriptors: 5}},    // startup baseline
+		{metrics: resourceMetrics{Goroutines: 200, HeapBytes: 400, ChildProcesses: 4, OpenFileDescriptors: 10}}, // warmup sample
+		{metrics: resourceMetrics{Goroutines: 260, HeapBytes: 450, ChildProcesses: 4, OpenFileDescriptors: 12}}, // warmup sample
+		{metrics: resourceMetrics{Goroutines: 260, HeapBytes: 450, ChildProcesses: 4, OpenFileDescriptors: 12}}, // warmup boundary
+		{metrics: resourceMetrics{Goroutines: 600, HeapBytes: 450, ChildProcesses: 4, OpenFileDescriptors: 12}}, // post-warmup breach
+	}
+
+	index := 0
+	now := time.Date(2026, 2, 7, 12, 0, 0, 0, time.UTC)
+	monitor := newResourceMonitorWithConfig(nil, func() resourceSample {
+		if index >= len(samples) {
+			return samples[len(samples)-1]
+		}
+		sample := samples[index]
+		index++
+		return sample
+	}, func() time.Time {
+		return now
+	}, time.Minute)
+
+	now = now.Add(10 * time.Second)
+	report := monitor.sampleAndCheck()
+	if report.Breached {
+		t.Fatal("expected no breach during warmup")
+	}
+
+	now = now.Add(20 * time.Second)
+	report = monitor.sampleAndCheck()
+	if report.Breached {
+		t.Fatal("expected no breach during warmup")
+	}
+
+	now = now.Add(30 * time.Second)
+	report = monitor.sampleAndCheck()
+	if report.Breached {
+		t.Fatal("expected no breach when baseline calibration completes")
+	}
+	if report.Baseline.Goroutines != 260 {
+		t.Fatalf("expected warmed baseline goroutines 260, got %d", report.Baseline.Goroutines)
+	}
+
+	now = now.Add(5 * time.Second)
+	report = monitor.sampleAndCheck()
+	if !report.Breached {
+		t.Fatal("expected breach after warmup calibration")
+	}
+	if len(report.Breaches) != 1 {
+		t.Fatalf("expected 1 breach, got %d", len(report.Breaches))
+	}
+	if report.Breaches[0].Metric != "goroutines" {
+		t.Fatalf("expected goroutine breach, got %q", report.Breaches[0].Metric)
+	}
+}
+
+func TestCountOpenFileDescriptorsReturnsPositiveValue(t *testing.T) {
+	count, err := countOpenFileDescriptors()
+	if err != nil {
+		t.Fatalf("expected descriptor count without error, got: %v", err)
+	}
+	if count <= 0 {
+		t.Fatalf("expected open descriptor count > 0, got %d", count)
+	}
+}
 
 func TestDetectResourceBreachesRequiresStrictlyGreaterThanTwoX(t *testing.T) {
 	baseline := resourceMetrics{

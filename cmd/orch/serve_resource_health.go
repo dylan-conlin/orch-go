@@ -19,6 +19,8 @@ import (
 
 const resourceCeilingMultiplier int64 = 2
 
+const resourceBaselineWarmupDuration = 60 * time.Second
+
 type resourceMetrics struct {
 	Goroutines          int64 `json:"goroutines"`
 	HeapBytes           int64 `json:"heap_bytes"`
@@ -52,6 +54,10 @@ type resourceSample struct {
 type resourceMonitor struct {
 	logger         *events.Logger
 	sampleFn       func() resourceSample
+	nowFn          func() time.Time
+	startedAt      time.Time
+	warmupDuration time.Duration
+	calibrated     bool
 	baseline       resourceMetrics
 	baselineErrors map[string]string
 	activeBreaches map[string]bool
@@ -59,17 +65,31 @@ type resourceMonitor struct {
 }
 
 func newResourceMonitor(logger *events.Logger) *resourceMonitor {
-	return newResourceMonitorWithSampler(logger, collectResourceSample)
+	return newResourceMonitorWithConfig(logger, collectResourceSample, time.Now, resourceBaselineWarmupDuration)
 }
 
 func newResourceMonitorWithSampler(logger *events.Logger, sampleFn func() resourceSample) *resourceMonitor {
+	return newResourceMonitorWithConfig(logger, sampleFn, time.Now, 0)
+}
+
+func newResourceMonitorWithConfig(logger *events.Logger, sampleFn func() resourceSample, nowFn func() time.Time, warmupDuration time.Duration) *resourceMonitor {
 	if sampleFn == nil {
 		sampleFn = collectResourceSample
 	}
+	if nowFn == nil {
+		nowFn = time.Now
+	}
 	baseline := sampleFn()
+	if warmupDuration < 0 {
+		warmupDuration = 0
+	}
 	return &resourceMonitor{
 		logger:         logger,
 		sampleFn:       sampleFn,
+		nowFn:          nowFn,
+		startedAt:      nowFn(),
+		warmupDuration: warmupDuration,
+		calibrated:     warmupDuration == 0,
 		baseline:       baseline.metrics,
 		baselineErrors: copyStringMap(baseline.errors),
 		activeBreaches: make(map[string]bool),
@@ -78,7 +98,19 @@ func newResourceMonitorWithSampler(logger *events.Logger, sampleFn func() resour
 
 func (m *resourceMonitor) sampleAndCheck() resourceHealthReport {
 	current := m.sampleFn()
-	breaches := detectResourceBreaches(m.baseline, current.metrics)
+
+	m.mu.Lock()
+	if !m.calibrated {
+		m.recalibrateBaselineDuringWarmupLocked(current)
+	}
+
+	baseline := m.baseline
+	baselineErrors := copyStringMap(m.baselineErrors)
+
+	breaches := make([]resourceBreach, 0)
+	if m.calibrated {
+		breaches = detectResourceBreaches(baseline, current.metrics)
+	}
 
 	breachByMetric := make(map[string]resourceBreach, len(breaches))
 	for _, breach := range breaches {
@@ -86,7 +118,6 @@ func (m *resourceMonitor) sampleAndCheck() resourceHealthReport {
 	}
 
 	var newBreaches []resourceBreach
-	m.mu.Lock()
 	for _, breach := range breaches {
 		if !m.activeBreaches[breach.Metric] {
 			newBreaches = append(newBreaches, breach)
@@ -105,12 +136,12 @@ func (m *resourceMonitor) sampleAndCheck() resourceHealthReport {
 	}
 
 	report := resourceHealthReport{
-		Baseline:          m.baseline,
+		Baseline:          baseline,
 		Current:           current.metrics,
 		CeilingMultiplier: resourceCeilingMultiplier,
 		Breached:          len(breaches) > 0,
 		Breaches:          breaches,
-		BaselineErrors:    copyStringMap(m.baselineErrors),
+		BaselineErrors:    baselineErrors,
 		CurrentErrors:     copyStringMap(current.errors),
 	}
 	if len(report.BaselineErrors) == 0 {
@@ -121,6 +152,18 @@ func (m *resourceMonitor) sampleAndCheck() resourceHealthReport {
 	}
 
 	return report
+}
+
+func (m *resourceMonitor) recalibrateBaselineDuringWarmupLocked(current resourceSample) {
+	m.baseline = maxResourceMetrics(m.baseline, current.metrics)
+	m.baselineErrors = copyStringMap(current.errors)
+
+	if m.nowFn().Sub(m.startedAt) < m.warmupDuration {
+		return
+	}
+
+	m.calibrated = true
+	m.activeBreaches = make(map[string]bool)
 }
 
 func (m *resourceMonitor) logResourceCeilingBreach(breach resourceBreach, current resourceMetrics, currentErrors map[string]string) {
@@ -298,9 +341,9 @@ func countOpenFileDescriptors() (int64, error) {
 	var lastErr error
 
 	for _, path := range paths {
-		entries, err := os.ReadDir(path)
+		count, err := countNumericDirectoryEntries(path)
 		if err == nil {
-			return int64(len(entries)), nil
+			return count, nil
 		}
 		lastErr = err
 	}
@@ -310,6 +353,50 @@ func countOpenFileDescriptors() (int64, error) {
 	}
 
 	return -1, lastErr
+}
+
+func countNumericDirectoryEntries(path string) (int64, error) {
+	dir, err := os.Open(path)
+	if err != nil {
+		return -1, err
+	}
+	defer dir.Close()
+
+	names, err := dir.Readdirnames(-1)
+	if err != nil {
+		return -1, err
+	}
+
+	var count int64
+	for _, name := range names {
+		if _, err := strconv.Atoi(name); err == nil {
+			count++
+		}
+	}
+
+	return count, nil
+}
+
+func maxResourceMetrics(a, b resourceMetrics) resourceMetrics {
+	return resourceMetrics{
+		Goroutines:          maxNonNegativeMetric(a.Goroutines, b.Goroutines),
+		HeapBytes:           maxNonNegativeMetric(a.HeapBytes, b.HeapBytes),
+		ChildProcesses:      maxNonNegativeMetric(a.ChildProcesses, b.ChildProcesses),
+		OpenFileDescriptors: maxNonNegativeMetric(a.OpenFileDescriptors, b.OpenFileDescriptors),
+	}
+}
+
+func maxNonNegativeMetric(a, b int64) int64 {
+	if a < 0 {
+		return b
+	}
+	if b < 0 {
+		return a
+	}
+	if b > a {
+		return b
+	}
+	return a
 }
 
 func copyStringMap(input map[string]string) map[string]string {

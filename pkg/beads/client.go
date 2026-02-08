@@ -108,25 +108,28 @@ func IsCLITimeout(err error) bool {
 }
 
 func runBDCommand(workDir, bdPath string, env []string, combined bool, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
+	acquireCtx, acquireCancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
+	defer acquireCancel()
 
 	operation := "bd"
 	if len(args) > 0 {
 		operation = "bd " + args[0]
 	}
 
-	release, err := acquireBdSubprocessSlot(ctx, operation)
+	release, err := acquireBdSubprocessSlot(acquireCtx, operation)
 	if err != nil {
 		return nil, err
 	}
 	defer release()
 
+	execCtx, execCancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
+	defer execCancel()
+
 	if bdPath == "" {
 		bdPath = getBdPath()
 	}
 
-	cmd := exec.CommandContext(ctx, bdPath, prependSandboxArg(args)...)
+	cmd := exec.CommandContext(execCtx, bdPath, prependSandboxArg(args)...)
 	if env != nil {
 		cmd.Env = env
 	} else {
@@ -142,7 +145,7 @@ func runBDCommand(workDir, bdPath string, env []string, combined bool, args ...s
 	} else {
 		output, err = cmd.Output()
 	}
-	if err != nil && IsCLITimeout(err) {
+	if err != nil && errors.Is(execCtx.Err(), context.DeadlineExceeded) {
 		log.Printf("event=bd_subprocess_timeout component=beads operation=%q timeout=%s", operation, DefaultCLITimeout)
 	}
 	return output, err

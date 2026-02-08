@@ -195,7 +195,7 @@ func (s *Server) collectAttemptHistory(beadsID string) ([]AttemptHistoryEntry, e
 			beads.WithTimeout(5*time.Second),
 		)
 		if err != nil {
-			cmd := exec.Command(getBdPath(), "comments", beadsID, "--json")
+			cmd := exec.Command(getBdPath(), "--sandbox", "comments", beadsID, "--json")
 			cmd.Dir = s.SourceDir
 			cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
 			if output, cmdErr := cmd.Output(); cmdErr == nil {

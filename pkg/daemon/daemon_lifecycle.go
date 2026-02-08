@@ -65,7 +65,7 @@ type Config struct {
 	ReflectInterval time.Duration
 
 	// ReflectCreateIssues controls whether reflection creates beads issues
-	// for synthesis opportunities (topics with 10+ investigations).
+	// for supported kb reflect types (currently synthesis + defect-class).
 	ReflectCreateIssues bool
 
 	// CleanupEnabled controls whether periodic cleanup is enabled.

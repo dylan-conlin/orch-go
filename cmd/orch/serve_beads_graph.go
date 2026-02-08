@@ -648,7 +648,12 @@ func runBdCommandOutput(workDir string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, getBdPath(), args...)
+	cmdArgs := args
+	if len(cmdArgs) == 0 || cmdArgs[0] != "--sandbox" {
+		cmdArgs = append([]string{"--sandbox"}, cmdArgs...)
+	}
+
+	cmd := exec.CommandContext(ctx, getBdPath(), cmdArgs...)
 	if workDir != "" {
 		cmd.Dir = workDir
 	}

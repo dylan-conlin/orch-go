@@ -290,7 +290,7 @@ func collectGapPatterns() ([]DetectedPattern, error) {
 			pattern.Severity = PatternSeverityCritical
 			pattern.Title = fmt.Sprintf("Empty context: %q", s.Query)
 			pattern.Description = fmt.Sprintf("Query %q has returned no results %d times", s.Query, s.Count)
-			pattern.Suggestion = "Add knowledge via 'kb quick decide', 'kb quick constrain', or 'kb create investigation'"
+			pattern.Suggestion = "Add knowledge via 'kb quick decide', 'kb quick constrain', or 'kb create investigation <slug> --defect-class <class>'"
 		} else {
 			if s.Priority == "high" {
 				pattern.Severity = PatternSeverityWarning

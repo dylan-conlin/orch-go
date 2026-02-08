@@ -260,7 +260,7 @@ func runServe(portNum int) error {
 	}
 
 	// Initialize bd subprocess limiter to prevent stampede under load.
-	// Two-layer protection: singleflight deduplication + hard concurrency cap (max 3).
+	// Two-layer protection: singleflight deduplication + hard concurrency cap (configurable).
 	// Without this, dashboard polling can spawn hundreds of concurrent bd subprocesses.
 	bdLim := newBdLimiter()
 	fmt.Printf("Initialized bd subprocess limiter (max %d concurrent)\n", maxBdConcurrent)

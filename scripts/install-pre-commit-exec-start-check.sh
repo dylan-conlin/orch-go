@@ -4,7 +4,6 @@ set -euo pipefail
 
 hook_path=".git/hooks/pre-commit"
 guard_line='scripts/pre-commit-exec-start-cleanup.sh'
-exec_line='exec bd hooks run pre-commit "$@"'
 
 if [[ ! -f "$hook_path" ]]; then
 	echo "ERROR: $hook_path not found. Run 'bd hooks install' first." >&2

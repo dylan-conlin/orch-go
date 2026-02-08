@@ -116,47 +116,78 @@ function createContextStore() {
 	const { subscribe, set } = writable<OrchestratorContext>({});
 
 	let pollTimeout: ReturnType<typeof setTimeout> | null = null;
-	let currentBackoff = 1000; // Start at 1s
+	let currentAbortController: AbortController | null = null;
+	let fetchInFlight: Promise<void> | null = null;
+	let isPolling = false;
+	let pollInterval = 2000;
+	let currentBackoff = pollInterval;
 	const maxBackoff = 30000; // Cap at 30s
-	const baseBackoff = 1000; // Base backoff 1s
 	let isDisconnected = false; // Track connection state for backoff
 	let currentData: OrchestratorContext = {}; // Track current data for shallow equality
 	
 	async function fetchWithRetry(): Promise<void> {
+		if (fetchInFlight) {
+			await fetchInFlight;
+			return;
+		}
+
+		fetchInFlight = (async () => {
+			const abortController = new AbortController();
+			currentAbortController = abortController;
+
+			try {
+				const response = await fetch(`${API_BASE}/api/context`, {
+					signal: abortController.signal,
+				});
+				if (!response.ok) {
+					throw new Error(`HTTP ${response.status}`);
+				}
+				const data = await response.json();
+				
+				// Only update if data actually changed (reduces reactive cascades)
+				if (!shallowEqual(currentData, data)) {
+					currentData = data;
+					set(data);
+				}
+				
+				// Success - use configured poll interval and mark connected
+				currentBackoff = pollInterval;
+				isDisconnected = false;
+				connectionStatus.setConnected();
+			} catch (error) {
+				// Abort is expected on unmount/stop; don't mark disconnected
+				if (error instanceof Error && error.name === 'AbortError') {
+					return;
+				}
+
+				// Connection failed - mark disconnected
+				isDisconnected = true;
+				connectionStatus.setDisconnected(String(error));
+				const errorData = { error: String(error) };
+				currentData = errorData;
+				set(errorData);
+				
+				// Don't throw - let polling continue with backoff
+			} finally {
+				if (currentAbortController === abortController) {
+					currentAbortController = null;
+				}
+			}
+		})();
+
 		try {
-			const response = await fetch(`${API_BASE}/api/context`);
-			if (!response.ok) {
-				throw new Error(`HTTP ${response.status}`);
-			}
-			const data = await response.json();
-			
-			// Only update if data actually changed (reduces reactive cascades)
-			if (!shallowEqual(currentData, data)) {
-				currentData = data;
-				set(data);
-			}
-			
-			// Success - reset backoff and mark connected
-			currentBackoff = baseBackoff;
-			isDisconnected = false;
-			connectionStatus.setConnected();
-		} catch (error) {
-			// Connection failed - mark disconnected
-			isDisconnected = true;
-			connectionStatus.setDisconnected(String(error));
-			const errorData = { error: String(error) };
-			currentData = errorData;
-			set(errorData);
-			
-			// Don't throw - let polling continue with backoff
+			await fetchInFlight;
+		} finally {
+			fetchInFlight = null;
 		}
 	}
 
 	function scheduleNextPoll(): void {
-		if (pollTimeout) return;
+		if (!isPolling || pollTimeout) return;
 		
 		pollTimeout = setTimeout(async () => {
 			pollTimeout = null;
+			if (!isPolling) return;
 			
 			// If disconnected, mark as retrying before fetch
 			if (isDisconnected) {
@@ -168,6 +199,8 @@ function createContextStore() {
 			// If still disconnected after fetch, increase backoff exponentially
 			if (isDisconnected) {
 				currentBackoff = Math.min(currentBackoff * 2, maxBackoff);
+			} else {
+				currentBackoff = pollInterval;
 			}
 			
 			// Schedule next poll
@@ -186,13 +219,18 @@ function createContextStore() {
 
 		// Start polling for context changes with exponential backoff
 		startPolling(intervalMs: number = 2000): void {
-			if (pollTimeout) return;
+			pollInterval = intervalMs;
+
+			if (isPolling) return;
+			isPolling = true;
 			
-			// Set initial backoff based on interval
-			currentBackoff = intervalMs;
+			// Set initial poll delay based on configured interval
+			currentBackoff = pollInterval;
 			
 			// Initial fetch
-			this.fetch();
+			this.fetch().catch(() => {
+				// Errors are handled in fetchWithRetry
+			});
 			
 			// Start polling loop
 			scheduleNextPoll();
@@ -200,15 +238,20 @@ function createContextStore() {
 
 		// Stop polling
 		stopPolling(): void {
+			isPolling = false;
 			if (pollTimeout) {
 				clearTimeout(pollTimeout);
 				pollTimeout = null;
+			}
+			if (currentAbortController) {
+				currentAbortController.abort();
+				currentAbortController = null;
 			}
 		},
 		
 		// Manual retry - resets backoff
 		async retry(): Promise<void> {
-			currentBackoff = baseBackoff;
+			currentBackoff = pollInterval;
 			await fetchWithRetry();
 		}
 	};

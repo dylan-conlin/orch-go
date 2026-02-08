@@ -15,6 +15,9 @@
 	import { daemon } from '$lib/stores/daemon';
 	import { attention, type CompletedIssue } from '$lib/stores/attention';
 	import { focus, type FocusInfo } from '$lib/stores/focus';
+
+	const WORK_GRAPH_POLL_INTERVAL_MS = 10000;
+	const CONTEXT_POLL_INTERVAL_MS = 10000;
 	
 	// Derived store for project_dir to isolate reactivity
 	// Only triggers reactive blocks when project_dir changes, not other context fields
@@ -57,6 +60,7 @@
 	let error: string | null = null;
 	let currentView: 'issues' | 'artifacts' | 'completed' = 'issues';
 	let refreshInterval: ReturnType<typeof setInterval> | null = null;
+	let isRefreshCycleInFlight = false;
 	let seenIssuesState: SeenIssuesState = { byProject: {} };
 	let currentProjectDir: string | undefined = undefined;
 	let projectChangeDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -92,8 +96,8 @@
 		// Load seen issues from localStorage
 		seenIssuesState = loadSeenIssues();
 		
-		// Start orchestratorContext polling (2 seconds like old dashboard)
-		orchestratorContext.startPolling(2000);
+		// Start orchestratorContext polling (slower cadence to avoid backend saturation)
+		orchestratorContext.startPolling(CONTEXT_POLL_INTERVAL_MS);
 
 		const projectDir = $orchestratorContext?.project_dir;
 		currentProjectDir = projectDir;
@@ -137,18 +141,33 @@
 		// Connect to SSE for real-time agent updates (WIP section)
 		connectSSE();
 		
-		// Poll workGraph periodically (5 seconds for faster updates)
-		refreshInterval = setInterval(() => {
-			const projectDir = $orchestratorContext?.project_dir;
-			workGraph.fetch(projectDir, 'open', focusedBeadsId).catch(console.error);
-			wip.fetchQueued(projectDir).catch(console.error);
-			daemon.fetch().catch(console.error);
-			attention.fetch(projectDir).catch(console.error); // Poll attention with project filter
-			// Also poll kbArtifacts if in artifacts view
-			if (currentView === 'artifacts' && $kbArtifacts) {
-				kbArtifacts.fetch(projectDir, '7d').catch(console.error);
+		// Poll work graph endpoints at a bounded cadence
+		refreshInterval = setInterval(async () => {
+			if (isRefreshCycleInFlight) {
+				return;
 			}
-		}, 5000);
+
+			isRefreshCycleInFlight = true;
+			try {
+				const projectDir = $orchestratorContext?.project_dir;
+
+				const requests: Promise<void>[] = [
+					workGraph.fetch(projectDir, 'open', focusedBeadsId),
+					wip.fetchQueued(projectDir),
+					daemon.fetch(),
+					attention.fetch(projectDir), // Poll attention with project filter
+				];
+
+				// Also poll kbArtifacts if in artifacts view
+				if (currentView === 'artifacts' && $kbArtifacts) {
+					requests.push(kbArtifacts.fetch(projectDir, '7d'));
+				}
+
+				await Promise.allSettled(requests);
+			} finally {
+				isRefreshCycleInFlight = false;
+			}
+		}, WORK_GRAPH_POLL_INTERVAL_MS);
 	});
 
 	// Subscribe to focus changes and update focusedBeadsId for auto-scoping
@@ -169,6 +188,7 @@
 			clearInterval(refreshInterval);
 			refreshInterval = null;
 		}
+		isRefreshCycleInFlight = false;
 		if (projectChangeDebounceTimeout) {
 			clearTimeout(projectChangeDebounceTimeout);
 			projectChangeDebounceTimeout = null;

@@ -231,10 +231,12 @@ This applies to:
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be {{.ProjectDir}})
 {{if .IsInvestigationSkill}}
-2. **SET UP investigation file:** Run ` + "`kb create investigation {{.InvestigationSlug}}`" + ` to create from template
-   - This creates: ` + "`.kb/investigations/simple/YYYY-MM-DD-{{.InvestigationSlug}}.md`" + `
-   - This file is your coordination artifact (replaces WORKSPACE.md)
-   - If command fails, report to orchestrator immediately
+2. **SET UP investigation file:** Run ` + "`kb create investigation {{.InvestigationSlug}} --defect-class <class>`" + ` to create from template
+    - This creates: ` + "`.kb/investigations/simple/YYYY-MM-DD-{{.InvestigationSlug}}.md`" + `
+    - This file is your coordination artifact (replaces WORKSPACE.md)
+   - Defect class is REQUIRED (mechanism, not symptom). Use one of:
+     ` + "`unbounded-growth`" + `, ` + "`race-condition`" + `, ` + "`missing-cleanup`" + `, ` + "`state-corruption`" + `, ` + "`resource-leak`" + `, ` + "`configuration-drift`" + `, ` + "`integration-mismatch`" + `
+    - If command fails, report to orchestrator immediately
 {{if not .NoTrack}}
    - **IMPORTANT:** After running ` + "`kb create`" + `, report the actual path via:
      ` + "`bd comment {{.BeadsID}} \"investigation_path: /path/to/file.md\"`" + `
