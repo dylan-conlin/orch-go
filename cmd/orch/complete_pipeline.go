@@ -275,7 +275,23 @@ func enrichGitTarget(target *CompletionTarget) {
 }
 
 func readGitMetadataFromManifest(workspacePath string) (string, string, string) {
-	return readGitIsolationManifest(workspacePath)
+	manifest, err := spawn.ReadAgentManifest(workspacePath)
+	if err != nil || manifest == nil {
+		return "", "", ""
+	}
+
+	source := strings.TrimSpace(manifest.SourceProjectDir)
+	if source == "" {
+		source = strings.TrimSpace(manifest.ProjectDir)
+	}
+
+	worktree := strings.TrimSpace(manifest.GitWorktreeDir)
+	if worktree == "" {
+		worktree = strings.TrimSpace(manifest.ProjectDir)
+	}
+
+	branch := strings.TrimSpace(manifest.GitBranch)
+	return source, worktree, branch
 }
 
 // ──────────────────────────────────────────────────────────────

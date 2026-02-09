@@ -23,6 +23,20 @@ func getGitBaseline(projectDir string) string {
 	return strings.TrimSpace(string(output))
 }
 
+func getGitBranch(projectDir string) string {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	branch := strings.TrimSpace(string(output))
+	if branch == "HEAD" {
+		return ""
+	}
+	return branch
+}
+
 // CreateScreenshotsDir creates the screenshots/ subdirectory in a workspace.
 // This directory is for agent-produced visual artifacts.
 func CreateScreenshotsDir(workspacePath string) error {
@@ -227,15 +241,18 @@ func WriteContext(cfg *Config) error {
 	}
 
 	manifest := AgentManifest{
-		WorkspaceName: cfg.WorkspaceName,
-		Skill:         cfg.SkillName,
-		BeadsID:       cfg.BeadsID,
-		ProjectDir:    cfg.ProjectDir,
-		GitBaseline:   getGitBaseline(cfg.ProjectDir),
-		SpawnTime:     spawnTime.Format(time.RFC3339),
-		Tier:          cfg.Tier,
-		SpawnMode:     cfg.SpawnMode,
-		Model:         cfg.Model,
+		WorkspaceName:    cfg.WorkspaceName,
+		Skill:            cfg.SkillName,
+		BeadsID:          cfg.BeadsID,
+		SourceProjectDir: cfg.ProjectDir,
+		ProjectDir:       cfg.ProjectDir,
+		GitWorktreeDir:   cfg.ProjectDir,
+		GitBranch:        getGitBranch(cfg.ProjectDir),
+		GitBaseline:      getGitBaseline(cfg.ProjectDir),
+		SpawnTime:        spawnTime.Format(time.RFC3339),
+		Tier:             cfg.Tier,
+		SpawnMode:        cfg.SpawnMode,
+		Model:            cfg.Model,
 	}
 	if err := WriteAgentManifest(workspacePath, manifest); err != nil {
 		return fmt.Errorf("failed to write agent manifest: %w", err)
