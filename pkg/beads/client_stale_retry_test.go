@@ -276,6 +276,58 @@ func TestRunBDCommand_DoesNotRetryAllowStaleWhenJSONLNotRecent(t *testing.T) {
 	}
 }
 
+func TestRunBDCommand_FallsBackToProjectRootWhenWorktreeMissing(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(projectDir, ".beads"), 0o755); err != nil {
+		t.Fatalf("mkdir .beads: %v", err)
+	}
+
+	worktreeDir := filepath.Join(projectDir, ".orch", "worktrees", "agent-test")
+	if err := os.MkdirAll(worktreeDir, 0o755); err != nil {
+		t.Fatalf("mkdir worktree dir: %v", err)
+	}
+	if err := os.RemoveAll(worktreeDir); err != nil {
+		t.Fatalf("remove worktree dir: %v", err)
+	}
+
+	pwdLog := filepath.Join(projectDir, "pwd.log")
+	scriptPath := filepath.Join(projectDir, "fake-bd.sh")
+	script := strings.Join([]string{
+		"#!/bin/sh",
+		"pwd > \"" + pwdLog + "\"",
+		"printf 'ok'",
+	}, "\n") + "\n"
+
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake bd script: %v", err)
+	}
+
+	output, err := runBDCommand(worktreeDir, scriptPath, nil, false, "show", "orch-go-1", "--json")
+	if err != nil {
+		t.Fatalf("runBDCommand returned error: %v", err)
+	}
+	if got := strings.TrimSpace(string(output)); got != "ok" {
+		t.Fatalf("runBDCommand output = %q, want %q", got, "ok")
+	}
+
+	pwdBytes, err := os.ReadFile(pwdLog)
+	if err != nil {
+		t.Fatalf("read pwd log: %v", err)
+	}
+	got := strings.TrimSpace(string(pwdBytes))
+	gotEval, gotErr := filepath.EvalSymlinks(got)
+	if gotErr != nil {
+		t.Fatalf("eval symlinks for command dir: %v", gotErr)
+	}
+	wantEval, wantErr := filepath.EvalSymlinks(projectDir)
+	if wantErr != nil {
+		t.Fatalf("eval symlinks for expected dir: %v", wantErr)
+	}
+	if gotEval != wantEval {
+		t.Fatalf("command ran in %q, want %q", gotEval, wantEval)
+	}
+}
+
 func writeLastImportTime(t *testing.T, workDir string, ts time.Time) {
 	t.Helper()
 

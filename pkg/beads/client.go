@@ -147,14 +147,19 @@ func runBDCommand(workDir, bdPath string, env []string, combined bool, args ...s
 		bdPath = getBdPath()
 	}
 
+	resolvedWorkDir, err := resolveBDWorkDir(workDir)
+	if err != nil {
+		return nil, err
+	}
+
 	cmd := exec.CommandContext(execCtx, bdPath, prependSandboxArg(args)...)
 	if env != nil {
 		cmd.Env = env
 	} else {
 		setupFallbackEnv(cmd)
 	}
-	if workDir != "" {
-		cmd.Dir = workDir
+	if resolvedWorkDir != "" {
+		cmd.Dir = resolvedWorkDir
 	}
 
 	var output []byte
@@ -167,7 +172,7 @@ func runBDCommand(workDir, bdPath string, env []string, combined bool, args ...s
 		log.Printf("event=bd_subprocess_timeout component=beads operation=%q timeout=%s", operation, DefaultCLITimeout)
 	}
 
-	if shouldRetryWithAllowStale(workDir, args, err, output) {
+	if shouldRetryWithAllowStale(resolvedWorkDir, args, err, output) {
 		retryArgs := append(append([]string{}, args...), "--allow-stale")
 		retryCmd := exec.CommandContext(execCtx, bdPath, prependSandboxArg(retryArgs)...)
 		if env != nil {
@@ -175,8 +180,8 @@ func runBDCommand(workDir, bdPath string, env []string, combined bool, args ...s
 		} else {
 			setupFallbackEnv(retryCmd)
 		}
-		if workDir != "" {
-			retryCmd.Dir = workDir
+		if resolvedWorkDir != "" {
+			retryCmd.Dir = resolvedWorkDir
 		}
 
 		if combined {
@@ -186,6 +191,58 @@ func runBDCommand(workDir, bdPath string, env []string, combined bool, args ...s
 	}
 
 	return output, err
+}
+
+func resolveBDWorkDir(workDir string) (string, error) {
+	dir := strings.TrimSpace(workDir)
+	if dir == "" {
+		dir = strings.TrimSpace(DefaultDir)
+	}
+	if dir == "" {
+		return "", nil
+	}
+
+	info, err := os.Stat(dir)
+	if err == nil {
+		if !info.IsDir() {
+			return "", fmt.Errorf("bd workdir is not a directory: %s", dir)
+		}
+		return dir, nil
+	}
+	if !os.IsNotExist(err) {
+		return "", fmt.Errorf("failed to inspect bd workdir %s: %w", dir, err)
+	}
+
+	fallbackDir, fallbackErr := findNearestBeadsProjectDir(dir)
+	if fallbackErr != nil {
+		return "", fmt.Errorf("bd workdir %s does not exist and no project root fallback was found", dir)
+	}
+
+	log.Printf("event=bd_workdir_fallback component=beads from=%q to=%q", dir, fallbackDir)
+	return fallbackDir, nil
+}
+
+func findNearestBeadsProjectDir(dir string) (string, error) {
+	current := filepath.Clean(dir)
+
+	for {
+		info, err := os.Stat(current)
+		if err == nil && info.IsDir() {
+			beadsDir := filepath.Join(current, ".beads")
+			beadsInfo, beadsErr := os.Stat(beadsDir)
+			if beadsErr == nil && beadsInfo.IsDir() {
+				return current, nil
+			}
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+
+	return "", fmt.Errorf("no beads project root found for %s", dir)
 }
 
 func shouldRetryWithAllowStale(workDir string, args []string, err error, output []byte) bool {
