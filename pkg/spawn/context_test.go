@@ -2185,3 +2185,109 @@ func TestGenerateContext_ProbeGuidance(t *testing.T) {
 		}
 	})
 }
+
+func TestApplySpawnContextBudget_TruncatesKBBeforeConstraints(t *testing.T) {
+	decisionBody := strings.Repeat("decision-detail-", 1200)
+
+	kbContext := "## PRIOR KNOWLEDGE (from kb context)\n\n" +
+		"**Query:** \"spawn context budget\"\n\n" +
+		"### Constraints (MUST respect)\n" +
+		"- keep-this-constraint\n" +
+		"  - Reason: must remain if possible\n\n" +
+		"### Prior Decisions\n" +
+		"- drop-this-decision " + decisionBody + "\n" +
+		"  - Reason: intentionally large for truncation test\n\n" +
+		"**IMPORTANT:** The above context represents existing knowledge and decisions.\n\n" +
+		"> Evidence Hierarchy: Prior investigations are claims to verify, not truth.\n"
+
+	cfg := &Config{
+		Task:          "implement spawn context budget",
+		SkillName:     "feature-impl",
+		Project:       "test-project",
+		ProjectDir:    "/tmp/test",
+		WorkspaceName: "og-feat-budget-test",
+		BeadsID:       "test-123",
+		Tier:          TierLight,
+		SkillContent:  "# Feature Impl\n\nFollow implementation guidance.\n",
+		KBContext:     kbContext,
+	}
+
+	full, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
+	}
+
+	fullTokens := EstimateTokens(len(full))
+	if fullTokens <= 3000 {
+		t.Fatalf("expected full context to be large enough for truncation, got %d tokens", fullTokens)
+	}
+
+	cfg.ContextBudget = fullTokens - 2000
+	truncated, err := applySpawnContextBudget(cfg, full)
+	if err != nil {
+		t.Fatalf("applySpawnContextBudget failed: %v", err)
+	}
+
+	if EstimateTokens(len(truncated)) > cfg.ContextBudget {
+		t.Fatalf("truncated context exceeds budget: got %d want <= %d", EstimateTokens(len(truncated)), cfg.ContextBudget)
+	}
+	if !strings.Contains(truncated, "TASK: implement spawn context budget") {
+		t.Error("expected task section to be preserved")
+	}
+	if !strings.Contains(truncated, "## SKILL GUIDANCE (feature-impl)") {
+		t.Error("expected skill guidance section to be preserved")
+	}
+	if !strings.Contains(truncated, "keep-this-constraint") {
+		t.Error("expected constraints to be preserved before constraints-truncation stage")
+	}
+	if strings.Contains(truncated, "drop-this-decision") {
+		t.Error("expected prior decisions to be truncated before constraints")
+	}
+}
+
+func TestApplySpawnContextBudget_Deterministic(t *testing.T) {
+	kbContext := "## PRIOR KNOWLEDGE (from kb context)\n\n" +
+		"**Query:** \"spawn context budget\"\n\n" +
+		"### Constraints (MUST respect)\n" +
+		"- constraint-a\n\n" +
+		"### Prior Decisions\n" +
+		"- decision-a " + strings.Repeat("x", 4000) + "\n\n" +
+		"### Related Investigations\n" +
+		"- investigation-a " + strings.Repeat("y", 4000) + "\n\n" +
+		"**IMPORTANT:** The above context represents existing knowledge and decisions.\n\n" +
+		"> Evidence Hierarchy: Prior investigations are claims to verify, not truth.\n"
+
+	cfg := &Config{
+		Task:          "test deterministic truncation",
+		SkillName:     "feature-impl",
+		Project:       "test-project",
+		ProjectDir:    "/tmp/test",
+		WorkspaceName: "og-feat-budget-deterministic",
+		BeadsID:       "test-456",
+		Tier:          TierLight,
+		SkillContent:  "# Feature Impl\n\nFollow implementation guidance.\n",
+		KBContext:     kbContext,
+		ContextBudget: 1200,
+	}
+
+	full, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
+	}
+
+	first, err := applySpawnContextBudget(cfg, full)
+	if err != nil {
+		t.Fatalf("first applySpawnContextBudget failed: %v", err)
+	}
+	second, err := applySpawnContextBudget(cfg, full)
+	if err != nil {
+		t.Fatalf("second applySpawnContextBudget failed: %v", err)
+	}
+
+	if first != second {
+		t.Error("expected deterministic truncation output for identical input")
+	}
+	if EstimateTokens(len(first)) > cfg.ContextBudget {
+		t.Fatalf("truncated context exceeds budget: got %d want <= %d", EstimateTokens(len(first)), cfg.ContextBudget)
+	}
+}

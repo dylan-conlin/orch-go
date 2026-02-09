@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	eventlog "github.com/dylan-conlin/orch-go/pkg/events"
 )
 
 // EpicOrphanCollector collects attention signals for orphaned children of force-closed epics.
@@ -38,8 +40,16 @@ type epicOrphanedEvent struct {
 
 // Collect gathers attention items for orphaned epic children.
 func (c *EpicOrphanCollector) Collect(role string) ([]AttentionItem, error) {
-	// Read events file
-	data, err := os.ReadFile(c.eventsPath)
+	const maxRecentLines = 100
+
+	recentLines := make([]string, 0, maxRecentLines)
+	err := eventlog.ReadCompactedJSONL(c.eventsPath, func(line string) error {
+		recentLines = append(recentLines, line)
+		if len(recentLines) > maxRecentLines {
+			recentLines = recentLines[1:]
+		}
+		return nil
+	})
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil // No events file yet
@@ -47,46 +57,39 @@ func (c *EpicOrphanCollector) Collect(role string) ([]AttentionItem, error) {
 		return nil, fmt.Errorf("failed to read events: %w", err)
 	}
 
-	// Parse JSONL and find recent epic.orphaned events
+	// Parse recent JSONL events and find epic.orphaned events.
 	var items []AttentionItem
-	lines := strings.Split(string(data), "\n")
-	
-	// Only look at last 100 events for performance
-	startIdx := 0
-	if len(lines) > 100 {
-		startIdx = len(lines) - 100
-	}
-	
+
 	// Track which epic orphan events we've already processed (dedup by epic ID)
 	seen := make(map[string]bool)
-	
-	for i := len(lines) - 1; i >= startIdx; i-- {
-		line := strings.TrimSpace(lines[i])
+
+	for i := len(recentLines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(recentLines[i])
 		if line == "" {
 			continue
 		}
-		
+
 		var event epicOrphanedEvent
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			continue
 		}
-		
+
 		if event.Type != "epic.orphaned" {
 			continue
 		}
-		
+
 		// Skip if we've already seen this epic (take most recent)
 		if seen[event.Data.EpicID] {
 			continue
 		}
 		seen[event.Data.EpicID] = true
-		
+
 		// Skip events older than 7 days
 		eventTime := time.Unix(event.Timestamp, 0)
 		if time.Since(eventTime) > 7*24*time.Hour {
 			continue
 		}
-		
+
 		// Calculate priority based on role
 		priority := 50 // Default medium priority
 		switch role {
@@ -97,7 +100,7 @@ func (c *EpicOrphanCollector) Collect(role string) ([]AttentionItem, error) {
 		case "daemon":
 			priority = 60 // Lower for daemon - can't auto-fix this
 		}
-		
+
 		item := AttentionItem{
 			ID:          fmt.Sprintf("epic-orphan-%s", event.Data.EpicID),
 			Source:      "epic-orphan",
@@ -118,6 +121,6 @@ func (c *EpicOrphanCollector) Collect(role string) ([]AttentionItem, error) {
 		}
 		items = append(items, item)
 	}
-	
+
 	return items, nil
 }

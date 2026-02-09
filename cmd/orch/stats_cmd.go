@@ -2,7 +2,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/action"
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/spf13/cobra"
 )
 
@@ -286,41 +286,23 @@ func getEventsPath() string {
 // parseEvents reads events from events.jsonl, returning all events.
 // Time window filtering is done in aggregateStats to support multi-window metrics.
 func parseEvents(path string) ([]StatsEvent, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("events.jsonl not found at %s - no events recorded yet", path)
-		}
-		return nil, fmt.Errorf("failed to open events file: %w", err)
-	}
-	defer file.Close()
-
-	var events []StatsEvent
-	scanner := bufio.NewScanner(file)
-	// Increase buffer size for potentially long lines
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
+	var parsedEvents []StatsEvent
+	err := events.ReadCompactedJSONL(path, func(line string) error {
 		var event StatsEvent
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			// Skip malformed lines
-			continue
+			return nil // Skip malformed lines
 		}
-
-		events = append(events, event)
+		parsedEvents = append(parsedEvents, event)
+		return nil
+	})
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("events.jsonl not found at %s - no events recorded yet: %w", path, os.ErrNotExist)
+		}
+		return nil, fmt.Errorf("failed to read events file: %w", err)
 	}
 
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading events: %w", err)
-	}
-
-	return events, nil
+	return parsedEvents, nil
 }
 
 // escapeHatchSpawn tracks a spawn that used the escape hatch (--backend claude)

@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
-	"os"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 )
@@ -24,34 +22,21 @@ func getGapAnalysisFromEvents(beadsIDs []string) map[string]*GapAPIResponse {
 
 	// Read events file
 	logPath := events.DefaultLogPath()
-	file, err := os.Open(logPath)
-	if err != nil {
-		return result
-	}
-	defer file.Close()
-
-	// Scan events for spawn events matching our beads IDs
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
+	err := events.ReadCompactedJSONL(logPath, func(line string) error {
 		var event events.Event
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			continue
+			return nil
 		}
 
 		// Only process spawn events
 		if event.Type != "session.spawned" {
-			continue
+			return nil
 		}
 
 		// Check if this event is for one of our beads IDs
 		beadsID, ok := event.Data["beads_id"].(string)
 		if !ok || !beadsIDSet[beadsID] {
-			continue
+			return nil
 		}
 
 		// Already have gap analysis for this beads ID? Skip (we want the most recent)
@@ -65,6 +50,10 @@ func getGapAnalysisFromEvents(beadsIDs []string) map[string]*GapAPIResponse {
 		if gapData != nil {
 			result[beadsID] = gapData
 		}
+		return nil
+	})
+	if err != nil {
+		return result
 	}
 
 	return result

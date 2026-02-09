@@ -43,6 +43,34 @@ func TestParseEvents(t *testing.T) {
 	}
 }
 
+func TestParseEventsIncludesRotatedArchives(t *testing.T) {
+	tmpDir := t.TempDir()
+	eventsPath := filepath.Join(tmpDir, "events.jsonl")
+	now := time.Now().Unix()
+
+	rotated := `{"type":"session.spawned","session_id":"old","timestamp":` + itoa(now-7200) + `,"data":{"skill":"feature-impl","beads_id":"old-1"}}` + "\n"
+	current := `{"type":"agent.completed","timestamp":` + itoa(now-3600) + `,"data":{"beads_id":"old-1"}}` + "\n"
+
+	if err := os.WriteFile(eventsPath+".1", []byte(rotated), 0644); err != nil {
+		t.Fatalf("write rotated events: %v", err)
+	}
+	if err := os.WriteFile(eventsPath, []byte(current), 0644); err != nil {
+		t.Fatalf("write current events: %v", err)
+	}
+
+	parsed, err := parseEvents(eventsPath)
+	if err != nil {
+		t.Fatalf("parseEvents failed: %v", err)
+	}
+
+	if len(parsed) != 2 {
+		t.Fatalf("expected 2 events from compacted logs, got %d", len(parsed))
+	}
+	if parsed[0].Type != "session.spawned" || parsed[1].Type != "agent.completed" {
+		t.Fatalf("unexpected event order: %#v", parsed)
+	}
+}
+
 func TestParseEventsTimeFiltering(t *testing.T) {
 	tmpDir := t.TempDir()
 	eventsPath := filepath.Join(tmpDir, "events.jsonl")
@@ -174,9 +202,9 @@ func TestAggregateStatsEmptyEvents(t *testing.T) {
 
 func TestAggregateStatsEscapeHatch(t *testing.T) {
 	now := time.Now().Unix()
-	sevenDaysAgo := now - (7 * 24 * 60 * 60) + 3600   // 7 days ago + 1 hour (within 7d window)
-	thirtyDaysAgo := now - (25 * 24 * 60 * 60)        // 25 days ago (within 30d, outside 7d)
-	veryOld := now - (60 * 24 * 60 * 60)              // 60 days ago (outside 30d)
+	sevenDaysAgo := now - (7 * 24 * 60 * 60) + 3600 // 7 days ago + 1 hour (within 7d window)
+	thirtyDaysAgo := now - (25 * 24 * 60 * 60)      // 25 days ago (within 30d, outside 7d)
+	veryOld := now - (60 * 24 * 60 * 60)            // 60 days ago (outside 30d)
 
 	events := []StatsEvent{
 		// Recent escape hatch spawn with account (within 7d)

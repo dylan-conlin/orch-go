@@ -29,6 +29,7 @@ func saveSpawnPipelineGlobals() func() {
 	oldSpawnMode := spawnMode
 	oldSpawnPhases := spawnPhases
 	oldSpawnDesignWorkspace := spawnDesignWorkspace
+	oldSpawnContextBudget := spawnContextBudget
 
 	return func() {
 		spawnBypassTriage = oldSpawnBypassTriage
@@ -52,6 +53,7 @@ func saveSpawnPipelineGlobals() func() {
 		spawnMode = oldSpawnMode
 		spawnPhases = oldSpawnPhases
 		spawnDesignWorkspace = oldSpawnDesignWorkspace
+		spawnContextBudget = oldSpawnContextBudget
 	}
 }
 
@@ -288,6 +290,7 @@ func TestBuildSpawnConfigHappyPathNoTrack(t *testing.T) {
 	spawnMode = "tdd"
 	spawnPhases = ""
 	spawnDesignWorkspace = ""
+	spawnContextBudget = 9000
 
 	p := &spawnPipeline{
 		task:          "add critical-path tests",
@@ -312,6 +315,9 @@ func TestBuildSpawnConfigHappyPathNoTrack(t *testing.T) {
 	}
 	if p.cfg.Validation != "tests" {
 		t.Fatalf("Validation = %q, want %q", p.cfg.Validation, "tests")
+	}
+	if p.cfg.ContextBudget != 9000 {
+		t.Fatalf("ContextBudget = %d, want %d", p.cfg.ContextBudget, 9000)
 	}
 	if p.cfg.WorkspaceName != p.workspaceName {
 		t.Fatalf("WorkspaceName = %q, want %q", p.cfg.WorkspaceName, p.workspaceName)

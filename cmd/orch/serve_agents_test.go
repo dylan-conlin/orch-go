@@ -199,6 +199,37 @@ func TestReadLastNEvents(t *testing.T) {
 	}
 }
 
+func TestReadLastNEventsIncludesRotatedArchives(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+
+	writeEvent := func(path string, event events.Event) {
+		t.Helper()
+		data, err := json.Marshal(event)
+		if err != nil {
+			t.Fatalf("marshal event: %v", err)
+		}
+		if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+			t.Fatalf("write event: %v", err)
+		}
+	}
+
+	writeEvent(logPath+".1", events.Event{Type: "session.spawned", SessionID: "old", Timestamp: time.Now().Add(-2 * time.Hour).Unix()})
+	writeEvent(logPath, events.Event{Type: "session.completed", SessionID: "old", Timestamp: time.Now().Add(-1 * time.Hour).Unix()})
+
+	eventList, err := readLastNEvents(logPath, 100)
+	if err != nil {
+		t.Fatalf("readLastNEvents failed: %v", err)
+	}
+
+	if len(eventList) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(eventList))
+	}
+	if eventList[0].Type != "session.spawned" || eventList[1].Type != "session.completed" {
+		t.Fatalf("unexpected event order: %#v", eventList)
+	}
+}
+
 func TestHandleAgentlogJSONResponse(t *testing.T) {
 	srv := newTestServer()
 	// Note: This test uses the default log path which may or may not exist

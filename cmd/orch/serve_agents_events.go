@@ -203,6 +203,11 @@ func (s *Server) handleAgentlogSSE(w http.ResponseWriter, r *http.Request) {
 				reader = bufio.NewReader(file)
 			}
 
+			// Reopen if current log file was rotated.
+			if err := reopenIfLogRotated(logPath, &file, &reader); err != nil {
+				continue
+			}
+
 			for {
 				line, err := reader.ReadString('\n')
 				if err != nil {
@@ -232,33 +237,52 @@ func (s *Server) handleAgentlogSSE(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func reopenIfLogRotated(logPath string, file **os.File, reader **bufio.Reader) error {
+	if file == nil || *file == nil {
+		return nil
+	}
+
+	openInfo, err := (*file).Stat()
+	if err != nil {
+		return err
+	}
+
+	currentInfo, err := os.Stat(logPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	if os.SameFile(openInfo, currentInfo) {
+		return nil
+	}
+
+	_ = (*file).Close()
+
+	newFile, err := os.Open(logPath)
+	if err != nil {
+		return err
+	}
+
+	*file = newFile
+	*reader = bufio.NewReader(newFile)
+	return nil
+}
+
 // readLastNEvents reads the last n events from a JSONL file.
 func readLastNEvents(path string, n int) ([]events.Event, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
 	var allEvents []events.Event
-	scanner := bufio.NewScanner(file)
-	// Increase buffer size to handle large event lines (e.g., events with
-	// embedded transcripts can exceed the default 64KB scanner buffer).
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // up to 1MB per line
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
+	err := events.ReadCompactedJSONL(path, func(line string) error {
 		var event events.Event
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			continue // Skip invalid lines
+			return nil // Skip invalid lines
 		}
 		allEvents = append(allEvents, event)
-	}
-
-	if err := scanner.Err(); err != nil {
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 

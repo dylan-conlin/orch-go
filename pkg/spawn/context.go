@@ -212,6 +212,10 @@ func WriteContext(cfg *Config) error {
 	if err != nil {
 		return err
 	}
+	content, err = applySpawnContextBudget(cfg, content)
+	if err != nil {
+		return fmt.Errorf("failed to enforce context budget: %w", err)
+	}
 
 	// Ensure SYNTHESIS.md template exists in the project (only for full tier).
 	if cfg.Tier != TierLight {

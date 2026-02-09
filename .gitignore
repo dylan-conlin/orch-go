@@ -30,6 +30,7 @@ tmp/
 # Dev/Ops mode (local state, not committed)
 .dev-mode
 .orch/workspace/
+.orch/worktrees/
 .orch/investigations/
 
 # Playwright outputs (generated)

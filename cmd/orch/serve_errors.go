@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -56,24 +55,6 @@ func (s *Server) handleErrors(w http.ResponseWriter, r *http.Request) {
 
 	logPath := events.DefaultLogPath()
 
-	file, err := os.Open(logPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// Return empty response if file doesn't exist
-			resp := ErrorsAPIResponse{
-				ByType: make(map[string]int),
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
-			return
-		}
-		resp := ErrorsAPIResponse{Error: fmt.Sprintf("Failed to open events file: %v", err)}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-	defer file.Close()
-
 	now := time.Now()
 	day24h := now.Add(-24 * time.Hour)
 	days7 := now.Add(-7 * 24 * time.Hour)
@@ -82,21 +63,15 @@ func (s *Server) handleErrors(w http.ResponseWriter, r *http.Request) {
 	byType := make(map[string]int)
 	patternCounts := make(map[string]*ErrorPattern)
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
+	err := events.ReadCompactedJSONL(logPath, func(line string) error {
 		var event events.Event
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			continue
+			return nil
 		}
 
 		// Only process error-related events
 		if event.Type != events.EventTypeSessionError && event.Type != "agent.abandoned" {
-			continue
+			return nil
 		}
 
 		ts := time.Unix(event.Timestamp, 0)
@@ -152,6 +127,23 @@ func (s *Server) handleErrors(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		return nil
+	})
+
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Return empty response if file doesn't exist
+			resp := ErrorsAPIResponse{
+				ByType: make(map[string]int),
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+		resp := ErrorsAPIResponse{Error: fmt.Sprintf("Failed to read events file: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
 	}
 
 	// Count errors by time window

@@ -586,6 +586,7 @@ func (p *spawnPipeline) buildSpawnConfig() error {
 		NoTrack:                  spawnNoTrack || p.skipBeadsForOrchestrator,
 		SkipArtifactCheck:        spawnSkipArtifactCheck,
 		KBContext:                p.kbContext,
+		ContextBudget:            spawnContextBudget,
 		IncludeServers:           spawn.DefaultIncludeServersForSkill(p.skillName),
 		GapAnalysis:              p.gapAnalysis,
 		IsBug:                    p.isBug,

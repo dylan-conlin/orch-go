@@ -389,15 +389,11 @@ func percentile(values []float64, p float64) float64 {
 }
 
 func collectAbandonmentReasons(eventsPath string) ([]OutcomeReasonCount, error) {
-	if _, err := os.Stat(eventsPath); err != nil {
+	events, err := parseEvents(eventsPath)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return []OutcomeReasonCount{}, nil
 		}
-		return nil, err
-	}
-
-	events, err := parseEvents(eventsPath)
-	if err != nil {
 		return nil, err
 	}
 

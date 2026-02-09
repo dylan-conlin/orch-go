@@ -2,12 +2,13 @@
 package daemon
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
+
+	eventlog "github.com/dylan-conlin/orch-go/pkg/events"
 )
 
 // UtilizationMetrics tracks the ratio of daemon-spawned vs manual-spawned agents.
@@ -75,38 +76,22 @@ func getEventsPath() string {
 
 // parseUtilizationEvents reads events from events.jsonl.
 func parseUtilizationEvents(path string) ([]UtilizationEvent, error) {
-	file, err := os.Open(path)
+	var events []UtilizationEvent
+	err := eventlog.ReadCompactedJSONL(path, func(line string) error {
+		var event UtilizationEvent
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			// Skip malformed lines
+			return nil
+		}
+
+		events = append(events, event)
+		return nil
+	})
 	if err != nil {
 		if os.IsNotExist(err) {
 			// No events yet - return empty slice
 			return []UtilizationEvent{}, nil
 		}
-		return nil, err
-	}
-	defer file.Close()
-
-	var events []UtilizationEvent
-	scanner := bufio.NewScanner(file)
-	// Increase buffer size for potentially long lines
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
-		var event UtilizationEvent
-		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			// Skip malformed lines
-			continue
-		}
-
-		events = append(events, event)
-	}
-
-	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
 

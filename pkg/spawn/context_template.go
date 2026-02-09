@@ -409,12 +409,15 @@ If you do not emit Phase: Complete, your work will be lost
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
 func GenerateContext(cfg *Config) (string, error) {
+	data := buildContextData(cfg)
+	return renderSpawnContextTemplate(data)
+}
+
+func renderSpawnContextTemplate(data contextData) (string, error) {
 	tmpl, err := template.New("spawn_context").Parse(SpawnContextTemplate)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse template: %w", err)
 	}
-
-	data := buildContextData(cfg)
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {

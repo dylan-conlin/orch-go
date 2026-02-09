@@ -18,6 +18,10 @@ var regexAlphanumeric = regexp.MustCompile(`[a-zA-Z0-9]+`)
 const (
 	TierLight = "light" // Lightweight spawn - skips SYNTHESIS.md requirement
 	TierFull  = "full"  // Full spawn - requires SYNTHESIS.md for knowledge externalization
+
+	// DefaultSpawnContextBudgetTokens is the default max budget for SPAWN_CONTEXT.md.
+	// This budget is enforced after context generation using deterministic truncation.
+	DefaultSpawnContextBudgetTokens = 12000
 )
 
 // SkillTierDefaults maps skills to their default tier.
@@ -188,6 +192,10 @@ type Config struct {
 
 	// KBContext is the formatted kb context to include in SPAWN_CONTEXT.md
 	KBContext string
+
+	// ContextBudget is the token budget for SPAWN_CONTEXT.md.
+	// When <= 0, DefaultSpawnContextBudgetTokens is used.
+	ContextBudget int
 
 	// HasInjectedModels indicates whether model content (summary, invariants, failures)
 	// was injected into the KB context. When true, agents see probe guidance directing
@@ -579,6 +587,15 @@ func (c *Config) RuntimeDir() string {
 		return c.CWD
 	}
 	return c.ProjectDir
+}
+
+// EffectiveContextBudget returns the configured context budget in tokens.
+// Falls back to DefaultSpawnContextBudgetTokens when unset.
+func (c *Config) EffectiveContextBudget() int {
+	if c != nil && c.ContextBudget > 0 {
+		return c.ContextBudget
+	}
+	return DefaultSpawnContextBudgetTokens
 }
 
 // ContextFilePath returns the path to the context file.

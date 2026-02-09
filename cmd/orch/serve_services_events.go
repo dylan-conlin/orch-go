@@ -131,6 +131,11 @@ func (s *Server) handleServiceEventsSSE(w http.ResponseWriter, r *http.Request) 
 				reader = bufio.NewReader(file)
 			}
 
+			// Reopen if current log file was rotated.
+			if err := reopenIfLogRotated(logPath, &file, &reader); err != nil {
+				continue
+			}
+
 			for {
 				line, err := reader.ReadString('\n')
 				if err != nil {

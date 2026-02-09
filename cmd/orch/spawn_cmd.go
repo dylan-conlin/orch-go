@@ -11,6 +11,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/model"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/spf13/cobra"
 )
@@ -50,6 +51,7 @@ var (
 	spawnAcknowledgeHotspot  bool   // Suppress hotspot warning output for this spawn
 	spawnDesignWorkspace     string // Design workspace name for ui-design-session → feature-impl handoff
 	spawnAcknowledgeDecision string // Acknowledge decision conflict to proceed with spawn
+	spawnContextBudget       int    // Token budget for generated SPAWN_CONTEXT.md
 )
 
 var spawnCmd = &cobra.Command{
@@ -216,6 +218,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnAcknowledgeHotspot, "acknowledge-hotspot", false, "Suppress hotspot warning output for this spawn (or set ORCH_SUPPRESS_HOTSPOT=1 for session-level suppression)")
 	spawnCmd.Flags().StringVar(&spawnDesignWorkspace, "design-workspace", "", "Design workspace name from ui-design-session for handoff to feature-impl (e.g., 'og-design-ready-queue-08jan')")
 	spawnCmd.Flags().StringVar(&spawnAcknowledgeDecision, "acknowledge-decision", "", "[DEPRECATED] Decision gate disabled - this flag has no effect")
+	spawnCmd.Flags().IntVar(&spawnContextBudget, "context-budget", spawn.DefaultSpawnContextBudgetTokens, "Token budget for SPAWN_CONTEXT.md (default 12000). Context is deterministically truncated when over budget")
 }
 
 var (

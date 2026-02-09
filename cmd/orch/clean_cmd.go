@@ -64,7 +64,7 @@ Optional cleanup actions:
   --phantoms             Close phantom tmux windows (beads ID but no active session)
   --verify-opencode      Delete orphaned OpenCode disk sessions (not tracked in workspaces)
   --investigations       Archive empty investigation files (agents died before filling template)
-  --stale                Archive old completed workspaces (default: 7 days)
+  --stale                Reconcile stale state rows then archive old completed workspaces (default: 7 days)
   --stale-days N         Set age threshold for --stale (default: 7)
   --worktrees            Prune stale git worktrees under .orch/worktrees (default: 7 days)
   --worktree-days N      Set age threshold for --worktrees (default: 7)
@@ -93,7 +93,7 @@ Examples:
   orch-go clean --phantoms         # Close phantom tmux windows
   orch-go clean --verify-opencode  # Delete orphaned OpenCode disk sessions
   orch-go clean --investigations   # Archive empty investigation templates
-  orch-go clean --stale            # Archive completed workspaces older than 7 days
+  orch-go clean --stale            # Reconcile state cache + archive completed workspaces older than 7 days
   orch-go clean --stale --stale-days 14  # Archive completed workspaces older than 14 days
   orch-go clean --worktrees        # Prune stale git worktrees older than 7 days
   orch-go clean --worktrees --worktree-days 14  # Prune stale git worktrees older than 14 days
@@ -126,7 +126,7 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanWindows, "windows", false, "Close tmux windows for completed agents")
 	cleanCmd.Flags().BoolVar(&cleanPhantoms, "phantoms", false, "Close all phantom tmux windows (stale agent windows)")
 	cleanCmd.Flags().BoolVar(&cleanInvestigations, "investigations", false, "Archive empty investigation files to .kb/investigations/archived/")
-	cleanCmd.Flags().BoolVar(&cleanStale, "stale", false, "Archive completed workspaces older than N days (default: 7)")
+	cleanCmd.Flags().BoolVar(&cleanStale, "stale", false, "Reconcile stale state rows and archive completed workspaces older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanStaleDays, "stale-days", 7, "Age threshold in days for --stale (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanWorktrees, "worktrees", false, "Prune stale git worktrees under .orch/worktrees older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanWorktreeDays, "worktree-days", 7, "Age threshold in days for --worktrees (default: 7)")
@@ -218,8 +218,29 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 	}
 
+	var stateRowsCompleted int
+	var stateRowsAbandoned int
+	var stateOpenMinusBefore int
+	var stateOpenMinusAfter int
+	var registryRowsUpdated int
 	var workspacesArchived int
 	if archiveStale {
+		reconcileResult, reconcileErr := cleanup.ReconcileState(cleanup.ReconcileStateOptions{
+			ServerURL:         serverURL,
+			DryRun:            dryRun,
+			Quiet:             false,
+			ReconcileRegistry: true,
+		})
+		if reconcileErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to reconcile state cache: %v\n", reconcileErr)
+		} else if reconcileResult != nil {
+			stateRowsCompleted = reconcileResult.CompletedRows
+			stateRowsAbandoned = reconcileResult.AbandonedRows
+			stateOpenMinusBefore = reconcileResult.OpenMinusLiveBefore
+			stateOpenMinusAfter = reconcileResult.OpenMinusLiveAfter
+			registryRowsUpdated = reconcileResult.RegistryUpdated
+		}
+
 		workspacesArchived, err = archiveStaleWorkspaces(projectDir, staleDays, dryRun, preserveOrchestrator)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to archive stale workspaces: %v\n", err)
@@ -296,6 +317,12 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 			if archiveStale && workspacesArchived > 0 {
 				fmt.Printf(" Would archive %d stale workspaces.", workspacesArchived)
 			}
+			if archiveStale && (stateRowsCompleted > 0 || stateRowsAbandoned > 0) {
+				fmt.Printf(" Would reconcile %d stale state rows.", stateRowsCompleted+stateRowsAbandoned)
+			}
+			if archiveStale && registryRowsUpdated > 0 {
+				fmt.Printf(" Would reconcile %d sessions.json entries.", registryRowsUpdated)
+			}
 			if cleanWorktrees && worktreePruned > 0 {
 				fmt.Printf(" Would prune %d stale git worktrees.", worktreePruned)
 				if worktreeBranchesDeleted > 0 {
@@ -316,7 +343,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		return nil
 	}
 
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || worktreePruned > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 || processesKilled > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || worktreePruned > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 || processesKilled > 0 || stateRowsCompleted > 0 || stateRowsAbandoned > 0 || registryRowsUpdated > 0 {
 		projectName := filepath.Base(projectDir)
 		logger := events.NewLogger(events.DefaultLogPath())
 		event := events.Event{
@@ -329,6 +356,11 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 				"disk_sessions_deleted":   diskSessionsDeleted,
 				"investigations_archived": investigationsArchived,
 				"workspaces_archived":     workspacesArchived,
+				"state_rows_completed":    stateRowsCompleted,
+				"state_rows_abandoned":    stateRowsAbandoned,
+				"state_open_minus_before": stateOpenMinusBefore,
+				"state_open_minus_after":  stateOpenMinusAfter,
+				"registry_rows_updated":   registryRowsUpdated,
 				"worktrees_pruned":        worktreePruned,
 				"worktree_branches":       worktreeBranchesDeleted,
 				"untracked_archived":      untrackedArchived,
@@ -354,7 +386,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 	}
 
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || worktreePruned > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 || processesKilled > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || worktreePruned > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 || processesKilled > 0 || stateRowsCompleted > 0 || stateRowsAbandoned > 0 || registryRowsUpdated > 0 {
 		fmt.Println()
 		if windowsClosed > 0 {
 			fmt.Printf("Closed %d tmux windows\n", windowsClosed)
@@ -370,6 +402,12 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 		if workspacesArchived > 0 {
 			fmt.Printf("Archived %d stale workspaces\n", workspacesArchived)
+		}
+		if stateRowsCompleted > 0 || stateRowsAbandoned > 0 {
+			fmt.Printf("Reconciled %d stale state rows (completed=%d, abandoned=%d, open_minus_live %d->%d)\n", stateRowsCompleted+stateRowsAbandoned, stateRowsCompleted, stateRowsAbandoned, stateOpenMinusBefore, stateOpenMinusAfter)
+		}
+		if registryRowsUpdated > 0 {
+			fmt.Printf("Reconciled %d stale sessions.json entries\n", registryRowsUpdated)
 		}
 		if worktreePruned > 0 {
 			fmt.Printf("Pruned %d stale git worktrees\n", worktreePruned)

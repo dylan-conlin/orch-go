@@ -4,13 +4,14 @@
 package verify
 
 import (
-	"bufio"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/events"
 )
 
 // FixAttemptStats tracks how many times an issue has been worked on.
@@ -87,37 +88,20 @@ func GetFixAttemptStatsFromPath(beadsID, eventsPath string) (*FixAttemptStats, e
 		Skills:  make([]string, 0),
 	}
 
-	// Open events file
-	f, err := os.Open(eventsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// No events file yet - return empty stats
-			return stats, nil
-		}
-		return nil, err
-	}
-	defer f.Close()
-
 	// Track unique skills
 	seenSkills := make(map[string]bool)
 
 	// Scan for relevant events
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
+	err := events.ReadCompactedJSONL(eventsPath, func(line string) error {
 		var event FixAttemptEvent
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			continue // Skip malformed lines
+			return nil // Skip malformed lines
 		}
 
 		// Check if this event is for our beads ID
 		eventBeadsID := extractBeadsIDFromEvent(event)
 		if eventBeadsID != beadsID {
-			continue
+			return nil
 		}
 
 		// Update stats based on event type
@@ -144,9 +128,14 @@ func GetFixAttemptStatsFromPath(beadsID, eventsPath string) (*FixAttemptStats, e
 		if eventTime.After(stats.LastAttemptAt) {
 			stats.LastAttemptAt = eventTime
 		}
-	}
 
-	if err := scanner.Err(); err != nil {
+		return nil
+	})
+	if err != nil {
+		if os.IsNotExist(err) {
+			// No events file yet - return empty stats
+			return stats, nil
+		}
 		return nil, err
 	}
 
@@ -164,30 +153,15 @@ func GetAllRetryPatternsFromPath(eventsPath string) ([]*FixAttemptStats, error) 
 	// Build stats for all beads IDs
 	statsMap := make(map[string]*FixAttemptStats)
 
-	f, err := os.Open(eventsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil // No events file
-		}
-		return nil, err
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
+	err := events.ReadCompactedJSONL(eventsPath, func(line string) error {
 		var event FixAttemptEvent
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			continue
+			return nil
 		}
 
 		beadsID := extractBeadsIDFromEvent(event)
 		if beadsID == "" {
-			continue
+			return nil
 		}
 
 		stats, exists := statsMap[beadsID]
@@ -228,9 +202,13 @@ func GetAllRetryPatternsFromPath(eventsPath string) ([]*FixAttemptStats, error) 
 		if eventTime.After(stats.LastAttemptAt) {
 			stats.LastAttemptAt = eventTime
 		}
-	}
 
-	if err := scanner.Err(); err != nil {
+		return nil
+	})
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // No events file
+		}
 		return nil, err
 	}
 
