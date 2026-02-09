@@ -14,9 +14,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/episodic"
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/spf13/cobra"
 )
@@ -128,6 +132,43 @@ func runPhaseWithDB(beadsID, phase, summary, dbPath string, writeComment bool) e
 			fmt.Fprintf(os.Stderr, "warning: bd comment failed (phase still recorded in SQLite): %v\n", err)
 		}
 	}
+
+	workspace := beadsID
+	sessionID := ""
+	project := projectFromCWD()
+	agent, err := db.GetAgentByBeadsID(beadsID)
+	if err == nil && agent != nil {
+		if strings.TrimSpace(agent.WorkspaceName) != "" {
+			workspace = agent.WorkspaceName
+		}
+		if strings.TrimSpace(agent.SessionID) != "" {
+			sessionID = agent.SessionID
+		}
+		if strings.TrimSpace(agent.ProjectName) != "" {
+			project = agent.ProjectName
+		} else if strings.TrimSpace(agent.ProjectDir) != "" {
+			project = filepath.Base(agent.ProjectDir)
+		}
+	}
+
+	phaseEvent := events.Event{
+		Type:      "session.phase",
+		SessionID: sessionID,
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"phase":     phase,
+			"summary":   summary,
+			"beads_id":  beadsID,
+			"workspace": workspace,
+		},
+	}
+	recordEpisodicEvent(phaseEvent, episodic.Context{
+		Boundary:  episodic.BoundaryCommand,
+		Project:   project,
+		Workspace: workspace,
+		SessionID: sessionID,
+		BeadsID:   beadsID,
+	})
 
 	// Confirm to caller
 	if summary != "" {

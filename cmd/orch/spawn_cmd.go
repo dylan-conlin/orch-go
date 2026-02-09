@@ -1,41 +1,22 @@
 // Package main provides spawn and work commands for the orch CLI.
-// This file contains command definitions, flag registration, and backend spawn functions
-// (headless, tmux, inline, claude, docker).
+// This file contains command definitions, flag registration, and pipeline entrypoints.
 // The core spawn orchestration logic is in spawn_pipeline.go (pipeline phases).
 // Supporting functionality is in spawn_beads.go, spawn_validation.go, spawn_concurrency.go,
-// spawn_usage.go, and spawn_helpers.go.
+// spawn_usage.go, spawn_helpers.go, and spawn_execute.go.
 package main
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"regexp"
 	"strings"
-	"syscall"
-	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/config"
-	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/model"
-	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/process"
-	"github.com/dylan-conlin/orch-go/pkg/spawn"
-	statedb "github.com/dylan-conlin/orch-go/pkg/state"
-	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/spf13/cobra"
 )
 
 // DefaultMaxAgents is the default maximum number of concurrent agents.
 const DefaultMaxAgents = 5
-
-const sessionIDExtractionRetryDelay = 300 * time.Millisecond
-
-var sessionIDExtractionRetrySleep = time.Sleep
 
 var (
 	// Spawn command flags
@@ -66,6 +47,7 @@ var (
 	spawnGapThreshold        int    // Custom gap quality threshold (defaults from project config)
 	spawnForce               bool   // Force spawn even if issue has blocking dependencies
 	spawnBypassTriage        bool   // Explicitly bypass triage (documents conscious decision to spawn directly)
+	spawnAcknowledgeHotspot  bool   // Suppress hotspot warning output for this spawn
 	spawnDesignWorkspace     string // Design workspace name for ui-design-session → feature-impl handoff
 	spawnAcknowledgeDecision string // Acknowledge decision conflict to proceed with spawn
 )
@@ -75,12 +57,19 @@ var spawnCmd = &cobra.Command{
 	Short: "Spawn a new agent with skill context (default: headless)",
 	Long: `Spawn a new OpenCode session with skill context.
 
-IMPORTANT: Manual spawn requires --bypass-triage flag.
+IMPORTANT: Tracked manual spawns require triage bypass acknowledgement.
 The default workflow is: create issues with triage:ready label → daemon auto-spawns.
 Manual spawning is for exceptions only (urgent single items, complex context needed).
 
-To proceed with manual spawn, you must acknowledge this with --bypass-triage.
+To proceed with manual spawn, use either --bypass-triage (one-off)
+or set ORCH_BYPASS_TRIAGE=1 for a session-level bypass.
 This creates friction to encourage the preferred daemon-driven workflow.
+
+Hotspot Warning Suppression:
+  If you're intentionally iterating in a known hotspot area, you can suppress
+  repeated hotspot warnings:
+    - One-off: --acknowledge-hotspot
+    - Session: export ORCH_SUPPRESS_HOTSPOT=1
 
 Backend Modes (--backend):
   opencode: Uses OpenCode HTTP API (DeepSeek, etc.) - DEFAULT
@@ -151,10 +140,19 @@ Examples:
   bd create "investigate auth" --type investigation -l triage:ready
   orch daemon run  # Daemon picks up triage:ready issues
   
-  # Manual spawn (requires --bypass-triage)
+  # Manual spawn (one-off bypass)
   orch spawn --bypass-triage investigation "explore the codebase"
   orch spawn --bypass-triage feature-impl "add feature" --phases implementation,validation
   orch spawn --bypass-triage --issue proj-123 feature-impl "implement the feature"
+
+  # Session-level bypass (avoid repeating the flag)
+  export ORCH_BYPASS_TRIAGE=1
+  orch spawn investigation "orchestrator-directed task A"
+  orch spawn feature-impl "orchestrator-directed task B"
+
+  # Suppress repeated hotspot warnings while intentionally working the same area
+  export ORCH_SUPPRESS_HOTSPOT=1
+  orch spawn feature-impl "continue fixing cmd/orch/spawn_pipeline.go"
   
   # Tmux mode (opt-in) - visible, interruptible
   orch spawn --bypass-triage --tmux investigation "explore codebase"
@@ -214,7 +212,8 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnSkipGapGate, "skip-gap-gate", false, "Explicitly bypass gap gating (documents conscious decision to proceed without context)")
 	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default from .orch/config.yaml spawn.context_quality.threshold, fallback 20; only used with --gate-on-gap)")
 	spawnCmd.Flags().BoolVar(&spawnForce, "force", false, "Force tactical spawn in hotspot areas (bypasses strategic-first gate - requires justification)")
-	spawnCmd.Flags().BoolVar(&spawnBypassTriage, "bypass-triage", false, "Acknowledge manual spawn bypasses daemon-driven triage workflow (required for manual spawns)")
+	spawnCmd.Flags().BoolVar(&spawnBypassTriage, "bypass-triage", false, "One-off triage bypass acknowledgement for manual tracked spawns (or set ORCH_BYPASS_TRIAGE=1 for session-level bypass)")
+	spawnCmd.Flags().BoolVar(&spawnAcknowledgeHotspot, "acknowledge-hotspot", false, "Suppress hotspot warning output for this spawn (or set ORCH_SUPPRESS_HOTSPOT=1 for session-level suppression)")
 	spawnCmd.Flags().StringVar(&spawnDesignWorkspace, "design-workspace", "", "Design workspace name from ui-design-session for handoff to feature-impl (e.g., 'og-design-ready-queue-08jan')")
 	spawnCmd.Flags().StringVar(&spawnAcknowledgeDecision, "acknowledge-decision", "", "[DEPRECATED] Decision gate disabled - this flag has no effect")
 }
@@ -264,12 +263,10 @@ func init() {
 // resolveModelWithConfig resolves the model specification, checking project and global config
 // for backend-specific defaults when no explicit --model flag is provided.
 func resolveModelWithConfig(spawnModel, backend, skillName string, projCfg *config.Config, globalCfg *userconfig.Config) model.ModelSpec {
-	// If model flag is provided, use it (existing behavior)
 	if spawnModel != "" {
 		return model.Resolve(spawnModel)
 	}
 
-	// Check global config for skill-specific model
 	if globalCfg != nil {
 		skillModel := globalCfg.GetModelForSkill(skillName)
 		if skillModel != "" {
@@ -277,7 +274,6 @@ func resolveModelWithConfig(spawnModel, backend, skillName string, projCfg *conf
 		}
 	}
 
-	// No model flag provided - check project config for backend-specific default
 	if projCfg != nil {
 		if backend == "claude" && projCfg.Claude.Model != "" {
 			return model.Resolve(projCfg.Claude.Model)
@@ -287,28 +283,20 @@ func resolveModelWithConfig(spawnModel, backend, skillName string, projCfg *conf
 		}
 	}
 
-	// No project config - for opencode backend, default to DeepSeek (cost optimization)
-	// For claude backend, default to Opus (Max subscription)
 	if backend == "opencode" {
 		return model.Resolve("deepseek")
 	}
 
-	// Claude backend or no backend specified - use existing DefaultModel behavior (Opus)
 	return model.Resolve("")
 }
 
 // validateModeModelCombo checks for known invalid mode+model combinations.
 // Returns a warning error (non-blocking) if an invalid combination is detected.
 func validateModeModelCombo(backend string, resolvedModel model.ModelSpec) error {
-	// Invalid combination: opencode + opus
-	// Opus requires Claude Code CLI auth, opencode backend creates zombie agents
 	if backend == "opencode" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "opus") {
 		return fmt.Errorf(`Warning: opencode backend with opus model may fail (auth blocked).
   Recommendation: Remove --backend opencode to use claude backend (default)`)
 	}
-
-	// Note: Flash model is blocked earlier in the flow (hard error, not warning)
-	// Claude backend + non-opus models work but are non-optimal (using Max sub for cheap models)
 
 	return nil
 }
@@ -362,721 +350,4 @@ func formatSessionTitle(workspaceName, beadsID string) string {
 		return workspaceName
 	}
 	return fmt.Sprintf("%s [%s]", workspaceName, beadsID)
-}
-
-// ensureSessionTitle enforces the expected session title after creation.
-// This prevents OpenCode from falling back to auto-generated titles (e.g. skill names)
-// when sessions are created through attach/tmux flows.
-func ensureSessionTitle(client opencode.ClientInterface, sessionID, title string) {
-	if sessionID == "" || title == "" {
-		return
-	}
-	if err := client.UpdateSessionTitle(sessionID, title); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to enforce session title for %s: %v\n", sessionID, err)
-	}
-}
-
-// runSpawnInline spawns the agent inline (blocking) - original behavior.
-func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
-	return runSpawnInlineWithClient(opencode.NewClient(serverURL), serverURL, cfg, minimalPrompt, beadsID, skillName, task)
-}
-
-func runSpawnInlineWithClient(client opencode.ClientInterface, serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
-	// Spawn opencode session
-	// Format title with beads ID so orch status can match sessions
-	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
-	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model, cfg.Variant)
-	cmd.Stderr = os.Stderr
-	cmd.Dir = cfg.ProjectDir
-	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
-	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("failed to get stdout: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start opencode: %w", err)
-	}
-
-	result, err := opencode.ProcessOutput(stdout)
-	if err != nil {
-		return fmt.Errorf("failed to process output: %w", err)
-	}
-
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("opencode exited with error: %w", err)
-	}
-
-	// Write session ID to workspace file for later lookups
-	if result.SessionID != "" {
-		if err := spawn.WriteSessionID(cfg.WorkspacePath(), result.SessionID); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
-		}
-		// Record session ID in state DB for coherent abandon/status resolution
-		if err := statedb.RecordSessionID(cfg.WorkspaceName, result.SessionID); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to record session ID in state db: %v\n", err)
-		}
-		ensureSessionTitle(client, result.SessionID, sessionTitle)
-	}
-
-	// Note: Inline mode is synchronous and blocks until completion,
-	// so process ID tracking is not needed (process exits before cleanup)
-
-	// Register orchestrator session in registry (workers use beads instead)
-	registerOrchestratorSession(cfg, result.SessionID, task)
-
-	// Log the session creation
-	inlineLogger := events.NewLogger(events.DefaultLogPath())
-	inlineEventData := map[string]interface{}{
-		"skill":               skillName,
-		"task":                task,
-		"workspace":           cfg.WorkspaceName,
-		"beads_id":            beadsID,
-		"spawn_mode":          "inline",
-		"no_track":            cfg.NoTrack,
-		"skip_artifact_check": cfg.SkipArtifactCheck,
-	}
-	if cfg.MCP != "" {
-		inlineEventData["mcp"] = cfg.MCP
-	}
-	addGapAnalysisToEventData(inlineEventData, cfg.GapAnalysis)
-	addUsageInfoToEventData(inlineEventData, cfg.UsageInfo)
-	inlineEvent := events.Event{
-		Type:      "session.spawned",
-		SessionID: result.SessionID,
-		Timestamp: time.Now().Unix(),
-		Data:      inlineEventData,
-	}
-	if err := inlineLogger.Log(inlineEvent); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
-	}
-
-	// Print spawn summary with prominent gap warning if needed
-	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
-
-	fmt.Printf("Spawned agent:\n")
-	fmt.Printf("  Session ID: %s\n", result.SessionID)
-	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
-	fmt.Printf("  Beads ID:   %s\n", beadsID)
-	// Print context quality with visual indicators
-	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
-
-	return nil
-}
-
-// runSpawnHeadless spawns the agent using CLI subprocess without a TUI.
-// This is useful for automation and daemon-driven spawns.
-// Uses opencode CLI with --format json to properly support model selection
-// (the HTTP API ignores the model parameter).
-// Includes retry logic for transient network failures.
-func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
-	return runSpawnHeadlessWithClient(opencode.NewClient(serverURL), serverURL, cfg, minimalPrompt, beadsID, skillName, task)
-}
-
-func runSpawnHeadlessWithClient(client opencode.ClientInterface, serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
-
-	// Build opencode command using CLI (like inline mode) to support model selection
-	// The HTTP API ignores model parameter - only CLI mode honors --model flag
-	// Format title with beads ID so orch status can match sessions
-	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
-
-	// Use retry logic for transient failures (network issues, server temporarily unavailable)
-	retryCfg := spawn.DefaultRetryConfig()
-	result, retryResult := spawn.Retry(retryCfg, func() (*headlessSpawnResult, error) {
-		return startHeadlessSession(client, serverURL, sessionTitle, minimalPrompt, cfg)
-	})
-
-	result, didSessionIDRetry := retryHeadlessSpawnAfterSessionIDExtractionFailure(result, retryResult, sessionIDExtractionRetryDelay, func() (*headlessSpawnResult, error) {
-		return startHeadlessSession(client, serverURL, sessionTitle, minimalPrompt, cfg)
-	})
-	if didSessionIDRetry {
-		fmt.Fprintf(os.Stderr, "Session ID extraction failed on initial attempt; retried once after %s\n", sessionIDExtractionRetryDelay)
-	}
-
-	if retryResult.LastErr != nil {
-		// Wrap the error with user-friendly message and recovery guidance
-		spawnErr := spawn.WrapSpawnError(retryResult.LastErr, "Headless spawn failed")
-		if retryResult.Attempts > 1 {
-			fmt.Fprintf(os.Stderr, "Spawn failed after %d attempts\n", retryResult.Attempts)
-		}
-		// Print formatted error with recovery guidance
-		fmt.Fprintf(os.Stderr, "\n%s\n", spawn.FormatSpawnError(spawnErr))
-		return spawnErr
-	}
-
-	if retryResult.Attempts > 1 {
-		fmt.Printf("Spawn succeeded after %d attempts\n", retryResult.Attempts)
-	}
-
-	sessionID := result.SessionID
-	ensureSessionTitle(client, sessionID, sessionTitle)
-
-	// Write session ID to workspace file for later lookups
-	if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
-	}
-	// Record session ID in state DB for coherent abandon/status resolution
-	if err := statedb.RecordSessionID(cfg.WorkspaceName, sessionID); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to record session ID in state db: %v\n", err)
-	}
-
-	// Write process ID to workspace file for explicit cleanup
-	// This enables killing the process during orch complete/abandon and daemon cleanup
-	if result.cmd != nil && result.cmd.Process != nil {
-		childPID := result.cmd.Process.Pid
-		if err := spawn.WriteProcessID(cfg.WorkspacePath(), childPID); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to write process ID: %v\n", err)
-		}
-
-		// Record in process ownership ledger for deterministic cleanup on restart
-		ledger := process.NewDefaultLedger()
-		pgid, _ := syscall.Getpgid(childPID)
-		ledgerEntry := process.LedgerEntry{
-			Workspace: cfg.WorkspaceName,
-			BeadsID:   beadsID,
-			SessionID: sessionID,
-			SpawnPID:  os.Getpid(),
-			ChildPID:  childPID,
-			PGID:      pgid,
-			StartedAt: time.Now(),
-			LastSeen:  time.Now(),
-		}
-		if err := ledger.Record(ledgerEntry); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to record process in ledger: %v\n", err)
-		}
-	}
-
-	// Start background cleanup goroutine
-	result.StartBackgroundCleanup()
-
-	// Register orchestrator session in registry (workers use beads instead)
-	registerOrchestratorSession(cfg, sessionID, task)
-
-	// Log the session creation
-	logger := events.NewLogger(events.DefaultLogPath())
-	eventData := map[string]interface{}{
-		"skill":               skillName,
-		"task":                task,
-		"workspace":           cfg.WorkspaceName,
-		"beads_id":            beadsID,
-		"session_id":          sessionID,
-		"spawn_mode":          "headless",
-		"model":               cfg.Model,
-		"no_track":            cfg.NoTrack,
-		"skip_artifact_check": cfg.SkipArtifactCheck,
-	}
-	if retryResult.Attempts > 1 {
-		eventData["retry_attempts"] = retryResult.Attempts
-	}
-	if cfg.MCP != "" {
-		eventData["mcp"] = cfg.MCP
-	}
-	addGapAnalysisToEventData(eventData, cfg.GapAnalysis)
-	addUsageInfoToEventData(eventData, cfg.UsageInfo)
-	event := events.Event{
-		Type:      "session.spawned",
-		SessionID: sessionID,
-		Timestamp: time.Now().Unix(),
-		Data:      eventData,
-	}
-	if err := logger.Log(event); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
-	}
-
-	// Print spawn summary with prominent gap warning if needed
-	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
-
-	fmt.Printf("Spawned agent (headless):\n")
-	fmt.Printf("  Session ID: %s\n", sessionID)
-	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
-	fmt.Printf("  Beads ID:   %s\n", beadsID)
-	fmt.Printf("  Model:      %s\n", cfg.Model)
-	if cfg.MCP != "" {
-		fmt.Printf("  MCP:        %s\n", cfg.MCP)
-	}
-	if cfg.NoTrack {
-		fmt.Printf("  Tracking:   disabled (--no-track)\n")
-	}
-	// Print context quality with visual indicators
-	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
-
-	return nil
-}
-
-func shouldRetrySessionIDExtraction(retryResult *spawn.RetryResult) bool {
-	if retryResult == nil || retryResult.LastErr == nil {
-		return false
-	}
-
-	var spawnErr *spawn.SpawnError
-	if errors.As(retryResult.LastErr, &spawnErr) {
-		return spawnErr.Kind == spawn.ErrKindSession && strings.HasPrefix(spawnErr.Message, "Failed to extract session ID")
-	}
-
-	return strings.Contains(retryResult.LastErr.Error(), "Failed to extract session ID")
-}
-
-func retryHeadlessSpawnAfterSessionIDExtractionFailure(initialResult *headlessSpawnResult, retryResult *spawn.RetryResult, retryDelay time.Duration, retryStart func() (*headlessSpawnResult, error)) (*headlessSpawnResult, bool) {
-	if !shouldRetrySessionIDExtraction(retryResult) {
-		return initialResult, false
-	}
-
-	if retryDelay > 0 {
-		sessionIDExtractionRetrySleep(retryDelay)
-	}
-
-	retryResult.Attempts++
-	recoveredResult, retryErr := retryStart()
-	if retryErr != nil {
-		retryResult.LastErr = retryErr
-		return initialResult, true
-	}
-
-	retryResult.LastErr = nil
-	return recoveredResult, true
-}
-
-// headlessSpawnResult contains the result of starting a headless session.
-type headlessSpawnResult struct {
-	SessionID string
-	cmd       *exec.Cmd
-	stdout    io.ReadCloser
-}
-
-// StartBackgroundCleanup starts a goroutine to drain stdout and wait for the process.
-func (r *headlessSpawnResult) StartBackgroundCleanup() {
-	if r.stdout == nil || r.cmd == nil {
-		return
-	}
-	go func() {
-		// Drain remaining stdout
-		io.Copy(io.Discard, r.stdout)
-		// Wait for process to complete (cleanup)
-		r.cmd.Wait()
-	}()
-}
-
-// ansiRegex matches ANSI escape sequences (colors, formatting, etc.)
-var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-
-// stripANSI removes ANSI escape codes from a string for cleaner error messages.
-func stripANSI(s string) string {
-	return ansiRegex.ReplaceAllString(s, "")
-}
-
-// startHeadlessSession starts an opencode session and extracts the session ID.
-// Returns the result with session ID and resources for cleanup.
-// Note: Uses CLI mode instead of HTTP API because OpenCode's HTTP API ignores the model parameter.
-// CLI mode correctly honors the --model flag.
-// See: .kb/investigations/2025-12-23-inv-model-selection-issue-architect-agent.md
-func startHeadlessSession(client opencode.ClientInterface, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
-	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model, cfg.Variant)
-	cmd.Dir = cfg.ProjectDir
-	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
-	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		spawnErr := spawn.WrapSpawnError(err, "Failed to get stdout pipe")
-		return nil, spawnErr
-	}
-
-	// Capture stderr to include in error messages when session ID extraction fails.
-	// Previously stderr was discarded (nil), losing valuable error context like
-	// "Error: Session not found" or model-specific errors.
-	var stderrBuf bytes.Buffer
-	cmd.Stderr = &stderrBuf
-
-	if err := cmd.Start(); err != nil {
-		spawnErr := spawn.WrapSpawnError(err, "Failed to start opencode process")
-		return nil, spawnErr
-	}
-
-	// Process stdout to extract session ID, then let the process run in background
-	// We need to read at least until we get the session ID
-	sessionID, err := opencode.ExtractSessionIDFromReader(stdout)
-	if err != nil {
-		// Try to kill the process if we couldn't get session ID
-		cmd.Process.Kill()
-		// Include stderr content for better error context
-		stderrContent := strings.TrimSpace(stderrBuf.String())
-		// Strip ANSI escape codes for cleaner error messages
-		stderrContent = stripANSI(stderrContent)
-		errMsg := "Failed to extract session ID"
-		if stderrContent != "" {
-			errMsg = fmt.Sprintf("Failed to extract session ID: %s", stderrContent)
-		}
-		spawnErr := spawn.WrapSpawnError(err, errMsg)
-		return nil, spawnErr
-	}
-
-	return &headlessSpawnResult{
-		SessionID: sessionID,
-		cmd:       cmd,
-		stdout:    stdout,
-	}, nil
-}
-
-// runSpawnTmux spawns the agent in a tmux window (interactive, returns immediately).
-// Creates a tmux window in workers-{project} session (or orchestrator session for orchestrator skills).
-func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string, attach bool) error {
-	return runSpawnTmuxWithClient(opencode.NewClient(serverURL), serverURL, cfg, minimalPrompt, beadsID, skillName, task, attach)
-}
-
-func runSpawnTmuxWithClient(client opencode.ClientInterface, serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string, attach bool) error {
-	var sessionName string
-	var err error
-
-	// Meta-orchestrators and orchestrators go into 'orchestrator' tmux session
-	// Workers go into 'workers-{project}' session
-	if cfg.IsMetaOrchestrator || cfg.IsOrchestrator {
-		sessionName, err = tmux.EnsureOrchestratorSession()
-	} else {
-		sessionName, err = tmux.EnsureWorkersSession(cfg.Project, cfg.ProjectDir)
-	}
-	if err != nil {
-		return fmt.Errorf("failed to ensure tmux session: %w", err)
-	}
-
-	// Build window name with emoji and beads ID
-	windowName := tmux.BuildWindowName(cfg.WorkspaceName, cfg.SkillName, beadsID)
-
-	// Create new tmux window
-	windowTarget, windowID, err := tmux.CreateWindow(sessionName, windowName, cfg.ProjectDir)
-	if err != nil {
-		return fmt.Errorf("failed to create tmux window: %w", err)
-	}
-
-	// Keep session titles deterministic for monitoring and matching.
-	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
-
-	// Pre-create session with explicit title, then attach by session ID.
-	// This avoids OpenCode auto-generated titles (often skill names) and keeps
-	// titles stable for dashboard/session monitoring.
-	var preCreatedSessionID string
-	resp, createErr := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model, cfg.Variant, !cfg.IsOrchestrator && !cfg.IsMetaOrchestrator)
-	if createErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to pre-create session with title %q: %v (falling back to attach without pre-created session)\n", sessionTitle, createErr)
-	} else {
-		preCreatedSessionID = resp.ID
-	}
-
-	// Build opencode command using tmux package
-	attachCfg := &tmux.OpencodeAttachConfig{
-		ServerURL:  serverURL,
-		ProjectDir: cfg.ProjectDir,
-		// Don't pass Model — opencode attach doesn't accept --model
-		SessionID: preCreatedSessionID,
-	}
-	opencodeCmd := tmux.BuildOpencodeAttachCommand(attachCfg)
-
-	// Send command and execute
-	if err := tmux.SendKeys(windowTarget, opencodeCmd); err != nil {
-		return fmt.Errorf("failed to send opencode command: %w", err)
-	}
-	if err := tmux.SendEnter(windowTarget); err != nil {
-		return fmt.Errorf("failed to execute command: %w", err)
-	}
-
-	// Wait for OpenCode TUI to be ready
-	waitCfg := tmux.DefaultWaitConfig()
-	if err := tmux.WaitForOpenCodeReady(windowTarget, waitCfg); err != nil {
-		return fmt.Errorf("failed to start opencode: %w", err)
-	}
-
-	// Use pre-created session ID if available, otherwise discover via API
-	sessionID := preCreatedSessionID
-	if sessionID == "" {
-		// Capture session ID from API with retry (OpenCode may not have registered yet)
-		sessionID, _ = client.FindRecentSessionWithRetry(cfg.ProjectDir, 3, 500*time.Millisecond)
-		// Note: We silently ignore errors here since window_id is sufficient for tmux monitoring
-	}
-	ensureSessionTitle(client, sessionID, sessionTitle)
-
-	// Send prompt
-	sendCfg := tmux.DefaultSendPromptConfig()
-	time.Sleep(sendCfg.PostReadyDelay)
-	if err := tmux.SendKeysLiteral(windowTarget, minimalPrompt); err != nil {
-		return fmt.Errorf("failed to send prompt: %w", err)
-	}
-	if err := tmux.SendEnter(windowTarget); err != nil {
-		return fmt.Errorf("failed to send enter: %w", err)
-	}
-
-	// Write session ID to workspace file for later lookups
-	if sessionID != "" {
-		if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
-		}
-		// Record session ID in state DB for coherent abandon/status resolution
-		if err := statedb.RecordSessionID(cfg.WorkspaceName, sessionID); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to record session ID in state db: %v\n", err)
-		}
-	}
-
-	// Record tmux window in state DB for liveness tracking
-	if err := statedb.RecordTmuxWindow(cfg.WorkspaceName, windowTarget); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to record tmux window in state db: %v\n", err)
-	}
-
-	// Register orchestrator session in registry (workers use beads instead)
-	registerOrchestratorSession(cfg, sessionID, task)
-
-	// Log the session creation
-	logger := events.NewLogger(events.DefaultLogPath())
-	eventData := map[string]interface{}{
-		"skill":               skillName,
-		"task":                task,
-		"workspace":           cfg.WorkspaceName,
-		"beads_id":            beadsID,
-		"session_id":          sessionID,
-		"window":              windowTarget,
-		"window_id":           windowID,
-		"session_name":        sessionName,
-		"spawn_mode":          "tmux",
-		"model":               cfg.Model,
-		"no_track":            cfg.NoTrack,
-		"skip_artifact_check": cfg.SkipArtifactCheck,
-	}
-	if cfg.MCP != "" {
-		eventData["mcp"] = cfg.MCP
-	}
-	addGapAnalysisToEventData(eventData, cfg.GapAnalysis)
-	addUsageInfoToEventData(eventData, cfg.UsageInfo)
-	event := events.Event{
-		Type:      "session.spawned",
-		SessionID: sessionID,
-		Timestamp: time.Now().Unix(),
-		Data:      eventData,
-	}
-	if err := logger.Log(event); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
-	}
-
-	// Focus the newly created window (skip for daemon-driven spawns to avoid interrupting orchestrator)
-	if !cfg.DaemonDriven {
-		selectCmd := exec.Command("tmux", "select-window", "-t", windowTarget)
-		if err := selectCmd.Run(); err != nil {
-			// Non-fatal - window was created successfully
-			fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
-		}
-	}
-
-	// Print spawn summary with prominent gap warning if needed
-	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
-
-	fmt.Printf("Spawned agent in tmux:\n")
-	fmt.Printf("  Session:    %s\n", sessionName)
-	if sessionID != "" {
-		fmt.Printf("  Session ID: %s\n", sessionID)
-	}
-	fmt.Printf("  Window:     %s\n", windowTarget)
-	fmt.Printf("  Window ID:  %s\n", windowID)
-	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
-	fmt.Printf("  Beads ID:   %s\n", beadsID)
-	fmt.Printf("  Model:      %s\n", cfg.Model)
-	if cfg.MCP != "" {
-		fmt.Printf("  MCP:        %s\n", cfg.MCP)
-	}
-	if cfg.NoTrack {
-		fmt.Printf("  Tracking:   disabled (--no-track)\n")
-	}
-	// Print context quality with visual indicators
-	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
-
-	// Attach if requested
-	if attach {
-		if err := tmux.Attach(windowTarget); err != nil {
-			return fmt.Errorf("failed to attach to tmux: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// runSpawnClaude spawns the agent using Claude Code CLI in a tmux window.
-func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, task string, attach bool) error {
-	result, err := spawn.SpawnClaude(cfg)
-	if err != nil {
-		return err
-	}
-
-	// Record tmux window in state DB for liveness tracking
-	if err := statedb.RecordTmuxWindow(cfg.WorkspaceName, result.Window); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to record tmux window in state db: %v\n", err)
-	}
-
-	// Register orchestrator session in registry if needed
-	registerOrchestratorSession(cfg, "", task)
-
-	// Log the session creation
-	logger := events.NewLogger(events.DefaultLogPath())
-	eventData := map[string]interface{}{
-		"skill":               skillName,
-		"task":                task,
-		"workspace":           cfg.WorkspaceName,
-		"beads_id":            beadsID,
-		"window":              result.Window,
-		"window_id":           result.WindowID,
-		"spawn_mode":          "claude",
-		"no_track":            cfg.NoTrack,
-		"skip_artifact_check": cfg.SkipArtifactCheck,
-	}
-	addGapAnalysisToEventData(eventData, cfg.GapAnalysis)
-	addUsageInfoToEventData(eventData, cfg.UsageInfo)
-	event := events.Event{
-		Type:      "session.spawned",
-		Timestamp: time.Now().Unix(),
-		Data:      eventData,
-	}
-	if err := logger.Log(event); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
-	}
-
-	// Focus the newly created window (skip for daemon-driven spawns to avoid interrupting orchestrator)
-	if !cfg.DaemonDriven {
-		selectCmd := exec.Command("tmux", "select-window", "-t", result.Window)
-		if err := selectCmd.Run(); err != nil {
-			// Non-fatal
-			fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
-		}
-	}
-
-	// Print spawn summary with prominent gap warning if needed
-	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
-
-	fmt.Printf("Spawned agent in Claude mode (tmux):\n")
-	fmt.Printf("  Window:     %s\n", result.Window)
-	fmt.Printf("  Window ID:  %s\n", result.WindowID)
-	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
-	fmt.Printf("  Beads ID:   %s\n", beadsID)
-	// Print context quality with visual indicators
-	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
-
-	// Attach if requested
-	if attach {
-		if err := tmux.Attach(result.Window); err != nil {
-			return fmt.Errorf("failed to attach to tmux: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// runSpawnClaudeInline spawns the agent using Claude Code CLI inline (blocking).
-// This runs claude directly in the current terminal without tmux, for interactive sessions.
-func runSpawnClaudeInline(serverURL string, cfg *spawn.Config, beadsID, skillName, task string) error {
-	// Register orchestrator session in registry if needed (before spawn, in case it fails)
-	registerOrchestratorSession(cfg, "", task)
-
-	// Log the session creation
-	logger := events.NewLogger(events.DefaultLogPath())
-	eventData := map[string]interface{}{
-		"skill":               skillName,
-		"task":                task,
-		"workspace":           cfg.WorkspaceName,
-		"beads_id":            beadsID,
-		"spawn_mode":          "claude-inline",
-		"no_track":            cfg.NoTrack,
-		"skip_artifact_check": cfg.SkipArtifactCheck,
-	}
-	addGapAnalysisToEventData(eventData, cfg.GapAnalysis)
-	addUsageInfoToEventData(eventData, cfg.UsageInfo)
-	event := events.Event{
-		Type:      "session.spawned",
-		Timestamp: time.Now().Unix(),
-		Data:      eventData,
-	}
-	if err := logger.Log(event); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
-	}
-
-	// Print spawn summary with prominent gap warning if needed
-	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
-
-	fmt.Printf("Spawning agent in Claude mode (inline):\n")
-	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
-	fmt.Printf("  Beads ID:   %s\n", beadsID)
-	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
-	fmt.Println()
-
-	// Run Claude inline (blocking) - this will take over the terminal
-	if err := spawn.SpawnClaudeInline(cfg); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// runSpawnDocker spawns the agent using Docker for Statsig fingerprint isolation.
-// This is an escape hatch for rate limit scenarios - provides fresh fingerprint per spawn.
-func runSpawnDocker(serverURL string, cfg *spawn.Config, beadsID, skillName, task string, attach bool) error {
-	result, err := spawn.SpawnDocker(cfg)
-	if err != nil {
-		return err
-	}
-
-	// Record tmux window in state DB for liveness tracking
-	if err := statedb.RecordTmuxWindow(cfg.WorkspaceName, result.Window); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to record tmux window in state db: %v\n", err)
-	}
-
-	// Register orchestrator session in registry if needed
-	registerOrchestratorSession(cfg, "", task)
-
-	// Log the session creation
-	logger := events.NewLogger(events.DefaultLogPath())
-	eventData := map[string]interface{}{
-		"skill":               skillName,
-		"task":                task,
-		"workspace":           cfg.WorkspaceName,
-		"beads_id":            beadsID,
-		"window":              result.Window,
-		"window_id":           result.WindowID,
-		"spawn_mode":          "docker",
-		"no_track":            cfg.NoTrack,
-		"skip_artifact_check": cfg.SkipArtifactCheck,
-	}
-	addGapAnalysisToEventData(eventData, cfg.GapAnalysis)
-	addUsageInfoToEventData(eventData, cfg.UsageInfo)
-	event := events.Event{
-		Type:      "session.spawned",
-		Timestamp: time.Now().Unix(),
-		Data:      eventData,
-	}
-	if err := logger.Log(event); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
-	}
-
-	// Focus the newly created window (skip for daemon-driven spawns to avoid interrupting orchestrator)
-	if !cfg.DaemonDriven {
-		selectCmd := exec.Command("tmux", "select-window", "-t", result.Window)
-		if err := selectCmd.Run(); err != nil {
-			// Non-fatal
-			fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
-		}
-	}
-
-	// Print spawn summary with prominent gap warning if needed
-	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
-
-	fmt.Printf("Spawned agent in Docker mode (rate limit escape hatch):\n")
-	fmt.Printf("  Window:     %s\n", result.Window)
-	fmt.Printf("  Window ID:  %s\n", result.WindowID)
-	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
-	fmt.Printf("  Beads ID:   %s\n", beadsID)
-	fmt.Printf("  Container:  %s\n", spawn.DockerImageName)
-	// Print context quality with visual indicators
-	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
-
-	// Attach if requested
-	if attach {
-		if err := tmux.Attach(result.Window); err != nil {
-			return fmt.Errorf("failed to attach to tmux: %w", err)
-		}
-	}
-
-	return nil
 }

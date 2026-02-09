@@ -20,6 +20,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/session"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
@@ -472,6 +473,9 @@ func postComplete(target *CompletionTarget, vOutcome *VerificationOutcome, reaso
 	}
 	if target.AgentName != "" {
 		completedData.Workspace = target.AgentName
+	}
+	if target.WorkspacePath != "" {
+		completedData.AttemptID = spawn.ReadAttemptID(target.WorkspacePath)
 	}
 	if completeForce && len(vOutcome.GatesFailed) > 0 {
 		completedData.GatesBypassed = vOutcome.GatesFailed

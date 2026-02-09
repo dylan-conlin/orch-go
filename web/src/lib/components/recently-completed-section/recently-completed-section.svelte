@@ -2,7 +2,12 @@
 	import { onMount } from 'svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { cn } from '$lib/utils';
-	import { attention, ATTENTION_BADGE_CONFIG, type CompletedIssue } from '$lib/stores/attention';
+	import {
+		attention,
+		ATTENTION_BADGE_CONFIG,
+		formatRelativeTime,
+		type CompletedIssue
+	} from '$lib/stores/attention';
 	import { IssueSidePanel } from '$lib/components/issue-side-panel';
 
 	export let completedIssues: CompletedIssue[] = [];
@@ -15,14 +20,18 @@
 	let copiedId: string | null = null;
 	let copiedTimeout: ReturnType<typeof setTimeout> | null = null;
 
-	// Sort: needs_fix first, then unverified, then verified, then by priority
+	function completedAtMs(issue: CompletedIssue): number {
+		const ms = new Date(issue.completedAt).getTime();
+		if (Number.isNaN(ms)) return 0;
+		return ms;
+	}
+
+	// Sort by completion recency (most recent first)
 	$: {
-		const statusOrder: Record<string, number> = { needs_fix: 0, unverified: 1, verified: 2 };
 		flattenedItems = [...completedIssues]
 			.sort((a, b) => {
-				const sa = statusOrder[a.verificationStatus] ?? 1;
-				const sb = statusOrder[b.verificationStatus] ?? 1;
-				if (sa !== sb) return sa - sb;
+				const timeDiff = completedAtMs(b) - completedAtMs(a);
+				if (timeDiff !== 0) return timeDiff;
 				return a.priority - b.priority;
 			});
 		if (selectedIndex >= flattenedItems.length) {
@@ -279,6 +288,11 @@
 					<Badge variant="outline" class="{getTypeBadge(issue.type)} text-xs shrink-0">
 						{issue.type}
 					</Badge>
+
+					<!-- Relative completion timestamp -->
+					<span class="text-[11px] text-muted-foreground shrink-0 min-w-[45px] text-right">
+						{issue.completedAt ? formatRelativeTime(issue.completedAt) : ''}
+					</span>
 				</div>
 
 				<!-- L1: Expanded details -->

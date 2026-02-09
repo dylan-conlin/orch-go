@@ -5,10 +5,12 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/episodic"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -20,6 +22,7 @@ var (
 	verificationRetrySleep   = time.Sleep
 	proofSpecEvaluator       = evaluateProofSpecGate
 	proofSpecDigestPoster    = postProofSpecDigestComment
+	getLiveness              = statedb.GetLiveness
 )
 
 const transientVerificationRetryDelay = 1 * time.Second
@@ -89,6 +92,7 @@ func verifyOrchestratorSession(target *CompletionTarget, skipConfig SkipConfig, 
 		applySkipFiltering(&result.GatesFailed, &result.Errors, skipConfig, target)
 		result.Passed = len(result.GatesFailed) == 0
 	}
+	recordVerificationOutcome(target, result.Passed, result.GatesFailed, result.Errors)
 
 	if !result.Passed {
 		outcome.Passed = false
@@ -174,6 +178,7 @@ func verifyRegularAgent(target *CompletionTarget, skipConfig SkipConfig, outcome
 		applySkipFiltering(&result.GatesFailed, &result.Errors, skipConfig, target)
 		result.Passed = len(result.GatesFailed) == 0
 	}
+	recordVerificationOutcome(target, result.Passed, result.GatesFailed, result.Errors)
 
 	outcome.SkillName = result.Skill
 
@@ -346,8 +351,19 @@ func emitVerificationFailedEvent(beadsID, workspace, skill string, gatesFailed, 
 
 // checkLiveness warns if the agent appears still running and prompts for confirmation.
 // Returns an error if the user declines to proceed.
-func checkLiveness(target *CompletionTarget) error {
+func checkLiveness(target *CompletionTarget, skipConfig SkipConfig) error {
 	if completeForce || target.IsUntracked {
+		return nil
+	}
+
+	if skipConfig.AgentRunning {
+		fmt.Printf("⚠️  Bypassing gate: %s (reason: %s)\n", verify.GateAgentRunning, skipConfig.Reason)
+		logSkipEvents(SkipConfig{AgentRunning: true, Reason: skipConfig.Reason}, target.BeadsID, target.AgentName, "")
+		skippedByID := target.BeadsID
+		if skippedByID == "" {
+			skippedByID = target.AgentName
+		}
+		persistGateSkipMemory([]string{verify.GateAgentRunning}, skipConfig.Reason, target.BeadsProjectDir, skippedByID)
 		return nil
 	}
 
@@ -360,7 +376,7 @@ func checkLiveness(target *CompletionTarget) error {
 		return nil
 	}
 
-	liveness := statedb.GetLiveness(target.BeadsID, serverURL, target.BeadsProjectDir)
+	liveness := getLiveness(target.BeadsID, serverURL, target.BeadsProjectDir)
 	if !liveness.IsAlive() {
 		return nil
 	}
@@ -385,7 +401,7 @@ func checkLiveness(target *CompletionTarget) error {
 	fmt.Fprintf(os.Stderr, "⚠️  Agent appears still running: %s\n", strings.Join(runningDetails, ", "))
 
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return fmt.Errorf("agent still running and stdin is not a terminal; use --force to complete anyway")
+		return fmt.Errorf("agent still running and stdin is not a terminal; use --skip-agent-running --skip-reason '<reason>' (or deprecated --force) to complete anyway")
 	}
 
 	fmt.Fprint(os.Stderr, "Proceed anyway? [y/N]: ")
@@ -675,4 +691,45 @@ func processKnowledgeGaps(target *CompletionTarget, skillName string) {
 		fmt.Printf("   Agent surfaced questions that kb already answers.\n")
 		fmt.Printf("   Review: cat ~/.orch/knowledge-gaps.jsonl | jq 'select(.workspace==\"%s\")'\n", target.AgentName)
 	}
+}
+
+func recordVerificationOutcome(target *CompletionTarget, passed bool, gates []string, errs []string) {
+	if target == nil {
+		return
+	}
+
+	workspace := target.AgentName
+	if strings.TrimSpace(workspace) == "" && target.WorkspacePath != "" {
+		workspace = filepath.Base(target.WorkspacePath)
+	}
+
+	sessionID := ""
+	if target.WorkspacePath != "" {
+		path := filepath.Join(target.WorkspacePath, ".session_id")
+		data, err := os.ReadFile(path)
+		if err == nil {
+			sessionID = strings.TrimSpace(string(data))
+		}
+	}
+
+	event := events.Event{
+		Type:      "verification.outcome",
+		SessionID: sessionID,
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"passed":       passed,
+			"gates_failed": gates,
+			"errors":       errs,
+			"beads_id":     target.BeadsID,
+			"workspace":    workspace,
+		},
+	}
+
+	recordEpisodicEvent(event, episodic.Context{
+		Boundary:  episodic.BoundaryVerification,
+		Project:   projectFromDir(target.BeadsProjectDir),
+		Workspace: workspace,
+		SessionID: sessionID,
+		BeadsID:   target.BeadsID,
+	})
 }

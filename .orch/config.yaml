@@ -3,7 +3,7 @@ claude:
     model: opus
     tmux_session: workers-orch-go
 opencode:
-    model: deepseek
+    model: gpt5.3-codex
     server: http://localhost:4096
 servers:
     api: 3348

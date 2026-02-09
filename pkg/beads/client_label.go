@@ -6,12 +6,16 @@ import (
 
 // AddLabel adds a label to an issue.
 func (c *Client) AddLabel(id, label string) error {
-	args := LabelAddArgs{
-		ID:    id,
-		Label: label,
+	return c.AddLabels(id, label)
+}
+
+// AddLabels adds one or more labels to an issue.
+func (c *Client) AddLabels(id string, labels ...string) error {
+	if len(labels) == 0 {
+		return nil
 	}
 
-	_, err := c.execute(OpLabelAdd, args)
+	_, err := c.Update(&UpdateArgs{ID: id, AddLabels: labels})
 	return err
 }
 
@@ -44,12 +48,28 @@ func FallbackRemoveLabel(id, label string) error {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackAddLabel(id, label string) error {
-	output, err := runBDCombinedOutput(DefaultDir, "update", id, "--add-label", label)
+	return FallbackAddLabels(id, label)
+}
+
+// FallbackAddLabels adds one or more labels to an issue via bd CLI.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
+// Uses getBdPath() to resolve the bd executable location.
+func FallbackAddLabels(id string, labels ...string) error {
+	if len(labels) == 0 {
+		return nil
+	}
+
+	args := []string{"update", id}
+	for _, label := range labels {
+		args = append(args, "--add-label", label)
+	}
+
+	output, err := runBDCombinedOutput(DefaultDir, args...)
 	if err != nil {
 		if IsCLITimeout(err) {
-			return fmt.Errorf("bd add-label timed out after %v", DefaultCLITimeout)
+			return fmt.Errorf("bd add-label(s) timed out after %v", DefaultCLITimeout)
 		}
-		return fmt.Errorf("bd add-label failed: %w: %s", err, string(output))
+		return fmt.Errorf("bd add-label(s) failed: %w: %s", err, string(output))
 	}
 	return nil
 }

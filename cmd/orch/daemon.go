@@ -326,7 +326,9 @@ func runDaemonLoop() error {
 
 	// Ensure reflection runs on exit if enabled
 	if daemonReflect {
-		defer runReflectionAnalysis(daemonVerbose)
+		defer func() {
+			runReflectionAnalysis(rt.verboseEnabled())
+		}()
 	}
 
 	// Clean up status file on shutdown
@@ -350,14 +352,16 @@ func runDaemonLoop() error {
 
 		// Check server health and update recovery state FIRST.
 		serverAvailable := rt.d.CheckServerHealth()
-		if daemonVerbose {
+		if rt.verboseEnabled() {
 			fmt.Printf("[%s] Server health: available=%v\n", timestamp, serverAvailable)
 		}
 
 		// Reconcile pool with actual OpenCode sessions.
-		if freed := rt.d.ReconcileWithOpenCode(); freed > 0 && daemonVerbose {
+		if freed := rt.d.ReconcileWithOpenCode(); freed > 0 && rt.verboseEnabled() {
 			fmt.Printf("[%s] Reconciled: freed %d stale slots\n", timestamp, freed)
 		}
+
+		rt.refreshVerboseMode(timestamp)
 
 		// Run periodic subsystems (reflection, cleanup, recovery, dead sessions)
 		rt.runSubsystems(timestamp)
@@ -374,7 +378,7 @@ func runDaemonLoop() error {
 		// Check capacity before polling
 		if rt.d.AtCapacity() {
 			activeCount := rt.d.ActiveCount()
-			if daemonVerbose {
+			if rt.verboseEnabled() {
 				fmt.Printf("[%s] At capacity (%d/%d agents active), waiting...\n",
 					timestamp, activeCount, daemonMaxAgents)
 			}
@@ -391,7 +395,7 @@ func runDaemonLoop() error {
 		// Runs once per poll cycle (~60s), which is acceptable staleness for batch daemon.
 		if rt.config.SortMode == "unblock" {
 			rt.d.RefreshFrontierCache()
-			if daemonVerbose {
+			if rt.verboseEnabled() {
 				if rt.d.CachedFrontier != nil {
 					fmt.Printf("[%s] Frontier cache refreshed: %d ready, %d blocked\n",
 						timestamp, len(rt.d.CachedFrontier.Ready), len(rt.d.CachedFrontier.Blocked))
@@ -401,7 +405,7 @@ func runDaemonLoop() error {
 			}
 		}
 
-		if daemonVerbose {
+		if rt.verboseEnabled() {
 			fmt.Printf("[%s] Polling for issues...\n", timestamp)
 		}
 
@@ -418,7 +422,7 @@ func runDaemonLoop() error {
 		}
 
 		// Wait for next poll cycle
-		if daemonVerbose {
+		if rt.verboseEnabled() {
 			fmt.Printf("[%s] Spawned %d this cycle, waiting %s before next poll...\n",
 				timestamp, spawnedThisCycle, formatDaemonDuration(config.PollInterval))
 		}

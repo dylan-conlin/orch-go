@@ -221,6 +221,7 @@ func (l *Logger) LogVerificationFailed(data VerificationFailedData) error {
 // AgentCompletedData contains the data for an agent.completed event.
 type AgentCompletedData struct {
 	BeadsID            string   `json:"beads_id,omitempty"`
+	AttemptID          string   `json:"attempt_id,omitempty"`
 	Workspace          string   `json:"workspace,omitempty"`
 	Reason             string   `json:"reason,omitempty"`
 	Forced             bool     `json:"forced"`
@@ -246,6 +247,9 @@ func (l *Logger) LogAgentCompleted(data AgentCompletedData) error {
 	}
 	if data.BeadsID != "" {
 		eventData["beads_id"] = data.BeadsID
+	}
+	if data.AttemptID != "" {
+		eventData["attempt_id"] = data.AttemptID
 	}
 	if data.Workspace != "" {
 		eventData["workspace"] = data.Workspace
@@ -280,6 +284,7 @@ func (l *Logger) LogAgentCompleted(data AgentCompletedData) error {
 // AgentAbandonedData contains the data for an agent.abandoned event.
 type AgentAbandonedData struct {
 	BeadsID         string `json:"beads_id,omitempty"`
+	AttemptID       string `json:"attempt_id,omitempty"`
 	Workspace       string `json:"workspace,omitempty"`
 	Reason          string `json:"reason,omitempty"`
 	Skill           string `json:"skill,omitempty"`
@@ -297,6 +302,9 @@ func (l *Logger) LogAgentAbandoned(data AgentAbandonedData) error {
 	}
 	if data.BeadsID != "" {
 		eventData["beads_id"] = data.BeadsID
+	}
+	if data.AttemptID != "" {
+		eventData["attempt_id"] = data.AttemptID
 	}
 	if data.Workspace != "" {
 		eventData["workspace"] = data.Workspace

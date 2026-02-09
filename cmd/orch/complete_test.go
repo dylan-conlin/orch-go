@@ -469,6 +469,11 @@ func TestSkipConfigHasAnySkip(t *testing.T) {
 			want:   true,
 		},
 		{
+			name:   "agent running skip",
+			config: SkipConfig{AgentRunning: true, Reason: "test reason"},
+			want:   true,
+		},
+		{
 			name:   "multiple skips",
 			config: SkipConfig{TestEvidence: true, GitDiff: true, Reason: "test"},
 			want:   true,
@@ -531,6 +536,7 @@ func TestSkipConfigSkippedGates(t *testing.T) {
 				SkillOutput:      true,
 				DecisionPatch:    true,
 				PhaseComplete:    true,
+				AgentRunning:     true,
 				VerificationSpec: true,
 			},
 			want: []string{
@@ -545,6 +551,7 @@ func TestSkipConfigSkippedGates(t *testing.T) {
 				"skill_output",
 				"decision_patch_limit",
 				"phase_complete",
+				"agent_running",
 				"verification_spec",
 			},
 		},
@@ -574,6 +581,7 @@ func TestSkipConfigShouldSkipGate(t *testing.T) {
 		GitDiff:          true,
 		Synthesis:        false,
 		Build:            true,
+		AgentRunning:     true,
 		VerificationSpec: true,
 	}
 
@@ -585,6 +593,7 @@ func TestSkipConfigShouldSkipGate(t *testing.T) {
 		{"model_connection", true},
 		{"git_diff", true},
 		{"build", true},
+		{"agent_running", true},
 		{"verification_spec", true},
 		{"synthesis", false},
 		{"visual_verification", false},

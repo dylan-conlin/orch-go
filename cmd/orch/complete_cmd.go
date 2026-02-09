@@ -54,6 +54,7 @@ var (
 	completeSkipSkillOutput      bool
 	completeSkipDecisionPatch    bool
 	completeSkipPhaseComplete    bool
+	completeSkipAgentRunning     bool
 	completeSkipHandoffContent   bool
 	completeSkipDashboardHealth  bool
 	completeSkipVerificationSpec bool
@@ -99,6 +100,7 @@ Use --skip-{gate} with --skip-reason to bypass specific gates:
   --skip-skill-output      Skip skill output verification gate
   --skip-decision-patch    Skip decision patch count gate
   --skip-phase-complete    Skip Phase: Complete gate
+  --skip-agent-running     Skip liveness gate when agent appears active
   --skip-handoff-content   Skip handoff content validation (orchestrator only)
   --skip-dashboard-health  Skip dashboard health check for web/ or serve_*.go changes
   --skip-verification-spec Skip VERIFICATION_SPEC executable checks gate
@@ -176,6 +178,7 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipSkillOutput, "skip-skill-output", false, "Skip skill output verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipDecisionPatch, "skip-decision-patch", false, "Skip decision patch count verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipPhaseComplete, "skip-phase-complete", false, "Skip Phase: Complete verification gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipAgentRunning, "skip-agent-running", false, "Skip liveness gate when agent appears active (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipHandoffContent, "skip-handoff-content", false, "Skip handoff content validation gate for orchestrators (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipDashboardHealth, "skip-dashboard-health", false, "Skip dashboard health check gate for web/ or serve_*.go changes (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipVerificationSpec, "skip-verification-spec", false, "Skip VERIFICATION_SPEC executable checks gate (requires --skip-reason)")
@@ -226,7 +229,7 @@ func runComplete(identifier, workdir string) error {
 	}
 
 	// Phase 3: Check liveness
-	if err := checkLiveness(target); err != nil {
+	if err := checkLiveness(target, skipConfig); err != nil {
 		return err
 	}
 

@@ -19,6 +19,20 @@ function makeArtifact(index: number, titlePrefix: string) {
   }
 }
 
+function makeModelArtifact(path: string, title: string, modifiedAt: string) {
+  return {
+    path,
+    title,
+    type: 'model',
+    status: 'Complete',
+    date: '2026-02-09',
+    summary: 'Model/probe lineage fixture',
+    recommendation: false,
+    modified_at: modifiedAt,
+    relative_time: '1h ago',
+  }
+}
+
 async function mockWorkGraphShell(page: Page, getProjectDir: () => string) {
   await page.route('**/api/context', async (route) => {
     await route.fulfill({
@@ -152,7 +166,9 @@ test.describe('Artifact Feed regressions', () => {
     await expect(page.getByText('RECENTLY UPDATED')).toBeVisible()
 
     await page.locator('select').selectOption('24h')
-    await expect(page.getByText('Recent 24h Artifact')).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: /Recent 24h Artifact 1/i }),
+    ).toBeVisible()
 
     // Wait for work-graph polling cycle (30s) to trigger a background artifacts refresh.
     await page.waitForTimeout(31000)
@@ -168,5 +184,119 @@ test.describe('Artifact Feed regressions', () => {
     const latestRequest = artifactRequests[artifactRequests.length - 1]
     expect(latestRequest.since).toBe('24h')
     expect(latestRequest.projectDir).toBe('/test/project-b')
+  })
+
+  test('artifact side panel shows probe lineage and model timeline navigation', async ({
+    page,
+  }) => {
+    let currentProjectDir = '/test/project-a'
+    await mockWorkGraphShell(page, () => currentProjectDir)
+
+    const modelPath = '.kb/models/daemon-autonomous-operation.md'
+    const newestProbePath =
+      '.kb/models/daemon-autonomous-operation/probes/2026-02-09-skill-inference-mapping-verification.md'
+    const olderProbePath =
+      '.kb/models/daemon-autonomous-operation/probes/2026-02-08-session-boundary-check.md'
+
+    const modelArtifact = makeModelArtifact(
+      modelPath,
+      'Daemon Autonomous Operation',
+      '2026-02-09T12:00:00Z',
+    )
+    const newestProbe = makeModelArtifact(
+      newestProbePath,
+      'Skill Inference Mapping Verification',
+      '2026-02-09T14:00:00Z',
+    )
+    const olderProbe = makeModelArtifact(
+      olderProbePath,
+      'Session Boundary Check',
+      '2026-02-08T12:00:00Z',
+    )
+
+    await page.route('**/api/kb/artifacts**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          needs_decision: [],
+          recent: [newestProbe, modelArtifact, olderProbe],
+          by_type: {
+            model: [modelArtifact, newestProbe, olderProbe],
+          },
+        }),
+      })
+    })
+
+    await page.route('**/api/kb/artifact/content**', async (route) => {
+      const url = new URL(route.request().url())
+      const path = url.searchParams.get('path')
+
+      let content = '# Unknown\n\nNo content'
+      if (path === newestProbePath) {
+        content = [
+          '# Skill Inference Mapping Verification',
+          '',
+          '## Question',
+          'Does the skill inference table correctly route labels to models?',
+          '',
+          '## Model Impact',
+          '**Verdict:** contradicts',
+        ].join('\n')
+      } else if (path === olderProbePath) {
+        content = [
+          '# Session Boundary Check',
+          '',
+          '## Question',
+          'Does session context bleed across model transitions?',
+          '',
+          '## Model Impact',
+          '**Verdict:** extends',
+        ].join('\n')
+      } else if (path === modelPath) {
+        content = '# Daemon Autonomous Operation\n\nModel body'
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ path, content }),
+      })
+    })
+
+    await page.goto('/work-graph')
+    await expect(page.getByText('project-a')).toBeVisible()
+    await page.getByRole('button', { name: 'Artifacts' }).click()
+    await expect(page.getByText('RECENTLY UPDATED')).toBeVisible()
+
+    await page
+      .getByRole('button', { name: /Skill Inference Mapping Verification/i })
+      .click()
+
+    await expect(page.getByTestId('probe-lineage-breadcrumb')).toContainText(
+      'Model: daemon-autonomous-operation > Probe: 2026-02-09-skill-inference-mapping-verification',
+    )
+    await expect(page.getByTestId('probe-verdict-chip')).toContainText('contradicts')
+    await expect(page.getByTestId('probe-claim-excerpt')).toContainText(
+      'Does the skill inference table correctly route labels to models?',
+    )
+
+    await page.getByTestId('probe-parent-model-link').click()
+    await expect(page.getByTestId('model-probe-timeline-card')).toBeVisible()
+
+    await page.getByTestId('model-probe-timeline-toggle').click()
+    await expect(page.getByTestId('model-probe-timeline-list')).toBeVisible()
+    await expect(page.getByText('contradicts')).toBeVisible()
+    await expect(page.getByText('extends')).toBeVisible()
+
+    await page
+      .getByTestId('model-probe-timeline-list')
+      .getByRole('button', { name: /Skill Inference Mapping Verification/i })
+      .click()
+    await expect(page.getByTestId('probe-lineage-breadcrumb')).toContainText(
+      'Probe: 2026-02-09-skill-inference-mapping-verification',
+    )
+    await expect(page.getByTestId('probe-prev-link')).toBeDisabled()
+    await expect(page.getByTestId('probe-next-link')).toBeEnabled()
   })
 })

@@ -85,6 +85,49 @@ func TestRunBDCommand_DoesNotRetryAllowStaleWhenImportNotRecent(t *testing.T) {
 	}
 }
 
+func TestRunBDCommand_RetriesAllowStaleWhenOutOfSyncJSONErrorPayload(t *testing.T) {
+	workDir := t.TempDir()
+	writeLastImportTime(t, workDir, time.Now().Add(-5*time.Second))
+
+	invocations := filepath.Join(workDir, "invocations.log")
+	scriptPath := filepath.Join(workDir, "fake-bd.sh")
+	script := strings.Join([]string{
+		"#!/bin/sh",
+		"printf '%s\\n' \"$*\" >> \"" + invocations + "\"",
+		"case \" $* \" in",
+		"  *\" --allow-stale \"*)",
+		"    printf '[{\"id\":\"orch-go-1\"}]'",
+		"    exit 0",
+		"    ;;",
+		"esac",
+		"printf '{\"error\":\"Database out of sync with JSONL.\"}'",
+		"exit 0",
+	}, "\n") + "\n"
+
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake bd script: %v", err)
+	}
+
+	output, err := runBDCommand(workDir, scriptPath, nil, false, "show", "orch-go-1", "--json")
+	if err != nil {
+		t.Fatalf("runBDCommand returned error: %v", err)
+	}
+	if got := strings.TrimSpace(string(output)); got != `[{"id":"orch-go-1"}]` {
+		t.Fatalf("runBDCommand output = %q, want %q", got, `[{"id":"orch-go-1"}]`)
+	}
+
+	calls := readInvocationLines(t, invocations)
+	if len(calls) != 2 {
+		t.Fatalf("invocation count = %d, want 2", len(calls))
+	}
+	if strings.Contains(calls[0], "--allow-stale") {
+		t.Fatalf("first call unexpectedly had --allow-stale: %q", calls[0])
+	}
+	if !strings.Contains(calls[1], "--allow-stale") {
+		t.Fatalf("second call missing --allow-stale: %q", calls[1])
+	}
+}
+
 func TestRunBDCommand_AddsQuietByDefault(t *testing.T) {
 	workDir := t.TempDir()
 	invocations := filepath.Join(workDir, "invocations.log")

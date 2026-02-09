@@ -377,6 +377,57 @@ func TestRequiresResourceLifecycleAudit(t *testing.T) {
 	}
 }
 
+func TestNoTrackWaitHints(t *testing.T) {
+	tests := []struct {
+		name         string
+		beadsID      string
+		noTrack      bool
+		wantHandle   string
+		wantWaitCmd  string
+		wantResolved bool
+	}{
+		{
+			name:         "tracked spawn returns no hints",
+			beadsID:      "orch-go-1234",
+			noTrack:      false,
+			wantHandle:   "",
+			wantWaitCmd:  "",
+			wantResolved: false,
+		},
+		{
+			name:         "untracked id returns wait command and display alias",
+			beadsID:      "orch-go-untracked-1768090360",
+			noTrack:      true,
+			wantHandle:   "orch-go-untracked-1768090360 (status: untracked-Jan10-1612)",
+			wantWaitCmd:  "orch wait orch-go-untracked-1768090360",
+			wantResolved: true,
+		},
+		{
+			name:         "empty beads id returns no hints",
+			beadsID:      "",
+			noTrack:      true,
+			wantHandle:   "",
+			wantWaitCmd:  "",
+			wantResolved: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handle, waitCmd, ok := noTrackWaitHints(tt.beadsID, tt.noTrack)
+			if ok != tt.wantResolved {
+				t.Fatalf("noTrackWaitHints() ok = %v, want %v", ok, tt.wantResolved)
+			}
+			if handle != tt.wantHandle {
+				t.Fatalf("noTrackWaitHints() handle = %q, want %q", handle, tt.wantHandle)
+			}
+			if waitCmd != tt.wantWaitCmd {
+				t.Fatalf("noTrackWaitHints() waitCmd = %q, want %q", waitCmd, tt.wantWaitCmd)
+			}
+		})
+	}
+}
+
 func TestStripANSI(t *testing.T) {
 	tests := []struct {
 		name  string

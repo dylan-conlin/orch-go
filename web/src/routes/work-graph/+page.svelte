@@ -3,6 +3,7 @@
 	import { derived } from 'svelte/store';
 	import { workGraph, buildTree, filterTreeByLabel, groupTreeNodes, type TreeNode, type GroupSection, type GroupByMode } from '$lib/stores/work-graph';
 	import { kbArtifacts } from '$lib/stores/kb-artifacts';
+	import { kbModelProbes } from '$lib/stores/kb-model-probes';
 	import { orchestratorContext, connectionStatus } from '$lib/stores/context';
 	import { agents, connectSSE, disconnectSSE, sseEvents } from '$lib/stores/agents';
 	import { WorkGraphTree } from '$lib/components/work-graph-tree';
@@ -115,6 +116,10 @@
 
 		if (currentView === 'artifacts' && $kbArtifacts) {
 			requests.push(kbArtifacts.fetch(projectDir));
+		}
+
+		if (currentView === 'artifacts' && $kbModelProbes) {
+			requests.push(kbModelProbes.fetch(projectDir));
 		}
 
 		const results = await Promise.allSettled(requests);
@@ -429,6 +434,9 @@
 					if (currentView === 'artifacts' && $kbArtifacts) {
 						kbArtifacts.fetch(newProjectDir).catch(console.error);
 					}
+					if (currentView === 'artifacts' && $kbModelProbes) {
+						kbModelProbes.fetch(newProjectDir).catch(console.error);
+					}
 				}, 300);
 			}
 		}
@@ -439,9 +447,18 @@
 		currentView = view;
 		
 		// Fetch artifacts when switching to artifacts view
-		if (view === 'artifacts' && !$kbArtifacts) {
+		if (view === 'artifacts') {
 			const projectDir = $orchestratorContext?.project_dir;
-			await kbArtifacts.fetch(projectDir);
+			const requests: Promise<void>[] = [];
+			if (!$kbArtifacts) {
+				requests.push(kbArtifacts.fetch(projectDir));
+			}
+			if (!$kbModelProbes) {
+				requests.push(kbModelProbes.fetch(projectDir));
+			}
+			if (requests.length > 0) {
+				await Promise.all(requests);
+			}
 		}
 	}
 

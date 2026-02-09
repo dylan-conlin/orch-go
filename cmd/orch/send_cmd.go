@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/episodic"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -91,6 +92,13 @@ func sendViaOpenCodeAPI(client opencode.ClientInterface, sessionID, identifier, 
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
+	recordEpisodicEvent(event, episodic.Context{
+		Boundary:  episodic.BoundaryCommand,
+		Project:   projectFromCWD(),
+		Workspace: identifier,
+		SessionID: sessionID,
+		BeadsID:   inferSendBeadsID(identifier),
+	})
 
 	if sendAsync {
 		// Send message asynchronously (non-blocking, no model for Q&A)
@@ -131,6 +139,12 @@ func sendViaTmux(windowInfo *tmux.WindowInfo, identifier, message string) error 
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
+	recordEpisodicEvent(event, episodic.Context{
+		Boundary:  episodic.BoundaryCommand,
+		Project:   projectFromCWD(),
+		Workspace: identifier,
+		BeadsID:   inferSendBeadsID(identifier),
+	})
 
 	// Send the message using tmux send-keys in literal mode
 	if err := tmux.SendKeysLiteral(windowInfo.Target, message); err != nil {
@@ -144,4 +158,12 @@ func sendViaTmux(windowInfo *tmux.WindowInfo, identifier, message string) error 
 
 	fmt.Printf("✓ Message sent to %s (via tmux %s)\n", identifier, windowInfo.Target)
 	return nil
+}
+
+func inferSendBeadsID(identifier string) string {
+	v := strings.TrimSpace(identifier)
+	if v == "" || strings.HasPrefix(v, "ses_") || !strings.Contains(v, "-") {
+		return ""
+	}
+	return v
 }

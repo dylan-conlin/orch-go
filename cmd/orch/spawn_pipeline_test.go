@@ -13,6 +13,7 @@ func saveSpawnPipelineGlobals() func() {
 	oldSpawnModel := spawnModel
 	oldSpawnWorkdir := spawnWorkdir
 	oldSpawnForce := spawnForce
+	oldSpawnAcknowledgeHotspot := spawnAcknowledgeHotspot
 	oldSpawnAutoInit := spawnAutoInit
 	oldSpawnNoTrack := spawnNoTrack
 	oldSpawnIssue := spawnIssue
@@ -35,6 +36,7 @@ func saveSpawnPipelineGlobals() func() {
 		spawnModel = oldSpawnModel
 		spawnWorkdir = oldSpawnWorkdir
 		spawnForce = oldSpawnForce
+		spawnAcknowledgeHotspot = oldSpawnAcknowledgeHotspot
 		spawnAutoInit = oldSpawnAutoInit
 		spawnNoTrack = oldSpawnNoTrack
 		spawnIssue = oldSpawnIssue
@@ -93,6 +95,63 @@ func TestRunPreFlightValidationHappyPathNonAnthropic(t *testing.T) {
 	}
 	if p.usageCheckResult == nil {
 		t.Fatal("expected usageCheckResult to be initialized for non-anthropic path")
+	}
+}
+
+func TestRunPreFlightValidationRequiresBypassForTrackedManualSpawns(t *testing.T) {
+	restore := saveSpawnPipelineGlobals()
+	defer restore()
+	t.Setenv(triageBypassEnvVar, "")
+
+	spawnBypassTriage = false
+	spawnNoTrack = false
+	spawnMaxAgents = 0
+	spawnModel = "google/gemini-2.5-pro"
+	spawnWorkdir = t.TempDir()
+
+	p := newSpawnPipeline("http://127.0.0.1:4096", "feature-impl", "manual tracked spawn", false, false, false, false, false)
+
+	err := p.runPreFlightValidation()
+	if err == nil {
+		t.Fatal("expected runPreFlightValidation() to require triage bypass for tracked manual spawn")
+	}
+	if !strings.Contains(err.Error(), "triage bypass required") {
+		t.Fatalf("expected triage bypass error, got %v", err)
+	}
+}
+
+func TestRunPreFlightValidationAllowsTrackedManualSpawnsWithSessionBypassEnv(t *testing.T) {
+	restore := saveSpawnPipelineGlobals()
+	defer restore()
+	t.Setenv(triageBypassEnvVar, "1")
+
+	spawnBypassTriage = false
+	spawnNoTrack = false
+	spawnMaxAgents = 0
+	spawnModel = "google/gemini-2.5-pro"
+	spawnWorkdir = t.TempDir()
+
+	p := newSpawnPipeline("http://127.0.0.1:4096", "feature-impl", "manual tracked spawn", false, false, false, false, false)
+
+	if err := p.runPreFlightValidation(); err != nil {
+		t.Fatalf("runPreFlightValidation() error = %v", err)
+	}
+}
+
+func TestRunPreFlightValidationAllowsNoTrackManualSpawnsWithoutBypass(t *testing.T) {
+	restore := saveSpawnPipelineGlobals()
+	defer restore()
+
+	spawnBypassTriage = false
+	spawnNoTrack = true
+	spawnMaxAgents = 0
+	spawnModel = "google/gemini-2.5-pro"
+	spawnWorkdir = t.TempDir()
+
+	p := newSpawnPipeline("http://127.0.0.1:4096", "feature-impl", "manual no-track spawn", false, false, false, false, false)
+
+	if err := p.runPreFlightValidation(); err != nil {
+		t.Fatalf("runPreFlightValidation() error = %v", err)
 	}
 }
 

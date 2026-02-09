@@ -364,64 +364,14 @@ func isBinaryUpToDate(projectDir string) (bool, error) {
 	return binaryMtime.After(lastGoCommitTime.Add(-time.Second)), nil
 }
 
-// restartOrchServe checks if orch serve is running and restarts it.
-// Returns true if it was restarted, false if it wasn't running.
+// restartOrchServe checks if orch serve is running under a process manager and restarts it.
+// Returns true if it was restarted, false if it wasn't running under a manager.
 func restartOrchServe(projectDir string) (bool, error) {
-	// Find the orch serve process
-	// We look for processes matching "orch serve" or "orch-go serve"
-	cmd := exec.Command("pgrep", "-f", "orch.*serve")
-	output, err := cmd.Output()
+	result, err := restartManagedOrchServe(restartOrchServeProjectDir(projectDir))
 	if err != nil {
-		// No process found - that's fine, just means serve isn't running
-		return false, nil
+		return false, err
 	}
-
-	pids := strings.Split(strings.TrimSpace(string(output)), "\n")
-	if len(pids) == 0 || pids[0] == "" {
-		return false, nil
-	}
-
-	// Get the current PID to avoid killing ourselves
-	currentPID := os.Getpid()
-
-	// Kill the serve process(es)
-	var killedAny bool
-	for _, pidStr := range pids {
-		pid, err := strconv.Atoi(strings.TrimSpace(pidStr))
-		if err != nil {
-			continue
-		}
-		// Don't kill ourselves
-		if pid == currentPID {
-			continue
-		}
-		// Send SIGTERM for graceful shutdown
-		killCmd := exec.Command("kill", "-TERM", pidStr)
-		if err := killCmd.Run(); err == nil {
-			killedAny = true
-		}
-	}
-
-	if !killedAny {
-		return false, nil
-	}
-
-	// Wait a moment for the process to stop
-	time.Sleep(500 * time.Millisecond)
-
-	// Start orch serve in the background
-	// We use nohup to ensure it survives after we exit
-	serveCmd := exec.Command("nohup", "orch", "serve")
-	serveCmd.Dir = projectDir
-	// Redirect output to files to avoid blocking
-	devNull, _ := os.OpenFile("/dev/null", os.O_WRONLY, 0)
-	serveCmd.Stdout = devNull
-	serveCmd.Stderr = devNull
-	if err := serveCmd.Start(); err != nil {
-		return true, fmt.Errorf("killed old serve but failed to start new: %w", err)
-	}
-
-	return true, nil
+	return result.Restarted, nil
 }
 
 // printBehavioralValidationInfo outputs structured behavioral validation information.

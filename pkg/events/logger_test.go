@@ -570,3 +570,54 @@ func TestLogSSEReconnectionSuccess(t *testing.T) {
 		t.Error("LogSSEReconnectionSuccess() should include attempt count in data")
 	}
 }
+
+func TestLogAgentCompleted_IncludesAttemptID(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogAgentCompleted(AgentCompletedData{
+		BeadsID:            "orch-go-abc123",
+		AttemptID:          "123e4567-e89b-42d3-a456-426614174003",
+		Workspace:          "og-feat-test-09feb-ab12",
+		Reason:             "done",
+		VerificationPassed: true,
+	})
+	if err != nil {
+		t.Fatalf("LogAgentCompleted() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	if !strings.Contains(string(data), "\"attempt_id\":\"123e4567-e89b-42d3-a456-426614174003\"") {
+		t.Error("LogAgentCompleted() should include attempt_id in data")
+	}
+}
+
+func TestLogAgentAbandoned_IncludesAttemptID(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogAgentAbandoned(AgentAbandonedData{
+		BeadsID:   "orch-go-abc123",
+		AttemptID: "123e4567-e89b-42d3-a456-426614174004",
+		Workspace: "og-feat-test-09feb-ab12",
+		Reason:    "stuck",
+	})
+	if err != nil {
+		t.Fatalf("LogAgentAbandoned() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	if !strings.Contains(string(data), "\"attempt_id\":\"123e4567-e89b-42d3-a456-426614174004\"") {
+		t.Error("LogAgentAbandoned() should include attempt_id in data")
+	}
+}

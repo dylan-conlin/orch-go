@@ -7,6 +7,84 @@ import (
 	"testing"
 )
 
+func TestResolveTriageBypass(t *testing.T) {
+	old := spawnBypassTriage
+	defer func() {
+		spawnBypassTriage = old
+	}()
+
+	tests := []struct {
+		name   string
+		flag   bool
+		env    string
+		wantOK bool
+		wantBy string
+	}{
+		{name: "flag bypass", flag: true, env: "", wantOK: true, wantBy: "flag"},
+		{name: "env bypass numeric", flag: false, env: "1", wantOK: true, wantBy: "env"},
+		{name: "env bypass true", flag: false, env: "true", wantOK: true, wantBy: "env"},
+		{name: "env bypass uppercase true", flag: false, env: "TRUE", wantOK: true, wantBy: "env"},
+		{name: "env bypass yes", flag: false, env: "yes", wantOK: true, wantBy: "env"},
+		{name: "invalid env value", flag: false, env: "0", wantOK: false, wantBy: ""},
+		{name: "none", flag: false, env: "", wantOK: false, wantBy: ""},
+		{name: "flag wins over env", flag: true, env: "0", wantOK: true, wantBy: "flag"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(triageBypassEnvVar, tt.env)
+			spawnBypassTriage = tt.flag
+
+			ok, by := resolveTriageBypass()
+			if ok != tt.wantOK {
+				t.Fatalf("resolveTriageBypass() ok = %v, want %v", ok, tt.wantOK)
+			}
+			if by != tt.wantBy {
+				t.Fatalf("resolveTriageBypass() source = %q, want %q", by, tt.wantBy)
+			}
+		})
+	}
+}
+
+func TestResolveHotspotSuppression(t *testing.T) {
+	old := spawnAcknowledgeHotspot
+	defer func() {
+		spawnAcknowledgeHotspot = old
+	}()
+
+	tests := []struct {
+		name   string
+		flag   bool
+		env    string
+		wantOK bool
+		wantBy string
+	}{
+		{name: "flag suppression", flag: true, env: "", wantOK: true, wantBy: "flag"},
+		{name: "env suppression numeric", flag: false, env: "1", wantOK: true, wantBy: "env"},
+		{name: "env suppression true", flag: false, env: "true", wantOK: true, wantBy: "env"},
+		{name: "env suppression uppercase true", flag: false, env: "TRUE", wantOK: true, wantBy: "env"},
+		{name: "env suppression yes", flag: false, env: "yes", wantOK: true, wantBy: "env"},
+		{name: "invalid env value", flag: false, env: "0", wantOK: false, wantBy: ""},
+		{name: "none", flag: false, env: "", wantOK: false, wantBy: ""},
+		{name: "flag wins over env", flag: true, env: "0", wantOK: true, wantBy: "flag"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(hotspotSuppressEnvVar, tt.env)
+			spawnAcknowledgeHotspot = tt.flag
+
+			ok, by := resolveHotspotSuppression()
+			if ok != tt.wantOK {
+				t.Fatalf("resolveHotspotSuppression() ok = %v, want %v", ok, tt.wantOK)
+			}
+			if by != tt.wantBy {
+				t.Fatalf("resolveHotspotSuppression() source = %q, want %q", by, tt.wantBy)
+			}
+		})
+	}
+}
+
 func TestParseDecisionFrontmatter(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -1,11 +1,14 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -296,5 +299,92 @@ func TestResolveBeadsIDFromSessionID(t *testing.T) {
 				t.Errorf("isSession = %v, want %v", gotIsSession, tt.wantIsSession)
 			}
 		})
+	}
+}
+
+func setupWaitStateDB(t *testing.T) *state.DB {
+	t.Helper()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	db, err := state.OpenDefault()
+	if err != nil {
+		t.Fatalf("OpenDefault failed: %v", err)
+	}
+	if db == nil {
+		t.Fatal("OpenDefault returned nil db")
+	}
+
+	return db
+}
+
+func seedUntrackedAgent(t *testing.T, db *state.DB, beadsID, phase, summary string, reportedAt int64) {
+	t.Helper()
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir failed: %v", err)
+	}
+
+	err = db.UpsertAgent(&state.Agent{
+		WorkspaceName:   "og-debug-untracked-09feb",
+		BeadsID:         beadsID,
+		ProjectDir:      filepath.Join(home, "Documents", "personal", "orch-go"),
+		ProjectName:     "orch-go",
+		Mode:            "opencode",
+		SpawnTime:       time.Now().UnixMilli(),
+		Phase:           phase,
+		PhaseSummary:    summary,
+		PhaseReportedAt: reportedAt,
+	})
+	if err != nil {
+		t.Fatalf("UpsertAgent failed: %v", err)
+	}
+}
+
+func TestResolveBeadsIDWithClientResolvesUntrackedDisplayHandle(t *testing.T) {
+	db := setupWaitStateDB(t)
+	defer db.Close()
+
+	beadsID := "orch-go-untracked-1768090360"
+	seedUntrackedAgent(t, db, beadsID, "", "", 0)
+
+	display := formatBeadsIDForDisplay(beadsID)
+	got, err := resolveBeadsIDWithClient(nil, display)
+	if err != nil {
+		t.Fatalf("resolveBeadsIDWithClient returned error: %v", err)
+	}
+	if got != beadsID {
+		t.Fatalf("resolveBeadsIDWithClient(%q) = %q, want %q", display, got, beadsID)
+	}
+}
+
+func TestGetWaitPhaseStatusReadsUntrackedPhaseFromStateDB(t *testing.T) {
+	db := setupWaitStateDB(t)
+	defer db.Close()
+
+	beadsID := "orch-go-untracked-1768090360"
+	now := time.Now().UnixMilli()
+	seedUntrackedAgent(t, db, beadsID, "Complete", "All done", now)
+
+	status, err := getWaitPhaseStatus(beadsID)
+	if err != nil {
+		t.Fatalf("getWaitPhaseStatus returned error: %v", err)
+	}
+	if !status.Found {
+		t.Fatal("status.Found = false, want true")
+	}
+	if status.Phase != "Complete" {
+		t.Fatalf("status.Phase = %q, want %q", status.Phase, "Complete")
+	}
+	if status.Summary != "All done" {
+		t.Fatalf("status.Summary = %q, want %q", status.Summary, "All done")
+	}
+}
+
+func TestVerifyWaitTargetSkipsIssueLookupForUntracked(t *testing.T) {
+	if err := verifyWaitTarget("orch-go-untracked-1768090360"); err != nil {
+		t.Fatalf("verifyWaitTarget returned error for untracked ID: %v", err)
 	}
 }

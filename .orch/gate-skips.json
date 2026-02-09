@@ -1,3 +1,18 @@
 {
-  "skips": []
+  "skips": [
+    {
+      "gate": "phase_complete",
+      "reason": "investigation already complete, stale beads ID from prior session",
+      "set_at": "2026-02-09T09:43:08.281312-08:00",
+      "set_by": "orch-go-d2ne1",
+      "expires_at": "2026-02-09T11:43:08.281312-08:00"
+    },
+    {
+      "gate": "verification_spec",
+      "reason": "investigation already complete, stale beads ID from prior session",
+      "set_at": "2026-02-09T09:43:08.341834-08:00",
+      "set_by": "orch-go-d2ne1",
+      "expires_at": "2026-02-09T11:43:08.341834-08:00"
+    }
+  ]
 }

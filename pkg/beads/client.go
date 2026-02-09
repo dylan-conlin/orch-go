@@ -189,11 +189,11 @@ func runBDCommand(workDir, bdPath string, env []string, combined bool, args ...s
 }
 
 func shouldRetryWithAllowStale(workDir string, args []string, err error, output []byte) bool {
-	if err == nil || hasCLIArg(args, "--allow-stale") {
+	if hasCLIArg(args, "--allow-stale") {
 		return false
 	}
 
-	if !isOutOfSyncError(err, output) {
+	if !isOutOfSyncFailure(err, output) {
 		return false
 	}
 
@@ -225,7 +225,20 @@ func hasCLIArg(args []string, target string) bool {
 	return false
 }
 
-func isOutOfSyncError(err error, output []byte) bool {
+func isOutOfSyncFailure(err error, output []byte) bool {
+	if err != nil {
+		return isOutOfSyncText(joinOutOfSyncText(err, output))
+	}
+
+	msg, ok := outputErrorMessage(output)
+	if !ok {
+		return false
+	}
+
+	return isOutOfSyncText(strings.ToLower(msg))
+}
+
+func joinOutOfSyncText(err error, output []byte) string {
 	var joined strings.Builder
 	joined.WriteString(strings.ToLower(err.Error()))
 	if len(output) > 0 {
@@ -241,7 +254,38 @@ func isOutOfSyncError(err error, output []byte) bool {
 		}
 	}
 
-	errText := joined.String()
+	return joined.String()
+}
+
+func outputErrorMessage(output []byte) (string, bool) {
+	if len(output) == 0 {
+		return "", false
+	}
+
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(output, &payload); err != nil {
+		return "", false
+	}
+
+	raw, ok := payload["error"]
+	if !ok {
+		return "", false
+	}
+
+	var msg string
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		return "", false
+	}
+
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return "", false
+	}
+
+	return msg, true
+}
+
+func isOutOfSyncText(errText string) bool {
 	return strings.Contains(errText, "database out of sync with jsonl") ||
 		strings.Contains(errText, "out of sync with jsonl") ||
 		strings.Contains(errText, "run 'bd sync --import-only'")

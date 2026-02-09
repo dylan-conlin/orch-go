@@ -202,7 +202,10 @@ function createAttentionStore() {
               priority: item.metadata.beads_priority || 0,
               type: item.metadata.issue_type || 'task',
               source: 'beads',
-              completedAt: item.metadata.closed_at || item.collected_at,
+              completedAt:
+                item.metadata.closed_at ||
+                item.metadata.completed_at ||
+                item.collected_at,
               verificationStatus,
               attentionBadge:
                 verificationStatus === 'needs_fix'
@@ -349,7 +352,8 @@ export const attentionCounts = derived(attention, ($attention) => {
 export function formatRelativeTime(timestamp: string): string {
   const now = Date.now()
   const then = new Date(timestamp).getTime()
-  const diffMs = now - then
+  if (Number.isNaN(then)) return 'unknown'
+  const diffMs = Math.max(0, now - then)
   const diffMins = Math.floor(diffMs / 60000)
   const diffHours = Math.floor(diffMs / 3600000)
   const diffDays = Math.floor(diffMs / 86400000)

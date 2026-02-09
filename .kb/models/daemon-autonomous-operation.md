@@ -2,12 +2,15 @@
 
 **Domain:** Daemon / Autonomous Spawning / Batch Processing
 **Last Updated:** 2026-02-09
-**Synthesized From:** 39 investigations + daemon.md guide (synthesized from 33 investigations, Dec 2025 - Jan 2026) + 1 probe (Feb 8, 2026) on poll loops, skill inference, capacity management, completion tracking, cross-project operation
+**Synthesized From:** 39 investigations + daemon.md guide (synthesized from 33 investigations, Dec 2025 - Jan 2026) + 2 probes (Feb 8-9, 2026) on poll loops, skill inference, capacity management, completion tracking, cross-project operation
 
 **Recent Probes:**
+
 - `probes/2026-02-08-processed-cache-mark-after-success.md` — **Extends** dedup invariants. `ProcessedIssueCache` must be written only after confirmed spawn success, not during evaluation. Rejected/failed spawns stay retryable. Transient race protection uses `SpawnedIssues` (in-memory). Confidence: High.
+- `probes/2026-02-09-skill-inference-mapping-verification.md` — **Contradicts (then updates)** stale skill inference claims. Confirms epics are non-spawnable errors, unknown types error (no daemon fallback), `investigation`/`question` mappings are valid, and `skill:*` labels are highest-priority override. Confidence: High.
 
 **Significant Changes (Feb 7-8, 2026):**
+
 - **Polish Mode:** Daemon self-improves when queue empty (audits, consolidates investigations, cleans stale decisions)
 - **Auto-detect completion:** Agents with commits + idle sessions auto-detected as complete (see agent-lifecycle probe)
 - **Phase-aware idle nudge:** Recovery detects idle agents at late phases and nudges them
@@ -17,7 +20,7 @@
 
 ## Summary (30 seconds)
 
-The daemon is an **autonomous agent spawner** that operates in a **poll-spawn-complete cycle**: polls beads for `triage:ready` issues, infers skill from issue type, spawns within capacity limits, monitors for `Phase: Complete`, verifies and closes. The daemon operates **independently of orchestrators** - orchestrators triage (label issues ready), daemon spawns (batch processing), orchestrators synthesize (review completed work). Skill inference uses **issue type** (not labels) to map task→investigation, bug→systematic-debugging, etc. Capacity management uses **WorkerPool** with reconciliation against OpenCode to free stale slots.
+The daemon is an **autonomous agent spawner** that operates in a **poll-spawn-complete cycle**: polls beads for `triage:ready` issues, infers skill, spawns within capacity limits, monitors for `Phase: Complete`, verifies and closes. The daemon operates **independently of orchestrators** - orchestrators triage (label issues ready), daemon spawns (batch processing), orchestrators synthesize (review completed work). Skill inference uses a **priority chain**: `skill:*` label → title pattern → issue type (`bug`→`systematic-debugging`, `feature`/`task`→`feature-impl`, `investigation`/`question`→`investigation`, `epic`/unknown→error skipped). Capacity management uses **WorkerPool** with reconciliation against OpenCode to free stale slots.
 
 ---
 
@@ -73,17 +76,18 @@ The daemon runs continuously via launchd, executing this cycle:
 
 Daemon infers skill using a **priority chain**: `skill:*` label → title pattern → issue type.
 
-| Issue Type | Inferred Skill | Notes |
-|------------|----------------|-------|
-| `bug` | systematic-debugging | Bugs need root cause analysis |
-| `feature` | feature-impl | Features need implementation |
-| `task` | feature-impl | Tasks are implementation work |
-| `investigation` | investigation | Explicit investigation requests |
-| `question` | investigation | Questions need understanding |
-| `epic` | error (non-spawnable) | Epics are not directly spawnable |
-| (unknown) | error (skipped) | Daemon skips issues with inference errors |
+| Issue Type      | Inferred Skill        | Notes                                     |
+| --------------- | --------------------- | ----------------------------------------- |
+| `bug`           | systematic-debugging  | Bugs need root cause analysis             |
+| `feature`       | feature-impl          | Features need implementation              |
+| `task`          | feature-impl          | Tasks are implementation work             |
+| `investigation` | investigation         | Explicit investigation requests           |
+| `question`      | investigation         | Questions need understanding              |
+| `epic`          | error (non-spawnable) | Epics are not directly spawnable          |
+| (unknown)       | error (skipped)       | Daemon skips issues with inference errors |
 
 **Override priority:**
+
 1. `skill:*` label (highest) — e.g., `skill:architect` forces architect skill
 2. Title pattern — e.g., "Synthesize ... investigations" maps to `kb-reflect`
 3. Issue type (lowest) — table above
@@ -91,6 +95,7 @@ Daemon infers skill using a **priority chain**: `skill:*` label → title patter
 **No silent fallback:** Unknown types produce errors and are skipped, not defaulted.
 
 **Why type as base, with label override:**
+
 - Type is required field on creation (always available)
 - Labels enable orchestrator to override inference when needed
 - Title patterns catch automated issue types (synthesis, etc.)
@@ -102,12 +107,12 @@ Daemon infers skill using a **priority chain**: `skill:*` label → title patter
 
 **WorkerPool** manages concurrent agent limits:
 
-| Component | Purpose |
-|-----------|---------|
-| `MaxAgents` | Hard limit (default: 5) from `~/.orch/config.yaml` |
-| `active map` | Tracks spawned agents by beads ID |
-| `Acquire()` | Blocks if at capacity, returns slot when available |
-| `Release()` | Frees slot when agent completes |
+| Component    | Purpose                                            |
+| ------------ | -------------------------------------------------- |
+| `MaxAgents`  | Hard limit (default: 5) from `~/.orch/config.yaml` |
+| `active map` | Tracks spawned agents by beads ID                  |
+| `Acquire()`  | Blocks if at capacity, returns slot when available |
+| `Release()`  | Frees slot when agent completes                    |
 
 **Reconciliation (every poll):**
 
@@ -141,6 +146,7 @@ projects:
 ```
 
 **Poll behavior:**
+
 1. For each project directory:
    - `cd` into project
    - Run `bd ready` (reads that project's `.beads/`)
@@ -155,11 +161,11 @@ projects:
 
 **Labels control spawn readiness:**
 
-| Label | Meaning | Who Sets | Daemon Action |
-|-------|---------|----------|---------------|
-| `triage:ready` | Confident spawn | Orchestrator or issue-creation agent | Spawns immediately |
-| `triage:review` | Needs review | issue-creation agent | Skips, waits for orchestrator review |
-| (no label) | Default triage | N/A | Skips |
+| Label           | Meaning         | Who Sets                             | Daemon Action                        |
+| --------------- | --------------- | ------------------------------------ | ------------------------------------ |
+| `triage:ready`  | Confident spawn | Orchestrator or issue-creation agent | Spawns immediately                   |
+| `triage:review` | Needs review    | issue-creation agent                 | Skips, waits for orchestrator review |
+| (no label)      | Default triage  | N/A                                  | Skips                                |
 
 **The flow:**
 
@@ -209,13 +215,13 @@ Daemon auto-spawns on next poll
 
 **What happens:** Daemon spawns wrong skill for issue type.
 
-**Root cause:** Issue type doesn't match actual work needed. User creates `task` for implementation work (should be `feature`), daemon infers `investigation`.
+**Root cause:** Issue metadata doesn't reflect actual work, or explicit override is missing. Example: a complex recurring bug needs architecture exploration, but default `bug` inference spawns `systematic-debugging` unless `skill:architect` is set.
 
-**Why detection is hard:** Type is set at creation, can't be changed by daemon. Daemon trusts type.
+**Why detection is hard:** Inference is deterministic and appears valid from metadata alone. The mismatch is semantic (intent vs metadata), not a runtime error.
 
-**Fix:** Manual override. Orchestrator updates issue type before labeling `triage:ready`, or spawns manually with correct skill.
+**Fix:** Apply explicit override before marking `triage:ready` (for example `skill:architect`), or adjust issue type/title to match intended workflow.
 
-**Prevention:** Better issue creation prompts, type validation, skill override via labels (future).
+**Prevention:** Better issue creation prompts, triage checklist for override labels, and validation that issue metadata reflects intended execution path.
 
 ---
 
@@ -234,18 +240,18 @@ Daemon auto-spawns on next poll
 
 ---
 
-### Why Skill Inference from Type, Not Labels?
+### Why Type-Based Inference with Label/Title Overrides?
 
-**Constraint:** Daemon uses issue type to infer skill, ignoring labels.
+**Constraint:** Daemon uses deterministic priority: `skill:*` label → title pattern → issue type.
 
-**Implication:** Can't override skill via label (e.g., `skill:architect` label has no effect).
+**Implication:** Type remains the baseline for most issues, but explicit labels and known title patterns can override default behavior.
 
-**Workaround:** Create issue with correct type, or spawn manually with skill override.
+**Workaround:** For edge cases, set explicit `skill:*` labels (for example `skill:architect`) before `triage:ready`.
 
-**This enables:** Simple triage workflow (one decision: ready or review?)
-**This constrains:** Cannot override skill inference via labels
+**This enables:** Predictable default routing with low-friction orchestrator overrides
+**This constrains:** Unknown and non-spawnable types still error and are skipped (no daemon fallback)
 
-**Future consideration:** Allow label override for edge cases (`skill:X` label overrides type-based inference).
+**Source:** `pkg/daemon/skill_inference.go`, `pkg/daemon/daemon_spawn.go`
 
 ---
 
@@ -322,24 +328,29 @@ Daemon auto-spawns on next poll
 ## References
 
 **Guide:**
+
 - `.kb/guides/daemon.md` - Procedural guide (commands, configuration, troubleshooting)
 
 **Investigations:**
+
 - Daemon.md references 33 investigations from Dec 2025 - Jan 2026
 - Additional 6+ investigations on cross-project operation, kb reflect integration
 
 **Decisions:**
+
 - `.kb/decisions/2026-01-21-cross-project-daemon-architecture.md` - Single daemon polls all kb-registered projects.
 - `.kb/decisions/2026-01-17-five-tier-completion-escalation-model.md` - Completion loop escalation semantics.
 - `.kb/decisions/2026-01-14-two-tier-cleanup-pattern.md` - Event cleanup + periodic cleanup for daemon-managed resources.
 - `.kb/decisions/2026-01-21-strategic-first-gate-advisory-only.md` - Spawn hotspot signal is advisory, not blocking.
 
 **Models:**
+
 - `.kb/models/spawn-architecture.md` - How `orch work` spawns agents
 - `.kb/models/beads-integration-architecture.md` - How daemon polls beads
 - `.kb/models/completion-verification.md` - How completion loop verifies agents
 
 **Source code:**
+
 - `pkg/daemon/daemon.go` - Main poll loop, Next() and Once() methods
 - `pkg/daemon/pool.go` - WorkerPool capacity management
 - `pkg/daemon/skill_inference.go` - Issue type → skill mapping

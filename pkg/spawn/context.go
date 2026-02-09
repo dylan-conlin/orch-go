@@ -37,6 +37,7 @@ func CreateScreenshotsDir(workspacePath string) error {
 type contextData struct {
 	Task                     string
 	BeadsID                  string
+	RecentValidatedEpisodes  string
 	ProjectDir               string
 	WorkspaceName            string
 	SkillName                string
@@ -101,6 +102,7 @@ func buildContextData(cfg *Config) contextData {
 	return contextData{
 		Task:                     cfg.Task,
 		BeadsID:                  cfg.BeadsID,
+		RecentValidatedEpisodes:  GenerateRecentValidatedEpisodesSection(cfg),
 		ProjectDir:               cfg.ProjectDir,
 		WorkspaceName:            cfg.WorkspaceName,
 		SkillName:                cfg.SkillName,
@@ -138,11 +140,33 @@ func buildContextData(cfg *Config) contextData {
 // For meta-orchestrator skills (IsMetaOrchestrator=true), it delegates to
 // WriteMetaOrchestratorContext which generates META_ORCHESTRATOR_CONTEXT.md.
 func WriteContext(cfg *Config) error {
+	attemptID := strings.TrimSpace(cfg.AttemptID)
+	if attemptID == "" {
+		var err error
+		attemptID, err = GenerateAttemptID()
+		if err != nil {
+			return fmt.Errorf("failed to generate attempt ID: %w", err)
+		}
+		cfg.AttemptID = attemptID
+	}
+
 	if cfg.IsMetaOrchestrator {
-		return WriteMetaOrchestratorContext(cfg)
+		if err := WriteMetaOrchestratorContext(cfg); err != nil {
+			return err
+		}
+		if err := WriteAttemptID(cfg.WorkspacePath(), attemptID); err != nil {
+			return fmt.Errorf("failed to write attempt ID file: %w", err)
+		}
+		return nil
 	}
 	if cfg.IsOrchestrator {
-		return WriteOrchestratorContext(cfg)
+		if err := WriteOrchestratorContext(cfg); err != nil {
+			return err
+		}
+		if err := WriteAttemptID(cfg.WorkspacePath(), attemptID); err != nil {
+			return fmt.Errorf("failed to write attempt ID file: %w", err)
+		}
+		return nil
 	}
 
 	content, err := GenerateContext(cfg)
@@ -182,6 +206,10 @@ func WriteContext(cfg *Config) error {
 	spawnTime := time.Now()
 	if err := WriteSpawnTime(workspacePath, spawnTime); err != nil {
 		return fmt.Errorf("failed to write spawn time file: %w", err)
+	}
+
+	if err := WriteAttemptID(workspacePath, attemptID); err != nil {
+		return fmt.Errorf("failed to write attempt ID file: %w", err)
 	}
 
 	if cfg.BeadsID != "" {

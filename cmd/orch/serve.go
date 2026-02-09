@@ -78,7 +78,8 @@ var serveCmd = &cobra.Command{
 	Long: `Start an HTTP API server that provides endpoints for the beads-ui dashboard.
 
 This is orchestration infrastructure (persistent monitoring), NOT a project
-dev server. Use 'orch serve status' to check if the API is running.
+dev server. Use 'orch serve status' to check health and 'orch serve restart'
+for managed restarts.
 
 Endpoints:
   GET /             - Dashboard UI (static build from web/build)
@@ -105,6 +106,7 @@ Endpoints:
   POST /api/attention/verify - Mark issue as verified or needs_fix (persisted to JSONL)
   GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)
   GET /api/operator-health - Behavioral system health dashboard metrics
+  GET /api/outcomes - Normalized outcome metrics (skills, durations, abandonment, throughput)
   GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)
   GET /api/frontier  - Decidability frontier (ready, blocked, active, stuck)
   GET /api/decisions - Decision center items grouped by action type
@@ -116,7 +118,8 @@ Endpoints:
 Examples:
   orch-go serve              # Start server on port 3348
   orch-go serve --port 8080  # Override with explicit port
-  orch-go serve status       # Check if server is running`,
+  orch-go serve status       # Check if server is running
+  orch-go serve restart      # Restart via overmind/launchd manager`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runServe(servePort)
 	},
@@ -139,11 +142,28 @@ Examples:
 	},
 }
 
+var serveRestartCmd = &cobra.Command{
+	Use:   "restart",
+	Short: "Restart orch serve through its process manager",
+	Long: `Restart orch serve using a managed lifecycle path.
+
+Restart order:
+  1. overmind restart api (development default)
+  2. launchctl kickstart for known launchd labels (legacy compatibility)
+
+If orch serve is running unmanaged (for example via nohup), this command
+returns a remediation message instead of spawning another orphan process.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runServeRestart()
+	},
+}
+
 func init() {
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", DefaultServePort, "Port to check/listen on")
 	serveStatusCmd.Flags().IntVarP(&servePort, "port", "p", DefaultServePort, "Port to check")
 
 	serveCmd.AddCommand(serveStatusCmd)
+	serveCmd.AddCommand(serveRestartCmd)
 	rootCmd.AddCommand(serveCmd)
 }
 
@@ -210,6 +230,7 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  POST /api/deliverables/override - Log override for missing deliverables")
 	fmt.Println("  GET /api/errors    - Error pattern analysis")
 	fmt.Println("  GET /api/operator-health - Behavioral system health metrics")
+	fmt.Println("  GET /api/outcomes - Normalized outcome metrics")
 	fmt.Println("  GET /api/frontier  - Decidability frontier")
 	fmt.Println("  GET /api/decisions - Decision center items")
 	fmt.Println("  GET /api/changelog - Aggregated changelog")
@@ -378,6 +399,7 @@ func runServe(portNum int) error {
 	fmt.Println("  POST /api/attention/verify - Mark issue as verified or needs_fix (persisted to JSONL)")
 	fmt.Println("  GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)")
 	fmt.Println("  GET /api/operator-health - Behavioral system health metrics")
+	fmt.Println("  GET /api/outcomes - Normalized outcome metrics")
 	fmt.Println("  GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)")
 	fmt.Println("  GET /api/orchestrator-sessions - Active orchestrator sessions")
 	fmt.Println("  GET /api/frontier   - Decidability frontier (ready, blocked, active, stuck)")
@@ -480,6 +502,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/reflect", c(s.handleReflect))
 	mux.HandleFunc("/api/kb-health", c(s.handleKBHealth))
 	mux.HandleFunc("/api/kb/artifacts", c(s.handleKBArtifacts))
+	mux.HandleFunc("/api/kb/model-probes", c(s.handleKBModelProbes))
 	mux.HandleFunc("/api/attention", c(s.handleAttention))
 	mux.HandleFunc("/api/attention/likely-done", c(s.handleLikelyDone))
 	mux.HandleFunc("/api/attention/verify", c(s.handleAttentionVerify))
@@ -488,6 +511,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/kb/artifact/content", c(s.handleKBArtifactContent))
 	mux.HandleFunc("/api/errors", c(s.handleErrors))
 	mux.HandleFunc("/api/operator-health", c(s.handleOperatorHealth))
+	mux.HandleFunc("/api/outcomes", c(s.handleOutcomes))
 	mux.HandleFunc("/api/pending-reviews", c(s.handlePendingReviews))
 	mux.HandleFunc("/api/dismiss-review", c(s.handleDismissReview))
 	mux.HandleFunc("/api/config", c(s.handleConfig))

@@ -20,6 +20,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const triageBypassEnvVar = "ORCH_BYPASS_TRIAGE"
+const hotspotSuppressEnvVar = "ORCH_SUPPRESS_HOTSPOT"
+
 // GapCheckResult contains the results of a pre-spawn gap check.
 type GapCheckResult struct {
 	Context     string             // Formatted context to include in SPAWN_CONTEXT.md
@@ -183,14 +186,44 @@ func recordGapForLearning(gapAnalysis *spawn.GapAnalysis, skill, task string) {
 	}
 }
 
-// showTriageBypassRequired displays a warning and returns an error when --bypass-triage is not provided.
+// resolveTriageBypass returns whether triage bypass is enabled and how it was enabled.
+// Sources: explicit --bypass-triage flag or session-level ORCH_BYPASS_TRIAGE env var.
+func resolveTriageBypass() (bool, string) {
+	if spawnBypassTriage {
+		return true, "flag"
+	}
+
+	v := strings.TrimSpace(strings.ToLower(os.Getenv(triageBypassEnvVar)))
+	if v == "1" || v == "true" || v == "yes" || v == "on" {
+		return true, "env"
+	}
+
+	return false, ""
+}
+
+// resolveHotspotSuppression returns whether hotspot warning output should be suppressed.
+// Sources: explicit --acknowledge-hotspot flag or session-level ORCH_SUPPRESS_HOTSPOT env var.
+func resolveHotspotSuppression() (bool, string) {
+	if spawnAcknowledgeHotspot {
+		return true, "flag"
+	}
+
+	v := strings.TrimSpace(strings.ToLower(os.Getenv(hotspotSuppressEnvVar)))
+	if v == "1" || v == "true" || v == "yes" || v == "on" {
+		return true, "env"
+	}
+
+	return false, ""
+}
+
+// showTriageBypassRequired displays a warning and returns an error when triage bypass is not provided.
 // This creates friction to encourage the daemon-driven workflow over manual spawning.
 func showTriageBypassRequired(skillName, task string) error {
 	fmt.Fprintf(os.Stderr, `
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  ⚠️  TRIAGE BYPASS REQUIRED                                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  Manual spawn requires --bypass-triage flag.                                │
+│  Tracked manual spawn requires --bypass-triage flag.                        │
 │                                                                             │
 │  The preferred workflow is daemon-driven triage:                            │
 │    1. Create issue: bd create "task" --type task -l triage:ready            │
@@ -201,24 +234,35 @@ func showTriageBypassRequired(skillName, task string) error {
 │    - Complex/ambiguous task needing custom context                          │
 │    - Skill selection requires orchestrator judgment                         │
 │                                                                             │
-│  To proceed with manual spawn, add --bypass-triage:                         │
+│  For ad-hoc work without issue tracking, use --no-track.                    │
+│                                                                             │
+│  To proceed with manual spawn, use one of:                                  │
+│    1. One-off: orch spawn --bypass-triage ...                               │
+│    2. Session: export ORCH_BYPASS_TRIAGE=1                                  │
+│                                                                             │
+│  Example one-off:                                                           │
 │    orch spawn --bypass-triage %s "%s"                          │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 `, skillName, truncate(task, 30))
-	return fmt.Errorf("spawn blocked: --bypass-triage flag required for manual spawns")
+	return fmt.Errorf("spawn blocked: triage bypass required for manual spawns (--bypass-triage or %s=1)", triageBypassEnvVar)
 }
 
 // logTriageBypass logs a triage bypass event to events.jsonl for Phase 2 review.
 // This tracks how often manual spawns occur vs daemon-driven spawns.
-func logTriageBypass(skillName, task string) {
+func logTriageBypass(skillName, task, source string) {
+	if source == "" {
+		source = "unknown"
+	}
+
 	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{
 		Type:      "spawn.triage_bypassed",
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
-			"skill": skillName,
-			"task":  task,
+			"skill":  skillName,
+			"task":   task,
+			"source": source,
 		},
 	}
 	if err := logger.Log(event); err != nil {

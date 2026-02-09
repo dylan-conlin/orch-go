@@ -4,12 +4,14 @@
 	import { orchestratorContext } from '$lib/stores/context';
 	import { ArtifactRow } from '$lib/components/artifact-row';
 	import { ArtifactSidePanel } from '$lib/components/artifact-side-panel';
+	import { ModelProbeSection } from '$lib/components/model-probe-section';
 
 	let selectedArtifact: ArtifactFeedItem | null = null;
 	let selectedIndex = -1;
 	let currentSection: 'needs-decision' | 'recent' | 'browse' = 'needs-decision';
 	let timeFilter = '7d';
 	let browseType: string | null = null;
+	let knownArtifacts = new Map<string, ArtifactFeedItem>();
 
 	// Get time filter from localStorage
 	onMount(() => {
@@ -49,6 +51,19 @@
 			...($kbArtifacts?.needs_decision ?? []),
 			...($kbArtifacts?.recent ?? [])
 		];
+
+	$: knownArtifacts = (() => {
+		const map = new Map<string, ArtifactFeedItem>();
+		for (const item of allArtifacts) {
+			map.set(item.path, item);
+		}
+		for (const items of Object.values($kbArtifacts?.by_type ?? {})) {
+			for (const item of items) {
+				map.set(item.path, item);
+			}
+		}
+		return map;
+	})();
 
 	function toggleBrowseType(type: string) {
 		if (browseType === type) {
@@ -142,11 +157,40 @@
 		selectedArtifact = artifact;
 		selectedIndex = index;
 	}
+
+	function handlePanelSelect(event: CustomEvent<{ artifact: ArtifactFeedItem }>) {
+		const next = event.detail?.artifact;
+		if (!next) {
+			return;
+		}
+
+		const index = allArtifacts.findIndex((item) => item.path === next.path);
+		selectedArtifact = index >= 0 ? allArtifacts[index] : next;
+		selectedIndex = index;
+	}
+
+	function handleModelProbeSelect(event: CustomEvent<{ path: string }>) {
+		const path = event.detail?.path;
+		if (!path) {
+			return;
+		}
+
+		const next = knownArtifacts.get(path);
+		if (!next) {
+			return;
+		}
+
+		const index = allArtifacts.findIndex((item) => item.path === path);
+		selectedArtifact = index >= 0 ? allArtifacts[index] : next;
+		selectedIndex = index;
+	}
 </script>
 
 <svelte:window on:keydown={handleKeydown} />
 
 <div class="artifact-feed flex flex-col h-full min-h-0 overflow-y-auto">
+	<ModelProbeSection on:select={handleModelProbeSelect} />
+
 	<!-- Browse by Type filter bar -->
 	<div class="px-6 py-3 border-b border-border">
 		<div class="flex flex-wrap gap-2 text-xs">
@@ -255,6 +299,7 @@
 {#if selectedArtifact}
 	<ArtifactSidePanel
 		artifact={selectedArtifact}
+		on:artifact-select={handlePanelSelect}
 		on:close={() => {
 			selectedArtifact = null;
 			selectedIndex = -1;

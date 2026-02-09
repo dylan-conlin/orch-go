@@ -150,6 +150,10 @@ type Config struct {
 	// BeadsID is the beads issue ID for lifecycle tracking
 	BeadsID string
 
+	// AttemptID identifies this specific spawn attempt.
+	// Written to workspace .attempt_id and threaded into lifecycle events.
+	AttemptID string
+
 	// Feature-impl configuration
 	Phases     string // Comma-separated phases (e.g., "implementation,validation")
 	Mode       string // Implementation mode: "tdd" or "direct"

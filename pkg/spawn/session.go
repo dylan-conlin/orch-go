@@ -2,6 +2,7 @@
 package spawn
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -143,6 +144,54 @@ func ReadSpawnTime(workspacePath string) time.Time {
 // SpawnTimePath returns the path to the spawn time file for a workspace.
 func SpawnTimePath(workspacePath string) string {
 	return filepath.Join(workspacePath, SpawnTimeFilename)
+}
+
+// AttemptIDFilename is the name of the file storing the spawn attempt UUID in the workspace.
+const AttemptIDFilename = ".attempt_id"
+
+// GenerateAttemptID generates a UUIDv4 for identifying a specific spawn attempt.
+func GenerateAttemptID() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+
+	// Set version (4) and variant (RFC 4122).
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]), nil
+}
+
+// WriteAttemptID writes the attempt UUID to the workspace directory.
+// Uses atomic write (temp file + rename) to prevent partial reads.
+// The workspace directory must already exist.
+func WriteAttemptID(workspacePath, attemptID string) error {
+	if attemptID == "" {
+		return nil
+	}
+
+	attemptFile := filepath.Join(workspacePath, AttemptIDFilename)
+	if err := atomicwrite.WriteFile(attemptFile, []byte(attemptID+"\n"), 0644); err != nil {
+		return fmt.Errorf("failed to write attempt ID: %w", err)
+	}
+	return nil
+}
+
+// ReadAttemptID reads the attempt UUID from the workspace directory.
+// Returns empty string if the file doesn't exist or is empty.
+func ReadAttemptID(workspacePath string) string {
+	attemptFile := filepath.Join(workspacePath, AttemptIDFilename)
+	data, err := os.ReadFile(attemptFile)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// AttemptIDPath returns the path to the attempt ID file for a workspace.
+func AttemptIDPath(workspacePath string) string {
+	return filepath.Join(workspacePath, AttemptIDFilename)
 }
 
 // AgentManifestFilename is the name of the file storing the agent manifest in the workspace.

@@ -97,15 +97,16 @@ func newSpawnPipeline(serverURL, skillName, task string, inline, headless, tmux,
 // runPreFlightValidation checks triage bypass, concurrency limits, rate limits,
 // and hotspot analysis before proceeding with the spawn.
 func (p *spawnPipeline) runPreFlightValidation() error {
-	// Check for --bypass-triage flag (required for manual spawns)
-	// Daemon-driven spawns skip this check (issue already triaged)
-	if !p.daemonDriven && !spawnBypassTriage {
+	// Check for triage bypass (required for tracked manual spawns).
+	// Daemon-driven spawns and ad-hoc --no-track spawns skip this check.
+	bypass, source := resolveTriageBypass()
+	if !p.daemonDriven && !spawnNoTrack && !bypass {
 		return showTriageBypassRequired(p.skillName, p.task)
 	}
 
-	// Log the triage bypass for Phase 2 review (only for manual bypasses, not daemon-driven)
-	if !p.daemonDriven && spawnBypassTriage {
-		logTriageBypass(p.skillName, p.task)
+	// Log the triage bypass for Phase 2 review (tracked manual bypasses only).
+	if !p.daemonDriven && !spawnNoTrack && bypass {
+		logTriageBypass(p.skillName, p.task, source)
 	}
 
 	// Check concurrency limit before spawning
@@ -141,10 +142,13 @@ func (p *spawnPipeline) runPreFlightValidation() error {
 
 	// STRATEGIC-FIRST ORCHESTRATION: Check for hotspots in task target area
 	if preCheckDir != "" {
+		suppressHotspotWarning, _ := resolveHotspotSuppression()
 		if hotspotResult, err := RunHotspotCheckForSpawn(preCheckDir, p.task); err == nil && hotspotResult != nil {
 			isStrategicSkill := p.skillName == "architect"
 
-			if !p.daemonDriven && !spawnForce && !isStrategicSkill {
+			if suppressHotspotWarning {
+				// Intentionally suppressed for this spawn/session.
+			} else if !p.daemonDriven && !spawnForce && !isStrategicSkill {
 				fmt.Fprint(os.Stderr, hotspotResult.Warning)
 				fmt.Fprintln(os.Stderr, "💡 Consider: spawn architect first for strategic approach in hotspot area")
 				fmt.Fprintln(os.Stderr, "")

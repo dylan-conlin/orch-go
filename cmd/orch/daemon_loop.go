@@ -25,6 +25,7 @@ type daemonRuntime struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	projectDir string
+	verbose    bool
 
 	// Counters
 	processed int
@@ -34,6 +35,35 @@ type daemonRuntime struct {
 	// Timestamps
 	lastSpawn      time.Time
 	lastCompletion time.Time
+}
+
+const daemonSwarmVerboseThreshold = 3
+
+func daemonVerboseForActive(verbose bool, active int) bool {
+	if !verbose {
+		return false
+	}
+	return active < daemonSwarmVerboseThreshold
+}
+
+func (rt *daemonRuntime) verboseEnabled() bool {
+	return rt.verbose
+}
+
+func (rt *daemonRuntime) refreshVerboseMode(timestamp string) {
+	active := rt.d.ActiveCount()
+	next := daemonVerboseForActive(rt.config.Verbose, active)
+	prev := rt.verbose
+	rt.verbose = next
+	rt.d.Config.Verbose = next
+	if !rt.config.Verbose || prev == next {
+		return
+	}
+	if next {
+		fmt.Printf("[%s] Swarm log mode disabled (%d active < %d), restoring verbose debug logs\n", timestamp, active, daemonSwarmVerboseThreshold)
+		return
+	}
+	fmt.Printf("[%s] Swarm log mode enabled (%d active >= %d), suppressing verbose debug logs\n", timestamp, active, daemonSwarmVerboseThreshold)
 }
 
 // buildDaemonConfig constructs a daemon.Config from CLI flags and user config.
@@ -219,6 +249,7 @@ func initDaemonRuntime(config daemon.Config) (*daemonRuntime, error) {
 		ctx:        ctx,
 		cancel:     cancel,
 		projectDir: projectDir,
+		verbose:    config.Verbose,
 	}, nil
 }
 
@@ -239,6 +270,11 @@ func printDaemonBanner(config daemon.Config) {
 	}
 	fmt.Printf("  Sort mode:        %s\n", sortMode)
 	fmt.Printf("  Spawn delay:      %s\n", formatDaemonDuration(config.SpawnDelay))
+	if config.Verbose {
+		fmt.Printf("  Verbose logs:     auto (enabled below %d active agents)\n", daemonSwarmVerboseThreshold)
+	} else {
+		fmt.Println("  Verbose logs:     disabled")
+	}
 	if config.CrossProject {
 		fmt.Println("  Cross-project:    enabled (polling all kb-registered projects)")
 	}
@@ -322,7 +358,7 @@ func (rt *daemonRuntime) runSubsystems(timestamp string) {
 			fmt.Fprintf(os.Stderr, "[%s] Reflection error: %v\n", timestamp, result.Error)
 		} else if result.Suggestions != nil && result.Suggestions.HasSuggestions() {
 			fmt.Printf("[%s] Reflection: %s\n", timestamp, result.Suggestions.Summary())
-		} else if daemonVerbose {
+		} else if rt.verboseEnabled() {
 			fmt.Printf("[%s] Reflection: no suggestions found\n", timestamp)
 		}
 	}
@@ -338,7 +374,7 @@ func (rt *daemonRuntime) runSubsystems(timestamp string) {
 		if result.Error != nil {
 			data["error"] = result.Error.Error()
 		}
-		logSubsystemResult(rt.logger, timestamp, daemonVerbose, subsystemResult{
+		logSubsystemResult(rt.logger, timestamp, rt.verboseEnabled(), subsystemResult{
 			Name:        "Cleanup",
 			EventType:   "daemon.cleanup",
 			Error:       result.Error,
@@ -359,7 +395,7 @@ func (rt *daemonRuntime) runSubsystems(timestamp string) {
 			data["resumed"] = 0
 			data["error"] = result.Error.Error()
 		}
-		logSubsystemResult(rt.logger, timestamp, daemonVerbose, subsystemResult{
+		logSubsystemResult(rt.logger, timestamp, rt.verboseEnabled(), subsystemResult{
 			Name:        "Recovery",
 			EventType:   "daemon.recovery",
 			Error:       result.Error,
@@ -371,7 +407,7 @@ func (rt *daemonRuntime) runSubsystems(timestamp string) {
 
 	// Run server restart recovery if due (runs once after daemon startup)
 	serverRecoveryResult := rt.d.RunServerRecovery()
-	if daemonVerbose {
+	if rt.verboseEnabled() {
 		if serverRecoveryResult == nil {
 			fmt.Printf("[%s] [DEBUG] Server recovery: ShouldRunServerRecovery returned false (recovery not due)\n", timestamp)
 		} else {
@@ -390,7 +426,7 @@ func (rt *daemonRuntime) runSubsystems(timestamp string) {
 			data["resumed"] = 0
 			data["error"] = serverRecoveryResult.Error.Error()
 		}
-		logSubsystemResult(rt.logger, timestamp, daemonVerbose, subsystemResult{
+		logSubsystemResult(rt.logger, timestamp, rt.verboseEnabled(), subsystemResult{
 			Name:        "Server recovery",
 			EventType:   "daemon.server_recovery",
 			Error:       serverRecoveryResult.Error,
@@ -403,17 +439,17 @@ func (rt *daemonRuntime) runSubsystems(timestamp string) {
 	// Run periodic orphan process reaping if due
 	if result := rt.d.ReapOrphanProcesses(); result != nil {
 		data := map[string]interface{}{
-			"found":         result.Found,
-			"killed":        result.Killed,
-			"ledger_swept":  result.LedgerSwept,
-			"message":       result.Message,
+			"found":        result.Found,
+			"killed":       result.Killed,
+			"ledger_swept": result.LedgerSwept,
+			"message":      result.Message,
 		}
 		if result.Error != nil {
 			data["found"] = 0
 			data["killed"] = 0
 			data["error"] = result.Error.Error()
 		}
-		logSubsystemResult(rt.logger, timestamp, daemonVerbose, subsystemResult{
+		logSubsystemResult(rt.logger, timestamp, rt.verboseEnabled(), subsystemResult{
 			Name:        "Orphan reaper",
 			EventType:   "daemon.orphan_reap",
 			Error:       result.Error,
@@ -436,7 +472,7 @@ func (rt *daemonRuntime) runSubsystems(timestamp string) {
 		if result.Error != nil {
 			data["error"] = result.Error.Error()
 		}
-		logSubsystemResult(rt.logger, timestamp, daemonVerbose, subsystemResult{
+		logSubsystemResult(rt.logger, timestamp, rt.verboseEnabled(), subsystemResult{
 			Name:        "Dashboard watchdog",
 			EventType:   "daemon.dashboard_watchdog",
 			Error:       result.Error,
@@ -460,7 +496,7 @@ func (rt *daemonRuntime) runSubsystems(timestamp string) {
 			data["marked"] = 0
 			data["error"] = result.Error.Error()
 		}
-		logSubsystemResult(rt.logger, timestamp, daemonVerbose, subsystemResult{
+		logSubsystemResult(rt.logger, timestamp, rt.verboseEnabled(), subsystemResult{
 			Name:        "Dead session detection",
 			EventType:   "daemon.dead_session_detection",
 			Error:       result.Error,
@@ -478,11 +514,11 @@ func (rt *daemonRuntime) processCompletions(timestamp string) {
 		ProjectDir:              rt.projectDir,
 		ServerURL:               serverURL,
 		DryRun:                  false,
-		Verbose:                 daemonVerbose,
+		Verbose:                 rt.verboseEnabled(),
 		IdleCompletionThreshold: rt.config.RecoveryIdleThreshold,
 	}
 	completionResult, err := rt.d.CompletionOnce(completionConfig)
-	if err != nil && daemonVerbose {
+	if err != nil && rt.verboseEnabled() {
 		fmt.Fprintf(os.Stderr, "[%s] Completion processing error: %v\n", timestamp, err)
 	} else if completionResult != nil {
 		completedThisCycle := 0
@@ -496,7 +532,7 @@ func (rt *daemonRuntime) processCompletions(timestamp string) {
 
 				// Release the pool slot immediately on completion.
 				if rt.d.Pool != nil && rt.d.Pool.ReleaseByBeadsID(cr.BeadsID) {
-					if daemonVerbose {
+					if rt.verboseEnabled() {
 						fmt.Printf("[%s] Released pool slot for %s\n", timestamp, cr.BeadsID)
 					}
 				}
@@ -507,12 +543,12 @@ func (rt *daemonRuntime) processCompletions(timestamp string) {
 					"escalation": cr.Escalation.String(),
 					"source":     "daemon_auto_complete",
 				})
-			} else if cr.Error != nil && daemonVerbose {
+			} else if cr.Error != nil && rt.verboseEnabled() {
 				fmt.Printf("[%s] Completion blocked: %s - %v (escalation=%s)\n",
 					timestamp, cr.BeadsID, cr.Error, cr.Escalation)
 			}
 		}
-		if completedThisCycle > 0 && daemonVerbose {
+		if completedThisCycle > 0 && rt.verboseEnabled() {
 			fmt.Printf("[%s] Auto-completed %d agent(s) this cycle\n", timestamp, completedThisCycle)
 		}
 	}
@@ -528,7 +564,7 @@ func (rt *daemonRuntime) processFactualQuestions(timestamp string) {
 		rt.processed += factualSpawned
 		rt.lastSpawn = time.Now()
 		fmt.Printf("[%s] Spawned %d investigation(s) for factual questions\n", timestamp, factualSpawned)
-	} else if daemonVerbose && !rt.d.AtCapacity() {
+	} else if rt.verboseEnabled() && !rt.d.AtCapacity() {
 		fmt.Printf("[%s] No factual questions to spawn\n", timestamp)
 	}
 }
@@ -552,7 +588,7 @@ func (rt *daemonRuntime) writeStatus(timestamp string, pollTime time.Time) {
 		ReadyCount:     readyCount,
 		Status:         daemon.DetermineStatus(pollTime, rt.config.PollInterval),
 	}
-	if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
+	if err := daemon.WriteStatusFile(status); err != nil && rt.verboseEnabled() {
 		fmt.Fprintf(os.Stderr, "Warning: failed to write status file: %v\n", err)
 	}
 }
@@ -573,7 +609,7 @@ func (rt *daemonRuntime) processSpawns(timestamp string) int {
 
 		// Check capacity
 		if rt.d.AtCapacity() {
-			if daemonVerbose {
+			if rt.verboseEnabled() {
 				fmt.Printf("[%s] At capacity, stopping this cycle\n", timestamp)
 			}
 			break
@@ -608,7 +644,7 @@ func (rt *daemonRuntime) processPolish(timestamp string, spawnedThisCycle int) {
 		return
 	}
 	if rt.config.CrossProject {
-		if daemonVerbose && spawnedThisCycle == 0 {
+		if rt.verboseEnabled() && spawnedThisCycle == 0 {
 			fmt.Printf("[%s] Polish skipped in cross-project mode\n", timestamp)
 		}
 		return
@@ -619,13 +655,13 @@ func (rt *daemonRuntime) processPolish(timestamp string, spawnedThisCycle int) {
 
 	readyIssues, err := daemon.ListReadyIssuesWithLabelAndOverride(rt.config.Label, rt.config.AllowFeatureWorkOverride)
 	if err != nil {
-		if daemonVerbose {
+		if rt.verboseEnabled() {
 			fmt.Fprintf(os.Stderr, "[%s] Polish readiness check failed: %v\n", timestamp, err)
 		}
 		return
 	}
 	if len(readyIssues) > 0 {
-		if daemonVerbose {
+		if rt.verboseEnabled() {
 			fmt.Printf("[%s] Polish skipped: %d triage:ready issue(s) still queued\n", timestamp, len(readyIssues))
 		}
 		return
@@ -650,7 +686,7 @@ func (rt *daemonRuntime) processPolish(timestamp string, spawnedThisCycle int) {
 		data["error"] = result.Error.Error()
 	}
 
-	logSubsystemResult(rt.logger, timestamp, daemonVerbose, subsystemResult{
+	logSubsystemResult(rt.logger, timestamp, rt.verboseEnabled(), subsystemResult{
 		Name:        "Polish",
 		EventType:   "daemon.polish",
 		Error:       result.Error,
@@ -680,7 +716,7 @@ func (rt *daemonRuntime) spawnCrossProject(timestamp string, skippedThisCycle ma
 		}
 
 		// No more issues across all projects
-		if daemonVerbose && *spawnedThisCycle == 0 {
+		if rt.verboseEnabled() && *spawnedThisCycle == 0 {
 			fmt.Printf("[%s] %s\n", timestamp, cpResult.Message)
 		}
 		return true
@@ -727,7 +763,7 @@ func (rt *daemonRuntime) spawnSingleProject(timestamp string, skippedThisCycle m
 		}
 
 		// No more issues or non-issue-specific error
-		if daemonVerbose && *spawnedThisCycle == 0 {
+		if rt.verboseEnabled() && *spawnedThisCycle == 0 {
 			fmt.Printf("[%s] %s\n", timestamp, result.Message)
 		}
 		return true

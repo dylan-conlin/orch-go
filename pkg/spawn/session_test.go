@@ -3,6 +3,7 @@ package spawn
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 )
@@ -262,6 +263,58 @@ func TestSpawnTimePath(t *testing.T) {
 	got := SpawnTimePath(workspace)
 	if got != expected {
 		t.Errorf("SpawnTimePath returned %q, want %q", got, expected)
+	}
+}
+
+func TestGenerateAttemptID(t *testing.T) {
+	attemptID, err := GenerateAttemptID()
+	if err != nil {
+		t.Fatalf("GenerateAttemptID failed: %v", err)
+	}
+
+	pattern := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	if !pattern.MatchString(attemptID) {
+		t.Fatalf("GenerateAttemptID returned %q, expected UUIDv4 format", attemptID)
+	}
+}
+
+func TestWriteReadAttemptID(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	attemptID := "a1b2c3d4-1111-4aaa-8bbb-1234567890ab"
+	if err := WriteAttemptID(tmpDir, attemptID); err != nil {
+		t.Fatalf("WriteAttemptID failed: %v", err)
+	}
+
+	readID := ReadAttemptID(tmpDir)
+	if readID != attemptID {
+		t.Errorf("ReadAttemptID returned %q, want %q", readID, attemptID)
+	}
+}
+
+func TestReadAttemptID_NoFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	readID := ReadAttemptID(tmpDir)
+	if readID != "" {
+		t.Errorf("ReadAttemptID returned %q for non-existent file, want empty string", readID)
+	}
+}
+
+func TestAttemptIDPath(t *testing.T) {
+	workspace := "/some/workspace/path"
+	expected := filepath.Join(workspace, AttemptIDFilename)
+	got := AttemptIDPath(workspace)
+	if got != expected {
+		t.Errorf("AttemptIDPath returned %q, want %q", got, expected)
 	}
 }
 

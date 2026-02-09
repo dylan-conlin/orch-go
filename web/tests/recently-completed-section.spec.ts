@@ -14,7 +14,12 @@ function mockAttentionWithIssues(items: any[]) {
 function makeCompletedItem(
   id: string,
   title: string,
-  opts: { priority?: number; type?: string; verification_status?: string } = {},
+  opts: {
+    priority?: number
+    type?: string
+    verification_status?: string
+    closed_at?: string
+  } = {},
 ) {
   return {
     id: `beads-recently-closed-${id}`,
@@ -27,7 +32,8 @@ function makeCompletedItem(
     role: 'human',
     collected_at: new Date().toISOString(),
     metadata: {
-      closed_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      closed_at:
+        opts.closed_at || new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       status: 'closed',
       issue_type: opts.type || 'task',
       beads_priority: opts.priority ?? 2,
@@ -92,6 +98,46 @@ test.describe('Completed View (Tab)', () => {
     // Should show completed issues
     await expect(view.getByText('Completed issue one')).toBeVisible()
     await expect(view.getByText('Completed issue two')).toBeVisible()
+  })
+
+  test('should sort completed issues by recency and show relative timestamps', async ({
+    page,
+  }) => {
+    const now = Date.now()
+    await page.route('**/api/attention**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          mockAttentionWithIssues([
+            makeCompletedItem('orch-go-003', 'Oldest issue', {
+              closed_at: new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString(),
+            }),
+            makeCompletedItem('orch-go-001', 'Most recent issue', {
+              closed_at: new Date(now - 5 * 60 * 1000).toISOString(),
+            }),
+            makeCompletedItem('orch-go-002', 'Middle issue', {
+              closed_at: new Date(now - 70 * 60 * 1000).toISOString(),
+            }),
+          ]),
+        ),
+      })
+    })
+
+    await page.goto('/work-graph')
+    await page.waitForTimeout(2000)
+    await page.getByRole('button', { name: /Completed/ }).click()
+
+    const rows = page.locator('[data-testid^="completed-row-"]')
+    await expect(rows).toHaveCount(3)
+
+    await expect(rows.nth(0)).toHaveAttribute('data-testid', 'completed-row-orch-go-001')
+    await expect(rows.nth(1)).toHaveAttribute('data-testid', 'completed-row-orch-go-002')
+    await expect(rows.nth(2)).toHaveAttribute('data-testid', 'completed-row-orch-go-003')
+
+    await expect(rows.nth(0)).toContainText('5m ago')
+    await expect(rows.nth(1)).toContainText('1h ago')
+    await expect(rows.nth(2)).toContainText('3d ago')
   })
 
   test('should show empty state when no completed issues', async ({ page }) => {

@@ -5,11 +5,8 @@ package beads
 
 import (
 	"encoding/json"
-	"regexp"
 	"strings"
 )
-
-var abandonReasonRegex = regexp.MustCompile(`(?im)^abandon_reason:\s*(.+)$`)
 
 // RPC operation constants matching beads internal/rpc/protocol.go
 const (
@@ -151,56 +148,19 @@ type CommentAddArgs struct {
 // while RPC may return just string IDs. We don't need to parse dependencies
 // for orch-go's use cases - just being able to unmarshal the response is enough.
 type Issue struct {
-	ID            string          `json:"id"`
-	Title         string          `json:"title"`
-	Description   string          `json:"description,omitempty"`
-	Notes         string          `json:"notes,omitempty"`
-	Status        string          `json:"status"`
-	Priority      int             `json:"priority"`
-	IssueType     string          `json:"issue_type"`
-	CausedBy      string          `json:"caused_by,omitempty"`
-	Labels        []string        `json:"labels,omitempty"`
-	Dependencies  json.RawMessage `json:"dependencies,omitempty"`
-	CreatedAt     string          `json:"created_at,omitempty"`
-	UpdatedAt     string          `json:"updated_at,omitempty"`
-	ClosedAt      string          `json:"closed_at,omitempty"`
-	CloseReason   string          `json:"close_reason,omitempty"`
-	Outcome       string          `json:"outcome,omitempty"`
-	AbandonReason string          `json:"abandon_reason,omitempty"`
-}
-
-func normalizeIssueOutcome(issue *Issue) {
-	if issue == nil {
-		return
-	}
-
-	status := strings.ToLower(strings.TrimSpace(issue.Status))
-	if status == "abandoned" {
-		issue.Outcome = "abandoned"
-	} else if status == "closed" {
-		if strings.Contains(strings.ToLower(issue.CloseReason), "abandon") {
-			issue.Outcome = "abandoned"
-		} else {
-			issue.Outcome = "completed"
-		}
-	} else {
-		issue.Outcome = "open"
-	}
-
-	if match := abandonReasonRegex.FindStringSubmatch(issue.Notes); len(match) > 1 {
-		issue.AbandonReason = strings.TrimSpace(match[1])
-		return
-	}
-
-	if issue.Outcome == "abandoned" {
-		issue.AbandonReason = strings.TrimSpace(issue.CloseReason)
-	}
-}
-
-func normalizeIssueOutcomes(issues []Issue) {
-	for i := range issues {
-		normalizeIssueOutcome(&issues[i])
-	}
+	ID           string          `json:"id"`
+	Title        string          `json:"title"`
+	Description  string          `json:"description,omitempty"`
+	Status       string          `json:"status"`
+	Priority     int             `json:"priority"`
+	IssueType    string          `json:"issue_type"`
+	CausedBy     string          `json:"caused_by,omitempty"`
+	Labels       []string        `json:"labels,omitempty"`
+	Dependencies json.RawMessage `json:"dependencies,omitempty"`
+	CreatedAt    string          `json:"created_at,omitempty"`
+	UpdatedAt    string          `json:"updated_at,omitempty"`
+	ClosedAt     string          `json:"closed_at,omitempty"`
+	CloseReason  string          `json:"close_reason,omitempty"`
 }
 
 // Dependency represents a dependency relationship returned by bd show.

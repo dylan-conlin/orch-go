@@ -1,6 +1,8 @@
 package spawn
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -54,5 +56,35 @@ func TestValidateVerificationEntryCommands_RejectsMalformedSyntax(t *testing.T) 
 	}
 	if !strings.Contains(err.Error(), "invalid bash syntax") {
 		t.Fatalf("expected invalid bash syntax error, got: %v", err)
+	}
+}
+
+func TestGenerateVerificationSpecSkeleton_DetectsGoBuildAndTestCommands(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "go.mod"), []byte("module example.com/test\n\ngo 1.24\n"), 0644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+
+	cfg := &Config{
+		SkillName:     "feature-impl",
+		Tier:          TierLight,
+		WorkspaceName: "og-feat-proof-09feb",
+		BeadsID:       "orch-go-proof1",
+		ProjectDir:    projectDir,
+	}
+
+	content, err := GenerateVerificationSpecSkeleton(cfg)
+	if err != nil {
+		t.Fatalf("GenerateVerificationSpecSkeleton failed: %v", err)
+	}
+
+	if !strings.Contains(content, "command: go build ./...") {
+		t.Fatalf("expected go build command in skeleton, got: %s", content)
+	}
+	if !strings.Contains(content, "command: go test ./...") {
+		t.Fatalf("expected go test command in skeleton, got: %s", content)
+	}
+	if strings.Contains(content, "TODO: replace build command") || strings.Contains(content, "TODO: replace test command") {
+		t.Fatalf("expected no TODO placeholders for go project, got: %s", content)
 	}
 }

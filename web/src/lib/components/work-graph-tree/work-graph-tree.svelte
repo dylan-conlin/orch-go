@@ -1,17 +1,40 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount } from 'svelte';
 	import { Badge } from '$lib/components/ui/badge';
-	import { cn } from '$lib/utils';
-	import type { TreeNode, AttentionBadgeType, GroupSection, GroupByMode } from '$lib/stores/work-graph';
+	import type { TreeNode, GroupSection, GroupByMode } from '$lib/stores/work-graph';
 	import { closeIssue, updateIssue } from '$lib/stores/work-graph';
 	import type { WIPItem } from '$lib/stores/wip';
 	import { computeAgentHealth, getContextPercent, getContextColor, getExpressiveStatus } from '$lib/stores/wip';
-	import { ATTENTION_BADGE_CONFIG } from '$lib/stores/attention';
 	import { DeliverableChecklist } from '$lib/components/deliverable-checklist';
 	import { getExpectedDeliverables } from '$lib/stores/deliverables';
 	import { IssueSidePanel } from '$lib/components/issue-side-panel';
 	import { CloseIssueModal } from '$lib/components/close-issue-modal';
 	import { orchestratorContext } from '$lib/stores/context';
+	import {
+		type GroupHeader,
+		type RunningAgentDetails,
+		flattenVisibleTree,
+		findNodeById,
+		formatRelatedIssueList,
+		formatStatusLabel,
+		getAgentStatusIcon,
+		getAttentionBadge,
+		getDependencyExplanation,
+		getInProgressSubline,
+		getIssueSummary,
+		getItemId,
+		getItemKey,
+		getPriorityVariant,
+		getProgressSnapshot,
+		getRelatedIssueLabel,
+		getRowTestId,
+		getStatusColor,
+		getStatusIcon,
+		getTypeBadge,
+		isGroupHeader,
+		isWIPItem,
+		shortenModel,
+	} from './work-graph-tree-helpers';
 
 	export let tree: TreeNode[] = [];
 	export let groups: GroupSection[] = [];
@@ -36,30 +59,11 @@
 	// Whether we're in grouped mode (non-priority has label sections)
 	$: isGrouped = groups.length > 0 && groupMode !== 'priority';
 
-	// Get attention badge config for a badge type
-	function getAttentionBadge(badge: AttentionBadgeType | 'unverified' | 'needs_fix' | undefined) {
-		if (!badge) return null;
-		return ATTENTION_BADGE_CONFIG[badge] || null;
-	}
-
-	// Group header sentinel for keyboard navigation
-	interface GroupHeader {
-		_groupHeader: true;
-		key: string;
-		label: string;
-		count: number;
-		unlabeled: boolean;
-	}
-
-	function isGroupHeader(item: any): item is GroupHeader {
-		return item && '_groupHeader' in item;
-	}
-
 	// Flatten tree for keyboard navigation
-		let flattenedNodes: (TreeNode | WIPItem | GroupHeader)[] = [];
-		let selectedIndex = 0;
-		let pinnedTreeIds = new Set<string>();
-		let runningAgentDetailsByIssueId = new Map<string, { phase?: string; runtime?: string; model?: string; skill?: string }>();
+	let flattenedNodes: (TreeNode | WIPItem | GroupHeader)[] = [];
+	let selectedIndex = 0;
+	let pinnedTreeIds = new Set<string>();
+	let runningAgentDetailsByIssueId = new Map<string, RunningAgentDetails>();
 
 	// Track expanded details separately (fixes reactivity issues)
 	let expandedDetails = new Set<string>();
@@ -192,36 +196,6 @@
 		treeNodeIndex = index;
 	}
 
-	// Flatten tree respecting expansion state
-	function flattenTree(nodes: TreeNode[], result: TreeNode[] = []): TreeNode[] {
-		for (const node of nodes) {
-			result.push(node);
-			if (node.expanded && node.children.length > 0) {
-				flattenTree(node.children, result);
-			}
-		}
-		return result;
-	}
-
-	function flattenVisibleTree(nodes: TreeNode[], pinnedIds: Set<string>): TreeNode[] {
-		return flattenTree(nodes).filter((node) => !pinnedIds.has(node.id));
-	}
-
-	function findNodeById(nodes: TreeNode[], nodeId: string): TreeNode | null {
-		for (const node of nodes) {
-			if (node.id === nodeId) {
-				return node;
-			}
-			if (node.children.length > 0) {
-				const childMatch = findNodeById(node.children, nodeId);
-				if (childMatch) {
-					return childMatch;
-				}
-			}
-		}
-		return null;
-	}
-
 	// Keep side panel issue in sync with latest tree snapshot so lifecycle tab auto-switching
 	// follows status changes while the panel remains open.
 	$: if (selectedIssueForPanel) {
@@ -281,20 +255,6 @@
 		}
 	}
 
-	// Type guard to check if item is a WIPItem
-	function isWIPItem(item: TreeNode | WIPItem | GroupHeader): item is WIPItem {
-		return 'type' in item && (item.type === 'running' || item.type === 'queued');
-	}
-
-	// Get ID from WIPItem, TreeNode, or GroupHeader
-	function getItemId(item: TreeNode | WIPItem | GroupHeader): string {
-		if (isGroupHeader(item)) return item.key;
-		if (isWIPItem(item)) {
-			return item.type === 'running' ? item.agent.id : item.issue.id;
-		}
-		return item.id;
-	}
-
 	function getPanelIssue(item: TreeNode | WIPItem | GroupHeader): TreeNode | null {
 		if (isGroupHeader(item)) return null;
 		if (!isWIPItem(item)) return item;
@@ -305,280 +265,11 @@
 		return treeNodeIndex.get(relatedIssueId) || null;
 	}
 
-	// Get stable key for Svelte each blocks (avoids collisions when same issue appears in multiple views)
-	function getItemKey(item: TreeNode | WIPItem | GroupHeader): string {
-		if (isGroupHeader(item)) return `group-${item.key}`;
-		if (isWIPItem(item)) {
-			return item.type === 'running' ? `wip-running-${item.agent.id}` : `wip-queued-${item.issue.id}`;
-		}
-		return `tree-${item.id}`;
-	}
-
-	// Get stable test ID per row type (avoids collisions when issue appears in both WIP + tree)
-	function getRowTestId(item: TreeNode | WIPItem | GroupHeader): string {
-		if (isGroupHeader(item)) return `group-header-${item.key}`;
-		if (isWIPItem(item)) {
-			return item.type === 'running'
-				? `wip-row-${item.agent.beads_id || item.agent.id}`
-				: `wip-row-${item.issue.id}`;
-		}
-		return `issue-row-${item.id}`;
-	}
-
-	// Get status icon
-	function getStatusIcon(status: string): string {
-		switch (status.toLowerCase()) {
-			case 'in_progress': return '▶';
-			case 'blocked': return '🚫';
-			case 'open': return '○';
-			case 'closed': return '✓';
-			case 'complete': return '✓';
-			default: return '•';
-		}
-	}
-
-	// Get status color
-	function getStatusColor(status: string): string {
-		switch (status.toLowerCase()) {
-			case 'in_progress': return 'text-blue-500';
-			case 'blocked': return 'text-red-500';
-			case 'open': return 'text-muted-foreground';
-			case 'closed': return 'text-green-500';
-			case 'complete': return 'text-green-500';
-			default: return 'text-muted-foreground';
-		}
-	}
-
-	function formatStatusLabel(status: string): string {
-		return status.replace(/_/g, ' ');
-	}
-
-	function isDoneStatus(status: string): boolean {
-		const normalized = status.toLowerCase();
-		return normalized === 'closed' || normalized === 'complete' || normalized === 'accepted';
-	}
-
-	function normalizeDescription(description?: string): string {
-		return description?.replace(/\s+/g, ' ').trim() || '';
-	}
-
-	function truncateText(text: string, limit: number): string {
-		if (text.length <= limit) {
-			return text;
-		}
-		return `${text.slice(0, Math.max(0, limit - 3)).trimEnd()}...`;
-	}
-
-	function getIssueSummary(node: TreeNode): string {
-		const description = normalizeDescription(node.description);
-		if (description) {
-			const sentenceMatch = description.match(/^(.+?[.!?])(\s|$)/);
-			const sentence = sentenceMatch ? sentenceMatch[1] : description;
-			return truncateText(sentence, 160);
-		}
-
-		if (node.status.toLowerCase() === 'in_progress') {
-			return 'Work is currently active and waiting for the next phase transition.';
-		}
-		if (node.blocked_by.length > 0) {
-			return 'This issue is waiting on upstream work before execution can continue.';
-		}
-		if (node.blocks.length > 0) {
-			return 'This issue is a dependency for downstream work and unblocks others when complete.';
-		}
-		return 'No summary provided yet. Expand related issues below for context.';
-	}
-
-	function collectDescendants(node: TreeNode): TreeNode[] {
-		const descendants: TreeNode[] = [];
-		const stack = [...node.children];
-		while (stack.length > 0) {
-			const next = stack.shift();
-			if (!next) continue;
-			descendants.push(next);
-			if (next.children.length > 0) {
-				stack.push(...next.children);
-			}
-		}
-		return descendants;
-	}
-
-	function countVisibleDescendants(node: TreeNode): number {
-		if (!node.expanded || node.children.length === 0) {
-			return 0;
-		}
-
-		let visible = 0;
-		for (const child of node.children) {
-			visible += 1;
-			visible += countVisibleDescendants(child);
-		}
-		return visible;
-	}
-
-	function getProgressSnapshot(node: TreeNode): { done: number; total: number; percent: number; visible: number } | null {
-		const descendants = collectDescendants(node);
-		if (descendants.length === 0) {
-			return null;
-		}
-
-		const done = descendants.filter((child) => isDoneStatus(child.status)).length;
-		const total = descendants.length;
-		const percent = Math.round((done / total) * 100);
-		const visible = countVisibleDescendants(node);
-
-		return { done, total, percent, visible };
-	}
-
-	function getRelatedIssueLabel(issueId: string): string {
-		const relatedNode = treeNodeIndex.get(issueId);
-		if (!relatedNode) {
-			return issueId;
-		}
-		return `${issueId} (${formatStatusLabel(relatedNode.status)})`;
-	}
-
-	function formatRelatedIssueList(issueIds: string[], maxItems = 4): string {
-		if (issueIds.length === 0) {
-			return 'none';
-		}
-
-		const shown = issueIds.slice(0, maxItems).map((issueId) => getRelatedIssueLabel(issueId));
-		const remaining = issueIds.length - shown.length;
-		if (remaining > 0) {
-			return `${shown.join(', ')} +${remaining} more`;
-		}
-		return shown.join(', ');
-	}
-
-	function getDependencyExplanation(node: TreeNode): { headline: string; detail: string; tone: string } {
-		if (node.blocked_by.length > 0) {
-			const blockers = formatRelatedIssueList(node.blocked_by);
-			return {
-				headline: `Blocked by ${node.blocked_by.length} upstream issue${node.blocked_by.length === 1 ? '' : 's'}.`,
-				detail: `This work cannot complete until these blockers resolve: ${blockers}`,
-				tone: 'text-amber-500',
-			};
-		}
-
-		if (node.blocks.length > 0) {
-			const downstream = formatRelatedIssueList(node.blocks);
-			return {
-				headline: `Ready and unblocks ${node.blocks.length} downstream issue${node.blocks.length === 1 ? '' : 's'}.`,
-				detail: `Completing this item unlocks: ${downstream}`,
-				tone: 'text-blue-500',
-			};
-		}
-
-		return {
-			headline: 'No direct blocking dependencies.',
-			detail: 'This issue can be worked independently within the current graph scope.',
-			tone: 'text-emerald-500',
-		};
-	}
-
-	function shortenModel(model?: string): string {
-		if (!model) return 'model unknown';
-		return model.split('/').pop()?.split('-').slice(0, 3).join('-') || model;
-	}
-
-	function formatIssueAge(createdAt?: string): string | null {
-		if (!createdAt) return null;
-		const created = new Date(createdAt);
-		if (Number.isNaN(created.getTime())) return null;
-
-		const ageMs = Date.now() - created.getTime();
-		if (ageMs < 60_000) return 'opened just now';
-
-		const minutes = Math.floor(ageMs / 60_000);
-		if (minutes < 60) return `opened ${minutes}m ago`;
-
-		const hours = Math.floor(minutes / 60);
-		if (hours < 24) return `opened ${hours}h ago`;
-
-		const days = Math.floor(hours / 24);
-		return `opened ${days}d ago`;
-	}
-
-	function getInProgressSubline(node: TreeNode): { text: string; tone: string } | null {
-		if (node.status.toLowerCase() !== 'in_progress') {
-			return null;
-		}
-
-		const activeAgent = runningAgentDetailsByIssueId.get(node.id);
-		const phase = node.active_agent?.phase || activeAgent?.phase;
-		const runtime = node.active_agent?.runtime || activeAgent?.runtime;
-		const model = node.active_agent?.model || activeAgent?.model;
-
-		if (phase || runtime || model) {
-			const phaseText = phase || 'active';
-			const runtimeText = runtime || 'runtime unknown';
-			const modelText = shortenModel(model);
-			return {
-				text: `${phaseText} · ${runtimeText} · ${modelText}`,
-				tone: 'text-blue-500/90',
-			};
-		}
-
-		if (node.attentionBadge === 'verify' || node.attentionBadge === 'likely_done') {
-			return {
-				text: 'Awaiting review (Phase: Complete)',
-				tone: 'text-emerald-500/90',
-			};
-		}
-
-		const ageText = formatIssueAge(node.created_at);
-		return {
-			text: ageText ? `No active agent linked · ${ageText}` : 'No active agent linked',
-			tone: 'text-amber-500/90',
-		};
-	}
-
-	// Get priority badge variant
-	function getPriorityVariant(priority: number): 'destructive' | 'secondary' | 'outline' {
-		if (priority === 0) return 'destructive';
-		if (priority === 1) return 'secondary';
-		return 'outline';
-	}
-
-	// Get type badge color
-	function getTypeBadge(type: string): string {
-		switch (type.toLowerCase()) {
-			case 'epic': return 'bg-purple-500/10 text-purple-500';
-			case 'feature': return 'bg-blue-500/10 text-blue-500';
-			case 'bug': return 'bg-red-500/10 text-red-500';
-			case 'task': return 'bg-green-500/10 text-green-500';
-			case 'question': return 'bg-yellow-500/10 text-yellow-500';
-			default: return 'bg-muted text-muted-foreground';
-		}
-	}
-
 	// Get age from ID (creation timestamp encoded in beads IDs)
 	function getAge(id: string): string {
 		// Beads IDs have timestamp - could parse it, but for now just return placeholder
 		// This would need actual created_at from API
 		return ''; // TODO: Add created_at to GraphNode
-	}
-
-	// Get status icon for running agents based on health (from WIP store)
-	function getAgentStatusIcon(agent: any): { icon: string; color: string } {
-		const health = computeAgentHealth(agent);
-		
-		if (health.status === 'critical') {
-			return { icon: '🚨', color: 'text-red-500' };
-		}
-		if (health.status === 'warning') {
-			return { icon: '⚠️', color: 'text-yellow-500' };
-		}
-		
-		// Healthy - show activity-based icon
-		if (agent.is_processing) {
-			return { icon: '◉', color: 'text-blue-500 animate-pulse' };
-		}
-		if (agent.status === 'idle') {
-			return { icon: '⏸', color: 'text-muted-foreground' };
-		}
-		return { icon: '▶', color: 'text-blue-500' };
 	}
 
 	// Keyboard navigation handlers
@@ -956,7 +647,7 @@
 				{@const health = computeAgentHealth(agent)}
 				{@const contextPct = getContextPercent(agent)}
 				{@const inProgressSubline = relatedNode
-					? getInProgressSubline(relatedNode)
+					? getInProgressSubline(relatedNode, runningAgentDetailsByIssueId)
 					: (agent.phase || agent.runtime || agent.model
 						? { text: `${agent.phase || 'active'} · ${agent.runtime || 'runtime unknown'} · ${shortenModel(agent.model)}`, tone: 'text-blue-500/90' }
 						: null)}
@@ -1129,7 +820,7 @@
 		{:else}
 			{@const node = item as TreeNode}
 			{@const feedback = actionFeedback.get(node.id)}
-			{@const inProgressSubline = getInProgressSubline(node)}
+			{@const inProgressSubline = getInProgressSubline(node, runningAgentDetailsByIssueId)}
 			{@const progressSnapshot = getProgressSnapshot(node)}
 			<!-- Tree Node - L0: Row -->
 			<div
@@ -1227,10 +918,10 @@
 
 				<!-- L1: Expanded details -->
 				{#if expandedDetails.has(node.id)}
-					{@const dependencyExplanation = getDependencyExplanation(node)}
+					{@const dependencyExplanation = getDependencyExplanation(node, treeNodeIndex)}
 					{@const progressInDetails = getProgressSnapshot(node)}
-					{@const parentLabel = node.parent_id ? getRelatedIssueLabel(node.parent_id) : null}
-					{@const directChildLabels = node.children.map((child) => getRelatedIssueLabel(child.id))}
+					{@const parentLabel = node.parent_id ? getRelatedIssueLabel(node.parent_id, treeNodeIndex) : null}
+					{@const directChildLabels = node.children.map((child) => getRelatedIssueLabel(child.id, treeNodeIndex))}
 					<div
 						data-testid={`issue-details-${node.id}`}
 						class="expanded-details ml-12 mt-1 mb-2 p-3 bg-muted/30 rounded text-sm"
@@ -1273,16 +964,16 @@
 									<div>Parent: {parentLabel}</div>
 								{/if}
 								{#if directChildLabels.length > 0}
-									<div>Children ({directChildLabels.length}): {formatRelatedIssueList(node.children.map((child) => child.id))}</div>
+									<div>Children ({directChildLabels.length}): {formatRelatedIssueList(node.children.map((child) => child.id), treeNodeIndex)}</div>
 								{/if}
 								{#if node.blocked_by.length > 0}
-									<div>Upstream blockers: {formatRelatedIssueList(node.blocked_by)}</div>
+									<div>Upstream blockers: {formatRelatedIssueList(node.blocked_by, treeNodeIndex)}</div>
 								{/if}
 								{#if node.blocks.length > 0}
-									<div>Downstream dependents: {formatRelatedIssueList(node.blocks)}</div>
+									<div>Downstream dependents: {formatRelatedIssueList(node.blocks, treeNodeIndex)}</div>
 								{/if}
 								{#if node.absorbed_by}
-									<div>Absorbed by: {getRelatedIssueLabel(node.absorbed_by)}</div>
+									<div>Absorbed by: {getRelatedIssueLabel(node.absorbed_by, treeNodeIndex)}</div>
 								{/if}
 								{#if !parentLabel && directChildLabels.length === 0 && node.blocked_by.length === 0 && node.blocks.length === 0 && !node.absorbed_by}
 									<div>No directly related issues in the current scope.</div>

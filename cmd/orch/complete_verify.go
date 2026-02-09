@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/episodic"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
@@ -24,6 +26,7 @@ type SkipConfig struct {
 	SkillOutput      bool
 	DecisionPatch    bool
 	PhaseComplete    bool
+	AgentRunning     bool
 	HandoffContent   bool
 	DashboardHealth  bool
 	VerificationSpec bool
@@ -35,7 +38,7 @@ type SkipConfig struct {
 func (c SkipConfig) hasAnySkip() bool {
 	return c.BatchMode || c.TestEvidence || c.ModelConnection || c.Visual || c.GitDiff || c.Synthesis ||
 		c.Build || c.Constraint || c.PhaseGate || c.SkillOutput ||
-		c.DecisionPatch || c.PhaseComplete || c.HandoffContent || c.DashboardHealth || c.VerificationSpec
+		c.DecisionPatch || c.PhaseComplete || c.AgentRunning || c.HandoffContent || c.DashboardHealth || c.VerificationSpec
 }
 
 // skippedGates returns a list of gate names that are being skipped.
@@ -73,6 +76,9 @@ func (c SkipConfig) skippedGates() []string {
 	}
 	if c.PhaseComplete {
 		gates = append(gates, verify.GatePhaseComplete)
+	}
+	if c.AgentRunning {
+		gates = append(gates, verify.GateAgentRunning)
 	}
 	if c.HandoffContent {
 		gates = append(gates, verify.GateHandoffContent)
@@ -115,6 +121,8 @@ func (c SkipConfig) shouldSkipGate(gate string) bool {
 		return c.DecisionPatch
 	case verify.GatePhaseComplete:
 		return c.PhaseComplete
+	case verify.GateAgentRunning:
+		return c.AgentRunning
 	case verify.GateHandoffContent:
 		return c.HandoffContent
 	case verify.GateDashboardHealth:
@@ -140,6 +148,7 @@ func getSkipConfig() SkipConfig {
 		SkillOutput:      completeSkipSkillOutput,
 		DecisionPatch:    completeSkipDecisionPatch,
 		PhaseComplete:    completeSkipPhaseComplete,
+		AgentRunning:     completeSkipAgentRunning,
 		HandoffContent:   completeSkipHandoffContent,
 		DashboardHealth:  completeSkipDashboardHealth,
 		VerificationSpec: completeSkipVerificationSpec,
@@ -182,6 +191,25 @@ func validateSkipFlags(skipConfig SkipConfig) error {
 func logSkipEvents(skipConfig SkipConfig, beadsID, workspace, skill string) {
 	logger := events.NewLogger(events.DefaultLogPath())
 	for _, gate := range skipConfig.skippedGates() {
+		event := events.Event{
+			Type:      events.EventTypeVerificationBypassed,
+			SessionID: beadsID,
+			Timestamp: time.Now().Unix(),
+			Data: map[string]interface{}{
+				"beads_id":  beadsID,
+				"workspace": workspace,
+				"gate":      gate,
+				"reason":    skipConfig.Reason,
+				"skill":     skill,
+			},
+		}
+		recordEpisodicEvent(event, episodic.Context{
+			Boundary:  episodic.BoundaryVerification,
+			Project:   projectFromCWD(),
+			Workspace: workspace,
+			BeadsID:   beadsID,
+		})
+
 		if err := logger.LogVerificationBypassed(events.VerificationBypassedData{
 			BeadsID:   beadsID,
 			Workspace: workspace,

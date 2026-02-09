@@ -29,7 +29,7 @@ var (
 )
 
 var abandonCmd = &cobra.Command{
-	Use:   "abandon [beads-id]",
+	Use:   "abandon [identifier]",
 	Short: "Abandon a stuck or frozen agent",
 	Long: `Abandon an agent and kill its tmux window.
 
@@ -48,13 +48,15 @@ where the beads issue lives.
 
 Examples:
   orch-go abandon proj-123                                      # Abandon agent in current project
+  orch-go abandon og-debug-stuck-09feb-ab12                    # Abandon by workspace name
+  orch-go abandon ses_abc123xyz                                # Abandon by OpenCode session ID
   orch-go abandon proj-123 --reason "Out of context"            # Abandon with failure report
   orch-go abandon proj-123 --reason "Stuck in loop"             # Document the failure
   orch-go abandon kb-cli-123 --workdir ~/projects/kb-cli        # Abandon agent in another project`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		beadsID := args[0]
-		return runAbandon(beadsID, abandonReason, abandonWorkdir)
+		id := args[0]
+		return runAbandon(id, abandonReason, abandonWorkdir)
 	},
 }
 
@@ -95,9 +97,9 @@ type abandonContext struct {
 //  6. Log abandonment event + telemetry
 //  7. Update tracking state (registry, beads, state DB)
 //  8. Print summary
-func runAbandon(beadsID, reason, workdir string) error {
+func runAbandon(identifier, reason, workdir string) error {
 	ctx := &abandonContext{
-		BeadsID: beadsID,
+		BeadsID: identifier,
 		Reason:  reason,
 	}
 
@@ -107,6 +109,19 @@ func runAbandon(beadsID, reason, workdir string) error {
 		return err
 	}
 	ctx.ProjectDir = projectDir
+
+	// Resolve identifier (beads ID / workspace name / session ID) to canonical beads ID
+	r, err := resolveAbandonIdentifier(ctx.ProjectDir, identifier)
+	if err != nil {
+		return err
+	}
+	ctx.BeadsID = r.BeadsID
+	ctx.WorkspacePath = r.WorkspacePath
+	ctx.AgentName = r.AgentName
+	ctx.SessionID = r.SessionID
+	if identifier != ctx.BeadsID {
+		fmt.Printf("Resolved %s -> %s\n", identifier, ctx.BeadsID)
+	}
 
 	// Phase 2: Verify the beads target
 	if err := verifyAbandonTarget(ctx); err != nil {
@@ -158,6 +173,100 @@ func resolveAbandonProjectDir(workdir string) (string, error) {
 		return "", fmt.Errorf("failed to get current directory: %w", err)
 	}
 	return projectDir, nil
+}
+
+// abandonResolution contains identity fields resolved from an abandon identifier.
+type abandonResolution struct {
+	BeadsID       string
+	WorkspacePath string
+	AgentName     string
+	SessionID     string
+}
+
+// resolveAbandonIdentifier resolves a CLI identifier (beads ID, workspace name,
+// session ID, or untracked display handle) to a canonical beads ID plus optional
+// workspace/session metadata.
+func resolveAbandonIdentifier(projectDir, identifier string) (*abandonResolution, error) {
+	id := strings.TrimSpace(identifier)
+	if id == "" {
+		return nil, fmt.Errorf("empty identifier")
+	}
+
+	if resolved, ok := resolveUntrackedIdentifier(id); ok {
+		return &abandonResolution{BeadsID: resolved}, nil
+	}
+
+	if strings.HasPrefix(id, "ses_") {
+		if r := resolveAbandonSession(projectDir, id); r != nil {
+			return r, nil
+		}
+		return nil, fmt.Errorf("could not resolve session %s to a workspace/beads ID", id)
+	}
+
+	if p := findWorkspaceByName(projectDir, id); p != "" {
+		beadsID := spawn.ReadBeadsID(p)
+		if beadsID == "" {
+			return nil, fmt.Errorf("workspace %s has no .beads_id (not a tracked worker workspace)", id)
+		}
+		return &abandonResolution{
+			BeadsID:       beadsID,
+			WorkspacePath: p,
+			AgentName:     id,
+			SessionID:     spawn.ReadSessionID(p),
+		}, nil
+	}
+
+	return &abandonResolution{BeadsID: id}, nil
+}
+
+// resolveAbandonSession resolves a session ID to workspace/beads identity using
+// state DB first, then workspace file scan fallback.
+func resolveAbandonSession(projectDir, sessionID string) *abandonResolution {
+	db, err := statedb.OpenDefault()
+	if err == nil && db != nil {
+		agent, agentErr := db.GetAgentBySessionID(sessionID)
+		db.Close()
+		if agentErr == nil && agent != nil {
+			root := projectDir
+			if agent.ProjectDir != "" {
+				root = agent.ProjectDir
+			}
+			return &abandonResolution{
+				BeadsID:       agent.BeadsID,
+				WorkspacePath: filepath.Join(root, ".orch", "workspace", agent.WorkspaceName),
+				AgentName:     agent.WorkspaceName,
+				SessionID:     sessionID,
+			}
+		}
+	}
+
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		return nil
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		p := filepath.Join(workspaceDir, entry.Name())
+		if spawn.ReadSessionID(p) != sessionID {
+			continue
+		}
+		beadsID := spawn.ReadBeadsID(p)
+		if beadsID == "" {
+			continue
+		}
+		return &abandonResolution{
+			BeadsID:       beadsID,
+			WorkspacePath: p,
+			AgentName:     entry.Name(),
+			SessionID:     sessionID,
+		}
+	}
+
+	return nil
 }
 
 // verifyAbandonTarget checks whether the beads ID is tracked or untracked,
@@ -492,6 +601,13 @@ func logStructuredEvent(logger *events.Logger, ctx *abandonContext) {
 		"agent_id":  ctx.AgentName,
 		"untracked": ctx.IsUntracked,
 	}
+	attemptID := ""
+	if ctx.WorkspacePath != "" {
+		attemptID = spawn.ReadAttemptID(ctx.WorkspacePath)
+	}
+	if attemptID != "" {
+		eventData["attempt_id"] = attemptID
+	}
 	if ctx.WindowInfo != nil {
 		eventData["window_id"] = ctx.WindowInfo.ID
 		eventData["window_target"] = ctx.WindowInfo.Target
@@ -526,6 +642,7 @@ func logAbandonTelemetry(logger *events.Logger, ctx *abandonContext) {
 	}
 
 	if ctx.WorkspacePath != "" {
+		abandonedData.AttemptID = spawn.ReadAttemptID(ctx.WorkspacePath)
 		collectTelemetryFromWorkspace(ctx.WorkspacePath, &abandonedData)
 	}
 

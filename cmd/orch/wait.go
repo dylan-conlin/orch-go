@@ -13,6 +13,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -65,6 +66,37 @@ func init() {
 	waitCmd.Flags().StringVar(&waitTimeout, "timeout", "30m", "Timeout duration (e.g., 30s, 5m, 1h)")
 	waitCmd.Flags().IntVar(&waitInterval, "interval", 5, "Poll interval in seconds")
 	waitCmd.Flags().BoolVarP(&waitQuiet, "quiet", "q", false, "Suppress progress output")
+}
+
+// resolveUntrackedIdentifier resolves untracked display handles (from `orch status`)
+// and canonical untracked beads IDs to canonical beads IDs via state.db.
+func resolveUntrackedIdentifier(identifier string) (string, bool) {
+	if !strings.Contains(strings.ToLower(identifier), "untracked") {
+		return identifier, false
+	}
+
+	db, err := state.OpenDefault()
+	if err != nil || db == nil {
+		return identifier, false
+	}
+	defer db.Close()
+
+	agents, err := db.ListAllAgents()
+	if err != nil {
+		return identifier, false
+	}
+
+	id := strings.ToLower(strings.TrimSpace(identifier))
+	for _, agent := range agents {
+		if agent == nil || !isUntrackedBeadsID(agent.BeadsID) {
+			continue
+		}
+		if strings.ToLower(agent.BeadsID) == id || strings.ToLower(formatBeadsIDForDisplay(agent.BeadsID)) == id {
+			return agent.BeadsID, true
+		}
+	}
+
+	return identifier, false
 }
 
 // parseTimeout parses a timeout string like '30s', '5m', '1h', '1h30m' to time.Duration.
@@ -145,8 +177,15 @@ func resolveBeadsID(serverURL, identifier string) (string, error) {
 }
 
 func resolveBeadsIDWithClient(client opencode.ClientInterface, identifier string) (string, error) {
+	if resolved, ok := resolveUntrackedIdentifier(identifier); ok {
+		return resolved, nil
+	}
+
 	// Strategy 1: If it looks like a beads ID (contains hyphen but not a session ID), verify it exists
 	if strings.Contains(identifier, "-") && !strings.HasPrefix(identifier, "ses_") {
+		if isUntrackedBeadsID(identifier) {
+			return identifier, nil
+		}
 		// Try to verify it exists
 		_, err := verify.GetIssue(identifier)
 		if err == nil {
@@ -247,6 +286,49 @@ func extractBeadsIDFromSpawnContext(content string) string {
 	return ""
 }
 
+func verifyWaitTarget(beadsID string) error {
+	if isUntrackedBeadsID(beadsID) {
+		return nil
+	}
+	_, err := verify.GetIssue(beadsID)
+	return err
+}
+
+func getWaitPhaseStatus(beadsID string) (verify.PhaseStatus, error) {
+	if !isUntrackedBeadsID(beadsID) {
+		return verify.GetPhaseStatus(beadsID)
+	}
+
+	db, err := state.OpenDefault()
+	if err != nil {
+		return verify.PhaseStatus{}, err
+	}
+	if db == nil {
+		return verify.PhaseStatus{}, fmt.Errorf("state database unavailable")
+	}
+	defer db.Close()
+
+	agent, err := db.GetAgentByBeadsID(beadsID)
+	if err != nil {
+		return verify.PhaseStatus{}, err
+	}
+	if agent.Phase == "" {
+		return verify.PhaseStatus{}, nil
+	}
+
+	status := verify.PhaseStatus{
+		Phase:   agent.Phase,
+		Summary: agent.PhaseSummary,
+		Found:   true,
+	}
+	if agent.PhaseReportedAt > 0 {
+		t := time.UnixMilli(agent.PhaseReportedAt)
+		status.PhaseReportedAt = &t
+	}
+
+	return status, nil
+}
+
 func runWait(identifier string) error {
 	// Start timing
 	startTime := time.Now()
@@ -267,7 +349,7 @@ func runWait(identifier string) error {
 	}
 
 	// Verify issue exists
-	_, err = verify.GetIssue(beadsID)
+	err = verifyWaitTarget(beadsID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
@@ -283,7 +365,7 @@ func runWait(identifier string) error {
 	var lastPhase string
 	for {
 		// Check phase status
-		status, err := verify.GetPhaseStatus(beadsID)
+		status, err := getWaitPhaseStatus(beadsID)
 		if err != nil {
 			// Non-fatal: issue might not have comments yet
 			if !waitQuiet {

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -185,5 +186,56 @@ func TestVerifyRegularAgentNoRetryOnNonTransientFailure(t *testing.T) {
 	}
 	if sleepCalls != 0 {
 		t.Fatalf("sleep calls = %d, want 0", sleepCalls)
+	}
+}
+
+func TestCheckLivenessSkipAgentRunning(t *testing.T) {
+	origGetLiveness := getLiveness
+	t.Cleanup(func() {
+		getLiveness = origGetLiveness
+	})
+
+	called := 0
+	getLiveness = func(beadsID, serverURL, projectDir string) statedb.LivenessResult {
+		called++
+		return statedb.LivenessResult{TmuxLive: true}
+	}
+
+	target := &CompletionTarget{
+		BeadsID:         "orch-go-test",
+		AgentName:       "og-test-liveness",
+		BeadsProjectDir: "/tmp/project",
+	}
+
+	err := checkLiveness(target, SkipConfig{AgentRunning: true, Reason: "GPT model liveness bypass"})
+	if err != nil {
+		t.Fatalf("checkLiveness() unexpected error: %v", err)
+	}
+	if called != 0 {
+		t.Fatalf("expected liveness lookup to be skipped, got %d call(s)", called)
+	}
+}
+
+func TestCheckLivenessNonInteractiveSuggestsSkipFlag(t *testing.T) {
+	origGetLiveness := getLiveness
+	t.Cleanup(func() {
+		getLiveness = origGetLiveness
+	})
+
+	getLiveness = func(beadsID, serverURL, projectDir string) statedb.LivenessResult {
+		return statedb.LivenessResult{TmuxLive: true}
+	}
+
+	target := &CompletionTarget{
+		AgentName:       "og-test-liveness",
+		BeadsProjectDir: "/tmp/project",
+	}
+
+	err := checkLiveness(target, SkipConfig{})
+	if err == nil {
+		t.Fatal("checkLiveness() expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "--skip-agent-running") {
+		t.Fatalf("expected error to suggest --skip-agent-running, got: %v", err)
 	}
 }

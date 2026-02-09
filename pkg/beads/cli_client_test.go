@@ -1,6 +1,9 @@
 package beads
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -64,4 +67,72 @@ func TestCLIClient_ImplementsBeadsClient(t *testing.T) {
 	// The compilation will fail if it doesn't.
 	var _ BeadsClient = (*CLIClient)(nil)
 	var _ BeadsClient = NewCLIClient()
+}
+
+func TestCLIClient_AddLabels_UsesSingleUpdateCommand(t *testing.T) {
+	workDir := t.TempDir()
+	invocations := filepath.Join(workDir, "invocations.log")
+	scriptPath := filepath.Join(workDir, "fake-bd.sh")
+	script := strings.Join([]string{
+		"#!/bin/sh",
+		"printf '%s\\n' \"$*\" >> \"" + invocations + "\"",
+		"printf 'ok'",
+		"exit 0",
+	}, "\n") + "\n"
+
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake bd script: %v", err)
+	}
+
+	c := NewCLIClient(WithWorkDir(workDir), WithBdPath(scriptPath))
+	if err := c.AddLabels("orch-go-123", "triage:ready", "area:beads", "effort:small"); err != nil {
+		t.Fatalf("AddLabels failed: %v", err)
+	}
+
+	calls := readInvocationLines(t, invocations)
+	if len(calls) != 1 {
+		t.Fatalf("invocation count = %d, want 1", len(calls))
+	}
+
+	if !strings.Contains(calls[0], "update orch-go-123 --add-label triage:ready --add-label area:beads --add-label effort:small") {
+		t.Fatalf("unexpected command args: %q", calls[0])
+	}
+}
+
+func TestFallbackAddLabels_UsesSingleUpdateCommand(t *testing.T) {
+	workDir := t.TempDir()
+	invocations := filepath.Join(workDir, "invocations.log")
+	scriptPath := filepath.Join(workDir, "fake-bd.sh")
+	script := strings.Join([]string{
+		"#!/bin/sh",
+		"printf '%s\\n' \"$*\" >> \"" + invocations + "\"",
+		"printf 'ok'",
+		"exit 0",
+	}, "\n") + "\n"
+
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake bd script: %v", err)
+	}
+
+	oldPath := BdPath
+	oldDir := DefaultDir
+	t.Cleanup(func() {
+		BdPath = oldPath
+		DefaultDir = oldDir
+	})
+	BdPath = scriptPath
+	DefaultDir = workDir
+
+	if err := FallbackAddLabels("orch-go-456", "triage:ready", "area:cli"); err != nil {
+		t.Fatalf("FallbackAddLabels failed: %v", err)
+	}
+
+	calls := readInvocationLines(t, invocations)
+	if len(calls) != 1 {
+		t.Fatalf("invocation count = %d, want 1", len(calls))
+	}
+
+	if !strings.Contains(calls[0], "update orch-go-456 --add-label triage:ready --add-label area:cli") {
+		t.Fatalf("unexpected command args: %q", calls[0])
+	}
 }

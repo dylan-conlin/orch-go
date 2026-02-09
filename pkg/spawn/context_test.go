@@ -449,6 +449,22 @@ func TestWriteContext(t *testing.T) {
 		t.Error("context file should contain task")
 	}
 
+	attemptIDPath := filepath.Join(tempDir, ".orch", "workspace", "og-test-19dec", ".attempt_id")
+	attemptIDBytes, err := os.ReadFile(attemptIDPath)
+	if err != nil {
+		t.Fatalf("failed to read attempt ID file: %v", err)
+	}
+	attemptID := strings.TrimSpace(string(attemptIDBytes))
+	if attemptID == "" {
+		t.Fatal("attempt ID should not be empty")
+	}
+	if cfg.AttemptID == "" {
+		t.Fatal("cfg.AttemptID should be populated")
+	}
+	if cfg.AttemptID != attemptID {
+		t.Fatalf("cfg.AttemptID = %q, want %q", cfg.AttemptID, attemptID)
+	}
+
 	verificationPath := filepath.Join(tempDir, ".orch", "workspace", "og-test-19dec", "VERIFICATION_SPEC.yaml")
 	verificationContent, err := os.ReadFile(verificationPath)
 	if err != nil {

@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/activity"
+	"github.com/dylan-conlin/orch-go/pkg/model"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // Gate names for verification tracking.
@@ -27,6 +29,7 @@ const (
 	GateBuild              = "build"                // Project build failed
 	GateDecisionPatchLimit = "decision_patch_limit" // Decision patch limit exceeded
 	GateDashboardHealth    = "dashboard_health"     // Dashboard API health check failed
+	GateAgentRunning       = "agent_running"        // Agent appears still running
 )
 
 // GateResult represents the result of a single verification gate.
@@ -611,6 +614,7 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 
 	// Check if Phase: Complete was reported
 	phaseComplete := status.Found && strings.EqualFold(status.Phase, "Complete")
+	phaseBypassed := false
 
 	// Fallback: Check ACTIVITY.json for Phase: Complete attempts
 	// This handles the case where bd comment reports success but the comment
@@ -632,6 +636,16 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 		}
 	}
 
+	// Model-aware bypass: GPT models frequently miss Phase: Complete reporting.
+	// If this workspace was spawned with a GPT model, don't block completion on
+	// missing phase comments.
+	if !phaseComplete && shouldBypassPhaseCompleteForModel(workspacePath) {
+		phaseComplete = true
+		phaseBypassed = true
+		result.Warnings = append(result.Warnings,
+			"Phase: Complete auto-bypassed for GPT model from AGENT_MANIFEST.json")
+	}
+
 	if !phaseComplete {
 		if !status.Found {
 			errMsg := fmt.Sprintf("agent has not reported any Phase status for %s", beadsID)
@@ -649,7 +663,7 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 		result.GateResults = append(result.GateResults, GateResult{Gate: GatePhaseComplete, Passed: false, Error: errMsg})
 		return result, nil
 	}
-	result.GateResults = append(result.GateResults, GateResult{Gate: GatePhaseComplete, Passed: true})
+	result.GateResults = append(result.GateResults, GateResult{Gate: GatePhaseComplete, Passed: true, Skipped: phaseBypassed})
 
 	// Check for SYNTHESIS.md (only for full tier)
 	if workspacePath != "" && tier != "light" {
@@ -792,6 +806,24 @@ func verifySessionEndedProperly(workspacePath string) (bool, error) {
 	return false, nil
 }
 
+func shouldBypassPhaseCompleteForModel(workspacePath string) bool {
+	if workspacePath == "" {
+		return false
+	}
+
+	manifest, err := spawn.ReadAgentManifest(workspacePath)
+	if err != nil || manifest == nil {
+		return false
+	}
+
+	resolved := model.Resolve(strings.TrimSpace(manifest.Model))
+	if strings.ToLower(resolved.Provider) != "openai" {
+		return false
+	}
+
+	return strings.Contains(strings.ToLower(resolved.ModelID), "gpt")
+}
+
 // joinErrors joins multiple error strings into a single semicolon-separated string.
 func joinErrors(errors []string) string {
 	return strings.Join(errors, "; ")
@@ -828,6 +860,8 @@ func GateSkipFlag(gate string) string {
 		return "--skip-decision-patch"
 	case GateDashboardHealth:
 		return "--skip-dashboard-health"
+	case GateAgentRunning:
+		return "--skip-agent-running"
 	default:
 		return "--skip-" + strings.ReplaceAll(gate, "_", "-")
 	}

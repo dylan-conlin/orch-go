@@ -299,7 +299,21 @@ func (c *CLIClient) Update(args *UpdateArgs) (*Issue, error) {
 
 // AddLabel adds a label to an issue.
 func (c *CLIClient) AddLabel(id, label string) error {
-	_, err := c.combinedOutput("label", id, label)
+	return c.AddLabels(id, label)
+}
+
+// AddLabels adds one or more labels to an issue.
+func (c *CLIClient) AddLabels(id string, labels ...string) error {
+	if len(labels) == 0 {
+		return nil
+	}
+
+	args := []string{"update", id}
+	for _, label := range labels {
+		args = append(args, "--add-label", label)
+	}
+
+	_, err := c.combinedOutput(args...)
 	return err
 }
 

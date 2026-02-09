@@ -10,6 +10,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/activity"
 	"github.com/dylan-conlin/orch-go/pkg/config"
+	"github.com/dylan-conlin/orch-go/pkg/episodic"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
@@ -30,6 +31,20 @@ func exportActivity(target *CompletionTarget) {
 		fmt.Fprintf(os.Stderr, "Warning: failed to export activity: %v\n", err)
 	} else if activityPath != "" {
 		fmt.Printf("Exported activity: %s\n", filepath.Base(activityPath))
+
+		events, loadErr := activity.LoadFromWorkspace(target.WorkspacePath)
+		if loadErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to load exported activity for episodic memory: %v\n", loadErr)
+		} else {
+			recordEpisodicActivity(events, episodic.Context{
+				Boundary:        episodic.BoundaryCompletion,
+				Project:         projectFromDir(target.BeadsProjectDir),
+				Workspace:       target.AgentName,
+				SessionID:       sessionID,
+				BeadsID:         target.BeadsID,
+				EvidencePointer: activityPath,
+			})
+		}
 	}
 }
 

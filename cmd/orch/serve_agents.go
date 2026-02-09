@@ -100,11 +100,11 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	client := opencode.NewClient(s.ServerURL)
 
-	// Get active sessions from OpenCode (all projects, not filtered by directory)
+	// Get active sessions from OpenCode (all projects, not filtered by directory).
+	// Gracefully degrade if OpenCode is unavailable — dashboard still shows tmux/workspace data.
 	sessions, err := client.ListSessions("")
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to list sessions: %v", err), http.StatusInternalServerError)
-		return
+		sessions = nil // Continue without OpenCode sessions
 	}
 
 	// EARLY FILTERING: Apply time filter before expensive operations (workspace cache, beads).

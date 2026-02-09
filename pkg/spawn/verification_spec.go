@@ -1,6 +1,7 @@
 package spawn
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -102,8 +103,8 @@ func GenerateVerificationSpecSkeleton(cfg *Config) (string, error) {
 	}
 
 	header := "# Spawn-time verification skeleton.\n" +
-		"# Placeholder commands are syntax-valid and intentionally fail until replaced.\n" +
-		"# Replace command and expect blocks before Phase: Complete.\n\n"
+		"# Commands are auto-detected from the project when possible.\n" +
+		"# Replace any remaining TODO placeholders before Phase: Complete.\n\n"
 
 	return header + string(body), nil
 }
@@ -126,7 +127,7 @@ func verificationEntriesForSkill(cfg *Config, tier string) []verificationSpecSke
 	case isBrowserUISkill(skill):
 		return browserVerificationEntries(tier)
 	case isImplementationVerificationSkill(skill):
-		entries := implementationVerificationEntries(tier)
+		entries := implementationVerificationEntries(cfg, tier)
 		if strings.EqualFold(strings.TrimSpace(cfg.MCP), "playwright") {
 			entries = append(entries, browserVerificationEntries(tier)...)
 		}
@@ -180,13 +181,21 @@ func isBrowserUISkill(skill string) bool {
 	}
 }
 
-func implementationVerificationEntries(tier string) []verificationSpecSkeletonRow {
+func implementationVerificationEntries(cfg *Config, tier string) []verificationSpecSkeletonRow {
+	build, test := detectImplementationCommands(cfg.ProjectDir)
+	if strings.TrimSpace(build) == "" {
+		build = placeholderCommand("build")
+	}
+	if strings.TrimSpace(test) == "" {
+		test = placeholderCommand("test")
+	}
+
 	return []verificationSpecSkeletonRow{
 		{
 			ID:      "verify-build",
 			Method:  "cli_smoke",
 			Tier:    tier,
-			Command: placeholderCommand("build"),
+			Command: build,
 			CWD:     ".",
 			Expect: verificationSpecSkeletonExpect{
 				ExitCode: 0,
@@ -196,13 +205,101 @@ func implementationVerificationEntries(tier string) []verificationSpecSkeletonRo
 			ID:      "verify-test",
 			Method:  "cli_smoke",
 			Tier:    tier,
-			Command: placeholderCommand("test"),
+			Command: test,
 			CWD:     ".",
 			Expect: verificationSpecSkeletonExpect{
 				ExitCode: 0,
 			},
 		},
 	}
+}
+
+func detectImplementationCommands(projectDir string) (string, string) {
+	projectDir = strings.TrimSpace(projectDir)
+	if projectDir == "" {
+		return "", ""
+	}
+
+	if pathExists(filepath.Join(projectDir, "go.mod")) {
+		return "go build ./...", "go test ./..."
+	}
+
+	if pathExists(filepath.Join(projectDir, "Cargo.toml")) {
+		return "cargo build", "cargo test"
+	}
+
+	if pathExists(filepath.Join(projectDir, "package.json")) {
+		scripts := readNodeScripts(filepath.Join(projectDir, "package.json"))
+		runner := detectNodeRunner(projectDir)
+		build := ""
+		test := ""
+		if strings.TrimSpace(scripts["build"]) != "" {
+			build = nodeScriptCommand(runner, "build")
+		}
+		if strings.TrimSpace(scripts["test"]) != "" {
+			test = nodeScriptCommand(runner, "test")
+		}
+		return build, test
+	}
+
+	if pathExists(filepath.Join(projectDir, "pyproject.toml")) || pathExists(filepath.Join(projectDir, "setup.py")) {
+		return "", "pytest"
+	}
+
+	return "", ""
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func readNodeScripts(path string) map[string]string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+
+	var parsed struct {
+		Scripts map[string]string `json:"scripts"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return nil
+	}
+
+	return parsed.Scripts
+}
+
+func detectNodeRunner(projectDir string) string {
+	if pathExists(filepath.Join(projectDir, "bun.lock")) || pathExists(filepath.Join(projectDir, "bun.lockb")) {
+		return "bun"
+	}
+	if pathExists(filepath.Join(projectDir, "pnpm-lock.yaml")) {
+		return "pnpm"
+	}
+	if pathExists(filepath.Join(projectDir, "yarn.lock")) {
+		return "yarn"
+	}
+	return "npm"
+}
+
+func nodeScriptCommand(runner, script string) string {
+	runner = strings.TrimSpace(strings.ToLower(runner))
+	script = strings.TrimSpace(script)
+
+	if runner == "bun" {
+		return "bun run " + script
+	}
+	if runner == "pnpm" {
+		return "pnpm run " + script
+	}
+	if runner == "yarn" {
+		return "yarn " + script
+	}
+	if script == "test" {
+		return "npm test"
+	}
+	return "npm run " + script
 }
 
 func artifactVerificationEntries(tier string) []verificationSpecSkeletonRow {

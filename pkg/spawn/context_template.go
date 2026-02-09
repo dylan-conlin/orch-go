@@ -104,6 +104,9 @@ Before /exit, explicitly run ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sente
 {{if .KBContext}}
 {{.KBContext}}
 {{end}}
+{{if .RecentValidatedEpisodes}}
+{{.RecentValidatedEpisodes}}
+{{end}}
 {{if .HasInjectedModels}}
 ## PROBE GUIDANCE (Model-Scoped Work)
 

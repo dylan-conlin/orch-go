@@ -9,6 +9,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"golang.org/x/term"
@@ -201,17 +202,27 @@ func cleanupAgentTmuxWindow(c CompletionInfo) {
 
 // logCompletionEvent records an agent.completed event for the given completion.
 func logCompletionEvent(logger *events.Logger, c CompletionInfo, projectDir string) {
+	attemptID := ""
+	if c.WorkspacePath != "" {
+		attemptID = spawn.ReadAttemptID(c.WorkspacePath)
+	}
+
+	eventData := map[string]interface{}{
+		"beads_id":    c.BeadsID,
+		"workspace":   c.WorkspaceID,
+		"reason":      c.Summary,
+		"batch":       true,
+		"source":      "review_done",
+		"project_dir": projectDir,
+	}
+	if attemptID != "" {
+		eventData["attempt_id"] = attemptID
+	}
+
 	event := events.Event{
 		Type:      "agent.completed",
 		Timestamp: time.Now().Unix(),
-		Data: map[string]interface{}{
-			"beads_id":    c.BeadsID,
-			"workspace":   c.WorkspaceID,
-			"reason":      c.Summary,
-			"batch":       true,
-			"source":      "review_done",
-			"project_dir": projectDir,
-		},
+		Data:      eventData,
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Printf("  Warning: failed to log event: %v\n", err)
