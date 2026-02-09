@@ -7,6 +7,21 @@
 
 	const dispatch = createEventDispatcher();
 
+	let copiedPath = false;
+	let copiedTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	async function copyPath(event: MouseEvent) {
+		event.stopPropagation();
+		try {
+			await navigator.clipboard.writeText(artifact.path);
+			copiedPath = true;
+			if (copiedTimeout) clearTimeout(copiedTimeout);
+			copiedTimeout = setTimeout(() => { copiedPath = false; }, 1500);
+		} catch (err) {
+			console.error('Failed to copy path:', err);
+		}
+	}
+
 	function getTypeIcon(type: string): string {
 		switch (type) {
 			case 'investigation':
@@ -73,6 +88,17 @@
 					<span>·</span>
 				{/if}
 				<span>{artifact.relative_time}</span>
+				<span>·</span>
+				<span
+					class="font-mono truncate max-w-[200px] cursor-pointer hover:text-foreground transition-colors {copiedPath ? 'text-green-500' : ''}"
+					on:click={copyPath}
+					on:keydown={(e) => { if (e.key === 'Enter') copyPath(e); }}
+					role="button"
+					tabindex="-1"
+					title="Click to copy full path: {artifact.path}"
+				>
+					{copiedPath ? 'Copied!' : artifact.path}
+				</span>
 			</div>
 		</div>
 	</div>

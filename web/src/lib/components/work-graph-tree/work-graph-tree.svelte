@@ -5,7 +5,7 @@
 	import type { TreeNode, AttentionBadgeType, GroupSection, GroupByMode } from '$lib/stores/work-graph';
 	import { closeIssue, updateIssue } from '$lib/stores/work-graph';
 	import type { WIPItem } from '$lib/stores/wip';
-	import { getExpressiveStatus, computeAgentHealth, getContextPercent, getContextColor } from '$lib/stores/wip';
+	import { computeAgentHealth, getContextPercent, getContextColor } from '$lib/stores/wip';
 	import { ATTENTION_BADGE_CONFIG } from '$lib/stores/attention';
 	import { DeliverableChecklist } from '$lib/components/deliverable-checklist';
 	import { getExpectedDeliverables } from '$lib/stores/deliverables';
@@ -59,6 +59,7 @@
 		let flattenedNodes: (TreeNode | WIPItem | GroupHeader)[] = [];
 		let selectedIndex = 0;
 		let pinnedTreeIds = new Set<string>();
+		let runningAgentDetailsByIssueId = new Map<string, { phase?: string; runtime?: string; model?: string; skill?: string }>();
 
 	// Track expanded details separately (fixes reactivity issues)
 	let expandedDetails = new Set<string>();
@@ -175,6 +176,21 @@
 	// Track issue for close modal
 	let issueToClose: TreeNode | null = null;
 	let isClosing = false;
+	let treeNodeIndex = new Map<string, TreeNode>();
+
+	$: {
+		const index = new Map<string, TreeNode>();
+		const walk = (nodes: TreeNode[]) => {
+			for (const node of nodes) {
+				index.set(node.id, node);
+				if (node.children.length > 0) {
+					walk(node.children);
+				}
+			}
+		};
+		walk(tree);
+		treeNodeIndex = index;
+	}
 
 	// Flatten tree respecting expansion state
 	function flattenTree(nodes: TreeNode[], result: TreeNode[] = []): TreeNode[] {
@@ -187,20 +203,56 @@
 		return result;
 	}
 
+	function flattenVisibleTree(nodes: TreeNode[], pinnedIds: Set<string>): TreeNode[] {
+		return flattenTree(nodes).filter((node) => !pinnedIds.has(node.id));
+	}
+
+	function findNodeById(nodes: TreeNode[], nodeId: string): TreeNode | null {
+		for (const node of nodes) {
+			if (node.id === nodeId) {
+				return node;
+			}
+			if (node.children.length > 0) {
+				const childMatch = findNodeById(node.children, nodeId);
+				if (childMatch) {
+					return childMatch;
+				}
+			}
+		}
+		return null;
+	}
+
+	// Keep side panel issue in sync with latest tree snapshot so lifecycle tab auto-switching
+	// follows status changes while the panel remains open.
+	$: if (selectedIssueForPanel) {
+		const latestIssue = findNodeById(tree, selectedIssueForPanel.id);
+		if (latestIssue && latestIssue !== selectedIssueForPanel) {
+			selectedIssueForPanel = latestIssue;
+		}
+	}
+
 	// Rebuild flattened list when tree, groups, or wipItems change
 		$: {
-		// Track which tree nodes are also surfaced in WIP (for visual differentiation in the tree)
+		// Track which tree nodes are already surfaced in WIP (hide duplicates from tree)
 		const pinnedIds = new Set<string>();
+		const runningDetails = new Map<string, { phase?: string; runtime?: string; model?: string; skill?: string }>();
 		for (const item of wipItems) {
 			if (item.type === 'running') {
 				if (item.agent.beads_id) {
 					pinnedIds.add(item.agent.beads_id);
+					runningDetails.set(item.agent.beads_id, {
+						phase: item.agent.phase,
+						runtime: item.agent.runtime,
+						model: item.agent.model,
+						skill: item.agent.skill,
+					});
 				}
 			} else {
 				pinnedIds.add(item.issue.id);
 			}
 		}
 		pinnedTreeIds = pinnedIds;
+		runningAgentDetailsByIssueId = runningDetails;
 
 		// Build flat list based on whether we're in grouped mode
 		const items: (TreeNode | WIPItem | GroupHeader)[] = [...wipItems];
@@ -215,11 +267,11 @@
 					unlabeled: group.unlabeled,
 				});
 				if (!collapsedGroups.has(group.key)) {
-					items.push(...flattenTree(group.nodes));
+					items.push(...flattenVisibleTree(group.nodes, pinnedIds));
 				}
 			}
 		} else {
-			items.push(...flattenTree(tree));
+			items.push(...flattenVisibleTree(tree, pinnedIds));
 		}
 
 		flattenedNodes = items;
@@ -241,6 +293,16 @@
 			return item.type === 'running' ? item.agent.id : item.issue.id;
 		}
 		return item.id;
+	}
+
+	function getPanelIssue(item: TreeNode | WIPItem | GroupHeader): TreeNode | null {
+		if (isGroupHeader(item)) return null;
+		if (!isWIPItem(item)) return item;
+
+		const relatedIssueId = item.type === 'running' ? item.agent.beads_id : item.issue.id;
+		if (!relatedIssueId) return null;
+
+		return treeNodeIndex.get(relatedIssueId) || null;
 	}
 
 	// Get stable key for Svelte each blocks (avoids collisions when same issue appears in multiple views)
@@ -285,6 +347,191 @@
 			case 'complete': return 'text-green-500';
 			default: return 'text-muted-foreground';
 		}
+	}
+
+	function formatStatusLabel(status: string): string {
+		return status.replace(/_/g, ' ');
+	}
+
+	function isDoneStatus(status: string): boolean {
+		const normalized = status.toLowerCase();
+		return normalized === 'closed' || normalized === 'complete' || normalized === 'accepted';
+	}
+
+	function normalizeDescription(description?: string): string {
+		return description?.replace(/\s+/g, ' ').trim() || '';
+	}
+
+	function truncateText(text: string, limit: number): string {
+		if (text.length <= limit) {
+			return text;
+		}
+		return `${text.slice(0, Math.max(0, limit - 3)).trimEnd()}...`;
+	}
+
+	function getIssueSummary(node: TreeNode): string {
+		const description = normalizeDescription(node.description);
+		if (description) {
+			const sentenceMatch = description.match(/^(.+?[.!?])(\s|$)/);
+			const sentence = sentenceMatch ? sentenceMatch[1] : description;
+			return truncateText(sentence, 160);
+		}
+
+		if (node.status.toLowerCase() === 'in_progress') {
+			return 'Work is currently active and waiting for the next phase transition.';
+		}
+		if (node.blocked_by.length > 0) {
+			return 'This issue is waiting on upstream work before execution can continue.';
+		}
+		if (node.blocks.length > 0) {
+			return 'This issue is a dependency for downstream work and unblocks others when complete.';
+		}
+		return 'No summary provided yet. Expand related issues below for context.';
+	}
+
+	function collectDescendants(node: TreeNode): TreeNode[] {
+		const descendants: TreeNode[] = [];
+		const stack = [...node.children];
+		while (stack.length > 0) {
+			const next = stack.shift();
+			if (!next) continue;
+			descendants.push(next);
+			if (next.children.length > 0) {
+				stack.push(...next.children);
+			}
+		}
+		return descendants;
+	}
+
+	function countVisibleDescendants(node: TreeNode): number {
+		if (!node.expanded || node.children.length === 0) {
+			return 0;
+		}
+
+		let visible = 0;
+		for (const child of node.children) {
+			visible += 1;
+			visible += countVisibleDescendants(child);
+		}
+		return visible;
+	}
+
+	function getProgressSnapshot(node: TreeNode): { done: number; total: number; percent: number; visible: number } | null {
+		const descendants = collectDescendants(node);
+		if (descendants.length === 0) {
+			return null;
+		}
+
+		const done = descendants.filter((child) => isDoneStatus(child.status)).length;
+		const total = descendants.length;
+		const percent = Math.round((done / total) * 100);
+		const visible = countVisibleDescendants(node);
+
+		return { done, total, percent, visible };
+	}
+
+	function getRelatedIssueLabel(issueId: string): string {
+		const relatedNode = treeNodeIndex.get(issueId);
+		if (!relatedNode) {
+			return issueId;
+		}
+		return `${issueId} (${formatStatusLabel(relatedNode.status)})`;
+	}
+
+	function formatRelatedIssueList(issueIds: string[], maxItems = 4): string {
+		if (issueIds.length === 0) {
+			return 'none';
+		}
+
+		const shown = issueIds.slice(0, maxItems).map((issueId) => getRelatedIssueLabel(issueId));
+		const remaining = issueIds.length - shown.length;
+		if (remaining > 0) {
+			return `${shown.join(', ')} +${remaining} more`;
+		}
+		return shown.join(', ');
+	}
+
+	function getDependencyExplanation(node: TreeNode): { headline: string; detail: string; tone: string } {
+		if (node.blocked_by.length > 0) {
+			const blockers = formatRelatedIssueList(node.blocked_by);
+			return {
+				headline: `Blocked by ${node.blocked_by.length} upstream issue${node.blocked_by.length === 1 ? '' : 's'}.`,
+				detail: `This work cannot complete until these blockers resolve: ${blockers}`,
+				tone: 'text-amber-500',
+			};
+		}
+
+		if (node.blocks.length > 0) {
+			const downstream = formatRelatedIssueList(node.blocks);
+			return {
+				headline: `Ready and unblocks ${node.blocks.length} downstream issue${node.blocks.length === 1 ? '' : 's'}.`,
+				detail: `Completing this item unlocks: ${downstream}`,
+				tone: 'text-blue-500',
+			};
+		}
+
+		return {
+			headline: 'No direct blocking dependencies.',
+			detail: 'This issue can be worked independently within the current graph scope.',
+			tone: 'text-emerald-500',
+		};
+	}
+
+	function shortenModel(model?: string): string {
+		if (!model) return 'model unknown';
+		return model.split('/').pop()?.split('-').slice(0, 3).join('-') || model;
+	}
+
+	function formatIssueAge(createdAt?: string): string | null {
+		if (!createdAt) return null;
+		const created = new Date(createdAt);
+		if (Number.isNaN(created.getTime())) return null;
+
+		const ageMs = Date.now() - created.getTime();
+		if (ageMs < 60_000) return 'opened just now';
+
+		const minutes = Math.floor(ageMs / 60_000);
+		if (minutes < 60) return `opened ${minutes}m ago`;
+
+		const hours = Math.floor(minutes / 60);
+		if (hours < 24) return `opened ${hours}h ago`;
+
+		const days = Math.floor(hours / 24);
+		return `opened ${days}d ago`;
+	}
+
+	function getInProgressSubline(node: TreeNode): { text: string; tone: string } | null {
+		if (node.status.toLowerCase() !== 'in_progress') {
+			return null;
+		}
+
+		const activeAgent = runningAgentDetailsByIssueId.get(node.id);
+		const phase = node.active_agent?.phase || activeAgent?.phase;
+		const runtime = node.active_agent?.runtime || activeAgent?.runtime;
+		const model = node.active_agent?.model || activeAgent?.model;
+
+		if (phase || runtime || model) {
+			const phaseText = phase || 'active';
+			const runtimeText = runtime || 'runtime unknown';
+			const modelText = shortenModel(model);
+			return {
+				text: `${phaseText} · ${runtimeText} · ${modelText}`,
+				tone: 'text-blue-500/90',
+			};
+		}
+
+		if (node.attentionBadge === 'verify' || node.attentionBadge === 'likely_done') {
+			return {
+				text: 'Awaiting review (Phase: Complete)',
+				tone: 'text-emerald-500/90',
+			};
+		}
+
+		const ageText = formatIssueAge(node.created_at);
+		return {
+			text: ageText ? `No active agent linked · ${ageText}` : 'No active agent linked',
+			tone: 'text-amber-500/90',
+		};
 	}
 
 	// Get priority badge variant
@@ -437,9 +684,14 @@
 			case 'i':
 			case 'o':
 				event.preventDefault();
-				// Open side panel for TreeNode (not for WIP items)
-				if (!isWIP) {
-					selectedIssueForPanel = current as TreeNode;
+				const panelIssue = getPanelIssue(current);
+				if (panelIssue) {
+					// Toggle: close if same issue is already open
+					if (selectedIssueForPanel?.id === panelIssue.id) {
+						selectedIssueForPanel = null;
+					} else {
+						selectedIssueForPanel = panelIssue;
+					}
 				}
 				break;
 
@@ -580,11 +832,11 @@
 					unlabeled: group.unlabeled,
 				});
 				if (!collapsedGroups.has(group.key)) {
-					items.push(...flattenTree(group.nodes));
+					items.push(...flattenVisibleTree(group.nodes, pinnedTreeIds));
 				}
 			}
 		} else {
-			items.push(...flattenTree(tree));
+			items.push(...flattenVisibleTree(tree, pinnedTreeIds));
 		}
 		flattenedNodes = items;
 		// Clamp selected index to valid range
@@ -697,49 +949,80 @@
 		{#if isWIP}
 			{#if item.type === 'running'}
 				{@const agent = item.agent}
+				{@const displayId = agent.beads_id || agent.id.slice(0, 15)}
+				{@const relatedNodeId = agent.beads_id && pinnedTreeIds.has(agent.beads_id) ? agent.beads_id : null}
+				{@const relatedNode = relatedNodeId ? treeNodeIndex.get(relatedNodeId) : null}
 				{@const statusIcon = getAgentStatusIcon(agent)}
 				{@const health = computeAgentHealth(agent)}
 				{@const contextPct = getContextPercent(agent)}
+				{@const inProgressSubline = relatedNode
+					? getInProgressSubline(relatedNode)
+					: (agent.phase || agent.runtime || agent.model
+						? { text: `${agent.phase || 'active'} · ${agent.runtime || 'runtime unknown'} · ${shortenModel(agent.model)}`, tone: 'text-blue-500/90' }
+						: null)}
 				<!-- Running Agent - WIP Item -->
 			<div class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}" style="padding-left: 0">
+				<!-- Expansion indicator placeholder (matches tree nodes) -->
+				<span class="w-4"></span>
+
 				<!-- Status icon with health indication -->
 				<span class="{statusIcon.color} w-5 text-center">{statusIcon.icon}</span>
-					
-					<!-- Priority placeholder (w-8 matches tree badge width) -->
+
+				<!-- Priority badge -->
+				{#if relatedNode}
+					<Badge variant={getPriorityVariant(relatedNode.priority)} class="w-8 justify-center text-xs">
+						P{relatedNode.priority}
+					</Badge>
+				{:else}
 					<span class="w-8"></span>
-					
-					<!-- ID (min-w-[120px] matches tree) -->
-					<span 
-						class="text-xs font-mono min-w-[120px] cursor-pointer hover:text-foreground transition-colors {copiedId === (agent.beads_id || agent.id.slice(0, 15)) ? 'text-green-500' : 'text-muted-foreground'}"
-						onclick={(e) => { e.stopPropagation(); copyToClipboard(agent.beads_id || agent.id.slice(0, 15)); }}
-						onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyToClipboard(agent.beads_id || agent.id.slice(0, 15)); }}}
-						role="button"
-						tabindex="-1"
-						title="Click to copy"
-					>
-						{copiedId === (agent.beads_id || agent.id.slice(0, 15)) ? 'Copied!' : (agent.beads_id || agent.id.slice(0, 15))}
+				{/if}
+
+				<!-- ID (min-w-[120px] matches tree) -->
+				<span
+					class="text-xs font-mono min-w-[120px] cursor-pointer hover:text-foreground transition-colors {copiedId === displayId ? 'text-green-500' : 'text-muted-foreground'}"
+					onclick={(e) => { e.stopPropagation(); copyToClipboard(displayId); }}
+					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyToClipboard(displayId); }}}
+					role="button"
+					tabindex="-1"
+					title="Click to copy"
+				>
+					{copiedId === displayId ? 'Copied!' : displayId}
+				</span>
+
+				<!-- Title + in-progress details -->
+				<div class="flex-1 min-w-0">
+					<span class="block text-sm font-medium text-foreground truncate">
+						{relatedNode?.title || agent.task || agent.skill || 'Unknown task'}
 					</span>
-					
-					<!-- Title (text-sm font-medium matches tree) -->
-					<span class="flex-1 text-sm font-medium text-foreground truncate">
-						{agent.task || agent.skill || 'Unknown task'}
-					</span>
-					
-					<!-- Expressive status (replaces phase badge) -->
-					<span class="text-xs text-muted-foreground italic min-w-[120px]">
-						{getExpressiveStatus(agent)}
-					</span>
+					{#if inProgressSubline}
+						<span class="block text-[11px] leading-4 truncate {inProgressSubline.tone}">
+							{inProgressSubline.text}
+						</span>
+					{/if}
+				</div>
+
+				<!-- Attention badge (if any) -->
+				{#if relatedNode?.attentionBadge}
+					{@const badgeConfig = getAttentionBadge(relatedNode.attentionBadge)}
+					{#if badgeConfig}
+						<Badge variant={badgeConfig.variant} class="shrink-0">
+							{badgeConfig.label}
+						</Badge>
+					{/if}
+				{/if}
+
+				<!-- Type badge -->
+				{#if relatedNode}
+					<Badge variant="outline" class="{getTypeBadge(relatedNode.type)} text-xs shrink-0">
+						{relatedNode.type}
+					</Badge>
+				{/if}
 					
 					<!-- Health warning tooltip -->
 					{#if health.status !== 'healthy'}
 						<span class="text-xs {health.status === 'critical' ? 'text-red-500' : 'text-yellow-500'}" title={health.reasons.join(', ')}>
 							{health.status === 'critical' ? '!' : '?'}
 						</span>
-					{/if}
-					
-					<!-- Runtime -->
-					{#if agent.runtime}
-						<span class="text-xs text-muted-foreground min-w-[40px] text-right">{agent.runtime}</span>
 					{/if}
 				</div>
 				
@@ -842,11 +1125,12 @@
 			{/if}
 		{:else}
 			{@const node = item as TreeNode}
-			{@const dimPinned = pinnedTreeIds.has(node.id) && index !== selectedIndex}
 			{@const feedback = actionFeedback.get(node.id)}
+			{@const inProgressSubline = getInProgressSubline(node)}
+			{@const progressSnapshot = getProgressSnapshot(node)}
 			<!-- Tree Node - L0: Row -->
 			<div
-			class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.absorbed_by ? 'opacity-50' : ''} {dimPinned ? 'opacity-60' : ''} {feedback === 'priority' ? 'action-feedback-priority' : ''} {feedback === 'queue' ? 'action-feedback-queue' : ''}"
+			class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.status.toLowerCase() === 'in_progress' ? 'border-l border-blue-500/30' : 'border-l border-transparent'} {node.absorbed_by ? 'opacity-50' : ''} {feedback === 'priority' ? 'action-feedback-priority' : ''} {feedback === 'queue' ? 'action-feedback-queue' : ''}"
 			style="padding-left: {node.depth * 24}px"
 			>
 					<!-- Expansion indicator -->
@@ -880,10 +1164,28 @@
 						{copiedId === node.id ? 'Copied!' : node.id}
 					</span>
 
-					<!-- Title -->
-					<span class="flex-1 text-sm font-medium text-foreground truncate">
-						{node.title}
-					</span>
+					<!-- Title + in_progress details -->
+					<div class="flex-1 min-w-0">
+						<span class="block text-sm font-medium text-foreground truncate">
+							{node.title}
+						</span>
+						{#if inProgressSubline}
+							<span class="block text-[11px] leading-4 truncate {inProgressSubline.tone}">
+								{inProgressSubline.text}
+							</span>
+						{/if}
+					</div>
+
+					{#if progressSnapshot}
+						<div class="hidden xl:flex items-center gap-2 min-w-[120px]">
+							<div class="w-14 h-1.5 bg-muted rounded-full overflow-hidden">
+								<div class="h-full bg-blue-500 transition-all" style="width: {progressSnapshot.percent}%"></div>
+							</div>
+							<span class="text-[11px] text-muted-foreground tabular-nums">
+								{progressSnapshot.done}/{progressSnapshot.total}
+							</span>
+						</div>
+					{/if}
 
 					<!-- Attention badge (if any) -->
 					{#if node.attentionBadge}
@@ -922,51 +1224,88 @@
 
 				<!-- L1: Expanded details -->
 				{#if expandedDetails.has(node.id)}
+					{@const dependencyExplanation = getDependencyExplanation(node)}
+					{@const progressInDetails = getProgressSnapshot(node)}
+					{@const parentLabel = node.parent_id ? getRelatedIssueLabel(node.parent_id) : null}
+					{@const directChildLabels = node.children.map((child) => getRelatedIssueLabel(child.id))}
 					<div
+						data-testid={`issue-details-${node.id}`}
 						class="expanded-details ml-12 mt-1 mb-2 p-3 bg-muted/30 rounded text-sm"
 						style="margin-left: {node.depth * 24 + 48}px"
 					>
-						<!-- Description preview -->
-						{#if node.description}
-							<div class="text-muted-foreground mb-2">
-								<span class="text-xs font-semibold uppercase text-foreground">Description:</span>
-								<p class="mt-1 text-xs">{node.description}</p>
+						<div class="mb-3">
+							<span class="text-xs font-semibold uppercase text-foreground">Issue summary:</span>
+							<p class="mt-1 text-xs text-muted-foreground">{getIssueSummary(node)}</p>
+						</div>
+
+						<div class="mb-3">
+							<span class="text-xs font-semibold uppercase text-foreground">Dependency context:</span>
+							<p class="mt-1 text-xs {dependencyExplanation.tone}">{dependencyExplanation.headline}</p>
+							<p class="mt-1 text-[11px] text-muted-foreground">{dependencyExplanation.detail}</p>
+						</div>
+
+						{#if progressInDetails}
+							<div class="mb-3">
+								<div class="flex items-center justify-between gap-2">
+									<span class="text-xs font-semibold uppercase text-foreground">Progress & completeness:</span>
+									<span class="text-xs text-muted-foreground tabular-nums">{progressInDetails.done}/{progressInDetails.total} done ({progressInDetails.percent}%)</span>
+								</div>
+								<div class="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
+									<div class="h-full bg-blue-500 transition-all" style="width: {progressInDetails.percent}%"></div>
+								</div>
+								<p class="mt-1 text-[11px] text-muted-foreground">
+									{#if progressInDetails.visible === progressInDetails.total}
+										All {progressInDetails.total} related issues are visible in this branch.
+									{:else}
+										{progressInDetails.visible} of {progressInDetails.total} related issues are visible (expand children to inspect all).
+									{/if}
+								</p>
 							</div>
 						{/if}
 
-						<!-- Blocking relationships -->
-						{#if node.blocked_by.length > 0}
-							<div class="mb-2">
-								<span class="text-xs font-semibold uppercase text-red-500">Blocked by:</span>
-								<ul class="mt-1 space-y-1">
-									{#each node.blocked_by as blocker}
-										<li class="text-xs text-muted-foreground">→ {blocker}</li>
-									{/each}
-								</ul>
+						<div class="mb-2">
+							<span class="text-xs font-semibold uppercase text-foreground">Related issues:</span>
+							<div class="mt-1 space-y-1 text-xs text-muted-foreground">
+								{#if parentLabel}
+									<div>Parent: {parentLabel}</div>
+								{/if}
+								{#if directChildLabels.length > 0}
+									<div>Children ({directChildLabels.length}): {formatRelatedIssueList(node.children.map((child) => child.id))}</div>
+								{/if}
+								{#if node.blocked_by.length > 0}
+									<div>Upstream blockers: {formatRelatedIssueList(node.blocked_by)}</div>
+								{/if}
+								{#if node.blocks.length > 0}
+									<div>Downstream dependents: {formatRelatedIssueList(node.blocks)}</div>
+								{/if}
+								{#if node.absorbed_by}
+									<div>Absorbed by: {getRelatedIssueLabel(node.absorbed_by)}</div>
+								{/if}
+								{#if !parentLabel && directChildLabels.length === 0 && node.blocked_by.length === 0 && node.blocks.length === 0 && !node.absorbed_by}
+									<div>No directly related issues in the current scope.</div>
+								{/if}
 							</div>
-						{/if}
+						</div>
 
-						{#if node.blocks.length > 0}
-							<div>
-								<span class="text-xs font-semibold uppercase text-yellow-500">Blocks:</span>
-								<ul class="mt-1 space-y-1">
-									{#each node.blocks as blocked}
-										<li class="text-xs text-muted-foreground">→ {blocked}</li>
-									{/each}
-								</ul>
-							</div>
-						{/if}
-
-						{#if node.absorbed_by}
-							<div class="mb-2">
-								<span class="text-xs font-semibold uppercase text-purple-500">Absorbed by:</span>
-								<span class="text-xs text-muted-foreground ml-1">⊃ {node.absorbed_by}</span>
-							</div>
-						{/if}
-
-						{#if node.blocked_by.length === 0 && node.blocks.length === 0 && !node.absorbed_by}
-							<div class="text-xs text-muted-foreground">No blocking relationships</div>
-						{/if}
+						<!-- Status details -->
+						<div class="flex flex-wrap items-center gap-4 text-xs border-t border-border pt-2 mt-2">
+							<span class="flex items-center gap-1">
+								<span class="text-foreground/60">Status:</span>
+								<span class={getStatusColor(node.status)}>{formatStatusLabel(node.status)}</span>
+							</span>
+							<span class="flex items-center gap-1">
+								<span class="text-foreground/60">Priority:</span>
+								<span class="text-muted-foreground">P{node.priority}</span>
+							</span>
+							<span class="flex items-center gap-1">
+								<span class="text-foreground/60">Type:</span>
+								<span class="text-muted-foreground">{node.type}</span>
+							</span>
+							<span class="flex items-center gap-1">
+								<span class="text-foreground/60">Source:</span>
+								<span class="text-muted-foreground">{node.source}</span>
+							</span>
+						</div>
 					</div>
 				{/if}
 		{/if}

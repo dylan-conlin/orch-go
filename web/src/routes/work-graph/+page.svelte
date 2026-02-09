@@ -114,7 +114,7 @@
 		];
 
 		if (currentView === 'artifacts' && $kbArtifacts) {
-			requests.push(kbArtifacts.fetch(projectDir, '7d'));
+			requests.push(kbArtifacts.fetch(projectDir));
 		}
 
 		const results = await Promise.allSettled(requests);
@@ -427,7 +427,7 @@
 					attention.fetch(newProjectDir).catch(console.error); // Re-fetch attention for new project
 					// Also re-fetch kbArtifacts if we're in artifacts view
 					if (currentView === 'artifacts' && $kbArtifacts) {
-						kbArtifacts.fetch(newProjectDir, '7d').catch(console.error);
+						kbArtifacts.fetch(newProjectDir).catch(console.error);
 					}
 				}, 300);
 			}
@@ -441,7 +441,7 @@
 		// Fetch artifacts when switching to artifacts view
 		if (view === 'artifacts' && !$kbArtifacts) {
 			const projectDir = $orchestratorContext?.project_dir;
-			await kbArtifacts.fetch(projectDir, '7d');
+			await kbArtifacts.fetch(projectDir);
 		}
 	}
 
@@ -486,10 +486,15 @@
 	const viewOrder: ('issues' | 'completed' | 'artifacts')[] = ['issues', 'completed', 'artifacts'];
 
 	function handleKeydown(event: KeyboardEvent) {
-		if (event.key === 'Tab' && !event.shiftKey) {
+		// Don't cycle views when a side panel dialog is open (panel handles Tab)
+		if (event.key === 'Tab' && !document.querySelector('[role="dialog"]')) {
 			event.preventDefault();
 			const idx = viewOrder.indexOf(currentView);
-			currentView = viewOrder[(idx + 1) % viewOrder.length];
+			if (event.shiftKey) {
+				currentView = viewOrder[(idx - 1 + viewOrder.length) % viewOrder.length];
+			} else {
+				currentView = viewOrder[(idx + 1) % viewOrder.length];
+			}
 			handleViewToggle(currentView);
 		}
 		// '/' to focus label filter (like GitHub)
@@ -594,7 +599,7 @@
 	<div class="border-b border-border px-2 py-2">
 		<div class="flex items-center gap-6">
 			<ViewToggle 
-				{currentView} 
+				bind:currentView
 				completedCount={completedIssues.length}
 				onToggle={handleViewToggle}
 			/>
@@ -667,7 +672,7 @@
 	{/if}
 
 	<!-- Content -->
-	<div class="flex-1 overflow-hidden">
+	<div class="flex-1 min-h-0 overflow-hidden">
 		{#if currentView === 'issues'}
 			{#if loading}
 				<div class="flex items-center justify-center h-full">

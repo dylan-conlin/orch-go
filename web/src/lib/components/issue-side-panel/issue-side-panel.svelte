@@ -2,9 +2,12 @@
 	import { createEventDispatcher } from 'svelte';
 	import type { TreeNode } from '$lib/stores/work-graph';
 	import { AttemptHistory } from '$lib/components/attempt-history';
+	import { ActivityTab } from '$lib/components/agent-detail';
 	import { CompletionDetails } from '$lib/components/completion-details';
 	import { DeliverableChecklist } from '$lib/components/deliverable-checklist';
 	import { MarkdownContent } from '$lib/components/markdown-content';
+	import type { Agent } from '$lib/stores/agents';
+	import { agents } from '$lib/stores/agents';
 	import { Badge } from '$lib/components/ui/badge';
 
 	export let issue: TreeNode;
@@ -12,15 +15,48 @@
 	const dispatch = createEventDispatcher();
 
 	// Tab state
-	type TabId = 'details' | 'completion';
-	let activeTab: TabId = 'details';
+	type TabId = 'description' | 'activity' | 'deliverables';
+	let activeTab: TabId = 'description';
+	let lastIssueId = '';
+	let lastLifecycleTab: TabId = 'description';
 
 	// Determine if issue is completed (show Completion tab)
-	$: isCompleted = ['closed', 'complete'].includes(issue.status.toLowerCase());
+	$: isCompleted = ['closed', 'complete', 'completed'].includes(issue.status.toLowerCase());
 
-	// Reset tab when issue changes or when switching to non-completed issue
-	$: if (!isCompleted && activeTab === 'completion') {
-		activeTab = 'details';
+	function getLifecycleTab(status: string): TabId {
+		const normalized = status.toLowerCase();
+		if (normalized === 'in_progress') return 'activity';
+		if (normalized === 'closed' || normalized === 'complete' || normalized === 'completed') return 'deliverables';
+		return 'description';
+	}
+
+	function getActivityAgent(agentList: Agent[], beadsId: string): Agent | null {
+		const relatedAgents = agentList
+			.filter((agent) => agent.beads_id === beadsId)
+			.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+
+		if (relatedAgents.length === 0) {
+			return null;
+		}
+
+		const liveAgent = relatedAgents.find((agent) => agent.status === 'active' || agent.status === 'idle');
+		return liveAgent || relatedAgents[0];
+	}
+
+	$: lifecycleTab = getLifecycleTab(issue.status);
+	$: activityAgent = getActivityAgent($agents, issue.id);
+
+	// Keep tab lifecycle-aware while still allowing manual tab switching.
+	// We only auto-switch when issue identity changes or status transitions lifecycle stage.
+	$: {
+		if (issue.id !== lastIssueId) {
+			lastIssueId = issue.id;
+			activeTab = lifecycleTab;
+			lastLifecycleTab = lifecycleTab;
+		} else if (lifecycleTab !== lastLifecycleTab) {
+			activeTab = lifecycleTab;
+			lastLifecycleTab = lifecycleTab;
+		}
 	}
 
 	// Get status badge variant
@@ -80,11 +116,23 @@
 		dispatch('close');
 	}
 
+	// Tab order for cycling
+	const tabOrder: TabId[] = ['description', 'activity', 'deliverables'];
+
 	// Handle keyboard shortcuts
 	function handleKeydown(event: KeyboardEvent) {
 		if (event.key === 'Escape' || event.key === 'h') {
 			event.preventDefault();
 			handleClose();
+		}
+		if (event.key === 'Tab') {
+			event.preventDefault();
+			const idx = tabOrder.indexOf(activeTab);
+			if (event.shiftKey) {
+				activeTab = tabOrder[(idx - 1 + tabOrder.length) % tabOrder.length];
+			} else {
+				activeTab = tabOrder[(idx + 1) % tabOrder.length];
+			}
 		}
 	}
 </script>
@@ -120,8 +168,10 @@
 		</div>
 		<button
 			on:click={handleClose}
+			on:mousedown|preventDefault
 			class="text-muted-foreground hover:text-foreground transition-colors ml-4"
 			aria-label="Close panel"
+			tabindex="-1"
 		>
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
@@ -140,39 +190,61 @@
 		</button>
 	</div>
 
-	<!-- Tabs (only show when Completion tab is available) -->
-	{#if isCompleted && issue.source === 'beads'}
-		<div class="border-b border-border px-6 flex gap-0">
-			<button
-				class="px-4 py-2.5 text-sm font-medium transition-colors relative
-					{activeTab === 'details'
-						? 'text-foreground'
-						: 'text-muted-foreground hover:text-foreground'}"
-				on:click={() => activeTab = 'details'}
-			>
-				Details
-				{#if activeTab === 'details'}
-					<div class="absolute bottom-0 left-0 right-0 h-0.5 bg-foreground"></div>
-				{/if}
-			</button>
-			<button
-				class="px-4 py-2.5 text-sm font-medium transition-colors relative
-					{activeTab === 'completion'
-						? 'text-foreground'
-						: 'text-muted-foreground hover:text-foreground'}"
-				on:click={() => activeTab = 'completion'}
-			>
-				Completion
-				{#if activeTab === 'completion'}
-					<div class="absolute bottom-0 left-0 right-0 h-0.5 bg-foreground"></div>
-				{/if}
-			</button>
-		</div>
-	{/if}
+	<!-- Lifecycle Tabs -->
+	<div class="border-b border-border px-6 flex gap-0" role="tablist" aria-label="Issue lifecycle tabs">
+		<button
+			class="px-4 py-2.5 text-sm font-medium transition-colors relative
+				{activeTab === 'description'
+					? 'text-foreground'
+					: 'text-muted-foreground hover:text-foreground'}"
+			on:click={() => activeTab = 'description'}
+			on:mousedown|preventDefault
+			role="tab"
+			aria-selected={activeTab === 'description'}
+			tabindex="-1"
+		>
+			Description
+			{#if activeTab === 'description'}
+				<div class="absolute bottom-0 left-0 right-0 h-0.5 bg-foreground"></div>
+			{/if}
+		</button>
+		<button
+			class="px-4 py-2.5 text-sm font-medium transition-colors relative
+				{activeTab === 'activity'
+					? 'text-foreground'
+					: 'text-muted-foreground hover:text-foreground'}"
+			on:click={() => activeTab = 'activity'}
+			on:mousedown|preventDefault
+			role="tab"
+			aria-selected={activeTab === 'activity'}
+			tabindex="-1"
+		>
+			Activity
+			{#if activeTab === 'activity'}
+				<div class="absolute bottom-0 left-0 right-0 h-0.5 bg-foreground"></div>
+			{/if}
+		</button>
+		<button
+			class="px-4 py-2.5 text-sm font-medium transition-colors relative
+				{activeTab === 'deliverables'
+					? 'text-foreground'
+					: 'text-muted-foreground hover:text-foreground'}"
+			on:click={() => activeTab = 'deliverables'}
+			on:mousedown|preventDefault
+			role="tab"
+			aria-selected={activeTab === 'deliverables'}
+			tabindex="-1"
+		>
+			Deliverables
+			{#if activeTab === 'deliverables'}
+				<div class="absolute bottom-0 left-0 right-0 h-0.5 bg-foreground"></div>
+			{/if}
+		</button>
+	</div>
 
 	<!-- Content -->
-	<div class="flex-1 overflow-auto px-6 py-4 space-y-6">
-		{#if activeTab === 'details'}
+	<div class="flex-1 min-h-0 {activeTab === 'activity' ? 'flex flex-col overflow-hidden' : 'overflow-auto px-6 py-4 space-y-6'}">
+		{#if activeTab === 'description'}
 			<!-- Description -->
 			{#if issue.description}
 				<section>
@@ -243,22 +315,6 @@
 				</section>
 			{/if}
 
-			<!-- Deliverables -->
-			{#if issue.source === 'beads'}
-				<section>
-					<h3 class="text-sm font-semibold text-foreground mb-2">Deliverables</h3>
-					<DeliverableChecklist beadsId={issue.id} issueType={issue.type} compact={false} />
-				</section>
-			{/if}
-
-			<!-- Attempt History -->
-			{#if issue.source === 'beads'}
-				<section>
-					<h3 class="text-sm font-semibold text-foreground mb-2">Attempt History</h3>
-					<AttemptHistory beadsId={issue.id} />
-				</section>
-			{/if}
-
 			<!-- Attention Signal -->
 			{#if issue.attentionBadge}
 				<section>
@@ -273,9 +329,50 @@
 					</div>
 				</section>
 			{/if}
-		{:else if activeTab === 'completion'}
-			<!-- Completion Details Tab -->
-			<CompletionDetails beadsId={issue.id} />
+		{:else if activeTab === 'activity'}
+			{#if activityAgent}
+				<ActivityTab agent={activityAgent} showComposer={false} />
+			{:else}
+				<section class="rounded-md border border-dashed border-border p-4 bg-muted/20 mx-6 my-4">
+					<h3 class="text-sm font-semibold text-foreground mb-1">No activity stream available</h3>
+					<p class="text-sm text-muted-foreground">
+						No agent session is currently linked to <span class="font-mono">{issue.id}</span>.
+						{#if issue.status.toLowerCase() === 'in_progress'}
+							Waiting for live messages from the active worker.
+						{/if}
+					</p>
+				</section>
+			{/if}
+		{:else if activeTab === 'deliverables'}
+			{#if issue.source === 'beads'}
+				<section>
+					<h3 class="text-sm font-semibold text-foreground mb-2">Deliverable Checklist</h3>
+					<DeliverableChecklist beadsId={issue.id} issueType={issue.type} compact={false} />
+				</section>
+
+				<section>
+					<h3 class="text-sm font-semibold text-foreground mb-2">Artifacts, Commits, and Synthesis</h3>
+					{#if isCompleted}
+						<CompletionDetails beadsId={issue.id} />
+					{:else}
+						<div class="text-sm text-muted-foreground italic">
+							Completion artifacts appear after this issue reaches Complete.
+						</div>
+					{/if}
+				</section>
+
+				<section>
+					<h3 class="text-sm font-semibold text-foreground mb-2">Attempt History</h3>
+					<AttemptHistory beadsId={issue.id} />
+				</section>
+			{:else}
+				<section class="rounded-md border border-dashed border-border p-4 bg-muted/20">
+					<h3 class="text-sm font-semibold text-foreground mb-1">Deliverables unavailable</h3>
+					<p class="text-sm text-muted-foreground">
+						Deliverables are only tracked for Beads issues.
+					</p>
+				</section>
+			{/if}
 		{/if}
 	</div>
 

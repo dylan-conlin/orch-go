@@ -78,6 +78,8 @@
 
 <div
 	class="fixed top-0 right-0 h-screen w-1/2 bg-background border-l border-border shadow-lg z-50 flex flex-col"
+	role="dialog"
+	aria-modal="true"
 >
 	<!-- Header -->
 	<div class="border-b border-border px-6 py-4 flex items-center justify-between">

@@ -31,7 +31,7 @@
 		error = null;
 
 		try {
-			const response = await fetch(`http://localhost:3348/api/beads/${beadsId}/attempts`);
+			const response = await fetch(`https://localhost:3348/api/beads/${beadsId}/attempts`);
 			
 			if (!response.ok) {
 				throw new Error(`Failed to fetch attempt history: ${response.statusText}`);

@@ -131,7 +131,12 @@
 			case 'i':
 			case 'o':
 				event.preventDefault();
-				selectedIssueForPanel = current;
+				if (selectedIssueForPanel?.id === current.id) {
+					selectedIssueForPanel = null;
+					setTimeout(() => containerElement?.focus(), 0);
+				} else {
+					selectedIssueForPanel = current;
+				}
 				break;
 
 			case 'v':

@@ -12,9 +12,18 @@
 
 	// Get time filter from localStorage
 	onMount(() => {
+		const projectDir = $orchestratorContext?.project_dir;
 		const saved = localStorage.getItem('artifact-feed-time-filter');
-		if (saved) {
-			timeFilter = saved;
+		const validFilters = new Set(['24h', '7d', '30d', 'all']);
+		const savedFilter = saved && validFilters.has(saved) ? saved : null;
+		timeFilter = savedFilter || kbArtifacts.getSince();
+
+		if (savedFilter && savedFilter !== kbArtifacts.getSince()) {
+			kbArtifacts.fetch(projectDir, savedFilter).catch(console.error);
+		}
+
+		if (!savedFilter && kbArtifacts.getSince() !== '7d') {
+			kbArtifacts.fetch(projectDir).catch(console.error);
 		}
 	});
 
@@ -96,6 +105,19 @@
 				navigator.clipboard.writeText(selectedArtifact.path);
 			}
 		}
+
+		// i/o - toggle side panel
+		else if (key === 'i' || key === 'o') {
+			event.preventDefault();
+			if (selectedIndex >= 0 && allArtifacts[selectedIndex]) {
+				const current = allArtifacts[selectedIndex];
+				if (selectedArtifact?.path === current.path) {
+					selectedArtifact = null;
+				} else {
+					selectedArtifact = current;
+				}
+			}
+		}
 	}
 
 	function handleArtifactClick(artifact: ArtifactFeedItem, index: number) {
@@ -106,7 +128,7 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<div class="artifact-feed flex flex-col h-full overflow-hidden">
+<div class="artifact-feed flex flex-col h-full min-h-0 overflow-y-auto">
 	<!-- Needs Decision Section -->
 	{#if $kbArtifacts?.needs_decision && $kbArtifacts.needs_decision.length > 0}
 		<div class="px-6 py-4 border-b border-border">
@@ -114,7 +136,7 @@
 				NEEDS DECISION ({$kbArtifacts.needs_decision.length})
 			</h2>
 			<div class="space-y-2">
-				{#each $kbArtifacts.needs_decision as artifact, i}
+				{#each $kbArtifacts.needs_decision as artifact, i (artifact.path)}
 					<ArtifactRow
 						{artifact}
 						selected={selectedIndex === i}
@@ -145,7 +167,7 @@
 		</div>
 		<div class="space-y-2">
 			{#if $kbArtifacts?.recent && $kbArtifacts.recent.length > 0}
-				{#each $kbArtifacts.recent as artifact, i}
+				{#each $kbArtifacts.recent as artifact, i (artifact.path)}
 					{@const globalIndex = ($kbArtifacts.needs_decision?.length ?? 0) + i}
 					<ArtifactRow
 						{artifact}
@@ -160,7 +182,7 @@
 	</div>
 
 	<!-- Browse by Type Section -->
-	<div class="px-6 py-4 flex-1 overflow-auto">
+	<div class="px-6 py-4">
 		<h2 class="text-sm font-semibold text-foreground mb-3">BROWSE BY TYPE</h2>
 		<div class="flex gap-3 text-sm">
 			{#if $kbArtifacts?.by_type}
@@ -195,5 +217,6 @@
 <style>
 	.artifact-feed {
 		max-height: 100%;
+		overscroll-behavior: contain;
 	}
 </style>

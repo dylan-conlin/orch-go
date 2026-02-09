@@ -8,9 +8,10 @@
 	// Props
 	interface Props {
 		agent: Agent;
+		showComposer?: boolean;
 	}
 
-	let { agent }: Props = $props();
+	let { agent, showComposer = true }: Props = $props();
 
 	// Event limit per agent
 	const EVENT_LIMIT = 500;
@@ -31,12 +32,9 @@
 	// Track current session to detect agent changes
 	let currentSessionId = $state<string | null>(null);
 
-	// Load auto-scroll preference from localStorage on mount
+	// Always start scrolled to the end when the activity view opens
 	onMount(() => {
-		const stored = localStorage.getItem('activityTab.autoScroll');
-		if (stored !== null) {
-			autoScroll = stored === 'true';
-		}
+		autoScroll = true;
 	});
 
 	// Fetch historical events when session changes
@@ -72,6 +70,14 @@
 			historicalEvents = [];
 		} finally {
 			historyLoading = false;
+			// Scroll to bottom after history loads
+			if (autoScroll) {
+				tick().then(() => {
+					if (scrollContainer) {
+						scrollContainer.scrollTop = scrollContainer.scrollHeight;
+					}
+				});
+			}
 		}
 	}
 
@@ -739,78 +745,80 @@
 		{/if}
 	</div>
 
-	<!-- Message Input -->
-	<div 
-		class="p-3 border-t shrink-0 relative"
-		role="region"
-		aria-label="Message input with image upload"
-		ondragover={handleDragOver}
-		ondragleave={handleDragLeave}
-		ondrop={handleDrop}
-	>
-		<!-- Drag overlay -->
-		{#if isDragging}
-			<div class="absolute inset-0 z-50 bg-primary/10 border-2 border-dashed border-primary rounded flex items-center justify-center">
-				<div class="text-center">
-					<p class="text-lg mb-1">📷</p>
-					<p class="text-sm text-primary font-medium">Drop image here</p>
-				</div>
-			</div>
-		{/if}
-
-		{#if sendError}
-			<div class="mb-2 text-xs text-red-500">
-				{sendError}
-			</div>
-		{/if}
-
-		<!-- Image previews -->
-		{#if pendingImages.length > 0}
-			<div class="mb-2 flex flex-wrap gap-2">
-				{#each pendingImages as img (img.id)}
-					<div class="relative group">
-						<img 
-							src={img.dataUrl} 
-							alt="Pending upload"
-							class="h-20 w-20 object-cover rounded border"
-						/>
-						<button
-							type="button"
-							onclick={() => removePendingImage(img.id)}
-							class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-							title="Remove image"
-						>
-							×
-						</button>
+	{#if showComposer}
+		<!-- Message Input -->
+		<div 
+			class="p-3 border-t shrink-0 relative"
+			role="region"
+			aria-label="Message input with image upload"
+			ondragover={handleDragOver}
+			ondragleave={handleDragLeave}
+			ondrop={handleDrop}
+		>
+			<!-- Drag overlay -->
+			{#if isDragging}
+				<div class="absolute inset-0 z-50 bg-primary/10 border-2 border-dashed border-primary rounded flex items-center justify-center">
+					<div class="text-center">
+						<p class="text-lg mb-1">📷</p>
+						<p class="text-sm text-primary font-medium">Drop image here</p>
 					</div>
-				{/each}
-			</div>
-		{/if}
+				</div>
+			{/if}
 
-		<div class="flex gap-2 items-end">
-			<textarea
-				bind:value={messageInput}
-				onkeydown={handleKeydown}
-				onpaste={handlePaste}
-				disabled={isInputDisabled}
-				placeholder={isInputDisabled ? 'Agent not active' : 'Send a message... (Enter to send, Shift+Enter for newline, Cmd+V to paste image)'}
-				class="flex-1 min-h-[40px] max-h-[120px] px-3 py-2 text-sm rounded border bg-background resize-none disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
-				rows="1"
-			></textarea>
-			<button
-				type="button"
-				onclick={sendMessage}
-				disabled={isInputDisabled || (!messageInput.trim() && pendingImages.length === 0)}
-				class="px-4 py-2 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-				title="Send message"
-			>
-				{isSending ? 'Sending...' : 'Send'}
-			</button>
+			{#if sendError}
+				<div class="mb-2 text-xs text-red-500">
+					{sendError}
+				</div>
+			{/if}
+
+			<!-- Image previews -->
+			{#if pendingImages.length > 0}
+				<div class="mb-2 flex flex-wrap gap-2">
+					{#each pendingImages as img (img.id)}
+						<div class="relative group">
+							<img 
+								src={img.dataUrl} 
+								alt="Pending upload"
+								class="h-20 w-20 object-cover rounded border"
+							/>
+							<button
+								type="button"
+								onclick={() => removePendingImage(img.id)}
+								class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+								title="Remove image"
+							>
+								×
+							</button>
+						</div>
+					{/each}
+				</div>
+			{/if}
+
+			<div class="flex gap-2 items-end">
+				<textarea
+					bind:value={messageInput}
+					onkeydown={handleKeydown}
+					onpaste={handlePaste}
+					disabled={isInputDisabled}
+					placeholder={isInputDisabled ? 'Agent not active' : 'Send a message... (Enter to send, Shift+Enter for newline, Cmd+V to paste image)'}
+					class="flex-1 min-h-[40px] max-h-[120px] px-3 py-2 text-sm rounded border bg-background resize-none disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
+					rows="1"
+				></textarea>
+				<button
+					type="button"
+					onclick={sendMessage}
+					disabled={isInputDisabled || (!messageInput.trim() && pendingImages.length === 0)}
+					class="px-4 py-2 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+					title="Send message"
+				>
+					{isSending ? 'Sending...' : 'Send'}
+				</button>
+			</div>
+			<p class="mt-1 text-xs text-muted-foreground">
+				Enter to send, Shift+Enter for newline, Cmd+V to paste images, or drag & drop
+			</p>
 		</div>
-		<p class="mt-1 text-xs text-muted-foreground">
-			Enter to send, Shift+Enter for newline, Cmd+V to paste images, or drag & drop
-		</p>
-	</div>
+	{/if}
 </div>
 
 <style>
