@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -337,6 +339,12 @@ type headlessSpawnResult struct {
 	stdout    io.ReadCloser
 }
 
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSI(s string) string {
+	return ansiRegex.ReplaceAllString(s, "")
+}
+
 // StartBackgroundCleanup starts a goroutine to drain stdout and wait for the process.
 func (r *headlessSpawnResult) StartBackgroundCleanup() {
 	if r.stdout == nil || r.cmd == nil {
@@ -348,56 +356,77 @@ func (r *headlessSpawnResult) StartBackgroundCleanup() {
 	}()
 }
 
-// ansiRegex matches ANSI escape sequences (colors, formatting, etc.)
-var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-
-// stripANSI removes ANSI escape codes from a string for cleaner error messages.
-func stripANSI(s string) string {
-	return ansiRegex.ReplaceAllString(s, "")
-}
-
-// startHeadlessSession starts an opencode session and extracts the session ID.
-// Returns the result with session ID and resources for cleanup.
-// Note: Uses CLI mode instead of HTTP API because OpenCode's HTTP API ignores the model parameter.
-// CLI mode correctly honors the --model flag.
-// See: .kb/investigations/2025-12-23-inv-model-selection-issue-architect-agent.md
+// startHeadlessSession creates a session and dispatches the spawn prompt via HTTP API.
+// This ensures all API requests carry the runtime directory explicitly.
 func startHeadlessSession(client opencode.ClientInterface, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
-	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model, cfg.Variant)
-	cmd.Dir = cfg.RuntimeDir()
-	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
-
-	stdout, err := cmd.StdoutPipe()
+	runtimeDir := cfg.RuntimeDir()
+	resp, err := client.CreateSession(sessionTitle, runtimeDir, cfg.Model, cfg.Variant, true)
 	if err != nil {
-		spawnErr := spawn.WrapSpawnError(err, "Failed to get stdout pipe")
+		spawnErr := spawn.WrapSpawnError(err, "Failed to create session")
 		return nil, spawnErr
 	}
 
-	var stderrBuf bytes.Buffer
-	cmd.Stderr = &stderrBuf
-
-	if err := cmd.Start(); err != nil {
-		spawnErr := spawn.WrapSpawnError(err, "Failed to start opencode process")
+	sessionID := strings.TrimSpace(resp.ID)
+	if sessionID == "" {
+		spawnErr := spawn.WrapSpawnError(fmt.Errorf("empty session ID"), "Failed to create session")
 		return nil, spawnErr
 	}
 
-	sessionID, err := opencode.ExtractSessionIDFromReader(stdout)
-	if err != nil {
-		cmd.Process.Kill()
-		stderrContent := strings.TrimSpace(stderrBuf.String())
-		stderrContent = stripANSI(stderrContent)
-		errMsg := "Failed to extract session ID"
-		if stderrContent != "" {
-			errMsg = fmt.Sprintf("Failed to extract session ID: %s", stderrContent)
-		}
-		spawnErr := spawn.WrapSpawnError(err, errMsg)
+	if err := sendHeadlessPrompt(serverURL, sessionID, minimalPrompt, cfg.Model, cfg.Variant, runtimeDir); err != nil {
+		spawnErr := spawn.WrapSpawnError(err, "Failed to send initial prompt")
 		return nil, spawnErr
 	}
 
 	return &headlessSpawnResult{
 		SessionID: sessionID,
-		cmd:       cmd,
-		stdout:    stdout,
 	}, nil
+}
+
+func sendHeadlessPrompt(serverURL, sessionID, prompt, model, variant, directory string) error {
+	payload := map[string]any{
+		"parts": []map[string]string{{"type": "text", "text": prompt}},
+		"agent": "build",
+	}
+
+	if idx := strings.Index(model, "/"); idx > 0 && idx < len(model)-1 {
+		payload["model"] = map[string]string{
+			"providerID": model[:idx],
+			"modelID":    model[idx+1:],
+		}
+	}
+
+	if strings.TrimSpace(variant) != "" {
+		payload["variant"] = variant
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal prompt payload: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/session/%s/prompt_async", serverURL, sessionID)
+	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create prompt request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if strings.TrimSpace(directory) != "" {
+		req.Header.Set("x-opencode-directory", directory)
+	}
+	req.Header.Set("x-opencode-env-ORCH_WORKER", "1")
+
+	resp, err := (&http.Client{Timeout: opencode.DefaultHTTPTimeout}).Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send prompt: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
+	return nil
 }
 
 // runSpawnTmux spawns the agent in a tmux window (interactive, returns immediately).
