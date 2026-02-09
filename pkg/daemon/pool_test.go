@@ -303,6 +303,34 @@ func TestWorkerPool_ReleaseUnknownSlot(t *testing.T) {
 	p.Release(slot1)
 }
 
+func TestWorkerPool_ActiveBeadsIDs(t *testing.T) {
+	p := NewWorkerPool(4)
+
+	s1 := p.TryAcquire()
+	s2 := p.TryAcquire()
+	s3 := p.TryAcquire()
+	if s1 == nil || s2 == nil || s3 == nil {
+		t.Fatal("expected TryAcquire() to return slots")
+	}
+
+	s1.BeadsID = "orch-go-1"
+	s2.BeadsID = "orch-go-2"
+	s3.BeadsID = "orch-go-1" // duplicate should be deduped
+
+	ids := p.ActiveBeadsIDs()
+	if len(ids) != 2 {
+		t.Fatalf("len(ActiveBeadsIDs()) = %d, want 2", len(ids))
+	}
+
+	seen := map[string]bool{}
+	for _, id := range ids {
+		seen[id] = true
+	}
+	if !seen["orch-go-1"] || !seen["orch-go-2"] {
+		t.Fatalf("ActiveBeadsIDs() = %v, want both orch-go-1 and orch-go-2", ids)
+	}
+}
+
 // =============================================================================
 // Tests for Reconcile
 // =============================================================================

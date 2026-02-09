@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func newProcessedCacheForSpawnTests(t *testing.T) *ProcessedIssueCache {
@@ -231,5 +232,44 @@ func TestDaemon_OnceExcluding_RejectedIssueNotCached(t *testing.T) {
 	}
 	if spawnCalls != 1 {
 		t.Fatalf("expected one spawn call after label added, got %d", spawnCalls)
+	}
+}
+
+func TestDaemon_OnceExcluding_ReopenedIssueRespawnsEvenWhenCached(t *testing.T) {
+	cache := newProcessedCacheForSpawnTests(t)
+
+	processedAt := time.Now().Add(-1 * time.Hour).UTC().Truncate(time.Second)
+	cache.entries["issue-1"] = processedAt
+
+	spawnCalls := 0
+	d := &Daemon{
+		Config:         Config{Label: "triage:ready"},
+		ProcessedCache: cache,
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{{
+				ID:        "issue-1",
+				Title:     "Reopened issue",
+				Priority:  0,
+				IssueType: "bug",
+				Status:    "open",
+				Labels:    []string{"triage:ready"},
+				UpdatedAt: processedAt.Add(5 * time.Minute).Format(time.RFC3339Nano),
+			}}, nil
+		},
+		spawnFunc: func(string) error {
+			spawnCalls++
+			return nil
+		},
+	}
+
+	result, err := d.OnceExcluding(nil)
+	if err != nil {
+		t.Fatalf("OnceExcluding() error: %v", err)
+	}
+	if !result.Processed {
+		t.Fatalf("expected reopened issue to respawn, got: %s", result.Message)
+	}
+	if spawnCalls != 1 {
+		t.Fatalf("expected one spawn call for reopened issue, got %d", spawnCalls)
 	}
 }

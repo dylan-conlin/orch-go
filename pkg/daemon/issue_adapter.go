@@ -197,6 +197,7 @@ func convertBeadsIssues(beadsIssues []beads.Issue) []Issue {
 			Status:      bi.Status,
 			IssueType:   bi.IssueType,
 			Labels:      bi.Labels,
+			UpdatedAt:   bi.UpdatedAt,
 		}
 	}
 	return issues

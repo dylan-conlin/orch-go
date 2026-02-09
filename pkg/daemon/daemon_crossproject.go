@@ -286,7 +286,7 @@ func (d *Daemon) selectCrossProjectCandidate(candidates []CrossProjectIssue) (*C
 		}
 
 		// Unified dedup check: Use ProcessedCache to consolidate three checks
-		if d.ProcessedCache != nil && !d.ProcessedCache.ShouldProcess(candidate.Issue.ID) {
+		if d.ProcessedCache != nil && !d.ProcessedCache.ShouldProcessIssue(candidate.Issue) {
 			if d.Config.Verbose {
 				fmt.Printf("  [%s] Skipping %s (blocked by ProcessedCache)\n",
 					candidate.Project.Name, candidate.Issue.ID)

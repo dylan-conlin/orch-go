@@ -1247,6 +1247,40 @@ func TestDaemon_ReconcileWithOpenCode_WithPool(t *testing.T) {
 	}
 }
 
+func TestDaemon_ReconcileWithOpenCode_ReleasesClosedIssueSlot(t *testing.T) {
+	pool := NewWorkerPool(1)
+	slot := pool.TryAcquire()
+	if slot == nil {
+		t.Fatal("TryAcquire() returned nil")
+	}
+	slot.BeadsID = "orch-go-closed1"
+
+	d := &Daemon{
+		Pool: pool,
+		// Simulate OpenCode still reporting one live session.
+		activeCountFunc: func() int { return 1 },
+		// Simulate beads status lookup reporting the issue is closed.
+		closedIssuesBatchFunc: func(beadsIDs []string) map[string]bool {
+			return map[string]bool{"orch-go-closed1": true}
+		},
+	}
+
+	if !d.AtCapacity() {
+		t.Fatal("expected pool to start at capacity")
+	}
+
+	freed := d.ReconcileWithOpenCode()
+	if freed != 1 {
+		t.Fatalf("ReconcileWithOpenCode() freed = %d, want 1", freed)
+	}
+	if d.ActiveCount() != 0 {
+		t.Fatalf("ActiveCount() = %d, want 0 after closed-issue eviction", d.ActiveCount())
+	}
+	if d.AtCapacity() {
+		t.Fatal("expected AtCapacity() = false after closed-issue eviction")
+	}
+}
+
 // Tests for beads RPC client integration
 
 func TestConvertBeadsIssues_Empty(t *testing.T) {

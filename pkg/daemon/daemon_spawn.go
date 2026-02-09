@@ -160,6 +160,30 @@ func (d *Daemon) ReconcileWithOpenCode() int {
 		return 0
 	}
 
+	freed := 0
+
+	// Release pool slots for issues that are already closed in beads.
+	// This prevents closed-but-still-running sessions from occupying capacity.
+	closedIssuesBatch := d.closedIssuesBatchFunc
+	if closedIssuesBatch == nil {
+		closedIssuesBatch = GetClosedIssuesBatch
+	}
+	activeBeadsIDs := d.Pool.ActiveBeadsIDs()
+	if len(activeBeadsIDs) > 0 {
+		closedIssues := closedIssuesBatch(activeBeadsIDs)
+		for _, beadsID := range activeBeadsIDs {
+			if !closedIssues[beadsID] {
+				continue
+			}
+			if d.Pool.ReleaseByBeadsID(beadsID) {
+				freed++
+				if d.Config.Verbose {
+					fmt.Printf("  DEBUG: Released slot for closed issue %s\n", beadsID)
+				}
+			}
+		}
+	}
+
 	// Get actual count using the configured counting function
 	// (DockerActiveCount for docker backend, DefaultActiveCount otherwise)
 	// Fall back to DefaultActiveCount if activeCountFunc is not set (e.g., in tests).
@@ -170,7 +194,8 @@ func (d *Daemon) ReconcileWithOpenCode() int {
 	actualCount := countFunc()
 
 	// Reconcile pool with actual count
-	return d.Pool.Reconcile(actualCount)
+	freed += d.Pool.Reconcile(actualCount)
+	return freed
 }
 
 // Once processes a single issue from the queue and returns.
@@ -251,7 +276,7 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		// 1. Persistent cache (survives daemon restart)
 		// 2. Session dedup (checks OpenCode sessions)
 		// 3. Phase Complete (checks beads comments)
-		if d.ProcessedCache != nil && !d.ProcessedCache.ShouldProcess(issue.ID) {
+		if d.ProcessedCache != nil && !d.ProcessedCache.ShouldProcessIssue(*issue) {
 			if d.Config.Verbose {
 				fmt.Printf("  DEBUG: Skipping %s (blocked by ProcessedCache)\n", issue.ID)
 			}
@@ -387,7 +412,7 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 	}
 
 	// Unified dedup check: Use ProcessedCache to consolidate three checks
-	if d.ProcessedCache != nil && !d.ProcessedCache.ShouldProcess(issue.ID) {
+	if d.ProcessedCache != nil && !d.ProcessedCache.ShouldProcessIssue(*issue) {
 		if d.Config.Verbose {
 			fmt.Printf("  DEBUG: Skipping %s (blocked by ProcessedCache)\n", issue.ID)
 		}

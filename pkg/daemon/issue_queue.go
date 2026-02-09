@@ -14,6 +14,7 @@ type Issue struct {
 	Status      string   `json:"status"`
 	IssueType   string   `json:"issue_type"`
 	Labels      []string `json:"labels"`
+	UpdatedAt   string   `json:"updated_at,omitempty"`
 }
 
 // HasLabel checks if an issue has a specific label.

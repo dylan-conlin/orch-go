@@ -184,3 +184,58 @@ func TestProcessedIssueCache_ShouldProcess_AllChecksPass(t *testing.T) {
 		t.Error("Expected ShouldProcess to return true when all checks pass")
 	}
 }
+
+func TestProcessedIssueCache_ShouldProcessIssue_ReopenedReadyIssueBypassesCache(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
+
+	cache, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
+	if err != nil {
+		t.Fatalf("NewProcessedIssueCache failed: %v", err)
+	}
+
+	cache.sessionChecker = func(string) bool { return false }
+	cache.phaseCompleteChecker = func(string) (bool, error) { return false, nil }
+
+	processedAt := time.Now().Add(-10 * time.Minute).UTC().Truncate(time.Second)
+	cache.entries["test-issue-1"] = processedAt
+
+	issue := Issue{
+		ID:        "test-issue-1",
+		Status:    "open",
+		Labels:    []string{"triage:ready"},
+		UpdatedAt: processedAt.Add(1 * time.Minute).Format(time.RFC3339Nano),
+	}
+
+	if !cache.ShouldProcessIssue(issue) {
+		t.Fatal("Expected reopened open+triage:ready issue to bypass processed cache")
+	}
+}
+
+func TestProcessedIssueCache_ShouldProcessIssue_DoesNotBypassWithoutReopenSignal(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
+
+	cache, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
+	if err != nil {
+		t.Fatalf("NewProcessedIssueCache failed: %v", err)
+	}
+
+	cache.sessionChecker = func(string) bool { return false }
+	cache.phaseCompleteChecker = func(string) (bool, error) { return false, nil }
+
+	processedAt := time.Now().Add(-10 * time.Minute).UTC().Truncate(time.Second)
+	cache.entries["test-issue-1"] = processedAt
+
+	// open + triage:ready is not enough if updated_at is not newer than cache timestamp
+	issue := Issue{
+		ID:        "test-issue-1",
+		Status:    "open",
+		Labels:    []string{"triage:ready"},
+		UpdatedAt: processedAt.Format(time.RFC3339Nano),
+	}
+
+	if cache.ShouldProcessIssue(issue) {
+		t.Fatal("Expected cached issue to remain blocked when updated_at is not newer")
+	}
+}

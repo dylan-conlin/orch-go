@@ -113,7 +113,33 @@ func (d *Daemon) SortIssues(issues []Issue) []Issue {
 	sortIssues := toSortIssues(issues)
 	ctx := d.buildSortContext()
 	sorted := strategy.Sort(sortIssues, ctx)
-	return fromSortIssues(sorted)
+
+	// Preserve all fields from the original issues (including metadata like
+	// UpdatedAt) while applying the sorted order returned by the strategy.
+	byID := make(map[string]Issue, len(issues))
+	for _, issue := range issues {
+		byID[issue.ID] = issue
+	}
+
+	result := make([]Issue, 0, len(sorted))
+	for _, sortedIssue := range sorted {
+		if original, ok := byID[sortedIssue.ID]; ok {
+			result = append(result, original)
+			continue
+		}
+
+		result = append(result, Issue{
+			ID:          sortedIssue.ID,
+			Title:       sortedIssue.Title,
+			Description: sortedIssue.Description,
+			Priority:    sortedIssue.Priority,
+			Status:      sortedIssue.Status,
+			IssueType:   sortedIssue.IssueType,
+			Labels:      sortedIssue.Labels,
+		})
+	}
+
+	return result
 }
 
 // SortCrossProjectIssues applies the daemon's active sort strategy to

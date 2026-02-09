@@ -441,6 +441,8 @@ type Daemon struct {
 	blockersFunc func(issueID, projectPath string) ([]string, error)
 	// spawnForProjectFunc is used for testing - allows mocking SpawnWorkForProject
 	spawnForProjectFunc func(beadsID, projectPath string) error
+	// closedIssuesBatchFunc is used for testing - allows mocking closed-issue lookups
+	closedIssuesBatchFunc func(beadsIDs []string) map[string]bool
 }
 
 // New creates a new Daemon instance with default configuration.
@@ -483,7 +485,8 @@ func NewWithConfig(config Config) *Daemon {
 		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
 			return ListReadyIssuesForProjectWithOverride(projectPath, config.AllowFeatureWorkOverride)
 		},
-		spawnForProjectFunc: SpawnWorkForProject,
+		spawnForProjectFunc:   SpawnWorkForProject,
+		closedIssuesBatchFunc: GetClosedIssuesBatch,
 	}
 	d.collectPolishCandidatesFunc = d.collectPolishCandidates
 	d.createPolishIssueFunc = d.createPolishIssue
@@ -540,7 +543,8 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
 			return ListReadyIssuesForProjectWithOverride(projectPath, config.AllowFeatureWorkOverride)
 		},
-		spawnForProjectFunc: SpawnWorkForProject,
+		spawnForProjectFunc:   SpawnWorkForProject,
+		closedIssuesBatchFunc: GetClosedIssuesBatch,
 	}
 	d.collectPolishCandidatesFunc = d.collectPolishCandidates
 	d.createPolishIssueFunc = d.createPolishIssue

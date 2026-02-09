@@ -209,6 +209,27 @@ func (p *WorkerPool) Status() PoolStatus {
 	}
 }
 
+// ActiveBeadsIDs returns unique non-empty Beads IDs currently occupying slots.
+func (p *WorkerPool) ActiveBeadsIDs() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	ids := make([]string, 0, len(p.slots))
+	seen := make(map[string]struct{}, len(p.slots))
+	for _, slot := range p.slots {
+		if slot.BeadsID == "" {
+			continue
+		}
+		if _, exists := seen[slot.BeadsID]; exists {
+			continue
+		}
+		seen[slot.BeadsID] = struct{}{}
+		ids = append(ids, slot.BeadsID)
+	}
+
+	return ids
+}
+
 // ReleaseByBeadsID finds and releases a slot by its BeadsID.
 // Returns true if a slot was found and released, false otherwise.
 // This is used for active slot release during completion processing,

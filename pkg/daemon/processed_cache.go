@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -96,17 +97,28 @@ func NewProcessedIssueCache(filePath string, maxSize int, ttl time.Duration) (*P
 //
 // This is the single entry point for all dedup checking, replacing the
 // fragmented checks previously spread across daemon.Once().
+func (c *ProcessedIssueCache) ShouldProcessIssue(issue Issue) bool {
+	return c.shouldProcess(issue.ID, &issue)
+}
+
 func (c *ProcessedIssueCache) ShouldProcess(beadsID string) bool {
+	return c.shouldProcess(beadsID, nil)
+}
+
+func (c *ProcessedIssueCache) shouldProcess(beadsID string, issue *Issue) bool {
 	if beadsID == "" {
 		return false
 	}
 
 	// Check 1: Persistent cache (replaces SpawnedIssueTracker)
 	c.mu.RLock()
-	_, inCache := c.entries[beadsID]
+	processedAt, inCache := c.entries[beadsID]
 	c.mu.RUnlock()
 
 	if inCache {
+		if issue != nil && isReopenedReadyIssueSince(*issue, processedAt) {
+			return true
+		}
 		return false
 	}
 
@@ -128,6 +140,38 @@ func (c *ProcessedIssueCache) ShouldProcess(beadsID string) bool {
 
 	// All checks passed - issue should be processed
 	return true
+}
+
+func isReopenedReadyIssueSince(issue Issue, processedAt time.Time) bool {
+	if !strings.EqualFold(issue.Status, "open") {
+		return false
+	}
+	if !issue.HasLabel("triage:ready") {
+		return false
+	}
+
+	updatedAt, ok := parseIssueTime(issue.UpdatedAt)
+	if !ok {
+		return false
+	}
+
+	return updatedAt.After(processedAt)
+}
+
+func parseIssueTime(raw string) (time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, false
+	}
+
+	if parsed, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return parsed, true
+	}
+	if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
+		return parsed, true
+	}
+
+	return time.Time{}, false
 }
 
 // MarkProcessed marks an issue as processed and persists to disk.

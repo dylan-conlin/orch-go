@@ -160,7 +160,7 @@ func (d *Daemon) QueueDiagnosticsForIssues(readyIssues []Issue) QueueDiagnostics
 
 	spawnable := 0
 	for _, issue := range readyIssues {
-		if d.ProcessedCache != nil && !d.ProcessedCache.ShouldProcess(issue.ID) {
+		if d.ProcessedCache != nil && !d.ProcessedCache.ShouldProcessIssue(issue) {
 			diagnostics.ProcessedCache++
 			continue
 		}
