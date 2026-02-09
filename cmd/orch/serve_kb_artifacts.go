@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -97,7 +100,7 @@ func (s *Server) handleKBArtifacts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Scan all artifact types
-	artifacts, err := scanKBArtifacts(projectDir, kbDir)
+	artifacts, err := scanKBArtifacts(projectDir, kbDir, gitArtifactModifiedAt(projectDir))
 	if err != nil {
 		resp := KBArtifactsResponse{
 			NeedsDecision: []ArtifactFeedItem{},
@@ -110,6 +113,9 @@ func (s *Server) handleKBArtifacts(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
+
+	// Keep ordering deterministic and newest-first for all feed sections.
+	sortArtifactsByRecency(artifacts)
 
 	// Categorize artifacts
 	needsDecision := filterNeedsDecision(artifacts)
@@ -128,6 +134,56 @@ func (s *Server) handleKBArtifacts(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+func gitArtifactModifiedAt(projectDir string) map[string]time.Time {
+	cmd := exec.Command("git", "log", "--pretty=format:__TS__%ct", "--name-only", "--", ".kb")
+	cmd.Dir = projectDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	return parseGitArtifactModifiedAt(string(output))
+}
+
+func parseGitArtifactModifiedAt(output string) map[string]time.Time {
+	result := map[string]time.Time{}
+	var current time.Time
+
+	for _, raw := range strings.Split(output, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+
+		if strings.HasPrefix(line, "__TS__") {
+			unix, err := strconv.ParseInt(strings.TrimPrefix(line, "__TS__"), 10, 64)
+			if err != nil {
+				current = time.Time{}
+				continue
+			}
+			current = time.Unix(unix, 0).UTC()
+			continue
+		}
+
+		if current.IsZero() {
+			continue
+		}
+
+		path := filepath.ToSlash(line)
+		if _, ok := result[path]; ok {
+			continue
+		}
+		result[path] = current
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+
+	return result
 }
 
 // parseSinceDuration parses time duration strings like "7d", "24h", "30d", "all".
@@ -166,13 +222,13 @@ func parseSinceDuration(since string) (time.Duration, error) {
 }
 
 // scanKBArtifacts scans the .kb/ directory and returns all artifacts.
-func scanKBArtifacts(projectDir, kbDir string) ([]ArtifactFeedItem, error) {
+func scanKBArtifacts(projectDir, kbDir string, gitModifiedAt map[string]time.Time) ([]ArtifactFeedItem, error) {
 	var artifacts []ArtifactFeedItem
 
 	// Scan investigations
 	invDir := filepath.Join(kbDir, "investigations")
 	if _, err := os.Stat(invDir); err == nil {
-		invArtifacts, err := scanArtifactDir(projectDir, invDir, "investigation")
+		invArtifacts, err := scanArtifactDir(projectDir, invDir, "investigation", gitModifiedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan investigations: %w", err)
 		}
@@ -182,7 +238,7 @@ func scanKBArtifacts(projectDir, kbDir string) ([]ArtifactFeedItem, error) {
 	// Scan decisions
 	decDir := filepath.Join(kbDir, "decisions")
 	if _, err := os.Stat(decDir); err == nil {
-		decArtifacts, err := scanArtifactDir(projectDir, decDir, "decision")
+		decArtifacts, err := scanArtifactDir(projectDir, decDir, "decision", gitModifiedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan decisions: %w", err)
 		}
@@ -192,7 +248,7 @@ func scanKBArtifacts(projectDir, kbDir string) ([]ArtifactFeedItem, error) {
 	// Scan models
 	modelDir := filepath.Join(kbDir, "models")
 	if _, err := os.Stat(modelDir); err == nil {
-		modelArtifacts, err := scanArtifactDir(projectDir, modelDir, "model")
+		modelArtifacts, err := scanArtifactDir(projectDir, modelDir, "model", gitModifiedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan models: %w", err)
 		}
@@ -202,7 +258,7 @@ func scanKBArtifacts(projectDir, kbDir string) ([]ArtifactFeedItem, error) {
 	// Scan guides
 	guideDir := filepath.Join(kbDir, "guides")
 	if _, err := os.Stat(guideDir); err == nil {
-		guideArtifacts, err := scanArtifactDir(projectDir, guideDir, "guide")
+		guideArtifacts, err := scanArtifactDir(projectDir, guideDir, "guide", gitModifiedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan guides: %w", err)
 		}
@@ -212,7 +268,7 @@ func scanKBArtifacts(projectDir, kbDir string) ([]ArtifactFeedItem, error) {
 	// Scan principles.md
 	principlesPath := filepath.Join(kbDir, "principles.md")
 	if _, err := os.Stat(principlesPath); err == nil {
-		artifact, err := parseArtifact(projectDir, principlesPath, "principle")
+		artifact, err := parseArtifact(projectDir, principlesPath, "principle", gitModifiedAt)
 		if err == nil {
 			artifacts = append(artifacts, artifact)
 		}
@@ -222,7 +278,7 @@ func scanKBArtifacts(projectDir, kbDir string) ([]ArtifactFeedItem, error) {
 }
 
 // scanArtifactDir scans a directory for markdown files and parses them as artifacts.
-func scanArtifactDir(projectDir, dir string, artifactType string) ([]ArtifactFeedItem, error) {
+func scanArtifactDir(projectDir, dir string, artifactType string, gitModifiedAt map[string]time.Time) ([]ArtifactFeedItem, error) {
 	var artifacts []ArtifactFeedItem
 
 	entries, err := os.ReadDir(dir)
@@ -234,7 +290,7 @@ func scanArtifactDir(projectDir, dir string, artifactType string) ([]ArtifactFee
 		if entry.IsDir() {
 			// Recursively scan subdirectories
 			subDir := filepath.Join(dir, entry.Name())
-			subArtifacts, err := scanArtifactDir(projectDir, subDir, artifactType)
+			subArtifacts, err := scanArtifactDir(projectDir, subDir, artifactType, gitModifiedAt)
 			if err != nil {
 				continue // Skip directories that fail to scan
 			}
@@ -247,7 +303,7 @@ func scanArtifactDir(projectDir, dir string, artifactType string) ([]ArtifactFee
 		}
 
 		path := filepath.Join(dir, entry.Name())
-		artifact, err := parseArtifact(projectDir, path, artifactType)
+		artifact, err := parseArtifact(projectDir, path, artifactType, gitModifiedAt)
 		if err != nil {
 			continue // Skip files that fail to parse
 		}
@@ -259,7 +315,7 @@ func scanArtifactDir(projectDir, dir string, artifactType string) ([]ArtifactFee
 }
 
 // parseArtifact parses a markdown file and extracts artifact metadata.
-func parseArtifact(projectDir, path string, artifactType string) (ArtifactFeedItem, error) {
+func parseArtifact(projectDir, path string, artifactType string, gitModifiedAt map[string]time.Time) (ArtifactFeedItem, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return ArtifactFeedItem{}, err
@@ -307,8 +363,15 @@ func parseArtifact(projectDir, path string, artifactType string) (ArtifactFeedIt
 		relativePath = path
 	}
 
+	modifiedAt := info.ModTime()
+	if gitModifiedAt != nil {
+		if gitTime, ok := gitModifiedAt[filepath.ToSlash(relativePath)]; ok {
+			modifiedAt = gitTime
+		}
+	}
+
 	// Calculate relative time
-	relativeTime := formatRelativeTime(info.ModTime())
+	relativeTime := formatRelativeTime(modifiedAt)
 
 	return ArtifactFeedItem{
 		Path:           relativePath,
@@ -318,7 +381,7 @@ func parseArtifact(projectDir, path string, artifactType string) (ArtifactFeedIt
 		Date:           date,
 		Summary:        summary,
 		Recommendation: hasRecommendation,
-		ModifiedAt:     info.ModTime(),
+		ModifiedAt:     modifiedAt,
 		RelativeTime:   relativeTime,
 	}, nil
 }
@@ -579,6 +642,16 @@ func groupByType(artifacts []ArtifactFeedItem) map[string][]ArtifactFeedItem {
 	}
 
 	return byType
+}
+
+// sortArtifactsByRecency sorts in-place by modified time descending, with path tie-break.
+func sortArtifactsByRecency(artifacts []ArtifactFeedItem) {
+	sort.SliceStable(artifacts, func(i, j int) bool {
+		if !artifacts[i].ModifiedAt.Equal(artifacts[j].ModifiedAt) {
+			return artifacts[i].ModifiedAt.After(artifacts[j].ModifiedAt)
+		}
+		return artifacts[i].Path < artifacts[j].Path
+	})
 }
 
 // ArtifactContentResponse is the JSON structure returned by /api/kb/artifact/content.

@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -232,53 +230,21 @@ func createFollowUpIssue(title string, sourceWorkspace string) error {
 	// Create description linking back to source
 	description := fmt.Sprintf("Follow-up from synthesis review of %s", sourceWorkspace)
 
-	// Find bd command
-	bdPath, err := findBdCommand()
-	if err != nil {
-		return fmt.Errorf("bd command not found: %w", err)
-	}
-
-	// Build args with triage:review label
-	args := []string{"create", title, "-d", description, "-l", "triage:review"}
+	labels := []string{"triage:review"}
 
 	// Suggest and add area label based on title/description
 	// This enables label discipline for follow-up issues.
 	// See: .kb/investigations/2026-02-05-inv-design-label-based-issue-grouping.md
 	suggestedArea := beads.SuggestAreaLabel(title, description)
 	if suggestedArea != "" {
-		args = append(args, "-l", suggestedArea)
+		labels = append(labels, suggestedArea)
 		fmt.Printf("Auto-applying area label: %s\n", suggestedArea)
 	}
 
-	// Run bd create
-	cmd := exec.Command(bdPath, args...)
-	output, err := cmd.CombinedOutput()
+	_, err := beads.FallbackCreate(title, description, "task", 2, labels)
 	if err != nil {
-		return fmt.Errorf("bd create failed: %w\nOutput: %s", err, string(output))
+		return fmt.Errorf("bd create failed: %w", err)
 	}
 
 	return nil
-}
-
-// findBdCommand locates the bd binary.
-func findBdCommand() (string, error) {
-	// Try common locations
-	paths := []string{
-		filepath.Join(os.Getenv("HOME"), "bin", "bd"),
-		filepath.Join(os.Getenv("HOME"), "go", "bin", "bd"),
-		filepath.Join(os.Getenv("HOME"), ".local", "bin", "bd"),
-	}
-
-	for _, p := range paths {
-		if _, err := os.Stat(p); err == nil {
-			return p, nil
-		}
-	}
-
-	// Try PATH
-	if path, err := exec.LookPath("bd"); err == nil {
-		return path, nil
-	}
-
-	return "", fmt.Errorf("bd not found in common locations or PATH")
 }

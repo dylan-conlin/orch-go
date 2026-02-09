@@ -131,12 +131,7 @@ func runReconcile() error {
 func findZombieIssues(projectDir string) ([]ZombieIssue, error) {
 	inProgress := "in_progress"
 	var issues []beads.Issue
-	err := beads.Do("", func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
-
+	err := withBeadsClient("", func(client *beads.Client) error {
 		var rpcErr error
 		issues, rpcErr = client.List(&beads.ListArgs{Status: inProgress})
 		return rpcErr
@@ -244,12 +239,7 @@ func filterZombiesWithClient(ocClient opencode.ClientInterface, projectDir strin
 
 func getLastPhase(beadsID string) string {
 	var comments []beads.Comment
-	err := beads.Do("", func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
-
+	err := withBeadsClient("", func(client *beads.Client) error {
 		var rpcErr error
 		comments, rpcErr = client.Comments(beadsID)
 		return rpcErr
@@ -352,6 +342,7 @@ func forceCloseIssue(id, reason string) error {
 	}
 
 	// Use "bd" command - ResolveBdPath should be called at startup
+	args = append([]string{"--quiet"}, args...)
 	cmd := exec.Command("bd", args...)
 	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
 	output, err := cmd.CombinedOutput()

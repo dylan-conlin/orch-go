@@ -330,25 +330,14 @@ func (d *Daemon) executeCrossProjectSpawn(selected *CrossProjectIssue, skill str
 		slot.BeadsID = selected.Issue.ID
 	}
 
-	// Mark issue as processed BEFORE calling spawnFunc
-	if d.ProcessedCache != nil {
-		if err := d.ProcessedCache.MarkProcessed(selected.Issue.ID); err != nil {
-			fmt.Printf("warning: failed to mark issue as processed: %v\n", err)
-		}
-	}
-	// Also mark in legacy tracker for backward compatibility
+	// Mark in legacy tracker before spawn to preserve the race-window dedup behavior.
+	// ProcessedCache is marked only after confirmed successful spawn.
 	if d.SpawnedIssues != nil {
 		d.SpawnedIssues.MarkSpawned(selected.Issue.ID)
 	}
 
 	// Spawn the work with project context
 	if err := d.spawnForProjectFunc(selected.Issue.ID, selected.Project.Path); err != nil {
-		// Unmark on spawn failure
-		if d.ProcessedCache != nil {
-			if unmErr := d.ProcessedCache.Unmark(selected.Issue.ID); unmErr != nil {
-				fmt.Printf("warning: failed to unmark issue: %v\n", unmErr)
-			}
-		}
 		if d.SpawnedIssues != nil {
 			d.SpawnedIssues.Unmark(selected.Issue.ID)
 		}
@@ -365,6 +354,13 @@ func (d *Daemon) executeCrossProjectSpawn(selected *CrossProjectIssue, skill str
 			Error:       err,
 			Message:     fmt.Sprintf("[%s] Failed to spawn: %v", selected.Project.Name, err),
 		}, nil
+	}
+
+	// Mark in persistent processed cache only after successful spawn.
+	if d.ProcessedCache != nil {
+		if err := d.ProcessedCache.MarkProcessed(selected.Issue.ID); err != nil {
+			fmt.Printf("warning: failed to mark issue as processed: %v\n", err)
+		}
 	}
 
 	// Record successful spawn for rate limiting

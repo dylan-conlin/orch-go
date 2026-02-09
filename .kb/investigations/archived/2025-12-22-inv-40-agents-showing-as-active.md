@@ -11,7 +11,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** The "active" count is misleading - it reflects persistent tmux windows, not running agents. `orch clean` doesn't close windows or reduce this count.
 
-**Next:** Implement proper cleanup: `orch clean` should kill tmux windows for completed agents, or `orch status` should filter to only truly active agents.
+**Next:** Close - superseded by .kb/decisions/2026-02-07-agent-completion-lifecycle-separation.md.
 
 ---
 
@@ -25,6 +25,7 @@ Fill this at the END of your investigation, before marking Complete.
 **Phase:** Complete
 **Next Step:** None
 **Status:** Complete
+**Superseded-By:** .kb/decisions/2026-02-07-agent-completion-lifecycle-separation.md
 
 ---
 

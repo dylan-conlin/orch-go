@@ -52,6 +52,8 @@ const (
 	EventTypeIssueReopened = "issue.reopened"
 	// EventTypeResourceCeilingBreach indicates orch serve exceeded a 2x resource baseline.
 	EventTypeResourceCeilingBreach = "resource_ceiling_breach"
+	// EventTypeFrictionLogged indicates a manual friction ledger incident was captured.
+	EventTypeFrictionLogged = "friction.logged"
 )
 
 // Event is a loggable event for events.jsonl.

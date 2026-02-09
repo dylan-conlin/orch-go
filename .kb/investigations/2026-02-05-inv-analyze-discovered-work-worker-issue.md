@@ -368,7 +368,7 @@ ls -lt .orch/workspace/ | head -15
 ```
 
 **Related Artifacts:**
-- **Investigation:** `.kb/investigations/2026-02-04-inv-investigate-workers-not-creating-issues.md` - Original problem analysis
+- **Investigation:** `.kb/investigations/archived/2026-02-04-inv-investigate-workers-not-creating-issues.md` - Original problem analysis
 - **Investigation:** `.kb/investigations/2026-02-04-inv-implement-multi-layer-reinforcement-discovered.md` - Implementation record
 
 ---

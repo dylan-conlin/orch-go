@@ -14,15 +14,11 @@ import (
 )
 
 // cleanOrphanedDiskSessions finds and deletes OpenCode disk sessions that aren't tracked via workspace files.
-func cleanOrphanedDiskSessions(serverURL string, dryRun bool, preserveOrchestrator bool) (int, error) {
-	return cleanOrphanedDiskSessionsWithClient(opencode.NewClient(serverURL), dryRun, preserveOrchestrator)
+func cleanOrphanedDiskSessions(serverURL, projectDir string, dryRun bool, preserveOrchestrator bool) (int, error) {
+	return cleanOrphanedDiskSessionsWithClient(opencode.NewClient(serverURL), projectDir, dryRun, preserveOrchestrator)
 }
 
-func cleanOrphanedDiskSessionsWithClient(client opencode.ClientInterface, dryRun bool, preserveOrchestrator bool) (int, error) {
-	projectDir, err := currentProjectDir()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get current directory: %w", err)
-	}
+func cleanOrphanedDiskSessionsWithClient(client opencode.ClientInterface, projectDir string, dryRun bool, preserveOrchestrator bool) (int, error) {
 
 	fmt.Printf("\nVerifying OpenCode disk sessions for %s...\n", projectDir)
 

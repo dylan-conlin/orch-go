@@ -50,22 +50,50 @@ func TestPrependSandboxArg(t *testing.T) {
 	t.Cleanup(func() {
 		useBDSandboxMode = original
 	})
+	t.Setenv("ORCH_DEBUG", "")
 
 	useBDSandboxMode = true
 
 	args := prependSandboxArg([]string{"show", "orch-go-123", "--json"})
-	if len(args) < 2 || args[0] != "--sandbox" || args[1] != "show" {
+	if len(args) < 3 || args[0] != "--sandbox" || args[1] != "--quiet" || args[2] != "show" {
 		t.Fatalf("prependSandboxArg returned unexpected args: %v", args)
 	}
 
 	already := prependSandboxArg([]string{"--sandbox", "show", "orch-go-123", "--json"})
-	if len(already) == 0 || already[0] != "--sandbox" {
+	if !hasCLIArg(already, "--sandbox") {
+		t.Fatalf("prependSandboxArg should include --sandbox: %v", already)
+	}
+	sandboxCount := 0
+	for _, arg := range already {
+		if arg == "--sandbox" {
+			sandboxCount++
+		}
+	}
+	if sandboxCount != 1 {
 		t.Fatalf("prependSandboxArg should not duplicate --sandbox: %v", already)
+	}
+	if !hasCLIArg(already, "--quiet") {
+		t.Fatalf("prependSandboxArg should include --quiet when ORCH_DEBUG is not set: %v", already)
 	}
 
 	useBDSandboxMode = false
 	unchanged := prependSandboxArg([]string{"show", "orch-go-123", "--json"})
-	if len(unchanged) == 0 || unchanged[0] != "show" {
-		t.Fatalf("prependSandboxArg should keep args unchanged when sandbox disabled: %v", unchanged)
+	if len(unchanged) == 0 || unchanged[0] != "--quiet" {
+		t.Fatalf("prependSandboxArg should still include --quiet when sandbox disabled: %v", unchanged)
+	}
+}
+
+func TestPrependSandboxArg_DisablesQuietWhenDebugEnabled(t *testing.T) {
+	original := useBDSandboxMode
+	t.Cleanup(func() {
+		useBDSandboxMode = original
+	})
+
+	t.Setenv("ORCH_DEBUG", "1")
+	useBDSandboxMode = true
+
+	args := prependSandboxArg([]string{"show", "orch-go-123", "--json"})
+	if hasCLIArg(args, "--quiet") || hasCLIArg(args, "-q") {
+		t.Fatalf("prependSandboxArg should not add --quiet when ORCH_DEBUG is set: %v", args)
 	}
 }

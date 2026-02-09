@@ -12,6 +12,10 @@ import (
 type GitCollector struct {
 	projectDir string
 	client     beads.BeadsClient
+
+	likelyDoneSnapshot *LikelyDoneResponse
+	snapshotErr        error
+	useSnapshot        bool
 }
 
 // NewGitCollector creates a new GitCollector with the given project directory and beads client.
@@ -22,14 +26,38 @@ func NewGitCollector(projectDir string, client beads.BeadsClient) *GitCollector 
 	}
 }
 
+// NewGitCollectorWithSignals creates a collector that uses pre-fetched likely-done
+// signals, avoiding repeated git log scans within the same request path.
+func NewGitCollectorWithSignals(snapshot *LikelyDoneResponse, snapshotErr error) *GitCollector {
+	return &GitCollector{
+		likelyDoneSnapshot: snapshot,
+		snapshotErr:        snapshotErr,
+		useSnapshot:        true,
+	}
+}
+
 // Collect gathers attention items for issues that appear complete (have commits)
 // but haven't been formally closed yet. These are observability signals that help
 // identify work that may be ready for review/completion.
 func (c *GitCollector) Collect(role string) ([]AttentionItem, error) {
-	// Collect likely-done signals from git commits
-	signals, err := CollectLikelyDoneSignals(c.projectDir, c.client)
-	if err != nil {
-		return nil, fmt.Errorf("failed to collect git signals: %w", err)
+	var signals *LikelyDoneResponse
+	var err error
+
+	if c.useSnapshot {
+		if c.snapshotErr != nil {
+			return nil, fmt.Errorf("failed to collect git signals: %w", c.snapshotErr)
+		}
+		signals = c.likelyDoneSnapshot
+	} else {
+		// Collect likely-done signals from git commits
+		signals, err = CollectLikelyDoneSignals(c.projectDir, c.client)
+		if err != nil {
+			return nil, fmt.Errorf("failed to collect git signals: %w", err)
+		}
+	}
+
+	if signals == nil {
+		signals = &LikelyDoneResponse{}
 	}
 
 	// Transform signals into attention items

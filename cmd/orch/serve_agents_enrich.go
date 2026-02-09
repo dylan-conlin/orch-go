@@ -68,7 +68,7 @@ func (ctx *agentCollectionContext) buildInvDirCache() *investigationDirCache {
 			uniqueProjectDirs = append(uniqueProjectDirs, dir)
 		}
 	}
-	return buildInvestigationDirCache(uniqueProjectDirs)
+	return buildInvestigationDirCache(uniqueProjectDirs, defaultInvestigationDirCacheMaxEntries)
 }
 
 // enrichSingleAgent populates beads data for a single agent using Priority Cascade model.

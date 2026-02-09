@@ -1,10 +1,13 @@
 # Decision: Schema Migration Pattern
 
 **Date:** 2026-01-14
-**Status:** Accepted
+**Status:** Superseded
+**Superseded-By:** `.kb/decisions/2026-01-19-remove-session-handoff-machinery.md`
 **Deciders:** Dylan
 
 ## Context
+
+> Superseded 2026-01-19: this decision addressed schema migration for session handoff paths. The handoff system was later removed, so this pattern is no longer active in orch-go.
 
 Session resume `--check` returned exit 1 despite handoffs existing because window-scoping was added to discovery logic without data migration. Old handoffs at `.orch/session/latest` became undiscoverable when code started checking `.orch/session/{window-name}/latest`.
 

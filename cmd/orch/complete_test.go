@@ -444,6 +444,11 @@ func TestSkipConfigHasAnySkip(t *testing.T) {
 			want:   true,
 		},
 		{
+			name:   "model connection skip",
+			config: SkipConfig{ModelConnection: true, Reason: "test reason"},
+			want:   true,
+		},
+		{
 			name:   "git diff skip",
 			config: SkipConfig{GitDiff: true, Reason: "test reason"},
 			want:   true,
@@ -456,6 +461,11 @@ func TestSkipConfigHasAnySkip(t *testing.T) {
 		{
 			name:   "build skip",
 			config: SkipConfig{Build: true, Reason: "test reason"},
+			want:   true,
+		},
+		{
+			name:   "verification spec skip",
+			config: SkipConfig{VerificationSpec: true, Reason: "test reason"},
 			want:   true,
 		},
 		{
@@ -493,31 +503,39 @@ func TestSkipConfigSkippedGates(t *testing.T) {
 			want:   []string{"test_evidence"},
 		},
 		{
+			name:   "single skip - model connection",
+			config: SkipConfig{ModelConnection: true},
+			want:   []string{"model_connection"},
+		},
+		{
 			name:   "single skip - visual",
 			config: SkipConfig{Visual: true},
 			want:   []string{"visual_verification"},
 		},
 		{
 			name:   "multiple skips",
-			config: SkipConfig{TestEvidence: true, GitDiff: true, Synthesis: true},
-			want:   []string{"test_evidence", "git_diff", "synthesis"},
+			config: SkipConfig{TestEvidence: true, ModelConnection: true, GitDiff: true, Synthesis: true},
+			want:   []string{"test_evidence", "model_connection", "git_diff", "synthesis"},
 		},
 		{
 			name: "all skips",
 			config: SkipConfig{
-				TestEvidence:  true,
-				Visual:        true,
-				GitDiff:       true,
-				Synthesis:     true,
-				Build:         true,
-				Constraint:    true,
-				PhaseGate:     true,
-				SkillOutput:   true,
-				DecisionPatch: true,
-				PhaseComplete: true,
+				TestEvidence:     true,
+				ModelConnection:  true,
+				Visual:           true,
+				GitDiff:          true,
+				Synthesis:        true,
+				Build:            true,
+				Constraint:       true,
+				PhaseGate:        true,
+				SkillOutput:      true,
+				DecisionPatch:    true,
+				PhaseComplete:    true,
+				VerificationSpec: true,
 			},
 			want: []string{
 				"test_evidence",
+				"model_connection",
 				"visual_verification",
 				"git_diff",
 				"synthesis",
@@ -527,6 +545,7 @@ func TestSkipConfigSkippedGates(t *testing.T) {
 				"skill_output",
 				"decision_patch_limit",
 				"phase_complete",
+				"verification_spec",
 			},
 		},
 	}
@@ -550,10 +569,12 @@ func TestSkipConfigSkippedGates(t *testing.T) {
 // TestSkipConfigShouldSkipGate tests the shouldSkipGate method.
 func TestSkipConfigShouldSkipGate(t *testing.T) {
 	config := SkipConfig{
-		TestEvidence: true,
-		GitDiff:      true,
-		Synthesis:    false,
-		Build:        true,
+		TestEvidence:     true,
+		ModelConnection:  true,
+		GitDiff:          true,
+		Synthesis:        false,
+		Build:            true,
+		VerificationSpec: true,
 	}
 
 	tests := []struct {
@@ -561,8 +582,10 @@ func TestSkipConfigShouldSkipGate(t *testing.T) {
 		want bool
 	}{
 		{"test_evidence", true},
+		{"model_connection", true},
 		{"git_diff", true},
 		{"build", true},
+		{"verification_spec", true},
 		{"synthesis", false},
 		{"visual_verification", false},
 		{"constraint", false},

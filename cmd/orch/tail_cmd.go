@@ -16,6 +16,7 @@ var (
 	// Tail command flags
 	tailLines     int
 	tailSessionID string // Direct session ID for non-orch-spawned sessions
+	tailWorkdir   string
 )
 
 var tailCmd = &cobra.Command{
@@ -42,13 +43,16 @@ Examples:
 			return fmt.Errorf("beads-id required (or use --session for direct session access)")
 		}
 		beadsID := args[0]
-		return runTail(client, beadsID, tailLines)
+		return runTail(client, beadsID, tailLines, tailWorkdir)
 	},
 }
 
 func init() {
 	tailCmd.Flags().IntVarP(&tailLines, "lines", "n", 50, "Number of lines to capture")
 	tailCmd.Flags().StringVar(&tailSessionID, "session", "", "OpenCode session ID for direct access (for non-orch-spawned sessions)")
+	tailCmd.Flags().StringVar(&tailWorkdir, "workdir", "", "Target project directory (for cross-project tail)")
+	tailCmd.Flags().StringVar(&tailWorkdir, "project", "", "Alias for --workdir")
+	tailCmd.Flags().MarkHidden("project")
 }
 
 // runTailBySessionID fetches messages directly from an OpenCode session by its ID.
@@ -89,8 +93,17 @@ func truncateSessionID(id string) string {
 	return id[:16] + "..."
 }
 
-func runTail(client opencode.ClientInterface, beadsID string, lines int) error {
-	projectDir, _ := currentProjectDir()
+func runTail(client opencode.ClientInterface, beadsID string, lines int, workdir string) error {
+	currentDir, err := currentProjectDir()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	projectResult, err := resolveProjectDir(workdir, "", currentDir)
+	if err != nil {
+		return err
+	}
+	projectDir := projectResult.ProjectDir
 
 	// Strategy: Workspace file first (fast path), then derived lookups
 	//

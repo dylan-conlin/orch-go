@@ -110,7 +110,7 @@ func TestDiscoverInvestigationPath(t *testing.T) {
 	}
 
 	// Build cache for the test project directory
-	cache := buildInvestigationDirCache([]string{tmpDir})
+	cache := buildInvestigationDirCache([]string{tmpDir}, 100)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -128,5 +128,32 @@ func TestDiscoverInvestigationPath(t *testing.T) {
 				t.Errorf("discoverInvestigationPath() = %q, want absolute path", got)
 			}
 		})
+	}
+}
+
+func TestBuildInvestigationDirCache_BoundsTotalEntries(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	invDir := filepath.Join(tmpDir, ".kb", "investigations")
+	if err := os.MkdirAll(invDir, 0755); err != nil {
+		t.Fatalf("Failed to create investigations dir: %v", err)
+	}
+
+	files := []string{"a.md", "b.md", "c.md"}
+	for _, name := range files {
+		if err := os.WriteFile(filepath.Join(invDir, name), []byte("# Investigation"), 0644); err != nil {
+			t.Fatalf("Failed to create investigation file: %v", err)
+		}
+	}
+
+	cache := buildInvestigationDirCache([]string{tmpDir}, 2)
+
+	totalCached := 0
+	for _, names := range cache.entries {
+		totalCached += len(names)
+	}
+
+	if totalCached != 2 {
+		t.Fatalf("total cached entries = %d, want 2", totalCached)
 	}
 }

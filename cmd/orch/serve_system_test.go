@@ -53,6 +53,64 @@ func TestHandleUsageJSONResponse(t *testing.T) {
 	}
 }
 
+func TestHandleUsageCostMethodNotAllowed(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/usage/cost", nil)
+	w := httptest.NewRecorder()
+
+	newTestServer().handleUsageCost(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status 405, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleUsageCostJSONResponse(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/usage/cost", nil)
+	w := httptest.NewRecorder()
+
+	newTestServer().handleUsageCost(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	if contentType := resp.Header.Get("Content-Type"); contentType != "application/json" {
+		t.Fatalf("Expected Content-Type application/json, got %s", contentType)
+	}
+
+	var costResp CostAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&costResp); err != nil {
+		t.Fatalf("Expected valid JSON response, got error: %v", err)
+	}
+
+	if costResp.CurrentMonthCost != 0.0 {
+		t.Fatalf("Expected CurrentMonthCost 0.0, got %f", costResp.CurrentMonthCost)
+	}
+	if costResp.CurrentMonthDate == "" {
+		t.Fatal("Expected CurrentMonthDate to be set")
+	}
+	if _, err := time.Parse("2006-01", costResp.CurrentMonthDate); err != nil {
+		t.Fatalf("Expected CurrentMonthDate in YYYY-MM format, got %q", costResp.CurrentMonthDate)
+	}
+	if len(costResp.DailyCosts) != 0 {
+		t.Fatalf("Expected empty DailyCosts, got %d entries", len(costResp.DailyCosts))
+	}
+	if costResp.BudgetColor != "green" {
+		t.Fatalf("Expected BudgetColor green, got %q", costResp.BudgetColor)
+	}
+	if costResp.BudgetEmoji != "🟢" {
+		t.Fatalf("Expected BudgetEmoji 🟢, got %q", costResp.BudgetEmoji)
+	}
+}
+
+func TestLookupAccountNameEmptyEmail(t *testing.T) {
+	if got := lookupAccountName(""); got != "" {
+		t.Fatalf("lookupAccountName(\"\") = %q, want empty string", got)
+	}
+}
+
 func TestUsageAPIResponseJSONFormat(t *testing.T) {
 	// Test that UsageAPIResponse serializes correctly to JSON
 	fiveHour := 45.5

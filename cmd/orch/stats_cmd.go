@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/action"
 	"github.com/spf13/cobra"
 )
 
@@ -113,6 +115,18 @@ type StatsReport struct {
 	EscapeHatchStats  EscapeHatchStats    `json:"escape_hatch_stats,omitempty"`
 	VerificationStats VerificationStats   `json:"verification_stats,omitempty"`
 	AttemptStats      AttemptStats        `json:"attempt_stats,omitempty"`
+	DiscoveredWork    DiscoveredWorkStats `json:"discovered_work_stats,omitempty"`
+}
+
+// DiscoveredWorkStats captures discovered-work issue creation behavior.
+// It measures how often worker sessions create follow-up issues via bd create.
+type DiscoveredWorkStats struct {
+	WorkerSessions                  int     `json:"worker_sessions"`
+	WorkerSessionsWithIssueCreation int     `json:"worker_sessions_with_issue_creation"`
+	WorkerIssueCreationRate         float64 `json:"worker_issue_creation_rate"`
+	WorkerIssuesCreated             int     `json:"worker_issues_created"`
+	OrchestratorIssuesCreated       int     `json:"orchestrator_issues_created"`
+	WorkerIssueShare                float64 `json:"worker_issue_share"`
 }
 
 // StatsSummary contains core metrics
@@ -241,11 +255,24 @@ func runStats() error {
 	// Aggregate statistics
 	report := aggregateStats(events, statsDays, statsIncludeUntracked)
 
+	// Enrich with discovered-work issue creation metrics from action-log.
+	if actionEvents, err := loadActionEvents(); err == nil {
+		report.DiscoveredWork = computeDiscoveredWorkStats(events, actionEvents, statsDays, statsIncludeUntracked)
+	}
+
 	// Output
 	if statsJSONOutput {
 		return outputStatsJSON(report)
 	}
 	return outputStatsText(report)
+}
+
+func loadActionEvents() ([]action.ActionEvent, error) {
+	tracker, err := action.LoadTracker("")
+	if err != nil {
+		return nil, err
+	}
+	return tracker.Events, nil
 }
 
 func getEventsPath() string {
@@ -920,6 +947,90 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 	return agg.report
 }
 
+var bdCreateCommandPattern = regexp.MustCompile(`(?i)(?:^|&&|\|\||;)\s*bd\s+create(?:\s|$)`)
+
+func isBDCreateAction(target string) bool {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return false
+	}
+	return bdCreateCommandPattern.MatchString(target)
+}
+
+func computeDiscoveredWorkStats(events []StatsEvent, actionEvents []action.ActionEvent, days int, includeUntracked bool) DiscoveredWorkStats {
+	stats := DiscoveredWorkStats{}
+	cutoff := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
+
+	workerSessions := make(map[string]bool)
+
+	for _, event := range events {
+		if event.Type != "session.spawned" {
+			continue
+		}
+		if time.Unix(event.Timestamp, 0).Before(cutoff) {
+			continue
+		}
+
+		sessionID := event.SessionID
+		if sessionID == "" {
+			continue
+		}
+
+		skill, _ := event.Data["skill"].(string)
+		if skill == "" || coordinationSkills[skill] {
+			continue
+		}
+
+		beadsID, _ := event.Data["beads_id"].(string)
+		if isUntrackedSpawn(beadsID) && !includeUntracked {
+			continue
+		}
+
+		workerSessions[sessionID] = true
+	}
+
+	workerCreatorSessions := make(map[string]bool)
+
+	for _, event := range actionEvents {
+		if event.Timestamp.Before(cutoff) {
+			continue
+		}
+		if !strings.EqualFold(event.Tool, "bash") {
+			continue
+		}
+		if event.Outcome != action.OutcomeSuccess {
+			continue
+		}
+		if !isBDCreateAction(event.Target) {
+			continue
+		}
+
+		if event.SessionID != "" && workerSessions[event.SessionID] {
+			stats.WorkerIssuesCreated++
+			workerCreatorSessions[event.SessionID] = true
+			continue
+		}
+
+		// Any successful bd create action not attributable to a worker session is
+		// counted as orchestrator-side issue creation.
+		stats.OrchestratorIssuesCreated++
+	}
+
+	stats.WorkerSessions = len(workerSessions)
+	stats.WorkerSessionsWithIssueCreation = len(workerCreatorSessions)
+
+	if stats.WorkerSessions > 0 {
+		stats.WorkerIssueCreationRate = float64(stats.WorkerSessionsWithIssueCreation) / float64(stats.WorkerSessions) * 100
+	}
+
+	totalIssueCreates := stats.WorkerIssuesCreated + stats.OrchestratorIssuesCreated
+	if totalIssueCreates > 0 {
+		stats.WorkerIssueShare = float64(stats.WorkerIssuesCreated) / float64(totalIssueCreates) * 100
+	}
+
+	return stats
+}
+
 func outputStatsJSON(report *StatsReport) error {
 	data, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
@@ -949,6 +1060,19 @@ func outputStatsText(report *StatsReport) error {
 	fmt.Printf("  Abandonments:  %d (%.1f%%)\n", report.Summary.TotalAbandonments, report.Summary.AbandonmentRate)
 	if report.Summary.AvgDurationMinutes > 0 {
 		fmt.Printf("  Avg Duration:  %.0f minutes\n", report.Summary.AvgDurationMinutes)
+	}
+
+	if report.DiscoveredWork.WorkerSessions > 0 || report.DiscoveredWork.WorkerIssuesCreated > 0 || report.DiscoveredWork.OrchestratorIssuesCreated > 0 {
+		fmt.Println()
+		fmt.Println("🔍 DISCOVERED WORK CAPTURE")
+		fmt.Printf("  Worker sessions creating issues: %d/%d (%.1f%%)\n",
+			report.DiscoveredWork.WorkerSessionsWithIssueCreation,
+			report.DiscoveredWork.WorkerSessions,
+			report.DiscoveredWork.WorkerIssueCreationRate,
+		)
+		fmt.Printf("  Worker issues created:          %d\n", report.DiscoveredWork.WorkerIssuesCreated)
+		fmt.Printf("  Orchestrator issues created:    %d\n", report.DiscoveredWork.OrchestratorIssuesCreated)
+		fmt.Printf("  Worker share of issue creation: %.1f%%\n", report.DiscoveredWork.WorkerIssueShare)
 	}
 
 	// Task vs Coordination breakdown

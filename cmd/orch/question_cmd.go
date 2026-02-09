@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var questionWorkdir string
+
 var questionCmd = &cobra.Command{
 	Use:   "question [beads-id]",
 	Short: "Extract pending question from an agent's session",
@@ -28,12 +30,27 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
 		client := opencode.NewClient(serverURL)
-		return runQuestion(client, beadsID)
+		return runQuestion(client, beadsID, questionWorkdir)
 	},
 }
 
-func runQuestion(client opencode.ClientInterface, beadsID string) error {
-	projectDir, _ := currentProjectDir()
+func init() {
+	questionCmd.Flags().StringVar(&questionWorkdir, "workdir", "", "Target project directory (for cross-project question)")
+	questionCmd.Flags().StringVar(&questionWorkdir, "project", "", "Alias for --workdir")
+	questionCmd.Flags().MarkHidden("project")
+}
+
+func runQuestion(client opencode.ClientInterface, beadsID string, workdir string) error {
+	currentDir, err := currentProjectDir()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	projectResult, err := resolveProjectDir(workdir, "", currentDir)
+	if err != nil {
+		return err
+	}
+	projectDir := projectResult.ProjectDir
 
 	// Strategy: Workspace file first (fast path), then derived lookups
 	//

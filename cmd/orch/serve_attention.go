@@ -10,11 +10,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/attention"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 )
 
 // handleLikelyDone returns LIKELY_DONE attention signals for the dashboard.
@@ -105,6 +107,217 @@ type AttentionAPIResponse struct {
 	CollectedAt string                  `json:"collected_at"`
 }
 
+// requestScopedBeadsClient wraps a BeadsClient and memoizes identical List/Ready/Stats
+// queries for a single HTTP request. Collectors execute concurrently and many share the
+// same query shape, so this avoids duplicate bd subprocess work within the request.
+type requestScopedBeadsClient struct {
+	inner beads.BeadsClient
+
+	mu sync.RWMutex
+
+	listCache  map[string][]beads.Issue
+	readyCache map[string][]beads.Issue
+	stats      *beads.Stats
+	statsSet   bool
+
+	group singleflight.Group
+}
+
+func newRequestScopedBeadsClient(inner beads.BeadsClient) beads.BeadsClient {
+	if inner == nil {
+		return nil
+	}
+
+	return &requestScopedBeadsClient{
+		inner:      inner,
+		listCache:  make(map[string][]beads.Issue),
+		readyCache: make(map[string][]beads.Issue),
+	}
+}
+
+func cloneIssues(issues []beads.Issue) []beads.Issue {
+	if issues == nil {
+		return nil
+	}
+	return append([]beads.Issue(nil), issues...)
+}
+
+func cacheKey(v any) string {
+	if v == nil {
+		return "<nil>"
+	}
+
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("%#v", v)
+	}
+
+	return string(b)
+}
+
+func (c *requestScopedBeadsClient) Ready(args *beads.ReadyArgs) ([]beads.Issue, error) {
+	key := cacheKey(args)
+
+	c.mu.RLock()
+	cached, ok := c.readyCache[key]
+	c.mu.RUnlock()
+	if ok {
+		return cloneIssues(cached), nil
+	}
+
+	value, err, _ := c.group.Do("ready:"+key, func() (interface{}, error) {
+		c.mu.RLock()
+		cached, ok := c.readyCache[key]
+		c.mu.RUnlock()
+		if ok {
+			return cloneIssues(cached), nil
+		}
+
+		issues, queryErr := c.inner.Ready(args)
+		if queryErr != nil {
+			return nil, queryErr
+		}
+
+		cloned := cloneIssues(issues)
+
+		c.mu.Lock()
+		c.readyCache[key] = cloned
+		c.mu.Unlock()
+
+		return cloneIssues(cloned), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if value == nil {
+		return nil, nil
+	}
+
+	return value.([]beads.Issue), nil
+}
+
+func (c *requestScopedBeadsClient) Show(id string) (*beads.Issue, error) {
+	return c.inner.Show(id)
+}
+
+func (c *requestScopedBeadsClient) List(args *beads.ListArgs) ([]beads.Issue, error) {
+	key := cacheKey(args)
+
+	c.mu.RLock()
+	cached, ok := c.listCache[key]
+	c.mu.RUnlock()
+	if ok {
+		return cloneIssues(cached), nil
+	}
+
+	value, err, _ := c.group.Do("list:"+key, func() (interface{}, error) {
+		c.mu.RLock()
+		cached, ok := c.listCache[key]
+		c.mu.RUnlock()
+		if ok {
+			return cloneIssues(cached), nil
+		}
+
+		issues, queryErr := c.inner.List(args)
+		if queryErr != nil {
+			return nil, queryErr
+		}
+
+		cloned := cloneIssues(issues)
+
+		c.mu.Lock()
+		c.listCache[key] = cloned
+		c.mu.Unlock()
+
+		return cloneIssues(cloned), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if value == nil {
+		return nil, nil
+	}
+
+	return value.([]beads.Issue), nil
+}
+
+func (c *requestScopedBeadsClient) Stats() (*beads.Stats, error) {
+	c.mu.RLock()
+	if c.statsSet {
+		stats := c.stats
+		c.mu.RUnlock()
+		return stats, nil
+	}
+	c.mu.RUnlock()
+
+	value, err, _ := c.group.Do("stats", func() (interface{}, error) {
+		c.mu.RLock()
+		if c.statsSet {
+			stats := c.stats
+			c.mu.RUnlock()
+			return stats, nil
+		}
+		c.mu.RUnlock()
+
+		stats, statsErr := c.inner.Stats()
+		if statsErr != nil {
+			return nil, statsErr
+		}
+
+		c.mu.Lock()
+		c.stats = stats
+		c.statsSet = true
+		c.mu.Unlock()
+
+		return stats, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if value == nil {
+		return nil, nil
+	}
+
+	return value.(*beads.Stats), nil
+}
+
+func (c *requestScopedBeadsClient) Comments(id string) ([]beads.Comment, error) {
+	return c.inner.Comments(id)
+}
+
+func (c *requestScopedBeadsClient) AddComment(id, author, text string) error {
+	return c.inner.AddComment(id, author, text)
+}
+
+func (c *requestScopedBeadsClient) CloseIssue(id, reason string) error {
+	return c.inner.CloseIssue(id, reason)
+}
+
+func (c *requestScopedBeadsClient) Create(args *beads.CreateArgs) (*beads.Issue, error) {
+	return c.inner.Create(args)
+}
+
+func (c *requestScopedBeadsClient) Update(args *beads.UpdateArgs) (*beads.Issue, error) {
+	return c.inner.Update(args)
+}
+
+func (c *requestScopedBeadsClient) AddLabel(id, label string) error {
+	return c.inner.AddLabel(id, label)
+}
+
+func (c *requestScopedBeadsClient) RemoveLabel(id, label string) error {
+	return c.inner.RemoveLabel(id, label)
+}
+
+func (c *requestScopedBeadsClient) ResolveID(partialID string) (string, error) {
+	return c.inner.ResolveID(partialID)
+}
+
+var _ beads.BeadsClient = (*requestScopedBeadsClient)(nil)
+
 // handleAttention returns unified attention signals from multiple collectors.
 // Query parameters:
 //   - role: Role for priority scoring (human, orchestrator, daemon) - default: human
@@ -165,6 +378,7 @@ func (s *Server) handleAttention(w http.ResponseWriter, r *http.Request) {
 	} else {
 		client = beads.NewCLIClient(beads.WithWorkDir(projectDir))
 	}
+	client = newRequestScopedBeadsClient(client)
 
 	countBySignal := func(items []attention.AttentionItem) map[string]int {
 		counts := make(map[string]int)
@@ -187,7 +401,15 @@ func (s *Server) handleAttention(w http.ResponseWriter, r *http.Request) {
 
 	// GitCollector - likely-done signals
 	if projectDir != "" {
-		gitCollector := attention.NewGitCollector(projectDir, client)
+		var likelyDoneData *attention.LikelyDoneResponse
+		var likelyDoneErr error
+		if s.LikelyDoneCache != nil {
+			likelyDoneData, likelyDoneErr = s.LikelyDoneCache.Get(projectDir, client)
+		} else {
+			likelyDoneData, likelyDoneErr = attention.CollectLikelyDoneSignals(projectDir, client)
+		}
+
+		gitCollector := attention.NewGitCollectorWithSignals(likelyDoneData, likelyDoneErr)
 		collectorEntries = append(collectorEntries, collectorEntry{source: "git", collector: gitCollector})
 	}
 

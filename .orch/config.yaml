@@ -7,3 +7,34 @@ opencode:
     server: http://localhost:4096
 servers:
     api: 3348
+daemon:
+    cleanup:
+        interval_minutes: 360
+        sessions_age_days: 7
+        workspaces_age_days: 7
+    dead_session:
+        interval_minutes: 10
+        max_retries: 2
+    orphan_reap:
+        interval_minutes: 5
+    dashboard_watchdog:
+        interval_seconds: 30
+        failures_before_restart: 2
+        restart_cooldown_minutes: 5
+dashboard:
+    agents:
+        active_minutes: 10
+        ghost_display_hours: 4
+        dead_minutes: 3
+        stalled_minutes: 15
+        beads_fetch_hours: 2
+spawn:
+    context_quality:
+        threshold: 20
+completion:
+    auto_rebuild:
+        timeout_seconds: 120
+    transcript_export:
+        timeout_seconds: 10
+    cache_invalidate:
+        timeout_seconds: 2

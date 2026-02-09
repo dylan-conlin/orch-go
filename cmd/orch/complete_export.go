@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/activity"
+	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
@@ -115,9 +116,11 @@ func exportOrchestratorTranscript(workspacePath, projectDir, beadsID string) err
 
 	fmt.Println("Exporting orchestrator transcript...")
 
-	// Wait for new export file to appear (poll for up to 10 seconds)
+	// Wait for new export file to appear.
+	exportTimeout := completionTranscriptExportTimeout(projectDir)
+	deadline := time.Now().Add(exportTimeout)
 	var newExportPath string
-	for i := 0; i < 20; i++ {
+	for time.Now().Before(deadline) {
 		time.Sleep(500 * time.Millisecond)
 		matches, _ := filepath.Glob(pattern)
 		for _, m := range matches {
@@ -132,7 +135,7 @@ func exportOrchestratorTranscript(workspacePath, projectDir, beadsID string) err
 	}
 
 	if newExportPath == "" {
-		return fmt.Errorf("timeout waiting for export file")
+		return fmt.Errorf("timeout waiting for export file after %v", exportTimeout)
 	}
 
 	// Move export to workspace as TRANSCRIPT.md
@@ -151,4 +154,12 @@ func exportOrchestratorTranscript(workspacePath, projectDir, beadsID string) err
 
 	fmt.Printf("Saved transcript: %s\n", destPath)
 	return nil
+}
+
+func completionTranscriptExportTimeout(projectDir string) time.Duration {
+	projCfg, err := config.Load(projectDir)
+	if err != nil || projCfg == nil {
+		projCfg = &config.Config{}
+	}
+	return time.Duration(projCfg.CompletionTranscriptExportTimeoutSeconds()) * time.Second
 }

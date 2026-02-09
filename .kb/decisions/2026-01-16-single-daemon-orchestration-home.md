@@ -1,7 +1,12 @@
+---
+status: superseded
+superseded_by: .kb/decisions/2026-01-21-cross-project-daemon-architecture.md
+---
+
 # Decision: Single Daemon with Orchestration Home
 
 **Date:** 2026-01-16
-**Status:** Accepted
+**Status:** Superseded (2026-01-21)
 **Context:** Daemon architecture for multi-project orchestration
 
 ## Problem

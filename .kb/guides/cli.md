@@ -67,6 +67,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch account` | Manage Claude accounts |
 | `orch usage` | Show usage statistics |
 | `orch hotspot` | Detect areas needing architect attention |
+| `orch friction` | Log and summarize orchestration friction |
 | `orch reconcile` | Fix zombie in_progress issues |
 | `orch changelog` | Show ecosystem changelog |
 | `orch sessions` | Search session history |

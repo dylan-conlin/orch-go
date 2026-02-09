@@ -42,7 +42,6 @@
 		connectServicelogSSE,
 		disconnectServicelogSSE
 	} from '$lib/stores/servicelog';
-	import { usage } from '$lib/stores/usage';
 	import { focus } from '$lib/stores/focus';
 	import { servers } from '$lib/stores/servers';
 	import { beads, readyIssues } from '$lib/stores/beads';
@@ -170,7 +169,6 @@
 		// Defer secondary data fetches using requestIdleCallback or setTimeout fallback
 		// These are "nice to have" data that can load after initial render
 		const deferSecondaryFetches = () => {
-			usage.fetch();
 			focus.fetch();
 			servers.fetch();
 			readyIssues.fetch();
@@ -204,7 +202,6 @@
 			const projectDir = $filters.followOrchestrator ? $orchestratorContext.project_dir : undefined;
 
 			Promise.all([
-				usage.fetch(),
 				focus.fetch(),
 				servers.fetch(),
 				beads.fetch(projectDir),

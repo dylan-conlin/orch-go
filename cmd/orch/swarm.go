@@ -231,13 +231,8 @@ func collectSwarmIssues() ([]daemon.Issue, error) {
 // getSwarmReadyIssues fetches issues from bd list with triage:ready label.
 // It uses the beads RPC client when available, falling back to the bd CLI.
 func getSwarmReadyIssues() ([]daemon.Issue, error) {
-	var rpcResult []daemon.Issue
-	err := beads.Do("", func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
-
+	result := make([]daemon.Issue, 0)
+	err := withBeadsFallback("", func(client *beads.Client) error {
 		issues, rpcErr := client.List(&beads.ListArgs{
 			Status: "open",
 			Labels: []string{"triage:ready"},
@@ -246,9 +241,9 @@ func getSwarmReadyIssues() ([]daemon.Issue, error) {
 			return rpcErr
 		}
 
-		rpcResult = make([]daemon.Issue, len(issues))
+		result = make([]daemon.Issue, len(issues))
 		for i, issue := range issues {
-			rpcResult[i] = daemon.Issue{
+			result[i] = daemon.Issue{
 				ID:        issue.ID,
 				Title:     issue.Title,
 				IssueType: issue.IssueType,
@@ -257,32 +252,31 @@ func getSwarmReadyIssues() ([]daemon.Issue, error) {
 			}
 		}
 		return nil
-	})
-	if err == nil {
-		return rpcResult, nil
-	}
+	}, func() error {
+		issues, fallbackErr := beads.FallbackList("open")
+		if fallbackErr != nil {
+			return fallbackErr
+		}
 
-	// Fallback to CLI - need to fetch and filter
-	issues, err := beads.FallbackList("open")
-	if err != nil {
-		return nil, err
-	}
-
-	// Filter for triage:ready label
-	var result []daemon.Issue
-	for _, issue := range issues {
-		for _, label := range issue.Labels {
-			if label == "triage:ready" {
-				result = append(result, daemon.Issue{
-					ID:        issue.ID,
-					Title:     issue.Title,
-					IssueType: issue.IssueType,
-					Priority:  issue.Priority,
-					Labels:    issue.Labels,
-				})
-				break
+		result = result[:0]
+		for _, issue := range issues {
+			for _, label := range issue.Labels {
+				if label == "triage:ready" {
+					result = append(result, daemon.Issue{
+						ID:        issue.ID,
+						Title:     issue.Title,
+						IssueType: issue.IssueType,
+						Priority:  issue.Priority,
+						Labels:    issue.Labels,
+					})
+					break
+				}
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return result, nil

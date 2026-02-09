@@ -63,6 +63,7 @@ type HealthResponse struct {
 type CreateArgs struct {
 	ID           string   `json:"id,omitempty"`
 	Parent       string   `json:"parent,omitempty"`
+	CausedBy     string   `json:"caused_by,omitempty"`
 	Title        string   `json:"title"`
 	Description  string   `json:"description,omitempty"`
 	IssueType    string   `json:"issue_type"`
@@ -153,6 +154,7 @@ type Issue struct {
 	Status       string          `json:"status"`
 	Priority     int             `json:"priority"`
 	IssueType    string          `json:"issue_type"`
+	CausedBy     string          `json:"caused_by,omitempty"`
 	Labels       []string        `json:"labels,omitempty"`
 	Dependencies json.RawMessage `json:"dependencies,omitempty"`
 	CreatedAt    string          `json:"created_at,omitempty"`

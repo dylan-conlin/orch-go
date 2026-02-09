@@ -406,12 +406,7 @@ func gatherActiveAgentsWithClient(client opencode.ClientInterface, projectDir st
 func getInProgressBeadsIDs() map[string]bool {
 	result := make(map[string]bool)
 
-	err := beads.Do("", func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
-
+	err := withBeadsClient("", func(client *beads.Client) error {
 		issues, rpcErr := client.List(&beads.ListArgs{Status: "in_progress"})
 		if rpcErr != nil {
 			return rpcErr
@@ -441,12 +436,7 @@ func getInProgressBeadsIDs() map[string]bool {
 func gatherPendingIssues() []PendingIssue {
 	var issues []PendingIssue
 
-	err := beads.Do("", func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
-
+	err := withBeadsClient("", func(client *beads.Client) error {
 		readyIssues, rpcErr := client.Ready(nil)
 		if rpcErr != nil {
 			return rpcErr
@@ -486,12 +476,7 @@ func gatherPendingIssues() []PendingIssue {
 func gatherRecentWork() []RecentWorkItem {
 	var work []RecentWorkItem
 
-	err := beads.Do("", func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
-
+	err := withBeadsClient("", func(client *beads.Client) error {
 		issues, rpcErr := client.List(&beads.ListArgs{Status: "closed"})
 		if rpcErr != nil {
 			return rpcErr

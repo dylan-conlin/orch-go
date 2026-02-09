@@ -93,4 +93,4 @@ bd close (direct)   →  issue closed, event gap  (bypass path - needs fix)
 - `.kb/investigations/2025-12-22-inv-40-agents-showing-as-active.md`
 - `.kb/investigations/2026-01-03-inv-agents-going-idle-without-phase.md`
 - `.kb/investigations/2026-01-08-inv-25-28-agents-not-completing.md`
-- `.kb/investigations/2026-02-04-inv-agents-own-declaration-via-bd.md`
+- `.kb/investigations/archived/2026-02-04-inv-agents-own-declaration-via-bd.md`

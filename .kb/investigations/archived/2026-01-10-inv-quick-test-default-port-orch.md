@@ -11,7 +11,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** The port is defined as a constant and is infrastructure-focused (not a project dev server), with override support via `--port` flag.
 
-**Next:** Close - question answered with direct evidence from source code.
+**Next:** Close - superseded by .kb/decisions/2026-02-08-kb-reflect-cluster-disposition-feature-agents-quick.md.
 
 **Promote to Decision:** recommend-no (simple fact lookup, not architectural)
 
@@ -49,7 +49,7 @@ Guidelines:
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
 **Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Superseded-By:** .kb/decisions/2026-02-08-kb-reflect-cluster-disposition-feature-agents-quick.md
 
 ---
 

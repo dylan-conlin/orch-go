@@ -1,9 +1,11 @@
 package daemon
 
 import (
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -312,6 +314,107 @@ func TestRecoveryIntegration_VerifyPackage(t *testing.T) {
 	if phaseStatus.Phase != "Planning" {
 		t.Errorf("Expected phase 'Planning', got '%s'", phaseStatus.Phase)
 	}
+}
+
+func TestDetermineRecoveryNudgeMode(t *testing.T) {
+	tests := []struct {
+		name     string
+		comments []verify.Comment
+		want     recoveryNudgeMode
+	}{
+		{
+			name: "testing phase nudges completion",
+			comments: []verify.Comment{
+				{Text: "Phase: Testing - Final validation"},
+			},
+			want: recoveryNudgeCompletion,
+		},
+		{
+			name: "validation phase nudges completion",
+			comments: []verify.Comment{
+				{Text: "Phase: Validation - Running checks"},
+			},
+			want: recoveryNudgeCompletion,
+		},
+		{
+			name: "implementing with test evidence nudges completion",
+			comments: []verify.Comment{
+				{Text: "Phase: Implementing - wiring daemon recovery"},
+				{Text: "Tests: go test ./pkg/daemon - PASS (8 passed, 0 failed)"},
+			},
+			want: recoveryNudgeCompletion,
+		},
+		{
+			name: "implementing without test evidence nudges progress",
+			comments: []verify.Comment{
+				{Text: "Phase: Implementing - still coding"},
+			},
+			want: recoveryNudgeProgress,
+		},
+		{
+			name: "planning nudges progress",
+			comments: []verify.Comment{
+				{Text: "Phase: Planning - assessing code paths"},
+			},
+			want: recoveryNudgeProgress,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := determineRecoveryNudgeMode(tt.comments, model.ResolveBehaviorProfile("opus"))
+			if got != tt.want {
+				t.Errorf("determineRecoveryNudgeMode() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDetermineRecoveryNudgeMode_NeedsNudgeProfile(t *testing.T) {
+	comments := []verify.Comment{{Text: "Phase: Implementing - still coding"}}
+	got := determineRecoveryNudgeMode(comments, model.ResolveBehaviorProfile("gpt"))
+	if got != recoveryNudgeCompletion {
+		t.Fatalf("determineRecoveryNudgeMode() with needs-nudge profile = %q, want %q", got, recoveryNudgeCompletion)
+	}
+}
+
+func TestBuildIdleRecoveryPrompt(t *testing.T) {
+	const beadsID = "orch-go-21464"
+
+	completionPrompt := buildIdleRecoveryPrompt(beadsID, "/tmp/workspace", recoveryNudgeCompletion, model.ResolveBehaviorProfile("opus"))
+	if !containsAll(completionPrompt,
+		"You appear to be in a late phase",
+		"Phase: Complete",
+		"Tests: go test ./... - PASS",
+		"SPAWN_CONTEXT.md",
+	) {
+		t.Errorf("completion prompt missing expected guidance: %q", completionPrompt)
+	}
+
+	progressPrompt := buildIdleRecoveryPrompt(beadsID, "", recoveryNudgeProgress, model.ResolveBehaviorProfile("opus"))
+	if !containsAll(progressPrompt,
+		"Continue making progress",
+		"bd comment "+beadsID,
+	) {
+		t.Errorf("progress prompt missing expected guidance: %q", progressPrompt)
+	}
+	if strings.Contains(progressPrompt, "Phase: Complete") {
+		t.Errorf("progress prompt should not include completion-only guidance: %q", progressPrompt)
+	}
+
+	nudgePrompt := buildIdleRecoveryPrompt(beadsID, "", recoveryNudgeProgress, model.ResolveBehaviorProfile("gpt"))
+	if !strings.Contains(nudgePrompt, "Model behavior profile: needs-nudge") {
+		t.Errorf("needs-nudge prompt should contain model-specific reminder: %q", nudgePrompt)
+	}
+}
+
+func containsAll(text string, parts ...string) bool {
+	for _, part := range parts {
+		if !strings.Contains(text, part) {
+			return false
+		}
+	}
+	return true
 }
 
 // =============================================================================

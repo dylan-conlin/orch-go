@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -223,4 +224,85 @@ func containsSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestFilterSynthesisSuggestions_RemovesArchivedOnlyInvestigations(t *testing.T) {
+	projectDir := t.TempDir()
+
+	activeDir := filepath.Join(projectDir, ".kb", "investigations")
+	if err := os.MkdirAll(filepath.Join(activeDir, "simple"), 0755); err != nil {
+		t.Fatalf("mkdir investigations: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(activeDir, "archived"), 0755); err != nil {
+		t.Fatalf("mkdir archived: %v", err)
+	}
+
+	mustWrite := func(path string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte("# test\n"), 0644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	mustWrite(filepath.Join(activeDir, "active.md"))
+	mustWrite(filepath.Join(activeDir, "simple", "simple-active.md"))
+	mustWrite(filepath.Join(activeDir, "archived", "archived-only.md"))
+	mustWrite(filepath.Join(activeDir, "archived", "archived-cluster.md"))
+
+	input := []SynthesisSuggestion{
+		{
+			Topic:          "mixed",
+			Count:          2,
+			Investigations: []string{"active.md", "archived-only.md"},
+		},
+		{
+			Topic:          "archived",
+			Count:          1,
+			Investigations: []string{"archived-cluster.md"},
+		},
+		{
+			Topic:          "simple",
+			Count:          1,
+			Investigations: []string{"simple/simple-active.md"},
+		},
+	}
+
+	filtered := filterSynthesisSuggestions(input, projectDir)
+	if len(filtered) != 2 {
+		t.Fatalf("expected 2 topics after filtering, got %d", len(filtered))
+	}
+
+	if filtered[0].Topic != "mixed" {
+		t.Fatalf("first topic = %q, want mixed", filtered[0].Topic)
+	}
+	if filtered[0].Count != 1 {
+		t.Fatalf("mixed count = %d, want 1", filtered[0].Count)
+	}
+	if !reflect.DeepEqual(filtered[0].Investigations, []string{"active.md"}) {
+		t.Fatalf("mixed investigations = %v, want [active.md]", filtered[0].Investigations)
+	}
+
+	if filtered[1].Topic != "simple" {
+		t.Fatalf("second topic = %q, want simple", filtered[1].Topic)
+	}
+	if filtered[1].Count != 1 {
+		t.Fatalf("simple count = %d, want 1", filtered[1].Count)
+	}
+}
+
+func TestFilterSynthesisSuggestions_NoKBDirReturnsOriginal(t *testing.T) {
+	projectDir := t.TempDir()
+
+	input := []SynthesisSuggestion{
+		{
+			Topic:          "topic",
+			Count:          2,
+			Investigations: []string{"a.md", "b.md"},
+		},
+	}
+
+	filtered := filterSynthesisSuggestions(input, projectDir)
+	if !reflect.DeepEqual(filtered, input) {
+		t.Fatalf("expected unchanged suggestions, got %#v", filtered)
+	}
 }

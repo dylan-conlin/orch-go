@@ -30,7 +30,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 <!-- Lineage -->
 **Patches-Decision:** N/A
 **Related-Investigation:** `.kb/investigations/2026-02-04-arch-work-graph-done-states.md` - UI badges and lifecycle states
-**Related-Investigation:** `.kb/investigations/2026-02-04-inv-agents-own-declaration-via-bd.md` - Three orthogonal dimensions model
+**Related-Investigation:** `.kb/investigations/archived/2026-02-04-inv-agents-own-declaration-via-bd.md` - Three orthogonal dimensions model
 **Related-Investigation:** `.kb/investigations/2026-02-02-design-work-graph-unified-attention-model.md` - Unified attention surface
 
 ## Prior Work
@@ -109,7 +109,7 @@ These are orthogonal - they don't replace each other. The UI should layer them:
 | Work Status | Section membership + phase badges | Overlay - surfaces subset |
 | Verification Status | Badge color + section priority | Overlay - indicates quality |
 
-**Source:** `2026-02-04-inv-agents-own-declaration-via-bd.md:74-98`
+**Source:** `.kb/investigations/archived/2026-02-04-inv-agents-own-declaration-via-bd.md:74-98`
 
 **Significance:** The confusion arises from treating Work Status (section membership) as REPLACING Issue Status (tree position). They should be LAYERED. An issue can simultaneously be "open" (tree), "in_progress with running agent" (WIP section), and "unverified" (badge).
 
@@ -320,7 +320,7 @@ If items appear in both section and tree, pressing a key like `t` (tree) on a se
 - `web/src/lib/components/work-graph-tree/work-graph-tree.svelte` - Main tree component, found deduplication logic
 - `web/src/lib/stores/attention.ts` - Attention store and badge types
 - `.kb/investigations/2026-02-04-arch-work-graph-done-states.md` - UI badges investigation
-- `.kb/investigations/2026-02-04-inv-agents-own-declaration-via-bd.md` - Three dimensions model
+- `.kb/investigations/archived/2026-02-04-inv-agents-own-declaration-via-bd.md` - Three dimensions model
 - `.kb/investigations/2026-02-02-design-work-graph-unified-attention-model.md` - Unified attention design
 - `.kb/investigations/2026-02-02-inv-pressure-test-work-graph-unified.md` - Pressure test findings
 

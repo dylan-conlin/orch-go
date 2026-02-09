@@ -130,6 +130,14 @@ func (d *Daemon) CheckServerHealth() bool {
 // Should be called at the start of each poll cycle.
 // Returns the number of slots freed due to reconciliation, or 0 if no pool.
 func (d *Daemon) ReconcileWithOpenCode() int {
+	// Reload ProcessedCache from disk so cache-clear commands from other processes
+	// are reflected without restarting the daemon.
+	if d.ProcessedCache != nil {
+		if err := d.ProcessedCache.Reload(); err != nil && d.Config.Verbose {
+			fmt.Printf("  DEBUG: Failed to reload processed cache: %v\n", err)
+		}
+	}
+
 	// Clean up stale spawned issue entries (older than TTL)
 	if d.SpawnedIssues != nil {
 		d.SpawnedIssues.CleanStale()
@@ -299,26 +307,14 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		slot.BeadsID = issue.ID
 	}
 
-	// Mark issue as processed BEFORE calling spawnFunc to prevent race condition.
-	// This prevents duplicate spawns if daemon polls again before beads status updates.
-	if d.ProcessedCache != nil {
-		if err := d.ProcessedCache.MarkProcessed(issue.ID); err != nil {
-			fmt.Printf("warning: failed to mark issue as processed: %v\n", err)
-		}
-	}
-	// Also mark in legacy tracker for backward compatibility
+	// Mark in legacy tracker before spawn to preserve the race-window dedup behavior.
+	// ProcessedCache is marked only after confirmed successful spawn.
 	if d.SpawnedIssues != nil {
 		d.SpawnedIssues.MarkSpawned(issue.ID)
 	}
 
 	// Spawn the work
 	if err := d.spawnFunc(issue.ID); err != nil {
-		// Unmark on spawn failure so issue can be retried
-		if d.ProcessedCache != nil {
-			if err := d.ProcessedCache.Unmark(issue.ID); err != nil {
-				fmt.Printf("warning: failed to unmark issue: %v\n", err)
-			}
-		}
 		if d.SpawnedIssues != nil {
 			d.SpawnedIssues.Unmark(issue.ID)
 		}
@@ -333,6 +329,13 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 			Error:     err,
 			Message:   fmt.Sprintf("Failed to spawn: %v", err),
 		}, nil
+	}
+
+	// Mark in persistent processed cache only after successful spawn.
+	if d.ProcessedCache != nil {
+		if err := d.ProcessedCache.MarkProcessed(issue.ID); err != nil {
+			fmt.Printf("warning: failed to mark issue as processed: %v\n", err)
+		}
 	}
 
 	// Record successful spawn for rate limiting
@@ -419,26 +422,14 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 		slot.BeadsID = issue.ID
 	}
 
-	// Mark issue as processed BEFORE calling spawnFunc to prevent race condition.
-	// This prevents duplicate spawns if daemon polls again before beads status updates.
-	if d.ProcessedCache != nil {
-		if err := d.ProcessedCache.MarkProcessed(issue.ID); err != nil {
-			fmt.Printf("warning: failed to mark issue as processed: %v\n", err)
-		}
-	}
-	// Also mark in legacy tracker for backward compatibility
+	// Mark in legacy tracker before spawn to preserve the race-window dedup behavior.
+	// ProcessedCache is marked only after confirmed successful spawn.
 	if d.SpawnedIssues != nil {
 		d.SpawnedIssues.MarkSpawned(issue.ID)
 	}
 
 	// Spawn the work
 	if err := d.spawnFunc(issue.ID); err != nil {
-		// Unmark on spawn failure so issue can be retried
-		if d.ProcessedCache != nil {
-			if err := d.ProcessedCache.Unmark(issue.ID); err != nil {
-				fmt.Printf("warning: failed to unmark issue: %v\n", err)
-			}
-		}
 		if d.SpawnedIssues != nil {
 			d.SpawnedIssues.Unmark(issue.ID)
 		}
@@ -453,6 +444,13 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 			Error:     err,
 			Message:   fmt.Sprintf("Failed to spawn: %v", err),
 		}, nil, nil
+	}
+
+	// Mark in persistent processed cache only after successful spawn.
+	if d.ProcessedCache != nil {
+		if err := d.ProcessedCache.MarkProcessed(issue.ID); err != nil {
+			fmt.Printf("warning: failed to mark issue as processed: %v\n", err)
+		}
 	}
 
 	// Record successful spawn for rate limiting

@@ -21,6 +21,8 @@ const (
 	GateSkillOutput        = "skill_output"         // Required skill outputs missing
 	GateVisualVerify       = "visual_verification"  // Visual verification required
 	GateTestEvidence       = "test_evidence"        // Test execution evidence required
+	GateModelConnection    = "model_connection"     // Model probe/candidate evidence required
+	GateVerificationSpec   = "verification_spec"    // VERIFICATION_SPEC executable checks failed
 	GateGitDiff            = "git_diff"             // Git diff doesn't match claims
 	GateBuild              = "build"                // Project build failed
 	GateDecisionPatchLimit = "decision_patch_limit" // Decision patch limit exceeded
@@ -38,10 +40,12 @@ type GateResult struct {
 // Tier 1 (core) gates: always run, even in batch mode.
 // These catch real problems (unfinished work, broken builds, untested code, broken UI).
 var CoreGates = map[string]bool{
-	GatePhaseComplete: true,
-	GateBuild:         true,
-	GateTestEvidence:  true,
-	GateVisualVerify:  true,
+	GatePhaseComplete:    true,
+	GateBuild:            true,
+	GateTestEvidence:     true,
+	GateModelConnection:  true,
+	GateVerificationSpec: true,
+	GateVisualVerify:     true,
 }
 
 // Tier 2 (quality) gates: skipped in batch mode, run in careful (default) mode.
@@ -351,7 +355,7 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 
 	// Run worker-specific gates (skip for orchestrator tier)
 	if !isOrch {
-		verifyWorkerGates(&result, beadsID, workspacePath, projectDir, serverURL, comments)
+		verifyWorkerGates(&result, beadsID, workspacePath, projectDir, serverURL, comments, result.Skill)
 	}
 
 	// Run gates that apply to all tiers
@@ -371,7 +375,7 @@ func mergeBackendResult(result *VerificationResult, backendResult *BackendResult
 // verifyWorkerGates runs verification gates specific to worker (non-orchestrator) spawns.
 // These gates are skipped for orchestrator tier since they depend on beads or are
 // worker-specific (constraints, phase gates, visual verification, test evidence, etc.).
-func verifyWorkerGates(result *VerificationResult, beadsID, workspacePath, projectDir, serverURL string, comments []Comment) {
+func verifyWorkerGates(result *VerificationResult, beadsID, workspacePath, projectDir, serverURL string, comments []Comment, skillName string) {
 	// Verify skill constraints from SPAWN_CONTEXT.md
 	checkConstraints(result, workspacePath, projectDir)
 
@@ -381,8 +385,12 @@ func verifyWorkerGates(result *VerificationResult, beadsID, workspacePath, proje
 	// Verify visual verification for web/ changes
 	checkVisualVerification(result, beadsID, workspacePath, projectDir, comments)
 
-	// Verify test execution evidence for code changes
-	checkTestEvidence(result, beadsID, workspacePath, projectDir, comments)
+	if IsSkillRequiringModelConnection(skillName) {
+		checkModelConnection(result, skillName, workspacePath, projectDir)
+	} else {
+		// Verify test execution evidence for code changes
+		checkTestEvidence(result, beadsID, workspacePath, projectDir, comments)
+	}
 
 	// Verify git diff against SYNTHESIS claims
 	checkGitDiff(result, workspacePath, projectDir)
@@ -392,6 +400,20 @@ func verifyWorkerGates(result *VerificationResult, beadsID, workspacePath, proje
 
 	// Verify decision patch count (prevent patch accumulation)
 	checkDecisionPatchCount(result, workspacePath, projectDir)
+}
+
+// checkModelConnection verifies model probe/candidate evidence for knowledge skills.
+func checkModelConnection(result *VerificationResult, skillName, workspacePath, projectDir string) {
+	modelResult := VerifyModelConnectionForCompletion(skillName, workspacePath, projectDir)
+	if modelResult == nil {
+		return
+	}
+	mergeGateResult(result, gateCheckResult{
+		gate:     GateModelConnection,
+		passed:   modelResult.Passed,
+		errors:   modelResult.Errors,
+		warnings: modelResult.Warnings,
+	})
 }
 
 // verifyCommonGates runs verification gates that apply to all tiers (including orchestrator).
@@ -794,6 +816,10 @@ func GateSkipFlag(gate string) string {
 		return "--skip-visual"
 	case GateTestEvidence:
 		return "--skip-test-evidence"
+	case GateModelConnection:
+		return "--skip-model-connection"
+	case GateVerificationSpec:
+		return "--skip-verification-spec"
 	case GateGitDiff:
 		return "--skip-git-diff"
 	case GateBuild:

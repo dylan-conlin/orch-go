@@ -5,6 +5,26 @@ import (
 	"testing"
 )
 
+func TestCurrentProjectDirPrefersWorkingDirectory(t *testing.T) {
+	oldSourceDir := sourceDir
+	sourceDir = t.TempDir()
+	t.Cleanup(func() {
+		sourceDir = oldSourceDir
+	})
+
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	got, err := currentProjectDir()
+	if err != nil {
+		t.Fatalf("currentProjectDir() error = %v", err)
+	}
+
+	if got != cwd {
+		t.Fatalf("currentProjectDir() = %q, want %q", got, cwd)
+	}
+}
+
 func TestFormatBeadsIDForDisplay(t *testing.T) {
 	// Note: These tests use specific timestamps and expect local timezone conversion
 	// Timestamp 1768090360 = Sat Jan 10 16:12:40 PST 2026
@@ -168,18 +188,18 @@ func TestResolveProjectDir(t *testing.T) {
 			wantErr:        false,
 		},
 		{
-			name:           "workdir not a directory",
-			workdir:        spawnContextPath, // file, not directory
-			workspacePath:  "",
-			currentDir:     currentDir,
-			wantErr:        true,
+			name:          "workdir not a directory",
+			workdir:       spawnContextPath, // file, not directory
+			workspacePath: "",
+			currentDir:    currentDir,
+			wantErr:       true,
 		},
 		{
-			name:           "workdir does not exist",
-			workdir:        tempDir + "/nonexistent",
-			workspacePath:  "",
-			currentDir:     currentDir,
-			wantErr:        true,
+			name:          "workdir does not exist",
+			workdir:       tempDir + "/nonexistent",
+			workspacePath: "",
+			currentDir:    currentDir,
+			wantErr:       true,
 		},
 	}
 

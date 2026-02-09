@@ -3,6 +3,7 @@ package beads
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/binutil"
+	_ "modernc.org/sqlite"
 )
 
 // DefaultCLITimeout is the maximum time to wait for a bd CLI fallback command
@@ -28,6 +30,7 @@ const (
 	defaultMaxBDSubprocess  = 12
 	bdSubprocessLimitEnvVar = "ORCH_BD_MAX_CONCURRENT"
 	bdDisableSandboxEnvVar  = "ORCH_BD_DISABLE_SANDBOX"
+	bdStaleGracePeriod      = 30 * time.Second
 )
 
 var (
@@ -72,15 +75,28 @@ func resolveBDSandboxMode() bool {
 }
 
 func prependSandboxArg(args []string) []string {
-	if !useBDSandboxMode {
-		return args
-	}
-	if len(args) > 0 && args[0] == "--sandbox" {
+	includeSandbox := useBDSandboxMode && !hasCLIArg(args, "--sandbox")
+	includeQuiet := os.Getenv("ORCH_DEBUG") == "" && !hasCLIArg(args, "--quiet") && !hasCLIArg(args, "-q")
+
+	if !includeSandbox && !includeQuiet {
 		return args
 	}
 
-	cmdArgs := make([]string, 0, len(args)+1)
-	cmdArgs = append(cmdArgs, "--sandbox")
+	extra := 0
+	if includeSandbox {
+		extra++
+	}
+	if includeQuiet {
+		extra++
+	}
+
+	cmdArgs := make([]string, 0, len(args)+extra)
+	if includeSandbox {
+		cmdArgs = append(cmdArgs, "--sandbox")
+	}
+	if includeQuiet {
+		cmdArgs = append(cmdArgs, "--quiet")
+	}
 	cmdArgs = append(cmdArgs, args...)
 	return cmdArgs
 }
@@ -92,7 +108,9 @@ func acquireBdSubprocessSlot(ctx context.Context, operation string) (func(), err
 	case bdSubprocessSem <- struct{}{}:
 		return func() { <-bdSubprocessSem }, nil
 	default:
-		log.Printf("event=bd_subprocess_cap_hit component=beads operation=%q inflight=%d cap=%d", operation, len(bdSubprocessSem), cap(bdSubprocessSem))
+		if os.Getenv("ORCH_DEBUG") != "" {
+			log.Printf("event=bd_subprocess_cap_hit component=beads operation=%q inflight=%d cap=%d", operation, len(bdSubprocessSem), cap(bdSubprocessSem))
+		}
 	}
 
 	select {
@@ -148,7 +166,201 @@ func runBDCommand(workDir, bdPath string, env []string, combined bool, args ...s
 	if err != nil && errors.Is(execCtx.Err(), context.DeadlineExceeded) {
 		log.Printf("event=bd_subprocess_timeout component=beads operation=%q timeout=%s", operation, DefaultCLITimeout)
 	}
+
+	if shouldRetryWithAllowStale(workDir, args, err, output) {
+		retryArgs := append(append([]string{}, args...), "--allow-stale")
+		retryCmd := exec.CommandContext(execCtx, bdPath, prependSandboxArg(retryArgs)...)
+		if env != nil {
+			retryCmd.Env = env
+		} else {
+			setupFallbackEnv(retryCmd)
+		}
+		if workDir != "" {
+			retryCmd.Dir = workDir
+		}
+
+		if combined {
+			return retryCmd.CombinedOutput()
+		}
+		return retryCmd.Output()
+	}
+
 	return output, err
+}
+
+func shouldRetryWithAllowStale(workDir string, args []string, err error, output []byte) bool {
+	if err == nil || hasCLIArg(args, "--allow-stale") {
+		return false
+	}
+
+	if !isOutOfSyncError(err, output) {
+		return false
+	}
+
+	recent, recentErr := importedRecently(workDir, bdStaleGracePeriod)
+	if recentErr == nil {
+		if recent {
+			log.Printf("event=bd_stale_grace_retry component=beads source=last_import_time grace=%s", bdStaleGracePeriod)
+		}
+		return recent
+	}
+
+	hotJSONL, hotErr := jsonlUpdatedRecently(workDir, bdStaleGracePeriod)
+	if hotErr != nil {
+		return false
+	}
+	if hotJSONL {
+		log.Printf("event=bd_stale_grace_retry component=beads source=jsonl_mtime grace=%s", bdStaleGracePeriod)
+	}
+
+	return hotJSONL
+}
+
+func hasCLIArg(args []string, target string) bool {
+	for _, arg := range args {
+		if arg == target {
+			return true
+		}
+	}
+	return false
+}
+
+func isOutOfSyncError(err error, output []byte) bool {
+	var joined strings.Builder
+	joined.WriteString(strings.ToLower(err.Error()))
+	if len(output) > 0 {
+		joined.WriteString(" ")
+		joined.WriteString(strings.ToLower(string(output)))
+	}
+
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		stderr := strings.TrimSpace(strings.ToLower(string(exitErr.Stderr)))
+		if stderr != "" {
+			joined.WriteString(" ")
+			joined.WriteString(stderr)
+		}
+	}
+
+	errText := joined.String()
+	return strings.Contains(errText, "database out of sync with jsonl") ||
+		strings.Contains(errText, "out of sync with jsonl") ||
+		strings.Contains(errText, "run 'bd sync --import-only'")
+}
+
+func importedRecently(workDir string, within time.Duration) (bool, error) {
+	if within <= 0 {
+		return false, nil
+	}
+
+	dbPath, err := findBeadsDBPath(workDir)
+	if err != nil {
+		return false, err
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return false, err
+	}
+	defer db.Close()
+
+	var raw string
+	err = db.QueryRow(`SELECT value FROM metadata WHERE key = 'last_import_time'`).Scan(&raw)
+	if err != nil {
+		return false, err
+	}
+
+	importedAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(raw))
+	if err != nil {
+		return false, err
+	}
+
+	age := time.Since(importedAt)
+	if age < 0 {
+		return false, nil
+	}
+
+	return age < within, nil
+}
+
+func jsonlUpdatedRecently(workDir string, within time.Duration) (bool, error) {
+	if within <= 0 {
+		return false, nil
+	}
+
+	jsonlPath, err := findBeadsJSONLPath(workDir)
+	if err != nil {
+		return false, err
+	}
+
+	info, err := os.Stat(jsonlPath)
+	if err != nil {
+		return false, err
+	}
+
+	age := time.Since(info.ModTime())
+	if age < 0 {
+		return false, nil
+	}
+
+	return age < within, nil
+}
+
+func findBeadsDBPath(dir string) (string, error) {
+	if dir == "" {
+		if DefaultDir != "" {
+			dir = DefaultDir
+		} else {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return "", err
+			}
+			dir = cwd
+		}
+	}
+
+	current := dir
+	for {
+		dbPath := filepath.Join(current, ".beads", "beads.db")
+		if _, err := os.Stat(dbPath); err == nil {
+			return dbPath, nil
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", fmt.Errorf("no beads database found in %s or parent directories", dir)
+		}
+
+		current = parent
+	}
+}
+
+func findBeadsJSONLPath(dir string) (string, error) {
+	if dir == "" {
+		if DefaultDir != "" {
+			dir = DefaultDir
+		} else {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return "", err
+			}
+			dir = cwd
+		}
+	}
+
+	current := dir
+	for {
+		jsonlPath := filepath.Join(current, ".beads", "issues.jsonl")
+		if _, err := os.Stat(jsonlPath); err == nil {
+			return jsonlPath, nil
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", fmt.Errorf("no beads JSONL found in %s or parent directories", dir)
+		}
+
+		current = parent
+	}
 }
 
 func runBDOutput(workDir string, args ...string) ([]byte, error) {

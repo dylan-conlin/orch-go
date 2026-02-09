@@ -88,6 +88,19 @@ SPAWN TIER: {{.Tier}}
    Document your findings, decisions, and learnings in SYNTHESIS.md before completing.
 {{end}}
 {{end}}
+{{if .ModelBehaviorProfile}}
+MODEL BEHAVIOR PROFILE: {{.ModelBehaviorProfile}}
+{{if .NeedsCompletionNudge}}
+⚠️ This model often needs an explicit completion nudge.
+{{if .NoTrack}}
+Before /exit, explicitly state completion in your final message and confirm the checklist is done.
+{{else}}
+Before /exit, explicitly run ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary]\"`" + ` and confirm it succeeds.
+{{end}}
+{{else if .ReliablePhaseReporting}}
+✅ This model usually reports phases reliably. Still follow the completion checklist exactly.
+{{end}}
+{{end}}
 {{if .KBContext}}
 {{.KBContext}}
 {{end}}
@@ -150,20 +163,17 @@ This is an ad-hoc spawn without beads issue tracking.
 Progress tracking via bd comment is NOT available.
 
 🚨 SESSION COMPLETE PROTOCOL:
-After your final commit, BEFORE typing anything else:
-
-⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
-   - Your orchestrator will handle pushing to remote after review
-   - Running ` + "`git push`" + ` can trigger deploys that disrupt production systems
-   - Worker rule: Commit your work, call ` + "`/exit`" + `. Don't push.
+TERMINAL CHECKLIST (EXECUTE IN ORDER):
+- [ ] NEVER run ` + "`git push`" + ` (orchestrator handles remote push)
+- [ ] ` + "`git push`" + ` can trigger deploys that disrupt production systems
 
 {{if eq .Tier "light"}}
-1. Run: ` + "`/exit`" + ` to close the agent session
+- [ ] Run: ` + "`/exit`" + `
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
 {{else}}
-1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. Run: ` + "`/exit`" + ` to close the agent session
+- [ ] Ensure SYNTHESIS.md is created and committed in your workspace
+- [ ] Run: ` + "`/exit`" + `
 {{end}}
 {{else}}
 🚨 FIRST 3 ACTIONS (ADVISORY - STRONGLY RECOMMENDED):
@@ -179,25 +189,21 @@ Suggested first actions for visibility:
 - **Advisory** (suggested): Best practices that help quality but aren't enforced - you can skip these without blocking completion
 
 🚨 SESSION COMPLETE PROTOCOL (READ NOW, DO AT END):
-After your final commit, BEFORE typing anything else:
-
-⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
-   - Your orchestrator will handle pushing to remote after review
-   - Running ` + "`git push`" + ` can trigger deploys that disrupt production systems
-   - Worker rule: Commit your work, call ` + "`/exit`" + `. Don't push.
+TERMINAL CHECKLIST (EXECUTE IN ORDER):
+- [ ] NEVER run ` + "`git push`" + ` (orchestrator handles remote push)
+- [ ] ` + "`git push`" + ` can trigger deploys that disrupt production systems
 
 {{if eq .Tier "light"}}
-1. Run: ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary of deliverables]\"`" + `
-2. Run: ` + "`/exit`" + ` to close the agent session
+- [ ] Run: ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary of deliverables]\"`" + `
+- [ ] Run: ` + "`/exit`" + `
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
 {{else}}
-1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. Run: ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary of deliverables]\"`" + `
-3. Run: ` + "`/exit`" + ` to close the agent session
+- [ ] Ensure SYNTHESIS.md is created and committed in your workspace
+- [ ] Run: ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary of deliverables]\"`" + `
+- [ ] Run: ` + "`/exit`" + `
 {{end}}
-⚠️ Work is NOT complete until Phase: Complete is reported.
-⚠️ The orchestrator cannot close this issue until you report Phase: Complete.
+If you do not emit Phase: Complete, your work will be lost
 {{end}}
 
 CONTEXT: [See task description]
@@ -251,21 +257,33 @@ This applies to:
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be {{.ProjectDir}})
 {{if .IsInvestigationSkill}}
-2. **SET UP investigation file:** Run ` + "`kb create investigation {{.InvestigationSlug}} --defect-class <class>`" + ` to create from template
+2. **SET UP investigation deliverable:**
+{{if .HasInjectedModels}}
+   - Models are available in kb context above. For model-scoped validation/extension work, produce a **probe** instead of a standalone investigation.
+   - Probe location: ` + "`.kb/models/<model-name>/probes/YYYY-MM-DD-<slug>.md`" + `
+   - Probe template: ` + "`{{.ProjectDir}}/.orch/templates/PROBE.md`" + `
+   - If you produce a probe, do NOT create a redundant standalone investigation file.
+   - Use standalone investigation only when no model applies or the model is fundamentally wrong.
+{{end}}
+   - For standalone investigation workflow, run ` + "`kb create investigation {{.InvestigationSlug}} --defect-class <class>`" + ` to create from template
    - This creates: ` + "`.kb/investigations/YYYY-MM-DD-<type>-<slug>.md`" + `
    - This file is your coordination artifact (replaces WORKSPACE.md)
    - Defect class is REQUIRED (mechanism, not symptom). Use one of:
      ` + "`unbounded-growth`" + `, ` + "`race-condition`" + `, ` + "`missing-cleanup`" + `, ` + "`state-corruption`" + `, ` + "`resource-leak`" + `, ` + "`configuration-drift`" + `, ` + "`integration-mismatch`" + `
    - If command fails, report to orchestrator immediately
 {{if not .NoTrack}}
-   - **IMPORTANT:** After running ` + "`kb create`" + `, report the actual path via:
+   - **IMPORTANT:** Report your actual deliverable path via:
      ` + "`bd comment {{.BeadsID}} \"investigation_path: /path/to/file.md\"`" + `
-     (This allows orch complete to verify the correct file)
+     (Use the probe or investigation path so orch complete can verify the correct file)
 {{end}}
-3. **UPDATE investigation file** as you work:
-   - Add TLDR at top (1-2 sentence summary of question and finding)
-   - Fill sections: What I tried → What I observed → Test performed
-   - Only fill Conclusion if you actually tested (this is the key discipline)
+3. **UPDATE investigation deliverable** as you work:
+{{if .HasInjectedModels}}
+   - Probe workflow: Fill all 4 mandatory sections (Question, What I Tested, What I Observed, Model Impact)
+   - Probe evidence must include concrete command/output results (reading code alone is insufficient)
+{{end}}
+   - Investigation workflow: Add TLDR at top (1-2 sentence summary of question and finding)
+   - Investigation workflow: Fill sections (What I tried → What I observed → Test performed)
+   - Investigation workflow: Only fill Conclusion if you actually tested (this is the key discipline)
 4. Update Status: field when done (Active → Complete)
 5. [Task-specific deliverables]
 {{else}}
@@ -357,35 +375,33 @@ CONTEXT AVAILABLE:
 {{.ServerContext}}
 {{end}}
 🚨 FINAL STEP - SESSION COMPLETE PROTOCOL:
-After your final commit, BEFORE doing anything else:
-
-⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
-   - Your orchestrator will handle pushing to remote after review
-   - Running ` + "`git push`" + ` can trigger deploys that disrupt production systems
-   - Worker rule: Commit your work, call ` + "`/exit`" + `. Don't push.
+TERMINAL CHECKLIST (EXECUTE IN ORDER):
+- [ ] NEVER run ` + "`git push`" + ` (orchestrator handles remote push)
+- [ ] ` + "`git push`" + ` can trigger deploys that disrupt production systems
 
 {{if .NoTrack}}
 {{if eq .Tier "light"}}
-1. ` + "`/exit`" + `
+- [ ] ` + "`/exit`" + `
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
 {{else}}
-1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. ` + "`/exit`" + `
+- [ ] Ensure SYNTHESIS.md is created and committed in your workspace
+- [ ] ` + "`/exit`" + `
 {{end}}
 {{else}}
 {{if eq .Tier "light"}}
-1. ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary]\"`" + `
-2. ` + "`/exit`" + `
+- [ ] ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary]\"`" + `
+- [ ] ` + "`/exit`" + `
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
 {{else}}
-1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary]\"`" + `
-3. ` + "`/exit`" + `
+- [ ] Ensure SYNTHESIS.md is created and committed in your workspace
+- [ ] ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary]\"`" + `
+- [ ] ` + "`/exit`" + `
 {{end}}
+If you do not emit Phase: Complete, your work will be lost
 {{end}}
-⚠️ Your work is NOT complete until you run these commands.
+⚠️ Your work is NOT complete until this checklist is finished.
 `
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -447,6 +463,19 @@ const DefaultSynthesisTemplate = `# Session Synthesis
 go test ./... 
 # PASS: all tests passing
 ` + "```" + `
+
+---
+
+## Verification Contract
+
+- **Spec:** ` + "`VERIFICATION_SPEC.yaml`" + ` (workspace root)
+- **Key outcomes:**
+  - ` + "`[verification-id]`" + ` - [pass | fail | pending] - Brief evidence or observed output
+  - ` + "`[verification-id]`" + ` - [pass | fail | pending] - Brief evidence or observed output
+- **Manual steps (if any):**
+  - ` + "`[step]`" + ` - [completed | pending] - Note or owner
+
+*(If no spec update was needed, state why.)*
 
 ---
 

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 func TestExtractSkillNameFromSpawnContext(t *testing.T) {
@@ -79,6 +81,57 @@ func TestExtractSkillNameFromSpawnContext_NoFile(t *testing.T) {
 	}
 	if got != "" {
 		t.Errorf("ExtractSkillNameFromSpawnContext() = %q, want empty string for missing file", got)
+	}
+}
+
+func TestExtractSkillNameFromSpawnContext_FallbackToAgentManifest(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	err := spawn.WriteAgentManifest(tmpDir, spawn.AgentManifest{
+		WorkspaceName: "og-inv-test-09feb",
+		Skill:         "investigation",
+		ProjectDir:    tmpDir,
+		SpawnTime:     time.Now().Format(time.RFC3339),
+		Tier:          "light",
+	})
+	if err != nil {
+		t.Fatalf("failed to write AGENT_MANIFEST.json: %v", err)
+	}
+
+	got, err := ExtractSkillNameFromSpawnContext(tmpDir)
+	if err != nil {
+		t.Fatalf("ExtractSkillNameFromSpawnContext() error = %v", err)
+	}
+	if got != "investigation" {
+		t.Errorf("ExtractSkillNameFromSpawnContext() = %q, want %q", got, "investigation")
+	}
+}
+
+func TestExtractSkillNameFromSpawnContext_SpawnContextPrecedenceOverManifest(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	err := os.WriteFile(filepath.Join(tmpDir, "SPAWN_CONTEXT.md"), []byte("## SKILL GUIDANCE (feature-impl)"), 0644)
+	if err != nil {
+		t.Fatalf("failed to write SPAWN_CONTEXT.md: %v", err)
+	}
+
+	err = spawn.WriteAgentManifest(tmpDir, spawn.AgentManifest{
+		WorkspaceName: "og-inv-test-09feb",
+		Skill:         "investigation",
+		ProjectDir:    tmpDir,
+		SpawnTime:     time.Now().Format(time.RFC3339),
+		Tier:          "light",
+	})
+	if err != nil {
+		t.Fatalf("failed to write AGENT_MANIFEST.json: %v", err)
+	}
+
+	got, err := ExtractSkillNameFromSpawnContext(tmpDir)
+	if err != nil {
+		t.Fatalf("ExtractSkillNameFromSpawnContext() error = %v", err)
+	}
+	if got != "feature-impl" {
+		t.Errorf("ExtractSkillNameFromSpawnContext() = %q, want %q", got, "feature-impl")
 	}
 }
 

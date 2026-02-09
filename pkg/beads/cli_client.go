@@ -241,6 +241,9 @@ func (c *CLIClient) Create(args *CreateArgs) (*Issue, error) {
 	if args.Parent != "" {
 		cmdArgs = append(cmdArgs, "--parent", args.Parent)
 	}
+	if args.CausedBy != "" {
+		cmdArgs = append(cmdArgs, "--caused-by", args.CausedBy)
+	}
 
 	output, err := c.output(cmdArgs...)
 	if err != nil {
@@ -250,6 +253,10 @@ func (c *CLIClient) Create(args *CreateArgs) (*Issue, error) {
 	var issue Issue
 	if err := json.Unmarshal(output, &issue); err != nil {
 		return nil, fmt.Errorf("failed to parse bd create output: %w", err)
+	}
+
+	if err := ensureCreatePersisted(&issue, c.Show); err != nil {
+		return nil, err
 	}
 
 	return &issue, nil

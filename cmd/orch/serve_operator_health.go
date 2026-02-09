@@ -506,8 +506,12 @@ func listOrphanedOrchProcesses(limit int) ([]orphanProcessEntry, error) {
 		return nil, fmt.Errorf("ps query failed: %w", err)
 	}
 
+	return parseOrphanedOrchProcesses(string(output), limit, os.Getpid())
+}
+
+func parseOrphanedOrchProcesses(output string, limit, selfPID int) ([]orphanProcessEntry, error) {
 	orphans := make([]orphanProcessEntry, 0)
-	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
 		if len(fields) < 4 {
@@ -523,6 +527,9 @@ func listOrphanedOrchProcesses(limit int) ([]orphanProcessEntry, error) {
 			continue
 		}
 		if ppid != 1 {
+			continue
+		}
+		if pid == selfPID {
 			continue
 		}
 

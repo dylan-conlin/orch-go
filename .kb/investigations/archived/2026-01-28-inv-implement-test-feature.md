@@ -11,7 +11,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** "Test feature" is a meta-test for decision gate functionality; gate is implemented with sound logic but has fail-open error handling that compromises blocking effectiveness; security/safety-critical gates should fail closed.
 
-**Next:** File issue to fix fail-open error handling in decision gate (change lines 405-408 to block spawn on errors); investigate what error findBlockingDecisions() encountered; add monitoring for decision gate bypass events.
+**Next:** Close - superseded by .kb/decisions/2026-01-28-decision-gate.md and fail-closed enforcement in cmd/orch/spawn_validation.go.
 
 **Promote to Decision:** Actioned - decision exists (decision-gate)
 
@@ -50,7 +50,7 @@ Guidelines:
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
 **Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Superseded-By:** .kb/decisions/2026-01-28-decision-gate.md
 
 ---
 

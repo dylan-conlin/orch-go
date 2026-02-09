@@ -33,21 +33,23 @@ func TestResourceMonitorCalibratesBaselineAfterWarmupWindow(t *testing.T) {
 		return sample
 	}, func() time.Time {
 		return now
-	}, time.Minute)
+	}, resourceBaselineWarmupDuration)
 
-	now = now.Add(10 * time.Second)
+	warmupSegment := resourceBaselineWarmupDuration / 3
+
+	now = now.Add(warmupSegment)
 	report := monitor.sampleAndCheck()
 	if report.Breached {
 		t.Fatal("expected no breach during warmup")
 	}
 
-	now = now.Add(20 * time.Second)
+	now = now.Add(warmupSegment)
 	report = monitor.sampleAndCheck()
 	if report.Breached {
 		t.Fatal("expected no breach during warmup")
 	}
 
-	now = now.Add(30 * time.Second)
+	now = now.Add(resourceBaselineWarmupDuration - (2 * warmupSegment))
 	report = monitor.sampleAndCheck()
 	if report.Breached {
 		t.Fatal("expected no breach when baseline calibration completes")

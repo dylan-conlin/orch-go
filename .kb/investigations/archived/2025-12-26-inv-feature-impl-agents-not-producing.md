@@ -11,7 +11,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** The tier system intentionally splits skills into "full" (investigation-type, require synthesis) and "light" (implementation-focused, skip synthesis). Feature-impl is defined as light tier in `pkg/spawn/config.go:31`.
 
-**Next:** Decide whether feature-impl should produce SYNTHESIS.md. If yes, change the default tier mapping. If no (current behavior), update `orch review` and dashboard to handle light-tier completions.
+**Next:** Close - superseded by .kb/decisions/2026-02-08-kb-reflect-cluster-disposition-feature-agents-quick.md and current review pipeline behavior.
 
 ---
 
@@ -25,6 +25,7 @@ Fill this at the END of your investigation, before marking Complete.
 **Phase:** Complete
 **Next Step:** Decision required on whether to change tier defaults or update review tooling
 **Status:** Complete
+**Superseded-By:** .kb/decisions/2026-02-08-kb-reflect-cluster-disposition-feature-agents-quick.md
 
 ---
 

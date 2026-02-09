@@ -13,27 +13,29 @@ import (
 
 // SkipConfig holds the configuration for which verification gates to skip.
 type SkipConfig struct {
-	TestEvidence    bool
-	Visual          bool
-	GitDiff         bool
-	Synthesis       bool
-	Build           bool
-	Constraint      bool
-	PhaseGate       bool
-	SkillOutput     bool
-	DecisionPatch   bool
-	PhaseComplete   bool
-	HandoffContent  bool
-	DashboardHealth bool
-	Reason          string // Required reason for skips
-	BatchMode       bool   // Batch mode: skip all Tier 2 (quality) gates
+	TestEvidence     bool
+	ModelConnection  bool
+	Visual           bool
+	GitDiff          bool
+	Synthesis        bool
+	Build            bool
+	Constraint       bool
+	PhaseGate        bool
+	SkillOutput      bool
+	DecisionPatch    bool
+	PhaseComplete    bool
+	HandoffContent   bool
+	DashboardHealth  bool
+	VerificationSpec bool
+	Reason           string // Required reason for skips
+	BatchMode        bool   // Batch mode: skip all Tier 2 (quality) gates
 }
 
 // hasAnySkip returns true if any skip flag is set (including batch mode).
 func (c SkipConfig) hasAnySkip() bool {
-	return c.BatchMode || c.TestEvidence || c.Visual || c.GitDiff || c.Synthesis ||
+	return c.BatchMode || c.TestEvidence || c.ModelConnection || c.Visual || c.GitDiff || c.Synthesis ||
 		c.Build || c.Constraint || c.PhaseGate || c.SkillOutput ||
-		c.DecisionPatch || c.PhaseComplete || c.HandoffContent || c.DashboardHealth
+		c.DecisionPatch || c.PhaseComplete || c.HandoffContent || c.DashboardHealth || c.VerificationSpec
 }
 
 // skippedGates returns a list of gate names that are being skipped.
@@ -41,6 +43,9 @@ func (c SkipConfig) skippedGates() []string {
 	var gates []string
 	if c.TestEvidence {
 		gates = append(gates, verify.GateTestEvidence)
+	}
+	if c.ModelConnection {
+		gates = append(gates, verify.GateModelConnection)
 	}
 	if c.Visual {
 		gates = append(gates, verify.GateVisualVerify)
@@ -75,6 +80,9 @@ func (c SkipConfig) skippedGates() []string {
 	if c.DashboardHealth {
 		gates = append(gates, verify.GateDashboardHealth)
 	}
+	if c.VerificationSpec {
+		gates = append(gates, verify.GateVerificationSpec)
+	}
 	return gates
 }
 
@@ -87,6 +95,8 @@ func (c SkipConfig) shouldSkipGate(gate string) bool {
 	switch gate {
 	case verify.GateTestEvidence:
 		return c.TestEvidence
+	case verify.GateModelConnection:
+		return c.ModelConnection
 	case verify.GateVisualVerify:
 		return c.Visual
 	case verify.GateGitDiff:
@@ -109,6 +119,8 @@ func (c SkipConfig) shouldSkipGate(gate string) bool {
 		return c.HandoffContent
 	case verify.GateDashboardHealth:
 		return c.DashboardHealth
+	case verify.GateVerificationSpec:
+		return c.VerificationSpec
 	default:
 		return false
 	}
@@ -117,20 +129,22 @@ func (c SkipConfig) shouldSkipGate(gate string) bool {
 // getSkipConfig builds the skip configuration from command-line flags.
 func getSkipConfig() SkipConfig {
 	return SkipConfig{
-		TestEvidence:    completeSkipTestEvidence,
-		Visual:          completeSkipVisual,
-		GitDiff:         completeSkipGitDiff,
-		Synthesis:       completeSkipSynthesis,
-		Build:           completeSkipBuild,
-		Constraint:      completeSkipConstraint,
-		PhaseGate:       completeSkipPhaseGate,
-		SkillOutput:     completeSkipSkillOutput,
-		DecisionPatch:   completeSkipDecisionPatch,
-		PhaseComplete:   completeSkipPhaseComplete,
-		HandoffContent:  completeSkipHandoffContent,
-		DashboardHealth: completeSkipDashboardHealth,
-		Reason:          completeSkipReason,
-		BatchMode:       completeBatch,
+		TestEvidence:     completeSkipTestEvidence,
+		ModelConnection:  completeSkipModelConnection,
+		Visual:           completeSkipVisual,
+		GitDiff:          completeSkipGitDiff,
+		Synthesis:        completeSkipSynthesis,
+		Build:            completeSkipBuild,
+		Constraint:       completeSkipConstraint,
+		PhaseGate:        completeSkipPhaseGate,
+		SkillOutput:      completeSkipSkillOutput,
+		DecisionPatch:    completeSkipDecisionPatch,
+		PhaseComplete:    completeSkipPhaseComplete,
+		HandoffContent:   completeSkipHandoffContent,
+		DashboardHealth:  completeSkipDashboardHealth,
+		VerificationSpec: completeSkipVerificationSpec,
+		Reason:           completeSkipReason,
+		BatchMode:        completeBatch,
 	}
 }
 

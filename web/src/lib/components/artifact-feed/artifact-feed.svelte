@@ -9,6 +9,7 @@
 	let selectedIndex = -1;
 	let currentSection: 'needs-decision' | 'recent' | 'browse' = 'needs-decision';
 	let timeFilter = '7d';
+	let browseType: string | null = null;
 
 	// Get time filter from localStorage
 	onMount(() => {
@@ -36,11 +37,28 @@
 		kbArtifacts.fetch(projectDir, filter);
 	}
 
+	// Artifacts filtered by browse type, or the default needs_decision + recent
+	$: browseArtifacts = browseType && $kbArtifacts?.by_type?.[browseType]
+		? $kbArtifacts.by_type[browseType]
+		: null;
+
 	// Flatten all artifacts into a single list for keyboard navigation
-	$: allArtifacts = [
-		...($kbArtifacts?.needs_decision ?? []),
-		...($kbArtifacts?.recent ?? [])
-	];
+	$: allArtifacts = browseArtifacts
+		? browseArtifacts
+		: [
+			...($kbArtifacts?.needs_decision ?? []),
+			...($kbArtifacts?.recent ?? [])
+		];
+
+	function toggleBrowseType(type: string) {
+		if (browseType === type) {
+			browseType = null;
+		} else {
+			browseType = type;
+		}
+		selectedIndex = -1;
+		selectedArtifact = null;
+	}
 
 	// Keyboard navigation
 	function handleKeydown(event: KeyboardEvent) {
@@ -129,14 +147,47 @@
 <svelte:window on:keydown={handleKeydown} />
 
 <div class="artifact-feed flex flex-col h-full min-h-0 overflow-y-auto">
-	<!-- Needs Decision Section -->
-	{#if $kbArtifacts?.needs_decision && $kbArtifacts.needs_decision.length > 0}
-		<div class="px-6 py-4 border-b border-border">
-			<h2 class="text-sm font-semibold text-foreground mb-3">
-				NEEDS DECISION ({$kbArtifacts.needs_decision.length})
-			</h2>
+	<!-- Browse by Type filter bar -->
+	<div class="px-6 py-3 border-b border-border">
+		<div class="flex flex-wrap gap-2 text-xs">
+			{#if $kbArtifacts?.by_type}
+				{@const types = [
+					{ key: 'investigation', label: 'Investigations' },
+					{ key: 'decision', label: 'Decisions' },
+					{ key: 'model', label: 'Models' },
+					{ key: 'guide', label: 'Guides' }
+				]}
+				{#each types as t (t.key)}
+					{@const count = $kbArtifacts.by_type[t.key]?.length ?? 0}
+					<button
+						class="px-2 py-1 rounded-md border transition-colors {browseType === t.key
+							? 'bg-accent text-accent-foreground border-accent'
+							: 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'}"
+						on:click={() => toggleBrowseType(t.key)}
+					>
+						{t.label} ({count})
+					</button>
+				{/each}
+			{/if}
+		</div>
+	</div>
+
+	{#if browseArtifacts}
+		<!-- Filtered by type -->
+		<div class="px-6 py-4">
+			<div class="flex items-center justify-between mb-3">
+				<h2 class="text-sm font-semibold text-foreground uppercase">
+					{browseType}s ({browseArtifacts.length})
+				</h2>
+				<button
+					class="text-xs text-muted-foreground hover:text-foreground"
+					on:click={() => { browseType = null; }}
+				>
+					Clear filter
+				</button>
+			</div>
 			<div class="space-y-2">
-				{#each $kbArtifacts.needs_decision as artifact, i (artifact.path)}
+				{#each browseArtifacts as artifact, i (artifact.path)}
 					<ArtifactRow
 						{artifact}
 						selected={selectedIndex === i}
@@ -145,62 +196,59 @@
 				{/each}
 			</div>
 		</div>
+	{:else}
+		<!-- Needs Decision Section -->
+		{#if $kbArtifacts?.needs_decision && $kbArtifacts.needs_decision.length > 0}
+			<div class="px-6 py-4 border-b border-border">
+				<h2 class="text-sm font-semibold text-foreground mb-3">
+					NEEDS DECISION ({$kbArtifacts.needs_decision.length})
+				</h2>
+				<div class="space-y-2">
+					{#each $kbArtifacts.needs_decision as artifact, i (artifact.path)}
+						<ArtifactRow
+							{artifact}
+							selected={selectedIndex === i}
+							on:click={() => handleArtifactClick(artifact, i)}
+						/>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<!-- Recently Updated Section -->
+		<div class="px-6 py-4 border-b border-border">
+			<div class="flex items-center justify-between mb-3">
+				<h2 class="text-sm font-semibold text-foreground">
+					RECENTLY UPDATED ({$kbArtifacts?.recent.length ?? 0})
+				</h2>
+				<!-- Time Filter -->
+				<select
+					bind:value={timeFilter}
+					on:change={(e) => setTimeFilter(e.currentTarget.value)}
+					class="text-xs border border-border rounded px-2 py-1 bg-background text-foreground"
+				>
+					<option value="24h">24h</option>
+					<option value="7d">7d</option>
+					<option value="30d">30d</option>
+					<option value="all">all</option>
+				</select>
+			</div>
+			<div class="space-y-2">
+				{#if $kbArtifacts?.recent && $kbArtifacts.recent.length > 0}
+					{#each $kbArtifacts.recent as artifact, i (artifact.path)}
+						{@const globalIndex = ($kbArtifacts.needs_decision?.length ?? 0) + i}
+						<ArtifactRow
+							{artifact}
+							selected={selectedIndex === globalIndex}
+							on:click={() => handleArtifactClick(artifact, globalIndex)}
+						/>
+					{/each}
+				{:else}
+					<p class="text-sm text-muted-foreground">No recent artifacts</p>
+				{/if}
+			</div>
+		</div>
 	{/if}
-
-	<!-- Recently Updated Section -->
-	<div class="px-6 py-4 border-b border-border">
-		<div class="flex items-center justify-between mb-3">
-			<h2 class="text-sm font-semibold text-foreground">
-				RECENTLY UPDATED ({$kbArtifacts?.recent.length ?? 0})
-			</h2>
-			<!-- Time Filter -->
-			<select
-				bind:value={timeFilter}
-				on:change={(e) => setTimeFilter(e.currentTarget.value)}
-				class="text-xs border border-border rounded px-2 py-1 bg-background text-foreground"
-			>
-				<option value="24h">24h</option>
-				<option value="7d">7d</option>
-				<option value="30d">30d</option>
-				<option value="all">all</option>
-			</select>
-		</div>
-		<div class="space-y-2">
-			{#if $kbArtifacts?.recent && $kbArtifacts.recent.length > 0}
-				{#each $kbArtifacts.recent as artifact, i (artifact.path)}
-					{@const globalIndex = ($kbArtifacts.needs_decision?.length ?? 0) + i}
-					<ArtifactRow
-						{artifact}
-						selected={selectedIndex === globalIndex}
-						on:click={() => handleArtifactClick(artifact, globalIndex)}
-					/>
-				{/each}
-			{:else}
-				<p class="text-sm text-muted-foreground">No recent artifacts</p>
-			{/if}
-		</div>
-	</div>
-
-	<!-- Browse by Type Section -->
-	<div class="px-6 py-4">
-		<h2 class="text-sm font-semibold text-foreground mb-3">BROWSE BY TYPE</h2>
-		<div class="flex gap-3 text-sm">
-			{#if $kbArtifacts?.by_type}
-				<button class="text-muted-foreground hover:text-foreground">
-					Investigations ({$kbArtifacts.by_type.investigation?.length ?? 0})
-				</button>
-				<button class="text-muted-foreground hover:text-foreground">
-					Decisions ({$kbArtifacts.by_type.decision?.length ?? 0})
-				</button>
-				<button class="text-muted-foreground hover:text-foreground">
-					Models ({$kbArtifacts.by_type.model?.length ?? 0})
-				</button>
-				<button class="text-muted-foreground hover:text-foreground">
-					Guides ({$kbArtifacts.by_type.guide?.length ?? 0})
-				</button>
-			{/if}
-		</div>
-	</div>
 </div>
 
 <!-- Side Panel -->

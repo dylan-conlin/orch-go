@@ -26,7 +26,8 @@ Subcommands:
   run      Process issues continuously with polling
   once     Process a single issue and exit
   preview  Show what would be processed next without processing
-  reflect  Run kb reflect analysis and store suggestions`,
+  reflect  Run kb reflect analysis and store suggestions
+  cache-clear  Remove entries from daemon processed cache`,
 }
 
 var daemonRunCmd = &cobra.Command{
@@ -109,6 +110,23 @@ Examples:
 	},
 }
 
+var daemonCacheClearCmd = &cobra.Command{
+	Use:   "cache-clear [beads-id...]",
+	Short: "Remove entries from daemon processed cache",
+	Long: `Remove one or more entries from the daemon processed issue cache.
+
+Use this when an issue should be re-evaluated immediately without waiting for
+cache TTL expiry or restarting daemon processes.
+
+Examples:
+  orch daemon cache-clear orch-go-12345
+  orch daemon cache-clear orch-go-12345 orch-go-67890
+  orch daemon cache-clear --all`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runDaemonCacheClear(args)
+	},
+}
+
 var (
 	// Daemon flags
 	daemonDelay                        int    // Delay between spawns in seconds
@@ -130,6 +148,10 @@ var (
 	daemonCleanupPreserveOrch          bool   // Preserve orchestrator sessions/workspaces during cleanup
 	daemonCrossProject                 bool   // Poll all kb-registered projects for issues
 	daemonSpawnFactualQuestions        bool   // Spawn investigations for factual questions (subtype:factual label)
+	daemonPolishEnabled                bool   // Enable polish mode when queue is empty
+	daemonPolishInterval               int    // Polish mode interval in minutes
+	daemonPolishMaxIssuesPerCycle      int    // Max polish issues to create per poll cycle
+	daemonPolishMaxIssuesPerDay        int    // Max polish issues to create per day
 	daemonDeadSessionDetectionEnabled  bool   // Enable dead session detection
 	daemonDeadSessionDetectionInterval int    // Dead session detection interval in minutes (0 = disabled)
 	daemonMaxDeadSessionRetries        int    // Max dead session retries before escalation
@@ -139,6 +161,7 @@ var (
 	daemonDashboardWatchdog            bool   // Enable dashboard health watchdog
 	daemonDashboardWatchdogInterval    int    // Dashboard watchdog check interval in seconds
 	daemonAllowFeatureWork             bool   // Override investigation circuit breaker and allow feature issues
+	daemonCacheClearAll                bool   // Clear all processed cache entries
 )
 
 func init() {
@@ -146,6 +169,7 @@ func init() {
 	daemonCmd.AddCommand(daemonOnceCmd)
 	daemonCmd.AddCommand(daemonPreviewCmd)
 	daemonCmd.AddCommand(daemonReflectCmd)
+	daemonCmd.AddCommand(daemonCacheClearCmd)
 
 	// Spawn delay between issues
 	daemonRunCmd.Flags().IntVar(&daemonDelay, "delay", 10, "Delay between spawns in seconds")
@@ -161,11 +185,11 @@ func init() {
 	daemonRunCmd.Flags().IntVar(&daemonReflectInterval, "reflect-interval", 60, "Periodic reflection interval in minutes (0 = disabled, default: 60)")
 	daemonRunCmd.Flags().BoolVar(&daemonReflectIssues, "reflect-issues", true, "Create beads issues for synthesis opportunities (default: true)")
 	daemonRunCmd.Flags().BoolVar(&daemonCleanupEnabled, "cleanup-enabled", true, "Enable periodic cleanup (default: true)")
-	daemonRunCmd.Flags().IntVar(&daemonCleanupInterval, "cleanup-interval", 360, "Cleanup interval in minutes (0 = disabled, default: 360 = 6 hours)")
+	daemonRunCmd.Flags().IntVar(&daemonCleanupInterval, "cleanup-interval", -1, "Cleanup interval in minutes (0 = disabled; default from .orch/config.yaml daemon.cleanup.interval_minutes, fallback 360)")
 	daemonRunCmd.Flags().BoolVar(&daemonCleanupSessions, "cleanup-sessions", true, "Clean stale OpenCode sessions (default: true)")
-	daemonRunCmd.Flags().IntVar(&daemonCleanupSessionsAge, "cleanup-sessions-age", 7, "Session age threshold in days (default: 7)")
+	daemonRunCmd.Flags().IntVar(&daemonCleanupSessionsAge, "cleanup-sessions-age", -1, "Session age threshold in days (default from .orch/config.yaml daemon.cleanup.sessions_age_days, fallback 7)")
 	daemonRunCmd.Flags().BoolVar(&daemonCleanupWorkspaces, "cleanup-workspaces", true, "Archive stale completed workspaces (default: true)")
-	daemonRunCmd.Flags().IntVar(&daemonCleanupWorkspacesAge, "cleanup-workspaces-age", 7, "Workspace age threshold in days (default: 7)")
+	daemonRunCmd.Flags().IntVar(&daemonCleanupWorkspacesAge, "cleanup-workspaces-age", -1, "Workspace age threshold in days (default from .orch/config.yaml daemon.cleanup.workspaces_age_days, fallback 7)")
 	daemonRunCmd.Flags().BoolVar(&daemonCleanupInvestigations, "cleanup-investigations", true, "Archive empty investigation files (default: true)")
 	daemonRunCmd.Flags().BoolVar(&daemonCleanupPreserveOrch, "cleanup-preserve-orchestrator", true, "Preserve orchestrator sessions/workspaces during cleanup (default: true)")
 	// Mark max-agents as hidden since --concurrency is the preferred name
@@ -176,15 +200,19 @@ func init() {
 
 	// Factual questions spawning
 	daemonRunCmd.Flags().BoolVar(&daemonSpawnFactualQuestions, "spawn-factual-questions", false, "Spawn investigations for factual questions (subtype:factual label)")
+	daemonRunCmd.Flags().BoolVar(&daemonPolishEnabled, "polish", true, "Enable polish mode when queue is empty (default: true)")
+	daemonRunCmd.Flags().IntVar(&daemonPolishInterval, "polish-interval", 30, "Polish audit interval in minutes (0 = disabled)")
+	daemonRunCmd.Flags().IntVar(&daemonPolishMaxIssuesPerCycle, "polish-max-per-cycle", 3, "Max polish issues to create per cycle")
+	daemonRunCmd.Flags().IntVar(&daemonPolishMaxIssuesPerDay, "polish-max-per-day", 10, "Max polish issues to create per day")
 
 	// Dead session detection
 	daemonRunCmd.Flags().BoolVar(&daemonDeadSessionDetectionEnabled, "dead-session-detection", true, "Enable dead session detection (default: true)")
-	daemonRunCmd.Flags().IntVar(&daemonDeadSessionDetectionInterval, "dead-session-interval", 10, "Dead session detection interval in minutes (0 = disabled, default: 10)")
-	daemonRunCmd.Flags().IntVar(&daemonMaxDeadSessionRetries, "max-dead-session-retries", 2, "Max times a dead session is retried before escalating to needs:human (default: 2)")
+	daemonRunCmd.Flags().IntVar(&daemonDeadSessionDetectionInterval, "dead-session-interval", -1, "Dead session detection interval in minutes (0 = disabled; default from .orch/config.yaml daemon.dead_session.interval_minutes, fallback 10)")
+	daemonRunCmd.Flags().IntVar(&daemonMaxDeadSessionRetries, "max-dead-session-retries", -1, "Max times a dead session is retried before escalating to needs:human (default from .orch/config.yaml daemon.dead_session.max_retries, fallback 2)")
 
 	// Orphan process reaping
 	daemonRunCmd.Flags().BoolVar(&daemonOrphanReapEnabled, "orphan-reap", true, "Enable periodic orphan process reaping (default: true)")
-	daemonRunCmd.Flags().IntVar(&daemonOrphanReapInterval, "orphan-reap-interval", 5, "Orphan reap interval in minutes (0 = disabled, default: 5)")
+	daemonRunCmd.Flags().IntVar(&daemonOrphanReapInterval, "orphan-reap-interval", -1, "Orphan reap interval in minutes (0 = disabled; default from .orch/config.yaml daemon.orphan_reap.interval_minutes, fallback 5)")
 
 	// Sort mode for issue prioritization
 	daemonRunCmd.Flags().StringVar(&daemonSortMode, "sort-mode", "priority", "Sort strategy for issue prioritization (priority, unblock)")
@@ -192,7 +220,7 @@ func init() {
 
 	// Dashboard health watchdog
 	daemonRunCmd.Flags().BoolVar(&daemonDashboardWatchdog, "dashboard-watchdog", true, "Enable dashboard health monitoring and auto-restart (default: true)")
-	daemonRunCmd.Flags().IntVar(&daemonDashboardWatchdogInterval, "dashboard-watchdog-interval", 30, "Dashboard health check interval in seconds (default: 30)")
+	daemonRunCmd.Flags().IntVar(&daemonDashboardWatchdogInterval, "dashboard-watchdog-interval", -1, "Dashboard health check interval in seconds (0 = disabled; default from .orch/config.yaml daemon.dashboard_watchdog.interval_seconds, fallback 30)")
 
 	// Add label filter to preview and once commands (share the same variable)
 	daemonPreviewCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
@@ -203,6 +231,69 @@ func init() {
 	daemonOnceCmd.Flags().BoolVar(&daemonCrossProject, "cross-project", false, "Process one issue from all kb-registered projects")
 	daemonOnceCmd.Flags().StringVar(&daemonSortMode, "sort-mode", "priority", "Sort strategy for issue prioritization (priority, unblock)")
 	daemonOnceCmd.Flags().BoolVar(&daemonAllowFeatureWork, "allow-feature-work", false, "Override investigation circuit breaker and include feature issues in ready queue")
+
+	// Cache maintenance
+	daemonCacheClearCmd.Flags().BoolVar(&daemonCacheClearAll, "all", false, "Clear all processed cache entries")
+}
+
+func runDaemonCacheClear(args []string) error {
+	if daemonCacheClearAll && len(args) > 0 {
+		return fmt.Errorf("cannot combine --all with explicit issue IDs")
+	}
+	if !daemonCacheClearAll && len(args) == 0 {
+		return fmt.Errorf("provide at least one beads ID or use --all")
+	}
+
+	cachePath := daemon.DefaultProcessedIssueCachePath()
+	cache, err := daemon.NewProcessedIssueCache(
+		cachePath,
+		daemon.DefaultProcessedIssueCacheMaxEntries,
+		daemon.DefaultProcessedIssueCacheTTL,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to open processed cache: %w", err)
+	}
+
+	if daemonCacheClearAll {
+		removed := cache.Count()
+		if err := cache.Clear(); err != nil {
+			return fmt.Errorf("failed to clear processed cache: %w", err)
+		}
+		fmt.Printf("Cleared %d processed cache entries from %s\n", removed, cachePath)
+		return nil
+	}
+
+	unique := make(map[string]struct{})
+	for _, beadsID := range args {
+		if beadsID == "" {
+			continue
+		}
+		unique[beadsID] = struct{}{}
+	}
+	if len(unique) == 0 {
+		return fmt.Errorf("no valid beads IDs provided")
+	}
+
+	before := cache.Count()
+	for beadsID := range unique {
+		if err := cache.Unmark(beadsID); err != nil {
+			return fmt.Errorf("failed to clear %s from processed cache: %w", beadsID, err)
+		}
+	}
+	after := cache.Count()
+	removed := before - after
+	if removed < 0 {
+		removed = 0
+	}
+
+	fmt.Printf(
+		"Cleared %d processed cache entries from %s (requested %d ID(s))\n",
+		removed,
+		cachePath,
+		len(unique),
+	)
+
+	return nil
 }
 
 func runDaemonLoop() error {
@@ -316,6 +407,9 @@ func runDaemonLoop() error {
 
 		// Process issues until queue is empty or at capacity
 		spawnedThisCycle := rt.processSpawns(timestamp)
+
+		// If queue had no spawnable work, run polish mode audits.
+		rt.processPolish(timestamp, spawnedThisCycle)
 
 		// If poll interval is 0, run once and exit
 		if config.PollInterval == 0 {

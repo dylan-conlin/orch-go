@@ -153,7 +153,7 @@ func getIssueComments(beadsID string) ([]beads.Comment, error) {
 		return comments, nil
 	}
 
-	cmd := exec.Command("bd", "--sandbox", "comments", beadsID, "--json")
+	cmd := exec.Command("bd", "--sandbox", "--quiet", "comments", beadsID, "--json")
 	output, err := bdCombinedOutput(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get comments: %w: %s", err, string(output))
@@ -239,7 +239,7 @@ func AddCommentToIssue(beadsID, comment string) error {
 	}
 
 	// Fallback to CLI if daemon unavailable
-	cmd := exec.Command("bd", "--sandbox", "comments", "add", beadsID, comment)
+	cmd := exec.Command("bd", "--sandbox", "--quiet", "comments", "add", beadsID, comment)
 	output, err := bdCombinedOutput(cmd)
 	if err != nil {
 		return fmt.Errorf("failed to add comment: %w: %s", err, string(output))
@@ -269,7 +269,7 @@ func UpdateIssueStatus(beadsID, status string) error {
 	}
 
 	// Fallback to CLI if daemon unavailable
-	cmd := exec.Command("bd", "--sandbox", "update", beadsID, "--status", status)
+	cmd := exec.Command("bd", "--sandbox", "--quiet", "update", beadsID, "--status", status)
 	output, err := bdCombinedOutput(cmd)
 	if err != nil {
 		return fmt.Errorf("failed to update status: %w: %s", err, string(output))
@@ -311,7 +311,7 @@ func listIssuesWithStatusCLI(status string) ([]Issue, error) {
 	// Use bd list --status <status> --json
 	// Note: bd list may not support --status filter in all versions
 	// Try filtered query first, fall back to manual filtering
-	cmd := exec.Command("bd", "--sandbox", "list", "--status", status, "--json", "--limit", "0")
+	cmd := exec.Command("bd", "--sandbox", "--quiet", "list", "--status", status, "--json", "--limit", "0")
 	output, err := bdCombinedOutput(cmd)
 
 	// If --status flag not supported, fall back to unfiltered list + manual filter
@@ -333,7 +333,7 @@ func listIssuesWithStatusCLI(status string) ([]Issue, error) {
 
 // listAndFilter gets all issues and filters by status manually.
 func listAndFilter(status string) ([]Issue, error) {
-	cmd := exec.Command("bd", "--sandbox", "list", "--json", "--limit", "0")
+	cmd := exec.Command("bd", "--sandbox", "--quiet", "list", "--json", "--limit", "0")
 	output, err := bdCombinedOutput(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list issues: %w: %s", err, string(output))

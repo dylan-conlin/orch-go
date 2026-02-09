@@ -8,7 +8,7 @@
 //	auto_export_transcript: true
 //	notifications:
 //	  enabled: true
-//	default_tier: full  # Force all spawns to produce SYNTHESIS.md (or "light" for skill defaults)
+//	default_tier: full  # Fallback tier when skill has no declared default ("light" or "full")
 package userconfig
 
 import (
@@ -113,9 +113,8 @@ type Config struct {
 	Notifications NotificationConfig `yaml:"notifications,omitempty"`
 	// Reflect holds settings for periodic kb reflect analysis.
 	Reflect ReflectConfig `yaml:"reflect,omitempty"`
-	// DefaultTier specifies the default spawn tier: "light" or "full".
-	// When set to "full", all spawns (including light-tier skills) will require SYNTHESIS.md.
-	// When set to "light" or empty, skill defaults are used.
+	// DefaultTier specifies the global fallback spawn tier: "light" or "full".
+	// Resolution order is: CLI flags -> skill default -> this global fallback.
 	// Explicit --light or --full flags still override this setting.
 	DefaultTier string `yaml:"default_tier,omitempty"`
 	// Daemon holds settings for the orch daemon plist generation.
@@ -219,16 +218,13 @@ func (c *Config) ReflectCreateIssues() bool {
 	return *c.Reflect.CreateIssues
 }
 
-// GetDefaultTier returns the default spawn tier from config.
-// Returns "full" if configured as "full", empty string otherwise (use skill defaults).
-// Valid values are "light", "full", or empty (skill defaults).
+// GetDefaultTier returns the global fallback spawn tier from config.
+// Valid values are "light", "full", or empty string (no global fallback).
 func (c *Config) GetDefaultTier() string {
-	// Only return "full" if explicitly configured - this forces all spawns to full tier
-	// "light" or empty means use skill defaults
-	if c.DefaultTier == "full" {
-		return "full"
+	if c.DefaultTier == "light" || c.DefaultTier == "full" {
+		return c.DefaultTier
 	}
-	return "" // Use skill defaults
+	return ""
 }
 
 // IsBackendDisabled returns true if the given backend is in the disabled list.

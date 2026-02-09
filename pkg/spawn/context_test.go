@@ -425,6 +425,8 @@ func TestWriteContext(t *testing.T) {
 		ProjectDir:    tempDir,
 		WorkspaceName: "og-test-19dec",
 		BeadsID:       "test-123",
+		SkillName:     "feature-impl",
+		Tier:          TierLight,
 	}
 
 	if err := WriteContext(cfg); err != nil {
@@ -445,6 +447,113 @@ func TestWriteContext(t *testing.T) {
 
 	if !strings.Contains(string(content), "TASK: test task") {
 		t.Error("context file should contain task")
+	}
+
+	verificationPath := filepath.Join(tempDir, ".orch", "workspace", "og-test-19dec", "VERIFICATION_SPEC.yaml")
+	verificationContent, err := os.ReadFile(verificationPath)
+	if err != nil {
+		t.Fatalf("failed to read verification spec skeleton: %v", err)
+	}
+
+	verificationChecks := []string{
+		"version: 1",
+		"beads_id: test-123",
+		"workspace: og-test-19dec",
+		"skill: feature-impl",
+		"id: verify-build",
+		"id: verify-test",
+		"method: cli_smoke",
+		"tier: light",
+	}
+
+	for _, check := range verificationChecks {
+		if !strings.Contains(string(verificationContent), check) {
+			t.Errorf("verification spec skeleton should contain %q", check)
+		}
+	}
+}
+
+func TestGenerateVerificationSpecSkeleton_ArtifactSkillsUseStaticEntry(t *testing.T) {
+	cfg := &Config{
+		SkillName:     "investigation",
+		Tier:          TierFull,
+		WorkspaceName: "og-inv-proof-08feb",
+		BeadsID:       "orch-go-99999",
+	}
+
+	content, err := GenerateVerificationSpecSkeleton(cfg)
+	if err != nil {
+		t.Fatalf("GenerateVerificationSpecSkeleton failed: %v", err)
+	}
+
+	checks := []string{
+		"method: static",
+		"id: verify-artifact-exists",
+		"tier: full",
+		"command: test -f \"<path-to-artifact>\"",
+	}
+
+	for _, check := range checks {
+		if !strings.Contains(content, check) {
+			t.Errorf("expected artifact skeleton to contain %q", check)
+		}
+	}
+}
+
+func TestGenerateVerificationSpecSkeleton_BrowserSkillUsesBrowserEntry(t *testing.T) {
+	cfg := &Config{
+		SkillName:     "ui-design-session",
+		Tier:          TierFull,
+		WorkspaceName: "og-ui-proof-08feb",
+		BeadsID:       "orch-go-88888",
+	}
+
+	content, err := GenerateVerificationSpecSkeleton(cfg)
+	if err != nil {
+		t.Fatalf("GenerateVerificationSpecSkeleton failed: %v", err)
+	}
+
+	checks := []string{
+		"method: browser",
+		"id: verify-browser",
+		"tier: full",
+		"timeout_seconds: 45",
+	}
+
+	for _, check := range checks {
+		if !strings.Contains(content, check) {
+			t.Errorf("expected browser skeleton to contain %q", check)
+		}
+	}
+}
+
+func TestGenerateVerificationSpecSkeleton_PlaywrightAddsBrowserEntry(t *testing.T) {
+	cfg := &Config{
+		SkillName:     "feature-impl",
+		Tier:          TierLight,
+		WorkspaceName: "og-feat-proof-08feb",
+		BeadsID:       "orch-go-77777",
+		MCP:           "playwright",
+	}
+
+	content, err := GenerateVerificationSpecSkeleton(cfg)
+	if err != nil {
+		t.Fatalf("GenerateVerificationSpecSkeleton failed: %v", err)
+	}
+
+	checks := []string{
+		"id: verify-build",
+		"id: verify-test",
+		"id: verify-browser",
+		"method: cli_smoke",
+		"method: browser",
+		"tier: light",
+	}
+
+	for _, check := range checks {
+		if !strings.Contains(content, check) {
+			t.Errorf("expected playwright skeleton to contain %q", check)
+		}
 	}
 }
 
@@ -1698,14 +1807,19 @@ func TestGenerateContext_NoPushGuidance(t *testing.T) {
 			t.Error("expected content to explain why pushing is prohibited")
 		}
 
-		// Should contain the worker rule
-		if !strings.Contains(content, "Worker rule: Commit your work, call `/exit`. Don't push") {
-			t.Error("expected content to contain worker rule statement")
+		// Should use terminal checklist format for completion steps
+		if !strings.Contains(content, "TERMINAL CHECKLIST (EXECUTE IN ORDER)") {
+			t.Error("expected content to contain terminal checklist format")
 		}
 
 		// Should mention orchestrator handles pushing
-		if !strings.Contains(content, "orchestrator will handle pushing to remote") {
+		if !strings.Contains(content, "orchestrator handles remote push") {
 			t.Error("expected content to explain orchestrator role in pushing")
+		}
+
+		// Should contain explicit failure wording for missing completion signal
+		if !strings.Contains(content, "If you do not emit Phase: Complete, your work will be lost") {
+			t.Error("expected content to contain explicit Phase: Complete failure wording")
 		}
 	})
 
@@ -1730,9 +1844,9 @@ func TestGenerateContext_NoPushGuidance(t *testing.T) {
 			t.Error("expected content to contain no-push guidance for no-track spawn")
 		}
 
-		// Should contain worker rule
-		if !strings.Contains(content, "Worker rule:") {
-			t.Error("expected content to contain worker rule for no-track spawn")
+		// Should use terminal checklist format for completion steps
+		if !strings.Contains(content, "TERMINAL CHECKLIST (EXECUTE IN ORDER)") {
+			t.Error("expected content to contain terminal checklist for no-track spawn")
 		}
 	})
 }
@@ -1858,6 +1972,58 @@ func TestGenerateContext_NoTrack(t *testing.T) {
 	})
 }
 
+func TestGenerateContext_ModelBehaviorProfile(t *testing.T) {
+	t.Run("strict-complete profile for anthropic model", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "implement feature",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-profile",
+			BeadsID:       "test-123",
+			Tier:          TierLight,
+			Model:         "anthropic/claude-opus-4-6",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		if !strings.Contains(content, "MODEL BEHAVIOR PROFILE: strict-complete") {
+			t.Error("expected strict-complete behavior profile for anthropic model")
+		}
+		if strings.Contains(content, "often needs an explicit completion nudge") {
+			t.Error("did not expect needs-nudge warning for strict-complete profile")
+		}
+	})
+
+	t.Run("needs-nudge profile for openai model", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "implement feature",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-profile",
+			BeadsID:       "test-456",
+			Tier:          TierLight,
+			Model:         "openai/gpt-5.3-codex",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		if !strings.Contains(content, "MODEL BEHAVIOR PROFILE: needs-nudge") {
+			t.Error("expected needs-nudge behavior profile for OpenAI model")
+		}
+		if !strings.Contains(content, "orch phase test-456 Complete") {
+			t.Error("expected explicit orch phase completion reminder for needs-nudge profile")
+		}
+	})
+}
+
 func TestGenerateContext_ProbeGuidance(t *testing.T) {
 	t.Run("includes probe guidance when model content is injected in KBContext", func(t *testing.T) {
 		cfg := &Config{
@@ -1885,6 +2051,10 @@ func TestGenerateContext_ProbeGuidance(t *testing.T) {
 			t.Error("expected content to contain probe guidance when models are injected")
 		}
 
+		if !strings.Contains(content, "produce a **probe** instead of a standalone investigation") {
+			t.Error("expected investigation deliverables to suggest probe-first workflow")
+		}
+
 		// Should reference the probe template
 		if !strings.Contains(content, "PROBE.md") {
 			t.Error("expected content to reference PROBE.md template")
@@ -1900,6 +2070,35 @@ func TestGenerateContext_ProbeGuidance(t *testing.T) {
 		// Should contain key discipline about testing vs reading
 		if !strings.Contains(content, "Reading code is not testing") {
 			t.Error("expected probe guidance to contain test-before-conclude discipline")
+		}
+	})
+
+	t.Run("detects model presence from models section header", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "check model assumptions",
+			SkillName:     "investigation",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-inv-test-08feb",
+			BeadsID:       "test-model-header",
+			Tier:          TierFull,
+			KBContext: "## PRIOR KNOWLEDGE (from kb context)\n\n" +
+				"### Models (synthesized understanding)\n" +
+				"- Domain Model\n" +
+				"  - See: /tmp/test/.kb/models/domain.md\n",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		if !strings.Contains(content, "## PROBE GUIDANCE (Model-Scoped Work)") {
+			t.Error("expected content to contain probe guidance when models section exists")
+		}
+
+		if !strings.Contains(content, "produce a **probe** instead of a standalone investigation") {
+			t.Error("expected investigation deliverables to suggest probe workflow when models exist")
 		}
 	})
 

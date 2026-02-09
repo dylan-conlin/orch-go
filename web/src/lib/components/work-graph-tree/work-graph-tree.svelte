@@ -5,7 +5,7 @@
 	import type { TreeNode, AttentionBadgeType, GroupSection, GroupByMode } from '$lib/stores/work-graph';
 	import { closeIssue, updateIssue } from '$lib/stores/work-graph';
 	import type { WIPItem } from '$lib/stores/wip';
-	import { computeAgentHealth, getContextPercent, getContextColor } from '$lib/stores/wip';
+	import { computeAgentHealth, getContextPercent, getContextColor, getExpressiveStatus } from '$lib/stores/wip';
 	import { ATTENTION_BADGE_CONFIG } from '$lib/stores/attention';
 	import { DeliverableChecklist } from '$lib/components/deliverable-checklist';
 	import { getExpectedDeliverables } from '$lib/stores/deliverables';
@@ -961,7 +961,7 @@
 						? { text: `${agent.phase || 'active'} · ${agent.runtime || 'runtime unknown'} · ${shortenModel(agent.model)}`, tone: 'text-blue-500/90' }
 						: null)}
 				<!-- Running Agent - WIP Item -->
-			<div class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}" style="padding-left: 0">
+			<div class="flex items-start gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}" style="padding-left: 0">
 				<!-- Expansion indicator placeholder (matches tree nodes) -->
 				<span class="w-4"></span>
 
@@ -999,6 +999,9 @@
 							{inProgressSubline.text}
 						</span>
 					{/if}
+					<span class="block text-[11px] leading-4 truncate text-muted-foreground">
+						{getExpressiveStatus(agent)}
+					</span>
 				</div>
 
 				<!-- Attention badge (if any) -->

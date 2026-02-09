@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 )
 
@@ -95,6 +96,7 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	// Use sourceDir (set at build time) since serve may run from any working directory
 	projectDir, _ := s.currentProjectDir()
+	projCfg, _ := config.Load(projectDir)
 
 	client := opencode.NewClient(s.ServerURL)
 
@@ -115,7 +117,7 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	wsCache := s.WorkspaceCache.getCachedWorkspace(projectDirs)
 
 	// Create collection context with thresholds and dependencies
-	ctx := newAgentCollectionContext(client, wsCache, s.BeadsCache, sinceDuration, s.ServerStartTime)
+	ctx := newAgentCollectionContext(client, wsCache, s.BeadsCache, sinceDuration, s.ServerStartTime, projCfg)
 
 	// Phase 1: Collect agents from all sources
 	ctx.collectOpenCodeSessions(sessions)

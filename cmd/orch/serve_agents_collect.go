@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -41,23 +42,27 @@ type agentCollectionContext struct {
 }
 
 // newAgentCollectionContext creates a new context with default thresholds and dependencies.
-func newAgentCollectionContext(client opencode.ClientInterface, wsCache *workspaceCache, bc *beadsCache, sinceDuration time.Duration, srvStartTime time.Time) *agentCollectionContext {
-	// Active threshold (10min): determines "running" vs "idle" status
-	activeThreshold := 10 * time.Minute
-	// Display threshold (4h): filters ghosts from default view (unless Phase: Complete)
-	displayThreshold := 4 * time.Hour
-	// Dead threshold: if no activity for 3 minutes, session is dead.
+func newAgentCollectionContext(client opencode.ClientInterface, wsCache *workspaceCache, bc *beadsCache, sinceDuration time.Duration, srvStartTime time.Time, projCfg *config.Config) *agentCollectionContext {
+	if projCfg == nil {
+		projCfg = &config.Config{}
+	}
+
+	// Active threshold: determines "running" vs "idle" status.
+	activeThreshold := time.Duration(projCfg.DashboardAgentsActiveMinutes()) * time.Minute
+	// Display threshold: filters ghosts from default view (unless Phase: Complete).
+	displayThreshold := time.Duration(projCfg.DashboardAgentsGhostDisplayHours()) * time.Hour
+	// Dead threshold: if no activity past this value, session is dead.
 	// Agents are constantly reading, editing, running commands - 3 min silence = dead.
-	deadThreshold := 3 * time.Minute
-	// Stalled threshold: if same phase for 15+ minutes, agent may be stuck.
+	deadThreshold := time.Duration(projCfg.DashboardAgentsDeadMinutes()) * time.Minute
+	// Stalled threshold: if same phase for this long, agent may be stuck.
 	// Advisory only - surfaces in Needs Attention but doesn't auto-abandon.
-	stalledThreshold := 15 * time.Minute
+	stalledThreshold := time.Duration(projCfg.DashboardAgentsStalledMinutes()) * time.Minute
 
 	// beadsFetchThreshold limits which sessions we fetch beads data for.
 	// Sessions older than this are excluded from beads lookups entirely.
 	// MAJOR optimization: with 600+ sessions but only ~6 active,
 	// fetching beads for all would require 400+ RPC calls = 3+ seconds.
-	beadsFetchThreshold := 2 * time.Hour
+	beadsFetchThreshold := time.Duration(projCfg.DashboardAgentsBeadsFetchHours()) * time.Hour
 	if sinceDuration > beadsFetchThreshold {
 		beadsFetchThreshold = sinceDuration
 	} else if sinceDuration == 0 {

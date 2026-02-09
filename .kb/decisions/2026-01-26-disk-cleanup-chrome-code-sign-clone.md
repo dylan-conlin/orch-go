@@ -1,7 +1,12 @@
+---
+status: superseded
+superseded_by: .kb/decisions/2026-01-28-two-tier-disk-cleanup-infrastructure.md
+---
+
 # Decision: Disk Cleanup Strategy for Chrome code_sign_clone
 
 **Date:** 2026-01-26
-**Status:** Accepted
+**Status:** Superseded (2026-01-28)
 **Context:** Dylan's disk was filling ~20GB/day, causing Claude Code crashes
 
 ## Problem

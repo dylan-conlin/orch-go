@@ -11,7 +11,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** File serves as primary context for agents; dual spawn modes (primary vs escape hatch) are critical for resilience; structured for quick agent reference.
 
-**Next:** Close investigation - task completed successfully.
+**Next:** Close - superseded by .kb/decisions/2026-02-08-kb-reflect-cluster-disposition-feature-agents-quick.md.
 
 **Promote to Decision:** recommend-no (documentation review, not architectural decision)
 
@@ -50,7 +50,7 @@ Guidelines:
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
 **Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Superseded-By:** .kb/decisions/2026-02-08-kb-reflect-cluster-disposition-feature-agents-quick.md
 
 ---
 

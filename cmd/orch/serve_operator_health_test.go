@@ -306,6 +306,42 @@ func TestIsOrchRelatedProcess(t *testing.T) {
 	}
 }
 
+func TestParseOrphanedOrchProcessesSkipsSelfPID(t *testing.T) {
+	output := `101 1 orch orch serve --port 3348
+102 1 bun bun run --attach session-123
+103 2 orch orch serve --daemon`
+
+	orphans, err := parseOrphanedOrchProcesses(output, 20, 101)
+	if err != nil {
+		t.Fatalf("parseOrphanedOrchProcesses returned error: %v", err)
+	}
+
+	if len(orphans) != 1 {
+		t.Fatalf("expected 1 orphan after self-PID exclusion, got %d", len(orphans))
+	}
+
+	if orphans[0].PID != 102 {
+		t.Fatalf("expected PID 102, got %d", orphans[0].PID)
+	}
+}
+
+func TestParseOrphanedOrchProcessesKeepsOtherOrchServe(t *testing.T) {
+	output := `201 1 orch orch serve --port 3348`
+
+	orphans, err := parseOrphanedOrchProcesses(output, 20, 999)
+	if err != nil {
+		t.Fatalf("parseOrphanedOrchProcesses returned error: %v", err)
+	}
+
+	if len(orphans) != 1 {
+		t.Fatalf("expected 1 orphan, got %d", len(orphans))
+	}
+
+	if orphans[0].PID != 201 {
+		t.Fatalf("expected PID 201, got %d", orphans[0].PID)
+	}
+}
+
 func writeStabilityEntries(t *testing.T, path string, entries []stability.Entry) {
 	t.Helper()
 

@@ -47,6 +47,11 @@ orch-dashboard stop
 
 **Reference:** `.kb/investigations/2026-01-14-inv-infrastructure-root-cause-synthesis.md`
 
+**Related decisions:**
+- `.kb/decisions/2026-01-21-colima-over-docker-desktop.md`
+- `.kb/decisions/2026-01-28-two-tier-disk-cleanup-infrastructure.md`
+- `.kb/decisions/2026-01-30-opencode-binary-resolution-patterns.md`
+
 ## Architecture
 
 ```

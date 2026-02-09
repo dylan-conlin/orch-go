@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -55,33 +56,47 @@ type SkillOutputVerificationResult struct {
 
 // ExtractSkillNameFromSpawnContext extracts the skill name from SPAWN_CONTEXT.md.
 // Looks for patterns like "## SKILL GUIDANCE (feature-impl)" or "**Skill:** feature-impl".
+// If SPAWN_CONTEXT.md is missing or doesn't include a skill marker, it falls back to
+// AGENT_MANIFEST.json (canonical spawn metadata).
 func ExtractSkillNameFromSpawnContext(workspacePath string) (string, error) {
 	spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
 	file, err := os.Open(spawnContextPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil // No SPAWN_CONTEXT.md
+		if !os.IsNotExist(err) {
+			return "", fmt.Errorf("failed to open SPAWN_CONTEXT.md: %w", err)
 		}
-		return "", fmt.Errorf("failed to open SPAWN_CONTEXT.md: %w", err)
+	} else {
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			// Check for SKILL GUIDANCE pattern first (more reliable)
+			if matches := regexSkillGuidanceHeader.FindStringSubmatch(line); len(matches) >= 2 {
+				return strings.ToLower(strings.TrimSpace(matches[1])), nil
+			}
+
+			// Check for skill name in YAML-like format
+			if matches := regexSkillNameField.FindStringSubmatch(line); len(matches) >= 2 {
+				return strings.ToLower(strings.TrimSpace(matches[1])), nil
+			}
+		}
+
+		if scanErr := scanner.Err(); scanErr != nil {
+			return "", scanErr
+		}
 	}
-	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Check for SKILL GUIDANCE pattern first (more reliable)
-		if matches := regexSkillGuidanceHeader.FindStringSubmatch(line); len(matches) >= 2 {
-			return matches[1], nil
-		}
-
-		// Check for skill name in YAML-like format
-		if matches := regexSkillNameField.FindStringSubmatch(line); len(matches) >= 2 {
-			return matches[1], nil
+	manifest, manifestErr := spawn.ReadAgentManifest(workspacePath)
+	if manifestErr == nil {
+		skill := strings.ToLower(strings.TrimSpace(manifest.Skill))
+		if skill != "" {
+			return skill, nil
 		}
 	}
 
-	return "", scanner.Err()
+	return "", nil
 }
 
 // FindSkillManifest locates and parses the skill.yaml file for a given skill.

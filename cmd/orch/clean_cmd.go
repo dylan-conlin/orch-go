@@ -36,6 +36,7 @@ var (
 	cleanPreserveOrchestrator bool
 	cleanAll                  bool
 	cleanProcesses            bool
+	cleanWorkdir              string
 )
 
 var cleanCmd = &cobra.Command{
@@ -107,7 +108,7 @@ Examples:
 			cleanSessions = true
 			cleanProcesses = true
 		}
-		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays, cleanUntracked, cleanUntrackedDays, cleanSessions, cleanSessionsDays, cleanPreserveOrchestrator, cleanProcesses)
+		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays, cleanUntracked, cleanUntrackedDays, cleanSessions, cleanSessionsDays, cleanPreserveOrchestrator, cleanProcesses, cleanWorkdir)
 	},
 }
 
@@ -126,14 +127,24 @@ func init() {
 	cleanCmd.Flags().IntVar(&cleanSessionsDays, "sessions-days", 7, "Age threshold in days for --sessions (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanPreserveOrchestrator, "preserve-orchestrator", false, "Skip orchestrator/meta-orchestrator workspaces and sessions")
 	cleanCmd.Flags().BoolVar(&cleanProcesses, "processes", false, "Kill orphaned bun processes (agent processes and untracked dashboard web bun)")
+	cleanCmd.Flags().StringVar(&cleanWorkdir, "workdir", "", "Target project directory (for cross-project cleanup)")
+	cleanCmd.Flags().StringVar(&cleanWorkdir, "project", "", "Alias for --workdir")
+	cleanCmd.Flags().MarkHidden("project")
 }
 
 // runClean orchestrates all cleanup subcommands based on the provided flags.
-func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int, archiveUntracked bool, untrackedDays int, cleanSessions bool, sessionsDays int, preserveOrchestrator bool, killProcesses bool) error {
-	projectDir, err := currentProjectDir()
+func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int, archiveUntracked bool, untrackedDays int, cleanSessions bool, sessionsDays int, preserveOrchestrator bool, killProcesses bool, workdir string) error {
+	currentDir, err := currentProjectDir()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
+
+	projectResult, err := resolveProjectDir(workdir, "", currentDir)
+	if err != nil {
+		return err
+	}
+	projectResult.SetBeadsDefaultDir()
+	projectDir := projectResult.ProjectDir
 
 	needsCompletedWorkspaces := closeWindows || (!archiveStale && !archiveUntracked && !cleanPhantoms && !verifyOpenCode && !cleanInvestigations)
 
@@ -176,7 +187,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 
 	var diskSessionsDeleted int
 	if verifyOpenCode {
-		diskSessionsDeleted, err = cleanOrphanedDiskSessions(serverURL, dryRun, preserveOrchestrator)
+		diskSessionsDeleted, err = cleanOrphanedDiskSessions(serverURL, projectDir, dryRun, preserveOrchestrator)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clean disk sessions: %v\n", err)
 		}

@@ -27,6 +27,7 @@ Fill this at the END of your investigation, before marking Complete.
 **Phase:** Complete
 **Next Step:** None
 **Status:** Complete
+**Superseded-By:** .kb/decisions/2026-02-08-kb-reflect-cluster-disposition-feature-agents-quick.md
 **Confidence:** Very High (95%)
 
 ---

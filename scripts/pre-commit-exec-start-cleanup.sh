@@ -97,7 +97,7 @@ for file in "${TARGET_GO_FILES[@]}"; do
 	for var_name in "${!START_VARS[@]}"; do
 		has_sysprocattr=false
 		has_setpgid=false
-		has_shutdown_registration=false
+		has_cleanup_path=false
 
 		if grep -Eq "\\b${var_name}\\.SysProcAttr[[:space:]]*=" <<<"$staged_content"; then
 			has_sysprocattr=true
@@ -106,21 +106,35 @@ for file in "${TARGET_GO_FILES[@]}"; do
 			has_setpgid=true
 		fi
 
-		if grep -Eq '(WriteProcessID|[Rr]egister[A-Za-z0-9_]*Process|[Rr]egister[A-Za-z0-9_]*Shutdown|[Tt]rack[A-Za-z0-9_]*Process|[Aa]ddShutdownHook|[Oo]nShutdown)[[:space:]]*\(' <<<"$staged_content"; then
-			has_shutdown_registration=true
+		if grep -Eq '(WriteProcessID|[Rr]egister[A-Za-z0-9_]*(Process|Shutdown)|[Tt]rack[A-Za-z0-9_]*Process|[Aa]ddShutdownHook|[Oo]nShutdown|[Cc]leanup[A-Za-z0-9_]*Process|[Tt]erminate[A-Za-z0-9_]*Process)[[:space:]]*\(' <<<"$staged_content"; then
+			has_cleanup_path=true
+		elif grep -Eq "\\b${var_name}\\.Wait[[:space:]]*\\(" <<<"$staged_content"; then
+			has_cleanup_path=true
+		elif grep -Eq "\\b${var_name}\\.Process\\.(Kill|Signal)[[:space:]]*\\(" <<<"$staged_content"; then
+			has_cleanup_path=true
+		elif grep -Eq "syscall\\.Kill[[:space:]]*\\([[:space:]]*-[[:space:]]*${var_name}\\.Process\\.Pid" <<<"$staged_content"; then
+			has_cleanup_path=true
 		elif grep -Eq "defer[[:space:]]+${var_name}\\.Process\\.Kill[[:space:]]*\\(" <<<"$staged_content"; then
-			has_shutdown_registration=true
+			has_cleanup_path=true
 		fi
 
-		if [[ "$has_sysprocattr" != true || "$has_setpgid" != true || "$has_shutdown_registration" != true ]]; then
+		if [[ "$has_sysprocattr" != true || "$has_setpgid" != true || "$has_cleanup_path" != true ]]; then
 			missing_parts=()
 			if [[ "$has_sysprocattr" != true || "$has_setpgid" != true ]]; then
 				missing_parts+=("process-group management (SysProcAttr + Setpgid: true)")
 			fi
-			if [[ "$has_shutdown_registration" != true ]]; then
-				missing_parts+=("shutdown registration")
+			if [[ "$has_cleanup_path" != true ]]; then
+				missing_parts+=("cleanup path (Wait/Kill/signal registration)")
 			fi
-			VIOLATIONS+=("$file: ${var_name}.Start() missing ${missing_parts[*]}")
+
+			missing_summary="${missing_parts[0]}"
+			if [[ ${#missing_parts[@]} -gt 1 ]]; then
+				for ((i = 1; i < ${#missing_parts[@]}; i++)); do
+					missing_summary+="; ${missing_parts[$i]}"
+				done
+			fi
+
+			VIOLATIONS+=("$file: ${var_name}.Start() missing ${missing_summary}")
 		fi
 	done
 done
@@ -134,7 +148,7 @@ if [[ ${#VIOLATIONS[@]} -gt 0 ]]; then
 	echo
 	echo "Required for each new exec Start call:"
 	echo "  1. Process group management: cmd.SysProcAttr + Setpgid: true"
-	echo "  2. Shutdown registration: register cleanup/termination on parent shutdown"
+	echo "  2. Cleanup path: Wait/Kill/signal registration (direct or helper)"
 	echo
 	echo "Emergency bypass (must include reason):"
 	echo "  ORCH_EXEC_START_CLEANUP_BYPASS=\"reason\" git commit ..."

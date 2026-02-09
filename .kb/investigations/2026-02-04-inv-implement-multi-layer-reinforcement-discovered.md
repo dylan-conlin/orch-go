@@ -104,5 +104,5 @@ Multi-layer reinforcement implemented successfully:
 
 ## References
 
-- Parent investigation: `/Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2026-02-04-inv-investigate-workers-not-creating-issues.md`
+- Parent investigation: `/Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/archived/2026-02-04-inv-investigate-workers-not-creating-issues.md`
 - Beads issue: `orch-go-21259`

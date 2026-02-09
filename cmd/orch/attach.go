@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var attachWorkdir string
+
 var attachCmd = &cobra.Command{
 	Use:   "attach <workspace>",
 	Short: "Attach to an existing OpenCode session via workspace name",
@@ -26,21 +28,29 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		workspaceName := args[0]
-		return runAttach(workspaceName)
+		return runAttach(workspaceName, attachWorkdir)
 	},
 }
 
 func init() {
+	attachCmd.Flags().StringVar(&attachWorkdir, "workdir", "", "Target project directory (for cross-project attach)")
+	attachCmd.Flags().StringVar(&attachWorkdir, "project", "", "Alias for --workdir")
+	attachCmd.Flags().MarkHidden("project")
 	rootCmd.AddCommand(attachCmd)
 }
 
 // runAttach attaches to an OpenCode session via workspace name.
-func runAttach(workspaceName string) error {
-	// Get current directory to determine project
-	projectDir, err := currentProjectDir()
+func runAttach(workspaceName string, workdir string) error {
+	currentDir, err := currentProjectDir()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
+
+	projectResult, err := resolveProjectDir(workdir, "", currentDir)
+	if err != nil {
+		return err
+	}
+	projectDir := projectResult.ProjectDir
 
 	// Try exact match first, then fall back to partial match
 	workspacePath := filepath.Join(projectDir, ".orch", "workspace", workspaceName)

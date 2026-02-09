@@ -47,6 +47,16 @@ const (
 	DefaultProcessedIssueCacheTTL        = 30 * 24 * time.Hour
 )
 
+// DefaultProcessedIssueCachePath returns the standard cache file location.
+// Default: ~/.orch/processed-issues.jsonl
+func DefaultProcessedIssueCachePath() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(".orch", "processed-issues.jsonl")
+	}
+	return filepath.Join(homeDir, ".orch", "processed-issues.jsonl")
+}
+
 // NewProcessedIssueCache creates a new cache, loading from the specified file path.
 // If the file doesn't exist, creates an empty cache.
 // Automatically prunes entries older than ttl on load.
@@ -121,7 +131,7 @@ func (c *ProcessedIssueCache) ShouldProcess(beadsID string) bool {
 }
 
 // MarkProcessed marks an issue as processed and persists to disk.
-// Call this immediately before spawning work to prevent duplicate spawns.
+// Call this only after confirming a successful spawn.
 func (c *ProcessedIssueCache) MarkProcessed(beadsID string) error {
 	if beadsID == "" {
 		return fmt.Errorf("beadsID cannot be empty")
@@ -147,6 +157,53 @@ func (c *ProcessedIssueCache) Unmark(beadsID string) error {
 
 	// Persist to disk
 	return c.save()
+}
+
+// Clear removes all entries from the cache and persists the empty state.
+func (c *ProcessedIssueCache) Clear() error {
+	c.mu.Lock()
+	c.entries = make(map[string]time.Time)
+	c.mu.Unlock()
+
+	return c.save()
+}
+
+// Reload refreshes in-memory entries from disk.
+// Useful when another process (e.g., orch daemon cache-clear) edits the cache file.
+func (c *ProcessedIssueCache) Reload() error {
+	f, err := os.Open(c.filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			c.mu.Lock()
+			c.entries = make(map[string]time.Time)
+			c.mu.Unlock()
+			return nil
+		}
+		return fmt.Errorf("failed to open cache file: %w", err)
+	}
+	defer f.Close()
+
+	entries := make(map[string]time.Time)
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		var entry cacheEntry
+		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to parse cache entry: %v\n", err)
+			continue
+		}
+		entries[entry.BeadsID] = entry.Timestamp
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("failed to read cache file: %w", err)
+	}
+
+	c.mu.Lock()
+	c.entries = entries
+	c.mu.Unlock()
+
+	c.prune()
+	c.enforceMaxEntries()
+	return nil
 }
 
 // save persists the cache to disk as JSONL.

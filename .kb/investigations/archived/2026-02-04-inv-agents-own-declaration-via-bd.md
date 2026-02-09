@@ -10,7 +10,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Knowledge:** Three orthogonal dimensions exist: (1) Work Status (agent progress), (2) Verification Status (quality gates), (3) Issue Status (beads lifecycle). These should remain independent with explicit mapping events. The current "Phase: Complete → orch complete → bd close" chain is correct; the friction is in the orchestrator bottleneck, not the architecture.
 
-**Next:** Recommend keeping current architecture with minor improvements: (1) Add `bd done` as convenience wrapper for `bd comment "Phase: Complete"`, (2) Enhance daemon to auto-verify simple completions, (3) Formalize verification_status as label-based state.
+**Next:** Close - superseded by .kb/decisions/2026-02-07-agent-completion-lifecycle-separation.md.
 
 **Authority:** architectural - This affects cross-component boundaries (beads, orch, daemon) and multiple valid approaches exist
 
@@ -26,6 +26,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 **Phase:** Complete
 **Next Step:** None - recommendation ready for decision
 **Status:** Complete
+**Superseded-By:** .kb/decisions/2026-02-07-agent-completion-lifecycle-separation.md
 
 <!-- Lineage -->
 **Related-Models:**

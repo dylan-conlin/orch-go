@@ -11,7 +11,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** Worker detection happens immediately on first SPAWN_CONTEXT.md read (coaching.ts:1350-1355), session is cached as isWorker=true permanently (coaching.ts:1375-1377), and filtering applies to both tool-based metrics (action_ratio, analysis_paralysis) and message-based Dylan patterns (frame-collapse, compensation, etc.) via two separate hooks.
 
-**Next:** Close - no action needed. Worker filtering is production-ready. Optional: add unit tests for regression protection.
+**Next:** Close - superseded by .kb/decisions/2026-01-28-coaching-plugin-disabled.md and .kb/decisions/2026-02-08-kb-reflect-cluster-disposition-feature-agents-quick.md.
 
 **Promote to Decision:** recommend-no - This is verification work confirming existing behavior, not a new architectural decision.
 
@@ -50,7 +50,7 @@ Guidelines:
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
 **Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Superseded-By:** .kb/decisions/2026-01-28-coaching-plugin-disabled.md
 
 ---
 

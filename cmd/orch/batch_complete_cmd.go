@@ -25,7 +25,8 @@ var batchCompleteCmd = &cobra.Command{
 Core gates (always run):
   - phase_complete: Agent reported "Phase: Complete"
   - build: Project builds (with blame attribution)
-  - test_evidence: Test execution evidence
+  - test_evidence: Test execution evidence (code-producing skills)
+  - model_connection: Probe/model linkage evidence (knowledge-producing skills)
   - visual_verification: Visual verification for web/ changes
 
 Quality gates (skipped in batch mode):
@@ -34,11 +35,13 @@ Quality gates (skipped in batch mode):
 
 Use --all to discover and complete all agents that reported Phase: Complete.
 Use --dry-run to preview what would be completed without making changes.
+Use skip-set/skip-list/skip-clear to control issues excluded from batch runs.
 
 Examples:
   orch batch-complete orch-go-abc1 orch-go-def2 orch-go-ghi3
   orch batch-complete --all
-  orch batch-complete --all --dry-run`,
+  orch batch-complete --all --dry-run
+  orch skip-set orch-go-stuck1`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !batchCompleteAll && len(args) == 0 {
 			return fmt.Errorf("provide beads IDs or use --all to discover completable agents")
@@ -73,11 +76,28 @@ Examples:
 			}
 		}
 
+		skipSet, err := readBatchSkipSet(currentDir)
+		if err != nil {
+			return fmt.Errorf("failed to read batch skip list: %w", err)
+		}
+		if len(skipSet) > 0 {
+			fmt.Printf("Loaded %d skipped issue(s) from skip list\n\n", len(skipSet))
+		}
+
 		fmt.Printf("Batch completing %d agent(s) (core gates only)\n\n", len(agents))
 
 		if batchCompleteDryRun {
 			fmt.Println("DRY RUN - no changes will be made")
 			for _, agent := range agents {
+				if _, isSkipped := skipSet[agent.BeadsID]; isSkipped {
+					fmt.Printf("  Would skip: %s", agent.BeadsID)
+					if agent.AgentName != "" {
+						fmt.Printf(" (%s)", agent.AgentName)
+					}
+					fmt.Println(" [skip list]")
+					continue
+				}
+
 				fmt.Printf("  Would complete: %s", agent.BeadsID)
 				if agent.AgentName != "" {
 					fmt.Printf(" (%s)", agent.AgentName)
@@ -90,7 +110,17 @@ Examples:
 		// Process each agent
 		var passed, failed, skipped int
 		for _, agent := range agents {
-			result := batchCompleteOne(agent, currentDir)
+			if _, isSkipped := skipSet[agent.BeadsID]; isSkipped {
+				label := agent.BeadsID
+				if agent.AgentName != "" {
+					label = fmt.Sprintf("%s (%s)", agent.BeadsID, agent.AgentName)
+				}
+				fmt.Printf("  SKIPPED: %s [skip list]\n", label)
+				skipped++
+				continue
+			}
+
+			result := batchCompleteOne(agent)
 			switch result {
 			case "passed":
 				passed++
@@ -169,7 +199,7 @@ func discoverCompletableAgents(projectDir string) []batchAgent {
 
 // batchCompleteOne completes a single agent in batch mode.
 // Returns "passed", "failed", or "skipped".
-func batchCompleteOne(agent batchAgent, projectDir string) string {
+func batchCompleteOne(agent batchAgent) string {
 	label := agent.BeadsID
 	if agent.AgentName != "" {
 		label = fmt.Sprintf("%s (%s)", agent.BeadsID, agent.AgentName)

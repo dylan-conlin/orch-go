@@ -484,13 +484,9 @@ func formatTestEvidence(result *TestResult) string {
 
 // submitTestEvidence submits the test evidence as a beads comment.
 func submitTestEvidence(beadsID, evidence string) error {
-	err := beads.Do("", func(client *beads.Client) error {
+	return withBeadsFallback("", func(client *beads.Client) error {
 		return client.AddComment(beadsID, "agent", evidence)
+	}, func() error {
+		return beads.FallbackAddComment(beadsID, evidence)
 	}, beads.WithAutoReconnect(3))
-	if err == nil {
-		return nil
-	}
-
-	// Fallback to CLI
-	return beads.FallbackAddComment(beadsID, evidence)
 }

@@ -15,7 +15,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** Two tracking gaps exist: (1) `session.completed` requires `orch monitor` running, (2) direct `bd close` bypasses `orch complete` and emits no events. Only ~0.7% of spawns are truly stuck.
 
-**Next:** Fix stats to deduplicate by beads_id; emit `agent.completed` events from zombie reconciliation; consider emitting from `bd close`.
+**Next:** Close - superseded by .kb/decisions/2026-02-07-agent-completion-lifecycle-separation.md.
 
 **Promote to Decision:** recommend-no - Tactical fix to stats calculation, not architectural
 
@@ -49,6 +49,7 @@ Guidelines:
 **Phase:** Complete
 **Next Step:** None - findings ready for implementation
 **Status:** Complete
+**Superseded-By:** .kb/decisions/2026-02-07-agent-completion-lifecycle-separation.md
 
 ---
 

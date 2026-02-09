@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 )
 
@@ -19,8 +20,15 @@ import (
 // This ensures the dashboard shows updated agent status immediately after completion.
 // Silently fails if orch serve is not running (cache will refresh via TTL).
 func invalidateServeCache() {
+	timeout := 2 * time.Second
+	if projectDir, err := currentProjectDir(); err == nil {
+		if projCfg, loadErr := config.Load(projectDir); loadErr == nil && projCfg != nil {
+			timeout = time.Duration(projCfg.CompletionCacheInvalidateTimeoutSeconds()) * time.Second
+		}
+	}
+
 	client := &http.Client{
-		Timeout: 2 * time.Second,
+		Timeout: timeout,
 	}
 
 	resp, err := client.Post(
@@ -39,16 +47,12 @@ func invalidateServeCache() {
 // addApprovalComment adds an approval comment to a beads issue.
 // This is used by --approve flag to mark visual changes as human-reviewed.
 func addApprovalComment(beadsID, comment string) error {
-	err := beads.Do("", func(client *beads.Client) error {
+	return withBeadsFallback("", func(client *beads.Client) error {
 		// Use "orchestrator" as the author for approval comments
 		return client.AddComment(beadsID, "orchestrator", comment)
+	}, func() error {
+		return beads.FallbackAddComment(beadsID, comment)
 	}, beads.WithAutoReconnect(3))
-	if err == nil {
-		return nil
-	}
-
-	// Fallback to CLI
-	return beads.FallbackAddComment(beadsID, comment)
 }
 
 // archiveWorkspace moves a completed workspace to the archived directory.

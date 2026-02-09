@@ -13,9 +13,19 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 )
 
-// determineSpawnTier determines the spawn tier based on flags, config, and skill defaults.
-// Priority: --light flag > --full flag > userconfig.default_tier > skill default > TierFull (conservative)
+// determineSpawnTier determines the spawn tier based on flags, skill defaults, and global config.
+// Priority: --light flag > --full flag > skill default > userconfig.default_tier > TierFull (conservative)
 func determineSpawnTier(skillName string, lightFlag, fullFlag bool) string {
+	globalDefault := ""
+	cfg, err := userconfig.Load()
+	if err == nil && cfg.GetDefaultTier() != "" {
+		globalDefault = cfg.GetDefaultTier()
+	}
+
+	return determineSpawnTierWithGlobalDefault(skillName, lightFlag, fullFlag, globalDefault)
+}
+
+func determineSpawnTierWithGlobalDefault(skillName string, lightFlag, fullFlag bool, globalDefault string) string {
 	// Explicit flags take precedence
 	if lightFlag {
 		return spawn.TierLight
@@ -23,13 +33,19 @@ func determineSpawnTier(skillName string, lightFlag, fullFlag bool) string {
 	if fullFlag {
 		return spawn.TierFull
 	}
-	// Check userconfig for default tier override
-	cfg, err := userconfig.Load()
-	if err == nil && cfg.GetDefaultTier() != "" {
-		return cfg.GetDefaultTier()
+
+	// Skill-specific default takes precedence over global fallback
+	if tier, ok := spawn.SkillTierDefaults[skillName]; ok {
+		return tier
 	}
-	// Fall back to skill default
-	return spawn.DefaultTierForSkill(skillName)
+
+	// Global default applies only when skill has no declared default
+	if globalDefault == spawn.TierLight || globalDefault == spawn.TierFull {
+		return globalDefault
+	}
+
+	// Conservative fallback for unknown skills
+	return spawn.TierFull
 }
 
 // UsageThresholds defines the thresholds for proactive rate limit monitoring.

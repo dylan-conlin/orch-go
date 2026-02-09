@@ -149,3 +149,71 @@ func TestModelSpec_IsAnthropic(t *testing.T) {
 		t.Error("deepseek should not be Anthropic")
 	}
 }
+
+func TestResolveBehaviorProfile(t *testing.T) {
+	tests := []struct {
+		name         string
+		spec         string
+		wantName     string
+		wantNudge    bool
+		wantReliable bool
+	}{
+		{
+			name:         "anthropic alias uses strict complete",
+			spec:         "opus",
+			wantName:     ProfileStrictComplete,
+			wantNudge:    false,
+			wantReliable: true,
+		},
+		{
+			name:         "openai alias uses needs nudge",
+			spec:         "gpt",
+			wantName:     ProfileNeedsNudge,
+			wantNudge:    true,
+			wantReliable: false,
+		},
+		{
+			name:         "provider model format uses needs nudge",
+			spec:         "openai/gpt-5.3-codex",
+			wantName:     ProfileNeedsNudge,
+			wantNudge:    true,
+			wantReliable: false,
+		},
+		{
+			name:         "raw anthropic model uses strict complete",
+			spec:         "claude-sonnet-4-5-20250929",
+			wantName:     ProfileStrictComplete,
+			wantNudge:    false,
+			wantReliable: true,
+		},
+		{
+			name:         "unknown provider defaults to needs nudge",
+			spec:         "mystery-provider/mystery-model",
+			wantName:     ProfileNeedsNudge,
+			wantNudge:    true,
+			wantReliable: false,
+		},
+		{
+			name:         "empty spec defaults to strict complete",
+			spec:         "",
+			wantName:     ProfileStrictComplete,
+			wantNudge:    false,
+			wantReliable: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResolveBehaviorProfile(tt.spec)
+			if got.Name != tt.wantName {
+				t.Errorf("ResolveBehaviorProfile(%q).Name = %q, want %q", tt.spec, got.Name, tt.wantName)
+			}
+			if got.NeedsCompletionNudge != tt.wantNudge {
+				t.Errorf("ResolveBehaviorProfile(%q).NeedsCompletionNudge = %v, want %v", tt.spec, got.NeedsCompletionNudge, tt.wantNudge)
+			}
+			if got.ReliablePhaseReporting != tt.wantReliable {
+				t.Errorf("ResolveBehaviorProfile(%q).ReliablePhaseReporting = %v, want %v", tt.spec, got.ReliablePhaseReporting, tt.wantReliable)
+			}
+		})
+	}
+}

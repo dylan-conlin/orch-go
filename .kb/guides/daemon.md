@@ -684,6 +684,11 @@ If those don't answer your question, then investigate. But update this guide wit
 - **~/.orch/config.yaml:** User configuration
 - **launchd plist:** `~/Library/LaunchAgents/com.orch.daemon.plist`
 
+**Related decisions:**
+- `.kb/decisions/2026-01-14-two-tier-cleanup-pattern.md`
+- `.kb/decisions/2026-01-17-five-tier-completion-escalation-model.md`
+- `.kb/decisions/2026-01-21-cross-project-daemon-architecture.md`
+
 ---
 
 ## Synthesized From

@@ -192,6 +192,9 @@ func (p *spawnPipeline) resolveProject() error {
 		return err
 	}
 
+	// Load project config once so earlier phases (context gating) can use it.
+	p.projCfg, _ = config.Load(p.projectDir)
+
 	return nil
 }
 
@@ -353,9 +356,14 @@ func (p *spawnPipeline) gatherContext() error {
 			p.gapAnalysis = gapResult.GapAnalysis
 		}
 
+		threshold := spawnGapThreshold
+		if threshold <= 0 && p.projCfg != nil {
+			threshold = p.projCfg.SpawnContextQualityThreshold()
+		}
+
 		// Check gap gating
-		if err := checkGapGating(p.gapAnalysis, spawnGateOnGap, spawnSkipGapGate, spawnGapThreshold); err != nil {
-			logGapGateBlock(p)
+		if err := checkGapGating(p.gapAnalysis, spawnGateOnGap, spawnSkipGapGate, threshold); err != nil {
+			logGapGateBlock(p, threshold)
 			return err
 		}
 
@@ -365,7 +373,7 @@ func (p *spawnPipeline) gatherContext() error {
 		}
 
 		// Log if skip-gap-gate was used
-		if spawnSkipGapGate && p.gapAnalysis != nil && p.gapAnalysis.ShouldBlockSpawn(spawnGapThreshold) {
+		if spawnSkipGapGate && p.gapAnalysis != nil && p.gapAnalysis.ShouldBlockSpawn(threshold) {
 			fmt.Fprintf(os.Stderr, "⚠️  Bypassing gap gate (--skip-gap-gate): context quality %d\n", p.gapAnalysis.ContextQuality)
 			logGapGateBypass(p)
 		}
@@ -377,7 +385,7 @@ func (p *spawnPipeline) gatherContext() error {
 }
 
 // logGapGateBlock logs a blocked spawn due to gap gating.
-func logGapGateBlock(p *spawnPipeline) {
+func logGapGateBlock(p *spawnPipeline, threshold int) {
 	logger := events.NewLogger(events.DefaultLogPath())
 
 	criticalGaps := []string{}
@@ -395,7 +403,7 @@ func logGapGateBlock(p *spawnPipeline) {
 		Data: map[string]interface{}{
 			"task":            p.task,
 			"context_quality": p.gapAnalysis.ContextQuality,
-			"threshold":       spawnGapThreshold,
+			"threshold":       threshold,
 			"beads_id":        p.beadsID,
 			"skill":           p.skillName,
 			"critical_gaps":   criticalGaps,
@@ -451,8 +459,10 @@ func (p *spawnPipeline) buildSpawnConfig() error {
 		}
 	}
 
-	// Load project config
-	p.projCfg, _ = config.Load(p.projectDir)
+	// Load project config if not already loaded during resolveProject.
+	if p.projCfg == nil {
+		p.projCfg, _ = config.Load(p.projectDir)
+	}
 
 	// Determine spawn backend
 	p.globalCfg, _ = userconfig.Load()

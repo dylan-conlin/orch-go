@@ -11,6 +11,7 @@
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
+	const HEADER_USAGE_REFRESH_INTERVAL_MS = 60000;
 
 	// Navigation items
 	const navItems = [
@@ -51,8 +52,19 @@
 		} else {
 			document.documentElement.classList.remove('dark');
 		}
+
+		// Keep usage visible in the shared header on all routes
+		usage.fetch();
+		const usageRefreshInterval = setInterval(() => {
+			usage.fetch();
+		}, HEADER_USAGE_REFRESH_INTERVAL_MS);
+
 		// Fetch cost data
 		cost.fetch();
+
+		return () => {
+			clearInterval(usageRefreshInterval);
+		};
 	});
 </script>
 
@@ -62,9 +74,8 @@
 		<header class="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
 			<div class="container flex h-10 items-center">
 				<div class="flex items-center gap-4">
-					<a href="/" class="flex items-center gap-1.5">
+					<a href="/" class="flex items-center">
 						<span class="text-base">🐝</span>
-						<span class="text-sm font-semibold">Swarm</span>
 					</a>
 					<nav class="flex items-center gap-1">
 						{#each navItems as item}

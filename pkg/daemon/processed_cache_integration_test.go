@@ -133,3 +133,45 @@ func TestProcessedCache_CacheFileLocation(t *testing.T) {
 		t.Error("Expected cache directory to exist")
 	}
 }
+
+// TestProcessedCache_ReloadReflectsExternalChanges verifies a long-running cache
+// instance can pick up edits made by another process without daemon restart.
+func TestProcessedCache_ReloadReflectsExternalChanges(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
+
+	cache1, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
+	if err != nil {
+		t.Fatalf("Failed to create first cache: %v", err)
+	}
+	cache1.sessionChecker = func(string) bool { return false }
+	cache1.phaseCompleteChecker = func(string) (bool, error) { return false, nil }
+
+	if err := cache1.MarkProcessed("test-issue-1"); err != nil {
+		t.Fatalf("Failed to mark issue: %v", err)
+	}
+	if cache1.ShouldProcess("test-issue-1") {
+		t.Fatal("Expected issue to be blocked after mark")
+	}
+
+	// Simulate an external process clearing the cache file.
+	cache2, err := NewProcessedIssueCache(cachePath, DefaultProcessedIssueCacheMaxEntries, DefaultProcessedIssueCacheTTL)
+	if err != nil {
+		t.Fatalf("Failed to create second cache: %v", err)
+	}
+	if err := cache2.Clear(); err != nil {
+		t.Fatalf("Failed to clear cache from second instance: %v", err)
+	}
+
+	// cache1 is stale until Reload is called.
+	if cache1.ShouldProcess("test-issue-1") {
+		t.Fatal("Expected stale cache1 to still block before reload")
+	}
+
+	if err := cache1.Reload(); err != nil {
+		t.Fatalf("Reload failed: %v", err)
+	}
+	if !cache1.ShouldProcess("test-issue-1") {
+		t.Fatal("Expected cache1 to allow processing after reload")
+	}
+}

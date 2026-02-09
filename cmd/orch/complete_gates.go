@@ -6,14 +6,28 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
-	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"golang.org/x/term"
 )
+
+var (
+	verifyCompletionFullFunc = verify.VerifyCompletionFull
+	verificationRetrySleep   = time.Sleep
+	proofSpecEvaluator       = evaluateProofSpecGate
+	proofSpecDigestPoster    = postProofSpecDigestComment
+)
+
+const transientVerificationRetryDelay = 1 * time.Second
+
+var transientVerificationGates = map[string]struct{}{
+	verify.GateDashboardHealth: {},
+	verify.GatePhaseComplete:   {},
+}
 
 // verifyCompletion checks all verification gates for the completion target.
 // It handles orchestrator, regular agent, question entity, and force-mode paths,
@@ -95,17 +109,73 @@ func verifyRegularAgent(target *CompletionTarget, skipConfig SkipConfig, outcome
 		fmt.Printf("Workspace: %s\n", target.AgentName)
 	}
 
-	result, err := verify.VerifyCompletionFull(target.BeadsID, target.WorkspacePath, target.BeadsProjectDir, "", serverURL)
+	result, err := verifyCompletionFullFunc(target.BeadsID, target.WorkspacePath, target.BeadsProjectDir, "", serverURL)
+	if err != nil {
+		if retry, reason := shouldRetryVerification(verify.VerificationResult{}, err); retry {
+			fmt.Fprintf(os.Stderr, "Verification failed with transient error (%s). Retrying once...\n", reason)
+			verificationRetrySleep(transientVerificationRetryDelay)
+			result, err = verifyCompletionFullFunc(target.BeadsID, target.WorkspacePath, target.BeadsProjectDir, "", serverURL)
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("verification failed: %w", err)
 	}
-	outcome.SkillName = result.Skill
 
-	// Apply skip-gate filtering (unified implementation)
+	applySkipAndMaybeRetry := func(res *verify.VerificationResult) error {
+		if skipConfig.hasAnySkip() && !res.Passed {
+			applySkipFiltering(&res.GatesFailed, &res.Errors, skipConfig, target)
+			res.Passed = len(res.GatesFailed) == 0
+		}
+
+		if res.Passed {
+			return nil
+		}
+
+		if retry, reason := shouldRetryVerification(*res, nil); retry {
+			fmt.Fprintf(os.Stderr, "Verification failed on transient gate (%s). Retrying once...\n", reason)
+			verificationRetrySleep(transientVerificationRetryDelay)
+
+			retried, retryErr := verifyCompletionFullFunc(target.BeadsID, target.WorkspacePath, target.BeadsProjectDir, "", serverURL)
+			if retryErr != nil {
+				return fmt.Errorf("verification failed: %w", retryErr)
+			}
+
+			*res = retried
+			if skipConfig.hasAnySkip() && !res.Passed {
+				applySkipFiltering(&res.GatesFailed, &res.Errors, skipConfig, target)
+				res.Passed = len(res.GatesFailed) == 0
+			}
+		}
+
+		return nil
+	}
+
+	if err := applySkipAndMaybeRetry(&result); err != nil {
+		return nil, err
+	}
+
+	proofSpecResult := proofSpecEvaluator(target)
+	result.Warnings = append(result.Warnings, proofSpecResult.warnings...)
+	result.GateResults = append(result.GateResults, proofSpecResult.gateResult())
+
+	if digest := proofSpecResult.digestComment(); digest != "" && target.BeadsID != "" {
+		if err := proofSpecDigestPoster(target.BeadsID, digest); err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to post verification spec digest: %v", err))
+		}
+	}
+
+	if len(proofSpecResult.errors) > 0 {
+		result.Passed = false
+		result.Errors = append(result.Errors, proofSpecResult.errors...)
+		result.GatesFailed = append(result.GatesFailed, verify.GateVerificationSpec)
+	}
+
 	if skipConfig.hasAnySkip() && !result.Passed {
 		applySkipFiltering(&result.GatesFailed, &result.Errors, skipConfig, target)
 		result.Passed = len(result.GatesFailed) == 0
 	}
+
+	outcome.SkillName = result.Skill
 
 	if !result.Passed {
 		outcome.Passed = false
@@ -139,6 +209,75 @@ func verifyRegularAgent(target *CompletionTarget, skipConfig SkipConfig, outcome
 	}
 
 	return outcome, nil
+}
+
+func shouldRetryVerification(result verify.VerificationResult, err error) (bool, string) {
+	if err != nil {
+		if isTransientVerificationMessage(err.Error()) {
+			return true, classifyTransientMessage(err.Error())
+		}
+		return false, ""
+	}
+
+	if result.Passed {
+		return false, ""
+	}
+
+	for _, gate := range result.GatesFailed {
+		if _, ok := transientVerificationGates[gate]; ok {
+			return true, gate
+		}
+	}
+
+	for _, msg := range result.Errors {
+		if isTransientVerificationMessage(msg) {
+			return true, classifyTransientMessage(msg)
+		}
+	}
+
+	return false, ""
+}
+
+func isTransientVerificationMessage(message string) bool {
+	lower := strings.ToLower(message)
+	patterns := []string{
+		"connection refused",
+		"connection reset",
+		"timeout",
+		"deadline exceeded",
+		"temporarily unavailable",
+		"no such host",
+		"eof",
+		"i/o timeout",
+		"failed to connect",
+	}
+
+	for _, pattern := range patterns {
+		if strings.Contains(lower, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func classifyTransientMessage(message string) string {
+	lower := strings.ToLower(message)
+
+	switch {
+	case strings.Contains(lower, "connection refused"):
+		return "connection_refused"
+	case strings.Contains(lower, "timeout") || strings.Contains(lower, "deadline exceeded") || strings.Contains(lower, "i/o timeout"):
+		return "timeout"
+	case strings.Contains(lower, "temporarily unavailable"):
+		return "temporarily_unavailable"
+	case strings.Contains(lower, "no such host"):
+		return "dns_error"
+	case strings.Contains(lower, "connection reset") || strings.Contains(lower, "eof"):
+		return "connection_reset"
+	default:
+		return "transient_error"
+	}
 }
 
 // applySkipFiltering is the unified skip-gate-filtering implementation.
@@ -283,7 +422,9 @@ func processGates(target *CompletionTarget, skillName string) error {
 	}
 
 	// Probe merge prompt (advisory, non-blocking)
-	processProbes(target)
+	if err := processProbes(target); err != nil {
+		return err
+	}
 
 	// Knowledge gap detection (informational, non-blocking)
 	processKnowledgeGaps(target, skillName)
@@ -493,35 +634,45 @@ func buildDesignDecompositionIssueTitle(item verify.DesignActionItem) string {
 // processProbes checks for probe files the agent produced against models.
 // If probes exist, displays a summary and prompts the orchestrator to merge findings.
 // This is advisory — the orchestrator can skip and merge later.
-func processProbes(target *CompletionTarget) {
-	probes := spawn.FindProjectProbes(target.BeadsProjectDir)
+func processProbes(target *CompletionTarget) error {
+	probes := findProbeMergeCandidates(target)
 	if len(probes) == 0 {
-		return
+		return nil
 	}
 
 	fmt.Println()
 	fmt.Println("--- Probe Merge ---")
-	fmt.Print(spawn.FormatProbeMergeSummary(probes))
 
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		fmt.Println("(Skipping probe merge — stdin is not a terminal)")
-		fmt.Println("Merge later: review .kb/models/*/probes/ and update models manually")
+		result := mergeProbesNonInteractive(probes)
+		printProbeMergeNonInteractive(result)
+
+		committed, err := commitProbeMergeArtifacts(target, probes)
+		if err != nil {
+			return fmt.Errorf("failed to auto-commit probe/model changes: %w", err)
+		}
+		if committed {
+			fmt.Println("✓ Auto-committed probe/model updates")
+		}
+
 		fmt.Println("-------------------")
-		return
+		return nil
 	}
+
+	fmt.Print(formatProbeMergeSummary(probes))
 
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Fprint(os.Stdout, "Merge probe findings into model(s)? [y/N]: ")
 	response, err := reader.ReadString('\n')
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to read response: %v\n", err)
-		return
+		return nil
 	}
 	response = strings.TrimSpace(strings.ToLower(response))
 	if response != "y" && response != "yes" {
 		fmt.Println("Skipped probe merge. Merge later by reviewing probe files manually.")
 		fmt.Println("-------------------")
-		return
+		return nil
 	}
 
 	merged := 0
@@ -530,7 +681,7 @@ func processProbes(target *CompletionTarget) {
 			fmt.Printf("  Skipping %s (no Model Impact section)\n", p.Probe.Name)
 			continue
 		}
-		if err := spawn.MergeProbeIntoModel(p.ModelPath, p); err != nil {
+		if err := mergeProbeIntoModel(p); err != nil {
 			fmt.Fprintf(os.Stderr, "  Warning: failed to merge %s into %s: %v\n", p.Probe.Name, p.ModelName, err)
 			continue
 		}
@@ -541,7 +692,17 @@ func processProbes(target *CompletionTarget) {
 	if merged > 0 {
 		fmt.Printf("✓ Merged %d probe(s) into model(s)\n", merged)
 	}
+
+	committed, err := commitProbeMergeArtifacts(target, probes)
+	if err != nil {
+		return fmt.Errorf("failed to auto-commit probe/model changes: %w", err)
+	}
+	if committed {
+		fmt.Println("✓ Auto-committed probe/model updates")
+	}
+
 	fmt.Println("-------------------")
+	return nil
 }
 
 // processKnowledgeGaps detects and logs knowledge gaps (informational, non-blocking).

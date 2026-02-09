@@ -16,22 +16,32 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/kb"
+	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
 // GraphNode represents a node in the decidability graph.
 // Can be a beads issue or a kb artifact (investigation/decision).
 type GraphNode struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Type        string   `json:"type"`                  // beads: task, bug, feature, epic, question; kb: investigation, decision
-	Status      string   `json:"status"`                // open, in_progress, closed, blocked, Complete, Accepted, etc.
-	Priority    int      `json:"priority"`              // 0-4 for beads, 0 for kb artifacts
-	Source      string   `json:"source"`                // "beads" or "kb"
-	Date        string   `json:"date,omitempty"`        // for kb artifacts
-	CreatedAt   string   `json:"created_at,omitempty"`  // creation timestamp
-	Description string   `json:"description,omitempty"` // issue description
-	Labels      []string `json:"labels,omitempty"`      // issue labels (area:*, effort:*, triage:*, etc.)
-	Layer       int      `json:"layer"`                 // execution layer from topological sort (0 = no blocking deps)
+	ID          string                `json:"id"`
+	Title       string                `json:"title"`
+	Type        string                `json:"type"`                   // beads: task, bug, feature, epic, question; kb: investigation, decision
+	Status      string                `json:"status"`                 // open, in_progress, closed, blocked, Complete, Accepted, etc.
+	Priority    int                   `json:"priority"`               // 0-4 for beads, 0 for kb artifacts
+	Source      string                `json:"source"`                 // "beads" or "kb"
+	Date        string                `json:"date,omitempty"`         // for kb artifacts
+	CreatedAt   string                `json:"created_at,omitempty"`   // creation timestamp
+	Description string                `json:"description,omitempty"`  // issue description
+	Labels      []string              `json:"labels,omitempty"`       // issue labels (area:*, effort:*, triage:*, etc.)
+	Layer       int                   `json:"layer"`                  // execution layer from topological sort (0 = no blocking deps)
+	ActiveAgent *GraphNodeActiveAgent `json:"active_agent,omitempty"` // Active agent metadata for in_progress issues
+}
+
+// GraphNodeActiveAgent contains lightweight status details for an active agent.
+type GraphNodeActiveAgent struct {
+	Phase   string `json:"phase,omitempty"`
+	Runtime string `json:"runtime,omitempty"`
+	Model   string `json:"model,omitempty"`
 }
 
 // GraphEdge represents an edge (dependency) in the graph.
@@ -185,7 +195,7 @@ func (s *Server) handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 		var stageTimings graphBuildTimings
 
 		if scope == "focus" {
-			nodes, edges, buildErr = s.buildFocusGraph(workDir)
+			nodes, edges, buildErr = s.buildFocusGraph(workDir, projectDir)
 		} else {
 			includeAll := scope == "all"
 			nodes, edges, stageTimings, buildErr = s.buildFullGraph(workDir, includeAll, parentID, projectDir)
@@ -205,6 +215,8 @@ func (s *Server) handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 			nodes, edges = filterToParentAndDescendants(nodes, edges, parentID)
 			stageTimings.ParentFilter = time.Since(focusParentFilterStart)
 		}
+
+		nodes = s.enrichInProgressNodesWithActiveAgent(workDir, projectDir, nodes)
 
 		treeBuildStart := time.Now()
 		nodes = computeLayers(nodes, edges)
@@ -295,83 +307,241 @@ func filterIssuesToParentAndDescendants(issues []beadsIssue, parentID string) []
 	return filtered
 }
 
+// enrichInProgressNodesWithActiveAgent attaches active agent metadata to in_progress beads nodes.
+// Best-effort only: if agent/session lookups fail, graph nodes are returned unchanged.
+func (s *Server) enrichInProgressNodesWithActiveAgent(workDir, projectDir string, nodes []GraphNode) []GraphNode {
+	if len(nodes) == 0 {
+		return nodes
+	}
+
+	inProgressIDs := make(map[string]bool)
+	for _, node := range nodes {
+		if node.Source != "beads" {
+			continue
+		}
+		if strings.EqualFold(node.Status, "in_progress") {
+			inProgressIDs[node.ID] = true
+		}
+	}
+
+	if len(inProgressIDs) == 0 {
+		return nodes
+	}
+
+	agentDetails := s.lookupActiveAgentDetails(workDir, projectDir, inProgressIDs)
+	if len(agentDetails) == 0 {
+		return nodes
+	}
+
+	for i := range nodes {
+		details, ok := agentDetails[nodes[i].ID]
+		if !ok {
+			continue
+		}
+		detailsCopy := details
+		nodes[i].ActiveAgent = &detailsCopy
+	}
+
+	return nodes
+}
+
+// lookupActiveAgentDetails returns phase/runtime/model for active sessions keyed by beads ID.
+// Uses a strict active window (<= 3 minutes since last update) to avoid surfacing stale sessions.
+func (s *Server) lookupActiveAgentDetails(workDir, projectDir string, targetIDs map[string]bool) map[string]GraphNodeActiveAgent {
+	if len(targetIDs) == 0 {
+		return map[string]GraphNodeActiveAgent{}
+	}
+
+	client := opencode.NewClient(s.ServerURL)
+	sessions, err := client.ListSessions("")
+	if err != nil || len(sessions) == 0 {
+		return map[string]GraphNodeActiveAgent{}
+	}
+
+	now := time.Now()
+	type candidateSession struct {
+		session opencode.Session
+		beadsID string
+	}
+
+	candidates := make(map[string]candidateSession)
+	for _, s := range sessions {
+		beadsID := extractBeadsIDFromTitle(s.Title)
+		if beadsID == "" || !targetIDs[beadsID] {
+			continue
+		}
+
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		if now.Sub(updatedAt) > 3*time.Minute {
+			continue
+		}
+
+		existing, exists := candidates[beadsID]
+		if !exists || s.Time.Updated > existing.session.Time.Updated {
+			candidates[beadsID] = candidateSession{session: s, beadsID: beadsID}
+		}
+	}
+
+	if len(candidates) == 0 {
+		return map[string]GraphNodeActiveAgent{}
+	}
+
+	beadsIDs := make([]string, 0, len(candidates))
+	for beadsID := range candidates {
+		beadsIDs = append(beadsIDs, beadsID)
+	}
+
+	projectDirs := make(map[string]string, len(beadsIDs))
+	for _, beadsID := range beadsIDs {
+		projectDirs[beadsID] = workDir
+	}
+
+	if s.WorkspaceCache != nil {
+		currentProjectDir := projectDir
+		if currentProjectDir == "" {
+			if fallbackDir, dirErr := s.currentProjectDir(); dirErr == nil {
+				currentProjectDir = fallbackDir
+			}
+		}
+		wsCache := s.WorkspaceCache.getCachedWorkspace(extractUniqueProjectDirs(sessions, currentProjectDir))
+		if wsCache != nil {
+			for _, beadsID := range beadsIDs {
+				if issueProjectDir := wsCache.lookupProjectDir(beadsID); issueProjectDir != "" {
+					projectDirs[beadsID] = issueProjectDir
+				}
+			}
+		}
+	}
+
+	commentsByID := make(map[string][]beads.Comment)
+	if s.BeadsCache != nil {
+		commentsByID = s.BeadsCache.getComments(beadsIDs, projectDirs)
+	} else {
+		commentsByID = verify.GetCommentsBatchWithProjectDirs(beadsIDs, projectDirs)
+	}
+
+	detailsByID := make(map[string]GraphNodeActiveAgent, len(candidates))
+	for beadsID, candidate := range candidates {
+		createdAt := time.Unix(candidate.session.Time.Created/1000, 0)
+		details := GraphNodeActiveAgent{
+			Runtime: formatDuration(now.Sub(createdAt)),
+			Model:   client.GetSessionModel(candidate.session.ID),
+		}
+
+		phaseStatus := verify.ParsePhaseFromComments(commentsByID[beadsID])
+		if phaseStatus.Found {
+			details.Phase = phaseStatus.Phase
+		}
+
+		detailsByID[beadsID] = details
+	}
+
+	return detailsByID
+}
+
 // buildFocusGraph builds a focused graph showing the active working set.
-func (s *Server) buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, error) {
-	allIssues, err := s.listBeadsIssues(workDir, false)
+// Query plan:
+//  1. Seed focus set from open/in_progress issues (in_progress + P0/P1)
+//  2. Expand one hop using a single dependency graph fetch
+//  3. Resolve node metadata from list output (with one optional --all fallback)
+//
+// This avoids per-issue bd show/dep shell-outs that scale poorly with issue count.
+func (s *Server) buildFocusGraph(workDir, cacheProjectDir string) ([]GraphNode, []GraphEdge, error) {
+	activeIssues, err := s.listBeadsIssues(workDir, false)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	issueByID := make(map[string]beadsIssue)
-	for _, issue := range allIssues {
+	for _, issue := range activeIssues {
 		issueByID[issue.ID] = issue
 	}
 
-	focusSet := make(map[string]bool)
-	for _, issue := range allIssues {
-		if issue.Status == "in_progress" {
-			focusSet[issue.ID] = true
+	seedSet := make(map[string]bool)
+	for _, issue := range activeIssues {
+		if issue.Status == "in_progress" || issue.Priority <= 1 {
+			seedSet[issue.ID] = true
 		}
 	}
-	for _, issue := range allIssues {
-		if issue.Priority <= 1 {
-			focusSet[issue.ID] = true
+
+	focusSet := make(map[string]bool, len(seedSet))
+	for id := range seedSet {
+		focusSet[id] = true
+	}
+
+	fetchDependencyGraph := func() ([]GraphEdge, error) {
+		return s.listGraphEdges(workDir)
+	}
+
+	var allEdges []GraphEdge
+	var graphErr error
+	if s.BeadsStatsCache != nil {
+		allEdges, graphErr = s.BeadsStatsCache.getDependencyGraph(cacheProjectDir, "open", fetchDependencyGraph)
+	} else {
+		allEdges, graphErr = fetchDependencyGraph()
+	}
+
+	if graphErr == nil {
+		for _, edge := range allEdges {
+			if seedSet[edge.From] || seedSet[edge.To] {
+				focusSet[edge.From] = true
+				focusSet[edge.To] = true
+			}
+		}
+	}
+
+	needsFullLookup := false
+	for id := range focusSet {
+		if _, ok := issueByID[id]; !ok {
+			needsFullLookup = true
+			break
+		}
+	}
+
+	if needsFullLookup {
+		allIssues, listErr := s.listBeadsIssues(workDir, true)
+		if listErr == nil {
+			for _, issue := range allIssues {
+				issueByID[issue.ID] = issue
+			}
 		}
 	}
 
 	edges := make([]GraphEdge, 0)
-	processedForDeps := make(map[string]bool)
-
-	for id := range focusSet {
-		if processedForDeps[id] {
-			continue
-		}
-		processedForDeps[id] = true
-
-		showIssue, err := s.showBeadsIssue(workDir, id)
-		if err != nil {
-			continue
-		}
-
-		for _, dep := range showIssue.Dependencies {
-			focusSet[dep.ID] = true
-		}
-		for _, dep := range showIssue.Dependents {
-			focusSet[dep.ID] = true
-		}
-
-		deps, depErr := s.listIssueDependencies(workDir, id)
-		if depErr == nil {
-			for _, dep := range deps {
-				edges = append(edges, GraphEdge{From: id, To: dep.ID, Type: dep.DependencyType})
+	if graphErr == nil {
+		for _, edge := range allEdges {
+			if focusSet[edge.From] && focusSet[edge.To] {
+				edges = append(edges, edge)
 			}
 		}
-		dependents, depErr := s.listIssueDependents(workDir, id)
-		if depErr == nil {
-			for _, dep := range dependents {
-				edges = append(edges, GraphEdge{From: dep.ID, To: id, Type: dep.DependencyType})
+	} else {
+		ids := make([]string, 0, len(focusSet))
+		for id := range focusSet {
+			ids = append(ids, id)
+		}
+
+		dependencyMap := s.fetchIssueDependencyMap(workDir, ids)
+		for _, id := range ids {
+			for _, dep := range dependencyMap[id] {
+				if focusSet[dep.ID] {
+					edges = append(edges, GraphEdge{From: id, To: dep.ID, Type: dep.DependencyType})
+				}
 			}
 		}
 	}
 
 	nodes := make([]GraphNode, 0, len(focusSet))
 	for id := range focusSet {
-		if issue, ok := issueByID[id]; ok {
-			nodes = append(nodes, GraphNode{
-				ID: issue.ID, Title: issue.Title, Type: issue.IssueType,
-				Status: issue.Status, Priority: issue.Priority, Source: "beads",
-				Description: issue.Description, CreatedAt: issue.CreatedAt, Labels: issue.Labels,
-			})
-		} else {
-			showIssue, err := s.showBeadsIssue(workDir, id)
-			if err == nil {
-				nodes = append(nodes, GraphNode{
-					ID: showIssue.ID, Title: showIssue.Title, Type: showIssue.IssueType,
-					Status: showIssue.Status, Priority: showIssue.Priority, Source: "beads",
-					Description: showIssue.Description, CreatedAt: showIssue.CreatedAt,
-				})
-			}
+		issue, ok := issueByID[id]
+		if !ok {
+			continue
 		}
+
+		nodes = append(nodes, GraphNode{
+			ID: issue.ID, Title: issue.Title, Type: issue.IssueType,
+			Status: issue.Status, Priority: issue.Priority, Source: "beads",
+			Description: issue.Description, CreatedAt: issue.CreatedAt, Labels: issue.Labels,
+		})
 	}
 
 	kbDir := filepath.Join(workDir, ".kb")

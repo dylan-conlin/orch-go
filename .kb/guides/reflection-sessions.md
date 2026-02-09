@@ -148,6 +148,7 @@ Reflection is working when RIR decreases and citation/follow-through improve wit
 ## References
 
 - `.kb/decisions/2026-02-07-orchestrator-reflection-session-protocol.md`
+- `.kb/guides/decision-index.md`
 - `.kb/investigations/2026-02-07-inv-design-orchestrator-level-reflection-session.md`
 - `~/.opencode/skill/worker/kb-reflect/SKILL.md`
 

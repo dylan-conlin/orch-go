@@ -444,6 +444,10 @@ OpenCode persists all session data to `~/.local/share/opencode/storage/` and exp
 
 **Related decisions:**
 - `.kb/decisions/2025-12-21-minimal-artifact-taxonomy.md`
+- `.kb/decisions/2026-01-17-event-sourced-monitoring-architecture.md`
+- `.kb/decisions/2026-01-24-readable-frontier-over-graph-visualization.md`
+- `.kb/decisions/2026-01-30-strategic-center-dashboard-architecture.md`
+- `.kb/decisions/2026-01-30-sse-reconnection-resilience-patterns.md`
 
 **Key investigations (by theme):**
 

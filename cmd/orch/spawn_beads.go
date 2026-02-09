@@ -50,14 +50,8 @@ func createBeadsIssue(projectName, skillName, task string) (string, error) {
 		fmt.Printf("Auto-applying area label: %s\n", suggestedArea)
 	}
 
-	// Try RPC client first
 	var rpcIssue *beads.Issue
-	err := beads.Do("", func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
-
+	err := withBeadsFallback("", func(client *beads.Client) error {
 		var rpcErr error
 		rpcIssue, rpcErr = client.Create(&beads.CreateArgs{
 			Title:     title,
@@ -66,18 +60,16 @@ func createBeadsIssue(projectName, skillName, task string) (string, error) {
 			Labels:    labels,
 		})
 		return rpcErr
+	}, func() error {
+		var fallbackErr error
+		rpcIssue, fallbackErr = beads.FallbackCreate(title, "", "task", 2, labels)
+		return fallbackErr
 	})
-	if err == nil {
-		return rpcIssue.ID, nil
-	}
-
-	// Fallback to CLI
-	issue, err := beads.FallbackCreate(title, "", "task", 2, labels)
 	if err != nil {
 		return "", err
 	}
 
-	return issue.ID, nil
+	return rpcIssue.ID, nil
 }
 
 // ensureOrchScaffolding checks for required scaffolding (.orch, .beads) and optionally auto-initializes.

@@ -43,19 +43,21 @@ var (
 
 	// Targeted skip flags (replace blanket --force)
 	// Each requires completeSkipReason to be set (min 10 chars)
-	completeSkipTestEvidence    bool
-	completeSkipVisual          bool
-	completeSkipGitDiff         bool
-	completeSkipSynthesis       bool
-	completeSkipBuild           bool
-	completeSkipConstraint      bool
-	completeSkipPhaseGate       bool
-	completeSkipSkillOutput     bool
-	completeSkipDecisionPatch   bool
-	completeSkipPhaseComplete   bool
-	completeSkipHandoffContent  bool
-	completeSkipDashboardHealth bool
-	completeSkipReason          string // Required for all --skip-* flags (min 10 chars)
+	completeSkipTestEvidence     bool
+	completeSkipModelConnection  bool
+	completeSkipVisual           bool
+	completeSkipGitDiff          bool
+	completeSkipSynthesis        bool
+	completeSkipBuild            bool
+	completeSkipConstraint       bool
+	completeSkipPhaseGate        bool
+	completeSkipSkillOutput      bool
+	completeSkipDecisionPatch    bool
+	completeSkipPhaseComplete    bool
+	completeSkipHandoffContent   bool
+	completeSkipDashboardHealth  bool
+	completeSkipVerificationSpec bool
+	completeSkipReason           string // Required for all --skip-* flags (min 10 chars)
 )
 
 var completeCmd = &cobra.Command{
@@ -71,7 +73,8 @@ VERIFICATION GATES:
 The following gates are checked before completion:
   - phase_complete:       Agent reported "Phase: Complete"
   - synthesis:            SYNTHESIS.md exists (full tier only)
-  - test_evidence:        Test execution evidence in beads comments
+  - test_evidence:        Test execution evidence (feature-impl/systematic-debugging/reliability-testing)
+  - model_connection:     Probe file or Model candidate evidence (investigation/research/architect)
   - visual_verification:  Visual verification for web/ changes
   - git_diff:             Git changes match SYNTHESIS.md claims
   - build:                Project builds successfully
@@ -81,10 +84,12 @@ The following gates are checked before completion:
   - decision_patch_limit: Decision patch count not exceeded
   - handoff_content:      SYNTHESIS.md has actual content (orchestrator only)
   - dashboard_health:     Dashboard API endpoints healthy for web/ or serve_*.go changes
+  - verification_spec:    VERIFICATION_SPEC executable checks pass for workspace tier
 
 TARGETED SKIP FLAGS:
 Use --skip-{gate} with --skip-reason to bypass specific gates:
   --skip-test-evidence     Skip test evidence gate
+  --skip-model-connection  Skip model connection gate
   --skip-visual            Skip visual verification gate
   --skip-git-diff          Skip git diff verification gate
   --skip-synthesis         Skip SYNTHESIS.md gate
@@ -96,6 +101,7 @@ Use --skip-{gate} with --skip-reason to bypass specific gates:
   --skip-phase-complete    Skip Phase: Complete gate
   --skip-handoff-content   Skip handoff content validation (orchestrator only)
   --skip-dashboard-health  Skip dashboard health check for web/ or serve_*.go changes
+  --skip-verification-spec Skip VERIFICATION_SPEC executable checks gate
 
 Each --skip-* flag requires --skip-reason with a minimum of 10 characters
 explaining why the gate is being bypassed. Bypasses are logged for audit.
@@ -160,6 +166,7 @@ func init() {
 
 	// Targeted skip flags - each bypasses a specific verification gate
 	completeCmd.Flags().BoolVar(&completeSkipTestEvidence, "skip-test-evidence", false, "Skip test execution evidence gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipModelConnection, "skip-model-connection", false, "Skip model connection gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipVisual, "skip-visual", false, "Skip visual verification gate for web/ changes (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipGitDiff, "skip-git-diff", false, "Skip git diff verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipSynthesis, "skip-synthesis", false, "Skip SYNTHESIS.md verification gate (requires --skip-reason)")
@@ -171,6 +178,7 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipPhaseComplete, "skip-phase-complete", false, "Skip Phase: Complete verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipHandoffContent, "skip-handoff-content", false, "Skip handoff content validation gate for orchestrators (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipDashboardHealth, "skip-dashboard-health", false, "Skip dashboard health check gate for web/ or serve_*.go changes (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipVerificationSpec, "skip-verification-spec", false, "Skip VERIFICATION_SPEC executable checks gate (requires --skip-reason)")
 	completeCmd.Flags().StringVar(&completeSkipReason, "skip-reason", "", "Reason for skip (required for all --skip-* flags, min 10 chars)")
 }
 

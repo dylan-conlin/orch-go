@@ -17,6 +17,11 @@ export interface GraphNode {
   description?: string // issue description
   labels?: string[] // issue labels (area:*, effort:*, triage:*, etc.)
   layer?: number // Execution phase (0 = ready, N = blocked by layers 0..N-1)
+  active_agent?: {
+    phase?: string
+    runtime?: string
+    model?: string
+  }
 }
 
 // Graph edge (dependency) from /api/beads/graph

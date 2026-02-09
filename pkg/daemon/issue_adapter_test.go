@@ -2,12 +2,60 @@
 package daemon
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
+
+func TestFilterAccessibleReadyIssues_DropsIssueNotFound(t *testing.T) {
+	issues := []Issue{
+		{ID: "orch-go-a", Title: "Findable"},
+		{ID: "orch-go-b", Title: "Missing"},
+	}
+
+	filtered := filterAccessibleReadyIssues(issues, func(id string) error {
+		if id == "orch-go-b" {
+			return fmt.Errorf("%w: %s", beads.ErrIssueNotFound, id)
+		}
+		return nil
+	}, "")
+
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 issue after filtering, got %d", len(filtered))
+	}
+	if filtered[0].ID != "orch-go-a" {
+		t.Fatalf("expected orch-go-a to remain, got %s", filtered[0].ID)
+	}
+}
+
+func TestFilterAccessibleReadyIssues_KeepsIssueOnTransientError(t *testing.T) {
+	issues := []Issue{{ID: "orch-go-a", Title: "Potentially findable"}}
+
+	filtered := filterAccessibleReadyIssues(issues, func(id string) error {
+		return errors.New("temporary rpc timeout")
+	}, "")
+
+	if len(filtered) != 1 {
+		t.Fatalf("expected issue to be kept on transient error, got %d issues", len(filtered))
+	}
+	if filtered[0].ID != "orch-go-a" {
+		t.Fatalf("expected orch-go-a to remain, got %s", filtered[0].ID)
+	}
+}
+
+func TestFilterAccessibleReadyIssues_NoCheckFunction(t *testing.T) {
+	issues := []Issue{{ID: "orch-go-a"}}
+
+	filtered := filterAccessibleReadyIssues(issues, nil, "")
+
+	if len(filtered) != len(issues) {
+		t.Fatalf("expected all issues to remain when check function is nil, got %d", len(filtered))
+	}
+}
 
 func TestListReadyIssuesForProject_EmptyPath(t *testing.T) {
 	_, err := ListReadyIssuesForProject("")

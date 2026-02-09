@@ -4,9 +4,11 @@ package daemon
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -176,6 +178,10 @@ func RunReflectionWithOptions(createIssues bool) (*ReflectSuggestions, error) {
 		return nil, fmt.Errorf("failed to parse kb reflect output: %w", err)
 	}
 
+	if projectDir, err := os.Getwd(); err == nil {
+		rawOutput.Synthesis = filterSynthesisSuggestions(rawOutput.Synthesis, projectDir)
+	}
+
 	// Convert refine output to suggestions
 	var refine []RefineSuggestion
 	for _, r := range rawOutput.Refine {
@@ -209,6 +215,109 @@ func RunReflectionWithOptions(createIssues bool) (*ReflectSuggestions, error) {
 	}
 
 	return suggestions, nil
+}
+
+// filterSynthesisSuggestions removes synthesis entries that only reference
+// archived investigations, and recomputes counts after filtering.
+func filterSynthesisSuggestions(suggestions []SynthesisSuggestion, projectDir string) []SynthesisSuggestion {
+	if len(suggestions) == 0 || projectDir == "" {
+		return suggestions
+	}
+
+	active, err := buildActiveInvestigationLookup(projectDir)
+	if err != nil || len(active) == 0 {
+		return suggestions
+	}
+
+	filtered := make([]SynthesisSuggestion, 0, len(suggestions))
+	for _, suggestion := range suggestions {
+		if len(suggestion.Investigations) == 0 {
+			filtered = append(filtered, suggestion)
+			continue
+		}
+
+		kept := make([]string, 0, len(suggestion.Investigations))
+		for _, investigation := range suggestion.Investigations {
+			if investigationIsActive(investigation, active) {
+				kept = append(kept, investigation)
+			}
+		}
+
+		if len(kept) == 0 {
+			continue
+		}
+
+		suggestion.Investigations = kept
+		suggestion.Count = len(kept)
+		filtered = append(filtered, suggestion)
+	}
+
+	return filtered
+}
+
+func buildActiveInvestigationLookup(projectDir string) (map[string]struct{}, error) {
+	investigationsDir := filepath.Join(projectDir, ".kb", "investigations")
+	if _, err := os.Stat(investigationsDir); err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	active := make(map[string]struct{})
+	err := filepath.WalkDir(investigationsDir, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		if d.IsDir() {
+			switch d.Name() {
+			case "archived", "archive":
+				return filepath.SkipDir
+			default:
+				return nil
+			}
+		}
+
+		if !strings.HasSuffix(strings.ToLower(d.Name()), ".md") {
+			return nil
+		}
+
+		rel, err := filepath.Rel(investigationsDir, path)
+		if err != nil {
+			return err
+		}
+
+		normalizedRel := filepath.ToSlash(rel)
+		active[normalizedRel] = struct{}{}
+		active[d.Name()] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return active, nil
+}
+
+func investigationIsActive(investigation string, active map[string]struct{}) bool {
+	if len(active) == 0 {
+		return false
+	}
+
+	normalized := filepath.ToSlash(strings.TrimSpace(investigation))
+	normalized = strings.TrimPrefix(normalized, "./")
+	if normalized == "" {
+		return false
+	}
+
+	if _, ok := active[normalized]; ok {
+		return true
+	}
+
+	base := filepath.Base(normalized)
+	_, ok := active[base]
+	return ok
 }
 
 func triggerReflectIssueCreation(reflectType string) error {

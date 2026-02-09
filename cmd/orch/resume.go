@@ -18,6 +18,7 @@ import (
 var (
 	resumeWorkspace string
 	resumeSession   string
+	resumeWorkdir   string
 )
 
 var resumeCmd = &cobra.Command{
@@ -71,11 +72,11 @@ requiring a workspace.`,
 		client := opencode.NewClient(serverURL)
 		switch {
 		case hasBeadsID:
-			return runResumeByBeadsID(client, args[0])
+			return runResumeByBeadsID(client, args[0], resumeWorkdir)
 		case hasWorkspace:
-			return runResumeByWorkspace(client, resumeWorkspace)
+			return runResumeByWorkspace(client, resumeWorkspace, resumeWorkdir)
 		case hasSession:
-			return runResumeBySession(client, resumeSession)
+			return runResumeBySession(client, resumeSession, resumeWorkdir)
 		default:
 			return fmt.Errorf("no identifier provided")
 		}
@@ -85,6 +86,9 @@ requiring a workspace.`,
 func init() {
 	resumeCmd.Flags().StringVar(&resumeWorkspace, "workspace", "", "Resume by workspace name (for orchestrators)")
 	resumeCmd.Flags().StringVar(&resumeSession, "session", "", "Resume by session ID directly")
+	resumeCmd.Flags().StringVar(&resumeWorkdir, "workdir", "", "Target project directory (for cross-project resume)")
+	resumeCmd.Flags().StringVar(&resumeWorkdir, "project", "", "Alias for --workdir")
+	resumeCmd.Flags().MarkHidden("project")
 	rootCmd.AddCommand(resumeCmd)
 }
 
@@ -138,12 +142,17 @@ func GenerateSessionResumePrompt() string {
 }
 
 // runResumeByBeadsID resumes an agent by beads ID (original behavior).
-func runResumeByBeadsID(client opencode.ClientInterface, beadsID string) error {
-	// Get current directory to determine project
-	projectDir, err := currentProjectDir()
+func runResumeByBeadsID(client opencode.ClientInterface, beadsID string, workdir string) error {
+	currentDir, err := currentProjectDir()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
+
+	projectResult, err := resolveProjectDir(workdir, "", currentDir)
+	if err != nil {
+		return err
+	}
+	projectDir := projectResult.ProjectDir
 	projectName := filepath.Base(projectDir)
 
 	// Find workspace by beadsID and read session_id
@@ -217,12 +226,17 @@ func runResumeByBeadsID(client opencode.ClientInterface, beadsID string) error {
 
 // runResumeByWorkspace resumes an agent by workspace name.
 // This is particularly useful for orchestrators which don't have beads IDs.
-func runResumeByWorkspace(client opencode.ClientInterface, workspaceName string) error {
-	// Get current directory to determine project
-	projectDir, err := currentProjectDir()
+func runResumeByWorkspace(client opencode.ClientInterface, workspaceName string, workdir string) error {
+	currentDir, err := currentProjectDir()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
+
+	projectResult, err := resolveProjectDir(workdir, "", currentDir)
+	if err != nil {
+		return err
+	}
+	projectDir := projectResult.ProjectDir
 	projectName := filepath.Base(projectDir)
 
 	// Build workspace path
@@ -317,12 +331,17 @@ func runResumeByWorkspace(client opencode.ClientInterface, workspaceName string)
 
 // runResumeBySession resumes an agent directly by session ID.
 // This is useful when you have the session ID but not the workspace.
-func runResumeBySession(client opencode.ClientInterface, sessionID string) error {
-	// Get current directory to determine project
-	projectDir, err := currentProjectDir()
+func runResumeBySession(client opencode.ClientInterface, sessionID string, workdir string) error {
+	currentDir, err := currentProjectDir()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
+
+	projectResult, err := resolveProjectDir(workdir, "", currentDir)
+	if err != nil {
+		return err
+	}
+	projectDir := projectResult.ProjectDir
 	projectName := filepath.Base(projectDir)
 
 	// Verify session exists

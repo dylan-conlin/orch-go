@@ -19,7 +19,8 @@ import (
 
 const resourceCeilingMultiplier int64 = 2
 
-const resourceBaselineWarmupDuration = 60 * time.Second
+// Capture baseline from warm steady-state, not cold start.
+const resourceBaselineWarmupDuration = 10 * time.Minute
 
 type resourceMetrics struct {
 	Goroutines          int64 `json:"goroutines"`

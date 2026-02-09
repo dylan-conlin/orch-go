@@ -11,7 +11,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** Backend follows established validation patterns (checksum, budget, links); CLI integration adds output to printCheckResult (human-readable) and checkJSON (machine-readable); error-severity blocks deploy, warn-severity is advisory.
 
-**Next:** Feature complete - skillc now warns when load-bearing patterns missing during check/build/deploy. Investigation committed to orch-go, implementation committed to skillc (commit 136a257).
+**Next:** Close - implemented under .kb/decisions/2026-01-08-load-bearing-guidance-data-model.md.
 
 **Promote to Decision:** recommend-no - implementation of existing decision (2026-01-08-load-bearing-guidance-data-model.md)
 
@@ -49,7 +49,7 @@ Guidelines:
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
 **Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Superseded-By:** .kb/decisions/2026-01-08-load-bearing-guidance-data-model.md
 
 ---
 

@@ -12,44 +12,73 @@ import (
 // with 500+ files, resulting in 300+ agents x 500+ files x 2 calls = massive slowdown.
 type investigationDirCache struct {
 	// entries maps directory path -> list of .md file names (not full DirEntry, just names for efficiency)
-	entries map[string][]string
+	entries    map[string][]string
+	maxEntries int
 }
+
+const defaultInvestigationDirCacheMaxEntries = 5000
 
 // buildInvestigationDirCache pre-loads directory listings for investigation discovery.
 // Call this once before processing agents, then pass to discoverInvestigationPath.
-func buildInvestigationDirCache(projectDirs []string) *investigationDirCache {
+func buildInvestigationDirCache(projectDirs []string, maxEntries int) *investigationDirCache {
+	if maxEntries <= 0 {
+		panic("investigation dir cache maxEntries must be > 0")
+	}
+
 	cache := &investigationDirCache{
-		entries: make(map[string][]string),
+		entries:    make(map[string][]string),
+		maxEntries: maxEntries,
+	}
+
+	cachedFiles := 0
+
+	cacheDirectory := func(dir string) {
+		if cachedFiles >= cache.maxEntries {
+			return
+		}
+
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+
+		remaining := cache.maxEntries - cachedFiles
+		mdFiles := make([]string, 0, remaining)
+		for _, entry := range entries {
+			if remaining == 0 {
+				break
+			}
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+				mdFiles = append(mdFiles, entry.Name())
+				remaining--
+			}
+		}
+
+		if len(mdFiles) > 0 {
+			cache.entries[dir] = mdFiles
+			cachedFiles += len(mdFiles)
+		}
 	}
 
 	for _, projectDir := range projectDirs {
+		if cachedFiles >= cache.maxEntries {
+			break
+		}
+
 		if projectDir == "" {
 			continue
 		}
 
 		// Cache .kb/investigations/
 		investigationsDir := filepath.Join(projectDir, ".kb", "investigations")
-		if entries, err := os.ReadDir(investigationsDir); err == nil {
-			var mdFiles []string
-			for _, entry := range entries {
-				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
-					mdFiles = append(mdFiles, entry.Name())
-				}
-			}
-			cache.entries[investigationsDir] = mdFiles
+		cacheDirectory(investigationsDir)
+		if cachedFiles >= cache.maxEntries {
+			break
 		}
 
 		// Cache .kb/investigations/simple/
 		simpleDir := filepath.Join(projectDir, ".kb", "investigations", "simple")
-		if entries, err := os.ReadDir(simpleDir); err == nil {
-			var mdFiles []string
-			for _, entry := range entries {
-				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
-					mdFiles = append(mdFiles, entry.Name())
-				}
-			}
-			cache.entries[simpleDir] = mdFiles
-		}
+		cacheDirectory(simpleDir)
 	}
 
 	return cache

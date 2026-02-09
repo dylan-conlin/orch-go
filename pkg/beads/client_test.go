@@ -437,6 +437,7 @@ func TestCreateArgs_JSON(t *testing.T) {
 		IssueType:   "feature",
 		Priority:    2,
 		Labels:      []string{"enhancement"},
+		CausedBy:    "orch-go-12345",
 	}
 
 	data, err := json.Marshal(args)
@@ -454,6 +455,9 @@ func TestCreateArgs_JSON(t *testing.T) {
 	}
 	if decoded.Priority != 2 {
 		t.Errorf("Priority = %d, want %d", decoded.Priority, 2)
+	}
+	if decoded.CausedBy != "orch-go-12345" {
+		t.Errorf("CausedBy = %q, want %q", decoded.CausedBy, "orch-go-12345")
 	}
 }
 

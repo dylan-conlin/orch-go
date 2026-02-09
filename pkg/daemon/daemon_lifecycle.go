@@ -68,6 +68,25 @@ type Config struct {
 	// for supported kb reflect types (currently synthesis + defect-class).
 	ReflectCreateIssues bool
 
+	// PolishEnabled controls whether idle-time polish mode is enabled.
+	// When enabled, the daemon runs low-priority self-improvement audits
+	// when no triage:ready issues are available to spawn.
+	PolishEnabled bool
+
+	// PolishInterval is how often to run polish audits (0 = disabled).
+	// Default is 30 minutes.
+	PolishInterval time.Duration
+
+	// PolishMaxIssuesPerCycle caps how many polish issues can be created in
+	// a single poll cycle.
+	// Default is 3.
+	PolishMaxIssuesPerCycle int
+
+	// PolishMaxIssuesPerDay caps how many polish issues can be created in
+	// a UTC day window.
+	// Default is 10.
+	PolishMaxIssuesPerDay int
+
 	// CleanupEnabled controls whether periodic cleanup is enabled.
 	// When enabled, the daemon will run cleanup operations periodically.
 	CleanupEnabled bool
@@ -221,6 +240,10 @@ func DefaultConfig() Config {
 		ReflectEnabled:                         true,
 		ReflectInterval:                        time.Hour, // Hourly by default
 		ReflectCreateIssues:                    true,
+		PolishEnabled:                          true,
+		PolishInterval:                         30 * time.Minute,
+		PolishMaxIssuesPerCycle:                3,
+		PolishMaxIssuesPerDay:                  10,
 		CleanupEnabled:                         true,
 		CleanupInterval:                        6 * time.Hour, // Every 6 hours by default
 		CleanupSessions:                        true,          // Clean sessions by default
@@ -341,6 +364,17 @@ type Daemon struct {
 	// lastReflect tracks when reflection was last run for periodic reflection.
 	lastReflect time.Time
 
+	// lastPolish tracks when polish mode was last run.
+	lastPolish time.Time
+
+	// polishWindowStart is the start time of the current UTC day window for
+	// polish issue daily caps.
+	polishWindowStart time.Time
+
+	// polishCreatedToday counts issues created by polish mode in the current
+	// UTC day window.
+	polishCreatedToday int
+
 	// lastCleanup tracks when session cleanup was last run for periodic cleanup.
 	lastCleanup time.Time
 
@@ -391,6 +425,12 @@ type Daemon struct {
 	listCompletedAgentsFunc func(CompletionConfig) ([]CompletedAgent, error)
 	// reflectFunc is used for testing - allows mocking kb reflect
 	reflectFunc func(createIssues bool) (*ReflectResult, error)
+	// collectPolishCandidatesFunc is used for testing - allows mocking polish audits
+	collectPolishCandidatesFunc func(projectDir string) ([]PolishIssueSpec, error)
+	// createPolishIssueFunc is used for testing - allows mocking polish issue creation
+	createPolishIssueFunc func(spec PolishIssueSpec) (string, error)
+	// listAllIssuesFunc is used for testing - allows mocking list of active issues
+	listAllIssuesFunc func() ([]Issue, error)
 	// listEpicChildrenFunc is used for testing - allows mocking ListEpicChildren
 	listEpicChildrenFunc func(epicID string) ([]Issue, error)
 	// listProjectsFunc is used for testing - allows mocking kb projects list
@@ -443,6 +483,9 @@ func NewWithConfig(config Config) *Daemon {
 		},
 		spawnForProjectFunc: SpawnWorkForProject,
 	}
+	d.collectPolishCandidatesFunc = d.collectPolishCandidates
+	d.createPolishIssueFunc = d.createPolishIssue
+	d.listAllIssuesFunc = ListOpenAndInProgressIssues
 	// Initialize worker pool if MaxAgents is set
 	if config.MaxAgents > 0 {
 		d.Pool = NewWorkerPool(config.MaxAgents)
@@ -497,6 +540,9 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		},
 		spawnForProjectFunc: SpawnWorkForProject,
 	}
+	d.collectPolishCandidatesFunc = d.collectPolishCandidates
+	d.createPolishIssueFunc = d.createPolishIssue
+	d.listAllIssuesFunc = ListOpenAndInProgressIssues
 	// Initialize rate limiter if MaxSpawnsPerHour is set
 	if config.MaxSpawnsPerHour > 0 {
 		d.RateLimiter = NewRateLimiter(config.MaxSpawnsPerHour)

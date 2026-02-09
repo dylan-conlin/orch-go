@@ -18,6 +18,7 @@ type CreateIssueRequest struct {
 	Priority    int      `json:"priority,omitempty"`
 	Labels      []string `json:"labels,omitempty"`
 	ParentID    string   `json:"parent_id,omitempty"` // Optional parent issue for follow-ups
+	CausedBy    string   `json:"caused_by,omitempty"` // Optional source issue/commit for regressions
 }
 
 // CreateIssueResponse is the JSON response for POST /api/issues.
@@ -65,13 +66,15 @@ func (s *Server) handleIssues(w http.ResponseWriter, r *http.Request) {
 				IssueType:   req.IssueType,
 				Priority:    req.Priority,
 				Labels:      req.Labels,
+				Parent:      req.ParentID,
+				CausedBy:    req.CausedBy,
 			})
 			if createErr != nil {
-				return beads.FallbackCreate(req.Title, req.Description, req.IssueType, req.Priority, req.Labels)
+				return beads.FallbackCreateWithParentAndCause(req.Title, req.Description, req.IssueType, req.Priority, req.Labels, req.ParentID, req.CausedBy)
 			}
 			return issue, nil
 		}
-		return beads.FallbackCreate(req.Title, req.Description, req.IssueType, req.Priority, req.Labels)
+		return beads.FallbackCreateWithParentAndCause(req.Title, req.Description, req.IssueType, req.Priority, req.Labels, req.ParentID, req.CausedBy)
 	})
 	var issue *beads.Issue
 	if err == nil {

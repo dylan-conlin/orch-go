@@ -1,9 +1,10 @@
 # Decision: Event-Sourced Monitoring Architecture
 
-**Status:** Accepted
+**Status:** Superseded (2026-02-07)
 **Date:** 2026-01-17
 **Deciders:** Architect synthesis from 8 investigations
 **Supersedes:** None
+**Superseded-By:** `.kb/decisions/2026-02-07-agent-completion-lifecycle-separation.md`
 **Synthesized from:** `.kb/investigations/2026-01-17-inv-synthesize-sse-investigation-cluster-investigations.md`
 
 ---
@@ -11,6 +12,8 @@
 ## Summary
 
 SSE-based event-sourced monitoring is the required architecture for real-time agent state observation in orch-go. This decision documents the settled architecture, constraints, and patterns that emerged from 8 investigations spanning 2025-12-19 to 2026-01-05.
+
+> Superseded scope: completion authority is no longer derived from SSE busy->idle transitions. As of 2026-02-07, `Phase: Complete` + verification gates are authoritative for closure. Keep this document for SSE transport and frontend eventing history.
 
 ---
 

@@ -7,6 +7,25 @@ import (
 	"strings"
 )
 
+func ensureCreatePersisted(issue *Issue, showFn func(string) (*Issue, error)) error {
+	if issue == nil {
+		return fmt.Errorf("bd create returned empty issue payload")
+	}
+	if strings.TrimSpace(issue.ID) == "" {
+		return fmt.Errorf("bd create returned empty issue id")
+	}
+
+	persisted, err := showFn(issue.ID)
+	if err != nil {
+		return fmt.Errorf("bd create returned issue %s but it was not persisted (possible JSONL hash mismatch): %w", issue.ID, err)
+	}
+	if persisted == nil || strings.TrimSpace(persisted.ID) == "" {
+		return fmt.Errorf("bd create returned issue %s but read-back was empty (possible JSONL hash mismatch)", issue.ID)
+	}
+
+	return nil
+}
+
 // Show retrieves a single issue by ID.
 // Note: bd show --json returns an array even for a single issue.
 // The RPC daemon may return either format (array or single object) depending on version.
@@ -231,13 +250,21 @@ func FallbackCloseForce(id, reason string, force bool) error {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackCreate(title, description, issueType string, priority int, labels []string) (*Issue, error) {
-	return FallbackCreateWithParent(title, description, issueType, priority, labels, "")
+	return FallbackCreateWithParentAndCause(title, description, issueType, priority, labels, "", "")
 }
 
 // FallbackCreateWithParent creates an issue via bd CLI with an optional parent link.
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackCreateWithParent(title, description, issueType string, priority int, labels []string, parent string) (*Issue, error) {
+	return FallbackCreateWithParentAndCause(title, description, issueType, priority, labels, parent, "")
+}
+
+// FallbackCreateWithParentAndCause creates an issue via bd CLI with optional
+// parent and caused-by links.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
+// Uses getBdPath() to resolve the bd executable location.
+func FallbackCreateWithParentAndCause(title, description, issueType string, priority int, labels []string, parent string, causedBy string) (*Issue, error) {
 	args := []string{"create", title, "--json"}
 	if description != "" {
 		args = append(args, "--description", description)
@@ -247,6 +274,9 @@ func FallbackCreateWithParent(title, description, issueType string, priority int
 	}
 	if parent != "" {
 		args = append(args, "--parent", parent)
+	}
+	if causedBy != "" {
+		args = append(args, "--caused-by", causedBy)
 	}
 	if priority > 0 {
 		args = append(args, "--priority", fmt.Sprintf("%d", priority))
@@ -269,6 +299,12 @@ func FallbackCreateWithParent(title, description, issueType string, priority int
 	var issue Issue
 	if err := json.Unmarshal(output, &issue); err != nil {
 		return nil, fmt.Errorf("failed to parse bd create output: %w", err)
+	}
+
+	if err := ensureCreatePersisted(&issue, func(id string) (*Issue, error) {
+		return fallbackShowWithDir(id, DefaultDir)
+	}); err != nil {
+		return nil, err
 	}
 
 	return &issue, nil

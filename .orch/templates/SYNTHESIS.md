@@ -73,6 +73,19 @@ go test ./...
 
 ---
 
+## Verification Contract
+
+- **Spec:** `VERIFICATION_SPEC.yaml` (workspace root)
+- **Key outcomes:**
+  - `[verification-id]` - `[pass | fail | pending]` - Brief evidence or observed output
+  - `[verification-id]` - `[pass | fail | pending]` - Brief evidence or observed output
+- **Manual steps (if any):**
+  - `[step]` - `[completed | pending]` - Note or owner
+
+*(If no spec update was needed, state why.)*
+
+---
+
 ## Knowledge (What Was Learned)
 
 ### New Artifacts

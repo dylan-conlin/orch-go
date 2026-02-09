@@ -380,12 +380,7 @@ func runNext() error {
 func getReadyIssues() []string {
 	var issues []string
 
-	err := beads.Do("", func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
-
+	err := withBeadsClient("", func(client *beads.Client) error {
 		readyIssues, rpcErr := client.Ready(nil)
 		if rpcErr != nil {
 			return rpcErr

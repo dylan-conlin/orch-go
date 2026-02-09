@@ -11,7 +11,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** The "silent failure" may be caused by wrong directory context in CLI fallback or RPC Cwd mismatch, but specific reproduction pending. Session idle is distinct from work complete.
 
-**Next:** Implement fix for FallbackClose to use beads.DefaultDir, add WithCwd to CloseIssue RPC client, and add error logging to surface silent failures.
+**Next:** Close - superseded by .kb/decisions/2026-02-07-agent-completion-lifecycle-separation.md.
 
 ---
 
@@ -25,6 +25,7 @@ Fill this at the END of your investigation, before marking Complete.
 **Phase:** Complete
 **Next Step:** None
 **Status:** Complete
+**Superseded-By:** .kb/decisions/2026-02-07-agent-completion-lifecycle-separation.md
 
 ---
 

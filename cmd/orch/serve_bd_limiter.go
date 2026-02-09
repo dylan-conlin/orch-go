@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -84,7 +85,9 @@ func (l *bdLimiter) acquire(ctx context.Context) (func(), error) {
 			l.inflight.Add(-1)
 		}, nil
 	default:
-		log.Printf("event=bd_subprocess_cap_hit component=serve-bd-limiter inflight=%d cap=%d", l.inflight.Load(), l.maxConcurrent)
+		if os.Getenv("ORCH_DEBUG") != "" {
+			log.Printf("event=bd_subprocess_cap_hit component=serve-bd-limiter inflight=%d cap=%d", l.inflight.Load(), l.maxConcurrent)
+		}
 	}
 
 	select {

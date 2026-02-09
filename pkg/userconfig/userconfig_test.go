@@ -411,9 +411,9 @@ func TestGetDefaultTier(t *testing.T) {
 			expected:    "",
 		},
 		{
-			name:        "light returns empty (use skill defaults)",
+			name:        "light returns light",
 			defaultTier: "light",
-			expected:    "",
+			expected:    "light",
 		},
 		{
 			name:        "full returns full",

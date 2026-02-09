@@ -48,12 +48,7 @@ func runWork(serverURL, beadsID string, inline bool, workdir string) error {
 	// Use beads.Issue which has Labels for full skill/MCP inference
 	var skillName string
 	var mcpServer string
-	_ = beads.Do(projectDir, func(beadsClient *beads.Client) error {
-		if connErr := beadsClient.Connect(); connErr != nil {
-			return connErr
-		}
-		defer beadsClient.Close()
-
+	_ = withBeadsClient(projectDir, func(beadsClient *beads.Client) error {
 		beadsIssue, showErr := beadsClient.Show(beadsID)
 		if showErr != nil {
 			return showErr

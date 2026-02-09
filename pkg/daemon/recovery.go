@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -25,6 +27,13 @@ type ActiveAgent struct {
 	UpdatedAt time.Time // When the agent last reported progress (from phase comment timestamp)
 	Title     string    // Issue title
 }
+
+type recoveryNudgeMode string
+
+const (
+	recoveryNudgeProgress   recoveryNudgeMode = "progress"
+	recoveryNudgeCompletion recoveryNudgeMode = "completion"
+)
 
 // GetActiveAgents returns all agents that are currently in_progress.
 // It queries beads for in_progress issues and parses their phase from comments.
@@ -83,6 +92,116 @@ func GetActiveAgents() ([]ActiveAgent, error) {
 	return agents, nil
 }
 
+func determineRecoveryNudgeMode(comments []verify.Comment, behavior model.BehaviorProfile) recoveryNudgeMode {
+	phaseStatus := verify.ParsePhaseFromComments(comments)
+	phase := strings.ToLower(strings.TrimSpace(phaseStatus.Phase))
+	hasTestEvidence, _ := verify.HasTestExecutionEvidence(comments)
+
+	if behavior.NeedsCompletionNudge {
+		switch phase {
+		case "testing", "validation", "validating", "implementing", "implementation":
+			return recoveryNudgeCompletion
+		}
+		if hasTestEvidence {
+			return recoveryNudgeCompletion
+		}
+	}
+
+	switch phase {
+	case "testing", "validation", "validating":
+		return recoveryNudgeCompletion
+	case "implementing", "implementation":
+		if hasTestEvidence {
+			return recoveryNudgeCompletion
+		}
+	}
+
+	return recoveryNudgeProgress
+}
+
+func resolveModelForRecovery(beadsID, workspacePath string) string {
+	if beadsID != "" {
+		db, err := statedb.OpenDefault()
+		if err == nil && db != nil {
+			defer db.Close()
+			agent, getErr := db.GetAgentByBeadsID(beadsID)
+			if getErr == nil && agent != nil && strings.TrimSpace(agent.Model) != "" {
+				return agent.Model
+			}
+		}
+	}
+
+	if workspacePath != "" {
+		manifest, err := spawn.ReadAgentManifest(workspacePath)
+		if err == nil && manifest != nil && strings.TrimSpace(manifest.Model) != "" {
+			return manifest.Model
+		}
+	}
+
+	return ""
+}
+
+func completionReminderText(beadsID string, behavior model.BehaviorProfile) string {
+	if !behavior.NeedsCompletionNudge {
+		return ""
+	}
+
+	if beadsID == "" {
+		return " Model behavior profile: needs-nudge. Before /exit, explicitly report completion with concrete test evidence."
+	}
+
+	return fmt.Sprintf(
+		" Model behavior profile: needs-nudge. Before /exit, explicitly run orch phase %s Complete \"[1-2 sentence summary]\" with concrete test evidence.",
+		beadsID,
+	)
+}
+
+func buildIdleRecoveryPrompt(beadsID, workspacePath string, nudgeMode recoveryNudgeMode, behavior model.BehaviorProfile) string {
+	if nudgeMode == recoveryNudgeCompletion {
+		reminder := completionReminderText(beadsID, behavior)
+		if workspacePath != "" {
+			contextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+			return fmt.Sprintf(
+				"You were paused mid-task. Re-read your spawn context from %s and continue your work. "+
+					"You appear to be in a late phase. If your deliverables are done, run the completion protocol now: "+
+					"report Phase: Complete with concrete test evidence (for example: Tests: go test ./... - PASS), "+
+					"include discovered-work status, and exit the session.%s If not done, keep moving and report your next phase via bd comment %s.",
+				contextPath,
+				reminder,
+				beadsID,
+			)
+		}
+
+		return fmt.Sprintf(
+			"You were paused mid-task. Continue your work from where you left off. "+
+				"You appear to be in a late phase. If your deliverables are done, run the completion protocol now: "+
+				"report Phase: Complete with concrete test evidence (for example: Tests: go test ./... - PASS), "+
+				"include discovered-work status, and exit the session.%s If not done, keep moving and report your next phase via bd comment %s.",
+			completionReminderText(beadsID, behavior),
+			beadsID,
+		)
+	}
+
+	reminder := completionReminderText(beadsID, behavior)
+	if workspacePath != "" {
+		contextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+		return fmt.Sprintf(
+			"You were paused mid-task. Re-read your spawn context from %s and continue your work. "+
+				"Continue making progress from your current phase and report your next phase milestone via bd comment %s.%s",
+			contextPath,
+			beadsID,
+			reminder,
+		)
+	}
+
+	return fmt.Sprintf(
+		"You were paused mid-task. Continue your work from where you left off. "+
+			"Continue making progress from your current phase and report your next phase milestone via bd comment %s.%s",
+		beadsID,
+		reminder,
+	)
+}
+
 // ResumeAgentByBeadsID attempts to resume a stuck agent by its beads ID.
 // It finds the agent's session and sends a continuation prompt.
 func ResumeAgentByBeadsID(beadsID string) error {
@@ -134,23 +253,18 @@ func ResumeAgentByBeadsID(beadsID string) error {
 		agentID = beadsID
 	}
 
-	// Generate resume prompt
-	var prompt string
-	if workspacePath != "" {
-		contextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
-		prompt = fmt.Sprintf(
-			"You were paused mid-task. Re-read your spawn context from %s and continue your work. "+
-				"Report progress via bd comment %s.",
-			contextPath,
-			beadsID,
-		)
+	behavior := model.ResolveBehaviorProfile(resolveModelForRecovery(beadsID, workspacePath))
+
+	// Generate phase-aware resume prompt from beads comments.
+	// On comment lookup failure, default to progress nudge (safe fallback).
+	nudgeMode := recoveryNudgeProgress
+	comments, commentsErr := verify.GetComments(beadsID)
+	if commentsErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to fetch comments for %s during recovery nudge selection: %v\n", beadsID, commentsErr)
 	} else {
-		prompt = fmt.Sprintf(
-			"You were paused mid-task. Continue your work from where you left off. "+
-				"Report progress via bd comment %s.",
-			beadsID,
-		)
+		nudgeMode = determineRecoveryNudgeMode(comments, behavior)
 	}
+	prompt := buildIdleRecoveryPrompt(beadsID, workspacePath, nudgeMode, behavior)
 
 	// Send resume message via OpenCode API
 	if err := client.SendMessageAsync(sessionID, prompt, ""); err != nil {
@@ -496,6 +610,7 @@ func ResumeOrphanedAgent(orphan OrphanedSession, serverURL string) error {
 // ResumeOrphanedAgentWithClient resumes an orphaned agent using a provided client.
 func ResumeOrphanedAgentWithClient(client opencode.ClientInterface, orphan OrphanedSession, serverURL string) error {
 	projectName := filepath.Base(orphan.ProjectDir)
+	behavior := model.ResolveBehaviorProfile(resolveModelForRecovery(orphan.BeadsID, orphan.WorkspacePath))
 
 	// Generate recovery-specific resume prompt
 	var prompt string
@@ -525,6 +640,8 @@ func ResumeOrphanedAgentWithClient(client opencode.ClientInterface, orphan Orpha
 			orphan.BeadsID,
 		)
 	}
+
+	prompt += completionReminderText(orphan.BeadsID, behavior)
 
 	// Send resume message via OpenCode API
 	if err := client.SendMessageAsync(orphan.SessionID, prompt, ""); err != nil {

@@ -16,6 +16,7 @@ var (
 	doctorSessions  bool // Cross-reference workspaces and OpenCode sessions
 	doctorConfig    bool // Check for config drift (plist vs config.yaml)
 	doctorDocs      bool // Check for undocumented CLI commands (doc debt)
+	doctorBacklog   bool // Check recurring backlog issue hygiene
 	doctorWatch     bool // Continuous monitoring with desktop notifications
 	doctorDaemon    bool // Run as self-healing background daemon
 )
@@ -49,6 +50,7 @@ Use --stale-only to check if the orch binary is stale (exit 1 if stale).
 Use --sessions to cross-reference workspaces and OpenCode sessions for zombies.
 Use --config to detect drift between config.yaml and external config (plist).
 Use --docs to check for undocumented CLI commands (doc debt).
+Use --backlog to detect recurring backlog issue hygiene defects.
 Use --watch to continuously monitor services and send desktop notifications on failures.
 
 Examples:
@@ -59,6 +61,7 @@ Examples:
   orch doctor --sessions   # Cross-reference workspaces and sessions
   orch doctor --config     # Check for config drift
   orch doctor --docs       # Check for undocumented CLI commands
+  orch doctor --backlog    # Check backlog issue hygiene
   orch doctor --watch      # Continuous monitoring with notifications`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDoctor()
@@ -72,6 +75,7 @@ func init() {
 	doctorCmd.Flags().BoolVar(&doctorSessions, "sessions", false, "Cross-reference workspaces and OpenCode sessions")
 	doctorCmd.Flags().BoolVar(&doctorConfig, "config", false, "Check for config drift (plist vs config.yaml)")
 	doctorCmd.Flags().BoolVar(&doctorDocs, "docs", false, "Check for undocumented CLI commands (doc debt)")
+	doctorCmd.Flags().BoolVar(&doctorBacklog, "backlog", false, "Check recurring backlog issue hygiene defects")
 	doctorCmd.Flags().BoolVarP(&doctorWatch, "watch", "w", false, "Continuous monitoring with desktop notifications")
 	doctorCmd.Flags().BoolVar(&doctorDaemon, "daemon", false, "Run as self-healing background daemon")
 	doctorCmd.AddCommand(doctorInstallCmd)
@@ -134,6 +138,11 @@ func runDoctor() error {
 	// Handle --docs flag for doc debt check
 	if doctorDocs {
 		return runDocDebtCheck()
+	}
+
+	// Handle --backlog flag for recurring issue hygiene check
+	if doctorBacklog {
+		return runBacklogHygieneCheck()
 	}
 
 	// Handle --watch flag for continuous monitoring

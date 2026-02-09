@@ -13,13 +13,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
-
-// DefaultMakeInstallTimeout is the maximum time to wait for 'make install' to complete.
-// 120 seconds is generous for a Go build while preventing indefinite hangs.
-const DefaultMakeInstallTimeout = 120 * time.Second
 
 // hasGoChangesInRecentCommits checks if any of the last 5 commits contain changes
 // to cmd/orch/*.go or pkg/*.go files.
@@ -299,7 +296,8 @@ func rebuildGoProjectsIfNeeded(beadsProjectDir, workspacePath string) {
 
 // runAutoRebuild runs make install in the project directory with a timeout.
 func runAutoRebuild(projectDir string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultMakeInstallTimeout)
+	timeout := completionAutoRebuildTimeout(projectDir)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "make", "install")
@@ -308,9 +306,17 @@ func runAutoRebuild(projectDir string) error {
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
-		return fmt.Errorf("make install timed out after %v", DefaultMakeInstallTimeout)
+		return fmt.Errorf("make install timed out after %v", timeout)
 	}
 	return err
+}
+
+func completionAutoRebuildTimeout(projectDir string) time.Duration {
+	projCfg, err := config.Load(projectDir)
+	if err != nil || projCfg == nil {
+		projCfg = &config.Config{}
+	}
+	return time.Duration(projCfg.CompletionAutoRebuildTimeoutSeconds()) * time.Second
 }
 
 // isBinaryUpToDate checks if the binary is newer than the most recent Go source change.

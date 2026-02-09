@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/model"
 )
 
 // getGitBaseline returns the current git commit SHA for the project directory.
@@ -60,6 +62,9 @@ type contextData struct {
 	IsInvestigationSkill     bool
 	FailureContext           *FailureContext
 	HasInjectedModels        bool
+	ModelBehaviorProfile     string
+	NeedsCompletionNudge     bool
+	ReliablePhaseReporting   bool
 }
 
 func buildContextData(cfg *Config) contextData {
@@ -79,10 +84,19 @@ func buildContextData(cfg *Config) contextData {
 		bloatWarnings = GenerateBloatWarningSection(warnings)
 	}
 
-	// Detect model injection from KBContext content or explicit flag.
-	// The marker line is only added by formatModelMatchForSpawn when model sections are extracted.
+	// Detect model presence from explicit flag or formatted KB context content.
+	// Some model entries only include references (no injected summary blocks), so we
+	// detect both the models section header and injected-claims marker line.
 	hasModels := cfg.HasInjectedModels ||
+		strings.Contains(cfg.KBContext, "### Models (synthesized understanding)") ||
 		strings.Contains(cfg.KBContext, "Your findings should confirm, contradict, or extend the claims above.")
+
+	behaviorProfileName := ""
+	behaviorProfile := model.BehaviorProfile{}
+	if strings.TrimSpace(cfg.Model) != "" {
+		behaviorProfile = model.ResolveBehaviorProfile(cfg.Model)
+		behaviorProfileName = behaviorProfile.Name
+	}
 
 	return contextData{
 		Task:                     cfg.Task,
@@ -112,6 +126,9 @@ func buildContextData(cfg *Config) contextData {
 		IsInvestigationSkill:     IsInvestigationSkill(cfg.SkillName),
 		FailureContext:           cfg.FailureContext,
 		HasInjectedModels:        hasModels,
+		ModelBehaviorProfile:     behaviorProfileName,
+		NeedsCompletionNudge:     behaviorProfile.NeedsCompletionNudge,
+		ReliablePhaseReporting:   behaviorProfile.ReliablePhaseReporting,
 	}
 }
 
@@ -147,6 +164,10 @@ func WriteContext(cfg *Config) error {
 
 	if err := CreateScreenshotsDir(workspacePath); err != nil {
 		return err
+	}
+
+	if err := WriteVerificationSpecSkeleton(cfg); err != nil {
+		return fmt.Errorf("failed to write verification spec skeleton: %w", err)
 	}
 
 	contextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")

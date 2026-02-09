@@ -1,11 +1,64 @@
 package main
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/dylan-conlin/orch-go/pkg/model"
+	"github.com/dylan-conlin/orch-go/pkg/opencode"
 )
+
+func TestEnsureSessionTitleUpdatesSession(t *testing.T) {
+	t.Parallel()
+
+	var gotMethod string
+	var gotPath string
+	var gotBody string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotBody = string(body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := opencode.NewClient(server.URL)
+	ensureSessionTitle(client, "ses_abc123", "og-feat-fix-title [orch-go-21200]")
+
+	if gotMethod != http.MethodPatch {
+		t.Fatalf("expected PATCH request, got %q", gotMethod)
+	}
+	if gotPath != "/api/sessions/ses_abc123" {
+		t.Fatalf("expected path /api/sessions/ses_abc123, got %q", gotPath)
+	}
+	if !strings.Contains(gotBody, `"title":"og-feat-fix-title [orch-go-21200]"`) {
+		t.Fatalf("expected title payload in request body, got %q", gotBody)
+	}
+}
+
+func TestEnsureSessionTitleSkipsEmptyInputs(t *testing.T) {
+	t.Parallel()
+
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := opencode.NewClient(server.URL)
+	ensureSessionTitle(client, "", "some title")
+	ensureSessionTitle(client, "ses_abc123", "")
+
+	if requestCount != 0 {
+		t.Fatalf("expected 0 requests for empty inputs, got %d", requestCount)
+	}
+}
 
 func TestValidateModeModelCombo(t *testing.T) {
 	tests := []struct {

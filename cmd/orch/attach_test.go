@@ -160,7 +160,7 @@ func TestAttachCommand_WorkspaceNotFound(t *testing.T) {
 		t.Fatalf("Failed to create workspace base: %v", err)
 	}
 
-	err = runAttach("nonexistent-workspace")
+	err = runAttach("nonexistent-workspace", "")
 	if err == nil {
 		t.Error("Expected error for nonexistent workspace, got nil")
 	}
@@ -187,7 +187,7 @@ func TestAttachCommand_NoSessionID(t *testing.T) {
 		t.Fatalf("Failed to create workspace: %v", err)
 	}
 
-	err = runAttach("test-workspace")
+	err = runAttach("test-workspace", "")
 	if err == nil {
 		t.Error("Expected error for workspace without session ID, got nil")
 	}
@@ -215,7 +215,7 @@ func TestAttachCommand_PartialNameMatch(t *testing.T) {
 	}
 
 	// Test partial match - should fail due to no session ID, but workspace should be found
-	err = runAttach("unique-auth")
+	err = runAttach("unique-auth", "")
 	if err == nil {
 		t.Error("Expected error (no session ID), got nil")
 	}
@@ -253,7 +253,7 @@ func TestAttachCommand_AmbiguousPartialName(t *testing.T) {
 	}
 
 	// Test ambiguous partial match - should fail with multiple matches error
-	err = runAttach("feat")
+	err = runAttach("feat", "")
 	if err == nil {
 		t.Error("Expected error for ambiguous workspace name, got nil")
 	}

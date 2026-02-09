@@ -17,15 +17,19 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
-// currentProjectDir returns the project directory for the current process.
-// It prefers sourceDir (embedded at build time via ldflags) over os.Getwd(),
-// since the serve command may run from a different directory than the project.
-// Returns the directory and any error from os.Getwd() if sourceDir is unavailable.
+// currentProjectDir returns the project directory for CLI commands.
+// It prefers the caller's current working directory so commands like spawn
+// operate on the invoking project, even when the binary was built elsewhere.
+// Falls back to sourceDir only when os.Getwd() is unavailable.
 func currentProjectDir() (string, error) {
+	cwd, err := os.Getwd()
+	if err == nil && cwd != "" {
+		return cwd, nil
+	}
 	if sourceDir != "" && sourceDir != "unknown" {
 		return sourceDir, nil
 	}
-	return os.Getwd()
+	return "", err
 }
 
 // truncate truncates a string to maxLen characters.
@@ -475,12 +479,7 @@ func extractProjectDirFromWorkspace(workspacePath string) string {
 func resolveShortBeadsIDWithDir(id, workdir string) (string, error) {
 	// Try RPC client first for ID resolution
 	var resolvedID string
-	err := beads.Do(workdir, func(client *beads.Client) error {
-		if connErr := client.Connect(); connErr != nil {
-			return connErr
-		}
-		defer client.Close()
-
+	err := withBeadsClient(workdir, func(client *beads.Client) error {
 		var rpcErr error
 		resolvedID, rpcErr = client.ResolveID(id)
 		if rpcErr != nil {

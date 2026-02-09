@@ -1,32 +1,32 @@
 {
   "skips": [
     {
-      "gate": "phase_complete",
-      "reason": "pre-opencode agent, phase not in transcript",
-      "set_at": "2026-02-08T08:59:23.333615-08:00",
-      "set_by": "orch-go-rjyjs",
-      "expires_at": "2026-02-08T10:59:23.333615-08:00"
-    },
-    {
-      "gate": "constraint",
-      "reason": "Investigation file exists at .kb/investigations/archived/2026-02-08-inv-*.md - agent archived it correctly, gate glob doesnt match archived subdir",
-      "set_at": "2026-02-08T09:47:41.285186-08:00",
-      "set_by": "orch-go-5ho4r",
-      "expires_at": "2026-02-08T11:47:41.285186-08:00"
+      "gate": "dashboard_health",
+      "reason": "dashboard health is a beads graph parse issue unrelated to this fix; verification spec has TODO placeholder from template",
+      "set_at": "2026-02-08T22:07:28.339305-08:00",
+      "set_by": "orch-go-oj8no",
+      "expires_at": "2026-02-09T00:07:28.339305-08:00"
     },
     {
       "gate": "git_diff",
-      "reason": "Investigation file exists at .kb/investigations/archived/2026-02-08-inv-*.md - agent archived it correctly, gate glob doesnt match archived subdir",
-      "set_at": "2026-02-08T09:47:41.285326-08:00",
-      "set_by": "orch-go-5ho4r",
-      "expires_at": "2026-02-08T11:47:41.285326-08:00"
+      "reason": "investigation file created but not committed - GPT completion protocol gap",
+      "set_at": "2026-02-08T23:17:49.797238-08:00",
+      "set_by": "orch-go-21508",
+      "expires_at": "2026-02-09T01:17:49.797238-08:00"
     },
     {
-      "gate": "skill_output",
-      "reason": "Investigation file exists at .kb/investigations/archived/2026-02-08-inv-*.md - agent archived it correctly, gate glob doesnt match archived subdir",
-      "set_at": "2026-02-08T09:47:41.285435-08:00",
-      "set_by": "orch-go-5ho4r",
-      "expires_at": "2026-02-08T11:47:41.285435-08:00"
+      "gate": "phase_complete",
+      "reason": "GPT-5.3 completion protocol gap - research done, investigation written",
+      "set_at": "2026-02-08T23:18:18.346729-08:00",
+      "set_by": "orch-go-21507",
+      "expires_at": "2026-02-09T01:18:18.346729-08:00"
+    },
+    {
+      "gate": "verification_spec",
+      "reason": "GPT-5.3 completion protocol gap - research done, investigation written",
+      "set_at": "2026-02-08T23:18:18.404438-08:00",
+      "set_by": "orch-go-21507",
+      "expires_at": "2026-02-09T01:18:18.404438-08:00"
     }
   ]
 }

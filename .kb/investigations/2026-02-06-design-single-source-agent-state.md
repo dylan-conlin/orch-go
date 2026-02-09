@@ -35,7 +35,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 **Related-Investigation:**
 - `.kb/investigations/2026-02-06-inv-agent-state-field-level-audit.md` - Complete field map (INPUT to this design)
 - `.kb/investigations/2026-02-06-inv-opencode-fork-audit-session-lifecycle-integration.md` - Integration options (INPUT to this design)
-- `.kb/investigations/2026-02-04-inv-agents-own-declaration-via-bd.md` - Three orthogonal dimensions (informs phase reporting fork)
+- `.kb/investigations/archived/2026-02-04-inv-agents-own-declaration-via-bd.md` - Three orthogonal dimensions (informs phase reporting fork)
 
 ## Prior Work
 
@@ -690,7 +690,7 @@ Reconnect: For each active agent in SQLite → GET /session/{id} → update muta
 - **Decision:** `.kb/decisions/2026-01-12-registry-is-spawn-cache.md` — Establishes registry as replaceable
 - **Investigation:** `.kb/investigations/2026-02-06-inv-agent-state-field-level-audit.md` — Complete field map
 - **Investigation:** `.kb/investigations/2026-02-06-inv-opencode-fork-audit-session-lifecycle-integration.md` — Integration options
-- **Investigation:** `.kb/investigations/2026-02-04-inv-agents-own-declaration-via-bd.md` — Three orthogonal dimensions
+- **Investigation:** `.kb/investigations/archived/2026-02-04-inv-agents-own-declaration-via-bd.md` — Three orthogonal dimensions
 - **Guide:** `.kb/guides/agent-lifecycle.md` — Current lifecycle documentation (needs update after migration)
 
 ---
