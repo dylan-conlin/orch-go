@@ -71,14 +71,32 @@ func TestParsePhaseFromComments(t *testing.T) {
 		{
 			name: "multiple phases - returns latest",
 			comments: []Comment{
-				{Text: "Phase: Planning - Starting work"},
-				{Text: "Some progress comment"},
-				{Text: "Phase: Implementing - Adding tests"},
 				{Text: "Phase: Complete - All done"},
+				{Text: "Phase: Implementing - Adding tests"},
+				{Text: "Some progress comment"},
+				{Text: "Phase: Planning - Starting work"},
 			},
 			want: PhaseStatus{
 				Phase:   "Complete",
 				Summary: "All done",
+				Found:   true,
+			},
+		},
+		{
+			name: "reverse-chronological comments - prefers newest phase",
+			comments: []Comment{
+				{
+					Text:      "Phase: Implementing - Newest status",
+					CreatedAt: "2026-02-09T12:00:00Z",
+				},
+				{
+					Text:      "Phase: Complete - Stale status",
+					CreatedAt: "2026-02-09T11:00:00Z",
+				},
+			},
+			want: PhaseStatus{
+				Phase:   "Implementing",
+				Summary: "Newest status",
 				Found:   true,
 			},
 		},

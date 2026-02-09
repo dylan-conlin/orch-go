@@ -108,29 +108,31 @@ func HasBeadsComment(beadsID string) (bool, error) {
 // Looks for comments matching "Phase: <phase> - <summary>" pattern.
 // Also captures the timestamp of when the phase was reported for stall detection.
 func ParsePhaseFromComments(comments []Comment) PhaseStatus {
-	var latestPhase PhaseStatus
-
 	for _, comment := range comments {
 		matches := regexPhaseComment.FindStringSubmatch(comment.Text)
 		if len(matches) >= 2 {
-			latestPhase = PhaseStatus{
+			phaseStatus := PhaseStatus{
 				Phase: matches[1],
 				Found: true,
 			}
 			if len(matches) >= 3 && matches[2] != "" {
-				latestPhase.Summary = strings.TrimSpace(matches[2])
+				phaseStatus.Summary = strings.TrimSpace(matches[2])
 			}
 			// Parse the comment timestamp for stall detection
 			// Beads comments use RFC3339 format: "2026-01-08T10:30:00Z"
 			if comment.CreatedAt != "" {
 				if t, err := time.Parse(time.RFC3339, comment.CreatedAt); err == nil {
-					latestPhase.PhaseReportedAt = &t
+					phaseStatus.PhaseReportedAt = &t
 				}
 			}
+
+			// Beads returns comments in reverse-chronological order (newest first),
+			// so the first phase match is the current phase.
+			return phaseStatus
 		}
 	}
 
-	return latestPhase
+	return PhaseStatus{}
 }
 
 // ParseInvestigationPathFromComments extracts the investigation file path from comments.
