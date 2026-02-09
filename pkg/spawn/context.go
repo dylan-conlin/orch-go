@@ -183,6 +183,31 @@ func WriteContext(cfg *Config) error {
 		return nil
 	}
 
+	sourceProjectDir := cfg.ProjectDir
+	runtimeDir := cfg.RuntimeDir()
+	gitWorktreeDir := sourceProjectDir
+	gitBranch := getGitBranch(sourceProjectDir)
+
+	if cfg.SpawnMode == "opencode" {
+		worktreeDir, branch, err := CreateWorktree(sourceProjectDir, cfg.WorkspaceName)
+		if err != nil {
+			return fmt.Errorf("failed to create git worktree: %w", err)
+		}
+		cfg.CWD = worktreeDir
+		runtimeDir = worktreeDir
+		gitWorktreeDir = worktreeDir
+		gitBranch = branch
+	} else {
+		if strings.TrimSpace(runtimeDir) == "" {
+			runtimeDir = sourceProjectDir
+		}
+		cfg.CWD = runtimeDir
+		gitWorktreeDir = runtimeDir
+		if gitBranch == "" {
+			gitBranch = getGitBranch(runtimeDir)
+		}
+	}
+
 	content, err := GenerateContext(cfg)
 	if err != nil {
 		return err
@@ -244,11 +269,11 @@ func WriteContext(cfg *Config) error {
 		WorkspaceName:    cfg.WorkspaceName,
 		Skill:            cfg.SkillName,
 		BeadsID:          cfg.BeadsID,
-		SourceProjectDir: cfg.ProjectDir,
-		ProjectDir:       cfg.ProjectDir,
-		GitWorktreeDir:   cfg.ProjectDir,
-		GitBranch:        getGitBranch(cfg.ProjectDir),
-		GitBaseline:      getGitBaseline(cfg.ProjectDir),
+		SourceProjectDir: sourceProjectDir,
+		ProjectDir:       sourceProjectDir,
+		GitWorktreeDir:   gitWorktreeDir,
+		GitBranch:        gitBranch,
+		GitBaseline:      getGitBaseline(sourceProjectDir),
 		SpawnTime:        spawnTime.Format(time.RFC3339),
 		Tier:             cfg.Tier,
 		SpawnMode:        cfg.SpawnMode,

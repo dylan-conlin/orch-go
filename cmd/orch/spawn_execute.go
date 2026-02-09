@@ -87,7 +87,7 @@ func runSpawnInlineWithClient(client opencode.ClientInterface, serverURL string,
 	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
 	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model, cfg.Variant)
 	cmd.Stderr = os.Stderr
-	cmd.Dir = cfg.ProjectDir
+	cmd.Dir = cfg.RuntimeDir()
 	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
 	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
 
@@ -363,7 +363,7 @@ func stripANSI(s string) string {
 // See: .kb/investigations/2025-12-23-inv-model-selection-issue-architect-agent.md
 func startHeadlessSession(client opencode.ClientInterface, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
 	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model, cfg.Variant)
-	cmd.Dir = cfg.ProjectDir
+	cmd.Dir = cfg.RuntimeDir()
 	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
 
 	stdout, err := cmd.StdoutPipe()
@@ -421,7 +421,7 @@ func runSpawnTmuxWithClient(client opencode.ClientInterface, serverURL string, c
 
 	windowName := tmux.BuildWindowName(cfg.WorkspaceName, cfg.SkillName, beadsID)
 
-	windowTarget, windowID, err := tmux.CreateWindow(sessionName, windowName, cfg.ProjectDir)
+	windowTarget, windowID, err := tmux.CreateWindow(sessionName, windowName, cfg.RuntimeDir())
 	if err != nil {
 		return fmt.Errorf("failed to create tmux window: %w", err)
 	}
@@ -429,7 +429,7 @@ func runSpawnTmuxWithClient(client opencode.ClientInterface, serverURL string, c
 	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
 
 	var preCreatedSessionID string
-	resp, createErr := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model, cfg.Variant, !cfg.IsOrchestrator && !cfg.IsMetaOrchestrator)
+	resp, createErr := client.CreateSession(sessionTitle, cfg.RuntimeDir(), cfg.Model, cfg.Variant, !cfg.IsOrchestrator && !cfg.IsMetaOrchestrator)
 	if createErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to pre-create session with title %q: %v (falling back to attach without pre-created session)\n", sessionTitle, createErr)
 	} else {
@@ -438,7 +438,7 @@ func runSpawnTmuxWithClient(client opencode.ClientInterface, serverURL string, c
 
 	attachCfg := &tmux.OpencodeAttachConfig{
 		ServerURL:  serverURL,
-		ProjectDir: cfg.ProjectDir,
+		ProjectDir: cfg.RuntimeDir(),
 		SessionID:  preCreatedSessionID,
 	}
 	opencodeCmd := tmux.BuildOpencodeAttachCommand(attachCfg)
@@ -457,7 +457,7 @@ func runSpawnTmuxWithClient(client opencode.ClientInterface, serverURL string, c
 
 	sessionID := preCreatedSessionID
 	if sessionID == "" {
-		sessionID, _ = client.FindRecentSessionWithRetry(cfg.ProjectDir, 3, 500*time.Millisecond)
+		sessionID, _ = client.FindRecentSessionWithRetry(cfg.RuntimeDir(), 3, 500*time.Millisecond)
 	}
 	ensureSessionTitle(client, sessionID, sessionTitle)
 

@@ -141,6 +141,10 @@ type Config struct {
 	Project string
 	// ProjectDir is the absolute path to the project directory
 	ProjectDir string
+	// CWD is the runtime working directory for spawned agents.
+	// When empty, ProjectDir is used.
+	// For git-isolated spawns this is set to .orch/worktrees/<workspace>.
+	CWD string
 	// WorkspaceName is the generated workspace directory name
 	WorkspaceName string
 
@@ -566,6 +570,15 @@ func generateProjectPrefix(projectName string) string {
 // WorkspacePath returns the full path to the workspace directory.
 func (c *Config) WorkspacePath() string {
 	return filepath.Join(c.ProjectDir, ".orch", "workspace", c.WorkspaceName)
+}
+
+// RuntimeDir returns the directory where spawned processes should run.
+// Defaults to ProjectDir for legacy behavior.
+func (c *Config) RuntimeDir() string {
+	if strings.TrimSpace(c.CWD) != "" {
+		return c.CWD
+	}
+	return c.ProjectDir
 }
 
 // ContextFilePath returns the path to the context file.
