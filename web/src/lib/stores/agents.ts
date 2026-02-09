@@ -56,6 +56,7 @@ export interface Agent {
   is_interactive?: boolean
   // New fields from enhanced API
   phase?: string // "Planning", "Implementing", "Complete", etc.
+  phase_reported_at?: string // Timestamp when current phase was reported
   task?: string // Task description from beads issue
   project?: string // Project name (orch-go, skillc, etc.)
   runtime?: string // Formatted duration
@@ -74,6 +75,12 @@ export interface Agent {
     type: 'text' | 'tool' | 'reasoning' | 'step-start' | 'step-finish'
     text?: string
     timestamp: number
+  }
+  tokens?: {
+    input_tokens?: number
+    output_tokens?: number
+    cache_read_tokens?: number
+    total_tokens?: number
   }
 }
 

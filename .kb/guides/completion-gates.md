@@ -249,7 +249,7 @@ bd comment <id> "Tests: npm test - 15 passing, 0 failing"
 
 **File:** `pkg/verify/build_verification.go`
 
-**What it checks:** `go build ./...` succeeds when Go files are modified.
+**What it checks:** Go project compiles (`go test -run=^$ ./...`) during completion.
 
 **Skills requiring build verification:**
 - `feature-impl`
@@ -262,6 +262,8 @@ bd comment <id> "Tests: npm test - 15 passing, 0 failing"
 **Go project detection:** Checks for `go.mod` or `.go` files in root/cmd/pkg/internal.
 
 **How to pass:** Fix build errors before completing.
+
+**Note:** This gate no longer short-circuits based on "recent Go file changes". It compiles on completion so cross-agent integration breakage is caught even when the latest commits are non-Go.
 
 **Bypass:** `--force`
 

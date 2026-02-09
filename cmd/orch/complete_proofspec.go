@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -260,9 +259,9 @@ func executeProofSpecEntry(entry verify.ProofVerification, workspacePath string)
 		timeout = time.Duration(entry.TimeoutSeconds) * time.Second
 	}
 
-	cwd := resolveProofSpecCWD(workspacePath, entry.CWD)
-	if _, err := os.Stat(cwd); err != nil {
-		return fmt.Errorf("cwd %q invalid: %w", cwd, err)
+	cwd, cwdErr := verify.ResolveProofStepCWD(workspacePath, entry.CWD)
+	if cwdErr != nil {
+		return cwdErr
 	}
 
 	stdout, stderr, exitCode, err := runProofSpecCommand(entry.Command, cwd, timeout)
@@ -281,17 +280,6 @@ func executeProofSpecEntry(entry verify.ProofVerification, workspacePath string)
 	}
 
 	return nil
-}
-
-func resolveProofSpecCWD(workspacePath, raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return workspacePath
-	}
-	if filepath.IsAbs(raw) {
-		return raw
-	}
-	return filepath.Clean(filepath.Join(workspacePath, raw))
 }
 
 func runProofSpecCommand(command, cwd string, timeout time.Duration) (string, string, int, error) {

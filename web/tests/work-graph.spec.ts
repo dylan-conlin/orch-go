@@ -54,6 +54,105 @@ test.describe('Work Graph Page', () => {
     // Should display the child node
     await expect(page.getByText('Child Task')).toBeVisible()
   })
+
+  test('shows Ready to Complete queue for phase-complete agents', async ({ page }) => {
+    await page.route('**/api/focus**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ has_focus: false }),
+      })
+    })
+
+    await page.route('**/api/attention**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ items: [], total: 0, sources: [], role: 'human' }),
+      })
+    })
+
+    await page.route('**/api/agents**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 'og-feat-ready-1',
+            session_id: 'sess-ready-1',
+            beads_id: 'orch-go-900',
+            status: 'completed',
+            phase: 'Complete',
+            runtime: '1h 4m',
+            phase_reported_at: '2026-02-09T01:00:00Z',
+            tokens: {
+              total_tokens: 98765,
+            },
+          },
+        ]),
+      })
+    })
+
+    await page.route('**/api/beads/ready**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ issues: [] }),
+      })
+    })
+
+    await page.route('**/api/daemon**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          running: false,
+          ready_count: 0,
+          capacity_max: 0,
+          capacity_used: 0,
+          capacity_free: 0,
+          queue: {
+            queued: 0,
+            spawnable: 0,
+            waiting_for_slots: 0,
+            grace_period: 0,
+            processed_cache: 0,
+          },
+        }),
+      })
+    })
+
+    await page.route('**/api/beads/graph**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          nodes: [
+            {
+              id: 'orch-go-900',
+              title: 'Add ready-to-complete section',
+              type: 'feature',
+              status: 'in_progress',
+              priority: 0,
+              source: 'beads',
+            },
+          ],
+          edges: [],
+          node_count: 1,
+          edge_count: 0,
+        }),
+      })
+    })
+
+    await page.goto('/work-graph')
+
+    await expect(page.locator('[data-testid="ready-to-complete-section"]')).toBeVisible()
+    const readyRow = page.locator('[data-testid="ready-to-complete-row-orch-go-900"]')
+    await expect(readyRow).toBeVisible()
+    await expect(readyRow).toContainText('Add ready-to-complete section')
+    await expect(readyRow).toContainText('1h 4m')
+    await expect(readyRow).toContainText('98.8k tokens')
+  })
 })
 
 test.describe('Work Graph Tree Structure', () => {

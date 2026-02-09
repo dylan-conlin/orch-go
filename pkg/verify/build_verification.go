@@ -201,14 +201,14 @@ func RunGoTestCompile(projectDir string) (string, error) {
 // The verification passes if:
 // 1. The skill is explicitly excluded from build verification (documentation/research skills), OR
 // 2. The project is not a Go project (no go.mod or .go files), OR
-// 3. No Go files were modified in recent commits, OR
-// 4. The project compiles successfully (both production and test code), OR
-// 5. Build failure is pre-existing (not caused by this agent - blame attribution), OR
-// 6. Build gate was previously skipped and skip memory is still valid
+// 3. The project compiles successfully (both production and test code), OR
+// 4. Build failure is pre-existing (not caused by this agent - blame attribution), OR
+// 5. Build gate was previously skipped and skip memory is still valid
 //
-// IMPORTANT: The default is restrictive - any agent that modifies Go files must pass
-// the build gate, regardless of skill name. Only explicitly excluded skills (investigation,
-// architect, etc.) skip the gate. This prevents agents from leaving broken builds
+// IMPORTANT: The default is restrictive - any non-excluded skill in a Go project must pass
+// the build gate, regardless of whether this agent modified Go files. This catches
+// cross-agent integration breakage before completion. Only explicitly excluded skills
+// (investigation, architect, etc.) skip the gate. This prevents agents from leaving broken builds
 // (e.g., partial refactorings with undefined variable errors).
 //
 // Uses 'go test -run=^$' instead of 'go build' because 'go build'
@@ -234,13 +234,6 @@ func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
 	if !result.HasGoFiles {
 		result.Warnings = append(result.Warnings,
 			"not a Go project - build verification not required")
-		return result
-	}
-
-	// Check if Go files were modified
-	if !HasGoChangesInRecentCommits(projectDir) {
-		result.Warnings = append(result.Warnings,
-			"no Go files modified - build verification not required")
 		return result
 	}
 
@@ -309,7 +302,7 @@ func truncateOutput(output string, maxLen int) string {
 }
 
 // VerifyBuildForCompletion is a convenience function for use in VerifyCompletionFull.
-// Returns nil if no verification is needed (not a Go project, no Go changes, or excluded skill).
+// Returns nil if no verification is needed (not a Go project or excluded skill).
 // Returns EscalationBlock level result if build fails.
 // Returns a passing result (with warnings) if failure is pre-existing or skip memory is active.
 func VerifyBuildForCompletion(workspacePath, projectDir string) *BuildVerificationResult {
@@ -322,11 +315,6 @@ func VerifyBuildForCompletion(workspacePath, projectDir string) *BuildVerificati
 
 	// Return nil if skill is explicitly excluded from build verification
 	if IsSkillExcludedFromBuildVerification(result.SkillName) {
-		return nil
-	}
-
-	// Return nil if no Go changes
-	if !HasGoChangesInRecentCommits(projectDir) {
 		return nil
 	}
 

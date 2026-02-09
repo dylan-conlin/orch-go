@@ -5,12 +5,23 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+)
+
+// VerificationCWDToken represents a reserved cwd token in VERIFICATION_SPEC.yaml.
+type VerificationCWDToken string
+
+const (
+	// RuntimeCWDToken resolves to the agent runtime directory from AGENT_MANIFEST.json.
+	// This lets proof-spec commands execute against the git worktree while keeping
+	// relative cwd values confined to the workspace.
+	RuntimeCWDToken VerificationCWDToken = "$GIT_WORKTREE_DIR"
 )
 
 // ProofStepStatus is the execution outcome for a proof spec step.
@@ -146,7 +157,7 @@ func ExecuteProofSpecInWorkspace(opts ProofSpecRunnerOptions) ProofSpecExecution
 			continue
 		}
 
-		runCWD, cwdErr := resolveProofStepCWD(workspacePath, entry.CWD)
+		runCWD, cwdErr := ResolveProofStepCWD(workspacePath, entry.CWD)
 		if cwdErr != nil {
 			step.Status = ProofStepStatusFail
 			step.Error = cwdErr.Error()
@@ -224,14 +235,26 @@ func entryAppliesToWorkspaceTier(stepTier, workspaceTier VerificationTier) bool 
 	}
 }
 
-func resolveProofStepCWD(workspacePath, specCWD string) (string, error) {
+// ResolveProofStepCWD resolves a proof step cwd relative to workspacePath.
+// Relative paths remain workspace-confined; RuntimeCWDToken is resolved from
+// AGENT_MANIFEST.json to target the actual runtime/worktree directory.
+func ResolveProofStepCWD(workspacePath, specCWD string) (string, error) {
 	base := filepath.Clean(workspacePath)
 	if base == "" {
 		return "", fmt.Errorf("workspace path is required")
 	}
 
+	raw := strings.TrimSpace(specCWD)
+	if raw == string(RuntimeCWDToken) {
+		runtimeDir, err := resolveRuntimeDirFromManifest(base)
+		if err != nil {
+			return "", err
+		}
+		return validateResolvedCWD(runtimeDir)
+	}
+
 	if specCWD == "" || specCWD == "." {
-		return base, nil
+		return validateResolvedCWD(base)
 	}
 
 	var resolved string
@@ -249,6 +272,40 @@ func resolveProofStepCWD(workspacePath, specCWD string) (string, error) {
 		return "", fmt.Errorf("cwd %q escapes workspace %q", specCWD, workspacePath)
 	}
 
+	return validateResolvedCWD(resolved)
+}
+
+func resolveRuntimeDirFromManifest(workspacePath string) (string, error) {
+	manifestPath := filepath.Join(workspacePath, "AGENT_MANIFEST.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return "", fmt.Errorf("cwd %q requires %s: %w", RuntimeCWDToken, manifestPath, err)
+	}
+
+	var manifest struct {
+		GitWorktreeDir   string `json:"git_worktree_dir"`
+		ProjectDir       string `json:"project_dir"`
+		SourceProjectDir string `json:"source_project_dir"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return "", fmt.Errorf("cwd %q invalid manifest %s: %w", RuntimeCWDToken, manifestPath, err)
+	}
+
+	runtimeDir := strings.TrimSpace(manifest.GitWorktreeDir)
+	if runtimeDir == "" {
+		runtimeDir = strings.TrimSpace(manifest.ProjectDir)
+	}
+	if runtimeDir == "" {
+		runtimeDir = strings.TrimSpace(manifest.SourceProjectDir)
+	}
+	if runtimeDir == "" {
+		return "", fmt.Errorf("cwd %q missing git_worktree_dir/project_dir in %s", RuntimeCWDToken, manifestPath)
+	}
+
+	return filepath.Clean(runtimeDir), nil
+}
+
+func validateResolvedCWD(resolved string) (string, error) {
 	if stat, err := os.Stat(resolved); err != nil || !stat.IsDir() {
 		if err != nil {
 			return "", fmt.Errorf("cwd %q does not exist: %w", resolved, err)

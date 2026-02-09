@@ -187,6 +187,53 @@ verification:
 	}
 }
 
+func TestEvaluateProofSpecGateResolvesRuntimeCWDTokenFromManifest(t *testing.T) {
+	workspace := t.TempDir()
+	runtimeDir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(runtimeDir, "marker.txt"), []byte("ok\n"), 0644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+
+	manifest := `{
+  "workspace_name": "ws-proofspec",
+  "skill": "feature-impl",
+  "project_dir": "` + runtimeDir + `",
+  "git_worktree_dir": "` + runtimeDir + `"
+}`
+	if err := os.WriteFile(filepath.Join(workspace, "AGENT_MANIFEST.json"), []byte(manifest), 0644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	spec := `version: 1
+scope:
+  beads_id: orch-go-test-runtime
+  workspace: ws-proofspec
+  skill: feature-impl
+verification:
+  - id: runtime-cli
+    method: cli_smoke
+    tier: full
+    command: "test -f marker.txt"
+    cwd: "` + string(verify.RuntimeCWDToken) + `"
+    expect:
+      exit_code: 0
+`
+	if err := os.WriteFile(filepath.Join(workspace, verify.VerificationSpecFileName), []byte(spec), 0644); err != nil {
+		t.Fatalf("write VERIFICATION_SPEC.yaml: %v", err)
+	}
+
+	target := &CompletionTarget{WorkspacePath: workspace, BeadsID: "orch-go-test-runtime"}
+	result := evaluateProofSpecGate(target)
+
+	if len(result.errors) != 0 {
+		t.Fatalf("expected no errors, got: %v", result.errors)
+	}
+	if result.executed != 1 || result.passed != 1 || result.failed != 0 {
+		t.Fatalf("unexpected execution counts: executed=%d passed=%d failed=%d", result.executed, result.passed, result.failed)
+	}
+}
+
 func TestVerifyRegularAgentSkipVerificationSpecGate(t *testing.T) {
 	origVerify := verifyCompletionFullFunc
 	origEvaluator := proofSpecEvaluator

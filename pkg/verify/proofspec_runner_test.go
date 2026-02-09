@@ -172,6 +172,56 @@ verification:
 	}
 }
 
+func TestExecuteProofSpecInWorkspaceResolvesRuntimeCWDTokenFromManifest(t *testing.T) {
+	workspace := t.TempDir()
+	runtimeDir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(runtimeDir, "marker.txt"), []byte("ok\n"), 0644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+
+	manifest := `{
+  "workspace_name": "test-workspace",
+  "skill": "feature-impl",
+  "project_dir": "` + runtimeDir + `",
+  "git_worktree_dir": "` + runtimeDir + `"
+}`
+	if err := os.WriteFile(filepath.Join(workspace, "AGENT_MANIFEST.json"), []byte(manifest), 0644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	spec := `version: 1
+scope:
+  beads_id: orch-go-abc1
+  workspace: test-workspace
+  skill: feature-impl
+verification:
+  - id: runtime-cwd
+    method: cli_smoke
+    tier: full
+    command: "test -f marker.txt"
+    cwd: "` + string(RuntimeCWDToken) + `"
+    expect:
+      exit_code: 0
+`
+
+	if err := os.WriteFile(filepath.Join(workspace, VerificationSpecFileName), []byte(spec), 0644); err != nil {
+		t.Fatalf("write spec: %v", err)
+	}
+
+	result := ExecuteProofSpecInWorkspace(ProofSpecRunnerOptions{WorkspacePath: workspace})
+
+	if result.Status != ProofStepStatusPass {
+		t.Fatalf("status = %s, want %s (error: %s)", result.Status, ProofStepStatusPass, result.Error)
+	}
+	if len(result.Steps) != 1 {
+		t.Fatalf("steps len = %d, want 1", len(result.Steps))
+	}
+	if result.Steps[0].CWD != runtimeDir {
+		t.Fatalf("step cwd = %q, want %q", result.Steps[0].CWD, runtimeDir)
+	}
+}
+
 func TestExecuteProofSpecInWorkspaceRejectsEscapingCWD(t *testing.T) {
 	workspace := t.TempDir()
 

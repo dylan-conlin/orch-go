@@ -272,8 +272,9 @@ func main() {}
 		t.Error("VerifyBuild() did not detect Go files")
 	}
 
-	// Note: result.Passed may be false because there are no recent git commits
-	// in the temp directory, so it skips the build check. That's expected behavior.
+	if !result.Passed {
+		t.Fatalf("VerifyBuild() should pass for a valid Go project, errors: %v", result.Errors)
+	}
 }
 
 func TestVerifyBuildForCompletion_NonGoProject(t *testing.T) {
@@ -338,5 +339,51 @@ func TestVerifyBuildForCompletion_ExcludedSkill(t *testing.T) {
 	// Should return nil for excluded skill
 	if result != nil {
 		t.Errorf("VerifyBuildForCompletion() should return nil for excluded skill, got %+v", result)
+	}
+}
+
+func TestVerifyBuildForCompletion_RunsEvenWithoutRecentGoChanges(t *testing.T) {
+	tempDir := t.TempDir()
+	projectDir := filepath.Join(tempDir, "go-project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	goMod := `module test
+go 1.21
+`
+	if err := os.WriteFile(filepath.Join(projectDir, "go.mod"), []byte(goMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Intentionally broken Go source: compile should fail.
+	brokenGo := `package main
+
+func main() {
+	undefinedSymbol()
+}
+`
+	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte(brokenGo), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	workspacePath := filepath.Join(tempDir, "workspace")
+	if err := os.MkdirAll(workspacePath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	spawnContext := `TASK: Test build gate
+
+## SKILL GUIDANCE (feature-impl)
+`
+	if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := VerifyBuildForCompletion(workspacePath, projectDir)
+	if result == nil {
+		t.Fatal("VerifyBuildForCompletion() should run build gate for Go projects even without git history")
+	}
+	if result.Passed {
+		t.Fatalf("expected build gate to fail on broken Go source, got passed with warnings: %v", result.Warnings)
 	}
 }

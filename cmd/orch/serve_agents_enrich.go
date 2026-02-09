@@ -116,6 +116,9 @@ func (ctx *agentCollectionContext) enrichSingleAgent(
 		if phaseStatus.Found {
 			ctx.agents[i].Phase = phaseStatus.Phase
 			phaseComplete = strings.EqualFold(phaseStatus.Phase, "Complete")
+			if phaseStatus.PhaseReportedAt != nil {
+				ctx.agents[i].PhaseReportedAt = phaseStatus.PhaseReportedAt.UTC().Format(time.RFC3339)
+			}
 
 			// Stalled detection: advisory only
 			if ctx.agents[i].Status == "active" && phaseStatus.PhaseReportedAt != nil {
@@ -245,8 +248,9 @@ func (ctx *agentCollectionContext) fetchTokensAndActivity() {
 
 	var wg sync.WaitGroup
 	for i := range ctx.agents {
-		// Skip agents without session ID, completed agents, or idle agents.
-		if ctx.agents[i].SessionID == "" || ctx.agents[i].Status == "completed" || ctx.agents[i].Status == "idle" {
+		// Skip agents without session ID or idle agents.
+		// Keep completed/awaiting-cleanup agents so review queues can show token usage.
+		if ctx.agents[i].SessionID == "" || ctx.agents[i].Status == "idle" {
 			continue
 		}
 

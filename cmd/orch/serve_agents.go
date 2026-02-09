@@ -18,12 +18,13 @@ type AgentAPIResponse struct {
 	BeadsTitle           string               `json:"beads_title,omitempty"`
 	BeadsLabels          []string             `json:"beads_labels,omitempty"` // Labels from beads issue
 	Skill                string               `json:"skill,omitempty"`
-	Model                string               `json:"model,omitempty"`        // Model ID from session messages (e.g., "claude-opus-4-5-20251101")
-	Status               string               `json:"status"`                 // "active", "idle", "dead", "completed", "awaiting-cleanup"
-	DeathReason          string               `json:"death_reason,omitempty"` // Reason for death: "server_restart", "context_exhausted", "auth_failed", "error", "timeout", "unknown"
-	Phase                string               `json:"phase,omitempty"`        // "Planning", "Implementing", "Complete", etc.
-	Task                 string               `json:"task,omitempty"`         // Task description from beads issue
-	Project              string               `json:"project,omitempty"`      // Project name (orch-go, skillc, etc.)
+	Model                string               `json:"model,omitempty"`             // Model ID from session messages (e.g., "claude-opus-4-5-20251101")
+	Status               string               `json:"status"`                      // "active", "idle", "dead", "completed", "awaiting-cleanup"
+	DeathReason          string               `json:"death_reason,omitempty"`      // Reason for death: "server_restart", "context_exhausted", "auth_failed", "error", "timeout", "unknown"
+	Phase                string               `json:"phase,omitempty"`             // "Planning", "Implementing", "Complete", etc.
+	PhaseReportedAt      string               `json:"phase_reported_at,omitempty"` // Timestamp when current phase was most recently reported
+	Task                 string               `json:"task,omitempty"`              // Task description from beads issue
+	Project              string               `json:"project,omitempty"`           // Project name (orch-go, skillc, etc.)
 	Runtime              string               `json:"runtime,omitempty"`
 	Window               string               `json:"window,omitempty"`
 	IsProcessing         bool                 `json:"is_processing,omitempty"` // True if actively generating response

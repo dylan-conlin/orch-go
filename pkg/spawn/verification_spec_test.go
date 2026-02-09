@@ -84,6 +84,9 @@ func TestGenerateVerificationSpecSkeleton_DetectsGoBuildAndTestCommands(t *testi
 	if !strings.Contains(content, "command: go test ./...") {
 		t.Fatalf("expected go test command in skeleton, got: %s", content)
 	}
+	if !strings.Contains(content, "cwd: "+verificationSpecRuntimeCWDToken) {
+		t.Fatalf("expected runtime cwd token in skeleton, got: %s", content)
+	}
 	if strings.Contains(content, "TODO: replace build command") || strings.Contains(content, "TODO: replace test command") {
 		t.Fatalf("expected no TODO placeholders for go project, got: %s", content)
 	}

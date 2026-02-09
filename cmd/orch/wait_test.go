@@ -67,12 +67,13 @@ func TestWaitForPhase(t *testing.T) {
 			wantPhase:   "Implementing",
 		},
 		{
-			name:        "multiple phases - latest matches",
+			name:        "multiple phases - newest first (beads order)",
 			targetPhase: "Complete",
 			comments: []verify.Comment{
-				{Text: "Phase: Planning - Start"},
-				{Text: "Phase: Implementing - Middle"},
+				// Beads returns comments in reverse-chronological order (newest first)
 				{Text: "Phase: Complete - End"},
+				{Text: "Phase: Implementing - Middle"},
+				{Text: "Phase: Planning - Start"},
 			},
 			wantReached: true,
 			wantPhase:   "Complete",

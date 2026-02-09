@@ -5,7 +5,7 @@
 	import { kbArtifacts } from '$lib/stores/kb-artifacts';
 	import { kbModelProbes } from '$lib/stores/kb-model-probes';
 	import { orchestratorContext, connectionStatus } from '$lib/stores/context';
-	import { agents, connectSSE, disconnectSSE, sseEvents } from '$lib/stores/agents';
+	import { agents, connectSSE, disconnectSSE, sseEvents, type Agent } from '$lib/stores/agents';
 	import { WorkGraphTree } from '$lib/components/work-graph-tree';
 	import { ViewToggle } from '$lib/components/view-toggle';
 	import { GroupByDropdown } from '$lib/components/group-by-dropdown';
@@ -14,7 +14,7 @@
 	import { RecentlyCompletedSection } from '$lib/components/recently-completed-section';
 	import { wip, wipItems } from '$lib/stores/wip';
 	import { daemon, type DaemonStatus } from '$lib/stores/daemon';
-	import { attention, type CompletedIssue } from '$lib/stores/attention';
+	import { attention, formatRelativeTime, type CompletedIssue } from '$lib/stores/attention';
 	import { focus, type FocusInfo } from '$lib/stores/focus';
 
 	const WORK_GRAPH_POLL_INTERVAL_MS = 30000;
@@ -87,6 +87,18 @@
 	let labelFilter: string = '';
 	let labelFilterComponent: { focus: () => void };
 	let groupByMode: GroupByMode = 'priority';
+
+	interface ReadyToCompleteItem {
+		id: string;
+		title: string;
+		type: string;
+		priority: number;
+		runtime?: string;
+		tokenTotal: number | null;
+		completionAt: string;
+	}
+
+	let readyToCompleteItems: ReadyToCompleteItem[] = [];
 	
 	// Persist groupBy mode in localStorage
 	const GROUP_BY_KEY = 'work-graph-group-by';
@@ -287,6 +299,48 @@
 	// Subscribe to attention store for completed issues
 	$: if ($attention) {
 		completedIssues = $attention.completedIssues;
+	}
+
+	// Build a dedicated review queue for agents that reported Phase: Complete
+	// while their beads issue is still in_progress (not closed yet).
+	$: {
+		const queueByIssue = new Map<string, ReadyToCompleteItem>();
+		const nodesById = new Map(($workGraph?.nodes || []).map((node) => [node.id, node]));
+
+		for (const agent of $agents || []) {
+			const beadsId = agent.beads_id;
+			if (!beadsId) continue;
+			if (agent.phase?.toLowerCase() !== 'complete') continue;
+
+			const issueNode = nodesById.get(beadsId);
+			if (!issueNode || issueNode.source !== 'beads') continue;
+			if (issueNode.status.toLowerCase() !== 'in_progress') continue;
+
+			const completionAt = agent.phase_reported_at || agent.updated_at || agent.spawned_at;
+			if (!completionAt) continue;
+
+			const candidate: ReadyToCompleteItem = {
+				id: beadsId,
+				title: issueNode.title,
+				type: issueNode.type,
+				priority: issueNode.priority,
+				runtime: agent.runtime,
+				tokenTotal: getAgentTokenTotal(agent),
+				completionAt,
+			};
+
+			const existing = queueByIssue.get(beadsId);
+			if (!existing || completionMs(candidate) > completionMs(existing)) {
+				queueByIssue.set(beadsId, candidate);
+			}
+		}
+
+		readyToCompleteItems = Array.from(queueByIssue.values()).sort((a, b) => {
+			const ageDiff = completionMs(a) - completionMs(b); // oldest completion first
+			if (ageDiff !== 0) return ageDiff;
+			if (a.priority !== b.priority) return a.priority - b.priority;
+			return a.id.localeCompare(b.id);
+		});
 	}
 
 	// Rebuild tree and phases whenever graph data OR attention changes
@@ -552,6 +606,36 @@
 		}
 	}
 
+	function getAgentTokenTotal(agent: Agent): number | null {
+		const tokens = agent.tokens;
+		if (!tokens) return null;
+
+		const total =
+			tokens.total_tokens ??
+			(tokens.input_tokens || 0) +
+				(tokens.output_tokens || 0) +
+				(tokens.cache_read_tokens || 0);
+
+		if (!Number.isFinite(total) || total <= 0) {
+			return null;
+		}
+
+		return total;
+	}
+
+	function formatTokenTotal(total: number | null): string {
+		if (total === null) return 'tokens unknown';
+		if (total >= 1_000_000) return `${(total / 1_000_000).toFixed(1)}M tokens`;
+		if (total >= 1_000) return `${(total / 1_000).toFixed(1)}k tokens`;
+		return `${total} tokens`;
+	}
+
+	function completionMs(item: ReadyToCompleteItem): number {
+		const ms = new Date(item.completionAt).getTime();
+		if (Number.isNaN(ms)) return 0;
+		return ms;
+	}
+
 	// Cycle group mode order for 'g' shortcut
 	const groupOrder: GroupByMode[] = ['priority', 'area', 'effort'];
 
@@ -646,6 +730,9 @@
 					</span>
 				{/if}
 				{#if currentView === 'issues' && $workGraph}
+					{#if readyToCompleteItems.length > 0}
+						<span class="text-emerald-400">{readyToCompleteItems.length} ready to complete</span>
+					{/if}
 					<span>{labelFilter ? filteredTree.length + ' matched' : $workGraph.node_count + ' issues'}</span>
 					<span>{$workGraph.edge_count} edges</span>
 				{:else if currentView === 'completed'}
@@ -699,7 +786,7 @@
 				<div class="flex items-center justify-center h-full">
 					<div class="text-red-500">Error: {error}</div>
 				</div>
-			{:else if filteredTree.length === 0}
+			{:else if filteredTree.length === 0 && readyToCompleteItems.length === 0}
 				<div class="flex items-center justify-center h-full">
 					<div class="text-muted-foreground">
 						{#if labelFilter}
@@ -710,15 +797,47 @@
 					</div>
 				</div>
 			{:else}
-				<WorkGraphTree 
-					tree={filteredTree} 
-					groups={groupSections}
-					groupMode={groupByMode}
-					{newIssueIds} 
-					wipItems={$wipItems} 
-					onToggleExpansion={handleToggleExpansion}
-					onSetFocus={handleSetFocus}
-				/>
+				<div class="h-full min-h-0 flex flex-col">
+					{#if readyToCompleteItems.length > 0}
+						<div
+							class="mx-2 mt-2 mb-2 rounded-md border border-emerald-500/30 bg-emerald-500/5"
+							data-testid="ready-to-complete-section"
+						>
+							<div class="px-3 py-2 border-b border-emerald-500/20 flex items-center justify-between gap-4">
+								<div class="text-sm font-semibold text-emerald-400">Ready to Complete</div>
+								<div class="text-xs text-emerald-300/80">{readyToCompleteItems.length} awaiting review · oldest first</div>
+							</div>
+							<div class="max-h-36 overflow-y-auto">
+								{#each readyToCompleteItems as item (item.id)}
+									<div
+										class="px-3 py-2 border-b border-emerald-500/10 last:border-b-0 flex items-center gap-3 text-xs"
+										data-testid={`ready-to-complete-row-${item.id}`}
+									>
+										<span class="font-mono text-emerald-300 min-w-[120px]">{item.id}</span>
+										<span class="text-foreground text-sm flex-1 truncate">{item.title}</span>
+										<span class="text-muted-foreground whitespace-nowrap">{item.runtime || 'runtime unknown'}</span>
+										<span class="text-muted-foreground whitespace-nowrap">{formatTokenTotal(item.tokenTotal)}</span>
+										<span class="text-emerald-200/80 whitespace-nowrap">completed {formatRelativeTime(item.completionAt)}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+					{/if}
+
+					{#if filteredTree.length > 0}
+						<div class="flex-1 min-h-0">
+							<WorkGraphTree 
+								tree={filteredTree} 
+								groups={groupSections}
+								groupMode={groupByMode}
+								{newIssueIds} 
+								wipItems={$wipItems} 
+								onToggleExpansion={handleToggleExpansion}
+								onSetFocus={handleSetFocus}
+							/>
+						</div>
+					{/if}
+				</div>
 			{/if}
 		{:else if currentView === 'completed'}
 			<RecentlyCompletedSection {completedIssues} />

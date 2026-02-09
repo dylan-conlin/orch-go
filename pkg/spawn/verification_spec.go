@@ -13,6 +13,7 @@ import (
 )
 
 const verificationSpecFileName = "VERIFICATION_SPEC.yaml"
+const verificationSpecRuntimeCWDToken = "$GIT_WORKTREE_DIR"
 
 type verificationSpecSkeleton struct {
 	Version      int                           `yaml:"version"`
@@ -196,7 +197,7 @@ func implementationVerificationEntries(cfg *Config, tier string) []verificationS
 			Method:  "cli_smoke",
 			Tier:    tier,
 			Command: build,
-			CWD:     ".",
+			CWD:     verificationSpecRuntimeCWDToken,
 			Expect: verificationSpecSkeletonExpect{
 				ExitCode: 0,
 			},
@@ -206,7 +207,7 @@ func implementationVerificationEntries(cfg *Config, tier string) []verificationS
 			Method:  "cli_smoke",
 			Tier:    tier,
 			Command: test,
-			CWD:     ".",
+			CWD:     verificationSpecRuntimeCWDToken,
 			Expect: verificationSpecSkeletonExpect{
 				ExitCode: 0,
 			},
