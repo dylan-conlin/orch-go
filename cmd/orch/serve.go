@@ -21,6 +21,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/materializer"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
+	"github.com/dylan-conlin/orch-go/pkg/process"
 	"github.com/dylan-conlin/orch-go/pkg/service"
 	"github.com/spf13/cobra"
 )
@@ -234,6 +235,21 @@ func runServe(portNum int) error {
 		fmt.Printf("Warning: could not resolve bd path (CLI fallback may fail): %v\n", err)
 	} else {
 		fmt.Printf("Resolved bd path: %s\n", bdPath)
+	}
+
+	// Startup stale-process sweep: reconcile ledger against live PIDs
+	// and remove entries for processes that no longer exist.
+	// This closes the "restart window" where stale agents accumulate.
+	ledger := process.NewLedger(process.DefaultLedgerPath())
+	sweepResult := ledger.Sweep()
+	if sweepResult.Error != nil {
+		fmt.Printf("Warning: startup sweep failed: %v\n", sweepResult.Error)
+	} else if sweepResult.StaleRemoved > 0 {
+		fmt.Printf("Startup sweep: removed %d stale entries from process ledger", sweepResult.StaleRemoved)
+		if sweepResult.Killed > 0 {
+			fmt.Printf(" (killed %d)", sweepResult.Killed)
+		}
+		fmt.Println()
 	}
 
 	// Initialize persistent beads client with auto-reconnect.

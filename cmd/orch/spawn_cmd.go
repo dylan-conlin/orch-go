@@ -8,18 +8,21 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/process"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -29,6 +32,10 @@ import (
 
 // DefaultMaxAgents is the default maximum number of concurrent agents.
 const DefaultMaxAgents = 5
+
+const sessionIDExtractionRetryDelay = 300 * time.Millisecond
+
+var sessionIDExtractionRetrySleep = time.Sleep
 
 var (
 	// Spawn command flags
@@ -56,7 +63,7 @@ var (
 	spawnWorkdir             string // Target project directory (defaults to current directory)
 	spawnGateOnGap           bool   // Block spawn if context quality is too low
 	spawnSkipGapGate         bool   // Explicitly bypass gap gating (documents conscious decision)
-	spawnGapThreshold        int    // Custom gap quality threshold (default 20)
+	spawnGapThreshold        int    // Custom gap quality threshold (defaults from project config)
 	spawnForce               bool   // Force spawn even if issue has blocking dependencies
 	spawnBypassTriage        bool   // Explicitly bypass triage (documents conscious decision to spawn directly)
 	spawnDesignWorkspace     string // Design workspace name for ui-design-session → feature-impl handoff
@@ -112,7 +119,7 @@ Spawn Tiers:
 Gap Gating (Gate Over Remind):
   --gate-on-gap:      Block spawn if context quality is too low (score < 20)
   --skip-gap-gate:    Explicitly bypass gating (documents conscious decision)
-  --gap-threshold N:  Custom quality threshold (default 20)
+  --gap-threshold N:  Custom quality threshold (default from .orch/config.yaml spawn.context_quality.threshold, fallback 20)
   
   When gating is enabled and context quality is below threshold, spawn is blocked
   with a prominent message explaining the gap and how to fix it. This enforces
@@ -205,7 +212,7 @@ func init() {
 	spawnCmd.Flags().MarkHidden("project")
 	spawnCmd.Flags().BoolVar(&spawnGateOnGap, "gate-on-gap", false, "Block spawn if context quality is too low (enforces Gate Over Remind)")
 	spawnCmd.Flags().BoolVar(&spawnSkipGapGate, "skip-gap-gate", false, "Explicitly bypass gap gating (documents conscious decision to proceed without context)")
-	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default 20, only used with --gate-on-gap)")
+	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default from .orch/config.yaml spawn.context_quality.threshold, fallback 20; only used with --gate-on-gap)")
 	spawnCmd.Flags().BoolVar(&spawnForce, "force", false, "Force tactical spawn in hotspot areas (bypasses strategic-first gate - requires justification)")
 	spawnCmd.Flags().BoolVar(&spawnBypassTriage, "bypass-triage", false, "Acknowledge manual spawn bypasses daemon-driven triage workflow (required for manual spawns)")
 	spawnCmd.Flags().StringVar(&spawnDesignWorkspace, "design-workspace", "", "Design workspace name from ui-design-session for handoff to feature-impl (e.g., 'og-design-ready-queue-08jan')")
@@ -357,6 +364,18 @@ func formatSessionTitle(workspaceName, beadsID string) string {
 	return fmt.Sprintf("%s [%s]", workspaceName, beadsID)
 }
 
+// ensureSessionTitle enforces the expected session title after creation.
+// This prevents OpenCode from falling back to auto-generated titles (e.g. skill names)
+// when sessions are created through attach/tmux flows.
+func ensureSessionTitle(client opencode.ClientInterface, sessionID, title string) {
+	if sessionID == "" || title == "" {
+		return
+	}
+	if err := client.UpdateSessionTitle(sessionID, title); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to enforce session title for %s: %v\n", sessionID, err)
+	}
+}
+
 // runSpawnInline spawns the agent inline (blocking) - original behavior.
 func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
 	return runSpawnInlineWithClient(opencode.NewClient(serverURL), serverURL, cfg, minimalPrompt, beadsID, skillName, task)
@@ -399,6 +418,7 @@ func runSpawnInlineWithClient(client opencode.ClientInterface, serverURL string,
 		if err := statedb.RecordSessionID(cfg.WorkspaceName, result.SessionID); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to record session ID in state db: %v\n", err)
 		}
+		ensureSessionTitle(client, result.SessionID, sessionTitle)
 	}
 
 	// Note: Inline mode is synchronous and blocks until completion,
@@ -468,6 +488,13 @@ func runSpawnHeadlessWithClient(client opencode.ClientInterface, serverURL strin
 		return startHeadlessSession(client, serverURL, sessionTitle, minimalPrompt, cfg)
 	})
 
+	result, didSessionIDRetry := retryHeadlessSpawnAfterSessionIDExtractionFailure(result, retryResult, sessionIDExtractionRetryDelay, func() (*headlessSpawnResult, error) {
+		return startHeadlessSession(client, serverURL, sessionTitle, minimalPrompt, cfg)
+	})
+	if didSessionIDRetry {
+		fmt.Fprintf(os.Stderr, "Session ID extraction failed on initial attempt; retried once after %s\n", sessionIDExtractionRetryDelay)
+	}
+
 	if retryResult.LastErr != nil {
 		// Wrap the error with user-friendly message and recovery guidance
 		spawnErr := spawn.WrapSpawnError(retryResult.LastErr, "Headless spawn failed")
@@ -484,6 +511,7 @@ func runSpawnHeadlessWithClient(client opencode.ClientInterface, serverURL strin
 	}
 
 	sessionID := result.SessionID
+	ensureSessionTitle(client, sessionID, sessionTitle)
 
 	// Write session ID to workspace file for later lookups
 	if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
@@ -497,8 +525,26 @@ func runSpawnHeadlessWithClient(client opencode.ClientInterface, serverURL strin
 	// Write process ID to workspace file for explicit cleanup
 	// This enables killing the process during orch complete/abandon and daemon cleanup
 	if result.cmd != nil && result.cmd.Process != nil {
-		if err := spawn.WriteProcessID(cfg.WorkspacePath(), result.cmd.Process.Pid); err != nil {
+		childPID := result.cmd.Process.Pid
+		if err := spawn.WriteProcessID(cfg.WorkspacePath(), childPID); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to write process ID: %v\n", err)
+		}
+
+		// Record in process ownership ledger for deterministic cleanup on restart
+		ledger := process.NewDefaultLedger()
+		pgid, _ := syscall.Getpgid(childPID)
+		ledgerEntry := process.LedgerEntry{
+			Workspace: cfg.WorkspaceName,
+			BeadsID:   beadsID,
+			SessionID: sessionID,
+			SpawnPID:  os.Getpid(),
+			ChildPID:  childPID,
+			PGID:      pgid,
+			StartedAt: time.Now(),
+			LastSeen:  time.Now(),
+		}
+		if err := ledger.Record(ledgerEntry); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to record process in ledger: %v\n", err)
 		}
 	}
 
@@ -557,6 +603,39 @@ func runSpawnHeadlessWithClient(client opencode.ClientInterface, serverURL strin
 	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
 
 	return nil
+}
+
+func shouldRetrySessionIDExtraction(retryResult *spawn.RetryResult) bool {
+	if retryResult == nil || retryResult.LastErr == nil {
+		return false
+	}
+
+	var spawnErr *spawn.SpawnError
+	if errors.As(retryResult.LastErr, &spawnErr) {
+		return spawnErr.Kind == spawn.ErrKindSession && strings.HasPrefix(spawnErr.Message, "Failed to extract session ID")
+	}
+
+	return strings.Contains(retryResult.LastErr.Error(), "Failed to extract session ID")
+}
+
+func retryHeadlessSpawnAfterSessionIDExtractionFailure(initialResult *headlessSpawnResult, retryResult *spawn.RetryResult, retryDelay time.Duration, retryStart func() (*headlessSpawnResult, error)) (*headlessSpawnResult, bool) {
+	if !shouldRetrySessionIDExtraction(retryResult) {
+		return initialResult, false
+	}
+
+	if retryDelay > 0 {
+		sessionIDExtractionRetrySleep(retryDelay)
+	}
+
+	retryResult.Attempts++
+	recoveredResult, retryErr := retryStart()
+	if retryErr != nil {
+		retryResult.LastErr = retryErr
+		return initialResult, true
+	}
+
+	retryResult.LastErr = nil
+	return recoveredResult, true
 }
 
 // headlessSpawnResult contains the result of starting a headless session.
@@ -670,16 +749,18 @@ func runSpawnTmuxWithClient(client opencode.ClientInterface, serverURL string, c
 		return fmt.Errorf("failed to create tmux window: %w", err)
 	}
 
-	// When a model is specified, create the session via API first (opencode attach
-	// doesn't accept --model). Then attach to that session by ID.
+	// Keep session titles deterministic for monitoring and matching.
+	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
+
+	// Pre-create session with explicit title, then attach by session ID.
+	// This avoids OpenCode auto-generated titles (often skill names) and keeps
+	// titles stable for dashboard/session monitoring.
 	var preCreatedSessionID string
-	if cfg.Model != "" {
-		resp, createErr := client.CreateSession(cfg.WorkspaceName, cfg.ProjectDir, cfg.Model, "", !cfg.IsOrchestrator && !cfg.IsMetaOrchestrator)
-		if createErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to pre-create session with model %s: %v (falling back to attach without model)\n", cfg.Model, createErr)
-		} else {
-			preCreatedSessionID = resp.ID
-		}
+	resp, createErr := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model, cfg.Variant, !cfg.IsOrchestrator && !cfg.IsMetaOrchestrator)
+	if createErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to pre-create session with title %q: %v (falling back to attach without pre-created session)\n", sessionTitle, createErr)
+	} else {
+		preCreatedSessionID = resp.ID
 	}
 
 	// Build opencode command using tmux package
@@ -712,6 +793,7 @@ func runSpawnTmuxWithClient(client opencode.ClientInterface, serverURL string, c
 		sessionID, _ = client.FindRecentSessionWithRetry(cfg.ProjectDir, 3, 500*time.Millisecond)
 		// Note: We silently ignore errors here since window_id is sufficient for tmux monitoring
 	}
+	ensureSessionTitle(client, sessionID, sessionTitle)
 
 	// Send prompt
 	sendCfg := tmux.DefaultSendPromptConfig()

@@ -30,6 +30,9 @@ func runCleanup(target *CompletionTarget) *CleanupOutcome {
 	// Delete OpenCode session and terminate process
 	outcome.SessionDeleted, outcome.ProcessTerminated = deleteSessionAndProcess(target)
 
+	// Remove from process ownership ledger
+	removeLedgerEntry(target)
+
 	// Export orchestrator transcript (before archival)
 	if target.IsOrchestratorSession {
 		if err := exportOrchestratorTranscript(target.WorkspacePath, target.BeadsProjectDir, target.AgentName); err != nil {
@@ -140,4 +143,25 @@ func cleanupTmuxWindow(target *CompletionTarget) bool {
 
 	fmt.Printf("Closed tmux window: %s:%s\n", tmuxSessionName, window.Name)
 	return true
+}
+
+// removeLedgerEntry removes the process ledger entry for the completed agent.
+// Uses workspace name as primary key, falls back to beads ID.
+func removeLedgerEntry(target *CompletionTarget) {
+	ledger := process.NewDefaultLedger()
+	agentName := target.AgentName
+	if agentName == "" {
+		agentName = filepath.Base(target.WorkspacePath)
+	}
+	if agentName != "" {
+		if err := ledger.RemoveByWorkspace(agentName); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to remove process ledger entry by workspace: %v\n", err)
+		}
+		return
+	}
+	if target.BeadsID != "" {
+		if err := ledger.RemoveByBeadsID(target.BeadsID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to remove process ledger entry by beads ID: %v\n", err)
+		}
+	}
 }

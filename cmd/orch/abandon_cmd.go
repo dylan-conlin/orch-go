@@ -375,6 +375,9 @@ func cleanupAgentResourcesWithClient(client opencode.ClientInterface, ctx *aband
 
 	// Terminate orphaned OpenCode process
 	terminateAgentProcess(ctx.WorkspacePath)
+
+	// Remove from process ownership ledger
+	removeAbandonLedgerEntry(ctx)
 }
 
 // cleanupDockerContainer removes the Docker container associated with a workspace.
@@ -652,6 +655,22 @@ func removeTriageLabel(beadsID string) {
 		fmt.Fprintf(os.Stderr, "Warning: failed to remove triage:ready label: %v\n", err)
 	} else {
 		fmt.Printf("Removed triage:ready label (use 'bd label %s triage:ready' to re-queue)\n", beadsID)
+	}
+}
+
+// removeAbandonLedgerEntry removes the process ledger entry for the abandoned agent.
+func removeAbandonLedgerEntry(ctx *abandonContext) {
+	ledger := process.NewDefaultLedger()
+	if ctx.AgentName != "" {
+		if err := ledger.RemoveByWorkspace(ctx.AgentName); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to remove process ledger entry: %v\n", err)
+		}
+		return
+	}
+	if ctx.BeadsID != "" {
+		if err := ledger.RemoveByBeadsID(ctx.BeadsID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to remove process ledger entry: %v\n", err)
+		}
 	}
 }
 
