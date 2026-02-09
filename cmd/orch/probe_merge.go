@@ -34,10 +34,6 @@ func resolveProbeMergeRoot(target *CompletionTarget) string {
 	return target.BeadsProjectDir
 }
 
-func formatProbeMergeSummary(probes []spawn.ProjectProbe) string {
-	return spawn.FormatProbeMergeSummary(probes)
-}
-
 func mergeProbeIntoModel(probe spawn.ProjectProbe) error {
 	return spawn.MergeProbeIntoModel(probe.ModelPath, probe)
 }

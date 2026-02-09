@@ -632,8 +632,7 @@ func buildDesignDecompositionIssueTitle(item verify.DesignActionItem) string {
 }
 
 // processProbes checks for probe files the agent produced against models.
-// If probes exist, displays a summary and prompts the orchestrator to merge findings.
-// This is advisory — the orchestrator can skip and merge later.
+// If probes exist, merges verdict-safe probes non-interactively and prints follow-up review items.
 func processProbes(target *CompletionTarget) error {
 	probes := findProbeMergeCandidates(target)
 	if len(probes) == 0 {
@@ -643,55 +642,8 @@ func processProbes(target *CompletionTarget) error {
 	fmt.Println()
 	fmt.Println("--- Probe Merge ---")
 
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		result := mergeProbesNonInteractive(probes)
-		printProbeMergeNonInteractive(result)
-
-		committed, err := commitProbeMergeArtifacts(target, probes)
-		if err != nil {
-			return fmt.Errorf("failed to auto-commit probe/model changes: %w", err)
-		}
-		if committed {
-			fmt.Println("✓ Auto-committed probe/model updates")
-		}
-
-		fmt.Println("-------------------")
-		return nil
-	}
-
-	fmt.Print(formatProbeMergeSummary(probes))
-
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Fprint(os.Stdout, "Merge probe findings into model(s)? [y/N]: ")
-	response, err := reader.ReadString('\n')
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to read response: %v\n", err)
-		return nil
-	}
-	response = strings.TrimSpace(strings.ToLower(response))
-	if response != "y" && response != "yes" {
-		fmt.Println("Skipped probe merge. Merge later by reviewing probe files manually.")
-		fmt.Println("-------------------")
-		return nil
-	}
-
-	merged := 0
-	for _, p := range probes {
-		if p.Impact == "" {
-			fmt.Printf("  Skipping %s (no Model Impact section)\n", p.Probe.Name)
-			continue
-		}
-		if err := mergeProbeIntoModel(p); err != nil {
-			fmt.Fprintf(os.Stderr, "  Warning: failed to merge %s into %s: %v\n", p.Probe.Name, p.ModelName, err)
-			continue
-		}
-		fmt.Printf("  Merged: %s → %s\n", p.Probe.Name, p.ModelName)
-		merged++
-	}
-
-	if merged > 0 {
-		fmt.Printf("✓ Merged %d probe(s) into model(s)\n", merged)
-	}
+	result := mergeProbesNonInteractive(probes)
+	printProbeMergeNonInteractive(result)
 
 	committed, err := commitProbeMergeArtifacts(target, probes)
 	if err != nil {
