@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -12,8 +11,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/state"
 )
-
-var beadsIDBracketPattern = regexp.MustCompile(`\[([a-zA-Z0-9-]+)\]`)
 
 // ReconcileStateOptions configures state/session reconciliation.
 type ReconcileStateOptions struct {
@@ -72,7 +69,7 @@ func ReconcileState(opts ReconcileStateOptions) (*ReconcileStateResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list live OpenCode sessions: %w", err)
 	}
-	liveSessionIDs, liveBeadsIDs := indexLiveSessions(liveSessions)
+	liveSessionIDs, liveTitles := indexLiveSessions(liveSessions)
 
 	dbPath := opts.DBPath
 	if dbPath == "" {
@@ -81,7 +78,7 @@ func ReconcileState(opts ReconcileStateOptions) (*ReconcileStateResult, error) {
 
 	if dbPath != "" {
 		if _, err := os.Stat(dbPath); err == nil {
-			if err := reconcileStateDBRows(dbPath, liveSessionIDs, liveBeadsIDs, opts.DryRun, result); err != nil {
+			if err := reconcileStateDBRows(dbPath, liveSessionIDs, liveTitles, opts.DryRun, result); err != nil {
 				return nil, err
 			}
 		} else if !os.IsNotExist(err) {
@@ -137,76 +134,24 @@ func listRecentlyActiveSessions(client opencode.ClientInterface, maxIdle time.Du
 	return live, nil
 }
 
-func indexLiveSessions(sessions []opencode.Session) (map[string]bool, map[string]bool) {
+func indexLiveSessions(sessions []opencode.Session) (map[string]bool, []string) {
 	liveSessionIDs := make(map[string]bool, len(sessions))
-	liveBeadsIDs := make(map[string]bool)
+	liveTitles := make([]string, 0, len(sessions))
 	for _, s := range sessions {
 		if s.ID != "" {
 			liveSessionIDs[s.ID] = true
 		}
-		for _, beadsID := range extractBeadsIDsFromTitle(s.Title) {
-			liveBeadsIDs[beadsID] = true
+		if s.Title != "" {
+			liveTitles = append(liveTitles, s.Title)
 		}
 	}
-	return liveSessionIDs, liveBeadsIDs
-}
-
-func extractBeadsIDsFromTitle(title string) []string {
-	out := []string{}
-	if title == "" {
-		return out
-	}
-	if m := beadsIDBracketPattern.FindStringSubmatch(title); len(m) >= 2 {
-		out = append(out, m[1])
-	}
-	fields := strings.FieldsFunc(title, func(r rune) bool {
-		return r == ' ' || r == '[' || r == ']' || r == '(' || r == ')' || r == ','
-	})
-	for _, field := range fields {
-		if looksLikeBeadsID(field) {
-			out = append(out, field)
-		}
-	}
-	return uniqueStrings(out)
-}
-
-func looksLikeBeadsID(value string) bool {
-	if value == "" {
-		return false
-	}
-	parts := strings.Split(value, "-")
-	if len(parts) < 2 {
-		return false
-	}
-	last := parts[len(parts)-1]
-	if len(last) < 4 || len(last) > 12 {
-		return false
-	}
-	for _, r := range last {
-		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
-			return false
-		}
-	}
-	return true
-}
-
-func uniqueStrings(values []string) []string {
-	seen := make(map[string]bool, len(values))
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if value == "" || seen[value] {
-			continue
-		}
-		seen[value] = true
-		out = append(out, value)
-	}
-	return out
+	return liveSessionIDs, liveTitles
 }
 
 func reconcileStateDBRows(
 	dbPath string,
 	liveSessionIDs map[string]bool,
-	liveBeadsIDs map[string]bool,
+	liveTitles []string,
 	dryRun bool,
 	result *ReconcileStateResult,
 ) error {
@@ -229,7 +174,7 @@ func reconcileStateDBRows(
 		}
 
 		result.ReconcilableRows++
-		if isStateRowLive(row, liveSessionIDs, liveBeadsIDs) {
+		if isStateRowLive(row, liveSessionIDs, liveTitles) {
 			result.LiveRows++
 			continue
 		}
@@ -266,7 +211,7 @@ func reconcileStateDBRows(
 	if err != nil {
 		return fmt.Errorf("failed to re-list active rows after reconciliation: %w", err)
 	}
-	result.OpenMinusLiveAfter = computeOpenMinusLive(activeAfter, liveSessionIDs, liveBeadsIDs)
+	result.OpenMinusLiveAfter = computeOpenMinusLive(activeAfter, liveSessionIDs, liveTitles)
 	return nil
 }
 
@@ -278,17 +223,21 @@ func isReconcilableStateRow(row *state.Agent) bool {
 	return mode == "" || mode == "opencode" || mode == "headless"
 }
 
-func isStateRowLive(row *state.Agent, liveSessionIDs map[string]bool, liveBeadsIDs map[string]bool) bool {
+func isStateRowLive(row *state.Agent, liveSessionIDs map[string]bool, liveTitles []string) bool {
 	if row.SessionID != "" && liveSessionIDs[row.SessionID] {
 		return true
 	}
-	if row.BeadsID != "" && liveBeadsIDs[row.BeadsID] {
-		return true
+	if row.BeadsID != "" {
+		for _, title := range liveTitles {
+			if strings.Contains(title, row.BeadsID) {
+				return true
+			}
+		}
 	}
 	return false
 }
 
-func computeOpenMinusLive(activeRows []*state.Agent, liveSessionIDs map[string]bool, liveBeadsIDs map[string]bool) int {
+func computeOpenMinusLive(activeRows []*state.Agent, liveSessionIDs map[string]bool, liveTitles []string) int {
 	reconcilable := 0
 	live := 0
 	for _, row := range activeRows {
@@ -296,7 +245,7 @@ func computeOpenMinusLive(activeRows []*state.Agent, liveSessionIDs map[string]b
 			continue
 		}
 		reconcilable++
-		if isStateRowLive(row, liveSessionIDs, liveBeadsIDs) {
+		if isStateRowLive(row, liveSessionIDs, liveTitles) {
 			live++
 		}
 	}

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 )
 
 func TestCleanupManagedGitIsolationSkipsSharedTree(t *testing.T) {
@@ -99,7 +101,9 @@ func TestCleanupManagedGitIsolationIdempotent(t *testing.T) {
 	}
 }
 
-func TestCleanupStaleManagedWorktreesPrunesUnlinked(t *testing.T) {
+func TestCleanupStaleManagedWorktreesPrunesOrphansByStateDB(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
 	repo, _ := initGitRepoForWorktree(t)
 	worktreeRoot := filepath.Join(repo, ".orch", "worktrees")
 	if err := os.MkdirAll(worktreeRoot, 0755); err != nil {
@@ -116,17 +120,29 @@ func TestCleanupStaleManagedWorktreesPrunesUnlinked(t *testing.T) {
 	runGitForWorktreeTest(t, repo, "branch", orphanBranch)
 	runGitForWorktreeTest(t, repo, "worktree", "add", orphanWorktree, orphanBranch)
 
-	workspace := filepath.Join(repo, ".orch", "workspace", "ws-linked")
-	if err := os.MkdirAll(workspace, 0755); err != nil {
-		t.Fatalf("mkdir workspace: %v", err)
+	db, err := statedb.OpenDefault()
+	if err != nil {
+		t.Fatalf("open state db: %v", err)
 	}
-	if err := writeManifestForWorktreeTest(workspace, repo, linkedWorktree, linkedBranch, "orch-go-test-4"); err != nil {
-		t.Fatalf("write manifest: %v", err)
+	defer db.Close()
+
+	if err := db.InsertAgent(&statedb.Agent{
+		WorkspaceName: "linked",
+		BeadsID:       "orch-go-linked",
+		Mode:          "opencode",
+		ProjectDir:    repo,
+		ProjectName:   filepath.Base(repo),
+		SpawnTime:     time.Now().UnixMilli(),
+	}); err != nil {
+		t.Fatalf("insert active agent: %v", err)
 	}
 
 	result, err := cleanupStaleManagedWorktrees(repo, 0, false)
 	if err != nil {
 		t.Fatalf("cleanupStaleManagedWorktrees returned error: %v", err)
+	}
+	if result.SkippedActive != 1 {
+		t.Fatalf("expected 1 active worktree skipped, got %d", result.SkippedActive)
 	}
 	if result.WorktreesPruned != 1 {
 		t.Fatalf("expected 1 pruned worktree, got %d", result.WorktreesPruned)

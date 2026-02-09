@@ -66,8 +66,8 @@ Optional cleanup actions:
   --investigations       Archive empty investigation files (agents died before filling template)
   --stale                Reconcile stale state rows then archive old completed workspaces (default: 7 days)
   --stale-days N         Set age threshold for --stale (default: 7)
-  --worktrees            Prune stale git worktrees under .orch/worktrees (default: 7 days)
-  --worktree-days N      Set age threshold for --worktrees (default: 7)
+  --worktrees            Prune orphaned git worktrees under .orch/worktrees (active agents in state.db are preserved)
+  --worktree-days N      Optional age threshold for --worktrees (default: 0, disable age filtering)
   --untracked            Archive old untracked workspaces (default: 7 days)
   --untracked-days N     Set age threshold for --untracked (default: 7)
   --sessions             Delete stale OpenCode sessions (default: older than 7 days)
@@ -95,8 +95,8 @@ Examples:
   orch-go clean --investigations   # Archive empty investigation templates
   orch-go clean --stale            # Reconcile state cache + archive completed workspaces older than 7 days
   orch-go clean --stale --stale-days 14  # Archive completed workspaces older than 14 days
-  orch-go clean --worktrees        # Prune stale git worktrees older than 7 days
-  orch-go clean --worktrees --worktree-days 14  # Prune stale git worktrees older than 14 days
+  orch-go clean --worktrees        # Prune orphaned git worktrees
+  orch-go clean --worktrees --worktree-days 14  # Prune orphaned git worktrees older than 14 days
   orch-go clean --untracked        # Archive untracked workspaces older than 7 days
   orch-go clean --untracked --untracked-days 14  # Archive untracked workspaces older than 14 days
   orch-go clean --sessions         # Delete OpenCode sessions older than 7 days
@@ -128,8 +128,8 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanInvestigations, "investigations", false, "Archive empty investigation files to .kb/investigations/archived/")
 	cleanCmd.Flags().BoolVar(&cleanStale, "stale", false, "Reconcile stale state rows and archive completed workspaces older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanStaleDays, "stale-days", 7, "Age threshold in days for --stale (default: 7)")
-	cleanCmd.Flags().BoolVar(&cleanWorktrees, "worktrees", false, "Prune stale git worktrees under .orch/worktrees older than N days (default: 7)")
-	cleanCmd.Flags().IntVar(&cleanWorktreeDays, "worktree-days", 7, "Age threshold in days for --worktrees (default: 7)")
+	cleanCmd.Flags().BoolVar(&cleanWorktrees, "worktrees", false, "Prune orphaned git worktrees under .orch/worktrees (active agents in state.db are preserved)")
+	cleanCmd.Flags().IntVar(&cleanWorktreeDays, "worktree-days", 0, "Optional age threshold in days for --worktrees (default: 0)")
 	cleanCmd.Flags().BoolVar(&cleanUntracked, "untracked", false, "Archive untracked workspaces older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanUntrackedDays, "untracked-days", 7, "Age threshold in days for --untracked (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Delete stale OpenCode sessions older than N days (default: 7)")
@@ -260,7 +260,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	if cleanWorktrees {
 		janitorResult, janitorErr := cleanupStaleManagedWorktrees(projectDir, worktreeDays, dryRun)
 		if janitorErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to prune stale worktrees: %v\n", janitorErr)
+			fmt.Fprintf(os.Stderr, "Warning: failed to prune orphaned worktrees: %v\n", janitorErr)
 		} else {
 			worktreePruned = janitorResult.WorktreesPruned
 			worktreeBranchesDeleted = janitorResult.BranchesDeleted
@@ -324,7 +324,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 				fmt.Printf(" Would reconcile %d sessions.json entries.", registryRowsUpdated)
 			}
 			if cleanWorktrees && worktreePruned > 0 {
-				fmt.Printf(" Would prune %d stale git worktrees.", worktreePruned)
+				fmt.Printf(" Would prune %d orphaned git worktrees.", worktreePruned)
 				if worktreeBranchesDeleted > 0 {
 					fmt.Printf(" Would delete %d agent branches.", worktreeBranchesDeleted)
 				}
@@ -410,9 +410,9 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 			fmt.Printf("Reconciled %d stale sessions.json entries\n", registryRowsUpdated)
 		}
 		if worktreePruned > 0 {
-			fmt.Printf("Pruned %d stale git worktrees\n", worktreePruned)
+			fmt.Printf("Pruned %d orphaned git worktrees\n", worktreePruned)
 			if worktreeBranchesDeleted > 0 {
-				fmt.Printf("Deleted %d stale agent branches\n", worktreeBranchesDeleted)
+				fmt.Printf("Deleted %d orphaned agent branches\n", worktreeBranchesDeleted)
 			}
 		}
 		if untrackedArchived > 0 {

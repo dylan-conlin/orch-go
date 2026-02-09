@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 )
 
 const gitCleanupRetries = 3
@@ -36,9 +37,32 @@ type staleWorktreeJanitorResult struct {
 	Candidates      int
 	WorktreesPruned int
 	BranchesDeleted int
-	SkippedLinked   int
+	SkippedActive   int
 	SkippedFresh    int
 	Failures        int
+}
+
+// RemoveWorktree removes a managed git worktree for the workspace.
+// Returns true when removal succeeded or the worktree no longer exists.
+func RemoveWorktree(projectDir, workspaceName string) bool {
+	root := canonicalPath(projectDir)
+	workspace := strings.TrimSpace(workspaceName)
+	if root == "" || workspace == "" {
+		return false
+	}
+
+	worktreeDir := filepath.Join(root, ".orch", "worktrees", workspace)
+	return removeManagedWorktree(root, worktreeDir)
+}
+
+// CleanAgentBranch deletes an agent branch from the source repository.
+// Returns true when deletion succeeded or the branch does not exist.
+func CleanAgentBranch(projectDir, branchName string) bool {
+	root := canonicalPath(projectDir)
+	if root == "" {
+		return false
+	}
+	return deleteManagedBranch(root, branchName)
 }
 
 func cleanupManagedGitIsolation(workspacePath, fallbackSourceDir string) gitIsolationCleanupResult {
@@ -53,9 +77,14 @@ func cleanupManagedGitIsolation(workspacePath, fallbackSourceDir string) gitIsol
 		return result
 	}
 
-	result.WorktreeRemoved = removeManagedWorktree(meta.sourceProjectDir, meta.worktreeDir)
+	workspaceName := managedWorkspaceName(meta.sourceProjectDir, meta.worktreeDir)
+	if workspaceName != "" {
+		result.WorktreeRemoved = RemoveWorktree(meta.sourceProjectDir, workspaceName)
+	} else {
+		result.WorktreeRemoved = removeManagedWorktree(meta.sourceProjectDir, meta.worktreeDir)
+	}
 	if shouldDeleteManagedBranch(meta.branch) {
-		result.BranchDeleted = deleteManagedBranch(meta.sourceProjectDir, meta.branch)
+		result.BranchDeleted = CleanAgentBranch(meta.sourceProjectDir, meta.branch)
 	}
 
 	return result
@@ -78,7 +107,10 @@ func cleanupStaleManagedWorktrees(projectDir string, staleDays int, dryRun bool)
 		staleDays = 0
 	}
 
-	linked := referencedManagedWorktrees(projectDir)
+	active, err := activeManagedWorkspaces(projectDir)
+	if err != nil {
+		return result, err
+	}
 	cutoff := time.Now().AddDate(0, 0, -staleDays)
 
 	for _, entry := range entries {
@@ -86,13 +118,18 @@ func cleanupStaleManagedWorktrees(projectDir string, staleDays int, dryRun bool)
 			continue
 		}
 
-		path := canonicalPath(filepath.Join(worktreeRoot, entry.Name()))
-		if path == "" {
+		workspaceName := strings.TrimSpace(entry.Name())
+		if workspaceName == "" {
 			continue
 		}
 
-		if _, ok := linked[path]; ok {
-			result.SkippedLinked++
+		if _, ok := active[workspaceName]; ok {
+			result.SkippedActive++
+			continue
+		}
+
+		path := canonicalPath(filepath.Join(worktreeRoot, workspaceName))
+		if path == "" {
 			continue
 		}
 
@@ -110,10 +147,13 @@ func cleanupStaleManagedWorktrees(projectDir string, staleDays int, dryRun bool)
 
 		result.Candidates++
 		branch := gitCurrentBranch(path)
+		if branch == "" {
+			branch = "agent/" + workspaceName
+		}
 		age := int(time.Since(info.ModTime()).Hours() / 24)
 
 		if dryRun {
-			fmt.Printf("  [DRY-RUN] Would prune stale worktree: %s (%d days old)\n", path, age)
+			fmt.Printf("  [DRY-RUN] Would prune orphaned worktree: %s (%d days old)\n", path, age)
 			result.WorktreesPruned++
 			if shouldDeleteManagedBranch(branch) {
 				fmt.Printf("  [DRY-RUN] Would delete branch: %s\n", branch)
@@ -122,14 +162,14 @@ func cleanupStaleManagedWorktrees(projectDir string, staleDays int, dryRun bool)
 			continue
 		}
 
-		if !removeManagedWorktree(projectDir, path) {
+		if !RemoveWorktree(projectDir, workspaceName) {
 			result.Failures++
 			continue
 		}
 
 		result.WorktreesPruned++
 		if shouldDeleteManagedBranch(branch) {
-			if deleteManagedBranch(projectDir, branch) {
+			if CleanAgentBranch(projectDir, branch) {
 				result.BranchesDeleted++
 			} else {
 				result.Failures++
@@ -138,6 +178,44 @@ func cleanupStaleManagedWorktrees(projectDir string, staleDays int, dryRun bool)
 	}
 
 	return result, nil
+}
+
+func activeManagedWorkspaces(projectDir string) (map[string]struct{}, error) {
+	active := map[string]struct{}{}
+	db, err := statedb.OpenDefault()
+	if err != nil {
+		return nil, fmt.Errorf("failed to open state db: %w", err)
+	}
+	if db == nil {
+		return nil, fmt.Errorf("state db unavailable")
+	}
+	defer db.Close()
+
+	agents, err := db.ListActiveAgents()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list active agents: %w", err)
+	}
+
+	root := canonicalPath(projectDir)
+	projectName := filepath.Base(root)
+	for _, agent := range agents {
+		if agent == nil || strings.TrimSpace(agent.WorkspaceName) == "" {
+			continue
+		}
+
+		agentProjectDir := canonicalPath(agent.ProjectDir)
+		if agentProjectDir != "" {
+			if agentProjectDir != root {
+				continue
+			}
+		} else if strings.TrimSpace(agent.ProjectName) != "" && strings.TrimSpace(agent.ProjectName) != projectName {
+			continue
+		}
+
+		active[agent.WorkspaceName] = struct{}{}
+	}
+
+	return active, nil
 }
 
 func resolveGitIsolationMetadata(workspacePath, fallbackSourceDir string) gitIsolationMetadata {
@@ -167,36 +245,6 @@ func resolveGitIsolationMetadata(workspacePath, fallbackSourceDir string) gitIso
 	return meta
 }
 
-func referencedManagedWorktrees(projectDir string) map[string]struct{} {
-	linked := map[string]struct{}{}
-	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
-	entries, err := os.ReadDir(workspaceDir)
-	if err != nil {
-		return linked
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == "archived" {
-			continue
-		}
-
-		workspacePath := filepath.Join(workspaceDir, entry.Name())
-		sourceProjectDir, worktreeDir, _ := readGitIsolationManifest(workspacePath)
-		if !isManagedWorktreePath(sourceProjectDir, worktreeDir) {
-			continue
-		}
-
-		path := canonicalPath(worktreeDir)
-		if path == "" {
-			continue
-		}
-
-		linked[path] = struct{}{}
-	}
-
-	return linked
-}
-
 func isManagedWorktreePath(sourceProjectDir, worktreeDir string) bool {
 	if strings.TrimSpace(sourceProjectDir) == "" || strings.TrimSpace(worktreeDir) == "" {
 		return false
@@ -223,6 +271,30 @@ func isManagedWorktreePath(sourceProjectDir, worktreeDir string) bool {
 	}
 
 	return true
+}
+
+func managedWorkspaceName(sourceProjectDir, worktreeDir string) string {
+	if !isManagedWorktreePath(sourceProjectDir, worktreeDir) {
+		return ""
+	}
+
+	root := filepath.Join(canonicalPath(sourceProjectDir), ".orch", "worktrees")
+	worktree := canonicalPath(worktreeDir)
+	rel, err := filepath.Rel(root, worktree)
+	if err != nil || rel == "." {
+		return ""
+	}
+
+	if strings.HasPrefix(rel, "..") {
+		return ""
+	}
+
+	parts := strings.Split(rel, string(os.PathSeparator))
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return strings.TrimSpace(parts[0])
 }
 
 func removeManagedWorktree(sourceProjectDir, worktreeDir string) bool {
@@ -265,7 +337,7 @@ func deleteManagedBranch(sourceProjectDir, branch string) bool {
 
 	lastOutput := ""
 	for i := 0; i < gitCleanupRetries; i++ {
-		output, err := runGitCleanup(sourceProjectDir, "branch", "-D", branch)
+		output, err := runGitCleanup(sourceProjectDir, "branch", "-d", branch)
 		lastOutput = output
 		if err == nil || isBranchAlreadyRemoved(output) {
 			fmt.Printf("Deleted git branch: %s\n", branch)
