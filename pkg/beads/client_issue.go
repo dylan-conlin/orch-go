@@ -54,6 +54,7 @@ func (c *Client) Show(id string) (*Issue, error) {
 		if len(issues) == 0 {
 			return nil, fmt.Errorf("%w: %s (empty array)", ErrIssueNotFound, id)
 		}
+		normalizeIssueOutcomes(issues)
 		return &issues[0], nil
 	}
 
@@ -62,6 +63,7 @@ func (c *Client) Show(id string) (*Issue, error) {
 	if err := json.Unmarshal(resp.Data, &issue); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal issue (tried array and object): %w", err)
 	}
+	normalizeIssueOutcome(&issue)
 
 	return &issue, nil
 }
@@ -210,6 +212,7 @@ func fallbackShowWithDir(id, dir string) (*Issue, error) {
 	if len(issues) == 0 {
 		return nil, fmt.Errorf("%w: %s (empty array)", ErrIssueNotFound, id)
 	}
+	normalizeIssueOutcomes(issues)
 
 	return &issues[0], nil
 }
