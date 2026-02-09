@@ -16,7 +16,7 @@ func (m ModelSpec) Format() string {
 
 // DefaultModel is used when no model is specified.
 // Opus is the default (Max subscription covers unlimited Claude CLI usage).
-// Sonnet requires pay-per-token API which needs explicit opt-in.
+// In practice, ~/.orch/config.yaml default_model overrides this.
 var DefaultModel = ModelSpec{
 	Provider: "anthropic",
 	ModelID:  "claude-opus-4-6",
