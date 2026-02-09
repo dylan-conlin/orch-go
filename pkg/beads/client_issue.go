@@ -352,22 +352,33 @@ func FallbackReopen(id, reason string) error {
 // Returns a list of blocking dependencies if any exist, or nil if the issue can be worked on.
 // Uses RPC client if available, falls back to CLI otherwise.
 func CheckBlockingDependencies(issueID string) ([]BlockingDependency, error) {
-	// Try RPC client first
-	socketPath, err := FindSocketPath("")
-	if err == nil {
-		client := NewClient(socketPath, WithAutoReconnect(2))
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			issue, err := client.Show(issueID)
-			if err == nil {
-				return issue.GetBlockingDependencies(), nil
-			}
-			// Fall through to CLI on error
+	return CheckBlockingDependenciesWithDir(issueID, "")
+}
+
+// CheckBlockingDependenciesWithDir checks blockers using a project directory context.
+// This is required for cross-project daemon polling so dependency checks resolve
+// the correct beads database instead of the daemon's own working directory.
+func CheckBlockingDependenciesWithDir(issueID, dir string) ([]BlockingDependency, error) {
+	var blockers []BlockingDependency
+	err := Do(dir, func(client *Client) error {
+		if err := client.Connect(); err != nil {
+			return err
 		}
+		defer client.Close()
+
+		issue, err := client.Show(issueID)
+		if err != nil {
+			return err
+		}
+
+		blockers = issue.GetBlockingDependencies()
+		return nil
+	}, WithAutoReconnect(2))
+	if err == nil {
+		return blockers, nil
 	}
 
-	// Fallback to CLI
-	issue, err := FallbackShow(issueID)
+	issue, err := FallbackShowWithDir(issueID, dir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get issue %s: %w", issueID, err)
 	}

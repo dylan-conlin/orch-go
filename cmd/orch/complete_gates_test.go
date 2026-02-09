@@ -189,6 +189,35 @@ func TestVerifyRegularAgentNoRetryOnNonTransientFailure(t *testing.T) {
 	}
 }
 
+func TestVerifyRegularAgentUsesGitWorktreeDir(t *testing.T) {
+	origVerify := verifyCompletionFullFunc
+	t.Cleanup(func() {
+		verifyCompletionFullFunc = origVerify
+	})
+
+	projectDir := ""
+	verifyCompletionFullFunc = func(beadsID, workspacePath, dir, tier, serverURL string) (verify.VerificationResult, error) {
+		projectDir = dir
+		return verify.VerificationResult{Passed: true, Skill: "feature-impl"}, nil
+	}
+
+	target := &CompletionTarget{
+		BeadsID:         "orch-go-test",
+		AgentName:       "og-feat-test",
+		WorkspacePath:   "/tmp/workspace",
+		BeadsProjectDir: "/tmp/source",
+		GitWorktreeDir:  "/tmp/worktree",
+	}
+
+	_, err := verifyRegularAgent(target, SkipConfig{}, &VerificationOutcome{Passed: true})
+	if err != nil {
+		t.Fatalf("verifyRegularAgent() unexpected error: %v", err)
+	}
+	if projectDir != "/tmp/worktree" {
+		t.Fatalf("verifyCompletionFull projectDir = %q, want %q", projectDir, "/tmp/worktree")
+	}
+}
+
 func TestCheckLivenessSkipAgentRunning(t *testing.T) {
 	origGetLiveness := getLiveness
 	t.Cleanup(func() {

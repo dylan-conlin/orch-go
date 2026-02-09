@@ -86,6 +86,10 @@ type abandonContext struct {
 
 	// State DB handle — opened once, reused across phases.
 	DB *statedb.DB
+
+	// Git isolation cleanup status.
+	GitWorktreeRemoved bool
+	GitBranchDeleted   bool
 }
 
 // runAbandon orchestrates the abandon workflow in discrete phases:
@@ -487,6 +491,10 @@ func cleanupAgentResourcesWithClient(client opencode.ClientInterface, ctx *aband
 
 	// Remove from process ownership ledger
 	removeAbandonLedgerEntry(ctx)
+
+	gitCleanup := cleanupManagedGitIsolation(ctx.WorkspacePath, ctx.ProjectDir)
+	ctx.GitWorktreeRemoved = gitCleanup.WorktreeRemoved
+	ctx.GitBranchDeleted = gitCleanup.BranchDeleted
 }
 
 // cleanupDockerContainer removes the Docker container associated with a workspace.
@@ -617,6 +625,12 @@ func logStructuredEvent(logger *events.Logger, ctx *abandonContext) {
 	}
 	if ctx.WorkspacePath != "" {
 		eventData["workspace_path"] = ctx.WorkspacePath
+	}
+	if ctx.GitWorktreeRemoved {
+		eventData["git_worktree_removed"] = true
+	}
+	if ctx.GitBranchDeleted {
+		eventData["git_branch_deleted"] = true
 	}
 	if ctx.Reason != "" {
 		eventData["reason"] = ctx.Reason
@@ -797,6 +811,12 @@ func printAbandonSummary(ctx *abandonContext) {
 	fmt.Printf("  Beads ID: %s\n", ctx.BeadsID)
 	if ctx.Reason != "" {
 		fmt.Printf("  Reason: %s\n", ctx.Reason)
+	}
+	if ctx.GitWorktreeRemoved {
+		fmt.Printf("  Git worktree: removed\n")
+	}
+	if ctx.GitBranchDeleted {
+		fmt.Printf("  Git branch: deleted\n")
 	}
 	if ctx.IsUntracked {
 		fmt.Println("  (Untracked agent - no beads issue to respawn)")

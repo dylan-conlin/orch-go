@@ -369,3 +369,52 @@ func TestBug_ListReadyIssuesReturnsNewlyCreated(t *testing.T) {
 	t.Logf("Preview NextIssue: %v", result.Issue)
 	t.Logf("Preview RejectedCount: %d", len(result.RejectedIssues))
 }
+
+// TestBug_CrossProjectBlockedDependenciesAreSkipped reproduces the bug where
+// cross-project intake would spawn an issue even when it had open blockers.
+func TestBug_CrossProjectBlockedDependenciesAreSkipped(t *testing.T) {
+	projects := []Project{{Name: "test-project", Path: "/test"}}
+	issues := []Issue{
+		{ID: "issue-1", Title: "Blocked", Priority: 0, IssueType: "bug", Status: "open", Labels: []string{"triage:ready"}},
+		{ID: "issue-2", Title: "Unblocked", Priority: 1, IssueType: "bug", Status: "open", Labels: []string{"triage:ready"}},
+	}
+
+	spawned := ""
+	d := &Daemon{
+		Config:        Config{Label: "triage:ready", CrossProject: true},
+		SpawnedIssues: NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL),
+		listProjectsFunc: func() ([]Project, error) {
+			return projects, nil
+		},
+		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
+			return issues, nil
+		},
+		blockersFunc: func(issueID, projectPath string) ([]string, error) {
+			if issueID == "issue-1" {
+				return []string{"dep-1"}, nil
+			}
+			return nil, nil
+		},
+		spawnForProjectFunc: func(beadsID, projectPath string) error {
+			spawned = beadsID
+			return nil
+		},
+	}
+
+	result, err := d.CrossProjectOnceExcluding(nil)
+	if err != nil {
+		t.Fatalf("CrossProjectOnceExcluding() error: %v", err)
+	}
+	if !result.Processed {
+		t.Fatalf("expected processed result, got: %+v", result)
+	}
+	if result.Issue == nil {
+		t.Fatal("expected selected issue in result")
+	}
+	if result.Issue.ID != "issue-2" {
+		t.Fatalf("expected blocked issue to be skipped and spawn issue-2, got %s", result.Issue.ID)
+	}
+	if spawned != "issue-2" {
+		t.Fatalf("expected spawnForProjectFunc to run for issue-2, got %s", spawned)
+	}
+}

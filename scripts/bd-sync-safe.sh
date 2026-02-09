@@ -36,6 +36,29 @@ sys.exit(proc.returncode)
 PY
 }
 
+ensure_read_path_fresh() {
+	check_output=""
+	if check_output="$(run_with_timeout bd --no-daemon --sqlite list --json --limit 1 2>&1)"; then
+		return 0
+	fi
+
+	check_status=$?
+	if [[ "$check_output" == *"Database out of sync with JSONL"* ]]; then
+		echo "→ Sync completed but read path is still stale; running final import-only..." >&2
+		run_with_timeout bd sync --no-daemon --sqlite --import-only
+
+		if run_with_timeout bd --no-daemon --sqlite list --json --limit 1 >/dev/null 2>&1; then
+			return 0
+		fi
+
+		echo "bd-sync-safe: database still stale after final import-only" >&2
+		exit 1
+	fi
+
+	printf '%s\n' "$check_output" >&2
+	exit "$check_status"
+}
+
 if [ ! -f "$local_db" ]; then
 	echo "→ No local SQLite DB found at $local_db"
 	echo "→ Attempting one-time bootstrap via 'bd init --sqlite'..."
@@ -64,6 +87,7 @@ sync_args=(sync --no-daemon --sqlite --no-pull --no-push "$@")
 output=""
 if output="$(run_with_timeout bd "${sync_args[@]}" 2>&1)"; then
 	printf '%s\n' "$output"
+	ensure_read_path_fresh
 	exit 0
 else
 	status=$?
@@ -75,6 +99,7 @@ if [ "$status" -eq 124 ] && [[ "$output" == *"JSONL content differs from last sy
 	echo "→ Timed out in JSONL hash-mismatch import path; retrying with explicit import-only..." >&2
 	run_with_timeout bd sync --no-daemon --sqlite --import-only "$@"
 	run_with_timeout bd "${sync_args[@]}"
+	ensure_read_path_fresh
 	exit 0
 fi
 

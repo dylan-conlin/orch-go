@@ -6,9 +6,10 @@
 //  2. VerifyCompletion: target + skipConfig → VerificationOutcome
 //  3. CheckLiveness:    target → (prompt or continue)
 //  4. ProcessGates:     target → (discovered work, knowledge gaps, etc.)
-//  5. CloseIssue:       target + reason → CloseOutcome (includes epic handling)
-//  6. Cleanup:          target → CleanupOutcome (session, archive, docker, tmux)
-//  7. PostComplete:     target + outcomes → (telemetry, events, cache)
+//  5. IntegrateBranch:  target → (rebase + ff-only merge)
+//  6. CloseIssue:       target + reason → CloseOutcome (includes epic handling)
+//  7. Cleanup:          target → CleanupOutcome (session, archive, docker, tmux)
+//  8. PostComplete:     target + outcomes → (telemetry, events, cache)
 package main
 
 import (
@@ -37,11 +38,37 @@ type CompletionTarget struct {
 	WorkspacePath         string // Path to .orch/workspace/...
 	AgentName             string // Workspace directory name
 	BeadsProjectDir       string // Directory containing the beads database
+	SourceProjectDir      string // Canonical source repo for beads/project identity
+	GitWorktreeDir        string // Worktree dir for verification and integration
+	GitBranch             string // Agent branch to rebase + merge
 	IsOrchestratorSession bool
 	IsUntracked           bool
 	IsQuestion            bool
 	IsClosed              bool
 	Issue                 *verify.Issue // nil for untracked/orchestrator
+}
+
+func (t *CompletionTarget) sourceDir() string {
+	if t == nil {
+		return ""
+	}
+	if strings.TrimSpace(t.SourceProjectDir) != "" {
+		return t.SourceProjectDir
+	}
+	return t.BeadsProjectDir
+}
+
+func (t *CompletionTarget) gitDir() string {
+	if t == nil {
+		return ""
+	}
+	if strings.TrimSpace(t.GitWorktreeDir) != "" {
+		return t.GitWorktreeDir
+	}
+	if strings.TrimSpace(t.SourceProjectDir) != "" {
+		return t.SourceProjectDir
+	}
+	return t.BeadsProjectDir
 }
 
 // VerificationOutcome is the result of the verification phase.
@@ -68,6 +95,8 @@ type CleanupOutcome struct {
 	TmuxWindowClosed   bool
 	DockerCleaned      bool
 	TranscriptExported bool
+	GitWorktreeRemoved bool
+	GitBranchDeleted   bool
 }
 
 // CompletionTelemetry holds pre-collected telemetry data.
@@ -167,6 +196,9 @@ func resolveTarget(identifier, workdir string) (*CompletionTarget, error) {
 	}
 
 	projectResult.SetBeadsDefaultDir()
+	target.SourceProjectDir = target.BeadsProjectDir
+	target.GitWorktreeDir = target.BeadsProjectDir
+	enrichGitTarget(target)
 
 	// Determine tracked/untracked status
 	target.IsUntracked = target.IsOrchestratorSession ||
@@ -202,6 +234,48 @@ func resolveTarget(identifier, workdir string) (*CompletionTarget, error) {
 	}
 
 	return target, nil
+}
+
+func enrichGitTarget(target *CompletionTarget) {
+	if target == nil {
+		return
+	}
+
+	if target.WorkspacePath != "" {
+		source, worktree, branch := readGitMetadataFromManifest(target.WorkspacePath)
+		if source != "" {
+			target.SourceProjectDir = source
+		}
+		if worktree != "" {
+			target.GitWorktreeDir = worktree
+		}
+		if branch != "" {
+			target.GitBranch = branch
+		}
+	}
+
+	if target.SourceProjectDir == "" {
+		target.SourceProjectDir = target.BeadsProjectDir
+	}
+	if target.GitWorktreeDir == "" {
+		target.GitWorktreeDir = target.SourceProjectDir
+	}
+	if target.GitWorktreeDir == "" {
+		target.GitWorktreeDir = target.BeadsProjectDir
+	}
+	if target.GitBranch != "" {
+		return
+	}
+
+	branch, err := readBranchName(target.gitDir())
+	if err != nil {
+		return
+	}
+	target.GitBranch = branch
+}
+
+func readGitMetadataFromManifest(workspacePath string) (string, string, string) {
+	return readGitIsolationManifest(workspacePath)
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -430,8 +504,8 @@ func updateOrchestratorSessionStatus(agentName, status string) {
 // Telemetry must be pre-collected because cleanup deletes the session and archives the workspace.
 func postComplete(target *CompletionTarget, vOutcome *VerificationOutcome, reason string, telemetry CompletionTelemetry) {
 	// Check for new CLI commands
-	if hasGoChangesInRecentCommits(target.BeadsProjectDir) {
-		newCommands := detectNewCLICommands(target.BeadsProjectDir)
+	if hasGoChangesInRecentCommits(target.sourceDir()) {
+		newCommands := detectNewCLICommands(target.sourceDir())
 		if len(newCommands) > 0 {
 			printNewCLICommandsNotice(newCommands)
 		}
@@ -443,7 +517,7 @@ func postComplete(target *CompletionTarget, vOutcome *VerificationOutcome, reaso
 		if target.WorkspacePath != "" {
 			agentSkill, _ = verify.ExtractSkillNameFromSpawnContext(target.WorkspacePath)
 		}
-		notableEntries := detectNotableChangelogEntries(target.BeadsProjectDir, agentSkill)
+		notableEntries := detectNotableChangelogEntries(target.sourceDir(), agentSkill)
 		if len(notableEntries) > 0 {
 			printNotableChangelogEntries(notableEntries)
 		}

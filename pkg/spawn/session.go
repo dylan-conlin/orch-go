@@ -213,8 +213,20 @@ type AgentManifest struct {
 	// BeadsID is the beads issue ID for tracking (empty for --no-track spawns)
 	BeadsID string `json:"beads_id,omitempty"`
 
-	// ProjectDir is the absolute path to the project directory
+	// SourceProjectDir is the canonical source repository root.
+	// This remains stable even when runtime execution moves to a dedicated worktree.
+	SourceProjectDir string `json:"source_project_dir,omitempty"`
+
+	// ProjectDir is the absolute path to the project directory.
+	// Deprecated compatibility alias for SourceProjectDir.
 	ProjectDir string `json:"project_dir"`
+
+	// GitWorktreeDir is the git working directory used by the agent runtime.
+	// Defaults to ProjectDir for legacy/monorepo spawns.
+	GitWorktreeDir string `json:"git_worktree_dir,omitempty"`
+
+	// GitBranch is the git branch associated with this agent's work.
+	GitBranch string `json:"git_branch,omitempty"`
 
 	// GitBaseline is the git commit SHA at spawn time
 	// Used for git-based change detection: git diff <baseline>..HEAD

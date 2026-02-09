@@ -49,14 +49,14 @@ PY
 **Output:**
 
 ```text
-successful_sync_runs 19
+successful_sync_runs 20
 stale_show_failures 0
 ```
 
 **Key observations:**
 
 - Post-fix, every successful `bd-sync-safe.sh` run was immediately followed by a successful `bd show` with zero stale errors.
-- One run failed due dirty-tree commit constraints, but that failure mode is separate from stale-read loop behavior.
+- No stale-read failures were observed across all successful wrapper sync runs.
 
 ---
 

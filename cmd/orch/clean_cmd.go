@@ -29,6 +29,8 @@ var (
 	cleanInvestigations       bool
 	cleanStale                bool
 	cleanStaleDays            int
+	cleanWorktrees            bool
+	cleanWorktreeDays         int
 	cleanUntracked            bool
 	cleanUntrackedDays        int
 	cleanSessions             bool
@@ -55,7 +57,7 @@ Protection options:
   --preserve-orchestrator  Skip orchestrator/meta-orchestrator workspaces and sessions
 
 Comprehensive cleanup:
-  --all                  Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, sessions, processes)
+  --all                  Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, worktrees, untracked, sessions, processes)
 
 Optional cleanup actions:
   --windows              Close tmux windows for completed agents
@@ -64,6 +66,8 @@ Optional cleanup actions:
   --investigations       Archive empty investigation files (agents died before filling template)
   --stale                Archive old completed workspaces (default: 7 days)
   --stale-days N         Set age threshold for --stale (default: 7)
+  --worktrees            Prune stale git worktrees under .orch/worktrees (default: 7 days)
+  --worktree-days N      Set age threshold for --worktrees (default: 7)
   --untracked            Archive old untracked workspaces (default: 7 days)
   --untracked-days N     Set age threshold for --untracked (default: 7)
   --sessions             Delete stale OpenCode sessions (default: older than 7 days)
@@ -91,6 +95,8 @@ Examples:
   orch-go clean --investigations   # Archive empty investigation templates
   orch-go clean --stale            # Archive completed workspaces older than 7 days
   orch-go clean --stale --stale-days 14  # Archive completed workspaces older than 14 days
+  orch-go clean --worktrees        # Prune stale git worktrees older than 7 days
+  orch-go clean --worktrees --worktree-days 14  # Prune stale git worktrees older than 14 days
   orch-go clean --untracked        # Archive untracked workspaces older than 7 days
   orch-go clean --untracked --untracked-days 14  # Archive untracked workspaces older than 14 days
   orch-go clean --sessions         # Delete OpenCode sessions older than 7 days
@@ -104,23 +110,26 @@ Examples:
 			cleanVerifyOpenCode = true
 			cleanInvestigations = true
 			cleanStale = true
+			cleanWorktrees = true
 			cleanUntracked = true
 			cleanSessions = true
 			cleanProcesses = true
 		}
-		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays, cleanUntracked, cleanUntrackedDays, cleanSessions, cleanSessionsDays, cleanPreserveOrchestrator, cleanProcesses, cleanWorkdir)
+		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays, cleanWorktrees, cleanWorktreeDays, cleanUntracked, cleanUntrackedDays, cleanSessions, cleanSessionsDays, cleanPreserveOrchestrator, cleanProcesses, cleanWorkdir)
 	},
 }
 
 func init() {
 	cleanCmd.Flags().BoolVar(&cleanDryRun, "dry-run", false, "Show what would be cleaned without making changes")
-	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, sessions, processes)")
+	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, worktrees, untracked, sessions, processes)")
 	cleanCmd.Flags().BoolVar(&cleanVerifyOpenCode, "verify-opencode", false, "Also verify OpenCode disk sessions (slower)")
 	cleanCmd.Flags().BoolVar(&cleanWindows, "windows", false, "Close tmux windows for completed agents")
 	cleanCmd.Flags().BoolVar(&cleanPhantoms, "phantoms", false, "Close all phantom tmux windows (stale agent windows)")
 	cleanCmd.Flags().BoolVar(&cleanInvestigations, "investigations", false, "Archive empty investigation files to .kb/investigations/archived/")
 	cleanCmd.Flags().BoolVar(&cleanStale, "stale", false, "Archive completed workspaces older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanStaleDays, "stale-days", 7, "Age threshold in days for --stale (default: 7)")
+	cleanCmd.Flags().BoolVar(&cleanWorktrees, "worktrees", false, "Prune stale git worktrees under .orch/worktrees older than N days (default: 7)")
+	cleanCmd.Flags().IntVar(&cleanWorktreeDays, "worktree-days", 7, "Age threshold in days for --worktrees (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanUntracked, "untracked", false, "Archive untracked workspaces older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanUntrackedDays, "untracked-days", 7, "Age threshold in days for --untracked (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Delete stale OpenCode sessions older than N days (default: 7)")
@@ -133,7 +142,7 @@ func init() {
 }
 
 // runClean orchestrates all cleanup subcommands based on the provided flags.
-func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int, archiveUntracked bool, untrackedDays int, cleanSessions bool, sessionsDays int, preserveOrchestrator bool, killProcesses bool, workdir string) error {
+func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int, cleanWorktrees bool, worktreeDays int, archiveUntracked bool, untrackedDays int, cleanSessions bool, sessionsDays int, preserveOrchestrator bool, killProcesses bool, workdir string) error {
 	currentDir, err := currentProjectDir()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -225,6 +234,18 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 	}
 
+	worktreePruned := 0
+	worktreeBranchesDeleted := 0
+	if cleanWorktrees {
+		janitorResult, janitorErr := cleanupStaleManagedWorktrees(projectDir, worktreeDays, dryRun)
+		if janitorErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to prune stale worktrees: %v\n", janitorErr)
+		} else {
+			worktreePruned = janitorResult.WorktreesPruned
+			worktreeBranchesDeleted = janitorResult.BranchesDeleted
+		}
+	}
+
 	var staleSessionsDeleted int
 	if cleanSessions {
 		staleSessionsDeleted, err = cleanup.CleanStaleSessions(cleanup.CleanStaleSessionsOptions{
@@ -247,7 +268,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 	}
 
-	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode || cleanInvestigations || archiveStale || archiveUntracked || cleanSessions || killProcesses
+	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode || cleanInvestigations || archiveStale || cleanWorktrees || archiveUntracked || cleanSessions || killProcesses
 
 	if dryRun {
 		if hasCleanupActions {
@@ -275,6 +296,12 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 			if archiveStale && workspacesArchived > 0 {
 				fmt.Printf(" Would archive %d stale workspaces.", workspacesArchived)
 			}
+			if cleanWorktrees && worktreePruned > 0 {
+				fmt.Printf(" Would prune %d stale git worktrees.", worktreePruned)
+				if worktreeBranchesDeleted > 0 {
+					fmt.Printf(" Would delete %d agent branches.", worktreeBranchesDeleted)
+				}
+			}
 			if archiveUntracked && untrackedArchived > 0 {
 				fmt.Printf(" Would archive %d untracked workspaces.", untrackedArchived)
 			}
@@ -289,7 +316,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		return nil
 	}
 
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 || processesKilled > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || worktreePruned > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 || processesKilled > 0 {
 		projectName := filepath.Base(projectDir)
 		logger := events.NewLogger(events.DefaultLogPath())
 		event := events.Event{
@@ -302,6 +329,8 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 				"disk_sessions_deleted":   diskSessionsDeleted,
 				"investigations_archived": investigationsArchived,
 				"workspaces_archived":     workspacesArchived,
+				"worktrees_pruned":        worktreePruned,
+				"worktree_branches":       worktreeBranchesDeleted,
 				"untracked_archived":      untrackedArchived,
 				"project":                 projectName,
 				"verify_opencode":         verifyOpenCode,
@@ -310,6 +339,8 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 				"clean_investigations":    cleanInvestigations,
 				"archive_stale":           archiveStale,
 				"stale_days":              staleDays,
+				"clean_worktrees":         cleanWorktrees,
+				"worktree_days":           worktreeDays,
 				"archive_untracked":       archiveUntracked,
 				"untracked_days":          untrackedDays,
 				"clean_sessions":          cleanSessions,
@@ -323,7 +354,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 	}
 
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 || processesKilled > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || worktreePruned > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 || processesKilled > 0 {
 		fmt.Println()
 		if windowsClosed > 0 {
 			fmt.Printf("Closed %d tmux windows\n", windowsClosed)
@@ -339,6 +370,12 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 		if workspacesArchived > 0 {
 			fmt.Printf("Archived %d stale workspaces\n", workspacesArchived)
+		}
+		if worktreePruned > 0 {
+			fmt.Printf("Pruned %d stale git worktrees\n", worktreePruned)
+			if worktreeBranchesDeleted > 0 {
+				fmt.Printf("Deleted %d stale agent branches\n", worktreeBranchesDeleted)
+			}
 		}
 		if untrackedArchived > 0 {
 			fmt.Printf("Archived %d untracked workspaces\n", untrackedArchived)

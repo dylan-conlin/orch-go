@@ -80,6 +80,10 @@ func runCleanup(target *CompletionTarget) *CleanupOutcome {
 	// Clean up tmux window
 	outcome.TmuxWindowClosed = cleanupTmuxWindow(target)
 
+	gitCleanup := cleanupManagedGitIsolation(target.WorkspacePath, target.BeadsProjectDir)
+	outcome.GitWorktreeRemoved = gitCleanup.WorktreeRemoved
+	outcome.GitBranchDeleted = gitCleanup.BranchDeleted
+
 	return outcome
 }
 

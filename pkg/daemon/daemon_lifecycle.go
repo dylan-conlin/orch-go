@@ -437,6 +437,8 @@ type Daemon struct {
 	listProjectsFunc func() ([]Project, error)
 	// listIssuesForProjectFunc is used for testing - allows mocking ListReadyIssuesForProject
 	listIssuesForProjectFunc func(projectPath string) ([]Issue, error)
+	// blockersFunc is used for testing - allows mocking dependency checks
+	blockersFunc func(issueID, projectPath string) ([]string, error)
 	// spawnForProjectFunc is used for testing - allows mocking SpawnWorkForProject
 	spawnForProjectFunc func(beadsID, projectPath string) error
 }

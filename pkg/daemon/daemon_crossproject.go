@@ -136,6 +136,7 @@ type projectSkipCounts struct {
 	recentSpawn   int
 	typeNotSpawn  int
 	statusBlocked int
+	depsBlocked   int
 	missingLabel  int
 }
 
@@ -217,6 +218,15 @@ func (d *Daemon) shouldSkipIssue(issue Issue, projectPath string, skip map[strin
 		return true
 	}
 
+	blockers, err := d.blockers(issue.ID, projectPath)
+	if err == nil && len(blockers) > 0 {
+		counts.depsBlocked++
+		if d.Config.Verbose {
+			fmt.Printf("  [%s] Skipping %s (blocked by %s)\n", projectPath, issue.ID, strings.Join(blockers, ", "))
+		}
+		return true
+	}
+
 	return false
 }
 
@@ -228,7 +238,7 @@ func (d *Daemon) logProjectSkipSummary(projectName string, spawnable int, counts
 	}
 
 	totalSkipped := counts.failedSpawn + counts.recentSpawn +
-		counts.typeNotSpawn + counts.statusBlocked + counts.missingLabel
+		counts.typeNotSpawn + counts.statusBlocked + counts.depsBlocked + counts.missingLabel
 	if totalSkipped == 0 && spawnable == 0 {
 		return
 	}
@@ -242,6 +252,9 @@ func (d *Daemon) logProjectSkipSummary(projectName string, spawnable int, counts
 	}
 	if counts.statusBlocked > 0 {
 		parts = append(parts, fmt.Sprintf("%d blocked/in_progress", counts.statusBlocked))
+	}
+	if counts.depsBlocked > 0 {
+		parts = append(parts, fmt.Sprintf("%d blocked by deps", counts.depsBlocked))
 	}
 	if counts.typeNotSpawn > 0 {
 		parts = append(parts, fmt.Sprintf("%d non-spawnable type", counts.typeNotSpawn))
@@ -420,7 +433,7 @@ func (d *Daemon) CrossProjectPreview() (*CrossProjectPreviewResult, error) {
 		}
 
 		for _, issue := range issues {
-			reason := d.checkRejectionReason(issue)
+			reason := d.checkRejectionReasonForProject(issue, project.Path)
 			if reason != "" {
 				result.RejectedIssues = append(result.RejectedIssues, CrossProjectRejected{
 					Issue:   issue,

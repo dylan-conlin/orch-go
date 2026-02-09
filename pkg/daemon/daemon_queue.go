@@ -117,7 +117,7 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 			}
 		}
 		// Skip issues with blocking dependencies (open/in_progress dependencies)
-		blockers, err := beads.CheckBlockingDependencies(issue.ID)
+		blockers, err := d.blockers(issue.ID, "")
 		if err != nil {
 			if d.Config.Verbose {
 				fmt.Printf("  DEBUG: Warning: could not check dependencies for %s: %v\n", issue.ID, err)
@@ -125,11 +125,7 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 			// Continue checking - don't skip issue just because we can't check dependencies
 		} else if len(blockers) > 0 {
 			if d.Config.Verbose {
-				var blockerIDs []string
-				for _, b := range blockers {
-					blockerIDs = append(blockerIDs, fmt.Sprintf("%s (%s)", b.ID, b.Status))
-				}
-				fmt.Printf("  DEBUG: Skipping %s (blocked by dependencies: %s)\n", issue.ID, strings.Join(blockerIDs, ", "))
+				fmt.Printf("  DEBUG: Skipping %s (blocked by %s)\n", issue.ID, strings.Join(blockers, ", "))
 			}
 			continue
 		}
@@ -334,7 +330,13 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 // Returns empty string if the issue is spawnable.
 // This is the legacy version that doesn't consider epic children.
 func (d *Daemon) checkRejectionReason(issue Issue) string {
-	return d.checkRejectionReasonWithEpicChildren(issue, nil)
+	return d.checkRejectionReasonForProjectWithEpicChildren(issue, "", nil)
+}
+
+// checkRejectionReasonForProject checks if an issue should be rejected and returns
+// the reason in a specific project context.
+func (d *Daemon) checkRejectionReasonForProject(issue Issue, projectPath string) string {
+	return d.checkRejectionReasonForProjectWithEpicChildren(issue, projectPath, nil)
 }
 
 // checkRejectionReasonWithEpicChildren checks if an issue should be rejected and returns the reason.
@@ -342,6 +344,12 @@ func (d *Daemon) checkRejectionReason(issue Issue) string {
 // These children are exempt from the label requirement check.
 // Returns empty string if the issue is spawnable.
 func (d *Daemon) checkRejectionReasonWithEpicChildren(issue Issue, epicChildIDs map[string]bool) string {
+	return d.checkRejectionReasonForProjectWithEpicChildren(issue, "", epicChildIDs)
+}
+
+// checkRejectionReasonForProjectWithEpicChildren checks if an issue should be rejected and
+// returns the reason using the provided project context for dependency checks.
+func (d *Daemon) checkRejectionReasonForProjectWithEpicChildren(issue Issue, projectPath string, epicChildIDs map[string]bool) string {
 	// Check for empty/missing type first (the main problem case from the bug report)
 	if issue.IssueType == "" {
 		return "missing type (required for skill inference)"
@@ -380,13 +388,9 @@ func (d *Daemon) checkRejectionReasonWithEpicChildren(issue Issue, epicChildIDs 
 	}
 
 	// Check for blocking dependencies
-	blockers, err := beads.CheckBlockingDependencies(issue.ID)
+	blockers, err := d.blockers(issue.ID, projectPath)
 	if err == nil && len(blockers) > 0 {
-		var blockerIDs []string
-		for _, b := range blockers {
-			blockerIDs = append(blockerIDs, fmt.Sprintf("%s (%s)", b.ID, b.Status))
-		}
-		return fmt.Sprintf("blocked by dependencies: %s", strings.Join(blockerIDs, ", "))
+		return fmt.Sprintf("blocked by %s", strings.Join(blockers, ", "))
 	}
 
 	// Grace period check: issue was recently added to the queue
@@ -395,6 +399,24 @@ func (d *Daemon) checkRejectionReasonWithEpicChildren(issue Issue, epicChildIDs 
 		return fmt.Sprintf("in grace period (%s remaining)", remaining.Round(time.Second))
 	}
 	return "" // Spawnable
+}
+
+func (d *Daemon) blockers(issueID, projectPath string) ([]string, error) {
+	if d.blockersFunc != nil {
+		return d.blockersFunc(issueID, projectPath)
+	}
+
+	blockers, err := beads.CheckBlockingDependenciesWithDir(issueID, projectPath)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]string, 0, len(blockers))
+	for _, blocker := range blockers {
+		ids = append(ids, blocker.ID)
+	}
+
+	return ids, nil
 }
 
 // FormatPreview formats an issue for preview display.

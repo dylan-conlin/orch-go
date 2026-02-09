@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -249,6 +251,9 @@ func TestCompletionTargetFields(t *testing.T) {
 		WorkspacePath:         "/tmp/workspace",
 		AgentName:             "og-feat-test",
 		BeadsProjectDir:       "/tmp/project",
+		SourceProjectDir:      "/tmp/project",
+		GitWorktreeDir:        "/tmp/project/.orch/worktrees/og-feat-test",
+		GitBranch:             "agent/orch-go-abc1",
 		IsOrchestratorSession: false,
 		IsUntracked:           false,
 		IsQuestion:            false,
@@ -274,5 +279,47 @@ func TestVerificationOutcomeDefaults(t *testing.T) {
 	}
 	if len(outcome.GatesFailed) != 0 {
 		t.Error("Expected empty GatesFailed")
+	}
+}
+
+func TestEnrichGitTargetFromManifest(t *testing.T) {
+	workspace := t.TempDir()
+	manifest := map[string]string{
+		"workspace_name":     "og-feat-test",
+		"skill":              "feature-impl",
+		"source_project_dir": "/tmp/source",
+		"project_dir":        "/tmp/source",
+		"git_worktree_dir":   "/tmp/worktree",
+		"git_branch":         "agent/test",
+	}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, spawn.AgentManifestFilename), data, 0644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	target := &CompletionTarget{
+		WorkspacePath:   workspace,
+		BeadsProjectDir: "/tmp/fallback",
+	}
+	enrichGitTarget(target)
+
+	if target.SourceProjectDir != "/tmp/source" {
+		t.Fatalf("SourceProjectDir = %q, want %q", target.SourceProjectDir, "/tmp/source")
+	}
+	if target.GitWorktreeDir != "/tmp/worktree" {
+		t.Fatalf("GitWorktreeDir = %q, want %q", target.GitWorktreeDir, "/tmp/worktree")
+	}
+	if target.GitBranch != "agent/test" {
+		t.Fatalf("GitBranch = %q, want %q", target.GitBranch, "agent/test")
+	}
+}
+
+func TestCompletionTargetGitDirFallback(t *testing.T) {
+	target := &CompletionTarget{BeadsProjectDir: "/tmp/project"}
+	if got := target.gitDir(); got != "/tmp/project" {
+		t.Fatalf("gitDir() = %q, want %q", got, "/tmp/project")
 	}
 }

@@ -113,12 +113,12 @@ func verifyRegularAgent(target *CompletionTarget, skipConfig SkipConfig, outcome
 		fmt.Printf("Workspace: %s\n", target.AgentName)
 	}
 
-	result, err := verifyCompletionFullFunc(target.BeadsID, target.WorkspacePath, target.BeadsProjectDir, "", serverURL)
+	result, err := verifyCompletionFullFunc(target.BeadsID, target.WorkspacePath, target.gitDir(), "", serverURL)
 	if err != nil {
 		if retry, reason := shouldRetryVerification(verify.VerificationResult{}, err); retry {
 			fmt.Fprintf(os.Stderr, "Verification failed with transient error (%s). Retrying once...\n", reason)
 			verificationRetrySleep(transientVerificationRetryDelay)
-			result, err = verifyCompletionFullFunc(target.BeadsID, target.WorkspacePath, target.BeadsProjectDir, "", serverURL)
+			result, err = verifyCompletionFullFunc(target.BeadsID, target.WorkspacePath, target.gitDir(), "", serverURL)
 		}
 	}
 	if err != nil {
@@ -139,7 +139,7 @@ func verifyRegularAgent(target *CompletionTarget, skipConfig SkipConfig, outcome
 			fmt.Fprintf(os.Stderr, "Verification failed on transient gate (%s). Retrying once...\n", reason)
 			verificationRetrySleep(transientVerificationRetryDelay)
 
-			retried, retryErr := verifyCompletionFullFunc(target.BeadsID, target.WorkspacePath, target.BeadsProjectDir, "", serverURL)
+			retried, retryErr := verifyCompletionFullFunc(target.BeadsID, target.WorkspacePath, target.gitDir(), "", serverURL)
 			if retryErr != nil {
 				return fmt.Errorf("verification failed: %w", retryErr)
 			}
@@ -207,7 +207,7 @@ func verifyRegularAgent(target *CompletionTarget, skipConfig SkipConfig, outcome
 	// Behavioral validation checkpoint (informational, not blocking)
 	if target.BeadsID != "" && target.BeadsProjectDir != "" {
 		comments, _ := verify.GetComments(target.BeadsID)
-		behavioralResult := verify.CheckBehavioralValidationForCompletion(target.BeadsID, target.WorkspacePath, target.BeadsProjectDir, comments)
+		behavioralResult := verify.CheckBehavioralValidationForCompletion(target.BeadsID, target.WorkspacePath, target.gitDir(), comments)
 		if behavioralResult != nil && behavioralResult.BehavioralValidationSuggested {
 			printBehavioralValidationInfo(behavioralResult)
 		}

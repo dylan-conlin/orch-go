@@ -401,6 +401,7 @@ func TestCleanAllFlagLogic(t *testing.T) {
 	verifyOpenCode := false
 	investigations := false
 	stale := false
+	worktrees := false
 	sessions := false
 	all := false
 
@@ -411,10 +412,11 @@ func TestCleanAllFlagLogic(t *testing.T) {
 		verifyOpenCode = true
 		investigations = true
 		stale = true
+		worktrees = true
 		sessions = true
 	}
 
-	if windows || phantoms || verifyOpenCode || investigations || stale || sessions {
+	if windows || phantoms || verifyOpenCode || investigations || stale || worktrees || sessions {
 		t.Error("Expected all flags to remain false when all=false")
 	}
 
@@ -426,6 +428,7 @@ func TestCleanAllFlagLogic(t *testing.T) {
 		verifyOpenCode = true
 		investigations = true
 		stale = true
+		worktrees = true
 		sessions = true
 	}
 
@@ -443,6 +446,9 @@ func TestCleanAllFlagLogic(t *testing.T) {
 	}
 	if !stale {
 		t.Error("Expected stale to be true when all=true")
+	}
+	if !worktrees {
+		t.Error("Expected worktrees to be true when all=true")
 	}
 	if !sessions {
 		t.Error("Expected sessions to be true when all=true")

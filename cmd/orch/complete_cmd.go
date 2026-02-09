@@ -8,9 +8,10 @@
 //  2. verifyCompletion:   target + skipConfig → VerificationOutcome
 //  3. checkLiveness:      target → (prompt or continue)
 //  4. processGates:       target → (discovered work, knowledge gaps)
-//  5. closeIssue:         target + skipConfig → reason string
-//  6. runCleanup:         target → CleanupOutcome
-//  7. postComplete:       target + outcomes + telemetry → (events, cache)
+//  5. integrateAgentBranch: target → (rebase + ff-only merge)
+//  6. closeIssue:         target + skipConfig → reason string
+//  7. runCleanup:         target → CleanupOutcome
+//  8. postComplete:       target + outcomes + telemetry → (events, cache)
 //
 // Related files:
 //   - complete_pipeline.go:  Pipeline types and phase implementations
@@ -86,6 +87,7 @@ The following gates are checked before completion:
   - handoff_content:      SYNTHESIS.md has actual content (orchestrator only)
   - dashboard_health:     Dashboard API endpoints healthy for web/ or serve_*.go changes
   - verification_spec:    VERIFICATION_SPEC executable checks pass for workspace tier
+  - branch_integration:   Agent branch rebased + merged fast-forward into base branch
 
 TARGETED SKIP FLAGS:
 Use --skip-{gate} with --skip-reason to bypass specific gates:
@@ -220,7 +222,7 @@ func runComplete(identifier, workdir string) error {
 			fmt.Printf("Added approval: %s\n", approvalComment)
 		}
 	}
-	rebuildGoProjectsIfNeeded(target.BeadsProjectDir, target.WorkspacePath)
+	rebuildGoProjectsIfNeeded(target.gitDir(), target.WorkspacePath)
 
 	// Phase 2: Verify completion
 	vOutcome, err := verifyCompletion(target, skipConfig)
@@ -238,7 +240,12 @@ func runComplete(identifier, workdir string) error {
 		return err
 	}
 
-	// Phase 5: Close issue
+	// Phase 5: Integrate branch (rebase + ff-only merge)
+	if err := integrateAgentBranch(target); err != nil {
+		return err
+	}
+
+	// Phase 6: Close issue
 	reason, err := closeIssue(target, skipConfig)
 	if err != nil {
 		return err
@@ -251,10 +258,10 @@ func runComplete(identifier, workdir string) error {
 			collectCompletionTelemetry(target.WorkspacePath, completeForce, vOutcome.Passed)
 	}
 
-	// Phase 6: Cleanup (session deletion, archival, docker, tmux)
+	// Phase 7: Cleanup (session deletion, archival, docker, tmux)
 	_ = runCleanup(target)
 
-	// Phase 7: Post-complete (CLI commands, changelog, events, cache)
+	// Phase 8: Post-complete (CLI commands, changelog, events, cache)
 	postComplete(target, vOutcome, reason, telemetry)
 
 	// Silence unused variable warnings for disabled reproduction gate
