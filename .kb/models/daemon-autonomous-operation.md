@@ -71,24 +71,32 @@ The daemon runs continuously via launchd, executing this cycle:
 
 ### Skill Inference
 
-Daemon infers skill from **issue type** (NOT labels):
+Daemon infers skill using a **priority chain**: `skill:*` label → title pattern → issue type.
 
-| Issue Type | Inferred Skill | Rationale |
-|------------|----------------|-----------|
-| `task` | investigation | Tasks often require understanding before implementation |
+| Issue Type | Inferred Skill | Notes |
+|------------|----------------|-------|
 | `bug` | systematic-debugging | Bugs need root cause analysis |
 | `feature` | feature-impl | Features need implementation |
-| `epic` | architect | Epics need strategic design |
+| `task` | feature-impl | Tasks are implementation work |
+| `investigation` | investigation | Explicit investigation requests |
+| `question` | investigation | Questions need understanding |
+| `epic` | error (non-spawnable) | Epics are not directly spawnable |
+| (unknown) | error (skipped) | Daemon skips issues with inference errors |
 
-**Fallback:** If type unmapped or missing, defaults to `investigation`.
+**Override priority:**
+1. `skill:*` label (highest) — e.g., `skill:architect` forces architect skill
+2. Title pattern — e.g., "Synthesize ... investigations" maps to `kb-reflect`
+3. Issue type (lowest) — table above
 
-**Why type, not labels:**
-- Type is required field on creation
-- Labels are optional, easily forgotten
-- Type reflects work nature, labels reflect workflow state
-- Consistent mapping (type stable, labels change)
+**No silent fallback:** Unknown types produce errors and are skipped, not defaulted.
 
-**Source:** `pkg/daemon/skill_inference.go`
+**Why type as base, with label override:**
+- Type is required field on creation (always available)
+- Labels enable orchestrator to override inference when needed
+- Title patterns catch automated issue types (synthesis, etc.)
+
+**Source:** `pkg/daemon/skill_inference.go`, `pkg/daemon/daemon_spawn.go:240`
+**Verified by:** `probes/2026-02-09-skill-inference-mapping-verification.md`
 
 ### Capacity Management
 
