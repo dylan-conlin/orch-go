@@ -186,8 +186,24 @@ func recordGapForLearning(gapAnalysis *spawn.GapAnalysis, skill, task string) {
 	}
 }
 
+// shouldAutoBypassTriage determines if a skill should automatically bypass triage ceremony.
+// Orchestrator and meta-orchestrator skills inherently perform triage as part of their
+// coordination work, so requiring --bypass-triage is redundant ceremony.
+// Returns (bypass, reason) where reason identifies the auto-bypass source.
+func shouldAutoBypassTriage(skillName string) (bool, string) {
+	switch skillName {
+	case "orchestrator":
+		return true, "orchestrator"
+	case "meta-orchestrator":
+		return true, "meta-orchestrator"
+	default:
+		return false, ""
+	}
+}
+
 // resolveTriageBypass returns whether triage bypass is enabled and how it was enabled.
-// Sources: explicit --bypass-triage flag or session-level ORCH_BYPASS_TRIAGE env var.
+// Sources: explicit --bypass-triage flag, session-level ORCH_BYPASS_TRIAGE env var,
+// or auto-bypass for orchestrator skills.
 func resolveTriageBypass() (bool, string) {
 	if spawnBypassTriage {
 		return true, "flag"

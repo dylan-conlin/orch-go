@@ -561,6 +561,58 @@ func TestFormatActiveAgentError(t *testing.T) {
 	}
 }
 
+func TestShouldAutoBypassTriageForOrchestrator(t *testing.T) {
+	tests := []struct {
+		name       string
+		skillName  string
+		wantBypass bool
+		wantReason string
+	}{
+		{
+			name:       "orchestrator skill auto-bypasses",
+			skillName:  "orchestrator",
+			wantBypass: true,
+			wantReason: "orchestrator",
+		},
+		{
+			name:       "meta-orchestrator skill auto-bypasses",
+			skillName:  "meta-orchestrator",
+			wantBypass: true,
+			wantReason: "meta-orchestrator",
+		},
+		{
+			name:       "worker skill does not auto-bypass",
+			skillName:  "feature-impl",
+			wantBypass: false,
+			wantReason: "",
+		},
+		{
+			name:       "investigation skill does not auto-bypass",
+			skillName:  "investigation",
+			wantBypass: false,
+			wantReason: "",
+		},
+		{
+			name:       "systematic-debugging skill does not auto-bypass",
+			skillName:  "systematic-debugging",
+			wantBypass: false,
+			wantReason: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bypass, reason := shouldAutoBypassTriage(tt.skillName)
+			if bypass != tt.wantBypass {
+				t.Errorf("shouldAutoBypassTriage() bypass = %v, want %v", bypass, tt.wantBypass)
+			}
+			if reason != tt.wantReason {
+				t.Errorf("shouldAutoBypassTriage() reason = %q, want %q", reason, tt.wantReason)
+			}
+		})
+	}
+}
+
 func TestDetermineValidationLevel(t *testing.T) {
 	tests := []struct {
 		name       string

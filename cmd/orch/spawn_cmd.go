@@ -7,6 +7,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/config"
@@ -305,7 +306,13 @@ func validateModeModelCombo(backend string, resolvedModel model.ModelSpec) error
 }
 
 func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless bool, tmux bool, attach bool) error {
-	return runSpawnWithSkillInternal(serverURL, skillName, task, inline, headless, tmux, attach, false)
+	// Auto-bypass triage for orchestrator skills (they inherently perform triage)
+	daemonDriven := false
+	if bypass, reason := shouldAutoBypassTriage(skillName); bypass {
+		daemonDriven = true
+		fmt.Fprintf(os.Stderr, "ℹ️  Auto-bypassing triage ceremony (%s skill performs triage)\n", reason)
+	}
+	return runSpawnWithSkillInternal(serverURL, skillName, task, inline, headless, tmux, attach, daemonDriven)
 }
 
 // runSpawnWithSkillInternal is the internal implementation that supports daemon-driven spawns.
