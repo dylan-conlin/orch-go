@@ -1,11 +1,15 @@
 # Model: SSE Connection Management in orch-go
 
 **Domain:** OpenCode SSE integration, HTTP connection pooling, and reconnection behavior
-**Last Updated:** 2026-01-29
+**Last Updated:** 2026-02-09
 **Synthesized From:** 
 - `.kb/investigations/archived/2026-01-28-inv-sse-reconnection-opencode-client-survive.md` (SSE reconnection)
 - `.kb/investigations/archived/2026-01-05-design-permanent-fix-http-connection-pool.md` (HTTP/2 design)
 - `.kb/investigations/archived/2026-01-05-inv-dashboard-connection-pool-exhaustion-sse.md` (Connection pool fix)
+- 1 probe (Feb 8, 2026)
+
+**Recent Probes:**
+- `probes/2026-02-08-delayed-log-open-fd-leak.md` — **Extends** cleanup requirements. SSE follow-mode handlers that lazily open `events.jsonl` after initial missing-file startup leaked one FD per disconnected client. Fix: unconditional deferred close covering late-opened handles. New invariant: SSE handlers with lazy resource acquisition must always close on exit. Confidence: High (reproduced + verified zero leaks post-fix).
 
 ---
 
@@ -358,9 +362,8 @@ http.ListenAndServeTLS(addr, certFile, keyFile, mux)
 - `.kb/investigations/archived/2026-01-05-inv-dashboard-connection-pool-exhaustion-sse.md` - Agentlog opt-in fix
 
 **Decisions informed by this model:**
-- (Pending) HTTP/2 upgrade decision - when to implement, TLS cert strategy
-- (Implemented) Agentlog SSE opt-in policy - non-critical streams require user action
-- (Implemented) SSE reconnection fix - conditional break in SDK generation
+- `.kb/decisions/2026-01-30-sse-reconnection-resilience-patterns.md` - Conditional-break reconnection fix + regeneration-safe patching.
+- `.kb/decisions/2026-01-17-event-sourced-monitoring-architecture.md` - Historical SSE architecture context (superseded for completion authority).
 
 **Related models:**
 - `.kb/models/opencode-session-lifecycle.md` - Session management and state transitions

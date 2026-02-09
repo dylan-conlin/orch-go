@@ -1,8 +1,17 @@
 # Model: Daemon Autonomous Operation
 
 **Domain:** Daemon / Autonomous Spawning / Batch Processing
-**Last Updated:** 2026-01-12
-**Synthesized From:** 39 investigations + daemon.md guide (synthesized from 33 investigations, Dec 2025 - Jan 2026) on poll loops, skill inference, capacity management, completion tracking, cross-project operation
+**Last Updated:** 2026-02-09
+**Synthesized From:** 39 investigations + daemon.md guide (synthesized from 33 investigations, Dec 2025 - Jan 2026) + 1 probe (Feb 8, 2026) on poll loops, skill inference, capacity management, completion tracking, cross-project operation
+
+**Recent Probes:**
+- `probes/2026-02-08-processed-cache-mark-after-success.md` — **Extends** dedup invariants. `ProcessedIssueCache` must be written only after confirmed spawn success, not during evaluation. Rejected/failed spawns stay retryable. Transient race protection uses `SpawnedIssues` (in-memory). Confidence: High.
+
+**Significant Changes (Feb 7-8, 2026):**
+- **Polish Mode:** Daemon self-improves when queue empty (audits, consolidates investigations, cleans stale decisions)
+- **Auto-detect completion:** Agents with commits + idle sessions auto-detected as complete (see agent-lifecycle probe)
+- **Phase-aware idle nudge:** Recovery detects idle agents at late phases and nudges them
+- **Model behavior profiles:** Per-model profiles for strict-complete vs needs-nudge agents
 
 ---
 
@@ -312,7 +321,10 @@ Daemon auto-spawns on next poll
 - Additional 6+ investigations on cross-project operation, kb reflect integration
 
 **Decisions:**
-- `.kb/decisions/2025-12-XX-daemon-first-workflow.md` (if exists - check)
+- `.kb/decisions/2026-01-21-cross-project-daemon-architecture.md` - Single daemon polls all kb-registered projects.
+- `.kb/decisions/2026-01-17-five-tier-completion-escalation-model.md` - Completion loop escalation semantics.
+- `.kb/decisions/2026-01-14-two-tier-cleanup-pattern.md` - Event cleanup + periodic cleanup for daemon-managed resources.
+- `.kb/decisions/2026-01-21-strategic-first-gate-advisory-only.md` - Spawn hotspot signal is advisory, not blocking.
 
 **Models:**
 - `.kb/models/spawn-architecture.md` - How `orch work` spawns agents

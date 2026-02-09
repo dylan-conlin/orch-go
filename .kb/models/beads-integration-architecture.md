@@ -1,8 +1,13 @@
 # Model: Beads Integration Architecture
 
 **Domain:** Beads Integration / Issue Tracking / RPC Client
-**Last Updated:** 2026-01-12
-**Synthesized From:** 28 investigations + beads-integration.md guide (synthesized from 17 investigations, Dec 2025 - Jan 2026) on RPC client design, CLI fallback, auto-tracking protocol, performance optimization
+**Last Updated:** 2026-02-09
+**Synthesized From:** 28 investigations + beads-integration.md guide (synthesized from 17 investigations, Dec 2025 - Jan 2026) + 3 probes (Feb 8, 2026) on RPC client design, CLI fallback, auto-tracking protocol, performance optimization
+
+**Recent Probes:**
+- `probes/2026-02-08-bd-subprocess-cap-hit-debug-only.md` — **Extends** CLI fallback observability. Cap-hit telemetry now debug-gated (`ORCH_DEBUG=1`), preventing routine CLI noise while preserving diagnostics. Confidence: High.
+- `probes/2026-02-08-ready-queue-accessibility-filter.md` — **Extends** ID-not-found failure mode. Ready-queue intake now drops unfindable issues before spawn attempts, reducing wasted spawn cycles. Confidence: Medium.
+- `probes/2026-02-08-synthesis-dedup-parse-error-fail-closed.md` — **Confirms** auto-tracking duplicate risk mitigation. `synthesisIssueExists()` now fails closed on JSON parse errors (prefers false positive over duplicate creation). Confidence: High.
 
 ---
 

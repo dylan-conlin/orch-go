@@ -2,7 +2,12 @@
 
 **Summary:** GPT-5.3-Codex is now the default model for all agent spawns. After an initial rough showing on Feb 6 (one extraction task produced non-compiling code), it has been the primary workhorse since Feb 7 — completing 18+ agents across feature-impl, systematic-debugging, and investigation tasks. The main failure mode is not code quality but **completion protocol compliance** (agents finish work then forget to run `orch phase Complete`). Model routing via beads labels is the validated integration path for cases where specific models are needed.
 
-**Synthesized from:** 6 investigations, 1 decision (daemon resilience), production usage data (Feb 7), direct orchestrator engagement.
+**Synthesized from:** 6 investigations, 1 decision (daemon resilience), production usage data (Feb 7-8), direct orchestrator engagement, 1 probe (Feb 8, 2026).
+
+**Recent Probes:**
+- `probes/2026-02-08-daemon-model-routing-not-yet-wired.md` — **Confirms** label-based per-issue model routing remains unimplemented in daemon spawn path. `orch work` infers skill and MCP only; no `InferModelFromLabels` function exists. Focus-level model preference also absent. Confidence: High.
+
+**Feb 8-9 Update:** Codex performance evaluation across 5 verification-spec implementation issues: 5/5 closed in 88 min total, clean Go code, proper tests (424 lines, 10 cases), faithful to decision record spec. Token efficiency: 1.48M total (highest single issue 638K on batch CLI integration). Comparable speed to overnight Opus baseline on implementation tasks. Protocol compliance improved (all 5 reported proper phase progression). Still needs evaluation on investigation/debugging/architect skills.
 
 ---
 

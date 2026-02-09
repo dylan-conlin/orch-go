@@ -1,8 +1,11 @@
 # Model: Completion Verification Architecture
 
 **Domain:** Completion / Verification / Quality Gates
-**Last Updated:** 2026-01-14
-**Synthesized From:** 31 investigations + completion.md guide on verification layers, UI approval gates, cross-project detection, escalation model, targeted bypasses
+**Last Updated:** 2026-02-09
+**Synthesized From:** 31 investigations + completion.md guide + 1 probe (Feb 9, 2026) + 1 decision (Feb 8, 2026) on verification layers, UI approval gates, cross-project detection, escalation model, targeted bypasses, proof-carrying specs
+
+**Recent Probes:**
+- `probes/2026-02-09-orch-complete-transient-verification-retry.md` — **Extends** gate behavior. One-shot retry on transient verification failures (network/server reachability) preserves correctness while reducing false-negative completion failures. Non-transient failures still fail immediately. Confidence: High.
 
 ---
 
@@ -338,6 +341,29 @@ To prevent knowledge loss at session end (**Capture at Context**), `orch complet
 - Markdown-only work exempted from test_evidence gate
 - Zero spawn_time handled gracefully (skip with warning for legacy workspaces)
 
+### Phase 7: Proof-Carrying Verification Specs (Feb 8-9, 2026)
+
+**What changed:** Agents now emit executable verification contracts (`VERIFICATION_SPEC.yaml`) that allow batch verification without reconstructing intent from prose. Design-by-contract applied to the orchestration layer.
+
+**Decision:** `.kb/decisions/2026-02-08-proof-carrying-verification-specs.md`
+
+**New components:**
+- `pkg/verify/proofspec.go` - Schema parser/validator (v1 schema: scope, method, tier, command, expect)
+- `pkg/verify/proofspec_runner.go` - Execution engine with replay metadata
+- `pkg/spawn/verification_spec.go` - Spawn-time skeleton generation by skill/tier
+- `cmd/orch/verify_cmd.go` - `orch verify --batch` and single-item CLI
+- `cmd/orch/complete_proofspec.go` - Completion-time spec execution + beads digest
+
+**Schema:** Five verification methods (cli_smoke, integration, browser, manual, static), three tiers (light, full, orchestrator). Agent fills in pre-populated skeleton before Phase: Complete.
+
+**Key insight:** The agent that implements the feature is in the best position to write its verification — it knows what changed, what could break, and what "working" looks like. Cost of generating at implementation time ≈ 0. Cost of reconstructing from synthesis doc ≈ significant and error-prone.
+
+**Rollout policy:** Phase A (advisory warning for missing spec) → Phase B (blocks implementation skills) → Phase C (required for all non-light tracked spawns).
+
+**New flag:** `--skip-verification-spec "reason"` for targeted bypass.
+
+**Relationship to existing gates:** Complements Phase/Evidence/Approval gates. Evidence/visual/test gates migrate from regex heuristics toward contract-backed checks as spec coverage grows. Existing gates remain fallback for legacy/missing specs.
+
 ---
 
 ## References
@@ -350,7 +376,10 @@ To prevent knowledge loss at session end (**Capture at Context**), `orch complet
 - Additional 16+ investigations on evidence gates, approval patterns, cross-project detection
 
 **Decisions:**
-- (Check for completion-related decisions in .kb/decisions/)
+- `.kb/decisions/2026-01-14-verification-bottleneck-principle.md` - Verification pace is a hard system constraint.
+- `.kb/decisions/2026-01-17-five-tier-completion-escalation-model.md` - Escalation policy used by daemon/orchestrator completion flow.
+- `.kb/decisions/2026-02-07-agent-completion-lifecycle-separation.md` - Separates declaration, verification, and issue closure authority.
+- `.kb/decisions/2026-01-14-models-track-architecture.md` - Model update threshold used when verification behavior changes.
 
 **Models:**
 - `.kb/models/agent-lifecycle-state-model.md` - Where completion fits in agent lifecycle
@@ -364,4 +393,9 @@ To prevent knowledge loss at session end (**Capture at Context**), `orch complet
 - `pkg/verify/visual.go` - Approval gate implementation (UI verification)
 - `pkg/verify/cross_project.go` - Project directory detection
 - `pkg/verify/escalation.go` - 5-tier escalation model
+- `pkg/verify/proofspec.go` - Proof-carrying spec parser/validator
+- `pkg/verify/proofspec_runner.go` - Proof spec execution engine
+- `pkg/spawn/verification_spec.go` - Spawn-time skeleton generation
+- `cmd/orch/verify_cmd.go` - `orch verify` CLI (batch + single)
+- `cmd/orch/complete_proofspec.go` - Completion-time spec execution
 - `cmd/orch/complete.go` - Complete command orchestration

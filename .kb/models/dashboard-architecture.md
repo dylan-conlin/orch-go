@@ -312,6 +312,11 @@ Plugin error → OpenCode internal 500 → orch status fails → API can't get a
 **Related Decisions:**
 - `.kb/decisions/2026-01-14-infrastructure-complexity-justified.md` - Why we keep 3-service architecture
 - `.kb/decisions/2026-01-09-dashboard-reliability-architecture.md` - orch doctor, orch deploy design
+- `.kb/decisions/2026-01-24-readable-frontier-over-graph-visualization.md` - Text-first strategic surface design
+- `.kb/decisions/2026-01-30-strategic-center-dashboard-architecture.md` - Action-oriented Strategic Center categories
+- `.kb/decisions/2026-01-30-dynamic-hud-pattern-opencode.md` - Per-turn context surfacing pattern (plugin layer)
+- `.kb/decisions/2026-01-30-sse-reconnection-resilience-patterns.md` - Reconnection behavior for real-time event streams
+- `.kb/decisions/2026-01-30-opencode-binary-resolution-patterns.md` - Stable runtime binary resolution for dashboard stack
 
 **Primary Evidence (Verify These):**
 - `cmd/orch/serve_agents.go` - Agent status calculation and API endpoint (~1400 lines)

@@ -103,6 +103,11 @@ For high-performance bulk operations (like `orch clean`), completion is inferred
 **Synthesis Investigation:**
 * `.kb/investigations/2026-01-17-inv-synthesize-12-investigations-related-workspace.md` - Comprehensive synthesis of all workspace investigations
 
+**Decisions:**
+* `.kb/decisions/2026-01-17-three-tier-workspace-hierarchy.md` - Canonical workspace taxonomy and completion artifacts
+* `.kb/decisions/2026-01-17-file-based-workspace-state-detection.md` - Fast bulk-state detection from filesystem metadata
+* `.kb/decisions/2026-01-14-two-tier-cleanup-pattern.md` - Event-driven plus periodic cleanup model
+
 **Source Investigations (13 total):**
 * `.kb/investigations/archived/2025-12-21-inv-workspace-lifecycle-when-workspaces-created.md`
 * `.kb/investigations/archived/2025-12-21-inv-beads-kb-workspace-relationships-how.md`

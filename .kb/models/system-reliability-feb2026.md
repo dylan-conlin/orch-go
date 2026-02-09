@@ -153,6 +153,10 @@ Five permanent constraints adopted to make this defect class structurally detect
 ### Decisions
 - `2026-02-07-unbounded-resource-consumption-constraints.md` — Structural prevention
 - `2026-02-07-static-dashboard-eliminate-bun-dev-server.md` — Process elimination
+- `2026-01-28-two-tier-disk-cleanup-infrastructure.md` — Threshold-triggered recovery for disk pressure
+- `2026-01-21-colima-over-docker-desktop.md` — Runtime stability decision for local Docker workflows
+- `2026-01-14-understanding-lag-pattern.md` — Interpret new observability as visibility, not automatic degradation
+- `2026-01-14-trust-calibration-assert-knowledge.md` — Human expertise assertion as reliability guardrail
 
 ### Prior Art
 - `2026-01-22-inv-strategic-audit-daemon-reliability-multiple.md`

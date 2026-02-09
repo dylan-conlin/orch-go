@@ -1,8 +1,11 @@
 # Model: Agent Lifecycle State Model
 
 **Domain:** Agent Lifecycle / State Management
-**Last Updated:** 2026-01-12
-**Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display
+**Last Updated:** 2026-02-09
+**Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) + 1 probe (Feb 8, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display
+
+**Recent Probes:**
+- `probes/2026-02-08-commit-idle-auto-completion.md` — **Extends** "session idle ≠ completion" invariant. Idle CAN signal completion when paired with session-scoped commit evidence + non-processing state. Daemon now backfills `Phase: Complete` comment for commit+idle auto-detections. Confidence: Medium (tests pass, live daemon validation pending).
 
 ---
 

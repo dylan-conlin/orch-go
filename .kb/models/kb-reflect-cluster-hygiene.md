@@ -1,0 +1,126 @@
+# Model: kb reflect Cluster Hygiene
+
+**Domain:** Knowledge system maintenance / synthesis triage
+**Last Updated:** 2026-02-08
+**Synthesized From:** Top synthesis clusters (`feature`, `agents`, `quick`) and their archived investigations
+
+---
+
+## Summary (30 seconds)
+
+`kb reflect --type synthesis` clusters investigations by lexical similarity. This is a useful discovery signal, but it is not automatically a valid synthesis boundary. Effective triage requires a second step: classify each cluster by semantic cohesion, verify key claims against current code/behavior, then route to one of three dispositions: **converge** (create/update decision/model), **split** (separate mixed lineages), or **demote** (use probe/quick artifact instead of full investigation).
+
+---
+
+## Core Mechanism
+
+### 1) Reflect emits lexical cluster signal
+
+Input: investigation titles and metadata.
+
+Output: topic buckets like `feature (5)` or `quick (4)`.
+
+### 2) Orchestrator performs semantic triage
+
+For each cluster:
+
+1. Check whether items describe one mechanism or multiple unrelated threads.
+2. Re-validate cluster claims against primary evidence (code/tests/runtime), not only old investigation conclusions.
+3. Choose disposition.
+
+### 3) Disposition routing
+
+- **Converge:** Coherent cluster with shared mechanism -> consolidate into canonical decision/model.
+- **Split:** Lexically similar but semantically mixed -> map items to existing lineages/decisions.
+- **Demote:** One-off fact checks or tactical validation -> probe or `kb quick`, not investigation.
+
+### 4) Closure normalization
+
+Redundant investigations are closed by metadata, not deletion:
+
+- add `Superseded-By`
+- make D.E.K.N. `Next` non-actionable for that file
+- keep archived file for provenance chain
+
+### Critical Invariants
+
+1. **Lexical cluster != conceptual model**
+2. **Code/test evidence outranks archived claims**
+3. **One canonical decision/model per mechanism**
+4. **Redundant investigations must point to canonical artifact**
+
+---
+
+## Why This Fails
+
+### Failure Mode 1: Lexical collision
+
+`feature` clusters can mix tiering behavior, cross-repo implementation tasks, and decision-gate debugging. Treating them as one topic creates noisy synthesis.
+
+### Failure Mode 2: Time-drifted conclusions
+
+Investigation findings can become stale after code changes (for example, fail-open to fail-closed gate behavior). Re-validation is required during consolidation.
+
+### Failure Mode 3: Artifact overuse
+
+Quick fact lookups become full investigations, increasing maintenance burden without adding durable understanding.
+
+### Failure Mode 4: Incomplete closure metadata
+
+Archived files without clear `Superseded-By` pointers remain discoverable but ambiguous, causing repeated re-triage.
+
+---
+
+## Constraints
+
+### Why not auto-consolidate directly from reflect output?
+
+**Constraint:** reflect clusters are intentionally broad and lexical.
+
+**Implication:** Human/orchestrator semantic triage is required before creating decisions/models.
+
+**This enables:** Better quality synthesis boundaries and less decision noise.
+**This constrains:** Fully automated promotion from cluster -> decision.
+
+### Why preserve redundant investigations instead of deleting?
+
+**Constraint:** Provenance chain must remain inspectable.
+
+**Implication:** Closure happens via metadata pointers (`Superseded-By`) and canonical references.
+
+**This enables:** Auditable understanding evolution.
+**This constrains:** Lightweight cleanup by file deletion alone.
+
+---
+
+## Evolution
+
+**2026-02-08:** Top-cluster consolidation codified as a triage model with converge/split/demote routing and closure normalization.
+
+---
+
+## References
+
+**Investigations:**
+- `.kb/investigations/archived/2025-12-24-inv-feature-impl-agents-completing-without.md`
+- `.kb/investigations/archived/2025-12-26-inv-feature-impl-agents-not-producing.md`
+- `.kb/investigations/archived/2026-01-14-inv-feature-register-friction-guidance-links.md`
+- `.kb/investigations/archived/2026-01-14-inv-feature-skillc-warns-load-bearing.md`
+- `.kb/investigations/archived/2026-01-28-inv-implement-test-feature.md`
+- `.kb/investigations/archived/2025-12-22-inv-40-agents-showing-as-active.md`
+- `.kb/investigations/archived/2026-01-03-inv-agents-going-idle-without-phase.md`
+- `.kb/investigations/archived/2026-01-08-inv-25-28-agents-not-completing.md`
+- `.kb/investigations/archived/2026-02-04-inv-agents-own-declaration-via-bd.md`
+- `.kb/investigations/archived/2026-01-10-inv-quick-test-default-port-orch.md`
+- `.kb/investigations/archived/2026-01-19-inv-quick-test-read-claude-md.md`
+- `.kb/investigations/archived/2026-01-21-inv-audit-kb-quick-entries-stale.md`
+- `.kb/investigations/archived/2026-01-27-inv-quick-test-verify-coaching-plugin.md`
+
+**Decisions informed by this model:**
+- `.kb/decisions/2026-02-08-kb-reflect-cluster-disposition-feature-agents-quick.md`
+
+**Primary evidence:**
+- `pkg/spawn/config.go` - `feature-impl` tier default
+- `cmd/orch/spawn_validation.go` - decision-gate fail-closed behavior
+- `cmd/orch/status_statedb.go` - fallback status discovery over `workers-*` tmux sessions
+- `cmd/orch/serve.go` - default serve port constant

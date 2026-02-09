@@ -282,10 +282,8 @@ Agent works in: ~/target-project/
 - ...and 35+ others
 
 **Decisions Informed by This Model:**
-- Headless default (enables daemon automation)
-- Tier system (appropriate docs for work complexity)
-- Triage friction (encourage daemon workflow)
-- KB context gathering (prevent duplicate work)
+- `.kb/decisions/2026-01-21-strategic-first-gate-advisory-only.md` - Hotspot guidance remains visible but non-blocking.
+- `.kb/decisions/2026-01-28-orchestrator-action-space-architectural-constraint.md` - Keeps orchestrator in meta-action space, pushes implementation to spawned workers.
 
 **Related Models:**
 - `.kb/models/context-injection.md` - How SPAWN_CONTEXT.md is assembled and injected

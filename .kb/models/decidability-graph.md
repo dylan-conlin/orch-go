@@ -548,6 +548,7 @@ The Question lifecycle (Open → Investigating → Answered → Closed) isn't fu
 - `.kb/decisions/2026-01-30-recommendation-authority-classification.md` - Authority labels for investigation/architect outputs
 - `.kb/decisions/2026-01-19-worker-authority-boundaries.md` - Workers create nodes, orchestrators create edges
 - `.kb/decisions/2026-01-18-questions-as-first-class-entities.md` - Question bead type
+- `.kb/decisions/2026-01-30-decidability-graph-substrate-options.md` - Substrate evolution path (beads extensions over replacement)
 - `.kb/decisions/2026-01-07-strategic-orchestrator-model.md` - Authority division (with 2026-01-19 refinement)
 - `.kb/decisions/2026-01-07-synthesis-is-strategic-orchestrator-work.md` - Why orchestrator resolves questions
 

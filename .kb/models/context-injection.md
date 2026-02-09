@@ -87,3 +87,10 @@ The primary mechanism for distinguishing between levels:
 1.  **Lazy-Loading:** Can we move the Orchestrator skill to a "Skill Tool" invocation so it consumes zero startup tokens?
 2.  **Deduplication:** Should `bd prime` be completely disabled in favor of `SPAWN_CONTEXT.md` for all spawned agents?
 3.  **Global vs Project:** How do we handle project-specific context (ROADMAP.md) without clobbering global instructions (Principles)?
+
+---
+
+## Related Decisions
+
+- `.kb/decisions/2026-01-30-dynamic-hud-pattern-opencode.md` - Per-turn context surfacing via plugin hook
+- `.kb/decisions/2026-01-14-models-track-architecture.md` - Model update threshold when context mechanisms change architecturally

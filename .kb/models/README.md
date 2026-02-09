@@ -147,3 +147,5 @@ Trust code over models. When model and code conflict, code wins. Update the mode
 **Decision:** `.kb/decisions/2026-01-12-models-as-understanding-artifacts.md` - Why models exist
 **Principle:** `~/.kb/principles.md` - Understanding Through Engagement
 **Decisions:** `.kb/decisions/2026-01-07-synthesis-is-strategic-orchestrator-work.md` - Synthesis is orchestrator work
+**Decision:** `.kb/decisions/2026-01-14-models-track-architecture.md` - Update threshold: architectural change, not every code change
+**Decision:** `.kb/decisions/2026-01-31-investigation-lineage-enforcement.md` - Structured prior-work lineage feeds model synthesis quality
