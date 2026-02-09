@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/atomicwrite"
+	projectconfig "github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/process"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 )
 
@@ -44,6 +46,12 @@ func buildDaemonConfig() (daemon.Config, error) {
 		cfg = userconfig.DefaultConfig()
 	}
 
+	// Load project config for repo-local daemon policy overrides.
+	var projCfg *projectconfig.Config
+	if projectDir, dirErr := currentProjectDir(); dirErr == nil {
+		projCfg, _ = projectconfig.Load(projectDir)
+	}
+
 	// Build configuration from defaults, then override with flags.
 	// This ensures recovery settings (RecoveryEnabled, ServerRecoveryEnabled, etc.)
 	// get their default values even when not explicitly set via flags.
@@ -59,27 +67,81 @@ func buildDaemonConfig() (daemon.Config, error) {
 	config.ReflectEnabled = daemonReflectInterval > 0
 	config.ReflectInterval = time.Duration(daemonReflectInterval) * time.Minute
 	config.ReflectCreateIssues = daemonReflectIssues
-	config.CleanupEnabled = daemonCleanupEnabled && daemonCleanupInterval > 0
-	config.CleanupInterval = time.Duration(daemonCleanupInterval) * time.Minute
+	config.PolishEnabled = daemonPolishEnabled && daemonPolishInterval > 0
+	config.PolishInterval = time.Duration(daemonPolishInterval) * time.Minute
+	config.PolishMaxIssuesPerCycle = daemonPolishMaxIssuesPerCycle
+	config.PolishMaxIssuesPerDay = daemonPolishMaxIssuesPerDay
+
+	cleanupIntervalMinutes := int(config.CleanupInterval / time.Minute)
+	if daemonCleanupInterval >= 0 {
+		cleanupIntervalMinutes = daemonCleanupInterval
+	} else if projCfg != nil {
+		cleanupIntervalMinutes = projCfg.DaemonCleanupIntervalMinutes()
+	}
+	cleanupSessionsAgeDays := config.CleanupSessionsAgeDays
+	if daemonCleanupSessionsAge >= 0 {
+		cleanupSessionsAgeDays = daemonCleanupSessionsAge
+	} else if projCfg != nil {
+		cleanupSessionsAgeDays = projCfg.DaemonCleanupSessionsAgeDays()
+	}
+	cleanupWorkspacesAgeDays := config.CleanupWorkspacesAgeDays
+	if daemonCleanupWorkspacesAge >= 0 {
+		cleanupWorkspacesAgeDays = daemonCleanupWorkspacesAge
+	} else if projCfg != nil {
+		cleanupWorkspacesAgeDays = projCfg.DaemonCleanupWorkspacesAgeDays()
+	}
+
+	config.CleanupEnabled = daemonCleanupEnabled && cleanupIntervalMinutes > 0
+	config.CleanupInterval = time.Duration(cleanupIntervalMinutes) * time.Minute
 	config.CleanupSessions = daemonCleanupSessions
-	config.CleanupSessionsAgeDays = daemonCleanupSessionsAge
+	config.CleanupSessionsAgeDays = cleanupSessionsAgeDays
 	config.CleanupWorkspaces = daemonCleanupWorkspaces
-	config.CleanupWorkspacesAgeDays = daemonCleanupWorkspacesAge
+	config.CleanupWorkspacesAgeDays = cleanupWorkspacesAgeDays
 	config.CleanupInvestigations = daemonCleanupInvestigations
 	config.CleanupPreserveOrchestrator = daemonCleanupPreserveOrch
 	config.CleanupServerURL = serverURL // Use global serverURL from root command
 	config.SpawnFactualQuestions = daemonSpawnFactualQuestions
-	config.DeadSessionDetectionEnabled = daemonDeadSessionDetectionEnabled && daemonDeadSessionDetectionInterval > 0
-	config.DeadSessionDetectionInterval = time.Duration(daemonDeadSessionDetectionInterval) * time.Minute
-	if daemonMaxDeadSessionRetries > 0 {
-		config.MaxDeadSessionRetries = daemonMaxDeadSessionRetries
+
+	deadSessionIntervalMinutes := int(config.DeadSessionDetectionInterval / time.Minute)
+	if daemonDeadSessionDetectionInterval >= 0 {
+		deadSessionIntervalMinutes = daemonDeadSessionDetectionInterval
+	} else if projCfg != nil {
+		deadSessionIntervalMinutes = projCfg.DaemonDeadSessionIntervalMinutes()
 	}
-	config.OrphanReapEnabled = daemonOrphanReapEnabled && daemonOrphanReapInterval > 0
-	config.OrphanReapInterval = time.Duration(daemonOrphanReapInterval) * time.Minute
+	maxDeadSessionRetries := config.MaxDeadSessionRetries
+	if daemonMaxDeadSessionRetries >= 0 {
+		maxDeadSessionRetries = daemonMaxDeadSessionRetries
+	} else if projCfg != nil {
+		maxDeadSessionRetries = projCfg.DaemonMaxDeadSessionRetries()
+	}
+	orphanReapIntervalMinutes := int(config.OrphanReapInterval / time.Minute)
+	if daemonOrphanReapInterval >= 0 {
+		orphanReapIntervalMinutes = daemonOrphanReapInterval
+	} else if projCfg != nil {
+		orphanReapIntervalMinutes = projCfg.DaemonOrphanReapIntervalMinutes()
+	}
+	dashboardWatchdogIntervalSeconds := int(config.DashboardWatchdogInterval / time.Second)
+	if daemonDashboardWatchdogInterval >= 0 {
+		dashboardWatchdogIntervalSeconds = daemonDashboardWatchdogInterval
+	} else if projCfg != nil {
+		dashboardWatchdogIntervalSeconds = projCfg.DaemonDashboardWatchdogIntervalSeconds()
+	}
+
+	config.DeadSessionDetectionEnabled = daemonDeadSessionDetectionEnabled && deadSessionIntervalMinutes > 0
+	config.DeadSessionDetectionInterval = time.Duration(deadSessionIntervalMinutes) * time.Minute
+	if maxDeadSessionRetries > 0 {
+		config.MaxDeadSessionRetries = maxDeadSessionRetries
+	}
+	config.OrphanReapEnabled = daemonOrphanReapEnabled && orphanReapIntervalMinutes > 0
+	config.OrphanReapInterval = time.Duration(orphanReapIntervalMinutes) * time.Minute
 	config.SortMode = daemonSortMode
 	config.AllowFeatureWorkOverride = daemonAllowFeatureWork
-	config.DashboardWatchdogEnabled = daemonDashboardWatchdog && daemonDashboardWatchdogInterval > 0
-	config.DashboardWatchdogInterval = time.Duration(daemonDashboardWatchdogInterval) * time.Second
+	config.DashboardWatchdogEnabled = daemonDashboardWatchdog && dashboardWatchdogIntervalSeconds > 0
+	config.DashboardWatchdogInterval = time.Duration(dashboardWatchdogIntervalSeconds) * time.Second
+	if projCfg != nil {
+		config.DashboardWatchdogFailuresBeforeRestart = projCfg.DaemonDashboardWatchdogFailuresBeforeRestart()
+		config.DashboardWatchdogRestartCooldown = time.Duration(projCfg.DaemonDashboardWatchdogRestartCooldownMinutes()) * time.Minute
+	}
 
 	return config, nil
 }
@@ -97,7 +159,7 @@ func initDaemonRuntime(config daemon.Config) (*daemonRuntime, error) {
 	// Initialize ProcessedIssueCache for unified dedup (survives daemon restart)
 	homeDir, err := os.UserHomeDir()
 	if err == nil {
-		cachePath := filepath.Join(homeDir, ".orch", "processed-issues.jsonl")
+		cachePath := daemon.DefaultProcessedIssueCachePath()
 		cache, cacheErr := daemon.NewProcessedIssueCache(cachePath, daemon.DefaultProcessedIssueCacheMaxEntries, daemon.DefaultProcessedIssueCacheTTL)
 		if cacheErr != nil {
 			fmt.Printf("Warning: failed to initialize ProcessedIssueCache: %v\n", cacheErr)
@@ -129,6 +191,20 @@ func initDaemonRuntime(config daemon.Config) (*daemonRuntime, error) {
 		for _, e := range homeErrs {
 			fmt.Printf("Warning: temp file cleanup: %v\n", e)
 		}
+	}
+
+	// Startup stale-process sweep: reconcile ledger against live PIDs.
+	// Same sweep as orch serve — ensures no stale agents from prior daemon runs.
+	ledger := process.NewLedger(process.DefaultLedgerPath())
+	sweepResult := ledger.Sweep()
+	if sweepResult.Error != nil {
+		fmt.Printf("Warning: startup sweep failed: %v\n", sweepResult.Error)
+	} else if sweepResult.StaleRemoved > 0 {
+		fmt.Printf("Startup sweep: removed %d stale entries from process ledger", sweepResult.StaleRemoved)
+		if sweepResult.Killed > 0 {
+			fmt.Printf(" (killed %d)", sweepResult.Killed)
+		}
+		fmt.Println()
 	}
 
 	logger := events.NewLogger(events.DefaultLogPath())
@@ -174,6 +250,12 @@ func printDaemonBanner(config daemon.Config) {
 		fmt.Printf("  Reflect issues:    %v\n", config.ReflectCreateIssues)
 	} else {
 		fmt.Println("  Reflect interval:  disabled")
+	}
+	if config.PolishEnabled {
+		fmt.Printf("  Polish interval:   %s\n", formatDaemonDuration(config.PolishInterval))
+		fmt.Printf("  Polish caps:       %d per cycle, %d per day\n", config.PolishMaxIssuesPerCycle, config.PolishMaxIssuesPerDay)
+	} else {
+		fmt.Println("  Polish interval:   disabled")
 	}
 	if config.CleanupEnabled {
 		fmt.Printf("  Cleanup interval:  %s\n", formatDaemonDuration(config.CleanupInterval))
@@ -321,9 +403,10 @@ func (rt *daemonRuntime) runSubsystems(timestamp string) {
 	// Run periodic orphan process reaping if due
 	if result := rt.d.ReapOrphanProcesses(); result != nil {
 		data := map[string]interface{}{
-			"found":   result.Found,
-			"killed":  result.Killed,
-			"message": result.Message,
+			"found":         result.Found,
+			"killed":        result.Killed,
+			"ledger_swept":  result.LedgerSwept,
+			"message":       result.Message,
 		}
 		if result.Error != nil {
 			data["found"] = 0
@@ -392,10 +475,11 @@ func (rt *daemonRuntime) runSubsystems(timestamp string) {
 // Returns the number of agents completed this cycle.
 func (rt *daemonRuntime) processCompletions(timestamp string) {
 	completionConfig := daemon.CompletionConfig{
-		ProjectDir: rt.projectDir,
-		ServerURL:  serverURL,
-		DryRun:     false,
-		Verbose:    daemonVerbose,
+		ProjectDir:              rt.projectDir,
+		ServerURL:               serverURL,
+		DryRun:                  false,
+		Verbose:                 daemonVerbose,
+		IdleCompletionThreshold: rt.config.RecoveryIdleThreshold,
 	}
 	completionResult, err := rt.d.CompletionOnce(completionConfig)
 	if err != nil && daemonVerbose {
@@ -515,6 +599,65 @@ func (rt *daemonRuntime) processSpawns(timestamp string) int {
 	}
 
 	return spawnedThisCycle
+}
+
+// processPolish runs idle-time polish audits when no triage:ready work was
+// spawned in the current poll cycle.
+func (rt *daemonRuntime) processPolish(timestamp string, spawnedThisCycle int) {
+	if !rt.config.PolishEnabled {
+		return
+	}
+	if rt.config.CrossProject {
+		if daemonVerbose && spawnedThisCycle == 0 {
+			fmt.Printf("[%s] Polish skipped in cross-project mode\n", timestamp)
+		}
+		return
+	}
+	if spawnedThisCycle > 0 {
+		return
+	}
+
+	readyIssues, err := daemon.ListReadyIssuesWithLabelAndOverride(rt.config.Label, rt.config.AllowFeatureWorkOverride)
+	if err != nil {
+		if daemonVerbose {
+			fmt.Fprintf(os.Stderr, "[%s] Polish readiness check failed: %v\n", timestamp, err)
+		}
+		return
+	}
+	if len(readyIssues) > 0 {
+		if daemonVerbose {
+			fmt.Printf("[%s] Polish skipped: %d triage:ready issue(s) still queued\n", timestamp, len(readyIssues))
+		}
+		return
+	}
+
+	result := rt.d.RunPolish(rt.projectDir)
+	if result == nil {
+		return
+	}
+
+	data := map[string]interface{}{
+		"candidates":      result.Candidates,
+		"created":         result.Created,
+		"skipped":         result.Skipped,
+		"daily_remaining": result.DailyRemaining,
+		"message":         result.Message,
+	}
+	if len(result.CreatedIssueIDs) > 0 {
+		data["created_issue_ids"] = result.CreatedIssueIDs
+	}
+	if result.Error != nil {
+		data["error"] = result.Error.Error()
+	}
+
+	logSubsystemResult(rt.logger, timestamp, daemonVerbose, subsystemResult{
+		Name:        "Polish",
+		EventType:   "daemon.polish",
+		Error:       result.Error,
+		Message:     result.Message,
+		HasActivity: result.Created > 0,
+		Data:        data,
+	})
 }
 
 // spawnCrossProject attempts to spawn one issue from any kb-registered project.

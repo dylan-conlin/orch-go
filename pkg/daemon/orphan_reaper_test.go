@@ -1,6 +1,8 @@
 package daemon
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -84,5 +86,53 @@ func TestGetActiveSessionTitles_InvalidServer(t *testing.T) {
 	_, err := getActiveSessionTitles("http://127.0.0.1:99999")
 	if err == nil {
 		t.Error("getActiveSessionTitles() should return error for invalid server")
+	}
+}
+
+func TestGetActiveSessionInfo_ExtractsIDsAndTitles(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[
+			{"id":"ses_abc","title":"og-feat-auth [orch-go-12345]"},
+			{"id":"ses_xyz","title":"og-debug-fix"}
+		]`))
+	}))
+	defer server.Close()
+
+	activeIDs, activeTitles, err := getActiveSessionInfo(server.URL)
+	if err != nil {
+		t.Fatalf("getActiveSessionInfo() error: %v", err)
+	}
+
+	// Verify session IDs
+	if !activeIDs["ses_abc"] {
+		t.Error("expected ses_abc in activeIDs")
+	}
+	if !activeIDs["ses_xyz"] {
+		t.Error("expected ses_xyz in activeIDs")
+	}
+
+	// Verify titles include full title and extracted workspace name
+	if !activeTitles["og-feat-auth [orch-go-12345]"] {
+		t.Error("expected full title in activeTitles")
+	}
+	if !activeTitles["og-feat-auth"] {
+		t.Error("expected workspace name extracted from title")
+	}
+	if !activeTitles["og-debug-fix"] {
+		t.Error("expected og-debug-fix in activeTitles")
+	}
+}
+
+func TestReapOrphanProcesses_LedgerSweptField(t *testing.T) {
+	// Verify the LedgerSwept field is included in the result structure
+	result := &OrphanReapResult{
+		Found:       3,
+		Killed:      2,
+		LedgerSwept: 1,
+		Message:     "test",
+	}
+	if result.LedgerSwept != 1 {
+		t.Errorf("LedgerSwept = %d, want 1", result.LedgerSwept)
 	}
 }

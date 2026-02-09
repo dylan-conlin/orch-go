@@ -17,19 +17,22 @@ type OrphanReapResult struct {
 	Found int
 	// Killed is the number of orphan processes successfully terminated.
 	Killed int
+	// LedgerSwept is the number of stale entries removed from the process ledger.
+	LedgerSwept int
 	// Error is set if the operation encountered an error.
 	Error error
 	// Message is a human-readable summary.
 	Message string
 }
 
-// ReapOrphanProcesses finds and kills bun agent processes that are not associated
-// with any active OpenCode session. This prevents resource leaks from agents whose
-// sessions have ended but whose bun processes remain running.
+// ReapOrphanProcesses finds and kills agent processes that are no longer associated
+// with any active OpenCode session. Uses a two-tier approach:
 //
-// The method queries the OpenCode API for active sessions, then uses
-// process.FindOrphanProcesses to identify bun processes not matching any session.
-// Orphan processes are terminated via SIGTERM (with SIGKILL fallback).
+// Tier 1 (primary): Ledger-backed ownership verification — reconciles the process
+// ledger against active session IDs and kills stale entries.
+//
+// Tier 2 (fallback): Title-string matching via process.FindOrphanProcesses — catches
+// processes spawned before the ledger existed or not recorded in the ledger.
 //
 // Returns nil if orphan reaping is not due (based on interval tracking).
 func (d *Daemon) ReapOrphanProcesses() *OrphanReapResult {
@@ -44,8 +47,8 @@ func (d *Daemon) ReapOrphanProcesses() *OrphanReapResult {
 
 	d.lastOrphanReap = time.Now()
 
-	// Get active session titles from OpenCode API
-	activeTitles, err := getActiveSessionTitles(d.Config.CleanupServerURL)
+	// Get active sessions from OpenCode API (both IDs and titles)
+	activeIDs, activeTitles, err := getActiveSessionInfo(d.Config.CleanupServerURL)
 	if err != nil {
 		return &OrphanReapResult{
 			Error:   fmt.Errorf("failed to get active sessions: %w", err),
@@ -53,50 +56,55 @@ func (d *Daemon) ReapOrphanProcesses() *OrphanReapResult {
 		}
 	}
 
-	// Find orphan processes
+	result := &OrphanReapResult{}
+
+	// Tier 1: Ledger-backed sweep
+	ledger := process.NewLedger(process.DefaultLedgerPath())
+	sweepResult := ledger.SweepWithKill(activeIDs)
+	result.LedgerSwept = sweepResult.StaleRemoved
+	result.Killed += sweepResult.Killed
+	result.Found += sweepResult.StaleRemoved
+
+	// Tier 2: Title-based fallback for processes not in the ledger
 	orphans, err := process.FindOrphanProcesses(activeTitles)
 	if err != nil {
-		return &OrphanReapResult{
-			Error:   fmt.Errorf("failed to find orphan processes: %w", err),
-			Message: fmt.Sprintf("Failed to find orphan processes: %v", err),
+		// Non-fatal: tier 1 may have already handled most cases
+		if d.Config.Verbose {
+			fmt.Printf("  Orphan reaper: title-based fallback failed: %v\n", err)
 		}
-	}
-
-	if len(orphans) == 0 {
-		return &OrphanReapResult{
-			Message: "No orphan processes found",
-		}
-	}
-
-	// Kill orphan processes
-	killed := 0
-	for _, orphan := range orphans {
-		if process.Terminate(orphan.PID, "bun (orphan)") {
-			killed++
-			if d.Config.Verbose {
-				name := orphan.WorkspaceName
-				if name == "" {
-					name = "(unknown)"
+	} else {
+		for _, orphan := range orphans {
+			if process.Terminate(orphan.PID, "bun (orphan, title-fallback)") {
+				result.Killed++
+				result.Found++
+				if d.Config.Verbose {
+					name := orphan.WorkspaceName
+					if name == "" {
+						name = "(unknown)"
+					}
+					beadsInfo := ""
+					if orphan.BeadsID != "" {
+						beadsInfo = fmt.Sprintf(" [%s]", orphan.BeadsID)
+					}
+					fmt.Printf("  Orphan reaper: killed PID %d (%s%s) via title-fallback\n", orphan.PID, name, beadsInfo)
 				}
-				beadsInfo := ""
-				if orphan.BeadsID != "" {
-					beadsInfo = fmt.Sprintf(" [%s]", orphan.BeadsID)
-				}
-				fmt.Printf("  Orphan reaper: killed PID %d (%s%s)\n", orphan.PID, name, beadsInfo)
 			}
 		}
 	}
 
-	return &OrphanReapResult{
-		Found:   len(orphans),
-		Killed:  killed,
-		Message: fmt.Sprintf("Reaped %d/%d orphan processes", killed, len(orphans)),
+	if result.Found == 0 {
+		result.Message = "No orphan processes found"
+	} else {
+		result.Message = fmt.Sprintf("Reaped %d/%d orphan processes (ledger: %d swept)", result.Killed, result.Found, result.LedgerSwept)
 	}
+
+	return result
 }
 
-// getActiveSessionTitles queries the OpenCode API and returns a set of active
-// session titles (workspace names and beads IDs) for orphan detection.
-func getActiveSessionTitles(serverURL string) (map[string]bool, error) {
+// getActiveSessionInfo queries the OpenCode API and returns both:
+//   - activeIDs: a set of session IDs (for ledger-backed verification)
+//   - activeTitles: a set of session titles and workspace names (for title-based fallback)
+func getActiveSessionInfo(serverURL string) (activeIDs map[string]bool, activeTitles map[string]bool, err error) {
 	if serverURL == "" {
 		serverURL = "http://127.0.0.1:4096"
 	}
@@ -104,33 +112,43 @@ func getActiveSessionTitles(serverURL string) (map[string]bool, error) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get(serverURL + "/session")
 	if err != nil {
-		return nil, fmt.Errorf("failed to query OpenCode sessions: %w", err)
+		return nil, nil, fmt.Errorf("failed to query OpenCode sessions: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OpenCode sessions API returned status %d", resp.StatusCode)
+		return nil, nil, fmt.Errorf("OpenCode sessions API returned status %d", resp.StatusCode)
 	}
 
 	var sessions []struct {
+		ID    string `json:"id"`
 		Title string `json:"title"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
-		return nil, fmt.Errorf("failed to decode sessions response: %w", err)
+		return nil, nil, fmt.Errorf("failed to decode sessions response: %w", err)
 	}
 
-	activeTitles := make(map[string]bool)
+	activeIDs = make(map[string]bool, len(sessions))
+	activeTitles = make(map[string]bool, len(sessions)*2)
 	for _, s := range sessions {
-		title := s.Title
-		if title == "" {
-			continue
+		if s.ID != "" {
+			activeIDs[s.ID] = true
 		}
-		activeTitles[title] = true
-		// Also extract workspace name from title (format: "workspace-name [beads-id]")
-		if idx := strings.Index(title, " ["); idx != -1 {
-			activeTitles[strings.TrimSpace(title[:idx])] = true
+		if s.Title != "" {
+			activeTitles[s.Title] = true
+			// Also extract workspace name from title (format: "workspace-name [beads-id]")
+			if idx := strings.Index(s.Title, " ["); idx != -1 {
+				activeTitles[strings.TrimSpace(s.Title[:idx])] = true
+			}
 		}
 	}
 
-	return activeTitles, nil
+	return activeIDs, activeTitles, nil
+}
+
+// getActiveSessionTitles is a convenience wrapper that returns only titles.
+// Kept for backward compatibility with tests.
+func getActiveSessionTitles(serverURL string) (map[string]bool, error) {
+	_, titles, err := getActiveSessionInfo(serverURL)
+	return titles, err
 }
