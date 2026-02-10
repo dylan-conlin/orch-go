@@ -6,7 +6,7 @@
 //  2. VerifyCompletion: target + skipConfig → VerificationOutcome
 //  3. CheckLiveness:    target → (prompt or continue)
 //  4. ProcessGates:     target → (discovered work, knowledge gaps, etc.)
-//  5. IntegrateBranch:  target → (rebase + ff-only merge)
+//  5. IntegrateBranch:  target → (cherry-pick onto base branch)
 //  6. CloseIssue:       target + reason → CloseOutcome (includes epic handling)
 //  7. Cleanup:          target → CleanupOutcome (session, archive, docker, tmux)
 //  8. PostComplete:     target + outcomes → (telemetry, events, cache)

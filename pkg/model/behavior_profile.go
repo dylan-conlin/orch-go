@@ -21,18 +21,25 @@ type BehaviorProfile struct {
 	// ReliablePhaseReporting indicates whether the model reliably reports phase
 	// transitions (Planning/Implementing/Testing/Complete) without reminders.
 	ReliablePhaseReporting bool
+
+	// NeedsExplicitGitCommit indicates the model does not naturally run
+	// git add && git commit after completing work. Without explicit instruction,
+	// work exists only as uncommitted changes that cannot be integrated.
+	NeedsExplicitGitCommit bool
 }
 
 var strictCompleteProfile = BehaviorProfile{
 	Name:                   ProfileStrictComplete,
 	NeedsCompletionNudge:   false,
 	ReliablePhaseReporting: true,
+	NeedsExplicitGitCommit: false,
 }
 
 var needsNudgeProfile = BehaviorProfile{
 	Name:                   ProfileNeedsNudge,
 	NeedsCompletionNudge:   true,
 	ReliablePhaseReporting: false,
+	NeedsExplicitGitCommit: true,
 }
 
 // behaviorProfileOverrides maps model aliases and canonical model IDs to

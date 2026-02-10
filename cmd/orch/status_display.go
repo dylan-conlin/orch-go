@@ -429,6 +429,9 @@ func getAgentStatus(agent AgentInfo) string {
 	if agent.IsProcessing {
 		return "running"
 	}
+	if isIdleWithWork(agent) {
+		return "idle ⚠"
+	}
 	return "idle"
 }
 

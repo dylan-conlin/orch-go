@@ -331,6 +331,58 @@ func findProjectDirByName(projectName string) string {
 	return ""
 }
 
+// idleWithWorkTokenThreshold is the minimum total token count for an idle agent
+// to be considered as having done meaningful work. 50K tokens represents substantial
+// work (multiple tool calls, code exploration, implementation).
+const idleWithWorkTokenThreshold = 50000
+
+// idleWithWorkPhases are phases that indicate an agent has progressed past planning
+// into active work. An idle agent at these phases likely has uncommitted work or
+// needs attention.
+var idleWithWorkPhases = map[string]bool{
+	"testing":      true,
+	"implementing": true,
+	"validation":   true,
+	"self-review":  true,
+	"integration":  true,
+}
+
+// isIdleWithWork determines if an idle agent has done meaningful work and should
+// be surfaced in default (compact) status output. This prevents agents like
+// orch-go-21511 (idle at Phase: Testing, 263K tokens) from being invisible.
+//
+// An agent is "idle with work" when ALL of:
+//   - Not currently processing (would already be shown as running)
+//   - Not completed, phantom, or untracked (handled by other filters)
+//
+// AND at least ONE of:
+//   - High token consumption (>= 50K tokens)
+//   - Active work phase (Testing, Implementing, Validation, etc.)
+func isIdleWithWork(agent AgentInfo) bool {
+	// Already visible through other paths
+	if agent.IsProcessing || agent.IsCompleted || agent.IsPhantom || agent.IsUntracked {
+		return false
+	}
+
+	// Check token consumption
+	if agent.Tokens != nil {
+		total := agent.Tokens.TotalTokens
+		if total == 0 {
+			total = agent.Tokens.InputTokens + agent.Tokens.OutputTokens
+		}
+		if total >= idleWithWorkTokenThreshold {
+			return true
+		}
+	}
+
+	// Check for active work phase
+	if agent.Phase != "" && idleWithWorkPhases[strings.ToLower(agent.Phase)] {
+		return true
+	}
+
+	return false
+}
+
 // extractDateFromWorkspaceName parses the date suffix from a workspace name.
 // Workspace names follow format: prefix-description-DDmon (e.g., og-feat-add-feature-24dec)
 // Returns zero time if no valid date found.

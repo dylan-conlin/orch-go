@@ -80,6 +80,7 @@ type contextData struct {
 	ModelBehaviorProfile     string
 	NeedsCompletionNudge     bool
 	ReliablePhaseReporting   bool
+	NeedsExplicitGitCommit   bool
 }
 
 func buildContextData(cfg *Config) contextData {
@@ -145,6 +146,7 @@ func buildContextData(cfg *Config) contextData {
 		ModelBehaviorProfile:     behaviorProfileName,
 		NeedsCompletionNudge:     behaviorProfile.NeedsCompletionNudge,
 		ReliablePhaseReporting:   behaviorProfile.ReliablePhaseReporting,
+		NeedsExplicitGitCommit:   behaviorProfile.NeedsExplicitGitCommit,
 	}
 }
 

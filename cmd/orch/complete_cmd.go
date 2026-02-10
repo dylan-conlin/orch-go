@@ -8,7 +8,7 @@
 //  2. verifyCompletion:   target + skipConfig → VerificationOutcome
 //  3. checkLiveness:      target → (prompt or continue)
 //  4. processGates:       target → (discovered work, knowledge gaps)
-//  5. integrateAgentBranch: target → (rebase + ff-only merge)
+//  5. integrateAgentBranch: target → (cherry-pick onto base branch)
 //  6. closeIssue:         target + skipConfig → reason string
 //  7. runCleanup:         target → CleanupOutcome
 //  8. postComplete:       target + outcomes + telemetry → (events, cache)
@@ -243,7 +243,7 @@ func runComplete(identifier, workdir string) error {
 		return err
 	}
 
-	// Phase 5: Integrate branch (rebase + ff-only merge)
+	// Phase 5: Integrate branch (cherry-pick onto base branch)
 	if err := integrateAgentBranch(target); err != nil {
 		return err
 	}

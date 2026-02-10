@@ -101,6 +101,18 @@ Before /exit, explicitly run ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sente
 ✅ This model usually reports phases reliably. Still follow the completion checklist exactly.
 {{end}}
 {{end}}
+{{if .NeedsExplicitGitCommit}}
+🚨 GIT COMMIT REQUIREMENT (CRITICAL):
+Your work MUST be committed to git before session ends. Any uncommitted changes cannot be integrated by the orchestrator.
+
+After completing your work and before reporting Phase: Complete:
+` + "```bash" + `
+git add -A
+git commit -m "type: description of changes"
+` + "```" + `
+
+**Why:** The orchestrator uses git commits to detect completed work. If you do not commit, your changes will be lost — even if the code is correct and tests pass.
+{{end}}
 {{if .KBContext}}
 {{.KBContext}}
 {{end}}
@@ -169,7 +181,9 @@ Progress tracking via bd comment is NOT available.
 TERMINAL CHECKLIST (EXECUTE IN ORDER):
 - [ ] NEVER run ` + "`git push`" + ` (orchestrator handles remote push)
 - [ ] ` + "`git push`" + ` can trigger deploys that disrupt production systems
-
+{{if .NeedsExplicitGitCommit}}
+- [ ] Commit all changes: ` + "`git add -A && git commit -m \"type: description\"`" + `
+{{end}}
 {{if eq .Tier "light"}}
 - [ ] Run: ` + "`/exit`" + `
 
@@ -195,7 +209,9 @@ Suggested first actions for visibility:
 TERMINAL CHECKLIST (EXECUTE IN ORDER):
 - [ ] NEVER run ` + "`git push`" + ` (orchestrator handles remote push)
 - [ ] ` + "`git push`" + ` can trigger deploys that disrupt production systems
-
+{{if .NeedsExplicitGitCommit}}
+- [ ] Commit all changes: ` + "`git add -A && git commit -m \"type: description\"`" + `
+{{end}}
 {{if eq .Tier "light"}}
 - [ ] Run: ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary of deliverables]\"`" + `
 - [ ] Run: ` + "`/exit`" + `
@@ -381,7 +397,9 @@ CONTEXT AVAILABLE:
 TERMINAL CHECKLIST (EXECUTE IN ORDER):
 - [ ] NEVER run ` + "`git push`" + ` (orchestrator handles remote push)
 - [ ] ` + "`git push`" + ` can trigger deploys that disrupt production systems
-
+{{if .NeedsExplicitGitCommit}}
+- [ ] Commit all changes: ` + "`git add -A && git commit -m \"type: description\"`" + `
+{{end}}
 {{if .NoTrack}}
 {{if eq .Tier "light"}}
 - [ ] ` + "`/exit`" + `

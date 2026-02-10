@@ -217,3 +217,66 @@ func TestResolveBehaviorProfile(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveBehaviorProfile_NeedsExplicitGitCommit(t *testing.T) {
+	tests := []struct {
+		name          string
+		spec          string
+		wantGitCommit bool
+	}{
+		{
+			name:          "anthropic models do NOT need explicit git commit",
+			spec:          "opus",
+			wantGitCommit: false,
+		},
+		{
+			name:          "sonnet does NOT need explicit git commit",
+			spec:          "sonnet",
+			wantGitCommit: false,
+		},
+		{
+			name:          "openai models need explicit git commit",
+			spec:          "gpt",
+			wantGitCommit: true,
+		},
+		{
+			name:          "codex needs explicit git commit",
+			spec:          "codex",
+			wantGitCommit: true,
+		},
+		{
+			name:          "google models need explicit git commit",
+			spec:          "flash",
+			wantGitCommit: true,
+		},
+		{
+			name:          "deepseek models need explicit git commit",
+			spec:          "deepseek",
+			wantGitCommit: true,
+		},
+		{
+			name:          "qwen models need explicit git commit",
+			spec:          "qwen",
+			wantGitCommit: true,
+		},
+		{
+			name:          "unknown provider needs explicit git commit",
+			spec:          "mystery-provider/mystery-model",
+			wantGitCommit: true,
+		},
+		{
+			name:          "empty spec defaults to no git commit needed",
+			spec:          "",
+			wantGitCommit: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResolveBehaviorProfile(tt.spec)
+			if got.NeedsExplicitGitCommit != tt.wantGitCommit {
+				t.Errorf("ResolveBehaviorProfile(%q).NeedsExplicitGitCommit = %v, want %v", tt.spec, got.NeedsExplicitGitCommit, tt.wantGitCommit)
+			}
+		})
+	}
+}

@@ -9,6 +9,13 @@ import (
 
 const beadsIssuesPath = ".beads/issues.jsonl"
 
+// integrateAgentBranch cherry-picks agent commits onto the base branch.
+//
+// Previous approach used rebase + ff-only merge, but git rebase checks ALL
+// worktrees for dirty state. If any worktree (e.g. master) has uncommitted
+// files (common: .beads/issues.jsonl), rebase fails even though we're
+// operating on the agent worktree. Cherry-pick only checks the target
+// worktree, avoiding this cross-worktree dirty state problem.
 func integrateAgentBranch(target *CompletionTarget) error {
 	if target == nil {
 		return nil
@@ -45,11 +52,6 @@ func integrateAgentBranch(target *CompletionTarget) error {
 		return fmt.Errorf("failed to checkout %s in %s: %w", target.GitBranch, worktree, err)
 	}
 
-	fmt.Printf("Rebasing %s onto %s\n", target.GitBranch, base)
-	if _, err := runGitMerge(worktree, "rebase", base); err != nil {
-		return fmt.Errorf("rebase failed for %s onto %s: %w", target.GitBranch, base, err)
-	}
-
 	mergeDir, err := findBranchWorktree(source, base)
 	if err != nil {
 		return err
@@ -58,9 +60,34 @@ func integrateAgentBranch(target *CompletionTarget) error {
 		return fmt.Errorf("failed to prepare merge worktree %s: %w", mergeDir, err)
 	}
 
-	fmt.Printf("Merging %s into %s (ff-only)\n", target.GitBranch, base)
-	if _, err := runGitMerge(mergeDir, "merge", "--ff-only", target.GitBranch); err != nil {
-		return fmt.Errorf("fast-forward merge failed for %s into %s: %w", target.GitBranch, base, err)
+	// Find the merge-base between base and agent branch
+	mergeBase, err := runGitMerge(worktree, "merge-base", base, target.GitBranch)
+	if err != nil {
+		return fmt.Errorf("failed to find merge-base between %s and %s: %w", base, target.GitBranch, err)
+	}
+
+	// Get list of commits unique to agent branch (oldest first for cherry-pick order)
+	commitList, err := runGitMerge(worktree, "rev-list", "--reverse", mergeBase+".."+target.GitBranch)
+	if err != nil {
+		return fmt.Errorf("failed to list commits for %s: %w", target.GitBranch, err)
+	}
+	if strings.TrimSpace(commitList) == "" {
+		// No commits to cherry-pick — branches are identical
+		return nil
+	}
+
+	commits := strings.Split(strings.TrimSpace(commitList), "\n")
+	fmt.Printf("Cherry-picking %d commit(s) from %s onto %s\n", len(commits), target.GitBranch, base)
+	for _, commit := range commits {
+		commit = strings.TrimSpace(commit)
+		if commit == "" {
+			continue
+		}
+		if _, err := runGitMerge(mergeDir, "cherry-pick", commit); err != nil {
+			// Abort any in-progress cherry-pick before returning
+			_, _ = runGitMerge(mergeDir, "cherry-pick", "--abort")
+			return fmt.Errorf("cherry-pick failed for %s onto %s: %w", target.GitBranch, base, err)
+		}
 	}
 
 	return nil
@@ -151,6 +178,10 @@ func parseDirtyPaths(status string) []string {
 
 func runGitMerge(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	// Set ORCH_COMPLETING=1 so post-commit hooks skip auto-rebuild.
+	// During cherry-pick, commits trigger the hook which runs make install,
+	// dirtying the workspace and causing subsequent git operations to fail.
+	cmd.Env = append(cmd.Environ(), "ORCH_COMPLETING=1")
 	out, err := cmd.CombinedOutput()
 	text := strings.TrimSpace(string(out))
 	if err != nil {

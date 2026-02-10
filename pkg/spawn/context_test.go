@@ -2040,6 +2040,113 @@ func TestGenerateContext_ModelBehaviorProfile(t *testing.T) {
 	})
 }
 
+func TestGenerateContext_ExplicitGitCommitInstruction(t *testing.T) {
+	t.Run("includes git commit instruction for needs-nudge model", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "implement feature",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-gitcommit",
+			BeadsID:       "test-123",
+			Tier:          TierLight,
+			Model:         "openai/gpt-5.3-codex",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should contain explicit git commit instruction
+		if !strings.Contains(content, "git add") {
+			t.Error("expected content to contain 'git add' instruction for needs-nudge model")
+		}
+		if !strings.Contains(content, "git commit") {
+			t.Error("expected content to contain 'git commit' instruction for needs-nudge model")
+		}
+		// Should mention that uncommitted work cannot be integrated
+		if !strings.Contains(content, "uncommitted") {
+			t.Error("expected content to explain why git commit is needed")
+		}
+	})
+
+	t.Run("excludes git commit instruction for strict-complete model", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "implement feature",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-gitcommit",
+			BeadsID:       "test-456",
+			Tier:          TierLight,
+			Model:         "anthropic/claude-opus-4-6",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should NOT contain explicit git commit warning section
+		if strings.Contains(content, "GIT COMMIT REQUIREMENT") {
+			t.Error("expected content to NOT contain git commit requirement for strict-complete model")
+		}
+	})
+
+	t.Run("includes git commit in session complete checklist for needs-nudge model", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "implement feature",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-gitcommit",
+			BeadsID:       "test-789",
+			Tier:          TierLight,
+			Model:         "google/gemini-2.5-flash",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Find the final SESSION COMPLETE PROTOCOL section
+		finalIdx := strings.LastIndex(content, "SESSION COMPLETE PROTOCOL")
+		if finalIdx == -1 {
+			t.Fatal("expected content to contain SESSION COMPLETE PROTOCOL")
+		}
+		finalSection := content[finalIdx:]
+
+		// Should contain git commit step in the checklist
+		if !strings.Contains(finalSection, "git add") || !strings.Contains(finalSection, "git commit") {
+			t.Error("expected SESSION COMPLETE PROTOCOL to contain git commit step for needs-nudge model")
+		}
+	})
+
+	t.Run("no-track spawn with needs-nudge model includes git commit", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "quick task",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-notrack",
+			NoTrack:       true,
+			Tier:          TierLight,
+			Model:         "openai/gpt-5.3-codex",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		if !strings.Contains(content, "git commit") {
+			t.Error("expected no-track spawn to contain git commit instruction for needs-nudge model")
+		}
+	})
+}
+
 func TestGenerateContext_ProbeGuidance(t *testing.T) {
 	t.Run("includes probe guidance when model content is injected in KBContext", func(t *testing.T) {
 		cfg := &Config{

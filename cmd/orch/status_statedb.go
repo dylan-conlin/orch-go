@@ -727,6 +727,7 @@ func filterAgentsForDisplay(agents []AgentInfo, showAll bool, projectFilter stri
 		// 2. RECENT agents with Phase: Complete (need review)
 		// 3. Agents with Phase: BLOCKED or QUESTION (need attention)
 		// 4. Untracked sessions (always visible for resource monitoring)
+		// 5. Idle agents with meaningful work (high tokens or active phase)
 		if !showAll && !agentItem.IsUntracked {
 			isRunning := agentItem.IsProcessing
 
@@ -742,7 +743,9 @@ func filterAgentsForDisplay(agents []AgentInfo, showAll bool, projectFilter stri
 				strings.EqualFold(agentItem.Phase, "BLOCKED") ||
 				strings.EqualFold(agentItem.Phase, "QUESTION")
 
-			if !isRunning && !needsAttention {
+			idleWithWork := isIdleWithWork(agentItem)
+
+			if !isRunning && !needsAttention && !idleWithWork {
 				continue
 			}
 		}
