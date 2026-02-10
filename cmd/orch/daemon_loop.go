@@ -165,7 +165,6 @@ func buildDaemonConfig() (daemon.Config, error) {
 	config.OrphanReapEnabled = daemonOrphanReapEnabled && orphanReapIntervalMinutes > 0
 	config.OrphanReapInterval = time.Duration(orphanReapIntervalMinutes) * time.Minute
 	config.SortMode = daemonSortMode
-	config.AllowFeatureWorkOverride = daemonAllowFeatureWork
 	config.DashboardWatchdogEnabled = daemonDashboardWatchdog && dashboardWatchdogIntervalSeconds > 0
 	config.DashboardWatchdogInterval = time.Duration(dashboardWatchdogIntervalSeconds) * time.Second
 	if projCfg != nil {
@@ -277,9 +276,6 @@ func printDaemonBanner(config daemon.Config) {
 	}
 	if config.CrossProject {
 		fmt.Println("  Cross-project:    enabled (polling all kb-registered projects)")
-	}
-	if config.AllowFeatureWorkOverride {
-		fmt.Println("  Feature gate:     override enabled (feature issues allowed)")
 	}
 	if config.ReflectEnabled {
 		fmt.Printf("  Reflect interval:  %s\n", formatDaemonDuration(config.ReflectInterval))
@@ -570,7 +566,7 @@ func (rt *daemonRuntime) processFactualQuestions(timestamp string) {
 
 // writeStatus writes the daemon status file with current state.
 func (rt *daemonRuntime) writeStatus(timestamp string, pollTime time.Time) {
-	readyIssues, _ := daemon.ListReadyIssuesWithLabelAndOverride(rt.config.Label, rt.config.AllowFeatureWorkOverride)
+	readyIssues, _ := daemon.ListReadyIssuesWithLabel(rt.config.Label)
 	readyCount := len(readyIssues)
 	queueDiagnostics := rt.d.QueueDiagnosticsForIssues(readyIssues)
 
@@ -652,7 +648,7 @@ func (rt *daemonRuntime) processPolish(timestamp string, spawnedThisCycle int) {
 		return
 	}
 
-	readyIssues, err := daemon.ListReadyIssuesWithLabelAndOverride(rt.config.Label, rt.config.AllowFeatureWorkOverride)
+	readyIssues, err := daemon.ListReadyIssuesWithLabel(rt.config.Label)
 	if err != nil {
 		if rt.verboseEnabled() {
 			fmt.Fprintf(os.Stderr, "[%s] Polish readiness check failed: %v\n", timestamp, err)

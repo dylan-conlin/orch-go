@@ -3,9 +3,16 @@
     {
       "gate": "verification_spec",
       "reason": "auto GPT completion profile: known gate incompatibilities",
-      "set_at": "2026-02-09T21:17:28.611025-08:00",
+      "set_at": "2026-02-09T21:19:30.7346-08:00",
       "set_by": "orch-go-g163h",
-      "expires_at": "2026-02-09T23:17:28.611025-08:00"
+      "expires_at": "2026-02-09T23:19:30.7346-08:00"
+    },
+    {
+      "gate": "dashboard_health",
+      "reason": "Dashboard API returning HTML - pre-existing issue, agent only changed frontend svelte component",
+      "set_at": "2026-02-09T21:19:48.535891-08:00",
+      "set_by": "orch-go-g163h",
+      "expires_at": "2026-02-09T23:19:48.535891-08:00"
     }
   ]
 }

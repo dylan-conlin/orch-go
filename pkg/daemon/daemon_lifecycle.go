@@ -29,10 +29,6 @@ type Config struct {
 	// Label filters issues to only those with this label (empty = no filter).
 	Label string
 
-	// AllowFeatureWorkOverride bypasses the investigation synthesis circuit
-	// breaker, allowing feature issues even when investigation volume is high.
-	AllowFeatureWorkOverride bool
-
 	// SpawnDelay is the delay between spawns to avoid rate limits.
 	SpawnDelay time.Duration
 
@@ -233,7 +229,6 @@ func DefaultConfig() Config {
 		MaxAgents:                              3,
 		MaxSpawnsPerHour:                       20, // Prevents runaway spawning
 		Label:                                  "triage:ready",
-		AllowFeatureWorkOverride:               false,
 		SpawnDelay:                             10 * time.Second,
 		DryRun:                                 false,
 		Verbose:                                false,
@@ -466,27 +461,23 @@ func NewWithConfig(config Config) *Daemon {
 	}
 
 	d := &Daemon{
-		Config:               config,
-		SortStrategy:         sortStrategy,
-		SpawnedIssues:        NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL),
-		EventLogger:          nil, // Set via SetEventLogger() to avoid circular deps
-		resumeAttempts:       make(map[string]time.Time),
-		resumeAttemptCounts:  make(map[string]int),
-		serverRecoveryState:  NewServerRecoveryState(),
-		restartDashboardFunc: restartDashboard,
-		listIssuesFunc: func() ([]Issue, error) {
-			return ListReadyIssuesWithOverride(config.AllowFeatureWorkOverride)
-		},
-		spawnFunc:            SpawnWork,
-		activeCountFunc:      activeCount,
-		reflectFunc:          DefaultRunReflection,
-		listEpicChildrenFunc: ListEpicChildren,
-		listProjectsFunc:     ListProjects,
-		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
-			return ListReadyIssuesForProjectWithOverride(projectPath, config.AllowFeatureWorkOverride)
-		},
-		spawnForProjectFunc:   SpawnWorkForProject,
-		closedIssuesBatchFunc: GetClosedIssuesBatch,
+		Config:                   config,
+		SortStrategy:             sortStrategy,
+		SpawnedIssues:            NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL),
+		EventLogger:              nil, // Set via SetEventLogger() to avoid circular deps
+		resumeAttempts:           make(map[string]time.Time),
+		resumeAttemptCounts:      make(map[string]int),
+		serverRecoveryState:      NewServerRecoveryState(),
+		restartDashboardFunc:     restartDashboard,
+		listIssuesFunc:           ListReadyIssues,
+		spawnFunc:                SpawnWork,
+		activeCountFunc:          activeCount,
+		reflectFunc:              DefaultRunReflection,
+		listEpicChildrenFunc:     ListEpicChildren,
+		listProjectsFunc:         ListProjects,
+		listIssuesForProjectFunc: ListReadyIssuesForProject,
+		spawnForProjectFunc:      SpawnWorkForProject,
+		closedIssuesBatchFunc:    GetClosedIssuesBatch,
 	}
 	d.collectPolishCandidatesFunc = d.collectPolishCandidates
 	d.createPolishIssueFunc = d.createPolishIssue
@@ -525,26 +516,22 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 	}
 
 	d := &Daemon{
-		Config:               config,
-		SortStrategy:         sortStrategy,
-		Pool:                 pool,
-		SpawnedIssues:        NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL),
-		EventLogger:          nil, // Set via SetEventLogger() to avoid circular deps
-		resumeAttempts:       make(map[string]time.Time),
-		serverRecoveryState:  NewServerRecoveryState(),
-		restartDashboardFunc: restartDashboard,
-		listIssuesFunc: func() ([]Issue, error) {
-			return ListReadyIssuesWithOverride(config.AllowFeatureWorkOverride)
-		},
-		spawnFunc:        SpawnWork,
-		activeCountFunc:  activeCount,
-		reflectFunc:      DefaultRunReflection,
-		listProjectsFunc: ListProjects,
-		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
-			return ListReadyIssuesForProjectWithOverride(projectPath, config.AllowFeatureWorkOverride)
-		},
-		spawnForProjectFunc:   SpawnWorkForProject,
-		closedIssuesBatchFunc: GetClosedIssuesBatch,
+		Config:                   config,
+		SortStrategy:             sortStrategy,
+		Pool:                     pool,
+		SpawnedIssues:            NewSpawnedIssueTracker(DefaultSpawnedIssueTrackerMaxEntries, DefaultSpawnedIssueTrackerTTL),
+		EventLogger:              nil, // Set via SetEventLogger() to avoid circular deps
+		resumeAttempts:           make(map[string]time.Time),
+		serverRecoveryState:      NewServerRecoveryState(),
+		restartDashboardFunc:     restartDashboard,
+		listIssuesFunc:           ListReadyIssues,
+		spawnFunc:                SpawnWork,
+		activeCountFunc:          activeCount,
+		reflectFunc:              DefaultRunReflection,
+		listProjectsFunc:         ListProjects,
+		listIssuesForProjectFunc: ListReadyIssuesForProject,
+		spawnForProjectFunc:      SpawnWorkForProject,
+		closedIssuesBatchFunc:    GetClosedIssuesBatch,
 	}
 	d.collectPolishCandidatesFunc = d.collectPolishCandidates
 	d.createPolishIssueFunc = d.createPolishIssue
