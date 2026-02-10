@@ -645,6 +645,137 @@ func TestMinimalPrompt(t *testing.T) {
 	}
 }
 
+func TestMinimalPrompt_WorktreePath(t *testing.T) {
+	cfg := &Config{
+		ProjectDir:    "/Users/test/orch-go",
+		WorkspaceName: "og-feat-spawn-19dec",
+		CWD:           "/Users/test/orch-go/.orch/worktrees/og-feat-spawn-19dec",
+	}
+
+	prompt := MinimalPrompt(cfg)
+
+	// When a worktree is in use, prompt should point to the worktree copy
+	expected := "/Users/test/orch-go/.orch/worktrees/og-feat-spawn-19dec/SPAWN_CONTEXT.md"
+	if !strings.Contains(prompt, expected) {
+		t.Errorf("minimal prompt with worktree should point to worktree path %q, got: %s", expected, prompt)
+	}
+
+	// Should NOT contain the workspace path
+	workspacePath := "/Users/test/orch-go/.orch/workspace/og-feat-spawn-19dec/SPAWN_CONTEXT.md"
+	if strings.Contains(prompt, workspacePath) {
+		t.Errorf("minimal prompt with worktree should NOT point to workspace path, got: %s", prompt)
+	}
+}
+
+func TestCopySpawnArtifactsToWorktree(t *testing.T) {
+	t.Run("copies artifacts to worktree", func(t *testing.T) {
+		tempDir := t.TempDir()
+		workspaceName := "test-workspace"
+
+		// Create workspace directory with artifacts
+		workspacePath := filepath.Join(tempDir, ".orch", "workspace", workspaceName)
+		if err := os.MkdirAll(workspacePath, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create worktree directory
+		worktreeDir := filepath.Join(tempDir, ".orch", "worktrees", workspaceName)
+		if err := os.MkdirAll(worktreeDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		// Write test artifacts to workspace
+		artifacts := map[string]string{
+			"SPAWN_CONTEXT.md":       "test context content",
+			"AGENT_MANIFEST.json":    `{"workspace_name":"test"}`,
+			"VERIFICATION_SPEC.yaml": "version: 1",
+		}
+		for name, content := range artifacts {
+			if err := os.WriteFile(filepath.Join(workspacePath, name), []byte(content), 0644); err != nil {
+				t.Fatalf("failed to write %s: %v", name, err)
+			}
+		}
+
+		cfg := &Config{
+			ProjectDir:    tempDir,
+			WorkspaceName: workspaceName,
+			CWD:           worktreeDir,
+		}
+
+		if err := copySpawnArtifactsToWorktree(cfg); err != nil {
+			t.Fatalf("copySpawnArtifactsToWorktree failed: %v", err)
+		}
+
+		// Verify all artifacts were copied to worktree
+		for name, expectedContent := range artifacts {
+			dst := filepath.Join(worktreeDir, name)
+			data, err := os.ReadFile(dst)
+			if err != nil {
+				t.Errorf("artifact %s not found in worktree: %v", name, err)
+				continue
+			}
+			if string(data) != expectedContent {
+				t.Errorf("artifact %s content mismatch: got %q, want %q", name, string(data), expectedContent)
+			}
+		}
+	})
+
+	t.Run("skips when CWD equals ProjectDir", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		cfg := &Config{
+			ProjectDir:    tempDir,
+			WorkspaceName: "test-workspace",
+			CWD:           "", // Empty CWD means RuntimeDir() returns ProjectDir
+		}
+
+		// Should be a no-op, not an error
+		if err := copySpawnArtifactsToWorktree(cfg); err != nil {
+			t.Fatalf("copySpawnArtifactsToWorktree should be no-op when CWD is empty: %v", err)
+		}
+	})
+
+	t.Run("skips missing optional artifacts", func(t *testing.T) {
+		tempDir := t.TempDir()
+		workspaceName := "test-workspace"
+
+		workspacePath := filepath.Join(tempDir, ".orch", "workspace", workspaceName)
+		if err := os.MkdirAll(workspacePath, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		worktreeDir := filepath.Join(tempDir, ".orch", "worktrees", workspaceName)
+		if err := os.MkdirAll(worktreeDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		// Only write SPAWN_CONTEXT.md, skip others
+		if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte("content"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg := &Config{
+			ProjectDir:    tempDir,
+			WorkspaceName: workspaceName,
+			CWD:           worktreeDir,
+		}
+
+		// Should succeed even with missing optional artifacts
+		if err := copySpawnArtifactsToWorktree(cfg); err != nil {
+			t.Fatalf("copySpawnArtifactsToWorktree should skip missing artifacts: %v", err)
+		}
+
+		// Verify SPAWN_CONTEXT.md was copied
+		data, err := os.ReadFile(filepath.Join(worktreeDir, "SPAWN_CONTEXT.md"))
+		if err != nil {
+			t.Fatal("SPAWN_CONTEXT.md should be in worktree")
+		}
+		if string(data) != "content" {
+			t.Errorf("content mismatch: got %q", string(data))
+		}
+	})
+}
+
 func TestEnsureSynthesisTemplate(t *testing.T) {
 	t.Run("creates template when missing", func(t *testing.T) {
 		tempDir := t.TempDir()

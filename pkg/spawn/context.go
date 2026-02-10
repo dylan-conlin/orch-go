@@ -289,6 +289,52 @@ func WriteContext(cfg *Config) error {
 		return fmt.Errorf("failed to write agent manifest: %w", err)
 	}
 
+	// Copy spawn artifacts to the worktree so the agent can find them in its CWD.
+	// The canonical copies remain in workspacePath; these are delivery copies.
+	if err := copySpawnArtifactsToWorktree(cfg); err != nil {
+		return fmt.Errorf("failed to copy spawn artifacts to worktree: %w", err)
+	}
+
+	return nil
+}
+
+// copySpawnArtifactsToWorktree copies key spawn artifacts from the workspace directory
+// to the agent's worktree directory so the agent can find them in its CWD.
+// This is only needed when CWD differs from ProjectDir (i.e., git worktree spawns).
+// The canonical copies remain in .orch/workspace/{name}/.
+func copySpawnArtifactsToWorktree(cfg *Config) error {
+	worktreeDir := cfg.RuntimeDir()
+	workspacePath := cfg.WorkspacePath()
+
+	// Only copy when the runtime directory differs from the workspace path parent.
+	// This means a worktree was created and the agent runs in a different directory.
+	if worktreeDir == cfg.ProjectDir || worktreeDir == "" {
+		return nil
+	}
+
+	artifacts := []string{
+		"SPAWN_CONTEXT.md",
+		AgentManifestFilename,
+		verificationSpecFileName,
+	}
+
+	for _, name := range artifacts {
+		src := filepath.Join(workspacePath, name)
+		dst := filepath.Join(worktreeDir, name)
+
+		data, err := os.ReadFile(src)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue // Skip optional artifacts that weren't generated
+			}
+			return fmt.Errorf("failed to read %s: %w", name, err)
+		}
+
+		if err := os.WriteFile(dst, data, 0644); err != nil {
+			return fmt.Errorf("failed to write %s to worktree: %w", name, err)
+		}
+	}
+
 	return nil
 }
 
@@ -321,6 +367,15 @@ func MinimalPrompt(cfg *Config) string {
 	}
 	if cfg.IsOrchestrator {
 		return MinimalOrchestratorPrompt(cfg)
+	}
+	// When a worktree is in use, SPAWN_CONTEXT.md is copied there.
+	// Point the agent to its CWD copy for reliable discovery.
+	runtimeDir := cfg.RuntimeDir()
+	if runtimeDir != "" && runtimeDir != cfg.ProjectDir {
+		return fmt.Sprintf(
+			"Read your spawn context from %s/SPAWN_CONTEXT.md and begin the task.",
+			runtimeDir,
+		)
 	}
 	return fmt.Sprintf(
 		"Read your spawn context from %s/.orch/workspace/%s/SPAWN_CONTEXT.md and begin the task.",
