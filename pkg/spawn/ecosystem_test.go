@@ -77,7 +77,7 @@ func TestGetEcosystemRepos(t *testing.T) {
 			name:         "work domain returns work ecosystem",
 			domain:       DomainWork,
 			wantNil:      false,
-			wantContains: []string{"scs-special-projects"},
+			wantContains: []string{"scs-special-projects", "price-watch", "specs-platform", "toolshed"},
 		},
 		{
 			name:    "unknown domain returns nil",

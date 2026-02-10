@@ -38,7 +38,9 @@ var DomainEcosystems = map[string]map[string]bool{
 	DomainWork: {
 		// SendCutSend projects
 		"scs-special-projects": true,
-		// Future: add other SCS repos as needed
+		"price-watch":          true,
+		"specs-platform":       true,
+		"toolshed":             true,
 	},
 }
 

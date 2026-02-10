@@ -19,14 +19,24 @@ func TestGetIncludedProjects(t *testing.T) {
 			expected: []string{"price-watch", "pw"},
 		},
 		{
-			name:    "orch-go includes ecosystem repos and price-watch",
-			project: "orch-go",
-			// Should include all ecosystem repos plus price-watch/pw
-			expected: []string{"orch-go", "orch-cli", "beads", "kb-cli", "orch-knowledge", "opencode", "price-watch", "pw"},
+			name:     "specs-platform includes sp alias",
+			project:  "specs-platform",
+			expected: []string{"specs-platform", "sp"},
 		},
 		{
-			name:    "unknown project returns just itself",
-			project: "unknown-project",
+			name:     "toolshed includes to alias",
+			project:  "toolshed",
+			expected: []string{"toolshed", "to"},
+		},
+		{
+			name:    "orch-go includes ecosystem repos and work projects",
+			project: "orch-go",
+			// Should include all ecosystem repos plus work projects with aliases
+			expected: []string{"orch-go", "orch-cli", "beads", "kb-cli", "orch-knowledge", "opencode", "price-watch", "pw", "specs-platform", "sp", "toolshed", "to"},
+		},
+		{
+			name:     "unknown project returns just itself",
+			project:  "unknown-project",
 			expected: []string{"unknown-project"},
 		},
 	}

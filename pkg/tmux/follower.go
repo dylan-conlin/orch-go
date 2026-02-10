@@ -365,13 +365,19 @@ func DefaultMultiProjectConfigs() []MultiProjectConfig {
 			// orch-go is the orchestration home - it should see agents from all ecosystem repos
 			Project: "orch-go",
 			IncludeProjects: []string{
+				// Personal ecosystem
 				"orch-cli",
 				"beads",
 				"kb-cli",
 				"orch-knowledge",
 				"opencode",
-				"price-watch", // Include price-watch agents when viewing from orch-go
-				"pw",          // Alias: price-watch directory uses "pw" beads ID prefix
+				// Work ecosystem (SCS special projects)
+				"price-watch",
+				"pw", // Alias: price-watch workspace prefix
+				"specs-platform",
+				"sp", // Alias: specs-platform workspace prefix
+				"toolshed",
+				"to", // Alias: toolshed workspace prefix
 			},
 		},
 		{
@@ -379,6 +385,16 @@ func DefaultMultiProjectConfigs() []MultiProjectConfig {
 			// Include "pw" so agents with beads IDs like "pw-xxxx" are visible
 			Project:         "price-watch",
 			IncludeProjects: []string{"pw"},
+		},
+		{
+			// specs-platform uses "sp" as workspace prefix
+			Project:         "specs-platform",
+			IncludeProjects: []string{"sp"},
+		},
+		{
+			// toolshed uses "to" as workspace prefix
+			Project:         "toolshed",
+			IncludeProjects: []string{"to"},
 		},
 	}
 }
