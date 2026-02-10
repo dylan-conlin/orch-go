@@ -1811,6 +1811,54 @@ func TestPhaseCompleteBypassForGPTModels(t *testing.T) {
 	})
 }
 
+func TestWorkspaceModelDetection(t *testing.T) {
+	t.Run("returns normalized model display", func(t *testing.T) {
+		workspace := t.TempDir()
+		if err := spawn.WriteAgentManifest(workspace, spawn.AgentManifest{
+			WorkspaceName: "og-feat-gpt",
+			Tier:          "light",
+			Model:         "gpt",
+		}); err != nil {
+			t.Fatalf("failed to write agent manifest: %v", err)
+		}
+
+		display := WorkspaceModelDisplay(workspace)
+		if display != "openai/gpt-5.3-codex" {
+			t.Fatalf("WorkspaceModelDisplay() = %q, want %q", display, "openai/gpt-5.3-codex")
+		}
+	})
+
+	t.Run("detects GPT model", func(t *testing.T) {
+		workspace := t.TempDir()
+		if err := spawn.WriteAgentManifest(workspace, spawn.AgentManifest{
+			WorkspaceName: "og-feat-gpt",
+			Tier:          "light",
+			Model:         "openai/gpt-5.2",
+		}); err != nil {
+			t.Fatalf("failed to write agent manifest: %v", err)
+		}
+
+		if !IsWorkspaceGPTModel(workspace) {
+			t.Fatal("expected GPT workspace model to be detected")
+		}
+	})
+
+	t.Run("does not detect non-GPT model", func(t *testing.T) {
+		workspace := t.TempDir()
+		if err := spawn.WriteAgentManifest(workspace, spawn.AgentManifest{
+			WorkspaceName: "og-feat-claude",
+			Tier:          "light",
+			Model:         "anthropic/claude-opus-4-6",
+		}); err != nil {
+			t.Fatalf("failed to write agent manifest: %v", err)
+		}
+
+		if IsWorkspaceGPTModel(workspace) {
+			t.Fatal("expected non-GPT workspace model to remain strict")
+		}
+	})
+}
+
 func TestMergeGateResult(t *testing.T) {
 	t.Run("passing gate adds to GateResults only", func(t *testing.T) {
 		result := VerificationResult{Passed: true}

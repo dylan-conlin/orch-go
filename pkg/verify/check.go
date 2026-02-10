@@ -806,22 +806,58 @@ func verifySessionEndedProperly(workspacePath string) (bool, error) {
 	return false, nil
 }
 
-func shouldBypassPhaseCompleteForModel(workspacePath string) bool {
-	if workspacePath == "" {
+// WorkspaceModelDisplay returns a normalized provider/model string from
+// AGENT_MANIFEST.json (for example: openai/gpt-5.3-codex).
+// Returns empty string when model metadata is unavailable.
+func WorkspaceModelDisplay(workspacePath string) string {
+	resolved, _, ok := resolveWorkspaceModel(workspacePath)
+	if !ok {
+		return ""
+	}
+	if display := strings.TrimSpace(resolved.Format()); display != "" {
+		return display
+	}
+	return strings.TrimSpace(resolved.ModelID)
+}
+
+// IsWorkspaceGPTModel returns true when AGENT_MANIFEST.json resolves to an
+// OpenAI GPT model.
+func IsWorkspaceGPTModel(workspacePath string) bool {
+	resolved, rawModel, ok := resolveWorkspaceModel(workspacePath)
+	if !ok {
 		return false
+	}
+
+	if strings.EqualFold(strings.TrimSpace(resolved.Provider), "openai") &&
+		strings.Contains(strings.ToLower(strings.TrimSpace(resolved.ModelID)), "gpt") {
+		return true
+	}
+
+	// Defensive fallback for unresolved/unknown specs.
+	rawLower := strings.ToLower(strings.TrimSpace(rawModel))
+	return strings.Contains(rawLower, "openai") && strings.Contains(rawLower, "gpt")
+}
+
+func shouldBypassPhaseCompleteForModel(workspacePath string) bool {
+	return IsWorkspaceGPTModel(workspacePath)
+}
+
+func resolveWorkspaceModel(workspacePath string) (model.ModelSpec, string, bool) {
+	if strings.TrimSpace(workspacePath) == "" {
+		return model.ModelSpec{}, "", false
 	}
 
 	manifest, err := spawn.ReadAgentManifest(workspacePath)
 	if err != nil || manifest == nil {
-		return false
+		return model.ModelSpec{}, "", false
 	}
 
-	resolved := model.Resolve(strings.TrimSpace(manifest.Model))
-	if strings.ToLower(resolved.Provider) != "openai" {
-		return false
+	rawModel := strings.TrimSpace(manifest.Model)
+	if rawModel == "" {
+		return model.ModelSpec{}, "", false
 	}
 
-	return strings.Contains(strings.ToLower(resolved.ModelID), "gpt")
+	return model.Resolve(rawModel), rawModel, true
 }
 
 // joinErrors joins multiple error strings into a single semicolon-separated string.
