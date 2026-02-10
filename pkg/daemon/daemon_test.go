@@ -903,6 +903,9 @@ func TestDefaultConfig(t *testing.T) {
 	if config.SpawnDelay <= 0 {
 		t.Error("DefaultConfig() SpawnDelay should be positive")
 	}
+	if config.CleanupInterval != 30*time.Minute {
+		t.Errorf("DefaultConfig() CleanupInterval = %v, want 30m", config.CleanupInterval)
+	}
 }
 
 func TestNewWithConfig(t *testing.T) {
@@ -1375,6 +1378,9 @@ func TestDefaultCompletionConfig(t *testing.T) {
 	}
 	if config.Verbose {
 		t.Error("DefaultCompletionConfig().Verbose should be false")
+	}
+	if config.IdleCompletionThreshold != 15*time.Minute {
+		t.Errorf("DefaultCompletionConfig().IdleCompletionThreshold = %v, want 15m", config.IdleCompletionThreshold)
 	}
 }
 

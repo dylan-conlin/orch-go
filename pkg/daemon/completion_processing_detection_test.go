@@ -1,8 +1,8 @@
 package daemon
 
 import (
-	"os"
-	"path/filepath"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -108,60 +108,44 @@ func TestParseExitCode(t *testing.T) {
 	}
 }
 
-func TestIdleCompletionDetectorSessionSignal(t *testing.T) {
-	now := time.Now()
-	d := &idleCompletionDetector{
-		now: now,
-		sessionsByID: map[string]opencode.Session{
-			"ses-workspace": {
-				ID: "ses-workspace",
-				Time: opencode.SessionTime{
-					Updated: now.Add(-20 * time.Minute).UnixMilli(),
-				},
-			},
-			"ses-index": {
-				ID: "ses-index",
-				Time: opencode.SessionTime{
-					Updated: now.Add(-12 * time.Minute).UnixMilli(),
-				},
-			},
-		},
-		sessionByID: map[string]string{
-			"orch-go-idx1": "ses-index",
-		},
+func TestNormalizeIdleCompletionThreshold_Default(t *testing.T) {
+	got := normalizeIdleCompletionThreshold(0)
+	if got != 15*time.Minute {
+		t.Errorf("normalizeIdleCompletionThreshold(0) = %v, want 15m", got)
 	}
+}
 
-	workspace := t.TempDir()
-	if err := os.WriteFile(filepath.Join(workspace, ".session_id"), []byte("ses-workspace\n"), 0o644); err != nil {
-		t.Fatalf("failed to write session id: %v", err)
+func TestDeleteCompletedAgentSession(t *testing.T) {
+	deleted := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Fatalf("expected DELETE, got %s", r.Method)
+		}
+		if r.URL.Path != "/session/ses_abc" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		deleted = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	err := deleteCompletedAgentSession(CompletedAgent{SessionID: "ses_abc"}, srv.URL)
+	if err != nil {
+		t.Fatalf("deleteCompletedAgentSession() error = %v", err)
 	}
+	if !deleted {
+		t.Fatal("expected session to be deleted")
+	}
+}
 
-	t.Run("resolves from workspace session id", func(t *testing.T) {
-		signal, ok := d.sessionSignal("orch-go-abc1", workspace)
-		if !ok {
-			t.Fatalf("expected signal from workspace session id")
-		}
-		if signal.SessionID != "ses-workspace" {
-			t.Fatalf("SessionID = %q, want ses-workspace", signal.SessionID)
-		}
-		if signal.IdleDuration < 19*time.Minute {
-			t.Fatalf("IdleDuration = %v, expected >= 19m", signal.IdleDuration)
-		}
-	})
+func TestDeleteCompletedAgentSession_IgnoreNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
 
-	t.Run("falls back to beads index", func(t *testing.T) {
-		signal, ok := d.sessionSignal("orch-go-idx1", "")
-		if !ok {
-			t.Fatalf("expected signal from beads index")
-		}
-		if signal.SessionID != "ses-index" {
-			t.Fatalf("SessionID = %q, want ses-index", signal.SessionID)
-		}
-	})
-
-	t.Run("returns false when missing", func(t *testing.T) {
-		if _, ok := d.sessionSignal("orch-go-missing", ""); ok {
-			t.Fatalf("expected missing session to return false")
-		}
-	})
+	err := deleteCompletedAgentSession(CompletedAgent{SessionID: "ses_missing"}, srv.URL)
+	if err != nil {
+		t.Fatalf("deleteCompletedAgentSession() should ignore not found, got: %v", err)
+	}
 }

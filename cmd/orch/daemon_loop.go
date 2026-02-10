@@ -511,11 +511,10 @@ func (rt *daemonRuntime) runSubsystems(timestamp string) {
 // Returns the number of agents completed this cycle.
 func (rt *daemonRuntime) processCompletions(timestamp string) {
 	completionConfig := daemon.CompletionConfig{
-		ProjectDir:              rt.projectDir,
-		ServerURL:               serverURL,
-		DryRun:                  false,
-		Verbose:                 rt.verboseEnabled(),
-		IdleCompletionThreshold: rt.config.RecoveryIdleThreshold,
+		ProjectDir: rt.projectDir,
+		ServerURL:  serverURL,
+		DryRun:     false,
+		Verbose:    rt.verboseEnabled(),
 	}
 	completionResult, err := rt.d.CompletionOnce(completionConfig)
 	if err != nil && rt.verboseEnabled() {

@@ -108,9 +108,22 @@ func (d *Daemon) RunPeriodicCleanup() *CleanupResult {
 				Message: fmt.Sprintf("Session cleanup failed: %v", err),
 			}
 		}
-		result.SessionsDeleted = deleted
+		result.SessionsDeleted += deleted
 		if deleted > 0 {
-			messages = append(messages, fmt.Sprintf("%d sessions", deleted))
+			messages = append(messages, fmt.Sprintf("%d stale sessions", deleted))
+		}
+
+		untrackedDeleted, err := runUntrackedSessionCleanup(d.Config.CleanupServerURL, d.Config.CleanupPreserveOrchestrator)
+		if err != nil {
+			return &CleanupResult{
+				SessionsDeleted: result.SessionsDeleted,
+				Error:           err,
+				Message:         fmt.Sprintf("Untracked session cleanup failed: %v", err),
+			}
+		}
+		result.SessionsDeleted += untrackedDeleted
+		if untrackedDeleted > 0 {
+			messages = append(messages, fmt.Sprintf("%d untracked sessions", untrackedDeleted))
 		}
 	}
 

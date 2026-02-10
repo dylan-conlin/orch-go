@@ -14,16 +14,15 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/process"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
 const (
 	completionSourcePhaseComplete = "phase_complete"
-	completionSourceCommitIdle    = "commit_idle"
+	completionSourceIdleTracked   = "idle_tracked"
 
-	defaultIdleCompletionThreshold = 10 * time.Minute
+	defaultIdleCompletionThreshold = 15 * time.Minute
 )
 
 // CompletionConfig holds configuration for the completion processing loop.
@@ -50,7 +49,7 @@ type CompletionConfig struct {
 	ServerURL string
 
 	// IdleCompletionThreshold is the minimum session idle duration required
-	// before commit+idle auto-detection can mark an agent complete.
+	// before tracked-session auto-detection can mark an agent complete.
 	IdleCompletionThreshold time.Duration
 }
 
@@ -71,8 +70,8 @@ type CompletedAgent struct {
 	Status        string // open or in_progress
 	PhaseSummary  string // Summary from "Phase: Complete - <summary>"
 	WorkspacePath string // Path to agent workspace (if found)
-	Source        string // completionSourcePhaseComplete | completionSourceCommitIdle
-	SessionID     string // OpenCode session ID for commit+idle auto-detection
+	Source        string // completionSourcePhaseComplete | completionSourceIdleTracked
+	SessionID     string // OpenCode session ID for post-completion cleanup
 	IdleDuration  time.Duration
 }
 
@@ -128,24 +127,21 @@ func ListCompletedAgentsDefault(config CompletionConfig) ([]CompletedAgent, erro
 	for id, issue := range openIssues {
 		comments, ok := commentMap[id]
 		if !ok {
-			comments, err = verify.GetCommentsWithDir(id, config.ProjectDir)
-			if err != nil {
-				continue
-			}
+			continue
 		}
 
 		workspacePath := findWorkspaceForIssue(id, config.WorkspaceDir, config.ProjectDir)
-		signal, hasSession := detector.sessionSignal(id, workspacePath)
-		sessionID := signal.SessionID
-		idleDuration := signal.IdleDuration
+		sessionID := ""
+		if detector != nil {
+			sessionID = detector.SessionIDForBeads(id, workspacePath)
+		} else if workspacePath != "" {
+			sessionID = spawn.ReadSessionID(workspacePath)
+		}
 
 		// Parse phase from comments
 		phaseStatus := verify.ParsePhaseFromComments(comments)
 
 		if phaseStatus.Found && strings.EqualFold(phaseStatus.Phase, "Complete") {
-			if !hasSession {
-				sessionID = spawn.ReadSessionID(workspacePath)
-			}
 			completed = append(completed, CompletedAgent{
 				BeadsID:       id,
 				Title:         issue.Title,
@@ -154,12 +150,11 @@ func ListCompletedAgentsDefault(config CompletionConfig) ([]CompletedAgent, erro
 				WorkspacePath: workspacePath,
 				Source:        completionSourcePhaseComplete,
 				SessionID:     sessionID,
-				IdleDuration:  idleDuration,
 			})
 			continue
 		}
 
-		// Enhanced auto-detection path: commit evidence + idle session.
+		// Aggressive auto-detection path: tracked in-progress session + idle window.
 		if !strings.EqualFold(issue.Status, "in_progress") || detector == nil {
 			continue
 		}
@@ -175,7 +170,7 @@ func ListCompletedAgentsDefault(config CompletionConfig) ([]CompletedAgent, erro
 			Status:        issue.Status,
 			PhaseSummary:  signal.Summary,
 			WorkspacePath: workspacePath,
-			Source:        completionSourceCommitIdle,
+			Source:        completionSourceIdleTracked,
 			SessionID:     signal.SessionID,
 			IdleDuration:  signal.IdleDuration,
 		})
@@ -229,52 +224,11 @@ func newIdleCompletionDetector(serverURL string, idleWindow time.Duration) *idle
 }
 
 func (d *idleCompletionDetector) Detect(beadsID, workspacePath string) (idleCompletionSignal, bool) {
-	if beadsID == "" || workspacePath == "" {
+	if beadsID == "" {
 		return idleCompletionSignal{}, false
 	}
 
-	signal, ok := d.sessionSignal(beadsID, workspacePath)
-	if !ok {
-		return idleCompletionSignal{}, false
-	}
-	sessionID := signal.SessionID
-
-	if signal.IdleDuration < d.idleWindow {
-		return idleCompletionSignal{}, false
-	}
-
-	if d.client.IsSessionProcessing(sessionID) {
-		return idleCompletionSignal{}, false
-	}
-
-	messages, err := d.client.GetMessages(sessionID)
-	if err != nil || !sessionHasSuccessfulGitCommit(messages) {
-		return idleCompletionSignal{}, false
-	}
-
-	return idleCompletionSignal{
-		SessionID:    sessionID,
-		IdleDuration: signal.IdleDuration,
-		Summary: fmt.Sprintf(
-			"Auto-detected by daemon: commit observed in session %s and idle for %s",
-			shortSessionID(sessionID),
-			signal.IdleDuration.Round(time.Minute),
-		),
-	}, true
-}
-
-func (d *idleCompletionDetector) sessionSignal(beadsID, workspacePath string) (idleCompletionSignal, bool) {
-	if d == nil || beadsID == "" {
-		return idleCompletionSignal{}, false
-	}
-
-	sessionID := ""
-	if workspacePath != "" {
-		sessionID = spawn.ReadSessionID(workspacePath)
-	}
-	if sessionID == "" {
-		sessionID = d.sessionByID[beadsID]
-	}
+	sessionID := d.SessionIDForBeads(beadsID, workspacePath)
 	if sessionID == "" {
 		return idleCompletionSignal{}, false
 	}
@@ -285,10 +239,34 @@ func (d *idleCompletionDetector) sessionSignal(beadsID, workspacePath string) (i
 	}
 
 	updatedAt := time.Unix(session.Time.Updated/1000, 0)
+	idleDuration := d.now.Sub(updatedAt)
+	if idleDuration < d.idleWindow {
+		return idleCompletionSignal{}, false
+	}
+
+	if d.client != nil && d.client.IsSessionProcessing(sessionID) {
+		return idleCompletionSignal{}, false
+	}
+
 	return idleCompletionSignal{
 		SessionID:    sessionID,
-		IdleDuration: d.now.Sub(updatedAt),
+		IdleDuration: idleDuration,
+		Summary: fmt.Sprintf(
+			"Auto-detected by daemon: tracked session %s idle for %s",
+			shortSessionID(sessionID),
+			idleDuration.Round(time.Minute),
+		),
 	}, true
+}
+
+func (d *idleCompletionDetector) SessionIDForBeads(beadsID, workspacePath string) string {
+	if workspacePath != "" {
+		if sessionID := spawn.ReadSessionID(workspacePath); sessionID != "" {
+			return sessionID
+		}
+	}
+
+	return d.sessionByID[beadsID]
 }
 
 func normalizeIdleCompletionThreshold(idleWindow time.Duration) time.Duration {
@@ -449,7 +427,7 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 		BeadsID: agent.BeadsID,
 	}
 
-	if agent.Source == completionSourceCommitIdle {
+	if agent.Source == completionSourceIdleTracked {
 		if err := ensureAutoPhaseComplete(agent, config.ProjectDir); err != nil {
 			result.Error = fmt.Errorf("failed to backfill Phase: Complete comment: %w", err)
 			result.Escalation = verify.EscalationFailed
@@ -528,11 +506,15 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 	// Close the issue (unless dry run), using force to bypass bd's redundant
 	// Phase: Complete gate since we already verified it via ListCompletedAgents
 	if !config.DryRun {
+		if err := deleteCompletedAgentSession(agent, config.ServerURL); err != nil {
+			result.Error = fmt.Errorf("failed to delete session: %w", err)
+			return result
+		}
+
 		if err := verify.CloseIssueForce(agent.BeadsID, closeReason, true); err != nil {
 			result.Error = fmt.Errorf("failed to close issue: %w", err)
 			return result
 		}
-		reapCompletedAgentSession(agent, config)
 	}
 
 	result.Processed = true
@@ -545,7 +527,7 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 func (d *Daemon) CompletionOnce(config CompletionConfig) (*CompletionLoopResult, error) {
 	result := &CompletionLoopResult{}
 
-	// Find completed agents (explicit Phase: Complete or commit+idle auto-detection)
+	// Find completed agents (explicit Phase: Complete or idle tracked-session detection)
 	completed, err := d.ListCompletedAgents(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list completed agents: %w", err)
@@ -645,7 +627,7 @@ func ensureAutoPhaseComplete(agent CompletedAgent, projectDir string) error {
 
 	summary := strings.TrimSpace(agent.PhaseSummary)
 	if summary == "" {
-		summary = "Auto-detected by daemon: commit observed and session idle"
+		summary = "Auto-detected by daemon: tracked session idle"
 	}
 
 	comment := fmt.Sprintf("Phase: Complete - %s", summary)
@@ -668,40 +650,27 @@ func ensureAutoPhaseComplete(agent CompletedAgent, projectDir string) error {
 	return nil
 }
 
-func reapCompletedAgentSession(agent CompletedAgent, config CompletionConfig) {
+func deleteCompletedAgentSession(agent CompletedAgent, serverURL string) error {
 	sessionID := strings.TrimSpace(agent.SessionID)
-	if sessionID == "" {
+	if sessionID == "" && agent.WorkspacePath != "" {
 		sessionID = spawn.ReadSessionID(agent.WorkspacePath)
 	}
 	if sessionID == "" {
-		return
+		return nil
 	}
 
-	serverURL := config.ServerURL
-	if serverURL == "" {
+	if strings.TrimSpace(serverURL) == "" {
 		serverURL = opencode.DefaultServerURL
 	}
+
 	client := opencode.NewClient(serverURL)
-
-	if client.IsSessionProcessing(sessionID) {
-		return
-	}
-
-	if err := client.DeleteSession(sessionID); err != nil && config.Verbose {
-		fmt.Printf("  Warning: failed to reap completed session %s for %s: %v\n", shortSessionID(sessionID), agent.BeadsID, err)
-	}
-
-	if agent.WorkspacePath != "" {
-		if pid := spawn.ReadProcessID(agent.WorkspacePath); pid > 0 {
-			process.Terminate(pid, "opencode")
+	if err := client.DeleteSession(sessionID); err != nil {
+		// Another cleanup path may have already deleted this session.
+		if strings.Contains(err.Error(), "status 404") {
+			return nil
 		}
-		ledger := process.NewDefaultLedger()
-		workspaceName := filepath.Base(agent.WorkspacePath)
-		if workspaceName != "" {
-			_ = ledger.RemoveByWorkspace(workspaceName)
-		}
+		return fmt.Errorf("session %s: %w", shortSessionID(sessionID), err)
 	}
-	if agent.BeadsID != "" {
-		_ = process.NewDefaultLedger().RemoveByBeadsID(agent.BeadsID)
-	}
+
+	return nil
 }
