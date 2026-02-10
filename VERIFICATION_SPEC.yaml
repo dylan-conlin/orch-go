@@ -1,34 +1,24 @@
+# Spawn-time verification skeleton.
+# Commands are auto-detected from the project when possible.
+# Replace any remaining TODO placeholders before Phase: Complete.
+
 version: 1
 scope:
-    beads_id: orch-go-a35n7
-    workspace: og-debug-fix-orch-complete-10feb-28e9
-    skill: systematic-debugging
+    beads_id: orch-go-21515
+    workspace: og-feat-add-one-line-10feb-ea39
+    skill: feature-impl
 verification:
     - id: verify-build
       method: cli_smoke
       tier: light
-      command: go build ./cmd/orch/
+      command: go build ./...
       cwd: $GIT_WORKTREE_DIR
       expect:
         exit_code: 0
-    - id: verify-workspace-resolution
+    - id: verify-test
       method: cli_smoke
       tier: light
-      command: go test ./cmd/orch/ -run "TestFindWorkspaceByBeadsID|TestPickBestWorkspace" -count=1
-      cwd: $GIT_WORKTREE_DIR
-      expect:
-        exit_code: 0
-    - id: verify-cherry-pick-skip
-      method: cli_smoke
-      tier: light
-      command: go test ./cmd/orch/ -run "TestIntegrateAgentBranchSkips|TestIsEmptyCherryPick" -count=1
-      cwd: $GIT_WORKTREE_DIR
-      expect:
-        exit_code: 0
-    - id: verify-existing-tests
-      method: cli_smoke
-      tier: light
-      command: go test ./cmd/orch/ -run "TestIntegrateAgent" -count=1
+      command: go test ./...
       cwd: $GIT_WORKTREE_DIR
       expect:
         exit_code: 0

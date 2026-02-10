@@ -9,6 +9,8 @@
 //	  api: 3000
 package config
 
+// E2E tracked test: pipeline validation Feb 10 2026
+
 import (
 	"fmt"
 	"os"
