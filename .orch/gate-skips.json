@@ -3,9 +3,9 @@
     {
       "gate": "verification_spec",
       "reason": "verify-test hits pre-existing pkg/episodic compile error",
-      "set_at": "2026-02-09T14:38:25.837787-08:00",
-      "set_by": "orch-go-a70kb",
-      "expires_at": "2026-02-09T16:38:25.837787-08:00"
+      "set_at": "2026-02-09T16:08:56.363126-08:00",
+      "set_by": "orch-go-adzke",
+      "expires_at": "2026-02-09T18:08:56.363126-08:00"
     }
   ]
 }
