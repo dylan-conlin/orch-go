@@ -3,8 +3,11 @@ package main
 import (
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
 )
+
+const beadsIssuesPath = ".beads/issues.jsonl"
 
 func integrateAgentBranch(target *CompletionTarget) error {
 	if target == nil {
@@ -51,6 +54,9 @@ func integrateAgentBranch(target *CompletionTarget) error {
 	if err != nil {
 		return err
 	}
+	if err := prepareMergeDirForFFMerge(mergeDir); err != nil {
+		return fmt.Errorf("failed to prepare merge worktree %s: %w", mergeDir, err)
+	}
 
 	fmt.Printf("Merging %s into %s (ff-only)\n", target.GitBranch, base)
 	if _, err := runGitMerge(mergeDir, "merge", "--ff-only", target.GitBranch); err != nil {
@@ -73,6 +79,74 @@ func ensureBranchCheckedOut(dir, branch string) error {
 
 	_, err = runGitMerge(dir, "checkout", branch)
 	return err
+}
+
+func prepareMergeDirForFFMerge(dir string) error {
+	status, err := runGitMerge(dir, "status", "--porcelain")
+	if err != nil {
+		return err
+	}
+
+	dirtyPaths := parseDirtyPaths(status)
+	if len(dirtyPaths) != 1 || dirtyPaths[0] != beadsIssuesPath {
+		return nil
+	}
+
+	if _, err := runGitMerge(dir, "restore", "--staged", "--worktree", "--", beadsIssuesPath); err != nil {
+		if _, checkoutErr := runGitMerge(dir, "checkout", "--", beadsIssuesPath); checkoutErr != nil {
+			return err
+		}
+		_, _ = runGitMerge(dir, "reset", "--", beadsIssuesPath)
+	}
+
+	fmt.Printf("Discarded local %s changes before ff-only merge\n", beadsIssuesPath)
+	return nil
+}
+
+func parseDirtyPaths(status string) []string {
+	if strings.TrimSpace(status) == "" {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	paths := make([]string, 0)
+	for _, line := range strings.Split(status, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		pathStart := -1
+		switch {
+		case len(line) >= 3 && line[2] == ' ':
+			pathStart = 3
+		case len(line) >= 2 && line[1] == ' ':
+			pathStart = 2
+		default:
+			if idx := strings.IndexByte(line, ' '); idx >= 0 {
+				pathStart = idx + 1
+			}
+		}
+		if pathStart <= 0 || pathStart >= len(line) {
+			continue
+		}
+
+		path := strings.TrimSpace(line[pathStart:])
+		if idx := strings.Index(path, " -> "); idx >= 0 {
+			path = strings.TrimSpace(path[idx+4:])
+		}
+		if path == "" {
+			continue
+		}
+		if _, exists := seen[path]; exists {
+			continue
+		}
+		seen[path] = struct{}{}
+		paths = append(paths, path)
+	}
+
+	sort.Strings(paths)
+	return paths
 }
 
 func runGitMerge(dir string, args ...string) (string, error) {
