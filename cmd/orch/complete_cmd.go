@@ -24,7 +24,10 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
+	statedb "github.com/dylan-conlin/orch-go/pkg/state"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -154,6 +157,24 @@ Examples:
 }
 
 func init() {
+	// Wire up state.db fallback for Phase: Complete checks.
+	// This breaks the circular dependency between verify and state packages.
+	verify.StateDBPhaseChecker = func(beadsID string) (string, string, bool, error) {
+		db, err := statedb.OpenDefault()
+		if err != nil || db == nil {
+			return "", "", false, err
+		}
+		defer db.Close()
+		agent, err := db.GetAgentByBeadsID(beadsID)
+		if err != nil {
+			return "", "", false, err
+		}
+		if agent == nil || strings.TrimSpace(agent.Phase) == "" {
+			return "", "", false, nil
+		}
+		return agent.Phase, agent.PhaseSummary, true, nil
+	}
+
 	completeCmd.Flags().BoolVarP(&completeForce, "force", "f", false, "DEPRECATED: Skip all verification (use targeted --skip-* flags instead)")
 	completeCmd.Flags().StringVarP(&completeReason, "reason", "r", "", "Reason for closing (default: uses phase summary)")
 	completeCmd.Flags().BoolVar(&completeApprove, "approve", false, "Approve visual changes for UI tasks (adds approval comment)")

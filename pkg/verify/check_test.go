@@ -1719,6 +1719,177 @@ func TestPhaseCompleteRecoveryFromActivity(t *testing.T) {
 	})
 }
 
+// TestPhaseCompleteRecoveryFromStateDB tests the state.db fallback
+// when Phase: Complete is in SQLite (via orch phase) but not in beads comments
+// (bd comment failed from worktree context - see orch-go-ugla4).
+func TestPhaseCompleteRecoveryFromStateDB(t *testing.T) {
+	t.Run("recovers Phase: Complete from state.db when missing from beads", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		tierPath := filepath.Join(tmpDir, ".tier")
+		if err := os.WriteFile(tierPath, []byte("light\n"), 0644); err != nil {
+			t.Fatalf("failed to write tier file: %v", err)
+		}
+
+		// Set up mock StateDBPhaseChecker that returns Complete
+		origChecker := StateDBPhaseChecker
+		t.Cleanup(func() { StateDBPhaseChecker = origChecker })
+
+		StateDBPhaseChecker = func(beadsID string) (string, string, bool, error) {
+			if beadsID == "test-statedb-123" {
+				return "Complete", "All tests passing", true, nil
+			}
+			return "", "", false, nil
+		}
+
+		// Verify with empty comments (bd comment failed)
+		result, err := VerifyCompletionWithTierAndComments("test-statedb-123", tmpDir, "light", []Comment{})
+		if err != nil {
+			t.Fatalf("verification failed: %v", err)
+		}
+
+		if !result.Passed {
+			t.Errorf("expected verification to pass with state.db fallback, got errors: %v", result.Errors)
+		}
+
+		// Should have a warning about recovery from state.db
+		warningFound := false
+		for _, w := range result.Warnings {
+			if contains(w, "recovered from state.db") {
+				warningFound = true
+				break
+			}
+		}
+		if !warningFound {
+			t.Errorf("expected warning about state.db recovery, got warnings: %v", result.Warnings)
+		}
+
+		if result.Phase.Phase != "Complete" {
+			t.Errorf("expected Phase = Complete, got %s", result.Phase.Phase)
+		}
+	})
+
+	t.Run("does not recover when state.db has non-Complete phase", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		tierPath := filepath.Join(tmpDir, ".tier")
+		if err := os.WriteFile(tierPath, []byte("light\n"), 0644); err != nil {
+			t.Fatalf("failed to write tier file: %v", err)
+		}
+
+		origChecker := StateDBPhaseChecker
+		t.Cleanup(func() { StateDBPhaseChecker = origChecker })
+
+		StateDBPhaseChecker = func(beadsID string) (string, string, bool, error) {
+			return "Implementing", "Working on it", true, nil
+		}
+
+		result, err := VerifyCompletionWithTierAndComments("test-statedb-456", tmpDir, "light", []Comment{})
+		if err != nil {
+			t.Fatalf("verification failed: %v", err)
+		}
+
+		if result.Passed {
+			t.Error("expected verification to fail when state.db phase is not Complete")
+		}
+	})
+
+	t.Run("does not recover when StateDBPhaseChecker is nil", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		tierPath := filepath.Join(tmpDir, ".tier")
+		if err := os.WriteFile(tierPath, []byte("light\n"), 0644); err != nil {
+			t.Fatalf("failed to write tier file: %v", err)
+		}
+
+		origChecker := StateDBPhaseChecker
+		t.Cleanup(func() { StateDBPhaseChecker = origChecker })
+
+		StateDBPhaseChecker = nil
+
+		result, err := VerifyCompletionWithTierAndComments("test-statedb-789", tmpDir, "light", []Comment{})
+		if err != nil {
+			t.Fatalf("verification failed: %v", err)
+		}
+
+		if result.Passed {
+			t.Error("expected verification to fail when StateDBPhaseChecker is nil")
+		}
+	})
+
+	t.Run("state.db fallback has lower priority than beads comments", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		tierPath := filepath.Join(tmpDir, ".tier")
+		if err := os.WriteFile(tierPath, []byte("light\n"), 0644); err != nil {
+			t.Fatalf("failed to write tier file: %v", err)
+		}
+
+		origChecker := StateDBPhaseChecker
+		t.Cleanup(func() { StateDBPhaseChecker = origChecker })
+
+		checkerCalled := false
+		StateDBPhaseChecker = func(beadsID string) (string, string, bool, error) {
+			checkerCalled = true
+			return "Complete", "via statedb", true, nil
+		}
+
+		// When beads comments have Phase: Complete, state.db should NOT be checked
+		comments := []Comment{
+			{Text: "Phase: Complete - All done via beads"},
+		}
+		result, err := VerifyCompletionWithTierAndComments("test-statedb-priority", tmpDir, "light", comments)
+		if err != nil {
+			t.Fatalf("verification failed: %v", err)
+		}
+
+		if !result.Passed {
+			t.Errorf("expected verification to pass, got errors: %v", result.Errors)
+		}
+
+		if checkerCalled {
+			t.Error("StateDBPhaseChecker should not be called when beads comments have Phase: Complete")
+		}
+	})
+}
+
+// TestPhaseCompleteErrorMessageIncludesSkipFlag verifies that the failure
+// message includes actionable guidance on how to bypass the gate.
+func TestPhaseCompleteErrorMessageIncludesSkipFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	tierPath := filepath.Join(tmpDir, ".tier")
+	if err := os.WriteFile(tierPath, []byte("light\n"), 0644); err != nil {
+		t.Fatalf("failed to write tier file: %v", err)
+	}
+
+	// Ensure no state.db fallback
+	origChecker := StateDBPhaseChecker
+	t.Cleanup(func() { StateDBPhaseChecker = origChecker })
+	StateDBPhaseChecker = nil
+
+	result, err := VerifyCompletionWithTierAndComments("test-skip-msg", tmpDir, "light", []Comment{})
+	if err != nil {
+		t.Fatalf("verification failed: %v", err)
+	}
+
+	if result.Passed {
+		t.Fatal("expected verification to fail")
+	}
+
+	// Check that the error message includes the skip flag guidance
+	skipFlagFound := false
+	for _, e := range result.Errors {
+		if contains(e, "--skip-phase-complete") {
+			skipFlagFound = true
+			break
+		}
+	}
+	if !skipFlagFound {
+		t.Errorf("expected error to include --skip-phase-complete guidance, got errors: %v", result.Errors)
+	}
+}
+
 func TestPhaseCompleteBypassForGPTModels(t *testing.T) {
 	t.Run("auto-bypasses phase gate for GPT model", func(t *testing.T) {
 		tmpDir := t.TempDir()

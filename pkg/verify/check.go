@@ -12,6 +12,12 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
+// StateDBPhaseChecker is an injectable function that checks state.db for phase status.
+// This avoids a circular dependency between verify and state packages.
+// Set by cmd/orch or other callers that have access to pkg/state.
+// Returns (phase, summary, found, error).
+var StateDBPhaseChecker func(beadsID string) (phase string, summary string, found bool, err error)
+
 // Gate names for verification tracking.
 // These constants are used in events to identify which verification gates failed.
 const (
@@ -636,6 +642,25 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 		}
 	}
 
+	// Fallback: Check state.db where orch phase writes directly.
+	// This handles the case where bd comment fails from worktree context
+	// (a known issue - see orch-go-ugla4) but orch phase succeeded writing
+	// to SQLite. The orch phase command writes to state.db (~1ms) and then
+	// attempts bd comment as a secondary audit trail.
+	if !phaseComplete && beadsID != "" && StateDBPhaseChecker != nil {
+		dbPhase, dbSummary, dbFound, dbErr := StateDBPhaseChecker(beadsID)
+		if dbErr == nil && dbFound && strings.EqualFold(dbPhase, "Complete") {
+			result.Phase = PhaseStatus{
+				Phase:   "Complete",
+				Summary: fmt.Sprintf("(recovered from state.db - bd comment may have failed) %s", dbSummary),
+				Found:   true,
+			}
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Phase: Complete recovered from state.db (orch phase wrote to SQLite but bd comment may not have persisted for %s)", beadsID))
+			phaseComplete = true
+		}
+	}
+
 	// Model-aware bypass: GPT models frequently miss Phase: Complete reporting.
 	// If this workspace was spawned with a GPT model, don't block completion on
 	// missing phase comments.
@@ -648,7 +673,7 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 
 	if !phaseComplete {
 		if !status.Found {
-			errMsg := fmt.Sprintf("agent has not reported any Phase status for %s", beadsID)
+			errMsg := fmt.Sprintf("agent has not reported any Phase status for %s — use --skip-phase-complete --skip-reason '<reason>' to bypass", beadsID)
 			result.Passed = false
 			result.Errors = append(result.Errors, errMsg)
 			result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
@@ -656,7 +681,7 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 			return result, nil
 		}
 
-		errMsg := fmt.Sprintf("agent phase is '%s', not 'Complete' (beads: %s)", status.Phase, beadsID)
+		errMsg := fmt.Sprintf("agent phase is '%s', not 'Complete' (beads: %s) — use --skip-phase-complete --skip-reason '<reason>' to bypass", status.Phase, beadsID)
 		result.Passed = false
 		result.Errors = append(result.Errors, errMsg)
 		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)

@@ -162,17 +162,33 @@ func GetPhaseStatus(beadsID string) (PhaseStatus, error) {
 }
 
 // IsPhaseComplete returns true if the agent has reported "Phase: Complete".
+// Checks beads comments first, then falls back to state.db (where orch phase writes).
 func IsPhaseComplete(beadsID string) (bool, error) {
 	status, err := GetPhaseStatus(beadsID)
 	if err != nil {
+		// Even if beads comments fail, try state.db fallback
+		if StateDBPhaseChecker != nil {
+			phase, _, found, dbErr := StateDBPhaseChecker(beadsID)
+			if dbErr == nil && found && strings.EqualFold(phase, "Complete") {
+				return true, nil
+			}
+		}
 		return false, err
 	}
 
-	if !status.Found {
-		return false, nil
+	if status.Found && strings.EqualFold(status.Phase, "Complete") {
+		return true, nil
 	}
 
-	return strings.EqualFold(status.Phase, "Complete"), nil
+	// Fallback: check state.db where orch phase writes directly
+	if StateDBPhaseChecker != nil {
+		phase, _, found, dbErr := StateDBPhaseChecker(beadsID)
+		if dbErr == nil && found && strings.EqualFold(phase, "Complete") {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // CloseIssue closes a beads issue with the given reason.
