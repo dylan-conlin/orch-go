@@ -1693,6 +1693,55 @@ bd comment <beads-id> "Phase: Complete"
 	}
 }
 
+func TestWorktreeArtifactDelivery(t *testing.T) {
+	tempDir := t.TempDir()
+	workspaceName := "og-feat-test-10feb"
+
+	// Create worktree directory (simulating git worktree)
+	worktreeDir := filepath.Join(tempDir, ".orch", "worktrees", workspaceName)
+	if err := os.MkdirAll(worktreeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &Config{
+		Task:          "test worktree artifact delivery",
+		Project:       "test-project",
+		ProjectDir:    tempDir,
+		WorkspaceName: workspaceName,
+		BeadsID:       "test-123",
+		SkillName:     "feature-impl",
+		Tier:          TierLight,
+		CWD:           worktreeDir, // Set CWD to worktree dir
+	}
+
+	// Call WriteContext which should create artifacts in workspace
+	// and copy them to worktree
+	if err := WriteContext(cfg); err != nil {
+		t.Fatalf("WriteContext failed: %v", err)
+	}
+
+	// Verify SPAWN_CONTEXT.md exists in RuntimeDir (worktree)
+	runtimeDir := cfg.RuntimeDir()
+	if runtimeDir != worktreeDir {
+		t.Fatalf("RuntimeDir() returned %q, expected %q", runtimeDir, worktreeDir)
+	}
+
+	contextPath := filepath.Join(runtimeDir, "SPAWN_CONTEXT.md")
+	if _, err := os.Stat(contextPath); os.IsNotExist(err) {
+		t.Errorf("expected SPAWN_CONTEXT.md to exist in RuntimeDir %s", runtimeDir)
+	}
+
+	// Verify content is valid
+	content, err := os.ReadFile(contextPath)
+	if err != nil {
+		t.Fatalf("failed to read SPAWN_CONTEXT.md: %v", err)
+	}
+
+	if !strings.Contains(string(content), "TASK: test worktree artifact delivery") {
+		t.Error("SPAWN_CONTEXT.md should contain task description")
+	}
+}
+
 func TestGenerateContext_SurfaceBeforeCircumvent(t *testing.T) {
 	t.Run("includes Surface Before Circumvent section with beads tracking", func(t *testing.T) {
 		cfg := &Config{
