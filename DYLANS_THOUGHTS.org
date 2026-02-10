@@ -1,85 +1,110 @@
-* orchestrators never remember that opencode plugins are here:
-/Users/dylanconlin/Documents/personal/orch-go/.opencode/plugins
-* we created the 'strategic center', but it appears incomplete: /Users/dylanconlin/Screenshots/screenshot_2026-01-29_10-05-58.png
+* ok so here is what my concerns are:
 
-what happened with the implementation? was this the intended result?
-* disk cleanup script isn't working:
-/opt/homebrew/Library/Homebrew/help.sh: line 38: cannot create temp file for here document: No space left on device
-/Users/dylanconlin/bin/disk-cleanup.sh✘ JSON API formula.jws.json
-Error: No space left on device @ dir_s_mkdir - /Users/dylanconlin/Library/Caches/Homebrew
-✘ JSON API formula_tap_migrations.jws.json
-Error: No space left on device @ dir_s_mkdir - /Users/dylanconlin/Library/Caches/Homebrew
-✘ JSON API cask.jws.json
-Error: No space left on device @ dir_s_mkdir - /Users/dylanconlin/Library/Caches/Homebrew
-✘ JSON API cask_tap_migrations.jws.json
-Error: No space left on device @ dir_s_mkdir - /Users/dylanconlin/Library/Caches/Homebrew
-✘ JSON API cask_tap_migrations.jws.json
-Error: No space left on device @ dir_s_mkdir - /Users/dylanconlin/Library/Caches/Homebrew
-Error: No space left on device @ dir_s_mkdir - /Users/dylanconlin/Library/Caches/Homebrew
-/Users/dylanconlin/.zshrc:.:318: no such file or directory: /libexec/asdf.sh
-zsh: locking failed for /Users/dylanconlin/.zsh_history: no space left on device: reading anyway
+we should be using gpt for all spawns and claude for orchestration. we started spawning with opus which broke this rule
 
-~ via 🥟 v1.3.5 via  v20.19.2 via 🐍 v3.9.6 on ☁️  dylan.conlin@sendcutsend.com
-❯ /Users/dylanconlin/bin/disk-cleanup.sh
-[2026-01-29 14:26:32] Starting daily cleanup
-[2026-01-29 14:26:32] Available before: 170Mi
-[2026-01-29 14:26:32] Pruning Docker build cache...
-Total:  0B
-Total reclaimed space: 0B
-[2026-01-29 14:26:32] Cleaning Go cache...
-[2026-01-29 14:26:32] Cleaning old Playwright browsers...
-[2026-01-29 14:26:32] Available after: 620Mi (recovered 0GB)
-[2026-01-29 14:26:32] Cleanup complete
+i'm concerned that the system is still broken and don't feel comfortable it's functioning correctly after the git worktrees feature landed.
 
-~ via 🥟 v1.3.5 via  v20.19.2 via 🐍 v3.9.6 on ☁️  dylan.conlin@sendcutsend.com took 10s
-❯
- 
+i still don't have a clear picture of whether or not we lost a bunch of work due to the worktree stuff landed. i was told that tons of agents never committed their work, but did it get committed by an orchestrator instead?
 
-so i started running these:
+so yeah, we should focus on proving that the orchestration system is actually functional
+* latest
+Strategic Synthesis
+Here's what I see across the full picture — the handoff, the actual state of the repo, the swarm, and the bugs:
+The Core Situation
+You went through a major incident (ghost completions — 22 issues closed with zero commits) followed by a major infrastructure change (worktree isolation) and are now in trust recovery mode — trying to prove the system works before turning the daemon back on.
+The previous orchestrator did two controlled E2E tests:
+- Test 1 (untracked): ✅ Passed — agent committed in worktree, cherry-pick works
+- Test 2 (tracked, orch-go-21515): Agent committed (27e3c5d1 on branch agent/og-feat-add-one-line-10feb-ea39), but it's sitting idle at 174K tokens, no phase reported. The commit also reverted GPT alias fixes (scope creep) — this confirms the GPT behavioral issue.
+The 5 Problems (in priority order)
+1. Rate limiter bug blocks GPT spawns when Claude is rate-limited
+The code in the spawn pipeline resolves model to DefaultModel (Anthropic Opus at line 20 of model.go) before consulting config. So the Anthropic rate limit check fires even for GPT spawns. This is a system-blocking bug — if Claude rate limit hits, no GPT spawns work either.
+2. Broken test from the GPT alias fix
+TestWorkspaceModelDetection expects gpt-5.3-codex but the code now maps to gpt-5.2-codex. One-line fix.
+3. 27 idle-warning + 4 zombie running agents consuming resources
+Agents 27-42 hours old on gpt5.3-codex (which doesn't even exist) consuming 250K-590K tokens. Dead weight.
+4. 30+ stale worktrees in /tmp and .orch/worktrees
+Many are prunable. Disk and git overhead.
+5. No GateCommitEvidence — the root cause of the ghost completions
+The verification pipeline has no gate that checks for actual git commits. This is what allowed 22 issues to close with zero commits. Important but can be addressed after trust recovery.
+Strategic Plan
+Phase 0: Stabilize (do now, get tests green)
+- Fix the broken test (one line)
+- Fix ListAliases() string that still says "latest 5.3-codex"
+- Verify build + test pass
+Phase 1: Clean up the swarm (get visibility back)
+- Abandon the 4 zombie running agents (orch-go-3xz3g.21, .22, 44cs5, 4a4da)
+- Reap the 27 idle-warning agents
+- Prune stale worktrees
+- This is the "can I see my dashboard clearly" step
+Phase 2: Fix the rate limiter bug (unblock GPT spawns)
+- The spawn pipeline resolves to DefaultModel (Anthropic) before checking config
+- Fix: early model resolution should consult config first
+- This is the highest-impact code fix — it blocks your GPT-for-all-spawns policy
+Phase 3: Complete the E2E validation (prove the pipeline)
+- Complete orch-go-21515 (test 2 agent) and verify cherry-pick lands on master
+- If cherry-pick works: the spawn→worktree→commit→complete→cherry-pick pipeline is proven
+- Then: restart daemon with confidence
+Phase 4: Add GateCommitEvidence (prevent ghost completions)
+- New verification gate that checks git log <baseline>..HEAD
+- Prevents the root cause of the incident from recurring
+- Can be daemon-processed once Phase 2-3 prove the system works
+---
+* maybe the work graph ui should make the daemon slots easier to understand/ more observable. recently, we didn't know it, but the daemon was clogged with issues that were stuck
+* new crash
 
-~ via 🥟 v1.3.5 via  v20.19.2 via 🐍 v3.9.6 on ☁️  dylan.conlin@sendcutsend.com
-❯ /Users/dylanconlin/bin/disk-cleanup.sh
-[2026-01-29 14:26:32] Starting daily cleanup
-[2026-01-29 14:26:32] Available before: 170Mi
-[2026-01-29 14:26:32] Pruning Docker build cache...
-Total:  0B
-Total reclaimed space: 0B
-[2026-01-29 14:26:32] Cleaning Go cache...
-[2026-01-29 14:26:32] Cleaning old Playwright browsers...
-[2026-01-29 14:26:32] Available after: 620Mi (recovered 0GB)
-[2026-01-29 14:26:32] Cleanup complete
+     Your ~/.local/share/opencode/auth.json only has Anthropic OAuth. The OpenAI OAuth entry is
+     completely missing — it used to have "openai": { "type": "oauth", "refresh": "rt_ivNGl5Ub.
+     ..", ... } (we saw it in the Jan 20 investigation). It's gone now.
 
-~ via 🥟 v1.3.5 via  v20.19.2 via 🐍 v3.9.6 on ☁️  dylan.conlin@sendcutsend.com took 10s
-❯ /Users/dylanconlin/bin/disk-threshold-cleanup.sh
+     2. Without OAuth, requests fall through to OPENAI_API_KEY (Platform API)
 
-~ via 🥟 v1.3.5 via  v20.19.2 via 🐍 v3.9.6 on ☁️  dylan.conlin@sendcutsend.com
-❯ /Users/dylanconlin/bin/disk-deep-clean
-=== Deep Disk Cleanup ===
-Current usage:
-/dev/disk1s1s1   460Gi    17Gi   623Mi    97%    426k  6.4M    6%   /
+     Since the OpenAI OAuth tokens are missing, the opencode-openai-codex-auth plugin has no
+     tokens to use. Requests to OpenAI models fall through to your OPENAI_API_KEY (sk-proj-
+     6TNhtR7...), which hits the OpenAI Platform API at api.openai.com.
 
-This will clean:
-  - All npm cache (~12GB)
-  - All bun install cache (~7GB)
-  - All uv/pip cache (~6GB)
-  - Docker: all unused images/volumes/containers (~13GB)
-  - Puppeteer/Playwright browsers (~2.5GB)
-  - Go build cache
+     And on the Platform API, gpt-5.3-codex does NOT exist. It only goes up to gpt-5.2-codex.
 
-Continue? [y/N] y
+     gpt-5.3-codex only exists on the Codex/ChatGPT backend — which requires OAuth
+     authentication through the plugin. That's why it worked before (when OAuth tokens were
+     present) and broke now.
 
-Cleaning npm cache...
-Cleaning bun cache...
-Cleaning uv cache...
-Cleaning pip cache...
-Cleaning Go cache...
-Cleaning Puppeteer browsers...
-Cleaning Playwright browsers...
+     The Fix
 
-Docker cleanup (if running)...
-Error response from daemon: 2 errors occurred:
-        * rpc error: code = Unknown desc = blob sha256:b03f24430d7631a8278e2b5bfa87eff22630f61810215acf48e468be4286a557 expected at /var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/b03f24430d7631a8278e2b5bfa87eff22630f61810215acf48e468be4286a557: open /var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/b03f24430d7631a8278e2b5bfa87eff22630f61810215acf48e468be4286a557: input/output error
-        * rpc error: code = Unknown desc = blob sha256:cf6e88074ddab3a982792d6adfcd56e887f0d33054a6acb9f977650c0985eda9 expected at /var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/cf6e88074ddab3a982792d6adfcd56e887f0d33054a6acb9f977650c0985eda9: open /var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/cf6e88074ddab3a982792d6adfcd56e887f0d33054a6acb9f977650c0985eda9: input/output error
+     You need to re-authenticate with OpenAI OAuth:
 
-~ via 🥟 v1.3.5 via  v20.19.2 via 🐍 v3.9.6 on ☁️  dylan.conlin@sendcutsend.com took 9s
-❯
+     opencode auth login
+
+     Choose the OpenAI / ChatGPT option, complete the OAuth flow, and this should restore the
+     openai entry in auth.json. After that, gpt-5.3-codex requests will route through the Codex
+     backend again instead of the Platform API.
+
+     Why the Plugin Config Doesn't List 5.3-codex
+
+     Notice the plugin (v4.4.0) only configures models up to gpt-5.2-codex in opencode.jsonc.
+     The gpt-5.3-codex model appeared in the models.dev cache and OpenCode lists it, but the
+     plugin hasn't been updated to include it in its config. This might also need a plugin
+     update — but first, restoring OAuth is the critical fix.
+
+     Want to try opencode auth login?
+
+     ▣  Orchestrator · claude-opus-4-6 · 1m 44s
+
+  ┃
+  ┃  200 |   async function withErrorHandling<T>(body: () => Promise<T>) {
+201 |     return body().catch((e) => {
+202 |       if (!(e instanceof Error)) throw e
+203 |       const errnoException = e as NodeJS.ErrnoException▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+204 |       if (errnoException.code === "ENOENT") {ctrl+t variants  tab agents  alt+x p commands
+205 |         throw new NotFoundError({ message: `Resource not found: ${errnoException.path}` })
+                    ^
+NotFoundError: NotFoundError
+ data: {
+  message: "Resource not found: /Users/dylanconlin/.local/share/opencode/storage/session/b402cf59063a1531925b8178d00732bdaacf3424/ses_3b61c6766ffeVNledBo9j5PTXs.json",
+},
+
+      at <anonymous> (/Users/dylanconlin/Documents/personal/opencode/packages/opencode/src/storage/storage.ts:205:15)
+
+
+
+* new issue: in the work-graph ui, new spawns don't have an actual title: /Users/dylanconlin/Screenshots/screenshot_2026-02-10_15-44-42.png
+i don't know if this is because a bug with daemon spawns or what it is. 
