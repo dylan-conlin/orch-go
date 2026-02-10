@@ -114,8 +114,24 @@ func (p *spawnPipeline) runPreFlightValidation() error {
 		return err
 	}
 
-	// Resolve model early to check if Anthropic rate limit applies
-	p.resolvedModel = model.Resolve(spawnModel)
+	// Resolve model early to check if Anthropic rate limit applies.
+	// When no --model flag is provided, consult global config (default_model, skill_models)
+	// before falling back to DefaultModel (Anthropic Opus). Without this, GPT spawns
+	// would be blocked by the Anthropic rate limit check when no --model flag is passed.
+	if spawnModel != "" {
+		p.resolvedModel = model.Resolve(spawnModel)
+	} else {
+		earlyGlobalCfg, _ := userconfig.Load()
+		if earlyGlobalCfg != nil {
+			if skillModel := earlyGlobalCfg.GetModelForSkill(p.skillName); skillModel != "" {
+				p.resolvedModel = model.Resolve(skillModel)
+			} else {
+				p.resolvedModel = model.Resolve("")
+			}
+		} else {
+			p.resolvedModel = model.Resolve("")
+		}
+	}
 
 	// Optional explicit account override before usage checks and spawn dispatch.
 	if err := maybeSwitchSpawnAccount(spawnAccount, p.resolvedModel); err != nil {
