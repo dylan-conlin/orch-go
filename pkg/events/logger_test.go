@@ -621,3 +621,12 @@ func TestLogAgentAbandoned_IncludesAttemptID(t *testing.T) {
 		t.Error("LogAgentAbandoned() should include attempt_id in data")
 	}
 }
+
+// TestSmokePipeline validates that logger.Path returns a non-empty string.
+// This is a minimal smoke test for pipeline validation.
+func TestSmokePipeline(t *testing.T) {
+	logger := NewLogger("/tmp/test.jsonl")
+	if logger.Path == "" {
+		t.Fatal("logger.Path returned empty string")
+	}
+}
