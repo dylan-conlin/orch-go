@@ -46,13 +46,13 @@ var Aliases = map[string]ModelSpec{
 	"pro":       {Provider: "google", ModelID: "gemini-2.5-pro"},
 	"pro-2.5":   {Provider: "google", ModelID: "gemini-2.5-pro"},
 
-	// OpenAI models (GPT) - IDs from models.dev
+	// OpenAI models (GPT) - verified against OpenAI /v1/models API
 	"gpt":           {Provider: "openai", ModelID: "gpt-5.2-codex"}, // Short alias for latest available GPT
 	"gpt5":          {Provider: "openai", ModelID: "gpt-5.2-codex"}, // Latest available (5.2-codex)
 	"gpt-5":         {Provider: "openai", ModelID: "gpt-5.2-codex"}, // Latest available (5.2-codex)
 	"gpt5-latest":   {Provider: "openai", ModelID: "gpt-5.2-codex"},
-	"gpt-5.3":       {Provider: "openai", ModelID: "gpt-5.2-codex"}, // 5.3 not yet available, fall back
-	"gpt-5.3-codex": {Provider: "openai", ModelID: "gpt-5.2-codex"}, // 5.3 not yet available, fall back
+	"gpt-5.3":       {Provider: "openai", ModelID: "gpt-5.2-codex"}, // 5.3 does not exist on OpenAI API, fall back
+	"gpt-5.3-codex": {Provider: "openai", ModelID: "gpt-5.2-codex"}, // 5.3 does not exist on OpenAI API, fall back
 	"codex":         {Provider: "openai", ModelID: "gpt-5.2-codex"},
 	"gpt-5.2":       {Provider: "openai", ModelID: "gpt-5.2"}, // Previous latest
 	"gpt-5.2-codex": {Provider: "openai", ModelID: "gpt-5.2-codex"},
@@ -139,7 +139,7 @@ func ListAliases() []string {
 	return []string{
 		"Anthropic: opus, sonnet, haiku (also -4.5 variants)",
 		"Google: flash, flash-2.5, flash3, flash-3, pro, pro-2.5",
-		"OpenAI: gpt/codex (latest 5.3-codex), gpt-5.2, gpt-5.2-codex, gpt-5-mini, gpt4o, gpt-4o, o3, o3-mini",
+		"OpenAI: gpt/codex (latest 5.2-codex), gpt-5.2, gpt-5.2-codex, gpt-5-mini, gpt4o, gpt-4o, o3, o3-mini",
 		"DeepSeek: deepseek, deepseek-chat, deepseek-r1, reasoning (alias for reasoner)",
 		"Alibaba: qwen, qwen-max, qwen3, qwen3-max, qwen-thinking (thinking mode snapshot)",
 	}
