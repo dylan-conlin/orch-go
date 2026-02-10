@@ -1742,6 +1742,61 @@ func TestWorktreeArtifactDelivery(t *testing.T) {
 	}
 }
 
+func TestEndToEndPipeline(t *testing.T) {
+	// Smoke test: WriteContext with a worktree config produces SPAWN_CONTEXT.md
+	// in RuntimeDir, verifying the full pipeline from config to readable artifact.
+	tempDir := t.TempDir()
+	workspaceName := "og-feat-e2e-10feb"
+
+	// Simulate a worktree directory (as git worktree would create).
+	worktreeDir := filepath.Join(tempDir, ".orch", "worktrees", workspaceName)
+	if err := os.MkdirAll(worktreeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &Config{
+		Task:          "end to end pipeline smoke test",
+		Project:       "test-project",
+		ProjectDir:    tempDir,
+		WorkspaceName: workspaceName,
+		BeadsID:       "test-e2e-001",
+		SkillName:     "feature-impl",
+		Tier:          TierLight,
+		CWD:           worktreeDir,
+	}
+
+	if err := WriteContext(cfg); err != nil {
+		t.Fatalf("WriteContext failed: %v", err)
+	}
+
+	// Core assertion: SPAWN_CONTEXT.md must exist in RuntimeDir.
+	runtimeDir := cfg.RuntimeDir()
+	if runtimeDir != worktreeDir {
+		t.Fatalf("RuntimeDir() = %q, want %q", runtimeDir, worktreeDir)
+	}
+
+	contextPath := filepath.Join(runtimeDir, "SPAWN_CONTEXT.md")
+	info, err := os.Stat(contextPath)
+	if err != nil {
+		t.Fatalf("SPAWN_CONTEXT.md not found in RuntimeDir: %v", err)
+	}
+	if info.Size() == 0 {
+		t.Fatal("SPAWN_CONTEXT.md exists but is empty")
+	}
+
+	// Verify content is well-formed and contains the task.
+	content, err := os.ReadFile(contextPath)
+	if err != nil {
+		t.Fatalf("failed to read SPAWN_CONTEXT.md: %v", err)
+	}
+	if !strings.Contains(string(content), "TASK: end to end pipeline smoke test") {
+		t.Error("SPAWN_CONTEXT.md missing expected task line")
+	}
+	if !strings.Contains(string(content), "PROJECT_DIR:") {
+		t.Error("SPAWN_CONTEXT.md missing PROJECT_DIR")
+	}
+}
+
 func TestGenerateContext_SurfaceBeforeCircumvent(t *testing.T) {
 	t.Run("includes Surface Before Circumvent section with beads tracking", func(t *testing.T) {
 		cfg := &Config{
