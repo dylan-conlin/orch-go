@@ -6,6 +6,12 @@
 	import { kbModelProbes } from '$lib/stores/kb-model-probes';
 	import { orchestratorContext, connectionStatus } from '$lib/stores/context';
 	import { agents, connectSSE, disconnectSSE, sseEvents, type Agent } from '$lib/stores/agents';
+	import {
+		agentlogEvents,
+		connectAgentlogSSE,
+		disconnectAgentlogSSE,
+		type AgentLogEvent,
+	} from '$lib/stores/agentlog';
 	import { WorkGraphTree } from '$lib/components/work-graph-tree';
 	import { ViewToggle } from '$lib/components/view-toggle';
 	import { GroupByDropdown } from '$lib/components/group-by-dropdown';
@@ -24,6 +30,14 @@
 	const EVENT_DRIVEN_REFRESH_TYPES = new Set([
 		'session.created',
 		'session.deleted',
+		'agent.completed',
+		'agent.abandoned',
+	]);
+	const AGENTLOG_EVENT_DRIVEN_REFRESH_TYPES = new Set([
+		'session.spawned',
+		'session.completed',
+		'session.error',
+		'session.auto_completed',
 		'agent.completed',
 		'agent.abandoned',
 	]);
@@ -74,6 +88,8 @@
 	let refreshBackoffMs = WORK_GRAPH_POLL_INTERVAL_MS;
 	let lastEventDrivenRefreshAt = 0;
 	let lastProcessedSSEEventId: string | null = null;
+	let lastProcessedAgentlogEventId: string | null = null;
+	let agentlogRealtimeStartUnix = 0;
 	let seenIssuesState: SeenIssuesState = { byProject: {} };
 	let currentProjectDir: string | undefined = undefined;
 	let projectChangeDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -249,6 +265,8 @@
 
 		// Connect to SSE for real-time agent updates (WIP section)
 		connectSSE();
+		agentlogRealtimeStartUnix = Math.floor(Date.now() / 1000);
+		connectAgentlogSSE();
 
 		// Keep a low-frequency poll as fallback; rely on SSE for responsive refreshes
 		startRefreshPolling();
@@ -259,6 +277,19 @@
 		if (latestEvent.id !== lastProcessedSSEEventId) {
 			lastProcessedSSEEventId = latestEvent.id;
 			if (EVENT_DRIVEN_REFRESH_TYPES.has(latestEvent.type)) {
+				triggerEventDrivenRefresh().catch(console.error);
+			}
+		}
+	}
+
+	$: if ($agentlogEvents.length > 0 && !loading) {
+		const latestAgentlogEvent = $agentlogEvents[$agentlogEvents.length - 1] as AgentLogEvent;
+		if (latestAgentlogEvent.id !== lastProcessedAgentlogEventId) {
+			lastProcessedAgentlogEventId = latestAgentlogEvent.id;
+			if (
+				latestAgentlogEvent.timestamp >= agentlogRealtimeStartUnix &&
+				AGENTLOG_EVENT_DRIVEN_REFRESH_TYPES.has(latestAgentlogEvent.type)
+			) {
 				triggerEventDrivenRefresh().catch(console.error);
 			}
 		}
@@ -277,6 +308,7 @@
 	// Disconnect SSE and stop polling on unmount
 	onDestroy(() => {
 		disconnectSSE();
+		disconnectAgentlogSSE();
 		orchestratorContext.stopPolling();
 		isRefreshPolling = false;
 		if (refreshTimeout) {
