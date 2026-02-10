@@ -53,6 +53,7 @@ type contextData struct {
 	BeadsID                  string
 	RecentValidatedEpisodes  string
 	ProjectDir               string
+	RuntimeDir               string // Worktree path (or ProjectDir if no worktree)
 	WorkspaceName            string
 	SkillName                string
 	SkillContent             string
@@ -114,11 +115,21 @@ func buildContextData(cfg *Config) contextData {
 		behaviorProfileName = behaviorProfile.Name
 	}
 
+	// RuntimeDir is the worktree path when git isolation is active,
+	// otherwise falls back to ProjectDir. This is used for PROJECT_DIR
+	// and pwd verification in SPAWN_CONTEXT.md so agents work in the
+	// correct directory (worktree for git-isolated spawns).
+	runtimeDir := cfg.RuntimeDir()
+	if runtimeDir == "" {
+		runtimeDir = cfg.ProjectDir
+	}
+
 	return contextData{
 		Task:                     cfg.Task,
 		BeadsID:                  cfg.BeadsID,
 		RecentValidatedEpisodes:  GenerateRecentValidatedEpisodesSection(cfg),
 		ProjectDir:               cfg.ProjectDir,
+		RuntimeDir:               runtimeDir,
 		WorkspaceName:            cfg.WorkspaceName,
 		SkillName:                cfg.SkillName,
 		SkillContent:             prepareSkillContent(cfg),

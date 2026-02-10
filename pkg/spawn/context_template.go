@@ -227,7 +227,7 @@ If you do not emit Phase: Complete, your work will be lost
 
 CONTEXT: [See task description]
 
-PROJECT_DIR: {{.ProjectDir}}
+PROJECT_DIR: {{.RuntimeDir}}
 
 SESSION SCOPE: Medium (estimated [1-2h / 2-4h / 4-6h+])
 - Default estimation
@@ -274,7 +274,7 @@ This applies to:
 - Creates hidden technical debt
 
 DELIVERABLES (REQUIRED):
-1. **FIRST:** Verify project location: pwd (must be {{.ProjectDir}})
+1. **FIRST:** Verify project location: pwd (must be {{.RuntimeDir}})
 {{if .IsInvestigationSkill}}
 2. **SET UP investigation deliverable:**
 {{if .HasInjectedModels}}

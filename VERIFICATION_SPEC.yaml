@@ -1,39 +1,24 @@
+# Spawn-time verification skeleton.
+# Commands are auto-detected from the project when possible.
+# Replace any remaining TODO placeholders before Phase: Complete.
+
 version: 1
 scope:
-    beads_id: orch-go-fc9od
-    workspace: og-audit-audit-kb-models-10feb-0ecc
-    skill: codebase-audit
+    beads_id: orch-go-lm3me
+    workspace: og-debug-fix-headless-agents-10feb-d794
+    skill: systematic-debugging
 verification:
-    - id: verify-artifact-exists
-      method: static
-      tier: full
-      command: test -f ".kb/investigations/2026-02-10-audit-kb-models-guides-drift-audit.md"
-      cwd: .
+    - id: verify-build
+      method: cli_smoke
+      tier: light
+      command: go build ./...
+      cwd: $GIT_WORKTREE_DIR
       expect:
         exit_code: 0
-
-    - id: verify-all-models-audited
-      description: All 28 model files appear in the audit table
-      method: static
-      tier: full
-      command: grep -c "agent-state-architecture\|spawn-architecture\|completion-lifecycle\|completion-verification\|agent-lifecycle-state\|spawn-system-evolution\|context-injection\|opencode-session\|dashboard-agent-status\|dashboard-architecture\|beads-integration-architecture\|current-model-stack\|model-access-spawn\|workspace-lifecycle-model\|daemon-autonomous\|system-reliability\|multi-model-evaluation\|sse-connection\|decidability-graph\|orchestration-cost\|beads-database-corruption\|cross-project-visibility\|escape-hatch\|follow-orchestrator\|extract-patterns\|kb-reflect-cluster\|PHASE3_REVIEW\|PHASE4_REVIEW" .kb/investigations/2026-02-10-audit-kb-models-guides-drift-audit.md
-      cwd: .
-      expect:
-        exit_code: 0
-
-    - id: verify-all-guides-audited
-      description: All 37 guide files appear in the audit table
-      method: static
-      tier: full
-      command: grep -c "spawn.md\|completion.md\|agent-lifecycle.md\|status.md\|beads-integration.md\|worker-patterns.md\|completion-gates.md\|daemon.md\|model-selection.md\|dashboard.md" .kb/investigations/2026-02-10-audit-kb-models-guides-drift-audit.md
-      cwd: .
-      expect:
-        exit_code: 0
-
-    - id: verify-synthesis-exists
-      method: static
-      tier: full
-      command: test -f ".orch/workspace/og-audit-audit-kb-models-10feb-0ecc/SYNTHESIS.md"
-      cwd: .
+    - id: verify-test
+      method: cli_smoke
+      tier: light
+      command: go test ./...
+      cwd: $GIT_WORKTREE_DIR
       expect:
         exit_code: 0

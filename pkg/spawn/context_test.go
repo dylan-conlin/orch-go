@@ -1740,6 +1740,58 @@ func TestWorktreeArtifactDelivery(t *testing.T) {
 	if !strings.Contains(string(content), "TASK: test worktree artifact delivery") {
 		t.Error("SPAWN_CONTEXT.md should contain task description")
 	}
+
+	// Critical: PROJECT_DIR must point to the worktree, not the source repo.
+	// This is the root cause fix for headless agents committing to master —
+	// agents read PROJECT_DIR and cd there for git operations.
+	expectedProjectDir := "PROJECT_DIR: " + worktreeDir
+	if !strings.Contains(string(content), expectedProjectDir) {
+		t.Errorf("SPAWN_CONTEXT.md PROJECT_DIR should point to worktree.\nwant substring: %s\ngot content containing PROJECT_DIR line that doesn't match", expectedProjectDir)
+	}
+
+	// pwd verification line must also reference worktree
+	expectedPwd := "pwd (must be " + worktreeDir + ")"
+	if !strings.Contains(string(content), expectedPwd) {
+		t.Errorf("SPAWN_CONTEXT.md pwd check should reference worktree.\nwant substring: %s", expectedPwd)
+	}
+
+}
+
+func TestWorktreeProjectDirVsRuntimeDir(t *testing.T) {
+	// Verifies that in a worktree config:
+	// - PROJECT_DIR uses RuntimeDir (worktree path)
+	// - Probe/template paths still use ProjectDir (source repo)
+	cfg := &Config{
+		Task:              "test dir distinction",
+		Project:           "test-project",
+		ProjectDir:        "/source/repo",
+		WorkspaceName:     "og-feat-test-10feb",
+		BeadsID:           "test-123",
+		SkillName:         "investigation",
+		Tier:              TierLight,
+		CWD:               "/source/repo/.orch/worktrees/og-feat-test-10feb",
+		HasInjectedModels: true,
+	}
+
+	content, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
+	}
+
+	// PROJECT_DIR must be the worktree (RuntimeDir)
+	if !strings.Contains(content, "PROJECT_DIR: /source/repo/.orch/worktrees/og-feat-test-10feb") {
+		t.Error("PROJECT_DIR should be the worktree path, not source repo")
+	}
+
+	// pwd check must be the worktree
+	if !strings.Contains(content, "pwd (must be /source/repo/.orch/worktrees/og-feat-test-10feb)") {
+		t.Error("pwd check should reference the worktree path")
+	}
+
+	// Probe template must still reference source repo (ProjectDir), not worktree
+	if !strings.Contains(content, "/source/repo/.orch/templates/PROBE.md") {
+		t.Error("Probe template path should reference source repo, not worktree")
+	}
 }
 
 func TestEndToEndPipeline(t *testing.T) {
@@ -1792,8 +1844,10 @@ func TestEndToEndPipeline(t *testing.T) {
 	if !strings.Contains(string(content), "TASK: end to end pipeline smoke test") {
 		t.Error("SPAWN_CONTEXT.md missing expected task line")
 	}
-	if !strings.Contains(string(content), "PROJECT_DIR:") {
-		t.Error("SPAWN_CONTEXT.md missing PROJECT_DIR")
+	// PROJECT_DIR must be the worktree path, not the source repo
+	expectedProjectDir := "PROJECT_DIR: " + worktreeDir
+	if !strings.Contains(string(content), expectedProjectDir) {
+		t.Errorf("SPAWN_CONTEXT.md PROJECT_DIR should be worktree path %q, not source repo", worktreeDir)
 	}
 }
 
