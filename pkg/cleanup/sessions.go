@@ -13,6 +13,8 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
+const untrackedSessionIdleTTL = 30 * time.Minute
+
 // CleanStaleSessionsOptions configures the session cleanup behavior.
 type CleanStaleSessionsOptions struct {
 	// ServerURL is the OpenCode server URL
@@ -64,8 +66,13 @@ func CleanStaleSessions(opts CleanStaleSessionsOptions) (int, error) {
 	var skippedActive int
 
 	for _, session := range sessions {
+		updatedAt := time.Unix(session.Time.Updated/1000, 0)
+		idleDuration := time.Since(updatedAt)
+
+		forceReapUntracked := isUntrackedSessionTitle(session.Title) && idleDuration >= untrackedSessionIdleTTL
+
 		// Skip recently updated sessions (within cutoff period)
-		if session.Time.Updated > cutoffMs {
+		if !forceReapUntracked && session.Time.Updated > cutoffMs {
 			continue
 		}
 
@@ -178,6 +185,19 @@ func extractWorkspaceFromTitle(title string) string {
 	}
 	// Return the full title if no beads ID suffix
 	return strings.TrimSpace(title)
+}
+
+func isUntrackedSessionTitle(title string) bool {
+	beadsID := ""
+	if idx := strings.LastIndex(title, "["); idx != -1 {
+		if end := strings.LastIndex(title, "]"); end > idx {
+			beadsID = strings.TrimSpace(title[idx+1 : end])
+		}
+	}
+	if beadsID != "" {
+		return strings.Contains(beadsID, "-untracked-")
+	}
+	return strings.Contains(strings.ToLower(title), "untracked")
 }
 
 // findWorkspacePath attempts to find the workspace directory for a given workspace name.

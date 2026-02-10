@@ -185,7 +185,7 @@ func init() {
 	daemonRunCmd.Flags().IntVar(&daemonReflectInterval, "reflect-interval", 60, "Periodic reflection interval in minutes (0 = disabled, default: 60)")
 	daemonRunCmd.Flags().BoolVar(&daemonReflectIssues, "reflect-issues", true, "Create beads issues for synthesis opportunities (default: true)")
 	daemonRunCmd.Flags().BoolVar(&daemonCleanupEnabled, "cleanup-enabled", true, "Enable periodic cleanup (default: true)")
-	daemonRunCmd.Flags().IntVar(&daemonCleanupInterval, "cleanup-interval", -1, "Cleanup interval in minutes (0 = disabled; default from .orch/config.yaml daemon.cleanup.interval_minutes, fallback 360)")
+	daemonRunCmd.Flags().IntVar(&daemonCleanupInterval, "cleanup-interval", -1, "Cleanup interval in minutes (0 = disabled; default from .orch/config.yaml daemon.cleanup.interval_minutes, fallback 30)")
 	daemonRunCmd.Flags().BoolVar(&daemonCleanupSessions, "cleanup-sessions", true, "Clean stale OpenCode sessions (default: true)")
 	daemonRunCmd.Flags().IntVar(&daemonCleanupSessionsAge, "cleanup-sessions-age", -1, "Session age threshold in days (default from .orch/config.yaml daemon.cleanup.sessions_age_days, fallback 7)")
 	daemonRunCmd.Flags().BoolVar(&daemonCleanupWorkspaces, "cleanup-workspaces", true, "Archive stale completed workspaces (default: true)")

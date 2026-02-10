@@ -92,7 +92,7 @@ type Config struct {
 	CleanupEnabled bool
 
 	// CleanupInterval is how often to run cleanup (0 = disabled).
-	// Default is 6 hours.
+	// Default is 30 minutes.
 	CleanupInterval time.Duration
 
 	// CleanupSessions if true, cleans stale OpenCode sessions.
@@ -245,13 +245,13 @@ func DefaultConfig() Config {
 		PolishMaxIssuesPerCycle:                3,
 		PolishMaxIssuesPerDay:                  10,
 		CleanupEnabled:                         true,
-		CleanupInterval:                        6 * time.Hour, // Every 6 hours by default
-		CleanupSessions:                        true,          // Clean sessions by default
-		CleanupSessionsAgeDays:                 7,             // 7 days threshold for sessions
-		CleanupWorkspaces:                      true,          // Archive stale workspaces by default
-		CleanupWorkspacesAgeDays:               7,             // 7 days threshold for workspaces
-		CleanupInvestigations:                  true,          // Archive empty investigations by default
-		CleanupPreserveOrchestrator:            true,          // Preserve orchestrator sessions
+		CleanupInterval:                        30 * time.Minute, // Every 30 minutes by default
+		CleanupSessions:                        true,             // Clean sessions by default
+		CleanupSessionsAgeDays:                 7,                // 7 days threshold for sessions
+		CleanupWorkspaces:                      true,             // Archive stale workspaces by default
+		CleanupWorkspacesAgeDays:               7,                // 7 days threshold for workspaces
+		CleanupInvestigations:                  true,             // Archive empty investigations by default
+		CleanupPreserveOrchestrator:            true,             // Preserve orchestrator sessions
 		CleanupServerURL:                       "http://127.0.0.1:4096",
 		RecoveryEnabled:                        true,
 		RecoveryInterval:                       5 * time.Minute,  // Check every 5 minutes

@@ -190,7 +190,7 @@ func (c *Config) applyLegacyFlatConfig(legacy legacyFlatConfig) (bool, []string)
 
 // Policy defaults for project-level config knobs.
 const (
-	DefaultDaemonCleanupIntervalMinutes             = 360
+	DefaultDaemonCleanupIntervalMinutes             = 30
 	DefaultDaemonCleanupSessionsAgeDays             = 7
 	DefaultDaemonCleanupWorkspacesAgeDays           = 7
 	DefaultDaemonDeadSessionIntervalMinutes         = 10

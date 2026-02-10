@@ -14,6 +14,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/process"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
@@ -127,15 +128,24 @@ func ListCompletedAgentsDefault(config CompletionConfig) ([]CompletedAgent, erro
 	for id, issue := range openIssues {
 		comments, ok := commentMap[id]
 		if !ok {
-			continue
+			comments, err = verify.GetCommentsWithDir(id, config.ProjectDir)
+			if err != nil {
+				continue
+			}
 		}
 
 		workspacePath := findWorkspaceForIssue(id, config.WorkspaceDir, config.ProjectDir)
+		signal, hasSession := detector.sessionSignal(id, workspacePath)
+		sessionID := signal.SessionID
+		idleDuration := signal.IdleDuration
 
 		// Parse phase from comments
 		phaseStatus := verify.ParsePhaseFromComments(comments)
 
 		if phaseStatus.Found && strings.EqualFold(phaseStatus.Phase, "Complete") {
+			if !hasSession {
+				sessionID = spawn.ReadSessionID(workspacePath)
+			}
 			completed = append(completed, CompletedAgent{
 				BeadsID:       id,
 				Title:         issue.Title,
@@ -143,6 +153,8 @@ func ListCompletedAgentsDefault(config CompletionConfig) ([]CompletedAgent, erro
 				PhaseSummary:  phaseStatus.Summary,
 				WorkspacePath: workspacePath,
 				Source:        completionSourcePhaseComplete,
+				SessionID:     sessionID,
+				IdleDuration:  idleDuration,
 			})
 			continue
 		}
@@ -221,22 +233,13 @@ func (d *idleCompletionDetector) Detect(beadsID, workspacePath string) (idleComp
 		return idleCompletionSignal{}, false
 	}
 
-	sessionID := spawn.ReadSessionID(workspacePath)
-	if sessionID == "" {
-		sessionID = d.sessionByID[beadsID]
-	}
-	if sessionID == "" {
-		return idleCompletionSignal{}, false
-	}
-
-	session, ok := d.sessionsByID[sessionID]
+	signal, ok := d.sessionSignal(beadsID, workspacePath)
 	if !ok {
 		return idleCompletionSignal{}, false
 	}
+	sessionID := signal.SessionID
 
-	updatedAt := time.Unix(session.Time.Updated/1000, 0)
-	idleDuration := d.now.Sub(updatedAt)
-	if idleDuration < d.idleWindow {
+	if signal.IdleDuration < d.idleWindow {
 		return idleCompletionSignal{}, false
 	}
 
@@ -251,12 +254,40 @@ func (d *idleCompletionDetector) Detect(beadsID, workspacePath string) (idleComp
 
 	return idleCompletionSignal{
 		SessionID:    sessionID,
-		IdleDuration: idleDuration,
+		IdleDuration: signal.IdleDuration,
 		Summary: fmt.Sprintf(
 			"Auto-detected by daemon: commit observed in session %s and idle for %s",
 			shortSessionID(sessionID),
-			idleDuration.Round(time.Minute),
+			signal.IdleDuration.Round(time.Minute),
 		),
+	}, true
+}
+
+func (d *idleCompletionDetector) sessionSignal(beadsID, workspacePath string) (idleCompletionSignal, bool) {
+	if d == nil || beadsID == "" {
+		return idleCompletionSignal{}, false
+	}
+
+	sessionID := ""
+	if workspacePath != "" {
+		sessionID = spawn.ReadSessionID(workspacePath)
+	}
+	if sessionID == "" {
+		sessionID = d.sessionByID[beadsID]
+	}
+	if sessionID == "" {
+		return idleCompletionSignal{}, false
+	}
+
+	session, ok := d.sessionsByID[sessionID]
+	if !ok {
+		return idleCompletionSignal{}, false
+	}
+
+	updatedAt := time.Unix(session.Time.Updated/1000, 0)
+	return idleCompletionSignal{
+		SessionID:    sessionID,
+		IdleDuration: d.now.Sub(updatedAt),
 	}, true
 }
 
@@ -501,6 +532,7 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 			result.Error = fmt.Errorf("failed to close issue: %w", err)
 			return result
 		}
+		reapCompletedAgentSession(agent, config)
 	}
 
 	result.Processed = true
@@ -634,4 +666,42 @@ func ensureAutoPhaseComplete(agent CompletedAgent, projectDir string) error {
 	}
 
 	return nil
+}
+
+func reapCompletedAgentSession(agent CompletedAgent, config CompletionConfig) {
+	sessionID := strings.TrimSpace(agent.SessionID)
+	if sessionID == "" {
+		sessionID = spawn.ReadSessionID(agent.WorkspacePath)
+	}
+	if sessionID == "" {
+		return
+	}
+
+	serverURL := config.ServerURL
+	if serverURL == "" {
+		serverURL = opencode.DefaultServerURL
+	}
+	client := opencode.NewClient(serverURL)
+
+	if client.IsSessionProcessing(sessionID) {
+		return
+	}
+
+	if err := client.DeleteSession(sessionID); err != nil && config.Verbose {
+		fmt.Printf("  Warning: failed to reap completed session %s for %s: %v\n", shortSessionID(sessionID), agent.BeadsID, err)
+	}
+
+	if agent.WorkspacePath != "" {
+		if pid := spawn.ReadProcessID(agent.WorkspacePath); pid > 0 {
+			process.Terminate(pid, "opencode")
+		}
+		ledger := process.NewDefaultLedger()
+		workspaceName := filepath.Base(agent.WorkspacePath)
+		if workspaceName != "" {
+			_ = ledger.RemoveByWorkspace(workspaceName)
+		}
+	}
+	if agent.BeadsID != "" {
+		_ = process.NewDefaultLedger().RemoveByBeadsID(agent.BeadsID)
+	}
 }
