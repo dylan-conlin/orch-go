@@ -1,14 +1,14 @@
 {
-  "workspace_name": "og-feat-add-one-line-10feb-ea39",
-  "skill": "feature-impl",
-  "beads_id": "orch-go-21515",
+  "workspace_name": "og-debug-fix-orch-complete-10feb-28e9",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-a35n7",
   "source_project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
   "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
-  "git_worktree_dir": "/Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-add-one-line-10feb-ea39",
-  "git_branch": "agent/og-feat-add-one-line-10feb-ea39",
-  "git_baseline": "4f787efc7732362c1303c8338536ffbe13bb784b",
-  "spawn_time": "2026-02-10T14:43:15-08:00",
+  "git_worktree_dir": "/Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-debug-fix-orch-complete-10feb-28e9",
+  "git_branch": "agent/og-debug-fix-orch-complete-10feb-28e9",
+  "git_baseline": "cd274101a6b9af624da4499297f4083c0c5e2b71",
+  "spawn_time": "2026-02-10T13:06:10-08:00",
   "tier": "light",
   "spawn_mode": "opencode",
-  "model": "openai/gpt-5.2"
+  "model": "anthropic/claude-opus-4-6"
 }

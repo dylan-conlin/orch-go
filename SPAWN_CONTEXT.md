@@ -1,4 +1,4 @@
-TASK: Add a one-line comment '// E2E tracked test: pipeline validation Feb 10 2026' to the top of pkg/config/config.go, just below the package declaration. Commit with message 'test: e2e tracked pipeline validation'. This is a trivial test.
+TASK: Fix orch complete resolving wrong workspace when multiple attempts exist (orch-go-a35n7). When multiple workspaces exist for same beads ID (after abandon + respawn), orch complete picks the first match instead of the most recent active one. Look at pkg/complete/ for workspace resolution logic — it needs to prefer the most recent non-abandoned workspace. Repro: spawn for orch-go-t7yn3 (fails), abandon, spawn again (succeeds), orch complete orch-go-t7yn3 resolves to abandoned workspace. Also fix the cherry-pick-already-applied case: when commits are already on master, cherry-pick fails with 'empty commit' — should detect this and skip gracefully.
 
 
 
@@ -10,25 +10,11 @@ SPAWN TIER: light
 
 
 
-MODEL BEHAVIOR PROFILE: needs-nudge
+MODEL BEHAVIOR PROFILE: strict-complete
 
-⚠️ This model often needs an explicit completion nudge.
-
-Before /exit, explicitly run `orch phase orch-go-21515 Complete "[1-2 sentence summary]"` and confirm it succeeds.
+✅ This model usually reports phases reliably. Still follow the completion checklist exactly.
 
 
-
-
-🚨 GIT COMMIT REQUIREMENT (CRITICAL):
-Your work MUST be committed to git before session ends. Any uncommitted changes cannot be integrated by the orchestrator.
-
-After completing your work and before reporting Phase: Complete:
-```bash
-git add -A
-git commit -m "type: description of changes"
-```
-
-**Why:** The orchestrator uses git commits to detect completed work. If you do not commit, your changes will be lost — even if the code is correct and tests pass.
 
 
 
@@ -54,11 +40,26 @@ git commit -m "type: description of changes"
 
 
 
+## REPRODUCTION (BUG FIX)
+
+🐛 **This is a bug fix issue.** The fix is verified when the reproduction steps no longer produce the bug.
+
+**Original Reproduction:**
+When multiple workspaces exist for the same beads ID (e.g. after abandon + respawn), orch complete picks the wrong one. Should resolve to the most recent active workspace, not the first match. Workaround: complete by workspace name directly, but that requires knowing the name.
+
+**Verification Requirement:**
+Before marking Phase: Complete, you MUST:
+1. Attempt to reproduce the original bug using the steps above
+2. Confirm the bug NO LONGER reproduces after your fix
+3. Report verification via: `bd comment orch-go-a35n7 "Reproduction verified: [describe test performed]"`
+
+⚠️ A bug fix is only complete when the original reproduction steps pass.
+
 
 
 🚨 FIRST 3 ACTIONS (ADVISORY - STRONGLY RECOMMENDED):
 Suggested first actions for visibility:
-1. Report phase: `orch phase orch-go-21515 Planning "[brief description]"`
+1. Report phase: `orch phase orch-go-a35n7 Planning "[brief description]"`
 2. Read relevant codebase context for your task
 3. Begin planning
 
@@ -73,10 +74,8 @@ TERMINAL CHECKLIST (EXECUTE IN ORDER):
 - [ ] NEVER run `git push` (orchestrator handles remote push)
 - [ ] `git push` can trigger deploys that disrupt production systems
 
-- [ ] Commit all changes: `git add -A && git commit -m "type: description"`
 
-
-- [ ] Run: `orch phase orch-go-21515 Complete "[1-2 sentence summary of deliverables]"`
+- [ ] Run: `orch phase orch-go-a35n7 Complete "[1-2 sentence summary of deliverables]"`
 - [ ] Run: `/exit`
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
@@ -86,7 +85,7 @@ If you do not emit Phase: Complete, your work will be lost
 
 CONTEXT: [See task description]
 
-PROJECT_DIR: /Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-add-one-line-10feb-ea39
+PROJECT_DIR: /Users/dylanconlin/Documents/personal/orch-go
 
 SESSION SCOPE: Medium (estimated [1-2h / 2-4h / 4-6h+])
 - Default estimation
@@ -115,7 +114,7 @@ AUTHORITY:
 
 **Surface Before Circumvent:**
 Before working around ANY constraint (technical, architectural, or process):
-1. Surface it first: `bd comment orch-go-21515 "CONSTRAINT: [what constraint] - [why considering workaround]"`
+1. Surface it first: `bd comment orch-go-a35n7 "CONSTRAINT: [what constraint] - [why considering workaround]"`
 2. Wait for orchestrator acknowledgment before proceeding
 3. The accountability is a feature, not a cost
 
@@ -131,7 +130,7 @@ This applies to:
 - Creates hidden technical debt
 
 DELIVERABLES (REQUIRED):
-1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-add-one-line-10feb-ea39)
+1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go)
 
 2. [Task-specific deliverables from skill guidance]
 
@@ -147,21 +146,21 @@ Signal orchestrator when blocked:
 
 ## PROGRESS TRACKING
 
-You were spawned from beads issue: **orch-go-21515**
+You were spawned from beads issue: **orch-go-a35n7**
 
 **Phase reporting:** Use `orch phase` — one command that writes to SQLite (~1ms) for instant dashboard visibility AND automatically adds a bd comment for permanent audit trail.
 
 ```bash
 # Report progress at phase transitions
-orch phase orch-go-21515 Planning "Analyzing codebase structure"
-orch phase orch-go-21515 Implementing "Adding authentication middleware"
-orch phase orch-go-21515 Complete "All tests passing, ready for review"
+orch phase orch-go-a35n7 Planning "Analyzing codebase structure"
+orch phase orch-go-a35n7 Implementing "Adding authentication middleware"
+orch phase orch-go-a35n7 Complete "All tests passing, ready for review"
 
 # Report blockers immediately
-orch phase orch-go-21515 BLOCKED "Need clarification on API contract"
+orch phase orch-go-a35n7 BLOCKED "Need clarification on API contract"
 
 # Report questions
-orch phase orch-go-21515 QUESTION "Should we use JWT or session-based auth?"
+orch phase orch-go-a35n7 QUESTION "Should we use JWT or session-based auth?"
 ```
 
 **When to report:**
@@ -176,7 +175,7 @@ orch phase orch-go-21515 QUESTION "Should we use JWT or session-based auth?"
 
 
 
-## SKILL GUIDANCE (feature-impl)
+## SKILL GUIDANCE (systematic-debugging)
 
 **IMPORTANT:** You have been spawned WITH this skill context already loaded.
 You do NOT need to invoke this skill using the Skill tool.
@@ -464,564 +463,757 @@ The orchestrator cannot close this issue until you report Phase: Complete.
 
 
 ---
-name: feature-impl
+name: systematic-debugging
 skill-type: procedure
-description: Unified feature implementation with configurable phases (investigation, clarifying-questions, design, implementation, validation, integration). Replaces test-driven-development, surgical-change, and feature-coordination skills. Use for any feature work with phases/mode/validation configured by orchestrator.
+description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes - four-phase framework (root cause investigation, pattern analysis, hypothesis testing, implementation) that ensures understanding before attempting solutions
 dependencies:
   - worker-base
 ---
 
 <!-- AUTO-GENERATED by skillc -->
-<!-- Checksum: 0ab2e75749df -->
-<!-- Source: /Users/dylanconlin/orch-knowledge/skills/src/worker/feature-impl/.skillc -->
-<!-- Deployed to: /Users/dylanconlin/.claude/skills/src/worker/feature-impl/SKILL.md -->
-<!-- To modify: edit files in /Users/dylanconlin/orch-knowledge/skills/src/worker/feature-impl/.skillc, then run: skillc deploy -->
+<!-- Checksum: a0f9bf3b4203 -->
+<!-- Source: /Users/dylanconlin/orch-knowledge/skills/src/worker/systematic-debugging/.skillc -->
+<!-- Deployed to: /Users/dylanconlin/.claude/skills/src/worker/systematic-debugging/SKILL.md -->
+<!-- To modify: edit files in /Users/dylanconlin/orch-knowledge/skills/src/worker/systematic-debugging/.skillc, then run: skillc deploy -->
 <!-- Last compiled: 2026-02-06 15:35:56 -->
 
 
 ## Summary
 
-name: feature-impl
-skill-type: procedure
-description: Unified feature implementation with configurable phases (investigation, clarifying-questions, design, implementation, validation, integration). Replaces test-driven-development, surgical-change, and feature-coordination skills. Use for any feature work with phases/mode/validation configured by orchestrator.
+Four-phase debugging framework: Root Cause → Pattern Analysis → Hypothesis Testing → Implementation. Core principle: understand before fixing.
 
 ---
 
----
-name: feature-impl
-skill-type: procedure
-description: Unified feature implementation with configurable phases (investigation, clarifying-questions, design, implementation, validation, integration). Replaces test-driven-development, surgical-change, and feature-coordination skills. Use for any feature work with phases/mode/validation configured by orchestrator.
----
-
-<!-- AUTO-GENERATED by skillc -->
-<!-- Checksum: 047ddb2689b3 -->
-<!-- Source: .skillc -->
-<!-- To modify: edit files in .skillc, then run: skillc build -->
-<!-- Last compiled: 2026-01-07 14:41:54 -->
-
+# Systematic Debugging
 
 ## Summary
 
-**For orchestrators:** Spawn via `orch spawn feature-impl "task" --phases "..." --mode ... --validation ...`
+Four-phase debugging framework: Root Cause → Pattern Analysis → Hypothesis Testing → Implementation. Core principle: understand before fixing.
 
 ---
 
-# Feature Implementation (Unified Framework)
+## The Iron Law
 
-**For orchestrators:** Spawn via `orch spawn feature-impl "task" --phases "..." --mode ... --validation ...`
-
-**For workers:** You've been spawned to implement a feature using a phased approach with specific configuration.
-
----
-
-## Your Configuration
-
-**Read from SPAWN_CONTEXT.md** to understand your configuration:
-
-- **Phases:** Which phases you'll proceed through (e.g., `investigation,clarifying-questions,design,implementation,validation`)
-- **Current Phase:** Determined by your progress (start with first configured phase)
-- **Implementation Mode:** `tdd`, `direct`, or `verification-first` (only relevant if implementation phase included)
-- **Validation Level:** `none`, `tests`, `smoke-test`, or `multi-phase` (only relevant if validation phase included)
-
-**Example configuration:**
 ```
-Phases: design, implementation, validation
-Mode: tdd
-Validation: smoke-test
+NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
 ```
 
-**Mode Selection Guide:**
-
-| Mode | When to Use |
-|------|-------------|
-| `tdd` | Adding behavior (APIs, business logic, UI) - discover through tests |
-| `direct` | Non-behavioral changes (refactoring, config, docs) |
-| `verification-first` | Spec exists, multi-agent work, high-risk features - spec is the contract |
+If you haven't completed Phase 1, you cannot propose fixes.
 
 ---
 
-## Deliverables
+## When to Use
 
-| Configuration | Required |
-|---------------|----------|
-| investigation phase | Investigation file |
-| design phase | Design document |
-| implementation phase | Source code |
-| mode=tdd | Tests (write first) |
-| mode=verification-first | Verification spec consumed + tests with AC-xxx traceability + evidence per spec |
-| validation=tests | Tests |
-| validation=smoke-test | Validation evidence via bd comment |
-| validation=multi-phase | Phase checkpoints via bd comment |
+Use for ANY technical issue: test failures, production bugs, unexpected behavior, performance problems, build failures, integration issues.
+
+**Use ESPECIALLY when:**
+- Under time pressure (emergencies make guessing tempting)
+- "Just one quick fix" seems obvious
+- Previous fixes didn't work
+- You don't fully understand the issue
 
 ---
 
-## Workflow
+## Quick Reference
 
-Proceed through phases sequentially per your configuration.
+1. Check if specialized technique applies (see patterns section)
+2. Check console/logs for errors - error may already be captured
+3. Phase 1: Root cause investigation (understand WHAT and WHY)
+4. Phase 2: Pattern analysis (working vs broken differences)
+5. Phase 3: Hypothesis testing (form and test specific theory)
+6. Phase 4: Implementation (failing test, fix root cause, verify)
+7. Document and complete
 
-**Phases:** Investigation → Clarifying Questions → Design → Implementation (TDD/direct) → Validation → Self-Review → Integration
+**Red flag:** If thinking "quick fix for now" → STOP, return to Phase 1.
 
-Track progress via `bd comment <beads-id> "Phase: X - details"`.
 
----
+## Error Visibility (BEFORE Phase 1)
 
-## Step 0: Scope Enumeration (ADVISORY)
+Check if errors have already been logged before investigating:
 
-**Purpose:** Prevent "Section Blindness" - implementing only part of spawn context.
-
-> **Note:** This is an **advisory checkpoint** - suggested but not enforced by `orch complete`. Code-enforced gates (like Phase: Complete, test evidence) will block completion if not satisfied.
-
-**Before starting ANY phase work:**
-
-1. **Read ENTIRE SPAWN_CONTEXT** - Don't skim. Don't stop at first section.
-2. **Enumerate ALL Requirements** - List every deliverable from ALL sections
-3. **Report Scope via Beads:**
-   ```bash
-   bd comment <beads-id> "Scope: 1. [requirement] 2. [requirement] 3. [requirement] ..."
-   ```
-4. **Flag Uncertainty** - If unclear what's in scope, ask before proceeding
-
-**Why:** Agents repeatedly implement `## Implementation` while ignoring other sections. Forcing explicit enumeration catches this BEFORE implementation.
-
-**Completion Criteria:**
-- [ ] Read full SPAWN_CONTEXT (all sections)
-- [ ] Enumerated ALL requirements
-- [ ] Reported scope via `bd comment`
-- [ ] Flagged any uncertainty
-
-**Once Step 0 complete → Proceed to first configured phase.**
-
----
-
-## Phase Guidance
-
-### Investigation Phase
-
-**Purpose:** Understand existing system before making changes.
-
-**Deliverables:**
-- Investigation file: `.kb/investigations/YYYY-MM-DD-inv-{topic}.md`
-- Findings with Evidence-Source-Significance pattern
-- Synthesis connecting findings
-
-**Key workflow:**
-1. Create investigation template BEFORE exploring (not at end)
-2. Add findings progressively as you explore
-3. Update synthesis every 3-5 findings
-4. Document uncertainty honestly (tested vs untested)
-
-**Completion:** Investigation committed, reported via `bd comment <beads-id> "Phase: Clarifying Questions"`
-
-**Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-investigation.md` for detailed workflow, templates, and examples.
-
----
-
-### Clarifying Questions Phase
-
-**Purpose:** Surface ambiguities BEFORE design work begins.
-
-**Deliverables:**
-- Questions documented via `bd comment`
-- Answers received from orchestrator
-- No remaining ambiguities
-
-**Key workflow:**
-1. Review what you know (investigation findings or SPAWN_CONTEXT)
-2. Identify gaps: Edge cases? Error handling? Integration? Compatibility? Security?
-3. Ask using directive-guidance pattern (state recommendation, ask if matches intent)
-4. Block until answers received
-
-**Completion:** All questions answered, reported via `bd comment <beads-id> "Phase: Design"`
-
-**Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-clarifying-questions.md` for question categories and patterns.
-
----
-
-### Design Phase
-
-**Purpose:** Document architectural approach before implementation.
-
-**Deliverables:**
-- Design document: `docs/designs/YYYY-MM-DD-{feature}.md`
-- Testing strategy
-- Architecture decision with trade-off analysis
-
-**Key workflow:**
-1. Review investigation findings (if applicable)
-2. Determine if design exploration needed (multiple viable approaches → escalate)
-3. Create design document using template
-4. Get orchestrator approval before implementation
-
-**Completion:** Design approved, committed, reported via `bd comment <beads-id> "Phase: Implementation"`
-
-**Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-design.md` for detailed workflow and template.
-
----
-
-### Harm Assessment (Pre-Implementation Checkpoint)
-
-**Purpose:** Evaluate feature ethics BEFORE implementation. Distinct from Security Review (code quality) - this is about feature design itself.
-
-**When to run:** Before starting Implementation Phase (TDD or direct).
-
-**Quick Assessment:**
-
-| Question | If YES → |
-|----------|----------|
-| Could this harm, deceive, or manipulate users? | Document concern |
-| Does this collect/transmit unexpected data? | Document concern |
-| Could this be weaponized at scale? | Document concern |
-| Does this undermine informed consent? | Document concern |
-| Disproportionate impact on vulnerable populations? | Document concern |
-
-**If concerns identified:**
-1. Document: `bd comment <beads-id> "HARM ASSESSMENT: [concern]"`
-2. Check if SPAWN_CONTEXT addresses with safeguards
-3. If addressed → Proceed with documented safeguards
-4. If NOT addressed → Escalate via Constitutional Objection Protocol (see worker-base)
-
-**If no concerns:** Proceed to Implementation.
-
-**Common false positives (usually OK):**
-- Analytics with proper consent disclosure
-- Security features (authentication, rate limiting)
-- Moderation tools with appeals process
-- Personalization with user control
-
-**Completion:** Assessment documented via `bd comment`, proceed to Implementation Phase.
-
----
-
-### Implementation Phase (TDD Mode)
-
-**Purpose:** Implement feature using test-driven development.
-
-**When to use:** Feature adds/changes behavior (APIs, business logic, UI).
-
-**The Iron Law:** NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST.
-
-**Key workflow:**
-1. **Pre-impl exploration:** Explore codebase with Task tool before coding
-2. **TDD Cycle:** RED (write failing test) → GREEN (minimal code to pass) → REFACTOR
-3. **UI features:** Mandatory smoke test (tests passing ≠ feature working)
-4. **Commit pattern:** Separate test and implementation commits
-
-**Red flags (STOP and restart):**
-- Writing code before test
-- Test passes immediately
-- Rationalizing "just this once"
-
-**Completion:** All tests pass, reported via `bd comment <beads-id> "Phase: Validation"`
-
-**Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-implementation-tdd.md` and `reference/tdd-best-practices.md`.
-
----
-
-### Implementation Phase (Verification-First Mode)
-
-**Purpose:** Implement feature by specifying expected behavior, instrumenting verification, implementing, then verifying behavior matches spec.
-
-**When to use:** Spec exists, multi-agent work (interface contracts), high-risk features where "working" must be defined upfront.
-
-**Core workflow:**
-1. **Consume Spec:** Parse verification spec (observable behaviors, acceptance criteria, failure modes, evidence requirements)
-2. **Instrument:** Write tests that prove acceptance criteria (AC-xxx traceability)
-3. **Implement:** Minimal code to pass tests
-4. **Verify:** Cross-reference behavior against spec + capture evidence per spec requirements
-
-**Key difference from TDD:**
-- TDD: Write test for behavior you want → discover through tests
-- Verification-first: Read spec → write test that proves AC-xxx → implement → verify behavior matches spec
-
-**Step 0.5: Consume Verification Spec (ADVISORY)**
-
-> **Note:** This is an **advisory checkpoint** for verification-first mode. The code-enforced gates will verify deliverables exist, but consuming the spec upfront is suggested best practice.
-
-Before any implementation, locate and parse the verification spec:
-1. Check spawn context for attached verification-spec.md
-2. Enumerate: Behaviors, Acceptance Criteria (AC-xxx), Failure Modes (FM-xxx), Evidence Requirements
-3. Create traceability matrix: Behavior → Criterion → Test → Evidence
-4. Report: `bd comment <beads-id> "Spec consumed: [N] behaviors, [M] criteria, [K] failure modes"`
-
-**Minimum Viable Spec (for simple work):**
-
-If no formal spec exists, create inline:
-```markdown
-**Observable Behavior:** [What can be seen when working - one sentence]
-**Acceptance Criterion:** [Testable pass/fail condition - one criterion]
-**Failure Mode:** Symptom: [what you see] → Fix: [how to resolve]
-**Evidence:** [What artifact proves it works]
+```bash
+# Check project-specific error logs
+tail -50 *.log 2>/dev/null
+# Check build/test output
+make test 2>&1 | tail -30
+# Check runtime logs (if applicable)
+docker logs <container> --tail 50 2>/dev/null
 ```
 
-**Red flags (STOP and reassess):**
-- Writing code before tests exist
-- Tests don't reference acceptance criteria (ad-hoc tests)
-- Implementing features not in spec (scope creep)
-- Behavior doesn't match spec but tests pass (bad tests)
+**If logs show relevant errors:**
+1. Copy error details to investigation file
+2. Use as starting point for Phase 1
+3. You may already have root cause evidence
 
-**Completion:** All criteria verified with evidence, reported via `bd comment <beads-id> "Phase: Validation - Spec criteria: AC-001 ✅, AC-002 ✅"`
-
-**Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-implementation-verification-first.md` for detailed workflow.
+**If empty or unhelpful:** Proceed to Phase 1.
 
 ---
 
-### Implementation Phase (Direct Mode)
+## Common Debugging Patterns
 
-**Purpose:** Implement non-behavioral changes without TDD overhead.
+Before starting Phase 1, identify if a specialized technique applies:
 
-**When to use:** Refactoring, configuration, documentation, code cleanup.
+| Pattern | Symptoms | Technique |
+|---------|----------|-----------|
+| **Deep call stack** | Error deep in execution, origin unclear, data corruption propagated | [techniques/root-cause-tracing.md](techniques/root-cause-tracing.md) |
+| **Timing-dependent** | Flaky tests, race conditions, arbitrary timeouts, "works locally fails in CI" | [techniques/condition-based-waiting.md](techniques/condition-based-waiting.md) |
+| **Invalid data propagation** | Bad data causes failures far from source, missing validation | [techniques/defense-in-depth.md](techniques/defense-in-depth.md) |
 
-⚠️ **Critical:** If changing behavior → STOP and switch to TDD mode.
+Load the appropriate technique for specialized guidance.
 
-**Key workflow:**
-1. **Pre-impl exploration:** Verify change is non-behavioral
-2. Run existing tests (establish baseline)
-3. Make focused changes (≤2 files, ≤1 hour)
-4. Verify no regressions
 
-**Completion:** Tests pass, reported via `bd comment <beads-id> "Phase: Validation"`
+## The Four Phases
 
-**Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-implementation-direct.md`.
+Complete each phase before proceeding to next.
+
+### Phase 1: Root Cause Investigation
+
+**Goal:** Understand WHAT and WHY
+
+<!-- Inlined from: phases/phase1-root-cause.md -->
+<!-- Original: **Load:** [phases/phase1-root-cause.md](phases/phase1-root-cause.md) -->
+
+# Phase 1: Root Cause Investigation
+
+**BEFORE attempting ANY fix:**
+
+## 1. Read Error Messages Carefully
+
+- Don't skip past errors or warnings
+- They often contain the exact solution
+- Read stack traces completely
+- Note line numbers, file paths, error codes
+
+## 2. Reproduce Consistently
+
+- Can you trigger it reliably?
+- What are the exact steps?
+- Does it happen every time?
+- If not reproducible → gather more data, don't guess
+
+## 3. Check Recent Changes AND Pattern Recognition
+
+**Recent changes:**
+- What changed that could cause this?
+- Git diff, recent commits
+- New dependencies, config changes
+- Environmental differences
+
+**Pattern recognition check (whack-a-mole detection):**
+- Search git history for similar fixes:
+  - `git log --all --grep="[issue-type]" --oneline` (e.g., "timeout", "null check", "race condition")
+  - `git log --all --grep="[component-name]" --oneline` (e.g., "proxy", "modal", "login")
+- Check commit messages/diffs for this issue type
+- **If 2+ previous fixes of same TYPE found → Whack-a-mole pattern detected**
+
+**Whack-a-mole indicators:**
+- Same issue type fixed in different locations (proxy timeout, modal timeout, API timeout)
+- Incrementally adjusting same variable type (bumping timeouts, adding null checks, increasing retries)
+- Each fix works temporarily but similar issues appear elsewhere
+- Pattern of "just increase this value" fixes
+
+**If whack-a-mole pattern detected:**
+1. **STOP fixing symptoms**
+2. Investigate systemic cause:
+   - Missing centralized configuration?
+   - Missing validation layer?
+   - Architectural issue (tight coupling, shared mutable state)?
+   - Environment-specific behavior not accounted for (proxy latency, network conditions)?
+3. Design systematic solution BEFORE implementing fix
+4. Document pattern in workspace under "Root Cause Analysis"
+5. Escalate to orchestrator for systemic design if needed (may spawn `architect -i`)
+
+**Example from real session:**
+- Immediate issue: Modal timeout (2s → 10s fix needed)
+- Git history check: Found 4 previous timeout fixes (proxy: 60s→120s, various other timeouts increased)
+- Pattern recognized: Hardcoded timeouts fail with residential proxies (2-4s unpredictable latency)
+- Systemic solution: Centralized timeout config with proxy multiplier (prevents future timeout whack-a-mole)
+
+## 4. Gather Evidence in Multi-Component Systems
+
+**WHEN system has multiple components (CI → build → signing, API → service → database):**
+
+**BEFORE proposing fixes, add diagnostic instrumentation:**
+```
+For EACH component boundary:
+  - Log what data enters component
+  - Log what data exits component
+  - Verify environment/config propagation
+  - Check state at each layer
+
+Run once to gather evidence showing WHERE it breaks
+THEN analyze evidence to identify failing component
+THEN investigate that specific component
+```
+
+**Example (multi-layer system):**
+```bash
+# Layer 1: Workflow
+echo "=== Secrets available in workflow: ==="
+echo "IDENTITY: ${IDENTITY:+SET}${IDENTITY:-UNSET}"
+
+# Layer 2: Build script
+echo "=== Env vars in build script: ==="
+env | grep IDENTITY || echo "IDENTITY not in environment"
+
+# Layer 3: Signing script
+echo "=== Keychain state: ==="
+security list-keychains
+security find-identity -v
+
+# Layer 4: Actual signing
+codesign --sign "$IDENTITY" --verbose=4 "$APP"
+```
+
+**This reveals:** Which layer fails (secrets → workflow ✓, workflow → build ✗)
+
+## 5. Layer Bias Anti-Pattern (Symptom Location ≠ Root Cause)
+
+**CRITICAL:** Where symptoms appear is often NOT where root cause lives.
+
+**Benchmark evidence (Jan 2026):** In a debugging task where admin logout didn't work:
+- 4/6 AI models created frontend fixes (LoginPage.tsx, AdminLogin.tsx, etc.)
+- Root cause was backend: missing `path="/"` in cookie operations
+- Frontend was where symptom appeared; backend was where fix belonged
+
+**Layer bias triggers:**
+- UI shows wrong state → Check if state source (API/backend) is correct BEFORE touching UI
+- Frontend behavior broken → Check if backend returns expected data FIRST
+- Error visible in logs at layer N → Trace whether cause is at layer N-1
+
+**Anti-pattern detection:**
+- You're about to create a new frontend component to "handle" an auth issue
+- You're adding UI workarounds for data that shouldn't be wrong
+- You're fixing display logic when the displayed value is incorrect at source
+
+**Countermeasure:** Before implementing frontend fix, verify:
+1. Is backend returning correct data? (check API response)
+2. Is state being set correctly at source? (check data flow)
+3. Would fixing at source eliminate the need for frontend fix?
+
+**Rule:** Fix at lowest layer that addresses root cause. UI fixes for backend bugs = symptom masking.
+
+## 6. Trace Data Flow
+
+**WHEN error is deep in call stack:**
+
+**REQUIRED SUB-SKILL:** Use superpowers:root-cause-tracing for backward tracing technique
+
+**Quick version:**
+- Where does bad value originate?
+- What called this with bad value?
+- Keep tracing up until you find the source
+- Fix at source, not at symptom
 
 ---
 
-### Validation Phase
+## Success Criteria for Phase 1
 
-**Purpose:** Verify implementation works as intended.
+You understand:
+- **WHAT** is broken (specific component, function, data)
+- **WHY** it's broken (root cause, not symptom)
+- **WHERE** the problem originates (source of bad data/state)
 
-**Validation levels:**
+If you can't answer all three, continue investigating. Don't proceed to Phase 2.
 
-| Level | Workflow |
-|-------|----------|
-| `none` | Commit, report complete |
-| `tests` | Run test suite, verify pass, commit |
-| `smoke-test` | Tests + manual verification + evidence capture |
-| `multi-phase` | Tests + smoke + STOP for orchestrator approval |
+Key activities:
+- Read error messages carefully (stack traces completely)
+- Reproduce consistently
+- Check recent changes AND pattern recognition (whack-a-mole detection)
+- In multi-component systems: add diagnostic instrumentation before fixing
+- Trace data flow to source
 
-**⚠️ UI Visual Verification (MANDATORY if web/ files modified):**
-
-Before completing, run: `git diff --name-only | grep "^web/"`
-
-If ANY files returned → Visual verification is REQUIRED:
-1. Rebuild server: `make install` then restart via `orch servers`
-2. Capture screenshot via Playwright MCP (`browser_take_screenshot` tool)
-3. Document evidence: `bd comment <beads-id> "Visual verification: [description]"`
-
-**⛔ Cannot mark Phase: Complete without visual evidence for web/ changes.**
-
-**When validation fails:**
-1. Check logs for runtime errors (test output, project logs)
-2. Analyze failure output
-3. Return to Implementation, fix, re-validate
-
-**Completion:** Validation evidence documented, reported via `bd comment`
-
-**Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-validation.md` and `reference/validation-examples.md`.
+**Success criteria:** You understand root cause, not just symptoms
 
 ---
 
-### Integration Phase
+### Phase 2: Pattern Analysis
 
-**Purpose:** Combine multiple validated phases into cohesive feature.
+**Goal:** Identify differences between working and broken
 
-**When to use:** Multi-phase features after individual phases validated.
+<!-- Inlined from: phases/phase2-pattern-analysis.md -->
+<!-- Original: **Load:** [phases/phase2-pattern-analysis.md](phases/phase2-pattern-analysis.md) -->
 
-**Key workflow:**
-1. Review all completed phases via beads history
-2. Identify integration points (data flow, shared state, API contracts)
-3. Write integration tests for cross-phase scenarios
-4. E2E verification + regression testing
-5. Final smoke test of complete feature
+# Phase 2: Pattern Analysis
 
-**Completion:** Integration tests pass, reported via `bd comment <beads-id> "Phase: Validation"`
+**Find the pattern before fixing:**
 
-**Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-integration.md`.
+## 1. Find Working Examples
+
+- Locate similar working code in same codebase
+- What works that's similar to what's broken?
+
+## 2. Compare Against References
+
+- If implementing pattern, read reference implementation COMPLETELY
+- Don't skim - read every line
+- Understand the pattern fully before applying
+
+## 3. Identify Differences
+
+- What's different between working and broken?
+- List every difference, however small
+- Don't assume "that can't matter"
+
+## 4. Understand Dependencies
+
+- What other components does this need?
+- What settings, config, environment?
+- What assumptions does it make?
 
 ---
 
-## Self-Review Phase (ADVISORY)
+## Success Criteria for Phase 2
 
-**Purpose:** Quality checkpoint before completion.
+You know:
+- What the working pattern looks like
+- Every difference between working and broken
+- What dependencies and assumptions exist
 
-> **Note:** This is an **advisory checkpoint** - suggested reflection before claiming completion. The code-enforced gates (Phase: Complete, test evidence, visual verification) will catch missing deliverables.
+If you can't articulate these differences, continue analyzing. Don't proceed to Phase 3.
 
-**Perform these checks before marking complete:**
+Key activities:
+- Find working examples in same codebase
+- Read reference implementations COMPLETELY (don't skim)
+- List every difference, however small
+- Understand dependencies and assumptions
 
-### Original Symptom Validation (For Bug Fixes)
-- [ ] Re-ran the EXACT command/scenario from original issue (same flags, same mode)
-- [ ] Documented actual result (not an estimate) via `bd comment`
-- [ ] If testing different mode/flag than original, explicitly justified why
+**Success criteria:** You know what's different and why it matters
 
-**⚠️ Scope Redefinition Warning:** Agents can claim "fix complete" by testing a different scenario (e.g., `--json` flag when issue showed bare command). The fix is only verified when the original failing scenario passes.
+---
 
-### Anti-Pattern Detection
-- [ ] No god objects (files >300 lines or multiple concerns)
-- [ ] No tight coupling (use dependency injection)
-- [ ] No magic values (use named constants)
-- [ ] No deep nesting (>3 levels → extract to helpers)
-- [ ] No incomplete work (TODOs, placeholders)
+### Phase 3: Hypothesis and Testing
 
-### Security Review
+**Goal:** Form and test specific hypothesis
+
+<!-- Inlined from: phases/phase3-hypothesis-testing.md -->
+<!-- Original: **Load:** [phases/phase3-hypothesis-testing.md](phases/phase3-hypothesis-testing.md) -->
+
+# Phase 3: Hypothesis and Testing
+
+**Scientific method:**
+
+## 1. Form Single Hypothesis
+
+- State clearly: "I think X is the root cause because Y"
+- Write it down
+- Be specific, not vague
+
+## 2. Test Minimally
+
+- Make the SMALLEST possible change to test hypothesis
+- One variable at a time
+- Don't fix multiple things at once
+
+## 3. Verify Before Continuing
+
+- Did it work? Yes → Phase 4
+- Didn't work? Form NEW hypothesis
+- DON'T add more fixes on top
+
+## 4. When You Don't Know
+
+- Say "I don't understand X"
+- Don't pretend to know
+- Ask for help
+- Research more
+
+---
+
+## Success Criteria for Phase 3
+
+Your hypothesis is:
+- Specific (not vague guessing)
+- Testable (can verify with minimal change)
+- Based on evidence from Phase 1 & 2
+
+If hypothesis is confirmed, proceed to Phase 4. If not, form new hypothesis based on test results.
+
+Key activities:
+- Form single hypothesis: "I think X is the root cause because Y"
+- Test minimally (one variable at a time)
+- Verify before continuing - didn't work? Form NEW hypothesis, don't add more fixes
+
+**Success criteria:** Hypothesis confirmed or new hypothesis formed
+
+---
+
+### Phase 4: Implementation
+
+**Goal:** Fix root cause, not symptom
+
+<!-- Inlined from: phases/phase4-implementation.md -->
+<!-- Original: **Load:** [phases/phase4-implementation.md](phases/phase4-implementation.md) -->
+
+# Phase 4: Implementation
+
+**Fix the root cause, not the symptom:**
+
+## 1. Create Failing Test Case
+
+- Simplest possible reproduction
+- Automated test if possible
+- One-off test script if no framework
+- MUST have before fixing
+- **REQUIRED SUB-SKILL:** Use superpowers:test-driven-development for writing proper failing tests
+
+## 2. Implement Single Fix
+
+- Address the root cause identified
+- ONE change at a time
+- No "while I'm here" improvements
+- No bundled refactoring
+
+## 3. Verify Fix
+
+- Test passes now?
+- No other tests broken?
+- Issue actually resolved?
+
+## 4. If Fix Doesn't Work
+
+- STOP
+- Count: How many fixes have you tried?
+- If < 3: Return to Phase 1, re-analyze with new information
+- **If ≥ 3: STOP and question the architecture (step 5 below)**
+- DON'T attempt Fix #4 without architectural discussion
+
+## 5. If 3+ Fixes Failed OR Whack-a-Mole Pattern Detected: Question Architecture
+
+**Triggers for architectural discussion:**
+- **3+ fix attempts in current session failed**
+- **OR: 2+ similar fixes found in git history (whack-a-mole pattern from Phase 1)**
+- Each fix reveals new shared state/coupling/problem in different place
+- Fixes require "massive refactoring" to implement
+- Each fix creates new symptoms elsewhere
+
+**Pattern indicating architectural problem:**
+- Same TYPE of issue keeps appearing (timeouts, null checks, race conditions)
+- Each fix works locally but similar issues appear in different components
+- Incremental parameter adjustments rather than root cause fixes
+- "Just bump this value" becoming a recurring pattern
+
+**STOP and question fundamentals:**
+- Is this pattern fundamentally sound?
+- Are we "sticking with it through sheer inertia"?
+- Should we refactor architecture vs. continue fixing symptoms?
+- Do we need centralized configuration/validation/infrastructure instead of scattered fixes?
+
+**Discuss with your human partner before attempting more fixes**
+
+This is NOT a failed hypothesis - this is a wrong architecture or missing infrastructure.
+
+**Example systemic solutions:**
+- Centralized configuration (timeout management, retry policies)
+- Validation layers (defense in depth, fail-fast at boundaries)
+- Architectural refactoring (remove tight coupling, eliminate shared mutable state)
+- Infrastructure improvements (better error handling, observability, adaptive behavior)
+
+---
+
+## Common Rationalizations (All Wrong)
+
+| Excuse | Reality |
+|--------|---------|
+| "Issue is simple, don't need process" | Simple issues have root causes too. Process is fast for simple bugs. |
+| "Emergency, no time for process" | Systematic debugging is FASTER than guess-and-check thrashing. |
+| "Just try this first, then investigate" | First fix sets the pattern. Do it right from the start. |
+| "I'll write test after confirming fix works" | Untested fixes don't stick. Test first proves it. |
+| "Multiple fixes at once saves time" | Can't isolate what worked. Causes new bugs. |
+| "Reference too long, I'll adapt the pattern" | Partial understanding guarantees bugs. Read it completely. |
+| "I see the problem, let me fix it" | Seeing symptoms ≠ understanding root cause. |
+| "One more fix attempt" (after 2+ failures) | 3+ failures = architectural problem. Question pattern, don't fix again. |
+
+---
+
+## your human partner's Signals You're Doing It Wrong
+
+**Watch for these redirections:**
+- "Is that not happening?" - You assumed without verifying
+- "Will it show us...?" - You should have added evidence gathering
+- "Stop guessing" - You're proposing fixes without understanding
+- "Ultrathink this" - Question fundamentals, not just symptoms
+- "We're stuck?" (frustrated) - Your approach isn't working
+
+**When you see these:** STOP. Return to Phase 1.
+
+---
+
+## When Process Reveals "No Root Cause"
+
+If systematic investigation reveals issue is truly environmental, timing-dependent, or external:
+
+1. You've completed the process
+2. Document what you investigated
+3. Implement appropriate handling (retry, timeout, error message)
+4. Add monitoring/logging for future investigation
+
+**But:** 95% of "no root cause" cases are incomplete investigation.
+
+---
+
+## Success Criteria for Phase 4
+
+- Failing test created and verified to fail
+- Single fix implemented addressing root cause
+- Test now passes
+- No other tests broken
+- Issue actually resolved (not just symptoms masked)
+
+Key activities:
+- Create failing test case
+- Implement single fix
+- **Smoke-test end-to-end** (critical - see below)
+- If 3+ fixes failed: question architecture
+
+**Success criteria:** Bug resolved, tests pass, smoke-test confirms real fix
+
+---
+
+## Smoke-Test Requirement
+
+**Before claiming fix is complete, you MUST:**
+1. Run the actual failing scenario that triggered debugging
+2. Verify expected behavior now occurs
+3. Document smoke-test in completion comment
+
+**Valid:** "Bug: CLI crashes on --mcp" → Run `orch spawn --mcp`, verify no crash
+**Invalid:** "Unit tests pass" (necessary but not sufficient)
+
+**If cannot smoke-test:** Document WHY in completion comment.
+
+
+## Visual Debugging Tools
+
+### snap - Screenshot CLI (Recommended)
+
+```bash
+snap                          # Capture screen, returns file path
+snap list --json              # Find window IDs
+snap window "Firefox"         # Capture by app name
+snap --json                   # JSON output: {"path": "/path/to/screenshot.png"}
+```
+
+**Use for:** Verifying UI state, documenting visual bugs, smoke-testing UI changes.
+
+**Advantage:** Zero context cost (returns file path, not image data).
+
+### Browser Automation
+
+**USE:** Glass MCP - connects to your actual Chrome tabs via DevTools Protocol
+
+**FALLBACK:** Playwright MCP - for headless/CI scenarios
+
+**AVOID:** browser-use MCP - causes context explosion (screenshots, full DOM)
+
+**Decision flow:**
+1. Need visual verification? → `snap` (zero context cost)
+2. Need browser automation (clicking, typing, DOM inspection)? → Glass MCP (spawned with --mcp glass)
+3. Need headless/CI testing? → Playwright MCP
+4. Need DevTools console errors? → Glass MCP (glass_page_state tool)
+
+**Glass advantages:**
+- Connects to your actual Chrome (not headless)
+- Auto-check DevTools console errors
+- Inspect live DOM state
+- CLI commands for validation gates (glass assert)
+
+
+## Investigation File (Optional for Simple Bugs)
+
+Investigation files are **recommended** for complex bugs but **optional** for simple fixes.
+
+### When to Create
+
+**Create when:**
+- Multi-step root cause analysis needed
+- Multiple hypotheses to test
+- Findings should be preserved
+- Pattern may recur (for synthesis)
+
+**Skip when:**
+- Bug is obvious and localized (typo, wrong variable)
+- Fix completes in <15 minutes
+- Root cause immediately clear from error
+- Commit message can fully document fix
+
+### Create Template (if needed)
+
+```bash
+kb create investigation "debug/topic-in-kebab-case"
+```
+
+**After creating:**
+1. Fill Question field with specific bug description
+2. Document findings progressively during Phases 1-4
+3. Update Confidence and Resolution-Status as you progress
+4. Set Resolution-Status when complete (Resolved/Mitigated/Recurring)
+
+### Commits-Only Completion
+
+If skipping investigation file, ensure descriptive commits:
+- Include "why" not just "what"
+- Example: `fix: handle null session in auth middleware - was causing silent failures when Redis connection dropped`
+
+
+## Self-Review (Mandatory)
+
+After implementing fix, perform self-review before completion.
+
+### Pattern Scope Verification
+
+**If bug was a pattern that could exist elsewhere:**
+
+```bash
+# Check for pattern occurrences
+rg "bug_pattern"                    # Should be 0 or documented exceptions
+rg "range\(len\(" --type py         # Off-by-one example
+rg "timeout.*=.*[0-9]" --type py    # Hardcoded timeout example
+```
+
+**Skip if:** Bug was truly one-off (typo, unique logic error).
+
+### Debugging-Specific Checks
+
+| Check | If Failed |
+|-------|-----------|
+| Root cause addressed (not symptom) | Return to Phase 1 |
+| No debug code left (console.log, print) | Remove before commit |
+| No temporary workarounds ("TODO: fix properly") | Complete the fix |
+| Regression test exists | Add test |
+| Investigation documented | Update file |
+
+### Standard Checks
+
 - [ ] No hardcoded secrets
-- [ ] No injection vulnerabilities (SQL, XSS, command, path traversal)
-
-### Commit Hygiene
-- [ ] Conventional format: `type: description`
-- [ ] Atomic commits (one logical change each)
-- [ ] No WIP commits
-
-### Test Coverage
-- [ ] Happy path tested
-- [ ] Edge cases covered
-- [ ] Error paths tested
-
-### Documentation
-- [ ] Public APIs documented
-- [ ] No commented-out code or debug statements
-
-### Deliverables
-- [ ] All required deliverables exist and complete
-- [ ] Deliverables reported via `bd comment`
-
-### Integration Wiring (CRITICAL)
-- [ ] New modules imported somewhere
-- [ ] New functions called somewhere
-- [ ] New routes registered
-- [ ] New components rendered
-- [ ] No orphaned code
-
-### Demo Data Ban (CRITICAL)
-- [ ] No fake identities in production code
-- [ ] No placeholder domains (use env vars)
-- [ ] No lorem ipsum or magic numbers as data
-
-### Scope Verification (For refactoring/migration)
-- [ ] Ran `rg "old_pattern"` - should return 0
-- [ ] Ran `rg "new_pattern"` - should match expected count
+- [ ] No injection vulnerabilities
+- [ ] Conventional commit format (`fix:`, `test:`)
+- [ ] Atomic commits
 
 ### Discovered Work
-- [ ] Reviewed for discoveries (bugs, tech debt, enhancement ideas, strategic questions)
-- [ ] Created beads issues with `triage:review` label (default - lets orchestrator review before daemon spawns)
-      - Known cause/task: `--type task` or `--type bug`
-      - Unknown premise/strategic unknown: `--type question`
 
-### Original Symptom Validation (For Bug Fixes)
+If you found related bugs, tech debt, or strategic unknowns:
 
-⚠️ **This gate is MANDATORY for bug fixes.** Skip only for pure features/refactoring.
+```bash
+bd create "description" --type bug    # or --type task
+bd create "description" --type question # for architectural/premise questions
+bd label <id> triage:review           # default label for review
+```
 
-**Purpose:** Prevent "scope redefinition" - fixing a different problem than the original symptom.
+**Note "No discovered work" in completion if nothing found.**
 
-**Before marking complete:**
-1. **Re-run the original failing command** from the issue
-   - Not a similar command - the EXACT command (same flags, same mode)
-   - Example: If issue shows `time orch status # 1:25.67`, run `time orch status` (not `time orch status --json`)
-2. **Document the actual result** in a beads comment:
-   ```bash
-   bd comment <beads-id> "Original symptom validation: [command] → [result]"
-   ```
-3. **Compare against original evidence** - is the symptom resolved?
+### Report via Beads
 
-**⚠️ Scope Redefinition Warning:**
-If your fix validates against a DIFFERENT command/mode than the original issue:
-- Example: Original issue shows text mode slow, you're testing JSON mode
-- Example: Original issue shows `--verbose` flag, you're testing without it
+```bash
+# If issues found and fixed:
+bd comment <beads-id> "Self-review: Fixed [issue summary]"
 
-This is a RED FLAG. Either:
-- Re-test with the original command and document result
-- OR explicitly justify why the different command is a valid proxy (with beads comment)
+# If passed:
+bd comment <beads-id> "Self-review passed - ready for completion"
+```
 
-**Checklist:**
-- [ ] Re-ran exact original command from issue
-- [ ] Documented actual timing/behavior via `bd comment`
-- [ ] Result matches expected fix (not an estimate like "~10s")
-- [ ] If testing different mode/flags: justified why via `bd comment`
 
-**If issues found:** Fix immediately, commit, re-verify.
+## Fix-Verify-Fix Cycle (Atomic Debugging)
 
-**If validation skipped:** Document why in completion comment (e.g., "Original symptom validation: N/A - pure refactoring, no bug fix")
+**Fix + Verify = One Unit of Work**
 
-**Reference:** `.kb/investigations/2025-12-29-inv-root-cause-analysis-agent-orch.md` - Root cause analysis showing why this gate matters.
+Do NOT:
+- Implement fix → claim complete → wait for new spawn if fails
+- "Fix is done, verification is a separate task"
 
-**If issues found:** Fix immediately, commit, re-verify.
+DO:
+- Implement fix → verify immediately → if fails, iterate
+- Only claim complete when smoke-test passes
 
-**When passed:** `bd comment <beads-id> "Self-review passed - ready for completion"`
+### When to Iterate vs Escalate
 
----
+**Keep iterating if:**
+- Verification reveals related issue in same area
+- Fix was incomplete but direction correct
+- You understand why it failed
 
-## Leave it Better (ADVISORY)
+**Escalate if:**
+- 3+ fix attempts failed (questioning architecture needed)
+- Root cause was misidentified (return to Phase 1)
+- Issue outside your scope/authority
 
-**Purpose:** Every session should externalize what you learned.
+### Reporting During Iteration
 
-> **Note:** This is an **advisory checkpoint** - encouraged best practice but not enforced. Externalizing knowledge helps future agents, but completion doesn't block on it.
-
-**Before marking complete, run at least one:**
-
-| What You Learned | Command |
-|------------------|---------|
-| Made a choice | `kb quick decide "X" --reason "Y"` |
-| Something failed | `kb quick tried "X" --failed "Y"` |
-| Found a constraint | `kb quick constrain "X" --reason "Y"` |
-| Open question | `kb quick question "X"` |
-
-**If nothing to externalize:** Note in completion comment.
-
-**Completion Criteria:**
-- [ ] Reflected on what was learned
-- [ ] Ran at least one `kb quick` command OR noted why nothing to externalize
-- [ ] Included "Leave it Better" status in completion comment
+```bash
+bd comment <beads-id> "Fix attempt 1: [what tried] - Result: [pass/fail + why]"
+bd comment <beads-id> "Fix attempt 2: [refined approach] - Result: [pass/fail]"
+# Only when actually working:
+bd comment <beads-id> "Phase: Complete - Fix verified via [smoke-test description]"
+```
 
 ---
 
-## Phase Transitions
+## Red Flags - STOP and Follow Process
 
-**After completing each phase:**
-1. Report progress: `bd comment <beads-id> "Phase: <new-phase> - <brief summary>"`
-2. Output: "Phase complete, moving to next phase"
-3. Continue to next phase guidance
+If you catch yourself thinking:
+- "Quick fix for now, investigate later"
+- "Just try changing X and see if it works"
+- "Skip the test, I'll manually verify"
+- "I don't fully understand but this might work"
+- "One more fix attempt" (when already tried 2+)
+- Each fix reveals new problem in different place
 
----
+**ALL mean: STOP. Return to Phase 1.**
+
 
 ## Completion Criteria
 
-- [ ] Step 0 completed (scope enumerated)
-- [ ] All configured phases completed
-- [ ] Self-review passed
-- [ ] Leave it Better completed
-- [ ] All deliverables created
-- [ ] All changes committed: `git status` shows "nothing to commit"
-- [ ] **If web/ modified:** Visual verification completed with `bd comment` evidence
-- [ ] Final status: `bd comment <beads-id> "Phase: Complete - [summary]"`
+Before marking complete, verify ALL:
 
-**⚠️ If web/ files modified without visual verification → completion will be REJECTED.**
+- [ ] **Root cause identified** - Documented in investigation OR commit message
+- [ ] **Fix implemented** - Addresses root cause, not symptoms
+- [ ] **Tests passing** - Including reproduction test, with **actual test output documented**
+- [ ] **Smoke-test passed** - Actual failing scenario now works
+- [ ] **Self-review passed** - Pattern scope, no debug code, no workarounds
+- [ ] **Discovered work reviewed** - Tracked or noted "No discoveries"
+- [ ] **Phase reported with test evidence** - `bd comment <beads-id> "Phase: Complete - Tests: <cmd> - <output>"` (BEFORE final commit)
+- [ ] **Git clean** - `git status` shows "nothing to commit"
 
 **If ANY unchecked, work is NOT complete.**
 
-**Final step:** After all criteria met:
-1. `bd comment <beads-id> "Phase: Complete - [summary]"` (report FIRST)
-2. Commit any final changes
-3. Call `/exit` to close the agent session
+### After All Criteria Met (in this EXACT order)
 
-**Note:** Workers do NOT close issues - only the orchestrator closes via `orch complete`.
+```bash
+# 1. Report phase FIRST (before commit) - prevents agent death race condition
+# Include ACTUAL test output, not just "tests passing"
+bd comment <beads-id> "Phase: Complete - Root cause: [X], Fix: [Y], Tests: go test ./... - 23 passed, 0 failed"
+
+# 2. Commit any final changes
+git add . && git commit -m "fix: [description]"
+
+# 3. Exit
+/exit
+```
+
+**Test Evidence Requirement:**
+- Format: `Tests: <command> - <actual output summary>`
+- Good: `Tests: go test ./... - 23 passed, 0 failed`
+- Good: `Tests: npm test - 15 specs, 0 failures`
+- Bad: `Tests passing` (no command, no numbers)
+
+**Why:** `orch complete` validates test evidence in comments. Vague claims trigger manual verification.
+
+**Why this order matters:** If the agent dies after commit but before reporting Phase: Complete, the orchestrator cannot detect completion. Reporting phase first ensures visibility.
 
 ---
 
-## Troubleshooting
+## Fast-Path Alternative
 
-**Stuck:** Re-read phase guidance, check SPAWN_CONTEXT. If blocked: `bd comment <beads-id> "BLOCKED: [reason]"`
+For clearly localized, trivial failures (import path error, undefined name, obvious single-file fix):
 
-**Unclear requirements:** `bd comment <beads-id> "QUESTION: [question]"` and wait
+Use `quick-debugging` skill instead. It provides lightweight loop with strict escalation back to systematic-debugging if first attempt fails.
 
-**Scope changes:** Document change, ask orchestrator via beads comment
+**Use quick-debugging when:**
+- Scope ≤ 2 files and ≤ 1 hour
+- Error points directly at fix location
+- No architectural uncertainty
 
----
-
-## Related Skills
-
-- **investigation**, **systematic-debugging**, **architect**, **record-decision**, **code-review**
-
-
-
-
+**If 3+ fixes failed:** Question architecture, return to Phase 1.
 
 
 
@@ -1061,11 +1253,9 @@ TERMINAL CHECKLIST (EXECUTE IN ORDER):
 - [ ] NEVER run `git push` (orchestrator handles remote push)
 - [ ] `git push` can trigger deploys that disrupt production systems
 
-- [ ] Commit all changes: `git add -A && git commit -m "type: description"`
 
 
-
-- [ ] `orch phase orch-go-21515 Complete "[1-2 sentence summary]"`
+- [ ] `orch phase orch-go-a35n7 Complete "[1-2 sentence summary]"`
 - [ ] `/exit`
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
