@@ -84,6 +84,17 @@ func integrateAgentBranch(target *CompletionTarget) error {
 			continue
 		}
 		if _, err := runGitMerge(mergeDir, "cherry-pick", commit); err != nil {
+			errMsg := err.Error()
+			// Detect "empty commit" — happens when the commit's changes are
+			// already present on the base branch (e.g. previously cherry-picked
+			// or independently applied). Skip gracefully instead of failing.
+			if isEmptyCherryPick(errMsg) {
+				// Reset the cherry-pick state and skip this commit
+				_, _ = runGitMerge(mergeDir, "cherry-pick", "--abort")
+				subject := commitSubject(mergeDir, commit)
+				fmt.Printf("  Skipping already-applied commit: %s %s\n", commit[:minInt(7, len(commit))], subject)
+				continue
+			}
 			// Abort any in-progress cherry-pick before returning
 			_, _ = runGitMerge(mergeDir, "cherry-pick", "--abort")
 			return fmt.Errorf("cherry-pick failed for %s onto %s: %w", target.GitBranch, base, err)
@@ -191,6 +202,40 @@ func runGitMerge(dir string, args ...string) (string, error) {
 		return "", fmt.Errorf("%w: %s", err, text)
 	}
 	return text, nil
+}
+
+// isEmptyCherryPick detects when a cherry-pick fails because the commit's changes
+// are already present on the target branch, resulting in an empty commit.
+func isEmptyCherryPick(errMsg string) bool {
+	// Git messages for this case vary by version:
+	// - "The previous cherry-pick is now empty"
+	// - "nothing to commit"
+	// - "empty" in the context of cherry-pick
+	lower := strings.ToLower(errMsg)
+	if strings.Contains(lower, "cherry-pick is now empty") {
+		return true
+	}
+	if strings.Contains(lower, "nothing to commit") {
+		return true
+	}
+	return false
+}
+
+// commitSubject returns the first line of a commit's message, for display purposes.
+func commitSubject(dir, commit string) string {
+	out, err := runGitMerge(dir, "log", "--format=%s", "-1", commit)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// minInt returns the smaller of two ints.
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func readBranchName(dir string) (string, error) {

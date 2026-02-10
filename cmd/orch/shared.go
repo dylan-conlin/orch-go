@@ -156,9 +156,24 @@ func extractProjectFromBeadsID(beadsID string) string {
 	return strings.Join(parts[:len(parts)-1], "-")
 }
 
+// workspaceCandidate represents a workspace that matches a beads ID lookup.
+type workspaceCandidate struct {
+	path    string
+	name    string
+	modTime time.Time
+	// abandoned is true if the workspace has a FAILURE_REPORT.md (written by orch abandon)
+	// or if the state DB marks it as abandoned.
+	abandoned bool
+}
+
 // findWorkspaceByBeadsID searches for a workspace directory spawned from the beads ID.
 // Looks in .orch/workspace/ for directories that match the beads ID in their name
 // or contain a SPAWN_CONTEXT.md with "spawned from beads issue: **beadsID**".
+//
+// When multiple workspaces match (e.g. after abandon + respawn), prefers the most
+// recent non-abandoned workspace. This prevents orch complete from resolving to a
+// stale abandoned workspace when an active one exists.
+//
 // Returns the workspace path and agent name (directory name) if found.
 func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentName string) {
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
@@ -166,6 +181,8 @@ func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentNam
 	if err != nil {
 		return "", ""
 	}
+
+	var candidates []workspaceCandidate
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -175,43 +192,107 @@ func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentNam
 		dirName := entry.Name()
 		dirPath := filepath.Join(workspaceDir, dirName)
 
+		matched := false
+
 		// Check if the beads ID is in the directory name
 		// Workspace names follow format: og-feat-description-21dec
 		// Beads ID format: project-xxxx (e.g., orch-go-3anf)
 		if strings.Contains(dirName, beadsID) {
-			return dirPath, dirName
+			matched = true
 		}
 
 		// Check .beads_id file (most reliable - written by spawn)
-		beadsIDPath := filepath.Join(dirPath, ".beads_id")
-		if content, err := os.ReadFile(beadsIDPath); err == nil {
-			if strings.TrimSpace(string(content)) == beadsID {
-				return dirPath, dirName
+		if !matched {
+			beadsIDPath := filepath.Join(dirPath, ".beads_id")
+			if content, err := os.ReadFile(beadsIDPath); err == nil {
+				if strings.TrimSpace(string(content)) == beadsID {
+					matched = true
+				}
 			}
 		}
 
 		// Check SPAWN_CONTEXT.md for authoritative "spawned from beads issue" line
-		// This is more precise than just checking if beadsID appears anywhere
-		spawnContextPath := filepath.Join(dirPath, "SPAWN_CONTEXT.md")
-		if content, err := os.ReadFile(spawnContextPath); err == nil {
-			contentStr := string(content)
-			// Look for the authoritative beads issue declaration
-			// Pattern: "spawned from beads issue: **orch-go-xxxx**" or similar
-			for _, line := range strings.Split(contentStr, "\n") {
-				lineLower := strings.ToLower(line)
-				if strings.Contains(lineLower, "spawned from beads issue:") {
-					if strings.Contains(line, beadsID) {
-						return dirPath, dirName
+		if !matched {
+			spawnContextPath := filepath.Join(dirPath, "SPAWN_CONTEXT.md")
+			if content, err := os.ReadFile(spawnContextPath); err == nil {
+				contentStr := string(content)
+				for _, line := range strings.Split(contentStr, "\n") {
+					lineLower := strings.ToLower(line)
+					if strings.Contains(lineLower, "spawned from beads issue:") {
+						if strings.Contains(line, beadsID) {
+							matched = true
+						}
+						break
 					}
-					// Found the authoritative line but beads ID doesn't match
-					// Don't continue searching this file - this workspace has a different ID
-					break
 				}
 			}
 		}
+
+		if matched {
+			candidate := workspaceCandidate{
+				path: dirPath,
+				name: dirName,
+			}
+
+			// Detect if workspace was abandoned:
+			// - FAILURE_REPORT.md exists (written by orch abandon --reason)
+			// - SESSION_LOG.md exists (written by orch abandon — transcript export)
+			if _, err := os.Stat(filepath.Join(dirPath, "FAILURE_REPORT.md")); err == nil {
+				candidate.abandoned = true
+			} else if _, err := os.Stat(filepath.Join(dirPath, "SESSION_LOG.md")); err == nil {
+				candidate.abandoned = true
+			}
+
+			// Use directory modification time as proxy for recency
+			if info, err := entry.Info(); err == nil {
+				candidate.modTime = info.ModTime()
+			}
+
+			candidates = append(candidates, candidate)
+		}
 	}
 
-	return "", ""
+	if len(candidates) == 0 {
+		return "", ""
+	}
+
+	// If only one candidate, return it directly
+	if len(candidates) == 1 {
+		return candidates[0].path, candidates[0].name
+	}
+
+	// Multiple candidates: prefer non-abandoned, then most recent
+	return pickBestWorkspace(candidates)
+}
+
+// pickBestWorkspace selects the best workspace from multiple candidates.
+// Prefers non-abandoned workspaces over abandoned ones.
+// Among workspaces with the same abandoned status, prefers the most recently modified.
+func pickBestWorkspace(candidates []workspaceCandidate) (string, string) {
+	var best *workspaceCandidate
+	for i := range candidates {
+		c := &candidates[i]
+		if best == nil {
+			best = c
+			continue
+		}
+		// Prefer non-abandoned over abandoned
+		if best.abandoned && !c.abandoned {
+			best = c
+			continue
+		}
+		if !best.abandoned && c.abandoned {
+			continue
+		}
+		// Same abandoned status: prefer more recent
+		if c.modTime.After(best.modTime) {
+			best = c
+		}
+	}
+	if best == nil {
+		return "", ""
+	}
+	return best.path, best.name
 }
 
 // resolveSessionID resolves an identifier to an OpenCode session ID.

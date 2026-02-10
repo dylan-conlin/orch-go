@@ -436,6 +436,119 @@ func TestIntegrateAgentBranchSucceedsWithDirtyMainWorktree(t *testing.T) {
 	_ = base // used for readability
 }
 
+// TestIntegrateAgentBranchSkipsAlreadyAppliedCommits verifies that when agent
+// commits are already on the base branch (e.g. previously cherry-picked),
+// the integration skips them gracefully instead of failing with "empty commit".
+func TestIntegrateAgentBranchSkipsAlreadyAppliedCommits(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	worktree := filepath.Join(t.TempDir(), "worktree")
+	setupMergeRepo(t, repo)
+
+	// Create initial commit on base
+	if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("base\n"), 0644); err != nil {
+		t.Fatalf("write base file: %v", err)
+	}
+	if _, err := runGitMerge(repo, "add", "."); err != nil {
+		t.Fatalf("git add base: %v", err)
+	}
+	if _, err := runGitMerge(repo, "commit", "-m", "base commit"); err != nil {
+		t.Fatalf("git commit base: %v", err)
+	}
+
+	// Create agent branch and worktree
+	branch := "agent/already-applied"
+	if _, err := runGitMerge(repo, "branch", branch); err != nil {
+		t.Fatalf("git branch: %v", err)
+	}
+	if _, err := runGitMerge(repo, "worktree", "add", worktree, branch); err != nil {
+		t.Fatalf("git worktree add: %v", err)
+	}
+
+	// Agent makes a commit
+	if err := os.WriteFile(filepath.Join(worktree, "agent.txt"), []byte("agent work\n"), 0644); err != nil {
+		t.Fatalf("write agent file: %v", err)
+	}
+	if _, err := runGitMerge(worktree, "add", "."); err != nil {
+		t.Fatalf("git add agent: %v", err)
+	}
+	if _, err := runGitMerge(worktree, "commit", "-m", "agent work"); err != nil {
+		t.Fatalf("git commit agent: %v", err)
+	}
+
+	// Now manually apply the same change on base (simulating a previous cherry-pick)
+	if err := os.WriteFile(filepath.Join(repo, "agent.txt"), []byte("agent work\n"), 0644); err != nil {
+		t.Fatalf("write agent file to base: %v", err)
+	}
+	if _, err := runGitMerge(repo, "add", "."); err != nil {
+		t.Fatalf("git add base: %v", err)
+	}
+	if _, err := runGitMerge(repo, "commit", "-m", "manually applied agent work"); err != nil {
+		t.Fatalf("git commit base: %v", err)
+	}
+
+	target := &CompletionTarget{
+		BeadsID:          "orch-go-test",
+		BeadsProjectDir:  repo,
+		SourceProjectDir: repo,
+		GitWorktreeDir:   worktree,
+		GitBranch:        branch,
+	}
+
+	// This should succeed, skipping the already-applied commit
+	if err := integrateAgentBranch(target); err != nil {
+		t.Fatalf("integrateAgentBranch() failed with already-applied commit: %v", err)
+	}
+
+	// Verify the agent.txt file exists on base (it was already there)
+	agentFile := filepath.Join(repo, "agent.txt")
+	contents, err := os.ReadFile(agentFile)
+	if err != nil {
+		t.Fatalf("agent.txt should exist on base: %v", err)
+	}
+	if string(contents) != "agent work\n" {
+		t.Fatalf("expected agent.txt content 'agent work\\n', got %q", string(contents))
+	}
+}
+
+// TestIsEmptyCherryPick tests detection of empty cherry-pick error messages.
+func TestIsEmptyCherryPick(t *testing.T) {
+	tests := []struct {
+		name     string
+		errMsg   string
+		expected bool
+	}{
+		{
+			name:     "empty cherry-pick message",
+			errMsg:   "exit status 1: The previous cherry-pick is now empty, possibly due to conflict resolution",
+			expected: true,
+		},
+		{
+			name:     "nothing to commit message",
+			errMsg:   "exit status 1: nothing to commit, working tree clean",
+			expected: true,
+		},
+		{
+			name:     "real conflict error",
+			errMsg:   "exit status 1: CONFLICT (content): Merge conflict in shared.txt",
+			expected: false,
+		},
+		{
+			name:     "generic error",
+			errMsg:   "exit status 128: fatal: bad object abc123",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isEmptyCherryPick(tt.errMsg)
+			if got != tt.expected {
+				t.Errorf("isEmptyCherryPick(%q) = %v, want %v", tt.errMsg, got, tt.expected)
+			}
+		})
+	}
+}
+
 func setupMergeRepo(t *testing.T, repo string) {
 	t.Helper()
 
