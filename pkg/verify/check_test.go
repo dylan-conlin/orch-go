@@ -1994,8 +1994,8 @@ func TestWorkspaceModelDetection(t *testing.T) {
 		}
 
 		display := WorkspaceModelDisplay(workspace)
-		if display != "openai/gpt-5.2-codex" {
-			t.Fatalf("WorkspaceModelDisplay() = %q, want %q", display, "openai/gpt-5.2-codex")
+		if display != "openai/gpt-5.3-codex" {
+			t.Fatalf("WorkspaceModelDisplay() = %q, want %q", display, "openai/gpt-5.3-codex")
 		}
 	})
 
