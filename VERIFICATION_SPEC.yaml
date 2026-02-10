@@ -1,0 +1,40 @@
+version: 1
+scope:
+    beads_id: orch-go-u7s0e
+    workspace: og-feat-build-orch-healthcheck-10feb-f512
+    skill: feature-impl
+verification:
+    - id: verify-build
+      method: cli_smoke
+      tier: light
+      command: go build ./cmd/orch/...
+      cwd: $GIT_WORKTREE_DIR
+      expect:
+        exit_code: 0
+    - id: verify-healthcheck-tests
+      method: cli_smoke
+      tier: light
+      command: go test ./cmd/orch/... -run TestHealthcheck -count=1
+      cwd: $GIT_WORKTREE_DIR
+      expect:
+        exit_code: 0
+    - id: verify-model-resolution-test
+      method: cli_smoke
+      tier: light
+      command: go test ./cmd/orch/... -run TestResolveModelForHealthcheck -count=1
+      cwd: $GIT_WORKTREE_DIR
+      expect:
+        exit_code: 0
+    - id: verify-vet
+      method: cli_smoke
+      tier: light
+      command: go vet ./cmd/orch/...
+      cwd: $GIT_WORKTREE_DIR
+      expect:
+        exit_code: 0
+    - id: manual-run-healthcheck
+      method: manual
+      tier: light
+      description: "Run 'orch healthcheck' against a running OpenCode server to validate the full pipeline end-to-end"
+      expect:
+        output_contains: "PASS"

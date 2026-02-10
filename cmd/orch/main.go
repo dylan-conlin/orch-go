@@ -78,6 +78,7 @@ func init() {
 	rootCmd.AddCommand(retriesCmd)
 	rootCmd.AddCommand(frontierCmd)
 	rootCmd.AddCommand(reworkCmd)
+	rootCmd.AddCommand(healthcheckCmd)
 }
 
 var (
