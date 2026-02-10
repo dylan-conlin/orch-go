@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/account"
 )
 
 func saveSpawnPipelineGlobals() func() {
@@ -22,6 +24,7 @@ func saveSpawnPipelineGlobals() func() {
 	oldSpawnFull := spawnFull
 	oldSpawnValidation := spawnValidation
 	oldSpawnBackendFlag := spawnBackendFlag
+	oldSpawnAccount := spawnAccount
 	oldSpawnOpus := spawnOpus
 	oldSpawnInfra := spawnInfra
 	oldSpawnVariant := spawnVariant
@@ -46,6 +49,7 @@ func saveSpawnPipelineGlobals() func() {
 		spawnFull = oldSpawnFull
 		spawnValidation = oldSpawnValidation
 		spawnBackendFlag = oldSpawnBackendFlag
+		spawnAccount = oldSpawnAccount
 		spawnOpus = oldSpawnOpus
 		spawnInfra = oldSpawnInfra
 		spawnVariant = oldSpawnVariant
@@ -321,5 +325,59 @@ func TestBuildSpawnConfigHappyPathNoTrack(t *testing.T) {
 	}
 	if p.cfg.WorkspaceName != p.workspaceName {
 		t.Fatalf("WorkspaceName = %q, want %q", p.cfg.WorkspaceName, p.workspaceName)
+	}
+}
+
+func TestBuildSpawnConfigSetsClaudeConfigDirForAutoSwitchedNonPrimary(t *testing.T) {
+	restore := saveSpawnPipelineGlobals()
+	defer restore()
+
+	oldLoad := loadSpawnAccounts
+	oldHome := spawnUserHomeDir
+	defer func() {
+		loadSpawnAccounts = oldLoad
+		spawnUserHomeDir = oldHome
+	}()
+
+	loadSpawnAccounts = func() (*account.Config, error) {
+		return &account.Config{Default: "personal"}, nil
+	}
+	spawnUserHomeDir = func() (string, error) {
+		return "/tmp/home", nil
+	}
+
+	spawnNoTrack = true
+	spawnLight = false
+	spawnFull = false
+	spawnValidation = "tests"
+	spawnBackendFlag = "claude"
+	spawnOpus = false
+	spawnInfra = false
+	spawnModel = "opus"
+	spawnVariant = ""
+	spawnMCP = ""
+	spawnMode = "tdd"
+	spawnPhases = ""
+	spawnDesignWorkspace = ""
+	spawnContextBudget = 12000
+	spawnAccount = ""
+
+	p := &spawnPipeline{
+		task:             "fix rate limit behavior",
+		skillName:        "feature-impl",
+		projectName:      "orch-go",
+		projectDir:       t.TempDir(),
+		workspaceName:    "og-feat-rate-limit-fix",
+		skillContent:     "# test skill",
+		usageCheckResult: &UsageCheckResult{Switched: true, SwitchedToAccount: "work"},
+	}
+
+	if err := p.buildSpawnConfig(); err != nil {
+		t.Fatalf("buildSpawnConfig() error = %v", err)
+	}
+
+	want := filepath.Join("/tmp/home", ".claude-work")
+	if p.cfg.ClaudeConfigDir != want {
+		t.Fatalf("ClaudeConfigDir = %q, want %q", p.cfg.ClaudeConfigDir, want)
 	}
 }

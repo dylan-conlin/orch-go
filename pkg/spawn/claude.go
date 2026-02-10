@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
@@ -67,12 +68,15 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 	// - For workers, also export ORCH_WORKER=1 so OpenCode can detect worker sessions
 	// - Pipe the file content to claude (no --file flag exists)
 	// - Use --dangerously-skip-permissions to avoid blocking on edit prompts
-	var launchCmd string
+	envVars := []string{fmt.Sprintf("CLAUDE_CONTEXT=%s", claudeContext)}
 	if claudeContext == "worker" {
-		launchCmd = fmt.Sprintf("export CLAUDE_CONTEXT=%s ORCH_WORKER=1; cat %q | claude --dangerously-skip-permissions", claudeContext, contextPath)
-	} else {
-		launchCmd = fmt.Sprintf("export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions", claudeContext, contextPath)
+		envVars = append(envVars, "ORCH_WORKER=1")
 	}
+	if cfg.ClaudeConfigDir != "" {
+		envVars = append(envVars, fmt.Sprintf("CLAUDE_CONFIG_DIR=%q", cfg.ClaudeConfigDir))
+	}
+
+	launchCmd := fmt.Sprintf("export %s; cat %q | claude --dangerously-skip-permissions", strings.Join(envVars, " "), contextPath)
 
 	if err := sendTmuxKeys(windowTarget, launchCmd); err != nil {
 		return nil, fmt.Errorf("failed to send launch command: %w", err)
@@ -148,6 +152,9 @@ func SpawnClaudeInline(cfg *Config) error {
 		"CLAUDE_CONTEXT="+claudeContext,
 		"ORCH_WORKER=1",
 	)
+	if cfg.ClaudeConfigDir != "" {
+		cmd.Env = append(cmd.Env, "CLAUDE_CONFIG_DIR="+cfg.ClaudeConfigDir)
+	}
 
 	// Connect stdin to the context content, then inherit from terminal
 	// We pipe the context first, then claude continues with interactive input

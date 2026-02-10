@@ -271,6 +271,10 @@ type Config struct {
 	// SpawnMode specifies the spawn backend: "opencode" or "claude"
 	SpawnMode string
 
+	// ClaudeConfigDir optionally overrides CLAUDE_CONFIG_DIR for Claude backend spawns.
+	// Used to isolate per-account fingerprints (e.g., ~/.claude-work).
+	ClaudeConfigDir string
+
 	// Design handoff fields (for ui-design-session → feature-impl handoff)
 	// DesignWorkspace is the workspace name from a prior ui-design-session spawn
 	DesignWorkspace string

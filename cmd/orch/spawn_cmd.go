@@ -27,6 +27,7 @@ var (
 	spawnPhases              string
 	spawnMode                string // Implementation mode: tdd or direct
 	spawnBackendFlag         string // Spawn backend: claude or opencode (overrides config and auto-selection)
+	spawnAccount             string // Claude Max account name to switch to before spawn (saved accounts.yaml key)
 	spawnOpus                bool   // Use Opus via Claude CLI in tmux (implies claude mode)
 	spawnInfra               bool   // Infrastructure work: implies claude+tmux (survives service crashes)
 	spawnValidation          string
@@ -192,6 +193,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnPhases, "phases", "", "Feature-impl phases (e.g., implementation,validation)")
 	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
 	spawnCmd.Flags().StringVar(&spawnBackendFlag, "backend", "", "Spawn backend: claude (tmux + Claude CLI), opencode (HTTP API), or docker (containerized for fingerprint isolation). Overrides config and auto-selection.")
+	spawnCmd.Flags().StringVar(&spawnAccount, "account", "", "Claude account name from ~/.orch/accounts.yaml to switch to before spawn")
 	spawnCmd.Flags().BoolVar(&spawnOpus, "opus", false, "Use Opus via Claude CLI in tmux (Max subscription, implies claude backend + tmux mode)")
 	spawnCmd.Flags().BoolVar(&spawnInfra, "infra", false, "Infrastructure work: use claude+tmux backend (survives service crashes)")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, integration, smoke-test")

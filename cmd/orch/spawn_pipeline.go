@@ -117,6 +117,11 @@ func (p *spawnPipeline) runPreFlightValidation() error {
 	// Resolve model early to check if Anthropic rate limit applies
 	p.resolvedModel = model.Resolve(spawnModel)
 
+	// Optional explicit account override before usage checks and spawn dispatch.
+	if err := maybeSwitchSpawnAccount(spawnAccount, p.resolvedModel); err != nil {
+		return err
+	}
+
 	// Proactive rate limit monitoring: warn at 80%, block at 95%
 	// Only applies to Anthropic models — non-Anthropic providers have their own limits
 	if p.resolvedModel.IsAnthropic() {
@@ -596,6 +601,7 @@ func (p *spawnPipeline) buildSpawnConfig() error {
 		IsMetaOrchestrator:       p.isMetaOrchestrator,
 		UsageInfo:                p.usageInfo,
 		SpawnMode:                p.spawnBackend,
+		ClaudeConfigDir:          resolveSpawnClaudeConfigDir(spawnAccount, p.usageCheckResult),
 		DesignWorkspace:          spawnDesignWorkspace,
 		DesignMockupPath:         p.designMockupPath,
 		DesignPromptPath:         p.designPromptPath,

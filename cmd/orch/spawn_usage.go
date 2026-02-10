@@ -75,6 +75,8 @@ type UsageCheckResult struct {
 	BlockReason string
 	// Switched is true if account was auto-switched.
 	Switched bool
+	// SwitchedToAccount is the saved account name selected by auto-switch.
+	SwitchedToAccount string
 	// SwitchReason explains the switch.
 	SwitchReason string
 	// CapacityInfo is the current account capacity (for telemetry).
@@ -135,6 +137,7 @@ func checkUsageBeforeSpawn() (*UsageCheckResult, error) {
 		switchResult, switchErr := tryAutoSwitchForSpawn()
 		if switchErr == nil && switchResult.Switched {
 			result.Switched = true
+			result.SwitchedToAccount = switchResult.ToAccount
 			result.SwitchReason = switchResult.Reason
 			// Update capacity after switch
 			newCapacity, _ := account.GetCurrentCapacity()
