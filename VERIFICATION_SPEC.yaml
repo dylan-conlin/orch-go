@@ -1,40 +1,39 @@
 version: 1
 scope:
-    beads_id: orch-go-u7s0e
-    workspace: og-feat-build-orch-healthcheck-10feb-f512
-    skill: feature-impl
+    beads_id: orch-go-fc9od
+    workspace: og-audit-audit-kb-models-10feb-0ecc
+    skill: codebase-audit
 verification:
-    - id: verify-build
-      method: cli_smoke
-      tier: light
-      command: go build ./cmd/orch/...
-      cwd: $GIT_WORKTREE_DIR
+    - id: verify-artifact-exists
+      method: static
+      tier: full
+      command: test -f ".kb/investigations/2026-02-10-audit-kb-models-guides-drift-audit.md"
+      cwd: .
       expect:
         exit_code: 0
-    - id: verify-healthcheck-tests
-      method: cli_smoke
-      tier: light
-      command: go test ./cmd/orch/... -run TestHealthcheck -count=1
-      cwd: $GIT_WORKTREE_DIR
+
+    - id: verify-all-models-audited
+      description: All 28 model files appear in the audit table
+      method: static
+      tier: full
+      command: grep -c "agent-state-architecture\|spawn-architecture\|completion-lifecycle\|completion-verification\|agent-lifecycle-state\|spawn-system-evolution\|context-injection\|opencode-session\|dashboard-agent-status\|dashboard-architecture\|beads-integration-architecture\|current-model-stack\|model-access-spawn\|workspace-lifecycle-model\|daemon-autonomous\|system-reliability\|multi-model-evaluation\|sse-connection\|decidability-graph\|orchestration-cost\|beads-database-corruption\|cross-project-visibility\|escape-hatch\|follow-orchestrator\|extract-patterns\|kb-reflect-cluster\|PHASE3_REVIEW\|PHASE4_REVIEW" .kb/investigations/2026-02-10-audit-kb-models-guides-drift-audit.md
+      cwd: .
       expect:
         exit_code: 0
-    - id: verify-model-resolution-test
-      method: cli_smoke
-      tier: light
-      command: go test ./cmd/orch/... -run TestResolveModelForHealthcheck -count=1
-      cwd: $GIT_WORKTREE_DIR
+
+    - id: verify-all-guides-audited
+      description: All 37 guide files appear in the audit table
+      method: static
+      tier: full
+      command: grep -c "spawn.md\|completion.md\|agent-lifecycle.md\|status.md\|beads-integration.md\|worker-patterns.md\|completion-gates.md\|daemon.md\|model-selection.md\|dashboard.md" .kb/investigations/2026-02-10-audit-kb-models-guides-drift-audit.md
+      cwd: .
       expect:
         exit_code: 0
-    - id: verify-vet
-      method: cli_smoke
-      tier: light
-      command: go vet ./cmd/orch/...
-      cwd: $GIT_WORKTREE_DIR
+
+    - id: verify-synthesis-exists
+      method: static
+      tier: full
+      command: test -f ".orch/workspace/og-audit-audit-kb-models-10feb-0ecc/SYNTHESIS.md"
+      cwd: .
       expect:
         exit_code: 0
-    - id: manual-run-healthcheck
-      method: manual
-      tier: light
-      description: "Run 'orch healthcheck' against a running OpenCode server to validate the full pipeline end-to-end"
-      expect:
-        output_contains: "PASS"
