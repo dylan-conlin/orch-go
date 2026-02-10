@@ -47,13 +47,13 @@ var Aliases = map[string]ModelSpec{
 	"pro-2.5":   {Provider: "google", ModelID: "gemini-2.5-pro"},
 
 	// OpenAI models (GPT) - IDs from models.dev
-	"gpt":           {Provider: "openai", ModelID: "gpt-5.3-codex"}, // Short alias for latest GPT
-	"gpt5":          {Provider: "openai", ModelID: "gpt-5.3-codex"}, // Updated to latest (5.3-codex)
-	"gpt-5":         {Provider: "openai", ModelID: "gpt-5.3-codex"}, // Updated to latest (5.3-codex)
-	"gpt5-latest":   {Provider: "openai", ModelID: "gpt-5.3-codex"},
-	"gpt-5.3":       {Provider: "openai", ModelID: "gpt-5.3-codex"},
-	"gpt-5.3-codex": {Provider: "openai", ModelID: "gpt-5.3-codex"},
-	"codex":         {Provider: "openai", ModelID: "gpt-5.3-codex"},
+	"gpt":           {Provider: "openai", ModelID: "gpt-5.2-codex"}, // Short alias for latest available GPT
+	"gpt5":          {Provider: "openai", ModelID: "gpt-5.2-codex"}, // Latest available (5.2-codex)
+	"gpt-5":         {Provider: "openai", ModelID: "gpt-5.2-codex"}, // Latest available (5.2-codex)
+	"gpt5-latest":   {Provider: "openai", ModelID: "gpt-5.2-codex"},
+	"gpt-5.3":       {Provider: "openai", ModelID: "gpt-5.2-codex"}, // 5.3 not yet available, fall back
+	"gpt-5.3-codex": {Provider: "openai", ModelID: "gpt-5.2-codex"}, // 5.3 not yet available, fall back
+	"codex":         {Provider: "openai", ModelID: "gpt-5.2-codex"},
 	"gpt-5.2":       {Provider: "openai", ModelID: "gpt-5.2"}, // Previous latest
 	"gpt-5.2-codex": {Provider: "openai", ModelID: "gpt-5.2-codex"},
 	"gpt5-mini":     {Provider: "openai", ModelID: "gpt-5-mini-20251130"},
