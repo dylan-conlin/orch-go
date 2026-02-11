@@ -2,13 +2,13 @@
 
 **Domain:** macOS input subsystem — trackpad click events stop registering while cursor movement continues
 **Last Updated:** 2026-02-11
-**Synthesized From:** Session 11 (systematic elimination), Session 14 (recurrence + 3 research probes)
+**Synthesized From:** Session 11 (systematic elimination), Session 14 (recurrence + 3 research probes + OpenCode fork resource audit)
 
 ---
 
 ## Summary (30 seconds)
 
-Trackpad clicks stop registering every ~15 minutes while cursor movement and keyboard continue working. `sudo killall -HUP WindowServer` fixes it every time (HUP = reconfigure, not restart). This points to WindowServer accumulating corrupted state in its click event pipeline. Eliminated: resource exhaustion (single check), BetterTouchTool, Hammerspoon, Shortcat, middleClick, Raycast, Karabiner mouse rules, yabai focus_follows_mouse, **yabai entire daemon**. **New leading hypothesis:** system-wide memory pressure from concurrent agent spawning (35GB/36GB used, 607MB free, OpenCode 8.4GB). Not yet eliminated: Karabiner DriverKit, skhd, memory pressure.
+Trackpad clicks stop registering every ~15 minutes while cursor movement and keyboard continue working. `sudo killall -HUP WindowServer` fixes it every time (HUP = reconfigure, not restart). This points to WindowServer accumulating corrupted state in its click event pipeline. Eliminated: BetterTouchTool, Hammerspoon, Shortcat, middleClick, Raycast, Karabiner mouse rules, yabai focus_follows_mouse, **yabai entire daemon**. **Two active hypotheses:** H2 (Karabiner DriverKit — only kernel-level interceptor) and H4 (memory pressure from OpenCode instance accumulation — correlates with onset timing). Not yet eliminated: Karabiner DriverKit, skhd, memory pressure.
 
 ---
 
@@ -84,25 +84,26 @@ macOS 15.6.1 (Sequoia) may have a bug where WindowServer's click event routing t
 
 **Evidence against:** Three research probes (2026-02-11) searched GitHub, Reddit, Apple Discussions exhaustively — **zero matching reports** for this symptom pattern (clicks stop, cursor moves, HUP fixes). If this were a Sequoia bug, community reports would exist. This significantly weakens H3.
 
-### Hypothesis 4: Memory pressure from concurrent agent spawning — NEW, STRONG
+### Hypothesis 4: Memory pressure from OpenCode instance accumulation — TESTING
 
-System running at 35GB/36GB RAM with only 607MB free. 1.9GB in compressor. Load average 16.22 (extremely high for M3 Pro). This coincides with ramping up concurrent agent spawning — each headless OpenCode session + bun worker + tsserver stack consumes significant RAM. OpenCode alone is 8.4GB.
+OpenCode accumulates instances (with LSP/MCP/file watchers) per unique project directory. Each instance costs 300-500MB for LSP alone. With MAX_INSTANCES=20 and orchestrator spawning agents to many worktree directories, memory fills up. OpenCode grew from 336MB to 3.5GB in 15 min, and was at 8.6GB before restart.
 
 **Evidence for:**
 - Click freeze started when concurrent agent spawning ramped up (yesterday)
-- System has 607MB free of 36GB — severe memory pressure
-- 699 processes, 4140 threads — extreme process count
-- WindowServer event buffers under memory pressure could drop click events (smaller, lower-priority) while move events (continuous stream, higher priority) still get through
-- HUP fix is consistent — reconfiguring WindowServer reallocates fresh event buffers
-- Explains why eliminating individual apps didn't help — the problem is cumulative memory pressure, not any single app
-- Explains why no community reports — unique to heavy concurrent AI agent workload
-- Explains "started yesterday" timing — that's when the orch reliability chain spawned 4-7 concurrent agents
+- System had 607MB free of 36GB when freeze occurred — severe memory pressure
+- OpenCode: 8.6GB RSS before restart, 336MB after, already 3.5GB after 15 min
+- OpenCode fork audit confirmed: MAX_INSTANCES=20 × ~500MB LSP = up to 10GB for LSP alone
+- No freeze (so far) since OpenCode restart freed 8.3GB — **active test running**
+- The "89% free" snapshot from audit agent was a point-in-time measurement shortly after restart, NOT when freeze actually occurred
 
-**Evidence against:** Session 11 checked CPU/RAM during a freeze and found "CPU 74% idle, 12GB free" — but that was a single point-in-time check. Memory pressure is dynamic; the system may have been at 607MB free when the freeze occurred, then freed memory by the time we checked. Need to monitor memory at the exact moment of freeze.
+**Evidence against:**
+- Session 11 found "CPU 74% idle, 12GB free" during one freeze — but that was a single check, memory is dynamic
+- Audit agent claimed freeze recurred at 89% free, but timing is unclear — the agent may have conflated the restart with the freeze occurrence
+- Could be correlation (heavy spawning = more tool activity = more Karabiner events)
 
-**Test:** Kill idle OpenCode sessions to free RAM. Monitor memory at next freeze. If freeze stops with fewer concurrent agents, memory pressure confirmed.
+**Status:** Test in progress. OpenCode restarted, memory freed. If freeze does NOT recur for 30+ min with low memory, H4 strengthened. If freeze recurs with 10GB+ free, H4 weakened.
 
-**Key insight:** This isn't about any single tool — it's about the system-wide memory footprint of running many headless AI agents simultaneously.
+**OpenCode tuning (worth doing regardless):** Reduce MAX_INSTANCES 20→8, IDLE_TTL 30min→5min for headless mode, add disposeAll to server.stop(), add periodic eviction timer. See `~/Documents/personal/opencode/.kb/investigations/2026-02-11-inv-opencode-fork-resource-audit-investigate.md`.
 
 ---
 
@@ -112,7 +113,7 @@ System running at 35GB/36GB RAM with only 607MB free. 1.9GB in compressor. Load 
 
 | Suspect | Action | Result | Conclusion |
 |---------|--------|--------|------------|
-| CPU/RAM exhaustion | Checked during freeze | CPU 74% idle, 12GB free | ⚠️ **Revisit** — single point-in-time check, memory now at 607MB free |
+| CPU/RAM exhaustion | Checked during freeze | CPU 74% idle, 12GB free | ⚠️ **Revisit** — single point-in-time check; system was at 607MB free later when freeze occurred |
 | BetterTouchTool | Uninstalled entirely | Freeze recurred | ✅ Eliminated |
 | Hammerspoon | Uninstalled | Freeze recurred | ✅ Eliminated |
 | Shortcat | Uninstalled | Freeze recurred | ✅ Eliminated |
@@ -127,25 +128,31 @@ System running at 35GB/36GB RAM with only 607MB free. 1.9GB in compressor. Load 
 |---------|--------|--------|------------|
 | yabai (entire daemon) | `yabai --stop-service` + confirmed no process | Freeze recurred ~30 min later | ✅ **Eliminated** |
 
+### Session 14, continued (2026-02-11, afternoon)
+
+| Suspect | Action | Result | Conclusion |
+|---------|--------|--------|------------|
+| Memory pressure (H4) | Restarted OpenCode (8.6GB → 336MB), freed 8.3GB RAM | ⏳ Testing... | 🔄 In progress — no freeze yet since restart |
+| OpenCode fork leak | Resource audit investigation | Fork is BETTER than upstream (has LRU/TTL eviction). Not a leak, but params too high for orchestrator. | ✅ Not a bug — tuning issue |
+
 ### Remaining Test Plan
 
-**Priority 1: Test memory pressure hypothesis (H4)**
-1. Kill idle OpenCode sessions to free RAM — target getting back to 10GB+ free
-2. Monitor memory at exact moment of next freeze (`memory_pressure` command)
-3. If freeze stops with fewer agents: **memory pressure confirmed**
-4. If freeze continues with free RAM: move to Karabiner test
+**Active test: H4 (memory pressure)**
+- OpenCode restarted, memory freed from 607MB → 11GB free
+- If no freeze for 30+ min: H4 strengthened → implement OpenCode tuning fixes
+- If freeze recurs with abundant memory: H4 eliminated → test Karabiner
 
-**Priority 2: Quit Karabiner entirely** (if H4 disproven)
-1. Stop all Karabiner components
-2. If still recurs: stop skhd (`skhd --stop-service`)
-3. If still recurs: stop borders + sketchybar (unlikely — display only)
-4. If still recurs with NOTHING running + free RAM: macOS bug or hardware → Apple Support
+**Next: Quit Karabiner entirely** (H2 — if H4 eliminated)
+1. Stop all Karabiner components (Karabiner-Elements, DriverKit VirtualHIDDevice)
+2. Wait 20+ minutes — if freeze stops: **Karabiner confirmed**
+3. If confirmed: investigate Karabiner DriverKit mouse/trackpad passthrough, check for updates, file issue
 
-**If memory pressure confirmed:**
-1. Set `--max-agents` lower (3 instead of 5)
-2. Aggressively clean up idle sessions after completion
-3. Monitor OpenCode memory footprint per session
-4. Consider lighter-weight agent backend
+**Then: Stop skhd** (if Karabiner eliminated)
+1. `skhd --stop-service`
+2. If still recurs: stop borders + sketchybar (unlikely — display only)
+
+**Finally: Nothing running** (if all eliminated)
+1. If still recurs with NOTHING running + free RAM: macOS bug or hardware → Apple Support
 
 ---
 
@@ -179,7 +186,9 @@ System running at 35GB/36GB RAM with only 607MB free. 1.9GB in compressor. Load 
 
 **2026-02-11 (Session 11):** First systematic investigation. 4 freezes in ~1 hour. Eliminated 5 apps (BTT, Hammerspoon, Shortcat, middleClick, Raycast). BTT was a red herring (correlated but not causal).
 
-**2026-02-11 (Session 14):** **yabai eliminated** — freeze recurred with yabai fully stopped (confirmed no process). Three research probes searched GitHub (yabai, Karabiner, broad), Reddit, Apple Discussions — zero matching reports found anywhere. Hypothesis 3 (macOS bug) significantly weakened. **New H4: memory pressure** — system at 35GB/36GB, 607MB free, OpenCode alone 8.4GB. Concurrent agent spawning ramped up yesterday (when freeze started). This is now the leading hypothesis — explains timing, explains why individual app elimination failed, explains unique-to-Dylan symptom.
+**2026-02-11 (Session 14):** **yabai eliminated** — freeze recurred with yabai fully stopped (confirmed no process). Three research probes searched GitHub (yabai, Karabiner, broad), Reddit, Apple Discussions — zero matching reports found anywhere. Hypothesis 3 (macOS bug) significantly weakened. New H4: memory pressure — system at 35GB/36GB, 607MB free, OpenCode alone 8.4GB.
+
+**2026-02-11 (Session 14, continued):** OpenCode fork resource audit found fork is better than upstream (LRU/TTL eviction added Feb 7). But params too high for orchestrator (MAX_INSTANCES=20, IDLE_TTL=30min). OpenCode grew from 336MB → 3.5GB in 15 min, was at 8.6GB before restart. Restarted OpenCode, freed 8.3GB. **H4 test in progress** — no freeze since restart. Audit agent prematurely eliminated H4 based on a point-in-time memory snapshot, not when freeze actually occurred. Both H2 (Karabiner) and H4 (memory pressure) remain active hypotheses.
 
 ---
 
@@ -187,6 +196,7 @@ System running at 35GB/36GB RAM with only 607MB free. 1.9GB in compressor. Load 
 
 **Investigations:**
 - Session 11 handoff in `.orch/HANDOFF.md` — detailed elimination record
+- `~/Documents/personal/opencode/.kb/investigations/2026-02-11-inv-opencode-fork-resource-audit-investigate.md` — OpenCode fork resource audit (eliminated H4, found optimization opportunities)
 
 **Probes:**
 - `.kb/models/macos-click-freeze/probes/2026-02-11-github-apple-support-search.md` — Broad search: zero matching reports
@@ -198,3 +208,6 @@ System running at 35GB/36GB RAM with only 607MB free. 1.9GB in compressor. Load 
 
 **Related models:**
 - None (macOS system issue, not orch-go)
+
+**Related issues (side-findings):**
+- OpenCode fork optimizations: MAX_INSTANCES 20→8, IDLE_TTL 30→5min, disposeAll in server.stop(), periodic eviction timer (worth doing regardless — may also fix click freeze if H4 confirmed)
