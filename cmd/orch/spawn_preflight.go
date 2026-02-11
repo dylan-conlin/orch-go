@@ -6,7 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/config"
 )
 
 // dockerSocketPath is the default Docker daemon socket path.
@@ -127,4 +130,60 @@ func getOSHint(macOSCmd, linuxCmd string) string {
 		return macOSCmd
 	}
 	return linuxCmd
+}
+
+// checkAPIKeyBilling checks if pay-per-token API keys are in the environment
+// and blocks spawn unless --allow-api-billing is explicitly set.
+// This prevents silent fallback from OAuth to pay-per-token billing.
+func checkAPIKeyBilling(cfg *config.Config) error {
+	// Check for pay-per-token API keys in environment
+	anthropicKey := os.Getenv("ANTHROPIC_API_KEY")
+	openaiKey := os.Getenv("OPENAI_API_KEY")
+
+	// If no API keys are set, OAuth will be used - safe to proceed
+	if anthropicKey == "" && openaiKey == "" {
+		return nil
+	}
+
+	// If --allow-api-billing flag is set, user has explicitly opted in
+	if spawnAllowAPIBilling {
+		return nil
+	}
+
+	// If config allows API billing, user has opted in via config file
+	if cfg != nil && cfg.Spawn.AllowAPIBilling {
+		return nil
+	}
+
+	// Build error message with detected keys
+	var detectedKeys []string
+	if anthropicKey != "" {
+		detectedKeys = append(detectedKeys, "ANTHROPIC_API_KEY")
+	}
+	if openaiKey != "" {
+		detectedKeys = append(detectedKeys, "OPENAI_API_KEY")
+	}
+
+	keysStr := strings.Join(detectedKeys, " and ")
+
+	return fmt.Errorf(`
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  🚫 Pay-per-token API key detected                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Environment variable: %s                                                   │
+│                                                                             │
+│  DANGER: These API keys bypass OAuth and use pay-per-token billing.        │
+│          A single overnight daemon run could cost $100+ in API charges.    │
+│          (January 2026: $402 surprise bill from OPENAI_API_KEY fallback)   │
+│                                                                             │
+│  To use OAuth (flat $200/mo subscription):                                 │
+│    unset %s                                                                 │
+│    # Restart OpenCode server to pick up change                             │
+│                                                                             │
+│  To explicitly opt-in to pay-per-token billing:                            │
+│    orch spawn --allow-api-billing ...                                      │
+│                                                                             │
+│  Reference: orch-go-4bo36 (Safety gate: prevent silent API key fallback)   │
+└─────────────────────────────────────────────────────────────────────────────┘
+`, keysStr, keysStr)
 }

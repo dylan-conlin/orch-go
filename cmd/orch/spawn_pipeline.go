@@ -151,7 +151,7 @@ func (p *spawnPipeline) runPreFlightValidation() error {
 		fmt.Fprintf(os.Stderr, "ℹ️  Non-Anthropic model (%s) — skipping Anthropic rate limit check\n", p.resolvedModel.Format())
 	}
 
-	// Get project directory early for hotspot check
+	// Get project directory early for API billing check and hotspot check
 	var preCheckDir string
 	if spawnWorkdir != "" {
 		if absPath, err := filepath.Abs(spawnWorkdir); err == nil {
@@ -159,6 +159,18 @@ func (p *spawnPipeline) runPreFlightValidation() error {
 		}
 	} else {
 		preCheckDir, _ = currentProjectDir()
+	}
+
+	// API key safety gate: Block spawn if pay-per-token API keys are in environment
+	// unless --allow-api-billing is explicitly set. This prevents silent fallback
+	// from OAuth to pay-per-token billing.
+	// Load config early to check allow_api_billing setting.
+	var earlyProjCfg *config.Config
+	if preCheckDir != "" {
+		earlyProjCfg, _ = config.Load(preCheckDir)
+	}
+	if err := checkAPIKeyBilling(earlyProjCfg); err != nil {
+		return err
 	}
 
 	// STRATEGIC-FIRST ORCHESTRATION: Check for hotspots in task target area

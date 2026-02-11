@@ -54,6 +54,7 @@ var (
 	spawnDesignWorkspace     string // Design workspace name for ui-design-session → feature-impl handoff
 	spawnAcknowledgeDecision string // Acknowledge decision conflict to proceed with spawn
 	spawnContextBudget       int    // Token budget for generated SPAWN_CONTEXT.md
+	spawnAllowAPIBilling     bool   // Explicit opt-in for pay-per-token API billing (when API keys are in environment)
 )
 
 var spawnCmd = &cobra.Command{
@@ -222,6 +223,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnDesignWorkspace, "design-workspace", "", "Design workspace name from ui-design-session for handoff to feature-impl (e.g., 'og-design-ready-queue-08jan')")
 	spawnCmd.Flags().StringVar(&spawnAcknowledgeDecision, "acknowledge-decision", "", "[DEPRECATED] Decision gate disabled - this flag has no effect")
 	spawnCmd.Flags().IntVar(&spawnContextBudget, "context-budget", spawn.DefaultSpawnContextBudgetTokens, "Token budget for SPAWN_CONTEXT.md (default 12000). Context is deterministically truncated when over budget")
+	spawnCmd.Flags().BoolVar(&spawnAllowAPIBilling, "allow-api-billing", false, "Explicit opt-in for pay-per-token API billing when ANTHROPIC_API_KEY or OPENAI_API_KEY are in environment (safety gate to prevent accidental $400+ bills)")
 }
 
 var (

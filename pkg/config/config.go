@@ -95,7 +95,8 @@ type DashboardAgentsConfig struct {
 
 // SpawnConfig holds spawn policy overrides.
 type SpawnConfig struct {
-	ContextQuality SpawnContextQualityConfig `yaml:"context_quality,omitempty"`
+	ContextQuality  SpawnContextQualityConfig `yaml:"context_quality,omitempty"`
+	AllowAPIBilling bool                      `yaml:"allow_api_billing,omitempty"` // Opt-in for pay-per-token API billing
 }
 
 // SpawnContextQualityConfig holds gap gate policy values.
