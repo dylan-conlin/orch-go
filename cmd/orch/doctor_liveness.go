@@ -21,7 +21,7 @@ func checkOpenCode() ServiceStatus {
 
 func checkOpenCodeWithClient(client opencode.ClientInterface) ServiceStatus {
 	status := ServiceStatus{
-		Name:      "OpenCode",
+		Name:      "OpenCode HTTP API",
 		Port:      4096,
 		URL:       serverURL,
 		CanFix:    true,
@@ -33,9 +33,9 @@ func checkOpenCodeWithClient(client opencode.ClientInterface) ServiceStatus {
 		status.Details = "API responding"
 	} else {
 		status.Running = false
-		status.Details = "Not responding"
+		status.Details = "HTTP API not serving (TUI may still be running)"
 		if doctorVerbose {
-			status.Details = fmt.Sprintf("Not responding: %v", err)
+			status.Details = fmt.Sprintf("HTTP API not serving (TUI may still be running): %v", err)
 		}
 	}
 

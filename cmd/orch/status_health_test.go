@@ -151,7 +151,7 @@ func TestCheckInfrastructureHealth(t *testing.T) {
 				if health.Services[i].Name == "Dashboard" {
 					dashboardStatus = &health.Services[i]
 				}
-				if health.Services[i].Name == "OpenCode" {
+				if health.Services[i].Name == "OpenCode HTTP API" {
 					opencodeStatus = &health.Services[i]
 				}
 			}
@@ -163,7 +163,7 @@ func TestCheckInfrastructureHealth(t *testing.T) {
 			}
 
 			if opencodeStatus == nil {
-				t.Error("OpenCode service not found in health check")
+				t.Error("OpenCode HTTP API service not found in health check")
 			} else if opencodeStatus.Running != tt.opencodeUp {
 				t.Errorf("OpenCode.Running = %v, want %v", opencodeStatus.Running, tt.opencodeUp)
 			}
@@ -199,11 +199,11 @@ func TestPrintInfrastructureHealth(t *testing.T) {
 				AllHealthy: true,
 				Services: []InfraServiceStatus{
 					{Name: "Dashboard", Running: true, Port: 3348, Details: "listening"},
-					{Name: "OpenCode", Running: true, Port: 4096, Details: "listening"},
+					{Name: "OpenCode HTTP API", Running: true, Port: 4096, Details: "listening"},
 				},
 				Daemon: &DaemonStatus{Status: "running", ReadyCount: 5},
 			},
-			wantContains:   []string{"SYSTEM HEALTH", "✅ Dashboard", "✅ OpenCode", "✅ Daemon", "listening"},
+			wantContains:   []string{"SYSTEM HEALTH", "✅ Dashboard", "✅ OpenCode HTTP API", "✅ Daemon", "listening"},
 			wantNotContain: []string{"❌"},
 		},
 		{
@@ -212,11 +212,11 @@ func TestPrintInfrastructureHealth(t *testing.T) {
 				AllHealthy: false,
 				Services: []InfraServiceStatus{
 					{Name: "Dashboard", Running: false, Port: 3348, Details: "not responding"},
-					{Name: "OpenCode", Running: true, Port: 4096, Details: "listening"},
+					{Name: "OpenCode HTTP API", Running: true, Port: 4096, Details: "listening"},
 				},
 				Daemon: nil,
 			},
-			wantContains: []string{"SYSTEM HEALTH", "❌ Dashboard", "✅ OpenCode", "❌ Daemon", "not responding"},
+			wantContains: []string{"SYSTEM HEALTH", "❌ Dashboard", "✅ OpenCode HTTP API", "❌ Daemon", "not responding"},
 		},
 	}
 

@@ -506,7 +506,7 @@ func waitForHealthChecks(timeout time.Duration) error {
 		name string
 		port int
 	}{
-		{"OpenCode", 4096},
+		{"OpenCode HTTP API", 4096},
 		{"orch serve", DefaultServePort},
 	}
 

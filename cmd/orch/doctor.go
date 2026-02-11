@@ -33,7 +33,7 @@ var doctorCmd = &cobra.Command{
 	Long: `Check the health status of orch-related services.
 
 Liveness checks (is it running?):
-  - OpenCode server (default port 4096)
+  - OpenCode HTTP API server (default port 4096)
   - orch serve API server (default port 3348)
   - Dashboard UI (static, served by orch serve on port 3348)
   - Beads daemon
@@ -261,7 +261,7 @@ func runDoctor() error {
 
 				var err error
 				switch svc.Name {
-				case "OpenCode":
+				case "OpenCode HTTP API":
 					err = startOpenCode()
 				case "orch serve":
 					err = startOrchServe()

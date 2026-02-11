@@ -27,8 +27,8 @@ func checkInfrastructureHealth() *InfrastructureHealth {
 		health.AllHealthy = false
 	}
 
-	// Check OpenCode server on port 4096
-	opencodeStatus := checkTCPPort("OpenCode", 4096)
+	// Check OpenCode HTTP API server on port 4096
+	opencodeStatus := checkTCPPort("OpenCode HTTP API", 4096)
 	health.Services = append(health.Services, opencodeStatus)
 	if !opencodeStatus.Running {
 		health.AllHealthy = false

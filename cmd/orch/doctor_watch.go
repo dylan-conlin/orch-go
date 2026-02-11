@@ -297,7 +297,7 @@ func runDaemonHealthCycle(config DoctorDaemonConfig, logger *DoctorDaemonLogger,
 	daemonFixedServices := make(map[string]bool)
 	if restarted > 0 {
 		// restartCrashedServices only restarts OpenCode currently
-		daemonFixedServices["OpenCode"] = true
+		daemonFixedServices["OpenCode HTTP API"] = true
 	}
 
 	report := &DoctorReport{Healthy: true, Services: make([]ServiceStatus, 0)}
