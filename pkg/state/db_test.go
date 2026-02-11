@@ -3,6 +3,7 @@ package state
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -1121,6 +1122,35 @@ func TestGetPhaseAdoptionMetrics_Mixed(t *testing.T) {
 	}
 	if metrics.ViaUnknown != 1 {
 		t.Errorf("ViaUnknown = %d, want 1", metrics.ViaUnknown)
+	}
+}
+
+func TestOpenRejectsRelativePath(t *testing.T) {
+	// Attempt to open with relative path should fail
+	_, err := Open(".orch/state.db")
+	if err == nil {
+		t.Fatal("expected error when opening with relative path, got nil")
+	}
+	if !strings.Contains(err.Error(), "must be absolute") {
+		t.Errorf("expected error about absolute path, got: %v", err)
+	}
+}
+
+func TestOpenAllowsTestPaths(t *testing.T) {
+	// Create a temp directory to simulate a test database
+	tmpDir := t.TempDir()
+	testPath := filepath.Join(tmpDir, "test-state.db")
+
+	// This should succeed (absolute path in temp directory)
+	db, err := Open(testPath)
+	if err != nil {
+		t.Fatalf("expected Open to succeed for test path in temp dir, got error: %v", err)
+	}
+	defer db.Close()
+
+	// Verify database was created and is functional
+	if db.Path() != testPath {
+		t.Errorf("expected path %s, got %s", testPath, db.Path())
 	}
 }
 

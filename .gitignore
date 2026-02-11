@@ -32,6 +32,9 @@ tmp/
 .orch/workspace/
 .orch/worktrees/
 .orch/investigations/
+.orch/state.db      # Spurious empty database (real one is at ~/.orch/state.db)
+.orch/state.db-shm  # SQLite shared memory file
+.orch/state.db-wal  # SQLite write-ahead log file
 
 # Playwright outputs (generated)
 web/playwright-report/

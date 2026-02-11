@@ -70,6 +70,57 @@ type DB struct {
 	mu   sync.Mutex // protects writes (reads are concurrent via WAL)
 }
 
+// validateStateDBPath ensures the database path is in the user's home directory,
+// not in a project directory. This prevents spurious empty state.db files from
+// being created in project roots or worktrees.
+//
+// The validation rejects relative paths (which would create databases in CWD)
+// but allows absolute paths for testing purposes (e.g., /tmp, /var/folders).
+func validateStateDBPath(path string) error {
+	// Reject relative paths - they would create databases in CWD
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf(
+			"state.db path must be absolute, got relative path: %s (would create database in current directory)",
+			path)
+	}
+
+	// Get the expected home directory path
+	expectedPath := DefaultDBPath()
+	if expectedPath == "" {
+		// If we can't determine home directory, we can't validate further
+		// This is a degraded state but we'll allow it to maintain backwards compatibility
+		return nil
+	}
+
+	absExpectedPath, err := filepath.Abs(expectedPath)
+	if err != nil {
+		// Can't resolve expected path, allow operation to continue
+		return nil
+	}
+
+	// If path matches expected, all good
+	if path == absExpectedPath {
+		return nil
+	}
+
+	// Allow test paths (in temp directories)
+	// This includes /tmp, /var/folders (macOS), /tmp/go-build, etc.
+	if strings.HasPrefix(path, "/tmp/") ||
+		strings.HasPrefix(path, "/var/folders/") ||
+		strings.HasPrefix(path, os.TempDir()) {
+		return nil
+	}
+
+	// Path is absolute but not in home directory or temp directory.
+	// This is unusual but might be intentional (e.g., custom deployment).
+	// Print warning but allow.
+	fmt.Fprintf(os.Stderr,
+		"Warning: state.db at non-standard location: %s (expected: %s)\n",
+		path, absExpectedPath)
+
+	return nil
+}
+
 // Open opens (or creates) the state database at the given path.
 // Enables WAL mode for concurrent reads and creates the schema if needed.
 func Open(path string) (*DB, error) {
@@ -78,6 +129,14 @@ func Open(path string) (*DB, error) {
 	}
 	if path == "" {
 		return nil, fmt.Errorf("could not determine state database path")
+	}
+
+	// Guard against project-local state.db creation.
+	// state.db must be in ~/.orch/state.db, not in project directories.
+	// This prevents spurious empty databases from being created in worktrees
+	// or project roots when relative paths are accidentally passed.
+	if err := validateStateDBPath(path); err != nil {
+		return nil, err
 	}
 
 	// Ensure parent directory exists
