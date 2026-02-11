@@ -57,8 +57,7 @@
 	import { operatorHealth } from '$lib/stores/operator-health';
 	import { OperatorHealthSection } from '$lib/components/operator-health-section';
 	import { filters, orchestratorContext, buildFilterQueryString } from '$lib/stores/context';
-	import { coaching, startCoachingPolling, stopCoachingPolling } from '$lib/stores/coaching';
-	import { questions } from '$lib/stores/questions';
+import { questions } from '$lib/stores/questions';
 	import { QuestionsSection } from '$lib/components/questions-section';
 	import { FrontierSection } from '$lib/components/frontier-section';
 	import { frontier } from '$lib/stores/frontier';
@@ -88,8 +87,7 @@
 		orchestratorSessions: true, // Orchestrator sessions expanded by default (important visibility)
 		services: true, // Services expanded by default (important visibility)
 		operatorHealth: true, // Operator health expanded by default (primary verification surface)
-		coaching: true, // Coaching metrics expanded by default
-		frontier: true, // Frontier expanded by default (shows decidability state)
+frontier: true, // Frontier expanded by default (shows decidability state)
 		decisionCenter: true // Decision Center expanded by default (strategic decisions)
 	};
 	
@@ -155,9 +153,7 @@
 		connectSSE();
 		connectAgentlogSSE();
 		connectServicelogSSE();
-		startCoachingPolling();
-
-		// Fetch critical data in parallel using Promise.all
+// Fetch critical data in parallel using Promise.all
 		// These affect the primary dashboard view and should load ASAP
 		// Note: beads.fetch() is called without projectDir initially - will be refetched
 		// when orchestrator context is loaded (see reactive block below)
@@ -236,8 +232,7 @@
 		disconnectSSE();
 		disconnectAgentlogSSE();
 		disconnectServicelogSSE();
-		stopCoachingPolling();
-		orchestratorContext.stopPolling();
+orchestratorContext.stopPolling();
 	});
 
 	// React to followOrchestrator changes - start/stop context polling
@@ -470,35 +465,6 @@
 <div class="space-y-3">
 	<!-- Stats Bar Component -->
 	<StatsBar bind:readyQueueExpanded={sectionState.readyQueue} />
-
-	<!-- Orchestrator Coaching (Frame 2: Simplified Health Indicator) -->
-	{#if $coaching.overall_status}
-	<div class="rounded-lg border bg-card {
-		$coaching.overall_status === 'good' ? 'border-green-500/30' :
-		$coaching.overall_status === 'warning' ? 'border-yellow-500/30' :
-		'border-red-500/30'
-	}" data-testid="coaching-section">
-		<div class="flex items-center justify-between px-3 py-2">
-			<div class="flex items-center gap-2">
-				<span class="text-lg">
-					{#if $coaching.overall_status === 'good'}
-						🟢
-					{:else if $coaching.overall_status === 'warning'}
-						🟡
-					{:else}
-						🔴
-					{/if}
-				</span>
-				<span class="text-sm font-medium">{$coaching.status_message}</span>
-				{#if $coaching.last_coaching_time}
-					<Badge variant="outline" class="h-5 px-1.5 text-xs text-muted-foreground">
-						Last coaching: {new Date($coaching.last_coaching_time).toLocaleTimeString()}
-					</Badge>
-				{/if}
-			</div>
-		</div>
-	</div>
-	{/if}
 
 	<!-- Orchestrator Sessions (always visible at top when active) -->
 	<OrchestratorSessionsSection

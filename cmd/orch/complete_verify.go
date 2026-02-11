@@ -35,8 +35,6 @@ type SkipConfig struct {
 	BatchMode        bool   // Batch mode: skip all Tier 2 (quality) gates
 }
 
-const autoGPTSkipReason = "auto GPT completion profile: known gate incompatibilities"
-
 // hasAnySkip returns true if any skip flag is set (including batch mode).
 func (c SkipConfig) hasAnySkip() bool {
 	return c.BatchMode || c.TestEvidence || c.ModelConnection || c.Visual || c.GitDiff || c.Synthesis ||
@@ -172,48 +170,6 @@ func buildBatchSkipConfig() SkipConfig {
 		BatchMode: true,
 		Reason:    "batch mode - core gates only",
 	}
-}
-
-// applyAutoModelSkipProfile augments skip configuration based on detected model behavior.
-// For GPT/OpenAI agents, some completion gates are currently unreliable and are auto-skipped.
-func applyAutoModelSkipProfile(target *CompletionTarget, skipConfig SkipConfig) SkipConfig {
-	if target == nil || target.WorkspacePath == "" || target.IsOrchestratorSession {
-		return skipConfig
-	}
-
-	if !verify.IsWorkspaceGPTModel(target.WorkspacePath) {
-		return skipConfig
-	}
-
-	var added []string
-	if !skipConfig.ModelConnection {
-		skipConfig.ModelConnection = true
-		added = append(added, verify.GateModelConnection)
-	}
-	if !skipConfig.GitDiff {
-		skipConfig.GitDiff = true
-		added = append(added, verify.GateGitDiff)
-	}
-	if !skipConfig.VerificationSpec {
-		skipConfig.VerificationSpec = true
-		added = append(added, verify.GateVerificationSpec)
-	}
-
-	if len(added) == 0 {
-		return skipConfig
-	}
-
-	if strings.TrimSpace(skipConfig.Reason) == "" {
-		skipConfig.Reason = autoGPTSkipReason
-	}
-
-	modelLabel := verify.WorkspaceModelDisplay(target.WorkspacePath)
-	if modelLabel == "" {
-		modelLabel = "openai/gpt"
-	}
-	fmt.Printf("Auto-applied GPT completion profile for %s: skipping %s\n", modelLabel, strings.Join(added, ", "))
-
-	return skipConfig
 }
 
 // validateSkipFlags validates that --skip-reason is provided when --skip-* flags are used.

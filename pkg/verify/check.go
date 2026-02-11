@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/activity"
-	"github.com/dylan-conlin/orch-go/pkg/model"
-	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // StateDBPhaseChecker is an injectable function that checks state.db for phase status.
@@ -674,8 +672,6 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 
 	// Check if Phase: Complete was reported
 	phaseComplete := status.Found && strings.EqualFold(status.Phase, "Complete")
-	phaseBypassed := false
-
 	// Fallback: Check ACTIVITY.json for Phase: Complete attempts
 	// This handles the case where bd comment reports success but the comment
 	// fails to persist (a known beads bug - see orch-go-21112).
@@ -715,16 +711,6 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 		}
 	}
 
-	// Model-aware bypass: GPT models frequently miss Phase: Complete reporting.
-	// If this workspace was spawned with a GPT model, don't block completion on
-	// missing phase comments.
-	if !phaseComplete && shouldBypassPhaseCompleteForModel(workspacePath) {
-		phaseComplete = true
-		phaseBypassed = true
-		result.Warnings = append(result.Warnings,
-			"Phase: Complete auto-bypassed for GPT model from AGENT_MANIFEST.json")
-	}
-
 	if !phaseComplete {
 		if !status.Found {
 			errMsg := fmt.Sprintf("agent has not reported any Phase status for %s — use --skip-phase-complete --skip-reason '<reason>' to bypass", beadsID)
@@ -742,7 +728,7 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 		result.GateResults = append(result.GateResults, GateResult{Gate: GatePhaseComplete, Passed: false, Error: errMsg})
 		return result, nil
 	}
-	result.GateResults = append(result.GateResults, GateResult{Gate: GatePhaseComplete, Passed: true, Skipped: phaseBypassed})
+	result.GateResults = append(result.GateResults, GateResult{Gate: GatePhaseComplete, Passed: true, Skipped: false})
 
 	// Check for SYNTHESIS.md (only for full tier)
 	if workspacePath != "" && tier != "light" {
@@ -883,60 +869,6 @@ func verifySessionEndedProperly(workspacePath string) (bool, error) {
 	}
 
 	return false, nil
-}
-
-// WorkspaceModelDisplay returns a normalized provider/model string from
-// AGENT_MANIFEST.json (for example: openai/gpt-5.3-codex).
-// Returns empty string when model metadata is unavailable.
-func WorkspaceModelDisplay(workspacePath string) string {
-	resolved, _, ok := resolveWorkspaceModel(workspacePath)
-	if !ok {
-		return ""
-	}
-	if display := strings.TrimSpace(resolved.Format()); display != "" {
-		return display
-	}
-	return strings.TrimSpace(resolved.ModelID)
-}
-
-// IsWorkspaceGPTModel returns true when AGENT_MANIFEST.json resolves to an
-// OpenAI GPT model.
-func IsWorkspaceGPTModel(workspacePath string) bool {
-	resolved, rawModel, ok := resolveWorkspaceModel(workspacePath)
-	if !ok {
-		return false
-	}
-
-	if strings.EqualFold(strings.TrimSpace(resolved.Provider), "openai") &&
-		strings.Contains(strings.ToLower(strings.TrimSpace(resolved.ModelID)), "gpt") {
-		return true
-	}
-
-	// Defensive fallback for unresolved/unknown specs.
-	rawLower := strings.ToLower(strings.TrimSpace(rawModel))
-	return strings.Contains(rawLower, "openai") && strings.Contains(rawLower, "gpt")
-}
-
-func shouldBypassPhaseCompleteForModel(workspacePath string) bool {
-	return IsWorkspaceGPTModel(workspacePath)
-}
-
-func resolveWorkspaceModel(workspacePath string) (model.ModelSpec, string, bool) {
-	if strings.TrimSpace(workspacePath) == "" {
-		return model.ModelSpec{}, "", false
-	}
-
-	manifest, err := spawn.ReadAgentManifest(workspacePath)
-	if err != nil || manifest == nil {
-		return model.ModelSpec{}, "", false
-	}
-
-	rawModel := strings.TrimSpace(manifest.Model)
-	if rawModel == "" {
-		return model.ModelSpec{}, "", false
-	}
-
-	return model.Resolve(rawModel), rawModel, true
 }
 
 // joinErrors joins multiple error strings into a single semicolon-separated string.

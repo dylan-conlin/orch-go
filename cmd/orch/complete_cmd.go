@@ -238,9 +238,6 @@ func runComplete(identifier, workdir string) error {
 		return err
 	}
 
-	// Auto-apply model-aware skip profile (for known GPT gate incompatibilities).
-	skipConfig = applyAutoModelSkipProfile(target, skipConfig)
-
 	// Pre-verification: approval comment + auto-rebuild
 	if completeApprove && !target.IsUntracked {
 		approvalComment := "APPROVED - Visual changes reviewed and approved by orchestrator"
