@@ -8,7 +8,7 @@
 
 ## Summary (30 seconds)
 
-Trackpad clicks stop registering every ~15 minutes while cursor movement and keyboard continue working. `sudo killall -HUP WindowServer` fixes it every time (HUP = reconfigure, not restart). This points to WindowServer accumulating corrupted state in its click event pipeline. Eliminated: resource exhaustion, BetterTouchTool, Hammerspoon, Shortcat, middleClick, Raycast, Karabiner mouse rules, yabai focus_follows_mouse. Not yet eliminated: yabai itself, Karabiner (kernel-level DriverKit), skhd, borders, sketchybar.
+Trackpad clicks stop registering every ~15 minutes while cursor movement and keyboard continue working. `sudo killall -HUP WindowServer` fixes it every time (HUP = reconfigure, not restart). This points to WindowServer accumulating corrupted state in its click event pipeline. Eliminated: resource exhaustion, BetterTouchTool, Hammerspoon, Shortcat, middleClick, Raycast, Karabiner mouse rules, yabai focus_follows_mouse, **yabai entire daemon** (freeze recurred without yabai). Not yet eliminated: Karabiner (kernel-level DriverKit) — **now primary suspect**, skhd, borders, sketchybar.
 
 ---
 
@@ -49,9 +49,9 @@ Click events and move events travel the same path but are **different event type
 |-----------|------|-------------|
 | Trackpad hardware | Generates raw events | ✅ Yes — HUP fix proves it's not hardware |
 | IOKit HID | Kernel input driver | ❌ Not tested — but unlikely (move events work) |
-| Karabiner DriverKit | Kernel-level input interception | ❌ **Not yet tested** — strongest remaining suspect at kernel level |
+| Karabiner DriverKit | Kernel-level input interception | ❌ **Primary suspect** — only kernel-level interceptor remaining |
 | WindowServer | Routes events to apps | Partially — it's WHERE the problem manifests (HUP fixes it) |
-| yabai | Window management, event interception | 🔄 **Currently testing** (stopped service) |
+| yabai | Window management, event interception | ✅ **Eliminated** — freeze recurred with yabai fully stopped |
 | skhd | Hotkey daemon, event interception | ❌ Not yet tested |
 | borders | Window border drawing | ❌ Not yet tested (unlikely — display only) |
 | sketchybar | Status bar | ❌ Not yet tested (unlikely — display only) |
@@ -60,21 +60,21 @@ Click events and move events travel the same path but are **different event type
 
 ## Why This Fails
 
-### Hypothesis 1: yabai event interception corrupts WindowServer state (TESTING)
+### Hypothesis 1: yabai event interception corrupts WindowServer state — ELIMINATED
 
-yabai uses the macOS Accessibility API to manage windows. It intercepts focus events and can manipulate window properties. If yabai's event handling creates a race condition or leaves WindowServer in an inconsistent state for click routing, clicks could be swallowed.
+yabai uses the macOS Accessibility API to manage windows. Freeze recurred with yabai fully stopped (`yabai --stop-service`, confirmed no process via `pgrep`).
 
-**Evidence for:** yabai is the most invasive remaining interceptor. It manipulates window focus, which is tightly coupled to click routing. yabai issue #2715 reports "window freezes during drag, mouse continues moving" — closest matching symptom found anywhere.
+**Evidence against:** Freeze recurred within ~30 minutes with yabai completely stopped. No yabai process running. Definitively eliminated.
 
-**Evidence against:** Disabling `focus_follows_mouse` in Session 11 didn't fix it (but that's just one feature — yabai does much more). No exact click freeze reports found in yabai GitHub (searched extensively).
-
-### Hypothesis 2: Karabiner DriverKit drops click events at kernel level
+### Hypothesis 2: Karabiner DriverKit drops click events at kernel level — PRIMARY SUSPECT
 
 Karabiner operates at the kernel level via DriverKit. It intercepts ALL input events before they reach WindowServer. If Karabiner's virtual HID device has a bug where click events get stuck in a buffer or filtered incorrectly, clicks would stop while moves continue.
 
-**Evidence for:** Karabiner is the ONLY component operating at kernel level. It has separate handling for mouse/trackpad events vs keyboard events. A bug in click event passthrough would explain the selective failure. Karabiner issue #2566 (36 comments) documents "heavy intermittent mouse lag" when mouse device is enabled — different symptom but same subsystem.
+**Evidence for:** Karabiner is the ONLY component operating at kernel level. It has separate handling for mouse/trackpad events vs keyboard events. A bug in click event passthrough would explain the selective failure. Karabiner issue #2566 (36 comments) documents "heavy intermittent mouse lag" when mouse device is enabled — different symptom but same subsystem. **Now the primary suspect** after yabai elimination. XProtect update on Feb 10 may have changed DriverKit security policies.
 
 **Evidence against:** Karabiner config only has keyboard rules (no mouse/trackpad rules). But DriverKit still processes all events even without rules. No exact click freeze reports found in Karabiner GitHub (searched extensively).
+
+**Next test:** Quit Karabiner entirely and wait 20+ minutes.
 
 ### Hypothesis 3: WindowServer internal corruption (no external cause) — WEAKENED
 
@@ -105,21 +105,20 @@ macOS 15.6.1 (Sequoia) may have a bug where WindowServer's click event routing t
 
 | Suspect | Action | Result | Conclusion |
 |---------|--------|--------|------------|
-| yabai (entire daemon) | `yabai --stop-service` | ⏳ Testing... | 🔄 In progress |
+| yabai (entire daemon) | `yabai --stop-service` + confirmed no process | Freeze recurred ~30 min later | ✅ **Eliminated** |
 
 ### Remaining Test Plan
 
-If yabai elimination FAILS (freeze recurs without yabai):
-1. Stop skhd: `skhd --stop-service`
-2. If still recurs: quit Karabiner entirely (kernel-level test)
-3. If still recurs: stop borders + sketchybar (unlikely but complete)
+1. **Quit Karabiner entirely** (primary suspect — kernel-level DriverKit)
+2. If still recurs: stop skhd (`skhd --stop-service`)
+3. If still recurs: stop borders + sketchybar (unlikely — display only)
 4. If still recurs with NOTHING running: macOS bug or hardware → Apple Support
 
-If yabai elimination SUCCEEDS (no freeze for 20+ minutes):
-1. Restart yabai: `yabai --start-service`
-2. If freeze returns: yabai confirmed as cause
-3. Investigate yabai version, check GitHub issues for similar reports
-4. Options: update yabai, configure differently, or replace
+If Karabiner elimination SUCCEEDS (no freeze for 20+ minutes):
+1. Restart Karabiner
+2. If freeze returns: Karabiner confirmed as cause
+3. Check Karabiner version (14.13.0), XProtect update (Feb 10) interaction
+4. Options: update Karabiner, disable DriverKit mouse passthrough, or replace
 
 ---
 
@@ -153,7 +152,7 @@ If yabai elimination SUCCEEDS (no freeze for 20+ minutes):
 
 **2026-02-11 (Session 11):** First systematic investigation. 4 freezes in ~1 hour. Eliminated 5 apps (BTT, Hammerspoon, Shortcat, middleClick, Raycast). BTT was a red herring (correlated but not causal).
 
-**2026-02-11 (Session 14):** Recurrence confirmed pattern persists. Started elimination of remaining suspects with yabai disabled. Three research probes searched GitHub (yabai, Karabiner, broad), Reddit, Apple Discussions — zero matching reports found anywhere. Hypothesis 3 (macOS bug) significantly weakened. Closest match: yabai #2715 (drag freeze). Karabiner #2566 (mouse lag, 36 comments) is same subsystem but different symptom.
+**2026-02-11 (Session 14):** **yabai eliminated** — freeze recurred with yabai fully stopped (confirmed no process). Three research probes searched GitHub (yabai, Karabiner, broad), Reddit, Apple Discussions — zero matching reports found anywhere. Hypothesis 3 (macOS bug) significantly weakened. Karabiner now primary suspect. XProtect updated Feb 10 — possible DriverKit interaction. Next: quit Karabiner entirely.
 
 ---
 
