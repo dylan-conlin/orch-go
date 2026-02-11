@@ -290,31 +290,62 @@ func validateOutcomeField(content string) bool {
 	return false
 }
 
-// VerifyCompletion checks if an agent is ready for completion.
-// Returns a VerificationResult with any errors or warnings.
-// Uses VerifyCompletionWithTier with an empty tier (reads from workspace).
-func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult, error) {
-	return VerifyCompletionWithTier(beadsID, workspacePath, "")
-}
-
 // isOrchestrator returns true if the tier is TierOrchestrator.
 func isOrchestrator(tier string) bool {
 	return tier == TierOrchestrator
 }
 
 // VerifyCompletionFull checks if an agent is ready for completion including skill constraints
-// and phase gates. This extends VerifyCompletion with:
-// 1. Constraint verification from SPAWN_CONTEXT.md (file patterns must match)
-// 2. Phase gate verification (required phases must be reported via beads comments)
-// 3. Skill output verification from skill.yaml outputs.required section
+// and phase gates. It verifies:
+// 1. Phase: Complete status (with ACTIVITY.json and state.db fallbacks)
+// 2. SYNTHESIS.md exists and is non-empty
+// 3. Backend deliverables (opencode transcript or tmux capture)
+// 4. Constraint verification from SPAWN_CONTEXT.md (file patterns must match)
+// 5. Phase gate verification (required phases must be reported via beads comments)
+// 6. Skill output verification from skill.yaml outputs.required section
 //
 // For orchestrator tier, beads-dependent checks are skipped since orchestrators
 // manage sessions rather than issues.
 //
-// The projectDir is used to verify that constraint patterns match actual files.
-func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier, serverURL string) (VerificationResult, error) {
-	// Delegate to the cached version without pre-fetched comments
-	return VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, serverURL, nil)
+// If comments is nil, comments will be fetched from beads API.
+func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier, serverURL string, comments []Comment) (VerificationResult, error) {
+	// Determine tier if not provided (needed for orchestrator check below)
+	if tier == "" && workspacePath != "" {
+		tier = ReadTierFromWorkspace(workspacePath)
+	}
+
+	// Run phase and synthesis verification
+	result, err := verifyPhaseAndSynthesis(beadsID, workspacePath, tier, comments)
+	if err != nil {
+		return result, err
+	}
+
+	// If phase/synthesis verification failed, no need to check constraints
+	if !result.Passed {
+		return result, nil
+	}
+
+	isOrch := isOrchestrator(tier)
+
+	// Verify backend deliverables (opencode transcript or tmux capture)
+	if !isOrch && workspacePath != "" {
+		mergeBackendResult(&result, VerifyBackendDeliverables(workspacePath, beadsID, serverURL, ""))
+	}
+
+	// Skip constraint/gate verification if no workspace or project dir
+	if workspacePath == "" || projectDir == "" {
+		return result, nil
+	}
+
+	// Run worker-specific gates (skip for orchestrator tier)
+	if !isOrch {
+		verifyWorkerGates(&result, beadsID, workspacePath, projectDir, serverURL, comments, result.Skill)
+	}
+
+	// Run gates that apply to all tiers
+	verifyCommonGates(&result, workspacePath, projectDir)
+
+	return result, nil
 }
 
 // VerifyCompletionForReview is a lightweight verification for orch review command.
@@ -322,13 +353,13 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier, serverURL st
 // expensive checks (git diff, go build) that are deferred to orch complete.
 // This enables O(1) verification per workspace instead of O(n) git/build commands.
 func VerifyCompletionForReview(beadsID, workspacePath, tier, serverURL string, comments []Comment) (VerificationResult, error) {
-	// Determine tier if not provided
+	// Determine tier if not provided (needed for orchestrator check below)
 	if tier == "" && workspacePath != "" {
 		tier = ReadTierFromWorkspace(workspacePath)
 	}
 
-	// First run standard verification (uses comments for phase status)
-	result, err := VerifyCompletionWithTierAndComments(beadsID, workspacePath, tier, comments)
+	// Run phase and synthesis verification directly
+	result, err := verifyPhaseAndSynthesis(beadsID, workspacePath, tier, comments)
 	if err != nil {
 		return result, err
 	}
@@ -366,49 +397,6 @@ func mergeGateResult(result *VerificationResult, gr gateCheckResult) {
 		result.GateResults = append(result.GateResults, GateResult{Gate: gr.gate, Passed: true})
 	}
 	result.Warnings = append(result.Warnings, gr.warnings...)
-}
-
-// VerifyCompletionFullWithComments is like VerifyCompletionFull but accepts pre-fetched comments.
-// This avoids O(n) beads API calls when verifying multiple completions in batch.
-// If comments is nil, comments will be fetched from beads API.
-func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, serverURL string, comments []Comment) (VerificationResult, error) {
-	// Determine tier if not provided (needed for orchestrator check below)
-	if tier == "" && workspacePath != "" {
-		tier = ReadTierFromWorkspace(workspacePath)
-	}
-
-	// First run standard verification (uses comments for phase status)
-	result, err := VerifyCompletionWithTierAndComments(beadsID, workspacePath, tier, comments)
-	if err != nil {
-		return result, err
-	}
-
-	// If standard verification failed, no need to check constraints
-	if !result.Passed {
-		return result, nil
-	}
-
-	isOrch := isOrchestrator(tier)
-
-	// Verify backend deliverables (opencode transcript or tmux capture)
-	if !isOrch && workspacePath != "" {
-		mergeBackendResult(&result, VerifyBackendDeliverables(workspacePath, beadsID, serverURL, ""))
-	}
-
-	// Skip constraint/gate verification if no workspace or project dir
-	if workspacePath == "" || projectDir == "" {
-		return result, nil
-	}
-
-	// Run worker-specific gates (skip for orchestrator tier)
-	if !isOrch {
-		verifyWorkerGates(&result, beadsID, workspacePath, projectDir, serverURL, comments, result.Skill)
-	}
-
-	// Run gates that apply to all tiers
-	verifyCommonGates(&result, workspacePath, projectDir)
-
-	return result, nil
 }
 
 // mergeBackendResult merges backend deliverable warnings into the overall result.
@@ -603,22 +591,10 @@ func checkBuild(result *VerificationResult, workspacePath, projectDir string) {
 	})
 }
 
-// VerifyCompletionWithTier checks if an agent is ready for completion.
-// The tier parameter specifies the spawn tier ("light", "full", or "orchestrator").
-// If tier is empty, it will be read from the workspace's .tier file.
-// Light tier spawns skip the SYNTHESIS.md requirement.
-// Orchestrator tier spawns:
-//   - Skip beads-dependent phase checks (orchestrators manage sessions, not issues)
-//   - Check SYNTHESIS.md instead of SYNTHESIS.md
-//
-// Returns a VerificationResult with any errors or warnings.
-func VerifyCompletionWithTier(beadsID string, workspacePath string, tier string) (VerificationResult, error) {
-	return VerifyCompletionWithTierAndComments(beadsID, workspacePath, tier, nil)
-}
-
-// VerifyCompletionWithTierAndComments is like VerifyCompletionWithTier but accepts pre-fetched comments.
-// If comments is nil, comments will be fetched from beads API.
-func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, tier string, comments []Comment) (VerificationResult, error) {
+// verifyPhaseAndSynthesis checks the core completion signals: phase status and synthesis.
+// It handles tier resolution, orchestrator dispatch, phase_complete checking
+// (with ACTIVITY.json and state.db fallbacks), and synthesis checking.
+func verifyPhaseAndSynthesis(beadsID, workspacePath, tier string, comments []Comment) (VerificationResult, error) {
 	result := VerificationResult{
 		Passed: true,
 	}

@@ -930,10 +930,7 @@ Completed orchestrator session for feature X.
 
 func TestVerifyOrchestratorCompletion(t *testing.T) {
 	t.Run("fails without workspace path", func(t *testing.T) {
-		result, err := VerifyCompletionWithTier("", "", TierOrchestrator)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		result := VerifyOrchestratorCompletion("")
 		if result.Passed {
 			t.Error("expected verification to fail without workspace path")
 		}
@@ -950,10 +947,7 @@ func TestVerifyOrchestratorCompletion(t *testing.T) {
 			t.Fatalf("failed to write tier file: %v", err)
 		}
 
-		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		result := VerifyOrchestratorCompletion(tmpDir)
 		if result.Passed {
 			t.Error("expected verification to fail without SYNTHESIS.md")
 		}
@@ -970,10 +964,7 @@ func TestVerifyOrchestratorCompletion(t *testing.T) {
 			t.Fatalf("failed to write handoff file: %v", err)
 		}
 
-		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		result := VerifyOrchestratorCompletion(tmpDir)
 		if result.Passed {
 			t.Error("expected verification to fail without session end markers")
 		}
@@ -1006,10 +997,7 @@ Made significant progress on the implementation.
 			t.Fatalf("failed to write handoff file: %v", err)
 		}
 
-		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		result := VerifyOrchestratorCompletion(tmpDir)
 		if !result.Passed {
 			t.Errorf("expected verification to pass, got errors: %v", result.Errors)
 		}
@@ -1035,10 +1023,7 @@ Brief session summary that completed all required work.
 			t.Fatalf("failed to write handoff file: %v", err)
 		}
 
-		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		result := VerifyOrchestratorCompletion(tmpDir)
 		if !result.Passed {
 			t.Errorf("expected verification to pass with Status marker, got errors: %v", result.Errors)
 		}
@@ -1067,10 +1052,7 @@ Notes for next session.
 			t.Fatalf("failed to write handoff file: %v", err)
 		}
 
-		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		result := VerifyOrchestratorCompletion(tmpDir)
 		if !result.Passed {
 			t.Errorf("expected verification to pass with Handoff section, got errors: %v", result.Errors)
 		}
@@ -1103,10 +1085,7 @@ Completed session.
 		}
 
 		// Call with empty beadsID - should still work for orchestrator tier
-		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		result := VerifyOrchestratorCompletion(tmpDir)
 		if !result.Passed {
 			t.Errorf("expected orchestrator verification to pass without beadsID, got errors: %v", result.Errors)
 		}
@@ -1585,7 +1564,7 @@ func TestPhaseCompleteRecoveryFromActivity(t *testing.T) {
 
 		// Verify with empty comments (simulating bd comment not persisting)
 		// The function should recover Phase: Complete from ACTIVITY.json
-		result, err := VerifyCompletionWithTierAndComments("test-123", tmpDir, "light", []Comment{})
+		result, err := VerifyCompletionFull("test-123", tmpDir, "", "light", "", []Comment{})
 		if err != nil {
 			t.Fatalf("verification failed: %v", err)
 		}
@@ -1663,7 +1642,7 @@ func TestPhaseCompleteRecoveryFromActivity(t *testing.T) {
 
 		// Verify with empty comments
 		// Should NOT recover because bd reported failure (no "Comment added")
-		result, err := VerifyCompletionWithTierAndComments("test-123", tmpDir, "light", []Comment{})
+		result, err := VerifyCompletionFull("test-123", tmpDir, "", "light", "", []Comment{})
 		if err != nil {
 			t.Fatalf("verification failed: %v", err)
 		}
@@ -1699,7 +1678,7 @@ func TestPhaseCompleteRecoveryFromActivity(t *testing.T) {
 		comments := []Comment{
 			{Text: "Phase: Complete - All done"},
 		}
-		result, err := VerifyCompletionWithTierAndComments("test-123", tmpDir, "light", comments)
+		result, err := VerifyCompletionFull("test-123", tmpDir, "", "light", "", comments)
 		if err != nil {
 			t.Fatalf("verification failed: %v", err)
 		}
@@ -1742,7 +1721,7 @@ func TestPhaseCompleteRecoveryFromStateDB(t *testing.T) {
 		}
 
 		// Verify with empty comments (bd comment failed)
-		result, err := VerifyCompletionWithTierAndComments("test-statedb-123", tmpDir, "light", []Comment{})
+		result, err := VerifyCompletionFull("test-statedb-123", tmpDir, "", "light", "", []Comment{})
 		if err != nil {
 			t.Fatalf("verification failed: %v", err)
 		}
@@ -1783,7 +1762,7 @@ func TestPhaseCompleteRecoveryFromStateDB(t *testing.T) {
 			return "Implementing", "Working on it", true, nil
 		}
 
-		result, err := VerifyCompletionWithTierAndComments("test-statedb-456", tmpDir, "light", []Comment{})
+		result, err := VerifyCompletionFull("test-statedb-456", tmpDir, "", "light", "", []Comment{})
 		if err != nil {
 			t.Fatalf("verification failed: %v", err)
 		}
@@ -1806,7 +1785,7 @@ func TestPhaseCompleteRecoveryFromStateDB(t *testing.T) {
 
 		StateDBPhaseChecker = nil
 
-		result, err := VerifyCompletionWithTierAndComments("test-statedb-789", tmpDir, "light", []Comment{})
+		result, err := VerifyCompletionFull("test-statedb-789", tmpDir, "", "light", "", []Comment{})
 		if err != nil {
 			t.Fatalf("verification failed: %v", err)
 		}
@@ -1837,7 +1816,7 @@ func TestPhaseCompleteRecoveryFromStateDB(t *testing.T) {
 		comments := []Comment{
 			{Text: "Phase: Complete - All done via beads"},
 		}
-		result, err := VerifyCompletionWithTierAndComments("test-statedb-priority", tmpDir, "light", comments)
+		result, err := VerifyCompletionFull("test-statedb-priority", tmpDir, "", "light", "", comments)
 		if err != nil {
 			t.Fatalf("verification failed: %v", err)
 		}
@@ -1867,7 +1846,7 @@ func TestPhaseCompleteErrorMessageIncludesSkipFlag(t *testing.T) {
 	t.Cleanup(func() { StateDBPhaseChecker = origChecker })
 	StateDBPhaseChecker = nil
 
-	result, err := VerifyCompletionWithTierAndComments("test-skip-msg", tmpDir, "light", []Comment{})
+	result, err := VerifyCompletionFull("test-skip-msg", tmpDir, "", "light", "", []Comment{})
 	if err != nil {
 		t.Fatalf("verification failed: %v", err)
 	}

@@ -19,7 +19,9 @@ import (
 )
 
 var (
-	verifyCompletionFullFunc = verify.VerifyCompletionFull
+	verifyCompletionFullFunc = func(beadsID, workspacePath, projectDir, tier, serverURL string) (verify.VerificationResult, error) {
+		return verify.VerifyCompletionFull(beadsID, workspacePath, projectDir, tier, serverURL, nil)
+	}
 	verificationRetrySleep   = time.Sleep
 	proofSpecEvaluator       = evaluateProofSpecGate
 	proofSpecDigestPoster    = postProofSpecDigestComment
@@ -42,7 +44,7 @@ func verifyCompletion(target *CompletionTarget, skipConfig SkipConfig) (*Verific
 	if completeForce {
 		// --force: run verification to capture which gates would have failed, but don't block
 		if !target.IsOrchestratorSession && !target.IsUntracked {
-			result, err := verify.VerifyCompletionFull(target.BeadsID, target.WorkspacePath, target.BeadsProjectDir, "", serverURL)
+			result, err := verify.VerifyCompletionFull(target.BeadsID, target.WorkspacePath, target.BeadsProjectDir, "", serverURL, nil)
 			if err == nil {
 				outcome.SkillName = result.Skill
 				if !result.Passed {

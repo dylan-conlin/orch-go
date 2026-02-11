@@ -448,6 +448,7 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 		config.ProjectDir,
 		tier,
 		config.ServerURL,
+		nil,
 	)
 	if err != nil {
 		result.Error = fmt.Errorf("verification failed: %w", err)
