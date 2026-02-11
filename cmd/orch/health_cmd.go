@@ -25,13 +25,14 @@ var healthCmd = &cobra.Command{
 	Use:   "health",
 	Short: "Show operator health summary from orch serve",
 	Long: `Fetch operator health telemetry from orch serve and print a
-terminal-friendly summary for the six health cards:
+terminal-friendly summary for the seven health cards:
   - crash-free streak
   - resource ceilings
   - investigations (30d)
   - defect clusters
   - agent health ratio (7d)
   - process census
+  - zombie bun processes (bun agents vs active sessions)
 
 This complements:
   - orch doctor    (service liveness and correctness)
@@ -199,6 +200,24 @@ func formatOperatorHealthSummary(report *OperatorHealthResponse) string {
 		}
 	}
 	writeHealthCard(&b, report.ProcessCensus.Status, "Process Census", processLines)
+
+	zombieStatus := report.ZombieProcesses.Status
+	zombieLines := []string{}
+	if zombieStatus == "" || zombieStatus == operatorHealthStatusUnknown {
+		// Server may be running old binary without zombie_processes field
+		zombieStatus = operatorHealthStatusUnknown
+		zombieLines = append(zombieLines, "Restart orch serve to enable zombie detection")
+	} else {
+		zombieLines = append(zombieLines,
+			fmt.Sprintf("Bun agent processes: %d", report.ZombieProcesses.BunAgentCount),
+			fmt.Sprintf("Active OpenCode sessions: %d", report.ZombieProcesses.ActiveSessions),
+			fmt.Sprintf("Zombie (no session): %d", report.ZombieProcesses.OrphanCount),
+		)
+		if !report.ZombieProcesses.APIAvailable && report.ZombieProcesses.BunAgentCount > 0 {
+			zombieLines = append(zombieLines, "OpenCode API unavailable — zombie detection degraded")
+		}
+	}
+	writeHealthCard(&b, zombieStatus, "Zombie Bun Processes", zombieLines)
 
 	if len(report.Errors) > 0 {
 		b.WriteString(colorizeStatus(operatorHealthStatusWarning, "PARTIAL DATA") + " " + strings.Join(report.Errors, " | ") + "\n")

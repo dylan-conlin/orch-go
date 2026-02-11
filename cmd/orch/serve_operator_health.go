@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/process"
 	"github.com/dylan-conlin/orch-go/pkg/stability"
 )
 
@@ -45,6 +47,7 @@ type OperatorHealthResponse struct {
 	DefectClassClusters  defectClassClustersMetric `json:"defect_class_clusters"`
 	AgentHealthRatio7d   agentHealthRatioMetric    `json:"agent_health_ratio_7d"`
 	ProcessCensus        processCensusMetric       `json:"process_census"`
+	ZombieProcesses      zombieProcessMetric       `json:"zombie_processes"`
 	Errors               []string                  `json:"errors,omitempty"`
 }
 
@@ -111,6 +114,14 @@ type processCensusMetric struct {
 	ChildProcesses    int64                `json:"child_processes"`
 	OrphanedCount     int                  `json:"orphaned_count"`
 	OrphanedProcesses []orphanProcessEntry `json:"orphaned_processes,omitempty"`
+}
+
+type zombieProcessMetric struct {
+	Status           string `json:"status"`
+	BunAgentCount    int    `json:"bun_agent_count"`
+	ActiveSessions   int    `json:"active_sessions"`
+	OrphanCount      int    `json:"orphan_count"`
+	APIAvailable     bool   `json:"api_available"`
 }
 
 type orphanProcessEntry struct {
@@ -182,6 +193,16 @@ func buildOperatorHealthResponse(s *Server, projectDir string, now time.Time) Op
 		errs = append(errs, fmt.Sprintf("process_census: %v", err))
 	}
 	response.ProcessCensus = processCensus
+
+	openCodeURL := "http://localhost:4096"
+	if s != nil && s.ServerURL != "" {
+		openCodeURL = s.ServerURL
+	}
+	zombies, err := buildZombieProcessMetric(openCodeURL)
+	if err != nil {
+		errs = append(errs, fmt.Sprintf("zombie_processes: %v", err))
+	}
+	response.ZombieProcesses = zombies
 
 	if len(errs) > 0 {
 		response.Errors = errs
@@ -488,6 +509,70 @@ func buildProcessCensusMetric(childProcesses int64) (processCensusMetric, error)
 		metric.Status = operatorHealthStatusCritical
 	} else if childProcesses < 0 {
 		metric.Status = operatorHealthStatusWarning
+	}
+
+	return metric, nil
+}
+
+// buildZombieProcessMetric compares bun agent processes against active OpenCode
+// sessions to detect zombies — processes that are still running but no longer
+// associated with any session. These are the processes that accumulate and
+// eventually exhaust RAM, crashing WindowServer (mouse stops working).
+func buildZombieProcessMetric(openCodeURL string) (zombieProcessMetric, error) {
+	metric := zombieProcessMetric{
+		Status: operatorHealthStatusUnknown,
+	}
+
+	agents, err := process.FindAgentProcesses()
+	if err != nil {
+		return metric, fmt.Errorf("find agent processes: %w", err)
+	}
+	metric.BunAgentCount = len(agents)
+
+	if len(agents) == 0 {
+		metric.Status = operatorHealthStatusHealthy
+		metric.APIAvailable = true
+		return metric, nil
+	}
+
+	client := opencode.NewClient(openCodeURL)
+	sessions, err := client.ListSessions("")
+	if err != nil {
+		// API unavailable — can't determine zombies, report what we know
+		metric.APIAvailable = false
+		if len(agents) > 0 {
+			metric.Status = operatorHealthStatusWarning
+		}
+		return metric, nil
+	}
+
+	metric.APIAvailable = true
+	metric.ActiveSessions = len(sessions)
+
+	activeIDs := make(map[string]bool, len(sessions))
+	activeTitles := make(map[string]bool, len(sessions))
+	for _, s := range sessions {
+		if s.ID != "" {
+			activeIDs[s.ID] = true
+		}
+		if s.Title != "" {
+			activeTitles[s.Title] = true
+		}
+	}
+
+	orphans, err := process.FindOrphanProcesses(activeTitles, activeIDs)
+	if err != nil {
+		return metric, fmt.Errorf("find orphan processes: %w", err)
+	}
+	metric.OrphanCount = len(orphans)
+
+	switch {
+	case metric.OrphanCount == 0:
+		metric.Status = operatorHealthStatusHealthy
+	case metric.OrphanCount <= 2:
+		metric.Status = operatorHealthStatusWarning
+	default:
+		metric.Status = operatorHealthStatusCritical
 	}
 
 	return metric, nil
