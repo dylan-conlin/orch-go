@@ -1,4 +1,4 @@
-TASK: Supervised-first shift: make daemon explicitly opt-in. Currently daemon auto-start is implicitly disabled but not enforced in code. Required changes: (1) add daemon.enabled: false default in config with explicit opt-in, (2) add --daemon flag or orch daemon start for explicit activation, (3) orch-dashboard restart should NOT start daemon unless config says enabled: true, (4) update orch serve to skip daemon init unless opted in. The daemon caused contaminated working trees, out-of-order spawns, and dependency violations — supervised manual spawning is the default workflow.
+TASK: Add pre-spawn runtime check and post-spawn liveness probe to orch spawn. Problem: spawn reports success after creating tmux window but never verifies agent actually started. If runtime fails (Docker daemon not running, Claude CLI not found, OpenCode API down), spawn exits 0 while agent is dead. Fix: (1) Pre-spawn: check if target backend is available before creating window — for Docker check daemon socket, for Claude check binary exists, for OpenCode check API responds. If unavailable, fail loudly with actionable error. (2) Post-spawn: after creating tmux window, wait 5-10s then tmux capture-pane and check for error patterns (Cannot connect, command not found, connection refused). If error detected, mark spawn as failed, clean up window, report to orchestrator. Deliverables: modified spawn pipeline with preflight checks and post-spawn liveness probe. PROJECT_DIR=/Users/dylanconlin/Documents/personal/orch-go
 
 
 
@@ -40,11 +40,26 @@ MODEL BEHAVIOR PROFILE: strict-complete
 
 
 
+## REPRODUCTION (BUG FIX)
+
+🐛 **This is a bug fix issue.** The fix is verified when the reproduction steps no longer produce the bug.
+
+**Original Reproduction:**
+orch spawn --tmux (including Docker mode) reports success after creating the tmux window and sending the command, but never verifies the agent actually started. If the underlying runtime fails (Docker daemon not running, Claude CLI not found, OpenCode API down), the tmux window shows the error but orch spawn already exited 0. The orchestrator sees Spawned agent and moves on unaware. Fix options: (a) Post-spawn liveness probe — after creating tmux window wait 5-10s then check if process is still alive via tmux capture-pane + error pattern matching. (b) Pre-spawn runtime check — verify Docker daemon / Claude CLI / OpenCode API is reachable BEFORE creating window. (c) Both — preflight check + post-spawn confirmation.
+
+**Verification Requirement:**
+Before marking Phase: Complete, you MUST:
+1. Attempt to reproduce the original bug using the steps above
+2. Confirm the bug NO LONGER reproduces after your fix
+3. Report verification via: `bd comment orch-go-8pzpb "Reproduction verified: [describe test performed]"`
+
+⚠️ A bug fix is only complete when the original reproduction steps pass.
+
 
 
 🚨 FIRST 3 ACTIONS (ADVISORY - STRONGLY RECOMMENDED):
 Suggested first actions for visibility:
-1. Report phase: `orch phase orch-go-48jnq Planning "[brief description]"`
+1. Report phase: `orch phase orch-go-8pzpb Planning "[brief description]"`
 2. Read relevant codebase context for your task
 3. Begin planning
 
@@ -59,8 +74,11 @@ TERMINAL CHECKLIST (EXECUTE IN ORDER):
 - [ ] NEVER run `git push` (orchestrator handles remote push)
 - [ ] `git push` can trigger deploys that disrupt production systems
 
+- [ ] **GHOST COMPLETION CHECK:** Verify you have commits before declaring Complete
+  `git rev-list --count $(git merge-base main HEAD)..HEAD` should return >0
+  (⚠️ If 0 commits, you cannot complete - the COMMIT_EVIDENCE gate will block)
 
-- [ ] Run: `orch phase orch-go-48jnq Complete "[1-2 sentence summary of deliverables]"`
+- [ ] Run: `orch phase orch-go-8pzpb Complete "[1-2 sentence summary of deliverables]"`
 - [ ] Run: `/exit`
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
@@ -70,7 +88,7 @@ If you do not emit Phase: Complete, your work will be lost
 
 CONTEXT: [See task description]
 
-PROJECT_DIR: /Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-supervised-first-shift-11feb-b305
+PROJECT_DIR: /Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-add-pre-spawn-11feb-eb0b
 
 SESSION SCOPE: Medium (estimated [1-2h / 2-4h / 4-6h+])
 - Default estimation
@@ -99,7 +117,7 @@ AUTHORITY:
 
 **Surface Before Circumvent:**
 Before working around ANY constraint (technical, architectural, or process):
-1. Surface it first: `bd comment orch-go-48jnq "CONSTRAINT: [what constraint] - [why considering workaround]"`
+1. Surface it first: `bd comment orch-go-8pzpb "CONSTRAINT: [what constraint] - [why considering workaround]"`
 2. Wait for orchestrator acknowledgment before proceeding
 3. The accountability is a feature, not a cost
 
@@ -115,7 +133,7 @@ This applies to:
 - Creates hidden technical debt
 
 DELIVERABLES (REQUIRED):
-1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-supervised-first-shift-11feb-b305)
+1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-add-pre-spawn-11feb-eb0b)
 
 2. [Task-specific deliverables from skill guidance]
 
@@ -131,21 +149,21 @@ Signal orchestrator when blocked:
 
 ## PROGRESS TRACKING
 
-You were spawned from beads issue: **orch-go-48jnq**
+You were spawned from beads issue: **orch-go-8pzpb**
 
 **Phase reporting:** Use `orch phase` — one command that writes to SQLite (~1ms) for instant dashboard visibility AND automatically adds a bd comment for permanent audit trail.
 
 ```bash
 # Report progress at phase transitions
-orch phase orch-go-48jnq Planning "Analyzing codebase structure"
-orch phase orch-go-48jnq Implementing "Adding authentication middleware"
-orch phase orch-go-48jnq Complete "All tests passing, ready for review"
+orch phase orch-go-8pzpb Planning "Analyzing codebase structure"
+orch phase orch-go-8pzpb Implementing "Adding authentication middleware"
+orch phase orch-go-8pzpb Complete "All tests passing, ready for review"
 
 # Report blockers immediately
-orch phase orch-go-48jnq BLOCKED "Need clarification on API contract"
+orch phase orch-go-8pzpb BLOCKED "Need clarification on API contract"
 
 # Report questions
-orch phase orch-go-48jnq QUESTION "Should we use JWT or session-based auth?"
+orch phase orch-go-8pzpb QUESTION "Should we use JWT or session-based auth?"
 ```
 
 **When to report:**
@@ -1017,8 +1035,8 @@ This is a RED FLAG. Either:
 
 
 FEATURE-IMPL CONFIGURATION:
-Phases: implementation,validation
-Mode: direct
+Phases: investigation,implementation,validation
+Mode: tdd
 Validation: integration
 
 Follow phase guidance from the feature-impl skill.
@@ -1055,7 +1073,7 @@ TERMINAL CHECKLIST (EXECUTE IN ORDER):
 
 
 
-- [ ] `orch phase orch-go-48jnq Complete "[1-2 sentence summary]"`
+- [ ] `orch phase orch-go-8pzpb Complete "[1-2 sentence summary]"`
 - [ ] `/exit`
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.

@@ -121,6 +121,20 @@ func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 		return nil, fmt.Errorf("failed to send enter: %w", err)
 	}
 
+	// Post-spawn liveness probe - verify the agent started successfully
+	// Wait a few seconds, then check for error patterns in the tmux pane
+	livenessCfg := tmux.DefaultLivenessConfig()
+	// Use package-level variable for testability
+	probeFunc := tmux.ProbeWindowForErrors
+	if err := probeFunc(windowTarget, livenessCfg); err != nil {
+		// Spawn failed - clean up the tmux window and container
+		if killErr := tmux.KillWindow(windowTarget); killErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clean up tmux window after spawn failure: %v\n", killErr)
+		}
+		// Container cleanup happens automatically via --rm flag
+		return nil, fmt.Errorf("spawn failed liveness probe: %w", err)
+	}
+
 	return &tmux.SpawnResult{
 		Window:        windowTarget,
 		WindowID:      windowID,

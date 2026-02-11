@@ -701,6 +701,12 @@ func (p *spawnPipeline) executeSpawn() error {
 		}
 	}
 
+	// Pre-spawn runtime checks - verify the target backend is available
+	// Checks Docker daemon socket, Claude CLI binary, or OpenCode API depending on backend
+	if err := runPreSpawnRuntimeChecks(p.cfg.SpawnMode, p.serverURL); err != nil {
+		return err
+	}
+
 	// Dispatch to backend-specific spawn function
 	return p.dispatchSpawn(minimalPrompt)
 }

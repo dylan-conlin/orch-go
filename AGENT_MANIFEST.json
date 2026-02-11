@@ -1,14 +1,14 @@
 {
-  "workspace_name": "og-feat-supervised-first-shift-11feb-b305",
+  "workspace_name": "og-feat-add-pre-spawn-11feb-eb0b",
   "skill": "feature-impl",
-  "beads_id": "orch-go-48jnq",
+  "beads_id": "orch-go-8pzpb",
   "source_project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
   "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
-  "git_worktree_dir": "/Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-supervised-first-shift-11feb-b305",
-  "git_branch": "agent/og-feat-supervised-first-shift-11feb-b305",
-  "git_baseline": "31a1f6baaa91bc16aaf9258037a4e145f907fb84",
-  "spawn_time": "2026-02-11T12:37:11-08:00",
+  "git_worktree_dir": "/Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-add-pre-spawn-11feb-eb0b",
+  "git_branch": "agent/og-feat-add-pre-spawn-11feb-eb0b",
+  "git_baseline": "12111d33ee30f081847d4d3fcce0a7664ac1beba",
+  "spawn_time": "2026-02-11T13:49:36-08:00",
   "tier": "light",
   "spawn_mode": "opencode",
-  "model": "anthropic/claude-sonnet-4-20250514"
+  "model": "anthropic/claude-sonnet-4-5-20250929"
 }

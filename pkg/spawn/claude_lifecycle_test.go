@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/internal/testutil"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
 func TestSpawnClaude_Lifecycle_NoLeakedTmuxWindowsAcrossInstances(t *testing.T) {
@@ -280,6 +281,7 @@ func stubTmuxLifecycle(t *testing.T) func() {
 	oldSendTmuxEnter := sendTmuxEnter
 	oldKillTmuxWindow := killTmuxWindow
 	oldGetTmuxPaneContent := getTmuxPaneContent
+	oldProbeWindowForErrors := probeWindowForErrors
 
 	ensureOrchestratorSession = func() (string, error) { return "orchestrator", nil }
 	ensureWorkersSession = func(project, projectDir string) (string, error) { return "workers-" + project, nil }
@@ -292,6 +294,7 @@ func stubTmuxLifecycle(t *testing.T) func() {
 	sendTmuxEnter = func(windowTarget string) error { return nil }
 	killTmuxWindow = func(windowTarget string) error { return nil }
 	getTmuxPaneContent = func(windowTarget string) (string, error) { return "", nil }
+	probeWindowForErrors = func(windowTarget string, cfg tmux.LivenessConfig) error { return nil }
 
 	return func() {
 		ensureOrchestratorSession = oldEnsureOrchestratorSession
@@ -303,5 +306,6 @@ func stubTmuxLifecycle(t *testing.T) func() {
 		sendTmuxEnter = oldSendTmuxEnter
 		killTmuxWindow = oldKillTmuxWindow
 		getTmuxPaneContent = oldGetTmuxPaneContent
+		probeWindowForErrors = oldProbeWindowForErrors
 	}
 }

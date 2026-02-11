@@ -499,6 +499,17 @@ func runSpawnTmuxWithClient(client opencode.ClientInterface, serverURL string, c
 		return fmt.Errorf("failed to send enter: %w", err)
 	}
 
+	// Post-spawn liveness probe - verify the agent started successfully
+	// Wait a few seconds, then check for error patterns in the tmux pane
+	livenessCfg := tmux.DefaultLivenessConfig()
+	if err := tmux.ProbeWindowForErrors(windowTarget, livenessCfg); err != nil {
+		// Spawn failed - clean up the tmux window
+		if killErr := tmux.KillWindow(windowTarget); killErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clean up tmux window after spawn failure: %v\n", killErr)
+		}
+		return fmt.Errorf("spawn failed liveness probe: %w", err)
+	}
+
 	if sessionID != "" {
 		if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)

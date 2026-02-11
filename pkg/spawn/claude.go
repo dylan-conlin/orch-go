@@ -20,6 +20,7 @@ var (
 	sendTmuxEnter             = tmux.SendEnter
 	killTmuxWindow            = tmux.KillWindow
 	getTmuxPaneContent        = tmux.GetPaneContent
+	probeWindowForErrors      = tmux.ProbeWindowForErrors
 )
 
 // SpawnClaude launches a Claude Code agent in a tmux window.
@@ -83,6 +84,17 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 	}
 	if err := sendTmuxEnter(windowTarget); err != nil {
 		return nil, fmt.Errorf("failed to send enter: %w", err)
+	}
+
+	// Post-spawn liveness probe - verify the agent started successfully
+	// Wait a few seconds, then check for error patterns in the tmux pane
+	livenessCfg := tmux.DefaultLivenessConfig()
+	if err := probeWindowForErrors(windowTarget, livenessCfg); err != nil {
+		// Spawn failed - clean up the tmux window
+		if killErr := killTmuxWindow(windowTarget); killErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clean up tmux window after spawn failure: %v\n", killErr)
+		}
+		return nil, fmt.Errorf("spawn failed liveness probe: %w", err)
 	}
 
 	return &tmux.SpawnResult{
