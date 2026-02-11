@@ -119,20 +119,8 @@ func runPhaseWithDB(beadsID, phase, summary, dbPath string, writeComment bool) e
 	// This is non-critical so we just call it and ignore errors.
 	invalidateServeCache()
 
-	// Fire bd comment for backward compatibility and audit trail.
-	// This is best-effort — if beads is unavailable, the phase is still
-	// recorded in SQLite. We run it synchronously but don't fail the command
-	// if the comment fails. The comment follows the established format that
-	// orch complete parses for phase detection.
-	if writeComment {
-		comment := formatPhaseComment(phase, summary)
-		if err := beads.FallbackAddComment(beadsID, comment); err != nil {
-			// Non-fatal: phase was already written to SQLite.
-			// Print warning so agents can see if comment failed.
-			fmt.Fprintf(os.Stderr, "warning: bd comment failed (phase still recorded in SQLite): %v\n", err)
-		}
-	}
-
+	// Look up agent to get project directory for beads operations.
+	// This must happen BEFORE FallbackAddComment so we can set beads.DefaultDir.
 	workspace := beadsID
 	sessionID := ""
 	project := projectFromCWD()
@@ -148,6 +136,31 @@ func runPhaseWithDB(beadsID, phase, summary, dbPath string, writeComment bool) e
 			project = agent.ProjectName
 		} else if strings.TrimSpace(agent.ProjectDir) != "" {
 			project = filepath.Base(agent.ProjectDir)
+		}
+	}
+
+	// Fire bd comment for backward compatibility and audit trail.
+	// This is best-effort — if beads is unavailable, the phase is still
+	// recorded in SQLite. We run it synchronously but don't fail the command
+	// if the comment fails. The comment follows the established format that
+	// orch complete parses for phase detection.
+	//
+	// IMPORTANT: Set beads.DefaultDir to the agent's project directory before
+	// calling FallbackAddComment. This ensures the bd command runs from the
+	// correct directory, which is critical when agents run in worktrees.
+	// Without this, bd --sandbox writes to the worktree's local .beads/issues.jsonl
+	// instead of the main project's beads database.
+	if writeComment {
+		// Set beads.DefaultDir to ensure cross-project operations work correctly.
+		// This is essential for worktree contexts where cwd != project root.
+		if agent != nil && strings.TrimSpace(agent.ProjectDir) != "" {
+			beads.DefaultDir = agent.ProjectDir
+		}
+		comment := formatPhaseComment(phase, summary)
+		if err := beads.FallbackAddComment(beadsID, comment); err != nil {
+			// Non-fatal: phase was already written to SQLite.
+			// Print warning so agents can see if comment failed.
+			fmt.Fprintf(os.Stderr, "warning: bd comment failed (phase still recorded in SQLite): %v\n", err)
 		}
 	}
 

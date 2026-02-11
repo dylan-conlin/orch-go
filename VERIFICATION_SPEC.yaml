@@ -1,24 +1,72 @@
-# Spawn-time verification skeleton.
-# Commands are auto-detected from the project when possible.
-# Replace any remaining TODO placeholders before Phase: Complete.
+# Verification spec for orch-go-ugla4: bd comment fails from worktree context
 
 version: 1
 scope:
-    beads_id: orch-go-d9aol
-    workspace: og-feat-startup-sweep-reconciles-11feb-0abf
-    skill: feature-impl
+    beads_id: orch-go-ugla4
+    workspace: og-debug-bd-comment-fails-11feb-1a03
+    skill: systematic-debugging
 verification:
     - id: verify-build
       method: cli_smoke
       tier: light
-      command: go build ./...
+      command: go build ./cmd/orch
       cwd: $GIT_WORKTREE_DIR
       expect:
         exit_code: 0
+      actual:
+        exit_code: 0
+        verified_at: "2026-02-11T20:00:00Z"
+
     - id: verify-test
       method: cli_smoke
       tier: light
-      command: go test ./...
+      command: go test ./cmd/orch/...
       cwd: $GIT_WORKTREE_DIR
       expect:
         exit_code: 0
+      actual:
+        exit_code: 0
+        output: "ok github.com/dylan-conlin/orch-go/cmd/orch 34.271s"
+        verified_at: "2026-02-11T20:00:15Z"
+
+    - id: reproduce-original-bug
+      method: cli_smoke
+      tier: light
+      description: "Verify bd comment fails from worktree before fix"
+      command: "bd --sandbox --quiet comments add orch-go-ugla4 'test'"
+      cwd: $GIT_WORKTREE_DIR
+      expect:
+        description: "Comment claims success but does NOT persist to main repo db"
+      actual:
+        verified_at: "2026-02-11T19:59:00Z"
+        notes: "bd --sandbox writes to worktree's local .beads/issues.jsonl instead of main repo"
+
+    - id: verify-fix-works
+      method: cli_smoke
+      tier: light
+      description: "Verify orch phase persists comment to beads from worktree"
+      command: "orch phase orch-go-ugla4 Testing 'Verifying fix from worktree'"
+      cwd: $GIT_WORKTREE_DIR
+      expect:
+        exit_code: 0
+        description: "Comment appears in bd show orch-go-ugla4"
+      actual:
+        exit_code: 0
+        output: "Phase: Testing - Verifying fix from worktree (beads_id: orch-go-ugla4)"
+        notes: "Comment persisted and visible in bd show"
+        verified_at: "2026-02-11T20:00:21Z"
+
+root_cause:
+    description: |
+        In worktree contexts, bd --sandbox writes to the worktree's local
+        .beads/issues.jsonl instead of the main project's beads database.
+        The FallbackAddComment function was not setting beads.DefaultDir,
+        so bd commands ran from the current working directory (the worktree).
+
+fix:
+    description: |
+        Look up the agent's ProjectDir from state.db before calling
+        FallbackAddComment and set beads.DefaultDir accordingly.
+        This ensures the bd command runs from the main project directory.
+    files_changed:
+        - cmd/orch/phase_cmd.go
