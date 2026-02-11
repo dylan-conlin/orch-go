@@ -1,87 +1,100 @@
 # Session Synthesis
 
-**Agent:** og-arch-simplification-architecture-review-10feb-8d87
-**Issue:** orch-go-qv699
-**Duration:** 2026-02-10
+**Agent:** og-inv-silent-agent-session-11feb-8564
+**Issue:** orch-go-i8vte
+**Duration:** 2026-02-11 13:02 → 2026-02-11 14:30
 **Outcome:** success
 
 ---
 
 ## TLDR
 
-Comprehensive architecture review of orch-go complexity. Identified that current 14 gates, 5-layer zombie defense, and model-specific bypasses are accidental complexity from patching failures at system boundaries. Recommends 4-phase simplification: (1) remove dead code, (2) fix critical boundaries (commit gate, process lifecycle), (3) reduce to core 5 gates, (4) shift to supervised-first with daemon as batch mode.
+Investigated why 40% of OpenCode agent sessions die without crash signal. Found that dead session detection infrastructure exists but checks session creation time instead of activity time, causing crashed sessions to appear "alive" for up to 6 hours. Root cause is 4 detection gaps working together: (1) spawn doesn't capture session ID, (2) detector checks wrong signal, (3) no crash watchdog, (4) state DB never reconciled. Recommended fix: change HasExistingSession() to check activity via IsSessionActive() instead of Time.Created - a ~5 line change.
 
 ---
 
 ## Delta (What Changed)
 
 ### Files Created
-- `.kb/investigations/2026-02-10-design-simplification-architecture-review.md` - Full architecture review with decision forks and recommendations
+- `.kb/investigations/2026-02-11-inv-silent-agent-session-death-root.md` - Complete root cause analysis with 4 findings and recommended fix
 
 ### Files Modified
 - None (investigation-only session)
 
 ### Commits
-- Pending (to be committed with this synthesis)
+- `6766faa5` - investigation: root cause of silent agent session deaths
 
 ---
 
 ## Evidence (What Was Observed)
 
-### From Ghost Completions Investigation (2026-02-09)
-- No "commit exists" gate in 14 verification gates
-- GPT model bypass at `check.go:809-825` auto-passes Phase:Complete
-- `git_diff` gate conflates working tree with committed history
-- Result: 22 issues closed with zero committed code
+### Finding 1: Fire-and-forget tmux spawn
+- `pkg/spawn/claude.go:88-93` - SpawnResult contains only window metadata, no SessionID field
+- `pkg/opencode/session.go:287-330` - Session ID discovered via time-based polling (FindRecentSession) matching directory + created<30s
+- Creates race condition: spawn can succeed while session creation fails silently
 
-### From Zombie Process Investigation (2026-02-10)
-- Process ledger (`~/.orch/process-ledger.jsonl`) is 0 bytes
-- Orphan detection pattern `"run --attach"` doesn't match current `opencode attach`
-- OpenCode `Session.remove()` doesn't kill attached bun processes
-- All 5 layers of zombie defense are non-functional
+### Finding 2: No crash detection
+- `pkg/opencode/monitor.go:193-247` - SSE monitor only processes session.status events for busy→idle (normal completion)
+- No watchdog checking if OpenCode sessions/processes actually die
+- SSE connection loss triggers reconnection but doesn't detect which sessions died during outage
 
-### From DYLANS_THOUGHTS.org
-- "this system is just too fragile as is"
-- Need for "diagnostic/firefighting mode"
-- "Setting a 30 minute reap timer that destroys my primary UI is such a careless and thoughtless thing"
+### Finding 3: State DB is cache without reconciliation
+- `pkg/state/db.go:3-34` - Explicit contract: "state.db is a spawn-time projection cache", NOT source of truth
+- No reconciliation loop to detect when cached state (agent active) diverges from reality (session dead)
+- Crashed sessions remain marked as active indefinitely
 
-### From Open Issues Backlog
-- 30+ open issues spanning spawn, daemon, dashboard, cli areas
-- Multiple P1/P2 bugs related to system reliability
-- Pattern: complexity created to patch failures, not address root causes
+### Finding 4: Dead session detection checks creation time, not activity
+- `pkg/daemon/session_dedup.go:90-92` - HasExistingSession() checks `Time.Created`, uses `age := now.Sub(createdAt); if age <= c.config.MaxAge` (6 hours)
+- Does NOT call IsSessionActive() which checks Time.Updated within 30min window
+- Session that crashes 5min after spawn will be considered "alive" for 6 hours
+
+### Tests Run
+```bash
+# Code review - verified spawn doesn't capture session ID
+grep -A 10 "SpawnResult" pkg/spawn/claude.go
+
+# Code review - verified detector checks creation time
+grep -A 5 "Time.Created" pkg/daemon/session_dedup.go
+
+# Code review - verified IsSessionActive exists but isn't used
+grep "IsSessionActive" pkg/daemon/*.go
+```
 
 ---
 
 ## Verification Contract
 
-- **Spec:** Not applicable (design investigation, no code changes)
+- **Spec:** Not applicable (investigation-only, no code changes)
 - **Key outcomes:**
-  - Investigation file created with complete analysis
-  - 4 decision forks identified with substrate-backed recommendations
-  - 4-phase implementation plan with concrete actions
+  - Root cause identified: detector checks creation time instead of activity
+  - 4 detection gaps documented with file:line references
+  - Recommended fix with implementation sequence provided
 
 ---
 
 ## Knowledge (What Was Learned)
 
 ### New Artifacts
-- `.kb/investigations/2026-02-10-design-simplification-architecture-review.md` - Architecture simplification analysis
+- `.kb/investigations/2026-02-11-inv-silent-agent-session-death-root.md` - Root cause analysis
 
-### Decisions Made (Recommendations)
-1. **Operating mode:** Supervised-first with daemon as batch mode (reduces blast radius)
-2. **Verification gates:** Reduce to core 5 (phase_complete, commit_evidence, synthesis, test_evidence, git_diff)
-3. **Process lifecycle:** Fix at both boundaries (orch + OpenCode)
-4. **CLAUDE.md:** Extract to guides, reduce to ~100 line orientation
+### Decisions Made
+- **Recommended fix:** Change HasExistingSession() to check activity time instead of creation time
+- **Rationale:** Minimal change (~5 lines), reuses existing IsSessionActive() API, fixes most common failure mode
+- **Alternative approaches considered:** Process watchdog, state DB reconciliation, spawn improvements - all orthogonal and can come later
 
 ### Key Insights
-- **Essential vs Accidental:** Dual-mode (tmux+HTTP), worktrees, beads integration are essential. Model-specific bypasses, empty process ledger, coaching plugins are accidental.
-- **Wrong boundaries:** orch owns session, OpenCode owns process — neither terminates on delete. This is root cause of zombie accumulation.
-- **Pattern:** Complexity created to compensate for silent failures. Fix should make failures visible, not add more layers.
+- **System has detection infrastructure that doesn't detect crashes** - Dead session detector exists but checks wrong signal (creation vs activity)
+- **Multiple gaps compound** - Session crashes → SSE emits nothing → detector sees creation time and thinks alive → state DB never reconciled → phantom persists
+- **Prior work exists** - git log shows `feat: add dead session detection to daemon` (f7c5bdf7) but implementation checks wrong timestamp
 
 ### Constraints Discovered
-- Cannot remove dual-mode architecture — confirmed correct by prior decision
-- Cannot eliminate verification entirely — need some gates for quality
-- Supervised-first shift requires stability validation first
+- Dead session detection relies on daemon running (daemon crash means no detection)
+- 6-hour MaxAge window means crashed sessions can appear alive for hours
+- State DB explicitly designed as cache, not authority - reconciliation would require new infrastructure
+
+### Externalized via `kb`
+- Investigation file created - contains full analysis, all 4 findings, recommendations
+- No quick commands used (investigation is the externalization)
 
 ---
 
@@ -89,12 +102,7 @@ Comprehensive architecture review of orch-go complexity. Identified that current
 
 **Discovered work tracked during this session:**
 
-No new issues created — existing backlog already covers the identified work:
-- `orch-go-w4pj9` — OpenCode boundary fix (process termination)
-- `orch-go-cmdfh` — Audit ghost completion work loss
-- `orch-go-6v2ta` — OpenCode crashes
-
-The investigation provides the strategic framing for this existing work.
+No new issues created - the recommendation is to fix the existing dead session detection infrastructure (pkg/daemon/session_dedup.go:90-92). This can be done as a direct implementation without creating a separate issue, or as part of the broader session reliability work (likely already tracked).
 
 ---
 
@@ -103,29 +111,39 @@ The investigation provides the strategic framing for this existing work.
 **Recommendation:** close
 
 ### If Close
-- [x] All deliverables complete (investigation file)
+- [x] All deliverables complete (investigation file with root cause and fix recommendation)
 - [x] Investigation file has `**Phase:** Complete`
-- [ ] Ready for `orch complete orch-go-qv699`
+- [x] Ready for `orch complete orch-go-i8vte`
 
-### Recommended Follow-up (for orchestrator)
+### Implementation Guidance (for next agent or orchestrator)
 
-1. **Immediate (Phase 0):** Remove dead code
-   - Remove coaching plugin code (already disabled)
-   - Remove model-specific bypass profiles
-   - Update orphan detection pattern
+**Quick win:** Fix HasExistingSession() to check activity instead of creation
+```go
+// pkg/daemon/session_dedup.go:68-98
+// BEFORE: age := now.Sub(createdAt); if age <= c.config.MaxAge
+// AFTER: Check IsSessionActive instead of age calculation
 
-2. **Priority (Phase 1):** Fix critical boundaries
-   - Add GateCommitEvidence — prevents ghost completions
-   - Fix orch complete tmux window kill ordering
-   - Add startup sweep
+if sessionBeadsID != beadsID {
+    continue
+}
 
-3. **After Phase 1 proven (Phase 2):** Simplify verification
-   - Reduce to core 5 gates
-   - Remove model-specific bypasses
+// Use OpenCode client to check if session is actively running
+updatedAt := time.Unix(s.Time.Updated/1000, 0)
+if now.Sub(updatedAt) <= 30*time.Minute {
+    return true
+}
+```
 
-4. **After stability (Phase 3-4):** Documentation and operational shift
-   - Simplify CLAUDE.md
-   - Shift to supervised-first
+**Test plan:**
+1. Start agent session
+2. Kill OpenCode session (simulate crash)
+3. Wait for next dead session detection cycle (default: 10min)
+4. Verify issue marked as "DEAD SESSION:" and reset to open
+
+**Follow-up improvements (orthogonal):**
+- Fix spawn to capture session ID synchronously (eliminates Finding 1)
+- Add process-level watchdog using pkg/process/ledger.go (catches OOM kills)
+- Add state DB reconciliation loop (fixes Finding 3 comprehensively)
 
 ---
 
@@ -133,24 +151,26 @@ The investigation provides the strategic framing for this existing work.
 
 **Questions that emerged during this session that weren't directly in scope:**
 
-1. **OAuth token detection** — Tokens disappeared without detection, caused silent fallback to pay-per-token. No gate exists for this.
+1. **What's the actual crash rate breakdown?** - Task says 40% die silently, but don't know: how many are process crashes (OOM) vs session-level failures vs spawn failures?
 
-2. **Scope limits for automation** — 30-minute reaper killed Dylan's UI. What scope limits should exist for automated cleanup?
+2. **Is daemon actually running and detecting?** - Saw dead session detection config but didn't verify daemon is active or check logs for detection runs
 
-3. **Model behavioral profiles** — Should we invest in per-model behavior profiles, or just require all models to meet baseline behavior (commit, report Phase:Complete)?
+3. **Why 6 hour MaxAge window?** - `pkg/daemon/session_dedup.go:34` sets MaxAge = 6 hours. Could this be reduced to detect faster?
+
+4. **Can state DB become authoritative?** - `pkg/state/db.go` warns against it without reconciliation. What would that reconciliation look like?
 
 **What remains unclear:**
 
-- Whether all 22 ghost completion issues had work that can be recovered
-- Whether OpenCode upstream would accept the Session.remove() process termination change
-- Optimal number of verification gates (recommended 5, but could be 3)
+- Whether most crashes happen at spawn-time (Finding 1) vs mid-flight (Finding 4) - would change priority of fixes
+- Whether the fix should check Time.Updated directly or call IsSessionActive() - latter is cleaner but adds HTTP call overhead
+- How to handle cases where OpenCode server itself is down (API check would fail)
 
 ---
 
 ## Session Metadata
 
-**Skill:** architect
-**Model:** claude-opus-4-5-20251101
-**Workspace:** `.orch/worktrees/og-arch-simplification-architecture-review-10feb-8d87/`
-**Investigation:** `.kb/investigations/2026-02-10-design-simplification-architecture-review.md`
-**Beads:** `bd show orch-go-qv699`
+**Skill:** investigation
+**Model:** claude-sonnet-4-5-20250929
+**Workspace:** `.orch/worktrees/og-inv-silent-agent-session-11feb-8564/`
+**Investigation:** `.kb/investigations/2026-02-11-inv-silent-agent-session-death-root.md`
+**Beads:** `bd show orch-go-i8vte`
