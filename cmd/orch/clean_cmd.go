@@ -71,7 +71,8 @@ Optional cleanup actions:
   --untracked            Archive old untracked workspaces (default: 7 days)
   --untracked-days N     Set age threshold for --untracked (default: 7)
   --sessions             Delete stale OpenCode sessions (default: older than 7 days)
-  --sessions-days N      Set age threshold for --sessions (default: 7)
+  --sessions-days N      Set age threshold for --sessions (default: 7, WARNING: 0 deletes ALL sessions)
+  --preserve-orchestrator  Protect orchestrator/meta-orch sessions from deletion (default: true)
   --processes            Kill orphaned bun processes (agent processes and untracked dashboard web bun)
 
 Process cleanup:
@@ -88,7 +89,7 @@ Examples:
   orch-go clean --dry-run          # Preview mode (same as default)
   orch-go clean --all              # Comprehensive cleanup of all agent status sources
   orch-go clean --all --dry-run    # Preview comprehensive cleanup
-  orch-go clean --all --preserve-orchestrator  # Clean everything except orchestrator sessions
+  orch-go clean --all                          # Clean everything (orchestrator sessions protected by default)
   orch-go clean --windows          # Close tmux windows for completed agents
   orch-go clean --phantoms         # Close phantom tmux windows
   orch-go clean --verify-opencode  # Delete orphaned OpenCode disk sessions
@@ -101,7 +102,7 @@ Examples:
   orch-go clean --untracked --untracked-days 14  # Archive untracked workspaces older than 14 days
   orch-go clean --sessions         # Delete OpenCode sessions older than 7 days
   orch-go clean --sessions --sessions-days 14  # Delete sessions older than 14 days
-  orch-go clean --sessions --preserve-orchestrator  # Clean sessions but protect orchestrators
+  orch-go clean --sessions --preserve-orchestrator=false  # Clean sessions INCLUDING orchestrators
   orch-go clean --processes                         # Kill orphaned bun processes`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if cleanAll {
@@ -134,7 +135,7 @@ func init() {
 	cleanCmd.Flags().IntVar(&cleanUntrackedDays, "untracked-days", 7, "Age threshold in days for --untracked (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Delete stale OpenCode sessions older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanSessionsDays, "sessions-days", 7, "Age threshold in days for --sessions (default: 7)")
-	cleanCmd.Flags().BoolVar(&cleanPreserveOrchestrator, "preserve-orchestrator", false, "Skip orchestrator/meta-orchestrator workspaces and sessions")
+	cleanCmd.Flags().BoolVar(&cleanPreserveOrchestrator, "preserve-orchestrator", true, "Skip orchestrator/meta-orchestrator workspaces and sessions (default: true, use --preserve-orchestrator=false to include them)")
 	cleanCmd.Flags().BoolVar(&cleanProcesses, "processes", false, "Kill orphaned bun processes (agent processes and untracked dashboard web bun)")
 	cleanCmd.Flags().StringVar(&cleanWorkdir, "workdir", "", "Target project directory (for cross-project cleanup)")
 	cleanCmd.Flags().StringVar(&cleanWorkdir, "project", "", "Alias for --workdir")
@@ -269,6 +270,14 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 
 	var staleSessionsDeleted int
 	if cleanSessions {
+		if sessionsDays == 0 && !preserveOrchestrator {
+			fmt.Fprintf(os.Stderr, "Error: --sessions-days 0 without --preserve-orchestrator=true would delete ALL sessions including active orchestrator sessions. Refusing.\n")
+			fmt.Fprintf(os.Stderr, "Use --preserve-orchestrator=false explicitly to override.\n")
+			return fmt.Errorf("dangerous session cleanup refused")
+		}
+		if sessionsDays == 0 {
+			fmt.Fprintf(os.Stderr, "Warning: --sessions-days 0 will delete ALL non-orchestrator sessions regardless of age\n")
+		}
 		staleSessionsDeleted, err = cleanup.CleanStaleSessions(cleanup.CleanStaleSessionsOptions{
 			ServerURL:            serverURL,
 			StaleDays:            sessionsDays,

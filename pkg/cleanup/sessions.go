@@ -15,6 +15,11 @@ import (
 
 const untrackedSessionIdleTTL = 30 * time.Minute
 
+// minSessionAge is a safety floor — never delete sessions updated within this window,
+// regardless of --sessions-days value. Protects interactive sessions where the user
+// may be paused/reading/thinking (not actively "processing").
+const minSessionAge = 1 * time.Hour
+
 // CleanStaleSessionsOptions configures the session cleanup behavior.
 type CleanStaleSessionsOptions struct {
 	// ServerURL is the OpenCode server URL
@@ -68,6 +73,13 @@ func CleanStaleSessions(opts CleanStaleSessionsOptions) (int, error) {
 	for _, session := range sessions {
 		updatedAt := time.Unix(session.Time.Updated/1000, 0)
 		idleDuration := time.Since(updatedAt)
+
+		// Safety floor: never delete sessions updated within minSessionAge,
+		// even with --sessions-days 0. Protects interactive sessions where
+		// the user is paused/reading (not actively "processing").
+		if idleDuration < minSessionAge {
+			continue
+		}
 
 		forceReapUntracked := isUntrackedSessionTitle(session.Title) && idleDuration >= untrackedSessionIdleTTL
 
