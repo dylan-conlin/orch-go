@@ -33,7 +33,7 @@ func runCleanup(target *CompletionTarget) *CleanupOutcome {
 	// Remove from process ownership ledger
 	removeLedgerEntry(target)
 
-	// Export orchestrator transcript (before archival)
+	// Export orchestrator transcript (needs tmux window alive, before tmux kill)
 	if target.IsOrchestratorSession {
 		if err := exportOrchestratorTranscript(target.WorkspacePath, target.BeadsProjectDir, target.AgentName); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to export orchestrator transcript: %v\n", err)
@@ -42,7 +42,26 @@ func runCleanup(target *CompletionTarget) *CleanupOutcome {
 		}
 	}
 
-	// Archive workspace
+	// Clean up Docker container (before tmux kill to avoid orphaning container)
+	containerName := spawn.ReadContainerID(target.WorkspacePath)
+	if containerName != "" {
+		if err := spawn.CleanupDockerContainer(containerName); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clean up Docker container %s: %v\n", containerName, err)
+		} else {
+			outcome.DockerCleaned = true
+			fmt.Printf("Cleaned up Docker container: %s\n", containerName)
+		}
+	}
+
+	// Kill tmux window — sends SIGHUP to terminate the bun process.
+	// This is the primary termination path for tmux-spawned agents since
+	// OpenCode Session.remove() doesn't kill attached bun processes and
+	// the process ledger is never populated for tmux spawns.
+	// Must run before archival to ensure the bun process dies even if
+	// later steps fail.
+	outcome.TmuxWindowClosed = cleanupTmuxWindow(target)
+
+	// Archive workspace (after all resource cleanup)
 	if !completeNoArchive {
 		archivedPath, err := archiveWorkspace(target.WorkspacePath, target.BeadsProjectDir)
 		if err != nil {
@@ -65,20 +84,6 @@ func runCleanup(target *CompletionTarget) *CleanupOutcome {
 	} else {
 		fmt.Println("Skipped workspace archival (--no-archive)")
 	}
-
-	// Clean up Docker container
-	containerName := spawn.ReadContainerID(target.WorkspacePath)
-	if containerName != "" {
-		if err := spawn.CleanupDockerContainer(containerName); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to clean up Docker container %s: %v\n", containerName, err)
-		} else {
-			outcome.DockerCleaned = true
-			fmt.Printf("Cleaned up Docker container: %s\n", containerName)
-		}
-	}
-
-	// Clean up tmux window
-	outcome.TmuxWindowClosed = cleanupTmuxWindow(target)
 
 	gitCleanup := cleanupManagedGitIsolation(target.WorkspacePath, target.sourceDir())
 	outcome.GitWorktreeRemoved = gitCleanup.WorktreeRemoved
@@ -136,7 +141,11 @@ func cleanupTmuxWindow(target *CompletionTarget) bool {
 		window, tmuxSessionName, findErr = tmux.FindWindowByBeadsIDAllSessions(windowSearchID)
 	}
 
-	if findErr != nil || window == nil {
+	if findErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to find tmux window for cleanup: %v\n", findErr)
+		return false
+	}
+	if window == nil {
 		return false
 	}
 
