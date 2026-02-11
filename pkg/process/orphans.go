@@ -17,9 +17,34 @@ type OrphanProcess struct {
 	SessionID     string // Extracted session ID from --session arg (new attach format)
 }
 
+// isOpenCodeAgentLine checks if a ps output line represents an OpenCode agent process.
+// OpenCode processes have a distinctive signature:
+//
+//	bun run --conditions=browser ./src/index.ts <args>
+//
+// The --conditions=browser flag is OpenCode-specific and prevents false matches
+// against other bun projects that may also have a src/index.ts file.
+// Excludes the OpenCode server process (which has "serve --port").
+func isOpenCodeAgentLine(line string) bool {
+	// Require both --conditions=browser (OpenCode-specific) and src/index.ts
+	if !strings.Contains(line, "--conditions=browser") || !strings.Contains(line, "src/index.ts") {
+		return false
+	}
+	// Exclude the OpenCode server process
+	if strings.Contains(line, "serve --port") {
+		return false
+	}
+	return true
+}
+
 // FindAgentProcesses discovers all bun processes that are OpenCode agent processes.
-// These are identified by having "src/index.ts" in their command line (the OpenCode
-// entrypoint), while excluding the OpenCode server process (which has "serve --port").
+// These are identified by having "--conditions=browser" AND "src/index.ts" in their
+// command line (the OpenCode-specific entrypoint pattern), while excluding the
+// OpenCode server process (which has "serve --port").
+//
+// The "--conditions=browser" flag is OpenCode-specific and distinguishes OpenCode
+// processes from other bun projects that may also have a src/index.ts file.
+//
 // Covers both old format (opencode run --attach) and new format (opencode attach).
 // Returns all agent processes regardless of whether they are orphaned or not.
 // The caller is responsible for determining which are orphans by cross-referencing
@@ -42,16 +67,7 @@ func FindAgentProcesses() ([]OrphanProcess, error) {
 			continue
 		}
 
-		// Look for bun processes running OpenCode (src/index.ts entrypoint).
-		// Covers both old format (run --attach) and new format (opencode attach).
-		// Old: bun run --conditions=browser ./src/index.ts run --attach http://... --title <workspace> [beads-id]
-		// New: bun run --conditions=browser ./src/index.ts attach http://... --dir /path --session <id>
-		if !strings.Contains(line, "bun") || !strings.Contains(line, "src/index.ts") {
-			continue
-		}
-		// Exclude the OpenCode server process — it also runs via bun + src/index.ts
-		// but has "serve --port" in its args.
-		if strings.Contains(line, "serve --port") {
+		if !isOpenCodeAgentLine(line) {
 			continue
 		}
 

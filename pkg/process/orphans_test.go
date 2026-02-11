@@ -4,6 +4,64 @@ import (
 	"testing"
 )
 
+func TestIsOpenCodeAgentLine(t *testing.T) {
+	tests := []struct {
+		name  string
+		line  string
+		match bool
+	}{
+		{
+			name:  "headless agent",
+			line:  `57559 bun run --conditions=browser ./src/index.ts /Users/dylanconlin/Documents/personal/orch-go`,
+			match: true,
+		},
+		{
+			name:  "attach agent",
+			line:  `12345 bun run --conditions=browser ./src/index.ts attach http://127.0.0.1:4096 --dir /tmp --session abc123`,
+			match: true,
+		},
+		{
+			name:  "old format agent",
+			line:  `12345 bun run --conditions=browser ./src/index.ts run --attach http://127.0.0.1:4096 --title my-workspace [beads-id]`,
+			match: true,
+		},
+		{
+			name:  "opencode server (excluded)",
+			line:  `12345 bun run --conditions=browser ./src/index.ts serve --port 4096`,
+			match: false,
+		},
+		{
+			name:  "other bun project with src/index.ts (no --conditions=browser)",
+			line:  `12345 bun run src/index.ts`,
+			match: false,
+		},
+		{
+			name:  "other bun project",
+			line:  `12345 bun run dev`,
+			match: false,
+		},
+		{
+			name:  "chrome-devtools-mcp bun",
+			line:  `12345 bun run --watch src/index.ts`,
+			match: false,
+		},
+		{
+			name:  "system process with 'bun' in path",
+			line:  `12345 /System/Library/CoreServices/SafariSupport.bundle/Contents/MacOS/SafariBookmarksSyncAgent`,
+			match: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isAgent := isOpenCodeAgentLine(tt.line)
+			if isAgent != tt.match {
+				t.Errorf("isOpenCodeAgentLine(%q) = %v, want %v", tt.line, isAgent, tt.match)
+			}
+		})
+	}
+}
+
 func TestFindAgentProcesses(t *testing.T) {
 	// This test just verifies the function runs without error on the current system.
 	// It doesn't assert specific processes since those are environment-dependent.
