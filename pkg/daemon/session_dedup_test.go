@@ -35,7 +35,7 @@ func TestHasExistingSession(t *testing.T) {
 						Updated int64 `json:"updated"`
 					}{
 						Created: time.Now().Add(-1 * time.Hour).UnixMilli(),
-						Updated: time.Now().Add(-30 * time.Minute).UnixMilli(),
+						Updated: time.Now().Add(-15 * time.Minute).UnixMilli(), // Active session (updated recently)
 					},
 				},
 			},
@@ -92,7 +92,7 @@ func TestHasExistingSession(t *testing.T) {
 						Updated int64 `json:"updated"`
 					}{
 						Created: time.Now().Add(-1 * time.Hour).UnixMilli(),
-						Updated: time.Now().UnixMilli(),
+						Updated: time.Now().Add(-5 * time.Minute).UnixMilli(), // Active
 					},
 				},
 				{
@@ -103,7 +103,7 @@ func TestHasExistingSession(t *testing.T) {
 						Updated int64 `json:"updated"`
 					}{
 						Created: time.Now().Add(-2 * time.Hour).UnixMilli(),
-						Updated: time.Now().UnixMilli(),
+						Updated: time.Now().Add(-10 * time.Minute).UnixMilli(), // Active
 					},
 				},
 			},
