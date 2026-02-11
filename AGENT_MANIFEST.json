@@ -1,14 +1,14 @@
 {
-  "workspace_name": "og-debug-fix-orch-complete-10feb-28e9",
-  "skill": "systematic-debugging",
-  "beads_id": "orch-go-a35n7",
+  "workspace_name": "og-feat-startup-sweep-reconciles-11feb-0abf",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-d9aol",
   "source_project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
   "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
-  "git_worktree_dir": "/Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-debug-fix-orch-complete-10feb-28e9",
-  "git_branch": "agent/og-debug-fix-orch-complete-10feb-28e9",
-  "git_baseline": "cd274101a6b9af624da4499297f4083c0c5e2b71",
-  "spawn_time": "2026-02-10T13:06:10-08:00",
+  "git_worktree_dir": "/Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-startup-sweep-reconciles-11feb-0abf",
+  "git_branch": "agent/og-feat-startup-sweep-reconciles-11feb-0abf",
+  "git_baseline": "faca6b71748dd2be1af15e03c55c50ac866f4ce3",
+  "spawn_time": "2026-02-11T11:37:38-08:00",
   "tier": "light",
   "spawn_mode": "opencode",
-  "model": "anthropic/claude-opus-4-6"
+  "model": "anthropic/claude-sonnet-4-20250514"
 }

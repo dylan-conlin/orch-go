@@ -223,17 +223,19 @@ func initDaemonRuntime(config daemon.Config) (*daemonRuntime, error) {
 	}
 
 	// Startup stale-process sweep: reconcile ledger against live PIDs.
-	// Same sweep as orch serve — ensures no stale agents from prior daemon runs.
-	ledger := process.NewLedger(process.DefaultLedgerPath())
-	sweepResult := ledger.Sweep()
-	if sweepResult.Error != nil {
-		fmt.Printf("Warning: startup sweep failed: %v\n", sweepResult.Error)
-	} else if sweepResult.StaleRemoved > 0 {
-		fmt.Printf("Startup sweep: removed %d stale entries from process ledger", sweepResult.StaleRemoved)
-		if sweepResult.Killed > 0 {
-			fmt.Printf(" (killed %d)", sweepResult.Killed)
+	// Startup sweep: reconcile ledger against live PIDs and kill orphaned bun processes.
+	// Same comprehensive sweep as orch serve — ensures no stale agents from prior daemon runs.
+	startupResult := process.StartupSweepWithReconciliation()
+	if startupResult.Error != nil {
+		fmt.Printf("Warning: startup sweep failed: %v\n", startupResult.Error)
+	} else {
+		if startupResult.LedgerStaleRemoved > 0 || startupResult.OrphanProcessesKilled > 0 {
+			fmt.Printf("Startup sweep: removed %d stale ledger entries", startupResult.LedgerStaleRemoved)
+			if startupResult.OrphanProcessesKilled > 0 {
+				fmt.Printf(", killed %d orphaned processes", startupResult.OrphanProcessesKilled)
+			}
+			fmt.Println()
 		}
-		fmt.Println()
 	}
 
 	logger := events.NewLogger(events.DefaultLogPath())

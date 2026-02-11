@@ -258,19 +258,20 @@ func runServe(portNum int) error {
 		fmt.Printf("Resolved bd path: %s\n", bdPath)
 	}
 
-	// Startup stale-process sweep: reconcile ledger against live PIDs
-	// and remove entries for processes that no longer exist.
-	// This closes the "restart window" where stale agents accumulate.
-	ledger := process.NewLedger(process.DefaultLedgerPath())
-	sweepResult := ledger.Sweep()
-	if sweepResult.Error != nil {
-		fmt.Printf("Warning: startup sweep failed: %v\n", sweepResult.Error)
-	} else if sweepResult.StaleRemoved > 0 {
-		fmt.Printf("Startup sweep: removed %d stale entries from process ledger", sweepResult.StaleRemoved)
-		if sweepResult.Killed > 0 {
-			fmt.Printf(" (killed %d)", sweepResult.Killed)
+	// Startup sweep: reconcile ledger against live PIDs, remove stale entries,
+	// and kill orphaned bun processes. This closes the "restart window" where
+	// stale agents accumulate.
+	startupResult := process.StartupSweepWithReconciliation()
+	if startupResult.Error != nil {
+		fmt.Printf("Warning: startup sweep failed: %v\n", startupResult.Error)
+	} else {
+		if startupResult.LedgerStaleRemoved > 0 || startupResult.OrphanProcessesKilled > 0 {
+			fmt.Printf("Startup sweep: removed %d stale ledger entries", startupResult.LedgerStaleRemoved)
+			if startupResult.OrphanProcessesKilled > 0 {
+				fmt.Printf(", killed %d orphaned processes", startupResult.OrphanProcessesKilled)
+			}
+			fmt.Println()
 		}
-		fmt.Println()
 	}
 
 	// Initialize persistent beads client with auto-reconnect.
@@ -525,7 +526,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/file", c(s.handleFile))
 	mux.HandleFunc("/api/screenshots", c(s.handleScreenshots))
 	mux.HandleFunc("/api/context", c(s.handleContext))
-mux.HandleFunc("/api/frontier", c(s.handleFrontier))
+	mux.HandleFunc("/api/frontier", c(s.handleFrontier))
 	mux.HandleFunc("/api/decisions", c(s.handleDecisions))
 	mux.HandleFunc("/api/session/", c(s.handleSessionMessages))
 	mux.HandleFunc("/api/approve", c(s.handleApprove))

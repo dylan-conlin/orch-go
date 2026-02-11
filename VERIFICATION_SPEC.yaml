@@ -1,40 +1,24 @@
-# Verification Spec for Simplification Architecture Review
-# Investigation-only session - produces decision record, no code changes
+# Spawn-time verification skeleton.
+# Commands are auto-detected from the project when possible.
+# Replace any remaining TODO placeholders before Phase: Complete.
 
 version: 1
 scope:
-    beads_id: orch-go-qv699
-    workspace: og-arch-simplification-architecture-review-10feb-8d87
-    skill: architect
+    beads_id: orch-go-d9aol
+    workspace: og-feat-startup-sweep-reconciles-11feb-0abf
+    skill: feature-impl
 verification:
-    - id: investigation-exists
-      description: Investigation file created with full analysis
-      method: static
-      tier: full
-      command: test -f ".kb/investigations/2026-02-10-design-simplification-architecture-review.md"
-      cwd: .
+    - id: verify-build
+      method: cli_smoke
+      tier: light
+      command: go build ./...
+      cwd: $GIT_WORKTREE_DIR
       expect:
         exit_code: 0
-    
-    - id: synthesis-exists
-      description: SYNTHESIS.md created with session summary
-      method: static
-      tier: full
-      command: test -f "SYNTHESIS.md"
-      cwd: .
+    - id: verify-test
+      method: cli_smoke
+      tier: light
+      command: go test ./...
+      cwd: $GIT_WORKTREE_DIR
       expect:
         exit_code: 0
-    
-    - id: investigation-complete
-      description: Investigation has Phase Complete status
-      method: static
-      tier: full
-      command: grep -q "Phase.*Complete" ".kb/investigations/2026-02-10-design-simplification-architecture-review.md"
-      cwd: .
-      expect:
-        exit_code: 0
-
-manual_verification:
-    - id: review-recommendations
-      description: Orchestrator should review the 4 decision forks and recommendations
-      owner: orchestrator

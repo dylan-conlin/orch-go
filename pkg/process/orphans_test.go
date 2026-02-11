@@ -176,3 +176,43 @@ func TestFindOrphanProcesses(t *testing.T) {
 		}
 	}
 }
+
+func TestStartupSweepWithReconciliation(t *testing.T) {
+	// Test that the function executes without panicking
+	// Note: This is a basic smoke test since the function interacts with system processes
+	result := StartupSweepWithReconciliation()
+
+	// Basic result validation
+	if result.LedgerTotalEntries < 0 {
+		t.Errorf("Expected non-negative LedgerTotalEntries, got %d", result.LedgerTotalEntries)
+	}
+
+	if result.LedgerStaleRemoved < 0 {
+		t.Errorf("Expected non-negative LedgerStaleRemoved, got %d", result.LedgerStaleRemoved)
+	}
+
+	if result.OrphanProcessesFound < 0 {
+		t.Errorf("Expected non-negative OrphanProcessesFound, got %d", result.OrphanProcessesFound)
+	}
+
+	if result.OrphanProcessesKilled < 0 {
+		t.Errorf("Expected non-negative OrphanProcessesKilled, got %d", result.OrphanProcessesKilled)
+	}
+
+	// Should not kill more than what was found
+	if result.OrphanProcessesKilled > result.OrphanProcessesFound {
+		t.Errorf("Killed (%d) more processes than found (%d)", result.OrphanProcessesKilled, result.OrphanProcessesFound)
+	}
+}
+
+func TestPerformFullReconciliation(t *testing.T) {
+	// Test with empty active session maps - should not error
+	killed, err := PerformFullReconciliation(map[string]bool{}, map[string]bool{})
+	if err != nil {
+		t.Errorf("PerformFullReconciliation() returned error: %v", err)
+	}
+
+	if killed < 0 {
+		t.Errorf("Expected non-negative killed count, got %d", killed)
+	}
+}

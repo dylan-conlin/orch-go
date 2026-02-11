@@ -189,3 +189,108 @@ func FindOrphanProcesses(activeSessionTitles map[string]bool, activeSessionIDs m
 
 	return orphans, nil
 }
+
+// StartupSweepResult contains the results of a comprehensive startup sweep.
+type StartupSweepResult struct {
+	// Ledger cleanup results
+	LedgerTotalEntries int
+	LedgerStaleRemoved int
+	LedgerErrors       []string
+
+	// Process reconciliation results
+	OrphanProcessesFound  int
+	OrphanProcessesKilled int
+	ProcessErrors         []string
+
+	// Overall status
+	Error          error // Fatal error that prevented operation
+	ApiUnavailable bool  // True if OpenCode API was not available
+}
+
+// StartupSweepWithReconciliation performs a comprehensive startup sweep that includes
+// both ledger cleanup and conservative orphan process cleanup.
+//
+// This function performs:
+// 1. Ledger cleanup (remove entries for dead processes)
+// 2. Conservative orphan cleanup (kill processes with PPID 1 - definitely orphaned)
+//
+// For full reconciliation against active OpenCode sessions, the caller should:
+// 1. Call this function first
+// 2. Query OpenCode API for active sessions
+// 3. Call FindOrphanProcesses with active session maps
+// 4. Kill the resulting orphans
+func StartupSweepWithReconciliation() StartupSweepResult {
+	result := StartupSweepResult{}
+
+	// Step 1: Clean up the process ledger (existing functionality)
+	ledger := NewDefaultLedger()
+	sweepResult := ledger.Sweep()
+	result.LedgerTotalEntries = sweepResult.TotalEntries
+	result.LedgerStaleRemoved = sweepResult.StaleRemoved
+	if sweepResult.Error != nil {
+		result.Error = sweepResult.Error
+		return result
+	}
+	for _, err := range sweepResult.Errors {
+		result.LedgerErrors = append(result.LedgerErrors, err)
+	}
+
+	// Step 2: Find all agent processes
+	agents, err := FindAgentProcesses()
+	if err != nil {
+		result.Error = fmt.Errorf("failed to find agent processes: %w", err)
+		return result
+	}
+
+	result.OrphanProcessesFound = len(agents)
+	if len(agents) == 0 {
+		return result // No processes to reconcile
+	}
+
+	// Step 3: Conservative orphan cleanup - only kill processes that are definitely orphaned
+	// (PPID == 1 means parent process died and they were reparented to init/launchd)
+	var definiteOrphans []OrphanProcess
+	for _, agent := range agents {
+		if agent.PPID == 1 {
+			definiteOrphans = append(definiteOrphans, agent)
+		}
+	}
+
+	// Step 4: Kill definitely orphaned processes
+	killed := 0
+	for _, orphan := range definiteOrphans {
+		if Terminate(orphan.PID, "bun (startup sweep)") {
+			killed++
+		} else {
+			result.ProcessErrors = append(result.ProcessErrors, fmt.Sprintf("failed to kill PID %d", orphan.PID))
+		}
+	}
+
+	result.OrphanProcessesKilled = killed
+	return result
+}
+
+// PerformFullReconciliation performs full bun process reconciliation against active sessions.
+// This should be called after StartupSweepWithReconciliation to handle remaining processes
+// that require session checking.
+//
+// Parameters:
+//   - activeTitles: map of active session titles/workspace names
+//   - activeSessionIDs: map of active session IDs
+//
+// Returns the number of orphaned processes killed and any errors.
+func PerformFullReconciliation(activeTitles map[string]bool, activeSessionIDs map[string]bool) (int, error) {
+	orphans, err := FindOrphanProcesses(activeTitles, activeSessionIDs)
+	if err != nil {
+		return 0, fmt.Errorf("failed to find orphan processes: %w", err)
+	}
+
+	killed := 0
+	for _, orphan := range orphans {
+		if Terminate(orphan.PID, "bun (startup reconciliation)") {
+			killed++
+		}
+	}
+
+	return killed, nil
+}
