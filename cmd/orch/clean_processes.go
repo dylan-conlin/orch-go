@@ -27,8 +27,12 @@ func cleanOrphanProcessesWithClient(client opencode.ClientInterface, projectDir 
 		return 0, fmt.Errorf("failed to list sessions: %w", err)
 	}
 
+	activeIDs := make(map[string]bool, len(sessions))
 	activeTitles := make(map[string]bool)
 	for _, s := range sessions {
+		if s.ID != "" {
+			activeIDs[s.ID] = true
+		}
 		title := s.Title
 		if title == "" {
 			continue
@@ -41,7 +45,7 @@ func cleanOrphanProcessesWithClient(client opencode.ClientInterface, projectDir 
 
 	fmt.Printf("  Found %d active OpenCode sessions\n", len(sessions))
 
-	orphans, err := process.FindOrphanProcesses(activeTitles)
+	orphans, err := process.FindOrphanProcesses(activeTitles, activeIDs)
 	if err != nil {
 		return 0, fmt.Errorf("failed to find orphan processes: %w", err)
 	}

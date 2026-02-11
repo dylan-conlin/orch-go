@@ -66,7 +66,7 @@ func (d *Daemon) ReapOrphanProcesses() *OrphanReapResult {
 	result.Found += sweepResult.StaleRemoved
 
 	// Tier 2: Title-based fallback for processes not in the ledger
-	orphans, err := process.FindOrphanProcesses(activeTitles)
+	orphans, err := process.FindOrphanProcesses(activeTitles, activeIDs)
 	if err != nil {
 		// Non-fatal: tier 1 may have already handled most cases
 		if d.Config.Verbose {

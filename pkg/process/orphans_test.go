@@ -32,7 +32,7 @@ func TestFindOrphanProcesses(t *testing.T) {
 		t.Fatalf("FindAgentProcesses() returned error: %v", err)
 	}
 
-	orphans, err := FindOrphanProcesses(map[string]bool{})
+	orphans, err := FindOrphanProcesses(map[string]bool{}, map[string]bool{})
 	if err != nil {
 		t.Fatalf("FindOrphanProcesses() returned error: %v", err)
 	}
@@ -42,24 +42,31 @@ func TestFindOrphanProcesses(t *testing.T) {
 		t.Errorf("Expected %d orphans with empty active set, got %d", len(allAgents), len(orphans))
 	}
 
-	// Test with active sessions matching workspace names
+	// Test with active sessions matching workspace names or session IDs
 	if len(allAgents) > 0 {
-		active := make(map[string]bool)
+		activeTitles := make(map[string]bool)
+		activeIDs := make(map[string]bool)
 		for _, agent := range allAgents {
 			if agent.WorkspaceName != "" {
-				active[agent.WorkspaceName] = true
+				activeTitles[agent.WorkspaceName] = true
+			}
+			if agent.SessionID != "" {
+				activeIDs[agent.SessionID] = true
 			}
 		}
 
-		orphans, err = FindOrphanProcesses(active)
+		orphans, err = FindOrphanProcesses(activeTitles, activeIDs)
 		if err != nil {
 			t.Fatalf("FindOrphanProcesses() with active set returned error: %v", err)
 		}
 
-		// With all workspace names active, no agents with workspace names should be orphans
+		// With all workspace names and session IDs active, matched agents should not be orphans
 		for _, orphan := range orphans {
-			if orphan.WorkspaceName != "" && active[orphan.WorkspaceName] {
+			if orphan.WorkspaceName != "" && activeTitles[orphan.WorkspaceName] {
 				t.Errorf("Orphan PID %d has workspace name %s that is in active set", orphan.PID, orphan.WorkspaceName)
+			}
+			if orphan.SessionID != "" && activeIDs[orphan.SessionID] {
+				t.Errorf("Orphan PID %d has session ID %s that is in active set", orphan.PID, orphan.SessionID)
 			}
 		}
 	}
