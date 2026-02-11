@@ -376,6 +376,58 @@ orch version
 2. Create `pkg/{name}/{name}_test.go`
 3. Import in cmd/orch as needed
 
+## Process Lifecycle & Zombie Prevention
+
+Headless agent spawns (the default) use OpenCode's HTTP API. OpenCode's server spawns the bun process internally — `orch` never gets a process handle. This means:
+
+- No `.process_id` file is written for headless agents
+- The process ledger (`~/.orch/process-ledger.jsonl`) is empty for headless spawns
+- When agents finish, the bun process keeps running (OpenCode doesn't terminate it on session deletion)
+
+**Without cleanup, these zombie processes accumulate, exhaust RAM, thrash swap, and crash macOS WindowServer (breaking mouse input, requiring reboot).** This has happened 3+ times.
+
+### Defenses (layered)
+
+1. **`orch reap`** — standalone reaper command, works without the daemon
+   - Queries OpenCode API for active sessions, kills unmatched bun processes
+   - `--force` kills ALL agent processes (use after crash/reboot)
+   - `--dry-run` to preview
+
+2. **Launchd agent** — runs `orch reap` every 5 minutes automatically
+   - Plist: `~/Library/LaunchAgents/com.orch.reap.plist`
+   - Logs: `~/.orch/logs/reap.log`
+   - Install: `./scripts/install-reaper.sh`
+
+3. **`orch complete` sweep** — after deleting a session, sweeps for newly-orphaned bun processes and kills them
+
+4. **Daemon orphan reaper** — if `orch daemon run` is active, it reaps orphans every 5 minutes via `ReapOrphanProcesses()`
+
+5. **`orch clean --processes`** — manual cleanup flag on the clean command
+
+### Emergency: System Seizing Up
+
+If system gets sluggish or mouse stops working:
+
+```bash
+# Kill all zombie agent processes immediately
+orch reap --force
+
+# Or if orch isn't responding:
+pkill -f 'bun.*src/index.ts' 
+
+# Then check memory
+vm_stat | head -5
+```
+
+### Key Files
+
+- Orphan detection: `pkg/process/orphans.go` — finds bun+src/index.ts processes, excludes server
+- Reap command: `cmd/orch/reap_cmd.go`
+- Complete sweep: `cmd/orch/complete_cleanup.go` (`sweepOrphanedProcessesAfterSessionDelete`)
+- Daemon reaper: `pkg/daemon/orphan_reaper.go`
+- Process ledger: `pkg/process/ledger.go` (only populated for non-headless spawns)
+- Launchd plist: `scripts/com.orch.reap.plist`
+
 ## Gotchas
 
 - **Window targeting**: Use workspace name, not window index

@@ -115,6 +115,7 @@ func deleteSessionAndProcessWithClient(client opencode.ClientInterface, target *
 		}
 	}
 
+	// Try workspace .process_id first (written for non-headless spawns)
 	pid := spawn.ReadProcessID(target.WorkspacePath)
 	if pid > 0 {
 		if process.Terminate(pid, "opencode") {
@@ -122,7 +123,55 @@ func deleteSessionAndProcessWithClient(client opencode.ClientInterface, target *
 		}
 	}
 
+	// For headless spawns, .process_id is never written. After deleting the session,
+	// sweep for orphaned bun processes that are no longer associated with any active
+	// session. This catches headless agent processes that would otherwise leak.
+	if !processTerminated && sessionDeleted {
+		killed := sweepOrphanedProcessesAfterSessionDelete(client)
+		if killed > 0 {
+			processTerminated = true
+		}
+	}
+
 	return sessionDeleted, processTerminated
+}
+
+// sweepOrphanedProcessesAfterSessionDelete finds and kills bun agent processes
+// that are no longer associated with any active OpenCode session. This is called
+// after deleting a session to catch headless processes that have no .process_id file.
+func sweepOrphanedProcessesAfterSessionDelete(client opencode.ClientInterface) int {
+	sessions, err := client.ListSessions("")
+	if err != nil {
+		return 0
+	}
+
+	activeIDs := make(map[string]bool, len(sessions))
+	activeTitles := make(map[string]bool)
+	for _, s := range sessions {
+		if s.ID != "" {
+			activeIDs[s.ID] = true
+		}
+		if s.Title != "" {
+			activeTitles[s.Title] = true
+			if idx := strings.Index(s.Title, " ["); idx != -1 {
+				activeTitles[strings.TrimSpace(s.Title[:idx])] = true
+			}
+		}
+	}
+
+	orphans, err := process.FindOrphanProcesses(activeTitles, activeIDs)
+	if err != nil {
+		return 0
+	}
+
+	killed := 0
+	for _, orphan := range orphans {
+		if process.Terminate(orphan.PID, "bun (orphan after session delete)") {
+			killed++
+			fmt.Printf("Terminated orphaned bun process: PID %d\n", orphan.PID)
+		}
+	}
+	return killed
 }
 
 // cleanupTmuxWindow finds and kills the tmux window for the agent.
