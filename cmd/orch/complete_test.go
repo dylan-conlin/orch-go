@@ -579,23 +579,32 @@ func TestSkipConfigShouldSkipGate(t *testing.T) {
 		TestEvidence:     true,
 		ModelConnection:  true,
 		GitDiff:          true,
-		Synthesis:        false,
+		Synthesis:        true,
 		Build:            true,
 		AgentRunning:     true,
 		VerificationSpec: true,
+		PhaseComplete:    true,
+		CommitEvidence:   true,
 	}
 
 	tests := []struct {
 		gate string
 		want bool
 	}{
-		{"test_evidence", true},
+		// Core gates are NEVER skippable, even when flag is set
+		{"test_evidence", false},
+		{"git_diff", false},
+		{"synthesis", false},
+		{"phase_complete", false},
+		{"commit_evidence", false},
+
+		// Quality gates ARE skippable when flag is set
 		{"model_connection", true},
-		{"git_diff", true},
 		{"build", true},
 		{"agent_running", true},
 		{"verification_spec", true},
-		{"synthesis", false},
+
+		// Gates without skip flag set
 		{"visual_verification", false},
 		{"constraint", false},
 		{"unknown_gate", false},
@@ -608,6 +617,28 @@ func TestSkipConfigShouldSkipGate(t *testing.T) {
 				t.Errorf("shouldSkipGate(%s) = %v, want %v", tt.gate, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestShouldSkipGateBatchModeSkipsQualityNotCore tests batch mode behavior.
+func TestShouldSkipGateBatchModeSkipsQualityNotCore(t *testing.T) {
+	config := SkipConfig{BatchMode: true}
+
+	// Core gates should NOT be skipped in batch mode
+	coreGates := []string{"phase_complete", "commit_evidence", "synthesis", "test_evidence", "git_diff"}
+	for _, gate := range coreGates {
+		if config.shouldSkipGate(gate) {
+			t.Errorf("batch mode should not skip core gate %s", gate)
+		}
+	}
+
+	// Quality gates SHOULD be skipped in batch mode
+	qualityGates := []string{"build", "model_connection", "verification_spec", "visual_verification",
+		"constraint", "phase_gate", "skill_output", "decision_patch_limit", "dashboard_health", "handoff_content"}
+	for _, gate := range qualityGates {
+		if !config.shouldSkipGate(gate) {
+			t.Errorf("batch mode should skip quality gate %s", gate)
+		}
 	}
 }
 
@@ -629,34 +660,65 @@ func TestValidateSkipFlags(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name:    "skip without reason - error",
-			config:  SkipConfig{TestEvidence: true},
+			name:    "skip quality gate without reason - error",
+			config:  SkipConfig{Build: true},
 			wantErr: "--skip-reason is required when using --skip-* flags",
 		},
 		{
-			name:    "skip with short reason - error",
-			config:  SkipConfig{TestEvidence: true, Reason: "short"},
+			name:    "skip quality gate with short reason - error",
+			config:  SkipConfig{Build: true, Reason: "short"},
 			wantErr: "--skip-reason must be at least 10 characters (got 5)",
 		},
 		{
-			name:    "skip with 9 char reason - error",
-			config:  SkipConfig{TestEvidence: true, Reason: "123456789"},
+			name:    "skip quality gate with 9 char reason - error",
+			config:  SkipConfig{Build: true, Reason: "123456789"},
 			wantErr: "--skip-reason must be at least 10 characters (got 9)",
 		},
 		{
-			name:    "skip with 10 char reason - ok",
-			config:  SkipConfig{TestEvidence: true, Reason: "1234567890"},
+			name:    "skip quality gate with 10 char reason - ok",
+			config:  SkipConfig{Build: true, Reason: "1234567890"},
 			wantErr: "",
 		},
 		{
-			name:    "skip with long reason - ok",
-			config:  SkipConfig{TestEvidence: true, Reason: "This is a valid reason for skipping the test evidence gate"},
+			name:    "skip quality gate with long reason - ok",
+			config:  SkipConfig{Build: true, Reason: "This is a valid reason for skipping the build gate"},
 			wantErr: "",
 		},
 		{
-			name:    "multiple skips with valid reason - ok",
-			config:  SkipConfig{TestEvidence: true, GitDiff: true, Reason: "Docs-only change"},
+			name:    "multiple quality skips with valid reason - ok",
+			config:  SkipConfig{Build: true, ModelConnection: true, Reason: "Docs-only change"},
 			wantErr: "",
+		},
+		// Core gate skip rejection
+		{
+			name:    "skip core gate phase_complete - blocked",
+			config:  SkipConfig{PhaseComplete: true, Reason: "This should fail"},
+			wantErr: "core gates cannot be skipped: phase_complete (use --force to bypass all verification)",
+		},
+		{
+			name:    "skip core gate commit_evidence - blocked",
+			config:  SkipConfig{CommitEvidence: true, Reason: "This should fail"},
+			wantErr: "core gates cannot be skipped: commit_evidence (use --force to bypass all verification)",
+		},
+		{
+			name:    "skip core gate synthesis - blocked",
+			config:  SkipConfig{Synthesis: true, Reason: "This should fail"},
+			wantErr: "core gates cannot be skipped: synthesis (use --force to bypass all verification)",
+		},
+		{
+			name:    "skip core gate test_evidence - blocked",
+			config:  SkipConfig{TestEvidence: true, Reason: "This should fail"},
+			wantErr: "core gates cannot be skipped: test_evidence (use --force to bypass all verification)",
+		},
+		{
+			name:    "skip core gate git_diff - blocked",
+			config:  SkipConfig{GitDiff: true, Reason: "This should fail"},
+			wantErr: "core gates cannot be skipped: git_diff (use --force to bypass all verification)",
+		},
+		{
+			name:    "skip multiple core gates - all listed",
+			config:  SkipConfig{PhaseComplete: true, CommitEvidence: true, Reason: "This should fail"},
+			wantErr: "core gates cannot be skipped: phase_complete, commit_evidence (use --force to bypass all verification)",
 		},
 	}
 

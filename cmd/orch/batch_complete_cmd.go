@@ -22,16 +22,17 @@ var batchCompleteCmd = &cobra.Command{
 	Short: "Bulk-complete multiple agents with core gates only",
 	Long: `Complete multiple agents in batch mode, running only Tier 1 (core) gates.
 
-Core gates (always run):
+Core gates (always run, cannot be skipped):
   - phase_complete: Agent reported "Phase: Complete"
-  - build: Project builds (with blame attribution)
-  - test_evidence: Test execution evidence (code-producing skills)
-  - model_connection: Probe/model linkage evidence (knowledge-producing skills)
-  - visual_verification: Visual verification for web/ changes
+  - commit_evidence: Agent branch has commits (prevents ghost completions)
+  - synthesis: SYNTHESIS.md exists (prevents broken handoffs)
+  - test_evidence: Test execution evidence (prevents shipping untested code)
+  - git_diff: Diff matches SYNTHESIS claims (prevents fiction in handoffs)
 
 Quality gates (skipped in batch mode):
-  - synthesis, constraint, phase_gate, skill_output, git_diff,
-    decision_patch_limit, dashboard_health, handoff_content
+  - build, model_connection, verification_spec, visual_verification,
+    constraint, phase_gate, skill_output, decision_patch_limit,
+    dashboard_health, handoff_content
 
 Use --all to discover and complete all agents that reported Phase: Complete.
 Use --dry-run to preview what would be completed without making changes.

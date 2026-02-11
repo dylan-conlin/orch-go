@@ -94,24 +94,23 @@ The following gates are checked before completion:
   - commit_evidence:      Agent branch has at least one commit (prevents ghost completions)
   - branch_integration:   Agent branch rebased + merged fast-forward into base branch
 
-TARGETED SKIP FLAGS:
-Use --skip-{gate} with --skip-reason to bypass specific gates:
-  --skip-test-evidence     Skip test evidence gate
+TARGETED SKIP FLAGS (Quality gates only):
+Use --skip-{gate} with --skip-reason to bypass specific quality gates:
+  --skip-build             Skip build verification gate
   --skip-model-connection  Skip model connection gate
   --skip-visual            Skip visual verification gate
-  --skip-git-diff          Skip git diff verification gate
-  --skip-synthesis         Skip SYNTHESIS.md gate
-  --skip-build             Skip build verification gate
   --skip-constraint        Skip constraint verification gate
   --skip-phase-gate        Skip phase gate verification
   --skip-skill-output      Skip skill output verification gate
   --skip-decision-patch    Skip decision patch count gate
-  --skip-phase-complete    Skip Phase: Complete gate
   --skip-agent-running     Skip liveness gate when agent appears active
   --skip-handoff-content   Skip handoff content validation (orchestrator only)
   --skip-dashboard-health  Skip dashboard health check for web/ or serve_*.go changes
   --skip-verification-spec Skip VERIFICATION_SPEC executable checks gate
-  --skip-commit-evidence   Skip commit evidence gate (allow zero-commit completion)
+
+Core gates (phase_complete, commit_evidence, synthesis, test_evidence, git_diff)
+CANNOT be skipped — they block completion unconditionally. Use --force to bypass
+all verification (deprecated, logged for audit).
 
 Each --skip-* flag requires --skip-reason with a minimum of 10 characters
 explaining why the gate is being bypassed. Bypasses are logged for audit.

@@ -98,23 +98,24 @@ func TestResolveTargetWorkerWorkspaceWithUntracked(t *testing.T) {
 // ──────────────────────────────────────────────────────────────
 
 // TestApplySkipFilteringRemovesSkippedGates verifies that skip filtering
-// correctly removes matching gates from the failure list.
+// correctly removes matching quality gates from the failure list.
+// Core gates are never removed by skip filtering.
 func TestApplySkipFilteringRemovesSkippedGates(t *testing.T) {
 	gatesFailed := []string{
-		verify.GateTestEvidence,
-		verify.GateGitDiff,
-		verify.GateSynthesis,
+		verify.GateBuild,
+		verify.GateModelConnection,
+		verify.GateConstraint,
 	}
 	errors := []string{
-		"test evidence: no test output found",
-		"git diff: changes not matching",
-		"synthesis: SYNTHESIS.md missing",
+		"build: go build failed",
+		"model connection: no probe found",
+		"constraint: scope exceeded",
 	}
 
 	skipConfig := SkipConfig{
-		TestEvidence: true,
-		Synthesis:    true,
-		Reason:       "docs-only change, no tests needed",
+		Build:           true,
+		ModelConnection: true,
+		Reason:          "docs-only change, no build needed",
 	}
 
 	target := &CompletionTarget{
@@ -125,12 +126,48 @@ func TestApplySkipFilteringRemovesSkippedGates(t *testing.T) {
 
 	applySkipFiltering(&gatesFailed, &errors, skipConfig, target)
 
-	// Only git_diff should remain
+	// Only constraint should remain (build and model_connection were skipped)
 	if len(gatesFailed) != 1 {
 		t.Errorf("Expected 1 remaining gate, got %d: %v", len(gatesFailed), gatesFailed)
 	}
-	if len(gatesFailed) > 0 && gatesFailed[0] != verify.GateGitDiff {
-		t.Errorf("Expected remaining gate to be git_diff, got %s", gatesFailed[0])
+	if len(gatesFailed) > 0 && gatesFailed[0] != verify.GateConstraint {
+		t.Errorf("Expected remaining gate to be constraint, got %s", gatesFailed[0])
+	}
+}
+
+// TestApplySkipFilteringCoreGatesNeverSkipped verifies that core gates
+// cannot be removed by skip filtering, even if skip flags are set.
+func TestApplySkipFilteringCoreGatesNeverSkipped(t *testing.T) {
+	gatesFailed := []string{
+		verify.GatePhaseComplete,
+		verify.GateCommitEvidence,
+		verify.GateBuild,
+	}
+	errors := []string{
+		"phase complete: not reported",
+		"commit evidence: no commits",
+		"build: failed",
+	}
+
+	// Even with core gate skip flags set, core gates should NOT be filtered
+	skipConfig := SkipConfig{
+		PhaseComplete:  true,
+		CommitEvidence: true,
+		Build:          true,
+		Reason:         "attempting to skip everything",
+	}
+
+	target := &CompletionTarget{
+		BeadsID:         "test-id",
+		AgentName:       "test-agent",
+		BeadsProjectDir: t.TempDir(),
+	}
+
+	applySkipFiltering(&gatesFailed, &errors, skipConfig, target)
+
+	// Core gates (phase_complete, commit_evidence) should remain; only build should be skipped
+	if len(gatesFailed) != 2 {
+		t.Errorf("Expected 2 remaining gates (core gates unskippable), got %d: %v", len(gatesFailed), gatesFailed)
 	}
 }
 

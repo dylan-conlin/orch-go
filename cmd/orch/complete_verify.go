@@ -98,7 +98,12 @@ func (c SkipConfig) skippedGates() []string {
 
 // shouldSkipGate returns true if the given gate should be skipped.
 // In batch mode, all Tier 2 (quality) gates are automatically skipped.
+// Core gates (Tier 1) are never skippable — they block completion unconditionally.
 func (c SkipConfig) shouldSkipGate(gate string) bool {
+	// Core gates cannot be skipped, period.
+	if verify.IsCoreGate(gate) {
+		return false
+	}
 	if c.BatchMode && verify.IsQualityGate(gate) {
 		return true
 	}
@@ -174,9 +179,16 @@ func buildBatchSkipConfig() SkipConfig {
 
 // validateSkipFlags validates that --skip-reason is provided when --skip-* flags are used.
 // Batch mode does not require --skip-reason (the reason is implicit).
+// Core gates (Tier 1) cannot be skipped — they block completion unconditionally.
 func validateSkipFlags(skipConfig SkipConfig) error {
 	if skipConfig.BatchMode {
 		return nil
+	}
+
+	// Check for attempts to skip core gates — these are never allowed
+	coreSkips := skipConfig.coreGateSkips()
+	if len(coreSkips) > 0 {
+		return fmt.Errorf("core gates cannot be skipped: %s (use --force to bypass all verification)", strings.Join(coreSkips, ", "))
 	}
 
 	if !skipConfig.hasAnySkip() {
@@ -192,6 +204,27 @@ func validateSkipFlags(skipConfig SkipConfig) error {
 	}
 
 	return nil
+}
+
+// coreGateSkips returns the names of core gates that the skip config attempts to skip.
+func (c SkipConfig) coreGateSkips() []string {
+	var skips []string
+	coreChecks := []struct {
+		flag bool
+		gate string
+	}{
+		{c.PhaseComplete, verify.GatePhaseComplete},
+		{c.CommitEvidence, verify.GateCommitEvidence},
+		{c.Synthesis, verify.GateSynthesis},
+		{c.TestEvidence, verify.GateTestEvidence},
+		{c.GitDiff, verify.GateGitDiff},
+	}
+	for _, check := range coreChecks {
+		if check.flag {
+			skips = append(skips, check.gate)
+		}
+	}
+	return skips
 }
 
 // logSkipEvents logs verification.bypassed events for all skipped gates.
