@@ -361,6 +361,31 @@ func closeIssue(target *CompletionTarget, skipConfig SkipConfig) (string, error)
 	if err := verify.CloseIssueForce(target.BeadsID, reason, skipConfig.PhaseComplete); err != nil {
 		return reason, fmt.Errorf("failed to close issue: %w", err)
 	}
+
+	// Verify close actually succeeded by reading back the issue status.
+	// This catches silent failures where bd close returns success but the issue
+	// remains open (e.g., due to beads daemon bugs or missing Phase: Complete proof).
+	verifiedIssue, verifyErr := verify.GetIssue(target.BeadsID)
+	if verifyErr != nil {
+		// Can't verify - warn but continue (issue might be closed, just unreadable)
+		fmt.Fprintf(os.Stderr, "Warning: Could not verify issue closure: %v\n", verifyErr)
+	} else if strings.ToLower(verifiedIssue.Status) != "closed" {
+		// Close command succeeded but issue is NOT closed - this is a silent failure.
+		// This can happen when:
+		// 1. Beads daemon returns success incorrectly
+		// 2. bd close CLI exits 0 but didn't actually close
+		// 3. Phase: Complete comment is missing and bd close rejected (but no error returned)
+		return reason, fmt.Errorf(
+			"bd close reported success but issue %s is still '%s' (expected: closed)\n\n"+
+				"This typically happens when:\n"+
+				"  - 'Phase: Complete' comment is missing from beads (check: bd comments %s)\n"+
+				"  - The agent wrote to state.db but bd comment failed\n\n"+
+				"To fix:\n"+
+				"  - If Phase: Complete is in state.db: orch complete %s --skip-phase-complete --skip-reason \"Phase in state.db\"\n"+
+				"  - Or force close: bd close %s --force",
+			target.BeadsID, verifiedIssue.Status, target.BeadsID, target.BeadsID, target.BeadsID)
+	}
+
 	fmt.Printf("Closed beads issue: %s\n", target.BeadsID)
 
 	// Epic auto-close: check parent
