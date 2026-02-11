@@ -11,6 +11,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +24,7 @@ The daemon processes beads issues from the queue, spawning agents
 for each issue in priority order.
 
 Subcommands:
+  start    Start daemon if enabled in config (checks daemon.enabled: true)
   run      Process issues continuously with polling
   once     Process a single issue and exit
   preview  Show what would be processed next without processing
@@ -57,6 +59,21 @@ Examples:
   orch-go daemon run --cross-project        # Poll all kb-registered projects`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDaemonLoop()
+	},
+}
+
+var daemonStartCmd = &cobra.Command{
+	Use:   "start",
+	Short: "Start daemon if enabled in config",
+	Long: `Start the daemon if daemon.enabled is true in config.
+
+This command checks the configuration and starts the daemon if enabled.
+If daemon.enabled is false, it will exit with an error message.
+
+Examples:
+  orch-go daemon start    # Start if enabled in config`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runDaemonStart()
 	},
 }
 
@@ -164,6 +181,7 @@ var (
 )
 
 func init() {
+	daemonCmd.AddCommand(daemonStartCmd)
 	daemonCmd.AddCommand(daemonRunCmd)
 	daemonCmd.AddCommand(daemonOnceCmd)
 	daemonCmd.AddCommand(daemonPreviewCmd)
@@ -290,7 +308,34 @@ func runDaemonCacheClear(args []string) error {
 	return nil
 }
 
+func runDaemonStart() error {
+	// Load config to check if daemon is enabled
+	cfg, err := userconfig.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	if !cfg.DaemonEnabled() {
+		fmt.Println("Daemon is disabled in config (daemon.enabled: false)")
+		fmt.Println("Enable it by setting daemon.enabled: true in ~/.orch/config.yaml")
+		fmt.Println("Or use 'orch daemon run' to start directly (bypasses config check)")
+		return fmt.Errorf("daemon disabled in configuration")
+	}
+
+	fmt.Println("Starting daemon (daemon.enabled: true in config)")
+	return runDaemonLoop()
+}
+
 func runDaemonLoop() error {
+	// Check config to warn if daemon is disabled (run command can still proceed)
+	cfg, err := userconfig.Load()
+	if err == nil && !cfg.DaemonEnabled() {
+		fmt.Println("Warning: daemon is disabled in config (daemon.enabled: false)")
+		fmt.Println("Consider using 'orch daemon start' instead, or set daemon.enabled: true")
+		fmt.Println("Proceeding anyway as 'run' bypasses config check...")
+		fmt.Println()
+	}
+
 	// Handle dry-run mode
 	if daemonDryRun {
 		return runDaemonDryRun()

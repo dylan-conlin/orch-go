@@ -1198,3 +1198,41 @@ skill_models:
 		t.Errorf("GetModelForSkill('unknown-skill') = %q, want 'opus' (default_model)", cfg.GetModelForSkill("unknown-skill"))
 	}
 }
+
+func TestDaemonEnabled(t *testing.T) {
+	tests := []struct {
+		name     string
+		enabled  *bool
+		expected bool
+	}{
+		{
+			name:     "nil defaults to false",
+			enabled:  nil,
+			expected: false,
+		},
+		{
+			name:     "explicit true",
+			enabled:  &[]bool{true}[0],
+			expected: true,
+		},
+		{
+			name:     "explicit false",
+			enabled:  &[]bool{false}[0],
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Daemon: DaemonConfig{
+					Enabled: tt.enabled,
+				},
+			}
+
+			if got := cfg.DaemonEnabled(); got != tt.expected {
+				t.Errorf("DaemonEnabled() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}

@@ -1,4 +1,4 @@
-TASK: startup sweep reconciles bun processes against active sessions
+TASK: Supervised-first shift: make daemon explicitly opt-in. Currently daemon auto-start is implicitly disabled but not enforced in code. Required changes: (1) add daemon.enabled: false default in config with explicit opt-in, (2) add --daemon flag or orch daemon start for explicit activation, (3) orch-dashboard restart should NOT start daemon unless config says enabled: true, (4) update orch serve to skip daemon init unless opted in. The daemon caused contaminated working trees, out-of-order spawns, and dependency violations — supervised manual spawning is the default workflow.
 
 
 
@@ -44,7 +44,7 @@ MODEL BEHAVIOR PROFILE: strict-complete
 
 🚨 FIRST 3 ACTIONS (ADVISORY - STRONGLY RECOMMENDED):
 Suggested first actions for visibility:
-1. Report phase: `orch phase orch-go-d9aol Planning "[brief description]"`
+1. Report phase: `orch phase orch-go-48jnq Planning "[brief description]"`
 2. Read relevant codebase context for your task
 3. Begin planning
 
@@ -60,7 +60,7 @@ TERMINAL CHECKLIST (EXECUTE IN ORDER):
 - [ ] `git push` can trigger deploys that disrupt production systems
 
 
-- [ ] Run: `orch phase orch-go-d9aol Complete "[1-2 sentence summary of deliverables]"`
+- [ ] Run: `orch phase orch-go-48jnq Complete "[1-2 sentence summary of deliverables]"`
 - [ ] Run: `/exit`
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
@@ -70,7 +70,7 @@ If you do not emit Phase: Complete, your work will be lost
 
 CONTEXT: [See task description]
 
-PROJECT_DIR: /Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-startup-sweep-reconciles-11feb-0abf
+PROJECT_DIR: /Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-supervised-first-shift-11feb-b305
 
 SESSION SCOPE: Medium (estimated [1-2h / 2-4h / 4-6h+])
 - Default estimation
@@ -99,7 +99,7 @@ AUTHORITY:
 
 **Surface Before Circumvent:**
 Before working around ANY constraint (technical, architectural, or process):
-1. Surface it first: `bd comment orch-go-d9aol "CONSTRAINT: [what constraint] - [why considering workaround]"`
+1. Surface it first: `bd comment orch-go-48jnq "CONSTRAINT: [what constraint] - [why considering workaround]"`
 2. Wait for orchestrator acknowledgment before proceeding
 3. The accountability is a feature, not a cost
 
@@ -115,7 +115,7 @@ This applies to:
 - Creates hidden technical debt
 
 DELIVERABLES (REQUIRED):
-1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-startup-sweep-reconciles-11feb-0abf)
+1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-supervised-first-shift-11feb-b305)
 
 2. [Task-specific deliverables from skill guidance]
 
@@ -131,21 +131,21 @@ Signal orchestrator when blocked:
 
 ## PROGRESS TRACKING
 
-You were spawned from beads issue: **orch-go-d9aol**
+You were spawned from beads issue: **orch-go-48jnq**
 
 **Phase reporting:** Use `orch phase` — one command that writes to SQLite (~1ms) for instant dashboard visibility AND automatically adds a bd comment for permanent audit trail.
 
 ```bash
 # Report progress at phase transitions
-orch phase orch-go-d9aol Planning "Analyzing codebase structure"
-orch phase orch-go-d9aol Implementing "Adding authentication middleware"
-orch phase orch-go-d9aol Complete "All tests passing, ready for review"
+orch phase orch-go-48jnq Planning "Analyzing codebase structure"
+orch phase orch-go-48jnq Implementing "Adding authentication middleware"
+orch phase orch-go-48jnq Complete "All tests passing, ready for review"
 
 # Report blockers immediately
-orch phase orch-go-d9aol BLOCKED "Need clarification on API contract"
+orch phase orch-go-48jnq BLOCKED "Need clarification on API contract"
 
 # Report questions
-orch phase orch-go-d9aol QUESTION "Should we use JWT or session-based auth?"
+orch phase orch-go-48jnq QUESTION "Should we use JWT or session-based auth?"
 ```
 
 **When to report:**
@@ -1016,6 +1016,13 @@ This is a RED FLAG. Either:
 ---
 
 
+FEATURE-IMPL CONFIGURATION:
+Phases: implementation,validation
+Mode: direct
+Validation: integration
+
+Follow phase guidance from the feature-impl skill.
+
 
 
 CONTEXT AVAILABLE:
@@ -1048,7 +1055,7 @@ TERMINAL CHECKLIST (EXECUTE IN ORDER):
 
 
 
-- [ ] `orch phase orch-go-d9aol Complete "[1-2 sentence summary]"`
+- [ ] `orch phase orch-go-48jnq Complete "[1-2 sentence summary]"`
 - [ ] `/exit`
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.

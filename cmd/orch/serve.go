@@ -23,6 +23,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/notify"
 	"github.com/dylan-conlin/orch-go/pkg/process"
 	"github.com/dylan-conlin/orch-go/pkg/service"
+	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -38,7 +39,10 @@ func tlsConfigSkipVerify() *tls.Config {
 // This is infrastructure, not a project dev server.
 const DefaultServePort = 3348
 
-var servePort int
+var (
+	servePort       int
+	serveWithDaemon bool // Enable daemon alongside serve
+)
 
 // Server holds all dependencies for HTTP handlers, enabling unit testing
 // without global state. Created in runServe and passed to registerRoutes.
@@ -118,6 +122,7 @@ Endpoints:
 Examples:
   orch-go serve              # Start server on port 3348
   orch-go serve --port 8080  # Override with explicit port
+  orch-go serve --daemon     # Start server with daemon (overrides config)
   orch-go serve status       # Check if server is running
   orch-go serve restart      # Restart via overmind/launchd manager`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -160,6 +165,7 @@ returns a remediation message instead of spawning another orphan process.`,
 
 func init() {
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", DefaultServePort, "Port to check/listen on")
+	serveCmd.Flags().BoolVar(&serveWithDaemon, "daemon", false, "Enable daemon alongside serve (overrides config)")
 	serveStatusCmd.Flags().IntVarP(&servePort, "port", "p", DefaultServePort, "Port to check")
 
 	serveCmd.AddCommand(serveStatusCmd)
@@ -242,6 +248,20 @@ func runServeStatus(portNum int) error {
 func runServe(portNum int) error {
 	// Record server start time for agent death diagnostics
 	srvStartTime := time.Now()
+
+	// Check if daemon should be enabled based on config and flag
+	cfg, configErr := userconfig.Load()
+	if configErr != nil {
+		return fmt.Errorf("failed to load config: %w", configErr)
+	}
+
+	// Determine if daemon should run: --daemon flag overrides config
+	daemonEnabled := serveWithDaemon || cfg.DaemonEnabled()
+
+	if !daemonEnabled {
+		fmt.Println("Daemon auto-start disabled (supervised-first workflow)")
+		fmt.Println("Use 'orch serve --daemon' or set daemon.enabled: true in config to enable")
+	}
 
 	// Set default directory for beads socket discovery
 	// This is needed because serve may run from any working directory

@@ -71,6 +71,10 @@ type CheckpointThresholds struct {
 // DaemonConfig holds settings for the orch daemon plist generation.
 // This is the declarative source of truth for ~/Library/LaunchAgents/com.orch.daemon.plist.
 type DaemonConfig struct {
+	// Enabled controls whether the daemon should run.
+	// Defaults to false if not specified (supervised-first workflow).
+	Enabled *bool `yaml:"enabled,omitempty"`
+
 	// PollInterval is how often the daemon polls for ready issues (in seconds).
 	// Defaults to 60 if not specified.
 	PollInterval *int `yaml:"poll_interval,omitempty"`
@@ -235,6 +239,15 @@ func (c *Config) IsBackendDisabled(backend string) bool {
 		}
 	}
 	return false
+}
+
+// DaemonEnabled returns whether the daemon should run.
+// Defaults to false if not configured (supervised-first workflow).
+func (c *Config) DaemonEnabled() bool {
+	if c.Daemon.Enabled == nil {
+		return false // Default to disabled for supervised-first workflow
+	}
+	return *c.Daemon.Enabled
 }
 
 // DaemonPollInterval returns the daemon poll interval in seconds.
