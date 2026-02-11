@@ -62,6 +62,7 @@ var (
 	completeSkipHandoffContent   bool
 	completeSkipDashboardHealth  bool
 	completeSkipVerificationSpec bool
+	completeSkipCommitEvidence   bool
 	completeSkipReason           string // Required for all --skip-* flags (min 10 chars)
 )
 
@@ -90,6 +91,7 @@ The following gates are checked before completion:
   - handoff_content:      SYNTHESIS.md has actual content (orchestrator only)
   - dashboard_health:     Dashboard API endpoints healthy for web/ or serve_*.go changes
   - verification_spec:    VERIFICATION_SPEC executable checks pass for workspace tier
+  - commit_evidence:      Agent branch has at least one commit (prevents ghost completions)
   - branch_integration:   Agent branch rebased + merged fast-forward into base branch
 
 TARGETED SKIP FLAGS:
@@ -109,6 +111,7 @@ Use --skip-{gate} with --skip-reason to bypass specific gates:
   --skip-handoff-content   Skip handoff content validation (orchestrator only)
   --skip-dashboard-health  Skip dashboard health check for web/ or serve_*.go changes
   --skip-verification-spec Skip VERIFICATION_SPEC executable checks gate
+  --skip-commit-evidence   Skip commit evidence gate (allow zero-commit completion)
 
 Each --skip-* flag requires --skip-reason with a minimum of 10 characters
 explaining why the gate is being bypassed. Bypasses are logged for audit.
@@ -205,6 +208,7 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipHandoffContent, "skip-handoff-content", false, "Skip handoff content validation gate for orchestrators (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipDashboardHealth, "skip-dashboard-health", false, "Skip dashboard health check gate for web/ or serve_*.go changes (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipVerificationSpec, "skip-verification-spec", false, "Skip VERIFICATION_SPEC executable checks gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipCommitEvidence, "skip-commit-evidence", false, "Skip commit evidence gate - allows completion with zero commits (requires --skip-reason)")
 	completeCmd.Flags().StringVar(&completeSkipReason, "skip-reason", "", "Reason for skip (required for all --skip-* flags, min 10 chars)")
 }
 

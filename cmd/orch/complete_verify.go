@@ -30,6 +30,7 @@ type SkipConfig struct {
 	HandoffContent   bool
 	DashboardHealth  bool
 	VerificationSpec bool
+	CommitEvidence   bool
 	Reason           string // Required reason for skips
 	BatchMode        bool   // Batch mode: skip all Tier 2 (quality) gates
 }
@@ -40,7 +41,7 @@ const autoGPTSkipReason = "auto GPT completion profile: known gate incompatibili
 func (c SkipConfig) hasAnySkip() bool {
 	return c.BatchMode || c.TestEvidence || c.ModelConnection || c.Visual || c.GitDiff || c.Synthesis ||
 		c.Build || c.Constraint || c.PhaseGate || c.SkillOutput ||
-		c.DecisionPatch || c.PhaseComplete || c.AgentRunning || c.HandoffContent || c.DashboardHealth || c.VerificationSpec
+		c.DecisionPatch || c.PhaseComplete || c.AgentRunning || c.HandoffContent || c.DashboardHealth || c.VerificationSpec || c.CommitEvidence
 }
 
 // skippedGates returns a list of gate names that are being skipped.
@@ -91,6 +92,9 @@ func (c SkipConfig) skippedGates() []string {
 	if c.VerificationSpec {
 		gates = append(gates, verify.GateVerificationSpec)
 	}
+	if c.CommitEvidence {
+		gates = append(gates, verify.GateCommitEvidence)
+	}
 	return gates
 }
 
@@ -131,6 +135,8 @@ func (c SkipConfig) shouldSkipGate(gate string) bool {
 		return c.DashboardHealth
 	case verify.GateVerificationSpec:
 		return c.VerificationSpec
+	case verify.GateCommitEvidence:
+		return c.CommitEvidence
 	default:
 		return false
 	}
@@ -154,6 +160,7 @@ func getSkipConfig() SkipConfig {
 		HandoffContent:   completeSkipHandoffContent,
 		DashboardHealth:  completeSkipDashboardHealth,
 		VerificationSpec: completeSkipVerificationSpec,
+		CommitEvidence:   completeSkipCommitEvidence,
 		Reason:           completeSkipReason,
 		BatchMode:        completeBatch,
 	}

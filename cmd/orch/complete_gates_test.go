@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -242,6 +244,151 @@ func TestCheckLivenessSkipAgentRunning(t *testing.T) {
 	}
 	if called != 0 {
 		t.Fatalf("expected liveness lookup to be skipped, got %d call(s)", called)
+	}
+}
+
+func TestCheckCommitEvidenceNoBranch(t *testing.T) {
+	// No git branch = gate not applicable, should pass with warning
+	target := &CompletionTarget{
+		BeadsID:   "orch-go-test",
+		AgentName: "og-test-no-branch",
+	}
+	result := checkCommitEvidence(target)
+	if !result.passed {
+		t.Fatal("expected pass for target without GitBranch")
+	}
+	if len(result.warnings) == 0 {
+		t.Fatal("expected warning about skipped gate")
+	}
+}
+
+func TestCheckCommitEvidenceNilTarget(t *testing.T) {
+	result := checkCommitEvidence(nil)
+	if !result.passed {
+		t.Fatal("expected pass for nil target")
+	}
+}
+
+func TestCheckCommitEvidenceZeroCommits(t *testing.T) {
+	// Set up a real git repo with an agent branch that has zero commits
+	tmpDir := t.TempDir()
+
+	// Init repo, create a commit on master
+	cmds := [][]string{
+		{"git", "-C", tmpDir, "init"},
+		{"git", "-C", tmpDir, "config", "user.email", "test@test.com"},
+		{"git", "-C", tmpDir, "config", "user.name", "Test"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("setup %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	// Create initial commit
+	testFile := tmpDir + "/main.go"
+	if err := os.WriteFile(testFile, []byte("package main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	setupCmds := [][]string{
+		{"git", "-C", tmpDir, "add", "."},
+		{"git", "-C", tmpDir, "commit", "-m", "initial"},
+		{"git", "-C", tmpDir, "branch", "agent/test-zero"},
+	}
+	for _, args := range setupCmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("setup %v failed: %v\n%s", args, err, out)
+		}
+	}
+	// SourceProjectDir stays on master; GitWorktreeDir is the same repo
+	// (in production these are separate dirs, but the git state is the same)
+	target := &CompletionTarget{
+		BeadsID:          "orch-go-test",
+		AgentName:        "og-test-zero-commits",
+		GitBranch:        "agent/test-zero",
+		GitWorktreeDir:   tmpDir,
+		SourceProjectDir: tmpDir,
+	}
+
+	result := checkCommitEvidence(target)
+	if result.passed {
+		t.Fatal("expected fail for branch with zero commits")
+	}
+	if len(result.errors) == 0 {
+		t.Fatal("expected error message about ghost completion")
+	}
+	found := false
+	for _, e := range result.errors {
+		if strings.Contains(e, "0 commits") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected error mentioning '0 commits', got: %v", result.errors)
+	}
+}
+
+func TestCheckCommitEvidenceWithCommits(t *testing.T) {
+	// Set up a real git repo with an agent branch that has commits
+	tmpDir := t.TempDir()
+
+	cmds := [][]string{
+		{"git", "-C", tmpDir, "init"},
+		{"git", "-C", tmpDir, "config", "user.email", "test@test.com"},
+		{"git", "-C", tmpDir, "config", "user.name", "Test"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("setup %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	// Create initial commit on master
+	testFile := tmpDir + "/main.go"
+	if err := os.WriteFile(testFile, []byte("package main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	setupCmds := [][]string{
+		{"git", "-C", tmpDir, "add", "."},
+		{"git", "-C", tmpDir, "commit", "-m", "initial"},
+		{"git", "-C", tmpDir, "checkout", "-b", "agent/test-with-commits"},
+	}
+	for _, args := range setupCmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("setup %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	// Add a commit on the agent branch
+	if err := os.WriteFile(testFile, []byte("package main\n\nfunc main() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	commitCmds := [][]string{
+		{"git", "-C", tmpDir, "add", "."},
+		{"git", "-C", tmpDir, "commit", "-m", "agent work"},
+	}
+	for _, args := range commitCmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("commit %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	target := &CompletionTarget{
+		BeadsID:          "orch-go-test",
+		AgentName:        "og-test-with-commits",
+		GitBranch:        "agent/test-with-commits",
+		GitWorktreeDir:   tmpDir,
+		SourceProjectDir: tmpDir,
+	}
+
+	result := checkCommitEvidence(target)
+	if !result.passed {
+		t.Fatalf("expected pass for branch with commits, got errors: %v", result.errors)
 	}
 }
 

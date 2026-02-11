@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -173,6 +174,21 @@ func verifyRegularAgent(target *CompletionTarget, skipConfig SkipConfig, outcome
 		result.Errors = append(result.Errors, proofSpecResult.errors...)
 		result.GatesFailed = append(result.GatesFailed, verify.GateVerificationSpec)
 	}
+
+	// Commit evidence gate: block completion if agent branch has zero commits.
+	// This prevents ghost completions where issues close with no work landed.
+	commitGate := checkCommitEvidence(target)
+	result.GateResults = append(result.GateResults, verify.GateResult{
+		Gate:   verify.GateCommitEvidence,
+		Passed: commitGate.passed,
+		Error:  joinGateErrors(commitGate.errors),
+	})
+	if !commitGate.passed {
+		result.Passed = false
+		result.Errors = append(result.Errors, commitGate.errors...)
+		result.GatesFailed = append(result.GatesFailed, verify.GateCommitEvidence)
+	}
+	result.Warnings = append(result.Warnings, commitGate.warnings...)
 
 	if skipConfig.hasAnySkip() && !result.Passed {
 		applySkipFiltering(&result.GatesFailed, &result.Errors, skipConfig, target)
@@ -418,6 +434,116 @@ func checkLiveness(target *CompletionTarget, skipConfig SkipConfig) error {
 
 	fmt.Println("Proceeding with completion despite liveness warning...")
 	return nil
+}
+
+// commitEvidenceResult holds the outcome of the commit evidence gate check.
+type commitEvidenceResult struct {
+	passed   bool
+	errors   []string
+	warnings []string
+}
+
+// checkCommitEvidence verifies the agent branch has at least one commit.
+// Returns passed=true if:
+//   - Agent has no git branch (untracked/orchestrator — not applicable)
+//   - Agent has commits on its branch beyond the merge-base
+//
+// Returns passed=false if the agent has a branch but zero commits on it.
+// This is the root cause gate for ghost completions (issues closed with no work landed).
+func checkCommitEvidence(target *CompletionTarget) commitEvidenceResult {
+	// Gate doesn't apply to agents without branches
+	if target == nil || strings.TrimSpace(target.GitBranch) == "" {
+		return commitEvidenceResult{
+			passed:   true,
+			warnings: []string{"commit evidence gate skipped: no git branch"},
+		}
+	}
+
+	worktree := strings.TrimSpace(target.gitDir())
+	if worktree == "" {
+		return commitEvidenceResult{
+			passed:   true,
+			warnings: []string{"commit evidence gate skipped: no worktree dir"},
+		}
+	}
+
+	// Read the base branch (master/main) from the source repo
+	sourceDir := strings.TrimSpace(target.sourceDir())
+	if sourceDir == "" {
+		sourceDir = worktree
+	}
+
+	baseBranch, err := readBranchNameForCommitGate(sourceDir)
+	if err != nil || baseBranch == "" {
+		return commitEvidenceResult{
+			passed:   true,
+			warnings: []string{fmt.Sprintf("commit evidence gate skipped: could not determine base branch: %v", err)},
+		}
+	}
+
+	// If agent is on the base branch, no commits to check
+	if baseBranch == target.GitBranch {
+		return commitEvidenceResult{
+			passed:   true,
+			warnings: []string{"commit evidence gate skipped: agent branch same as base branch"},
+		}
+	}
+
+	// Ensure agent branch is checked out in the worktree
+	cmd := exec.Command("git", "-C", worktree, "rev-parse", "--verify", target.GitBranch)
+	if err := cmd.Run(); err != nil {
+		return commitEvidenceResult{
+			passed: false,
+			errors: []string{fmt.Sprintf("agent branch %s does not exist in %s", target.GitBranch, worktree)},
+		}
+	}
+
+	// Find merge-base between base branch and agent branch
+	cmd = exec.Command("git", "-C", worktree, "merge-base", baseBranch, target.GitBranch)
+	mergeBaseOut, err := cmd.Output()
+	if err != nil {
+		return commitEvidenceResult{
+			passed:   true,
+			warnings: []string{fmt.Sprintf("commit evidence gate skipped: merge-base failed: %v", err)},
+		}
+	}
+	mergeBase := strings.TrimSpace(string(mergeBaseOut))
+
+	// Count commits on agent branch beyond merge-base
+	cmd = exec.Command("git", "-C", worktree, "rev-list", "--count", mergeBase+".."+target.GitBranch)
+	countOut, err := cmd.Output()
+	if err != nil {
+		return commitEvidenceResult{
+			passed:   true,
+			warnings: []string{fmt.Sprintf("commit evidence gate skipped: rev-list failed: %v", err)},
+		}
+	}
+	count := strings.TrimSpace(string(countOut))
+
+	if count == "0" {
+		return commitEvidenceResult{
+			passed: false,
+			errors: []string{fmt.Sprintf("agent branch %s has 0 commits (ghost completion: no work to land)", target.GitBranch)},
+		}
+	}
+
+	return commitEvidenceResult{passed: true}
+}
+
+// readBranchNameForCommitGate reads the current branch name from a git repo.
+// This is a local helper to avoid coupling to complete_merge.go's readBranchName.
+func readBranchNameForCommitGate(dir string) (string, error) {
+	cmd := exec.Command("git", "-C", dir, "symbolic-ref", "--short", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// joinGateErrors joins error strings for GateResult.Error field.
+func joinGateErrors(errs []string) string {
+	return strings.Join(errs, "; ")
 }
 
 // processGates handles discovered work disposition and knowledge gap detection.

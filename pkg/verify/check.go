@@ -36,6 +36,7 @@ const (
 	GateDecisionPatchLimit = "decision_patch_limit" // Decision patch limit exceeded
 	GateDashboardHealth    = "dashboard_health"     // Dashboard API health check failed
 	GateAgentRunning       = "agent_running"        // Agent appears still running
+	GateCommitEvidence     = "commit_evidence"      // No commits on agent branch
 )
 
 // GateResult represents the result of a single verification gate.
@@ -55,6 +56,7 @@ var CoreGates = map[string]bool{
 	GateModelConnection:  true,
 	GateVerificationSpec: true,
 	GateVisualVerify:     true,
+	GateCommitEvidence:   true,
 }
 
 // Tier 2 (quality) gates: skipped in batch mode, run in careful (default) mode.
@@ -923,6 +925,8 @@ func GateSkipFlag(gate string) string {
 		return "--skip-dashboard-health"
 	case GateAgentRunning:
 		return "--skip-agent-running"
+	case GateCommitEvidence:
+		return "--skip-commit-evidence"
 	default:
 		return "--skip-" + strings.ReplaceAll(gate, "_", "-")
 	}
