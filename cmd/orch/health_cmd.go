@@ -25,10 +25,9 @@ var healthCmd = &cobra.Command{
 	Use:   "health",
 	Short: "Show operator health summary from orch serve",
 	Long: `Fetch operator health telemetry from orch serve and print a
-terminal-friendly summary for the seven health cards:
+terminal-friendly summary for the six health cards:
   - crash-free streak
   - resource ceilings
-  - investigations (30d)
   - defect clusters
   - agent health ratio (7d)
   - process census
@@ -154,11 +153,6 @@ func formatOperatorHealthSummary(report *OperatorHealthResponse) string {
 		resourceLines = append(resourceLines, errSummary)
 	}
 	writeHealthCard(&b, report.ResourceCeilings.Status, "Resource Ceilings", resourceLines)
-
-	writeHealthCard(&b, report.InvestigationRate30d.Status, "Investigations (30d)", []string{
-		fmt.Sprintf("Count: %d in %d day window", report.InvestigationRate30d.Count, report.InvestigationRate30d.WindowDays),
-		fmt.Sprintf("Warning at >= %d, critical at >= %d", report.InvestigationRate30d.WarningFrom, report.InvestigationRate30d.Threshold),
-	})
 
 	defectLines := []string{}
 	if len(report.DefectClassClusters.TopClasses) == 0 {

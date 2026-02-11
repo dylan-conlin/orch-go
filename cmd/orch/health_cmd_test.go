@@ -37,13 +37,6 @@ func TestFormatOperatorHealthSummaryIncludesAllCards(t *testing.T) {
 			CeilingMultiplier: 2,
 			Breached:          false,
 		},
-		InvestigationRate30d: investigationRateMetric{
-			Status:      operatorHealthStatusCritical,
-			WindowDays:  30,
-			Count:       51,
-			WarningFrom: 40,
-			Threshold:   50,
-		},
 		DefectClassClusters: defectClassClustersMetric{
 			Status: operatorHealthStatusWarning,
 			TopClasses: []defectClassClusterItem{
@@ -73,7 +66,6 @@ func TestFormatOperatorHealthSummaryIncludesAllCards(t *testing.T) {
 	requiredCards := []string{
 		"Crash-Free Streak",
 		"Resource Ceilings",
-		"Investigations (30d)",
 		"Defect Clusters (30d)",
 		"Agent Health Ratio (7d)",
 		"Process Census",

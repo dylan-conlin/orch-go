@@ -99,20 +99,6 @@ func TestHandleOperatorHealthReturnsExpectedMetrics(t *testing.T) {
 	}
 
 	projectDir := t.TempDir()
-	investigationsDir := filepath.Join(projectDir, ".kb", "investigations")
-	if err := os.MkdirAll(investigationsDir, 0755); err != nil {
-		t.Fatalf("failed to create investigations dir: %v", err)
-	}
-
-	todayFile := filepath.Join(investigationsDir, time.Now().UTC().Format("2006-01-02")+"-inv-test-one.md")
-	recentFile := filepath.Join(investigationsDir, time.Now().UTC().AddDate(0, 0, -10).Format("2006-01-02")+"-inv-test-two.md")
-	oldFile := filepath.Join(investigationsDir, time.Now().UTC().AddDate(0, 0, -45).Format("2006-01-02")+"-inv-test-old.md")
-
-	for _, file := range []string{todayFile, recentFile, oldFile} {
-		if err := os.WriteFile(file, []byte("# test"), 0644); err != nil {
-			t.Fatalf("failed to write investigation file %s: %v", file, err)
-		}
-	}
 
 	samples := []resourceSample{
 		{metrics: resourceMetrics{Goroutines: 8, HeapBytes: 80, ChildProcesses: 2, OpenFileDescriptors: 6}},
@@ -151,10 +137,6 @@ func TestHandleOperatorHealthReturnsExpectedMetrics(t *testing.T) {
 		t.Fatalf("expected generated_at to be set")
 	}
 
-	if response.InvestigationRate30d.Count != 2 {
-		t.Fatalf("expected 2 recent investigations, got %d", response.InvestigationRate30d.Count)
-	}
-
 	if response.ResourceCeilings.Current.ChildProcesses != 4 {
 		t.Fatalf("expected current child processes 4, got %d", response.ResourceCeilings.Current.ChildProcesses)
 	}
@@ -169,38 +151,6 @@ func TestHandleOperatorHealthReturnsExpectedMetrics(t *testing.T) {
 
 	if response.CrashFreeStreak.Status == "" {
 		t.Fatalf("expected crash_free_streak.status to be set")
-	}
-}
-
-func TestCountRecentInvestigations(t *testing.T) {
-	projectDir := t.TempDir()
-	investigationsDir := filepath.Join(projectDir, ".kb", "investigations")
-	if err := os.MkdirAll(investigationsDir, 0755); err != nil {
-		t.Fatalf("failed to create investigations dir: %v", err)
-	}
-
-	now := time.Date(2026, 2, 7, 12, 0, 0, 0, time.UTC)
-
-	files := []string{
-		"2026-02-07-inv-current.md",
-		"2026-01-20-inv-within-window.md",
-		"2025-12-15-inv-old.md",
-		"README.md",
-	}
-
-	for _, name := range files {
-		if err := os.WriteFile(filepath.Join(investigationsDir, name), []byte("test"), 0644); err != nil {
-			t.Fatalf("failed to write file %s: %v", name, err)
-		}
-	}
-
-	count, err := countRecentInvestigations(projectDir, now, 30)
-	if err != nil {
-		t.Fatalf("countRecentInvestigations returned error: %v", err)
-	}
-
-	if count != 2 {
-		t.Fatalf("expected 2 investigations in window, got %d", count)
 	}
 }
 

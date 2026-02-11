@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,12 +24,9 @@ const (
 	operatorHealthStatusCritical = "critical"
 	operatorHealthStatusUnknown  = "unknown"
 
-	operatorHealthInvestigationWindowDays        = 30
-	operatorHealthInvestigationWarningThreshold  = 40
-	operatorHealthInvestigationCriticalThreshold = 50
-
 	operatorHealthAgentWindowDays = 7
 
+	operatorHealthDefectWindowDays        = 30
 	operatorHealthDefectCriticalThreshold = 10
 	operatorHealthDefectWarningThreshold  = 5
 
@@ -40,15 +36,14 @@ const (
 // OperatorHealthResponse is the JSON structure returned by /api/operator-health.
 // It surfaces system-level behavioral health signals in operator language.
 type OperatorHealthResponse struct {
-	GeneratedAt          string                    `json:"generated_at"`
-	CrashFreeStreak      crashFreeStreakMetric     `json:"crash_free_streak"`
-	ResourceCeilings     resourceCeilingsMetric    `json:"resource_ceilings"`
-	InvestigationRate30d investigationRateMetric   `json:"investigation_rate_30d"`
-	DefectClassClusters  defectClassClustersMetric `json:"defect_class_clusters"`
-	AgentHealthRatio7d   agentHealthRatioMetric    `json:"agent_health_ratio_7d"`
-	ProcessCensus        processCensusMetric       `json:"process_census"`
-	ZombieProcesses      zombieProcessMetric       `json:"zombie_processes"`
-	Errors               []string                  `json:"errors,omitempty"`
+	GeneratedAt         string                    `json:"generated_at"`
+	CrashFreeStreak     crashFreeStreakMetric     `json:"crash_free_streak"`
+	ResourceCeilings    resourceCeilingsMetric    `json:"resource_ceilings"`
+	DefectClassClusters defectClassClustersMetric `json:"defect_class_clusters"`
+	AgentHealthRatio7d  agentHealthRatioMetric    `json:"agent_health_ratio_7d"`
+	ProcessCensus       processCensusMetric       `json:"process_census"`
+	ZombieProcesses     zombieProcessMetric       `json:"zombie_processes"`
+	Errors              []string                  `json:"errors,omitempty"`
 }
 
 type crashFreeStreakMetric struct {
@@ -77,14 +72,6 @@ type resourceCeilingsMetric struct {
 	Breaches          []resourceBreach  `json:"breaches,omitempty"`
 	BaselineErrors    map[string]string `json:"baseline_errors,omitempty"`
 	CurrentErrors     map[string]string `json:"current_errors,omitempty"`
-}
-
-type investigationRateMetric struct {
-	Status      string `json:"status"`
-	WindowDays  int    `json:"window_days"`
-	Count       int    `json:"count"`
-	Threshold   int    `json:"threshold"`
-	WarningFrom int    `json:"warning_from"`
 }
 
 type defectClassClustersMetric struct {
@@ -117,11 +104,11 @@ type processCensusMetric struct {
 }
 
 type zombieProcessMetric struct {
-	Status           string `json:"status"`
-	BunAgentCount    int    `json:"bun_agent_count"`
-	ActiveSessions   int    `json:"active_sessions"`
-	OrphanCount      int    `json:"orphan_count"`
-	APIAvailable     bool   `json:"api_available"`
+	Status         string `json:"status"`
+	BunAgentCount  int    `json:"bun_agent_count"`
+	ActiveSessions int    `json:"active_sessions"`
+	OrphanCount    int    `json:"orphan_count"`
+	APIAvailable   bool   `json:"api_available"`
 }
 
 type orphanProcessEntry struct {
@@ -169,12 +156,6 @@ func buildOperatorHealthResponse(s *Server, projectDir string, now time.Time) Op
 
 	resources := buildResourceCeilingsMetric(s)
 	response.ResourceCeilings = resources
-
-	investigationRate, err := buildInvestigationRateMetric(projectDir, now)
-	if err != nil {
-		errs = append(errs, fmt.Sprintf("investigation_rate_30d: %v", err))
-	}
-	response.InvestigationRate30d = investigationRate
 
 	defectClusters, err := buildDefectClassClustersMetric(projectDir)
 	if err != nil {
@@ -335,75 +316,12 @@ func buildResourceCeilingsMetric(s *Server) resourceCeilingsMetric {
 	}
 }
 
-func buildInvestigationRateMetric(projectDir string, now time.Time) (investigationRateMetric, error) {
-	count, err := countRecentInvestigations(projectDir, now, operatorHealthInvestigationWindowDays)
-	if err != nil {
-		return investigationRateMetric{
-			Status:      operatorHealthStatusUnknown,
-			WindowDays:  operatorHealthInvestigationWindowDays,
-			Threshold:   operatorHealthInvestigationCriticalThreshold,
-			WarningFrom: operatorHealthInvestigationWarningThreshold,
-		}, err
-	}
-
-	status := operatorHealthStatusHealthy
-	if count >= operatorHealthInvestigationCriticalThreshold {
-		status = operatorHealthStatusCritical
-	} else if count >= operatorHealthInvestigationWarningThreshold {
-		status = operatorHealthStatusWarning
-	}
-
-	return investigationRateMetric{
-		Status:      status,
-		WindowDays:  operatorHealthInvestigationWindowDays,
-		Count:       count,
-		Threshold:   operatorHealthInvestigationCriticalThreshold,
-		WarningFrom: operatorHealthInvestigationWarningThreshold,
-	}, nil
-}
-
-func countRecentInvestigations(projectDir string, now time.Time, windowDays int) (int, error) {
-	investigationsDir := filepath.Join(projectDir, ".kb", "investigations")
-	entries, err := os.ReadDir(investigationsDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil
-		}
-		return 0, err
-	}
-
-	cutoff := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -windowDays)
-	count := 0
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if !strings.HasSuffix(name, ".md") || len(name) < len("2006-01-02") {
-			continue
-		}
-
-		datePrefix := name[:len("2006-01-02")]
-		fileDate, err := time.Parse("2006-01-02", datePrefix)
-		if err != nil {
-			continue
-		}
-
-		if !fileDate.Before(cutoff) {
-			count++
-		}
-	}
-
-	return count, nil
-}
-
 func buildDefectClassClustersMetric(projectDir string) (defectClassClustersMetric, error) {
 	items, err := fetchKBReflect(projectDir, "defect-class")
 	if err != nil {
 		return defectClassClustersMetric{
 			Status:     operatorHealthStatusUnknown,
-			WindowDays: operatorHealthInvestigationWindowDays,
+			WindowDays: operatorHealthDefectWindowDays,
 			TopClasses: []defectClassClusterItem{},
 		}, err
 	}
@@ -443,7 +361,7 @@ func buildDefectClassClustersMetric(projectDir string) (defectClassClustersMetri
 
 	return defectClassClustersMetric{
 		Status:     status,
-		WindowDays: operatorHealthInvestigationWindowDays,
+		WindowDays: operatorHealthDefectWindowDays,
 		TopClasses: clusters,
 		TotalTopN:  len(clusters),
 	}, nil
