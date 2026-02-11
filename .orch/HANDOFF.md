@@ -1,3 +1,70 @@
+# Session Handoff — 2026-02-11 (Session 13: Spawning Resumes + Completion Pipeline Discovery)
+
+## What Happened This Session
+
+Resumed spawning after Session 12's diagnostic work. Completed 4 issues from the reliability chain, discovered systemic completion pipeline failures, and reprioritized around them.
+
+### Reliability Chain Progress (4 closed this session)
+
+| # | Issue | Fix | Commit |
+|---|-------|-----|--------|
+| 4 | `d9aol` | Bun process reconciliation in startup sweep | `e7e8ae89` |
+| 5 | `ugla4` | Set beads.DefaultDir before FallbackAddComment for worktree support | `dd6a851a` |
+| 6 | `gs5ls` | Verify issue actually closed after bd close, fail loudly on silent failure | `a774a8e7` |
+| 7 | `48jnq` | Supervised-first daemon workflow — explicit opt-in via config and flags | `1af53dbf` |
+
+Original chain is now 7/10 complete. Remaining Tier 3+4 items (d5i6t, 6qf98, rw3dl, ssyc0, 267y3) are deprioritized.
+
+### Critical Discovery: Completion Pipeline Is the Weakest Link
+
+The system is good at **spawning** and **gating** but unreliable at **completing**:
+
+1. **Agent sessions die silently (40% failure rate).** 2 of 5 spawns (gs5ls, 48jnq) had OpenCode sessions vanish. No crash signal. Work was on the branch but had to be manually discovered, cherry-picked, and force-closed.
+
+2. **Phase comments still don't persist.** Every `orch complete` showed "recovered from state.db" warnings. The ugla4 fix landed but agents this session were built from pre-fix code.
+
+3. **`orch complete` can't handle dead sessions.** Core gates block completion when session died before Phase: Complete. Only workaround is manual cherry-pick + `bd close --force`.
+
+4. **Ghost completions waste resources.** Sonnet ghost-completed 48jnq (0 commits, 26K tokens) because the issue described an outcome not deliverables.
+
+5. **Beads sync race conditions.** d9aol reverted from closed to in_progress after sync. Close-then-sync-immediately is the workaround.
+
+### New Priority: Completion Pipeline Fix
+
+```
+Tier 1: Unblock completions (parallel, all P1 READY)
+  orch-go-i8vte   Silent session death investigation (root cause)
+  orch-go-o018r   Core gate orchestrator override (unblock dead sessions)
+  orch-go-03lk9   Ghost completion early detection
+  orch-go-6h005   Spurious state.db confusion trap
+
+Tier 2: Full recovery (blocked by i8vte + o018r)
+  orch-go-z4ubn   Dead session recovery workflow in orch complete
+```
+
+### Also Created This Session
+- `orch-go-tmba0` [P2] — WIP section shows stale "Thinking..." after agent completes
+- `orch-go-3nlu2` [P2] — Issue descriptions must specify concrete deliverables
+- `kb-9fb254` — Constraint: Sonnet spawns require explicit deliverables or ghost-complete
+
+### Key Learnings
+- **Sonnet + vague requirements = ghost completions.** Always specify concrete deliverables (files to change, config fields to add, flags to implement) when spawning Sonnet.
+- **`orch-dashboard restart` rebuilds the orch binary.** If an agent's `orch complete` auto-rebuilds from a worktree, the binary may lack flags from master. Run `make install` to restore.
+- **The spurious `.orch/state.db` in project dir is a trap.** Real state.db is at `~/.orch/state.db`. If you see empty state, check the path.
+
+## Git State
+
+- **Branch:** master, up to date with origin
+- **Working tree:** clean
+
+## For the Next Orchestrator
+
+Run `bd ready | grep P1` — four completion pipeline issues are ready in parallel. `i8vte` (silent session death) is the investigation that tells us why sessions die. `o018r` (orchestrator override) is the immediate unblock. Both are high-leverage.
+
+The original reliability chain Tier 3+4 items are unblocked but deprioritized. They're P2 cleanup/diagnostic work. Focus on the completion pipeline first.
+
+---
+
 # Session Handoff — 2026-02-11 (Session 12: Diagnostic Skill Design + Test)
 
 ## Flight Recorder — 2026-02-11
