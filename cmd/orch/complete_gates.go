@@ -22,10 +22,10 @@ var (
 	verifyCompletionFullFunc = func(beadsID, workspacePath, projectDir, tier, serverURL string) (verify.VerificationResult, error) {
 		return verify.VerifyCompletionFull(beadsID, workspacePath, projectDir, tier, serverURL, nil)
 	}
-	verificationRetrySleep   = time.Sleep
-	proofSpecEvaluator       = evaluateProofSpecGate
-	proofSpecDigestPoster    = postProofSpecDigestComment
-	getLiveness              = statedb.GetLiveness
+	verificationRetrySleep = time.Sleep
+	proofSpecEvaluator     = evaluateProofSpecGate
+	proofSpecDigestPoster  = postProofSpecDigestComment
+	getLiveness            = statedb.GetLiveness
 )
 
 const transientVerificationRetryDelay = 1 * time.Second
@@ -44,7 +44,7 @@ func verifyCompletion(target *CompletionTarget, skipConfig SkipConfig) (*Verific
 	if completeForce {
 		// --force: run verification to capture which gates would have failed, but don't block
 		if !target.IsOrchestratorSession && !target.IsUntracked {
-			result, err := verify.VerifyCompletionFull(target.BeadsID, target.WorkspacePath, target.BeadsProjectDir, "", serverURL, nil)
+			result, err := verify.VerifyCompletionFull(target.BeadsID, target.artifactsDir(), target.BeadsProjectDir, "", serverURL, nil)
 			if err == nil {
 				outcome.SkillName = result.Skill
 				if !result.Passed {
@@ -53,7 +53,7 @@ func verifyCompletion(target *CompletionTarget, skipConfig SkipConfig) (*Verific
 				}
 			}
 		} else if target.IsOrchestratorSession {
-			result := verify.VerifyOrchestratorCompletion(target.WorkspacePath)
+			result := verify.VerifyOrchestratorCompletion(target.artifactsDir())
 			outcome.SkillName = result.Skill
 			if !result.Passed {
 				outcome.Passed = false
@@ -87,7 +87,7 @@ func verifyOrchestratorSession(target *CompletionTarget, skipConfig SkipConfig, 
 		fmt.Printf("Workspace: %s\n", target.AgentName)
 	}
 
-	result := verify.VerifyOrchestratorCompletion(target.WorkspacePath)
+	result := verify.VerifyOrchestratorCompletion(target.artifactsDir())
 	outcome.SkillName = result.Skill
 
 	// Apply skip-gate filtering (unified implementation)
@@ -116,12 +116,12 @@ func verifyRegularAgent(target *CompletionTarget, skipConfig SkipConfig, outcome
 		fmt.Printf("Workspace: %s\n", target.AgentName)
 	}
 
-	result, err := verifyCompletionFullFunc(target.BeadsID, target.WorkspacePath, target.gitDir(), "", serverURL)
+	result, err := verifyCompletionFullFunc(target.BeadsID, target.artifactsDir(), target.gitDir(), "", serverURL)
 	if err != nil {
 		if retry, reason := shouldRetryVerification(verify.VerificationResult{}, err); retry {
 			fmt.Fprintf(os.Stderr, "Verification failed with transient error (%s). Retrying once...\n", reason)
 			verificationRetrySleep(transientVerificationRetryDelay)
-			result, err = verifyCompletionFullFunc(target.BeadsID, target.WorkspacePath, target.gitDir(), "", serverURL)
+			result, err = verifyCompletionFullFunc(target.BeadsID, target.artifactsDir(), target.gitDir(), "", serverURL)
 		}
 	}
 	if err != nil {
@@ -142,7 +142,7 @@ func verifyRegularAgent(target *CompletionTarget, skipConfig SkipConfig, outcome
 			fmt.Fprintf(os.Stderr, "Verification failed on transient gate (%s). Retrying once...\n", reason)
 			verificationRetrySleep(transientVerificationRetryDelay)
 
-			retried, retryErr := verifyCompletionFullFunc(target.BeadsID, target.WorkspacePath, target.gitDir(), "", serverURL)
+			retried, retryErr := verifyCompletionFullFunc(target.BeadsID, target.artifactsDir(), target.gitDir(), "", serverURL)
 			if retryErr != nil {
 				return fmt.Errorf("verification failed: %w", retryErr)
 			}
@@ -225,7 +225,7 @@ func verifyRegularAgent(target *CompletionTarget, skipConfig SkipConfig, outcome
 	// Behavioral validation checkpoint (informational, not blocking)
 	if target.BeadsID != "" && target.BeadsProjectDir != "" {
 		comments, _ := verify.GetComments(target.BeadsID)
-		behavioralResult := verify.CheckBehavioralValidationForCompletion(target.BeadsID, target.WorkspacePath, target.gitDir(), comments)
+		behavioralResult := verify.CheckBehavioralValidationForCompletion(target.BeadsID, target.artifactsDir(), target.gitDir(), comments)
 		if behavioralResult != nil && behavioralResult.BehavioralValidationSuggested {
 			printBehavioralValidationInfo(behavioralResult)
 		}
@@ -578,7 +578,7 @@ func processGates(target *CompletionTarget, skillName string) error {
 
 // processDiscoveredWork handles the discovered work disposition gate.
 func processDiscoveredWork(target *CompletionTarget) error {
-	synthesis, err := verify.ParseSynthesis(target.WorkspacePath)
+	synthesis, err := verify.ParseSynthesis(target.artifactsDir())
 	if err != nil || synthesis == nil {
 		return nil
 	}
@@ -675,7 +675,7 @@ func processDesignDecomposition(target *CompletionTarget, skillName string) erro
 		return nil
 	}
 
-	pendingDocs, warnings, err := verify.FindDesignDocsRequiringDecomposition(target.WorkspacePath, target.BeadsProjectDir)
+	pendingDocs, warnings, err := verify.FindDesignDocsRequiringDecomposition(target.artifactsDir(), target.BeadsProjectDir)
 	for _, warning := range warnings {
 		fmt.Fprintf(os.Stderr, "⚠️  %s\n", warning)
 	}
@@ -803,7 +803,7 @@ func processProbes(target *CompletionTarget) error {
 
 // processKnowledgeGaps detects and logs knowledge gaps (informational, non-blocking).
 func processKnowledgeGaps(target *CompletionTarget, skillName string) {
-	gapResult, err := verify.DetectKnowledgeGaps(target.WorkspacePath, target.BeadsID, skillName, target.BeadsProjectDir)
+	gapResult, err := verify.DetectKnowledgeGaps(target.artifactsDir(), target.BeadsID, skillName, target.BeadsProjectDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to detect knowledge gaps: %v\n", err)
 		return
@@ -832,8 +832,8 @@ func recordVerificationOutcome(target *CompletionTarget, passed bool, gates []st
 	}
 
 	sessionID := ""
-	if target.WorkspacePath != "" {
-		path := filepath.Join(target.WorkspacePath, ".session_id")
+	if target.artifactsDir() != "" {
+		path := filepath.Join(target.artifactsDir(), ".session_id")
 		data, err := os.ReadFile(path)
 		if err == nil {
 			sessionID = strings.TrimSpace(string(data))

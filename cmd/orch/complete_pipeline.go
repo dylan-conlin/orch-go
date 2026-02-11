@@ -71,6 +71,25 @@ func (t *CompletionTarget) gitDir() string {
 	return t.BeadsProjectDir
 }
 
+// artifactsDir returns the directory where agent-created artifacts (like SYNTHESIS.md) should be found.
+// Prefers worktree directory (where agents actually work), with workspace as fallback.
+// This fixes the workspace/ vs worktrees/ path confusion: spawn artifacts go to workspace/,
+// but agents write their artifacts in worktrees/.
+func (t *CompletionTarget) artifactsDir() string {
+	if t == nil {
+		return ""
+	}
+	// Prefer worktree directory where agents actually work
+	if strings.TrimSpace(t.GitWorktreeDir) != "" {
+		return t.GitWorktreeDir
+	}
+	// Fall back to workspace directory for non-worktree spawns
+	if strings.TrimSpace(t.WorkspacePath) != "" {
+		return t.WorkspacePath
+	}
+	return t.BeadsProjectDir
+}
+
 // VerificationOutcome is the result of the verification phase.
 type VerificationOutcome struct {
 	Passed      bool
