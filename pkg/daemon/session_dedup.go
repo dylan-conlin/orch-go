@@ -79,6 +79,8 @@ func (c *SessionDedupChecker) HasExistingSession(beadsID string) bool {
 	}
 
 	now := time.Now()
+	activityTimeout := 30 * time.Minute // Session is considered active if updated within 30min
+
 	for _, s := range sessions {
 		// Extract beads ID from session title
 		sessionBeadsID := extractBeadsIDFromSessionTitle(s.Title)
@@ -86,11 +88,11 @@ func (c *SessionDedupChecker) HasExistingSession(beadsID string) bool {
 			continue
 		}
 
-		// Check if session is recent enough to block spawn
-		createdAt := time.Unix(s.Time.Created/1000, 0)
-		age := now.Sub(createdAt)
-		if age <= c.config.MaxAge {
-			// Found a recent session for this beads ID
+		// Check if session is actively running (updated recently)
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		timeSinceUpdate := now.Sub(updatedAt)
+		if timeSinceUpdate <= activityTimeout {
+			// Found an active session for this beads ID
 			return true
 		}
 	}

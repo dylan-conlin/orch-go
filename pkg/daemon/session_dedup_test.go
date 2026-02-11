@@ -136,6 +136,25 @@ func TestHasExistingSession(t *testing.T) {
 			maxAge:     6 * time.Hour,
 			wantExists: false,
 		},
+		{
+			name:    "crashed session - created recently but not updated (DEAD)",
+			beadsID: "orch-go-abc123",
+			sessions: []sessionResponse{
+				{
+					ID:    "session-1",
+					Title: "og-feat-test-15jan [orch-go-abc123]",
+					Time: struct {
+						Created int64 `json:"created"`
+						Updated int64 `json:"updated"`
+					}{
+						Created: time.Now().Add(-4 * time.Hour).UnixMilli(), // Created 4h ago (within 6h MaxAge)
+						Updated: time.Now().Add(-2 * time.Hour).UnixMilli(), // Last activity 2h ago (DEAD)
+					},
+				},
+			},
+			maxAge:     6 * time.Hour,
+			wantExists: false, // Should be considered DEAD (not updated recently)
+		},
 	}
 
 	for _, tt := range tests {
