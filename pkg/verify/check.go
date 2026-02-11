@@ -39,6 +39,24 @@ const (
 	GateCommitEvidence     = "commit_evidence"      // No commits on agent branch
 )
 
+// Two-Tier Verification System
+//
+// The verification system uses a two-tier architecture to balance quality with velocity:
+//
+// **Tier 1 (Core)**: Essential checks that catch fundamental problems making work
+// unusable or dangerous. Always run regardless of mode.
+//
+// **Tier 2 (Quality)**: Process compliance checks that ensure documentation and
+// workflow standards. Skipped in batch mode for rapid iteration.
+//
+// This separation allows:
+// - Batch mode (--batch): Fast completion for trusted agents, running only core checks
+// - Careful mode (default): Full quality assurance with both tiers
+// - Selective skipping: Individual gates can be bypassed with --skip-* flags
+//
+// The tier assignment is based on blast radius: Core gates prevent objectively
+// broken deliverables, while Quality gates enforce team process standards.
+
 // GateResult represents the result of a single verification gate.
 type GateResult struct {
 	Gate    string // Gate constant name (e.g., GateBuild)
@@ -47,8 +65,24 @@ type GateResult struct {
 	Error   string // Error message if failed (empty if passed)
 }
 
-// Tier 1 (core) gates: always run, even in batch mode.
-// These catch real problems (unfinished work, broken builds, untested code, broken UI).
+// Tier 1 (Core Gates): Critical verification checks that always run, even in batch mode.
+//
+// Philosophy: These gates catch fundamental problems that would make the work unusable
+// or dangerous to deploy. They represent the minimum viable quality bar - if any of
+// these fail, the work is objectively incomplete or broken.
+//
+// Characteristics:
+// - Always executed regardless of mode (batch/careful)
+// - Block completion unconditionally when failed
+// - Catch concrete, observable problems (builds fail, tests missing, UI broken)
+// - Focus on deliverable integrity rather than process compliance
+//
+// Examples of issues caught:
+// - Unfinished work (Phase: Complete not reported)
+// - Broken builds that would prevent deployment
+// - Code changes without any test evidence
+// - UI changes without visual verification
+// - Missing commits (no actual work performed)
 var CoreGates = map[string]bool{
 	GatePhaseComplete:    true,
 	GateBuild:            true,
@@ -59,8 +93,26 @@ var CoreGates = map[string]bool{
 	GateCommitEvidence:   true,
 }
 
-// Tier 2 (quality) gates: skipped in batch mode, run in careful (default) mode.
-// These verify process compliance.
+// Tier 2 (Quality Gates): Process compliance checks that are skipped in batch mode,
+// but run in careful (default) mode.
+//
+// Philosophy: These gates enforce organizational process and documentation standards.
+// They catch process violations and missing documentation that don't make the work
+// technically broken, but do impact maintainability and team coordination.
+//
+// Characteristics:
+// - Skipped in batch mode (--batch) to allow rapid iteration
+// - Run by default in careful mode for quality assurance
+// - Focus on process compliance rather than functional correctness
+// - Ensure proper documentation and workflow adherence
+//
+// Examples of issues caught:
+// - Missing SYNTHESIS.md documentation for handoff
+// - Unfilled handoff content (placeholder templates)
+// - Constraint violations from skill requirements
+// - Missing phase gate reporting in beads comments
+// - Git diffs that don't match claimed changes
+// - Dashboard health issues for UI changes
 var QualityGates = map[string]bool{
 	GateSynthesis:          true,
 	GateConstraint:         true,
