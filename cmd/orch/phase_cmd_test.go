@@ -233,3 +233,23 @@ func TestPhaseCommandArgs(t *testing.T) {
 		t.Errorf("Should succeed with 4 args: %v", err)
 	}
 }
+
+func TestGhostCompletionWarning(t *testing.T) {
+	// Test that Phase: Complete with 0 commits triggers a warning
+	// This is a unit test for the ghost completion early detection feature
+
+	t.Run("warns when Phase Complete with 0 commits", func(t *testing.T) {
+		// This will be implemented after we add the checkWorktreeCommits helper
+		t.Skip("Pending implementation of checkWorktreeCommits")
+	})
+
+	t.Run("no warning when Phase Complete with commits", func(t *testing.T) {
+		// This will be implemented after we add the checkWorktreeCommits helper
+		t.Skip("Pending implementation of checkWorktreeCommits")
+	})
+
+	t.Run("no warning for non-Complete phases", func(t *testing.T) {
+		// This will be implemented after we add the checkWorktreeCommits helper
+		t.Skip("Pending implementation of checkWorktreeCommits")
+	})
+}

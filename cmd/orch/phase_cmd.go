@@ -14,6 +14,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -65,6 +66,50 @@ func init() {
 
 func runPhase(beadsID, phase, summary string) error {
 	return runPhaseWithDB(beadsID, phase, summary, "", !phaseSkipComment)
+}
+
+// checkWorktreeCommits checks if a worktree has any commits ahead of its merge-base.
+// Returns the commit count and any error. Returns (0, nil) if no commits found.
+// This is used for ghost completion early detection when agents report Phase: Complete.
+func checkWorktreeCommits(worktreePath string) (int, error) {
+	// Get the current branch name
+	cmd := exec.Command("git", "-C", worktreePath, "symbolic-ref", "--short", "HEAD")
+	branchOut, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get branch name: %w", err)
+	}
+	branch := strings.TrimSpace(string(branchOut))
+
+	// Determine base branch (typically main or master)
+	baseBranch := "main"
+	cmd = exec.Command("git", "-C", worktreePath, "rev-parse", "--verify", "main")
+	if err := cmd.Run(); err != nil {
+		// Try master if main doesn't exist
+		baseBranch = "master"
+	}
+
+	// Find merge-base between base branch and current branch
+	cmd = exec.Command("git", "-C", worktreePath, "merge-base", baseBranch, branch)
+	mergeBaseOut, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("failed to find merge-base: %w", err)
+	}
+	mergeBase := strings.TrimSpace(string(mergeBaseOut))
+
+	// Count commits on current branch beyond merge-base
+	cmd = exec.Command("git", "-C", worktreePath, "rev-list", "--count", mergeBase+".."+branch)
+	countOut, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("failed to count commits: %w", err)
+	}
+
+	count := strings.TrimSpace(string(countOut))
+	var commitCount int
+	if _, err := fmt.Sscanf(count, "%d", &commitCount); err != nil {
+		return 0, fmt.Errorf("failed to parse commit count: %w", err)
+	}
+
+	return commitCount, nil
 }
 
 // formatPhaseComment formats a phase transition as a bd comment string.
@@ -136,6 +181,22 @@ func runPhaseWithDB(beadsID, phase, summary, dbPath string, writeComment bool) e
 			project = agent.ProjectName
 		} else if strings.TrimSpace(agent.ProjectDir) != "" {
 			project = filepath.Base(agent.ProjectDir)
+		}
+
+		// Ghost completion early detection: warn when Phase: Complete with 0 commits
+		if phase == "Complete" && agent.ProjectDir != "" {
+			// Construct worktree path from project dir and workspace name
+			worktreePath := filepath.Join(agent.ProjectDir, ".orch", "worktrees", agent.WorkspaceName)
+			if count, err := checkWorktreeCommits(worktreePath); err == nil {
+				if count == 0 {
+					fmt.Fprintf(os.Stderr, "⚠️  WARNING: Phase: Complete with 0 commits detected\n")
+					fmt.Fprintf(os.Stderr, "   This may indicate ghost completion (work reported but not committed)\n")
+					fmt.Fprintf(os.Stderr, "   Worktree: %s\n", worktreePath)
+					fmt.Fprintf(os.Stderr, "   COMMIT_EVIDENCE gate will block during 'orch complete'\n")
+				}
+			}
+			// Silently ignore errors (e.g., not a git repo, worktree doesn't exist)
+			// The COMMIT_EVIDENCE gate at orch complete is the final safety net
 		}
 	}
 
