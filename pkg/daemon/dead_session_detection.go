@@ -4,10 +4,12 @@ package daemon
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/events"
 )
 
 // DefaultMaxDeadSessionRetries is the default number of times a dead session
@@ -167,8 +169,16 @@ func getIssueComments(beadsID string) ([]beads.Comment, error) {
 
 // MarkSessionAsDead adds a comment to the beads issue indicating the session died.
 // Includes the last phase comment from the dying agent for context preservation.
+// Also logs a crash event to agentlog for dashboard visibility.
 func MarkSessionAsDead(beadsID string, reason string) error {
 	lastPhase := GetLastPhaseComment(beadsID)
+
+	// Log crash event to agentlog for dashboard visibility
+	logger := events.NewDefaultLogger()
+	if err := logger.LogSessionDied(beadsID, reason, lastPhase); err != nil {
+		// Log error but don't fail - comment and status update are more critical
+		fmt.Fprintf(os.Stderr, "Warning: failed to log crash event: %v\n", err)
+	}
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("DEAD SESSION: %s\n\n", reason))

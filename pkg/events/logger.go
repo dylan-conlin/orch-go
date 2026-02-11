@@ -57,6 +57,8 @@ const (
 	EventTypeResourceCeilingBreach = "resource_ceiling_breach"
 	// EventTypeFrictionLogged indicates a manual friction ledger incident was captured.
 	EventTypeFrictionLogged = "friction.logged"
+	// EventTypeSessionDied indicates a session crashed/died without completing.
+	EventTypeSessionDied = "session.died"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -169,6 +171,23 @@ func (l *Logger) LogStatusChange(sessionID, status string) error {
 		Data: map[string]interface{}{
 			"status": status,
 		},
+	})
+}
+
+// LogSessionDied logs a session crash/death event.
+func (l *Logger) LogSessionDied(beadsID, reason, lastPhase string) error {
+	data := map[string]interface{}{
+		"beads_id": beadsID,
+		"reason":   reason,
+	}
+	if lastPhase != "" {
+		data["last_phase"] = lastPhase
+	}
+	return l.Log(Event{
+		Type:      EventTypeSessionDied,
+		SessionID: beadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      data,
 	})
 }
 
