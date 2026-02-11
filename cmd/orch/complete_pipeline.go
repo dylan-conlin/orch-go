@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -663,4 +664,98 @@ func printNotableChangelogEntries(entries []string) {
 	fmt.Println("│  Review recent changes that may affect agent behavior       │")
 	fmt.Println("│  Run: orch changelog --days 3                               │")
 	fmt.Println("└─────────────────────────────────────────────────────────────┘")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Dead Session Recovery
+// ──────────────────────────────────────────────────────────────
+
+// DeadSessionRecovery holds the result of dead session detection.
+type DeadSessionRecovery struct {
+	IsDeadSession  bool
+	HasCommits     bool
+	Reason         string
+	CommitCount    int
+	LastCommitHash string
+}
+
+// detectDeadSessionWithCommits checks if this is a dead session that has commits
+// and can be recovered automatically.
+//
+// A dead session is detected when:
+//  1. Issue status is in_progress
+//  2. No active OpenCode session exists
+//  3. No "Phase: Complete" comment found
+//  4. Agent branch has at least one commit
+//
+// This enables automatic recovery: orch complete can bypass the phase_complete gate
+// while still running all other verification gates (build, test, commit_evidence).
+func detectDeadSessionWithCommits(target *CompletionTarget) DeadSessionRecovery {
+	result := DeadSessionRecovery{}
+
+	// Only applies to tracked agents with beads issues
+	if target == nil || target.BeadsID == "" || target.IsUntracked || target.IsOrchestratorSession {
+		return result
+	}
+
+	// Check 1: Issue must be in_progress
+	if target.Issue == nil || strings.ToLower(target.Issue.Status) != "in_progress" {
+		return result
+	}
+
+	// Check 2: No active OpenCode session
+	if hasSession := daemon.HasExistingSessionForBeadsID(target.BeadsID); hasSession {
+		return result
+	}
+
+	// Check 3: No "Phase: Complete" comment
+	// Use verify package which already checks both beads comments and state.db
+	if hasComplete, _ := verify.IsPhaseComplete(target.BeadsID); hasComplete {
+		return result
+	}
+
+	// Check 4: Agent branch must have commits
+	if strings.TrimSpace(target.GitBranch) == "" || strings.TrimSpace(target.gitDir()) == "" {
+		return result
+	}
+
+	// Count commits on agent branch
+	worktree := target.gitDir()
+	sourceDir := target.sourceDir()
+	if sourceDir == "" {
+		sourceDir = worktree
+	}
+
+	baseBranch, err := readBranchName(sourceDir)
+	if err != nil || baseBranch == "" || baseBranch == target.GitBranch {
+		return result
+	}
+
+	// Get merge-base and count commits
+	mergeBase, err := runGitMerge(worktree, "merge-base", baseBranch, target.GitBranch)
+	if err != nil {
+		return result
+	}
+
+	countOut, err := runGitMerge(worktree, "rev-list", "--count", mergeBase+".."+target.GitBranch)
+	if err != nil {
+		return result
+	}
+
+	count := strings.TrimSpace(countOut)
+	if count == "0" {
+		return result
+	}
+
+	// Get last commit hash for logging
+	lastCommit, _ := runGitMerge(worktree, "rev-parse", "--short", target.GitBranch)
+
+	// All conditions met - this is a recoverable dead session
+	result.IsDeadSession = true
+	result.HasCommits = true
+	result.CommitCount, _ = fmt.Sscanf(count, "%d", &result.CommitCount)
+	result.LastCommitHash = strings.TrimSpace(lastCommit)
+	result.Reason = fmt.Sprintf("Dead session recovery: agent died after committing %s commit(s) (%s)", count, result.LastCommitHash)
+
+	return result
 }

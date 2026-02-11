@@ -25,7 +25,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -271,6 +273,59 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 	rebuildGoProjectsIfNeeded(target.gitDir(), target.WorkspacePath)
+
+	// Dead session recovery: auto-detect and auto-apply orchestrator-override
+	// This happens BEFORE verification and BEFORE any flags are checked.
+	// Only triggers if all conditions met (in_progress, no session, no Phase: Complete, has commits).
+	deadSessionRecovery := detectDeadSessionWithCommits(target)
+	if deadSessionRecovery.IsDeadSession && !completeForce {
+		// Auto-apply orchestrator-override for phase_complete gate
+		// This allows us to bypass the missing "Phase: Complete" comment
+		// while still running all other verification gates (build, test, commit_evidence)
+		fmt.Println()
+		fmt.Println("🔧 DEAD SESSION RECOVERY")
+		fmt.Printf("   Agent died after committing work (%d commit(s), last: %s)\n", deadSessionRecovery.CommitCount, deadSessionRecovery.LastCommitHash)
+		fmt.Printf("   Auto-applying orchestrator override: phase_complete\n")
+		fmt.Println()
+
+		// Only override phase_complete if not already overriding something else
+		if completeOrchestratorOverride == "" {
+			completeOrchestratorOverride = "phase_complete"
+			if completeReason == "" {
+				completeReason = deadSessionRecovery.Reason
+			}
+			// Rebuild skipConfig with the auto-applied override
+			skipConfig = getSkipConfig()
+
+			// Add beads comment documenting the recovery
+			recoveryComment := fmt.Sprintf("DEAD SESSION RECOVERY: Automatic completion detected.\n\n"+
+				"Session died without reporting Phase: Complete, but commits were found on branch.\n"+
+				"Commits: %d (last: %s)\n\n"+
+				"Running verification with orchestrator-override for phase_complete gate.\n"+
+				"All other gates (build, test, commit_evidence, etc.) still enforced.",
+				deadSessionRecovery.CommitCount, deadSessionRecovery.LastCommitHash)
+			if err := addApprovalComment(target.BeadsID, recoveryComment); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to add recovery comment: %v\n", err)
+			} else {
+				fmt.Printf("   Added recovery comment to %s\n", target.BeadsID)
+			}
+
+			// Log dead session recovery event
+			logger := events.NewLogger(events.DefaultLogPath())
+			_ = logger.Log(events.Event{
+				Type:      "dead_session.recovered",
+				SessionID: target.BeadsID,
+				Timestamp: time.Now().Unix(),
+				Data: map[string]interface{}{
+					"beads_id":         target.BeadsID,
+					"commit_count":     deadSessionRecovery.CommitCount,
+					"last_commit_hash": deadSessionRecovery.LastCommitHash,
+					"reason":           deadSessionRecovery.Reason,
+					"gate_overridden":  "phase_complete",
+				},
+			})
+		}
+	}
 
 	// Phase 2: Verify completion
 	vOutcome, err := verifyCompletion(target, skipConfig)
