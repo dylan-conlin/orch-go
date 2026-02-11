@@ -8,7 +8,7 @@
 
 ## Summary (30 seconds)
 
-Trackpad clicks stop registering every ~15 minutes while cursor movement and keyboard continue working. `sudo killall -HUP WindowServer` fixes it every time (HUP = reconfigure, not restart). This points to WindowServer accumulating corrupted state in its click event pipeline. Eliminated: resource exhaustion, BetterTouchTool, Hammerspoon, Shortcat, middleClick, Raycast, Karabiner mouse rules, yabai focus_follows_mouse, **yabai entire daemon** (freeze recurred without yabai). Not yet eliminated: Karabiner (kernel-level DriverKit) — **now primary suspect**, skhd, borders, sketchybar.
+Trackpad clicks stop registering every ~15 minutes while cursor movement and keyboard continue working. `sudo killall -HUP WindowServer` fixes it every time (HUP = reconfigure, not restart). This points to WindowServer accumulating corrupted state in its click event pipeline. Eliminated: resource exhaustion (single check), BetterTouchTool, Hammerspoon, Shortcat, middleClick, Raycast, Karabiner mouse rules, yabai focus_follows_mouse, **yabai entire daemon**. **New leading hypothesis:** system-wide memory pressure from concurrent agent spawning (35GB/36GB used, 607MB free, OpenCode 8.4GB). Not yet eliminated: Karabiner DriverKit, skhd, memory pressure.
 
 ---
 
@@ -84,6 +84,26 @@ macOS 15.6.1 (Sequoia) may have a bug where WindowServer's click event routing t
 
 **Evidence against:** Three research probes (2026-02-11) searched GitHub, Reddit, Apple Discussions exhaustively — **zero matching reports** for this symptom pattern (clicks stop, cursor moves, HUP fixes). If this were a Sequoia bug, community reports would exist. This significantly weakens H3.
 
+### Hypothesis 4: Memory pressure from concurrent agent spawning — NEW, STRONG
+
+System running at 35GB/36GB RAM with only 607MB free. 1.9GB in compressor. Load average 16.22 (extremely high for M3 Pro). This coincides with ramping up concurrent agent spawning — each headless OpenCode session + bun worker + tsserver stack consumes significant RAM. OpenCode alone is 8.4GB.
+
+**Evidence for:**
+- Click freeze started when concurrent agent spawning ramped up (yesterday)
+- System has 607MB free of 36GB — severe memory pressure
+- 699 processes, 4140 threads — extreme process count
+- WindowServer event buffers under memory pressure could drop click events (smaller, lower-priority) while move events (continuous stream, higher priority) still get through
+- HUP fix is consistent — reconfiguring WindowServer reallocates fresh event buffers
+- Explains why eliminating individual apps didn't help — the problem is cumulative memory pressure, not any single app
+- Explains why no community reports — unique to heavy concurrent AI agent workload
+- Explains "started yesterday" timing — that's when the orch reliability chain spawned 4-7 concurrent agents
+
+**Evidence against:** Session 11 checked CPU/RAM during a freeze and found "CPU 74% idle, 12GB free" — but that was a single point-in-time check. Memory pressure is dynamic; the system may have been at 607MB free when the freeze occurred, then freed memory by the time we checked. Need to monitor memory at the exact moment of freeze.
+
+**Test:** Kill idle OpenCode sessions to free RAM. Monitor memory at next freeze. If freeze stops with fewer concurrent agents, memory pressure confirmed.
+
+**Key insight:** This isn't about any single tool — it's about the system-wide memory footprint of running many headless AI agents simultaneously.
+
 ---
 
 ## Elimination Record
@@ -92,7 +112,7 @@ macOS 15.6.1 (Sequoia) may have a bug where WindowServer's click event routing t
 
 | Suspect | Action | Result | Conclusion |
 |---------|--------|--------|------------|
-| CPU/RAM exhaustion | Checked during freeze | CPU 74% idle, 12GB free | ✅ Eliminated |
+| CPU/RAM exhaustion | Checked during freeze | CPU 74% idle, 12GB free | ⚠️ **Revisit** — single point-in-time check, memory now at 607MB free |
 | BetterTouchTool | Uninstalled entirely | Freeze recurred | ✅ Eliminated |
 | Hammerspoon | Uninstalled | Freeze recurred | ✅ Eliminated |
 | Shortcat | Uninstalled | Freeze recurred | ✅ Eliminated |
@@ -109,16 +129,23 @@ macOS 15.6.1 (Sequoia) may have a bug where WindowServer's click event routing t
 
 ### Remaining Test Plan
 
-1. **Quit Karabiner entirely** (primary suspect — kernel-level DriverKit)
+**Priority 1: Test memory pressure hypothesis (H4)**
+1. Kill idle OpenCode sessions to free RAM — target getting back to 10GB+ free
+2. Monitor memory at exact moment of next freeze (`memory_pressure` command)
+3. If freeze stops with fewer agents: **memory pressure confirmed**
+4. If freeze continues with free RAM: move to Karabiner test
+
+**Priority 2: Quit Karabiner entirely** (if H4 disproven)
+1. Stop all Karabiner components
 2. If still recurs: stop skhd (`skhd --stop-service`)
 3. If still recurs: stop borders + sketchybar (unlikely — display only)
-4. If still recurs with NOTHING running: macOS bug or hardware → Apple Support
+4. If still recurs with NOTHING running + free RAM: macOS bug or hardware → Apple Support
 
-If Karabiner elimination SUCCEEDS (no freeze for 20+ minutes):
-1. Restart Karabiner
-2. If freeze returns: Karabiner confirmed as cause
-3. Check Karabiner version (14.13.0), XProtect update (Feb 10) interaction
-4. Options: update Karabiner, disable DriverKit mouse passthrough, or replace
+**If memory pressure confirmed:**
+1. Set `--max-agents` lower (3 instead of 5)
+2. Aggressively clean up idle sessions after completion
+3. Monitor OpenCode memory footprint per session
+4. Consider lighter-weight agent backend
 
 ---
 
@@ -152,7 +179,7 @@ If Karabiner elimination SUCCEEDS (no freeze for 20+ minutes):
 
 **2026-02-11 (Session 11):** First systematic investigation. 4 freezes in ~1 hour. Eliminated 5 apps (BTT, Hammerspoon, Shortcat, middleClick, Raycast). BTT was a red herring (correlated but not causal).
 
-**2026-02-11 (Session 14):** **yabai eliminated** — freeze recurred with yabai fully stopped (confirmed no process). Three research probes searched GitHub (yabai, Karabiner, broad), Reddit, Apple Discussions — zero matching reports found anywhere. Hypothesis 3 (macOS bug) significantly weakened. Karabiner now primary suspect. XProtect updated Feb 10 — possible DriverKit interaction. Next: quit Karabiner entirely.
+**2026-02-11 (Session 14):** **yabai eliminated** — freeze recurred with yabai fully stopped (confirmed no process). Three research probes searched GitHub (yabai, Karabiner, broad), Reddit, Apple Discussions — zero matching reports found anywhere. Hypothesis 3 (macOS bug) significantly weakened. **New H4: memory pressure** — system at 35GB/36GB, 607MB free, OpenCode alone 8.4GB. Concurrent agent spawning ramped up yesterday (when freeze started). This is now the leading hypothesis — explains timing, explains why individual app elimination failed, explains unique-to-Dylan symptom.
 
 ---
 
