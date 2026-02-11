@@ -693,32 +693,32 @@ func TestValidateSkipFlags(t *testing.T) {
 		{
 			name:    "skip core gate phase_complete - blocked",
 			config:  SkipConfig{PhaseComplete: true, Reason: "This should fail"},
-			wantErr: "core gates cannot be skipped: phase_complete (use --force to bypass all verification)",
+			wantErr: "core gates cannot be skipped: phase_complete (use --orchestrator-override <gate-name> --reason '<justification>' to bypass with elevated logging)",
 		},
 		{
 			name:    "skip core gate commit_evidence - blocked",
 			config:  SkipConfig{CommitEvidence: true, Reason: "This should fail"},
-			wantErr: "core gates cannot be skipped: commit_evidence (use --force to bypass all verification)",
+			wantErr: "core gates cannot be skipped: commit_evidence (use --orchestrator-override <gate-name> --reason '<justification>' to bypass with elevated logging)",
 		},
 		{
 			name:    "skip core gate synthesis - blocked",
 			config:  SkipConfig{Synthesis: true, Reason: "This should fail"},
-			wantErr: "core gates cannot be skipped: synthesis (use --force to bypass all verification)",
+			wantErr: "core gates cannot be skipped: synthesis (use --orchestrator-override <gate-name> --reason '<justification>' to bypass with elevated logging)",
 		},
 		{
 			name:    "skip core gate test_evidence - blocked",
 			config:  SkipConfig{TestEvidence: true, Reason: "This should fail"},
-			wantErr: "core gates cannot be skipped: test_evidence (use --force to bypass all verification)",
+			wantErr: "core gates cannot be skipped: test_evidence (use --orchestrator-override <gate-name> --reason '<justification>' to bypass with elevated logging)",
 		},
 		{
 			name:    "skip core gate git_diff - blocked",
 			config:  SkipConfig{GitDiff: true, Reason: "This should fail"},
-			wantErr: "core gates cannot be skipped: git_diff (use --force to bypass all verification)",
+			wantErr: "core gates cannot be skipped: git_diff (use --orchestrator-override <gate-name> --reason '<justification>' to bypass with elevated logging)",
 		},
 		{
 			name:    "skip multiple core gates - all listed",
 			config:  SkipConfig{PhaseComplete: true, CommitEvidence: true, Reason: "This should fail"},
-			wantErr: "core gates cannot be skipped: phase_complete, commit_evidence (use --force to bypass all verification)",
+			wantErr: "core gates cannot be skipped: phase_complete, commit_evidence (use --orchestrator-override <gate-name> --reason '<justification>' to bypass with elevated logging)",
 		},
 	}
 

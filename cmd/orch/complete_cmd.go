@@ -45,6 +45,10 @@ var (
 	completeAutoCloseParent  bool // Auto-close parent epic when all children complete
 	completeBatch            bool // Batch mode: run only Tier 1 (core) gates
 
+	// Orchestrator override: elevated privilege to bypass a single gate (including core gates)
+	// Requires --reason with explicit justification. Distinct from --force (which skips everything).
+	completeOrchestratorOverride string // Gate name to override (e.g., "phase_complete")
+
 	// Targeted skip flags (replace blanket --force)
 	// Each requires completeSkipReason to be set (min 10 chars)
 	completeSkipTestEvidence     bool
@@ -109,14 +113,31 @@ Use --skip-{gate} with --skip-reason to bypass specific quality gates:
   --skip-verification-spec Skip VERIFICATION_SPEC executable checks gate
 
 Core gates (phase_complete, commit_evidence, synthesis, test_evidence, git_diff)
-CANNOT be skipped — they block completion unconditionally. Use --force to bypass
-all verification (deprecated, logged for audit).
+CANNOT be skipped via --skip-* flags — they block completion unconditionally.
+
+ORCHESTRATOR OVERRIDE (elevated privilege):
+Use --orchestrator-override to bypass a single gate (including core gates) with
+explicit justification:
+  --orchestrator-override <gate-name> --reason "<justification>"
+
+Example use case: Agent session died after committing work but before reporting
+Phase: Complete. Orchestrator can override phase_complete gate while still
+running other core gates (build, test_evidence, commit_evidence).
+
+  orch complete proj-123 --orchestrator-override phase_complete \
+    --reason "Agent died after commit, verified work via git log"
+
+Orchestrator override:
+  - Only skips the single named gate
+  - Requires --reason (min 10 chars)
+  - Logs override event to agentlog with justification
+  - Distinct from --force (which skips everything)
 
 Each --skip-* flag requires --skip-reason with a minimum of 10 characters
 explaining why the gate is being bypassed. Bypasses are logged for audit.
 
-DEPRECATION: --force is deprecated. Use targeted --skip-* flags instead.
-Using --force will show a deprecation warning.
+DEPRECATION: --force is deprecated. Use targeted --skip-* flags or
+--orchestrator-override instead. Using --force will show a deprecation warning.
 
 For orchestrator sessions (spawned with orchestrator or meta-orchestrator skill),
 the argument is the workspace name instead of beads ID. Orchestrators use
@@ -190,6 +211,9 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeForceCloseEpic, "force-close-epic", false, "Force close epic even if it has open children (use with caution)")
 	completeCmd.Flags().BoolVar(&completeAutoCloseParent, "auto-close-parent", false, "Automatically close parent epic when completing the last open child")
 	completeCmd.Flags().BoolVar(&completeBatch, "batch", false, "Batch mode: run only Tier 1 (core) gates, skip Tier 2 (quality) gates")
+
+	// Orchestrator override: elevated privilege to bypass a single gate with justification
+	completeCmd.Flags().StringVar(&completeOrchestratorOverride, "orchestrator-override", "", "Gate name to override (e.g., 'phase_complete'). Bypasses core gate protection. Requires --reason.")
 
 	// Targeted skip flags - each bypasses a specific verification gate
 	completeCmd.Flags().BoolVar(&completeSkipTestEvidence, "skip-test-evidence", false, "Skip test execution evidence gate (requires --skip-reason)")
