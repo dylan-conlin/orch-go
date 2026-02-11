@@ -245,6 +245,8 @@ func printAgentsWideFormat(agents []AgentInfo) {
 		phase := agent.Phase
 		if phase == "" {
 			phase = "-"
+		} else if agent.HasGhostCompletion {
+			phase = "⚠️ " + phase // Flag ghost completion (Phase: Complete with 0 commits)
 		}
 		task := agent.Task
 		if task == "" {
@@ -329,6 +331,8 @@ func printAgentsNarrowFormat(agents []AgentInfo) {
 		phase := agent.Phase
 		if phase == "" {
 			phase = "-"
+		} else if agent.HasGhostCompletion {
+			phase = "⚠️ " + phase // Flag ghost completion (Phase: Complete with 0 commits)
 		}
 		skill := abbreviateSkill(agent.Skill)
 		if skill == "" {
@@ -374,6 +378,8 @@ func printAgentsCardFormat(agents []AgentInfo) {
 		phase := agent.Phase
 		if phase == "" {
 			phase = "-"
+		} else if agent.HasGhostCompletion {
+			phase = "⚠️ " + phase // Flag ghost completion (Phase: Complete with 0 commits)
 		}
 		task := agent.Task
 		if task == "" {

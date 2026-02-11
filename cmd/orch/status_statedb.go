@@ -126,6 +126,15 @@ func agentInfoFromStateDB(dbAgent *state.Agent, now time.Time, currentProjectDir
 			t := time.UnixMilli(dbAgent.PhaseReportedAt)
 			agent.PhaseReportedAt = &t
 		}
+
+		// Ghost completion early detection: check for Phase: Complete + 0 commits
+		if dbAgent.Phase == "Complete" && dbAgent.ProjectDir != "" && dbAgent.WorkspaceName != "" {
+			worktreePath := filepath.Join(dbAgent.ProjectDir, ".orch", "worktrees", dbAgent.WorkspaceName)
+			if count, err := checkWorktreeCommits(worktreePath); err == nil && count == 0 {
+				agent.HasGhostCompletion = true
+			}
+			// Silently ignore errors (not a git repo, worktree doesn't exist, etc.)
+		}
 	}
 
 	// Set completion/abandonment status from cached state

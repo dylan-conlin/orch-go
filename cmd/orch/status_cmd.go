@@ -93,28 +93,29 @@ type AccountUsage struct {
 
 // AgentInfo represents information about an active agent.
 type AgentInfo struct {
-	SessionID       string                        `json:"session_id"`
-	BeadsID         string                        `json:"beads_id,omitempty"`
-	Mode            string                        `json:"mode,omitempty"`  // Agent mode: "claude" or "opencode"
-	Model           string                        `json:"model,omitempty"` // Model spec (e.g., "gemini-3-flash-preview", "claude-opus-4-5-20251101")
-	Skill           string                        `json:"skill,omitempty"`
-	Account         string                        `json:"account,omitempty"`
-	Runtime         string                        `json:"runtime"`
-	Title           string                        `json:"title,omitempty"`
-	Window          string                        `json:"window,omitempty"`
-	Phase           string                        `json:"phase,omitempty"`             // Current phase from beads comments
-	Task            string                        `json:"task,omitempty"`              // Task description (truncated)
-	Project         string                        `json:"project,omitempty"`           // Project name derived from beads ID or workspace
-	ProjectDir      string                        `json:"project_dir,omitempty"`       // Full path to project directory (for cross-project agents)
-	Source          string                        `json:"source,omitempty"`            // Source where agent originated: T=tmux, O=opencode, B=beads, W=workspace
-	IsPhantom       bool                          `json:"is_phantom,omitempty"`        // True if beads issue open but agent not running
-	IsProcessing    bool                          `json:"is_processing,omitempty"`     // True if session is actively generating a response
-	IsCompleted     bool                          `json:"is_completed,omitempty"`      // True if beads issue is closed
-	IsUntracked     bool                          `json:"is_untracked,omitempty"`      // True if session has no beads tracking (OpenCode-only, or spawned with --no-track)
-	Tokens          *opencode.TokenStats          `json:"tokens,omitempty"`            // Token usage for the session
-	ContextRisk     *verify.ContextExhaustionRisk `json:"context_risk,omitempty"`      // Context exhaustion risk assessment
-	PhaseReportedAt *time.Time                    `json:"phase_reported_at,omitempty"` // Timestamp when latest phase was reported
-	LastActivity    time.Time                     `json:"last_activity,omitempty"`     // Timestamp of last activity (for ghost filtering)
+	SessionID          string                        `json:"session_id"`
+	BeadsID            string                        `json:"beads_id,omitempty"`
+	Mode               string                        `json:"mode,omitempty"`  // Agent mode: "claude" or "opencode"
+	Model              string                        `json:"model,omitempty"` // Model spec (e.g., "gemini-3-flash-preview", "claude-opus-4-5-20251101")
+	Skill              string                        `json:"skill,omitempty"`
+	Account            string                        `json:"account,omitempty"`
+	Runtime            string                        `json:"runtime"`
+	Title              string                        `json:"title,omitempty"`
+	Window             string                        `json:"window,omitempty"`
+	Phase              string                        `json:"phase,omitempty"`                // Current phase from beads comments
+	Task               string                        `json:"task,omitempty"`                 // Task description (truncated)
+	Project            string                        `json:"project,omitempty"`              // Project name derived from beads ID or workspace
+	ProjectDir         string                        `json:"project_dir,omitempty"`          // Full path to project directory (for cross-project agents)
+	Source             string                        `json:"source,omitempty"`               // Source where agent originated: T=tmux, O=opencode, B=beads, W=workspace
+	IsPhantom          bool                          `json:"is_phantom,omitempty"`           // True if beads issue open but agent not running
+	IsProcessing       bool                          `json:"is_processing,omitempty"`        // True if session is actively generating a response
+	IsCompleted        bool                          `json:"is_completed,omitempty"`         // True if beads issue is closed
+	IsUntracked        bool                          `json:"is_untracked,omitempty"`         // True if session has no beads tracking (OpenCode-only, or spawned with --no-track)
+	HasGhostCompletion bool                          `json:"has_ghost_completion,omitempty"` // True if Phase: Complete but 0 commits (ghost completion early detection)
+	Tokens             *opencode.TokenStats          `json:"tokens,omitempty"`               // Token usage for the session
+	ContextRisk        *verify.ContextExhaustionRisk `json:"context_risk,omitempty"`         // Context exhaustion risk assessment
+	PhaseReportedAt    *time.Time                    `json:"phase_reported_at,omitempty"`    // Timestamp when latest phase was reported
+	LastActivity       time.Time                     `json:"last_activity,omitempty"`        // Timestamp of last activity (for ghost filtering)
 }
 
 // OrchestratorSessionInfo represents an active orchestrator session for display.
