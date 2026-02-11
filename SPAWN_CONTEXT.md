@@ -1,4 +1,4 @@
-TASK: Add pre-spawn runtime check and post-spawn liveness probe to orch spawn. Problem: spawn reports success after creating tmux window but never verifies agent actually started. If runtime fails (Docker daemon not running, Claude CLI not found, OpenCode API down), spawn exits 0 while agent is dead. Fix: (1) Pre-spawn: check if target backend is available before creating window — for Docker check daemon socket, for Claude check binary exists, for OpenCode check API responds. If unavailable, fail loudly with actionable error. (2) Post-spawn: after creating tmux window, wait 5-10s then tmux capture-pane and check for error patterns (Cannot connect, command not found, connection refused). If error detected, mark spawn as failed, clean up window, report to orchestrator. Deliverables: modified spawn pipeline with preflight checks and post-spawn liveness probe. PROJECT_DIR=/Users/dylanconlin/Documents/personal/orch-go
+TASK: Fix orch status visibility for non-OpenCode agents. Two issues: (1) rrjie: Claude CLI backend agents don't create OpenCode sessions, so they're invisible to the materializer — register them in state.db at spawn time. (2) 0tejd: Untracked agents all show same generic label — use workspace name as identifier, show truncated task description. Both are about making orch status useful regardless of backend.
 
 
 
@@ -45,13 +45,13 @@ MODEL BEHAVIOR PROFILE: strict-complete
 🐛 **This is a bug fix issue.** The fix is verified when the reproduction steps no longer produce the bug.
 
 **Original Reproduction:**
-orch spawn --tmux (including Docker mode) reports success after creating the tmux window and sending the command, but never verifies the agent actually started. If the underlying runtime fails (Docker daemon not running, Claude CLI not found, OpenCode API down), the tmux window shows the error but orch spawn already exited 0. The orchestrator sees Spawned agent and moves on unaware. Fix options: (a) Post-spawn liveness probe — after creating tmux window wait 5-10s then check if process is still alive via tmux capture-pane + error pattern matching. (b) Pre-spawn runtime check — verify Docker daemon / Claude CLI / OpenCode API is reachable BEFORE creating window. (c) Both — preflight check + post-spawn confirmation.
+orch status derives agent state from OpenCode sessions API. Claude CLI backend agents don't create OpenCode sessions, so they're invisible to the materializer. Need either: (a) register Claude CLI agents in state.db at spawn time so status can track them, or (b) detect tmux windows with agent naming convention and show them in status even without OpenCode sessions.
 
 **Verification Requirement:**
 Before marking Phase: Complete, you MUST:
 1. Attempt to reproduce the original bug using the steps above
 2. Confirm the bug NO LONGER reproduces after your fix
-3. Report verification via: `bd comment orch-go-8pzpb "Reproduction verified: [describe test performed]"`
+3. Report verification via: `bd comment orch-go-rrjie "Reproduction verified: [describe test performed]"`
 
 ⚠️ A bug fix is only complete when the original reproduction steps pass.
 
@@ -59,7 +59,7 @@ Before marking Phase: Complete, you MUST:
 
 🚨 FIRST 3 ACTIONS (ADVISORY - STRONGLY RECOMMENDED):
 Suggested first actions for visibility:
-1. Report phase: `orch phase orch-go-8pzpb Planning "[brief description]"`
+1. Report phase: `orch phase orch-go-rrjie Planning "[brief description]"`
 2. Read relevant codebase context for your task
 3. Begin planning
 
@@ -78,7 +78,7 @@ TERMINAL CHECKLIST (EXECUTE IN ORDER):
   `git rev-list --count $(git merge-base main HEAD)..HEAD` should return >0
   (⚠️ If 0 commits, you cannot complete - the COMMIT_EVIDENCE gate will block)
 
-- [ ] Run: `orch phase orch-go-8pzpb Complete "[1-2 sentence summary of deliverables]"`
+- [ ] Run: `orch phase orch-go-rrjie Complete "[1-2 sentence summary of deliverables]"`
 - [ ] Run: `/exit`
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
@@ -88,7 +88,7 @@ If you do not emit Phase: Complete, your work will be lost
 
 CONTEXT: [See task description]
 
-PROJECT_DIR: /Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-add-pre-spawn-11feb-eb0b
+PROJECT_DIR: /Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-fix-orch-status-11feb-4117
 
 SESSION SCOPE: Medium (estimated [1-2h / 2-4h / 4-6h+])
 - Default estimation
@@ -117,7 +117,7 @@ AUTHORITY:
 
 **Surface Before Circumvent:**
 Before working around ANY constraint (technical, architectural, or process):
-1. Surface it first: `bd comment orch-go-8pzpb "CONSTRAINT: [what constraint] - [why considering workaround]"`
+1. Surface it first: `bd comment orch-go-rrjie "CONSTRAINT: [what constraint] - [why considering workaround]"`
 2. Wait for orchestrator acknowledgment before proceeding
 3. The accountability is a feature, not a cost
 
@@ -133,7 +133,7 @@ This applies to:
 - Creates hidden technical debt
 
 DELIVERABLES (REQUIRED):
-1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-add-pre-spawn-11feb-eb0b)
+1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go/.orch/worktrees/og-feat-fix-orch-status-11feb-4117)
 
 2. [Task-specific deliverables from skill guidance]
 
@@ -149,21 +149,21 @@ Signal orchestrator when blocked:
 
 ## PROGRESS TRACKING
 
-You were spawned from beads issue: **orch-go-8pzpb**
+You were spawned from beads issue: **orch-go-rrjie**
 
 **Phase reporting:** Use `orch phase` — one command that writes to SQLite (~1ms) for instant dashboard visibility AND automatically adds a bd comment for permanent audit trail.
 
 ```bash
 # Report progress at phase transitions
-orch phase orch-go-8pzpb Planning "Analyzing codebase structure"
-orch phase orch-go-8pzpb Implementing "Adding authentication middleware"
-orch phase orch-go-8pzpb Complete "All tests passing, ready for review"
+orch phase orch-go-rrjie Planning "Analyzing codebase structure"
+orch phase orch-go-rrjie Implementing "Adding authentication middleware"
+orch phase orch-go-rrjie Complete "All tests passing, ready for review"
 
 # Report blockers immediately
-orch phase orch-go-8pzpb BLOCKED "Need clarification on API contract"
+orch phase orch-go-rrjie BLOCKED "Need clarification on API contract"
 
 # Report questions
-orch phase orch-go-8pzpb QUESTION "Should we use JWT or session-based auth?"
+orch phase orch-go-rrjie QUESTION "Should we use JWT or session-based auth?"
 ```
 
 **When to report:**
@@ -187,11 +187,10 @@ Simply follow the guidance provided below.
 ---
 
 <!-- AUTO-GENERATED by skillc -->
-<!-- Checksum: 8fb7aff88c55 -->
-<!-- Source: /Users/dylanconlin/orch-knowledge/skills/src/shared/worker-base/.skillc -->
-<!-- Deployed to: /Users/dylanconlin/.claude/skills/shared/worker-base/SKILL.md -->
-<!-- To modify: edit files in /Users/dylanconlin/orch-knowledge/skills/src/shared/worker-base/.skillc, then run: skillc deploy -->
-<!-- Last compiled: 2026-02-11 11:08:24 -->
+<!-- Checksum: 331761c2b398 -->
+<!-- Source: .skillc -->
+<!-- To modify: edit files in .skillc, then run: skillc build -->
+<!-- Last compiled: 2026-02-11 13:56:48 -->
 
 
 ## Summary
@@ -322,39 +321,44 @@ These are operational - escalate to orchestrator normally.
 
 
 
-## Beads Progress Tracking
+## Progress Tracking
 
-**Use `bd comment` for progress updates instead of workspace-only tracking.**
+**Use `orch phase` for phase transitions. The command writes to both SQLite (~1ms) and bd comments automatically.**
 
 ```bash
 # Report progress at phase transitions
-bd comment {{.BeadsID}} "Phase: Planning - Analyzing codebase structure"
-bd comment {{.BeadsID}} "Phase: Implementing - Adding authentication middleware"
-bd comment {{.BeadsID}} "Phase: Complete - Tests: make test - 15 passed, 0 failed. [summary]"
+orch phase {{.BeadsID}} Planning "Analyzing codebase structure"
+orch phase {{.BeadsID}} Implementing "Adding authentication middleware"
+orch phase {{.BeadsID}} Complete "All tests passing, ready for review"
 
 # Report blockers immediately
-bd comment {{.BeadsID}} "BLOCKED: Need clarification on API contract"
+orch phase {{.BeadsID}} BLOCKED "Need clarification on API contract"
 
 # Report questions
-bd comment {{.BeadsID}} "QUESTION: Should we use JWT or session-based auth?"
+orch phase {{.BeadsID}} QUESTION "Should we use JWT or session-based auth?"
 ```
 
-**When to comment:**
+**When to report:**
 - Phase transitions (Planning → Implementing → Testing → Complete)
-- Significant milestones or findings
 - Blockers or questions requiring orchestrator input
 - Completion summary with deliverables
 
+**Additional context (use `bd comment`):**
+Use `bd comment` for additional context, findings, or updates that are NOT phase transitions:
+```bash
+bd comment {{.BeadsID}} "Found performance bottleneck in database query"
+bd comment {{.BeadsID}} "investigation_path: .kb/investigations/2026-02-11-perf-issue.md"
+```
+
 **Test Evidence Requirement:**
-When reporting Phase: Complete, you MUST include **actual test output**, not just "tests passing":
-- Format: `Tests: <command> - <actual output summary>`
-- Example: `Tests: go test ./... - 47 passed, 0 failed (2.3s)`
-- Example: `Tests: npm test - 23 specs, 0 failures`
-- Example: `Tests: make test - PASS (coverage: 78%)`
+When reporting Phase: Complete, include test results in the summary:
+- Example: `orch phase {{.BeadsID}} Complete "Tests: go test ./... - 47 passed, 0 failed (2.3s)"`
+- Example: `orch phase {{.BeadsID}} Complete "Tests: npm test - 23 specs, 0 failures"`
+- Example: `orch phase {{.BeadsID}} Complete "Tests: make test - PASS (coverage: 78%)"`
 
-**Why:** `orch complete` validates test evidence in comments. Vague claims like "all tests pass" trigger manual verification.
+**Why:** `orch complete` validates test evidence in phase comments. Vague claims like "all tests pass" trigger manual verification.
 
-**Why beads comments:** Creates permanent, searchable progress history linked to the issue. Orchestrator can track progress across sessions via `bd show {{.BeadsID}}`.
+**How it works:** `orch phase` writes directly to SQLite (~1ms) for instant dashboard visibility AND automatically creates a bd comment for permanent audit trail. One command handles both.
 
 **Never run `bd close`** - Only the orchestrator closes issues via `orch complete`.
 - Workers report `Phase: Complete`, orchestrator verifies and closes
@@ -368,12 +372,12 @@ When reporting Phase: Complete, you MUST include **actual test output**, not jus
 
 **First 3 Actions (Critical):**
 Within your first 3 tool calls, you MUST:
-1. Report via `bd comment {{.BeadsID}} "Phase: Planning - [brief description]"`
+1. Report via `orch phase {{.BeadsID}} Planning "[brief description]"`
 2. Read relevant codebase context for your task
 3. Begin planning
 
 If Phase is not reported within first 3 actions, you will be flagged as unresponsive.
-Do NOT skip this - the orchestrator monitors via beads comments.
+Do NOT skip this - the orchestrator monitors phase reporting.
 
 **Status Updates:**
 Update Status: field in your workspace/investigation file:
@@ -440,7 +444,7 @@ In your `Phase: Complete` comment, include either:
 {{if eq .Tier "light"}}
 1. Author/update `VERIFICATION_SPEC.yaml` in the workspace root.
    - Fill the pre-populated skeleton with the exact commands you ran, expectations you verified, and any manual steps still required.
-2. Run: `bd comment {{.BeadsID}} "Phase: Complete - [1-2 sentence summary of deliverables]"` (report phase FIRST - before commit)
+2. Run: `orch phase {{.BeadsID}} Complete "[1-2 sentence summary of deliverables]"` (report phase FIRST - before commit)
 3. Commit any final changes (including `VERIFICATION_SPEC.yaml`)
 4. Run: `/exit` to close the agent session
 
@@ -448,7 +452,7 @@ In your `Phase: Complete` comment, include either:
 {{else}}
 1. Author/update `VERIFICATION_SPEC.yaml` in the workspace root.
    - Fill the pre-populated skeleton with the exact commands you ran, expectations you verified, and any manual steps still required.
-2. Run: `bd comment {{.BeadsID}} "Phase: Complete - [1-2 sentence summary of deliverables]"` (report phase FIRST - before commit)
+2. Run: `orch phase {{.BeadsID}} Complete "[1-2 sentence summary of deliverables]"` (report phase FIRST - before commit)
 3. Ensure SYNTHESIS.md is created (including the `Verification Contract` section linking `VERIFICATION_SPEC.yaml` and key outcomes)
 4. Commit all changes (including SYNTHESIS.md and `VERIFICATION_SPEC.yaml`)
 5. Run: `/exit` to close the agent session
@@ -1034,13 +1038,6 @@ This is a RED FLAG. Either:
 ---
 
 
-FEATURE-IMPL CONFIGURATION:
-Phases: investigation,implementation,validation
-Mode: tdd
-Validation: integration
-
-Follow phase guidance from the feature-impl skill.
-
 
 
 CONTEXT AVAILABLE:
@@ -1073,7 +1070,7 @@ TERMINAL CHECKLIST (EXECUTE IN ORDER):
 
 
 
-- [ ] `orch phase orch-go-8pzpb Complete "[1-2 sentence summary]"`
+- [ ] `orch phase orch-go-rrjie Complete "[1-2 sentence summary]"`
 - [ ] `/exit`
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.

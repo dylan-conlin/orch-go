@@ -102,15 +102,16 @@ func fetchAgentsFromStateDB(showAll bool) *stateDBAgentResult {
 // Populates all immutable fields from the cached data.
 func agentInfoFromStateDB(dbAgent *state.Agent, now time.Time, currentProjectDir string) AgentInfo {
 	agent := AgentInfo{
-		SessionID:  dbAgent.SessionID,
-		BeadsID:    dbAgent.BeadsID,
-		Mode:       dbAgent.Mode,
-		Model:      dbAgent.Model,
-		Skill:      dbAgent.Skill,
-		Project:    dbAgent.ProjectName,
-		ProjectDir: dbAgent.ProjectDir,
-		Task:       truncate(dbAgent.IssueTitle, 40),
-		Window:     dbAgent.TmuxWindow,
+		SessionID:     dbAgent.SessionID,
+		BeadsID:       dbAgent.BeadsID,
+		WorkspaceName: dbAgent.WorkspaceName,
+		Mode:          dbAgent.Mode,
+		Model:         dbAgent.Model,
+		Skill:         dbAgent.Skill,
+		Project:       dbAgent.ProjectName,
+		ProjectDir:    dbAgent.ProjectDir,
+		Task:          truncate(dbAgent.IssueTitle, 40),
+		Window:        dbAgent.TmuxWindow,
 	}
 
 	// Compute runtime from spawn time
@@ -428,8 +429,11 @@ func fallbackDiscoverAgents(
 				}
 			}
 
-			workspacePath, _ := findWorkspaceByBeadsID(agentProjectDir, beadsID)
+			workspacePath, workspaceName := findWorkspaceByBeadsID(agentProjectDir, beadsID)
 			if workspacePath != "" {
+				if workspaceName != "" {
+					info.WorkspaceName = workspaceName
+				}
 				manifest := readAgentManifest(workspacePath)
 				if manifest != nil {
 					if manifest.Skill != "" {
@@ -444,6 +448,9 @@ func fallbackDiscoverAgents(
 					}
 					if manifest.Model != "" {
 						info.Model = manifest.Model
+					}
+					if manifest.WorkspaceName != "" {
+						info.WorkspaceName = manifest.WorkspaceName
 					}
 				}
 			}

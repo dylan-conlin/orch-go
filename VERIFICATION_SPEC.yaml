@@ -4,8 +4,8 @@
 
 version: 1
 scope:
-    beads_id: orch-go-8pzpb
-    workspace: og-feat-add-pre-spawn-11feb-eb0b
+    beads_id: orch-go-rrjie
+    workspace: og-feat-fix-orch-status-11feb-4117
     skill: feature-impl
 verification:
     - id: verify-build

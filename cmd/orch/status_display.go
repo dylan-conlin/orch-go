@@ -230,8 +230,10 @@ func printAgentsWideFormat(agents []AgentInfo) {
 		}
 		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
 		if beadsID == "" {
-			// For untracked sessions, show truncated session ID to enable `orch tail --session`
-			if agent.IsUntracked && agent.SessionID != "" {
+			// For agents without beads ID, show workspace name or truncated session ID
+			if agent.WorkspaceName != "" {
+				beadsID = agent.WorkspaceName
+			} else if agent.IsUntracked && agent.SessionID != "" {
 				beadsID = truncateSessionIDForStatus(agent.SessionID)
 			} else {
 				beadsID = "-"
@@ -316,8 +318,10 @@ func printAgentsNarrowFormat(agents []AgentInfo) {
 		}
 		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
 		if beadsID == "" {
-			// For untracked sessions, show truncated session ID
-			if agent.IsUntracked && agent.SessionID != "" {
+			// For agents without beads ID, show workspace name or truncated session ID
+			if agent.WorkspaceName != "" {
+				beadsID = agent.WorkspaceName
+			} else if agent.IsUntracked && agent.SessionID != "" {
 				beadsID = truncateSessionIDForStatus(agent.SessionID)
 			} else {
 				beadsID = "-"
@@ -367,8 +371,10 @@ func printAgentsCardFormat(agents []AgentInfo) {
 		}
 		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
 		if beadsID == "" {
-			// For untracked sessions, show truncated session ID
-			if agent.IsUntracked && agent.SessionID != "" {
+			// For agents without beads ID, show workspace name or truncated session ID
+			if agent.WorkspaceName != "" {
+				beadsID = agent.WorkspaceName
+			} else if agent.IsUntracked && agent.SessionID != "" {
 				beadsID = truncateSessionIDForStatus(agent.SessionID)
 			} else {
 				beadsID = "-"

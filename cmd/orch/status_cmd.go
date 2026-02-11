@@ -95,8 +95,9 @@ type AccountUsage struct {
 type AgentInfo struct {
 	SessionID          string                        `json:"session_id"`
 	BeadsID            string                        `json:"beads_id,omitempty"`
-	Mode               string                        `json:"mode,omitempty"`  // Agent mode: "claude" or "opencode"
-	Model              string                        `json:"model,omitempty"` // Model spec (e.g., "gemini-3-flash-preview", "claude-opus-4-5-20251101")
+	WorkspaceName      string                        `json:"workspace_name,omitempty"` // Workspace name (for display of untracked agents)
+	Mode               string                        `json:"mode,omitempty"`           // Agent mode: "claude" or "opencode"
+	Model              string                        `json:"model,omitempty"`          // Model spec (e.g., "gemini-3-flash-preview", "claude-opus-4-5-20251101")
 	Skill              string                        `json:"skill,omitempty"`
 	Account            string                        `json:"account,omitempty"`
 	Runtime            string                        `json:"runtime"`
