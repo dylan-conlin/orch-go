@@ -1,34 +1,40 @@
+# Verification Spec for Simplification Architecture Review
+# Investigation-only session - produces decision record, no code changes
+
 version: 1
 scope:
-    beads_id: orch-go-a35n7
-    workspace: og-debug-fix-orch-complete-10feb-28e9
-    skill: systematic-debugging
+    beads_id: orch-go-qv699
+    workspace: og-arch-simplification-architecture-review-10feb-8d87
+    skill: architect
 verification:
-    - id: verify-build
-      method: cli_smoke
-      tier: light
-      command: go build ./cmd/orch/
-      cwd: $GIT_WORKTREE_DIR
+    - id: investigation-exists
+      description: Investigation file created with full analysis
+      method: static
+      tier: full
+      command: test -f ".kb/investigations/2026-02-10-design-simplification-architecture-review.md"
+      cwd: .
       expect:
         exit_code: 0
-    - id: verify-workspace-resolution
-      method: cli_smoke
-      tier: light
-      command: go test ./cmd/orch/ -run "TestFindWorkspaceByBeadsID|TestPickBestWorkspace" -count=1
-      cwd: $GIT_WORKTREE_DIR
+    
+    - id: synthesis-exists
+      description: SYNTHESIS.md created with session summary
+      method: static
+      tier: full
+      command: test -f "SYNTHESIS.md"
+      cwd: .
       expect:
         exit_code: 0
-    - id: verify-cherry-pick-skip
-      method: cli_smoke
-      tier: light
-      command: go test ./cmd/orch/ -run "TestIntegrateAgentBranchSkips|TestIsEmptyCherryPick" -count=1
-      cwd: $GIT_WORKTREE_DIR
+    
+    - id: investigation-complete
+      description: Investigation has Phase Complete status
+      method: static
+      tier: full
+      command: grep -q "Phase.*Complete" ".kb/investigations/2026-02-10-design-simplification-architecture-review.md"
+      cwd: .
       expect:
         exit_code: 0
-    - id: verify-existing-tests
-      method: cli_smoke
-      tier: light
-      command: go test ./cmd/orch/ -run "TestIntegrateAgent" -count=1
-      cwd: $GIT_WORKTREE_DIR
-      expect:
-        exit_code: 0
+
+manual_verification:
+    - id: review-recommendations
+      description: Orchestrator should review the 4 decision forks and recommendations
+      owner: orchestrator
