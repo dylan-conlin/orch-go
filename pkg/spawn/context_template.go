@@ -184,6 +184,9 @@ TERMINAL CHECKLIST (EXECUTE IN ORDER):
 {{if .NeedsExplicitGitCommit}}
 - [ ] Commit all changes: ` + "`git add -A && git commit -m \"type: description\"`" + `
 {{end}}
+- [ ] **GHOST COMPLETION CHECK:** Verify you have commits before declaring Complete
+  ` + "`git rev-list --count $(git merge-base main HEAD)..HEAD`" + ` should return >0
+  (⚠️ If 0 commits, you cannot complete - the COMMIT_EVIDENCE gate will block)
 {{if eq .Tier "light"}}
 - [ ] Run: ` + "`/exit`" + `
 
@@ -212,6 +215,9 @@ TERMINAL CHECKLIST (EXECUTE IN ORDER):
 {{if .NeedsExplicitGitCommit}}
 - [ ] Commit all changes: ` + "`git add -A && git commit -m \"type: description\"`" + `
 {{end}}
+- [ ] **GHOST COMPLETION CHECK:** Verify you have commits before declaring Complete
+  ` + "`git rev-list --count $(git merge-base main HEAD)..HEAD`" + ` should return >0
+  (⚠️ If 0 commits, you cannot complete - the COMMIT_EVIDENCE gate will block)
 {{if eq .Tier "light"}}
 - [ ] Run: ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary of deliverables]\"`" + `
 - [ ] Run: ` + "`/exit`" + `
