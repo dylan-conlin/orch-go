@@ -107,4 +107,48 @@ NotFoundError: NotFoundError
 
 
 * new issue: in the work-graph ui, new spawns don't have an actual title: /Users/dylanconlin/Screenshots/screenshot_2026-02-10_15-44-42.png
-i don't know if this is because a bug with daemon spawns or what it is. 
+i don't know if this is because a bug with daemon spawns or what it is.
+* new approach needed: we need a 'mode' for orchestrator skill that is something like a diagnostic/firefighting mode where the primary focus is on system reliability, awareness of bugs/issues/friction with a goal of creating issues for these, monitoring health and vitals etc. this system is just too fragile as is.
+* ANOTHER OPENCODE CRASH: (FIFTH IN THE LAST COUPLE DAYS)
+SYSTEM HEALTH
+  ✅ Dashboard (port 3348) - listening
+  ✅ OpenCode (port 4096) - listening
+  ✅ Daemon - running (1 ready)
+SWARM STATUS: Active: 0, Untracked: 1
+ACCOUNTS
+  personal:            10% used (resets in 6d 18h) *
+…
+Click to expand
+Clean. The two stale agents are gone. One last orphan — untracked-Feb10-1438 — which is the old session from before the crash:
+# Find the last orphan
+$ python3 << 'EOF'
+import sqlite3, os
+db_path = os.path.expanduser('~/.orch/state.db')
+conn = sqlite3.connect(db_path)
+conn.row_factory = sqlite3.Row
+rows = conn.execute("SELECT workspace_name, beads_id, session_id FROM agents WHERE is_completed = 0 AND is_abandoned = 0").fetchall()
+for r in rows:
+    print(f"  {r['workspace_name']}  beads={r['beads_id']}  session={r['session_id']}")
+conn.close()
+EOF
+It's not in the state DB — it's a truly untracked session only visible from OpenCode's side. That remaining session file is ses_3b64b6110ffeJCUZn5N5Klh6xu which is actually your current orchestrator session. Let's leave that alone.
+# Verify only current session remains
+$ ls ~/.local/share/opencode/storage/session/b402cf59063a1531925b8178d00732bdaacf3424/
+ses_3b64b6110ffeJCUZn5N5Klh6xu.json
+All clean. Here's the final state:
+- Agents: 0 active (all stale/orphan agents cleaned up)
+- OpenCode sessions: 1 remaining (your current TUI session)
+- OAuth: ✅ Both Anthropic and OpenAI
+- Model config: gpt-5.3-codex everywhere
+- Model verified: ✅ Spawned and got tokens
+- Daemon: Running, 1 ready issue available
+- Account usage: 10% (plenty of room)
+System is ready to go.
+▣  Orchestrator · claude-opus-4-6 · 2m 16s
+Orchestrator 
+Claude Opus 4.6
+Anthropic
+ctrl+t variants
+tab agents
+alt+x p commands
+* setting a 30 minute reap timer that destroys my primary UI is such a careless and thoughtless thing for an ai orchestrator to do...
