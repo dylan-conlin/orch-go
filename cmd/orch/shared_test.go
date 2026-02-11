@@ -28,8 +28,13 @@ func TestCurrentProjectDirPrefersWorkingDirectory(t *testing.T) {
 }
 
 func TestFormatBeadsIDForDisplay(t *testing.T) {
-	// Note: These tests use specific timestamps and expect local timezone conversion
-	// Timestamp 1768090360 = Sat Jan 10 16:12:40 PST 2026
+	// Helper to compute the expected display string from a unix timestamp,
+	// matching the implementation's use of time.Unix() (local timezone).
+	expectedFromTS := func(ts int64) string {
+		tm := time.Unix(ts, 0)
+		return "untracked-" + tm.Format("Jan02") + "-" + tm.Format("1504")
+	}
+
 	tests := []struct {
 		name     string
 		input    string
@@ -43,12 +48,12 @@ func TestFormatBeadsIDForDisplay(t *testing.T) {
 		{
 			name:     "untracked ID with valid timestamp",
 			input:    "orch-go-untracked-1768090360",
-			expected: "untracked-Jan10-1612", // Jan 10, 2026 16:12 PST
+			expected: expectedFromTS(1768090360),
 		},
 		{
 			name:     "untracked ID with different project",
 			input:    "my-project-untracked-1768090360",
-			expected: "untracked-Jan10-1612",
+			expected: expectedFromTS(1768090360),
 		},
 		{
 			name:     "malformed untracked ID (too few parts)",
@@ -68,7 +73,7 @@ func TestFormatBeadsIDForDisplay(t *testing.T) {
 		{
 			name:     "untracked with Unix epoch (timestamp 0)",
 			input:    "test-untracked-0",
-			expected: "untracked-Dec31-1600", // Dec 31, 1969 16:00 PST (epoch in PST)
+			expected: expectedFromTS(0),
 		},
 	}
 

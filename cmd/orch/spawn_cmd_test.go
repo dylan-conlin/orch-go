@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -395,10 +397,12 @@ func TestNoTrackWaitHints(t *testing.T) {
 			wantResolved: false,
 		},
 		{
-			name:         "untracked id returns wait command and display alias",
-			beadsID:      "orch-go-untracked-1768090360",
-			noTrack:      true,
-			wantHandle:   "orch-go-untracked-1768090360 (status: untracked-Jan10-1612)",
+			name:    "untracked id returns wait command and display alias",
+			beadsID: "orch-go-untracked-1768090360",
+			noTrack: true,
+			wantHandle: fmt.Sprintf("orch-go-untracked-1768090360 (status: untracked-%s-%s)",
+				time.Unix(1768090360, 0).Format("Jan02"),
+				time.Unix(1768090360, 0).Format("1504")),
 			wantWaitCmd:  "orch wait orch-go-untracked-1768090360",
 			wantResolved: true,
 		},

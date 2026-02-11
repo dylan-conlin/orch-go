@@ -107,7 +107,8 @@ func TestNextIssue_InProgressWithNoSession_IsSpawnable(t *testing.T) {
 				{ID: "proj-2", Title: "Open", Priority: 1, IssueType: "feature", Status: "open", Labels: []string{"triage:ready"}},
 			}, nil
 		},
-		Config: Config{Label: "triage:ready"},
+		hasSessionFunc: func(string) bool { return false },
+		Config:         Config{Label: "triage:ready"},
 	}
 
 	issue, err := d.NextIssue()
@@ -342,6 +343,7 @@ func TestDaemon_Preview_ShowsRejectionReasons(t *testing.T) {
 				{ID: "proj-5", Title: "Spawnable", Priority: 4, IssueType: "bug", Status: "open"},
 			}, nil
 		},
+		hasSessionFunc: func(string) bool { return false },
 	}
 
 	result, err := d.Preview()

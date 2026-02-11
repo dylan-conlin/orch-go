@@ -89,7 +89,7 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 		// Skip in_progress issues ONLY if there's an active session working on them.
 		// If no active session exists, the user may have marked it in_progress to release it TO the daemon.
 		if issue.Status == "in_progress" {
-			if HasExistingSessionForBeadsID(issue.ID) {
+			if d.hasExistingSession(issue.ID) {
 				if d.Config.Verbose {
 					fmt.Printf("  DEBUG: Skipping %s (in_progress with active session)\n", issue.ID)
 				}
@@ -372,7 +372,7 @@ func (d *Daemon) checkRejectionReasonForProjectWithEpicChildren(issue Issue, pro
 
 	// Check for in_progress status - only reject if there's an active session
 	if issue.Status == "in_progress" {
-		if HasExistingSessionForBeadsID(issue.ID) {
+		if d.hasExistingSession(issue.ID) {
 			return "status is in_progress (active session found)"
 		}
 		// No active session - issue was likely released to daemon, spawnable
@@ -399,6 +399,16 @@ func (d *Daemon) checkRejectionReasonForProjectWithEpicChildren(issue Issue, pro
 		return fmt.Sprintf("in grace period (%s remaining)", remaining.Round(time.Second))
 	}
 	return "" // Spawnable
+}
+
+// hasExistingSession checks if there's an active OpenCode session for the given beads ID.
+// Uses the injectable hasSessionFunc if set (for testing), otherwise falls back to the
+// package-level HasExistingSessionForBeadsID function.
+func (d *Daemon) hasExistingSession(beadsID string) bool {
+	if d.hasSessionFunc != nil {
+		return d.hasSessionFunc(beadsID)
+	}
+	return HasExistingSessionForBeadsID(beadsID)
 }
 
 func (d *Daemon) blockers(issueID, projectPath string) ([]string, error) {

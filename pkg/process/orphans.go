@@ -11,92 +11,133 @@ import (
 // OrphanProcess represents a bun process that may be orphaned.
 type OrphanProcess struct {
 	PID           int
+	PPID          int    // Parent process ID
 	Command       string // Full command line
 	WorkspaceName string // Extracted workspace name from --title arg (old run --attach format)
 	BeadsID       string // Extracted beads ID from [beads-id] in title (old run --attach format)
 	SessionID     string // Extracted session ID from --session arg (new attach format)
 }
 
-// isOpenCodeAgentLine checks if a ps output line represents an OpenCode agent process.
-// OpenCode processes have a distinctive signature:
-//
-//	bun run --conditions=browser ./src/index.ts <args>
-//
-// The --conditions=browser flag is OpenCode-specific and prevents false matches
-// against other bun projects that may also have a src/index.ts file.
-// Excludes the OpenCode server process (which has "serve --port").
-func isOpenCodeAgentLine(line string) bool {
-	// Require both --conditions=browser (OpenCode-specific) and src/index.ts
-	if !strings.Contains(line, "--conditions=browser") || !strings.Contains(line, "src/index.ts") {
-		return false
-	}
-	// Exclude the OpenCode server process
-	if strings.Contains(line, "serve --port") {
-		return false
-	}
-	return true
+// isOpenCodeProcess checks if a ps output line represents any OpenCode process
+// (agent, server, or TUI). Matches on --conditions=browser + src/index.ts.
+func isOpenCodeProcess(line string) bool {
+	return strings.Contains(line, "--conditions=browser") && strings.Contains(line, "src/index.ts")
 }
 
-// FindAgentProcesses discovers all bun processes that are OpenCode agent processes.
-// These are identified by having "--conditions=browser" AND "src/index.ts" in their
-// command line (the OpenCode-specific entrypoint pattern), while excluding the
-// OpenCode server process (which has "serve --port").
+// isOpenCodeServer checks if a ps output line is the OpenCode server process.
+func isOpenCodeServer(line string) bool {
+	return isOpenCodeProcess(line) && strings.Contains(line, "serve --port")
+}
+
+// isReapableAgent determines if an OpenCode process is a reapable agent
+// (as opposed to the TUI or server). Uses three signals:
 //
-// The "--conditions=browser" flag is OpenCode-specific and distinguishes OpenCode
-// processes from other bun projects that may also have a src/index.ts file.
+//  1. Has "attach" in cmdline → explicitly an agent process (attach mode)
+//  2. PPID == serverPID → headless agent spawned by the server
+//  3. PPID == 1 → orphan whose parent (server) already died
 //
-// Covers both old format (opencode run --attach) and new format (opencode attach).
-// Returns all agent processes regardless of whether they are orphaned or not.
-// The caller is responsible for determining which are orphans by cross-referencing
-// with active OpenCode sessions.
+// The TUI has none of these: no "attach", PPID is the user's shell, not the server.
+func isReapableAgent(line string, ppid, serverPID int) bool {
+	// Attach-mode agents always have "attach" in their command line
+	if strings.Contains(line, "attach") {
+		return true
+	}
+	// Headless agents are direct children of the OpenCode server
+	if serverPID > 0 && ppid == serverPID {
+		return true
+	}
+	// Orphans whose parent died get reparented to PID 1 (init/launchd)
+	if ppid == 1 {
+		return true
+	}
+	return false
+}
+
+// FindAgentProcesses discovers reapable OpenCode agent processes.
+//
+// Uses a two-pass approach:
+//  1. Find the OpenCode server PID (if running)
+//  2. Identify agent processes using PPID-based classification
+//
+// A process is a reapable agent if it matches the OpenCode pattern AND:
+//   - Has "attach" in cmdline (attach-mode agent), OR
+//   - Is a child of the OpenCode server (headless agent), OR
+//   - Has PPID 1 (orphan — server already died, reparented to init/launchd)
+//
+// This correctly excludes the TUI, which is a child of the user's shell.
 func FindAgentProcesses() ([]OrphanProcess, error) {
-	// Use ps to list all bun processes with their full command line
-	// -e: all processes, -o: custom output format
-	cmd := exec.Command("ps", "-eo", "pid,args")
+	// Include PPID in output for parent-based classification
+	cmd := exec.Command("ps", "-eo", "pid,ppid,args")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to run ps: %w", err)
 	}
 
-	var agents []OrphanProcess
-
 	lines := strings.Split(string(output), "\n")
+
+	// Pass 1: Find the OpenCode server PID
+	serverPID := 0
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if isOpenCodeServer(line) {
+			fields := strings.Fields(line)
+			if len(fields) >= 1 {
+				if pid, err := strconv.Atoi(fields[0]); err == nil {
+					serverPID = pid
+				}
+			}
+			break
+		}
+	}
+
+	// Pass 2: Find reapable agent processes
+	var agents []OrphanProcess
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
 
-		if !isOpenCodeAgentLine(line) {
+		if !isOpenCodeProcess(line) || isOpenCodeServer(line) {
 			continue
 		}
 
-		// Parse PID (first field)
+		// Parse PID and PPID (first two fields)
 		fields := strings.Fields(line)
-		if len(fields) < 2 {
+		if len(fields) < 3 {
 			continue
 		}
 		pid, err := strconv.Atoi(fields[0])
 		if err != nil {
 			continue
 		}
+		ppid, err := strconv.Atoi(fields[1])
+		if err != nil {
+			continue
+		}
 
-		fullCmd := strings.Join(fields[1:], " ")
+		fullCmd := strings.Join(fields[2:], " ")
+
+		if !isReapableAgent(fullCmd, ppid, serverPID) {
+			continue
+		}
 
 		agent := OrphanProcess{
 			PID:     pid,
+			PPID:    ppid,
 			Command: fullCmd,
 		}
 
 		// Extract workspace name from --title argument (old run --attach format)
 		if titleIdx := strings.Index(fullCmd, "--title "); titleIdx != -1 {
 			rest := fullCmd[titleIdx+len("--title "):]
-			// Title is followed by either [beads-id] or another flag
 			parts := strings.Fields(rest)
 			if len(parts) > 0 {
 				agent.WorkspaceName = parts[0]
 			}
-			// Extract beads ID from [beads-id] bracket notation
 			if bracketIdx := strings.Index(rest, "["); bracketIdx != -1 {
 				if endIdx := strings.Index(rest[bracketIdx:], "]"); endIdx != -1 {
 					agent.BeadsID = rest[bracketIdx+1 : bracketIdx+endIdx]

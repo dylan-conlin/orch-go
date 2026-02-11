@@ -409,6 +409,9 @@ type Daemon struct {
 	// Used to determine when server recovery should run (once per daemon start).
 	serverRecoveryState *ServerRecoveryState
 
+	// hasSessionFunc is used for testing - allows mocking session dedup check.
+	// Defaults to HasExistingSessionForBeadsID when nil.
+	hasSessionFunc func(beadsID string) bool
 	// listIssuesFunc is used for testing - allows mocking bd list
 	listIssuesFunc func() ([]Issue, error)
 	// spawnFunc is used for testing - allows mocking orch work
