@@ -1,18 +1,25 @@
 {
   "skips": [
     {
-      "gate": "verification_spec",
-      "reason": "auto GPT completion profile: known gate incompatibilities",
-      "set_at": "2026-02-09T21:19:30.7346-08:00",
-      "set_by": "orch-go-g163h",
-      "expires_at": "2026-02-09T23:19:30.7346-08:00"
+      "gate": "commit_evidence",
+      "reason": "GPT E2E validation test - trivial task, GPT failed to commit but OAuth and model routing confirmed working",
+      "set_at": "2026-02-10T17:56:27.032477-08:00",
+      "set_by": "orch-go-21519",
+      "expires_at": "2026-02-10T19:56:27.032477-08:00"
     },
     {
-      "gate": "dashboard_health",
-      "reason": "Dashboard API returning HTML - pre-existing issue, agent only changed frontend svelte component",
-      "set_at": "2026-02-09T21:19:48.535891-08:00",
-      "set_by": "orch-go-g163h",
-      "expires_at": "2026-02-09T23:19:48.535891-08:00"
+      "gate": "model_connection",
+      "reason": "Investigation-only session, no code changes — model probe and verification spec not applicable",
+      "set_at": "2026-02-10T19:05:00.583049-08:00",
+      "set_by": "orch-go-21520",
+      "expires_at": "2026-02-10T21:05:00.583049-08:00"
+    },
+    {
+      "gate": "verification_spec",
+      "reason": "Investigation-only session, no code changes — model probe and verification spec not applicable",
+      "set_at": "2026-02-10T19:05:00.665922-08:00",
+      "set_by": "orch-go-21520",
+      "expires_at": "2026-02-10T21:05:00.665922-08:00"
     }
   ]
 }
