@@ -415,3 +415,122 @@ func TestCheckLivenessNonInteractiveSuggestsSkipFlag(t *testing.T) {
 		t.Fatalf("expected error to suggest --skip-agent-running, got: %v", err)
 	}
 }
+
+// TestOrchestratorOverrideCoreGate verifies that orchestrator-override allows
+// bypassing a single core gate while still running other gates.
+func TestOrchestratorOverrideCoreGate(t *testing.T) {
+	tests := []struct {
+		name          string
+		gateName      string
+		reason        string
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name:        "valid phase_complete override",
+			gateName:    verify.GatePhaseComplete,
+			reason:      "Agent died after commit but before reporting phase",
+			expectError: false,
+		},
+		{
+			name:        "valid commit_evidence override",
+			gateName:    verify.GateCommitEvidence,
+			reason:      "Manual verification confirmed work was landed",
+			expectError: false,
+		},
+		{
+			name:          "missing reason",
+			gateName:      verify.GatePhaseComplete,
+			reason:        "",
+			expectError:   true,
+			errorContains: "reason is required",
+		},
+		{
+			name:          "short reason",
+			gateName:      verify.GatePhaseComplete,
+			reason:        "short",
+			expectError:   true,
+			errorContains: "at least 10 characters",
+		},
+		{
+			name:          "invalid gate name",
+			gateName:      "nonexistent_gate",
+			reason:        "Valid reason with enough characters",
+			expectError:   true,
+			errorContains: "unknown gate",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := SkipConfig{
+				OrchestratorOverride: tt.gateName,
+				Reason:               tt.reason,
+			}
+
+			err := validateSkipFlags(config)
+			if tt.expectError {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if tt.errorContains != "" && !strings.Contains(err.Error(), tt.errorContains) {
+					t.Fatalf("expected error containing %q, got: %v", tt.errorContains, err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestOrchestratorOverrideOnlySkipsNamedGate verifies that orchestrator-override
+// only skips the specified gate and other gates still run.
+func TestOrchestratorOverrideOnlySkipsNamedGate(t *testing.T) {
+	config := SkipConfig{
+		OrchestratorOverride: verify.GatePhaseComplete,
+		Reason:               "Agent died after commit but before reporting phase",
+	}
+
+	// Should skip phase_complete
+	if !config.shouldSkipGate(verify.GatePhaseComplete) {
+		t.Error("expected phase_complete to be skipped")
+	}
+
+	// Should NOT skip other core gates
+	if config.shouldSkipGate(verify.GateCommitEvidence) {
+		t.Error("expected commit_evidence NOT to be skipped")
+	}
+	if config.shouldSkipGate(verify.GateSynthesis) {
+		t.Error("expected synthesis NOT to be skipped")
+	}
+	if config.shouldSkipGate(verify.GateTestEvidence) {
+		t.Error("expected test_evidence NOT to be skipped")
+	}
+	if config.shouldSkipGate(verify.GateBuild) {
+		t.Error("expected build NOT to be skipped")
+	}
+}
+
+// TestOrchestratorOverrideDistinctFromForce verifies that orchestrator-override
+// is distinct from --force (which skips everything).
+func TestOrchestratorOverrideDistinctFromForce(t *testing.T) {
+	overrideConfig := SkipConfig{
+		OrchestratorOverride: verify.GatePhaseComplete,
+		Reason:               "Agent died after commit",
+	}
+
+	// Orchestrator override should only skip the named gate
+	skippedGates := overrideConfig.skippedGates()
+	if len(skippedGates) != 1 {
+		t.Fatalf("expected 1 skipped gate, got %d: %v", len(skippedGates), skippedGates)
+	}
+	if skippedGates[0] != verify.GatePhaseComplete {
+		t.Fatalf("expected phase_complete to be skipped, got %s", skippedGates[0])
+	}
+
+	// --force skips all gates (tested elsewhere, but verifying the distinction)
+	// With force mode, completeForce is set to true and verification returns early
+	// without running individual gate checks
+}
