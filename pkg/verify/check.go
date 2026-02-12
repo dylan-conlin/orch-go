@@ -92,9 +92,9 @@ var CoreGates = map[string]bool{
 // mode enables rapid iteration for trusted agents.
 //
 // Demoted from Core (Phase 2 simplification):
-// - build, model_connection, verification_spec, visual_verify
-//   These are valuable but not essential — a passing build doesn't guarantee
-//   correctness, and visual/model checks are skill-specific.
+//   - build, model_connection, verification_spec, visual_verify
+//     These are valuable but not essential — a passing build doesn't guarantee
+//     correctness, and visual/model checks are skill-specific.
 var QualityGates = map[string]bool{
 	GateBuild:              true,
 	GateModelConnection:    true,
@@ -433,7 +433,7 @@ func verifyWorkerGates(result *VerificationResult, beadsID, workspacePath, proje
 	}
 
 	// Verify git diff against SYNTHESIS claims
-	checkGitDiff(result, workspacePath, projectDir)
+	checkGitDiff(result, workspacePath, projectDir, skillName)
 
 	// Verify dashboard health for dashboard-touching changes
 	verifyDashboardHealthGate(result, workspacePath, projectDir, serverURL)
@@ -523,7 +523,13 @@ func checkTestEvidence(result *VerificationResult, beadsID, workspacePath, proje
 }
 
 // checkGitDiff verifies git diff against SYNTHESIS claims.
-func checkGitDiff(result *VerificationResult, workspacePath, projectDir string) {
+func checkGitDiff(result *VerificationResult, workspacePath, projectDir, skillName string) {
+	if SkillClassForName(skillName) == SkillClassKnowledge {
+		result.Warnings = append(result.Warnings,
+			"skill '"+skillName+"' is knowledge-producing - git diff verification not required")
+		return
+	}
+
 	gitDiffResult := VerifyGitDiffForCompletion(workspacePath, projectDir)
 	if gitDiffResult == nil {
 		return

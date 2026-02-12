@@ -5,7 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 func TestParsePhaseFromComments(t *testing.T) {
@@ -1865,6 +1867,61 @@ func TestPhaseCompleteErrorMessageIncludesSkipFlag(t *testing.T) {
 	}
 	if !skipFlagFound {
 		t.Errorf("expected error to include --skip-phase-complete guidance, got errors: %v", result.Errors)
+	}
+}
+
+func TestCheckGitDiff_SkipsKnowledgeSkill(t *testing.T) {
+	result := &VerificationResult{Passed: true}
+
+	checkGitDiff(result, "/unused/workspace", "/unused/project", "investigation")
+
+	if !result.Passed {
+		t.Fatal("expected result to remain passed")
+	}
+	if len(result.GateResults) != 0 {
+		t.Fatalf("expected git_diff gate to be skipped, got gate results: %+v", result.GateResults)
+	}
+	if len(result.GatesFailed) != 0 {
+		t.Fatalf("expected no failed gates, got: %v", result.GatesFailed)
+	}
+	if len(result.Warnings) == 0 || !strings.Contains(result.Warnings[0], "knowledge-producing") {
+		t.Fatalf("expected knowledge-producing skip warning, got: %v", result.Warnings)
+	}
+}
+
+func TestCheckGitDiff_RunsForCodeSkill(t *testing.T) {
+	projectDir := t.TempDir()
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace", "test-agent")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+
+	if err := spawn.WriteSpawnTime(workspaceDir, time.Now()); err != nil {
+		t.Fatalf("failed to write spawn time: %v", err)
+	}
+
+	synthesisContent := `# Session Synthesis
+
+## Delta (What Changed)
+
+### Files Modified
+- ` + "`pkg/verify/check.go`" + ` - Updated gate behavior
+`
+	if err := os.WriteFile(filepath.Join(workspaceDir, "SYNTHESIS.md"), []byte(synthesisContent), 0644); err != nil {
+		t.Fatalf("failed to write SYNTHESIS.md: %v", err)
+	}
+
+	result := &VerificationResult{Passed: true}
+	checkGitDiff(result, workspaceDir, projectDir, "feature-impl")
+
+	if len(result.GateResults) != 1 {
+		t.Fatalf("expected git_diff gate to run, got gate results: %+v", result.GateResults)
+	}
+	if result.GateResults[0].Gate != GateGitDiff {
+		t.Fatalf("expected gate %q, got %q", GateGitDiff, result.GateResults[0].Gate)
+	}
+	if !result.GateResults[0].Passed {
+		t.Fatalf("expected git_diff gate to pass, got: %+v", result.GateResults[0])
 	}
 }
 
