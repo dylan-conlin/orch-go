@@ -259,6 +259,49 @@ func TestSetupIssueTrackingNoTrackHappyPath(t *testing.T) {
 	}
 }
 
+func TestShouldBlockPhaseCompleteSpawn(t *testing.T) {
+	tests := []struct {
+		name          string
+		issueStatus   string
+		phaseComplete bool
+		want          bool
+	}{
+		{
+			name:          "open issue with stale phase complete allows respawn",
+			issueStatus:   "open",
+			phaseComplete: true,
+			want:          false,
+		},
+		{
+			name:          "open status is case insensitive",
+			issueStatus:   "Open",
+			phaseComplete: true,
+			want:          false,
+		},
+		{
+			name:          "in progress issue with phase complete stays blocked",
+			issueStatus:   "in_progress",
+			phaseComplete: true,
+			want:          true,
+		},
+		{
+			name:          "non complete phase never blocks",
+			issueStatus:   "in_progress",
+			phaseComplete: false,
+			want:          false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldBlockPhaseCompleteSpawn(tt.issueStatus, tt.phaseComplete)
+			if got != tt.want {
+				t.Fatalf("shouldBlockPhaseCompleteSpawn(%q, %v) = %v, want %v", tt.issueStatus, tt.phaseComplete, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestGatherContextSkipArtifactCheck(t *testing.T) {
 	restore := saveSpawnPipelineGlobals()
 	defer restore()

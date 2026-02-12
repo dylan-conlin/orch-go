@@ -311,7 +311,7 @@ func (p *spawnPipeline) setupIssueTracking() error {
 			if issue.Status == "closed" {
 				return fmt.Errorf("issue %s is already closed", p.beadsID)
 			}
-			if complete, err := verify.IsPhaseComplete(p.beadsID); err == nil && complete {
+			if complete, err := verify.IsPhaseComplete(p.beadsID); err == nil && shouldBlockPhaseCompleteSpawn(issue.Status, complete) {
 				return fmt.Errorf("issue %s has Phase: Complete but is not closed. Run 'orch complete %s' first", p.beadsID, p.beadsID)
 			}
 			if issue.Status == "in_progress" {
@@ -368,6 +368,14 @@ func (p *spawnPipeline) setupIssueTracking() error {
 	}
 
 	return nil
+}
+
+func shouldBlockPhaseCompleteSpawn(issueStatus string, phaseComplete bool) bool {
+	if !phaseComplete {
+		return false
+	}
+
+	return !strings.EqualFold(strings.TrimSpace(issueStatus), "open")
 }
 
 // gatherContext gathers KB context and performs gap analysis.

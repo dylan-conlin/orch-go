@@ -4,22 +4,21 @@
 
 version: 1
 scope:
-    beads_id: orch-go-f7ak5
-    workspace: og-debug-gpt-headless-agents-11feb-8b60
+    beads_id: orch-go-628uc
+    workspace: og-debug-fix-spawn-phase-12feb-51dd
     skill: systematic-debugging
 verification:
-    - id: reproduce-race-regression
+    - id: verify-regression-open-stale-phase
       method: cli_smoke
       tier: light
-      command: go test ./pkg/cleanup -run TestReconcileStateChecksSessionEndpointBeforeAbandon -v
+      command: go test ./cmd/orch -run TestShouldBlockPhaseCompleteSpawn -count=1
       cwd: $GIT_WORKTREE_DIR
       expect:
         exit_code: 0
-    - id: verify-cleanup-suite
+    - id: verify-existing-no-track-path
       method: cli_smoke
       tier: light
-      command: go test ./pkg/cleanup
+      command: go test ./cmd/orch -run TestSetupIssueTrackingNoTrackHappyPath -count=1
       cwd: $GIT_WORKTREE_DIR
       expect:
         exit_code: 0
-manual_checks: []
