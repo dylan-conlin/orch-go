@@ -19,7 +19,7 @@ SOURCE_DIR ?= $(shell pwd)
 GIT_HASH ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.sourceDir=$(SOURCE_DIR) -X main.gitHash=$(GIT_HASH)"
 
-.PHONY: all build smoke release-stable clean test install install-restart hooks-install cross-compile-linux fmt lint docs version
+.PHONY: all build smoke release-stable clean test install install-safe install-restart hooks-install cross-compile-linux fmt lint docs version
 
 # Default target
 all: build
@@ -51,18 +51,12 @@ test:
 	@echo "Running tests..."
 	go test -v ./...
 
-# Run fast smoke suite against built binary
-smoke: build
-	@echo "Running smoke tests..."
-	./$(BUILD_DIR)/$(BINARY_NAME) version
-	./$(BUILD_DIR)/$(BINARY_NAME) status --json >/dev/null
-	./$(BUILD_DIR)/$(BINARY_NAME) doctor --check >/dev/null
-	go test -run 'TestSmoke' ./cmd/orch/ ./pkg/...
-	@echo "Smoke tests passed."
+# Install to ~/bin (symlink to build output) with smoke gate
+# Keep `install` as the familiar entrypoint, but require smoke first.
+install: install-safe
 
-# Install to ~/bin (symlink to build output)
-# This makes `make build` automatically update the human-accessible CLI
-install: build
+# Safe install path: smoke must pass before binary promotion
+install-safe: smoke
 	@echo "Installing $(BINARY_NAME) to $(INSTALL_DIR) (symlink)..."
 	@mkdir -p $(INSTALL_DIR)
 	@# Codesign the build output (required for macOS)
@@ -143,7 +137,8 @@ help:
 	@echo "  smoke                  - Build and run lightweight binary smoke checks"
 	@echo "  release-stable         - Promote smoke-tested binary to ~/.orch/bin/orch-stable"
 	@echo "  test                   - Run tests"
-	@echo "  install                - Install to ~/bin (symlink to build output)"
+	@echo "  install                - Run smoke + install to ~/bin"
+	@echo "  install-safe           - Run smoke + install to ~/bin"
 	@echo "  install-restart        - Install and restart daemon"
 	@echo "  hooks-install          - Install bd hooks + project pre-commit guards"
 	@echo "  cross-compile-linux    - Build Linux binaries (bd, orch, kb) for Docker"
