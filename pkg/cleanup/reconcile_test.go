@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -142,6 +143,68 @@ func TestReconcileStateDryRunDoesNotMutate(t *testing.T) {
 	assertAgentState(t, verifyDB, "ws-stale", false, false)
 }
 
+func TestReconcileStateChecksSessionEndpointBeforeAbandon(t *testing.T) {
+	now := time.Now().UnixMilli()
+
+	dbPath := filepath.Join(t.TempDir(), "state.db")
+	db, err := state.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open state DB: %v", err)
+	}
+	if err := db.InsertAgent(&state.Agent{
+		WorkspaceName: "ws-race",
+		BeadsID:       "orch-go-race",
+		SessionID:     "ses_race",
+		Mode:          "headless",
+		ProjectDir:    t.TempDir(),
+		SpawnTime:     now,
+	}); err != nil {
+		t.Fatalf("insert state row: %v", err)
+	}
+	db.Close()
+
+	server := newSessionServerWithDetails(
+		[]map[string]any{},
+		map[string]map[string]any{
+			"ses_race": {
+				"id":    "ses_race",
+				"title": "Worker [orch-go-race]",
+				"time": map[string]any{
+					"created": now,
+					"updated": now,
+				},
+			},
+		},
+	)
+	defer server.Close()
+
+	result, err := ReconcileState(ReconcileStateOptions{
+		ServerURL: server.URL,
+		DBPath:    dbPath,
+		Quiet:     true,
+	})
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	if result.LiveRows != 1 {
+		t.Fatalf("LiveRows = %d, want 1", result.LiveRows)
+	}
+	if result.StaleRows != 0 {
+		t.Fatalf("StaleRows = %d, want 0", result.StaleRows)
+	}
+	if result.AbandonedRows != 0 {
+		t.Fatalf("AbandonedRows = %d, want 0", result.AbandonedRows)
+	}
+
+	verifyDB, err := state.Open(dbPath)
+	if err != nil {
+		t.Fatalf("reopen state DB: %v", err)
+	}
+	defer verifyDB.Close()
+	assertAgentState(t, verifyDB, "ws-race", false, false)
+}
+
 func TestReconcileStateUpdatesRegistryBySessionLiveness(t *testing.T) {
 	now := time.Now().UnixMilli()
 	registryPath := filepath.Join(t.TempDir(), "sessions.json")
@@ -209,13 +272,42 @@ func TestReconcileStateUpdatesRegistryBySessionLiveness(t *testing.T) {
 }
 
 func newSessionServer(payload []map[string]any) *httptest.Server {
+	return newSessionServerWithDetails(payload, nil)
+}
+
+func newSessionServerWithDetails(payload []map[string]any, details map[string]map[string]any) *httptest.Server {
+	sessionsByID := make(map[string]map[string]any)
+	for _, item := range payload {
+		id, _ := item["id"].(string)
+		if id != "" {
+			sessionsByID[id] = item
+		}
+	}
+	for id, item := range details {
+		sessionsByID[id] = item
+	}
+
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/session" {
-			http.NotFound(w, r)
+		if r.URL.Path == "/session" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(payload)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(payload)
+
+		if strings.HasPrefix(r.URL.Path, "/session/") {
+			sessionID := strings.TrimPrefix(r.URL.Path, "/session/")
+			item, ok := sessionsByID[sessionID]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(item)
+			return
+		}
+
+		http.NotFound(w, r)
+		return
 	}))
 }
 

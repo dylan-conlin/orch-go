@@ -78,7 +78,7 @@ func ReconcileState(opts ReconcileStateOptions) (*ReconcileStateResult, error) {
 
 	if dbPath != "" {
 		if _, err := os.Stat(dbPath); err == nil {
-			if err := reconcileStateDBRows(dbPath, liveSessionIDs, liveTitles, opts.DryRun, result); err != nil {
+			if err := reconcileStateDBRows(dbPath, liveSessionIDs, liveTitles, client, state.DefaultMaxIdleTime, opts.DryRun, result); err != nil {
 				return nil, err
 			}
 		} else if !os.IsNotExist(err) {
@@ -152,6 +152,8 @@ func reconcileStateDBRows(
 	dbPath string,
 	liveSessionIDs map[string]bool,
 	liveTitles []string,
+	client opencode.ClientInterface,
+	maxIdle time.Duration,
 	dryRun bool,
 	result *ReconcileStateResult,
 ) error {
@@ -175,6 +177,10 @@ func reconcileStateDBRows(
 
 		result.ReconcilableRows++
 		if isStateRowLive(row, liveSessionIDs, liveTitles) {
+			result.LiveRows++
+			continue
+		}
+		if isStateRowLiveBySessionLookup(row, liveSessionIDs, client, maxIdle) {
 			result.LiveRows++
 			continue
 		}
@@ -235,6 +241,39 @@ func isStateRowLive(row *state.Agent, liveSessionIDs map[string]bool, liveTitles
 		}
 	}
 	return false
+}
+
+func isStateRowLiveBySessionLookup(row *state.Agent, liveSessionIDs map[string]bool, client opencode.ClientInterface, maxIdle time.Duration) bool {
+	sessionID := strings.TrimSpace(row.SessionID)
+	if sessionID == "" || client == nil {
+		return false
+	}
+
+	if isLive, ok := liveSessionIDs[sessionID]; ok {
+		return isLive
+	}
+
+	sessionInfo, err := client.GetSession(sessionID)
+	if err != nil || sessionInfo == nil {
+		liveSessionIDs[sessionID] = false
+		return false
+	}
+
+	isLive := isSessionWithinIdleWindow(sessionInfo, maxIdle)
+	liveSessionIDs[sessionID] = isLive
+	return isLive
+}
+
+func isSessionWithinIdleWindow(sessionInfo *opencode.Session, maxIdle time.Duration) bool {
+	referenceMillis := sessionInfo.Time.Updated
+	if referenceMillis <= 0 {
+		referenceMillis = sessionInfo.Time.Created
+	}
+	if referenceMillis <= 0 {
+		return true
+	}
+	updatedAt := time.Unix(referenceMillis/1000, 0)
+	return time.Since(updatedAt) <= maxIdle
 }
 
 func computeOpenMinusLive(activeRows []*state.Agent, liveSessionIDs map[string]bool, liveTitles []string) int {

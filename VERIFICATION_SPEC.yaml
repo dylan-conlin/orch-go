@@ -4,21 +4,22 @@
 
 version: 1
 scope:
-    beads_id: orch-go-49026
-    workspace: og-feat-fix-gpt-agents-11feb-981f
-    skill: feature-impl
+    beads_id: orch-go-f7ak5
+    workspace: og-debug-gpt-headless-agents-11feb-8b60
+    skill: systematic-debugging
 verification:
-    - id: verify-build
+    - id: reproduce-race-regression
       method: cli_smoke
       tier: light
-      command: go build ./...
+      command: go test ./pkg/cleanup -run TestReconcileStateChecksSessionEndpointBeforeAbandon -v
       cwd: $GIT_WORKTREE_DIR
       expect:
         exit_code: 0
-    - id: verify-test
+    - id: verify-cleanup-suite
       method: cli_smoke
       tier: light
-      command: go test ./...
+      command: go test ./pkg/cleanup
       cwd: $GIT_WORKTREE_DIR
       expect:
         exit_code: 0
+manual_checks: []
