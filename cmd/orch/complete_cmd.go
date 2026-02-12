@@ -47,9 +47,9 @@ var (
 	completeAutoCloseParent  bool // Auto-close parent epic when all children complete
 	completeBatch            bool // Batch mode: run only Tier 1 (core) gates
 
-	// Orchestrator override: elevated privilege to bypass a single gate (including core gates)
-	// Requires --reason with explicit justification. Distinct from --force (which skips everything).
-	completeOrchestratorOverride string // Gate name to override (e.g., "phase_complete")
+	// Orchestrator override: elevated privilege to bypass gates (including core gates)
+	// Accepts comma-separated gate names. Requires --reason with explicit justification.
+	completeOrchestratorOverride string // Comma-separated gate names to override (e.g., "phase_complete,test_evidence")
 
 	// Targeted skip flags (replace blanket --force)
 	// Each requires completeSkipReason to be set (min 10 chars)
@@ -118,9 +118,9 @@ Core gates (phase_complete, commit_evidence, synthesis, test_evidence, git_diff)
 CANNOT be skipped via --skip-* flags — they block completion unconditionally.
 
 ORCHESTRATOR OVERRIDE (elevated privilege):
-Use --orchestrator-override to bypass a single gate (including core gates) with
-explicit justification:
-  --orchestrator-override <gate-name> --reason "<justification>"
+Use --orchestrator-override to bypass one or more gates (including core gates) with
+explicit justification. Accepts comma-separated gate names:
+  --orchestrator-override <gate-name>[,<gate-name>,...] --reason "<justification>"
 
 Example use case: Agent session died after committing work but before reporting
 Phase: Complete. Orchestrator can override phase_complete gate while still
@@ -129,8 +129,11 @@ running other core gates (build, test_evidence, commit_evidence).
   orch complete proj-123 --orchestrator-override phase_complete \
     --reason "Agent died after commit, verified work via git log"
 
+  orch complete proj-123 --orchestrator-override test_evidence,git_diff,verification_spec \
+    --reason "Docs-only change with no testable behavior"
+
 Orchestrator override:
-  - Only skips the single named gate
+  - Only skips the named gate(s)
   - Requires --reason (min 10 chars)
   - Logs override event to agentlog with justification
   - Distinct from --force (which skips everything)
@@ -214,8 +217,8 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeAutoCloseParent, "auto-close-parent", false, "Automatically close parent epic when completing the last open child")
 	completeCmd.Flags().BoolVar(&completeBatch, "batch", false, "Batch mode: run only Tier 1 (core) gates, skip Tier 2 (quality) gates")
 
-	// Orchestrator override: elevated privilege to bypass a single gate with justification
-	completeCmd.Flags().StringVar(&completeOrchestratorOverride, "orchestrator-override", "", "Gate name to override (e.g., 'phase_complete'). Bypasses core gate protection. Requires --reason.")
+	// Orchestrator override: elevated privilege to bypass gates with justification
+	completeCmd.Flags().StringVar(&completeOrchestratorOverride, "orchestrator-override", "", "Comma-separated gate names to override (e.g., 'phase_complete' or 'test_evidence,git_diff'). Bypasses core gate protection. Requires --reason.")
 
 	// Targeted skip flags - each bypasses a specific verification gate
 	completeCmd.Flags().BoolVar(&completeSkipTestEvidence, "skip-test-evidence", false, "Skip test execution evidence gate (requires --skip-reason)")
@@ -288,7 +291,7 @@ func runComplete(identifier, workdir string) error {
 		fmt.Printf("   Auto-applying orchestrator override: phase_complete\n")
 		fmt.Println()
 
-		// Only override phase_complete if not already overriding something else
+		// Only override phase_complete if not already overriding any gates
 		if completeOrchestratorOverride == "" {
 			completeOrchestratorOverride = "phase_complete"
 			if completeReason == "" {

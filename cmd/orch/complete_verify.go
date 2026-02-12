@@ -31,14 +31,14 @@ type SkipConfig struct {
 	DashboardHealth      bool
 	VerificationSpec     bool
 	CommitEvidence       bool
-	OrchestratorOverride string // Gate name to override (allows core gate bypass with elevated logging)
+	OrchestratorOverride []string // Gate names to override (allows core gate bypass with elevated logging)
 	Reason               string // Required reason for skips
 	BatchMode            bool   // Batch mode: skip all Tier 2 (quality) gates
 }
 
 // hasAnySkip returns true if any skip flag is set (including batch mode and orchestrator-override).
 func (c SkipConfig) hasAnySkip() bool {
-	return c.BatchMode || c.OrchestratorOverride != "" || c.TestEvidence || c.ModelConnection || c.Visual || c.GitDiff || c.Synthesis ||
+	return c.BatchMode || len(c.OrchestratorOverride) > 0 || c.TestEvidence || c.ModelConnection || c.Visual || c.GitDiff || c.Synthesis ||
 		c.Build || c.Constraint || c.PhaseGate || c.SkillOutput ||
 		c.DecisionPatch || c.PhaseComplete || c.AgentRunning || c.HandoffContent || c.DashboardHealth || c.VerificationSpec || c.CommitEvidence
 }
@@ -46,9 +46,7 @@ func (c SkipConfig) hasAnySkip() bool {
 // skippedGates returns a list of gate names that are being skipped.
 func (c SkipConfig) skippedGates() []string {
 	var gates []string
-	if c.OrchestratorOverride != "" {
-		gates = append(gates, c.OrchestratorOverride)
-	}
+	gates = append(gates, c.OrchestratorOverride...)
 	if c.TestEvidence {
 		gates = append(gates, verify.GateTestEvidence)
 	}
@@ -106,8 +104,10 @@ func (c SkipConfig) skippedGates() []string {
 // Core gates (Tier 1) are never skippable via --skip-* flags — they block completion unconditionally.
 func (c SkipConfig) shouldSkipGate(gate string) bool {
 	// Orchestrator override: elevated privilege to bypass any gate (including core gates)
-	if c.OrchestratorOverride == gate {
-		return true
+	for _, override := range c.OrchestratorOverride {
+		if override == gate {
+			return true
+		}
 	}
 	// Core gates cannot be skipped via --skip-* flags (only via orchestrator-override or --force)
 	if verify.IsCoreGate(gate) {
@@ -173,10 +173,27 @@ func getSkipConfig() SkipConfig {
 		DashboardHealth:      completeSkipDashboardHealth,
 		VerificationSpec:     completeSkipVerificationSpec,
 		CommitEvidence:       completeSkipCommitEvidence,
-		OrchestratorOverride: completeOrchestratorOverride,
+		OrchestratorOverride: parseOrchestratorOverride(completeOrchestratorOverride),
 		Reason:               completeSkipReason,
 		BatchMode:            completeBatch,
 	}
+}
+
+// parseOrchestratorOverride parses a comma-separated string of gate names into a slice.
+// Returns nil for empty input. Trims whitespace around each gate name.
+func parseOrchestratorOverride(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	var gates []string
+	for _, p := range parts {
+		g := strings.TrimSpace(p)
+		if g != "" {
+			gates = append(gates, g)
+		}
+	}
+	return gates
 }
 
 // buildBatchSkipConfig creates a SkipConfig for batch mode (used by batch-complete command).
@@ -196,17 +213,19 @@ func validateSkipFlags(skipConfig SkipConfig) error {
 		return nil
 	}
 
-	// Orchestrator override: validate gate name and reason
-	if skipConfig.OrchestratorOverride != "" {
+	// Orchestrator override: validate gate names and reason
+	if len(skipConfig.OrchestratorOverride) > 0 {
 		if skipConfig.Reason == "" {
 			return fmt.Errorf("--reason is required when using --orchestrator-override")
 		}
 		if len(skipConfig.Reason) < 10 {
 			return fmt.Errorf("--reason must be at least 10 characters (got %d)", len(skipConfig.Reason))
 		}
-		// Validate that the gate name is a known gate
-		if !isValidGateName(skipConfig.OrchestratorOverride) {
-			return fmt.Errorf("unknown gate name for --orchestrator-override: %s (valid gates: phase_complete, commit_evidence, synthesis, test_evidence, git_diff, build, visual_verification, model_connection, etc.)", skipConfig.OrchestratorOverride)
+		// Validate that each gate name is a known gate
+		for _, gate := range skipConfig.OrchestratorOverride {
+			if !isValidGateName(gate) {
+				return fmt.Errorf("unknown gate name for --orchestrator-override: %s (valid gates: phase_complete, commit_evidence, synthesis, test_evidence, git_diff, build, visual_verification, model_connection, etc.)", gate)
+			}
 		}
 		return nil
 	}

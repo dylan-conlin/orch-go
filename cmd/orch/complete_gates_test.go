@@ -417,44 +417,57 @@ func TestCheckLivenessNonInteractiveSuggestsSkipFlag(t *testing.T) {
 }
 
 // TestOrchestratorOverrideCoreGate verifies that orchestrator-override allows
-// bypassing a single core gate while still running other gates.
+// bypassing core gates while still running other gates.
 func TestOrchestratorOverrideCoreGate(t *testing.T) {
 	tests := []struct {
 		name          string
-		gateName      string
+		gates         []string
 		reason        string
 		expectError   bool
 		errorContains string
 	}{
 		{
 			name:        "valid phase_complete override",
-			gateName:    verify.GatePhaseComplete,
+			gates:       []string{verify.GatePhaseComplete},
 			reason:      "Agent died after commit but before reporting phase",
 			expectError: false,
 		},
 		{
 			name:        "valid commit_evidence override",
-			gateName:    verify.GateCommitEvidence,
+			gates:       []string{verify.GateCommitEvidence},
 			reason:      "Manual verification confirmed work was landed",
 			expectError: false,
 		},
 		{
+			name:        "valid multi-gate override",
+			gates:       []string{verify.GateTestEvidence, verify.GateGitDiff, verify.GateVerificationSpec},
+			reason:      "Docs-only change with no testable behavior",
+			expectError: false,
+		},
+		{
 			name:          "missing reason",
-			gateName:      verify.GatePhaseComplete,
+			gates:         []string{verify.GatePhaseComplete},
 			reason:        "",
 			expectError:   true,
 			errorContains: "reason is required",
 		},
 		{
 			name:          "short reason",
-			gateName:      verify.GatePhaseComplete,
+			gates:         []string{verify.GatePhaseComplete},
 			reason:        "short",
 			expectError:   true,
 			errorContains: "at least 10 characters",
 		},
 		{
 			name:          "invalid gate name",
-			gateName:      "nonexistent_gate",
+			gates:         []string{"nonexistent_gate"},
+			reason:        "Valid reason with enough characters",
+			expectError:   true,
+			errorContains: "unknown gate",
+		},
+		{
+			name:          "one invalid in multi-gate",
+			gates:         []string{verify.GatePhaseComplete, "nonexistent_gate"},
 			reason:        "Valid reason with enough characters",
 			expectError:   true,
 			errorContains: "unknown gate",
@@ -464,7 +477,7 @@ func TestOrchestratorOverrideCoreGate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := SkipConfig{
-				OrchestratorOverride: tt.gateName,
+				OrchestratorOverride: tt.gates,
 				Reason:               tt.reason,
 			}
 
@@ -486,10 +499,10 @@ func TestOrchestratorOverrideCoreGate(t *testing.T) {
 }
 
 // TestOrchestratorOverrideOnlySkipsNamedGate verifies that orchestrator-override
-// only skips the specified gate and other gates still run.
+// only skips the specified gate(s) and other gates still run.
 func TestOrchestratorOverrideOnlySkipsNamedGate(t *testing.T) {
 	config := SkipConfig{
-		OrchestratorOverride: verify.GatePhaseComplete,
+		OrchestratorOverride: []string{verify.GatePhaseComplete},
 		Reason:               "Agent died after commit but before reporting phase",
 	}
 
@@ -513,15 +526,51 @@ func TestOrchestratorOverrideOnlySkipsNamedGate(t *testing.T) {
 	}
 }
 
+// TestOrchestratorOverrideMultiGate verifies that multiple gates can be overridden simultaneously.
+func TestOrchestratorOverrideMultiGate(t *testing.T) {
+	config := SkipConfig{
+		OrchestratorOverride: []string{verify.GateTestEvidence, verify.GateGitDiff, verify.GateVerificationSpec},
+		Reason:               "Docs-only change with no testable behavior",
+	}
+
+	// Should skip all named gates
+	if !config.shouldSkipGate(verify.GateTestEvidence) {
+		t.Error("expected test_evidence to be skipped")
+	}
+	if !config.shouldSkipGate(verify.GateGitDiff) {
+		t.Error("expected git_diff to be skipped")
+	}
+	if !config.shouldSkipGate(verify.GateVerificationSpec) {
+		t.Error("expected verification_spec to be skipped")
+	}
+
+	// Should NOT skip gates not in the override list
+	if config.shouldSkipGate(verify.GatePhaseComplete) {
+		t.Error("expected phase_complete NOT to be skipped")
+	}
+	if config.shouldSkipGate(verify.GateCommitEvidence) {
+		t.Error("expected commit_evidence NOT to be skipped")
+	}
+	if config.shouldSkipGate(verify.GateBuild) {
+		t.Error("expected build NOT to be skipped")
+	}
+
+	// skippedGates should return all 3
+	skipped := config.skippedGates()
+	if len(skipped) != 3 {
+		t.Fatalf("expected 3 skipped gates, got %d: %v", len(skipped), skipped)
+	}
+}
+
 // TestOrchestratorOverrideDistinctFromForce verifies that orchestrator-override
 // is distinct from --force (which skips everything).
 func TestOrchestratorOverrideDistinctFromForce(t *testing.T) {
 	overrideConfig := SkipConfig{
-		OrchestratorOverride: verify.GatePhaseComplete,
+		OrchestratorOverride: []string{verify.GatePhaseComplete},
 		Reason:               "Agent died after commit",
 	}
 
-	// Orchestrator override should only skip the named gate
+	// Orchestrator override should only skip the named gate(s)
 	skippedGates := overrideConfig.skippedGates()
 	if len(skippedGates) != 1 {
 		t.Fatalf("expected 1 skipped gate, got %d: %v", len(skippedGates), skippedGates)
@@ -533,4 +582,35 @@ func TestOrchestratorOverrideDistinctFromForce(t *testing.T) {
 	// --force skips all gates (tested elsewhere, but verifying the distinction)
 	// With force mode, completeForce is set to true and verification returns early
 	// without running individual gate checks
+}
+
+// TestParseOrchestratorOverride verifies comma-separated parsing of gate names.
+func TestParseOrchestratorOverride(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{name: "empty", raw: "", want: nil},
+		{name: "single gate", raw: "phase_complete", want: []string{"phase_complete"}},
+		{name: "two gates", raw: "test_evidence,git_diff", want: []string{"test_evidence", "git_diff"}},
+		{name: "three gates", raw: "test_evidence,git_diff,verification_spec", want: []string{"test_evidence", "git_diff", "verification_spec"}},
+		{name: "with spaces", raw: "test_evidence, git_diff , verification_spec", want: []string{"test_evidence", "git_diff", "verification_spec"}},
+		{name: "trailing comma", raw: "test_evidence,", want: []string{"test_evidence"}},
+		{name: "leading comma", raw: ",test_evidence", want: []string{"test_evidence"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseOrchestratorOverride(tt.raw)
+			if len(got) != len(tt.want) {
+				t.Fatalf("parseOrchestratorOverride(%q) = %v (len %d), want %v (len %d)", tt.raw, got, len(got), tt.want, len(tt.want))
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("parseOrchestratorOverride(%q)[%d] = %q, want %q", tt.raw, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
 }
