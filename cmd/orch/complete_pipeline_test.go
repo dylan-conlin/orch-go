@@ -124,7 +124,7 @@ func TestApplySkipFilteringRemovesSkippedGates(t *testing.T) {
 		BeadsProjectDir: t.TempDir(),
 	}
 
-	applySkipFiltering(&gatesFailed, &errors, skipConfig, target)
+	applySkipFiltering(&gatesFailed, &errors, skipConfig, target, "feature-impl")
 
 	// Only constraint should remain (build and model_connection were skipped)
 	if len(gatesFailed) != 1 {
@@ -163,7 +163,7 @@ func TestApplySkipFilteringCoreGatesNeverSkipped(t *testing.T) {
 		BeadsProjectDir: t.TempDir(),
 	}
 
-	applySkipFiltering(&gatesFailed, &errors, skipConfig, target)
+	applySkipFiltering(&gatesFailed, &errors, skipConfig, target, "feature-impl")
 
 	// Core gates (phase_complete, commit_evidence) should remain; only build should be skipped
 	if len(gatesFailed) != 2 {
@@ -194,10 +194,47 @@ func TestApplySkipFilteringNoMatchingGates(t *testing.T) {
 		BeadsProjectDir: t.TempDir(),
 	}
 
-	applySkipFiltering(&gatesFailed, &errors, skipConfig, target)
+	applySkipFiltering(&gatesFailed, &errors, skipConfig, target, "feature-impl")
 
 	if len(gatesFailed) != 2 {
 		t.Errorf("Expected 2 remaining gates, got %d", len(gatesFailed))
+	}
+}
+
+// TestApplySkipFilteringBatchModeKnowledgeSkillSkipsCodeCore verifies that batch mode
+// only enforces universal core gates for knowledge-producing skills.
+func TestApplySkipFilteringBatchModeKnowledgeSkillSkipsCodeCore(t *testing.T) {
+	gatesFailed := []string{
+		verify.GatePhaseComplete,
+		verify.GateTestEvidence,
+		verify.GateGitDiff,
+		verify.GateBuild,
+	}
+	errors := []string{
+		"phase complete: not reported",
+		"test evidence: no execution evidence found",
+		"git diff: mismatch between claims and changes",
+		"build: go test failed",
+	}
+
+	skipConfig := SkipConfig{
+		BatchMode: true,
+		Reason:    "batch mode - skill-aware core gates only",
+	}
+
+	target := &CompletionTarget{
+		BeadsID:         "test-id",
+		AgentName:       "test-agent",
+		BeadsProjectDir: t.TempDir(),
+	}
+
+	applySkipFiltering(&gatesFailed, &errors, skipConfig, target, "investigation")
+
+	if len(gatesFailed) != 1 {
+		t.Errorf("Expected only universal core gate to remain, got %d: %v", len(gatesFailed), gatesFailed)
+	}
+	if len(gatesFailed) == 1 && gatesFailed[0] != verify.GatePhaseComplete {
+		t.Errorf("Expected remaining gate %q, got %q", verify.GatePhaseComplete, gatesFailed[0])
 	}
 }
 

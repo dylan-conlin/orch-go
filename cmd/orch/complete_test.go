@@ -612,7 +612,7 @@ func TestSkipConfigShouldSkipGate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.gate, func(t *testing.T) {
-			got := config.shouldSkipGate(tt.gate)
+			got := config.shouldSkipGate(tt.gate, "")
 			if got != tt.want {
 				t.Errorf("shouldSkipGate(%s) = %v, want %v", tt.gate, got, tt.want)
 			}
@@ -624,10 +624,10 @@ func TestSkipConfigShouldSkipGate(t *testing.T) {
 func TestShouldSkipGateBatchModeSkipsQualityNotCore(t *testing.T) {
 	config := SkipConfig{BatchMode: true}
 
-	// Core gates should NOT be skipped in batch mode
+	// Code skill: all core gates should NOT be skipped in batch mode
 	coreGates := []string{"phase_complete", "commit_evidence", "synthesis", "test_evidence", "git_diff"}
 	for _, gate := range coreGates {
-		if config.shouldSkipGate(gate) {
+		if config.shouldSkipGate(gate, "feature-impl") {
 			t.Errorf("batch mode should not skip core gate %s", gate)
 		}
 	}
@@ -636,9 +636,20 @@ func TestShouldSkipGateBatchModeSkipsQualityNotCore(t *testing.T) {
 	qualityGates := []string{"build", "model_connection", "verification_spec", "visual_verification",
 		"constraint", "phase_gate", "skill_output", "decision_patch_limit", "dashboard_health", "handoff_content"}
 	for _, gate := range qualityGates {
-		if !config.shouldSkipGate(gate) {
+		if !config.shouldSkipGate(gate, "feature-impl") {
 			t.Errorf("batch mode should skip quality gate %s", gate)
 		}
+	}
+
+	// Knowledge skill: code core gates should be skipped in batch mode
+	if !config.shouldSkipGate("test_evidence", "investigation") {
+		t.Error("batch mode should skip test_evidence for knowledge skill")
+	}
+	if !config.shouldSkipGate("git_diff", "investigation") {
+		t.Error("batch mode should skip git_diff for knowledge skill")
+	}
+	if config.shouldSkipGate("phase_complete", "investigation") {
+		t.Error("batch mode should still enforce universal core gate phase_complete")
 	}
 }
 

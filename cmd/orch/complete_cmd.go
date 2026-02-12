@@ -251,7 +251,7 @@ func runComplete(identifier, workdir string) error {
 
 	// Pre-pipeline notices
 	if skipConfig.BatchMode {
-		fmt.Println("Batch mode: running Tier 1 (core) gates only, skipping Tier 2 (quality) gates")
+		fmt.Println("Batch mode: running skill-aware Tier 1 (core) gates only, skipping Tier 2 (quality) gates")
 	}
 	if completeForce {
 		fmt.Fprintln(os.Stderr, "DEPRECATED: --force is deprecated. Use targeted --skip-* flags instead.")

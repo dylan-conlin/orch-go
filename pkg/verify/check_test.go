@@ -230,6 +230,32 @@ func TestVerificationResult(t *testing.T) {
 	})
 }
 
+func TestIsCoreGateSkillAware(t *testing.T) {
+	tests := []struct {
+		name  string
+		gate  string
+		skill string
+		want  bool
+	}{
+		{name: "universal core for knowledge skill", gate: GatePhaseComplete, skill: "investigation", want: true},
+		{name: "universal core for code skill", gate: GateCommitEvidence, skill: "feature-impl", want: true},
+		{name: "code core for code skill", gate: GateTestEvidence, skill: "feature-impl", want: true},
+		{name: "code core for knowledge skill", gate: GateTestEvidence, skill: "investigation", want: false},
+		{name: "code core for design skill", gate: GateGitDiff, skill: "design-session", want: false},
+		{name: "code core for unknown skill defaults on", gate: GateGitDiff, skill: "some-new-skill", want: true},
+		{name: "quality gate is not core", gate: GateBuild, skill: "feature-impl", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsCoreGate(tt.gate, tt.skill)
+			if got != tt.want {
+				t.Errorf("IsCoreGate(%q, %q) = %v, want %v", tt.gate, tt.skill, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestPhaseStatusComplete(t *testing.T) {
 	tests := []struct {
 		name   string

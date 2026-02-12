@@ -1,5 +1,5 @@
 // Package main provides the batch-complete command for bulk-closing already-reviewed agents.
-// This runs only Tier 1 (core) gates on each agent and closes all that pass.
+// This runs only Tier 1 (skill-aware core) gates on each agent and closes all that pass.
 package main
 
 import (
@@ -22,10 +22,12 @@ var batchCompleteCmd = &cobra.Command{
 	Short: "Bulk-complete multiple agents with core gates only",
 	Long: `Complete multiple agents in batch mode, running only Tier 1 (core) gates.
 
-Core gates (always run, cannot be skipped):
+Universal core gates (always run, cannot be skipped):
   - phase_complete: Agent reported "Phase: Complete"
   - commit_evidence: Agent branch has commits (prevents ghost completions)
   - synthesis: SYNTHESIS.md exists (prevents broken handoffs)
+
+Code core gates (only for code-producing skills):
   - test_evidence: Test execution evidence (prevents shipping untested code)
   - git_diff: Diff matches SYNTHESIS claims (prevents fiction in handoffs)
 
@@ -85,7 +87,7 @@ Examples:
 			fmt.Printf("Loaded %d skipped issue(s) from skip list\n\n", len(skipSet))
 		}
 
-		fmt.Printf("Batch completing %d agent(s) (core gates only)\n\n", len(agents))
+		fmt.Printf("Batch completing %d agent(s) (skill-aware core gates only)\n\n", len(agents))
 
 		if batchCompleteDryRun {
 			fmt.Println("DRY RUN - no changes will be made")

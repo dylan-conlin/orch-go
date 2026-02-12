@@ -32,8 +32,8 @@ type SkipConfig struct {
 	VerificationSpec     bool
 	CommitEvidence       bool
 	OrchestratorOverride []string // Gate names to override (allows core gate bypass with elevated logging)
-	Reason               string // Required reason for skips
-	BatchMode            bool   // Batch mode: skip all Tier 2 (quality) gates
+	Reason               string   // Required reason for skips
+	BatchMode            bool     // Batch mode: enforce only skill-applicable core gates
 }
 
 // hasAnySkip returns true if any skip flag is set (including batch mode and orchestrator-override).
@@ -99,23 +99,27 @@ func (c SkipConfig) skippedGates() []string {
 }
 
 // shouldSkipGate returns true if the given gate should be skipped.
-// In batch mode, all Tier 2 (quality) gates are automatically skipped.
-// Orchestrator override bypasses core gate protection for the single named gate.
+// In batch mode, only skill-applicable core gates are enforced.
+// Orchestrator override bypasses core gate protection for explicitly named gates.
 // Core gates (Tier 1) are never skippable via --skip-* flags — they block completion unconditionally.
-func (c SkipConfig) shouldSkipGate(gate string) bool {
+func (c SkipConfig) shouldSkipGate(gate, skillName string) bool {
 	// Orchestrator override: elevated privilege to bypass any gate (including core gates)
 	for _, override := range c.OrchestratorOverride {
 		if override == gate {
 			return true
 		}
 	}
+
+	// Batch mode: enforce only universal core + applicable code core for this skill.
+	if c.BatchMode {
+		return !verify.IsCoreGate(gate, skillName)
+	}
+
 	// Core gates cannot be skipped via --skip-* flags (only via orchestrator-override or --force)
-	if verify.IsCoreGate(gate) {
+	if verify.IsCoreGate(gate, skillName) {
 		return false
 	}
-	if c.BatchMode && verify.IsQualityGate(gate) {
-		return true
-	}
+
 	switch gate {
 	case verify.GateTestEvidence:
 		return c.TestEvidence
@@ -200,7 +204,7 @@ func parseOrchestratorOverride(raw string) []string {
 func buildBatchSkipConfig() SkipConfig {
 	return SkipConfig{
 		BatchMode: true,
-		Reason:    "batch mode - core gates only",
+		Reason:    "batch mode - skill-aware core gates only",
 	}
 }
 

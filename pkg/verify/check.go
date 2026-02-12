@@ -41,8 +41,9 @@ const (
 //
 // The verification system uses a two-tier architecture to balance quality with velocity:
 //
-// **Tier 1 (Core 5)**: The essential gates that prevent ghost completions and
-// broken handoffs. Always run regardless of mode.
+// **Tier 1 (Skill-Aware Core)**: Essential gates that prevent ghost completions
+// and broken handoffs. Universal core gates always run; code core gates run only
+// for code-producing skills.
 //
 // **Tier 2 (Quality 10)**: Process compliance and secondary quality checks.
 // Skipped in batch mode for rapid iteration.
@@ -60,29 +61,28 @@ type GateResult struct {
 	Error   string // Error message if failed (empty if passed)
 }
 
-// Tier 1 (Core Gates): The 5 essential gates that always run, even in batch mode.
+// Tier 1 (Core Gates): Essential gates that enforce completion integrity.
 //
 // Philosophy: These gates prevent the two most costly failure modes:
 // 1. Ghost completions (issues close with no actual work landed)
 // 2. Broken handoffs (next session wastes context re-discovering state)
 //
 // Characteristics:
-// - Always executed regardless of mode (batch/careful)
+// - Always executed regardless of mode (batch/careful) when applicable to the skill
 // - Block completion unconditionally when failed
 // - Each gate has a clear, non-overlapping failure mode it prevents
 //
-// The Core 5:
-// - phase_complete: Agent self-reported completion (prevents premature close)
-// - commit_evidence: Commits exist on branch (prevents ghost completions)
-// - synthesis: SYNTHESIS.md exists (prevents broken handoffs)
-// - test_evidence: Tests were run (prevents shipping untested code)
-// - git_diff: Diff matches SYNTHESIS claims (prevents fiction in handoffs)
-var CoreGates = map[string]bool{
+// Universal core gates apply to all skill classes.
+var UniversalCoreGates = map[string]bool{
 	GatePhaseComplete:  true,
 	GateCommitEvidence: true,
 	GateSynthesis:      true,
-	GateTestEvidence:   true,
-	GateGitDiff:        true,
+}
+
+// Code core gates apply only to code-producing skills.
+var CodeCoreGates = map[string]bool{
+	GateTestEvidence: true,
+	GateGitDiff:      true,
 }
 
 // Tier 2 (Quality Gates): Process compliance checks skipped in batch mode (--batch).
@@ -108,9 +108,15 @@ var QualityGates = map[string]bool{
 	GateHandoffContent:     true,
 }
 
-// IsCoreGate returns true if the gate is a Tier 1 core gate.
-func IsCoreGate(gate string) bool {
-	return CoreGates[gate]
+// IsCoreGate returns true if the gate is a Tier 1 core gate for the given skill.
+func IsCoreGate(gate, skillName string) bool {
+	if UniversalCoreGates[gate] {
+		return true
+	}
+	if CodeCoreGates[gate] {
+		return SkillClassForName(skillName) == SkillClassCode
+	}
+	return false
 }
 
 // IsQualityGate returns true if the gate is a Tier 2 quality gate.

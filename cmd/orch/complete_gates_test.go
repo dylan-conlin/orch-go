@@ -507,21 +507,21 @@ func TestOrchestratorOverrideOnlySkipsNamedGate(t *testing.T) {
 	}
 
 	// Should skip phase_complete
-	if !config.shouldSkipGate(verify.GatePhaseComplete) {
+	if !config.shouldSkipGate(verify.GatePhaseComplete, "") {
 		t.Error("expected phase_complete to be skipped")
 	}
 
 	// Should NOT skip other core gates
-	if config.shouldSkipGate(verify.GateCommitEvidence) {
+	if config.shouldSkipGate(verify.GateCommitEvidence, "") {
 		t.Error("expected commit_evidence NOT to be skipped")
 	}
-	if config.shouldSkipGate(verify.GateSynthesis) {
+	if config.shouldSkipGate(verify.GateSynthesis, "") {
 		t.Error("expected synthesis NOT to be skipped")
 	}
-	if config.shouldSkipGate(verify.GateTestEvidence) {
+	if config.shouldSkipGate(verify.GateTestEvidence, "") {
 		t.Error("expected test_evidence NOT to be skipped")
 	}
-	if config.shouldSkipGate(verify.GateBuild) {
+	if config.shouldSkipGate(verify.GateBuild, "") {
 		t.Error("expected build NOT to be skipped")
 	}
 }
@@ -534,24 +534,24 @@ func TestOrchestratorOverrideMultiGate(t *testing.T) {
 	}
 
 	// Should skip all named gates
-	if !config.shouldSkipGate(verify.GateTestEvidence) {
+	if !config.shouldSkipGate(verify.GateTestEvidence, "") {
 		t.Error("expected test_evidence to be skipped")
 	}
-	if !config.shouldSkipGate(verify.GateGitDiff) {
+	if !config.shouldSkipGate(verify.GateGitDiff, "") {
 		t.Error("expected git_diff to be skipped")
 	}
-	if !config.shouldSkipGate(verify.GateVerificationSpec) {
+	if !config.shouldSkipGate(verify.GateVerificationSpec, "") {
 		t.Error("expected verification_spec to be skipped")
 	}
 
 	// Should NOT skip gates not in the override list
-	if config.shouldSkipGate(verify.GatePhaseComplete) {
+	if config.shouldSkipGate(verify.GatePhaseComplete, "") {
 		t.Error("expected phase_complete NOT to be skipped")
 	}
-	if config.shouldSkipGate(verify.GateCommitEvidence) {
+	if config.shouldSkipGate(verify.GateCommitEvidence, "") {
 		t.Error("expected commit_evidence NOT to be skipped")
 	}
-	if config.shouldSkipGate(verify.GateBuild) {
+	if config.shouldSkipGate(verify.GateBuild, "") {
 		t.Error("expected build NOT to be skipped")
 	}
 

@@ -92,7 +92,7 @@ func verifyOrchestratorSession(target *CompletionTarget, skipConfig SkipConfig, 
 
 	// Apply skip-gate filtering (unified implementation)
 	if skipConfig.hasAnySkip() && !result.Passed {
-		applySkipFiltering(&result.GatesFailed, &result.Errors, skipConfig, target)
+		applySkipFiltering(&result.GatesFailed, &result.Errors, skipConfig, target, result.Skill)
 		result.Passed = len(result.GatesFailed) == 0
 	}
 	recordVerificationOutcome(target, result.Passed, result.GatesFailed, result.Errors)
@@ -130,7 +130,7 @@ func verifyRegularAgent(target *CompletionTarget, skipConfig SkipConfig, outcome
 
 	applySkipAndMaybeRetry := func(res *verify.VerificationResult) error {
 		if skipConfig.hasAnySkip() && !res.Passed {
-			applySkipFiltering(&res.GatesFailed, &res.Errors, skipConfig, target)
+			applySkipFiltering(&res.GatesFailed, &res.Errors, skipConfig, target, res.Skill)
 			res.Passed = len(res.GatesFailed) == 0
 		}
 
@@ -149,7 +149,7 @@ func verifyRegularAgent(target *CompletionTarget, skipConfig SkipConfig, outcome
 
 			*res = retried
 			if skipConfig.hasAnySkip() && !res.Passed {
-				applySkipFiltering(&res.GatesFailed, &res.Errors, skipConfig, target)
+				applySkipFiltering(&res.GatesFailed, &res.Errors, skipConfig, target, res.Skill)
 				res.Passed = len(res.GatesFailed) == 0
 			}
 		}
@@ -193,7 +193,7 @@ func verifyRegularAgent(target *CompletionTarget, skipConfig SkipConfig, outcome
 	result.Warnings = append(result.Warnings, commitGate.warnings...)
 
 	if skipConfig.hasAnySkip() && !result.Passed {
-		applySkipFiltering(&result.GatesFailed, &result.Errors, skipConfig, target)
+		applySkipFiltering(&result.GatesFailed, &result.Errors, skipConfig, target, result.Skill)
 		result.Passed = len(result.GatesFailed) == 0
 	}
 	recordVerificationOutcome(target, result.Passed, result.GatesFailed, result.Errors)
@@ -305,13 +305,13 @@ func classifyTransientMessage(message string) string {
 
 // applySkipFiltering is the unified skip-gate-filtering implementation.
 // It replaces the duplicated logic that was in both orchestrator and regular agent paths.
-func applySkipFiltering(gatesFailed *[]string, errors *[]string, skipConfig SkipConfig, target *CompletionTarget) {
+func applySkipFiltering(gatesFailed *[]string, errors *[]string, skipConfig SkipConfig, target *CompletionTarget, skillName string) {
 	var filteredGates []string
 	var filteredErrors []string
 	var skippedGatesFound []string
 
 	for _, gate := range *gatesFailed {
-		if skipConfig.shouldSkipGate(gate) {
+		if skipConfig.shouldSkipGate(gate, skillName) {
 			skippedGatesFound = append(skippedGatesFound, gate)
 			fmt.Printf("⚠️  Bypassing gate: %s (reason: %s)\n", gate, skipConfig.Reason)
 		} else {
