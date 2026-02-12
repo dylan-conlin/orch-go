@@ -27,9 +27,9 @@ func TestIsSkillRequiringTestEvidence(t *testing.T) {
 		{"issue-creation excluded", "issue-creation", false},
 		{"writing-skills excluded", "writing-skills", false},
 
-		// Edge cases
-		{"empty skill", "", false},
-		{"unknown skill", "unknown-skill", false},
+		// Edge cases (conservative default: unknown -> requires evidence)
+		{"empty skill", "", true},
+		{"unknown skill", "unknown-skill", true},
 		{"case insensitive", "Feature-Impl", true},
 		{"case insensitive lower", "FEATURE-IMPL", true},
 	}

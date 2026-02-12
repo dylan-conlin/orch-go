@@ -29,52 +29,13 @@ type TestEvidenceResult struct {
 	SkillName              string   // Skill that was used
 }
 
-// Skills that require test execution evidence before completion.
-// Only implementation-focused skills need test verification.
-// Investigation/research skills produce artifacts, not code changes.
-var skillsRequiringTestEvidence = map[string]bool{
-	"feature-impl":         true, // Primary implementation skill
-	"systematic-debugging": true, // Debug fixes should be tested
-	"reliability-testing":  true, // Testing skill should document tests
-}
-
-// Skills explicitly excluded from test evidence requirements.
-// These skills may modify code incidentally but don't require test evidence.
-var skillsExcludedFromTestEvidence = map[string]bool{
-	"investigation":  true, // Research skill, produces investigations
-	"architect":      true, // Design skill, produces decisions
-	"research":       true, // External research, no code changes
-	"design-session": true, // Scoping skill, produces epics
-	"codebase-audit": true, // Audit skill, produces reports
-	"issue-creation": true, // Triage skill, creates issues
-	"writing-skills": true, // Meta skill, modifies skills
-}
-
 // IsSkillRequiringTestEvidence determines if a skill requires test execution evidence.
 //
-// The logic is:
-// 1. If skill is explicitly excluded (investigation, architect, etc.) -> false
-// 2. If skill is explicitly included (feature-impl, debugging) -> true
-// 3. If skill is unknown -> false (permissive default)
+// Code-producing skills require test evidence.
+// Knowledge-producing skills do not.
+// Unknown skills default to requiring evidence (conservative).
 func IsSkillRequiringTestEvidence(skillName string) bool {
-	if skillName == "" {
-		return false
-	}
-
-	skillName = strings.ToLower(skillName)
-
-	// Check explicit exclusions first
-	if skillsExcludedFromTestEvidence[skillName] {
-		return false
-	}
-
-	// Check explicit inclusions
-	if skillsRequiringTestEvidence[skillName] {
-		return true
-	}
-
-	// Unknown skill - be permissive
-	return false
+	return SkillClassForName(skillName) == SkillClassCode
 }
 
 // testEvidencePatterns defines regex patterns that indicate test execution was performed.
