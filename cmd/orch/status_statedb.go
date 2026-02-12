@@ -43,6 +43,35 @@ type stateDBAgentResult struct {
 	beadsIDsToFetch []string
 }
 
+// normalizeProjectDir returns a valid project directory for beads operations.
+// If dir is a worktree directory (.orch/worktrees), maps to the source project root.
+// If dir doesn't exist, returns empty string to let beads fallback handle.
+func normalizeProjectDir(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	// Check if directory exists
+	if _, err := os.Stat(dir); err == nil {
+		// Directory exists, but might be a worktree directory.
+		// If it's inside .orch/worktrees, map to source project root.
+		worktreeMarker := filepath.Join(".orch", "worktrees")
+		if strings.Contains(dir, worktreeMarker) {
+			// Find the .orch directory
+			parts := strings.Split(dir, worktreeMarker)
+			if len(parts) > 0 && parts[0] != "" {
+				root := strings.TrimSuffix(parts[0], string(filepath.Separator))
+				// Ensure root contains .beads directory
+				if _, err := os.Stat(filepath.Join(root, ".beads")); err == nil {
+					return root
+				}
+			}
+		}
+		return dir
+	}
+	// Directory doesn't exist, return empty string to let beads fallback handle
+	return ""
+}
+
 // fetchAgentsFromStateDB attempts to pre-populate agents from the state DB.
 // Returns nil if the state DB is unavailable or empty (graceful degradation).
 //
@@ -85,7 +114,10 @@ func fetchAgentsFromStateDB(showAll bool) *stateDBAgentResult {
 
 			// Set project dir for cross-project comment lookups
 			if dbAgent.ProjectDir != "" && dbAgent.ProjectDir != projectDir {
-				result.beadsProjectDirs[dbAgent.BeadsID] = dbAgent.ProjectDir
+				normalized := normalizeProjectDir(dbAgent.ProjectDir)
+				if normalized != "" && normalized != projectDir {
+					result.beadsProjectDirs[dbAgent.BeadsID] = normalized
+				}
 			}
 		}
 		if dbAgent.SessionID != "" {

@@ -193,6 +193,30 @@ func runBDCommand(workDir, bdPath string, env []string, combined bool, args ...s
 	return output, err
 }
 
+// mapWorktreeToSourceRoot maps a worktree directory to its source project root.
+// If dir is inside .orch/worktrees, returns the source project root (the directory
+// containing .orch/worktrees) if it contains .beads. Otherwise returns dir unchanged.
+func mapWorktreeToSourceRoot(dir string) string {
+	if dir == "" {
+		return dir
+	}
+	worktreeMarker := filepath.Join(".orch", "worktrees")
+	// Check if dir contains worktreeMarker as a path component
+	// We look for separator + worktreeMarker + separator
+	markerWithSep := string(filepath.Separator) + worktreeMarker + string(filepath.Separator)
+	if strings.Contains(dir, markerWithSep) {
+		parts := strings.Split(dir, markerWithSep)
+		if len(parts) > 0 && parts[0] != "" {
+			root := parts[0]
+			// Ensure root contains .beads directory
+			if _, err := os.Stat(filepath.Join(root, ".beads")); err == nil {
+				return root
+			}
+		}
+	}
+	return dir
+}
+
 func resolveBDWorkDir(workDir string) (string, error) {
 	dir := strings.TrimSpace(workDir)
 	if dir == "" {
@@ -207,6 +231,15 @@ func resolveBDWorkDir(workDir string) (string, error) {
 		if !info.IsDir() {
 			return "", fmt.Errorf("bd workdir is not a directory: %s", dir)
 		}
+		// If directory is a worktree directory, map to source project root
+		mapped := mapWorktreeToSourceRoot(dir)
+		if mapped != dir {
+			// Verify mapped directory contains .beads
+			beadsDir := filepath.Join(mapped, ".beads")
+			if _, err := os.Stat(beadsDir); err == nil {
+				return mapped, nil
+			}
+		}
 		return dir, nil
 	}
 	if !os.IsNotExist(err) {
@@ -218,7 +251,10 @@ func resolveBDWorkDir(workDir string) (string, error) {
 		return "", fmt.Errorf("bd workdir %s does not exist and no project root fallback was found", dir)
 	}
 
-	log.Printf("event=bd_workdir_fallback component=beads from=%q to=%q", dir, fallbackDir)
+	// Suppress log spam for worktree directories that are expected to be transient
+	if !strings.Contains(dir, ".orch/worktrees") {
+		log.Printf("event=bd_workdir_fallback component=beads from=%q to=%q", dir, fallbackDir)
+	}
 	return fallbackDir, nil
 }
 
