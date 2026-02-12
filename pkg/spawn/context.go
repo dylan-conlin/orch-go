@@ -384,12 +384,12 @@ func MinimalPrompt(cfg *Config) string {
 	runtimeDir := cfg.RuntimeDir()
 	if runtimeDir != "" && runtimeDir != cfg.ProjectDir {
 		return fmt.Sprintf(
-			"Read your spawn context from %s/SPAWN_CONTEXT.md and begin the task.",
+			"Read your spawn context from %s/SPAWN_CONTEXT.md and begin the task. When your task is complete, you MUST commit: git add <changed files> && git commit -m \"type: description\". Only stage files you modified for the task. Do not stage AGENT_MANIFEST.json or SPAWN_CONTEXT.md. Do not send your final response until you have committed.",
 			runtimeDir,
 		)
 	}
 	return fmt.Sprintf(
-		"Read your spawn context from %s/.orch/workspace/%s/SPAWN_CONTEXT.md and begin the task.",
+		"Read your spawn context from %s/.orch/workspace/%s/SPAWN_CONTEXT.md and begin the task. When your task is complete, you MUST commit: git add <changed files> && git commit -m \"type: description\". Only stage files you modified for the task. Do not stage AGENT_MANIFEST.json or SPAWN_CONTEXT.md. Do not send your final response until you have committed.",
 		cfg.ProjectDir,
 		cfg.WorkspaceName,
 	)

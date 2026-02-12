@@ -4,28 +4,21 @@
 
 version: 1
 scope:
-    beads_id: orch-go-4hmii
-    workspace: og-feat-add-release-stable-11feb-5c74
+    beads_id: orch-go-49026
+    workspace: og-feat-fix-gpt-agents-11feb-981f
     skill: feature-impl
 verification:
-    - id: verify-make-smoke
+    - id: verify-build
       method: cli_smoke
       tier: light
-      command: make smoke
+      command: go build ./...
       cwd: $GIT_WORKTREE_DIR
       expect:
         exit_code: 0
-    - id: verify-make-release-stable
+    - id: verify-test
       method: cli_smoke
       tier: light
-      command: make release-stable
-      cwd: $GIT_WORKTREE_DIR
-      expect:
-        exit_code: 0
-    - id: verify-stable-metadata
-      method: cli_smoke
-      tier: light
-      command: test -f "$HOME/.orch/bin/orch-stable.metadata.json"
+      command: go test ./...
       cwd: $GIT_WORKTREE_DIR
       expect:
         exit_code: 0
