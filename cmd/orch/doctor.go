@@ -19,6 +19,7 @@ var (
 	doctorBacklog   bool // Check recurring backlog issue hygiene
 	doctorWatch     bool // Continuous monitoring with desktop notifications
 	doctorDaemon    bool // Run as self-healing background daemon
+	doctorCheck     bool // Compatibility alias: explicit health check mode
 )
 
 const (
@@ -51,6 +52,7 @@ Use --sessions to cross-reference workspaces and OpenCode sessions for zombies.
 Use --config to detect drift between config.yaml and external config (plist).
 Use --docs to check for undocumented CLI commands (doc debt).
 Use --backlog to detect recurring backlog issue hygiene defects.
+Use --check as an explicit alias for the default health-check behavior.
 Use --watch to continuously monitor services and send desktop notifications on failures.
 
 Examples:
@@ -62,6 +64,7 @@ Examples:
   orch doctor --config     # Check for config drift
   orch doctor --docs       # Check for undocumented CLI commands
   orch doctor --backlog    # Check backlog issue hygiene
+  orch doctor --check      # Explicitly run default health checks
   orch doctor --watch      # Continuous monitoring with notifications`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDoctor()
@@ -76,6 +79,7 @@ func init() {
 	doctorCmd.Flags().BoolVar(&doctorConfig, "config", false, "Check for config drift (plist vs config.yaml)")
 	doctorCmd.Flags().BoolVar(&doctorDocs, "docs", false, "Check for undocumented CLI commands (doc debt)")
 	doctorCmd.Flags().BoolVar(&doctorBacklog, "backlog", false, "Check recurring backlog issue hygiene defects")
+	doctorCmd.Flags().BoolVar(&doctorCheck, "check", false, "Run health checks (default behavior)")
 	doctorCmd.Flags().BoolVarP(&doctorWatch, "watch", "w", false, "Continuous monitoring with desktop notifications")
 	doctorCmd.Flags().BoolVar(&doctorDaemon, "daemon", false, "Run as self-healing background daemon")
 	doctorCmd.AddCommand(doctorInstallCmd)
@@ -101,6 +105,10 @@ type DoctorReport struct {
 }
 
 func runDoctor() error {
+	if doctorCheck {
+		// Compatibility no-op. `orch doctor` already performs health checks by default.
+	}
+
 	// Handle --stale-only flag for quick staleness check
 	if doctorStaleOnly {
 		result := checkAllEcosystemBinaries()

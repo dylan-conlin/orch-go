@@ -51,6 +51,15 @@ test:
 	@echo "Running tests..."
 	go test -v ./...
 
+# Run fast smoke suite against built binary
+smoke: build
+	@echo "Running smoke tests..."
+	./$(BUILD_DIR)/$(BINARY_NAME) version
+	./$(BUILD_DIR)/$(BINARY_NAME) status --json >/dev/null
+	./$(BUILD_DIR)/$(BINARY_NAME) doctor --check >/dev/null
+	go test -run 'TestSmoke' ./cmd/orch/ ./pkg/...
+	@echo "Smoke tests passed."
+
 # Install to ~/bin (symlink to build output)
 # This makes `make build` automatically update the human-accessible CLI
 install: build
