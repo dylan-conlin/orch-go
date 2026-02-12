@@ -30,11 +30,14 @@ build:
 	@mkdir -p $(BUILD_DIR)
 	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/orch/
 
-# Run lightweight smoke checks against the built binary
+# Run fast smoke suite against built binary
 smoke: build
-	@echo "Running smoke checks..."
-	@./$(BUILD_DIR)/$(BINARY_NAME) version --json >/dev/null
-	@echo "Smoke checks passed."
+	@echo "Running smoke tests..."
+	./$(BUILD_DIR)/$(BINARY_NAME) version
+	./$(BUILD_DIR)/$(BINARY_NAME) status --json >/dev/null
+	./$(BUILD_DIR)/$(BINARY_NAME) doctor --check >/dev/null
+	go test -run 'TestSmoke' ./cmd/orch/ ./pkg/...
+	@echo "Smoke tests passed."
 
 # Release smoke-tested binary to stable channel
 release-stable: smoke
@@ -134,7 +137,7 @@ version: build
 help:
 	@echo "Available targets:"
 	@echo "  build                  - Build the binary"
-	@echo "  smoke                  - Build and run lightweight binary smoke checks"
+	@echo "  smoke                  - Build and run fast binary smoke checks"
 	@echo "  release-stable         - Promote smoke-tested binary to ~/.orch/bin/orch-stable"
 	@echo "  test                   - Run tests"
 	@echo "  install                - Run smoke + install to ~/bin"
