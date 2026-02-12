@@ -9,6 +9,9 @@ BUILD_DIR=build
 # Install directory
 INSTALL_DIR=$(HOME)/bin
 
+# Stable release channel directory
+STABLE_DIR=$(HOME)/.orch/bin
+
 # Go build flags
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
@@ -16,7 +19,7 @@ SOURCE_DIR ?= $(shell pwd)
 GIT_HASH ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.sourceDir=$(SOURCE_DIR) -X main.gitHash=$(GIT_HASH)"
 
-.PHONY: all build clean test install install-restart hooks-install cross-compile-linux fmt lint docs version
+.PHONY: all build smoke release-stable clean test install install-restart hooks-install cross-compile-linux fmt lint docs version
 
 # Default target
 all: build
@@ -26,6 +29,22 @@ build:
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
 	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/orch/
+
+# Run lightweight smoke checks against the built binary
+smoke: build
+	@echo "Running smoke checks..."
+	@./$(BUILD_DIR)/$(BINARY_NAME) version --json >/dev/null
+	@echo "Smoke checks passed."
+
+# Release smoke-tested binary to stable channel
+release-stable: smoke
+	@echo "Releasing stable binary..."
+	@mkdir -p $(STABLE_DIR)
+	@cp $(BUILD_DIR)/$(BINARY_NAME) $(STABLE_DIR)/$(BINARY_NAME)-stable
+	@codesign --force --sign - $(STABLE_DIR)/$(BINARY_NAME)-stable
+	@$(STABLE_DIR)/$(BINARY_NAME)-stable version --json > $(STABLE_DIR)/$(BINARY_NAME)-stable.metadata.json
+	@echo "Stable binary: $(STABLE_DIR)/$(BINARY_NAME)-stable"
+	@echo "Version metadata: $(STABLE_DIR)/$(BINARY_NAME)-stable.metadata.json"
 
 # Run tests
 test:
@@ -112,6 +131,8 @@ version: build
 help:
 	@echo "Available targets:"
 	@echo "  build                  - Build the binary"
+	@echo "  smoke                  - Build and run lightweight binary smoke checks"
+	@echo "  release-stable         - Promote smoke-tested binary to ~/.orch/bin/orch-stable"
 	@echo "  test                   - Run tests"
 	@echo "  install                - Install to ~/bin (symlink to build output)"
 	@echo "  install-restart        - Install and restart daemon"
