@@ -591,10 +591,21 @@ func VerifyTestEvidence(beadsID, workspacePath, projectDir string) TestEvidenceR
 // VerifyTestEvidenceWithComments is like VerifyTestEvidence but accepts pre-fetched comments.
 // If comments is nil, comments will be fetched from beads API.
 func VerifyTestEvidenceWithComments(beadsID, workspacePath, projectDir string, comments []Comment) TestEvidenceResult {
+	return verifyTestEvidenceInternal(beadsID, workspacePath, projectDir, "", comments)
+}
+
+// verifyTestEvidenceInternal is the shared implementation for test evidence verification.
+// If skillOverride is non-empty, it's used instead of extracting from SPAWN_CONTEXT.md.
+func verifyTestEvidenceInternal(beadsID, workspacePath, projectDir, skillOverride string, comments []Comment) TestEvidenceResult {
 	result := TestEvidenceResult{Passed: true}
 
 	// Extract skill name for skill-based gating
-	skillName, _ := ExtractSkillNameFromSpawnContext(workspacePath)
+	var skillName string
+	if skillOverride != "" {
+		skillName = skillOverride
+	} else {
+		skillName = ResolveSkillName(workspacePath, projectDir, beadsID)
+	}
 	result.SkillName = skillName
 	requiresIntegration, behavioralCriteria := requiresIntegrationEvidenceForBehavioralAcceptance(skillName, workspacePath)
 	result.RequiresIntegration = requiresIntegration
@@ -709,6 +720,21 @@ func VerifyTestEvidenceForCompletion(beadsID, workspacePath, projectDir string) 
 func VerifyTestEvidenceForCompletionWithComments(beadsID, workspacePath, projectDir string, comments []Comment) *TestEvidenceResult {
 	result := VerifyTestEvidenceWithComments(beadsID, workspacePath, projectDir, comments)
 
+	return filterTestEvidenceResult(&result)
+}
+
+// VerifyTestEvidenceForCompletionWithSkill is like VerifyTestEvidenceForCompletionWithComments
+// but accepts a pre-extracted skill name, avoiding re-extraction from a potentially wrong path.
+// This is used by checkTestEvidence when the skill has already been resolved via ResolveSkillName.
+func VerifyTestEvidenceForCompletionWithSkill(beadsID, workspacePath, projectDir, skillName string, comments []Comment) *TestEvidenceResult {
+	result := verifyTestEvidenceInternal(beadsID, workspacePath, projectDir, skillName, comments)
+
+	return filterTestEvidenceResult(&result)
+}
+
+// filterTestEvidenceResult applies common filtering logic for completion convenience functions.
+func filterTestEvidenceResult(result *TestEvidenceResult) *TestEvidenceResult {
+
 	// Return nil if no code changes - no action needed
 	if !result.HasCodeChanges {
 		return nil
@@ -729,5 +755,5 @@ func VerifyTestEvidenceForCompletionWithComments(beadsID, workspacePath, project
 		return nil
 	}
 
-	return &result
+	return result
 }

@@ -135,6 +135,91 @@ func TestExtractSkillNameFromSpawnContext_SpawnContextPrecedenceOverManifest(t *
 	}
 }
 
+func TestResolveSkillName_DirectExtraction(t *testing.T) {
+	// When SPAWN_CONTEXT.md is in workspacePath, direct extraction works
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "SPAWN_CONTEXT.md"),
+		[]byte("## SKILL GUIDANCE (feature-impl)\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := ResolveSkillName(tmpDir, "", "")
+	if got != "feature-impl" {
+		t.Errorf("ResolveSkillName() = %q, want %q", got, "feature-impl")
+	}
+}
+
+func TestResolveSkillName_FallbackToWorkspaceByBeadsID(t *testing.T) {
+	// Simulates the headless spawn bug: workspacePath is the project root,
+	// but spawn artifacts are in .orch/workspace/{name}/
+	projectDir := t.TempDir()
+
+	// Create workspace with AGENT_MANIFEST.json and .beads_id
+	wsName := "og-feat-test-11feb-ab12"
+	wsDir := filepath.Join(projectDir, ".orch", "workspace", wsName)
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	beadsID := "orch-go-test123"
+	if err := os.WriteFile(filepath.Join(wsDir, ".beads_id"), []byte(beadsID), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := spawn.WriteAgentManifest(wsDir, spawn.AgentManifest{
+		WorkspaceName: wsName,
+		Skill:         "feature-impl",
+		BeadsID:       beadsID,
+		ProjectDir:    projectDir,
+		SpawnTime:     time.Now().Format(time.RFC3339),
+		Tier:          "full",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Call with projectDir as workspacePath (simulating artifactsDir() for headless spawns)
+	got := ResolveSkillName(projectDir, projectDir, beadsID)
+	if got != "feature-impl" {
+		t.Errorf("ResolveSkillName() = %q, want %q (fallback to .orch/workspace/ by beadsID failed)", got, "feature-impl")
+	}
+}
+
+func TestResolveSkillName_FallbackViaProjectDir(t *testing.T) {
+	// workspacePath is a worktree dir (cleaned up), projectDir is the project root
+	worktreeDir := t.TempDir() // empty, no spawn artifacts
+	projectDir := t.TempDir()
+
+	// Create workspace with SPAWN_CONTEXT.md and .beads_id
+	wsDir := filepath.Join(projectDir, ".orch", "workspace", "og-inv-test")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	beadsID := "orch-go-xyz789"
+	if err := os.WriteFile(filepath.Join(wsDir, ".beads_id"), []byte(beadsID), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wsDir, "SPAWN_CONTEXT.md"),
+		[]byte("## SKILL GUIDANCE (investigation)\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// worktreeDir has no spawn artifacts, but projectDir has the workspace
+	got := ResolveSkillName(worktreeDir, projectDir, beadsID)
+	if got != "investigation" {
+		t.Errorf("ResolveSkillName() = %q, want %q", got, "investigation")
+	}
+}
+
+func TestResolveSkillName_NoBeadsID(t *testing.T) {
+	// Without beadsID, can't do the workspace fallback
+	projectDir := t.TempDir()
+	got := ResolveSkillName(projectDir, projectDir, "")
+	if got != "" {
+		t.Errorf("ResolveSkillName() = %q, want empty string", got)
+	}
+}
+
 func TestParseSkillManifest(t *testing.T) {
 	content := `name: investigation
 skill-type: procedure

@@ -99,6 +99,72 @@ func ExtractSkillNameFromSpawnContext(workspacePath string) (string, error) {
 	return "", nil
 }
 
+// ResolveSkillName extracts the skill name using multiple strategies.
+//
+// Strategy 1: Direct extraction from workspacePath (SPAWN_CONTEXT.md or AGENT_MANIFEST.json)
+// Strategy 2: If workspacePath is a project root (not a workspace dir), search
+// .orch/workspace/*/ for a workspace matching beadsID and extract skill from there.
+// Strategy 3: Same search using projectDir if different from workspacePath.
+//
+// This fixes the 87% skill=unknown bug: for headless (non-worktree) spawns,
+// orch complete passes the project root as workspacePath (via artifactsDir()),
+// but spawn artifacts live in .orch/workspace/{name}/.
+func ResolveSkillName(workspacePath, projectDir, beadsID string) string {
+	// Strategy 1: direct extraction
+	skill, _ := ExtractSkillNameFromSpawnContext(workspacePath)
+	if skill != "" {
+		return skill
+	}
+
+	// Strategy 2+3: find workspace by beadsID
+	if beadsID == "" {
+		return ""
+	}
+
+	for _, searchDir := range []string{workspacePath, projectDir} {
+		if searchDir == "" {
+			continue
+		}
+		wsPath := findSpawnWorkspaceByBeadsID(searchDir, beadsID)
+		if wsPath != "" {
+			skill, _ = ExtractSkillNameFromSpawnContext(wsPath)
+			if skill != "" {
+				return skill
+			}
+		}
+	}
+
+	return ""
+}
+
+// findSpawnWorkspaceByBeadsID searches .orch/workspace/*/.beads_id files to find
+// the canonical workspace directory for a given beads ID.
+// Returns the workspace path if found, empty string otherwise.
+func findSpawnWorkspaceByBeadsID(projectDir, beadsID string) string {
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		return ""
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		wsPath := filepath.Join(workspaceDir, entry.Name())
+		idFile := filepath.Join(wsPath, ".beads_id")
+		data, err := os.ReadFile(idFile)
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(string(data)) == beadsID {
+			return wsPath
+		}
+	}
+
+	return ""
+}
+
 // FindSkillManifest locates and parses the skill.yaml file for a given skill.
 // Searches in standard locations:
 // 1. ~/.claude/skills/worker/{skill}/.skillc/skill.yaml

@@ -315,7 +315,9 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier, serverURL st
 	}
 
 	// Run phase and synthesis verification
-	result, err := verifyPhaseAndSynthesis(beadsID, workspacePath, tier, comments)
+	// Pass projectDir for skill resolution fallback: when workspacePath is the
+	// project root (headless spawns), spawn artifacts live in .orch/workspace/{name}/
+	result, err := verifyPhaseAndSynthesis(beadsID, workspacePath, projectDir, tier, comments)
 	if err != nil {
 		return result, err
 	}
@@ -359,7 +361,9 @@ func VerifyCompletionForReview(beadsID, workspacePath, tier, serverURL string, c
 	}
 
 	// Run phase and synthesis verification directly
-	result, err := verifyPhaseAndSynthesis(beadsID, workspacePath, tier, comments)
+	// VerifyCompletionForReview doesn't have projectDir context, pass workspacePath
+	// as fallback (sufficient when called with canonical workspace path)
+	result, err := verifyPhaseAndSynthesis(beadsID, workspacePath, workspacePath, tier, comments)
 	if err != nil {
 		return result, err
 	}
@@ -424,7 +428,8 @@ func verifyWorkerGates(result *VerificationResult, beadsID, workspacePath, proje
 		checkModelConnection(result, skillName, workspacePath, projectDir)
 	} else {
 		// Verify test execution evidence for code changes
-		checkTestEvidence(result, beadsID, workspacePath, projectDir, comments)
+		// Pass pre-extracted skillName to avoid re-extraction with wrong path
+		checkTestEvidence(result, beadsID, workspacePath, projectDir, skillName, comments)
 	}
 
 	// Verify git diff against SYNTHESIS claims
@@ -504,8 +509,8 @@ func checkVisualVerification(result *VerificationResult, beadsID, workspacePath,
 }
 
 // checkTestEvidence verifies test execution evidence for code changes.
-func checkTestEvidence(result *VerificationResult, beadsID, workspacePath, projectDir string, comments []Comment) {
-	testResult := VerifyTestEvidenceForCompletionWithComments(beadsID, workspacePath, projectDir, comments)
+func checkTestEvidence(result *VerificationResult, beadsID, workspacePath, projectDir, skillName string, comments []Comment) {
+	testResult := VerifyTestEvidenceForCompletionWithSkill(beadsID, workspacePath, projectDir, skillName, comments)
 	if testResult == nil {
 		return
 	}
@@ -594,14 +599,16 @@ func checkBuild(result *VerificationResult, workspacePath, projectDir string) {
 // verifyPhaseAndSynthesis checks the core completion signals: phase status and synthesis.
 // It handles tier resolution, orchestrator dispatch, phase_complete checking
 // (with ACTIVITY.json and state.db fallbacks), and synthesis checking.
-func verifyPhaseAndSynthesis(beadsID, workspacePath, tier string, comments []Comment) (VerificationResult, error) {
+func verifyPhaseAndSynthesis(beadsID, workspacePath, projectDir, tier string, comments []Comment) (VerificationResult, error) {
 	result := VerificationResult{
 		Passed: true,
 	}
 
-	// Extract skill name for tracking
+	// Extract skill name for tracking.
+	// Uses ResolveSkillName which falls back to searching .orch/workspace/ by beadsID
+	// when workspacePath (artifacts dir) doesn't contain spawn artifacts (headless spawns).
 	if workspacePath != "" {
-		result.Skill, _ = ExtractSkillNameFromSpawnContext(workspacePath)
+		result.Skill = ResolveSkillName(workspacePath, projectDir, beadsID)
 	}
 
 	// Determine tier if not provided
