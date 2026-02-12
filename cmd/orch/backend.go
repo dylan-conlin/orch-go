@@ -16,6 +16,13 @@ type BackendResolution struct {
 	Error    error    // Fatal error (e.g., explicitly requested disabled backend)
 }
 
+// BackendAvailabilityChecker tests whether a backend runtime is available.
+// Implementations should be cheap (socket stat, binary lookup, HTTP ping with short timeout).
+type BackendAvailabilityChecker interface {
+	// IsAvailable returns nil if the backend is ready, or an error describing why not.
+	IsAvailable(backend string) error
+}
+
 // resolveBackend determines which backend to use for spawning.
 // Priority: 1) explicit flags, 2) project config, 3) global config, 4) default opencode
 //
@@ -147,6 +154,79 @@ func resolveBackend(
 	// All backends disabled - fatal error
 	result.Error = fmt.Errorf("all backends are disabled in ~/.orch/config.yaml (disabled_backends: %v)",
 		globalCfg.DisabledBackends)
+	return result
+}
+
+// backendFallbackOrder defines the order in which backends are tried when the
+// preferred backend is unavailable. This mirrors the disabled-backend fallback
+// at the bottom of resolveBackend().
+var backendFallbackOrder = []string{"opencode", "claude", "docker"}
+
+// resolveBackendWithAvailability wraps resolveBackend and adds runtime availability
+// checking. If the selected backend is unavailable:
+//   - Explicit --backend flag: returns the resolution as-is (let preflight fail with
+//     actionable error message, since the user explicitly asked for this backend)
+//   - Auto-selected (config/default): tries each fallback in order with a warning
+//
+// The checker parameter must not be nil.
+func resolveBackendWithAvailability(
+	backendFlag string,
+	opusFlag bool,
+	infraFlag bool,
+	modelFlag string,
+	projCfg *config.Config,
+	globalCfg *userconfig.Config,
+	task string,
+	beadsID string,
+	checker BackendAvailabilityChecker,
+) BackendResolution {
+	// First, resolve using the normal priority chain.
+	result := resolveBackend(backendFlag, opusFlag, infraFlag, modelFlag, projCfg, globalCfg, task, beadsID)
+	if result.Error != nil {
+		return result
+	}
+
+	// Check if the selected backend is available.
+	if err := checker.IsAvailable(result.Backend); err == nil {
+		return result // Available - use it.
+	}
+
+	// Backend is unavailable. If it was explicitly requested via --backend flag,
+	// don't fall back - the user specifically asked for this backend and should
+	// see the full preflight error with actionable instructions.
+	if backendFlag != "" && (backendFlag == "claude" || backendFlag == "opencode" || backendFlag == "docker") {
+		return result
+	}
+
+	// Auto-selected backend is unavailable - try fallbacks.
+	unavailableBackend := result.Backend
+	unavailableReason := result.Reason
+
+	// Helper to check if backend is disabled
+	isDisabled := func(backend string) bool {
+		return globalCfg != nil && globalCfg.IsBackendDisabled(backend)
+	}
+
+	for _, candidate := range backendFallbackOrder {
+		if candidate == unavailableBackend {
+			continue // Skip the one we already know is unavailable
+		}
+		if isDisabled(candidate) {
+			continue // Skip disabled backends
+		}
+		if err := checker.IsAvailable(candidate); err == nil {
+			// Found an available fallback.
+			result.Backend = candidate
+			result.Reason = fmt.Sprintf("fallback (%s unavailable, using %s)", unavailableBackend, candidate)
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("⚠️  %s backend unavailable (selected via: %s), falling back to %s",
+					unavailableBackend, unavailableReason, candidate))
+			return addInfrastructureWarning(result, task, beadsID)
+		}
+	}
+
+	// No backends available at all.
+	result.Error = fmt.Errorf("no backends available: %s was selected (%s) but is unavailable, and no fallback backends are available", unavailableBackend, unavailableReason)
 	return result
 }
 

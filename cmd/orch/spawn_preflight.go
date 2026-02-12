@@ -124,6 +124,32 @@ func runPreSpawnRuntimeChecks(backend, serverURL string) error {
 	}
 }
 
+// runtimeBackendChecker implements BackendAvailabilityChecker using the existing
+// preflight check functions. Each check is cheap: Docker checks socket existence,
+// Claude checks binary in PATH, OpenCode pings the API with a 2s timeout.
+type runtimeBackendChecker struct {
+	serverURL string // OpenCode API URL (needed for opencode availability check)
+}
+
+// newRuntimeBackendChecker creates a checker that tests real backend availability.
+func newRuntimeBackendChecker(serverURL string) BackendAvailabilityChecker {
+	return &runtimeBackendChecker{serverURL: serverURL}
+}
+
+// IsAvailable checks if the given backend is available at runtime.
+func (c *runtimeBackendChecker) IsAvailable(backend string) error {
+	switch backend {
+	case "docker":
+		return checkDockerAvailable()
+	case "claude":
+		return checkClaudeAvailable()
+	case "opencode":
+		return checkOpencodeAvailable(c.serverURL)
+	default:
+		return fmt.Errorf("unknown backend: %s", backend)
+	}
+}
+
 // getOSHint returns a helpful hint based on the current operating system.
 func getOSHint(macOSCmd, linuxCmd string) string {
 	if runtime.GOOS == "darwin" {

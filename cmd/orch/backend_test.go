@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/dylan-conlin/orch-go/pkg/config"
@@ -398,6 +400,150 @@ func TestResolveBackendDisabledBackends(t *testing.T) {
 
 			if result.Reason != tt.expectedReason {
 				t.Errorf("Reason: got %q, want %q", result.Reason, tt.expectedReason)
+			}
+
+			hasWarnings := len(result.Warnings) > 0
+			if hasWarnings != tt.expectWarnings {
+				t.Errorf("Warnings: got %v (len=%d), want hasWarnings=%v", result.Warnings, len(result.Warnings), tt.expectWarnings)
+			}
+		})
+	}
+}
+
+// mockBackendChecker is a test double for BackendAvailabilityChecker.
+// availableBackends maps backend name to availability (nil = available, error = unavailable).
+type mockBackendChecker struct {
+	available map[string]bool
+}
+
+func (m *mockBackendChecker) IsAvailable(backend string) error {
+	if m.available[backend] {
+		return nil
+	}
+	return fmt.Errorf("%s is not available", backend)
+}
+
+func TestResolveBackendWithAvailability(t *testing.T) {
+	tests := []struct {
+		name            string
+		backendFlag     string
+		opusFlag        bool
+		infraFlag       bool
+		projCfg         *config.Config
+		globalCfg       *userconfig.Config
+		available       map[string]bool // which backends are available
+		expectedBackend string
+		expectWarnings  bool
+		expectError     bool
+		reasonContains  string // substring to check in Reason
+	}{
+		{
+			name:            "all available - uses default opencode",
+			available:       map[string]bool{"opencode": true, "claude": true, "docker": true},
+			expectedBackend: "opencode",
+			reasonContains:  "default",
+		},
+		{
+			name:            "opencode unavailable - falls back to claude",
+			available:       map[string]bool{"opencode": false, "claude": true, "docker": true},
+			expectedBackend: "claude",
+			expectWarnings:  true,
+			reasonContains:  "fallback",
+		},
+		{
+			name:            "opencode and claude unavailable - falls back to docker",
+			available:       map[string]bool{"opencode": false, "claude": false, "docker": true},
+			expectedBackend: "docker",
+			expectWarnings:  true,
+			reasonContains:  "fallback",
+		},
+		{
+			name:        "all unavailable - returns error",
+			available:   map[string]bool{"opencode": false, "claude": false, "docker": false},
+			expectError: true,
+		},
+		{
+			name:            "explicit --backend flag skips fallback even when unavailable",
+			backendFlag:     "docker",
+			available:       map[string]bool{"opencode": true, "claude": true, "docker": false},
+			expectedBackend: "docker",
+			reasonContains:  "--backend docker flag",
+		},
+		{
+			name:            "config-selected docker unavailable - falls back to opencode",
+			globalCfg:       &userconfig.Config{Backend: "docker"},
+			available:       map[string]bool{"opencode": true, "claude": true, "docker": false},
+			expectedBackend: "opencode",
+			expectWarnings:  true,
+			reasonContains:  "fallback",
+		},
+		{
+			name:            "project config docker unavailable - falls back to opencode",
+			projCfg:         &config.Config{SpawnMode: "docker"},
+			available:       map[string]bool{"opencode": true, "claude": true, "docker": false},
+			expectedBackend: "opencode",
+			expectWarnings:  true,
+			reasonContains:  "fallback",
+		},
+		{
+			name:            "--opus flag with claude unavailable - falls back to opencode",
+			opusFlag:        true,
+			available:       map[string]bool{"opencode": true, "claude": false, "docker": true},
+			expectedBackend: "opencode",
+			expectWarnings:  true,
+			reasonContains:  "fallback",
+		},
+		{
+			name:            "opencode disabled + claude unavailable - falls back to docker",
+			globalCfg:       &userconfig.Config{DisabledBackends: []string{"opencode"}},
+			available:       map[string]bool{"opencode": true, "claude": false, "docker": true},
+			expectedBackend: "docker",
+			expectWarnings:  true,
+			reasonContains:  "fallback",
+		},
+		{
+			name:            "fallback skips disabled backends",
+			globalCfg:       &userconfig.Config{DisabledBackends: []string{"claude"}},
+			available:       map[string]bool{"opencode": false, "claude": true, "docker": true},
+			expectedBackend: "docker",
+			expectWarnings:  true,
+			reasonContains:  "fallback",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checker := &mockBackendChecker{available: tt.available}
+			result := resolveBackendWithAvailability(
+				tt.backendFlag,
+				tt.opusFlag,
+				tt.infraFlag,
+				"",
+				tt.projCfg,
+				tt.globalCfg,
+				"",
+				"",
+				checker,
+			)
+
+			if tt.expectError {
+				if result.Error == nil {
+					t.Errorf("expected error, got nil (backend=%s, reason=%s)", result.Backend, result.Reason)
+				}
+				return
+			}
+
+			if result.Error != nil {
+				t.Errorf("unexpected error: %v", result.Error)
+				return
+			}
+
+			if result.Backend != tt.expectedBackend {
+				t.Errorf("Backend: got %q, want %q (reason: %s)", result.Backend, tt.expectedBackend, result.Reason)
+			}
+
+			if tt.reasonContains != "" && !strings.Contains(result.Reason, tt.reasonContains) {
+				t.Errorf("Reason: got %q, want it to contain %q", result.Reason, tt.reasonContains)
 			}
 
 			hasWarnings := len(result.Warnings) > 0

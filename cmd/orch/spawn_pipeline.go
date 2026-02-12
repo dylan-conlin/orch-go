@@ -509,9 +509,12 @@ func (p *spawnPipeline) buildSpawnConfig() error {
 		p.projCfg, _ = config.Load(p.projectDir)
 	}
 
-	// Determine spawn backend
+	// Determine spawn backend with availability checking.
+	// This checks if the selected backend is actually running before committing to it.
+	// If the auto-selected backend is unavailable, falls back to the next available one.
 	p.globalCfg, _ = userconfig.Load()
-	resolution := resolveBackend(
+	checker := newRuntimeBackendChecker(p.serverURL)
+	resolution := resolveBackendWithAvailability(
 		spawnBackendFlag,
 		spawnOpus,
 		spawnInfra,
@@ -520,6 +523,7 @@ func (p *spawnPipeline) buildSpawnConfig() error {
 		p.globalCfg,
 		p.task,
 		p.beadsID,
+		checker,
 	)
 
 	if resolution.Error != nil {
