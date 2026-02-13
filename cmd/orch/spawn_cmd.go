@@ -1438,48 +1438,47 @@ func printSpawnSummaryWithGapWarning(gapAnalysis *spawn.GapAnalysis) {
 	}
 }
 
-// runSpawnInline spawns the agent inline (blocking) - original behavior.
+// runSpawnInline spawns the agent inline (blocking) using the HTTP API.
+// Uses CreateSession + SendMessageInDirectory to properly pass x-opencode-directory
+// header, ensuring the session is created in the correct project directory.
+// Blocks until the session completes by watching SSE events.
 func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
-	// Spawn opencode session
 	client := opencode.NewClient(serverURL)
-	// Format title with beads ID so orch status can match sessions
 	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
-	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model)
-	cmd.Stderr = os.Stderr
-	cmd.Dir = cfg.ProjectDir
-	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
-	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
 
-	stdout, err := cmd.StdoutPipe()
+	// Step 1: Create session via HTTP API with correct directory
+	// CreateSession passes x-opencode-directory header so the server uses the target project dir
+	session, err := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model)
 	if err != nil {
-		return fmt.Errorf("failed to get stdout: %w", err)
+		return fmt.Errorf("failed to create session: %w", err)
 	}
 
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start opencode: %w", err)
+	sessionID := session.ID
+
+	// Step 2: Send the initial prompt with model selection and directory context
+	// The directory header ensures the server resolves the correct project context
+	if err := client.SendMessageInDirectory(sessionID, minimalPrompt, cfg.Model, cfg.ProjectDir); err != nil {
+		return fmt.Errorf("failed to send prompt: %w", err)
 	}
 
-	result, err := opencode.ProcessOutput(stdout)
-	if err != nil {
-		return fmt.Errorf("failed to process output: %w", err)
-	}
+	fmt.Printf("Inline agent spawned (session: %s), waiting for completion...\n", sessionID)
 
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("opencode exited with error: %w", err)
+	// Step 3: Wait for session to complete (blocking)
+	// Watches SSE events for busy→idle transition to maintain inline mode's blocking behavior
+	if err := client.WaitForSessionIdle(sessionID); err != nil {
+		return fmt.Errorf("error waiting for session: %w", err)
 	}
 
 	// Write session ID to workspace file for later lookups
-	if result.SessionID != "" {
-		if err := spawn.WriteSessionID(cfg.WorkspacePath(), result.SessionID); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
-		}
+	if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 	}
 
 	// Register agent in general registry
-	registerAgent(cfg, result.SessionID, "", registry.ModeHeadless, cfg.Model)
+	registerAgent(cfg, sessionID, "", registry.ModeHeadless, cfg.Model)
 
 	// Register orchestrator session in registry (workers use beads instead)
-	registerOrchestratorSession(cfg, result.SessionID, task)
+	registerOrchestratorSession(cfg, sessionID, task)
 
 	// Log the session creation
 	inlineLogger := events.NewLogger(events.DefaultLogPath())
@@ -1499,7 +1498,7 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	addUsageInfoToEventData(inlineEventData, cfg.UsageInfo)
 	inlineEvent := events.Event{
 		Type:      "session.spawned",
-		SessionID: result.SessionID,
+		SessionID: sessionID,
 		Timestamp: time.Now().Unix(),
 		Data:      inlineEventData,
 	}
@@ -1510,8 +1509,8 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	// Print spawn summary with prominent gap warning if needed
 	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
 
-	fmt.Printf("Spawned agent:\n")
-	fmt.Printf("  Session ID: %s\n", result.SessionID)
+	fmt.Printf("Agent completed:\n")
+	fmt.Printf("  Session ID: %s\n", sessionID)
 	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
 	fmt.Printf("  Beads ID:   %s\n", beadsID)
 	// Print context quality with visual indicators

@@ -626,6 +626,76 @@ func (c *Client) SendMessageInDirectory(sessionID, content, model, directory str
 	return nil
 }
 
+// WaitForSessionIdle watches SSE events and blocks until the specified session
+// transitions from busy to idle. Used by inline spawn mode to maintain blocking
+// behavior while using the HTTP API for session creation.
+func (c *Client) WaitForSessionIdle(sessionID string) error {
+	sseClient := &http.Client{}
+	sseURL := c.ServerURL + "/event"
+	resp, err := sseClient.Get(sseURL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to SSE: %w", err)
+	}
+	defer resp.Body.Close()
+
+	reader := bufio.NewReader(resp.Body)
+	var eventBuffer strings.Builder
+	var sessionWasBusy bool
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+
+		eventBuffer.WriteString(line)
+
+		if line == "\n" && eventBuffer.Len() > 1 {
+			raw := eventBuffer.String()
+			eventType, data := ParseSSEEvent(raw)
+			eventBuffer.Reset()
+
+			if data == "" {
+				continue
+			}
+
+			// Handle session error events
+			if eventType == "session.error" {
+				var eventData map[string]interface{}
+				if err := json.Unmarshal([]byte(data), &eventData); err == nil {
+					if props, ok := eventData["properties"].(map[string]interface{}); ok {
+						if sid, ok := props["sessionID"].(string); ok && sid == sessionID {
+							if errorObj, ok := props["error"].(map[string]interface{}); ok {
+								if msg, ok := errorObj["message"].(string); ok {
+									return fmt.Errorf("session error: %s", msg)
+								}
+							}
+							return fmt.Errorf("session error occurred")
+						}
+					}
+				}
+				continue
+			}
+
+			// Handle session status events
+			if eventType == "session.status" {
+				status, sid := ParseSessionStatus(data)
+				if sid == sessionID {
+					if status == "busy" || status == "running" {
+						sessionWasBusy = true
+					}
+					if sessionWasBusy && status == "idle" {
+						return nil
+					}
+				}
+			}
+		}
+	}
+}
+
 // GetMessages fetches all messages for a session from the OpenCode API.
 func (c *Client) GetMessages(sessionID string) ([]Message, error) {
 	req, err := http.NewRequest("GET", c.ServerURL+"/session/"+sessionID+"/message", nil)

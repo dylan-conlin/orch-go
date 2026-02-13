@@ -1386,6 +1386,120 @@ func TestSendMessageInDirectoryEmpty(t *testing.T) {
 	}
 }
 
+// TestWaitForSessionIdle tests that WaitForSessionIdle returns when session transitions busy→idle.
+func TestWaitForSessionIdle(t *testing.T) {
+	sessionID := "ses_wait123"
+
+	// Create SSE server that sends busy then idle events
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/event" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("expected http.Flusher")
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		// Send busy event
+		busyData := fmt.Sprintf(`{"type":"session.status","properties":{"sessionID":"%s","status":{"type":"busy"}}}`, sessionID)
+		fmt.Fprintf(w, "event: session.status\ndata: %s\n\n", busyData)
+		flusher.Flush()
+
+		// Send idle event
+		idleData := fmt.Sprintf(`{"type":"session.status","properties":{"sessionID":"%s","status":{"type":"idle"}}}`, sessionID)
+		fmt.Fprintf(w, "event: session.status\ndata: %s\n\n", idleData)
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.WaitForSessionIdle(sessionID)
+	if err != nil {
+		t.Fatalf("WaitForSessionIdle() error = %v", err)
+	}
+}
+
+// TestWaitForSessionIdleError tests that WaitForSessionIdle returns error on session error.
+func TestWaitForSessionIdleError(t *testing.T) {
+	sessionID := "ses_error123"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/event" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("expected http.Flusher")
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		// Send error event
+		errorData := fmt.Sprintf(`{"type":"session.error","properties":{"sessionID":"%s","error":{"message":"rate limit exceeded"}}}`, sessionID)
+		fmt.Fprintf(w, "event: session.error\ndata: %s\n\n", errorData)
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.WaitForSessionIdle(sessionID)
+	if err == nil {
+		t.Fatal("WaitForSessionIdle() expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "rate limit exceeded") {
+		t.Errorf("error = %q, want to contain 'rate limit exceeded'", err.Error())
+	}
+}
+
+// TestWaitForSessionIdleIgnoresOtherSessions tests that events from other sessions are ignored.
+func TestWaitForSessionIdleIgnoresOtherSessions(t *testing.T) {
+	targetSession := "ses_target"
+	otherSession := "ses_other"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/event" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("expected http.Flusher")
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		// Send busy for other session (should be ignored)
+		otherBusy := fmt.Sprintf(`{"type":"session.status","properties":{"sessionID":"%s","status":{"type":"busy"}}}`, otherSession)
+		fmt.Fprintf(w, "event: session.status\ndata: %s\n\n", otherBusy)
+		flusher.Flush()
+
+		// Send idle for other session (should not trigger return)
+		otherIdle := fmt.Sprintf(`{"type":"session.status","properties":{"sessionID":"%s","status":{"type":"idle"}}}`, otherSession)
+		fmt.Fprintf(w, "event: session.status\ndata: %s\n\n", otherIdle)
+		flusher.Flush()
+
+		// Send busy then idle for target session (should trigger return)
+		targetBusy := fmt.Sprintf(`{"type":"session.status","properties":{"sessionID":"%s","status":{"type":"busy"}}}`, targetSession)
+		fmt.Fprintf(w, "event: session.status\ndata: %s\n\n", targetBusy)
+		flusher.Flush()
+
+		targetIdle := fmt.Sprintf(`{"type":"session.status","properties":{"sessionID":"%s","status":{"type":"idle"}}}`, targetSession)
+		fmt.Fprintf(w, "event: session.status\ndata: %s\n\n", targetIdle)
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.WaitForSessionIdle(targetSession)
+	if err != nil {
+		t.Fatalf("WaitForSessionIdle() error = %v", err)
+	}
+}
+
 // TestParseModelSpec tests the parseModelSpec helper function.
 func TestParseModelSpec(t *testing.T) {
 	tests := []struct {
