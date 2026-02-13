@@ -1416,7 +1416,26 @@ func runAutoRebuild(projectDir string) error {
 
 // restartOrchServe checks if orch serve is running and restarts it.
 // Returns true if it was restarted, false if it wasn't running.
+//
+// When running under Overmind (dashboard), uses "overmind restart api" to avoid
+// tearing down the whole process group (web, opencode). Falls back to kill+nohup
+// for standalone orch serve.
 func restartOrchServe(projectDir string) (bool, error) {
+	// Check if Overmind is managing orch serve by looking for its socket.
+	// When orch-dashboard starts services, Overmind creates .overmind.sock in the project dir.
+	// Killing the api process directly causes Overmind to tear down all services (web, opencode).
+	overmindSock := filepath.Join(projectDir, ".overmind.sock")
+	if _, err := os.Stat(overmindSock); err == nil {
+		cmd := exec.Command("overmind", "restart", "api")
+		cmd.Dir = projectDir
+		if err := cmd.Run(); err != nil {
+			return false, fmt.Errorf("overmind restart api failed: %w", err)
+		}
+		return true, nil
+	}
+
+	// Fallback: not under Overmind, use pgrep + kill + nohup
+
 	// Find the orch serve process
 	// We look for processes matching "orch serve" or "orch-go serve"
 	cmd := exec.Command("pgrep", "-f", "orch.*serve")
