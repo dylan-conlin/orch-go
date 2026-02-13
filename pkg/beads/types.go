@@ -208,8 +208,8 @@ func (i *Issue) GetBlockingDependencies() []BlockingDependency {
 			// Epic closes when children complete, so children can't wait for parent
 			isBlocking = false
 		default:
-			// "blocks" and other types: blocks unless closed
-			isBlocking = dep.Status != "closed"
+			// "blocks" and other types: blocks unless closed or answered
+			isBlocking = dep.Status != "closed" && dep.Status != "answered"
 		}
 
 		if isBlocking {

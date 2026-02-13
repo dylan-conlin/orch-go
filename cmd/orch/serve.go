@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/attention"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
@@ -45,6 +46,9 @@ var (
 	// Protected by serviceMonitorMu for thread-safe access across HTTP handlers.
 	serviceMonitor   *service.ServiceMonitor
 	serviceMonitorMu sync.RWMutex
+
+	// globalLikelyDoneCache caches LIKELY_DONE signals with TTL.
+	globalLikelyDoneCache *attention.LikelyDoneCache
 )
 
 var serveCmd = &cobra.Command{
@@ -222,6 +226,9 @@ func runServe(portNum int) error {
 	serviceMonitor.Start()
 	fmt.Println("Started service monitor (polling every 10s, auto-restart enabled)")
 
+	// Initialize LIKELY_DONE cache for attention signals
+	globalLikelyDoneCache = attention.NewLikelyDoneCache()
+
 	mux := http.NewServeMux()
 
 	// CORS middleware wrapper
@@ -366,6 +373,21 @@ func runServe(portNum int) error {
 
 	// POST /api/approve - approve an agent's work (creates beads comment + updates workspace manifest)
 	mux.HandleFunc("/api/approve", corsHandler(handleApprove))
+
+	// GET /api/attention - unified attention signals from multiple collectors
+	mux.HandleFunc("/api/attention", corsHandler(handleAttention))
+
+	// GET /api/attention/likely-done - LIKELY_DONE signals for dashboard
+	mux.HandleFunc("/api/attention/likely-done", corsHandler(handleLikelyDone))
+
+	// POST /api/attention/verify - mark issue as verified or needs_fix
+	mux.HandleFunc("/api/attention/verify", corsHandler(handleAttentionVerify))
+
+	// POST /api/attention/verify-failed/clear - clear a verification failure
+	mux.HandleFunc("/api/attention/verify-failed/clear", corsHandler(handleVerifyFailedClear))
+
+	// POST /api/attention/verify-failed/reset-status - reset issue status to open
+	mux.HandleFunc("/api/attention/verify-failed/reset-status", corsHandler(handleVerifyFailedResetStatus))
 
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
