@@ -586,6 +586,46 @@ func (c *Client) SendPrompt(sessionID, prompt, model string) error {
 	return c.SendMessageAsync(sessionID, prompt, model)
 }
 
+// SendMessageInDirectory sends a message to a session with the x-opencode-directory header.
+// This ensures the server resolves the correct project context for the session.
+// Used by headless spawn where the session directory must match the target project.
+func (c *Client) SendMessageInDirectory(sessionID, content, model, directory string) error {
+	payload := map[string]any{
+		"parts": []map[string]string{{"type": "text", "text": content}},
+		"agent": "build",
+	}
+	if model != "" {
+		modelObj := parseModelSpec(model)
+		if modelObj != nil {
+			payload["model"] = modelObj
+		}
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", c.ServerURL+"/session/"+sessionID+"/prompt_async", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if directory != "" {
+		req.Header.Set("x-opencode-directory", directory)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status code: %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
 // GetMessages fetches all messages for a session from the OpenCode API.
 func (c *Client) GetMessages(sessionID string) ([]Message, error) {
 	req, err := http.NewRequest("GET", c.ServerURL+"/session/"+sessionID+"/message", nil)

@@ -1321,6 +1321,71 @@ func TestSendMessageAsyncWithModel(t *testing.T) {
 	}
 }
 
+// TestSendMessageInDirectory tests that SendMessageInDirectory passes x-opencode-directory header.
+func TestSendMessageInDirectory(t *testing.T) {
+	sessionID := "ses_test123"
+	content := "test message"
+	model := "google/gemini-2.5-flash"
+	directory := "/Users/dylan/Documents/work/price-watch"
+
+	var receivedHeaders http.Header
+	var receivedPayload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header.Clone()
+		if err := json.NewDecoder(r.Body).Decode(&receivedPayload); err != nil {
+			t.Fatalf("Failed to decode request: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.SendMessageInDirectory(sessionID, content, model, directory)
+	if err != nil {
+		t.Fatalf("SendMessageInDirectory() error = %v", err)
+	}
+
+	// Verify x-opencode-directory header is set
+	if got := receivedHeaders.Get("x-opencode-directory"); got != directory {
+		t.Errorf("x-opencode-directory header = %q, want %q", got, directory)
+	}
+
+	// Verify model is included in payload
+	modelObj, ok := receivedPayload["model"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("model not included as object in payload")
+	}
+	if modelObj["providerID"] != "google" {
+		t.Errorf("model.providerID = %v, want google", modelObj["providerID"])
+	}
+	if modelObj["modelID"] != "gemini-2.5-flash" {
+		t.Errorf("model.modelID = %v, want gemini-2.5-flash", modelObj["modelID"])
+	}
+}
+
+// TestSendMessageInDirectoryEmpty tests that empty directory omits the header.
+func TestSendMessageInDirectoryEmpty(t *testing.T) {
+	sessionID := "ses_test123"
+
+	var receivedHeaders http.Header
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.SendMessageInDirectory(sessionID, "msg", "", "")
+	if err != nil {
+		t.Fatalf("SendMessageInDirectory() error = %v", err)
+	}
+
+	// Verify x-opencode-directory header is NOT set when directory is empty
+	if got := receivedHeaders.Get("x-opencode-directory"); got != "" {
+		t.Errorf("x-opencode-directory header = %q, want empty", got)
+	}
+}
+
 // TestParseModelSpec tests the parseModelSpec helper function.
 func TestParseModelSpec(t *testing.T) {
 	tests := []struct {

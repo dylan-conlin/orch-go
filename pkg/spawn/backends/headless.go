@@ -3,18 +3,16 @@ package backends
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
-// HeadlessBackend spawns the agent using CLI subprocess without a TUI.
+// HeadlessBackend spawns the agent via the OpenCode HTTP API without a TUI.
 // This is useful for automation and daemon-driven spawns.
-// Uses opencode CLI with --format json to properly support model selection
-// (the HTTP API ignores the model parameter).
+// Uses HTTP API with x-opencode-directory header to properly set the session's
+// working directory for cross-project spawns.
 // Includes retry logic for transient network failures.
 type HeadlessBackend struct{}
 
@@ -26,21 +24,6 @@ func (b *HeadlessBackend) Name() string {
 // headlessSpawnResult contains the result of starting a headless session.
 type headlessSpawnResult struct {
 	SessionID string
-	cmd       *exec.Cmd
-	stdout    io.ReadCloser
-}
-
-// StartBackgroundCleanup starts a goroutine to drain stdout and wait for the process.
-func (r *headlessSpawnResult) StartBackgroundCleanup() {
-	if r.stdout == nil || r.cmd == nil {
-		return
-	}
-	go func() {
-		// Drain remaining stdout
-		io.Copy(io.Discard, r.stdout)
-		// Wait for process to complete (cleanup)
-		r.cmd.Wait()
-	}()
 }
 
 // Spawn creates a new agent session in headless mode.
@@ -78,9 +61,6 @@ func (b *HeadlessBackend) Spawn(ctx context.Context, req *SpawnRequest) (*Result
 		fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 	}
 
-	// Start background cleanup goroutine
-	result.StartBackgroundCleanup()
-
 	// Register orchestrator session in registry (workers use beads instead)
 	RegisterOrchestratorSession(req.Config, sessionID, req.Task)
 
@@ -104,44 +84,26 @@ func (b *HeadlessBackend) Spawn(ctx context.Context, req *SpawnRequest) (*Result
 	}, nil
 }
 
-// startHeadlessSession starts an opencode session and extracts the session ID.
-// Returns the result with session ID and resources for cleanup.
-// Note: Uses CLI mode instead of HTTP API because OpenCode's HTTP API ignores the model parameter.
-// CLI mode correctly honors the --model flag.
-// See: .kb/investigations/2025-12-23-inv-model-selection-issue-architect-agent.md
+// startHeadlessSession creates an OpenCode session via HTTP API and sends the initial prompt.
+// Uses HTTP API instead of CLI subprocess to properly set the session's working directory
+// via x-opencode-directory header. This fixes cross-project spawns where --workdir differs
+// from the orchestrator's CWD.
+// Model selection is handled per-message by SendMessageInDirectory (providerID/modelID format).
 func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
-	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model)
-	cmd.Dir = cfg.ProjectDir
-	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
-	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
-
-	stdout, err := cmd.StdoutPipe()
+	// Step 1: Create session via HTTP API with correct directory
+	// CreateSession passes x-opencode-directory header so the server uses the target project dir
+	session, err := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model)
 	if err != nil {
-		spawnErr := spawn.WrapSpawnError(err, "Failed to get stdout pipe")
-		return nil, spawnErr
+		return nil, spawn.WrapSpawnError(err, "Failed to create session via API")
 	}
 
-	// Discard stderr in headless mode (no TUI to display it)
-	cmd.Stderr = nil
-
-	if err := cmd.Start(); err != nil {
-		spawnErr := spawn.WrapSpawnError(err, "Failed to start opencode process")
-		return nil, spawnErr
-	}
-
-	// Process stdout to extract session ID, then let the process run in background
-	// We need to read at least until we get the session ID
-	sessionID, err := opencode.ExtractSessionIDFromReader(stdout)
-	if err != nil {
-		// Try to kill the process if we couldn't get session ID
-		cmd.Process.Kill()
-		spawnErr := spawn.WrapSpawnError(err, "Failed to extract session ID")
-		return nil, spawnErr
+	// Step 2: Send the initial prompt with model selection and directory context
+	// The directory header ensures the server resolves the correct project context
+	if err := client.SendMessageInDirectory(session.ID, minimalPrompt, cfg.Model, cfg.ProjectDir); err != nil {
+		return nil, spawn.WrapSpawnError(err, "Failed to send prompt to session")
 	}
 
 	return &headlessSpawnResult{
-		SessionID: sessionID,
-		cmd:       cmd,
-		stdout:    stdout,
+		SessionID: session.ID,
 	}, nil
 }
