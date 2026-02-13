@@ -4,6 +4,7 @@ package spawn
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -36,6 +37,10 @@ const MaxKBContextChars = 80000
 // Claude typically uses ~4 chars per token for English text.
 const CharsPerToken = 4
 
+// maxModelSectionChars limits each injected model section.
+// Large models are truncated per section to preserve token budget.
+const maxModelSectionChars = 2500
+
 // KBContextMatch represents a match from kb context.
 type KBContextMatch struct {
 	Type        string // "constraint", "decision", "investigation", "guide"
@@ -62,6 +67,7 @@ type KBContextFormatResult struct {
 	TruncatedMatches  int      // Number of matches after truncation
 	EstimatedTokens   int      // Estimated token count of the formatted content
 	OmittedCategories []string // Categories that were partially or fully omitted
+	HasInjectedModels bool     // Whether model content (summary/invariants/failures) was injected
 }
 
 // ExtractKeywords extracts meaningful keywords from a task description for kb context query.
@@ -494,11 +500,12 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	// Check if we need to truncate
 	if len(content) <= maxChars {
 		return &KBContextFormatResult{
-			Content:          content,
-			WasTruncated:     false,
-			OriginalMatches:  originalMatchCount,
-			TruncatedMatches: originalMatchCount,
-			EstimatedTokens:  EstimateTokens(len(content)),
+			Content:           content,
+			WasTruncated:      false,
+			OriginalMatches:   originalMatchCount,
+			TruncatedMatches:  originalMatchCount,
+			EstimatedTokens:   EstimateTokens(len(content)),
+			HasInjectedModels: hasInjectedModelContent(models),
 		}
 	}
 
@@ -593,6 +600,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 		TruncatedMatches:  truncatedMatches,
 		EstimatedTokens:   EstimateTokens(len(content)),
 		OmittedCategories: omittedCategories,
+		HasInjectedModels: hasInjectedModelContent(models),
 	}
 }
 
@@ -637,11 +645,7 @@ func formatKBContextContent(query string, constraints, decisions, models, guides
 	if len(models) > 0 {
 		sb.WriteString("### Models (synthesized understanding)\n")
 		for _, m := range models {
-			sb.WriteString(fmt.Sprintf("- %s", m.Title))
-			if m.Path != "" {
-				sb.WriteString(fmt.Sprintf("\n  - See: %s", m.Path))
-			}
-			sb.WriteString("\n")
+			sb.WriteString(formatModelMatchForSpawn(m))
 		}
 		sb.WriteString("\n")
 	}
@@ -704,4 +708,223 @@ func filterByType(matches []KBContextMatch, matchType string) []KBContextMatch {
 		}
 	}
 	return filtered
+}
+
+type markdownHeading struct {
+	line  int
+	level int
+	title string
+}
+
+type modelSpawnSections struct {
+	summary            string
+	criticalInvariants string
+	whyThisFails       string
+}
+
+// hasInjectedModelContent checks whether any model matches have extractable content
+// (summary, critical invariants, or why-this-fails sections). When true, spawn context
+// should include probe guidance so agents produce lightweight probes instead of full investigations.
+func hasInjectedModelContent(models []KBContextMatch) bool {
+	for _, m := range models {
+		if m.Path == "" {
+			continue
+		}
+		sections, err := extractModelSectionsForSpawn(m.Path)
+		if err != nil {
+			continue
+		}
+		if sections.summary != "" || sections.criticalInvariants != "" || sections.whyThisFails != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func formatModelMatchForSpawn(match KBContextMatch) string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("- %s\n", match.Title))
+	if match.Path != "" {
+		sb.WriteString(fmt.Sprintf("  - See: %s\n", match.Path))
+	}
+
+	if match.Path == "" {
+		return sb.String()
+	}
+
+	sections, err := extractModelSectionsForSpawn(match.Path)
+	if err != nil {
+		return sb.String()
+	}
+
+	hasInjectedContent := false
+	if sections.summary != "" {
+		hasInjectedContent = true
+		sb.WriteString("  - Summary:\n")
+		sb.WriteString(indentBlock(sections.summary, "    "))
+	}
+	if sections.criticalInvariants != "" {
+		hasInjectedContent = true
+		sb.WriteString("  - Critical Invariants:\n")
+		sb.WriteString(indentBlock(sections.criticalInvariants, "    "))
+	}
+	if sections.whyThisFails != "" {
+		hasInjectedContent = true
+		sb.WriteString("  - Why This Fails:\n")
+		sb.WriteString(indentBlock(sections.whyThisFails, "    "))
+	}
+
+	if hasInjectedContent {
+		sb.WriteString("  - Your findings should confirm, contradict, or extend the claims above.\n")
+	}
+
+	// Inject recent probes from this model's probes/ directory
+	if match.Path != "" {
+		probes := ListRecentProbes(match.Path, MaxRecentProbes)
+		probeContent := FormatProbesForSpawn(probes)
+		if probeContent != "" {
+			sb.WriteString(probeContent)
+		}
+	}
+
+	return sb.String()
+}
+
+func extractModelSectionsForSpawn(path string) (*modelSpawnSections, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	lines := strings.Split(string(content), "\n")
+	headings := collectMarkdownHeadings(lines)
+
+	sections := &modelSpawnSections{
+		summary: truncateModelSection(extractSectionByHeading(lines, headings, func(title string) bool {
+			return strings.HasPrefix(title, "summary") || title == "what this is" || strings.HasPrefix(title, "executive summary")
+		})),
+		criticalInvariants: truncateModelSection(extractSectionByHeading(lines, headings, func(title string) bool { return strings.HasPrefix(title, "critical invariants") })),
+		whyThisFails:       truncateModelSection(extractSectionByHeading(lines, headings, func(title string) bool { return strings.HasPrefix(title, "why this fails") })),
+	}
+
+	return sections, nil
+}
+
+func collectMarkdownHeadings(lines []string) []markdownHeading {
+	headings := make([]markdownHeading, 0)
+	inCodeFence := false
+
+	for i, raw := range lines {
+		line := strings.TrimSpace(raw)
+
+		if strings.HasPrefix(line, "```") {
+			inCodeFence = !inCodeFence
+			continue
+		}
+		if inCodeFence {
+			continue
+		}
+
+		level, title, ok := parseMarkdownHeading(line)
+		if !ok {
+			continue
+		}
+
+		headings = append(headings, markdownHeading{
+			line:  i,
+			level: level,
+			title: normalizeHeading(title),
+		})
+	}
+
+	return headings
+}
+
+func parseMarkdownHeading(line string) (int, string, bool) {
+	if !strings.HasPrefix(line, "#") {
+		return 0, "", false
+	}
+
+	level := 0
+	for level < len(line) && line[level] == '#' {
+		level++
+	}
+
+	if level < 2 || level > 6 {
+		return 0, "", false
+	}
+
+	if len(line) == level || line[level] != ' ' {
+		return 0, "", false
+	}
+
+	title := strings.TrimSpace(line[level:])
+	if title == "" {
+		return 0, "", false
+	}
+
+	return level, title, true
+}
+
+func normalizeHeading(title string) string {
+	return strings.ToLower(strings.TrimSpace(title))
+}
+
+func extractSectionByHeading(lines []string, headings []markdownHeading, matcher func(string) bool) string {
+	for idx, heading := range headings {
+		if !matcher(heading.title) {
+			continue
+		}
+
+		startLine := heading.line + 1
+		endLine := len(lines)
+
+		for next := idx + 1; next < len(headings); next++ {
+			if headings[next].level <= heading.level {
+				endLine = headings[next].line
+				break
+			}
+		}
+
+		if startLine >= len(lines) || startLine >= endLine {
+			return ""
+		}
+
+		content := strings.TrimSpace(strings.Join(lines[startLine:endLine], "\n"))
+		return content
+	}
+
+	return ""
+}
+
+func truncateModelSection(content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" || len(content) <= maxModelSectionChars {
+		return content
+	}
+
+	truncated := strings.TrimSpace(content[:maxModelSectionChars])
+	if lastBreak := strings.LastIndexAny(truncated, "\n "); lastBreak > maxModelSectionChars/2 {
+		truncated = strings.TrimSpace(truncated[:lastBreak])
+	}
+
+	return truncated + "\n... [truncated]"
+}
+
+func indentBlock(content, indent string) string {
+	if strings.TrimSpace(content) == "" {
+		return ""
+	}
+
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			lines[i] = indent
+			continue
+		}
+		lines[i] = indent + line
+	}
+
+	return strings.Join(lines, "\n") + "\n"
 }
