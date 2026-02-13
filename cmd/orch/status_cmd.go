@@ -299,6 +299,7 @@ func runStatus(serverURL string) error {
 
 				if !windowExists {
 					info.SessionID = "tmux-stalled"
+					info.Window = "" // Clear stale window reference so phantom detection works
 				}
 
 				// Even in claude mode, we might have an OpenCode session for tokens/processing
@@ -478,8 +479,8 @@ func runStatus(serverURL string) error {
 		}
 
 		// Determine phantom status
-		// For now, if we have a session ID or a tmux window, it's not a phantom
-		if agent.SessionID != "" && agent.SessionID != "tmux-stalled" {
+		// An agent is phantom if it has no live backing: no live session AND no live tmux window
+		if agent.SessionID != "" && agent.SessionID != "tmux-stalled" && agent.SessionID != "api-stalled" {
 			agent.IsPhantom = false
 		} else if agent.Window != "" {
 			agent.IsPhantom = false
