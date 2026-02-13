@@ -64,36 +64,55 @@ func TestEnsureSessionTitleSkipsEmptyInputs(t *testing.T) {
 
 func TestValidateModeModelCombo(t *testing.T) {
 	tests := []struct {
-		name          string
-		backend       string
-		modelSpec     model.ModelSpec
-		expectWarning bool
-		warningText   string
+		name        string
+		backend     string
+		modelSpec   model.ModelSpec
+		expectError bool
+		errorText   string
 	}{
 		{
-			name:          "valid: opencode + sonnet",
-			backend:       "opencode",
-			modelSpec:     model.ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"},
-			expectWarning: false,
+			name:        "valid: opencode + sonnet",
+			backend:     "opencode",
+			modelSpec:   model.ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"},
+			expectError: false,
 		},
 		{
-			name:          "valid: claude + opus",
-			backend:       "claude",
-			modelSpec:     model.ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"},
-			expectWarning: false,
+			name:        "valid: opencode + opus (opencode can use opus)",
+			backend:     "opencode",
+			modelSpec:   model.ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"},
+			expectError: false,
 		},
 		{
-			name:          "invalid: opencode + opus",
-			backend:       "opencode",
-			modelSpec:     model.ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"},
-			expectWarning: true,
-			warningText:   "opencode backend with opus model may fail",
+			name:        "valid: claude + opus",
+			backend:     "claude",
+			modelSpec:   model.ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"},
+			expectError: false,
 		},
 		{
-			name:          "valid: claude + sonnet (non-optimal but works)",
-			backend:       "claude",
-			modelSpec:     model.ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"},
-			expectWarning: false,
+			name:        "valid: claude + sonnet",
+			backend:     "claude",
+			modelSpec:   model.ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"},
+			expectError: false,
+		},
+		{
+			name:        "valid: opencode + gemini flash",
+			backend:     "opencode",
+			modelSpec:   model.ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"},
+			expectError: false,
+		},
+		{
+			name:        "invalid: claude + gemini flash (non-Anthropic)",
+			backend:     "claude",
+			modelSpec:   model.ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"},
+			expectError: true,
+			errorText:   "claude backend only supports Anthropic models",
+		},
+		{
+			name:        "invalid: claude + gpt (non-Anthropic)",
+			backend:     "claude",
+			modelSpec:   model.ModelSpec{Provider: "openai", ModelID: "gpt-4o"},
+			expectError: true,
+			errorText:   "claude backend only supports Anthropic models",
 		},
 	}
 
@@ -101,15 +120,15 @@ func TestValidateModeModelCombo(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateModeModelCombo(tt.backend, tt.modelSpec)
 
-			if tt.expectWarning {
+			if tt.expectError {
 				if err == nil {
-					t.Errorf("expected warning but got nil")
-				} else if !strings.Contains(err.Error(), tt.warningText) {
-					t.Errorf("expected warning containing %q, got %q", tt.warningText, err.Error())
+					t.Errorf("expected error but got nil")
+				} else if !strings.Contains(err.Error(), tt.errorText) {
+					t.Errorf("expected error containing %q, got %q", tt.errorText, err.Error())
 				}
 			} else {
 				if err != nil {
-					t.Errorf("expected no warning but got: %v", err)
+					t.Errorf("expected no error but got: %v", err)
 				}
 			}
 		})

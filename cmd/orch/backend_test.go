@@ -173,56 +173,98 @@ func TestResolveBackend(t *testing.T) {
 
 func TestValidateBackendModelCompatibility(t *testing.T) {
 	tests := []struct {
-		name        string
-		backend     string
-		modelFlag   string
-		wantWarning bool
+		name      string
+		backend   string
+		modelFlag string
+		wantError bool
 	}{
 		{
-			name:        "opencode + opus = warning",
-			backend:     "opencode",
-			modelFlag:   "opus",
-			wantWarning: true,
+			name:      "opencode + opus = ok (opencode can use opus)",
+			backend:   "opencode",
+			modelFlag: "opus",
+			wantError: false,
 		},
 		{
-			name:        "opencode + claude-opus = warning",
-			backend:     "opencode",
-			modelFlag:   "claude-opus-4",
-			wantWarning: true,
+			name:      "opencode + sonnet = ok",
+			backend:   "opencode",
+			modelFlag: "sonnet",
+			wantError: false,
 		},
 		{
-			name:        "opencode + sonnet = ok",
-			backend:     "opencode",
-			modelFlag:   "sonnet",
-			wantWarning: false,
+			name:      "claude + opus = ok",
+			backend:   "claude",
+			modelFlag: "opus",
+			wantError: false,
 		},
 		{
-			name:        "claude + opus = ok",
-			backend:     "claude",
-			modelFlag:   "opus",
-			wantWarning: false,
+			name:      "claude + sonnet = ok",
+			backend:   "claude",
+			modelFlag: "sonnet",
+			wantError: false,
 		},
 		{
-			name:        "opencode + deepseek = ok",
-			backend:     "opencode",
-			modelFlag:   "deepseek",
-			wantWarning: false,
+			name:      "opencode + gemini flash = ok",
+			backend:   "opencode",
+			modelFlag: "flash",
+			wantError: false,
 		},
 		{
-			name:        "opencode + empty model = ok",
-			backend:     "opencode",
-			modelFlag:   "",
-			wantWarning: false,
+			name:      "opencode + gemini pro = ok",
+			backend:   "opencode",
+			modelFlag: "pro",
+			wantError: false,
+		},
+		{
+			name:      "claude + flash = error (non-Anthropic)",
+			backend:   "claude",
+			modelFlag: "flash",
+			wantError: true,
+		},
+		{
+			name:      "claude + gemini-2.5-flash = error (non-Anthropic)",
+			backend:   "claude",
+			modelFlag: "gemini-2.5-flash",
+			wantError: true,
+		},
+		{
+			name:      "claude + google/gemini-2.5-flash = error (non-Anthropic)",
+			backend:   "claude",
+			modelFlag: "google/gemini-2.5-flash",
+			wantError: true,
+		},
+		{
+			name:      "claude + gpt-4o = error (non-Anthropic)",
+			backend:   "claude",
+			modelFlag: "gpt-4o",
+			wantError: true,
+		},
+		{
+			name:      "opencode + deepseek = ok",
+			backend:   "opencode",
+			modelFlag: "deepseek",
+			wantError: false,
+		},
+		{
+			name:      "opencode + empty model = ok",
+			backend:   "opencode",
+			modelFlag: "",
+			wantError: false,
+		},
+		{
+			name:      "claude + empty model = ok (defaults to Anthropic)",
+			backend:   "claude",
+			modelFlag: "",
+			wantError: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			warning := validateBackendModelCompatibility(tt.backend, tt.modelFlag)
-			gotWarning := warning != ""
+			errMsg := validateBackendModelCompatibility(tt.backend, tt.modelFlag)
+			gotError := errMsg != ""
 
-			if gotWarning != tt.wantWarning {
-				t.Errorf("got warning=%v (%q), want warning=%v", gotWarning, warning, tt.wantWarning)
+			if gotError != tt.wantError {
+				t.Errorf("got error=%v (%q), want error=%v", gotError, errMsg, tt.wantError)
 			}
 		})
 	}

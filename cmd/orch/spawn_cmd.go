@@ -299,11 +299,15 @@ func resolveModelWithConfig(spawnModel, backend, skillName string, projCfg *conf
 }
 
 // validateModeModelCombo checks for known invalid mode+model combinations.
-// Returns a warning error (non-blocking) if an invalid combination is detected.
+// Returns an error if an invalid combination is detected.
+//
+// Known incompatibilities:
+//   - claude backend + non-Anthropic model: Claude CLI only supports Anthropic models
 func validateModeModelCombo(backend string, resolvedModel model.ModelSpec) error {
-	if backend == "opencode" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "opus") {
-		return fmt.Errorf(`Warning: opencode backend with opus model may fail (auth blocked).
-  Recommendation: Remove --backend opencode to use claude backend (default)`)
+	// Claude backend only supports Anthropic models
+	if backend == "claude" && !resolvedModel.IsAnthropic() {
+		return fmt.Errorf(`claude backend only supports Anthropic models, got %q.
+  Use --backend opencode for non-Anthropic models (e.g., gemini, gpt).`, resolvedModel.Format())
 	}
 
 	return nil

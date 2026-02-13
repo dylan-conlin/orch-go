@@ -248,10 +248,29 @@ func addInfrastructureWarning(result BackendResolution, task, beadsID string) Ba
 }
 
 // validateBackendModelCompatibility checks for known-bad combinations.
-// Returns warning message if there's an issue, empty string if OK.
+// Returns error message if there's a fatal incompatibility, empty string if OK.
+//
+// Known incompatibilities:
+//   - claude backend + non-Anthropic model: Claude CLI only supports Anthropic models
 func validateBackendModelCompatibility(backend, modelFlag string) string {
-	if backend == "opencode" && strings.Contains(strings.ToLower(modelFlag), "opus") {
-		return "  opus model with opencode backend may fail (auth issues). Consider: --backend claude"
+	// Claude backend only supports Anthropic models
+	if backend == "claude" && modelFlag != "" {
+		modelLower := strings.ToLower(modelFlag)
+		// Check for non-Anthropic indicators
+		isNonAnthropic := strings.Contains(modelLower, "gemini") ||
+			strings.Contains(modelLower, "gpt") ||
+			strings.Contains(modelLower, "google/") ||
+			strings.Contains(modelLower, "openai/") ||
+			modelLower == "flash" ||
+			modelLower == "flash-2.5" ||
+			modelLower == "flash3" ||
+			modelLower == "flash-3" ||
+			modelLower == "flash-3.0" ||
+			modelLower == "pro" ||
+			modelLower == "pro-2.5"
+		if isNonAnthropic {
+			return fmt.Sprintf("  claude backend only supports Anthropic models, got %q. Use --backend opencode for non-Anthropic models.", modelFlag)
+		}
 	}
 	return ""
 }
