@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-02-12
 **Updated:** 2026-02-12
 **Owner:** Investigation Worker
-**Phase:** Investigating
-**Next Step:** Deep analysis of commit patterns
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
@@ -54,11 +54,11 @@ Guidelines:
 
 | Investigation | Relationship | Verified | Conflicts |
 |--------------|--------------|----------|-----------|
-| N/A - novel investigation | - | - | - |
+| .kb/post-mortems/2026-01-02-system-spiral-dec27-jan02.md | deepens | yes | Root causes identified but not addressed |
 
 **Relationship types:** extends, confirms, contradicts, deepens
 **Verified:** Did you check claims against primary sources?
-**Conflicts:** What contradictions did you find?
+**Conflicts:** Earlier post-mortem (Dec 27-Jan 2) identified same root causes: agents fixing agent infrastructure, investigations replacing testing, no human verification loop. These mitigations were not implemented, causing repeat spiral.
 
 ---
 
@@ -130,19 +130,106 @@ Fix:Feat ratio = 0.96:1 (nearly equal fixes to features)
 
 ---
 
+### Finding 4: 24/7 Autonomous Operation with No Human Checkpoints
+
+**Evidence:**
+Commits occurred at all hours including overnight:
+- 2026-01-22 04:00 (4 commits)
+- 2026-01-22 05:00 (1 commit)
+- 2026-01-22 06:00 (1 commit)
+- 2026-01-23 02:00 (1 commit)
+- 2026-01-23 03:00 (2 commits)
+- 2026-01-23 05:00 (1 commit)
+
+Average 45 commits/day sustained for 26 days.
+Zero human commits in the entire period.
+Commit authorship: 1162 "Test User" (agent), 1 "Claude"
+
+**Source:** `git log --format="%ad" --date=format:"%Y-%m-%d %H"` analysis
+
+**Significance:** The system ran continuously without human oversight. No circuit breaker existed to halt autonomous operation or require human confirmation.
+
+---
+
+### Finding 5: Repeat Spiral - Same Root Causes as Dec 27-Jan 2
+
+**Evidence:**
+Earlier post-mortem (.kb/post-mortems/2026-01-02-system-spiral-dec27-jan02.md) identified:
+
+| Root Cause (Jan 2) | Evidence in Current Spiral |
+|-------------------|----------------------------|
+| "Agents fixing agent infrastructure" | 175 cmd/orch files churned, 84 pkg/daemon files deleted |
+| "Investigations replaced testing" | 407 investigation files created then deleted |
+| "No human verification loop" | Zero human commits in 26 days |
+| "Velocity over correctness" | 1163 commits = 45/day vs 58/day in first spiral |
+| "Complexity as solution" | pkg/attention built across 18+ commits then deleted |
+
+The earlier post-mortem recommended:
+1. "Human verifies behavior, not just output, before next change" - NOT IMPLEMENTED
+2. "Agents don't modify agent infrastructure without manual review" - NOT IMPLEMENTED
+3. "One change at a time with a pause to confirm it worked" - NOT IMPLEMENTED
+4. "I don't know if this is working halts progress" - NOT IMPLEMENTED
+5. "Limit self-modification velocity" - NOT IMPLEMENTED
+
+**Source:** git show entropy-spiral-feb2026:.kb/post-mortems/2026-01-02-system-spiral-dec27-jan02.md
+
+**Significance:** The system repeated the exact same failure pattern because mitigations from the first post-mortem were never implemented. This is the critical finding: **known root causes with documented mitigations were ignored.**
+
+---
+
+### Finding 6: Failed Stabilization Attempts Continued Without Human Intervention
+
+**Evidence:**
+One explicit stabilization commit on Feb 9:
+```
+21ed501d stabilize: abandon contaminated agents, strip triage:ready from blocked issues, restore clean tree
+```
+
+However, activity continued immediately afterward:
+- Feb 9-10: 39 more commits after stabilization
+- Feb 10-12: 150 more commits
+- Zombie process fixes, zombie detection, reaper commands
+- Memory pressure investigation (OpenCode killed at 8.4GB)
+
+Problems identified but not halted:
+- Zombie bun processes (25cfd6d8: "3 compounding integration mismatches")
+- OpenCode stack overflows
+- 8.4GB memory usage causing jetsam kills
+- Test failures requiring fixes (ff84a29a: "7 test failures")
+
+**Source:** git log analysis around stabilization commit
+
+**Significance:** Even when instability was detected, the system continued without human intervention. The stabilization was performed by agents, not humans, and was insufficient to halt the spiral.
+
+---
+
 ## Synthesis
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Self-Modifying Systems Require External Verification** - Agents modified the very infrastructure that tracks and manages agents (Finding 2: 175 cmd/orch files, 46 pkg/daemon files churned). Each change altered the ground truth, making it impossible for subsequent agents to verify correctness.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Documented Lessons Not Implemented = Repeated Failure** - The Dec 27-Jan 2 post-mortem identified 5 specific mitigations. None were implemented (Finding 5). The current spiral repeated the exact same failure pattern at 3x the duration.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Velocity Without Gates Compounds Errors** - 45 commits/day for 26 days with no human verification (Finding 4). The 0.96:1 fix:feat ratio (Finding 3) shows each feature introduced nearly one bug, creating a churn cycle.
+
+4. **Agent Self-Stabilization Fails** - The Feb 9 stabilization attempt (Finding 6) was performed by agents, not humans. It failed to halt the spiral, proving that the system cannot stabilize itself.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+**What patterns led to 1163 agent commits churning 5.4M LOC with zero human oversight?**
+
+1. **No human-in-the-loop gates** - The system had no mechanism to require human approval before continuing after N commits or detecting anomalies.
+
+2. **Ignored prior post-mortem** - Known mitigations from Jan 2 post-mortem were never implemented.
+
+3. **Self-modifying system without external verification** - Agents changed the code that observes agents, making self-diagnosis impossible.
+
+4. **Velocity incentives without correctness gates** - The system rewarded shipping (commits, completion) without verifying the ship was sound.
+
+**What mitigations would prevent recurrence?**
+
+See Implementation Recommendations below.
 
 ---
 
@@ -150,21 +237,22 @@ Fix:Feat ratio = 0.96:1 (nearly equal fixes to features)
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Commit counts, dates, authors verified via git log (1163 commits, 26 days, 1162 by "Test User")
+- ✅ LOC churn verified via git log --numstat (5.4M total, 1.7M net)
+- ✅ Prior post-mortem existence verified (read full content from entropy-spiral-feb2026 branch)
+- ✅ Churned file counts verified via git diff-filter analysis (5244 files created then deleted)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Whether proposed mitigations would actually prevent recurrence (hypothesis)
+- ⚠️ Whether velocity was the root cause vs a symptom (could be direction, not speed)
+- ⚠️ Whether human intervention would have been effective (assumes human attention was available)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if the 1163 commits represent parallel feature development rather than churn (would need to verify features shipped to production)
+- Finding would be wrong if human review was occurring but not tracked via commits (would need to check Slack/email/verbal)
+- Mitigations would be wrong if the real issue is agent capability, not process (would need to test with same process but better agents)
 
 ---
 
@@ -174,114 +262,116 @@ Fix:Feat ratio = 0.96:1 (nearly equal fixes to features)
 
 ### Recommendation Authority
 
-Classify each recommendation by authority level to route to the appropriate decision-maker:
-
 | Recommendation | Authority | Rationale |
 |----------------|-----------|-----------|
-| [Primary recommendation from investigation] | implementation / architectural / strategic | [Why this authority level - stays inside scope? reaches across boundaries? involves irreversible choice?] |
-
-**Authority Levels:**
-- **implementation**: Worker decides within scope (reversible, single-scope, clear criteria, no cross-boundary impact)
-- **architectural**: Orchestrator decides across boundaries (cross-component, multiple valid approaches, requires synthesis)
-- **strategic**: Dylan decides on direction (irreversible, resource commitment, value judgment, premise-level question)
-
-**Classification test:** "Does this decision stay inside my scoped context, or does it reach out?"
-- Stays inside → implementation
-- Reaches to other components/agents → architectural
-- Reaches to values/direction/irreversibility → strategic
+| Human approval gate after N commits | strategic | Changes fundamental autonomy model |
+| Daily churn metrics dashboard | architectural | Cross-component visibility |
+| Infrastructure change review requirement | architectural | Changes agent workflow |
+| Commit velocity throttle | implementation | Reversible rate limit |
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Circuit Breaker Architecture** - Implement hard gates that halt autonomous operation and require human confirmation.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Directly addresses Finding 4: No mechanism existed to pause and ask human
+- Addresses Finding 5: Jan 2 mitigations recommended same approach but weren't implemented
+- Prevents self-stabilization loops (Finding 6): Human must explicitly continue
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Reduced velocity (acceptable: 45 commits/day with 0.96:1 fix:feat ratio isn't productive velocity)
+- Requires human attention (acceptable: that's the point - human-in-loop)
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. **Daily commit limit with human override** - System halts after 20 commits/day; human must explicitly continue
+2. **Churn monitoring** - Alert when files created then deleted exceeds threshold (e.g., 10%)
+3. **Infrastructure change gate** - Any change to cmd/orch, pkg/daemon, pkg/spawn requires human review
+4. **Fix:Feat ratio monitor** - Alert when ratio exceeds 0.5:1 (50% of features causing bugs)
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Improve agent quality (better testing, better prompts)**
+- **Pros:** Preserves autonomy, addresses root capability
+- **Cons:** Doesn't address self-modification problem (Finding 2); agents can't verify changes to observation infrastructure
+- **When to use instead:** After circuit breakers are in place; defense in depth
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Disable autonomous operation entirely (human approves every commit)**
+- **Pros:** Maximum control
+- **Cons:** Eliminates agent value; overkill
+- **When to use instead:** During active crisis recovery
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Rationale for recommendation:** Circuit breakers balance autonomy with oversight. Finding 5 shows known mitigations were ignored - circuit breakers FORCE human involvement rather than relying on process discipline.
 
 ---
 
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+1. **Daily commit limit (orch config)** - Add `max_commits_per_day: 20` to orch config; daemon halts and notifies human when reached
+2. **Churn ratio monitoring** - Track created/deleted file ratio per day; alert at >10%
+3. **Infrastructure gate list** - Define `protected_paths: [cmd/orch, pkg/daemon, pkg/spawn]` requiring human review
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ Agents may work around limits (e.g., batch changes into single commits) - monitor commit size
+- ⚠️ Human may rubber-stamp approvals without reviewing - make approval effortful
+- ⚠️ Legitimate parallel work may hit daily limits - allow per-issue exemptions
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- What caused the Dec 27-Jan 2 mitigations to not be implemented? Process failure or prioritization?
+- Are there legitimate high-velocity periods (e.g., initial development) that need different rules?
+- How to distinguish productive velocity from churn velocity automatically?
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ No period >7 days without human commit
+- ✅ Churn ratio (created+deleted/net) stays below 2:1
+- ✅ Infrastructure changes require explicit human approval in beads comments
+- ✅ Fix:feat ratio stays below 0.5:1 over rolling 7-day window
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `.kb/post-mortems/2026-01-02-system-spiral-dec27-jan02.md` (via git show) - Prior post-mortem with same root causes
+- Git history on entropy-spiral-feb2026 branch - Primary evidence source
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Commit statistics
+git log --oneline 0bca3dec..entropy-spiral-feb2026 | wc -l  # 1163
+git shortlog -sn 0bca3dec..entropy-spiral-feb2026  # 1162 Test User, 1 Claude
 
-# [Command description]
-[command]
+# LOC churn
+git log --numstat 0bca3dec..entropy-spiral-feb2026 | awk 'NF==3 {plus+=$1; minus+=$2} END {print plus, minus, plus+minus}'
+
+# File churn
+git log --diff-filter=A --name-only --format="" 0bca3dec..entropy-spiral-feb2026 | sort -u > created.txt
+git log --diff-filter=D --name-only --format="" 0bca3dec..entropy-spiral-feb2026 | sort -u > deleted.txt
+comm -12 created.txt deleted.txt | wc -l  # 5244
+
+# Commit type distribution
+git log --format="%s" 0bca3dec..entropy-spiral-feb2026 | sed 's/:.*//' | sort | uniq -c | sort -rn
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Post-mortem:** .kb/post-mortems/2026-01-02-system-spiral-dec27-jan02.md - Earlier spiral with identical root causes
+- **Branch:** entropy-spiral-feb2026 - Preserved evidence of the spiral
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-02-12 22:40:** Investigation started
+- Initial question: What patterns led to entropy spiral with 772+ agent commits?
+- Context: Orchestrator requested post-mortem analysis
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-02-12 22:45:** Scale discovery
+- Found 1163 commits (not 772), 5.4M LOC churn, zero human commits
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-02-12 23:00:** Prior post-mortem discovery
+- Found Dec 27-Jan 2 post-mortem documenting same root causes
+- Critical finding: mitigations were documented but never implemented
+
+**2026-02-12 23:15:** Investigation completed
+- Status: Complete
+- Key outcome: Repeat spiral caused by unimplemented mitigations from prior post-mortem
