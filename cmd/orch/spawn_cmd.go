@@ -189,7 +189,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnGateOnGap, "gate-on-gap", false, "Block spawn if context quality is too low (enforces Gate Over Remind)")
 	spawnCmd.Flags().BoolVar(&spawnSkipGapGate, "skip-gap-gate", false, "Explicitly bypass gap gating (documents conscious decision to proceed without context)")
 	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default 20, only used with --gate-on-gap)")
-	spawnCmd.Flags().BoolVar(&spawnForce, "force", false, "Force tactical spawn in hotspot areas (bypasses strategic-first gate - requires justification)")
+	spawnCmd.Flags().BoolVar(&spawnForce, "force", false, "Force overwrite of existing workspace (allows spawning into directory with existing session files)")
 	spawnCmd.Flags().BoolVar(&spawnBypassTriage, "bypass-triage", false, "Acknowledge manual spawn bypasses daemon-driven triage workflow (required for manual spawns)")
 	spawnCmd.Flags().StringVar(&spawnDesignWorkspace, "design-workspace", "", "Design workspace name from ui-design-session for handoff to feature-impl (e.g., 'og-design-ready-queue-08jan')")
 }
@@ -828,46 +828,27 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 
 	// STRATEGIC-FIRST ORCHESTRATION: Check for hotspots in task target area
-	// In hotspot areas (5+ bugs, persistent failures), strategic approach is required
-	// Tactical debugging only allowed with --force (requires justification)
+	// In hotspot areas (5+ bugs, persistent failures), strategic approach is recommended
+	// Warning shown but spawn proceeds (non-blocking)
 	if preCheckDir != "" {
 		if hotspotResult, err := RunHotspotCheckForSpawn(preCheckDir, task); err == nil && hotspotResult != nil {
-			// Strategic-first gate: block tactical spawns to hotspot areas unless:
-			// 1. Daemon-driven (triage already happened when issue was labeled triage:ready), OR
-			// 2. --force flag provided (user explicitly overrides with justification), OR
-			// 3. Skill is architect (strategic approach, not tactical)
+			// Strategic-first gate: warn about hotspot areas (non-blocking)
+			// Daemon-driven spawns stay silent (triage already happened)
 			isStrategicSkill := skillName == "architect"
 
-			if !daemonDriven && !spawnForce && !isStrategicSkill {
-				// BLOCKING: Strategic approach required in hotspot area
+			if !daemonDriven {
+				// Show hotspot warning (includes recommendation to use architect)
 				fmt.Fprint(os.Stderr, hotspotResult.Warning)
-				fmt.Fprintln(os.Stderr, "")
-				fmt.Fprintln(os.Stderr, "🚫 STRATEGIC-FIRST ORCHESTRATION")
-				fmt.Fprintln(os.Stderr, "   Tactical debugging blocked in hotspot areas.")
-				fmt.Fprintln(os.Stderr, "   ")
-				fmt.Fprintln(os.Stderr, "   REQUIRED: Spawn architect first to understand root cause")
-				fmt.Fprintf(os.Stderr, "   orch spawn architect \"%s\"\n", task)
-				fmt.Fprintln(os.Stderr, "   ")
-				fmt.Fprintln(os.Stderr, "   To override (requires justification):")
-				fmt.Fprintf(os.Stderr, "   orch spawn --force %s \"%s\"\n", skillName, task)
-				fmt.Fprintln(os.Stderr, "")
-				return fmt.Errorf("strategic-first gate: architect required in hotspot area (use --force to override)")
-			}
 
-			// Strategic skill, --force, or daemon-driven: print warning but allow
-			if daemonDriven {
-				// Daemon-driven: triage already happened, silent bypass
-				// (issue was labeled triage:ready by orchestrator)
-			} else if spawnForce {
-				fmt.Fprint(os.Stderr, hotspotResult.Warning)
-				fmt.Fprintln(os.Stderr, "⚠️  --force used: bypassing strategic-first gate")
-				fmt.Fprintln(os.Stderr, "")
-			} else {
-				// Architect skill: print info message
-				fmt.Fprint(os.Stderr, hotspotResult.Warning)
-				fmt.Fprintln(os.Stderr, "✓ Strategic approach: architect skill in hotspot area")
+				// Add context based on skill choice
+				if isStrategicSkill {
+					fmt.Fprintln(os.Stderr, "✓ Strategic approach: architect skill selected for hotspot area")
+				} else {
+					fmt.Fprintln(os.Stderr, "⚠️  Proceeding with tactical approach in hotspot area")
+				}
 				fmt.Fprintln(os.Stderr, "")
 			}
+			// Daemon-driven: silent (triage already happened when issue was labeled triage:ready)
 		}
 	}
 

@@ -338,6 +338,17 @@ To prevent knowledge loss at session end (**Capture at Context**), `orch complet
 - Markdown-only work exempted from test_evidence gate
 - Zero spawn_time handled gracefully (skip with warning for legacy workspaces)
 
+### Phase 7: Pure-Noise Gate Removal (Feb 2026)
+
+**What changed:** Removed three gates identified as pure noise through friction analysis: `agent_running`, `model_connection`, and `commit_evidence`.
+
+**Investigation:** Probe 2026-02-13 analyzed 1,008 bypass events and 403 failure events across all gates. Three gates showed extreme bypass:fail ratios indicating they never caught real defects:
+- `agent_running`: ∞:1 ratio (183 bypasses, 0 failures) - never caught anything, 94% bypassed for GPT model compatibility
+- `model_connection`: 71:1 ratio (71 bypasses, 1 failure) - almost never caught anything
+- `commit_evidence`: 11.8:1 ratio (59 bypasses, 5 failures) - redundant with `git_diff` gate which already validates commits
+
+**Key insight:** Gates that generate only bypass noise without catching defects should be removed entirely, not softened. These three gates were removed from both the verification code and CLI skip flags.
+
 ---
 
 ## References
