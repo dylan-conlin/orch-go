@@ -1,0 +1,52 @@
+verification_type: test
+project_dir: /Users/dylanconlin/Documents/personal/orch-go
+
+commands:
+  - name: Run backend package tests
+    command: go test -v ./pkg/spawn/backends/
+    expected_output_contains:
+      - "PASS"
+      - "ok  	github.com/dylan-conlin/orch-go/pkg/spawn/backends"
+    expected_exit_code: 0
+
+test_evidence:
+  test_count: 9
+  total_cases: 31
+  passing: 31
+  failing: 0
+  duration: "0.009s"
+  
+  test_functions:
+    - TestSelect (backend selection logic)
+    - TestFormatSessionTitle (session title formatting)
+    - TestBackendNames (backend name methods)
+    - TestAddGapAnalysisToEventData (gap analysis event mapping)
+    - TestAddUsageInfoToEventData (usage info event mapping)
+    - TestFormatContextQualitySummary (context quality formatting)
+    - TestRegisterOrchestratorSession (orchestrator registration)
+    - TestResult (result structure validation)
+    - TestSpawnRequest (spawn request validation)
+
+coverage_notes: |
+  Unit tests added for pkg/spawn/backends covering:
+  - Backend interface implementation (inline, headless, tmux)
+  - Helper functions in common.go
+  - Data structure validation (Result, TmuxInfo, SpawnRequest)
+  - Gap analysis and usage info event data mapping
+  - Context quality summary formatting
+  
+  Per constraint "Worker agents must test spawn functionality via unit tests 
+  and code review, not end-to-end spawning", these tests focus on:
+  - Pure functions (formatting, data mapping)
+  - Structure validation
+  - Logic paths without external dependencies
+  
+  Full integration testing of Spawn() methods would require mocking framework,
+  which is out of scope for this task.
+
+additional_work:
+  - Fixed compilation error in pkg/verify/test_evidence.go
+  - Removed call to deprecated HasCodeChangesInRecentCommits function
+  - Replaced with conservative fallback (return false on git error)
+
+manual_verification_required: false
