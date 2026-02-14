@@ -18,6 +18,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/session"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
@@ -359,11 +360,9 @@ func runComplete(identifier, workdir string) error {
 				isOrchestratorSession = true
 				fmt.Printf("Orchestrator session: %s\n", agentName)
 			} else {
-				// Non-orchestrator workspace found by name - read beads ID from .beads_id file
-				beadsIDPath := filepath.Join(workspacePath, ".beads_id")
-				if content, err := os.ReadFile(beadsIDPath); err == nil {
-					beadsID = strings.TrimSpace(string(content))
-				}
+				// Non-orchestrator workspace found by name - read beads ID from manifest
+				manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+				beadsID = manifest.BeadsID
 			}
 		}
 	}
@@ -1660,26 +1659,20 @@ func collectCompletionTelemetry(workspacePath string, forced bool, verificationP
 		outcome = "failed"
 	}
 
-	// Read spawn time from workspace
-	spawnTimeFile := filepath.Join(workspacePath, ".spawn_time")
-	if spawnTimeBytes, err := os.ReadFile(spawnTimeFile); err == nil {
-		spawnTimeStr := strings.TrimSpace(string(spawnTimeBytes))
-		if spawnTime, err := time.Parse(time.RFC3339, spawnTimeStr); err == nil {
-			durationSeconds = int(time.Since(spawnTime).Seconds())
-		}
+	// Read spawn time from manifest (falls back to dotfiles)
+	manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+	if spawnTime := manifest.ParseSpawnTime(); !spawnTime.IsZero() {
+		durationSeconds = int(time.Since(spawnTime).Seconds())
 	}
 
-	// Read session ID from workspace
-	sessionIDFile := filepath.Join(workspacePath, ".session_id")
-	if sessionIDBytes, err := os.ReadFile(sessionIDFile); err == nil {
-		sessionID := strings.TrimSpace(string(sessionIDBytes))
-		if sessionID != "" {
-			// Get token usage from OpenCode API
-			client := opencode.NewClient("http://127.0.0.1:4096")
-			if tokenStats, err := client.GetSessionTokens(sessionID); err == nil && tokenStats != nil {
-				tokensInput = tokenStats.InputTokens
-				tokensOutput = tokenStats.OutputTokens
-			}
+	// Read session ID from workspace (.session_id stays separate - infrastructure handle)
+	sessionID := spawn.ReadSessionID(workspacePath)
+	if sessionID != "" {
+		// Get token usage from OpenCode API
+		client := opencode.NewClient("http://127.0.0.1:4096")
+		if tokenStats, err := client.GetSessionTokens(sessionID); err == nil && tokenStats != nil {
+			tokensInput = tokenStats.InputTokens
+			tokensOutput = tokenStats.OutputTokens
 		}
 	}
 
@@ -1697,15 +1690,10 @@ func collectAccretionDelta(projectDir, workspacePath string) *events.AccretionDe
 		return nil
 	}
 
-	// Read spawn time to scope the diff to this agent's commits
-	spawnTimeFile := filepath.Join(workspacePath, ".spawn_time")
-	spawnTimeBytes, err := os.ReadFile(spawnTimeFile)
-	if err != nil {
-		return nil
-	}
-	spawnTimeStr := strings.TrimSpace(string(spawnTimeBytes))
-	spawnTime, err := time.Parse(time.RFC3339, spawnTimeStr)
-	if err != nil {
+	// Read spawn time from manifest (falls back to dotfiles)
+	manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+	spawnTime := manifest.ParseSpawnTime()
+	if spawnTime.IsZero() {
 		return nil
 	}
 

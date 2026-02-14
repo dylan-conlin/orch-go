@@ -3,11 +3,10 @@ package verify
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
@@ -45,14 +44,12 @@ func verifyOpencodeDeliverables(workspacePath, serverURL string, result *Backend
 		return
 	}
 
-	// Read session ID from workspace
-	sessionIDPath := filepath.Join(workspacePath, ".session_id")
-	data, err := os.ReadFile(sessionIDPath)
-	if err != nil {
-		result.Warnings = append(result.Warnings, fmt.Sprintf("could not read .session_id: %v", err))
+	// Read session ID from workspace (.session_id stays separate - infrastructure handle)
+	sessionID := spawn.ReadSessionID(workspacePath)
+	if sessionID == "" {
+		result.Warnings = append(result.Warnings, "could not read .session_id")
 		return
 	}
-	sessionID := strings.TrimSpace(string(data))
 
 	client := opencode.NewClient(serverURL)
 	messages, err := client.GetMessages(sessionID)
@@ -110,12 +107,9 @@ func verifyTmuxDeliverables(beadsID string, result *BackendResult) {
 	}
 }
 
-// ReadSpawnModeFromWorkspace reads the spawn mode from the workspace's .spawn_mode file.
+// ReadSpawnModeFromWorkspace reads the spawn mode from the workspace.
+// Reads AGENT_MANIFEST.json first, falls back to .spawn_mode dotfile.
 func ReadSpawnModeFromWorkspace(workspacePath string) string {
-	modeFile := filepath.Join(workspacePath, ".spawn_mode")
-	data, err := os.ReadFile(modeFile)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
+	manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+	return manifest.SpawnMode
 }

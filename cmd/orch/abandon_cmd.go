@@ -320,29 +320,20 @@ func runAbandon(beadsID, reason, workdir string) error {
 
 	// Collect telemetry (duration and tokens) if workspace is available
 	if workspacePath != "" {
-		// Read spawn time
-		spawnTimeFile := filepath.Join(workspacePath, ".spawn_time")
-		spawnTimeBytes, readErr := os.ReadFile(spawnTimeFile)
-		if readErr == nil {
-			spawnTimeStr := strings.TrimSpace(string(spawnTimeBytes))
-			spawnTime, parseErr := time.Parse(time.RFC3339, spawnTimeStr)
-			if parseErr == nil {
-				abandonedData.DurationSeconds = int(time.Since(spawnTime).Seconds())
-			}
+		// Read spawn time from manifest (falls back to dotfiles)
+		manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+		if spawnTime := manifest.ParseSpawnTime(); !spawnTime.IsZero() {
+			abandonedData.DurationSeconds = int(time.Since(spawnTime).Seconds())
 		}
 
-		// Read session ID and get token usage
-		sessionIDFile := filepath.Join(workspacePath, ".session_id")
-		sessionIDBytes, readErr := os.ReadFile(sessionIDFile)
-		if readErr == nil {
-			sessionIDStr := strings.TrimSpace(string(sessionIDBytes))
-			if sessionIDStr != "" {
-				client := opencode.NewClient("http://127.0.0.1:4096")
-				tokenStats, tokErr := client.GetSessionTokens(sessionIDStr)
-				if tokErr == nil && tokenStats != nil {
-					abandonedData.TokensInput = tokenStats.InputTokens
-					abandonedData.TokensOutput = tokenStats.OutputTokens
-				}
+		// Read session ID and get token usage (.session_id stays separate)
+		sessionIDStr := spawn.ReadSessionID(workspacePath)
+		if sessionIDStr != "" {
+			client := opencode.NewClient("http://127.0.0.1:4096")
+			tokenStats, tokErr := client.GetSessionTokens(sessionIDStr)
+			if tokErr == nil && tokenStats != nil {
+				abandonedData.TokensInput = tokenStats.InputTokens
+				abandonedData.TokensOutput = tokenStats.OutputTokens
 			}
 		}
 

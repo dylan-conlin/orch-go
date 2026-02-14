@@ -11,6 +11,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -695,19 +696,12 @@ func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool, prese
 			continue
 		}
 
-		// Read spawn time
-		spawnTimeFile := filepath.Join(dirPath, ".spawn_time")
-		spawnTimeData, err := os.ReadFile(spawnTimeFile)
-		if err != nil {
+		// Read agent state from manifest (falls back to dotfiles)
+		manifest := spawn.ReadAgentManifestWithFallback(dirPath)
+		spawnTime := manifest.ParseSpawnTime()
+		if spawnTime.IsZero() {
 			continue // Skip workspaces without spawn time
 		}
-
-		// Parse spawn time (nanoseconds)
-		var spawnTimeNs int64
-		if _, err := fmt.Sscanf(string(spawnTimeData), "%d", &spawnTimeNs); err != nil {
-			continue
-		}
-		spawnTime := time.Unix(0, spawnTimeNs)
 
 		// Check if workspace is old enough
 		if spawnTime.After(cutoff) {
@@ -724,22 +718,13 @@ func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool, prese
 		}
 
 		// Check for light tier (light tier doesn't require SYNTHESIS.md by design)
-		if reason == "" {
-			tierFile := filepath.Join(dirPath, ".tier")
-			if tierData, err := os.ReadFile(tierFile); err == nil {
-				tier := strings.TrimSpace(string(tierData))
-				if tier == "light" {
-					reason = "light tier (no SYNTHESIS.md required)"
-				}
-			}
+		if reason == "" && manifest.Tier == "light" {
+			reason = "light tier (no SYNTHESIS.md required)"
 		}
 
-		// Check for .beads_id file (indicates tracked spawn)
-		if reason == "" {
-			beadsIDFile := filepath.Join(dirPath, ".beads_id")
-			if _, err := os.Stat(beadsIDFile); err == nil {
-				reason = "tracked spawn (has .beads_id)"
-			}
+		// Check for beads_id (indicates tracked spawn)
+		if reason == "" && manifest.BeadsID != "" {
+			reason = "tracked spawn (has beads_id)"
 		}
 
 		if reason == "" {

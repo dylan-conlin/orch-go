@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // Gate names for verification tracking.
@@ -642,17 +644,13 @@ func verifySessionEndedProperly(workspacePath string) (bool, error) {
 	return false, nil
 }
 
-// ReadTierFromWorkspace reads the spawn tier from the workspace's .tier file.
-// Returns "full" as the conservative default if the file doesn't exist.
+// ReadTierFromWorkspace reads the spawn tier from the workspace.
+// Reads AGENT_MANIFEST.json first, falls back to .tier dotfile.
+// Returns "full" as the conservative default if neither exists.
 func ReadTierFromWorkspace(workspacePath string) string {
-	tierFile := filepath.Join(workspacePath, ".tier")
-	data, err := os.ReadFile(tierFile)
-	if err != nil {
-		return "full" // Conservative default
+	manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+	if manifest.Tier != "" {
+		return manifest.Tier
 	}
-	tier := strings.TrimSpace(string(data))
-	if tier == "" {
-		return "full"
-	}
-	return tier
+	return "full" // Conservative default
 }

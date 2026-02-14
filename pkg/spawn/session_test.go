@@ -390,3 +390,120 @@ func TestAgentManifestPath(t *testing.T) {
 		t.Errorf("AgentManifestPath returned %q, want %q", got, expected)
 	}
 }
+
+func TestReadAgentManifestWithFallback_ManifestExists(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Write a proper manifest
+	manifest := AgentManifest{
+		WorkspaceName: "og-feat-test-14feb-abc1",
+		Skill:         "feature-impl",
+		BeadsID:       "orch-go-xyz1",
+		ProjectDir:    "/Users/test/orch-go",
+		SpawnTime:     "2026-02-14T10:30:00Z",
+		Tier:          TierLight,
+		SpawnMode:     "opencode",
+		Model:         "claude-opus-4-5-20251101",
+	}
+	if err := WriteAgentManifest(tmpDir, manifest); err != nil {
+		t.Fatalf("WriteAgentManifest failed: %v", err)
+	}
+
+	// ReadAgentManifestWithFallback should use the manifest
+	result := ReadAgentManifestWithFallback(tmpDir)
+	if result.BeadsID != "orch-go-xyz1" {
+		t.Errorf("BeadsID: got %q, want %q", result.BeadsID, "orch-go-xyz1")
+	}
+	if result.Tier != TierLight {
+		t.Errorf("Tier: got %q, want %q", result.Tier, TierLight)
+	}
+	if result.SpawnMode != "opencode" {
+		t.Errorf("SpawnMode: got %q, want %q", result.SpawnMode, "opencode")
+	}
+	if result.Model != "claude-opus-4-5-20251101" {
+		t.Errorf("Model: got %q, want %q", result.Model, "claude-opus-4-5-20251101")
+	}
+}
+
+func TestReadAgentManifestWithFallback_DotfilesOnly(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Write only dotfiles (no AGENT_MANIFEST.json) — simulates pre-manifest workspace
+	os.WriteFile(filepath.Join(tmpDir, ".beads_id"), []byte("orch-go-old1"), 0644)
+	os.WriteFile(filepath.Join(tmpDir, ".tier"), []byte("light\n"), 0644)
+	os.WriteFile(filepath.Join(tmpDir, ".spawn_mode"), []byte("claude"), 0644)
+	spawnTime := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
+	WriteSpawnTime(tmpDir, spawnTime)
+
+	result := ReadAgentManifestWithFallback(tmpDir)
+	if result.BeadsID != "orch-go-old1" {
+		t.Errorf("BeadsID: got %q, want %q", result.BeadsID, "orch-go-old1")
+	}
+	if result.Tier != "light" {
+		t.Errorf("Tier: got %q, want %q", result.Tier, "light")
+	}
+	if result.SpawnMode != "claude" {
+		t.Errorf("SpawnMode: got %q, want %q", result.SpawnMode, "claude")
+	}
+	// SpawnTime should be converted from Unix nanos to RFC3339
+	parsedTime := result.ParseSpawnTime()
+	if parsedTime.IsZero() {
+		t.Error("ParseSpawnTime returned zero time for fallback workspace")
+	}
+	if !parsedTime.Equal(spawnTime) {
+		t.Errorf("ParseSpawnTime: got %v, want %v", parsedTime, spawnTime)
+	}
+}
+
+func TestReadAgentManifestWithFallback_EmptyDir(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// No manifest, no dotfiles — should return non-nil manifest with defaults
+	result := ReadAgentManifestWithFallback(tmpDir)
+	if result == nil {
+		t.Fatal("ReadAgentManifestWithFallback returned nil")
+	}
+	if result.BeadsID != "" {
+		t.Errorf("BeadsID: got %q, want empty", result.BeadsID)
+	}
+	if result.Tier != TierFull {
+		t.Errorf("Tier: got %q, want %q (conservative default)", result.Tier, TierFull)
+	}
+}
+
+func TestParseSpawnTime(t *testing.T) {
+	tests := []struct {
+		name      string
+		spawnTime string
+		wantZero  bool
+	}{
+		{"valid RFC3339", "2026-02-14T10:30:00Z", false},
+		{"empty", "", true},
+		{"invalid", "not-a-time", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &AgentManifest{SpawnTime: tt.spawnTime}
+			result := m.ParseSpawnTime()
+			if tt.wantZero && !result.IsZero() {
+				t.Errorf("ParseSpawnTime(%q) should return zero time", tt.spawnTime)
+			}
+			if !tt.wantZero && result.IsZero() {
+				t.Errorf("ParseSpawnTime(%q) should return non-zero time", tt.spawnTime)
+			}
+		})
+	}
+}

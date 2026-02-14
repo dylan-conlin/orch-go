@@ -16,6 +16,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/notify"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -813,21 +814,17 @@ func runSessionsCrossReference() error {
 			}
 			wsPath := filepath.Join(workspaceDir, entry.Name())
 
-			// Read session ID
-			if data, err := os.ReadFile(filepath.Join(wsPath, ".session_id")); err == nil {
-				sessionID := strings.TrimSpace(string(data))
-				if sessionID != "" {
-					workspaceToSession[entry.Name()] = sessionID
-					sessionToWorkspace[sessionID] = entry.Name()
-				}
+			// Read session ID (.session_id stays separate - infrastructure handle)
+			sessionID := spawn.ReadSessionID(wsPath)
+			if sessionID != "" {
+				workspaceToSession[entry.Name()] = sessionID
+				sessionToWorkspace[sessionID] = entry.Name()
 			}
 
-			// Read beads ID
-			if data, err := os.ReadFile(filepath.Join(wsPath, ".beads_id")); err == nil {
-				beadsID := strings.TrimSpace(string(data))
-				if beadsID != "" {
-					workspaceBeadsID[entry.Name()] = beadsID
-				}
+			// Read beads ID from manifest (falls back to dotfiles)
+			manifest := spawn.ReadAgentManifestWithFallback(wsPath)
+			if manifest.BeadsID != "" {
+				workspaceBeadsID[entry.Name()] = manifest.BeadsID
 			}
 		}
 	}

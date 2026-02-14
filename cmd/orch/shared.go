@@ -167,12 +167,10 @@ func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentNam
 			return dirPath, dirName
 		}
 
-		// Check .beads_id file (most reliable - written by spawn)
-		beadsIDPath := filepath.Join(dirPath, ".beads_id")
-		if content, err := os.ReadFile(beadsIDPath); err == nil {
-			if strings.TrimSpace(string(content)) == beadsID {
-				return dirPath, dirName
-			}
+		// Check AGENT_MANIFEST.json for beads_id (primary, falls back to .beads_id dotfile)
+		manifest := spawn.ReadAgentManifestWithFallback(dirPath)
+		if manifest.BeadsID == beadsID {
+			return dirPath, dirName
 		}
 
 		// Check SPAWN_CONTEXT.md for authoritative "spawned from beads issue" line

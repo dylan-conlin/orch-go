@@ -247,3 +247,70 @@ func ReadAgentManifest(workspacePath string) (*AgentManifest, error) {
 func AgentManifestPath(workspacePath string) string {
 	return filepath.Join(workspacePath, AgentManifestFilename)
 }
+
+// ReadAgentManifestWithFallback reads the agent manifest from the workspace directory.
+// If AGENT_MANIFEST.json exists, it is the source of truth. Otherwise, falls back
+// to reading individual dotfiles (.beads_id, .tier, .spawn_time, .spawn_mode) for
+// backward compatibility with pre-manifest workspaces.
+// Always returns a non-nil manifest (fields may be empty if nothing is readable).
+func ReadAgentManifestWithFallback(workspacePath string) *AgentManifest {
+	manifest, err := ReadAgentManifest(workspacePath)
+	if err == nil {
+		return manifest
+	}
+	// Fallback: construct manifest from individual dotfiles
+	return readLegacyDotfiles(workspacePath)
+}
+
+// readLegacyDotfiles constructs an AgentManifest from individual dotfiles.
+// Used as fallback for pre-manifest workspaces.
+func readLegacyDotfiles(workspacePath string) *AgentManifest {
+	manifest := &AgentManifest{
+		WorkspaceName: filepath.Base(workspacePath),
+	}
+
+	// Read .beads_id
+	if data, err := os.ReadFile(filepath.Join(workspacePath, ".beads_id")); err == nil {
+		manifest.BeadsID = strings.TrimSpace(string(data))
+	}
+
+	// Read .tier (default to "full" if missing)
+	if data, err := os.ReadFile(filepath.Join(workspacePath, TierFilename)); err == nil {
+		tier := strings.TrimSpace(string(data))
+		if tier != "" {
+			manifest.Tier = tier
+		} else {
+			manifest.Tier = TierFull
+		}
+	} else {
+		manifest.Tier = TierFull
+	}
+
+	// Read .spawn_time (Unix nanos in dotfile -> RFC3339 in manifest)
+	if data, err := os.ReadFile(filepath.Join(workspacePath, SpawnTimeFilename)); err == nil {
+		nanos, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+		if err == nil {
+			manifest.SpawnTime = time.Unix(0, nanos).Format(time.RFC3339)
+		}
+	}
+
+	// Read .spawn_mode
+	if data, err := os.ReadFile(filepath.Join(workspacePath, ".spawn_mode")); err == nil {
+		manifest.SpawnMode = strings.TrimSpace(string(data))
+	}
+
+	return manifest
+}
+
+// ParseSpawnTime parses the manifest's SpawnTime string (RFC3339) to time.Time.
+// Returns zero time if the field is empty or unparseable.
+func (m *AgentManifest) ParseSpawnTime() time.Time {
+	if m.SpawnTime == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, m.SpawnTime)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
