@@ -8,7 +8,7 @@
 
 ## Summary
 
-Dylan owns a fork of [sst/opencode](https://github.com/sst/opencode) at `~/Documents/personal/opencode`. The fork is 13 custom commits ahead of upstream (linear forward — all upstream changes included). Custom changes focus on **memory management** (LRU/TTL instance eviction preventing 8.4GB unbounded growth), **SSE cleanup** (idempotent teardown preventing leaked connections), **OAuth stealth mode** (Claude Max access), and **ORCH_WORKER header forwarding** (worker session detection). The fork is a TypeScript monorepo (Bun runtime, Hono HTTP framework) with sessions stored as JSON files on disk — no database. Session status (idle/busy/retry) is tracked in-memory only, lost on server restart. A `GET /session/status` endpoint already exists for querying session state.
+Dylan owns a fork of [sst/opencode](https://github.com/sst/opencode) at `~/Documents/personal/opencode`. The fork is 16 custom commits ahead of upstream (linear forward — all upstream changes included). Custom changes focus on **memory management** (LRU/TTL instance eviction preventing 8.4GB unbounded growth), **SSE cleanup** (idempotent teardown preventing leaked connections), **OAuth stealth mode** (Claude Max access), **ORCH_WORKER header forwarding** (worker session detection), **session metadata** (extensible key-value storage), and **session TTL** (auto-expiry with periodic cleanup). The fork is a TypeScript monorepo (Bun runtime, Hono HTTP framework) with sessions stored in SQLite database (~/.local/share/opencode/opencode.db) using Drizzle ORM with migration-based schema management. Session status (idle/busy/retry) is tracked in-memory only, lost on server restart. A `GET /session/status` endpoint already exists for querying session state.
 
 ---
 
@@ -38,23 +38,39 @@ packages/
 ```
 
 ### Session Storage
-Sessions are JSON files on disk at `~/.local/share/opencode/storage/`:
-```
-session/{projectID}/{sessionID}.json    # Session metadata
-message/{sessionID}/{messageID}.json    # Messages per session
-part/{messageID}/{partID}.json          # Message parts (text, tool calls, etc.)
-session_diff/{sessionID}.json           # File diffs (migrated out of session object)
-```
+Sessions are stored in SQLite database at `~/.local/share/opencode/opencode.db`:
 
-- **No database** — pure filesystem with file locking (read/write locks via `Lock`)
+**Database:**
+- SQLite with WAL mode enabled
+- Located at `~/.local/share/opencode/opencode.db`
+- Managed via Drizzle ORM (bun-sqlite driver)
+
+**Schema Management:**
+- Schema definitions in `packages/opencode/src/*.sql.ts` files (e.g., `session.sql.ts`, `message.sql.ts`)
+- Migration files generated via `bun drizzle-kit generate` in `packages/opencode/migration/`
+- Migrations applied at server startup via `drizzle-orm/bun-sqlite/migrator`
+- **CRITICAL:** Schema changes in `*.sql.ts` MUST have corresponding migrations or server crashes on startup (columns missing from actual database)
+- Pre-commit hook enforces migration generation for schema changes
+
+**Tables:**
+- `session` — session metadata (id, slug, projectID, directory, title, metadata, time_ttl, etc.)
+- `message` — messages per session
+- `part` — message parts (text, tool calls, etc.)
+- `todo` — task tracking
+- `permission` — access control rules
+- `project` — project metadata
+- `control_account` — account management
+
+**Key Features:**
+- **Indexed queries** — no more linear scans for session lists
 - **Project scoping** — sessions grouped by `projectID` (git root commit hash)
-- **Migration system** — numbered migrations for storage format changes
-- **Linear scan for list** — no indexing, scans all session files
+- **Migration-based evolution** — schema changes require explicit migrations
 
 ### Instance vs Session (Critical Distinction)
 - **Instance** = execution context for a project directory (spawns LSP servers, MCP clients, file watchers)
-- **Session** = conversation record (messages, parts, metadata) — persists as JSON files
-- Instance has TTL/eviction; Session does NOT — sessions persist forever until explicitly deleted
+- **Session** = conversation record (messages, parts, metadata) — persists in SQLite database
+- Instance has TTL/eviction (30min idle); Session can optionally have TTL (configurable per-session)
+- Sessions without TTL persist forever until explicitly deleted
 - Multiple sessions can share one Instance (same project directory)
 
 ---
@@ -68,10 +84,13 @@ origin   → https://github.com/sst/opencode            (upstream, stale Jan 27)
 upstream → https://github.com/sst/opencode.git         (upstream, fetched Feb 5)
 ```
 
-### Custom Commits (upstream/dev..HEAD, 13 commits)
+### Custom Commits (upstream/dev..HEAD, 16 commits)
 
 | Date | Commit | Category | Description |
 |------|--------|----------|-------------|
+| Feb 14 | f3c3865b8 | feat(session) | Add TTL with periodic cleanup and SSE events |
+| Feb 14 | 36f084ca5 | feat | Add optional metadata field to Session.Info schema |
+| Feb 14 | 3ea245f6f | fix | Rebind session_delete from ctrl+d to <leader>d |
 | Feb 11 | c08ed9c | investigation | Complete OpenCode fork resource audit |
 | Feb 11 | fac8fc8 | investigation | Initial checkpoint for fork resource audit |
 | Feb 9 | 5032a89 | fix(config) | Skip .test.ts/.spec.ts from plugin directories |
@@ -88,8 +107,9 @@ upstream → https://github.com/sst/opencode.git         (upstream, fetched Feb 
 
 ### Sync Strategy
 - Last upstream fetch: Feb 5, 2026
-- Sync method: `git reset --moving to upstream/dev` + cherry-pick custom commits
+- Sync method: `git reset --hard upstream/dev` + cherry-pick custom commits
 - upstream/dev IS ancestor of local dev — pure linear forward advancement
+- Fork now 16 custom commits ahead (3 new commits added Feb 14: TTL, metadata, keybind fix)
 - **510 commits ahead of origin/dev** (stale origin, not meaningfully different from upstream)
 
 ### Critical Custom Changes
@@ -135,10 +155,12 @@ Session.Info = {
 ```
 
 **Key observations:**
-- **No `metadata` bag** — schema is fixed fields only
-- **No TTL/expiry field** — sessions persist forever
+- **`metadata?: Record<string, string>`** — extensible metadata bag (added Feb 14, 2026)
+- **`time_ttl?: number`** — session TTL/auto-expiry in milliseconds (added Feb 14, 2026)
 - **No state field** — idle/busy tracked separately in memory
 - **`time.archived`** is a manual flag, not auto-expiry
+- Metadata enables storing arbitrary key-value pairs (e.g., beads_id, workspace_path)
+- TTL enables automatic cleanup of expired sessions via periodic job
 
 ### Session Status (In-Memory Only)
 ```typescript
@@ -153,11 +175,12 @@ SessionStatus.Info =
 - Published via `session.status` Bus event → SSE stream
 
 ### Session Lifecycle
-1. **Create** → JSON file written to `session/{projectID}/{sessionID}.json`
+1. **Create** → Row inserted into SQLite `session` table
 2. **Prompt** → Status set to "busy", messages/parts appended incrementally
 3. **Complete** → Status set to "idle" (deleted from status map), Instance stays cached
 4. **Archive** → Manual `time.archived` flag via PATCH, hides from active list
-5. **Delete** → Recursive deletion of session + all messages + all parts + unshare
+5. **TTL Expiry** → Periodic cleanup job deletes sessions where `Date.now() - time.updated > time_ttl` (if set)
+6. **Delete** → Recursive deletion of session + all messages + all parts + unshare
 
 ---
 
@@ -198,46 +221,36 @@ server.instance.disposed
 
 ### Feature 1: Session TTL with Configurable Expiry
 
-**Current state:** Sessions persist forever. Instance has TTL (30min); sessions do not. Archive is manual.
+**Status:** ✅ **IMPLEMENTED** (Feb 14, 2026, commit f3c3865b8)
 
-**What needs to change:**
-1. Add `ttl?: number` field to `Session.Info.time` schema (Zod)
-2. Add periodic cleanup job (new — nothing like this exists today)
-3. Cleanup job scans sessions, deletes those where `Date.now() - time.updated > ttl`
-4. Make TTL configurable — either per-session (set at creation) or global via env var
-5. Update `POST /session` create input to accept TTL
-6. SSE event on auto-deletion so orch-go can react
+**Implementation:**
+1. ✅ Added `time_ttl?: number` field to `Session.Info` schema (Drizzle schema + Zod validation)
+2. ✅ Added periodic cleanup job running every 5 minutes
+3. ✅ Cleanup job queries sessions from SQLite where `Date.now() - time.updated > time_ttl`
+4. ✅ TTL configurable per-session (set at creation) via `POST /session` input
+5. ✅ SSE event `session.deleted` emitted on auto-deletion
+6. ✅ Respects active prompts — won't delete sessions with `status = "busy"`
 
-**Effort:** MODERATE (2-4 hours)
-- Storage layer is simple (JSON files), no schema migration needed
-- Periodic job is new pattern (no scheduler for sessions exists today)
-- Instance eviction pattern in `instance.ts` is a good template
-- Needs careful handling: don't delete sessions with active prompts
-
-**Risk:** LOW
-- Schema addition is backward-compatible (optional field)
-- Cleanup job is independent, doesn't interfere with existing code paths
+**Database Migration:**
+- Required Drizzle migration to add `time_ttl` column to `session` table
+- Migration generated via `bun drizzle-kit generate`
+- Applied automatically at server startup
 
 ### Feature 2: Session Metadata API
 
-**Current state:** `Session.Info` has fixed Zod schema. No extensible metadata bag. PATCH only supports `title` and `time.archived`. The ORCH_WORKER header forwarding was an attempt at metadata but the server-side code appears lost.
+**Status:** ✅ **IMPLEMENTED** (Feb 14, 2026, commit 36f084ca5)
 
-**What needs to change:**
-1. Add `metadata?: Record<string, string>` field to `Session.Info` schema
-2. Accept `metadata` in `POST /session` (create) and `PATCH /session/:id` (update)
-3. Update `Session.createNext()` to include metadata in initial write
-4. Update `Session.update()` PATCH handler to merge metadata
-5. Metadata persists to disk (just another field in the JSON file)
+**Implementation:**
+1. ✅ Added `metadata?: Record<string, string>` field to `Session.Info` schema (Drizzle schema + Zod validation)
+2. ✅ Accepts `metadata` in `POST /session` (create) and `PATCH /session/:id` (update)
+3. ✅ `Session.createNext()` includes metadata in initial database insert
+4. ✅ `Session.update()` PATCH handler merges metadata
+5. ✅ Metadata persists to SQLite (JSON column in `session` table)
 
-**Effort:** LOW (1-2 hours)
-- Adding an optional field to a Zod schema is trivial
-- Storage is JSON — no migration needed, old sessions just lack the field
-- PATCH endpoint already has the pattern for partial updates
-- SDK client needs update to pass metadata in requests
-
-**Risk:** VERY LOW
-- Backward-compatible — old sessions without metadata still valid
-- No performance impact (tiny additional JSON field)
+**Database Migration:**
+- Required Drizzle migration to add `metadata` column (JSON type) to `session` table
+- Migration generated via `bun drizzle-kit generate`
+- Applied automatically at server startup
 
 **orch-go usage:** Store `beads_id`, `workspace_path`, `tier`, `spawn_mode` with session at creation. Query via `GET /session/:id` — eliminates workspace `.session_id` cross-reference files entirely.
 
@@ -266,7 +279,7 @@ server.instance.disposed
 - Fork must be periodically rebased onto upstream/dev
 - Custom changes can be lost during rebase (ORCH_WORKER server-side code was lost)
 - Strategy: keep custom commits minimal and well-isolated
-- **13 custom commits is manageable** — any more and rebasing becomes painful
+- **16 custom commits is manageable** — any more and rebasing becomes painful
 
 ### Instance vs Session Confusion
 - Instance eviction (TTL/LRU) does NOT delete sessions
@@ -280,32 +293,37 @@ server.instance.disposed
 - No persistence of busy/idle transitions
 - SSE `session.status` events are the only way to track transitions in real-time
 
-### Storage is Linear Scan
-- `Session.list()` iterates all session JSON files (no index)
-- `Session.children()` iterates all sessions to find matching `parentID`
-- Works fine for <1000 sessions but could become slow with very high session counts
-- No query optimization possible without adding an index layer
+### Schema Changes Require Migrations
+- Modifying `*.sql.ts` schema files without running `bun drizzle-kit generate` causes runtime crashes
+- Error: columns missing from actual database when server tries to query/insert
+- Pre-commit hook enforces migration generation: checks for schema changes without corresponding migrations
+- Migration workflow:
+  1. Edit schema in `packages/opencode/src/*.sql.ts`
+  2. Run `bun drizzle-kit generate` to create migration file in `migration/`
+  3. Server auto-applies migrations at startup via `drizzle-orm/bun-sqlite/migrator`
+- **Never skip migrations** — SQLite won't auto-sync schema changes like some ORMs
 
-### PATCH Endpoint is Limited
-- Only accepts `title` and `time.archived` today
-- Adding metadata support requires updating the Zod validator in `session.ts:264-274`
-- Must update both the route validator AND the update function body
+### PATCH Endpoint Extensibility
+- Accepts `title`, `time.archived`, and `metadata` (as of Feb 14, 2026)
+- Metadata support added via Zod validator update in session.ts
+- Future field additions require updating both route validator AND update function body
+- Must ensure backward compatibility (optional fields only)
 
 ---
 
 ## What This Enables (for orch-go lifecycle)
 
-| orch-go Problem | OpenCode Feature | Lines Eliminated |
-|-----------------|-----------------|------------------|
-| Ghost/phantom/orphan cleanup | Session TTL auto-expiry | ~1,200 (cleanup logic) |
-| Workspace .session_id cross-reference | Session metadata API | ~800 (file-based cross-ref) |
-| SSE-only status polling | GET /session/status (exists!) | ~1,400 (SSE status parsing) |
-| **Total** | | **~3,400 lines** |
+| orch-go Problem | OpenCode Feature | Status | Lines Eliminated |
+|-----------------|-----------------|--------|------------------|
+| Ghost/phantom/orphan cleanup | Session TTL auto-expiry | ✅ IMPLEMENTED | ~1,200 (cleanup logic) |
+| Workspace .session_id cross-reference | Session metadata API | ✅ IMPLEMENTED | ~800 (file-based cross-ref) |
+| SSE-only status polling | GET /session/status (exists!) | Available (integration needed) | ~1,400 (SSE status parsing) |
+| **Total** | | | **~3,400 lines** |
 
-### Implementation Priority
-1. **Session metadata API** — lowest effort, highest immediate value (eliminates cross-ref files)
-2. **GET /session/status integration** — zero OpenCode work, orch-go client change only
-3. **Session TTL** — most complex but largest cleanup elimination
+### Implementation Status (as of Feb 14, 2026)
+1. ✅ **Session metadata API** — COMPLETE (commit 36f084ca5)
+2. ✅ **Session TTL** — COMPLETE (commit f3c3865b8)
+3. ⏳ **GET /session/status integration** — Available in OpenCode, orch-go client integration pending
 
 ---
 
@@ -329,7 +347,9 @@ server.instance.disposed
 **Primary Evidence (Verify These):**
 - `~/Documents/personal/opencode/packages/opencode/src/instance.ts` - Instance LRU/TTL eviction implementation (350 lines, custom)
 - `~/Documents/personal/opencode/packages/opencode/src/server.ts` - SSE cleanup with idempotent teardown
-- `~/Documents/personal/opencode/packages/opencode/src/session.ts` - Session storage and API implementation
+- `~/Documents/personal/opencode/packages/opencode/src/session.ts` - Session storage and API implementation (now using Drizzle ORM)
+- `~/Documents/personal/opencode/packages/opencode/src/session.sql.ts` - Session table schema definition (Drizzle)
+- `~/Documents/personal/opencode/packages/opencode/migration/` - Drizzle migration files
 - `~/Documents/personal/opencode/packages/sdk/js/src/v2/client.ts` - ORCH_WORKER header forwarding
-- `~/Documents/personal/opencode/.git/` - Git history showing 13 custom commits ahead of upstream
-- `~/.local/share/opencode/storage/` - Session JSON file storage structure
+- `~/Documents/personal/opencode/.git/` - Git history showing 16 custom commits ahead of upstream
+- `~/.local/share/opencode/opencode.db` - SQLite database (WAL mode)
