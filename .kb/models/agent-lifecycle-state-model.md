@@ -1,14 +1,14 @@
 # Model: Agent Lifecycle State Model
 
 **Domain:** Agent Lifecycle / State Management
-**Last Updated:** 2026-01-12
+**Last Updated:** 2026-02-13
 **Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display
 
 ---
 
 ## Summary (30 seconds)
 
-Agent state exists across **four independent layers** (tmux windows, OpenCode in-memory, OpenCode on-disk, beads comments). The dashboard reconciles these via a **Priority Cascade**: check beads issue status first (highest authority), then Phase comments, then registry state, then session existence. Status can appear "wrong" at the dashboard level while being "correct" at each individual layer - this is a measurement artifact from combining multiple sources of truth.
+Agent state exists across **four independent layers** (tmux windows, OpenCode in-memory, OpenCode on-disk, beads comments). These layers fall into two distinct categories: **state layers** (beads, workspace files) that represent what work was done, and **infrastructure layers** (OpenCode sessions, tmux windows) that represent transient execution resources. The dashboard reconciles these via a **Priority Cascade**: check beads issue status first (highest authority), then Phase comments, then registry state, then session existence. Status can appear "wrong" at the dashboard level while being "correct" at each individual layer - this is a measurement artifact from combining multiple sources of truth.
 
 ---
 
@@ -18,12 +18,13 @@ Agent state exists across **four independent layers** (tmux windows, OpenCode in
 
 Agent state is distributed across four independent systems:
 
-| Layer | Storage | Lifecycle | What It Knows | Authority Level |
-|-------|---------|-----------|---------------|-----------------|
-| **Beads comments** | `.beads/issues.jsonl` | Persistent | Phase transitions, metadata | Highest (canonical) |
-| **OpenCode on-disk** | `~/.local/share/opencode/storage/` | Persistent | Full message history | Medium (historical) |
-| **OpenCode in-memory** | Server process | Until restart | Session ID, current status | Medium (operational) |
-| **Tmux windows** | Runtime (volatile) | Until window closed | Agent visible, window ID | Low (UI only) |
+| Layer | Category | Storage | Lifecycle | What It Knows | Authority Level |
+|-------|----------|---------|-----------|---------------|-----------------|
+| **Beads comments** | **State** | `.beads/issues.jsonl` | Persistent | Phase transitions, metadata | Highest (canonical) |
+| **Workspace files** | **State** | `.orch/workspace/` | Persistent | SPAWN_CONTEXT, SYNTHESIS, .tier | High (artifact record) |
+| **OpenCode on-disk** | **Infrastructure** | `~/.local/share/opencode/storage/` | Persistent (no TTL) | Full message history | Medium (historical) |
+| **OpenCode in-memory** | **Infrastructure** | Server process | Until restart | Session ID, current status | Medium (operational) |
+| **Tmux windows** | **Infrastructure** | Runtime (volatile) | Until window closed | Agent visible, window ID | Low (UI only) |
 
 **Key insight:** The registry (`~/.orch/registry.json`) was a fifth layer attempting to cache all four, which caused drift. The solution is to query authoritative sources directly and reconcile at query time.
 
@@ -40,6 +41,26 @@ Different questions have different authoritative sources:
 | Is agent visible? | Tmux window exists | Session exists |
 
 **Beads is the source of truth for completion.** OpenCode sessions persist to disk indefinitely. Session existence means nothing about whether the agent is done. Only beads matters.
+
+### State vs Infrastructure: Why This Distinction Matters
+
+The four-layer model (above) conflates two fundamentally different concerns. Recognizing the difference clarifies what orch should *own* versus what it should merely *use*.
+
+**State layers** (beads comments, workspace files) represent *what work was done* and *what phase it's in*. They are persistent, orch-controlled, and survive infrastructure restarts. Orch owns their lifecycle entirely.
+
+**Infrastructure layers** (OpenCode sessions, tmux windows) represent *execution resources*. They are transient, externally-controlled (by OpenCode server and tmux respectively), and have no inherent connection to work completion. Orch uses them but doesn't control their lifecycle.
+
+**The reconciliation burden comes from treating infrastructure as state.** When orch tries to derive agent status from session existence or tmux window presence, it must constantly reconcile infrastructure reality against state truth. This is the root cause of phantom agents (tmux window exists but session exited), ghost sessions (OpenCode session persists after work completed), and orphan infrastructure (resources with no corresponding state).
+
+**Ownership model (Own / Accept / Lobby):**
+
+| Bucket | What | Implication |
+|--------|------|-------------|
+| **Own** | State layers (beads, workspaces), verification gates, skill integration | Orch's domain — design, maintain, evolve |
+| **Accept** | Infrastructure constraints (sessions persist, no metadata API, SSE-only) | Work within them — periodic cleanup, workspace-as-metadata |
+| **Lobby** | Missing infrastructure features (session TTL, metadata API, state endpoint) | File upstream — would eliminate reconciliation burden |
+
+See: `.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md` for the full decision and implementation plan.
 
 ### State Transitions
 
@@ -170,14 +191,17 @@ Session remains in OpenCode
 
 **Implication:** State must be reconciled by combining sources, not stored in one place
 
-**Breakdown:**
+**Breakdown (state layers — orch owns):**
 - **Beads** - Work tracking (survives everything, multi-session)
+- **Workspace files** - Artifact record (SPAWN_CONTEXT, SYNTHESIS, tier metadata)
+
+**Breakdown (infrastructure layers — orch uses):**
 - **OpenCode disk** - Message history (debugging, resume)
 - **OpenCode memory** - Real-time processing state (fast queries)
 - **Tmux** - Visual monitoring (orchestrator needs to SEE work)
 
 **This enables:** Each layer optimized for its purpose
-**This constrains:** Must reconcile at query time (eventual consistency)
+**This constrains:** Must reconcile at query time (eventual consistency). The reconciliation burden is heaviest when infrastructure layers are treated as authoritative — they should be consulted only as fallback, after state layers.
 
 ### Why Can't We Infer Completion from Session State?
 
@@ -232,6 +256,13 @@ Session remains in OpenCode
 - Four-layer architecture formalized
 - Constraints made explicit
 
+**Feb 13, 2026: State vs Infrastructure Distinction**
+- Four-layer table reframed with Category column (State vs Infrastructure)
+- Workspace files added as explicit state layer
+- New section explaining why conflating state and infrastructure creates reconciliation burden
+- Three-bucket ownership model (Own/Accept/Lobby) referenced
+- Decision: `.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md`
+
 ---
 
 ## References
@@ -248,6 +279,7 @@ Session remains in OpenCode
 - Priority Cascade for status calculation
 - Four-layer architecture (no single source)
 - Registry demoted to metadata only
+- State vs infrastructure distinction (`.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md`)
 
 **Related Models:**
 - `.kb/models/dashboard-agent-status.md` - How Priority Cascade calculates status
