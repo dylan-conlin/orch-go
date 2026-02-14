@@ -26,8 +26,8 @@ orch review -p <project>
 orch review done <project>
 
 # Clean stale workspaces
-orch clean --stale
-orch clean --stale --dry-run
+orch clean --workspaces
+orch clean --workspaces --dry-run
 ```
 
 ---
@@ -270,10 +270,10 @@ archived/og-feat-xyz/  →  archived/og-feat-xyz-1737123456/
 
 ```bash
 # Preview what would be archived
-orch clean --stale --dry-run
+orch clean --workspaces --dry-run
 
 # Archive stale workspaces (>7 days old)
-orch clean --stale
+orch clean --workspaces
 ```
 
 ### Archival Criteria

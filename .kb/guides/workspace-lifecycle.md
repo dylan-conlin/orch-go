@@ -166,9 +166,9 @@ func GenerateWorkspaceName(skill, taskSlug string) string {
 
 | Command | Purpose | What It Does |
 |---------|---------|--------------|
-| `orch clean --stale` | Archive old workspaces | Moves >7 day workspaces to `archived/` |
-| `orch clean --stale --stale-days 14` | Custom retention | Uses 14-day threshold |
-| `orch clean --stale --dry-run` | Preview | Shows what would be archived |
+| `orch clean --workspaces` | Archive old workspaces | Moves >7 day workspaces to `archived/` |
+| `orch clean --workspaces --workspace-days 14` | Custom retention | Uses 14-day threshold |
+| `orch clean --workspaces --dry-run` | Preview | Shows what would be archived |
 | `orch doctor --sessions` | Cross-reference | Detects orphaned workspaces/sessions |
 
 ### Cleanup Strategy
@@ -178,10 +178,10 @@ func GenerateWorkspaceName(skill, taskSlug string) string {
 orch doctor --sessions
 
 # 2. Preview what would be archived
-orch clean --stale --dry-run
+orch clean --workspaces --dry-run
 
 # 3. Archive old workspaces
-orch clean --stale
+orch clean --workspaces
 ```
 
 ### File-Based Completion Detection
@@ -309,12 +309,12 @@ Interactive sessions use global location because:
 
 ### "340+ workspaces accumulated"
 
-**Cause:** `orch complete` closes beads issue but doesn't archive workspace. Archival requires manual `orch clean --stale`.
+**Cause:** `orch complete` closes beads issue but doesn't archive workspace. Archival requires manual `orch clean --workspaces`.
 
 **Fix:**
 ```bash
-orch clean --stale --dry-run  # Preview
-orch clean --stale            # Archive
+orch clean --workspaces --dry-run  # Preview
+orch clean --workspaces            # Archive
 ```
 
 ### "Workspace name collision"
@@ -334,7 +334,7 @@ orch attach auth  # Matches "og-feat-auth-17jan-abc1"
 
 **Evaluation:**
 1. Check if SYNTHESIS.md exists (completed work)
-2. If completed, archive: `orch clean --stale`
+2. If completed, archive: `orch clean --workspaces`
 3. If incomplete, review manually
 
 ---
@@ -348,7 +348,7 @@ These are settled. Don't re-investigate:
 - **Hex suffix for uniqueness** - 4-char random prevents name collisions
 - **Project-local for workers** - Keeps evidence close to code
 - **Global for interactive** - Humans work across projects
-- **Manual archival** - `orch clean --stale` is opt-in, not automatic
+- **Manual archival** - `orch clean --workspaces` is opt-in, not automatic
 
 ---
 

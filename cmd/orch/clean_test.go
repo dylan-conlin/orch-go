@@ -396,59 +396,29 @@ func TestCleanAllFlagLogic(t *testing.T) {
 	// in the RunE function when cleanAll is set to true.
 
 	// Start with all flags false (default state)
-	windows := false
-	phantoms := false
-	ghosts := false
-	verifyOpenCode := false
-	investigations := false
-	stale := false
+	workspaces := false
 	sessions := false
 	all := false
 
 	// Test 1: When all=false, individual flags should remain unchanged
 	if all {
-		windows = true
-		phantoms = true
-		ghosts = true
-		verifyOpenCode = true
-		investigations = true
-		stale = true
+		workspaces = true
 		sessions = true
 	}
 
-	if windows || phantoms || ghosts || verifyOpenCode || investigations || stale || sessions {
+	if workspaces || sessions {
 		t.Error("Expected all flags to remain false when all=false")
 	}
 
 	// Test 2: When all=true, all individual flags should be set to true
 	all = true
 	if all {
-		windows = true
-		phantoms = true
-		ghosts = true
-		verifyOpenCode = true
-		investigations = true
-		stale = true
+		workspaces = true
 		sessions = true
 	}
 
-	if !windows {
-		t.Error("Expected windows to be true when all=true")
-	}
-	if !phantoms {
-		t.Error("Expected phantoms to be true when all=true")
-	}
-	if !ghosts {
-		t.Error("Expected ghosts to be true when all=true")
-	}
-	if !verifyOpenCode {
-		t.Error("Expected verifyOpenCode to be true when all=true")
-	}
-	if !investigations {
-		t.Error("Expected investigations to be true when all=true")
-	}
-	if !stale {
-		t.Error("Expected stale to be true when all=true")
+	if !workspaces {
+		t.Error("Expected workspaces to be true when all=true")
 	}
 	if !sessions {
 		t.Error("Expected sessions to be true when all=true")

@@ -98,7 +98,7 @@ session.status { status: "idle" }    ← Agent finished
 
 | Concept | Definition | Why It Matters |
 |---------|------------|----------------|
-| **Disk session** | Session persisted to `~/.local/share/opencode/storage/` | Sessions never auto-delete; cleanup via `orch clean --verify-opencode` |
+| **Disk session** | Session persisted to `~/.local/share/opencode/storage/` | Sessions never auto-delete; cleanup via `orch clean --sessions` |
 | **Session ID** | `ses_xxx` unique identifier | Required for API calls; stored in `.session_id` file in workspace |
 | **x-opencode-directory** | HTTP header specifying project path | Controls session scoping - WITH header = disk, WITHOUT = memory |
 | **SSE events** | Server-sent events from `/event` endpoint | Real-time monitoring without polling |
@@ -189,7 +189,7 @@ bun add @opencode-ai/plugin
 
 **Why:** `opencode-dev` (local development) skips auto-install. Production installs should auto-install.
 
-### `orch clean --verify-opencode` deletes active session
+### `orch clean --sessions` deletes active session
 
 **Cause:** Early implementation only checked workspace `.session_id` files, missing orchestrator/interactive sessions that don't have workspaces.
 
@@ -206,9 +206,9 @@ bun add @opencode-ai/plugin
 
 **Fix:** Use `orch clean --sessions` to delete sessions older than N days (default: 7):
 ```bash
-orch clean --sessions                    # Delete sessions > 7 days old
-orch clean --sessions --sessions-days 3  # Delete sessions > 3 days old
-orch clean --sessions --dry-run          # Preview what would be deleted
+orch clean --sessions                   # Delete sessions > 7 days old
+orch clean --sessions --session-days 3  # Delete sessions > 3 days old
+orch clean --sessions --dry-run         # Preview what would be deleted
 ```
 
 **Notes:**

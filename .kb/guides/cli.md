@@ -29,7 +29,7 @@ This identity was established on Nov 29, 2025 and has remained stable through 79
 | `orch spawn` | Create new agent session | `--issue`, `--model`, `--mcp`, `--tmux` |
 | `orch complete` | Verify and close agent work | `--force`, `--reason` |
 | `orch abandon` | Abandon stuck agents | - |
-| `orch clean` | Remove completed agents | `--stale`, `--all` |
+| `orch clean` | Clean up stale resources | `--workspaces`, `--sessions`, `--all` |
 | `orch wait` | Block until agent reaches phase | - |
 | `orch resume` | Resume paused agent | - |
 
