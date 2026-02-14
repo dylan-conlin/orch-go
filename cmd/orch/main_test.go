@@ -9,15 +9,14 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 )
 
-// TestGetMaxAgentsDefault tests that getMaxAgents returns the default when no flag or env var is set.
+// TestGetMaxAgentsDefault tests that GetMaxAgents returns the default when no flag or env var is set.
 func TestGetMaxAgentsDefault(t *testing.T) {
-	// Save and restore original values
-	originalMaxAgents := spawnMaxAgents
+	// Save and restore original env
 	originalEnv := os.Getenv("ORCH_MAX_AGENTS")
 	defer func() {
-		spawnMaxAgents = originalMaxAgents
 		if originalEnv == "" {
 			os.Unsetenv("ORCH_MAX_AGENTS")
 		} else {
@@ -25,23 +24,20 @@ func TestGetMaxAgentsDefault(t *testing.T) {
 		}
 	}()
 
-	// Clear flag and env var
-	spawnMaxAgents = 0
+	// Clear env var, pass 0 for flag (not set)
 	os.Unsetenv("ORCH_MAX_AGENTS")
 
-	got := getMaxAgents()
-	if got != DefaultMaxAgents {
-		t.Errorf("getMaxAgents() = %d, want default %d", got, DefaultMaxAgents)
+	got := gates.GetMaxAgents(0)
+	if got != gates.DefaultMaxAgents {
+		t.Errorf("gates.GetMaxAgents(0) = %d, want default %d", got, gates.DefaultMaxAgents)
 	}
 }
 
-// TestGetMaxAgentsFlagOverridesAll tests that --max-agents flag takes precedence.
+// TestGetMaxAgentsFlagOverridesAll tests that flag value takes precedence.
 func TestGetMaxAgentsFlagOverridesAll(t *testing.T) {
-	// Save and restore original values
-	originalMaxAgents := spawnMaxAgents
+	// Save and restore original env
 	originalEnv := os.Getenv("ORCH_MAX_AGENTS")
 	defer func() {
-		spawnMaxAgents = originalMaxAgents
 		if originalEnv == "" {
 			os.Unsetenv("ORCH_MAX_AGENTS")
 		} else {
@@ -49,23 +45,20 @@ func TestGetMaxAgentsFlagOverridesAll(t *testing.T) {
 		}
 	}()
 
-	// Set flag to 10, env to 20
-	spawnMaxAgents = 10
+	// Set env to 20, pass flag value of 10
 	os.Setenv("ORCH_MAX_AGENTS", "20")
 
-	got := getMaxAgents()
+	got := gates.GetMaxAgents(10)
 	if got != 10 {
-		t.Errorf("getMaxAgents() = %d, want 10 (flag value)", got)
+		t.Errorf("gates.GetMaxAgents(10) = %d, want 10 (flag value)", got)
 	}
 }
 
 // TestGetMaxAgentsEnvVar tests that ORCH_MAX_AGENTS env var is used when flag is 0.
 func TestGetMaxAgentsEnvVar(t *testing.T) {
-	// Save and restore original values
-	originalMaxAgents := spawnMaxAgents
+	// Save and restore original env
 	originalEnv := os.Getenv("ORCH_MAX_AGENTS")
 	defer func() {
-		spawnMaxAgents = originalMaxAgents
 		if originalEnv == "" {
 			os.Unsetenv("ORCH_MAX_AGENTS")
 		} else {
@@ -73,23 +66,20 @@ func TestGetMaxAgentsEnvVar(t *testing.T) {
 		}
 	}()
 
-	// Clear flag, set env to 15
-	spawnMaxAgents = 0
+	// Set env to 15, pass 0 for flag (not set)
 	os.Setenv("ORCH_MAX_AGENTS", "15")
 
-	got := getMaxAgents()
+	got := gates.GetMaxAgents(0)
 	if got != 15 {
-		t.Errorf("getMaxAgents() = %d, want 15 (env value)", got)
+		t.Errorf("gates.GetMaxAgents(0) = %d, want 15 (env value)", got)
 	}
 }
 
 // TestGetMaxAgentsInvalidEnvVar tests that invalid env var falls back to default.
 func TestGetMaxAgentsInvalidEnvVar(t *testing.T) {
-	// Save and restore original values
-	originalMaxAgents := spawnMaxAgents
+	// Save and restore original env
 	originalEnv := os.Getenv("ORCH_MAX_AGENTS")
 	defer func() {
-		spawnMaxAgents = originalMaxAgents
 		if originalEnv == "" {
 			os.Unsetenv("ORCH_MAX_AGENTS")
 		} else {
@@ -97,20 +87,19 @@ func TestGetMaxAgentsInvalidEnvVar(t *testing.T) {
 		}
 	}()
 
-	// Clear flag, set invalid env
-	spawnMaxAgents = 0
+	// Set invalid env, pass 0 for flag (not set)
 	os.Setenv("ORCH_MAX_AGENTS", "not-a-number")
 
-	got := getMaxAgents()
-	if got != DefaultMaxAgents {
-		t.Errorf("getMaxAgents() = %d, want default %d (invalid env)", got, DefaultMaxAgents)
+	got := gates.GetMaxAgents(0)
+	if got != gates.DefaultMaxAgents {
+		t.Errorf("gates.GetMaxAgents(0) = %d, want default %d (invalid env)", got, gates.DefaultMaxAgents)
 	}
 }
 
 // TestCheckConcurrencyLimitUsesOpenCodeAPI documents the concurrency checking behavior.
-// Concurrency checking uses OpenCode API ListSessions() directly.
+// Concurrency checking uses OpenCode API ListSessions() directly via gates.CheckConcurrency().
 func TestCheckConcurrencyLimitUsesOpenCodeAPI(t *testing.T) {
-	// The checkConcurrencyLimit function:
+	// The gates.CheckConcurrency function:
 	// 1. Creates an OpenCode client
 	// 2. Calls client.ListSessions()
 	// 3. Counts active sessions (status != "completed")

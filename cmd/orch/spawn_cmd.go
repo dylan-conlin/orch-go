@@ -19,24 +19,20 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
-	"github.com/dylan-conlin/orch-go/pkg/agent"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/config"
-	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
-
-// DefaultMaxAgents is the default maximum number of concurrent agents.
-const DefaultMaxAgents = 5
 
 var (
 	// Spawn command flags
@@ -359,158 +355,6 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	return runSpawnWithSkillInternal(serverURL, skillName, task, inline, true, false, false, true)
 }
 
-// getMaxAgents returns the effective maximum agents limit.
-// Priority: --max-agents flag > ORCH_MAX_AGENTS env var > DefaultMaxAgents constant.
-// Returns 0 if limit is explicitly disabled (flag set to 0).
-func getMaxAgents() int {
-	// If flag was explicitly set (non-zero), use it
-	if spawnMaxAgents != 0 {
-		return spawnMaxAgents
-	}
-
-	// Check environment variable
-	if envVal := os.Getenv("ORCH_MAX_AGENTS"); envVal != "" {
-		if val, err := strconv.Atoi(envVal); err == nil {
-			return val
-		}
-		// Invalid value - fall through to default
-		fmt.Fprintf(os.Stderr, "Warning: invalid ORCH_MAX_AGENTS value '%s', using default %d\n", envVal, DefaultMaxAgents)
-	}
-
-	return DefaultMaxAgents
-}
-
-// ensureOpenCodeRunning checks if OpenCode is reachable, and starts it if not.
-// Returns nil if OpenCode is running (or was successfully started), error otherwise.
-func ensureOpenCodeRunning() error {
-	client := opencode.NewClient(serverURL)
-	_, err := client.ListSessions("")
-	if err == nil {
-		return nil // Already running
-	}
-
-	// Check if it's a connection error (not running)
-	if !strings.Contains(err.Error(), "connection refused") {
-		return nil // Some other error, let it proceed
-	}
-
-	fmt.Fprintf(os.Stderr, "OpenCode not running, starting it...\n")
-
-	// Start OpenCode server in background, fully detached via shell
-	// This ensures the process survives even if the parent is killed
-	// Set ORCH_WORKER=1 so agents spawned by this server know they are orch-managed workers
-	cmd := exec.Command("sh", "-c", "ORCH_WORKER=1 opencode serve --port 4096 </dev/null >/dev/null 2>&1 &")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to start OpenCode: %w", err)
-	}
-
-	// Wait for it to be ready (poll for up to 10 seconds)
-	for i := 0; i < 20; i++ {
-		time.Sleep(500 * time.Millisecond)
-		_, err := client.ListSessions("")
-		if err == nil {
-			fmt.Fprintf(os.Stderr, "OpenCode started successfully\n")
-			return nil
-		}
-	}
-
-	return fmt.Errorf("OpenCode started but not responding after 10s")
-}
-
-// checkConcurrencyLimit checks if spawning a new agent would exceed the concurrency limit.
-// Returns nil if spawning is allowed, or an error if at the limit.
-func checkConcurrencyLimit() error {
-	maxAgents := getMaxAgents()
-
-	// Limit disabled (0 means unlimited)
-	if maxAgents == 0 {
-		return nil
-	}
-
-	// Ensure OpenCode is running before checking
-	if err := ensureOpenCodeRunning(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
-		return nil // Allow spawn to proceed, it will fail later with better error
-	}
-
-	// Check active count via OpenCode API
-	client := opencode.NewClient(serverURL)
-	sessions, err := client.ListSessions("")
-	if err != nil {
-		// If we can't check, log a warning but allow the spawn
-		fmt.Fprintf(os.Stderr, "Warning: could not check agent limit (API error): %v\n", err)
-		return nil
-	}
-
-	// Filter to only count active ORCH-SPAWNED sessions using two-threshold logic:
-	// Uses agent.IsActiveForConcurrency with aggressive 1h threshold
-	// This prevents ghost agents from blocking new spawns
-	now := time.Now()
-	activeThreshold := 10 * time.Minute // Threshold for determining "running" vs "idle"
-
-	// Phase 1: Collect all beads IDs and session data for batch processing
-	type sessionData struct {
-		beadsID   string
-		updatedAt time.Time
-		status    string
-	}
-	var sessionList []sessionData
-	var beadsIDs []string
-
-	for _, s := range sessions {
-		// Only count sessions with parseable beadsID (orch-spawned agents)
-		beadsID := extractBeadsIDFromTitle(s.Title)
-		if beadsID == "" {
-			continue // not an orch-spawned agent
-		}
-
-		// Determine status based on recent activity
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
-		status := "idle"
-		if now.Sub(updatedAt) < activeThreshold {
-			status = "running"
-		}
-
-		sessionList = append(sessionList, sessionData{
-			beadsID:   beadsID,
-			updatedAt: updatedAt,
-			status:    status,
-		})
-		beadsIDs = append(beadsIDs, beadsID)
-	}
-
-	// Phase 2: Batch check which beads issues are closed
-	// This prevents counting agents whose work is already complete
-	// (issue closed) but whose OpenCode session is still lingering
-	closedIssues := daemon.GetClosedIssuesBatch(beadsIDs)
-
-	// Phase 3: Count active agents, excluding closed issues
-	activeCount := 0
-	for _, sd := range sessionList {
-		// Skip sessions whose beads issues are closed
-		if closedIssues[sd.beadsID] {
-			continue
-		}
-
-		// Get phase from beads comments
-		phase := ""
-		if isComplete, _ := verify.IsPhaseComplete(sd.beadsID); isComplete {
-			phase = "Complete"
-		}
-
-		// Use IsActiveForConcurrency to determine if this agent counts
-		if agent.IsActiveForConcurrency(sd.status, sd.updatedAt, phase) {
-			activeCount++
-		}
-	}
-
-	if activeCount >= maxAgents {
-		return fmt.Errorf("concurrency limit reached: %d active agents (max %d). Use 'orch status' to see active agents, 'orch complete' to finish agents, or --max-agents to increase limit", activeCount, maxAgents)
-	}
-
-	return nil
-}
-
 // determineSpawnTier determines the spawn tier based on flags, config, and skill defaults.
 // Priority: --light flag > --full flag > userconfig.default_tier > skill default > TierFull (conservative)
 func determineSpawnTier(skillName string, lightFlag, fullFlag bool) string {
@@ -795,17 +639,17 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, headless bool, tmux bool, attach bool, daemonDriven bool) error {
 	// Check for --bypass-triage flag (required for manual spawns)
 	// Daemon-driven spawns skip this check (issue already triaged)
-	if !daemonDriven && !spawnBypassTriage {
-		return showTriageBypassRequired(skillName, task)
+	if err := gates.CheckTriageBypass(daemonDriven, spawnBypassTriage, skillName, task); err != nil {
+		return err
 	}
 
 	// Log the triage bypass for Phase 2 review (only for manual bypasses, not daemon-driven)
 	if !daemonDriven && spawnBypassTriage {
-		logTriageBypass(skillName, task)
+		gates.LogTriageBypass(skillName, task)
 	}
 
 	// Check concurrency limit before spawning
-	if err := checkConcurrencyLimit(); err != nil {
+	if err := gates.CheckConcurrency(serverURL, spawnMaxAgents, extractBeadsIDFromTitle); err != nil {
 		return err
 	}
 
@@ -830,27 +674,13 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// STRATEGIC-FIRST ORCHESTRATION: Check for hotspots in task target area
 	// In hotspot areas (5+ bugs, persistent failures), strategic approach is recommended
 	// Warning shown but spawn proceeds (non-blocking)
-	if preCheckDir != "" {
-		if hotspotResult, err := RunHotspotCheckForSpawn(preCheckDir, task); err == nil && hotspotResult != nil {
-			// Strategic-first gate: warn about hotspot areas (non-blocking)
-			// Daemon-driven spawns stay silent (triage already happened)
-			isStrategicSkill := skillName == "architect"
-
-			if !daemonDriven {
-				// Show hotspot warning (includes recommendation to use architect)
-				fmt.Fprint(os.Stderr, hotspotResult.Warning)
-
-				// Add context based on skill choice
-				if isStrategicSkill {
-					fmt.Fprintln(os.Stderr, "✓ Strategic approach: architect skill selected for hotspot area")
-				} else {
-					fmt.Fprintln(os.Stderr, "⚠️  Proceeding with tactical approach in hotspot area")
-				}
-				fmt.Fprintln(os.Stderr, "")
-			}
-			// Daemon-driven: silent (triage already happened when issue was labeled triage:ready)
+	gates.CheckHotspot(preCheckDir, task, skillName, daemonDriven, func(dir, t string) (*gates.HotspotResult, error) {
+		result, err := RunHotspotCheckForSpawn(dir, t)
+		if err != nil || result == nil {
+			return nil, err
 		}
-	}
+		return &gates.HotspotResult{HasHotspots: result.HasHotspots, Warning: result.Warning}, nil
+	})
 
 	// Get project directory - use --workdir if provided, otherwise current directory
 	var projectDir string
@@ -2153,49 +1983,6 @@ func recordGapForLearning(gapAnalysis *spawn.GapAnalysis, skill, task string) {
 	// Save tracker
 	if err := tracker.Save(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save gap tracker: %v\n", err)
-	}
-}
-
-// showTriageBypassRequired displays a warning and returns an error when --bypass-triage is not provided.
-// This creates friction to encourage the daemon-driven workflow over manual spawning.
-func showTriageBypassRequired(skillName, task string) error {
-	fmt.Fprintf(os.Stderr, `
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  ⚠️  TRIAGE BYPASS REQUIRED                                                  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  Manual spawn requires --bypass-triage flag.                                │
-│                                                                             │
-│  The preferred workflow is daemon-driven triage:                            │
-│    1. Create issue: bd create "task" --type task -l triage:ready            │
-│    2. Daemon auto-spawns: orch daemon run                                   │
-│                                                                             │
-│  Manual spawn is for exceptions only:                                       │
-│    - Single urgent item requiring immediate attention                       │
-│    - Complex/ambiguous task needing custom context                          │
-│    - Skill selection requires orchestrator judgment                         │
-│                                                                             │
-│  To proceed with manual spawn, add --bypass-triage:                         │
-│    orch spawn --bypass-triage %s "%s"                          │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-`, skillName, truncate(task, 30))
-	return fmt.Errorf("spawn blocked: --bypass-triage flag required for manual spawns")
-}
-
-// logTriageBypass logs a triage bypass event to events.jsonl for Phase 2 review.
-// This tracks how often manual spawns occur vs daemon-driven spawns.
-func logTriageBypass(skillName, task string) {
-	logger := events.NewLogger(events.DefaultLogPath())
-	event := events.Event{
-		Type:      "spawn.triage_bypassed",
-		Timestamp: time.Now().Unix(),
-		Data: map[string]interface{}{
-			"skill": skillName,
-			"task":  task,
-		},
-	}
-	if err := logger.Log(event); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to log triage bypass: %v\n", err)
 	}
 }
 
