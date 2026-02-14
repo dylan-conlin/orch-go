@@ -1024,6 +1024,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Gather context based on skill requirements (or fall back to default behavior)
 	var kbContext string
 	var gapAnalysis *spawn.GapAnalysis
+	var hasInjectedModels bool
+	var primaryModelPath string
 	if !spawnSkipArtifactCheck {
 		if requires != nil && requires.HasRequirements() {
 			// Skill-driven context gathering
@@ -1037,6 +1039,15 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 			gapResult := runPreSpawnKBCheckFull(task)
 			kbContext = gapResult.Context
 			gapAnalysis = gapResult.GapAnalysis
+
+			// Extract model injection info for probe vs investigation routing
+			if gapResult.FormatResult != nil {
+				hasInjectedModels = gapResult.FormatResult.HasInjectedModels
+				if hasInjectedModels {
+					// Extract primary model path from KB context result
+					primaryModelPath = extractPrimaryModelPath(gapResult.FormatResult)
+				}
+			}
 		}
 
 		// Check gap gating - may block spawn if context quality is too low
@@ -1198,6 +1209,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		NoTrack:            spawnNoTrack || skipBeadsForOrchestrator,
 		SkipArtifactCheck:  spawnSkipArtifactCheck,
 		KBContext:          kbContext,
+		HasInjectedModels:  hasInjectedModels,
+		PrimaryModelPath:   primaryModelPath,
 		IncludeServers:     spawn.DefaultIncludeServersForSkill(skillName),
 		GapAnalysis:        gapAnalysis,
 		IsBug:              isBug,
@@ -1986,10 +1999,20 @@ func checkWorkspaceExists(workspacePath string, force bool) error {
 
 // GapCheckResult contains the results of a pre-spawn gap check.
 type GapCheckResult struct {
-	Context     string             // Formatted context to include in SPAWN_CONTEXT.md
-	GapAnalysis *spawn.GapAnalysis // Gap analysis results for further processing
-	Blocked     bool               // True if spawn should be blocked due to gaps
-	BlockReason string             // Reason for blocking (if Blocked is true)
+	Context      string                       // Formatted context to include in SPAWN_CONTEXT.md
+	GapAnalysis  *spawn.GapAnalysis           // Gap analysis results for further processing
+	Blocked      bool                         // True if spawn should be blocked due to gaps
+	BlockReason  string                       // Reason for blocking (if Blocked is true)
+	FormatResult *spawn.KBContextFormatResult // Full format result including HasInjectedModels
+}
+
+// extractPrimaryModelPath extracts the file path of the first model from KB context result.
+// Returns empty string if no model paths found.
+func extractPrimaryModelPath(formatResult *spawn.KBContextFormatResult) string {
+	if formatResult == nil {
+		return ""
+	}
+	return formatResult.PrimaryModelPath
 }
 
 // runPreSpawnKBCheck runs kb context check before spawning an agent.
@@ -2056,8 +2079,12 @@ func runPreSpawnKBCheckFull(task string) *GapCheckResult {
 	// No interactive prompt needed; context is automatically included
 	fmt.Printf("Found %d relevant context entries - including in spawn context.\n", len(result.Matches))
 
+	// Format context with limit and capture full result (includes HasInjectedModels)
+	formatResult := spawn.FormatContextForSpawnWithLimit(result, spawn.MaxKBContextChars)
+	gcr.FormatResult = formatResult
+
 	// Include gap summary in spawn context if there are significant gaps
-	contextContent := spawn.FormatContextForSpawn(result)
+	contextContent := formatResult.Content
 	if gapSummary := gcr.GapAnalysis.FormatGapSummary(); gapSummary != "" {
 		contextContent = gapSummary + "\n\n" + contextContent
 	}

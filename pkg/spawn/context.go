@@ -202,6 +202,18 @@ This applies to:
 
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be {{.ProjectDir}})
+{{if .ProducesInvestigation}}
+{{if .HasInjectedModels}}
+2. **SET UP probe file:** This is confirmatory work against an existing model.
+   - Model content was injected in PRIOR KNOWLEDGE section above
+   - Create probe file in model's probes/ directory
+   - Use probe template structure: Question, What I Tested, What I Observed, Model Impact
+   - Your probe should confirm, contradict, or extend the model's claims
+{{if not .NoTrack}}
+   - **IMPORTANT:** After creating probe file, report the path via:
+     ` + "`bd comment {{.BeadsID}} \"probe_path: /path/to/probe.md\"`" + `
+{{end}}
+{{else}}
 2. **SET UP investigation file:** Run ` + "`kb create investigation {{.InvestigationSlug}}`" + ` to create from template
    - This creates: ` + "`.kb/investigations/simple/YYYY-MM-DD-{{.InvestigationSlug}}.md`" + `
    - This file is your coordination artifact (replaces WORKSPACE.md)
@@ -211,28 +223,49 @@ DELIVERABLES (REQUIRED):
      ` + "`bd comment {{.BeadsID}} \"investigation_path: /path/to/file.md\"`" + `
      (This allows orch complete to verify the correct file)
 {{end}}
+{{end}}
+{{if .HasInjectedModels}}
+3. **UPDATE probe file** as you work:
+   - Question: What model claim are you testing?
+   - What I Tested: Actual command/code run (not just code review)
+   - What I Observed: Actual output/behavior
+   - Model Impact: Confirms/contradicts/extends which invariant
+{{else}}
 3. **UPDATE investigation file** as you work:
    - Add TLDR at top (1-2 sentence summary of question and finding)
    - Fill sections: What I tried → What I observed → Test performed
    - Only fill Conclusion if you actually tested (this is the key discipline)
+{{end}}
 4. Update Status: field when done (Active → Complete)
 5. [Task-specific deliverables]
+{{else}}
+2. [Task-specific deliverables]
+{{end}}
 {{if ne .Tier "light"}}
-6. **CREATE SYNTHESIS.md:** Before completing, create ` + "`SYNTHESIS.md`" + ` in your workspace: {{.ProjectDir}}/.orch/workspace/{{.WorkspaceName}}/SYNTHESIS.md
+{{if .ProducesInvestigation}}6{{else}}3{{end}}. **CREATE SYNTHESIS.md:** Before completing, create ` + "`SYNTHESIS.md`" + ` in your workspace: {{.ProjectDir}}/.orch/workspace/{{.WorkspaceName}}/SYNTHESIS.md
    - Use the template from: {{.ProjectDir}}/.orch/templates/SYNTHESIS.md
    - This is CRITICAL for the orchestrator to review your work.
 {{else}}
-6. ⚡ SYNTHESIS.md is NOT required (light tier spawn).
+{{if .ProducesInvestigation}}6{{else}}3{{end}}. ⚡ SYNTHESIS.md is NOT required (light tier spawn).
 {{end}}
 
 STATUS UPDATES:
-Update Status: field in your investigation file:
+{{if .ProducesInvestigation}}{{if .HasInjectedModels}}Update Status: field in your probe file:
+- Status: Active (while working)
+- Status: Complete (when done and committed) → then call /exit to close agent session
+
+Signal orchestrator when blocked:
+- Add '**Status:** BLOCKED - [reason]' to probe file
+- Add '**Status:** QUESTION - [question]' when needing input
+{{else}}Update Status: field in your investigation file:
 - Status: Active (while working)
 - Status: Complete (when done and committed) → then call /exit to close agent session
 
 Signal orchestrator when blocked:
 - Add '**Status:** BLOCKED - [reason]' to investigation file
 - Add '**Status:** QUESTION - [question]' when needing input
+{{end}}{{else}}Track progress via beads comments. Call /exit to close agent session when done.
+{{end}}
 {{if not .NoTrack}}
 
 ## BEADS PROGRESS TRACKING (PREFERRED)
@@ -440,27 +473,28 @@ func StripBeadsInstructions(content string) string {
 
 // contextData holds template data for SPAWN_CONTEXT.md.
 type contextData struct {
-	Task              string
-	BeadsID           string
-	ProjectDir        string
-	WorkspaceName     string
-	SkillName         string
-	SkillContent      string
-	InvestigationSlug string
-	Phases            string
-	Mode              string
-	Validation        string
-	InvestigationType string
-	KBContext         string
-	Tier              string
-	ServerContext     string
-	NoTrack           bool   // When true, omit beads instructions from spawn context
-	IsBug             bool   // When true, this is a bug issue with reproduction info
-	ReproSteps        string // Reproduction steps from bug issue
-	DesignWorkspace   string // Design workspace name for ui-design-session handoff
-	DesignMockupPath  string // Path to approved mockup
-	DesignPromptPath  string // Path to design prompt
-	DesignNotes       string // Notes from design session
+	Task                  string
+	BeadsID               string
+	ProjectDir            string
+	WorkspaceName         string
+	SkillName             string
+	SkillContent          string
+	InvestigationSlug     string
+	ProducesInvestigation bool
+	Phases                string
+	Mode                  string
+	Validation            string
+	InvestigationType     string
+	KBContext             string
+	Tier                  string
+	ServerContext         string
+	NoTrack               bool   // When true, omit beads instructions from spawn context
+	IsBug                 bool   // When true, this is a bug issue with reproduction info
+	ReproSteps            string // Reproduction steps from bug issue
+	DesignWorkspace       string // Design workspace name for ui-design-session handoff
+	DesignMockupPath      string // Path to approved mockup
+	DesignPromptPath      string // Path to design prompt
+	DesignNotes           string // Notes from design session
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -487,27 +521,28 @@ func GenerateContext(cfg *Config) (string, error) {
 	}
 
 	data := contextData{
-		Task:              cfg.Task,
-		BeadsID:           cfg.BeadsID,
-		ProjectDir:        cfg.ProjectDir,
-		WorkspaceName:     cfg.WorkspaceName,
-		SkillName:         cfg.SkillName,
-		SkillContent:      skillContent,
-		InvestigationSlug: slug,
-		Phases:            cfg.Phases,
-		Mode:              cfg.Mode,
-		Validation:        cfg.Validation,
-		InvestigationType: cfg.InvestigationType,
-		KBContext:         cfg.KBContext,
-		Tier:              cfg.Tier,
-		ServerContext:     serverContext,
-		NoTrack:           cfg.NoTrack,
-		IsBug:             cfg.IsBug,
-		ReproSteps:        cfg.ReproSteps,
-		DesignWorkspace:   cfg.DesignWorkspace,
-		DesignMockupPath:  cfg.DesignMockupPath,
-		DesignPromptPath:  cfg.DesignPromptPath,
-		DesignNotes:       cfg.DesignNotes,
+		Task:                  cfg.Task,
+		BeadsID:               cfg.BeadsID,
+		ProjectDir:            cfg.ProjectDir,
+		WorkspaceName:         cfg.WorkspaceName,
+		SkillName:             cfg.SkillName,
+		SkillContent:          skillContent,
+		InvestigationSlug:     slug,
+		ProducesInvestigation: DefaultProducesInvestigationForSkill(cfg.SkillName, cfg.Phases),
+		Phases:                cfg.Phases,
+		Mode:                  cfg.Mode,
+		Validation:            cfg.Validation,
+		InvestigationType:     cfg.InvestigationType,
+		KBContext:             cfg.KBContext,
+		Tier:                  cfg.Tier,
+		ServerContext:         serverContext,
+		NoTrack:               cfg.NoTrack,
+		IsBug:                 cfg.IsBug,
+		ReproSteps:            cfg.ReproSteps,
+		DesignWorkspace:       cfg.DesignWorkspace,
+		DesignMockupPath:      cfg.DesignMockupPath,
+		DesignPromptPath:      cfg.DesignPromptPath,
+		DesignNotes:           cfg.DesignNotes,
 	}
 
 	var buf bytes.Buffer

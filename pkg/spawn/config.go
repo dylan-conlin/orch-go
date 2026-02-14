@@ -55,6 +55,34 @@ var SkillIncludesServers = map[string]bool{
 	"reliability-testing":  true, // Needs to test live servers
 }
 
+// SkillProducesInvestigation maps skills to whether they produce investigation artifacts
+// as their primary deliverable. Only these skills get investigation file setup in SPAWN_CONTEXT.md.
+var SkillProducesInvestigation = map[string]bool{
+	"investigation":        true,
+	"architect":            true,
+	"research":             true,
+	"codebase-audit":       true,
+	"reliability-testing":  true,
+}
+
+// DefaultProducesInvestigationForSkill returns whether a skill should produce investigation artifacts.
+// For feature-impl, this depends on whether the phases include "investigation".
+// Returns false for unknown skills (most skills don't produce investigations).
+func DefaultProducesInvestigationForSkill(skillName string, phases string) bool {
+	if produces, ok := SkillProducesInvestigation[skillName]; ok {
+		return produces
+	}
+	// feature-impl produces investigation only when investigation phase is configured
+	if skillName == "feature-impl" && phases != "" {
+		for _, phase := range strings.Split(phases, ",") {
+			if strings.TrimSpace(phase) == "investigation" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // DefaultIncludeServersForSkill returns whether a skill should include server context by default.
 // Returns false for unknown skills (conservative default).
 func DefaultIncludeServersForSkill(skillName string) bool {
@@ -110,6 +138,15 @@ type Config struct {
 
 	// KBContext is the formatted kb context to include in SPAWN_CONTEXT.md
 	KBContext string
+
+	// HasInjectedModels indicates whether model content was injected into KB context.
+	// When true, the spawn will use probe template instead of investigation template.
+	// This implements the Feb 8 decision: model exists → probe, no model → investigation.
+	HasInjectedModels bool
+
+	// PrimaryModelPath is the file path to the primary model when HasInjectedModels is true.
+	// Used to determine probe file location (.kb/models/{model-name}/probes/).
+	PrimaryModelPath string
 
 	// IncludeServers controls whether server context is included in SPAWN_CONTEXT.md
 	// Default is based on skill type (true for UI-focused skills)

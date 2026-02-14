@@ -68,6 +68,7 @@ type KBContextFormatResult struct {
 	EstimatedTokens   int      // Estimated token count of the formatted content
 	OmittedCategories []string // Categories that were partially or fully omitted
 	HasInjectedModels bool     // Whether model content (summary/invariants/failures) was injected
+	PrimaryModelPath  string   // File path of the first model (when HasInjectedModels is true)
 }
 
 // ExtractKeywords extracts meaningful keywords from a task description for kb context query.
@@ -497,6 +498,12 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	// Try to format with all matches first
 	content := formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
 
+	// Extract primary model path if models exist
+	primaryModelPath := ""
+	if len(models) > 0 && models[0].Path != "" {
+		primaryModelPath = models[0].Path
+	}
+
 	// Check if we need to truncate
 	if len(content) <= maxChars {
 		return &KBContextFormatResult{
@@ -506,6 +513,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 			TruncatedMatches:  originalMatchCount,
 			EstimatedTokens:   EstimateTokens(len(content)),
 			HasInjectedModels: hasInjectedModelContent(models),
+			PrimaryModelPath:  primaryModelPath,
 		}
 	}
 
@@ -601,6 +609,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 		EstimatedTokens:   EstimateTokens(len(content)),
 		OmittedCategories: omittedCategories,
 		HasInjectedModels: hasInjectedModelContent(models),
+		PrimaryModelPath:  primaryModelPath,
 	}
 }
 
