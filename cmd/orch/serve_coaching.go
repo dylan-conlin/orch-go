@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,16 +8,9 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
-)
 
-// CoachingMetric represents a single behavioral metric entry.
-type CoachingMetric struct {
-	Timestamp string                 `json:"timestamp"`
-	SessionID string                 `json:"session_id,omitempty"`
-	Type      string                 `json:"metric_type"`
-	Value     float64                `json:"value"`
-	Details   map[string]interface{} `json:"details,omitempty"`
-}
+	"github.com/dylan-conlin/orch-go/pkg/coaching"
+)
 
 // WorkerHealthMetrics represents health signals for a worker session.
 // These are different from orchestrator metrics (action_ratio, analysis_paralysis).
@@ -52,47 +44,9 @@ type CoachingResponse struct {
 	WorkerHealth map[string]WorkerHealthMetrics `json:"worker_health,omitempty"`
 }
 
-// readCoachingMetrics reads the last N lines from coaching-metrics.jsonl.
-func readCoachingMetrics(limit int) ([]CoachingMetric, error) {
-	path := filepath.Join(os.Getenv("HOME"), ".orch", "coaching-metrics.jsonl")
-
-	file, err := os.Open(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []CoachingMetric{}, nil // No metrics yet
-		}
-		return nil, fmt.Errorf("failed to open metrics file: %w", err)
-	}
-	defer file.Close()
-
-	var metrics []CoachingMetric
-	scanner := bufio.NewScanner(file)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
-		var metric CoachingMetric
-		if err := json.Unmarshal([]byte(line), &metric); err != nil {
-			// Skip malformed lines
-			continue
-		}
-
-		metrics = append(metrics, metric)
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading metrics: %w", err)
-	}
-
-	// Return last N lines
-	if len(metrics) > limit {
-		metrics = metrics[len(metrics)-limit:]
-	}
-
-	return metrics, nil
+// getCoachingMetricsPath returns the path to the coaching metrics file.
+func getCoachingMetricsPath() string {
+	return filepath.Join(os.Getenv("HOME"), ".orch", "coaching-metrics.jsonl")
 }
 
 // Worker health metric types
@@ -150,7 +104,7 @@ func calculateWorkerHealthStatus(health WorkerHealthMetrics) string {
 }
 
 // aggregateWorkerHealthMetrics aggregates worker health metrics by session
-func aggregateWorkerHealthMetrics(metrics []CoachingMetric) map[string]WorkerHealthMetrics {
+func aggregateWorkerHealthMetrics(metrics []coaching.Metric) map[string]WorkerHealthMetrics {
 	result := make(map[string]WorkerHealthMetrics)
 
 	for _, m := range metrics {
@@ -201,7 +155,7 @@ func aggregateWorkerHealthMetrics(metrics []CoachingMetric) map[string]WorkerHea
 }
 
 // aggregateMetrics aggregates metrics by session and calculates overall health status (Frame 2).
-func aggregateMetrics(metrics []CoachingMetric) CoachingResponse {
+func aggregateMetrics(metrics []coaching.Metric) CoachingResponse {
 	resp := CoachingResponse{
 		OverallStatus: "good",
 		StatusMessage: "No metrics yet",
@@ -224,7 +178,7 @@ func aggregateMetrics(metrics []CoachingMetric) CoachingResponse {
 	resp.Session.SessionID = latestSessionID
 
 	// Filter metrics for latest session (orchestrator metrics only)
-	var sessionMetrics []CoachingMetric
+	var sessionMetrics []coaching.Metric
 	for _, m := range metrics {
 		if m.SessionID == latestSessionID && !isWorkerHealthMetric(m.Type) {
 			sessionMetrics = append(sessionMetrics, m)
@@ -302,7 +256,7 @@ func aggregateMetrics(metrics []CoachingMetric) CoachingResponse {
 // handleCoaching serves the /api/coaching endpoint.
 func handleCoaching(w http.ResponseWriter, r *http.Request) {
 	// Read last 100 metrics
-	metrics, err := readCoachingMetrics(100)
+	metrics, err := coaching.ReadMetrics(getCoachingMetricsPath(), 100)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to read metrics: %v", err), http.StatusInternalServerError)
 		return
