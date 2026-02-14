@@ -360,3 +360,121 @@ func containsMiddle(s, substr string) bool {
 	}
 	return false
 }
+
+func TestRegisterOrchestratorSession(t *testing.T) {
+	t.Run("worker session not registered", func(t *testing.T) {
+		cfg := &spawn.Config{
+			WorkspaceName:  "test-workspace",
+			ProjectDir:     "/tmp/test-project",
+			IsOrchestrator: false,
+		}
+
+		// Should not panic or error for worker sessions
+		RegisterOrchestratorSession(cfg, "session-123", "test task")
+	})
+
+	t.Run("orchestrator session registered", func(t *testing.T) {
+		cfg := &spawn.Config{
+			WorkspaceName:  "test-orch-workspace",
+			ProjectDir:     "/tmp/test-project",
+			IsOrchestrator: true,
+		}
+
+		// Should not panic or error
+		RegisterOrchestratorSession(cfg, "session-456", "test orchestrator task")
+	})
+
+	t.Run("meta-orchestrator session registered", func(t *testing.T) {
+		cfg := &spawn.Config{
+			WorkspaceName:      "test-meta-workspace",
+			ProjectDir:         "/tmp/test-project",
+			IsMetaOrchestrator: true,
+		}
+
+		// Should not panic or error
+		RegisterOrchestratorSession(cfg, "session-789", "test meta task")
+	})
+}
+
+func TestResult(t *testing.T) {
+	t.Run("inline result", func(t *testing.T) {
+		result := &Result{
+			SessionID: "test-session-id",
+			SpawnMode: "inline",
+		}
+
+		if result.SessionID != "test-session-id" {
+			t.Errorf("SessionID = %q, want %q", result.SessionID, "test-session-id")
+		}
+		if result.SpawnMode != "inline" {
+			t.Errorf("SpawnMode = %q, want %q", result.SpawnMode, "inline")
+		}
+		if result.TmuxInfo != nil {
+			t.Errorf("TmuxInfo should be nil for inline mode")
+		}
+	})
+
+	t.Run("headless result with retry attempts", func(t *testing.T) {
+		result := &Result{
+			SessionID:     "headless-session",
+			SpawnMode:     "headless",
+			RetryAttempts: 3,
+		}
+
+		if result.RetryAttempts != 3 {
+			t.Errorf("RetryAttempts = %d, want 3", result.RetryAttempts)
+		}
+	})
+
+	t.Run("tmux result with info", func(t *testing.T) {
+		result := &Result{
+			SessionID: "tmux-session",
+			SpawnMode: "tmux",
+			TmuxInfo: &TmuxInfo{
+				SessionName:  "workers-test",
+				WindowTarget: "workers-test:1",
+				WindowID:     "@1",
+			},
+		}
+
+		if result.TmuxInfo == nil {
+			t.Fatal("TmuxInfo should not be nil for tmux mode")
+		}
+		if result.TmuxInfo.SessionName != "workers-test" {
+			t.Errorf("SessionName = %q, want %q", result.TmuxInfo.SessionName, "workers-test")
+		}
+		if result.TmuxInfo.WindowTarget != "workers-test:1" {
+			t.Errorf("WindowTarget = %q, want %q", result.TmuxInfo.WindowTarget, "workers-test:1")
+		}
+		if result.TmuxInfo.WindowID != "@1" {
+			t.Errorf("WindowID = %q, want %q", result.TmuxInfo.WindowID, "@1")
+		}
+	})
+}
+
+func TestSpawnRequest(t *testing.T) {
+	t.Run("basic spawn request", func(t *testing.T) {
+		cfg := &spawn.Config{
+			WorkspaceName: "test-workspace",
+			ProjectDir:    "/tmp/test",
+			Model:         "claude-sonnet-4",
+		}
+
+		req := &SpawnRequest{
+			Config:        cfg,
+			ServerURL:     "http://localhost:4096",
+			MinimalPrompt: "test prompt",
+			BeadsID:       "test-123",
+			SkillName:     "test-skill",
+			Task:          "test task",
+			Attach:        false,
+		}
+
+		if req.ServerURL != "http://localhost:4096" {
+			t.Errorf("ServerURL = %q, want %q", req.ServerURL, "http://localhost:4096")
+		}
+		if req.BeadsID != "test-123" {
+			t.Errorf("BeadsID = %q, want %q", req.BeadsID, "test-123")
+		}
+	})
+}

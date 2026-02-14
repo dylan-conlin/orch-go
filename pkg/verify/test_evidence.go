@@ -177,51 +177,19 @@ var codeFileExtensions = []string{
 	".svelte", ".vue", // UI components
 }
 
-// HasCodeChangesInRecentCommits checks if any code files were modified
-// in recent commits that would require test verification.
-//
-// DEPRECATED: Use HasCodeChangesSinceSpawn for accurate per-agent change detection.
-// This function uses HEAD~5 which includes changes from OTHER agents' commits.
-func HasCodeChangesInRecentCommits(projectDir string) bool {
-	// Get changed files from last 5 commits
-	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
-	if err != nil {
-		// Try with fewer commits
-		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
-		cmd.Dir = projectDir
-		output, err = cmd.Output()
-		if err != nil {
-			return false
-		}
-	}
-
-	return hasCodeChangesInFiles(string(output))
-}
-
-// HasCodeChangesSinceSpawn checks if any code files were modified
-// in commits since the given spawn time.
-//
-// DEPRECATED: Use HasCodeChangesSinceSpawnForWorkspace for accurate per-agent change detection.
-// This function considers ALL commits since spawn time, including concurrent agents' commits.
-func HasCodeChangesSinceSpawn(projectDir string, spawnTime time.Time) bool {
-	return HasCodeChangesSinceSpawnForWorkspace(projectDir, spawnTime, "")
-}
-
 // HasCodeChangesSinceSpawnForWorkspace checks if any code files were modified
 // in commits since the given spawn time that are associated with the given workspace.
 //
-// This is more accurate than HasCodeChangesSinceSpawn because it only considers
-// commits that modified files in the workspace directory. This prevents false positives
-// where markdown-only changes trigger the test evidence gate because concurrent agents
-// (spawned around the same time) made commits with code changes.
+// This only considers commits that modified files in the workspace directory.
+// This prevents false positives where markdown-only changes trigger the test evidence
+// gate because concurrent agents (spawned around the same time) made commits with code changes.
 //
-// If workspacePath is empty, it falls back to checking all commits since spawn time.
+// If workspacePath is empty, it checks all commits since spawn time.
+// Returns false if spawn time is zero (unavailable).
 func HasCodeChangesSinceSpawnForWorkspace(projectDir string, spawnTime time.Time, workspacePath string) bool {
 	if spawnTime.IsZero() {
-		// Fall back to recent commits if spawn time is unavailable
-		return HasCodeChangesInRecentCommits(projectDir)
+		// Cannot determine changes without spawn time
+		return false
 	}
 
 	// Use git log with --since to get commits since spawn time
@@ -237,8 +205,8 @@ func HasCodeChangesSinceSpawnForWorkspace(projectDir string, spawnTime time.Time
 	cmd.Dir = projectDir
 	output, err := cmd.Output()
 	if err != nil {
-		// Fall back to recent commits if git log fails
-		return HasCodeChangesInRecentCommits(projectDir)
+		// If git log fails, we cannot determine changes - return false to avoid blocking
+		return false
 	}
 
 	return hasCodeChangesInFiles(string(output))
