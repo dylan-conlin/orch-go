@@ -1,5 +1,5 @@
 // Package gates provides pre-spawn gate checks that must pass before an agent is spawned.
-// These gates enforce triage workflow, concurrency limits, and hotspot awareness.
+// These gates enforce triage workflow, concurrency limits, rate-limit awareness, and hotspot detection.
 package gates
 
 import (
