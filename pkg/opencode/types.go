@@ -43,6 +43,30 @@ type SessionStatus struct {
 	SessionID string `json:"session_id"`
 }
 
+// SessionStatusInfo represents the status of a session from GET /session/status endpoint.
+// Matches OpenCode's SessionStatus.Info Zod schema.
+type SessionStatusInfo struct {
+	Type    string `json:"type"` // "idle", "busy", or "retry"
+	Attempt int    `json:"attempt,omitempty"`
+	Message string `json:"message,omitempty"`
+	Next    int    `json:"next,omitempty"`
+}
+
+// IsIdle returns true if the session is idle.
+func (s *SessionStatusInfo) IsIdle() bool {
+	return s.Type == "idle"
+}
+
+// IsBusy returns true if the session is busy.
+func (s *SessionStatusInfo) IsBusy() bool {
+	return s.Type == "busy"
+}
+
+// IsRetrying returns true if the session is in retry state.
+func (s *SessionStatusInfo) IsRetrying() bool {
+	return s.Type == "retry"
+}
+
 // Result holds the result of processing opencode output.
 type Result struct {
 	SessionID string

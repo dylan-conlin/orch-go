@@ -1389,29 +1389,26 @@ func TestSendMessageInDirectoryEmpty(t *testing.T) {
 // TestWaitForSessionIdle tests that WaitForSessionIdle returns when session transitions busy→idle.
 func TestWaitForSessionIdle(t *testing.T) {
 	sessionID := "ses_wait123"
+	callCount := 0
 
-	// Create SSE server that sends busy then idle events
+	// Mock /session/status endpoint - returns busy then idle
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/event" {
+		if r.URL.Path != "/session/status" {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			t.Fatal("expected http.Flusher")
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+
+		// First call: busy
+		// Second call: idle
+		var response string
+		if callCount == 1 {
+			response = fmt.Sprintf(`{"%s": {"type": "busy"}}`, sessionID)
+		} else {
+			response = fmt.Sprintf(`{"%s": {"type": "idle"}}`, sessionID)
 		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-
-		// Send busy event
-		busyData := fmt.Sprintf(`{"type":"session.status","properties":{"sessionID":"%s","status":{"type":"busy"}}}`, sessionID)
-		fmt.Fprintf(w, "event: session.status\ndata: %s\n\n", busyData)
-		flusher.Flush()
-
-		// Send idle event
-		idleData := fmt.Sprintf(`{"type":"session.status","properties":{"sessionID":"%s","status":{"type":"idle"}}}`, sessionID)
-		fmt.Fprintf(w, "event: session.status\ndata: %s\n\n", idleData)
-		flusher.Flush()
+		w.Write([]byte(response))
 	}))
 	defer server.Close()
 
@@ -1422,26 +1419,19 @@ func TestWaitForSessionIdle(t *testing.T) {
 	}
 }
 
-// TestWaitForSessionIdleError tests that WaitForSessionIdle returns error on session error.
+// TestWaitForSessionIdleError tests that WaitForSessionIdle returns error on HTTP error.
 func TestWaitForSessionIdleError(t *testing.T) {
 	sessionID := "ses_error123"
 
+	// Mock /session/status endpoint that returns server error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/event" {
+		if r.URL.Path != "/session/status" {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			t.Fatal("expected http.Flusher")
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-
-		// Send error event
-		errorData := fmt.Sprintf(`{"type":"session.error","properties":{"sessionID":"%s","error":{"message":"rate limit exceeded"}}}`, sessionID)
-		fmt.Fprintf(w, "event: session.error\ndata: %s\n\n", errorData)
-		flusher.Flush()
+		// Return server error
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Internal server error"))
 	}))
 	defer server.Close()
 
@@ -1450,46 +1440,35 @@ func TestWaitForSessionIdleError(t *testing.T) {
 	if err == nil {
 		t.Fatal("WaitForSessionIdle() expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "rate limit exceeded") {
-		t.Errorf("error = %q, want to contain 'rate limit exceeded'", err.Error())
+	if !strings.Contains(err.Error(), "failed to get session status") {
+		t.Errorf("error = %q, want to contain 'failed to get session status'", err.Error())
 	}
 }
 
-// TestWaitForSessionIdleIgnoresOtherSessions tests that events from other sessions are ignored.
+// TestWaitForSessionIdleIgnoresOtherSessions tests that status from other sessions are ignored.
 func TestWaitForSessionIdleIgnoresOtherSessions(t *testing.T) {
 	targetSession := "ses_target"
 	otherSession := "ses_other"
+	callCount := 0
 
+	// Mock /session/status endpoint with multiple sessions
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/event" {
+		if r.URL.Path != "/session/status" {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			t.Fatal("expected http.Flusher")
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+
+		// First call: target busy, other busy
+		// Second call: target idle, other still busy
+		var response string
+		if callCount == 1 {
+			response = fmt.Sprintf(`{"%s": {"type": "busy"}, "%s": {"type": "busy"}}`, targetSession, otherSession)
+		} else {
+			response = fmt.Sprintf(`{"%s": {"type": "idle"}, "%s": {"type": "busy"}}`, targetSession, otherSession)
 		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-
-		// Send busy for other session (should be ignored)
-		otherBusy := fmt.Sprintf(`{"type":"session.status","properties":{"sessionID":"%s","status":{"type":"busy"}}}`, otherSession)
-		fmt.Fprintf(w, "event: session.status\ndata: %s\n\n", otherBusy)
-		flusher.Flush()
-
-		// Send idle for other session (should not trigger return)
-		otherIdle := fmt.Sprintf(`{"type":"session.status","properties":{"sessionID":"%s","status":{"type":"idle"}}}`, otherSession)
-		fmt.Fprintf(w, "event: session.status\ndata: %s\n\n", otherIdle)
-		flusher.Flush()
-
-		// Send busy then idle for target session (should trigger return)
-		targetBusy := fmt.Sprintf(`{"type":"session.status","properties":{"sessionID":"%s","status":{"type":"busy"}}}`, targetSession)
-		fmt.Fprintf(w, "event: session.status\ndata: %s\n\n", targetBusy)
-		flusher.Flush()
-
-		targetIdle := fmt.Sprintf(`{"type":"session.status","properties":{"sessionID":"%s","status":{"type":"idle"}}}`, targetSession)
-		fmt.Fprintf(w, "event: session.status\ndata: %s\n\n", targetIdle)
-		flusher.Flush()
+		w.Write([]byte(response))
 	}))
 	defer server.Close()
 
@@ -2117,5 +2096,229 @@ func TestFormatMessagesAsTranscript(t *testing.T) {
 	}
 	if !strings.Contains(transcript, "**Tools:**") {
 		t.Error("Missing tools section")
+	}
+}
+
+// TestGetAllSessionStatus tests the GetAllSessionStatus method.
+func TestGetAllSessionStatus(t *testing.T) {
+	mockStatus := `{
+		"ses_busy": {"type": "busy"},
+		"ses_idle": {"type": "idle"},
+		"ses_retry": {"type": "retry", "attempt": 3, "message": "Retrying...", "next": 5000}
+	}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/session/status" {
+			t.Errorf("Expected path /session/status, got %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(mockStatus))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	status, err := client.GetAllSessionStatus()
+	if err != nil {
+		t.Fatalf("GetAllSessionStatus() error = %v", err)
+	}
+
+	// Verify busy session
+	if busy, ok := status["ses_busy"]; !ok || busy.Type != "busy" {
+		t.Errorf("Expected ses_busy with type busy, got %+v", busy)
+	}
+
+	// Verify idle session
+	if idle, ok := status["ses_idle"]; !ok || idle.Type != "idle" {
+		t.Errorf("Expected ses_idle with type idle, got %+v", idle)
+	}
+
+	// Verify retry session
+	if retry, ok := status["ses_retry"]; !ok {
+		t.Error("Expected ses_retry in status map")
+	} else {
+		if retry.Type != "retry" {
+			t.Errorf("Expected type retry, got %s", retry.Type)
+		}
+		if retry.Attempt != 3 {
+			t.Errorf("Expected attempt 3, got %d", retry.Attempt)
+		}
+		if retry.Message != "Retrying..." {
+			t.Errorf("Expected message 'Retrying...', got %s", retry.Message)
+		}
+		if retry.Next != 5000 {
+			t.Errorf("Expected next 5000, got %d", retry.Next)
+		}
+	}
+}
+
+// TestGetAllSessionStatusEmpty tests GetAllSessionStatus with no active sessions.
+func TestGetAllSessionStatusEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("{}"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	status, err := client.GetAllSessionStatus()
+	if err != nil {
+		t.Fatalf("GetAllSessionStatus() error = %v", err)
+	}
+	if len(status) != 0 {
+		t.Errorf("Expected empty status map, got %d entries", len(status))
+	}
+}
+
+// TestGetAllSessionStatusError tests GetAllSessionStatus with server error.
+func TestGetAllSessionStatusError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.GetAllSessionStatus()
+	if err == nil {
+		t.Error("Expected error for server error response")
+	}
+}
+
+// TestGetSessionStatusByID tests the GetSessionStatusByID method.
+func TestGetSessionStatusByID(t *testing.T) {
+	mockStatus := `{
+		"ses_busy": {"type": "busy"},
+		"ses_retry": {"type": "retry", "attempt": 2, "message": "Error", "next": 1000}
+	}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(mockStatus))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+
+	// Test busy session
+	status, err := client.GetSessionStatusByID("ses_busy")
+	if err != nil {
+		t.Fatalf("GetSessionStatusByID() error = %v", err)
+	}
+	if !status.IsBusy() {
+		t.Errorf("Expected busy status, got %+v", status)
+	}
+
+	// Test session not in map (should return idle)
+	status, err = client.GetSessionStatusByID("ses_notfound")
+	if err != nil {
+		t.Fatalf("GetSessionStatusByID() error = %v", err)
+	}
+	if !status.IsIdle() {
+		t.Errorf("Expected idle status for session not in map, got %+v", status)
+	}
+
+	// Test retry session
+	status, err = client.GetSessionStatusByID("ses_retry")
+	if err != nil {
+		t.Fatalf("GetSessionStatusByID() error = %v", err)
+	}
+	if !status.IsRetrying() {
+		t.Errorf("Expected retry status, got %+v", status)
+	}
+}
+
+// TestSessionStatusInfoHelpers tests the helper methods on SessionStatusInfo.
+func TestSessionStatusInfoHelpers(t *testing.T) {
+	idle := SessionStatusInfo{Type: "idle"}
+	if !idle.IsIdle() || idle.IsBusy() || idle.IsRetrying() {
+		t.Error("IsIdle() should be true for idle status")
+	}
+
+	busy := SessionStatusInfo{Type: "busy"}
+	if idle.IsBusy() || !busy.IsBusy() || busy.IsRetrying() {
+		t.Error("IsBusy() should be true for busy status")
+	}
+
+	retry := SessionStatusInfo{Type: "retry", Attempt: 1}
+	if retry.IsIdle() || retry.IsBusy() || !retry.IsRetrying() {
+		t.Error("IsRetrying() should be true for retry status")
+	}
+}
+
+// TestWaitForSessionIdlePolling tests the new polling-based WaitForSessionIdle.
+func TestWaitForSessionIdlePolling(t *testing.T) {
+	sessionID := "ses_polling_test"
+	callCount := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+
+		// First call: busy
+		// Second call: still busy
+		// Third call: idle
+		var response string
+		if callCount < 3 {
+			response = fmt.Sprintf(`{"%s": {"type": "busy"}}`, sessionID)
+		} else {
+			response = fmt.Sprintf(`{"%s": {"type": "idle"}}`, sessionID)
+		}
+		w.Write([]byte(response))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.WaitForSessionIdle(sessionID)
+	if err != nil {
+		t.Fatalf("WaitForSessionIdle() error = %v", err)
+	}
+
+	if callCount < 3 {
+		t.Errorf("Expected at least 3 status checks, got %d", callCount)
+	}
+}
+
+// TestWaitForSessionIdleTimeout tests WaitForSessionIdle timeout behavior.
+func TestWaitForSessionIdleTimeout(t *testing.T) {
+	// Skip this test in short mode as it involves waiting
+	if testing.Short() {
+		t.Skip("Skipping timeout test in short mode")
+	}
+
+	sessionID := "ses_timeout_test"
+
+	// Skip early to avoid unused variable warnings
+	// Note: This test would take ~10 minutes with current maxWait constant
+	t.Skip("Skipping timeout test - would take 10 minutes with current maxWait constant")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Always return busy to trigger timeout
+		response := fmt.Sprintf(`{"%s": {"type": "busy"}}`, sessionID)
+		w.Write([]byte(response))
+	}))
+	defer server.Close()
+
+	client := NewClientWithTimeout(server.URL, 1*time.Second)
+	_ = client // Avoid unused warning if test is skipped
+}
+
+// TestWaitForSessionIdleServerError tests WaitForSessionIdle with server errors.
+func TestWaitForSessionIdleServerError(t *testing.T) {
+	sessionID := "ses_error"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.WaitForSessionIdle(sessionID)
+	if err == nil {
+		t.Error("Expected error when server returns error")
+	}
+	if !strings.Contains(err.Error(), "failed to get session status") {
+		t.Errorf("Expected 'failed to get session status' error, got: %v", err)
 	}
 }

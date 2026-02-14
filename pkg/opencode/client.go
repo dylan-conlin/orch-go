@@ -626,74 +626,39 @@ func (c *Client) SendMessageInDirectory(sessionID, content, model, directory str
 	return nil
 }
 
-// WaitForSessionIdle watches SSE events and blocks until the specified session
+// WaitForSessionIdle polls GET /session/status and blocks until the specified session
 // transitions from busy to idle. Used by inline spawn mode to maintain blocking
 // behavior while using the HTTP API for session creation.
+//
+// Replaced SSE-based implementation with polling for simplicity. Polls every 500ms.
 func (c *Client) WaitForSessionIdle(sessionID string) error {
-	sseClient := &http.Client{}
-	sseURL := c.ServerURL + "/event"
-	resp, err := sseClient.Get(sseURL)
-	if err != nil {
-		return fmt.Errorf("failed to connect to SSE: %w", err)
-	}
-	defer resp.Body.Close()
+	const pollInterval = 500 * time.Millisecond
+	const maxWait = 10 * time.Minute // Safety timeout
 
-	reader := bufio.NewReader(resp.Body)
-	var eventBuffer strings.Builder
+	deadline := time.Now().Add(maxWait)
 	var sessionWasBusy bool
 
-	for {
-		line, err := reader.ReadString('\n')
+	for time.Now().Before(deadline) {
+		status, err := c.GetSessionStatusByID(sessionID)
 		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return err
+			return fmt.Errorf("failed to get session status: %w", err)
 		}
 
-		eventBuffer.WriteString(line)
-
-		if line == "\n" && eventBuffer.Len() > 1 {
-			raw := eventBuffer.String()
-			eventType, data := ParseSSEEvent(raw)
-			eventBuffer.Reset()
-
-			if data == "" {
-				continue
-			}
-
-			// Handle session error events
-			if eventType == "session.error" {
-				var eventData map[string]interface{}
-				if err := json.Unmarshal([]byte(data), &eventData); err == nil {
-					if props, ok := eventData["properties"].(map[string]interface{}); ok {
-						if sid, ok := props["sessionID"].(string); ok && sid == sessionID {
-							if errorObj, ok := props["error"].(map[string]interface{}); ok {
-								if msg, ok := errorObj["message"].(string); ok {
-									return fmt.Errorf("session error: %s", msg)
-								}
-							}
-							return fmt.Errorf("session error occurred")
-						}
-					}
-				}
-				continue
-			}
-
-			// Handle session status events
-			if eventType == "session.status" {
-				status, sid := ParseSessionStatus(data)
-				if sid == sessionID {
-					if status == "busy" || status == "running" {
-						sessionWasBusy = true
-					}
-					if sessionWasBusy && status == "idle" {
-						return nil
-					}
-				}
-			}
+		// Track if session was ever busy
+		if status.IsBusy() || status.IsRetrying() {
+			sessionWasBusy = true
 		}
+
+		// Completion: session was busy and is now idle
+		if sessionWasBusy && status.IsIdle() {
+			return nil
+		}
+
+		// Poll again after interval
+		time.Sleep(pollInterval)
 	}
+
+	return fmt.Errorf("timeout waiting for session %s to complete (max %v)", sessionID, maxWait)
 }
 
 // GetMessages fetches all messages for a session from the OpenCode API.
@@ -1078,6 +1043,51 @@ func (c *Client) GetSessionTokens(sessionID string) (*TokenStats, error) {
 	}
 	stats := AggregateTokens(messages)
 	return &stats, nil
+}
+
+// GetAllSessionStatus fetches the status of all sessions from GET /session/status endpoint.
+// Returns a map of sessionID -> SessionStatusInfo.
+// Sessions not in the map are considered idle (status is in-memory only in OpenCode).
+func (c *Client) GetAllSessionStatus() (map[string]SessionStatusInfo, error) {
+	req, err := http.NewRequest("GET", c.ServerURL+"/session/status", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch session status: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var result map[string]SessionStatusInfo
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode session status: %w", err)
+	}
+
+	return result, nil
+}
+
+// GetSessionStatusByID fetches the status of a specific session.
+// Returns nil if session is idle (status deleted from in-memory map in OpenCode).
+// Use SessionExists() to distinguish between "session doesn't exist" vs "session is idle".
+func (c *Client) GetSessionStatusByID(sessionID string) (*SessionStatusInfo, error) {
+	allStatus, err := c.GetAllSessionStatus()
+	if err != nil {
+		return nil, err
+	}
+
+	status, exists := allStatus[sessionID]
+	if !exists {
+		// Session not in status map = idle (or doesn't exist)
+		return &SessionStatusInfo{Type: "idle"}, nil
+	}
+
+	return &status, nil
 }
 
 // ExportSessionTranscript fetches all messages for a session and formats them as markdown.
