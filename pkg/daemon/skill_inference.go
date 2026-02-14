@@ -83,8 +83,39 @@ func InferMCPFromLabels(labels []string) string {
 
 // InferSkillFromTitle detects skills from issue title patterns.
 // Returns the skill name if a known pattern is matched, or empty string otherwise.
+// Supports patterns like "Architect: Design system" or "Debug: Fix issue".
 func InferSkillFromTitle(title string) string {
-	// No title-based patterns currently
+	if title == "" {
+		return ""
+	}
+
+	// Check for "SkillName: ..." pattern
+	parts := strings.SplitN(title, ":", 2)
+	if len(parts) < 2 {
+		return ""
+	}
+
+	// Extract and normalize the potential skill name
+	skillPrefix := strings.ToLower(strings.TrimSpace(parts[0]))
+
+	// Map title prefixes to known skills
+	skillMap := map[string]string{
+		"architect":            "architect",
+		"debug":                "systematic-debugging",
+		"investigation":        "investigation",
+		"investigate":          "investigation",
+		"research":             "research",
+		"feature":              "feature-impl",
+		"implement":            "feature-impl",
+		"fix":                  "systematic-debugging",
+		"systematic-debugging": "systematic-debugging",
+		"feature-impl":         "feature-impl",
+	}
+
+	if skill, ok := skillMap[skillPrefix]; ok {
+		return skill
+	}
+
 	return ""
 }
 

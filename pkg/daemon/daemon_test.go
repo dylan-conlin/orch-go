@@ -512,8 +512,40 @@ func TestInferSkillFromTitle(t *testing.T) {
 		title     string
 		wantSkill string
 	}{
+		// No prefix - should return empty
 		{"Fix dashboard bug", ""},
 		{"Add synthesis feature", ""},
+
+		// Architect prefix variations
+		{"Architect: Design accretion gravity enforcement infrastructure", "architect"},
+		{"architect: some design work", "architect"},
+		{"ARCHITECT: Design system", "architect"},
+
+		// Debug/Systematic-debugging prefix
+		{"Debug: Fix spawn issue", "systematic-debugging"},
+		{"debug: something broken", "systematic-debugging"},
+		{"Fix: Broken test", "systematic-debugging"},
+		{"Systematic-debugging: Issue with daemon", "systematic-debugging"},
+
+		// Investigation prefix
+		{"Investigation: How does X work", "investigation"},
+		{"Investigate: Dashboard status", "investigation"},
+		{"investigation: something to understand", "investigation"},
+
+		// Research prefix
+		{"Research: Best practices for auth", "research"},
+		{"research: compare options", "research"},
+
+		// Feature/Implementation prefix
+		{"Feature: Add new dashboard", "feature-impl"},
+		{"Implement: New API endpoint", "feature-impl"},
+		{"feature-impl: Build something", "feature-impl"},
+
+		// Edge cases
+		{"", ""},
+		{"No colon in title", ""},
+		{"Unknown: Skill name", ""},
+		{"Architect:", "architect"}, // No text after colon - still valid skill prefix
 	}
 
 	for _, tt := range tests {
@@ -2368,5 +2400,28 @@ func TestExpandTriageReadyEpics_FiltersClosedChildren(t *testing.T) {
 		if issue.ID == "proj-child-2" {
 			t.Error("expandTriageReadyEpics() added closed child to issues list")
 		}
+	}
+}
+
+// TestOriginalBugReproduction verifies the fix for orch-go-4mu.
+// Issue titled "Architect: Design accretion gravity enforcement infrastructure"
+// was incorrectly inferred as "investigation" instead of "architect".
+func TestOriginalBugReproduction(t *testing.T) {
+	issue := &Issue{
+		ID:          "orch-go-4mu",
+		Title:       "Architect: Design accretion gravity enforcement infrastructure",
+		Description: "",
+		IssueType:   "task",
+		Labels:      []string{},
+	}
+
+	got, err := InferSkillFromIssue(issue)
+	if err != nil {
+		t.Fatalf("InferSkillFromIssue() unexpected error: %v", err)
+	}
+
+	want := "architect"
+	if got != want {
+		t.Errorf("InferSkillFromIssue() = %q, want %q (bug reproduction failed - title prefix not detected)", got, want)
 	}
 }
