@@ -1,7 +1,7 @@
 # Probe: Worker Detection Header Implementation
 
 **Date:** 2026-02-14
-**Status:** Active
+**Status:** Complete
 **Model:** Coaching Plugin
 
 ## Question
@@ -36,4 +36,23 @@ Does re-implementing the `x-opencode-env-ORCH_WORKER` header reading in OpenCode
 **Target Invariants:**
 - Invariant 5: Worker detection caching is one-way - Only cache `true` results (confirmed worker), never cache `false`
 
-**Expected Result:** Confirms that server-side header reading + metadata.role setting is the missing piece that prevents worker health tracking from firing.
+**Result:** ✅ **CONFIRMS** - Server-side header reading was the missing piece.
+
+**Fix implemented:**
+```typescript
+// routes/session.ts POST "/" handler (line 207-211)
+const isWorker = c.req.header("x-opencode-env-orch_worker") === "1"
+if (isWorker) {
+  body.metadata = {
+    ...body.metadata,
+    role: "worker",
+  }
+}
+```
+
+This restores the full worker detection chain:
+1. ✅ orch spawn sets `x-opencode-env-ORCH_WORKER=1` header
+2. ✅ OpenCode server reads header → sets `metadata.role = 'worker'`
+3. ✅ Coaching plugin detects via `session?.metadata?.role === 'worker'`
+
+**Model extension:** Adds to "Why This Fails" section - confirms Failure Mode 4 would be "Missing Server-Side Header Processing". The header was sent but never consumed, so the metadata was never set.
