@@ -1769,3 +1769,146 @@ func TestGenerateContext_NoTrack(t *testing.T) {
 		}
 	})
 }
+
+func TestGenerateContext_InvestigationDeliverableGating(t *testing.T) {
+	t.Run("feature-impl without investigation phase excludes investigation deliverable", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "fix some bug",
+			SkillName:  "feature-impl",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-123",
+			Phases:     "implementation,validation",
+			Tier:       "light",
+		}
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+		if strings.Contains(content, "SET UP investigation file") {
+			t.Error("feature-impl spawn without investigation phase should NOT contain investigation deliverable")
+		}
+		if strings.Contains(content, "kb create investigation") {
+			t.Error("feature-impl spawn without investigation phase should NOT contain kb create investigation")
+		}
+	})
+
+	t.Run("investigation skill includes investigation deliverable", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "explore something",
+			SkillName:  "investigation",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-456",
+			Tier:       "full",
+		}
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+		if !strings.Contains(content, "SET UP investigation file") {
+			t.Error("investigation spawn should contain investigation deliverable")
+		}
+	})
+
+	t.Run("architect skill includes investigation deliverable", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "design something",
+			SkillName:  "architect",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-789",
+			Tier:       "full",
+		}
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+		if !strings.Contains(content, "SET UP investigation file") {
+			t.Error("architect spawn should contain investigation deliverable")
+		}
+	})
+
+	t.Run("feature-impl with investigation phase includes investigation deliverable", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "investigate and implement",
+			SkillName:  "feature-impl",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-abc",
+			Phases:     "investigation,implementation,validation",
+			Tier:       "light",
+		}
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+		if !strings.Contains(content, "SET UP investigation file") {
+			t.Error("feature-impl with investigation phase should contain investigation deliverable")
+		}
+	})
+
+	t.Run("issue-creation excludes investigation deliverable", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "create an issue",
+			SkillName:  "issue-creation",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-def",
+			Tier:       "light",
+		}
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+		if strings.Contains(content, "SET UP investigation file") {
+			t.Error("issue-creation spawn should NOT contain investigation deliverable")
+		}
+	})
+
+	t.Run("research skill includes investigation deliverable", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "research something",
+			SkillName:  "research",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-ghi",
+			Tier:       "full",
+		}
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+		if !strings.Contains(content, "SET UP investigation file") {
+			t.Error("research spawn should contain investigation deliverable")
+		}
+	})
+
+	t.Run("reliability-testing includes investigation deliverable", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "harden system",
+			SkillName:  "reliability-testing",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-jkl",
+			Tier:       "light",
+		}
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+		if !strings.Contains(content, "SET UP investigation file") {
+			t.Error("reliability-testing spawn should contain investigation deliverable")
+		}
+	})
+
+	t.Run("codebase-audit includes investigation deliverable", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "audit the codebase",
+			SkillName:  "codebase-audit",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-mno",
+			Tier:       "full",
+		}
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+		if !strings.Contains(content, "SET UP investigation file") {
+			t.Error("codebase-audit spawn should contain investigation deliverable")
+		}
+	})
+}
