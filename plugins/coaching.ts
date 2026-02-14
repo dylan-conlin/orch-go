@@ -86,19 +86,7 @@ interface InvestigationRecommendation {
   keywords: string[] // Extracted keywords for matching (launchd, overmind, etc.)
 }
 
-/**
- * Tool categories for behavioral analysis.
- */
-const TOOL_CATEGORIES = {
-  // Context-gathering tools
-  context: ["bash"], // kb context calls detected via bash
-  // Reading/exploration tools
-  read: ["read", "grep", "glob"],
-  // Action tools (making changes)
-  action: ["edit", "write"],
-  // Execution tools
-  execute: ["bash"],
-}
+
 
 /**
  * Semantic groups for bash commands.
@@ -187,13 +175,7 @@ function classifyBashCommand(command: string): SemanticGroup {
   return "other"
 }
 
-/**
- * Detect if a bash command is a context check.
- */
-function isContextCheck(command: string): boolean {
-  if (!command) return false
-  return command.includes("kb context") || command.includes("kb search")
-}
+
 
 /**
  * Detect if a bash command is a spawn.
@@ -432,8 +414,6 @@ interface VariationState {
  * Phase 3.5: Dylan pattern tracking state for Phase 3.5.
  */
 interface DylanPatternState {
-  priorityUncertaintyCount: number // Count of "what's next?" type questions
-  compensationKeywords: string[] // Keywords from Dylan's provided context
   premiseSkippingCount: number // Count of "how to X" questions that skip premise validation
   premiseSkippingWarningInjected: boolean // Have we warned about premise-skipping yet?
   premiseSkippingStrongWarningInjected: boolean // Have we warned strongly (2nd+ occurrence)?
@@ -537,11 +517,7 @@ function isCodeFile(filePath: string): boolean {
  */
 interface SessionState {
   sessionId: string
-  contextChecks: number
   spawns: number
-  reads: number
-  actions: number
-  toolWindow: string[] // Last 10 tools
   lastFlush: number
   // Phase 1: Behavioral variation detection
   variation: VariationState
@@ -551,111 +527,13 @@ interface SessionState {
   frameCollapse: FrameCollapseState
 }
 
-/**
- * Detect tool repetition sequence (analysis paralysis signal).
- */
-function detectSequence(tools: string[]): number {
-  if (tools.length < 3) return 0
 
-  let maxSequence = 0
-  let currentTool = tools[0]
-  let currentCount = 1
-
-  for (let i = 1; i < tools.length; i++) {
-    if (tools[i] === currentTool) {
-      currentCount++
-    } else {
-      if (currentCount >= 3) {
-        maxSequence = Math.max(maxSequence, currentCount)
-      }
-      currentTool = tools[i]
-      currentCount = 1
-    }
-  }
-
-  // Check final sequence
-  if (currentCount >= 3) {
-    maxSequence = Math.max(maxSequence, currentCount)
-  }
-
-  return maxSequence
-}
 
 /**
  * Calculate and flush metrics for a session.
  * Now also injects coaching messages into the session when patterns detected.
  */
 async function flushMetrics(state: SessionState, client: any): Promise<void> {
-  const now = new Date().toISOString()
-
-  // Context ratio: context checks per spawn
-  if (state.spawns > 0) {
-    const contextRatio = state.contextChecks / state.spawns
-    writeMetric({
-      timestamp: now,
-      session_id: state.sessionId,
-      metric_type: "context_ratio",
-      value: parseFloat(contextRatio.toFixed(2)),
-      details: {
-        context_checks: state.contextChecks,
-        spawns: state.spawns,
-      },
-    })
-  }
-
-  // Action ratio: actions per reads
-  let shouldInjectActionCoaching = false
-  if (state.reads > 0) {
-    const actionRatio = state.actions / state.reads
-    writeMetric({
-      timestamp: now,
-      session_id: state.sessionId,
-      metric_type: "action_ratio",
-      value: parseFloat(actionRatio.toFixed(2)),
-      details: {
-        actions: state.actions,
-        reads: state.reads,
-      },
-    })
-
-    // Frame 1: Inject coaching when action ratio is low
-    if (actionRatio < 0.5 && state.reads >= 6) {
-      shouldInjectActionCoaching = true
-    }
-  }
-
-  // Tool repetition sequence (analysis paralysis)
-  const sequence = detectSequence(state.toolWindow)
-  let shouldInjectAnalysisParalysis = false
-  if (sequence >= 3) {
-    writeMetric({
-      timestamp: now,
-      session_id: state.sessionId,
-      metric_type: "analysis_paralysis",
-      value: sequence,
-      details: {
-        window: state.toolWindow.slice(-10),
-      },
-    })
-
-    shouldInjectAnalysisParalysis = true
-  }
-
-  // Inject coaching messages when thresholds exceeded
-  if (shouldInjectActionCoaching) {
-    await injectCoachingMessage(client, state.sessionId, "action_ratio", {
-      reads: state.reads,
-      actions: state.actions,
-    })
-  }
-
-  if (shouldInjectAnalysisParalysis) {
-    await injectCoachingMessage(client, state.sessionId, "analysis_paralysis", {
-      sequence,
-      toolWindow: state.toolWindow.slice(-10),
-    })
-  }
-
   state.lastFlush = Date.now()
   log("Flushed metrics for session:", state.sessionId)
 }
@@ -667,29 +545,13 @@ async function flushMetrics(state: SessionState, client: any): Promise<void> {
 async function injectCoachingMessage(
   client: any,
   sessionId: string,
-  patternType: "action_ratio" | "analysis_paralysis" | "frame_collapse" | "frame_collapse_strong" | "premise_skipping" | "premise_skipping_strong",
+  patternType: "frame_collapse" | "frame_collapse_strong" | "premise_skipping" | "premise_skipping_strong",
   details: any
 ): Promise<void> {
   try {
     let message = ""
 
-    if (patternType === "action_ratio") {
-      message = `## 📊 Orchestrator Coaching
-
-You've done **${details.reads} reads** with only **${details.actions} actions** (ratio: ${(details.actions / details.reads).toFixed(2)}).
-
-**Observation:** Low action-to-read ratio suggests analysis paralysis or investigation without delegation.
-
-**Consider:** Spawning an agent instead of investigating yourself, or taking action on what you've learned.`
-    } else if (patternType === "analysis_paralysis") {
-      message = `## 📊 Orchestrator Coaching
-
-Tool repetition sequence detected: **${details.sequence} consecutive uses** of the same tool.
-
-**Observation:** Repeated tool use without progress suggests stuck pattern.
-
-**Consider:** Stepping back to reassess approach, or spawning an agent to handle the investigation.`
-    } else if (patternType === "frame_collapse") {
+    if (patternType === "frame_collapse") {
       message = `## ⚠️ Frame Collapse Warning
 
 You've edited a code file: \`${details.filePath}\`
@@ -839,40 +701,6 @@ function formatMetricForCoach(metric: CoachingMetric, context: any): string {
       `**Recommendation Date:** ${metric.details.recommendation_date}`,
       ``
     )
-  } else if (metric.metric_type === "dylan_signal_prefix") {
-    lines.push(
-      `**Pattern:** Dylan used explicit signal prefix: \`${metric.details.prefix}:\``,
-      ``,
-      `**Message:** "${metric.details.message.substring(0, 200)}${metric.details.message.length > 200 ? "..." : ""}"`,
-      ``,
-      `**Signal Meaning:**`,
-      `- **frame-collapse**: Orchestrator dropped into worker mode (doing spawnable work)`,
-      `- **compensation**: Dylan providing context system should have surfaced`,
-      `- **focus**: Dylan redirecting to what actually matters`,
-      `- **step-back**: Need perspective, pause current thread`,
-      ``
-    )
-  } else if (metric.metric_type === "priority_uncertainty") {
-    lines.push(
-      `**Pattern:** Dylan asking "what's next?" type questions (${metric.value} times)`,
-      ``,
-      `**Recent Questions:**`,
-      ...metric.details.recent_questions.map((q: string) => `- "${q.substring(0, 150)}..."`),
-      ``,
-      `**Threshold:** ${metric.details.threshold}+ occurrences indicates orchestrator not providing strategic guidance`,
-      ``
-    )
-  } else if (metric.metric_type === "compensation_pattern") {
-    lines.push(
-      `**Pattern:** Dylan providing repeated context (${Math.round(metric.value * 100)}% keyword overlap)`,
-      ``,
-      `**Current Message:** "${metric.details.current_message.substring(0, 200)}..."`,
-      ``,
-      `**Overlapping Keywords:** ${metric.details.overlapping_keywords.join(", ")}`,
-      ``,
-      `**Indicates:** System failing to surface knowledge - orchestrator should have run \`kb context\` first`,
-      ``
-    )
   }
 
   // Add context if provided
@@ -919,46 +747,9 @@ function extractUserMessages(
   return userMessages
 }
 
-/**
- * Phase 3.5: Detect Dylan's explicit signal prefixes.
- * Returns prefix type if message starts with known prefix, null otherwise.
- */
-function detectSignalPrefix(text: string): string | null {
-  const lowerText = text.toLowerCase()
 
-  const prefixes = [
-    "frame-collapse:",
-    "compensation:",
-    "focus:",
-    "step-back:",
-  ]
 
-  for (const prefix of prefixes) {
-    if (lowerText.startsWith(prefix)) {
-      return prefix.replace(":", "") // Return without colon for cleaner metric
-    }
-  }
 
-  return null
-}
-
-/**
- * Phase 3.5: Detect priority uncertainty patterns.
- * Returns true if message contains phrases indicating Dylan doesn't know what to do next.
- */
-function detectPriorityUncertainty(text: string): boolean {
-  const lowerText = text.toLowerCase()
-
-  const patterns = [
-    "what's next",
-    "what should we focus on",
-    "what should i focus on",
-    "where should we start",
-    "what's the priority",
-  ]
-
-  return patterns.some((pattern) => lowerText.includes(pattern))
-}
 
 /**
  * Detect premise-skipping question patterns.
@@ -1016,60 +807,9 @@ function detectPremiseSkipping(text: string): { matched: boolean; verb?: string;
   return null
 }
 
-/**
- * Phase 3.5: Extract keywords from text for compensation pattern detection.
- * Simple keyword extraction (words >4 chars, not common stopwords).
- */
-function extractKeywordsSimple(text: string): string[] {
-  const stopwords = new Set([
-    "this",
-    "that",
-    "with",
-    "from",
-    "have",
-    "been",
-    "were",
-    "they",
-    "what",
-    "when",
-    "where",
-    "which",
-    "while",
-    "should",
-    "could",
-    "would",
-    "there",
-  ])
 
-  const words = text.toLowerCase().match(/\b\w+\b/g) || []
-  const keywords: string[] = []
 
-  for (const word of words) {
-    if (word.length > 4 && !stopwords.has(word)) {
-      keywords.push(word)
-    }
-  }
 
-  return keywords
-}
-
-/**
- * Phase 3.5: Detect compensation pattern (Dylan providing repeated context).
- * Returns keyword overlap ratio if significant (>0.3), null otherwise.
- */
-function detectCompensation(
-  newKeywords: string[],
-  priorKeywords: string[]
-): number | null {
-  if (newKeywords.length === 0 || priorKeywords.length === 0) return null
-
-  // Count overlapping keywords
-  const overlap = newKeywords.filter((k) => priorKeywords.includes(k)).length
-  const ratio = overlap / Math.max(newKeywords.length, priorKeywords.length)
-
-  // Significant overlap if >30% keywords repeat
-  return ratio > 0.3 ? ratio : null
-}
 
 /**
  * Estimate token usage for a worker session.
@@ -1364,11 +1104,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       if (!state) {
         state = {
           sessionId,
-          contextChecks: 0,
           spawns: 0,
-          reads: 0,
-          actions: 0,
-          toolWindow: [],
           lastFlush: Date.now(),
           variation: {
             currentGroup: null,
@@ -1377,8 +1113,6 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
             variationHistory: [],
           },
           dylan: {
-            priorityUncertaintyCount: 0,
-            compensationKeywords: [],
             premiseSkippingCount: 0,
             premiseSkippingWarningInjected: false,
             premiseSkippingStrongWarningInjected: false,
@@ -1395,94 +1129,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         log("Created session state for Dylan patterns:", sessionId)
       }
 
-      // Pattern 1: Explicit Signal Prefixes
-      const prefix = detectSignalPrefix(text)
-      if (prefix) {
-        const metric = {
-          timestamp: new Date().toISOString(),
-          session_id: sessionId,
-          metric_type: "dylan_signal_prefix",
-          value: 1,
-          details: {
-            prefix,
-            message: text.substring(0, 500), // First 500 chars
-          },
-        }
-
-        writeMetric(metric)
-        log(`⚠️ DYLAN SIGNAL PREFIX DETECTED: ${prefix}`)
-
-        // Stream to coach
-        streamToCoach(client, sessionId, metric, {})
-      }
-
-      // Pattern 2: Priority Uncertainty
-      if (detectPriorityUncertainty(text)) {
-        state.dylan.priorityUncertaintyCount++
-
-        // Emit metric when threshold reached (2+ occurrences)
-        if (state.dylan.priorityUncertaintyCount >= 2) {
-          const recentQuestions = userMessages.slice(-5).map((m) => m.text)
-
-          const metric = {
-            timestamp: new Date().toISOString(),
-            session_id: sessionId,
-            metric_type: "priority_uncertainty",
-            value: state.dylan.priorityUncertaintyCount,
-            details: {
-              recent_questions: recentQuestions,
-              threshold: 2,
-            },
-          }
-
-          writeMetric(metric)
-          log(`⚠️ PRIORITY UNCERTAINTY DETECTED: ${state.dylan.priorityUncertaintyCount} occurrences`)
-
-          // Stream to coach
-          streamToCoach(client, sessionId, metric, {})
-
-          // Reset counter after emitting
-          state.dylan.priorityUncertaintyCount = 0
-        }
-      }
-
-      // Pattern 3: Compensation Pattern (keyword overlap)
-      const newKeywords = extractKeywordsSimple(text)
-      if (newKeywords.length > 0) {
-        const overlapRatio = detectCompensation(newKeywords, state.dylan.compensationKeywords)
-
-        if (overlapRatio !== null) {
-          const overlappingKeywords = newKeywords.filter((k) => state.dylan.compensationKeywords.includes(k))
-
-          const metric = {
-            timestamp: new Date().toISOString(),
-            session_id: sessionId,
-            metric_type: "compensation_pattern",
-            value: overlapRatio,
-            details: {
-              current_message: text.substring(0, 500),
-              overlapping_keywords: overlappingKeywords,
-              overlap_ratio: overlapRatio,
-            },
-          }
-
-          writeMetric(metric)
-          log(
-            `⚠️ COMPENSATION PATTERN DETECTED: ${Math.round(overlapRatio * 100)}% keyword overlap (${overlappingKeywords.length} keywords)`
-          )
-
-          // Stream to coach
-          streamToCoach(client, sessionId, metric, {})
-        }
-
-        // Update compensation keywords (keep last 100)
-        state.dylan.compensationKeywords.push(...newKeywords)
-        if (state.dylan.compensationKeywords.length > 100) {
-          state.dylan.compensationKeywords = state.dylan.compensationKeywords.slice(-100)
-        }
-      }
-
-      // Pattern 4: Premise-Skipping Detection
+      // Premise-Skipping Detection
       // Track recent questions for pattern analysis
       state.dylan.recentQuestions.push(text)
       if (state.dylan.recentQuestions.length > 5) {
@@ -1584,11 +1231,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       if (!state) {
         state = {
           sessionId,
-          contextChecks: 0,
           spawns: 0,
-          reads: 0,
-          actions: 0,
-          toolWindow: [],
           lastFlush: Date.now(),
           variation: {
             currentGroup: null,
@@ -1597,8 +1240,6 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
             variationHistory: [],
           },
           dylan: {
-            priorityUncertaintyCount: 0,
-            compensationKeywords: [],
             premiseSkippingCount: 0,
             premiseSkippingWarningInjected: false,
             premiseSkippingStrongWarningInjected: false,
@@ -1613,21 +1254,6 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         }
         sessions.set(sessionId, state)
         log("Created session state:", sessionId)
-      }
-
-      // Update tool window (keep last 10)
-      state.toolWindow.push(tool)
-      if (state.toolWindow.length > 10) {
-        state.toolWindow.shift()
-      }
-
-      // Track tool categories
-      if (TOOL_CATEGORIES.read.includes(tool)) {
-        state.reads++
-      }
-
-      if (TOOL_CATEGORIES.action.includes(tool)) {
-        state.actions++
       }
 
       // Frame Collapse Detection: Track edit/write on code files
@@ -1672,20 +1298,13 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
           }
 
           // Stream to coach session for investigation
-          streamToCoach(client, sessionId, metric, {
-            recentCommands: state.toolWindow.slice(-5),
-          })
+          streamToCoach(client, sessionId, metric, {})
         }
       }
 
       // Special handling for bash commands
       if (tool === "bash") {
         const command = (input as any).args?.command || ""
-
-        if (isContextCheck(command)) {
-          state.contextChecks++
-          log("Context check detected:", command.substring(0, 50))
-        }
 
         if (isSpawn(command)) {
           state.spawns++
@@ -1811,7 +1430,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         // Flush all active sessions
         for (const [sid, s] of sessions.entries()) {
           // Only flush if there's activity to report
-          if (s.spawns > 0 || s.reads > 0 || s.actions > 0) {
+          if (s.spawns > 0) {
             flushMetrics(s, client)
           }
         }
@@ -1821,7 +1440,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       // Also flush if session has been active for 5+ minutes since last flush
       const now = Date.now()
       if (now - state.lastFlush > 5 * 60 * 1000) {
-        if (state.spawns > 0 || state.reads > 0 || state.actions > 0) {
+        if (state.spawns > 0) {
           flushMetrics(state, client)
         }
       }
