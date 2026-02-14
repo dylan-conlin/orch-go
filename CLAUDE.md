@@ -332,8 +332,20 @@ orch emit agent.completed --beads-id proj-123 --reason "Closed via bd close"
 1. Create `.beads/hooks/on_close` (executable)
 2. Copy content from orch-go's hook as a template
 
+## OpenCode Fork (We Own It)
+
+**OpenCode is NOT a third-party dependency.** Dylan maintains a fork at `~/Documents/personal/opencode` (upstream: `sst/opencode`). This means:
+
+- **Bugs in OpenCode → fix them in the fork**, not "report upstream"
+- **Schema changes** in `*.sql.ts` require running `cd packages/opencode && bun drizzle-kit generate` and committing the migration
+- **After code changes:** rebuild with `cd ~/Documents/personal/opencode/packages/opencode && bun run build`, then restart via `orch-dashboard restart`
+- **Never install opencode-ai from npm** — it shadows the fork
+
+The fork uses SQLite + Drizzle ORM (migrated from JSON file storage). Database at `~/.local/share/opencode/opencode.db`.
+
 ## Related
 
+- **OpenCode fork:** `~/Documents/personal/opencode` (we maintain this)
 - **Python orch-cli:** `~/Documents/personal/orch-cli` (fallback: `orch-py`)
 - **Beads:** Issue tracking via `bd` CLI
 - **Orchestrator skill:** `~/.claude/skills/meta/orchestrator/SKILL.md`
