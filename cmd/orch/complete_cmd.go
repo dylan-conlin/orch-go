@@ -855,6 +855,16 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
+	// Surface probe verdicts for orchestrator review
+	// Probes in .kb/models/*/probes/ produced during this agent's session
+	// contain Model Impact verdicts that need to be surfaced for model merging.
+	if workspacePath != "" {
+		probeVerdicts := verify.FindProbesForWorkspace(workspacePath, beadsProjectDir)
+		if len(probeVerdicts) > 0 {
+			fmt.Print(verify.FormatProbeVerdicts(probeVerdicts))
+		}
+	}
+
 	// Update session handoff with spawn completion info (Capture at Context principle)
 	// This is only for worker agents, not orchestrator sessions (which manage their own handoffs)
 	if !isOrchestratorSession && agentName != "" && beadsID != "" {
