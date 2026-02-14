@@ -36,6 +36,8 @@ const (
 	EventTypeVerificationBypassed = "verification.bypassed"
 	// EventTypeAgentAbandoned indicates an agent was abandoned via orch abandon.
 	EventTypeAgentAbandoned = "agent.abandoned"
+	// EventTypeSpawnSkillInferred indicates a skill was inferred for an issue spawn.
+	EventTypeSpawnSkillInferred = "spawn.skill_inferred"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -402,6 +404,37 @@ func (l *Logger) LogVerificationBypassed(data VerificationBypassedData) error {
 	return l.Log(Event{
 		Type:      EventTypeVerificationBypassed,
 		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// SkillInferredData contains the data for a spawn.skill_inferred event.
+type SkillInferredData struct {
+	IssueID                  string `json:"issue_id"`
+	InferredSkill            string `json:"inferred_skill"`
+	IssueType                string `json:"issue_type"`
+	Title                    string `json:"title"`
+	HadSkillLabel            bool   `json:"had_skill_label"`
+	HadTitleMatch            bool   `json:"had_title_match"`
+	UsedDescriptionHeuristic bool   `json:"used_description_heuristic"`
+}
+
+// LogSkillInferred logs a skill inference event with metadata for accuracy tracking.
+func (l *Logger) LogSkillInferred(data SkillInferredData) error {
+	eventData := map[string]interface{}{
+		"issue_id":                   data.IssueID,
+		"inferred_skill":             data.InferredSkill,
+		"issue_type":                 data.IssueType,
+		"title":                      data.Title,
+		"had_skill_label":            data.HadSkillLabel,
+		"had_title_match":            data.HadTitleMatch,
+		"used_description_heuristic": data.UsedDescriptionHeuristic,
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeSpawnSkillInferred,
+		SessionID: data.IssueID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,
 	})
