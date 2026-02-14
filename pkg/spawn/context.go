@@ -481,6 +481,7 @@ type contextData struct {
 	SkillContent          string
 	InvestigationSlug     string
 	ProducesInvestigation bool
+	HasInjectedModels     bool // When true, this spawn has model content injected for probing
 	Phases                string
 	Mode                  string
 	Validation            string
@@ -529,6 +530,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		SkillContent:          skillContent,
 		InvestigationSlug:     slug,
 		ProducesInvestigation: DefaultProducesInvestigationForSkill(cfg.SkillName, cfg.Phases),
+		HasInjectedModels:     cfg.HasInjectedModels,
 		Phases:                cfg.Phases,
 		Mode:                  cfg.Mode,
 		Validation:            cfg.Validation,
