@@ -42,3 +42,23 @@ export function formatRelativeTime(timestamp: string): string {
 	const diffDays = Math.floor(diffHours / 24);
 	return `${diffDays}d ago`;
 }
+
+// Attention badge configuration stub
+// TODO: Implement proper attention badge types and styling
+export const ATTENTION_BADGE_CONFIG = {
+	warning: {
+		color: 'text-yellow-600',
+		bg: 'bg-yellow-100',
+		label: 'Needs Attention'
+	},
+	error: {
+		color: 'text-red-600',
+		bg: 'bg-red-100',
+		label: 'Error'
+	},
+	info: {
+		color: 'text-blue-600',
+		bg: 'bg-blue-100',
+		label: 'Info'
+	}
+};

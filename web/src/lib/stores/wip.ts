@@ -27,3 +27,13 @@ function createWIPStore() {
 
 export const wip = createWIPStore();
 export const wipItems = derived(wip, ($wip) => $wip);
+
+/**
+ * Compute agent health status based on WIP item state
+ * Stub implementation - returns 'healthy' for now
+ */
+export function computeAgentHealth(wipItem: WIPItem): 'healthy' | 'warning' | 'error' {
+	// TODO: Implement actual health computation based on agent state
+	console.warn('computeAgentHealth: not implemented, returning healthy');
+	return 'healthy';
+}
