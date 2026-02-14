@@ -314,3 +314,9 @@ Add to `orch doctor`:
 - `.beads/backup-corrupted-2026-01-21/` - First corruption backup
 - `.beads/backup-corrupted-2026-01-21-1444/` - Second corruption backup
 - `.beads/backup-corrupted-2026-01-22/` - Third corruption backup (mislabeled)
+
+**Primary Evidence (Verify These):**
+- `~/Documents/personal/beads/internal/storage/sqlite/store.go:206-217` - WAL checkpoint implementation showing TRUNCATE mode
+- `~/Documents/personal/beads/cmd/bd/main.go` - Daemon auto-start logic
+- `~/Documents/personal/beads/internal/storage/sqlite/` - SQLite storage implementation with WAL mode
+- `.beads/daemon.log` - Historical daemon restart logs showing rapid cycles

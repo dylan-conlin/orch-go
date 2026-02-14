@@ -355,3 +355,13 @@ tmux source-file ~/.tmux.conf.local  # Reload
 - Added lsof fallback for Claude Code panes (empty pane_current_path)
 - Added socket detection for overmind context (wrong tmux server)
 - Both fixes applied to shell script and Go code
+
+---
+
+**Primary Evidence (Verify These):**
+- `cmd/orch/serve_context.go` - Dashboard `/api/context` endpoint with project detection
+- `pkg/tmux/follower.go` - `GetTmuxCwd()` with lsof fallback implementation
+- `pkg/tmux/tmux.go` - Tmux socket detection for overmind compatibility
+- `~/.tmux.conf.local` - `after-select-window` hook configuration (line ~58-61)
+- `~/.local/bin/sync-workers-session.sh` - Ghostty auto-switch script with CWD detection
+- `web/src/lib/stores/context.ts` - Dashboard context polling logic

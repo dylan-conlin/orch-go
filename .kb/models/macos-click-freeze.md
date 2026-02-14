@@ -277,3 +277,11 @@ Services disabled in Session 15:
 
 **Related issues (side-findings):**
 - OpenCode fork optimizations: MAX_INSTANCES 20→8, IDLE_TTL 30→5min, disposeAll in server.stop(), periodic eviction timer (worth doing regardless — may also fix click freeze if H4 confirmed)
+
+**Primary Evidence (Verify These):**
+- `~/Library/LaunchAgents/` - User launch agents (skhd, yabai disabled; others per session state)
+- `/Library/LaunchDaemons/` - System daemons (NI, Docker components uninstalled/disabled)
+- WindowServer process - macOS input event routing (HUP signal fixes)
+- `launchctl list | grep` output - Service state verification
+- `ioreg` output - IOKit HID device registration (Karabiner DriverKit presence)
+- Activity Monitor - Memory pressure metrics during freeze

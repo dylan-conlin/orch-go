@@ -121,3 +121,11 @@ For high-performance bulk operations (like `orch clean`), completion is inferred
 * `pkg/spawn/config.go` - Name generation and uniqueness
 * `cmd/orch/clean_cmd.go` - Archival logic
 * `cmd/orch/session.go` - Interactive workspace creation
+
+**Primary Evidence (Verify These):**
+* `pkg/spawn/config.go` - Workspace naming with 4-char hex suffix generation
+* `cmd/orch/clean_cmd.go` - Stale workspace archival logic
+* `cmd/orch/session.go` - Interactive session workspace creation in ~/.orch/session/
+* `pkg/verify/check.go` - Tier-aware verification using .tier file
+* `.orch/workspace/` - Worker workspace directory structure
+* `~/.orch/session/` - Interactive orchestrator session directory structure

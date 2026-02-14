@@ -1138,6 +1138,24 @@ func runComplete(identifier, workdir string) error {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
+	// Collect and log accretion delta metrics (file growth/shrinkage tracking)
+	// This helps monitor whether accretion gravity is being inverted over time.
+	// Non-blocking - failures are silently ignored.
+	if workspacePath != "" && beadsProjectDir != "" {
+		if accretionData := collectAccretionDelta(beadsProjectDir, workspacePath); accretionData != nil {
+			// Populate metadata
+			accretionData.BeadsID = beadsID
+			accretionData.Workspace = agentName
+			accretionData.Skill = skillName
+
+			// Log the accretion delta event
+			if err := logger.LogAccretionDelta(*accretionData); err != nil {
+				// Silent failure - accretion tracking is nice-to-have, not critical
+				fmt.Fprintf(os.Stderr, "Warning: failed to log accretion delta: %v\n", err)
+			}
+		}
+	}
+
 	// Invalidate orch serve cache to ensure dashboard shows updated status immediately.
 	// Without this, the TTL cache holds stale "active" status after completion.
 	invalidateServeCache()
@@ -1666,4 +1684,176 @@ func collectCompletionTelemetry(workspacePath string, forced bool, verificationP
 	}
 
 	return durationSeconds, tokensInput, tokensOutput, outcome
+}
+
+// collectAccretionDelta collects file growth/shrinkage metrics from git diff.
+// This tracks which files grew vs shrank during the agent's session, helping
+// monitor whether accretion gravity is being inverted (files getting smaller
+// rather than larger over time).
+//
+// Returns nil if collection fails (non-blocking).
+func collectAccretionDelta(projectDir, workspacePath string) *events.AccretionDeltaData {
+	if workspacePath == "" {
+		return nil
+	}
+
+	// Read spawn time to scope the diff to this agent's commits
+	spawnTimeFile := filepath.Join(workspacePath, ".spawn_time")
+	spawnTimeBytes, err := os.ReadFile(spawnTimeFile)
+	if err != nil {
+		return nil
+	}
+	spawnTimeStr := strings.TrimSpace(string(spawnTimeBytes))
+	spawnTime, err := time.Parse(time.RFC3339, spawnTimeStr)
+	if err != nil {
+		return nil
+	}
+
+	// Get commits since spawn time that touch the workspace
+	sinceStr := spawnTime.UTC().Format("2006-01-02T15:04:05Z")
+
+	// Convert workspace path to relative path from project dir for git matching
+	relWorkspace := workspacePath
+	if filepath.IsAbs(workspacePath) && filepath.IsAbs(projectDir) {
+		rel, err := filepath.Rel(projectDir, workspacePath)
+		if err == nil {
+			relWorkspace = rel
+		}
+	}
+
+	// Get commit hashes since spawn time that touch the workspace
+	cmd := exec.Command("git", "log", "--since="+sinceStr, "--format=%H", "--", relWorkspace)
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil || len(strings.TrimSpace(string(output))) == 0 {
+		// No commits touching workspace
+		return nil
+	}
+
+	commitHashes := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(commitHashes) == 0 {
+		return nil
+	}
+
+	// Collect numstat for all commits touching workspace
+	fileDeltas := make(map[string]*events.FileDelta)
+
+	for _, hash := range commitHashes {
+		if hash == "" {
+			continue
+		}
+
+		// Get numstat for this commit
+		cmd := exec.Command("git", "show", "--numstat", "--format=", hash)
+		cmd.Dir = projectDir
+		output, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+
+		// Parse numstat output: added<TAB>removed<TAB>filepath
+		lines := strings.Split(string(output), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+
+			parts := strings.Split(line, "\t")
+			if len(parts) < 3 {
+				continue
+			}
+
+			filePath := parts[2]
+
+			// Parse line counts (may be "-" for binary files)
+			added := 0
+			removed := 0
+			if parts[0] != "-" {
+				var n int
+				_, err := fmt.Sscanf(parts[0], "%d", &n)
+				if err == nil {
+					added = n
+				}
+			}
+			if parts[1] != "-" {
+				var n int
+				_, err := fmt.Sscanf(parts[1], "%d", &n)
+				if err == nil {
+					removed = n
+				}
+			}
+
+			// Aggregate changes per file across all commits
+			if existing, ok := fileDeltas[filePath]; ok {
+				existing.LinesAdded += added
+				existing.LinesRemoved += removed
+				existing.NetDelta = existing.LinesAdded - existing.LinesRemoved
+			} else {
+				fileDeltas[filePath] = &events.FileDelta{
+					Path:         filePath,
+					LinesAdded:   added,
+					LinesRemoved: removed,
+					NetDelta:     added - removed,
+				}
+			}
+		}
+	}
+
+	// Count current lines in each file and check for accretion risk
+	var totalAdded, totalRemoved, riskFiles int
+	var deltas []events.FileDelta
+
+	for _, delta := range fileDeltas {
+		// Count current lines in the file
+		fullPath := filepath.Join(projectDir, delta.Path)
+		if lineCount, err := countFileLines(fullPath); err == nil {
+			delta.TotalLines = lineCount
+			delta.IsAccretionRisk = lineCount > 800
+
+			// Track files >800 lines that grew
+			if delta.IsAccretionRisk && delta.NetDelta > 0 {
+				riskFiles++
+			}
+		}
+
+		totalAdded += delta.LinesAdded
+		totalRemoved += delta.LinesRemoved
+		deltas = append(deltas, *delta)
+	}
+
+	if len(deltas) == 0 {
+		return nil
+	}
+
+	return &events.AccretionDeltaData{
+		FileDeltas:   deltas,
+		TotalFiles:   len(deltas),
+		TotalAdded:   totalAdded,
+		TotalRemoved: totalRemoved,
+		NetDelta:     totalAdded - totalRemoved,
+		RiskFiles:    riskFiles,
+	}
+}
+
+// countFileLines counts the number of lines in a file.
+// Returns 0 if file doesn't exist or can't be read.
+func countFileLines(filePath string) (int, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+	for scanner.Scan() {
+		lineCount++
+	}
+
+	if err := scanner.Err(); err != nil {
+		return 0, err
+	}
+
+	return lineCount, nil
 }

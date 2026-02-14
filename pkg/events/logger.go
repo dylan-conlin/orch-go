@@ -40,6 +40,8 @@ const (
 	EventTypeAgentAbandoned = "agent.abandoned"
 	// EventTypeSpawnSkillInferred indicates a skill was inferred for an issue spawn.
 	EventTypeSpawnSkillInferred = "spawn.skill_inferred"
+	// EventTypeAccretionDelta indicates file growth/shrinkage during an agent session.
+	EventTypeAccretionDelta = "accretion.delta"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -462,6 +464,57 @@ func (l *Logger) LogSkillInferred(data SkillInferredData) error {
 	return l.Log(Event{
 		Type:      EventTypeSpawnSkillInferred,
 		SessionID: data.IssueID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// FileDelta represents the delta for a single file.
+type FileDelta struct {
+	Path            string `json:"path"`
+	LinesAdded      int    `json:"lines_added"`
+	LinesRemoved    int    `json:"lines_removed"`
+	NetDelta        int    `json:"net_delta"`         // Positive = growth, negative = shrinkage
+	TotalLines      int    `json:"total_lines"`       // Current line count in the file
+	IsAccretionRisk bool   `json:"is_accretion_risk"` // True if file is >800 lines
+}
+
+// AccretionDeltaData contains the data for an accretion.delta event.
+type AccretionDeltaData struct {
+	BeadsID      string      `json:"beads_id,omitempty"`
+	Workspace    string      `json:"workspace,omitempty"`
+	Skill        string      `json:"skill,omitempty"`
+	FileDeltas   []FileDelta `json:"file_deltas"`
+	TotalFiles   int         `json:"total_files"`
+	TotalAdded   int         `json:"total_added"`
+	TotalRemoved int         `json:"total_removed"`
+	NetDelta     int         `json:"net_delta"`
+	RiskFiles    int         `json:"risk_files"` // Number of files >800 lines that grew
+}
+
+// LogAccretionDelta logs an accretion delta event tracking file growth/shrinkage.
+func (l *Logger) LogAccretionDelta(data AccretionDeltaData) error {
+	eventData := map[string]interface{}{
+		"file_deltas":   data.FileDeltas,
+		"total_files":   data.TotalFiles,
+		"total_added":   data.TotalAdded,
+		"total_removed": data.TotalRemoved,
+		"net_delta":     data.NetDelta,
+		"risk_files":    data.RiskFiles,
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if data.Workspace != "" {
+		eventData["workspace"] = data.Workspace
+	}
+	if data.Skill != "" {
+		eventData["skill"] = data.Skill
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeAccretionDelta,
+		SessionID: data.BeadsID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,
 	})

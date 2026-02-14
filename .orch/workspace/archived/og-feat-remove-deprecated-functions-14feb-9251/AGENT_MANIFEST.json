@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-remove-deprecated-functions-14feb-9251",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-0xr",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "3ff95912174346f026c574536aab7456c368dee1",
+  "spawn_time": "2026-02-14T10:45:22-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

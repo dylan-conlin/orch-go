@@ -316,3 +316,13 @@ Critical Infrastructure Work
 ```
 
 Remove any link in this chain and the visibility criterion fails.
+
+---
+
+**Primary Evidence (Verify These):**
+- `pkg/spawn/backend.go` - Backend selection logic (--backend claude flag handling)
+- `pkg/spawn/spawn.go` - Spawn mode routing (headless vs tmux)
+- `~/.tmux.conf.local:58-61` - Auto-switch hook configuration
+- `~/.local/bin/sync-workers-session.sh` - Workers session auto-switching script
+- `cmd/orch/spawn.go` - Spawn command with escape-hatch flags
+- Dashboard code showing headless agent monitoring as alternative

@@ -327,3 +327,11 @@ Daemon auto-spawns on next poll
 - `pkg/daemon/completion_processing.go` - Beads-polling completion detection
 - `pkg/daemon/spawn_tracker.go` - Deduplication tracking
 - `cmd/orch/daemon.go` - CLI commands (run, preview)
+
+**Primary Evidence (Verify These):**
+- `pkg/daemon/daemon.go` - Poll-spawn-complete cycle implementation
+- `pkg/daemon/pool.go` - WorkerPool with MaxAgents limit and OpenCode reconciliation
+- `pkg/daemon/skill_inference.go` - Issue type to skill mapping table
+- `pkg/daemon/completion_processing.go` - Phase: Complete detection and auto-close logic
+- `pkg/daemon/spawn_tracker.go` - Deduplication to prevent duplicate spawns
+- `cmd/orch/daemon.go` - CLI entry points for run and preview modes

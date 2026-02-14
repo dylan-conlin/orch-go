@@ -3,6 +3,8 @@ package daemon
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 )
@@ -221,4 +223,92 @@ func inferTargetPackage(filePath string) string {
 
 	// Default fallback
 	return "pkg/appropriate/package/"
+}
+
+// ExtractionResult contains the result of checking if extraction is needed before feature work.
+type ExtractionResult struct {
+	// Needed indicates that extraction should happen before the feature agent.
+	Needed bool
+	// CriticalFile is the hotspot file path that triggered extraction.
+	CriticalFile string
+	// ExtractionTask is the generated task description for the extraction agent.
+	ExtractionTask string
+	// Hotspot is the matched critical hotspot warning.
+	Hotspot *HotspotWarning
+}
+
+// CheckExtractionNeeded determines if an issue targets a CRITICAL hotspot file (>1500 lines)
+// that requires extraction before feature work can begin.
+// Returns nil if no extraction is needed (no target files inferred, no hotspots, or no critical match).
+func CheckExtractionNeeded(issue *Issue, checker HotspotChecker) *ExtractionResult {
+	if issue == nil || checker == nil {
+		return nil
+	}
+
+	// Step 1: Infer target files from issue title/description
+	files := InferTargetFilesFromIssue(issue)
+	if len(files) == 0 {
+		return nil
+	}
+
+	// Step 2: Get hotspots for the project
+	hotspots, err := checker.CheckHotspots("")
+	if err != nil || len(hotspots) == 0 {
+		return nil
+	}
+
+	// Step 3: Check if any inferred file matches a CRITICAL hotspot (>1500 lines, bloat-size type)
+	critical := FindCriticalHotspot(files, hotspots)
+	if critical == nil {
+		return nil
+	}
+
+	// Step 4: Generate extraction task description
+	task := GenerateExtractionTask(issue, critical.Path)
+
+	return &ExtractionResult{
+		Needed:         true,
+		CriticalFile:   critical.Path,
+		ExtractionTask: task,
+		Hotspot:        critical,
+	}
+}
+
+// DefaultCreateExtractionIssue creates a beads issue for extraction work and adds a dependency
+// so the parent issue is blocked until extraction completes.
+// Returns the new extraction issue ID.
+func DefaultCreateExtractionIssue(task string, parentIssueID string) (string, error) {
+	// Create extraction issue via bd create
+	cmd := exec.Command("bd", "create", task, "--type", "task", "--priority", "1", "-l", "triage:ready")
+	cmd.Env = os.Environ()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to create extraction issue: %w: %s", err, string(output))
+	}
+
+	// Parse the issue ID from bd create output
+	extractionID := parseBeadsIDFromOutput(string(output))
+	if extractionID == "" {
+		return "", fmt.Errorf("could not parse extraction issue ID from: %s", strings.TrimSpace(string(output)))
+	}
+
+	// Add dependency: parentIssueID depends on extractionID
+	// (extraction must complete before parent can be spawned)
+	depCmd := exec.Command("bd", "dep", "add", parentIssueID, extractionID)
+	depCmd.Env = os.Environ()
+	depOutput, err := depCmd.CombinedOutput()
+	if err != nil {
+		return extractionID, fmt.Errorf("created %s but failed to add dependency: %w: %s",
+			extractionID, err, string(depOutput))
+	}
+
+	return extractionID, nil
+}
+
+// parseBeadsIDFromOutput extracts a beads issue ID from command output.
+// Beads IDs follow the pattern: project-name-shortid (e.g., orch-go-b8c, orch-go-a1b2).
+func parseBeadsIDFromOutput(output string) string {
+	// Match pattern: lowercase word segments joined by hyphens, ending with 3-4 char short ID
+	re := regexp.MustCompile(`[a-z][a-z0-9]*(?:-[a-z0-9]+)+-[a-z0-9]{3,4}`)
+	return re.FindString(strings.TrimSpace(output))
 }

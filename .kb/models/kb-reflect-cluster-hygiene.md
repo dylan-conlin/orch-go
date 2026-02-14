@@ -140,3 +140,10 @@ kb reflect scans `.kb/investigations/archived/` and `.kb/investigations/synthesi
 - `cmd/orch/spawn_validation.go` - decision-gate fail-closed behavior
 - `cmd/orch/status_statedb.go` - fallback status discovery over `workers-*` tmux sessions
 - `cmd/orch/serve.go` - default serve port constant
+
+**Primary Evidence (Verify These):**
+- `~/Documents/personal/kb-cli/` - kb reflect implementation (cluster algorithm)
+- `.kb/investigations/archived/` - Archived investigations (should be excluded from kb reflect scans)
+- `.kb/investigations/synthesized/` - Synthesized investigations (should be excluded from kb reflect scans)
+- `.kb/decisions/2026-02-08-kb-reflect-cluster-disposition-feature-agents-quick.md` - Disposition routing decision
+- `pkg/spawn/config.go` - Feature-impl tier configuration showing referenced behavior

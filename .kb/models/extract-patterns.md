@@ -97,3 +97,10 @@ Smaller, cohesive files are more resilient to **Session Amnesia**. A new agent c
 - `2026-01-03-inv-extract-shared-go-utility-functions.md` (Shared utilities first)
 - `2026-01-04-inv-phase-extract-serve-agents-cache.md` (Infrastructure separation)
 - `2026-01-06-inv-extract-synthesistab-component-part-orch.md` (Svelte tab pattern)
+
+**Primary Evidence (Verify These):**
+- `cmd/orch/shared.go` - Shared utilities extraction (extracted first to break cross-dependencies)
+- `cmd/orch/serve_agents.go` - Domain handler showing extraction from monolithic serve.go
+- `cmd/orch/serve_agents_cache.go` - Sub-domain infrastructure extraction
+- `cmd/orch/main.go` - Package main showing multiple file split within same package
+- `web/src/lib/components/agent-detail/` - Svelte tab component extraction pattern

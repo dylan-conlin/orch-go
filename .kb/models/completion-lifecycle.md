@@ -72,3 +72,15 @@ Stale OpenCode sessions and tmux windows consume system memory and "Registry Slo
 - **Principles**: Enforces **Verification Bottleneck** and **Session Amnesia**.
 - **Guides**: Complements `.kb/guides/completion.md`.
 - **Infrastructure**: Informs `orch status` and `orch hotspot` logic.
+
+---
+
+## References
+
+**Primary Evidence (Verify These):**
+- `cmd/orch/complete_cmd.go` - Main completion command with Phase: Complete detection
+- `pkg/verify/check.go` - Verification gate orchestration and tier-aware routing
+- `pkg/registry/registry.go` - Registry status updates (running → completed)
+- `cmd/orch/abandon.go` - Abandonment path for dead agents
+- `cmd/orch/doctor.go` - Registry reconciliation with beads
+- `.beads/issues.jsonl` - Authoritative completion signal (issue status)

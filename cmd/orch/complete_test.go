@@ -951,3 +951,32 @@ func TestRegistryArchivedPathUpdate(t *testing.T) {
 		t.Errorf("Expected ArchivedPath %s, got %s", archivedPath, retrieved.ArchivedPath)
 	}
 }
+
+// TestCountFileLines tests the countFileLines helper function.
+func TestCountFileLines(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a test file with known line count
+	testFile := filepath.Join(tmpDir, "test.txt")
+	content := "line1\nline2\nline3\nline4\nline5"
+	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Test counting lines
+	count, err := countFileLines(testFile)
+	if err != nil {
+		t.Fatalf("countFileLines failed: %v", err)
+	}
+
+	expectedLines := 5
+	if count != expectedLines {
+		t.Errorf("Expected %d lines, got %d", expectedLines, count)
+	}
+
+	// Test non-existent file
+	_, err = countFileLines(filepath.Join(tmpDir, "nonexistent.txt"))
+	if err == nil {
+		t.Error("Expected error for non-existent file, got nil")
+	}
+}

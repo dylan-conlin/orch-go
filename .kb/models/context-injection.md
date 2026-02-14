@@ -85,3 +85,14 @@ The primary mechanism for distinguishing between levels:
 1.  **Lazy-Loading:** Can we move the Orchestrator skill to a "Skill Tool" invocation so it consumes zero startup tokens?
 2.  **Deduplication:** Should `bd prime` be completely disabled in favor of `SPAWN_CONTEXT.md` for all spawned agents?
 3.  **Global vs Project:** How do we handle project-specific context (ROADMAP.md) without clobbering global instructions (Principles)?
+
+---
+
+## References
+
+**Primary Evidence (Verify These):**
+- `~/.claude/settings.json` - SessionStart hook configuration
+- `~/.claude/session-start.sh` - Claude Code hook entry point
+- `~/.claude/load-orchestration-context.py` - Context loading logic with CLAUDE_CONTEXT filtering
+- `pkg/spawn/context.go` - SPAWN_CONTEXT.md generation showing authoritative context source
+- OpenCode plugins directory - Minimal context injection for execution sessions

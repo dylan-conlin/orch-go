@@ -358,3 +358,11 @@ Meta frame:          "What is the orchestrator struggling with?"
 - `pkg/session/registry.go` - Session registry management
 - `cmd/orch/complete_cmd.go` - Tier-aware completion flow
 - `pkg/verify/check.go` - VerifyCompletionWithTier()
+
+**Primary Evidence (Verify These):**
+- `pkg/spawn/orchestrator_context.go` - Orchestrator vs worker context generation logic
+- `pkg/session/registry.go` - Session registry structure showing status tracking for orchestrators
+- `cmd/orch/complete_cmd.go` - Tier-aware completion routing (orchestrator vs worker vs light)
+- `pkg/verify/check.go:VerifyCompletionWithTier()` - Three-tier verification logic
+- `cmd/orch/session.go` - Session management commands (start, status, resume)
+- `~/.orch/sessions.json` - Session registry file showing active orchestrator sessions
