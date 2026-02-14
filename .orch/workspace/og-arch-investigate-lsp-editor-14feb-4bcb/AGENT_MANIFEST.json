@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-investigate-lsp-editor-14feb-4bcb",
+  "skill": "architect",
+  "beads_id": "orch-go-fr3",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "12d1c086577bdb93089b05a29d7de2b63c173adf",
+  "spawn_time": "2026-02-14T12:48:30-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}
