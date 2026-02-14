@@ -458,27 +458,19 @@ func cleanUntrackedDiskSessions(serverURL string, dryRun bool, preserveOrchestra
 	// The orchestrator/interactive sessions don't have workspace .session_id files, but they're
 	// still valid sessions that should not be deleted.
 	//
-	// We use two heuristics to detect active sessions (no extra API calls needed):
-	// 1. Recently updated sessions (within last 5 minutes) - likely in use
-	// 2. Sessions that are currently processing (expensive check, only if recently updated)
+	// We check ALL untracked sessions with IsSessionProcessing() to detect active sessions.
+	// This costs one API call per untracked session, but prevents catastrophic deletion of
+	// active TUI/orchestrator sessions that have been idle >5min.
 	var untrackedSessions []opencode.Session
 	var skippedActive int
-	now := time.Now()
-	const recentActivityThreshold = 5 * time.Minute
 
 	for _, session := range diskSessions {
 		if !trackedSessionIDs[session.ID] {
-			// First, quick check: was this session recently active? (using data we already have)
-			updatedAt := time.Unix(session.Time.Updated/1000, 0)
-			isRecentlyActive := now.Sub(updatedAt) <= recentActivityThreshold
-
-			if isRecentlyActive {
-				// Session is recently active - check if it's actually processing
-				// This is the expensive check, but we only do it for recently active sessions
-				if client.IsSessionProcessing(session.ID) {
-					skippedActive++
-					continue
-				}
+			// Check if this session is currently processing
+			// This is the only reliable way to detect active sessions without workspace files
+			if client.IsSessionProcessing(session.ID) {
+				skippedActive++
+				continue
 			}
 			untrackedSessions = append(untrackedSessions, session)
 		}
