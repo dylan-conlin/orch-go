@@ -519,9 +519,10 @@ func truncateText(text string, maxLen int) string {
 
 // CreateSessionRequest represents the request body for creating a new session.
 type CreateSessionRequest struct {
-	Title     string `json:"title,omitempty"`
-	Directory string `json:"directory,omitempty"`
-	Model     string `json:"model,omitempty"`
+	Title     string            `json:"title,omitempty"`
+	Directory string            `json:"directory,omitempty"`
+	Model     string            `json:"model,omitempty"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
 }
 
 // CreateSessionResponse represents the response from creating a new session.
@@ -533,11 +534,12 @@ type CreateSessionResponse struct {
 
 // CreateSession creates a new OpenCode session via HTTP API.
 // This is used for headless spawns (no tmux window).
-func (c *Client) CreateSession(title, directory, model string) (*CreateSessionResponse, error) {
+func (c *Client) CreateSession(title, directory, model string, metadata map[string]string) (*CreateSessionResponse, error) {
 	payload := CreateSessionRequest{
 		Title:     title,
 		Directory: directory,
 		Model:     model,
+		Metadata:  metadata,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

@@ -1198,7 +1198,7 @@ func TestCreateSession(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	resp, err := client.CreateSession(title, directory, model)
+	resp, err := client.CreateSession(title, directory, model, nil)
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -1252,7 +1252,7 @@ func TestCreateSessionWithoutModel(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	_, err := client.CreateSession(title, directory, model)
+	_, err := client.CreateSession(title, directory, model, nil)
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}

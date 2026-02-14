@@ -1428,7 +1428,13 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 
 	// Step 1: Create session via HTTP API with correct directory
 	// CreateSession passes x-opencode-directory header so the server uses the target project dir
-	session, err := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model)
+	metadata := map[string]string{
+		"beads_id":       cfg.BeadsID,
+		"workspace_path": cfg.WorkspacePath(),
+		"tier":           cfg.Tier,
+		"spawn_mode":     "inline",
+	}
+	session, err := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model, metadata)
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
@@ -1612,7 +1618,13 @@ func stripANSI(s string) string {
 func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
 	// Step 1: Create session via HTTP API with correct directory
 	// CreateSession passes x-opencode-directory header so the server uses the target project dir
-	session, err := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model)
+	metadata := map[string]string{
+		"beads_id":       cfg.BeadsID,
+		"workspace_path": cfg.WorkspacePath(),
+		"tier":           cfg.Tier,
+		"spawn_mode":     "headless",
+	}
+	session, err := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model, metadata)
 	if err != nil {
 		return nil, spawn.WrapSpawnError(err, "Failed to create session via API")
 	}
