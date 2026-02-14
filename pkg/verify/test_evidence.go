@@ -9,20 +9,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // TestEvidenceResult represents the result of checking for test execution evidence.
 type TestEvidenceResult struct {
-	Passed              bool     // Whether verification passed
-	HasCodeChanges      bool     // Whether code files were changed (requires test evidence)
-	HasTestEvidence     bool     // Whether test execution evidence was found
-	MarkdownOnlyExempt  bool     // Whether exempted due to markdown-only changes
-	OutsideProjectExempt bool    // Whether exempted due to files outside project
-	Errors              []string // Error messages (blocking)
-	Warnings            []string // Warning messages (non-blocking)
-	Evidence            []string // Evidence found (for debugging)
-	SkillName           string   // Skill that was used
+	Passed               bool     // Whether verification passed
+	HasCodeChanges       bool     // Whether code files were changed (requires test evidence)
+	HasTestEvidence      bool     // Whether test execution evidence was found
+	MarkdownOnlyExempt   bool     // Whether exempted due to markdown-only changes
+	OutsideProjectExempt bool     // Whether exempted due to files outside project
+	Errors               []string // Error messages (blocking)
+	Warnings             []string // Warning messages (non-blocking)
+	Evidence             []string // Evidence found (for debugging)
+	SkillName            string   // Skill that was used
 }
 
 // Skills that require test execution evidence before completion.
@@ -598,4 +599,25 @@ func VerifyTestEvidenceForCompletionWithComments(beadsID, workspacePath, project
 	}
 
 	return &result
+}
+
+// logAutoSkip logs a verification.auto_skipped event to events.jsonl for observability.
+// This tracks when gates are automatically skipped due to skill-class or file type exemptions.
+func logAutoSkip(beadsID, workspacePath, gate, reason, skillName string) {
+	// Avoid logging if no beads ID (untracked spawns)
+	if beadsID == "" {
+		return
+	}
+
+	// Use the default event logger
+	logger := events.NewDefaultLogger()
+
+	// Log the auto-skip event (silently fail on error to avoid breaking verification flow)
+	_ = logger.LogVerificationAutoSkipped(events.VerificationBypassedData{
+		BeadsID:   beadsID,
+		Workspace: workspacePath,
+		Gate:      gate,
+		Reason:    reason,
+		Skill:     skillName,
+	})
 }

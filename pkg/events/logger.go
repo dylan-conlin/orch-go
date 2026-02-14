@@ -34,6 +34,8 @@ const (
 	EventTypeServiceStarted = "service.started"
 	// EventTypeVerificationBypassed indicates a verification gate was bypassed via --skip-* flag.
 	EventTypeVerificationBypassed = "verification.bypassed"
+	// EventTypeVerificationAutoSkipped indicates a verification gate was auto-skipped due to skill-class or file type exemption.
+	EventTypeVerificationAutoSkipped = "verification.auto_skipped"
 	// EventTypeAgentAbandoned indicates an agent was abandoned via orch abandon.
 	EventTypeAgentAbandoned = "agent.abandoned"
 	// EventTypeSpawnSkillInferred indicates a skill was inferred for an issue spawn.
@@ -403,6 +405,31 @@ func (l *Logger) LogVerificationBypassed(data VerificationBypassedData) error {
 
 	return l.Log(Event{
 		Type:      EventTypeVerificationBypassed,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// LogVerificationAutoSkipped logs a verification gate auto-skip event.
+// This is emitted when a gate is automatically skipped due to skill-class or file type exemptions.
+func (l *Logger) LogVerificationAutoSkipped(data VerificationBypassedData) error {
+	eventData := map[string]interface{}{
+		"gate":   data.Gate,
+		"reason": data.Reason,
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if data.Workspace != "" {
+		eventData["workspace"] = data.Workspace
+	}
+	if data.Skill != "" {
+		eventData["skill"] = data.Skill
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeVerificationAutoSkipped,
 		SessionID: data.BeadsID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,

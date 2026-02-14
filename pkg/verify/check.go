@@ -77,10 +77,10 @@ func VerifySessionHandoff(workspacePath string) (bool, error) {
 
 // HandoffContentValidation contains the results of validating handoff content.
 type HandoffContentValidation struct {
-	Valid    bool     // Whether the handoff has actual content
-	Errors   []string // Specific validation failures
-	TLDRFilled    bool // Whether TLDR section has actual content
-	OutcomeFilled bool // Whether Outcome field has a valid value
+	Valid         bool     // Whether the handoff has actual content
+	Errors        []string // Specific validation failures
+	TLDRFilled    bool     // Whether TLDR section has actual content
+	OutcomeFilled bool     // Whether Outcome field has a valid value
 }
 
 // ValidateHandoffContent checks if SESSION_HANDOFF.md has actual content,
@@ -507,16 +507,33 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 		return result, nil
 	}
 
-	// Check for SYNTHESIS.md (only for full tier)
+	// Check for SYNTHESIS.md (only for full tier AND code-producing skills)
+	// Knowledge-producing skills (investigation, architect, research, etc.) produce
+	// artifacts as their deliverable - SYNTHESIS.md is redundant
 	if workspacePath != "" && tier != "light" {
-		ok, err := VerifySynthesis(workspacePath)
-		if err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SYNTHESIS.md: %v", err))
-		} else if !ok {
-			result.Passed = false
-			result.Errors = append(result.Errors,
-				fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath))
-			result.GatesFailed = append(result.GatesFailed, GateSynthesis)
+		// Check if skill requires synthesis
+		skillName := result.Skill
+		if skillName == "" {
+			skillName, _ = ExtractSkillNameFromSpawnContext(workspacePath)
+		}
+
+		// Auto-skip for investigation skill - the investigation artifact IS the deliverable
+		if strings.ToLower(skillName) == "investigation" {
+			logAutoSkip(beadsID, workspacePath, GateSynthesis,
+				"investigation skill produces investigation artifact, not SYNTHESIS.md",
+				skillName)
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("synthesis gate auto-skipped for investigation skill"))
+		} else {
+			ok, err := VerifySynthesis(workspacePath)
+			if err != nil {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SYNTHESIS.md: %v", err))
+			} else if !ok {
+				result.Passed = false
+				result.Errors = append(result.Errors,
+					fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath))
+				result.GatesFailed = append(result.GatesFailed, GateSynthesis)
+			}
 		}
 	}
 
