@@ -1,0 +1,75 @@
+observable_behaviors:
+  - behavior: "Shared metrics package available for import"
+    acceptance_criteria:
+      - "AC-001: pkg/coaching/metrics.go exists with Metric and MetricSummary types"
+      - "AC-002: ReadMetrics(path, limit) reads JSONL and returns last N metrics"
+      - "AC-003: ReadMetricsSince(path, since) filters metrics by timestamp"
+      - "AC-004: AggregateByType() calculates count, avg, latest for each metric type"
+      - "AC-005: FormatTextSummary() returns human-readable CLI output"
+    evidence:
+      - "go test ./pkg/coaching -v shows 5 test suites passing"
+      - "All 21 test cases pass in metrics_test.go"
+
+  - behavior: "serve_coaching.go uses shared package instead of inline code"
+    acceptance_criteria:
+      - "AC-006: serve_coaching.go imports github.com/dylan-conlin/orch-go/pkg/coaching"
+      - "AC-007: readCoachingMetrics() function removed from serve_coaching.go"
+      - "AC-008: handleCoaching() calls coaching.ReadMetrics() with path parameter"
+      - "AC-009: CoachingMetric type replaced with coaching.Metric throughout"
+    evidence:
+      - "git diff shows imports updated, old function removed"
+      - "go build ./cmd/orch succeeds without errors"
+
+failure_modes:
+  - symptom: "Tests fail with file not found errors"
+    root_cause: "JSONL file path construction incorrect"
+    fix: "Use filepath.Join and check HOME env var"
+    
+  - symptom: "Time-filtered reads return wrong metrics"
+    root_cause: "Timestamp parsing or comparison logic error"
+    fix: "Verify RFC3339 format, use time.After() correctly"
+    
+  - symptom: "serve_coaching.go compilation errors"
+    root_cause: "Type mismatches after refactoring"
+    fix: "Ensure all CoachingMetric → coaching.Metric replacements complete"
+
+verification_commands:
+  - command: "go test ./pkg/coaching -v"
+    expected_output: "PASS\nok  \tgithub.com/dylan-conlin/orch-go/pkg/coaching"
+    actual_result: "✅ All tests pass (21 test cases across 5 test suites)"
+    
+  - command: "go build ./cmd/orch"
+    expected_output: "No output (successful build)"
+    actual_result: "✅ Build succeeds, binary created"
+    
+  - command: "go test ./... -short"
+    expected_output: "pkg/coaching tests pass, no new failures introduced"
+    actual_result: "✅ pkg/coaching passes, pre-existing failures in unrelated packages only"
+
+manual_steps:
+  - step: "Verify extraction completeness"
+    procedure: "grep -r 'CoachingMetric' cmd/orch/serve_coaching.go should return 0 results"
+    result: "✅ No references to old type name found"
+    
+  - step: "Verify shared package independence"
+    procedure: "pkg/coaching/metrics.go should have no dependencies on cmd/orch code"
+    result: "✅ Only stdlib imports (bufio, encoding/json, fmt, os, sort, time)"
+
+deliverables:
+  - name: "pkg/coaching/metrics.go"
+    status: "complete"
+    location: "pkg/coaching/metrics.go"
+    
+  - name: "pkg/coaching/metrics_test.go"
+    status: "complete"
+    location: "pkg/coaching/metrics_test.go"
+    
+  - name: "Updated serve_coaching.go"
+    status: "complete"
+    location: "cmd/orch/serve_coaching.go"
+
+notes:
+  - "Phase 1 of coaching metrics redesign (see .kb/investigations/2026-02-14-design-coaching-metrics-redesign.md)"
+  - "Foundation for Phase 2 (stats integration) and Phase 4 (health calculation update)"
+  - "No regressions: all new tests pass, existing code builds successfully"
+  - "Commit: 55dc22bf - feat: extract shared coaching metrics reader to pkg/coaching"
