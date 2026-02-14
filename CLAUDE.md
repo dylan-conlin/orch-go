@@ -20,10 +20,12 @@ Claude API / Gemini API
 
 ```
 cmd/orch/
-├── main.go              # Entry point, Cobra commands, command registration
-├── daemon.go            # Daemon command (autonomous processing)
-├── resume.go            # Resume command (continue paused agents)
-└── wait.go              # Wait command (block until phase reached)
+├── main.go              # Entry point, Cobra root command setup
+├── *_cmd.go             # Command implementations (spawn, complete, status, etc.)
+├── daemon.go            # Daemon autonomous processing
+├── serve*.go            # HTTP API server and handlers (agents, beads, system)
+├── session.go           # Session management and state
+└── shared.go            # Shared utilities and helpers
 
 pkg/
 ├── opencode/            # OpenCode HTTP client + SSE streaming
@@ -34,8 +36,6 @@ pkg/
 │   └── model.go        # opus→anthropic/claude-opus, flash→google/gemini-2.5-flash
 ├── account/             # Claude Max account management
 │   └── account.go      # Read/write ~/.orch/accounts.yaml, token refresh
-├── registry/            # Agent state management
-│   └── registry.go     # JSON registry with file locking, reconcile with tmux
 ├── tmux/                # Tmux window management
 │   └── tmux.go         # Create windows, send keys, capture output
 ├── spawn/               # Spawn context generation
@@ -161,10 +161,6 @@ orch-dashboard logs     # View service logs (overmind echo)
 
 ### pkg/model/ (Model Resolution)
 - `Resolve(spec)` maps aliases to full provider/model format
-- Aliases: `opus`, `sonnet`, `haiku` (Anthropic), `flash`, `pro` (Gemini)
-- Default: `google/gemini-3-flash-preview` (Opus restricted to Claude Code as of Jan 2026)
-- Aliases: `opus`, `sonnet`, `haiku` (Anthropic), `flash`, `pro` (Gemini)
-- Default: `google/gemini-3-flash-preview` (Opus restricted to Claude Code as of Jan 2026)
 - Aliases: `opus`, `sonnet`, `haiku` (Anthropic), `flash`, `pro` (Gemini)
 - Default: `google/gemini-3-flash-preview` (Opus restricted to Claude Code as of Jan 2026)
 
