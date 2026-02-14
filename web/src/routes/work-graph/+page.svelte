@@ -4,8 +4,8 @@
 	import { workGraph, buildTree, filterTreeByLabel, groupTreeNodes, type TreeNode, type GroupSection, type GroupByMode } from '$lib/stores/work-graph';
 	import { kbArtifacts } from '$lib/stores/kb-artifacts';
 	import { kbModelProbes } from '$lib/stores/kb-model-probes';
-	import { orchestratorContext, connectionStatus } from '$lib/stores/context';
-	import { agents, connectSSE, disconnectSSE, sseEvents, type Agent } from '$lib/stores/agents';
+	import { orchestratorContext } from '$lib/stores/context';
+	import { agents, connectSSE, disconnectSSE, sseEvents, connectionStatus, type Agent } from '$lib/stores/agents';
 	import {
 		agentlogEvents,
 		connectAgentlogSSE,
