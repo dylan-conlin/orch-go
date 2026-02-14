@@ -27,3 +27,13 @@ function createDeliverablesStore() {
 }
 
 export const deliverables = createDeliverablesStore();
+
+/**
+ * Get expected deliverables based on issue type and skill
+ * Stub implementation - returns empty array
+ */
+export function getExpectedDeliverables(issueType: string, skill: string): string[] {
+	// TODO: Implement actual deliverables logic based on issue type and skill
+	console.warn('getExpectedDeliverables: not implemented, returning empty array');
+	return [];
+}
