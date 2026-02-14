@@ -110,3 +110,30 @@ func SpawnWork(beadsID string) error {
 	}
 	return nil
 }
+
+// UpdateBeadsStatus updates the status of a beads issue.
+// Uses the beads RPC client if available, falling back to CLI.
+// This is called by the daemon to mark issues as in_progress before spawning.
+func UpdateBeadsStatus(beadsID, status string) error {
+	// Try to use the beads RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			statusPtr := &status
+			_, err := client.Update(&beads.UpdateArgs{
+				ID:     beadsID,
+				Status: statusPtr,
+			})
+			if err == nil {
+				return nil
+			}
+			// Fall through to CLI fallback on Update() error
+		}
+		// Fall through to CLI fallback on Connect() error
+	}
+
+	// Fallback to CLI if daemon unavailable
+	return beads.FallbackUpdate(beadsID, status)
+}

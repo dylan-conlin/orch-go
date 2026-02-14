@@ -831,15 +831,36 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		slot.BeadsID = issue.ID
 	}
 
-	// Mark issue as spawned BEFORE calling spawnFunc to prevent race condition.
-	// This prevents duplicate spawns if daemon polls again before beads status updates.
+	// PRIMARY DEDUP: Update beads status to in_progress BEFORE spawning.
+	// This makes the beads database (source of truth) immediately reflect that
+	// the issue is being worked on. This prevents duplicate spawns even if:
+	// - SpawnedIssueTracker TTL expires (6 hours)
+	// - Daemon restarts (in-memory tracker lost)
+	// - Multiple daemon instances poll simultaneously
+	// The status update happens synchronously before spawn to ensure immediate visibility.
+	if err := UpdateBeadsStatus(issue.ID, "in_progress"); err != nil {
+		if d.Config.Verbose {
+			fmt.Printf("  Warning: failed to mark %s as in_progress: %v (proceeding with spawn - tracker will provide fallback)\n", issue.ID, err)
+		}
+		// Continue with spawn - SpawnedIssueTracker provides secondary protection
+	}
+
+	// SECONDARY DEDUP: Mark issue as spawned in memory.
+	// This catches the race window between beads update and subprocess spawn completion.
+	// Also provides fallback if beads status update failed above.
 	if d.SpawnedIssues != nil {
 		d.SpawnedIssues.MarkSpawned(issue.ID)
 	}
 
 	// Spawn the work
 	if err := d.spawnFunc(issue.ID); err != nil {
-		// Unmark on spawn failure so issue can be retried
+		// On spawn failure, roll back beads status to open
+		if rollbackErr := UpdateBeadsStatus(issue.ID, "open"); rollbackErr != nil {
+			if d.Config.Verbose {
+				fmt.Printf("  Warning: failed to rollback status for %s: %v\n", issue.ID, rollbackErr)
+			}
+		}
+		// Unmark from tracker so issue can be retried
 		if d.SpawnedIssues != nil {
 			d.SpawnedIssues.Unmark(issue.ID)
 		}
@@ -938,15 +959,36 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 		slot.BeadsID = issue.ID
 	}
 
-	// Mark issue as spawned BEFORE calling spawnFunc to prevent race condition.
-	// This prevents duplicate spawns if daemon polls again before beads status updates.
+	// PRIMARY DEDUP: Update beads status to in_progress BEFORE spawning.
+	// This makes the beads database (source of truth) immediately reflect that
+	// the issue is being worked on. This prevents duplicate spawns even if:
+	// - SpawnedIssueTracker TTL expires (6 hours)
+	// - Daemon restarts (in-memory tracker lost)
+	// - Multiple daemon instances poll simultaneously
+	// The status update happens synchronously before spawn to ensure immediate visibility.
+	if err := UpdateBeadsStatus(issue.ID, "in_progress"); err != nil {
+		if d.Config.Verbose {
+			fmt.Printf("  Warning: failed to mark %s as in_progress: %v (proceeding with spawn - tracker will provide fallback)\n", issue.ID, err)
+		}
+		// Continue with spawn - SpawnedIssueTracker provides secondary protection
+	}
+
+	// SECONDARY DEDUP: Mark issue as spawned in memory.
+	// This catches the race window between beads update and subprocess spawn completion.
+	// Also provides fallback if beads status update failed above.
 	if d.SpawnedIssues != nil {
 		d.SpawnedIssues.MarkSpawned(issue.ID)
 	}
 
 	// Spawn the work
 	if err := d.spawnFunc(issue.ID); err != nil {
-		// Unmark on spawn failure so issue can be retried
+		// On spawn failure, roll back beads status to open
+		if rollbackErr := UpdateBeadsStatus(issue.ID, "open"); rollbackErr != nil {
+			if d.Config.Verbose {
+				fmt.Printf("  Warning: failed to rollback status for %s: %v\n", issue.ID, rollbackErr)
+			}
+		}
+		// Unmark from tracker so issue can be retried
 		if d.SpawnedIssues != nil {
 			d.SpawnedIssues.Unmark(issue.ID)
 		}
