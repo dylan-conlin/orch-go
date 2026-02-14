@@ -326,3 +326,163 @@ func TestInferTargetPackage(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckExtractionNeeded(t *testing.T) {
+	tests := []struct {
+		name     string
+		issue    *Issue
+		hotspots []HotspotWarning
+		expected bool
+	}{
+		{
+			name: "critical hotspot triggers extraction",
+			issue: &Issue{
+				Title:       "Add feature to cmd/orch/spawn_cmd.go",
+				Description: "Implement new spawn logic",
+			},
+			hotspots: []HotspotWarning{
+				{Path: "cmd/orch/spawn_cmd.go", Type: "bloat-size", Score: 2000},
+			},
+			expected: true,
+		},
+		{
+			name: "non-critical hotspot skips extraction",
+			issue: &Issue{
+				Title:       "Fix bug in pkg/daemon/daemon.go",
+				Description: "",
+			},
+			hotspots: []HotspotWarning{
+				{Path: "pkg/daemon/daemon.go", Type: "bloat-size", Score: 1200},
+			},
+			expected: false,
+		},
+		{
+			name: "no file mentions skips extraction",
+			issue: &Issue{
+				Title:       "Add new feature",
+				Description: "General improvement",
+			},
+			hotspots: []HotspotWarning{
+				{Path: "cmd/orch/spawn_cmd.go", Type: "bloat-size", Score: 2000},
+			},
+			expected: false,
+		},
+		{
+			name: "nil issue returns nil",
+			issue: nil,
+			hotspots: []HotspotWarning{
+				{Path: "cmd/orch/spawn_cmd.go", Type: "bloat-size", Score: 2000},
+			},
+			expected: false,
+		},
+		{
+			name: "nil checker returns nil",
+			issue: &Issue{
+				Title: "Fix cmd/orch/spawn_cmd.go",
+			},
+			hotspots: nil, // nil checker
+			expected: false,
+		},
+		{
+			name: "fix-density type ignored",
+			issue: &Issue{
+				Title: "Fix cmd/orch/spawn_cmd.go",
+			},
+			hotspots: []HotspotWarning{
+				{Path: "cmd/orch/spawn_cmd.go", Type: "fix-density", Score: 2000},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var checker HotspotChecker
+			if tt.hotspots != nil {
+				checker = &mockHotspotChecker{hotspots: tt.hotspots}
+			}
+
+			result := CheckExtractionNeeded(tt.issue, checker)
+
+			if tt.expected && (result == nil || !result.Needed) {
+				t.Errorf("CheckExtractionNeeded() expected extraction needed, got %+v", result)
+			}
+			if !tt.expected && result != nil && result.Needed {
+				t.Errorf("CheckExtractionNeeded() expected no extraction, got %+v", result)
+			}
+
+			// Verify result fields when extraction is needed
+			if result != nil && result.Needed {
+				if result.CriticalFile == "" {
+					t.Error("ExtractionResult.CriticalFile should not be empty")
+				}
+				if result.ExtractionTask == "" {
+					t.Error("ExtractionResult.ExtractionTask should not be empty")
+				}
+				if result.Hotspot == nil {
+					t.Error("ExtractionResult.Hotspot should not be nil")
+				}
+				if !strings.Contains(result.ExtractionTask, "Extract") {
+					t.Errorf("ExtractionTask should contain 'Extract', got: %s", result.ExtractionTask)
+				}
+			}
+		})
+	}
+}
+
+// mockHotspotChecker implements HotspotChecker for testing.
+type mockHotspotChecker struct {
+	hotspots []HotspotWarning
+}
+
+func (m *mockHotspotChecker) CheckHotspots(projectDir string) ([]HotspotWarning, error) {
+	return m.hotspots, nil
+}
+
+func TestParseBeadsIDFromOutput(t *testing.T) {
+	tests := []struct {
+		name     string
+		output   string
+		expected string
+	}{
+		{
+			name:     "standard beads ID",
+			output:   "Created orch-go-b8c\n",
+			expected: "orch-go-b8c",
+		},
+		{
+			name:     "beads ID only",
+			output:   "orch-go-a1b2",
+			expected: "orch-go-a1b2",
+		},
+		{
+			name:     "with extra whitespace",
+			output:   "  orch-go-def3  \n",
+			expected: "orch-go-def3",
+		},
+		{
+			name:     "longer project name",
+			output:   "my-cool-project-abc1",
+			expected: "my-cool-project-abc1",
+		},
+		{
+			name:     "no beads ID",
+			output:   "error: something failed",
+			expected: "",
+		},
+		{
+			name:     "empty output",
+			output:   "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseBeadsIDFromOutput(tt.output)
+			if result != tt.expected {
+				t.Errorf("parseBeadsIDFromOutput(%q) = %q, expected %q", tt.output, result, tt.expected)
+			}
+		})
+	}
+}

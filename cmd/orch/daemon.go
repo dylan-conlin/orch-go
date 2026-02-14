@@ -184,6 +184,11 @@ func runDaemonLoop() error {
 
 	d := daemon.NewWithConfig(config)
 
+	// Enable hotspot checking for auto-extraction.
+	// When a triage:ready issue targets a CRITICAL hotspot file (>1500 lines),
+	// the daemon will spawn an extraction agent first and block the feature issue.
+	d.HotspotChecker = daemon.NewGitHotspotChecker()
+
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -483,23 +488,37 @@ func runDaemonLoop() error {
 			processed++
 			spawnedThisCycle++
 			lastSpawn = time.Now()
-			fmt.Printf("[%s] Spawned: %s (%s) - %s\n",
-				timestamp,
-				result.Issue.ID,
-				result.Skill,
-				result.Issue.Title,
-			)
+			if result.ExtractionSpawned {
+				fmt.Printf("[%s] Auto-extraction: %s (blocking %s) - %s\n",
+					timestamp,
+					result.Issue.ID,
+					result.OriginalIssueID,
+					result.Issue.Title,
+				)
+			} else {
+				fmt.Printf("[%s] Spawned: %s (%s) - %s\n",
+					timestamp,
+					result.Issue.ID,
+					result.Skill,
+					result.Issue.Title,
+				)
+			}
 
 			// Log the spawn
+			eventData := map[string]interface{}{
+				"beads_id": result.Issue.ID,
+				"skill":    result.Skill,
+				"title":    result.Issue.Title,
+				"count":    processed,
+			}
+			if result.ExtractionSpawned {
+				eventData["extraction"] = true
+				eventData["original_issue"] = result.OriginalIssueID
+			}
 			event := events.Event{
 				Type:      "daemon.spawn",
 				Timestamp: time.Now().Unix(),
-				Data: map[string]interface{}{
-					"beads_id": result.Issue.ID,
-					"skill":    result.Skill,
-					"title":    result.Issue.Title,
-					"count":    processed,
-				},
+				Data:      eventData,
 			}
 			if err := logger.Log(event); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)

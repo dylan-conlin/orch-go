@@ -147,6 +147,13 @@ type OnceResult struct {
 	Skill     string
 	Message   string
 	Error     error
+
+	// ExtractionSpawned indicates that an extraction agent was spawned instead of the original issue.
+	// The original issue was given a blocking dependency on the extraction issue.
+	ExtractionSpawned bool
+	// OriginalIssueID is set when ExtractionSpawned is true, containing the ID of the
+	// original issue that will be spawned after extraction completes.
+	OriginalIssueID string
 }
 
 // Daemon manages autonomous issue processing.
@@ -193,6 +200,8 @@ type Daemon struct {
 	reflectFunc func(createIssues bool) (*ReflectResult, error)
 	// listEpicChildrenFunc is used for testing - allows mocking ListEpicChildren
 	listEpicChildrenFunc func(epicID string) ([]Issue, error)
+	// createExtractionIssueFunc is used for testing - allows mocking extraction issue creation
+	createExtractionIssueFunc func(task string, parentIssueID string) (string, error)
 }
 
 // New creates a new Daemon instance with default configuration.
@@ -203,13 +212,14 @@ func New() *Daemon {
 // NewWithConfig creates a new Daemon instance with the given configuration.
 func NewWithConfig(config Config) *Daemon {
 	d := &Daemon{
-		Config:               config,
-		SpawnedIssues:        NewSpawnedIssueTracker(),
-		resumeAttempts:       make(map[string]time.Time),
-		listIssuesFunc:       ListReadyIssues,
-		spawnFunc:            SpawnWork,
-		reflectFunc:          DefaultRunReflection,
-		listEpicChildrenFunc: ListEpicChildren,
+		Config:                    config,
+		SpawnedIssues:             NewSpawnedIssueTracker(),
+		resumeAttempts:            make(map[string]time.Time),
+		listIssuesFunc:            ListReadyIssues,
+		spawnFunc:                 SpawnWork,
+		reflectFunc:               DefaultRunReflection,
+		listEpicChildrenFunc:      ListEpicChildren,
+		createExtractionIssueFunc: DefaultCreateExtractionIssue,
 	}
 	// Initialize worker pool if MaxAgents is set
 	if config.MaxAgents > 0 {
@@ -226,13 +236,14 @@ func NewWithConfig(config Config) *Daemon {
 // This is useful for sharing a pool across daemon instances or for testing.
 func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 	d := &Daemon{
-		Config:         config,
-		Pool:           pool,
-		SpawnedIssues:  NewSpawnedIssueTracker(),
-		resumeAttempts: make(map[string]time.Time),
-		listIssuesFunc: ListReadyIssues,
-		spawnFunc:      SpawnWork,
-		reflectFunc:    DefaultRunReflection,
+		Config:                    config,
+		Pool:                      pool,
+		SpawnedIssues:             NewSpawnedIssueTracker(),
+		resumeAttempts:            make(map[string]time.Time),
+		listIssuesFunc:            ListReadyIssues,
+		spawnFunc:                 SpawnWork,
+		reflectFunc:               DefaultRunReflection,
+		createExtractionIssueFunc: DefaultCreateExtractionIssue,
 	}
 	// Initialize rate limiter if MaxSpawnsPerHour is set
 	if config.MaxSpawnsPerHour > 0 {
@@ -749,6 +760,45 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		return nil, fmt.Errorf("failed to infer skill: %w", err)
 	}
 
+	// Check for critical hotspots requiring pre-extraction.
+	// If the issue targets a file >1500 lines, spawn an extraction agent first
+	// and block the original issue until extraction completes.
+	extractionSpawned := false
+	originalIssueID := ""
+	if d.HotspotChecker != nil {
+		extraction := CheckExtractionNeeded(issue, d.HotspotChecker)
+		if extraction != nil && extraction.Needed {
+			createFunc := d.createExtractionIssueFunc
+			if createFunc == nil {
+				createFunc = DefaultCreateExtractionIssue
+			}
+			extractionID, err := createFunc(extraction.ExtractionTask, issue.ID)
+			if err != nil {
+				if d.Config.Verbose {
+					fmt.Printf("  Warning: extraction setup failed for %s: %v (proceeding with normal spawn)\n", issue.ID, err)
+				}
+				// Fall through to normal spawn on extraction setup failure
+			} else {
+				if d.Config.Verbose {
+					fmt.Printf("  Auto-extraction: created %s blocking %s for %s (%d lines)\n",
+						extractionID, issue.ID, extraction.CriticalFile, extraction.Hotspot.Score)
+				}
+				// Replace issue and skill with extraction work.
+				// The original issue now has a blocking dependency and will be
+				// picked up on a future poll cycle after extraction completes.
+				originalIssueID = issue.ID
+				issue = &Issue{
+					ID:        extractionID,
+					Title:     extraction.ExtractionTask,
+					IssueType: "task",
+					Priority:  1,
+				}
+				skill = "feature-impl"
+				extractionSpawned = true
+			}
+		}
+	}
+
 	// Session-level dedup: Check if there's an existing OpenCode session for this issue.
 	// This prevents duplicate spawns when:
 	// 1. SpawnedIssueTracker TTL expires (5min/6h) but agent is still running
@@ -812,10 +862,12 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 	}
 
 	return &OnceResult{
-		Processed: true,
-		Issue:     issue,
-		Skill:     skill,
-		Message:   fmt.Sprintf("Spawned work on %s", issue.ID),
+		Processed:         true,
+		Issue:             issue,
+		Skill:             skill,
+		Message:           fmt.Sprintf("Spawned work on %s", issue.ID),
+		ExtractionSpawned: extractionSpawned,
+		OriginalIssueID:   originalIssueID,
 	}, nil
 }
 
