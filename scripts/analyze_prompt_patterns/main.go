@@ -8,47 +8,9 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/dylan-conlin/orch-go/scripts/eventtypes"
 )
-
-type SessionSpawned struct {
-	Type      string `json:"type"`
-	SessionID string `json:"session_id"`
-	Timestamp int64  `json:"timestamp"`
-	Data      struct {
-		BeadsID           string `json:"beads_id"`
-		Model             string `json:"model"`
-		Skill             string `json:"skill"`
-		Task              string `json:"task"`
-		SpawnMode         string `json:"spawn_mode"`
-		NoTrack           bool   `json:"no_track"`
-		GapContextQuality int    `json:"gap_context_quality"`
-		GapHasGaps        bool   `json:"gap_has_gaps"`
-		Workspace         string `json:"workspace"`
-	} `json:"data"`
-}
-
-type AgentCompleted struct {
-	Type      string `json:"type"`
-	SessionID string `json:"session_id"`
-	Timestamp int64  `json:"timestamp"`
-	Data      struct {
-		BeadsID            string `json:"beads_id"`
-		Outcome            string `json:"outcome"`
-		Skill              string `json:"skill"`
-		VerificationPassed bool   `json:"verification_passed"`
-		Reason             string `json:"reason"`
-	} `json:"data"`
-}
-
-type AgentAbandoned struct {
-	Type      string `json:"type"`
-	SessionID string `json:"session_id"`
-	Timestamp int64  `json:"timestamp"`
-	Data      struct {
-		BeadsID string `json:"beads_id"`
-		Reason  string `json:"reason"`
-	} `json:"data"`
-}
 
 func main() {
 	eventsPath := os.ExpandEnv("$HOME/.orch/events.jsonl")
@@ -58,9 +20,9 @@ func main() {
 	}
 	defer file.Close()
 
-	spawns := make(map[string]SessionSpawned)
-	completed := make(map[string]AgentCompleted)
-	abandoned := make(map[string]AgentAbandoned)
+	spawns := make(map[string]eventtypes.SessionSpawned)
+	completed := make(map[string]eventtypes.AgentCompleted)
+	abandoned := make(map[string]eventtypes.AgentAbandoned)
 
 	scanner := bufio.NewScanner(file)
 	// Increase buffer size for large lines
@@ -80,21 +42,21 @@ func main() {
 
 		switch eventType {
 		case "session.spawned":
-			var spawn SessionSpawned
+			var spawn eventtypes.SessionSpawned
 			if err := json.Unmarshal(scanner.Bytes(), &spawn); err == nil {
 				if spawn.Data.BeadsID != "" {
 					spawns[spawn.Data.BeadsID] = spawn
 				}
 			}
 		case "agent.completed":
-			var comp AgentCompleted
+			var comp eventtypes.AgentCompleted
 			if err := json.Unmarshal(scanner.Bytes(), &comp); err == nil {
 				if comp.Data.BeadsID != "" {
 					completed[comp.Data.BeadsID] = comp
 				}
 			}
 		case "agent.abandoned":
-			var aband AgentAbandoned
+			var aband eventtypes.AgentAbandoned
 			if err := json.Unmarshal(scanner.Bytes(), &aband); err == nil {
 				if aband.Data.BeadsID != "" {
 					abandoned[aband.Data.BeadsID] = aband
@@ -104,9 +66,9 @@ func main() {
 	}
 
 	// Analyze successful prompts vs failed prompts
-	var successfulPrompts []SessionSpawned
-	var failedPrompts []SessionSpawned
-	var inProgressPrompts []SessionSpawned
+	var successfulPrompts []eventtypes.SessionSpawned
+	var failedPrompts []eventtypes.SessionSpawned
+	var inProgressPrompts []eventtypes.SessionSpawned
 
 	for beadsID, spawn := range spawns {
 		if comp, ok := completed[beadsID]; ok && comp.Data.VerificationPassed {
