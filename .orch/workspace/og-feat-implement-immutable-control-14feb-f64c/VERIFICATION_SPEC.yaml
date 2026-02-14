@@ -1,0 +1,136 @@
+verification_spec:
+  title: Immutable Control Plane Implementation
+  
+  observable_behaviors:
+    - behavior: "Config initialization creates ~/.orch/control-plane.conf"
+      command: "orch control init"
+      expected: "Config file created with default thresholds"
+      actual: "✓ Created config at ~/.orch/control-plane.conf with MAX_COMMITS_PER_DAY=20"
+      
+    - behavior: "Status command shows control plane state"
+      command: "orch control status"
+      expected: "Shows config location, state, thresholds, and metrics"
+      actual: "✓ Displays config path, ACTIVE/HALTED state, thresholds with current values, today's metrics"
+      
+    - behavior: "Post-commit hook tracks daily commits"
+      command: "make commit && cat ~/.orch/metrics/daily-commits.log"
+      expected: "Metrics log updated with today's commit count"
+      actual: "✓ Log shows '2026-02-14 56' after commit"
+      
+    - behavior: "Circuit breaker halts when commit limit exceeded"
+      command: "orch control status (after 56 commits with limit=20)"
+      expected: "State: HALTED with reason about commit limit"
+      actual: "✓ State: HALTED (since 2026-02-14 20:39 UTC), Reason: Daily commit limit exceeded (56/20)"
+      
+    - behavior: "Resume command clears halt"
+      command: "orch control resume"
+      expected: "Halt file removed, state returns to ACTIVE"
+      actual: "✓ Halt cleared, status shows State: ACTIVE"
+      
+    - behavior: "Protected path violations are logged"
+      command: "git commit (modifying cmd/orch/file) && cat ~/.orch/metrics/protected-violations.log"
+      expected: "Violations log shows modified protected paths"
+      actual: "✓ Log shows '2026-02-14T20:40:51Z cmd/orch/ 1 files'"
+      
+    - behavior: "Daemon halt check prevents spawning"
+      command: "Daemon poll loop with halt file present"
+      expected: "Daemon prints halt message and sleeps instead of spawning"
+      actual: "Code review: halt check added at line 269, continues to next poll cycle when halted"
+
+  acceptance_criteria:
+    - id: AC-001
+      criterion: "Control commands available and functional"
+      test_method: "Run orch control init/status/resume"
+      status: "PASS"
+      evidence: "All three commands executed successfully, created config, showed status, cleared halt"
+      
+    - id: AC-002
+      criterion: "Post-commit hook tracks metrics"
+      test_method: "Make commit and verify metrics files created"
+      status: "PASS"
+      evidence: "daily-commits.log and protected-violations.log created and updated correctly"
+      
+    - id: AC-003
+      criterion: "Circuit breaker halts daemon when threshold exceeded"
+      test_method: "Verify halt file created and status shows HALTED"
+      status: "PASS"
+      evidence: "Halt file created with reason, status command shows HALTED state and reason"
+      
+    - id: AC-004
+      criterion: "Resume clears halt and allows operation"
+      test_method: "Run orch control resume and verify halt removed"
+      status: "PASS"
+      evidence: "Halt file removed, status shows ACTIVE"
+      
+    - id: AC-005
+      criterion: "Daemon checks halt before spawning"
+      test_method: "Code review of daemon.go integration"
+      status: "PASS"
+      evidence: "Halt check added at cmd/orch/daemon.go:269, continues to next poll when halted"
+      
+    - id: AC-006
+      criterion: "Protected paths monitored and logged"
+      test_method: "Commit change to cmd/orch/ and check violations log"
+      status: "PASS"
+      evidence: "protected-violations.log shows cmd/orch/ modification"
+
+  failure_modes:
+    - id: FM-001
+      symptom: "Hook doesn't run on commit"
+      cause: "Hook script not executable or delegation line missing"
+      fix: "chmod +x ~/.orch/hooks/control-plane-post-commit.sh and verify .git/hooks/post-commit delegation"
+      
+    - id: FM-002
+      symptom: "Circuit breaker doesn't halt daemon"
+      cause: "Daemon not checking halt file or config threshold wrong"
+      fix: "Verify daemon has control package import and halt check in poll loop"
+      
+    - id: FM-003
+      symptom: "Config not found error"
+      cause: "Control plane not initialized"
+      fix: "Run 'orch control init' to create config"
+
+  build_verification:
+    - command: "go build ./cmd/orch/"
+      expected: "Successful compilation"
+      actual: "✓ Built without errors"
+      
+    - command: "go vet ./cmd/orch/"
+      expected: "No vet warnings"
+      actual: "✓ No warnings"
+      
+    - command: "make install"
+      expected: "Binary installed to ~/bin/orch"
+      actual: "✓ Installed and symlinked successfully"
+
+  integration_points:
+    - component: "pkg/control"
+      integration: "Imported in cmd/orch/daemon.go for halt checks"
+      verified: true
+      
+    - component: "cmd/orch/control_cmd.go"
+      integration: "Registered in main.go rootCmd"
+      verified: true
+      
+    - component: "~/.orch/hooks/control-plane-post-commit.sh"
+      integration: "Called from .git/hooks/post-commit"
+      verified: true
+
+  manual_steps_required:
+    - step: "Human must run 'orch control resume' when circuit breaker fires"
+      reason: "Deliberate forcing function - requires human acknowledgment"
+      
+    - step: "Adjust thresholds in ~/.orch/control-plane.conf based on actual usage"
+      reason: "Default of 20 commits/day may need tuning per project"
+
+  notes: |
+    Implementation complete and verified. All acceptance criteria passed.
+    
+    Circuit breaker fired immediately after first commit because project already
+    had 56 commits today (threshold: 20). This validates the protection works.
+    
+    Protected path logging works correctly. Hook logs violations but doesn't
+    block commits (by design - commits always succeed, daemon is what halts).
+    
+    Daemon integration verified via code review. Halt check added at correct
+    location in poll loop (after reconciliation, before any spawning work).
