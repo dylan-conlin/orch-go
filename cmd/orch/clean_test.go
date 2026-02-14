@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/dylan-conlin/orch-go/pkg/cleanup"
 )
 
 // TestGetProjectNameFromWorkdir verifies project name extraction.
@@ -154,37 +152,7 @@ func TestCleanCommandIntegration(t *testing.T) {
 	t.Skip("Integration test not implemented - requires agent setup")
 }
 
-// TestIsOrchestratorSessionTitle tests the orchestrator session title detection.
-func TestIsOrchestratorSessionTitle(t *testing.T) {
-	tests := []struct {
-		title    string
-		expected bool
-	}{
-		// Should match orchestrator patterns
-		{"meta-orch-continue-session-06jan", true},
-		{"orchestrator-main", true},
-		{"meta-orchestrator-06jan-abc1", true},
-		{"og-orch-goal-04jan", true},
-		{"Meta-Orch Session", true},
-
-		// Should NOT match worker patterns
-		{"og-feat-add-feature-21dec", false},
-		{"og-debug-fix-bug-21dec", false},
-		{"og-inv-investigate-21dec", false},
-		{"worker-session-123", false},
-		{"", false},
-		{"untitled", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.title, func(t *testing.T) {
-			result := cleanup.IsOrchestratorSessionTitle(tt.title)
-			if result != tt.expected {
-				t.Errorf("cleanup.IsOrchestratorSessionTitle(%q) = %v, want %v", tt.title, result, tt.expected)
-			}
-		})
-	}
-}
+// TestIsOrchestratorSessionTitle removed - session cleanup logic moved to OpenCode server (TTL-based)
 
 // TestPreserveOrchestratorWorkspace tests that orchestrator workspaces are detected correctly.
 func TestPreserveOrchestratorWorkspace(t *testing.T) {

@@ -70,12 +70,6 @@ func convertBeadsIssues(beadsIssues []beads.Issue) []Issue {
 	return issues
 }
 
-// ListOpenIssues is an alias for ListReadyIssues for backward compatibility.
-// Deprecated: Use ListReadyIssues instead.
-func ListOpenIssues() ([]Issue, error) {
-	return ListReadyIssues()
-}
-
 // ListEpicChildren retrieves children of an epic by its ID.
 // Uses the beads RPC client if available, falling back to CLI.
 func ListEpicChildren(epicID string) ([]Issue, error) {

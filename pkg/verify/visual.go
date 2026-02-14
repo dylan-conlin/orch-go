@@ -183,30 +183,6 @@ var humanApprovalPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)UI.*LGTM`),
 }
 
-// HasWebChangesInRecentCommits checks if any of the last 5 commits contain changes
-// to web/ files (Svelte, TypeScript, CSS, etc.).
-//
-// DEPRECATED: This function checks the last 5 project commits, which may include
-// commits from other agents or prior work. Use HasWebChangesForAgent instead,
-// which scopes to commits made since the agent was spawned.
-func HasWebChangesInRecentCommits(projectDir string) bool {
-	// Get changed files from last 5 commits
-	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
-	if err != nil {
-		// If git command fails (e.g., not enough commits), try last 1 commit
-		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
-		cmd.Dir = projectDir
-		output, err = cmd.Output()
-		if err != nil {
-			return false
-		}
-	}
-
-	return hasWebChangesInFiles(string(output))
-}
-
 // HasWebChangesForAgent checks if any commits since the agent's spawn time
 // contain changes to web/ files (Svelte, TypeScript, CSS, etc.).
 //
@@ -219,56 +195,43 @@ func HasWebChangesInRecentCommits(projectDir string) bool {
 // concurrently - each agent only sees its own commits, not commits from other agents
 // that happened to occur around the same spawn time.
 //
-// If the workspace has no spawn time file (legacy workspace), falls back to
-// checking the last 5 commits for backward compatibility.
+// Returns false if the workspace has no spawn time file (cannot determine changes).
 func HasWebChangesForAgent(projectDir, workspacePath string) bool {
 	// Read spawn time from workspace
 	spawnTime := spawn.ReadSpawnTime(workspacePath)
 
-	// If no spawn time, fall back to the old behavior for backward compatibility
+	// If no spawn time, cannot determine changes
 	if spawnTime.IsZero() {
-		return HasWebChangesInRecentCommits(projectDir)
+		return false
 	}
 
 	// Use workspace-scoped check to filter out concurrent agents' commits
 	return hasWebChangesSinceTimeForWorkspace(projectDir, spawnTime, workspacePath)
 }
 
-// hasWebChangesSinceTime checks if any commits since the given time modified web/ files.
-//
-// DEPRECATED: This function checks ALL commits since the given time, which may include
-// commits from other concurrent agents. Use hasWebChangesSinceTimeForWorkspace instead,
-// which scopes to commits that touch the workspace directory.
-func hasWebChangesSinceTime(projectDir string, since time.Time) bool {
-	// Format time for git --since flag (ISO 8601 format works well)
-	sinceStr := since.UTC().Format("2006-01-02T15:04:05Z")
-
-	// Get all files changed in commits since spawn time
-	// Using git log with --name-only to get file paths
-	cmd := exec.Command("git", "log", "--since="+sinceStr, "--name-only", "--format=")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
-	if err != nil {
-		// If git command fails, return false (no web changes detectable)
-		return false
-	}
-
-	return hasWebChangesInFiles(string(output))
-}
-
 // hasWebChangesSinceTimeForWorkspace checks if any commits since the given time
 // that touch the workspace directory contain web/ file changes.
 //
-// This is more accurate than hasWebChangesSinceTime because it only considers
-// commits that modified files in the workspace directory. This prevents false positives
-// where concurrent agents (spawned around the same time) make commits that would
-// incorrectly trigger visual verification requirements for this agent.
+// This only considers commits that modified files in the workspace directory.
+// This prevents false positives where concurrent agents (spawned around the same time)
+// make commits that would incorrectly trigger visual verification requirements for this agent.
 //
-// If workspacePath is empty, falls back to hasWebChangesSinceTime for backward compatibility.
+// If workspacePath is empty, checks all commits since the given time.
 func hasWebChangesSinceTimeForWorkspace(projectDir string, since time.Time, workspacePath string) bool {
-	// If no workspace path provided, fall back to the unscoped check
+	// If no workspace path provided, check all commits since spawn time
 	if workspacePath == "" {
-		return hasWebChangesSinceTime(projectDir, since)
+		// Format time for git --since flag (ISO 8601 format works well)
+		sinceStr := since.UTC().Format("2006-01-02T15:04:05Z")
+
+		// Get all files changed in commits since spawn time
+		cmd := exec.Command("git", "log", "--since="+sinceStr, "--name-only", "--format=")
+		cmd.Dir = projectDir
+		output, err := cmd.Output()
+		if err != nil {
+			return false
+		}
+
+		return hasWebChangesInFiles(string(output))
 	}
 
 	sinceStr := since.UTC().Format("2006-01-02T15:04:05Z")

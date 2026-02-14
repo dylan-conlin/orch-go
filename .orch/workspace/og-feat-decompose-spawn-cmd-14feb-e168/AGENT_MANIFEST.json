@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-decompose-spawn-cmd-14feb-e168",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-awt",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "d3dd5b4d95a328f829cf6591ddc9bed15d27c6ba",
+  "spawn_time": "2026-02-14T10:49:08-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

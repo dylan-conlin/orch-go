@@ -297,9 +297,9 @@ func TestGetCheckpointStatus(t *testing.T) {
 	}
 
 	// Test with no active session
-	status := store.GetCheckpointStatus()
+	status := store.GetCheckpointStatusWithType(SessionTypeAgent)
 	if status != nil {
-		t.Error("GetCheckpointStatus() should return nil when no session is active")
+		t.Error("GetCheckpointStatusWithType() should return nil when no session is active")
 	}
 
 	// Start session
@@ -308,9 +308,9 @@ func TestGetCheckpointStatus(t *testing.T) {
 	}
 
 	// Test immediate checkpoint status (should be "ok")
-	status = store.GetCheckpointStatus()
+	status = store.GetCheckpointStatusWithType(SessionTypeAgent)
 	if status == nil {
-		t.Fatal("GetCheckpointStatus() returned nil for active session")
+		t.Fatal("GetCheckpointStatusWithType() returned nil for active session")
 	}
 	if status.Level != "ok" {
 		t.Errorf("status.Level = %q, want 'ok' for new session", status.Level)
@@ -324,7 +324,9 @@ func TestGetCheckpointStatus(t *testing.T) {
 }
 
 func TestCheckpointStatusLevels(t *testing.T) {
-	// Test the threshold logic directly by examining the constants
+	// Test the threshold logic using agent thresholds (2h/3h/4h)
+	agentThresholds := DefaultAgentThresholds()
+
 	tests := []struct {
 		duration  time.Duration
 		wantLevel string
@@ -342,44 +344,47 @@ func TestCheckpointStatusLevels(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.duration.String(), func(t *testing.T) {
 			var level string
-			switch {
-			case tt.duration >= CheckpointMaxDuration:
+
+			// Replicate the logic from GetCheckpointStatusWithThresholds
+			if tt.duration > agentThresholds.Max {
 				level = "exceeded"
-			case tt.duration >= CheckpointStrongDuration:
+			} else if tt.duration > agentThresholds.Strong {
 				level = "strong"
-			case tt.duration >= CheckpointWarningDuration:
+			} else if tt.duration > agentThresholds.Warning {
 				level = "warning"
-			default:
+			} else {
 				level = "ok"
 			}
 
 			if level != tt.wantLevel {
-				t.Errorf("level for %v = %q, want %q", tt.duration, level, tt.wantLevel)
+				t.Errorf("duration %v: got level %q, want %q", tt.duration, level, tt.wantLevel)
 			}
 		})
 	}
+
+	// Verify the agent thresholds are what we expect
+	if agentThresholds.Warning != 2*time.Hour {
+		t.Errorf("AgentThresholds.Warning = %v, expected 2h", agentThresholds.Warning)
+	}
+	if agentThresholds.Strong != 3*time.Hour {
+		t.Errorf("AgentThresholds.Strong = %v, expected 3h", agentThresholds.Strong)
+	}
+	if agentThresholds.Max != 4*time.Hour {
+		t.Errorf("AgentThresholds.Max = %v, expected 4h", agentThresholds.Max)
+	}
 }
 
-func TestCheckpointConstants(t *testing.T) {
-	// Verify checkpoint constants are in expected order
-	if CheckpointWarningDuration >= CheckpointStrongDuration {
-		t.Errorf("CheckpointWarningDuration (%v) should be < CheckpointStrongDuration (%v)",
-			CheckpointWarningDuration, CheckpointStrongDuration)
+func TestOrchestratorThresholds(t *testing.T) {
+	// Verify the orchestrator thresholds are correct
+	thresholds := DefaultOrchestratorThresholds()
+	if thresholds.Warning != 4*time.Hour {
+		t.Errorf("OrchestratorThresholds.Warning = %v, expected 4h", thresholds.Warning)
 	}
-	if CheckpointStrongDuration >= CheckpointMaxDuration {
-		t.Errorf("CheckpointStrongDuration (%v) should be < CheckpointMaxDuration (%v)",
-			CheckpointStrongDuration, CheckpointMaxDuration)
+	if thresholds.Strong != 6*time.Hour {
+		t.Errorf("OrchestratorThresholds.Strong = %v, expected 6h", thresholds.Strong)
 	}
-
-	// Verify expected values
-	if CheckpointWarningDuration != 2*time.Hour {
-		t.Errorf("CheckpointWarningDuration = %v, want 2h", CheckpointWarningDuration)
-	}
-	if CheckpointStrongDuration != 3*time.Hour {
-		t.Errorf("CheckpointStrongDuration = %v, want 3h", CheckpointStrongDuration)
-	}
-	if CheckpointMaxDuration != 4*time.Hour {
-		t.Errorf("CheckpointMaxDuration = %v, want 4h", CheckpointMaxDuration)
+	if thresholds.Max != 8*time.Hour {
+		t.Errorf("OrchestratorThresholds.Max = %v, expected 8h", thresholds.Max)
 	}
 }
 

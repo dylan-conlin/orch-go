@@ -862,9 +862,14 @@ func TestDaemon_AtCapacity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := &Daemon{
-				Config:          Config{MaxAgents: tt.maxAgents},
-				activeCountFunc: tt.activeFunc,
+			config := Config{MaxAgents: tt.maxAgents}
+			d := NewWithConfig(config)
+			// Simulate active agents by acquiring slots from pool
+			if d.Pool != nil {
+				activeCount := tt.activeFunc()
+				for i := 0; i < activeCount; i++ {
+					d.Pool.TryAcquire()
+				}
 			}
 			got := d.AtCapacity()
 			if got != tt.want {
@@ -890,9 +895,14 @@ func TestDaemon_AvailableSlots(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := &Daemon{
-				Config:          Config{MaxAgents: tt.maxAgents},
-				activeCountFunc: tt.activeFunc,
+			config := Config{MaxAgents: tt.maxAgents}
+			d := NewWithConfig(config)
+			// Simulate active agents by acquiring slots from pool
+			if d.Pool != nil {
+				activeCount := tt.activeFunc()
+				for i := 0; i < activeCount; i++ {
+					d.Pool.TryAcquire()
+				}
 			}
 			got := d.AvailableSlots()
 			if got != tt.want {

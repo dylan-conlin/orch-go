@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-design-artifact-taxonomy-14feb-ee48",
+  "skill": "architect",
+  "beads_id": "orch-go-d6k",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "b52fac2e3d7e980651993e42482e27d7a0937fe8",
+  "spawn_time": "2026-02-14T01:20:02-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

@@ -25,26 +25,6 @@ import (
 // TimeFormat is the timestamp format used in session storage.
 const TimeFormat = time.RFC3339Nano
 
-// Default checkpoint thresholds for agent sessions.
-// These are for agents that accumulate implementation context which degrades.
-// For orchestrator sessions, use longer thresholds via GetCheckpointStatusWithType.
-//
-// DEPRECATED: Use GetCheckpointStatusWithType for type-aware thresholds.
-// These constants are kept for backward compatibility with existing tests.
-const (
-	// CheckpointWarningDuration is when to start suggesting checkpoints (2 hours).
-	// For orchestrator sessions, use CheckpointThresholds.OrchestratorWarning (4h default).
-	CheckpointWarningDuration = 2 * time.Hour
-
-	// CheckpointStrongDuration is when to strongly recommend handoff (3 hours).
-	// For orchestrator sessions, use CheckpointThresholds.OrchestratorStrong (6h default).
-	CheckpointStrongDuration = 3 * time.Hour
-
-	// CheckpointMaxDuration is the maximum recommended session duration (4 hours).
-	// For orchestrator sessions, use CheckpointThresholds.OrchestratorMax (8h default).
-	CheckpointMaxDuration = 4 * time.Hour
-)
-
 // SessionType indicates the type of session for checkpoint threshold selection.
 type SessionType string
 
@@ -379,15 +359,6 @@ type CheckpointStatus struct {
 
 	// NextThreshold is the duration until the next checkpoint threshold
 	NextThreshold time.Duration
-}
-
-// GetCheckpointStatus returns checkpoint status for the current session.
-// Returns nil if no session is active.
-//
-// DEPRECATED: Use GetCheckpointStatusWithType for type-aware thresholds.
-// This method uses agent thresholds (2h/3h/4h) for backward compatibility.
-func (s *Store) GetCheckpointStatus() *CheckpointStatus {
-	return s.GetCheckpointStatusWithThresholds(DefaultAgentThresholds())
 }
 
 // GetCheckpointStatusWithType returns checkpoint status using type-appropriate thresholds.

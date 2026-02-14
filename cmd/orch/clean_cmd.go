@@ -9,10 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/cleanup"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -31,20 +29,22 @@ var (
 
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
-	Short: "Clean up stale workspaces, sessions, and infrastructure",
-	Long: `Clean up stale agent resources (workspaces, sessions, tmux windows).
+	Short: "Clean up stale workspaces and tmux windows",
+	Long: `Clean up stale agent resources (workspaces, tmux windows).
+
+NOTE: OpenCode session cleanup is now handled automatically via TTL (opencode-fork commit f3c3865).
+The --sessions flag now only cleans stale tmux windows. OpenCode sessions are managed by the server.
 
 By default, this command only REPORTS what could be cleaned - it does not delete
 anything. Workspace directories are archived (moved to archived/), never deleted.
 
 Cleanup actions:
   --workspaces        Archive old completed workspaces and empty investigation files
-  --sessions          Clean stale session infrastructure (tmux windows, OpenCode sessions)
+  --sessions          Clean stale tmux windows (OpenCode sessions are auto-cleaned by server)
   --all               Enable all cleanup actions (workspaces + sessions)
 
 Age thresholds:
   --workspace-days N  Set age threshold for --workspaces (default: 7)
-  --session-days N    Set age threshold for --sessions (default: 7)
 
 Protection options:
   --preserve-orchestrator  Skip orchestrator/meta-orchestrator workspaces and sessions
@@ -55,10 +55,9 @@ Examples:
   orch clean --all              # Comprehensive cleanup
   orch clean --all --dry-run    # Preview comprehensive cleanup
   orch clean --all --preserve-orchestrator  # Clean everything except orchestrator sessions
-  orch clean --sessions         # Clean stale sessions and infrastructure
+  orch clean --sessions         # Clean stale tmux windows
   orch clean --workspaces       # Archive old workspaces and empty investigations
-  orch clean --workspaces --workspace-days 14  # Archive workspaces older than 14 days
-  orch clean --sessions --session-days 14  # Clean sessions older than 14 days`,
+  orch clean --workspaces --workspace-days 14  # Archive workspaces older than 14 days`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// If --all is specified, enable all cleanup flags
 		if cleanAll {
@@ -73,7 +72,7 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanDryRun, "dry-run", false, "Show what would be cleaned without making changes")
 	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "Enable all cleanup actions (workspaces + sessions)")
 	cleanCmd.Flags().BoolVar(&cleanWorkspaces, "workspaces", false, "Archive old completed workspaces and empty investigation files")
-	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Clean stale session infrastructure (tmux windows, OpenCode sessions)")
+	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Clean stale tmux windows (OpenCode sessions are auto-cleaned by server)")
 	cleanCmd.Flags().IntVar(&cleanWorkspaceDays, "workspace-days", 7, "Age threshold in days for --workspaces (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanSessionDays, "session-days", 7, "Age threshold in days for --sessions (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanPreserveOrchestrator, "preserve-orchestrator", false, "Skip orchestrator/meta-orchestrator workspaces and sessions")
@@ -305,29 +304,18 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 
 	// --sessions: Clean all stale session infrastructure
 	if doSessions {
+		// NOTE: OpenCode now handles session cleanup automatically via TTL (see opencode-fork commit f3c3865)
+		// Session cleanup logic has been removed from orch-go. Only tmux window cleanup remains.
+
 		// 1. Close stale tmux windows (no active session behind them)
 		windowsClosed, err = cleanStaleTmuxWindows(serverURL, dryRun, preserveOrchestrator)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clean stale tmux windows: %v\n", err)
 		}
 
-		// 2. Delete untracked disk sessions (not referenced by any workspace)
-		untrackedSessionsDeleted, err = cleanUntrackedDiskSessions(serverURL, dryRun, preserveOrchestrator)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to clean untracked sessions: %v\n", err)
-		}
-
-		// 3. Delete old sessions by age
-		staleSessionsDeleted, err = cleanup.CleanStaleSessions(cleanup.CleanStaleSessionsOptions{
-			ServerURL:            serverURL,
-			StaleDays:            sessionDays,
-			DryRun:               dryRun,
-			PreserveOrchestrator: preserveOrchestrator,
-			Quiet:                false,
-		})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to clean stale sessions: %v\n", err)
-		}
+		// Session cleanup (steps 2-3) removed - OpenCode handles this via TTL
+		untrackedSessionsDeleted = 0
+		staleSessionsDeleted = 0
 	}
 
 	// Dry-run summary
@@ -408,127 +396,8 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 // cleanUntrackedDiskSessions finds and deletes OpenCode disk sessions that aren't tracked via workspace files.
 // If preserveOrchestrator is true, sessions associated with orchestrator workspaces are skipped.
 // Returns the number of sessions deleted and any error encountered.
-func cleanUntrackedDiskSessions(serverURL string, dryRun bool, preserveOrchestrator bool) (int, error) {
-	// Get current project directory
-	projectDir, err := os.Getwd()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get current directory: %w", err)
-	}
-
-	fmt.Printf("\nScanning for untracked OpenCode sessions in %s...\n", projectDir)
-
-	client := opencode.NewClient(serverURL)
-
-	// Fetch all disk sessions for this directory
-	diskSessions, err := client.ListDiskSessions(projectDir)
-	if err != nil {
-		return 0, fmt.Errorf("failed to list disk sessions: %w", err)
-	}
-
-	fmt.Printf("  Found %d disk sessions\n", len(diskSessions))
-
-	// Build a set of session IDs that are tracked via workspace files
-	// Also track which ones are orchestrator sessions (for --preserve-orchestrator)
-	trackedSessionIDs := make(map[string]bool)
-	orchestratorSessionIDs := make(map[string]bool)
-	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
-	if entries, err := os.ReadDir(workspaceDir); err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() {
-				wsPath := filepath.Join(workspaceDir, entry.Name())
-				sessionID := spawn.ReadSessionID(wsPath)
-				if sessionID != "" {
-					trackedSessionIDs[sessionID] = true
-					// Check if this is an orchestrator workspace
-					if isOrchestratorWorkspace(wsPath) {
-						orchestratorSessionIDs[sessionID] = true
-					}
-				}
-			}
-		}
-	}
-
-	fmt.Printf("  Workspaces track %d session IDs\n", len(trackedSessionIDs))
-	if preserveOrchestrator && len(orchestratorSessionIDs) > 0 {
-		fmt.Printf("  Found %d orchestrator session IDs to preserve\n", len(orchestratorSessionIDs))
-	}
-
-	// Find untracked sessions (disk sessions not tracked in workspaces)
-	// IMPORTANT: Exclude sessions that are actively processing (e.g., the current orchestrator session)
-	// The orchestrator/interactive sessions don't have workspace .session_id files, but they're
-	// still valid sessions that should not be deleted.
-	//
-	// We check ALL untracked sessions with IsSessionProcessing() to detect active sessions.
-	// This costs one API call per untracked session, but prevents catastrophic deletion of
-	// active TUI/orchestrator sessions that have been idle >5min.
-	var untrackedSessions []opencode.Session
-	var skippedActive int
-
-	for _, session := range diskSessions {
-		if !trackedSessionIDs[session.ID] {
-			// Check if this session is currently processing
-			// This is the only reliable way to detect active sessions without workspace files
-			if client.IsSessionProcessing(session.ID) {
-				skippedActive++
-				continue
-			}
-			untrackedSessions = append(untrackedSessions, session)
-		}
-	}
-
-	if skippedActive > 0 {
-		fmt.Printf("  Skipped %d active sessions (currently processing)\n", skippedActive)
-	}
-
-	if len(untrackedSessions) == 0 {
-		fmt.Println("  No untracked sessions found")
-		return 0, nil
-	}
-
-	fmt.Printf("  Found %d untracked sessions:\n", len(untrackedSessions))
-
-	// Delete untracked sessions
-	deleted := 0
-	skippedOrch := 0
-	for _, session := range untrackedSessions {
-		title := session.Title
-		if title == "" {
-			title = "(untitled)"
-		}
-
-		// Check if this session should be preserved (orchestrator session)
-		if preserveOrchestrator && orchestratorSessionIDs[session.ID] {
-			skippedOrch++
-			continue
-		}
-
-		// Also check title for orchestrator indicators (sessions without workspace files)
-		if preserveOrchestrator && cleanup.IsOrchestratorSessionTitle(title) {
-			skippedOrch++
-			continue
-		}
-
-		if dryRun {
-			fmt.Printf("    [DRY-RUN] Would delete: %s (%s)\n", session.ID[:12], title)
-			deleted++
-			continue
-		}
-
-		if err := client.DeleteSession(session.ID); err != nil {
-			fmt.Fprintf(os.Stderr, "    Warning: failed to delete %s: %v\n", session.ID[:12], err)
-			continue
-		}
-
-		fmt.Printf("    Deleted: %s (%s)\n", session.ID[:12], title)
-		deleted++
-	}
-
-	if skippedOrch > 0 {
-		fmt.Printf("  Skipped %d orchestrator sessions (--preserve-orchestrator)\n", skippedOrch)
-	}
-
-	return deleted, nil
-}
+// cleanUntrackedDiskSessions has been removed - OpenCode now handles session cleanup via TTL
+// (see opencode-fork commit f3c3865)
 
 // cleanStaleTmuxWindows finds and closes tmux windows with no active OpenCode session backing them.
 // If preserveOrchestrator is true, windows in orchestrator/meta-orchestrator sessions are skipped.

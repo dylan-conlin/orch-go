@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-add-session-metadata-14feb-abed",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-ac2",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "06e1fd558ba600ab0666002c61b12e2821d21c2d",
+  "spawn_time": "2026-02-14T00:53:37-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

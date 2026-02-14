@@ -64,6 +64,46 @@ var (
 	spawnDesignWorkspace   string // Design workspace name for ui-design-session → feature-impl handoff
 )
 
+// SpawnInput holds all input parameters for spawn operation.
+// This follows the pattern from complete_cmd.go for organizing function parameters.
+type SpawnInput struct {
+	ServerURL    string
+	SkillName    string
+	Task         string
+	Inline       bool
+	Headless     bool
+	Tmux         bool
+	Attach       bool
+	DaemonDriven bool
+}
+
+// SpawnContext holds all computed context for spawn operation.
+// This accumulates values as we progress through the spawn pipeline.
+type SpawnContext struct {
+	Task               string
+	SkillName          string
+	ProjectDir         string
+	ProjectName        string
+	WorkspaceName      string
+	SkillContent       string
+	BeadsID            string
+	IsOrchestrator     bool
+	IsMetaOrchestrator bool
+	ResolvedModel      model.ModelSpec
+	KBContext          string
+	GapAnalysis        *spawn.GapAnalysis
+	HasInjectedModels  bool
+	PrimaryModelPath   string
+	IsBug              bool
+	ReproSteps         string
+	UsageInfo          *spawn.UsageInfo
+	SpawnBackend       string
+	Tier               string
+	DesignMockupPath   string
+	DesignPromptPath   string
+	DesignNotes        string
+}
+
 var spawnCmd = &cobra.Command{
 	Use:   "spawn [skill] [task]",
 	Short: "Spawn a new agent with skill context (default: headless)",
@@ -374,7 +414,6 @@ func determineSpawnTier(skillName string, lightFlag, fullFlag bool) string {
 	return spawn.DefaultTierForSkill(skillName)
 }
 
-
 // checkAndAutoSwitchAccount checks if the current account is over usage thresholds
 // and automatically switches to a better account if available.
 // Returns nil if no switch was needed or switch succeeded.
@@ -458,6 +497,530 @@ func validateModeModelCombo(backend string, resolvedModel model.ModelSpec) error
 	// Claude backend + non-opus models work but are non-optimal (using Max sub for cheap models)
 
 	return nil
+}
+
+// runPreFlightChecks performs all pre-spawn validation checks.
+// Returns usage check result for telemetry, or error if any check fails.
+func runPreFlightChecks(input *SpawnInput, preCheckDir string) (*gates.UsageCheckResult, error) {
+	// Check for --bypass-triage flag (required for manual spawns)
+	// Daemon-driven spawns skip this check (issue already triaged)
+	if err := gates.CheckTriageBypass(input.DaemonDriven, spawnBypassTriage, input.SkillName, input.Task); err != nil {
+		return nil, err
+	}
+
+	// Log the triage bypass for Phase 2 review (only for manual bypasses, not daemon-driven)
+	if !input.DaemonDriven && spawnBypassTriage {
+		gates.LogTriageBypass(input.SkillName, input.Task)
+	}
+
+	// Check concurrency limit before spawning
+	if err := gates.CheckConcurrency(input.ServerURL, spawnMaxAgents, extractBeadsIDFromTitle); err != nil {
+		return nil, err
+	}
+
+	// Proactive rate limit monitoring: warn at 80%, block at 95%
+	usageCheckResult, usageErr := gates.CheckRateLimit()
+	if usageErr != nil {
+		// usageErr contains formatted blocking message
+		return nil, usageErr
+	}
+
+	// STRATEGIC-FIRST ORCHESTRATION: Check for hotspots in task target area
+	// In hotspot areas (5+ bugs, persistent failures), strategic approach is recommended
+	// Warning shown but spawn proceeds (non-blocking)
+	gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, func(dir, t string) (*gates.HotspotResult, error) {
+		result, err := RunHotspotCheckForSpawn(dir, t)
+		if err != nil || result == nil {
+			return nil, err
+		}
+		return &gates.HotspotResult{HasHotspots: result.HasHotspots, Warning: result.Warning}, nil
+	})
+
+	return usageCheckResult, nil
+}
+
+// resolveProjectDirectory determines the project directory and name.
+// Uses --workdir if provided, otherwise current working directory.
+func resolveProjectDirectory() (projectDir, projectName string, err error) {
+	if spawnWorkdir != "" {
+		// User specified target directory via --workdir
+		projectDir, err = filepath.Abs(spawnWorkdir)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to resolve workdir path: %w", err)
+		}
+		// Verify directory exists
+		if stat, err := os.Stat(projectDir); err != nil {
+			return "", "", fmt.Errorf("workdir does not exist: %s", projectDir)
+		} else if !stat.IsDir() {
+			return "", "", fmt.Errorf("workdir is not a directory: %s", projectDir)
+		}
+	} else {
+		// Default: use current working directory
+		projectDir, err = os.Getwd()
+		if err != nil {
+			return "", "", fmt.Errorf("failed to get current directory: %w", err)
+		}
+	}
+
+	// Get project name from directory
+	projectName = filepath.Base(projectDir)
+	return projectDir, projectName, nil
+}
+
+// loadSkillAndGenerateWorkspace loads skill content and generates workspace name.
+// Also ensures orch scaffolding is initialized.
+func loadSkillAndGenerateWorkspace(skillName, projectName, task, projectDir string) (
+	skillContent, workspaceName string,
+	isOrchestrator, isMetaOrchestrator bool,
+	err error) {
+
+	// Check and optionally auto-initialize scaffolding
+	if err := ensureOrchScaffolding(projectDir, spawnAutoInit, spawnNoTrack); err != nil {
+		return "", "", false, false, err
+	}
+
+	// Load skill content with dependencies (e.g., worker-base patterns)
+	loader := skills.DefaultLoader()
+
+	// First load raw skill content (without dependencies) to detect skill type
+	// This is needed because LoadSkillWithDependencies puts dependency content first,
+	// which means the main skill's frontmatter isn't at the start of the combined content
+	rawSkillContent, err := loader.LoadSkillContent(skillName)
+	if err == nil {
+		if metadata, err := skills.ParseSkillMetadata(rawSkillContent); err == nil {
+			isOrchestrator = metadata.SkillType == "policy" || metadata.SkillType == "orchestrator"
+		}
+	}
+	// Detect meta-orchestrator by skill name (not skill-type)
+	// This enables tiered context templates for different orchestrator levels
+	if skillName == "meta-orchestrator" {
+		isMetaOrchestrator = true
+	}
+
+	// Generate workspace name
+	// Meta-orchestrators use "meta-" prefix instead of project prefix for visual distinction
+	// Orchestrators use "orch" skill prefix instead of "work" for visual distinction from workers
+	workspaceName = spawn.GenerateWorkspaceName(projectName, skillName, task, spawn.WorkspaceNameOptions{
+		IsMetaOrchestrator: isMetaOrchestrator,
+		IsOrchestrator:     isOrchestrator,
+	})
+
+	// Now load full skill content with dependencies for the actual spawn
+	skillContent, err = loader.LoadSkillWithDependencies(skillName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not load skill '%s': %v\n", skillName, err)
+		skillContent = "" // Continue without skill content
+	}
+
+	return skillContent, workspaceName, isOrchestrator, isMetaOrchestrator, nil
+}
+
+// setupBeadsTracking determines beads ID and manages issue lifecycle.
+// Returns final beads ID (empty if untracked), or error if setup fails.
+func setupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isOrchestrator, isMetaOrchestrator bool, serverURL string) (string, error) {
+	// Determine beads ID - either from flag, create new issue, or skip if --no-track
+	// Orchestrators skip beads tracking entirely - they're interactive sessions with Dylan,
+	// not autonomous tasks. SESSION_HANDOFF.md is richer than beads comments.
+	skipBeadsForOrchestrator := isOrchestrator || isMetaOrchestrator
+	beadsID, err := determineBeadsID(projectName, skillName, task, beadsIssueFlag, spawnNoTrack || skipBeadsForOrchestrator, createBeadsIssue)
+	if err != nil {
+		return "", fmt.Errorf("failed to determine beads ID: %w", err)
+	}
+	if skipBeadsForOrchestrator {
+		fmt.Println("Skipping beads tracking (orchestrator session)")
+	} else if spawnNoTrack {
+		fmt.Println("Skipping beads tracking (--no-track)")
+	}
+
+	// Check for retry patterns on existing issues - surface to prevent blind respawning
+	// Skip for orchestrators since they don't use beads tracking
+	if !spawnNoTrack && !skipBeadsForOrchestrator && beadsIssueFlag != "" {
+		if stats, err := verify.GetFixAttemptStats(beadsID); err == nil && stats.IsRetryPattern() {
+			warning := verify.FormatRetryWarning(stats)
+			if warning != "" {
+				fmt.Fprintf(os.Stderr, "\n%s\n", warning)
+			}
+		}
+	}
+
+	// DISABLED: Dependency check gate (Jan 4, 2026)
+	// This was added to prevent spawning on issues with unresolved dependencies,
+	// but it added friction without clear benefit. Dependencies are informational,
+	// not blocking - agents can often make progress even if dependencies exist.
+	// See: .kb/post-mortems/2026-01-02-system-spiral-dec27-jan02.md
+	/*
+		if !spawnNoTrack && beadsIssueFlag != "" && !spawnForce {
+			blockers, err := beads.CheckBlockingDependencies(beadsID)
+			// ... gate logic disabled ...
+		}
+	*/
+	_ = spawnForce // silence unused variable warning (flag still exists but doesn't gate)
+
+	// Check if issue is already being worked on (prevent duplicate spawns)
+	// Skip for orchestrators since they don't use beads tracking
+	if !spawnNoTrack && !skipBeadsForOrchestrator && beadsIssueFlag != "" {
+		if issue, err := verify.GetIssue(beadsID); err == nil {
+			if issue.Status == "closed" {
+				return "", fmt.Errorf("issue %s is already closed", beadsID)
+			}
+			if issue.Status == "in_progress" {
+				// Check if there's a truly active agent for this issue
+				// OpenCode persists sessions to disk, so we must verify liveness not just existence
+				client := opencode.NewClient(serverURL)
+				sessions, _ := client.ListSessions("")
+				for _, s := range sessions {
+					if strings.Contains(s.Title, beadsID) {
+						// Session exists - but is it actually active (recently updated)?
+						// Use 30 minute threshold - if no activity, session is stale
+						if client.IsSessionActive(s.ID, 30*time.Minute) {
+							return "", fmt.Errorf("issue %s is already in_progress with active agent (session %s). Use 'orch send %s' to interact or 'orch abandon %s' to restart", beadsID, s.ID, s.ID, beadsID)
+						}
+						// Session exists but is stale - log and continue (allow respawn)
+						fmt.Fprintf(os.Stderr, "Note: found stale session %s for issue %s (no activity in 30m)\n", s.ID[:12], beadsID)
+					}
+				}
+				// No active session - check if Phase: Complete was reported
+				// If so, orchestrator needs to run 'orch complete' before respawning
+				if complete, err := verify.IsPhaseComplete(beadsID); err == nil && complete {
+					return "", fmt.Errorf("issue %s has Phase: Complete but is not closed. Run 'orch complete %s' first", beadsID, beadsID)
+				}
+				// In progress but no active agent and not Phase: Complete - warn but allow respawn
+				fmt.Fprintf(os.Stderr, "Warning: issue %s is in_progress but no active agent found. Respawning.\n", beadsID)
+			}
+		}
+	}
+
+	// Update beads issue status to in_progress (only if tracking a real issue)
+	// Skip for orchestrators since they don't use beads tracking
+	if !spawnNoTrack && !skipBeadsForOrchestrator && beadsIssueFlag != "" {
+		if err := verify.UpdateIssueStatus(beadsID, "in_progress"); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to update beads issue status: %v\n", err)
+			// Continue anyway
+		}
+	}
+
+	return beadsID, nil
+}
+
+// resolveAndValidateModel resolves model aliases and validates model choice.
+// Returns error if flash model is requested (unsupported).
+func resolveAndValidateModel(modelFlag string) (model.ModelSpec, error) {
+	// Resolve model - convert aliases to full format
+	resolvedModel := model.Resolve(modelFlag)
+
+	// Validate flash model - TPM rate limits make it unusable
+	if resolvedModel.Provider == "google" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "flash") {
+		return resolvedModel, fmt.Errorf(`
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  🚫 Flash model not supported                                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Gemini Flash has TPM (tokens per minute) rate limits that make it           │
+│  unsuitable for agent work. Use sonnet (default) or opus instead.            │
+│                                                                             │
+│  Available options:                                                         │
+│    • --model sonnet  (default, pay-per-token via OpenCode)                  │
+│    • --model opus    (Max subscription via claude CLI)                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+`)
+	}
+
+	return resolvedModel, nil
+}
+
+// gatherSpawnContext gathers KB context and performs gap analysis.
+// Returns context string, gap analysis, model injection info, or error.
+func gatherSpawnContext(skillContent, task, beadsID, projectDir string) (
+	kbContext string,
+	gapAnalysis *spawn.GapAnalysis,
+	hasInjectedModels bool,
+	primaryModelPath string,
+	err error) {
+
+	if spawnSkipArtifactCheck {
+		fmt.Println("Skipping context check (--skip-artifact-check)")
+		return "", nil, false, "", nil
+	}
+
+	// Parse skill requirements to determine what context to gather
+	requires := spawn.ParseSkillRequires(skillContent)
+
+	if requires != nil && requires.HasRequirements() {
+		// Skill-driven context gathering
+		fmt.Printf("Gathering context (skill requires: %s)\n", requires.String())
+		kbContext = spawn.GatherRequiredContext(requires, task, beadsID, projectDir)
+		// For skill-driven context, create a basic gap analysis from the results
+		// This is a placeholder - skills may provide their own gap info
+		gapAnalysis = spawn.AnalyzeGaps(nil, task)
+	} else {
+		// Fall back to default kb context check with full gap analysis
+		gapResult := runPreSpawnKBCheckFull(task)
+		kbContext = gapResult.Context
+		gapAnalysis = gapResult.GapAnalysis
+
+		// Extract model injection info for probe vs investigation routing
+		if gapResult.FormatResult != nil {
+			hasInjectedModels = gapResult.FormatResult.HasInjectedModels
+			if hasInjectedModels {
+				// Extract primary model path from KB context result
+				primaryModelPath = extractPrimaryModelPath(gapResult.FormatResult)
+			}
+		}
+	}
+
+	// Check gap gating - may block spawn if context quality is too low
+	if err := checkGapGating(gapAnalysis, spawnGateOnGap, spawnSkipGapGate, spawnGapThreshold); err != nil {
+		return "", nil, false, "", err
+	}
+
+	// Record gap for learning loop (if gaps detected)
+	if gapAnalysis != nil && gapAnalysis.HasGaps {
+		recordGapForLearning(gapAnalysis, skillContent, task)
+	}
+
+	// Log if skip-gap-gate was used (documents conscious bypass)
+	if spawnSkipGapGate && gapAnalysis != nil && gapAnalysis.ShouldBlockSpawn(spawnGapThreshold) {
+		fmt.Fprintf(os.Stderr, "⚠️  Bypassing gap gate (--skip-gap-gate): context quality %d\n", gapAnalysis.ContextQuality)
+		// Log the bypass for pattern detection
+		logger := events.NewLogger(events.DefaultLogPath())
+		event := events.Event{
+			Type:      "gap.gate.bypassed",
+			Timestamp: time.Now().Unix(),
+			Data: map[string]interface{}{
+				"task":            task,
+				"context_quality": gapAnalysis.ContextQuality,
+				"beads_id":        beadsID,
+				"skill":           skillContent,
+			},
+		}
+		if err := logger.Log(event); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to log gap bypass: %v\n", err)
+		}
+	}
+
+	return kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, nil
+}
+
+// extractBugReproInfo extracts reproduction steps if the issue is a bug.
+// Returns isBug flag and reproduction steps.
+func extractBugReproInfo(beadsID string, noTrack bool) (isBug bool, reproSteps string) {
+	if noTrack || beadsID == "" {
+		return false, ""
+	}
+
+	if reproResult, err := verify.GetReproForCompletion(beadsID); err == nil && reproResult != nil {
+		isBug = reproResult.IsBug
+		reproSteps = reproResult.Repro
+		if isBug && reproSteps != "" {
+			fmt.Printf("🐛 Bug issue detected - reproduction steps included in context\n")
+		}
+	}
+	return isBug, reproSteps
+}
+
+// buildUsageInfo converts rate limit check result to UsageInfo struct.
+// Returns nil if no usage check result available.
+func buildUsageInfo(usageCheckResult *gates.UsageCheckResult) *spawn.UsageInfo {
+	if usageCheckResult == nil || usageCheckResult.CapacityInfo == nil {
+		return nil
+	}
+
+	return &spawn.UsageInfo{
+		FiveHourUsed: usageCheckResult.CapacityInfo.FiveHourUsed,
+		SevenDayUsed: usageCheckResult.CapacityInfo.SevenDayUsed,
+		AccountEmail: usageCheckResult.CapacityInfo.Email,
+		AutoSwitched: usageCheckResult.Switched,
+		SwitchReason: usageCheckResult.SwitchReason,
+	}
+}
+
+// determineSpawnBackend determines spawn backend with auto-selection.
+// Priority: --backend flag > --opus flag > infrastructure detection > model-based > config > default.
+func determineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, projectDir string) (string, error) {
+	// Load project config (used for backend default)
+	projCfg, _ := config.Load(projectDir)
+
+	// Default to claude (Max subscription covers Claude CLI usage)
+	backend := "claude"
+
+	if spawnBackendFlag != "" {
+		// Explicit --backend flag: highest priority
+		backend = spawnBackendFlag
+		// Validate backend value
+		if backend != "claude" && backend != "opencode" {
+			return "", fmt.Errorf("invalid --backend value: %s (must be 'claude' or 'opencode')", backend)
+		}
+	} else if spawnOpus {
+		// Explicit --opus flag: use claude CLI
+		backend = "claude"
+	} else if isInfrastructureWork(task, beadsID) {
+		// Infrastructure work detection: auto-apply escape hatch
+		// Agents working on OpenCode/orch infrastructure need claude backend + tmux
+		// to survive server restarts (prevent agents from killing themselves)
+		backend = "claude"
+		fmt.Println("🔧 Infrastructure work detected - auto-applying escape hatch (--backend claude --tmux)")
+		fmt.Println("   This ensures the agent survives OpenCode server restarts.")
+
+		// Log the infrastructure work detection for pattern analysis
+		logger := events.NewLogger(events.DefaultLogPath())
+		event := events.Event{
+			Type:      "spawn.infrastructure_detected",
+			Timestamp: time.Now().Unix(),
+			Data: map[string]interface{}{
+				"task":     task,
+				"beads_id": beadsID,
+				"skill":    "", // Will be filled by caller
+			},
+		}
+		if err := logger.Log(event); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to log infrastructure detection: %v\n", err)
+		}
+	} else if spawnModel != "" {
+		// Auto-select backend based on model
+		modelLower := strings.ToLower(spawnModel)
+		if modelLower == "opus" || strings.Contains(modelLower, "opus") {
+			// Opus model: use claude CLI (Max subscription)
+			backend = "claude"
+			fmt.Println("Auto-selected claude backend for opus model")
+		} else if modelLower == "sonnet" || strings.Contains(modelLower, "sonnet") {
+			// Sonnet model: use opencode (pay-per-token API)
+			backend = "opencode"
+		}
+		// Other models keep the default backend (claude)
+	} else if projCfg != nil && projCfg.SpawnMode == "claude" {
+		// Config default: respect project spawn_mode setting
+		backend = "claude"
+	}
+
+	// Validate mode+model combination
+	if err := validateModeModelCombo(backend, resolvedModel); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  %v\n", err)
+	}
+
+	return backend, nil
+}
+
+// loadDesignArtifacts reads design artifacts if --design-workspace is provided.
+// Returns mockup path, prompt path, and design notes.
+func loadDesignArtifacts(designWorkspace, projectDir string) (mockupPath, promptPath, notes string) {
+	if designWorkspace == "" {
+		return "", "", ""
+	}
+
+	mockupPath, promptPath, notes = readDesignArtifacts(projectDir, designWorkspace)
+	if mockupPath != "" {
+		fmt.Printf("📐 Design handoff from workspace: %s\n", designWorkspace)
+		fmt.Printf("   Mockup: %s\n", mockupPath)
+		if promptPath != "" {
+			fmt.Printf("   Prompt: %s\n", promptPath)
+		}
+	}
+	return mockupPath, promptPath, notes
+}
+
+// buildSpawnConfig constructs the spawn.Config from SpawnContext.
+func buildSpawnConfig(ctx *SpawnContext) *spawn.Config {
+	return &spawn.Config{
+		Task:               ctx.Task,
+		SkillName:          ctx.SkillName,
+		Project:            ctx.ProjectName,
+		ProjectDir:         ctx.ProjectDir,
+		WorkspaceName:      ctx.WorkspaceName,
+		SkillContent:       ctx.SkillContent,
+		BeadsID:            ctx.BeadsID,
+		Phases:             spawnPhases,
+		Mode:               spawnMode,
+		Validation:         spawnValidation,
+		Model:              ctx.ResolvedModel.Format(),
+		MCP:                spawnMCP,
+		Tier:               ctx.Tier,
+		NoTrack:            spawnNoTrack || ctx.IsOrchestrator || ctx.IsMetaOrchestrator,
+		SkipArtifactCheck:  spawnSkipArtifactCheck,
+		KBContext:          ctx.KBContext,
+		HasInjectedModels:  ctx.HasInjectedModels,
+		PrimaryModelPath:   ctx.PrimaryModelPath,
+		IncludeServers:     spawn.DefaultIncludeServersForSkill(ctx.SkillName),
+		GapAnalysis:        ctx.GapAnalysis,
+		IsBug:              ctx.IsBug,
+		ReproSteps:         ctx.ReproSteps,
+		IsOrchestrator:     ctx.IsOrchestrator,
+		IsMetaOrchestrator: ctx.IsMetaOrchestrator,
+		UsageInfo:          ctx.UsageInfo,
+		SpawnMode:          ctx.SpawnBackend,
+		DesignWorkspace:    spawnDesignWorkspace,
+		DesignMockupPath:   ctx.DesignMockupPath,
+		DesignPromptPath:   ctx.DesignPromptPath,
+		DesignNotes:        ctx.DesignNotes,
+	}
+}
+
+// validateAndWriteContext validates context size, writes SPAWN_CONTEXT.md, and generates prompt.
+// Returns minimal prompt, or error if validation fails.
+func validateAndWriteContext(cfg *spawn.Config) (minimalPrompt string, err error) {
+	// Pre-spawn token estimation and validation
+	if err := spawn.ValidateContextSize(cfg); err != nil {
+		return "", fmt.Errorf("pre-spawn validation failed: %w", err)
+	}
+
+	// Warn about large contexts (but don't block)
+	if shouldWarn, warning := spawn.ShouldWarnAboutSize(cfg); shouldWarn {
+		fmt.Fprintf(os.Stderr, "%s", warning)
+	}
+
+	// Check for existing workspace before writing context
+	// This prevents accidentally overwriting SESSION_HANDOFF.md from completed sessions
+	// Note: With unique suffixes in workspace names (since Jan 2026), collisions are rare
+	// but this provides an extra safety net and meaningful error messages
+	if err := checkWorkspaceExists(cfg.WorkspacePath(), spawnForce); err != nil {
+		return "", err
+	}
+
+	// Write SPAWN_CONTEXT.md
+	if err := spawn.WriteContext(cfg); err != nil {
+		return "", fmt.Errorf("failed to write spawn context: %w", err)
+	}
+
+	// Record spawn in session (if session is active)
+	if sessionStore, err := session.New(""); err == nil {
+		if err := sessionStore.RecordSpawn(cfg.BeadsID, cfg.SkillName, cfg.Task, cfg.ProjectDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to record spawn in session: %v\n", err)
+		}
+	}
+
+	// Generate minimal prompt
+	minimalPrompt = spawn.MinimalPrompt(cfg)
+	return minimalPrompt, nil
+}
+
+// dispatchSpawn routes to the appropriate spawn mode function.
+// Handles inline, headless, claude, and tmux modes.
+func dispatchSpawn(input *SpawnInput, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task, serverURL string) error {
+	// Spawn mode: inline (blocking TUI), tmux (opt-in for workers, default for orchestrators), claude (tmux), or headless (default for workers)
+	if input.Inline {
+		// Inline mode (blocking) - run in current terminal with TUI
+		return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+	}
+
+	// Explicit --headless flag overrides all other mode decisions
+	if input.Headless {
+		return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+	}
+
+	// Claude mode: Use tmux + claude CLI
+	if cfg.SpawnMode == "claude" {
+		return runSpawnClaude(serverURL, cfg, beadsID, skillName, task, input.Attach)
+	}
+
+	// Orchestrator-type skills default to tmux mode (visible interaction)
+	// Workers default to headless mode (automation-friendly)
+	useTmux := input.Tmux || input.Attach || cfg.IsOrchestrator
+	if useTmux {
+		// Tmux mode - visible, interruptible
+		// Default for orchestrator skills, opt-in for workers
+		return runSpawnTmux(serverURL, cfg, minimalPrompt, beadsID, skillName, task, input.Attach)
+	}
+
+	// Default for workers: Headless mode - spawn via HTTP API (automation-friendly, no TUI overhead)
+	return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 }
 
 func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless bool, tmux bool, attach bool) error {

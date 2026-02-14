@@ -250,57 +250,6 @@ type SpawnConfig struct {
 	Model         string
 }
 
-// RunConfig holds configuration for spawning an agent using 'opencode run'.
-// DEPRECATED: Use StandaloneConfig instead for TUI spawning.
-type RunConfig struct {
-	ProjectDir string
-	Model      string
-	Title      string
-	Prompt     string
-}
-
-// BuildRunCommand creates the opencode run command.
-// DEPRECATED: Use BuildStandaloneCommand instead for TUI spawning.
-func BuildRunCommand(cfg *RunConfig) *exec.Cmd {
-	opencodeBin := "opencode"
-	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
-		opencodeBin = bin
-	}
-
-	args := []string{
-		"run",
-		"--model", cfg.Model,
-		"--title", cfg.Title,
-		cfg.Prompt,
-	}
-	cmd := exec.Command(opencodeBin, args...)
-	cmd.Dir = cfg.ProjectDir
-	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
-	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
-	return cmd
-}
-
-// StandaloneConfig holds configuration for spawning an agent in standalone mode.
-// DEPRECATED: Use OpencodeAttachConfig instead for dual TUI+API access.
-type StandaloneConfig struct {
-	ProjectDir string // Project directory (passed as first arg to opencode)
-	Model      string // Model in format "provider/model"
-}
-
-// BuildStandaloneCommand creates the opencode standalone mode command string.
-// DEPRECATED: Use BuildOpencodeAttachCommand instead for dual TUI+API access.
-func BuildStandaloneCommand(cfg *StandaloneConfig) string {
-	opencodeBin := "opencode"
-	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
-		opencodeBin = bin
-	}
-
-	// Build command: ORCH_WORKER=1 opencode {project_dir} --model {model}
-	// Quote project dir in case it has spaces
-	// Prefix with ORCH_WORKER=1 so the spawned agent knows it's an orch-managed worker
-	return fmt.Sprintf("ORCH_WORKER=1 %s %q --model %q", opencodeBin, cfg.ProjectDir, cfg.Model)
-}
-
 // OpencodeAttachConfig holds configuration for spawning an agent in attach mode.
 // This is the preferred approach for TUI spawning - it connects to a shared
 // server, making sessions visible via API while still showing the TUI.

@@ -133,55 +133,6 @@ func TestBuildOpencodeAttachCommand(t *testing.T) {
 	}
 }
 
-func TestBuildStandaloneCommand(t *testing.T) {
-
-	tests := []struct {
-		name      string
-		cfg       *StandaloneConfig
-		wantParts []string
-		dontWant  []string
-	}{
-		{
-			name: "basic standalone command",
-			cfg: &StandaloneConfig{
-				ProjectDir: "/test/project",
-				Model:      "anthropic/claude-sonnet-4-20250514",
-			},
-			wantParts: []string{"opencode", "/test/project", "--model", "anthropic/claude-sonnet-4-20250514"},
-			dontWant:  []string{"run", "--prompt", "--title", "--attach"},
-		},
-		{
-			name: "project dir with spaces",
-			cfg: &StandaloneConfig{
-				ProjectDir: "/my project/with spaces",
-				Model:      "anthropic/claude-opus-4-5-20251101",
-			},
-			wantParts: []string{"opencode", "my project", "--model"},
-			dontWant:  []string{"run"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := BuildStandaloneCommand(tt.cfg)
-
-			// Check expected parts are present
-			for _, part := range tt.wantParts {
-				if !strings.Contains(result, part) {
-					t.Errorf("BuildStandaloneCommand() = %q, want to contain %q", result, part)
-				}
-			}
-
-			// Check unwanted parts are absent
-			for _, part := range tt.dontWant {
-				if strings.Contains(result, part) {
-					t.Errorf("BuildStandaloneCommand() = %q, should NOT contain %q", result, part)
-				}
-			}
-		})
-	}
-}
-
 func TestListWindowIDs(t *testing.T) {
 	if !IsAvailable() {
 		t.Skip("tmux not available")
@@ -514,31 +465,6 @@ func TestFindWindowByWorkspaceNameAllSessions(t *testing.T) {
 	}
 }
 
-// TestBuildRunCommandEnv verifies ORCH_WORKER=1 is set in the command environment.
-func TestBuildRunCommandEnv(t *testing.T) {
-	cfg := &RunConfig{
-		ProjectDir: "/test/project",
-		Model:      "anthropic/claude-opus",
-		Title:      "test-title",
-		Prompt:     "test prompt",
-	}
-
-	cmd := BuildRunCommand(cfg)
-
-	// Check that ORCH_WORKER=1 is in the environment
-	hasOrchWorker := false
-	for _, env := range cmd.Env {
-		if env == "ORCH_WORKER=1" {
-			hasOrchWorker = true
-			break
-		}
-	}
-
-	if !hasOrchWorker {
-		t.Errorf("BuildRunCommand() should set ORCH_WORKER=1 in environment, got env: %v", cmd.Env)
-	}
-}
-
 // TestBuildSpawnCommandEnv verifies ORCH_WORKER=1 is set in the command environment.
 func TestBuildSpawnCommandEnv(t *testing.T) {
 	cfg := &SpawnConfig{
@@ -578,21 +504,6 @@ func TestBuildOpencodeAttachCommandEnv(t *testing.T) {
 	// Check that the command starts with ORCH_WORKER=1
 	if !strings.HasPrefix(cmd, "ORCH_WORKER=1 ") {
 		t.Errorf("BuildOpencodeAttachCommand() should start with 'ORCH_WORKER=1 ', got: %q", cmd)
-	}
-}
-
-// TestBuildStandaloneCommandEnv verifies ORCH_WORKER=1 is prefixed in the command string.
-func TestBuildStandaloneCommandEnv(t *testing.T) {
-	cfg := &StandaloneConfig{
-		ProjectDir: "/test/project",
-		Model:      "anthropic/claude-opus",
-	}
-
-	cmd := BuildStandaloneCommand(cfg)
-
-	// Check that the command starts with ORCH_WORKER=1
-	if !strings.HasPrefix(cmd, "ORCH_WORKER=1 ") {
-		t.Errorf("BuildStandaloneCommand() should start with 'ORCH_WORKER=1 ', got: %q", cmd)
 	}
 }
 

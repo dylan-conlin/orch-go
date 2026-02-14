@@ -487,44 +487,6 @@ func TestTestEvidencePatternMatching(t *testing.T) {
 	}
 }
 
-func TestHasCodeChangesSinceSpawn(t *testing.T) {
-	// Note: This test uses the actual git repo, so results depend on repo state.
-	// The key behavior we're testing is the fallback logic and that it handles
-	// zero time correctly.
-
-	tests := []struct {
-		name      string
-		spawnTime time.Time
-		desc      string
-	}{
-		{
-			name:      "zero spawn time falls back to recent commits",
-			spawnTime: time.Time{},
-			desc:      "Should fall back to HasCodeChangesInRecentCommits",
-		},
-		{
-			name:      "future spawn time returns false (no commits since)",
-			spawnTime: time.Now().Add(24 * time.Hour),
-			desc:      "No commits can exist since a future time",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Use current directory as project dir (this test file's repo)
-			projectDir := "."
-			result := HasCodeChangesSinceSpawn(projectDir, tt.spawnTime)
-
-			// For future spawn time, we expect false (no commits since future)
-			if tt.spawnTime.After(time.Now()) && result {
-				t.Errorf("HasCodeChangesSinceSpawn with future time = true, want false")
-			}
-			// For zero time, we can't test exact result but it shouldn't panic
-			t.Logf("%s: result=%v", tt.desc, result)
-		})
-	}
-}
-
 func TestMarkdownOnlyChangesScenario(t *testing.T) {
 	// This test verifies the hasCodeChangesInFiles correctly identifies
 	// markdown-only changes as NOT requiring test evidence
@@ -609,15 +571,15 @@ func TestHasCodeChangesSinceSpawnForWorkspace(t *testing.T) {
 		}
 	})
 
-	t.Run("zero spawn time falls back to recent commits", func(t *testing.T) {
+	t.Run("zero spawn time returns false", func(t *testing.T) {
 		projectDir := "."
 		zeroTime := time.Time{}
 
-		// Should fall back to HasCodeChangesInRecentCommits, which may or may not
-		// find code changes depending on repo state
+		// With zero spawn time, should return false (cannot determine changes)
 		result := HasCodeChangesSinceSpawnForWorkspace(projectDir, zeroTime, "")
-		t.Logf("Zero spawn time fallback result: %v", result)
-		// Just verify it doesn't panic
+		if result {
+			t.Error("Expected false for zero spawn time (cannot determine changes without spawn time)")
+		}
 	})
 }
 

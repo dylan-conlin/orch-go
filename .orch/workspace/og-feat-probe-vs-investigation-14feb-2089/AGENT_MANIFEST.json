@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-probe-vs-investigation-14feb-2089",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-vn9",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "951f3225d344e34fc4eebc0715004f7faf991ed1",
+  "spawn_time": "2026-02-14T10:00:04-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

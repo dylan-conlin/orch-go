@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-extract-spawn-gate-14feb-b898",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-3c0",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "5c432f98408ea31ca5dce5326c175cd7f6e9fc42",
+  "spawn_time": "2026-02-14T10:16:20-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

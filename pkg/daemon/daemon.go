@@ -155,7 +155,6 @@ type Daemon struct {
 	Config Config
 
 	// Pool is the worker pool for concurrency control.
-	// If set, it is used instead of activeCountFunc.
 	Pool *WorkerPool
 
 	// RateLimiter tracks spawn history for hourly rate limiting.
@@ -188,9 +187,6 @@ type Daemon struct {
 	listIssuesFunc func() ([]Issue, error)
 	// spawnFunc is used for testing - allows mocking orch work
 	spawnFunc func(beadsID string) error
-	// activeCountFunc is used for testing - allows mocking active agent count
-	// Deprecated: Use Pool for concurrency control instead.
-	activeCountFunc func() int
 	// listCompletedAgentsFunc is used for testing - allows mocking completed agents list
 	listCompletedAgentsFunc func(CompletionConfig) ([]CompletedAgent, error)
 	// reflectFunc is used for testing - allows mocking kb reflect
@@ -212,7 +208,6 @@ func NewWithConfig(config Config) *Daemon {
 		resumeAttempts:       make(map[string]time.Time),
 		listIssuesFunc:       ListReadyIssues,
 		spawnFunc:            SpawnWork,
-		activeCountFunc:      DefaultActiveCount,
 		reflectFunc:          DefaultRunReflection,
 		listEpicChildrenFunc: ListEpicChildren,
 	}
@@ -231,14 +226,13 @@ func NewWithConfig(config Config) *Daemon {
 // This is useful for sharing a pool across daemon instances or for testing.
 func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 	d := &Daemon{
-		Config:          config,
-		Pool:            pool,
-		SpawnedIssues:   NewSpawnedIssueTracker(),
-		resumeAttempts:  make(map[string]time.Time),
-		listIssuesFunc:  ListReadyIssues,
-		spawnFunc:       SpawnWork,
-		activeCountFunc: DefaultActiveCount,
-		reflectFunc:     DefaultRunReflection,
+		Config:         config,
+		Pool:           pool,
+		SpawnedIssues:  NewSpawnedIssueTracker(),
+		resumeAttempts: make(map[string]time.Time),
+		listIssuesFunc: ListReadyIssues,
+		spawnFunc:      SpawnWork,
+		reflectFunc:    DefaultRunReflection,
 	}
 	// Initialize rate limiter if MaxSpawnsPerHour is set
 	if config.MaxSpawnsPerHour > 0 {
@@ -443,16 +437,12 @@ func (d *Daemon) AvailableSlots() int {
 	if d.Pool != nil {
 		return d.Pool.Available()
 	}
-	// Fallback to legacy activeCountFunc
+	// If no pool and no limit, unlimited slots available
 	if d.Config.MaxAgents <= 0 {
 		return 100 // No limit
 	}
-	active := d.activeCountFunc()
-	available := d.Config.MaxAgents - active
-	if available < 0 {
-		return 0
-	}
-	return available
+	// If pool not configured, assume unlimited
+	return 100
 }
 
 // AtCapacity returns true if the daemon cannot spawn more agents.
@@ -461,11 +451,8 @@ func (d *Daemon) AtCapacity() bool {
 	if d.Pool != nil {
 		return d.Pool.AtCapacity()
 	}
-	// Fallback to legacy activeCountFunc
-	if d.Config.MaxAgents <= 0 {
-		return false // No limit
-	}
-	return d.activeCountFunc() >= d.Config.MaxAgents
+	// If no pool configured, never at capacity
+	return false
 }
 
 // ActiveCount returns the number of currently active agents.
@@ -473,7 +460,8 @@ func (d *Daemon) ActiveCount() int {
 	if d.Pool != nil {
 		return d.Pool.Active()
 	}
-	return d.activeCountFunc()
+	// If no pool configured, return 0 (cannot track active count without pool)
+	return 0
 }
 
 // PoolStatus returns the current worker pool status for monitoring.
@@ -1016,31 +1004,13 @@ type CleanupResult struct {
 	Message string
 }
 
-// RunPeriodicCleanup runs the periodic session cleanup if due.
-// Returns the result if cleanup was run, or nil if it wasn't due.
+// RunPeriodicCleanup is deprecated - OpenCode now handles session cleanup via TTL.
+// Returns nil (no cleanup needed).
 func (d *Daemon) RunPeriodicCleanup() *CleanupResult {
-	if !d.ShouldRunCleanup() {
-		return nil
-	}
-
-	// Import cleanup package functions via helper
-	deleted, err := runSessionCleanup(d.Config.CleanupServerURL, d.Config.CleanupAgeDays, d.Config.CleanupPreserveOrchestrator)
-	if err != nil {
-		return &CleanupResult{
-			Deleted: 0,
-			Error:   err,
-			Message: fmt.Sprintf("Session cleanup failed: %v", err),
-		}
-	}
-
-	// Update last cleanup time on success
-	d.lastCleanup = time.Now()
-
-	return &CleanupResult{
-		Deleted: deleted,
-		Error:   nil,
-		Message: fmt.Sprintf("Deleted %d stale sessions (age >%d days)", deleted, d.Config.CleanupAgeDays),
-	}
+	// NOTE: Session cleanup has been moved to OpenCode server (opencode-fork commit f3c3865).
+	// OpenCode now automatically deletes sessions based on TTL, so orch-go daemon
+	// no longer needs to run periodic cleanup.
+	return nil
 }
 
 // LastCleanupTime returns when cleanup was last run.

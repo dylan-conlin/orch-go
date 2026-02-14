@@ -746,12 +746,12 @@ func TestHasWebChangesForAgent(t *testing.T) {
 			t.Fatalf("failed to create SPAWN_CONTEXT.md: %v", err)
 		}
 
-		// With no spawn time, should fall back to HasWebChangesInRecentCommits
-		// We can't easily test the actual git behavior in unit tests,
-		// but we can verify the function doesn't panic and returns a boolean
+		// With no spawn time, should return false (cannot determine changes)
 		projectDir := t.TempDir()
-		_ = HasWebChangesForAgent(projectDir, workspacePath)
-		// Just verify it doesn't panic - actual behavior depends on git state
+		result := HasWebChangesForAgent(projectDir, workspacePath)
+		if result {
+			t.Error("Expected false when no spawn time available")
+		}
 	})
 
 	t.Run("with spawn time uses time-based filtering", func(t *testing.T) {
@@ -815,25 +815,14 @@ func TestHasWebChangesSinceTime(t *testing.T) {
 }
 
 func TestHasWebChangesForAgentScopesBehavior(t *testing.T) {
-	// This test documents the expected behavior difference between
-	// HasWebChangesInRecentCommits (project-scoped) and
-	// HasWebChangesForAgent (agent-scoped)
+	// This test documents the expected behavior of HasWebChangesForAgent
 
-	t.Run("documents scope difference", func(t *testing.T) {
-		// HasWebChangesInRecentCommits:
-		// - Checks HEAD~5..HEAD (last 5 commits)
-		// - Includes ALL recent commits, not just this agent's
-		// - Can cause false positives if prior agents modified web/ files
-
-		// HasWebChangesForAgent (old behavior):
-		// - Checks commits since spawn time
-		// - But includes ALL commits since spawn time, not just workspace-touching ones
-		// - Can cause false positives from concurrent agents
-
-		// HasWebChangesForAgent (new behavior with workspace scoping):
+	t.Run("documents scope behavior", func(t *testing.T) {
+		// HasWebChangesForAgent with workspace scoping:
 		// - Checks commits since spawn time that touch the workspace directory
 		// - Only includes commits made by this specific agent
 		// - Prevents false positives from concurrent agent work
+		// - Returns false if no spawn time available (cannot determine changes)
 
 		// This is a documentation test - the actual behavior is tested above
 		// and in integration tests
@@ -844,9 +833,8 @@ func TestHasWebChangesSinceTimeForWorkspace(t *testing.T) {
 	// This test verifies the new workspace-scoped behavior
 	// prevents false positives from concurrent agents
 
-	t.Run("empty workspace path falls back to unscoped check", func(t *testing.T) {
-		// When workspacePath is empty, should fall back to hasWebChangesSinceTime
-		// This maintains backward compatibility with legacy workspaces
+	t.Run("empty workspace path checks all commits", func(t *testing.T) {
+		// When workspacePath is empty, checks all commits since spawn time
 		projectDir := t.TempDir()
 		spawnTime := time.Now().Add(-1 * time.Hour)
 

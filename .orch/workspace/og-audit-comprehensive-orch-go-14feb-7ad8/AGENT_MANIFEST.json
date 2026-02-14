@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-audit-comprehensive-orch-go-14feb-7ad8",
+  "skill": "codebase-audit",
+  "beads_id": "orch-go-17x",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "93be7a412987f964f41eca19b7266acdea9d516e",
+  "spawn_time": "2026-02-14T00:48:06-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

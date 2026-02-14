@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-revive-work-graph-14feb-6c9d",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-lsy",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "7fa8a43b6ab75c20493a9a77f68e2bdd8153dfcc",
+  "spawn_time": "2026-02-14T00:45:49-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}
