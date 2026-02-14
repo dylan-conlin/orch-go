@@ -12,7 +12,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -118,34 +117,24 @@ func runAbandon(beadsID, reason, workdir string) error {
 
 	client := opencode.NewClient(serverURL)
 
-	// Try registry first (primary source of truth)
-	agentReg, _ := registry.New("")
-	var agent *registry.Agent
-	if agentReg != nil {
-		agent = agentReg.Find(beadsID)
-	}
-
 	var windowInfo *tmux.WindowInfo
 	var sessionID string
 	var workspacePath, agentName string
 
-	if agent != nil {
-		fmt.Printf("Found agent in registry: %s (mode: %s)\n", agent.ID, agent.Mode)
-		agentName = agent.ID
-		sessionID = agent.SessionID
-		if agent.Mode == registry.ModeTmux && agent.TmuxWindow != "" {
-			windowInfo = &tmux.WindowInfo{
-				Target: agent.TmuxWindow,
-				Name:   agent.TmuxWindow,
-			}
-		}
-		// Resolve workspace path from project dir and agent ID
-		if agent.ProjectDir != "" {
-			workspacePath = filepath.Join(agent.ProjectDir, ".orch", "workspace", agent.ID)
+	// Look up workspace by beads ID for session ID and metadata
+	wPath, aName := findWorkspaceByBeadsID(projectDir, beadsID)
+	if wPath != "" {
+		workspacePath = wPath
+		agentName = aName
+		sessionID = spawn.ReadSessionID(wPath)
+		if sessionID != "" {
+			fmt.Printf("Found agent workspace: %s (session: %s)\n", agentName, sessionID[:12])
+		} else {
+			fmt.Printf("Found agent workspace: %s\n", agentName)
 		}
 	}
 
-	// Discovery fallback if registry didn't give us everything
+	// Discovery: find tmux window
 	if windowInfo == nil {
 		// Try searching by beads ID first (for worker sessions)
 		sessions, _ := tmux.ListWorkersSessions()

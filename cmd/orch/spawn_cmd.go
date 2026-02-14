@@ -26,7 +26,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -1474,9 +1473,6 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 		fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 	}
 
-	// Register agent in general registry
-	registerAgent(cfg, sessionID, "", registry.ModeHeadless, cfg.Model)
-
 	// Register orchestrator session in registry (workers use beads instead)
 	registerOrchestratorSession(cfg, sessionID, task)
 
@@ -1559,9 +1555,6 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 	}
-
-	// Register agent in general registry
-	registerAgent(cfg, sessionID, "", registry.ModeHeadless, cfg.Model)
 
 	// Register orchestrator session in registry (workers use beads instead)
 	registerOrchestratorSession(cfg, sessionID, task)
@@ -1725,9 +1718,6 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		}
 	}
 
-	// Register agent in general registry
-	registerAgent(cfg, sessionID, windowTarget, registry.ModeTmux, cfg.Model)
-
 	// Register orchestrator session in registry (workers use beads instead)
 	registerOrchestratorSession(cfg, sessionID, task)
 
@@ -1810,9 +1800,6 @@ func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 
 	// Register orchestrator session in registry if needed
 	registerOrchestratorSession(cfg, "", task)
-
-	// Register agent in the agent registry (for orch status tracking)
-	registerAgent(cfg, "", result.Window, registry.ModeTmux, cfg.Model)
 
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())
@@ -2260,36 +2247,6 @@ func isInfrastructureWork(task string, beadsID string) bool {
 	}
 
 	return false
-}
-
-// registerAgent registers any agent (worker or orchestrator) in the general agent registry.
-func registerAgent(cfg *spawn.Config, sessionID, tmuxWindow, mode, modelSpec string) {
-	agentReg, err := registry.New("")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to open agent registry: %v\n", err)
-		return
-	}
-
-	agent := &registry.Agent{
-		ID:         cfg.WorkspaceName,
-		BeadsID:    cfg.BeadsID,
-		Mode:       mode,
-		SessionID:  sessionID,
-		TmuxWindow: tmuxWindow,
-		Model:      modelSpec,
-		ProjectDir: cfg.ProjectDir,
-		Skill:      cfg.SkillName,
-		Status:     registry.StateActive,
-	}
-
-	if err := agentReg.Register(agent); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to register agent in registry: %v\n", err)
-		return
-	}
-
-	if err := agentReg.Save(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to save agent registry: %v\n", err)
-	}
 }
 
 // readDesignArtifacts reads design artifacts from a ui-design-session workspace.

@@ -190,6 +190,9 @@ type AgentManifest struct {
 
 	// SpawnMode is the spawn backend: "opencode" or "claude"
 	SpawnMode string `json:"spawn_mode,omitempty"`
+
+	// Model is the model spec used for this agent (e.g., "gemini-3-flash-preview", "claude-opus-4-5-20251101")
+	Model string `json:"model,omitempty"`
 }
 
 // WriteAgentManifest writes the agent manifest JSON to the workspace directory.

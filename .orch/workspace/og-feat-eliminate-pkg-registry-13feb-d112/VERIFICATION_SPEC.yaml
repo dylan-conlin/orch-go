@@ -1,0 +1,27 @@
+verification:
+  build:
+    command: "go build ./cmd/orch/"
+    expect: "exit 0"
+    result: "pass"
+  vet:
+    command: "go vet ./..."
+    expect: "exit 0"
+    result: "pass"
+  tests:
+    command: "go test ./..."
+    expect: "no new failures"
+    result: "pass - only pre-existing pkg/model failures"
+  no_registry_references:
+    command: "grep -r 'pkg/registry' --include='*.go' ."
+    expect: "no matches"
+    result: "pass - zero matches"
+  files_deleted:
+    - "pkg/registry/registry.go"
+    - "pkg/registry/registry_test.go"
+  files_modified:
+    - "cmd/orch/spawn_cmd.go"
+    - "cmd/orch/status_cmd.go"
+    - "cmd/orch/abandon_cmd.go"
+    - "cmd/orch/clean_cmd.go"
+    - "pkg/spawn/session.go"
+    - "pkg/spawn/context.go"

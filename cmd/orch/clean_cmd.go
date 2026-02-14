@@ -12,7 +12,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/cleanup"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -33,14 +32,14 @@ var (
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
 	Short: "Clean up stale workspaces, sessions, and infrastructure",
-	Long: `Clean up stale agent resources (workspaces, sessions, tmux windows, registry).
+	Long: `Clean up stale agent resources (workspaces, sessions, tmux windows).
 
 By default, this command only REPORTS what could be cleaned - it does not delete
 anything. Workspace directories are archived (moved to archived/), never deleted.
 
 Cleanup actions:
   --workspaces        Archive old completed workspaces and empty investigation files
-  --sessions          Clean stale session infrastructure (tmux windows, registry entries, OpenCode sessions)
+  --sessions          Clean stale session infrastructure (tmux windows, OpenCode sessions)
   --all               Enable all cleanup actions (workspaces + sessions)
 
 Age thresholds:
@@ -74,7 +73,7 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanDryRun, "dry-run", false, "Show what would be cleaned without making changes")
 	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "Enable all cleanup actions (workspaces + sessions)")
 	cleanCmd.Flags().BoolVar(&cleanWorkspaces, "workspaces", false, "Archive old completed workspaces and empty investigation files")
-	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Clean stale session infrastructure (tmux windows, registry entries, OpenCode sessions)")
+	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Clean stale session infrastructure (tmux windows, OpenCode sessions)")
 	cleanCmd.Flags().IntVar(&cleanWorkspaceDays, "workspace-days", 7, "Age threshold in days for --workspaces (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanSessionDays, "session-days", 7, "Age threshold in days for --sessions (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanPreserveOrchestrator, "preserve-orchestrator", false, "Skip orchestrator/meta-orchestrator workspaces and sessions")
@@ -289,7 +288,7 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 
 	// Track cleanup stats
 	var workspacesArchived, investigationsArchived int
-	var windowsClosed, registryEntriesRemoved, untrackedSessionsDeleted, staleSessionsDeleted int
+	var windowsClosed, untrackedSessionsDeleted, staleSessionsDeleted int
 
 	// --workspaces: Archive old workspaces + empty investigations
 	if doWorkspaces {
@@ -312,19 +311,13 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 			fmt.Fprintf(os.Stderr, "Warning: failed to clean stale tmux windows: %v\n", err)
 		}
 
-		// 2. Remove inactive agents from registry (no backing infrastructure)
-		registryEntriesRemoved, err = cleanInactiveRegistryEntries(serverURL, dryRun)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to clean inactive registry entries: %v\n", err)
-		}
-
-		// 3. Delete untracked disk sessions (not referenced by any workspace)
+		// 2. Delete untracked disk sessions (not referenced by any workspace)
 		untrackedSessionsDeleted, err = cleanUntrackedDiskSessions(serverURL, dryRun, preserveOrchestrator)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clean untracked sessions: %v\n", err)
 		}
 
-		// 4. Delete old sessions by age
+		// 3. Delete old sessions by age
 		staleSessionsDeleted, err = cleanup.CleanStaleSessions(cleanup.CleanStaleSessionsOptions{
 			ServerURL:            serverURL,
 			StaleDays:            sessionDays,
@@ -352,9 +345,6 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 			if windowsClosed > 0 {
 				fmt.Printf(" Would close %d stale tmux windows.", windowsClosed)
 			}
-			if registryEntriesRemoved > 0 {
-				fmt.Printf(" Would remove %d inactive registry entries.", registryEntriesRemoved)
-			}
 			if untrackedSessionsDeleted > 0 {
 				fmt.Printf(" Would delete %d untracked sessions.", untrackedSessionsDeleted)
 			}
@@ -367,7 +357,7 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 	}
 
 	// Log event if any cleanup actions were taken
-	totalCleaned := workspacesArchived + investigationsArchived + windowsClosed + registryEntriesRemoved + untrackedSessionsDeleted + staleSessionsDeleted
+	totalCleaned := workspacesArchived + investigationsArchived + windowsClosed + untrackedSessionsDeleted + staleSessionsDeleted
 	if totalCleaned > 0 {
 		projectName := filepath.Base(projectDir)
 		logger := events.NewLogger(events.DefaultLogPath())
@@ -378,7 +368,6 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 				"workspaces_archived":        workspacesArchived,
 				"investigations_archived":    investigationsArchived,
 				"windows_closed":             windowsClosed,
-				"registry_entries_removed":   registryEntriesRemoved,
 				"untracked_sessions_deleted": untrackedSessionsDeleted,
 				"stale_sessions_deleted":     staleSessionsDeleted,
 				"project":                    projectName,
@@ -404,9 +393,6 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 		}
 		if windowsClosed > 0 {
 			fmt.Printf("Closed %d stale tmux windows\n", windowsClosed)
-		}
-		if registryEntriesRemoved > 0 {
-			fmt.Printf("Removed %d inactive agents from registry\n", registryEntriesRemoved)
 		}
 		if untrackedSessionsDeleted > 0 {
 			fmt.Printf("Deleted %d untracked sessions\n", untrackedSessionsDeleted)
@@ -962,106 +948,6 @@ func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool, prese
 	}
 
 	return archived, nil
-}
-
-// cleanInactiveRegistryEntries finds and removes inactive agents from the registry.
-// An inactive agent is one that is marked "active" in the registry but has no live backing:
-// - No live tmux window (for claude/tmux mode agents)
-// - No live OpenCode session (checked via API)
-// Returns the number of entries removed and any error encountered.
-func cleanInactiveRegistryEntries(serverURL string, dryRun bool) (int, error) {
-	fmt.Println("\nScanning for inactive agents in registry...")
-
-	agentReg, err := registry.New("")
-	if err != nil {
-		return 0, fmt.Errorf("failed to load registry: %w", err)
-	}
-
-	activeAgents := agentReg.ListActive()
-	if len(activeAgents) == 0 {
-		fmt.Println("  No active agents in registry")
-		return 0, nil
-	}
-
-	fmt.Printf("  Found %d active agents in registry\n", len(activeAgents))
-
-	// Build a set of live OpenCode session IDs (single API call)
-	client := opencode.NewClient(serverURL)
-	sessions, err := client.ListSessions("")
-	if err != nil {
-		return 0, fmt.Errorf("failed to list OpenCode sessions: %w", err)
-	}
-
-	liveSessionIDs := make(map[string]bool, len(sessions))
-	for _, s := range sessions {
-		liveSessionIDs[s.ID] = true
-	}
-
-	fmt.Printf("  Found %d live OpenCode sessions\n", len(liveSessionIDs))
-
-	// Check each active agent for liveness
-	var inactive []*registry.Agent
-	for _, agent := range activeAgents {
-		hasLiveTmux := false
-		hasLiveSession := false
-
-		// Check tmux window liveness (for claude/tmux mode)
-		if agent.TmuxWindow != "" {
-			if strings.HasPrefix(agent.TmuxWindow, "@") {
-				hasLiveTmux = tmux.WindowExistsByID(agent.TmuxWindow)
-			} else {
-				hasLiveTmux = tmux.WindowExists(agent.TmuxWindow)
-			}
-		}
-
-		// Check OpenCode session liveness
-		if agent.SessionID != "" {
-			hasLiveSession = liveSessionIDs[agent.SessionID]
-		}
-
-		// Inactive = no live tmux AND no live OpenCode session
-		if !hasLiveTmux && !hasLiveSession {
-			inactive = append(inactive, agent)
-		}
-	}
-
-	if len(inactive) == 0 {
-		fmt.Println("  No inactive agents found")
-		return 0, nil
-	}
-
-	fmt.Printf("  Found %d inactive agents:\n", len(inactive))
-
-	removed := 0
-	for _, agent := range inactive {
-		beadsID := agent.BeadsID
-		if beadsID == "" {
-			beadsID = "(no beads ID)"
-		}
-
-		if dryRun {
-			fmt.Printf("    [DRY-RUN] Would remove: %s [%s] (mode=%s)\n", agent.ID, beadsID, agent.Mode)
-			removed++
-			continue
-		}
-
-		// Mark as deleted in registry (tombstone pattern)
-		if agentReg.Remove(agent.ID) {
-			fmt.Printf("    Removed: %s [%s] (mode=%s)\n", agent.ID, beadsID, agent.Mode)
-			removed++
-		} else {
-			fmt.Fprintf(os.Stderr, "    Warning: failed to remove %s\n", agent.ID)
-		}
-	}
-
-	// Save registry changes
-	if !dryRun && removed > 0 {
-		if err := agentReg.Save(); err != nil {
-			return removed, fmt.Errorf("failed to save registry: %w", err)
-		}
-	}
-
-	return removed, nil
 }
 
 // NOTE: extractBeadsIDFromWorkspace is defined in review.go

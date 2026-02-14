@@ -15,8 +15,8 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/session"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -204,13 +204,6 @@ func runStatus(serverURL string) error {
 	client := opencode.NewClient(serverURL)
 	now := time.Now()
 
-	// Initialize agent registry
-	agentReg, err := registry.New("")
-	if err != nil {
-		// Log error but continue - registry might be missing or corrupt
-		fmt.Fprintf(os.Stderr, "Warning: failed to load agent registry: %v\n", err)
-	}
-
 	agents := make([]AgentInfo, 0)
 	seenBeadsIDs := make(map[string]bool)
 
@@ -253,70 +246,36 @@ func runStatus(serverURL string) error {
 	// Get current project's workspace directory for workspace lookups
 	projectDir, _ := os.Getwd()
 
-	// Phase 1: Collect agents from registry (primary source of truth for mode)
-	if agentReg != nil {
-		registryAgents := agentReg.ListActive()
-		if statusAll {
-			registryAgents = append(registryAgents, agentReg.ListCompleted()...)
-		}
-
-		for _, a := range registryAgents {
-			if a.BeadsID != "" {
-				if !seenBeadsIDs[a.BeadsID] {
-					beadsIDsToFetch = append(beadsIDsToFetch, a.BeadsID)
-					seenBeadsIDs[a.BeadsID] = true
-				}
-				if a.ProjectDir != "" {
-					beadsProjectDirs[a.BeadsID] = a.ProjectDir
-				}
+	// Phase 1: Collect agents from workspace AGENT_MANIFEST.json files
+	// Workspace files are the source of truth for spawn-time metadata.
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+	if entries, err := os.ReadDir(workspaceDir); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() || entry.Name() == "archived" {
+				continue
 			}
 
-			// Unify into AgentInfo
+			wsPath := filepath.Join(workspaceDir, entry.Name())
+			manifest, err := spawn.ReadAgentManifest(wsPath)
+			if err != nil {
+				continue // Skip workspaces without manifest (pre-manifest or non-agent dirs)
+			}
+
+			sessionID := spawn.ReadSessionID(wsPath)
+
 			info := AgentInfo{
-				SessionID:  a.SessionID,
-				BeadsID:    a.BeadsID,
-				Mode:       a.Mode,
-				Model:      a.Model,
-				Skill:      a.Skill,
-				ProjectDir: a.ProjectDir,
-				Project:    extractProjectFromBeadsID(a.BeadsID),
+				SessionID:  sessionID,
+				BeadsID:    manifest.BeadsID,
+				Mode:       manifest.SpawnMode,
+				Model:      manifest.Model,
+				Skill:      manifest.Skill,
+				ProjectDir: manifest.ProjectDir,
+				Project:    extractProjectFromBeadsID(manifest.BeadsID),
 			}
 
-			// Mode-aware enrichment
-			if a.Mode == "claude" || a.Mode == "tmux" {
-				info.Window = a.TmuxWindow
-				info.Title = a.TmuxWindow // Default to window name
-
-				// Check if tmux window actually exists
-				windowExists := false
-				if a.TmuxWindow != "" {
-					if strings.HasPrefix(a.TmuxWindow, "@") {
-						windowExists = tmux.WindowExistsByID(a.TmuxWindow)
-					} else {
-						windowExists = tmux.WindowExists(a.TmuxWindow)
-					}
-				}
-
-				if !windowExists {
-					info.SessionID = "tmux-stalled"
-					info.Window = "" // Clear stale window reference so phantom detection works
-				}
-
-				// Even in claude mode, we might have an OpenCode session for tokens/processing
-				if a.SessionID != "" {
-					if s, ok := sessionMap[a.SessionID]; ok {
-						createdAt := time.Unix(s.Time.Created/1000, 0)
-						updatedAt := time.Unix(s.Time.Updated/1000, 0)
-						info.Runtime = formatDuration(now.Sub(createdAt))
-						info.LastActivity = updatedAt
-						info.IsProcessing = isSessionLikelyProcessing(client, s.ID, updatedAt, now)
-						if info.Title == "" || info.Title == a.TmuxWindow {
-							info.Title = s.Title
-						}
-					}
-				}
-			} else if a.Mode == "opencode" || a.Mode == "headless" {
-				if s, ok := sessionMap[a.SessionID]; ok {
+			// Enrich from OpenCode session if available
+			if sessionID != "" {
+				if s, ok := sessionMap[sessionID]; ok {
 					createdAt := time.Unix(s.Time.Created/1000, 0)
 					updatedAt := time.Unix(s.Time.Updated/1000, 0)
 					info.Runtime = formatDuration(now.Sub(createdAt))
@@ -328,7 +287,16 @@ func runStatus(serverURL string) error {
 				}
 			}
 
-			// Add to agents list
+			if manifest.BeadsID != "" {
+				if !seenBeadsIDs[manifest.BeadsID] {
+					beadsIDsToFetch = append(beadsIDsToFetch, manifest.BeadsID)
+					seenBeadsIDs[manifest.BeadsID] = true
+				}
+				if manifest.ProjectDir != "" {
+					beadsProjectDirs[manifest.BeadsID] = manifest.ProjectDir
+				}
+			}
+
 			agents = append(agents, info)
 		}
 	}
