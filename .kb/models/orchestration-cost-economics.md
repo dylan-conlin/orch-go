@@ -357,3 +357,11 @@ The $402 surprise proves: never use pay-per-token without cost tracking. Impleme
 
 ### Test Evidence
 - `.orch/workspace/og-inv-test-deepseek-v3-19jan-25d3/SYNTHESIS.md` - DeepSeek V3 function calling test
+
+**Primary Evidence (Verify These):**
+- Anthropic billing dashboard - Actual spend history showing $402 in ~2 weeks
+- `~/.anthropic/` - OAuth token storage showing Max subscription authentication
+- DeepSeek API documentation - Current pricing ($0.25/$0.38/MTok) and function calling status
+- `.kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md` - Economic decision
+- `pkg/spawn/backend.go` - Dual spawn path implementation (OpenCode API vs Claude CLI)
+- she-llac.com credit formula reverse engineering - Internal credit system documentation

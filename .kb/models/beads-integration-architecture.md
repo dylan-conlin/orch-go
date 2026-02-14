@@ -377,3 +377,11 @@ output, _ := cmd.Output()
 - `pkg/beads/id.go` - Beads ID parsing and project detection
 - `pkg/spawn/tracking.go` - Auto-tracking logic
 - `cmd/orch/spawn.go` - Spawn command with --no-track, --issue flags
+
+**Primary Evidence (Verify These):**
+- `pkg/beads/client.go` - RPC-first with CLI fallback pattern (NewClient showing connection attempt)
+- `pkg/beads/fallback.go` - exec.Command("bd") subprocess implementations for CLI fallback
+- `pkg/beads/lifecycle.go` - Three integration points (spawn/work/complete) with beads API calls
+- `~/.beads/daemon.sock` - Unix socket for RPC communication (when daemon running)
+- `cmd/orch/spawn.go` - Auto-tracking implementation with --no-track opt-out
+- `.beads/issues.jsonl` - Authoritative issue storage showing beads ID format

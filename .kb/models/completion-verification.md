@@ -376,3 +376,12 @@ To prevent knowledge loss at session end (**Capture at Context**), `orch complet
 - `pkg/verify/cross_project.go` - Project directory detection
 - `pkg/verify/escalation.go` - 5-tier escalation model
 - `cmd/orch/complete.go` - Complete command orchestration
+
+**Primary Evidence (Verify These):**
+- `pkg/verify/check.go:VerifyCompletionWithTier()` - Three-gate verification with tier-aware routing
+- `pkg/verify/phase.go` - Phase gate checking for "Phase: Complete" in beads comments
+- `pkg/verify/evidence.go` - Evidence gate requiring visual/test proof in comments
+- `pkg/verify/visual.go` - Approval gate for UI changes (web/ files detection)
+- `pkg/verify/escalation.go` - 5-tier escalation (investigation/architect/research surface for review)
+- `cmd/orch/complete.go` - Complete command showing targeted --skip-{gate} flags
+- `.beads/issues.jsonl` - Beads comments showing Phase: Complete signals

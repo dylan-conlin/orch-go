@@ -321,3 +321,15 @@ server.instance.disposed
 - Must not break upstream compatibility (fork may re-sync)
 - Session metadata schema must be generic (not orch-go-specific field names in OpenCode)
 - TTL cleanup must respect active prompts (don't delete mid-conversation)
+
+---
+
+## References
+
+**Primary Evidence (Verify These):**
+- `~/Documents/personal/opencode/packages/opencode/src/instance.ts` - Instance LRU/TTL eviction implementation (350 lines, custom)
+- `~/Documents/personal/opencode/packages/opencode/src/server.ts` - SSE cleanup with idempotent teardown
+- `~/Documents/personal/opencode/packages/opencode/src/session.ts` - Session storage and API implementation
+- `~/Documents/personal/opencode/packages/sdk/js/src/v2/client.ts` - ORCH_WORKER header forwarding
+- `~/Documents/personal/opencode/.git/` - Git history showing 13 custom commits ahead of upstream
+- `~/.local/share/opencode/storage/` - Session JSON file storage structure
