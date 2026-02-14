@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-implement-immutable-control-14feb-f64c",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-bzr",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "413f3ec09f72544052b12e1bac71fdd60782071e",
+  "spawn_time": "2026-02-14T12:34:47-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

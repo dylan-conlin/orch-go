@@ -184,7 +184,7 @@ func discoverSessionHandoff() (string, error) {
 	// Start from current directory
 	currentDir, err := os.Getwd()
 	if err != nil {
-		return "", fmt.Err("failed to get current directory: %w", err)
+		return "", fmt.Errorf("failed to get current directory: %w", err)
 	}
 
 	// Walk up directory tree
