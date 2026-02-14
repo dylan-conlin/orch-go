@@ -37,3 +37,31 @@ export function computeAgentHealth(wipItem: WIPItem): 'healthy' | 'warning' | 'e
 	console.warn('computeAgentHealth: not implemented, returning healthy');
 	return 'healthy';
 }
+
+/**
+ * Get context usage percent for agent
+ * Stub implementation - returns 0 for now
+ */
+export function getContextPercent(agent: any): number {
+	// TODO: Implement actual context percent calculation
+	return 0;
+}
+
+/**
+ * Get context usage color based on percent
+ * Stub implementation - returns 'green' for now
+ */
+export function getContextColor(percent: number): string {
+	if (percent < 60) return 'text-green-600';
+	if (percent < 80) return 'text-yellow-600';
+	return 'text-red-600';
+}
+
+/**
+ * Get expressive status string for agent
+ * Stub implementation - returns empty string for now
+ */
+export function getExpressiveStatus(agent: any): string {
+	// TODO: Implement actual expressive status generation
+	return '';
+}
