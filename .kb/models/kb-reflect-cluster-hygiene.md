@@ -1,8 +1,8 @@
 # Model: kb reflect Cluster Hygiene
 
 **Domain:** Knowledge system maintenance / synthesis triage
-**Last Updated:** 2026-02-08
-**Synthesized From:** Top synthesis clusters (`feature`, `agents`, `quick`) and their archived investigations
+**Last Updated:** 2026-02-14
+**Synthesized From:** Top synthesis clusters (`feature`, `agents`, `quick`) and 10 synthesis investigations (Jan-Feb 2026)
 
 ---
 
@@ -69,6 +69,20 @@ Quick fact lookups become full investigations, increasing maintenance burden wit
 
 Archived files without clear `Superseded-By` pointers remain discoverable but ambiguous, causing repeated re-triage.
 
+### Failure Mode 5: Scans archived/synthesized directories
+
+kb reflect scans `.kb/investigations/archived/` and `.kb/investigations/synthesized/` directories, creating false positives for already-processed clusters.
+
+**Evidence:** Extract synthesis (Jan 17) moved 14 investigations to `synthesized/code-extraction-patterns/`, but kb reflect still reported "13 investigations need synthesis" by scanning the synthesized directory.
+
+**Impact:** Agents repeatedly triage and investigate the same clusters thinking they need synthesis, when they've already been consolidated into guides.
+
+**Workaround:** Manually verify guide completeness and ignore kb reflect output for topics with synthesized/ or archived/ directories.
+
+**Fix needed:** kb-cli synthesis detection should exclude `.kb/investigations/archived/` and `.kb/investigations/synthesized/` from scanning.
+
+**Source:** `2026-01-17-inv-synthesize-extract-investigation-cluster-13.md:59-69`, `2026-02-14-inv-synthesize-synthesize-investigations-10-synthesis.md`
+
 ---
 
 ## Constraints
@@ -96,6 +110,8 @@ Archived files without clear `Superseded-By` pointers remain discoverable but am
 ## Evolution
 
 **2026-02-08:** Top-cluster consolidation codified as a triage model with converge/split/demote routing and closure normalization.
+
+**2026-02-14:** Added Failure Mode 5 (scans archived/synthesized directories) discovered from synthesis investigations analysis. kb reflect needs to exclude these directories to prevent false positives for already-processed clusters.
 
 ---
 
