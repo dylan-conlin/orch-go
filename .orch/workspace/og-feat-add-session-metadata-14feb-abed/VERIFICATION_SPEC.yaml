@@ -1,0 +1,72 @@
+verification:
+  description: "Verify session metadata API implementation in OpenCode and orch-go"
+  
+  build_checks:
+    - command: "cd ~/Documents/personal/opencode/packages/opencode && npx tsc --noEmit"
+      expectation: "No TypeScript compilation errors"
+      status: "✅ PASSED"
+    
+    - command: "cd /Users/dylanconlin/Documents/personal/orch-go && go build ./pkg/opencode/..."
+      expectation: "No Go compilation errors in opencode package"
+      status: "✅ PASSED"
+    
+    - command: "cd /Users/dylanconlin/Documents/personal/orch-go && go build ./cmd/orch"
+      expectation: "No Go compilation errors in orch command"
+      status: "✅ PASSED"
+  
+  code_changes:
+    opencode:
+      - file: "packages/opencode/src/session/session.sql.ts"
+        change: "Added metadata column to SessionTable with JSON mode"
+      
+      - file: "packages/opencode/src/session/index.ts"
+        changes:
+          - "Added metadata?: Record<string, string> to Session.Info Zod schema"
+          - "Added metadata mapping in fromRow and toRow functions"
+          - "Added metadata to Session.create.schema"
+          - "Created Session.setMetadata function"
+      
+      - file: "packages/opencode/src/server/routes/session.ts"
+        changes:
+          - "Added metadata to POST /session validator"
+          - "Added metadata to PATCH /session/:id validator"
+          - "Added metadata handling in PATCH endpoint logic"
+    
+    orch-go:
+      - file: "pkg/opencode/client.go"
+        changes:
+          - "Added Metadata field to CreateSessionRequest struct"
+          - "Updated CreateSession signature to accept metadata map"
+          - "Pass metadata in request payload"
+      
+      - file: "pkg/spawn/backends/headless.go"
+        change: "Build and pass metadata map (beads_id, workspace_path, tier, spawn_mode)"
+      
+      - file: "cmd/orch/spawn_cmd.go"
+        change: "Build and pass metadata map in inline spawn"
+      
+      - file: "cmd/orch/kb.go"
+        change: "Pass nil metadata for kb ask sessions (no tracking)"
+      
+      - file: "pkg/opencode/client_test.go"
+        change: "Updated test calls to pass nil metadata"
+  
+  commits:
+    - repo: "opencode"
+      hash: "36f084ca5"
+      message: "feat: add optional metadata field to Session.Info schema"
+    
+    - repo: "orch-go"
+      hash: "e10a1df3"
+      message: "feat: wire session metadata to OpenCode API"
+  
+  manual_verification_needed:
+    - "Create a new session via OpenCode API with metadata and verify it's persisted"
+    - "Retrieve the session and verify metadata is returned"
+    - "Update session metadata via PATCH endpoint and verify changes"
+    - "Spawn an agent via orch and verify metadata is set (requires OpenCode rebuild + restart)"
+  
+  notes:
+    - "Both repositories compile successfully"
+    - "No runtime testing performed (requires OpenCode rebuild and server restart)"
+    - "Integration test would verify metadata flows from orch-go spawn to OpenCode session storage"
