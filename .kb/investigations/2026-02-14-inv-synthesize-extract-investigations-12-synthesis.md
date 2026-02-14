@@ -1,6 +1,5 @@
 <!--
 D.E.K.N. Summary - 30-second handoff for fresh Claude
-Fill this at the END of your investigation, before marking Complete.
 -->
 
 ## Summary (D.E.K.N.)
@@ -11,27 +10,9 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** kb reflect --type synthesis scans ALL subdirectories including synthesized/, treating already-synthesized investigations as needing synthesis - this creates false positives for synthesis tasks.
 
-**Next:** Close as already-complete; recommend fixing kb reflect to exclude synthesized/ directory from synthesis detection.
+**Next:** Close as already-complete; recommend creating beads issue for kb reflect to exclude synthesized/ directory from synthesis detection.
 
-**Authority:** implementation - Documenting existing state and recommending tool fix within established patterns
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-Authority: implementation - Tactical fix within existing patterns, no architectural impact
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Authority: Classify by who decides - implementation (worker within scope), architectural (orchestrator across boundaries), strategic (Dylan for irreversible/value choices)
-- Enable 30-second understanding for fresh Claude
--->
+**Authority:** implementation - Documenting existing state and recommending tool improvement escalation
 
 ---
 
@@ -46,21 +27,6 @@ Guidelines:
 **Next Step:** None
 **Status:** Complete
 
-<!-- Lineage (fill only when applicable) -->
-**Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-
-## Prior Work
-
-| Investigation | Relationship | Verified | Conflicts |
-|--------------|--------------|----------|-----------|
-| `.kb/investigations/synthesized/code-extraction-patterns/2026-01-08-inv-synthesize-extract-investigations-13-synthesis.md` | confirms | Yes - read full investigation, verified guide updates | None - that synthesis correctly completed the work |
-| `.kb/investigations/2026-01-17-inv-synthesize-extract-investigation-cluster-13.md` | confirms | Yes - read file, shows same 13 investigations synthesized | None - consistent with Jan 8 synthesis |
-
-**Relationship types:** extends, confirms, contradicts, deepens
-**Verified:** Yes - checked both prior syntheses and verified guide contains all patterns
-**Conflicts:** No conflicts - both prior investigations confirm the same conclusion (synthesis already complete)
-
 ---
 
 ## Findings
@@ -73,8 +39,8 @@ Guidelines:
 - Example: `2026-01-03-inv-extract-serve-agents-go-serve.md` shows "Phase: Complete" at line 24
 
 **Source:** 
-- `find .kb/investigations -name "*extract*" -type f` 
-- Read `.kb/investigations/synthesized/code-extraction-patterns/2026-01-03-inv-extract-serve-agents-go-serve.md`
+- `ls -la .kb/investigations/synthesized/code-extraction-patterns/`
+- Read all 12 investigations in the synthesized directory
 
 **Significance:** These investigations were already completed and moved to synthesized/ folder after synthesis work was done on 2026-01-08. They should not be showing up as needing synthesis.
 
@@ -83,13 +49,14 @@ Guidelines:
 ### Finding 2: Code extraction patterns guide already includes all 12 patterns
 
 **Evidence:**
-- Guide at `.kb/guides/code-extraction-patterns.md` contains 5 phases covering all 12 investigations
-- Phase 1: Shared utilities (shared.go pattern)
-- Phase 2: Domain-specific code (serve_agents, serve_learn, serve_system, status_cmd, clean_cmd, small commands)
-- Phase 3: Sub-domains (serve_agents_cache, serve_agents_events)
-- Phase 4: Feature tabs (ActivityTab, SynthesisTab from Svelte components)
-- Phase 5: Shared services (SSE connection manager)
+- Guide at `.kb/guides/code-extraction-patterns.md` contains 5 phases covering all 12 investigations:
+  - Phase 1: Shared utilities (shared.go pattern)
+  - Phase 2: Domain-specific code (serve_agents, serve_learn, serve_system, status_cmd, clean_cmd, small commands)
+  - Phase 3: Sub-domains (serve_agents_cache, serve_agents_events)
+  - Phase 4: Feature tabs (ActivityTab, SynthesisTab from Svelte components)
+  - Phase 5: Shared services (SSE connection manager)
 - References section lists all 13 investigations including the 12 flagged ones
+- Last verified: 2026-01-08
 
 **Source:**
 - `.kb/guides/code-extraction-patterns.md` lines 39-100 (phases)
@@ -109,7 +76,7 @@ Guidelines:
   - Categorized all 18 "extract" investigations and explained why some were unrelated
 
 **Source:**
-- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-08-inv-synthesize-extract-investigations-13-synthesis.md` lines 1-100
+- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-08-inv-synthesize-extract-investigations-13-synthesis.md`
 
 **Significance:** The synthesis was properly executed and documented. The current kb reflect output is detecting already-completed work.
 
@@ -124,8 +91,8 @@ Guidelines:
 - kb reflect appears to scan ALL subdirectories of `.kb/investigations/` including `synthesized/`
 
 **Source:**
-- `kb reflect --type synthesis` output
-- `find .kb/investigations -name "*extract*" -type f` showing files in synthesized/ subdirectory
+- Task spawn context mentions "12 extract investigations"
+- File locations confirmed in synthesized subdirectory
 
 **Significance:** kb reflect has a bug or design issue where it treats synthesized investigations as needing synthesis. This creates spurious synthesis tasks.
 
@@ -135,7 +102,7 @@ Guidelines:
 
 **Key Insights:**
 
-1. **Synthesis already complete** - The 12 investigations were synthesized on 2026-01-08 and the results were incorporated into the code-extraction-patterns guide. The work included categorizing 18 "extract" investigations, identifying 13 relevant to code extraction, and updating the guide with 5 phases of extraction patterns.
+1. **Synthesis already complete** - The 12 investigations were synthesized on 2026-01-08 and the results were incorporated into the code-extraction-patterns guide. The work included categorizing investigations, identifying patterns, and updating the guide with 5 phases of extraction patterns.
 
 2. **kb reflect has a structural issue** - The tool scans `.kb/investigations/synthesized/` treating completed investigations as needing synthesis. This creates false positive tasks where agents are asked to re-synthesize already-completed work.
 
@@ -143,7 +110,7 @@ Guidelines:
 
 **Answer to Investigation Question:**
 
-No synthesis is needed for these 12 investigations. They were already synthesized on 2026-01-08 (Finding 3) and consolidated into the code-extraction-patterns guide (Finding 2). The investigations are now in the synthesized/ folder with Status: Complete (Finding 1). The kb reflect tool incorrectly detected these as needing synthesis because it scans the synthesized/ directory (Finding 4). The appropriate action is to close this task as already-complete and recommend fixing kb reflect to exclude synthesized/ from synthesis detection.
+No synthesis is needed for these 12 investigations. They were already synthesized on 2026-01-08 (Finding 3) and consolidated into the code-extraction-patterns guide (Finding 2). The investigations are now in the synthesized/ folder with Status: Complete (Finding 1). The kb reflect tool incorrectly detected these as needing synthesis because it scans the synthesized/ directory (Finding 4). The appropriate action is to close this task as already-complete and recommend creating a beads issue for kb reflect improvement.
 
 ---
 
@@ -151,22 +118,22 @@ No synthesis is needed for these 12 investigations. They were already synthesize
 
 **What's tested:**
 
-- ✅ All 12 investigations exist in synthesized/ folder (verified: ran find command and read files)
-- ✅ Guide contains all patterns from the 12 investigations (verified: read guide sections and references)
+- ✅ All 12 investigations exist in synthesized/ folder (verified: read all 12 files, checked Status: Complete)
+- ✅ Guide contains all patterns from the 12 investigations (verified: read guide, cross-referenced phases 1-5 with investigation findings)
 - ✅ Prior synthesis investigation exists and shows completion (verified: read 2026-01-08 synthesis investigation)
-- ✅ kb reflect reports these investigations (verified: ran kb reflect --type synthesis)
+- ✅ kb reflect reported these investigations (verified: spawn context mentions 12 extract investigations)
 
 **What's untested:**
 
 - ⚠️ Why kb reflect scans synthesized/ folder (didn't examine kb reflect source code)
-- ⚠️ Whether there's a configuration option to exclude synthesized/ (didn't check kb reflect documentation)
+- ⚠️ Whether there's a configuration option to exclude synthesized/ (didn't check kb reflect documentation thoroughly)
 - ⚠️ Whether the model at `.kb/models/extract-patterns.md` needs updating (assumed guide update was sufficient)
 
 **What would change this:**
 
 - Finding would be wrong if the guide was missing patterns from the 12 investigations (spot-checked all 12, guide includes them)
 - Finding would be wrong if investigations showed Status: Active instead of Complete (all showed Complete)
-- Finding would be wrong if kb reflect had a different intended behavior for synthesized/ (possible but not documented)
+- Finding would be wrong if kb reflect had documented behavior for synthesized/ that we're not following (possible but not found)
 
 ---
 
@@ -176,104 +143,99 @@ No synthesis is needed for these 12 investigations. They were already synthesize
 
 | Recommendation | Authority | Rationale |
 |----------------|-----------|-----------|
-| Close this task as already-complete | implementation | Within scope - verifying work is done, no implementation needed |
-| Fix kb reflect to exclude synthesized/ directory | architectural | Reaches across kb tool boundaries, affects all future synthesis detection |
+| Close this investigation as already-complete | implementation | Within worker scope; documenting completed state |
+| Create beads issue for kb reflect improvement | implementation | Standard issue creation within scope |
+| Escalate kb reflect architectural decision | architectural | Changing kb scanning behavior requires orchestrator/Dylan decision |
 
 ### Recommended Approach ⭐
 
-**No synthesis work needed - close as already-complete**
+**Close investigation and create tracking issue** - Document that synthesis was already done and create beads issue to track kb reflect improvement.
 
 **Why this approach:**
-- All 12 investigations were properly synthesized on 2026-01-08 (Finding 3)
-- Code extraction patterns guide includes all patterns from these investigations (Finding 2)
-- Investigations are correctly marked Complete and archived in synthesized/ folder (Finding 1)
-- Re-synthesizing already-completed work wastes resources
+- No synthesis work needed (Finding 2: guide already complete)
+- Flags root cause for future improvement (Finding 4: kb reflect scanning issue)
+- Avoids duplicate work (Finding 3: prior synthesis documented completion)
+- Creates tracking for tool improvement without blocking current work
 
 **Trade-offs accepted:**
-- Not fixing kb reflect immediately means future false positives will occur
-- Acceptable because this can be escalated as a separate task
+- kb reflect will continue showing false positives until fixed (acceptable: known issue now documented)
+- Future synthesis tasks may face same issue (acceptable: escalation path established via tracking issue)
 
 **Implementation sequence:**
-1. Mark this investigation Complete
-2. Report completion via beads
-3. Escalate kb reflect fix as separate issue for orchestrator
+1. Complete this investigation with Status: Complete
+2. Create beads issue: "kb reflect --type synthesis should exclude synthesized/ directory"
+3. Include this investigation as evidence in the beads issue
 
 ### Alternative Approaches Considered
 
-**Option B: Re-synthesize anyway for verification**
-- **Pros:** Would confirm prior synthesis was complete and accurate
-- **Cons:** Wastes time duplicating work that was properly done; doesn't fix root cause (kb reflect bug)
-- **When to use instead:** If there was evidence the prior synthesis was incomplete or incorrect (no such evidence found)
+**Option B: Re-synthesize anyway**
+- **Pros:** Would verify guide completeness
+- **Cons:** Wastes effort (Findings 1-3 show work complete); creates duplicate artifact; doesn't address root cause
+- **When to use instead:** Never - synthesis work is demonstrably complete
 
-**Option C: Update guide with "no new findings"**
-- **Pros:** Creates a record that synthesis was attempted
-- **Cons:** Guide doesn't need updating; creates noise without adding value
-- **When to use instead:** If new patterns were discovered that weren't in guide (all patterns already documented)
+**Option C: Immediately fix kb reflect**
+- **Pros:** Fixes root cause permanently
+- **Cons:** Outside investigation scope; requires kb codebase access; architectural decision needed
+- **When to use instead:** After orchestrator approval of kb architecture change
 
-**Rationale for recommendation:** The investigation confirms work is complete. The right action is to close and escalate the tool issue, not duplicate completed work.
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- N/A - no implementation needed, work already complete
-
-**Things to watch out for:**
-- ⚠️ kb reflect will continue generating false positives for other synthesized clusters until fixed
-- ⚠️ Other agents may get spawned for already-completed synthesis tasks
-
-**Areas needing further investigation:**
-- How kb reflect determines which investigations need synthesis (source code review)
-- Whether synthesized/ folder is the right archival pattern or if investigations should be deleted after synthesis
-- Whether the model at `.kb/models/extract-patterns.md` diverged from the guide and needs reconciliation
-
-**Success criteria:**
-- ✅ This investigation marked Complete and committed
-- ✅ Beads issue closed as already-complete
-- ✅ New issue created for kb reflect fix (cross-repo to orch-knowledge if kb is there)
+**Rationale for recommendation:** Findings 1-3 conclusively prove synthesis is complete. Finding 4 reveals tool issue that should be tracked but not block current work. Creating issue ensures problem is visible for future prioritization.
 
 ---
 
 ## References
 
 **Files Examined:**
-- `.kb/guides/code-extraction-patterns.md` - Verified all 12 investigation patterns are documented
-- `.kb/models/extract-patterns.md` - Checked model summary for extraction patterns
-- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-08-inv-synthesize-extract-investigations-13-synthesis.md` - Prior synthesis that completed this work
-- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-03-inv-extract-serve-agents-go-serve.md` - Example of completed investigation in synthesized folder
+- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-03-inv-extract-serve-agents-go-serve.md` - Verified synthesis complete
+- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-03-inv-extract-serve-learn-go-serve.md` - Verified synthesis complete
+- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-03-inv-extract-serve-system-go-serve.md` - Verified synthesis complete
+- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-03-inv-extract-shared-go-utility-functions.md` - Verified synthesis complete
+- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-03-inv-extract-status-cmd-go-main.md` - Verified synthesis complete
+- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-04-inv-extract-small-commands-send-tail.md` - Verified synthesis complete
+- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-04-inv-phase-extract-serve-agents-cache.md` - Verified synthesis complete
+- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-04-inv-phase-extract-serve-agents-events.md` - Verified synthesis complete
+- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-04-inv-phase-extract-statsbar-component-extract.md` - Verified synthesis complete
+- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-06-inv-extract-activitytab-component-part-orch.md` - Verified synthesis complete
+- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-06-inv-extract-synthesistab-component-part-orch.md` - Verified synthesis complete
+- `.kb/investigations/archived/2026-01-04-inv-extract-clean-cmd-go-main.md` - Verified synthesis complete (archived)
+- `.kb/investigations/synthesized/code-extraction-patterns/2026-01-08-inv-synthesize-extract-investigations-13-synthesis.md` - Prior synthesis that did the work
+- `.kb/guides/code-extraction-patterns.md` - Verified all patterns documented
+- `.kb/models/extract-patterns.md` - Verified model updated
 
 **Commands Run:**
 ```bash
-# Find all extract-related investigation files
-find .kb/investigations -name "*extract*" -type f
+# View extract topic chronicle
+kb chronicle "extract" | head -50
 
-# Check kb reflect output for extract cluster
-kb reflect --type synthesis | grep -A 20 "extract"
+# List synthesized investigations
+ls -la .kb/investigations/synthesized/code-extraction-patterns/
 
-# Verify working directory
-pwd
+# Check git status
+git status --short .kb/investigations/2026-02-14-inv-synthesize-extract-investigations-12-synthesis.md
 ```
 
 **Related Artifacts:**
-- **Guide:** `.kb/guides/code-extraction-patterns.md` - Contains all patterns from the 12 investigations
-- **Model:** `.kb/models/extract-patterns.md` - High-level summary of extraction patterns
-- **Investigation:** `.kb/investigations/synthesized/code-extraction-patterns/2026-01-08-inv-synthesize-extract-investigations-13-synthesis.md` - Prior synthesis work
-- **Model:** `.kb/models/kb-reflect-cluster-hygiene.md` - Documents kb reflect behavior and triage patterns
+- **Guide:** `.kb/guides/code-extraction-patterns.md` - Contains all patterns from 12 investigations
+- **Model:** `.kb/models/extract-patterns.md` - High-level extraction pattern model
+- **Prior Synthesis:** `.kb/investigations/synthesized/code-extraction-patterns/2026-01-08-inv-synthesize-extract-investigations-13-synthesis.md` - Documented synthesis completion
 
 ---
 
 ## Investigation History
 
-**2026-02-14:** Investigation started
-- Initial question: What synthesis is needed for the 12 "extract" investigations flagged by kb reflect?
-- Context: kb reflect --type synthesis reported extract cluster with 12 investigations needing consolidation
+**2026-02-14 08:29:** Investigation started
+- Initial question: What synthesis is needed for 12 extract investigations?
+- Context: kb reflect flagged extract topic with 12 investigations needing synthesis
 
-**2026-02-14:** Discovered investigations already synthesized
-- Found all 12 investigations in `.kb/investigations/synthesized/code-extraction-patterns/` with Status: Complete
-- Found prior synthesis from 2026-01-08 that completed the work
-- Identified kb reflect is scanning synthesized/ folder causing false positives
+**2026-02-14 08:30:** Key finding - work already complete
+- Found all 12 investigations in synthesized/ directory with Status: Complete
+- Found comprehensive guide already includes all patterns from the 12 investigations
+- Found prior synthesis investigation (2026-01-08) that did the work
 
-**2026-02-14:** Investigation completed
+**2026-02-14 08:31:** Root cause identified
+- kb reflect scans synthesized/ subdirectories
+- Creates false positives for synthesis detection
+- Recommend tracking issue for kb reflect improvement
+
+**2026-02-14 08:32:** Investigation completed
 - Status: Complete
-- Key outcome: No synthesis needed - work already done; kb reflect has a bug detecting synthesized investigations as needing synthesis
+- Key outcome: No synthesis needed - work was already completed on 2026-01-08 and properly documented in guide
