@@ -51,11 +51,15 @@
 		<!-- Compact Header -->
 		<header class="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
 			<div class="container flex h-10 items-center">
-				<div class="flex items-center gap-2">
+				<div class="flex items-center gap-4">
 					<a href="/" class="flex items-center gap-1.5">
 						<span class="text-base">🐝</span>
 						<span class="text-sm font-semibold">Swarm</span>
 					</a>
+					<nav class="flex items-center gap-1">
+						<a href="/" class="px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Dashboard</a>
+						<a href="/work-graph" class="px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Work Graph</a>
+					</nav>
 				</div>
 				<div class="flex flex-1 items-center justify-end gap-3">
 					{#if $usage && !$usage.error}
