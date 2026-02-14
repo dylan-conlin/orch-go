@@ -69,12 +69,42 @@ Displays:
 		if cfg != nil {
 			fmt.Println("Thresholds:")
 
-			// Commits per day
-			if cfg.MaxCommitsPerDay > 0 {
-				fmt.Printf("  Commits/day:     %d", cfg.MaxCommitsPerDay)
+			// Rolling average
+			if cfg.RollingAvgHalt > 0 {
+				fmt.Printf("  Rolling avg:     warn=%d halt=%d (%dd window)",
+					cfg.RollingAvgWarn, cfg.RollingAvgHalt, cfg.RollingWindowDays)
+				if status.RollingDays > 0 {
+					fmt.Printf(" (current: %d/day over %dd)", status.RollingAvg, status.RollingDays)
+					if status.RollingAvg >= cfg.RollingAvgHalt {
+						fmt.Print(" ← EXCEEDED")
+					} else if status.RollingAvg >= cfg.RollingAvgWarn {
+						fmt.Print(" ← WARNING")
+					}
+				}
+				fmt.Println()
+			}
+
+			// Unverified velocity
+			if cfg.MaxUnverifiedDays > 0 {
+				fmt.Printf("  Unverified:      halt after %dd without ack (if commits/day > %d)",
+					cfg.MaxUnverifiedDays, cfg.UnverifiedDailyMin)
+				if status.HeartbeatAge >= 0 {
+					fmt.Printf(" (heartbeat: %dd ago)", status.HeartbeatAge)
+					if status.HeartbeatAge >= cfg.MaxUnverifiedDays && status.CommitsToday >= cfg.UnverifiedDailyMin {
+						fmt.Print(" ← EXCEEDED")
+					}
+				} else {
+					fmt.Print(" (no heartbeat — run 'orch control ack')")
+				}
+				fmt.Println()
+			}
+
+			// Hard cap
+			if cfg.DailyHardCap > 0 {
+				fmt.Printf("  Hard cap:        %d/day", cfg.DailyHardCap)
 				if status.MetricsExist {
 					fmt.Printf(" (current: %d)", status.CommitsToday)
-					if status.CommitsToday >= cfg.MaxCommitsPerDay {
+					if status.CommitsToday >= cfg.DailyHardCap {
 						fmt.Print(" ← EXCEEDED")
 					}
 				}
@@ -106,6 +136,14 @@ Displays:
 		if status.MetricsExist {
 			fmt.Println("Today's Metrics:")
 			fmt.Printf("  Commits: %d\n", status.CommitsToday)
+			if status.RollingDays > 0 {
+				fmt.Printf("  Rolling avg: %d/day (%dd)\n", status.RollingAvg, status.RollingDays)
+			}
+			if status.HeartbeatAge >= 0 {
+				fmt.Printf("  Heartbeat: %dd ago\n", status.HeartbeatAge)
+			} else {
+				fmt.Println("  Heartbeat: never (run 'orch control ack')")
+			}
 
 			if len(status.Violations) > 0 {
 				fmt.Printf("  Protected path violations: %d\n", len(status.Violations))
@@ -159,12 +197,57 @@ This command also displays current metrics as confirmation.`,
 			fmt.Println()
 		}
 
-		// Clear halt
+		// Clear halt and touch heartbeat
 		if err := control.ClearHalt(); err != nil {
 			return fmt.Errorf("failed to clear halt: %w", err)
 		}
+		if err := control.Ack(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to touch heartbeat: %v\n", err)
+		}
 
-		fmt.Println("✓ Halt cleared. Daemon will resume on next poll cycle (within 60s).")
+		fmt.Println("✓ Halt cleared + heartbeat refreshed. Daemon will resume on next poll cycle (within 60s).")
+		return nil
+	},
+}
+
+var controlAckCmd = &cobra.Command{
+	Use:   "ack",
+	Short: "Acknowledge system health (touch heartbeat)",
+	Long: `Touch the heartbeat file to signal that a human is actively monitoring.
+
+The control plane tracks how long since the last human acknowledgment.
+If agents continue committing without human ack for MAX_UNVERIFIED_DAYS
+(default: 2 days), and daily commits exceed UNVERIFIED_DAILY_MIN
+(default: 15), the circuit breaker halts the daemon.
+
+Run this periodically when the system is operating normally:
+  orch control ack
+
+The 'resume' command also implicitly acks.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := control.Ack(); err != nil {
+			return fmt.Errorf("failed to ack: %w", err)
+		}
+
+		fmt.Println("✓ Heartbeat refreshed.")
+		fmt.Println()
+
+		// Show current metrics
+		status, err := control.Status()
+		if err != nil {
+			return nil // ack succeeded, status is nice-to-have
+		}
+
+		if status.MetricsExist {
+			fmt.Printf("  Commits today: %d\n", status.CommitsToday)
+			if status.RollingDays > 0 {
+				fmt.Printf("  Rolling avg: %d/day (%dd)\n", status.RollingAvg, status.RollingDays)
+			}
+			if status.FixFeatRatio != "" {
+				fmt.Printf("  Fix:feat ratio: %s\n", status.FixFeatRatio)
+			}
+		}
+
 		return nil
 	},
 }
@@ -172,44 +255,40 @@ This command also displays current metrics as confirmation.`,
 var controlInitCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Create default control-plane.conf",
-	Long: `Create ~/.orch/control-plane.conf with default thresholds.
+	Long: `Create ~/.orch/control-plane.conf with v2 defaults.
 
-Default configuration:
-- MAX_COMMITS_PER_DAY=20
+Three-layer circuit breaker:
+1. Rolling average:  warn at 50/day, halt at 70/day (3-day window)
+2. Unverified velocity: halt after 2 days without 'orch control ack' + >15 commits/day
+3. Hard cap: 150 commits/day absolute maximum
+
+Other thresholds:
 - FIX_FEAT_RATIO_THRESHOLD=50 (0.5:1 fix:feat)
-- CHURN_RATIO_THRESHOLD=200 (2:1 created+deleted/net)
 - PROTECTED_PATHS="cmd/orch/ pkg/daemon/ pkg/spawn/ pkg/verify/ plugins/"
-- COOLDOWN_MINUTES=30
 
-After creating the config, you must install the post-commit hook manually:
-
-Add this line to .git/hooks/post-commit:
-  [ -x "$HOME/.orch/hooks/control-plane-post-commit.sh" ] && "$HOME/.orch/hooks/control-plane-post-commit.sh" || true
-
-Then create the hook script:
-  cp ~/.orch/templates/control-plane-post-commit.sh ~/.orch/hooks/
-  chmod +x ~/.orch/hooks/control-plane-post-commit.sh`,
+After creating the config, install the post-commit hook:
+  [ -x "$HOME/.orch/hooks/control-plane-post-commit.sh" ] && "$HOME/.orch/hooks/control-plane-post-commit.sh" || true`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Check if already exists
 		if _, err := os.Stat(control.ConfigPath); err == nil {
 			return fmt.Errorf("config already exists: %s", control.ConfigPath)
 		}
 
-		// Create config
 		if err := control.InitConfig(); err != nil {
 			return err
 		}
 
 		fmt.Printf("✓ Created: %s\n", control.ConfigPath)
 		fmt.Println()
-		fmt.Println("Default thresholds:")
-		fmt.Println("  MAX_COMMITS_PER_DAY=20")
-		fmt.Println("  FIX_FEAT_RATIO_THRESHOLD=50")
-		fmt.Println("  PROTECTED_PATHS=\"cmd/orch/ pkg/daemon/ pkg/spawn/ pkg/verify/ plugins/\"")
+		fmt.Println("Default thresholds (v2):")
+		fmt.Println("  Rolling avg:     warn=50 halt=70 (3-day window)")
+		fmt.Println("  Unverified:      halt after 2d without ack + >15 commits/day")
+		fmt.Println("  Hard cap:        150/day")
+		fmt.Println("  Fix:feat ratio:  50%")
 		fmt.Println()
 		fmt.Println("Next steps:")
 		fmt.Println("1. Review and adjust thresholds in the config file")
 		fmt.Println("2. Install the post-commit hook (see 'orch control init --help')")
+		fmt.Println("3. Run 'orch control ack' to initialize heartbeat")
 
 		return nil
 	},
@@ -218,5 +297,6 @@ Then create the hook script:
 func init() {
 	controlCmd.AddCommand(controlStatusCmd)
 	controlCmd.AddCommand(controlResumeCmd)
+	controlCmd.AddCommand(controlAckCmd)
 	controlCmd.AddCommand(controlInitCmd)
 }

@@ -1,0 +1,66 @@
+name: Control Plane Circuit Breaker Heuristics v2
+type: architect
+investigation: .kb/investigations/2026-02-14-design-control-plane-heuristics.md
+
+verification:
+  build:
+    command: go build ./cmd/orch/
+    expected: exit 0
+    result: PASS
+
+  vet:
+    command: go vet ./cmd/orch/ ./pkg/control/
+    expected: exit 0
+    result: PASS
+
+  shell_syntax:
+    command: bash -n ~/.orch/hooks/control-plane-post-commit.sh
+    expected: exit 0
+    result: PASS
+
+  control_status:
+    command: go run ./cmd/orch/ control status
+    expected: |
+      Shows three-layer thresholds (rolling avg, unverified, hard cap)
+      Shows heartbeat age
+      Shows rolling average with window
+    result: PASS
+
+  control_ack:
+    command: go run ./cmd/orch/ control ack
+    expected: |
+      Creates/updates ~/.orch/heartbeat
+      Shows current metrics
+    result: PASS
+
+  control_resume:
+    command: go run ./cmd/orch/ control resume
+    expected: |
+      Clears halt + refreshes heartbeat
+      Shows "heartbeat refreshed" in output
+    result: PASS
+
+  backward_compat:
+    description: MAX_COMMITS_PER_DAY in config is used as DAILY_HARD_CAP alias
+    verified: manually (config parsing code + shell script both handle fallback)
+    result: PASS
+
+scenario_validation:
+  burst_day_with_human:
+    pattern: 61 commits, heartbeat fresh
+    expected: warn on rolling avg (if sustained), no halt
+    result: Correctly warned on rolling avg, no halt due to heartbeat
+
+  entropy_spiral:
+    pattern: 45/day sustained, no heartbeat
+    expected: halt by day 2-3 via unverified velocity
+    result: Would halt (heartbeat stale >2d + commits >15)
+
+  runaway:
+    pattern: 200 commits in one day
+    expected: halt via hard cap at 150
+    result: Would halt
+
+manual_steps:
+  - Run 'orch control ack' after deploying to initialize heartbeat
+  - Verify post-commit hook is symlinked/sourced from .git/hooks/post-commit

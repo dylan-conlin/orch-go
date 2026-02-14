@@ -22,17 +22,39 @@ var (
 	// HaltPath is the halt sentinel file
 	HaltPath = filepath.Join(ControlDir, "halt")
 
+	// HeartbeatPath is the human acknowledgment file
+	HeartbeatPath = filepath.Join(ControlDir, "heartbeat")
+
 	// MetricsDir is where metrics logs are stored
 	MetricsDir = filepath.Join(ControlDir, "metrics")
 )
 
 // Config represents control plane configuration
 type Config struct {
-	MaxCommitsPerDay      int
+	// v2: Rolling window (replaces MaxCommitsPerDay as primary signal)
+	RollingWindowDays int
+	RollingAvgWarn    int
+	RollingAvgHalt    int
+
+	// v2: Human verification
+	MaxUnverifiedDays  int
+	UnverifiedDailyMin int
+
+	// v2: Emergency brake (replaces MaxCommitsPerDay)
+	DailyHardCap int
+
+	// Legacy (backward compat: used as DailyHardCap if new var not set)
+	MaxCommitsPerDay int
+
+	// Quality signals
 	FixFeatRatioThreshold int
 	ChurnRatioThreshold   int
-	ProtectedPaths        []string
-	CooldownMinutes       int
+
+	// Protected paths
+	ProtectedPaths []string
+
+	// Cooldown
+	CooldownMinutes int
 }
 
 // HaltInfo represents halt sentinel data
@@ -49,6 +71,9 @@ type StatusInfo struct {
 	Halted       bool
 	HaltInfo     *HaltInfo
 	CommitsToday int
+	RollingAvg   int
+	RollingDays  int
+	HeartbeatAge int // days since last human ack (-1 if no heartbeat)
 	Violations   []string
 	FixFeatRatio string
 	MetricsExist bool
@@ -97,7 +122,14 @@ func LoadConfig() (*Config, error) {
 	}
 
 	cfg := &Config{
-		CooldownMinutes: 30, // default
+		// v2 defaults
+		RollingWindowDays:  3,
+		RollingAvgWarn:     50,
+		RollingAvgHalt:     70,
+		MaxUnverifiedDays:  2,
+		UnverifiedDailyMin: 15,
+		DailyHardCap:       150,
+		CooldownMinutes:    30,
 	}
 
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
@@ -122,10 +154,39 @@ func LoadConfig() (*Config, error) {
 		value = strings.Trim(value, "\"")
 
 		switch key {
+		// v2: Rolling window
+		case "ROLLING_WINDOW_DAYS":
+			if v, err := strconv.Atoi(value); err == nil {
+				cfg.RollingWindowDays = v
+			}
+		case "ROLLING_AVG_WARN":
+			if v, err := strconv.Atoi(value); err == nil {
+				cfg.RollingAvgWarn = v
+			}
+		case "ROLLING_AVG_HALT":
+			if v, err := strconv.Atoi(value); err == nil {
+				cfg.RollingAvgHalt = v
+			}
+		// v2: Human verification
+		case "MAX_UNVERIFIED_DAYS":
+			if v, err := strconv.Atoi(value); err == nil {
+				cfg.MaxUnverifiedDays = v
+			}
+		case "UNVERIFIED_DAILY_MIN":
+			if v, err := strconv.Atoi(value); err == nil {
+				cfg.UnverifiedDailyMin = v
+			}
+		// v2: Emergency brake
+		case "DAILY_HARD_CAP":
+			if v, err := strconv.Atoi(value); err == nil {
+				cfg.DailyHardCap = v
+			}
+		// Legacy (backward compat)
 		case "MAX_COMMITS_PER_DAY":
 			if v, err := strconv.Atoi(value); err == nil {
 				cfg.MaxCommitsPerDay = v
 			}
+		// Quality signals
 		case "FIX_FEAT_RATIO_THRESHOLD":
 			if v, err := strconv.Atoi(value); err == nil {
 				cfg.FixFeatRatioThreshold = v
@@ -135,13 +196,18 @@ func LoadConfig() (*Config, error) {
 				cfg.ChurnRatioThreshold = v
 			}
 		case "PROTECTED_PATHS":
-			// Split on spaces
 			cfg.ProtectedPaths = strings.Fields(value)
 		case "COOLDOWN_MINUTES":
 			if v, err := strconv.Atoi(value); err == nil {
 				cfg.CooldownMinutes = v
 			}
 		}
+	}
+
+	// Backward compat: if DailyHardCap not explicitly set but MaxCommitsPerDay is,
+	// use MaxCommitsPerDay as DailyHardCap
+	if cfg.MaxCommitsPerDay > 0 && cfg.DailyHardCap == 150 {
+		cfg.DailyHardCap = cfg.MaxCommitsPerDay
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -177,9 +243,31 @@ func ParseHaltInfo() (*HaltInfo, error) {
 	return info, nil
 }
 
+// Ack touches the heartbeat file to signal human is monitoring
+func Ack() error {
+	// Touch heartbeat file (create or update mtime)
+	f, err := os.Create(HeartbeatPath)
+	if err != nil {
+		return fmt.Errorf("failed to touch heartbeat: %w", err)
+	}
+	return f.Close()
+}
+
+// HeartbeatAgeDays returns days since last human ack, or -1 if no heartbeat
+func HeartbeatAgeDays() int {
+	info, err := os.Stat(HeartbeatPath)
+	if err != nil {
+		return -1
+	}
+	age := time.Since(info.ModTime())
+	return int(age.Hours() / 24)
+}
+
 // Status returns control plane state (config + halt + recent metrics)
 func Status() (*StatusInfo, error) {
-	status := &StatusInfo{}
+	status := &StatusInfo{
+		HeartbeatAge: -1,
+	}
 
 	// Check config exists
 	if _, err := os.Stat(ConfigPath); err == nil {
@@ -197,12 +285,17 @@ func Status() (*StatusInfo, error) {
 		}
 	}
 
+	// Read heartbeat age
+	status.HeartbeatAge = HeartbeatAgeDays()
+
 	// Read today's commit count from metrics
 	commitsLogPath := filepath.Join(MetricsDir, "daily-commits.log")
 	if data, err := os.ReadFile(commitsLogPath); err == nil {
 		status.MetricsExist = true
 		lines := strings.Split(string(data), "\n")
 		today := time.Now().Format("2006-01-02")
+
+		// Get today's count (last entry for today)
 		for i := len(lines) - 1; i >= 0; i-- {
 			if strings.HasPrefix(lines[i], today) {
 				parts := strings.Fields(lines[i])
@@ -213,6 +306,30 @@ func Status() (*StatusInfo, error) {
 					break
 				}
 			}
+		}
+
+		// Calculate rolling average from last N days
+		windowDays := 3
+		if status.Config != nil && status.Config.RollingWindowDays > 0 {
+			windowDays = status.Config.RollingWindowDays
+		}
+
+		seen := make(map[string]bool)
+		total := 0
+		days := 0
+		for i := len(lines) - 1; i >= 0 && days < windowDays; i-- {
+			parts := strings.Fields(lines[i])
+			if len(parts) >= 2 && !seen[parts[0]] {
+				seen[parts[0]] = true
+				if count, err := strconv.Atoi(parts[1]); err == nil {
+					total += count
+					days++
+				}
+			}
+		}
+		if days > 0 {
+			status.RollingAvg = total / days
+			status.RollingDays = days
 		}
 	}
 
@@ -256,10 +373,28 @@ func InitConfig() error {
 		return fmt.Errorf("config already exists: %s", ConfigPath)
 	}
 
-	defaultConfig := `# Control Plane Configuration
+	defaultConfig := `# Control Plane Configuration (v2)
 # Circuit breakers — daemon halts when threshold exceeded
-MAX_COMMITS_PER_DAY=20
-FIX_FEAT_RATIO_THRESHOLD=50    # percentage (50 = 0.5:1 fix:feat)
+#
+# Three-layer circuit breaker:
+#   1. Rolling average — catches sustained velocity
+#   2. Unverified velocity — catches autonomous drift without human ack
+#   3. Hard cap — emergency brake for extreme single-day bursts
+
+# --- Rolling window (primary signal) ---
+ROLLING_WINDOW_DAYS=3
+ROLLING_AVG_WARN=50        # desktop notification when avg exceeds this
+ROLLING_AVG_HALT=70        # halt daemon when avg exceeds this
+
+# --- Human verification ---
+MAX_UNVERIFIED_DAYS=2      # halt if no heartbeat AND daily commits > min
+UNVERIFIED_DAILY_MIN=15    # minimum daily commits to trigger unverified check
+
+# --- Emergency brake ---
+DAILY_HARD_CAP=150         # absolute single-day maximum
+
+# --- Quality signals ---
+FIX_FEAT_RATIO_THRESHOLD=50    # percentage (50 = 0.5:1 fix:feat, 7-day window)
 CHURN_RATIO_THRESHOLD=200      # percentage (200 = 2:1 created+deleted/net)
 
 # Protected paths — violations logged, human notified
