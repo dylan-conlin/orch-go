@@ -8,13 +8,24 @@ Models are where orchestrators externalize the mental models they build through 
 
 ## When to Create a Model
 
-**Signals:**
-- 3+ investigations on same topic converge to understanding
-- You can explain "how X works" coherently (not just "how to do X")
-- Multiple downstream decisions/epics will reference this understanding
-- Same confusion recurs (scattered understanding needs consolidation)
+**Creation threshold:** 15+ investigations on a single topic (investigation cluster).
 
-**The test:** Can you explain the mechanism in 1-2 paragraphs? If yes, you understand it enough to model it.
+**Four-factor test (all required):**
+1. **HOT** - Cluster exists (15+ investigations)
+2. **COMPLEX** - Has failure modes, constraints, state transitions
+3. **OWNED** - Our system internals (not external tools)
+4. **STRATEGIC_VALUE** - "Enable/constrain" answers save hours vs minutes
+
+**Hard floor:** Never below 10 investigations. Between 10-15, must pass four-factor test with clear justification.
+
+**Watch signals** (not creation triggers - these indicate a topic to monitor):
+- 3+ investigations on same topic starting to converge
+- Same confusion recurs across sessions
+- Multiple downstream decisions/epics reference the same understanding
+
+**The test:** Can you explain the mechanism in 1-2 paragraphs? If yes, you understand it enough to model it - but wait for the cluster threshold before creating.
+
+**Anti-pattern:** 3 investigations → "let's create a model." Models are synthesis artifacts. 3 investigations don't provide enough perspective. Use a decision or guide instead.
 
 ---
 
@@ -130,7 +141,7 @@ Trust code over models. When model and code conflict, code wins. Update the mode
 
 **How we know models work:**
 
-1. ✅ Orchestrators create models after synthesizing 3+ investigations
+1. ✅ Orchestrators create models after synthesizing 15+ investigations (passing four-factor test)
 2. ✅ Dylan asks sharper questions because constraints are explicit
 3. ✅ Decisions reference models for context
 4. ✅ Duplicate investigations decrease (model answers the question)
