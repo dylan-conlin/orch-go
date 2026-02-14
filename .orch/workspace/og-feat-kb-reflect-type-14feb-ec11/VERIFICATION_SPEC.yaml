@@ -1,0 +1,69 @@
+observable_behaviors:
+  - name: kb reflect --type synthesis excludes synthesized/ directory
+    description: When scanning for synthesis opportunities, kb reflect does not report investigations from .kb/investigations/synthesized/ subdirectory
+    
+  - name: kb reflect --type synthesis excludes archived/ directory
+    description: When scanning for synthesis opportunities, kb reflect does not report investigations from .kb/investigations/archived/ subdirectory
+
+acceptance_criteria:
+  - id: AC-001
+    criterion: Binary rebuilt with fix
+    test_method: Verify binary version matches commit hash 8b3f1c8
+    expected: kb version shows "8b3f1c8-dirty"
+    actual: Verified - "kb version" outputs "8b3f1c8-dirty"
+    status: PASS
+    
+  - id: AC-002
+    criterion: Test suite passes for exclusion logic
+    test_method: Run TestReflectSynthesisExcludesArchivedAndSynthesized
+    expected: Test passes
+    actual: Test passed in 0.00s
+    status: PASS
+    
+  - id: AC-003
+    criterion: Synthesized investigations excluded from scan
+    test_method: Run kb reflect --type synthesis in orch-go (which has synthesized/code-extraction-patterns with 14 investigations)
+    expected: No "code" or "extraction" cluster in output (only valid root investigations)
+    actual: Output shows "synthesize", "serve", "sse", "account", "complete" - no "code" or "extraction" cluster. The one "extract" mention is from a root-level investigation ABOUT synthesizing, not FROM the synthesized directory.
+    status: PASS
+    
+  - id: AC-004
+    criterion: Binary installed to correct locations
+    test_method: Verify symlinks point to rebuilt binary
+    expected: Both ~/bin/kb and ~/.bun/bin/kb point to ~/Documents/personal/kb-cli/build/kb
+    actual: Verified both symlinks correct
+    status: PASS
+
+failure_modes:
+  - id: FM-001
+    symptom: kb reflect still reports synthesized investigations as needing synthesis
+    root_cause: Binary not rebuilt after source code fix
+    resolution: Run "make install" to rebuild and update symlinks
+    status: RESOLVED
+
+evidence:
+  - type: test_run
+    description: Unit test for archived/synthesized exclusion
+    command: cd ~/Documents/personal/kb-cli && go test ./cmd/kb -run TestReflectSynthesisExcludesArchivedAndSynthesized -v
+    result: PASS (0.00s)
+    
+  - type: behavioral_test
+    description: Real-world test with orch-go .kb directory
+    command: cd ~/Documents/personal/orch-go && kb reflect --type synthesis
+    result: No "code" or "extraction" clusters in output despite 14 investigations in synthesized/code-extraction-patterns/
+    
+  - type: version_check
+    description: Verify binary version matches fix commit
+    command: kb version
+    result: "8b3f1c8-dirty"
+
+implementation_notes:
+  - The fix was already implemented in commit 8b3f1c8 (Feb 14, 2026 02:54:04)
+  - Code changes in cmd/kb/reflect.go lines 609-615 skip archived/ and synthesized/ directories
+  - Binary was outdated (built Feb 6) and needed rebuild
+  - make install rebuilt binary and updated symlinks in ~/bin and ~/.bun/bin
+  - No new code changes required - task was deployment of existing fix
+
+verification_complete: true
+verified_by: agent
+verified_at: 2026-02-14T18:47:00Z
