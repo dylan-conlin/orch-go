@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-soften-strategic-first-14feb-d4c8",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-55h",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "86a748f278d22e69d0f3948f67ddef250e05500c",
+  "spawn_time": "2026-02-14T00:05:03-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

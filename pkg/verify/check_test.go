@@ -1515,3 +1515,107 @@ Done.
 		}
 	})
 }
+
+func TestSynthesisGateAutoSkipForKnowledgeProducingSkills(t *testing.T) {
+	// Create temporary workspace
+	tmpDir := t.TempDir()
+
+	// Write .tier file (full tier to ensure synthesis would normally be required)
+	tierPath := filepath.Join(tmpDir, ".tier")
+	if err := os.WriteFile(tierPath, []byte("full"), 0644); err != nil {
+		t.Fatalf("failed to write .tier file: %v", err)
+	}
+
+	tests := []struct {
+		name               string
+		skillName          string
+		shouldRequireSynth bool
+	}{
+		{
+			name:               "investigation skill should auto-skip synthesis",
+			skillName:          "investigation",
+			shouldRequireSynth: false,
+		},
+		{
+			name:               "architect skill should auto-skip synthesis",
+			skillName:          "architect",
+			shouldRequireSynth: false,
+		},
+		{
+			name:               "research skill should auto-skip synthesis",
+			skillName:          "research",
+			shouldRequireSynth: false,
+		},
+		{
+			name:               "codebase-audit skill should auto-skip synthesis",
+			skillName:          "codebase-audit",
+			shouldRequireSynth: false,
+		},
+		{
+			name:               "feature-impl skill should require synthesis",
+			skillName:          "feature-impl",
+			shouldRequireSynth: true,
+		},
+		{
+			name:               "systematic-debugging skill should require synthesis",
+			skillName:          "systematic-debugging",
+			shouldRequireSynth: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Write SPAWN_CONTEXT.md with skill name
+			spawnContextPath := filepath.Join(tmpDir, "SPAWN_CONTEXT.md")
+			spawnContext := "## SKILL GUIDANCE (" + tt.skillName + ")\n\nSome context here."
+			if err := os.WriteFile(spawnContextPath, []byte(spawnContext), 0644); err != nil {
+				t.Fatalf("failed to write SPAWN_CONTEXT.md: %v", err)
+			}
+
+			// Create fake "Phase: Complete" comments
+			comments := []Comment{
+				{Text: "Phase: Complete - Work done"},
+			}
+
+			// Run verification (without SYNTHESIS.md to see if it's required)
+			result, err := VerifyCompletionWithTierAndComments("test-bead", tmpDir, "full", comments)
+			if err != nil {
+				t.Fatalf("VerifyCompletionWithTierAndComments() error = %v", err)
+			}
+
+			if tt.shouldRequireSynth {
+				// Should fail without SYNTHESIS.md
+				if result.Passed {
+					t.Errorf("expected verification to fail (require SYNTHESIS.md) for %s, but it passed", tt.skillName)
+				}
+				// Check that GateSynthesis is in failed gates
+				hasSynthesisGate := false
+				for _, gate := range result.GatesFailed {
+					if gate == GateSynthesis {
+						hasSynthesisGate = true
+						break
+					}
+				}
+				if !hasSynthesisGate {
+					t.Errorf("expected GateSynthesis in failed gates for %s, got: %v", tt.skillName, result.GatesFailed)
+				}
+			} else {
+				// Should pass without SYNTHESIS.md (auto-skipped)
+				if !result.Passed {
+					t.Errorf("expected verification to pass (auto-skip synthesis) for %s, got errors: %v", tt.skillName, result.Errors)
+				}
+				// Check for auto-skip warning
+				hasAutoSkipWarning := false
+				for _, warning := range result.Warnings {
+					if strings.Contains(warning, "synthesis gate auto-skipped") {
+						hasAutoSkipWarning = true
+						break
+					}
+				}
+				if !hasAutoSkipWarning {
+					t.Errorf("expected auto-skip warning for %s, got warnings: %v", tt.skillName, result.Warnings)
+				}
+			}
+		})
+	}
+}

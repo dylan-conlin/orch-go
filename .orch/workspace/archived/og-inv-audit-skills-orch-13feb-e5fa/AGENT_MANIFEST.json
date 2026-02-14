@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-inv-audit-skills-orch-13feb-e5fa",
+  "skill": "investigation",
+  "beads_id": "orch-go-1",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "afab54049a94fe20b65eacbbdf1b04b1af324755",
+  "spawn_time": "2026-02-13T09:47:04-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode"
+}

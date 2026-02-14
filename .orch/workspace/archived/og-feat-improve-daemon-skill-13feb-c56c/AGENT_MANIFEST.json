@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-improve-daemon-skill-13feb-c56c",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-0pr",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "d554d4e3ee600746b9974f0cd89927e9854e3a30",
+  "spawn_time": "2026-02-13T23:15:44-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

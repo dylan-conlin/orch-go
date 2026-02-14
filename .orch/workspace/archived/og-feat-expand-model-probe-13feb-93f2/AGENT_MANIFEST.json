@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-feat-expand-model-probe-13feb-93f2",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-e27",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "f8ab73d4ca5fe1ead5e270c4b4827cfba90049d1",
+  "spawn_time": "2026-02-13T23:01:16-08:00",
+  "tier": "light",
+  "spawn_mode": "claude"
+}

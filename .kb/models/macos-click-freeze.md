@@ -1,14 +1,14 @@
 # Model: macOS Click Freeze
 
 **Domain:** macOS input subsystem — trackpad click events stop registering while cursor movement continues
-**Last Updated:** 2026-02-11
-**Synthesized From:** Session 11 (systematic elimination), Session 14 (recurrence + 3 research probes + OpenCode fork resource audit), Session 15 (nuclear elimination — Karabiner uninstalled, 23+ services disabled)
+**Last Updated:** 2026-02-13
+**Synthesized From:** Session 11 (systematic elimination), Session 14 (recurrence + 3 research probes + OpenCode fork resource audit), Session 15 (nuclear elimination — Karabiner uninstalled, 23+ services disabled), Session 16 (freeze recurrence — service state probe)
 
 ---
 
 ## Summary (30 seconds)
 
-Trackpad clicks stop registering every ~15 minutes while cursor movement and keyboard continue working. `sudo killall -HUP WindowServer` fixes it every time (HUP = reconfigure, not restart). This points to WindowServer accumulating corrupted state in its click event pipeline. **Breakthrough in Session 15:** nuclear elimination of ~23 services stopped the freeze. Karabiner reinstalled (upgraded 14.13→15.9.0) — **no freeze with Karabiner running**, further confirming H2 elimination. NI HardwareAgent and Ollama fully uninstalled (not just disabled). System stable under full agent workload (3 concurrent spawns + Karabiner + OpenCode + orch). **Still narrowing:** ~18 user LaunchAgents + 3 system LaunchDaemons remain disabled. Next: re-enable in phases to isolate culprit.
+Trackpad clicks stop registering every ~15 minutes while cursor movement and keyboard continue working. `sudo killall -HUP WindowServer` fixes it every time (HUP = reconfigure, not restart). This points to WindowServer accumulating corrupted state in its click event pipeline. **Breakthrough in Session 15:** nuclear elimination of ~23 services stopped the freeze. **Freeze returned (2026-02-13)** after gradual service re-enablement — first recurrence in ~2 days. NI HardwareAgent and Ollama remain fully uninstalled, so H5 (NI as sole culprit) is weakened. Memory was 78% free with zero swap, further weakening H4. **H6 (aggregate service contention) is now the leading hypothesis.** Current suspect set: yabai (running), colima/Docker (manually started), emacs, Phase 1 services. Next: binary search — stop yabai first, then colima/Docker.
 
 ---
 
@@ -51,8 +51,8 @@ Click events and move events travel the same path but are **different event type
 | IOKit HID | Kernel input driver | ❌ Not tested — but unlikely (move events work) |
 | Karabiner DriverKit | Kernel-level input interception | ✅ **Eliminated** — uninstalled (freeze persisted), reinstalled 15.9.0 (no freeze) |
 | WindowServer | Routes events to apps | Partially — it's WHERE the problem manifests (HUP fixes it) |
-| yabai | Window management, event interception | ✅ **Eliminated** — freeze recurred with yabai fully stopped |
-| skhd | Hotkey daemon, event interception | 🔄 Re-enabled — testing individually (Session 15 Phase 2) |
+| yabai | Window management, event interception | ⚠️ Previously eliminated (Session 14) but freeze recurred with it running (Session 16). Re-testing needed. |
+| skhd | Hotkey daemon, event interception | ❌ Disabled since Session 15 — not running, not a current suspect |
 | borders | Window border drawing | ⚠️ Disabled in batch — not individually tested |
 | sketchybar | Status bar | ⚠️ Disabled in batch — not individually tested |
 | NI HardwareAgent | Native Instruments audio HID service (root) | ✅ **Fully uninstalled** — top suspect, IOKit HID layer, ran as root |
@@ -63,11 +63,13 @@ Click events and move events travel the same path but are **different event type
 
 ## Why This Fails
 
-### Hypothesis 1: yabai event interception corrupts WindowServer state — ELIMINATED
+### Hypothesis 1: yabai event interception corrupts WindowServer state — WEAKENED (RE-TESTING NEEDED)
 
-yabai uses the macOS Accessibility API to manage windows. Freeze recurred with yabai fully stopped (`yabai --stop-service`, confirmed no process via `pgrep`).
+yabai uses the macOS Accessibility API to manage windows. Freeze recurred with yabai fully stopped in Session 14 (`yabai --stop-service`, confirmed no process via `pgrep`).
 
-**Evidence against:** Freeze recurred within ~30 minutes with yabai completely stopped. No yabai process running. Definitively eliminated.
+**Evidence against:** Freeze recurred within ~30 minutes with yabai completely stopped (Session 14). No yabai process running. Seemed eliminated.
+
+**Evidence for re-testing (Session 16):** The Session 14 elimination was a single 30-min test with everything else still running. The environment is now different — yabai is running with a reduced service set (NI/Ollama gone, many agents disabled). yabai may not be the sole cause but could be a necessary component of H6 (aggregate contention). Worth re-testing by stopping yabai in current environment.
 
 ### Hypothesis 2: Karabiner DriverKit drops click events at kernel level — ELIMINATED
 
@@ -83,7 +85,7 @@ macOS 15.6.1 (Sequoia) may have a bug where WindowServer's click event routing t
 
 **Evidence against:** Three research probes (2026-02-11) searched GitHub, Reddit, Apple Discussions exhaustively — **zero matching reports** for this symptom pattern (clicks stop, cursor moves, HUP fixes). If this were a Sequoia bug, community reports would exist. This significantly weakens H3.
 
-### Hypothesis 4: Memory pressure from OpenCode instance accumulation — WEAKENED
+### Hypothesis 4: Memory pressure from OpenCode instance accumulation — EFFECTIVELY ELIMINATED
 
 OpenCode accumulates instances (with LSP/MCP/file watchers) per unique project directory. Each instance costs 300-500MB for LSP alone.
 
@@ -92,15 +94,13 @@ OpenCode accumulates instances (with LSP/MCP/file watchers) per unique project d
 - This strongly suggests memory pressure is NOT the primary cause
 - After disabling ~23 services, OpenCode + orch + 3 concurrent agents ran fine with no freeze
 
-**Evidence for (still relevant):**
-- Memory pressure may be a contributing factor that lowers the threshold for the real culprit
-- System was at 607MB free when freeze occurred in Session 14
+**Evidence against (Session 16, 2026-02-13):**
+- Freeze recurred with **78% memory free and zero swap** — memory is abundant
+- This effectively eliminates memory pressure as a cause or significant contributor
 
-**Status:** Weakened as primary cause. May be contributing factor. OpenCode tuning still worth doing regardless.
+**Status:** Effectively eliminated. Memory pressure is not a factor.
 
-**OpenCode tuning (worth doing regardless):** Reduce MAX_INSTANCES 20→8, IDLE_TTL 30min→5min for headless mode, add disposeAll to server.stop(), add periodic eviction timer. See `~/Documents/personal/opencode/.kb/investigations/2026-02-11-inv-opencode-fork-resource-audit-investigate.md`.
-
-### Hypothesis 5: NI HardwareAgent (Native Instruments) corrupts IOKit HID state — STRONG SUSPECT (UNINSTALLED)
+### Hypothesis 5: NI HardwareAgent (Native Instruments) corrupts IOKit HID state — WEAKENED (NOT SOLE CAUSE)
 
 Native Instruments NIHardwareAgent ran as root via system LaunchDaemon. Audio hardware services enumerate HID devices (MIDI controllers, control surfaces) which registers them on the same IOKit HID bus as the trackpad. If NI's agent periodically re-enumerates or refreshes HID device state, it could corrupt WindowServer's click event routing.
 
@@ -110,29 +110,39 @@ Native Instruments NIHardwareAgent ran as root via system LaunchDaemon. Audio ha
 - Audio HID services register virtual devices that share the input pipeline
 - Was killed as part of the nuclear batch that stopped the freeze
 - Never previously tested in isolation
-- **Fully uninstalled** — system remains stable with Karabiner reinstalled + agents running
 
 **Evidence against:**
 - Killed as part of a batch (~23 services) — not individually isolated before removal
 - No known reports of NI causing click freeze specifically
 - Cannot re-test since fully uninstalled (would need to reinstall to confirm)
+- **Freeze recurred (2026-02-13) with NI fully uninstalled** — NI cannot be the sole cause
 
-**Status:** Fully uninstalled. If freeze never returns, H5 remains the strongest candidate by elimination. Cannot be definitively confirmed without reinstall test (not worth it).
+**Status:** Weakened. NI may have been a contributor but is not the sole cause. Freeze recurred without it.
 
-### Hypothesis 6: Aggregate service load / event contention — POSSIBLE
+### Hypothesis 6: Aggregate service load / event contention — LEADING HYPOTHESIS
 
-Not a single culprit but the combination of many services (skhd, sketchybar, Ollama, NI, orch daemon, various LaunchAgents) creating enough IOKit/WindowServer event contention to corrupt click routing state. No single service triggers it, but the aggregate does.
+Not a single culprit but the combination of services creating enough IOKit/WindowServer event contention to corrupt click routing state. No single service triggers it alone, but a critical mass does.
 
 **Evidence for:**
 - Individual elimination of Karabiner, yabai, skhd (in earlier sessions) didn't fix it
 - Only the nuclear "disable everything" approach worked
 - Would explain why no single culprit was found in Sessions 11-14
+- **Freeze returned (2026-02-13) as services were gradually re-enabled** — directly consistent with aggregate theory
+- NI fully uninstalled yet freeze recurred — no single culprit
+- Reduced service set (fewer than original) still triggered freeze — threshold is lower than "everything"
 
 **Evidence against:**
 - The system ran fine with this same service set for months/years before the freeze started
 - Something specific likely changed (XProtect update Feb 10? macOS update? NI update?)
 
-**Next test:** Binary search through disabled services to narrow down.
+**Current suspect set (running during 2026-02-13 freeze):**
+1. **yabai** (PID 1055) — re-enabled, Accessibility API + window event interception
+2. **colima + Docker** (manually started despite disabled LaunchAgents)
+3. **emacs-plus@31** (manually started despite disabled LaunchAgent)
+4. **Phase 1 services** — mysql, redis, disk-cleanup, disk-threshold, tmuxinator
+5. **Karabiner** (15.9.0) — running, but already eliminated as sole cause
+
+**Next test:** Binary search — stop yabai first (quick re-test in new environment), then colima/Docker if freeze persists.
 
 ---
 
@@ -166,32 +176,32 @@ Not a single culprit but the combination of many services (skhd, sketchybar, Oll
 
 ### Remaining Test Plan
 
-**Current state:** Nuclear elimination worked. ~23 services disabled, NI HardwareAgent killed, Ollama killed. No freeze under full agent workload (3 concurrent spawns + OpenCode + orch).
+**Current state (2026-02-13):** Freeze recurred after gradual service re-enablement. NI and Ollama remain fully uninstalled. The original phased plan is superseded — freeze returned before Phase 2 was complete.
 
-**Phase 1: Re-enable safe services (low risk)**
-Re-enable batch: disk-cleanup, disk-threshold, opencode-prune, aider-cleanup, redis, mysql, dnsmasq, nginx, php, tmuxinator, emacs
-- If freeze returns → one of these is involved (unlikely)
-- If clean → proceed to Phase 2
+**What's currently running (verified via launchctl + ps, 2026-02-13):**
+- ✅ Karabiner 15.9.0 (eliminated as cause)
+- ✅ yabai (enabled, running PID 1055)
+- ✅ Phase 1 services: disk-cleanup, disk-threshold, mysql, redis, tmuxinator
+- ✅ Manually started: colima + Docker, emacs-plus@31
 
-**Phase 2: Re-enable workflow services**
-Re-enable batch: skhd, sketchybar, yabai (Dylan's core workflow)
-- If freeze returns → one of these (test individually)
-- If clean → proceed to Phase 3
+**What's still disabled:**
+- skhd, sketchybar, borders (LaunchAgent disabled, no plist or not loaded)
+- agentmail, artifact-watcher, claude-docs-sync, claude-version-monitor, orch-daemon, orch-reap, reprocess-skills, living-instruction-evolution, google-updater, dbus-session, emacs-plus@29
+- System: NI (uninstalled), docker.socket, docker.vmnetd, xquartz, ZoomDaemon
 
-**Phase 3: Re-enable orch/claude services**
-Re-enable batch: orch daemon, orch reap, claude-docs-sync, claude-version-monitor, reprocess-skills, artifact-watcher
-- If freeze returns → one of these
-- If clean → proceed to Phase 4
+**New plan: Binary search through running suspect set**
 
-**Phase 4: The remaining suspects**
-Re-enable ONE AT A TIME, wait 20+ min each:
-1. ~~NI HardwareAgent~~ — FULLY UNINSTALLED
-2. ~~Ollama~~ — FULLY UNINSTALLED
-3. Docker/Colima
-4. Zoom daemon
-5. Google updaters
+**Step 1: Stop yabai** — Quick re-test in reduced environment (was "eliminated" in Session 14 but environment is different now). Wait 30+ min.
+- If freeze stops → yabai is a necessary component (even if not sole cause)
+- If freeze persists → yabai still eliminated, proceed to Step 2
 
-**Current approach:** NI and Ollama permanently removed. If freeze stays gone after re-enabling phases 1-3, the culprit was NI or Ollama (or their combination). If freeze returns during phases 1-3, it's something else.
+**Step 2: Stop colima/Docker** — Manually started, runs container networking + vmnet.
+- If freeze stops → colima/Docker interaction
+- If freeze persists → proceed to Step 3
+
+**Step 3: Stop Phase 1 services** — mysql, redis, disk-cleanup, disk-threshold, tmuxinator.
+- If freeze stops → one of these (test individually)
+- If freeze persists → emacs or something not yet identified
 
 ---
 
@@ -216,8 +226,8 @@ Re-enable ONE AT A TIME, wait 20+ min each:
 - **macOS:** 15.6.1 (Sequoia)
 - **Hardware:** Mac15,7 (M3 Pro)
 - **Karabiner:** 15.9.0 (reinstalled, upgraded from 14.13.0 — running, no freeze)
-- **yabai:** /opt/homebrew/bin/yabai (disabled via launchctl, not running)
-- **skhd:** /opt/homebrew/bin/skhd (disabled via launchctl, not running)
+- **yabai:** /opt/homebrew/bin/yabai (ENABLED, running — PID 1055)
+- **skhd:** /opt/homebrew/bin/skhd (DISABLED, not running)
 - **NI HardwareAgent:** FULLY UNINSTALLED (was com.native-instruments.NativeAccess.Helper2)
 - **Ollama:** FULLY UNINSTALLED (was /Applications/Ollama.app)
 
@@ -240,8 +250,9 @@ Services disabled in Session 15:
 - **Killed processes:** NIHardwareAgent, Ollama
 - **Permanently uninstalled:** NI HardwareAgent (all files removed), Ollama (app + ~/.ollama removed)
 - **Re-enabled:** Karabiner-Elements 15.9.0 (upgraded from 14.13.0) — running with DriverKit active, no freeze
-- **Phase 1 re-enabled:** disk-cleanup, disk-threshold, mysql, redis, tmuxinator — no freeze
-- **Phase 2 in progress:** skhd re-enabled and running — testing individually before yabai and sketchybar
+- **Phase 1 re-enabled:** disk-cleanup, disk-threshold, mysql, redis, tmuxinator — no freeze at time of re-enablement
+
+**2026-02-13 (Session 16):** **Freeze recurred** — first time since Session 15 nuclear elimination (~2 days freeze-free). Service state probe revealed model had Phase 2 states inverted: skhd was DISABLED (not re-enabled), yabai was ENABLED+running (not disabled). Additionally colima/Docker and emacs-plus@31 were manually started despite disabled LaunchAgents. H5 (NI) weakened — fully uninstalled yet freeze returned. H4 (memory) effectively eliminated — 78% free, zero swap. **H6 (aggregate contention) is now the leading hypothesis.** New binary search plan through current suspect set.
 
 ---
 
@@ -252,6 +263,8 @@ Services disabled in Session 15:
 - `~/Documents/personal/opencode/.kb/investigations/2026-02-11-inv-opencode-fork-resource-audit-investigate.md` — OpenCode fork resource audit (eliminated H4, found optimization opportunities)
 
 **Probes:**
+- `.kb/models/macos-click-freeze/probes/2026-02-13-service-state-freeze-recurrence.md` — Full service state capture during freeze recurrence; corrected model Phase 2 states, weakened H5, eliminated H4
+- `.kb/models/macos-click-freeze/probes/2026-02-12-skhd-event-tap-source-analysis.md` — skhd CGEventTap analysis
 - `.kb/models/macos-click-freeze/probes/2026-02-11-github-apple-support-search.md` — Broad search: zero matching reports
 - `.kb/models/macos-click-freeze/probes/2026-02-11-karabiner-github-search.md` — Karabiner: mouse lag (#2566) but no click freeze
 - `.kb/models/macos-click-freeze/probes/2026-02-11-yabai-github-issues-search.md` — yabai: drag freeze (#2715) closest match, no click freeze

@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-inv-build-model-dylan-13feb-7c37",
+  "skill": "investigation",
+  "beads_id": "orch-go-3w3",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "ba3c900414ece7e0e0182538775b3bc253476f2f",
+  "spawn_time": "2026-02-13T23:19:45-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}
