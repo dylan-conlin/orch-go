@@ -179,7 +179,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `GenerateContext()` creates SPAWN_CONTEXT.md content
 - Embeds skill content, task description, beads issue context
 - Sets deliverables paths for verification
-- Conditionally includes server context for UI-focused skills (feature-impl, systematic-debugging, reliability-testing)
+- Conditionally includes server context for UI-focused skills (feature-impl, systematic-debugging)
 
 ### pkg/config/ (Project Config)
 - `Load()` reads `.orch/config.yaml` from project directory

@@ -82,10 +82,7 @@ func InferMCPFromLabels(labels []string) string {
 // InferSkillFromTitle detects skills from issue title patterns.
 // Returns the skill name if a known pattern is matched, or empty string otherwise.
 func InferSkillFromTitle(title string) string {
-	// Synthesis issues created by kb reflect --create-issue
-	if strings.HasPrefix(title, "Synthesize ") && strings.Contains(title, " investigations") {
-		return "kb-reflect"
-	}
+	// No title-based patterns currently
 	return ""
 }
 

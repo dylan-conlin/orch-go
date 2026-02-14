@@ -491,7 +491,6 @@ func TestInferSkillFromLabels(t *testing.T) {
 		wantSkill string
 	}{
 		{[]string{"skill:research"}, "research"},
-		{[]string{"skill:kb-reflect"}, "kb-reflect"},
 		{[]string{"priority:P0", "skill:investigation"}, "investigation"},
 		{[]string{"priority:P0", "triage:ready"}, ""},
 		{[]string{}, ""},
@@ -513,8 +512,6 @@ func TestInferSkillFromTitle(t *testing.T) {
 		title     string
 		wantSkill string
 	}{
-		{"Synthesize 49 dashboard investigations", "kb-reflect"},
-		{"Synthesize agent investigations into consolidated findings", "kb-reflect"},
 		{"Fix dashboard bug", ""},
 		{"Add synthesis feature", ""},
 	}
@@ -548,12 +545,7 @@ func TestInferSkillFromIssue(t *testing.T) {
 			wantSkill: "research",
 			wantErr:   false,
 		},
-		{
-			name:      "title pattern for synthesis",
-			issue:     &Issue{Labels: []string{}, Title: "Synthesize 49 dashboard investigations", IssueType: "task"},
-			wantSkill: "kb-reflect",
-			wantErr:   false,
-		},
+
 		{
 			name:      "falls back to issue type",
 			issue:     &Issue{Labels: []string{}, Title: "Fix the bug", IssueType: "bug"},
