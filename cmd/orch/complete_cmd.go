@@ -880,7 +880,8 @@ func runComplete(identifier, workdir string) error {
 	// After all verification passes, require human to explain what was built and why.
 	// This creates an unfakeable verification gate - can't rubber-stamp a conversational explanation.
 	// Extracted to pkg/orch/completion.go for reusability.
-	explainResult, err := orch.RunExplainBackGate(
+	// The gate prompts for explanation AND stores it as a beads comment internally.
+	if err := orch.RunExplainBackGate(
 		beadsID,
 		completeForce,
 		skipConfig.ExplainBack,
@@ -889,18 +890,8 @@ func runComplete(identifier, workdir string) error {
 		isUntracked,
 		os.Stdin,
 		os.Stdout,
-	)
-	if err != nil {
+	); err != nil {
 		return err
-	}
-
-	// Store explanation as beads comment if one was captured
-	if explainResult != nil {
-		if err := addApprovalComment(beadsID, explainResult.FullExplanation); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to save explanation to beads: %v\n", err)
-		} else {
-			fmt.Println("Explanation saved to beads issue")
-		}
 	}
 
 	// Update session handoff with spawn completion info (Capture at Context principle)

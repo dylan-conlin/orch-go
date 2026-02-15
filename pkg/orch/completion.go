@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"golang.org/x/term"
 )
@@ -70,6 +71,26 @@ func DetectCompletionBacklog(agents []AgentInfo, threshold time.Duration) []stri
 	return backlog
 }
 
+// addBeadsComment adds a comment to a beads issue.
+// This is used internally by the explain-back gate to store explanations.
+// It tries RPC first, then falls back to CLI if RPC fails.
+func addBeadsComment(beadsID, comment string) error {
+	// Try RPC client first with auto-reconnect
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		// Use "orchestrator" as the author for explain-back comments
+		err := client.AddComment(beadsID, "orchestrator", comment)
+		if err == nil {
+			return nil
+		}
+		// Fall through to CLI fallback on RPC error
+	}
+
+	// Fallback to CLI
+	return beads.FallbackAddComment(beadsID, comment)
+}
+
 // RunExplainBackGate executes the explain-back verification gate for agent completion.
 // This gate requires the human orchestrator to explain what was built and why in their own words,
 // creating an unfakeable verification that ensures human comprehension beyond agent self-reporting.
@@ -82,7 +103,7 @@ func DetectCompletionBacklog(agents []AgentInfo, threshold time.Duration) []stri
 // When the gate is active, it:
 //   - Checks if stdin is a terminal (required for interactive prompts)
 //   - Prompts the human for a structured explanation (what, why, verification)
-//   - Returns the explanation for the caller to store
+//   - Stores the explanation as a beads comment
 //
 // This is extracted from cmd/orch/complete_cmd.go to pkg/orch for reusability
 // and separation of concerns (orchestration logic vs command handling).
@@ -98,7 +119,6 @@ func DetectCompletionBacklog(agents []AgentInfo, threshold time.Duration) []stri
 //   - stdout: Output writer for prompts
 //
 // Returns:
-//   - *verify.ExplainBackResult: The captured explanation (nil if gate was skipped)
 //   - error: Error if verification fails or terminal check fails
 func RunExplainBackGate(
 	beadsID string,
@@ -109,27 +129,27 @@ func RunExplainBackGate(
 	isUntracked bool,
 	stdin io.Reader,
 	stdout io.Writer,
-) (*verify.ExplainBackResult, error) {
+) error {
 	// Skip for orchestrator sessions (they have handoffs)
 	if isOrchestratorSession {
-		return nil, nil
+		return nil
 	}
 
 	// Skip for untracked agents (no beads issue)
 	if isUntracked || beadsID == "" {
-		return nil, nil
+		return nil
 	}
 
 	// Skip if --force was used
 	if forced {
 		fmt.Fprintln(stdout, "Skipping explain-back verification (--force)")
-		return nil, nil
+		return nil
 	}
 
 	// Skip if --skip-explain-back was set
 	if skipExplainBack {
 		fmt.Fprintf(stdout, "⚠️  Bypassing explain-back gate (reason: %s)\n", skipReason)
-		return nil, nil
+		return nil
 	}
 
 	// Check if stdin is a terminal for interactive prompting
@@ -138,7 +158,7 @@ func RunExplainBackGate(
 		if !term.IsTerminal(int(stdinFile.Fd())) {
 			fmt.Fprintln(stdout, "⚠️  Explain-back gate requires terminal interaction")
 			fmt.Fprintln(stdout, "Use --skip-explain-back --skip-reason \"...\" to bypass in non-interactive mode")
-			return nil, fmt.Errorf("explain-back gate requires terminal")
+			return fmt.Errorf("explain-back gate requires terminal")
 		}
 	} else {
 		// If we can't determine terminal status (e.g., in tests with bytes.Buffer),
@@ -148,8 +168,16 @@ func RunExplainBackGate(
 	// Prompt for explanation
 	explainResult, err := verify.PromptExplainBack(stdin, stdout)
 	if err != nil {
-		return nil, fmt.Errorf("explain-back verification failed: %w", err)
+		return fmt.Errorf("explain-back verification failed: %w", err)
 	}
 
-	return explainResult, nil
+	// Store explanation as beads comment
+	if err := addBeadsComment(beadsID, explainResult.FullExplanation); err != nil {
+		fmt.Fprintf(stdout, "Warning: failed to save explanation to beads: %v\n", err)
+		// Continue anyway - the explanation was captured even if storage failed
+	} else {
+		fmt.Fprintln(stdout, "Explanation saved to beads issue")
+	}
+
+	return nil
 }
