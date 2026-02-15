@@ -82,10 +82,10 @@ type Config struct {
 	// Default is 1 hour to prevent infinite loops.
 	RecoveryRateLimit time.Duration
 
-	// VerificationPauseThreshold is the maximum number of auto-completions
-	// allowed before pausing for human verification. When the daemon auto-completes
-	// this many issues without human verification (manual orch complete), it will
-	// pause spawning until Dylan explicitly resumes. Set to 0 to disable (no pause).
+	// VerificationPauseThreshold is the maximum number of agents that can be marked
+	// ready-for-review before pausing for human verification. When the daemon marks
+	// this many issues as ready-for-review without human verification (manual orch complete),
+	// it will pause spawning until Dylan explicitly resumes. Set to 0 to disable (no pause).
 	// Default is 3.
 	VerificationPauseThreshold int
 }
@@ -93,11 +93,11 @@ type Config struct {
 // DefaultConfig returns sensible defaults for daemon configuration.
 func DefaultConfig() Config {
 	return Config{
-		PollInterval:                time.Minute,
+		PollInterval:                15 * time.Second, // Faster polling for responsive dashboard updates
 		MaxAgents:                   3,
 		MaxSpawnsPerHour:            20, // Prevents runaway spawning
 		Label:                       "triage:ready",
-		SpawnDelay:                  10 * time.Second,
+		SpawnDelay:                  3 * time.Second, // Reduced from 10s - dedup cache prevents duplicates
 		DryRun:                      false,
 		Verbose:                     false,
 		ReflectEnabled:              true,

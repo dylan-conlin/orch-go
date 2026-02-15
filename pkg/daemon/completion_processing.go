@@ -182,11 +182,12 @@ func findWorkspaceForIssue(beadsID, workspaceDir, projectDir string) string {
 	return ""
 }
 
-// ProcessCompletion verifies and closes a single completed agent.
-// It runs the same verification as `orch complete` and closes the beads issue.
-// Uses the escalation model to determine whether to auto-complete:
-//   - EscalationNone/Info/Review: Auto-complete (issue closed)
-//   - EscalationBlock/Failed: Do not auto-complete (issue remains open)
+// ProcessCompletion verifies and marks a single completed agent as ready-for-review.
+// It runs the same verification as `orch complete` but does NOT close the beads issue.
+// Instead, it adds a "daemon:ready-review" label for orchestrator review.
+// Uses the escalation model to determine whether to mark ready-for-review:
+//   - EscalationNone/Info/Review: Mark ready-for-review (labeled, not closed)
+//   - EscalationBlock/Failed: Requires human review (no label, remains in_progress)
 func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig) CompletionResult {
 	result := CompletionResult{
 		BeadsID: agent.BeadsID,
@@ -248,22 +249,23 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 		return result
 	}
 
-	// Build close reason from phase summary
-	closeReason := "Phase: Complete"
+	// Build completion summary from phase summary
+	completionSummary := "Phase: Complete"
 	if agent.PhaseSummary != "" {
-		closeReason = fmt.Sprintf("Phase: Complete - %s", agent.PhaseSummary)
+		completionSummary = fmt.Sprintf("Phase: Complete - %s", agent.PhaseSummary)
 	}
 
-	// Close the issue (unless dry run)
+	// Mark issue as ready for review (unless dry run)
+	// Instead of auto-closing, add a label so Dylan can review via orchestrator
 	if !config.DryRun {
-		if err := verify.CloseIssue(agent.BeadsID, closeReason); err != nil {
-			result.Error = fmt.Errorf("failed to close issue: %w", err)
+		if err := verify.AddLabel(agent.BeadsID, "daemon:ready-review"); err != nil {
+			result.Error = fmt.Errorf("failed to mark ready for review: %w", err)
 			return result
 		}
 	}
 
 	result.Processed = true
-	result.CloseReason = closeReason
+	result.CloseReason = completionSummary // Still used for logging/display
 	return result
 }
 

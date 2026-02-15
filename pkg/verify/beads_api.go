@@ -231,6 +231,41 @@ func UpdateIssueStatus(beadsID, status string) error {
 	return beads.FallbackUpdate(beadsID, status)
 }
 
+// AddLabel adds a label to a beads issue.
+// It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
+// Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
+func AddLabel(beadsID, label string) error {
+	// Try RPC client first with auto-reconnect
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if beads.DefaultDir != "" {
+			opts = append(opts, beads.WithCwd(beads.DefaultDir))
+		}
+		client := beads.NewClient(socketPath, opts...)
+		if connErr := client.Connect(); connErr == nil {
+			defer client.Close()
+			err := client.AddLabel(beadsID, label)
+			if err == nil {
+				return nil
+			}
+		}
+		// Fall through to CLI fallback on RPC error
+	}
+
+	// Fallback to CLI
+	cmd := exec.Command("bd", "label", "add", beadsID, label)
+	// Set BEADS_NO_DAEMON=1 to avoid daemon timeout in minimal envs
+	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+	if beads.DefaultDir != "" {
+		cmd.Dir = beads.DefaultDir
+	}
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("bd label add failed: %w (output: %s)", err, string(output))
+	}
+	return nil
+}
+
 // RemoveTriageReadyLabel removes the triage:ready label from a beads issue.
 // It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
 // This should be called after orch complete successfully closes the issue, not at spawn time.

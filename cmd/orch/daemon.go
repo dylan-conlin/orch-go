@@ -110,7 +110,7 @@ var daemonResumeCmd = &cobra.Command{
 	Short: "Resume daemon after verification pause",
 	Long: `Resume the daemon after reviewing completed work.
 
-When the daemon auto-completes N issues without human verification (manual orch complete),
+When the daemon marks N issues as ready-for-review without human verification (manual orch complete),
 it pauses spawning to enforce the verifiability-first constraint. After reviewing the
 completed work, run this command to reset the completion counter and resume operation.
 
@@ -148,11 +148,11 @@ func init() {
 	daemonCmd.AddCommand(daemonResumeCmd)
 
 	// Spawn delay between issues
-	daemonRunCmd.Flags().IntVar(&daemonDelay, "delay", 10, "Delay between spawns in seconds")
+	daemonRunCmd.Flags().IntVar(&daemonDelay, "delay", 3, "Delay between spawns in seconds")
 	daemonRunCmd.Flags().BoolVar(&daemonDryRun, "dry-run", false, "Preview mode - show what would be processed without spawning")
 
 	// New flags for continuous polling
-	daemonRunCmd.Flags().IntVar(&daemonPollInterval, "poll-interval", 60, "Poll interval in seconds (0 = run once and exit)")
+	daemonRunCmd.Flags().IntVar(&daemonPollInterval, "poll-interval", 15, "Poll interval in seconds (0 = run once and exit)")
 	daemonRunCmd.Flags().IntVarP(&daemonMaxAgents, "concurrency", "c", 3, "Maximum concurrent agents (0 = no limit)")
 	daemonRunCmd.Flags().IntVar(&daemonMaxAgents, "max-agents", 3, "Maximum concurrent agents (alias for --concurrency)")
 	daemonRunCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
@@ -224,7 +224,7 @@ func runDaemonLoop() error {
 
 	logger := events.NewLogger(events.DefaultLogPath())
 	processed := 0
-	completed := 0 // Track auto-completed agents
+	completed := 0 // Track agents marked ready-for-review
 	cycles := 0
 	var lastSpawn time.Time      // Track last successful spawn
 	var lastCompletion time.Time // Track last auto-completion
@@ -307,8 +307,8 @@ func runDaemonLoop() error {
 		}
 
 		// Check verification pause BEFORE spawning
-		// This enforces the verifiability-first constraint by pausing after N auto-completions
-		// without human verification (manual orch complete).
+		// This enforces the verifiability-first constraint by pausing after N agents
+		// are marked ready-for-review without human verification (manual orch complete).
 		if d.VerificationTracker != nil && d.VerificationTracker.IsPaused() {
 			verifyStatus := d.VerificationTracker.Status()
 			if daemonVerbose || cycles%10 == 0 {
@@ -316,7 +316,7 @@ func runDaemonLoop() error {
 				pendingIssues, _ := daemon.ListReadyIssues()
 				pendingCount := len(pendingIssues)
 
-				fmt.Printf("[%s] ⏸  Verification pause: %d auto-completions without human review (threshold: %d)\n",
+				fmt.Printf("[%s] ⏸  Verification pause: %d agent(s) ready for review (threshold: %d)\n",
 					timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
 				fmt.Printf("[%s]    Completed work is waiting for review. %d issue(s) ready to spawn once resumed.\n",
 					timestamp, pendingCount)
@@ -411,10 +411,10 @@ func runDaemonLoop() error {
 			}
 		}
 
-		// Process completions: auto-close agents that report Phase: Complete
-		// This frees capacity slots for new work. Uses the escalation model:
-		// - None/Info/Review: Auto-complete (closes issue)
-		// - Block/Failed: Requires human review (issue stays open)
+		// Process completions: mark Phase: Complete agents as ready-for-review
+		// This signals they're waiting for orchestrator review. Uses the escalation model:
+		// - None/Info/Review: Mark ready-for-review (labeled, not closed)
+		// - Block/Failed: Requires human review (no label, remains in_progress)
 		completionConfig := daemon.CompletionConfig{
 			ProjectDir: projectDir,
 			ServerURL:  serverURL,
@@ -431,15 +431,15 @@ func runDaemonLoop() error {
 					completedThisCycle++
 					completed++
 					lastCompletion = time.Now()
-					fmt.Printf("[%s] Auto-completed: %s (escalation=%s)\n",
+					fmt.Printf("[%s] Ready for review: %s (escalation=%s)\n",
 						timestamp, cr.BeadsID, cr.Escalation)
 
-					// Record auto-completion for verification tracking
+					// Record completion for verification tracking
 					// This increments the counter and may pause daemon if threshold reached
 					if d.VerificationTracker != nil {
 						if shouldPause := d.VerificationTracker.RecordCompletion(); shouldPause {
 							verifyStatus := d.VerificationTracker.Status()
-							fmt.Printf("[%s] ⚠️  Verification threshold reached: %d/%d auto-completions\n",
+							fmt.Printf("[%s] ⚠️  Verification threshold reached: %d/%d agents ready for review\n",
 								timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
 							fmt.Printf("[%s]    Daemon will pause spawning on next cycle\n", timestamp)
 							fmt.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work\n", timestamp)
@@ -454,19 +454,19 @@ func runDaemonLoop() error {
 							"beads_id":   cr.BeadsID,
 							"reason":     cr.CloseReason,
 							"escalation": cr.Escalation.String(),
-							"source":     "daemon_auto_complete",
+							"source":     "daemon_ready_for_review",
 						},
 					}
 					if err := logger.Log(event); err != nil {
 						fmt.Fprintf(os.Stderr, "Warning: failed to log completion event: %v\n", err)
 					}
 				} else if cr.Error != nil && daemonVerbose {
-					fmt.Printf("[%s] Completion blocked: %s - %v (escalation=%s)\n",
+					fmt.Printf("[%s] Review required: %s - %v (escalation=%s)\n",
 						timestamp, cr.BeadsID, cr.Error, cr.Escalation)
 				}
 			}
 			if completedThisCycle > 0 && daemonVerbose {
-				fmt.Printf("[%s] Auto-completed %d agent(s) this cycle\n", timestamp, completedThisCycle)
+				fmt.Printf("[%s] Marked %d agent(s) ready for review this cycle\n", timestamp, completedThisCycle)
 			}
 		}
 

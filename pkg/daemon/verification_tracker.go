@@ -13,14 +13,14 @@ import (
 // and manages pause state when threshold is reached.
 //
 // Human verification is defined as a manual `orch complete` invocation
-// (not daemon auto-completion). This enforces the verifiability-first
-// constraint by pausing autonomous operation after N completions without
-// human review.
+// (not daemon marking ready-for-review). This enforces the verifiability-first
+// constraint by pausing autonomous operation after N agents are marked
+// ready-for-review without human review.
 type VerificationTracker struct {
 	mu sync.RWMutex
 
-	// completionsSinceVerification tracks how many auto-completions have
-	// occurred since the last human verification.
+	// completionsSinceVerification tracks how many agents have been marked
+	// ready-for-review since the last human verification.
 	completionsSinceVerification int
 
 	// lastVerification is when the last human verification occurred.
@@ -31,8 +31,8 @@ type VerificationTracker struct {
 	// the verification threshold.
 	isPaused bool
 
-	// threshold is the maximum number of auto-completions allowed before
-	// pausing for human verification. Default is 3.
+	// threshold is the maximum number of agents that can be marked ready-for-review
+	// before pausing for human verification. Default is 3.
 	threshold int
 }
 
@@ -48,7 +48,7 @@ func NewVerificationTracker(threshold int) *VerificationTracker {
 }
 
 // RecordCompletion increments the completion counter.
-// This should be called when the daemon auto-completes an issue.
+// This should be called when the daemon marks an issue as ready-for-review.
 // Returns true if the threshold was reached and daemon should pause.
 func (vt *VerificationTracker) RecordCompletion() bool {
 	vt.mu.Lock()
