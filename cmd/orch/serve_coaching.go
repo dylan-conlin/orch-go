@@ -199,55 +199,49 @@ func aggregateMetrics(metrics []coaching.Metric) CoachingResponse {
 	resp.Session.Started = sessionMetrics[0].Timestamp
 	resp.Session.DurationMinutes = int(lastTimestamp.Sub(firstTimestamp).Minutes())
 
-	// Aggregate by metric type (use latest value)
-	metricValues := make(map[string]float64)
-	for _, m := range sessionMetrics {
-		metricValues[m.Type] = m.Value
-		// Track last coaching time (when metric was written)
-		resp.LastCoachingTime = m.Timestamp
-	}
+	// Track last coaching time (latest metric timestamp)
+	resp.LastCoachingTime = sessionMetrics[len(sessionMetrics)-1].Timestamp
 
 	// Calculate overall health status based on aggregated metrics
-	// Thresholds: good = all metrics good, warning = any warning, poor = any poor
-	goodCount := 0
+	// Count events per metric type for the session
+	metricEventCounts := make(map[string]int)
+	for _, m := range sessionMetrics {
+		metricEventCounts[m.Type]++
+	}
+
 	warningCount := 0
 	poorCount := 0
 
-	// Action ratio
-	if val, ok := metricValues["action_ratio"]; ok {
-		if val >= 0.5 {
-			goodCount++
-		} else if val >= 0.3 {
-			warningCount++
-		} else {
-			poorCount++
-		}
+	// frame_collapse: any events = warning
+	if metricEventCounts["frame_collapse"] > 0 {
+		warningCount++
 	}
 
-	// Analysis paralysis
-	if val, ok := metricValues["analysis_paralysis"]; ok {
-		if val < 1 {
-			goodCount++
-		} else if val < 3 {
-			warningCount++
-		} else {
-			poorCount++
-		}
+	// completion_backlog: any events = warning
+	if metricEventCounts["completion_backlog"] > 0 {
+		warningCount++
+	}
+
+	// behavioral_variation: 5+ events = warning
+	if metricEventCounts["behavioral_variation"] >= 5 {
+		warningCount++
+	}
+
+	// circular_pattern: any events = poor
+	if metricEventCounts["circular_pattern"] > 0 {
+		poorCount++
 	}
 
 	// Determine overall status
 	if poorCount > 0 {
 		resp.OverallStatus = "poor"
-		resp.StatusMessage = "Orchestrator doing worker work"
+		resp.StatusMessage = "Circular patterns detected - orchestrator looping"
 	} else if warningCount > 0 {
 		resp.OverallStatus = "warning"
-		resp.StatusMessage = "Orchestrator may be stuck - check in"
-	} else if goodCount > 0 {
-		resp.OverallStatus = "good"
-		resp.StatusMessage = "Orchestrator delegating well"
+		resp.StatusMessage = "Behavioral warnings detected - check orchestrator"
 	} else {
 		resp.OverallStatus = "good"
-		resp.StatusMessage = "No behavioral patterns detected yet"
+		resp.StatusMessage = "Orchestrator delegating well"
 	}
 
 	return resp
