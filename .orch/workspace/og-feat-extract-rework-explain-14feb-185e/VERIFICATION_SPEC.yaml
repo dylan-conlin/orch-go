@@ -1,0 +1,26 @@
+verification:
+  task: "Extract explain-back gate from cmd/orch/complete_cmd.go to pkg/orch/"
+  
+  commands:
+    - command: "grep -n 'RunExplainBackGate' pkg/orch/completion.go"
+      expectation: "Function exists in pkg/orch/completion.go"
+      result: "Found at line 123"
+      
+    - command: "grep -n 'orch.RunExplainBackGate' cmd/orch/complete_cmd.go"
+      expectation: "Called from cmd/orch/complete_cmd.go"
+      result: "Found at line 884"
+      
+    - command: "go test ./pkg/orch/ ./cmd/orch/"
+      expectation: "All tests pass"
+      result: "PASS - all tests passing"
+  
+  manual_steps:
+    - step: "Verify extraction is pure structural (no behavior changes)"
+      verification: "Checked commits db0d3975 and caa5e3dd - pure refactoring"
+      result: "Confirmed - function extracted with no logic changes"
+      
+    - step: "Verify function signature matches usage"
+      verification: "RunExplainBackGate takes beadsID, flags, session state, stdin/stdout"
+      result: "Confirmed - signature matches call site"
+  
+  outcome: "COMPLETE - Extraction already done in prior commits, verified working"
