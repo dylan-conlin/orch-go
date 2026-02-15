@@ -28,7 +28,7 @@ func TestBuildKnowledgeTree(t *testing.T) {
 		Format: "text",
 	}
 
-	root, err := BuildKnowledgeTree(kbDir, opts)
+	root, _, err := BuildKnowledgeTree(kbDir, opts)
 	if err != nil {
 		t.Fatalf("BuildKnowledgeTree failed: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestRenderTree(t *testing.T) {
 		Depth:  0,
 	}
 
-	output, err := RenderTree(root, opts)
+	output, err := RenderTree(root, opts, nil)
 	if err != nil {
 		t.Fatalf("RenderTree failed: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestRenderJSON(t *testing.T) {
 		Format: "json",
 	}
 
-	output, err := RenderTree(root, opts)
+	output, err := RenderTree(root, opts, nil)
 	if err != nil {
 		t.Fatalf("RenderTree failed: %v", err)
 	}

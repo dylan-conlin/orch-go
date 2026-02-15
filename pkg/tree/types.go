@@ -48,10 +48,27 @@ type Relationship struct {
 	Verified     bool   // Whether the relationship was verified
 }
 
+// HealthSmellType represents different types of health smells
+type HealthSmellType string
+
+const (
+	SmellNeedsSynthesis HealthSmellType = "needs_synthesis" // 15+ investigations without decision/model
+	SmellNotActedOn     HealthSmellType = "not_acted_on"    // Decision without spawned issues
+	SmellUntestedModel  HealthSmellType = "untested_model"  // Model without probes
+)
+
+// HealthSmell represents a health smell detected in a cluster
+type HealthSmell struct {
+	Type        HealthSmellType // Type of smell
+	Description string          // Human-readable description
+	Count       int             // Supporting count (e.g., number of investigations)
+}
+
 // Cluster represents a group of related artifacts
 type Cluster struct {
-	Name  string           // Cluster name
-	Nodes []*KnowledgeNode // Nodes in this cluster
+	Name   string           // Cluster name
+	Nodes  []*KnowledgeNode // Nodes in this cluster
+	Smells []HealthSmell    // Health smells detected in this cluster
 }
 
 // TreeOptions represents options for rendering the tree
@@ -60,4 +77,6 @@ type TreeOptions struct {
 	Depth         int    // Maximum depth to render (0 = unlimited)
 	Format        string // Output format (text or json)
 	WorkView      bool   // Use work view instead of knowledge view
+	SmellsOnly    bool   // Filter to only clusters with health smells
+	Compact       bool   // Use compact format (minimal output for hook injection)
 }

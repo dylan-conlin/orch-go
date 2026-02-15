@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-orch-tree-phase-15feb-bcc5",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-qde",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "cdc4e58377586fd42631d37bb6515687974af2a7",
+  "spawn_time": "2026-02-15T00:41:55-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

@@ -34,6 +34,8 @@ var (
 	treeDepth   int
 	treeFormat  string
 	treeWork    bool
+	treeSmells  bool
+	treeCompact bool
 )
 
 func init() {
@@ -41,6 +43,8 @@ func init() {
 	treeCmd.Flags().IntVar(&treeDepth, "depth", 2, "Maximum depth to render (0 = unlimited)")
 	treeCmd.Flags().StringVar(&treeFormat, "format", "text", "Output format: text or json")
 	treeCmd.Flags().BoolVar(&treeWork, "work", false, "Show work view (issues as primary nodes)")
+	treeCmd.Flags().BoolVar(&treeSmells, "smells", false, "Show only clusters with health smells")
+	treeCmd.Flags().BoolVar(&treeCompact, "compact", false, "Use compact format (minimal output for hook injection)")
 
 	rootCmd.AddCommand(treeCmd)
 }
@@ -63,6 +67,8 @@ func runTreeCmd(cmd *cobra.Command, args []string) error {
 		Depth:         treeDepth,
 		Format:        treeFormat,
 		WorkView:      treeWork,
+		SmellsOnly:    treeSmells,
+		Compact:       treeCompact,
 	}
 
 	// Validate format
@@ -85,12 +91,12 @@ func runTreeCmd(cmd *cobra.Command, args []string) error {
 		fmt.Print(output)
 	} else {
 		// Knowledge view: investigations/decisions/models as primary nodes
-		root, err := tree.BuildKnowledgeTree(kbDir, opts)
+		root, clusters, err := tree.BuildKnowledgeTree(kbDir, opts)
 		if err != nil {
 			return fmt.Errorf("failed to build knowledge tree: %w", err)
 		}
 
-		output, err := tree.RenderTree(root, opts)
+		output, err := tree.RenderTree(root, opts, clusters)
 		if err != nil {
 			return fmt.Errorf("failed to render tree: %w", err)
 		}

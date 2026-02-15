@@ -15,6 +15,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/session"
+	"github.com/dylan-conlin/orch-go/pkg/tree"
 	// spawn import moved to session_handoff.go
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/spf13/cobra"
@@ -209,6 +210,10 @@ func runSessionStart(goal string) error {
 	// Part of Capture at Context principle - surface context when it matters
 	surfaceFocusGuidance()
 
+	// Surface tree summary - show work view with health smells
+	// Gives cluster awareness and health smell triage without extra commands
+	surfaceTreeSummary()
+
 	return nil
 }
 
@@ -242,6 +247,49 @@ func surfaceFocusGuidance() {
 
 	// Display formatted guidance
 	fmt.Print(focus.FormatFocusGuidance(guidance))
+}
+
+// surfaceTreeSummary displays orch tree summary with work view and health smells.
+// This gives orchestrators cluster awareness and health smell triage at session start.
+func surfaceTreeSummary() {
+	// Get current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		// Failed to get cwd - silently skip (not critical)
+		return
+	}
+
+	// Find .kb/ directory
+	kbDir := filepath.Join(cwd, ".kb")
+	if _, err := os.Stat(kbDir); os.IsNotExist(err) {
+		// No .kb/ directory - silently skip (not all projects have knowledge bases)
+		return
+	}
+
+	// Build tree with work view, smells only, and compact format
+	opts := tree.TreeOptions{
+		Depth:      2,
+		Format:     "text",
+		WorkView:   true,
+		SmellsOnly: true,
+		Compact:    true,
+	}
+
+	issues, err := tree.BuildWorkTree(kbDir, cwd, opts)
+	if err != nil {
+		// Failed to build tree - silently skip (not critical)
+		return
+	}
+
+	output, err := tree.RenderWorkView(issues, opts)
+	if err != nil {
+		// Failed to render - silently skip (not critical)
+		return
+	}
+
+	// Display output with a blank line before it
+	fmt.Println()
+	fmt.Print(output)
 }
 
 // surfaceReflectSuggestions loads and displays synthesis warnings from reflect-suggestions.json.
@@ -681,7 +729,6 @@ func runSessionEnd() error {
 
 	return nil
 }
-
 
 // ============================================================================
 // Session Resume Command

@@ -206,6 +206,7 @@ func parseDecision(path string) (*KnowledgeNode, []Relationship, error) {
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
 
+	inEvidence := false
 	for scanner.Scan() {
 		line := scanner.Text()
 		lineNum++
@@ -225,18 +226,48 @@ func parseDecision(path string) (*KnowledgeNode, []Relationship, error) {
 			continue
 		}
 
+		// Check for Evidence section
+		if strings.Contains(line, "## Evidence") || strings.Contains(line, "**Evidence:**") {
+			inEvidence = true
+			continue
+		}
+
+		// End of Evidence section
+		if inEvidence && strings.HasPrefix(line, "##") {
+			inEvidence = false
+			continue
+		}
+
 		// Extract references to investigations in Evidence section
-		// Look for markdown links: [text](.kb/investigations/file.md)
-		refRegex := regexp.MustCompile(`\[.+?\]\((.kb/investigations/.+?\.md)\)`)
-		if matches := refRegex.FindAllStringSubmatch(line, -1); matches != nil {
-			for _, match := range matches {
-				if len(match) > 1 {
-					absTargetPath := resolveKbPath(path, match[1])
-					// Decision references investigation, so decision is parent, investigation is child
+		// Look for markdown links: [text](.kb/investigations/file.md) or inline references
+		// Also look for direct path references
+		if inEvidence {
+			// Pattern 1: Markdown links
+			refRegex := regexp.MustCompile(`\[.+?\]\((.kb/investigations/.+?\.md)\)`)
+			if matches := refRegex.FindAllStringSubmatch(line, -1); matches != nil {
+				for _, match := range matches {
+					if len(match) > 1 {
+						absTargetPath := resolveKbPath(path, match[1])
+						// Investigation is the evidence, so investigation is parent, decision is child
+						relationships = append(relationships, Relationship{
+							From:         absTargetPath, // Investigation (parent/evidence)
+							To:           path,          // Decision (child/outcome)
+							RelationType: "synthesizes",
+							Verified:     true,
+						})
+					}
+				}
+			}
+
+			// Pattern 2: Direct path references (e.g., ".kb/investigations/2026-02-14-inv-something.md")
+			pathRegex := regexp.MustCompile(`\.kb/investigations/[^\s\)]+\.md`)
+			if matches := pathRegex.FindAllString(line, -1); matches != nil {
+				for _, match := range matches {
+					absTargetPath := resolveKbPath(path, match)
 					relationships = append(relationships, Relationship{
-						From:         path,          // Decision (parent)
-						To:           absTargetPath, // Investigation (child)
-						RelationType: "references",
+						From:         absTargetPath, // Investigation (parent/evidence)
+						To:           path,          // Decision (child/outcome)
+						RelationType: "synthesizes",
 						Verified:     true,
 					})
 				}
@@ -336,12 +367,53 @@ func parseModel(path string, modelDir string) (*KnowledgeNode, []Relationship, e
 			continue
 		}
 
-		// Extract Synthesized From header
+		// Extract Synthesized From header and parse investigation references
 		if matches := synthesizedFromRegex.FindStringSubmatch(line); matches != nil {
-			// This indicates the model synthesizes multiple investigations
-			// We could parse the investigation references here
-			node.Metadata["synthesized_from"] = matches[1]
+			synthesizedText := matches[1]
+			node.Metadata["synthesized_from"] = synthesizedText
+
+			// Parse investigation references from the synthesized text
+			// Look for patterns like: "31 investigations", ".kb/investigations/file.md", etc.
+			// Pattern 1: Direct file references
+			pathRegex := regexp.MustCompile(`\.kb/investigations/[^\s,\)]+\.md`)
+			if pathMatches := pathRegex.FindAllString(synthesizedText, -1); pathMatches != nil {
+				for _, match := range pathMatches {
+					absTargetPath := resolveKbPath(path, match)
+					// Investigation is source, model is synthesis
+					relationships = append(relationships, Relationship{
+						From:         absTargetPath, // Investigation (parent/source)
+						To:           modelDir,      // Model (child/synthesis)
+						RelationType: "synthesizes",
+						Verified:     true,
+					})
+				}
+			}
 			continue
+		}
+
+		// Also look for investigation references anywhere in the model content
+		// This catches references in the Summary or other sections
+		pathRegex := regexp.MustCompile(`\.kb/investigations/[^\s,\)]+\.md`)
+		if pathMatches := pathRegex.FindAllString(line, -1); pathMatches != nil {
+			for _, match := range pathMatches {
+				absTargetPath := resolveKbPath(path, match)
+				// Check if we already have this relationship
+				found := false
+				for _, rel := range relationships {
+					if rel.From == absTargetPath && rel.To == modelDir {
+						found = true
+						break
+					}
+				}
+				if !found {
+					relationships = append(relationships, Relationship{
+						From:         absTargetPath, // Investigation (parent/source)
+						To:           modelDir,      // Model (child/synthesis)
+						RelationType: "references",
+						Verified:     false, // Not from Synthesized From header
+					})
+				}
+			}
 		}
 	}
 

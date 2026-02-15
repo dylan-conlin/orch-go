@@ -11,7 +11,7 @@ import (
 )
 
 // BuildKnowledgeTree builds the full knowledge tree from .kb/ directory
-func BuildKnowledgeTree(kbDir string, opts TreeOptions) (*KnowledgeNode, error) {
+func BuildKnowledgeTree(kbDir string, opts TreeOptions) (*KnowledgeNode, []*Cluster, error) {
 	root := &KnowledgeNode{
 		ID:       "root",
 		Type:     NodeTypeCluster,
@@ -28,7 +28,7 @@ func BuildKnowledgeTree(kbDir string, opts TreeOptions) (*KnowledgeNode, error) 
 	if _, err := os.Stat(invDir); err == nil {
 		invNodes, invRels, err := ParseInvestigations(invDir)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse investigations: %w", err)
+			return nil, nil, fmt.Errorf("failed to parse investigations: %w", err)
 		}
 		allNodes = append(allNodes, invNodes...)
 		allRelationships = append(allRelationships, invRels...)
@@ -39,7 +39,7 @@ func BuildKnowledgeTree(kbDir string, opts TreeOptions) (*KnowledgeNode, error) 
 	if _, err := os.Stat(decDir); err == nil {
 		decNodes, decRels, err := ParseDecisions(decDir)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse decisions: %w", err)
+			return nil, nil, fmt.Errorf("failed to parse decisions: %w", err)
 		}
 		allNodes = append(allNodes, decNodes...)
 		allRelationships = append(allRelationships, decRels...)
@@ -50,7 +50,7 @@ func BuildKnowledgeTree(kbDir string, opts TreeOptions) (*KnowledgeNode, error) 
 	if _, err := os.Stat(modelDir); err == nil {
 		modelNodes, modelRels, err := ParseModels(modelDir)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse models: %w", err)
+			return nil, nil, fmt.Errorf("failed to parse models: %w", err)
 		}
 		allNodes = append(allNodes, modelNodes...)
 		allRelationships = append(allRelationships, modelRels...)
@@ -61,7 +61,7 @@ func BuildKnowledgeTree(kbDir string, opts TreeOptions) (*KnowledgeNode, error) 
 	if _, err := os.Stat(guideDir); err == nil {
 		guideNodes, err := ParseGuides(guideDir)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse guides: %w", err)
+			return nil, nil, fmt.Errorf("failed to parse guides: %w", err)
 		}
 		allNodes = append(allNodes, guideNodes...)
 	}
@@ -70,9 +70,9 @@ func BuildKnowledgeTree(kbDir string, opts TreeOptions) (*KnowledgeNode, error) 
 	BuildRelationshipGraph(allNodes, allRelationships)
 
 	// 3. Detect clusters
-	clusters, err := DetectClusters(kbDir, allNodes, allRelationships)
+	clusters, err := DetectClusters(kbDir, allNodes, allRelationships, opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to detect clusters: %w", err)
+		return nil, nil, fmt.Errorf("failed to detect clusters: %w", err)
 	}
 
 	// 4. Filter by cluster if specified
@@ -84,12 +84,15 @@ func BuildKnowledgeTree(kbDir string, opts TreeOptions) (*KnowledgeNode, error) 
 					Type:     NodeTypeCluster,
 					Title:    cluster.Name,
 					Children: buildClusterTree(cluster),
+					Metadata: map[string]interface{}{
+						"smells": cluster.Smells,
+					},
 				}
 				root.Children = append(root.Children, clusterNode)
-				return root, nil
+				return root, clusters, nil
 			}
 		}
-		return nil, fmt.Errorf("cluster %q not found", opts.ClusterFilter)
+		return nil, nil, fmt.Errorf("cluster %q not found", opts.ClusterFilter)
 	}
 
 	// 5. Add all clusters to root
@@ -99,36 +102,112 @@ func BuildKnowledgeTree(kbDir string, opts TreeOptions) (*KnowledgeNode, error) 
 			Type:     NodeTypeCluster,
 			Title:    cluster.Name,
 			Children: buildClusterTree(cluster),
+			Metadata: map[string]interface{}{
+				"smells": cluster.Smells,
+			},
 		}
 		root.Children = append(root.Children, clusterNode)
 	}
 
-	return root, nil
+	return root, clusters, nil
 }
 
-// buildClusterTree builds a tree for a cluster's nodes
+// buildClusterTree builds a tree for a cluster's nodes using relationship graph
 func buildClusterTree(cluster *Cluster) []*KnowledgeNode {
-	// Find root nodes (nodes that are not children of other nodes)
+	// Find root nodes (nodes that are not children of other nodes within this cluster)
 	childMap := make(map[string]bool)
+	nodeMap := make(map[string]*KnowledgeNode)
+
+	// Index nodes in this cluster
+	for _, node := range cluster.Nodes {
+		nodeMap[node.ID] = node
+	}
+
+	// Mark all children (nodes that have parents in this cluster)
 	for _, node := range cluster.Nodes {
 		for _, child := range node.Children {
-			childMap[child.ID] = true
+			// Only mark as child if the child is also in this cluster
+			if _, inCluster := nodeMap[child.ID]; inCluster {
+				childMap[child.ID] = true
+			}
 		}
 	}
 
+	// Collect root nodes (nodes without parents in this cluster)
 	var rootNodes []*KnowledgeNode
 	for _, node := range cluster.Nodes {
 		if !childMap[node.ID] {
-			rootNodes = append(rootNodes, node)
+			// This is a root node - it has no parent in this cluster
+			// Clone the node to avoid modifying the original and filter children
+			clonedNode := cloneNodeForTree(node, nodeMap)
+			rootNodes = append(rootNodes, clonedNode)
 		}
 	}
 
-	// If no root nodes found, return all nodes
+	// If no root nodes found (all nodes are in cycles or have external parents),
+	// return all nodes with cycle-safe traversal
 	if len(rootNodes) == 0 {
-		return cluster.Nodes
+		for _, node := range cluster.Nodes {
+			clonedNode := cloneNodeForTree(node, nodeMap)
+			rootNodes = append(rootNodes, clonedNode)
+		}
 	}
 
 	return rootNodes
+}
+
+// cloneNodeForTree clones a node and filters children to only include those in the cluster
+// Also implements cycle detection by tracking visited nodes
+func cloneNodeForTree(node *KnowledgeNode, clusterNodes map[string]*KnowledgeNode) *KnowledgeNode {
+	visited := make(map[string]bool)
+	return cloneNodeRecursive(node, clusterNodes, visited)
+}
+
+// cloneNodeRecursive clones a node recursively with cycle detection
+func cloneNodeRecursive(node *KnowledgeNode, clusterNodes map[string]*KnowledgeNode, visited map[string]bool) *KnowledgeNode {
+	// Detect cycle - if we've already visited this node in this path, stop
+	if visited[node.ID] {
+		// Return a shallow clone without children to break the cycle
+		return &KnowledgeNode{
+			ID:       node.ID,
+			Type:     node.Type,
+			Title:    node.Title,
+			Path:     node.Path,
+			Status:   node.Status,
+			Date:     node.Date,
+			Children: nil, // Break cycle by not including children
+			Metadata: node.Metadata,
+		}
+	}
+
+	// Mark this node as visited in current path
+	visited[node.ID] = true
+	defer func() {
+		// Unmark when we return (for backtracking)
+		delete(visited, node.ID)
+	}()
+
+	// Clone the node
+	cloned := &KnowledgeNode{
+		ID:       node.ID,
+		Type:     node.Type,
+		Title:    node.Title,
+		Path:     node.Path,
+		Status:   node.Status,
+		Date:     node.Date,
+		Children: []*KnowledgeNode{},
+		Metadata: node.Metadata,
+	}
+
+	// Only include children that are in the cluster
+	for _, child := range node.Children {
+		if _, inCluster := clusterNodes[child.ID]; inCluster {
+			clonedChild := cloneNodeRecursive(child, clusterNodes, visited)
+			cloned.Children = append(cloned.Children, clonedChild)
+		}
+	}
+
+	return cloned
 }
 
 // BuildWorkTree builds the work view tree (issues as primary nodes)

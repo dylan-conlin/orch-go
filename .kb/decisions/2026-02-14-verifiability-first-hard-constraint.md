@@ -246,23 +246,21 @@ Gate 2 alone (behavioral): Can verify tests pass without understanding what they
 
 ## Open Questions
 
-1. **What counts as "deliverable" for verification purposes?**
-   - Investigation file? Feature implementation? Bug fix? All of the above?
-   - Granularity matters: too fine = verification bottleneck, too coarse = batched risk
+1. **What counts as "deliverable" for verification purposes?** — RESOLVED (kb-676bdb)
+   - Three-tier system: Tier 1 (full two-gate) for features/bugs/decisions, Tier 2 (comprehension only) for investigations/probes, Tier 3 (acknowledge) for trivial fixes
+   - Tier inferred from issue type
 
-2. **How to handle multi-agent parallel work?**
-   - Agent A on feature X, Agent B on feature Y — both need verification before merge
-   - Does verification queue become linear bottleneck?
-   - Can features be verified independently if truly isolated?
+2. **How to handle multi-agent parallel work?** — RESOLVED (kb-96dec5)
+   - Simple model first: serialize all Tier 1 verification. Daemon blocks new spawns while unverified Tier 1 work exists.
+   - May revisit with overlap-aware model after seeing bottleneck in practice via dashboard/tree UI.
 
-3. **What's the override threshold before constraint is failing?**
-   - If 10% of completions use `--bypass-verification`, is that acceptable friction?
-   - If 50%? At what point is the constraint broken vs working-as-designed?
+3. **What's the override threshold before constraint is failing?** — RESOLVED (kb-f26074)
+   - Trend-based monitoring, not absolute threshold. Stable 8% is fine, climbing trend is a problem.
+   - Circuit breaker: 50% override in any week → halt and surface structural problem.
 
-4. **How to verify the verification system?**
-   - Who verifies that checkpoints are being written correctly?
-   - How to detect if control plane code gets modified to bypass gates?
-   - Infinite regress problem: at some point human must trust something
+4. **How to verify the verification system?** — RESOLVED (kb-d2334a)
+   - Human observation, not meta-verification. Two observable behaviors: gate fires during orch complete, gate blocks daemon spawns.
+   - Protected path monitoring for pkg/control/ provides structural safeguard.
 
 ## Related Decisions
 
@@ -272,8 +270,8 @@ Gate 2 alone (behavioral): Can verify tests pass without understanding what they
 
 ## Next Steps
 
-1. **Accept or reject this decision** - Dylan must confirm willingness to change workflow
-2. **Phase 1 implementation** - checkpoint infrastructure and `--explain` flag
-3. **Calibration period** - run for 2 weeks, measure override frequency
-4. **Iterate on deliverable granularity** - adjust what requires verification based on friction
+1. ~~**Accept or reject this decision**~~ — ✅ Accepted (Feb 15)
+2. ~~**Resolve open questions**~~ — ✅ All four resolved (Feb 15, see above)
+3. **Phase 1 implementation** - checkpoint infrastructure and `--explain` flag
+4. **Calibration period** - run for 2 weeks, measure override frequency and trend
 5. **Monitor violation patterns** - if same constraint repeatedly overridden, constraint is wrong

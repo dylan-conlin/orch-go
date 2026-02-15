@@ -7,7 +7,7 @@ import (
 )
 
 // DetectClusters detects clusters from filesystem organization
-func DetectClusters(kbDir string, nodes []*KnowledgeNode, relationships []Relationship) ([]*Cluster, error) {
+func DetectClusters(kbDir string, nodes []*KnowledgeNode, relationships []Relationship, opts TreeOptions) ([]*Cluster, error) {
 	clusters := make(map[string]*Cluster)
 
 	// 1. Filesystem-based clustering from investigations/synthesized/{cluster}/
@@ -74,10 +74,18 @@ func DetectClusters(kbDir string, nodes []*KnowledgeNode, relationships []Relati
 		clusters["uncategorized"].Nodes = append(clusters["uncategorized"].Nodes, node)
 	}
 
-	// Convert map to slice
+	// Convert map to slice and detect health smells
 	var result []*Cluster
 	for _, cluster := range clusters {
 		if len(cluster.Nodes) > 0 {
+			// Detect health smells for this cluster
+			cluster.Smells = DetectHealthSmells(cluster, kbDir)
+
+			// If SmellsOnly flag is set, only include clusters with smells
+			if opts.SmellsOnly && len(cluster.Smells) == 0 {
+				continue
+			}
+
 			result = append(result, cluster)
 		}
 	}

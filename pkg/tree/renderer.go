@@ -77,7 +77,7 @@ func getNodeStatus(node *KnowledgeNode) string {
 }
 
 // RenderTree renders the tree as ASCII text
-func RenderTree(root *KnowledgeNode, opts TreeOptions) (string, error) {
+func RenderTree(root *KnowledgeNode, opts TreeOptions, clusters []*Cluster) (string, error) {
 	if opts.Format == "json" {
 		return renderJSON(root)
 	}
@@ -86,7 +86,13 @@ func RenderTree(root *KnowledgeNode, opts TreeOptions) (string, error) {
 	sb.WriteString("orch-go knowledge tree\n")
 	sb.WriteString("│\n")
 
-	renderNode(&sb, root, "", true, 0, opts.Depth)
+	// Build cluster map for smell lookup
+	clusterMap := make(map[string]*Cluster)
+	for _, cluster := range clusters {
+		clusterMap[cluster.Name] = cluster
+	}
+
+	renderNode(&sb, root, "", true, 0, opts.Depth, clusterMap)
 
 	return sb.String(), nil
 }
@@ -101,7 +107,7 @@ func renderJSON(root *KnowledgeNode) (string, error) {
 }
 
 // renderNode renders a single node and its children recursively
-func renderNode(sb *strings.Builder, node *KnowledgeNode, prefix string, isLast bool, currentDepth int, maxDepth int) {
+func renderNode(sb *strings.Builder, node *KnowledgeNode, prefix string, isLast bool, currentDepth int, maxDepth int, clusterMap map[string]*Cluster) {
 	if maxDepth > 0 && currentDepth >= maxDepth {
 		return
 	}
@@ -119,6 +125,14 @@ func renderNode(sb *strings.Builder, node *KnowledgeNode, prefix string, isLast 
 			sb.WriteString(getNodeIcon(node))
 			sb.WriteString(" ")
 			sb.WriteString(getNodeTitle(node))
+
+			// Add cluster stats and smell badges for depth 2 (cluster level)
+			if currentDepth == 1 {
+				if cluster, ok := clusterMap[node.Title]; ok {
+					sb.WriteString(renderClusterStats(cluster))
+				}
+			}
+
 			sb.WriteString("\n")
 		}
 
@@ -133,7 +147,7 @@ func renderNode(sb *strings.Builder, node *KnowledgeNode, prefix string, isLast 
 					childPrefix += "│ "
 				}
 			}
-			renderNode(sb, child, childPrefix, childIsLast, currentDepth+1, maxDepth)
+			renderNode(sb, child, childPrefix, childIsLast, currentDepth+1, maxDepth, clusterMap)
 		}
 		return
 	}
@@ -194,8 +208,54 @@ func renderNode(sb *strings.Builder, node *KnowledgeNode, prefix string, isLast 
 		} else {
 			childPrefix += "│ "
 		}
-		renderNode(sb, child, childPrefix, childIsLast, currentDepth+1, maxDepth)
+		renderNode(sb, child, childPrefix, childIsLast, currentDepth+1, maxDepth, clusterMap)
 	}
+}
+
+// renderClusterStats renders statistics and health smells for a cluster
+func renderClusterStats(cluster *Cluster) string {
+	// Count node types
+	var invCount, decCount, modelCount, issueCount int
+	for _, node := range cluster.Nodes {
+		switch node.Type {
+		case NodeTypeInvestigation:
+			invCount++
+		case NodeTypeDecision:
+			decCount++
+		case NodeTypeModel:
+			modelCount++
+		case NodeTypeIssue:
+			issueCount++
+		}
+	}
+
+	var parts []string
+	if invCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d investigations", invCount))
+	}
+	if decCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d decisions", decCount))
+	}
+	if modelCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d models", modelCount))
+	}
+	if issueCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d issues", issueCount))
+	}
+
+	statsStr := ""
+	if len(parts) > 0 {
+		statsStr = " (" + strings.Join(parts, ", ") + ")"
+	}
+
+	// Add health smells
+	if len(cluster.Smells) > 0 {
+		for _, smell := range cluster.Smells {
+			statsStr += "  " + FormatSmellDescription(smell)
+		}
+	}
+
+	return statsStr
 }
 
 // RenderWorkView renders the tree in work view (issues as primary nodes)
