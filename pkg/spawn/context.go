@@ -12,6 +12,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
@@ -82,6 +83,9 @@ SPAWN TIER: {{.Tier}}
 {{end}}
 {{if .KBContext}}
 {{.KBContext}}
+{{end}}
+{{if .ClusterSummary}}
+{{.ClusterSummary}}
 {{end}}
 {{if .IsBug}}
 ## REPRODUCTION (BUG FIX)
@@ -487,6 +491,7 @@ type contextData struct {
 	Validation            string
 	InvestigationType     string
 	KBContext             string
+	ClusterSummary        string // Area awareness: cluster summary from orch tree --cluster <area> --format summary
 	Tier                  string
 	ServerContext         string
 	NoTrack               bool   // When true, omit beads instructions from spawn context
@@ -521,6 +526,15 @@ func GenerateContext(cfg *Config) (string, error) {
 		skillContent = StripBeadsInstructions(skillContent)
 	}
 
+	// Generate cluster summary for area awareness
+	// Detect area from task description or beads issue labels
+	clusterSummary := ""
+	if detectedArea := DetectAreaFromTask(cfg.Task, cfg.BeadsID, cfg.ProjectDir); detectedArea != "" {
+		if summary := GetClusterSummary(detectedArea, cfg.ProjectDir); summary != "" {
+			clusterSummary = fmt.Sprintf("\n## AREA CONTEXT: %s\n\n%s\n", detectedArea, summary)
+		}
+	}
+
 	data := contextData{
 		Task:                  cfg.Task,
 		BeadsID:               cfg.BeadsID,
@@ -536,6 +550,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		Validation:            cfg.Validation,
 		InvestigationType:     cfg.InvestigationType,
 		KBContext:             cfg.KBContext,
+		ClusterSummary:        clusterSummary,
 		Tier:                  cfg.Tier,
 		ServerContext:         serverContext,
 		NoTrack:               cfg.NoTrack,
@@ -1082,6 +1097,94 @@ func GenerateServerContext(projectDir string) string {
 type RegisteredProject struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
+}
+
+// DetectAreaFromTask attempts to detect a knowledge area/cluster from the task description or beads issue.
+// Returns empty string if no clear area is detected.
+// Checks against known clusters in .kb/investigations/synthesized/ and model directories.
+func DetectAreaFromTask(task string, beadsID string, projectDir string) string {
+	// Get list of known clusters from filesystem
+	kbDir := filepath.Join(projectDir, ".kb")
+
+	// Check investigations/synthesized/ for clusters
+	synthesizedDir := filepath.Join(kbDir, "investigations", "synthesized")
+	var knownClusters []string
+	if entries, err := os.ReadDir(synthesizedDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				knownClusters = append(knownClusters, entry.Name())
+			}
+		}
+	}
+
+	// Add model directories as potential clusters
+	modelsDir := filepath.Join(kbDir, "models")
+	if entries, err := os.ReadDir(modelsDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				knownClusters = append(knownClusters, entry.Name())
+			}
+		}
+	}
+
+	// Always include "models" and "decisions" as default clusters
+	knownClusters = append(knownClusters, "models", "decisions")
+
+	// Check task description for cluster keywords
+	taskLower := strings.ToLower(task)
+	for _, cluster := range knownClusters {
+		// Check if cluster name appears in task (word boundary match)
+		// Use regex to match whole words only
+		pattern := `\b` + regexp.QuoteMeta(strings.ToLower(cluster)) + `\b`
+		if matched, _ := regexp.MatchString(pattern, taskLower); matched {
+			return cluster
+		}
+	}
+
+	// If beads issue is provided, check labels for area:* pattern
+	if beadsID != "" {
+		// Try to get beads issue and check labels
+		socketPath, err := beads.FindSocketPath("")
+		if err == nil {
+			client := beads.NewClient(socketPath)
+			if err := client.Connect(); err == nil {
+				defer client.Close()
+				if issue, err := client.Show(beadsID); err == nil {
+					for _, label := range issue.Labels {
+						if strings.HasPrefix(label, "area:") {
+							area := strings.TrimPrefix(label, "area:")
+							// Verify area exists as a known cluster
+							for _, cluster := range knownClusters {
+								if cluster == area {
+									return area
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+// GetClusterSummary fetches a summary for a specific cluster using orch tree --format summary.
+// Returns empty string if cluster not found or command fails.
+func GetClusterSummary(clusterName string, projectDir string) string {
+	if clusterName == "" {
+		return ""
+	}
+
+	// Run orch tree --cluster <name> --format summary
+	cmd := exec.Command("orch", "tree", "--cluster", clusterName, "--format", "summary")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(string(output))
 }
 
 // GenerateRegisteredProjectsContext creates the registered projects section for orchestrator contexts.

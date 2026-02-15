@@ -75,7 +75,7 @@ type Cluster struct {
 type TreeOptions struct {
 	ClusterFilter string // Filter to specific cluster
 	Depth         int    // Maximum depth to render (0 = unlimited)
-	Format        string // Output format (text or json)
+	Format        string // Output format (text, json, or summary)
 	WorkView      bool   // Use work view instead of knowledge view
 	SmellsOnly    bool   // Filter to only clusters with health smells
 	Compact       bool   // Use compact format (minimal output for hook injection)

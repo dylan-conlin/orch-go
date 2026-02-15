@@ -20,12 +20,18 @@ Two views:
   - Knowledge view (default): investigations/decisions/models as primary nodes
   - Work view (--work): issues grouped by state as primary nodes
 
+Output formats:
+  - text (default): Full tree visualization
+  - json: Machine-readable JSON output
+  - summary: Concise 3-5 line area briefing (requires --cluster)
+
 Examples:
-  orch tree                           # Show full knowledge tree
-  orch tree --work                    # Show work view (issues grouped by state)
-  orch tree --cluster entropy-spiral  # Filter to specific cluster
-  orch tree --depth 2                 # Limit depth to 2 levels
-  orch tree --format json             # Output as JSON`,
+  orch tree                                      # Show full knowledge tree
+  orch tree --work                               # Show work view (issues grouped by state)
+  orch tree --cluster entropy-spiral             # Filter to specific cluster
+  orch tree --cluster spawn --format summary     # Show summary for spawn area
+  orch tree --depth 2                            # Limit depth to 2 levels
+  orch tree --format json                        # Output as JSON`,
 	RunE: runTreeCmd,
 }
 
@@ -72,8 +78,13 @@ func runTreeCmd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate format
-	if opts.Format != "text" && opts.Format != "json" {
-		return fmt.Errorf("invalid format %q, must be 'text' or 'json'", opts.Format)
+	if opts.Format != "text" && opts.Format != "json" && opts.Format != "summary" {
+		return fmt.Errorf("invalid format %q, must be 'text', 'json', or 'summary'", opts.Format)
+	}
+
+	// Summary format requires cluster filter
+	if opts.Format == "summary" && opts.ClusterFilter == "" {
+		return fmt.Errorf("--format summary requires --cluster <name> to specify which area to summarize")
 	}
 
 	if treeWork {

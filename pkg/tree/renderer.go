@@ -82,6 +82,10 @@ func RenderTree(root *KnowledgeNode, opts TreeOptions, clusters []*Cluster) (str
 		return renderJSON(root)
 	}
 
+	if opts.Format == "summary" {
+		return RenderSummary(root, opts, clusters)
+	}
+
 	var sb strings.Builder
 	sb.WriteString("orch-go knowledge tree\n")
 	sb.WriteString("│\n")
@@ -375,4 +379,106 @@ func getStatusLabel(status NodeStatus) string {
 	default:
 		return "● " + string(status)
 	}
+}
+
+// RenderSummary renders a concise 3-5 line area briefing for a cluster.
+// Format:
+//   - Line 1: Cluster name and artifact counts (N investigations, M decisions, K models, J open issues)
+//   - Line 2+: Health smells if any
+//   - Last line: Most recent artifact date
+func RenderSummary(root *KnowledgeNode, opts TreeOptions, clusters []*Cluster) (string, error) {
+	// If no cluster filter specified, return error
+	if opts.ClusterFilter == "" {
+		return "", fmt.Errorf("--format summary requires --cluster <name> to specify which area to summarize")
+	}
+
+	// Find the target cluster
+	var targetCluster *Cluster
+	for _, cluster := range clusters {
+		if cluster.Name == opts.ClusterFilter {
+			targetCluster = cluster
+			break
+		}
+	}
+
+	if targetCluster == nil {
+		return "", fmt.Errorf("cluster %q not found", opts.ClusterFilter)
+	}
+
+	var sb strings.Builder
+
+	// Line 1: Cluster name and artifact counts
+	sb.WriteString(fmt.Sprintf("## %s\n", targetCluster.Name))
+
+	// Count node types
+	var invCount, decCount, modelCount, probeCount, guideCount int
+	var mostRecentDate string
+
+	for _, node := range targetCluster.Nodes {
+		switch node.Type {
+		case NodeTypeInvestigation:
+			invCount++
+		case NodeTypeDecision:
+			decCount++
+		case NodeTypeModel:
+			modelCount++
+		case NodeTypeProbe:
+			probeCount++
+		case NodeTypeGuide:
+			guideCount++
+		}
+
+		// Track most recent date
+		if !node.Date.IsZero() {
+			dateStr := node.Date.Format("2006-01-02")
+			if mostRecentDate == "" || dateStr > mostRecentDate {
+				mostRecentDate = dateStr
+			}
+		}
+	}
+
+	// Build stats line
+	var stats []string
+	if invCount > 0 {
+		stats = append(stats, fmt.Sprintf("%d investigations", invCount))
+	}
+	if decCount > 0 {
+		stats = append(stats, fmt.Sprintf("%d decisions", decCount))
+	}
+	if modelCount > 0 {
+		stats = append(stats, fmt.Sprintf("%d models", modelCount))
+	}
+	if probeCount > 0 {
+		stats = append(stats, fmt.Sprintf("%d probes", probeCount))
+	}
+	if guideCount > 0 {
+		stats = append(stats, fmt.Sprintf("%d guides", guideCount))
+	}
+
+	if len(stats) > 0 {
+		sb.WriteString(fmt.Sprintf("**Artifacts:** %s\n", strings.Join(stats, ", ")))
+	} else {
+		sb.WriteString("**Artifacts:** none\n")
+	}
+
+	// Health smells (if any)
+	if len(targetCluster.Smells) > 0 {
+		sb.WriteString("**Health:**")
+		for i, smell := range targetCluster.Smells {
+			if i == 0 {
+				sb.WriteString(" ")
+			} else {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(FormatSmellDescription(smell))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Most recent artifact date
+	if mostRecentDate != "" {
+		sb.WriteString(fmt.Sprintf("**Last updated:** %s\n", mostRecentDate))
+	}
+
+	return sb.String(), nil
 }
