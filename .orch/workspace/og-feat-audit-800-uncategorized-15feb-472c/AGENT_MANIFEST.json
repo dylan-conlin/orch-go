@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-audit-800-uncategorized-15feb-472c",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-5ts",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "132ac3c61e8935dc4c4ccbad93f09773db9d7e04",
+  "spawn_time": "2026-02-15T10:15:28-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}
