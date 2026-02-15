@@ -1,0 +1,71 @@
+observable_behaviors:
+  - behavior: "pkg/orch/ structure created for completion backlog detection"
+    acceptance_criteria:
+      - "AC-001: pkg/orch/completion.go exists with AgentInfo type"
+      - "AC-002: DetectCompletionBacklog() function signature defined"
+      - "AC-003: Function documentation explains backlog detection logic"
+      - "AC-004: Placeholder implementation returns nil (to be filled in orch-go-k5v)"
+    evidence:
+      - "pkg/orch/completion.go exists with complete type definitions and function signature"
+      - "Documentation includes usage example and expected implementation notes"
+
+  - behavior: "Test structure prepared for future implementation"
+    acceptance_criteria:
+      - "AC-005: pkg/orch/completion_test.go exists with test cases"
+      - "AC-006: Tests cover all expected scenarios (empty list, no backlog, single/multiple agents, exclusions, case-insensitive)"
+      - "AC-007: Tests skip with clear message about orch-go-k5v implementation"
+      - "AC-008: Helper function equalStringSlices() ready for test validation"
+    evidence:
+      - "go test ./pkg/orch/... -v shows all 6 test cases skip with placeholder message"
+      - "Test structure includes comprehensive edge cases"
+
+failure_modes:
+  - symptom: "Tests fail instead of skipping"
+    root_cause: "t.Skip() not called correctly in placeholder tests"
+    fix: "Ensure each test calls t.Skip() before any assertions"
+    
+  - symptom: "LSP errors about unused variables"
+    root_cause: "Variables declared but commented out in placeholder tests"
+    fix: "Comment out variable declarations along with assertions"
+
+verification_commands:
+  - command: "go test ./pkg/orch/... -v"
+    expected_output: "All 6 tests skip with 'Placeholder test - will be implemented in orch-go-k5v' message"
+    actual_result: "✅ All 6 test cases skip as expected"
+    
+  - command: "go build ./pkg/orch"
+    expected_output: "No output (successful build)"
+    actual_result: "✅ Package builds successfully"
+    
+  - command: "ls pkg/orch/"
+    expected_output: "completion.go  completion_test.go"
+    actual_result: "✅ Both files present"
+
+manual_steps:
+  - step: "Verify structural extraction is pure (no behavior changes)"
+    procedure: "Check that no code from serve_agents.go was modified - only pkg/orch/ structure created"
+    result: "✅ No changes to serve_agents.go - pure structural extraction"
+    
+  - step: "Verify blocked issue can proceed"
+    procedure: "Check that orch-go-k5v has the necessary types and function signatures to implement"
+    result: "✅ AgentInfo type and DetectCompletionBacklog() signature provide clear interface"
+
+deliverables:
+  - name: "pkg/orch/completion.go"
+    status: "complete"
+    location: "pkg/orch/completion.go"
+    
+  - name: "pkg/orch/completion_test.go"
+    status: "complete"
+    location: "pkg/orch/completion_test.go"
+    
+  - name: "pkg/orch/ directory"
+    status: "complete"
+    location: "pkg/orch/"
+
+notes:
+  - "This is a pre-extraction task - no actual detection logic implemented yet"
+  - "Blocked issue orch-go-k5v will implement the actual DetectCompletionBacklog() logic"
+  - "Pure structural extraction - no behavior changes to existing code"
+  - "Related to Phase 6 of coaching metrics redesign (see .kb/investigations/2026-02-14-design-coaching-metrics-redesign.md)"
+  - "Test structure provides clear specifications for future implementation with 6 comprehensive test cases"
