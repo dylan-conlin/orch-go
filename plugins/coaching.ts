@@ -57,6 +57,10 @@ const STRATEGIC_PAUSE_MS = 30 * 1000 // 30 seconds = strategic pause
 const VARIATION_THRESHOLD = 5 // 5+ variations triggers behavioral_variation metric
 const COACH_SESSION_ID = process.env.ORCH_COACH_SESSION_ID || "" // Coach session to stream metrics to
 
+// Accretion thresholds (matches pkg/verify/accretion.go)
+const AccretionWarningThreshold = 800   // Files >800 lines trigger warnings
+const AccretionCriticalThreshold = 1500 // Files >1500 lines are CRITICAL
+
 function log(...args: any[]) {
   if (DEBUG) console.log(LOG_PREFIX, ...args)
 }
@@ -433,6 +437,16 @@ interface FrameCollapseState {
 }
 
 /**
+ * Accretion tracking state for file size growth detection.
+ * Accretion = agents adding significant lines to already-large files (>800 lines).
+ */
+interface AccretionState {
+  fileEditCounts: Map<string, number> // Per-file edit counters (path -> count)
+  fileWarningInjected: Map<string, boolean> // Per-file first warning tracking
+  fileStrongWarningInjected: Map<string, boolean> // Per-file strong warning tracking
+}
+
+/**
  * Worker health state for worker-specific metric tracking.
  * Workers need different signals than orchestrators (context budget, tool failures, etc.)
  */
@@ -449,6 +463,26 @@ interface WorkerHealthState {
   lastWarningValue?: number         // Value of last health signal injected
 }
 
+
+/**
+ * Get line count for a file.
+ * Returns the number of lines in the file, or null if the file cannot be read.
+ * Used for accretion detection to warn when editing large files.
+ */
+function getFileLineCount(filePath: string): number | null {
+  if (!filePath || !existsSync(filePath)) {
+    return null
+  }
+
+  try {
+    const content = readFileSync(filePath, "utf-8")
+    const lines = content.split("\n")
+    return lines.length
+  } catch (err) {
+    if (DEBUG) console.error(LOG_PREFIX, `Failed to read file for line count: ${filePath}`, err)
+    return null
+  }
+}
 
 /**
  * Determine if a file path represents code (vs orchestration artifact).
@@ -527,6 +561,8 @@ interface SessionState {
   dylan: DylanPatternState
   // Frame collapse detection: orchestrator editing code files
   frameCollapse: FrameCollapseState
+  // Accretion detection: workers editing large files
+  accretion: AccretionState
 }
 
 
@@ -547,7 +583,7 @@ async function flushMetrics(state: SessionState, client: any): Promise<void> {
 async function injectCoachingMessage(
   client: any,
   sessionId: string,
-  patternType: "frame_collapse" | "frame_collapse_strong" | "premise_skipping" | "premise_skipping_strong",
+  patternType: "frame_collapse" | "frame_collapse_strong" | "premise_skipping" | "premise_skipping_strong" | "accretion_warning" | "accretion_strong",
   details: any
 ): Promise<void> {
   try {
@@ -606,6 +642,35 @@ ${details.recentQuestions.slice(-3).map((q: string) => `- "${q.substring(0, 100)
 3. **THEN PROCEED** - After premise is validated, ask "how to" questions
 
 **Why this matters:** From CLAUDE.md constraint: "Ask 'should we' before 'how do we' for strategic direction changes." The orch-go-erdw epic failure demonstrates the cost of skipping this step.`
+    } else if (patternType === "accretion_warning") {
+      message = `## 📏 File Size Warning
+
+You're editing: \`${details.filePath}\` (${details.lineCount} lines)
+
+**Observation:** This file is ${details.lineCount > 1500 ? "CRITICAL" : "large"} (threshold: ${details.lineCount > 1500 ? "1,500" : "800"} lines). Adding features to large files contributes to "accretion gravity" - the pattern where files grow from manageable to unmaintainable through repeated small additions.
+
+**Consider:**
+1. Extract logic to a new file/package before adding features
+2. See \`.kb/guides/code-extraction-patterns.md\` for extraction workflow
+3. Run \`orch hotspot\` to see all files in accretion risk zones
+
+**Why this matters:** Files over ${details.lineCount > 1500 ? "1,500" : "800"} lines are harder to understand, modify, and test. Extraction before addition prevents technical debt accumulation.`
+    } else if (patternType === "accretion_strong") {
+      message = `## 🚨 Accretion Alert - Multiple Edits to Large File
+
+You've now made **${details.count} edits** to \`${details.filePath}\` (${details.lineCount} lines).
+
+**Pattern detected:** Repeatedly modifying a ${details.lineCount > 1500 ? "CRITICAL" : "large"} file instead of extracting.
+
+**Required Action:**
+1. **STOP** adding to this file
+2. **EXTRACT** logic to pkg/ or a new module BEFORE adding features
+3. **REFERENCE** \`.kb/guides/code-extraction-patterns.md\` for extraction workflow
+4. **CHECK** completion gates will ${details.lineCount > 1500 ? "BLOCK" : "WARN"} if you add +50 lines without extraction
+
+**Why this matters:** Accretion gravity is how spawn_cmd.go grew from 200 to 2,332 lines. Each agent added "just one feature" without extracting. Prevention through extraction is cheaper than cleanup later.
+
+**Suggested approach:** Create a new package for this feature's logic, import it from the existing file.`
     }
 
     // Inject using noReply:true pattern
@@ -1245,6 +1310,11 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
             warningInjected: false,
             strongWarningInjected: false,
           },
+          accretion: {
+            fileEditCounts: new Map(),
+            fileWarningInjected: new Map(),
+            fileStrongWarningInjected: new Map(),
+          },
         }
         sessions.set(sessionId, state)
         log("Created session state for Dylan patterns:", sessionId)
@@ -1343,6 +1413,104 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         // Track worker health metrics
         await trackWorkerHealth(client, workerState, tool, success, input.args, output)
 
+        // Accretion Detection: Track edit/write on large files (>800 lines)
+        // Only triggers for worker sessions (NOT orchestrator sessions)
+        if (tool === "edit" || tool === "write") {
+          const filePath = (input as any).args?.file_path || (input as any).args?.filePath || ""
+
+          if (filePath) {
+            // Get file line count
+            const lineCount = getFileLineCount(filePath)
+
+            // Check if file is in accretion risk zone (>800 lines)
+            if (lineCount && lineCount > AccretionWarningThreshold) {
+              // Get or create session state for accretion tracking
+              // (Separate from orchestrator session state - this is worker-specific accretion)
+              let workerSessionState = sessions.get(sessionId)
+              if (!workerSessionState) {
+                workerSessionState = {
+                  sessionId,
+                  spawns: 0,
+                  lastFlush: Date.now(),
+                  variation: {
+                    currentGroup: null,
+                    variationCount: 0,
+                    lastToolTimestamp: Date.now(),
+                    variationHistory: [],
+                  },
+                  dylan: {
+                    premiseSkippingCount: 0,
+                    premiseSkippingWarningInjected: false,
+                    premiseSkippingStrongWarningInjected: false,
+                    recentQuestions: [],
+                  },
+                  frameCollapse: {
+                    codeEditCount: 0,
+                    lastCodeEditPath: null,
+                    warningInjected: false,
+                    strongWarningInjected: false,
+                  },
+                  accretion: {
+                    fileEditCounts: new Map(),
+                    fileWarningInjected: new Map(),
+                    fileStrongWarningInjected: new Map(),
+                  },
+                }
+                sessions.set(sessionId, workerSessionState)
+                log(`Created worker session state for accretion tracking: ${sessionId}`)
+              }
+
+              // Track per-file edit count
+              const currentCount = workerSessionState.accretion.fileEditCounts.get(filePath) || 0
+              workerSessionState.accretion.fileEditCounts.set(filePath, currentCount + 1)
+
+              log(
+                `⚠️ ACCRETION: Large file edit detected: ${filePath} (${lineCount} lines, edit ${currentCount + 1})`
+              )
+
+              // Write metric for tracking
+              const metric = {
+                timestamp: new Date().toISOString(),
+                session_id: sessionId,
+                metric_type: "accretion_warning",
+                value: lineCount,
+                details: {
+                  filePath,
+                  lineCount,
+                  editCount: currentCount + 1,
+                  severity: lineCount > AccretionCriticalThreshold ? "critical" : "warning",
+                  threshold: lineCount > AccretionCriticalThreshold ? AccretionCriticalThreshold : AccretionWarningThreshold,
+                },
+              }
+              writeMetric(metric)
+
+              // Tiered injection: first warning, then strong warning at 3+ edits to same file
+              const hasWarned = workerSessionState.accretion.fileWarningInjected.get(filePath)
+              const hasStrongWarned = workerSessionState.accretion.fileStrongWarningInjected.get(filePath)
+
+              if (!hasWarned) {
+                // First edit to this large file - warning
+                await injectCoachingMessage(client, sessionId, "accretion_warning", {
+                  filePath,
+                  lineCount,
+                })
+                workerSessionState.accretion.fileWarningInjected.set(filePath, true)
+              } else if (currentCount + 1 >= 3 && !hasStrongWarned) {
+                // 3+ edits to same large file - strong warning
+                await injectCoachingMessage(client, sessionId, "accretion_strong", {
+                  filePath,
+                  lineCount,
+                  count: currentCount + 1,
+                })
+                workerSessionState.accretion.fileStrongWarningInjected.set(filePath, true)
+              }
+
+              // Stream to coach session for investigation
+              streamToCoach(client, sessionId, metric, {})
+            }
+          }
+        }
+
         // Skip orchestrator metrics for workers
         return
       }
@@ -1371,6 +1539,11 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
             lastCodeEditPath: null,
             warningInjected: false,
             strongWarningInjected: false,
+          },
+          accretion: {
+            fileEditCounts: new Map(),
+            fileWarningInjected: new Map(),
+            fileStrongWarningInjected: new Map(),
           },
         }
         sessions.set(sessionId, state)
