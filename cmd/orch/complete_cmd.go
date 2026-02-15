@@ -17,6 +17,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/orch"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/state"
@@ -878,34 +879,28 @@ func runComplete(identifier, workdir string) error {
 	// Explain-back verification gate
 	// After all verification passes, require human to explain what was built and why.
 	// This creates an unfakeable verification gate - can't rubber-stamp a conversational explanation.
-	// Skipped for orchestrator sessions (they have handoffs) and untracked agents (no beads to comment on).
-	if !completeForce && !isOrchestratorSession && !isUntracked && beadsID != "" {
-		// Check if skip flag is set
-		if skipConfig.ExplainBack {
-			fmt.Printf("⚠️  Bypassing explain-back gate (reason: %s)\n", skipConfig.Reason)
+	// Extracted to pkg/orch/completion.go for reusability.
+	explainResult, err := orch.RunExplainBackGate(
+		beadsID,
+		completeForce,
+		skipConfig.ExplainBack,
+		skipConfig.Reason,
+		isOrchestratorSession,
+		isUntracked,
+		os.Stdin,
+		os.Stdout,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Store explanation as beads comment if one was captured
+	if explainResult != nil {
+		if err := addApprovalComment(beadsID, explainResult.FullExplanation); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save explanation to beads: %v\n", err)
 		} else {
-			// Check if stdin is a terminal for interactive prompting
-			if !term.IsTerminal(int(os.Stdin.Fd())) {
-				fmt.Fprintf(os.Stderr, "⚠️  Explain-back gate requires terminal interaction\n")
-				fmt.Fprintf(os.Stderr, "Use --skip-explain-back --skip-reason \"...\" to bypass in non-interactive mode\n")
-				return fmt.Errorf("explain-back gate requires terminal")
-			}
-
-			// Prompt for explanation
-			explainResult, err := verify.PromptExplainBack(os.Stdin, os.Stdout)
-			if err != nil {
-				return fmt.Errorf("explain-back verification failed: %w", err)
-			}
-
-			// Store explanation as beads comment
-			if err := addApprovalComment(beadsID, explainResult.FullExplanation); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to save explanation to beads: %v\n", err)
-			} else {
-				fmt.Println("Explanation saved to beads issue")
-			}
+			fmt.Println("Explanation saved to beads issue")
 		}
-	} else if completeForce {
-		fmt.Println("Skipping explain-back verification (--force)")
 	}
 
 	// Update session handoff with spawn completion info (Capture at Context principle)
