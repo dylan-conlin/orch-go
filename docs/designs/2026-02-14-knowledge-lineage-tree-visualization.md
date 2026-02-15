@@ -518,11 +518,97 @@ orch-go knowledge tree
 - `pkg/verify/` code (patterns for artifact parsing)
 - Beads integration guide (`.kb/guides/beads-integration.md`)
 
+## Design Addendum: Two-View Model (from Dylan review, Feb 14)
+
+### The Issue Role Question
+
+Dylan asked: "Are issues secondary or on the same level as knowledge artifacts?"
+
+**Answer:** Issues are the **active manifestation** of knowledge artifacts — the live edge of work. They're not leaf nodes hanging off decisions. They're where the energy is.
+
+This leads to a **two-view model** — same data, same tree, different root:
+
+### Knowledge View (`orch tree`)
+
+Knowledge artifacts are primary. Issues hang off as "what this knowledge produced."
+Question it answers: **"What do we understand?"**
+
+```
+orch-go knowledge tree
+│
+├─◉ Entropy Spiral
+│ ├─◉ post-mortems/2026-01-02-system-spiral-dec27-jan02.md
+│ ├─◉ investigations/2026-02-14-inv-entropy-spiral-deep-analysis.md
+│ │ ├─★ decisions/2026-02-14-verifiability-first-hard-constraint.md
+│ │ │ ├─● orch-go-5sc  Decision record                    CLOSED
+│ │ │ ├─● orch-go-7jl  Daemon pause after N completions   CLOSED
+│ │ │ └─◇ orch-go-6th  Skill system update                triage:review
+│ │ └─● orch-go-agr  Trajectory audit                     IN PROGRESS
+│ └─◉ handoffs/2026-02-13-entropy-spiral-recovery.md
+```
+
+### Work View (`orch tree --work`)
+
+Issues are primary. Knowledge artifacts hang off as "where this work came from."
+Question it answers: **"What are we doing and why?"**
+
+This is likely the view Dylan opens most often — when the daemon has paused and he sits down to review.
+
+```
+orch-go work tree
+│
+├─⚡ NEEDS VERIFICATION (3)
+│ ├─● orch-go-7jl  Daemon pause after N completions
+│ │ └─ from ★ verifiability-first-hard-constraint
+│ │    └─ from ◉ entropy-spiral-deep-analysis
+│ ├─● orch-go-tyi  Explain-back verification gate
+│ │ └─ from ★ verifiability-first-hard-constraint
+│ └─● orch-go-8f7  Knowledge tree visualization
+│   └─ from design session (Feb 14)
+│
+├─◇ TRIAGE:REVIEW (2)
+│ ├─◇ orch-go-6th  Skill system update
+│ │ └─ from ★ verifiability-first-hard-constraint
+│ └─◇ orch-go-cem  Click freeze reactive capture
+│
+├─● IN PROGRESS (1)
+│ └─● orch-go-agr  Trajectory audit
+│   └─ from ◉ entropy-spiral-deep-analysis
+│
+└─░ QUEUED (7)
+  ├─● orch-go-2qj  Model staleness detection
+  ├─● orch-go-4tz  Completion accretion gate
+  └─ ... 5 more
+```
+
+### Why Two Views
+
+| View | When | Question | Primary nodes | Secondary nodes |
+|------|------|----------|---------------|-----------------|
+| Knowledge | Orientation, triage, synthesis | "What do we understand?" | Investigations, decisions, models | Issues as outcomes |
+| Work | Review session, daemon pause, daily standup | "What are we doing and why?" | Issues grouped by state | Knowledge artifacts as provenance |
+
+Same underlying data graph. Same extraction algorithm. Different traversal root and grouping logic.
+
+### Impact on Implementation Phases
+
+Phase 1 (CLI MVP) should include **both** views:
+- `orch tree` — knowledge view (default)
+- `orch tree --work` — work view (likely used more often)
+
+The work view is cheap once the knowledge view exists — it's the same tree traversed from the other end.
+
+### Dylan's Note
+
+"This UI design could entirely transform how I work if we do this right."
+
+The key is: **Dylan drives what 'right' means through usage.** CLI MVP ships, Dylan uses it, we iterate. This is the verifiability-first loop applied to its own tooling.
+
 ---
 
 **Next Steps:**
-1. Review this design with orchestrator
-2. Get approval on phased approach
-3. Start Phase 1: CLI MVP implementation
+1. ✅ Design reviewed with orchestrator — phased approach approved
+2. ✅ Two-view model added (knowledge view + work view)
+3. Start Phase 1: CLI MVP implementation (both views)
 4. Test with current .kb/ structure
 5. Iterate based on Dylan's feedback on resonance
