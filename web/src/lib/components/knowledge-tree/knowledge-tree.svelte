@@ -54,7 +54,7 @@
 	}
 	
 	$: hasChildren = node.Children && node.Children.length > 0;
-	$: isExpanded = node.expanded !== false; // Default to expanded
+	$: isExpanded = node.expanded === true; // Default to collapsed; expansion state managed by store
 	$: indentClass = `pl-${Math.min(depth * 4, 16)}`;
 </script>
 

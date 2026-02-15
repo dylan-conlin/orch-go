@@ -442,6 +442,16 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /health        - Health check")
 	fmt.Println("\nPress Ctrl+C to stop")
 
+	// Start periodic cleanup for stall tracker to prevent memory leaks
+	// Clean snapshots older than 1 hour every 15 minutes
+	go func() {
+		ticker := time.NewTicker(15 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			globalStallTracker.CleanStale(1 * time.Hour)
+		}
+	}()
+
 	// HTTP/2 is automatically enabled when using TLS with Go's http package
 	return http.ListenAndServeTLS(addr, certFile, keyFile, mux)
 }

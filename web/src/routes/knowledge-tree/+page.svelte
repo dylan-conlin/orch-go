@@ -2,15 +2,20 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { knowledgeTree, type TreeView, type KnowledgeNode, type NodeType } from '$lib/stores/knowledge-tree';
 	import { KnowledgeTree as KnowledgeTreeComponent } from '$lib/components/knowledge-tree';
-	
+	import type { ConnectionStatus } from '$lib/services/sse-connection';
+	import type { Readable } from 'svelte/store';
+
 	// localStorage key for expansion state
 	const EXPANSION_STATE_KEY = 'knowledge-tree-expansion';
-	
+
 	let currentView: TreeView = 'knowledge';
 	let loading = true;
 	let searchQuery = '';
 	let selectedTypes: Set<NodeType> = new Set();
-	
+	let sseStatus: ConnectionStatus = 'disconnected';
+	let sseStatusUnsubscribe: (() => void) | null = null;
+	let scrollContainer: HTMLDivElement;
+
 	// Load expansion state from localStorage
 	function loadExpansionState(): Set<string> {
 		if (typeof window === 'undefined') return new Set();
@@ -22,7 +27,7 @@
 			return new Set();
 		}
 	}
-	
+
 	// Save expansion state to localStorage
 	function saveExpansionState(expandedIds: Set<string>) {
 		if (typeof window === 'undefined') return;
@@ -32,38 +37,67 @@
 			console.error('Failed to save expansion state:', e);
 		}
 	}
-	
+
 	// Track expanded nodes
 	let expandedNodes = loadExpansionState();
-	
+
+	// Subscribe to SSE status updates
+	function subscribeSSEStatus() {
+		if (sseStatusUnsubscribe) sseStatusUnsubscribe();
+		const statusStore = knowledgeTree.getSSEStatus();
+		if (statusStore) {
+			sseStatusUnsubscribe = statusStore.subscribe(s => { sseStatus = s; });
+		}
+	}
+
+	// Save and restore scroll position around store updates
+	let savedScrollTop = 0;
+	const storeUnsubscribe = knowledgeTree.subscribe(() => {
+		// After store update, restore scroll position on next tick
+		if (scrollContainer && savedScrollTop > 0) {
+			const pos = savedScrollTop;
+			requestAnimationFrame(() => {
+				if (scrollContainer) scrollContainer.scrollTop = pos;
+			});
+		}
+	});
+
+	// Wrap the store's connectSSE to intercept updates for scroll preservation
+	function connectWithScrollPreservation(view: TreeView, expandedIds: Set<string>) {
+		knowledgeTree.connectSSE(view, expandedIds);
+		subscribeSSEStatus();
+	}
+
 	// Load initial tree
 	onMount(async () => {
-		await knowledgeTree.fetch(currentView);
-		knowledgeTree.connectSSE(currentView);
+		await knowledgeTree.fetch(currentView, expandedNodes);
+		connectWithScrollPreservation(currentView, expandedNodes);
 		loading = false;
 	});
-	
-	// Cleanup SSE on unmount
+
+	// Cleanup on unmount
 	onDestroy(() => {
 		knowledgeTree.disconnectSSE();
+		storeUnsubscribe();
+		if (sseStatusUnsubscribe) sseStatusUnsubscribe();
 	});
-	
+
 	// Handle view toggle
 	async function handleViewToggle() {
 		loading = true;
 		currentView = currentView === 'knowledge' ? 'work' : 'knowledge';
-		
+
 		// Disconnect old SSE, fetch new tree, reconnect SSE
 		knowledgeTree.disconnectSSE();
-		await knowledgeTree.fetch(currentView);
-		knowledgeTree.connectSSE(currentView);
+		await knowledgeTree.fetch(currentView, expandedNodes);
+		connectWithScrollPreservation(currentView, expandedNodes);
 		loading = false;
 	}
-	
+
 	// Handle node toggle
 	function handleNodeToggle(nodeId: string) {
 		knowledgeTree.toggleNode(nodeId);
-		
+
 		// Update expansion state tracking
 		if (expandedNodes.has(nodeId)) {
 			expandedNodes.delete(nodeId);
@@ -73,33 +107,33 @@
 		expandedNodes = expandedNodes; // Trigger reactivity
 		saveExpansionState(expandedNodes);
 	}
-	
+
 	// Filter tree by search and type
 	function filterTree(node: KnowledgeNode | null): KnowledgeNode | null {
 		if (!node) return null;
-		
+
 		// Check if this node matches filters
-		const matchesSearch = searchQuery === '' || 
+		const matchesSearch = searchQuery === '' ||
 			node.Title.toLowerCase().includes(searchQuery.toLowerCase());
-		
-		const matchesType = selectedTypes.size === 0 || 
+
+		const matchesType = selectedTypes.size === 0 ||
 			selectedTypes.has(node.Type);
-		
+
 		// Filter children recursively
 		const filteredChildren = node.Children
 			?.map(child => filterTree(child))
 			.filter(child => child !== null) as KnowledgeNode[] || [];
-		
+
 		// Include node if it matches OR has matching children
 		if (matchesSearch && matchesType) {
 			return { ...node, Children: filteredChildren };
 		} else if (filteredChildren.length > 0) {
 			return { ...node, Children: filteredChildren };
 		}
-		
+
 		return null;
 	}
-	
+
 	// Toggle type filter
 	function toggleTypeFilter(type: NodeType) {
 		if (selectedTypes.has(type)) {
@@ -109,11 +143,18 @@
 		}
 		selectedTypes = selectedTypes; // Trigger reactivity
 	}
-	
-	// Get filtered root nodes
+
+	// Get filtered root nodes - save scroll before recomputing
+	$: {
+		if (scrollContainer) savedScrollTop = scrollContainer.scrollTop;
+	}
 	$: filteredTree = $knowledgeTree.tree ? filterTree($knowledgeTree.tree) : null;
 	$: rootChildren = filteredTree?.Children || [];
-	
+
+	// SSE status indicator color
+	$: statusColor = sseStatus === 'connected' ? 'bg-green-500' : sseStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500';
+	$: statusLabel = sseStatus === 'connected' ? 'Live' : sseStatus === 'connecting' ? 'Connecting...' : 'Disconnected';
+
 	// Available node types for filtering
 	const nodeTypes: NodeType[] = [
 		'investigation',
@@ -138,7 +179,7 @@
 			>
 				{currentView === 'knowledge' ? '📚 Knowledge' : '⚙️ Work'}
 			</button>
-			
+
 			<!-- Search -->
 			<input
 				type="text"
@@ -146,7 +187,7 @@
 				placeholder="Search nodes..."
 				class="px-3 py-1.5 text-sm bg-zinc-900 border border-border rounded flex-1 max-w-md"
 			/>
-			
+
 			<!-- Type Filters -->
 			<div class="flex gap-2 flex-wrap">
 				{#each nodeTypes as type}
@@ -159,20 +200,24 @@
 					</button>
 				{/each}
 			</div>
-			
-			<div class="text-xs text-muted-foreground ml-auto">
-				{rootChildren.length} {currentView === 'knowledge' ? 'clusters' : 'issues'}
+
+			<div class="flex items-center gap-2 ml-auto text-xs text-muted-foreground">
+				<span>{rootChildren.length} {currentView === 'knowledge' ? 'clusters' : 'issues'}</span>
+				<span class="flex items-center gap-1" title={statusLabel}>
+					<span class="inline-block w-2 h-2 rounded-full {statusColor}"></span>
+					<span class="text-[10px]">{statusLabel}</span>
+				</span>
 			</div>
 		</div>
 	</div>
-	
+
 	<!-- Content -->
-	<div class="flex-1 overflow-auto">
+	<div class="flex-1 overflow-auto" bind:this={scrollContainer}>
 		{#if loading}
 			<div class="flex items-center justify-center h-full">
 				<div class="text-muted-foreground">Loading tree...</div>
 			</div>
-		{:else if $knowledgeTree.error}
+		{:else if $knowledgeTree.error && !$knowledgeTree.tree}
 			<div class="flex items-center justify-center h-full">
 				<div class="text-red-500">Error: {$knowledgeTree.error}</div>
 			</div>
@@ -185,8 +230,8 @@
 		{:else}
 			<div class="py-2">
 				{#each rootChildren as child (child.ID)}
-					<KnowledgeTreeComponent 
-						node={child} 
+					<KnowledgeTreeComponent
+						node={child}
 						depth={0}
 						onToggle={handleNodeToggle}
 					/>
@@ -194,7 +239,7 @@
 			</div>
 		{/if}
 	</div>
-	
+
 	<!-- Footer -->
 	<div class="h-9 px-2 flex items-center justify-center border-t border-zinc-800 bg-zinc-950 text-zinc-500 text-[11px] font-mono">
 		<span class="tracking-wide">

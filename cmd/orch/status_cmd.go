@@ -108,6 +108,7 @@ type AgentInfo struct {
 	IsPhantom       bool                          `json:"is_phantom,omitempty"`        // True if beads issue open but agent not running
 	IsProcessing    bool                          `json:"is_processing,omitempty"`     // True if session is actively generating a response
 	IsCompleted     bool                          `json:"is_completed,omitempty"`      // True if beads issue is closed
+	IsStalled       bool                          `json:"is_stalled,omitempty"`        // True if no token progress for 3+ minutes
 	Tokens          *opencode.TokenStats          `json:"tokens,omitempty"`            // Token usage for the session
 	ContextRisk     *verify.ContextExhaustionRisk `json:"context_risk,omitempty"`      // Context exhaustion risk assessment
 	PhaseReportedAt *time.Time                    `json:"phase_reported_at,omitempty"` // Timestamp when latest phase was reported
@@ -573,6 +574,16 @@ func runStatus(serverURL string) error {
 		tokens, err := client.GetSessionTokens(agent.SessionID)
 		if err == nil && tokens != nil {
 			agent.Tokens = tokens
+
+			// Check for stall: agent running but no token progress for N minutes
+			// Only check for processing agents (skip idle/phantom/completed)
+			if agent.IsProcessing && !agent.IsPhantom && !agent.IsCompleted {
+				// Use global stall tracker to detect token-based stalls
+				isStalled := globalStallTracker.Update(agent.SessionID, tokens)
+				if isStalled {
+					agent.IsStalled = true
+				}
+			}
 		}
 	}
 
@@ -1216,6 +1227,9 @@ func getAgentStatus(agent AgentInfo) string {
 	}
 	if agent.IsPhantom {
 		return "phantom"
+	}
+	if agent.IsStalled {
+		return "⚠️ STALLED"
 	}
 	if agent.IsProcessing {
 		return "running"

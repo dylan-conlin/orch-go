@@ -13,6 +13,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/agent"
 	"github.com/dylan-conlin/orch-go/pkg/coaching"
+	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	orchpkg "github.com/dylan-conlin/orch-go/pkg/orch"
@@ -986,10 +987,24 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		close(resultChan)
 	}()
 
-	// Collect results
+	// Collect results and check for stall
 	for result := range resultChan {
 		if result.tokens != nil {
 			agents[result.index].Tokens = result.tokens
+
+			// Check for stall: agent running but no token progress for N minutes
+			// Only check for active agents (skip idle/dead/completed)
+			if agents[result.index].Status == "active" && agents[result.index].SessionID != "" {
+				// Update stall tracker and check if agent is stalled
+				isStalled := globalStallTracker.Update(agents[result.index].SessionID, result.tokens)
+
+				// Set IsStalled if either phase-based OR token-based stall detected
+				// Phase-based stall: same phase for 15+ minutes (already set earlier)
+				// Token-based stall: no token progress for 3+ minutes (checked here)
+				if isStalled {
+					agents[result.index].IsStalled = true
+				}
+			}
 		}
 		if result.activity != nil {
 			agents[result.index].CurrentActivity = result.activity.Text
@@ -1340,6 +1355,11 @@ func extractLastActivityFromMessages(messages []opencode.Message) *opencode.Last
 // metrics file from dashboard polls (every 30s).
 var completionBacklogLastEmit time.Time
 
+// globalStallTracker tracks token progress for stall detection.
+// Agents that are running but making no token progress for N minutes are flagged as stalled.
+// This catches agents stuck in infinite loops, crashed during tool execution, etc.
+var globalStallTracker = daemon.NewStallTracker(3 * time.Minute)
+
 // emitCompletionBacklogMetrics detects agents stuck in Phase: Complete and writes
 // completion_backlog metrics to coaching-metrics.jsonl.
 // Rate-limited: writes at most once per 5 minutes.
@@ -1481,10 +1501,10 @@ type ToolState struct {
 // This file serves as archival storage for session activity, loaded when
 // the OpenCode session no longer exists (deleted/cleaned up).
 type ActivityJSONFile struct {
-	Version    int                    `json:"version"`
-	SessionID  string                 `json:"session_id"`
-	ExportedAt string                 `json:"exported_at"`
-	Events     []MessagePartResponse  `json:"events"`
+	Version    int                   `json:"version"`
+	SessionID  string                `json:"session_id"`
+	ExportedAt string                `json:"exported_at"`
+	Events     []MessagePartResponse `json:"events"`
 }
 
 // findWorkspaceBySessionID searches for a workspace directory with a matching .session_id file.
