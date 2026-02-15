@@ -1,0 +1,74 @@
+verification_spec:
+  name: Click Freeze Reactive Capture Script
+  date: 2026-02-14
+  
+  # What was built
+  deliverables:
+    - path: scripts/click-freeze-capture.sh
+      description: Shell script that captures full system diagnostics when click freeze occurs
+      type: executable
+    
+    - path: scripts/click-freeze-capture-README.md
+      description: Documentation for using the capture script and setting up Karabiner hotkey
+      type: documentation
+  
+  # How to verify it works
+  verification_steps:
+    - step: 1
+      command: "ls -lh /Users/dylanconlin/Documents/personal/orch-go/scripts/click-freeze-capture.sh"
+      expectation: "File exists and is executable (-rwxr-xr-x)"
+      actual: "File exists and is executable"
+      status: PASS
+    
+    - step: 2
+      command: "/Users/dylanconlin/Documents/personal/orch-go/scripts/click-freeze-capture.sh"
+      expectation: "Script runs without errors and creates timestamped capture file in ~/.orch/click-freeze-captures/"
+      actual: "Created capture-20260214-184442.log (2.8M)"
+      status: PASS
+    
+    - step: 3
+      command: "grep -c '^======' ~/.orch/click-freeze-captures/capture-20260214-184442.log"
+      expectation: "Contains all 10 major sections (20 separator lines = 10 sections)"
+      actual: "20 separator lines found (10 sections present)"
+      status: PASS
+    
+    - step: 4
+      command: "grep 'yabai\\|WindowServer\\|memory_pressure\\|ioreg\\|launchctl' ~/.orch/click-freeze-captures/capture-20260214-184442.log | wc -l"
+      expectation: "Contains all required diagnostic data (processes, memory, IOKit, WindowServer, launchctl)"
+      actual: "All sections present with data"
+      status: PASS
+  
+  # What data is captured
+  captured_sections:
+    - PROCESS STATE (suspect services, full process list)
+    - LAUNCHCTL SERVICE STATE (user agents, system daemons, loaded services)
+    - MEMORY STATE (memory_pressure, vm_stat, top snapshot)
+    - IOKIT HID STATE (HID devices, DriverKit extensions)
+    - WINDOWSERVER STATE (process, connections, event taps)
+    - ACCESSIBILITY API STATE (TCC database for accessibility permissions)
+    - DOCKER/COLIMA STATE (if running)
+    - SYSTEM UPTIME & LOAD
+  
+  # Known limitations
+  limitations:
+    - sudo_commands: "WindowServer lsof connections and CGEventTap analysis require sudo (will show 'Unable to query' messages)"
+    - karabiner_hotkey: "Karabiner hotkey binding NOT YET CONFIGURED - requires manual addition to dotfiles"
+    - manual_trigger_only: "Currently manual trigger only (run script from terminal)"
+  
+  # Next steps for future work
+  next_steps:
+    - description: "Add Karabiner hotkey binding after manual testing validates reliability"
+      location: "~/Documents/dotfiles/.config/karabiner/karabiner.json"
+      recommended_hotkey: "Cmd+Shift+F9"
+    
+    - description: "Collect 3-5 captures during actual freeze occurrences"
+      purpose: "Correlation analysis to identify common service patterns (H6 hypothesis)"
+    
+    - description: "Update pgrep patterns if new suspect services identified"
+      location: "scripts/click-freeze-capture.sh line ~37"
+  
+  # Context links
+  references:
+    model: ".kb/models/macos-click-freeze.md"
+    recent_probe: ".kb/models/macos-click-freeze/probes/2026-02-13-service-state-freeze-recurrence.md"
+    documentation: "scripts/click-freeze-capture-README.md"
