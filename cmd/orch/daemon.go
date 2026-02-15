@@ -686,8 +686,10 @@ func formatDaemonDuration(d time.Duration) string {
 }
 
 func runDaemonDryRun() error {
+	defaults := daemon.DefaultConfig()
 	config := daemon.Config{
-		Label: daemonLabel,
+		Label:                      daemonLabel,
+		VerificationPauseThreshold: defaults.VerificationPauseThreshold,
 	}
 	d := daemon.NewWithConfig(config)
 
@@ -697,6 +699,18 @@ func runDaemonDryRun() error {
 	result, err := d.Preview()
 	if err != nil {
 		return fmt.Errorf("preview error: %w", err)
+	}
+
+	// Show verification status in dry-run output
+	if d.VerificationTracker != nil {
+		verifyStatus := d.VerificationTracker.Status()
+		if d.VerificationTracker.IsPaused() {
+			fmt.Printf("[DRY-RUN] Verification pause: %d unverified completions, threshold is %d\n",
+				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
+		} else if verifyStatus.IsEnabled() {
+			fmt.Printf("[DRY-RUN] Verification check: %d/%d unverified completions\n",
+				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
+		}
 	}
 
 	fmt.Println("[DRY-RUN] Would process the following issue:")
@@ -730,10 +744,25 @@ func runDaemonDryRun() error {
 }
 
 func runDaemonOnce() error {
+	defaults := daemon.DefaultConfig()
 	config := daemon.Config{
-		Label: daemonLabel,
+		Label:                      daemonLabel,
+		VerificationPauseThreshold: defaults.VerificationPauseThreshold,
 	}
 	d := daemon.NewWithConfig(config)
+
+	// Show verification status before spawning
+	if d.VerificationTracker != nil {
+		verifyStatus := d.VerificationTracker.Status()
+		if d.VerificationTracker.IsPaused() {
+			fmt.Printf("Verification pause: %d unverified completions, threshold is %d\n",
+				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
+			fmt.Println("  Run 'orch daemon resume' after reviewing completed work to continue")
+		} else if verifyStatus.IsEnabled() {
+			fmt.Printf("Verification check: %d/%d unverified completions, proceeding\n",
+				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
+		}
+	}
 
 	result, err := d.Once()
 	if err != nil {
