@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"time"
 )
@@ -154,6 +155,43 @@ func AggregateByType(metrics []Metric, since time.Time) map[string]MetricSummary
 	}
 
 	return result
+}
+
+// DefaultMetricsPath returns the default path for coaching metrics JSONL file.
+func DefaultMetricsPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".orch", "coaching-metrics.jsonl")
+}
+
+// WriteMetric appends a single metric to a JSONL file.
+// Creates the file and parent directories if they don't exist.
+// Safe for concurrent appenders (JSONL append-only semantics).
+func WriteMetric(path string, m Metric) error {
+	// Ensure parent directory exists
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create metrics directory: %w", err)
+	}
+
+	data, err := json.Marshal(m)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metric: %w", err)
+	}
+	data = append(data, '\n')
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open metrics file: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := f.Write(data); err != nil {
+		return fmt.Errorf("failed to write metric: %w", err)
+	}
+	return nil
 }
 
 // FormatTextSummary formats metric summaries as human-readable text for CLI output.

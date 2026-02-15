@@ -6,8 +6,6 @@ import (
 )
 
 // TestDetectCompletionBacklog tests the completion backlog detection logic.
-// This is a placeholder test structure that will be fully implemented in orch-go-k5v
-// when the actual detection logic is added.
 func TestDetectCompletionBacklog(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -120,15 +118,10 @@ func TestDetectCompletionBacklog(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// NOTE: This test is a placeholder. When the actual implementation is added
-			// in orch-go-k5v, uncomment the assertions below and remove this skip.
-			t.Skip("Placeholder test - will be implemented in orch-go-k5v")
-
-			// Uncomment when implementation is complete:
-			// got := DetectCompletionBacklog(tt.agents, tt.threshold)
-			// if !equalStringSlices(got, tt.want) {
-			// 	t.Errorf("DetectCompletionBacklog() = %v, want %v", got, tt.want)
-			// }
+			got := DetectCompletionBacklog(tt.agents, tt.threshold)
+			if !equalStringSlices(got, tt.want) {
+				t.Errorf("DetectCompletionBacklog() = %v, want %v", got, tt.want)
+			}
 		})
 	}
 }

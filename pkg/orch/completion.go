@@ -3,6 +3,7 @@
 package orch
 
 import (
+	"strings"
 	"time"
 )
 
@@ -10,6 +11,7 @@ import (
 // This is populated from serve_agents.go's agent data structures.
 type AgentInfo struct {
 	BeadsID         string    // Beads issue ID (e.g., "orch-go-e6o")
+	SessionID       string    // OpenCode session ID
 	Phase           string    // Current phase from beads comments (e.g., "Planning", "Complete")
 	PhaseReportedAt time.Time // Timestamp when the phase was reported
 	Status          string    // Agent status (e.g., "active", "idle", "dead", "completed")
@@ -31,7 +33,7 @@ type AgentInfo struct {
 // Returns:
 //   - slice of beads IDs for agents in completion backlog
 //
-// Example usage (to be implemented in orch-go-k5v):
+// Example usage:
 //
 //	agents := []orch.AgentInfo{
 //	    {BeadsID: "orch-go-abc", Phase: "Complete", PhaseReportedAt: time.Now().Add(-15 * time.Minute)},
@@ -39,16 +41,26 @@ type AgentInfo struct {
 //	}
 //	backlog := orch.DetectCompletionBacklog(agents, 10 * time.Minute)
 //	// backlog = ["orch-go-abc"]
-//
-// NOTE: This is a structural extraction placeholder. The actual implementation
-// will be added in issue orch-go-k5v when the completion_backlog metric detection
-// is implemented in serve_agents.go.
 func DetectCompletionBacklog(agents []AgentInfo, threshold time.Duration) []string {
-	// Placeholder implementation - will be filled in orch-go-k5v
-	// Expected logic:
-	// 1. Filter agents where Phase == "Complete" (case-insensitive)
-	// 2. Check if PhaseReportedAt + threshold < now
-	// 3. Exclude agents with Status == "completed" (already closed by orch complete)
-	// 4. Return beads IDs of backlogged agents
-	return nil
+	now := time.Now()
+	var backlog []string
+	for _, a := range agents {
+		// Skip agents not at Phase: Complete
+		if !strings.EqualFold(a.Phase, "Complete") {
+			continue
+		}
+		// Skip agents already closed by orch complete
+		if a.Status == "completed" {
+			continue
+		}
+		// Skip agents with zero PhaseReportedAt (no timestamp available)
+		if a.PhaseReportedAt.IsZero() {
+			continue
+		}
+		// Check if agent has been in Complete phase longer than threshold
+		if now.Sub(a.PhaseReportedAt) > threshold {
+			backlog = append(backlog, a.BeadsID)
+		}
+	}
+	return backlog
 }

@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/agent"
+	"github.com/dylan-conlin/orch-go/pkg/coaching"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	orchpkg "github.com/dylan-conlin/orch-go/pkg/orch"
 	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -732,6 +734,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		}
 		invDirCache := buildInvestigationDirCache(uniqueProjectDirs)
 
+		// Track PhaseReportedAt for completion backlog detection.
+		// Populated during the enrichment loop below, used after to detect backlogged agents.
+		phaseReportedAtMap := make(map[string]time.Time)
+
 		// Populate phase, task, close_reason, and status for each agent using Priority Cascade model.
 		// See .kb/investigations/2026-01-04-design-dashboard-agent-status-model.md for design.
 		for i := range agents {
@@ -774,6 +780,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				if phaseStatus.Found {
 					agents[i].Phase = phaseStatus.Phase
 					phaseComplete = strings.EqualFold(phaseStatus.Phase, "Complete")
+
+					// Track PhaseReportedAt for completion backlog detection
+					if phaseStatus.PhaseReportedAt != nil {
+						phaseReportedAtMap[agents[i].BeadsID] = *phaseStatus.PhaseReportedAt
+					}
 
 					// Stalled detection: if active agent has same phase for 15+ minutes
 					// Advisory only - surfaces in Needs Attention but doesn't auto-abandon.
@@ -877,6 +888,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				agents[i].GapAnalysis = gapData
 			}
 		}
+
+		// Completion backlog detection: find agents at Phase: Complete for >10 min
+		// without orch complete being run. Write metric to coaching-metrics.jsonl.
+		// Rate-limited to avoid writing on every dashboard poll (every 30s).
+		emitCompletionBacklogMetrics(agents, phaseReportedAtMap)
 
 		// Post-Phase filtering: remove agents using two-threshold ghost filtering
 		// Uses IsVisibleByDefault to determine if agent should be shown
@@ -1317,6 +1333,83 @@ func extractLastActivityFromMessages(messages []opencode.Message) *opencode.Last
 		Text:      activityText,
 		Timestamp: timestamp,
 	}
+}
+
+// completionBacklogLastEmit tracks the last time we wrote completion_backlog metrics.
+// Rate-limits metric writes to at most once per 5 minutes to avoid spamming the
+// metrics file from dashboard polls (every 30s).
+var completionBacklogLastEmit time.Time
+
+// emitCompletionBacklogMetrics detects agents stuck in Phase: Complete and writes
+// completion_backlog metrics to coaching-metrics.jsonl.
+// Rate-limited: writes at most once per 5 minutes.
+func emitCompletionBacklogMetrics(agents []AgentAPIResponse, phaseReportedAtMap map[string]time.Time) {
+	// Rate limit: only emit once per 5 minutes
+	if time.Since(completionBacklogLastEmit) < 5*time.Minute {
+		return
+	}
+
+	// Build AgentInfo slice for detection
+	var agentInfos []orchpkg.AgentInfo
+	for _, a := range agents {
+		if a.BeadsID == "" {
+			continue
+		}
+		reportedAt, ok := phaseReportedAtMap[a.BeadsID]
+		if !ok {
+			continue
+		}
+		agentInfos = append(agentInfos, orchpkg.AgentInfo{
+			BeadsID:         a.BeadsID,
+			SessionID:       a.SessionID,
+			Phase:           a.Phase,
+			PhaseReportedAt: reportedAt,
+			Status:          a.Status,
+		})
+	}
+
+	backlog := orchpkg.DetectCompletionBacklog(agentInfos, 10*time.Minute)
+	if len(backlog) == 0 {
+		return
+	}
+
+	// Build a lookup for session IDs
+	sessionMap := make(map[string]string)
+	for _, a := range agents {
+		if a.BeadsID != "" && a.SessionID != "" {
+			sessionMap[a.BeadsID] = a.SessionID
+		}
+	}
+
+	metricsPath := coaching.DefaultMetricsPath()
+	if metricsPath == "" {
+		return
+	}
+
+	for _, beadsID := range backlog {
+		details := map[string]interface{}{
+			"beads_id": beadsID,
+		}
+		if sid, ok := sessionMap[beadsID]; ok {
+			details["session_id"] = sid
+		}
+		if reportedAt, ok := phaseReportedAtMap[beadsID]; ok {
+			details["completed_at"] = reportedAt.Format(time.RFC3339)
+			details["wait_minutes"] = int(time.Since(reportedAt).Minutes())
+		}
+
+		m := coaching.Metric{
+			Timestamp: time.Now().Format(time.RFC3339),
+			SessionID: sessionMap[beadsID],
+			Type:      "completion_backlog",
+			Value:     float64(len(backlog)),
+			Details:   details,
+		}
+		// Best-effort write; don't fail the API response on metric write errors
+		_ = coaching.WriteMetric(metricsPath, m)
+	}
+
+	completionBacklogLastEmit = time.Now()
 }
 
 // handleCacheInvalidate clears all dashboard caches to force fresh data on next request.

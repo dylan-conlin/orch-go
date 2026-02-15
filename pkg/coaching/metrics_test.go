@@ -307,6 +307,69 @@ func TestAggregateByType(t *testing.T) {
 	}
 }
 
+func TestWriteMetric(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "sub", "metrics.jsonl")
+
+	m := Metric{
+		Timestamp: "2026-02-14T12:00:00Z",
+		SessionID: "sess1",
+		Type:      "completion_backlog",
+		Value:     2,
+		Details: map[string]interface{}{
+			"beads_id":   "orch-go-abc",
+			"session_id": "sess1",
+		},
+	}
+
+	if err := WriteMetric(tmpFile, m); err != nil {
+		t.Fatalf("WriteMetric() error = %v", err)
+	}
+
+	// Verify file was created and contains the metric
+	got, err := ReadMetrics(tmpFile, 10)
+	if err != nil {
+		t.Fatalf("ReadMetrics() error = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("ReadMetrics() got %d metrics, want 1", len(got))
+	}
+	if got[0].Type != "completion_backlog" {
+		t.Errorf("ReadMetrics()[0].Type = %v, want completion_backlog", got[0].Type)
+	}
+	if got[0].SessionID != "sess1" {
+		t.Errorf("ReadMetrics()[0].SessionID = %v, want sess1", got[0].SessionID)
+	}
+
+	// Write a second metric and verify both are present
+	m2 := Metric{
+		Timestamp: "2026-02-14T12:05:00Z",
+		Type:      "frame_collapse",
+		Value:     1,
+	}
+	if err := WriteMetric(tmpFile, m2); err != nil {
+		t.Fatalf("WriteMetric() second error = %v", err)
+	}
+
+	got, err = ReadMetrics(tmpFile, 10)
+	if err != nil {
+		t.Fatalf("ReadMetrics() second error = %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("ReadMetrics() got %d metrics, want 2", len(got))
+	}
+}
+
+func TestDefaultMetricsPath(t *testing.T) {
+	path := DefaultMetricsPath()
+	if path == "" {
+		t.Error("DefaultMetricsPath() returned empty string")
+	}
+	if !strings.Contains(path, "coaching-metrics.jsonl") {
+		t.Errorf("DefaultMetricsPath() = %v, want to contain coaching-metrics.jsonl", path)
+	}
+}
+
 func TestFormatTextSummary(t *testing.T) {
 	now := time.Now()
 
