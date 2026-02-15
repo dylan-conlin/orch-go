@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-implement-spawn-time-15feb-fdb2",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-2qj",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "38237ce6634b7f4a394665340a9a94ae13d47c4f",
+  "spawn_time": "2026-02-15T09:52:41-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

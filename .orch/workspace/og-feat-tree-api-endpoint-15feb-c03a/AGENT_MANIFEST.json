@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-tree-api-endpoint-15feb-c03a",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-jnvk",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "c22fe28233ae84b284c99d243a7f54d9da42d27f",
+  "spawn_time": "2026-02-15T10:35:53-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

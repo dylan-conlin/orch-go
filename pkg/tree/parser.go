@@ -2,6 +2,7 @@ package tree
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -577,6 +578,119 @@ func parseGuide(path string) (*KnowledgeNode, error) {
 	}
 
 	return node, nil
+}
+
+// QuickEntry represents a quick knowledge entry from .kb/quick/entries.jsonl
+type QuickEntry struct {
+	ID              string    `json:"id"`
+	Type            string    `json:"type"`
+	Content         string    `json:"content"`
+	Status          string    `json:"status"`
+	Reason          string    `json:"reason,omitempty"`
+	Result          string    `json:"result,omitempty"`
+	RelatedArtifact string    `json:"related_artifact,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+// ParseQuickEntries parses quick entries from .kb/quick/entries.jsonl
+func ParseQuickEntries(kbDir string) ([]*KnowledgeNode, []Relationship, error) {
+	var nodes []*KnowledgeNode
+	var relationships []Relationship
+
+	quickFile := filepath.Join(kbDir, "quick", "entries.jsonl")
+	if _, err := os.Stat(quickFile); os.IsNotExist(err) {
+		return nodes, relationships, nil
+	}
+
+	file, err := os.Open(quickFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		var entry QuickEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to parse quick entry line %d: %v\n", lineNum, err)
+			continue
+		}
+
+		// Skip non-active entries
+		if entry.Status != "active" {
+			continue
+		}
+
+		// Skip entries without related_artifact field
+		if entry.RelatedArtifact == "" {
+			continue
+		}
+
+		// Map quick entry type to NodeType
+		var nodeType NodeType
+		switch entry.Type {
+		case "decision":
+			nodeType = NodeTypeQuickDecision
+		case "constraint":
+			nodeType = NodeTypeQuickConstraint
+		case "attempt":
+			nodeType = NodeTypeQuickAttempt
+		default:
+			// Skip unknown types
+			continue
+		}
+
+		// Create node for the quick entry
+		node := &KnowledgeNode{
+			ID:       entry.ID,
+			Type:     nodeType,
+			Title:    entry.Content,
+			Path:     entry.ID, // Use ID as path
+			Date:     entry.CreatedAt,
+			Metadata: make(map[string]interface{}),
+		}
+
+		// Store reason/result in metadata
+		if entry.Reason != "" {
+			node.Metadata["reason"] = entry.Reason
+		}
+		if entry.Result != "" {
+			node.Metadata["result"] = entry.Result
+		}
+
+		nodes = append(nodes, node)
+
+		// Create relationship from parent artifact to quick entry
+		// Normalize the related artifact path
+		relatedPath := entry.RelatedArtifact
+		if !strings.HasPrefix(relatedPath, ".kb/") && !filepath.IsAbs(relatedPath) {
+			// Assume it's a relative path from .kb/
+			relatedPath = filepath.Join(kbDir, relatedPath)
+		} else if strings.HasPrefix(relatedPath, ".kb/") {
+			// Convert .kb/ prefix to absolute path
+			relatedPath = filepath.Join(kbDir, strings.TrimPrefix(relatedPath, ".kb/"))
+		}
+
+		relationships = append(relationships, Relationship{
+			From:         relatedPath, // Parent artifact
+			To:           entry.ID,    // Quick entry (child)
+			RelationType: "quick",
+			Verified:     true,
+		})
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	return nodes, relationships, nil
 }
 
 // resolveKbPath resolves a .kb/ relative path to an absolute path

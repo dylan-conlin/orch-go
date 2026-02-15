@@ -6,15 +6,18 @@ import "time"
 type NodeType string
 
 const (
-	NodeTypeInvestigation NodeType = "investigation"
-	NodeTypeDecision      NodeType = "decision"
-	NodeTypeModel         NodeType = "model"
-	NodeTypeProbe         NodeType = "probe"
-	NodeTypeGuide         NodeType = "guide"
-	NodeTypeIssue         NodeType = "issue"
-	NodeTypeCluster       NodeType = "cluster"
-	NodeTypePostMortem    NodeType = "postmortem"
-	NodeTypeHandoff       NodeType = "handoff"
+	NodeTypeInvestigation   NodeType = "investigation"
+	NodeTypeDecision        NodeType = "decision"
+	NodeTypeModel           NodeType = "model"
+	NodeTypeProbe           NodeType = "probe"
+	NodeTypeGuide           NodeType = "guide"
+	NodeTypeIssue           NodeType = "issue"
+	NodeTypeCluster         NodeType = "cluster"
+	NodeTypePostMortem      NodeType = "postmortem"
+	NodeTypeHandoff         NodeType = "handoff"
+	NodeTypeQuickDecision   NodeType = "quick_decision"
+	NodeTypeQuickConstraint NodeType = "quick_constraint"
+	NodeTypeQuickAttempt    NodeType = "quick_attempt"
 )
 
 // NodeStatus represents the status of a node (for investigations and issues)

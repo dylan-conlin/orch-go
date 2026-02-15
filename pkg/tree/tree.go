@@ -66,6 +66,17 @@ func BuildKnowledgeTree(kbDir string, opts TreeOptions) (*KnowledgeNode, []*Clus
 		allNodes = append(allNodes, guideNodes...)
 	}
 
+	// Parse quick entries
+	quickDir := filepath.Join(kbDir, "quick")
+	if _, err := os.Stat(quickDir); err == nil {
+		quickNodes, quickRels, err := ParseQuickEntries(kbDir)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to parse quick entries: %w", err)
+		}
+		allNodes = append(allNodes, quickNodes...)
+		allRelationships = append(allRelationships, quickRels...)
+	}
+
 	// 2. Build relationship graph
 	BuildRelationshipGraph(allNodes, allRelationships)
 

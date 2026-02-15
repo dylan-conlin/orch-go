@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-add-completion-accretion-15feb-c9a9",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-4tz",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "7ebe5bd4187d74c1485b82faf4b1b15d1489ea1f",
+  "spawn_time": "2026-02-15T10:02:19-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}
