@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/checkpoint"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -175,6 +176,25 @@ func RunExplainBackGate(
 		// Continue anyway - the explanation was captured even if storage failed
 	} else {
 		fmt.Fprintln(stdout, "Explanation saved to beads issue")
+	}
+
+	// Write checkpoint entry (Phase 1: Comprehension gate)
+	// This creates a persistent record that the orchestrator has verified comprehension.
+	// The checkpoint file is used by orch complete to gate Tier 1 work.
+	cp := checkpoint.Checkpoint{
+		BeadsID:       beadsID,
+		Deliverable:   "completion", // Could be enhanced to track specific deliverables
+		Gate1Complete: true,         // Comprehension gate (explain-back)
+		Gate2Complete: false,        // Behavioral gate (not yet implemented)
+		Timestamp:     time.Now(),
+		ExplainText:   explanation,
+	}
+
+	if err := checkpoint.WriteCheckpoint(cp); err != nil {
+		fmt.Fprintf(stdout, "Warning: failed to write verification checkpoint: %v\n", err)
+		// Continue anyway - the beads comment was saved, checkpoint is supplementary
+	} else {
+		fmt.Fprintln(stdout, "Verification checkpoint written")
 	}
 
 	return nil

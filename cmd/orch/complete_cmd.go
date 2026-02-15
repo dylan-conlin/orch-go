@@ -15,6 +15,8 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/activity"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/checkpoint"
+	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/orch"
@@ -505,6 +507,29 @@ func runComplete(identifier, workdir string) error {
 		isClosed = false
 	}
 
+	// Checkpoint verification gate (Phase 1: Verifiability-first enforcement)
+	// For Tier 1 work (features/bugs/decisions), require verification checkpoint
+	// before allowing completion. This ensures human comprehension of deliverables.
+	if !isUntracked && !completeForce && issue != nil {
+		if checkpoint.RequiresCheckpoint(issue.IssueType) {
+			hasCheckpoint, err := checkpoint.HasGate1Checkpoint(beadsID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to check verification checkpoint: %v\n", err)
+				// Continue with completion - checkpoint check is advisory for now
+			} else if !hasCheckpoint && !skipConfig.ExplainBack {
+				// No checkpoint exists and explain-back is not being skipped
+				fmt.Fprintf(os.Stderr, "❌ Verification checkpoint missing for Tier 1 work (%s)\n", issue.IssueType)
+				fmt.Fprintf(os.Stderr, "\nTier 1 work (features/bugs/decisions) requires comprehension verification:\n")
+				fmt.Fprintf(os.Stderr, "  orch complete %s --explain 'Built X because Y, verified by Z'\n", beadsID)
+				fmt.Fprintf(os.Stderr, "\nOr bypass with:\n")
+				fmt.Fprintf(os.Stderr, "  --skip-explain-back --skip-reason \"...\"\n")
+				return fmt.Errorf("verification checkpoint required for Tier 1 work")
+			} else if hasCheckpoint {
+				fmt.Println("✓ Verification checkpoint found (comprehension gate passed)")
+			}
+		}
+	}
+
 	// If --approve flag is set, add approval comment BEFORE verification
 	// This ensures the visual verification gate sees the approval
 	// Skip for untracked agents (no beads issue to comment on)
@@ -948,6 +973,14 @@ func runComplete(identifier, workdir string) error {
 		if err := verify.RemoveTriageReadyLabel(beadsID); err != nil {
 			// Non-critical - the issue may not have had this label
 			// or it was already removed
+		}
+
+		// Signal human verification to daemon.
+		// This resets the completion counter and unpauses the daemon if it was paused.
+		// We use a file-based signal so orch complete doesn't need direct access to the daemon instance.
+		if err := daemon.WriteVerificationSignal(); err != nil {
+			// Log warning but don't fail completion - the issue is already closed
+			fmt.Fprintf(os.Stderr, "Warning: failed to signal human verification to daemon: %v\n", err)
 		}
 	} else if isOrchestratorSession {
 		fmt.Printf("Completed orchestrator session: %s\n", agentName)
