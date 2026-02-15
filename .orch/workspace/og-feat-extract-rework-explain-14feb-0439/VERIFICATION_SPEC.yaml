@@ -1,0 +1,56 @@
+verification_spec:
+  status: DUPLICATE_ISSUE
+  duplicate_of: orch-go-12a
+  
+  summary: |
+    This issue (orch-go-rpj) is a duplicate of orch-go-12a, which was already completed.
+    The explain-back gate extraction was completed in commits db0d3975 and caa5e3dd.
+    No implementation work was needed for this spawn.
+  
+  verification_performed:
+    - command: "grep -n 'RunExplainBackGate' pkg/orch/completion.go"
+      expectation: "Function exists in pkg/orch/completion.go"
+      result: "PASS - Found at lines 94, 123"
+      
+    - command: "grep -n 'orch.RunExplainBackGate' cmd/orch/complete_cmd.go"
+      expectation: "complete_cmd.go calls the extracted function"
+      result: "PASS - Call found at line 884"
+      
+    - command: "go test ./pkg/orch/..."
+      expectation: "All tests pass"
+      result: "PASS - ok github.com/dylan-conlin/orch-go/pkg/orch (cached)"
+      
+    - command: "go build ./cmd/orch/..."
+      expectation: "Code compiles successfully"
+      result: "PASS - compiled without errors"
+      
+    - command: "git log --oneline --grep='explain-back' | head -5"
+      expectation: "Find extraction commits"
+      result: |
+        PASS - Found commits:
+        caa5e3dd refactor: extract explain-back beads storage to pkg/orch
+        db0d3975 refactor: extract explain-back gate to pkg/orch
+        61ee67c3 feat: add explain-back verification gate to orch complete
+      
+    - command: "bd show orch-go-12a"
+      expectation: "Verify original issue was closed"
+      result: "PASS - orch-go-12a closed with extraction work completed"
+  
+  extraction_details:
+    commits:
+      - hash: db0d3975
+        message: "refactor: extract explain-back gate to pkg/orch"
+        extracted: "Main gate logic with stdin/stdout parameters"
+      - hash: caa5e3dd
+        message: "refactor: extract explain-back beads storage to pkg/orch"
+        extracted: "Beads comment storage logic into addBeadsComment helper"
+    
+    extracted_function: RunExplainBackGate
+    source: cmd/orch/complete_cmd.go
+    destination: pkg/orch/completion.go
+    current_location: "pkg/orch/completion.go:94-183"
+    
+  recommendation: |
+    Close orch-go-rpj as duplicate of orch-go-12a.
+    The extraction work is complete and verified.
+    No further action needed.
