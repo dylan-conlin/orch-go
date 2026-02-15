@@ -229,6 +229,9 @@ func runServe(portNum int) error {
 	// Initialize LIKELY_DONE cache for attention signals
 	globalLikelyDoneCache = attention.NewLikelyDoneCache()
 
+	// Initialize tree cache to prevent expensive re-extraction
+	globalTreeCache = newTreeCache()
+
 	mux := http.NewServeMux()
 
 	// CORS middleware wrapper
@@ -382,6 +385,12 @@ func runServe(portNum int) error {
 
 	// POST /api/attention/verify - mark issue as verified or needs_fix
 	mux.HandleFunc("/api/attention/verify", corsHandler(handleAttentionVerify))
+
+	// GET /api/tree - knowledge/work tree as JSON
+	mux.HandleFunc("/api/tree", corsHandler(handleTree))
+
+	// GET /api/events/tree - SSE stream for tree updates
+	mux.HandleFunc("/api/events/tree", corsHandler(handleTreeEvents))
 
 	// POST /api/attention/verify-failed/clear - clear a verification failure
 	mux.HandleFunc("/api/attention/verify-failed/clear", corsHandler(handleVerifyFailedClear))
