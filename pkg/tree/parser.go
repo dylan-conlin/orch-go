@@ -586,10 +586,18 @@ func resolveKbPath(currentFilePath, referencePath string) string {
 		return referencePath
 	}
 
+	// Convert current file path to absolute if it isn't already
+	absCurrentPath := currentFilePath
+	if !filepath.IsAbs(currentFilePath) {
+		if abs, err := filepath.Abs(currentFilePath); err == nil {
+			absCurrentPath = abs
+		}
+	}
+
 	// If it's a .kb/ relative path, find the .kb/ root and resolve
 	if strings.HasPrefix(referencePath, ".kb/") {
 		// Find the .kb/ directory in the current file's path
-		parts := strings.Split(currentFilePath, "/.kb/")
+		parts := strings.Split(absCurrentPath, "/.kb/")
 		if len(parts) > 1 {
 			kbRoot := parts[0] + "/.kb/"
 			return filepath.Join(kbRoot, strings.TrimPrefix(referencePath, ".kb/"))
@@ -600,7 +608,7 @@ func resolveKbPath(currentFilePath, referencePath string) string {
 	// Example: .kb/models/completion-verification/
 	// We'll match this to the model node by directory path
 	if strings.HasPrefix(referencePath, ".kb/models/") && !strings.HasSuffix(referencePath, ".md") {
-		parts := strings.Split(currentFilePath, "/.kb/")
+		parts := strings.Split(absCurrentPath, "/.kb/")
 		if len(parts) > 1 {
 			kbRoot := parts[0] + "/.kb/"
 			return filepath.Join(kbRoot, strings.TrimPrefix(referencePath, ".kb/"))
@@ -608,6 +616,6 @@ func resolveKbPath(currentFilePath, referencePath string) string {
 	}
 
 	// Otherwise resolve relative to the current file
-	dir := filepath.Dir(currentFilePath)
+	dir := filepath.Dir(absCurrentPath)
 	return filepath.Join(dir, referencePath)
 }

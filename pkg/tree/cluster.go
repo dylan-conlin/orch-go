@@ -132,11 +132,34 @@ func BuildRelationshipGraph(nodes []*KnowledgeNode, relationships []Relationship
 	return graph
 }
 
-// findNodeByPath finds a node by path, handling both exact matches and directory matches
+// findNodeByPath finds a node by path, handling both exact matches, directory matches,
+// and absolute vs relative path mismatches
 func findNodeByPath(nodeMap map[string]*KnowledgeNode, path string) *KnowledgeNode {
 	// Try exact match first
 	if node, ok := nodeMap[path]; ok {
 		return node
+	}
+
+	// If path is absolute, try to match against relative .kb/ paths
+	if filepath.IsAbs(path) && strings.Contains(path, "/.kb/") {
+		// Extract the .kb/ relative part
+		parts := strings.Split(path, "/.kb/")
+		if len(parts) > 1 {
+			relativePath := ".kb/" + parts[1]
+			if node, ok := nodeMap[relativePath]; ok {
+				return node
+			}
+		}
+	}
+
+	// If path is relative, try to match against absolute paths
+	if !filepath.IsAbs(path) && strings.HasPrefix(path, ".kb/") {
+		// Try to find any node whose absolute path ends with this relative path
+		for _, node := range nodeMap {
+			if strings.HasSuffix(node.Path, path) || strings.HasSuffix(node.ID, path) {
+				return node
+			}
+		}
 	}
 
 	// For directory paths (like .kb/models/completion-verification/), try to match by ID

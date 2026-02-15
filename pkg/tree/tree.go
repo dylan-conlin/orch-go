@@ -199,12 +199,11 @@ func cloneNodeRecursive(node *KnowledgeNode, clusterNodes map[string]*KnowledgeN
 		Metadata: node.Metadata,
 	}
 
-	// Only include children that are in the cluster
+	// Include ALL children (not filtered by cluster) to show cross-cluster relationships
+	// like investigations → decisions → issues
 	for _, child := range node.Children {
-		if _, inCluster := clusterNodes[child.ID]; inCluster {
-			clonedChild := cloneNodeRecursive(child, clusterNodes, visited)
-			cloned.Children = append(cloned.Children, clonedChild)
-		}
+		clonedChild := cloneNodeRecursive(child, clusterNodes, visited)
+		cloned.Children = append(cloned.Children, clonedChild)
 	}
 
 	return cloned
