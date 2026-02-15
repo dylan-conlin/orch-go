@@ -23,6 +23,7 @@ const (
 	GateVisualVerify       = "visual_verification"  // Visual verification required
 	GateTestEvidence       = "test_evidence"        // Test execution evidence required
 	GateGitDiff            = "git_diff"             // Git diff doesn't match claims
+	GateAccretion          = "accretion"            // File size accretion detected
 	GateBuild              = "build"                // Project build failed
 	GateDecisionPatchLimit = "decision_patch_limit" // Decision patch limit exceeded
 	GateExplainBack        = "explain_back"         // Human explanation of what was built required
@@ -406,6 +407,21 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 				result.GatesFailed = append(result.GatesFailed, GateGitDiff)
 			}
 			result.Warnings = append(result.Warnings, gitDiffResult.Warnings...)
+		}
+	}
+
+	// Verify accretion (file size growth) for non-orchestrator tiers
+	// This gates completion when agents add >50 lines to already-large files (>800 or >1500 lines)
+	// Skip for orchestrator tier (orchestrators don't write code)
+	if !isOrch {
+		accretionResult := VerifyAccretionForCompletion(workspacePath, projectDir)
+		if accretionResult != nil {
+			if !accretionResult.Passed {
+				result.Passed = false
+				result.Errors = append(result.Errors, accretionResult.Errors...)
+				result.GatesFailed = append(result.GatesFailed, GateAccretion)
+			}
+			result.Warnings = append(result.Warnings, accretionResult.Warnings...)
 		}
 	}
 

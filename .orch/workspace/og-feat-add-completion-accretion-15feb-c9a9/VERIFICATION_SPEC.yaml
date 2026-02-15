@@ -1,0 +1,69 @@
+# Verification Specification
+# Generated for: orch-go-4tz (og-feat-add-completion-accretion-15feb-c9a9)
+# Task: Add completion accretion gate (GateAccretion in pkg/verify)
+
+## Automated Checks
+
+### Build Verification
+```bash
+# Command:
+cd /Users/dylanconlin/Documents/personal/orch-go && go build -o /tmp/orch-test ./cmd/orch
+
+# Expected: Build succeeds with no errors
+# Actual: Build succeeded
+```
+
+### Test Execution
+```bash
+# Command:
+cd /Users/dylanconlin/Documents/personal/orch-go && go test ./pkg/verify -run "Accretion|IsSourceFile|GetFileLineCount" -v
+
+# Expected: All new accretion gate tests pass
+# Actual: 17 tests passed, 0 failed
+# - TestVerifyAccretionForCompletion: 7 subtests (all passed)
+# - TestIsSourceFile: 15 subtests (all passed)
+# - TestGetFileLineCount: 1 test (passed)
+```
+
+## Implementation Verification
+
+### Files Created
+- `pkg/verify/accretion.go` - Accretion gate implementation
+  - AccretionResult struct
+  - VerifyAccretionForCompletion function
+  - Helper functions: getGitDiffWithLineCounts, getFileLineCount, isSourceFile
+  - Thresholds: 800 lines (warning), 1500 lines (error), 50 line delta
+
+- `pkg/verify/accretion_test.go` - Test coverage
+  - TestVerifyAccretionForCompletion - Gate behavior tests
+  - TestIsSourceFile - File filtering tests
+  - TestGetFileLineCount - Line counting tests
+
+### Files Modified
+- `pkg/verify/check.go`
+  - Added GateAccretion constant (line 26)
+  - Integrated VerifyAccretionForCompletion into VerifyCompletionFull (after git_diff gate, before build gate)
+
+## Acceptance Criteria
+
+✅ GateAccretion constant added to pkg/verify/check.go
+✅ VerifyAccretionForCompletion function implemented
+✅ Gate integrated into VerifyCompletionFull (worker tier only, skipped for orchestrator)
+✅ Tests cover all scenarios:
+   - Small files pass
+   - Files >800 lines with +50 net lines → warning
+   - Files >1500 lines with +50 net lines → error
+   - Net negative delta (extraction) → auto-pass
+   - Multiple files with mixed results
+✅ Build succeeds
+✅ All new tests pass
+
+## Known Limitations
+
+- Pre-existing test failure in TestSynthesisGateAutoSkipForKnowledgeProducingSkills (unrelated to this change)
+- Gate currently only checks unstaged changes (git diff HEAD), not committed changes
+- Line counting uses wc -l which may vary slightly on files without trailing newlines
+
+## Manual Steps
+
+None required - all verification automated through tests.
