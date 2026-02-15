@@ -3,10 +3,38 @@
 	import { knowledgeTree, type TreeView, type KnowledgeNode, type NodeType } from '$lib/stores/knowledge-tree';
 	import { KnowledgeTree as KnowledgeTreeComponent } from '$lib/components/knowledge-tree';
 	
+	// localStorage key for expansion state
+	const EXPANSION_STATE_KEY = 'knowledge-tree-expansion';
+	
 	let currentView: TreeView = 'knowledge';
 	let loading = true;
 	let searchQuery = '';
 	let selectedTypes: Set<NodeType> = new Set();
+	
+	// Load expansion state from localStorage
+	function loadExpansionState(): Set<string> {
+		if (typeof window === 'undefined') return new Set();
+		try {
+			const stored = localStorage.getItem(EXPANSION_STATE_KEY);
+			return stored ? new Set(JSON.parse(stored)) : new Set();
+		} catch (e) {
+			console.error('Failed to load expansion state:', e);
+			return new Set();
+		}
+	}
+	
+	// Save expansion state to localStorage
+	function saveExpansionState(expandedIds: Set<string>) {
+		if (typeof window === 'undefined') return;
+		try {
+			localStorage.setItem(EXPANSION_STATE_KEY, JSON.stringify(Array.from(expandedIds)));
+		} catch (e) {
+			console.error('Failed to save expansion state:', e);
+		}
+	}
+	
+	// Track expanded nodes
+	let expandedNodes = loadExpansionState();
 	
 	// Load initial tree
 	onMount(async () => {
@@ -35,6 +63,15 @@
 	// Handle node toggle
 	function handleNodeToggle(nodeId: string) {
 		knowledgeTree.toggleNode(nodeId);
+		
+		// Update expansion state tracking
+		if (expandedNodes.has(nodeId)) {
+			expandedNodes.delete(nodeId);
+		} else {
+			expandedNodes.add(nodeId);
+		}
+		expandedNodes = expandedNodes; // Trigger reactivity
+		saveExpansionState(expandedNodes);
 	}
 	
 	// Filter tree by search and type
