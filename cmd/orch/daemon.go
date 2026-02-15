@@ -185,6 +185,7 @@ func runDaemonLoop() error {
 	}
 
 	// Build configuration from flags
+	defaults := daemon.DefaultConfig()
 	config := daemon.Config{
 		PollInterval:                time.Duration(daemonPollInterval) * time.Second,
 		MaxAgents:                   daemonMaxAgents,
@@ -200,6 +201,7 @@ func runDaemonLoop() error {
 		CleanupAgeDays:              daemonCleanupAge,
 		CleanupPreserveOrchestrator: daemonCleanupPreserveOrch,
 		CleanupServerURL:            serverURL, // Use global serverURL from root command
+		VerificationPauseThreshold:  defaults.VerificationPauseThreshold,
 	}
 
 	d := daemon.NewWithConfig(config)
@@ -262,6 +264,11 @@ func runDaemonLoop() error {
 	} else {
 		fmt.Println("  Recovery interval: disabled")
 	}
+	if config.VerificationPauseThreshold > 0 {
+		fmt.Printf("  Verify threshold:  %d (pause after N unverified completions)\n", config.VerificationPauseThreshold)
+	} else {
+		fmt.Println("  Verify threshold:  disabled")
+	}
 	fmt.Println()
 
 	// Main polling loop
@@ -320,21 +327,19 @@ func runDaemonLoop() error {
 		// Check verification pause BEFORE spawning
 		// This enforces the verifiability-first constraint by pausing after N agents
 		// are marked ready-for-review without human verification (manual orch complete).
-		if d.VerificationTracker != nil && d.VerificationTracker.IsPaused() {
+		if d.VerificationTracker != nil {
 			verifyStatus := d.VerificationTracker.Status()
-			if daemonVerbose || cycles%10 == 0 {
-				// Get ready issues count to show what's waiting
-				pendingIssues, _ := daemon.ListReadyIssues()
-				pendingCount := len(pendingIssues)
-
-				fmt.Printf("[%s] ⏸  Verification pause: %d agent(s) ready for review (threshold: %d)\n",
+			if d.VerificationTracker.IsPaused() {
+				fmt.Printf("[%s] Verification pause: %d unverified completions, threshold is %d\n",
 					timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
-				fmt.Printf("[%s]    Completed work is waiting for review. %d issue(s) ready to spawn once resumed.\n",
-					timestamp, pendingCount)
 				fmt.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work to continue\n", timestamp)
+				time.Sleep(config.PollInterval)
+				continue
 			}
-			time.Sleep(config.PollInterval)
-			continue
+			if verifyStatus.IsEnabled() {
+				fmt.Printf("[%s] Verification check: %d/%d unverified completions, proceeding\n",
+					timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
+			}
 		}
 
 		// Run periodic reflection if due
