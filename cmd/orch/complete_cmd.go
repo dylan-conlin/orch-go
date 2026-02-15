@@ -516,8 +516,8 @@ func runComplete(identifier, workdir string) error {
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to check verification checkpoint: %v\n", err)
 				// Continue with completion - checkpoint check is advisory for now
-			} else if !hasCheckpoint && !skipConfig.ExplainBack {
-				// No checkpoint exists and explain-back is not being skipped
+			} else if !hasCheckpoint && !skipConfig.ExplainBack && completeExplain == "" {
+				// No checkpoint exists, explain-back not being skipped, and no --explain text provided
 				fmt.Fprintf(os.Stderr, "❌ Verification checkpoint missing for Tier 1 work (%s)\n", issue.IssueType)
 				fmt.Fprintf(os.Stderr, "\nTier 1 work (features/bugs/decisions) requires comprehension verification:\n")
 				fmt.Fprintf(os.Stderr, "  orch complete %s --explain 'Built X because Y, verified by Z'\n", beadsID)
