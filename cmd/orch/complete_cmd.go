@@ -51,6 +51,7 @@ var (
 	completeSkipDecisionPatch  bool
 	completeSkipPhaseComplete  bool
 	completeSkipHandoffContent bool
+	completeSkipExplainBack    bool
 	completeSkipReason         string // Required for all --skip-* flags (min 10 chars)
 )
 
@@ -76,6 +77,7 @@ The following gates are checked before completion:
   - skill_output:         Required skill outputs exist
   - decision_patch_limit: Decision patch count not exceeded
   - handoff_content:      SESSION_HANDOFF.md has actual content (orchestrator only)
+  - explain_back:         Human explains what was built and why
 
 TARGETED SKIP FLAGS:
 Use --skip-{gate} with --skip-reason to bypass specific gates:
@@ -90,6 +92,7 @@ Use --skip-{gate} with --skip-reason to bypass specific gates:
   --skip-decision-patch   Skip decision patch count gate
   --skip-phase-complete   Skip Phase: Complete gate
   --skip-handoff-content  Skip handoff content validation (orchestrator only)
+  --skip-explain-back     Skip explain-back verification gate
 
 Each --skip-* flag requires --skip-reason with a minimum of 10 characters
 explaining why the gate is being bypassed. Bypasses are logged for audit.
@@ -151,6 +154,7 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipDecisionPatch, "skip-decision-patch", false, "Skip decision patch count verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipPhaseComplete, "skip-phase-complete", false, "Skip Phase: Complete verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipHandoffContent, "skip-handoff-content", false, "Skip handoff content validation gate for orchestrators (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipExplainBack, "skip-explain-back", false, "Skip explain-back verification gate (requires --skip-reason)")
 	completeCmd.Flags().StringVar(&completeSkipReason, "skip-reason", "", "Reason for skip (required for all --skip-* flags, min 10 chars)")
 }
 
@@ -167,6 +171,7 @@ type SkipConfig struct {
 	DecisionPatch  bool
 	PhaseComplete  bool
 	HandoffContent bool
+	ExplainBack    bool
 	Reason         string // Required reason for skips
 }
 
@@ -174,7 +179,7 @@ type SkipConfig struct {
 func (c SkipConfig) hasAnySkip() bool {
 	return c.TestEvidence || c.Visual || c.GitDiff || c.Synthesis ||
 		c.Build || c.Constraint || c.PhaseGate || c.SkillOutput ||
-		c.DecisionPatch || c.PhaseComplete || c.HandoffContent
+		c.DecisionPatch || c.PhaseComplete || c.HandoffContent || c.ExplainBack
 }
 
 // skippedGates returns a list of gate names that are being skipped.
@@ -213,6 +218,9 @@ func (c SkipConfig) skippedGates() []string {
 	if c.HandoffContent {
 		gates = append(gates, verify.GateHandoffContent)
 	}
+	if c.ExplainBack {
+		gates = append(gates, verify.GateExplainBack)
+	}
 	return gates
 }
 
@@ -241,6 +249,8 @@ func (c SkipConfig) shouldSkipGate(gate string) bool {
 		return c.PhaseComplete
 	case verify.GateHandoffContent:
 		return c.HandoffContent
+	case verify.GateExplainBack:
+		return c.ExplainBack
 	default:
 		return false
 	}
@@ -260,6 +270,7 @@ func getSkipConfig() SkipConfig {
 		DecisionPatch:  completeSkipDecisionPatch,
 		PhaseComplete:  completeSkipPhaseComplete,
 		HandoffContent: completeSkipHandoffContent,
+		ExplainBack:    completeSkipExplainBack,
 		Reason:         completeSkipReason,
 	}
 }
@@ -862,6 +873,39 @@ func runComplete(identifier, workdir string) error {
 		if len(probeVerdicts) > 0 {
 			fmt.Print(verify.FormatProbeVerdicts(probeVerdicts))
 		}
+	}
+
+	// Explain-back verification gate
+	// After all verification passes, require human to explain what was built and why.
+	// This creates an unfakeable verification gate - can't rubber-stamp a conversational explanation.
+	// Skipped for orchestrator sessions (they have handoffs) and untracked agents (no beads to comment on).
+	if !completeForce && !isOrchestratorSession && !isUntracked && beadsID != "" {
+		// Check if skip flag is set
+		if skipConfig.ExplainBack {
+			fmt.Printf("⚠️  Bypassing explain-back gate (reason: %s)\n", skipConfig.Reason)
+		} else {
+			// Check if stdin is a terminal for interactive prompting
+			if !term.IsTerminal(int(os.Stdin.Fd())) {
+				fmt.Fprintf(os.Stderr, "⚠️  Explain-back gate requires terminal interaction\n")
+				fmt.Fprintf(os.Stderr, "Use --skip-explain-back --skip-reason \"...\" to bypass in non-interactive mode\n")
+				return fmt.Errorf("explain-back gate requires terminal")
+			}
+
+			// Prompt for explanation
+			explainResult, err := verify.PromptExplainBack(os.Stdin, os.Stdout)
+			if err != nil {
+				return fmt.Errorf("explain-back verification failed: %w", err)
+			}
+
+			// Store explanation as beads comment
+			if err := addApprovalComment(beadsID, explainResult.FullExplanation); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to save explanation to beads: %v\n", err)
+			} else {
+				fmt.Println("Explanation saved to beads issue")
+			}
+		}
+	} else if completeForce {
+		fmt.Println("Skipping explain-back verification (--force)")
 	}
 
 	// Update session handoff with spawn completion info (Capture at Context principle)
