@@ -22,7 +22,7 @@ Additionally, `orch stats` provides operational metrics (spawns, completions, ve
 
 ### Success Criteria
 
-1. Orchestrator metrics: 5 high-signal metrics (down from 8)
+1. Orchestrator metrics: 4 high-signal metrics (down from 8)
 2. Stats integration: `orch stats` shows coaching summary section
 3. Session start: Orchestrator automatically sees last-24h health summary
 4. No regressions in worker health tracking
@@ -39,33 +39,15 @@ Additionally, `orch stats` provides operational metrics (spawns, completions, ve
 
 ## Fork 1: How to Detect the 3 New Orchestrator Metrics
 
-### Fork 1a: `spawn_without_context`
+### Fork 1a: `spawn_without_context` — KILLED (Post-Synthesis)
 
-**What it detects:** Orchestrator running `orch spawn` without first running `kb context` for the relevant domain.
+**What it would detect:** Orchestrator running `orch spawn` without first running `kb context`.
 
-**Options:**
+**Why killed:** `orch spawn` already runs `kb context` automatically via `pkg/spawn/kbcontext.go`. The infrastructure extracts keywords from the task description, runs tiered search (local → global), and injects results into SPAWN_CONTEXT.md. The orchestrator skill's instruction to manually run `kb context` before every spawn is a holdover from before this automation existed.
 
-- **A: Track kb context → spawn sequence in session state.** When `orch spawn` is detected in bash, check if `kb context` was called in the previous N tool calls. If not, emit metric.
-- **B: Track spawn count vs context check count ratio.** Current `context_ratio` already does this, but it's a ratio. The new metric would be a per-spawn check.
+**Action:** Remove manual `kb context` instruction from orchestrator skill. The real quality gate is the automated context score shown in spawn output (e.g., "Context: ✓ 90/100 (excellent)"). If context is low, the orchestrator should improve the task description, not manually run `kb context`.
 
-**Substrate says:**
-- Model: Coaching plugin already tracks `isContextCheck()` and `isSpawn()` functions (lines 193-204). These are the building blocks.
-- Decision: "Skills own domain behavior, spawn owns orchestration infrastructure" — checking context before spawn is an orchestrator behavioral concern.
-
-**RECOMMENDATION:** Option A — per-spawn sequence check. When `orch spawn` is detected, look back through `state.toolWindow` (last 10 tools) and `state.variation.variationHistory` for any `kb context` or `kb search` call. If absent, emit `spawn_without_context`. This replaces `context_ratio` which was a less actionable ratio.
-
-**Implementation:**
-```typescript
-// In tool.execute.after, when isSpawn(command):
-const recentContextCheck = state.toolWindow.some(t => /* was context check */)
-// Need to also track bash commands more specifically
-// Add: state.recentBashCommands: string[] (last 20 bash commands)
-if (!recentContextCheck) {
-  writeMetric({ metric_type: "spawn_without_context", ... })
-}
-```
-
-**Trade-off:** Window size (10 vs 20 tools) affects false positive rate. 10 is tight — orchestrator might have checked context 15 tool calls ago. Recommend 20-tool window for bash commands.
+**Result:** 4 orchestrator metrics (not 5): frame_collapse, completion_backlog, behavioral_variation, circular_pattern.
 
 ---
 
@@ -180,8 +162,9 @@ Both `serve_coaching.go` (for API) and `stats_cmd.go` (for CLI) import the share
 🧠 BEHAVIORAL HEALTH (coaching metrics)
   Orchestrator:
     frame_collapse:        2 events (last: 2h ago)
-    spawn_without_context: 0 events ✅
     completion_backlog:    1 event  (last: 15m ago) ⚠️
+    behavioral_variation:  3 events
+    circular_pattern:      0 events ✅
   Workers:
     tool_failure_rate:     3 events across 2 sessions
     context_usage:         1 event
@@ -273,7 +256,6 @@ event: async ({ event }) => {
 ```go
 // Replace action_ratio/analysis_paralysis threshold checks with:
 // frame_collapse: any events = warning
-// spawn_without_context: any events = warning
 // completion_backlog: any events = warning
 // behavioral_variation: 5+ events = warning
 // circular_pattern: any events = poor
@@ -327,8 +309,6 @@ event: async ({ event }) => {
 - Clean up `SessionState` interface to remove `dylan` field
 
 **What (additions):**
-- Add `spawn_without_context` detection: when `isSpawn()` is true, check recent bash commands for `kb context` / `kb search`. If none found in last 20 bash commands, emit metric.
-- Add `recentBashCommands: string[]` to `SessionState` (track last 20 bash commands for context checking)
 - Update `frame_collapse` allowlist: add `agents.md` to `isCodeFile()` orchestration paths
 
 **What (tuning):**
@@ -342,7 +322,7 @@ event: async ({ event }) => {
 
 **What:**
 - Update `aggregateMetrics()` to use new metric types for health status
-- Replace `action_ratio`/`analysis_paralysis` checks with `frame_collapse`, `spawn_without_context`, `completion_backlog`, `behavioral_variation`, `circular_pattern`
+- Replace `action_ratio`/`analysis_paralysis` checks with `frame_collapse`, `completion_backlog`, `behavioral_variation`, `circular_pattern`
 
 ### Phase 5: Session-Start Auto-Surfacing
 

@@ -1,7 +1,7 @@
 # Model: Coaching Plugin
 
 **Domain:** OpenCode Plugins / Behavioral Monitoring
-**Last Updated:** 2026-02-14
+**Last Updated:** 2026-02-14 (worker detection fix verified)
 **Synthesized From:** 15 investigations (Jan 10-18, 2026) exploring coaching plugin implementation, worker detection failures, and injection architecture
 
 ---
@@ -12,7 +12,7 @@ The Coaching Plugin is an OpenCode plugin that provides real-time behavioral fee
 
 The plugin hooks `tool.execute.after` to observe tool usage patterns (it cannot see LLM response text—fundamental constraint), detects 8 behavioral patterns using behavioral proxies (action ratio, analysis paralysis, frame collapse, etc.), and injects coaching messages via `client.session.prompt({ noReply: true })`. Metrics persist to `~/.orch/coaching-metrics.jsonl` and are exposed via `/api/coaching` for dashboard visualization.
 
-**Current status (Jan 2026):** Orchestrator coaching works (50+ metrics collected), worker health tracking doesn't fire (0 metrics collected despite implemented code). Root cause: worker detection has failed through multiple implementations (caching bugs, invalid detection signals, unverified metadata-based detection).
+**Current status (Feb 2026):** Both orchestrator and worker coaching operational. Orchestrator coaching: 1000+ metrics collected. Worker health tracking: verified working Feb 14 — stress test (50+ tool calls) emitted `context_usage` worker metric with zero orchestrator metric leakage. Fix required two opencode fork commits (459a1bfba, 0922edfe7) to: (1) read `x-opencode-env-ORCH_WORKER` header and set `session.metadata.role='worker'`, (2) pass `session.metadata` through `tool.execute.after` plugin hooks. **Note:** Worker detection only works for headless (OpenCode HTTP API) spawns — Claude CLI/tmux spawns bypass the HTTP session creation endpoint and don't get metadata set.
 
 ---
 
@@ -89,12 +89,14 @@ Dashboard Visualization (/api/coaching)
   - Bash `args.workdir` containing `.orch/workspace/`
 - Status: Failed - caching bug cached false results prematurely; bash workdir arg doesn't exist
 
-**Approach 3: session.metadata.role (Jan 17+, current)**
-- Chain of trust:
-  1. `orch spawn` sets `x-opencode-env-ORCH_WORKER=1` header
-  2. OpenCode server sets `session.metadata.role = 'worker'`
-  3. Plugin checks `session?.metadata?.role === 'worker'`
-- Status: Unverified in production - zero worker metrics suggest it's not working
+**Approach 3: session.metadata.role (Jan 17+, current — WORKING)**
+  - Chain of trust:
+    1. `orch spawn` sets `x-opencode-env-ORCH_WORKER=1` header ✅
+    2. OpenCode server reads header → sets `session.metadata.role = 'worker'` ✅ (commit 459a1bfba, Feb 14)
+    3. OpenCode passes `session.metadata` to `tool.execute.after` hook ✅ (commit 0922edfe7, Feb 14)
+    4. Plugin checks `session?.metadata?.role === 'worker'` ✅
+  - Status: Verified Feb 14 — stress test emitted worker-only `context_usage` metric, zero orchestrator leakage
+  - Limitation: Only works for headless spawns (OpenCode HTTP API). Claude CLI/tmux spawns bypass HTTP session creation.
 
 ### Critical Invariants
 
@@ -192,26 +194,20 @@ if (args?.filePath && typeof args.filePath === "string") {
 
 ---
 
-### Failure Mode 5: session.metadata.role Detection Unverified
+### Failure Mode 5: session.metadata.role Detection Unverified — RESOLVED
 
-**Symptom:** Zero worker metrics in production after metadata-based detection implemented
+**Symptom:** Zero worker metrics in production after metadata-based detection implemented (Jan 17)
 
-**Root cause:** Unverified assumption that OpenCode server sets `session.metadata.role` from `x-opencode-env-ORCH_WORKER` header
+**Root cause (discovered Feb 14):** TWO missing pieces, not one:
+1. Server-side handler to read header and set metadata was lost during upstream rebase
+2. `tool.execute.after` hook interface didn't pass `session.metadata` to plugins at all
 
-**Chain of trust:**
-1. `orch spawn` sets header: `req.Header.Set("x-opencode-env-ORCH_WORKER", "1")` ✅ verified in code
-2. OpenCode server sets metadata: `session.metadata.role = 'worker'` ❓ unverified
-3. Plugin reads metadata: `session?.metadata?.role === 'worker'` ✅ implemented
+**Fix (Feb 14, opencode fork commits 459a1bfba + 0922edfe7):**
+1. `server/routes/session.ts` — reads `x-opencode-env-orch_worker` header, sets `metadata.role = "worker"` during session creation
+2. `session/prompt.ts` — passes `{ session: { metadata: session.metadata } }` through to `tool.execute.after` hook (two call sites)
+3. `plugin/src/index.ts` — updated hook type signature to include `session?: { metadata?: Record<string, string> }`
 
-**Missing verification:** Need runtime logging to confirm OpenCode actually sets the metadata
-
-**Recommended debug approach:**
-1. Add `console.log` in `detectWorkerSession()` showing: sessionId, session?.metadata, return value
-2. Restart OpenCode server
-3. Spawn a worker, check logs for detection output
-4. If metadata undefined → problem is OpenCode not setting it
-5. If metadata.role exists but not 'worker' → problem is header not being read
-6. If metadata.role === 'worker' but function returns false → problem in plugin logic
+**Verified:** Stress test (50+ tool calls) emitted `context_usage` worker metric with zero orchestrator metric leakage.
 
 ---
 
@@ -352,6 +348,13 @@ Intervention: daemon polls metrics file → threshold check → inject via API
 - Comprehensive status investigation (orch-go-f9b8)
 - Confirmed: orchestrator coaching works (50+ metrics), worker coaching broken (0 metrics)
 - Recommended debug logging to verify session.metadata.role
+
+**Feb 14, 2026: Worker Detection Chain Fixed and Verified**
+- Root cause found: TWO missing pieces in opencode fork — (1) server-side handler lost in rebase, (2) plugin hook didn't pass session metadata
+- Fix: opencode commits 459a1bfba (read header → set metadata.role) + 0922edfe7 (pass metadata through hooks + type update)
+- Verified: stress test (50+ tool calls) emitted `context_usage` worker metric, zero orchestrator leakage
+- Limitation documented: only works for headless (HTTP API) spawns, not Claude CLI/tmux
+- Closed orch-go-a4r
 
 ---
 

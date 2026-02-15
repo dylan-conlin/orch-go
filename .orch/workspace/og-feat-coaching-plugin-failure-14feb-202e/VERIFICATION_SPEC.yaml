@@ -1,0 +1,50 @@
+commands:
+  - description: "Read all 15 coaching plugin investigations from synthesized/coaching-plugin/"
+    command: "ls -la /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/synthesized/coaching-plugin/"
+    expected: "15 investigation files from Jan 10-18 period"
+  
+  - description: "Verify coaching-plugin model documents 5 failure modes"
+    command: "grep -c 'Failure Mode' /Users/dylanconlin/Documents/personal/orch-go/.kb/models/coaching-plugin.md"
+    expected: "At least 5 failure modes documented"
+  
+  - description: "Count coaching commits vs total commits Jan 10-18"
+    command: "cd /Users/dylanconlin/Documents/personal/orch-go && git log --oneline --since='2026-01-10' --until='2026-01-19' --all | wc -l"
+    expected: "~537 total commits"
+  
+  - description: "Count coaching-specific commits Jan 10-18"
+    command: "cd /Users/dylanconlin/Documents/personal/orch-go && git log --oneline --since='2026-01-10' --until='2026-01-19' --all | grep -i coaching | wc -l"
+    expected: "~21 coaching commits (3.9% of total)"
+
+manual_verification:
+  - description: "Verify retry cycle mapping is accurate by cross-referencing investigation D.E.K.N. summaries"
+    steps:
+      - "Check investigation #4 (Debug Worker Filtering) mentions process boundary discovery"
+      - "Check investigation #9 (Design Review Failures) identifies caching bug + bash workdir"
+      - "Check investigation #14 (Understand Status) shows '90% complete, 0 worker metrics'"
+  
+  - description: "Verify failure mode mapping against coaching-plugin.md model"
+    steps:
+      - "FM1 (Caching bug) documented in model lines 114-134"
+      - "FM2 (Bash workdir) documented in model lines 137-149"
+      - "FM3 (Observation/intervention coupling) documented in model lines 152-172"
+      - "FM4 (Removed signal) documented in model lines 175-195"
+      - "FM5 (session.metadata.role) documented in model lines 198-211"
+  
+  - description: "Verify bandwidth analysis calculations"
+    steps:
+      - "21 coaching commits / 537 total commits = 3.9%"
+      - "15 investigations solely on coaching plugin (from .kb/investigations/synthesized/coaching-plugin/)"
+      - "4 retry cycles documented with commit hashes and failure evidence"
+
+key_outcomes:
+  - "Mapped all 15 investigations to failure modes or feature work"
+  - "Identified 4 distinct retry-without-resolution cycles"
+  - "Calculated 3.9% commit activity, ~10-15% investigative bandwidth consumption"
+  - "Determined saga was NOT abandoned but remained unresolved through Jan 18, resolved Feb 14 (35 days)"
+  - "Established that architectural coupling (FM3) created cascading failure surface"
+  - "Documented pattern: verification theater without actual validation between retry cycles"
+
+evidence_artifacts:
+  - "ANALYSIS.md: Comprehensive 500+ line analysis with investigation mapping, retry cycle analysis, bandwidth calculations"
+  - "Git commit history: 21 coaching commits identified from Jan 10-18 period"
+  - "Investigation file review: All 15 investigations read and analyzed for failure mode mapping"

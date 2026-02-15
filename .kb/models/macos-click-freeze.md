@@ -1,14 +1,14 @@
 # Model: macOS Click Freeze
 
 **Domain:** macOS input subsystem — trackpad click events stop registering while cursor movement continues
-**Last Updated:** 2026-02-13
-**Synthesized From:** Session 11 (systematic elimination), Session 14 (recurrence + 3 research probes + OpenCode fork resource audit), Session 15 (nuclear elimination — Karabiner uninstalled, 23+ services disabled), Session 16 (freeze recurrence — service state probe)
+**Last Updated:** 2026-02-14
+**Synthesized From:** Session 11 (systematic elimination), Session 14 (recurrence + 3 research probes + OpenCode fork resource audit), Session 15 (nuclear elimination — Karabiner uninstalled, 23+ services disabled), Session 16 (freeze recurrence — service state probe), Session 17 (stability observation + reactive capture tooling)
 
 ---
 
 ## Summary (30 seconds)
 
-Trackpad clicks stop registering every ~15 minutes while cursor movement and keyboard continue working. `sudo killall -HUP WindowServer` fixes it every time (HUP = reconfigure, not restart). This points to WindowServer accumulating corrupted state in its click event pipeline. **Breakthrough in Session 15:** nuclear elimination of ~23 services stopped the freeze. **Freeze returned (2026-02-13)** after gradual service re-enablement — first recurrence in ~2 days. NI HardwareAgent and Ollama remain fully uninstalled, so H5 (NI as sole culprit) is weakened. Memory was 78% free with zero swap, further weakening H4. **H6 (aggregate service contention) is now the leading hypothesis.** Current suspect set: yabai (running), colima/Docker (manually started), emacs, Phase 1 services. Next: binary search — stop yabai first, then colima/Docker.
+Trackpad clicks stop registering while cursor movement and keyboard continue working. `sudo killall -HUP WindowServer` fixes it every time (HUP = reconfigure, not restart). This points to WindowServer accumulating corrupted state in its click event pipeline. **Breakthrough in Session 15:** nuclear elimination of ~23 services stopped the freeze. **Freeze returned (2026-02-13)** after gradual service re-enablement — first recurrence in ~2 days. **However (2026-02-14):** the same service set that triggered the Feb 13 freeze ran stable for 5+ hours, suggesting the freeze is **intermittent/stochastic** rather than deterministic. Frequency has decreased from every ~15 min (Sessions 11-14) to rare occurrences. macOS updated to 15.7.4 (from 15.6.1) between sessions. **H6 (aggregate service contention) remains the leading hypothesis** but is weakened by the stability observation. **New approach:** reactive capture script (`scripts/click-freeze-capture.sh`) to snapshot full system state during freeze occurrences for correlation analysis, rather than disruptive elimination testing.
 
 ---
 
@@ -134,15 +134,17 @@ Not a single culprit but the combination of services creating enough IOKit/Windo
 **Evidence against:**
 - The system ran fine with this same service set for months/years before the freeze started
 - Something specific likely changed (XProtect update Feb 10? macOS update? NI update?)
+- **(2026-02-14)** Same suspect set from Feb 13 freeze ran stable for 5+ hours without a freeze. If aggregate contention were deterministic, this shouldn't happen. Suggests the threshold is probabilistic or requires an additional transient trigger.
 
-**Current suspect set (running during 2026-02-13 freeze):**
-1. **yabai** (PID 1055) — re-enabled, Accessibility API + window event interception
-2. **colima + Docker** (manually started despite disabled LaunchAgents)
-3. **emacs-plus@31** (manually started despite disabled LaunchAgent)
-4. **Phase 1 services** — mysql, redis, disk-cleanup, disk-threshold, tmuxinator
-5. **Karabiner** (15.9.0) — running, but already eliminated as sole cause
+**Current suspect set (running during 2026-02-13 freeze AND stable 2026-02-14):**
+1. **yabai** (PID 9116) — re-enabled, Accessibility API + window event interception
+2. **sketchybar** (PID 9743) — re-enabled since Feb 13 (was disabled in batch)
+3. **colima + Docker** (manually started despite disabled LaunchAgents)
+4. **emacs-plus@31** (manually started despite disabled LaunchAgent)
+5. **Phase 1 services** — mysql, redis, disk-cleanup, disk-threshold, tmuxinator
+6. **Karabiner** (15.9.0) — running, but already eliminated as sole cause
 
-**Next test:** Binary search — stop yabai first (quick re-test in new environment), then colima/Docker if freeze persists.
+**Next approach:** Reactive capture (`scripts/click-freeze-capture.sh`) to collect system snapshots during actual freeze occurrences for correlation analysis. Will bind to Karabiner hotkey after manual validation. Binary search (stop yabai → colima → Phase 1) remains fallback if correlation data is inconclusive.
 
 ---
 
@@ -223,7 +225,7 @@ Not a single culprit but the combination of services creating enough IOKit/Windo
 
 ## Environment
 
-- **macOS:** 15.6.1 (Sequoia)
+- **macOS:** 15.7.4 (Sequoia) — updated from 15.6.1 between Session 16 and 17
 - **Hardware:** Mac15,7 (M3 Pro)
 - **Karabiner:** 15.9.0 (reinstalled, upgraded from 14.13.0 — running, no freeze)
 - **yabai:** /opt/homebrew/bin/yabai (ENABLED, running — PID 1055)
@@ -254,6 +256,8 @@ Services disabled in Session 15:
 
 **2026-02-13 (Session 16):** **Freeze recurred** — first time since Session 15 nuclear elimination (~2 days freeze-free). Service state probe revealed model had Phase 2 states inverted: skhd was DISABLED (not re-enabled), yabai was ENABLED+running (not disabled). Additionally colima/Docker and emacs-plus@31 were manually started despite disabled LaunchAgents. H5 (NI) weakened — fully uninstalled yet freeze returned. H4 (memory) effectively eliminated — 78% free, zero swap. **H6 (aggregate contention) is now the leading hypothesis.** New binary search plan through current suspect set.
 
+**2026-02-14 (Session 17):** **Stability observation.** Same suspect set from Feb 13 freeze (yabai, colima/Docker, emacs, Phase 1 services) ran stable for 5+ hours without a freeze — *plus* sketchybar (newly re-enabled). macOS updated to 15.7.4 (from 15.6.1). This weakens deterministic H6 — if aggregate contention were sufficient, the same stack should freeze reliably. Freeze frequency has decreased from every ~15 min (Sessions 11-14) to rare/intermittent. **Strategy shift:** built reactive capture script (`scripts/click-freeze-capture.sh`) to snapshot full system state during actual freeze occurrences for correlation analysis. Captures 10 sections: processes, launchctl state, memory, IOKit HID, WindowServer, Accessibility API, Docker/colima, uptime. Will bind to Karabiner hotkey after manual validation. This allows continued app usage while collecting diagnostic data.
+
 ---
 
 ## References
@@ -269,8 +273,12 @@ Services disabled in Session 15:
 - `.kb/models/macos-click-freeze/probes/2026-02-11-karabiner-github-search.md` — Karabiner: mouse lag (#2566) but no click freeze
 - `.kb/models/macos-click-freeze/probes/2026-02-11-yabai-github-issues-search.md` — yabai: drag freeze (#2715) closest match, no click freeze
 
+**Tooling:**
+- `scripts/click-freeze-capture.sh` — Reactive capture script (run during freeze, before HUP). Outputs to `~/.orch/click-freeze-captures/capture-YYYYMMDD-HHMMSS.log`. Next: bind to Karabiner hotkey in dotfiles.
+
 **Issues:**
 - `orch-go-uvtgi` [P2] — Click freeze tracking issue
+- `orch-go-cem` — Reactive capture script (completed 2026-02-14)
 
 **Related models:**
 - None (macOS system issue, not orch-go)
@@ -279,7 +287,7 @@ Services disabled in Session 15:
 - OpenCode fork optimizations: MAX_INSTANCES 20→8, IDLE_TTL 30→5min, disposeAll in server.stop(), periodic eviction timer (worth doing regardless — may also fix click freeze if H4 confirmed)
 
 **Primary Evidence (Verify These):**
-- `~/Library/LaunchAgents/` - User launch agents (skhd, yabai disabled; others per session state)
+- `~/Library/LaunchAgents/` - User launch agents (skhd disabled, yabai enabled; others per session state)
 - `/Library/LaunchDaemons/` - System daemons (NI, Docker components uninstalled/disabled)
 - WindowServer process - macOS input event routing (HUP signal fixes)
 - `launchctl list | grep` output - Service state verification

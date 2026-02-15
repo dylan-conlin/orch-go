@@ -62,6 +62,7 @@ This is the critical architectural insight: **instance eviction does NOT cause N
 3. **Multiple processes share one SQLite DB** - No coordination protocol
 4. **Cascade deletes propagate silently** - Deleting a session kills all messages and parts
 5. **No "active session" lock exists** - Any process can delete any session at any time
+6. **JSON→SQLite migration is one-time** - Gate checks `opencode.db` existence, not whether sessions were imported. DB existed from Jan 27 schema migrations → 188 JSON sessions permanently orphaned, invisible to current code
 
 ---
 
@@ -75,7 +76,7 @@ This is the critical architectural insight: **instance eviction does NOT cause N
 | 4 | **DELETE /session/:id API** | Any HTTP client calls `DELETE /session/:id` | None - unauthenticated on localhost | Any local process (orch, scripts, curl) can delete any session | **MEDIUM** | **OPEN** (by design) |
 | 5 | **Daemon periodic cleanup** | Every 6 hours via `RunPeriodicCleanup()` | 7-day age threshold, `IsSessionProcessing()` check, `PreserveOrchestrator: true` | Safe for active sessions (7-day threshold far exceeds any active session age). Orchestrator title detection is heuristic-based. | **LOW** | **SAFE** |
 | 6 | **CASCADE via project deletion** | `SessionTable.project_id` has `onDelete: cascade` | No code path found that deletes projects | Theoretical only - no `Project.remove()` exists in codebase | **THEORETICAL** | **SAFE** |
-| 7 | **SQLite migration data loss** | Upstream commit `6d95f0d14` (Feb 13) rewrote storage from JSON to SQLite | Migration code should import existing sessions | Post-dates bug onset. Could create NEW failure if migration missed sessions. Recent commit `b02075844` (Feb 14) changed session listing (removed directory filtering). | **UNKNOWN** | **NEEDS PROBE** |
+| 7 | **SQLite migration gate bug** | Upstream commit `6d95f0d14` (Feb 13) rewrote storage from JSON to SQLite | One-time gate: only runs if `opencode.db` doesn't exist | DB existed since Jan 27 from earlier schema migrations → json import **never ran**. 188 JSON sessions permanently orphaned. Affects all incremental upgraders. Does NOT cause runtime NotFoundError in current binary (current code uses SQLite exclusively). | **MEDIUM** (data loss, not crashes) | **CONFIRMED — filed upstream [#13654](https://github.com/anomalyco/opencode/issues/13654)** |
 
 ---
 
@@ -202,6 +203,14 @@ The confirmation ("Press ctrl+d again to confirm") is displayed as red-highlight
 - `Session.get()` hits DB directly, not affected by eviction
 - This was the least investigated hypothesis - now confirmed as NOT a deletion vector
 
+**Feb 14, 2026: Vector #7 probed — migration gate bug confirmed**
+- JSON→SQLite migration never ran: `opencode.db` existed since Jan 27 from earlier schema migrations
+- 188 JSON session files permanently orphaned (exist on disk, invisible to current SQLite code)
+- Dylan's JSON-path NotFoundError was from pre-migration binary still running, NOT from migration gap
+- Current binary uses SQLite exclusively for sessions — Vector #7 cannot cause runtime crashes
+- Filed upstream: https://github.com/anomalyco/opencode/issues/13654
+- Probe: `.kb/models/session-deletion-vectors/probes/2026-02-14-probe-vector7-sqlite-migration-json-fallback.md`
+
 ---
 
 ## References
@@ -209,6 +218,12 @@ The confirmation ("Press ctrl+d again to confirm") is displayed as red-highlight
 **Investigations:**
 - `.kb/investigations/2026-02-14-inv-active-orchestrator-session-deleted-while.md` - Root cause analysis of the ongoing TUI crash bug
 - `.kb/investigations/2026-02-13-inv-verify-whether-orch-clean-kills-headless-sessions.md` - Confirmed orch clean gap for untracked sessions
+
+**Probes:**
+- `.kb/models/session-deletion-vectors/probes/2026-02-14-probe-vector7-sqlite-migration-json-fallback.md` - Vector #7 confirmed: migration gate bug, 188 orphaned sessions
+
+**Upstream Issues:**
+- https://github.com/anomalyco/opencode/issues/13654 - JSON→SQLite migration gate bug
 
 **Related models:**
 - `.kb/models/opencode-session-lifecycle.md` - How sessions are created, stored, and queried (stale: predates SQLite migration)
