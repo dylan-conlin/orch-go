@@ -3,6 +3,7 @@ package daemon
 
 import (
 	"os"
+	"sync"
 	"testing"
 	"time"
 )
@@ -275,5 +276,273 @@ func TestResumeSignal_MultipleWrites(t *testing.T) {
 	}
 	if !exists {
 		t.Error("Expected resume signal to exist after multiple writes")
+	}
+}
+
+// Pressure test: Concurrent RecordCompletion calls
+func TestVerificationTracker_ConcurrentRecordCompletion(t *testing.T) {
+	threshold := 3
+	vt := NewVerificationTracker(threshold)
+
+	// Launch many goroutines calling RecordCompletion concurrently
+	numGoroutines := 100
+	results := make(chan bool, numGoroutines)
+	var wg sync.WaitGroup
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			shouldPause := vt.RecordCompletion()
+			results <- shouldPause
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+
+	// Count how many goroutines received the pause signal
+	pauseCount := 0
+	for result := range results {
+		if result {
+			pauseCount++
+		}
+	}
+
+	// Verify tracker state
+	status := vt.Status()
+
+	// All 100 completions should be recorded
+	if status.CompletionsSinceVerification != numGoroutines {
+		t.Errorf("Expected %d completions, got %d", numGoroutines, status.CompletionsSinceVerification)
+	}
+
+	// Should be paused after hitting threshold
+	if !vt.IsPaused() {
+		t.Error("Expected tracker to be paused after concurrent completions")
+	}
+
+	// At least one goroutine should have received pause signal (when threshold was hit)
+	// Due to concurrent access, multiple goroutines might see the pause signal
+	if pauseCount == 0 {
+		t.Error("Expected at least one goroutine to receive pause signal")
+	}
+}
+
+// Pressure test: Concurrent mixed operations
+func TestVerificationTracker_ConcurrentMixedOperations(t *testing.T) {
+	threshold := 10
+	vt := NewVerificationTracker(threshold)
+
+	numGoroutines := 50
+	var wg sync.WaitGroup
+
+	// Launch goroutines performing different operations concurrently
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			switch idx % 4 {
+			case 0:
+				vt.RecordCompletion()
+			case 1:
+				vt.IsPaused()
+			case 2:
+				vt.Status()
+			case 3:
+				// Every 10th operation does resume/verification
+				if idx%10 == 3 {
+					vt.Resume()
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify tracker is in a valid state
+	status := vt.Status()
+	if status.CompletionsSinceVerification < 0 {
+		t.Errorf("Invalid completion count: %d", status.CompletionsSinceVerification)
+	}
+}
+
+// Pressure test: Rapid pause/resume cycles
+func TestVerificationTracker_RapidPauseResumeCycles(t *testing.T) {
+	threshold := 3
+	vt := NewVerificationTracker(threshold)
+
+	// Perform rapid pause/resume cycles
+	for cycle := 0; cycle < 100; cycle++ {
+		// Record completions to trigger pause
+		for i := 0; i < threshold; i++ {
+			vt.RecordCompletion()
+		}
+
+		if !vt.IsPaused() {
+			t.Fatalf("Expected pause after %d completions in cycle %d", threshold, cycle)
+		}
+
+		// Resume immediately
+		vt.Resume()
+
+		if vt.IsPaused() {
+			t.Fatalf("Expected unpause after Resume in cycle %d", cycle)
+		}
+
+		// Verify counter was reset
+		status := vt.Status()
+		if status.CompletionsSinceVerification != 0 {
+			t.Errorf("Expected counter reset in cycle %d, got %d", cycle, status.CompletionsSinceVerification)
+		}
+	}
+}
+
+// Pressure test: State consistency under concurrent pause/resume
+func TestVerificationTracker_ConcurrentPauseResume(t *testing.T) {
+	threshold := 5
+	vt := NewVerificationTracker(threshold)
+
+	var wg sync.WaitGroup
+	numIterations := 1000
+
+	// Goroutine 1: Continuously record completions
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < numIterations; i++ {
+			vt.RecordCompletion()
+			time.Sleep(1 * time.Microsecond)
+		}
+	}()
+
+	// Goroutine 2: Continuously resume
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < numIterations/2; i++ {
+			vt.Resume()
+			time.Sleep(2 * time.Microsecond)
+		}
+	}()
+
+	// Goroutine 3: Continuously check status
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < numIterations; i++ {
+			status := vt.Status()
+			// Verify invariants
+			if status.CompletionsSinceVerification < 0 {
+				t.Errorf("Invalid completion count: %d", status.CompletionsSinceVerification)
+			}
+			if status.IsPaused && status.CompletionsSinceVerification < threshold {
+				// Note: This might trigger due to race - paused state might persist briefly
+				// after Resume, but counter should be reset
+			}
+		}
+	}()
+
+	wg.Wait()
+
+	// Final state should be consistent
+	status := vt.Status()
+	if status.CompletionsSinceVerification < 0 {
+		t.Errorf("Final state invalid: completions = %d", status.CompletionsSinceVerification)
+	}
+}
+
+// Pressure test: Concurrent RecordHumanVerification and RecordCompletion
+func TestVerificationTracker_ConcurrentVerificationAndCompletion(t *testing.T) {
+	threshold := 5
+	vt := NewVerificationTracker(threshold)
+
+	var wg sync.WaitGroup
+	numOps := 1000
+
+	// Goroutines recording completions
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < numOps/10; j++ {
+				vt.RecordCompletion()
+			}
+		}()
+	}
+
+	// Goroutines recording human verifications
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < numOps/20; j++ {
+				vt.RecordHumanVerification()
+				time.Sleep(1 * time.Microsecond)
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	// Verify final state is consistent
+	status := vt.Status()
+	if status.CompletionsSinceVerification < 0 {
+		t.Errorf("Invalid final completion count: %d", status.CompletionsSinceVerification)
+	}
+	// Counter should be < threshold due to periodic resets from RecordHumanVerification
+	// (unless last operations were all RecordCompletion)
+}
+
+// Pressure test: Threshold boundary concurrent access
+func TestVerificationTracker_ThresholdBoundaryConcurrent(t *testing.T) {
+	threshold := 3
+	vt := NewVerificationTracker(threshold)
+
+	// Pre-load to one below threshold
+	for i := 0; i < threshold-1; i++ {
+		vt.RecordCompletion()
+	}
+
+	// Launch many goroutines trying to cross the threshold simultaneously
+	numGoroutines := 50
+	results := make(chan bool, numGoroutines)
+	var wg sync.WaitGroup
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			shouldPause := vt.RecordCompletion()
+			results <- shouldPause
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+
+	// Count pause signals
+	pauseCount := 0
+	for result := range results {
+		if result {
+			pauseCount++
+		}
+	}
+
+	// Should be paused
+	if !vt.IsPaused() {
+		t.Error("Expected tracker to be paused")
+	}
+
+	// At least one should have triggered pause
+	if pauseCount == 0 {
+		t.Error("Expected at least one pause signal")
+	}
+
+	// Total completions should be threshold-1 (preload) + numGoroutines
+	status := vt.Status()
+	expectedTotal := (threshold - 1) + numGoroutines
+	if status.CompletionsSinceVerification != expectedTotal {
+		t.Errorf("Expected %d total completions, got %d", expectedTotal, status.CompletionsSinceVerification)
 	}
 }
