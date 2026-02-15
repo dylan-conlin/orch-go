@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/opencode"
 )
 
 // SessionIDFilename is the name of the file storing the session ID in the workspace.
@@ -249,17 +251,73 @@ func AgentManifestPath(workspacePath string) string {
 }
 
 // ReadAgentManifestWithFallback reads the agent manifest from the workspace directory.
-// If AGENT_MANIFEST.json exists, it is the source of truth. Otherwise, falls back
-// to reading individual dotfiles (.beads_id, .tier, .spawn_time, .spawn_mode) for
-// backward compatibility with pre-manifest workspaces.
+// Tries multiple sources in order:
+// 1. OpenCode session metadata (if session_id exists and OpenCode is reachable)
+// 2. AGENT_MANIFEST.json (if it exists)
+// 3. Individual dotfiles (.beads_id, .tier, .spawn_time, .spawn_mode) for backward compatibility
 // Always returns a non-nil manifest (fields may be empty if nothing is readable).
 func ReadAgentManifestWithFallback(workspacePath string) *AgentManifest {
+	// Try OpenCode session metadata first (preferred source)
+	if manifest := readFromOpenCodeMetadata(workspacePath); manifest != nil {
+		return manifest
+	}
+
+	// Fallback 1: Read from AGENT_MANIFEST.json
 	manifest, err := ReadAgentManifest(workspacePath)
 	if err == nil {
 		return manifest
 	}
-	// Fallback: construct manifest from individual dotfiles
+
+	// Fallback 2: construct manifest from individual dotfiles
 	return readLegacyDotfiles(workspacePath)
+}
+
+// readFromOpenCodeMetadata tries to read agent manifest from OpenCode session metadata.
+// Returns nil if session_id doesn't exist, OpenCode is unreachable, or session doesn't have metadata.
+func readFromOpenCodeMetadata(workspacePath string) *AgentManifest {
+	// Read session ID from workspace
+	sessionID := ReadSessionID(workspacePath)
+	if sessionID == "" {
+		return nil // No session ID, can't query OpenCode
+	}
+
+	// Try to get session from OpenCode
+	client := opencode.NewClient(opencode.DefaultServerURL)
+	session, err := client.GetSession(sessionID)
+	if err != nil {
+		return nil // OpenCode unreachable or session not found
+	}
+
+	// If session has no metadata, return nil to fall back to other sources
+	if session.Metadata == nil || len(session.Metadata) == 0 {
+		return nil
+	}
+
+	// Construct manifest from session metadata
+	manifest := &AgentManifest{
+		WorkspaceName: filepath.Base(workspacePath),
+	}
+
+	if beadsID, ok := session.Metadata["beads_id"]; ok {
+		manifest.BeadsID = beadsID
+	}
+
+	if tier, ok := session.Metadata["tier"]; ok {
+		manifest.Tier = tier
+	} else {
+		manifest.Tier = TierFull // Default to "full" if not specified
+	}
+
+	if spawnMode, ok := session.Metadata["spawn_mode"]; ok {
+		manifest.SpawnMode = spawnMode
+	}
+
+	// Use session creation time as spawn time
+	if session.Time.Created > 0 {
+		manifest.SpawnTime = time.Unix(session.Time.Created, 0).Format(time.RFC3339)
+	}
+
+	return manifest
 }
 
 // readLegacyDotfiles constructs an AgentManifest from individual dotfiles.

@@ -75,14 +75,15 @@ type Result struct {
 
 // Session represents a session from the OpenCode /session API.
 type Session struct {
-	ID        string         `json:"id"`
-	Version   string         `json:"version,omitempty"`
-	ProjectID string         `json:"projectID,omitempty"`
-	Directory string         `json:"directory"`
-	Title     string         `json:"title"`
-	ParentID  string         `json:"parentID,omitempty"`
-	Time      SessionTime    `json:"time"`
-	Summary   SessionSummary `json:"summary,omitempty"`
+	ID        string            `json:"id"`
+	Version   string            `json:"version,omitempty"`
+	ProjectID string            `json:"projectID,omitempty"`
+	Directory string            `json:"directory"`
+	Title     string            `json:"title"`
+	ParentID  string            `json:"parentID,omitempty"`
+	Time      SessionTime       `json:"time"`
+	Summary   SessionSummary    `json:"summary,omitempty"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
 }
 
 // SessionTime contains session timing information.
