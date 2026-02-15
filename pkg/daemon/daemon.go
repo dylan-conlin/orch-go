@@ -750,6 +750,18 @@ func (d *Daemon) Once() (*OnceResult, error) {
 // If a worker pool is configured, it acquires a slot before spawning.
 // If a rate limiter is configured, it checks the hourly limit before spawning.
 func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
+	// Check verification pause BEFORE any other checks (including rate limit).
+	// This enforces the verifiability-first constraint: daemon pauses after N
+	// auto-completions without human verification.
+	if d.VerificationTracker != nil && d.VerificationTracker.IsPaused() {
+		status := d.VerificationTracker.Status()
+		return &OnceResult{
+			Processed: false,
+			Message: fmt.Sprintf("Paused for human verification (%d/%d auto-completions). Resume with: orch daemon resume",
+				status.CompletionsSinceVerification, status.Threshold),
+		}, nil
+	}
+
 	// Check rate limit first (before fetching issues)
 	if d.RateLimiter != nil {
 		canSpawn, count, msg := d.RateLimiter.CanSpawn()

@@ -295,14 +295,25 @@ func runDaemonLoop() error {
 			continue
 		}
 
-		// Check for resume signal (before checking pause state)
-		// This allows Dylan to resume the daemon after reviewing completed work.
+		// Check for verification signal (human ran `orch complete`)
+		// This resets the counter and unpauses the daemon.
+		if d.VerificationTracker != nil {
+			if verified, err := daemon.CheckAndClearVerificationSignal(); err != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Warning: failed to check verification signal: %v\n", timestamp, err)
+			} else if verified {
+				d.VerificationTracker.RecordHumanVerification()
+				fmt.Printf("[%s] ✅ Human verification detected - verification counter reset\n", timestamp)
+			}
+		}
+
+		// Check for resume signal (manual resume command)
+		// This allows Dylan to resume the daemon without running orch complete.
 		if d.VerificationTracker != nil {
 			if resumed, err := daemon.CheckAndClearResumeSignal(); err != nil {
 				fmt.Fprintf(os.Stderr, "[%s] Warning: failed to check resume signal: %v\n", timestamp, err)
 			} else if resumed {
 				d.VerificationTracker.Resume()
-				fmt.Printf("[%s] ✅ Daemon resumed - verification counter reset\n", timestamp)
+				fmt.Printf("[%s] ✅ Daemon resumed manually - verification counter reset\n", timestamp)
 			}
 		}
 

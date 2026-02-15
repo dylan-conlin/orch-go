@@ -155,6 +155,19 @@ func ResumePath() string {
 	return filepath.Join(homeDir, ".orch", "daemon-resume.signal")
 }
 
+// VerificationPath returns the path to the human verification signal file.
+// Default: ~/.orch/daemon-verification.signal
+// This signal is written by `orch complete` to notify the daemon that human
+// verification has occurred, which resets the completion counter.
+func VerificationPath() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		// Fallback to current directory if home not available
+		return ".orch/daemon-verification.signal"
+	}
+	return filepath.Join(homeDir, ".orch", "daemon-verification.signal")
+}
+
 // WriteResumeSignal writes a resume signal file.
 // The running daemon will detect this file and resume operation.
 func WriteResumeSignal() error {
@@ -170,6 +183,27 @@ func WriteResumeSignal() error {
 	timestamp := time.Now().Format(time.RFC3339)
 	if err := os.WriteFile(resumePath, []byte(timestamp), 0644); err != nil {
 		return fmt.Errorf("failed to write resume signal: %w", err)
+	}
+
+	return nil
+}
+
+// WriteVerificationSignal writes a human verification signal file.
+// This is called by `orch complete` to notify the daemon that human verification
+// has occurred, which should reset the completion counter and unpause the daemon.
+func WriteVerificationSignal() error {
+	verificationPath := VerificationPath()
+
+	// Ensure directory exists
+	dir := filepath.Dir(verificationPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create verification signal directory: %w", err)
+	}
+
+	// Write signal file with timestamp
+	timestamp := time.Now().Format(time.RFC3339)
+	if err := os.WriteFile(verificationPath, []byte(timestamp), 0644); err != nil {
+		return fmt.Errorf("failed to write verification signal: %w", err)
 	}
 
 	return nil
@@ -191,6 +225,28 @@ func CheckAndClearResumeSignal() (bool, error) {
 	// Signal exists - remove it atomically
 	if err := os.Remove(resumePath); err != nil && !os.IsNotExist(err) {
 		return false, fmt.Errorf("failed to remove resume signal: %w", err)
+	}
+
+	return true, nil
+}
+
+// CheckAndClearVerificationSignal checks if a human verification signal exists.
+// If it does, it removes the signal file and returns true.
+// This should be called by the daemon loop to detect when `orch complete` has run,
+// indicating that human verification has occurred.
+func CheckAndClearVerificationSignal() (bool, error) {
+	verificationPath := VerificationPath()
+
+	// Check if signal file exists
+	if _, err := os.Stat(verificationPath); os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("failed to check verification signal: %w", err)
+	}
+
+	// Signal exists - remove it atomically
+	if err := os.Remove(verificationPath); err != nil && !os.IsNotExist(err) {
+		return false, fmt.Errorf("failed to remove verification signal: %w", err)
 	}
 
 	return true, nil

@@ -262,6 +262,17 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 			result.Error = fmt.Errorf("failed to mark ready for review: %w", err)
 			return result
 		}
+
+		// Record auto-completion for verification tracking.
+		// This increments the counter and may trigger pause if threshold reached.
+		if d.VerificationTracker != nil {
+			shouldPause := d.VerificationTracker.RecordCompletion()
+			if shouldPause && config.Verbose {
+				status := d.VerificationTracker.Status()
+				fmt.Printf("    Verification pause triggered: %d/%d auto-completions. Resume with: orch daemon resume\n",
+					status.CompletionsSinceVerification, status.Threshold)
+			}
+		}
 	}
 
 	result.Processed = true
