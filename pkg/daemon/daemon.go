@@ -853,11 +853,23 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 	// - Daemon restarts (in-memory tracker lost)
 	// - Multiple daemon instances poll simultaneously
 	// The status update happens synchronously before spawn to ensure immediate visibility.
+	//
+	// CRITICAL: If status update fails, we MUST NOT spawn. Spawning without persistent
+	// tracking leads to duplicate spawns when SpawnedIssueTracker TTL expires or daemon restarts.
+	// Fail-fast here prevents the Feb 14 2026 incident where 10 duplicate spawns occurred
+	// because UpdateBeadsStatus was failing silently.
 	if err := UpdateBeadsStatus(issue.ID, "in_progress"); err != nil {
-		if d.Config.Verbose {
-			fmt.Printf("  Warning: failed to mark %s as in_progress: %v (proceeding with spawn - tracker will provide fallback)\n", issue.ID, err)
+		// Release slot on status update failure
+		if d.Pool != nil && slot != nil {
+			d.Pool.Release(slot)
 		}
-		// Continue with spawn - SpawnedIssueTracker provides secondary protection
+		return &OnceResult{
+			Processed: false,
+			Issue:     issue,
+			Skill:     skill,
+			Error:     fmt.Errorf("failed to mark issue as in_progress: %w", err),
+			Message:   fmt.Sprintf("Failed to update beads status for %s - skipping spawn to prevent duplicates", issue.ID),
+		}, nil
 	}
 
 	// SECONDARY DEDUP: Mark issue as spawned in memory.
@@ -981,11 +993,23 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 	// - Daemon restarts (in-memory tracker lost)
 	// - Multiple daemon instances poll simultaneously
 	// The status update happens synchronously before spawn to ensure immediate visibility.
+	//
+	// CRITICAL: If status update fails, we MUST NOT spawn. Spawning without persistent
+	// tracking leads to duplicate spawns when SpawnedIssueTracker TTL expires or daemon restarts.
+	// Fail-fast here prevents the Feb 14 2026 incident where 10 duplicate spawns occurred
+	// because UpdateBeadsStatus was failing silently.
 	if err := UpdateBeadsStatus(issue.ID, "in_progress"); err != nil {
-		if d.Config.Verbose {
-			fmt.Printf("  Warning: failed to mark %s as in_progress: %v (proceeding with spawn - tracker will provide fallback)\n", issue.ID, err)
+		// Release slot on status update failure
+		if d.Pool != nil && slot != nil {
+			d.Pool.Release(slot)
 		}
-		// Continue with spawn - SpawnedIssueTracker provides secondary protection
+		return &OnceResult{
+			Processed: false,
+			Issue:     issue,
+			Skill:     skill,
+			Error:     fmt.Errorf("failed to mark issue as in_progress: %w", err),
+			Message:   fmt.Sprintf("Failed to update beads status for %s - skipping spawn to prevent duplicates", issue.ID),
+		}, nil, nil
 	}
 
 	// SECONDARY DEDUP: Mark issue as spawned in memory.
