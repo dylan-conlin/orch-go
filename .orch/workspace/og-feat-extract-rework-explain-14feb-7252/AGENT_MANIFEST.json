@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-extract-rework-explain-14feb-7252",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-bga",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "b1eae35a825b52e382671317368445179c55f3e5",
+  "spawn_time": "2026-02-14T22:27:28-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

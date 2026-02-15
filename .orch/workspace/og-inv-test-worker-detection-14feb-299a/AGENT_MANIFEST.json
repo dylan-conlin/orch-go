@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-inv-test-worker-detection-14feb-299a",
+  "skill": "investigation",
+  "beads_id": "orch-go-apy",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "4bc213d31b0dc8aeb0ee75216535c1c454f74fca",
+  "spawn_time": "2026-02-14T14:42:17-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

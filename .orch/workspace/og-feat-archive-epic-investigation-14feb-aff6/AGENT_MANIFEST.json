@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-archive-epic-investigation-14feb-aff6",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-cr8",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "a75fe91c6bf4220d13e0c186b3bf0dfde2e40165",
+  "spawn_time": "2026-02-14T14:13:29-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

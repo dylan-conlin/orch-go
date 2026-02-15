@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-fix-daemon-duplicate-14feb-fa4c",
+  "skill": "architect",
+  "beads_id": "orch-go-2ma",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "39ce02d38804647c09906a04df0994589ce1b1ab",
+  "spawn_time": "2026-02-14T22:37:43-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-inv-worker-detection-stress-14feb-116c",
+  "skill": "investigation",
+  "beads_id": "orch-go-8ze",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "4bc213d31b0dc8aeb0ee75216535c1c454f74fca",
+  "spawn_time": "2026-02-14T14:46:35-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

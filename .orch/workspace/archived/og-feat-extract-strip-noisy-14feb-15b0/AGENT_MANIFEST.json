@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-extract-strip-noisy-14feb-15b0",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-xig",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "342dfc41834a874a479ad3e1f828f05e65e03f35",
+  "spawn_time": "2026-02-14T15:59:37-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

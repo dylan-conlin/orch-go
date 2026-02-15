@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-design-coaching-metrics-14feb-26c1",
+  "skill": "architect",
+  "beads_id": "orch-go-0pc",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "4bc213d31b0dc8aeb0ee75216535c1c454f74fca",
+  "spawn_time": "2026-02-14T15:06:52-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

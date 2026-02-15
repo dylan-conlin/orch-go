@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-inv-probe-vector-sqlite-14feb-63fc",
+  "skill": "investigation",
+  "beads_id": "orch-go-q9c",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "c96d78f965674bb306432183b2a881bf234edea6",
+  "spawn_time": "2026-02-14T13:28:00-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

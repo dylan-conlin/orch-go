@@ -1,0 +1,33 @@
+verification:
+  automated:
+    - command: "go build ./cmd/orch/"
+      expectation: "Builds without errors"
+      result: "PASS"
+    - command: "go vet ./cmd/orch/ && go vet ./pkg/spawn/... && go vet ./pkg/verify/..."
+      expectation: "No vet issues"
+      result: "PASS"
+    - command: "go test ./pkg/spawn/... -v"
+      expectation: "All tests pass including new ReadAgentManifestWithFallback and ParseSpawnTime tests"
+      result: "PASS (0.307s)"
+    - command: "go test ./pkg/verify/..."
+      expectation: "No new test failures (pre-existing TestSynthesisGateAutoSkipForKnowledgeProducingSkills failure expected)"
+      result: "PASS (pre-existing failure only)"
+
+  manual:
+    - description: "Verify orch status shows correct agent info from AGENT_MANIFEST.json"
+    - description: "Verify orch complete works for both OpenCode and Claude CLI agents"
+    - description: "Verify orch clean archives workspaces correctly using manifest data"
+    - description: "Verify backward compat with old workspaces that only have dotfiles"
+
+  changes_summary:
+    files_modified:
+      - "pkg/spawn/session.go: Added ReadAgentManifestWithFallback(), readLegacyDotfiles(), ParseSpawnTime()"
+      - "pkg/spawn/session_test.go: Added tests for new functions"
+      - "cmd/orch/shared.go: findWorkspaceByBeadsID uses manifest instead of .beads_id"
+      - "cmd/orch/complete_cmd.go: Migrated .beads_id and .spawn_time reads to manifest"
+      - "cmd/orch/clean_cmd.go: Migrated .spawn_time, .tier, .beads_id reads to manifest"
+      - "cmd/orch/abandon_cmd.go: Migrated .spawn_time and .session_id reads"
+      - "cmd/orch/doctor.go: Migrated .beads_id read to manifest"
+      - "cmd/orch/serve_agents.go: Added AGENT_MANIFEST.json and VERIFICATION_SPEC.yaml to skip list"
+      - "pkg/verify/backend.go: ReadSpawnModeFromWorkspace uses manifest instead of .spawn_mode"
+      - "pkg/verify/check.go: ReadTierFromWorkspace uses manifest instead of .tier"

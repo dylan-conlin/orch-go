@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-create-coaching-plugin-14feb-bec7",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-n2b",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "f85c2817f0b9068cb5f09a06a6fed8abfca05528",
+  "spawn_time": "2026-02-14T14:10:40-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-decision-record-verifiability-14feb-c067",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-5sc",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "015b779fcfb492e746be9bad977cc3eff4f23018",
+  "spawn_time": "2026-02-14T18:45:22-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}
