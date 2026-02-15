@@ -10,7 +10,6 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
-	"golang.org/x/term"
 )
 
 // AgentInfo represents the minimal agent information needed for completion backlog detection.
@@ -92,8 +91,9 @@ func addBeadsComment(beadsID, comment string) error {
 }
 
 // RunExplainBackGate executes the explain-back verification gate for agent completion.
-// This gate requires the human orchestrator to explain what was built and why in their own words,
-// creating an unfakeable verification that ensures human comprehension beyond agent self-reporting.
+// This gate requires the orchestrator to provide an explanation of what was built via
+// the --explain flag, creating a verification that ensures human comprehension beyond
+// agent self-reporting.
 //
 // The gate is skipped for:
 //   - Orchestrator sessions (they have handoffs instead)
@@ -101,12 +101,11 @@ func addBeadsComment(beadsID, comment string) error {
 //   - When skipExplainBack is true (with a required reason)
 //
 // When the gate is active, it:
-//   - Checks if stdin is a terminal (required for interactive prompts)
-//   - Prompts the human for a structured explanation (what, why, verification)
-//   - Stores the explanation as a beads comment
+//   - Gates on non-empty explanation text (from --explain flag)
+//   - Formats and stores the explanation as a beads comment
 //
-// This is extracted from cmd/orch/complete_cmd.go to pkg/orch for reusability
-// and separation of concerns (orchestration logic vs command handling).
+// The conversational quality check (is the explanation sufficient?) stays with the
+// AI orchestrator. The CLI's job is: accept explanation, store it, gate on non-empty.
 //
 // Parameters:
 //   - beadsID: The beads issue ID being completed
@@ -115,11 +114,11 @@ func addBeadsComment(beadsID, comment string) error {
 //   - skipReason: The reason for skipping (required if skipExplainBack is true)
 //   - isOrchestratorSession: Whether this is an orchestrator session
 //   - isUntracked: Whether this is an untracked agent
-//   - stdin: Input reader for prompts
-//   - stdout: Output writer for prompts
+//   - explanation: The explanation text from --explain flag
+//   - stdout: Output writer for status messages
 //
 // Returns:
-//   - error: Error if verification fails or terminal check fails
+//   - error: Error if explanation is missing or storage fails
 func RunExplainBackGate(
 	beadsID string,
 	forced bool,
@@ -127,7 +126,7 @@ func RunExplainBackGate(
 	skipReason string,
 	isOrchestratorSession bool,
 	isUntracked bool,
-	stdin io.Reader,
+	explanation string,
 	stdout io.Writer,
 ) error {
 	// Skip for orchestrator sessions (they have handoffs)
@@ -152,21 +151,20 @@ func RunExplainBackGate(
 		return nil
 	}
 
-	// Check if stdin is a terminal for interactive prompting
-	// This is required because explain-back needs conversational input
-	if stdinFile, ok := stdin.(interface{ Fd() uintptr }); ok {
-		if !term.IsTerminal(int(stdinFile.Fd())) {
-			fmt.Fprintln(stdout, "⚠️  Explain-back gate requires terminal interaction")
-			fmt.Fprintln(stdout, "Use --skip-explain-back --skip-reason \"...\" to bypass in non-interactive mode")
-			return fmt.Errorf("explain-back gate requires terminal")
-		}
-	} else {
-		// If we can't determine terminal status (e.g., in tests with bytes.Buffer),
-		// proceed anyway - the PromptExplainBack call will fail naturally if stdin doesn't work
+	// Gate on non-empty explanation
+	if explanation == "" {
+		fmt.Fprintln(stdout, "❌ Explain-back gate: --explain flag is required")
+		fmt.Fprintln(stdout, "")
+		fmt.Fprintln(stdout, "The orchestrator must provide an explanation of what was built:")
+		fmt.Fprintln(stdout, "  orch complete <id> --explain 'Built X because Y, verified by Z'")
+		fmt.Fprintln(stdout, "")
+		fmt.Fprintln(stdout, "Or bypass with:")
+		fmt.Fprintln(stdout, "  --skip-explain-back --skip-reason \"...\"")
+		return fmt.Errorf("explain-back gate: --explain is required")
 	}
 
-	// Prompt for explanation
-	explainResult, err := verify.PromptExplainBack(stdin, stdout)
+	// Format and validate the explanation
+	explainResult, err := verify.FormatExplainBack(explanation)
 	if err != nil {
 		return fmt.Errorf("explain-back verification failed: %w", err)
 	}

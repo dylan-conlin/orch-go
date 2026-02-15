@@ -54,6 +54,9 @@ var (
 	completeSkipHandoffContent bool
 	completeSkipExplainBack    bool
 	completeSkipReason         string // Required for all --skip-* flags (min 10 chars)
+
+	// Explain-back flag: orchestrator provides explanation text
+	completeExplain string
 )
 
 var completeCmd = &cobra.Command{
@@ -78,7 +81,14 @@ The following gates are checked before completion:
   - skill_output:         Required skill outputs exist
   - decision_patch_limit: Decision patch count not exceeded
   - handoff_content:      SESSION_HANDOFF.md has actual content (orchestrator only)
-  - explain_back:         Human explains what was built and why
+  - explain_back:         Orchestrator provides --explain text
+
+EXPLAIN-BACK GATE:
+The explain-back gate requires the orchestrator to provide an explanation of what
+was built via --explain. The conversational quality check stays with the AI
+orchestrator - the CLI only gates on non-empty text.
+
+  orch complete proj-123 --explain 'Built X because Y, verified by Z'
 
 TARGETED SKIP FLAGS:
 Use --skip-{gate} with --skip-reason to bypass specific gates:
@@ -114,12 +124,12 @@ the command auto-detects the project from the workspace's SPAWN_CONTEXT.md.
 Use --workdir as explicit override when auto-detection fails.
 
 Examples:
-  orch-go complete proj-123
-  orch-go complete proj-123 --reason "All tests passing"
-  orch-go complete proj-123 --approve       # Approve UI changes after visual review
-  orch-go complete proj-123 --skip-test-evidence --skip-reason "Tests run in CI"
-  orch-go complete proj-123 --skip-git-diff --skip-synthesis --skip-reason "Docs-only change"
-  orch-go complete kb-cli-123 --workdir ~/projects/kb-cli  # Cross-project completion
+  orch-go complete proj-123 --explain 'Reworked auth to use JWT tokens, verified with integration tests'
+  orch-go complete proj-123 --explain 'Fixed login bug' --reason "All tests passing"
+  orch-go complete proj-123 --approve --explain 'Added dark mode toggle'
+  orch-go complete proj-123 --skip-test-evidence --skip-reason "Tests run in CI" --explain 'Refactored config'
+  orch-go complete proj-123 --skip-explain-back --skip-reason "Automated completion, no human review"
+  orch-go complete kb-cli-123 --workdir ~/projects/kb-cli --explain 'Cross-project fix'
 
   # Orchestrator session completion (by workspace name)
   orch-go complete og-orch-goal-04jan       # Complete orchestrator session
@@ -157,6 +167,9 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipHandoffContent, "skip-handoff-content", false, "Skip handoff content validation gate for orchestrators (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipExplainBack, "skip-explain-back", false, "Skip explain-back verification gate (requires --skip-reason)")
 	completeCmd.Flags().StringVar(&completeSkipReason, "skip-reason", "", "Reason for skip (required for all --skip-* flags, min 10 chars)")
+
+	// Explain-back flag
+	completeCmd.Flags().StringVar(&completeExplain, "explain", "", "Explanation of what was built and why (required by explain-back gate)")
 }
 
 // SkipConfig holds the configuration for which verification gates to skip.
@@ -888,7 +901,7 @@ func runComplete(identifier, workdir string) error {
 		skipConfig.Reason,
 		isOrchestratorSession,
 		isUntracked,
-		os.Stdin,
+		completeExplain,
 		os.Stdout,
 	); err != nil {
 		return err
