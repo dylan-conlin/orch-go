@@ -47,6 +47,7 @@ import {
 } from "fs"
 import { homedir } from "os"
 import { join, dirname } from "path"
+import { exec } from "child_process"
 
 const LOG_PREFIX = "[coaching]"
 const DEBUG = process.env.ORCH_PLUGIN_DEBUG === "1"
@@ -1030,6 +1031,75 @@ async function trackWorkerHealth(
 }
 
 /**
+ * Promisified exec for async shell commands.
+ */
+function execAsync(command: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    exec(command, { timeout: 10000 }, (error, stdout) => {
+      if (error) {
+        reject(error)
+        return
+      }
+      resolve(stdout)
+    })
+  })
+}
+
+/**
+ * Simple promise-based delay.
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * Format orch stats JSON into compact health summary for session injection.
+ */
+function formatHealthSummary(stats: any): string {
+  const s = stats.summary
+  const lines = [
+    `## Orch Health (24h)`,
+    ``,
+    `**Throughput:** ${s.total_spawns} spawned, ${s.task_completions} complete (${Math.round(s.task_completion_rate)}%), ${s.total_abandonments} abandoned | avg ${Math.round(s.avg_duration_minutes)}m`,
+  ]
+
+  // Top skills
+  if (stats.skill_stats?.length > 0) {
+    const topSkills = stats.skill_stats.slice(0, 3).map((sk: any) =>
+      `${sk.skill} ${sk.spawns}→${sk.completions}`
+    ).join(", ")
+    lines.push(`**Skills:** ${topSkills}`)
+  }
+
+  // Verification
+  if (stats.verification_stats) {
+    const v = stats.verification_stats
+    lines.push(`**Verification:** ${Math.round(v.pass_rate)}% first-try pass (${v.total_attempts} attempts)`)
+
+    // Gate failures
+    if (v.failures_by_gate?.length > 0) {
+      const gates = v.failures_by_gate.map((g: any) => `${g.gate}:${g.fail_count}`).join(", ")
+      lines.push(`**Gate failures:** ${gates}`)
+    }
+  }
+
+  // Coaching highlights (only non-zero)
+  if (stats.coaching_stats) {
+    const c = stats.coaching_stats
+    const highlights: string[] = []
+    if (c.frame_collapse?.count > 0) highlights.push(`frame_collapse:${c.frame_collapse.count}`)
+    if (c.behavioral_variation?.count > 0) highlights.push(`variation:${c.behavioral_variation.count}`)
+    if (c.circular_pattern?.count > 0) highlights.push(`circular:${c.circular_pattern.count}`)
+    if (c.premise_skipping?.count > 0) highlights.push(`premise_skip:${c.premise_skipping.count}`)
+    if (highlights.length > 0) {
+      lines.push(`**Coaching signals:** ${highlights.join(", ")}`)
+    }
+  }
+
+  return lines.join("\n")
+}
+
+/**
  * OpenCode plugin that tracks orchestrator behavioral patterns.
  */
 export const CoachingPlugin: Plugin = async ({ directory, client }) => {
@@ -1077,6 +1147,56 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
   let toolCallCounter = 0
 
   return {
+    /**
+     * Auto-surface orch stats health summary on orchestrator session start.
+     * Fires on session.created, skips workers, injects compact summary via noReply.
+     */
+    event: async ({ event }) => {
+      if (event.type !== "session.created") return
+
+      const sessionId = (event as any).properties?.sessionID
+      if (!sessionId) return
+
+      // Skip workers: check session metadata from event
+      const sessionInfo = (event as any).properties?.info
+      if (sessionInfo?.metadata?.role === "worker") {
+        workerSessions.set(sessionId, true)
+        log(`Health summary: Skipping worker session ${sessionId}`)
+        return
+      }
+
+      // Fire-and-forget: fetch stats and inject health summary
+      ;(async () => {
+        // Brief delay for progressive worker detection via tool hooks
+        await delay(3000)
+
+        // Re-check worker status after delay
+        if (workerSessions.get(sessionId) === true) {
+          log(`Health summary: Skipping late-detected worker ${sessionId}`)
+          return
+        }
+
+        try {
+          const output = await execAsync("orch stats --days 1 --json")
+          const stats = JSON.parse(output)
+          const summary = formatHealthSummary(stats)
+
+          if (client?.session?.prompt) {
+            await client.session.prompt({
+              sessionID: sessionId,
+              prompt: summary,
+              noReply: true,
+            })
+            log(`Injected health summary into session ${sessionId}`)
+          }
+        } catch (err) {
+          if (DEBUG) console.error(LOG_PREFIX, "Failed to inject health summary:", err)
+        }
+      })().catch(err => {
+        if (DEBUG) console.error(LOG_PREFIX, "Health summary injection error:", err)
+      })
+    },
+
     /**
      * Phase 3.5: Track Dylan's behavioral patterns via message monitoring.
      * Detects: explicit prefixes, priority uncertainty, compensation patterns.
