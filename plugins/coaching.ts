@@ -21,7 +21,7 @@
  * - Semantic tool grouping: bash commands grouped by domain (process_mgmt, git, etc.)
  * - Variation counter: track consecutive attempts in same semantic group
  * - Strategic pause heuristic: 30s no tools = pause (resets variation counter)
- * - Emit behavioral_variation metric when 3+ variations detected
+ * - Emit behavioral_variation metric when 5+ variations detected
  *
  * Phase 2 (Cross-Document Circular Detection):
  * - Parse investigation D.E.K.N. summaries from .kb/investigations/*.md
@@ -53,7 +53,7 @@ const DEBUG = process.env.ORCH_PLUGIN_DEBUG === "1"
 const METRICS_PATH = join(homedir(), ".orch", "coaching-metrics.jsonl")
 const MAX_LINES = 1000 // Keep last 1000 lines
 const STRATEGIC_PAUSE_MS = 30 * 1000 // 30 seconds = strategic pause
-const VARIATION_THRESHOLD = 3 // 3+ variations triggers behavioral_variation metric
+const VARIATION_THRESHOLD = 5 // 5+ variations triggers behavioral_variation metric
 const COACH_SESSION_ID = process.env.ORCH_COACH_SESSION_ID || "" // Coach session to stream metrics to
 
 function log(...args: any[]) {
@@ -472,6 +472,7 @@ function isCodeFile(filePath: string): boolean {
     "synthesis.md",
     "session_handoff.md",
     "workspace.md",
+    "agents.md",
   ]
 
   for (const orchPath of orchestrationPaths) {
