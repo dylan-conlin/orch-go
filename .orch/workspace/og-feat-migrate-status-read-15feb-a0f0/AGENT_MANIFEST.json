@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-migrate-status-read-15feb-a0f0",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-hpgt",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "ed1c03bfadd96d7697e5cfef14d159ed59675b4b",
+  "spawn_time": "2026-02-15T11:16:40-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}
