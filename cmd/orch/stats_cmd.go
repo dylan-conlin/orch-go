@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/coaching"
 	"github.com/spf13/cobra"
 )
 
@@ -101,17 +102,18 @@ type StatsEvent struct {
 
 // StatsReport contains all aggregated statistics
 type StatsReport struct {
-	GeneratedAt       string              `json:"generated_at"`
-	AnalysisPeriod    string              `json:"analysis_period"`
-	DaysAnalyzed      int                 `json:"days_analyzed"`
-	EventsAnalyzed    int                 `json:"events_analyzed"`
-	Summary           StatsSummary        `json:"summary"`
-	SkillStats        []SkillStatsSummary `json:"skill_stats"`
-	DaemonStats       DaemonStatsSummary  `json:"daemon_stats"`
-	WaitStats         WaitStatsSummary    `json:"wait_stats,omitempty"`
-	SessionStats      SessionStatsSummary `json:"session_stats,omitempty"`
-	EscapeHatchStats  EscapeHatchStats    `json:"escape_hatch_stats,omitempty"`
-	VerificationStats VerificationStats   `json:"verification_stats,omitempty"`
+	GeneratedAt       string                            `json:"generated_at"`
+	AnalysisPeriod    string                            `json:"analysis_period"`
+	DaysAnalyzed      int                               `json:"days_analyzed"`
+	EventsAnalyzed    int                               `json:"events_analyzed"`
+	Summary           StatsSummary                      `json:"summary"`
+	SkillStats        []SkillStatsSummary               `json:"skill_stats"`
+	DaemonStats       DaemonStatsSummary                `json:"daemon_stats"`
+	WaitStats         WaitStatsSummary                  `json:"wait_stats,omitempty"`
+	SessionStats      SessionStatsSummary               `json:"session_stats,omitempty"`
+	EscapeHatchStats  EscapeHatchStats                  `json:"escape_hatch_stats,omitempty"`
+	VerificationStats VerificationStats                 `json:"verification_stats,omitempty"`
+	CoachingStats     map[string]coaching.MetricSummary `json:"coaching_stats,omitempty"`
 }
 
 // StatsSummary contains core metrics
@@ -171,23 +173,23 @@ type SessionStatsSummary struct {
 // EscapeHatchStats tracks escape hatch spawn usage (--backend claude)
 // Escape hatch provides resilience when OpenCode server is unstable
 type EscapeHatchStats struct {
-	TotalSpawns    int                      `json:"total_spawns"`     // All-time escape hatch spawns
-	Last7DaySpawns int                      `json:"last_7d_spawns"`   // Last 7 days
-	Last30DaySpawns int                     `json:"last_30d_spawns"`  // Last 30 days
-	ByAccount       []AccountSpawnBreakdown `json:"by_account"`       // Breakdown by Claude Max account
+	TotalSpawns     int                     `json:"total_spawns"`      // All-time escape hatch spawns
+	Last7DaySpawns  int                     `json:"last_7d_spawns"`    // Last 7 days
+	Last30DaySpawns int                     `json:"last_30d_spawns"`   // Last 30 days
+	ByAccount       []AccountSpawnBreakdown `json:"by_account"`        // Breakdown by Claude Max account
 	EscapeHatchRate float64                 `json:"escape_hatch_rate"` // % of spawns using escape hatch (in analysis window)
 }
 
 // VerificationStats tracks completion verification metrics
 // Enables identifying miscalibrated gates (high fail + high force = false positive pattern)
 type VerificationStats struct {
-	TotalAttempts       int                     `json:"total_attempts"`       // Total completion attempts
-	PassedFirstTry      int                     `json:"passed_first_try"`     // Passed verification on first try
-	Bypassed            int                     `json:"bypassed"`             // Used --force to bypass failures
-	PassRate            float64                 `json:"pass_rate"`            // % passed first try
-	BypassRate          float64                 `json:"bypass_rate"`          // % bypassed with --force
-	FailuresByGate      []GateFailureStats      `json:"failures_by_gate"`     // Breakdown by gate type
-	BySkill             []SkillVerificationStats `json:"by_skill,omitempty"` // Optional: breakdown by skill
+	TotalAttempts  int                      `json:"total_attempts"`     // Total completion attempts
+	PassedFirstTry int                      `json:"passed_first_try"`   // Passed verification on first try
+	Bypassed       int                      `json:"bypassed"`           // Used --force to bypass failures
+	PassRate       float64                  `json:"pass_rate"`          // % passed first try
+	BypassRate     float64                  `json:"bypass_rate"`        // % bypassed with --force
+	FailuresByGate []GateFailureStats       `json:"failures_by_gate"`   // Breakdown by gate type
+	BySkill        []SkillVerificationStats `json:"by_skill,omitempty"` // Optional: breakdown by skill
 }
 
 // GateFailureStats tracks failure count for a specific verification gate
@@ -200,11 +202,11 @@ type GateFailureStats struct {
 
 // SkillVerificationStats tracks verification metrics per skill
 type SkillVerificationStats struct {
-	Skill           string  `json:"skill"`
-	TotalAttempts   int     `json:"total_attempts"`
-	PassedFirstTry  int     `json:"passed_first_try"`
-	Bypassed        int     `json:"bypassed"`
-	PassRate        float64 `json:"pass_rate"`
+	Skill          string  `json:"skill"`
+	TotalAttempts  int     `json:"total_attempts"`
+	PassedFirstTry int     `json:"passed_first_try"`
+	Bypassed       int     `json:"bypassed"`
+	PassRate       float64 `json:"pass_rate"`
 }
 
 // AccountSpawnBreakdown tracks spawns per Claude Max account
@@ -294,9 +296,9 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 
 	// Time window cutoffs
 	now := time.Now().Unix()
-	cutoffDays := now - int64(days*86400)    // --days window for main stats
-	cutoff7d := now - int64(7*86400)         // 7 days for escape hatch
-	cutoff30d := now - int64(30*86400)       // 30 days for escape hatch
+	cutoffDays := now - int64(days*86400) // --days window for main stats
+	cutoff7d := now - int64(7*86400)      // 7 days for escape hatch
+	cutoff30d := now - int64(30*86400)    // 30 days for escape hatch
 
 	// Track spawn times for duration calculation
 	spawnTimes := make(map[string]int64)       // session_id -> timestamp
@@ -330,8 +332,8 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 
 	// Track verification stats
 	// gateFailures tracks how many times each gate failed across all verification.failed events
-	gateFailures := make(map[string]int)      // gate -> failure count
-	gatesBypassed := make(map[string]int)     // gate -> bypass count (from agent.completed with forced=true)
+	gateFailures := make(map[string]int)                          // gate -> failure count
+	gatesBypassed := make(map[string]int)                         // gate -> bypass count (from agent.completed with forced=true)
 	skillVerification := make(map[string]*SkillVerificationStats) // skill -> verification stats
 
 	// Count events within analysis window for EventsAnalyzed
@@ -910,6 +912,17 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 		return report.SkillStats[i].Spawns > report.SkillStats[j].Spawns
 	})
 
+	// Read coaching metrics
+	home, err := os.UserHomeDir()
+	if err == nil {
+		coachingPath := filepath.Join(home, ".orch", "coaching-metrics.jsonl")
+		since := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
+		coachingMetrics, err := coaching.ReadMetricsSince(coachingPath, since)
+		if err == nil && len(coachingMetrics) > 0 {
+			report.CoachingStats = coaching.AggregateByType(coachingMetrics, since)
+		}
+	}
+
 	return report
 }
 
@@ -1079,6 +1092,89 @@ func outputStatsText(report *StatsReport) error {
 					sv.Bypassed,
 					sv.PassRate,
 				)
+			}
+		}
+	}
+
+	// Behavioral health (coaching metrics)
+	if len(report.CoachingStats) > 0 {
+		fmt.Println()
+		fmt.Println("🧠 BEHAVIORAL HEALTH (coaching metrics)")
+
+		// Separate orchestrator and worker metrics
+		orchestratorMetrics := []string{"frame_collapse", "completion_backlog", "behavioral_variation", "circular_pattern"}
+		workerMetrics := []string{"tool_failure_rate", "context_usage", "session_timeout", "spawn_depth_exceeded"}
+
+		// Display orchestrator metrics
+		hasOrchestratorMetrics := false
+		for _, metricType := range orchestratorMetrics {
+			if _, exists := report.CoachingStats[metricType]; exists {
+				hasOrchestratorMetrics = true
+				break
+			}
+		}
+
+		if hasOrchestratorMetrics {
+			fmt.Println("  Orchestrator:")
+			for _, metricType := range orchestratorMetrics {
+				if summary, exists := report.CoachingStats[metricType]; exists {
+					timeSince := time.Since(summary.LastSeen)
+					var timeStr string
+					if timeSince < time.Minute {
+						timeStr = "just now"
+					} else if timeSince < time.Hour {
+						timeStr = fmt.Sprintf("%dm ago", int(timeSince.Minutes()))
+					} else if timeSince < 24*time.Hour {
+						timeStr = fmt.Sprintf("%dh ago", int(timeSince.Hours()))
+					} else {
+						timeStr = fmt.Sprintf("%dd ago", int(timeSince.Hours()/24))
+					}
+
+					// Add warning emoji for recent events
+					warningEmoji := ""
+					if timeSince < 30*time.Minute {
+						warningEmoji = " ⚠️"
+					} else if summary.Count == 0 {
+						warningEmoji = " ✅"
+					}
+
+					fmt.Printf("    %-25s %d events (last: %s)%s\n",
+						metricType+":", summary.Count, timeStr, warningEmoji)
+				}
+			}
+		}
+
+		// Display worker metrics
+		hasWorkerMetrics := false
+		for _, metricType := range workerMetrics {
+			if _, exists := report.CoachingStats[metricType]; exists {
+				hasWorkerMetrics = true
+				break
+			}
+		}
+
+		if hasWorkerMetrics {
+			if hasOrchestratorMetrics {
+				fmt.Println()
+			}
+			fmt.Println("  Workers:")
+			for _, metricType := range workerMetrics {
+				if summary, exists := report.CoachingStats[metricType]; exists {
+					timeSince := time.Since(summary.LastSeen)
+					var timeStr string
+					if timeSince < time.Minute {
+						timeStr = "just now"
+					} else if timeSince < time.Hour {
+						timeStr = fmt.Sprintf("%dm ago", int(timeSince.Minutes()))
+					} else if timeSince < 24*time.Hour {
+						timeStr = fmt.Sprintf("%dh ago", int(timeSince.Hours()))
+					} else {
+						timeStr = fmt.Sprintf("%dd ago", int(timeSince.Hours()/24))
+					}
+
+					fmt.Printf("    %-25s %d events (last: %s)\n",
+						metricType+":", summary.Count, timeStr)
+				}
 			}
 		}
 	}
