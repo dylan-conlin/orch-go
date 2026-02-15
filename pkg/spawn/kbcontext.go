@@ -69,6 +69,15 @@ type KBContextFormatResult struct {
 	OmittedCategories []string // Categories that were partially or fully omitted
 	HasInjectedModels bool     // Whether model content (summary/invariants/failures) was injected
 	PrimaryModelPath  string   // File path of the first model (when HasInjectedModels is true)
+	HasStaleModels    bool     // Whether any served models have stale file references
+}
+
+// StalenessResult holds the result of checking a model's staleness.
+type StalenessResult struct {
+	IsStale      bool     // Whether the model has stale references
+	ChangedFiles []string // Files that changed since Last Updated
+	DeletedFiles []string // Files that no longer exist
+	LastUpdated  string   // The model's Last Updated date
 }
 
 // ExtractKeywords extracts meaningful keywords from a task description for kb context query.
@@ -496,7 +505,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	openQuestions := filterByType(result.Matches, "open-question")
 
 	// Try to format with all matches first
-	content := formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
+	content, hasStaleModels := formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
 
 	// Extract primary model path if models exist
 	primaryModelPath := ""
@@ -514,6 +523,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 			EstimatedTokens:   EstimateTokens(len(content)),
 			HasInjectedModels: hasInjectedModelContent(models),
 			PrimaryModelPath:  primaryModelPath,
+			HasStaleModels:    hasStaleModels,
 		}
 	}
 
@@ -526,7 +536,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(openQuestions) > 0 {
 		openQuestions = openQuestions[:len(openQuestions)-1]
 		truncatedMatches--
-		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
 	}
 	if len(filterByType(result.Matches, "open-question")) > len(openQuestions) {
 		omittedCategories = append(omittedCategories, "open-question")
@@ -536,7 +546,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(failedAttempts) > 0 {
 		failedAttempts = failedAttempts[:len(failedAttempts)-1]
 		truncatedMatches--
-		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
 	}
 	if len(filterByType(result.Matches, "failed-attempt")) > len(failedAttempts) {
 		omittedCategories = append(omittedCategories, "failed-attempt")
@@ -546,7 +556,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(investigations) > 0 {
 		investigations = investigations[:len(investigations)-1]
 		truncatedMatches--
-		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
 	}
 	if len(filterByType(result.Matches, "investigation")) > len(investigations) {
 		omittedCategories = append(omittedCategories, "investigation")
@@ -556,7 +566,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(guides) > 0 {
 		guides = guides[:len(guides)-1]
 		truncatedMatches--
-		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
 	}
 	if len(filterByType(result.Matches, "guide")) > len(guides) {
 		omittedCategories = append(omittedCategories, "guide")
@@ -566,7 +576,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(models) > 0 {
 		models = models[:len(models)-1]
 		truncatedMatches--
-		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
 	}
 	if len(filterByType(result.Matches, "model")) > len(models) {
 		omittedCategories = append(omittedCategories, "model")
@@ -576,7 +586,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(decisions) > 0 {
 		decisions = decisions[:len(decisions)-1]
 		truncatedMatches--
-		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
 	}
 	if len(filterByType(result.Matches, "decision")) > len(decisions) {
 		omittedCategories = append(omittedCategories, "decision")
@@ -586,7 +596,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(constraints) > 0 {
 		constraints = constraints[:len(constraints)-1]
 		truncatedMatches--
-		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
 	}
 	if len(filterByType(result.Matches, "constraint")) > len(constraints) {
 		omittedCategories = append(omittedCategories, "constraint")
@@ -598,7 +608,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 		estimatedMaxTokens := EstimateTokens(maxChars)
 		truncationNote := fmt.Sprintf("⚠️ **KB context truncated:** %d of %d matches omitted to stay within token budget (~%dk tokens).\n\n",
 			omittedCount, originalMatchCount, estimatedMaxTokens/1000)
-		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, &truncationNote)
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, &truncationNote, ".")
 	}
 
 	return &KBContextFormatResult{
@@ -610,13 +620,17 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 		OmittedCategories: omittedCategories,
 		HasInjectedModels: hasInjectedModelContent(models),
 		PrimaryModelPath:  primaryModelPath,
+		HasStaleModels:    hasStaleModels,
 	}
 }
 
 // formatKBContextContent generates the formatted KB context markdown.
 // If truncationNote is provided, it's inserted after the query line.
-func formatKBContextContent(query string, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions []KBContextMatch, truncationNote *string) string {
+// Returns the formatted content and whether any models were stale.
+func formatKBContextContent(query string, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions []KBContextMatch, truncationNote *string, projectDir string) (string, bool) {
 	var sb strings.Builder
+	hasStaleModels := false
+
 	sb.WriteString("## PRIOR KNOWLEDGE (from kb context)\n\n")
 	sb.WriteString(fmt.Sprintf("**Query:** %q\n\n", query))
 
@@ -654,7 +668,11 @@ func formatKBContextContent(query string, constraints, decisions, models, guides
 	if len(models) > 0 {
 		sb.WriteString("### Models (synthesized understanding)\n")
 		for _, m := range models {
-			sb.WriteString(formatModelMatchForSpawn(m))
+			modelContent, isStale := formatModelMatchForSpawn(m, projectDir)
+			sb.WriteString(modelContent)
+			if isStale {
+				hasStaleModels = true
+			}
 		}
 		sb.WriteString("\n")
 	}
@@ -706,7 +724,7 @@ func formatKBContextContent(query string, constraints, decisions, models, guides
 
 	sb.WriteString("**IMPORTANT:** The above context represents existing knowledge and decisions. Do not contradict constraints. Reference models and guides for established patterns. Reference investigations for prior findings.\n\n")
 
-	return sb.String()
+	return sb.String(), hasStaleModels
 }
 
 func filterByType(matches []KBContextMatch, matchType string) []KBContextMatch {
@@ -750,8 +768,9 @@ func hasInjectedModelContent(models []KBContextMatch) bool {
 	return false
 }
 
-func formatModelMatchForSpawn(match KBContextMatch) string {
+func formatModelMatchForSpawn(match KBContextMatch, projectDir string) (string, bool) {
 	var sb strings.Builder
+	isStale := false
 
 	sb.WriteString(fmt.Sprintf("- %s\n", match.Title))
 	if match.Path != "" {
@@ -759,12 +778,31 @@ func formatModelMatchForSpawn(match KBContextMatch) string {
 	}
 
 	if match.Path == "" {
-		return sb.String()
+		return sb.String(), isStale
+	}
+
+	// Check for staleness
+	modelContent, err := os.ReadFile(match.Path)
+	if err == nil {
+		stalenessResult, err := checkModelStaleness(string(modelContent), projectDir)
+		if err == nil && stalenessResult.IsStale {
+			isStale = true
+			// Prepend staleness warning
+			sb.WriteString("  - **STALENESS WARNING:**\n")
+			sb.WriteString(fmt.Sprintf("    This model was last updated %s.\n", stalenessResult.LastUpdated))
+			if len(stalenessResult.ChangedFiles) > 0 {
+				sb.WriteString(fmt.Sprintf("    Changed files: %s.\n", strings.Join(stalenessResult.ChangedFiles, ", ")))
+			}
+			if len(stalenessResult.DeletedFiles) > 0 {
+				sb.WriteString(fmt.Sprintf("    Deleted files: %s.\n", strings.Join(stalenessResult.DeletedFiles, ", ")))
+			}
+			sb.WriteString("    Verify model claims about these files against current code.\n")
+		}
 	}
 
 	sections, err := extractModelSectionsForSpawn(match.Path)
 	if err != nil {
-		return sb.String()
+		return sb.String(), isStale
 	}
 
 	hasInjectedContent := false
@@ -797,7 +835,7 @@ func formatModelMatchForSpawn(match KBContextMatch) string {
 		}
 	}
 
-	return sb.String()
+	return sb.String(), isStale
 }
 
 func extractModelSectionsForSpawn(path string) (*modelSpawnSections, error) {
@@ -936,4 +974,163 @@ func indentBlock(content, indent string) string {
 	}
 
 	return strings.Join(lines, "\n") + "\n"
+}
+
+// extractCodeRefs parses file paths from Primary Evidence sections in model content.
+// Looks for backtick-quoted file paths (with optional :line or :function suffixes).
+// Returns relative file paths without line numbers or function names.
+func extractCodeRefs(content string) []string {
+	var refs []string
+	seen := make(map[string]bool)
+
+	// Look for Primary Evidence section
+	lines := strings.Split(content, "\n")
+	inPrimaryEvidence := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Start of Primary Evidence section
+		if strings.Contains(trimmed, "Primary Evidence") {
+			inPrimaryEvidence = true
+			continue
+		}
+
+		// End of section (next ## heading or blank lines followed by **)
+		if inPrimaryEvidence {
+			if strings.HasPrefix(trimmed, "##") || strings.HasPrefix(trimmed, "# ") {
+				break
+			}
+		}
+
+		// Extract file paths from backticks
+		if inPrimaryEvidence && strings.Contains(trimmed, "`") {
+			// Find all backtick-quoted content
+			parts := strings.Split(trimmed, "`")
+			for i := 1; i < len(parts); i += 2 {
+				path := strings.TrimSpace(parts[i])
+
+				// Check if this looks like a file path (has .go, .md, etc.)
+				if !strings.Contains(path, ".") {
+					continue
+				}
+
+				// Remove :line number or :function() suffix
+				if idx := strings.Index(path, ":"); idx > 0 {
+					path = path[:idx]
+				}
+
+				// Skip if already seen
+				if seen[path] {
+					continue
+				}
+
+				// Only include if it looks like a file path (contains / or has valid extension)
+				if strings.Contains(path, "/") || hasValidFileExtension(path) {
+					refs = append(refs, path)
+					seen[path] = true
+				}
+			}
+		}
+	}
+
+	return refs
+}
+
+// hasValidFileExtension checks if a string ends with a common file extension.
+func hasValidFileExtension(path string) bool {
+	validExts := []string{".go", ".md", ".yaml", ".yml", ".json", ".toml", ".sh", ".js", ".ts", ".tsx", ".jsx"}
+	for _, ext := range validExts {
+		if strings.HasSuffix(path, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// extractLastUpdated parses the "Last Updated:" date from model content.
+// Returns the date string (YYYY-MM-DD format) or empty string if not found.
+func extractLastUpdated(content string) string {
+	lines := strings.Split(content, "\n")
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Look for **Last Updated:** or **last updated:**
+		if strings.HasPrefix(trimmed, "**Last Updated:") || strings.HasPrefix(trimmed, "**last updated:") {
+			// Extract the date after the colon
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) == 2 {
+				date := strings.TrimSpace(parts[1])
+				// Remove leading and trailing ** (markdown bold markers)
+				date = strings.TrimPrefix(date, "**")
+				date = strings.TrimSuffix(date, "**")
+				return strings.TrimSpace(date)
+			}
+		}
+	}
+
+	return ""
+}
+
+// checkModelStaleness checks if a model's referenced files have changed since its Last Updated date.
+// Returns a StalenessResult with changed/deleted files, or an empty result if the model can't be checked.
+func checkModelStaleness(modelContent string, projectDir string) (*StalenessResult, error) {
+	result := &StalenessResult{
+		IsStale:      false,
+		ChangedFiles: []string{},
+		DeletedFiles: []string{},
+	}
+
+	// Extract Last Updated date
+	lastUpdated := extractLastUpdated(modelContent)
+	if lastUpdated == "" {
+		// No Last Updated field - can't check staleness
+		return result, nil
+	}
+	result.LastUpdated = lastUpdated
+
+	// Extract code references
+	codeRefs := extractCodeRefs(modelContent)
+	if len(codeRefs) == 0 {
+		// No code references - can't check staleness
+		return result, nil
+	}
+
+	// Check each referenced file
+	for _, ref := range codeRefs {
+		filePath := ref
+		if !strings.HasPrefix(filePath, "/") {
+			// Make relative paths absolute
+			filePath = fmt.Sprintf("%s/%s", projectDir, ref)
+		}
+
+		// Check if file exists
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			result.DeletedFiles = append(result.DeletedFiles, ref)
+			result.IsStale = true
+			continue
+		}
+
+		// Check if file changed since Last Updated using git log
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		cmd := exec.CommandContext(ctx, "git", "log", "--since="+lastUpdated, "--oneline", "--", ref)
+		cmd.Dir = projectDir
+		output, err := cmd.Output()
+		if err != nil {
+			// Git command failed - might not be in a git repo, or file not tracked
+			// This is not an error condition - just skip this file
+			continue
+		}
+
+		// If output is non-empty, file has commits since Last Updated
+		if len(strings.TrimSpace(string(output))) > 0 {
+			result.ChangedFiles = append(result.ChangedFiles, ref)
+			result.IsStale = true
+		}
+	}
+
+	return result, nil
 }

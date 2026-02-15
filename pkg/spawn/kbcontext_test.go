@@ -1,6 +1,7 @@
 package spawn
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -718,6 +719,241 @@ func TestFormatContextForSpawnWithLimit(t *testing.T) {
 		directResult := FormatContextForSpawnWithLimit(kbResult, MaxKBContextChars)
 		if content != directResult.Content {
 			t.Error("FormatContextForSpawn should produce same output as FormatContextForSpawnWithLimit with default limit")
+		}
+	})
+}
+
+func TestExtractCodeRefs(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    []string
+	}{
+		{
+			name: "extracts file paths from Primary Evidence section",
+			content: `# Model: Test
+**Last Updated:** 2026-01-12
+
+**Primary Evidence (Verify These):**
+- ` + "`pkg/verify/check.go`" + ` - Verification gate implementation
+- ` + "`cmd/orch/complete_cmd.go`" + ` - Completion orchestration pipeline
+- ` + "`pkg/spawn/kbcontext.go:150`" + ` - Context formatting with line number
+
+Other content here`,
+			want: []string{
+				"pkg/verify/check.go",
+				"cmd/orch/complete_cmd.go",
+				"pkg/spawn/kbcontext.go",
+			},
+		},
+		{
+			name: "handles paths with functions",
+			content: `**Primary Evidence:**
+- ` + "`pkg/test.go:TestFunc()`" + ` - Test function
+- ` + "`internal/helper.go:DoWork()`" + ` - Helper`,
+			want: []string{
+				"pkg/test.go",
+				"internal/helper.go",
+			},
+		},
+		{
+			name: "returns empty for no code references",
+			content: `# Model: Test
+No code references here`,
+			want: []string{},
+		},
+		{
+			name: "handles HTML comment markers (future format)",
+			content: `**Primary Evidence:**
+<!-- code_refs -->
+- ` + "`pkg/test.go`" + ` - Test file
+<!-- /code_refs -->`,
+			want: []string{"pkg/test.go"},
+		},
+		{
+			name: "skips non-file backtick content",
+			content: `**Primary Evidence:**
+- ` + "`pkg/test.go`" + ` - Test file
+- Use ` + "`--flag`" + ` for options
+- Variable ` + "`someVar`" + ` is set`,
+			want: []string{"pkg/test.go"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractCodeRefs(tt.content)
+			if len(got) != len(tt.want) {
+				t.Errorf("extractCodeRefs() returned %d paths, want %d: %v", len(got), len(tt.want), got)
+				return
+			}
+			for i, wantPath := range tt.want {
+				if i < len(got) && got[i] != wantPath {
+					t.Errorf("extractCodeRefs()[%d] = %q, want %q", i, got[i], wantPath)
+				}
+			}
+		})
+	}
+}
+
+func TestExtractLastUpdated(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name: "extracts Last Updated date",
+			content: `# Model: Test
+**Last Updated:** 2026-01-12
+**Domain:** Testing`,
+			want: "2026-01-12",
+		},
+		{
+			name: "handles different spacing",
+			content: `**Last Updated:**  2025-12-25
+Other content`,
+			want: "2025-12-25",
+		},
+		{
+			name: "returns empty if not found",
+			content: `# Model: Test
+No last updated field`,
+			want: "",
+		},
+		{
+			name:    "handles lowercase variant",
+			content: `**last updated:** 2026-02-14`,
+			want:    "2026-02-14",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractLastUpdated(tt.content)
+			if got != tt.want {
+				t.Errorf("extractLastUpdated() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckModelStaleness(t *testing.T) {
+	// Note: This test requires git to be available and the repo to have history
+	// We'll test with the actual repo's files for realistic scenarios
+
+	t.Run("detects no staleness for future date", func(t *testing.T) {
+		// Use a far-future date that will definitely have no commits
+		testContent := `# Model: Test
+**Last Updated:** 2099-12-31
+
+**Primary Evidence:**
+- ` + "`pkg/spawn/kbcontext.go`" + ` - This file (guaranteed to exist)
+`
+		// Use "../.." to get to project root from pkg/spawn/
+		result, err := checkModelStaleness(testContent, "../..")
+		if err != nil {
+			t.Fatalf("checkModelStaleness() error = %v", err)
+		}
+		if result == nil {
+			t.Fatal("checkModelStaleness() returned nil result")
+		}
+		// Should not be stale (date is far in future)
+		if result.IsStale {
+			t.Errorf("checkModelStaleness() IsStale = true for far-future date, want false. Changed: %v, Deleted: %v", result.ChangedFiles, result.DeletedFiles)
+		}
+	})
+
+	t.Run("returns empty result for model without code refs", func(t *testing.T) {
+		testContent := `# Model: Test
+**Last Updated:** 2025-01-01
+
+No code references here.
+`
+		result, err := checkModelStaleness(testContent, "../..")
+		if err != nil {
+			t.Fatalf("checkModelStaleness() error = %v", err)
+		}
+		if result.IsStale {
+			t.Error("checkModelStaleness() should not be stale when no code refs exist")
+		}
+		if len(result.ChangedFiles) > 0 {
+			t.Error("checkModelStaleness() should have no changed files when no code refs")
+		}
+	})
+
+	t.Run("returns empty result for model without Last Updated", func(t *testing.T) {
+		testContent := `# Model: Test
+
+**Primary Evidence:**
+- ` + "`pkg/spawn/kbcontext.go`" + ` - Test file
+`
+		result, err := checkModelStaleness(testContent, "../..")
+		if err != nil {
+			t.Fatalf("checkModelStaleness() error = %v", err)
+		}
+		if result.IsStale {
+			t.Error("checkModelStaleness() should not be stale when no Last Updated date")
+		}
+	})
+
+	t.Run("detects deleted files", func(t *testing.T) {
+		testContent := `# Model: Test
+**Last Updated:** 2025-01-01
+
+**Primary Evidence:**
+- ` + "`pkg/nonexistent/deleted.go`" + ` - This file doesn't exist
+`
+		result, err := checkModelStaleness(testContent, "../..")
+		if err != nil {
+			t.Fatalf("checkModelStaleness() error = %v", err)
+		}
+		if !result.IsStale {
+			t.Error("checkModelStaleness() should be stale when referenced file doesn't exist")
+		}
+		if len(result.DeletedFiles) == 0 {
+			t.Error("checkModelStaleness() should report deleted file")
+		}
+	})
+}
+
+func TestStaleModelIntegration(t *testing.T) {
+	// Integration test: verify staleness detection works end-to-end with real model formatting
+	t.Run("integrates staleness into model formatting", func(t *testing.T) {
+		// Create a mock KBContextMatch with a stale model
+		match := KBContextMatch{
+			Type:  "model",
+			Title: "Test Stale Model",
+			Path:  "/tmp/test-stale-model.md",
+		}
+
+		// Create a temporary model file with stale references
+		testModelContent := `# Model: Test
+**Last Updated:** 2025-01-01
+
+**Primary Evidence:**
+- ` + "`pkg/spawn/kbcontext.go`" + ` - This file has changed since 2025-01-01
+`
+		err := os.WriteFile(match.Path, []byte(testModelContent), 0644)
+		if err != nil {
+			t.Fatalf("Failed to create test model file: %v", err)
+		}
+		defer os.Remove(match.Path)
+
+		// Format the model
+		formatted, isStale := formatModelMatchForSpawn(match, "../..")
+
+		// Should detect staleness
+		if !isStale {
+			t.Error("formatModelMatchForSpawn() should detect staleness for file changed since 2025-01-01")
+		}
+
+		// Should include staleness warning in formatted output
+		if !strings.Contains(formatted, "STALENESS WARNING") {
+			t.Error("formatted output should include staleness warning")
+		}
+		if !strings.Contains(formatted, "2025-01-01") {
+			t.Error("formatted output should include Last Updated date")
 		}
 	})
 }
