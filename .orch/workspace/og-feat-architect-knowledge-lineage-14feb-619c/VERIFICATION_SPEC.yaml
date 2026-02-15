@@ -1,0 +1,169 @@
+version: 1.0
+beads_id: orch-go-8f7
+title: "Architect: Knowledge lineage tree visualization for dashboard and orchestrator"
+spawn_tier: light
+
+# Observable Behaviors (what can be seen when this design is implemented)
+observable_behaviors:
+  - id: OB-1
+    description: "Design document exists with all 6 design questions answered"
+    location: "docs/designs/2026-02-14-knowledge-lineage-tree-visualization.md"
+    
+  - id: OB-2
+    description: "Design addresses rendering locations (dashboard, CLI, orchestrator)"
+    location: "Design Question 1 section"
+    
+  - id: OB-3
+    description: "Design defines data extraction algorithm from existing artifacts"
+    location: "Design Question 2 section"
+    
+  - id: OB-4
+    description: "Design specifies interaction model (expand/collapse, filtering, health smells)"
+    location: "Design Question 3 section"
+    
+  - id: OB-5
+    description: "Design integrates with verification flow"
+    location: "Design Question 4 section"
+    
+  - id: OB-6
+    description: "Design covers both CLI and web implementations"
+    location: "Design Question 5 section"
+    
+  - id: OB-7
+    description: "Design defines clustering strategy for top-level grouping"
+    location: "Design Question 6 section"
+
+# Acceptance Criteria (testable pass/fail conditions)
+acceptance_criteria:
+  - id: AC-001
+    description: "Design document includes all 6 design questions with concrete answers"
+    test_method: "Manual review of design document sections"
+    status: pass
+    evidence: "All 6 design questions have dedicated sections with detailed answers"
+    
+  - id: AC-002
+    description: "Design includes walkthrough for all 4 use cases from spawn context"
+    test_method: "Manual review of Use Case Walkthrough section"
+    status: pass
+    evidence: "Session start, triage, verification, and orientation use cases all documented"
+    
+  - id: AC-003
+    description: "Design validates all 3 constraints from spawn context"
+    test_method: "Manual review of Constraints & Validation section"
+    status: pass
+    evidence: "Existing structure, extract relationships, and primary interface constraints validated"
+    
+  - id: AC-004
+    description: "Design includes implementation phases with concrete deliverables"
+    test_method: "Manual review of Implementation Phases section"
+    status: pass
+    evidence: "4 phases defined with checklists and deliverables"
+    
+  - id: AC-005
+    description: "Design documents technical decisions with trade-offs"
+    test_method: "Manual review of Technical Decisions section"
+    status: pass
+    evidence: "Parser, rendering, and clustering decisions documented with pros/cons"
+
+# Failure Modes (known ways this can break)
+failure_modes:
+  - id: FM-001
+    symptom: "Design questions answered but not actionable (too abstract)"
+    detection: "Implementation phase starts and has no concrete guidance"
+    fix: "Design includes code examples, algorithms, and specific file paths"
+    
+  - id: FM-002
+    symptom: "Design doesn't match example tree that resonated with Dylan"
+    detection: "Implemented tree doesn't feel like the example from spawn context"
+    fix: "Design explicitly references example format and replicates its structure"
+    
+  - id: FM-003
+    symptom: "Design requires manual curation violating constraint 2"
+    detection: "Implementation requires Dylan to tag or annotate artifacts manually"
+    fix: "Design uses 100% automatic extraction from existing artifact structure"
+
+# Evidence Requirements (what artifacts prove this works)
+evidence:
+  - type: file
+    description: "Design document created"
+    path: "docs/designs/2026-02-14-knowledge-lineage-tree-visualization.md"
+    exists: true
+    
+  - type: commit
+    description: "Design document committed to git"
+    required: true
+    
+  - type: kb_quick
+    description: "Key decisions recorded in kb quick"
+    items:
+      - "kb-f824d5 (decision: dual-interface design)"
+      - "kb-23a950 (constraint: extract from existing artifacts)"
+
+# Verification Steps (how to verify this design is complete)
+verification_steps:
+  - step: 1
+    action: "Read design document"
+    command: "cat docs/designs/2026-02-14-knowledge-lineage-tree-visualization.md"
+    expected: "528-line design document with 20 subsections"
+    actual: "Design document exists with comprehensive coverage"
+    
+  - step: 2
+    action: "Verify all 6 design questions addressed"
+    command: "grep '^### [0-9]\\.' docs/designs/2026-02-14-knowledge-lineage-tree-visualization.md"
+    expected: "6 design question sections"
+    actual: "All 6 design questions have dedicated sections"
+    
+  - step: 3
+    action: "Verify use case walkthroughs exist"
+    command: "grep -A 5 '^### Use Case [0-9]' docs/designs/2026-02-14-knowledge-lineage-tree-visualization.md"
+    expected: "4 use case walkthroughs"
+    actual: "All 4 use cases documented with flows and value statements"
+    
+  - step: 4
+    action: "Verify kb quick entries created"
+    command: "kb quick list | grep -E '(knowledge-lineage|extract-lineage)'"
+    expected: "2 kb quick entries"
+    actual: "kb-f824d5 and kb-23a950 created"
+
+# Manual Verification Required
+manual_verification:
+  - description: "Dylan review: Does this design match the 'wow' feeling from the example tree?"
+    importance: critical
+    reviewer: Dylan
+    
+  - description: "Orchestrator review: Are all design questions answered concretely enough for implementation?"
+    importance: high
+    reviewer: Orchestrator
+
+# Success Metrics
+success_metrics:
+  - metric: "Design completeness"
+    target: "All 6 questions answered"
+    actual: "6/6 questions answered"
+    
+  - metric: "Use case coverage"
+    target: "All 4 use cases walkthrough"
+    actual: "4/4 use cases documented"
+    
+  - metric: "Constraint validation"
+    target: "All 3 constraints validated"
+    actual: "3/3 constraints validated"
+    
+  - metric: "Implementation readiness"
+    target: "Concrete phases with deliverables"
+    actual: "4 phases with checklists"
+
+# Notes
+notes: |
+  This is a design artifact, not an implementation. Verification focuses on design completeness
+  and actionability rather than code functionality. The design is ready for implementation when:
+  1. All 6 design questions have concrete, actionable answers
+  2. All 4 use cases have clear walkthroughs
+  3. All 3 constraints are validated
+  4. Implementation phases are defined with deliverables
+  
+  Key design decisions:
+  - Dual interface: Dashboard for browsing, CLI for quick lookups
+  - Extract from existing artifacts (no new metadata)
+  - Multi-signal clustering (filesystem, models, Prior-Work references)
+  - Health smells for triage (15+ investigations without decision)
