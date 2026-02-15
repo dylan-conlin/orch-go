@@ -105,6 +105,24 @@ Examples:
 	},
 }
 
+var daemonResumeCmd = &cobra.Command{
+	Use:   "resume",
+	Short: "Resume daemon after verification pause",
+	Long: `Resume the daemon after reviewing completed work.
+
+When the daemon auto-completes N issues without human verification (manual orch complete),
+it pauses spawning to enforce the verifiability-first constraint. After reviewing the
+completed work, run this command to reset the completion counter and resume operation.
+
+The daemon checks for the resume signal on each poll cycle and automatically resumes.
+
+Examples:
+  orch daemon resume          # Resume after reviewing completed work`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runDaemonResume()
+	},
+}
+
 var (
 	// Daemon flags
 	daemonDelay               int    // Delay between spawns in seconds
@@ -127,6 +145,7 @@ func init() {
 	daemonCmd.AddCommand(daemonOnceCmd)
 	daemonCmd.AddCommand(daemonPreviewCmd)
 	daemonCmd.AddCommand(daemonReflectCmd)
+	daemonCmd.AddCommand(daemonResumeCmd)
 
 	// Spawn delay between issues
 	daemonRunCmd.Flags().IntVar(&daemonDelay, "delay", 10, "Delay between spawns in seconds")
@@ -276,6 +295,37 @@ func runDaemonLoop() error {
 			continue
 		}
 
+		// Check for resume signal (before checking pause state)
+		// This allows Dylan to resume the daemon after reviewing completed work.
+		if d.VerificationTracker != nil {
+			if resumed, err := daemon.CheckAndClearResumeSignal(); err != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Warning: failed to check resume signal: %v\n", timestamp, err)
+			} else if resumed {
+				d.VerificationTracker.Resume()
+				fmt.Printf("[%s] ✅ Daemon resumed - verification counter reset\n", timestamp)
+			}
+		}
+
+		// Check verification pause BEFORE spawning
+		// This enforces the verifiability-first constraint by pausing after N auto-completions
+		// without human verification (manual orch complete).
+		if d.VerificationTracker != nil && d.VerificationTracker.IsPaused() {
+			verifyStatus := d.VerificationTracker.Status()
+			if daemonVerbose || cycles%10 == 0 {
+				// Get ready issues count to show what's waiting
+				pendingIssues, _ := daemon.ListReadyIssues()
+				pendingCount := len(pendingIssues)
+
+				fmt.Printf("[%s] ⏸  Verification pause: %d auto-completions without human review (threshold: %d)\n",
+					timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
+				fmt.Printf("[%s]    Completed work is waiting for review. %d issue(s) ready to spawn once resumed.\n",
+					timestamp, pendingCount)
+				fmt.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work to continue\n", timestamp)
+			}
+			time.Sleep(config.PollInterval)
+			continue
+		}
+
 		// Run periodic reflection if due
 		if result := d.RunPeriodicReflection(); result != nil {
 			if result.Error != nil {
@@ -383,6 +433,19 @@ func runDaemonLoop() error {
 					lastCompletion = time.Now()
 					fmt.Printf("[%s] Auto-completed: %s (escalation=%s)\n",
 						timestamp, cr.BeadsID, cr.Escalation)
+
+					// Record auto-completion for verification tracking
+					// This increments the counter and may pause daemon if threshold reached
+					if d.VerificationTracker != nil {
+						if shouldPause := d.VerificationTracker.RecordCompletion(); shouldPause {
+							verifyStatus := d.VerificationTracker.Status()
+							fmt.Printf("[%s] ⚠️  Verification threshold reached: %d/%d auto-completions\n",
+								timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
+							fmt.Printf("[%s]    Daemon will pause spawning on next cycle\n", timestamp)
+							fmt.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work\n", timestamp)
+						}
+					}
+
 					// Log the completion
 					event := events.Event{
 						Type:      "daemon.complete",
@@ -412,6 +475,22 @@ func runDaemonLoop() error {
 		readyCount := len(readyIssues)
 
 		// Write daemon status file AFTER reconciliation and completions so counts are accurate
+		var verificationSnapshot *daemon.VerificationStatusSnapshot
+		isPaused := false
+		if d.VerificationTracker != nil {
+			verifyStatus := d.VerificationTracker.Status()
+			isPaused = verifyStatus.IsPaused
+			if verifyStatus.IsEnabled() {
+				verificationSnapshot = &daemon.VerificationStatusSnapshot{
+					IsPaused:                     verifyStatus.IsPaused,
+					CompletionsSinceVerification: verifyStatus.CompletionsSinceVerification,
+					Threshold:                    verifyStatus.Threshold,
+					LastVerification:             verifyStatus.LastVerification,
+					RemainingBeforePause:         verifyStatus.RemainingBeforePause(),
+				}
+			}
+		}
+
 		status := daemon.DaemonStatus{
 			Capacity: daemon.CapacityStatus{
 				Max:       config.MaxAgents,
@@ -422,7 +501,8 @@ func runDaemonLoop() error {
 			LastSpawn:      lastSpawn,
 			LastCompletion: lastCompletion,
 			ReadyCount:     readyCount,
-			Status:         daemon.DetermineStatus(pollTime, config.PollInterval),
+			Status:         daemon.DetermineStatus(pollTime, config.PollInterval, isPaused),
+			Verification:   verificationSnapshot,
 		}
 		if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
 			fmt.Fprintf(os.Stderr, "Warning: failed to write status file: %v\n", err)
@@ -795,4 +875,19 @@ func runReflectionAnalysis(verbose bool) {
 			fmt.Printf("Suggestions saved to: %s\n", daemon.SuggestionsPath())
 		}
 	}
+}
+
+func runDaemonResume() error {
+	fmt.Println("Sending resume signal to daemon...")
+
+	if err := daemon.WriteResumeSignal(); err != nil {
+		return fmt.Errorf("failed to write resume signal: %w", err)
+	}
+
+	fmt.Println("✅ Resume signal sent")
+	fmt.Println()
+	fmt.Println("The daemon will detect the signal on the next poll cycle and resume operation.")
+	fmt.Println("The verification counter will be reset, allowing the daemon to continue spawning.")
+
+	return nil
 }

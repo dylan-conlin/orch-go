@@ -81,6 +81,13 @@ type Config struct {
 	// RecoveryRateLimit is minimum time between resume attempts per agent.
 	// Default is 1 hour to prevent infinite loops.
 	RecoveryRateLimit time.Duration
+
+	// VerificationPauseThreshold is the maximum number of auto-completions
+	// allowed before pausing for human verification. When the daemon auto-completes
+	// this many issues without human verification (manual orch complete), it will
+	// pause spawning until Dylan explicitly resumes. Set to 0 to disable (no pause).
+	// Default is 3.
+	VerificationPauseThreshold int
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -105,6 +112,7 @@ func DefaultConfig() Config {
 		RecoveryInterval:            5 * time.Minute,  // Check every 5 minutes
 		RecoveryIdleThreshold:       10 * time.Minute, // Idle >10min triggers recovery
 		RecoveryRateLimit:           time.Hour,        // 1 resume per agent per hour
+		VerificationPauseThreshold:  3,                // Pause after 3 auto-completions
 	}
 }
 
@@ -190,6 +198,11 @@ type Daemon struct {
 	// Prevents infinite resume loops by rate-limiting to 1 attempt per hour per agent.
 	resumeAttempts map[string]time.Time
 
+	// VerificationTracker tracks completions since last human verification and manages
+	// pause state when threshold is reached. This enforces the verifiability-first
+	// constraint by pausing autonomous operation after N completions without human review.
+	VerificationTracker *VerificationTracker
+
 	// listIssuesFunc is used for testing - allows mocking bd list
 	listIssuesFunc func() ([]Issue, error)
 	// spawnFunc is used for testing - allows mocking orch work
@@ -215,6 +228,7 @@ func NewWithConfig(config Config) *Daemon {
 		Config:                    config,
 		SpawnedIssues:             NewSpawnedIssueTracker(),
 		resumeAttempts:            make(map[string]time.Time),
+		VerificationTracker:       NewVerificationTracker(config.VerificationPauseThreshold),
 		listIssuesFunc:            ListReadyIssues,
 		spawnFunc:                 SpawnWork,
 		reflectFunc:               DefaultRunReflection,
@@ -240,6 +254,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		Pool:                      pool,
 		SpawnedIssues:             NewSpawnedIssueTracker(),
 		resumeAttempts:            make(map[string]time.Time),
+		VerificationTracker:       NewVerificationTracker(config.VerificationPauseThreshold),
 		listIssuesFunc:            ListReadyIssues,
 		spawnFunc:                 SpawnWork,
 		reflectFunc:               DefaultRunReflection,

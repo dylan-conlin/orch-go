@@ -182,9 +182,9 @@ func TestDetermineStatus(t *testing.T) {
 	pollInterval := 60 * time.Second
 
 	tests := []struct {
-		name         string
-		lastPollAge  time.Duration
-		wantStatus   string
+		name        string
+		lastPollAge time.Duration
+		wantStatus  string
 	}{
 		{
 			name:        "recent poll is running",
@@ -211,7 +211,7 @@ func TestDetermineStatus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			lastPoll := time.Now().Add(-tt.lastPollAge)
-			got := DetermineStatus(lastPoll, pollInterval)
+			got := DetermineStatus(lastPoll, pollInterval, false) // Not paused for these tests
 			if got != tt.wantStatus {
 				t.Errorf("DetermineStatus() = %q, want %q", got, tt.wantStatus)
 			}
@@ -286,5 +286,43 @@ func TestDaemonStatus_ZeroLastSpawn(t *testing.T) {
 	// Verify status is present
 	if m["status"] != "running" {
 		t.Errorf("status = %v, want 'running'", m["status"])
+	}
+}
+
+func TestDetermineStatus_VerificationPause(t *testing.T) {
+	pollInterval := time.Minute
+	lastPoll := time.Now()
+
+	tests := []struct {
+		name       string
+		isPaused   bool
+		wantStatus string
+	}{
+		{
+			name:       "paused takes precedence",
+			isPaused:   true,
+			wantStatus: "paused",
+		},
+		{
+			name:       "not paused when running",
+			isPaused:   false,
+			wantStatus: "running",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := DetermineStatus(lastPoll, pollInterval, tt.isPaused)
+			if got != tt.wantStatus {
+				t.Errorf("DetermineStatus() = %q, want %q", got, tt.wantStatus)
+			}
+		})
+	}
+
+	// Verify that pause takes precedence over stalled
+	stalledPoll := time.Now().Add(-3 * time.Minute) // Way past 2x interval
+	got := DetermineStatus(stalledPoll, pollInterval, true)
+	if got != "paused" {
+		t.Errorf("Paused should take precedence over stalled, got %q", got)
 	}
 }

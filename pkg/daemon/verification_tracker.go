@@ -1,0 +1,197 @@
+// Package daemon provides autonomous overnight processing capabilities.
+package daemon
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+// VerificationTracker tracks completions since last human verification
+// and manages pause state when threshold is reached.
+//
+// Human verification is defined as a manual `orch complete` invocation
+// (not daemon auto-completion). This enforces the verifiability-first
+// constraint by pausing autonomous operation after N completions without
+// human review.
+type VerificationTracker struct {
+	mu sync.RWMutex
+
+	// completionsSinceVerification tracks how many auto-completions have
+	// occurred since the last human verification.
+	completionsSinceVerification int
+
+	// lastVerification is when the last human verification occurred.
+	// This is when Dylan manually ran `orch complete`.
+	lastVerification time.Time
+
+	// isPaused indicates whether the daemon is paused due to reaching
+	// the verification threshold.
+	isPaused bool
+
+	// threshold is the maximum number of auto-completions allowed before
+	// pausing for human verification. Default is 3.
+	threshold int
+}
+
+// NewVerificationTracker creates a new VerificationTracker with the given threshold.
+// If threshold is 0, verification tracking is disabled (never pauses).
+func NewVerificationTracker(threshold int) *VerificationTracker {
+	return &VerificationTracker{
+		threshold:                    threshold,
+		lastVerification:             time.Now(), // Start with current time
+		isPaused:                     false,
+		completionsSinceVerification: 0,
+	}
+}
+
+// RecordCompletion increments the completion counter.
+// This should be called when the daemon auto-completes an issue.
+// Returns true if the threshold was reached and daemon should pause.
+func (vt *VerificationTracker) RecordCompletion() bool {
+	vt.mu.Lock()
+	defer vt.mu.Unlock()
+
+	// If threshold is 0, verification tracking is disabled - don't count
+	if vt.threshold == 0 {
+		return false
+	}
+
+	vt.completionsSinceVerification++
+
+	// Check if we've reached the threshold
+	if vt.completionsSinceVerification >= vt.threshold {
+		vt.isPaused = true
+		return true
+	}
+
+	return false
+}
+
+// RecordHumanVerification resets the completion counter and unpauses the daemon.
+// This should be called when Dylan manually runs `orch complete`.
+func (vt *VerificationTracker) RecordHumanVerification() {
+	vt.mu.Lock()
+	defer vt.mu.Unlock()
+
+	vt.completionsSinceVerification = 0
+	vt.lastVerification = time.Now()
+	vt.isPaused = false
+}
+
+// IsPaused returns true if the daemon is paused due to verification threshold.
+func (vt *VerificationTracker) IsPaused() bool {
+	vt.mu.RLock()
+	defer vt.mu.RUnlock()
+
+	return vt.isPaused
+}
+
+// Status returns the current verification tracking status.
+func (vt *VerificationTracker) Status() VerificationStatus {
+	vt.mu.RLock()
+	defer vt.mu.RUnlock()
+
+	return VerificationStatus{
+		CompletionsSinceVerification: vt.completionsSinceVerification,
+		LastVerification:             vt.lastVerification,
+		IsPaused:                     vt.isPaused,
+		Threshold:                    vt.threshold,
+	}
+}
+
+// Resume manually unpauses the daemon without resetting the counter.
+// Dylan can resume after reviewing completed work even if counter hasn't reset.
+// This allows for "I've reviewed, continue" without requiring manual orch complete.
+func (vt *VerificationTracker) Resume() {
+	vt.mu.Lock()
+	defer vt.mu.Unlock()
+
+	// Reset counter and unpause
+	vt.completionsSinceVerification = 0
+	vt.lastVerification = time.Now()
+	vt.isPaused = false
+}
+
+// VerificationStatus contains the current verification tracking status.
+type VerificationStatus struct {
+	CompletionsSinceVerification int
+	LastVerification             time.Time
+	IsPaused                     bool
+	Threshold                    int
+}
+
+// IsEnabled returns true if verification tracking is enabled (threshold > 0).
+func (vs VerificationStatus) IsEnabled() bool {
+	return vs.Threshold > 0
+}
+
+// RemainingBeforePause returns how many more completions are allowed before pause.
+// Returns -1 if already paused or if tracking is disabled.
+func (vs VerificationStatus) RemainingBeforePause() int {
+	if !vs.IsEnabled() {
+		return -1
+	}
+	if vs.IsPaused {
+		return 0
+	}
+	remaining := vs.Threshold - vs.CompletionsSinceVerification
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+// ResumePath returns the path to the resume signal file.
+// Default: ~/.orch/daemon-resume.signal
+func ResumePath() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		// Fallback to current directory if home not available
+		return ".orch/daemon-resume.signal"
+	}
+	return filepath.Join(homeDir, ".orch", "daemon-resume.signal")
+}
+
+// WriteResumeSignal writes a resume signal file.
+// The running daemon will detect this file and resume operation.
+func WriteResumeSignal() error {
+	resumePath := ResumePath()
+
+	// Ensure directory exists
+	dir := filepath.Dir(resumePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create resume signal directory: %w", err)
+	}
+
+	// Write signal file with timestamp
+	timestamp := time.Now().Format(time.RFC3339)
+	if err := os.WriteFile(resumePath, []byte(timestamp), 0644); err != nil {
+		return fmt.Errorf("failed to write resume signal: %w", err)
+	}
+
+	return nil
+}
+
+// CheckAndClearResumeSignal checks if a resume signal exists.
+// If it does, it removes the signal file and returns true.
+// This should be called by the daemon loop to detect resume requests.
+func CheckAndClearResumeSignal() (bool, error) {
+	resumePath := ResumePath()
+
+	// Check if signal file exists
+	if _, err := os.Stat(resumePath); os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("failed to check resume signal: %w", err)
+	}
+
+	// Signal exists - remove it atomically
+	if err := os.Remove(resumePath); err != nil && !os.IsNotExist(err) {
+		return false, fmt.Errorf("failed to remove resume signal: %w", err)
+	}
+
+	return true, nil
+}
