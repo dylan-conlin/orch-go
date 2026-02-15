@@ -1198,7 +1198,8 @@ func TestCreateSession(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	resp, err := client.CreateSession(title, directory, model, nil)
+	timeTTL := 4 * 60 * 60 // 4 hours
+	resp, err := client.CreateSession(title, directory, model, nil, timeTTL)
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -1252,7 +1253,8 @@ func TestCreateSessionWithoutModel(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	_, err := client.CreateSession(title, directory, model, nil)
+	timeTTL := 4 * 60 * 60 // 4 hours
+	_, err := client.CreateSession(title, directory, model, nil, timeTTL)
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -1260,6 +1262,66 @@ func TestCreateSessionWithoutModel(t *testing.T) {
 	// Verify empty model was sent (omitempty should exclude it from JSON)
 	if receivedRequest.Model != "" {
 		t.Errorf("receivedRequest.Model = %s, want empty string", receivedRequest.Model)
+	}
+}
+
+// TestCreateSessionWithTTL tests that CreateSession correctly sets the time_ttl field.
+func TestCreateSessionWithTTL(t *testing.T) {
+	tests := []struct {
+		name        string
+		timeTTL     int
+		wantTTL     int
+		description string
+	}{
+		{
+			name:        "worker session with 4-hour TTL",
+			timeTTL:     14400, // 4 hours in seconds
+			wantTTL:     14400,
+			description: "Worker sessions should expire after 4 hours",
+		},
+		{
+			name:        "orchestrator session with no TTL",
+			timeTTL:     0,
+			wantTTL:     0,
+			description: "Orchestrator sessions should not expire",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			title := "test-session"
+			directory := "/Users/dylan/project"
+			model := "anthropic/claude-opus-4"
+
+			var receivedRequest CreateSessionRequest
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&receivedRequest); err != nil {
+					t.Fatalf("Failed to decode request: %v", err)
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				response := CreateSessionResponse{
+					ID:        "ses_test_ttl",
+					Title:     title,
+					Directory: directory,
+				}
+				json.NewEncoder(w).Encode(response)
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL)
+			_, err := client.CreateSession(title, directory, model, nil, tt.timeTTL)
+			if err != nil {
+				t.Fatalf("CreateSession() error = %v", err)
+			}
+
+			// Verify TTL was set correctly
+			if receivedRequest.TimeTTL != tt.wantTTL {
+				t.Errorf("receivedRequest.TimeTTL = %d, want %d (%s)",
+					receivedRequest.TimeTTL, tt.wantTTL, tt.description)
+			}
+		})
 	}
 }
 

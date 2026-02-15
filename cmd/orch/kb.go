@@ -494,7 +494,9 @@ func synthesizeAnswer(question, context string) (string, error) {
 	// Create session with title indicating kb ask
 	title := fmt.Sprintf("kb-ask-%d", time.Now().Unix())
 	// kb ask sessions don't have beads tracking, so metadata is empty
-	session, err := client.CreateSession(title, projectDir, modelSpec.Format(), nil)
+	// Set 4-hour TTL for automatic cleanup of temporary kb ask sessions
+	timeTTL := 4 * 60 * 60 // 4 hours in seconds
+	session, err := client.CreateSession(title, projectDir, modelSpec.Format(), nil, timeTTL)
 	if err != nil {
 		return "", fmt.Errorf("failed to create session: %w", err)
 	}

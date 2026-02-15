@@ -523,6 +523,7 @@ type CreateSessionRequest struct {
 	Directory string            `json:"directory,omitempty"`
 	Model     string            `json:"model,omitempty"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
+	TimeTTL   int               `json:"time_ttl,omitempty"` // Session TTL in seconds (0 = no expiration)
 }
 
 // CreateSessionResponse represents the response from creating a new session.
@@ -534,12 +535,14 @@ type CreateSessionResponse struct {
 
 // CreateSession creates a new OpenCode session via HTTP API.
 // This is used for headless spawns (no tmux window).
-func (c *Client) CreateSession(title, directory, model string, metadata map[string]string) (*CreateSessionResponse, error) {
+// timeTTL is the session expiration time in seconds (0 = no expiration).
+func (c *Client) CreateSession(title, directory, model string, metadata map[string]string, timeTTL int) (*CreateSessionResponse, error) {
 	payload := CreateSessionRequest{
 		Title:     title,
 		Directory: directory,
 		Model:     model,
 		Metadata:  metadata,
+		TimeTTL:   timeTTL,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

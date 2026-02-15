@@ -1,0 +1,93 @@
+# Verification Specification for Session TTL Implementation
+
+## Build Verification
+- command: go build ./...
+  expected: Clean build with no errors
+  status: ✅ PASSED
+  notes: All packages compiled successfully
+
+## Test Verification
+- command: go test ./pkg/opencode -run TestCreateSession
+  expected: All CreateSession tests pass, including new TTL test
+  status: ✅ PASSED
+  notes: |
+    - TestCreateSession: PASS
+    - TestCreateSessionWithoutModel: PASS
+    - TestCreateSessionWithTTL (worker 4h TTL): PASS
+    - TestCreateSessionWithTTL (orchestrator no TTL): PASS
+
+- command: go test ./pkg/spawn/backends
+  expected: Backend tests pass with new TTL logic
+  status: ✅ PASSED
+  notes: Headless backend tests passed
+
+## Code Changes Summary
+Modified files:
+1. pkg/opencode/client.go
+   - Added TimeTTL field to CreateSessionRequest struct
+   - Updated CreateSession function signature to accept timeTTL parameter
+   
+2. pkg/spawn/backends/headless.go
+   - Added TTL calculation logic: 4 hours for workers, 0 for orchestrators
+   - Pass calculated TTL to CreateSession call
+
+3. cmd/orch/spawn_cmd.go
+   - Updated inline spawn mode to calculate and pass TTL
+   - Updated headless spawn helper to calculate and pass TTL
+
+4. cmd/orch/kb.go
+   - Updated kb ask sessions to use 4-hour TTL
+
+5. pkg/opencode/client_test.go
+   - Updated existing tests to pass TTL parameter
+   - Added TestCreateSessionWithTTL to verify TTL behavior
+
+## Runtime Verification (Manual Steps Required)
+
+The following verifications require OpenCode server to be running and cannot be automated:
+
+### 1. Worker Session TTL Verification
+**Steps:**
+1. Spawn a worker session: `orch spawn --headless --skill feature-impl "test task"`
+2. Check OpenCode database for time_ttl field:
+   ```bash
+   sqlite3 ~/.local/share/opencode/opencode.db "SELECT id, title, time_ttl FROM sessions ORDER BY created DESC LIMIT 1;"
+   ```
+3. Verify time_ttl is set to 14400 (4 hours in seconds)
+
+**Expected:** Worker session has time_ttl = 14400
+
+### 2. Orchestrator Session TTL Verification
+**Steps:**
+1. Spawn an orchestrator session: `orch spawn --skill orchestrator --goal "test goal"`
+2. Check OpenCode database for time_ttl field:
+   ```bash
+   sqlite3 ~/.local/share/opencode/opencode.db "SELECT id, title, time_ttl FROM sessions ORDER BY created DESC LIMIT 1;"
+   ```
+3. Verify time_ttl is NULL or 0
+
+**Expected:** Orchestrator session has time_ttl = 0 or NULL (no expiration)
+
+### 3. Automatic Cleanup Verification
+**Steps:**
+1. Create a test worker session with short TTL (modify code temporarily to use 60 seconds)
+2. Wait 5-10 minutes (OpenCode cleanup runs every 5 minutes)
+3. Query sessions to verify expired session was deleted
+4. Verify active sessions (last updated within TTL) are not deleted
+
+**Expected:** Expired sessions are automatically cleaned up by OpenCode
+
+## Integration Points
+
+The implementation integrates with OpenCode fork's session TTL feature (commit f3c3865b8):
+- OpenCode accepts time_ttl field during session creation
+- Periodic cleanup job runs every 5 minutes
+- Respects active prompts (won't delete sessions with status = "busy")
+- TTL is calculated from last update time, not creation time
+
+## Notes
+
+- The implementation follows the specification: worker sessions get 4-hour TTL, orchestrator sessions persist indefinitely
+- All code paths that create sessions have been updated to pass TTL
+- Tests verify that TTL is correctly included in CreateSession API requests
+- Runtime verification requires manual testing with OpenCode server running

@@ -98,7 +98,16 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 		"tier":           cfg.Tier,
 		"spawn_mode":     "headless",
 	}
-	session, err := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model, metadata)
+
+	// Calculate TTL based on session type
+	// Worker sessions: 4 hours (14400 seconds)
+	// Orchestrator sessions: 0 (no expiration)
+	timeTTL := 4 * 60 * 60 // 4 hours in seconds
+	if cfg.IsOrchestrator {
+		timeTTL = 0 // Orchestrator sessions persist until manually cleaned
+	}
+
+	session, err := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model, metadata, timeTTL)
 	if err != nil {
 		return nil, spawn.WrapSpawnError(err, "Failed to create session via API")
 	}
