@@ -494,6 +494,93 @@ func TestVerificationTracker_ConcurrentVerificationAndCompletion(t *testing.T) {
 	// (unless last operations were all RecordCompletion)
 }
 
+func TestVerificationTracker_SeedFromBacklog(t *testing.T) {
+	tests := []struct {
+		name           string
+		threshold      int
+		seedCount      int
+		expectPaused   bool
+		expectCounter  int
+	}{
+		{
+			name:          "seed below threshold",
+			threshold:     3,
+			seedCount:     2,
+			expectPaused:  false,
+			expectCounter: 2,
+		},
+		{
+			name:          "seed at threshold triggers pause",
+			threshold:     3,
+			seedCount:     3,
+			expectPaused:  true,
+			expectCounter: 3,
+		},
+		{
+			name:          "seed above threshold triggers pause",
+			threshold:     3,
+			seedCount:     5,
+			expectPaused:  true,
+			expectCounter: 5,
+		},
+		{
+			name:          "seed with zero threshold (disabled)",
+			threshold:     0,
+			seedCount:     5,
+			expectPaused:  false,
+			expectCounter: 5,
+		},
+		{
+			name:          "seed zero count",
+			threshold:     3,
+			seedCount:     0,
+			expectPaused:  false,
+			expectCounter: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vt := NewVerificationTracker(tt.threshold)
+			vt.SeedFromBacklog(tt.seedCount)
+
+			if vt.IsPaused() != tt.expectPaused {
+				t.Errorf("IsPaused() = %v, want %v", vt.IsPaused(), tt.expectPaused)
+			}
+
+			status := vt.Status()
+			if status.CompletionsSinceVerification != tt.expectCounter {
+				t.Errorf("CompletionsSinceVerification = %v, want %v",
+					status.CompletionsSinceVerification, tt.expectCounter)
+			}
+		})
+	}
+}
+
+func TestVerificationTracker_SeedThenRecord(t *testing.T) {
+	// Seed with 2 of 3, then record 1 more to hit threshold
+	vt := NewVerificationTracker(3)
+	vt.SeedFromBacklog(2)
+
+	if vt.IsPaused() {
+		t.Fatal("Should not be paused after seeding 2 with threshold 3")
+	}
+
+	shouldPause := vt.RecordCompletion()
+	if !shouldPause {
+		t.Error("RecordCompletion should signal pause at threshold")
+	}
+	if !vt.IsPaused() {
+		t.Error("Should be paused after reaching threshold")
+	}
+
+	status := vt.Status()
+	if status.CompletionsSinceVerification != 3 {
+		t.Errorf("Expected 3 completions (2 seeded + 1 recorded), got %d",
+			status.CompletionsSinceVerification)
+	}
+}
+
 // Pressure test: Threshold boundary concurrent access
 func TestVerificationTracker_ThresholdBoundaryConcurrent(t *testing.T) {
 	threshold := 3

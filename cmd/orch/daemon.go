@@ -172,6 +172,57 @@ func init() {
 	daemonOnceCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
 }
 
+// daemonConfigFromFlags builds a Config starting from DefaultConfig(),
+// overriding with CLI flag values. All daemon paths (run, once, dry-run,
+// preview) MUST use this function instead of constructing Config directly.
+func daemonConfigFromFlags() daemon.Config {
+	config := daemon.DefaultConfig()
+
+	// Override with CLI flags
+	config.PollInterval = time.Duration(daemonPollInterval) * time.Second
+	config.MaxAgents = daemonMaxAgents
+	config.Label = daemonLabel
+	config.SpawnDelay = time.Duration(daemonDelay) * time.Second
+	config.DryRun = daemonDryRun
+	config.Verbose = daemonVerbose
+	config.ReflectEnabled = daemonReflectInterval > 0
+	config.ReflectInterval = time.Duration(daemonReflectInterval) * time.Minute
+	config.ReflectCreateIssues = daemonReflectIssues
+	config.CleanupEnabled = daemonCleanupEnabled && daemonCleanupInterval > 0
+	config.CleanupInterval = time.Duration(daemonCleanupInterval) * time.Minute
+	config.CleanupAgeDays = daemonCleanupAge
+	config.CleanupPreserveOrchestrator = daemonCleanupPreserveOrch
+	config.CleanupServerURL = serverURL
+
+	return config
+}
+
+// seedVerificationTracker seeds the tracker with the backlog count.
+// Called after daemon construction, before entering the main loop.
+func seedVerificationTracker(d *daemon.Daemon) {
+	if d.VerificationTracker == nil {
+		return
+	}
+
+	count, err := daemon.CountUnverifiedCompletions()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not seed verification tracker: %v\n", err)
+		return
+	}
+
+	if count > 0 {
+		d.VerificationTracker.SeedFromBacklog(count)
+		fmt.Printf("  Verification backlog: %d unverified completions from previous sessions\n", count)
+
+		if d.VerificationTracker.IsPaused() {
+			status := d.VerificationTracker.Status()
+			fmt.Printf("  Warning: Verification pause: backlog exceeds threshold (%d/%d)\n",
+				count, status.Threshold)
+			fmt.Println("  Run 'orch daemon resume' after reviewing completed work")
+		}
+	}
+}
+
 func runDaemonLoop() error {
 	// Handle dry-run mode
 	if daemonDryRun {
@@ -184,32 +235,16 @@ func runDaemonLoop() error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	// Build configuration from flags
-	defaults := daemon.DefaultConfig()
-	config := daemon.Config{
-		PollInterval:                time.Duration(daemonPollInterval) * time.Second,
-		MaxAgents:                   daemonMaxAgents,
-		Label:                       daemonLabel,
-		SpawnDelay:                  time.Duration(daemonDelay) * time.Second,
-		DryRun:                      daemonDryRun,
-		Verbose:                     daemonVerbose,
-		ReflectEnabled:              daemonReflectInterval > 0,
-		ReflectInterval:             time.Duration(daemonReflectInterval) * time.Minute,
-		ReflectCreateIssues:         daemonReflectIssues,
-		CleanupEnabled:              daemonCleanupEnabled && daemonCleanupInterval > 0,
-		CleanupInterval:             time.Duration(daemonCleanupInterval) * time.Minute,
-		CleanupAgeDays:              daemonCleanupAge,
-		CleanupPreserveOrchestrator: daemonCleanupPreserveOrch,
-		CleanupServerURL:            serverURL, // Use global serverURL from root command
-		VerificationPauseThreshold:  defaults.VerificationPauseThreshold,
-	}
-
+	config := daemonConfigFromFlags()
 	d := daemon.NewWithConfig(config)
 
 	// Enable hotspot checking for auto-extraction.
 	// When a triage:ready issue targets a CRITICAL hotspot file (>1500 lines),
 	// the daemon will spawn an extraction agent first and block the feature issue.
 	d.HotspotChecker = daemon.NewGitHotspotChecker()
+
+	// Seed verification tracker with unverified backlog from previous sessions
+	seedVerificationTracker(d)
 
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -686,15 +721,14 @@ func formatDaemonDuration(d time.Duration) string {
 }
 
 func runDaemonDryRun() error {
-	defaults := daemon.DefaultConfig()
-	config := daemon.Config{
-		Label:                      daemonLabel,
-		VerificationPauseThreshold: defaults.VerificationPauseThreshold,
-	}
+	config := daemonConfigFromFlags()
 	d := daemon.NewWithConfig(config)
 
 	// Configure hotspot checking for dry-run
 	d.HotspotChecker = daemon.NewGitHotspotChecker()
+
+	// Seed verification tracker with unverified backlog
+	seedVerificationTracker(d)
 
 	result, err := d.Preview()
 	if err != nil {
@@ -744,12 +778,11 @@ func runDaemonDryRun() error {
 }
 
 func runDaemonOnce() error {
-	defaults := daemon.DefaultConfig()
-	config := daemon.Config{
-		Label:                      daemonLabel,
-		VerificationPauseThreshold: defaults.VerificationPauseThreshold,
-	}
+	config := daemonConfigFromFlags()
 	d := daemon.NewWithConfig(config)
+
+	// Seed verification tracker with unverified backlog
+	seedVerificationTracker(d)
 
 	// Show verification status before spawning
 	if d.VerificationTracker != nil {
@@ -798,13 +831,14 @@ func runDaemonOnce() error {
 }
 
 func runDaemonPreview() error {
-	config := daemon.Config{
-		Label: daemonLabel,
-	}
+	config := daemonConfigFromFlags()
 	d := daemon.NewWithConfig(config)
 
 	// Configure hotspot checking for preview
 	d.HotspotChecker = daemon.NewGitHotspotChecker()
+
+	// Seed verification tracker with unverified backlog
+	seedVerificationTracker(d)
 
 	result, err := d.Preview()
 	if err != nil {

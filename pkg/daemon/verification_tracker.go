@@ -102,6 +102,20 @@ func (vt *VerificationTracker) Status() VerificationStatus {
 	}
 }
 
+// SeedFromBacklog sets the completion counter to reflect existing
+// unverified backlog. Call after construction, before entering the
+// main loop, to make the tracker aware of work completed before
+// this daemon session started.
+func (vt *VerificationTracker) SeedFromBacklog(unverifiedCount int) {
+	vt.mu.Lock()
+	defer vt.mu.Unlock()
+
+	vt.completionsSinceVerification = unverifiedCount
+	if vt.threshold > 0 && unverifiedCount >= vt.threshold {
+		vt.isPaused = true
+	}
+}
+
 // Resume manually unpauses the daemon without resetting the counter.
 // Dylan can resume after reviewing completed work even if counter hasn't reset.
 // This allows for "I've reviewed, continue" without requiring manual orch complete.
