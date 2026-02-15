@@ -3,7 +3,6 @@
 	import { knowledgeTree, type TreeView, type KnowledgeNode, type NodeType } from '$lib/stores/knowledge-tree';
 	import { KnowledgeTree as KnowledgeTreeComponent } from '$lib/components/knowledge-tree';
 	import type { ConnectionStatus } from '$lib/services/sse-connection';
-	import type { Readable } from 'svelte/store';
 
 	// localStorage key for expansion state
 	const EXPANSION_STATE_KEY = 'knowledge-tree-expansion';
@@ -38,10 +37,11 @@
 		}
 	}
 
-	// Track expanded nodes
+	// Expansion state is fully owned by this component, not by the store.
+	// This makes it immune to tree data replacements from SSE updates.
 	let expandedNodes = loadExpansionState();
 
-	// Subscribe to SSE status updates
+	// Subscribe to SSE connection status
 	function subscribeSSEStatus() {
 		if (sseStatusUnsubscribe) sseStatusUnsubscribe();
 		const statusStore = knowledgeTree.getSSEStatus();
@@ -50,35 +50,17 @@
 		}
 	}
 
-	// Save and restore scroll position around store updates
-	let savedScrollTop = 0;
-	const storeUnsubscribe = knowledgeTree.subscribe(() => {
-		// After store update, restore scroll position on next tick
-		if (scrollContainer && savedScrollTop > 0) {
-			const pos = savedScrollTop;
-			requestAnimationFrame(() => {
-				if (scrollContainer) scrollContainer.scrollTop = pos;
-			});
-		}
-	});
-
-	// Wrap the store's connectSSE to intercept updates for scroll preservation
-	function connectWithScrollPreservation(view: TreeView, expandedIds: Set<string>) {
-		knowledgeTree.connectSSE(view, expandedIds);
-		subscribeSSEStatus();
-	}
-
 	// Load initial tree
 	onMount(async () => {
-		await knowledgeTree.fetch(currentView, expandedNodes);
-		connectWithScrollPreservation(currentView, expandedNodes);
+		await knowledgeTree.fetch(currentView);
+		knowledgeTree.connectSSE(currentView);
+		subscribeSSEStatus();
 		loading = false;
 	});
 
 	// Cleanup on unmount
 	onDestroy(() => {
 		knowledgeTree.disconnectSSE();
-		storeUnsubscribe();
 		if (sseStatusUnsubscribe) sseStatusUnsubscribe();
 	});
 
@@ -87,44 +69,46 @@
 		loading = true;
 		currentView = currentView === 'knowledge' ? 'work' : 'knowledge';
 
-		// Disconnect old SSE, fetch new tree, reconnect SSE
 		knowledgeTree.disconnectSSE();
-		await knowledgeTree.fetch(currentView, expandedNodes);
-		connectWithScrollPreservation(currentView, expandedNodes);
+		await knowledgeTree.fetch(currentView);
+		knowledgeTree.connectSSE(currentView);
+		subscribeSSEStatus();
 		loading = false;
 	}
 
-	// Handle node toggle
+	// Handle node toggle - purely local state, independent of store
 	function handleNodeToggle(nodeId: string) {
-		knowledgeTree.toggleNode(nodeId);
-
-		// Update expansion state tracking
 		if (expandedNodes.has(nodeId)) {
 			expandedNodes.delete(nodeId);
 		} else {
 			expandedNodes.add(nodeId);
 		}
-		expandedNodes = expandedNodes; // Trigger reactivity
+		expandedNodes = expandedNodes; // Trigger Svelte reactivity
 		saveExpansionState(expandedNodes);
+	}
+
+	// Sort children by ID for stable ordering across SSE updates.
+	// Backend may return clusters in different order based on filesystem mod times.
+	function stableSort(children: KnowledgeNode[]): KnowledgeNode[] {
+		return [...children].sort((a, b) => a.ID.localeCompare(b.ID));
 	}
 
 	// Filter tree by search and type
 	function filterTree(node: KnowledgeNode | null): KnowledgeNode | null {
 		if (!node) return null;
 
-		// Check if this node matches filters
 		const matchesSearch = searchQuery === '' ||
 			node.Title.toLowerCase().includes(searchQuery.toLowerCase());
 
 		const matchesType = selectedTypes.size === 0 ||
 			selectedTypes.has(node.Type);
 
-		// Filter children recursively
-		const filteredChildren = node.Children
-			?.map(child => filterTree(child))
-			.filter(child => child !== null) as KnowledgeNode[] || [];
+		const filteredChildren = stableSort(
+			node.Children
+				?.map(child => filterTree(child))
+				.filter(child => child !== null) as KnowledgeNode[] || []
+		);
 
-		// Include node if it matches OR has matching children
 		if (matchesSearch && matchesType) {
 			return { ...node, Children: filteredChildren };
 		} else if (filteredChildren.length > 0) {
@@ -141,17 +125,14 @@
 		} else {
 			selectedTypes.add(type);
 		}
-		selectedTypes = selectedTypes; // Trigger reactivity
+		selectedTypes = selectedTypes;
 	}
 
-	// Get filtered root nodes - save scroll before recomputing
-	$: {
-		if (scrollContainer) savedScrollTop = scrollContainer.scrollTop;
-	}
+	// Filtered tree derived from store data
 	$: filteredTree = $knowledgeTree.tree ? filterTree($knowledgeTree.tree) : null;
 	$: rootChildren = filteredTree?.Children || [];
 
-	// SSE status indicator color
+	// SSE status indicator
 	$: statusColor = sseStatus === 'connected' ? 'bg-green-500' : sseStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500';
 	$: statusLabel = sseStatus === 'connected' ? 'Live' : sseStatus === 'connecting' ? 'Connecting...' : 'Disconnected';
 
@@ -234,6 +215,7 @@
 						node={child}
 						depth={0}
 						onToggle={handleNodeToggle}
+						{expandedNodes}
 					/>
 				{/each}
 			</div>

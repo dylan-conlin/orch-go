@@ -1,10 +1,11 @@
 <script lang="ts">
 	import type { KnowledgeNode, NodeType, NodeStatus } from '$lib/stores/knowledge-tree';
-	
+
 	export let node: KnowledgeNode;
 	export let depth: number = 0;
 	export let onToggle: (nodeId: string) => void;
-	
+	export let expandedNodes: Set<string>;
+
 	// Node icon by type (from design doc)
 	function getNodeIcon(type: NodeType): string {
 		switch (type) {
@@ -20,7 +21,7 @@
 			default: return '◦';
 		}
 	}
-	
+
 	// Color by type (from design doc)
 	function getNodeColor(type: NodeType): string {
 		switch (type) {
@@ -34,7 +35,7 @@
 			default: return 'text-gray-500';
 		}
 	}
-	
+
 	// Status badge color
 	function getStatusColor(status: NodeStatus): string {
 		switch (status) {
@@ -46,15 +47,15 @@
 			default: return 'bg-gray-500/20 text-gray-400';
 		}
 	}
-	
+
 	function handleClick() {
 		if (node.Children && node.Children.length > 0) {
 			onToggle(node.ID);
 		}
 	}
-	
+
 	$: hasChildren = node.Children && node.Children.length > 0;
-	$: isExpanded = node.expanded === true; // Default to collapsed; expansion state managed by store
+	$: isExpanded = expandedNodes.has(node.ID);
 	$: indentClass = `pl-${Math.min(depth * 4, 16)}`;
 </script>
 
@@ -74,24 +75,24 @@
 		{:else}
 			<span class="w-3"></span>
 		{/if}
-		
+
 		<!-- Node icon -->
 		<span class="text-base {getNodeColor(node.Type)}">
 			{getNodeIcon(node.Type)}
 		</span>
-		
+
 		<!-- Title -->
 		<span class="flex-1 truncate text-gray-200">
 			{node.Title}
 		</span>
-		
+
 		<!-- Status badge -->
 		{#if node.Status && node.Status !== 'complete'}
 			<span class="text-xs px-2 py-0.5 rounded {getStatusColor(node.Status)}">
 				{node.Status}
 			</span>
 		{/if}
-		
+
 		<!-- Date -->
 		{#if node.Date}
 			<span class="text-xs text-gray-500">
@@ -99,11 +100,11 @@
 			</span>
 		{/if}
 	</button>
-	
+
 	<!-- Children (recursive) -->
 	{#if hasChildren && isExpanded}
 		{#each node.Children as child (child.ID)}
-			<svelte:self node={child} depth={depth + 1} {onToggle} />
+			<svelte:self node={child} depth={depth + 1} {onToggle} {expandedNodes} />
 		{/each}
 	{/if}
 </div>

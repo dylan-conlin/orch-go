@@ -33,8 +33,6 @@ export interface KnowledgeNode {
   Date?: string; // ISO timestamp
   Children: KnowledgeNode[];
   Metadata?: Record<string, any>;
-  // UI state
-  expanded?: boolean;
 }
 
 // Tree response
@@ -49,13 +47,16 @@ export type TreeView = 'knowledge' | 'work';
 // Create SSE connection for tree updates
 let treeSSE: SSEConnection | null = null;
 
-// Build a structural fingerprint of the tree (ignoring UI state like expanded)
-// to detect when content actually changed vs just a re-send
+// Build a structural fingerprint of the tree to detect actual content changes.
+// Ignores fields that change without meaningful structural impact (Date, Metadata, Path).
+// Children are sorted by ID before fingerprinting so reordering doesn't trigger false updates.
 function treeFingerprint(node: KnowledgeNode | null): string {
   if (!node) return '';
   const parts = [node.ID, node.Type, node.Title, node.Status || ''];
   if (node.Children?.length) {
-    parts.push(node.Children.map(c => treeFingerprint(c)).join(','));
+    const childFps = node.Children.map(c => treeFingerprint(c));
+    childFps.sort();
+    parts.push(childFps.join(','));
   }
   return parts.join('|');
 }
@@ -66,26 +67,11 @@ function createKnowledgeTreeStore() {
   // Track last tree fingerprint to skip duplicate updates
   let lastFingerprint = '';
 
-  // Apply expansion state to tree nodes
-  const applyExpansionState = (node: KnowledgeNode | null, expandedIds: Set<string>): void => {
-    if (!node) return;
-
-    // Set expanded state based on whether this node's ID is in the expandedIds set
-    node.expanded = expandedIds.has(node.ID);
-
-    // Recursively apply to children
-    if (node.Children) {
-      for (const child of node.Children) {
-        applyExpansionState(child, expandedIds);
-      }
-    }
-  };
-
   return {
     subscribe,
 
     // Fetch tree from API
-    async fetch(view: TreeView = 'knowledge', expandedIds?: Set<string>): Promise<void> {
+    async fetch(view: TreeView = 'knowledge'): Promise<void> {
       try {
         const url = `${API_BASE}/api/tree?view=${view}`;
         const response = await fetch(url);
@@ -95,12 +81,6 @@ function createKnowledgeTreeStore() {
         }
 
         const tree = await response.json();
-
-        // Apply expansion state if provided
-        if (expandedIds) {
-          applyExpansionState(tree, expandedIds);
-        }
-
         lastFingerprint = treeFingerprint(tree);
         set({ tree });
       } catch (error) {
@@ -110,7 +90,7 @@ function createKnowledgeTreeStore() {
     },
 
     // Connect to SSE stream for live updates
-    connectSSE(view: TreeView = 'knowledge', expandedIds?: Set<string>): void {
+    connectSSE(view: TreeView = 'knowledge'): void {
       if (treeSSE) {
         treeSSE.disconnect();
       }
@@ -126,11 +106,6 @@ function createKnowledgeTreeStore() {
               const fp = treeFingerprint(tree);
               if (fp === lastFingerprint) return;
               lastFingerprint = fp;
-
-              // Apply expansion state to preserve UI state across SSE updates
-              if (expandedIds) {
-                applyExpansionState(tree, expandedIds);
-              }
 
               set({ tree });
             } catch (error) {
@@ -156,27 +131,6 @@ function createKnowledgeTreeStore() {
     // Get SSE connection status store (reactive)
     getSSEStatus(): Readable<ConnectionStatus> | null {
       return treeSSE?.status ?? null;
-    },
-
-    // Toggle node expansion
-    toggleNode(nodeId: string): void {
-      update(state => {
-        if (!state.tree) return state;
-
-        const toggleInTree = (node: KnowledgeNode): boolean => {
-          if (node.ID === nodeId) {
-            node.expanded = !node.expanded;
-            return true;
-          }
-          for (const child of node.Children || []) {
-            if (toggleInTree(child)) return true;
-          }
-          return false;
-        };
-
-        toggleInTree(state.tree);
-        return { ...state };
-      });
     }
   };
 }
