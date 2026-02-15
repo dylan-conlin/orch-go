@@ -174,8 +174,14 @@ Test findings here.
 		t.Fatalf("Expected 1 relationship, got %d", len(rels))
 	}
 
-	if rels[0].To != ".kb/investigations/other.md" {
-		t.Errorf("Expected relationship to .kb/investigations/other.md, got %s", rels[0].To)
+	// After Phase 1b changes, Prior-Work relationships are reversed:
+	// From = parent (Prior-Work source), To = child (this investigation)
+	if !strings.HasSuffix(rels[0].From, ".kb/investigations/other.md") {
+		t.Errorf("Expected relationship From to end with .kb/investigations/other.md, got %s", rels[0].From)
+	}
+
+	if rels[0].To != invPath {
+		t.Errorf("Expected relationship To to be %s, got %s", invPath, rels[0].To)
 	}
 
 	if rels[0].RelationType != "synthesizes" {

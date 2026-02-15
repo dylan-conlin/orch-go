@@ -38,7 +38,7 @@ var (
 
 func init() {
 	treeCmd.Flags().StringVar(&treeCluster, "cluster", "", "Filter to specific cluster")
-	treeCmd.Flags().IntVar(&treeDepth, "depth", 0, "Maximum depth to render (0 = unlimited)")
+	treeCmd.Flags().IntVar(&treeDepth, "depth", 2, "Maximum depth to render (0 = unlimited)")
 	treeCmd.Flags().StringVar(&treeFormat, "format", "text", "Output format: text or json")
 	treeCmd.Flags().BoolVar(&treeWork, "work", false, "Show work view (issues as primary nodes)")
 

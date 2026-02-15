@@ -26,8 +26,32 @@ func DetectClusters(kbDir string, nodes []*KnowledgeNode, relationships []Relati
 		}
 	}
 
-	// 2. Assign nodes to clusters based on their path
+	// 2. Add a "models" cluster for all model nodes
+	clusters["models"] = &Cluster{
+		Name:  "models",
+		Nodes: []*KnowledgeNode{},
+	}
+
+	// 3. Add a "decisions" cluster for all decision nodes
+	clusters["decisions"] = &Cluster{
+		Name:  "decisions",
+		Nodes: []*KnowledgeNode{},
+	}
+
+	// 4. Assign nodes to clusters based on their path and type
 	for _, node := range nodes {
+		// Check if node is a model
+		if node.Type == NodeTypeModel {
+			clusters["models"].Nodes = append(clusters["models"].Nodes, node)
+			continue
+		}
+
+		// Check if node is a decision
+		if node.Type == NodeTypeDecision {
+			clusters["decisions"].Nodes = append(clusters["decisions"].Nodes, node)
+			continue
+		}
+
 		// Check if node is in a synthesized subdirectory
 		if strings.Contains(node.Path, "/investigations/synthesized/") {
 			parts := strings.Split(node.Path, "/investigations/synthesized/")
@@ -66,17 +90,20 @@ func BuildRelationshipGraph(nodes []*KnowledgeNode, relationships []Relationship
 	graph := make(map[string][]*KnowledgeNode)
 	nodeMap := make(map[string]*KnowledgeNode)
 
-	// Index nodes by their path
+	// Index nodes by their path AND by their ID (for models, ID is directory, Path is .md file)
 	for _, node := range nodes {
 		nodeMap[node.Path] = node
+		if node.ID != node.Path {
+			nodeMap[node.ID] = node
+		}
 	}
 
 	// Build parent-child relationships
 	for _, rel := range relationships {
-		parent, parentExists := nodeMap[rel.From]
-		child, childExists := nodeMap[rel.To]
+		parent := findNodeByPath(nodeMap, rel.From)
+		child := findNodeByPath(nodeMap, rel.To)
 
-		if parentExists && childExists {
+		if parent != nil && child != nil {
 			// Add child to parent's children if not already there
 			found := false
 			for _, existingChild := range parent.Children {
@@ -95,4 +122,32 @@ func BuildRelationshipGraph(nodes []*KnowledgeNode, relationships []Relationship
 	}
 
 	return graph
+}
+
+// findNodeByPath finds a node by path, handling both exact matches and directory matches
+func findNodeByPath(nodeMap map[string]*KnowledgeNode, path string) *KnowledgeNode {
+	// Try exact match first
+	if node, ok := nodeMap[path]; ok {
+		return node
+	}
+
+	// For directory paths (like .kb/models/completion-verification/), try to match by ID
+	// Models use directory as ID, so check if any node's ID matches this path
+	for _, node := range nodeMap {
+		if node.ID == path {
+			return node
+		}
+		// Also try matching directory to directory
+		if strings.HasSuffix(path, "/") && node.Type == NodeTypeModel {
+			if strings.HasSuffix(node.ID, "/") && node.ID == path {
+				return node
+			}
+			// Try without trailing slash
+			if node.ID == strings.TrimSuffix(path, "/") {
+				return node
+			}
+		}
+	}
+
+	return nil
 }

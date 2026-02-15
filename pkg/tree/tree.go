@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
+
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
 
 // BuildKnowledgeTree builds the full knowledge tree from .kb/ directory
@@ -129,9 +133,137 @@ func buildClusterTree(cluster *Cluster) []*KnowledgeNode {
 
 // BuildWorkTree builds the work view tree (issues as primary nodes)
 func BuildWorkTree(kbDir string, projectDir string, opts TreeOptions) ([]*KnowledgeNode, error) {
-	// For Phase 1, we'll create a placeholder implementation
-	// In Phase 2, this would integrate with beads to get actual issues
+	// Initialize beads client (CLI client for simplicity)
+	var client beads.BeadsClient
+	client = beads.NewCLIClient()
 
-	// For now, return empty slice since beads integration is out of scope for Phase 1
-	return []*KnowledgeNode{}, nil
+	// Get all issues
+	issues, err := client.List(&beads.ListArgs{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list issues: %w", err)
+	}
+
+	// Parse all knowledge artifacts to build a reference map
+	// This allows us to find which artifacts issues reference
+	artifactMap := make(map[string]*KnowledgeNode)
+
+	// Parse investigations
+	invDir := filepath.Join(kbDir, "investigations")
+	if invNodes, _, err := ParseInvestigations(invDir); err == nil {
+		for _, node := range invNodes {
+			// Index by filename
+			filename := filepath.Base(node.Path)
+			artifactMap[filename] = node
+			artifactMap[node.Path] = node
+		}
+	}
+
+	// Parse decisions
+	decDir := filepath.Join(kbDir, "decisions")
+	if decNodes, _, err := ParseDecisions(decDir); err == nil {
+		for _, node := range decNodes {
+			filename := filepath.Base(node.Path)
+			artifactMap[filename] = node
+			artifactMap[node.Path] = node
+		}
+	}
+
+	// Parse models
+	modelDir := filepath.Join(kbDir, "models")
+	if modelNodes, _, err := ParseModels(modelDir); err == nil {
+		for _, node := range modelNodes {
+			artifactMap[node.ID] = node
+			artifactMap[node.Path] = node
+		}
+	}
+
+	// Convert beads issues to KnowledgeNodes and link to artifacts
+	var issueNodes []*KnowledgeNode
+	for _, issue := range issues {
+		issueNode := convertIssueToNode(&issue)
+
+		// Parse issue description to find references to knowledge artifacts
+		// Look for file paths in description
+		linkedArtifacts := findReferencedArtifacts(issue.Description, artifactMap)
+		issueNode.Children = linkedArtifacts
+
+		issueNodes = append(issueNodes, issueNode)
+	}
+
+	return issueNodes, nil
+}
+
+// convertIssueToNode converts a beads Issue to a KnowledgeNode
+func convertIssueToNode(issue *beads.Issue) *KnowledgeNode {
+	status := StatusOpen
+	switch issue.Status {
+	case "closed":
+		status = StatusClosed
+	case "in_progress":
+		status = StatusInProgress
+	case "open":
+		if hasLabel(issue.Labels, "triage:review") {
+			status = StatusTriage
+		} else {
+			status = StatusOpen
+		}
+	}
+
+	return &KnowledgeNode{
+		ID:       issue.ID,
+		Type:     NodeTypeIssue,
+		Title:    issue.Title,
+		Path:     issue.ID, // Use ID as path for issues
+		Status:   status,
+		Children: []*KnowledgeNode{},
+		Metadata: map[string]interface{}{
+			"priority": issue.Priority,
+			"type":     issue.IssueType,
+		},
+	}
+}
+
+// hasLabel checks if a label exists in the labels slice
+func hasLabel(labels []string, target string) bool {
+	for _, label := range labels {
+		if label == target {
+			return true
+		}
+	}
+	return false
+}
+
+// findReferencedArtifacts finds knowledge artifacts referenced in text
+func findReferencedArtifacts(text string, artifactMap map[string]*KnowledgeNode) []*KnowledgeNode {
+	var artifacts []*KnowledgeNode
+	seen := make(map[string]bool)
+
+	// Look for .kb/ paths in the text
+	// Match patterns like: .kb/investigations/2026-02-14-inv-something.md
+	// or decisions/2026-02-14-something.md
+	pathRegex := regexp.MustCompile(`(?:\.kb/)?(?:investigations|decisions|models)/[^\s\)]+\.md`)
+	matches := pathRegex.FindAllString(text, -1)
+
+	for _, match := range matches {
+		// Normalize the path
+		normalized := match
+		if !strings.HasPrefix(normalized, ".kb/") {
+			normalized = ".kb/" + normalized
+		}
+
+		// Try to find the artifact
+		if artifact, ok := artifactMap[normalized]; ok && !seen[artifact.ID] {
+			artifacts = append(artifacts, artifact)
+			seen[artifact.ID] = true
+		} else {
+			// Try just the filename
+			filename := filepath.Base(match)
+			if artifact, ok := artifactMap[filename]; ok && !seen[artifact.ID] {
+				artifacts = append(artifacts, artifact)
+				seen[artifact.ID] = true
+			}
+		}
+	}
+
+	return artifacts
 }

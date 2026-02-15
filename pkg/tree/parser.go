@@ -134,9 +134,14 @@ func parseInvestigation(path string) (*KnowledgeNode, []Relationship, error) {
 					continue
 				}
 
+				// Resolve relative path to absolute
+				absTargetPath := resolveKbPath(path, targetPath)
+
+				// Prior-Work table lists SOURCES (parents), so reverse the direction:
+				// The target is the parent, this investigation is the child
 				relationships = append(relationships, Relationship{
-					From:         path,
-					To:           targetPath,
+					From:         absTargetPath, // Parent (source)
+					To:           path,          // Child (this investigation)
 					RelationType: relType,
 					Verified:     strings.ToLower(verified) == "yes",
 				})
@@ -226,9 +231,11 @@ func parseDecision(path string) (*KnowledgeNode, []Relationship, error) {
 		if matches := refRegex.FindAllStringSubmatch(line, -1); matches != nil {
 			for _, match := range matches {
 				if len(match) > 1 {
+					absTargetPath := resolveKbPath(path, match[1])
+					// Decision references investigation, so decision is parent, investigation is child
 					relationships = append(relationships, Relationship{
-						From:         path,
-						To:           match[1],
+						From:         path,          // Decision (parent)
+						To:           absTargetPath, // Investigation (child)
 						RelationType: "references",
 						Verified:     true,
 					})
@@ -244,7 +251,7 @@ func parseDecision(path string) (*KnowledgeNode, []Relationship, error) {
 	return node, relationships, nil
 }
 
-// ParseModels parses all model directories
+// ParseModels parses all model files and directories
 func ParseModels(dir string) ([]*KnowledgeNode, []Relationship, error) {
 	var nodes []*KnowledgeNode
 	var relationships []Relationship
@@ -254,34 +261,43 @@ func ParseModels(dir string) ([]*KnowledgeNode, []Relationship, error) {
 		return nil, nil, err
 	}
 
+	// Track which models we've already processed to avoid duplicates
+	processed := make(map[string]bool)
+
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		// Skip template file
+		if strings.HasPrefix(entry.Name(), "_") {
 			continue
 		}
 
-		modelPath := filepath.Join(dir, entry.Name())
-		modelFile := filepath.Join(modelPath, entry.Name()+".md")
+		// Handle .md files (these are the actual model files)
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+			modelName := strings.TrimSuffix(entry.Name(), ".md")
+			if processed[modelName] {
+				continue
+			}
 
-		// Check if the model file exists
-		if _, err := os.Stat(modelFile); os.IsNotExist(err) {
-			continue
-		}
+			modelFile := filepath.Join(dir, entry.Name())
+			modelDirPath := filepath.Join(dir, modelName)
 
-		node, rels, err := parseModel(modelFile, modelPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to parse %s: %v\n", modelFile, err)
-			continue
-		}
+			node, rels, err := parseModel(modelFile, modelDirPath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to parse %s: %v\n", modelFile, err)
+				continue
+			}
 
-		if node != nil {
-			nodes = append(nodes, node)
-			relationships = append(relationships, rels...)
+			if node != nil {
+				nodes = append(nodes, node)
+				relationships = append(relationships, rels...)
 
-			// Parse probes for this model
-			probesDir := filepath.Join(modelPath, "probes")
-			if probes, probeRels, err := ParseProbes(probesDir, node.ID); err == nil {
-				node.Children = append(node.Children, probes...)
-				relationships = append(relationships, probeRels...)
+				// Check if there's a corresponding directory with probes
+				probesDir := filepath.Join(modelDirPath, "probes")
+				if probes, probeRels, err := ParseProbes(probesDir, node.ID); err == nil {
+					node.Children = append(node.Children, probes...)
+					relationships = append(relationships, probeRels...)
+				}
+
+				processed[modelName] = true
 			}
 		}
 	}
@@ -489,4 +505,37 @@ func parseGuide(path string) (*KnowledgeNode, error) {
 	}
 
 	return node, nil
+}
+
+// resolveKbPath resolves a .kb/ relative path to an absolute path
+func resolveKbPath(currentFilePath, referencePath string) string {
+	// If already absolute, return as-is
+	if filepath.IsAbs(referencePath) {
+		return referencePath
+	}
+
+	// If it's a .kb/ relative path, find the .kb/ root and resolve
+	if strings.HasPrefix(referencePath, ".kb/") {
+		// Find the .kb/ directory in the current file's path
+		parts := strings.Split(currentFilePath, "/.kb/")
+		if len(parts) > 1 {
+			kbRoot := parts[0] + "/.kb/"
+			return filepath.Join(kbRoot, strings.TrimPrefix(referencePath, ".kb/"))
+		}
+	}
+
+	// If it's a model directory reference (no .md extension), return as-is for now
+	// Example: .kb/models/completion-verification/
+	// We'll match this to the model node by directory path
+	if strings.HasPrefix(referencePath, ".kb/models/") && !strings.HasSuffix(referencePath, ".md") {
+		parts := strings.Split(currentFilePath, "/.kb/")
+		if len(parts) > 1 {
+			kbRoot := parts[0] + "/.kb/"
+			return filepath.Join(kbRoot, strings.TrimPrefix(referencePath, ".kb/"))
+		}
+	}
+
+	// Otherwise resolve relative to the current file
+	dir := filepath.Dir(currentFilePath)
+	return filepath.Join(dir, referencePath)
 }
