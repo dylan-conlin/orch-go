@@ -37,6 +37,10 @@ type DaemonStatus struct {
 	// Verification holds verification tracking information.
 	// Omitted if verification tracking is disabled (threshold = 0).
 	Verification *VerificationStatusSnapshot `json:"verification,omitempty"`
+
+	// SpawnFailures holds spawn failure tracking information.
+	// Surfaced to enable health card alerting when daemon stops spawning due to failures.
+	SpawnFailures *SpawnFailureSnapshot `json:"spawn_failures,omitempty"`
 }
 
 // VerificationStatusSnapshot is a snapshot of verification tracking state.

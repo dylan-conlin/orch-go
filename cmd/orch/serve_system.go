@@ -353,6 +353,9 @@ type DaemonAPIResponse struct {
 
 	// Utilization metrics - tracks daemon vs manual spawn ratio to surface triage discipline
 	Utilization *DaemonUtilizationMetrics `json:"utilization,omitempty"`
+
+	// SpawnFailures holds spawn failure tracking information for health card alerting
+	SpawnFailures *DaemonSpawnFailures `json:"spawn_failures,omitempty"`
 }
 
 // DaemonUtilizationMetrics tracks the ratio of daemon-spawned vs manual-spawned agents.
@@ -367,6 +370,16 @@ type DaemonUtilizationMetrics struct {
 	AutoCompletions int     `json:"auto_completions"`  // Count of daemon auto-completions
 	AnalysisPeriod  string  `json:"analysis_period"`   // Time window description (e.g., "Last 7 days")
 	DaysAnalyzed    int     `json:"days_analyzed"`     // Number of days in analysis window
+}
+
+// DaemonSpawnFailures tracks spawn failures to surface them in health metrics.
+// This prevents silent failure when UpdateBeadsStatus or spawn persistently fails.
+type DaemonSpawnFailures struct {
+	ConsecutiveFailures int    `json:"consecutive_failures"`          // Failures since last successful spawn
+	TotalFailures       int    `json:"total_failures"`                // Total failures (lifetime)
+	LastFailure         string `json:"last_failure,omitempty"`        // ISO 8601 timestamp
+	LastFailureAgo      string `json:"last_failure_ago,omitempty"`    // Human-readable time since last failure
+	LastFailureReason   string `json:"last_failure_reason,omitempty"` // Error message from last failure
 }
 
 // handleDaemon returns the daemon status from ~/.orch/daemon-status.json.
@@ -408,6 +421,19 @@ func handleDaemon(w http.ResponseWriter, r *http.Request) {
 		if !status.LastSpawn.IsZero() {
 			resp.LastSpawn = status.LastSpawn.Format(time.RFC3339)
 			resp.LastSpawnAgo = formatDurationAgo(time.Since(status.LastSpawn))
+		}
+
+		// Populate spawn failures for health card visibility
+		if status.SpawnFailures != nil {
+			resp.SpawnFailures = &DaemonSpawnFailures{
+				ConsecutiveFailures: status.SpawnFailures.ConsecutiveFailures,
+				TotalFailures:       status.SpawnFailures.TotalFailures,
+				LastFailureReason:   status.SpawnFailures.LastFailureReason,
+			}
+			if !status.SpawnFailures.LastFailure.IsZero() {
+				resp.SpawnFailures.LastFailure = status.SpawnFailures.LastFailure.Format(time.RFC3339)
+				resp.SpawnFailures.LastFailureAgo = formatDurationAgo(time.Since(status.SpawnFailures.LastFailure))
+			}
 		}
 	}
 

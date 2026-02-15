@@ -491,6 +491,16 @@ func runDaemonLoop() error {
 			}
 		}
 
+		// Capture spawn failure snapshot for health card visibility
+		var spawnFailureSnapshot *daemon.SpawnFailureSnapshot
+		if d.SpawnFailureTracker != nil {
+			snapshot := d.SpawnFailureTracker.Snapshot()
+			// Only include if there have been failures
+			if snapshot.TotalFailures > 0 {
+				spawnFailureSnapshot = &snapshot
+			}
+		}
+
 		status := daemon.DaemonStatus{
 			Capacity: daemon.CapacityStatus{
 				Max:       config.MaxAgents,
@@ -503,6 +513,7 @@ func runDaemonLoop() error {
 			ReadyCount:     readyCount,
 			Status:         daemon.DetermineStatus(pollTime, config.PollInterval, isPaused),
 			Verification:   verificationSnapshot,
+			SpawnFailures:  spawnFailureSnapshot,
 		}
 		if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
 			fmt.Fprintf(os.Stderr, "Warning: failed to write status file: %v\n", err)

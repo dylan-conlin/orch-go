@@ -203,6 +203,10 @@ type Daemon struct {
 	// constraint by pausing autonomous operation after N completions without human review.
 	VerificationTracker *VerificationTracker
 
+	// SpawnFailureTracker tracks spawn failures to surface them in health metrics.
+	// This prevents silent failure when UpdateBeadsStatus persistently fails.
+	SpawnFailureTracker *SpawnFailureTracker
+
 	// listIssuesFunc is used for testing - allows mocking bd list
 	listIssuesFunc func() ([]Issue, error)
 	// spawnFunc is used for testing - allows mocking orch work
@@ -229,6 +233,7 @@ func NewWithConfig(config Config) *Daemon {
 		SpawnedIssues:             NewSpawnedIssueTracker(),
 		resumeAttempts:            make(map[string]time.Time),
 		VerificationTracker:       NewVerificationTracker(config.VerificationPauseThreshold),
+		SpawnFailureTracker:       NewSpawnFailureTracker(),
 		listIssuesFunc:            ListReadyIssues,
 		spawnFunc:                 SpawnWork,
 		reflectFunc:               DefaultRunReflection,
@@ -255,6 +260,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		SpawnedIssues:             NewSpawnedIssueTracker(),
 		resumeAttempts:            make(map[string]time.Time),
 		VerificationTracker:       NewVerificationTracker(config.VerificationPauseThreshold),
+		SpawnFailureTracker:       NewSpawnFailureTracker(),
 		listIssuesFunc:            ListReadyIssues,
 		spawnFunc:                 SpawnWork,
 		reflectFunc:               DefaultRunReflection,
@@ -859,6 +865,10 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 	// Fail-fast here prevents the Feb 14 2026 incident where 10 duplicate spawns occurred
 	// because UpdateBeadsStatus was failing silently.
 	if err := UpdateBeadsStatus(issue.ID, "in_progress"); err != nil {
+		// Track failure for health card visibility
+		if d.SpawnFailureTracker != nil {
+			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("UpdateBeadsStatus failed: %v", err))
+		}
 		// Release slot on status update failure
 		if d.Pool != nil && slot != nil {
 			d.Pool.Release(slot)
@@ -881,6 +891,10 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 
 	// Spawn the work
 	if err := d.spawnFunc(issue.ID); err != nil {
+		// Track spawn failure for health card visibility
+		if d.SpawnFailureTracker != nil {
+			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("Spawn failed: %v", err))
+		}
 		// On spawn failure, roll back beads status to open
 		if rollbackErr := UpdateBeadsStatus(issue.ID, "open"); rollbackErr != nil {
 			if d.Config.Verbose {
@@ -907,6 +921,11 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 	// Record successful spawn for rate limiting
 	if d.RateLimiter != nil {
 		d.RateLimiter.RecordSpawn()
+	}
+
+	// Record successful spawn for failure tracking
+	if d.SpawnFailureTracker != nil {
+		d.SpawnFailureTracker.RecordSuccess()
 	}
 
 	return &OnceResult{
@@ -999,6 +1018,10 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 	// Fail-fast here prevents the Feb 14 2026 incident where 10 duplicate spawns occurred
 	// because UpdateBeadsStatus was failing silently.
 	if err := UpdateBeadsStatus(issue.ID, "in_progress"); err != nil {
+		// Track failure for health card visibility
+		if d.SpawnFailureTracker != nil {
+			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("UpdateBeadsStatus failed: %v", err))
+		}
 		// Release slot on status update failure
 		if d.Pool != nil && slot != nil {
 			d.Pool.Release(slot)
@@ -1021,6 +1044,10 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 
 	// Spawn the work
 	if err := d.spawnFunc(issue.ID); err != nil {
+		// Track spawn failure for health card visibility
+		if d.SpawnFailureTracker != nil {
+			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("Spawn failed: %v", err))
+		}
 		// On spawn failure, roll back beads status to open
 		if rollbackErr := UpdateBeadsStatus(issue.ID, "open"); rollbackErr != nil {
 			if d.Config.Verbose {
@@ -1047,6 +1074,11 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 	// Record successful spawn for rate limiting
 	if d.RateLimiter != nil {
 		d.RateLimiter.RecordSpawn()
+	}
+
+	// Record successful spawn for failure tracking
+	if d.SpawnFailureTracker != nil {
+		d.SpawnFailureTracker.RecordSuccess()
 	}
 
 	return &OnceResult{
