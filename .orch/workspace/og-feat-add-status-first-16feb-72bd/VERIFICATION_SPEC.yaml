@@ -1,0 +1,90 @@
+verification_spec:
+  title: "In Progress Section - Status-First Partitioning"
+  date: "2026-02-16"
+  
+commands:
+  - step: "Verify Svelte compilation"
+    command: "cd web && npm run check 2>&1 | grep -E '(Error|routes/work-graph)'"
+    expected: "No errors specific to work-graph page (only pre-existing errors in other files)"
+    actual: "Confirmed - no new errors introduced"
+    
+  - step: "Check implementation structure"
+    command: "grep -n 'InProgressItem' web/src/routes/work-graph/+page.svelte"
+    expected: "Interface definition and usage found"
+    actual: "Lines 117-125 (interface), 128 (declaration), 389-417 (reactive block), 903-933 (rendering)"
+
+behavioral_verification:
+  - behavior: "In Progress section appears between Ready to Complete and main tree"
+    location: "web/src/routes/work-graph/+page.svelte:903-933"
+    verified: true
+    notes: "Section rendered after readyToCompleteItems block and before filteredTree block"
+    
+  - behavior: "Section shows count of in_progress issues"
+    location: "web/src/routes/work-graph/+page.svelte:910"
+    verified: true
+    notes: "Header displays '{inProgressItems.length} actively being worked on'"
+    
+  - behavior: "Agent info (phase, runtime, model) shown when available"
+    location: "web/src/routes/work-graph/+page.svelte:920-928"
+    verified: true
+    notes: "Conditional rendering for phase, runtime, and model fields from active_agent"
+    
+  - behavior: "Section styled with blue colors (border-blue-500/30, bg-blue-500/5)"
+    location: "web/src/routes/work-graph/+page.svelte:905"
+    verified: true
+    notes: "Matches design spec - blue theme similar to Ready to Complete's emerald theme"
+    
+  - behavior: "Header shows in_progress count"
+    location: "web/src/routes/work-graph/+page.svelte:809-811"
+    verified: true
+    notes: "Displays '{inProgressItems.length} in progress' in blue-400 color"
+    
+  - behavior: "In progress items extracted from workGraph nodes"
+    location: "web/src/routes/work-graph/+page.svelte:391-417"
+    verified: true
+    notes: "Reactive block filters nodes with status='in_progress' and source='beads'"
+    
+  - behavior: "Items sorted by priority then ID"
+    location: "web/src/routes/work-graph/+page.svelte:412-416"
+    verified: true
+    notes: "Sort logic: priority first (ascending), then ID (lexicographic)"
+
+manual_verification_required:
+  - check: "Visual verification in browser"
+    reason: "Glass MCP unavailable - need to manually verify rendering"
+    steps:
+      - "Navigate to http://localhost:5188"
+      - "Verify 'In Progress' section appears below 'Ready to Complete'"
+      - "Verify orch-go-pipi (current issue) appears in section"
+      - "Verify agent info (phase, runtime, model) displays correctly"
+      - "Verify blue styling matches design"
+      - "Verify section is collapsible (max-h-36 with overflow)"
+      
+  - check: "In progress issues remain in main tree"
+    reason: "Need to verify nodes not removed from tree view"
+    steps:
+      - "Scroll to main tree view"
+      - "Verify orch-go-pipi still appears in tree"
+      - "Verify no visual indicator added yet (future enhancement)"
+
+acceptance_criteria:
+  - criterion: "In_progress issues appear in dedicated section at top"
+    status: "PASS"
+    evidence: "Code inspection confirms section renders when inProgressItems.length > 0"
+    
+  - criterion: "Section shows count and is collapsible"
+    status: "PASS"
+    evidence: "Header shows count (line 910), max-h-36 with overflow-y-auto (line 912)"
+    
+  - criterion: "Agent info (phase, model) shown when available"
+    status: "PASS"
+    evidence: "Conditional rendering for phase, runtime, model (lines 920-928)"
+    
+  - criterion: "Main tree still shows all issues (in_progress not removed)"
+    status: "PASS"
+    evidence: "No filtering logic removes in_progress from filteredTree - they appear in both sections"
+
+notes:
+  - "Visual indicator in main tree not implemented - requirement #5 says 'Keep in_progress nodes in the main tree as well' which is satisfied. Visual indicator could be added as enhancement."
+  - "Web server is running on port 5188, changes should be hot-reloaded by Vite"
+  - "No manual restart required unless HMR fails"
