@@ -4,9 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
-
-	"github.com/dylan-conlin/orch-go/pkg/checkpoint"
 )
 
 func TestCheckVerificationGate_NoUnverifiedWork(t *testing.T) {
@@ -86,49 +83,6 @@ func TestLogVerificationBypass(t *testing.T) {
 	}
 	if !contains(contentStr, "verification_bypassed") {
 		t.Errorf("Expected violations log to contain event type, got: %s", contentStr)
-	}
-}
-
-func TestGetIssueClosedTime(t *testing.T) {
-	beadsID := "test-123"
-	checkpoints := []checkpoint.Checkpoint{
-		{
-			BeadsID:   beadsID,
-			Timestamp: time.Date(2026, 2, 14, 10, 0, 0, 0, time.UTC),
-		},
-		{
-			BeadsID:   beadsID,
-			Timestamp: time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC),
-		},
-		{
-			BeadsID:   "other-456",
-			Timestamp: time.Date(2026, 2, 16, 10, 0, 0, 0, time.UTC),
-		},
-	}
-
-	closedTime := getIssueClosedTime(beadsID, checkpoints)
-
-	// Should return the latest timestamp for this beads ID
-	expected := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
-	if !closedTime.Equal(expected) {
-		t.Errorf("Expected %v, got %v", expected, closedTime)
-	}
-}
-
-func TestGetIssueClosedTime_NoCheckpoint(t *testing.T) {
-	beadsID := "nonexistent-789"
-	checkpoints := []checkpoint.Checkpoint{
-		{
-			BeadsID:   "other-456",
-			Timestamp: time.Date(2026, 2, 16, 10, 0, 0, 0, time.UTC),
-		},
-	}
-
-	closedTime := getIssueClosedTime(beadsID, checkpoints)
-
-	// Should return a non-zero time (fallback to now)
-	if closedTime.IsZero() {
-		t.Error("Expected non-zero time as fallback")
 	}
 }
 

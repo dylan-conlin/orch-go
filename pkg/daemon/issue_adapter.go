@@ -162,65 +162,29 @@ func listIssuesWithLabelCLI(label string) ([]Issue, error) {
 	return filtered, nil
 }
 
-// CountUnverifiedCompletions counts unverified completions by reading the checkpoint file directly.
-// This is the source of truth for verification state.
-//
-// For each checkpoint entry, determines if it's unverified based on tier:
-// - Tier 1 work (feature/bug/decision): unverified if gate2_complete == false
-// - Tier 2 work (investigation/probe): unverified if gate1_complete == false
-// - Tier 3 work (task/question/other): never requires verification (skip)
+// CountUnverifiedCompletions counts unverified completions using the canonical
+// verify.ListUnverifiedWork() function. This ensures the daemon, spawn gate,
+// and review command all agree on what constitutes "unverified work."
 //
 // Only counts checkpoints for OPEN issues (open/in_progress/blocked).
-// Closed/deferred/tombstone issues are filtered out to match `orch review` behavior.
-// This prevents the verification backlog count from including already-closed issues.
+// Closed/deferred/tombstone issues are excluded.
+//
+// Falls back to the legacy counting logic if the canonical function fails
+// (e.g., beads RPC unavailable). Better to overcount than undercount.
 func CountUnverifiedCompletions() (int, error) {
-	// Read all checkpoints from file
-	checkpoints, err := checkpoint.ReadCheckpoints()
+	count, err := verify.CountUnverifiedWork()
 	if err != nil {
-		return 0, fmt.Errorf("failed to read checkpoints: %w", err)
-	}
-
-	if len(checkpoints) == 0 {
-		return 0, nil
-	}
-
-	// Get the set of open issues (same filtering as orch review)
-	// This includes: open, in_progress, blocked
-	// This excludes: closed, deferred, tombstone
-	openIssuesMap, err := verify.ListOpenIssues()
-	if err != nil {
-		// If we can't get open issues, fall back to old behavior
-		// (better to overcount than undercount verification needs)
+		// Fall back to legacy counting if canonical function fails
+		checkpoints, cpErr := checkpoint.ReadCheckpoints()
+		if cpErr != nil {
+			return 0, fmt.Errorf("failed to read checkpoints: %w", cpErr)
+		}
+		if len(checkpoints) == 0 {
+			return 0, nil
+		}
 		return countUnverifiedWithoutFiltering(checkpoints)
 	}
-
-	// Count unverified completions based on tier, filtering to open issues only
-	unverified := 0
-	for _, cp := range checkpoints {
-		// Skip checkpoints for closed issues (not in open issues map)
-		openIssue, isOpen := openIssuesMap[cp.BeadsID]
-		if !isOpen {
-			continue
-		}
-
-		// Determine tier and check verification status
-		tier := checkpoint.TierForIssueType(openIssue.IssueType)
-		switch tier {
-		case 1:
-			// Tier 1 (feature/bug/decision): requires both gates
-			if !cp.Gate2Complete {
-				unverified++
-			}
-		case 2:
-			// Tier 2 (investigation/probe): requires gate1 only
-			if !cp.Gate1Complete {
-				unverified++
-			}
-			// case 3: Tier 3 (task/question/other) never requires verification - skip
-		}
-	}
-
-	return unverified, nil
+	return count, nil
 }
 
 // countUnverifiedWithoutFiltering is a fallback when open issues can't be fetched.
