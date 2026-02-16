@@ -1,0 +1,68 @@
+verification_spec:
+  version: "1.0"
+  beads_id: "orch-go-cu0r"
+  task: "Extract spawn flags phase 1: --mode from cmd/orch/spawn_cmd.go into pkg/orch/"
+  
+behaviors:
+  - id: "B-001"
+    description: "Mode flag registration is delegated to pkg/orch.RegisterModeFlag()"
+    acceptance_criteria:
+      - id: "AC-001"
+        description: "spawn_cmd.go calls orch.RegisterModeFlag() instead of directly registering flag"
+        verification: "grep 'orch.RegisterModeFlag' cmd/orch/spawn_cmd.go"
+        expected: "Found at line 210"
+        actual: "orch.RegisterModeFlag(spawnCmd)"
+        status: "✅ PASS"
+      
+  - id: "B-002"
+    description: "Mode flag value is stored in pkg/orch.Mode global variable"
+    acceptance_criteria:
+      - id: "AC-002"
+        description: "spawn_cmd.go references orch.Mode instead of local spawnMode variable"
+        verification: "grep 'orch.Mode' cmd/orch/spawn_cmd.go"
+        expected: "Found at line 942"
+        actual: "Mode: orch.Mode,"
+        status: "✅ PASS"
+        
+  - id: "B-003"
+    description: "pkg/orch/flags.go contains the extracted flag implementation"
+    acceptance_criteria:
+      - id: "AC-003"
+        description: "flags.go exports Mode variable and RegisterModeFlag function"
+        verification: "cat pkg/orch/flags.go"
+        expected: "Contains var Mode string and func RegisterModeFlag"
+        actual: "Both present with proper documentation"
+        status: "✅ PASS"
+
+tests:
+  - id: "T-001"
+    description: "Package tests pass"
+    command: "go test ./pkg/orch/... -v"
+    expected: "All tests pass"
+    actual: "PASS - 6 tests in TestDetectCompletionBacklog suite"
+    status: "✅ PASS"
+    
+  - id: "T-002"
+    description: "Build succeeds with no errors"
+    command: "go build ./cmd/orch"
+    expected: "No compilation errors"
+    actual: "Build successful"
+    status: "✅ PASS"
+
+evidence:
+  commit: "41f5a781"
+  commit_message: "Extract --mode flag from cmd/orch/spawn_cmd.go to pkg/orch/flags.go"
+  files_changed:
+    - "cmd/orch/spawn_cmd.go"
+    - "pkg/orch/flags.go (new file)"
+  
+notes: |
+  This extraction was already completed in commit 41f5a781 (Feb 15 23:10:11).
+  The work is a pure structural refactoring with no behavior changes:
+  - Moved spawnMode flag variable to pkg/orch.Mode
+  - Created RegisterModeFlag helper function
+  - Updated spawn_cmd.go to use the new pkg/orch exports
+  
+  The extraction follows the code extraction patterns documented in 
+  .kb/models/extract-patterns.md for better separation of concerns and
+  reusability across spawn-related commands.
