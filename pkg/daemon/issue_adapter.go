@@ -9,6 +9,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/checkpoint"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
 // ListReadyIssues retrieves ready issues from beads (open or in_progress, no blockers).
@@ -169,8 +170,9 @@ func listIssuesWithLabelCLI(label string) ([]Issue, error) {
 // - Tier 2 work (investigation/probe): unverified if gate1_complete == false
 // - Tier 3 work (task/question/other): never requires verification (skip)
 //
-// Labels (like daemon:ready-review) are the view layer and disappear when issues are closed.
-// The checkpoint file persists verification state even after closure.
+// Only counts checkpoints for OPEN issues (open/in_progress/blocked).
+// Closed/deferred/tombstone issues are filtered out to match `orch review` behavior.
+// This prevents the verification backlog count from including already-closed issues.
 func CountUnverifiedCompletions() (int, error) {
 	// Read all checkpoints from file
 	checkpoints, err := checkpoint.ReadCheckpoints()
@@ -182,6 +184,48 @@ func CountUnverifiedCompletions() (int, error) {
 		return 0, nil
 	}
 
+	// Get the set of open issues (same filtering as orch review)
+	// This includes: open, in_progress, blocked
+	// This excludes: closed, deferred, tombstone
+	openIssuesMap, err := verify.ListOpenIssues()
+	if err != nil {
+		// If we can't get open issues, fall back to old behavior
+		// (better to overcount than undercount verification needs)
+		return countUnverifiedWithoutFiltering(checkpoints)
+	}
+
+	// Count unverified completions based on tier, filtering to open issues only
+	unverified := 0
+	for _, cp := range checkpoints {
+		// Skip checkpoints for closed issues (not in open issues map)
+		openIssue, isOpen := openIssuesMap[cp.BeadsID]
+		if !isOpen {
+			continue
+		}
+
+		// Determine tier and check verification status
+		tier := checkpoint.TierForIssueType(openIssue.IssueType)
+		switch tier {
+		case 1:
+			// Tier 1 (feature/bug/decision): requires both gates
+			if !cp.Gate2Complete {
+				unverified++
+			}
+		case 2:
+			// Tier 2 (investigation/probe): requires gate1 only
+			if !cp.Gate1Complete {
+				unverified++
+			}
+			// case 3: Tier 3 (task/question/other) never requires verification - skip
+		}
+	}
+
+	return unverified, nil
+}
+
+// countUnverifiedWithoutFiltering is a fallback when open issues can't be fetched.
+// Uses the old logic that attempts to look up each issue individually.
+func countUnverifiedWithoutFiltering(checkpoints []checkpoint.Checkpoint) (int, error) {
 	// Try RPC client first for issue lookups
 	socketPath, err := beads.FindSocketPath("")
 	var client *beads.Client
