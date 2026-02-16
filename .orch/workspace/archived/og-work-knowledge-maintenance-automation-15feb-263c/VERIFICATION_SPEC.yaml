@@ -1,0 +1,52 @@
+verification_spec:
+  version: "1.0"
+  type: decision-design
+  issue: orch-go-ymjz
+
+  observable_behaviors:
+    - id: OB-1
+      description: "Decision record documents complete three-layer automation loop (Detection → Queueing → Remediation)"
+      verification: "Read .kb/decisions/2026-02-15-knowledge-maintenance-automation-loop.md, confirm all three layers defined"
+      status: done
+
+    - id: OB-2
+      description: "Five design forks navigated with substrate-cited reasoning"
+      verification: "Decision record section 'Design Decisions (Forks Navigated)' has 5 forks, each with alternatives rejected"
+      status: done
+
+    - id: OB-3
+      description: "Verifiability-first compliance explicitly demonstrated"
+      verification: "Decision record has 'Verifiability-First Compliance' table showing each mechanism's compliance"
+      status: done
+
+    - id: OB-4
+      description: "Throttling mechanism respects verification bandwidth math (C × V ≤ 1)"
+      verification: "Backpressure (max 3 open issues), 4h cadence, batching rule, circuit breaker (>5 halts)"
+      status: done
+
+    - id: OB-5
+      description: "Implementation plan has 5 concrete phases with acceptance criteria"
+      verification: "Phases 1-5 each have scope, deliverables, and acceptance criteria"
+      status: done
+
+  acceptance_criteria:
+    - id: AC-1
+      description: "Prior work (Jan 6 two-tier automation, Feb 14 detect-annotate-queue, Feb 14 verifiability-first) is integrated, not contradicted"
+      status: pass
+
+    - id: AC-2
+      description: "Design closes the remediation gap: detection → issue → update → close"
+      status: pass
+
+    - id: AC-3
+      description: "Model-drift issue creation has deduplication, backpressure, and batching"
+      status: pass
+
+    - id: AC-4
+      description: "Reflection session guide integration specified (model-drift as new lane)"
+      status: pass
+
+  manual_verification_needed:
+    - "Review decision record for architectural soundness"
+    - "Validate throttling parameters (max 3 issues, 4h cadence, 3 spawn threshold) against real workflow"
+    - "Confirm implementation phases are ordered correctly (dependencies satisfied)"

@@ -1,0 +1,50 @@
+name: Daemon Unified Config & Persistent Tracker Design
+type: architect
+status: complete
+
+deliverables:
+  investigation:
+    path: .kb/investigations/2026-02-15-design-daemon-unified-config-persistent-tracker.md
+    expectation: "Investigation file exists with Phase: Complete and all 3 forks navigated"
+    result: PASS
+
+  probe:
+    path: .kb/models/daemon-autonomous-operation/probes/2026-02-15-daemon-config-construction-divergence-audit.md
+    expectation: "Probe file exists with Status: Complete and divergence matrix"
+    result: PASS
+
+  decision:
+    path: .kb/decisions/2026-02-15-daemon-unified-config-construction.md
+    expectation: "Decision record exists with Status: Proposed"
+    result: PASS
+
+  follow_up_issue:
+    id: orch-go-i2mj
+    expectation: "Implementation task created with triage:ready label and description referencing design"
+    result: PASS
+
+verification_commands:
+  build:
+    command: "go build ./cmd/orch/"
+    expectation: "Build succeeds (no code changes in this design session)"
+    result: PASS
+
+  probe_exists:
+    command: "test -f .kb/models/daemon-autonomous-operation/probes/2026-02-15-daemon-config-construction-divergence-audit.md"
+    expectation: "Probe file exists"
+    result: PASS
+
+  investigation_exists:
+    command: "test -f .kb/investigations/2026-02-15-design-daemon-unified-config-persistent-tracker.md"
+    expectation: "Investigation file exists"
+    result: PASS
+
+  decision_exists:
+    command: "test -f .kb/decisions/2026-02-15-daemon-unified-config-construction.md"
+    expectation: "Decision record exists"
+    result: PASS
+
+manual_verification:
+  - "Review divergence matrix in probe - confirms all 4 construction sites audited"
+  - "Review design forks - 3 forks navigated with substrate traces"
+  - "Review acceptance criteria in investigation - 9 testable criteria defined"

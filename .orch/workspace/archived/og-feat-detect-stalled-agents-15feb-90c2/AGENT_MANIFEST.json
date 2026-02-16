@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-detect-stalled-agents-15feb-90c2",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-05k7",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "520045f6852f7095495665fa3d405d3e836811f6",
+  "spawn_time": "2026-02-15T11:00:13-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

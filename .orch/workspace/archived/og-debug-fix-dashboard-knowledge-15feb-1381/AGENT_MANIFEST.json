@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-debug-fix-dashboard-knowledge-15feb-1381",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-p7b9",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "520045f6852f7095495665fa3d405d3e836811f6",
+  "spawn_time": "2026-02-15T10:58:25-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

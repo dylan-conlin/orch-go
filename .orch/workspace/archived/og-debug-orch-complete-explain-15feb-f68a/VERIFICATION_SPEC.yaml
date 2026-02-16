@@ -1,0 +1,30 @@
+verification:
+  build:
+    command: "go build ./cmd/orch/"
+    expectation: "exits 0"
+    result: PASS
+
+  vet:
+    command: "go vet ./cmd/orch/"
+    expectation: "exits 0"
+    result: PASS
+
+  unit_tests:
+    - command: "go test ./cmd/orch/ -run TestComplete"
+      expectation: "PASS"
+      result: PASS
+    - command: "go test ./pkg/checkpoint/ -v"
+      expectation: "7 tests PASS"
+      result: PASS
+
+  smoke_test:
+    command: "orch complete <any-id> --explain 'test' --skip-visual --skip-test-evidence --skip-reason 'smoke test for checkpoint fix'"
+    expectation: "Outputs 'Verification checkpoint written' and ~/.orch/verification-checkpoints.jsonl contains entry"
+    result: PASS
+    evidence: |
+      Output: "Verification checkpoint written"
+      File content: {"beads_id":"orch-go-05k7","deliverable":"completion","gate1_complete":true,"gate2_complete":false,"timestamp":"2026-02-15T12:00:49.659735-08:00","explain_text":"test explanation for checkpoint verification"}
+
+  regression:
+    description: "Without --explain, checkpoint gate still blocks Tier 1 work as intended"
+    manual: true

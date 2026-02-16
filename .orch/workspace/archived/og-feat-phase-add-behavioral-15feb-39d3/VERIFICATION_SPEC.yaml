@@ -1,0 +1,30 @@
+verification:
+  automated:
+    - command: "go build ./cmd/orch/"
+      expectation: "Build succeeds with no errors"
+    - command: "go vet ./cmd/orch/ ./pkg/checkpoint/ ./pkg/orch/"
+      expectation: "No vet errors"
+    - command: "go test ./pkg/checkpoint/"
+      expectation: "All tests pass including new TierForIssueType, IsTier2Work, RequiresGate2 tests"
+    - command: "go test ./pkg/orch/"
+      expectation: "All tests pass"
+    - command: "go run ./cmd/orch/ complete --help | grep verified"
+      expectation: "--verified flag appears in help text with gate2 description"
+
+  manual:
+    - description: "Run `orch complete <tier1-issue> --explain '...'` WITHOUT --verified"
+      expectation: "Should fail with 'behavioral verification (gate2) required for Tier 1 work'"
+    - description: "Run `orch complete <tier1-issue> --explain '...' --verified`"
+      expectation: "Should pass both gates and record gate2_complete=true in checkpoint"
+    - description: "Run `orch complete <tier2-issue> --explain '...'`"
+      expectation: "Should pass without --verified (Tier 2 doesn't require gate2)"
+    - description: "Run `orch complete <tier3-issue>`"
+      expectation: "Should pass without --explain or --verified (Tier 3 no checkpoint)"
+    - description: "Check checkpoint file after tier1 completion with --verified"
+      expectation: "cat ~/.orch/verification-checkpoints.jsonl shows gate2_complete:true"
+
+  files_changed:
+    - pkg/checkpoint/checkpoint.go: "Added TierForIssueType, IsTier2Work, RequiresGate2; updated RequiresCheckpoint for Tier 2"
+    - pkg/checkpoint/checkpoint_test.go: "Updated RequiresCheckpoint test, added tests for TierForIssueType, IsTier2Work, RequiresGate2"
+    - pkg/orch/completion.go: "Added verified param to RunExplainBackGate, added RecordGate2Checkpoint"
+    - cmd/orch/complete_cmd.go: "Added --verified flag, tier-aware gate2 enforcement, conditional explain-back gate, help text"

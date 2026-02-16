@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-verify-spawn-time-15feb-4399",
+  "skill": "architect",
+  "beads_id": "orch-go-aac8",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "103d513c16f7fc855c786f44a1a594b5876d1bc2",
+  "spawn_time": "2026-02-15T17:13:13-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}
