@@ -1,0 +1,33 @@
+name: work-graph-issues-view-sections
+type: design
+investigation: .kb/investigations/2026-02-16-design-work-graph-issues-view-sections.md
+
+acceptance_criteria:
+  - id: AC-001
+    description: Investigation documents section definitions with clear criteria for each
+    status: pass
+    evidence: Investigation has table with Section/Purpose/Criteria/Visual Treatment
+
+  - id: AC-002
+    description: Mutual exclusivity rules are defined with priority cascade
+    status: pass
+    evidence: "Three rules: Ready to Complete claims first, WIP claims second, Tree gets rest"
+
+  - id: AC-003
+    description: Implementation approach uses existing deduplication pattern
+    status: pass
+    evidence: Extends pinnedTreeIds pattern with excludeIds prop
+
+  - id: AC-004
+    description: Edge cases documented (multiple agents, agentless in_progress, etc.)
+    status: pass
+    evidence: Three edge cases documented under Fork 3
+
+  - id: AC-005
+    description: File targets identified for implementation
+    status: pass
+    evidence: Three files identified with specific changes
+
+manual_verification:
+  - "Review investigation for completeness and architectural soundness"
+  - "Validate that the recommended approach extends (not replaces) existing WIP deduplication"
