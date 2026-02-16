@@ -164,24 +164,24 @@ export const ATTENTION_BADGE_CONFIG: Record<AttentionBadgeType, {
 	label: string;
 }> = {
 	verify: {
-		color: 'text-blue-600',
-		bg: 'bg-blue-100',
-		label: 'Verify'
+		color: 'text-amber-600',
+		bg: 'bg-amber-100',
+		label: 'Awaiting verification'
 	},
 	decide: {
 		color: 'text-purple-600',
 		bg: 'bg-purple-100',
-		label: 'Decide'
+		label: 'Decision needed'
 	},
 	escalate: {
-		color: 'text-orange-600',
-		bg: 'bg-orange-100',
-		label: 'Escalate'
+		color: 'text-yellow-600',
+		bg: 'bg-yellow-100',
+		label: 'Needs escalation'
 	},
 	likely_done: {
-		color: 'text-green-600',
-		bg: 'bg-green-100',
-		label: 'Likely Done'
+		color: 'text-blue-600',
+		bg: 'bg-blue-100',
+		label: 'Likely complete'
 	},
 	recently_closed: {
 		color: 'text-gray-600',
@@ -189,23 +189,23 @@ export const ATTENTION_BADGE_CONFIG: Record<AttentionBadgeType, {
 		label: 'Recently Closed'
 	},
 	unblocked: {
-		color: 'text-teal-600',
-		bg: 'bg-teal-100',
+		color: 'text-green-600',
+		bg: 'bg-green-100',
 		label: 'Unblocked'
 	},
 	stuck: {
-		color: 'text-red-600',
-		bg: 'bg-red-100',
-		label: 'Stuck'
+		color: 'text-orange-600',
+		bg: 'bg-orange-100',
+		label: 'Agent stuck'
 	},
 	crashed: {
 		color: 'text-red-700',
 		bg: 'bg-red-200',
-		label: 'Crashed'
+		label: 'Agent crashed'
 	},
 	verify_failed: {
-		color: 'text-yellow-700',
-		bg: 'bg-yellow-100',
-		label: 'Verify Failed'
+		color: 'text-red-600',
+		bg: 'bg-red-100',
+		label: 'Verification failed'
 	}
 };

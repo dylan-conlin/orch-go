@@ -699,9 +699,9 @@
 				{#if relatedNode?.attentionBadge}
 					{@const badgeConfig = getAttentionBadge(relatedNode.attentionBadge)}
 					{#if badgeConfig}
-						<Badge variant={badgeConfig.variant} class="shrink-0">
+						<span class="shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {badgeConfig.bg} {badgeConfig.color}" title={relatedNode.attentionReason || badgeConfig.label}>
 							{badgeConfig.label}
-						</Badge>
+						</span>
 					{/if}
 				{/if}
 
@@ -885,9 +885,9 @@
 					{#if node.attentionBadge}
 						{@const badgeConfig = getAttentionBadge(node.attentionBadge)}
 						{#if badgeConfig}
-							<Badge variant={badgeConfig.variant} class="shrink-0">
+							<span class="shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {badgeConfig.bg} {badgeConfig.color}" title={node.attentionReason || badgeConfig.label}>
 								{badgeConfig.label}
-							</Badge>
+							</span>
 						{/if}
 					{/if}
 
