@@ -59,6 +59,7 @@
 					<nav class="flex items-center gap-1">
 						<a href="/" class="px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Dashboard</a>
 						<a href="/work-graph" class="px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Work Graph</a>
+						<a href="/knowledge-tree" class="px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Knowledge Tree</a>
 					</nav>
 				</div>
 				<div class="flex flex-1 items-center justify-end gap-3">

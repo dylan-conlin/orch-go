@@ -115,8 +115,8 @@
 			</span>
 		{/if}
 
-		<!-- Date -->
-		{#if node.Date}
+		<!-- Date (hide Go zero-time "0001-01-01T00:00:00Z" and missing dates) -->
+		{#if node.Date && new Date(node.Date).getFullYear() > 1}
 			<span class="text-xs text-gray-500">
 				{new Date(node.Date).toLocaleDateString()}
 			</span>

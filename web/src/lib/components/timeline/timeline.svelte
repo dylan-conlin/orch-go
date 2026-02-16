@@ -45,9 +45,20 @@
 		return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 	}
 
+	// Strip markdown formatting from titles (## headers, **bold**, etc.)
+	function stripMarkdown(text: string): string {
+		return text
+			.replace(/^#{1,6}\s+/, '')   // Remove heading markers
+			.replace(/\*\*(.+?)\*\*/g, '$1') // Remove bold
+			.replace(/\*(.+?)\*/g, '$1')     // Remove italic
+			.replace(/`(.+?)`/g, '$1')       // Remove inline code
+			.trim();
+	}
+
 	$: icon = getActionIcon(action.type);
 	$: color = getActionColor(action.type);
 	$: time = formatTimestamp(action.timestamp);
+	$: title = stripMarkdown(action.title);
 </script>
 
 <div class="timeline-action flex items-start gap-3 px-2 py-1.5 hover:bg-zinc-800/30 rounded text-sm">
@@ -64,7 +75,7 @@
 	<!-- Title -->
 	<div class="flex-1 min-w-0">
 		<span class="text-gray-200 truncate block">
-			{action.title}
+			{title}
 		</span>
 		{#if action.beads_id}
 			<span class="text-xs text-gray-500 font-mono">

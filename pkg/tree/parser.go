@@ -297,8 +297,8 @@ func ParseModels(dir string) ([]*KnowledgeNode, []Relationship, error) {
 	processed := make(map[string]bool)
 
 	for _, entry := range entries {
-		// Skip template file
-		if strings.HasPrefix(entry.Name(), "_") {
+		// Skip template files (both _TEMPLATE.md and TEMPLATE.md)
+		if strings.HasPrefix(entry.Name(), "_") || strings.EqualFold(entry.Name(), "TEMPLATE.md") {
 			continue
 		}
 
