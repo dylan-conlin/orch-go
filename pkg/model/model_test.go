@@ -31,12 +31,13 @@ func TestResolve_Aliases(t *testing.T) {
 		{"pro", ModelSpec{Provider: "google", ModelID: "gemini-2.5-pro"}},
 
 		// OpenAI aliases
-		{"gpt-5", ModelSpec{Provider: "openai", ModelID: "gpt-5-20251215"}},
-		{"gpt5-mini", ModelSpec{Provider: "openai", ModelID: "gpt-5-mini-20251130"}},
+		{"gpt-5", ModelSpec{Provider: "openai", ModelID: "gpt-5"}},
+		{"gpt5-mini", ModelSpec{Provider: "openai", ModelID: "gpt-5-mini"}},
+		{"o3", ModelSpec{Provider: "openai", ModelID: "o3"}},
 
 		// DeepSeek aliases
-		{"deepseek-v3", ModelSpec{Provider: "deepseek", ModelID: "deepseek-v3.2"}},
-		{"reasoning", ModelSpec{Provider: "deepseek", ModelID: "deepseek-r1"}},
+		{"deepseek", ModelSpec{Provider: "deepseek", ModelID: "deepseek-chat"}},
+		{"reasoning", ModelSpec{Provider: "deepseek", ModelID: "deepseek-reasoner"}},
 	}
 
 	for _, tt := range tests {

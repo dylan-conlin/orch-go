@@ -37,27 +37,13 @@ func InferTargetFilesFromIssue(issue *Issue) []string {
 		}
 	}
 
-	// Pattern 2: Common Go file naming patterns from context
-	// Look for package/module mentions that might indicate file targets
-	// Examples: "daemon spawn", "spawn_cmd", "hotspot_checker"
-	words := strings.Fields(strings.ToLower(text))
-	for i, word := range words {
-		// Check for "X.go" pattern mentions (e.g., "spawn.go", "daemon.go")
-		if strings.HasSuffix(word, ".go") {
+	// Pattern 2: Bare filename mentions (e.g., "spawn_cmd.go" without a path)
+	// Only matches words ending in .go that weren't already captured by Pattern 1
+	for _, word := range strings.Fields(strings.ToLower(text)) {
+		if strings.HasSuffix(word, ".go") && !strings.Contains(word, "/") {
 			if !seen[word] {
 				files = append(files, word)
 				seen[word] = true
-			}
-		}
-
-		// Check for adjacent words that might form a file pattern
-		// Example: "spawn cmd" → "cmd/orch/spawn_cmd.go"
-		if i < len(words)-1 {
-			combined := word + "_" + words[i+1] + ".go"
-			// Check if this looks like a known orch-go file pattern
-			if isLikelyOrchGoFile(combined) && !seen[combined] {
-				files = append(files, combined)
-				seen[combined] = true
 			}
 		}
 	}
@@ -65,26 +51,6 @@ func InferTargetFilesFromIssue(issue *Issue) []string {
 	return files
 }
 
-// isLikelyOrchGoFile checks if a filename pattern matches common orch-go naming conventions.
-func isLikelyOrchGoFile(filename string) bool {
-	// Common orch-go file patterns
-	commonPatterns := []string{
-		"_cmd.go",
-		"_test.go",
-		"spawn_",
-		"daemon_",
-		"hotspot_",
-		"session_",
-		"verify_",
-	}
-
-	for _, pattern := range commonPatterns {
-		if strings.Contains(filename, pattern) {
-			return true
-		}
-	}
-	return false
-}
 
 // FindCriticalHotspot checks if any of the inferred files matches a CRITICAL hotspot (>1500 lines).
 // Returns the first matching critical hotspot, or nil if none found.

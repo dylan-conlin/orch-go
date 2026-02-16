@@ -536,13 +536,13 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 			skillName, _ = ExtractSkillNameFromSpawnContext(workspacePath)
 		}
 
-		// Auto-skip for investigation skill - the investigation artifact IS the deliverable
-		if strings.ToLower(skillName) == "investigation" {
+		// Auto-skip for knowledge-producing skills - their artifacts ARE the deliverable
+		if IsKnowledgeProducingSkill(skillName) {
 			logAutoSkip(beadsID, workspacePath, GateSynthesis,
-				"investigation skill produces investigation artifact, not SYNTHESIS.md",
+				skillName+" skill produces knowledge artifacts, not SYNTHESIS.md",
 				skillName)
 			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("synthesis gate auto-skipped for investigation skill"))
+				fmt.Sprintf("synthesis gate auto-skipped for %s skill", strings.ToLower(skillName)))
 		} else {
 			ok, err := VerifySynthesis(workspacePath)
 			if err != nil {

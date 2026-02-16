@@ -1,0 +1,35 @@
+name: test-suite-health
+description: Fix all failing tests in the orch-go test suite
+
+verification:
+  automated:
+    - command: "go test ./..."
+      expectation: "All packages pass (0 failures)"
+      result: PASS
+    - command: "go vet ./..."
+      expectation: "No issues"
+      result: PASS
+    - command: "go build ./cmd/orch/"
+      expectation: "Compiles successfully"
+      result: PASS
+
+  specific_tests:
+    - command: "go test ./pkg/daemon/ -run TestInferTargetFilesFromIssue -v"
+      expectation: "All 5 subtests pass"
+      result: PASS
+    - command: "go test ./pkg/verify/ -run TestSynthesisGateAutoSkipForKnowledgeProducingSkills -v"
+      expectation: "All 6 subtests pass (investigation, architect, research, codebase-audit auto-skip; feature-impl, systematic-debugging require)"
+      result: PASS
+    - command: "go test ./pkg/model/ -v"
+      expectation: "All alias tests pass with updated expectations"
+      result: PASS
+
+  manual: []
+
+files_changed:
+  - path: pkg/daemon/extraction.go
+    change: "Removed adjacent-word heuristic and unused isLikelyOrchGoFile function"
+  - path: pkg/verify/check.go
+    change: "Replaced hardcoded investigation check with IsKnowledgeProducingSkill()"
+  - path: pkg/model/model_test.go
+    change: "Updated test expectations to match current alias map"
