@@ -1,0 +1,48 @@
+verification_id: orch-go-a2li
+task: Extract --mode flag from spawn_cmd.go to pkg/orch/
+outcome: ✅ Extraction already completed in previous session (commit 41f5a781)
+
+automated_checks:
+  - name: Unit tests pass
+    command: go test ./pkg/orch/... -v
+    expected: PASS
+    result: ✅ All tests passed
+
+  - name: Binary compiles
+    command: go build ./cmd/orch
+    expected: No compilation errors
+    result: ✅ Compiles successfully
+
+  - name: Flag visible in help
+    command: ./orch spawn --help | grep "mode"
+    expected: "--mode string               Implementation mode: tdd or direct (default \"tdd\")"
+    result: ✅ Flag present with correct description
+
+verification_evidence:
+  - Commit 41f5a781: "Extract --mode flag from cmd/orch/spawn_cmd.go to pkg/orch/flags.go"
+  - pkg/orch/flags.go created with Mode variable and RegisterModeFlag function
+  - cmd/orch/spawn_cmd.go uses orch.RegisterModeFlag (line 210)
+  - cmd/orch/spawn_cmd.go uses orch.Mode (line 942)
+  - All tests pass
+  - Binary compiles and flag is visible in help output
+
+structural_verification:
+  - Mode variable location: pkg/orch/flags.go:10
+  - RegisterModeFlag function: pkg/orch/flags.go:20-22
+  - Flag registration: cmd/orch/spawn_cmd.go:210
+  - Mode usage: cmd/orch/spawn_cmd.go:942
+
+behavior_verification:
+  status: No behavior changes (pure structural extraction)
+  notes: |
+    The flag behavior is identical to before extraction:
+    - Default value is "tdd"
+    - Valid values are "tdd" or "direct"
+    - Flag is accessible via --mode in spawn command
+    
+manual_steps_required: None - extraction is complete and verified
+
+notes: |
+  This task was already completed in a previous session (commit 41f5a781).
+  Verification confirms the extraction is correct and working as expected.
+  No additional work needed - the --mode flag is properly extracted to pkg/orch/.
