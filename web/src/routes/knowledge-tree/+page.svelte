@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { knowledgeTree, type TreeView, type KnowledgeNode, type NodeType } from '$lib/stores/knowledge-tree';
+	import { knowledgeTree, type TreeView, type KnowledgeNode, type NodeType, type NodeAnimation } from '$lib/stores/knowledge-tree';
 	import { KnowledgeTree as KnowledgeTreeComponent } from '$lib/components/knowledge-tree';
 	import type { ConnectionStatus } from '$lib/services/sse-connection';
 
@@ -14,6 +14,7 @@
 	let sseStatus: ConnectionStatus = 'disconnected';
 	let sseStatusUnsubscribe: (() => void) | null = null;
 	let scrollContainer: HTMLDivElement;
+	let animationStates: Map<string, NodeAnimation> = new Map();
 
 	// Load expansion state from localStorage
 	function loadExpansionState(): Set<string> {
@@ -50,6 +51,12 @@
 		}
 	}
 
+	// Subscribe to animation states
+	const animationStatesStore = knowledgeTree.getAnimationStates();
+	const animationUnsubscribe = animationStatesStore.subscribe(states => {
+		animationStates = states;
+	});
+
 	// Load initial tree
 	onMount(async () => {
 		await knowledgeTree.fetch(currentView);
@@ -62,6 +69,7 @@
 	onDestroy(() => {
 		knowledgeTree.disconnectSSE();
 		if (sseStatusUnsubscribe) sseStatusUnsubscribe();
+		animationUnsubscribe();
 	});
 
 	// Handle view toggle
@@ -216,6 +224,7 @@
 						depth={0}
 						onToggle={handleNodeToggle}
 						{expandedNodes}
+						{animationStates}
 					/>
 				{/each}
 			</div>

@@ -159,6 +159,7 @@
 	/* Issue node fades and shrinks when transforming */
 	.fading {
 		animation: fade-shrink 0.8s ease forwards;
+		position: relative;
 	}
 
 	@keyframes fade-shrink {
@@ -170,6 +171,34 @@
 			opacity: 0.3;
 			transform: scale(0.8);
 			color: #9ca3af; /* gray-400 */
+		}
+	}
+
+	/* Growing node appears with scale transition (handled by Svelte's in:scale) */
+	.growing-node {
+		position: relative;
+	}
+
+	/* Connecting line from parent to child during split-and-grow */
+	.growing-node::before {
+		content: '';
+		position: absolute;
+		left: 0.75rem;
+		top: -0.5rem;
+		width: 2px;
+		height: 0.5rem;
+		background: linear-gradient(to bottom, #6b7280, transparent);
+		animation: line-grow 0.6s ease;
+	}
+
+	@keyframes line-grow {
+		0% {
+			height: 0;
+			opacity: 0;
+		}
+		100% {
+			height: 0.5rem;
+			opacity: 1;
 		}
 	}
 
