@@ -24,6 +24,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/orch"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -39,7 +40,6 @@ var (
 	spawnSkill             string
 	spawnIssue             string
 	spawnPhases            string
-	spawnMode              string // Implementation mode: tdd or direct
 	spawnBackendFlag       string // Spawn backend: claude or opencode (overrides config and auto-selection)
 	spawnOpus              bool   // Use Opus via Claude CLI in tmux (implies claude mode)
 	spawnValidation        string
@@ -205,7 +205,7 @@ Examples:
 func init() {
 	spawnCmd.Flags().StringVar(&spawnIssue, "issue", "", "Beads issue ID for tracking")
 	spawnCmd.Flags().StringVar(&spawnPhases, "phases", "", "Feature-impl phases (e.g., implementation,validation)")
-	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
+	orch.RegisterModeFlag(spawnCmd)
 	spawnCmd.Flags().StringVar(&spawnBackendFlag, "backend", "", "Spawn backend: claude (tmux + Claude CLI) or opencode (HTTP API). Overrides config and auto-selection.")
 	spawnCmd.Flags().BoolVar(&spawnOpus, "opus", false, "Use Opus via Claude CLI in tmux (Max subscription, implies claude backend + tmux mode)")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
@@ -928,7 +928,7 @@ func buildSpawnConfig(ctx *SpawnContext) *spawn.Config {
 		SkillContent:       ctx.SkillContent,
 		BeadsID:            ctx.BeadsID,
 		Phases:             spawnPhases,
-		Mode:               spawnMode,
+		Mode:               orch.Mode,
 		Validation:         spawnValidation,
 		Model:              ctx.ResolvedModel.Format(),
 		MCP:                spawnMCP,
