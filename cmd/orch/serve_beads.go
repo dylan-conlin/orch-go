@@ -18,6 +18,9 @@ type projectCacheEntry struct {
 
 	readyIssues    []beads.Issue
 	readyFetchedAt time.Time
+
+	graphIssues    []beads.Issue
+	graphFetchedAt time.Time
 }
 
 // beadsStatsCache provides TTL-based caching for /api/beads and /api/beads/ready.
@@ -31,9 +34,10 @@ type beadsStatsCache struct {
 	// Empty string key is used for default project (sourceDir)
 	projects map[string]*projectCacheEntry
 
-	// TTL for stats and ready issues
+	// TTL for stats, ready issues, and graph data
 	statsTTL time.Duration
 	readyTTL time.Duration
+	graphTTL time.Duration
 }
 
 // Global beads stats cache, initialized in runServe
@@ -44,6 +48,7 @@ func newBeadsStatsCache() *beadsStatsCache {
 		projects: make(map[string]*projectCacheEntry),
 		statsTTL: 30 * time.Second, // Stats change infrequently
 		readyTTL: 15 * time.Second, // Ready queue changes more often
+		graphTTL: 15 * time.Second, // Graph data changes with ready queue
 	}
 }
 
@@ -221,6 +226,112 @@ func (c *beadsStatsCache) getReadyIssues(projectDir string) ([]beads.Issue, erro
 	c.mu.Lock()
 	entry.readyIssues = issues
 	entry.readyFetchedAt = time.Now()
+	c.mu.Unlock()
+
+	return issues, nil
+}
+
+// getGraphIssues returns cached graph issues or fetches fresh if stale.
+// projectDir specifies which project's beads to query. Empty string uses default.
+func (c *beadsStatsCache) getGraphIssues(projectDir string) ([]beads.Issue, error) {
+	entry := c.getOrCreateEntry(projectDir)
+
+	c.mu.RLock()
+	if entry.graphIssues != nil && time.Since(entry.graphFetchedAt) < c.graphTTL {
+		result := entry.graphIssues
+		c.mu.RUnlock()
+		return result, nil
+	}
+	c.mu.RUnlock()
+
+	// Determine the directory to use
+	workDir := projectDir
+	if workDir == "" {
+		workDir = beads.DefaultDir
+	}
+
+	// Fetch fresh graph issues (open + in_progress)
+	var issues []beads.Issue
+	var err error
+
+	// Check if socket exists before attempting RPC to avoid slow timeout on dead daemon.
+	socketPath, findErr := beads.FindSocketPath(workDir)
+	socketExists := findErr == nil && socketPath != ""
+	if socketExists {
+		if _, statErr := os.Stat(socketPath); statErr != nil {
+			socketExists = false
+		}
+	}
+
+	// Thread-safe cleanup of stale beadsClient when socket disappears.
+	beadsClientMu.Lock()
+	if !socketExists && beadsClient != nil {
+		beadsClient.Close()
+		beadsClient = nil
+	}
+
+	// Reinitialize beadsClient if socket reappears and client is nil.
+	if socketExists && beadsClient == nil && socketPath != "" {
+		beadsClient = beads.NewClient(socketPath,
+			beads.WithAutoReconnect(3),
+			beads.WithTimeout(5*time.Second),
+		)
+		// Don't block on connection - let execute() handle reconnect
+	}
+
+	// Capture client reference under lock for use after unlock
+	currentClient := beadsClient
+	beadsClientMu.Unlock()
+
+	// For non-default projects, always use CLI client with project dir
+	if projectDir != "" && projectDir != beads.DefaultDir {
+		cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
+		// List open and in_progress issues
+		var openIssues, inProgressIssues []beads.Issue
+		openIssues, err = cliClient.List(&beads.ListArgs{Status: "open"})
+		if err != nil {
+			return nil, err
+		}
+		inProgressIssues, err = cliClient.List(&beads.ListArgs{Status: "in_progress"})
+		if err != nil {
+			return nil, err
+		}
+		issues = append(openIssues, inProgressIssues...)
+	} else if currentClient != nil && socketExists {
+		// List open and in_progress issues via RPC
+		openIssues, err := currentClient.List(&beads.ListArgs{Status: "open"})
+		if err != nil {
+			// Fallback to CLI on RPC error
+			openIssues, err = beads.FallbackList("open")
+			if err != nil {
+				return nil, err
+			}
+		}
+		inProgressIssues, err := currentClient.List(&beads.ListArgs{Status: "in_progress"})
+		if err != nil {
+			// Fallback to CLI on RPC error
+			inProgressIssues, err = beads.FallbackList("in_progress")
+			if err != nil {
+				return nil, err
+			}
+		}
+		issues = append(openIssues, inProgressIssues...)
+	} else {
+		// CLI fallback
+		openIssues, err := beads.FallbackList("open")
+		if err != nil {
+			return nil, err
+		}
+		inProgressIssues, err := beads.FallbackList("in_progress")
+		if err != nil {
+			return nil, err
+		}
+		issues = append(openIssues, inProgressIssues...)
+	}
+
+	c.mu.Lock()
+	entry.graphIssues = issues
+	entry.graphFetchedAt = time.Now()
 	c.mu.Unlock()
 
 	return issues, nil
@@ -480,6 +591,39 @@ type QuestionsAPIResponse struct {
 	Error         string             `json:"error,omitempty"`
 }
 
+// GraphNode represents a node in the work graph (from /api/beads/graph).
+// Matches frontend GraphNode interface in web/src/lib/stores/work-graph.ts
+type GraphNode struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Type        string   `json:"type"`     // task, bug, feature, epic, question
+	Status      string   `json:"status"`   // open, in_progress, closed, blocked
+	Priority    int      `json:"priority"` // 0-4 for beads
+	Source      string   `json:"source"`   // "beads"
+	CreatedAt   string   `json:"created_at,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Labels      []string `json:"labels,omitempty"`
+}
+
+// GraphEdge represents a dependency edge in the work graph.
+// Matches frontend GraphEdge interface in web/src/lib/stores/work-graph.ts
+type GraphEdge struct {
+	From string `json:"from"` // ID of the issue that has the dependency
+	To   string `json:"to"`   // ID of the issue being depended on
+	Type string `json:"type"` // dependency_type: blocks, parent-child, relates_to
+}
+
+// WorkGraphResponse is the JSON structure returned by /api/beads/graph.
+// Matches frontend WorkGraphResponse interface in web/src/lib/stores/work-graph.ts
+type WorkGraphResponse struct {
+	Nodes      []GraphNode `json:"nodes"`
+	Edges      []GraphEdge `json:"edges"`
+	NodeCount  int         `json:"node_count"`
+	EdgeCount  int         `json:"edge_count"`
+	ProjectDir string      `json:"project_dir,omitempty"`
+	Error      string      `json:"error,omitempty"`
+}
+
 // handleQuestions returns questions grouped by status for the dashboard.
 // Questions are issues with type=question.
 // Groups:
@@ -587,6 +731,95 @@ func handleQuestions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode questions: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleBeadsGraph returns work graph nodes and edges for dependency visualization.
+// The cache has a 15s TTL to balance freshness with performance.
+// Without caching, each request spawns multiple bd processes (list + show for dependencies).
+// Query params:
+//   - project_dir: Optional project directory to query. If not provided, uses default.
+//   - scope: Optional scope filter (currently not used, reserved for future filtering)
+//   - parent: Optional parent issue ID filter (reserved for future epic filtering)
+func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get query params
+	projectDir := r.URL.Query().Get("project_dir")
+	// scope := r.URL.Query().Get("scope")     // Reserved for future use
+	// parent := r.URL.Query().Get("parent")   // Reserved for future use
+
+	// Use cached graph issues when available
+	issues, err := globalBeadsStatsCache.getGraphIssues(projectDir)
+	if err != nil {
+		resp := WorkGraphResponse{
+			Nodes:      []GraphNode{},
+			Edges:      []GraphEdge{},
+			NodeCount:  0,
+			EdgeCount:  0,
+			ProjectDir: projectDir,
+			Error:      fmt.Sprintf("Failed to get graph issues: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Build nodes from issues
+	nodes := make([]GraphNode, 0, len(issues))
+	for _, issue := range issues {
+		nodes = append(nodes, GraphNode{
+			ID:          issue.ID,
+			Title:       issue.Title,
+			Type:        issue.IssueType,
+			Status:      issue.Status,
+			Priority:    issue.Priority,
+			Source:      "beads",
+			CreatedAt:   issue.CreatedAt,
+			Description: issue.Description,
+			Labels:      issue.Labels,
+		})
+	}
+
+	// Build edges from dependencies
+	edges := make([]GraphEdge, 0)
+	for _, issue := range issues {
+		// Parse dependencies from the raw JSON
+		deps := issue.ParseDependencies()
+		if deps == nil {
+			continue
+		}
+
+		// Create edges for each dependency
+		for _, dep := range deps {
+			edge := GraphEdge{
+				From: issue.ID,
+				To:   dep.ID,
+				Type: dep.DependencyType,
+			}
+			// Default to "blocks" if no type specified
+			if edge.Type == "" {
+				edge.Type = "blocks"
+			}
+			edges = append(edges, edge)
+		}
+	}
+
+	resp := WorkGraphResponse{
+		Nodes:      nodes,
+		Edges:      edges,
+		NodeCount:  len(nodes),
+		EdgeCount:  len(edges),
+		ProjectDir: projectDir,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode graph: %v", err), http.StatusInternalServerError)
 		return
 	}
 }
