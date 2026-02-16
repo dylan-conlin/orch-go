@@ -229,8 +229,11 @@ func runServe(portNum int) error {
 	// Initialize LIKELY_DONE cache for attention signals
 	globalLikelyDoneCache = attention.NewLikelyDoneCache()
 
-	// Initialize tree cache to prevent expensive re-extraction
+	// Initialize tree cache
 	globalTreeCache = newTreeCache()
+
+	// Initialize timeline cache
+	globalTimelineCache = newTimelineCache()
 
 	mux := http.NewServeMux()
 
@@ -391,6 +394,12 @@ func runServe(portNum int) error {
 
 	// GET /api/events/tree - SSE stream for tree updates
 	mux.HandleFunc("/api/events/tree", corsHandler(handleTreeEvents))
+
+	// GET /api/timeline - session timeline as JSON
+	mux.HandleFunc("/api/timeline", corsHandler(handleTimeline))
+
+	// GET /api/events/timeline - SSE stream for timeline updates
+	mux.HandleFunc("/api/events/timeline", corsHandler(handleTimelineEvents))
 
 	// POST /api/attention/verify-failed/clear - clear a verification failure
 	mux.HandleFunc("/api/attention/verify-failed/clear", corsHandler(handleVerifyFailedClear))

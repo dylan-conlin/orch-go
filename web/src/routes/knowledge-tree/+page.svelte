@@ -1,13 +1,18 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { knowledgeTree, type TreeView, type KnowledgeNode, type NodeType, type NodeAnimation } from '$lib/stores/knowledge-tree';
+	import { timelineStore } from '$lib/stores/timeline';
 	import { KnowledgeTree as KnowledgeTreeComponent } from '$lib/components/knowledge-tree';
+	import { SessionGroup } from '$lib/components/timeline';
 	import type { ConnectionStatus } from '$lib/services/sse-connection';
 
 	// localStorage key for expansion state
 	const EXPANSION_STATE_KEY = 'knowledge-tree-expansion';
 
-	let currentView: TreeView = 'knowledge';
+	type ViewMode = 'knowledge' | 'work' | 'timeline';
+
+	let currentView: ViewMode = 'knowledge';
+	let treeView: TreeView = 'knowledge'; // For knowledge tree API (only 'knowledge' or 'work')
 	let loading = true;
 	let searchQuery = '';
 	let selectedTypes: Set<NodeType> = new Set();
@@ -57,10 +62,13 @@
 		animationStates = states;
 	});
 
+	// Expanded sessions in timeline view
+	let expandedSessions = new Set<string>();
+
 	// Load initial tree
 	onMount(async () => {
-		await knowledgeTree.fetch(currentView);
-		knowledgeTree.connectSSE(currentView);
+		await knowledgeTree.fetch(treeView);
+		knowledgeTree.connectSSE(treeView);
 		subscribeSSEStatus();
 		loading = false;
 	});
@@ -68,20 +76,51 @@
 	// Cleanup on unmount
 	onDestroy(() => {
 		knowledgeTree.disconnectSSE();
+		timelineStore.disconnectSSE();
 		if (sseStatusUnsubscribe) sseStatusUnsubscribe();
 		animationUnsubscribe();
 	});
 
-	// Handle view toggle
+	// Handle view toggle - cycles through knowledge → work → timeline → knowledge
 	async function handleViewToggle() {
 		loading = true;
-		currentView = currentView === 'knowledge' ? 'work' : 'knowledge';
 
+		// Cycle through views
+		if (currentView === 'knowledge') {
+			currentView = 'work';
+			treeView = 'work';
+		} else if (currentView === 'work') {
+			currentView = 'timeline';
+		} else {
+			currentView = 'knowledge';
+			treeView = 'knowledge';
+		}
+
+		// Disconnect previous SSE connections
 		knowledgeTree.disconnectSSE();
-		await knowledgeTree.fetch(currentView);
-		knowledgeTree.connectSSE(currentView);
-		subscribeSSEStatus();
+		timelineStore.disconnectSSE();
+
+		// Load data for new view
+		if (currentView === 'timeline') {
+			await timelineStore.fetch(undefined, 10);
+			timelineStore.connectSSE(undefined, 10);
+		} else {
+			await knowledgeTree.fetch(treeView);
+			knowledgeTree.connectSSE(treeView);
+			subscribeSSEStatus();
+		}
+
 		loading = false;
+	}
+
+	// Toggle session expansion in timeline view
+	function toggleSession(sessionID: string) {
+		if (expandedSessions.has(sessionID)) {
+			expandedSessions.delete(sessionID);
+		} else {
+			expandedSessions.add(sessionID);
+		}
+		expandedSessions = expandedSessions; // Trigger reactivity
 	}
 
 	// Handle node toggle - purely local state, independent of store
@@ -166,7 +205,7 @@
 				onclick={handleViewToggle}
 				class="px-3 py-1.5 text-sm rounded border border-border hover:bg-zinc-800 transition-colors"
 			>
-				{currentView === 'knowledge' ? '📚 Knowledge' : '⚙️ Work'}
+				{currentView === 'knowledge' ? '📚 Knowledge' : currentView === 'work' ? '⚙️ Work' : '📅 Timeline'}
 			</button>
 
 			<!-- Search -->
@@ -191,7 +230,11 @@
 			</div>
 
 			<div class="flex items-center gap-2 ml-auto text-xs text-muted-foreground">
-				<span>{rootChildren.length} {currentView === 'knowledge' ? 'clusters' : 'issues'}</span>
+				{#if currentView === 'timeline'}
+					<span>{$timelineStore.timeline?.total || 0} actions</span>
+				{:else}
+					<span>{rootChildren.length} {currentView === 'knowledge' ? 'clusters' : 'issues'}</span>
+				{/if}
 				<span class="flex items-center gap-1" title={statusLabel}>
 					<span class="inline-block w-2 h-2 rounded-full {statusColor}"></span>
 					<span class="text-[10px]">{statusLabel}</span>
@@ -204,30 +247,54 @@
 	<div class="flex-1 overflow-auto" bind:this={scrollContainer}>
 		{#if loading}
 			<div class="flex items-center justify-center h-full">
-				<div class="text-muted-foreground">Loading tree...</div>
+				<div class="text-muted-foreground">Loading...</div>
 			</div>
-		{:else if $knowledgeTree.error && !$knowledgeTree.tree}
-			<div class="flex items-center justify-center h-full">
-				<div class="text-red-500">Error: {$knowledgeTree.error}</div>
-			</div>
-		{:else if rootChildren.length === 0}
-			<div class="flex items-center justify-center h-full">
-				<div class="text-muted-foreground">
-					{searchQuery || selectedTypes.size > 0 ? 'No nodes match filters' : 'No nodes found'}
+		{:else if currentView === 'timeline'}
+			<!-- Timeline View -->
+			{#if $timelineStore.error}
+				<div class="flex items-center justify-center h-full">
+					<div class="text-red-500">Error: {$timelineStore.error}</div>
 				</div>
-			</div>
+			{:else if !$timelineStore.timeline || $timelineStore.timeline.sessions.length === 0}
+				<div class="flex items-center justify-center h-full">
+					<div class="text-muted-foreground">No timeline data</div>
+				</div>
+			{:else}
+				<div class="py-4 px-2">
+					{#each $timelineStore.timeline.sessions as session (session.session_id)}
+						<SessionGroup
+							{session}
+							expanded={expandedSessions.has(session.session_id)}
+							onToggle={() => toggleSession(session.session_id)}
+						/>
+					{/each}
+				</div>
+			{/if}
 		{:else}
-			<div class="py-2">
-				{#each rootChildren as child (child.ID)}
-					<KnowledgeTreeComponent
-						node={child}
-						depth={0}
-						onToggle={handleNodeToggle}
-						{expandedNodes}
-						{animationStates}
-					/>
-				{/each}
-			</div>
+			<!-- Tree View (knowledge or work) -->
+			{#if $knowledgeTree.error && !$knowledgeTree.tree}
+				<div class="flex items-center justify-center h-full">
+					<div class="text-red-500">Error: {$knowledgeTree.error}</div>
+				</div>
+			{:else if rootChildren.length === 0}
+				<div class="flex items-center justify-center h-full">
+					<div class="text-muted-foreground">
+						{searchQuery || selectedTypes.size > 0 ? 'No nodes match filters' : 'No nodes found'}
+					</div>
+				</div>
+			{:else}
+				<div class="py-2">
+					{#each rootChildren as child (child.ID)}
+						<KnowledgeTreeComponent
+							node={child}
+							depth={0}
+							onToggle={handleNodeToggle}
+							{expandedNodes}
+							{animationStates}
+						/>
+					{/each}
+				</div>
+			{/if}
 		{/if}
 	</div>
 
