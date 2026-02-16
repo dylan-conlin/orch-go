@@ -37,31 +37,33 @@ import (
 
 var (
 	// Spawn command flags
-	spawnSkill             string
-	spawnIssue             string
-	spawnPhases            string
-	spawnBackendFlag       string // Spawn backend: claude or opencode (overrides config and auto-selection)
-	spawnOpus              bool   // Use Opus via Claude CLI in tmux (implies claude mode)
-	spawnValidation        string
-	spawnInline            bool   // Run inline (blocking) with TUI
-	spawnHeadless          bool   // Run headless via HTTP API (automation/scripting)
-	spawnTmux              bool   // Run in tmux window (opt-in, overrides default headless)
-	spawnAttach            bool   // Attach to tmux window after spawning
-	spawnModel             string // Model to use for standalone spawns
-	spawnNoTrack           bool   // Opt-out of beads tracking
-	spawnMCP               string // MCP server config (e.g., "playwright")
-	spawnSkipArtifactCheck bool   // Bypass pre-spawn kb context check
-	spawnMaxAgents         int    // Maximum concurrent agents (0 = use default or env var)
-	spawnAutoInit          bool   // Auto-initialize .orch and .beads if missing
-	spawnLight             bool   // Light tier spawn (skips SYNTHESIS.md requirement)
-	spawnFull              bool   // Full tier spawn (requires SYNTHESIS.md)
-	spawnWorkdir           string // Target project directory (defaults to current directory)
-	spawnGateOnGap         bool   // Block spawn if context quality is too low
-	spawnSkipGapGate       bool   // Explicitly bypass gap gating (documents conscious decision)
-	spawnGapThreshold      int    // Custom gap quality threshold (default 20)
-	spawnForce             bool   // Force spawn even if issue has blocking dependencies
-	spawnBypassTriage      bool   // Explicitly bypass triage (documents conscious decision to spawn directly)
-	spawnDesignWorkspace   string // Design workspace name for ui-design-session → feature-impl handoff
+	spawnSkill              string
+	spawnIssue              string
+	spawnPhases             string
+	spawnBackendFlag        string // Spawn backend: claude or opencode (overrides config and auto-selection)
+	spawnOpus               bool   // Use Opus via Claude CLI in tmux (implies claude mode)
+	spawnValidation         string
+	spawnInline             bool   // Run inline (blocking) with TUI
+	spawnHeadless           bool   // Run headless via HTTP API (automation/scripting)
+	spawnTmux               bool   // Run in tmux window (opt-in, overrides default headless)
+	spawnAttach             bool   // Attach to tmux window after spawning
+	spawnModel              string // Model to use for standalone spawns
+	spawnNoTrack            bool   // Opt-out of beads tracking
+	spawnMCP                string // MCP server config (e.g., "playwright")
+	spawnSkipArtifactCheck  bool   // Bypass pre-spawn kb context check
+	spawnMaxAgents          int    // Maximum concurrent agents (0 = use default or env var)
+	spawnAutoInit           bool   // Auto-initialize .orch and .beads if missing
+	spawnLight              bool   // Light tier spawn (skips SYNTHESIS.md requirement)
+	spawnFull               bool   // Full tier spawn (requires SYNTHESIS.md)
+	spawnWorkdir            string // Target project directory (defaults to current directory)
+	spawnGateOnGap          bool   // Block spawn if context quality is too low
+	spawnSkipGapGate        bool   // Explicitly bypass gap gating (documents conscious decision)
+	spawnGapThreshold       int    // Custom gap quality threshold (default 20)
+	spawnForce              bool   // Force spawn even if issue has blocking dependencies
+	spawnBypassTriage       bool   // Explicitly bypass triage (documents conscious decision to spawn directly)
+	spawnDesignWorkspace    string // Design workspace name for ui-design-session → feature-impl handoff
+	spawnBypassVerification bool   // Bypass verification gate for independent parallel work
+	spawnBypassReason       string // Justification for bypassing verification gate
 )
 
 // SpawnInput holds all input parameters for spawn operation.
@@ -228,6 +230,8 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnForce, "force", false, "Force overwrite of existing workspace (allows spawning into directory with existing session files)")
 	spawnCmd.Flags().BoolVar(&spawnBypassTriage, "bypass-triage", false, "Acknowledge manual spawn bypasses daemon-driven triage workflow (required for manual spawns)")
 	spawnCmd.Flags().StringVar(&spawnDesignWorkspace, "design-workspace", "", "Design workspace name from ui-design-session for handoff to feature-impl (e.g., 'og-design-ready-queue-08jan')")
+	spawnCmd.Flags().BoolVar(&spawnBypassVerification, "bypass-verification", false, "Bypass verification gate for independent parallel work (requires --bypass-reason)")
+	spawnCmd.Flags().StringVar(&spawnBypassReason, "bypass-reason", "", "Justification for bypassing verification gate (required with --bypass-verification)")
 }
 
 var (
@@ -511,6 +515,13 @@ func runPreFlightChecks(input *SpawnInput, preCheckDir string) (*gates.UsageChec
 	// Log the triage bypass for Phase 2 review (only for manual bypasses, not daemon-driven)
 	if !input.DaemonDriven && spawnBypassTriage {
 		gates.LogTriageBypass(input.SkillName, input.Task)
+	}
+
+	// Check verification gate (Phase 3: Session Continuity Gate)
+	// Block spawn if unverified Tier 1 work exists (prevents cascade pattern)
+	// Independent parallel work can use --bypass-verification to override
+	if err := gates.CheckVerificationGate(spawnBypassVerification, spawnBypassReason); err != nil {
+		return nil, err
 	}
 
 	// Check concurrency limit before spawning
