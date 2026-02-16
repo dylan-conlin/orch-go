@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-inv-analyze-spawn-workflow-15feb-1424",
+  "skill": "investigation",
+  "beads_id": "orch-go-untracked-1771204529",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "103d513c16f7fc855c786f44a1a594b5876d1bc2",
+  "spawn_time": "2026-02-15T17:15:31-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-create-verification-checkpoint-15feb-3500",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-lyp3",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "7526f23044f08179e42e43cf3d53b80b7dd4e179",
+  "spawn_time": "2026-02-15T11:31:32-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

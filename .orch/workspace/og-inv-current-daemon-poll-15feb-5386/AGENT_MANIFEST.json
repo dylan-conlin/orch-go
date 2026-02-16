@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-inv-current-daemon-poll-15feb-5386",
+  "skill": "investigation",
+  "beads_id": "orch-go-untracked-1771200446",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "9fd51e281d7603948ca43b87c76f4d2868b299c5",
+  "spawn_time": "2026-02-15T16:07:28-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

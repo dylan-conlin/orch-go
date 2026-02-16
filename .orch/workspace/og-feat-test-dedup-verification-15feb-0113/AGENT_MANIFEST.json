@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-test-dedup-verification-15feb-0113",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-sdei",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "4e6609909e50f60772da2b012d5da08b168b7c61",
+  "spawn_time": "2026-02-15T16:23:03-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

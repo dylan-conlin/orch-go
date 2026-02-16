@@ -1,0 +1,68 @@
+verification_type: smoke_test
+description: Verify unified daemon config construction (daemonConfigFromFlags) works correctly across all daemon commands
+
+preconditions:
+  - Commit cee21263 implemented daemonConfigFromFlags() to unify config construction
+  - Replaced 4 independent daemon.Config{} constructions with single function
+  - Fixed silently broken features (RecoveryEnabled, MaxSpawnsPerHour, VerificationPauseThreshold)
+
+verification_steps:
+  - step: "Run unit tests for VerificationTracker"
+    command: "go test ./pkg/daemon/ -run TestVerification -v"
+    expected: "All 14 tests pass (includes TestVerificationTracker_SeedFromBacklog)"
+    actual: "PASS - all 14 tests passed"
+    status: "✓ PASS"
+
+  - step: "Verify all daemon commands use daemonConfigFromFlags()"
+    command: "rg 'daemonConfigFromFlags\\(\\)' cmd/orch/daemon.go"
+    expected: "4 calls (runDaemonLoop, runDaemonDryRun, runDaemonOnce, runDaemonPreview)"
+    actual: "Found 4 calls at lines 238, 724, 781, 834"
+    status: "✓ PASS"
+
+  - step: "Verify no direct daemon.Config{} constructions remain"
+    command: "rg 'daemon\\.Config\\{' cmd/orch/daemon.go"
+    expected: "No matches (all unified through daemonConfigFromFlags)"
+    actual: "No matches found"
+    status: "✓ PASS"
+
+  - step: "Run daemon preview smoke test"
+    command: "./build/orch daemon preview"
+    expected: "Shows verification backlog with SeedFromBacklog working"
+    actual: "Verification backlog: 2 unverified completions from previous sessions"
+    status: "✓ PASS"
+
+  - step: "Verify DefaultConfig() sets correct values"
+    command: "Read pkg/daemon/daemon.go:94-116"
+    expected: |
+      RecoveryEnabled: true
+      MaxSpawnsPerHour: 20
+      VerificationPauseThreshold: 3
+    actual: "Confirmed - all defaults present in DefaultConfig()"
+    status: "✓ PASS"
+
+verified_fixes:
+  - issue: "RecoveryEnabled was never set in production loop"
+    fix: "Now true via DefaultConfig()"
+    verification: "Confirmed in DefaultConfig() line 111"
+    
+  - issue: "MaxSpawnsPerHour was 0 in production"
+    fix: "Now 20 via DefaultConfig()"
+    verification: "Confirmed in DefaultConfig() line 98"
+    
+  - issue: "Preview mode had no VerificationPauseThreshold"
+    fix: "Now 3 via DefaultConfig()"
+    verification: "Confirmed in DefaultConfig() line 115 and smoke test shows verification backlog"
+
+verification_results:
+  overall_status: "PASS"
+  test_count: 14
+  tests_passed: 14
+  tests_failed: 0
+  smoke_tests: 1
+  smoke_passed: 1
+  
+notes:
+  - All 4 daemon paths (run, once, preview, dry-run) now use daemonConfigFromFlags()
+  - SeedFromBacklog() functionality verified working in smoke test
+  - No code changes needed - verification only
+  - Issue was temporary test task, marked for deletion after verification

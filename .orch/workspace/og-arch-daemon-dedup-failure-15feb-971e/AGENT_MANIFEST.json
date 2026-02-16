@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-daemon-dedup-failure-15feb-971e",
+  "skill": "architect",
+  "beads_id": "orch-go-dr0u",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "fa2bccd92baeaba5fcb487b9c9e1f4b70cee7615",
+  "spawn_time": "2026-02-15T16:11:16-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}
