@@ -1,0 +1,64 @@
+# Verification Specification for og-feat-surface-verification-tracker-16feb-4b86
+
+## Build Verification
+- Command: `go build ./cmd/orch/`
+- Expected: Build succeeds with no errors
+- Actual: ✓ Build succeeded
+
+## Code Changes Verification
+
+### Backend (serve_system.go)
+1. Added `DaemonVerificationStatus` struct to API response types
+   - Location: cmd/orch/serve_system.go:386-392
+   - Fields: is_paused, completions_since_verification, threshold, remaining_before_pause, last_verification, last_verification_ago
+
+2. Added verification field to `DaemonAPIResponse`
+   - Location: cmd/orch/serve_system.go:361
+
+3. Populated verification status in `handleDaemon()` function
+   - Location: cmd/orch/serve_system.go:439-449
+   - Reads from status.Verification
+   - Formats timestamps with RFC3339
+
+### Frontend (daemon.ts)
+1. Added `DaemonVerificationStatus` interface
+   - Location: web/src/lib/stores/daemon.ts:6-12
+   - Matches backend API structure
+
+2. Added verification field to `DaemonStatus` interface
+   - Location: web/src/lib/stores/daemon.ts:27
+
+### Frontend (+page.svelte)
+1. Added verification counter to daemon status bar
+   - Location: web/src/routes/work-graph/+page.svelte:802-807
+   - Shows "PAUSED (X/Y)" when paused (in red)
+   - Shows "Verification: X/Y" when not paused
+
+2. Added verification gate banner
+   - Location: web/src/routes/work-graph/+page.svelte:854-866
+   - Amber background with warning icon
+   - Shows threshold reached message
+   - Displays action hint: "Run orch complete to resume"
+
+## Web Build Verification
+- Command: `cd web && npm run build`
+- Expected: Build succeeds with no errors (warnings about accessibility are pre-existing)
+- Actual: ✓ Build succeeded
+
+## Manual Verification Required
+- **Visual verification**: Dashboard should display verification counter and banner when daemon is paused
+- **Test scenario**: Run daemon with verification threshold set, allow auto-completions to reach threshold, verify UI shows paused state
+- **API verification**: Check /api/daemon response includes verification object when daemon status file has verification data
+
+## Files Modified
+- cmd/orch/serve_system.go
+- web/src/lib/stores/daemon.ts
+- web/src/routes/work-graph/+page.svelte
+
+## Dependencies
+None - uses existing daemon.ReadStatusFile() which already includes verification data
+
+## Notes
+- Verification data is only included in API response when daemon status file contains it (threshold > 0)
+- Banner only appears when is_paused is true
+- Status bar shows verification counter when daemon is running and verification tracking is enabled

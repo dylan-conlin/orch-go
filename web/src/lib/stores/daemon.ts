@@ -3,6 +3,16 @@ import { writable } from 'svelte/store';
 // API configuration - HTTPS for HTTP/2 multiplexing
 const API_BASE = 'https://localhost:3348';
 
+// Verification status for daemon gate visibility
+export interface DaemonVerificationStatus {
+	is_paused: boolean; // Whether daemon is paused due to verification threshold
+	completions_since_verification: number; // Count of auto-completions since last verification
+	threshold: number; // Maximum auto-completions before pausing
+	remaining_before_pause: number; // Completions allowed before pause
+	last_verification?: string; // ISO 8601 timestamp of last verification
+	last_verification_ago?: string; // Human-readable time since last verification
+}
+
 // Daemon status response from /api/daemon
 export interface DaemonStatus {
 	running: boolean;
@@ -16,6 +26,7 @@ export interface DaemonStatus {
 	capacity_used: number; // Currently active agents
 	capacity_free: number; // Available slots
 	issues_per_hour?: number; // Processing rate (future)
+	verification?: DaemonVerificationStatus; // Verification gate status
 }
 
 // Daemon store
