@@ -20,6 +20,18 @@ function createWIPStore() {
 			console.warn('wip store: fetch not implemented');
 			return [];
 		},
+		fetchQueued: async (projectDir: string) => {
+			// Stub implementation - returns empty queued items for now
+			console.warn('wip store: fetchQueued not implemented');
+			return [];
+		},
+		setRunningAgents: (agents: any[]) => {
+			// Stub implementation - updates store from agents list
+			console.warn('wip store: setRunningAgents not implemented');
+			// For now, just update the store with empty array
+			// TODO: Transform agents into WIPItem format
+			set([]);
+		},
 		set,
 		update
 	};

@@ -32,6 +32,43 @@ function createFocusStore() {
 				console.error('Failed to fetch focus:', error);
 				set({ has_focus: false, is_drifting: false });
 			}
+		},
+		// Clear focus by POST to /api/focus with empty payload
+		async clearFocus(): Promise<{ success: boolean; error?: string }> {
+			try {
+				const response = await fetch(`${API_BASE}/api/focus`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({})
+				});
+				if (!response.ok) {
+					return { success: false, error: `HTTP ${response.status}: ${response.statusText}` };
+				}
+				// Update local store state
+				set({ has_focus: false, is_drifting: false });
+				return { success: true };
+			} catch (error) {
+				return { success: false, error: String(error) };
+			}
+		},
+		// Set focus by POST to /api/focus with goal and beads_id
+		async setFocus(goal: string, beadsId: string): Promise<{ success: boolean; error?: string }> {
+			try {
+				const response = await fetch(`${API_BASE}/api/focus`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ goal, beads_id: beadsId })
+				});
+				if (!response.ok) {
+					return { success: false, error: `HTTP ${response.status}: ${response.statusText}` };
+				}
+				const data = await response.json();
+				// Update local store state with response
+				set(data);
+				return { success: true };
+			} catch (error) {
+				return { success: false, error: String(error) };
+			}
 		}
 	};
 }
