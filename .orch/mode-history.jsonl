@@ -118,3 +118,6 @@
 {"time":"2026-02-15T09:51:45-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
 {"time":"2026-02-15T09:51:53-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
 {"time":"2026-02-15T10:41:22-08:00","action":"bypass","reason":"Adding /api/tree endpoint - feature addition tested and verified"}
+{"time":"2026-02-15T23:26:45-08:00","action":"bypass","reason":"Phase 2 heartbeat verification system - controlled implementation with tests"}
+{"time":"2026-02-16T00:26:48-08:00","action":"bypass","reason":"Adding new endpoint - no impact on existing agents"}
+{"time":"2026-02-16T08:42:44-08:00","action":"bypass","reason":"Adding verification UI display - pure read-only dashboard feature"}
