@@ -219,6 +219,10 @@ type Daemon struct {
 	listEpicChildrenFunc func(epicID string) ([]Issue, error)
 	// createExtractionIssueFunc is used for testing - allows mocking extraction issue creation
 	createExtractionIssueFunc func(task string, parentIssueID string) (string, error)
+	// getIssueStatusFunc is used for fresh status checks before spawning.
+	// This fetches the CURRENT status from beads to catch the TOCTOU race where
+	// another daemon process has already marked the issue as in_progress.
+	getIssueStatusFunc func(beadsID string) (string, error)
 }
 
 // New creates a new Daemon instance with default configuration.
@@ -239,6 +243,7 @@ func NewWithConfig(config Config) *Daemon {
 		reflectFunc:               DefaultRunReflection,
 		listEpicChildrenFunc:      ListEpicChildren,
 		createExtractionIssueFunc: DefaultCreateExtractionIssue,
+		getIssueStatusFunc:        GetBeadsIssueStatus,
 	}
 	// Initialize worker pool if MaxAgents is set
 	if config.MaxAgents > 0 {
@@ -265,6 +270,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		spawnFunc:                 SpawnWork,
 		reflectFunc:               DefaultRunReflection,
 		createExtractionIssueFunc: DefaultCreateExtractionIssue,
+		getIssueStatusFunc:        GetBeadsIssueStatus,
 	}
 	// Initialize rate limiter if MaxSpawnsPerHour is set
 	if config.MaxSpawnsPerHour > 0 {
@@ -849,6 +855,30 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		}, nil
 	}
 
+	// FRESH STATUS CHECK: Re-fetch the issue's current status from beads.
+	// This catches the TOCTOU race where another daemon process marked this issue
+	// as in_progress between our ListReadyIssues() call and now. Without this check,
+	// UpdateBeadsStatus is idempotent (setting in_progress when already in_progress
+	// succeeds), so two concurrent daemon processes can both spawn the same issue.
+	// This was the root cause of the Feb 15 2026 orch-go-09cc duplicate spawn incident.
+	if d.getIssueStatusFunc != nil {
+		if currentStatus, err := d.getIssueStatusFunc(issue.ID); err == nil {
+			if currentStatus != "open" {
+				if d.Config.Verbose {
+					fmt.Printf("  DEBUG: Skipping %s (status is %s, expected open)\n", issue.ID, currentStatus)
+				}
+				return &OnceResult{
+					Processed: false,
+					Issue:     issue,
+					Skill:     skill,
+					Message:   fmt.Sprintf("Issue %s is already %s - skipping to prevent duplicate", issue.ID, currentStatus),
+				}, nil
+			}
+		}
+		// On error, continue to spawn (fail-open to avoid blocking work).
+		// The UpdateBeadsStatus call below provides the persistent dedup gate.
+	}
+
 	// If pool is configured, acquire a slot first
 	var slot *Slot
 	if d.Pool != nil {
@@ -1000,6 +1030,25 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 			Skill:     skill,
 			Message:   fmt.Sprintf("Existing session found for %s - skipping to prevent duplicate", issue.ID),
 		}, nil, nil
+	}
+
+	// FRESH STATUS CHECK: Re-fetch the issue's current status from beads.
+	// This catches the TOCTOU race where another daemon process marked this issue
+	// as in_progress between our ListReadyIssues() call and now.
+	if d.getIssueStatusFunc != nil {
+		if currentStatus, err := d.getIssueStatusFunc(issue.ID); err == nil {
+			if currentStatus != "open" {
+				if d.Config.Verbose {
+					fmt.Printf("  DEBUG: Skipping %s (status is %s, expected open)\n", issue.ID, currentStatus)
+				}
+				return &OnceResult{
+					Processed: false,
+					Issue:     issue,
+					Skill:     skill,
+					Message:   fmt.Sprintf("Issue %s is already %s - skipping to prevent duplicate", issue.ID, currentStatus),
+				}, nil, nil
+			}
+		}
 	}
 
 	// If pool is configured, acquire a slot first

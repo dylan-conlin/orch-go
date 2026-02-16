@@ -200,6 +200,35 @@ func CountUnverifiedCompletions() (int, error) {
 	return unverified, nil
 }
 
+// GetBeadsIssueStatus fetches the current status of a beads issue directly from beads.
+// This is used for fresh status checks before spawning to prevent the TOCTOU race
+// condition where the cached status from ListReadyIssues() is stale because another
+// daemon process has already marked the issue as in_progress.
+//
+// Returns the issue status string ("open", "in_progress", "closed", etc.) or error.
+func GetBeadsIssueStatus(beadsID string) (string, error) {
+	// Try RPC first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			issue, err := client.Show(beadsID)
+			if err == nil {
+				return issue.Status, nil
+			}
+			// Fall through to CLI fallback
+		}
+	}
+
+	// Fallback to CLI
+	issue, err := beads.FallbackShow(beadsID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get issue status: %w", err)
+	}
+	return issue.Status, nil
+}
+
 // SpawnWork spawns work on a beads issue using orch work command.
 // This is the default implementation that shells out to orch.
 func SpawnWork(beadsID string) error {

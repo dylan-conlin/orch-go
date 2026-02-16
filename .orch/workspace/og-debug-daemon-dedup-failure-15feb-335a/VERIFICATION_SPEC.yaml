@@ -1,0 +1,73 @@
+# Verification Specification: Daemon Dedup Failure Fix
+# Task: Fix daemon duplicate spawn TOCTOU race (orch-go-dr0u)
+
+## Test Environment
+workspace: og-debug-daemon-dedup-failure-15feb-335a
+date: 2026-02-15
+issue: orch-go-dr0u
+
+## Verification Goals
+- Fresh beads status check prevents duplicate spawns across daemon restarts
+- Existing daemon tests continue to pass (no regressions)
+- Fail-open behavior when beads is unavailable
+- Nil getIssueStatusFunc handled gracefully (backwards compatibility)
+
+## Test Commands Executed
+
+### New Dedup Tests
+```bash
+go test ./pkg/daemon/ -run 'TestDaemon_Once_FreshStatus|TestDaemon_ConcurrentDaemon' -timeout 30s -v
+```
+
+**Expected:**
+- All 5 tests pass
+- TestDaemon_Once_FreshStatusCheck_SkipsInProgressIssue: spawn skipped
+- TestDaemon_Once_FreshStatusCheck_AllowsOpenIssue: spawn proceeds
+- TestDaemon_Once_FreshStatusCheck_FailOpenOnError: spawn proceeds on error
+- TestDaemon_Once_FreshStatusCheck_NilFunc: spawn proceeds when func nil
+- TestDaemon_ConcurrentDaemonDedup: only 1 spawn across 2 daemon instances
+
+**Actual:**
+```
+=== RUN   TestDaemon_Once_FreshStatusCheck_SkipsInProgressIssue
+--- PASS: TestDaemon_Once_FreshStatusCheck_SkipsInProgressIssue (0.07s)
+=== RUN   TestDaemon_Once_FreshStatusCheck_AllowsOpenIssue
+--- PASS: TestDaemon_Once_FreshStatusCheck_AllowsOpenIssue (0.14s)
+=== RUN   TestDaemon_Once_FreshStatusCheck_FailOpenOnError
+--- PASS: TestDaemon_Once_FreshStatusCheck_FailOpenOnError (0.14s)
+=== RUN   TestDaemon_Once_FreshStatusCheck_NilFunc
+--- PASS: TestDaemon_Once_FreshStatusCheck_NilFunc (0.14s)
+=== RUN   TestDaemon_ConcurrentDaemonDedup
+--- PASS: TestDaemon_ConcurrentDaemonDedup (0.20s)
+PASS
+ok  	github.com/dylan-conlin/orch-go/pkg/daemon	0.692s
+```
+
+### Existing Tests (Regression Check)
+```bash
+go test ./pkg/daemon/ -run 'TestDaemon|TestOnce|TestRun|TestNext|TestPreview|TestPool|TestSpawnTracker|TestSession|TestCompletion|TestRecovery|TestUtil|TestSkill|TestStatus|TestStall|TestVerification|TestHotspot|TestReflect' -timeout 60s
+```
+
+**Expected:** All pass (excluding pre-existing TestInferTargetFilesFromIssue failure)
+
+**Actual:**
+```
+ok  	github.com/dylan-conlin/orch-go/pkg/daemon	9.554s
+```
+
+### Build Verification
+```bash
+go build ./cmd/orch/ && go vet ./cmd/orch/ && go vet ./pkg/daemon/
+```
+
+**Expected:** Clean build, no warnings
+
+**Actual:** Clean, no output
+
+## Manual Verification (Reproduction)
+The original reproduction (two workspaces for orch-go-09cc) cannot be reproduced now
+because it requires concurrent daemon restarts during active spawning. The unit tests
+simulate this exact scenario (TestDaemon_ConcurrentDaemonDedup) and confirm the fix works.
+
+## Pre-existing Failures (Not Introduced)
+- TestInferTargetFilesFromIssue (extraction_test.go) - regex parsing issue, pre-existing

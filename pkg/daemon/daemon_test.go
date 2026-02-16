@@ -2627,6 +2627,198 @@ func TestOnceExcluding_AutoExtraction_SkipsWhenNoHotspotChecker(t *testing.T) {
 	}
 }
 
+// TestDaemon_Once_FreshStatusCheck_SkipsInProgressIssue verifies that the fresh
+// beads status check prevents spawning an issue that another daemon process
+// already marked as in_progress. This was the root cause of the Feb 15 2026
+// orch-go-09cc duplicate spawn incident (TOCTOU race between concurrent daemons).
+func TestDaemon_Once_FreshStatusCheck_SkipsInProgressIssue(t *testing.T) {
+	spawnCalled := false
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			// List returns the issue as "open" (stale cached status)
+			return []Issue{
+				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			spawnCalled = true
+			return nil
+		},
+		// Fresh status check reveals the issue is already in_progress
+		getIssueStatusFunc: func(beadsID string) (string, error) {
+			return "in_progress", nil
+		},
+	}
+
+	result, err := d.Once()
+	if err != nil {
+		t.Fatalf("Once() unexpected error: %v", err)
+	}
+	if result.Processed {
+		t.Error("Once() should not process an in_progress issue")
+	}
+	if spawnCalled {
+		t.Error("spawnFunc should not be called when fresh status check shows in_progress")
+	}
+	if result.Issue == nil || result.Issue.ID != "proj-1" {
+		t.Error("result.Issue should still reference the skipped issue")
+	}
+}
+
+// TestDaemon_Once_FreshStatusCheck_AllowsOpenIssue verifies that an issue
+// with status "open" in both cached and fresh checks proceeds to spawn.
+func TestDaemon_Once_FreshStatusCheck_AllowsOpenIssue(t *testing.T) {
+	spawnCalled := false
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			spawnCalled = true
+			return nil
+		},
+		// Fresh status check confirms issue is still open
+		getIssueStatusFunc: func(beadsID string) (string, error) {
+			return "open", nil
+		},
+	}
+
+	result, err := d.Once()
+	if err != nil {
+		t.Fatalf("Once() unexpected error: %v", err)
+	}
+	if !result.Processed {
+		t.Error("Once() should process an open issue")
+	}
+	if !spawnCalled {
+		t.Error("spawnFunc should be called when fresh status check confirms open")
+	}
+}
+
+// TestDaemon_Once_FreshStatusCheck_FailOpenOnError verifies that if the
+// fresh status check fails (beads unavailable), the daemon continues to spawn
+// (fail-open). This prevents beads outages from blocking all daemon work.
+func TestDaemon_Once_FreshStatusCheck_FailOpenOnError(t *testing.T) {
+	spawnCalled := false
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			spawnCalled = true
+			return nil
+		},
+		// Fresh status check fails (beads unavailable)
+		getIssueStatusFunc: func(beadsID string) (string, error) {
+			return "", fmt.Errorf("beads daemon unavailable")
+		},
+	}
+
+	result, err := d.Once()
+	if err != nil {
+		t.Fatalf("Once() unexpected error: %v", err)
+	}
+	if !result.Processed {
+		t.Error("Once() should still process when fresh status check fails (fail-open)")
+	}
+	if !spawnCalled {
+		t.Error("spawnFunc should be called when fresh status check errors (fail-open)")
+	}
+}
+
+// TestDaemon_Once_FreshStatusCheck_NilFunc verifies that the daemon works
+// when getIssueStatusFunc is nil (backwards compatibility with tests that
+// construct Daemon structs directly without setting all func fields).
+func TestDaemon_Once_FreshStatusCheck_NilFunc(t *testing.T) {
+	spawnCalled := false
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			spawnCalled = true
+			return nil
+		},
+		// getIssueStatusFunc is nil (not set)
+	}
+
+	result, err := d.Once()
+	if err != nil {
+		t.Fatalf("Once() unexpected error: %v", err)
+	}
+	if !result.Processed {
+		t.Error("Once() should process when getIssueStatusFunc is nil")
+	}
+	if !spawnCalled {
+		t.Error("spawnFunc should be called when getIssueStatusFunc is nil")
+	}
+}
+
+// TestDaemon_ConcurrentDaemonDedup simulates the exact scenario from the
+// Feb 15 2026 incident: two daemon instances (daemon run + daemon once)
+// racing to spawn the same issue. The first daemon's UpdateBeadsStatus
+// makes the issue in_progress, which the second daemon's fresh status
+// check should detect.
+func TestDaemon_ConcurrentDaemonDedup(t *testing.T) {
+	// Shared state simulating beads database
+	issueStatus := "open"
+	spawnCount := 0
+
+	makeStatusFunc := func() func(string) (string, error) {
+		return func(beadsID string) (string, error) {
+			return issueStatus, nil
+		}
+	}
+
+	makeDaemon := func() *Daemon {
+		return &Daemon{
+			listIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+				}, nil
+			},
+			spawnFunc: func(beadsID string) error {
+				spawnCount++
+				return nil
+			},
+			getIssueStatusFunc: makeStatusFunc(),
+		}
+	}
+
+	// Daemon 1 spawns the issue
+	d1 := makeDaemon()
+	result1, err := d1.Once()
+	if err != nil {
+		t.Fatalf("Daemon 1 Once() unexpected error: %v", err)
+	}
+	if !result1.Processed {
+		t.Error("Daemon 1 should have processed the issue")
+	}
+
+	// Simulate beads status update (would happen via UpdateBeadsStatus in production)
+	issueStatus = "in_progress"
+
+	// Daemon 2 (new instance, no shared memory) tries the same issue
+	d2 := makeDaemon()
+	result2, err := d2.Once()
+	if err != nil {
+		t.Fatalf("Daemon 2 Once() unexpected error: %v", err)
+	}
+	if result2.Processed {
+		t.Error("Daemon 2 should NOT have processed the issue (fresh status check should catch in_progress)")
+	}
+
+	if spawnCount != 1 {
+		t.Errorf("Expected exactly 1 spawn, got %d", spawnCount)
+	}
+}
+
 // mockDaemonHotspotChecker implements HotspotChecker for daemon tests.
 type mockDaemonHotspotChecker struct {
 	hotspots []HotspotWarning
