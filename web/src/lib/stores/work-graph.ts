@@ -272,7 +272,7 @@ export function buildTree(nodes: GraphNode[], edges: GraphEdge[]): TreeNode[] {
 }
 
 // Grouping mode for Work Graph
-export type GroupByMode = 'priority' | 'area' | 'effort'
+export type GroupByMode = 'priority' | 'area' | 'effort' | 'dep-chain'
 
 // A group section for rendering
 export interface GroupSection {
@@ -285,6 +285,7 @@ export interface GroupSection {
 // Group tree nodes by the selected mode
 // Priority groups by priority level (P0, P1, P2, P3, P4)
 // Area/Effort groups by matching label prefix, with unlabeled at bottom
+// Note: This function does NOT handle 'dep-chain' mode - caller should use clusterByDepChain instead
 export function groupTreeNodes(nodes: TreeNode[], mode: GroupByMode): GroupSection[] {
   if (mode === 'priority') {
     const groups = new Map<number, TreeNode[]>()
@@ -340,6 +341,153 @@ export function groupTreeNodes(nodes: TreeNode[], mode: GroupByMode): GroupSecti
   }
 
   return sections
+}
+
+// Cluster tree nodes by dependency chains (connected components)
+// Groups nodes that are connected via blocks or parent-child edges
+export function clusterByDepChain(nodes: TreeNode[], edges: GraphEdge[]): GroupSection[] {
+  // Build adjacency list from edges (undirected - connection in either direction means same cluster)
+  const adjacency = new Map<string, Set<string>>()
+  const nodeMap = new Map<string, TreeNode>()
+  
+  // Initialize adjacency list and node map
+  for (const node of nodes) {
+    adjacency.set(node.id, new Set())
+    nodeMap.set(node.id, node)
+  }
+  
+  // Add edges for blocks and parent-child relationships
+  for (const edge of edges) {
+    // Only consider edges where both nodes are in our current node set
+    if (!nodeMap.has(edge.from) || !nodeMap.has(edge.to)) continue
+    
+    if (edge.type === 'blocks' || edge.type === '' || edge.type === 'parent-child') {
+      adjacency.get(edge.from)?.add(edge.to)
+      adjacency.get(edge.to)?.add(edge.from)
+    }
+  }
+  
+  // Find connected components using BFS
+  const visited = new Set<string>()
+  const clusters: TreeNode[][] = []
+  
+  for (const node of nodes) {
+    if (visited.has(node.id)) continue
+    
+    // BFS to find all nodes in this connected component
+    const component: TreeNode[] = []
+    const queue: string[] = [node.id]
+    visited.add(node.id)
+    
+    while (queue.length > 0) {
+      const currentId = queue.shift()!
+      const currentNode = nodeMap.get(currentId)
+      if (currentNode) {
+        component.push(currentNode)
+      }
+      
+      // Add neighbors to queue
+      const neighbors = adjacency.get(currentId) || new Set()
+      for (const neighborId of neighbors) {
+        if (!visited.has(neighborId)) {
+          visited.add(neighborId)
+          queue.push(neighborId)
+        }
+      }
+    }
+    
+    clusters.push(component)
+  }
+  
+  // Build GroupSections
+  const sections: GroupSection[] = []
+  
+  for (const cluster of clusters) {
+    if (cluster.length === 0) continue
+    
+    // Find root node (node with no blockers/parents in this cluster, or alphabetically first)
+    let rootNode = cluster[0]
+    for (const node of cluster) {
+      // A node is a root if it has no blocked_by relationships within this cluster
+      const clusterIds = new Set(cluster.map(n => n.id))
+      const hasBlockersInCluster = node.blocked_by.some(blockerId => clusterIds.has(blockerId))
+      
+      if (!hasBlockersInCluster) {
+        // This is a potential root - choose alphabetically first among roots
+        if (node.id < rootNode.id || rootNode.blocked_by.some(bid => clusterIds.has(bid))) {
+          rootNode = node
+        }
+      }
+    }
+    
+    // Sort cluster by topological order (dependencies first)
+    // Simple approach: sort by number of dependencies within cluster, then alphabetically
+    const clusterIds = new Set(cluster.map(n => n.id))
+    const sortedCluster = cluster.sort((a, b) => {
+      const aDepCount = a.blocked_by.filter(bid => clusterIds.has(bid)).length
+      const bDepCount = b.blocked_by.filter(bid => clusterIds.has(bid)).length
+      
+      // Fewer dependencies first (leaves before roots in dependency tree)
+      if (aDepCount !== bDepCount) {
+        return aDepCount - bDepCount
+      }
+      
+      // Then by priority
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority
+      }
+      
+      // Finally alphabetically
+      return a.id.localeCompare(b.id)
+    })
+    
+    sections.push({
+      label: cluster.length === 1 ? 'Independent' : rootNode.title || rootNode.id,
+      key: `dep-chain-${rootNode.id}`,
+      nodes: sortedCluster,
+      unlabeled: cluster.length === 1, // Single nodes are treated like "unlabeled"
+    })
+  }
+  
+  // Sort sections: multi-node clusters first (by size, desc), then independent nodes
+  sections.sort((a, b) => {
+    const aSize = a.nodes.length
+    const bSize = b.nodes.length
+    
+    // Single-node sections go last
+    if (aSize === 1 && bSize > 1) return 1
+    if (bSize === 1 && aSize > 1) return -1
+    
+    // Multi-node sections sorted by size (largest first)
+    if (aSize !== bSize) return bSize - aSize
+    
+    // Same size - sort by label
+    return a.label.localeCompare(b.label)
+  })
+  
+  // Merge all single-node clusters into one "Independent" section
+  const independentNodes: TreeNode[] = []
+  const clusteredSections: GroupSection[] = []
+  
+  for (const section of sections) {
+    if (section.nodes.length === 1) {
+      independentNodes.push(...section.nodes)
+    } else {
+      clusteredSections.push(section)
+    }
+  }
+  
+  // Add Independent section at the end if there are any
+  if (independentNodes.length > 0) {
+    clusteredSections.push({
+      label: 'Independent',
+      key: 'dep-chain-independent',
+      nodes: independentNodes,
+      unlabeled: true,
+    })
+  }
+  
+  return clusteredSections
 }
 
 // Filter tree nodes by label text. Keeps nodes (and their ancestors) where any label
