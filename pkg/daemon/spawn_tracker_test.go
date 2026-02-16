@@ -286,6 +286,166 @@ func (e *spawnError) Error() string {
 	return e.msg
 }
 
+// TestSpawnedIssueTracker_TitleDedup tests content-aware dedup via title tracking.
+func TestSpawnedIssueTracker_TitleDedup(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+
+	// Mark issue with title
+	tracker.MarkSpawnedWithTitle("issue-1", "Extract spawn flags phase 1")
+
+	// Same title should be detected as spawned
+	spawned, dupID := tracker.IsTitleSpawned("Extract spawn flags phase 1")
+	if !spawned {
+		t.Error("title should be detected as spawned")
+	}
+	if dupID != "issue-1" {
+		t.Errorf("dupID = %q, want %q", dupID, "issue-1")
+	}
+
+	// Different title should not be detected
+	spawned, _ = tracker.IsTitleSpawned("Different task")
+	if spawned {
+		t.Error("different title should not be detected as spawned")
+	}
+
+	// Case-insensitive match
+	spawned, dupID = tracker.IsTitleSpawned("extract spawn flags phase 1")
+	if !spawned {
+		t.Error("title matching should be case-insensitive")
+	}
+	if dupID != "issue-1" {
+		t.Errorf("dupID = %q, want %q", dupID, "issue-1")
+	}
+}
+
+// TestSpawnedIssueTracker_TitleDedup_TTL tests that title tracking respects TTL.
+func TestSpawnedIssueTracker_TitleDedup_TTL(t *testing.T) {
+	tracker := NewSpawnedIssueTrackerWithTTL(50 * time.Millisecond)
+
+	tracker.MarkSpawnedWithTitle("issue-1", "Extract spawn flags")
+
+	// Should be detected immediately
+	spawned, _ := tracker.IsTitleSpawned("Extract spawn flags")
+	if !spawned {
+		t.Error("title should be detected immediately after marking")
+	}
+
+	// Wait for TTL to expire
+	time.Sleep(60 * time.Millisecond)
+
+	// Should no longer be detected
+	spawned, _ = tracker.IsTitleSpawned("Extract spawn flags")
+	if spawned {
+		t.Error("title should not be detected after TTL expires")
+	}
+}
+
+// TestSpawnedIssueTracker_TitleDedup_Unmark tests that Unmark cleans up title index.
+func TestSpawnedIssueTracker_TitleDedup_Unmark(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+
+	tracker.MarkSpawnedWithTitle("issue-1", "Some task")
+
+	// Should be detected
+	spawned, _ := tracker.IsTitleSpawned("Some task")
+	if !spawned {
+		t.Error("title should be detected")
+	}
+
+	// Unmark the issue
+	tracker.Unmark("issue-1")
+
+	// Title should also be cleaned up
+	spawned, _ = tracker.IsTitleSpawned("Some task")
+	if spawned {
+		t.Error("title should not be detected after unmark")
+	}
+}
+
+// TestSpawnedIssueTracker_TitleDedup_EmptyTitle tests edge cases with empty titles.
+func TestSpawnedIssueTracker_TitleDedup_EmptyTitle(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+
+	// Mark with empty title should not panic or cause issues
+	tracker.MarkSpawnedWithTitle("issue-1", "")
+
+	// Checking empty title should return false
+	spawned, _ := tracker.IsTitleSpawned("")
+	if spawned {
+		t.Error("empty title should not be detected as spawned")
+	}
+}
+
+// TestDaemon_ContentDedupSkipsDuplicateTitle tests that Once() skips issues
+// whose title matches a recently-spawned issue (in-memory layer).
+func TestDaemon_ContentDedupSkipsDuplicateTitle(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+	spawnCount := 0
+
+	d := &Daemon{
+		SpawnedIssues: tracker,
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "issue-dup", Title: "Extract spawn flags phase 1", Priority: 0, IssueType: "task", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			spawnCount++
+			return nil
+		},
+	}
+
+	// Pre-mark a different issue ID with the same title
+	tracker.MarkSpawnedWithTitle("issue-original", "Extract spawn flags phase 1")
+
+	// Once should skip issue-dup because its title matches issue-original
+	result, err := d.Once()
+	if err != nil {
+		t.Fatalf("Once() error: %v", err)
+	}
+	if result.Processed {
+		t.Error("Once() should not process duplicate title")
+	}
+	if spawnCount != 0 {
+		t.Errorf("spawnFunc should not have been called, got %d calls", spawnCount)
+	}
+}
+
+// TestDaemon_ContentDedupAllowsDifferentTitle tests that Once() allows issues
+// with different titles even when another issue is tracked.
+func TestDaemon_ContentDedupAllowsDifferentTitle(t *testing.T) {
+	tracker := NewSpawnedIssueTracker()
+	spawnCount := 0
+
+	d := &Daemon{
+		SpawnedIssues: tracker,
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "issue-new", Title: "Add new feature X", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			spawnCount++
+			return nil
+		},
+	}
+
+	// Pre-mark a different title
+	tracker.MarkSpawnedWithTitle("issue-other", "Extract spawn flags phase 1")
+
+	// Once should process issue-new because title is different
+	result, err := d.Once()
+	if err != nil {
+		t.Fatalf("Once() error: %v", err)
+	}
+	if !result.Processed {
+		t.Errorf("Once() should process issue with different title, got message: %s", result.Message)
+	}
+	if spawnCount != 1 {
+		t.Errorf("spawnFunc should have been called once, got %d", spawnCount)
+	}
+}
+
 // TestDaemon_PreventsDuplicateSpawns is an integration test that verifies
 // the entire flow prevents duplicate spawns during the race window.
 func TestDaemon_PreventsDuplicateSpawns(t *testing.T) {

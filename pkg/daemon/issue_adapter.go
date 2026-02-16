@@ -294,6 +294,57 @@ func GetBeadsIssueStatus(beadsID string) (string, error) {
 	return issue.Status, nil
 }
 
+// FindInProgressByTitle returns the first in_progress issue with a matching title.
+// Uses case-insensitive substring matching via beads List API.
+// Returns nil if no match found. Fails open (returns nil on error) to avoid blocking work.
+// This is the persistent layer of content-aware dedup - it survives daemon restarts
+// because it queries the beads database directly.
+func FindInProgressByTitle(title string) *Issue {
+	if title == "" {
+		return nil
+	}
+
+	// Try RPC first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			beadsIssues, err := client.List(&beads.ListArgs{
+				Status: "in_progress",
+				Title:  title,
+				Limit:  1,
+			})
+			if err == nil && len(beadsIssues) > 0 {
+				issues := convertBeadsIssues(beadsIssues)
+				return &issues[0]
+			}
+			// Fall through to CLI fallback
+		}
+	}
+
+	// Fallback to CLI
+	beadsIssues, err := beads.FallbackList("in_progress")
+	if err != nil {
+		return nil // fail-open
+	}
+
+	normalizedTarget := normalizeTitle(title)
+	for _, bi := range beadsIssues {
+		if normalizeTitle(bi.Title) == normalizedTarget {
+			issue := Issue{
+				ID:        bi.ID,
+				Title:     bi.Title,
+				Status:    bi.Status,
+				IssueType: bi.IssueType,
+			}
+			return &issue
+		}
+	}
+
+	return nil
+}
+
 // SpawnWork spawns work on a beads issue using orch work command.
 // This is the default implementation that shells out to orch.
 func SpawnWork(beadsID string) error {

@@ -2,6 +2,7 @@
 package daemon
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -25,6 +26,12 @@ type SpawnedIssueTracker struct {
 	// to be in_progress or closed.
 	spawned map[string]time.Time
 
+	// spawnedTitles maps normalized title to issue ID for content-aware dedup.
+	// This catches the case where multiple beads issues are created with identical
+	// content (different IDs, same title). Without this, the daemon would spawn
+	// each one because ID-based dedup treats them as distinct.
+	spawnedTitles map[string]string
+
 	// TTL is how long to keep entries before considering them stale.
 	// Default is 6 hours - matching typical agent work duration.
 	// This provides backup protection when session-level dedup fails.
@@ -37,16 +44,18 @@ type SpawnedIssueTracker struct {
 // Primary dedup is done via session-level checking in daemon.Once().
 func NewSpawnedIssueTracker() *SpawnedIssueTracker {
 	return &SpawnedIssueTracker{
-		spawned: make(map[string]time.Time),
-		TTL:     6 * time.Hour,
+		spawned:       make(map[string]time.Time),
+		spawnedTitles: make(map[string]string),
+		TTL:           6 * time.Hour,
 	}
 }
 
 // NewSpawnedIssueTrackerWithTTL creates a tracker with a custom TTL.
 func NewSpawnedIssueTrackerWithTTL(ttl time.Duration) *SpawnedIssueTracker {
 	return &SpawnedIssueTracker{
-		spawned: make(map[string]time.Time),
-		TTL:     ttl,
+		spawned:       make(map[string]time.Time),
+		spawnedTitles: make(map[string]string),
+		TTL:           ttl,
 	}
 }
 
@@ -56,6 +65,59 @@ func (t *SpawnedIssueTracker) MarkSpawned(issueID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.spawned[issueID] = time.Now()
+}
+
+// MarkSpawnedWithTitle records that an issue has been spawned, including its title
+// for content-aware dedup. This prevents duplicate spawning when multiple beads issues
+// are created with the same title (different IDs, identical content).
+func (t *SpawnedIssueTracker) MarkSpawnedWithTitle(issueID, title string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.spawned[issueID] = time.Now()
+	if title != "" {
+		normalized := normalizeTitle(title)
+		if normalized != "" {
+			t.spawnedTitles[normalized] = issueID
+		}
+	}
+}
+
+// IsTitleSpawned returns true if an issue with this title was recently spawned (within TTL).
+// Returns the issue ID of the matching spawn, or empty string if not found.
+// This catches content duplicates where different beads issues have the same title.
+func (t *SpawnedIssueTracker) IsTitleSpawned(title string) (bool, string) {
+	if title == "" {
+		return false, ""
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	normalized := normalizeTitle(title)
+	if normalized == "" {
+		return false, ""
+	}
+
+	issueID, exists := t.spawnedTitles[normalized]
+	if !exists {
+		return false, ""
+	}
+
+	// Check if the associated spawn is still within TTL
+	spawnTime, spawned := t.spawned[issueID]
+	if !spawned || time.Since(spawnTime) > t.TTL {
+		// Stale - clean up
+		delete(t.spawnedTitles, normalized)
+		return false, ""
+	}
+
+	return true, issueID
+}
+
+// normalizeTitle normalizes a title for comparison.
+// Lowercases and trims whitespace.
+func normalizeTitle(title string) string {
+	return strings.TrimSpace(strings.ToLower(title))
 }
 
 // IsSpawned returns true if the issue was recently spawned (within TTL).
@@ -84,6 +146,12 @@ func (t *SpawnedIssueTracker) Unmark(issueID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.spawned, issueID)
+	// Clean title index entries pointing to this issue
+	for title, id := range t.spawnedTitles {
+		if id == issueID {
+			delete(t.spawnedTitles, title)
+		}
+	}
 }
 
 // CleanStale removes entries older than TTL.
@@ -98,6 +166,12 @@ func (t *SpawnedIssueTracker) CleanStale() int {
 		if now.Sub(spawnTime) > t.TTL {
 			delete(t.spawned, id)
 			removed++
+		}
+	}
+	// Clean orphaned title entries
+	for title, id := range t.spawnedTitles {
+		if _, exists := t.spawned[id]; !exists {
+			delete(t.spawnedTitles, title)
 		}
 	}
 	return removed

@@ -873,6 +873,40 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		}, nil
 	}
 
+	// CONTENT-AWARE DEDUP: Check if another issue with the same title is already in_progress.
+	// This catches the case where multiple beads issues are created with identical content
+	// (different IDs, same title). Without this, the daemon would spawn each one because
+	// all other dedup layers are keyed on issue ID.
+	//
+	// Layer 1 (in-memory): Check SpawnedIssueTracker title index for recently-spawned titles.
+	// This is fast and catches duplicates within the same daemon instance.
+	if d.SpawnedIssues != nil {
+		if spawned, dupID := d.SpawnedIssues.IsTitleSpawned(issue.Title); spawned && dupID != issue.ID {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Skipping %s (title matches recently spawned %s)\n", issue.ID, dupID)
+			}
+			return &OnceResult{
+				Processed: false,
+				Issue:     issue,
+				Skill:     skill,
+				Message:   fmt.Sprintf("Skipping %s - title matches recently spawned %s", issue.ID, dupID),
+			}, nil
+		}
+	}
+	// Layer 2 (persistent): Check beads database for in_progress issues with same title.
+	// This survives daemon restarts and catches duplicates across daemon instances.
+	if dup := FindInProgressByTitle(issue.Title); dup != nil && dup.ID != issue.ID {
+		if d.Config.Verbose {
+			fmt.Printf("  DEBUG: Skipping %s (content duplicate of in_progress %s)\n", issue.ID, dup.ID)
+		}
+		return &OnceResult{
+			Processed: false,
+			Issue:     issue,
+			Skill:     skill,
+			Message:   fmt.Sprintf("Skipping %s - duplicate of in_progress issue %s with same title", issue.ID, dup.ID),
+		}, nil
+	}
+
 	// FRESH STATUS CHECK: Re-fetch the issue's current status from beads.
 	// This catches the TOCTOU race where another daemon process marked this issue
 	// as in_progress between our ListReadyIssues() call and now. Without this check,
@@ -942,11 +976,11 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		}, nil
 	}
 
-	// SECONDARY DEDUP: Mark issue as spawned in memory.
+	// SECONDARY DEDUP: Mark issue as spawned in memory (with title for content dedup).
 	// This catches the race window between beads update and subprocess spawn completion.
-	// Also provides fallback if beads status update failed above.
+	// Title tracking prevents duplicate content spawns within the same daemon instance.
 	if d.SpawnedIssues != nil {
-		d.SpawnedIssues.MarkSpawned(issue.ID)
+		d.SpawnedIssues.MarkSpawnedWithTitle(issue.ID, issue.Title)
 	}
 
 	// Spawn the work
@@ -1050,6 +1084,33 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 		}, nil, nil
 	}
 
+	// CONTENT-AWARE DEDUP: Check if another issue with the same title is already in_progress.
+	// (See Once() for detailed comments on these two layers.)
+	if d.SpawnedIssues != nil {
+		if spawned, dupID := d.SpawnedIssues.IsTitleSpawned(issue.Title); spawned && dupID != issue.ID {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Skipping %s (title matches recently spawned %s)\n", issue.ID, dupID)
+			}
+			return &OnceResult{
+				Processed: false,
+				Issue:     issue,
+				Skill:     skill,
+				Message:   fmt.Sprintf("Skipping %s - title matches recently spawned %s", issue.ID, dupID),
+			}, nil, nil
+		}
+	}
+	if dup := FindInProgressByTitle(issue.Title); dup != nil && dup.ID != issue.ID {
+		if d.Config.Verbose {
+			fmt.Printf("  DEBUG: Skipping %s (content duplicate of in_progress %s)\n", issue.ID, dup.ID)
+		}
+		return &OnceResult{
+			Processed: false,
+			Issue:     issue,
+			Skill:     skill,
+			Message:   fmt.Sprintf("Skipping %s - duplicate of in_progress issue %s with same title", issue.ID, dup.ID),
+		}, nil, nil
+	}
+
 	// FRESH STATUS CHECK: Re-fetch the issue's current status from beads.
 	// This catches the TOCTOU race where another daemon process marked this issue
 	// as in_progress between our ListReadyIssues() call and now.
@@ -1114,11 +1175,11 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 		}, nil, nil
 	}
 
-	// SECONDARY DEDUP: Mark issue as spawned in memory.
+	// SECONDARY DEDUP: Mark issue as spawned in memory (with title for content dedup).
 	// This catches the race window between beads update and subprocess spawn completion.
-	// Also provides fallback if beads status update failed above.
+	// Title tracking prevents duplicate content spawns within the same daemon instance.
 	if d.SpawnedIssues != nil {
-		d.SpawnedIssues.MarkSpawned(issue.ID)
+		d.SpawnedIssues.MarkSpawnedWithTitle(issue.ID, issue.Title)
 	}
 
 	// Spawn the work
