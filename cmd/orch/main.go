@@ -69,6 +69,7 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(retriesCmd)
 	rootCmd.AddCommand(controlCmd)
+	rootCmd.AddCommand(verifyCmd)
 }
 
 var (

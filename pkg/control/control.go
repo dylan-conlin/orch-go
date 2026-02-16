@@ -22,8 +22,8 @@ var (
 	// HaltPath is the halt sentinel file
 	HaltPath = filepath.Join(ControlDir, "halt")
 
-	// HeartbeatPath is the human acknowledgment file
-	HeartbeatPath = filepath.Join(ControlDir, "heartbeat")
+	// HeartbeatPath is the human acknowledgment file (verification timestamp)
+	HeartbeatPath = filepath.Join(ControlDir, "control-heartbeat")
 
 	// MetricsDir is where metrics logs are stored
 	MetricsDir = filepath.Join(ControlDir, "metrics")
@@ -261,6 +261,27 @@ func HeartbeatAgeDays() int {
 	}
 	age := time.Since(info.ModTime())
 	return int(age.Hours() / 24)
+}
+
+// HeartbeatAgeHours returns hours since last verification heartbeat, or -1 if no heartbeat exists.
+// Used by daemon to detect stale heartbeat (>24h = halt autonomous spawning).
+func HeartbeatAgeHours() float64 {
+	info, err := os.Stat(HeartbeatPath)
+	if err != nil {
+		return -1
+	}
+	age := time.Since(info.ModTime())
+	return age.Hours()
+}
+
+// IsHeartbeatStale returns true if heartbeat is older than 24 hours or doesn't exist.
+// This is the primary defense against multi-day autonomous drift.
+func IsHeartbeatStale() bool {
+	age := HeartbeatAgeHours()
+	if age < 0 {
+		return true // No heartbeat file exists
+	}
+	return age > 24
 }
 
 // Status returns control plane state (config + halt + recent metrics)

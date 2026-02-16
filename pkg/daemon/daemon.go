@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/control"
 )
 
 // Config holds configuration for the daemon.
@@ -756,6 +757,23 @@ func (d *Daemon) Once() (*OnceResult, error) {
 // If a worker pool is configured, it acquires a slot before spawning.
 // If a rate limiter is configured, it checks the hourly limit before spawning.
 func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
+	// Check heartbeat staleness FIRST (before any other checks).
+	// This is the primary defense against multi-day autonomous drift.
+	// Stale heartbeat (>24h) means no human verification activity.
+	if control.IsHeartbeatStale() {
+		age := control.HeartbeatAgeHours()
+		var msg string
+		if age < 0 {
+			msg = "No heartbeat file exists. Run: orch verify heartbeat"
+		} else {
+			msg = fmt.Sprintf("Heartbeat stale (%.1fh old, >24h threshold). Run: orch verify heartbeat", age)
+		}
+		return &OnceResult{
+			Processed: false,
+			Message:   msg,
+		}, nil
+	}
+
 	// Check verification pause BEFORE any other checks (including rate limit).
 	// This enforces the verifiability-first constraint: daemon pauses after N
 	// auto-completions without human verification.
