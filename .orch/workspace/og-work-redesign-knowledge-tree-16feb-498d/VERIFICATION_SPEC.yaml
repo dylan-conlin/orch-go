@@ -1,0 +1,74 @@
+---
+version: "1.0"
+issue: orch-go-r3zy
+skill: design-session
+tier: full
+
+summary: |
+  Design session that analyzed 6 problems with the work-graph dashboard and
+  produced an epic (orch-go-nbem) with 6 implementation tasks, dependency
+  chain, and parallel execution plan.
+
+deliverables:
+  - type: epic
+    id: orch-go-nbem
+    title: "Redesign work-graph dashboard"
+    verification: "bd show orch-go-nbem"
+    expected: "Epic exists with title and description"
+
+  - type: task
+    id: orch-go-pcyb
+    title: "Build /api/beads/graph endpoint"
+    verification: "bd show orch-go-pcyb"
+    expected: "Task exists, status open, no blockers"
+
+  - type: task
+    id: orch-go-nylj
+    title: "Wire attention store"
+    verification: "bd show orch-go-nylj"
+    expected: "Task exists, status open, no blockers"
+
+  - type: task
+    id: orch-go-pipi
+    title: "Status-first partitioning"
+    verification: "bd show orch-go-pipi"
+    expected: "Task exists, blocked by orch-go-pcyb"
+
+  - type: task
+    id: orch-go-sk88
+    title: "Verification gate visibility"
+    verification: "bd show orch-go-sk88"
+    expected: "Task exists, status open, no blockers"
+
+  - type: task
+    id: orch-go-nibk
+    title: "Verification badges on issues"
+    verification: "bd show orch-go-nibk"
+    expected: "Task exists, blocked by orch-go-nylj"
+
+  - type: task
+    id: orch-go-25b6
+    title: "Dep-chain grouping mode"
+    verification: "bd show orch-go-25b6"
+    expected: "Task exists, blocked by orch-go-pcyb"
+
+  - type: synthesis
+    path: ".orch/workspace/og-work-redesign-knowledge-tree-16feb-498d/SYNTHESIS.md"
+    verification: "test -f .orch/workspace/og-work-redesign-knowledge-tree-16feb-498d/SYNTHESIS.md"
+    expected: "File exists with Plain-Language Summary and Verification Contract sections"
+
+dependencies:
+  - from: orch-go-pipi
+    to: orch-go-pcyb
+    type: blocks
+  - from: orch-go-25b6
+    to: orch-go-pcyb
+    type: blocks
+  - from: orch-go-nibk
+    to: orch-go-nylj
+    type: blocks
+
+manual_verification:
+  - step: "Verify epic has all 6 children: bd show orch-go-nbem"
+  - step: "Verify dependency chain: bd blocked should show pipi, 25b6, nibk as blocked"
+  - step: "Verify 3 tasks ready for parallel execution: pcyb, nylj, sk88"
