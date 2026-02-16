@@ -114,18 +114,7 @@
 		completionAt: string;
 	}
 
-	interface InProgressItem {
-		id: string;
-		title: string;
-		type: string;
-		priority: number;
-		phase?: string;
-		runtime?: string;
-		model?: string;
-	}
-
 	let readyToCompleteItems: ReadyToCompleteItem[] = [];
-	let inProgressItems: InProgressItem[] = [];
 	
 	// Persist groupBy mode in localStorage
 	const GROUP_BY_KEY = 'work-graph-group-by';
@@ -381,36 +370,6 @@
 		readyToCompleteItems = Array.from(queueByIssue.values()).sort((a, b) => {
 			const ageDiff = completionMs(a) - completionMs(b); // oldest completion first
 			if (ageDiff !== 0) return ageDiff;
-			if (a.priority !== b.priority) return a.priority - b.priority;
-			return a.id.localeCompare(b.id);
-		});
-	}
-
-	// Build a dedicated "In Progress" section for issues with status=in_progress
-	// Shows agent info (phase, runtime, model) when available from active_agent field
-	$: {
-		const progressByIssue = new Map<string, InProgressItem>();
-		const nodesById = new Map(($workGraph?.nodes || []).map((node) => [node.id, node]));
-
-		for (const node of $workGraph?.nodes || []) {
-			if (node.status.toLowerCase() !== 'in_progress') continue;
-			if (node.source !== 'beads') continue;
-
-			const item: InProgressItem = {
-				id: node.id,
-				title: node.title,
-				type: node.type,
-				priority: node.priority,
-				phase: node.active_agent?.phase,
-				runtime: node.active_agent?.runtime,
-				model: node.active_agent?.model,
-			};
-
-			progressByIssue.set(node.id, item);
-		}
-
-		inProgressItems = Array.from(progressByIssue.values()).sort((a, b) => {
-			// Sort by priority first, then by ID
 			if (a.priority !== b.priority) return a.priority - b.priority;
 			return a.id.localeCompare(b.id);
 		});
@@ -799,22 +758,12 @@
 								· last poll {$daemon.last_poll_ago}
 							{/if}
 							· {daemonQueueSummary($daemon)}
-							{#if $daemon.verification}
-								{#if $daemon.verification.is_paused}
-									· <span class="text-red-500 font-medium">PAUSED ({$daemon.verification.completions_since_verification}/{$daemon.verification.threshold})</span>
-								{:else}
-									· Verification: {$daemon.verification.completions_since_verification}/{$daemon.verification.threshold}
-								{/if}
-							{/if}
 						{/if}
 					</span>
 				{/if}
 				{#if currentView === 'issues' && $workGraph}
 					{#if readyToCompleteItems.length > 0}
 						<span class="text-emerald-400">{readyToCompleteItems.length} ready to complete</span>
-					{/if}
-					{#if inProgressItems.length > 0}
-						<span class="text-blue-400">{inProgressItems.length} in progress</span>
 					{/if}
 					<span>{labelFilter ? filteredTree.length + ' matched' : $workGraph.node_count + ' issues'}</span>
 					<span>{$workGraph.edge_count} edges</span>
@@ -855,24 +804,6 @@
 			>
 				Clear Focus
 			</button>
-		</div>
-	{/if}
-
-	<!-- Verification Gate Banner -->
-	{#if $daemon?.verification?.is_paused}
-		<div class="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-between">
-			<div class="flex items-center gap-2">
-				<span class="text-amber-500">⚠️</span>
-				<span class="text-sm text-amber-600 dark:text-amber-400 font-medium">
-					Daemon Paused: Verification Required
-				</span>
-				<span class="text-sm text-amber-500/80">
-					{$daemon.verification.completions_since_verification} auto-completions reached threshold ({$daemon.verification.threshold})
-				</span>
-			</div>
-			<div class="text-xs text-amber-500/80">
-				Run <code class="bg-amber-500/20 px-1 rounded">orch complete</code> to resume
-			</div>
 		</div>
 	{/if}
 
@@ -919,38 +850,6 @@
 										<span class="text-muted-foreground whitespace-nowrap">{item.runtime || 'runtime unknown'}</span>
 										<span class="text-muted-foreground whitespace-nowrap">{formatTokenTotal(item.tokenTotal)}</span>
 										<span class="text-emerald-200/80 whitespace-nowrap">completed {formatRelativeTime(item.completionAt)}</span>
-									</div>
-								{/each}
-							</div>
-						</div>
-					{/if}
-
-					{#if inProgressItems.length > 0}
-						<div
-							class="mx-2 mb-2 rounded-md border border-blue-500/30 bg-blue-500/5"
-							data-testid="in-progress-section"
-						>
-							<div class="px-3 py-2 border-b border-blue-500/20 flex items-center justify-between gap-4">
-								<div class="text-sm font-semibold text-blue-400">In Progress</div>
-								<div class="text-xs text-blue-300/80">{inProgressItems.length} actively being worked on</div>
-							</div>
-							<div class="max-h-36 overflow-y-auto">
-								{#each inProgressItems as item (item.id)}
-									<div
-										class="px-3 py-2 border-b border-blue-500/10 last:border-b-0 flex items-center gap-3 text-xs"
-										data-testid={`in-progress-row-${item.id}`}
-									>
-										<span class="font-mono text-blue-300 min-w-[120px]">{item.id}</span>
-										<span class="text-foreground text-sm flex-1 truncate">{item.title}</span>
-										{#if item.phase}
-											<span class="text-muted-foreground whitespace-nowrap">{item.phase}</span>
-										{/if}
-										{#if item.runtime}
-											<span class="text-muted-foreground whitespace-nowrap">{item.runtime}</span>
-										{/if}
-										{#if item.model}
-											<span class="text-blue-200/80 whitespace-nowrap">{item.model}</span>
-										{/if}
 									</div>
 								{/each}
 							</div>
