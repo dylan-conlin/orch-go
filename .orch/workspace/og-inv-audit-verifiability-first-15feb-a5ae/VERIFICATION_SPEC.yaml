@@ -1,0 +1,32 @@
+verification_spec:
+  type: investigation
+  issue: orch-go-nlgg
+
+  commands_run:
+    - command: "go build ./cmd/orch/"
+      expectation: "Clean build with no errors"
+      result: "PASS"
+
+    - command: "go test ./pkg/daemon/ -run TestVerification -v -count=1"
+      expectation: "All VerificationTracker tests pass"
+      result: "PASS - 16 test cases"
+
+    - command: "go test ./pkg/checkpoint/ -v -count=1"
+      expectation: "All checkpoint tests pass"
+      result: "PASS - 7 test cases"
+
+    - command: "grep -r 'PromptExplainBack' --include='*.go' ."
+      expectation: "Zero matches (interactive prompts removed)"
+      result: "0 matches"
+
+    - command: "grep -c 'two-gate\\|completion review\\|explain-back\\|SYNTHESIZE' ~/.claude/skills/meta/orchestrator/SKILL.md"
+      expectation: "Multiple matches confirming skill content deployed"
+      result: "23 matches"
+
+  expectations_verified:
+    - "orch-go-6th: Orchestrator skill deployed with two-gate completion review"
+    - "orch-go-7jl: VerificationTracker wired into daemon (RecordCompletion, IsPaused, signal)"
+    - "orch-go-tyi: Interactive explain-back prompts fully removed"
+    - "orch-go-w50: --explain flag writes checkpoint AND beads comment"
+
+  manual_steps_required: none
