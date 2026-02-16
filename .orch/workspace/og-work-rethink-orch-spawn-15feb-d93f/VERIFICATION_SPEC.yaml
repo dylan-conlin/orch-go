@@ -1,0 +1,32 @@
+# Verification Specification: Spawn Flag Orthogonalization Design
+# This is a design-only session - verification is of the design document, not code.
+
+type: design
+status: complete
+
+verification:
+  - criterion: "Current flag audit covers all spawn flags"
+    evidence: "SYNTHESIS.md ## Current Flag Audit lists all 8 spawn flags from spawn_cmd.go:37-65"
+    result: pass
+
+  - criterion: "All 4 conflation points identified with source references"
+    evidence: "SYNTHESIS.md ## The 4 Conflation Points - each with file:line references"
+    result: pass
+
+  - criterion: "Proposed design addresses each conflation point"
+    evidence: "SYNTHESIS.md ## Proposed Design - 3 orthogonal axes, infrastructure advisory, --mode validation"
+    result: pass
+
+  - criterion: "Migration path specified with phases"
+    evidence: "SYNTHESIS.md ## Migration Path - 3 phases from non-breaking to new capabilities"
+    result: pass
+
+  - criterion: "Backward compatibility considered"
+    evidence: "SYNTHESIS.md recommends Option B (keep boolean flags), deprecation over removal for --opus"
+    result: pass
+
+  - criterion: "Backend × visibility matrix fully specified"
+    evidence: "SYNTHESIS.md ## Supported Combinations - 6 valid pairs, 2 new capabilities identified"
+    result: pass
+
+manual_steps: []
