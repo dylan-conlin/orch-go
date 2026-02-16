@@ -59,6 +59,9 @@ var (
 
 	// Explain-back flag: orchestrator provides explanation text
 	completeExplain string
+
+	// Behavioral verification flag: orchestrator confirms agent behavior verified
+	completeVerified bool
 )
 
 var completeCmd = &cobra.Command{
@@ -83,14 +86,27 @@ The following gates are checked before completion:
   - skill_output:         Required skill outputs exist
   - decision_patch_limit: Decision patch count not exceeded
   - handoff_content:      SESSION_HANDOFF.md has actual content (orchestrator only)
-  - explain_back:         Orchestrator provides --explain text
+  - explain_back:         Orchestrator provides --explain text (gate1: comprehension)
+  - verified:             Orchestrator confirms behavioral verification (gate2)
 
-EXPLAIN-BACK GATE:
+TIER-AWARE VERIFICATION:
+Checkpoint requirements are inferred from beads issue type:
+  Tier 1 (feature/bug/decision): Both gate1 (--explain) and gate2 (--verified) required
+  Tier 2 (investigation/probe):  Gate1 (--explain) only
+  Tier 3 (task/question/other):  No checkpoint required
+
+EXPLAIN-BACK GATE (gate1 - comprehension):
 The explain-back gate requires the orchestrator to provide an explanation of what
 was built via --explain. The conversational quality check stays with the AI
 orchestrator - the CLI only gates on non-empty text.
 
   orch complete proj-123 --explain 'Built X because Y, verified by Z'
+
+BEHAVIORAL VERIFICATION (gate2 - verified):
+For Tier 1 work, the --verified flag confirms the orchestrator has verified
+the agent's actual behavior, not just comprehended what was built.
+
+  orch complete proj-123 --explain '...' --verified
 
 TARGETED SKIP FLAGS:
 Use --skip-{gate} with --skip-reason to bypass specific gates:
@@ -126,12 +142,13 @@ the command auto-detects the project from the workspace's SPAWN_CONTEXT.md.
 Use --workdir as explicit override when auto-detection fails.
 
 Examples:
-  orch-go complete proj-123 --explain 'Reworked auth to use JWT tokens, verified with integration tests'
-  orch-go complete proj-123 --explain 'Fixed login bug' --reason "All tests passing"
-  orch-go complete proj-123 --approve --explain 'Added dark mode toggle'
+  orch-go complete proj-123 --explain 'Reworked auth to use JWT tokens' --verified
+  orch-go complete proj-123 --explain 'Fixed login bug' --verified --reason "All tests passing"
+  orch-go complete proj-123 --approve --explain 'Added dark mode toggle' --verified
   orch-go complete proj-123 --skip-test-evidence --skip-reason "Tests run in CI" --explain 'Refactored config'
   orch-go complete proj-123 --skip-explain-back --skip-reason "Automated completion, no human review"
-  orch-go complete kb-cli-123 --workdir ~/projects/kb-cli --explain 'Cross-project fix'
+  orch-go complete kb-cli-123 --workdir ~/projects/kb-cli --explain 'Cross-project fix' --verified
+  orch-go complete proj-123 --verified  # Add gate2 when gate1 already recorded
 
   # Orchestrator session completion (by workspace name)
   orch-go complete og-orch-goal-04jan       # Complete orchestrator session
@@ -172,6 +189,9 @@ func init() {
 
 	// Explain-back flag
 	completeCmd.Flags().StringVar(&completeExplain, "explain", "", "Explanation of what was built and why (required by explain-back gate)")
+
+	// Behavioral verification flag (gate2)
+	completeCmd.Flags().BoolVar(&completeVerified, "verified", false, "Record behavioral verification (gate2) - confirms orchestrator verified agent behavior (required for Tier 1 work)")
 }
 
 // SkipConfig holds the configuration for which verification gates to skip.
@@ -507,25 +527,44 @@ func runComplete(identifier, workdir string) error {
 		isClosed = false
 	}
 
-	// Checkpoint verification gate (Phase 1: Verifiability-first enforcement)
-	// For Tier 1 work (features/bugs/decisions), require verification checkpoint
-	// before allowing completion. This ensures human comprehension of deliverables.
+	// Checkpoint verification gate (Verifiability-first enforcement)
+	// Tier-aware: Tier 1 requires both gates, Tier 2 requires gate1 only, Tier 3 no checkpoint.
 	if !isUntracked && !completeForce && issue != nil {
+		tier := checkpoint.TierForIssueType(issue.IssueType)
+
 		if checkpoint.RequiresCheckpoint(issue.IssueType) {
-			hasCheckpoint, err := checkpoint.HasGate1Checkpoint(beadsID)
+			// Gate 1 (comprehension) check
+			hasGate1, err := checkpoint.HasGate1Checkpoint(beadsID)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to check verification checkpoint: %v\n", err)
 				// Continue with completion - checkpoint check is advisory for now
-			} else if !hasCheckpoint && !skipConfig.ExplainBack && completeExplain == "" {
+			} else if !hasGate1 && !skipConfig.ExplainBack && completeExplain == "" {
 				// No checkpoint exists, explain-back not being skipped, and no --explain text provided
-				fmt.Fprintf(os.Stderr, "❌ Verification checkpoint missing for Tier 1 work (%s)\n", issue.IssueType)
-				fmt.Fprintf(os.Stderr, "\nTier 1 work (features/bugs/decisions) requires comprehension verification:\n")
+				fmt.Fprintf(os.Stderr, "❌ Comprehension gate (gate1) missing for Tier %d work (%s)\n", tier, issue.IssueType)
+				fmt.Fprintf(os.Stderr, "\nTier %d work requires comprehension verification:\n", tier)
 				fmt.Fprintf(os.Stderr, "  orch complete %s --explain 'Built X because Y, verified by Z'\n", beadsID)
 				fmt.Fprintf(os.Stderr, "\nOr bypass with:\n")
 				fmt.Fprintf(os.Stderr, "  --skip-explain-back --skip-reason \"...\"\n")
-				return fmt.Errorf("verification checkpoint required for Tier 1 work")
-			} else if hasCheckpoint {
-				fmt.Println("✓ Verification checkpoint found (comprehension gate passed)")
+				return fmt.Errorf("verification checkpoint required for Tier %d work", tier)
+			} else if hasGate1 {
+				fmt.Println("✓ Comprehension gate (gate1) passed")
+			}
+		}
+
+		// Gate 2 (behavioral) check - Tier 1 only
+		if checkpoint.RequiresGate2(issue.IssueType) {
+			hasGate2, err := checkpoint.HasGate2Checkpoint(beadsID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to check gate2 checkpoint: %v\n", err)
+			} else if !hasGate2 && !completeVerified {
+				fmt.Fprintf(os.Stderr, "❌ Behavioral verification (gate2) missing for Tier 1 work (%s)\n", issue.IssueType)
+				fmt.Fprintf(os.Stderr, "\nTier 1 work (features/bugs/decisions) requires behavioral verification:\n")
+				fmt.Fprintf(os.Stderr, "  orch complete %s --verified --explain '...'\n", beadsID)
+				fmt.Fprintf(os.Stderr, "\nThe --verified flag confirms the orchestrator has verified the agent's behavior,\n")
+				fmt.Fprintf(os.Stderr, "not just comprehended what was built.\n")
+				return fmt.Errorf("behavioral verification (gate2) required for Tier 1 work")
+			} else if hasGate2 {
+				fmt.Println("✓ Behavioral verification (gate2) passed")
 			}
 		}
 	}
@@ -919,17 +958,36 @@ func runComplete(identifier, workdir string) error {
 	// This creates an unfakeable verification gate - can't rubber-stamp a conversational explanation.
 	// Extracted to pkg/orch/completion.go for reusability.
 	// The gate prompts for explanation AND stores it as a beads comment internally.
-	if err := orch.RunExplainBackGate(
-		beadsID,
-		completeForce,
-		skipConfig.ExplainBack,
-		skipConfig.Reason,
-		isOrchestratorSession,
-		isUntracked,
-		completeExplain,
-		os.Stdout,
-	); err != nil {
-		return err
+	//
+	// Skip if gate1 already exists and no --explain provided (gate2-only update path).
+	// In that case, the user already explained in a previous run.
+	priorGate1, _ := checkpoint.HasGate1Checkpoint(beadsID)
+	if completeExplain != "" || !priorGate1 {
+		if err := orch.RunExplainBackGate(
+			beadsID,
+			completeForce,
+			skipConfig.ExplainBack,
+			skipConfig.Reason,
+			isOrchestratorSession,
+			isUntracked,
+			completeExplain,
+			completeVerified,
+			os.Stdout,
+		); err != nil {
+			return err
+		}
+	}
+
+	// Record gate2 checkpoint if --verified flag is set and explain-back gate didn't run
+	// (gate1 already existed from a previous completion attempt)
+	if completeVerified && !isUntracked && !isOrchestratorSession && beadsID != "" {
+		hasGate2, _ := checkpoint.HasGate2Checkpoint(beadsID)
+		if !hasGate2 && priorGate1 && completeExplain == "" {
+			// Gate1 exists, gate2 doesn't, explain-back didn't run → record gate2 standalone
+			if err := orch.RecordGate2Checkpoint(beadsID, os.Stdout); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to record gate2 checkpoint: %v\n", err)
+			}
+		}
 	}
 
 	// Update session handoff with spawn completion info (Capture at Context principle)

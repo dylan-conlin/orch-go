@@ -152,22 +152,45 @@ func HasGate2Checkpoint(beadsID string) (bool, error) {
 	return cp.Gate2Complete, nil
 }
 
+// TierForIssueType returns the verification tier for the given issue type.
+// Tier 1 (features/bugs/decisions): requires both comprehension and behavioral gates
+// Tier 2 (investigations/probes): comprehension only
+// Tier 3 (tasks/questions/other): acknowledge only
+func TierForIssueType(issueType string) int {
+	switch issueType {
+	case "feature", "bug", "decision":
+		return 1
+	case "investigation", "probe":
+		return 2
+	default:
+		return 3
+	}
+}
+
 // IsTier1Work determines if the given issue type requires full two-gate verification.
 // Tier 1 work = features/bugs/decisions (requires both comprehension and behavioral gates)
 // Tier 2 work = investigations/probes (comprehension only)
 // Tier 3 work = trivial fixes (acknowledge only)
 func IsTier1Work(issueType string) bool {
-	switch issueType {
-	case "feature", "bug", "decision":
-		return true
-	default:
-		return false
-	}
+	return TierForIssueType(issueType) == 1
+}
+
+// IsTier2Work determines if the given issue type is Tier 2 (comprehension only).
+func IsTier2Work(issueType string) bool {
+	return TierForIssueType(issueType) == 2
+}
+
+// RequiresGate2 determines if work of the given issue type requires gate2 (behavioral verification).
+// Only Tier 1 work (features/bugs/decisions) requires both gates.
+func RequiresGate2(issueType string) bool {
+	return TierForIssueType(issueType) == 1
 }
 
 // RequiresCheckpoint determines if work of the given issue type requires a verification checkpoint.
-// Currently, Tier 1 work (features/bugs/decisions) requires checkpoints.
-// Tier 2+ work (investigations, tasks, etc.) does not require checkpoints yet.
+// Tier 1 work (features/bugs/decisions) requires both gates.
+// Tier 2 work (investigations/probes) requires gate1 (comprehension) only.
+// Tier 3 work (tasks/questions/other) requires no checkpoint.
 func RequiresCheckpoint(issueType string) bool {
-	return IsTier1Work(issueType)
+	tier := TierForIssueType(issueType)
+	return tier == 1 || tier == 2
 }

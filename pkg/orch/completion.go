@@ -116,6 +116,7 @@ func addBeadsComment(beadsID, comment string) error {
 //   - isOrchestratorSession: Whether this is an orchestrator session
 //   - isUntracked: Whether this is an untracked agent
 //   - explanation: The explanation text from --explain flag
+//   - verified: Whether --verified flag was set (records gate2 in checkpoint)
 //   - stdout: Output writer for status messages
 //
 // Returns:
@@ -128,6 +129,7 @@ func RunExplainBackGate(
 	isOrchestratorSession bool,
 	isUntracked bool,
 	explanation string,
+	verified bool,
 	stdout io.Writer,
 ) error {
 	// Skip for orchestrator sessions (they have handoffs)
@@ -185,7 +187,7 @@ func RunExplainBackGate(
 		BeadsID:       beadsID,
 		Deliverable:   "completion", // Could be enhanced to track specific deliverables
 		Gate1Complete: true,         // Comprehension gate (explain-back)
-		Gate2Complete: false,        // Behavioral gate (not yet implemented)
+		Gate2Complete: verified,     // Behavioral gate (via --verified flag)
 		Timestamp:     time.Now(),
 		ExplainText:   explanation,
 	}
@@ -197,5 +199,24 @@ func RunExplainBackGate(
 		fmt.Fprintln(stdout, "Verification checkpoint written")
 	}
 
+	return nil
+}
+
+// RecordGate2Checkpoint writes a checkpoint entry recording gate2 (behavioral verification).
+// This is used when gate1 was already recorded in a previous run and only gate2 needs to be added.
+func RecordGate2Checkpoint(beadsID string, stdout io.Writer) error {
+	cp := checkpoint.Checkpoint{
+		BeadsID:       beadsID,
+		Deliverable:   "completion",
+		Gate1Complete: true, // Gate1 must have passed before gate2
+		Gate2Complete: true, // Behavioral gate
+		Timestamp:     time.Now(),
+	}
+
+	if err := checkpoint.WriteCheckpoint(cp); err != nil {
+		fmt.Fprintf(stdout, "Warning: failed to write gate2 checkpoint: %v\n", err)
+		return err
+	}
+	fmt.Fprintln(stdout, "✓ Behavioral verification (gate2) checkpoint recorded")
 	return nil
 }

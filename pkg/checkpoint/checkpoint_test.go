@@ -220,8 +220,11 @@ func TestRequiresCheckpoint(t *testing.T) {
 		{"feature", true},
 		{"bug", true},
 		{"decision", true},
-		{"investigation", false},
-		{"task", false},
+		{"investigation", true}, // Tier 2: requires gate1 (comprehension)
+		{"probe", true},         // Tier 2: requires gate1 (comprehension)
+		{"task", false},         // Tier 3: no checkpoint
+		{"question", false},     // Tier 3: no checkpoint
+		{"", false},             // Tier 3: no checkpoint
 	}
 
 	for _, tt := range tests {
@@ -229,6 +232,75 @@ func TestRequiresCheckpoint(t *testing.T) {
 			result := RequiresCheckpoint(tt.issueType)
 			if result != tt.expected {
 				t.Errorf("RequiresCheckpoint(%q) = %v, want %v", tt.issueType, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestTierForIssueType(t *testing.T) {
+	tests := []struct {
+		issueType string
+		expected  int
+	}{
+		{"feature", 1},
+		{"bug", 1},
+		{"decision", 1},
+		{"investigation", 2},
+		{"probe", 2},
+		{"task", 3},
+		{"question", 3},
+		{"", 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.issueType, func(t *testing.T) {
+			result := TierForIssueType(tt.issueType)
+			if result != tt.expected {
+				t.Errorf("TierForIssueType(%q) = %v, want %v", tt.issueType, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsTier2Work(t *testing.T) {
+	tests := []struct {
+		issueType string
+		expected  bool
+	}{
+		{"investigation", true},
+		{"probe", true},
+		{"feature", false},
+		{"task", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.issueType, func(t *testing.T) {
+			result := IsTier2Work(tt.issueType)
+			if result != tt.expected {
+				t.Errorf("IsTier2Work(%q) = %v, want %v", tt.issueType, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestRequiresGate2(t *testing.T) {
+	tests := []struct {
+		issueType string
+		expected  bool
+	}{
+		{"feature", true},
+		{"bug", true},
+		{"decision", true},
+		{"investigation", false},
+		{"probe", false},
+		{"task", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.issueType, func(t *testing.T) {
+			result := RequiresGate2(tt.issueType)
+			if result != tt.expected {
+				t.Errorf("RequiresGate2(%q) = %v, want %v", tt.issueType, result, tt.expected)
 			}
 		})
 	}
