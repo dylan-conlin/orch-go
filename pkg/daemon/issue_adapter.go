@@ -161,43 +161,100 @@ func listIssuesWithLabelCLI(label string) ([]Issue, error) {
 	return filtered, nil
 }
 
-// CountUnverifiedCompletions counts open/in_progress issues with
-// the daemon:ready-review label that don't have verification checkpoint entries.
-// This represents the backlog of daemon-completed work awaiting human review.
+// CountUnverifiedCompletions counts unverified completions by reading the checkpoint file directly.
+// This is the source of truth for verification state.
+//
+// For each checkpoint entry, determines if it's unverified based on tier:
+// - Tier 1 work (feature/bug/decision): unverified if gate2_complete == false
+// - Tier 2 work (investigation/probe): unverified if gate1_complete == false
+// - Tier 3 work (task/question/other): never requires verification (skip)
+//
+// Labels (like daemon:ready-review) are the view layer and disappear when issues are closed.
+// The checkpoint file persists verification state even after closure.
 func CountUnverifiedCompletions() (int, error) {
-	readyForReview, err := ListIssuesWithLabel("daemon:ready-review")
+	// Read all checkpoints from file
+	checkpoints, err := checkpoint.ReadCheckpoints()
 	if err != nil {
-		return 0, fmt.Errorf("failed to list ready-for-review issues: %w", err)
+		return 0, fmt.Errorf("failed to read checkpoints: %w", err)
 	}
 
-	if len(readyForReview) == 0 {
+	if len(checkpoints) == 0 {
 		return 0, nil
 	}
 
-	// Read checkpoint file
-	checkpoints, err := checkpoint.ReadCheckpoints()
-	if err != nil {
-		// Checkpoint file missing/corrupt - count all as unverified
-		return len(readyForReview), nil
-	}
-
-	// Build set of checkpoint beads IDs (only gate1 completed = verified)
-	checkpointIDs := make(map[string]bool)
-	for _, cp := range checkpoints {
-		if cp.Gate1Complete {
-			checkpointIDs[cp.BeadsID] = true
+	// Try RPC client first for issue lookups
+	socketPath, err := beads.FindSocketPath("")
+	var client *beads.Client
+	useRPC := false
+	if err == nil {
+		client = beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			useRPC = true
+			defer client.Close()
 		}
 	}
 
-	// Count issues without checkpoints
+	// Count unverified completions based on tier
 	unverified := 0
-	for _, issue := range readyForReview {
-		if !checkpointIDs[issue.ID] {
-			unverified++
+	for _, cp := range checkpoints {
+		// Look up issue to determine tier
+		var issueType string
+		if useRPC {
+			issue, err := client.Show(cp.BeadsID)
+			if err != nil {
+				// Issue may be deleted or inaccessible - skip
+				continue
+			}
+			issueType = issue.IssueType
+		} else {
+			// Fallback to CLI
+			issue, err := showIssueCLI(cp.BeadsID)
+			if err != nil {
+				// Issue may be deleted or inaccessible - skip
+				continue
+			}
+			issueType = issue.IssueType
+		}
+
+		// Determine tier and check verification status
+		tier := checkpoint.TierForIssueType(issueType)
+		switch tier {
+		case 1:
+			// Tier 1 (feature/bug/decision): requires both gates
+			if !cp.Gate2Complete {
+				unverified++
+			}
+		case 2:
+			// Tier 2 (investigation/probe): requires gate1 only
+			if !cp.Gate1Complete {
+				unverified++
+			}
+			// case 3: Tier 3 (task/question/other) never requires verification - skip
 		}
 	}
 
 	return unverified, nil
+}
+
+// showIssueCLI fetches a single issue using bd CLI (fallback when RPC unavailable).
+func showIssueCLI(beadsID string) (*beads.Issue, error) {
+	cmd := exec.Command("bd", "show", beadsID, "--json")
+	cmd.Env = os.Environ()
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run bd show: %w", err)
+	}
+
+	var issues []beads.Issue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return nil, fmt.Errorf("failed to parse bd show output: %w", err)
+	}
+
+	if len(issues) == 0 {
+		return nil, fmt.Errorf("issue not found: %s", beadsID)
+	}
+
+	return &issues[0], nil
 }
 
 // GetBeadsIssueStatus fetches the current status of a beads issue directly from beads.
