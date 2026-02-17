@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-remove-knowledge-tree-16feb-323c",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-996",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "6b5bfa2bb1b27bf53de6d66570b63ae97c269c45",
+  "spawn_time": "2026-02-16T20:54:05-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

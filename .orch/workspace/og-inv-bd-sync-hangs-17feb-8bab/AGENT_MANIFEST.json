@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-inv-bd-sync-hangs-17feb-8bab",
+  "skill": "investigation",
+  "beads_id": "orch-go-1008",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "ccd0505a6d4a00abc3c8da0a52264d6171b14f25",
+  "spawn_time": "2026-02-17T10:18:48-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

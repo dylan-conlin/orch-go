@@ -1,0 +1,71 @@
+# Verification Specification
+# Generated: 2026-02-16
+# Issue: orch-go-986 - Extraction issues recursively trigger more extraction
+
+verification:
+  build:
+    command: "go build ./..."
+    expected: "Builds successfully with no errors"
+    result: "✓ PASS - Build completed successfully (auto-rebuilds orch on commit)"
+
+  tests:
+    command: "go test ./pkg/daemon -run TestCheckExtractionNeeded -v"
+    expected: "All extraction tests pass, including new recursion prevention test"
+    result: "✓ PASS - All 7 subtests passed, including 'extraction_issues_skipped_to_prevent_recursion'"
+
+  functionality:
+    - name: "Regular issues still trigger extraction"
+      description: "Issues mentioning critical hotspot files should still trigger extraction"
+      expected: "CheckExtractionNeeded() returns ExtractionResult for regular issues"
+      result: "✓ PASS - Test case 'critical_hotspot_triggers_extraction' passes"
+
+    - name: "Extraction issues do NOT trigger extraction (recursion prevention)"
+      description: "Issues with titles starting with 'Extract ' should be skipped"
+      expected: "CheckExtractionNeeded() returns nil for extraction issues"
+      result: "✓ PASS - Test case 'extraction_issues_skipped_to_prevent_recursion' passes"
+
+    - name: "Reproduction verification"
+      command: "go run /tmp/test_extraction_recursion.go"
+      expected: |
+        Regular issue: triggers extraction (OLD and NEW)
+        Extraction issue: OLD triggers (BUG), NEW does not trigger (FIXED)
+      result: |
+        ✓ PASS - Regular issue: OLD=true, NEW=true
+        ✓ PASS - Extraction issue: OLD=true (recursion bug), NEW=false (fixed)
+
+bug_reproduction:
+  original_behavior:
+    description: "Daemon creates cascading chains of extraction issues"
+    example: "orch-go-hcrg → l8k2 → kzqq → pg9l → p6k6 → 95uh → xy7n → cu0r"
+    symptom: "Title concatenation (issue xy7n has title repeated 3 times)"
+    root_cause: |
+      1. GenerateExtractionTask() creates title: "Extract X from file.go into pkg/..."
+      2. InferTargetFilesFromIssue() parses "file.go" from the extraction issue title
+      3. CheckExtractionNeeded() triggers another extraction if file.go is still >1500 lines
+      4. Repeat → cascading duplicates
+
+  fixed_behavior:
+    description: "Extraction issues are skipped by extraction checker"
+    implementation: |
+      Added guard at CheckExtractionNeeded() entry:
+      if strings.HasPrefix(issue.Title, "Extract ") {
+          return nil
+      }
+    verification: "Extraction issues no longer trigger CheckExtractionNeeded() → no recursion"
+
+deliverables:
+  - file: "pkg/daemon/extraction.go"
+    change: "Added guard to skip extraction issues (lines 215-221)"
+    
+  - file: "pkg/daemon/extraction_test.go"
+    change: "Added test case 'extraction issues skipped to prevent recursion'"
+    
+  - file: ".kb/models/daemon-autonomous-operation/probes/2026-02-16-extraction-recursion-fix.md"
+    description: "Probe documenting bug analysis, design options, and fix verification"
+
+notes:
+  - "Fix is intentionally simple: 1-line check at function entry"
+  - "Trade-off: Title prefix detection is less robust than label-based marking, but avoids schema changes"
+  - "Alternative approaches considered but rejected: remove file paths from titles (loses context), add labels (too complex)"
+  - "Related probe: 2026-02-16-duplicate-extraction-provenance-trace.md documents the original bug cascade"
+  - "Some pre-existing test failures in daemon test suite unrelated to this change (OnceExcluding tests, pool tests)"
