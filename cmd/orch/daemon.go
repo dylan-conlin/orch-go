@@ -238,10 +238,10 @@ func runDaemonLoop() error {
 	config := daemonConfigFromFlags()
 	d := daemon.NewWithConfig(config)
 
-	// Enable hotspot checking for auto-extraction.
-	// When a triage:ready issue targets a CRITICAL hotspot file (>1500 lines),
-	// the daemon will spawn an extraction agent first and block the feature issue.
-	d.HotspotChecker = daemon.NewGitHotspotChecker()
+	// NOTE: Extraction system disabled. HotspotChecker is not set, so the
+	// extraction gate in Once() and hotspot warnings in Preview() are skipped.
+	// The daemon goes straight from polling bd ready to spawning issues.
+	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
 
 	// Seed verification tracker with unverified backlog from previous sessions
 	seedVerificationTracker(d)
@@ -724,8 +724,8 @@ func runDaemonDryRun() error {
 	config := daemonConfigFromFlags()
 	d := daemon.NewWithConfig(config)
 
-	// Configure hotspot checking for dry-run
-	d.HotspotChecker = daemon.NewGitHotspotChecker()
+	// NOTE: Extraction system disabled. Hotspot checking not configured.
+	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
 
 	// Seed verification tracker with unverified backlog
 	seedVerificationTracker(d)
@@ -834,8 +834,8 @@ func runDaemonPreview() error {
 	config := daemonConfigFromFlags()
 	d := daemon.NewWithConfig(config)
 
-	// Configure hotspot checking for preview
-	d.HotspotChecker = daemon.NewGitHotspotChecker()
+	// NOTE: Extraction system disabled. Hotspot checking not configured.
+	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
 
 	// Seed verification tracker with unverified backlog
 	seedVerificationTracker(d)
