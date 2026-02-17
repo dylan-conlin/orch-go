@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-dylan-dashboard-views-16feb-ceec",
+  "skill": "architect",
+  "beads_id": "orch-go-zigc",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "febb1c33f3d0fc39762794b63e8a91f0e37a6997",
+  "spawn_time": "2026-02-16T09:06:46-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

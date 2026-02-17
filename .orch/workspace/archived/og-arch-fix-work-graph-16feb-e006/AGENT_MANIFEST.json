@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-fix-work-graph-16feb-e006",
+  "skill": "architect",
+  "beads_id": "orch-go-mrh4",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "2c9ca051b8becf5db2a9bed4a8eda21368eece0e",
+  "spawn_time": "2026-02-16T11:28:24-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

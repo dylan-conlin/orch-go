@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-work-redesign-knowledge-tree-16feb-498d",
+  "skill": "design-session",
+  "beads_id": "orch-go-r3zy",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "aaa2fedc12bb865e0328f50f2a93201615c50c93",
+  "spawn_time": "2026-02-16T00:15:23-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

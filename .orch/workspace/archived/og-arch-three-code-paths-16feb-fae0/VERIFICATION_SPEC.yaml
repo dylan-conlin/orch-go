@@ -1,0 +1,61 @@
+# Verification Specification: Three Code Paths Unification
+# Design Document: .kb/models/completion-verification/probes/2026-02-16-probe-three-code-paths-verification-state.md
+
+observable_behaviors:
+  primary: "All three verification state consumers (spawn gate, daemon, review) return the same count for unverified work"
+  secondary:
+    - "Spawn gate no longer blocks when all issues are closed"
+    - "Closed issues are excluded from all unverified work counts"
+
+acceptance_criteria:
+  - id: AC-001
+    name: "Spawn gate uses canonical function"
+    behavior: "GetUnverifiedTier1Work() delegates to verify.ListUnverifiedWork()"
+    condition: "Spawn gate returns 0 when all checkpointed issues are closed"
+    verified: true
+    evidence: "orch spawn succeeded without blocking (was blocked at 6 before fix)"
+
+  - id: AC-002
+    name: "Daemon uses canonical function"
+    behavior: "CountUnverifiedCompletions() delegates to verify.CountUnverifiedWork()"
+    condition: "Daemon preview shows no verification backlog when all issues are closed"
+    verified: true
+    evidence: "orch daemon preview showed no verification backlog message"
+
+  - id: AC-003
+    name: "All three paths agree"
+    behavior: "spawn gate, daemon preview, and orch review show consistent counts"
+    condition: "All return 0 when no open issues have incomplete checkpoints"
+    verified: true
+    evidence: "spawn: proceeded, daemon preview: 0, review: 'No pending completions'"
+
+  - id: AC-004
+    name: "Build and tests pass"
+    behavior: "go build and go test succeed for all affected packages"
+    condition: "No compilation errors, no test failures in spawn/gates, verify, checkpoint"
+    verified: true
+    evidence: "go build ./cmd/orch/ PASS, go test ./pkg/spawn/gates/... PASS, go test ./pkg/verify/... PASS"
+
+failure_modes:
+  - id: FM-001
+    symptom: "Spawn gate still blocks despite all issues being closed"
+    root_cause: "GetUnverifiedTier1Work not delegating to canonical function"
+    diagnostic: "Check if pkg/spawn/gates/verification.go imports and calls verify.ListUnverifiedWork()"
+    fix: "Ensure GetUnverifiedTier1Work delegates to verify.ListUnverifiedWork()"
+
+  - id: FM-002
+    symptom: "Daemon and spawn gate show different counts"
+    root_cause: "One consumer not using the canonical function"
+    diagnostic: "grep for independent checkpoint counting logic outside verify.ListUnverifiedWork"
+    fix: "Ensure all consumers use verify.ListUnverifiedWork() or verify.CountUnverifiedWork()"
+
+commands_run:
+  - "go build ./cmd/orch/"
+  - "go vet ./pkg/verify/... ./pkg/spawn/gates/... ./pkg/daemon/..."
+  - "go test ./pkg/spawn/gates/... -timeout 30s -v"
+  - "go test ./pkg/checkpoint/... -timeout 30s -v"
+  - "go test ./pkg/verify/ -run TestListUnverifiedWork -timeout 30s -v"
+  - "go test ./pkg/verify/ -run 'TestCountUnverifiedWork|TestUnverifiedItem' -timeout 30s -v"
+  - "orch spawn --bypass-triage investigation 'test' (verified spawn proceeds)"
+  - "orch daemon preview (verified 0 verification backlog)"
+  - "orch review (verified 'No pending completions')"

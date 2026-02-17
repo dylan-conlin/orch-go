@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-work-dylan-issue-backlog-16feb-b154",
+  "skill": "design-session",
+  "beads_id": "orch-go-979",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "84870a2fd43c2b74b3f4240adb63fa3c535b788e",
+  "spawn_time": "2026-02-16T11:35:14-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

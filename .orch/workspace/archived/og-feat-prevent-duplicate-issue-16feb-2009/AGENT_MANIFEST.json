@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-prevent-duplicate-issue-16feb-2009",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-bj0v",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "2c9ca051b8becf5db2a9bed4a8eda21368eece0e",
+  "spawn_time": "2026-02-16T11:27:59-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

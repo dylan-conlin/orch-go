@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-extract-spawn-flags-16feb-ad44",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-a2li",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "d29a3c8afbbaa5e8cc18b9b93dd9ef0a0e028d00",
+  "spawn_time": "2026-02-16T09:00:54-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

@@ -144,13 +144,17 @@ func buildClusterTree(cluster *Cluster) []*KnowledgeNode {
 		}
 	}
 
+	// Track nodes that have already been included in the tree to prevent duplicates
+	// This prevents showing the same investigation under multiple parent models
+	globalIncluded := make(map[string]bool)
+
 	// Collect root nodes (nodes without parents in this cluster)
 	var rootNodes []*KnowledgeNode
 	for _, node := range cluster.Nodes {
 		if !childMap[node.ID] {
 			// This is a root node - it has no parent in this cluster
 			// Clone the node to avoid modifying the original and filter children
-			clonedNode := cloneNodeForTree(node, nodeMap)
+			clonedNode := cloneNodeForTreeWithDedup(node, nodeMap, globalIncluded)
 			rootNodes = append(rootNodes, clonedNode)
 		}
 	}
@@ -159,7 +163,7 @@ func buildClusterTree(cluster *Cluster) []*KnowledgeNode {
 	// return all nodes with cycle-safe traversal
 	if len(rootNodes) == 0 {
 		for _, node := range cluster.Nodes {
-			clonedNode := cloneNodeForTree(node, nodeMap)
+			clonedNode := cloneNodeForTreeWithDedup(node, nodeMap, globalIncluded)
 			rootNodes = append(rootNodes, clonedNode)
 		}
 	}
@@ -172,6 +176,13 @@ func buildClusterTree(cluster *Cluster) []*KnowledgeNode {
 func cloneNodeForTree(node *KnowledgeNode, clusterNodes map[string]*KnowledgeNode) *KnowledgeNode {
 	visited := make(map[string]bool)
 	return cloneNodeRecursive(node, clusterNodes, visited)
+}
+
+// cloneNodeForTreeWithDedup clones a node with global deduplication tracking
+// to prevent the same child appearing under multiple parents
+func cloneNodeForTreeWithDedup(node *KnowledgeNode, clusterNodes map[string]*KnowledgeNode, globalIncluded map[string]bool) *KnowledgeNode {
+	visited := make(map[string]bool)
+	return cloneNodeRecursiveWithDedup(node, clusterNodes, visited, globalIncluded)
 }
 
 // cloneNodeRecursive clones a node recursively with cycle detection
@@ -214,6 +225,60 @@ func cloneNodeRecursive(node *KnowledgeNode, clusterNodes map[string]*KnowledgeN
 	// like investigations → decisions → issues
 	for _, child := range node.Children {
 		clonedChild := cloneNodeRecursive(child, clusterNodes, visited)
+		cloned.Children = append(cloned.Children, clonedChild)
+	}
+
+	return cloned
+}
+
+// cloneNodeRecursiveWithDedup clones a node recursively with cycle detection and global deduplication
+func cloneNodeRecursiveWithDedup(node *KnowledgeNode, clusterNodes map[string]*KnowledgeNode, visited map[string]bool, globalIncluded map[string]bool) *KnowledgeNode {
+	// Detect cycle - if we've already visited this node in this path, stop
+	if visited[node.ID] {
+		// Return a shallow clone without children to break the cycle
+		return &KnowledgeNode{
+			ID:       node.ID,
+			Type:     node.Type,
+			Title:    node.Title,
+			Path:     node.Path,
+			Status:   node.Status,
+			Date:     node.Date,
+			Children: nil, // Break cycle by not including children
+			Metadata: node.Metadata,
+		}
+	}
+
+	// Mark this node as visited in current path
+	visited[node.ID] = true
+	defer func() {
+		// Unmark when we return (for backtracking)
+		delete(visited, node.ID)
+	}()
+
+	// Mark this node as globally included
+	globalIncluded[node.ID] = true
+
+	// Clone the node
+	cloned := &KnowledgeNode{
+		ID:       node.ID,
+		Type:     node.Type,
+		Title:    node.Title,
+		Path:     node.Path,
+		Status:   node.Status,
+		Date:     node.Date,
+		Children: []*KnowledgeNode{},
+		Metadata: node.Metadata,
+	}
+
+	// Include ALL children (not filtered by cluster) to show cross-cluster relationships
+	// like investigations → decisions → issues
+	// BUT skip children that have already been included globally to prevent duplicates
+	for _, child := range node.Children {
+		// Skip this child if it's already been included elsewhere in the tree
+		if globalIncluded[child.ID] {
+			continue
+		}
+		clonedChild := cloneNodeRecursiveWithDedup(child, clusterNodes, visited, globalIncluded)
 		cloned.Children = append(cloned.Children, clonedChild)
 	}
 

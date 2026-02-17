@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-inv-daemon-completion-loop-16feb-f5b4",
+  "skill": "investigation",
+  "beads_id": "orch-go-984",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "1d117dd1af0c6633bdd060d6b9f35ace96dcb7b3",
+  "spawn_time": "2026-02-16T15:30:25-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

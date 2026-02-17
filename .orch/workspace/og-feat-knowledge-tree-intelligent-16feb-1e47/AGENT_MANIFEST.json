@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-knowledge-tree-intelligent-16feb-1e47",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-sg4k",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "f004f89f21b78026321029545a55cd8dac8aceae",
+  "spawn_time": "2026-02-16T16:38:18-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

@@ -72,26 +72,29 @@ function createAttentionStore() {
 				const completedIssues: CompletedIssue[] = [];
 				const signals = new Map<string, AttentionSignal>();
 
-				for (const item of data.items) {
-					// Map signal type to badge type
-					const badge = mapSignalToBadge(item);
-					
-					// Add to signals map
+			for (const item of data.items) {
+				// Map signal type to badge type
+				const badge = mapSignalToBadge(item);
+				
+				// Only add to signals map if badge is not null
+				// (filters out informational signals like 'issue-ready' that don't need visual badges)
+				if (badge !== null) {
 					signals.set(item.subject, {
 						badge,
 						reason: item.summary
 					});
-
-					// Add to completedIssues if recently-closed
-					if (item.signal === 'recently-closed') {
-						completedIssues.push({
-							id: item.subject,
-							title: item.summary,
-							completed_at: item.collected_at,
-							project: projectDir || ''
-						});
-					}
 				}
+
+				// Add to completedIssues if recently-closed
+				if (item.signal === 'recently-closed') {
+					completedIssues.push({
+						id: item.subject,
+						title: item.summary,
+						completed_at: item.collected_at,
+						project: projectDir || ''
+					});
+				}
+			}
 
 				set({ completedIssues, signals });
 			} catch (err) {
@@ -107,7 +110,7 @@ function createAttentionStore() {
 /**
  * Map attention signal types to badge types based on signal and metadata
  */
-function mapSignalToBadge(item: AttentionItemResponse): AttentionBadgeType {
+function mapSignalToBadge(item: AttentionItemResponse): AttentionBadgeType | null {
 	// Handle recently-closed with verification status
 	if (item.signal === 'recently-closed') {
 		const verificationStatus = item.metadata?.verification_status;
@@ -134,8 +137,9 @@ function mapSignalToBadge(item: AttentionItemResponse): AttentionBadgeType {
 		case 'verify-failed':
 			return 'verify_failed';
 		default:
-			// Fallback for unknown signals
-			return 'verify';
+			// Return null for unmapped signals (e.g., 'issue-ready', 'stale', etc.)
+			// These are informational signals that don't need visual badges
+			return null;
 	}
 }
 
