@@ -203,13 +203,19 @@ func (i *Issue) GetBlockingDependencies() []BlockingDependency {
 		isBlocking := false
 
 		switch dep.DependencyType {
+		case "blocks":
+			// "blocks" type: blocks unless closed or answered
+			isBlocking = dep.Status != "closed" && dep.Status != "answered"
 		case "parent-child":
 			// Parent-child: NEVER blocks - children are independently spawnable
 			// Epic closes when children complete, so children can't wait for parent
 			isBlocking = false
+		case "relates_to":
+			// relates_to: informational only, NEVER blocks
+			isBlocking = false
 		default:
-			// "blocks" and other types: blocks unless closed or answered
-			isBlocking = dep.Status != "closed" && dep.Status != "answered"
+			// Unknown dependency type - treat as non-blocking to avoid false positives
+			isBlocking = false
 		}
 
 		if isBlocking {

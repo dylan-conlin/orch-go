@@ -1363,6 +1363,34 @@ func TestGetBlockingDependencies(t *testing.T) {
 			deps:      json.RawMessage(`[{"id":"dep-1","title":"Blocks Dep","status":"closed","dependency_type":"blocks"},{"id":"epic-1","title":"Parent Epic","status":"open","dependency_type":"parent-child"}]`),
 			wantCount: 0, // Changed: parent-child never blocks, blocks dep is closed
 		},
+		// relates_to dependency tests
+		// relates_to is informational only - NEVER blocks regardless of status
+		{
+			name:      "relates_to: open does NOT block",
+			deps:      json.RawMessage(`[{"id":"rel-1","title":"Related Issue","status":"open","dependency_type":"relates_to"}]`),
+			wantCount: 0,
+		},
+		{
+			name:      "relates_to: in_progress does NOT block",
+			deps:      json.RawMessage(`[{"id":"rel-1","title":"Related Issue","status":"in_progress","dependency_type":"relates_to"}]`),
+			wantCount: 0,
+		},
+		{
+			name:      "relates_to: closed does NOT block",
+			deps:      json.RawMessage(`[{"id":"rel-1","title":"Related Issue","status":"closed","dependency_type":"relates_to"}]`),
+			wantCount: 0,
+		},
+		{
+			name:          "mixed: blocks open + relates_to open",
+			deps:          json.RawMessage(`[{"id":"dep-1","title":"Blocks Dep","status":"open","dependency_type":"blocks"},{"id":"rel-1","title":"Related Issue","status":"open","dependency_type":"relates_to"}]`),
+			wantCount:     1, // Only the "blocks" dep blocks, not relates_to
+			wantBlockerID: "dep-1",
+		},
+		{
+			name:      "mixed: blocks closed + relates_to open",
+			deps:      json.RawMessage(`[{"id":"dep-1","title":"Blocks Dep","status":"closed","dependency_type":"blocks"},{"id":"rel-1","title":"Related Issue","status":"open","dependency_type":"relates_to"}]`),
+			wantCount: 0, // relates_to never blocks, blocks dep is closed
+		},
 	}
 
 	for _, tt := range tests {
