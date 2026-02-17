@@ -439,7 +439,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	usageInfo := orch.BuildUsageInfo(usageCheckResult)
 
 	// 9. Determine spawn backend
-	spawnBackend, err := orch.DetermineSpawnBackend(resolvedModel, task, beadsID, projectDir, spawnBackendFlag, spawnModel, spawnOpus)
+	spawnBackend, err := orch.DetermineSpawnBackend(resolvedModel, task, beadsID, projectDir, spawnBackendFlag, spawnModel)
 	if err != nil {
 		return err
 	}

@@ -19,16 +19,17 @@ import (
 
 // Config represents the project configuration.
 type Config struct {
-	SpawnMode string         `yaml:"spawn_mode"`           // "claude" | "opencode"
-	Claude    ClaudeConfig   `yaml:"claude,omitempty"`     // Claude mode settings
-	OpenCode  OpenCodeConfig `yaml:"opencode,omitempty"`   // OpenCode mode settings
-	Servers   map[string]int `yaml:"servers,omitempty"`
+	SpawnMode string            `yaml:"spawn_mode"`         // "claude" | "opencode"
+	Models    map[string]string `yaml:"models,omitempty"`   // Model aliases (e.g., "opus": "anthropic/claude-opus-4-6")
+	Claude    ClaudeConfig      `yaml:"claude,omitempty"`   // Claude mode settings
+	OpenCode  OpenCodeConfig    `yaml:"opencode,omitempty"` // OpenCode mode settings
+	Servers   map[string]int    `yaml:"servers,omitempty"`
 }
 
 // ClaudeConfig holds settings for Claude mode spawning.
 type ClaudeConfig struct {
-	Model       string `yaml:"model"`         // "opus" | "sonnet" | "haiku"
-	TmuxSession string `yaml:"tmux_session"`  // tmux session name
+	Model       string `yaml:"model"`        // "opus" | "sonnet" | "haiku"
+	TmuxSession string `yaml:"tmux_session"` // tmux session name
 }
 
 // OpenCodeConfig holds settings for OpenCode mode spawning.

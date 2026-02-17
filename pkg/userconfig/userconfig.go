@@ -104,6 +104,9 @@ type DaemonConfig struct {
 type Config struct {
 	// Backend specifies the orchestration backend (e.g., "opencode").
 	Backend string `yaml:"backend,omitempty"`
+	// Models holds custom model aliases (e.g., "opus": "anthropic/claude-opus-4-6").
+	// These override built-in aliases in pkg/model/model.go.
+	Models map[string]string `yaml:"models,omitempty"`
 	// AutoExportTranscript enables automatic transcript export.
 	AutoExportTranscript bool `yaml:"auto_export_transcript,omitempty"`
 	// Notifications holds notification-related settings.

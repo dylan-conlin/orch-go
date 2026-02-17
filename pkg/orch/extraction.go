@@ -459,8 +459,16 @@ func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isO
 // ResolveAndValidateModel resolves model aliases and validates model choice.
 // Returns error if flash model is requested (unsupported).
 func ResolveAndValidateModel(modelFlag string) (model.ModelSpec, error) {
+	// Load user config for custom model aliases
+	cfg, _ := userconfig.Load()
+	var configModels map[string]string
+	if cfg != nil {
+		configModels = cfg.Models
+	}
+
 	// Resolve model - convert aliases to full format
-	resolvedModel := model.Resolve(modelFlag)
+	// Config aliases take precedence over built-in aliases
+	resolvedModel := model.ResolveWithConfig(modelFlag, configModels)
 
 	// Validate flash model - TPM rate limits make it unusable
 	if resolvedModel.Provider == "google" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "flash") {
@@ -590,7 +598,7 @@ func BuildUsageInfo(usageCheckResult *gates.UsageCheckResult) *spawn.UsageInfo {
 // DetermineSpawnBackend determines spawn backend with auto-selection.
 // Priority: --backend flag > --opus flag > infrastructure detection > model-based > config > default.
 // When --backend is explicit, it always wins - infrastructure detection becomes advisory (warning only).
-func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, projectDir, backendFlag, spawnModel string, opusFlag bool) (string, error) {
+func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, projectDir, backendFlag, spawnModel string) (string, error) {
 	// Load project config (used for backend default)
 	projCfg, _ := config.Load(projectDir)
 
@@ -608,19 +616,12 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 			return "", fmt.Errorf("invalid --backend value: %s (must be 'claude' or 'opencode')", backend)
 		}
 
-		// Advisory: warn if --opus conflicts with explicit --backend
-		if opusFlag && backend != "claude" {
-			fmt.Fprintf(os.Stderr, "⚠️  --opus flag ignored: explicit --backend %s takes priority\n", backend)
-		}
 
 		// Advisory: warn if infrastructure work detected but user chose different backend
 		if isInfrastructureWork(task, beadsID) && backend != "claude" {
 			fmt.Fprintf(os.Stderr, "⚠️  Infrastructure work detected but respecting explicit --backend %s\n", backend)
 			fmt.Fprintf(os.Stderr, "   Recommendation: Use --backend claude for infrastructure work to survive server restarts.\n")
 		}
-	} else if opusFlag {
-		// Explicit --opus flag: use claude CLI
-		backend = "claude"
 	} else if isInfrastructureWork(task, beadsID) {
 		// Infrastructure work detection: auto-apply escape hatch
 		// Agents working on OpenCode/orch infrastructure need claude backend + tmux

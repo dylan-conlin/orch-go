@@ -65,7 +65,21 @@ var Aliases = map[string]ModelSpec{
 //   - Alias: "opus", "sonnet", "haiku", "flash", etc.
 //   - Provider/model format: "anthropic/claude-opus-4-5-20251101", "google/gemini-2.5-flash"
 //   - Model ID only (assumes anthropic for claude, google for gemini): "claude-opus-4-5-20251101"
+//
+// To use config-based model aliases, call ResolveWithConfig instead.
 func Resolve(spec string) ModelSpec {
+	return ResolveWithConfig(spec, nil)
+}
+
+// ResolveWithConfig resolves a model specification with optional config-based aliases.
+// Config aliases take precedence over built-in aliases.
+//
+// Accepts:
+//   - Empty string: returns DefaultModel
+//   - Alias: "opus", "sonnet", "haiku", "flash", etc.
+//   - Provider/model format: "anthropic/claude-opus-4-5-20251101", "google/gemini-2.5-flash"
+//   - Model ID only (assumes anthropic for claude, google for gemini): "claude-opus-4-5-20251101"
+func ResolveWithConfig(spec string, configModels map[string]string) ModelSpec {
 	if spec == "" {
 		return DefaultModel
 	}
@@ -73,7 +87,23 @@ func Resolve(spec string) ModelSpec {
 	// Normalize to lowercase for alias lookup
 	specLower := strings.ToLower(spec)
 
-	// Check aliases first
+	// Check config aliases first (highest priority)
+	if configModels != nil {
+		if configAlias, ok := configModels[specLower]; ok {
+			// Config alias found - parse it
+			// Config aliases should be in provider/model format
+			if idx := strings.Index(configAlias, "/"); idx > 0 {
+				return ModelSpec{
+					Provider: configAlias[:idx],
+					ModelID:  configAlias[idx+1:],
+				}
+			}
+			// If not in provider/model format, try to infer provider
+			return inferProviderFromModelID(configAlias)
+		}
+	}
+
+	// Check built-in aliases
 	if resolved, ok := Aliases[specLower]; ok {
 		return resolved
 	}
@@ -87,21 +117,26 @@ func Resolve(spec string) ModelSpec {
 	}
 
 	// Infer provider from model ID
-	if strings.Contains(specLower, "claude") {
-		return ModelSpec{Provider: "anthropic", ModelID: spec}
-	}
-	if strings.Contains(specLower, "gemini") {
-		return ModelSpec{Provider: "google", ModelID: spec}
-	}
-	if strings.Contains(specLower, "gpt") {
-		return ModelSpec{Provider: "openai", ModelID: spec}
-	}
-	if strings.Contains(specLower, "deepseek") {
-		return ModelSpec{Provider: "deepseek", ModelID: spec}
-	}
+	return inferProviderFromModelID(spec)
+}
 
+// inferProviderFromModelID infers the provider from a model ID.
+func inferProviderFromModelID(modelID string) ModelSpec {
+	modelIDLower := strings.ToLower(modelID)
+	if strings.Contains(modelIDLower, "claude") {
+		return ModelSpec{Provider: "anthropic", ModelID: modelID}
+	}
+	if strings.Contains(modelIDLower, "gemini") {
+		return ModelSpec{Provider: "google", ModelID: modelID}
+	}
+	if strings.Contains(modelIDLower, "gpt") {
+		return ModelSpec{Provider: "openai", ModelID: modelID}
+	}
+	if strings.Contains(modelIDLower, "deepseek") {
+		return ModelSpec{Provider: "deepseek", ModelID: modelID}
+	}
 	// Default to anthropic for unknown models
-	return ModelSpec{Provider: "anthropic", ModelID: spec}
+	return ModelSpec{Provider: "anthropic", ModelID: modelID}
 }
 
 // ListAliases returns a formatted list of available model aliases.
