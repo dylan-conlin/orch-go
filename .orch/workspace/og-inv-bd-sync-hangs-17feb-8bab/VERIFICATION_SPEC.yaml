@@ -1,0 +1,27 @@
+verification:
+  reproduction:
+    command: "timeout 15 bd sync"
+    working_dir: "/Users/dylanconlin/Documents/personal/orch-go"
+    precondition: "repo has unstaged changes (git status shows modifications)"
+    expected_before_fix: "Hangs indefinitely at 'Committing changes to git...'"
+    expected_after_fix: "Fails fast (exit 1) with 'cannot pull with rebase: You have unstaged changes'"
+    verified: true
+
+  tests:
+    - name: "TestBuildGitCommitArgs_ConfigOptions"
+      command: "cd ~/Documents/personal/beads && go test -run TestBuildGitCommitArgs_ConfigOptions ./cmd/bd/ -v"
+      result: "PASS"
+    - name: "TestGitCommitBeadsDir_PathspecDoesNotCommitOtherStagedFiles"
+      command: "cd ~/Documents/personal/beads && go test -run TestGitCommitBeadsDir_PathspecDoesNotCommitOtherStagedFiles ./cmd/bd/ -v"
+      result: "PASS"
+    - name: "TestImportFromJSONL_NoDbMode_NoDeadlock"
+      command: "cd ~/Documents/personal/beads && go test -run TestImportFromJSONL_NoDbMode_NoDeadlock ./cmd/bd/ -v"
+      result: "PASS"
+
+  secondary_verification:
+    - command: "timeout 10 orch status"
+      expected: "Returns successfully (no longer times out)"
+      verified: true
+
+  manual_steps:
+    - "Beads repo changes need separate commit: cd ~/Documents/personal/beads && git add cmd/bd/sync_git.go cmd/bd/sync_helpers_more_test.go && git commit -m 'fix: prevent bd sync deadlock from pre-commit hook reentrant flock'"
