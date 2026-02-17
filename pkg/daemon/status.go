@@ -41,6 +41,10 @@ type DaemonStatus struct {
 	// SpawnFailures holds spawn failure tracking information.
 	// Surfaced to enable health card alerting when daemon stops spawning due to failures.
 	SpawnFailures *SpawnFailureSnapshot `json:"spawn_failures,omitempty"`
+
+	// CompletionFailures holds completion processing failure tracking information.
+	// Surfaced to enable health card alerting when daemon stops processing completions.
+	CompletionFailures *CompletionFailureSnapshot `json:"completion_failures,omitempty"`
 }
 
 // VerificationStatusSnapshot is a snapshot of verification tracking state.

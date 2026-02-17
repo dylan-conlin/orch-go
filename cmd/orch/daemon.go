@@ -473,9 +473,35 @@ func runDaemonLoop() error {
 			Verbose:    daemonVerbose,
 		}
 		completionResult, err := d.CompletionOnce(completionConfig)
-		if err != nil && daemonVerbose {
-			fmt.Fprintf(os.Stderr, "[%s] Completion processing error: %v\n", timestamp, err)
-		} else if completionResult != nil {
+		if err != nil {
+			// Record completion failure for health tracking
+			if d.CompletionFailureTracker != nil {
+				d.CompletionFailureTracker.RecordFailure(err.Error())
+			}
+
+			// Always log completion errors (not just in verbose mode)
+			fmt.Fprintf(os.Stderr, "[%s] ⚠️  Completion processing error: %v\n", timestamp, err)
+
+			// Log the error event
+			event := events.Event{
+				Type:      "daemon.completion_error",
+				Timestamp: time.Now().Unix(),
+				Data: map[string]interface{}{
+					"error":   err.Error(),
+					"message": "Completion processing failed",
+				},
+			}
+			if logErr := logger.Log(event); logErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to log completion error event: %v\n", logErr)
+			}
+		} else {
+			// Record successful completion processing
+			if d.CompletionFailureTracker != nil {
+				d.CompletionFailureTracker.RecordSuccess()
+			}
+		}
+
+		if completionResult != nil {
 			completedThisCycle := 0
 			for _, cr := range completionResult.Processed {
 				if cr.Processed {
@@ -552,19 +578,30 @@ func runDaemonLoop() error {
 			}
 		}
 
+		// Capture completion failure snapshot for health card visibility
+		var completionFailureSnapshot *daemon.CompletionFailureSnapshot
+		if d.CompletionFailureTracker != nil {
+			snapshot := d.CompletionFailureTracker.Snapshot()
+			// Only include if there have been failures
+			if snapshot.TotalFailures > 0 {
+				completionFailureSnapshot = &snapshot
+			}
+		}
+
 		status := daemon.DaemonStatus{
 			Capacity: daemon.CapacityStatus{
 				Max:       config.MaxAgents,
 				Active:    d.ActiveCount(),
 				Available: d.AvailableSlots(),
 			},
-			LastPoll:       pollTime,
-			LastSpawn:      lastSpawn,
-			LastCompletion: lastCompletion,
-			ReadyCount:     readyCount,
-			Status:         daemon.DetermineStatus(pollTime, config.PollInterval, isPaused),
-			Verification:   verificationSnapshot,
-			SpawnFailures:  spawnFailureSnapshot,
+			LastPoll:           pollTime,
+			LastSpawn:          lastSpawn,
+			LastCompletion:     lastCompletion,
+			ReadyCount:         readyCount,
+			Status:             daemon.DetermineStatus(pollTime, config.PollInterval, isPaused),
+			Verification:       verificationSnapshot,
+			SpawnFailures:      spawnFailureSnapshot,
+			CompletionFailures: completionFailureSnapshot,
 		}
 		if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
 			fmt.Fprintf(os.Stderr, "Warning: failed to write status file: %v\n", err)
