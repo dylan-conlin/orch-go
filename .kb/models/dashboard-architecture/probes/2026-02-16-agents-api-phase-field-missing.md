@@ -1,7 +1,7 @@
 # Probe: Agents API Missing phase and phase_reported_at Fields
 
 **Date:** 2026-02-16
-**Status:** Active
+**Status:** Complete
 **Issue:** orch-go-995
 
 ## Question
@@ -42,9 +42,21 @@ The Ready to Complete section failure is caused by a **missing API field**, not 
 2. Only `agent.phase` exists in the API response - `phase_reported_at` is tracked internally but never serialized
 3. Without `phase_reported_at`, the frontend can't construct `ReadyToCompleteItem.completionAt`, causing the item to be filtered out (line 352: `if (!completionAt) continue;`)
 
-## Fix Required
+## Fix Implemented
 
-Add `PhaseReportedAt` field to `AgentAPIResponse` struct and populate it from the internal `phaseReportedAtMap`:
+**Changes made:**
 
-1. Add field to struct: `PhaseReportedAt string json:"phase_reported_at,omitempty"`
-2. Populate after phase extraction: `agents[i].PhaseReportedAt = phaseStatus.PhaseReportedAt.Format(time.RFC3339)`
+1. **Added field to struct** (`serve_agents.go:35`):
+   ```go
+   PhaseReportedAt string `json:"phase_reported_at,omitempty"` // ISO 8601 timestamp when phase was reported
+   ```
+
+2. **Populated field when parsing phase** (`serve_agents.go:790`):
+   ```go
+   if phaseStatus.PhaseReportedAt != nil {
+       phaseReportedAtMap[agents[i].BeadsID] = *phaseStatus.PhaseReportedAt
+       agents[i].PhaseReportedAt = phaseStatus.PhaseReportedAt.Format(time.RFC3339)
+   }
+   ```
+
+**Verification:** The agents API now returns both `phase` and `phase_reported_at` fields, allowing the frontend's Ready to Complete section to properly filter and sort completed agents.
