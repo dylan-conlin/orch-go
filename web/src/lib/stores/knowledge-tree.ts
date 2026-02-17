@@ -43,6 +43,9 @@ export interface TreeResponse {
 // View mode (only knowledge view exposed in UI, work view still available via CLI)
 export type TreeView = 'knowledge'
 
+// Sort modes matching backend SortMode enum
+export type SortMode = 'recency' | 'connectivity' | 'alphabetical'
+
 // Animation states for nodes
 export type AnimationState = 'pulsing' | 'fading' | 'growing' | 'static'
 
@@ -157,9 +160,12 @@ function createKnowledgeTreeStore() {
     subscribe,
 
     // Fetch tree from API
-    async fetch(view: TreeView = 'knowledge'): Promise<void> {
+    async fetch(
+      view: TreeView = 'knowledge',
+      sortMode: SortMode = 'recency',
+    ): Promise<void> {
       try {
-        const url = `${API_BASE}/api/tree?view=${view}`
+        const url = `${API_BASE}/api/tree?view=${view}&sort=${sortMode}`
         const response = await fetch(url)
 
         if (!response.ok) {
@@ -182,12 +188,12 @@ function createKnowledgeTreeStore() {
     },
 
     // Connect to SSE stream for live updates
-    connectSSE(view: TreeView = 'knowledge'): void {
+    connectSSE(view: TreeView = 'knowledge', sortMode: SortMode = 'recency'): void {
       if (treeSSE) {
         treeSSE.disconnect()
       }
 
-      const url = `${API_BASE}/api/events/tree?view=${view}`
+      const url = `${API_BASE}/api/events/tree?view=${view}&sort=${sortMode}`
       treeSSE = createSSEConnection(url, {
         eventListeners: {
           'tree-update': (event) => {

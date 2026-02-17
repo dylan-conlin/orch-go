@@ -90,11 +90,15 @@ func BuildKnowledgeTree(kbDir string, opts TreeOptions) (*KnowledgeNode, []*Clus
 	if opts.ClusterFilter != "" {
 		for _, cluster := range clusters {
 			if cluster.Name == opts.ClusterFilter {
+				clusterChildren := buildClusterTree(cluster)
+				// Sort nodes within cluster
+				SortNodes(clusterChildren, opts.SortMode)
+
 				clusterNode := &KnowledgeNode{
 					ID:       cluster.Name,
 					Type:     NodeTypeCluster,
 					Title:    cluster.Name,
-					Children: buildClusterTree(cluster),
+					Children: clusterChildren,
 					Metadata: map[string]interface{}{
 						"smells": cluster.Smells,
 					},
@@ -106,13 +110,20 @@ func BuildKnowledgeTree(kbDir string, opts TreeOptions) (*KnowledgeNode, []*Clus
 		return nil, nil, fmt.Errorf("cluster %q not found", opts.ClusterFilter)
 	}
 
-	// 5. Add all clusters to root
+	// 5. Sort clusters based on sort mode
+	SortClusters(clusters, opts.SortMode)
+
+	// 6. Add all clusters to root
 	for _, cluster := range clusters {
+		clusterChildren := buildClusterTree(cluster)
+		// Sort nodes within cluster
+		SortNodes(clusterChildren, opts.SortMode)
+
 		clusterNode := &KnowledgeNode{
 			ID:       cluster.Name,
 			Type:     NodeTypeCluster,
 			Title:    cluster.Name,
-			Children: buildClusterTree(cluster),
+			Children: clusterChildren,
 			Metadata: map[string]interface{}{
 				"smells": cluster.Smells,
 			},

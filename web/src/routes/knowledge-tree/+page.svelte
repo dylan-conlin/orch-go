@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { knowledgeTree, type TreeView, type KnowledgeNode, type NodeType, type NodeAnimation } from '$lib/stores/knowledge-tree';
+	import { knowledgeTree, type TreeView, type SortMode, type KnowledgeNode, type NodeType, type NodeAnimation } from '$lib/stores/knowledge-tree';
 	import { timelineStore } from '$lib/stores/timeline';
 	import { KnowledgeTree as KnowledgeTreeComponent } from '$lib/components/knowledge-tree';
 	import { SessionGroup } from '$lib/components/timeline';
@@ -9,6 +9,7 @@
 	// localStorage keys
 	const EXPANSION_STATE_KEY = 'knowledge-tree-expansion';
 	const VIEW_STATE_KEY = 'knowledge-tree-view';
+	const SORT_MODE_KEY = 'knowledge-tree-sort';
 
 	type ViewMode = 'knowledge' | 'timeline';
 
@@ -59,8 +60,33 @@
 		}
 	}
 
+	// Load sort mode from localStorage
+	function loadSortMode(): SortMode {
+		if (typeof window === 'undefined') return 'recency';
+		try {
+			const stored = localStorage.getItem(SORT_MODE_KEY);
+			if (stored === 'recency' || stored === 'connectivity' || stored === 'alphabetical') {
+				return stored as SortMode;
+			}
+		} catch (e) {
+			console.error('Failed to load sort mode:', e);
+		}
+		return 'recency'; // Default
+	}
+
+	// Save sort mode to localStorage
+	function saveSortMode(mode: SortMode) {
+		if (typeof window === 'undefined') return;
+		try {
+			localStorage.setItem(SORT_MODE_KEY, mode);
+		} catch (e) {
+			console.error('Failed to save sort mode:', e);
+		}
+	}
+
 	let currentView: ViewMode = loadInitialView();
 	let treeView: TreeView = 'knowledge'; // Tree API always uses knowledge view
+	let sortMode: SortMode = loadSortMode();
 	let loading = true;
 	let searchQuery = '';
 	let selectedTypes: Set<NodeType> = new Set();
@@ -121,8 +147,8 @@
 			await timelineStore.fetch(undefined, 10);
 			timelineStore.connectSSE(undefined, 10);
 		} else {
-			await knowledgeTree.fetch(treeView);
-			knowledgeTree.connectSSE(treeView);
+			await knowledgeTree.fetch(treeView, sortMode);
+			knowledgeTree.connectSSE(treeView, sortMode);
 			subscribeSSEStatus();
 		}
 		
@@ -179,8 +205,8 @@
 			await timelineStore.fetch(undefined, 10);
 			timelineStore.connectSSE(undefined, 10);
 		} else {
-			await knowledgeTree.fetch(treeView);
-			knowledgeTree.connectSSE(treeView);
+			await knowledgeTree.fetch(treeView, sortMode);
+			knowledgeTree.connectSSE(treeView, sortMode);
 			subscribeSSEStatus();
 		}
 
@@ -203,13 +229,28 @@
 				await timelineStore.fetch(undefined, 10);
 				timelineStore.connectSSE(undefined, 10);
 			} else {
-				await knowledgeTree.fetch(treeView);
-				knowledgeTree.connectSSE(treeView);
+				await knowledgeTree.fetch(treeView, sortMode);
+				knowledgeTree.connectSSE(treeView, sortMode);
 				subscribeSSEStatus();
 			}
 
 			loading = false;
 		}
+	}
+
+	// Handle sort mode change
+	async function handleSortChange(newMode: SortMode) {
+		if (newMode === sortMode) return;
+		
+		sortMode = newMode;
+		saveSortMode(sortMode);
+
+		// Reload tree with new sort mode
+		loading = true;
+		knowledgeTree.disconnectSSE();
+		await knowledgeTree.fetch(treeView, sortMode);
+		knowledgeTree.connectSSE(treeView, sortMode);
+		loading = false;
 	}
 
 	// Toggle session expansion in timeline view
@@ -334,6 +375,36 @@
 			>
 				{currentView === 'knowledge' ? '📚 Knowledge' : '📅 Timeline'}
 			</button>
+
+			<!-- Sort Toggle (only show in knowledge view) -->
+			{#if currentView === 'knowledge'}
+				<div class="flex gap-1 border border-border rounded overflow-hidden">
+					<button
+						type="button"
+						onclick={() => handleSortChange('recency')}
+						class="px-2 py-1.5 text-xs transition-colors {sortMode === 'recency' ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-zinc-800'}"
+						title="Sort by last modified (most recent first)"
+					>
+						🕒 Recent
+					</button>
+					<button
+						type="button"
+						onclick={() => handleSortChange('connectivity')}
+						class="px-2 py-1.5 text-xs transition-colors {sortMode === 'connectivity' ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-zinc-800'}"
+						title="Sort by connectivity (most linked first)"
+					>
+						🔗 Links
+					</button>
+					<button
+						type="button"
+						onclick={() => handleSortChange('alphabetical')}
+						class="px-2 py-1.5 text-xs transition-colors {sortMode === 'alphabetical' ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-zinc-800'}"
+						title="Sort alphabetically"
+					>
+						🔤 A-Z
+					</button>
+				</div>
+			{/if}
 
 			<!-- Search -->
 			<input

@@ -133,12 +133,18 @@ func handleTree(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	sortMode := tree.SortMode(r.URL.Query().Get("sort"))
+	if sortMode == "" {
+		sortMode = tree.SortModeRecency // Default to recency
+	}
+
 	// Build tree options
 	opts := tree.TreeOptions{
 		ClusterFilter: cluster,
 		Depth:         depth,
 		Format:        "json", // Always JSON for API
 		WorkView:      view == "work",
+		SortMode:      sortMode,
 	}
 
 	// Determine paths
@@ -218,12 +224,18 @@ func handleTreeEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	sortMode := tree.SortMode(r.URL.Query().Get("sort"))
+	if sortMode == "" {
+		sortMode = tree.SortModeRecency // Default to recency
+	}
+
 	// Build tree options
 	opts := tree.TreeOptions{
 		ClusterFilter: cluster,
 		Depth:         depth,
 		Format:        "json",
 		WorkView:      view == "work",
+		SortMode:      sortMode,
 	}
 
 	// Determine paths

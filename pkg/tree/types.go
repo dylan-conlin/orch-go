@@ -74,12 +74,22 @@ type Cluster struct {
 	Smells []HealthSmell    // Health smells detected in this cluster
 }
 
+// SortMode represents how to sort tree nodes
+type SortMode string
+
+const (
+	SortModeRecency      SortMode = "recency"      // Sort by last modified (most recent first)
+	SortModeConnectivity SortMode = "connectivity" // Sort by number of links/references
+	SortModeAlphabetical SortMode = "alphabetical" // Sort alphabetically by title
+)
+
 // TreeOptions represents options for rendering the tree
 type TreeOptions struct {
-	ClusterFilter string // Filter to specific cluster
-	Depth         int    // Maximum depth to render (0 = unlimited)
-	Format        string // Output format (text, json, or summary)
-	WorkView      bool   // Use work view instead of knowledge view
-	SmellsOnly    bool   // Filter to only clusters with health smells
-	Compact       bool   // Use compact format (minimal output for hook injection)
+	ClusterFilter string   // Filter to specific cluster
+	Depth         int      // Maximum depth to render (0 = unlimited)
+	Format        string   // Output format (text, json, or summary)
+	WorkView      bool     // Use work view instead of knowledge view
+	SmellsOnly    bool     // Filter to only clusters with health smells
+	Compact       bool     // Use compact format (minimal output for hook injection)
+	SortMode      SortMode // How to sort clusters and nodes (default: recency)
 }
