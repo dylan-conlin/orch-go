@@ -1,0 +1,99 @@
+# Verification Specification
+# Feature: Knowledge Tree Intelligent Sorting
+
+## Observable Behavior
+Knowledge tab allows users to sort clusters and nodes by recency, connectivity, or alphabetical order via toggle buttons in the header.
+
+## Acceptance Criteria
+
+### AC-001: Sort modes are available
+**Criterion:** Three sort buttons (Recent/Links/A-Z) appear in Knowledge tab header
+**Test:** Visual inspection of Knowledge tab
+**Evidence:** UI shows three toggle buttons between view toggle and search box
+
+### AC-002: Recency sort works
+**Criterion:** Selecting "Recent" sorts clusters and nodes by most recent first
+**Test:** Click "Recent" button and verify order
+**Evidence:** Most recently modified items appear at top of tree
+
+### AC-003: Connectivity sort works
+**Criterion:** Selecting "Links" sorts by number of connections (most linked first)
+**Test:** Click "Links" button and verify highly connected nodes appear first
+**Evidence:** Nodes with many children rank higher in order
+
+### AC-004: Alphabetical sort works
+**Criterion:** Selecting "A-Z" sorts alphabetically by title
+**Test:** Click "A-Z" button and verify alphabetical order
+**Evidence:** Clusters and nodes appear in A-Z order (case-insensitive)
+
+### AC-005: Sort mode persists
+**Criterion:** Selected sort mode is saved and restored on page reload
+**Test:** Select sort mode, reload page, verify same mode is active
+**Evidence:** localStorage contains 'knowledge-tree-sort' with selected mode
+
+### AC-006: Default is recency
+**Criterion:** First-time users see recency sort by default
+**Test:** Clear localStorage, reload page, verify "Recent" is selected
+**Evidence:** Recency button is highlighted on first load
+
+## Commands Run
+
+```bash
+# Build backend
+go build ./pkg/tree
+
+# Build frontend
+cd web && npm run build
+
+# Test with local server (manual verification)
+# orch servers start orch-go
+# Open http://localhost:5188/knowledge-tree
+# Click each sort button and verify ordering changes
+```
+
+## Manual Verification Steps
+1. Open Knowledge tab at http://localhost:5188/knowledge-tree
+2. Verify three sort buttons appear: 🕒 Recent, 🔗 Links, 🔤 A-Z
+3. Click "Recent" - verify most recent items appear first
+4. Click "Links" - verify highly connected items appear first
+5. Click "A-Z" - verify alphabetical ordering
+6. Reload page - verify selected sort mode persists
+7. Clear localStorage and reload - verify defaults to "Recent"
+
+## Failure Modes
+
+### FM-001: Sort doesn't persist
+**Symptom:** Sort mode resets to default on page reload
+**Fix:** Check localStorage 'knowledge-tree-sort' key is being set in saveSortMode()
+
+### FM-002: Backend ignores sort parameter
+**Symptom:** Clicking sort buttons doesn't change order
+**Fix:** Verify API calls include ?sort=<mode> parameter in network tab
+
+### FM-003: SSE updates don't respect sort
+**Symptom:** Live updates appear in wrong order
+**Fix:** Verify SSE connection URL includes sort parameter
+
+## Evidence
+
+**Commit:** 71a84c1b - feat: add intelligent sorting to Knowledge tab
+
+**Files changed:**
+- pkg/tree/sort.go (new) - Sorting logic
+- pkg/tree/types.go - SortMode enum
+- pkg/tree/tree.go - Apply sorting in tree building
+- cmd/orch/serve_tree.go - Parse sort query parameter
+- web/src/lib/stores/knowledge-tree.ts - Accept sortMode in fetch/SSE
+- web/src/routes/knowledge-tree/+page.svelte - Sort toggle UI
+
+**Build verification:**
+```bash
+$ go build ./pkg/tree
+# Success - no errors
+
+$ cd web && npm run build
+# Success - built in 12.88s
+```
+
+**Test results:**
+Manual testing required for visual verification of sort behavior. Automated tests not applicable for UI sort ordering.
