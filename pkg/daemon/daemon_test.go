@@ -2179,7 +2179,10 @@ func TestExpandTriageReadyEpics_NoEpics(t *testing.T) {
 		{ID: "proj-2", Title: "Bug", IssueType: "bug", Labels: []string{"triage:ready"}},
 	}
 
-	expanded, epicChildIDs := d.expandTriageReadyEpics(issues)
+	expanded, epicChildIDs, err := d.expandTriageReadyEpics(issues)
+	if err != nil {
+		t.Fatalf("expandTriageReadyEpics() unexpected error: %v", err)
+	}
 
 	// No epics, so nothing should change
 	if len(expanded) != 2 {
@@ -2200,7 +2203,10 @@ func TestExpandTriageReadyEpics_NoLabelFilter(t *testing.T) {
 		{ID: "proj-1.1", Title: "Child", IssueType: "task", Labels: []string{}},
 	}
 
-	expanded, epicChildIDs := d.expandTriageReadyEpics(issues)
+	expanded, epicChildIDs, err := d.expandTriageReadyEpics(issues)
+	if err != nil {
+		t.Fatalf("expandTriageReadyEpics() unexpected error: %v", err)
+	}
 
 	// No label filter, so no expansion needed
 	if len(expanded) != 2 {
@@ -2221,7 +2227,10 @@ func TestExpandTriageReadyEpics_EpicWithoutLabel(t *testing.T) {
 		{ID: "proj-1", Title: "Feature", IssueType: "feature", Labels: []string{"triage:ready"}},
 	}
 
-	expanded, epicChildIDs := d.expandTriageReadyEpics(issues)
+	expanded, epicChildIDs, err := d.expandTriageReadyEpics(issues)
+	if err != nil {
+		t.Fatalf("expandTriageReadyEpics() unexpected error: %v", err)
+	}
 
 	// Epic doesn't have the label, so no expansion
 	if len(expanded) != 2 {
@@ -2378,7 +2387,10 @@ func TestExpandTriageReadyEpics_FiltersClosedChildren(t *testing.T) {
 		{ID: "proj-epic", Title: "Epic", IssueType: "epic", Status: "open", Labels: []string{"triage:ready"}},
 	}
 
-	expanded, epicChildIDs := d.expandTriageReadyEpics(issues)
+	expanded, epicChildIDs, err := d.expandTriageReadyEpics(issues)
+	if err != nil {
+		t.Fatalf("expandTriageReadyEpics() unexpected error: %v", err)
+	}
 
 	// Should have original epic + 2 children (open and in_progress, but NOT closed)
 	if len(expanded) != 3 {
@@ -2541,8 +2553,9 @@ func TestOnceExcluding_AutoExtraction_SkipsWhenNoCriticalHotspot(t *testing.T) {
 	}
 }
 
-func TestOnceExcluding_AutoExtraction_FallsBackOnExtractionFailure(t *testing.T) {
-	// When extraction issue creation fails, fall back to normal spawn.
+func TestOnceExcluding_AutoExtraction_FailsFastOnExtractionFailure(t *testing.T) {
+	// When extraction issue creation fails, skip the issue (fail-fast).
+	// Extraction gate is non-negotiable - do not proceed with normal spawn.
 	spawnedID := ""
 	d := &Daemon{
 		Config: Config{Verbose: true},
@@ -2575,16 +2588,23 @@ func TestOnceExcluding_AutoExtraction_FallsBackOnExtractionFailure(t *testing.T)
 	if err != nil {
 		t.Fatalf("OnceExcluding() unexpected error: %v", err)
 	}
-	if result == nil || !result.Processed {
-		t.Fatal("OnceExcluding() expected processed result (fallback to normal spawn)")
+	if result == nil {
+		t.Fatal("OnceExcluding() expected non-nil result")
 	}
 
-	// Should have fallen back to spawning the original issue
-	if spawnedID != "proj-1" {
-		t.Errorf("spawnFunc called with %q, want 'proj-1' (fallback to original)", spawnedID)
+	// Should NOT have processed/spawned - extraction gate is non-negotiable
+	if result.Processed {
+		t.Error("OnceExcluding() should NOT process when extraction setup fails (fail-fast)")
 	}
-	if result.ExtractionSpawned {
-		t.Error("OnceResult.ExtractionSpawned should be false on fallback")
+
+	// Should not have spawned the original issue
+	if spawnedID != "" {
+		t.Errorf("spawnFunc should not be called when extraction fails, but was called with %q", spawnedID)
+	}
+
+	// Should have a message explaining the skip
+	if result.Message == "" {
+		t.Error("OnceResult.Message should explain why issue was skipped")
 	}
 }
 
@@ -2826,4 +2846,27 @@ type mockDaemonHotspotChecker struct {
 
 func (m *mockDaemonHotspotChecker) CheckHotspots(projectDir string) ([]HotspotWarning, error) {
 	return m.hotspots, nil
+}
+
+func TestExpandTriageReadyEpics_ListChildrenError(t *testing.T) {
+	d := &Daemon{
+		Config: Config{Label: "triage:ready"},
+		listEpicChildrenFunc: func(epicID string) ([]Issue, error) {
+			return nil, fmt.Errorf("simulated error listing children")
+		},
+	}
+
+	issues := []Issue{
+		{ID: "proj-epic", Title: "Epic", IssueType: "epic", Labels: []string{"triage:ready"}},
+		{ID: "proj-task", Title: "Task", IssueType: "task", Labels: []string{}},
+	}
+
+	_, _, err := d.expandTriageReadyEpics(issues)
+	if err == nil {
+		t.Error("expandTriageReadyEpics() expected error when ListEpicChildren fails, got nil")
+	}
+
+	if err != nil && !strings.Contains(err.Error(), "failed to list children of epic proj-epic") {
+		t.Errorf("expandTriageReadyEpics() error message = %v, want to contain 'failed to list children of epic proj-epic'", err)
+	}
 }
