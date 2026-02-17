@@ -643,21 +643,9 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 		if err := logger.Log(event); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to log infrastructure detection: %v\n", err)
 		}
-	} else if spawnModel != "" {
-		// Auto-select backend based on model
-		modelLower := strings.ToLower(spawnModel)
-		if modelLower == "opus" || strings.Contains(modelLower, "opus") {
-			// Opus model: use claude CLI (Max subscription)
-			backend = "claude"
-			fmt.Println("Auto-selected claude backend for opus model")
-		} else if modelLower == "sonnet" || strings.Contains(modelLower, "sonnet") {
-			// Sonnet model: use opencode (pay-per-token API)
-			backend = "opencode"
-		}
-		// Other models keep the default backend (claude)
-	} else if projCfg != nil && projCfg.SpawnMode == "claude" {
+	} else if projCfg != nil && projCfg.SpawnMode != "" {
 		// Config default: respect project spawn_mode setting
-		backend = "claude"
+		backend = projCfg.SpawnMode
 	}
 
 	// Validate mode+model combination
