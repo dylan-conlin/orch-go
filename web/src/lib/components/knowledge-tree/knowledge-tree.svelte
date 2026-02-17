@@ -57,6 +57,34 @@
 		}
 	}
 
+	// Tooltip text for node type
+	function getNodeTypeTooltip(type: NodeType): string {
+		switch (type) {
+			case 'investigation': return 'Investigation - Recorded findings and analysis';
+			case 'decision': return 'Decision - Architectural or strategic choice made';
+			case 'model': return 'Model - Conceptual framework or pattern';
+			case 'guide': return 'Guide - How-to documentation or best practices';
+			case 'issue': return 'Issue - Task or bug tracked in beads';
+			case 'cluster': return 'Cluster - Grouped related items';
+			case 'probe': return 'Probe - Test or validation of a model claim';
+			case 'postmortem': return 'Postmortem - Incident analysis and lessons learned';
+			case 'handoff': return 'Handoff - Session context preserved for continuation';
+			default: return 'Knowledge artifact';
+		}
+	}
+
+	// Tooltip text for status
+	function getStatusTooltip(status: NodeStatus): string {
+		switch (status) {
+			case 'complete': return 'Complete - Work finished and verified';
+			case 'in_progress': return 'In Progress - Currently being worked on';
+			case 'triage': return 'Triage - Needs review or prioritization';
+			case 'closed': return 'Closed - Issue resolved or archived';
+			case 'open': return 'Open - Available for work';
+			default: return status;
+		}
+	}
+
 	function handleClick() {
 		if (node.Children && node.Children.length > 0) {
 			onToggle(node.ID);
@@ -96,6 +124,7 @@
 		<span 
 			class="text-base {getNodeColor(node.Type)} transition-all duration-300"
 			class:icon-pulse={isFading}
+			title={getNodeTypeTooltip(node.Type)}
 		>
 			{getNodeIcon(node.Type)}
 		</span>
@@ -110,6 +139,7 @@
 			<span 
 				class="text-xs px-2 py-0.5 rounded {getStatusColor(node.Status)} transition-all duration-300"
 				in:fade={{ duration: 200 }}
+				title={getStatusTooltip(node.Status)}
 			>
 				{node.Status}
 			</span>
