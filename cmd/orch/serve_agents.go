@@ -30,10 +30,11 @@ type AgentAPIResponse struct {
 	BeadsID              string               `json:"beads_id,omitempty"`
 	BeadsTitle           string               `json:"beads_title,omitempty"`
 	Skill                string               `json:"skill,omitempty"`
-	Status               string               `json:"status"`            // "active", "idle", "dead", "completed", "awaiting-cleanup"
-	Phase                string               `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
-	Task                 string               `json:"task,omitempty"`    // Task description from beads issue
-	Project              string               `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
+	Status               string               `json:"status"`                      // "active", "idle", "dead", "completed", "awaiting-cleanup"
+	Phase                string               `json:"phase,omitempty"`             // "Planning", "Implementing", "Complete", etc.
+	PhaseReportedAt      string               `json:"phase_reported_at,omitempty"` // ISO 8601 timestamp when phase was reported
+	Task                 string               `json:"task,omitempty"`              // Task description from beads issue
+	Project              string               `json:"project,omitempty"`           // Project name (orch-go, skillc, etc.)
 	Runtime              string               `json:"runtime,omitempty"`
 	Window               string               `json:"window,omitempty"`
 	IsProcessing         bool                 `json:"is_processing,omitempty"` // True if actively generating response
@@ -782,9 +783,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 					agents[i].Phase = phaseStatus.Phase
 					phaseComplete = strings.EqualFold(phaseStatus.Phase, "Complete")
 
-					// Track PhaseReportedAt for completion backlog detection
+					// Track PhaseReportedAt for completion backlog detection and API response
 					if phaseStatus.PhaseReportedAt != nil {
 						phaseReportedAtMap[agents[i].BeadsID] = *phaseStatus.PhaseReportedAt
+						agents[i].PhaseReportedAt = phaseStatus.PhaseReportedAt.Format(time.RFC3339)
 					}
 
 					// Stalled detection: if active agent has same phase for 15+ minutes
