@@ -1,26 +1,15 @@
 <script lang="ts">
+	// Stub component for group-by dropdown
+	// TODO: Implement full functionality for grouping options
+	
 	import type { GroupByMode } from '$lib/stores/work-graph';
 	
-	type Props = {
-		mode: GroupByMode;
-		onChange: (mode: GroupByMode) => void;
-	};
-	
-	let { mode, onChange }: Props = $props();
-	
-	function handleChange(event: Event) {
-		const target = event.target as HTMLSelectElement;
-		onChange(target.value as GroupByMode);
-	}
+	let { groupBy = $bindable('none' as GroupByMode) }: { groupBy: GroupByMode } = $props();
 </script>
 
-<select 
-	value={mode} 
-	onchange={handleChange}
-	class="px-2 py-1 text-sm border border-border rounded bg-background text-foreground hover:bg-accent transition-colors"
->
+<select bind:value={groupBy} class="px-2 py-1 text-sm border rounded">
+	<option value="none">No Grouping</option>
 	<option value="priority">By Priority</option>
-	<option value="area">By Area</option>
-	<option value="effort">By Effort</option>
-	<option value="dep-chain">By Dependency Chain</option>
+	<option value="status">By Status</option>
+	<option value="label">By Label</option>
 </select>

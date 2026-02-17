@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { derived } from 'svelte/store';
-	import { workGraph, buildTree, filterTreeByLabel, groupTreeNodes, clusterByDepChain, type TreeNode, type GroupSection, type GroupByMode } from '$lib/stores/work-graph';
+	import { workGraph, buildTree, filterTreeByLabel, groupTreeNodes, type TreeNode, type GroupSection, type GroupByMode } from '$lib/stores/work-graph';
 	import { kbArtifacts } from '$lib/stores/kb-artifacts';
 	import { kbModelProbes } from '$lib/stores/kb-model-probes';
 	import { orchestratorContext } from '$lib/stores/context';
@@ -120,7 +120,7 @@
 	const GROUP_BY_KEY = 'work-graph-group-by';
 	if (typeof window !== 'undefined') {
 		const stored = localStorage.getItem(GROUP_BY_KEY);
-		if (stored === 'priority' || stored === 'area' || stored === 'effort' || stored === 'dep-chain') {
+		if (stored === 'priority' || stored === 'area' || stored === 'effort') {
 			groupByMode = stored;
 		}
 	}
@@ -625,9 +625,7 @@
 	$: filteredTree = labelFilter ? filterTreeByLabel(tree, labelFilter) : tree;
 
 	// Compute group sections from filtered tree
-	$: groupSections = groupByMode === 'dep-chain' 
-		? clusterByDepChain(filteredTree, $workGraph?.edges || [])
-		: (groupByMode !== 'priority' ? groupTreeNodes(filteredTree, groupByMode) : [] as GroupSection[]);
+	$: groupSections = groupByMode !== 'priority' ? groupTreeNodes(filteredTree, groupByMode) : [] as GroupSection[];
 
 	function handleLabelFilterChange(value: string) {
 		labelFilter = value;
@@ -671,7 +669,7 @@
 	}
 
 	// Cycle group mode order for 'g' shortcut
-	const groupOrder: GroupByMode[] = ['priority', 'area', 'effort', 'dep-chain'];
+	const groupOrder: GroupByMode[] = ['priority', 'area', 'effort'];
 
 	function getHelpText(): string {
 		if (currentView === 'completed') {
