@@ -16,7 +16,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/activity"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/checkpoint"
-	"github.com/dylan-conlin/orch-go/pkg/control"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -978,15 +977,6 @@ func runComplete(identifier, workdir string) error {
 			return err
 		}
 
-		// Update verification heartbeat when explain-back gate runs (gate1: comprehension).
-		// This signals human verification activity occurred. Daemon checks heartbeat age
-		// before spawning - stale heartbeat (>24h) halts autonomous spawning.
-		if completeExplain != "" {
-			if err := control.Ack(); err != nil {
-				// Non-critical - warn but don't fail completion
-				fmt.Fprintf(os.Stderr, "Warning: failed to update verification heartbeat: %v\n", err)
-			}
-		}
 	}
 
 	// Record gate2 checkpoint if --verified flag is set and explain-back gate didn't run

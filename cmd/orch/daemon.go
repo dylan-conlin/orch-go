@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/control"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/spf13/cobra"
@@ -325,16 +324,6 @@ func runDaemonLoop() error {
 		// Must happen before status write so status shows accurate counts.
 		if freed := d.ReconcileWithOpenCode(); freed > 0 && daemonVerbose {
 			fmt.Printf("[%s] Reconciled: freed %d stale slots\n", timestamp, freed)
-		}
-
-		// Check control plane halt BEFORE any work
-		if halted, reason := control.CheckHalt(); halted {
-			if daemonVerbose || cycles%10 == 0 {
-				fmt.Printf("[%s] ⏸  Circuit breaker active: %s\n", timestamp, reason)
-				fmt.Printf("[%s]    Run 'orch control resume' to continue\n", timestamp)
-			}
-			time.Sleep(config.PollInterval)
-			continue
 		}
 
 		// Check for verification signal (human ran `orch complete`)
