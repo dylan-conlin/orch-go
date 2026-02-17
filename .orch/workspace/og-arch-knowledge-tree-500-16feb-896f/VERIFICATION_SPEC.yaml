@@ -1,0 +1,27 @@
+verification:
+  type: bug_fix
+  reproduction_verified: true
+  
+  commands_run:
+    - command: "cd web && npm run build"
+      expectation: "Build succeeds without SSR errors for knowledge-tree page"
+      result: "✓ Build completed successfully, entries/pages/knowledge-tree/_page.svelte.js generated"
+    
+    - command: "cd web && npm run check"
+      expectation: "Type checking passes (unrelated warnings in other files acceptable)"
+      result: "✓ No errors in knowledge-tree page, only pre-existing warnings in other components"
+  
+  manual_verification:
+    - step: "Inspected web/src/routes/knowledge-tree/+page.svelte:150-152"
+      expectation: "SSR guard wraps window.removeEventListener call"
+      result: "✓ Guard applied: if (typeof window !== 'undefined') { ... }"
+    
+    - step: "Checked for consistent pattern usage"
+      expectation: "Guard matches pattern used elsewhere in file (lines 17, 41, 67, 79)"
+      result: "✓ Pattern consistent with existing SSR guards"
+  
+  bug_reproduction:
+    original_issue: "Browser-only code at line 150 runs during SSR where window doesn't exist"
+    fix: "Added SSR guard: if (typeof window !== 'undefined') around window.removeEventListener"
+    verified_fixed: true
+    evidence: "Build with SSR processing completed without errors"

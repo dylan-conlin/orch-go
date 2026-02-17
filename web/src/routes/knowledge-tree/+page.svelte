@@ -6,13 +6,53 @@
 	import { SessionGroup } from '$lib/components/timeline';
 	import type { ConnectionStatus } from '$lib/services/sse-connection';
 
-	// localStorage key for expansion state
+	// localStorage keys
 	const EXPANSION_STATE_KEY = 'knowledge-tree-expansion';
+	const VIEW_STATE_KEY = 'knowledge-tree-view';
 
 	type ViewMode = 'knowledge' | 'work' | 'timeline';
 
-	let currentView: ViewMode = 'knowledge';
-	let treeView: TreeView = 'knowledge'; // For knowledge tree API (only 'knowledge' or 'work')
+	// Load initial view from URL hash or localStorage
+	function loadInitialView(): ViewMode {
+		if (typeof window === 'undefined') return 'knowledge';
+		
+		// 1. Check URL hash first (enables bookmarking)
+		const hash = window.location.hash.slice(1); // Remove #
+		if (hash === 'knowledge' || hash === 'work' || hash === 'timeline') {
+			return hash as ViewMode;
+		}
+		
+		// 2. Fall back to localStorage
+		try {
+			const stored = localStorage.getItem(VIEW_STATE_KEY);
+			if (stored === 'knowledge' || stored === 'work' || stored === 'timeline') {
+				return stored as ViewMode;
+			}
+		} catch (e) {
+			console.error('Failed to load view state:', e);
+		}
+		
+		// 3. Default to knowledge view
+		return 'knowledge';
+	}
+
+	// Save view to both URL hash and localStorage
+	function saveView(view: ViewMode) {
+		if (typeof window === 'undefined') return;
+		
+		// Update URL hash (enables bookmarking)
+		window.location.hash = view;
+		
+		// Also save to localStorage as fallback
+		try {
+			localStorage.setItem(VIEW_STATE_KEY, view);
+		} catch (e) {
+			console.error('Failed to save view state:', e);
+		}
+	}
+
+	let currentView: ViewMode = loadInitialView();
+	let treeView: TreeView = currentView === 'work' ? 'work' : 'knowledge'; // For knowledge tree API (only 'knowledge' or 'work')
 	let loading = true;
 	let searchQuery = '';
 	let selectedTypes: Set<NodeType> = new Set();
@@ -68,9 +108,19 @@
 
 	// Load initial tree
 	onMount(async () => {
-		await knowledgeTree.fetch(treeView);
-		knowledgeTree.connectSSE(treeView);
-		subscribeSSEStatus();
+		// Load data for initial view
+		if (currentView === 'timeline') {
+			await timelineStore.fetch(undefined, 10);
+			timelineStore.connectSSE(undefined, 10);
+		} else {
+			await knowledgeTree.fetch(treeView);
+			knowledgeTree.connectSSE(treeView);
+			subscribeSSEStatus();
+		}
+		
+		// Listen for hash changes (browser back/forward)
+		window.addEventListener('hashchange', handleHashChange);
+		
 		loading = false;
 	});
 
@@ -97,6 +147,9 @@
 		timelineStore.disconnectSSE();
 		if (sseStatusUnsubscribe) sseStatusUnsubscribe();
 		animationUnsubscribe();
+		if (typeof window !== 'undefined') {
+			window.removeEventListener('hashchange', handleHashChange);
+		}
 	});
 
 	// Handle view toggle - cycles through knowledge → work → timeline → knowledge
@@ -114,6 +167,9 @@
 			treeView = 'knowledge';
 		}
 
+		// Save view to hash and localStorage
+		saveView(currentView);
+
 		// Disconnect previous SSE connections
 		knowledgeTree.disconnectSSE();
 		timelineStore.disconnectSSE();
@@ -129,6 +185,32 @@
 		}
 
 		loading = false;
+	}
+
+	// Handle browser back/forward navigation via hash changes
+	async function handleHashChange() {
+		const newView = loadInitialView();
+		if (newView !== currentView) {
+			loading = true;
+			currentView = newView;
+			treeView = newView === 'work' ? 'work' : 'knowledge';
+
+			// Disconnect previous SSE connections
+			knowledgeTree.disconnectSSE();
+			timelineStore.disconnectSSE();
+
+			// Load data for new view
+			if (currentView === 'timeline') {
+				await timelineStore.fetch(undefined, 10);
+				timelineStore.connectSSE(undefined, 10);
+			} else {
+				await knowledgeTree.fetch(treeView);
+				knowledgeTree.connectSSE(treeView);
+				subscribeSSEStatus();
+			}
+
+			loading = false;
+		}
 	}
 
 	// Toggle session expansion in timeline view
