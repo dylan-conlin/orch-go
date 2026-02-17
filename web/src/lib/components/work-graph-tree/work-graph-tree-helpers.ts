@@ -314,7 +314,8 @@ export function getInProgressSubline(
     }
   }
 
-  if (node.attentionBadge === 'verify' || node.attentionBadge === 'likely_done') {
+  // Guard against null/undefined badges before checking specific types
+  if (node.attentionBadge && (node.attentionBadge === 'verify' || node.attentionBadge === 'likely_done')) {
     return {
       text: 'Awaiting review (Phase: Complete)',
       tone: 'text-emerald-500/90',
