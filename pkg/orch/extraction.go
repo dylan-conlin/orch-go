@@ -589,6 +589,7 @@ func BuildUsageInfo(usageCheckResult *gates.UsageCheckResult) *spawn.UsageInfo {
 
 // DetermineSpawnBackend determines spawn backend with auto-selection.
 // Priority: --backend flag > --opus flag > infrastructure detection > model-based > config > default.
+// When --backend is explicit, it always wins - infrastructure detection becomes advisory (warning only).
 func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, projectDir, backendFlag, spawnModel string, opusFlag bool) (string, error) {
 	// Load project config (used for backend default)
 	projCfg, _ := config.Load(projectDir)
@@ -596,12 +597,26 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 	// Default to claude (Max subscription covers Claude CLI usage)
 	backend := "claude"
 
-	if backendFlag != "" {
-		// Explicit --backend flag: highest priority
+	// Track whether --backend was explicitly set by user
+	explicitBackend := backendFlag != ""
+
+	if explicitBackend {
+		// Explicit --backend flag: highest priority, always wins
 		backend = backendFlag
 		// Validate backend value
 		if backend != "claude" && backend != "opencode" {
 			return "", fmt.Errorf("invalid --backend value: %s (must be 'claude' or 'opencode')", backend)
+		}
+
+		// Advisory: warn if --opus conflicts with explicit --backend
+		if opusFlag && backend != "claude" {
+			fmt.Fprintf(os.Stderr, "⚠️  --opus flag ignored: explicit --backend %s takes priority\n", backend)
+		}
+
+		// Advisory: warn if infrastructure work detected but user chose different backend
+		if isInfrastructureWork(task, beadsID) && backend != "claude" {
+			fmt.Fprintf(os.Stderr, "⚠️  Infrastructure work detected but respecting explicit --backend %s\n", backend)
+			fmt.Fprintf(os.Stderr, "   Recommendation: Use --backend claude for infrastructure work to survive server restarts.\n")
 		}
 	} else if opusFlag {
 		// Explicit --opus flag: use claude CLI

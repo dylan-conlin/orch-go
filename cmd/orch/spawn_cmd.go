@@ -361,6 +361,11 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 // runSpawnWithSkillInternal is the main spawn pipeline following complete_cmd.go pattern.
 // Extracted into helper functions for better readability and maintainability.
 func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, headless bool, tmux bool, attach bool, daemonDriven bool) error {
+	// Validate --mode flag early (before any side effects)
+	if err := orch.ValidateMode(orch.Mode); err != nil {
+		return err
+	}
+
 	// Build input parameter struct
 	input := &orch.SpawnInput{
 		ServerURL:    serverURL,
