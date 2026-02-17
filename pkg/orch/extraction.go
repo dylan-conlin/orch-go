@@ -588,7 +588,7 @@ func BuildUsageInfo(usageCheckResult *gates.UsageCheckResult) *spawn.UsageInfo {
 }
 
 // DetermineSpawnBackend determines spawn backend with auto-selection.
-// Priority: --backend flag > --opus flag > infrastructure detection > config > default.
+// Priority: --backend flag > --opus flag > infrastructure detection > model-based > config > default.
 // When --backend is explicit, it always wins - infrastructure detection becomes advisory (warning only).
 func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, projectDir, backendFlag, spawnModel string, opusFlag bool) (string, error) {
 	// Load project config (used for backend default)
@@ -643,9 +643,21 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 		if err := logger.Log(event); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to log infrastructure detection: %v\n", err)
 		}
-	} else if projCfg != nil && projCfg.SpawnMode != "" {
+	} else if spawnModel != "" {
+		// Auto-select backend based on model
+		modelLower := strings.ToLower(spawnModel)
+		if modelLower == "opus" || strings.Contains(modelLower, "opus") {
+			// Opus model: use claude CLI (Max subscription)
+			backend = "claude"
+			fmt.Println("Auto-selected claude backend for opus model")
+		} else if modelLower == "sonnet" || strings.Contains(modelLower, "sonnet") {
+			// Sonnet model: use opencode (pay-per-token API)
+			backend = "opencode"
+		}
+		// Other models keep the default backend (claude)
+	} else if projCfg != nil && projCfg.SpawnMode == "claude" {
 		// Config default: respect project spawn_mode setting
-		backend = projCfg.SpawnMode
+		backend = "claude"
 	}
 
 	// Validate mode+model combination
