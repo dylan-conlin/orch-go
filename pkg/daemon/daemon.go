@@ -313,7 +313,7 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 
 	// Expand triage:ready epics by including their children.
 	// This allows "label the epic" to mean "process the entire epic".
-	issues, epicChildIDs := d.expandTriageReadyEpics(issues)
+	issues, epicChildIDs, err := d.expandTriageReadyEpics(issues)
 
 	// Sort by priority (lower number = higher priority)
 	sort.Slice(issues, func(i, j int) bool {
@@ -403,12 +403,12 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 // expandTriageReadyEpics finds epics with the required label and includes their children.
 // Returns the expanded issue list and a map of issue IDs that are epic children
 // (for label exemption in NextIssueExcluding).
-func (d *Daemon) expandTriageReadyEpics(issues []Issue) ([]Issue, map[string]bool) {
+func (d *Daemon) expandTriageReadyEpics(issues []Issue) ([]Issue, map[string]bool, error) {
 	epicChildIDs := make(map[string]bool)
 
 	// If no label filter is set, no expansion needed
 	if d.Config.Label == "" {
-		return issues, epicChildIDs
+	return issues, epicChildIDs, nil
 	}
 
 	// Find epics with the required label
@@ -426,7 +426,7 @@ func (d *Daemon) expandTriageReadyEpics(issues []Issue) ([]Issue, map[string]boo
 
 	// No epics to expand
 	if len(epicsToExpand) == 0 {
-		return issues, epicChildIDs
+	return issues, epicChildIDs, nil
 	}
 
 	// Expand each epic by fetching its children
@@ -437,10 +437,7 @@ func (d *Daemon) expandTriageReadyEpics(issues []Issue) ([]Issue, map[string]boo
 	for _, epicID := range epicsToExpand {
 		children, err := listChildren(epicID)
 		if err != nil {
-			if d.Config.Verbose {
-				fmt.Printf("  DEBUG: Warning: could not list children of epic %s: %v\n", epicID, err)
-			}
-			continue
+			return nil, nil, fmt.Errorf("failed to list children of epic %s: %w", epicID, err)
 		}
 
 		for _, child := range children {
@@ -466,7 +463,7 @@ func (d *Daemon) expandTriageReadyEpics(issues []Issue) ([]Issue, map[string]boo
 		}
 	}
 
-	return issues, epicChildIDs
+	return issues, epicChildIDs, nil
 }
 
 // AvailableSlots returns the number of agent slots available for spawning.
@@ -591,7 +588,7 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 	}
 
 	// Expand triage:ready epics by including their children
-	issues, epicChildIDs := d.expandTriageReadyEpics(issues)
+	issues, epicChildIDs, err := d.expandTriageReadyEpics(issues)
 
 	// Sort by priority (lower number = higher priority)
 	sort.Slice(issues, func(i, j int) bool {
@@ -831,28 +828,33 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 			}
 			extractionID, err := createFunc(extraction.ExtractionTask, issue.ID)
 			if err != nil {
+				// Extraction gate is non-negotiable: if setup fails, skip the issue
+				// and return error (fail-fast). Do not proceed with normal spawn.
 				if d.Config.Verbose {
-					fmt.Printf("  Warning: extraction setup failed for %s: %v (proceeding with normal spawn)\n", issue.ID, err)
+					fmt.Printf("  Extraction setup failed for %s: %v (skipping issue)\n", issue.ID, err)
 				}
-				// Fall through to normal spawn on extraction setup failure
-			} else {
-				if d.Config.Verbose {
-					fmt.Printf("  Auto-extraction: created %s blocking %s for %s (%d lines)\n",
-						extractionID, issue.ID, extraction.CriticalFile, extraction.Hotspot.Score)
-				}
-				// Replace issue and skill with extraction work.
-				// The original issue now has a blocking dependency and will be
-				// picked up on a future poll cycle after extraction completes.
-				originalIssueID = issue.ID
-				issue = &Issue{
-					ID:        extractionID,
-					Title:     extraction.ExtractionTask,
-					IssueType: "task",
-					Priority:  1,
-				}
-				skill = "feature-impl"
-				extractionSpawned = true
+				return &OnceResult{
+					Processed: false,
+					Message:   fmt.Sprintf("Extraction setup failed for %s: %v (issue skipped, will retry on next poll)", issue.ID, err),
+				}, nil
 			}
+
+			if d.Config.Verbose {
+				fmt.Printf("  Auto-extraction: created %s blocking %s for %s (%d lines)\n",
+					extractionID, issue.ID, extraction.CriticalFile, extraction.Hotspot.Score)
+			}
+			// Replace issue and skill with extraction work.
+			// The original issue now has a blocking dependency and will be
+			// picked up on a future poll cycle after extraction completes.
+			originalIssueID = issue.ID
+			issue = &Issue{
+				ID:        extractionID,
+				Title:     extraction.ExtractionTask,
+				IssueType: "task",
+				Priority:  1,
+			}
+			skill = "feature-impl"
+			extractionSpawned = true
 		}
 	}
 
