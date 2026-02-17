@@ -662,6 +662,9 @@ func TestDaemon_Once_ProcessesOneIssue(t *testing.T) {
 			}
 			return nil
 		},
+		updateBeadsStatusFunc: func(beadsID string, status string) error {
+			return nil // Mock: always succeed
+		},
 	}
 
 	result, err := d.Once()
@@ -716,6 +719,9 @@ func TestDaemon_Run_ProcessesAllIssues(t *testing.T) {
 			callCount++
 			return nil
 		},
+		updateBeadsStatusFunc: func(beadsID string, status string) error {
+			return nil // Mock: always succeed
+		},
 	}
 
 	results, err := d.Run(10) // Max 10 iterations
@@ -742,6 +748,9 @@ func TestDaemon_Run_RespectsMaxIterations(t *testing.T) {
 		spawnFunc: func(beadsID string) error {
 			callCount++
 			return nil
+		},
+		updateBeadsStatusFunc: func(beadsID string, status string) error {
+			return nil // Mock: always succeed
 		},
 	}
 
@@ -1064,8 +1073,8 @@ func TestDaemon_PoolStatus_NilPool(t *testing.T) {
 }
 
 func TestDaemon_Once_WithPool_AcquiresSlot(t *testing.T) {
-	pool := NewWorkerPool(2)
-	spawnCount := 0
+	pool := NewWorkerPool(3)
+
 	d := &Daemon{
 		Pool: pool,
 		listIssuesFunc: func() ([]Issue, error) {
@@ -1074,8 +1083,10 @@ func TestDaemon_Once_WithPool_AcquiresSlot(t *testing.T) {
 			}, nil
 		},
 		spawnFunc: func(beadsID string) error {
-			spawnCount++
 			return nil
+		},
+		updateBeadsStatusFunc: func(beadsID string, status string) error {
+			return nil // Mock: always succeed
 		},
 	}
 
@@ -1153,6 +1164,7 @@ func TestDaemon_Once_WithPool_ReleasesSlotOnError(t *testing.T) {
 
 func TestDaemon_OnceWithSlot_ReturnsSlot(t *testing.T) {
 	pool := NewWorkerPool(2)
+	spawnCount := 0
 	d := &Daemon{
 		Pool: pool,
 		listIssuesFunc: func() ([]Issue, error) {
@@ -1161,7 +1173,11 @@ func TestDaemon_OnceWithSlot_ReturnsSlot(t *testing.T) {
 			}, nil
 		},
 		spawnFunc: func(beadsID string) error {
+			spawnCount++
 			return nil
+		},
+		updateBeadsStatusFunc: func(beadsID string, status string) error {
+			return nil // Mock: always succeed
 		},
 	}
 
@@ -1196,6 +1212,9 @@ func TestDaemon_OnceWithSlot_NoPool(t *testing.T) {
 		},
 		spawnFunc: func(beadsID string) error {
 			return nil
+		},
+		updateBeadsStatusFunc: func(beadsID string, status string) error {
+			return nil // Mock: always succeed
 		},
 	}
 
@@ -1846,7 +1865,6 @@ func TestRateLimiter_Status(t *testing.T) {
 }
 
 func TestDaemon_OnceExcluding_RateLimited(t *testing.T) {
-	// Test that OnceExcluding respects rate limiting
 	d := &Daemon{
 		Config: Config{MaxSpawnsPerHour: 2},
 		listIssuesFunc: func() ([]Issue, error) {
@@ -1855,6 +1873,9 @@ func TestDaemon_OnceExcluding_RateLimited(t *testing.T) {
 			}, nil
 		},
 		spawnFunc: func(id string) error { return nil },
+		updateBeadsStatusFunc: func(beadsID string, status string) error {
+			return nil // Mock: always succeed
+		},
 	}
 	d.RateLimiter = NewRateLimiter(2)
 
@@ -2254,6 +2275,15 @@ func TestNextIssue_EpicChildrenIncludedInSpawnQueue(t *testing.T) {
 				{ID: "proj-1", Title: "Feature without label", IssueType: "feature", Status: "open", Labels: []string{}},
 			}, nil
 		},
+		listEpicChildrenFunc: func(epicID string) ([]Issue, error) {
+			epicChildCalled = true
+			if epicID == "proj-epic" {
+				return []Issue{
+					{ID: "proj-child-1", Title: "Child 1", IssueType: "task", Status: "open"},
+				}, nil
+			}
+			return []Issue{}, nil
+		},
 	}
 
 	// Create a wrapper that tracks ListEpicChildren calls
@@ -2484,6 +2514,9 @@ func TestOnceExcluding_AutoExtraction_SpawnsExtractionWhenCriticalHotspot(t *tes
 			}
 			return "proj-ext1", nil
 		},
+		updateBeadsStatusFunc: func(beadsID string, status string) error {
+			return nil // Mock: always succeed
+		},
 	}
 
 	result, err := d.OnceExcluding(nil)
@@ -2533,6 +2566,9 @@ func TestOnceExcluding_AutoExtraction_SkipsWhenNoCriticalHotspot(t *testing.T) {
 				// Below critical threshold
 				{Path: "pkg/daemon/daemon.go", Type: "bloat-size", Score: 1200},
 			},
+		},
+		updateBeadsStatusFunc: func(beadsID string, status string) error {
+			return nil // Mock: always succeed
 		},
 	}
 
@@ -2627,6 +2663,9 @@ func TestOnceExcluding_AutoExtraction_SkipsWhenNoHotspotChecker(t *testing.T) {
 			spawnedID = beadsID
 			return nil
 		},
+		updateBeadsStatusFunc: func(beadsID string, status string) error {
+			return nil // Mock: always succeed
+		},
 		// HotspotChecker is nil
 	}
 
@@ -2699,9 +2738,11 @@ func TestDaemon_Once_FreshStatusCheck_AllowsOpenIssue(t *testing.T) {
 			spawnCalled = true
 			return nil
 		},
-		// Fresh status check confirms issue is still open
 		getIssueStatusFunc: func(beadsID string) (string, error) {
-			return "open", nil
+			return "open", nil // Fresh status check confirms issue is still open
+		},
+		updateBeadsStatusFunc: func(beadsID string, status string) error {
+			return nil // Mock: always succeed
 		},
 	}
 
@@ -2736,6 +2777,9 @@ func TestDaemon_Once_FreshStatusCheck_FailOpenOnError(t *testing.T) {
 		getIssueStatusFunc: func(beadsID string) (string, error) {
 			return "", fmt.Errorf("beads daemon unavailable")
 		},
+		updateBeadsStatusFunc: func(beadsID string, status string) error {
+			return nil // Mock: always succeed
+		},
 	}
 
 	result, err := d.Once()
@@ -2766,6 +2810,9 @@ func TestDaemon_Once_FreshStatusCheck_NilFunc(t *testing.T) {
 			return nil
 		},
 		// getIssueStatusFunc is nil (not set)
+		updateBeadsStatusFunc: func(beadsID string, status string) error {
+			return nil // Mock: always succeed
+		},
 	}
 
 	result, err := d.Once()
@@ -2808,6 +2855,10 @@ func TestDaemon_ConcurrentDaemonDedup(t *testing.T) {
 				return nil
 			},
 			getIssueStatusFunc: makeStatusFunc(),
+			updateBeadsStatusFunc: func(beadsID string, status string) error {
+				issueStatus = status // Update shared state
+				return nil
+			},
 		}
 	}
 

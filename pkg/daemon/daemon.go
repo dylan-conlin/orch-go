@@ -228,6 +228,8 @@ type Daemon struct {
 	// This fetches the CURRENT status from beads to catch the TOCTOU race where
 	// another daemon process has already marked the issue as in_progress.
 	getIssueStatusFunc func(beadsID string) (string, error)
+	// updateBeadsStatusFunc is used for testing - allows mocking UpdateBeadsStatus
+	updateBeadsStatusFunc func(beadsID string, status string) error
 }
 
 // New creates a new Daemon instance with default configuration.
@@ -970,7 +972,11 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 	// tracking leads to duplicate spawns when SpawnedIssueTracker TTL expires or daemon restarts.
 	// Fail-fast here prevents the Feb 14 2026 incident where 10 duplicate spawns occurred
 	// because UpdateBeadsStatus was failing silently.
-	if err := UpdateBeadsStatus(issue.ID, "in_progress"); err != nil {
+	updateStatus := d.updateBeadsStatusFunc
+	if updateStatus == nil {
+		updateStatus = UpdateBeadsStatus
+	}
+	if err := updateStatus(issue.ID, "in_progress"); err != nil {
 		// Track failure for health card visibility
 		if d.SpawnFailureTracker != nil {
 			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("UpdateBeadsStatus failed: %v", err))
@@ -1185,7 +1191,11 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 	// tracking leads to duplicate spawns when SpawnedIssueTracker TTL expires or daemon restarts.
 	// Fail-fast here prevents the Feb 14 2026 incident where 10 duplicate spawns occurred
 	// because UpdateBeadsStatus was failing silently.
-	if err := UpdateBeadsStatus(issue.ID, "in_progress"); err != nil {
+	updateStatus := d.updateBeadsStatusFunc
+	if updateStatus == nil {
+		updateStatus = UpdateBeadsStatus
+	}
+	if err := updateStatus(issue.ID, "in_progress"); err != nil {
 		// Track failure for health card visibility
 		if d.SpawnFailureTracker != nil {
 			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("UpdateBeadsStatus failed: %v", err))
