@@ -51,7 +51,6 @@ func InferTargetFilesFromIssue(issue *Issue) []string {
 	return files
 }
 
-
 // FindCriticalHotspot checks if any of the inferred files matches a CRITICAL hotspot (>1500 lines).
 // Returns the first matching critical hotspot, or nil if none found.
 func FindCriticalHotspot(inferredFiles []string, hotspots []HotspotWarning) *HotspotWarning {
@@ -208,6 +207,15 @@ type ExtractionResult struct {
 // Returns nil if no extraction is needed (no target files inferred, no hotspots, or no critical match).
 func CheckExtractionNeeded(issue *Issue, checker HotspotChecker) *ExtractionResult {
 	if issue == nil || checker == nil {
+		return nil
+	}
+
+	// Skip extraction checks for extraction issues themselves (prevents recursion).
+	// Extraction issues have titles like: "Extract X from file.go into pkg/..."
+	// Without this guard, InferTargetFilesFromIssue() would parse the file path from
+	// the extraction issue's title, triggering another extraction and creating
+	// cascading chains of duplicate extraction issues.
+	if strings.HasPrefix(issue.Title, "Extract ") {
 		return nil
 	}
 

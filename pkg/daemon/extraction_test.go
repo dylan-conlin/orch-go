@@ -368,7 +368,7 @@ func TestCheckExtractionNeeded(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "nil issue returns nil",
+			name:  "nil issue returns nil",
 			issue: nil,
 			hotspots: []HotspotWarning{
 				{Path: "cmd/orch/spawn_cmd.go", Type: "bloat-size", Score: 2000},
@@ -392,6 +392,17 @@ func TestCheckExtractionNeeded(t *testing.T) {
 				{Path: "cmd/orch/spawn_cmd.go", Type: "fix-density", Score: 2000},
 			},
 			expected: false,
+		},
+		{
+			name: "extraction issues skipped to prevent recursion",
+			issue: &Issue{
+				Title:       "Extract spawn flags phase 1: --mode from cmd/orch/spawn_cmd.go into pkg/orch/. Pure structural extraction — no behavior changes.",
+				Description: "Auto-generated extraction task",
+			},
+			hotspots: []HotspotWarning{
+				{Path: "cmd/orch/spawn_cmd.go", Type: "bloat-size", Score: 2200},
+			},
+			expected: false, // Should NOT trigger extraction even though file is >1500 lines
 		},
 	}
 
