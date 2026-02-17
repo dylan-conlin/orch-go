@@ -188,3 +188,118 @@ Test findings here.
 		t.Errorf("Expected relationship type 'synthesizes', got %s", rels[0].RelationType)
 	}
 }
+
+// TestDeduplicationAcrossParents tests that when an investigation references multiple models
+// in its Prior-Work table, it only appears once in the tree (not duplicated under each model)
+func TestDeduplicationAcrossParents(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create two model files
+	model1Dir := filepath.Join(tmpDir, ".kb", "models", "model1")
+	model2Dir := filepath.Join(tmpDir, ".kb", "models", "model2")
+	if err := os.MkdirAll(model1Dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(model2Dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	model1Path := filepath.Join(tmpDir, ".kb", "models", "model1.md")
+	model2Path := filepath.Join(tmpDir, ".kb", "models", "model2.md")
+
+	model1Content := `# Model 1
+
+This is the first model.
+`
+	model2Content := `# Model 2
+
+This is the second model.
+`
+
+	if err := os.WriteFile(model1Path, []byte(model1Content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(model2Path, []byte(model2Content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create an investigation that references BOTH models in Prior-Work
+	invDir := filepath.Join(tmpDir, ".kb", "investigations")
+	if err := os.MkdirAll(invDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	invPath := filepath.Join(invDir, "test-inv.md")
+	invContent := `# Investigation: Shared Investigation
+
+**Status:** Complete
+
+**Prior-Work:**
+
+| Investigation | Relationship | Verified | Conflicts |
+|--------------|--------------|----------|-----------|
+| .kb/models/model1.md | extends | yes | None |
+| .kb/models/model2.md | extends | yes | None |
+
+## Findings
+
+This investigation extends both models.
+`
+
+	if err := os.WriteFile(invPath, []byte(invContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Build the tree
+	kbDir := filepath.Join(tmpDir, ".kb")
+	opts := TreeOptions{
+		Format: "text",
+		Depth:  0,
+	}
+
+	root, clusters, err := BuildKnowledgeTree(kbDir, opts)
+	if err != nil {
+		t.Fatalf("BuildKnowledgeTree failed: %v", err)
+	}
+
+	// Find the "models" cluster
+	var modelsCluster *KnowledgeNode
+	for _, child := range root.Children {
+		if child.Title == "models" {
+			modelsCluster = child
+			break
+		}
+	}
+
+	if modelsCluster == nil {
+		t.Fatal("Expected to find 'models' cluster")
+	}
+
+	// Count how many times the investigation appears in the tree
+	invCount := countNodeOccurrences(modelsCluster, "Shared Investigation")
+
+	if invCount > 1 {
+		t.Errorf("Investigation appears %d times in the tree, expected at most 1 (deduplication should prevent duplicates)", invCount)
+		// Print the tree structure for debugging
+		output, _ := RenderTree(root, opts, clusters)
+		t.Logf("Tree structure:\n%s", output)
+	}
+
+	if invCount == 0 {
+		t.Error("Investigation doesn't appear in the tree at all, expected 1 occurrence")
+	}
+}
+
+// countNodeOccurrences recursively counts how many times a node with the given title appears in the tree
+func countNodeOccurrences(node *KnowledgeNode, title string) int {
+	count := 0
+	if node.Title == title {
+		count = 1
+	}
+
+	for _, child := range node.Children {
+		count += countNodeOccurrences(child, title)
+	}
+
+	return count
+}

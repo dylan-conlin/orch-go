@@ -1,6 +1,6 @@
 # Probe: Knowledge Tree Duplicate Items Fix
 
-**Status:** Active
+**Status:** Complete
 **Model:** dashboard-architecture
 **Date:** 2026-02-17
 
@@ -39,6 +39,52 @@ The code is currently using the NEW function with deduplication. This suggests e
 
 **Next Step:** Need to actually run the dashboard and verify if duplicates still appear
 
+### Test Results
+
+**Test 1: Unit test with synthetic data**
+
+- Created `TestDeduplicationAcrossParents` in `pkg/tree/tree_test.go`
+- Simulated an investigation that references two models in Prior-Work table
+- Expected: Investigation appears only once in tree
+- Result: ✅ PASS - Investigation appeared exactly once (deduplication working)
+
+**Test 2: Real .kb/ data**
+
+- Tested with actual PHASE3_REVIEW.md and PHASE4_REVIEW.md
+- Investigation `2026-02-13-inv-audit-model-probe-investigation-claims.md` references both
+- Result: ✅ NO DUPLICATES FOUND
+  - Investigation appears under PHASE3_REVIEW.md only
+  - Does NOT appear under PHASE4_REVIEW.md
+  - Deduplication logic is working correctly in production
+
 ## Model Impact
 
-(To be filled as I work - will confirm, contradict, or extend the existing probe's findings)
+**CONFIRMS** the existing probe's analysis, with key clarification:
+
+**Timeline Discovery:**
+
+- Original probe (2026-02-16): Identified root cause - investigations with multiple parents in Prior-Work tables create duplicates
+- Fix implemented: 2026-02-16 18:00:49 - Added `cloneNodeRecursiveWithDedup()` function
+- Verification (2026-02-17): Confirmed fix is working correctly in production
+
+**Key Finding:** The bug has ALREADY BEEN FIXED.
+
+**Evidence:**
+
+1. Unit test with synthetic data: ✅ PASS - deduplication working
+2. Production tree output: ✅ NO DUPLICATES - investigation appears only under PHASE3, not PHASE4
+3. Git history: Deduplication logic added in commit 9d84d415 on 2026-02-16
+
+**The Fix:**
+
+- `buildClusterTree()` creates a `globalIncluded` map shared across all root nodes in a cluster
+- `cloneNodeRecursiveWithDedup()` marks each node as globally included
+- When encountering a child that's already in `globalIncluded`, it's skipped
+- This prevents the same child from appearing under multiple parents
+
+**Model Extension:**
+The dashboard-architecture model should document that:
+
+- Tree deduplication operates at the CLUSTER level (not cross-cluster)
+- First parent wins - child appears under whichever parent is processed first
+- This is by design - provides stable, predictable tree structure
