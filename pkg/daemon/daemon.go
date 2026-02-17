@@ -3,6 +3,7 @@ package daemon
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -208,6 +209,10 @@ type Daemon struct {
 	// This prevents silent failure when UpdateBeadsStatus persistently fails.
 	SpawnFailureTracker *SpawnFailureTracker
 
+	// CompletionFailureTracker tracks completion processing failures to surface them in health metrics.
+	// This prevents silent failure when CompletionOnce persistently fails (e.g., beads database issues).
+	CompletionFailureTracker *CompletionFailureTracker
+
 	// listIssuesFunc is used for testing - allows mocking bd list
 	listIssuesFunc func() ([]Issue, error)
 	// spawnFunc is used for testing - allows mocking orch work
@@ -239,6 +244,7 @@ func NewWithConfig(config Config) *Daemon {
 		resumeAttempts:            make(map[string]time.Time),
 		VerificationTracker:       NewVerificationTracker(config.VerificationPauseThreshold),
 		SpawnFailureTracker:       NewSpawnFailureTracker(),
+		CompletionFailureTracker:  NewCompletionFailureTracker(),
 		listIssuesFunc:            ListReadyIssues,
 		spawnFunc:                 SpawnWork,
 		reflectFunc:               DefaultRunReflection,
@@ -408,7 +414,7 @@ func (d *Daemon) expandTriageReadyEpics(issues []Issue) ([]Issue, map[string]boo
 
 	// If no label filter is set, no expansion needed
 	if d.Config.Label == "" {
-	return issues, epicChildIDs, nil
+		return issues, epicChildIDs, nil
 	}
 
 	// Find epics with the required label
@@ -426,7 +432,7 @@ func (d *Daemon) expandTriageReadyEpics(issues []Issue) ([]Issue, map[string]boo
 
 	// No epics to expand
 	if len(epicsToExpand) == 0 {
-	return issues, epicChildIDs, nil
+		return issues, epicChildIDs, nil
 	}
 
 	// Expand each epic by fetching its children
@@ -783,6 +789,22 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		}, nil
 	}
 
+	// Check completion processing health BEFORE spawning.
+	// If completion processing has failed 3+ times consecutively, pause spawning.
+	// This prevents orphaning completed agents when completion processing is broken.
+	const completionFailureThreshold = 3
+	if d.CompletionFailureTracker != nil {
+		consecutiveFailures := d.CompletionFailureTracker.ConsecutiveFailures()
+		if consecutiveFailures >= completionFailureThreshold {
+			lastFailureTime, lastFailureReason := d.CompletionFailureTracker.LastFailure()
+			return &OnceResult{
+				Processed: false,
+				Message: fmt.Sprintf("Paused: completion processing has failed %d consecutive times (last: %v at %s). Fix completion processing before spawning more agents.",
+					consecutiveFailures, lastFailureReason, lastFailureTime.Format("15:04:05")),
+			}, nil
+		}
+	}
+
 	// Check rate limit first (before fetching issues)
 	if d.RateLimiter != nil {
 		canSpawn, count, msg := d.RateLimiter.CanSpawn()
@@ -992,10 +1014,26 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("Spawn failed: %v", err))
 		}
 		// On spawn failure, roll back beads status to open
+		// CRITICAL: If rollback fails, return immediately. Rollback failure indicates
+		// database issues (connectivity, beads daemon unavailability, etc.) that need
+		// immediate attention. Continuing would leave the issue in an inconsistent state
+		// (marked in_progress but spawn failed), blocking future spawns and orphaning the issue.
 		if rollbackErr := UpdateBeadsStatus(issue.ID, "open"); rollbackErr != nil {
-			if d.Config.Verbose {
-				fmt.Printf("  Warning: failed to rollback status for %s: %v\n", issue.ID, rollbackErr)
+			// Log as ERROR (not warning) - this is a critical failure
+			fmt.Fprintf(os.Stderr, "ERROR: Failed to rollback status for %s after spawn failure: %v\n", issue.ID, rollbackErr)
+			// Track rollback failure for health metrics
+			if d.SpawnFailureTracker != nil {
+				d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("Rollback failed for %s: %v", issue.ID, rollbackErr))
 			}
+			// Return rollback error immediately - don't continue cleanup
+			// The rollback error is more critical than the spawn error
+			return &OnceResult{
+				Processed: false,
+				Issue:     issue,
+				Skill:     skill,
+				Error:     fmt.Errorf("spawn failed (%w) and rollback failed: %v - issue may be orphaned", err, rollbackErr),
+				Message:   fmt.Sprintf("CRITICAL: spawn failed and status rollback failed for %s - issue may be orphaned", issue.ID),
+			}, nil
 		}
 		// Unmark from tracker so issue can be retried
 		if d.SpawnedIssues != nil {
@@ -1191,10 +1229,26 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("Spawn failed: %v", err))
 		}
 		// On spawn failure, roll back beads status to open
+		// CRITICAL: If rollback fails, return immediately. Rollback failure indicates
+		// database issues (connectivity, beads daemon unavailability, etc.) that need
+		// immediate attention. Continuing would leave the issue in an inconsistent state
+		// (marked in_progress but spawn failed), blocking future spawns and orphaning the issue.
 		if rollbackErr := UpdateBeadsStatus(issue.ID, "open"); rollbackErr != nil {
-			if d.Config.Verbose {
-				fmt.Printf("  Warning: failed to rollback status for %s: %v\n", issue.ID, rollbackErr)
+			// Log as ERROR (not warning) - this is a critical failure
+			fmt.Fprintf(os.Stderr, "ERROR: Failed to rollback status for %s after spawn failure: %v\n", issue.ID, rollbackErr)
+			// Track rollback failure for health metrics
+			if d.SpawnFailureTracker != nil {
+				d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("Rollback failed for %s: %v", issue.ID, rollbackErr))
 			}
+			// Return rollback error immediately - don't continue cleanup
+			// The rollback error is more critical than the spawn error
+			return &OnceResult{
+				Processed: false,
+				Issue:     issue,
+				Skill:     skill,
+				Error:     fmt.Errorf("spawn failed (%w) and rollback failed: %v - issue may be orphaned", err, rollbackErr),
+				Message:   fmt.Sprintf("CRITICAL: spawn failed and status rollback failed for %s - issue may be orphaned", issue.ID),
+			}, nil, nil
 		}
 		// Unmark from tracker so issue can be retried
 		if d.SpawnedIssues != nil {
