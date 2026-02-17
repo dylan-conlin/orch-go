@@ -1,0 +1,17 @@
+verification:
+  automated:
+    - command: "go build ./..."
+      expect: "exit code 0, no output"
+      result: "PASS"
+    - command: "go vet ./cmd/orch/"
+      expect: "exit code 0, no output"
+      result: "PASS"
+    - command: "go test -c ./cmd/orch/ -o /dev/null"
+      expect: "exit code 0, test binary compiles"
+      result: "PASS"
+    - command: "go test ./cmd/orch/ -run 'TestFormatSessionTitle|TestDetermineBeadsID|TestFormatContextQualitySummary|TestRegisterOrchestratorSession|TestAddUsageInfoToEventData|TestValidateModeModelCombo|TestIsInfrastructureWork|TestStripANSI' -v"
+      expect: "all 8 test suites PASS"
+      result: "PASS"
+  manual: []
+  known_issues:
+    - "pkg/daemon test failure is pre-existing and unrelated (TestDaemon_OnceWithSlot_ReturnsSlot panic)"

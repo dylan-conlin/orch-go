@@ -11,10 +11,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/orch"
+	"github.com/dylan-conlin/orch-go/pkg/session"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -533,3 +538,140 @@ func ensureOrchScaffolding(projectDir string, autoInit bool, noTrack bool) error
 
 func formatSessionTitle(workspaceName, beadsID string) string {
 	if beadsID == "" {
+		return workspaceName
+	}
+	return fmt.Sprintf("%s [%s]", workspaceName, beadsID)
+}
+
+// ansiRegex matches ANSI escape sequences (colors, formatting, etc.)
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSI(s string) string {
+	return ansiRegex.ReplaceAllString(s, "")
+}
+
+func validateModeModelCombo(backend string, resolvedModel model.ModelSpec) error {
+	if backend == "opencode" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "opus") {
+		return fmt.Errorf(`Warning: opencode backend with opus model may fail (auth blocked).
+  Recommendation: Use --model sonnet (default) or let auto-selection use claude backend`)
+	}
+	return nil
+}
+
+func determineBeadsID(projectName, skillName, task, spawnIssueFlag string, noTrack bool, createBeadsFn func(string, string, string) (string, error)) (string, error) {
+	if spawnIssueFlag != "" {
+		return resolveShortBeadsID(spawnIssueFlag)
+	}
+	if noTrack {
+		return fmt.Sprintf("%s-untracked-%d", projectName, time.Now().Unix()), nil
+	}
+	beadsID, err := createBeadsFn(projectName, skillName, task)
+	if err != nil {
+		return "", fmt.Errorf("failed to create beads issue: %w", err)
+	}
+	return beadsID, nil
+}
+
+func formatContextQualitySummary(gapAnalysis *spawn.GapAnalysis) string {
+	if gapAnalysis == nil {
+		return "not checked"
+	}
+	quality := gapAnalysis.ContextQuality
+	var indicator, label string
+	switch {
+	case quality == 0:
+		indicator = "🚨"
+		label = "CRITICAL - No context"
+	case quality < 20:
+		indicator = "⚠️"
+		label = "poor"
+	case quality < 40:
+		indicator = "⚠️"
+		label = "limited"
+	case quality < 60:
+		indicator = "📊"
+		label = "moderate"
+	case quality < 80:
+		indicator = "✓"
+		label = "good"
+	default:
+		indicator = "✓"
+		label = "excellent"
+	}
+	summary := fmt.Sprintf("%s %d/100 (%s)", indicator, quality, label)
+	if gapAnalysis.MatchStats.TotalMatches > 0 {
+		summary += fmt.Sprintf(" - %d matches", gapAnalysis.MatchStats.TotalMatches)
+		if gapAnalysis.MatchStats.ConstraintCount > 0 {
+			summary += fmt.Sprintf(" (%d constraints)", gapAnalysis.MatchStats.ConstraintCount)
+		}
+	}
+	return summary
+}
+
+func registerOrchestratorSession(cfg *spawn.Config, sessionID, task string) {
+	if !cfg.IsOrchestrator && !cfg.IsMetaOrchestrator {
+		return
+	}
+	registry := session.NewRegistry("")
+	orchSession := session.OrchestratorSession{
+		WorkspaceName: cfg.WorkspaceName,
+		SessionID:     sessionID,
+		ProjectDir:    cfg.ProjectDir,
+		SpawnTime:     time.Now(),
+		Goal:          task,
+		Status:        "active",
+	}
+	if err := registry.Register(orchSession); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to register orchestrator session: %v\n", err)
+	}
+}
+
+func addUsageInfoToEventData(eventData map[string]interface{}, usageInfo *spawn.UsageInfo) {
+	if usageInfo == nil {
+		return
+	}
+	eventData["usage_5h_used"] = usageInfo.FiveHourUsed
+	eventData["usage_weekly_used"] = usageInfo.SevenDayUsed
+	if usageInfo.AccountEmail != "" {
+		eventData["usage_account"] = usageInfo.AccountEmail
+	}
+	if usageInfo.AutoSwitched {
+		eventData["usage_auto_switched"] = true
+		eventData["usage_switch_reason"] = usageInfo.SwitchReason
+	}
+}
+
+func isInfrastructureWork(task string, beadsID string) bool {
+	infrastructureKeywords := []string{
+		"opencode", "orch-go", "pkg/spawn", "pkg/opencode", "pkg/verify",
+		"pkg/state", "cmd/orch", "spawn_cmd.go", "serve.go", "status.go",
+		"main.go", "dashboard", "agent-card", "agents.ts", "daemon.ts",
+		"skillc", "skill.yaml", "SPAWN_CONTEXT", "spawn system",
+		"spawn logic", "spawn template", "orchestration infrastructure",
+		"orchestration system",
+	}
+	taskLower := strings.ToLower(task)
+	for _, keyword := range infrastructureKeywords {
+		if strings.Contains(taskLower, keyword) {
+			return true
+		}
+	}
+	if beadsID != "" {
+		issue, err := verify.GetIssue(beadsID)
+		if err == nil {
+			titleLower := strings.ToLower(issue.Title)
+			for _, keyword := range infrastructureKeywords {
+				if strings.Contains(titleLower, keyword) {
+					return true
+				}
+			}
+			descLower := strings.ToLower(issue.Description)
+			for _, keyword := range infrastructureKeywords {
+				if strings.Contains(descLower, keyword) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
