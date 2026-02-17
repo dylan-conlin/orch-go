@@ -40,8 +40,8 @@ export interface TreeResponse {
   error?: string
 }
 
-// View mode
-export type TreeView = 'knowledge' | 'work'
+// View mode (only knowledge view exposed in UI, work view still available via CLI)
+export type TreeView = 'knowledge'
 
 // Animation states for nodes
 export type AnimationState = 'pulsing' | 'fading' | 'growing' | 'static'

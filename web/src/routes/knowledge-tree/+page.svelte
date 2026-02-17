@@ -10,7 +10,7 @@
 	const EXPANSION_STATE_KEY = 'knowledge-tree-expansion';
 	const VIEW_STATE_KEY = 'knowledge-tree-view';
 
-	type ViewMode = 'knowledge' | 'work' | 'timeline';
+	type ViewMode = 'knowledge' | 'timeline';
 
 	// Load initial view from URL hash or localStorage
 	function loadInitialView(): ViewMode {
@@ -18,15 +18,23 @@
 		
 		// 1. Check URL hash first (enables bookmarking)
 		const hash = window.location.hash.slice(1); // Remove #
-		if (hash === 'knowledge' || hash === 'work' || hash === 'timeline') {
+		if (hash === 'knowledge' || hash === 'timeline') {
 			return hash as ViewMode;
+		}
+		// Legacy: redirect 'work' to 'knowledge'
+		if (hash === 'work') {
+			return 'knowledge';
 		}
 		
 		// 2. Fall back to localStorage
 		try {
 			const stored = localStorage.getItem(VIEW_STATE_KEY);
-			if (stored === 'knowledge' || stored === 'work' || stored === 'timeline') {
+			if (stored === 'knowledge' || stored === 'timeline') {
 				return stored as ViewMode;
+			}
+			// Legacy: redirect 'work' to 'knowledge'
+			if (stored === 'work') {
+				return 'knowledge';
 			}
 		} catch (e) {
 			console.error('Failed to load view state:', e);
@@ -52,7 +60,7 @@
 	}
 
 	let currentView: ViewMode = loadInitialView();
-	let treeView: TreeView = currentView === 'work' ? 'work' : 'knowledge'; // For knowledge tree API (only 'knowledge' or 'work')
+	let treeView: TreeView = 'knowledge'; // Tree API always uses knowledge view
 	let loading = true;
 	let searchQuery = '';
 	let selectedTypes: Set<NodeType> = new Set();
@@ -152,20 +160,12 @@
 		}
 	});
 
-	// Handle view toggle - cycles through knowledge → work → timeline → knowledge
+	// Handle view toggle - cycles through knowledge → timeline → knowledge
 	async function handleViewToggle() {
 		loading = true;
 
-		// Cycle through views
-		if (currentView === 'knowledge') {
-			currentView = 'work';
-			treeView = 'work';
-		} else if (currentView === 'work') {
-			currentView = 'timeline';
-		} else {
-			currentView = 'knowledge';
-			treeView = 'knowledge';
-		}
+		// Cycle between knowledge and timeline
+		currentView = currentView === 'knowledge' ? 'timeline' : 'knowledge';
 
 		// Save view to hash and localStorage
 		saveView(currentView);
@@ -193,7 +193,6 @@
 		if (newView !== currentView) {
 			loading = true;
 			currentView = newView;
-			treeView = newView === 'work' ? 'work' : 'knowledge';
 
 			// Disconnect previous SSE connections
 			knowledgeTree.disconnectSSE();
@@ -333,7 +332,7 @@
 				onclick={handleViewToggle}
 				class="px-3 py-1.5 text-sm rounded border border-border hover:bg-zinc-800 transition-colors"
 			>
-				{currentView === 'knowledge' ? '📚 Knowledge' : currentView === 'work' ? '⚙️ Work' : '📅 Timeline'}
+				{currentView === 'knowledge' ? '📚 Knowledge' : '📅 Timeline'}
 			</button>
 
 			<!-- Search -->
@@ -374,7 +373,7 @@
 				{#if currentView === 'timeline'}
 					<span>{$timelineStore.timeline?.total || 0} actions</span>
 				{:else}
-					<span>{rootChildren.length} {currentView === 'knowledge' ? 'clusters' : 'issues'}</span>
+					<span>{rootChildren.length} clusters</span>
 				{/if}
 				<span class="flex items-center gap-1" title={statusLabel}>
 					<span class="inline-block w-2 h-2 rounded-full {statusColor}"></span>
