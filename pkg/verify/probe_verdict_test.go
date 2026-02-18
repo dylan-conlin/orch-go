@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,12 +10,12 @@ import (
 
 func TestParseProbeVerdict(t *testing.T) {
 	tests := []struct {
-		name        string
-		content     string
-		wantVerdict string
-		wantDetails string
-		wantTitle   string
-		wantModel   string
+		name         string
+		content      string
+		wantVerdict  string
+		wantDetails  string
+		wantTitle    string
+		wantModel    string
 		wantQuestion string
 	}{
 		{
@@ -298,9 +299,10 @@ X works.
 		t.Fatal(err)
 	}
 	spawnTime := time.Now().Add(-1 * time.Hour)
+	// Write spawn time as Unix nanoseconds (the format readLegacyDotfiles expects)
 	if err := os.WriteFile(
 		filepath.Join(workspacePath, ".spawn_time"),
-		[]byte(spawnTime.Format(time.RFC3339)),
+		[]byte(fmt.Sprintf("%d", spawnTime.UnixNano())),
 		0644,
 	); err != nil {
 		t.Fatal(err)
