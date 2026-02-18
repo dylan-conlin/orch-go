@@ -796,10 +796,14 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 
 		// Create edges for each dependency
 		for _, dep := range deps {
+			depID := dep.EffectiveID()
+			if depID == "" {
+				continue // Skip edges with no target
+			}
 			edge := GraphEdge{
 				From: issue.ID,
-				To:   dep.ID,
-				Type: dep.DependencyType,
+				To:   depID,
+				Type: dep.EffectiveType(),
 			}
 			// Default to "blocks" if no type specified
 			if edge.Type == "" {

@@ -153,14 +153,35 @@ type Issue struct {
 	CloseReason  string          `json:"close_reason,omitempty"`
 }
 
-// Dependency represents a dependency relationship returned by bd show.
-// When an issue has dependencies, bd show returns full Issue objects
-// with an additional dependency_type field.
+// Dependency represents a dependency relationship.
+// Two formats exist in the data:
+//   - bd show returns full Issue objects with "id" and "dependency_type"
+//   - bd list / JSONL stores raw edges with "depends_on_id" and "type"
+//
+// ParseDependencies handles both formats via EffectiveID/EffectiveType.
 type Dependency struct {
 	ID             string `json:"id"`
+	DependsOnID    string `json:"depends_on_id"`
 	Title          string `json:"title"`
 	Status         string `json:"status"`
 	DependencyType string `json:"dependency_type"` // e.g., "blocks"
+	Type           string `json:"type"`            // alternate field name in JSONL format
+}
+
+// EffectiveID returns the dependency target ID, handling both data formats.
+func (d Dependency) EffectiveID() string {
+	if d.ID != "" {
+		return d.ID
+	}
+	return d.DependsOnID
+}
+
+// EffectiveType returns the dependency type, handling both data formats.
+func (d Dependency) EffectiveType() string {
+	if d.DependencyType != "" {
+		return d.DependencyType
+	}
+	return d.Type
 }
 
 // ParseDependencies parses the raw dependencies JSON into a slice of Dependency objects.
@@ -202,7 +223,7 @@ func (i *Issue) GetBlockingDependencies() []BlockingDependency {
 	for _, dep := range deps {
 		isBlocking := false
 
-		switch dep.DependencyType {
+		switch dep.EffectiveType() {
 		case "blocks":
 			// "blocks" type: blocks unless closed or answered
 			isBlocking = dep.Status != "closed" && dep.Status != "answered"
@@ -220,7 +241,7 @@ func (i *Issue) GetBlockingDependencies() []BlockingDependency {
 
 		if isBlocking {
 			blocking = append(blocking, BlockingDependency{
-				ID:     dep.ID,
+				ID:     dep.EffectiveID(),
 				Title:  dep.Title,
 				Status: dep.Status,
 			})

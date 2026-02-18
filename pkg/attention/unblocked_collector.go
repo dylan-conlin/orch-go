@@ -77,11 +77,11 @@ func (c *UnblockedCollector) Collect(role string) ([]AttentionItem, error) {
 			ActionHint:  fmt.Sprintf("orch spawn %s", issue.ID),
 			CollectedAt: now,
 			Metadata: map[string]any{
-				"issue_type":      issue.IssueType,
-				"issue_status":    issue.Status,
-				"resolved_deps":   resolvedDeps,
-				"total_deps":      len(deps),
-				"beads_priority":  issue.Priority,
+				"issue_type":     issue.IssueType,
+				"issue_status":   issue.Status,
+				"resolved_deps":  resolvedDeps,
+				"total_deps":     len(deps),
+				"beads_priority": issue.Priority,
 			},
 		}
 		items = append(items, item)
@@ -96,7 +96,7 @@ func findResolvedDependencies(deps []beads.Dependency) []string {
 	var resolved []string
 	for _, dep := range deps {
 		// Skip parent-child relationships (they never block)
-		if dep.DependencyType == "parent-child" {
+		if dep.EffectiveType() == "parent-child" {
 			continue
 		}
 
@@ -105,7 +105,7 @@ func findResolvedDependencies(deps []beads.Dependency) []string {
 		isResolved := dep.Status == "closed" || dep.Status == "answered"
 
 		if isResolved {
-			resolved = append(resolved, dep.ID)
+			resolved = append(resolved, dep.EffectiveID())
 		}
 	}
 	return resolved
