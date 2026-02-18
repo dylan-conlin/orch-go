@@ -13,40 +13,52 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/tree"
 )
 
+// knowledgeCacheEntry holds a cached knowledge tree for a specific set of options.
+type knowledgeCacheEntry struct {
+	tree     *tree.KnowledgeNode
+	clusters []*tree.Cluster
+	time     time.Time
+}
+
 // treeCache provides TTL-based caching for /api/tree.
 // Tree extraction can be expensive, so we cache the result.
+// Knowledge trees are cached per sort mode + cluster filter since sorting
+// is baked into the tree structure during building.
 type treeCache struct {
 	mu sync.RWMutex
 
-	// Cached tree data (separate for knowledge and work views)
-	knowledgeTree *tree.KnowledgeNode
-	knowledgeTime time.Time
+	// Cached knowledge trees keyed by "sortMode|clusterFilter"
+	knowledgeTrees map[string]*knowledgeCacheEntry
 
 	workTree     []*tree.KnowledgeNode
 	workTreeTime time.Time
 
 	// TTL for tree cache
 	ttl time.Duration
-
-	// Clusters (shared across views)
-	clusters     []*tree.Cluster
-	clustersTime time.Time
 }
 
 var globalTreeCache *treeCache
 
 func newTreeCache() *treeCache {
 	return &treeCache{
-		ttl: 10 * time.Second, // Tree changes when bd create/kb commands run
+		knowledgeTrees: make(map[string]*knowledgeCacheEntry),
+		ttl:            10 * time.Second, // Tree changes when bd create/kb commands run
 	}
+}
+
+// knowledgeCacheKey returns the cache key for a given set of tree options.
+func knowledgeCacheKey(opts tree.TreeOptions) string {
+	return string(opts.SortMode) + "|" + opts.ClusterFilter
 }
 
 // getKnowledgeTree returns cached knowledge tree or builds fresh if stale.
 func (c *treeCache) getKnowledgeTree(kbDir string, opts tree.TreeOptions) (*tree.KnowledgeNode, []*tree.Cluster, error) {
+	key := knowledgeCacheKey(opts)
+
 	c.mu.RLock()
-	if c.knowledgeTree != nil && time.Since(c.knowledgeTime) < c.ttl {
-		result := c.knowledgeTree
-		clusters := c.clusters
+	if entry, ok := c.knowledgeTrees[key]; ok && time.Since(entry.time) < c.ttl {
+		result := entry.tree
+		clusters := entry.clusters
 		c.mu.RUnlock()
 		return result, clusters, nil
 	}
@@ -60,10 +72,11 @@ func (c *treeCache) getKnowledgeTree(kbDir string, opts tree.TreeOptions) (*tree
 
 	// Update cache
 	c.mu.Lock()
-	c.knowledgeTree = root
-	c.knowledgeTime = time.Now()
-	c.clusters = clusters
-	c.clustersTime = time.Now()
+	c.knowledgeTrees[key] = &knowledgeCacheEntry{
+		tree:     root,
+		clusters: clusters,
+		time:     time.Now(),
+	}
 	c.mu.Unlock()
 
 	return root, clusters, nil
@@ -99,9 +112,8 @@ func (c *treeCache) invalidate() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.knowledgeTree = nil
+	c.knowledgeTrees = make(map[string]*knowledgeCacheEntry)
 	c.workTree = nil
-	c.clusters = nil
 }
 
 // handleTree handles GET /api/tree requests.

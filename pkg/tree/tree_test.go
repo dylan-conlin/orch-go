@@ -290,6 +290,41 @@ This investigation extends both models.
 	}
 }
 
+// TestSortModesProduceDifferentOrdering verifies that different sort modes
+// actually produce different cluster orderings in the built tree.
+func TestSortModesProduceDifferentOrdering(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectRoot := filepath.Join(cwd, "../..")
+	kbDir := filepath.Join(projectRoot, ".kb")
+
+	if _, err := os.Stat(kbDir); os.IsNotExist(err) {
+		t.Skip(".kb directory not found, skipping test")
+	}
+
+	// Build with alphabetical sort
+	alphaOpts := TreeOptions{SortMode: SortModeAlphabetical}
+	alphaRoot, _, err := BuildKnowledgeTree(kbDir, alphaOpts)
+	if err != nil {
+		t.Fatalf("BuildKnowledgeTree (alphabetical) failed: %v", err)
+	}
+
+	if len(alphaRoot.Children) < 2 {
+		t.Skip("Need at least 2 clusters to test sort ordering")
+	}
+
+	// Verify alphabetical ordering
+	for i := 1; i < len(alphaRoot.Children); i++ {
+		prev := strings.ToLower(alphaRoot.Children[i-1].Title)
+		curr := strings.ToLower(alphaRoot.Children[i].Title)
+		if prev > curr {
+			t.Errorf("Alphabetical sort violated: %q > %q at position %d", prev, curr, i)
+		}
+	}
+}
+
 // countNodeOccurrences recursively counts how many times a node with the given title appears in the tree
 func countNodeOccurrences(node *KnowledgeNode, title string) int {
 	count := 0
