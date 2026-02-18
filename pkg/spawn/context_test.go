@@ -381,6 +381,7 @@ Test skill content.
 	// Check key sections are present
 	checks := []string{
 		"TASK: implement spawn command",
+		"ORIENTATION_FRAME:\nimplement spawn command",
 		"PROJECT_DIR: /Users/test/orch-go",
 		"bd comment orch-go-123",
 		"SKILL GUIDANCE (feature-impl)",
@@ -445,6 +446,9 @@ func TestWriteContext(t *testing.T) {
 
 	if !strings.Contains(string(content), "TASK: test task") {
 		t.Error("context file should contain task")
+	}
+	if !strings.Contains(string(content), "ORIENTATION_FRAME:\ntest task") {
+		t.Error("context file should contain orientation frame")
 	}
 }
 
@@ -517,6 +521,12 @@ func TestMinimalPrompt(t *testing.T) {
 
 	if !strings.Contains(prompt, "/Users/test/orch-go/.orch/workspace/og-feat-spawn-19dec/SPAWN_CONTEXT.md") {
 		t.Errorf("minimal prompt should contain full path to context file, got: %s", prompt)
+	}
+	if !strings.Contains(prompt, "mandatory protocol") {
+		t.Errorf("minimal prompt should mark context as mandatory protocol, got: %s", prompt)
+	}
+	if !strings.Contains(prompt, "Do not end a turn with narrative") {
+		t.Errorf("minimal prompt should forbid narrative endings, got: %s", prompt)
 	}
 }
 

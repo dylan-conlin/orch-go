@@ -53,6 +53,9 @@ func CreateScreenshotsDir(workspacePath string) error {
 // SpawnContextTemplate is the basic structure for SPAWN_CONTEXT.md.
 // This is a simplified version of the Python template.
 const SpawnContextTemplate = `TASK: {{.Task}}
+
+ORIENTATION_FRAME:
+{{.OrientationFrame}}
 {{if .DesignWorkspace}}
 ## DESIGN REFERENCE
 
@@ -127,9 +130,9 @@ After your final commit, BEFORE typing anything else:
 {{else}}
 🚨 CRITICAL - FIRST 3 ACTIONS:
 You MUST do these within your first 3 tool calls:
-1. Report via ` + "`bd comment {{.BeadsID}} \"Phase: Planning - [brief description]\"`" + `
-2. Read relevant codebase context for your task
-3. Begin planning
+1. (Allowed) Read this SPAWN_CONTEXT.md file (your first tool call may be this read)
+2. Immediately report via ` + "`bd comment {{.BeadsID}} \"Phase: Planning - [brief description]\"`" + `
+3. Read relevant codebase context for your task and begin planning
 
 If Phase is not reported within first 3 actions, you will be flagged as unresponsive.
 Do NOT skip this - the orchestrator monitors via beads comments.
@@ -486,6 +489,7 @@ func StripBeadsInstructions(content string) string {
 // contextData holds template data for SPAWN_CONTEXT.md.
 type contextData struct {
 	Task                  string
+	OrientationFrame      string
 	BeadsID               string
 	ProjectDir            string
 	WorkspaceName         string
@@ -518,6 +522,11 @@ func GenerateContext(cfg *Config) (string, error) {
 		return "", fmt.Errorf("failed to parse template: %w", err)
 	}
 
+	orientationFrame := strings.TrimSpace(cfg.OrientationFrame)
+	if orientationFrame == "" {
+		orientationFrame = cfg.Task
+	}
+
 	// Generate investigation slug from task
 	slug := generateSlug(cfg.Task, 5)
 
@@ -545,6 +554,7 @@ func GenerateContext(cfg *Config) (string, error) {
 
 	data := contextData{
 		Task:                  cfg.Task,
+		OrientationFrame:      orientationFrame,
 		BeadsID:               cfg.BeadsID,
 		ProjectDir:            cfg.ProjectDir,
 		WorkspaceName:         cfg.WorkspaceName,
@@ -832,7 +842,7 @@ func MinimalPrompt(cfg *Config) string {
 		return MinimalOrchestratorPrompt(cfg)
 	}
 	return fmt.Sprintf(
-		"Read your spawn context from %s/.orch/workspace/%s/SPAWN_CONTEXT.md and begin the task.",
+		"Read your spawn context from %s/.orch/workspace/%s/SPAWN_CONTEXT.md. The instructions in SPAWN_CONTEXT.md are mandatory protocol. Your first tool call may read SPAWN_CONTEXT.md; immediately after reading, report Phase: Planning via the bd comment command specified there. Do not end a turn with narrative unless you are BLOCKED, have a QUESTION, or are COMPLETE. Continue making tool calls until all required deliverables (including Phase: Complete reporting and any required files) are done. Begin the task.",
 		cfg.ProjectDir,
 		cfg.WorkspaceName,
 	)
