@@ -1,0 +1,33 @@
+verification:
+  type: audit
+  gate1_explain: "Audited orchestrator skill CLI references against actual --help output. Found 13 stale references (7 harmful, 4 misleading, 2 cosmetic). Highest impact: --opus flag and orch frontier."
+  gate2_behavioral: false  # Audit-only, no code changes to verify
+
+  commands_run:
+    - command: "orch frontier --help"
+      expected: "exit 1 (unknown command)"
+      observed: "exit 1: unknown command 'frontier' for 'orch-go'"
+    - command: "orch rework --help"
+      expected: "exit 1 (unknown command)"
+      observed: "exit 1: unknown command 'rework', suggests 'work'"
+    - command: "orch reflect --help"
+      expected: "exit 1 (unknown command)"
+      observed: "exit 1: unknown command 'reflect'"
+    - command: "orch spawn --help | grep opus"
+      expected: "no --opus flag"
+      observed: "--model flag exists, no --opus flag"
+    - command: "orch clean --help | grep stale"
+      expected: "no --stale flag"
+      observed: "no --stale or --untracked flags found"
+
+  deliverables:
+    - path: ".kb/models/orchestrator-session-lifecycle/probes/2026-02-18-orchestrator-skill-cli-staleness-audit.md"
+      description: "Probe with all 13 findings, severity ratings, proposed replacements"
+      exists: true
+    - path: ".orch/workspace/og-audit-staleness-audit-orchestrator-18feb-8da1/SYNTHESIS.md"
+      description: "Session synthesis with plain-language summary"
+      exists: true
+
+  manual_verification:
+    - "Run any --help command from the probe to verify findings"
+    - "Cross-reference template line numbers against SKILL.md.template"
