@@ -858,12 +858,13 @@
 
 					{#if filteredTree.length > 0}
 						<div class="flex-1 min-h-0">
-							<WorkGraphTree 
-								tree={filteredTree} 
+							<WorkGraphTree
+								tree={filteredTree}
 								groups={groupSections}
 								groupMode={groupByMode}
-								{newIssueIds} 
-								wipItems={$wipItems} 
+								edges={$workGraph?.edges || []}
+								{newIssueIds}
+								wipItems={$wipItems}
 								onToggleExpansion={handleToggleExpansion}
 								onSetFocus={handleSetFocus}
 							/>

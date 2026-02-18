@@ -10,6 +10,14 @@ export interface GroupHeader {
   unlabeled: boolean
 }
 
+export interface DepSectionHeader {
+  _depSectionHeader: true
+  key: string
+  label: string
+  count: number
+  type: 'chain' | 'independent'
+}
+
 export type RunningAgentDetails = {
   phase?: string
   runtime?: string
@@ -28,20 +36,26 @@ export function isGroupHeader(item: unknown): item is GroupHeader {
   return !!item && typeof item === 'object' && '_groupHeader' in item
 }
 
+export function isDepSectionHeader(item: unknown): item is DepSectionHeader {
+  return !!item && typeof item === 'object' && '_depSectionHeader' in item
+}
+
 export function isWIPItem(item: TreeNode | WIPItem | GroupHeader): item is WIPItem {
   return 'type' in item && (item.type === 'running' || item.type === 'queued')
 }
 
-export function getItemId(item: TreeNode | WIPItem | GroupHeader): string {
+export function getItemId(item: TreeNode | WIPItem | GroupHeader | DepSectionHeader): string {
   if (isGroupHeader(item)) return item.key
+  if (isDepSectionHeader(item)) return item.key
   if (isWIPItem(item)) {
     return item.type === 'running' ? item.agent.id : item.issue.id
   }
   return item.id
 }
 
-export function getItemKey(item: TreeNode | WIPItem | GroupHeader): string {
+export function getItemKey(item: TreeNode | WIPItem | GroupHeader | DepSectionHeader): string {
   if (isGroupHeader(item)) return `group-${item.key}`
+  if (isDepSectionHeader(item)) return `dep-${item.key}`
   if (isWIPItem(item)) {
     return item.type === 'running'
       ? `wip-running-${item.agent.id}`
@@ -50,8 +64,9 @@ export function getItemKey(item: TreeNode | WIPItem | GroupHeader): string {
   return `tree-${item.id}`
 }
 
-export function getRowTestId(item: TreeNode | WIPItem | GroupHeader): string {
+export function getRowTestId(item: TreeNode | WIPItem | GroupHeader | DepSectionHeader): string {
   if (isGroupHeader(item)) return `group-header-${item.key}`
+  if (isDepSectionHeader(item)) return `dep-header-${item.key}`
   if (isWIPItem(item)) {
     return item.type === 'running'
       ? `wip-row-${item.agent.beads_id || item.agent.id}`

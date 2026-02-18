@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Badge } from '$lib/components/ui/badge';
-	import type { TreeNode, GroupSection, GroupByMode } from '$lib/stores/work-graph';
-	import { closeIssue, updateIssue } from '$lib/stores/work-graph';
+	import type { TreeNode, GroupSection, GroupByMode, GraphEdge } from '$lib/stores/work-graph';
+	import { closeIssue, updateIssue, buildDependencyView, flattenDepChain } from '$lib/stores/work-graph';
 	import type { WIPItem } from '$lib/stores/wip';
 	import { computeAgentHealth, getContextPercent, getContextColor, getExpressiveStatus } from '$lib/stores/wip';
 	import { DeliverableChecklist } from '$lib/components/deliverable-checklist';
@@ -12,6 +12,7 @@
 	import { orchestratorContext } from '$lib/stores/context';
 	import {
 		type GroupHeader,
+		type DepSectionHeader,
 		type RunningAgentDetails,
 		flattenVisibleTree,
 		findNodeById,
@@ -32,6 +33,7 @@
 		getStatusIcon,
 		getTypeBadge,
 		isGroupHeader,
+		isDepSectionHeader,
 		isWIPItem,
 		shortenModel,
 	} from './work-graph-tree-helpers';
@@ -39,6 +41,7 @@
 	export let tree: TreeNode[] = [];
 	export let groups: GroupSection[] = [];
 	export let groupMode: GroupByMode = 'priority';
+	export let edges: GraphEdge[] = [];
 	export let newIssueIds: Set<string> = new Set();
 	export let wipItems: WIPItem[] = [];
 	export let onToggleExpansion: (nodeId: string, expanded: boolean) => void = () => {};
@@ -46,6 +49,12 @@
 
 	// Track which group sections are collapsed
 	let collapsedGroups = new Set<string>();
+
+	// Track which dependency chain sections are collapsed
+	let collapsedChains = new Set<string>();
+
+	// Box-drawing prefix map for dependency chain nodes
+	let depPrefixMap = new Map<string, string>();
 
 	function toggleGroup(key: string) {
 		if (collapsedGroups.has(key)) {
@@ -56,11 +65,20 @@
 		collapsedGroups = collapsedGroups; // trigger reactivity
 	}
 
+	function toggleChain(key: string) {
+		if (collapsedChains.has(key)) {
+			collapsedChains.delete(key);
+		} else {
+			collapsedChains.add(key);
+		}
+		collapsedChains = collapsedChains; // trigger reactivity
+	}
+
 	// Whether we're in grouped mode (non-priority has label sections)
 	$: isGrouped = groups.length > 0 && groupMode !== 'priority';
 
 	// Flatten tree for keyboard navigation
-	let flattenedNodes: (TreeNode | WIPItem | GroupHeader)[] = [];
+	let flattenedNodes: (TreeNode | WIPItem | GroupHeader | DepSectionHeader)[] = [];
 	let selectedIndex = 0;
 	let pinnedTreeIds = new Set<string>();
 	let runningAgentDetailsByIssueId = new Map<string, RunningAgentDetails>();
@@ -229,7 +247,7 @@
 		runningAgentDetailsByIssueId = runningDetails;
 
 		// Build flat list based on whether we're in grouped mode
-		const items: (TreeNode | WIPItem | GroupHeader)[] = [...wipItems];
+		const items: (TreeNode | WIPItem | GroupHeader | DepSectionHeader)[] = [...wipItems];
 
 		if (isGrouped && groups.length > 0) {
 			for (const group of groups) {
@@ -245,7 +263,56 @@
 				}
 			}
 		} else {
-			items.push(...flattenVisibleTree(tree, pinnedIds));
+			// Check for blocking edges to enable dependency chain view
+			const hasBlockingEdges = edges.some(e =>
+				e.type === 'blocks' && treeNodeIndex.has(e.from) && treeNodeIndex.has(e.to)
+			);
+
+			if (hasBlockingEdges) {
+				const dv = buildDependencyView(treeNodeIndex, edges);
+				const prefixes = new Map<string, string>();
+
+				for (const chain of dv.chains) {
+					items.push({
+						_depSectionHeader: true,
+						key: chain.id,
+						label: chain.label,
+						count: chain.size,
+						type: 'chain' as const,
+					});
+
+					if (!collapsedChains.has(chain.id)) {
+						const flatItems = flattenDepChain(chain, pinnedIds);
+						for (const fi of flatItems) {
+							prefixes.set(fi.node.id, fi.prefix);
+							items.push(fi.node);
+						}
+					}
+				}
+
+				if (dv.independentNodes.length > 0) {
+					items.push({
+						_depSectionHeader: true,
+						key: 'independent',
+						label: 'Independent Issues',
+						count: dv.independentNodes.length,
+						type: 'independent' as const,
+					});
+
+					if (!collapsedChains.has('independent')) {
+						for (const node of dv.independentNodes) {
+							if (!pinnedIds.has(node.id)) {
+								items.push(node);
+							}
+						}
+					}
+				}
+
+				depPrefixMap = prefixes;
+			} else {
+				items.push(...flattenVisibleTree(tree, pinnedIds));
+				depPrefixMap = new Map();
+			}
 		}
 
 		flattenedNodes = items;
@@ -282,6 +349,28 @@
 			if (event.key === 'Enter' || event.key === 'l' || event.key === 'h' || event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
 				event.preventDefault();
 				toggleGroup(current.key);
+				return;
+			}
+			if (event.key === 'j' || event.key === 'ArrowDown') {
+				event.preventDefault();
+				selectedIndex = Math.min(selectedIndex + 1, flattenedNodes.length - 1);
+				scrollToSelected();
+				return;
+			}
+			if (event.key === 'k' || event.key === 'ArrowUp') {
+				event.preventDefault();
+				selectedIndex = Math.max(selectedIndex - 1, 0);
+				scrollToSelected();
+				return;
+			}
+			return;
+		}
+
+		// Handle dependency section header interactions
+		if (isDepSectionHeader(current)) {
+			if (event.key === 'Enter' || event.key === 'l' || event.key === 'h' || event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+				event.preventDefault();
+				toggleChain(current.key);
 				return;
 			}
 			if (event.key === 'j' || event.key === 'ArrowDown') {
@@ -512,7 +601,7 @@
 		// Notify parent component to update expansion state
 		onToggleExpansion(node.id, node.expanded);
 		// Manually rebuild flattened nodes (include WIP items + groups)
-		const items: (TreeNode | WIPItem | GroupHeader)[] = [...wipItems];
+		const items: (TreeNode | WIPItem | GroupHeader | DepSectionHeader)[] = [...wipItems];
 		if (isGrouped && groups.length > 0) {
 			for (const group of groups) {
 				items.push({
@@ -526,6 +615,24 @@
 					items.push(...flattenVisibleTree(group.nodes, pinnedTreeIds));
 				}
 			}
+		} else if (depPrefixMap.size > 0) {
+			// In dep chain mode, rebuild with chain structure
+			const dv = buildDependencyView(treeNodeIndex, edges);
+			const prefixes = new Map<string, string>();
+			for (const chain of dv.chains) {
+				items.push({ _depSectionHeader: true, key: chain.id, label: chain.label, count: chain.size, type: 'chain' as const });
+				if (!collapsedChains.has(chain.id)) {
+					const flatItems = flattenDepChain(chain, pinnedTreeIds);
+					for (const fi of flatItems) { prefixes.set(fi.node.id, fi.prefix); items.push(fi.node); }
+				}
+			}
+			if (dv.independentNodes.length > 0) {
+				items.push({ _depSectionHeader: true, key: 'independent', label: 'Independent Issues', count: dv.independentNodes.length, type: 'independent' as const });
+				if (!collapsedChains.has('independent')) {
+					for (const n of dv.independentNodes) { if (!pinnedTreeIds.has(n.id)) items.push(n); }
+				}
+			}
+			depPrefixMap = prefixes;
 		} else {
 			items.push(...flattenVisibleTree(tree, pinnedTreeIds));
 		}
@@ -593,8 +700,8 @@
 	{/if}
 	{#each flattenedNodes as item, index (getItemKey(item))}
 		{@const itemId = getItemId(item)}
-		{@const isWIP = !isGroupHeader(item) && isWIPItem(item)}
-		{@const depth = !isGroupHeader(item) && !isWIP ? (item as TreeNode).depth : undefined}
+		{@const isWIP = !isGroupHeader(item) && !isDepSectionHeader(item) && isWIPItem(item)}
+		{@const depth = !isGroupHeader(item) && !isDepSectionHeader(item) && !isWIP ? (item as TreeNode).depth : undefined}
 		{#if isGroupHeader(item)}
 			<!-- Group Section Header -->
 			<div
@@ -621,6 +728,34 @@
 					{#if item.unlabeled}
 						<span class="text-xs text-yellow-500/70 italic">needs labeling</span>
 					{/if}
+				</div>
+			</div>
+		{:else if isDepSectionHeader(item)}
+			<!-- Dependency Chain Section Header -->
+			<div
+				data-testid={getRowTestId(item)}
+				data-node-index={index}
+				class="dep-section-header cursor-pointer select-none focus:outline-none border-t border-border/40 mt-1 first:mt-0 first:border-t-0"
+				class:selected={index === selectedIndex}
+				class:focused={index === selectedIndex}
+				role="treeitem"
+				aria-selected={index === selectedIndex}
+				tabindex="-1"
+				onclick={() => { selectNode(index); toggleChain(item.key); }}
+			>
+				<div class="flex items-center gap-2 py-2 px-2 {index === selectedIndex ? 'bg-zinc-800' : ''}">
+					<span class="w-4 text-muted-foreground text-xs">
+						{collapsedChains.has(item.key) ? '▶' : '▼'}
+					</span>
+					{#if item.type === 'chain'}
+						<span class="text-xs text-muted-foreground font-mono">──</span>
+					{/if}
+					<span class="text-xs font-semibold tracking-wider {item.type === 'independent' ? 'text-muted-foreground uppercase' : 'text-blue-400'} truncate max-w-md">
+						{item.label}
+					</span>
+					<span class="text-xs text-muted-foreground">
+						({item.count})
+					</span>
 				</div>
 			</div>
 		{:else}
@@ -822,19 +957,25 @@
 			{@const feedback = actionFeedback.get(node.id)}
 			{@const inProgressSubline = getInProgressSubline(node, runningAgentDetailsByIssueId)}
 			{@const progressSnapshot = getProgressSnapshot(node)}
+			{@const depPrefix = depPrefixMap.get(node.id)}
 			<!-- Tree Node - L0: Row -->
 			<div
 			class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.status.toLowerCase() === 'in_progress' ? 'border-l border-blue-500/30' : 'border-l border-transparent'} {node.absorbed_by ? 'opacity-50' : ''} {feedback === 'priority' ? 'action-feedback-priority' : ''} {feedback === 'queue' ? 'action-feedback-queue' : ''}"
-			style="padding-left: {node.depth * 24}px"
+			style="padding-left: {depPrefix !== undefined ? '8px' : node.depth * 24 + 'px'}"
 			>
-					<!-- Expansion indicator -->
-					<span class="w-4 text-muted-foreground text-xs">
-						{#if node.children.length > 0}
-							{node.expanded ? '▼' : '▶'}
-						{:else}
-							<span class="opacity-0">•</span>
-						{/if}
-					</span>
+					{#if depPrefix !== undefined}
+						<!-- Box-drawing prefix for dependency chain -->
+						<span class="text-zinc-600 font-mono text-xs whitespace-pre select-none leading-none">{depPrefix}</span>
+					{:else}
+						<!-- Expansion indicator (non-dep mode) -->
+						<span class="w-4 text-muted-foreground text-xs">
+							{#if node.children.length > 0}
+								{node.expanded ? '▼' : '▶'}
+							{:else}
+								<span class="opacity-0">•</span>
+							{/if}
+						</span>
+					{/if}
 
 					<!-- Status icon -->
 					<span data-testid="status-icon" class="w-5 {getStatusColor(node.status)}">
@@ -925,7 +1066,7 @@
 					<div
 						data-testid={`issue-details-${node.id}`}
 						class="expanded-details ml-12 mt-1 mb-2 p-3 bg-muted/30 rounded text-sm"
-						style="margin-left: {node.depth * 24 + 48}px"
+						style="margin-left: {depPrefix !== undefined ? '48px' : node.depth * 24 + 48 + 'px'}"
 					>
 						<div class="mb-3">
 							<span class="text-xs font-semibold uppercase text-foreground">Issue summary:</span>

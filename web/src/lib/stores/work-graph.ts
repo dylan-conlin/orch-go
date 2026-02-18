@@ -367,6 +367,196 @@ export function filterTreeByLabel(nodes: TreeNode[], filter: string): TreeNode[]
   return filterNodes(nodes)
 }
 
+// === Dependency Chain Visualization ===
+
+export interface DepNode {
+  node: TreeNode
+  depChildren: DepNode[]
+  depDepth: number
+}
+
+export interface DepChain {
+  id: string
+  label: string
+  roots: DepNode[]
+  size: number
+}
+
+export interface FlatDepItem {
+  node: TreeNode
+  prefix: string
+  depDepth: number
+}
+
+export interface DepView {
+  chains: DepChain[]
+  independentNodes: TreeNode[]
+}
+
+/**
+ * Build dependency chains from blocking edges.
+ * Groups connected issues into chains via BFS, finds roots (no blockers),
+ * and builds trees following blocker→blocked direction.
+ */
+export function buildDependencyView(
+  treeNodeIndex: Map<string, TreeNode>,
+  edges: GraphEdge[],
+): DepView {
+  const blocksMap = new Map<string, string[]>()
+  const blockedByMap = new Map<string, string[]>()
+  const involvedNodes = new Set<string>()
+
+  for (const edge of edges) {
+    if (edge.type !== 'blocks') continue
+    if (!treeNodeIndex.has(edge.from) || !treeNodeIndex.has(edge.to)) continue
+
+    involvedNodes.add(edge.from)
+    involvedNodes.add(edge.to)
+
+    if (!blocksMap.has(edge.from)) blocksMap.set(edge.from, [])
+    blocksMap.get(edge.from)!.push(edge.to)
+    if (!blockedByMap.has(edge.to)) blockedByMap.set(edge.to, [])
+    blockedByMap.get(edge.to)!.push(edge.from)
+  }
+
+  if (involvedNodes.size === 0) {
+    return {
+      chains: [],
+      independentNodes: Array.from(treeNodeIndex.values()).sort((a, b) => {
+        if (a.priority !== b.priority) return a.priority - b.priority
+        return a.id.localeCompare(b.id)
+      }),
+    }
+  }
+
+  // Find connected components using BFS
+  const visited = new Set<string>()
+  const components: Set<string>[] = []
+
+  for (const nodeId of involvedNodes) {
+    if (visited.has(nodeId)) continue
+    const component = new Set<string>()
+    const queue = [nodeId]
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      if (visited.has(current)) continue
+      visited.add(current)
+      component.add(current)
+
+      for (const blocked of blocksMap.get(current) || []) {
+        if (!visited.has(blocked)) queue.push(blocked)
+      }
+      for (const blocker of blockedByMap.get(current) || []) {
+        if (!visited.has(blocker)) queue.push(blocker)
+      }
+    }
+    if (component.size > 0) components.push(component)
+  }
+
+  // Build dependency trees for each component
+  const chains: DepChain[] = []
+
+  for (const component of components) {
+    const roots: string[] = []
+    for (const id of component) {
+      const blockers = (blockedByMap.get(id) || []).filter((b) => component.has(b))
+      if (blockers.length === 0) roots.push(id)
+    }
+    if (roots.length === 0) roots.push([...component][0])
+
+    const buildDepNode = (
+      nodeId: string,
+      depth: number,
+      seen: Set<string>,
+    ): DepNode => {
+      seen.add(nodeId)
+      const blocked = (blocksMap.get(nodeId) || [])
+        .filter((b) => component.has(b) && !seen.has(b))
+        .sort()
+      return {
+        node: treeNodeIndex.get(nodeId)!,
+        depChildren: blocked.map((childId) =>
+          buildDepNode(childId, depth + 1, seen),
+        ),
+        depDepth: depth,
+      }
+    }
+
+    const seen = new Set<string>()
+    const rootNodes: DepNode[] = []
+    for (const rootId of roots.sort()) {
+      if (seen.has(rootId)) continue
+      rootNodes.push(buildDepNode(rootId, 0, seen))
+    }
+
+    const firstRoot = treeNodeIndex.get(roots[0])
+    chains.push({
+      id: `chain-${roots[0]}`,
+      label: firstRoot?.title || roots[0],
+      roots: rootNodes,
+      size: component.size,
+    })
+  }
+
+  chains.sort((a, b) => {
+    if (a.size !== b.size) return b.size - a.size
+    return a.id.localeCompare(b.id)
+  })
+
+  const independentNodes: TreeNode[] = []
+  for (const [, node] of treeNodeIndex) {
+    if (!involvedNodes.has(node.id)) {
+      independentNodes.push(node)
+    }
+  }
+  independentNodes.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority
+    return a.id.localeCompare(b.id)
+  })
+
+  return { chains, independentNodes }
+}
+
+/**
+ * Flatten a dependency chain into items with box-drawing prefixes.
+ * Root nodes are flush left, children get ├── or └── prefixes.
+ */
+export function flattenDepChain(
+  chain: DepChain,
+  pinnedIds: Set<string>,
+): FlatDepItem[] {
+  const items: FlatDepItem[] = []
+
+  function walk(depNode: DepNode, ancestorIsLast: boolean[]) {
+    if (pinnedIds.has(depNode.node.id)) return
+
+    let prefix = ''
+    if (depNode.depDepth > 0) {
+      for (let i = 0; i < ancestorIsLast.length - 1; i++) {
+        prefix += ancestorIsLast[i] ? '    ' : '│   '
+      }
+      const isLast = ancestorIsLast[ancestorIsLast.length - 1]
+      prefix += isLast ? '└── ' : '├── '
+    }
+
+    items.push({ node: depNode.node, prefix, depDepth: depNode.depDepth })
+
+    const visibleChildren = depNode.depChildren.filter(
+      (c) => !pinnedIds.has(c.node.id),
+    )
+    for (let i = 0; i < visibleChildren.length; i++) {
+      const childIsLast = i === visibleChildren.length - 1
+      walk(visibleChildren[i], [...ancestorIsLast, childIsLast])
+    }
+  }
+
+  for (const root of chain.roots) {
+    walk(root, [])
+  }
+
+  return items
+}
+
 export const workGraph = createWorkGraphStore()
 
 // Close issue request/response types
