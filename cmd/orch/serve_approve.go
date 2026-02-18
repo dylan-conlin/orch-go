@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -129,12 +131,13 @@ func findWorkspaceAndBeadsID(agentID string) (string, string, error) {
 	// Try to find workspace by name first
 	workspacePath := findWorkspaceByName(currentDir, agentID)
 	if workspacePath != "" {
-		// Found by workspace name - read beads ID from .beads_id file
-		beadsIDPath := filepath.Join(workspacePath, ".beads_id")
-		if content, err := os.ReadFile(beadsIDPath); err == nil {
-			return workspacePath, string(content), nil
+		// Found by workspace name - read beads ID from manifest (fallback handles dotfiles)
+		manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+		beadsID := strings.TrimSpace(manifest.BeadsID)
+		if beadsID != "" {
+			return workspacePath, beadsID, nil
 		}
-		// No beads ID file - might be untracked
+		// No beads ID - might be untracked
 		return workspacePath, "", nil
 	}
 

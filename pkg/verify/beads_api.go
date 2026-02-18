@@ -503,6 +503,37 @@ func ListOpenIssues() (map[string]*Issue, error) {
 	return result, nil
 }
 
+// ListOpenIssuesWithDir retrieves all open issues scoped to a project directory.
+// If projectDir is empty, falls back to ListOpenIssues which uses the default directory.
+func ListOpenIssuesWithDir(projectDir string) (map[string]*Issue, error) {
+	if projectDir == "" {
+		return ListOpenIssues()
+	}
+
+	result := make(map[string]*Issue)
+	client := beads.NewCLIClient(beads.WithWorkDir(projectDir))
+	issues, err := client.List(nil)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range issues {
+		status := strings.ToLower(issues[i].Status)
+		if status == "open" || status == "in_progress" || status == "blocked" {
+			result[issues[i].ID] = &Issue{
+				ID:          issues[i].ID,
+				Title:       issues[i].Title,
+				Description: issues[i].Description,
+				Status:      issues[i].Status,
+				IssueType:   issues[i].IssueType,
+				CloseReason: issues[i].CloseReason,
+			}
+		}
+	}
+
+	return result, nil
+}
+
 // GetCommentsBatch fetches comments for multiple issues in parallel.
 // Returns a map from beadsID to comments. Errors are silently skipped.
 // Uses goroutines with semaphore to parallelize fetching (much faster than sequential).

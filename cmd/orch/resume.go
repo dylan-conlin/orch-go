@@ -270,9 +270,8 @@ func runResumeByWorkspace(workspaceName string) error {
 	}
 
 	// Check for beads ID (optional for orchestrators)
-	beadsIDPath := filepath.Join(workspacePath, ".beads_id")
-	beadsIDBytes, _ := os.ReadFile(beadsIDPath)
-	beadsID := strings.TrimSpace(string(beadsIDBytes))
+	manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+	beadsID := strings.TrimSpace(manifest.BeadsID)
 
 	// Generate appropriate resume prompt
 	var prompt string

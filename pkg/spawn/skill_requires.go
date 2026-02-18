@@ -118,7 +118,7 @@ func parseBool(s string) bool {
 
 // GatherRequiredContext gathers context based on skill requirements.
 // Returns a formatted string suitable for inclusion in SPAWN_CONTEXT.md.
-func GatherRequiredContext(requires *RequiresContext, task, beadsID, projectDir string) string {
+func GatherRequiredContext(requires *RequiresContext, task, beadsID, projectDir string, stalenessMeta *StalenessEventMeta) string {
 	if requires == nil {
 		return ""
 	}
@@ -127,7 +127,7 @@ func GatherRequiredContext(requires *RequiresContext, task, beadsID, projectDir 
 
 	// Gather kb-context if required
 	if requires.KBContext {
-		kbContext := gatherKBContext(task)
+		kbContext := gatherKBContext(task, projectDir, stalenessMeta)
 		if kbContext != "" {
 			sections = append(sections, kbContext)
 		}
@@ -159,7 +159,7 @@ func GatherRequiredContext(requires *RequiresContext, task, beadsID, projectDir 
 // gatherKBContext runs kb context query with task keywords.
 // Returns formatted context string or empty string if no matches.
 // Also performs gap analysis and includes gap summary in the context if significant.
-func gatherKBContext(task string) string {
+func gatherKBContext(task, projectDir string, stalenessMeta *StalenessEventMeta) string {
 	// Extract keywords from task description
 	keywords := ExtractKeywords(task, 3)
 	if keywords == "" {
@@ -192,7 +192,11 @@ func gatherKBContext(task string) string {
 	}
 
 	// Format context with optional gap summary
-	contextContent := FormatContextForSpawn(result)
+	if projectDir == "" {
+		projectDir = "."
+	}
+	formatResult := FormatContextForSpawnWithLimitAndMeta(result, MaxKBContextChars, projectDir, stalenessMeta)
+	contextContent := formatResult.Content
 	if gapSummary := gapAnalysis.FormatGapSummary(); gapSummary != "" {
 		contextContent = gapSummary + "\n\n" + contextContent
 	}

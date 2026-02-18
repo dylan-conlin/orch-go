@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-work-search-your-entire-17feb-d212",
+  "skill": "hello",
+  "beads_id": "orch-go-untracked-1771392248",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "a0cb1114c50176240e7e588524218333f20cf8d6",
+  "spawn_time": "2026-02-17T21:24:09-08:00",
+  "tier": "full",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-4o"
+}

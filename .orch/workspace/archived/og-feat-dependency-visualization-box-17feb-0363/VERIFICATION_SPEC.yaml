@@ -1,0 +1,45 @@
+verification:
+  build:
+    - command: "cd web && npm run build"
+      expectation: "Build succeeds without errors"
+      status: passed
+    - command: "go build -o build/orch ./cmd/orch/"
+      expectation: "Go backend builds successfully"
+      status: passed
+
+  functional:
+    - description: "Dependency chains rendered with box-drawing characters"
+      steps:
+        - "Open http://localhost:5188/work-graph"
+        - "Issues tab should show dependency chains with ├── └── │ characters"
+        - "Each chain has a collapsible header showing root issue title and count"
+        - "Root issues are flush left, dependents indent per hop"
+      status: manual_required
+
+    - description: "Independent issues in separate section"
+      steps:
+        - "Issues without blocking edges appear under 'Independent Issues' section"
+        - "Section is collapsible via click or keyboard"
+      status: manual_required
+
+    - description: "Existing functionality preserved"
+      checks:
+        - "Keyboard navigation (j/k/h/l/enter) works across chain headers and nodes"
+        - "Label filter (/) still filters issues"
+        - "Group modes (shift+G) still work (chains only shown in default priority mode)"
+        - "Side panel (i/o) still opens for tree nodes"
+        - "WIP section still renders at top"
+        - "Ready to Complete section still renders"
+        - "Expand/collapse details (Enter) still works"
+      status: manual_required
+
+    - description: "Falls back gracefully when no blocking edges"
+      steps:
+        - "If no blocking edges exist, standard flat tree renders (no chain headers)"
+      status: manual_required
+
+  files_changed:
+    - web/src/lib/stores/work-graph.ts
+    - web/src/lib/components/work-graph-tree/work-graph-tree-helpers.ts
+    - web/src/lib/components/work-graph-tree/work-graph-tree.svelte
+    - web/src/routes/work-graph/+page.svelte

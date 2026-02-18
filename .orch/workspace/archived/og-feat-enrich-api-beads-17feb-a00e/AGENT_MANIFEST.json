@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-enrich-api-beads-17feb-a00e",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-980.2",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go/",
+  "git_baseline": "ded4b05bd04f07b7871cee289c90ecf2a0a5f691",
+  "spawn_time": "2026-02-17T22:03:38-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-4o"
+}

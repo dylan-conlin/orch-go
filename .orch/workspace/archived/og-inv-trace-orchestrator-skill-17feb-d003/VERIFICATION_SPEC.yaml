@@ -1,0 +1,31 @@
+verification:
+  type: investigation
+  outcome: success
+
+  claims:
+    - claim: "orchestrator-session.ts plugin is the primary injection path for interactive OpenCode sessions"
+      verified: true
+      evidence: "plugins/orchestrator-session.ts line 215-237: experimental.chat.system.transform hook injects skillContent"
+
+    - claim: "Plugin caches skill content at init time, causing stale versions after skillc deploy"
+      verified: true
+      evidence: "plugins/orchestrator-session.ts lines 138-147: skillContent read once at init, never refreshed"
+
+    - claim: "load-orchestration-context.py uses wrong path (missing meta/)"
+      verified: true
+      evidence: "~/.orch/hooks/load-orchestration-context.py line 27: Path.home() / '.claude' / 'skills' / 'orchestrator' / 'SKILL.md'"
+
+    - claim: "7 copies of orchestrator skill exist at different versions"
+      verified: true
+      evidence: "md5 checksums and compilation dates differ across 7 locations"
+
+    - claim: "Pre-gate sections no longer exist on disk in any current skill file"
+      verified: true
+      evidence: "grep -r 'Spawning Checklist' across all skill dirs returned only deprecated reference files"
+
+  manual_verification:
+    - step: "Restart OpenCode server, then check if orchestrator sessions get latest skill version"
+      command: "orch-dashboard restart && sleep 5 && # start new OpenCode session"
+
+    - step: "Verify stale copies can be safely deleted"
+      command: "ls ~/.opencode/skill/policy/orchestrator/ ~/.opencode/skill/SKILL.md ~/.claude/skills/src/meta/"

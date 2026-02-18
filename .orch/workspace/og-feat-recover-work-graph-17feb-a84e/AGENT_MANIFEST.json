@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-recover-work-graph-17feb-a84e",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-988",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "ee699f2905e7a7cfcae8b256590c5570d1f658c2",
+  "spawn_time": "2026-02-17T19:59:38-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-5.2-codex"
+}

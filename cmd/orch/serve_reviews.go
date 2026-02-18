@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -47,9 +48,9 @@ type PendingReviewsAPIResponse struct {
 // that have completed (Phase: Complete) but have no synthesis by design.
 //
 // Performance optimization:
-// 1. Light-tier processing is disabled - the PendingReviewsSection was removed from the
-//    dashboard, and processing 200+ light-tier workspaces causes 15+ second API latency.
-// 2. Recency filter: Workspaces older than 7 days are skipped to avoid stale data.
+//  1. Light-tier processing is disabled - the PendingReviewsSection was removed from the
+//     dashboard, and processing 200+ light-tier workspaces causes 15+ second API latency.
+//  2. Recency filter: Workspaces older than 7 days are skipped to avoid stale data.
 //
 // Previously, each light-tier workspace would call isLightTierComplete which called
 // GetComments individually. Even with batch fetching, 200+ beads API calls is too slow.
@@ -120,7 +121,7 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 			hasSynthesis = true
 		}
 
-		// Check if this is a light-tier workspace (has .tier file with "light")
+		// Check if this is a light-tier workspace (tier in manifest, fallback to dotfiles)
 		// Light-tier processing is disabled by default due to performance impact
 		isLightTier := false
 		if !skipLightTierProcessing {
@@ -302,14 +303,10 @@ func containsInt(slice []int, val int) bool {
 }
 
 // isLightTierWorkspace checks if a workspace is a light tier spawn.
-// Light tier workspaces have a .tier file containing "light".
+// Light tier workspaces have a Tier of "light" in the agent manifest.
 func isLightTierWorkspace(workspacePath string) bool {
-	tierPath := filepath.Join(workspacePath, ".tier")
-	data, err := os.ReadFile(tierPath)
-	if err != nil {
-		return false
-	}
-	return strings.TrimSpace(string(data)) == "light"
+	manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+	return strings.TrimSpace(manifest.Tier) == spawn.TierLight
 }
 
 // isLightTierComplete checks if a light tier workspace has Phase: Complete in beads comments.

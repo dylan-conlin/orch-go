@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-design-orch-rework-17feb-e3ed",
+  "skill": "architect",
+  "beads_id": "orch-go-1025",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "71bca206c9748a4169284d10f54c425e55347e70",
+  "spawn_time": "2026-02-17T22:53:07-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "openai/gpt-5.2-codex"
+}

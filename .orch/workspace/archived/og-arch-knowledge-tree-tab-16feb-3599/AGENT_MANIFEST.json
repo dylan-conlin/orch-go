@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-knowledge-tree-tab-16feb-3599",
+  "skill": "architect",
+  "beads_id": "orch-go-lott",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "507de7e3d740fb8d6472b34657ecb8abefccf285",
+  "spawn_time": "2026-02-16T16:11:14-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

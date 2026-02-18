@@ -7,6 +7,7 @@
 	import { AgentDetailPanel } from '$lib/components/agent-detail';
 	import { CollapsibleSection } from '$lib/components/collapsible-section';
 	// PendingReviewsSection removed - not actively used
+	import { ReviewQueueSection } from '$lib/components/review-queue-section';
 	import { ReadyQueueSection } from '$lib/components/ready-queue-section';
 	import { UpNextSection } from '$lib/components/up-next-section';
 	import { RecentWins } from '$lib/components/recent-wins';
@@ -44,8 +45,9 @@
 	import { usage } from '$lib/stores/usage';
 	import { focus } from '$lib/stores/focus';
 	import { servers } from '$lib/stores/servers';
-	import { beads, readyIssues } from '$lib/stores/beads';
+	import { beads, readyIssues, reviewQueue } from '$lib/stores/beads';
 	import { daemon } from '$lib/stores/daemon';
+	import { verification } from '$lib/stores/verification';
 	// pendingReviews store removed - not actively used
 	import { dashboardMode } from '$lib/stores/dashboard-mode';
 	import { config } from '$lib/stores/config';
@@ -74,6 +76,7 @@
 		recent: false,  // Recent collapsed by default
 		archive: false, // Archive collapsed by default
 		upNext: false,  // Up Next collapsed by default (auto-expands on P0/P1)
+		reviewQueue: true, // Review queue expanded by default
 		readyQueue: false, // Ready queue collapsed by default
 		questions: true, // Questions expanded by default (important for blocking visibility)
 		// pendingReviews removed - not actively used
@@ -153,6 +156,7 @@
 		// when orchestrator context is loaded (see reactive block below)
 		Promise.all([
 			beads.fetch(),
+			reviewQueue.fetch(),
 			config.fetch()
 		]).catch(console.error);
 
@@ -164,6 +168,7 @@
 			servers.fetch();
 			readyIssues.fetch();
 			daemon.fetch();
+			verification.fetch();
 			hotspots.fetch();
 			orchestratorSessions.fetch();
 			services.fetch();
@@ -194,7 +199,9 @@
 				servers.fetch(),
 				beads.fetch(projectDir),
 				readyIssues.fetch(projectDir),
+				reviewQueue.fetch(projectDir),
 				daemon.fetch(),
+				verification.fetch(projectDir),
 				hotspots.fetch(),
 				orchestratorSessions.fetch(),
 				services.fetch(),
@@ -250,6 +257,8 @@
 		if (typeof window !== 'undefined' && $filters.followOrchestrator && $orchestratorContext.project_dir) {
 			beads.fetch($orchestratorContext.project_dir).catch(console.error);
 			readyIssues.fetch($orchestratorContext.project_dir).catch(console.error);
+			reviewQueue.fetch($orchestratorContext.project_dir).catch(console.error);
+			verification.fetch($orchestratorContext.project_dir).catch(console.error);
 		}
 	}
 
@@ -409,7 +418,12 @@
 
 <div class="space-y-3">
 	<!-- Stats Bar Component -->
-	<StatsBar bind:readyQueueExpanded={sectionState.readyQueue} />
+	<StatsBar bind:readyQueueExpanded={sectionState.readyQueue} bind:reviewQueueExpanded={sectionState.reviewQueue} />
+
+	<!-- Review Queue (primary workflow) -->
+	<ReviewQueueSection
+		bind:expanded={sectionState.reviewQueue}
+	/>
 
 	<!-- Orchestrator Coaching (Frame 2: Simplified Health Indicator) -->
 	{#if $coaching.overall_status}

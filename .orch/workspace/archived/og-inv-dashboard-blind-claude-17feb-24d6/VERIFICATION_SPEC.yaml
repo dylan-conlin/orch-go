@@ -1,0 +1,67 @@
+verification_spec:
+  type: investigation
+  issue: orch-go-1010
+  workspace: og-inv-dashboard-blind-claude-17feb-24d6
+
+  question: >
+    Why is the dashboard blind to Claude CLI tmux agents and what signals
+    exist to make them visible?
+
+  root_cause_identified: true
+  root_cause: >
+    Scan ordering bug in serve_agents.go: completed workspace scan (line 598)
+    runs before tmux scan (line 551), claiming tmux agents as "completed"
+    without beads enrichment. Tmux scan defers via duplicate check.
+
+  tests_performed:
+    - name: tmux_window_exists
+      command: tmux list-windows -t workers-orch-go -F '#{window_name}' | grep 1010
+      expected: Window name containing [orch-go-1010]
+      actual: "🔬 og-inv-dashboard-blind-claude-17feb-24d6 [orch-go-1010]"
+      passed: true
+
+    - name: api_agents_wrong_status
+      command: "curl -sk 'https://localhost:3348/api/agents' | jq '.[] | select(.beads_id==\"orch-go-1010\")'"
+      expected: status=active, phase=Planning, window set
+      actual: status=completed, phase=null, window=null
+      passed: false  # This IS the bug
+
+    - name: beads_comments_exist
+      command: bd comments orch-go-1010
+      expected: Phase comment present
+      actual: "Phase: Planning - Tracing dashboard data sources..."
+      passed: true
+
+    - name: graph_api_no_active_agent
+      command: "curl -sk 'https://localhost:3348/api/beads/graph?status=open' | jq '.nodes[] | select(.status==\"in_progress\") | .active_agent'"
+      expected: active_agent populated for issues with running agents
+      actual: active_agent field absent from all nodes (backend struct lacks field)
+      passed: false  # Contributing factor
+
+  fix_recommendations:
+    - priority: 1
+      description: >
+        Reorder scans: move tmux scan (line 551-596) before completed workspace
+        scan (line 598-707). Add beads_id to workspace scan duplicate check.
+      files: [cmd/orch/serve_agents.go]
+      complexity: small
+
+    - priority: 2
+      description: >
+        Populate active_agent in GraphNode by joining agents data with graph
+        nodes by beads_id in handleBeadsGraph().
+      files: [cmd/orch/serve_beads.go]
+      complexity: medium
+
+    - priority: 3
+      description: >
+        Implement WIP store setRunningAgents() to populate
+        runningAgentDetailsByIssueId from agents list.
+      files: [web/src/lib/stores/wip.ts]
+      complexity: small
+
+  reproduction_verified: true
+  reproduction_notes: >
+    Bug reproduced live on orch-go-1010 (this agent). Tmux window exists,
+    beads comments have Phase: Planning, but API returns status=completed
+    with no phase and no window link.

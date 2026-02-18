@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // LikelyDoneSignal represents an issue that appears to be complete
@@ -253,14 +254,8 @@ func getActiveWorkspaces(projectDir string) (map[string]string, error) {
 
 		dirPath := filepath.Join(workspaceDir, entry.Name())
 
-		// Check for .beads_id file
-		beadsIDPath := filepath.Join(dirPath, ".beads_id")
-		beadsIDData, err := os.ReadFile(beadsIDPath)
-		if err != nil {
-			continue
-		}
-
-		beadsID := strings.TrimSpace(string(beadsIDData))
+		manifest := spawn.ReadAgentManifestWithFallback(dirPath)
+		beadsID := strings.TrimSpace(manifest.BeadsID)
 		if beadsID != "" {
 			activeWorkspaces[beadsID] = dirPath
 		}

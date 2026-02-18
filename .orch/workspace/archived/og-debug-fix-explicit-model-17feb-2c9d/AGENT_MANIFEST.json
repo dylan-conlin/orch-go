@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-debug-fix-explicit-model-17feb-2c9d",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-1020",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "8d7d47ed6de7fc3a22de07eeeafc36a8f577e556",
+  "spawn_time": "2026-02-17T22:41:23-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "openai/gpt-5.2-codex"
+}

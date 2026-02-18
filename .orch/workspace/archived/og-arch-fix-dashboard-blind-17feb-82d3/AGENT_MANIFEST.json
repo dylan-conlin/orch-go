@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-fix-dashboard-blind-17feb-82d3",
+  "skill": "architect",
+  "beads_id": "orch-go-1022",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go/",
+  "git_baseline": "a0cb1114c50176240e7e588524218333f20cf8d6",
+  "spawn_time": "2026-02-17T21:42:27-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "openai/gpt-4o"
+}

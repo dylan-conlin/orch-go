@@ -941,7 +941,7 @@ func TestStaleModelIntegration(t *testing.T) {
 		defer os.Remove(match.Path)
 
 		// Format the model
-		formatted, isStale := formatModelMatchForSpawn(match, "../..")
+		formatted, isStale := formatModelMatchForSpawn(match, "../..", nil)
 
 		// Should detect staleness
 		if !isStale {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -180,6 +181,31 @@ func VerificationPath() string {
 		return ".orch/daemon-verification.signal"
 	}
 	return filepath.Join(homeDir, ".orch", "daemon-verification.signal")
+}
+
+// ReadVerificationSignal reads the last human verification timestamp from the signal file.
+// Returns zero time if the signal file does not exist or is empty.
+func ReadVerificationSignal() (time.Time, error) {
+	verificationPath := VerificationPath()
+	data, err := os.ReadFile(verificationPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return time.Time{}, nil
+		}
+		return time.Time{}, fmt.Errorf("failed to read verification signal: %w", err)
+	}
+
+	ts := strings.TrimSpace(string(data))
+	if ts == "" {
+		return time.Time{}, nil
+	}
+
+	parsed, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse verification signal: %w", err)
+	}
+
+	return parsed, nil
 }
 
 // WriteResumeSignal writes a resume signal file.

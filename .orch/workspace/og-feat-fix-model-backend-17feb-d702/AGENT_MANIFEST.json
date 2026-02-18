@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-fix-model-backend-17feb-d702",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1011",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "c6a1a8561aac77dd03b61c663b22532adeabd18d",
+  "spawn_time": "2026-02-17T11:11:05-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

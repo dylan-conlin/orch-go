@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-write-simple-hello-17feb-7fd3",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-untracked-1771384257",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "4b8718b16b6b9ef9970448e015e7fafdd0a533b9",
+  "spawn_time": "2026-02-17T19:10:59-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-5.2-codex"
+}

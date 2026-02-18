@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-integrate-recovered-slide-17feb-93b4",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-989",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go/",
+  "git_baseline": "0cc609e5766a9300df890a3d5f2984273451a1d8",
+  "spawn_time": "2026-02-17T22:05:57-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "openai/gpt-4o"
+}

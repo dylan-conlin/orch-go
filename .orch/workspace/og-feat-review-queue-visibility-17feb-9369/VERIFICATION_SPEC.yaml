@@ -1,0 +1,47 @@
+verification_spec:
+  feature: 'Review queue visibility in dashboard and orchestrator context'
+
+  acceptance_criteria:
+    - id: AC-001
+      description: 'API exposes issues awaiting review via daemon:ready-review label'
+      verification_method: 'Code review'
+      status: 'verified'
+      evidence: |
+        - New /api/beads/review-queue handler lists in_progress issues labeled daemon:ready-review (cmd/orch/serve_beads.go)
+        - Cached via reviewTTL in beadsStatsCache to avoid repeated bd calls
+
+    - id: AC-002
+      description: 'Dashboard surfaces review queue prominently with count and issue list'
+      verification_method: 'Code review'
+      status: 'verified'
+      evidence: |
+        - ReviewQueueSection added above other dashboard panels (web/src/routes/+page.svelte)
+        - Stats bar indicator shows review queue count and toggles section (web/src/lib/components/stats-bar/stats-bar.svelte)
+        - Review queue list renders issue title, priority, type, labels (web/src/lib/components/review-queue-section/review-queue-section.svelte)
+
+    - id: AC-003
+      description: 'Orchestrator context includes review queue summary'
+      verification_method: 'Code review'
+      status: 'verified'
+      evidence: |
+        - ORCHESTRATOR_CONTEXT.md template includes Review Queue section (pkg/spawn/orchestrator_context.go)
+        - Summary lists count and up to 8 issues from daemon:ready-review label
+
+  commands_run:
+    - command: 'gofmt -w cmd/orch/serve_beads.go cmd/orch/serve.go cmd/orch/serve_beads_test.go pkg/spawn/orchestrator_context.go'
+      purpose: 'Format updated Go files'
+      result: 'Completed'
+
+  manual_verification:
+    - step: 'Open dashboard and confirm Review Queue section appears when label present'
+      expected: 'Shows count and list of issues awaiting review'
+      actual: 'Not performed (code review only)'
+
+    - step: 'Spawn orchestrator and inspect ORCHESTRATOR_CONTEXT.md'
+      expected: 'Review Queue section includes count and issue list'
+      actual: 'Not performed (code review only)'
+
+  notes: |
+    No automated tests were run. Changes verified via code review and existing patterns.
+
+  discovered_work: []

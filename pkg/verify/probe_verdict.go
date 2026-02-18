@@ -11,7 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // ProbeVerdict represents a parsed probe verdict from a probe file's Model Impact section.
@@ -110,15 +111,10 @@ func extractProbeSection(content, sectionName string) string {
 // that were produced by the agent during its session.
 func FindProbesForWorkspace(workspacePath, projectDir string) []ProbeVerdict {
 	// Read spawn time to determine which probes are relevant
-	spawnTimeFile := filepath.Join(workspacePath, ".spawn_time")
-	spawnTimeBytes, err := os.ReadFile(spawnTimeFile)
-	if err != nil {
+	manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+	spawnTime := manifest.ParseSpawnTime()
+	if spawnTime.IsZero() {
 		return nil // Can't determine relevance without spawn time
-	}
-
-	spawnTime, err := time.Parse(time.RFC3339, strings.TrimSpace(string(spawnTimeBytes)))
-	if err != nil {
-		return nil
 	}
 
 	// Scan all model probe directories

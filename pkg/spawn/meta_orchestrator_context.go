@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"text/template"
 	"time"
 )
@@ -320,7 +319,7 @@ func MinimalMetaOrchestratorPrompt(cfg *Config) string {
 // - SESSION_HANDOFF.md (indicating completed session)
 //
 // Returns the path to the most recent SESSION_HANDOFF.md, or empty string if none found.
-// The "most recent" is determined by the .spawn_time file in the workspace.
+// The "most recent" is determined by the agent manifest spawn time (fallback to dotfiles).
 func FindPriorMetaOrchestratorHandoff(projectDir string) string {
 	// Exclude the current workspace being created (will be passed in as part of cfg later)
 	return findPriorMetaOrchestratorHandoffExcluding(projectDir, "")
@@ -396,20 +395,14 @@ func findPriorMetaOrchestratorHandoffExcluding(projectDir, excludeWorkspace stri
 	return candidates[0].handoffPath
 }
 
-// getSpawnTime reads the .spawn_time file and parses the timestamp.
-// Returns zero time if file doesn't exist or can't be parsed.
+// getSpawnTime reads the agent manifest spawn time.
+// Returns zero time if the manifest is missing or unparseable.
 func getSpawnTime(workspacePath string) time.Time {
-	spawnTimePath := filepath.Join(workspacePath, ".spawn_time")
-	content, err := os.ReadFile(spawnTimePath)
-	if err != nil {
+	manifest := ReadAgentManifestWithFallback(workspacePath)
+	spawnTime := manifest.ParseSpawnTime()
+	if spawnTime.IsZero() {
 		return time.Time{}
 	}
 
-	// Parse the timestamp (stored as Unix nanoseconds)
-	var nanos int64
-	if _, err := fmt.Sscanf(strings.TrimSpace(string(content)), "%d", &nanos); err != nil {
-		return time.Time{}
-	}
-
-	return time.Unix(0, nanos)
+	return spawnTime
 }

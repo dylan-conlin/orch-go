@@ -586,6 +586,8 @@ func runComplete(identifier, workdir string) error {
 	var verificationPassed bool = true
 	var gatesFailed []string
 	var skillName string
+	var completionResult verify.VerificationResult
+	var completionResultSet bool
 
 	// Verify completion status
 	// - For orchestrator sessions: check SESSION_HANDOFF.md exists AND has content
@@ -601,6 +603,8 @@ func runComplete(identifier, workdir string) error {
 
 			result := verify.VerifyOrchestratorCompletion(workspacePath)
 			skillName = result.Skill
+			completionResult = result
+			completionResultSet = true
 
 			// Apply skip config to filter out bypassed gates
 			if skipConfig.hasAnySkip() && !result.Passed {
@@ -683,6 +687,8 @@ func runComplete(identifier, workdir string) error {
 			if err != nil {
 				return fmt.Errorf("verification failed: %w", err)
 			}
+			completionResult = result
+			completionResultSet = true
 
 			// Track skill name for event
 			skillName = result.Skill
@@ -775,6 +781,8 @@ func runComplete(identifier, workdir string) error {
 			result, err := verify.VerifyCompletionFull(beadsID, workspacePath, beadsProjectDir, "", serverURL)
 			if err == nil {
 				skillName = result.Skill
+				completionResult = result
+				completionResultSet = true
 				if !result.Passed {
 					verificationPassed = false
 					gatesFailed = result.GatesFailed
@@ -784,6 +792,8 @@ func runComplete(identifier, workdir string) error {
 			// Run verification to capture what would have failed
 			result := verify.VerifyOrchestratorCompletion(workspacePath)
 			skillName = result.Skill
+			completionResult = result
+			completionResultSet = true
 			if !result.Passed {
 				verificationPassed = false
 				gatesFailed = result.GatesFailed
@@ -989,6 +999,26 @@ func runComplete(identifier, workdir string) error {
 				fmt.Fprintf(os.Stderr, "Warning: failed to record gate2 checkpoint: %v\n", err)
 			}
 		}
+	}
+
+	// Surface verification checklist before closing
+	if completionResultSet && !isUntracked {
+		gate1Complete := false
+		gate2Complete := false
+		if beadsID != "" && !isOrchestratorSession {
+			gate1Complete, _ = checkpoint.HasGate1Checkpoint(beadsID)
+			gate2Complete, _ = checkpoint.HasGate2Checkpoint(beadsID)
+		}
+		tier := ""
+		if workspacePath != "" && !isOrchestratorSession {
+			tier = verify.ReadTierFromWorkspace(workspacePath)
+		}
+		issueType := ""
+		if issue != nil {
+			issueType = issue.IssueType
+		}
+		checklist := buildVerificationChecklist(completionResult, issueType, tier, isOrchestratorSession, skipConfig, gate1Complete, gate2Complete)
+		printVerificationChecklist(checklist)
 	}
 
 	// Update session handoff with spawn completion info (Capture at Context principle)
@@ -1812,6 +1842,114 @@ func collectCompletionTelemetry(workspacePath string, forced bool, verificationP
 	}
 
 	return durationSeconds, tokensInput, tokensOutput, outcome
+}
+
+type verificationChecklistItem struct {
+	Label  string
+	Status string // passed, pending, skipped
+}
+
+func buildVerificationChecklist(
+	result verify.VerificationResult,
+	issueType string,
+	tier string,
+	isOrchestrator bool,
+	skipConfig SkipConfig,
+	gate1Complete bool,
+	gate2Complete bool,
+) []verificationChecklistItem {
+	items := []verificationChecklistItem{}
+	appendItem := func(label, status string) {
+		if status == "n/a" {
+			return
+		}
+		items = append(items, verificationChecklistItem{Label: label, Status: status})
+	}
+
+	gateStatus := func(gate string) string {
+		if skipConfig.shouldSkipGate(gate) {
+			return "skipped"
+		}
+		for _, failed := range result.GatesFailed {
+			if failed == gate {
+				return "pending"
+			}
+		}
+		return "passed"
+	}
+
+	if isOrchestrator {
+		appendItem("session handoff", gateStatus(verify.GateSessionHandoff))
+		appendItem("handoff content", gateStatus(verify.GateHandoffContent))
+		return items
+	}
+
+	if issueType != "" && checkpoint.RequiresCheckpoint(issueType) {
+		explainStatus := "pending"
+		if skipConfig.ExplainBack {
+			explainStatus = "skipped"
+		} else if gate1Complete {
+			explainStatus = "passed"
+		}
+		appendItem("explain-back (gate1)", explainStatus)
+	} else {
+		appendItem("explain-back (gate1)", "n/a")
+	}
+
+	if issueType != "" && checkpoint.RequiresGate2(issueType) {
+		behaviorStatus := "pending"
+		if gate2Complete {
+			behaviorStatus = "passed"
+		}
+		appendItem("behavioral verification (gate2)", behaviorStatus)
+	} else {
+		appendItem("behavioral verification (gate2)", "n/a")
+	}
+
+	appendItem("phase complete", gateStatus(verify.GatePhaseComplete))
+
+	if tier == "light" || verify.IsKnowledgeProducingSkill(result.Skill) {
+		appendItem("synthesis", "n/a")
+	} else {
+		appendItem("synthesis", gateStatus(verify.GateSynthesis))
+	}
+
+	appendItem("test evidence", gateStatus(verify.GateTestEvidence))
+	appendItem("visual verification", gateStatus(verify.GateVisualVerify))
+	appendItem("git diff", gateStatus(verify.GateGitDiff))
+	appendItem("build", gateStatus(verify.GateBuild))
+	appendItem("constraint", gateStatus(verify.GateConstraint))
+	appendItem("phase gate", gateStatus(verify.GatePhaseGate))
+	appendItem("skill output", gateStatus(verify.GateSkillOutput))
+	appendItem("decision patch limit", gateStatus(verify.GateDecisionPatchLimit))
+	appendItem("accretion", gateStatus(verify.GateAccretion))
+
+	return items
+}
+
+func printVerificationChecklist(items []verificationChecklistItem) {
+	if len(items) == 0 {
+		return
+	}
+
+	fmt.Println("\n--- Verification Checklist ---")
+	for _, item := range items {
+		fmt.Printf("  [%s] %s\n", formatChecklistStatus(item.Status), item.Label)
+	}
+	fmt.Println("--------------------------------")
+}
+
+func formatChecklistStatus(status string) string {
+	switch status {
+	case "passed":
+		return "PASS"
+	case "pending":
+		return "PEND"
+	case "skipped":
+		return "SKIP"
+	default:
+		return "N/A"
+	}
 }
 
 // collectAccretionDelta collects file growth/shrinkage metrics from git diff.

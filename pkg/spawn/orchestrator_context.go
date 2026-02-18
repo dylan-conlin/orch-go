@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"text/template"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
 
 // OrchestratorContextTemplate is the template for ORCHESTRATOR_CONTEXT.md.
@@ -48,6 +52,11 @@ Within your first 5 tool calls:
 **Progressive Handoff:** SESSION_HANDOFF.md has been pre-created with metadata. Fill sections AS YOU WORK, not at the end.
 
 ---
+
+{{if .ReviewQueueContext}}
+{{.ReviewQueueContext}}
+---
+{{end}}
 
 ## Session Scope
 
@@ -138,6 +147,7 @@ type orchestratorContextData struct {
 	KBContext                 string
 	ServerContext             string
 	RegisteredProjects        string
+	ReviewQueueContext        string
 	HasSessionHandoffTemplate bool
 }
 
@@ -171,6 +181,7 @@ func GenerateOrchestratorContext(cfg *Config) (string, error) {
 		KBContext:                 cfg.KBContext,
 		ServerContext:             serverContext,
 		RegisteredProjects:        registeredProjects,
+		ReviewQueueContext:        buildReviewQueueContext(cfg.ProjectDir),
 		HasSessionHandoffTemplate: cfg.HasSessionHandoffTemplate,
 	}
 
@@ -254,6 +265,56 @@ func WriteOrchestratorContext(cfg *Config) error {
 	// SESSION_HANDOFF.md is the completion signal, not Phase: Complete
 
 	return nil
+}
+
+func buildReviewQueueContext(projectDir string) string {
+	if projectDir == "" {
+		return ""
+	}
+
+	listArgs := &beads.ListArgs{
+		Status: "in_progress",
+		Labels: []string{"daemon:ready-review"},
+	}
+
+	cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
+	issues, err := cliClient.List(listArgs)
+	if err != nil {
+		return "## Review Queue\n\nReview queue unavailable (failed to load).\n\n"
+	}
+
+	if len(issues) == 0 {
+		return "## Review Queue\n\nNo completions awaiting review.\n\n"
+	}
+
+	sort.Slice(issues, func(i, j int) bool {
+		if issues[i].Priority != issues[j].Priority {
+			return issues[i].Priority < issues[j].Priority
+		}
+		return issues[i].ID < issues[j].ID
+	})
+
+	var sb strings.Builder
+	sb.WriteString("## Review Queue\n\n")
+	sb.WriteString(fmt.Sprintf("Completions awaiting review: %d\n\n", len(issues)))
+
+	maxItems := 8
+	if len(issues) < maxItems {
+		maxItems = len(issues)
+	}
+
+	for _, issue := range issues[:maxItems] {
+		if issue.Title != "" {
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", issue.ID, issue.Title))
+		} else {
+			sb.WriteString(fmt.Sprintf("- %s\n", issue.ID))
+		}
+	}
+	if len(issues) > maxItems {
+		sb.WriteString(fmt.Sprintf("- +%d more\n", len(issues)-maxItems))
+	}
+	sb.WriteString("\n")
+	return sb.String()
 }
 
 // copySessionHandoffTemplate copies the SESSION_HANDOFF.md template from

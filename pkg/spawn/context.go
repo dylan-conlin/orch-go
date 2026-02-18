@@ -156,6 +156,14 @@ After your final commit, BEFORE typing anything else:
 ⚠️ The orchestrator cannot close this issue until you report Phase: Complete.
 {{end}}
 
+{{if not .NoTrack}}
+VERIFICATION REQUIREMENTS (ORCH COMPLETE):
+Your work is verified in two human gates before closing:
+- Gate 1 (explain-back): orchestrator must explain what was built and why.
+- Gate 2 (behavioral, Tier 1 only): orchestrator confirms behavior is verified.
+Provide clear Phase: Complete summary and VERIFICATION_SPEC.yaml evidence to support both gates.
+{{end}}
+
 CONTEXT: [See task description]
 
 PROJECT_DIR: {{.ProjectDir}}

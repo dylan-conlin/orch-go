@@ -35,6 +35,12 @@ type UnverifiedItem struct {
 //   - Tier 2 (investigation/probe): gate1 must be complete
 //   - Tier 3 (task/question/other): no verification required (never returned)
 func ListUnverifiedWork() ([]UnverifiedItem, error) {
+	return ListUnverifiedWorkWithDir("")
+}
+
+// ListUnverifiedWorkWithDir returns unverified work scoped to a project directory.
+// If projectDir is empty, uses the default beads directory.
+func ListUnverifiedWorkWithDir(projectDir string) ([]UnverifiedItem, error) {
 	checkpoints, err := checkpoint.ReadCheckpoints()
 	if err != nil {
 		return nil, err
@@ -44,7 +50,7 @@ func ListUnverifiedWork() ([]UnverifiedItem, error) {
 	}
 
 	// Get the set of open issues to filter against
-	openIssues, err := ListOpenIssues()
+	openIssues, err := ListOpenIssuesWithDir(projectDir)
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +111,16 @@ func ListUnverifiedWork() ([]UnverifiedItem, error) {
 // This is a convenience wrapper around ListUnverifiedWork.
 func CountUnverifiedWork() (int, error) {
 	items, err := ListUnverifiedWork()
+	if err != nil {
+		return 0, err
+	}
+	return len(items), nil
+}
+
+// CountUnverifiedWorkWithDir returns the count of unverified work scoped to a project directory.
+// If projectDir is empty, uses the default beads directory.
+func CountUnverifiedWorkWithDir(projectDir string) (int, error) {
+	items, err := ListUnverifiedWorkWithDir(projectDir)
 	if err != nil {
 		return 0, err
 	}

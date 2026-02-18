@@ -294,6 +294,9 @@ func runServe(portNum int) error {
 	// GET /api/beads/ready - returns list of ready issues for dashboard queue visibility
 	mux.HandleFunc("/api/beads/ready", corsHandler(handleBeadsReady))
 
+	// GET /api/beads/review-queue - returns list of issues awaiting review
+	mux.HandleFunc("/api/beads/review-queue", corsHandler(handleBeadsReviewQueue))
+
 	// GET /api/beads/graph - returns work graph nodes and edges for dependency visualization
 	mux.HandleFunc("/api/beads/graph", corsHandler(handleBeadsGraph))
 
@@ -325,6 +328,9 @@ func runServe(portNum int) error {
 
 	// GET /api/daemon - returns daemon status (running, capacity, last poll)
 	mux.HandleFunc("/api/daemon", corsHandler(handleDaemon))
+
+	// GET /api/verification - verification status summary
+	mux.HandleFunc("/api/verification", corsHandler(handleVerification))
 
 	// GET /api/gaps - returns gap tracker statistics
 	mux.HandleFunc("/api/gaps", corsHandler(handleGaps))
@@ -437,6 +443,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/focus     - Current focus and drift status")
 	fmt.Println("  GET /api/beads     - Beads stats (ready, blocked, open)")
 	fmt.Println("  GET /api/beads/ready - List of ready issues for queue visibility")
+	fmt.Println("  GET /api/beads/review-queue - List of issues awaiting review")
 	fmt.Println("  GET /api/beads/graph - Work graph nodes and edges for dependency visualization")
 	fmt.Println("  GET /api/questions - Questions grouped by status")
 	fmt.Println("  GET /api/servers   - Servers status across projects")
@@ -447,6 +454,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)")
 	fmt.Println("  GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)")
 	fmt.Println("  GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)")
+	fmt.Println("  GET /api/verification - Verification status summary")
 	fmt.Println("  GET /api/orchestrator-sessions - Active orchestrator sessions")
 	fmt.Println("  GET /api/pending-reviews - Agents with unreviewed synthesis recommendations")
 	fmt.Println("  POST /api/dismiss-review - Dismiss a specific recommendation")

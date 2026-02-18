@@ -128,8 +128,10 @@ type CompletionInfo struct {
 
 // getCompletionsForReview retrieves completed agents with verification status.
 // Scans .orch/workspace/ for completed workspaces. Detects both:
-// - Full-tier agents: those with SYNTHESIS.md
-// - Light-tier agents: those with .tier file containing "light" AND Phase: Complete in beads comments
+//   - Full-tier agents: those with SYNTHESIS.md
+//   - Light-tier agents: those with Tier "light" in the agent manifest (fallback to dotfiles)
+//     AND Phase: Complete in beads comments
+//
 // Filters out completions whose beads issues are already closed (closed/deferred/tombstone).
 //
 // Performance optimization: Uses batch comment fetching to avoid O(n) beads API calls.
@@ -181,7 +183,7 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 			hasSynthesis = true
 		}
 
-		// Check if this is a light-tier workspace (has .tier file with "light")
+		// Check if this is a light-tier workspace (tier in manifest, fallback to dotfiles)
 		// Note: We check isLightTierWorkspace here, NOT isLightTierComplete
 		// The Phase: Complete check is deferred until after batch fetching
 		isLightTier := isLightTierWorkspace(dirPath)

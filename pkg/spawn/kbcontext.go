@@ -481,6 +481,13 @@ func FormatContextForSpawn(result *KBContextResult) string {
 // Returns detailed information about the formatting including truncation status.
 // Priority order for truncation: investigations (lowest) → decisions → constraints (highest).
 func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBContextFormatResult {
+	return FormatContextForSpawnWithLimitAndMeta(result, maxChars, ".", nil)
+}
+
+// FormatContextForSpawnWithLimitAndMeta formats kb context with a character limit and staleness metadata.
+// projectDir controls staleness checks for model references. When stalenessMeta is provided,
+// stale model detections will be recorded for daemon consumption.
+func FormatContextForSpawnWithLimitAndMeta(result *KBContextResult, maxChars int, projectDir string, stalenessMeta *StalenessEventMeta) *KBContextFormatResult {
 	emptyResult := &KBContextFormatResult{
 		Content:          "",
 		WasTruncated:     false,
@@ -505,7 +512,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	openQuestions := filterByType(result.Matches, "open-question")
 
 	// Try to format with all matches first
-	content, hasStaleModels := formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
+	content, hasStaleModels := formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, projectDir, stalenessMeta)
 
 	// Extract primary model path if models exist
 	primaryModelPath := ""
@@ -536,7 +543,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(openQuestions) > 0 {
 		openQuestions = openQuestions[:len(openQuestions)-1]
 		truncatedMatches--
-		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, projectDir, stalenessMeta)
 	}
 	if len(filterByType(result.Matches, "open-question")) > len(openQuestions) {
 		omittedCategories = append(omittedCategories, "open-question")
@@ -546,7 +553,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(failedAttempts) > 0 {
 		failedAttempts = failedAttempts[:len(failedAttempts)-1]
 		truncatedMatches--
-		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, projectDir, stalenessMeta)
 	}
 	if len(filterByType(result.Matches, "failed-attempt")) > len(failedAttempts) {
 		omittedCategories = append(omittedCategories, "failed-attempt")
@@ -556,7 +563,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(investigations) > 0 {
 		investigations = investigations[:len(investigations)-1]
 		truncatedMatches--
-		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, projectDir, stalenessMeta)
 	}
 	if len(filterByType(result.Matches, "investigation")) > len(investigations) {
 		omittedCategories = append(omittedCategories, "investigation")
@@ -566,7 +573,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(guides) > 0 {
 		guides = guides[:len(guides)-1]
 		truncatedMatches--
-		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, projectDir, stalenessMeta)
 	}
 	if len(filterByType(result.Matches, "guide")) > len(guides) {
 		omittedCategories = append(omittedCategories, "guide")
@@ -576,7 +583,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(models) > 0 {
 		models = models[:len(models)-1]
 		truncatedMatches--
-		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, projectDir, stalenessMeta)
 	}
 	if len(filterByType(result.Matches, "model")) > len(models) {
 		omittedCategories = append(omittedCategories, "model")
@@ -586,7 +593,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(decisions) > 0 {
 		decisions = decisions[:len(decisions)-1]
 		truncatedMatches--
-		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, projectDir, stalenessMeta)
 	}
 	if len(filterByType(result.Matches, "decision")) > len(decisions) {
 		omittedCategories = append(omittedCategories, "decision")
@@ -596,7 +603,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(constraints) > 0 {
 		constraints = constraints[:len(constraints)-1]
 		truncatedMatches--
-		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, ".")
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil, projectDir, stalenessMeta)
 	}
 	if len(filterByType(result.Matches, "constraint")) > len(constraints) {
 		omittedCategories = append(omittedCategories, "constraint")
@@ -608,7 +615,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 		estimatedMaxTokens := EstimateTokens(maxChars)
 		truncationNote := fmt.Sprintf("⚠️ **KB context truncated:** %d of %d matches omitted to stay within token budget (~%dk tokens).\n\n",
 			omittedCount, originalMatchCount, estimatedMaxTokens/1000)
-		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, &truncationNote, ".")
+		content, hasStaleModels = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, &truncationNote, projectDir, stalenessMeta)
 	}
 
 	return &KBContextFormatResult{
@@ -627,7 +634,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 // formatKBContextContent generates the formatted KB context markdown.
 // If truncationNote is provided, it's inserted after the query line.
 // Returns the formatted content and whether any models were stale.
-func formatKBContextContent(query string, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions []KBContextMatch, truncationNote *string, projectDir string) (string, bool) {
+func formatKBContextContent(query string, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions []KBContextMatch, truncationNote *string, projectDir string, stalenessMeta *StalenessEventMeta) (string, bool) {
 	var sb strings.Builder
 	hasStaleModels := false
 
@@ -668,7 +675,7 @@ func formatKBContextContent(query string, constraints, decisions, models, guides
 	if len(models) > 0 {
 		sb.WriteString("### Models (synthesized understanding)\n")
 		for _, m := range models {
-			modelContent, isStale := formatModelMatchForSpawn(m, projectDir)
+			modelContent, isStale := formatModelMatchForSpawn(m, projectDir, stalenessMeta)
 			sb.WriteString(modelContent)
 			if isStale {
 				hasStaleModels = true
@@ -768,7 +775,7 @@ func hasInjectedModelContent(models []KBContextMatch) bool {
 	return false
 }
 
-func formatModelMatchForSpawn(match KBContextMatch, projectDir string) (string, bool) {
+func formatModelMatchForSpawn(match KBContextMatch, projectDir string, stalenessMeta *StalenessEventMeta) (string, bool) {
 	var sb strings.Builder
 	isStale := false
 
@@ -787,6 +794,9 @@ func formatModelMatchForSpawn(match KBContextMatch, projectDir string) (string, 
 		stalenessResult, err := checkModelStaleness(string(modelContent), projectDir)
 		if err == nil && stalenessResult.IsStale {
 			isStale = true
+			if err := RecordModelStalenessEvent(match.Path, stalenessResult, stalenessMeta); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to record staleness event: %v\n", err)
+			}
 			// Prepend staleness warning
 			sb.WriteString("  - **STALENESS WARNING:**\n")
 			sb.WriteString(fmt.Sprintf("    This model was last updated %s.\n", stalenessResult.LastUpdated))
