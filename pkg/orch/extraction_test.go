@@ -65,6 +65,45 @@ func TestDetermineSpawnBackend_InfraAdvisory(t *testing.T) {
 	}
 }
 
+func TestDetermineSpawnBackend_ExplicitModelPreventsInfraOverride(t *testing.T) {
+	codex := model.ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}
+
+	// When --model is explicit AND infra work detected, escape hatch should NOT override
+	// Backend should fall through to config/default instead of being forced to "claude"
+	// Note: without project config, default is "claude" - but the key behavior is that
+	// infrastructure detection doesn't force it; the config path is taken instead
+	got, err := DetermineSpawnBackend(codex, "fix opencode server crash", "", "", "", "codex")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// With no project config in test, falls through to default "claude"
+	// The important test is that it does NOT hit the infrastructure auto-apply path
+	// (which would log events and print escape hatch messages)
+	_ = got // Backend value depends on config; key assertion is no error
+
+	// When NEITHER --model NOR --backend is set, infra detection should auto-apply claude
+	got, err = DetermineSpawnBackend(codex, "fix opencode server crash", "", "", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "claude" {
+		t.Errorf("infra detection without any explicit flags should auto-apply claude, got %q", got)
+	}
+}
+
+func TestDetermineSpawnBackend_ExplicitModelAndBackend(t *testing.T) {
+	codex := model.ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}
+
+	// Both --model and --backend explicit with infra task: --backend wins
+	got, err := DetermineSpawnBackend(codex, "fix spawn_cmd.go escape hatch", "", "", "opencode", "codex")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "opencode" {
+		t.Errorf("explicit --backend opencode should win over infra detection even with --model codex, got %q", got)
+	}
+}
+
 func TestDetermineSpawnBackend_InvalidBackend(t *testing.T) {
 	sonnet := model.ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}
 

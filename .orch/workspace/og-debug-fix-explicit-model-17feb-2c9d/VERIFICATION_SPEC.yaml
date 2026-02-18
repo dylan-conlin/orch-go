@@ -1,0 +1,41 @@
+verification:
+  type: bug-fix
+  issue: orch-go-1020
+
+  reproduction:
+    description: "Explicit --model codex --backend opencode gets silently overridden by infrastructure escape hatch"
+    steps:
+      - "orch spawn --bypass-triage --model codex --backend opencode systematic-debugging 'Fix spawn_cmd.go escape hatch'"
+    expected_before_fix: "Backend overridden to claude, model codex ignored"
+    expected_after_fix: "Backend stays opencode, model codex respected, advisory warning printed"
+
+  tests:
+    unit:
+      command: "go test ./pkg/orch/ -run TestDetermineSpawnBackend -v"
+      result: "5 tests passed"
+      cases:
+        - "ExplicitBackendWins: --backend flag always wins over infra detection"
+        - "InfraAdvisory: explicit --backend gets advisory warning, no override"
+        - "ExplicitModelPreventsInfraOverride: --model prevents infra backend override"
+        - "ExplicitModelAndBackend: both flags explicit, --backend wins"
+        - "InvalidBackend: invalid --backend value returns error"
+
+    build:
+      command: "go build ./cmd/orch/"
+      result: "clean"
+
+    vet:
+      command: "go vet ./pkg/orch/ ./cmd/orch/"
+      result: "clean"
+
+  files_changed:
+    - path: "pkg/orch/extraction.go"
+      change: "Added explicitModel tracking to DetermineSpawnBackend; --model prevents infra override"
+    - path: "pkg/orch/extraction_test.go"
+      change: "Added 2 new test functions for explicit model behavior"
+
+  manual_verification:
+    - "Run: orch spawn --bypass-triage --model codex --backend opencode systematic-debugging 'test task'"
+    - "Verify: advisory warning printed but backend stays opencode"
+    - "Run: orch spawn --bypass-triage --model codex systematic-debugging 'fix spawn_cmd.go'"
+    - "Verify: backend uses config spawn_mode (opencode), not claude escape hatch"

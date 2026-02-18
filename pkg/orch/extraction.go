@@ -497,12 +497,16 @@ func ResolveAndValidateModel(modelFlag string) (model.ModelSpec, error) {
 
 // GatherSpawnContext gathers KB context and performs gap analysis.
 // Returns context string, gap analysis, model injection info, or error.
-func GatherSpawnContext(skillContent, task, beadsID, projectDir string, skipArtifactCheck, gateOnGap, skipGapGate bool, gapThreshold int) (
+func GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, skillName string, skipArtifactCheck, gateOnGap, skipGapGate bool, gapThreshold int) (
 	kbContext string,
 	gapAnalysis *spawn.GapAnalysis,
 	hasInjectedModels bool,
 	primaryModelPath string,
 	err error) {
+	stalenessMeta := &spawn.StalenessEventMeta{
+		SpawnID:    workspaceName,
+		AgentSkill: skillName,
+	}
 
 	if skipArtifactCheck {
 		fmt.Println("Skipping context check (--skip-artifact-check)")
@@ -515,13 +519,13 @@ func GatherSpawnContext(skillContent, task, beadsID, projectDir string, skipArti
 	if requires != nil && requires.HasRequirements() {
 		// Skill-driven context gathering
 		fmt.Printf("Gathering context (skill requires: %s)\n", requires.String())
-		kbContext = spawn.GatherRequiredContext(requires, task, beadsID, projectDir)
+		kbContext = spawn.GatherRequiredContext(requires, task, beadsID, projectDir, stalenessMeta)
 		// For skill-driven context, create a basic gap analysis from the results
 		// This is a placeholder - skills may provide their own gap info
 		gapAnalysis = spawn.AnalyzeGaps(nil, task)
 	} else {
 		// Fall back to default kb context check with full gap analysis
-		gapResult := runPreSpawnKBCheckFull(task)
+		gapResult := runPreSpawnKBCheckFull(task, projectDir, stalenessMeta)
 		kbContext = gapResult.Context
 		gapAnalysis = gapResult.GapAnalysis
 
@@ -602,8 +606,9 @@ func BuildUsageInfo(usageCheckResult *gates.UsageCheckResult) *spawn.UsageInfo {
 }
 
 // DetermineSpawnBackend determines spawn backend with auto-selection.
-// Priority: --backend flag > --opus flag > infrastructure detection > model-based > config > default.
-// When --backend is explicit, it always wins - infrastructure detection becomes advisory (warning only).
+// Priority: explicit flags (--backend or --model) > infrastructure detection > config > default.
+// When --backend OR --model is explicit, infrastructure detection becomes advisory (warning only).
+// This prevents the escape hatch from silently overriding user intent.
 func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, projectDir, backendFlag, spawnModel string) (string, error) {
 	// Load project config (used for backend default)
 	projCfg, _ := config.Load(projectDir)
@@ -611,8 +616,10 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 	// Default to claude (Max subscription covers Claude CLI usage)
 	backend := "claude"
 
-	// Track whether --backend was explicitly set by user
+	// Track whether flags were explicitly set by user
+	// Explicit flags ALWAYS win over auto-detection (including infrastructure escape hatch)
 	explicitBackend := backendFlag != ""
+	explicitModel := spawnModel != ""
 
 	if explicitBackend {
 		// Explicit --backend flag: highest priority, always wins
@@ -622,14 +629,25 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 			return "", fmt.Errorf("invalid --backend value: %s (must be 'claude' or 'opencode')", backend)
 		}
 
-
 		// Advisory: warn if infrastructure work detected but user chose different backend
 		if isInfrastructureWork(task, beadsID) && backend != "claude" {
 			fmt.Fprintf(os.Stderr, "⚠️  Infrastructure work detected but respecting explicit --backend %s\n", backend)
 			fmt.Fprintf(os.Stderr, "   Recommendation: Use --backend claude for infrastructure work to survive server restarts.\n")
 		}
+	} else if explicitModel {
+		// Explicit --model flag: model choice implies backend requirements
+		// Don't let infrastructure detection override — the user chose a specific model
+		// that may require a specific backend (e.g., codex requires opencode)
+		if projCfg != nil && projCfg.SpawnMode != "" {
+			backend = projCfg.SpawnMode
+		}
+		// Advisory: warn if infrastructure work detected
+		if isInfrastructureWork(task, beadsID) && backend != "claude" {
+			fmt.Fprintf(os.Stderr, "⚠️  Infrastructure work detected but respecting explicit --model %s (backend: %s)\n", spawnModel, backend)
+			fmt.Fprintf(os.Stderr, "   Recommendation: Use --backend claude for infrastructure work to survive server restarts.\n")
+		}
 	} else if isInfrastructureWork(task, beadsID) {
-		// Infrastructure work detection: auto-apply escape hatch
+		// No explicit flags: auto-apply escape hatch
 		// Agents working on OpenCode/orch infrastructure need claude backend + tmux
 		// to survive server restarts (prevent agents from killing themselves)
 		backend = "claude"
@@ -1482,14 +1500,14 @@ func extractPrimaryModelPath(formatResult *spawn.KBContextFormatResult) string {
 // runPreSpawnKBCheck runs kb context check before spawning an agent.
 // Returns formatted context string to include in SPAWN_CONTEXT.md, or empty string if no matches.
 // Also performs gap analysis and displays warnings for sparse or missing context.
-func runPreSpawnKBCheck(task string) string {
-	result := runPreSpawnKBCheckFull(task)
+func runPreSpawnKBCheck(task, projectDir string, stalenessMeta *spawn.StalenessEventMeta) string {
+	result := runPreSpawnKBCheckFull(task, projectDir, stalenessMeta)
 	return result.Context
 }
 
 // runPreSpawnKBCheckFull runs kb context check with full gap analysis results.
 // This allows callers to access gap analysis for gating decisions.
-func runPreSpawnKBCheckFull(task string) *GapCheckResult {
+func runPreSpawnKBCheckFull(task, projectDir string, stalenessMeta *spawn.StalenessEventMeta) *GapCheckResult {
 	gcr := &GapCheckResult{}
 
 	// Extract keywords from task description
@@ -1544,7 +1562,7 @@ func runPreSpawnKBCheckFull(task string) *GapCheckResult {
 	fmt.Printf("Found %d relevant context entries - including in spawn context.\n", len(result.Matches))
 
 	// Format context with limit and capture full result (includes HasInjectedModels)
-	formatResult := spawn.FormatContextForSpawnWithLimit(result, spawn.MaxKBContextChars)
+	formatResult := spawn.FormatContextForSpawnWithLimitAndMeta(result, spawn.MaxKBContextChars, projectDir, stalenessMeta)
 	gcr.FormatResult = formatResult
 
 	// Include gap summary in spawn context if there are significant gaps
