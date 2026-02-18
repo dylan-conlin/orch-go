@@ -1,0 +1,37 @@
+verification:
+  type: investigation
+
+  claims:
+    - claim: "Codex auth is GLOBAL (auth.json), not per-project"
+      evidence: "auth/index.ts:37 — filepath is path.join(Global.Path.data, 'auth.json')"
+      verified: true
+
+    - claim: "OpenCode does NOT load .env files from project directories"
+      evidence: "env/index.ts:4-8 — Env.state does { ...process.env }, no dotenv loader"
+      verified: true
+
+    - claim: "CodexAuthPlugin is loaded unconditionally as internal plugin"
+      evidence: "plugin/index.ts:22 — INTERNAL_PLUGINS array includes CodexAuthPlugin"
+      verified: true
+
+    - claim: "Provider state is per-directory via Instance.state"
+      evidence: "provider/provider.ts:704 — const state = Instance.state(async () => {...})"
+      verified: true
+
+    - claim: "State.create caches rejected Promises with no retry"
+      evidence: "project/state.ts:20-22 — entries.set(init, {state, dispose}) caches raw init() result"
+      verified: true
+
+    - claim: "Neither project has OpenAI-specific config that would affect Codex"
+      evidence: "orch-go .opencode/opencode.json is empty; price-watch opencode.json has no provider config"
+      verified: true
+
+  hypothesis_tested: "Codex auth initialization is project-scoped, and .env files affect whether OAuth tokens are loaded"
+  hypothesis_result: "DISPROVEN — auth is global, .env not loaded, plugin is unconditional"
+
+  manual_verification:
+    - step: "Check auth.json has both anthropic and openai OAuth entries"
+      command: "python3 -c \"import json; d=json.load(open('~/.local/share/opencode/auth.json')); print(list(d.keys()))\""
+    - step: "Confirm price-watch .env has no OPENAI_API_KEY"
+      command: "grep OPENAI /Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/price-watch/.env"
+      expected: "No matches"
