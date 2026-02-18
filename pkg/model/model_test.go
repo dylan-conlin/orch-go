@@ -41,6 +41,15 @@ func TestResolve_Aliases(t *testing.T) {
 		{"gpt5-mini", ModelSpec{Provider: "openai", ModelID: "gpt-5-mini"}},
 		{"o3", ModelSpec{Provider: "openai", ModelID: "o3"}},
 
+		// Codex aliases (GPT Pro OAuth path)
+		{"codex", ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}},
+		{"codex-mini", ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex-mini"}},
+		{"codex-max", ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex-max"}},
+		{"codex-latest", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
+		{"codex-5.1", ModelSpec{Provider: "openai", ModelID: "gpt-5.1-codex"}},
+		{"codex-5.2", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
+		{"CODEX", ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}},
+
 		// DeepSeek aliases
 		{"deepseek", ModelSpec{Provider: "deepseek", ModelID: "deepseek-chat"}},
 		{"reasoning", ModelSpec{Provider: "deepseek", ModelID: "deepseek-reasoner"}},
