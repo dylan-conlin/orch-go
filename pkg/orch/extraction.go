@@ -606,15 +606,18 @@ func BuildUsageInfo(usageCheckResult *gates.UsageCheckResult) *spawn.UsageInfo {
 }
 
 // DetermineSpawnBackend determines spawn backend with auto-selection.
-// Priority: explicit flags (--backend or --model) > infrastructure detection > config > default.
+// Priority: explicit --backend flag > infrastructure detection > project config > user config > default.
 // When --backend OR --model is explicit, infrastructure detection becomes advisory (warning only).
 // This prevents the escape hatch from silently overriding user intent.
 func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, projectDir, backendFlag, spawnModel string) (string, error) {
 	// Load project config (used for backend default)
 	projCfg, _ := config.Load(projectDir)
 
-	// Default to claude (Max subscription covers Claude CLI usage)
-	backend := "claude"
+	// Load user config (~/.orch/config.yaml) for backend fallback
+	userCfg, _ := userconfig.Load()
+
+	// Default to opencode (primary spawn path)
+	backend := "opencode"
 
 	// Track whether flags were explicitly set by user
 	// Explicit flags ALWAYS win over auto-detection (including infrastructure escape hatch)
@@ -638,8 +641,11 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 		// Explicit --model flag: model choice implies backend requirements
 		// Don't let infrastructure detection override — the user chose a specific model
 		// that may require a specific backend (e.g., codex requires opencode)
+		// Resolution: project config > user config > hardcoded default
 		if projCfg != nil && projCfg.SpawnMode != "" {
 			backend = projCfg.SpawnMode
+		} else if userCfg != nil && userCfg.Backend != "" {
+			backend = userCfg.Backend
 		}
 		// Advisory: warn if infrastructure work detected
 		if isInfrastructureWork(task, beadsID) && backend != "claude" {
@@ -671,6 +677,9 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 	} else if projCfg != nil && projCfg.SpawnMode != "" {
 		// Config default: respect project spawn_mode setting
 		backend = projCfg.SpawnMode
+	} else if userCfg != nil && userCfg.Backend != "" {
+		// User config default: respect user-level backend setting (~/.orch/config.yaml)
+		backend = userCfg.Backend
 	}
 
 	// Validate mode+model combination
