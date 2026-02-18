@@ -12,14 +12,14 @@
  * - Results cached in Map<sessionID, boolean> for performance
  *
  * Lazy-loading implementation:
- * - Orchestrator skill content (52KB) cached in memory at plugin init
+ * - Orchestrator skill content read fresh from disk on each system transform
  * - experimental.chat.system.transform hook injects skill per-session
  * - Worker sessions detected progressively skip skill injection
  * - Non-worker sessions receive full orchestrator skill in system prompt
  */
 
 import type { Plugin } from "@opencode-ai/plugin"
-import { access } from "fs/promises"
+import { access, readFile } from "fs/promises"
 import { join, resolve } from "path"
 import { homedir } from "os"
 
@@ -129,20 +129,18 @@ export const OrchestratorSessionPlugin: Plugin = async ({
   // Plugin runs in server process, can't see ORCH_WORKER env from spawned agents
   const workerSessions = new Map<string, boolean>() // sessionID -> isWorker
 
-  // Check if orchestrator skill exists and cache content
+  // Check orchestrator skill path (read fresh per system transform)
   const skillPath = join(homedir(), ".claude", "skills", "meta", "orchestrator", "SKILL.md")
-  const skillExists = await exists(skillPath)
-  log("Skill path:", skillPath, "exists:", skillExists)
-  
-  // Cache skill content in memory to avoid reading on every system prompt
-  let skillContent: string | null = null
-  if (skillExists) {
+  log("Skill path:", skillPath)
+
+  async function loadSkillContent(): Promise<string | null> {
     try {
-      const { readFile } = await import("fs/promises")
-      skillContent = await readFile(skillPath, "utf-8")
-      log("Cached orchestrator skill content:", skillContent.length, "bytes")
+      const content = await readFile(skillPath, "utf-8")
+      log("Loaded orchestrator skill content:", content.length, "bytes")
+      return content
     } catch (err) {
       if (DEBUG) console.error(`${LOG_PREFIX} Failed to read orchestrator skill:`, err)
+      return null
     }
   }
   
@@ -224,7 +222,8 @@ export const OrchestratorSessionPlugin: Plugin = async ({
         return
       }
       
-      // Not a worker - inject orchestrator skill content
+      // Not a worker - inject orchestrator skill content (read fresh each time)
+      const skillContent = await loadSkillContent()
       if (!skillContent) {
         log(`System transform: Skill content not available for session ${sessionID}`)
         return
