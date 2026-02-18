@@ -21,6 +21,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
+	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -327,10 +328,22 @@ func runWork(serverURL, beadsID string, inline bool) error {
 		spawnMCP = mcpServer
 	}
 
+	// Load user config default_model for daemon-spawned work.
+	// Without this, spawnModel stays empty and the spawn pipeline falls back to
+	// the hardcoded default (sonnet), ignoring the user's configured model preference.
+	if spawnModel == "" {
+		if cfg, err := userconfig.Load(); err == nil && cfg.DefaultModel != "" {
+			spawnModel = cfg.DefaultModel
+		}
+	}
+
 	fmt.Printf("Starting work on: %s\n", beadsID)
 	fmt.Printf("  Title:  %s\n", issue.Title)
 	fmt.Printf("  Type:   %s\n", issue.IssueType)
 	fmt.Printf("  Skill:  %s\n", skillName)
+	if spawnModel != "" {
+		fmt.Printf("  Model:  %s\n", spawnModel)
+	}
 	if mcpServer != "" {
 		fmt.Printf("  MCP:    %s\n", mcpServer)
 	}
