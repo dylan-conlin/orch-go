@@ -1,6 +1,6 @@
 // Package main provides spawn and work commands for the orch CLI.
 // This file contains all spawn-related functionality including:
-// - spawn command with all flags and modes (headless, tmux, inline)
+// - spawn command with all flags and modes (headless, tmux)
 // - work command for daemon-driven spawns
 // - beads issue creation and tracking
 // - gap analysis and context gathering
@@ -31,12 +31,9 @@ var (
 	spawnIssue              string
 	spawnPhases             string
 	spawnBackendFlag        string // Spawn backend: claude or opencode (overrides config and auto-selection)
-	spawnOpus               bool   // Use Opus via Claude CLI in tmux (implies claude mode)
 	spawnValidation         string
-	spawnInline             bool   // Run inline (blocking) with TUI
 	spawnHeadless           bool   // Run headless via HTTP API (automation/scripting)
 	spawnTmux               bool   // Run in tmux window (opt-in, overrides default headless)
-	spawnAttach             bool   // Attach to tmux window after spawning
 	spawnModel              string // Model to use for standalone spawns
 	spawnNoTrack            bool   // Opt-out of beads tracking
 	spawnMCP                string // MCP server config (e.g., "playwright")
@@ -81,8 +78,6 @@ Backend Modes (--backend):
 Spawn Modes:
   Default (headless): Spawns via HTTP API - no TUI, automation-friendly, returns immediately
   --tmux:             Spawns in a tmux window - visible, interruptible, opt-in
-  --inline:           Runs in current terminal - blocking with TUI, for debugging
-  --attach:           Spawns in tmux and attaches immediately (implies --tmux)
 
 Spawn Tiers:
   --light: Skip SYNTHESIS.md requirement (for code-focused work)
@@ -135,10 +130,6 @@ Examples:
   
   # Tmux mode (opt-in) - visible, interruptible
   orch spawn --bypass-triage --tmux investigation "explore codebase"
-  orch spawn --bypass-triage --attach investigation "explore codebase"
-  
-  # Inline mode - blocking with TUI, for debugging
-  orch spawn --bypass-triage --inline investigation "explore codebase"
   
   # Gap gating - block spawn on poor context quality
   orch spawn --bypass-triage --gate-on-gap investigation "important task"
@@ -153,7 +144,7 @@ Examples:
 		skillName := args[0]
 		task := strings.Join(args[1:], " ")
 
-		return runSpawnWithSkill(serverURL, skillName, task, spawnInline, spawnHeadless, spawnTmux, spawnAttach)
+		return runSpawnWithSkill(serverURL, skillName, task, false, spawnHeadless, spawnTmux, false)
 	},
 }
 
@@ -162,12 +153,9 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnPhases, "phases", "", "Feature-impl phases (e.g., implementation,validation)")
 	orch.RegisterModeFlag(spawnCmd)
 	spawnCmd.Flags().StringVar(&spawnBackendFlag, "backend", "", "Spawn backend: claude (tmux + Claude CLI) or opencode (HTTP API). Overrides config and auto-selection.")
-	spawnCmd.Flags().BoolVar(&spawnOpus, "opus", false, "Use Opus via Claude CLI in tmux (Max subscription, implies claude backend + tmux mode)")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
-	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) with TUI")
 	spawnCmd.Flags().BoolVar(&spawnHeadless, "headless", false, "Run headless via HTTP API (default behavior, flag is redundant)")
 	spawnCmd.Flags().BoolVar(&spawnTmux, "tmux", false, "Run in tmux window (opt-in for visual monitoring)")
-	spawnCmd.Flags().BoolVar(&spawnAttach, "attach", false, "Attach to tmux window after spawning (implies --tmux)")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
 	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
@@ -427,7 +415,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 
 	// 6. Gather spawn context
-	kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, err := orch.GatherSpawnContext(skillContent, task, beadsID, projectDir, spawnSkipArtifactCheck, spawnGateOnGap, spawnSkipGapGate, spawnGapThreshold)
+	kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, err := orch.GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, skillName, spawnSkipArtifactCheck, spawnGateOnGap, spawnSkipGapGate, spawnGapThreshold)
 	if err != nil {
 		return err
 	}
