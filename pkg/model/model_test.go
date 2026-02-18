@@ -31,6 +31,12 @@ func TestResolve_Aliases(t *testing.T) {
 		{"pro", ModelSpec{Provider: "google", ModelID: "gemini-2.5-pro"}},
 
 		// OpenAI aliases
+		{"gpt", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
+		{"gpt4o", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
+		{"gpt-4o", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
+		{"GPT4O", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
+		{"gpt4o-mini", ModelSpec{Provider: "openai", ModelID: "gpt-4o-mini"}},
+		{"gpt-4o-mini", ModelSpec{Provider: "openai", ModelID: "gpt-4o-mini"}},
 		{"gpt-5", ModelSpec{Provider: "openai", ModelID: "gpt-5"}},
 		{"gpt5-mini", ModelSpec{Provider: "openai", ModelID: "gpt-5-mini"}},
 		{"o3", ModelSpec{Provider: "openai", ModelID: "o3"}},
@@ -97,6 +103,40 @@ func TestResolve_ModelIDOnly(t *testing.T) {
 				t.Errorf("Resolve(%q) = %v, want %v", tt.input, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestResolveWithConfig_ConfigAliasOverride(t *testing.T) {
+	configModels := map[string]string{
+		"default": "openai/gpt-4o",
+		"fast":    "google/gemini-2.5-flash",
+	}
+
+	// Config alias should resolve
+	result := ResolveWithConfig("default", configModels)
+	expected := ModelSpec{Provider: "openai", ModelID: "gpt-4o"}
+	if result != expected {
+		t.Errorf("ResolveWithConfig('default', config) = %v, want %v", result, expected)
+	}
+
+	// Config alias takes precedence over built-in
+	result = ResolveWithConfig("fast", configModels)
+	expected = ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}
+	if result != expected {
+		t.Errorf("ResolveWithConfig('fast', config) = %v, want %v", result, expected)
+	}
+
+	// Empty spec still returns DefaultModel
+	result = ResolveWithConfig("", configModels)
+	if result != DefaultModel {
+		t.Errorf("ResolveWithConfig('', config) = %v, want DefaultModel %v", result, DefaultModel)
+	}
+
+	// Built-in alias still works when not overridden in config
+	result = ResolveWithConfig("opus", configModels)
+	expected = ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}
+	if result != expected {
+		t.Errorf("ResolveWithConfig('opus', config) = %v, want %v", result, expected)
 	}
 }
 

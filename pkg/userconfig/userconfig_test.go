@@ -506,6 +506,108 @@ func TestLoadMissingDefaultTier(t *testing.T) {
 }
 
 // =============================================================================
+// Tests for DefaultModel
+// =============================================================================
+
+func TestDefaultModelConfig(t *testing.T) {
+	cfg := DefaultConfig()
+
+	// Default config should have empty DefaultModel
+	if cfg.DefaultModel != "" {
+		t.Errorf("DefaultConfig().DefaultModel = %q, want empty", cfg.DefaultModel)
+	}
+}
+
+func TestLoadDefaultModelConfig(t *testing.T) {
+	// Save original home and restore after test
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create config directory and file with default_model
+	configDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	configContent := `backend: opencode
+default_model: gpt4o
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	if cfg.DefaultModel != "gpt4o" {
+		t.Errorf("Load() DefaultModel = %q, want %q", cfg.DefaultModel, "gpt4o")
+	}
+}
+
+func TestSaveDefaultModelConfig(t *testing.T) {
+	// Save original home and restore after test
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	cfg := &Config{
+		Backend:      "opencode",
+		DefaultModel: "gpt4o",
+	}
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	// Load it back
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load() after Save() error = %v", err)
+	}
+
+	if loaded.DefaultModel != "gpt4o" {
+		t.Errorf("Loaded DefaultModel = %q, want %q", loaded.DefaultModel, "gpt4o")
+	}
+}
+
+func TestLoadMissingDefaultModel(t *testing.T) {
+	// Save original home and restore after test
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create config without default_model
+	configDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	configContent := `backend: opencode
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	// Should default to empty (use hardcoded default)
+	if cfg.DefaultModel != "" {
+		t.Errorf("Load() without default_model should return empty string, got %q", cfg.DefaultModel)
+	}
+}
+
+// =============================================================================
 // Tests for DaemonConfig
 // =============================================================================
 

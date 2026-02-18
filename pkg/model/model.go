@@ -44,6 +44,11 @@ var Aliases = map[string]ModelSpec{
 	"pro-2.5":   {Provider: "google", ModelID: "gemini-2.5-pro"},
 
 	// OpenAI models (GPT) - IDs from models.dev
+	"gpt":         {Provider: "openai", ModelID: "gpt-4o"},
+	"gpt4o":       {Provider: "openai", ModelID: "gpt-4o"},
+	"gpt-4o":      {Provider: "openai", ModelID: "gpt-4o"},
+	"gpt4o-mini":  {Provider: "openai", ModelID: "gpt-4o-mini"},
+	"gpt-4o-mini": {Provider: "openai", ModelID: "gpt-4o-mini"},
 	"gpt5":        {Provider: "openai", ModelID: "gpt-5"},
 	"gpt-5":       {Provider: "openai", ModelID: "gpt-5"},
 	"gpt5-latest": {Provider: "openai", ModelID: "gpt-5.2"},
@@ -144,7 +149,7 @@ func ListAliases() []string {
 	return []string{
 		"Anthropic: opus, sonnet, haiku (also -4.5 variants)",
 		"Google: flash, flash-2.5, flash3, flash-3, pro, pro-2.5",
-		"OpenAI: gpt-5, gpt5-latest (5.2), gpt-5-mini, o3, o3-mini",
+		"OpenAI: gpt (4o), gpt4o, gpt-4o, gpt4o-mini, gpt-5, gpt5-latest (5.2), gpt-5-mini, o3, o3-mini",
 		"DeepSeek: deepseek, deepseek-chat, deepseek-r1, reasoning (alias for reasoner)",
 	}
 }

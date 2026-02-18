@@ -86,14 +86,17 @@ Examples:
 var configSetCmd = &cobra.Command{
 	Use:   "set <key> <value>",
 	Short: "Set a project config value",
-	Long: `Set a configuration value in .orch/config.yaml.
+	Long: `Set a configuration value in ~/.orch/config.yaml.
 
 Supported keys:
-  spawn_mode     Set spawn backend: "claude" or "opencode"
+  spawn_mode      Set spawn backend: "claude" or "opencode"
+  default_model   Set default model for worker spawns (alias or provider/model)
 
 Examples:
-  orch config set spawn_mode claude    # Use Claude Code (tmux) for spawns
-  orch config set spawn_mode opencode  # Use OpenCode (HTTP API) for spawns`,
+  orch config set spawn_mode claude       # Use Claude Code (tmux) for spawns
+  orch config set spawn_mode opencode     # Use OpenCode (HTTP API) for spawns
+  orch config set default_model gpt4o     # Use GPT-4o as default worker model
+  orch config set default_model sonnet    # Use Sonnet as default worker model`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := args[0]
@@ -119,16 +122,25 @@ Examples:
 				return fmt.Errorf("invalid spawn_mode: %s (must be 'claude' or 'opencode')", value)
 			}
 			cfg.SpawnMode = value
+			// Save project config
+			if err := config.Save(cwd, cfg); err != nil {
+				return fmt.Errorf("failed to save config: %w", err)
+			}
+		case "default_model":
+			// default_model lives in user config (~/.orch/config.yaml)
+			ucfg, err := userconfig.Load()
+			if err != nil {
+				return fmt.Errorf("failed to load user config: %w", err)
+			}
+			ucfg.DefaultModel = value
+			if err := userconfig.Save(ucfg); err != nil {
+				return fmt.Errorf("failed to save user config: %w", err)
+			}
 		default:
-			return fmt.Errorf("unknown config key: %s", key)
+			return fmt.Errorf("unknown config key: %s (supported: spawn_mode, default_model)", key)
 		}
 
-		// Save config
-		if err := config.Save(cwd, cfg); err != nil {
-			return fmt.Errorf("failed to save config: %w", err)
-		}
-
-		fmt.Printf("✓ Set %s = %s\n", key, value)
+		fmt.Printf("Set %s = %s\n", key, value)
 		return nil
 	},
 }
@@ -136,13 +148,15 @@ Examples:
 var configGetCmd = &cobra.Command{
 	Use:   "get <key>",
 	Short: "Get a project config value",
-	Long: `Get a configuration value from .orch/config.yaml.
+	Long: `Get a configuration value from config.
 
 Supported keys:
-  spawn_mode     Current spawn backend ("claude" or "opencode")
+  spawn_mode      Current spawn backend ("claude" or "opencode")
+  default_model   Default model for worker spawns
 
 Examples:
-  orch config get spawn_mode`,
+  orch config get spawn_mode
+  orch config get default_model`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := args[0]
@@ -164,8 +178,18 @@ Examples:
 		switch key {
 		case "spawn_mode":
 			fmt.Println(cfg.SpawnMode)
+		case "default_model":
+			ucfg, err := userconfig.Load()
+			if err != nil {
+				return fmt.Errorf("failed to load user config: %w", err)
+			}
+			if ucfg.DefaultModel == "" {
+				fmt.Println("(not set - using hardcoded default)")
+			} else {
+				fmt.Println(ucfg.DefaultModel)
+			}
 		default:
-			return fmt.Errorf("unknown config key: %s", key)
+			return fmt.Errorf("unknown config key: %s (supported: spawn_mode, default_model)", key)
 		}
 
 		return nil
@@ -371,6 +395,11 @@ func runShowConfig() error {
 	fmt.Println("# ~/.orch/config.yaml (effective values)")
 	fmt.Println()
 	fmt.Printf("backend: %s\n", cfg.Backend)
+	if cfg.DefaultModel != "" {
+		fmt.Printf("default_model: %s\n", cfg.DefaultModel)
+	} else {
+		fmt.Printf("default_model: (not set - using hardcoded default)\n")
+	}
 	fmt.Printf("auto_export_transcript: %v\n", cfg.AutoExportTranscript)
 	fmt.Printf("default_tier: %s\n", cfg.DefaultTier)
 	fmt.Println()

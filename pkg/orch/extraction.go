@@ -466,9 +466,15 @@ func ResolveAndValidateModel(modelFlag string) (model.ModelSpec, error) {
 		configModels = cfg.Models
 	}
 
+	// If no model flag specified, check config default_model before hardcoded default
+	effectiveSpec := modelFlag
+	if effectiveSpec == "" && cfg != nil && cfg.DefaultModel != "" {
+		effectiveSpec = cfg.DefaultModel
+	}
+
 	// Resolve model - convert aliases to full format
 	// Config aliases take precedence over built-in aliases
-	resolvedModel := model.ResolveWithConfig(modelFlag, configModels)
+	resolvedModel := model.ResolveWithConfig(effectiveSpec, configModels)
 
 	// Validate flash model - TPM rate limits make it unusable
 	if resolvedModel.Provider == "google" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "flash") {

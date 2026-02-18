@@ -113,6 +113,11 @@ type Config struct {
 	Notifications NotificationConfig `yaml:"notifications,omitempty"`
 	// Reflect holds settings for periodic kb reflect analysis.
 	Reflect ReflectConfig `yaml:"reflect,omitempty"`
+	// DefaultModel specifies the default model alias for worker spawns.
+	// When set, spawns without an explicit --model flag will use this model.
+	// Accepts aliases (e.g., "gpt4o", "opus", "sonnet") or provider/model format.
+	// When empty, uses the hardcoded DefaultModel in pkg/model.
+	DefaultModel string `yaml:"default_model,omitempty"`
 	// DefaultTier specifies the default spawn tier: "light" or "full".
 	// When set to "full", all spawns (including light-tier skills) will require SYNTHESIS.md.
 	// When set to "light" or empty, skill defaults are used.
