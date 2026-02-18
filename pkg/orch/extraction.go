@@ -84,6 +84,7 @@ type GapCheckResult struct {
 
 // ansiRegex matches ANSI escape sequences (colors, formatting, etc.)
 var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+var sessionScopeRegex = regexp.MustCompile(`(?mi)^\s*session\s+scope:\s*([^\r\n]+)`)
 
 // InferSkillFromIssueType maps issue types to appropriate skills.
 // Returns an error for types that cannot be spawned (e.g., epic) or unknown types.
@@ -113,9 +114,10 @@ func InferSkillFromIssueType(issueType string) (string, error) {
 	}
 }
 
-// DetermineSpawnTier determines the spawn tier based on flags, config, and skill defaults.
-// Priority: --light flag > --full flag > userconfig.default_tier > skill default > TierFull (conservative)
-func DetermineSpawnTier(skillName string, lightFlag, fullFlag bool) string {
+// DetermineSpawnTier determines the spawn tier based on flags, config, task scope signals,
+// and skill defaults.
+// Priority: --light flag > --full flag > userconfig.default_tier > task scope signals > skill default
+func DetermineSpawnTier(skillName, task string, lightFlag, fullFlag bool) string {
 	// Explicit flags take precedence
 	if lightFlag {
 		return spawn.TierLight
@@ -128,8 +130,82 @@ func DetermineSpawnTier(skillName string, lightFlag, fullFlag bool) string {
 	if err == nil && cfg.GetDefaultTier() != "" {
 		return cfg.GetDefaultTier()
 	}
+	// Use task scope signals to upgrade to full tier when needed
+	if inferredTier := inferTierFromTask(task); inferredTier != "" {
+		return inferredTier
+	}
 	// Fall back to skill default
 	return spawn.DefaultTierForSkill(skillName)
+}
+
+func inferTierFromTask(task string) string {
+	if task == "" {
+		return ""
+	}
+
+	if scope := parseSessionScope(task); scope != "" {
+		switch scope {
+		case "medium", "large", "full", "4-6h", "4-6h+", "2-4h":
+			return spawn.TierFull
+		}
+	}
+
+	lower := strings.ToLower(task)
+
+	score := 0
+	if containsAny(lower, []string{
+		"create package",
+		"new package",
+		"create module",
+		"new module",
+		"new pkg/",
+		"create pkg/",
+		"new package/",
+		"create package/",
+	}) {
+		score += 2
+	}
+	if containsAny(lower, []string{
+		"comprehensive tests",
+		"test suite",
+		"integration tests",
+		"unit tests",
+		"tests for",
+		"add tests",
+	}) {
+		score++
+	}
+
+	if score >= 2 {
+		return spawn.TierFull
+	}
+
+	return ""
+}
+
+func parseSessionScope(task string) string {
+	matches := sessionScopeRegex.FindStringSubmatch(task)
+	if len(matches) < 2 {
+		return ""
+	}
+	scope := strings.TrimSpace(strings.ToLower(matches[1]))
+	if scope == "" {
+		return ""
+	}
+	fields := strings.Fields(scope)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
+func containsAny(text string, terms []string) bool {
+	for _, term := range terms {
+		if strings.Contains(text, term) {
+			return true
+		}
+	}
+	return false
 }
 
 // CheckAndAutoSwitchAccount checks if the current account is over usage thresholds
@@ -606,8 +682,8 @@ func BuildUsageInfo(usageCheckResult *gates.UsageCheckResult) *spawn.UsageInfo {
 }
 
 // DetermineSpawnBackend determines spawn backend with auto-selection.
-// Priority: explicit --backend flag > infrastructure detection > project config > user config > default.
-// When --backend OR --model is explicit, infrastructure detection becomes advisory (warning only).
+// Priority: explicit --backend flag > explicit --model > project config > user config > infrastructure detection (advisory) > default.
+// When --backend, --model, or config is explicit, infrastructure detection becomes advisory (warning only).
 // This prevents the escape hatch from silently overriding user intent.
 func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, projectDir, backendFlag, spawnModel string) (string, error) {
 	// Load project config (used for backend default)
@@ -615,6 +691,8 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 
 	// Load user config (~/.orch/config.yaml) for backend fallback
 	userCfg, _ := userconfig.Load()
+	_, userCfgErr := os.Stat(userconfig.ConfigPath())
+	userCfgExplicit := userCfgErr == nil && userCfg != nil && userCfg.Backend != ""
 
 	// Default to opencode (primary spawn path)
 	backend := "opencode"
@@ -644,7 +722,7 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 		// Resolution: project config > user config > hardcoded default
 		if projCfg != nil && projCfg.SpawnMode != "" {
 			backend = projCfg.SpawnMode
-		} else if userCfg != nil && userCfg.Backend != "" {
+		} else if userCfgExplicit {
 			backend = userCfg.Backend
 		}
 		// Advisory: warn if infrastructure work detected
@@ -652,8 +730,22 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 			fmt.Fprintf(os.Stderr, "⚠️  Infrastructure work detected but respecting explicit --model %s (backend: %s)\n", spawnModel, backend)
 			fmt.Fprintf(os.Stderr, "   Recommendation: Use --backend claude for infrastructure work to survive server restarts.\n")
 		}
+	} else if projCfg != nil && projCfg.SpawnMode != "" {
+		// Config default: respect project spawn_mode setting
+		backend = projCfg.SpawnMode
+		if isInfrastructureWork(task, beadsID) && backend != "claude" {
+			fmt.Fprintf(os.Stderr, "⚠️  Infrastructure work detected but respecting project spawn_mode %s\n", backend)
+			fmt.Fprintf(os.Stderr, "   Recommendation: Use --backend claude for infrastructure work to survive server restarts.\n")
+		}
+	} else if userCfgExplicit {
+		// User config default: respect user-level backend setting (~/.orch/config.yaml)
+		backend = userCfg.Backend
+		if isInfrastructureWork(task, beadsID) && backend != "claude" {
+			fmt.Fprintf(os.Stderr, "⚠️  Infrastructure work detected but respecting user config backend %s\n", backend)
+			fmt.Fprintf(os.Stderr, "   Recommendation: Use --backend claude for infrastructure work to survive server restarts.\n")
+		}
 	} else if isInfrastructureWork(task, beadsID) {
-		// No explicit flags: auto-apply escape hatch
+		// No explicit flags or config: auto-apply escape hatch
 		// Agents working on OpenCode/orch infrastructure need claude backend + tmux
 		// to survive server restarts (prevent agents from killing themselves)
 		backend = "claude"
@@ -674,12 +766,6 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 		if err := logger.Log(event); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to log infrastructure detection: %v\n", err)
 		}
-	} else if projCfg != nil && projCfg.SpawnMode != "" {
-		// Config default: respect project spawn_mode setting
-		backend = projCfg.SpawnMode
-	} else if userCfg != nil && userCfg.Backend != "" {
-		// User config default: respect user-level backend setting (~/.orch/config.yaml)
-		backend = userCfg.Backend
 	}
 
 	// Validate mode+model combination

@@ -1,9 +1,12 @@
 package orch
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/dylan-conlin/orch-go/pkg/model"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 )
 
@@ -47,6 +50,9 @@ func TestDetermineSpawnBackend_ExplicitBackendWins(t *testing.T) {
 func TestDetermineSpawnBackend_InfraAdvisory(t *testing.T) {
 	sonnet := model.ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}
 
+	// Isolate user config lookups
+	t.Setenv("HOME", t.TempDir())
+
 	// When --backend is explicit AND infra work detected, backend is respected (advisory only)
 	got, err := DetermineSpawnBackend(sonnet, "fix opencode server crash", "", "", "opencode", "")
 	if err != nil {
@@ -68,6 +74,9 @@ func TestDetermineSpawnBackend_InfraAdvisory(t *testing.T) {
 
 func TestDetermineSpawnBackend_ExplicitModelPreventsInfraOverride(t *testing.T) {
 	codex := model.ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}
+
+	// Isolate user config lookups
+	t.Setenv("HOME", t.TempDir())
 
 	// When --model is explicit AND infra work detected, escape hatch should NOT override
 	// Backend should fall through to user config/default instead of being forced to "claude"
@@ -105,6 +114,18 @@ func TestDetermineSpawnBackend_ExplicitModelAndBackend(t *testing.T) {
 func TestDetermineSpawnBackend_UserConfigFallback(t *testing.T) {
 	sonnet := model.ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}
 
+	// Set explicit user config backend
+	configHome := t.TempDir()
+	t.Setenv("HOME", configHome)
+	configDir := filepath.Join(configHome, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("failed to create user config dir: %v", err)
+	}
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("backend: claude\n"), 0644); err != nil {
+		t.Fatalf("failed to write user config: %v", err)
+	}
+
 	// Load user config to see what backend is set
 	userCfg, err := userconfig.Load()
 	if err != nil {
@@ -139,6 +160,9 @@ func TestDetermineSpawnBackend_UserConfigFallback(t *testing.T) {
 func TestDetermineSpawnBackend_HardcodedDefaultIsOpencode(t *testing.T) {
 	sonnet := model.ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}
 
+	// Isolate user config lookups (no config file)
+	t.Setenv("HOME", t.TempDir())
+
 	// When no explicit flags, no project config, no user config backend,
 	// the hardcoded default should be "opencode"
 	// Note: this test validates the default when user config exists but may have backend set.
@@ -147,10 +171,55 @@ func TestDetermineSpawnBackend_HardcodedDefaultIsOpencode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Should never be "claude" without explicit flag or infrastructure detection
-	if got == "claude" {
-		t.Errorf("default backend should not be 'claude' without explicit flag, got %q", got)
+	if got != "opencode" {
+		t.Errorf("default backend should be 'opencode' without explicit config, got %q", got)
 	}
+}
+
+func TestDetermineSpawnBackend_ConfigOverridesInfra(t *testing.T) {
+	sonnet := model.ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}
+
+	t.Run("user config overrides infra", func(t *testing.T) {
+		configHome := t.TempDir()
+		t.Setenv("HOME", configHome)
+		configDir := filepath.Join(configHome, ".orch")
+		if err := os.MkdirAll(configDir, 0755); err != nil {
+			t.Fatalf("failed to create user config dir: %v", err)
+		}
+		configPath := filepath.Join(configDir, "config.yaml")
+		if err := os.WriteFile(configPath, []byte("backend: opencode\n"), 0644); err != nil {
+			t.Fatalf("failed to write user config: %v", err)
+		}
+
+		got, err := DetermineSpawnBackend(sonnet, "fix opencode server crash", "", "", "", "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "opencode" {
+			t.Errorf("user config backend should override infra detection, got %q", got)
+		}
+	})
+
+	t.Run("project config overrides infra", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		projectDir := t.TempDir()
+		configDir := filepath.Join(projectDir, ".orch")
+		if err := os.MkdirAll(configDir, 0755); err != nil {
+			t.Fatalf("failed to create project config dir: %v", err)
+		}
+		configPath := filepath.Join(configDir, "config.yaml")
+		if err := os.WriteFile(configPath, []byte("spawn_mode: opencode\n"), 0644); err != nil {
+			t.Fatalf("failed to write project config: %v", err)
+		}
+
+		got, err := DetermineSpawnBackend(sonnet, "fix opencode server crash", "", projectDir, "", "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "opencode" {
+			t.Errorf("project config spawn_mode should override infra detection, got %q", got)
+		}
+	})
 }
 
 func TestDetermineSpawnBackend_InvalidBackend(t *testing.T) {
@@ -159,5 +228,46 @@ func TestDetermineSpawnBackend_InvalidBackend(t *testing.T) {
 	_, err := DetermineSpawnBackend(sonnet, "some task", "", "", "invalid", "")
 	if err == nil {
 		t.Fatal("expected error for invalid backend value")
+	}
+}
+
+func TestDetermineSpawnTier_TaskScopeSignals(t *testing.T) {
+	// Isolate user config lookups
+	t.Setenv("HOME", t.TempDir())
+
+	tests := []struct {
+		name string
+		task string
+		want string
+	}{
+		{
+			name: "session scope medium upgrades to full",
+			task: "SESSION SCOPE: Medium (estimated [1-2h / 2-4h / 4-6h+])",
+			want: spawn.TierFull,
+		},
+		{
+			name: "session scope small keeps light",
+			task: "SESSION SCOPE: Small (text edits only)",
+			want: spawn.TierLight,
+		},
+		{
+			name: "new package with tests upgrades to full",
+			task: "Create new package pkg/graph with comprehensive tests",
+			want: spawn.TierFull,
+		},
+		{
+			name: "no scope signals uses skill default",
+			task: "Update README wording",
+			want: spawn.TierLight,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := DetermineSpawnTier("feature-impl", tt.task, false, false)
+			if got != tt.want {
+				t.Errorf("DetermineSpawnTier() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
