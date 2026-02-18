@@ -1,0 +1,40 @@
+verification:
+  type: investigation-probe
+  issue: orch-go-1039
+  related: orch-go-1034
+
+  assertions:
+    - name: IsOpenCodeReady detects real TUI content
+      command: "go run /tmp/test_readiness.go"
+      expect: "IsOpenCodeReady result: true"
+      status: verified
+
+    - name: Readiness latency under 15s timeout
+      command: "go run /tmp/test_spawn_timing2.go (without --model flag)"
+      expect: "READY DETECTED within ~3-4 seconds"
+      status: verified
+
+    - name: opencode attach does not support --model
+      command: "$OPENCODE_BIN attach --help"
+      expect: "No --model in options list"
+      status: verified
+
+    - name: Model always resolved in spawn flow
+      evidence: "pkg/model/model.go:19 DefaultModel, pkg/orch/extraction.go:724 Format()"
+      expect: "Model field always non-empty string"
+      status: verified
+
+    - name: BuildOpencodeAttachCommand adds --model unconditionally
+      evidence: "pkg/tmux/tmux.go:279-281 (if cfg.Model != '')"
+      expect: "--model flag always appended for tmux spawns"
+      status: verified
+
+  outcome:
+    root_cause: "BuildOpencodeAttachCommand adds unsupported --model flag to opencode attach"
+    severity: "Every tmux spawn fails — TUI never starts"
+    fix_options:
+      - "Remove --model from BuildOpencodeAttachCommand (near-term)"
+      - "Add --model support to opencode attach in fork (long-term)"
+
+  manual_steps:
+    - "Orchestrator should verify orch-go-1034 fix addresses the root cause"
