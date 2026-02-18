@@ -140,6 +140,7 @@
 			wip.fetchQueued(projectDir),
 			daemon.fetch(),
 			attention.fetch(projectDir),
+			agents.fetch(), // Refresh agents to detect phase transitions (Phase: Complete via bd comment)
 		];
 
 		if (currentView === 'artifacts' && $kbArtifacts) {
@@ -342,7 +343,11 @@
 		for (const agent of $agents || []) {
 			const beadsId = agent.beads_id;
 			if (!beadsId) continue;
-			if (agent.status !== 'active' && agent.status !== 'awaiting-cleanup') continue;
+			// Include 'completed' status because determineAgentStatus() returns 'completed'
+			// for Phase: Complete agents whose sessions are still alive (Priority 3 in cascade).
+			// Closed issues are excluded below via the issueNode.status check (workGraph scope=open
+			// means closed issues aren't in the graph at all).
+			if (agent.status !== 'active' && agent.status !== 'awaiting-cleanup' && agent.status !== 'completed') continue;
 			if (agent.phase?.toLowerCase() !== 'complete') continue;
 
 			const issueNode = nodesById.get(beadsId);
