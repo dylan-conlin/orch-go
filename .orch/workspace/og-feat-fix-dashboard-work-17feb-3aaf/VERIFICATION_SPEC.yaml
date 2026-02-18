@@ -1,0 +1,73 @@
+verification_spec:
+  feature: 'Work-graph usability refresh (in-progress emphasis, sorting, progressive disclosure)'
+
+  acceptance_criteria:
+    - id: AC-001
+      description: 'In-progress issues stand out visually in the Issues view'
+      verification_method: 'Code review + manual UI check'
+      status: 'verified'
+      evidence: |
+        - In-progress rows add stronger left border + subtle background highlight (work-graph-tree.svelte:1000)
+
+    - id: AC-002
+      description: 'Independent issues are sorted by priority and recent items are surfaced in preview'
+      verification_method: 'Code review + manual UI check'
+      status: 'verified'
+      evidence: |
+        - Priority + recency sort used for independent list (work-graph-tree.svelte:246-284)
+        - Preview shows in-progress first, then recent items, with Show all toggle
+
+    - id: AC-003
+      description: 'Dependency chain headers use root issue title'
+      verification_method: 'Code review'
+      status: 'verified'
+      evidence: |
+        - Chain label now selects the shallowest root node for title (work-graph.ts:492-506)
+
+    - id: AC-004
+      description: 'In-progress subline shows unassigned when no agent linked'
+      verification_method: 'Code review'
+      status: 'verified'
+      evidence: |
+        - getInProgressSubline returns "unassigned" when no agent details (work-graph-tree-helpers.ts:331-339)
+
+    - id: AC-005
+      description: 'Ready to Complete only includes open in-progress issues'
+      verification_method: 'Code review'
+      status: 'verified'
+      evidence: |
+        - Filtered to active/awaiting-cleanup agents and in_progress issue status (work-graph/+page.svelte:342-350)
+
+    - id: AC-006
+      description: 'Completed agents section is collapsed by default'
+      verification_method: 'Code review + manual UI check'
+      status: 'verified'
+      evidence: |
+        - Recent Wins now renders as a collapsed section by default (recent-wins.svelte:80-108)
+
+  commands_run:
+    - command: 'npm run build'
+      purpose: 'Ensure dashboard build passes'
+      result: 'Succeeded with existing Svelte a11y warnings in work-graph-tree, screenshots-tab, daemon-config-panel, close-issue-modal'
+
+  manual_verification:
+    - step: 'Navigate to http://localhost:5188/work-graph (Issues view)'
+      expected: 'In-progress issues have a stronger left border + subtle blue highlight'
+      actual: 'Not performed (code review only)'
+
+    - step: 'Expand Independent Issues section and toggle Show all'
+      expected: 'Preview shows in-progress + recent items first, Show all reveals full list'
+      actual: 'Not performed (code review only)'
+
+    - step: 'Open Recent Wins section on dashboard home'
+      expected: 'Section is collapsed by default and expands on click'
+      actual: 'Not performed (code review only)'
+
+  notes: |
+    Build output reported pre-existing a11y warnings in:
+      - work-graph-tree.svelte
+      - agent-detail/screenshots-tab.svelte
+      - daemon-config-panel.svelte
+      - close-issue-modal.svelte
+
+  discovered_work: []

@@ -337,9 +337,8 @@ export function getInProgressSubline(
     }
   }
 
-  const ageText = formatIssueAge(node.created_at)
   return {
-    text: ageText ? `No active agent linked · ${ageText}` : 'No active agent linked',
+    text: 'unassigned',
     tone: 'text-amber-500/90',
   }
 }

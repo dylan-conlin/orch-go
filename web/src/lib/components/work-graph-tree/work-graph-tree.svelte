@@ -55,6 +55,10 @@
 
 	// Box-drawing prefix map for dependency chain nodes
 	let depPrefixMap = new Map<string, string>();
+	let showAllIndependent = false;
+	let independentHiddenCount = 0;
+	let independentHasOverflow = false;
+	const INDEPENDENT_PREVIEW_LIMIT = 8;
 
 	function toggleGroup(key: string) {
 		if (collapsedGroups.has(key)) {
@@ -214,6 +218,117 @@
 		treeNodeIndex = index;
 	}
 
+	function parseCreatedAt(value?: string): number {
+		if (!value) return 0;
+		const ms = new Date(value).getTime();
+		return Number.isNaN(ms) ? 0 : ms;
+	}
+
+	function sortNodesByPriorityAndRecency(nodes: TreeNode[]): TreeNode[] {
+		return [...nodes].sort((a, b) => {
+			if (a.priority !== b.priority) return a.priority - b.priority;
+			const dateDiff = parseCreatedAt(b.created_at) - parseCreatedAt(a.created_at);
+			if (dateDiff !== 0) return dateDiff;
+			return a.id.localeCompare(b.id);
+		});
+	}
+
+	function getIndependentPreview(nodes: TreeNode[]): { visible: TreeNode[]; hidden: number } {
+		const inProgress = nodes.filter((node) => node.status.toLowerCase() === 'in_progress');
+		const rest = nodes.filter((node) => node.status.toLowerCase() !== 'in_progress');
+		const sortedInProgress = sortNodesByPriorityAndRecency(inProgress);
+		const sortedRest = sortNodesByPriorityAndRecency(rest);
+		const visible = [...sortedInProgress];
+		for (const node of sortedRest) {
+			if (visible.length >= sortedInProgress.length + INDEPENDENT_PREVIEW_LIMIT) break;
+			visible.push(node);
+		}
+		const hidden = Math.max(0, nodes.length - visible.length);
+		return { visible, hidden };
+	}
+
+	function buildFlattenedItems(): (TreeNode | WIPItem | GroupHeader | DepSectionHeader)[] {
+		independentHiddenCount = 0;
+		independentHasOverflow = false;
+		const items: (TreeNode | WIPItem | GroupHeader | DepSectionHeader)[] = [...wipItems];
+
+		if (isGrouped && groups.length > 0) {
+			for (const group of groups) {
+				items.push({
+					_groupHeader: true,
+					key: group.key,
+					label: group.label,
+					count: group.nodes.length,
+					unlabeled: group.unlabeled,
+				});
+				if (!collapsedGroups.has(group.key)) {
+					items.push(...flattenVisibleTree(group.nodes, pinnedTreeIds));
+				}
+			}
+			depPrefixMap = new Map();
+			return items;
+		}
+
+		const hasBlockingEdges = edges.some(
+			(e) => e.type === 'blocks' && treeNodeIndex.has(e.from) && treeNodeIndex.has(e.to),
+		);
+
+		if (hasBlockingEdges) {
+			const dv = buildDependencyView(treeNodeIndex, edges);
+			const prefixes = new Map<string, string>();
+
+			for (const chain of dv.chains) {
+				items.push({
+					_depSectionHeader: true,
+					key: chain.id,
+					label: chain.label,
+					count: chain.size,
+					type: 'chain' as const,
+				});
+
+				if (!collapsedChains.has(chain.id)) {
+					const flatItems = flattenDepChain(chain, pinnedTreeIds);
+					for (const fi of flatItems) {
+						prefixes.set(fi.node.id, fi.prefix);
+						items.push(fi.node);
+					}
+				}
+			}
+
+			const availableIndependent = dv.independentNodes.filter((node) => !pinnedTreeIds.has(node.id));
+			if (availableIndependent.length > 0) {
+				items.push({
+					_depSectionHeader: true,
+					key: 'independent',
+					label: 'Independent Issues',
+					count: availableIndependent.length,
+					type: 'independent' as const,
+				});
+
+				if (!collapsedChains.has('independent')) {
+					const ordered = sortNodesByPriorityAndRecency(availableIndependent);
+					const preview = getIndependentPreview(ordered);
+					const visible = showAllIndependent ? ordered : preview.visible;
+					independentHiddenCount = showAllIndependent ? 0 : preview.hidden;
+					independentHasOverflow = preview.hidden > 0;
+					for (const node of visible) {
+						items.push(node);
+					}
+				} else {
+					independentHiddenCount = 0;
+					independentHasOverflow = false;
+				}
+			}
+
+			depPrefixMap = prefixes;
+			return items;
+		}
+
+		items.push(...flattenVisibleTree(tree, pinnedTreeIds));
+		depPrefixMap = new Map();
+		return items;
+	}
+
 	// Keep side panel issue in sync with latest tree snapshot so lifecycle tab auto-switching
 	// follows status changes while the panel remains open.
 	$: if (selectedIssueForPanel) {
@@ -224,7 +339,7 @@
 	}
 
 	// Rebuild flattened list when tree, groups, or wipItems change
-		$: {
+	$: {
 		// Track which tree nodes are already surfaced in WIP (hide duplicates from tree)
 		const pinnedIds = new Set<string>();
 		const runningDetails = new Map<string, { phase?: string; runtime?: string; model?: string; skill?: string }>();
@@ -245,77 +360,17 @@
 		}
 		pinnedTreeIds = pinnedIds;
 		runningAgentDetailsByIssueId = runningDetails;
+		// Ensure reactive dependencies for flattened list rebuilds
+		tree;
+		groups;
+		edges;
+		isGrouped;
+		treeNodeIndex;
+		collapsedGroups;
+		collapsedChains;
+		showAllIndependent;
 
-		// Build flat list based on whether we're in grouped mode
-		const items: (TreeNode | WIPItem | GroupHeader | DepSectionHeader)[] = [...wipItems];
-
-		if (isGrouped && groups.length > 0) {
-			for (const group of groups) {
-				items.push({
-					_groupHeader: true,
-					key: group.key,
-					label: group.label,
-					count: group.nodes.length,
-					unlabeled: group.unlabeled,
-				});
-				if (!collapsedGroups.has(group.key)) {
-					items.push(...flattenVisibleTree(group.nodes, pinnedIds));
-				}
-			}
-		} else {
-			// Check for blocking edges to enable dependency chain view
-			const hasBlockingEdges = edges.some(e =>
-				e.type === 'blocks' && treeNodeIndex.has(e.from) && treeNodeIndex.has(e.to)
-			);
-
-			if (hasBlockingEdges) {
-				const dv = buildDependencyView(treeNodeIndex, edges);
-				const prefixes = new Map<string, string>();
-
-				for (const chain of dv.chains) {
-					items.push({
-						_depSectionHeader: true,
-						key: chain.id,
-						label: chain.label,
-						count: chain.size,
-						type: 'chain' as const,
-					});
-
-					if (!collapsedChains.has(chain.id)) {
-						const flatItems = flattenDepChain(chain, pinnedIds);
-						for (const fi of flatItems) {
-							prefixes.set(fi.node.id, fi.prefix);
-							items.push(fi.node);
-						}
-					}
-				}
-
-				if (dv.independentNodes.length > 0) {
-					items.push({
-						_depSectionHeader: true,
-						key: 'independent',
-						label: 'Independent Issues',
-						count: dv.independentNodes.length,
-						type: 'independent' as const,
-					});
-
-					if (!collapsedChains.has('independent')) {
-						for (const node of dv.independentNodes) {
-							if (!pinnedIds.has(node.id)) {
-								items.push(node);
-							}
-						}
-					}
-				}
-
-				depPrefixMap = prefixes;
-			} else {
-				items.push(...flattenVisibleTree(tree, pinnedIds));
-				depPrefixMap = new Map();
-			}
-		}
-
-		flattenedNodes = items;
+		flattenedNodes = buildFlattenedItems();
 		// Clamp selected index to valid range
 		if (selectedIndex >= flattenedNodes.length) {
 			selectedIndex = Math.max(0, flattenedNodes.length - 1);
@@ -601,42 +656,7 @@
 		// Notify parent component to update expansion state
 		onToggleExpansion(node.id, node.expanded);
 		// Manually rebuild flattened nodes (include WIP items + groups)
-		const items: (TreeNode | WIPItem | GroupHeader | DepSectionHeader)[] = [...wipItems];
-		if (isGrouped && groups.length > 0) {
-			for (const group of groups) {
-				items.push({
-					_groupHeader: true,
-					key: group.key,
-					label: group.label,
-					count: group.nodes.length,
-					unlabeled: group.unlabeled,
-				});
-				if (!collapsedGroups.has(group.key)) {
-					items.push(...flattenVisibleTree(group.nodes, pinnedTreeIds));
-				}
-			}
-		} else if (depPrefixMap.size > 0) {
-			// In dep chain mode, rebuild with chain structure
-			const dv = buildDependencyView(treeNodeIndex, edges);
-			const prefixes = new Map<string, string>();
-			for (const chain of dv.chains) {
-				items.push({ _depSectionHeader: true, key: chain.id, label: chain.label, count: chain.size, type: 'chain' as const });
-				if (!collapsedChains.has(chain.id)) {
-					const flatItems = flattenDepChain(chain, pinnedTreeIds);
-					for (const fi of flatItems) { prefixes.set(fi.node.id, fi.prefix); items.push(fi.node); }
-				}
-			}
-			if (dv.independentNodes.length > 0) {
-				items.push({ _depSectionHeader: true, key: 'independent', label: 'Independent Issues', count: dv.independentNodes.length, type: 'independent' as const });
-				if (!collapsedChains.has('independent')) {
-					for (const n of dv.independentNodes) { if (!pinnedTreeIds.has(n.id)) items.push(n); }
-				}
-			}
-			depPrefixMap = prefixes;
-		} else {
-			items.push(...flattenVisibleTree(tree, pinnedTreeIds));
-		}
-		flattenedNodes = items;
+		flattenedNodes = buildFlattenedItems();
 		// Clamp selected index to valid range
 		if (selectedIndex >= flattenedNodes.length) {
 			selectedIndex = Math.max(0, flattenedNodes.length - 1);
@@ -756,6 +776,17 @@
 					<span class="text-xs text-muted-foreground">
 						({item.count})
 					</span>
+					{#if item.type === 'independent' && independentHasOverflow}
+						<button
+							class="ml-auto text-[11px] text-muted-foreground hover:text-foreground"
+							onclick={(event) => {
+								event.stopPropagation();
+								showAllIndependent = !showAllIndependent;
+							}}
+						>
+							{showAllIndependent ? 'Show less' : `Show all (${independentHiddenCount} more)`}
+						</button>
+					{/if}
 				</div>
 			</div>
 		{:else}
@@ -960,7 +991,7 @@
 			{@const depPrefix = depPrefixMap.get(node.id)}
 			<!-- Tree Node - L0: Row -->
 			<div
-			class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.status.toLowerCase() === 'in_progress' ? 'border-l border-blue-500/30' : 'border-l border-transparent'} {node.absorbed_by ? 'opacity-50' : ''} {feedback === 'priority' ? 'action-feedback-priority' : ''} {feedback === 'queue' ? 'action-feedback-queue' : ''}"
+			class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.status.toLowerCase() === 'in_progress' ? 'border-l-2 border-blue-500/60 bg-blue-500/5' : 'border-l border-transparent'} {node.absorbed_by ? 'opacity-50' : ''} {feedback === 'priority' ? 'action-feedback-priority' : ''} {feedback === 'queue' ? 'action-feedback-queue' : ''}"
 			style="padding-left: {depPrefix !== undefined ? '8px' : node.depth * 24 + 'px'}"
 			>
 					{#if depPrefix !== undefined}

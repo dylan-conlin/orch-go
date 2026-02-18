@@ -342,6 +342,7 @@
 		for (const agent of $agents || []) {
 			const beadsId = agent.beads_id;
 			if (!beadsId) continue;
+			if (agent.status !== 'active' && agent.status !== 'awaiting-cleanup') continue;
 			if (agent.phase?.toLowerCase() !== 'complete') continue;
 
 			const issueNode = nodesById.get(beadsId);

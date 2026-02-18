@@ -402,6 +402,21 @@ export function buildDependencyView(
   treeNodeIndex: Map<string, TreeNode>,
   edges: GraphEdge[],
 ): DepView {
+  const parseCreatedAt = (value?: string): number => {
+    if (!value) return 0
+    const ms = new Date(value).getTime()
+    return Number.isNaN(ms) ? 0 : ms
+  }
+
+  const compareNodes = (a: TreeNode, b: TreeNode): number => {
+    if (a.priority !== b.priority) {
+      return a.priority - b.priority
+    }
+    const dateDiff = parseCreatedAt(b.created_at) - parseCreatedAt(a.created_at)
+    if (dateDiff !== 0) return dateDiff
+    return a.id.localeCompare(b.id)
+  }
+
   const blocksMap = new Map<string, string[]>()
   const blockedByMap = new Map<string, string[]>()
   const involvedNodes = new Set<string>()
@@ -422,10 +437,7 @@ export function buildDependencyView(
   if (involvedNodes.size === 0) {
     return {
       chains: [],
-      independentNodes: Array.from(treeNodeIndex.values()).sort((a, b) => {
-        if (a.priority !== b.priority) return a.priority - b.priority
-        return a.id.localeCompare(b.id)
-      }),
+      independentNodes: Array.from(treeNodeIndex.values()).sort(compareNodes),
     }
   }
 
@@ -472,7 +484,12 @@ export function buildDependencyView(
       seen.add(nodeId)
       const blocked = (blocksMap.get(nodeId) || [])
         .filter((b) => component.has(b) && !seen.has(b))
-        .sort()
+        .sort((a, b) => {
+          const nodeA = treeNodeIndex.get(a)
+          const nodeB = treeNodeIndex.get(b)
+          if (nodeA && nodeB) return compareNodes(nodeA, nodeB)
+          return a.localeCompare(b)
+        })
       return {
         node: treeNodeIndex.get(nodeId)!,
         depChildren: blocked.map((childId) =>
@@ -489,10 +506,16 @@ export function buildDependencyView(
       rootNodes.push(buildDepNode(rootId, 0, seen))
     }
 
-    const firstRoot = treeNodeIndex.get(roots[0])
+    const labelRoot = roots
+      .map((id) => treeNodeIndex.get(id))
+      .filter((node): node is TreeNode => Boolean(node))
+      .sort((a, b) => {
+        if (a.depth !== b.depth) return a.depth - b.depth
+        return compareNodes(a, b)
+      })[0]
     chains.push({
       id: `chain-${roots[0]}`,
-      label: firstRoot?.title || roots[0],
+      label: labelRoot?.title || roots[0],
       roots: rootNodes,
       size: component.size,
     })
@@ -509,10 +532,7 @@ export function buildDependencyView(
       independentNodes.push(node)
     }
   }
-  independentNodes.sort((a, b) => {
-    if (a.priority !== b.priority) return a.priority - b.priority
-    return a.id.localeCompare(b.id)
-  })
+  independentNodes.sort(compareNodes)
 
   return { chains, independentNodes }
 }

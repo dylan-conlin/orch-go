@@ -74,35 +74,48 @@
 		}
 		return agent.id;
 	}
+
+	let expanded = false;
 </script>
 
 {#if $recentWins.length > 0}
 	<div class="rounded-lg border border-green-500/30 bg-green-500/5" data-testid="recent-wins-section">
-		<div class="flex items-center gap-2 px-3 py-2 border-b">
+		<button
+			class="flex w-full items-center gap-2 px-3 py-2 border-b text-left hover:bg-accent/50 transition-colors"
+			onclick={() => { expanded = !expanded; }}
+			aria-expanded={expanded}
+		>
 			<span class="text-sm">🏆</span>
 			<span class="text-sm font-medium">Recent Wins</span>
 			<Badge variant="secondary" class="h-5 px-1.5 text-xs">
 				{$recentWins.length}
 			</Badge>
 			<span class="text-xs text-muted-foreground">last 24h</span>
-		</div>
-		<div class="p-2 space-y-1 max-h-48 overflow-y-auto">
-			{#each $recentWins as agent (agent.id)}
-				<div class="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50">
-					<span class="text-sm flex-shrink-0">{getOutcomeEmoji(agent.synthesis?.outcome)}</span>
-					<span class="flex-1 truncate text-xs" title={agent.synthesis?.tldr || agent.task || agent.id}>
-						{getDisplayText(agent)}
-					</span>
-					{#if agent.project}
-						<Badge variant="secondary" class="h-4 px-1 text-[10px] flex-shrink-0">
-							{agent.project}
-						</Badge>
-					{/if}
-					<span class="text-[10px] text-muted-foreground flex-shrink-0">
-						{formatTimeAgo(agent.completed_at || agent.updated_at)}
-					</span>
-				</div>
-			{/each}
-		</div>
+			<span class="ml-auto text-muted-foreground transition-transform {expanded ? 'rotate-180' : ''}">
+				<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<polyline points="6 9 12 15 18 9"></polyline>
+				</svg>
+			</span>
+		</button>
+		{#if expanded}
+			<div class="p-2 space-y-1 max-h-48 overflow-y-auto">
+				{#each $recentWins as agent (agent.id)}
+					<div class="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50">
+						<span class="text-sm flex-shrink-0">{getOutcomeEmoji(agent.synthesis?.outcome)}</span>
+						<span class="flex-1 truncate text-xs" title={agent.synthesis?.tldr || agent.task || agent.id}>
+							{getDisplayText(agent)}
+						</span>
+						{#if agent.project}
+							<Badge variant="secondary" class="h-4 px-1 text-[10px] flex-shrink-0">
+								{agent.project}
+							</Badge>
+						{/if}
+						<span class="text-[10px] text-muted-foreground flex-shrink-0">
+							{formatTimeAgo(agent.completed_at || agent.updated_at)}
+						</span>
+					</div>
+				{/each}
+			</div>
+		{/if}
 	</div>
 {/if}
