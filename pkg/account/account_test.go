@@ -1,6 +1,7 @@
 package account
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -687,15 +688,15 @@ func TestAutoSwitchDecisionScenarios(t *testing.T) {
 	thresholds := DefaultAutoSwitchThresholds()
 
 	tests := []struct {
-		name                  string
-		currentFiveHour       float64
-		currentWeekly         float64
-		altFiveHour           float64
-		altWeekly             float64
-		wantShouldSwitch      bool
-		wantReason            string
-		wantCurrentEffective  float64
-		wantAltEffective      float64
+		name                 string
+		currentFiveHour      float64
+		currentWeekly        float64
+		altFiveHour          float64
+		altWeekly            float64
+		wantShouldSwitch     bool
+		wantReason           string
+		wantCurrentEffective float64
+		wantAltEffective     float64
 	}{
 		{
 			name:                 "current healthy - no switch needed",
@@ -788,13 +789,128 @@ func TestAutoSwitchDecisionScenarios(t *testing.T) {
 	}
 }
 
+// TestSaveOpenCodeAuth_PreservesOtherProviders tests that saving anthropic auth
+// doesn't nuke other provider credentials (e.g., openai OAuth).
+func TestSaveOpenCodeAuth_PreservesOtherProviders(t *testing.T) {
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	// Create the auth directory
+	authDir := filepath.Join(tmpDir, ".local", "share", "opencode")
+	if err := os.MkdirAll(authDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write an existing auth.json with both anthropic AND openai sections
+	existingAuth := map[string]interface{}{
+		"anthropic": map[string]interface{}{
+			"type":    "oauth",
+			"refresh": "old-anthropic-refresh",
+			"access":  "old-anthropic-access",
+			"expires": 1000000,
+		},
+		"openai": map[string]interface{}{
+			"type":    "oauth",
+			"refresh": "openai-refresh-token",
+			"access":  "openai-access-token",
+			"expires": 2000000,
+		},
+	}
+	existingData, _ := json.MarshalIndent(existingAuth, "", "  ")
+	if err := os.WriteFile(filepath.Join(authDir, "auth.json"), existingData, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now save new anthropic credentials (simulating account switch)
+	auth := &OpenCodeAuth{}
+	auth.Anthropic.Type = "oauth"
+	auth.Anthropic.Refresh = "new-anthropic-refresh"
+	auth.Anthropic.Access = "new-anthropic-access"
+	auth.Anthropic.Expires = 9999999
+
+	if err := SaveOpenCodeAuth(auth); err != nil {
+		t.Fatalf("SaveOpenCodeAuth() error = %v", err)
+	}
+
+	// Read back the file and verify openai section is preserved
+	savedData, err := os.ReadFile(filepath.Join(authDir, "auth.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var saved map[string]interface{}
+	if err := json.Unmarshal(savedData, &saved); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check anthropic was updated
+	anthropic, ok := saved["anthropic"].(map[string]interface{})
+	if !ok {
+		t.Fatal("anthropic section missing from saved auth.json")
+	}
+	if anthropic["refresh"] != "new-anthropic-refresh" {
+		t.Errorf("anthropic.refresh = %v, want %v", anthropic["refresh"], "new-anthropic-refresh")
+	}
+
+	// Check openai was preserved
+	openai, ok := saved["openai"].(map[string]interface{})
+	if !ok {
+		t.Fatal("openai section was nuked from auth.json — this is the bug")
+	}
+	if openai["refresh"] != "openai-refresh-token" {
+		t.Errorf("openai.refresh = %v, want %v", openai["refresh"], "openai-refresh-token")
+	}
+	if openai["access"] != "openai-access-token" {
+		t.Errorf("openai.access = %v, want %v", openai["access"], "openai-access-token")
+	}
+}
+
+// TestSaveOpenCodeAuth_NoExistingFile tests that saving works when no auth.json exists yet.
+func TestSaveOpenCodeAuth_NoExistingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	auth := &OpenCodeAuth{}
+	auth.Anthropic.Type = "oauth"
+	auth.Anthropic.Refresh = "fresh-refresh"
+	auth.Anthropic.Access = "fresh-access"
+	auth.Anthropic.Expires = 5555555
+
+	if err := SaveOpenCodeAuth(auth); err != nil {
+		t.Fatalf("SaveOpenCodeAuth() error = %v", err)
+	}
+
+	// Verify file was created with anthropic section
+	savedData, err := os.ReadFile(OpenCodeAuthPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var saved map[string]interface{}
+	if err := json.Unmarshal(savedData, &saved); err != nil {
+		t.Fatal(err)
+	}
+
+	anthropic, ok := saved["anthropic"].(map[string]interface{})
+	if !ok {
+		t.Fatal("anthropic section missing")
+	}
+	if anthropic["refresh"] != "fresh-refresh" {
+		t.Errorf("anthropic.refresh = %v, want %v", anthropic["refresh"], "fresh-refresh")
+	}
+}
+
 // TestAutoSwitchCustomThresholds tests that custom thresholds are respected.
 func TestAutoSwitchCustomThresholds(t *testing.T) {
 	// Test with more aggressive thresholds
 	aggressiveThresholds := AutoSwitchThresholds{
-		FiveHourThreshold: 60,  // Switch when 60% used (40% remaining)
-		WeeklyThreshold:   70,  // Switch when 70% used (30% remaining)
-		MinHeadroomDelta:  5,   // Require only 5% improvement
+		FiveHourThreshold: 60, // Switch when 60% used (40% remaining)
+		WeeklyThreshold:   70, // Switch when 70% used (30% remaining)
+		MinHeadroomDelta:  5,  // Require only 5% improvement
 	}
 
 	// Same usage that would NOT trigger default thresholds

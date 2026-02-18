@@ -216,6 +216,8 @@ func LoadOpenCodeAuth() (*OpenCodeAuth, error) {
 }
 
 // SaveOpenCodeAuth saves auth to OpenCode's auth.json.
+// It merges the anthropic section into the existing file, preserving any
+// other provider credentials (e.g., openai OAuth) that may be present.
 func SaveOpenCodeAuth(auth *OpenCodeAuth) error {
 	// Ensure directory exists
 	dir := filepath.Dir(OpenCodeAuthPath())
@@ -223,7 +225,17 @@ func SaveOpenCodeAuth(auth *OpenCodeAuth) error {
 		return fmt.Errorf("failed to create auth directory: %w", err)
 	}
 
-	data, err := json.MarshalIndent(auth, "", "  ")
+	// Read existing file to preserve non-anthropic fields (e.g., openai OAuth)
+	existing := make(map[string]interface{})
+	if data, err := os.ReadFile(OpenCodeAuthPath()); err == nil {
+		// Best-effort parse — if it fails, we start fresh
+		_ = json.Unmarshal(data, &existing)
+	}
+
+	// Update only the anthropic section
+	existing["anthropic"] = auth.Anthropic
+
+	data, err := json.MarshalIndent(existing, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal auth.json: %w", err)
 	}
