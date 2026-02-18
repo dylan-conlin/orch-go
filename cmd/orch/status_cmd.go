@@ -41,6 +41,8 @@ const (
 	compactCompletedAgentsMaxAge = 6 * time.Hour
 	// Only fetch processing status for sessions updated within this window
 	processingCheckMaxAge = 5 * time.Minute
+	// Treat session metrics as stale if no activity in this window
+	sessionMetricsStaleAfter = session.DefaultInactivityTimeout
 )
 
 var statusCmd = &cobra.Command{
@@ -442,20 +444,18 @@ func runStatus(serverURL string) error {
 		}
 
 		// Get task and check closed status from pre-fetched issues
+		beadsOpen := false
 		if issue, ok := allIssues[agent.BeadsID]; ok {
 			agent.Task = truncate(issue.Title, 40)
-			agent.IsCompleted = strings.EqualFold(issue.Status, "closed")
+			beadsOpen = !strings.EqualFold(issue.Status, "closed")
+			agent.IsCompleted = !beadsOpen
 		}
 
-		// Determine phantom status
-		// An agent is phantom if it has no live backing: no live session AND no live tmux window
-		if agent.SessionID != "" && agent.SessionID != "tmux-stalled" && agent.SessionID != "api-stalled" {
-			agent.IsPhantom = false
-		} else if agent.Window != "" {
-			agent.IsPhantom = false
-		} else {
-			agent.IsPhantom = true
-		}
+		// Determine phantom status (match reconcile.go logic)
+		// Phantom = beads issue open AND no live session AND no live tmux window
+		opencodeLive := agent.SessionID != "" && agent.SessionID != "tmux-stalled" && agent.SessionID != "api-stalled"
+		tmuxLive := agent.Window != ""
+		agent.IsPhantom = beadsOpen && !tmuxLive && !opencodeLive
 
 		// Determine source indicator
 		agent.Source = determineAgentSource(*agent, projectDir)
@@ -840,6 +840,16 @@ func getSessionMetrics() *SessionMetrics {
 	}
 
 	now := time.Now()
+	lastActivity := sess.StartedAt
+	if len(sess.Spawns) > 0 {
+		lastActivity = sess.Spawns[len(sess.Spawns)-1].SpawnedAt
+	}
+	if now.Sub(lastActivity) > sessionMetricsStaleAfter {
+		return &SessionMetrics{
+			HasActiveSession: false,
+			TimeInSession:    "-",
+		}
+	}
 	metrics := &SessionMetrics{
 		HasActiveSession: true,
 		Goal:             sess.Goal,

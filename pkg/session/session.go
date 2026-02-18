@@ -25,6 +25,9 @@ import (
 // TimeFormat is the timestamp format used in session storage.
 const TimeFormat = time.RFC3339Nano
 
+// DefaultInactivityTimeout marks sessions inactive after this long with no spawns.
+const DefaultInactivityTimeout = 24 * time.Hour
+
 // SessionType indicates the type of session for checkpoint threshold selection.
 type SessionType string
 
@@ -154,7 +157,42 @@ func New(path string) (*Store, error) {
 		return nil, err
 	}
 
+	if _, err := s.ExpireIfInactive(DefaultInactivityTimeout); err != nil {
+		return nil, err
+	}
+
 	return s, nil
+}
+
+// ExpireIfInactive clears the session if there has been no activity for staleAfter.
+// Returns true if the session was expired.
+func (s *Store) ExpireIfInactive(staleAfter time.Duration) (bool, error) {
+	if staleAfter <= 0 {
+		return false, nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.session == nil {
+		return false, nil
+	}
+
+	lastActivity := s.session.StartedAt
+	if len(s.session.Spawns) > 0 {
+		lastActivity = s.session.Spawns[len(s.session.Spawns)-1].SpawnedAt
+	}
+
+	if time.Since(lastActivity) <= staleAfter {
+		return false, nil
+	}
+
+	s.session = nil
+	if err := s.save(); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // load reads the session from disk.

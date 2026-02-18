@@ -176,6 +176,76 @@ func TestPersistence(t *testing.T) {
 	}
 }
 
+func TestAutoExpireInactiveSession(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionPath := filepath.Join(tmpDir, "session.json")
+
+	store, err := New(sessionPath)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if err := store.Start("Stale session", "test-window", ""); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	store.session.StartedAt = time.Now().Add(-DefaultInactivityTimeout - time.Hour)
+	if err := store.save(); err != nil {
+		t.Fatalf("save() error = %v", err)
+	}
+
+	reloaded, err := New(sessionPath)
+	if err != nil {
+		t.Fatalf("New() reload error = %v", err)
+	}
+
+	if reloaded.IsActive() {
+		t.Error("IsActive() = true after inactivity timeout, want false")
+	}
+	if reloaded.Get() != nil {
+		t.Error("Get() returned session after inactivity timeout, want nil")
+	}
+}
+
+func TestAutoExpireRespectsRecentSpawn(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionPath := filepath.Join(tmpDir, "session.json")
+
+	store, err := New(sessionPath)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if err := store.Start("Active session", "test-window", ""); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	store.session.StartedAt = time.Now().Add(-DefaultInactivityTimeout - time.Hour)
+	store.session.Spawns = []SpawnRecord{
+		{
+			BeadsID:   "recent-123",
+			Skill:     "feature-impl",
+			Task:      "test",
+			SpawnedAt: time.Now().Add(-DefaultInactivityTimeout / 2),
+		},
+	}
+	if err := store.save(); err != nil {
+		t.Fatalf("save() error = %v", err)
+	}
+
+	reloaded, err := New(sessionPath)
+	if err != nil {
+		t.Fatalf("New() reload error = %v", err)
+	}
+
+	if !reloaded.IsActive() {
+		t.Error("IsActive() = false with recent spawn, want true")
+	}
+	if reloaded.Get() == nil {
+		t.Error("Get() returned nil with recent spawn, want session")
+	}
+}
+
 func TestSessionReplace(t *testing.T) {
 	tmpDir := t.TempDir()
 	sessionPath := filepath.Join(tmpDir, "session.json")
