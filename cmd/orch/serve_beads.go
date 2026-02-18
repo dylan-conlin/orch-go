@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
 // projectCacheEntry holds cached data for a single project.
@@ -18,6 +21,9 @@ type projectCacheEntry struct {
 
 	readyIssues    []beads.Issue
 	readyFetchedAt time.Time
+
+	reviewQueueIssues []beads.Issue
+	reviewFetchedAt   time.Time
 
 	graphIssues    []beads.Issue
 	graphFetchedAt time.Time
@@ -35,9 +41,10 @@ type beadsStatsCache struct {
 	projects map[string]*projectCacheEntry
 
 	// TTL for stats, ready issues, and graph data
-	statsTTL time.Duration
-	readyTTL time.Duration
-	graphTTL time.Duration
+	statsTTL  time.Duration
+	readyTTL  time.Duration
+	reviewTTL time.Duration
+	graphTTL  time.Duration
 }
 
 // Global beads stats cache, initialized in runServe
@@ -45,10 +52,11 @@ var globalBeadsStatsCache *beadsStatsCache
 
 func newBeadsStatsCache() *beadsStatsCache {
 	return &beadsStatsCache{
-		projects: make(map[string]*projectCacheEntry),
-		statsTTL: 30 * time.Second, // Stats change infrequently
-		readyTTL: 15 * time.Second, // Ready queue changes more often
-		graphTTL: 15 * time.Second, // Graph data changes with ready queue
+		projects:  make(map[string]*projectCacheEntry),
+		statsTTL:  30 * time.Second, // Stats change infrequently
+		readyTTL:  15 * time.Second, // Ready queue changes more often
+		reviewTTL: 15 * time.Second, // Review queue changes with completions
+		graphTTL:  15 * time.Second, // Graph data changes with ready queue
 	}
 }
 
@@ -226,6 +234,90 @@ func (c *beadsStatsCache) getReadyIssues(projectDir string) ([]beads.Issue, erro
 	c.mu.Lock()
 	entry.readyIssues = issues
 	entry.readyFetchedAt = time.Now()
+	c.mu.Unlock()
+
+	return issues, nil
+}
+
+// getReviewQueueIssues returns cached review queue issues or fetches fresh if stale.
+// Review queue issues are in_progress issues labeled daemon:ready-review.
+func (c *beadsStatsCache) getReviewQueueIssues(projectDir string) ([]beads.Issue, error) {
+	entry := c.getOrCreateEntry(projectDir)
+
+	c.mu.RLock()
+	if entry.reviewQueueIssues != nil && time.Since(entry.reviewFetchedAt) < c.reviewTTL {
+		result := entry.reviewQueueIssues
+		c.mu.RUnlock()
+		return result, nil
+	}
+	c.mu.RUnlock()
+
+	// Determine the directory to use
+	workDir := projectDir
+	if workDir == "" {
+		workDir = beads.DefaultDir
+	}
+
+	// Fetch fresh review queue issues
+	var issues []beads.Issue
+	var err error
+
+	// Check if socket exists before attempting RPC to avoid slow timeout on dead daemon.
+	socketPath, findErr := beads.FindSocketPath(workDir)
+	socketExists := findErr == nil && socketPath != ""
+	if socketExists {
+		if _, statErr := os.Stat(socketPath); statErr != nil {
+			socketExists = false
+		}
+	}
+
+	// Thread-safe cleanup of stale beadsClient when socket disappears.
+	beadsClientMu.Lock()
+	if !socketExists && beadsClient != nil {
+		beadsClient.Close()
+		beadsClient = nil
+	}
+
+	// Reinitialize beadsClient if socket reappears and client is nil.
+	if socketExists && beadsClient == nil && socketPath != "" {
+		beadsClient = beads.NewClient(socketPath,
+			beads.WithAutoReconnect(3),
+			beads.WithTimeout(5*time.Second),
+		)
+	}
+
+	// Capture client reference under lock for use after unlock
+	currentClient := beadsClient
+	beadsClientMu.Unlock()
+
+	listArgs := &beads.ListArgs{
+		Status: "in_progress",
+		Labels: []string{"daemon:ready-review"},
+	}
+
+	// For non-default projects, always use CLI client with project dir
+	if projectDir != "" && projectDir != beads.DefaultDir {
+		cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
+		issues, err = cliClient.List(listArgs)
+	} else if currentClient != nil && socketExists {
+		issues, err = currentClient.List(listArgs)
+		if err != nil {
+			// Fallback to CLI on RPC error
+			cliClient := beads.NewCLIClient(beads.WithWorkDir(workDir))
+			issues, err = cliClient.List(listArgs)
+		}
+	} else {
+		cliClient := beads.NewCLIClient(beads.WithWorkDir(workDir))
+		issues, err = cliClient.List(listArgs)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	entry.reviewQueueIssues = issues
+	entry.reviewFetchedAt = time.Now()
 	c.mu.Unlock()
 
 	return issues, nil
@@ -426,6 +518,26 @@ type BeadsReadyAPIResponse struct {
 	Error      string               `json:"error,omitempty"`
 }
 
+// ReviewQueueIssueResponse represents an issue ready for review.
+type ReviewQueueIssueResponse struct {
+	ID        string   `json:"id"`
+	Title     string   `json:"title"`
+	Priority  int      `json:"priority"`
+	IssueType string   `json:"issue_type"`
+	Status    string   `json:"status"`
+	Labels    []string `json:"labels,omitempty"`
+	CreatedAt string   `json:"created_at,omitempty"`
+	UpdatedAt string   `json:"updated_at,omitempty"`
+}
+
+// BeadsReviewQueueResponse is the JSON structure returned by /api/beads/review-queue.
+type BeadsReviewQueueResponse struct {
+	Issues     []ReviewQueueIssueResponse `json:"issues"`
+	Count      int                        `json:"count"`
+	ProjectDir string                     `json:"project_dir,omitempty"`
+	Error      string                     `json:"error,omitempty"`
+}
+
 // handleBeadsReady returns list of ready issues for dashboard queue visibility.
 // The cache has a 15s TTL to balance freshness with performance.
 // Without caching, each request spawns a bd process (~80ms overhead).
@@ -476,6 +588,58 @@ func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode beads ready: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleBeadsReviewQueue returns list of issues awaiting review (daemon:ready-review label).
+// The cache has a 15s TTL to balance freshness with performance.
+// Query params:
+//   - project_dir: Optional project directory to query. If not provided, uses default.
+func handleBeadsReviewQueue(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectDir := r.URL.Query().Get("project_dir")
+
+	issues, err := globalBeadsStatsCache.getReviewQueueIssues(projectDir)
+	if err != nil {
+		resp := BeadsReviewQueueResponse{
+			Issues:     []ReviewQueueIssueResponse{},
+			Count:      0,
+			ProjectDir: projectDir,
+			Error:      fmt.Sprintf("Failed to get review queue: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	reviewIssues := make([]ReviewQueueIssueResponse, 0, len(issues))
+	for _, issue := range issues {
+		reviewIssues = append(reviewIssues, ReviewQueueIssueResponse{
+			ID:        issue.ID,
+			Title:     issue.Title,
+			Priority:  issue.Priority,
+			IssueType: issue.IssueType,
+			Status:    issue.Status,
+			Labels:    issue.Labels,
+			CreatedAt: issue.CreatedAt,
+			UpdatedAt: issue.UpdatedAt,
+		})
+	}
+
+	resp := BeadsReviewQueueResponse{
+		Issues:     reviewIssues,
+		Count:      len(reviewIssues),
+		ProjectDir: projectDir,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode review queue: %v", err), http.StatusInternalServerError)
 		return
 	}
 }
@@ -591,18 +755,27 @@ type QuestionsAPIResponse struct {
 	Error         string             `json:"error,omitempty"`
 }
 
+// ActiveAgentInfo represents active agent data for graph node enrichment.
+// Matches frontend active_agent interface in web/src/lib/stores/work-graph.ts
+type ActiveAgentInfo struct {
+	Phase   string `json:"phase,omitempty"`
+	Runtime string `json:"runtime,omitempty"`
+	Model   string `json:"model,omitempty"`
+}
+
 // GraphNode represents a node in the work graph (from /api/beads/graph).
 // Matches frontend GraphNode interface in web/src/lib/stores/work-graph.ts
 type GraphNode struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Type        string   `json:"type"`     // task, bug, feature, epic, question
-	Status      string   `json:"status"`   // open, in_progress, closed, blocked
-	Priority    int      `json:"priority"` // 0-4 for beads
-	Source      string   `json:"source"`   // "beads"
-	CreatedAt   string   `json:"created_at,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Labels      []string `json:"labels,omitempty"`
+	ID          string           `json:"id"`
+	Title       string           `json:"title"`
+	Type        string           `json:"type"`     // task, bug, feature, epic, question
+	Status      string           `json:"status"`   // open, in_progress, closed, blocked
+	Priority    int              `json:"priority"` // 0-4 for beads
+	Source      string           `json:"source"`   // "beads"
+	CreatedAt   string           `json:"created_at,omitempty"`
+	Description string           `json:"description,omitempty"`
+	Labels      []string         `json:"labels,omitempty"`
+	ActiveAgent *ActiveAgentInfo `json:"active_agent,omitempty"`
 }
 
 // GraphEdge represents a dependency edge in the work graph.
@@ -813,6 +986,16 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Enrich nodes with active agent data for in-progress issues.
+	// This enables the frontend to show which agent is working on each issue
+	// via the active_agent field (phase, runtime, model).
+	activeAgentMap := buildActiveAgentMap()
+	for i := range nodes {
+		if info, ok := activeAgentMap[nodes[i].ID]; ok {
+			nodes[i].ActiveAgent = info
+		}
+	}
+
 	resp := WorkGraphResponse{
 		Nodes:      nodes,
 		Edges:      edges,
@@ -826,4 +1009,62 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode graph: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// buildActiveAgentMap returns a map of beads_id -> active agent info.
+// Queries OpenCode sessions and tmux windows for running agents,
+// then enriches with phase from beads comments.
+func buildActiveAgentMap() map[string]*ActiveAgentInfo {
+	result := make(map[string]*ActiveAgentInfo)
+	now := time.Now()
+
+	// 1. OpenCode sessions (primary agent source)
+	client := opencode.NewClient(serverURL)
+	sessions, err := client.ListSessions("")
+	if err == nil {
+		for _, s := range sessions {
+			beadsID := extractBeadsIDFromTitle(s.Title)
+			if beadsID == "" {
+				continue
+			}
+			createdAt := time.Unix(s.Time.Created/1000, 0)
+			result[beadsID] = &ActiveAgentInfo{
+				Runtime: formatDuration(now.Sub(createdAt)),
+			}
+		}
+	}
+
+	// 2. Tmux windows (catches Claude CLI agents not in OpenCode)
+	workersSessions, _ := tmux.ListWorkersSessions()
+	for _, sessionName := range workersSessions {
+		windows, _ := tmux.ListWindows(sessionName)
+		for _, win := range windows {
+			if win.Name == "servers" || win.Name == "zsh" {
+				continue
+			}
+			beadsID := extractBeadsIDFromWindowName(win.Name)
+			if beadsID != "" && result[beadsID] == nil {
+				result[beadsID] = &ActiveAgentInfo{}
+			}
+		}
+	}
+
+	// 3. Enrich with phase from beads comments
+	beadsIDs := make([]string, 0, len(result))
+	for id := range result {
+		beadsIDs = append(beadsIDs, id)
+	}
+	if len(beadsIDs) > 0 {
+		commentsMap := globalBeadsCache.getComments(beadsIDs, nil)
+		for id, comments := range commentsMap {
+			if info, ok := result[id]; ok {
+				phaseStatus := verify.ParsePhaseFromComments(comments)
+				if phaseStatus.Found {
+					info.Phase = phaseStatus.Phase
+				}
+			}
+		}
+	}
+
+	return result
 }

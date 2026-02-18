@@ -1,0 +1,55 @@
+version: 1
+issue: orch-go-1022
+title: "Fix: Dashboard blind to tmux agents"
+
+automated_checks:
+  - name: Go build
+    command: go build ./cmd/orch/
+    expectation: exits 0, no errors
+    result: PASS
+
+  - name: Go vet
+    command: go vet ./cmd/orch/
+    expectation: exits 0, no warnings
+    result: PASS
+
+  - name: Go test
+    command: go test ./cmd/orch/ -timeout 60s
+    expectation: all tests pass
+    result: PASS (2.314s)
+
+manual_checks:
+  - name: No duplicate beads_ids for tmux agents
+    description: |
+      After rebuilding and restarting orch serve, check that tmux agents
+      are not duplicated by workspace scan entries.
+      curl -sk 'https://localhost:3348/api/agents' | python3 -c "
+      import sys, json; data = json.load(sys.stdin)
+      beads_ids = [a.get('beads_id') for a in data if a.get('beads_id')]
+      dupes = [bid for bid in set(beads_ids) if beads_ids.count(bid) > 1]
+      print(f'Duplicates: {dupes if dupes else \"none\"}')"
+    expectation: No duplicate beads_ids for agents that have tmux windows
+    status: PENDING (requires server restart with new binary)
+
+  - name: active_agent populated in graph API
+    description: |
+      After rebuilding, verify /api/beads/graph returns active_agent data.
+      curl -sk 'https://localhost:3348/api/beads/graph' | python3 -c "
+      import sys, json; data = json.load(sys.stdin)
+      ip = [n for n in data['nodes'] if n['status']=='in_progress']
+      for n in ip: print(f\"{n['id']}: active_agent={n.get('active_agent', 'NONE')}\")"
+    expectation: In-progress nodes have active_agent with phase data
+    status: PENDING (requires server restart with new binary)
+
+  - name: Phase populated for workspace-scanned agents
+    description: |
+      Recent workspace entries (within beadsFetchThreshold) should have phase
+      data from beads comments, not null.
+    expectation: phase field populated for recent workspace entries
+    status: PENDING (requires server restart with new binary)
+
+notes: |
+  The running orch serve uses the old binary. Full verification requires:
+  1. make install (or go build -o ~/bin/orch ./cmd/orch/)
+  2. orch-dashboard restart
+  3. Re-run manual checks above

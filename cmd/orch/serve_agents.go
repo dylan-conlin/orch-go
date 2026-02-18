@@ -604,12 +604,25 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			// Check if already in active list
-			// Active session IDs have format "workspace [beads-id]", workspace names don't
-			alreadyIn := false
 			workspaceName := entry.Name()
+
+			// Extract workspacePath and beadsID early for accurate dedup.
+			// This catches tmux agents whose IDs include emoji prefix and [beads-id] suffix,
+			// preventing the workspace scan from adding a duplicate "completed" entry.
+			workspacePath := wsCache.lookupWorkspacePathByEntry(workspaceName)
+			wsBeadsID := extractBeadsIDFromWorkspace(workspacePath)
+			if wsBeadsID == "" {
+				wsBeadsID = extractBeadsIDFromTitle(workspaceName)
+			}
+
+			// Check if already in active list (by name OR beads_id)
+			alreadyIn := false
 			for _, a := range agents {
 				if a.ID == workspaceName || strings.HasPrefix(a.ID, workspaceName+" ") {
+					alreadyIn = true
+					break
+				}
+				if wsBeadsID != "" && a.BeadsID == wsBeadsID {
 					alreadyIn = true
 					break
 				}
@@ -618,9 +631,6 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			if alreadyIn {
 				continue
 			}
-
-			// Use the lookup method for multi-project support
-			workspacePath := wsCache.lookupWorkspacePathByEntry(entry.Name())
 			synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
 			hasSynthesis := false
 
@@ -689,18 +699,24 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Extract beadsID from workspace SPAWN_CONTEXT.md (more reliable than parsing name)
-			agent.BeadsID = extractBeadsIDFromWorkspace(workspacePath)
-			// Fallback to extracting from workspace name if SPAWN_CONTEXT.md doesn't have it
-			if agent.BeadsID == "" {
-				agent.BeadsID = extractBeadsIDFromTitle(entry.Name())
-			}
+			agent.BeadsID = wsBeadsID
 			agent.Skill = extractSkillFromTitle(entry.Name())
 
-			// NOTE: We intentionally DON'T extract PROJECT_DIR or fetch beads data for completed workspaces.
-			// Completed workspaces have already done their work - they don't need phase updates.
-			// The close_reason is nice-to-have but not worth spawning bd processes.
-			// This optimization prevents CPU spikes from fetching beads data for 600+ historical workspaces.
+			// Include beads enrichment for recent workspace entries to populate phase data.
+			// Performance guard: only enrich workspaces within beadsFetchThreshold to avoid
+			// CPU spikes from fetching beads data for 600+ historical workspaces.
+			if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] {
+				workspaceTime := extractDateFromWorkspaceName(workspaceName)
+				if !workspaceTime.IsZero() && now.Sub(workspaceTime) <= beadsFetchThreshold {
+					beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)
+					seenBeadsIDs[agent.BeadsID] = true
+
+					// For cross-project agent visibility: use cached PROJECT_DIR
+					if agentProjectDir := wsCache.lookupProjectDir(agent.BeadsID); agentProjectDir != "" {
+						beadsProjectDirs[agent.BeadsID] = agentProjectDir
+					}
+				}
+			}
 
 			agents = append(agents, agent)
 		}
