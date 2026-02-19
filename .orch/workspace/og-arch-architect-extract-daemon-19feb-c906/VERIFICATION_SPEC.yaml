@@ -1,0 +1,21 @@
+# Verification spec for architect session (design-only)
+# No code changes to verify - deliverables are knowledge artifacts
+
+deliverables:
+  - path: .kb/investigations/2026-02-19-design-extract-daemon-config-package.md
+    type: investigation
+    description: Full architect investigation with surface area analysis, decision forks, and 3-phase implementation plan
+    verification: file exists and contains implementation phases
+
+  - path: .kb/models/daemon-autonomous-operation/probes/2026-02-19-probe-config-surface-area-extraction.md
+    type: probe
+    description: Probe documenting config surface area as agent operability concern
+    verification: file exists and has model impact section
+
+  - path: .orch/workspace/og-arch-architect-extract-daemon-19feb-c906/SYNTHESIS.md
+    type: synthesis
+    description: Session synthesis with delta, evidence, and next steps
+    verification: file exists
+
+skip_tests: true
+reason: Design-only session - no code changes, no behavioral changes to verify
