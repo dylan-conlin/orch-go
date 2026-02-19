@@ -263,18 +263,19 @@ func buildPlistData(cfg *userconfig.Config) (*daemonconfig.PlistData, error) {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
 
+	dcfg := daemonconfig.FromUserConfig(cfg)
 	orchPath := daemonconfig.FindOrchPath(home)
 	pathStr := daemonconfig.BuildPATH(cfg.DaemonPath())
 
 	return &daemonconfig.PlistData{
 		Label:            "com.orch.daemon",
 		OrchPath:         orchPath,
-		PollInterval:     cfg.DaemonPollInterval(),
-		MaxAgents:        cfg.DaemonMaxAgents(),
-		IssueLabel:       cfg.DaemonLabel(),
-		Verbose:          cfg.DaemonVerbose(),
-		ReflectIssues:    cfg.DaemonReflectIssues(),
-		ReflectOpen:      cfg.DaemonReflectOpen(),
+		PollInterval:     int(dcfg.PollInterval.Seconds()),
+		MaxAgents:        dcfg.MaxAgents,
+		IssueLabel:       dcfg.Label,
+		Verbose:          dcfg.Verbose,
+		ReflectIssues:    dcfg.ReflectCreateIssues,
+		ReflectOpen:      dcfg.ReflectOpenEnabled,
 		LogPath:          filepath.Join(home, ".orch", "daemon.log"),
 		WorkingDirectory: cfg.DaemonWorkingDirectory(),
 		PATH:             pathStr,
