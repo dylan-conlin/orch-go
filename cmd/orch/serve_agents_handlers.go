@@ -76,8 +76,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// Key: beadsID, Value: projectDir from workspace SPAWN_CONTEXT.md or beads query
 	beadsProjectDirs := make(map[string]string)
 
-	// Beads-first discovery: start from in_progress issues
-	inProgressIssues, issueProjectDirs := listInProgressIssues(projectDirs)
+	// Beads-first discovery: start from active issues (open + in_progress)
+	inProgressIssues, issueProjectDirs := listActiveIssues(projectDirs)
 	for beadsID, projectPath := range issueProjectDirs {
 		if projectPath != "" {
 			beadsProjectDirs[beadsID] = projectPath

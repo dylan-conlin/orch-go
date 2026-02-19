@@ -1226,7 +1226,7 @@ func TestDiscoverInvestigationPath(t *testing.T) {
 	}
 }
 
-func TestListInProgressIssuesSingleProject(t *testing.T) {
+func TestListActiveIssuesSingleProject(t *testing.T) {
 	oldListOpenIssues := listOpenIssues
 	oldListOpenIssuesWithDir := listOpenIssuesWithDir
 	defer func() {
@@ -1239,28 +1239,32 @@ func TestListInProgressIssuesSingleProject(t *testing.T) {
 	}
 	listOpenIssuesWithDir = func(projectDir string) (map[string]*verify.Issue, error) {
 		return map[string]*verify.Issue{
-			"orch-go-open":   {ID: "orch-go-open", Status: "open"},
-			"orch-go-active": {ID: "orch-go-active", Status: "in_progress"},
-			"orch-go-closed": {ID: "orch-go-closed", Status: "closed"},
+			"orch-go-open":    {ID: "orch-go-open", Status: "open"},
+			"orch-go-active":  {ID: "orch-go-active", Status: "in_progress"},
+			"orch-go-blocked": {ID: "orch-go-blocked", Status: "blocked"},
+			"orch-go-closed":  {ID: "orch-go-closed", Status: "closed"},
 		}, nil
 	}
 
-	issues, projectDirs := listInProgressIssues([]string{"/tmp/project"})
-	if len(projectDirs) != 1 {
-		t.Fatalf("Expected 1 project dir, got %d", len(projectDirs))
+	issues, projectDirs := listActiveIssues([]string{"/tmp/project"})
+	if len(projectDirs) != 2 {
+		t.Fatalf("Expected 2 project dirs (open + in_progress), got %d", len(projectDirs))
 	}
 	if _, ok := issues["orch-go-active"]; !ok {
 		t.Fatal("Expected in_progress issue to be included")
 	}
-	if _, ok := issues["orch-go-open"]; ok {
-		t.Fatal("Expected open issue to be excluded")
+	if _, ok := issues["orch-go-open"]; !ok {
+		t.Fatal("Expected open issue to be included (newly spawned agents may have open status)")
+	}
+	if _, ok := issues["orch-go-blocked"]; ok {
+		t.Fatal("Expected blocked issue to be excluded")
 	}
 	if _, ok := issues["orch-go-closed"]; ok {
 		t.Fatal("Expected closed issue to be excluded")
 	}
 }
 
-func TestListInProgressIssuesCrossProjectDedup(t *testing.T) {
+func TestListActiveIssuesCrossProjectDedup(t *testing.T) {
 	oldListOpenIssues := listOpenIssues
 	oldListOpenIssuesWithDir := listOpenIssuesWithDir
 	defer func() {
@@ -1288,7 +1292,7 @@ func TestListInProgressIssuesCrossProjectDedup(t *testing.T) {
 		}
 	}
 
-	issues, projectDirs := listInProgressIssues([]string{"/tmp/project-a", "/tmp/project-b"})
+	issues, projectDirs := listActiveIssues([]string{"/tmp/project-a", "/tmp/project-b"})
 	if len(issues) != 3 {
 		t.Fatalf("Expected 3 deduplicated issues, got %d", len(issues))
 	}
@@ -1297,7 +1301,7 @@ func TestListInProgressIssuesCrossProjectDedup(t *testing.T) {
 	}
 }
 
-func TestListInProgressIssuesEmptyProjectDirs(t *testing.T) {
+func TestListActiveIssuesEmptyProjectDirs(t *testing.T) {
 	oldListOpenIssues := listOpenIssues
 	oldListOpenIssuesWithDir := listOpenIssuesWithDir
 	defer func() {
@@ -1314,7 +1318,7 @@ func TestListInProgressIssuesEmptyProjectDirs(t *testing.T) {
 		return nil, fmt.Errorf("unexpected call")
 	}
 
-	issues, projectDirs := listInProgressIssues(nil)
+	issues, projectDirs := listActiveIssues(nil)
 	if len(projectDirs) != 0 {
 		t.Fatalf("Expected no project dir mappings, got %d", len(projectDirs))
 	}
@@ -1323,7 +1327,7 @@ func TestListInProgressIssuesEmptyProjectDirs(t *testing.T) {
 	}
 }
 
-func TestListInProgressIssuesErrorHandling(t *testing.T) {
+func TestListActiveIssuesErrorHandling(t *testing.T) {
 	oldListOpenIssues := listOpenIssues
 	oldListOpenIssuesWithDir := listOpenIssuesWithDir
 	defer func() {
@@ -1343,7 +1347,7 @@ func TestListInProgressIssuesErrorHandling(t *testing.T) {
 		}, nil
 	}
 
-	issues, _ := listInProgressIssues([]string{"/tmp/project-a", "/tmp/project-b"})
+	issues, _ := listActiveIssues([]string{"/tmp/project-a", "/tmp/project-b"})
 	if _, ok := issues["orch-go-ok"]; !ok {
 		t.Fatal("Expected in_progress issue from healthy project")
 	}
@@ -1573,6 +1577,112 @@ PROJECT_DIR: /tmp/active
 	}
 	if agent.Status != "active" {
 		t.Fatalf("Expected active status from session activity, got %s", agent.Status)
+	}
+}
+
+// TestHandleAgentsOpenStatusIssueVisible is a regression test for orch-go-1066:
+// agents with "open" status beads issues (e.g., auto-created issues where UpdateIssueStatus
+// was skipped) must be visible in the dashboard, not silently dropped.
+func TestHandleAgentsOpenStatusIssueVisible(t *testing.T) {
+	oldSourceDir := sourceDir
+	oldServerURL := serverURL
+	oldListOpenIssues := listOpenIssues
+	oldListOpenIssuesWithDir := listOpenIssuesWithDir
+	oldGetIssuesBatch := getIssuesBatch
+	oldGetCommentsBatch := getCommentsBatchWithProjectDirs
+	oldGetKBProjectsFn := getKBProjectsFn
+	oldBeadsCache := globalBeadsCache
+
+	defer func() {
+		sourceDir = oldSourceDir
+		serverURL = oldServerURL
+		listOpenIssues = oldListOpenIssues
+		listOpenIssuesWithDir = oldListOpenIssuesWithDir
+		getIssuesBatch = oldGetIssuesBatch
+		getCommentsBatchWithProjectDirs = oldGetCommentsBatch
+		getKBProjectsFn = oldGetKBProjectsFn
+		globalBeadsCache = oldBeadsCache
+		globalWorkspaceCacheInstance.invalidate()
+	}()
+
+	projectDir := t.TempDir()
+	sourceDir = projectDir
+	getKBProjectsFn = func() []string { return nil }
+	globalWorkspaceCacheInstance.invalidate()
+	globalBeadsCache = newBeadsCache()
+
+	// Create workspace for the "open" issue agent
+	workspaceName := "og-feat-test-open-20feb-acde"
+	workspacePath := filepath.Join(projectDir, ".orch", "workspace", workspaceName)
+	if err := os.MkdirAll(workspacePath, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+	spawnContext := fmt.Sprintf(`TASK: Auto-created task
+
+You were spawned from beads issue: **orch-go-open1**
+
+PROJECT_DIR: %s
+`, projectDir)
+	if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+		t.Fatalf("Failed to write SPAWN_CONTEXT.md: %v", err)
+	}
+	if err := spawn.WriteSessionID(workspacePath, "sess-open1"); err != nil {
+		t.Fatalf("Failed to write session ID: %v", err)
+	}
+
+	now := time.Now()
+	sessions := map[string]opencode.Session{
+		"sess-open1": {
+			ID:        "sess-open1",
+			Directory: projectDir,
+			Time: opencode.SessionTime{
+				Created: now.Add(-3 * time.Minute).UnixMilli(),
+				Updated: now.Add(-1 * time.Minute).UnixMilli(),
+			},
+		},
+	}
+	server := newTestOpenCodeServer(t, sessions, map[string][]opencode.Message{})
+	serverURL = server.URL
+	defer server.Close()
+
+	listOpenIssues = func() (map[string]*verify.Issue, error) {
+		return nil, fmt.Errorf("unexpected call")
+	}
+	// Return an issue with "open" status (simulates auto-created issue where
+	// UpdateIssueStatus was skipped or failed)
+	listOpenIssuesWithDir = func(dir string) (map[string]*verify.Issue, error) {
+		return map[string]*verify.Issue{
+			"orch-go-open1": {ID: "orch-go-open1", Title: "Auto-created task", Status: "open"},
+		}, nil
+	}
+	getIssuesBatch = func(ids []string, projectDirs map[string]string) (map[string]*verify.Issue, error) {
+		return map[string]*verify.Issue{
+			"orch-go-open1": {ID: "orch-go-open1", Title: "Auto-created task", Status: "open"},
+		}, nil
+	}
+	getCommentsBatchWithProjectDirs = func(ids []string, projectDirs map[string]string) map[string][]verify.Comment {
+		return map[string][]verify.Comment{}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	w := httptest.NewRecorder()
+	handleAgents(w, req)
+
+	var agents []AgentAPIResponse
+	if err := json.NewDecoder(w.Result().Body).Decode(&agents); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	agent, ok := findAgentByBeadsID(agents, "orch-go-open1")
+	if !ok {
+		t.Fatal("Expected agent with 'open' status beads issue to be visible in dashboard (regression: orch-go-1066)")
+	}
+	// Agent has a recent session, so it should be active (not dead)
+	if agent.Status == "" {
+		t.Fatal("Expected agent to have a status")
+	}
+	if agent.SessionID != "sess-open1" {
+		t.Fatalf("Expected session ID from workspace, got %s", agent.SessionID)
 	}
 }
 

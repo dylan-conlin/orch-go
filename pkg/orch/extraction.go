@@ -525,9 +525,10 @@ func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isO
 		}
 	}
 
-	// Update beads issue status to in_progress (only if tracking a real issue)
+	// Update beads issue status to in_progress (for any tracked issue, including auto-created ones)
 	// Skip for orchestrators since they don't use beads tracking
-	if !noTrack && !skipBeadsForOrchestrator && beadsIssueFlag != "" {
+	// Uses beadsID (not beadsIssueFlag) to also cover auto-created issues from determineBeadsID
+	if !noTrack && !skipBeadsForOrchestrator && beadsID != "" {
 		if err := verify.UpdateIssueStatus(beadsID, "in_progress"); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to update beads issue status: %v\n", err)
 			// Continue anyway
