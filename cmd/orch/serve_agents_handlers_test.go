@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -29,14 +28,32 @@ func newTestOpenCodeServer(t *testing.T, sessions map[string]opencode.Session, m
 	t.Helper()
 
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/session/") {
-			http.NotFound(w, r)
+		// Handle /session/status endpoint
+		if r.URL.Path == "/session/status" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]opencode.SessionStatusInfo{})
 			return
 		}
 
-		relative := strings.TrimPrefix(r.URL.Path, "/session/")
-		parts := strings.Split(strings.Trim(relative, "/"), "/")
-		if len(parts) == 0 || parts[0] == "" {
+		if r.URL.Path == "/session" || r.URL.Path == "/session/" {
+			// List sessions endpoint
+			result := make([]opencode.Session, 0, len(sessions))
+			for _, s := range sessions {
+				result = append(result, s)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(result)
+			return
+		}
+
+		if r.URL.Path == "/session" && r.Method == http.MethodPut {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(opencode.Session{})
+			return
+		}
+
+		parts := splitSessionPath(r.URL.Path)
+		if parts == nil {
 			http.NotFound(w, r)
 			return
 		}
@@ -67,10 +84,104 @@ func newTestOpenCodeServer(t *testing.T, sessions map[string]opencode.Session, m
 	}))
 }
 
+// splitSessionPath extracts parts after /session/ prefix.
+func splitSessionPath(path string) []string {
+	const prefix = "/session/"
+	if len(path) <= len(prefix) || path[:len(prefix)] != prefix {
+		return nil
+	}
+	relative := path[len(prefix):]
+	parts := make([]string, 0, 2)
+	for _, p := range splitTrim(relative, "/") {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	return parts
+}
+
+func splitTrim(s, sep string) []string {
+	var result []string
+	for s != "" {
+		idx := indexOf(s, sep)
+		if idx < 0 {
+			result = append(result, s)
+			break
+		}
+		result = append(result, s[:idx])
+		s = s[idx+len(sep):]
+	}
+	return result
+}
+
+func indexOf(s, substr string) int {
+	for i := range s {
+		if i+len(substr) <= len(s) && s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
+}
+
+// testHandlerSetup saves and restores global state for handler tests.
+type testHandlerSetup struct {
+	oldSourceDir                    string
+	oldServerURL                    string
+	oldGetKBProjectsFn              func() []string
+	oldBeadsCache                   *beadsCache
+	oldQueryTrackedAgentsFn         func([]string) ([]AgentStatus, error)
+	oldGetIssuesBatch               func([]string, map[string]string) (map[string]*verify.Issue, error)
+	oldGetCommentsBatchWithProjDirs func([]string, map[string]string) map[string][]verify.Comment
+}
+
+func setupHandlerTest(t *testing.T, projectDir string) *testHandlerSetup {
+	t.Helper()
+	s := &testHandlerSetup{
+		oldSourceDir:                    sourceDir,
+		oldServerURL:                    serverURL,
+		oldGetKBProjectsFn:              getKBProjectsFn,
+		oldBeadsCache:                   globalBeadsCache,
+		oldQueryTrackedAgentsFn:         queryTrackedAgentsFn,
+		oldGetIssuesBatch:               getIssuesBatch,
+		oldGetCommentsBatchWithProjDirs: getCommentsBatchWithProjectDirs,
+	}
+
+	sourceDir = projectDir
+	getKBProjectsFn = func() []string { return nil }
+	globalWorkspaceCacheInstance.invalidate()
+	globalTrackedAgentsCache.invalidate()
+	globalBeadsCache = newBeadsCache()
+
+	return s
+}
+
+func (s *testHandlerSetup) restore() {
+	sourceDir = s.oldSourceDir
+	serverURL = s.oldServerURL
+	getKBProjectsFn = s.oldGetKBProjectsFn
+	globalBeadsCache = s.oldBeadsCache
+	queryTrackedAgentsFn = s.oldQueryTrackedAgentsFn
+	getIssuesBatch = s.oldGetIssuesBatch
+	getCommentsBatchWithProjectDirs = s.oldGetCommentsBatchWithProjDirs
+	globalWorkspaceCacheInstance.invalidate()
+	globalTrackedAgentsCache.invalidate()
+}
+
 func TestHandleAgents(t *testing.T) {
 	if globalBeadsCache == nil {
 		globalBeadsCache = newBeadsCache()
 	}
+
+	// Mock queryTrackedAgentsFn to return empty (no beads/workspace in test env)
+	oldFn := queryTrackedAgentsFn
+	defer func() { queryTrackedAgentsFn = oldFn }()
+	queryTrackedAgentsFn = func(dirs []string) ([]AgentStatus, error) {
+		return nil, nil
+	}
+	globalTrackedAgentsCache.invalidate()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
 	w := httptest.NewRecorder()
@@ -106,44 +217,23 @@ func TestHandleAgentsMethodNotAllowed(t *testing.T) {
 }
 
 func TestHandleAgentsBeadsFirstWorkspaceEnrichment(t *testing.T) {
-	oldSourceDir := sourceDir
-	oldServerURL := serverURL
-	oldListOpenIssues := listOpenIssues
-	oldListOpenIssuesWithDir := listOpenIssuesWithDir
-	oldGetIssuesBatch := getIssuesBatch
-	oldGetCommentsBatch := getCommentsBatchWithProjectDirs
-	oldGetKBProjectsFn := getKBProjectsFn
-	oldBeadsCache := globalBeadsCache
-
-	defer func() {
-		sourceDir = oldSourceDir
-		serverURL = oldServerURL
-		listOpenIssues = oldListOpenIssues
-		listOpenIssuesWithDir = oldListOpenIssuesWithDir
-		getIssuesBatch = oldGetIssuesBatch
-		getCommentsBatchWithProjectDirs = oldGetCommentsBatch
-		getKBProjectsFn = oldGetKBProjectsFn
-		globalBeadsCache = oldBeadsCache
-		globalWorkspaceCacheInstance.invalidate()
-	}()
-
 	projectDir := t.TempDir()
-	sourceDir = projectDir
-	getKBProjectsFn = func() []string { return nil }
-	globalWorkspaceCacheInstance.invalidate()
-	globalBeadsCache = newBeadsCache()
+	setup := setupHandlerTest(t, projectDir)
+	defer setup.restore()
 
+	// Create workspace directory with SPAWN_CONTEXT.md for enrichment path
 	workspaceName := "og-feat-test-20feb-acde"
 	workspacePath := filepath.Join(projectDir, ".orch", "workspace", workspaceName)
 	if err := os.MkdirAll(workspacePath, 0755); err != nil {
 		t.Fatalf("Failed to create workspace: %v", err)
 	}
+	targetProjectDir := filepath.Join(projectDir, "target-project")
 	spawnContext := fmt.Sprintf(`TASK: Test task
 
 You were spawned from beads issue: **orch-go-aaa1**
 
 PROJECT_DIR: %s
-`, filepath.Join(projectDir, "target-project"))
+`, targetProjectDir)
 	if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
 		t.Fatalf("Failed to write SPAWN_CONTEXT.md: %v", err)
 	}
@@ -155,6 +245,7 @@ PROJECT_DIR: %s
 		t.Fatalf("Failed to write spawn time: %v", err)
 	}
 
+	// Set up OpenCode test server with session data
 	sessions := map[string]opencode.Session{
 		"sess-123": {
 			ID:        "sess-123",
@@ -170,19 +261,26 @@ PROJECT_DIR: %s
 	serverURL = server.URL
 	defer server.Close()
 
-	listOpenIssues = func() (map[string]*verify.Issue, error) {
-		return nil, fmt.Errorf("unexpected call")
-	}
-	listOpenIssuesWithDir = func(dir string) (map[string]*verify.Issue, error) {
-		return map[string]*verify.Issue{
-			"orch-go-aaa1": {ID: "orch-go-aaa1", Title: "Primary", Status: "in_progress"},
-			"orch-go-bbb2": {ID: "orch-go-bbb2", Title: "No workspace", Status: "in_progress"},
+	// Mock queryTrackedAgentsFn - the core discovery path
+	// Status "active" so determineAgentStatus sees Phase Complete + active session → "completed"
+	queryTrackedAgentsFn = func(dirs []string) ([]AgentStatus, error) {
+		return []AgentStatus{
+			{
+				BeadsID:       "orch-go-aaa1",
+				Title:         "Primary",
+				SessionID:     "sess-123",
+				ProjectDir:    targetProjectDir,
+				WorkspaceName: workspaceName,
+				Phase:         "Complete - done",
+				Status:        "active",
+			},
 		}, nil
 	}
+
+	// Mock enrichment data sources (still used by dashboard enrichment)
 	getIssuesBatch = func(ids []string, projectDirs map[string]string) (map[string]*verify.Issue, error) {
 		return map[string]*verify.Issue{
 			"orch-go-aaa1": {ID: "orch-go-aaa1", Title: "Primary", Status: "in_progress"},
-			"orch-go-bbb2": {ID: "orch-go-bbb2", Title: "No workspace", Status: "in_progress"},
 		}, nil
 	}
 	getCommentsBatchWithProjectDirs = func(ids []string, projectDirs map[string]string) map[string][]verify.Comment {
@@ -217,46 +315,20 @@ PROJECT_DIR: %s
 	if primary.SpawnedAt == "" {
 		t.Fatalf("Expected SpawnedAt from workspace")
 	}
-	if primary.ProjectDir != filepath.Join(projectDir, "target-project") {
+	if primary.ProjectDir != targetProjectDir {
 		t.Fatalf("Expected ProjectDir from workspace, got %s", primary.ProjectDir)
 	}
 	if primary.Status != "completed" {
-		t.Fatalf("Expected completed status, got %s", primary.Status)
-	}
-
-	if _, ok := findAgentByBeadsID(agents, "orch-go-bbb2"); ok {
-		t.Fatal("Expected secondary agent without workspace/session/label to be filtered out")
+		t.Fatalf("Expected completed status (Phase Complete + workspace), got %s", primary.Status)
 	}
 }
 
 func TestHandleAgentsSessionStatusDerivedFromActivity(t *testing.T) {
-	oldSourceDir := sourceDir
-	oldServerURL := serverURL
-	oldListOpenIssues := listOpenIssues
-	oldListOpenIssuesWithDir := listOpenIssuesWithDir
-	oldGetIssuesBatch := getIssuesBatch
-	oldGetCommentsBatch := getCommentsBatchWithProjectDirs
-	oldGetKBProjectsFn := getKBProjectsFn
-	oldBeadsCache := globalBeadsCache
-
-	defer func() {
-		sourceDir = oldSourceDir
-		serverURL = oldServerURL
-		listOpenIssues = oldListOpenIssues
-		listOpenIssuesWithDir = oldListOpenIssuesWithDir
-		getIssuesBatch = oldGetIssuesBatch
-		getCommentsBatchWithProjectDirs = oldGetCommentsBatch
-		getKBProjectsFn = oldGetKBProjectsFn
-		globalBeadsCache = oldBeadsCache
-		globalWorkspaceCacheInstance.invalidate()
-	}()
-
 	projectDir := t.TempDir()
-	sourceDir = projectDir
-	getKBProjectsFn = func() []string { return nil }
-	globalWorkspaceCacheInstance.invalidate()
-	globalBeadsCache = newBeadsCache()
+	setup := setupHandlerTest(t, projectDir)
+	defer setup.restore()
 
+	// Create workspace for enrichment
 	workspaceName := "og-feat-test-active-20feb-acde"
 	workspacePath := filepath.Join(projectDir, ".orch", "workspace", workspaceName)
 	if err := os.MkdirAll(workspacePath, 0755); err != nil {
@@ -290,14 +362,20 @@ PROJECT_DIR: /tmp/active
 	serverURL = server.URL
 	defer server.Close()
 
-	listOpenIssues = func() (map[string]*verify.Issue, error) {
-		return nil, fmt.Errorf("unexpected call")
-	}
-	listOpenIssuesWithDir = func(dir string) (map[string]*verify.Issue, error) {
-		return map[string]*verify.Issue{
-			"orch-go-active": {ID: "orch-go-active", Title: "Active", Status: "in_progress"},
+	// Mock queryTrackedAgentsFn - agent is active
+	queryTrackedAgentsFn = func(dirs []string) ([]AgentStatus, error) {
+		return []AgentStatus{
+			{
+				BeadsID:       "orch-go-active",
+				Title:         "Active",
+				SessionID:     "sess-active",
+				ProjectDir:    "/tmp/active",
+				WorkspaceName: workspaceName,
+				Status:        "active",
+			},
 		}, nil
 	}
+
 	getIssuesBatch = func(ids []string, projectDirs map[string]string) (map[string]*verify.Issue, error) {
 		return map[string]*verify.Issue{
 			"orch-go-active": {ID: "orch-go-active", Title: "Active", Status: "in_progress"},
@@ -326,33 +404,11 @@ PROJECT_DIR: /tmp/active
 }
 
 func TestHandleAgentsOpenStatusIssueVisible(t *testing.T) {
-	oldSourceDir := sourceDir
-	oldServerURL := serverURL
-	oldListOpenIssues := listOpenIssues
-	oldListOpenIssuesWithDir := listOpenIssuesWithDir
-	oldGetIssuesBatch := getIssuesBatch
-	oldGetCommentsBatch := getCommentsBatchWithProjectDirs
-	oldGetKBProjectsFn := getKBProjectsFn
-	oldBeadsCache := globalBeadsCache
-
-	defer func() {
-		sourceDir = oldSourceDir
-		serverURL = oldServerURL
-		listOpenIssues = oldListOpenIssues
-		listOpenIssuesWithDir = oldListOpenIssuesWithDir
-		getIssuesBatch = oldGetIssuesBatch
-		getCommentsBatchWithProjectDirs = oldGetCommentsBatch
-		getKBProjectsFn = oldGetKBProjectsFn
-		globalBeadsCache = oldBeadsCache
-		globalWorkspaceCacheInstance.invalidate()
-	}()
-
 	projectDir := t.TempDir()
-	sourceDir = projectDir
-	getKBProjectsFn = func() []string { return nil }
-	globalWorkspaceCacheInstance.invalidate()
-	globalBeadsCache = newBeadsCache()
+	setup := setupHandlerTest(t, projectDir)
+	defer setup.restore()
 
+	// Create workspace for enrichment
 	workspaceName := "og-feat-test-open-20feb-acde"
 	workspacePath := filepath.Join(projectDir, ".orch", "workspace", workspaceName)
 	if err := os.MkdirAll(workspacePath, 0755); err != nil {
@@ -386,14 +442,20 @@ PROJECT_DIR: %s
 	serverURL = server.URL
 	defer server.Close()
 
-	listOpenIssues = func() (map[string]*verify.Issue, error) {
-		return nil, fmt.Errorf("unexpected call")
-	}
-	listOpenIssuesWithDir = func(dir string) (map[string]*verify.Issue, error) {
-		return map[string]*verify.Issue{
-			"orch-go-open1": {ID: "orch-go-open1", Title: "Auto-created task", Status: "open"},
+	// Mock queryTrackedAgentsFn - agent with "open" status issue
+	queryTrackedAgentsFn = func(dirs []string) ([]AgentStatus, error) {
+		return []AgentStatus{
+			{
+				BeadsID:       "orch-go-open1",
+				Title:         "Auto-created task",
+				SessionID:     "sess-open1",
+				ProjectDir:    projectDir,
+				WorkspaceName: workspaceName,
+				Status:        "active",
+			},
 		}, nil
 	}
+
 	getIssuesBatch = func(ids []string, projectDirs map[string]string) (map[string]*verify.Issue, error) {
 		return map[string]*verify.Issue{
 			"orch-go-open1": {ID: "orch-go-open1", Title: "Auto-created task", Status: "open"},
@@ -425,33 +487,11 @@ PROJECT_DIR: %s
 }
 
 func TestHandleAgentsSessionNotFoundDefaultsToDead(t *testing.T) {
-	oldSourceDir := sourceDir
-	oldServerURL := serverURL
-	oldListOpenIssues := listOpenIssues
-	oldListOpenIssuesWithDir := listOpenIssuesWithDir
-	oldGetIssuesBatch := getIssuesBatch
-	oldGetCommentsBatch := getCommentsBatchWithProjectDirs
-	oldGetKBProjectsFn := getKBProjectsFn
-	oldBeadsCache := globalBeadsCache
-
-	defer func() {
-		sourceDir = oldSourceDir
-		serverURL = oldServerURL
-		listOpenIssues = oldListOpenIssues
-		listOpenIssuesWithDir = oldListOpenIssuesWithDir
-		getIssuesBatch = oldGetIssuesBatch
-		getCommentsBatchWithProjectDirs = oldGetCommentsBatch
-		getKBProjectsFn = oldGetKBProjectsFn
-		globalBeadsCache = oldBeadsCache
-		globalWorkspaceCacheInstance.invalidate()
-	}()
-
 	projectDir := t.TempDir()
-	sourceDir = projectDir
-	getKBProjectsFn = func() []string { return nil }
-	globalWorkspaceCacheInstance.invalidate()
-	globalBeadsCache = newBeadsCache()
+	setup := setupHandlerTest(t, projectDir)
+	defer setup.restore()
 
+	// Create workspace for enrichment
 	workspaceName := "og-feat-test-dead-20feb-acde"
 	workspacePath := filepath.Join(projectDir, ".orch", "workspace", workspaceName)
 	if err := os.MkdirAll(workspacePath, 0755); err != nil {
@@ -470,18 +510,27 @@ PROJECT_DIR: /tmp/dead
 		t.Fatalf("Failed to write session ID: %v", err)
 	}
 
+	// OpenCode server has NO sessions - simulates missing session
 	server := newTestOpenCodeServer(t, map[string]opencode.Session{}, map[string][]opencode.Message{})
 	serverURL = server.URL
 	defer server.Close()
 
-	listOpenIssues = func() (map[string]*verify.Issue, error) {
-		return nil, fmt.Errorf("unexpected call")
-	}
-	listOpenIssuesWithDir = func(dir string) (map[string]*verify.Issue, error) {
-		return map[string]*verify.Issue{
-			"orch-go-dead": {ID: "orch-go-dead", Title: "Dead", Status: "in_progress"},
+	// Mock queryTrackedAgentsFn - agent has session ID but session is idle/dead
+	queryTrackedAgentsFn = func(dirs []string) ([]AgentStatus, error) {
+		return []AgentStatus{
+			{
+				BeadsID:       "orch-go-dead",
+				Title:         "Dead",
+				SessionID:     "sess-missing",
+				ProjectDir:    "/tmp/dead",
+				WorkspaceName: workspaceName,
+				Status:        "idle",
+				SessionDead:   true,
+				Reason:        "session_idle",
+			},
 		}, nil
 	}
+
 	getIssuesBatch = func(ids []string, projectDirs map[string]string) (map[string]*verify.Issue, error) {
 		return map[string]*verify.Issue{
 			"orch-go-dead": {ID: "orch-go-dead", Title: "Dead", Status: "in_progress"},
@@ -505,50 +554,32 @@ PROJECT_DIR: /tmp/dead
 		t.Fatal("Expected dead agent to be present")
 	}
 	if agent.Status != "dead" {
-		t.Fatalf("Expected dead status when session fetch fails, got %s", agent.Status)
+		t.Fatalf("Expected dead status when session is idle, got %s", agent.Status)
 	}
 }
 
 func TestHandleAgentsReviewLabelWithoutWorkspace(t *testing.T) {
-	oldSourceDir := sourceDir
-	oldServerURL := serverURL
-	oldListOpenIssues := listOpenIssues
-	oldListOpenIssuesWithDir := listOpenIssuesWithDir
-	oldGetIssuesBatch := getIssuesBatch
-	oldGetCommentsBatch := getCommentsBatchWithProjectDirs
-	oldGetKBProjectsFn := getKBProjectsFn
-	oldBeadsCache := globalBeadsCache
-
-	defer func() {
-		sourceDir = oldSourceDir
-		serverURL = oldServerURL
-		listOpenIssues = oldListOpenIssues
-		listOpenIssuesWithDir = oldListOpenIssuesWithDir
-		getIssuesBatch = oldGetIssuesBatch
-		getCommentsBatchWithProjectDirs = oldGetCommentsBatch
-		getKBProjectsFn = oldGetKBProjectsFn
-		globalBeadsCache = oldBeadsCache
-		globalWorkspaceCacheInstance.invalidate()
-	}()
-
 	projectDir := t.TempDir()
-	sourceDir = projectDir
-	getKBProjectsFn = func() []string { return nil }
-	globalWorkspaceCacheInstance.invalidate()
-	globalBeadsCache = newBeadsCache()
+	setup := setupHandlerTest(t, projectDir)
+	defer setup.restore()
 
 	server := newTestOpenCodeServer(t, map[string]opencode.Session{}, map[string][]opencode.Message{})
 	serverURL = server.URL
 	defer server.Close()
 
-	listOpenIssues = func() (map[string]*verify.Issue, error) {
-		return nil, fmt.Errorf("unexpected call")
-	}
-	listOpenIssuesWithDir = func(dir string) (map[string]*verify.Issue, error) {
-		return map[string]*verify.Issue{
-			"orch-go-review": {ID: "orch-go-review", Title: "Needs review", Status: "in_progress", Labels: []string{"daemon:ready-review"}},
+	// Mock queryTrackedAgentsFn - issue with no workspace binding (missing_binding)
+	queryTrackedAgentsFn = func(dirs []string) ([]AgentStatus, error) {
+		return []AgentStatus{
+			{
+				BeadsID:        "orch-go-review",
+				Title:          "Needs review",
+				Status:         "unknown",
+				MissingBinding: true,
+				Reason:         "missing_binding",
+			},
 		}, nil
 	}
+
 	getIssuesBatch = func(ids []string, projectDirs map[string]string) (map[string]*verify.Issue, error) {
 		return map[string]*verify.Issue{
 			"orch-go-review": {ID: "orch-go-review", Title: "Needs review", Status: "in_progress", Labels: []string{"daemon:ready-review"}},

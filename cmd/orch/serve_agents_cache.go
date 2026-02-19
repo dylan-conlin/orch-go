@@ -156,6 +156,69 @@ var globalBeadsCache *beadsCache
 var getIssuesBatch = verify.GetIssuesBatch
 var getCommentsBatchWithProjectDirs = verify.GetCommentsBatchWithProjectDirs
 
+// queryTrackedAgentsFn is the function used by the cache to fetch tracked agents.
+// Package-level variable to allow test injection.
+var queryTrackedAgentsFn = queryTrackedAgents
+
+// trackedAgentsCache provides TTL-based caching for queryTrackedAgents results.
+// The dashboard polls /api/agents every 30s; queryTrackedAgents involves beads RPC,
+// workspace scanning, and OpenCode HTTP calls. Caching prevents redundant work.
+// TTL of 3 seconds balances freshness with performance.
+type trackedAgentsCache struct {
+	mu          sync.RWMutex
+	agents      []AgentStatus
+	fetchedAt   time.Time
+	ttl         time.Duration
+	projectDirs []string // Track which project dirs the cache was built with
+}
+
+// defaultTrackedAgentsTTL is the cache TTL for queryTrackedAgents results.
+// Short enough to show status changes within a few seconds,
+// long enough to prevent redundant queries from rapid dashboard polls.
+const defaultTrackedAgentsTTL = 3 * time.Second
+
+// globalTrackedAgentsCache is the singleton cache for the dashboard server.
+var globalTrackedAgentsCache = &trackedAgentsCache{
+	ttl: defaultTrackedAgentsTTL,
+}
+
+// get returns cached tracked agents or queries fresh if cache is stale.
+// Rebuilds if TTL expired or project dirs changed.
+func (c *trackedAgentsCache) get(projectDirs []string) ([]AgentStatus, error) {
+	c.mu.RLock()
+	cacheValid := c.agents != nil && time.Since(c.fetchedAt) < c.ttl
+	dirsMatch := projectDirsMatch(c.projectDirs, projectDirs)
+	if cacheValid && dirsMatch {
+		result := c.agents
+		c.mu.RUnlock()
+		return result, nil
+	}
+	c.mu.RUnlock()
+
+	// Fetch fresh data
+	agents, err := queryTrackedAgentsFn(projectDirs)
+	if err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	c.agents = agents
+	c.fetchedAt = time.Now()
+	c.projectDirs = projectDirs
+	c.mu.Unlock()
+
+	return agents, nil
+}
+
+// invalidate clears the cached tracked agents data.
+func (c *trackedAgentsCache) invalidate() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.agents = nil
+	c.fetchedAt = time.Time{}
+	c.projectDirs = nil
+}
+
 // newBeadsCache creates a new beads cache with default TTLs.
 func newBeadsCache() *beadsCache {
 	return &beadsCache{

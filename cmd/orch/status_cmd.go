@@ -16,8 +16,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/session"
-	"github.com/dylan-conlin/orch-go/pkg/spawn"
-	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -193,303 +191,66 @@ func runStatus(serverURL string) error {
 	client := opencode.NewClient(serverURL)
 	now := time.Now()
 
-	agents := make([]AgentInfo, 0)
-	seenBeadsIDs := make(map[string]bool)
-
-	// Get current project's workspace directory for workspace lookups
+	// Get current project directory
 	projectDir, _ := os.Getwd()
 
-	// === OPTIMIZED: Batch fetch all data upfront ===
-	// 1. Fetch sessions across all known projects (not just current project).
-	// OpenCode scopes sessions by x-opencode-directory header, so cross-project
-	// agents are invisible without querying each project directory.
-	sessions, err := listSessionsAcrossProjects(client, projectDir)
+	// Build project dirs list for cross-project visibility
+	projectDirs := uniqueProjectDirs(append([]string{projectDir}, getKBProjectsFn()...))
+
+	// === Core discovery via queryTrackedAgents (single-pass query engine) ===
+	// This replaces the previous 3-phase ad-hoc discovery (workspace scan, tmux, opencode sessions).
+	// See query_tracked.go for the implementation.
+	trackedAgents, err := queryTrackedAgents(projectDirs)
 	if err != nil {
-		return fmt.Errorf("failed to list sessions: %w", err)
+		return fmt.Errorf("failed to query tracked agents: %w", err)
+	}
+
+	// Convert AgentStatus -> AgentInfo for display
+	agents := make([]AgentInfo, 0, len(trackedAgents))
+	for _, tracked := range trackedAgents {
+		info := agentStatusToAgentInfo(tracked, now)
+		agents = append(agents, info)
+	}
+
+	// Enrich with session data for runtime/processing status
+	// queryTrackedAgents provides liveness (active/idle/retrying) but not timestamps or processing details.
+	sessions, _ := listSessionsAcrossProjects(client, projectDir)
+	sessionMap := make(map[string]*opencode.Session)
+	for i := range sessions {
+		sessionMap[sessions[i].ID] = &sessions[i]
 	}
 
 	sessionStatusMap := make(map[string]opencode.SessionStatusInfo)
 	if status, err := client.GetAllSessionStatus(); err == nil {
 		sessionStatusMap = status
-	} else {
-		fmt.Fprintf(os.Stderr, "Warning: failed to fetch session status: %v\n", err)
 	}
-
-	// Build a map of session ID -> session for quick lookup
-	sessionMap := make(map[string]*opencode.Session)
-	// Also build a map of beadsID -> session for matching
-	beadsToSession := make(map[string]*opencode.Session)
-	const maxIdleTime = 30 * time.Minute
-
-	for i := range sessions {
-		s := &sessions[i]
-		sessionMap[s.ID] = s
-
-		// Only consider recently active sessions for beads matching
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
-		if now.Sub(updatedAt) <= maxIdleTime {
-			beadsID := beadsIDFromSession(s)
-			if beadsID != "" {
-				beadsToSession[beadsID] = s
-			}
-		}
-	}
-
-	// 2. Collect beads IDs first, then batch fetch issues later
-	// (openIssues removed - we now use allIssues to check both open and closed status)
-
-	// 3. Collect all beads IDs we need comments for
-	var beadsIDsToFetch []string
-
-	// Track project directories for cross-project agents (beadsID -> projectDir)
-	beadsProjectDirs := make(map[string]string)
-
-	// Phase 1: Collect agents from workspace AGENT_MANIFEST.json files
-	// Workspace files are the source of truth for spawn-time metadata.
-	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
-	if entries, err := os.ReadDir(workspaceDir); err == nil {
-		for _, entry := range entries {
-			if !entry.IsDir() || entry.Name() == "archived" {
-				continue
-			}
-
-			wsPath := filepath.Join(workspaceDir, entry.Name())
-			manifest, err := spawn.ReadAgentManifest(wsPath)
-			if err != nil {
-				continue // Skip workspaces without manifest (pre-manifest or non-agent dirs)
-			}
-
-			sessionID := spawn.ReadSessionID(wsPath)
-
-			info := AgentInfo{
-				SessionID:  sessionID,
-				BeadsID:    manifest.BeadsID,
-				Mode:       manifest.SpawnMode,
-				Model:      manifest.Model,
-				Skill:      manifest.Skill,
-				ProjectDir: manifest.ProjectDir,
-				Project:    extractProjectFromBeadsID(manifest.BeadsID),
-			}
-
-			// Enrich from OpenCode session if available
-			if sessionID != "" {
-				if s, ok := sessionMap[sessionID]; ok {
-					createdAt := time.Unix(s.Time.Created/1000, 0)
-					updatedAt := time.Unix(s.Time.Updated/1000, 0)
-					info.Runtime = formatDuration(now.Sub(createdAt))
-					info.LastActivity = updatedAt
-					if info.Title == "" {
-						info.Title = workspaceNameFromSession(s)
-					}
-					if info.ProjectDir == "" {
-						if projectDir := projectDirFromWorkspacePath(workspacePathFromSession(s)); projectDir != "" {
-							info.ProjectDir = projectDir
-						} else if s.Directory != "" {
-							info.ProjectDir = s.Directory
-						}
-					}
-					if statusInfo, ok := sessionStatusMap[s.ID]; ok {
-						info.IsProcessing = statusInfo.IsBusy() || statusInfo.IsRetrying()
-					} else {
-						info.IsProcessing = isSessionLikelyProcessing(client, s.ID, updatedAt, now)
-					}
-				} else {
-					info.SessionID = "api-stalled"
-				}
-			}
-
-			if manifest.BeadsID != "" {
-				if !seenBeadsIDs[manifest.BeadsID] {
-					beadsIDsToFetch = append(beadsIDsToFetch, manifest.BeadsID)
-					seenBeadsIDs[manifest.BeadsID] = true
-				}
-				if manifest.ProjectDir != "" {
-					beadsProjectDirs[manifest.BeadsID] = manifest.ProjectDir
-				}
-			}
-
-			agents = append(agents, info)
-		}
-	}
-
-	// Phase 2: Discovery - Collect agents from tmux windows (for untracked or legacy agents)
-	workersSessions, _ := tmux.ListWorkersSessions()
-	for _, sessionName := range workersSessions {
-		windows, _ := tmux.ListWindows(sessionName)
-		for _, w := range windows {
-			// Skip known non-agent windows
-			if w.Name == "servers" || w.Name == "zsh" {
-				continue
-			}
-
-			beadsID := extractBeadsIDFromWindowName(w.Name)
-			if beadsID == "" {
-				continue
-			}
-
-			// Skip if already tracked via workspace scan
-			if seenBeadsIDs[beadsID] {
-				// Enrich existing AgentInfo with window details if missing
-				for i := range agents {
-					if agents[i].BeadsID == beadsID {
-						if agents[i].Window == "" {
-							agents[i].Window = w.Target
-							agents[i].Title = w.Name
-						}
-						break
-					}
-				}
-				continue
-			}
-
-			agents = append(agents, AgentInfo{
-				BeadsID: beadsID,
-				Mode:    "claude", // Legacy/untracked tmux agents are claude mode
-				Skill:   extractSkillFromWindowName(w.Name),
-				Project: extractProjectFromBeadsID(beadsID),
-				Window:  w.Target,
-				Title:   w.Name,
-			})
-
-			if beadsID != "" && !seenBeadsIDs[beadsID] {
-				beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
-				seenBeadsIDs[beadsID] = true
-			}
-		}
-	}
-
-	// Phase 3: Discovery - Collect beads IDs from active OpenCode sessions (untracked)
-	for _, s := range sessions {
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
-		if now.Sub(updatedAt) > maxIdleTime {
-			continue
-		}
-
-		beadsID := extractBeadsIDFromTitle(s.Title)
-		if beadsID == "" {
-			continue
-		}
-
-		// Skip if already tracked via workspace scan or tmux
-		if seenBeadsIDs[beadsID] {
-			continue
-		}
-
-		createdAt := time.Unix(s.Time.Created/1000, 0)
-		// updatedAt already declared in loop, so just use existing value
-		agents = append(agents, AgentInfo{
-			SessionID:    s.ID,
-			BeadsID:      beadsID,
-			Mode:         "opencode", // Untracked OpenCode sessions are opencode mode
-			Title:        s.Title,
-			Runtime:      formatDuration(now.Sub(createdAt)),
-			LastActivity: updatedAt,
-			Skill:        extractSkillFromTitle(s.Title),
-			Project:      extractProjectFromBeadsID(beadsID),
-			IsProcessing: isSessionLikelyProcessing(client, s.ID, updatedAt, now),
-		})
-
-		beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
-		seenBeadsIDs[beadsID] = true
-	}
-
-	// Build beadsProjectDirs map for cross-project agents.
-	// Strategy 1: Use session.Directory from OpenCode sessions (if valid, not "/").
-	// Strategy 2: Look up workspace from current project's .orch/workspace/.
-	// Strategy 3: Derive project directory from beads ID prefix by checking known project locations.
-	// This ensures we look up beads comments from the correct project's .beads/ directory.
-	for beadsID, session := range beadsToSession {
-		if session != nil && session.Directory != "" && session.Directory != "/" && session.Directory != projectDir {
-			beadsProjectDirs[beadsID] = session.Directory
-		}
-	}
-
-	// For beads IDs without a valid session directory, try additional strategies
-	for _, beadsID := range beadsIDsToFetch {
-		if _, hasProjectDir := beadsProjectDirs[beadsID]; hasProjectDir {
-			continue // Already have project dir
-		}
-
-		// Strategy 2: Look up workspace from current project
-		workspacePath, _ := findWorkspaceByBeadsID(projectDir, beadsID)
-		if workspacePath != "" {
-			agentProjectDir := extractProjectDirFromWorkspace(workspacePath)
-			if agentProjectDir != "" {
-				beadsProjectDirs[beadsID] = agentProjectDir
-				continue
-			}
-		}
-
-		// Strategy 3: Derive from beads ID prefix
-		// Beads IDs have format: project-name-xxxx (e.g., orch-go-3anf, kb-cli-xrm)
-		projectName := extractProjectFromBeadsID(beadsID)
-		if projectName != "" && projectName != "untracked" {
-			if derivedDir := findProjectDirByName(projectName); derivedDir != "" {
-				beadsProjectDirs[beadsID] = derivedDir
-			}
-		}
-	}
-
-	// 4. Batch fetch all comments with project-aware lookup for cross-project agents
-	commentsMap := verify.GetCommentsBatchWithProjectDirs(beadsIDsToFetch, beadsProjectDirs)
-
-	// 5. Batch fetch issue details to check closed status
-	// This also provides task info for closed issues (not returned by ListOpenIssues)
-	allIssues, _ := verify.GetIssuesBatch(beadsIDsToFetch, beadsProjectDirs)
-
-	// === Now enrich and filter agents ===
 
 	for i := range agents {
 		agent := &agents[i]
-
-		// Get phase from pre-fetched comments
-		if comments, ok := commentsMap[agent.BeadsID]; ok {
-			phaseStatus := verify.ParsePhaseFromComments(comments)
-			if phaseStatus.Found {
-				agent.Phase = phaseStatus.Phase
-				agent.PhaseReportedAt = phaseStatus.PhaseReportedAt
+		if agent.SessionID == "" {
+			continue
+		}
+		if s, ok := sessionMap[agent.SessionID]; ok {
+			createdAt := time.Unix(s.Time.Created/1000, 0)
+			updatedAt := time.Unix(s.Time.Updated/1000, 0)
+			agent.Runtime = formatDuration(now.Sub(createdAt))
+			agent.LastActivity = updatedAt
+			if statusInfo, ok := sessionStatusMap[s.ID]; ok {
+				agent.IsProcessing = statusInfo.IsBusy() || statusInfo.IsRetrying()
 			}
 		}
-
-		// Get task and check closed status from pre-fetched issues
-		beadsOpen := false
-		if issue, ok := allIssues[agent.BeadsID]; ok {
-			agent.Task = truncate(issue.Title, 40)
-			beadsOpen = !strings.EqualFold(issue.Status, "closed")
-			agent.IsCompleted = !beadsOpen
-		}
-
-		// Determine phantom status (match reconcile.go logic)
-		// Phantom = beads issue open AND no live session AND no live tmux window
-		opencodeLive := agent.SessionID != "" && agent.SessionID != "tmux-stalled" && agent.SessionID != "api-stalled"
-		tmuxLive := agent.Window != ""
-		agent.IsPhantom = beadsOpen && !tmuxLive && !opencodeLive
-
-		// Determine source indicator
-		agent.Source = determineAgentSource(*agent, projectDir)
-
-		// If it's claude mode and we matched a session, get runtime
-		if agent.Mode == "claude" && agent.SessionID != "" {
-			if s, ok := sessionMap[agent.SessionID]; ok {
-				createdAt := time.Unix(s.Time.Created/1000, 0)
-				updatedAt := time.Unix(s.Time.Updated/1000, 0)
-				agent.Runtime = formatDuration(now.Sub(createdAt))
-				if agent.Title == "" {
-					agent.Title = s.Title
-				}
-				agent.IsProcessing = isSessionLikelyProcessing(client, s.ID, updatedAt, now)
-			}
-		}
-
-		// Ensure runtime has a value
 		if agent.Runtime == "" {
 			agent.Runtime = "unknown"
 		}
 	}
 
-	// Phase 3: Filter agents based on flags
-	// Compact mode (default): Only show running agents + recently completed (Phase: Complete)
-	// Full mode (--all): Show all agents including idle, phantom, completed
+	// Determine phantom and completed status from the query engine's reason codes
+	for i := range agents {
+		agent := &agents[i]
+		agent.Source = determineAgentSource(*agent, projectDir)
+	}
+
+	// Filter agents based on flags
 	filteredAgents := make([]AgentInfo, 0)
 	for _, agentItem := range agents {
 		// Filter by project if specified
@@ -504,7 +265,7 @@ func runStatus(serverURL string) error {
 		if !statusAll {
 			isRunning := agentItem.IsProcessing
 
-			isComplete := strings.EqualFold(agentItem.Phase, "Complete")
+			isComplete := strings.HasPrefix(agentItem.Phase, "Complete")
 			isRecent := true
 			if isComplete && agentItem.PhaseReportedAt != nil {
 				if time.Since(*agentItem.PhaseReportedAt) > compactCompletedAgentsMaxAge {
@@ -517,16 +278,13 @@ func runStatus(serverURL string) error {
 				strings.EqualFold(agentItem.Phase, "QUESTION")
 
 			if !isRunning && !needsAttention {
-				continue // Skip idle or stale complete agents in compact mode
+				continue
 			}
 		}
 
-		// Filter completed agents (beads issue closed) unless --all is set
 		if agentItem.IsCompleted && !statusAll {
 			continue
 		}
-
-		// Filter phantom agents unless --all is set
 		if agentItem.IsPhantom && !statusAll {
 			continue
 		}
@@ -534,7 +292,7 @@ func runStatus(serverURL string) error {
 		filteredAgents = append(filteredAgents, agentItem)
 	}
 
-	// Phase 4: Build swarm status (counts before filtering)
+	// Build swarm status (counts before filtering)
 	activeCount := 0
 	processingCount := 0
 	idleCount := 0
@@ -544,7 +302,6 @@ func runStatus(serverURL string) error {
 		if agent.IsPhantom {
 			phantomCount++
 		} else if agent.IsCompleted {
-			// Completed agents (beads issue closed) don't count as active
 			completedCount++
 		} else {
 			activeCount++
@@ -561,8 +318,8 @@ func runStatus(serverURL string) error {
 		Processing: processingCount,
 		Idle:       idleCount,
 		Phantom:    phantomCount,
-		Queued:     0,              // TODO: implement queuing system
-		Completed:  completedCount, // Agents with closed beads issues
+		Queued:     0,
+		Completed:  completedCount,
 	}
 
 	// Fetch account usage information
@@ -571,22 +328,16 @@ func runStatus(serverURL string) error {
 	// Fetch token usage - in compact mode, only for running agents (expensive operation)
 	for i := range filteredAgents {
 		agent := &filteredAgents[i]
-		// Skip if no valid session ID
 		if agent.SessionID == "" || agent.SessionID == "tmux-stalled" {
 			continue
 		}
-		// In compact mode, only fetch tokens for running agents (saves ~100ms per idle agent)
 		if !statusAll && !agent.IsProcessing {
 			continue
 		}
 		tokens, err := client.GetSessionTokens(agent.SessionID)
 		if err == nil && tokens != nil {
 			agent.Tokens = tokens
-
-			// Check for stall: agent running but no token progress for N minutes
-			// Only check for processing agents (skip idle/phantom/completed)
 			if agent.IsProcessing && !agent.IsPhantom && !agent.IsCompleted {
-				// Use global stall tracker to detect token-based stalls
 				isStalled := globalStallTracker.Update(agent.SessionID, tokens)
 				if isStalled {
 					agent.IsStalled = true
@@ -598,15 +349,12 @@ func runStatus(serverURL string) error {
 	// Assess context exhaustion risk - in compact mode, only for running agents
 	for i := range filteredAgents {
 		agent := &filteredAgents[i]
-		// Skip phantom or completed agents
 		if agent.IsPhantom || agent.IsCompleted {
 			continue
 		}
-		// In compact mode, only assess risk for running agents
 		if !statusAll && !agent.IsProcessing {
 			continue
 		}
-		// Get total tokens for risk assessment
 		totalTokens := 0
 		if agent.Tokens != nil {
 			totalTokens = agent.Tokens.TotalTokens
@@ -614,7 +362,6 @@ func runStatus(serverURL string) error {
 				totalTokens = agent.Tokens.InputTokens + agent.Tokens.OutputTokens
 			}
 		}
-		// Assess risk (uses ProjectDir for git status check)
 		risk := verify.AssessContextRisk(totalTokens, agent.ProjectDir, agent.IsProcessing)
 		if risk.IsAtRisk() {
 			agent.ContextRisk = &risk
@@ -630,10 +377,10 @@ func runStatus(serverURL string) error {
 		synthesisOpps, _ = verify.DetectSynthesisOpportunities(projectDir)
 	}
 
-	// Get session metrics for drift detection (surfaces to Dylan)
+	// Get session metrics for drift detection
 	sessionMetrics := getSessionMetrics()
 
-	// Build output (use filtered agents for display)
+	// Build output
 	output := StatusOutput{
 		Infrastructure:         infraHealth,
 		SessionMetrics:         sessionMetrics,
@@ -643,7 +390,6 @@ func runStatus(serverURL string) error {
 		SynthesisOpportunities: synthesisOpps,
 	}
 
-	// Output as JSON if flag is set
 	if statusJSON {
 		data, err := json.MarshalIndent(output, "", "  ")
 		if err != nil {
@@ -653,9 +399,57 @@ func runStatus(serverURL string) error {
 		return nil
 	}
 
-	// Print human-readable output
 	printSwarmStatus(output, statusAll)
 	return nil
+}
+
+// agentStatusToAgentInfo converts a queryTrackedAgents result to the CLI display type.
+// Maps reason codes to status annotations for human-readable output.
+func agentStatusToAgentInfo(tracked AgentStatus, now time.Time) AgentInfo {
+	info := AgentInfo{
+		SessionID:  tracked.SessionID,
+		BeadsID:    tracked.BeadsID,
+		Model:      tracked.Model,
+		Skill:      tracked.Skill,
+		ProjectDir: tracked.ProjectDir,
+		Project:    extractProjectFromBeadsID(tracked.BeadsID),
+		Mode:       tracked.SpawnMode,
+		Task:       truncate(tracked.Title, 40),
+	}
+
+	// Map status
+	switch tracked.Status {
+	case "active":
+		info.IsProcessing = true
+	case "idle":
+		// idle but not phantom (has session)
+	case "retrying":
+		info.IsProcessing = true // show as running with annotation
+	}
+
+	// Map phase - extract just the phase name for the Phase field
+	if tracked.Phase != "" {
+		info.Phase = tracked.Phase
+	}
+
+	// Surface reason codes
+	if tracked.Reason != "" {
+		// Embed reason in the status display logic
+		switch tracked.Reason {
+		case "missing_binding":
+			info.IsPhantom = true
+		case "session_idle":
+			// session exists but idle
+		case "opencode_unreachable":
+			// degrade gracefully
+		}
+	}
+
+	if info.Runtime == "" {
+		info.Runtime = "unknown"
+	}
+
+	return info
 }
 
 // extractDateFromWorkspaceName parses the date suffix from a workspace name.

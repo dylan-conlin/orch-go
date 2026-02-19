@@ -28,6 +28,9 @@ func handleCacheInvalidate(w http.ResponseWriter, r *http.Request) {
 	// Invalidate workspace cache (workspace metadata)
 	globalWorkspaceCacheInstance.invalidate()
 
+	// Invalidate tracked agents cache (queryTrackedAgents results)
+	globalTrackedAgentsCache.invalidate()
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"status":  "ok",

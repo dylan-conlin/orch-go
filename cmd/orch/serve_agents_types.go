@@ -32,6 +32,7 @@ type AgentAPIResponse struct {
 	InvestigationContent string               `json:"investigation_content,omitempty"` // Raw investigation file content for inline rendering
 	CurrentActivity      string               `json:"current_activity,omitempty"`      // Last activity text from session messages
 	LastActivityAt       string               `json:"last_activity_at,omitempty"`      // ISO 8601 timestamp of last activity
+	Reason               string               `json:"reason,omitempty"`                // Reason code for degraded/partial state (from query engine)
 }
 
 // GapAPIResponse represents gap analysis data for the API.
