@@ -15,14 +15,18 @@ import (
 //
 // Default: 12h if not specified or invalid.
 func parseSinceParam(r *http.Request) time.Duration {
+	return parseSinceParamWithDefault(r, 12*time.Hour)
+}
+
+// parseSinceParamWithDefault parses the ?since= query parameter with a custom default.
+// A defaultDuration of 0 means no time filtering when the param is not specified.
+func parseSinceParamWithDefault(r *http.Request, defaultDuration time.Duration) time.Duration {
 	since := r.URL.Query().Get("since")
-	if since == "" || since == "all" {
-		// "all" means no time filtering - return 0
-		if since == "all" {
-			return 0
-		}
-		// Default to 12h if not specified
-		return 12 * time.Hour
+	if since == "" {
+		return defaultDuration
+	}
+	if since == "all" {
+		return 0
 	}
 
 	// Try parsing as hours (e.g., "12h", "24h")
@@ -41,8 +45,8 @@ func parseSinceParam(r *http.Request) time.Duration {
 		}
 	}
 
-	// Default fallback
-	return 12 * time.Hour
+	// Default fallback for invalid values
+	return defaultDuration
 }
 
 // parseProjectFilter parses the ?project= query parameter.

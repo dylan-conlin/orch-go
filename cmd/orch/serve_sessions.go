@@ -41,7 +41,10 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sinceDuration := parseSinceParam(r)
+	// Default to no time filtering for sessions (matching CLI behavior).
+	// The CLI's orch sessions has no time filter; the API should behave the same.
+	// Callers can still pass ?since=12h to opt into time filtering.
+	sinceDuration := parseSinceParamWithDefault(r, 0)
 	projectFilterParam := parseProjectFilter(r)
 
 	projectDir := sourceDir

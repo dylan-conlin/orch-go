@@ -1,0 +1,40 @@
+verification:
+  type: behavioral
+  issue: orch-go-1094
+
+  reproduction:
+    original_bug: "curl -sk https://localhost:3348/api/sessions returns []"
+    expected: "Returns JSON array of untracked sessions (matching orch sessions CLI output)"
+
+  checks:
+    - name: "API returns sessions by default"
+      command: "curl -sk https://localhost:3348/api/sessions"
+      expect: "Non-empty JSON array with session objects"
+      result: PASS
+
+    - name: "Explicit time filter still works"
+      command: "curl -sk 'https://localhost:3348/api/sessions?since=12h'"
+      expect: "Filters sessions by time (may return [] if all sessions > 12h old)"
+      result: PASS
+
+    - name: "since=all returns all sessions"
+      command: "curl -sk 'https://localhost:3348/api/sessions?since=all'"
+      expect: "Returns all untracked sessions regardless of age"
+      result: PASS
+
+    - name: "CLI and API return same sessions"
+      command: "orch sessions --json vs curl api/sessions"
+      expect: "Both return the same set of untracked sessions"
+      result: PASS
+
+  tests:
+    command: "go test ./cmd/orch/ -count=1"
+    result: "PASS (2.728s)"
+
+  build:
+    command: "go build ./cmd/orch/"
+    result: PASS
+
+  vet:
+    command: "go vet ./cmd/orch/"
+    result: PASS
