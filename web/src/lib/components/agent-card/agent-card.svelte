@@ -410,6 +410,29 @@
 					{agent.phase}
 				</Badge>
 			{/if}
+			{#if agent.context_risk}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<Badge variant="destructive" class="h-4 px-1 text-[10px] {agent.context_risk.level === 'critical' ? 'bg-red-600' : 'bg-orange-500'}">
+							{agent.context_risk.level === 'critical' ? '🚨 CRITICAL' : '⚠️ AT-RISK'}
+						</Badge>
+					</Tooltip.Trigger>
+					<Tooltip.Content class="max-w-xs">
+						<p class="font-medium {agent.context_risk.level === 'critical' ? 'text-red-500' : 'text-orange-500'}">
+							{agent.context_risk.reason}
+						</p>
+						<p class="text-xs text-muted-foreground mt-1">
+							Token usage: {Math.round(agent.context_risk.token_percent)}% of context limit
+							({(agent.context_risk.token_usage / 1000).toFixed(0)}K tokens)
+						</p>
+						{#if agent.context_risk.has_uncommitted_work}
+							<p class="text-xs text-red-400 mt-1">
+								{agent.context_risk.uncommitted_count} uncommitted file{agent.context_risk.uncommitted_count === 1 ? '' : 's'}
+							</p>
+						{/if}
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{/if}
 		</div>
 		<span class="flex items-center gap-0.5 text-[10px] text-muted-foreground">
 			{#if healthIndicator}

@@ -1,6 +1,9 @@
 package main
 
-import "github.com/dylan-conlin/orch-go/pkg/opencode"
+import (
+	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
+)
 
 // AgentAPIResponse is the JSON structure returned by /api/agents.
 type AgentAPIResponse struct {
@@ -32,7 +35,8 @@ type AgentAPIResponse struct {
 	InvestigationContent string               `json:"investigation_content,omitempty"` // Raw investigation file content for inline rendering
 	CurrentActivity      string               `json:"current_activity,omitempty"`      // Last activity text from session messages
 	LastActivityAt       string               `json:"last_activity_at,omitempty"`      // ISO 8601 timestamp of last activity
-	Reason               string               `json:"reason,omitempty"`                // Reason code for degraded/partial state (from query engine)
+	Reason               string                        `json:"reason,omitempty"`                // Reason code for degraded/partial state (from query engine)
+	ContextRisk          *verify.ContextExhaustionRisk `json:"context_risk,omitempty"`          // Context exhaustion risk assessment
 }
 
 // GapAPIResponse represents gap analysis data for the API.

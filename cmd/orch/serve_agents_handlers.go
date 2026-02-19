@@ -391,11 +391,39 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Apply time and project filters
+	// Assess context exhaustion risk for agents with token data.
+	// This matches what orch status --all shows (AT-RISK, CRITICAL flags).
+	for i := range agents {
+		if agents[i].Tokens == nil || agents[i].Status == "completed" {
+			continue
+		}
+		totalTokens := agents[i].Tokens.TotalTokens
+		if totalTokens == 0 {
+			totalTokens = agents[i].Tokens.InputTokens + agents[i].Tokens.OutputTokens
+		}
+		if totalTokens == 0 {
+			continue
+		}
+		risk := verify.AssessContextRisk(totalTokens, agents[i].ProjectDir, agents[i].IsProcessing)
+		if risk.IsAtRisk() {
+			agents[i].ContextRisk = &risk
+		}
+	}
+
+	// Apply time and project filters.
+	// Agents needing attention (dead, awaiting-cleanup, at-risk) bypass the time filter
+	// so they are always visible in the dashboard regardless of the ?since= parameter.
+	// This fixes the bug where idle/at-risk agents were hidden by the default 12h filter.
 	if sinceDuration > 0 || len(projectFilterParam) > 0 {
 		filtered := make([]AgentAPIResponse, 0, len(agents))
 		for _, agentItem := range agents {
-			if sinceDuration > 0 {
+			// Agents that need attention bypass the time filter (but not project filter).
+			// These are the agents most likely to need the orchestrator's intervention.
+			needsAttention := agentItem.Status == "dead" ||
+				agentItem.Status == "awaiting-cleanup" ||
+				agentItem.ContextRisk != nil
+
+			if sinceDuration > 0 && !needsAttention {
 				var agentTime time.Time
 				if agentItem.UpdatedAt != "" {
 					agentTime, _ = time.Parse(time.RFC3339, agentItem.UpdatedAt)

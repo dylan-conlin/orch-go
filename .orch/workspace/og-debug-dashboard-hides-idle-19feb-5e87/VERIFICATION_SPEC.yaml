@@ -1,0 +1,31 @@
+verification:
+  type: bug-fix
+  issue: orch-go-1112
+
+  build:
+    - command: "go build ./cmd/orch/"
+      expected: "exit 0"
+      result: pass
+    - command: "go vet ./cmd/orch/"
+      expected: "exit 0"
+      result: pass
+    - command: "npm run build"
+      expected: "exit 0, built successfully"
+      result: pass
+
+  functional:
+    - description: "Dead/idle agents bypass time filter in API"
+      verification: "agents with status dead/awaiting-cleanup/at-risk are returned regardless of ?since= parameter"
+    - description: "Context risk computed for non-completed agents with tokens"
+      verification: "API response includes context_risk field for agents exceeding thresholds"
+    - description: "NeedsAttention shows at-risk agents"
+      verification: "Context At-Risk section appears in dashboard when at-risk agents exist"
+    - description: "Agent cards show risk badges"
+      verification: "CRITICAL (red) and AT-RISK (orange) badges render with tooltip"
+
+  files_changed:
+    - cmd/orch/serve_agents_types.go
+    - cmd/orch/serve_agents_handlers.go
+    - web/src/lib/stores/agents.ts
+    - web/src/lib/components/needs-attention/needs-attention.svelte
+    - web/src/lib/components/agent-card/agent-card.svelte

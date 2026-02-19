@@ -27,6 +27,16 @@ export interface GapAnalysis {
 	investigations?: number;
 }
 
+// Context exhaustion risk assessment from backend
+export interface ContextRisk {
+	level: '' | 'warning' | 'critical';
+	token_usage: number;
+	token_percent: number;
+	has_uncommitted_work: boolean;
+	uncommitted_count: number;
+	reason: string;
+}
+
 export interface Agent {
 	id: string;
 	session_id?: string;
@@ -56,6 +66,7 @@ export interface Agent {
 	synthesis?: Synthesis; // Parsed SYNTHESIS.md for completed agents
 	close_reason?: string; // Beads close reason, fallback for completed agents without synthesis
 	gap_analysis?: GapAnalysis; // Context gap analysis from spawn time
+	context_risk?: ContextRisk; // Context exhaustion risk (AT-RISK, CRITICAL)
 	investigation_path?: string; // Path to investigation file from beads comments
 	synthesis_content?: string; // Raw SYNTHESIS.md content for inline rendering
 	investigation_content?: string; // Raw investigation file content for inline rendering
@@ -333,6 +344,12 @@ export const awaitingCleanupAgents = derived(agents, ($agents) =>
 // See .kb/investigations/2026-01-08-inv-design-stalled-agent-detection-agents.md
 export const stalledAgents = derived(agents, ($agents) =>
 	$agents.filter((a) => a.status === 'active' && a.is_stalled === true)
+);
+
+// At-risk agents: context exhaustion risk detected (AT-RISK or CRITICAL)
+// These need immediate attention - high token usage may cause agent to lose context
+export const atRiskAgents = derived(agents, ($agents) =>
+	$agents.filter((a) => a.context_risk && a.context_risk.level !== '')
 );
 
 // Needs Review: agents at Phase: Complete that haven't been closed yet
