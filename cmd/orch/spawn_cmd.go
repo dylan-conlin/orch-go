@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/orch"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -52,6 +53,8 @@ var (
 	spawnBypassVerification bool   // Bypass verification gate for independent parallel work
 	spawnBypassReason       string // Justification for bypassing verification gate
 	spawnOrientationFrame   string // Why Dylan cares about this work (spawn-time frame)
+	spawnModeSet            bool   // Tracks whether --mode was explicitly set
+	spawnValidationSet      bool   // Tracks whether --validation was explicitly set
 )
 
 // SpawnInput, SpawnContext, GapCheckResult, and headlessSpawnResult types
@@ -144,6 +147,8 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		skillName := args[0]
 		task := strings.Join(args[1:], " ")
+		spawnModeSet = cmd.Flags().Changed("mode")
+		spawnValidationSet = cmd.Flags().Changed("validation")
 
 		return runSpawnWithSkill(serverURL, skillName, task, false, spawnHeadless, spawnTmux, false)
 	},
@@ -204,6 +209,8 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
+		spawnModeSet = false
+		spawnValidationSet = false
 		return runWork(serverURL, beadsID, workInline)
 	},
 }
@@ -283,6 +290,70 @@ func inferMCPFromBeadsIssue(issue *beads.Issue) string {
 	return ""
 }
 
+func loadBeadsLabels(beadsID string) []string {
+	if beadsID == "" {
+		return nil
+	}
+	socketPath, connErr := beads.FindSocketPath("")
+	if connErr != nil {
+		return nil
+	}
+	beadsClient := beads.NewClient(socketPath)
+	if err := beadsClient.Connect(); err != nil {
+		return nil
+	}
+	defer beadsClient.Close()
+	beadsIssue, showErr := beadsClient.Show(beadsID)
+	if showErr != nil {
+		return nil
+	}
+	return beadsIssue.Labels
+}
+
+func projectMetaFromConfig(meta *config.ConfigMeta) spawn.ProjectConfigMeta {
+	if meta == nil {
+		return spawn.ProjectConfigMeta{}
+	}
+	return spawn.ProjectConfigMeta{
+		SpawnMode:     meta.Explicit["spawn_mode"],
+		ClaudeModel:   meta.ExplicitClaude["model"],
+		OpenCodeModel: meta.ExplicitOpenCode["model"],
+		Models:        meta.Explicit["models"],
+	}
+}
+
+func userMetaFromConfig(meta *userconfig.ConfigMeta) spawn.UserConfigMeta {
+	if meta == nil {
+		return spawn.UserConfigMeta{}
+	}
+	return spawn.UserConfigMeta{
+		Backend:      meta.Explicit["backend"],
+		DefaultModel: meta.Explicit["default_model"],
+		DefaultTier:  meta.Explicit["default_tier"],
+		Models:       meta.Explicit["models"],
+	}
+}
+
+func applyResolvedSpawnMode(input *orch.SpawnInput, spawnMode string) {
+	if input == nil || input.Attach {
+		return
+	}
+	switch spawnMode {
+	case spawn.SpawnModeInline:
+		input.Inline = true
+		input.Headless = false
+		input.Tmux = false
+	case spawn.SpawnModeTmux:
+		input.Tmux = true
+		input.Inline = false
+		input.Headless = false
+	case spawn.SpawnModeHeadless:
+		input.Headless = true
+		input.Inline = false
+		input.Tmux = false
+	}
+}
+
 func runWork(serverURL, beadsID string, inline bool) error {
 	// Get issue details from verify (for description)
 	issue, err := verify.GetIssue(beadsID)
@@ -322,12 +393,6 @@ func runWork(serverURL, beadsID string, inline bool) error {
 
 	// Set the spawnIssue flag so runSpawnWithSkillInternal uses the existing issue
 	spawnIssue = beadsID
-
-	// Set the spawnMCP flag if the issue has a needs:* label (e.g., needs:playwright)
-	// This allows daemon-spawned agents to automatically get browser access for UI work
-	if mcpServer != "" {
-		spawnMCP = mcpServer
-	}
 
 	// Load user config default_model for daemon-spawned work.
 	// Without this, spawnModel stays empty and the spawn pipeline falls back to
@@ -422,11 +487,49 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		return err
 	}
 
-	// 5. Resolve and validate model
-	resolvedModel, err := orch.ResolveAndValidateModel(spawnModel)
+	// 5. Resolve spawn settings (centralized resolver)
+	projectCfg, projectMeta, err := config.LoadWithMeta(projectDir)
+	if err != nil {
+		projectCfg = nil
+		projectMeta = nil
+	}
+	userCfg, userMeta, err := userconfig.LoadWithMeta()
+	if err != nil {
+		userCfg = nil
+		userMeta = nil
+	}
+	beadsLabels := loadBeadsLabels(beadsID)
+	resolveInput := spawn.ResolveInput{
+		CLI: spawn.CLISettings{
+			Backend:       spawnBackendFlag,
+			Model:         spawnModel,
+			Mode:          orch.Mode,
+			ModeSet:       spawnModeSet,
+			Validation:    spawnValidation,
+			ValidationSet: spawnValidationSet,
+			MCP:           spawnMCP,
+			Light:         spawnLight,
+			Full:          spawnFull,
+			Headless:      input.Headless,
+			Tmux:          input.Tmux,
+			Inline:        input.Inline,
+		},
+		BeadsLabels:            beadsLabels,
+		ProjectConfig:          projectCfg,
+		ProjectConfigMeta:      projectMetaFromConfig(projectMeta),
+		UserConfig:             userCfg,
+		UserConfigMeta:         userMetaFromConfig(userMeta),
+		Task:                   task,
+		BeadsID:                beadsID,
+		SkillName:              skillName,
+		IsOrchestrator:         isOrchestrator,
+		InfrastructureDetected: isInfrastructureWork(task, beadsID),
+	}
+	resolved, err := orch.ResolveSpawnSettings(resolveInput)
 	if err != nil {
 		return err
 	}
+	applyResolvedSpawnMode(input, resolved.Settings.SpawnMode.Value)
 
 	// 6. Gather spawn context
 	kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, err := orch.GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, skillName, spawnSkipArtifactCheck, spawnGateOnGap, spawnSkipGapGate, spawnGapThreshold)
@@ -440,16 +543,10 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// 8. Build usage info
 	usageInfo := orch.BuildUsageInfo(usageCheckResult)
 
-	// 9. Determine spawn backend
-	spawnBackend, err := orch.DetermineSpawnBackend(resolvedModel, task, beadsID, projectDir, spawnBackendFlag, spawnModel)
-	if err != nil {
-		return err
-	}
-
-	// 10. Load design artifacts
+	// 9. Load design artifacts
 	designMockupPath, designPromptPath, designNotes := orch.LoadDesignArtifacts(spawnDesignWorkspace, projectDir)
 
-	// 11. Build spawn context
+	// 10. Build spawn context
 	ctx := &orch.SpawnContext{
 		Task:               task,
 		OrientationFrame:   spawnOrientationFrame,
@@ -461,7 +558,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		BeadsID:            beadsID,
 		IsOrchestrator:     isOrchestrator,
 		IsMetaOrchestrator: isMetaOrchestrator,
-		ResolvedModel:      resolvedModel,
+		ResolvedModel:      resolved.Model,
 		KBContext:          kbContext,
 		GapAnalysis:        gapAnalysis,
 		HasInjectedModels:  hasInjectedModels,
@@ -469,15 +566,15 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		IsBug:              isBug,
 		ReproSteps:         reproSteps,
 		UsageInfo:          usageInfo,
-		SpawnBackend:       spawnBackend,
-		Tier:               orch.DetermineSpawnTier(skillName, task, spawnLight, spawnFull),
+		SpawnBackend:       resolved.Settings.Backend.Value,
+		Tier:               resolved.Settings.Tier.Value,
 		DesignMockupPath:   designMockupPath,
 		DesignPromptPath:   designPromptPath,
 		DesignNotes:        designNotes,
 	}
 
-	// 12. Build spawn config
-	cfg := orch.BuildSpawnConfig(ctx, spawnPhases, orch.Mode, spawnValidation, spawnMCP, spawnNoTrack, spawnSkipArtifactCheck)
+	// 11. Build spawn config
+	cfg := orch.BuildSpawnConfig(ctx, spawnPhases, resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, spawnNoTrack, spawnSkipArtifactCheck)
 
 	// 13. Validate and write context
 	minimalPrompt, err := orch.ValidateAndWriteContext(cfg, spawnForce)

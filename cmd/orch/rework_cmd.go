@@ -8,10 +8,12 @@ import (
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/orch"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
+	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -154,10 +156,49 @@ func runRework(beadsID, feedback string) error {
 	if modelFlag == "" {
 		modelFlag = strings.TrimSpace(manifest.Model)
 	}
-	resolvedModel, err := orch.ResolveAndValidateModel(modelFlag)
+	projectCfg, projectMeta, err := config.LoadWithMeta(projectDir)
+	if err != nil {
+		projectCfg = nil
+		projectMeta = nil
+	}
+	userCfg, userMeta, err := userconfig.LoadWithMeta()
+	if err != nil {
+		userCfg = nil
+		userMeta = nil
+	}
+	beadsLabels := loadBeadsLabels(beadsID)
+	manifestTier := strings.TrimSpace(manifest.Tier)
+	resolveInput := spawn.ResolveInput{
+		CLI: spawn.CLISettings{
+			Backend:       "",
+			Model:         modelFlag,
+			Mode:          orch.Mode,
+			ModeSet:       false,
+			Validation:    "tests",
+			ValidationSet: false,
+			MCP:           "",
+			Light:         strings.EqualFold(manifestTier, spawn.TierLight),
+			Full:          strings.EqualFold(manifestTier, spawn.TierFull),
+			Headless:      false,
+			Tmux:          reworkTmux,
+			Inline:        false,
+		},
+		BeadsLabels:            beadsLabels,
+		ProjectConfig:          projectCfg,
+		ProjectConfigMeta:      projectMetaFromConfig(projectMeta),
+		UserConfig:             userCfg,
+		UserConfigMeta:         userMetaFromConfig(userMeta),
+		Task:                   task,
+		BeadsID:                beadsID,
+		SkillName:              skillName,
+		IsOrchestrator:         false,
+		InfrastructureDetected: orch.IsInfrastructureWork(task, beadsID),
+	}
+	resolved, err := orch.ResolveSpawnSettings(resolveInput)
 	if err != nil {
 		return err
 	}
+	applyResolvedSpawnMode(input, resolved.Settings.SpawnMode.Value)
 
 	kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, err := orch.GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, skillName, false, false, false, 0)
 	if err != nil {
@@ -166,11 +207,6 @@ func runRework(beadsID, feedback string) error {
 
 	isBug, reproSteps := orch.ExtractBugReproInfo(beadsID, false)
 	usageInfo := orch.BuildUsageInfo(usageCheckResult)
-
-	spawnBackend, err := orch.DetermineSpawnBackend(resolvedModel, task, beadsID, projectDir, "", reworkModel)
-	if err != nil {
-		return err
-	}
 
 	reworkCount, err := spawn.CountReworks(beadsID, projectDir)
 	if err != nil {
@@ -203,11 +239,6 @@ func runRework(beadsID, feedback string) error {
 		fmt.Fprintf(os.Stderr, "Warning: failed to set issue status to in_progress: %v\n", err)
 	}
 
-	tier := strings.TrimSpace(manifest.Tier)
-	if tier == "" {
-		tier = orch.DetermineSpawnTier(skillName, task, false, false)
-	}
-
 	ctx := &orch.SpawnContext{
 		Task:              task,
 		OrientationFrame:  "",
@@ -217,7 +248,7 @@ func runRework(beadsID, feedback string) error {
 		WorkspaceName:     workspaceName,
 		SkillContent:      skillContent,
 		BeadsID:           beadsID,
-		ResolvedModel:     resolvedModel,
+		ResolvedModel:     resolved.Model,
 		KBContext:         kbContext,
 		GapAnalysis:       gapAnalysis,
 		HasInjectedModels: hasInjectedModels,
@@ -229,11 +260,11 @@ func runRework(beadsID, feedback string) error {
 		PriorSynthesis:    priorSynthesis,
 		PriorWorkspace:    priorWorkspace,
 		UsageInfo:         usageInfo,
-		SpawnBackend:      spawnBackend,
-		Tier:              tier,
+		SpawnBackend:      resolved.Settings.Backend.Value,
+		Tier:              resolved.Settings.Tier.Value,
 	}
 
-	cfg := orch.BuildSpawnConfig(ctx, "", orch.Mode, "tests", "", false, false)
+	cfg := orch.BuildSpawnConfig(ctx, "", resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, false, false)
 	minimalPrompt, err := orch.ValidateAndWriteContext(cfg, false)
 	if err != nil {
 		return err
@@ -251,7 +282,7 @@ func runRework(beadsID, feedback string) error {
 		ReworkNumber:   reworkNumber,
 		Feedback:       feedback,
 		Skill:          skillName,
-		Model:          resolvedModel.Format(),
+		Model:          resolved.Model.Format(),
 	})
 	if logErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log rework event: %v\n", logErr)

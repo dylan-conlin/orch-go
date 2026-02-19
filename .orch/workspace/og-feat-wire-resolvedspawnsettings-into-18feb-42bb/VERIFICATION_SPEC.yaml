@@ -1,0 +1,34 @@
+version: 1.0
+beads_id: orch-go-1070
+title: 'Wire ResolvedSpawnSettings into spawn pipeline'
+spawn_tier: light
+
+observable_behaviors:
+  - id: OB-1
+    description: 'Spawn pipeline resolves backend/model/tier/mode/validation via centralized resolver'
+    location: 'cmd/orch/spawn_cmd.go'
+
+acceptance_criteria:
+  - id: AC-001
+    description: 'Spawn/rework paths use spawn.Resolve results for backend, model, tier, mode, validation, and MCP'
+    test_method: 'Code review + tests'
+    status: pass
+    evidence: 'spawn_cmd.go and rework_cmd.go use orch.ResolveSpawnSettings and resolved settings'
+
+  - id: AC-002
+    description: 'Infrastructure escape hatch only auto-applies when no explicit config exists'
+    test_method: 'Code review'
+    status: pass
+    evidence: 'orch.ResolveSpawnSettings emits escape hatch only when resolver returns SourceHeuristic/infra-escape-hatch'
+
+tests_run:
+  - 'go test ./pkg/orch ./cmd/orch'
+
+manual_verification:
+  - description: 'Spawn with explicit backend/model and infra task: verify warnings only, no override'
+    importance: medium
+
+files_changed:
+  - 'cmd/orch/spawn_cmd.go'
+  - 'cmd/orch/rework_cmd.go'
+  - 'pkg/orch/extraction.go'

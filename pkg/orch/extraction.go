@@ -73,6 +73,12 @@ type SpawnContext struct {
 	DesignNotes        string
 }
 
+// ResolvedSpawnResult holds resolved spawn settings and the parsed model spec.
+type ResolvedSpawnResult struct {
+	Settings spawn.ResolvedSpawnSettings
+	Model    model.ModelSpec
+}
+
 // headlessSpawnResult contains the result of starting a headless session.
 type headlessSpawnResult struct {
 	SessionID string
@@ -575,6 +581,44 @@ func ResolveAndValidateModel(modelFlag string) (model.ModelSpec, error) {
 	}
 
 	return resolvedModel, nil
+}
+
+// ResolveSpawnSettings resolves spawn settings using the centralized resolver and
+// emits any warnings or infrastructure escape hatch messages.
+func ResolveSpawnSettings(input spawn.ResolveInput) (ResolvedSpawnResult, error) {
+	settings, err := spawn.Resolve(input)
+	if err != nil {
+		return ResolvedSpawnResult{}, err
+	}
+
+	for _, warning := range settings.Warnings {
+		fmt.Fprintf(os.Stderr, "⚠️  %s\n", warning)
+		if strings.Contains(warning, "infrastructure work detected") {
+			fmt.Fprintf(os.Stderr, "   Recommendation: Use --backend claude for infrastructure work to survive server restarts.\n")
+		}
+	}
+
+	if input.InfrastructureDetected && settings.Backend.Source == spawn.SourceHeuristic && settings.Backend.Detail == "infra-escape-hatch" {
+		fmt.Println("🔧 Infrastructure work detected - auto-applying escape hatch (--backend claude --tmux)")
+		fmt.Println("   This ensures the agent survives OpenCode server restarts.")
+
+		logger := events.NewLogger(events.DefaultLogPath())
+		event := events.Event{
+			Type:      "spawn.infrastructure_detected",
+			Timestamp: time.Now().Unix(),
+			Data: map[string]interface{}{
+				"task":     input.Task,
+				"beads_id": input.BeadsID,
+				"skill":    input.SkillName,
+			},
+		}
+		if err := logger.Log(event); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to log infrastructure detection: %v\n", err)
+		}
+	}
+
+	resolvedModel := model.ResolveWithConfig(settings.Model.Value, nil)
+	return ResolvedSpawnResult{Settings: settings, Model: resolvedModel}, nil
 }
 
 // GatherSpawnContext gathers KB context and performs gap analysis.
@@ -1806,6 +1850,11 @@ func isInfrastructureWork(task string, beadsID string) bool {
 	}
 
 	return false
+}
+
+// IsInfrastructureWork exposes infrastructure work detection for callers.
+func IsInfrastructureWork(task string, beadsID string) bool {
+	return isInfrastructureWork(task, beadsID)
 }
 
 // readDesignArtifacts reads design artifacts from a ui-design-session workspace.
