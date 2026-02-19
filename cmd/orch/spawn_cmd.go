@@ -423,17 +423,10 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	// Set the spawnIssue flag so runSpawnWithSkillInternal uses the existing issue
 	spawnIssue = beadsID
 
-	// Load user config default_model for daemon-spawned work.
-	// Without this, spawnModel stays empty and the spawn pipeline falls back to
-	// the hardcoded default (sonnet), ignoring the user's configured model preference.
-	if spawnModel == "" {
-		cfg, warning := loadUserConfigAndWarning()
-		if warning != "" {
-			fmt.Fprint(os.Stderr, warning)
-		} else if cfg != nil && cfg.DefaultModel != "" {
-			spawnModel = cfg.DefaultModel
-		}
-	}
+	// NOTE: Do NOT load user config default_model into spawnModel here.
+	// spawnModel maps to CLI.Model in the resolve pipeline (highest priority).
+	// User config default_model is already handled at correct precedence in
+	// pkg/spawn/resolve.go:resolveModel() via ResolveInput.UserConfig.
 
 	fmt.Printf("Starting work on: %s\n", beadsID)
 	fmt.Printf("  Title:  %s\n", issue.Title)

@@ -338,3 +338,72 @@ func TestResolve_BugClass10_UserDefaultModelNotInjectedAsCLI(t *testing.T) {
 		t.Fatalf("Model.Source = %q, want %q", settings.Model.Source, SourceUserConfig)
 	}
 }
+
+// TestResolve_BugClass11_ProjectConfigModelOverridesUserDefaultModel reproduces
+// orch-go-1105: project config opencode.model must take precedence over user
+// config default_model. Prior to fix, runWork() loaded default_model into
+// CLI.Model (highest priority), silently overriding project config.
+func TestResolve_BugClass11_ProjectConfigModelOverridesUserDefaultModel(t *testing.T) {
+	input := baseResolveInput()
+	// Simulate: project config has opencode.model = "gpt-4o"
+	input.ProjectConfig = &config.Config{OpenCode: config.OpenCodeConfig{Model: "gpt-4o"}}
+	input.ProjectConfigMeta = ProjectConfigMeta{OpenCodeModel: true}
+	// Simulate: user config has default_model = "codex" (should be lower priority)
+	input.UserConfig = &userconfig.Config{DefaultModel: "openai/codex-mini-latest"}
+	input.UserConfigMeta = UserConfigMeta{DefaultModel: true}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	// Project config model must win over user config default_model
+	if settings.Model.Value != "openai/gpt-4o" {
+		t.Fatalf("Model.Value = %q, want %q (project config should override user default_model)", settings.Model.Value, "openai/gpt-4o")
+	}
+	if settings.Model.Source != SourceProjectConfig {
+		t.Fatalf("Model.Source = %q, want %q", settings.Model.Source, SourceProjectConfig)
+	}
+}
+
+// TestResolve_BugClass11b_CLIModelStillOverridesProjectConfig verifies that
+// --model CLI flag maintains highest priority even with project config set.
+func TestResolve_BugClass11b_CLIModelStillOverridesProjectConfig(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Model = "opus"
+	input.CLI.Backend = BackendClaude
+	input.ProjectConfig = &config.Config{Claude: config.ClaudeConfig{Model: "sonnet"}}
+	input.ProjectConfigMeta = ProjectConfigMeta{ClaudeModel: true}
+	input.UserConfig = &userconfig.Config{DefaultModel: "haiku"}
+	input.UserConfigMeta = UserConfigMeta{DefaultModel: true}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	// CLI flag must win over everything
+	if settings.Model.Source != SourceCLI {
+		t.Fatalf("Model.Source = %q, want %q", settings.Model.Source, SourceCLI)
+	}
+	if !strings.Contains(settings.Model.Value, "opus") {
+		t.Fatalf("Model.Value = %q, want opus variant", settings.Model.Value)
+	}
+}
+
+// TestResolve_BugClass11c_UserDefaultModelFallbackWhenNoProjectConfig verifies
+// user config default_model is used when no project config model is set.
+func TestResolve_BugClass11c_UserDefaultModelFallbackWhenNoProjectConfig(t *testing.T) {
+	input := baseResolveInput()
+	input.UserConfig = &userconfig.Config{DefaultModel: "gpt-4o"}
+	input.UserConfigMeta = UserConfigMeta{DefaultModel: true}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.Model.Value != "openai/gpt-4o" {
+		t.Fatalf("Model.Value = %q, want %q", settings.Model.Value, "openai/gpt-4o")
+	}
+	if settings.Model.Source != SourceUserConfig {
+		t.Fatalf("Model.Source = %q, want %q", settings.Model.Source, SourceUserConfig)
+	}
+}
