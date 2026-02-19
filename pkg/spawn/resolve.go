@@ -76,10 +76,11 @@ type ProjectConfigMeta struct {
 
 // UserConfigMeta tracks explicit user config keys.
 type UserConfigMeta struct {
-	Backend      bool
-	DefaultModel bool
-	DefaultTier  bool
-	Models       bool
+	Backend                bool
+	DefaultModel           bool
+	DefaultTier            bool
+	Models                 bool
+	AllowAnthropicOpenCode bool
 }
 
 // ResolveInput captures all inputs needed to resolve spawn settings.
@@ -143,7 +144,8 @@ func Resolve(input ResolveInput) (ResolvedSpawnSettings, error) {
 		resolvedModel = model.ResolveWithConfig(result.Model.Value, nil)
 	}
 
-	if err := validateModelCompatibility(result.Backend.Value, resolvedModel); err != nil {
+	allowAnthropicOpenCode := input.UserConfig != nil && input.UserConfigMeta.AllowAnthropicOpenCode && input.UserConfig.AllowAnthropicOpenCode
+	if err := validateModelCompatibility(result.Backend.Value, resolvedModel, allowAnthropicOpenCode); err != nil {
 		return result, err
 	}
 	if warn := warnOnNonOptimalCombo(result.Backend.Value, resolvedModel); warn != "" {
@@ -349,7 +351,13 @@ func modelBackendRequirement(resolvedModel model.ModelSpec) (string, bool) {
 	return "", false
 }
 
-func validateModelCompatibility(backend string, resolvedModel model.ModelSpec) error {
+func validateModelCompatibility(backend string, resolvedModel model.ModelSpec, allowAnthropicOpenCode bool) error {
+	if backend == BackendOpenCode && resolvedModel.Provider == "anthropic" {
+		if allowAnthropicOpenCode {
+			return nil
+		}
+		return fmt.Errorf("backend %s does not support provider %s (set allow_anthropic_opencode: true to override)", backend, resolvedModel.Provider)
+	}
 	if backend == BackendClaude && resolvedModel.Provider != "anthropic" {
 		return fmt.Errorf("backend %s does not support provider %s", backend, resolvedModel.Provider)
 	}

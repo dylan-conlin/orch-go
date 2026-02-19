@@ -132,6 +132,7 @@ func TestLoadWithMetaExistingConfig(t *testing.T) {
 	}
 
 	configContent := `backend: opencode
+allow_anthropic_opencode: true
 default_model: gpt4o
 default_tier: full
 notifications:
@@ -163,6 +164,9 @@ session:
 	}
 	if !meta.Explicit["default_model"] {
 		t.Error("Expected default_model to be explicit")
+	}
+	if !meta.Explicit["allow_anthropic_opencode"] {
+		t.Error("Expected allow_anthropic_opencode to be explicit")
 	}
 	if !meta.Explicit["default_tier"] {
 		t.Error("Expected default_tier to be explicit")

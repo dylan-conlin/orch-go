@@ -1,0 +1,7 @@
+version: 1
+commands:
+  - command: go test ./pkg/spawn -run TestResolve_AnthropicModel -v
+    expected: Tests pass
+  - command: go test ./pkg/userconfig -run TestLoadWithMetaExistingConfig -v
+    expected: Tests pass
+manual: []

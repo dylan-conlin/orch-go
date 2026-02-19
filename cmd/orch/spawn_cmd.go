@@ -327,10 +327,11 @@ func userMetaFromConfig(meta *userconfig.ConfigMeta) spawn.UserConfigMeta {
 		return spawn.UserConfigMeta{}
 	}
 	return spawn.UserConfigMeta{
-		Backend:      meta.Explicit["backend"],
-		DefaultModel: meta.Explicit["default_model"],
-		DefaultTier:  meta.Explicit["default_tier"],
-		Models:       meta.Explicit["models"],
+		Backend:                meta.Explicit["backend"],
+		DefaultModel:           meta.Explicit["default_model"],
+		DefaultTier:            meta.Explicit["default_tier"],
+		Models:                 meta.Explicit["models"],
+		AllowAnthropicOpenCode: meta.Explicit["allow_anthropic_opencode"],
 	}
 }
 

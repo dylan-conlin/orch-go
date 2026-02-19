@@ -161,6 +161,33 @@ func TestResolve_BugClass02_UserDefaultModelDoesNotOverrideProjectBackend(t *tes
 	}
 }
 
+func TestResolve_AnthropicModelBlockedOnOpenCodeByDefault(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Backend = BackendOpenCode
+	input.CLI.Model = "sonnet"
+
+	_, err := Resolve(input)
+	if err == nil {
+		t.Fatal("Resolve() error = nil, want compatibility error")
+	}
+	if !strings.Contains(err.Error(), "allow_anthropic_opencode") {
+		t.Fatalf("Resolve() error = %q, want allow_anthropic_opencode hint", err)
+	}
+}
+
+func TestResolve_AnthropicModelAllowedWithUserConfigOverride(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Backend = BackendOpenCode
+	input.CLI.Model = "sonnet"
+	input.UserConfig = &userconfig.Config{AllowAnthropicOpenCode: true}
+	input.UserConfigMeta = UserConfigMeta{AllowAnthropicOpenCode: true}
+
+	_, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+}
+
 func TestResolve_BugClass03_ExplicitModelForcesBackendRequirement(t *testing.T) {
 	input := baseResolveInput()
 	input.CLI.Model = "gpt-4o"

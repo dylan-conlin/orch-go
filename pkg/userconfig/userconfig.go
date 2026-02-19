@@ -5,6 +5,7 @@
 // Example config:
 //
 //	backend: opencode
+//	allow_anthropic_opencode: true  # Allow Anthropic models via OpenCode backend (unsupported)
 //	auto_export_transcript: true
 //	notifications:
 //	  enabled: true
@@ -104,6 +105,9 @@ type DaemonConfig struct {
 type Config struct {
 	// Backend specifies the orchestration backend (e.g., "opencode").
 	Backend string `yaml:"backend,omitempty"`
+	// AllowAnthropicOpenCode allows Anthropic models to run on the OpenCode backend.
+	// Defaults to false; only set to true to override the compatibility guard.
+	AllowAnthropicOpenCode bool `yaml:"allow_anthropic_opencode,omitempty"`
 	// Models holds custom model aliases (e.g., "opus": "anthropic/claude-opus-4-6").
 	// These override built-in aliases in pkg/model/model.go.
 	Models map[string]string `yaml:"models,omitempty"`
