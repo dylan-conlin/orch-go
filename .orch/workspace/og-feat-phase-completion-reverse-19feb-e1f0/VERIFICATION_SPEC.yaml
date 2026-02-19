@@ -1,0 +1,6 @@
+version: 1
+tests:
+  - name: go_test_pkg_verify
+    command: go test ./pkg/verify
+    expected: PASS
+manual: []

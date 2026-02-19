@@ -730,6 +730,16 @@ func runComplete(identifier, workdir string) error {
 				result.Passed = len(filteredGates) == 0
 			}
 
+			// Surface model references for modified files (informational only)
+			if workspacePath != "" && beadsProjectDir != "" {
+				matches, err := verify.FindModelReferencesForModifiedFiles(workspacePath, beadsProjectDir)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to check model code references: %v\n", err)
+				} else if note := verify.FormatModelReferenceNote(matches); note != "" {
+					fmt.Println(note)
+				}
+			}
+
 			if !result.Passed {
 				verificationPassed = false
 				gatesFailed = result.GatesFailed
