@@ -1,0 +1,6 @@
+commands:
+  - cmd: 'pwd'
+    expected: 'Prints repository root path.'
+  - cmd: 'go test ./pkg/daemon'
+    expected: 'Daemon package tests pass.'
+manual_checks: []
