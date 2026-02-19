@@ -507,7 +507,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 
 	// 4. Setup beads tracking
-	beadsID, err := orch.SetupBeadsTracking(skillName, task, projectName, spawnIssue, isOrchestrator, isMetaOrchestrator, serverURL, spawnNoTrack, orch.CreateBeadsIssue)
+	beadsID, err := orch.SetupBeadsTracking(skillName, task, projectName, spawnIssue, isOrchestrator, isMetaOrchestrator, serverURL, spawnNoTrack, workspaceName, orch.CreateBeadsIssue)
 	if err != nil {
 		return err
 	}

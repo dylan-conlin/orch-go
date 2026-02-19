@@ -1084,6 +1084,23 @@ func FallbackUpdate(id, status string) error {
 	return nil
 }
 
+// FallbackUpdateAssignee updates the assignee of an issue via bd CLI.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
+// Uses getBdPath() to resolve the bd executable location.
+func FallbackUpdateAssignee(id, assignee string) error {
+	args := []string{"update", id, "--assignee", assignee}
+	cmd := exec.Command(getBdPath(), args...)
+	setupFallbackEnv(cmd)
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd update assignee failed: %w: %s", err, string(output))
+	}
+	return nil
+}
+
 // FallbackAddLabel adds a label to an issue via bd CLI.
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.

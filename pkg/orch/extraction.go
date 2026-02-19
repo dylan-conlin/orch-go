@@ -471,8 +471,9 @@ func LoadSkillAndGenerateWorkspace(skillName, projectName, task, projectDir stri
 }
 
 // SetupBeadsTracking determines beads ID and manages issue lifecycle.
+// workspaceName is used to set the assignee on the beads issue when status is set to in_progress.
 // Returns final beads ID (empty if untracked), or error if setup fails.
-func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isOrchestrator, isMetaOrchestrator bool, serverURL string, noTrack bool, createBeadsFn func(string, string, string) (string, error)) (string, error) {
+func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isOrchestrator, isMetaOrchestrator bool, serverURL string, noTrack bool, workspaceName string, createBeadsFn func(string, string, string) (string, error)) (string, error) {
 	// Determine beads ID - either from flag, create new issue, or skip if --no-track
 	// Orchestrators skip beads tracking entirely - they're interactive sessions with Dylan,
 	// not autonomous tasks. SESSION_HANDOFF.md is richer than beads comments.
@@ -539,6 +540,13 @@ func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isO
 		if err := verify.UpdateIssueStatus(beadsID, "in_progress"); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to update beads issue status: %v\n", err)
 			// Continue anyway
+		}
+		// Set assignee to workspace name so dashboard shows which agent is working on this issue
+		if workspaceName != "" {
+			if err := verify.UpdateIssueAssignee(beadsID, workspaceName); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to set assignee on beads issue: %v\n", err)
+				// Continue anyway - assignee is supplementary metadata
+			}
 		}
 	}
 
