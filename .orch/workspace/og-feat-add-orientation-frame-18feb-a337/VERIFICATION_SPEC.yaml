@@ -1,0 +1,28 @@
+verification:
+  type: feature
+  gate1_explain: "Added ORIENTATION_FRAME wiring through spawn config, context, and completion explain-back messaging. Spawn-time FRAME comments are recorded in beads."
+  gate2_behavioral: false
+
+  commands_run:
+    - command: "go test ./..."
+      expected: "All tests pass"
+      observed: "All tests passed"
+
+  manual_verification:
+    - "Spawned worker: orch spawn --bypass-triage --issue orch-go-1053 feature-impl 'verify orientation frame propagation' --orientation-frame 'Frame check for completion UX' --light --max-agents 10"
+    - "Confirmed ORIENTATION_FRAME in .orch/workspace/og-feat-verify-orientation-frame-18feb-62cd/SPAWN_CONTEXT.md"
+    - "Confirmed beads comment FRAME: 'Frame check for completion UX' via bd comments orch-go-1053"
+
+  deliverables:
+    - path: "cmd/orch/spawn_cmd.go"
+      description: "Added --orientation-frame flag to spawn CLI"
+      exists: true
+    - path: "pkg/spawn/config.go"
+      description: "Added OrientationFrame to spawn config"
+      exists: true
+    - path: "pkg/orch/extraction.go"
+      description: "Propagated orientation frame through spawn config and added spawn-time FRAME comment"
+      exists: true
+    - path: "pkg/orch/completion.go"
+      description: "Surfaces spawn frame when explain-back requires --explain"
+      exists: true
