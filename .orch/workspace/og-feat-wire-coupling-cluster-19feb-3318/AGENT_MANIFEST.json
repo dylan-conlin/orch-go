@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-wire-coupling-cluster-19feb-3318",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1110",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "822a04504a260844d5dc6ce27516b236951dd31d",
+  "spawn_time": "2026-02-19T13:01:47-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}
