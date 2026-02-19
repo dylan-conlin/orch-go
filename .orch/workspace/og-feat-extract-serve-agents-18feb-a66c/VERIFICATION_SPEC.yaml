@@ -1,0 +1,33 @@
+verification_spec:
+  task: 'Extract serve_agents_test.go into per-area test files'
+
+  acceptance_criteria:
+    AC-001:
+      description: 'serve_agents tests are split into per-area files and the monolithic file is removed'
+      verification:
+        method: 'File inspection'
+        command: 'ls cmd/orch/serve_agents_*_test.go'
+        expected: 'handlers/events/status/discovery/cache/types test files present; serve_agents_test.go absent'
+        actual: 'Not run (file inspection pending)'
+
+  behavioral_verification:
+    - description: 'Go tests pass for cmd/orch after test split'
+      verification:
+        method: 'Go test'
+        command: 'go test ./cmd/orch'
+        expected: 'All tests pass'
+        actual: 'Not run (tests pending)'
+
+  evidence:
+    - files_added:
+        - cmd/orch/serve_agents_handlers_test.go
+        - cmd/orch/serve_agents_events_test.go
+        - cmd/orch/serve_agents_types_test.go
+        - cmd/orch/serve_agents_status_test.go
+        - cmd/orch/serve_agents_discovery_test.go
+        - cmd/orch/serve_agents_cache_extra_test.go
+    - files_removed:
+        - cmd/orch/serve_agents_test.go
+
+  notes: |
+    No tests were run in this session. Run `go test ./cmd/orch` to validate.
