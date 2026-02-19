@@ -94,9 +94,7 @@ func (b *TmuxBackend) Spawn(ctx context.Context, req *SpawnRequest) (*Result, er
 		}
 	}
 
-	// Register orchestrator session in registry (workers use beads instead)
-	RegisterOrchestratorSession(req.Config, sessionID, req.Task)
-
+	// Orchestrator sessions use workspace artifacts for tracking
 	// Build extra event data for tmux
 	extraData := map[string]interface{}{
 		"window":       windowTarget,

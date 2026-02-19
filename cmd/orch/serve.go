@@ -369,9 +369,6 @@ func runServe(portNum int) error {
 	// GET /api/hotspot - returns hotspot analysis (fix density, investigation clusters)
 	mux.HandleFunc("/api/hotspot", corsHandler(handleHotspot))
 
-	// GET /api/orchestrator-sessions - returns active orchestrator sessions from registry
-	mux.HandleFunc("/api/orchestrator-sessions", corsHandler(handleOrchestratorSessions))
-
 	// GET /api/file - returns file contents for investigation/workspace files
 	mux.HandleFunc("/api/file", corsHandler(handleFile))
 
@@ -455,7 +452,6 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)")
 	fmt.Println("  GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)")
 	fmt.Println("  GET /api/verification - Verification status summary")
-	fmt.Println("  GET /api/orchestrator-sessions - Active orchestrator sessions")
 	fmt.Println("  GET /api/pending-reviews - Agents with unreviewed synthesis recommendations")
 	fmt.Println("  POST /api/dismiss-review - Dismiss a specific recommendation")
 	fmt.Println("  GET/PUT /api/config - User configuration settings")

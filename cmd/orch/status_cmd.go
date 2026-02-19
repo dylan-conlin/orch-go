@@ -33,10 +33,6 @@ var (
 
 // Compact mode thresholds
 const (
-	// Only show orchestrator sessions from the last N hours in compact mode
-	compactOrchestratorSessionsMaxAge = 6 * time.Hour
-	// Maximum orchestrator sessions to show in compact mode
-	compactOrchestratorSessionsLimit = 5
 	// Only show Phase: Complete agents from the last N hours in compact mode
 	compactCompletedAgentsMaxAge = 6 * time.Hour
 	// Only fetch processing status for sessions updated within this window
@@ -117,15 +113,6 @@ type AgentInfo struct {
 	LastActivity    time.Time                     `json:"last_activity,omitempty"`     // Timestamp of last activity (for ghost filtering)
 }
 
-// OrchestratorSessionInfo represents an active orchestrator session for display.
-type OrchestratorSessionInfo struct {
-	WorkspaceName string `json:"workspace_name"`
-	Goal          string `json:"goal"`
-	Duration      string `json:"duration"`
-	Project       string `json:"project,omitempty"`
-	Status        string `json:"status"`
-}
-
 // InfraServiceStatus represents the health status of an infrastructure service.
 type InfraServiceStatus struct {
 	Name    string `json:"name"`
@@ -186,7 +173,6 @@ type StatusOutput struct {
 	SessionMetrics         *SessionMetrics                `json:"session_metrics,omitempty"`
 	Swarm                  SwarmStatus                    `json:"swarm"`
 	Accounts               []AccountUsage                 `json:"accounts"`
-	OrchestratorSessions   []OrchestratorSessionInfo      `json:"orchestrator_sessions,omitempty"`
 	Agents                 []AgentInfo                    `json:"agents"`
 	SynthesisOpportunities *verify.SynthesisOpportunities `json:"synthesis_opportunities,omitempty"`
 }
@@ -321,7 +307,7 @@ func runStatus(serverURL string) error {
 				continue
 			}
 
-			// Skip if already tracked via registry
+			// Skip if already tracked via workspace scan
 			if seenBeadsIDs[beadsID] {
 				// Enrich existing AgentInfo with window details if missing
 				for i := range agents {
@@ -364,7 +350,7 @@ func runStatus(serverURL string) error {
 			continue
 		}
 
-		// Skip if already tracked via registry or tmux
+		// Skip if already tracked via workspace scan or tmux
 		if seenBeadsIDs[beadsID] {
 			continue
 		}
@@ -615,13 +601,6 @@ func runStatus(serverURL string) error {
 		}
 	}
 
-	// Fetch orchestrator sessions from registry
-	orchestratorSessions := getOrchestratorSessions(statusProject)
-	// In compact mode, limit to recent sessions
-	if !statusAll && len(orchestratorSessions) > compactOrchestratorSessionsLimit {
-		orchestratorSessions = orchestratorSessions[:compactOrchestratorSessionsLimit]
-	}
-
 	// Check infrastructure health
 	infraHealth := checkInfrastructureHealth()
 
@@ -640,7 +619,6 @@ func runStatus(serverURL string) error {
 		SessionMetrics:         sessionMetrics,
 		Swarm:                  swarm,
 		Accounts:               accounts,
-		OrchestratorSessions:   orchestratorSessions,
 		Agents:                 filteredAgents,
 		SynthesisOpportunities: synthesisOpps,
 	}
@@ -783,41 +761,6 @@ func getAccountUsage() []AccountUsage {
 	}
 
 	return accounts
-}
-
-// getOrchestratorSessions fetches active orchestrator sessions from the registry.
-// If project is non-empty, filters to only sessions in that project.
-func getOrchestratorSessions(project string) []OrchestratorSessionInfo {
-	registry := session.NewRegistry("")
-	sessions, err := registry.ListActive()
-	if err != nil {
-		return nil // Silently fail - registry may not exist yet
-	}
-
-	now := time.Now()
-	var result []OrchestratorSessionInfo
-
-	for _, s := range sessions {
-		// Extract project name from directory path
-		projectName := filepath.Base(s.ProjectDir)
-
-		// Filter by project if specified
-		if project != "" && projectName != project {
-			continue
-		}
-
-		duration := formatDuration(now.Sub(s.SpawnTime))
-
-		result = append(result, OrchestratorSessionInfo{
-			WorkspaceName: s.WorkspaceName,
-			Goal:          s.Goal,
-			Duration:      duration,
-			Project:       projectName,
-			Status:        s.Status,
-		})
-	}
-
-	return result
 }
 
 // getSessionMetrics computes drift detection metrics for the current orchestrator session.
@@ -965,12 +908,6 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 		fmt.Println()
 	}
 
-	// Print orchestrator sessions
-	if len(output.OrchestratorSessions) > 0 {
-		printOrchestratorSessions(output.OrchestratorSessions, termWidth)
-		fmt.Println()
-	}
-
 	// Print agents in format appropriate for terminal width
 	if len(output.Agents) > 0 {
 		fmt.Println("AGENTS")
@@ -989,52 +926,6 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 	if output.SynthesisOpportunities != nil && output.SynthesisOpportunities.HasOpportunities() {
 		fmt.Println()
 		printSynthesisOpportunities(output.SynthesisOpportunities)
-	}
-}
-
-// printOrchestratorSessions prints orchestrator sessions in a table format.
-func printOrchestratorSessions(sessions []OrchestratorSessionInfo, termWidth int) {
-	fmt.Println("ORCHESTRATOR SESSIONS")
-
-	if termWidth < termWidthMin {
-		// Card format for very narrow terminals
-		for i, s := range sessions {
-			if i > 0 {
-				fmt.Println()
-			}
-			fmt.Printf("  %s [%s]\n", s.WorkspaceName, s.Status)
-			fmt.Printf("    Goal: %s\n", truncate(s.Goal, 50))
-			fmt.Printf("    Duration: %s | Project: %s\n", s.Duration, s.Project)
-		}
-	} else if termWidth < termWidthNarrow {
-		// Narrow format - drop goal column
-		fmt.Printf("  %-40s %-10s %s\n", "WORKSPACE", "DURATION", "PROJECT")
-		fmt.Printf("  %s\n", strings.Repeat("-", 65))
-		for _, s := range sessions {
-			project := s.Project
-			if project == "" {
-				project = "-"
-			}
-			fmt.Printf("  %-40s %-10s %s\n",
-				truncate(s.WorkspaceName, 38),
-				s.Duration,
-				project)
-		}
-	} else {
-		// Wide format - full table
-		fmt.Printf("  %-40s %-30s %-10s %s\n", "WORKSPACE", "GOAL", "DURATION", "PROJECT")
-		fmt.Printf("  %s\n", strings.Repeat("-", 95))
-		for _, s := range sessions {
-			project := s.Project
-			if project == "" {
-				project = "-"
-			}
-			fmt.Printf("  %-40s %-30s %-10s %s\n",
-				truncate(s.WorkspaceName, 38),
-				truncate(s.Goal, 28),
-				s.Duration,
-				project)
-		}
 	}
 }
 

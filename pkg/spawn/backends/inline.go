@@ -56,9 +56,7 @@ func (b *InlineBackend) Spawn(ctx context.Context, req *SpawnRequest) (*Result, 
 		}
 	}
 
-	// Register orchestrator session in registry (workers use beads instead)
-	RegisterOrchestratorSession(req.Config, processResult.SessionID, req.Task)
-
+	// Orchestrator sessions use workspace artifacts for tracking
 	// Log the session creation
 	if err := LogSpawnEvent(processResult.SessionID, req, "inline", nil); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)

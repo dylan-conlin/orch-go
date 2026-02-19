@@ -20,7 +20,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/orch"
-	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -370,34 +369,15 @@ func runComplete(identifier, workdir string) error {
 	// Beads IDs: orch-go-kypi, kb-cli-abc1
 	//
 	// Strategy (priority order):
-	// 1. Check orchestrator session registry FIRST (handles cross-project orchestrators)
-	// 2. Try to find workspace by name in current directory
-	// 3. Only fall back to beads ID lookup for worker sessions
-	//
-	// This prevents orchestrator workspace names from being misinterpreted as beads IDs.
+	// 1. Try to find workspace by name in current directory
+	// 2. If it looks like a workspace name, search known projects
+	// 3. Fall back to beads ID lookup for worker sessions
 	var workspacePath, agentName string
 	var beadsID string
 	var isOrchestratorSession bool
 
-	// Step 1: Check orchestrator session registry FIRST
-	// This is the authoritative source for orchestrator sessions and handles cross-project cases.
-	registry := session.NewRegistry("")
-	if orchSession, err := registry.Get(identifier); err == nil {
-		// Found in registry - this is an orchestrator session
-		isOrchestratorSession = true
-		agentName = orchSession.WorkspaceName
-		fmt.Printf("Orchestrator session (from registry): %s\n", agentName)
-
-		// Use the registry's ProjectDir to find the workspace
-		workspacePath = findWorkspaceByName(orchSession.ProjectDir, agentName)
-		if workspacePath == "" {
-			// Workspace not found in expected location - might have been moved or deleted
-			fmt.Fprintf(os.Stderr, "Warning: Workspace %s not found in %s\n", agentName, orchSession.ProjectDir)
-		}
-	}
-
-	// Step 2: Try direct workspace name lookup in current directory (if not found in registry)
-	if workspacePath == "" && !isOrchestratorSession {
+	// Step 1: Try direct workspace name lookup in current directory
+	if workspacePath == "" {
 		directWorkspacePath := findWorkspaceByName(currentDir, identifier)
 		if directWorkspacePath != "" {
 			workspacePath = directWorkspacePath
@@ -408,6 +388,21 @@ func runComplete(identifier, workdir string) error {
 				fmt.Printf("Orchestrator session: %s\n", agentName)
 			} else {
 				// Non-orchestrator workspace found by name - read beads ID from manifest
+				manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+				beadsID = manifest.BeadsID
+			}
+		}
+	}
+
+	// Step 2: Search for workspace across known projects if identifier looks like a workspace name
+	if workspacePath == "" && looksLikeWorkspaceName(identifier) {
+		if foundPath := findWorkspaceByNameAcrossProjects(identifier); foundPath != "" {
+			workspacePath = foundPath
+			agentName = identifier
+			if isOrchestratorWorkspace(workspacePath) {
+				isOrchestratorSession = true
+				fmt.Printf("Orchestrator session (cross-project): %s\n", agentName)
+			} else {
 				manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
 				beadsID = manifest.BeadsID
 			}
@@ -1073,21 +1068,6 @@ func runComplete(identifier, workdir string) error {
 		}
 	} else if isOrchestratorSession {
 		fmt.Printf("Completed orchestrator session: %s\n", agentName)
-		// Update orchestrator session status to "completed" in the registry
-		// We update rather than unregister to preserve session history for tracking
-		registry := session.NewRegistry("")
-		if err := registry.Update(agentName, func(s *session.OrchestratorSession) {
-			s.Status = "completed"
-		}); err != nil {
-			if err == session.ErrSessionNotFound {
-				// Session wasn't in registry - likely a legacy workspace or spawned before registry existed
-				fmt.Printf("Note: Session %s was not in registry (legacy workspace)\n", agentName)
-			} else {
-				fmt.Fprintf(os.Stderr, "Warning: failed to update session status in registry: %v\n", err)
-			}
-		} else {
-			fmt.Printf("Updated session registry: status → completed\n")
-		}
 	} else if isUntracked {
 		fmt.Printf("Cleaned up untracked agent: %s\n", identifier)
 	}
@@ -1151,18 +1131,6 @@ func runComplete(identifier, workdir string) error {
 		} else {
 			fmt.Printf("Archived workspace: %s\n", filepath.Base(archivedPath))
 
-			// Update session registry with archived path (orchestrator sessions only)
-			if isOrchestratorSession && archivedPath != "" {
-				registry := session.NewRegistry("")
-				if err := registry.Update(agentName, func(s *session.OrchestratorSession) {
-					s.ArchivedPath = archivedPath
-				}); err != nil {
-					// Non-critical - session may not be in registry
-					if err != session.ErrSessionNotFound {
-						fmt.Fprintf(os.Stderr, "Warning: failed to update archived path in registry: %v\n", err)
-					}
-				}
-			}
 		}
 	} else if completeNoArchive && workspacePath != "" {
 		fmt.Println("Skipped workspace archival (--no-archive)")
@@ -1683,6 +1651,49 @@ func restartOrchServe(projectDir string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func looksLikeWorkspaceName(identifier string) bool {
+	return strings.HasPrefix(identifier, "og-") ||
+		strings.HasPrefix(identifier, "meta-") ||
+		strings.HasPrefix(identifier, "orch-")
+}
+
+func findWorkspaceByNameAcrossProjects(workspaceName string) string {
+	for _, project := range getKBProjectsWithNames() {
+		if wsPath := findWorkspaceByName(project.Path, workspaceName); wsPath != "" {
+			return wsPath
+		}
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	rootCandidates := []string{
+		filepath.Join(homeDir, "Documents", "personal"),
+		filepath.Join(homeDir, "projects"),
+		filepath.Join(homeDir, "src"),
+	}
+
+	for _, root := range rootCandidates {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			projectDir := filepath.Join(root, entry.Name())
+			if wsPath := findWorkspaceByName(projectDir, workspaceName); wsPath != "" {
+				return wsPath
+			}
+		}
+	}
+
+	return ""
 }
 
 // exportOrchestratorTranscript exports the session transcript for orchestrator sessions.

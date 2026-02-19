@@ -18,7 +18,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/orch"
-	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
@@ -615,24 +614,6 @@ func formatContextQualitySummary(gapAnalysis *spawn.GapAnalysis) string {
 		}
 	}
 	return summary
-}
-
-func registerOrchestratorSession(cfg *spawn.Config, sessionID, task string) {
-	if !cfg.IsOrchestrator && !cfg.IsMetaOrchestrator {
-		return
-	}
-	registry := session.NewRegistry("")
-	orchSession := session.OrchestratorSession{
-		WorkspaceName: cfg.WorkspaceName,
-		SessionID:     sessionID,
-		ProjectDir:    cfg.ProjectDir,
-		SpawnTime:     time.Now(),
-		Goal:          task,
-		Status:        "active",
-	}
-	if err := registry.Register(orchSession); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to register orchestrator session: %v\n", err)
-	}
 }
 
 func addUsageInfoToEventData(eventData map[string]interface{}, usageInfo *spawn.UsageInfo) {

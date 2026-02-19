@@ -4,9 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
-
-	"github.com/dylan-conlin/orch-go/pkg/session"
 )
 
 // TestOrchestratorWorkspaceDetection verifies that orchestrator workspaces are detected
@@ -274,145 +271,6 @@ func TestOrchestratorCompletionWithoutHandoff(t *testing.T) {
 	// Verify SESSION_HANDOFF.md is NOT present (should fail completion)
 	if hasSessionHandoff(found) {
 		t.Error("Incomplete orchestrator should not have SESSION_HANDOFF.md")
-	}
-}
-
-// TestRegistryCleanupOnCompletion tests that orchestrator sessions are
-// removed from the session registry when completed.
-func TestRegistryCleanupOnCompletion(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "sessions.json")
-
-	// Create a registry with a test session
-	registry := session.NewRegistry(registryPath)
-
-	testSession := session.OrchestratorSession{
-		WorkspaceName: "og-orch-test-session-05jan",
-		SessionID:     "ses_test123",
-		ProjectDir:    "/test/project",
-		SpawnTime:     time.Now(),
-		Goal:          "Test goal",
-		Status:        "active",
-	}
-
-	// Register the session
-	if err := registry.Register(testSession); err != nil {
-		t.Fatalf("Failed to register session: %v", err)
-	}
-
-	// Verify session is in registry
-	sessions, err := registry.List()
-	if err != nil {
-		t.Fatalf("Failed to list sessions: %v", err)
-	}
-	if len(sessions) != 1 {
-		t.Fatalf("Expected 1 session, got %d", len(sessions))
-	}
-
-	// Unregister the session (simulating what complete command does)
-	if err := registry.Unregister("og-orch-test-session-05jan"); err != nil {
-		t.Fatalf("Failed to unregister session: %v", err)
-	}
-
-	// Verify session is removed
-	sessions, err = registry.List()
-	if err != nil {
-		t.Fatalf("Failed to list sessions after unregister: %v", err)
-	}
-	if len(sessions) != 0 {
-		t.Errorf("Expected 0 sessions after unregister, got %d", len(sessions))
-	}
-}
-
-// TestRegistryFirstLookupForOrchestratorCompletion tests that the complete command
-// checks the registry FIRST before falling back to beads ID lookup. This is critical
-// for orchestrator sessions which don't have beads tracking.
-func TestRegistryFirstLookupForOrchestratorCompletion(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "sessions.json")
-
-	// Create workspace in a "different project" directory
-	projectDir := filepath.Join(tmpDir, "other-project")
-	workspaceDir := filepath.Join(projectDir, ".orch", "workspace", "og-orch-cross-project-05jan")
-	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
-		t.Fatalf("Failed to create workspace: %v", err)
-	}
-
-	// Create orchestrator marker files
-	if err := os.WriteFile(filepath.Join(workspaceDir, ".orchestrator"), []byte(""), 0644); err != nil {
-		t.Fatalf("Failed to create .orchestrator marker: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(workspaceDir, ".tier"), []byte("orchestrator\n"), 0644); err != nil {
-		t.Fatalf("Failed to create .tier file: %v", err)
-	}
-
-	// Create a registry with the session pointing to the other project
-	registry := session.NewRegistry(registryPath)
-	testSession := session.OrchestratorSession{
-		WorkspaceName: "og-orch-cross-project-05jan",
-		SessionID:     "ses_test123",
-		ProjectDir:    projectDir, // Points to the "other project"
-		SpawnTime:     time.Now(),
-		Goal:          "Test cross-project orchestrator",
-		Status:        "active",
-	}
-
-	if err := registry.Register(testSession); err != nil {
-		t.Fatalf("Failed to register session: %v", err)
-	}
-
-	// Verify session is retrievable by workspace name
-	retrieved, err := registry.Get("og-orch-cross-project-05jan")
-	if err != nil {
-		t.Fatalf("Failed to get session from registry: %v", err)
-	}
-	if retrieved.ProjectDir != projectDir {
-		t.Errorf("Expected ProjectDir %s, got %s", projectDir, retrieved.ProjectDir)
-	}
-
-	// The key test: findWorkspaceByName using the registry's ProjectDir should find the workspace
-	// even though we're "not in that project directory"
-	foundPath := findWorkspaceByName(retrieved.ProjectDir, retrieved.WorkspaceName)
-	if foundPath == "" {
-		t.Error("Expected to find workspace using registry's ProjectDir")
-	}
-	if foundPath != workspaceDir {
-		t.Errorf("Expected %s, got %s", workspaceDir, foundPath)
-	}
-
-	// Verify it's detected as orchestrator workspace
-	if !isOrchestratorWorkspace(foundPath) {
-		t.Error("Workspace should be detected as orchestrator")
-	}
-}
-
-// TestRegistryCleanupSessionNotFound tests that unregistering a non-existent
-// session returns ErrSessionNotFound (graceful handling of legacy workspaces).
-func TestRegistryCleanupSessionNotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "sessions.json")
-
-	registry := session.NewRegistry(registryPath)
-
-	// Try to unregister a session that doesn't exist
-	err := registry.Unregister("og-orch-nonexistent-05jan")
-	if err != session.ErrSessionNotFound {
-		t.Errorf("Expected ErrSessionNotFound, got %v", err)
-	}
-}
-
-// TestRegistryCleanupEmptyRegistry tests that unregistering from an empty
-// registry (file doesn't exist) returns ErrSessionNotFound gracefully.
-func TestRegistryCleanupEmptyRegistry(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "nonexistent-sessions.json")
-
-	registry := session.NewRegistry(registryPath)
-
-	// Registry file doesn't exist yet - should return ErrSessionNotFound
-	err := registry.Unregister("og-orch-any-05jan")
-	if err != session.ErrSessionNotFound {
-		t.Errorf("Expected ErrSessionNotFound for empty registry, got %v", err)
 	}
 }
 
@@ -909,46 +767,6 @@ func TestArchiveWorkspaceNameCollision(t *testing.T) {
 	// Verify original workspace was moved
 	if _, err := os.Stat(wsPath); !os.IsNotExist(err) {
 		t.Error("Original workspace should not exist after archival")
-	}
-}
-
-// TestRegistryArchivedPathUpdate tests that orchestrator sessions get their
-// ArchivedPath field updated after archival.
-func TestRegistryArchivedPathUpdate(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "sessions.json")
-
-	// Create a registry with a test orchestrator session
-	registry := session.NewRegistry(registryPath)
-	testSession := session.OrchestratorSession{
-		WorkspaceName: "og-orch-archive-test-17jan",
-		SessionID:     "ses_test456",
-		ProjectDir:    tmpDir,
-		SpawnTime:     time.Now(),
-		Goal:          "Test archival",
-		Status:        "completed",
-	}
-
-	if err := registry.Register(testSession); err != nil {
-		t.Fatalf("Failed to register session: %v", err)
-	}
-
-	// Update the archived path (simulating what complete does after archival)
-	archivedPath := filepath.Join(tmpDir, ".orch", "workspace", "archived", "og-orch-archive-test-17jan")
-	if err := registry.Update("og-orch-archive-test-17jan", func(s *session.OrchestratorSession) {
-		s.ArchivedPath = archivedPath
-	}); err != nil {
-		t.Fatalf("Failed to update archived path: %v", err)
-	}
-
-	// Verify the archived path was saved
-	retrieved, err := registry.Get("og-orch-archive-test-17jan")
-	if err != nil {
-		t.Fatalf("Failed to retrieve session: %v", err)
-	}
-
-	if retrieved.ArchivedPath != archivedPath {
-		t.Errorf("Expected ArchivedPath %s, got %s", archivedPath, retrieved.ArchivedPath)
 	}
 }
 

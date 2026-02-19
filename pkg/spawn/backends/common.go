@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
-	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
@@ -18,28 +17,6 @@ func FormatSessionTitle(workspaceName, beadsID string) string {
 		return workspaceName
 	}
 	return fmt.Sprintf("%s [%s]", workspaceName, beadsID)
-}
-
-// RegisterOrchestratorSession registers an orchestrator session in the session registry.
-// This is called after successful spawn for orchestrator-type skills.
-// Workers do not use the session registry - they use beads for lifecycle tracking.
-func RegisterOrchestratorSession(cfg *spawn.Config, sessionID, task string) {
-	if !cfg.IsOrchestrator && !cfg.IsMetaOrchestrator {
-		return // Only register orchestrator sessions
-	}
-
-	registry := session.NewRegistry("")
-	orchSession := session.OrchestratorSession{
-		WorkspaceName: cfg.WorkspaceName,
-		SessionID:     sessionID,
-		ProjectDir:    cfg.ProjectDir,
-		SpawnTime:     time.Now(),
-		Goal:          task,
-		Status:        "active",
-	}
-	if err := registry.Register(orchSession); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to register orchestrator session: %v\n", err)
-	}
 }
 
 // AddGapAnalysisToEventData adds gap analysis information to an event data map.

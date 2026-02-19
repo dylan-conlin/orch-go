@@ -361,41 +361,6 @@ func containsMiddle(s, substr string) bool {
 	return false
 }
 
-func TestRegisterOrchestratorSession(t *testing.T) {
-	t.Run("worker session not registered", func(t *testing.T) {
-		cfg := &spawn.Config{
-			WorkspaceName:  "test-workspace",
-			ProjectDir:     "/tmp/test-project",
-			IsOrchestrator: false,
-		}
-
-		// Should not panic or error for worker sessions
-		RegisterOrchestratorSession(cfg, "session-123", "test task")
-	})
-
-	t.Run("orchestrator session registered", func(t *testing.T) {
-		cfg := &spawn.Config{
-			WorkspaceName:  "test-orch-workspace",
-			ProjectDir:     "/tmp/test-project",
-			IsOrchestrator: true,
-		}
-
-		// Should not panic or error
-		RegisterOrchestratorSession(cfg, "session-456", "test orchestrator task")
-	})
-
-	t.Run("meta-orchestrator session registered", func(t *testing.T) {
-		cfg := &spawn.Config{
-			WorkspaceName:      "test-meta-workspace",
-			ProjectDir:         "/tmp/test-project",
-			IsMetaOrchestrator: true,
-		}
-
-		// Should not panic or error
-		RegisterOrchestratorSession(cfg, "session-789", "test meta task")
-	})
-}
-
 func TestResult(t *testing.T) {
 	t.Run("inline result", func(t *testing.T) {
 		result := &Result{

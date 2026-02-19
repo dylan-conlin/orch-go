@@ -52,8 +52,6 @@
 	import { dashboardMode } from '$lib/stores/dashboard-mode';
 	import { config } from '$lib/stores/config';
 	import { hotspots } from '$lib/stores/hotspot';
-	import { orchestratorSessions } from '$lib/stores/orchestrator-sessions';
-	import { OrchestratorSessionsSection } from '$lib/components/orchestrator-sessions-section';
 	import { services } from '$lib/stores/services';
 	import { ServicesSection } from '$lib/components/services-section';
 	import { filters, orchestratorContext, buildFilterQueryString } from '$lib/stores/context';
@@ -81,7 +79,6 @@
 		questions: true, // Questions expanded by default (important for blocking visibility)
 		// pendingReviews removed - not actively used
 		sseStream: false, // SSE Stream collapsed by default (low signal-to-noise for most users)
-		orchestratorSessions: true, // Orchestrator sessions expanded by default (important visibility)
 		services: true, // Services expanded by default (important visibility)
 		coaching: true // Coaching metrics expanded by default
 	};
@@ -170,7 +167,6 @@
 			daemon.fetch();
 			verification.fetch();
 			hotspots.fetch();
-			orchestratorSessions.fetch();
 			services.fetch();
 			questions.fetch();
 		};
@@ -203,7 +199,6 @@
 				daemon.fetch(),
 				verification.fetch(projectDir),
 				hotspots.fetch(),
-				orchestratorSessions.fetch(),
 				services.fetch(),
 				questions.fetch()
 			]).catch(console.error);
@@ -453,11 +448,6 @@
 		</div>
 	</div>
 	{/if}
-
-	<!-- Orchestrator Sessions (always visible at top when active) -->
-	<OrchestratorSessionsSection
-		bind:expanded={sectionState.orchestratorSessions}
-	/>
 
 	<!-- Services (overmind-managed processes) -->
 	<ServicesSection

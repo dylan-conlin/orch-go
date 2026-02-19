@@ -61,9 +61,7 @@ func (b *HeadlessBackend) Spawn(ctx context.Context, req *SpawnRequest) (*Result
 		fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 	}
 
-	// Register orchestrator session in registry (workers use beads instead)
-	RegisterOrchestratorSession(req.Config, sessionID, req.Task)
-
+	// Orchestrator sessions use workspace artifacts for tracking
 	// Build extra event data for retries
 	var extraData map[string]interface{}
 	if retryResult.Attempts > 1 {

@@ -1,8 +1,8 @@
 // Package session provides orchestrator session state management.
 //
 // A session represents a focused work period with a goal, start time, and
-// tracked spawns. Unlike agent-registry which tracks ALL spawns, session
-// only tracks spawns made during the current session.
+// tracked spawns. Unlike workspace artifacts that track individual agents,
+// session only tracks spawns made during the current session.
 //
 // Key principle: spawn states are derived at query time via GetLiveness(),
 // not stored. This prevents stale state - the session file only records

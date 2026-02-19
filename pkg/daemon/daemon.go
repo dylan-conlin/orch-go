@@ -1440,7 +1440,7 @@ func (d *Daemon) RunPeriodicRecovery() *RecoveryResult {
 		return nil
 	}
 
-	// Get list of active agents via registry
+	// Get list of active agents via workspace + OpenCode discovery
 	agents, err := GetActiveAgents()
 	if err != nil {
 		return &RecoveryResult{
