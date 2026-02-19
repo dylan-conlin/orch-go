@@ -1497,6 +1497,68 @@ func TestWaitForSessionError(t *testing.T) {
 	}
 }
 
+func TestVerifySessionAfterPromptSuccess(t *testing.T) {
+	sessionID := "ses_verify_ok"
+	directory := "/tmp/project"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/session/" + sessionID:
+			if got := r.Header.Get("x-opencode-directory"); got != directory {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"id":"%s","directory":"%s"}`, sessionID, directory)))
+		case "/event":
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("event: session.error\n"))
+			_, _ = w.Write([]byte("data: {\"type\":\"session.error\",\"properties\":{\"sessionID\":\"ses_other\",\"error\":{\"message\":\"ignore\"}}}\n\n"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	if err := client.VerifySessionAfterPrompt(sessionID, directory, time.Second); err != nil {
+		t.Fatalf("VerifySessionAfterPrompt() error = %v", err)
+	}
+}
+
+func TestVerifySessionAfterPromptReportsError(t *testing.T) {
+	sessionID := "ses_verify_error"
+	directory := "/tmp/project"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/session/" + sessionID:
+			if got := r.Header.Get("x-opencode-directory"); got != directory {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"id":"%s","directory":"%s"}`, sessionID, directory)))
+		case "/event":
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("event: session.error\n"))
+			_, _ = w.Write([]byte("data: {\"type\":\"session.error\",\"properties\":{\"sessionID\":\"" + sessionID + "\",\"error\":{\"message\":\"boom\"}}}\n\n"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.VerifySessionAfterPrompt(sessionID, directory, time.Second)
+	if err == nil {
+		t.Fatal("VerifySessionAfterPrompt() expected error")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("VerifySessionAfterPrompt() error = %v, want to contain boom", err)
+	}
+}
+
 // TestWaitForSessionIdle tests that WaitForSessionIdle returns when session transitions busy→idle.
 func TestWaitForSessionIdle(t *testing.T) {
 	sessionID := "ses_wait123"

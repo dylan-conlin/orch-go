@@ -370,6 +370,25 @@ func (c *Client) GetSessionInDirectory(sessionID, directory string) (*Session, e
 	return &session, nil
 }
 
+// VerifySessionAfterPrompt checks that a session exists in the given directory
+// after sending a prompt and listens briefly for session.error events.
+// Returns an error if the session cannot be fetched or reports an error event.
+func (c *Client) VerifySessionAfterPrompt(sessionID, directory string, timeout time.Duration) error {
+	if _, err := c.GetSessionInDirectory(sessionID, directory); err != nil {
+		return fmt.Errorf("session not found after prompt: %w", err)
+	}
+
+	errMsg, err := c.WaitForSessionError(sessionID, timeout)
+	if err != nil {
+		return fmt.Errorf("failed to monitor session for errors: %w", err)
+	}
+	if errMsg != "" {
+		return fmt.Errorf("session reported error: %s", errMsg)
+	}
+
+	return nil
+}
+
 // SessionExists checks if a session exists in OpenCode (in-memory).
 // Returns true if the session is accessible via the API, false otherwise.
 // NOTE: This returns true for any persisted session, not just actively running ones.

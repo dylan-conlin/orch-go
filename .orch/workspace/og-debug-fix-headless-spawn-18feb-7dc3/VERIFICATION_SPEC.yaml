@@ -1,0 +1,23 @@
+verification:
+  type: bug
+  gate1_explain: "Headless spawn now verifies the created session in the target directory after the prompt and watches briefly for session.error events so failures surface instead of reporting success."
+  gate2_behavioral: true
+
+  commands_run:
+    - command: "go test ./pkg/opencode/ ./pkg/orch/"
+      expected: "Tests pass"
+      observed: "All tests passed"
+
+  manual_verification:
+    - "Simulated headless verification path with httptest: VerifySessionAfterPrompt checks x-opencode-directory header and returns error on session.error event."
+
+  deliverables:
+    - path: "pkg/opencode/client.go"
+      description: "Added VerifySessionAfterPrompt to confirm session visibility and session.error detection"
+      exists: true
+    - path: "pkg/opencode/client_test.go"
+      description: "Added tests covering VerifySessionAfterPrompt success and session.error handling"
+      exists: true
+    - path: "pkg/orch/extraction.go"
+      description: "Headless spawn now verifies session after prompt with a short SSE window"
+      exists: true

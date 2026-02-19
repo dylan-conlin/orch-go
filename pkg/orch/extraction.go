@@ -1285,19 +1285,14 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 	if err != nil {
 		return nil, spawn.WrapSpawnError(err, "Failed to create session via API")
 	}
-	if _, err := client.GetSessionInDirectory(session.ID, cfg.ProjectDir); err != nil {
-		return nil, spawn.WrapSpawnError(err, "Created session but could not verify in directory")
-	}
 
 	// Step 2: Send the initial prompt with model selection and directory context
 	// The directory header ensures the server resolves the correct project context
 	if err := client.SendMessageInDirectory(session.ID, minimalPrompt, cfg.Model, cfg.ProjectDir); err != nil {
 		return nil, spawn.WrapSpawnError(err, "Failed to send prompt to session")
 	}
-	if errMsg, err := client.WaitForSessionError(session.ID, 5*time.Second); err != nil {
-		return nil, spawn.WrapSpawnError(err, "Failed to monitor session for errors")
-	} else if errMsg != "" {
-		return nil, spawn.WrapSpawnError(fmt.Errorf("%s", errMsg), "Session reported an error after prompt")
+	if err := client.VerifySessionAfterPrompt(session.ID, cfg.ProjectDir, 3*time.Second); err != nil {
+		return nil, spawn.WrapSpawnError(err, "Session failed verification after prompt")
 	}
 
 	return &headlessSpawnResult{
