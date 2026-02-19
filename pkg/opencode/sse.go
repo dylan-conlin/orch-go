@@ -2,6 +2,7 @@ package opencode
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -38,6 +39,22 @@ func NewSSEClient(url string) *SSEClient {
 // This is a blocking call that reads events until the connection is closed.
 func (c *SSEClient) Connect(events chan<- SSEEvent) error {
 	resp, err := c.httpClient.Get(c.URL)
+	if err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+	defer resp.Body.Close()
+
+	return ReadSSEStream(resp.Body, events)
+}
+
+// ConnectWithContext establishes SSE connection with context cancellation.
+// When the context is canceled, the request is aborted and the function returns.
+func (c *SSEClient) ConnectWithContext(ctx context.Context, events chan<- SSEEvent) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", c.URL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}

@@ -1448,6 +1448,55 @@ func TestSendMessageInDirectoryEmpty(t *testing.T) {
 	}
 }
 
+func TestGetSessionInDirectory(t *testing.T) {
+	directory := "/tmp/project"
+	sessionID := "ses_test"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/session/"+sessionID {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if got := r.Header.Get("x-opencode-directory"); got != directory {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"id":"%s","directory":"%s"}`, sessionID, directory)))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.GetSessionInDirectory(sessionID, directory)
+	if err != nil {
+		t.Fatalf("GetSessionInDirectory() error = %v", err)
+	}
+}
+
+func TestWaitForSessionError(t *testing.T) {
+	sessionID := "ses_error"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/event" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: session.error\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"session.error\",\"properties\":{\"sessionID\":\"" + sessionID + "\",\"error\":{\"message\":\"boom\"}}}\n\n"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	msg, err := client.WaitForSessionError(sessionID, time.Second)
+	if err != nil {
+		t.Fatalf("WaitForSessionError() error = %v", err)
+	}
+	if msg != "boom" {
+		t.Fatalf("WaitForSessionError() msg = %q, want %q", msg, "boom")
+	}
+}
+
 // TestWaitForSessionIdle tests that WaitForSessionIdle returns when session transitions busy→idle.
 func TestWaitForSessionIdle(t *testing.T) {
 	sessionID := "ses_wait123"

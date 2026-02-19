@@ -3,6 +3,7 @@ package opencode
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -341,6 +342,34 @@ func (c *Client) GetSession(sessionID string) (*Session, error) {
 	return &session, nil
 }
 
+// GetSessionInDirectory fetches a session and scopes it to the provided directory.
+// This is required when the server uses x-opencode-directory to select project context.
+func (c *Client) GetSessionInDirectory(sessionID, directory string) (*Session, error) {
+	req, err := http.NewRequest("GET", c.ServerURL+"/session/"+sessionID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	if directory != "" {
+		req.Header.Set("x-opencode-directory", directory)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch session: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var session Session
+	if err := json.NewDecoder(resp.Body).Decode(&session); err != nil {
+		return nil, fmt.Errorf("failed to decode session: %w", err)
+	}
+
+	return &session, nil
+}
+
 // SessionExists checks if a session exists in OpenCode (in-memory).
 // Returns true if the session is accessible via the API, false otherwise.
 // NOTE: This returns true for any persisted session, not just actively running ones.
@@ -358,6 +387,56 @@ func (c *Client) SessionExists(sessionID string) bool {
 
 	// Session exists if we get 200 OK
 	return resp.StatusCode == http.StatusOK
+}
+
+// WaitForSessionError listens for session.error events for a limited time.
+// Returns the error message if detected, empty string if none, or an error on connection failure.
+func (c *Client) WaitForSessionError(sessionID string, timeout time.Duration) (string, error) {
+	if timeout <= 0 {
+		return "", nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	sseClient := NewSSEClient(c.ServerURL + "/event")
+	events := make(chan SSEEvent, 10)
+	errCh := make(chan error, 1)
+
+	go func() {
+		errCh <- sseClient.ConnectWithContext(ctx, events)
+		close(events)
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return "", nil
+		case event, ok := <-events:
+			if !ok {
+				select {
+				case err := <-errCh:
+					if err != nil && ctx.Err() == nil {
+						return "", err
+					}
+				default:
+				}
+				return "", nil
+			}
+			if event.Event != "session.error" && event.Event != "" {
+				continue
+			}
+			sid, msg := ParseSessionError(event.Data)
+			if sid == sessionID && msg != "" {
+				return msg, nil
+			}
+		case err := <-errCh:
+			if err != nil && ctx.Err() == nil {
+				return "", err
+			}
+			return "", nil
+		}
+	}
 }
 
 // IsSessionActive checks if a session is actively running (updated within maxIdleTime).
