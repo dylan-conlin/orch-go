@@ -44,6 +44,7 @@
 	export let edges: GraphEdge[] = [];
 	export let newIssueIds: Set<string> = new Set();
 	export let wipItems: WIPItem[] = [];
+	export let excludeIds: Set<string> = new Set();
 	export let onToggleExpansion: (nodeId: string, expanded: boolean) => void = () => {};
 	export let onSetFocus: (beadsId: string, title: string) => void = () => {};
 
@@ -86,6 +87,7 @@
 	let selectedIndex = 0;
 	let pinnedTreeIds = new Set<string>();
 	let runningAgentDetailsByIssueId = new Map<string, RunningAgentDetails>();
+	let visibleWipItems: WIPItem[] = [];
 
 	// Track expanded details separately (fixes reactivity issues)
 	let expandedDetails = new Set<string>();
@@ -250,7 +252,8 @@
 	function buildFlattenedItems(): (TreeNode | WIPItem | GroupHeader | DepSectionHeader)[] {
 		independentHiddenCount = 0;
 		independentHasOverflow = false;
-		const items: (TreeNode | WIPItem | GroupHeader | DepSectionHeader)[] = [...wipItems];
+		const excludedIds = new Set([...pinnedTreeIds, ...excludeIds]);
+		const items: (TreeNode | WIPItem | GroupHeader | DepSectionHeader)[] = [...visibleWipItems];
 
 		if (isGrouped && groups.length > 0) {
 			for (const group of groups) {
@@ -262,7 +265,7 @@
 					unlabeled: group.unlabeled,
 				});
 				if (!collapsedGroups.has(group.key)) {
-					items.push(...flattenVisibleTree(group.nodes, pinnedTreeIds));
+					items.push(...flattenVisibleTree(group.nodes, excludedIds));
 				}
 			}
 			depPrefixMap = new Map();
@@ -272,8 +275,9 @@
 		const hasBlockingEdges = edges.some(
 			(e) => e.type === 'blocks' && treeNodeIndex.has(e.from) && treeNodeIndex.has(e.to),
 		);
+		const shouldUseDependencyView = groupMode === 'dep-chain' || (hasBlockingEdges && !isGrouped);
 
-		if (hasBlockingEdges) {
+		if (shouldUseDependencyView) {
 			const dv = buildDependencyView(treeNodeIndex, edges);
 			const prefixes = new Map<string, string>();
 
@@ -287,7 +291,7 @@
 				});
 
 				if (!collapsedChains.has(chain.id)) {
-					const flatItems = flattenDepChain(chain, pinnedTreeIds);
+					const flatItems = flattenDepChain(chain, excludedIds);
 					for (const fi of flatItems) {
 						prefixes.set(fi.node.id, fi.prefix);
 						items.push(fi.node);
@@ -295,7 +299,7 @@
 				}
 			}
 
-			const availableIndependent = dv.independentNodes.filter((node) => !pinnedTreeIds.has(node.id));
+			const availableIndependent = dv.independentNodes.filter((node) => !excludedIds.has(node.id));
 			if (availableIndependent.length > 0) {
 				items.push({
 					_depSectionHeader: true,
@@ -324,7 +328,7 @@
 			return items;
 		}
 
-		items.push(...flattenVisibleTree(tree, pinnedTreeIds));
+		items.push(...flattenVisibleTree(tree, excludedIds));
 		depPrefixMap = new Map();
 		return items;
 	}
@@ -343,7 +347,13 @@
 		// Track which tree nodes are already surfaced in WIP (hide duplicates from tree)
 		const pinnedIds = new Set<string>();
 		const runningDetails = new Map<string, { phase?: string; runtime?: string; model?: string; skill?: string }>();
+		const filteredWipItems: WIPItem[] = [];
 		for (const item of wipItems) {
+			const itemId = item.type === 'running' ? item.agent.beads_id : item.issue.id;
+			if (itemId && excludeIds.has(itemId)) {
+				continue;
+			}
+			filteredWipItems.push(item);
 			if (item.type === 'running') {
 				if (item.agent.beads_id) {
 					pinnedIds.add(item.agent.beads_id);
@@ -358,6 +368,7 @@
 				pinnedIds.add(item.issue.id);
 			}
 		}
+		visibleWipItems = filteredWipItems;
 		pinnedTreeIds = pinnedIds;
 		runningAgentDetailsByIssueId = runningDetails;
 		// Ensure reactive dependencies for flattened list rebuilds
@@ -369,6 +380,7 @@
 		collapsedGroups;
 		collapsedChains;
 		showAllIndependent;
+		excludeIds;
 
 		flattenedNodes = buildFlattenedItems();
 		// Clamp selected index to valid range
@@ -675,6 +687,10 @@
 	
 	// Open side panel for a node
 	function openSidePanel(node: TreeNode) {
+		if (selectedIssueForPanel?.id === node.id) {
+			selectedIssueForPanel = null;
+			return;
+		}
 		selectedIssueForPanel = node;
 	}
 
@@ -818,7 +834,29 @@
 						? { text: `${agent.phase || 'active'} · ${agent.runtime || 'runtime unknown'} · ${shortenModel(agent.model)}`, tone: 'text-blue-500/90' }
 						: null)}
 				<!-- Running Agent - WIP Item -->
-			<div class="flex items-start gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}" style="padding-left: 0">
+			<div
+				class="flex items-start gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}"
+				style="padding-left: 0"
+				role="button"
+				tabindex="-1"
+				onclick={() => {
+					selectNode(index);
+					const panelIssue = getPanelIssue(item);
+					if (panelIssue) {
+						openSidePanel(panelIssue);
+					}
+				}}
+				onkeydown={(event) => {
+					if (event.key === 'Enter' || event.key === ' ') {
+						event.preventDefault();
+						selectNode(index);
+						const panelIssue = getPanelIssue(item);
+						if (panelIssue) {
+							openSidePanel(panelIssue);
+						}
+					}
+				}}
+			>
 				<!-- Expansion indicator placeholder (matches tree nodes) -->
 				<span class="w-4"></span>
 
@@ -934,7 +972,29 @@
 			{:else}
 				{@const issue = item.issue}
 				<!-- Queued Issue - WIP Item (NO opacity-60) -->
-				<div class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}" style="padding-left: 0">
+				<div
+					class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}"
+					style="padding-left: 0"
+					role="button"
+					tabindex="-1"
+					onclick={() => {
+						selectNode(index);
+						const panelIssue = getPanelIssue(item);
+						if (panelIssue) {
+							openSidePanel(panelIssue);
+						}
+					}}
+					onkeydown={(event) => {
+						if (event.key === 'Enter' || event.key === ' ') {
+							event.preventDefault();
+							selectNode(index);
+							const panelIssue = getPanelIssue(item);
+							if (panelIssue) {
+								openSidePanel(panelIssue);
+							}
+						}
+					}}
+				>
 					<!-- Expansion indicator placeholder (matches tree nodes) -->
 					<span class="w-4"></span>
 					
@@ -991,8 +1051,21 @@
 			{@const depPrefix = depPrefixMap.get(node.id)}
 			<!-- Tree Node - L0: Row -->
 			<div
-			class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.status.toLowerCase() === 'in_progress' ? 'border-l-2 border-blue-500/60 bg-blue-500/5' : 'border-l border-transparent'} {node.absorbed_by ? 'opacity-50' : ''} {feedback === 'priority' ? 'action-feedback-priority' : ''} {feedback === 'queue' ? 'action-feedback-queue' : ''}"
-			style="padding-left: {depPrefix !== undefined ? '8px' : node.depth * 24 + 'px'}"
+				class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.status.toLowerCase() === 'in_progress' ? 'border-l-2 border-blue-500/60 bg-blue-500/5' : 'border-l border-transparent'} {node.absorbed_by ? 'opacity-50' : ''} {feedback === 'priority' ? 'action-feedback-priority' : ''} {feedback === 'queue' ? 'action-feedback-queue' : ''}"
+				style="padding-left: {depPrefix !== undefined ? '8px' : node.depth * 24 + 'px'}"
+				role="button"
+				tabindex="-1"
+				onclick={() => {
+					selectNode(index);
+					openSidePanel(node);
+				}}
+				onkeydown={(event) => {
+					if (event.key === 'Enter' || event.key === ' ') {
+						event.preventDefault();
+						selectNode(index);
+						openSidePanel(node);
+					}
+				}}
 			>
 					{#if depPrefix !== undefined}
 						<!-- Box-drawing prefix for dependency chain -->
@@ -1070,12 +1143,15 @@
 
 						<!-- Set as Focus button for epics -->
 						{#if node.type === 'epic'}
-							<button
-								type="button"
-								class="text-xs text-blue-500 hover:text-blue-600 hover:underline px-1"
-								onclick={() => onSetFocus(node.id, node.title)}
-								title="Set this epic as your current focus"
-							>
+						<button
+							type="button"
+							class="text-xs text-blue-500 hover:text-blue-600 hover:underline px-1"
+							onclick={(event) => {
+								event.stopPropagation();
+								onSetFocus(node.id, node.title);
+							}}
+							title="Set this epic as your current focus"
+						>
 								Set Focus
 							</button>
 						{/if}
