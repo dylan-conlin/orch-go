@@ -144,6 +144,16 @@ func Resolve(input ResolveInput) (ResolvedSpawnSettings, error) {
 		resolvedModel = model.ResolveWithConfig(result.Model.Value, nil)
 	}
 
+	// Auto-resolve: when backend is claude but resolved model is non-anthropic
+	// (and model was not explicitly set via CLI), override to default Anthropic model.
+	// This handles cross-project spawns where the project defaults to OpenAI but
+	// the user explicitly chose --backend claude.
+	if result.Backend.Value == BackendClaude && resolvedModel.Provider != "anthropic" && result.Model.Source != SourceCLI {
+		resolvedModel = model.DefaultModel
+		result.Model = ResolvedSetting{Value: resolvedModel.Format(), Source: SourceDerived, Detail: "backend-compatibility"}
+		result.Warnings = append(result.Warnings, fmt.Sprintf("Auto-resolved model to %s (claude backend requires Anthropic model)", resolvedModel.ModelID))
+	}
+
 	allowAnthropicOpenCode := input.UserConfig != nil && input.UserConfigMeta.AllowAnthropicOpenCode && input.UserConfig.AllowAnthropicOpenCode
 	if err := validateModelCompatibility(result.Backend.Value, resolvedModel, allowAnthropicOpenCode); err != nil {
 		return result, err

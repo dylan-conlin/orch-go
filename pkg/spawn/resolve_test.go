@@ -145,19 +145,29 @@ func TestResolve_BugClass01_ProjectConfigDefaultsDoNotOverrideUserBackend(t *tes
 	}
 }
 
-func TestResolve_BugClass02_UserDefaultModelDoesNotOverrideProjectBackend(t *testing.T) {
+func TestResolve_BugClass02_ClaudeBackendAutoResolvesNonAnthropicModel(t *testing.T) {
 	input := baseResolveInput()
 	input.ProjectConfig = &config.Config{SpawnMode: BackendClaude}
 	input.ProjectConfigMeta = ProjectConfigMeta{SpawnMode: true}
 	input.UserConfig = &userconfig.Config{DefaultModel: "gpt-4o"}
 	input.UserConfigMeta = UserConfigMeta{DefaultModel: true}
 
-	_, err := Resolve(input)
-	if err == nil {
-		t.Fatal("Resolve() error = nil, want compatibility error")
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
 	}
-	if !strings.Contains(err.Error(), "backend claude does not support provider openai") {
-		t.Fatalf("Resolve() error = %q, want compatibility error", err)
+	// Model should be auto-resolved to default Anthropic model
+	if settings.Model.Value != model.DefaultModel.Format() {
+		t.Fatalf("Model.Value = %q, want %q", settings.Model.Value, model.DefaultModel.Format())
+	}
+	if settings.Model.Source != SourceDerived {
+		t.Fatalf("Model.Source = %q, want %q", settings.Model.Source, SourceDerived)
+	}
+	if settings.Model.Detail != "backend-compatibility" {
+		t.Fatalf("Model.Detail = %q, want %q", settings.Model.Detail, "backend-compatibility")
+	}
+	if !containsWarning(settings.Warnings, "Auto-resolved model to") {
+		t.Fatalf("Warnings = %v, want auto-resolve warning", settings.Warnings)
 	}
 }
 
@@ -386,6 +396,49 @@ func TestResolve_BugClass11b_CLIModelStillOverridesProjectConfig(t *testing.T) {
 	}
 	if !strings.Contains(settings.Model.Value, "opus") {
 		t.Fatalf("Model.Value = %q, want opus variant", settings.Model.Value)
+	}
+}
+
+// TestResolve_BugClass12_CLIBackendClaudeAutoResolvesOpenAIDefault reproduces
+// orch-go-1127: --backend claude + user default_model gpt-4o should auto-resolve
+// to anthropic default, not error with "backend claude does not support provider openai".
+func TestResolve_BugClass12_CLIBackendClaudeAutoResolvesOpenAIDefault(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Backend = BackendClaude
+	input.UserConfig = &userconfig.Config{DefaultModel: "gpt-4o"}
+	input.UserConfigMeta = UserConfigMeta{DefaultModel: true}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v, want auto-resolve to Anthropic default", err)
+	}
+	if settings.Model.Value != model.DefaultModel.Format() {
+		t.Fatalf("Model.Value = %q, want %q", settings.Model.Value, model.DefaultModel.Format())
+	}
+	if settings.Model.Source != SourceDerived {
+		t.Fatalf("Model.Source = %q, want %q", settings.Model.Source, SourceDerived)
+	}
+	if settings.Model.Detail != "backend-compatibility" {
+		t.Fatalf("Model.Detail = %q, want %q", settings.Model.Detail, "backend-compatibility")
+	}
+	if !containsWarning(settings.Warnings, "Auto-resolved model to") {
+		t.Fatalf("Warnings = %v, want auto-resolve warning", settings.Warnings)
+	}
+}
+
+// TestResolve_BugClass12b_CLIBackendClaudeWithExplicitModelStillErrors verifies
+// that --backend claude + explicit --model gpt-4o still errors (user explicitly chose incompatible combo).
+func TestResolve_BugClass12b_CLIBackendClaudeWithExplicitModelStillErrors(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Backend = BackendClaude
+	input.CLI.Model = "gpt-4o"
+
+	_, err := Resolve(input)
+	if err == nil {
+		t.Fatal("Resolve() error = nil, want compatibility error for explicit incompatible model")
+	}
+	if !strings.Contains(err.Error(), "backend claude does not support provider openai") {
+		t.Fatalf("Resolve() error = %q, want compatibility error", err)
 	}
 }
 
