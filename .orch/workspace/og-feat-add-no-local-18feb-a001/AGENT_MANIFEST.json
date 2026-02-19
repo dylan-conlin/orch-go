@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-add-no-local-18feb-a001",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1077",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go/",
+  "git_baseline": "ad1c5f10a1065f4985927290fbb942c568596223",
+  "spawn_time": "2026-02-18T23:09:16-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-5.2-codex"
+}
