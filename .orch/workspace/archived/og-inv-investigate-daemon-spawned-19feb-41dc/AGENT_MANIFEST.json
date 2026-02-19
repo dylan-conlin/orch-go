@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-inv-investigate-daemon-spawned-19feb-41dc",
+  "skill": "investigation",
+  "beads_id": "orch-go-1104",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "d6cb171bf737e16de70ad937b8152a42a0a384ba",
+  "spawn_time": "2026-02-19T11:39:01-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

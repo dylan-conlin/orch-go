@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-debug-fix-getallsessionstatus-fetching-19feb-ec64",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-1099",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "e52bc0098d4764e5b779f4d610b02e4627e6a8bc",
+  "spawn_time": "2026-02-19T11:32:11-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-debug-fix-orch-agent-19feb-8a90",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-1096",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "393c874fd5b378370ac4215af984bba0af64cdc0",
+  "spawn_time": "2026-02-19T11:02:05-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

@@ -1,0 +1,54 @@
+type: architect-design
+issue: orch-go-1109
+skill: architect
+
+observable_behavior:
+  primary: "Design document provides actionable coupling hotspot detection approach validated against real git data"
+  secondary:
+    - "Algorithm validated: cross-surface filter identifies 4 known concept clusters from 2,733 commits"
+    - "Scoring formula validated: daemon config scores CRITICAL (180), tmux scores noise (13)"
+    - "Integration design: 4th hotspot type fits existing HotspotReport schema"
+    - "Probe extends completion-verification model with coupling dimension"
+
+acceptance_criteria:
+  - criterion: "Investigation file complete with all 5 forks navigated"
+    evidence: ".kb/investigations/2026-02-19-design-coupling-hotspot-analysis-system.md — Phase: Complete"
+    type: artifact
+
+  - criterion: "Algorithm validated with real git data"
+    evidence: "Co-change analysis ran on 2,733 commits, found 76 cross-surface commits, identified 4 concept clusters matching known problems"
+    type: test_output
+
+  - criterion: "Scoring formula produces correct severity ranking"
+    evidence: "daemon=180 (CRITICAL, caused 526K spiral), agent-status=67 (HIGH, caused 84/85 empty metadata), tmux=13 (noise, no issues)"
+    type: test_output
+
+  - criterion: "Integration design preserves existing hotspot schema"
+    evidence: "coupling-cluster uses existing Hotspot struct with type/score/path/related_files fields"
+    type: artifact
+
+  - criterion: "Probe extends completion-verification model"
+    evidence: ".kb/models/completion-verification/probes/2026-02-19-probe-coupling-hotspot-detection-gap.md — Status: Complete"
+    type: artifact
+
+failure_modes:
+  - symptom: "Algorithm produces too many clusters (>10)"
+    diagnostic: "Check cross-surface filter threshold — may need 3+ layers instead of 2+"
+    fix: "Increase layer threshold or raise coupling_score minimum"
+
+  - symptom: "Test+source pairs appear in coupling output"
+    diagnostic: "Healthy coupling filter not working — check same-directory exclusion"
+    fix: "Verify filter excludes pairs where both files share directory or one is test of other"
+
+evidence_requirements:
+  - criterion: "Investigation complete"
+    evidence_type: "artifact"
+    artifact: ".kb/investigations/2026-02-19-design-coupling-hotspot-analysis-system.md"
+
+  - criterion: "Probe complete"
+    evidence_type: "artifact"
+    artifact: ".kb/models/completion-verification/probes/2026-02-19-probe-coupling-hotspot-detection-gap.md"
+
+  - criterion: "Real data validation"
+    evidence_type: "test_output"
+    artifact: "Git co-change analysis script output showing 4 concept clusters"
