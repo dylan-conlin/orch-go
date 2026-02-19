@@ -222,6 +222,40 @@ func TestDetermineSpawnBackend_ConfigOverridesInfra(t *testing.T) {
 	})
 }
 
+func TestDetermineSpawnBackend_ProjectConfigWithoutSpawnModeDoesNotOverrideUserBackend(t *testing.T) {
+	sonnet := model.ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}
+
+	configHome := t.TempDir()
+	t.Setenv("HOME", configHome)
+
+	configDir := filepath.Join(configHome, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("failed to create user config dir: %v", err)
+	}
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("backend: claude\n"), 0644); err != nil {
+		t.Fatalf("failed to write user config: %v", err)
+	}
+
+	projectDir := t.TempDir()
+	projectConfigDir := filepath.Join(projectDir, ".orch")
+	if err := os.MkdirAll(projectConfigDir, 0755); err != nil {
+		t.Fatalf("failed to create project config dir: %v", err)
+	}
+	projectConfigPath := filepath.Join(projectConfigDir, "config.yaml")
+	if err := os.WriteFile(projectConfigPath, []byte("servers:\n  web: 5173\n"), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	got, err := DetermineSpawnBackend(sonnet, "add user feature", "", projectDir, "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "claude" {
+		t.Errorf("project config without spawn_mode should not override user backend, got %q", got)
+	}
+}
+
 func TestDetermineSpawnBackend_InvalidBackend(t *testing.T) {
 	sonnet := model.ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}
 

@@ -1,0 +1,16 @@
+verification:
+  commands_ran:
+    - 'go test ./pkg/orch -run TestDetermineSpawnBackend -v'
+
+  acceptance_criteria:
+    project_config_spawn_mode_explicitness:
+      description: 'Project config without spawn_mode does not override explicit user backend'
+      verified: true
+      evidence: 'TestDetermineSpawnBackend_ProjectConfigWithoutSpawnModeDoesNotOverrideUserBackend passes'
+
+  manual_verification_needed: []
+
+  files_changed:
+    - 'pkg/orch/extraction.go: use explicit spawn_mode metadata for backend resolution'
+    - 'pkg/orch/extraction_test.go: add test for spawn_mode explicitness'
+    - '.kb/models/daemon-autonomous-operation/probes/2026-02-18-probe-project-config-spawn-mode-explicitness.md: probe evidence'

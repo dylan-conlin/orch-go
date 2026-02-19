@@ -737,12 +737,12 @@ func BuildUsageInfo(usageCheckResult *gates.UsageCheckResult) *spawn.UsageInfo {
 // This prevents the escape hatch from silently overriding user intent.
 func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, projectDir, backendFlag, spawnModel string) (string, error) {
 	// Load project config (used for backend default)
-	projCfg, _ := config.Load(projectDir)
+	projCfg, projMeta, _ := config.LoadWithMeta(projectDir)
+	projectSpawnModeExplicit := projMeta != nil && projMeta.Explicit["spawn_mode"]
 
 	// Load user config (~/.orch/config.yaml) for backend fallback
-	userCfg, _ := userconfig.Load()
-	_, userCfgErr := os.Stat(userconfig.ConfigPath())
-	userCfgExplicit := userCfgErr == nil && userCfg != nil && userCfg.Backend != ""
+	userCfg, userMeta, _ := userconfig.LoadWithMeta()
+	userCfgExplicit := userMeta != nil && userMeta.Explicit["backend"] && userCfg != nil && userCfg.Backend != ""
 
 	// Default to opencode (primary spawn path)
 	backend := "opencode"
@@ -770,7 +770,7 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 		// Don't let infrastructure detection override — the user chose a specific model
 		// that may require a specific backend (e.g., codex requires opencode)
 		// Resolution: project config > user config > hardcoded default
-		if projCfg != nil && projCfg.SpawnMode != "" {
+		if projCfg != nil && projectSpawnModeExplicit && projCfg.SpawnMode != "" {
 			backend = projCfg.SpawnMode
 		} else if userCfgExplicit {
 			backend = userCfg.Backend
@@ -780,7 +780,7 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 			fmt.Fprintf(os.Stderr, "⚠️  Infrastructure work detected but respecting explicit --model %s (backend: %s)\n", spawnModel, backend)
 			fmt.Fprintf(os.Stderr, "   Recommendation: Use --backend claude for infrastructure work to survive server restarts.\n")
 		}
-	} else if projCfg != nil && projCfg.SpawnMode != "" {
+	} else if projCfg != nil && projectSpawnModeExplicit && projCfg.SpawnMode != "" {
 		// Config default: respect project spawn_mode setting
 		backend = projCfg.SpawnMode
 		if isInfrastructureWork(task, beadsID) && backend != "claude" {
