@@ -61,6 +61,7 @@ dev server. Use 'orch serve status' to check if the API is running.
 
 Endpoints:
   GET /api/agents    - Returns JSON list of active agents from OpenCode/tmux
+  GET /api/sessions  - Returns JSON list of untracked OpenCode sessions
   GET /api/events    - Proxies the OpenCode SSE stream for real-time updates
   GET /api/agentlog  - Agent lifecycle events
   GET /api/usage     - Claude Max usage stats
@@ -156,6 +157,7 @@ func runServeStatus(portNum int) error {
 	fmt.Println()
 	fmt.Println("Endpoints:")
 	fmt.Println("  GET /api/agents    - Active agents")
+	fmt.Println("  GET /api/sessions  - Untracked sessions")
 	fmt.Println("  GET /api/events    - SSE event stream")
 	fmt.Println("  GET /api/agentlog  - Agent lifecycle events")
 	fmt.Println("  GET /api/usage     - Claude Max usage")
@@ -275,6 +277,9 @@ func runServe(portNum int) error {
 
 	// GET /api/agents - returns JSON list of agents from OpenCode/tmux
 	mux.HandleFunc("/api/agents", corsHandler(handleAgents))
+
+	// GET /api/sessions - returns JSON list of untracked sessions from OpenCode
+	mux.HandleFunc("/api/sessions", corsHandler(handleSessions))
 
 	// GET /api/events - proxies OpenCode SSE stream
 	mux.HandleFunc("/api/events", corsHandler(handleEvents))
@@ -434,6 +439,7 @@ func runServe(portNum int) error {
 	fmt.Printf("Starting orch-go API server on https://localhost%s (HTTP/2 with TLS)\n", addr)
 	fmt.Println("Endpoints:")
 	fmt.Println("  GET /api/agents    - List of active agents from OpenCode/tmux")
+	fmt.Println("  GET /api/sessions  - List of untracked OpenCode sessions")
 	fmt.Println("  GET /api/events    - SSE proxy for OpenCode events")
 	fmt.Println("  GET /api/agentlog  - Agent lifecycle events (supports ?follow=true for SSE)")
 	fmt.Println("  GET /api/usage     - Claude Max usage stats")

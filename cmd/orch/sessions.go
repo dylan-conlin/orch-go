@@ -21,8 +21,8 @@ var (
 	sessionsCase      bool
 )
 
-var sessionsCmd = &cobra.Command{
-	Use:   "sessions",
+var sessionHistoryCmd = &cobra.Command{
+	Use:   "session-history",
 	Short: "Search and list OpenCode session history",
 	Long: `Search and list OpenCode session history.
 
@@ -36,15 +36,15 @@ Subcommands:
   show    - View a specific session
 
 Examples:
-  orch sessions list                    # List recent sessions
-  orch sessions list --limit 20         # List last 20 sessions
-  orch sessions list --date 2025-12-25  # Sessions from specific date
-  orch sessions search "teeth check"    # Search for text in sessions
-  orch sessions search --regex "auth.*token"  # Regex search
-  orch sessions show ses_abc123         # Show specific session`,
+  orch session-history list                    # List recent sessions
+  orch session-history list --limit 20         # List last 20 sessions
+  orch session-history list --date 2025-12-25  # Sessions from specific date
+  orch session-history search "teeth check"    # Search for text in sessions
+  orch session-history search --regex "auth.*token"  # Regex search
+  orch session-history show ses_abc123         # Show specific session`,
 }
 
-var sessionsListCmd = &cobra.Command{
+var sessionHistoryListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List recent sessions",
 	Long: `List recent OpenCode sessions with summaries.
@@ -53,17 +53,17 @@ Sessions are sorted by most recently updated. Use --limit to control
 how many sessions are shown.
 
 Examples:
-  orch sessions list                    # List recent sessions (default: 10)
-  orch sessions list --limit 50         # List last 50 sessions
-  orch sessions list --date 2025-12-25  # Sessions from specific date
-  orch sessions list --after 2025-12-20 # Sessions after date
-  orch sessions list --directory /path/to/project  # Filter by project`,
+  orch session-history list                    # List recent sessions (default: 10)
+  orch session-history list --limit 50         # List last 50 sessions
+  orch session-history list --date 2025-12-25  # Sessions from specific date
+  orch session-history list --after 2025-12-20 # Sessions after date
+  orch session-history list --directory /path/to/project  # Filter by project`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSessionsList()
 	},
 }
 
-var sessionsSearchCmd = &cobra.Command{
+var sessionHistorySearchCmd = &cobra.Command{
 	Use:   "search [query]",
 	Short: "Search session message content",
 	Long: `Search through session message content for matching text.
@@ -75,12 +75,12 @@ with context snippets.
 Requires OpenCode to be running (uses API to fetch message content).
 
 Examples:
-  orch sessions search "error handling"        # Search for text
-  orch sessions search "teeth check"           # Find specific discussion
-  orch sessions search --regex "auth.*token"   # Regex search
-  orch sessions search -i "ERROR"              # Case-insensitive (default)
-  orch sessions search --case "Error"          # Case-sensitive
-  orch sessions search --limit 5 "pattern"     # Limit results`,
+  orch session-history search "error handling"        # Search for text
+  orch session-history search "teeth check"           # Find specific discussion
+  orch session-history search --regex "auth.*token"   # Regex search
+  orch session-history search -i "ERROR"              # Case-insensitive (default)
+  orch session-history search --case "Error"          # Case-sensitive
+  orch session-history search --limit 5 "pattern"     # Limit results`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		query := args[0]
@@ -88,7 +88,7 @@ Examples:
 	},
 }
 
-var sessionsShowCmd = &cobra.Command{
+var sessionHistoryShowCmd = &cobra.Command{
 	Use:   "show [session-id]",
 	Short: "Show session details and messages",
 	Long: `Show detailed information about a specific session.
@@ -97,8 +97,8 @@ Displays session metadata and message content. Requires OpenCode
 to be running to fetch message content.
 
 Examples:
-  orch sessions show ses_abc123   # Show specific session
-  orch sessions show ses_xyz789   # View session messages`,
+  orch session-history show ses_abc123   # Show specific session
+  orch session-history show ses_xyz789   # View session messages`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sessionID := args[0]
@@ -108,26 +108,26 @@ Examples:
 
 func init() {
 	// List flags
-	sessionsListCmd.Flags().IntVar(&sessionsLimit, "limit", 10, "Maximum number of sessions to show")
-	sessionsListCmd.Flags().StringVar(&sessionsDate, "date", "", "Filter by specific date (YYYY-MM-DD)")
-	sessionsListCmd.Flags().StringVar(&sessionsAfter, "after", "", "Sessions created after date (YYYY-MM-DD)")
-	sessionsListCmd.Flags().StringVar(&sessionsBefore, "before", "", "Sessions created before date (YYYY-MM-DD)")
-	sessionsListCmd.Flags().StringVarP(&sessionsDirectory, "directory", "d", "", "Filter by project directory")
+	sessionHistoryListCmd.Flags().IntVar(&sessionsLimit, "limit", 10, "Maximum number of sessions to show")
+	sessionHistoryListCmd.Flags().StringVar(&sessionsDate, "date", "", "Filter by specific date (YYYY-MM-DD)")
+	sessionHistoryListCmd.Flags().StringVar(&sessionsAfter, "after", "", "Sessions created after date (YYYY-MM-DD)")
+	sessionHistoryListCmd.Flags().StringVar(&sessionsBefore, "before", "", "Sessions created before date (YYYY-MM-DD)")
+	sessionHistoryListCmd.Flags().StringVarP(&sessionsDirectory, "directory", "d", "", "Filter by project directory")
 
 	// Search flags
-	sessionsSearchCmd.Flags().IntVar(&sessionsLimit, "limit", 10, "Maximum number of results")
-	sessionsSearchCmd.Flags().BoolVar(&sessionsRegex, "regex", false, "Treat query as regular expression")
-	sessionsSearchCmd.Flags().BoolVar(&sessionsCase, "case", false, "Case-sensitive search (default: case-insensitive)")
-	sessionsSearchCmd.Flags().StringVar(&sessionsDate, "date", "", "Filter by specific date (YYYY-MM-DD)")
-	sessionsSearchCmd.Flags().StringVar(&sessionsAfter, "after", "", "Sessions created after date (YYYY-MM-DD)")
-	sessionsSearchCmd.Flags().StringVar(&sessionsBefore, "before", "", "Sessions created before date (YYYY-MM-DD)")
-	sessionsSearchCmd.Flags().StringVarP(&sessionsDirectory, "directory", "d", "", "Filter by project directory")
+	sessionHistorySearchCmd.Flags().IntVar(&sessionsLimit, "limit", 10, "Maximum number of results")
+	sessionHistorySearchCmd.Flags().BoolVar(&sessionsRegex, "regex", false, "Treat query as regular expression")
+	sessionHistorySearchCmd.Flags().BoolVar(&sessionsCase, "case", false, "Case-sensitive search (default: case-insensitive)")
+	sessionHistorySearchCmd.Flags().StringVar(&sessionsDate, "date", "", "Filter by specific date (YYYY-MM-DD)")
+	sessionHistorySearchCmd.Flags().StringVar(&sessionsAfter, "after", "", "Sessions created after date (YYYY-MM-DD)")
+	sessionHistorySearchCmd.Flags().StringVar(&sessionsBefore, "before", "", "Sessions created before date (YYYY-MM-DD)")
+	sessionHistorySearchCmd.Flags().StringVarP(&sessionsDirectory, "directory", "d", "", "Filter by project directory")
 
-	sessionsCmd.AddCommand(sessionsListCmd)
-	sessionsCmd.AddCommand(sessionsSearchCmd)
-	sessionsCmd.AddCommand(sessionsShowCmd)
+	sessionHistoryCmd.AddCommand(sessionHistoryListCmd)
+	sessionHistoryCmd.AddCommand(sessionHistorySearchCmd)
+	sessionHistoryCmd.AddCommand(sessionHistoryShowCmd)
 
-	rootCmd.AddCommand(sessionsCmd)
+	rootCmd.AddCommand(sessionHistoryCmd)
 }
 
 func runSessionsList() error {
