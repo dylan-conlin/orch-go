@@ -1,0 +1,15 @@
+verification:
+  commands_ran:
+    - 'gofmt -w cmd/orch/serve_agents.go'
+
+  acceptance_criteria:
+    beads_first_discovery:
+      description: '/api/agents builds active list from in_progress issues and workspace session_id'
+      verified: false
+      evidence: 'Not run (manual verification required)'
+
+  manual_verification_needed:
+    - 'Run /api/agents and confirm in_progress issues appear even when OpenCode session list is empty; session liveness uses workspace .session_id.'
+
+  files_changed:
+    - 'cmd/orch/serve_agents.go: Reworked /api/agents to beads-first discovery and OpenCode liveness check'

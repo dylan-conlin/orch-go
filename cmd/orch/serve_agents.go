@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,7 +20,6 @@ import (
 	orchpkg "github.com/dylan-conlin/orch-go/pkg/orch"
 	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
-	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -329,7 +329,67 @@ func isHexLike(s string) bool {
 	return true
 }
 
-// handleAgents returns JSON list of active agents from OpenCode/tmux and completed workspaces.
+// uniqueProjectDirs deduplicates project directories while preserving order.
+func uniqueProjectDirs(dirs []string) []string {
+	seen := make(map[string]bool, len(dirs))
+	result := make([]string, 0, len(dirs))
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		cleaned := filepath.Clean(dir)
+		if seen[cleaned] {
+			continue
+		}
+		seen[cleaned] = true
+		result = append(result, cleaned)
+	}
+	return result
+}
+
+// listInProgressIssues retrieves in_progress issues across project directories.
+// Returns a map of beadsID -> Issue, plus beadsID -> projectDir for cross-project lookups.
+func listInProgressIssues(projectDirs []string) (map[string]*verify.Issue, map[string]string) {
+	issues := make(map[string]*verify.Issue)
+	projectDirsByID := make(map[string]string)
+
+	if len(projectDirs) == 0 {
+		openIssues, err := verify.ListOpenIssues()
+		if err != nil {
+			log.Printf("Warning: failed to list open issues: %v", err)
+			return issues, projectDirsByID
+		}
+
+		for id, issue := range openIssues {
+			if strings.EqualFold(issue.Status, "in_progress") {
+				issues[id] = issue
+			}
+		}
+
+		return issues, projectDirsByID
+	}
+
+	for _, projectDir := range projectDirs {
+		openIssues, err := verify.ListOpenIssuesWithDir(projectDir)
+		if err != nil {
+			log.Printf("Warning: failed to list open issues for %s: %v", projectDir, err)
+			continue
+		}
+
+		for id, issue := range openIssues {
+			if strings.EqualFold(issue.Status, "in_progress") {
+				if _, exists := issues[id]; !exists {
+					issues[id] = issue
+					projectDirsByID[id] = projectDir
+				}
+			}
+		}
+	}
+
+	return issues, projectDirsByID
+}
+
+// handleAgents returns JSON list of in-progress agents (beads-first) and completed workspaces.
 // Query parameters:
 //   - since: Time filter (12h, 24h, 48h, 7d, all). Default: 12h
 //   - project: Project filter (full path or project name). Default: none (all projects)
@@ -351,62 +411,28 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	client := opencode.NewClient(serverURL)
 
-	// Get active sessions from OpenCode across ALL known projects.
-	// OpenCode scopes session listing by x-opencode-directory header.
-	// Without querying each project, cross-project agents are invisible.
-	// Fix: query default (current project) + all registered kb projects, then deduplicate.
-	sessions, err := listSessionsAcrossProjects(client, projectDir)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to list sessions: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// EARLY FILTERING: Apply time filter immediately after fetching sessions.
-	// This is critical for performance - filtering BEFORE expensive operations (workspace cache,
-	// beads batch fetches) reduces the number of sessions we need to process.
-	// Previously: filters were applied at the END, causing 20s+ cold cache times.
-	// Now: time filter applied early, reducing expensive operations proportionally.
-	//
-	// NOTE: Project filter is NOT applied here because s.Directory may be the orchestrator's cwd
-	// due to OpenCode --attach bug, not the actual target project directory from --workdir spawns.
-	// The correct project_dir is populated later from workspace cache (line ~727) and filtered
-	// at the end (line ~894) using agent.ProjectDir which has the correct value.
-	now := time.Now()
-	if sinceDuration > 0 {
-		filtered := make([]opencode.Session, 0, len(sessions))
-		for _, s := range sessions {
-			// Time filter: check session updated_at or created_at
-			updatedAt := time.Unix(s.Time.Updated/1000, 0)
-			if now.Sub(updatedAt) > sinceDuration {
-				// Session is too old, skip it
-				continue
-			}
-
-			filtered = append(filtered, s)
-		}
-		sessions = filtered
-	}
-
-	// Build multi-project workspace cache for cross-project agent visibility.
-	// This aggregates workspace metadata from all projects with active sessions,
-	// enabling the dashboard to show correct status for agents spawned with --workdir.
-	// Previously: Only scanned current project's .orch/workspace/
-	// Now: Scans all unique project directories found in OpenCode sessions
-	// CACHED: Workspace scanning is slow (600+ files), so cache with 30s TTL.
-	projectDirs := extractUniqueProjectDirs(sessions, projectDir)
+	projectDirs := uniqueProjectDirs(append([]string{projectDir}, getKBProjects()...))
 	wsCache := globalWorkspaceCacheInstance.getCachedWorkspace(projectDirs)
 
 	agents := []AgentAPIResponse{} // Initialize as empty slice, not nil, to return [] instead of null
 
 	// Collect beads IDs for batch fetching
-	var beadsIDsToFetch []string
+	beadsIDsToFetch := make([]string, 0)
 	seenBeadsIDs := make(map[string]bool)
 
 	// Track project directories for cross-project agents
-	// Key: beadsID, Value: projectDir from workspace SPAWN_CONTEXT.md
+	// Key: beadsID, Value: projectDir from workspace SPAWN_CONTEXT.md or beads query
 	beadsProjectDirs := make(map[string]string)
 
-	// Add active sessions from OpenCode
+	// Beads-first discovery: start from in_progress issues
+	inProgressIssues, issueProjectDirs := listInProgressIssues(projectDirs)
+	for beadsID, projectPath := range issueProjectDirs {
+		if projectPath != "" {
+			beadsProjectDirs[beadsID] = projectPath
+		}
+	}
+
+	now := time.Now()
 	// Filter: only show sessions updated in the last 10 minutes as "active"
 	// Two-threshold ghost filtering:
 	// - Active threshold (10min): determines "running" vs "idle" status
@@ -425,12 +451,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// See .kb/investigations/2026-01-08-inv-design-stalled-agent-detection-agents.md
 	stalledThreshold := 15 * time.Minute
 
-	// beadsFetchThreshold limits which sessions we fetch beads data for.
-	// Sessions older than this are excluded from beads lookups entirely.
-	// This is a MAJOR optimization: with 600+ sessions but only ~6 active,
-	// fetching beads for all would require 400+ RPC calls = 3+ seconds.
-	// By limiting to recent sessions, we reduce this to ~10-20 RPC calls.
-	// Sessions older than this are simply excluded from the API response.
+	// beadsFetchThreshold limits which completed workspaces we fetch beads data for.
+	// This remains important for performance on large workspaces archives.
 	beadsFetchThreshold := 2 * time.Hour
 	if sinceDuration > beadsFetchThreshold {
 		beadsFetchThreshold = sinceDuration
@@ -443,157 +465,83 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// These will be filtered out after Phase check unless Phase: Complete
 	pendingFilterByBeadsID := make(map[string]bool)
 
-	// Track agents by title to deduplicate (OpenCode can have multiple sessions with same title)
-	// Keep the most recently updated session for each title
-	seenTitles := make(map[string]int) // title -> index in agents slice
-
-	for _, s := range sessions {
-		createdAt := time.Unix(s.Time.Created/1000, 0)
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
-		runtime := now.Sub(createdAt)
-		timeSinceUpdate := now.Sub(updatedAt)
-
-		// Determine status based on recent activity
-		// Priority: dead (3min silence) > active (recent) > idle (10min+)
-		// Dead agents need attention - they're crashed/stuck/killed.
-		status := "active"
-		if timeSinceUpdate > deadThreshold {
-			status = "dead" // No activity for 3+ minutes = dead (crashed/stuck/killed)
-		} else if timeSinceUpdate > activeThreshold {
-			status = "idle" // Session exists but hasn't had recent activity
-		}
-
-		// NOTE: IsProcessing is now populated client-side via SSE session.status events.
-		// Previously we called client.IsSessionProcessing(s.ID) here, but that makes
-		// an HTTP call per session which caused 125% CPU when dashboard polled frequently.
-		// The frontend already receives busy/idle state from OpenCode SSE and updates
-		// is_processing in real-time, so we don't need to fetch it here.
-
+	for beadsID, issue := range inProgressIssues {
 		agent := AgentAPIResponse{
-			ID:           s.Title,
-			SessionID:    s.ID,
-			Status:       status,
-			Runtime:      formatDuration(runtime),
-			SpawnedAt:    createdAt.Format(time.RFC3339),
-			UpdatedAt:    updatedAt.Format(time.RFC3339),
-			IsProcessing: false,       // Populated client-side via SSE
-			ProjectDir:   s.Directory, // Set from session directory for project filtering
+			BeadsID:    beadsID,
+			BeadsTitle: issue.Title,
+			Task:       truncate(issue.Title, 60),
+			Status:     "dead",
+			Project:    extractProjectFromBeadsID(beadsID),
+			ProjectDir: issueProjectDirs[beadsID],
 		}
 
-		// Derive beadsID and skill from session title
-		if s.Title != "" {
-			agent.BeadsID = extractBeadsIDFromTitle(s.Title)
-			agent.Skill = extractSkillFromTitle(s.Title)
-			agent.Project = extractProjectFromBeadsID(agent.BeadsID)
-
-		}
-
-		// Only include sessions that were spawned via orch spawn (have beads ID)
-		// This filters out interactive/ad-hoc OpenCode sessions
-		if agent.BeadsID == "" {
-			continue
-		}
-
-		// OPTIMIZATION: Mark sessions older than beadsFetchThreshold as stale.
-		// We still include them in the response (for dashboard visibility) but skip
-		// beads data fetch for performance. With 600+ sessions but only ~6-10 active,
-		// fetching beads for all would require 400+ RPC calls = 3+ seconds per request.
-		// By marking old sessions as stale and skipping beads fetch, we reduce to ~20-50 RPC calls.
-		isStale := timeSinceUpdate > beadsFetchThreshold
-		if isStale {
-			agent.IsStale = true
-			agent.Status = "idle" // Stale agents are not actively running
-		}
-
-		// Track if this agent should be filtered after Phase check using two-threshold logic
-		// Don't filter yet - we need to check beads Phase: Complete first
-		// Don't filter stale agents - they're already marked with is_stale=true
-		// Use aggressive threshold for marking (agents idle > 4h are candidates for filtering)
-		if status == "idle" && timeSinceUpdate > displayThreshold && !isStale {
-			pendingFilterByBeadsID[agent.BeadsID] = true
-		}
-
-		// For cross-project agent visibility: use cached PROJECT_DIR from workspace
-		// This is O(1) lookup and should happen for ALL agents (including stale)
-		// to ensure correct project filtering when using --workdir spawns.
-		// The session's directory may be wrong (orchestrator's cwd vs target workdir).
-		if agent.BeadsID != "" {
-			if agentProjectDir := wsCache.lookupProjectDir(agent.BeadsID); agentProjectDir != "" {
-				beadsProjectDirs[agent.BeadsID] = agentProjectDir
+		workspacePath := wsCache.lookupWorkspace(beadsID)
+		if workspacePath != "" {
+			workspaceName := filepath.Base(workspacePath)
+			agent.ID = workspaceName
+			agent.Skill = extractSkillFromTitle(workspaceName)
+			if sessionID := spawn.ReadSessionID(workspacePath); sessionID != "" {
+				agent.SessionID = sessionID
+			}
+			if spawnTime := spawn.ReadSpawnTime(workspacePath); !spawnTime.IsZero() {
+				agent.SpawnedAt = spawnTime.Format(time.RFC3339)
+			}
+			if agentProjectDir := wsCache.lookupProjectDir(beadsID); agentProjectDir != "" {
+				agent.ProjectDir = agentProjectDir
+				beadsProjectDirs[beadsID] = agentProjectDir
 			}
 		}
 
-		// Collect beads ID for batch fetch - only for NON-STALE agents with beads ID.
-		// Stale agents (older than beadsFetchThreshold) are included in response but
-		// skip beads fetch for performance optimization.
-		// See .kb/investigations/2026-01-04-design-dashboard-agent-status-model.md
-		if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] && !isStale {
-			beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)
-			seenBeadsIDs[agent.BeadsID] = true
+		if agent.Project == "" && agent.ProjectDir != "" {
+			agent.Project = extractProjectName(agent.ProjectDir)
 		}
 
-		// Deduplicate by title - keep the most recently updated session
-		// OpenCode can have multiple sessions with the same title (e.g., resumed agents)
-		if existingIdx, exists := seenTitles[s.Title]; exists {
-			// Compare updated_at to keep the more recent session
-			existingUpdatedAt, _ := time.Parse(time.RFC3339, agents[existingIdx].UpdatedAt)
-			if updatedAt.After(existingUpdatedAt) {
-				// Replace the existing agent with this newer one
-				agents[existingIdx] = agent
+		if agent.SessionID != "" {
+			session, err := client.GetSession(agent.SessionID)
+			if err == nil && session != nil {
+				if session.Title != "" {
+					agent.ID = session.Title
+				}
+
+				createdAt := time.Unix(session.Time.Created/1000, 0)
+				updatedAt := time.Unix(session.Time.Updated/1000, 0)
+				runtime := now.Sub(createdAt)
+				timeSinceUpdate := now.Sub(updatedAt)
+
+				status := "active"
+				if timeSinceUpdate > deadThreshold {
+					status = "dead"
+				} else if timeSinceUpdate > activeThreshold {
+					status = "idle"
+				}
+
+				agent.Status = status
+				agent.Runtime = formatDuration(runtime)
+				if agent.SpawnedAt == "" {
+					agent.SpawnedAt = createdAt.Format(time.RFC3339)
+				}
+				agent.UpdatedAt = updatedAt.Format(time.RFC3339)
+				if agent.ProjectDir == "" && session.Directory != "" {
+					agent.ProjectDir = session.Directory
+				}
+			} else if err != nil {
+				log.Printf("Warning: failed to fetch session %s: %v", agent.SessionID, err)
 			}
-			// Skip appending since we either replaced or kept the existing one
-			continue
 		}
 
-		seenTitles[s.Title] = len(agents)
+		if agent.Status == "idle" && agent.UpdatedAt != "" {
+			if updatedAt, err := time.Parse(time.RFC3339, agent.UpdatedAt); err == nil {
+				if now.Sub(updatedAt) > displayThreshold {
+					pendingFilterByBeadsID[beadsID] = true
+				}
+			}
+		}
+
+		if !seenBeadsIDs[beadsID] {
+			beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
+			seenBeadsIDs[beadsID] = true
+		}
 		agents = append(agents, agent)
-	}
-
-	// Add tmux-only agents
-	workersSessions, _ := tmux.ListWorkersSessions()
-	for _, sessionName := range workersSessions {
-		windows, _ := tmux.ListWindows(sessionName)
-		for _, win := range windows {
-			if win.Name == "servers" || win.Name == "zsh" {
-				continue
-			}
-
-			beadsID := extractBeadsIDFromWindowName(win.Name)
-			skill := extractSkillFromWindowName(win.Name)
-			project := extractProjectFromBeadsID(beadsID)
-
-			// Check if already in agents list
-			alreadyIn := false
-			for _, a := range agents {
-				if (beadsID != "" && a.BeadsID == beadsID) || (a.ID != "" && strings.Contains(win.Name, a.ID)) {
-					alreadyIn = true
-					break
-				}
-			}
-
-			if !alreadyIn {
-				agents = append(agents, AgentAPIResponse{
-					ID:      win.Name,
-					BeadsID: beadsID,
-					Skill:   skill,
-					Project: project,
-					Status:  "active",
-					Window:  win.Target,
-				})
-
-				// Collect beads ID for batch fetch
-				if beadsID != "" && !seenBeadsIDs[beadsID] {
-					beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
-					seenBeadsIDs[beadsID] = true
-
-					// For cross-project agent visibility: use cached PROJECT_DIR
-					// This replaces expensive directory scanning with O(1) lookup
-					if agentProjectDir := wsCache.lookupProjectDir(beadsID); agentProjectDir != "" {
-						beadsProjectDirs[beadsID] = agentProjectDir
-					}
-				}
-			}
-		}
 	}
 
 	// Add completed workspaces (those with SYNTHESIS.md or light-tier completions)
@@ -727,9 +675,6 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// This is the same pattern used by orch status for efficiency.
 	// Uses TTL cache to prevent CPU spikes from spawning 20+ bd processes per request.
 	if len(beadsIDsToFetch) > 0 {
-		// Fetch all open issues in one call (cached with TTL)
-		openIssues, _ := globalBeadsCache.getOpenIssues()
-
 		// Batch fetch all issues (including closed) for close_reason (cached with TTL)
 		// Uses bd show which works for any issue status
 		allIssues, _ := globalBeadsCache.getAllIssues(beadsIDsToFetch, beadsProjectDirs)
@@ -764,15 +709,21 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			// Get task from open issue title first
-			if issue, ok := openIssues[agents[i].BeadsID]; ok {
+			// Get task from in-progress issue first (beads-first)
+			if issue, ok := inProgressIssues[agents[i].BeadsID]; ok {
 				agents[i].Task = truncate(issue.Title, 60)
+				if agents[i].BeadsTitle == "" {
+					agents[i].BeadsTitle = issue.Title
+				}
 			}
 
-			// If not in open issues, try all issues (for closed ones)
+			// If not in in-progress issues, try all issues (for closed ones)
 			if agents[i].Task == "" {
 				if issue, ok := allIssues[agents[i].BeadsID]; ok {
 					agents[i].Task = truncate(issue.Title, 60)
+					if agents[i].BeadsTitle == "" {
+						agents[i].BeadsTitle = issue.Title
+					}
 					// For completed agents without synthesis, use close_reason as fallback
 					if agents[i].Synthesis == nil && issue.CloseReason != "" {
 						agents[i].CloseReason = issue.CloseReason
