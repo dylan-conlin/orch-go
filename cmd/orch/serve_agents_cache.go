@@ -27,11 +27,13 @@ type beadsCache struct {
 	comments   map[string][]beads.Comment
 
 	// Cache metadata
-	openIssuesFetchedAt time.Time
-	allIssuesFetchedAt  time.Time
-	allIssuesFetchedFor []string // Track which beads IDs were fetched
-	commentsFetchedAt   time.Time
-	commentsFetchedFor  []string // Track which beads IDs were fetched
+	openIssuesFetchedAt         time.Time
+	allIssuesFetchedAt          time.Time
+	allIssuesFetchedFor         []string // Track which beads IDs were fetched
+	allIssuesFetchedProjectDirs map[string]string
+	commentsFetchedAt           time.Time
+	commentsFetchedFor          []string // Track which beads IDs were fetched
+	commentsFetchedProjectDirs  map[string]string
 
 	// TTL configuration
 	openIssuesTTL time.Duration
@@ -55,7 +57,7 @@ type globalWorkspaceCacheType struct {
 
 // Global workspace cache
 var globalWorkspaceCacheInstance = &globalWorkspaceCacheType{
-	ttl: 30 * time.Second, // Workspace metadata changes infrequently
+	ttl: 10 * time.Second, // Shorter TTL improves freshness during high spawn activity
 }
 
 // getCachedWorkspace returns cached workspace data or builds fresh if stale.
@@ -132,7 +134,9 @@ func (c *beadsCache) invalidate() {
 	c.allIssuesFetchedAt = time.Time{}
 	c.commentsFetchedAt = time.Time{}
 	c.allIssuesFetchedFor = nil
+	c.allIssuesFetchedProjectDirs = nil
 	c.commentsFetchedFor = nil
+	c.commentsFetchedProjectDirs = nil
 }
 
 // invalidate clears the cached workspace data, forcing a fresh scan on next request.
@@ -188,9 +192,12 @@ func (c *beadsCache) getOpenIssues() (map[string]*verify.Issue, error) {
 // getAllIssues returns cached issues or fetches fresh data if cache is stale.
 // The beadsIDs parameter specifies which issues to fetch. If the cached set
 // matches the requested set and is not expired, returns cached data.
-func (c *beadsCache) getAllIssues(beadsIDs []string) (map[string]*verify.Issue, error) {
+// projectDirs provides beadsID -> projectDir mappings for cross-project lookups.
+func (c *beadsCache) getAllIssues(beadsIDs []string, projectDirs map[string]string) (map[string]*verify.Issue, error) {
 	c.mu.RLock()
-	if time.Since(c.allIssuesFetchedAt) < c.allIssuesTTL && c.containsAllIDs(c.allIssuesFetchedFor, beadsIDs) {
+	if time.Since(c.allIssuesFetchedAt) < c.allIssuesTTL &&
+		c.containsAllIDs(c.allIssuesFetchedFor, beadsIDs) &&
+		c.projectDirsMatchForIDs(c.allIssuesFetchedProjectDirs, projectDirs, beadsIDs) {
 		result := c.allIssues
 		c.mu.RUnlock()
 		return result, nil
@@ -198,7 +205,7 @@ func (c *beadsCache) getAllIssues(beadsIDs []string) (map[string]*verify.Issue, 
 	c.mu.RUnlock()
 
 	// Fetch fresh data
-	issues, err := verify.GetIssuesBatch(beadsIDs, nil)
+	issues, err := verify.GetIssuesBatch(beadsIDs, projectDirs)
 	if err != nil {
 		return nil, err
 	}
@@ -207,6 +214,7 @@ func (c *beadsCache) getAllIssues(beadsIDs []string) (map[string]*verify.Issue, 
 	c.allIssues = issues
 	c.allIssuesFetchedAt = time.Now()
 	c.allIssuesFetchedFor = beadsIDs
+	c.allIssuesFetchedProjectDirs = cloneProjectDirsForIDs(projectDirs, beadsIDs)
 	c.mu.Unlock()
 
 	return issues, nil
@@ -216,7 +224,9 @@ func (c *beadsCache) getAllIssues(beadsIDs []string) (map[string]*verify.Issue, 
 // The beadsIDs and projectDirs parameters specify which comments to fetch.
 func (c *beadsCache) getComments(beadsIDs []string, projectDirs map[string]string) map[string][]beads.Comment {
 	c.mu.RLock()
-	if time.Since(c.commentsFetchedAt) < c.commentsTTL && c.containsAllIDs(c.commentsFetchedFor, beadsIDs) {
+	if time.Since(c.commentsFetchedAt) < c.commentsTTL &&
+		c.containsAllIDs(c.commentsFetchedFor, beadsIDs) &&
+		c.projectDirsMatchForIDs(c.commentsFetchedProjectDirs, projectDirs, beadsIDs) {
 		result := c.comments
 		c.mu.RUnlock()
 		return result
@@ -230,6 +240,7 @@ func (c *beadsCache) getComments(beadsIDs []string, projectDirs map[string]strin
 	c.comments = comments
 	c.commentsFetchedAt = time.Now()
 	c.commentsFetchedFor = beadsIDs
+	c.commentsFetchedProjectDirs = cloneProjectDirsForIDs(projectDirs, beadsIDs)
 	c.mu.Unlock()
 
 	return comments
@@ -250,6 +261,41 @@ func (c *beadsCache) containsAllIDs(cachedIDs, requestedIDs []string) bool {
 		}
 	}
 	return true
+}
+
+func (c *beadsCache) projectDirsMatchForIDs(cachedDirs, requestedDirs map[string]string, ids []string) bool {
+	if len(ids) == 0 {
+		return true
+	}
+	for _, id := range ids {
+		cachedDir := ""
+		if cachedDirs != nil {
+			cachedDir = cachedDirs[id]
+		}
+		requestedDir := ""
+		if requestedDirs != nil {
+			requestedDir = requestedDirs[id]
+		}
+		if cachedDir != requestedDir {
+			return false
+		}
+	}
+	return true
+}
+
+func cloneProjectDirsForIDs(projectDirs map[string]string, ids []string) map[string]string {
+	if len(ids) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(ids))
+	for _, id := range ids {
+		if projectDirs != nil {
+			cloned[id] = projectDirs[id]
+		} else {
+			cloned[id] = ""
+		}
+	}
+	return cloned
 }
 
 // workspaceCache stores pre-computed workspace metadata to avoid repeated directory scans.
@@ -328,6 +374,10 @@ func getKBProjects() []string {
 	if err != nil {
 		// Log warning but don't fail - graceful degradation
 		log.Printf("Warning: kb projects list failed: %v (cross-project visibility may be limited)", err)
+		if fallback := getKBProjectsFromRegistry(); len(fallback) > 0 {
+			log.Printf("Warning: using ~/.kb/projects.json as fallback for kb projects")
+			return fallback
+		}
 		return []string{}
 	}
 
@@ -343,6 +393,34 @@ func getKBProjects() []string {
 			// Normalize path
 			paths = append(paths, filepath.Clean(p.Path))
 		}
+	}
+
+	return paths
+}
+
+func getKBProjectsFromRegistry() []string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return []string{}
+	}
+
+	registryPath := filepath.Join(homeDir, ".kb", "projects.json")
+	data, err := os.ReadFile(registryPath)
+	if err != nil {
+		return []string{}
+	}
+
+	var registry KBProjectsRegistry
+	if err := json.Unmarshal(data, &registry); err != nil {
+		return []string{}
+	}
+
+	paths := make([]string, 0, len(registry.Projects))
+	for _, project := range registry.Projects {
+		if project.Path == "" {
+			continue
+		}
+		paths = append(paths, filepath.Clean(project.Path))
 	}
 
 	return paths

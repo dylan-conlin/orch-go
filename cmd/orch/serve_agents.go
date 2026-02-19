@@ -732,7 +732,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 		// Batch fetch all issues (including closed) for close_reason (cached with TTL)
 		// Uses bd show which works for any issue status
-		allIssues, _ := globalBeadsCache.getAllIssues(beadsIDsToFetch)
+		allIssues, _ := globalBeadsCache.getAllIssues(beadsIDsToFetch, beadsProjectDirs)
 
 		// Batch fetch comments for all beads IDs (cached with TTL)
 		// Use project-aware batch fetch for cross-project agent visibility

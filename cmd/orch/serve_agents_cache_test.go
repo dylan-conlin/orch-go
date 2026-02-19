@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -34,6 +37,38 @@ func TestGetKBProjectsGracefulFallback(t *testing.T) {
 	}()
 
 	_ = getKBProjects()
+}
+
+func TestGetKBProjectsFallbackToRegistry(t *testing.T) {
+	tempDir := t.TempDir()
+	kbDir := filepath.Join(tempDir, ".kb")
+	if err := os.MkdirAll(kbDir, 0755); err != nil {
+		t.Fatalf("failed to create temp kb dir: %v", err)
+	}
+
+	registry := KBProjectsRegistry{
+		Projects: []KBProject{{Name: "orch-go", Path: "/tmp/orch-go"}},
+	}
+	data, err := json.Marshal(registry)
+	if err != nil {
+		t.Fatalf("failed to marshal registry: %v", err)
+	}
+
+	registryPath := filepath.Join(kbDir, "projects.json")
+	if err := os.WriteFile(registryPath, data, 0644); err != nil {
+		t.Fatalf("failed to write registry: %v", err)
+	}
+
+	t.Setenv("HOME", tempDir)
+	t.Setenv("PATH", "")
+
+	projects := getKBProjects()
+	if len(projects) != 1 {
+		t.Fatalf("expected 1 project from registry, got %d", len(projects))
+	}
+	if projects[0] != filepath.Clean("/tmp/orch-go") {
+		t.Fatalf("unexpected project path: %s", projects[0])
+	}
 }
 
 func TestExtractUniqueProjectDirsWithKBProjects(t *testing.T) {
