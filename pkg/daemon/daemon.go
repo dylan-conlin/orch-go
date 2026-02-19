@@ -230,6 +230,8 @@ type Daemon struct {
 	getIssueStatusFunc func(beadsID string) (string, error)
 	// updateBeadsStatusFunc is used for testing - allows mocking UpdateBeadsStatus
 	updateBeadsStatusFunc func(beadsID string, status string) error
+	// cleanupFunc is used for testing - allows mocking cleanup behavior
+	cleanupFunc func(config Config) (int, string, error)
 }
 
 // New creates a new Daemon instance with default configuration.
@@ -1363,13 +1365,33 @@ type CleanupResult struct {
 	Message string
 }
 
-// RunPeriodicCleanup is deprecated - OpenCode now handles session cleanup via TTL.
-// Returns nil (no cleanup needed).
+// RunPeriodicCleanup runs periodic cleanup if due.
+// OpenCode handles session cleanup via TTL, so this only closes stale tmux windows.
 func (d *Daemon) RunPeriodicCleanup() *CleanupResult {
-	// NOTE: Session cleanup has been moved to OpenCode server (opencode-fork commit f3c3865).
-	// OpenCode now automatically deletes sessions based on TTL, so orch-go daemon
-	// no longer needs to run periodic cleanup.
-	return nil
+	if !d.ShouldRunCleanup() {
+		return nil
+	}
+
+	cleanupFunc := d.cleanupFunc
+	if cleanupFunc == nil {
+		cleanupFunc = defaultCleanup
+	}
+
+	deleted, message, err := cleanupFunc(d.Config)
+	if err != nil {
+		return &CleanupResult{
+			Deleted: deleted,
+			Error:   err,
+			Message: message,
+		}
+	}
+
+	d.lastCleanup = time.Now()
+
+	return &CleanupResult{
+		Deleted: deleted,
+		Message: message,
+	}
 }
 
 // LastCleanupTime returns when cleanup was last run.
