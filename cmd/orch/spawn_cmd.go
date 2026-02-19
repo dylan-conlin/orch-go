@@ -334,6 +334,34 @@ func userMetaFromConfig(meta *userconfig.ConfigMeta) spawn.UserConfigMeta {
 	}
 }
 
+func formatUserConfigLoadWarning(err error) string {
+	if err == nil {
+		return ""
+	}
+	return fmt.Sprintf(
+		"Warning: failed to load user config %s: %v\n"+
+			"         Using defaults; user config preferences (backend/default_model) will be ignored.\n",
+		userconfig.ConfigPath(),
+		err,
+	)
+}
+
+func loadUserConfigAndWarning() (*userconfig.Config, string) {
+	cfg, err := userconfig.Load()
+	if err != nil {
+		return nil, formatUserConfigLoadWarning(err)
+	}
+	return cfg, ""
+}
+
+func loadUserConfigWithMetaAndWarning() (*userconfig.Config, *userconfig.ConfigMeta, string) {
+	cfg, meta, err := userconfig.LoadWithMeta()
+	if err != nil {
+		return nil, nil, formatUserConfigLoadWarning(err)
+	}
+	return cfg, meta, ""
+}
+
 func applyResolvedSpawnMode(input *orch.SpawnInput, spawnMode string) {
 	if input == nil || input.Attach {
 		return
@@ -398,7 +426,10 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	// Without this, spawnModel stays empty and the spawn pipeline falls back to
 	// the hardcoded default (sonnet), ignoring the user's configured model preference.
 	if spawnModel == "" {
-		if cfg, err := userconfig.Load(); err == nil && cfg.DefaultModel != "" {
+		cfg, warning := loadUserConfigAndWarning()
+		if warning != "" {
+			fmt.Fprint(os.Stderr, warning)
+		} else if cfg != nil && cfg.DefaultModel != "" {
 			spawnModel = cfg.DefaultModel
 		}
 	}
@@ -493,8 +524,9 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		projectCfg = nil
 		projectMeta = nil
 	}
-	userCfg, userMeta, err := userconfig.LoadWithMeta()
-	if err != nil {
+	userCfg, userMeta, warning := loadUserConfigWithMetaAndWarning()
+	if warning != "" {
+		fmt.Fprint(os.Stderr, warning)
 		userCfg = nil
 		userMeta = nil
 	}

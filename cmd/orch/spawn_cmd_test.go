@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -274,5 +276,57 @@ func TestStripANSI(t *testing.T) {
 				t.Errorf("stripANSI(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestLoadUserConfigWithMetaAndWarningMalformedConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	configDir := filepath.Join(tempDir, ".orch")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("backend: ["), 0o644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	userCfg, userMeta, warning := loadUserConfigWithMetaAndWarning()
+	if warning == "" {
+		t.Fatalf("expected warning for malformed config")
+	}
+	if !strings.Contains(warning, "config.yaml") {
+		t.Fatalf("warning missing config path: %q", warning)
+	}
+	if !strings.Contains(warning, "backend/default_model") {
+		t.Fatalf("warning missing preference hint: %q", warning)
+	}
+	if userCfg != nil || userMeta != nil {
+		t.Fatalf("expected nil config and meta on error")
+	}
+}
+
+func TestLoadUserConfigAndWarningMalformedConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	configDir := filepath.Join(tempDir, ".orch")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("backend: ["), 0o644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	userCfg, warning := loadUserConfigAndWarning()
+	if warning == "" {
+		t.Fatalf("expected warning for malformed config")
+	}
+	if userCfg != nil {
+		t.Fatalf("expected nil config on error")
 	}
 }
