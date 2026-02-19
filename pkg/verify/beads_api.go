@@ -512,7 +512,7 @@ func ListOpenIssuesWithDir(projectDir string) (map[string]*Issue, error) {
 
 	result := make(map[string]*Issue)
 	client := beads.NewCLIClient(beads.WithWorkDir(projectDir))
-	issues, err := client.List(nil)
+	issues, err := client.List(&beads.ListArgs{Limit: 0})
 	if err != nil {
 		return nil, err
 	}

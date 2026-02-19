@@ -51,7 +51,7 @@ func WithEnv(env []string) CLIOption {
 // NewCLIClient creates a new CLIClient with the given options.
 func NewCLIClient(opts ...CLIOption) *CLIClient {
 	c := &CLIClient{
-		BdPath: "bd",
+		BdPath: getBdPath(),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -135,9 +135,9 @@ func (c *CLIClient) List(args *ListArgs) ([]Issue, error) {
 		if args.Parent != "" {
 			cmdArgs = append(cmdArgs, "--parent", args.Parent)
 		}
-		if args.Limit > 0 {
-			cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", args.Limit))
-		}
+		// Always include limit when args provided to override CLI default (50).
+		// Use 0 for unlimited.
+		cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", args.Limit))
 	}
 
 	cmd := c.bdCommand(cmdArgs...)
