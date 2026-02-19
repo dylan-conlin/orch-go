@@ -52,6 +52,7 @@ var (
 	spawnDesignWorkspace    string // Design workspace name for ui-design-session → feature-impl handoff
 	spawnBypassVerification bool   // Bypass verification gate for independent parallel work
 	spawnBypassReason       string // Justification for bypassing verification gate
+	spawnOrientationFrame   string // Why Dylan cares about this work (spawn-time frame)
 )
 
 // SpawnInput, SpawnContext, GapCheckResult, and headlessSpawnResult types
@@ -174,6 +175,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnDesignWorkspace, "design-workspace", "", "Design workspace name from ui-design-session for handoff to feature-impl (e.g., 'og-design-ready-queue-08jan')")
 	spawnCmd.Flags().BoolVar(&spawnBypassVerification, "bypass-verification", false, "Bypass verification gate for independent parallel work (requires --bypass-reason)")
 	spawnCmd.Flags().StringVar(&spawnBypassReason, "bypass-reason", "", "Justification for bypassing verification gate (required with --bypass-verification)")
+	spawnCmd.Flags().StringVar(&spawnOrientationFrame, "orientation-frame", "", "Why Dylan cares about this work (defaults to task description)")
 }
 
 var (
@@ -451,6 +453,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// 11. Build spawn context
 	ctx := &orch.SpawnContext{
 		Task:               task,
+		OrientationFrame:   spawnOrientationFrame,
 		SkillName:          skillName,
 		ProjectDir:         projectDir,
 		ProjectName:        projectName,
@@ -468,7 +471,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		ReproSteps:         reproSteps,
 		UsageInfo:          usageInfo,
 		SpawnBackend:       spawnBackend,
-		Tier:               orch.DetermineSpawnTier(skillName, spawnLight, spawnFull),
+		Tier:               orch.DetermineSpawnTier(skillName, task, spawnLight, spawnFull),
 		DesignMockupPath:   designMockupPath,
 		DesignPromptPath:   designPromptPath,
 		DesignNotes:        designNotes,

@@ -58,11 +58,11 @@ var SkillIncludesServers = map[string]bool{
 // SkillProducesInvestigation maps skills to whether they produce investigation artifacts
 // as their primary deliverable. Only these skills get investigation file setup in SPAWN_CONTEXT.md.
 var SkillProducesInvestigation = map[string]bool{
-	"investigation":        true,
-	"architect":            true,
-	"research":             true,
-	"codebase-audit":       true,
-	"reliability-testing":  true,
+	"investigation":       true,
+	"architect":           true,
+	"research":            true,
+	"codebase-audit":      true,
+	"reliability-testing": true,
 }
 
 // DefaultProducesInvestigationForSkill returns whether a skill should produce investigation artifacts.
@@ -96,6 +96,9 @@ func DefaultIncludeServersForSkill(skillName string) bool {
 type Config struct {
 	// Task description
 	Task string
+	// OrientationFrame captures "why Dylan cares" in Dylan's terms.
+	// Defaults to Task if not provided by the orchestrator.
+	OrientationFrame string
 	// SkillName is the name of the skill to use (e.g., "investigation", "feature-impl")
 	SkillName string
 	// Project name (e.g., "orch-go")

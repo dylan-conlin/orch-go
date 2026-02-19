@@ -355,14 +355,15 @@ func TestConfigPaths(t *testing.T) {
 
 func TestGenerateContext(t *testing.T) {
 	cfg := &Config{
-		Task:       "implement spawn command",
-		SkillName:  "feature-impl",
-		Project:    "orch-go",
-		ProjectDir: "/Users/test/orch-go",
-		BeadsID:    "orch-go-123",
-		Phases:     "implementation,validation",
-		Mode:       "tdd",
-		Validation: "tests",
+		Task:             "implement spawn command",
+		OrientationFrame: "why this matters",
+		SkillName:        "feature-impl",
+		Project:          "orch-go",
+		ProjectDir:       "/Users/test/orch-go",
+		BeadsID:          "orch-go-123",
+		Phases:           "implementation,validation",
+		Mode:             "tdd",
+		Validation:       "tests",
 		SkillContent: `---
 name: feature-impl
 ---
@@ -381,7 +382,7 @@ Test skill content.
 	// Check key sections are present
 	checks := []string{
 		"TASK: implement spawn command",
-		"ORIENTATION_FRAME:\nimplement spawn command",
+		"ORIENTATION_FRAME:\nwhy this matters",
 		"PROJECT_DIR: /Users/test/orch-go",
 		"bd comment orch-go-123",
 		"SKILL GUIDANCE (feature-impl)",
@@ -421,11 +422,12 @@ func TestGenerateContext_NoSkill(t *testing.T) {
 func TestWriteContext(t *testing.T) {
 	tempDir := t.TempDir()
 	cfg := &Config{
-		Task:          "test task",
-		Project:       "test",
-		ProjectDir:    tempDir,
-		WorkspaceName: "og-test-19dec",
-		BeadsID:       "test-123",
+		Task:             "test task",
+		OrientationFrame: "",
+		Project:          "test",
+		ProjectDir:       tempDir,
+		WorkspaceName:    "og-test-19dec",
+		BeadsID:          "test-123",
 	}
 
 	if err := WriteContext(cfg); err != nil {

@@ -91,6 +91,46 @@ func addBeadsComment(beadsID, comment string) error {
 	return beads.FallbackAddComment(beadsID, comment)
 }
 
+// getOrientationFrame retrieves the most recent FRAME annotation from beads comments.
+// Returns empty string if no frame is found or comments cannot be retrieved.
+func getOrientationFrame(beadsID string) string {
+	if beadsID == "" {
+		return ""
+	}
+
+	var comments []beads.Comment
+	// Try RPC client first with auto-reconnect
+	if socketPath, err := beads.FindSocketPath(""); err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			if result, err := client.Comments(beadsID); err == nil {
+				comments = result
+			}
+		}
+	}
+
+	// Fallback to CLI if RPC failed or returned nothing
+	if comments == nil {
+		if result, err := beads.FallbackComments(beadsID); err == nil {
+			comments = result
+		}
+	}
+
+	if len(comments) == 0 {
+		return ""
+	}
+
+	for i := len(comments) - 1; i >= 0; i-- {
+		text := strings.TrimSpace(comments[i].Text)
+		if strings.HasPrefix(text, "FRAME:") {
+			return strings.TrimSpace(strings.TrimPrefix(text, "FRAME:"))
+		}
+	}
+
+	return ""
+}
+
 // RunExplainBackGate executes the explain-back verification gate for agent completion.
 // This gate requires the orchestrator to provide an explanation of what was built via
 // the --explain flag, creating a verification that ensures human comprehension beyond
@@ -158,6 +198,9 @@ func RunExplainBackGate(
 	if explanation == "" {
 		fmt.Fprintln(stdout, "❌ Explain-back gate: --explain flag is required")
 		fmt.Fprintln(stdout, "")
+		if frame := getOrientationFrame(beadsID); frame != "" {
+			fmt.Fprintf(stdout, "Spawn frame: %s\n\n", frame)
+		}
 		fmt.Fprintln(stdout, "The orchestrator must provide an explanation of what was built:")
 		fmt.Fprintln(stdout, "  orch complete <id> --explain 'Built X because Y, verified by Z'")
 		fmt.Fprintln(stdout, "")
