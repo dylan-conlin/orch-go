@@ -436,10 +436,12 @@ export function buildDependencyView(
     involvedNodes.add(edge.from)
     involvedNodes.add(edge.to)
 
-    if (!blocksMap.has(edge.from)) blocksMap.set(edge.from, [])
-    blocksMap.get(edge.from)!.push(edge.to)
-    if (!blockedByMap.has(edge.to)) blockedByMap.set(edge.to, [])
-    blockedByMap.get(edge.to)!.push(edge.from)
+    // edges are directional: edge.from depends on edge.to
+    // build maps so blockers (upstream) point to dependents (downstream)
+    if (!blocksMap.has(edge.to)) blocksMap.set(edge.to, [])
+    blocksMap.get(edge.to)!.push(edge.from)
+    if (!blockedByMap.has(edge.from)) blockedByMap.set(edge.from, [])
+    blockedByMap.get(edge.from)!.push(edge.to)
   }
 
   if (involvedNodes.size === 0) {
@@ -553,7 +555,58 @@ export function buildDependencyView(
  */
 export function flattenDepChain(chain: DepChain, pinnedIds: Set<string>): FlatDepItem[] {
   const items: FlatDepItem[] = []
-  const leafDepths: { index: number; depth: number }[] = []
+  const leafDepths: { nodeId: string; depth: number }[] = []
+
+  function collect(depNode: DepNode) {
+    if (pinnedIds.has(depNode.node.id)) return
+
+    const visibleChildren = depNode.depChildren.filter((c) => !pinnedIds.has(c.node.id))
+    if (visibleChildren.length === 0) {
+      leafDepths.push({ nodeId: depNode.node.id, depth: depNode.depDepth })
+      return
+    }
+
+    for (const child of visibleChildren) {
+      collect(child)
+    }
+  }
+
+  for (const root of chain.roots) {
+    collect(root)
+  }
+
+  // Detect gate items: single leaf at maximum depth = convergence point
+  // Gate = everything above must complete before this item closes
+  const maxLeafDepth = leafDepths.reduce((max, l) => Math.max(max, l.depth), 0)
+  let gateId: string | undefined
+  if (maxLeafDepth > 0) {
+    const leavesAtMax = leafDepths.filter((l) => l.depth === maxLeafDepth)
+    if (leavesAtMax.length === 1) {
+      gateId = leavesAtMax[0].nodeId
+    }
+  }
+
+  const gatePathIds = new Set<string>()
+  if (gateId) {
+    const markGatePath = (depNode: DepNode): boolean => {
+      if (pinnedIds.has(depNode.node.id)) return false
+      const visibleChildren = depNode.depChildren.filter((c) => !pinnedIds.has(c.node.id))
+      let onPath = depNode.node.id === gateId
+      for (const child of visibleChildren) {
+        if (markGatePath(child)) {
+          onPath = true
+        }
+      }
+      if (onPath) {
+        gatePathIds.add(depNode.node.id)
+      }
+      return onPath
+    }
+
+    for (const root of chain.roots) {
+      markGatePath(root)
+    }
+  }
 
   function walk(depNode: DepNode, ancestorIsLast: boolean[]) {
     if (pinnedIds.has(depNode.node.id)) return
@@ -569,17 +622,22 @@ export function flattenDepChain(chain: DepChain, pinnedIds: Set<string>): FlatDe
     }
 
     const visibleChildren = depNode.depChildren.filter((c) => !pinnedIds.has(c.node.id))
-    const itemIndex = items.length
+    let orderedChildren = visibleChildren
+
+    if (gatePathIds.size > 0 && orderedChildren.length > 1) {
+      const gateChildIndex = orderedChildren.findIndex((child) => gatePathIds.has(child.node.id))
+      if (gateChildIndex !== -1 && gateChildIndex !== orderedChildren.length - 1) {
+        orderedChildren = [...orderedChildren]
+        const [gateChild] = orderedChildren.splice(gateChildIndex, 1)
+        orderedChildren.push(gateChild)
+      }
+    }
 
     items.push({ node: depNode.node, prefix, depDepth: depNode.depDepth })
 
-    if (visibleChildren.length === 0) {
-      leafDepths.push({ index: itemIndex, depth: depNode.depDepth })
-    }
-
-    for (let i = 0; i < visibleChildren.length; i++) {
-      const childIsLast = i === visibleChildren.length - 1
-      walk(visibleChildren[i], [...ancestorIsLast, childIsLast])
+    for (let i = 0; i < orderedChildren.length; i++) {
+      const childIsLast = i === orderedChildren.length - 1
+      walk(orderedChildren[i], [...ancestorIsLast, childIsLast])
     }
   }
 
@@ -587,13 +645,10 @@ export function flattenDepChain(chain: DepChain, pinnedIds: Set<string>): FlatDe
     walk(root, [])
   }
 
-  // Detect gate items: single leaf at maximum depth = convergence point
-  // Gate = everything above must complete before this item closes
-  const maxLeafDepth = leafDepths.reduce((max, l) => Math.max(max, l.depth), 0)
-  if (maxLeafDepth > 0) {
-    const leavesAtMax = leafDepths.filter((l) => l.depth === maxLeafDepth)
-    if (leavesAtMax.length === 1) {
-      items[leavesAtMax[0].index].isGate = true
+  if (gateId) {
+    const gateItem = items.find((item) => item.node.id === gateId)
+    if (gateItem) {
+      gateItem.isGate = true
     }
   }
 

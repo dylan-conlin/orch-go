@@ -1,0 +1,11 @@
+commands:
+  - cmd: 'pwd'
+    expected: 'Prints repository root path.'
+  - cmd: 'cd web && npm test -- work-graph-dep-chain.spec.ts'
+    expected: 'Playwright spec passes.'
+    status: 'not_run'
+    note: 'Requires local dev server at http://localhost:5188.'
+manual_checks:
+  - 'In Work Graph, set Group By: "Dependency Chain" and confirm upstream items are at top and the gate (downstream leaf) appears last.'
+  - 'Verify the gate separator line appears directly above the gate item, not above root items.'
+  - 'Confirm the ◆ root marker appears on upstream items with no blockers, not on the gate.'

@@ -826,7 +826,7 @@
 			</div>
 		{:else}
 		<!-- Gate separator: visual signal that everything above must complete before this closes -->
-		{#if !isWIP && depGateSeparatorBefore.has((item as TreeNode).id)}
+		{#if !isWIP && depGateSeparatorBefore.has((item as TreeNode).id) && depPrefixMap.get((item as TreeNode).id) !== ''}
 			<div class="flex items-center gap-2 py-1.5 px-3 select-none">
 				<div class="flex-1 border-t border-dashed border-zinc-600"></div>
 				<span class="text-[10px] uppercase tracking-widest text-zinc-500 font-medium">gate</span>
