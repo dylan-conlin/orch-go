@@ -123,15 +123,21 @@ func listTrackedIssues() ([]beads.Issue, error) {
 }
 
 // listTrackedIssuesCLI queries beads via bd CLI for orch:agent tagged issues.
+var fallbackListWithLabelFn = beads.FallbackListWithLabel
+
 func listTrackedIssuesCLI() ([]beads.Issue, error) {
-	return beads.FallbackListWithLabel("orch:agent")
+	issues, err := fallbackListWithLabelFn("orch:agent")
+	if err != nil {
+		return nil, err
+	}
+	return filterActiveIssues(issues), nil
 }
 
 // filterActiveIssues returns only issues with active statuses (open, in_progress).
 func filterActiveIssues(issues []beads.Issue) []beads.Issue {
 	var active []beads.Issue
 	for _, issue := range issues {
-		switch issue.Status {
+		switch strings.ToLower(issue.Status) {
 		case "open", "in_progress":
 			active = append(active, issue)
 		}

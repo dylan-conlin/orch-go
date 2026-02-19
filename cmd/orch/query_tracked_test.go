@@ -344,7 +344,7 @@ func TestUnknownLiveness(t *testing.T) {
 func TestExtractSessionIDs(t *testing.T) {
 	manifests := map[string]*spawn.AgentManifest{
 		"id-1": {SessionID: "sess-a"},
-		"id-2": {SessionID: ""},       // No session (claude backend)
+		"id-2": {SessionID: ""}, // No session (claude backend)
 		"id-3": {SessionID: "sess-b"},
 	}
 
@@ -523,5 +523,37 @@ func TestFilterActiveIssues(t *testing.T) {
 	}
 	if !ids["id-1"] || !ids["id-2"] || !ids["id-4"] {
 		t.Errorf("expected id-1, id-2, id-4 to be active, got %v", ids)
+	}
+}
+
+func TestListTrackedIssuesCLIFiltersClosed(t *testing.T) {
+	oldFn := fallbackListWithLabelFn
+	defer func() { fallbackListWithLabelFn = oldFn }()
+
+	fallbackListWithLabelFn = func(label string) ([]beads.Issue, error) {
+		if label != "orch:agent" {
+			t.Fatalf("expected label orch:agent, got %s", label)
+		}
+		return []beads.Issue{
+			{ID: "id-open", Status: "open"},
+			{ID: "id-progress", Status: "in_progress"},
+			{ID: "id-closed", Status: "closed"},
+			{ID: "id-closed-upper", Status: "Closed"},
+		}, nil
+	}
+
+	issues, err := listTrackedIssuesCLI()
+	if err != nil {
+		t.Fatalf("listTrackedIssuesCLI returned error: %v", err)
+	}
+	if len(issues) != 2 {
+		t.Fatalf("expected 2 active issues, got %d", len(issues))
+	}
+	ids := map[string]bool{}
+	for _, issue := range issues {
+		ids[issue.ID] = true
+	}
+	if !ids["id-open"] || !ids["id-progress"] {
+		t.Fatalf("expected open and in_progress issues, got %v", ids)
 	}
 }
