@@ -1069,6 +1069,11 @@ func runComplete(identifier, workdir string) error {
 			// or it was already removed
 		}
 
+		// Remove orch:agent label so bd list -l orch:agent returns only active agents
+		if err := verify.RemoveOrchAgentLabel(beadsID); err != nil {
+			// Non-critical - label may not exist or already removed
+		}
+
 		// Signal human verification to daemon.
 		// This resets the completion counter and unpauses the daemon if it was paused.
 		// We use a file-based signal so orch complete doesn't need direct access to the daemon instance.

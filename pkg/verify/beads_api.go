@@ -297,6 +297,34 @@ func RemoveTriageReadyLabel(beadsID string) error {
 	return beads.FallbackRemoveLabel(beadsID, triageReadyLabel)
 }
 
+// RemoveOrchAgentLabel removes the orch:agent label from a beads issue.
+// This should be called when an agent completes or is closed, so that
+// bd list -l orch:agent returns only active agents (not historical).
+func RemoveOrchAgentLabel(beadsID string) error {
+	const orchAgentLabel = "orch:agent"
+
+	// Try RPC client first with auto-reconnect
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if beads.DefaultDir != "" {
+			opts = append(opts, beads.WithCwd(beads.DefaultDir))
+		}
+		client := beads.NewClient(socketPath, opts...)
+		if connErr := client.Connect(); connErr == nil {
+			defer client.Close()
+			err := client.RemoveLabel(beadsID, orchAgentLabel)
+			if err == nil {
+				return nil
+			}
+		}
+		// Fall through to CLI fallback on RPC error
+	}
+
+	// Fallback to CLI
+	return beads.FallbackRemoveLabel(beadsID, orchAgentLabel)
+}
+
 // GetIssue retrieves issue details from beads.
 // It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
 // Uses beads.DefaultDir if set to ensure cross-project operations work correctly.

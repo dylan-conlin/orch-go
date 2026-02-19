@@ -28,6 +28,9 @@ fi
 # Read close_reason from stdin JSON if available
 CLOSE_REASON=$(cat | jq -r '.close_reason // empty' 2>/dev/null)
 
+# Remove orch:agent label so bd list -l orch:agent returns only active agents
+bd label remove "$ISSUE_ID" orch:agent 2>/dev/null
+
 # Emit the agent.completed event
 # Use --reason if we have a close reason from the issue
 if [ -n "$CLOSE_REASON" ]; then
