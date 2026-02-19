@@ -1,0 +1,5 @@
+commands:
+  - cmd: 'pwd'
+    expected: 'Prints repository root path.'
+manual_checks:
+  - 'In Work Graph, select Group By: "By Dependency Chain" and confirm chain sections render without errors.'

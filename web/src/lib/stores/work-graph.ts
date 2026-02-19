@@ -279,7 +279,7 @@ export function buildTree(nodes: GraphNode[], edges: GraphEdge[]): TreeNode[] {
 }
 
 // Grouping mode for Work Graph
-export type GroupByMode = 'priority' | 'area' | 'effort'
+export type GroupByMode = 'priority' | 'area' | 'effort' | 'dep-chain'
 
 // A group section for rendering
 export interface GroupSection {
