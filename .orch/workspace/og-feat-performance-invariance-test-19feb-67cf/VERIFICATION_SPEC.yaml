@@ -1,0 +1,37 @@
+version: "1.0"
+issue: orch-go-1097
+title: Performance invariance test for agent discovery
+
+verification:
+  automated:
+    - name: Structural gate - filter blocks closed agents
+      command: go test ./cmd/orch/ -run TestPerfInvariance_FilterBlocksClosedAgents -v -count=1
+      expected: PASS - 5 active agents returned regardless of 0/50/100/200 closed agents
+
+    - name: CLI pipeline filters closed agents
+      command: go test ./cmd/orch/ -run TestPerfInvariance_CLIPipelineFilters -v -count=1
+      expected: PASS - listTrackedIssuesCLI returns only active issues
+
+    - name: Pipeline timing invariance
+      command: go test ./cmd/orch/ -run TestPerfInvariance_PipelineTiming -v -count=1
+      expected: PASS - ratio < 3.0x when adding 200 closed agents
+
+    - name: Join linear scaling
+      command: go test ./cmd/orch/ -run TestPerfInvariance_JoinLinearScaling -v -count=1
+      expected: PASS - ratio < 80x when scaling 5→200 agents (linear, not quadratic)
+
+    - name: Benchmarks
+      command: go test ./cmd/orch/ -bench "BenchmarkJoinWithReasonCodes|BenchmarkFilterActiveIssues" -benchmem -count=1 -run='^$'
+      expected: Linear ns/op scaling with agent count
+
+  regression_scenarios:
+    - scenario: "filterActiveIssues removed from pipeline"
+      detection: TestPerfInvariance_CLIPipelineFilters fails (returns closed agents)
+    - scenario: "orch:agent label not removed on close"
+      detection: TestPerfInvariance_PipelineTiming fails (ratio > 3.0x)
+    - scenario: "joinWithReasonCodes becomes O(N^2)"
+      detection: TestPerfInvariance_JoinLinearScaling fails (ratio > 80x)
+
+evidence:
+  test_results: "go test ./cmd/orch/ -run TestPerfInvariance -v: 4 PASS (0.03s)"
+  benchmark_results: "joinWithReasonCodes: 280ns@5 → 15.7µs@200 (linear). filterActiveIssues: 497ns@0closed → 2.1µs@200closed (linear, constant alloc)"
