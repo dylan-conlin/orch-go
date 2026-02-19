@@ -29,7 +29,7 @@ Filtered beads-first discovery to only treat issues with agent evidence (workspa
 
 ### Commits
 
-- (pending)
+- `6f7aea62d` - feat: filter agents by spawn evidence (orch-go-1074)
 
 ---
 
