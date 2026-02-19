@@ -5,6 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
 func TestGetKBProjects(t *testing.T) {
@@ -151,5 +154,62 @@ func TestExtractUniqueProjectDirsWithKBProjectsDedup(t *testing.T) {
 	// Should only have 2 dirs: orch-go (deduped) + new-project
 	if len(dirs) != 2 {
 		t.Errorf("Expected 2 dirs after dedup, got %d: %v", len(dirs), dirs)
+	}
+}
+
+func TestBeadsCacheProjectDirsMatchForIDs(t *testing.T) {
+	cache := newBeadsCache()
+	ids := []string{"orch-go-123"}
+
+	cached := map[string]string{"orch-go-123": "/tmp/project-a"}
+	requested := map[string]string{"orch-go-123": "/tmp/project-a"}
+	if !cache.projectDirsMatchForIDs(cached, requested, ids) {
+		t.Fatal("Expected project dirs to match")
+	}
+
+	requested["orch-go-123"] = "/tmp/project-b"
+	if cache.projectDirsMatchForIDs(cached, requested, ids) {
+		t.Fatal("Expected project dirs mismatch to be detected")
+	}
+}
+
+func TestBeadsCacheGetAllIssuesProjectDirInvalidation(t *testing.T) {
+	oldGetIssuesBatch := getIssuesBatch
+	defer func() { getIssuesBatch = oldGetIssuesBatch }()
+
+	callCount := 0
+	getIssuesBatch = func(ids []string, projectDirs map[string]string) (map[string]*verify.Issue, error) {
+		callCount++
+		return map[string]*verify.Issue{
+			"orch-go-1": {ID: "orch-go-1", Status: "in_progress"},
+		}, nil
+	}
+
+	cache := newBeadsCache()
+	cache.allIssuesTTL = 1 * time.Minute
+
+	ids := []string{"orch-go-1"}
+	projectDirsA := map[string]string{"orch-go-1": "/tmp/project-a"}
+	projectDirsB := map[string]string{"orch-go-1": "/tmp/project-b"}
+
+	if _, err := cache.getAllIssues(ids, projectDirsA); err != nil {
+		t.Fatalf("getAllIssues returned error: %v", err)
+	}
+	if callCount != 1 {
+		t.Fatalf("Expected getIssuesBatch to be called once, got %d", callCount)
+	}
+
+	if _, err := cache.getAllIssues(ids, projectDirsA); err != nil {
+		t.Fatalf("getAllIssues returned error: %v", err)
+	}
+	if callCount != 1 {
+		t.Fatalf("Expected cached result to be used, got %d calls", callCount)
+	}
+
+	if _, err := cache.getAllIssues(ids, projectDirsB); err != nil {
+		t.Fatalf("getAllIssues returned error: %v", err)
+	}
+	if callCount != 2 {
+		t.Fatalf("Expected cache invalidation on project dir change, got %d calls", callCount)
 	}
 }

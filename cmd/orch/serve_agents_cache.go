@@ -153,6 +153,9 @@ func (c *globalWorkspaceCacheType) invalidate() {
 // Global beads cache instance, initialized in runServe
 var globalBeadsCache *beadsCache
 
+var getIssuesBatch = verify.GetIssuesBatch
+var getCommentsBatchWithProjectDirs = verify.GetCommentsBatchWithProjectDirs
+
 // newBeadsCache creates a new beads cache with default TTLs.
 func newBeadsCache() *beadsCache {
 	return &beadsCache{
@@ -205,7 +208,7 @@ func (c *beadsCache) getAllIssues(beadsIDs []string, projectDirs map[string]stri
 	c.mu.RUnlock()
 
 	// Fetch fresh data
-	issues, err := verify.GetIssuesBatch(beadsIDs, projectDirs)
+	issues, err := getIssuesBatch(beadsIDs, projectDirs)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +237,7 @@ func (c *beadsCache) getComments(beadsIDs []string, projectDirs map[string]strin
 	c.mu.RUnlock()
 
 	// Fetch fresh data
-	comments := verify.GetCommentsBatchWithProjectDirs(beadsIDs, projectDirs)
+	comments := getCommentsBatchWithProjectDirs(beadsIDs, projectDirs)
 
 	c.mu.Lock()
 	c.comments = comments
@@ -320,6 +323,8 @@ type kbProject struct {
 	Path string `json:"path"`
 }
 
+var getKBProjectsFn = getKBProjects
+
 // listSessionsAcrossProjects queries OpenCode for sessions across all known projects.
 // OpenCode scopes session listing by the x-opencode-directory header, so querying
 // with "" only returns sessions for the server's default project. Cross-project agents
@@ -339,7 +344,7 @@ func listSessionsAcrossProjects(client *opencode.Client, currentProjectDir strin
 	}
 
 	// Query each registered kb project for its sessions
-	for _, projectDir := range getKBProjects() {
+	for _, projectDir := range getKBProjectsFn() {
 		// Skip current project (already covered by default query)
 		if filepath.Clean(projectDir) == filepath.Clean(currentProjectDir) {
 			continue
@@ -459,7 +464,7 @@ func extractUniqueProjectDirs(sessions []opencode.Session, currentProjectDir str
 	// Add registered kb projects for cross-project visibility
 	// This solves the problem where OpenCode --attach uses server cwd,
 	// causing cross-project workspaces to never be scanned
-	for _, proj := range getKBProjects() {
+	for _, proj := range getKBProjectsFn() {
 		if !seen[proj] {
 			seen[proj] = true
 			dirs = append(dirs, proj)

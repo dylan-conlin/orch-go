@@ -23,6 +23,9 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
+var listOpenIssues = verify.ListOpenIssues
+var listOpenIssuesWithDir = verify.ListOpenIssuesWithDir
+
 // AgentAPIResponse is the JSON structure returned by /api/agents.
 type AgentAPIResponse struct {
 	ID                   string               `json:"id"`
@@ -30,6 +33,7 @@ type AgentAPIResponse struct {
 	BeadsID              string               `json:"beads_id,omitempty"`
 	BeadsTitle           string               `json:"beads_title,omitempty"`
 	Skill                string               `json:"skill,omitempty"`
+	Tier                 string               `json:"tier,omitempty"`
 	Status               string               `json:"status"`                      // "active", "idle", "dead", "completed", "awaiting-cleanup"
 	Phase                string               `json:"phase,omitempty"`             // "Planning", "Implementing", "Complete", etc.
 	PhaseReportedAt      string               `json:"phase_reported_at,omitempty"` // ISO 8601 timestamp when phase was reported
@@ -354,7 +358,7 @@ func listInProgressIssues(projectDirs []string) (map[string]*verify.Issue, map[s
 	projectDirsByID := make(map[string]string)
 
 	if len(projectDirs) == 0 {
-		openIssues, err := verify.ListOpenIssues()
+		openIssues, err := listOpenIssues()
 		if err != nil {
 			log.Printf("Warning: failed to list open issues: %v", err)
 			return issues, projectDirsByID
@@ -370,7 +374,7 @@ func listInProgressIssues(projectDirs []string) (map[string]*verify.Issue, map[s
 	}
 
 	for _, projectDir := range projectDirs {
-		openIssues, err := verify.ListOpenIssuesWithDir(projectDir)
+		openIssues, err := listOpenIssuesWithDir(projectDir)
 		if err != nil {
 			log.Printf("Warning: failed to list open issues for %s: %v", projectDir, err)
 			continue
@@ -411,7 +415,31 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	client := opencode.NewClient(serverURL)
 
-	projectDirs := uniqueProjectDirs(append([]string{projectDir}, getKBProjects()...))
+	sessions, err := listSessionsAcrossProjects(client, projectDir)
+	if err != nil {
+		log.Printf("Warning: failed to list sessions: %v", err)
+	}
+
+	sessionByID := make(map[string]*opencode.Session)
+	beadsToSession := make(map[string]*opencode.Session)
+	for i := range sessions {
+		session := &sessions[i]
+		sessionByID[session.ID] = session
+
+		beadsID := beadsIDFromSession(session)
+		if beadsID != "" {
+			beadsToSession[beadsID] = session
+		}
+	}
+
+	sessionStatusMap := make(map[string]opencode.SessionStatusInfo)
+	if status, err := client.GetAllSessionStatus(); err != nil {
+		log.Printf("Warning: failed to fetch session status: %v", err)
+	} else {
+		sessionStatusMap = status
+	}
+
+	projectDirs := uniqueProjectDirs(append([]string{projectDir}, getKBProjectsFn()...))
 	wsCache := globalWorkspaceCacheInstance.getCachedWorkspace(projectDirs)
 
 	agents := []AgentAPIResponse{} // Initialize as empty slice, not nil, to return [] instead of null
@@ -476,6 +504,13 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		}
 
 		workspacePath := wsCache.lookupWorkspace(beadsID)
+		if workspacePath == "" {
+			if session, ok := beadsToSession[beadsID]; ok {
+				if sessionWorkspace := workspacePathFromSession(session); sessionWorkspace != "" {
+					workspacePath = sessionWorkspace
+				}
+			}
+		}
 		if workspacePath != "" {
 			workspaceName := filepath.Base(workspacePath)
 			agent.ID = workspaceName
@@ -492,15 +527,50 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		if agent.SessionID == "" {
+			if session, ok := beadsToSession[beadsID]; ok {
+				agent.SessionID = session.ID
+			}
+		}
+
 		if agent.Project == "" && agent.ProjectDir != "" {
 			agent.Project = extractProjectName(agent.ProjectDir)
 		}
 
 		if agent.SessionID != "" {
-			session, err := client.GetSession(agent.SessionID)
-			if err == nil && session != nil {
-				if session.Title != "" {
-					agent.ID = session.Title
+			session := sessionByID[agent.SessionID]
+			if session == nil {
+				var err error
+				session, err = client.GetSession(agent.SessionID)
+				if err != nil {
+					log.Printf("Warning: failed to fetch session %s: %v", agent.SessionID, err)
+				}
+			}
+
+			if session != nil {
+				if agent.BeadsID == "" {
+					agent.BeadsID = beadsIDFromSession(session)
+				}
+				if agent.ID == "" {
+					agent.ID = workspaceNameFromSession(session)
+				}
+				if agent.ProjectDir == "" {
+					if projectDir := projectDirFromWorkspacePath(workspacePathFromSession(session)); projectDir != "" {
+						agent.ProjectDir = projectDir
+					} else if session.Directory != "" {
+						agent.ProjectDir = session.Directory
+					}
+				}
+				if agent.Tier == "" && session.Metadata != nil {
+					if tier, ok := session.Metadata["tier"]; ok {
+						agent.Tier = tier
+					}
+				}
+
+				if agent.ProjectDir != "" {
+					if _, exists := beadsProjectDirs[beadsID]; !exists {
+						beadsProjectDirs[beadsID] = agent.ProjectDir
+					}
 				}
 
 				createdAt := time.Unix(session.Time.Created/1000, 0)
@@ -521,11 +591,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 					agent.SpawnedAt = createdAt.Format(time.RFC3339)
 				}
 				agent.UpdatedAt = updatedAt.Format(time.RFC3339)
-				if agent.ProjectDir == "" && session.Directory != "" {
-					agent.ProjectDir = session.Directory
-				}
-			} else if err != nil {
-				log.Printf("Warning: failed to fetch session %s: %v", agent.SessionID, err)
+			}
+
+			if statusInfo, ok := sessionStatusMap[agent.SessionID]; ok {
+				agent.IsProcessing = statusInfo.IsBusy() || statusInfo.IsRetrying()
 			}
 		}
 
