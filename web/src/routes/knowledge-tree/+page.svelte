@@ -274,10 +274,32 @@
 		saveExpansionState(expandedNodes);
 	}
 
-	// Sort children by ID for stable ordering across SSE updates.
-	// Backend may return clusters in different order based on filesystem mod times.
+	const parseMetadataNumber = (value: unknown): number | undefined => {
+		if (typeof value === 'number') return value;
+		if (typeof value === 'string') {
+			const parsed = Number(value);
+			return Number.isNaN(parsed) ? undefined : parsed;
+		}
+		return undefined;
+	};
+
+	const getEffectivePriority = (node: KnowledgeNode): number | undefined =>
+		parseMetadataNumber(node.Metadata?.effective_priority ?? node.Metadata?.effectivePriority);
+	const getLayer = (node: KnowledgeNode): number | undefined =>
+		parseMetadataNumber(node.Metadata?.layer);
+
+	// Sort children by effective priority, then topological layer when present.
+	// Fall back to ID for stable ordering across SSE updates.
 	function stableSort(children: KnowledgeNode[]): KnowledgeNode[] {
-		return [...children].sort((a, b) => a.ID.localeCompare(b.ID));
+		return [...children].sort((a, b) => {
+			const priorityDiff = (getEffectivePriority(a) ?? Number.POSITIVE_INFINITY)
+				- (getEffectivePriority(b) ?? Number.POSITIVE_INFINITY);
+			if (priorityDiff !== 0) return priorityDiff;
+			const layerDiff = (getLayer(a) ?? Number.POSITIVE_INFINITY)
+				- (getLayer(b) ?? Number.POSITIVE_INFINITY);
+			if (layerDiff !== 0) return layerDiff;
+			return a.ID.localeCompare(b.ID);
+		});
 	}
 
 	// Filter tree by search and type

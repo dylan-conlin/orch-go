@@ -256,18 +256,24 @@ export function buildTree(nodes: GraphNode[], edges: GraphEdge[]): TreeNode[] {
     }
   }
 
-  // Sort children by ID (maintains creation order)
-  for (const node of treeNodes.values()) {
-    node.children.sort((a, b) => a.id.localeCompare(b.id))
+  const getEffectivePriority = (node: TreeNode): number =>
+    node.effective_priority ?? node.priority
+  const getLayer = (node: TreeNode): number => node.layer ?? Number.POSITIVE_INFINITY
+  const compareTreeOrder = (a: TreeNode, b: TreeNode): number => {
+    const priorityDiff = getEffectivePriority(a) - getEffectivePriority(b)
+    if (priorityDiff !== 0) return priorityDiff
+    const layerDiff = getLayer(a) - getLayer(b)
+    if (layerDiff !== 0) return layerDiff
+    return a.id.localeCompare(b.id)
   }
 
-  // Sort roots by priority, then by ID
-  roots.sort((a, b) => {
-    if (a.priority !== b.priority) {
-      return a.priority - b.priority
-    }
-    return a.id.localeCompare(b.id)
-  })
+  // Sort children by effective priority, then topological layer
+  for (const node of treeNodes.values()) {
+    node.children.sort(compareTreeOrder)
+  }
+
+  // Sort roots by effective priority, then topological layer
+  roots.sort(compareTreeOrder)
 
   return roots
 }
@@ -477,11 +483,7 @@ export function buildDependencyView(
     }
     if (roots.length === 0) roots.push([...component][0])
 
-    const buildDepNode = (
-      nodeId: string,
-      depth: number,
-      seen: Set<string>,
-    ): DepNode => {
+    const buildDepNode = (nodeId: string, depth: number, seen: Set<string>): DepNode => {
       seen.add(nodeId)
       const blocked = (blocksMap.get(nodeId) || [])
         .filter((b) => component.has(b) && !seen.has(b))
@@ -493,9 +495,7 @@ export function buildDependencyView(
         })
       return {
         node: treeNodeIndex.get(nodeId)!,
-        depChildren: blocked.map((childId) =>
-          buildDepNode(childId, depth + 1, seen),
-        ),
+        depChildren: blocked.map((childId) => buildDepNode(childId, depth + 1, seen)),
         depDepth: depth,
       }
     }
@@ -542,10 +542,7 @@ export function buildDependencyView(
  * Flatten a dependency chain into items with box-drawing prefixes.
  * Root nodes are flush left, children get ├── or └── prefixes.
  */
-export function flattenDepChain(
-  chain: DepChain,
-  pinnedIds: Set<string>,
-): FlatDepItem[] {
+export function flattenDepChain(chain: DepChain, pinnedIds: Set<string>): FlatDepItem[] {
   const items: FlatDepItem[] = []
 
   function walk(depNode: DepNode, ancestorIsLast: boolean[]) {
@@ -562,9 +559,7 @@ export function flattenDepChain(
 
     items.push({ node: depNode.node, prefix, depDepth: depNode.depDepth })
 
-    const visibleChildren = depNode.depChildren.filter(
-      (c) => !pinnedIds.has(c.node.id),
-    )
+    const visibleChildren = depNode.depChildren.filter((c) => !pinnedIds.has(c.node.id))
     for (let i = 0; i < visibleChildren.length; i++) {
       const childIsLast = i === visibleChildren.length - 1
       walk(visibleChildren[i], [...ancestorIsLast, childIsLast])

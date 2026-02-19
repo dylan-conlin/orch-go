@@ -1,0 +1,21 @@
+verification:
+  type: feature
+  gate1_explain: 'Sort work graph and knowledge tree nodes by effective priority, then topological layer when available.'
+  gate2_behavioral: false
+
+  commands_run:
+    - command: 'Not run (no automated tests)'
+      expected: 'N/A'
+      observed: 'Not run'
+
+  manual_verification:
+    - 'Open work graph; confirm nodes sort by effective priority first, then layer, with IDs only as tie-breakers.'
+    - 'Open knowledge tree (work view if enabled); confirm issue nodes with effective priority/layer sort ahead of others.'
+
+  deliverables:
+    - path: 'web/src/lib/stores/work-graph.ts'
+      description: 'Sort work graph tree nodes by effective priority, then topological layer.'
+      exists: true
+    - path: 'web/src/routes/knowledge-tree/+page.svelte'
+      description: 'Sort knowledge tree children by effective priority/layer when present, fallback to ID.'
+      exists: true
