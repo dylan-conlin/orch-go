@@ -55,6 +55,7 @@ type SpawnContext struct {
 	IsOrchestrator     bool
 	IsMetaOrchestrator bool
 	ResolvedModel      model.ModelSpec
+	ResolvedSettings   spawn.ResolvedSpawnSettings
 	KBContext          string
 	GapAnalysis        *spawn.GapAnalysis
 	HasInjectedModels  bool
@@ -732,8 +733,8 @@ func BuildUsageInfo(usageCheckResult *gates.UsageCheckResult) *spawn.UsageInfo {
 }
 
 // DetermineSpawnBackend determines spawn backend with auto-selection.
-// Priority: explicit --backend flag > explicit --model > project config > user config > infrastructure detection (advisory) > default.
-// When --backend, --model, or config is explicit, infrastructure detection becomes advisory (warning only).
+// Priority: explicit --backend flag > explicit model (CLI or user default_model) > project config > user config > infrastructure detection (advisory) > default.
+// When --backend, explicit model, or config is explicit, infrastructure detection becomes advisory (warning only).
 // This prevents the escape hatch from silently overriding user intent.
 func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, projectDir, backendFlag, spawnModel string) (string, error) {
 	// Load project config (used for backend default)
@@ -743,6 +744,7 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 	// Load user config (~/.orch/config.yaml) for backend fallback
 	userCfg, userMeta, _ := userconfig.LoadWithMeta()
 	userCfgExplicit := userMeta != nil && userMeta.Explicit["backend"] && userCfg != nil && userCfg.Backend != ""
+	userDefaultModelExplicit := userMeta != nil && userMeta.Explicit["default_model"] && userCfg != nil && userCfg.DefaultModel != ""
 
 	// Default to opencode (primary spawn path)
 	backend := "opencode"
@@ -750,7 +752,7 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 	// Track whether flags were explicitly set by user
 	// Explicit flags ALWAYS win over auto-detection (including infrastructure escape hatch)
 	explicitBackend := backendFlag != ""
-	explicitModel := spawnModel != ""
+	explicitModel := spawnModel != "" || userDefaultModelExplicit
 
 	if explicitBackend {
 		// Explicit --backend flag: highest priority, always wins
@@ -766,6 +768,13 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 			fmt.Fprintf(os.Stderr, "   Recommendation: Use --backend claude for infrastructure work to survive server restarts.\n")
 		}
 	} else if explicitModel {
+		modelName := spawnModel
+		if modelName == "" && userDefaultModelExplicit {
+			modelName = userCfg.DefaultModel
+		}
+		if modelName == "" {
+			modelName = resolvedModel.Format()
+		}
 		// Explicit --model flag: model choice implies backend requirements
 		// Don't let infrastructure detection override — the user chose a specific model
 		// that may require a specific backend (e.g., codex requires opencode)
@@ -777,7 +786,7 @@ func DetermineSpawnBackend(resolvedModel model.ModelSpec, task, beadsID, project
 		}
 		// Advisory: warn if infrastructure work detected
 		if isInfrastructureWork(task, beadsID) && backend != "claude" {
-			fmt.Fprintf(os.Stderr, "⚠️  Infrastructure work detected but respecting explicit --model %s (backend: %s)\n", spawnModel, backend)
+			fmt.Fprintf(os.Stderr, "⚠️  Infrastructure work detected but respecting explicit model %s (backend: %s)\n", modelName, backend)
 			fmt.Fprintf(os.Stderr, "   Recommendation: Use --backend claude for infrastructure work to survive server restarts.\n")
 		}
 	} else if projCfg != nil && projectSpawnModeExplicit && projCfg.SpawnMode != "" {
@@ -863,6 +872,7 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 		Mode:               mode,
 		Validation:         validation,
 		Model:              ctx.ResolvedModel.Format(),
+		ResolvedSettings:   ctx.ResolvedSettings,
 		MCP:                mcp,
 		Tier:               ctx.Tier,
 		NoTrack:            noTrack || ctx.IsOrchestrator || ctx.IsMetaOrchestrator,

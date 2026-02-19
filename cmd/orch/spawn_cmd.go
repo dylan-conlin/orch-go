@@ -591,6 +591,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		IsOrchestrator:     isOrchestrator,
 		IsMetaOrchestrator: isMetaOrchestrator,
 		ResolvedModel:      resolved.Model,
+		ResolvedSettings:   resolved.Settings,
 		KBContext:          kbContext,
 		GapAnalysis:        gapAnalysis,
 		HasInjectedModels:  hasInjectedModels,

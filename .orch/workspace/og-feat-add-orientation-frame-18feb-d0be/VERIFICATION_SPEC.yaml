@@ -1,0 +1,4 @@
+commands:
+  - cmd: 'pwd'
+    expected: 'Prints repository root path.'
+manual_checks: []

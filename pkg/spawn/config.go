@@ -125,6 +125,9 @@ type Config struct {
 	// Model to use for standalone spawns
 	Model string
 
+	// ResolvedSettings captures spawn settings with provenance for SPAWN_CONTEXT.md
+	ResolvedSettings ResolvedSpawnSettings
+
 	// MCP server configuration (e.g., "playwright" for browser automation)
 	MCP string
 

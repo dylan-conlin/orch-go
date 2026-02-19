@@ -84,6 +84,12 @@ SPAWN TIER: {{.Tier}}
    Document your findings, decisions, and learnings in SYNTHESIS.md before completing.
 {{end}}
 {{end}}
+{{if .ConfigResolution}}
+## CONFIG RESOLUTION
+
+{{.ConfigResolution}}
+
+{{end}}
 {{if .ReworkFeedback}}
 ## 🔄 REWORK CONTEXT (Attempt #{{.ReworkNumber}})
 
@@ -550,6 +556,7 @@ type contextData struct {
 	InvestigationType     string
 	KBContext             string
 	ClusterSummary        string // Area awareness: cluster summary from orch tree --cluster <area> --format summary
+	ConfigResolution      string
 	Tier                  string
 	ServerContext         string
 	NoTrack               bool   // When true, omit beads instructions from spawn context
@@ -619,6 +626,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		InvestigationType:     cfg.InvestigationType,
 		KBContext:             cfg.KBContext,
 		ClusterSummary:        clusterSummary,
+		ConfigResolution:      FormatResolvedSpawnSettings(cfg.ResolvedSettings),
 		Tier:                  cfg.Tier,
 		ServerContext:         serverContext,
 		NoTrack:               cfg.NoTrack,

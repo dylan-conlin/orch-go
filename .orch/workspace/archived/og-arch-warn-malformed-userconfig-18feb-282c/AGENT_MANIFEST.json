@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-warn-malformed-userconfig-18feb-282c",
+  "skill": "architect",
+  "beads_id": "orch-go-1048",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go/",
+  "git_baseline": "1258c1b58ced7f6493b254c5cffee7f0d3c6ff7d",
+  "spawn_time": "2026-02-18T21:51:25-08:00",
+  "tier": "full",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-5.2-codex"
+}

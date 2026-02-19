@@ -1,0 +1,7 @@
+commands:
+  - cmd: 'pwd'
+    expected: 'Prints repository root path.'
+  - cmd: 'gofmt -w "pkg/spawn/resolve_format.go" "pkg/spawn/context.go" "pkg/spawn/config.go" "pkg/orch/extraction.go" "cmd/orch/spawn_cmd.go" "cmd/orch/rework_cmd.go"'
+    expected: 'Formats updated Go files.'
+manual_checks:
+  - 'Spawn a worker and confirm SPAWN_CONTEXT.md includes a Config Resolution section with setting sources.'

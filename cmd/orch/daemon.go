@@ -133,6 +133,7 @@ var (
 	daemonReflect             bool   // Run reflection analysis after processing (on exit)
 	daemonReflectInterval     int    // Periodic reflection interval in minutes (0 = disabled)
 	daemonReflectIssues       bool   // Create beads issues for synthesis opportunities
+	daemonModelDriftInterval  int    // Periodic model drift reflection interval in minutes (0 = disabled)
 	daemonCleanupEnabled      bool   // Enable periodic session cleanup
 	daemonCleanupInterval     int    // Session cleanup interval in minutes (0 = disabled)
 	daemonCleanupAge          int    // Session age threshold in days for cleanup
@@ -159,6 +160,7 @@ func init() {
 	daemonRunCmd.Flags().BoolVar(&daemonReflect, "reflect", true, "Run kb reflect analysis on exit (default: true)")
 	daemonRunCmd.Flags().IntVar(&daemonReflectInterval, "reflect-interval", 60, "Periodic reflection interval in minutes (0 = disabled, default: 60)")
 	daemonRunCmd.Flags().BoolVar(&daemonReflectIssues, "reflect-issues", true, "Create beads issues for synthesis opportunities (default: true)")
+	daemonRunCmd.Flags().IntVar(&daemonModelDriftInterval, "reflect-model-drift-interval", 240, "Model drift reflection interval in minutes (0 = disabled, default: 240 = 4 hours)")
 	daemonRunCmd.Flags().BoolVar(&daemonCleanupEnabled, "cleanup-enabled", true, "Enable periodic session cleanup (default: true)")
 	daemonRunCmd.Flags().IntVar(&daemonCleanupInterval, "cleanup-interval", 360, "Session cleanup interval in minutes (0 = disabled, default: 360 = 6 hours)")
 	daemonRunCmd.Flags().IntVar(&daemonCleanupAge, "cleanup-age", 7, "Session age threshold in days for cleanup (default: 7)")
@@ -187,6 +189,8 @@ func daemonConfigFromFlags() daemon.Config {
 	config.ReflectEnabled = daemonReflectInterval > 0
 	config.ReflectInterval = time.Duration(daemonReflectInterval) * time.Minute
 	config.ReflectCreateIssues = daemonReflectIssues
+	config.ReflectModelDriftEnabled = daemonModelDriftInterval > 0
+	config.ReflectModelDriftInterval = time.Duration(daemonModelDriftInterval) * time.Minute
 	config.CleanupEnabled = daemonCleanupEnabled && daemonCleanupInterval > 0
 	config.CleanupInterval = time.Duration(daemonCleanupInterval) * time.Minute
 	config.CleanupAgeDays = daemonCleanupAge
@@ -284,6 +288,11 @@ func runDaemonLoop() error {
 	} else {
 		fmt.Println("  Reflect interval:  disabled")
 	}
+	if config.ReflectModelDriftEnabled {
+		fmt.Printf("  Model drift:       %s\n", formatDaemonDuration(config.ReflectModelDriftInterval))
+	} else {
+		fmt.Println("  Model drift:       disabled")
+	}
 	if config.CleanupEnabled {
 		fmt.Printf("  Cleanup interval:  %s\n", formatDaemonDuration(config.CleanupInterval))
 		fmt.Printf("  Cleanup age:       %d days\n", config.CleanupAgeDays)
@@ -374,6 +383,17 @@ func runDaemonLoop() error {
 				fmt.Printf("[%s] Reflection: %s\n", timestamp, result.Suggestions.Summary())
 			} else if daemonVerbose {
 				fmt.Printf("[%s] Reflection: no suggestions found\n", timestamp)
+			}
+		}
+
+		// Run periodic model drift reflection if due
+		if result := d.RunPeriodicModelDriftReflection(); result != nil {
+			if result.Error != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Model drift error: %v\n", timestamp, result.Error)
+			} else if result.Message != "" {
+				fmt.Printf("[%s] Model drift: %s\n", timestamp, result.Message)
+			} else if daemonVerbose {
+				fmt.Printf("[%s] Model drift: no updates\n", timestamp)
 			}
 		}
 

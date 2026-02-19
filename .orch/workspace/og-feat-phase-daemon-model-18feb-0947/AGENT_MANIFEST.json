@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-phase-daemon-model-18feb-0947",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-9b26",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go/",
+  "git_baseline": "20dd07ec35576e6ac42c2ab63c469ef914305e8c",
+  "spawn_time": "2026-02-18T21:36:38-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-5.2-codex"
+}

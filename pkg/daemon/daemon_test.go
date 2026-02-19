@@ -2173,6 +2173,12 @@ func TestDefaultConfig_IncludesReflect(t *testing.T) {
 	if !config.ReflectCreateIssues {
 		t.Error("DefaultConfig().ReflectCreateIssues should be true")
 	}
+	if !config.ReflectModelDriftEnabled {
+		t.Error("DefaultConfig().ReflectModelDriftEnabled should be true")
+	}
+	if config.ReflectModelDriftInterval != 4*time.Hour {
+		t.Errorf("DefaultConfig().ReflectModelDriftInterval = %v, want 4h", config.ReflectModelDriftInterval)
+	}
 }
 
 func TestNewWithConfig_InitializesReflectFunc(t *testing.T) {

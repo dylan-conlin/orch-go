@@ -98,6 +98,29 @@ func TestDetermineSpawnBackend_ExplicitModelPreventsInfraOverride(t *testing.T) 
 	}
 }
 
+func TestDetermineSpawnBackend_UserDefaultModelPreventsInfraOverride(t *testing.T) {
+	sonnet := model.ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}
+
+	configHome := t.TempDir()
+	t.Setenv("HOME", configHome)
+	configDir := filepath.Join(configHome, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("failed to create user config dir: %v", err)
+	}
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("default_model: gpt-4o\n"), 0644); err != nil {
+		t.Fatalf("failed to write user config: %v", err)
+	}
+
+	got, err := DetermineSpawnBackend(sonnet, "fix opencode server crash", "", "", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == "claude" {
+		t.Errorf("user default_model should prevent infra auto-apply, got %q", got)
+	}
+}
+
 func TestDetermineSpawnBackend_ExplicitModelAndBackend(t *testing.T) {
 	codex := model.ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}
 

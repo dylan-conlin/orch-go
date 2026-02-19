@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-architect-design-unified-18feb-4dfe",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1067",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go/",
+  "git_baseline": "b0e61fcb1f6e443b702a05392af5d9e9303c89a4",
+  "spawn_time": "2026-02-18T20:26:09-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-5.2-codex"
+}

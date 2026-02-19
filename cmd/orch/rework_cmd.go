@@ -249,6 +249,7 @@ func runRework(beadsID, feedback string) error {
 		SkillContent:      skillContent,
 		BeadsID:           beadsID,
 		ResolvedModel:     resolved.Model,
+		ResolvedSettings:  resolved.Settings,
 		KBContext:         kbContext,
 		GapAnalysis:       gapAnalysis,
 		HasInjectedModels: hasInjectedModels,

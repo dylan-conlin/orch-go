@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-log-resolved-spawn-18feb-ead8",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1071",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go/",
+  "git_baseline": "9364a4c8de628899eb245ce8a907ab1c4ecac6a1",
+  "spawn_time": "2026-02-18T21:58:25-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-5.2-codex"
+}
