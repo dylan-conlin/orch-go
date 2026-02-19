@@ -2,6 +2,7 @@
 package spawn
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -141,6 +142,133 @@ func TestSpawnClaudeSessionSelection(t *testing.T) {
 			if useOrchestratorSession != tt.wantOrchestratorSess {
 				t.Errorf("session selection: (IsMetaOrchestrator=%v || IsOrchestrator=%v) = %v, want %v",
 					cfg.IsMetaOrchestrator, cfg.IsOrchestrator, useOrchestratorSession, tt.wantOrchestratorSess)
+			}
+		})
+	}
+}
+
+// TestMCPConfigJSON tests that known MCP presets produce valid JSON configs.
+func TestMCPConfigJSON(t *testing.T) {
+	t.Run("playwright preset returns valid JSON", func(t *testing.T) {
+		configJSON, ok := MCPConfigJSON("playwright")
+		if !ok {
+			t.Fatal("MCPConfigJSON('playwright') returned false, want true")
+		}
+		if configJSON == "" {
+			t.Fatal("MCPConfigJSON('playwright') returned empty string")
+		}
+
+		// Verify it's valid JSON
+		var parsed map[string]interface{}
+		if err := json.Unmarshal([]byte(configJSON), &parsed); err != nil {
+			t.Fatalf("MCPConfigJSON('playwright') returned invalid JSON: %v\nGot: %s", err, configJSON)
+		}
+
+		// Verify structure: {"mcpServers": {"playwright": {"command": "npx", "args": [...]}}}
+		servers, ok := parsed["mcpServers"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("missing or invalid mcpServers key in: %s", configJSON)
+		}
+		pw, ok := servers["playwright"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("missing or invalid playwright server in: %s", configJSON)
+		}
+		if pw["command"] != "npx" {
+			t.Errorf("playwright command = %v, want 'npx'", pw["command"])
+		}
+		args, ok := pw["args"].([]interface{})
+		if !ok || len(args) < 2 {
+			t.Fatalf("playwright args missing or too short: %v", pw["args"])
+		}
+		if args[0] != "-y" {
+			t.Errorf("playwright args[0] = %v, want '-y'", args[0])
+		}
+		argsStr, _ := args[1].(string)
+		if !strings.HasPrefix(argsStr, "@playwright/mcp") {
+			t.Errorf("playwright args[1] = %v, want prefix '@playwright/mcp'", args[1])
+		}
+	})
+
+	t.Run("unknown preset returns false", func(t *testing.T) {
+		_, ok := MCPConfigJSON("nonexistent")
+		if ok {
+			t.Error("MCPConfigJSON('nonexistent') returned true, want false")
+		}
+	})
+}
+
+// TestBuildClaudeLaunchCommand tests command construction with and without MCP.
+func TestBuildClaudeLaunchCommand(t *testing.T) {
+	tests := []struct {
+		name         string
+		contextPath  string
+		claudeCtx    string
+		mcp          string
+		wantContains []string
+		wantExcludes []string
+	}{
+		{
+			name:        "no MCP - basic command",
+			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
+			claudeCtx:   "worker",
+			mcp:         "",
+			wantContains: []string{
+				"export CLAUDE_CONTEXT=worker",
+				"cat \"/tmp/workspace/SPAWN_CONTEXT.md\"",
+				"claude --dangerously-skip-permissions",
+			},
+			wantExcludes: []string{
+				"--mcp-config",
+			},
+		},
+		{
+			name:        "playwright MCP preset",
+			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
+			claudeCtx:   "worker",
+			mcp:         "playwright",
+			wantContains: []string{
+				"export CLAUDE_CONTEXT=worker",
+				"claude --dangerously-skip-permissions",
+				"--mcp-config",
+				"mcpServers",
+				"playwright",
+				"@playwright/mcp",
+			},
+		},
+		{
+			name:        "unknown MCP passed as raw value",
+			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
+			claudeCtx:   "worker",
+			mcp:         "/path/to/custom-mcp.json",
+			wantContains: []string{
+				"--mcp-config '/path/to/custom-mcp.json'",
+			},
+		},
+		{
+			name:        "orchestrator context",
+			contextPath: "/tmp/workspace/ORCHESTRATOR_CONTEXT.md",
+			claudeCtx:   "orchestrator",
+			mcp:         "",
+			wantContains: []string{
+				"export CLAUDE_CONTEXT=orchestrator",
+				"ORCHESTRATOR_CONTEXT.md",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp)
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(cmd, want) {
+					t.Errorf("command missing %q\nGot: %s", want, cmd)
+				}
+			}
+			for _, exclude := range tt.wantExcludes {
+				if strings.Contains(cmd, exclude) {
+					t.Errorf("command should not contain %q\nGot: %s", exclude, cmd)
+				}
 			}
 		})
 	}

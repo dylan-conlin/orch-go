@@ -1,0 +1,28 @@
+verification:
+  - name: "MCP config JSON generation for playwright preset"
+    command: "go test ./pkg/spawn/ -run TestMCPConfigJSON -v"
+    expected: "PASS"
+    result: "PASS - 2/2 subtests"
+
+  - name: "Claude launch command includes --mcp-config when MCP set"
+    command: "go test ./pkg/spawn/ -run TestBuildClaudeLaunchCommand -v"
+    expected: "PASS"
+    result: "PASS - 4/4 subtests"
+
+  - name: "Full binary builds cleanly"
+    command: "go build ./cmd/orch/ && go vet ./cmd/orch/"
+    expected: "No errors"
+    result: "Build and vet passed"
+
+  - name: "Smoke test - manual verification required"
+    command: "orch spawn --bypass-triage --mcp playwright --backend claude --no-track --tmux hello 'list MCP servers'"
+    expected: "Agent should report mcp__playwright__* tools are available"
+    result: "MANUAL - Cannot smoke-test from within Claude Code session (nested session restriction)"
+    note: "Orchestrator should run this manually to verify"
+
+known_limitations:
+  - "OpenCode backend (headless/tmux) does not support per-session MCP config. --mcp only works with --backend claude."
+  - "Smoke test requires manual execution outside of Claude Code session."
+
+pre_existing_failures:
+  - "5 resolve_test.go tests fail before and after this change (TestResolve_PrecedenceLayers/default_backend, etc.)"

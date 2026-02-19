@@ -1532,6 +1532,9 @@ func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 		"no_track":            cfg.NoTrack,
 		"skip_artifact_check": cfg.SkipArtifactCheck,
 	}
+	if cfg.MCP != "" {
+		eventData["mcp"] = cfg.MCP
+	}
 	addGapAnalysisToEventData(eventData, cfg.GapAnalysis)
 	addUsageInfoToEventData(eventData, cfg.UsageInfo)
 	event := events.Event{
@@ -1558,6 +1561,9 @@ func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 	fmt.Printf("  Window ID:  %s\n", result.WindowID)
 	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
 	fmt.Printf("  Beads ID:   %s\n", beadsID)
+	if cfg.MCP != "" {
+		fmt.Printf("  MCP:        %s\n", cfg.MCP)
+	}
 	// Print context quality with visual indicators
 	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
 

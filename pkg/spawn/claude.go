@@ -2,10 +2,74 @@
 package spawn
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
+
+// mcpPresets maps known MCP preset names to their server configurations.
+// Each preset defines the command and args needed to launch the MCP server.
+// Format matches Claude CLI's --mcp-config JSON format.
+var mcpPresets = map[string]MCPServerConfig{
+	"playwright": {
+		Command: "npx",
+		Args:    []string{"-y", "@playwright/mcp@latest"},
+	},
+}
+
+// MCPServerConfig defines the command to launch an MCP server.
+type MCPServerConfig struct {
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+}
+
+// MCPConfigJSON returns the JSON string for --mcp-config given an MCP preset name.
+// Returns the JSON config and true if the preset is known, or empty string and false if not.
+// For unknown presets, the caller should treat the value as a raw JSON string or file path.
+func MCPConfigJSON(preset string) (string, bool) {
+	server, ok := mcpPresets[preset]
+	if !ok {
+		return "", false
+	}
+
+	config := map[string]map[string]MCPServerConfig{
+		"mcpServers": {
+			preset: server,
+		},
+	}
+
+	data, err := json.Marshal(config)
+	if err != nil {
+		return "", false
+	}
+	return string(data), true
+}
+
+// BuildClaudeLaunchCommand constructs the shell command to launch Claude Code CLI.
+// This is extracted from SpawnClaude for testability.
+//
+// The command:
+// - Exports CLAUDE_CONTEXT env var so SessionStart hooks skip duplicate injection
+// - Pipes the context file to claude (no --file flag exists)
+// - Uses --dangerously-skip-permissions to avoid blocking on edit prompts
+// - When MCP is set, adds --mcp-config with the appropriate JSON config
+func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp string) string {
+	// Base command: export CLAUDE_CONTEXT=X; cat CONTEXT.md | claude --dangerously-skip-permissions
+	mcpFlag := ""
+	if mcp != "" {
+		// Check if it's a known preset
+		if configJSON, ok := MCPConfigJSON(mcp); ok {
+			// Use single quotes around JSON to avoid shell interpretation of double quotes
+			mcpFlag = fmt.Sprintf(" --mcp-config '%s'", configJSON)
+		} else {
+			// Treat as raw value (could be a file path or custom JSON)
+			mcpFlag = fmt.Sprintf(" --mcp-config '%s'", mcp)
+		}
+	}
+
+	return fmt.Sprintf("export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s", claudeContext, contextPath, mcpFlag)
+}
 
 // SpawnClaude launches a Claude Code agent in a tmux window.
 // It uses the SPAWN_CONTEXT.md file approach: claude --file SPAWN_CONTEXT.md
@@ -47,12 +111,7 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 		claudeContext = "worker"
 	}
 
-	// Command: export CLAUDE_CONTEXT=X; cat CONTEXT.md | claude --dangerously-skip-permissions
-	// - Export env var so SessionStart hooks skip duplicate context injection
-	//   (must export, not inline, so claude inherits it through the pipe)
-	// - Pipe the file content to claude (no --file flag exists)
-	// - Use --dangerously-skip-permissions to avoid blocking on edit prompts
-	launchCmd := fmt.Sprintf("export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions", claudeContext, contextPath)
+	launchCmd := BuildClaudeLaunchCommand(contextPath, claudeContext, cfg.MCP)
 
 	if err := tmux.SendKeys(windowTarget, launchCmd); err != nil {
 		return nil, fmt.Errorf("failed to send launch command: %w", err)
