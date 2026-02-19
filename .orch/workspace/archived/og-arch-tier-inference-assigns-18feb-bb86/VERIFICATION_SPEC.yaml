@@ -1,0 +1,18 @@
+verification:
+  type: bugfix
+
+  claims:
+    - claim: 'Tier inference upgrades to full when task text signals medium scope'
+      evidence: 'pkg/orch/extraction.go:120-197'
+      verified: true
+
+  tests:
+    - command: 'go test ./pkg/orch -run TestDetermineSpawnTier_TaskScopeSignals'
+      expected: 'PASS'
+      status: PASSED
+
+  manual_verification:
+    - step: 'Reproduce tier inference on new package + tests task'
+      command: 'go run /tmp/tier_repro.go'
+      expected: 'tier=full'
+      status: PASSED

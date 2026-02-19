@@ -1,0 +1,9 @@
+{
+  "merge_base": "0bca3dec40bf2b0f1840225b678617236944722a",
+  "fix_commit_count": 161,
+  "counts": {
+    "still-relevant": 3,
+    "irrelevant": 158,
+    "already-fixed": 0
+  }
+}

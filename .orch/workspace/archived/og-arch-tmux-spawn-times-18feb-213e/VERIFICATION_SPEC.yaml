@@ -1,0 +1,26 @@
+verification:
+  type: bugfix
+
+  claims:
+    - claim: 'Tmux spawn uses an absolute opencode binary path to avoid PATH-dependent readiness timeouts'
+      evidence: 'pkg/tmux/tmux.go: resolveOpencodeBin used in BuildOpencodeAttachCommand'
+      verified: true
+
+    - claim: 'WaitForOpenCodeReady fails fast if opencode is missing, instead of timing out'
+      evidence: "pkg/tmux/tmux.go: WaitForOpenCodeReady checks pane content for 'command not found' + 'opencode'"
+      verified: true
+
+  manual_verification:
+    - step: 'Reproduce PATH failure in a tmux session'
+      command: |
+        WINDOW=$(tmux -S /private/tmp/tmux-501/default new-window -t workers-orch-go -n oc-ready-probe -d -P -F "#{window_index}")
+        tmux -S /private/tmp/tmux-501/default send-keys -t workers-orch-go:${WINDOW} "opencode attach \"http://127.0.0.1:4096\" --dir \"/Users/dylanconlin/Documents/personal/orch-go\"" Enter
+        sleep 5
+        tmux -S /private/tmp/tmux-501/default capture-pane -t workers-orch-go:${WINDOW} -p
+      expected: "Pane shows 'command not found: opencode' and no TUI"
+    - step: 'Verify TUI readiness with absolute path'
+      command: |
+        tmux -S /private/tmp/tmux-501/default send-keys -t workers-orch-go:${WINDOW} "/Users/dylanconlin/.bun/bin/opencode attach \"http://127.0.0.1:4096\" --dir \"/Users/dylanconlin/Documents/personal/orch-go\"" Enter
+        sleep 5
+        tmux -S /private/tmp/tmux-501/default capture-pane -t workers-orch-go:${WINDOW} -p
+      expected: 'Pane shows OpenCode TUI prompt box, Build selector, and command hints'

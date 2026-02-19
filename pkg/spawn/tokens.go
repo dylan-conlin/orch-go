@@ -114,8 +114,22 @@ func EstimateContextTokens(cfg *Config) *TokenEstimate {
 		components["server_context"] = EstimateTokens(serverContextSize)
 	}
 
+	// Rework context
+	reworkFeedbackSize := len(cfg.ReworkFeedback)
+	if reworkFeedbackSize > 0 {
+		components["rework_feedback"] = EstimateTokens(reworkFeedbackSize)
+	}
+	priorSynthesisSize := len(cfg.PriorSynthesis)
+	if priorSynthesisSize > 0 {
+		components["prior_synthesis"] = EstimateTokens(priorSynthesisSize)
+	}
+	priorWorkspaceSize := len(cfg.PriorWorkspace)
+	if priorWorkspaceSize > 0 {
+		components["prior_workspace"] = EstimateTokens(priorWorkspaceSize)
+	}
+
 	// Calculate total
-	totalChars := baseTemplateSize + taskSize + skillSize + kbContextSize + serverContextSize
+	totalChars := baseTemplateSize + taskSize + skillSize + kbContextSize + serverContextSize + reworkFeedbackSize + priorSynthesisSize + priorWorkspaceSize
 	totalTokens := 0
 	for _, tokens := range components {
 		totalTokens += tokens

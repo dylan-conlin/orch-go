@@ -27,6 +27,9 @@ type ReflectSuggestions struct {
 	// Drift detected constraints that may conflict with code.
 	Drift []DriftSuggestion `json:"drift,omitempty"`
 
+	// ModelDrift detects stale model artifacts with changed code references.
+	ModelDrift []json.RawMessage `json:"model_drift,omitempty"`
+
 	// Refine suggestions for kn entries that refine existing principles.
 	Refine []RefineSuggestion `json:"refine,omitempty"`
 }
@@ -71,11 +74,12 @@ type RefineSuggestion struct {
 
 // kbReflectOutput represents the raw output from kb reflect --format json.
 type kbReflectOutput struct {
-	Synthesis []SynthesisSuggestion `json:"synthesis,omitempty"`
-	Promote   []PromoteSuggestion   `json:"promote,omitempty"`
-	Stale     []StaleSuggestion     `json:"stale,omitempty"`
-	Drift     []DriftSuggestion     `json:"drift,omitempty"`
-	Refine    []kbRefineOutput      `json:"refine,omitempty"`
+	Synthesis  []SynthesisSuggestion `json:"synthesis,omitempty"`
+	Promote    []PromoteSuggestion   `json:"promote,omitempty"`
+	Stale      []StaleSuggestion     `json:"stale,omitempty"`
+	Drift      []DriftSuggestion     `json:"drift,omitempty"`
+	ModelDrift []json.RawMessage     `json:"model_drift,omitempty"`
+	Refine     []kbRefineOutput      `json:"refine,omitempty"`
 }
 
 // kbRefineOutput represents the raw refine entry from kb reflect.
@@ -124,6 +128,12 @@ func RunReflectionWithOptions(createIssues bool) (*ReflectSuggestions, error) {
 		return nil, fmt.Errorf("failed to parse kb reflect output: %w", err)
 	}
 
+	modelDrift, err := RunModelDriftReflection()
+	if err != nil {
+		return nil, err
+	}
+	rawOutput.ModelDrift = modelDrift
+
 	// Convert refine output to suggestions
 	var refine []RefineSuggestion
 	for _, r := range rawOutput.Refine {
@@ -137,12 +147,13 @@ func RunReflectionWithOptions(createIssues bool) (*ReflectSuggestions, error) {
 	}
 
 	suggestions := &ReflectSuggestions{
-		Timestamp: time.Now().UTC(),
-		Synthesis: rawOutput.Synthesis,
-		Promote:   rawOutput.Promote,
-		Stale:     rawOutput.Stale,
-		Drift:     rawOutput.Drift,
-		Refine:    refine,
+		Timestamp:  time.Now().UTC(),
+		Synthesis:  rawOutput.Synthesis,
+		Promote:    rawOutput.Promote,
+		Stale:      rawOutput.Stale,
+		Drift:      rawOutput.Drift,
+		ModelDrift: rawOutput.ModelDrift,
+		Refine:     refine,
 	}
 
 	return suggestions, nil
@@ -202,7 +213,7 @@ func (s *ReflectSuggestions) HasSuggestions() bool {
 	if s == nil {
 		return false
 	}
-	return len(s.Synthesis) > 0 || len(s.Promote) > 0 || len(s.Stale) > 0 || len(s.Drift) > 0 || len(s.Refine) > 0
+	return len(s.Synthesis) > 0 || len(s.Promote) > 0 || len(s.Stale) > 0 || len(s.Drift) > 0 || len(s.ModelDrift) > 0 || len(s.Refine) > 0
 }
 
 // TotalCount returns the total number of suggestions across all categories.
@@ -210,7 +221,7 @@ func (s *ReflectSuggestions) TotalCount() int {
 	if s == nil {
 		return 0
 	}
-	return len(s.Synthesis) + len(s.Promote) + len(s.Stale) + len(s.Drift) + len(s.Refine)
+	return len(s.Synthesis) + len(s.Promote) + len(s.Stale) + len(s.Drift) + len(s.ModelDrift) + len(s.Refine)
 }
 
 // Summary returns a human-readable summary of suggestions.
@@ -231,6 +242,9 @@ func (s *ReflectSuggestions) Summary() string {
 	}
 	if len(s.Drift) > 0 {
 		parts = append(parts, fmt.Sprintf("%d potential drifts", len(s.Drift)))
+	}
+	if len(s.ModelDrift) > 0 {
+		parts = append(parts, fmt.Sprintf("%d model drift warnings", len(s.ModelDrift)))
 	}
 	if len(s.Refine) > 0 {
 		parts = append(parts, fmt.Sprintf("%d principle refinements", len(s.Refine)))
@@ -297,4 +311,30 @@ func DefaultRunReflection(createIssues bool) (*ReflectResult, error) {
 		return result, result.Error
 	}
 	return result, nil
+}
+
+// RunModelDriftReflection executes kb reflect --type model-drift and returns raw entries.
+func RunModelDriftReflection() ([]json.RawMessage, error) {
+	args := []string{"reflect", "--type", "model-drift", "--format", "json"}
+	cmd := exec.Command("kb", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run kb reflect model-drift: %w", err)
+	}
+	return parseModelDriftOutput(output)
+}
+
+func parseModelDriftOutput(output []byte) ([]json.RawMessage, error) {
+	var typed struct {
+		ModelDrift []json.RawMessage `json:"model_drift,omitempty"`
+	}
+	if err := json.Unmarshal(output, &typed); err == nil {
+		return typed.ModelDrift, nil
+	}
+
+	var list []json.RawMessage
+	if err := json.Unmarshal(output, &list); err != nil {
+		return nil, fmt.Errorf("failed to parse kb reflect model-drift output: %w", err)
+	}
+	return list, nil
 }

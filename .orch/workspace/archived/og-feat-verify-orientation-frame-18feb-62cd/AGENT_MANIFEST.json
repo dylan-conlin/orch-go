@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-verify-orientation-frame-18feb-62cd",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1053",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "90d816fedd7bee0f4d6bbc3980567fd59531fa9b",
+  "spawn_time": "2026-02-18T16:03:16-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-5.2-codex"
+}

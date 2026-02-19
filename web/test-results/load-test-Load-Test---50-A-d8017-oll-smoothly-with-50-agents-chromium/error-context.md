@@ -1,0 +1,329 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - link "🐝 Swarm" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e8]: 🐝
+          - generic [ref=e9]: Swarm
+        - navigation [ref=e10]:
+          - link "Dashboard" [ref=e11] [cursor=pointer]:
+            - /url: /
+          - link "Work Graph" [ref=e12] [cursor=pointer]:
+            - /url: /work-graph
+          - link "Knowledge Tree" [ref=e13] [cursor=pointer]:
+            - /url: /knowledge-tree
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - generic [ref=e16]: 4%(3h 45m)
+          - generic [ref=e17]: "|"
+          - generic [ref=e18]: 6%(6d 17h)
+          - generic [ref=e19]: "@personal"
+        - generic [ref=e20]: disconnected
+        - button "Select theme" [ref=e22] [cursor=pointer]:
+          - img [ref=e23]
+  - main [ref=e24]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]:
+          - button "⚡ Ops" [ref=e28] [cursor=pointer]
+          - button "📦 History" [ref=e29] [cursor=pointer]
+        - generic [ref=e30]:
+          - generic [ref=e31]: "Since:"
+          - combobox [ref=e32] [cursor=pointer]:
+            - option "12h" [selected]
+            - option "24h"
+            - option "48h"
+            - option "7d"
+            - option "All"
+        - button "👁️ Following" [ref=e33] [cursor=pointer]:
+          - generic [ref=e34]: 👁️
+          - generic [ref=e35]: Following
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - generic [ref=e38]: ❌
+            - generic [ref=e39]:
+              - generic [ref=e40]: "0"
+              - generic [ref=e41]: errors
+          - generic [ref=e42]:
+            - generic [ref=e43]: 🟢
+            - generic [ref=e44]:
+              - generic [ref=e45]: "0"
+              - generic [ref=e46]: active
+          - button "📋 20 ready (7 blocked)" [ref=e47] [cursor=pointer]:
+            - generic [ref=e48]: 📋
+            - generic [ref=e49]:
+              - generic [ref=e50]: "20"
+              - generic [ref=e51]: ready
+            - generic [ref=e52]: (7 blocked)
+          - button "✅ 10 review" [ref=e53] [cursor=pointer]:
+            - generic [ref=e54]: ✅
+            - generic [ref=e55]:
+              - generic [ref=e56]: "10"
+              - generic [ref=e57]: review
+          - generic [ref=e58]:
+            - generic [ref=e59]: 🛡️
+            - generic [ref=e60]:
+              - generic [ref=e61]: "0"
+              - generic [ref=e62]: unverified
+          - button "🟢 2/3 slots" [ref=e63] [cursor=pointer]:
+            - generic [ref=e64]: 🟢
+            - generic [ref=e65]:
+              - generic [ref=e66]: 2/3
+              - generic [ref=e67]: slots
+        - generic [ref=e68]:
+          - button "Settings" [ref=e69] [cursor=pointer]:
+            - img [ref=e70]
+          - button "Connect" [ref=e73] [cursor=pointer]
+      - generic [ref=e74]:
+        - button "✅ Review Queue 10 completions awaiting review" [expanded] [ref=e75] [cursor=pointer]:
+          - generic [ref=e76]:
+            - generic [ref=e77]: ✅
+            - generic [ref=e78]: Review Queue
+            - generic [ref=e79]: "10"
+            - generic [ref=e80]: completions awaiting review
+          - img [ref=e82]
+        - generic [ref=e85]:
+          - generic [ref=e86]:
+            - generic [ref=e87]: P0
+            - generic "Headless codex spawns silently die — session created but not visible in OpenCode, no error surfaced to user" [ref=e88]
+            - generic [ref=e89]: bug
+            - generic [ref=e90]: area:spawn
+            - generic [ref=e91]: "+1"
+            - generic [ref=e92]: orch-go-1051
+          - generic [ref=e93]:
+            - generic [ref=e94]: P1
+            - 'generic "Investigation: skillc deploy pipeline is a source of chronic rework and confusion — audit source/compiled/deployed file relationships and fix" [ref=e95]'
+            - generic [ref=e96]: investigation
+            - generic [ref=e97]: area:skills
+            - generic [ref=e98]: "+1"
+            - generic [ref=e99]: orch-go-1050
+          - generic [ref=e100]:
+            - generic [ref=e101]: P2
+            - generic "Re-implement dep-chain grouping mode in work-graph" [ref=e102]
+            - generic [ref=e103]: feature
+            - generic [ref=e104]: area:dashboard
+            - generic [ref=e105]: "+1"
+            - generic [ref=e106]: orch-go-998
+          - generic [ref=e107]:
+            - generic [ref=e108]: P2
+            - generic "Auto-expire orchestrator session metrics — 689h unbounded timer" [ref=e109]
+            - generic [ref=e110]: feature
+            - generic [ref=e111]: area:spawn
+            - generic [ref=e112]: "+1"
+            - generic [ref=e113]: orch-go-1043
+          - generic [ref=e114]:
+            - generic [ref=e115]: P2
+            - generic "Re-implement in-progress section at top of work-graph" [ref=e116]
+            - generic [ref=e117]: feature
+            - generic [ref=e118]: area:dashboard
+            - generic [ref=e119]: "+1"
+            - generic [ref=e120]: orch-go-999
+          - generic [ref=e121]:
+            - generic [ref=e122]: P2
+            - generic "Add ORIENTATION_FRAME to SPAWN_CONTEXT.md template and orch spawn" [ref=e123]
+            - generic [ref=e124]: feature
+            - generic [ref=e125]: area:spawn
+            - generic [ref=e126]: "+1"
+            - generic [ref=e127]: orch-go-1005
+          - generic [ref=e128]:
+            - generic [ref=e129]: P2
+            - generic "Implement work-graph three-layer priority cascade (mutual exclusivity)" [ref=e130]
+            - generic [ref=e131]: feature
+            - generic [ref=e132]: area:dashboard
+            - generic [ref=e133]: "+1"
+            - generic [ref=e134]: orch-go-987
+          - generic [ref=e135]:
+            - generic [ref=e136]: P2
+            - generic "Integrate recovered slide-out panel tabs with current work-graph architecture" [ref=e137]
+            - generic [ref=e138]: task
+            - generic [ref=e139]: area:dashboard
+            - generic [ref=e140]: "+1"
+            - generic [ref=e141]: orch-go-989
+          - generic [ref=e142]:
+            - generic [ref=e143]: P2
+            - generic "Enrich /api/beads/graph response with layer + effective_priority fields" [ref=e144]
+            - generic [ref=e145]: task
+            - generic [ref=e146]: area:dashboard
+            - generic [ref=e147]: "+1"
+            - generic [ref=e148]: orch-go-980.2
+          - generic [ref=e149]:
+            - generic [ref=e150]: P2
+            - generic "Verify orientation frame propagation" [ref=e151]
+            - generic [ref=e152]: task
+            - generic [ref=e153]: triage:review
+            - generic [ref=e154]: orch-go-1053
+      - generic [ref=e157]:
+        - generic [ref=e158]: 🟢
+        - generic [ref=e159]: Worker health metrics active
+      - generic [ref=e160]:
+        - button "O Orchestrator Sessions 2" [expanded] [ref=e161] [cursor=pointer]:
+          - generic [ref=e162]:
+            - generic [ref=e163]: O
+            - generic [ref=e164]: Orchestrator Sessions
+            - generic [ref=e165]: "2"
+          - img [ref=e167]
+        - generic [ref=e170]:
+          - generic [ref=e171]:
+            - button "O" [ref=e173] [cursor=pointer]
+            - generic [ref=e174]:
+              - generic [ref=e175]:
+                - generic [ref=e176]: 📁
+                - generic [ref=e177]: active
+              - button "11m 12s" [ref=e179] [cursor=pointer]
+            - paragraph [ref=e181]: test orchestrator task
+            - generic [ref=e182]:
+              - button "Workspace" [ref=e183] [cursor=pointer]
+              - generic [ref=e184]: "|"
+              - generic [ref=e185]: test-project
+          - generic [ref=e186]:
+            - button "O" [ref=e188] [cursor=pointer]
+            - generic [ref=e189]:
+              - generic [ref=e190]:
+                - generic [ref=e191]: 📁
+                - generic [ref=e192]: active
+              - button "11m 12s" [ref=e194] [cursor=pointer]
+            - paragraph [ref=e196]: test meta task
+            - generic [ref=e197]:
+              - button "Test Meta Workspace" [ref=e198] [cursor=pointer]
+              - generic [ref=e199]: "|"
+              - generic [ref=e200]: test-project
+      - generic [ref=e201]:
+        - button "S Services 3 3 running" [expanded] [ref=e202] [cursor=pointer]:
+          - generic [ref=e203]:
+            - generic [ref=e204]: S
+            - generic [ref=e205]: Services
+            - generic [ref=e206]: "3"
+            - generic [ref=e207]: 3 running
+          - img [ref=e209]
+        - generic [ref=e212]:
+          - generic [ref=e213]:
+            - button "S" [ref=e215] [cursor=pointer]
+            - generic [ref=e216]:
+              - generic [ref=e217]:
+                - generic [ref=e218]: 🎯
+                - generic [ref=e219]:
+                  - generic [ref=e220]: ●
+                  - text: running
+              - button "9s" [ref=e222] [cursor=pointer]
+            - paragraph [ref=e224]: api
+            - generic [ref=e225]:
+              - 'button "PID: 44629" [ref=e226] [cursor=pointer]'
+              - generic [ref=e227]: "|"
+              - generic [ref=e228]: orch-go
+            - button "📊 Events" [ref=e231] [cursor=pointer]
+          - generic [ref=e232]:
+            - button "S" [ref=e234] [cursor=pointer]
+            - generic [ref=e235]:
+              - generic [ref=e236]:
+                - generic [ref=e237]: 🎯
+                - generic [ref=e238]:
+                  - generic [ref=e239]: ●
+                  - text: running
+              - button "9s" [ref=e241] [cursor=pointer]
+            - paragraph [ref=e243]: web
+            - generic [ref=e244]:
+              - 'button "PID: 36666" [ref=e245] [cursor=pointer]'
+              - generic [ref=e246]: "|"
+              - generic [ref=e247]: orch-go
+            - button "📊 Events" [ref=e250] [cursor=pointer]
+          - generic [ref=e251]:
+            - button "S" [ref=e253] [cursor=pointer]
+            - generic [ref=e254]:
+              - generic [ref=e255]:
+                - generic [ref=e256]: 🎯
+                - generic [ref=e257]:
+                  - generic [ref=e258]: ●
+                  - text: running
+              - button "9s" [ref=e260] [cursor=pointer]
+            - paragraph [ref=e262]: opencode
+            - generic [ref=e263]:
+              - 'button "PID: 91204" [ref=e264] [cursor=pointer]'
+              - generic [ref=e265]: "|"
+              - generic [ref=e266]: orch-go
+            - button "📊 Events" [ref=e269] [cursor=pointer]
+      - generic [ref=e270]:
+        - button "🎯 Up Next 5 2 urgent" [expanded] [ref=e271] [cursor=pointer]:
+          - generic [ref=e272]:
+            - generic [ref=e273]: 🎯
+            - generic [ref=e274]: Up Next
+            - generic [ref=e275]: "5"
+            - generic [ref=e276]: 2 urgent
+          - img [ref=e278]
+        - generic [ref=e280]:
+          - generic [ref=e281]:
+            - generic [ref=e282]:
+              - generic [ref=e283]: P0
+              - generic "Headless codex spawns silently die — session created but not visible in OpenCode, no error surfaced to user" [ref=e284]
+              - generic "Age" [ref=e285]: 1h
+              - generic [ref=e286]: orch-go-1051
+            - generic [ref=e287]:
+              - generic [ref=e288]: P1
+              - 'generic "Investigation: skillc deploy pipeline is a source of chronic rework and confusion — audit source/compiled/deployed file relationships and fix" [ref=e289]'
+              - generic "Age" [ref=e290]: 1h
+              - generic [ref=e291]: orch-go-1050
+            - generic [ref=e292]:
+              - generic [ref=e293]: P2
+              - generic "Implement work-graph three-layer priority cascade (mutual exclusivity)" [ref=e294]
+              - generic "Age" [ref=e295]: 1d
+              - generic [ref=e296]: orch-go-987
+            - generic [ref=e297]:
+              - generic [ref=e298]: P2
+              - generic "Integrate recovered slide-out panel tabs with current work-graph architecture" [ref=e299]
+              - generic "Age" [ref=e300]: 1d
+              - generic [ref=e301]: orch-go-989
+            - generic [ref=e302]:
+              - generic [ref=e303]: P2
+              - generic "Dependency visualization with box-drawing characters in work-graph tree" [ref=e304]
+              - generic "Age" [ref=e305]: 1d
+              - generic [ref=e306]: orch-go-990
+          - paragraph [ref=e307]: +25 more in queue
+      - generic [ref=e308]:
+        - button "? Questions 1" [expanded] [ref=e309] [cursor=pointer]:
+          - generic [ref=e310]:
+            - generic [ref=e311]: "?"
+            - generic [ref=e312]: Questions
+            - generic [ref=e313]: "1"
+          - img [ref=e315]
+        - generic [ref=e318]:
+          - generic [ref=e319]:
+            - generic [ref=e320]: + Answered (last 7 days)
+            - generic [ref=e321]: "1"
+          - generic [ref=e323]:
+            - generic [ref=e324]: +
+            - generic "Reorganize orchestrator skill around 'keep Dylan oriented' as primary frame" [ref=e325]
+            - generic [ref=e326]: orch-go-1003
+      - generic [ref=e327]:
+        - generic [ref=e328]:
+          - generic [ref=e329]: 🟢
+          - generic [ref=e330]: Active Agents
+          - generic [ref=e331]: "0"
+        - generic [ref=e333]:
+          - paragraph [ref=e334]: No active agents
+          - paragraph [ref=e335]:
+            - text: Spawn with
+            - code [ref=e336]: orch spawn
+      - generic [ref=e337]:
+        - generic [ref=e338]:
+          - generic [ref=e339]: ⚠️
+          - generic [ref=e340]: Needs Attention
+          - generic [ref=e341]: "1"
+        - generic [ref=e344]:
+          - generic [ref=e345]: 🚧
+          - generic [ref=e346]: Blocked Issues
+          - generic [ref=e347]: "7"
+          - generic [ref=e348]:
+            - text: Run
+            - code [ref=e349]: bd blocked
+            - text: to see details
+      - 'button "📋 Ready Queue 30 — Headless codex spawns silently..., Investigation: skillc deploy p... +28" [ref=e351] [cursor=pointer]':
+        - generic [ref=e352]:
+          - generic [ref=e353]: 📋
+          - generic [ref=e354]: Ready Queue
+          - generic [ref=e355]: "30"
+          - generic [ref=e356]: "— Headless codex spawns silently..., Investigation: skillc deploy p... +28"
+        - img [ref=e358]
+```

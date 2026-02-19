@@ -1,0 +1,272 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - link "🐝 Swarm" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e8]: 🐝
+          - generic [ref=e9]: Swarm
+        - navigation [ref=e10]:
+          - link "Dashboard" [ref=e11] [cursor=pointer]:
+            - /url: /
+          - link "Work Graph" [ref=e12] [cursor=pointer]:
+            - /url: /work-graph
+          - link "Knowledge Tree" [ref=e13] [cursor=pointer]:
+            - /url: /knowledge-tree
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - generic [ref=e16]: 4%(3h 45m)
+          - generic [ref=e17]: "|"
+          - generic [ref=e18]: 6%(6d 17h)
+          - generic [ref=e19]: "@personal"
+        - generic [ref=e20]: connected
+        - button "Select theme" [ref=e22] [cursor=pointer]:
+          - img [ref=e23]
+  - main [ref=e24]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]:
+          - button "⚡ Ops" [ref=e28] [cursor=pointer]
+          - button "📦 History" [ref=e29] [cursor=pointer]
+        - generic [ref=e30]:
+          - generic [ref=e31]: "Since:"
+          - combobox [ref=e32] [cursor=pointer]:
+            - option "12h" [selected]
+            - option "24h"
+            - option "48h"
+            - option "7d"
+            - option "All"
+        - button "👁️ Following" [ref=e33] [cursor=pointer]:
+          - generic [ref=e34]: 👁️
+          - generic [ref=e35]: Following
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - generic [ref=e38]: ❌
+            - generic [ref=e39]:
+              - generic [ref=e40]: "0"
+              - generic [ref=e41]: errors
+          - generic [ref=e42]:
+            - generic [ref=e43]: 🟢
+            - generic [ref=e44]:
+              - generic [ref=e45]: "0"
+              - generic [ref=e46]: active
+          - button "📋 21 ready (4 blocked)" [ref=e47] [cursor=pointer]:
+            - generic [ref=e48]: 📋
+            - generic [ref=e49]:
+              - generic [ref=e50]: "21"
+              - generic [ref=e51]: ready
+            - generic [ref=e52]: (4 blocked)
+          - button "✅ 2 review" [ref=e53] [cursor=pointer]:
+            - generic [ref=e54]: ✅
+            - generic [ref=e55]:
+              - generic [ref=e56]: "2"
+              - generic [ref=e57]: review
+          - generic [ref=e58]:
+            - generic [ref=e59]: 🛡️
+            - generic [ref=e60]:
+              - generic [ref=e61]: "0"
+              - generic [ref=e62]: unverified
+          - button "🟢 2/3 slots" [ref=e63] [cursor=pointer]:
+            - generic [ref=e64]: 🟢
+            - generic [ref=e65]:
+              - generic [ref=e66]: 2/3
+              - generic [ref=e67]: slots
+        - generic [ref=e68]:
+          - button "Settings" [ref=e69] [cursor=pointer]:
+            - img [ref=e70]
+          - button "Disconnect" [ref=e73] [cursor=pointer]
+      - generic [ref=e74]:
+        - button "✅ Review Queue 2 completions awaiting review" [expanded] [ref=e75] [cursor=pointer]:
+          - generic [ref=e76]:
+            - generic [ref=e77]: ✅
+            - generic [ref=e78]: Review Queue
+            - generic [ref=e79]: "2"
+            - generic [ref=e80]: completions awaiting review
+          - img [ref=e82]
+        - generic [ref=e85]:
+          - generic [ref=e86]:
+            - generic [ref=e87]: P1
+            - generic "Automated weekly price verification run — API vs browser parity check with alerting" [ref=e88]
+            - generic [ref=e89]: feature
+            - generic [ref=e90]: area:backend
+            - generic [ref=e91]: "+1"
+            - generic [ref=e92]: pw-8936
+          - generic [ref=e93]:
+            - generic [ref=e94]: P3
+            - 'generic "CollectionService path bug: strips probes/ subdirectory from config path" [ref=e95]'
+            - generic [ref=e96]: bug
+            - generic [ref=e97]: pw-8925
+      - generic [ref=e100]:
+        - generic [ref=e101]: 🟢
+        - generic [ref=e102]: Worker health metrics active
+      - generic [ref=e103]:
+        - button "O Orchestrator Sessions 2" [expanded] [ref=e104] [cursor=pointer]:
+          - generic [ref=e105]:
+            - generic [ref=e106]: O
+            - generic [ref=e107]: Orchestrator Sessions
+            - generic [ref=e108]: "2"
+          - img [ref=e110]
+        - generic [ref=e113]:
+          - generic [ref=e114]:
+            - button "O" [ref=e116] [cursor=pointer]
+            - generic [ref=e117]:
+              - generic [ref=e118]:
+                - generic [ref=e119]: 📁
+                - generic [ref=e120]: active
+              - button "11m 9s" [ref=e122] [cursor=pointer]
+            - paragraph [ref=e124]: test orchestrator task
+            - generic [ref=e125]:
+              - button "Workspace" [ref=e126] [cursor=pointer]
+              - generic [ref=e127]: "|"
+              - generic [ref=e128]: test-project
+          - generic [ref=e129]:
+            - button "O" [ref=e131] [cursor=pointer]
+            - generic [ref=e132]:
+              - generic [ref=e133]:
+                - generic [ref=e134]: 📁
+                - generic [ref=e135]: active
+              - button "11m 9s" [ref=e137] [cursor=pointer]
+            - paragraph [ref=e139]: test meta task
+            - generic [ref=e140]:
+              - button "Test Meta Workspace" [ref=e141] [cursor=pointer]
+              - generic [ref=e142]: "|"
+              - generic [ref=e143]: test-project
+      - generic [ref=e144]:
+        - button "S Services 3 3 running" [expanded] [ref=e145] [cursor=pointer]:
+          - generic [ref=e146]:
+            - generic [ref=e147]: S
+            - generic [ref=e148]: Services
+            - generic [ref=e149]: "3"
+            - generic [ref=e150]: 3 running
+          - img [ref=e152]
+        - generic [ref=e155]:
+          - generic [ref=e156]:
+            - button "S" [ref=e158] [cursor=pointer]
+            - generic [ref=e159]:
+              - generic [ref=e160]:
+                - generic [ref=e161]: 🎯
+                - generic [ref=e162]:
+                  - generic [ref=e163]: ●
+                  - text: running
+              - button "6s" [ref=e165] [cursor=pointer]
+            - paragraph [ref=e167]: web
+            - generic [ref=e168]:
+              - 'button "PID: 36666" [ref=e169] [cursor=pointer]'
+              - generic [ref=e170]: "|"
+              - generic [ref=e171]: orch-go
+            - button "📊 Events" [ref=e174] [cursor=pointer]
+          - generic [ref=e175]:
+            - button "S" [ref=e177] [cursor=pointer]
+            - generic [ref=e178]:
+              - generic [ref=e179]:
+                - generic [ref=e180]: 🎯
+                - generic [ref=e181]:
+                  - generic [ref=e182]: ●
+                  - text: running
+              - button "6s" [ref=e184] [cursor=pointer]
+            - paragraph [ref=e186]: opencode
+            - generic [ref=e187]:
+              - 'button "PID: 91204" [ref=e188] [cursor=pointer]'
+              - generic [ref=e189]: "|"
+              - generic [ref=e190]: orch-go
+            - button "📊 Events" [ref=e193] [cursor=pointer]
+          - generic [ref=e194]:
+            - button "S" [ref=e196] [cursor=pointer]
+            - generic [ref=e197]:
+              - generic [ref=e198]:
+                - generic [ref=e199]: 🎯
+                - generic [ref=e200]:
+                  - generic [ref=e201]: ●
+                  - text: running
+              - button "6s" [ref=e203] [cursor=pointer]
+            - paragraph [ref=e205]: api
+            - generic [ref=e206]:
+              - 'button "PID: 44629" [ref=e207] [cursor=pointer]'
+              - generic [ref=e208]: "|"
+              - generic [ref=e209]: orch-go
+            - button "📊 Events" [ref=e212] [cursor=pointer]
+      - generic [ref=e213]:
+        - button "🎯 Up Next 5 3 urgent" [expanded] [ref=e214] [cursor=pointer]:
+          - generic [ref=e215]:
+            - generic [ref=e216]: 🎯
+            - generic [ref=e217]: Up Next
+            - generic [ref=e218]: "5"
+            - generic [ref=e219]: 3 urgent
+          - img [ref=e221]
+        - generic [ref=e223]:
+          - generic [ref=e224]:
+            - generic [ref=e225]:
+              - generic [ref=e226]: P1
+              - generic "Build price simulation API endpoint" [ref=e227]
+              - generic "Age" [ref=e228]: 5d
+              - generic [ref=e229]: pw-8cnx
+            - generic [ref=e230]:
+              - generic [ref=e231]: P1
+              - generic "Simulation recommendation UI — show Jim what to change on red cells" [ref=e232]
+              - generic "Age" [ref=e233]: 5d
+              - generic [ref=e234]: pw-aq5m
+            - generic [ref=e235]:
+              - generic [ref=e236]: P1
+              - generic "Re-quote validation workflow — confirm Jim's changes moved the price" [ref=e237]
+              - generic "Age" [ref=e238]: 5d
+              - generic [ref=e239]: pw-d18e
+            - generic [ref=e240]:
+              - generic [ref=e241]: P2
+              - generic "Fill missing SCS API quantity tiers using local pricing formula" [ref=e242]
+              - generic "Age" [ref=e243]: 1d
+              - generic [ref=e244]: pw-8926
+            - generic [ref=e245]:
+              - generic [ref=e246]: P2
+              - 'generic "Full verification matrix: landed pricing parity across SCS API, SCS browser, and OshCut" [ref=e247]'
+              - generic "Age" [ref=e248]: 1d
+              - generic [ref=e249]: pw-8940
+          - paragraph [ref=e250]: +17 more in queue
+      - generic [ref=e251]:
+        - button "? Questions 1" [expanded] [ref=e252] [cursor=pointer]:
+          - generic [ref=e253]:
+            - generic [ref=e254]: "?"
+            - generic [ref=e255]: Questions
+            - generic [ref=e256]: "1"
+          - img [ref=e258]
+        - generic [ref=e261]:
+          - generic [ref=e262]:
+            - generic [ref=e263]: + Answered (last 7 days)
+            - generic [ref=e264]: "1"
+          - generic [ref=e266]:
+            - generic [ref=e267]: +
+            - generic "Reorganize orchestrator skill around 'keep Dylan oriented' as primary frame" [ref=e268]
+            - generic [ref=e269]: orch-go-1003
+      - generic [ref=e270]:
+        - generic [ref=e271]:
+          - generic [ref=e272]: 🟢
+          - generic [ref=e273]: Active Agents
+          - generic [ref=e274]: "0"
+        - generic [ref=e276]:
+          - paragraph [ref=e277]: No active agents
+          - paragraph [ref=e278]:
+            - text: Spawn with
+            - code [ref=e279]: orch spawn
+      - generic [ref=e280]:
+        - generic [ref=e281]:
+          - generic [ref=e282]: ⚠️
+          - generic [ref=e283]: Needs Attention
+          - generic [ref=e284]: "1"
+        - generic [ref=e287]:
+          - generic [ref=e288]: 🚧
+          - generic [ref=e289]: Blocked Issues
+          - generic [ref=e290]: "4"
+          - generic [ref=e291]:
+            - text: Run
+            - code [ref=e292]: bd blocked
+            - text: to see details
+      - 'button "📋 Ready Queue 22 — Fill missing SCS API quantity ..., Full verification matrix: land... +20" [ref=e294] [cursor=pointer]':
+        - generic [ref=e295]:
+          - generic [ref=e296]: 📋
+          - generic [ref=e297]: Ready Queue
+          - generic [ref=e298]: "22"
+          - generic [ref=e299]: "— Fill missing SCS API quantity ..., Full verification matrix: land... +20"
+        - img [ref=e301]
+```

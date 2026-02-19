@@ -351,10 +351,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	client := opencode.NewClient(serverURL)
 
-	// Get active sessions from OpenCode
-	// Don't filter by directory - show all sessions across all projects
-	// (serve process CWD may not match project directory)
-	sessions, err := client.ListSessions("")
+	// Get active sessions from OpenCode across ALL known projects.
+	// OpenCode scopes session listing by x-opencode-directory header.
+	// Without querying each project, cross-project agents are invisible.
+	// Fix: query default (current project) + all registered kb projects, then deduplicate.
+	sessions, err := listSessionsAcrossProjects(client, projectDir)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to list sessions: %v", err), http.StatusInternalServerError)
 		return

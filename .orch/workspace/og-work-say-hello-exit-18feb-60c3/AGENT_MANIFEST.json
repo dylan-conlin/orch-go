@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-work-say-hello-exit-18feb-60c3",
+  "skill": "hello",
+  "beads_id": "orch-go-untracked-1771464996",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "e75ffcda58e8d552178dc58d464d1b1c5b92a973",
+  "spawn_time": "2026-02-18T17:36:38-08:00",
+  "tier": "full",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-5.2-codex"
+}

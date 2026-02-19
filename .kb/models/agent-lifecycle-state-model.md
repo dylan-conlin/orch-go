@@ -18,13 +18,13 @@ Agent state exists across **four independent layers** (tmux windows, OpenCode in
 
 Agent state is distributed across four independent systems:
 
-| Layer | Category | Storage | Lifecycle | What It Knows | Authority Level |
-|-------|----------|---------|-----------|---------------|-----------------|
-| **Beads comments** | **State** | `.beads/issues.jsonl` | Persistent | Phase transitions, metadata | Highest (canonical) |
-| **Workspace files** | **State** | `.orch/workspace/` | Persistent | SPAWN_CONTEXT, SYNTHESIS, .tier | High (artifact record) |
-| **OpenCode on-disk** | **Infrastructure** | `~/.local/share/opencode/storage/` | Persistent (no TTL) | Full message history | Medium (historical) |
-| **OpenCode in-memory** | **Infrastructure** | Server process | Until restart | Session ID, current status | Medium (operational) |
-| **Tmux windows** | **Infrastructure** | Runtime (volatile) | Until window closed | Agent visible, window ID | Low (UI only) |
+| Layer                  | Category           | Storage                            | Lifecycle           | What It Knows                   | Authority Level        |
+| ---------------------- | ------------------ | ---------------------------------- | ------------------- | ------------------------------- | ---------------------- |
+| **Beads comments**     | **State**          | `.beads/issues.jsonl`              | Persistent          | Phase transitions, metadata     | Highest (canonical)    |
+| **Workspace files**    | **State**          | `.orch/workspace/`                 | Persistent          | SPAWN_CONTEXT, SYNTHESIS, .tier | High (artifact record) |
+| **OpenCode on-disk**   | **Infrastructure** | `~/.local/share/opencode/storage/` | Persistent (no TTL) | Full message history            | Medium (historical)    |
+| **OpenCode in-memory** | **Infrastructure** | Server process                     | Until restart       | Session ID, current status      | Medium (operational)   |
+| **Tmux windows**       | **Infrastructure** | Runtime (volatile)                 | Until window closed | Agent visible, window ID        | Low (UI only)          |
 
 **Key insight:** The registry (`~/.orch/registry.json`) was a fifth layer attempting to cache all four, which caused drift. The solution is to query authoritative sources directly and reconcile at query time.
 
@@ -32,33 +32,33 @@ Agent state is distributed across four independent systems:
 
 Different questions have different authoritative sources:
 
-| Question | Source | NOT this |
-|----------|--------|----------|
-| Is agent complete? | Beads issue `status = closed` | OpenCode session exists |
-| What phase is agent in? | Beads comments (`Phase: X`) | Dashboard shows "active" |
-| Did agent finish? | `Phase: Complete` comment exists | Session went idle |
-| Is agent processing? | SSE `session.status = busy` | Session exists |
-| Is agent visible? | Tmux window exists | Session exists |
+| Question                | Source                           | NOT this                 |
+| ----------------------- | -------------------------------- | ------------------------ |
+| Is agent complete?      | Beads issue `status = closed`    | OpenCode session exists  |
+| What phase is agent in? | Beads comments (`Phase: X`)      | Dashboard shows "active" |
+| Did agent finish?       | `Phase: Complete` comment exists | Session went idle        |
+| Is agent processing?    | SSE `session.status = busy`      | Session exists           |
+| Is agent visible?       | Tmux window exists               | Session exists           |
 
 **Beads is the source of truth for completion.** OpenCode sessions persist to disk indefinitely. Session existence means nothing about whether the agent is done. Only beads matters.
 
 ### State vs Infrastructure: Why This Distinction Matters
 
-The four-layer model (above) conflates two fundamentally different concerns. Recognizing the difference clarifies what orch should *own* versus what it should merely *use*.
+The four-layer model (above) conflates two fundamentally different concerns. Recognizing the difference clarifies what orch should _own_ versus what it should merely _use_.
 
-**State layers** (beads comments, workspace files) represent *what work was done* and *what phase it's in*. They are persistent, orch-controlled, and survive infrastructure restarts. Orch owns their lifecycle entirely.
+**State layers** (beads comments, workspace files) represent _what work was done_ and _what phase it's in_. They are persistent, orch-controlled, and survive infrastructure restarts. Orch owns their lifecycle entirely.
 
-**Infrastructure layers** (OpenCode sessions, tmux windows) represent *execution resources*. They are transient, externally-controlled (by OpenCode server and tmux respectively), and have no inherent connection to work completion. Orch uses them but doesn't control their lifecycle.
+**Infrastructure layers** (OpenCode sessions, tmux windows) represent _execution resources_. They are transient, externally-controlled (by OpenCode server and tmux respectively), and have no inherent connection to work completion. Orch uses them but doesn't control their lifecycle.
 
 **The reconciliation burden comes from treating infrastructure as state.** When orch tries to derive agent status from session existence or tmux window presence, it must constantly reconcile infrastructure reality against state truth. This is the root cause of phantom agents (tmux window exists but session exited), ghost sessions (OpenCode session persists after work completed), and orphan infrastructure (resources with no corresponding state).
 
 **Ownership model (Own / Accept / Lobby):**
 
-| Bucket | What | Implication |
-|--------|------|-------------|
-| **Own** | State layers (beads, workspaces), verification gates, skill integration | Orch's domain — design, maintain, evolve |
-| **Accept** | Infrastructure constraints (sessions persist, no metadata API, SSE-only) | Work within them — periodic cleanup, workspace-as-metadata |
-| **Lobby** | Missing infrastructure features (session TTL, metadata API, state endpoint) | File upstream — would eliminate reconciliation burden |
+| Bucket     | What                                                                        | Implication                                                |
+| ---------- | --------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Own**    | State layers (beads, workspaces), verification gates, skill integration     | Orch's domain — design, maintain, evolve                   |
+| **Accept** | Infrastructure constraints (sessions persist, no metadata API, SSE-only)    | Work within them — periodic cleanup, workspace-as-metadata |
+| **Lobby**  | Missing infrastructure features (session TTL, metadata API, state endpoint) | File upstream — would eliminate reconciliation burden      |
 
 See: `.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md` for the full decision and implementation plan.
 
@@ -126,6 +126,7 @@ Session remains in OpenCode
 **Root cause:** Dashboard caching or SSE lag - hasn't received beads update yet
 
 **Why it happens:**
+
 - Agent reaches Phase: Complete
 - `orch complete` closes beads issue
 - Beads issue status = closed
@@ -143,6 +144,7 @@ Session remains in OpenCode
 **Root cause:** Session cleanup happened before dashboard queried, cascade reached session check
 
 **Why it happens:**
+
 - Agent completed, beads issue closed
 - Session cleanup ran (manual or automatic)
 - Dashboard cascade: beads check → no issue (closed) → session check → no session → "dead"
@@ -156,6 +158,7 @@ Session remains in OpenCode
 **Root cause:** Agent ran out of context, crashed, or didn't follow completion protocol
 
 **Why it happens:**
+
 - Session exhausts context (150k tokens)
 - Agent stops responding
 - SSE event: `session.status = idle`
@@ -165,6 +168,7 @@ Session remains in OpenCode
 **This is expected behavior.** Session idle ≠ work complete. Only agents that explicitly run `bd comment <id> "Phase: Complete"` are considered done.
 
 **Fix:** Check workspace for what agent accomplished, then either:
+
 - `orch complete <id> --force` if work is done
 - `orch abandon <id>` if work is incomplete
 
@@ -175,6 +179,7 @@ Session remains in OpenCode
 **Root cause:** Dashboard only scans current project's `.orch/workspace/` directory
 
 **Why it happens:**
+
 - Workspace created in `/other/project/.orch/workspace/`
 - Dashboard running from `orch-go` only sees `orch-go/.orch/workspace/`
 - Cross-project discovery requires querying OpenCode sessions for unique directories
@@ -192,10 +197,12 @@ Session remains in OpenCode
 **Implication:** State must be reconciled by combining sources, not stored in one place
 
 **Breakdown (state layers — orch owns):**
+
 - **Beads** - Work tracking (survives everything, multi-session)
 - **Workspace files** - Artifact record (SPAWN_CONTEXT, SYNTHESIS, tier metadata)
 
 **Breakdown (infrastructure layers — orch uses):**
+
 - **OpenCode disk** - Message history (debugging, resume)
 - **OpenCode memory** - Real-time processing state (fast queries)
 - **Tmux** - Visual monitoring (orchestrator needs to SEE work)
@@ -221,6 +228,7 @@ Session remains in OpenCode
 **Implication:** Registry state diverged from authoritative sources
 
 **Root cause:**
+
 - Beads issues closed via `bd close` (not `orch complete`) → registry not updated
 - OpenCode sessions persist → registry shows "dead" when session exists
 - Tmux windows close → registry still shows "running"
@@ -232,31 +240,37 @@ Session remains in OpenCode
 ## Evolution
 
 **Dec 20-21, 2025: Initial Implementation**
+
 - Basic agent tracking via registry
 - Tmux windows as primary UI
 - OpenCode sessions for execution
 
 **Dec 22-26, 2025: State Reconciliation Issues**
+
 - "Dead" agents that actually completed
 - "Active" agents when beads said closed
 - Registry drift discovered
 
 **Jan 4-6, 2026: Four-Layer Model**
+
 - Investigation `2026-01-04-design-dashboard-agent-status-model.md` proposed Priority Cascade
 - Beads established as canonical source for completion
 - Registry demoted to metadata only
 
 **Jan 6, 2026: Cross-Project Visibility**
+
 - Multi-project workspace discovery
 - Directory extraction from OpenCode sessions
 - Beads queries routed to correct project
 
 **Jan 12, 2026: Model Synthesis**
+
 - 17 investigations synthesized into this model
 - Four-layer architecture formalized
 - Constraints made explicit
 
 **Feb 13, 2026: State vs Infrastructure Distinction**
+
 - Four-layer table reframed with Category column (State vs Infrastructure)
 - Workspace files added as explicit state layer
 - New section explaining why conflating state and infrastructure creates reconciliation burden
@@ -268,6 +282,7 @@ Session remains in OpenCode
 ## References
 
 **Key Investigations:**
+
 - `2026-01-04-design-dashboard-agent-status-model.md` - Priority Cascade design
 - `2026-01-06-inv-cross-project-agent-visibility.md` - Multi-project discovery
 - `2025-12-26-inv-registry-drift-analysis.md` - Why registry caching failed
@@ -275,6 +290,7 @@ Session remains in OpenCode
 - ...and 13 others
 
 **Decisions Informed by This Model:**
+
 - Beads as canonical source of truth (completion)
 - Priority Cascade for status calculation
 - Four-layer architecture (no single source)
@@ -282,17 +298,20 @@ Session remains in OpenCode
 - State vs infrastructure distinction (`.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md`)
 
 **Related Models:**
+
 - `.kb/models/dashboard-agent-status.md` - How Priority Cascade calculates status
 - `.kb/models/opencode-session-lifecycle.md` - How OpenCode sessions work
 - `.kb/models/spawn-architecture.md` - How agents are created
 
 **Related Guides:**
+
 - `.kb/guides/agent-lifecycle.md` - How to use agent lifecycle commands (procedural)
 - `.kb/guides/completion.md` - How to complete agents (procedural)
 - `.kb/guides/status.md` - How to use orch status (procedural)
 
 **Primary Evidence (Verify These):**
+
 - `cmd/orch/serve_agents.go` - Status calculation implementation (~1400 lines)
-- `pkg/registry/registry.go` - Registry structure (metadata only)
+- `pkg/session/registry.go` - Session registry structure (metadata only)
 - `pkg/verify/check.go` - Phase parsing from beads comments
 - `.beads/issues.jsonl` - Canonical completion source

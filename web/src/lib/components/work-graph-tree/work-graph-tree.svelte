@@ -1005,6 +1005,11 @@
 					<Badge variant={getPriorityVariant(issue.priority)} class="w-8 justify-center text-xs">
 						P{issue.priority}
 					</Badge>
+					{#if issue.effective_priority !== undefined && issue.effective_priority !== issue.priority}
+						<Badge variant="outline" class="text-xs">
+							Eff P{issue.effective_priority}
+						</Badge>
+					{/if}
 					
 					<!-- ID -->
 					<span 
@@ -1090,6 +1095,11 @@
 					<Badge data-testid="priority-badge" variant={getPriorityVariant(node.priority)} class="w-8 justify-center text-xs">
 						P{node.priority}
 					</Badge>
+					{#if node.effective_priority !== undefined && node.effective_priority !== node.priority}
+						<Badge variant="outline" class="text-xs">
+							Eff P{node.effective_priority}
+						</Badge>
+					{/if}
 
 					<!-- ID -->
 					<span 

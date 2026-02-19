@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-inv-tmux-readiness-probe-18feb-541a",
+  "skill": "investigation",
+  "beads_id": "orch-go-1039",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "8ec512d5af3e94b4158fa88e02c3e0e51d6e17ba",
+  "spawn_time": "2026-02-18T13:22:10-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "openai/gpt-5.2-codex"
+}

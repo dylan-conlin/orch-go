@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // TestGetProjectNameFromWorkdir verifies project name extraction.
@@ -264,6 +265,47 @@ func TestArchiveStaleWorkspacesPreservesOrchestrator(t *testing.T) {
 	// Verify archived directory wasn't created (dry-run)
 	if _, err := os.Stat(archivedDir); !os.IsNotExist(err) {
 		t.Error("Archived directory should not be created in dry-run mode")
+	}
+}
+
+func TestArchiveStaleWorkspacesUsesFallbackSpawnTime(t *testing.T) {
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+	archivedDir := filepath.Join(workspaceDir, "archived")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir: %v", err)
+	}
+
+	wsName := "og-feat-fallback-01jan"
+	ws := filepath.Join(workspaceDir, wsName)
+	if err := os.MkdirAll(ws, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "SYNTHESIS.md"), []byte("# Complete"), 0644); err != nil {
+		t.Fatalf("Failed to write SYNTHESIS.md: %v", err)
+	}
+	spawnContextPath := filepath.Join(ws, "SPAWN_CONTEXT.md")
+	if err := os.WriteFile(spawnContextPath, []byte("Task: test"), 0644); err != nil {
+		t.Fatalf("Failed to write SPAWN_CONTEXT.md: %v", err)
+	}
+
+	oldTime := time.Now().AddDate(0, 0, -8)
+	if err := os.Chtimes(spawnContextPath, oldTime, oldTime); err != nil {
+		t.Fatalf("Failed to set SPAWN_CONTEXT.md mtime: %v", err)
+	}
+
+	archived, err := archiveStaleWorkspaces(tmpDir, 7, false, false)
+	if err != nil {
+		t.Fatalf("archiveStaleWorkspaces failed: %v", err)
+	}
+	if archived != 1 {
+		t.Errorf("Expected 1 workspace archived, got %d", archived)
+	}
+	if _, err := os.Stat(ws); !os.IsNotExist(err) {
+		t.Error("Original workspace should have been moved")
+	}
+	if _, err := os.Stat(filepath.Join(archivedDir, wsName)); err != nil {
+		t.Fatalf("Expected archived workspace to exist: %v", err)
 	}
 }
 

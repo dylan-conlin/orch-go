@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-tier-inference-assigns-18feb-bb86",
+  "skill": "architect",
+  "beads_id": "orch-go-1021",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go/",
+  "git_baseline": "7ca033dc5473e87e9ddc6b87db45095555fa718e",
+  "spawn_time": "2026-02-18T13:36:20-08:00",
+  "tier": "full",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-5.2-codex"
+}

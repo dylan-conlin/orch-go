@@ -700,7 +700,10 @@ func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool, prese
 		manifest := spawn.ReadAgentManifestWithFallback(dirPath)
 		spawnTime := manifest.ParseSpawnTime()
 		if spawnTime.IsZero() {
-			continue // Skip workspaces without spawn time
+			spawnTime, _ = fallbackWorkspaceSpawnTime(dirPath)
+			if spawnTime.IsZero() {
+				continue // Skip workspaces without usable spawn time
+			}
 		}
 
 		// Check if workspace is old enough
@@ -794,6 +797,31 @@ func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool, prese
 	}
 
 	return archived, nil
+}
+
+func fallbackWorkspaceSpawnTime(workspacePath string) (time.Time, string) {
+	candidates := []struct {
+		name  string
+		label string
+	}{
+		{"SPAWN_CONTEXT.md", "SPAWN_CONTEXT.md mtime"},
+		{spawn.AgentManifestFilename, "AGENT_MANIFEST.json mtime"},
+		{spawn.SpawnTimeFilename, ".spawn_time mtime"},
+	}
+
+	for _, candidate := range candidates {
+		info, err := os.Stat(filepath.Join(workspacePath, candidate.name))
+		if err == nil {
+			return info.ModTime(), candidate.label
+		}
+	}
+
+	info, err := os.Stat(workspacePath)
+	if err == nil {
+		return info.ModTime(), "workspace mtime"
+	}
+
+	return time.Time{}, ""
 }
 
 // NOTE: extractBeadsIDFromWorkspace is defined in review.go

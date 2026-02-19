@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-debug-fix-gpt-codex-18feb-7e4d",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-1057",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "cd98751e1b575241fffeb9ff9bcecb28d95ae790",
+  "spawn_time": "2026-02-18T17:11:46-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

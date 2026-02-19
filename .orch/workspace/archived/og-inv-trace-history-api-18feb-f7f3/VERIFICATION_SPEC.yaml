@@ -1,0 +1,29 @@
+verification:
+  type: investigation
+
+  claims:
+    - claim: "orch-go OpenCode client has always used /session (no /api prefix)"
+      evidence: "git log -S '/api' -- pkg/opencode/client.go (no hits); git show 26f9acba:pkg/opencode/client.go | rg '/session'"
+      verified: true
+
+    - claim: "OpenCode server history does not include a committed /api route mount"
+      evidence: "git log -S 'route(\"/api\"' -- packages/opencode/src/server/server.ts (no hits); git show HEAD:packages/opencode/src/server/server.ts shows no /api mount"
+      verified: true
+
+    - claim: "OpenCode SPA Vite configs do not proxy or strip /api"
+      evidence: "packages/app/vite.config.ts and packages/console/app/vite.config.ts (no server.proxy rules)"
+      verified: true
+
+  hypothesis_tested: "The /api prefix was used historically in orch-go or OpenCode server routes, or stripped by SPA proxy"
+  hypothesis_result: "DISPROVEN — orch-go has used /session from the start, OpenCode server committed history lacks /api mount, and SPA configs contain no /api proxy"
+
+  manual_verification:
+    - step: "Confirm client route usage in earliest commit"
+      command: "git show 26f9acba:pkg/opencode/client.go | rg '/session'"
+      expected: "Shows /session usage without /api prefix"
+    - step: "Confirm OpenCode server history for /api mount"
+      command: "git log -S 'route(\"/api\"' -- packages/opencode/src/server/server.ts"
+      expected: "No commits returned"
+    - step: "Confirm SPA proxy config absence"
+      command: "rg 'proxy' -n /Users/dylanconlin/Documents/personal/opencode/packages/app/vite.config.ts /Users/dylanconlin/Documents/personal/opencode/packages/console/app/vite.config.ts"
+      expected: "No matches"

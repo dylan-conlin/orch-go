@@ -15,14 +15,16 @@ The agent completion lifecycle is the transition from **Active Work** to **Knowl
 ## Core Mechanism
 
 ### The Completion Chain
+
 Completion is not a single event but a chain of state transitions across four layers:
 
 1.  **Work (Agent)**: Agent writes artifacts (investigations, code) and self-verifies.
-2.  **Signal (Beads)**: Agent comments `Phase: Complete`. This is the *authoritative signal*.
+2.  **Signal (Beads)**: Agent comments `Phase: Complete`. This is the _authoritative signal_.
 3.  **Verification (Orchestrator)**: `orch complete` runs automated gates (synthesis, build, tests, visual).
 4.  **Persistence (System)**: Beads issue closes, Registry updates to `completed`, OpenCode session is deleted, Workspace is archived.
 
 ### The Authoritative Signal
+
 **Constraint:** `Session idle ≠ Agent complete`.
 Agents legitimately go idle during thinking or tool execution. `busy→idle` transitions in SSE/OpenCode are used only for dashboard animation, never for lifecycle logic. **`Phase: Complete` is the only truth.**
 
@@ -31,20 +33,21 @@ Agents legitimately go idle during thinking or tool execution. `busy→idle` tra
 ## The Recovery Path
 
 ### Dead Agent Recovery
+
 "Dead" agents occur when a lifecycle chain breaks—usually during the synthesis phase where context is most exhausted.
 
-| Failure Mode | Symptom | Recovery Action |
-| :--- | :--- | :--- |
-| **Synthesis Crash** | `Phase: Completing` + No Session | Use `orch complete --skip-synthesis --skip-phase-complete` if artifact exists in `.kb/`. |
-| **Registry Drift** | Agent shows 'running' but issue is closed | Run `orch doctor --fix` to reconcile registry with beads. |
-| **Zombie Session** | Agent is done but window/session remains | Run `orch abandon` or `orch complete` with workspace name. |
+| Failure Mode        | Symptom                                   | Recovery Action                                                                          |
+| :------------------ | :---------------------------------------- | :--------------------------------------------------------------------------------------- |
+| **Synthesis Crash** | `Phase: Completing` + No Session          | Use `orch complete --skip-synthesis --skip-phase-complete` if artifact exists in `.kb/`. |
+| **Registry Drift**  | Agent shows 'running' but issue is closed | Run `orch doctor --fix` to reconcile registry with beads.                                |
+| **Zombie Session**  | Agent is done but window/session remains  | Run `orch abandon` or `orch complete` with workspace name.                               |
 
 ---
 
 ## Constraints
 
 - **The Verification Bottleneck**: Spawning is automated (Daemon), but completion is manual. To maintain system health, orchestrators must dedicate "Hygiene Blocks" to process completions.
-- **Visual Gating**: Any change to `web/` files *must* include screenshot evidence or manual smoke-test confirmation before completion.
+- **Visual Gating**: Any change to `web/` files _must_ include screenshot evidence or manual smoke-test confirmation before completion.
 - **Escape Hatch Discipline**: Infrastructure work (like OpenCode or Beads fixes) should use `--backend claude` to ensure the completion agent survives a service restart.
 
 ---
@@ -52,9 +55,11 @@ Agents legitimately go idle during thinking or tool execution. `busy→idle` tra
 ## Why This Matters
 
 ### Knowledge Persistence
+
 Without a rigid completion lifecycle, the system suffers from **Understanding Lag**. Completed tasks remain in the "Active" frame, cluttering the dashboard and preventing the synthesis of findings into the Knowledge Base.
 
 ### Resource Management
+
 Stale OpenCode sessions and tmux windows consume system memory and "Registry Slot" capacity, eventually blocking the Daemon from spawning new work.
 
 ---
@@ -78,9 +83,10 @@ Stale OpenCode sessions and tmux windows consume system memory and "Registry Slo
 ## References
 
 **Primary Evidence (Verify These):**
+
 - `cmd/orch/complete_cmd.go` - Main completion command with Phase: Complete detection
 - `pkg/verify/check.go` - Verification gate orchestration and tier-aware routing
-- `pkg/registry/registry.go` - Registry status updates (running → completed)
+- `pkg/session/registry.go` - Session registry status updates (running → completed)
 - `cmd/orch/abandon.go` - Abandonment path for dead agents
 - `cmd/orch/doctor.go` - Registry reconciliation with beads
 - `.beads/issues.jsonl` - Authoritative completion signal (issue status)

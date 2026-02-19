@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-state-create-caches-18feb-dd4e",
+  "skill": "architect",
+  "beads_id": "orch-go-1031",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go/",
+  "git_baseline": "2e2e0fd52733516b44f6767af8fedbff6e9ba84b",
+  "spawn_time": "2026-02-18T11:24:20-08:00",
+  "tier": "full",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-5.2-codex"
+}

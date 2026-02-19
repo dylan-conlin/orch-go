@@ -150,10 +150,10 @@
 							{issue.status}
 						</Badge>
 					{/if}
-					<Badge variant="secondary" class="text-xs">P{issue.priority}</Badge>
-					{#if issue.effective_priority !== undefined}
-						<Badge variant="outline" class="text-xs">Eff P{issue.effective_priority}</Badge>
-					{/if}
+						<Badge variant="secondary" class="text-xs">P{issue.priority}</Badge>
+						{#if issue.effective_priority !== undefined && issue.effective_priority !== issue.priority}
+							<Badge variant="outline" class="text-xs">Eff P{issue.effective_priority}</Badge>
+						{/if}
 					{#if issue.layer !== undefined}
 						<Badge variant="outline" class="text-xs">Layer {issue.layer}</Badge>
 					{/if}
@@ -213,7 +213,7 @@
 							<p class="text-xs text-muted-foreground">Priority</p>
 							<p class="text-sm">P{issue.priority}</p>
 						</div>
-						{#if issue.effective_priority !== undefined}
+						{#if issue.effective_priority !== undefined && issue.effective_priority !== issue.priority}
 							<div>
 								<p class="text-xs text-muted-foreground">Effective Priority</p>
 								<p class="text-sm">P{issue.effective_priority}</p>

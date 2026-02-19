@@ -171,6 +171,12 @@ type Config struct {
 	// Included in SPAWN_CONTEXT.md to help agents understand how to verify the fix.
 	ReproSteps string
 
+	// Rework fields provide context for rework spawns.
+	ReworkFeedback string // Orchestrator's rework instructions
+	ReworkNumber   int    // Rework attempt number
+	PriorSynthesis string // TLDR + Delta from prior SYNTHESIS.md
+	PriorWorkspace string // Path to archived prior workspace
+
 	// IsOrchestrator indicates whether the skill is an orchestrator-type skill.
 	// Orchestrator skills (skill-type: policy/orchestrator) have different defaults:
 	// - Default to tmux mode (visible interaction instead of headless)

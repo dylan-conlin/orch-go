@@ -274,6 +274,50 @@ type kbProject struct {
 	Path string `json:"path"`
 }
 
+// listSessionsAcrossProjects queries OpenCode for sessions across all known projects.
+// OpenCode scopes session listing by the x-opencode-directory header, so querying
+// with "" only returns sessions for the server's default project. Cross-project agents
+// (e.g., price-watch agents spawned from orch-go) are invisible without this.
+// Fix: query the default project + all registered kb projects, then deduplicate by session ID.
+func listSessionsAcrossProjects(client *opencode.Client, currentProjectDir string) ([]opencode.Session, error) {
+	// Start with default query (no directory header = server's default project)
+	sessions, err := client.ListSessions("")
+	if err != nil {
+		return nil, err
+	}
+
+	// Build set of session IDs we already have
+	seen := make(map[string]bool, len(sessions))
+	for _, s := range sessions {
+		seen[s.ID] = true
+	}
+
+	// Query each registered kb project for its sessions
+	for _, projectDir := range getKBProjects() {
+		// Skip current project (already covered by default query)
+		if filepath.Clean(projectDir) == filepath.Clean(currentProjectDir) {
+			continue
+		}
+
+		projectSessions, err := client.ListSessions(projectDir)
+		if err != nil {
+			// Log but don't fail — graceful degradation
+			log.Printf("Warning: failed to list sessions for %s: %v", projectDir, err)
+			continue
+		}
+
+		// Merge, deduplicating by session ID
+		for _, s := range projectSessions {
+			if !seen[s.ID] {
+				seen[s.ID] = true
+				sessions = append(sessions, s)
+			}
+		}
+	}
+
+	return sessions, nil
+}
+
 // getKBProjects fetches registered project directories from kb CLI.
 // Returns empty slice if kb is unavailable or fails (graceful degradation).
 // This enables cross-project workspace scanning by providing project paths

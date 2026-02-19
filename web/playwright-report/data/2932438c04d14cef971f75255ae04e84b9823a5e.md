@@ -1,0 +1,578 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - link "🐝 Swarm" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e8]: 🐝
+          - generic [ref=e9]: Swarm
+        - navigation [ref=e10]:
+          - link "Dashboard" [ref=e11] [cursor=pointer]:
+            - /url: /
+          - link "Work Graph" [ref=e12] [cursor=pointer]:
+            - /url: /work-graph
+          - link "Knowledge Tree" [ref=e13] [cursor=pointer]:
+            - /url: /knowledge-tree
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - generic [ref=e16]: 4%(3h 45m)
+          - generic [ref=e17]: "|"
+          - generic [ref=e18]: 6%(6d 17h)
+          - generic [ref=e19]: "@personal"
+        - generic [ref=e20]: connected
+        - button "Select theme" [ref=e22] [cursor=pointer]:
+          - img [ref=e23]
+  - main [ref=e24]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]:
+          - button "⚡ Ops" [ref=e28] [cursor=pointer]
+          - button "📦 History" [ref=e29] [cursor=pointer]
+        - generic [ref=e30]:
+          - generic [ref=e31]: "Since:"
+          - combobox [ref=e32] [cursor=pointer]:
+            - option "12h" [selected]
+            - option "24h"
+            - option "48h"
+            - option "7d"
+            - option "All"
+        - button "👁️ Following" [ref=e33] [cursor=pointer]:
+          - generic [ref=e34]: 👁️
+          - generic [ref=e35]: Following
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - generic [ref=e38]: ❌
+            - generic [ref=e39]:
+              - generic [ref=e40]: "0"
+              - generic [ref=e41]: errors
+          - generic [ref=e42]:
+            - generic [ref=e43]: 🟢
+            - generic [ref=e44]:
+              - generic [ref=e45]: "3"
+              - generic [ref=e46]: active
+              - generic [ref=e47]: (+1 need attention)
+          - button "📋 20 ready (7 blocked)" [ref=e48] [cursor=pointer]:
+            - generic [ref=e49]: 📋
+            - generic [ref=e50]:
+              - generic [ref=e51]: "20"
+              - generic [ref=e52]: ready
+            - generic [ref=e53]: (7 blocked)
+          - button "✅ 10 review" [ref=e54] [cursor=pointer]:
+            - generic [ref=e55]: ✅
+            - generic [ref=e56]:
+              - generic [ref=e57]: "10"
+              - generic [ref=e58]: review
+          - generic [ref=e59]:
+            - generic [ref=e60]: 🛡️
+            - generic [ref=e61]:
+              - generic [ref=e62]: "0"
+              - generic [ref=e63]: unverified
+          - button "🟢 2/3 slots" [ref=e64] [cursor=pointer]:
+            - generic [ref=e65]: 🟢
+            - generic [ref=e66]:
+              - generic [ref=e67]: 2/3
+              - generic [ref=e68]: slots
+        - generic [ref=e69]:
+          - button "Settings" [ref=e70] [cursor=pointer]:
+            - img [ref=e71]
+          - button "Disconnect" [ref=e74] [cursor=pointer]
+      - generic [ref=e75]:
+        - button "✅ Review Queue 10 completions awaiting review" [expanded] [ref=e76] [cursor=pointer]:
+          - generic [ref=e77]:
+            - generic [ref=e78]: ✅
+            - generic [ref=e79]: Review Queue
+            - generic [ref=e80]: "10"
+            - generic [ref=e81]: completions awaiting review
+          - img [ref=e83]
+        - generic [ref=e86]:
+          - generic [ref=e87]:
+            - generic [ref=e88]: P0
+            - generic "Headless codex spawns silently die — session created but not visible in OpenCode, no error surfaced to user" [ref=e89]
+            - generic [ref=e90]: bug
+            - generic [ref=e91]: area:spawn
+            - generic [ref=e92]: "+1"
+            - generic [ref=e93]: orch-go-1051
+          - generic [ref=e94]:
+            - generic [ref=e95]: P1
+            - 'generic "Investigation: skillc deploy pipeline is a source of chronic rework and confusion — audit source/compiled/deployed file relationships and fix" [ref=e96]'
+            - generic [ref=e97]: investigation
+            - generic [ref=e98]: area:skills
+            - generic [ref=e99]: "+1"
+            - generic [ref=e100]: orch-go-1050
+          - generic [ref=e101]:
+            - generic [ref=e102]: P2
+            - generic "Re-implement dep-chain grouping mode in work-graph" [ref=e103]
+            - generic [ref=e104]: feature
+            - generic [ref=e105]: area:dashboard
+            - generic [ref=e106]: "+1"
+            - generic [ref=e107]: orch-go-998
+          - generic [ref=e108]:
+            - generic [ref=e109]: P2
+            - generic "Auto-expire orchestrator session metrics — 689h unbounded timer" [ref=e110]
+            - generic [ref=e111]: feature
+            - generic [ref=e112]: area:spawn
+            - generic [ref=e113]: "+1"
+            - generic [ref=e114]: orch-go-1043
+          - generic [ref=e115]:
+            - generic [ref=e116]: P2
+            - generic "Re-implement in-progress section at top of work-graph" [ref=e117]
+            - generic [ref=e118]: feature
+            - generic [ref=e119]: area:dashboard
+            - generic [ref=e120]: "+1"
+            - generic [ref=e121]: orch-go-999
+          - generic [ref=e122]:
+            - generic [ref=e123]: P2
+            - generic "Add ORIENTATION_FRAME to SPAWN_CONTEXT.md template and orch spawn" [ref=e124]
+            - generic [ref=e125]: feature
+            - generic [ref=e126]: area:spawn
+            - generic [ref=e127]: "+1"
+            - generic [ref=e128]: orch-go-1005
+          - generic [ref=e129]:
+            - generic [ref=e130]: P2
+            - generic "Implement work-graph three-layer priority cascade (mutual exclusivity)" [ref=e131]
+            - generic [ref=e132]: feature
+            - generic [ref=e133]: area:dashboard
+            - generic [ref=e134]: "+1"
+            - generic [ref=e135]: orch-go-987
+          - generic [ref=e136]:
+            - generic [ref=e137]: P2
+            - generic "Integrate recovered slide-out panel tabs with current work-graph architecture" [ref=e138]
+            - generic [ref=e139]: task
+            - generic [ref=e140]: area:dashboard
+            - generic [ref=e141]: "+1"
+            - generic [ref=e142]: orch-go-989
+          - generic [ref=e143]:
+            - generic [ref=e144]: P2
+            - generic "Enrich /api/beads/graph response with layer + effective_priority fields" [ref=e145]
+            - generic [ref=e146]: task
+            - generic [ref=e147]: area:dashboard
+            - generic [ref=e148]: "+1"
+            - generic [ref=e149]: orch-go-980.2
+          - generic [ref=e150]:
+            - generic [ref=e151]: P2
+            - generic "Verify orientation frame propagation" [ref=e152]
+            - generic [ref=e153]: task
+            - generic [ref=e154]: triage:review
+            - generic [ref=e155]: orch-go-1053
+      - generic [ref=e158]:
+        - generic [ref=e159]: 🟢
+        - generic [ref=e160]: Worker health metrics active
+      - generic [ref=e161]:
+        - button "O Orchestrator Sessions 2" [expanded] [ref=e162] [cursor=pointer]:
+          - generic [ref=e163]:
+            - generic [ref=e164]: O
+            - generic [ref=e165]: Orchestrator Sessions
+            - generic [ref=e166]: "2"
+          - img [ref=e168]
+        - generic [ref=e171]:
+          - generic [ref=e172]:
+            - button "O" [ref=e174] [cursor=pointer]
+            - generic [ref=e175]:
+              - generic [ref=e176]:
+                - generic [ref=e177]: 📁
+                - generic [ref=e178]: active
+              - button "11m 21s" [ref=e180] [cursor=pointer]
+            - paragraph [ref=e182]: test orchestrator task
+            - generic [ref=e183]:
+              - button "Workspace" [ref=e184] [cursor=pointer]
+              - generic [ref=e185]: "|"
+              - generic [ref=e186]: test-project
+          - generic [ref=e187]:
+            - button "O" [ref=e189] [cursor=pointer]
+            - generic [ref=e190]:
+              - generic [ref=e191]:
+                - generic [ref=e192]: 📁
+                - generic [ref=e193]: active
+              - button "11m 21s" [ref=e195] [cursor=pointer]
+            - paragraph [ref=e197]: test meta task
+            - generic [ref=e198]:
+              - button "Test Meta Workspace" [ref=e199] [cursor=pointer]
+              - generic [ref=e200]: "|"
+              - generic [ref=e201]: test-project
+      - generic [ref=e202]:
+        - button "S Services 3 3 running" [expanded] [ref=e203] [cursor=pointer]:
+          - generic [ref=e204]:
+            - generic [ref=e205]: S
+            - generic [ref=e206]: Services
+            - generic [ref=e207]: "3"
+            - generic [ref=e208]: 3 running
+          - img [ref=e210]
+        - generic [ref=e213]:
+          - generic [ref=e214]:
+            - button "S" [ref=e216] [cursor=pointer]
+            - generic [ref=e217]:
+              - generic [ref=e218]:
+                - generic [ref=e219]: 🎯
+                - generic [ref=e220]:
+                  - generic [ref=e221]: ●
+                  - text: running
+              - button "8s" [ref=e223] [cursor=pointer]
+            - paragraph [ref=e225]: web
+            - generic [ref=e226]:
+              - 'button "PID: 36666" [ref=e227] [cursor=pointer]'
+              - generic [ref=e228]: "|"
+              - generic [ref=e229]: orch-go
+            - button "📊 Events" [ref=e232] [cursor=pointer]
+          - generic [ref=e233]:
+            - button "S" [ref=e235] [cursor=pointer]
+            - generic [ref=e236]:
+              - generic [ref=e237]:
+                - generic [ref=e238]: 🎯
+                - generic [ref=e239]:
+                  - generic [ref=e240]: ●
+                  - text: running
+              - button "8s" [ref=e242] [cursor=pointer]
+            - paragraph [ref=e244]: opencode
+            - generic [ref=e245]:
+              - 'button "PID: 91204" [ref=e246] [cursor=pointer]'
+              - generic [ref=e247]: "|"
+              - generic [ref=e248]: orch-go
+            - button "📊 Events" [ref=e251] [cursor=pointer]
+          - generic [ref=e252]:
+            - button "S" [ref=e254] [cursor=pointer]
+            - generic [ref=e255]:
+              - generic [ref=e256]:
+                - generic [ref=e257]: 🎯
+                - generic [ref=e258]:
+                  - generic [ref=e259]: ●
+                  - text: running
+              - button "8s" [ref=e261] [cursor=pointer]
+            - paragraph [ref=e263]: api
+            - generic [ref=e264]:
+              - 'button "PID: 44629" [ref=e265] [cursor=pointer]'
+              - generic [ref=e266]: "|"
+              - generic [ref=e267]: orch-go
+            - button "📊 Events" [ref=e270] [cursor=pointer]
+      - generic [ref=e271]:
+        - button "🎯 Up Next 5 2 urgent" [expanded] [ref=e272] [cursor=pointer]:
+          - generic [ref=e273]:
+            - generic [ref=e274]: 🎯
+            - generic [ref=e275]: Up Next
+            - generic [ref=e276]: "5"
+            - generic [ref=e277]: 2 urgent
+          - img [ref=e279]
+        - generic [ref=e281]:
+          - generic [ref=e282]:
+            - generic [ref=e283]:
+              - generic [ref=e284]: P0
+              - generic "Headless codex spawns silently die — session created but not visible in OpenCode, no error surfaced to user" [ref=e285]
+              - generic "Age" [ref=e286]: 1h
+              - generic [ref=e287]: orch-go-1051
+            - generic [ref=e288]:
+              - generic [ref=e289]: P1
+              - 'generic "Investigation: skillc deploy pipeline is a source of chronic rework and confusion — audit source/compiled/deployed file relationships and fix" [ref=e290]'
+              - generic "Age" [ref=e291]: 1h
+              - generic [ref=e292]: orch-go-1050
+            - generic [ref=e293]:
+              - generic [ref=e294]: P2
+              - generic "Implement work-graph three-layer priority cascade (mutual exclusivity)" [ref=e295]
+              - generic "Age" [ref=e296]: 1d
+              - generic [ref=e297]: orch-go-987
+            - generic [ref=e298]:
+              - generic [ref=e299]: P2
+              - generic "Integrate recovered slide-out panel tabs with current work-graph architecture" [ref=e300]
+              - generic "Age" [ref=e301]: 1d
+              - generic [ref=e302]: orch-go-989
+            - generic [ref=e303]:
+              - generic [ref=e304]: P2
+              - generic "Dependency visualization with box-drawing characters in work-graph tree" [ref=e305]
+              - generic "Age" [ref=e306]: 1d
+              - generic [ref=e307]: orch-go-990
+          - paragraph [ref=e308]: +25 more in queue
+      - generic [ref=e309]:
+        - button "? Questions 1" [expanded] [ref=e310] [cursor=pointer]:
+          - generic [ref=e311]:
+            - generic [ref=e312]: "?"
+            - generic [ref=e313]: Questions
+            - generic [ref=e314]: "1"
+          - img [ref=e316]
+        - generic [ref=e319]:
+          - generic [ref=e320]:
+            - generic [ref=e321]: + Answered (last 7 days)
+            - generic [ref=e322]: "1"
+          - generic [ref=e324]:
+            - generic [ref=e325]: +
+            - generic "Reorganize orchestrator skill around 'keep Dylan oriented' as primary frame" [ref=e326]
+            - generic [ref=e327]: orch-go-1003
+      - generic [ref=e328]:
+        - generic [ref=e329]:
+          - generic [ref=e330]: 🟢
+          - generic [ref=e331]: Active Agents
+          - generic [ref=e332]: "3"
+        - generic [ref=e334]:
+          - button "active Implementing 🔥 38m 16s Integrate recovered slide-out panel tabs with current wor og-feat-integrate-recovered-slide-18feb-2c01 [orch-go-989] orch-go feature-impl orch-go-989 🔧 Using bash now" [ref=e335] [cursor=pointer]:
+            - generic [ref=e337]:
+              - generic [ref=e338]:
+                - generic [ref=e339]: active
+                - generic [ref=e340]: Implementing
+              - generic [ref=e341]:
+                - button "🔥" [ref=e342]
+                - button
+                - button "38m 16s" [ref=e343]
+            - generic [ref=e344]: Integrate recovered slide-out panel tabs with current wor
+            - generic [ref=e345]: og-feat-integrate-recovered-slide-18feb-2c01 [orch-go-989]
+            - generic [ref=e346]:
+              - generic [ref=e347]: orch-go
+              - generic [ref=e348]: feature-impl
+              - button "orch-go-989" [ref=e349]:
+                - button "orch-go-989" [ref=e350]
+            - generic [ref=e352]:
+              - generic [ref=e353]: 🔧
+              - paragraph [ref=e354]: Using bash
+              - generic [ref=e355]: now
+          - button "active Implementing 🔥 1h 6m Add ORIENTATION_FRAME to SPAWN_CONTEXT og-feat-add-orientation-frame-18feb-a337 [orch-go-1005] orch-go feature-impl orch-go-1005 💤 Idle - no activity for 2m ago waiting" [ref=e356] [cursor=pointer]:
+            - generic [ref=e358]:
+              - generic [ref=e359]:
+                - generic [ref=e360]: active
+                - generic [ref=e361]: Implementing
+              - generic [ref=e362]:
+                - button "🔥" [ref=e363]
+                - button
+                - button "1h 6m" [ref=e364]
+            - generic [ref=e365]: Add ORIENTATION_FRAME to SPAWN_CONTEXT
+            - generic [ref=e366]: og-feat-add-orientation-frame-18feb-a337 [orch-go-1005]
+            - generic [ref=e367]:
+              - generic [ref=e368]: orch-go
+              - generic [ref=e369]: feature-impl
+              - button "orch-go-1005" [ref=e370]:
+                - button "orch-go-1005" [ref=e371]
+            - generic [ref=e373]:
+              - generic [ref=e374]: 💤
+              - paragraph [ref=e375]: Idle - no activity for 2m ago
+              - button "waiting" [ref=e376]
+          - button "active Implementing 🔥 ⏱️ 1h 41m Re-implement dep-chain grouping mode in work-graph og-feat-re-implement-dep-18feb-9a8e [orch-go-998] orch-go feature-impl orch-go-998 ⏱️ Stuck at Implementing for 15+ min may need attention" [ref=e377] [cursor=pointer]:
+            - generic [ref=e379]:
+              - generic [ref=e380]:
+                - generic [ref=e381]: active
+                - generic [ref=e382]: Implementing
+              - generic [ref=e383]:
+                - button "🔥" [ref=e384]
+                - button "⏱️" [ref=e385]
+                - button "1h 41m" [ref=e386]
+            - generic [ref=e387]: Re-implement dep-chain grouping mode in work-graph
+            - generic [ref=e388]: og-feat-re-implement-dep-18feb-9a8e [orch-go-998]
+            - generic [ref=e389]:
+              - generic [ref=e390]: orch-go
+              - generic [ref=e391]: feature-impl
+              - button "orch-go-998" [ref=e392]:
+                - button "orch-go-998" [ref=e393]
+            - generic [ref=e395]:
+              - generic [ref=e396]: ⏱️
+              - paragraph [ref=e397]: Stuck at Implementing for 15+ min
+              - button "may need attention" [ref=e398]
+      - generic [ref=e399]:
+        - generic [ref=e400]:
+          - generic [ref=e401]: ⚠️
+          - generic [ref=e402]: Needs Attention
+          - generic [ref=e403]: "11"
+        - generic [ref=e404]:
+          - generic [ref=e405]:
+            - generic [ref=e406]:
+              - generic [ref=e407]: 💀
+              - generic [ref=e408]: Dead Agents (1)
+              - button "No activity for 3+ min" [ref=e409] [cursor=pointer]
+            - 'button "dead BLOCKED 🔥 💀 9m 54s [orch-go] investigation: repro headless codex spawn og-inv-repro-headless-codex-18feb-25b1 [orch-go-1054] orch-go investigation orch-go-1054 💀 No activity for 7 minutes crashed/stuck" [ref=e411] [cursor=pointer]':
+              - generic [ref=e413]:
+                - generic [ref=e414]:
+                  - generic [ref=e415]: dead
+                  - generic [ref=e416]: BLOCKED
+                - generic [ref=e417]:
+                  - button "🔥" [ref=e418]
+                  - button "💀" [ref=e419]
+                  - button "9m 54s" [ref=e420]
+              - generic [ref=e421]: "[orch-go] investigation: repro headless codex spawn"
+              - generic [ref=e422]: og-inv-repro-headless-codex-18feb-25b1 [orch-go-1054]
+              - generic [ref=e423]:
+                - generic [ref=e424]: orch-go
+                - generic [ref=e425]: investigation
+                - button "orch-go-1054" [ref=e426]:
+                  - button "orch-go-1054" [ref=e427]
+              - generic [ref=e429]:
+                - generic [ref=e430]: 💀
+                - paragraph [ref=e431]: No activity for 7 minutes
+                - button "crashed/stuck" [ref=e432]
+          - generic [ref=e433]:
+            - generic [ref=e434]:
+              - generic [ref=e435]: 🧹
+              - generic [ref=e436]: Awaiting Cleanup (8)
+              - button "Completed but not closed" [ref=e437] [cursor=pointer]
+            - generic [ref=e438]:
+              - button "awaiting-cleanup Complete 🔥 🧹 1h 41m Auto-expire orchestrator session metrics — 689h unbound og-feat-auto-expire-orchestrator-18feb-d7b8 [orch-go-1043] orch-go feature-impl orch-go-1043" [ref=e439] [cursor=pointer]:
+                - generic [ref=e441]:
+                  - generic [ref=e442]:
+                    - generic [ref=e443]: awaiting-cleanup
+                    - generic [ref=e444]: Complete
+                  - generic [ref=e445]:
+                    - button "🔥" [ref=e446]
+                    - button "🧹" [ref=e447]
+                    - button "1h 41m" [ref=e448]
+                - generic [ref=e449]: Auto-expire orchestrator session metrics — 689h unbound
+                - generic [ref=e450]: og-feat-auto-expire-orchestrator-18feb-d7b8 [orch-go-1043]
+                - generic [ref=e451]:
+                  - generic [ref=e452]: orch-go
+                  - generic [ref=e453]: feature-impl
+                  - button "orch-go-1043" [ref=e454]:
+                    - button "orch-go-1043" [ref=e455]
+              - button "awaiting-cleanup Complete 🔥 🧹 1h 40m Re-implement in-progress section at top of work-graph og-feat-re-implement-progress-18feb-88a0 [orch-go-999] orch-go feature-impl orch-go-999" [ref=e456] [cursor=pointer]:
+                - generic [ref=e458]:
+                  - generic [ref=e459]:
+                    - generic [ref=e460]: awaiting-cleanup
+                    - generic [ref=e461]: Complete
+                  - generic [ref=e462]:
+                    - button "🔥" [ref=e463]
+                    - button "🧹" [ref=e464]
+                    - button "1h 40m" [ref=e465]
+                - generic [ref=e466]: Re-implement in-progress section at top of work-graph
+                - generic [ref=e467]: og-feat-re-implement-progress-18feb-88a0 [orch-go-999]
+                - generic [ref=e468]:
+                  - generic [ref=e469]: orch-go
+                  - generic [ref=e470]: feature-impl
+                  - button "orch-go-999" [ref=e471]:
+                    - button "orch-go-999" [ref=e472]
+              - 'button "awaiting-cleanup Complete 🔥 🧹 1h 35m Investigation: skillc deploy pipeline is a source of chro og-inv-audit-full-skillc-18feb-3ba2 [orch-go-1050] orch-go investigation orch-go-1050" [ref=e473] [cursor=pointer]':
+                - generic [ref=e475]:
+                  - generic [ref=e476]:
+                    - generic [ref=e477]: awaiting-cleanup
+                    - generic [ref=e478]: Complete
+                  - generic [ref=e479]:
+                    - button "🔥" [ref=e480]
+                    - button "🧹" [ref=e481]
+                    - button "1h 35m" [ref=e482]
+                - generic [ref=e483]: "Investigation: skillc deploy pipeline is a source of chro"
+                - generic [ref=e484]: og-inv-audit-full-skillc-18feb-3ba2 [orch-go-1050]
+                - generic [ref=e485]:
+                  - generic [ref=e486]: orch-go
+                  - generic [ref=e487]: investigation
+                  - button "orch-go-1050" [ref=e488]:
+                    - button "orch-go-1050" [ref=e489]
+              - button "awaiting-cleanup Complete 🚨 🔥 🧹 1h 21m Headless codex spawns silently die — session created bu og-debug-investigate-headless-codex-18feb-0eb3 [orch-go-1051] orch-go systematic-debugging orch-go-1051" [ref=e490] [cursor=pointer]:
+                - generic [ref=e492]:
+                  - generic [ref=e493]:
+                    - generic [ref=e494]: awaiting-cleanup
+                    - generic [ref=e495]: Complete
+                  - generic [ref=e496]:
+                    - button "🚨" [ref=e497]
+                    - button "🔥" [ref=e498]
+                    - button "🧹" [ref=e499]
+                    - button "1h 21m" [ref=e500]
+                - generic [ref=e501]: Headless codex spawns silently die — session created bu
+                - generic [ref=e502]: og-debug-investigate-headless-codex-18feb-0eb3 [orch-go-1051]
+                - generic [ref=e503]:
+                  - generic [ref=e504]: orch-go
+                  - generic [ref=e505]: systematic-debugging
+                  - button "orch-go-1051" [ref=e506]:
+                    - button "orch-go-1051" [ref=e507]
+              - button "awaiting-cleanup Complete 🔥 🧹 58m 52s Implement work-graph three-layer priority cascade (mutual og-feat-implement-work-graph-18feb-6734 [orch-go-987] orch-go feature-impl orch-go-987" [ref=e508] [cursor=pointer]:
+                - generic [ref=e510]:
+                  - generic [ref=e511]:
+                    - generic [ref=e512]: awaiting-cleanup
+                    - generic [ref=e513]: Complete
+                  - generic [ref=e514]:
+                    - button "🔥" [ref=e515]
+                    - button "🧹" [ref=e516]
+                    - button "58m 52s" [ref=e517]
+                - generic [ref=e518]: Implement work-graph three-layer priority cascade (mutual
+                - generic [ref=e519]: og-feat-implement-work-graph-18feb-6734 [orch-go-987]
+                - generic [ref=e520]:
+                  - generic [ref=e521]: orch-go
+                  - generic [ref=e522]: feature-impl
+                  - button "orch-go-987" [ref=e523]:
+                    - button "orch-go-987" [ref=e524]
+              - button "awaiting-cleanup Complete 🔥 🧹 33m 46s Enrich /api/beads/graph response with layer + effective_p og-feat-enrich-api-beads-18feb-fb25 [orch-go-980.2] orch-go feature-impl orch-go-980.2" [ref=e525] [cursor=pointer]:
+                - generic [ref=e527]:
+                  - generic [ref=e528]:
+                    - generic [ref=e529]: awaiting-cleanup
+                    - generic [ref=e530]: Complete
+                  - generic [ref=e531]:
+                    - button "🔥" [ref=e532]
+                    - button "🧹" [ref=e533]
+                    - button "33m 46s" [ref=e534]
+                - generic [ref=e535]: Enrich /api/beads/graph response with layer + effective_p
+                - generic [ref=e536]: og-feat-enrich-api-beads-18feb-fb25 [orch-go-980.2]
+                - generic [ref=e537]:
+                  - generic [ref=e538]: orch-go
+                  - generic [ref=e539]: feature-impl
+                  - button "orch-go-980.2" [ref=e540]:
+                    - button "orch-go-980.2" [ref=e541]
+              - 'button "awaiting-cleanup Complete 🔥 🧹 23m 57s [orch-go] feature-impl: Fix worker spawn wrapper prompt s og-feat-fix-worker-spawn-18feb-7652 [orch-go-1052] orch-go feature-impl orch-go-1052" [ref=e542] [cursor=pointer]':
+                - generic [ref=e544]:
+                  - generic [ref=e545]:
+                    - generic [ref=e546]: awaiting-cleanup
+                    - generic [ref=e547]: Complete
+                  - generic [ref=e548]:
+                    - button "🔥" [ref=e549]
+                    - button "🧹" [ref=e550]
+                    - button "23m 57s" [ref=e551]
+                - generic [ref=e552]: "[orch-go] feature-impl: Fix worker spawn wrapper prompt s"
+                - generic [ref=e553]: og-feat-fix-worker-spawn-18feb-7652 [orch-go-1052]
+                - generic [ref=e554]:
+                  - generic [ref=e555]: orch-go
+                  - generic [ref=e556]: feature-impl
+                  - button "orch-go-1052" [ref=e557]:
+                    - button "orch-go-1052" [ref=e558]
+              - button "awaiting-cleanup Complete 🔥 🧹 11m 16s Verify orientation frame propagation og-feat-verify-orientation-frame-18feb-62cd [orch-go-1053] orch-go feature-impl orch-go-1053" [ref=e559] [cursor=pointer]:
+                - generic [ref=e561]:
+                  - generic [ref=e562]:
+                    - generic [ref=e563]: awaiting-cleanup
+                    - generic [ref=e564]: Complete
+                  - generic [ref=e565]:
+                    - button "🔥" [ref=e566]
+                    - button "🧹" [ref=e567]
+                    - button "11m 16s" [ref=e568]
+                - generic [ref=e569]: Verify orientation frame propagation
+                - generic [ref=e570]: og-feat-verify-orientation-frame-18feb-62cd [orch-go-1053]
+                - generic [ref=e571]:
+                  - generic [ref=e572]: orch-go
+                  - generic [ref=e573]: feature-impl
+                  - button "orch-go-1053" [ref=e574]:
+                    - button "orch-go-1053" [ref=e575]
+          - generic [ref=e576]:
+            - generic [ref=e577]:
+              - generic [ref=e578]: ⏱️
+              - generic [ref=e579]: Stalled Agents (1)
+              - button "Same phase for 15+ min" [ref=e580] [cursor=pointer]
+            - button "active Implementing 🔥 ⏱️ 1h 41m Re-implement dep-chain grouping mode in work-graph og-feat-re-implement-dep-18feb-9a8e [orch-go-998] orch-go feature-impl orch-go-998 ⏱️ Stuck at Implementing for 15+ min may need attention" [ref=e582] [cursor=pointer]:
+              - generic [ref=e584]:
+                - generic [ref=e585]:
+                  - generic [ref=e586]: active
+                  - generic [ref=e587]: Implementing
+                - generic [ref=e588]:
+                  - button "🔥" [ref=e589]
+                  - button "⏱️" [ref=e590]
+                  - button "1h 41m" [ref=e591]
+              - generic [ref=e592]: Re-implement dep-chain grouping mode in work-graph
+              - generic [ref=e593]: og-feat-re-implement-dep-18feb-9a8e [orch-go-998]
+              - generic [ref=e594]:
+                - generic [ref=e595]: orch-go
+                - generic [ref=e596]: feature-impl
+                - button "orch-go-998" [ref=e597]:
+                  - button "orch-go-998" [ref=e598]
+              - generic [ref=e600]:
+                - generic [ref=e601]: ⏱️
+                - paragraph [ref=e602]: Stuck at Implementing for 15+ min
+                - button "may need attention" [ref=e603]
+          - generic [ref=e605]:
+            - generic [ref=e606]: 🚧
+            - generic [ref=e607]: Blocked Issues
+            - generic [ref=e608]: "7"
+            - generic [ref=e609]:
+              - text: Run
+              - code [ref=e610]: bd blocked
+              - text: to see details
+      - button "🏆 Recent Wins 1 last 24h" [ref=e612] [cursor=pointer]:
+        - generic [ref=e613]: 🏆
+        - generic [ref=e614]: Recent Wins
+        - generic [ref=e615]: "1"
+        - generic [ref=e616]: last 24h
+        - img [ref=e618]
+      - 'button "📋 Ready Queue 30 — Headless codex spawns silently..., Investigation: skillc deploy p... +28" [ref=e621] [cursor=pointer]':
+        - generic [ref=e622]:
+          - generic [ref=e623]: 📋
+          - generic [ref=e624]: Ready Queue
+          - generic [ref=e625]: "30"
+          - generic [ref=e626]: "— Headless codex spawns silently..., Investigation: skillc deploy p... +28"
+        - img [ref=e628]
+```

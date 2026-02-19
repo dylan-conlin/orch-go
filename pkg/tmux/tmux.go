@@ -266,10 +266,7 @@ type OpencodeAttachConfig struct {
 // OpenCode commit 18b26856a fixed Session.create to respect the directory parameter.
 // Sets ORCH_WORKER=1 so agents know they are orch-managed workers.
 func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
-	opencodeBin := "opencode"
-	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
-		opencodeBin = bin
-	}
+	opencodeBin := resolveOpencodeBin()
 
 	// Use attach mode with --dir to connect to shared server
 	// This makes sessions visible via API for session ID capture
@@ -285,6 +282,26 @@ func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
 		cmd += fmt.Sprintf(" --session %q", cfg.SessionID)
 	}
 	return cmd
+}
+
+func resolveOpencodeBin() string {
+	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
+		return bin
+	}
+
+	if path, err := exec.LookPath("opencode"); err == nil {
+		return path
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		candidate := filepath.Join(homeDir, ".bun", "bin", "opencode")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+
+	return "opencode"
 }
 
 // WaitConfig holds configuration for waiting for OpenCode to be ready.
@@ -572,6 +589,11 @@ func WaitForOpenCodeReady(windowTarget string, cfg WaitConfig) error {
 		if err != nil {
 			// Pane capture failed - window may have closed
 			return fmt.Errorf("failed to capture pane content: %w", err)
+		}
+
+		contentLower := strings.ToLower(content)
+		if strings.Contains(contentLower, "command not found") && strings.Contains(contentLower, "opencode") {
+			return fmt.Errorf("opencode command not found in tmux pane")
 		}
 
 		if IsOpenCodeReady(content) {

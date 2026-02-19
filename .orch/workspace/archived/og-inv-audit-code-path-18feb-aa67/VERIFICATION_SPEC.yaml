@@ -1,0 +1,18 @@
+verification:
+  type: investigation
+  issue: orch-go-1046
+
+  automated:
+    - name: "Locate config/model/backend references"
+      command: "rg -n \"DetermineSpawnBackend|ResolveAndValidateModel|default_model|Backend\" pkg/orch/extraction.go cmd/orch/spawn_cmd.go pkg/userconfig/userconfig.go pkg/config/config.go pkg/model/model.go"
+      expected: "Matches found in spawn pipeline and config files"
+      result: "PASS"
+
+  behavioral:
+    - name: "Document override points"
+      description: >
+        Review /Users/dylanconlin/Documents/personal/orch-go/.orch/workspace/og-inv-audit-code-path-18feb-aa67/INVESTIGATION.md
+        and confirm each override point includes file:line evidence and a proposed fix
+        for BROKEN/RISKY entries.
+      manual: true
+      expected: "All override points captured with evidence and remediation guidance"

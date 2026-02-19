@@ -1,0 +1,21 @@
+version: 1
+runs:
+  - name: frontend build
+    command: npm run build
+    workdir: web
+    result: pass
+    notes: Svelte a11y warnings emitted (pre-existing)
+  - name: frontend tests
+    command: npm run test
+    workdir: web
+    result: fail
+    notes: 28 failing tests (Playwright suite, pre-existing failures)
+  - name: go tests
+    command: go test ./...
+    workdir: .
+    result: pass
+manual:
+  - name: UI verification for in_progress section
+    status: not_run
+    reason: Glass CDP not available (127.0.0.1:9222 refused)
+    steps: Open http://127.0.0.1:5173/work-graph with backend running and confirm the In Progress section appears above the tree and does not duplicate WIP or tree rows.

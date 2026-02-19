@@ -1,0 +1,162 @@
+sha,subject,category,patch_applies,files_on_master,files_total
+2e77cd0b9f25e58db837951777c6cabf58a32fd2,"fix: disable worktree-assuming code in orch complete",irrelevant,false,2,9
+84d1dd2062f55494fc8354a73188cb2621c1f241,"fix: add .orch/worktrees/ to .gitignore and remove from tracking",irrelevant,false,1,8
+e43396d602c66ef46829c14a58a8c381af53fcbd,"fix: validate --headless flag is compatible with selected backend",irrelevant,false,5,7
+c0f35bcafa379158f60aef6dc6661cd67e11fa6b,"fix: always write fresh VERIFICATION_SPEC.yaml skeleton on spawn",irrelevant,false,3,5
+42ae888ddb45996b7d15b0e28f18a8bdfcb450ae,"fix: ignore stale Phase: Complete on open issues",irrelevant,false,0,3
+d4a0f299ab8a5106f9f74cc9a3ac40d3d5d85efb,"fix: prevent reconcile from abandoning live headless sessions",irrelevant,false,0,3
+7593ea3fd79c82c993e9696cae8653f55196c41a,"fix: add commit instructions to worker minimal prompt",irrelevant,false,1,2
+2e6d851e8943bd2717cd008073b8e1177567698a,"fix: restore full smoke suite — 5 checks gutted to 1 by install-safe commit",irrelevant,false,1,1
+e90ab43a86d8cabc0e15402247ee6ac761813d5d,"fix: resolve skill name for headless spawns via workspace beadsID fallback",irrelevant,false,5,5
+4ca9d0de386e4f3d1f3ccccf652b9a25ff5849e0,"fix: show workspace name for agents without beads ID",irrelevant,false,1,6
+088126c6d75d167befc32b84515c21ff86d8012b,"fix: check worktree path for agent artifacts in orch complete",irrelevant,false,0,2
+8a259417c15ee61914849372ba6140035657f57d,"fix: adjust test timestamps to avoid boundary condition failures",still-relevant,true,1,1
+65df2bc373e10a184562b92d8d409411086bec00,"fix: check session activity time instead of creation time",irrelevant,false,3,4
+12111d33ee30f081847d4d3fcce0a7664ac1beba,"fix: prevent spurious empty .orch/state.db in project directories",irrelevant,false,1,3
+bba77e5fa344071ae48b8aefeebcc2606b115c19,"fix: distinguish OpenCode TUI from HTTP API in orch doctor",irrelevant,false,3,7
+d76a5c462ba4b8d98d05e292c6f2fb8cf75babf6,"fix: PPID-based reaper to protect TUI, fix all test failures",irrelevant,false,5,9
+760757dc28e94963f298e0bd28376c50fbc256a5,"fix: tighten orphan detection to require --conditions=browser flag",irrelevant,false,0,2
+de0a68bea65b9b7c155390b791fa7912d1901c6c,"fix: add orch reap command and launchd safety net for zombie bun processes",irrelevant,false,3,9
+35078ba6d51faadb74324978dfefd933b244b30c,"fix: reorder complete cleanup to kill tmux window before archival",irrelevant,false,1,2
+9167ed92b835e00e5ce441a3e6e1c8655edaff86,"fix: replace stale 'run --attach' orphan detection with 'src/index.ts' matching",irrelevant,false,1,5
+db58c09c40242813032afd826d1ef0f99ff7e56c,"fix: strip OPENAI_API_KEY from OpenCode server env and remove invalid BUN_JSC_heapSize",irrelevant,false,2,2
+cbc273512ff14d53a8503620975d35ba15b1144a,"fix: protect orchestrator sessions from cleanup by default",irrelevant,false,1,2
+dc8a7cd9caaff8f395217e4d316db58c16efdcb2,"fix: restore gpt-5.3-codex aliases — model exists on Codex/ChatGPT backend (requires OAuth)",irrelevant,false,4,4
+a3b2569e87b6a8f8b8134b4e6365864e085cd706,"fix: early model resolution consults global config before rate limit check",irrelevant,false,0,1
+b649b5620dafebf3413761e3985bb066fc2ce1d9,"fix: revert workspace artifacts leaked by cherry-pick from agent branch",irrelevant,false,0,3
+83b91c974706f233b1b1ac02c6354e635beff421,"fix: restore gpt-5.2-codex aliases and tests — gpt-5.3-codex does not exist on OpenAI API",irrelevant,false,3,3
+d527309037f80c1a178d6f3a5d71b73647a6eba1,"fix: map GPT aliases to gpt-5.2-codex — gpt-5.3-codex does not exist yet",irrelevant,false,2,2
+a5ec05d091dc72dce174a1b17d1ee49845753811,"fix: resolve workspace by most recent active, skip already-applied cherry-picks",irrelevant,false,3,8
+810e374b6ab034cdf34ccf563473a58186c2abb0,"fix: SPAWN_CONTEXT.md PROJECT_DIR now uses worktree path for headless agents",irrelevant,false,3,5
+8da70fcc162f86319d82d7260d182a6f83a53569,"fix: add state.db fallback for phase_complete gate and improve error messages",irrelevant,false,5,5
+6fc11e27d8cb0b9d890a64ff65f1f6092566e9e1,"fix: copy spawn artifacts to worktree so agents find SPAWN_CONTEXT.md in their CWD",still-relevant,true,2,2
+b476fef716515668031d7af1035e2a8f6abff084,"fix: completion pipeline — cherry-pick replaces rebase, git commit for non-Claude models, idle-with-work status visibility",irrelevant,false,5,14
+afc91207a0cb8163e230265b0fbff61e208c7136,"fix: work-graph SSE - hook refresh to agentlog session.spawned lifecycle events and cleanup on route destroy",irrelevant,false,1,1
+53d9a67d7448c9aa06a644fde0aebd9063f5ac91,"fix: episodic validate_test.go build errors — use correct ValidationState* constant names and fix single-line sanitization test",irrelevant,false,1,2
+d219766476f9172635199b8c3023eba9381b7a5e,"fix: discard dirty .beads/issues.jsonl before ff-only merge in orch complete",irrelevant,false,1,3
+bd21b3538b282d80822dbecf3ac8e869454f1d90,"fix: bd command falls back to nearest .beads project root when worktree cwd is deleted",irrelevant,false,2,3
+9539a5d14a287ff3bb23fb73ecba9dc2f6f97735,"fix: daemon processed cache allows respawn of reopened triage:ready issues",irrelevant,false,6,14
+6512d8d4c5ea94c091a98da2a0c50c173adae0e3,"fix: ParsePhaseFromComments takes first match (newest) instead of last (oldest)",irrelevant,false,3,3
+6890004b83750bbf17cb6dfbb99d049df59421ed,"fix: headless spawn uses HTTP API with x-opencode-directory for worktree cwd",irrelevant,false,1,3
+117b3973d18d6947224cb8a3c2c1eb4043e77f1a,"fix: work-graph UI improvements — side panel toggle, keyboard nav, CORS",irrelevant,false,7,10
+08e427c45a23efa45a30d8c289e8dbd2139703d8,"fix: correct multi-model evaluation model based on production evidence",irrelevant,false,1,2
+3956657ad503ae8f2d3a7b7f95e1bfaa123fd4e3,"fix: filter agent_abandoned from crash-free streak calculation",irrelevant,false,2,5
+2c389341ff1baba97282944653214344d07ebbef,"fix: process census false positives for PPID=1 processes",irrelevant,false,1,4
+e40402ac852a1d46a8263654db0ebb3797b324fa,"fix: post-mortem reliability batch - beads concurrency, resource constraints, operator health",irrelevant,false,42,97
+e631d7a02f3735f333268bf69ebcad66d7ed3665,"fix: remove duplicate function declarations from decomposition collision",irrelevant,false,4948,6778
+9d09c33d7930fa750161d82db3256ba331dd326e,"fix: prevent temp file leaks from atomic writes on crash/interrupt",irrelevant,false,3,8
+9dd4065f650071b2e5f2d0bb8922a1790e53adae,"fix: differentiate needs-review agents by synthesis recommendation",irrelevant,false,4,4
+ff84a29a56b383ff2f8d6953ba3258cd3c41b0b6,"fix: resolve 7 test failures across cmd/orch and pkg/daemon",irrelevant,false,3,7
+2d8e4c7ab6f54973608a68c25761697218797f8b,"fix: handle bare strings in extractHashFromBeadsID",irrelevant,false,1,2
+d075d3397cc3111dac1e9b2533a1916a97734cc5,"fix: add dashboard health watchdog to daemon - auto-restarts when services die",irrelevant,false,2,6
+dab0b34005d556ab0cd3c2418490d9b90875ab0f,"fix: change build gate default from permissive to restrictive",irrelevant,false,3,3
+59551c0c3038cbe4f7a0ec702e75bb601c35da08,"fix: add TTL cache to graph endpoint to prevent bd limiter timeout",irrelevant,false,3,3
+ff057df542118bd1b5897ad7897490cadab4dea1,"fix: state DB drift - upsert on respawn, session wiring, abandon safety, drift metrics",irrelevant,false,4,8
+04b567e6b88b2c657274e8f3d31fdee283eb77f1,"fix: implement orch lint --skills command to unblock pre-commit hook",irrelevant,false,1,3
+9f92ebcf6d72c89b7f44a29ce88c33a85ecdd2d0,"fix: add orch clean --processes to kill orphan bun processes",irrelevant,false,2,4
+1c52a0be276040219c4fa9b5678b8f5678adf0ba,"fix: add singleflight dedup + concurrency limiter for bd subprocess stampede in serve",irrelevant,false,5,7
+32689a4ba348727b9efa92673275e0ada565336c,"fix: add 15s timeout to build blame attribution — root cause of orch complete hang",irrelevant,false,1,2
+23828fae64e6073550a2113357e18ac7f58443bf,"fix: add timeouts to all subprocess calls in orch complete path",irrelevant,false,4,5
+ed80944fdab354e81a6b57fd48319b46afcc8d61,"fix: add bd subprocess concurrency limiter to prevent process stampede",irrelevant,false,2,5
+11cd45e35579f8bb1b444b89e6e0d7538dfc7281,"fix: add retry limit and escalation to dead session detection",irrelevant,false,3,5
+07426e29931127f28680bb9a13c6f079e7a974e0,"fix: show per-gate pass/fail details when orch complete verification fails",irrelevant,false,3,4
+c1e831df293b60268adc57947b371aa9fec8eb8c,"fix: add synthesis completion recognition to prevent false daemon spawns",irrelevant,false,2,4
+d5f9faec9d410ebebc86a1233837ffe900ebd076,"fix: change dedup error handling to fail-safe (assume exists) to prevent duplicate spawns",irrelevant,false,4,7
+c80ba3664132375c58c06adf9493910f1cd08565,"fix: use Registry.Purge+SaveSkipMerge for cleanup writes to prevent data loss",irrelevant,false,2,3
+a65c0f2cc72e83dd051de3e002b30a8eafd261f9,"fix: wire --registry flag into orch clean to remove untracked agents from registry",irrelevant,false,2,2
+ba72bdeeae47329e8c82a9f4d852f81cbcc8d1ff,"fix: use CloseIssueForce in remaining close paths to bypass bd Phase: Complete gate",irrelevant,false,4,4
+d7c583da9eefeaf74042f84195784ddeea4eb814,"fix: Update orch-dashboard restart to rebuild binary before restarting",irrelevant,false,6,15
+9d5aff14b0db01261c72bd081edfc712969cedb0,"fix: make --skip-phase-complete bypass bd close's Phase: Complete gate",irrelevant,false,4,5
+1f9d7b76e09a6c2e8fc02581f00443b70e000243,"fix: suppress 'no .beads directory' warnings during spawn",irrelevant,false,3,3
+e3c748e406c4f7a9e7ae5ba4358220ad7e9998aa,"fix: wire --mcp flag to OpenCode API - connect MCP servers before spawn",irrelevant,false,4,4
+16011d6ba74110e785370be716211a71b6f5500e,"fix: fetch open and in_progress issues separately to avoid bd AND filter",irrelevant,false,1,1
+05696674bbb6efcc3daf0b83966447100a7e3454,"fix: exclude untracked agents from WIP section - prevents permanent 'Working...' display",irrelevant,false,4,4
+7961d47d0de11c693661a321e793cdd8fb5c8c87,"fix: Add description field to Work Graph API and include in_progress issues",irrelevant,false,3,3
+dafe7181d3fb40f340702541bc6ccba50baf5f72,"fix: restore focus to tree after close modal dismissal",irrelevant,false,2,2
+f31dce817cf9760b8dab4b4761e6fe5460f31da2,"fix: add --force to CLI client CloseIssue for UI-based closes",irrelevant,false,2,2
+04daab867479ec48e8e6c1c5af6b1580bffbe35a,"fix: set BEADS_NO_DAEMON=1 for close operation to match read operations",irrelevant,false,2,2
+2a57096a9cb27957c3dd07290906951a171a6741,"fix: add DELETE to CORS allowed methods for focus API",irrelevant,false,2,2
+a158b281d49783448d4ecb2e19ebc0c7d06f9431,"fix: spawn context now recommends orch-dashboard for orch-go workers",irrelevant,false,3,4
+fa08bef9796397e0d8a688317f0645a09c0084b8,"fix: verification filter now only applies to recently-closed signals",irrelevant,false,2,3
+0616f38798c4c726bbe68646ac1a5c2e6dd75605,"fix: align test expectations with implementation in pkg/spawn",irrelevant,false,4,4
+3e67429a3395c4d6dc5f20241b7fc57f970bd548,"fix: remove obsolete session handoff tests and sync beads state",irrelevant,false,3,3
+9c912e9c029b25e290258f0e06b3ed2afad5f525,"fix: Enable Enter key expansion for unverified completed issues",irrelevant,false,2,2
+18f523a30d0abf4ff63492de09be34fb278d8ad1,"fix: add *.test cleanup to make clean target",irrelevant,false,2,2
+47522cb67639959e35eeb08183e8cfea00bc9697,"fix: embed TLS certs via go:embed for self-contained binary",irrelevant,false,1,2
+415e5533ad431f056816522dc0b62e868362fca9,"fix: prevent duplicate spawns via /api/agents check before spawn",irrelevant,false,2,4
+5ceda7fd3c83bd41807fbd4889043b52b67fd96f,"fix: filter queued issues that have running agents from WIP display",irrelevant,false,3,3
+d87ede04d107ded422cf0edf449c39a132058be4,"fix: filter /api/beads/ready to only return triage:ready issues",irrelevant,false,3,3
+8c72e81c29f6fcdfa30e438bb1a8e933e8cd1e04,"fix: load verification state in GET /api/attention",irrelevant,false,2,3
+9d2cdadfca5235dddd4060ceadf6a0949914ec29,"fix: resolve work graph duplicate key error and attention API JSON parse error",irrelevant,false,3,3
+64aa99213a06f3b06845f7cef35a8092442c421c,"fix: initialize ProcessedIssueCache in daemon startup",irrelevant,false,2,2
+6aa939f838995fbe2fe1f0e2106ab51b29800ec2,"fix: debounce only after first tree render completes",irrelevant,false,4,49
+d81a7408c9feecde718c5d1e24ac0d3735ef7f00,"fix: add missing imports for DeliverableChecklist component",irrelevant,false,2,2
+585c69e6e3dbb745b137a4bb7b966da146fac493,"fix: prevent work graph flip-flopping on orchestrator project switch",irrelevant,false,3,3
+1070a880fa3356aeeb97c13217cc394ab1694909,"fix: prevent blue fade noise on project switch in Work Graph",irrelevant,false,2,2
+e61778c04a3c92b042c67643067be17946afaaa6,"fix: preserve expansion state across rebuilds and fix highlight on children",irrelevant,false,3,4
+8379d382417e62b6f28b318e86acadbc29310940,"fix: remove duplicate scrollbars on Work Graph page",irrelevant,false,2,2
+e827bf4dad12a8ae43fa78c4d0bb920edf9a1657,"fix: prevent newIssueIds closure bug in reactive block",irrelevant,false,1,2
+c58bcf5df95fb2229aed9c1a6e91f803055547c3,"fix: filter WIP queued issues by project context",irrelevant,false,3,3
+1f35fbaaffdb40338741b27add075080e8cb5923,"fix: integrate WIP items into WorkGraphTree",irrelevant,false,3,3
+d271c63b726bd89a6f97a61c83a80703515be153,"fix: make wip/daemon fetches non-blocking to prevent page hang",irrelevant,false,3,6
+5e7cd2d54324ed47c5b4c71dfdc43291beca1e88,"fix: render tree even when only WIP items exist",irrelevant,false,1,3
+8eee81af2dcac9029da797b3a64f94aab7a29a18,"fix: orch spawn --attach no longer steals terminal from orchestrator",still-relevant,true,1,1
+b8cd0cfe356c9c610544639c7df87123d1b9555b,"fix: improve selection visibility with background + border (GREEN)",irrelevant,false,1,1
+9b3db78ed724478d707401af42125daefbb5086a,"fix: add focus calls to work-graph keyboard navigation tests",irrelevant,false,2,10
+dc8609907cfa9b443894caeb1338c1edd9addd15,"fix: manually rebuild flattened nodes on tree expansion toggle",irrelevant,false,3,64
+391bec6a1dfb1ed3a7b833f36c98cab060caba0b,"fix: improve tree expansion reactivity and update tests",irrelevant,false,4,67
+39d4ce7e263454d831f8bc0b8cb6f7088ad4396e,"fix: resolve Phase 1.1 interaction bugs (orch-go-21144, 21145, 21146)",irrelevant,false,4,642
+48642f11bfd624369c3e31e9c9ec1a46e8238d6f,"fix: return empty arrays not null for frontier active/stuck",irrelevant,false,0,1
+811989ddf9307c76336413795441c0a47bbeace5,"fix: improve work graph tree expansion and accessibility",irrelevant,false,1,1
+1bc1957dfda3f39f5a0961d316f76d45e3b641df,"fix: use go test -run=^$ instead of go build for completion verification",irrelevant,false,2,3
+2bddcc0f9c263810ede3f2c0a7c96e480baab1a4,"fix: recover Phase: Complete from ACTIVITY.json when bd comment fails to persist",irrelevant,false,5,5
+2e6a7175e0f0e122e522e6f228944863d83ae16e,"fix: collect completion telemetry before session deletion",irrelevant,false,2,2
+05c493552d2ee155b5566bd0beda0c554fe41179,"fix: filter daemon ready count by triage:ready label",irrelevant,false,3,4
+1e9be62cb625fdb6982440daf546f0a480e1614a,"fix: orch status shows cross-project agents from other workers-* sessions",irrelevant,false,2,2
+2861cb1b63693b6a32da3f457fcb17ff5c8349f7,"fix: decision gate fails closed on errors instead of open",irrelevant,false,4,10
+18b840b52324daef6dca1b26b4438bb831bf6449,"fix: rename models/TEMPLATE.md to _TEMPLATE.md to exclude from kb context",irrelevant,false,2,2
+6d0ce98a8842f15b26ce13ab140f87f843ac5682,"fix: set cmd.Dir in kb context queries for cross-project spawns",irrelevant,false,3,4
+64af1e9cb1b59f3f37003cd9bb3f16ed6767f758,"fix: skip tmux select-window for daemon-driven spawns",irrelevant,false,3,3
+c7a039a121b2819f2a280f9d6e7a44991a1e5ff8,"fix: prevent dashboard investigation tab from showing stale files",irrelevant,false,3,3
+10e722c87000b424b66d63607af341abd81c4b7e,"fix: block closing epics with open children in orch complete",irrelevant,false,3,4
+06fd3568fd3d2b2cf9d96dfe695c50da805092ed,"fix: auto-resume agents by reading .beads_id from workspace",irrelevant,false,4,4
+929b84f1294622c61124f892705c18cdee330ef8,"fix: harden orch deploy when OpenCode already running on port 4096",irrelevant,false,2,2
+c4876a52b2e11f52522c04a3620ea597cc4f712f,"fix: skip redundant auto-rebuilds in orch complete when binary is current",irrelevant,false,2,2
+ea17e064e61a66ebef65b81bc6d2ad24045e65ee,"fix: remove triage:ready label on abandon to prevent daemon respawn",irrelevant,false,2,2
+1b9e9f67bf410424bcd4db797454ef6d0b2e0403,"fix: filter untracked sessions from default orch status output",irrelevant,false,2,2
+922b55036a8ca34ad67d92cf364e62dfddb95aa9,"fix: render markdown in activity feed text/reasoning events",irrelevant,false,2,2
+e2268cb64db5011b3c06c8dcf6bd02f06d1c0783,"fix: add external_directory permissions for global paths (~/.kb, ~/.claude) to gpt_orchestrator",irrelevant,false,2,2
+17877ddbdfa76ff48def13d5cecd6bfdc3c886f2,"fix: populate MODEL field in orch status and dashboard API",irrelevant,false,6,6
+645d7590154bf527330bf5a36a9556337b57c5eb,"fix: add bare command patterns to gpt_orchestrator bash permissions",irrelevant,false,2,2
+d7e5da0e71d8f9bc8ccf48d9c9394247afc55695,"fix: correct future-dated investigation filename (2027-01-27 → 2026-01-27)",irrelevant,false,1,2
+11356ccdcea85d2dac005c2ddeb6eea16d779f49,"fix: add 'question' issue type to skill inference",irrelevant,false,2,3
+ac1689562c0511cb262768c00b6d0e81b1d151cd,"fix: prevent template placeholders from corrupting workspace cache beads ID lookup",irrelevant,false,4,5
+cc06ca358232da78d76def6c9db83242272df8e6,"fix: rollback beads status to open when daemon spawn fails",irrelevant,false,7,10
+851ac02e98a10234cd43ddc28c9dd466bf8d0a73,"fix: store args from tool.execute.before for use in after hook",irrelevant,false,1,1
+ea1a013fc6bd2e72a09c8159b4d333db4b012b82,"fix: update session metadata when orchestrator skill detected",irrelevant,false,1,2
+3f46af496d79ce98defc5b740550fdccf0edd729,"fix: daemon server recovery detects each restart, not just first",irrelevant,false,5,5
+8b4be5cfc0f90ee0552f1cca64b8c1cfe7f12d11,"fix: dashboard project filter matches both beads prefix and directory name",irrelevant,false,4,4
+8b53dd3203479be30c6c3f140705d26f7ebc9cad,"fix: Add --limit 0 to FallbackList() to find all open issues",irrelevant,false,2,3
+beab871ab6174cfe2ac2ad807fb2feee8e47e116,"fix: make session ID parser robust to npm warnings in stdout",irrelevant,false,3,3
+0fd788f4ba3aaad13a7a61e8ffe2ff8eeafa0091,"fix: eliminate duplicate hotspot warning in spawn command",irrelevant,false,1,1
+08eae65f26f0a1f5ae66a280d9182d18e1f4a209,"fix: move Phase: Complete check before status-specific spawn logic",irrelevant,false,2,3
+d58860d256023cfe57ca5ff5d7a5bf3829ba370d,"fix: treat beads lookup errors as closed to prevent capacity leaks",irrelevant,false,1,3
+580d00204c4104b7320d66d73ace12ac981cfada,"fix: Docker memory limits + daemon cross-project handling",irrelevant,false,1,3
+b99b573e6575ba31a454d74ed1bc45d575c6c8e8,"fix: Docker OOM crashes + daemon capacity tracking + beads corruption model",irrelevant,false,2,6
+e869b43c5caa1b2b37c798a6de958300562919a8,"fix: Docker backend stuck at Tinkering - use stdin redirection",irrelevant,false,1,3
+b8de8846d43724dd3c3e04d16c1092a51f64c90a,"fix: add Go to Docker image for auto-rebuild hooks",irrelevant,false,1,2
+6fa627c531d445f97c2dd829aa1579f7c433905b,"fix: detect agent activity via tmux pane for tmux-based agents",irrelevant,false,3,4
+3bd26bb5d42d8ece54f8b396a3159188409ec839,"fix: model stack knowledge hygiene - supersede old decisions + create current state reference",irrelevant,false,2,5
+9bf692454d372cb64d7d71250ed00f764a0faf29,"fix: pass workdir through resolveShortBeadsID for cross-project spawns",irrelevant,false,6,7
+fef5879e507834dae84659b5d76361429d3b2afe,"fix: backend selection priority and cross-compile for docker",irrelevant,false,11,171
+7fd0b7fcbc78cd3026e4dab0928818766a679fb4,"fix: exclude untracked sessions from concurrency limit check",irrelevant,false,2,4
+42027eb21d4ba99147a89efb6b04f4dbe66e8d21,"fix: make systematic-debugging spawn as light tier",irrelevant,false,3,5
+0ed7eecb2638828ebb83817f7ca67bf0318b417c,"fix: don't default project spawn_mode so global config is respected",irrelevant,false,43,519
+8fc3deff5d7b53ae1faa4ef2d33d5599c46d9a4c,"fix: respect docker backend in global/project config",irrelevant,false,0,4
+f3cbec5556f503eccea7128cc8b22389b40171a2,"fix: improve error messages for tmux session creation",irrelevant,false,1,2
+dc9f88067010b6ce6ed966da181a343387ae7515,"fix: respect spawn_mode config over infrastructure gate",irrelevant,false,3,5
+3caef72dfb533868e558b7739db0e451c78c90bf,"fix: respect spawn_mode 'opencode' config value",irrelevant,false,2,10
+22ae4dbefeb8eee9bb097861b9c3c689491d74a3,"fix: prevent stale handoff injection after explicit session end",irrelevant,false,3,11
+79a8102898c6bf751f1c71ebdea9e0d2ce6a2a0e,"fix: set status=in_progress before spawning to prevent respawn loops",irrelevant,false,2,2
+708aa56efb80f63a315905dfd82438f308203cc0,"fix: use tmuxCommand() helper for all tmux operations",irrelevant,false,3,11
+acc668c9183c3fdabfb87cdb0fa2d220fdbe578d,"fix: change default model from sonnet to opus (Max subscription)",irrelevant,false,3,3

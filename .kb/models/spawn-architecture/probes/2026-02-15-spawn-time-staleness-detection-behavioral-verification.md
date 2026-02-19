@@ -11,6 +11,7 @@
 
 **Model Claim Being Tested:**
 The spawn-time model staleness detection (implemented in orch-go-2qj) claims to:
+
 1. Detect when model-referenced files have changed since the model's "Last Updated" date
 2. Include a staleness warning in SPAWN_CONTEXT.md when serving stale models
 3. Report stale file references (changed files and deleted files)
@@ -24,12 +25,14 @@ The spawn-time model staleness detection (implemented in orch-go-2qj) claims to:
 ### Test Setup
 
 **Target Model:** Spawn Architecture (.kb/models/spawn-architecture.md)
+
 - Last Updated: 2026-01-12
 - Contains code references in "Primary Evidence (Verify These)" section
 - Files referenced: cmd/orch/spawn_cmd.go, pkg/spawn/config.go, pkg/spawn/context.go
 
 **Expected Behavior:**
 If any of these files changed since 2026-01-12, the staleness detection should:
+
 1. Run `git log --since=2026-01-12` for each referenced file
 2. Detect changes if commits exist
 3. Prepend staleness warning to the model section in SPAWN_CONTEXT.md
@@ -74,6 +77,7 @@ grep -A 5 "STALENESS WARNING" .orch/workspace/{workspace-name}/SPAWN_CONTEXT.md
 ### Observation 1: File Change Detection
 
 **Command Executed:**
+
 ```bash
 git log --since=2026-01-12 --oneline -- cmd/orch/spawn_cmd.go
 git log --since=2026-01-12 --oneline -- pkg/spawn/config.go
@@ -81,6 +85,7 @@ git log --since=2026-01-12 --oneline -- pkg/spawn/context.go
 ```
 
 **Command Output:**
+
 ```
 # spawn_cmd.go - 10 commits
 87952d12 Add session TTL support for automatic cleanup
@@ -91,7 +96,7 @@ b24e9bb7 refactor(spawn): extract 3 gate concerns into pkg/spawn/gates/
 e39e4695 feat: add automatic probe vs investigation routing at spawn time
 e10a1df3 feat: wire session metadata to OpenCode API
 16386a7f docs: document removal of three pure-noise completion gates
-d554d4e3 refactor: eliminate pkg/registry — workspace files serve all lookup needs
+d554d4e3 refactor: eliminate legacy registry — workspace files serve all lookup needs
 99b77c80 fix: inline spawn uses HTTP API with x-opencode-directory for correct workdir
 
 # config.go - 3 commits
@@ -103,13 +108,14 @@ f074433c fix: ContextFilePath returns correct filename for meta/orchestrator spa
 c22fe282 feat: enrich spawn context with cluster summaries for area awareness
 999ea19e fix(spawn): gate investigation deliverable on skill type
 e39e4695 feat: add automatic probe vs investigation routing at spawn time
-d554d4e3 refactor: eliminate pkg/registry — workspace files serve all lookup needs
+d554d4e3 refactor: eliminate legacy registry — workspace files serve all lookup needs
 e2f2c2d8 feat: add --design-workspace flag for ui-design-session handoff
 287944a4 feat: add AGENT_MANIFEST.json creation at spawn time
 814c35e0 architect: add no-push guidance to worker spawn context template
 ```
 
 **Analysis:**
+
 - Files changed: cmd/orch/spawn_cmd.go (10 commits), pkg/spawn/config.go (3 commits), pkg/spawn/context.go (7 commits)
 - Files deleted: None of the referenced files were deleted
 - Files unchanged: None (all referenced files changed)
@@ -117,11 +123,13 @@ e2f2c2d8 feat: add --design-workspace flag for ui-design-session handoff
 ### Observation 2: Spawn Execution
 
 **Command Executed:**
+
 ```bash
 orch spawn investigation "analyze spawn workflow mechanics" --no-track --bypass-triage --headless
 ```
 
 **Command Output:**
+
 ```
 Skipping beads tracking (--no-track)
 Checking kb context for: "analyze spawn workflow"
@@ -142,6 +150,7 @@ Spawned agent (headless):
 **Staleness Warning Present:** YES ✅
 
 **Search Results:**
+
 ```bash
 grep -n "STALENESS WARNING" .orch/workspace/og-inv-analyze-spawn-workflow-15feb-1424/SPAWN_CONTEXT.md
 
@@ -155,6 +164,7 @@ grep -n "STALENESS WARNING" .orch/workspace/og-inv-analyze-spawn-workflow-15feb-
 **Four models had staleness warnings:**
 
 **1. Model Access and Spawn Paths (line 73):**
+
 ```
   - **STALENESS WARNING:**
     This model was last updated 2026-01-12.
@@ -164,6 +174,7 @@ grep -n "STALENESS WARNING" .orch/workspace/og-inv-analyze-spawn-workflow-15feb-
 ```
 
 **2. Spawn Architecture (line 146):**
+
 ```
   - **STALENESS WARNING:**
     This model was last updated 2026-01-12.
@@ -172,6 +183,7 @@ grep -n "STALENESS WARNING" .orch/workspace/og-inv-analyze-spawn-workflow-15feb-
 ```
 
 **3. Daemon Autonomous Operation (line 239):**
+
 ```
   - **STALENESS WARNING:**
     This model was last updated 2026-01-12.
@@ -180,6 +192,7 @@ grep -n "STALENESS WARNING" .orch/workspace/og-inv-analyze-spawn-workflow-15feb-
 ```
 
 **4. Orchestrator Session Lifecycle (line 346):**
+
 ```
   - **STALENESS WARNING:**
     This model was last updated 2026-01-12.
@@ -195,6 +208,7 @@ grep -n "STALENESS WARNING" .orch/workspace/og-inv-analyze-spawn-workflow-15feb-
 ### Result: Staleness Warning Present ✅ (Confirms Model)
 
 **Confirms Invariants:**
+
 - ✅ Spawn-time staleness detection fires in production (not just unit tests)
 - ✅ Staleness warnings are included in served model content in SPAWN_CONTEXT.md
 - ✅ Changed file detection works via `git log --since={Last Updated}`
@@ -206,6 +220,7 @@ grep -n "STALENESS WARNING" .orch/workspace/og-inv-analyze-spawn-workflow-15feb-
 **Confidence Level:** High - behavioral verification via end-to-end spawn with 4 stale models detected
 
 **Specific Findings:**
+
 1. **All target files correctly detected:** All three files referenced by Spawn Architecture model (spawn_cmd.go, config.go, context.go) were correctly identified as changed
 2. **Accurate change counts:** Detection matched manual git log verification (10, 3, and 7 commits respectively)
 3. **Cross-model detection:** The spawn served 4 different stale models, demonstrating the detection works across all models in kb context
@@ -218,16 +233,19 @@ grep -n "STALENESS WARNING" .orch/workspace/og-inv-analyze-spawn-workflow-15feb-
 ## References
 
 **Related Issues:**
+
 - orch-go-2qj - Phase 2 implementation (claimed complete)
 - orch-go-bm9 - Phase 1 backfill (code_refs blocks)
 - orch-go-nlgg - Flagged batch-completion without verification
 
 **Related Files:**
+
 - pkg/spawn/kbcontext.go - Implementation of staleness detection
 - pkg/spawn/kbcontext_test.go - Unit tests (48 tests passing)
 - .kb/investigations/2026-02-14-inv-design-solution-model-artifact-staleness.md - Original design
 
 **Related Model Claims:**
+
 - Spawn Architecture model (this probe's target)
 - Model Access and Spawn Paths (also has Last Updated: 2026-01-12)
 
@@ -244,6 +262,7 @@ All evidence collected and documented above:
 - [x] Workspace location: `.orch/workspace/og-inv-analyze-spawn-workflow-15feb-1424`
 
 **Artifacts Preserved:**
+
 - SPAWN_CONTEXT.md with 4 staleness warnings
 - Spawn command output in /tmp/spawn-test-output.txt
 - Git log verification commands documented in this probe

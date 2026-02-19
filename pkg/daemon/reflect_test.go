@@ -29,11 +29,15 @@ func TestReflectSuggestions_HasSuggestions(t *testing.T) {
 		{"drift only", &ReflectSuggestions{
 			Drift: []DriftSuggestion{{ID: "1", Content: "test"}},
 		}, true},
+		{"model drift only", &ReflectSuggestions{
+			ModelDrift: []json.RawMessage{json.RawMessage(`{"model":"test"}`)},
+		}, true},
 		{"all types", &ReflectSuggestions{
-			Synthesis: []SynthesisSuggestion{{Topic: "test", Count: 3}},
-			Promote:   []PromoteSuggestion{{ID: "1", Content: "test"}},
-			Stale:     []StaleSuggestion{{Path: "test.md", Age: 10}},
-			Drift:     []DriftSuggestion{{ID: "1", Content: "test"}},
+			Synthesis:  []SynthesisSuggestion{{Topic: "test", Count: 3}},
+			Promote:    []PromoteSuggestion{{ID: "1", Content: "test"}},
+			Stale:      []StaleSuggestion{{Path: "test.md", Age: 10}},
+			Drift:      []DriftSuggestion{{ID: "1", Content: "test"}},
+			ModelDrift: []json.RawMessage{json.RawMessage(`{"model":"test"}`)},
 		}, true},
 	}
 
@@ -59,11 +63,12 @@ func TestReflectSuggestions_TotalCount(t *testing.T) {
 			Synthesis: []SynthesisSuggestion{{Topic: "a"}, {Topic: "b"}},
 		}, 2},
 		{"mixed", &ReflectSuggestions{
-			Synthesis: []SynthesisSuggestion{{Topic: "a"}},
-			Promote:   []PromoteSuggestion{{ID: "1"}},
-			Stale:     []StaleSuggestion{{Path: "x"}},
-			Drift:     []DriftSuggestion{{ID: "2"}},
-		}, 4},
+			Synthesis:  []SynthesisSuggestion{{Topic: "a"}},
+			Promote:    []PromoteSuggestion{{ID: "1"}},
+			Stale:      []StaleSuggestion{{Path: "x"}},
+			Drift:      []DriftSuggestion{{ID: "2"}},
+			ModelDrift: []json.RawMessage{json.RawMessage(`{"model":"test"}`)},
+		}, 5},
 	}
 
 	for _, tt := range tests {
@@ -91,6 +96,9 @@ func TestReflectSuggestions_Summary(t *testing.T) {
 			Synthesis: []SynthesisSuggestion{{Topic: "a"}},
 			Stale:     []StaleSuggestion{{Path: "x"}, {Path: "y"}},
 		}, []string{"1 synthesis", "2 stale"}},
+		{"model drift", &ReflectSuggestions{
+			ModelDrift: []json.RawMessage{json.RawMessage(`{"model":"test"}`)},
+		}, []string{"model drift"}},
 	}
 
 	for _, tt := range tests {

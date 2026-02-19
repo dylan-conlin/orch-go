@@ -6,6 +6,7 @@
 ## Overview
 
 Implement dual backend system for agent spawning:
+
 - **Claude mode:** tmux + `claude` CLI (Max subscription, unlimited Opus)
 - **OpenCode mode:** HTTP API + dashboard (paid API)
 
@@ -26,10 +27,12 @@ Implement dual backend system for agent spawning:
 ### 1. Config System (orch-go-5w0fj)
 
 **Files to create/modify:**
+
 - `pkg/config/config.go` - Add `SpawnMode` field
 - `cmd/orch/config.go` - Add `config set` subcommand
 
 **Schema:**
+
 ```go
 type Config struct {
     SpawnMode   string            `yaml:"spawn_mode"`   // "claude" | "opencode"
@@ -50,8 +53,9 @@ type OpenCodeConfig struct {
 ```
 
 **Default values:**
+
 ```yaml
-spawn_mode: opencode  # backward compatible
+spawn_mode: opencode # backward compatible
 claude:
   model: opus
   tmux_session: workers-orch-go
@@ -61,6 +65,7 @@ opencode:
 ```
 
 **Command:**
+
 ```bash
 orch config set spawn_mode claude
 orch config set spawn_mode opencode
@@ -70,9 +75,11 @@ orch config get spawn_mode
 ### 2a. Claude Spawn (orch-go-0z5i4)
 
 **Files to create:**
+
 - `pkg/spawn/claude.go` - Tmux spawn implementation
 
 **Key functions:**
+
 ```go
 // SpawnClaude creates tmux window and launches claude CLI
 func SpawnClaude(cfg SpawnConfig) (AgentInfo, error) {
@@ -99,6 +106,7 @@ func AbandonClaude(agentID string) error {
 ```
 
 **Tmux workflow:**
+
 ```bash
 # Create window
 tmux new-window -t workers-orch-go: -n "inv-task-abc"
@@ -117,9 +125,11 @@ tmux capture-pane -p -t workers-orch-go:inv-task-abc
 ### 2b. Registry Schema (orch-go-1rk4z)
 
 **Files to modify:**
-- `pkg/registry/registry.go` - Add mode tracking
+
+- `pkg/session/registry.go` - Add mode tracking
 
 **Schema changes:**
+
 ```go
 type Agent struct {
     ID          string    `json:"id"`
@@ -137,15 +147,18 @@ type Agent struct {
 ```
 
 **Backward compatibility:**
+
 - Load old registry → default `mode` to "opencode"
 - Populate `SessionID` from existing field
 
 ### 3a. Status Command (orch-go-7ocqx)
 
 **Files to modify:**
+
 - `cmd/orch/status.go` - Mode-aware routing
 
 **Implementation:**
+
 ```go
 func getAgentStatus(agent *registry.Agent) (Status, error) {
     switch agent.Mode {
@@ -173,9 +186,11 @@ func getOpenCodeStatus(agent *registry.Agent) (Status, error) {
 ### 3b. Complete Command (orch-go-ec9kh)
 
 **Files to modify:**
+
 - `cmd/orch/complete.go` - Mode-aware verification
 
 **Implementation:**
+
 ```go
 func completeAgent(agent *registry.Agent) error {
     switch agent.Mode {
@@ -210,6 +225,7 @@ func completeClaude(agent *registry.Agent) error {
 ### 3c. Other Commands (orch-go-wjf89)
 
 **Monitor:**
+
 ```go
 // Claude mode: tmux capture + follow new output
 // OpenCode mode: SSE stream
@@ -225,6 +241,7 @@ func monitorAgent(agent *registry.Agent) error {
 ```
 
 **Send:**
+
 ```go
 func sendMessage(agent *registry.Agent, msg string) error {
     switch agent.Mode {
@@ -237,6 +254,7 @@ func sendMessage(agent *registry.Agent, msg string) error {
 ```
 
 **Abandon:**
+
 ```go
 func abandonAgent(agent *registry.Agent) error {
     switch agent.Mode {
@@ -255,6 +273,7 @@ func abandonAgent(agent *registry.Agent) error {
 **Test scenarios:**
 
 1. **Mode toggle:**
+
    ```bash
    orch config set spawn_mode claude
    orch spawn investigation "test claude mode"
@@ -266,6 +285,7 @@ func abandonAgent(agent *registry.Agent) error {
    ```
 
 2. **Mixed registry:**
+
    ```bash
    # Create agents in different modes
    orch spawn --mode claude investigation "task 1"
@@ -276,6 +296,7 @@ func abandonAgent(agent *registry.Agent) error {
    ```
 
 3. **Mode-specific operations:**
+
    ```bash
    # Test send in both modes
    orch send <claude-agent> "message"
@@ -287,6 +308,7 @@ func abandonAgent(agent *registry.Agent) error {
    ```
 
 4. **Graceful fallback:**
+
    ```bash
    # Stop opencode server
    pkill -f "opencode serve"
@@ -303,24 +325,28 @@ func abandonAgent(agent *registry.Agent) error {
 ### SPAWN_CONTEXT.md Generation
 
 Both modes use the same context generation (existing `pkg/spawn/context.go`). Only the delivery mechanism differs:
+
 - OpenCode: Send as prompt via HTTP
 - Claude: Write to file, reference via `--file` flag
 
 ### Phase Detection
 
 Both modes need to parse agent output for "Phase: X":
+
 - OpenCode: Already implemented in SSE parsing
 - Claude: Parse tmux capture output with same regex
 
 ### Workspace Management
 
 Workspace paths remain the same for both modes:
+
 - `.orch/workspace/{name}/`
 - `SPAWN_CONTEXT.md`, `SYNTHESIS.md`, etc.
 
 ### Tmux Session Auto-Creation
 
 If tmux session doesn't exist, create it:
+
 ```bash
 if ! tmux has-session -t workers-orch-go 2>/dev/null; then
     tmux new-session -d -s workers-orch-go
@@ -330,14 +356,17 @@ fi
 ## Migration Path
 
 **Phase 1: Add config (backward compatible)**
+
 - Default mode = opencode
 - Existing workflows unchanged
 
 **Phase 2: Implement claude mode**
+
 - Add `--mode claude` flag
 - Test in parallel with opencode
 
 **Phase 3: Switch default (breaking change)**
+
 - Change default to claude
 - Document opencode usage for dashboard needs
 
@@ -354,7 +383,7 @@ fi
 
 ## Cost Impact Summary
 
-| Mode | Monthly Cost | When to Use |
-|------|--------------|-------------|
-| Claude | $100 (Max only) | Default, budget-constrained, need Opus quality |
+| Mode     | Monthly Cost         | When to Use                                        |
+| -------- | -------------------- | -------------------------------------------------- |
+| Claude   | $100 (Max only)      | Default, budget-constrained, need Opus quality     |
 | OpenCode | $200-300 (Max + API) | Need dashboard, parallel spawning, specific models |

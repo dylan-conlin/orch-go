@@ -27,6 +27,7 @@ var (
 	reconcileProject  string
 	reconcileMinAge   int
 	reconcileMaxShown int
+	reconcileOpen     bool
 )
 
 type ZombieIssue struct {
@@ -44,15 +45,34 @@ type ZombieIssue struct {
 	LastPhase        string    `json:"last_phase,omitempty"`
 }
 
+type PhantomIssue struct {
+	ID               string    `json:"id"`
+	Title            string    `json:"title"`
+	Project          string    `json:"project"`
+	Status           string    `json:"status"`
+	Priority         int       `json:"priority"`
+	Labels           []string  `json:"labels"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	AgeSinceUpdate   string    `json:"age_since_update"`
+	HoursSinceUpdate float64   `json:"hours_since_update"`
+	HasWorkspace     bool      `json:"has_workspace"`
+	WorkspacePath    string    `json:"workspace_path,omitempty"`
+	LastPhase        string    `json:"last_phase,omitempty"`
+	SuggestedAction  string    `json:"suggested_action,omitempty"`
+	SuggestedCommand string    `json:"suggested_command,omitempty"`
+}
+
 var reconcileCmd = &cobra.Command{
 	Use:   "reconcile",
-	Short: "Detect and fix zombie in_progress issues",
+	Short: "Detect zombie in_progress issues or stale open phantom issues",
 	Long: `Detect in_progress issues that have no active agent and offer to fix them.
+Also detects open issues with no live session or tmux window (phantoms).
 
 Examples:
-  orch reconcile                      # Show zombie issues
-  orch reconcile --json               # Output as JSON
-  orch reconcile --fix                # Interactive fix mode`,
+	  orch reconcile                      # Show zombie issues
+	  orch reconcile --json               # Output as JSON
+	  orch reconcile --fix                # Interactive fix mode
+	  orch reconcile --open               # Show open phantom issues`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runReconcile()
 	},
@@ -66,11 +86,76 @@ func init() {
 	reconcileCmd.Flags().StringVarP(&reconcileProject, "project", "p", "", "Filter by project")
 	reconcileCmd.Flags().IntVar(&reconcileMinAge, "min-age", 1, "Minimum hours since update")
 	reconcileCmd.Flags().IntVar(&reconcileMaxShown, "limit", 50, "Maximum zombies to show")
+	reconcileCmd.Flags().BoolVar(&reconcileOpen, "open", false, "Reconcile open issues with no live session (phantoms)")
 	rootCmd.AddCommand(reconcileCmd)
 }
 
 func runReconcile() error {
 	projectDir, _ := os.Getwd()
+	if reconcileOpen {
+		if reconcileFix {
+			return fmt.Errorf("--fix is not supported with --open; use orch abandon or orch complete --force")
+		}
+		phantoms, err := findPhantomIssues(projectDir)
+		if err != nil {
+			return fmt.Errorf("failed to find phantom issues: %w", err)
+		}
+
+		if reconcileProject != "" {
+			filtered := make([]PhantomIssue, 0)
+			for _, p := range phantoms {
+				if p.Project == reconcileProject {
+					filtered = append(filtered, p)
+				}
+			}
+			phantoms = filtered
+		}
+
+		if reconcileMinAge > 0 {
+			filtered := make([]PhantomIssue, 0)
+			for _, p := range phantoms {
+				if p.HoursSinceUpdate >= float64(reconcileMinAge) {
+					filtered = append(filtered, p)
+				}
+			}
+			phantoms = filtered
+		}
+
+		sort.Slice(phantoms, func(i, j int) bool {
+			return phantoms[i].HoursSinceUpdate > phantoms[j].HoursSinceUpdate
+		})
+
+		if reconcileMaxShown > 0 && len(phantoms) > reconcileMaxShown {
+			phantoms = phantoms[:reconcileMaxShown]
+		}
+
+		if reconcileJSON {
+			data, _ := json.MarshalIndent(phantoms, "", "  ")
+			fmt.Println(string(data))
+			return nil
+		}
+
+		if len(phantoms) == 0 {
+			fmt.Println("No stale open phantom issues found")
+			return nil
+		}
+
+		fmt.Printf("Found %d open phantom issue(s):\n\n", len(phantoms))
+		for i, p := range phantoms {
+			fmt.Printf("  %d. [P%d] %s: %s\n", i+1, p.Priority, p.ID, p.Title)
+			fmt.Printf("     Age: %s\n", p.AgeSinceUpdate)
+			if p.LastPhase != "" {
+				fmt.Printf("     Last Phase: %s\n", p.LastPhase)
+			}
+			if p.SuggestedCommand != "" {
+				fmt.Printf("     Suggested: %s\n", p.SuggestedCommand)
+			}
+			fmt.Println()
+		}
+
+		fmt.Println("Review suggested actions (orch abandon or orch complete --force).")
+		return nil
+	}
 	zombies, err := findZombieIssues(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to find zombie issues: %w", err)
@@ -145,6 +230,32 @@ func findZombieIssues(projectDir string) ([]ZombieIssue, error) {
 		return findZombieIssuesFallback(projectDir)
 	}
 	return filterZombies(projectDir, issues)
+}
+
+func findPhantomIssues(projectDir string) ([]PhantomIssue, error) {
+	socketPath, err := beads.FindSocketPath("")
+	if err != nil {
+		return findPhantomIssuesFallback(projectDir)
+	}
+	client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+	if err := client.Connect(); err != nil {
+		return findPhantomIssuesFallback(projectDir)
+	}
+	defer client.Close()
+
+	issues, err := client.List(&beads.ListArgs{Status: "open"})
+	if err != nil {
+		return findPhantomIssuesFallback(projectDir)
+	}
+	return filterPhantoms(projectDir, issues)
+}
+
+func findPhantomIssuesFallback(projectDir string) ([]PhantomIssue, error) {
+	issues, err := beads.FallbackList("open")
+	if err != nil {
+		return nil, err
+	}
+	return filterPhantoms(projectDir, issues)
 }
 
 func findZombieIssuesFallback(projectDir string) ([]ZombieIssue, error) {
@@ -239,6 +350,50 @@ func filterZombies(projectDir string, issues []beads.Issue) ([]ZombieIssue, erro
 	return zombies, nil
 }
 
+func filterPhantoms(projectDir string, issues []beads.Issue) ([]PhantomIssue, error) {
+	now := time.Now()
+	var phantoms []PhantomIssue
+
+	for _, issue := range issues {
+		liveness := state.GetLiveness(issue.ID, serverURL, projectDir)
+		beadsOpen := !strings.EqualFold(issue.Status, "closed")
+		if !beadsOpen || liveness.TmuxLive || liveness.OpencodeLive {
+			continue
+		}
+
+		var updatedAt time.Time
+		if issue.UpdatedAt != "" {
+			t, _ := time.Parse(time.RFC3339, issue.UpdatedAt)
+			updatedAt = t
+		}
+		if updatedAt.IsZero() {
+			updatedAt = now
+		}
+		hoursSinceUpdate := now.Sub(updatedAt).Hours()
+		lastPhase := getLastPhase(issue.ID)
+		suggestedAction, suggestedCommand := suggestPhantomAction(issue.ID, lastPhase)
+
+		phantoms = append(phantoms, PhantomIssue{
+			ID:               issue.ID,
+			Title:            issue.Title,
+			Project:          extractProjectFromBeadsID(issue.ID),
+			Status:           issue.Status,
+			Priority:         issue.Priority,
+			Labels:           issue.Labels,
+			UpdatedAt:        updatedAt,
+			AgeSinceUpdate:   formatDuration(now.Sub(updatedAt)),
+			HoursSinceUpdate: hoursSinceUpdate,
+			HasWorkspace:     liveness.WorkspaceExists,
+			WorkspacePath:    liveness.WorkspacePath,
+			LastPhase:        lastPhase,
+			SuggestedAction:  suggestedAction,
+			SuggestedCommand: suggestedCommand,
+		})
+	}
+
+	return phantoms, nil
+}
+
 func getLastPhase(beadsID string) string {
 	socketPath, err := beads.FindSocketPath("")
 	if err != nil {
@@ -256,6 +411,14 @@ func getLastPhase(beadsID string) string {
 		}
 	}
 	return ""
+}
+
+func suggestPhantomAction(beadsID, lastPhase string) (string, string) {
+	phase := strings.TrimSpace(strings.ToLower(lastPhase))
+	if strings.HasPrefix(phase, "complete") {
+		return "complete", fmt.Sprintf("orch complete --force %s", beadsID)
+	}
+	return "abandon", fmt.Sprintf("orch abandon %s", beadsID)
 }
 
 func runReconcileFix(zombies []ZombieIssue) error {

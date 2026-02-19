@@ -174,3 +174,48 @@ func TestZombieIssueStruct(t *testing.T) {
 		t.Error("ZombieIssue.HoursSinceUpdate should be set")
 	}
 }
+
+func TestSuggestPhantomAction(t *testing.T) {
+	tests := []struct {
+		name          string
+		lastPhase     string
+		wantAction    string
+		wantCommand   string
+		wantCommandID string
+	}{
+		{
+			name:          "complete phase suggests force complete",
+			lastPhase:     "Complete - finished work",
+			wantAction:    "complete",
+			wantCommand:   "orch complete --force",
+			wantCommandID: "proj-abc123",
+		},
+		{
+			name:          "planning phase suggests abandon",
+			lastPhase:     "Planning - reading codebase",
+			wantAction:    "abandon",
+			wantCommand:   "orch abandon",
+			wantCommandID: "proj-xyz789",
+		},
+		{
+			name:          "empty phase suggests abandon",
+			lastPhase:     "",
+			wantAction:    "abandon",
+			wantCommand:   "orch abandon",
+			wantCommandID: "proj-empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			beadsID := tt.wantCommandID
+			action, command := suggestPhantomAction(beadsID, tt.lastPhase)
+			if action != tt.wantAction {
+				t.Errorf("suggestPhantomAction(%q) action = %q, want %q", tt.lastPhase, action, tt.wantAction)
+			}
+			if !strings.Contains(command, tt.wantCommand) || !strings.Contains(command, beadsID) {
+				t.Errorf("suggestPhantomAction(%q) command = %q, want to contain %q and %q", tt.lastPhase, command, tt.wantCommand, beadsID)
+			}
+		})
+	}
+}

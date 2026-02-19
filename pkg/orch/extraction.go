@@ -61,6 +61,10 @@ type SpawnContext struct {
 	PrimaryModelPath   string
 	IsBug              bool
 	ReproSteps         string
+	ReworkFeedback     string
+	ReworkNumber       int
+	PriorSynthesis     string
+	PriorWorkspace     string
 	UsageInfo          *spawn.UsageInfo
 	SpawnBackend       string
 	Tier               string
@@ -825,6 +829,10 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 		GapAnalysis:        ctx.GapAnalysis,
 		IsBug:              ctx.IsBug,
 		ReproSteps:         ctx.ReproSteps,
+		ReworkFeedback:     ctx.ReworkFeedback,
+		ReworkNumber:       ctx.ReworkNumber,
+		PriorSynthesis:     ctx.PriorSynthesis,
+		PriorWorkspace:     ctx.PriorWorkspace,
 		IsOrchestrator:     ctx.IsOrchestrator,
 		IsMetaOrchestrator: ctx.IsMetaOrchestrator,
 		UsageInfo:          ctx.UsageInfo,

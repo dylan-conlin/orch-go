@@ -24,6 +24,8 @@ const (
 	EventTypeAutoCompleted = "session.auto_completed"
 	// EventTypeAgentCompleted indicates an agent was completed via orch complete.
 	EventTypeAgentCompleted = "agent.completed"
+	// EventTypeAgentReworked indicates a rework spawn was created for an issue.
+	EventTypeAgentReworked = "agent.reworked"
 	// EventTypeVerificationFailed indicates verification failed before user decides to --force or fix.
 	EventTypeVerificationFailed = "verification.failed"
 	// EventTypeServiceCrashed indicates a service crashed (PID changed unexpectedly).
@@ -259,6 +261,50 @@ func (l *Logger) LogAgentCompleted(data AgentCompletedData) error {
 
 	return l.Log(Event{
 		Type:      EventTypeAgentCompleted,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// AgentReworkedData contains the data for an agent.reworked event.
+type AgentReworkedData struct {
+	BeadsID        string `json:"beads_id,omitempty"`
+	PriorWorkspace string `json:"prior_workspace,omitempty"`
+	NewWorkspace   string `json:"new_workspace,omitempty"`
+	ReworkNumber   int    `json:"rework_number,omitempty"`
+	Feedback       string `json:"feedback,omitempty"`
+	Skill          string `json:"skill,omitempty"`
+	Model          string `json:"model,omitempty"`
+}
+
+// LogAgentReworked logs a rework event with metadata for quality tracking.
+func (l *Logger) LogAgentReworked(data AgentReworkedData) error {
+	eventData := map[string]interface{}{}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if data.PriorWorkspace != "" {
+		eventData["prior_workspace"] = data.PriorWorkspace
+	}
+	if data.NewWorkspace != "" {
+		eventData["new_workspace"] = data.NewWorkspace
+	}
+	if data.ReworkNumber > 0 {
+		eventData["rework_number"] = data.ReworkNumber
+	}
+	if data.Feedback != "" {
+		eventData["feedback"] = data.Feedback
+	}
+	if data.Skill != "" {
+		eventData["skill"] = data.Skill
+	}
+	if data.Model != "" {
+		eventData["model"] = data.Model
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeAgentReworked,
 		SessionID: data.BeadsID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,

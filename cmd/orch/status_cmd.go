@@ -210,9 +210,14 @@ func runStatus(serverURL string) error {
 	agents := make([]AgentInfo, 0)
 	seenBeadsIDs := make(map[string]bool)
 
+	// Get current project's workspace directory for workspace lookups
+	projectDir, _ := os.Getwd()
+
 	// === OPTIMIZED: Batch fetch all data upfront ===
-	// 1. Fetch all OpenCode sessions in one call (already fast, ~15ms)
-	sessions, err := client.ListSessions("")
+	// 1. Fetch sessions across all known projects (not just current project).
+	// OpenCode scopes sessions by x-opencode-directory header, so cross-project
+	// agents are invisible without querying each project directory.
+	sessions, err := listSessionsAcrossProjects(client, projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
@@ -245,9 +250,6 @@ func runStatus(serverURL string) error {
 
 	// Track project directories for cross-project agents (beadsID -> projectDir)
 	beadsProjectDirs := make(map[string]string)
-
-	// Get current project's workspace directory for workspace lookups
-	projectDir, _ := os.Getwd()
 
 	// Phase 1: Collect agents from workspace AGENT_MANIFEST.json files
 	// Workspace files are the source of truth for spawn-time metadata.
