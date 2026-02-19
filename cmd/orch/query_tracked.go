@@ -86,7 +86,7 @@ func queryTrackedAgents(projectDirs []string) ([]AgentStatus, error) {
 	var liveness map[string]opencode.SessionStatusInfo
 	if len(sessionIDs) > 0 {
 		client := opencode.NewClient(opencode.DefaultServerURL)
-		liveness, err = client.GetAllSessionStatus()
+		liveness, err = client.GetSessionStatusByIDs(sessionIDs)
 		if err != nil {
 			// OpenCode down: agents shown with status=unknown
 			log.Printf("Warning: OpenCode unreachable: %v", err)

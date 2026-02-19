@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -1178,11 +1179,31 @@ func (c *Client) GetSessionTokens(sessionID string) (*TokenStats, error) {
 	return &stats, nil
 }
 
+// GetSessionStatusByIDs fetches the status of specific sessions from GET /session/status.
+// Returns a map of sessionID -> SessionStatusInfo.
+// Sessions not in the map are considered idle (status is in-memory only in OpenCode).
+func (c *Client) GetSessionStatusByIDs(sessionIDs []string) (map[string]SessionStatusInfo, error) {
+	if len(sessionIDs) == 0 {
+		return map[string]SessionStatusInfo{}, nil
+	}
+	return c.getSessionStatus(sessionIDs)
+}
+
 // GetAllSessionStatus fetches the status of all sessions from GET /session/status endpoint.
 // Returns a map of sessionID -> SessionStatusInfo.
 // Sessions not in the map are considered idle (status is in-memory only in OpenCode).
 func (c *Client) GetAllSessionStatus() (map[string]SessionStatusInfo, error) {
-	req, err := http.NewRequest("GET", c.ServerURL+"/session/status", nil)
+	return c.getSessionStatus(nil)
+}
+
+func (c *Client) getSessionStatus(sessionIDs []string) (map[string]SessionStatusInfo, error) {
+	endpoint := c.ServerURL + "/session/status"
+	if len(sessionIDs) > 0 {
+		query := url.Values{}
+		query.Set("ids", strings.Join(sessionIDs, ","))
+		endpoint = endpoint + "?" + query.Encode()
+	}
+	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -1209,7 +1230,7 @@ func (c *Client) GetAllSessionStatus() (map[string]SessionStatusInfo, error) {
 // Returns nil if session is idle (status deleted from in-memory map in OpenCode).
 // Use SessionExists() to distinguish between "session doesn't exist" vs "session is idle".
 func (c *Client) GetSessionStatusByID(sessionID string) (*SessionStatusInfo, error) {
-	allStatus, err := c.GetAllSessionStatus()
+	allStatus, err := c.GetSessionStatusByIDs([]string{sessionID})
 	if err != nil {
 		return nil, err
 	}

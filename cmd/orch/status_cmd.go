@@ -221,8 +221,18 @@ func runStatus(serverURL string) error {
 	}
 
 	sessionStatusMap := make(map[string]opencode.SessionStatusInfo)
-	if status, err := client.GetAllSessionStatus(); err == nil {
-		sessionStatusMap = status
+	{
+		statusIDs := make([]string, 0, len(agents))
+		for _, a := range agents {
+			if a.SessionID != "" {
+				statusIDs = append(statusIDs, a.SessionID)
+			}
+		}
+		if len(statusIDs) > 0 {
+			if status, err := client.GetSessionStatusByIDs(statusIDs); err == nil {
+				sessionStatusMap = status
+			}
+		}
 	}
 
 	for i := range agents {

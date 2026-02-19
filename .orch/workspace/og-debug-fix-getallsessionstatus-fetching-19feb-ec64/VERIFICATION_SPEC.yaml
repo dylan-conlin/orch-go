@@ -1,0 +1,34 @@
+verification:
+  issue: orch-go-1099
+  type: bug-fix
+
+  build:
+    command: "go build ./cmd/orch/"
+    expectation: "Clean build, no errors"
+    result: PASS
+
+  vet:
+    command: "go vet ./cmd/orch/"
+    expectation: "No static analysis issues"
+    result: PASS
+
+  tests:
+    - command: "go test ./pkg/opencode/ -count=1"
+      expectation: "All opencode tests pass including GetAllSessionStatus and GetSessionStatusByID tests"
+      result: "PASS (2.282s)"
+    - command: "go test ./cmd/orch/ -count=1"
+      expectation: "All cmd/orch tests pass"
+      result: "PASS (3.594s)"
+
+  behavioral:
+    description: "GetAllSessionStatus no longer called from production code paths"
+    verification: "grep -r 'GetAllSessionStatus' across *.go files shows only definition (client.go:1195) and tests (client_test.go)"
+    result: PASS
+
+  scope_check:
+    files_changed:
+      - "cmd/orch/query_tracked.go (1 line: GetAllSessionStatus -> GetSessionStatusByIDs)"
+      - "cmd/orch/status_cmd.go (7 lines: collect session IDs, filter call)"
+      - "pkg/opencode/client.go (1 line: GetSessionStatusByIDs instead of GetAllSessionStatus)"
+    no_api_changes: true
+    no_dashboard_changes: true
