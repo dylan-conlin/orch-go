@@ -11,6 +11,7 @@ export interface GraphNode {
   type: string // beads: task, bug, feature, epic, question; kb: investigation, decision
   status: string // open, in_progress, closed, blocked, Complete, Accepted, etc.
   priority: number // 0-4 for beads, 0 for kb artifacts
+  effective_priority?: number
   source: string // "beads" or "kb"
   date?: string // for kb artifacts
   created_at?: string // creation timestamp

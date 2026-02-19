@@ -153,6 +153,12 @@
 	<div
 		class="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex items-center justify-center p-4"
 		onclick={() => (expandedImage = null)}
+		onkeydown={(e) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				expandedImage = null;
+			}
+		}}
 		role="button"
 		tabindex="-1"
 	>
@@ -167,12 +173,23 @@
 			</button>
 
 			<!-- Image -->
-			<img
-				src={getScreenshotPath(expandedImage)}
-				alt={expandedImage}
-				class="w-full h-full object-contain rounded-lg border shadow-lg"
+			<button
+				type="button"
+				class="w-full h-full"
 				onclick={(e) => e.stopPropagation()}
-			/>
+				onkeydown={(e) => {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault();
+						e.stopPropagation();
+					}
+				}}
+			>
+				<img
+					src={getScreenshotPath(expandedImage)}
+					alt={expandedImage}
+					class="w-full h-full object-contain rounded-lg border shadow-lg"
+				/>
+			</button>
 
 			<!-- Filename -->
 			<div class="mt-3 text-center">
