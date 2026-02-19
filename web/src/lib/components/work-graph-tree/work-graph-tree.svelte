@@ -54,8 +54,11 @@
 	// Track which dependency chain sections are collapsed
 	let collapsedChains = new Set<string>();
 
-	// Box-drawing prefix map for dependency chain nodes
+	// Flow connector prefix map for dependency chain nodes
 	let depPrefixMap = new Map<string, string>();
+	// Gate tracking: items that are convergence points in dependency chains
+	let depGateIds = new Set<string>();
+	let depGateSeparatorBefore = new Set<string>();
 	let showAllIndependent = false;
 	let independentHiddenCount = 0;
 	let independentHasOverflow = false;
@@ -269,6 +272,8 @@
 				}
 			}
 			depPrefixMap = new Map();
+			depGateIds = new Set();
+			depGateSeparatorBefore = new Set();
 			return items;
 		}
 
@@ -280,6 +285,8 @@
 		if (shouldUseDependencyView) {
 			const dv = buildDependencyView(treeNodeIndex, edges);
 			const prefixes = new Map<string, string>();
+			const gateIds = new Set<string>();
+			const gateSepBefore = new Set<string>();
 
 			for (const chain of dv.chains) {
 				items.push({
@@ -292,7 +299,15 @@
 
 				if (!collapsedChains.has(chain.id)) {
 					const flatItems = flattenDepChain(chain, excludedIds);
+					let firstGateInChain = true;
 					for (const fi of flatItems) {
+						if (fi.isGate) {
+							gateIds.add(fi.node.id);
+							if (firstGateInChain) {
+								gateSepBefore.add(fi.node.id);
+								firstGateInChain = false;
+							}
+						}
 						prefixes.set(fi.node.id, fi.prefix);
 						items.push(fi.node);
 					}
@@ -325,11 +340,15 @@
 			}
 
 			depPrefixMap = prefixes;
+			depGateIds = gateIds;
+			depGateSeparatorBefore = gateSepBefore;
 			return items;
 		}
 
 		items.push(...flattenVisibleTree(tree, excludedIds));
 		depPrefixMap = new Map();
+		depGateIds = new Set();
+		depGateSeparatorBefore = new Set();
 		return items;
 	}
 
@@ -784,7 +803,7 @@
 						{collapsedChains.has(item.key) ? '▶' : '▼'}
 					</span>
 					{#if item.type === 'chain'}
-						<span class="text-xs text-muted-foreground font-mono">──</span>
+						<span class="text-xs text-blue-400/60 font-mono">▸</span>
 					{/if}
 					<span class="text-xs font-semibold tracking-wider {item.type === 'independent' ? 'text-muted-foreground uppercase' : 'text-blue-400'} truncate max-w-md">
 						{item.label}
@@ -806,6 +825,14 @@
 				</div>
 			</div>
 		{:else}
+		<!-- Gate separator: visual signal that everything above must complete before this closes -->
+		{#if !isWIP && depGateSeparatorBefore.has((item as TreeNode).id)}
+			<div class="flex items-center gap-2 py-1.5 px-3 select-none">
+				<div class="flex-1 border-t border-dashed border-zinc-600"></div>
+				<span class="text-[10px] uppercase tracking-widest text-zinc-500 font-medium">gate</span>
+				<div class="flex-1 border-t border-dashed border-zinc-600"></div>
+			</div>
+		{/if}
 		<div
 			data-testid={getRowTestId(item)}
 			data-node-index={index}
@@ -1073,8 +1100,13 @@
 				}}
 			>
 					{#if depPrefix !== undefined}
-						<!-- Box-drawing prefix for dependency chain -->
-						<span class="text-zinc-600 font-mono text-xs whitespace-pre select-none leading-none">{depPrefix}</span>
+						{#if depPrefix === ''}
+							<!-- Flow origin: unblocked root of dependency chain -->
+							<span class="text-blue-400 font-mono text-sm select-none w-4 text-center" title="Flow origin (unblocked)">◆</span>
+						{:else}
+							<!-- Flow connector: directional arrow shows dependency flow -->
+							<span class="text-zinc-600 font-mono text-xs whitespace-pre select-none leading-none">{depPrefix}</span>
+						{/if}
 					{:else}
 						<!-- Expansion indicator (non-dep mode) -->
 						<span class="w-4 text-muted-foreground text-xs">

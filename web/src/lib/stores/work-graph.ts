@@ -393,6 +393,7 @@ export interface FlatDepItem {
   node: TreeNode
   prefix: string
   depDepth: number
+  isGate?: boolean
 }
 
 export interface DepView {
@@ -490,7 +491,13 @@ export function buildDependencyView(
         .sort((a, b) => {
           const nodeA = treeNodeIndex.get(a)
           const nodeB = treeNodeIndex.get(b)
-          if (nodeA && nodeB) return compareNodes(nodeA, nodeB)
+          if (nodeA && nodeB) {
+            // Topological: sort by layer first (upstream items before downstream)
+            const layerA = nodeA.layer ?? Number.POSITIVE_INFINITY
+            const layerB = nodeB.layer ?? Number.POSITIVE_INFINITY
+            if (layerA !== layerB) return layerA - layerB
+            return compareNodes(nodeA, nodeB)
+          }
           return a.localeCompare(b)
         })
       return {
@@ -539,11 +546,14 @@ export function buildDependencyView(
 }
 
 /**
- * Flatten a dependency chain into items with box-drawing prefixes.
- * Root nodes are flush left, children get ├── or └── prefixes.
+ * Flatten a dependency chain into items with flow connector prefixes.
+ * Root nodes are flush left (◆ marker added by renderer), children get ├─▸ or └─▸ prefixes.
+ * Top-to-bottom = dependency flow direction (upstream first, downstream last).
+ * Gate items (single leaf at max depth) are marked for separator rendering.
  */
 export function flattenDepChain(chain: DepChain, pinnedIds: Set<string>): FlatDepItem[] {
   const items: FlatDepItem[] = []
+  const leafDepths: { index: number; depth: number }[] = []
 
   function walk(depNode: DepNode, ancestorIsLast: boolean[]) {
     if (pinnedIds.has(depNode.node.id)) return
@@ -554,12 +564,19 @@ export function flattenDepChain(chain: DepChain, pinnedIds: Set<string>): FlatDe
         prefix += ancestorIsLast[i] ? '    ' : '│   '
       }
       const isLast = ancestorIsLast[ancestorIsLast.length - 1]
-      prefix += isLast ? '└── ' : '├── '
+      // Flow connectors: directional arrow shows blocking flows downstream
+      prefix += isLast ? '└─▸ ' : '├─▸ '
     }
+
+    const visibleChildren = depNode.depChildren.filter((c) => !pinnedIds.has(c.node.id))
+    const itemIndex = items.length
 
     items.push({ node: depNode.node, prefix, depDepth: depNode.depDepth })
 
-    const visibleChildren = depNode.depChildren.filter((c) => !pinnedIds.has(c.node.id))
+    if (visibleChildren.length === 0) {
+      leafDepths.push({ index: itemIndex, depth: depNode.depDepth })
+    }
+
     for (let i = 0; i < visibleChildren.length; i++) {
       const childIsLast = i === visibleChildren.length - 1
       walk(visibleChildren[i], [...ancestorIsLast, childIsLast])
@@ -568,6 +585,16 @@ export function flattenDepChain(chain: DepChain, pinnedIds: Set<string>): FlatDe
 
   for (const root of chain.roots) {
     walk(root, [])
+  }
+
+  // Detect gate items: single leaf at maximum depth = convergence point
+  // Gate = everything above must complete before this item closes
+  const maxLeafDepth = leafDepths.reduce((max, l) => Math.max(max, l.depth), 0)
+  if (maxLeafDepth > 0) {
+    const leavesAtMax = leafDepths.filter((l) => l.depth === maxLeafDepth)
+    if (leavesAtMax.length === 1) {
+      items[leavesAtMax[0].index].isGate = true
+    }
   }
 
   return items

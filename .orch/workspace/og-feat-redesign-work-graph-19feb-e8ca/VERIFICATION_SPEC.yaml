@@ -1,0 +1,50 @@
+verification:
+  commands:
+    - command: "go build ./cmd/orch/"
+      expected: "Success (exit 0)"
+      actual: "Success"
+    - command: "go vet ./cmd/orch/"
+      expected: "No errors"
+      actual: "No errors"
+    - command: "go test ./pkg/graph/... -v"
+      expected: "All tests pass"
+      actual: "8/8 PASS"
+    - command: "cd web && npm run build"
+      expected: "Build succeeds"
+      actual: "Built in 11.88s, ✔ done"
+    - command: "npx svelte-check --tsconfig ./tsconfig.json 2>&1 | grep 'work-graph'"
+      expected: "No errors in modified files"
+      actual: "No output (no errors in work-graph files)"
+
+  manual_verification:
+    - step: "Open http://localhost:5188, navigate to work-graph view"
+      expected: "Dependency chains show ├─▸/└─▸ flow connectors instead of ├──/└──"
+      status: "Requires visual verification"
+    - step: "Look at chain roots"
+      expected: "Root items show ◆ blue diamond marker"
+      status: "Requires visual verification"
+    - step: "Check chain with single convergence point"
+      expected: "Gate separator line (dashed '─── gate ───') appears before the final downstream item"
+      status: "Requires visual verification"
+    - step: "Check topological ordering within chains"
+      expected: "Items sorted by layer (upstream first, downstream last) then by priority"
+      status: "Requires visual verification"
+    - step: "Chain section headers show ▸ glyph instead of ──"
+      expected: "Blue arrow indicator on chain headers"
+      status: "Requires visual verification"
+
+  files_changed:
+    - "web/src/lib/stores/work-graph.ts"
+    - "web/src/lib/components/work-graph-tree/work-graph-tree.svelte"
+
+  scope_boundary:
+    in_scope:
+      - "Flow connector glyphs (├─▸/└─▸ replacing ├──/└──)"
+      - "Root marker (◆ for unblocked chain origins)"
+      - "Gate separator (dashed line before convergence points)"
+      - "Topological sort by layer in dependency view"
+      - "Chain header glyph update (▸ replacing ──)"
+    out_of_scope:
+      - "Overall page layout unchanged"
+      - "Data model/API unchanged"
+      - "No horizontal/DAG visualizations"
