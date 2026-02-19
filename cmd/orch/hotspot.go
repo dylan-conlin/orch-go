@@ -86,16 +86,17 @@ type Hotspot struct {
 
 // HotspotReport is the complete analysis output.
 type HotspotReport struct {
-	GeneratedAt         string    `json:"generated_at"`
-	AnalysisPeriod      string    `json:"analysis_period"`
-	FixThreshold        int       `json:"fix_threshold"`
-	InvThreshold        int       `json:"inv_threshold"`
-	BloatThreshold      int       `json:"bloat_threshold"`
-	Hotspots            []Hotspot `json:"hotspots"`
-	TotalFixCommits     int       `json:"total_fix_commits"`
-	TotalInvestigations int       `json:"total_investigations"`
-	TotalBloatedFiles   int       `json:"total_bloated_files"`
-	HasArchitectWork    bool      `json:"has_architect_work"`
+	GeneratedAt          string    `json:"generated_at"`
+	AnalysisPeriod       string    `json:"analysis_period"`
+	FixThreshold         int       `json:"fix_threshold"`
+	InvThreshold         int       `json:"inv_threshold"`
+	BloatThreshold       int       `json:"bloat_threshold"`
+	Hotspots             []Hotspot `json:"hotspots"`
+	TotalFixCommits      int       `json:"total_fix_commits"`
+	TotalInvestigations  int       `json:"total_investigations"`
+	TotalBloatedFiles    int       `json:"total_bloated_files"`
+	TotalCouplingClusters int      `json:"total_coupling_clusters"`
+	HasArchitectWork     bool      `json:"has_architect_work"`
 }
 
 func runHotspot() error {
@@ -138,6 +139,15 @@ func runHotspot() error {
 	} else {
 		report.TotalBloatedFiles = totalBloat
 		report.Hotspots = append(report.Hotspots, bloatHotspots...)
+	}
+
+	// 4. Analyze cross-layer coupling clusters
+	couplingHotspots, totalCoupling, err := analyzeCouplingClusters(projectDir, hotspotDaysBack)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to analyze coupling clusters: %v\n", err)
+	} else {
+		report.TotalCouplingClusters = totalCoupling
+		report.Hotspots = append(report.Hotspots, couplingHotspots...)
 	}
 
 	// Sort hotspots by score (descending)
@@ -504,6 +514,7 @@ func outputText(report HotspotReport) error {
 	fmt.Printf("║  Fix Commits Analyzed: %-53d ║\n", report.TotalFixCommits)
 	fmt.Printf("║  Investigations Analyzed: %-50d ║\n", report.TotalInvestigations)
 	fmt.Printf("║  Bloated Files (>%d lines): %-48d ║\n", report.BloatThreshold, report.TotalBloatedFiles)
+	fmt.Printf("║  Coupling Clusters: %-56d ║\n", report.TotalCouplingClusters)
 	fmt.Println("╠══════════════════════════════════════════════════════════════════════════════╣")
 
 	if len(report.Hotspots) == 0 {
@@ -527,6 +538,8 @@ func outputText(report HotspotReport) error {
 			typeIcon = "📚"
 		} else if h.Type == "bloat-size" {
 			typeIcon = "📏"
+		} else if h.Type == "coupling-cluster" {
+			typeIcon = "🔗"
 		}
 
 		// Truncate path for display
@@ -680,6 +693,22 @@ func matchPathToHotspots(path string, hotspots []Hotspot) (bool, int) {
 			if matched && h.Score > maxScore {
 				maxScore = h.Score
 			}
+		case "coupling-cluster":
+			// For coupling clusters, check if the concept appears in the path
+			// or if the path matches any of the related files
+			if strings.Contains(strings.ToLower(path), strings.ToLower(h.Path)) {
+				matched = true
+			}
+			// Also check related files for exact or directory matches
+			for _, rf := range h.RelatedFiles {
+				if path == rf || (strings.HasSuffix(path, "/") && strings.HasPrefix(rf, path)) {
+					matched = true
+					break
+				}
+			}
+			if matched && h.Score > maxScore {
+				maxScore = h.Score
+			}
 		}
 	}
 
@@ -709,8 +738,8 @@ func checkSpawnHotspots(task string, hotspots []Hotspot) *SpawnHotspotResult {
 			}
 		}
 
-		// For investigation clusters, also check if topic appears in task text
-		if !matched && h.Type == "investigation-cluster" {
+		// For investigation clusters and coupling clusters, also check if topic appears in task text
+		if !matched && (h.Type == "investigation-cluster" || h.Type == "coupling-cluster") {
 			if strings.Contains(taskLower, strings.ToLower(h.Path)) {
 				matched = true
 			}
@@ -750,6 +779,8 @@ func formatHotspotWarning(result *SpawnHotspotResult) string {
 			typeIcon = "📚"
 		} else if h.Type == "bloat-size" {
 			typeIcon = "📏"
+		} else if h.Type == "coupling-cluster" {
+			typeIcon = "🔗"
 		}
 		line := fmt.Sprintf("│  %s [%d] %s", typeIcon, h.Score, h.Path)
 		// Pad to box width
@@ -789,6 +820,10 @@ func RunHotspotCheckForSpawn(projectDir, task string) (*SpawnHotspotResult, erro
 	// Analyze investigation clusters (silent failure if kb not available)
 	invHotspots, _, _ := analyzeInvestigationClusters(projectDir, 3)
 	report.Hotspots = append(report.Hotspots, invHotspots...)
+
+	// Analyze coupling clusters
+	couplingHotspots, _, _ := analyzeCouplingClusters(projectDir, 28)
+	report.Hotspots = append(report.Hotspots, couplingHotspots...)
 
 	if len(report.Hotspots) == 0 {
 		return nil, nil
