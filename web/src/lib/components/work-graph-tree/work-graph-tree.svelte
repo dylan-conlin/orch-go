@@ -42,7 +42,6 @@
 	export let groups: GroupSection[] = [];
 	export let groupMode: GroupByMode = 'priority';
 	export let edges: GraphEdge[] = [];
-	export let newIssueIds: Set<string> = new Set();
 	export let wipItems: WIPItem[] = [];
 	export let excludeIds: Set<string> = new Set();
 	export let onToggleExpansion: (nodeId: string, expanded: boolean) => void = () => {};
@@ -840,7 +839,7 @@
 			class="node-row cursor-pointer select-none focus:outline-none"
 			class:selected={index === selectedIndex}
 			class:focused={index === selectedIndex}
-			class:new-issue-highlight={!isWIP && newIssueIds.has(itemId)}
+	
 			role="treeitem"
 			aria-selected={index === selectedIndex}
 			tabindex="-1"
@@ -1317,21 +1316,6 @@
 	.work-graph-tree {
 		/* Ensure keyboard focus works */
 		min-height: 100%;
-	}
-	
-	.new-issue-highlight {
-		animation: highlight-fade 30s ease-out;
-	}
-	
-	@keyframes highlight-fade {
-		0% {
-			background-color: rgba(59, 130, 246, 0.3); /* blue-500 with opacity */
-			box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
-		}
-		100% {
-			background-color: transparent;
-			box-shadow: 0 0 0 0 transparent;
-		}
 	}
 	
 	.action-feedback-priority {

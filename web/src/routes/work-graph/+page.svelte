@@ -94,10 +94,6 @@
 	let currentProjectDir: string | undefined = undefined;
 	let projectChangeDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
 	let previousIssueIds = new Set<string>();
-	let newIssueIds = new Set<string>();
-	// Flag to prevent marking all issues as "new" on first load
-	// Set to true after onMount initializes previousIssueIds
-	let isNewIssueDetectionEnabled = false;
 	let completedIssues: CompletedIssue[] = [];
 	let focusedBeadsId: string | undefined = undefined; // Current focus beads ID for auto-scoping
 	let labelFilter: string = '';
@@ -262,9 +258,6 @@
 			}
 		}
 		
-		// Enable new issue detection now that previousIssueIds is initialized
-		isNewIssueDetectionEnabled = true;
-
 		// Connect to SSE for real-time agent updates (WIP section)
 		connectSSE();
 		agentlogRealtimeStartUnix = Math.floor(Date.now() / 1000);
@@ -444,27 +437,10 @@
 
 			error = null;
 			
-			// Track newly appeared issues for highlighting (use API nodes, not filtered nodes)
-			// This prevents highlighting children when expanding parents (they were always in the API data)
 			if ($workGraph.nodes) {
 				const currentIssueIds = new Set($workGraph.nodes.map(n => n.id));
 				const projectDir = $orchestratorContext?.project_dir;
-				
-				// Find issues that are new (in current but not in previous)
-				// Only detect new issues after onMount has initialized previousIssueIds
-				// This prevents marking all issues as "new" on first load
-				for (const id of currentIssueIds) {
-					if (isNewIssueDetectionEnabled && !previousIssueIds.has(id) && !newIssueIds.has(id)) {
-						newIssueIds.add(id);
-						newIssueIds = newIssueIds; // Trigger reactivity
-						// Remove highlight after 30 seconds
-						setTimeout(() => {
-							newIssueIds.delete(id);
-							newIssueIds = newIssueIds; // Trigger reactivity
-						}, 30000);
-					}
-				}
-				
+
 				// Update previousIssueIds for next comparison
 				previousIssueIds = currentIssueIds;
 				
@@ -510,10 +486,7 @@
 				
 				// Update state synchronously to prevent stale comparisons
 				currentProjectDir = newProjectDir;
-				
-				// Clear current highlights - they belong to the old project
-				newIssueIds = new Set<string>();
-				
+
 				// Load seen issues for this project from localStorage
 				if (seenIssuesState.byProject[newProjectDir]) {
 					previousIssueIds = new Set(seenIssuesState.byProject[newProjectDir].issueIds);
@@ -880,7 +853,6 @@
 								groups={groupSections}
 								groupMode={groupByMode}
 								edges={$workGraph?.edges || []}
-							{newIssueIds}
 							excludeIds={readyToCompleteIds}
 								wipItems={$wipItems}
 								onToggleExpansion={handleToggleExpansion}
