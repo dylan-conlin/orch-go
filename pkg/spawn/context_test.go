@@ -392,6 +392,7 @@ Test skill content.
 		"CREATE SYNTHESIS.md",
 		"COMMIT YOUR WORK",
 		"git add -A",
+		"git commit -m",
 	}
 
 	for _, check := range checks {
