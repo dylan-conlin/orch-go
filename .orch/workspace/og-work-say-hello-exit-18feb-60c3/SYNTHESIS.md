@@ -19,10 +19,10 @@ Printed the required hello message and created the session synthesis file; no co
 - `.orch/workspace/og-work-say-hello-exit-18feb-60c3/SYNTHESIS.md` - Session synthesis for this ad-hoc run.
 
 ### Files Modified
-- None.
+- `build/orch` - Rebuilt binary from commit hook.
 
 ### Commits
-- Pending (commit created after synthesis).
+- `886eb0cc7d50a049acc41e33e7b36d5bff8713d6` - feat: add session synthesis for hello task
 
 ---
 
