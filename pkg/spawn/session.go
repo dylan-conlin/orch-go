@@ -195,6 +195,9 @@ type AgentManifest struct {
 
 	// Model is the model spec used for this agent (e.g., "gemini-3-flash-preview", "claude-opus-4-5-20251101")
 	Model string `json:"model,omitempty"`
+
+	// SessionID is the OpenCode session ID (empty for claude backend which has no OpenCode session)
+	SessionID string `json:"session_id,omitempty"`
 }
 
 // WriteAgentManifest writes the agent manifest JSON to the workspace directory.
@@ -371,4 +374,45 @@ func (m *AgentManifest) ParseSpawnTime() time.Time {
 		return time.Time{}
 	}
 	return t
+}
+
+// LookupManifestsByBeadsIDs scans workspace directories and returns manifests
+// indexed by beads_id. Used by queryTrackedAgents for batch binding lookup.
+// Only returns manifests whose BeadsID matches one of the provided IDs.
+func LookupManifestsByBeadsIDs(projectDir string, beadsIDs []string) (map[string]*AgentManifest, error) {
+	if len(beadsIDs) == 0 {
+		return nil, nil
+	}
+
+	// Build lookup set for O(1) matching
+	idSet := make(map[string]bool, len(beadsIDs))
+	for _, id := range beadsIDs {
+		idSet[id] = true
+	}
+
+	workspaceRoot := filepath.Join(projectDir, ".orch", "workspace")
+	entries, err := os.ReadDir(workspaceRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read workspace directory: %w", err)
+	}
+
+	result := make(map[string]*AgentManifest)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		workspacePath := filepath.Join(workspaceRoot, entry.Name())
+		manifest, err := ReadAgentManifest(workspacePath)
+		if err != nil {
+			continue // Skip unreadable manifests
+		}
+		if manifest.BeadsID != "" && idSet[manifest.BeadsID] {
+			result[manifest.BeadsID] = manifest
+		}
+	}
+
+	return result, nil
 }

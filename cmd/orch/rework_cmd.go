@@ -266,12 +266,15 @@ func runRework(beadsID, feedback string) error {
 	}
 
 	cfg := orch.BuildSpawnConfig(ctx, "", resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, false, false)
-	minimalPrompt, err := orch.ValidateAndWriteContext(cfg, false)
+	minimalPrompt, rollback, err := orch.ValidateAndWriteContext(cfg, false)
 	if err != nil {
 		return err
 	}
 
 	if err := orch.DispatchSpawn(input, cfg, minimalPrompt, beadsID, skillName, task, serverURL); err != nil {
+		if rollback != nil {
+			rollback()
+		}
 		return err
 	}
 

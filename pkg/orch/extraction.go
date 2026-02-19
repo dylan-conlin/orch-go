@@ -899,12 +899,13 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 	}
 }
 
-// ValidateAndWriteContext validates context size, writes SPAWN_CONTEXT.md, and generates prompt.
-// Returns minimal prompt, or error if validation fails.
-func ValidateAndWriteContext(cfg *spawn.Config, force bool) (minimalPrompt string, err error) {
+// ValidateAndWriteContext validates context size, writes workspace via atomic spawn Phase 1, and generates prompt.
+// Returns minimal prompt, rollback function (for undoing Phase 1 on spawn failure), or error if validation fails.
+// The rollback function should be called if session creation fails to undo beads tagging and workspace writes.
+func ValidateAndWriteContext(cfg *spawn.Config, force bool) (minimalPrompt string, rollback func(), err error) {
 	// Pre-spawn token estimation and validation
 	if err := spawn.ValidateContextSize(cfg); err != nil {
-		return "", fmt.Errorf("pre-spawn validation failed: %w", err)
+		return "", nil, fmt.Errorf("pre-spawn validation failed: %w", err)
 	}
 
 	// Warn about large contexts (but don't block)
@@ -917,12 +918,19 @@ func ValidateAndWriteContext(cfg *spawn.Config, force bool) (minimalPrompt strin
 	// Note: With unique suffixes in workspace names (since Jan 2026), collisions are rare
 	// but this provides an extra safety net and meaningful error messages
 	if err := checkWorkspaceExists(cfg.WorkspacePath(), force); err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	// Write SPAWN_CONTEXT.md
-	if err := spawn.WriteContext(cfg); err != nil {
-		return "", fmt.Errorf("failed to write spawn context: %w", err)
+	// Atomic spawn Phase 1: tag beads with orch:agent + write workspace (SPAWN_CONTEXT.md, manifest, dotfiles)
+	// Returns rollback function that undoes all Phase 1 writes on spawn failure.
+	atomicOpts := &spawn.AtomicSpawnOpts{
+		Config:  cfg,
+		BeadsID: cfg.BeadsID,
+		NoTrack: cfg.NoTrack,
+	}
+	rollback, atomicErr := spawn.AtomicSpawnPhase1(atomicOpts)
+	if atomicErr != nil {
+		return "", nil, fmt.Errorf("failed to write spawn context: %w", atomicErr)
 	}
 
 	// Record orientation frame in beads comments at spawn time
@@ -947,7 +955,7 @@ func ValidateAndWriteContext(cfg *spawn.Config, force bool) (minimalPrompt strin
 
 	// Generate minimal prompt
 	minimalPrompt = spawn.MinimalPrompt(cfg)
-	return minimalPrompt, nil
+	return minimalPrompt, rollback, nil
 }
 
 // DispatchSpawn routes to the appropriate spawn mode function.
@@ -1126,6 +1134,8 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 		"workspace_path": cfg.WorkspacePath(),
 		"tier":           cfg.Tier,
 		"spawn_mode":     "inline",
+		"skill":          cfg.SkillName,
+		"model":          cfg.Model,
 	}
 
 	// Calculate TTL based on session type
@@ -1157,12 +1167,11 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 		return fmt.Errorf("error waiting for session: %w", err)
 	}
 
-	// Write session ID to workspace file for later lookups
-	if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
+	// Atomic spawn Phase 2: update manifest with session ID
+	inlineAtomicOpts := &spawn.AtomicSpawnOpts{Config: cfg, BeadsID: beadsID}
+	if err := spawn.AtomicSpawnPhase2(inlineAtomicOpts, sessionID); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to update manifest with session ID: %v\n", err)
 	}
-
-	// Orchestrator sessions use workspace artifacts for tracking
 
 	// Log the session creation
 	inlineLogger := events.NewLogger(events.DefaultLogPath())
@@ -1239,12 +1248,11 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 
 	sessionID := result.SessionID
 
-	// Write session ID to workspace file for later lookups
-	if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
+	// Atomic spawn Phase 2: update manifest with session ID
+	headlessAtomicOpts := &spawn.AtomicSpawnOpts{Config: cfg, BeadsID: beadsID}
+	if err := spawn.AtomicSpawnPhase2(headlessAtomicOpts, sessionID); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to update manifest with session ID: %v\n", err)
 	}
-
-	// Orchestrator sessions use workspace artifacts for tracking
 
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())
@@ -1310,6 +1318,8 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 		"workspace_path": cfg.WorkspacePath(),
 		"tier":           cfg.Tier,
 		"spawn_mode":     "headless",
+		"skill":          cfg.SkillName,
+		"model":          cfg.Model,
 	}
 
 	// Calculate TTL based on session type
@@ -1403,23 +1413,24 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		return fmt.Errorf("failed to send enter: %w", err)
 	}
 
-	// Write session ID to workspace file for later lookups
+	// Atomic spawn Phase 2: update manifest with session ID + set session metadata
 	if sessionID != "" {
 		metadata := map[string]string{
 			"beads_id":       cfg.BeadsID,
 			"workspace_path": cfg.WorkspacePath(),
 			"tier":           cfg.Tier,
 			"spawn_mode":     "tmux",
+			"skill":          cfg.SkillName,
+			"model":          cfg.Model,
 		}
 		if err := client.SetSessionMetadata(sessionID, metadata); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to set session metadata: %v\n", err)
 		}
-		if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
+		tmuxAtomicOpts := &spawn.AtomicSpawnOpts{Config: cfg, BeadsID: beadsID}
+		if err := spawn.AtomicSpawnPhase2(tmuxAtomicOpts, sessionID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to update manifest with session ID: %v\n", err)
 		}
 	}
-
-	// Orchestrator sessions use workspace artifacts for tracking
 
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())

@@ -610,14 +610,21 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// 11. Build spawn config
 	cfg := orch.BuildSpawnConfig(ctx, spawnPhases, resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, spawnNoTrack, spawnSkipArtifactCheck)
 
-	// 13. Validate and write context
-	minimalPrompt, err := orch.ValidateAndWriteContext(cfg, spawnForce)
+	// 13. Validate and write context (atomic spawn Phase 1: beads tag + workspace)
+	minimalPrompt, rollback, err := orch.ValidateAndWriteContext(cfg, spawnForce)
 	if err != nil {
 		return err
 	}
 
-	// 14. Dispatch spawn
-	return orch.DispatchSpawn(input, cfg, minimalPrompt, beadsID, skillName, task, serverURL)
+	// 14. Dispatch spawn (each backend calls atomic spawn Phase 2 after session creation)
+	if err := orch.DispatchSpawn(input, cfg, minimalPrompt, beadsID, skillName, task, serverURL); err != nil {
+		// Rollback Phase 1 writes (beads tag + workspace) on spawn failure
+		if rollback != nil {
+			rollback()
+		}
+		return err
+	}
+	return nil
 }
 
 // dirExists returns true if the path exists and is a directory.
