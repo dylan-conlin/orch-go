@@ -23,7 +23,6 @@ var ExpandedOrchEcosystemRepos = map[string]bool{
 	"kn":             true,
 	// Additional ecosystem repos
 	"beads-ui-svelte": true,
-	"glass":           true,
 	"skillc":          true,
 	"agentlog":        true,
 }
@@ -37,7 +36,7 @@ func IsEcosystemRepo(projectName string) bool {
 // GenerateEcosystemContext reads the ecosystem registry from ~/.orch/ECOSYSTEM.md
 // and extracts the Quick Reference table for inclusion in spawn context.
 // This provides spawned agents with knowledge of Dylan's local project ecosystem
-// so they don't try to search GitHub for projects like glass, beads, kb-cli, etc.
+// so they don't try to search GitHub for projects like beads, kb-cli, etc.
 // Returns empty string if file doesn't exist or can't be read.
 func GenerateEcosystemContext() string {
 	// Expand ~ to home directory

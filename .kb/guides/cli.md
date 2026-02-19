@@ -235,7 +235,6 @@ This guide synthesizes knowledge from 16 CLI investigations (Dec 19, 2025 - Jan 
 **Feature additions (Dec 20-26):**
 - Strategic commands: focus, drift, next
 - Auto-detection of new CLI commands
-- Glass CLI integration for validation
 
 **Bug fixes (Dec 23):**
 - Stale binary causing SIGKILL (exit 137)

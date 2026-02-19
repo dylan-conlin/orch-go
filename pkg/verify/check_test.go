@@ -777,15 +777,15 @@ Test with indented continuation lines.
 **Recommendation:** close
 
 ### Follow-up Work (for separate issues)
-1. **Add glass_* to visual verification** - Update pkg/verify/visual.go
+1. **Add Playwright patterns to visual verification** - Update pkg/verify/visual.go
    - Skill: feature-impl
    - Quick win, <30 min
-   
-2. **Configure Glass as MCP option** - Make it work
-   - Skill: feature-impl  
+
+2. **Configure Playwright as MCP option** - Make it work
+   - Skill: feature-impl
    - Needs investigation
 
-3. **Document Chrome launch requirement** - Add to docs
+3. **Document browser launch requirement** - Add to docs
    - Skill: feature-impl (or documentation task)
 
 ---

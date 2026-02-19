@@ -196,7 +196,6 @@ var ExpandedOrchEcosystemRepos = map[string]bool{
     "kn":             true,
     // Additional ecosystem repos
     "beads-ui-svelte": true,
-    "glass":           true,
     "skillc":          true,
     "agentlog":        true,
     // Add new repo here:
