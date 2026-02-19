@@ -1047,6 +1047,47 @@ func FallbackCreate(title, description, issueType string, priority int, labels [
 	return &issue, nil
 }
 
+// FallbackCreateInDir creates an issue via bd CLI in a specific directory.
+// If dir is non-empty, it overrides both DefaultDir and the process cwd.
+// If dir is empty, falls back to DefaultDir then process cwd (same as FallbackCreate).
+func FallbackCreateInDir(title, description, issueType string, priority int, labels []string, dir string) (*Issue, error) {
+	args := []string{"create", title, "--json"}
+	if description != "" {
+		args = append(args, "--description", description)
+	}
+	if issueType != "" {
+		args = append(args, "--type", issueType)
+	}
+	if priority > 0 {
+		args = append(args, "--priority", fmt.Sprintf("%d", priority))
+	}
+	for _, label := range labels {
+		args = append(args, "--label", label)
+	}
+
+	cmd := exec.Command(getBdPath(), args...)
+	setupFallbackEnv(cmd)
+	if dir != "" {
+		cmd.Dir = dir
+	} else if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("bd create failed: %w: %s", err, string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("bd create failed: %w", err)
+	}
+
+	var issue Issue
+	if err := json.Unmarshal(output, &issue); err != nil {
+		return nil, fmt.Errorf("failed to parse bd create output: %w", err)
+	}
+
+	return &issue, nil
+}
+
 // FallbackAddComment adds a comment via bd CLI.
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.

@@ -40,6 +40,7 @@ type ModelDriftIssueCreateArgs struct {
 	Description string
 	Priority    int
 	Labels      []string
+	ProjectDir  string // Project directory to create the issue in (uses cwd if empty)
 }
 
 // ModelDriftMetadata captures model attributes used for grouping and priority.
@@ -67,13 +68,15 @@ type modelDriftCandidate struct {
 	Priority    int
 	Domain      string
 	DomainKey   string
+	ProjectDir  string
 }
 
 type modelDriftGroup struct {
-	Domain    string
-	DomainKey string
-	Priority  int
-	Models    []modelDriftCandidate
+	Domain     string
+	DomainKey  string
+	Priority   int
+	ProjectDir string
+	Models     []modelDriftCandidate
 }
 
 // ShouldRunModelDriftReflection returns true if model drift reflection should run.
@@ -249,14 +252,16 @@ func (d *Daemon) RunModelDriftReflection() (*ModelDriftResult, error) {
 		candidate.CommitCount = commitCount
 		candidate.Domain = metadata.Domain
 		candidate.DomainKey = metadata.DomainKey
+		candidate.ProjectDir = metadata.ProjectDir
 		candidate.Priority = modelDriftPriority(candidate)
 
 		group := groups[candidate.DomainKey]
 		if group == nil {
 			group = &modelDriftGroup{
-				Domain:    metadata.Domain,
-				DomainKey: metadata.DomainKey,
-				Priority:  candidate.Priority,
+				Domain:     metadata.Domain,
+				DomainKey:  metadata.DomainKey,
+				Priority:   candidate.Priority,
+				ProjectDir: metadata.ProjectDir,
 			}
 			groups[candidate.DomainKey] = group
 		}
@@ -301,6 +306,7 @@ func (d *Daemon) RunModelDriftReflection() (*ModelDriftResult, error) {
 			Description: formatModelDriftIssueDescription(group),
 			Priority:    group.Priority,
 			Labels:      []string{modelDriftLabel},
+			ProjectDir:  group.ProjectDir,
 		})
 		if err != nil {
 			result := &ModelDriftResult{
@@ -335,17 +341,21 @@ func DefaultCreateModelDriftIssue(args ModelDriftIssueCreateArgs) (string, error
 	if priority == 0 {
 		priority = 3
 	}
-	issue, err := createBeadsIssue(args.Title, args.Description, modelDriftIssueType, priority, labels)
+	issue, err := createBeadsIssue(args.Title, args.Description, modelDriftIssueType, priority, labels, args.ProjectDir)
 	if err != nil {
 		return "", err
 	}
 	return issue.ID, nil
 }
 
-func createBeadsIssue(title, description, issueType string, priority int, labels []string) (*beads.Issue, error) {
-	socketPath, err := beads.FindSocketPath("")
+func createBeadsIssue(title, description, issueType string, priority int, labels []string, dir string) (*beads.Issue, error) {
+	socketPath, err := beads.FindSocketPath(dir)
 	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if dir != "" {
+			opts = append(opts, beads.WithCwd(dir))
+		}
+		client := beads.NewClient(socketPath, opts...)
 		if err := client.Connect(); err == nil {
 			defer client.Close()
 			issue, err := client.Create(&beads.CreateArgs{
@@ -361,7 +371,7 @@ func createBeadsIssue(title, description, issueType string, priority int, labels
 		}
 	}
 
-	return beads.FallbackCreate(title, description, issueType, priority, labels)
+	return beads.FallbackCreateInDir(title, description, issueType, priority, labels, dir)
 }
 
 func readStalenessEvents(path string) ([]spawn.StalenessEvent, error) {
