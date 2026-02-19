@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1226,6 +1227,41 @@ func TestCreateSession(t *testing.T) {
 	// Verify ORCH_WORKER header is set
 	if orchWorker := receivedHeaders.Get("x-opencode-env-ORCH_WORKER"); orchWorker != "1" {
 		t.Errorf("x-opencode-env-ORCH_WORKER header = %q, want \"1\"", orchWorker)
+	}
+}
+
+func TestSetSessionMetadata(t *testing.T) {
+	sessionID := "ses_meta"
+	metadata := map[string]string{
+		"owner":   "orch",
+		"purpose": "test",
+	}
+
+	var receivedRequest struct {
+		Metadata map[string]string `json:"metadata"`
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "PATCH" {
+			t.Errorf("Expected PATCH method, got %s", r.Method)
+		}
+		if r.URL.Path != "/session/"+sessionID {
+			t.Errorf("Expected path /session/%s, got %s", sessionID, r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&receivedRequest); err != nil {
+			t.Fatalf("Failed to decode request: %v", err)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	if err := client.SetSessionMetadata(sessionID, metadata); err != nil {
+		t.Fatalf("SetSessionMetadata() error = %v", err)
+	}
+
+	if !reflect.DeepEqual(receivedRequest.Metadata, metadata) {
+		t.Errorf("receivedRequest.Metadata = %v, want %v", receivedRequest.Metadata, metadata)
 	}
 }
 

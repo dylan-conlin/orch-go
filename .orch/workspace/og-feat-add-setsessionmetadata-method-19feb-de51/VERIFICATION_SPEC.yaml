@@ -1,0 +1,6 @@
+commands:
+  - cmd: "pwd"
+    expected: "Prints repository root path."
+  - cmd: "go test ./pkg/opencode -run TestSetSessionMetadata"
+    expected: "Test passes."
+manual_checks: []

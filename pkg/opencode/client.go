@@ -682,6 +682,36 @@ func (c *Client) CreateSession(title, directory, model string, metadata map[stri
 	return &result, nil
 }
 
+// SetSessionMetadata updates metadata for an existing session.
+func (c *Client) SetSessionMetadata(sessionID string, metadata map[string]string) error {
+	payload := map[string]map[string]string{
+		"metadata": metadata,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("PATCH", c.ServerURL+"/session/"+sessionID, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to update session metadata: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
 // SendPrompt sends a prompt to a session via HTTP API (async).
 // This is used for headless spawns to send the initial prompt.
 // The model parameter is optional - if empty, OpenCode will use the default model.
