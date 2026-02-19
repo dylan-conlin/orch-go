@@ -115,12 +115,13 @@
 	}
 
 	let readyToCompleteItems: ReadyToCompleteItem[] = [];
+	let readyToCompleteIds = new Set<string>();
 	
 	// Persist groupBy mode in localStorage
 	const GROUP_BY_KEY = 'work-graph-group-by';
 	if (typeof window !== 'undefined') {
 		const stored = localStorage.getItem(GROUP_BY_KEY);
-		if (stored === 'priority' || stored === 'area' || stored === 'effort') {
+		if (stored === 'priority' || stored === 'area' || stored === 'effort' || stored === 'dep-chain') {
 			groupByMode = stored;
 		}
 	}
@@ -381,6 +382,11 @@
 		});
 	}
 
+	$: {
+		readyToCompleteIds = new Set(readyToCompleteItems.map((item) => item.id));
+	}
+
+
 	// Rebuild tree and phases whenever graph data OR attention changes
 	// Debounced to batch rapid updates and reduce CPU during polling
 	// Skip debounce until first tree render completes for immediate display
@@ -631,7 +637,9 @@
 	$: filteredTree = labelFilter ? filterTreeByLabel(tree, labelFilter) : tree;
 
 	// Compute group sections from filtered tree
-	$: groupSections = groupByMode !== 'priority' ? groupTreeNodes(filteredTree, groupByMode) : [] as GroupSection[];
+	$: groupSections = (groupByMode === 'area' || groupByMode === 'effort')
+		? groupTreeNodes(filteredTree, groupByMode)
+		: [] as GroupSection[];
 
 	function handleLabelFilterChange(value: string) {
 		labelFilter = value;
@@ -675,7 +683,7 @@
 	}
 
 	// Cycle group mode order for 'g' shortcut
-	const groupOrder: GroupByMode[] = ['priority', 'area', 'effort'];
+	const groupOrder: GroupByMode[] = ['priority', 'area', 'effort', 'dep-chain'];
 
 	function getHelpText(): string {
 		if (currentView === 'completed') {
@@ -771,6 +779,9 @@
 					{#if readyToCompleteItems.length > 0}
 						<span class="text-emerald-400">{readyToCompleteItems.length} ready to complete</span>
 					{/if}
+					{#if ($wipItems?.length ?? 0) > 0}
+						<span class="text-blue-400">{$wipItems.length} wip</span>
+					{/if}
 					<span>{labelFilter ? filteredTree.length + ' matched' : $workGraph.node_count + ' issues'}</span>
 					<span>{$workGraph.edge_count} edges</span>
 				{:else if currentView === 'completed'}
@@ -824,16 +835,16 @@
 				<div class="flex items-center justify-center h-full">
 					<div class="text-red-500">Error: {error}</div>
 				</div>
-			{:else if filteredTree.length === 0 && readyToCompleteItems.length === 0}
-				<div class="flex items-center justify-center h-full">
-					<div class="text-muted-foreground">
-						{#if labelFilter}
-							No issues match label filter "{labelFilter}"
-						{:else}
-							No open issues found
-						{/if}
-					</div>
+		{:else if filteredTree.length === 0 && readyToCompleteItems.length === 0 && ($wipItems?.length ?? 0) === 0}
+			<div class="flex items-center justify-center h-full">
+				<div class="text-muted-foreground">
+					{#if labelFilter}
+						No issues match label filter "{labelFilter}"
+					{:else}
+						No open issues found
+					{/if}
 				</div>
+			</div>
 			{:else}
 				<div class="h-full min-h-0 flex flex-col">
 					{#if readyToCompleteItems.length > 0}
@@ -869,7 +880,8 @@
 								groups={groupSections}
 								groupMode={groupByMode}
 								edges={$workGraph?.edges || []}
-								{newIssueIds}
+							{newIssueIds}
+							excludeIds={readyToCompleteIds}
 								wipItems={$wipItems}
 								onToggleExpansion={handleToggleExpansion}
 								onSetFocus={handleSetFocus}
