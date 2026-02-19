@@ -32,6 +32,7 @@ type Issue struct {
 	Description string    `json:"description"`
 	Status      string    `json:"status"`
 	IssueType   string    `json:"issue_type"`
+	Labels      []string  `json:"labels,omitempty"`
 	CloseReason string    `json:"close_reason,omitempty"`
 	Comments    []Comment `json:"comments"`
 }
@@ -317,6 +318,7 @@ func GetIssue(beadsID string) (*Issue, error) {
 				Description: issue.Description,
 				Status:      issue.Status,
 				IssueType:   issue.IssueType,
+				Labels:      issue.Labels,
 				CloseReason: issue.CloseReason,
 				// Comments are not populated via Show() - use GetComments() if needed
 			}, nil
@@ -336,6 +338,7 @@ func GetIssue(beadsID string) (*Issue, error) {
 		Description: issue.Description,
 		Status:      issue.Status,
 		IssueType:   issue.IssueType,
+		Labels:      issue.Labels,
 		CloseReason: issue.CloseReason,
 	}, nil
 }
@@ -403,6 +406,7 @@ func GetIssuesBatch(beadsIDs []string, projectDirs map[string]string) (map[strin
 							Description: issue.Description,
 							Status:      issue.Status,
 							IssueType:   issue.IssueType,
+							Labels:      issue.Labels,
 							CloseReason: issue.CloseReason,
 						}
 						mu.Unlock()
@@ -428,6 +432,7 @@ func GetIssuesBatch(beadsIDs []string, projectDirs map[string]string) (map[strin
 							Description: issue.Description,
 							Status:      issue.Status,
 							IssueType:   issue.IssueType,
+							Labels:      issue.Labels,
 							CloseReason: issue.CloseReason,
 						}
 						mu.Unlock()
@@ -470,6 +475,7 @@ func ListOpenIssues() (map[string]*Issue, error) {
 						Description: issues[i].Description,
 						Status:      issues[i].Status,
 						IssueType:   issues[i].IssueType,
+						Labels:      issues[i].Labels,
 						CloseReason: issues[i].CloseReason,
 					}
 				}
@@ -495,6 +501,7 @@ func ListOpenIssues() (map[string]*Issue, error) {
 				Description: issues[i].Description,
 				Status:      issues[i].Status,
 				IssueType:   issues[i].IssueType,
+				Labels:      issues[i].Labels,
 				CloseReason: issues[i].CloseReason,
 			}
 		}
@@ -526,6 +533,7 @@ func ListOpenIssuesWithDir(projectDir string) (map[string]*Issue, error) {
 				Description: issues[i].Description,
 				Status:      issues[i].Status,
 				IssueType:   issues[i].IssueType,
+				Labels:      issues[i].Labels,
 				CloseReason: issues[i].CloseReason,
 			}
 		}

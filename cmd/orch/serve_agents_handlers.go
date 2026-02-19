@@ -17,6 +17,19 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
+func issueHasAgentMetadata(issue *verify.Issue) bool {
+	if issue == nil {
+		return false
+	}
+	for _, label := range issue.Labels {
+		lower := strings.ToLower(label)
+		if strings.HasPrefix(lower, "daemon:") || strings.HasPrefix(lower, "agent:") {
+			return true
+		}
+	}
+	return false
+}
+
 // handleAgents returns JSON list of in-progress agents (beads-first) and completed workspaces.
 // Query parameters:
 //   - since: Time filter (12h, 24h, 48h, 7d, all). Default: 12h
@@ -118,15 +131,6 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	pendingFilterByBeadsID := make(map[string]bool)
 
 	for beadsID, issue := range inProgressIssues {
-		agent := AgentAPIResponse{
-			BeadsID:    beadsID,
-			BeadsTitle: issue.Title,
-			Task:       truncate(issue.Title, 60),
-			Status:     "dead",
-			Project:    extractProjectFromBeadsID(beadsID),
-			ProjectDir: issueProjectDirs[beadsID],
-		}
-
 		workspacePath := wsCache.lookupWorkspace(beadsID)
 		if workspacePath == "" {
 			if session, ok := beadsToSession[beadsID]; ok {
@@ -134,6 +138,20 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 					workspacePath = sessionWorkspace
 				}
 			}
+		}
+
+		_, hasSession := beadsToSession[beadsID]
+		if workspacePath == "" && !hasSession && !issueHasAgentMetadata(issue) {
+			continue
+		}
+
+		agent := AgentAPIResponse{
+			BeadsID:    beadsID,
+			BeadsTitle: issue.Title,
+			Task:       truncate(issue.Title, 60),
+			Status:     "dead",
+			Project:    extractProjectFromBeadsID(beadsID),
+			ProjectDir: issueProjectDirs[beadsID],
 		}
 		if workspacePath != "" {
 			workspaceName := filepath.Base(workspacePath)

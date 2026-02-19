@@ -224,15 +224,8 @@ PROJECT_DIR: %s
 		t.Fatalf("Expected completed status, got %s", primary.Status)
 	}
 
-	secondary, ok := findAgentByBeadsID(agents, "orch-go-bbb2")
-	if !ok {
-		t.Fatal("Expected secondary agent to be present")
-	}
-	if secondary.ID != "" {
-		t.Fatalf("Expected no workspace ID for secondary agent, got %s", secondary.ID)
-	}
-	if secondary.Status != "dead" {
-		t.Fatalf("Expected dead status for secondary agent, got %s", secondary.Status)
+	if _, ok := findAgentByBeadsID(agents, "orch-go-bbb2"); ok {
+		t.Fatal("Expected secondary agent without workspace/session/label to be filtered out")
 	}
 }
 
@@ -513,5 +506,68 @@ PROJECT_DIR: /tmp/dead
 	}
 	if agent.Status != "dead" {
 		t.Fatalf("Expected dead status when session fetch fails, got %s", agent.Status)
+	}
+}
+
+func TestHandleAgentsReviewLabelWithoutWorkspace(t *testing.T) {
+	oldSourceDir := sourceDir
+	oldServerURL := serverURL
+	oldListOpenIssues := listOpenIssues
+	oldListOpenIssuesWithDir := listOpenIssuesWithDir
+	oldGetIssuesBatch := getIssuesBatch
+	oldGetCommentsBatch := getCommentsBatchWithProjectDirs
+	oldGetKBProjectsFn := getKBProjectsFn
+	oldBeadsCache := globalBeadsCache
+
+	defer func() {
+		sourceDir = oldSourceDir
+		serverURL = oldServerURL
+		listOpenIssues = oldListOpenIssues
+		listOpenIssuesWithDir = oldListOpenIssuesWithDir
+		getIssuesBatch = oldGetIssuesBatch
+		getCommentsBatchWithProjectDirs = oldGetCommentsBatch
+		getKBProjectsFn = oldGetKBProjectsFn
+		globalBeadsCache = oldBeadsCache
+		globalWorkspaceCacheInstance.invalidate()
+	}()
+
+	projectDir := t.TempDir()
+	sourceDir = projectDir
+	getKBProjectsFn = func() []string { return nil }
+	globalWorkspaceCacheInstance.invalidate()
+	globalBeadsCache = newBeadsCache()
+
+	server := newTestOpenCodeServer(t, map[string]opencode.Session{}, map[string][]opencode.Message{})
+	serverURL = server.URL
+	defer server.Close()
+
+	listOpenIssues = func() (map[string]*verify.Issue, error) {
+		return nil, fmt.Errorf("unexpected call")
+	}
+	listOpenIssuesWithDir = func(dir string) (map[string]*verify.Issue, error) {
+		return map[string]*verify.Issue{
+			"orch-go-review": {ID: "orch-go-review", Title: "Needs review", Status: "in_progress", Labels: []string{"daemon:ready-review"}},
+		}, nil
+	}
+	getIssuesBatch = func(ids []string, projectDirs map[string]string) (map[string]*verify.Issue, error) {
+		return map[string]*verify.Issue{
+			"orch-go-review": {ID: "orch-go-review", Title: "Needs review", Status: "in_progress", Labels: []string{"daemon:ready-review"}},
+		}, nil
+	}
+	getCommentsBatchWithProjectDirs = func(ids []string, projectDirs map[string]string) map[string][]verify.Comment {
+		return map[string][]verify.Comment{}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	w := httptest.NewRecorder()
+	handleAgents(w, req)
+
+	var agents []AgentAPIResponse
+	if err := json.NewDecoder(w.Result().Body).Decode(&agents); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if _, ok := findAgentByBeadsID(agents, "orch-go-review"); !ok {
+		t.Fatal("Expected review-queue issue to be included without workspace/session")
 	}
 }

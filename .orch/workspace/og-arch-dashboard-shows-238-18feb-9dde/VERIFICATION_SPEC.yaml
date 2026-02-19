@@ -1,0 +1,29 @@
+# Verification Specification
+# Generated: 2026-02-18
+
+verification:
+  tests:
+    command: 'go test ./cmd/orch -run TestHandleAgents'
+    expected: 'cmd/orch handler tests pass'
+    result: '✓ PASS - ok   github.com/dylan-conlin/orch-go/cmd/orch 1.212s'
+
+  manual_steps:
+    - description: 'Reproduce dead-agent flood on existing server (pre-fix)'
+      command: 'curl -sk https://localhost:3348/api/agents | python3 -c "import json,sys; data=json.load(sys.stdin); print(\"agents\", len(data)); print(\"dead\", sum(1 for a in data if a.get(\"status\")==\"dead\"))"'
+      result: 'agents 283; dead 240'
+    - description: 'Verify filtered agents on patched server'
+      command: 'go run -ldflags "-X main.sourceDir=/Users/dylanconlin/Documents/personal/orch-go" ./cmd/orch serve --port 3349 ...'
+      result: 'agents 25; dead 3'
+
+deliverables:
+  - file: 'cmd/orch/serve_agents_handlers.go'
+    change: 'Filter beads-first issues to those with workspace/session/daemon label evidence'
+  - file: 'pkg/verify/beads_api.go'
+    change: 'Expose labels on verify.Issue to support evidence filtering'
+  - file: 'cmd/orch/serve_agents_handlers_test.go'
+    change: 'Adjust dead-agent filtering tests and add review-label coverage'
+  - file: '.kb/models/agent-lifecycle-state-model/probes/2026-02-18-filter-unspawned-issues.md'
+    change: 'Record verification of agent evidence filter'
+
+notes:
+  - 'go run without ldflags fails to find TLS certs (sourceDir=unknown); use -ldflags to set sourceDir for verification'
