@@ -1,9 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { derived } from 'svelte/store';
-	import { workGraph, buildTree, filterTreeByLabel, groupTreeNodes, type TreeNode, type GroupSection, type GroupByMode } from '$lib/stores/work-graph';
-	import { kbArtifacts } from '$lib/stores/kb-artifacts';
-	import { kbModelProbes } from '$lib/stores/kb-model-probes';
+	import { workGraph, buildTree, groupTreeNodes, type TreeNode, type GroupSection, type GroupByMode } from '$lib/stores/work-graph';
 	import { orchestratorContext } from '$lib/stores/context';
 	import { agents, connectSSE, disconnectSSE, sseEvents, connectionStatus, type Agent } from '$lib/stores/agents';
 	import {
@@ -13,14 +11,10 @@
 		type AgentLogEvent,
 	} from '$lib/stores/agentlog';
 	import { WorkGraphTree } from '$lib/components/work-graph-tree';
-	import { ViewToggle } from '$lib/components/view-toggle';
 	import { GroupByDropdown } from '$lib/components/group-by-dropdown';
-	import { LabelFilter } from '$lib/components/label-filter';
-	import { ArtifactFeed } from '$lib/components/artifact-feed';
-	import { RecentlyCompletedSection } from '$lib/components/recently-completed-section';
 	import { wip, wipItems } from '$lib/stores/wip';
 	import { daemon, type DaemonStatus } from '$lib/stores/daemon';
-	import { attention, formatRelativeTime, type CompletedIssue } from '$lib/stores/attention';
+	import { attention, formatRelativeTime } from '$lib/stores/attention';
 	import { focus, type FocusInfo } from '$lib/stores/focus';
 
 	const WORK_GRAPH_POLL_INTERVAL_MS = 30000;
@@ -81,7 +75,6 @@
 	let tree: TreeNode[] = [];
 	let loading = true;
 	let error: string | null = null;
-	let currentView: 'issues' | 'artifacts' | 'completed' = 'issues';
 	let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
 	let isRefreshCycleInFlight = false;
 	let isRefreshPolling = false;
@@ -94,10 +87,7 @@
 	let currentProjectDir: string | undefined = undefined;
 	let projectChangeDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
 	let previousIssueIds = new Set<string>();
-	let completedIssues: CompletedIssue[] = [];
 	let focusedBeadsId: string | undefined = undefined; // Current focus beads ID for auto-scoping
-	let labelFilter: string = '';
-	let labelFilterComponent: { focus: () => void };
 	let groupByMode: GroupByMode = 'priority';
 
 	interface ReadyToCompleteItem {
@@ -139,14 +129,6 @@
 			attention.fetch(projectDir),
 			agents.fetch(), // Refresh agents to detect phase transitions (Phase: Complete via bd comment)
 		];
-
-		if (currentView === 'artifacts' && $kbArtifacts) {
-			requests.push(kbArtifacts.fetch(projectDir));
-		}
-
-		if (currentView === 'artifacts' && $kbModelProbes) {
-			requests.push(kbModelProbes.fetch(projectDir));
-		}
 
 		const results = await Promise.allSettled(requests);
 		return results.every((result) => result.status === 'fulfilled');
@@ -323,11 +305,6 @@
 		workGraph.cancelPending();
 	});
 
-	// Subscribe to attention store for completed issues
-	$: if ($attention) {
-		completedIssues = $attention.completedIssues;
-	}
-
 	// Build a dedicated review queue for agents that reported Phase: Complete
 	// while their beads issue is still in_progress (not closed yet).
 	$: {
@@ -467,7 +444,7 @@
 		tree = [];
 	}
 	
-	// Re-fetch workGraph and kbArtifacts when orchestrator project_dir changes
+	// Re-fetch workGraph when orchestrator project_dir changes
 	// Uses derived store to isolate reactivity (only fires when project_dir changes)
 	// Uses debounce + abort to prevent flip-flopping between old/new project data
 	$: {
@@ -501,34 +478,7 @@
 					projectChangeDebounceTimeout = null;
 					workGraph.fetch(newProjectDir, 'open', focusedBeadsId).catch(console.error);
 					attention.fetch(newProjectDir).catch(console.error); // Re-fetch attention for new project
-					// Also re-fetch kbArtifacts if we're in artifacts view
-					if (currentView === 'artifacts' && $kbArtifacts) {
-						kbArtifacts.fetch(newProjectDir).catch(console.error);
-					}
-					if (currentView === 'artifacts' && $kbModelProbes) {
-						kbModelProbes.fetch(newProjectDir).catch(console.error);
-					}
 				}, 300);
-			}
-		}
-	}
-
-	// Handle view toggle
-	async function handleViewToggle(view: 'issues' | 'artifacts' | 'completed') {
-		currentView = view;
-		
-		// Fetch artifacts when switching to artifacts view
-		if (view === 'artifacts') {
-			const projectDir = $orchestratorContext?.project_dir;
-			const requests: Promise<void>[] = [];
-			if (!$kbArtifacts) {
-				requests.push(kbArtifacts.fetch(projectDir));
-			}
-			if (!$kbModelProbes) {
-				requests.push(kbModelProbes.fetch(projectDir));
-			}
-			if (requests.length > 0) {
-				await Promise.all(requests);
 			}
 		}
 	}
@@ -570,31 +520,9 @@
 		}
 	}
 
-	// Cycle views: issues -> completed -> artifacts -> issues
-	const viewOrder: ('issues' | 'completed' | 'artifacts')[] = ['issues', 'completed', 'artifacts'];
-
 	function handleKeydown(event: KeyboardEvent) {
-		// Don't cycle views when a side panel dialog is open (panel handles Tab)
-		if (event.key === 'Tab' && !document.querySelector('[role="dialog"]')) {
-			event.preventDefault();
-			const idx = viewOrder.indexOf(currentView);
-			if (event.shiftKey) {
-				currentView = viewOrder[(idx - 1 + viewOrder.length) % viewOrder.length];
-			} else {
-				currentView = viewOrder[(idx + 1) % viewOrder.length];
-			}
-			handleViewToggle(currentView);
-		}
-		// '/' to focus label filter (like GitHub)
-		if (event.key === '/' && currentView === 'issues') {
-			const active = document.activeElement;
-			if (active?.tagName !== 'INPUT' && active?.tagName !== 'TEXTAREA') {
-				event.preventDefault();
-				labelFilterComponent?.focus();
-			}
-		}
-		// 'G' (shift+g) to cycle group mode when in issues view
-		if (event.key === 'G' && event.shiftKey && currentView === 'issues') {
+		// 'G' (shift+g) to cycle group mode
+		if (event.key === 'G' && event.shiftKey) {
 			const active = document.activeElement;
 			if (active?.tagName !== 'INPUT' && active?.tagName !== 'TEXTAREA') {
 				event.preventDefault();
@@ -606,17 +534,12 @@
 	}
 	
 	// Get help text based on current view mode
-	// Compute filtered tree whenever tree or labelFilter changes
-	$: filteredTree = labelFilter ? filterTreeByLabel(tree, labelFilter) : tree;
+	$: filteredTree = tree;
 
 	// Compute group sections from filtered tree
 	$: groupSections = (groupByMode === 'area' || groupByMode === 'effort')
 		? groupTreeNodes(filteredTree, groupByMode)
 		: [] as GroupSection[];
-
-	function handleLabelFilterChange(value: string) {
-		labelFilter = value;
-	}
 
 	function handleGroupByChange(mode: GroupByMode) {
 		groupByMode = mode;
@@ -657,16 +580,6 @@
 
 	// Cycle group mode order for 'g' shortcut
 	const groupOrder: GroupByMode[] = ['priority', 'area', 'effort', 'dep-chain'];
-
-	function getHelpText(): string {
-		if (currentView === 'completed') {
-			return 'Completed view - Navigate with j/k, details with enter, verify with v, needs fix with x';
-		}
-		if (currentView === 'artifacts') {
-			return 'Artifact view - Navigate with j/k, open with l/enter, Tab to toggle';
-		}
-		return 'Tree view - Navigate with j/k, expand with l/enter, collapse with h/esc, close with x';
-	}
 
 	function daemonQueueSummary(status: DaemonStatus): string {
 		const queued = status.queue?.queued ?? status.ready_count ?? 0;
@@ -718,25 +631,12 @@
 	<!-- Header -->
 	<div class="border-b border-border px-2 py-2">
 		<div class="flex items-center gap-6">
-			<ViewToggle 
-				bind:currentView
-				completedCount={completedIssues.length}
-				onToggle={handleViewToggle}
+			<GroupByDropdown
+				mode={groupByMode}
+				onChange={handleGroupByChange}
 			/>
-			{#if currentView === 'issues'}
-				<GroupByDropdown
-					mode={groupByMode}
-					onChange={handleGroupByChange}
-				/>
-				<LabelFilter
-					bind:this={labelFilterComponent}
-					value={labelFilter}
-					onChange={handleLabelFilterChange}
-					placeholder="Filter by label..."
-				/>
-			{/if}
 			<div class="flex items-center gap-4 text-sm text-muted-foreground ml-auto">
-				{#if currentView === 'issues' && $daemon}
+				{#if $daemon}
 					<span class="truncate max-w-[40rem]">
 						Daemon: {$daemon.running ? ($daemon.status || 'running') : 'stopped'}
 						{#if $daemon.running}
@@ -748,21 +648,15 @@
 						{/if}
 					</span>
 				{/if}
-				{#if currentView === 'issues' && $workGraph}
+				{#if $workGraph}
 					{#if readyToCompleteItems.length > 0}
 						<span class="text-emerald-400">{readyToCompleteItems.length} ready to complete</span>
 					{/if}
 					{#if ($wipItems?.length ?? 0) > 0}
 						<span class="text-blue-400">{$wipItems.length} wip</span>
 					{/if}
-					<span>{labelFilter ? filteredTree.length + ' matched' : $workGraph.node_count + ' issues'}</span>
+					<span>{$workGraph.node_count} issues</span>
 					<span>{$workGraph.edge_count} edges</span>
-				{:else if currentView === 'completed'}
-					<span>{completedIssues.length} completed</span>
-				{:else if currentView === 'artifacts' && $kbArtifacts}
-					<span>
-						{($kbArtifacts.needs_decision?.length ?? 0) + ($kbArtifacts.recent?.length ?? 0)} artifacts
-					</span>
 				{/if}
 				{#if $orchestratorContext?.project_dir}
 					<span class="truncate max-w-xs">
@@ -799,8 +693,7 @@
 
 	<!-- Content -->
 	<div class="flex-1 min-h-0 overflow-hidden">
-		{#if currentView === 'issues'}
-			{#if loading}
+		{#if loading}
 				<div class="flex items-center justify-center h-full">
 					<div class="text-muted-foreground">Loading work graph...</div>
 				</div>
@@ -811,11 +704,7 @@
 		{:else if filteredTree.length === 0 && readyToCompleteItems.length === 0 && ($wipItems?.length ?? 0) === 0}
 			<div class="flex items-center justify-center h-full">
 				<div class="text-muted-foreground">
-					{#if labelFilter}
-						No issues match label filter "{labelFilter}"
-					{:else}
-						No open issues found
-					{/if}
+					No open issues found
 				</div>
 			</div>
 			{:else}
@@ -862,71 +751,28 @@
 					{/if}
 				</div>
 			{/if}
-		{:else if currentView === 'completed'}
-			<RecentlyCompletedSection {completedIssues} />
-		{:else}
-			{#if $kbArtifacts?.error}
-				<div class="flex items-center justify-center h-full">
-					<div class="text-red-500">Error: {$kbArtifacts.error}</div>
-				</div>
-			{:else if !$kbArtifacts}
-				<div class="flex items-center justify-center h-full">
-					<div class="text-muted-foreground">Loading artifacts...</div>
-				</div>
-			{:else}
-				<ArtifactFeed />
-			{/if}
-		{/if}
 	</div>
 
 	<!-- Keyboard Shortcuts Footer -->
 	<div class="h-9 px-2 flex items-center justify-center border-t border-zinc-800 bg-zinc-950 text-zinc-500 text-[11px] font-mono">
-		{#if currentView === 'issues'}
-			<span class="tracking-wide">
-				<span class="text-zinc-400">j/k</span> navigate
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">h/l</span> collapse/expand
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">enter</span> details
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">i</span> side panel
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">v</span> verify
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">x</span> close
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">c</span> copy ID
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">t/w</span> WIP↔tree
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">/</span> filter labels
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">G</span> cycle groups
-			</span>
-		{:else if currentView === 'completed'}
-			<span class="tracking-wide">
-				<span class="text-zinc-400">j/k</span> navigate
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">enter</span> details
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">i</span> side panel
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">v</span> verify
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">x</span> needs fix
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">c</span> copy ID
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">Tab</span> switch view
-			</span>
-		{:else}
-			<span class="tracking-wide">
-				<span class="text-zinc-400">j/k</span> navigate
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">enter</span> open
-				<span class="mx-3">·</span>
-				<span class="text-zinc-400">Tab</span> toggle view
-			</span>
-		{/if}
+		<span class="tracking-wide">
+			<span class="text-zinc-400">j/k</span> navigate
+			<span class="mx-3">·</span>
+			<span class="text-zinc-400">h/l</span> collapse/expand
+			<span class="mx-3">·</span>
+			<span class="text-zinc-400">enter</span> details
+			<span class="mx-3">·</span>
+			<span class="text-zinc-400">i</span> side panel
+			<span class="mx-3">·</span>
+			<span class="text-zinc-400">v</span> verify
+			<span class="mx-3">·</span>
+			<span class="text-zinc-400">x</span> close
+			<span class="mx-3">·</span>
+			<span class="text-zinc-400">c</span> copy ID
+			<span class="mx-3">·</span>
+			<span class="text-zinc-400">t/w</span> WIP↔tree
+			<span class="mx-3">·</span>
+			<span class="text-zinc-400">G</span> cycle groups
+		</span>
 	</div>
 </div>
