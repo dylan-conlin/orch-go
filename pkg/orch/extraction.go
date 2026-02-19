@@ -1405,6 +1405,15 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 
 	// Write session ID to workspace file for later lookups
 	if sessionID != "" {
+		metadata := map[string]string{
+			"beads_id":       cfg.BeadsID,
+			"workspace_path": cfg.WorkspacePath(),
+			"tier":           cfg.Tier,
+			"spawn_mode":     "tmux",
+		}
+		if err := client.SetSessionMetadata(sessionID, metadata); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to set session metadata: %v\n", err)
+		}
 		if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 		}

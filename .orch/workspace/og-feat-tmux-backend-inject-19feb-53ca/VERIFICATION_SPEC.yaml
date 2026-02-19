@@ -1,0 +1,12 @@
+version: 1
+checks:
+  - id: tests-not-run
+    type: note
+    summary: Tests not run (not requested for small change)
+    details: No automated tests were executed for this change.
+manual:
+  - id: spawn-tmux-metadata
+    summary: Verify tmux spawn sets session metadata
+    steps:
+      - Run an `orch spawn --tmux` and capture the session ID from workspace file.
+      - Use opencode client or API to inspect session metadata for beads_id, workspace_path, tier, spawn_mode=tmux.
