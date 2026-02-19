@@ -11,7 +11,6 @@ export interface GraphNode {
   type: string // beads: task, bug, feature, epic, question; kb: investigation, decision
   status: string // open, in_progress, closed, blocked, Complete, Accepted, etc.
   priority: number // 0-4 for beads, 0 for kb artifacts
-  effective_priority?: string
   source: string // "beads" or "kb"
   date?: string // for kb artifacts
   created_at?: string // creation timestamp
@@ -273,7 +272,7 @@ export function buildTree(nodes: GraphNode[], edges: GraphEdge[]): TreeNode[] {
 }
 
 // Grouping mode for Work Graph
-export type GroupByMode = 'priority' | 'area' | 'effort' | 'dep-chain'
+export type GroupByMode = 'priority' | 'area' | 'effort'
 
 // A group section for rendering
 export interface GroupSection {
@@ -477,7 +476,11 @@ export function buildDependencyView(
     }
     if (roots.length === 0) roots.push([...component][0])
 
-    const buildDepNode = (nodeId: string, depth: number, seen: Set<string>): DepNode => {
+    const buildDepNode = (
+      nodeId: string,
+      depth: number,
+      seen: Set<string>,
+    ): DepNode => {
       seen.add(nodeId)
       const blocked = (blocksMap.get(nodeId) || [])
         .filter((b) => component.has(b) && !seen.has(b))
@@ -489,7 +492,9 @@ export function buildDependencyView(
         })
       return {
         node: treeNodeIndex.get(nodeId)!,
-        depChildren: blocked.map((childId) => buildDepNode(childId, depth + 1, seen)),
+        depChildren: blocked.map((childId) =>
+          buildDepNode(childId, depth + 1, seen),
+        ),
         depDepth: depth,
       }
     }
@@ -536,7 +541,10 @@ export function buildDependencyView(
  * Flatten a dependency chain into items with box-drawing prefixes.
  * Root nodes are flush left, children get ├── or └── prefixes.
  */
-export function flattenDepChain(chain: DepChain, pinnedIds: Set<string>): FlatDepItem[] {
+export function flattenDepChain(
+  chain: DepChain,
+  pinnedIds: Set<string>,
+): FlatDepItem[] {
   const items: FlatDepItem[] = []
 
   function walk(depNode: DepNode, ancestorIsLast: boolean[]) {
@@ -553,7 +561,9 @@ export function flattenDepChain(chain: DepChain, pinnedIds: Set<string>): FlatDe
 
     items.push({ node: depNode.node, prefix, depDepth: depNode.depDepth })
 
-    const visibleChildren = depNode.depChildren.filter((c) => !pinnedIds.has(c.node.id))
+    const visibleChildren = depNode.depChildren.filter(
+      (c) => !pinnedIds.has(c.node.id),
+    )
     for (let i = 0; i < visibleChildren.length; i++) {
       const childIsLast = i === visibleChildren.length - 1
       walk(visibleChildren[i], [...ancestorIsLast, childIsLast])

@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
-	"github.com/dylan-conlin/orch-go/pkg/graph"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -768,18 +766,16 @@ type ActiveAgentInfo struct {
 // GraphNode represents a node in the work graph (from /api/beads/graph).
 // Matches frontend GraphNode interface in web/src/lib/stores/work-graph.ts
 type GraphNode struct {
-	ID                string           `json:"id"`
-	Title             string           `json:"title"`
-	Type              string           `json:"type"`     // task, bug, feature, epic, question
-	Status            string           `json:"status"`   // open, in_progress, closed, blocked
-	Priority          int              `json:"priority"` // 0-4 for beads
-	EffectivePriority string           `json:"effective_priority"`
-	Source            string           `json:"source"` // "beads"
-	CreatedAt         string           `json:"created_at,omitempty"`
-	Description       string           `json:"description,omitempty"`
-	Labels            []string         `json:"labels,omitempty"`
-	Layer             int              `json:"layer"`
-	ActiveAgent       *ActiveAgentInfo `json:"active_agent,omitempty"`
+	ID          string           `json:"id"`
+	Title       string           `json:"title"`
+	Type        string           `json:"type"`     // task, bug, feature, epic, question
+	Status      string           `json:"status"`   // open, in_progress, closed, blocked
+	Priority    int              `json:"priority"` // 0-4 for beads
+	Source      string           `json:"source"`   // "beads"
+	CreatedAt   string           `json:"created_at,omitempty"`
+	Description string           `json:"description,omitempty"`
+	Labels      []string         `json:"labels,omitempty"`
+	ActiveAgent *ActiveAgentInfo `json:"active_agent,omitempty"`
 }
 
 // GraphEdge represents a dependency edge in the work graph.
@@ -987,28 +983,6 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 				edge.Type = "blocks"
 			}
 			edges = append(edges, edge)
-		}
-	}
-
-	// Compute effective priority and topological layers
-	nodeInputs := make([]graph.Node, 0, len(nodes))
-	for _, node := range nodes {
-		nodeInputs = append(nodeInputs, graph.Node{ID: node.ID, Priority: node.Priority})
-	}
-	edgeInputs := make([]graph.Edge, 0, len(edges))
-	for _, edge := range edges {
-		edgeInputs = append(edgeInputs, graph.Edge{From: edge.From, To: edge.To, Type: edge.Type})
-	}
-	priorityByID := graph.ComputeEffectivePriority(nodeInputs, edgeInputs)
-	layersByID := graph.ComputeLayers(nodeInputs, edgeInputs)
-	for i := range nodes {
-		if eff, ok := priorityByID[nodes[i].ID]; ok {
-			nodes[i].EffectivePriority = strconv.Itoa(eff)
-		} else {
-			nodes[i].EffectivePriority = strconv.Itoa(nodes[i].Priority)
-		}
-		if layer, ok := layersByID[nodes[i].ID]; ok {
-			nodes[i].Layer = layer
 		}
 	}
 
