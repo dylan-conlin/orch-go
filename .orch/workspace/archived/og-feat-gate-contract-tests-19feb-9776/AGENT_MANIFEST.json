@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-gate-contract-tests-19feb-9776",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1088",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "53a1238680c2f3d9fa666733bc6b600c87fe87bf",
+  "spawn_time": "2026-02-19T10:18:35-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

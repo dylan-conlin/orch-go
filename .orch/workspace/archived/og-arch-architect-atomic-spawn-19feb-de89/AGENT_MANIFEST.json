@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-architect-atomic-spawn-19feb-de89",
+  "skill": "architect",
+  "beads_id": "orch-go-1083",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "14b08109db0052f22d8d9b29d54c8380b950701f",
+  "spawn_time": "2026-02-19T08:40:20-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-implement-single-pass-19feb-2d16",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1085",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "b9acd6474cf5ae2e4d692e3f8f209fc14e168b58",
+  "spawn_time": "2026-02-19T09:23:36-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-arch-api-sessions-returns-19feb-9d33",
+  "skill": "architect",
+  "beads_id": "orch-go-1094",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go/",
+  "git_baseline": "dc6d350e88fafda7524506a86684f77d672c621e",
+  "spawn_time": "2026-02-19T10:28:18-08:00",
+  "tier": "full",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-5.2-codex",
+  "session_id": "ses_388d70d5bffemZPWkAQd4revCS"
+}

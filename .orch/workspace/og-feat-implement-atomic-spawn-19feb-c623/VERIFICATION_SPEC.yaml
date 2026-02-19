@@ -1,0 +1,40 @@
+version: "1.0"
+workspace: og-feat-implement-atomic-spawn-19feb-c623
+beads_id: orch-go-1083
+
+checks:
+  - name: "Build passes"
+    command: "go build ./cmd/orch/"
+    expect_exit: 0
+
+  - name: "Vet passes"
+    command: "go vet ./cmd/orch/"
+    expect_exit: 0
+
+  - name: "AtomicSpawnPhase1 test passes"
+    command: "go test ./pkg/spawn/ -run TestAtomicSpawnPhase1_WritesWorkspace -v"
+    expect_exit: 0
+
+  - name: "AtomicSpawnPhase2 test passes"
+    command: "go test ./pkg/spawn/ -run TestAtomicSpawnPhase2_UpdatesManifest -v"
+    expect_exit: 0
+
+  - name: "Phase2 empty session ID test passes"
+    command: "go test ./pkg/spawn/ -run TestAtomicSpawnPhase2_EmptySessionID -v"
+    expect_exit: 0
+
+  - name: "SessionID serialization test passes"
+    command: "go test ./pkg/spawn/ -run TestAgentManifest_SessionID_Serialization -v"
+    expect_exit: 0
+
+  - name: "SessionID omitempty test passes"
+    command: "go test ./pkg/spawn/ -run TestAgentManifest_SessionID_OmitEmpty -v"
+    expect_exit: 0
+
+  - name: "LookupManifestsByBeadsIDs test passes"
+    command: "go test ./pkg/spawn/ -run TestLookupManifestsByBeadsIDs$ -v"
+    expect_exit: 0
+
+  - name: "Rollback on workspace write fail test passes"
+    command: "go test ./pkg/spawn/ -run TestAtomicSpawnPhase1_RollbackOnWorkspaceWriteFail -v"
+    expect_exit: 0

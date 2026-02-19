@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-implement-atomic-spawn-19feb-c623",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1083",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "c7945decfd108cc10ddf8dec11992360925ace24",
+  "spawn_time": "2026-02-19T09:07:22-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

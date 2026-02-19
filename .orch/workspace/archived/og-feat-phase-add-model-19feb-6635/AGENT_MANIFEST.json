@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-feat-phase-add-model-19feb-6635",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-p941",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go/",
+  "git_baseline": "e51238288b133eab32b1c9eb2092f77b43b24133",
+  "spawn_time": "2026-02-19T09:51:14-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-5.2-codex",
+  "session_id": "ses_388f8fcbbffeIw1fZv4nOprXVu"
+}

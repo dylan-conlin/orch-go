@@ -1,0 +1,12 @@
+version: "1.0"
+workspace: og-feat-lane-implement-orch-19feb-5a3f
+beads_id: orch-go-1087
+
+checks:
+  - name: "Build orch CLI"
+    command: "go build ./cmd/orch/"
+    expect_exit: 0
+
+  - name: "Run cmd/orch tests"
+    command: "go test ./cmd/orch/..."
+    expect_exit: 0
