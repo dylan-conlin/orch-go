@@ -1075,6 +1075,11 @@ func checkPlistDrift() (*ConfigDriftReport, error) {
 			Actual:   actualValues["reflect_issues"],
 		},
 		{
+			Field:    "reflect_open",
+			Expected: fmt.Sprintf("%v", cfg.DaemonReflectOpen()),
+			Actual:   actualValues["reflect_open"],
+		},
+		{
 			Field:    "working_directory",
 			Expected: cfg.DaemonWorkingDirectory(),
 			Actual:   actualValues["working_directory"],
@@ -1160,6 +1165,15 @@ func parsePlistValues(content string) (map[string]string, error) {
 		remaining := content[idx+17:] // Skip "--reflect-issues="
 		if end := strings.Index(remaining, "</string>"); end != -1 {
 			values["reflect_issues"] = remaining[:end]
+		}
+	}
+
+	// Parse reflect-open (--reflect-open=true/false)
+	values["reflect_open"] = "true" // Default
+	if idx := strings.Index(content, "--reflect-open="); idx != -1 {
+		remaining := content[idx+15:] // Skip "--reflect-open="
+		if end := strings.Index(remaining, "</string>"); end != -1 {
+			values["reflect_open"] = remaining[:end]
 		}
 	}
 

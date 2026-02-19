@@ -327,9 +327,10 @@ func TestParsePlistValues(t *testing.T) {
         <string>3</string>
         <string>--label</string>
         <string>triage:ready</string>
-        <string>--verbose</string>
-        <string>--reflect-issues=false</string>
-    </array>
+		<string>--verbose</string>
+		<string>--reflect-issues=false</string>
+		<string>--reflect-open=true</string>
+	</array>
 
     <key>WorkingDirectory</key>
     <string>/Users/test/Documents/personal/orch-go</string>
@@ -356,6 +357,7 @@ func TestParsePlistValues(t *testing.T) {
 		{"label", "triage:ready"},
 		{"verbose", "true"},
 		{"reflect_issues", "false"},
+		{"reflect_open", "true"},
 		{"working_directory", "/Users/test/Documents/personal/orch-go"},
 	}
 
@@ -408,6 +410,7 @@ func TestParsePlistValuesWithReflectIssuesTrue(t *testing.T) {
     <array>
         <string>orch</string>
         <string>--reflect-issues=true</string>
+        <string>--reflect-open=false</string>
     </array>
 </dict>
 </plist>`
@@ -419,6 +422,9 @@ func TestParsePlistValuesWithReflectIssuesTrue(t *testing.T) {
 
 	if values["reflect_issues"] != "true" {
 		t.Errorf("parsePlistValues() reflect_issues = %q, want \"true\"", values["reflect_issues"])
+	}
+	if values["reflect_open"] != "false" {
+		t.Errorf("parsePlistValues() reflect_open = %q, want \"false\"", values["reflect_open"])
 	}
 }
 

@@ -92,6 +92,10 @@ type DaemonConfig struct {
 	// Defaults to false if not specified.
 	ReflectIssues *bool `yaml:"reflect_issues,omitempty"`
 
+	// ReflectOpen controls whether the daemon creates issues for open investigation actions.
+	// Defaults to false if not specified.
+	ReflectOpen *bool `yaml:"reflect_open,omitempty"`
+
 	// WorkingDirectory is the directory the daemon runs from.
 	// Defaults to ~/Documents/personal/orch-go if not specified.
 	WorkingDirectory string `yaml:"working_directory,omitempty"`
@@ -331,6 +335,15 @@ func (c *Config) DaemonReflectIssues() bool {
 		return false // Default to false (the flag that caused the bug!)
 	}
 	return *c.Daemon.ReflectIssues
+}
+
+// DaemonReflectOpen returns whether to create issues from kb reflect open findings.
+// Defaults to false if not configured.
+func (c *Config) DaemonReflectOpen() bool {
+	if c.Daemon.ReflectOpen == nil {
+		return false
+	}
+	return *c.Daemon.ReflectOpen
 }
 
 // DaemonWorkingDirectory returns the daemon's working directory.

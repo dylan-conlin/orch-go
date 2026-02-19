@@ -891,6 +891,43 @@ func TestDaemonReflectIssues(t *testing.T) {
 	}
 }
 
+func TestDaemonReflectOpen(t *testing.T) {
+	tests := []struct {
+		name        string
+		reflectOpen *bool
+		expected    bool
+	}{
+		{
+			name:        "nil defaults to false",
+			reflectOpen: nil,
+			expected:    false,
+		},
+		{
+			name:        "explicit true",
+			reflectOpen: boolPtr(true),
+			expected:    true,
+		},
+		{
+			name:        "explicit false",
+			reflectOpen: boolPtr(false),
+			expected:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Daemon: DaemonConfig{
+					ReflectOpen: tt.reflectOpen,
+				},
+			}
+			if got := cfg.DaemonReflectOpen(); got != tt.expected {
+				t.Errorf("DaemonReflectOpen() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestDaemonWorkingDirectory(t *testing.T) {
 	// Get actual home dir for testing
 	home, _ := os.UserHomeDir()
@@ -1002,6 +1039,7 @@ daemon:
   label: "custom:ready"
   verbose: false
   reflect_issues: true
+  reflect_open: true
   working_directory: ~/custom/dir
   path:
     - ~/.custom/bin
@@ -1035,6 +1073,10 @@ daemon:
 
 	if !cfg.DaemonReflectIssues() {
 		t.Error("Load() DaemonReflectIssues() = false, want true")
+	}
+
+	if !cfg.DaemonReflectOpen() {
+		t.Error("Load() DaemonReflectOpen() = false, want true")
 	}
 
 	expectedWorkDir := filepath.Join(tmpDir, "custom/dir")
@@ -1092,6 +1134,10 @@ func TestLoadMissingDaemonSection(t *testing.T) {
 
 	if cfg.DaemonReflectIssues() {
 		t.Error("Load() without daemon section should default reflect_issues to false")
+	}
+
+	if cfg.DaemonReflectOpen() {
+		t.Error("Load() without daemon section should default reflect_open to false")
 	}
 
 	// Path should have defaults

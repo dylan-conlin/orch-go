@@ -617,6 +617,7 @@ type DaemonConfigAPIResponse struct {
 	Label            string   `json:"label"`             // Beads label filter (e.g., "triage:ready")
 	Verbose          bool     `json:"verbose"`           // Verbose logging enabled
 	ReflectIssues    bool     `json:"reflect_issues"`    // Create issues from kb reflect
+	ReflectOpen      bool     `json:"reflect_open"`      // Create issues for open investigation actions
 	WorkingDirectory string   `json:"working_directory"` // Daemon's working directory
 	Path             []string `json:"path"`              // PATH directories for daemon environment
 }
@@ -628,6 +629,7 @@ type DaemonConfigUpdateRequest struct {
 	Label            *string `json:"label,omitempty"`
 	Verbose          *bool   `json:"verbose,omitempty"`
 	ReflectIssues    *bool   `json:"reflect_issues,omitempty"`
+	ReflectOpen      *bool   `json:"reflect_open,omitempty"`
 	WorkingDirectory *string `json:"working_directory,omitempty"`
 }
 
@@ -659,6 +661,7 @@ func handleDaemonConfigGet(w http.ResponseWriter, r *http.Request) {
 		Label:            cfg.DaemonLabel(),
 		Verbose:          cfg.DaemonVerbose(),
 		ReflectIssues:    cfg.DaemonReflectIssues(),
+		ReflectOpen:      cfg.DaemonReflectOpen(),
 		WorkingDirectory: cfg.DaemonWorkingDirectory(),
 		Path:             cfg.DaemonPath(),
 	}
@@ -716,6 +719,9 @@ func handleDaemonConfigPut(w http.ResponseWriter, r *http.Request) {
 	if req.ReflectIssues != nil {
 		cfg.Daemon.ReflectIssues = req.ReflectIssues
 	}
+	if req.ReflectOpen != nil {
+		cfg.Daemon.ReflectOpen = req.ReflectOpen
+	}
 	if req.WorkingDirectory != nil {
 		cfg.Daemon.WorkingDirectory = *req.WorkingDirectory
 	}
@@ -742,6 +748,7 @@ func handleDaemonConfigPut(w http.ResponseWriter, r *http.Request) {
 			Label:            cfg.DaemonLabel(),
 			Verbose:          cfg.DaemonVerbose(),
 			ReflectIssues:    cfg.DaemonReflectIssues(),
+			ReflectOpen:      cfg.DaemonReflectOpen(),
 			WorkingDirectory: cfg.DaemonWorkingDirectory(),
 			Path:             cfg.DaemonPath(),
 		},
@@ -935,6 +942,7 @@ type PlistDataAPI struct {
 	IssueLabel       string
 	Verbose          bool
 	ReflectIssues    bool
+	ReflectOpen      bool
 	LogPath          string
 	WorkingDirectory string
 	PATH             string
@@ -967,6 +975,7 @@ func buildPlistDataForAPI(cfg *userconfig.Config) (*PlistDataAPI, error) {
 		IssueLabel:       cfg.DaemonLabel(),
 		Verbose:          cfg.DaemonVerbose(),
 		ReflectIssues:    cfg.DaemonReflectIssues(),
+		ReflectOpen:      cfg.DaemonReflectOpen(),
 		LogPath:          filepath.Join(home, ".orch", "daemon.log"),
 		WorkingDirectory: cfg.DaemonWorkingDirectory(),
 		PATH:             pathStr,
@@ -1020,6 +1029,7 @@ const plistTemplateAPI = `<?xml version="1.0" encoding="UTF-8"?>
         <string>{{.IssueLabel}}</string>{{if .Verbose}}
         <string>--verbose</string>{{end}}
         <string>--reflect-issues={{.ReflectIssues}}</string>
+        <string>--reflect-open={{.ReflectOpen}}</string>
     </array>
 
     <key>RunAtLoad</key>

@@ -324,6 +324,16 @@ func RunModelDriftReflection() ([]json.RawMessage, error) {
 	return parseModelDriftOutput(output)
 }
 
+// RunOpenReflection executes kb reflect --type open --create-issue.
+func RunOpenReflection() error {
+	args := []string{"reflect", "--type", "open", "--create-issue", "--format", "json"}
+	cmd := exec.Command("kb", args...)
+	if _, err := cmd.Output(); err != nil {
+		return fmt.Errorf("failed to run kb reflect open: %w", err)
+	}
+	return nil
+}
+
 func parseModelDriftOutput(output []byte) ([]json.RawMessage, error) {
 	var typed struct {
 		ModelDrift []json.RawMessage `json:"model_drift,omitempty"`

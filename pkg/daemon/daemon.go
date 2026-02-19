@@ -48,6 +48,10 @@ type Config struct {
 	// for synthesis opportunities (topics with 10+ investigations).
 	ReflectCreateIssues bool
 
+	// ReflectOpenEnabled controls whether reflection creates issues for open
+	// investigation actions (Next: items older than 3 days).
+	ReflectOpenEnabled bool
+
 	// ReflectModelDriftEnabled controls whether model drift reflection is enabled.
 	// When enabled, the daemon will scan staleness events and create model maintenance issues.
 	ReflectModelDriftEnabled bool
@@ -113,6 +117,7 @@ func DefaultConfig() Config {
 		ReflectEnabled:              true,
 		ReflectInterval:             time.Hour, // Hourly by default
 		ReflectCreateIssues:         true,
+		ReflectOpenEnabled:          true,
 		ReflectModelDriftEnabled:    true,
 		ReflectModelDriftInterval:   4 * time.Hour,
 		CleanupEnabled:              true,
@@ -234,6 +239,8 @@ type Daemon struct {
 	listCompletedAgentsFunc func(CompletionConfig) ([]CompletedAgent, error)
 	// reflectFunc is used for testing - allows mocking kb reflect
 	reflectFunc func(createIssues bool) (*ReflectResult, error)
+	// openReflectFunc is used for testing - allows mocking kb reflect open
+	openReflectFunc func() error
 	// modelDriftReflectFunc is used for testing - allows mocking model drift reflection
 	modelDriftReflectFunc func() (*ModelDriftResult, error)
 	// modelDriftEventReader is used for testing - allows mocking staleness event reads
@@ -277,6 +284,7 @@ func NewWithConfig(config Config) *Daemon {
 		listIssuesFunc:            ListReadyIssues,
 		spawnFunc:                 SpawnWork,
 		reflectFunc:               DefaultRunReflection,
+		openReflectFunc:           RunOpenReflection,
 		listEpicChildrenFunc:      ListEpicChildren,
 		listIssuesWithLabelFunc:   ListIssuesWithLabel,
 		createExtractionIssueFunc: DefaultCreateExtractionIssue,
@@ -311,6 +319,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		listIssuesFunc:            ListReadyIssues,
 		spawnFunc:                 SpawnWork,
 		reflectFunc:               DefaultRunReflection,
+		openReflectFunc:           RunOpenReflection,
 		listIssuesWithLabelFunc:   ListIssuesWithLabel,
 		createExtractionIssueFunc: DefaultCreateExtractionIssue,
 		createModelDriftIssueFunc: DefaultCreateModelDriftIssue,
@@ -1356,6 +1365,21 @@ func (d *Daemon) RunPeriodicReflection() *ReflectResult {
 		return &ReflectResult{
 			Error:   err,
 			Message: fmt.Sprintf("Reflection failed: %v", err),
+		}
+	}
+
+	if d.Config.ReflectOpenEnabled {
+		openReflectFunc := d.openReflectFunc
+		if openReflectFunc == nil {
+			openReflectFunc = RunOpenReflection
+		}
+		if err := openReflectFunc(); err != nil {
+			return &ReflectResult{
+				Suggestions: result.Suggestions,
+				Saved:       result.Saved,
+				Error:       err,
+				Message:     fmt.Sprintf("Reflection open failed: %v", err),
+			}
 		}
 	}
 

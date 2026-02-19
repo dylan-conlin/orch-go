@@ -2080,6 +2080,33 @@ func TestDaemon_RunPeriodicReflection_Due(t *testing.T) {
 	}
 }
 
+func TestDaemon_RunPeriodicReflection_OpenEnabled(t *testing.T) {
+	openCalled := false
+	d := &Daemon{
+		Config: Config{
+			ReflectEnabled:     true,
+			ReflectInterval:    time.Hour,
+			ReflectOpenEnabled: true,
+		},
+		lastReflect: time.Now().Add(-2 * time.Hour),
+		reflectFunc: func(createIssues bool) (*ReflectResult, error) {
+			return &ReflectResult{}, nil
+		},
+		openReflectFunc: func() error {
+			openCalled = true
+			return nil
+		},
+	}
+
+	result := d.RunPeriodicReflection()
+	if result == nil {
+		t.Fatal("RunPeriodicReflection() should return result when due")
+	}
+	if !openCalled {
+		t.Error("openReflectFunc should be called when ReflectOpenEnabled is true")
+	}
+}
+
 func TestDaemon_RunPeriodicReflection_Error(t *testing.T) {
 	d := &Daemon{
 		Config: Config{
@@ -2172,6 +2199,9 @@ func TestDefaultConfig_IncludesReflect(t *testing.T) {
 	}
 	if !config.ReflectCreateIssues {
 		t.Error("DefaultConfig().ReflectCreateIssues should be true")
+	}
+	if !config.ReflectOpenEnabled {
+		t.Error("DefaultConfig().ReflectOpenEnabled should be true")
 	}
 	if !config.ReflectModelDriftEnabled {
 		t.Error("DefaultConfig().ReflectModelDriftEnabled should be true")

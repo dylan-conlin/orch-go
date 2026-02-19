@@ -216,6 +216,7 @@ type PlistData struct {
 	IssueLabel       string
 	Verbose          bool
 	ReflectIssues    bool
+	ReflectOpen      bool
 	LogPath          string
 	WorkingDirectory string
 	PATH             string
@@ -243,6 +244,7 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
         <string>{{.IssueLabel}}</string>{{if .Verbose}}
         <string>--verbose</string>{{end}}
         <string>--reflect-issues={{.ReflectIssues}}</string>
+        <string>--reflect-open={{.ReflectOpen}}</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -351,6 +353,7 @@ func buildPlistData(cfg *userconfig.Config) (*PlistData, error) {
 		IssueLabel:       cfg.DaemonLabel(),
 		Verbose:          cfg.DaemonVerbose(),
 		ReflectIssues:    cfg.DaemonReflectIssues(),
+		ReflectOpen:      cfg.DaemonReflectOpen(),
 		LogPath:          filepath.Join(home, ".orch", "daemon.log"),
 		WorkingDirectory: cfg.DaemonWorkingDirectory(),
 		PATH:             pathStr,
@@ -417,6 +420,7 @@ func runShowConfig() error {
 	fmt.Printf("  label: %s\n", cfg.DaemonLabel())
 	fmt.Printf("  verbose: %v\n", cfg.DaemonVerbose())
 	fmt.Printf("  reflect_issues: %v\n", cfg.DaemonReflectIssues())
+	fmt.Printf("  reflect_open: %v\n", cfg.DaemonReflectOpen())
 	fmt.Printf("  working_directory: %s\n", cfg.DaemonWorkingDirectory())
 	fmt.Println("  path:")
 	for _, p := range cfg.DaemonPath() {
@@ -446,6 +450,7 @@ func runShowPlistConfig() error {
 	fmt.Printf("IssueLabel:        %s\n", data.IssueLabel)
 	fmt.Printf("Verbose:           %v\n", data.Verbose)
 	fmt.Printf("ReflectIssues:     %v\n", data.ReflectIssues)
+	fmt.Printf("ReflectOpen:       %v\n", data.ReflectOpen)
 	fmt.Printf("WorkingDirectory:  %s\n", data.WorkingDirectory)
 	fmt.Printf("LogPath:           %s\n", data.LogPath)
 	fmt.Println()

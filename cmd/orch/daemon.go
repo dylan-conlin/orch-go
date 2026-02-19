@@ -133,6 +133,7 @@ var (
 	daemonReflect             bool   // Run reflection analysis after processing (on exit)
 	daemonReflectInterval     int    // Periodic reflection interval in minutes (0 = disabled)
 	daemonReflectIssues       bool   // Create beads issues for synthesis opportunities
+	daemonReflectOpen         bool   // Create beads issues for open investigation actions
 	daemonModelDriftInterval  int    // Periodic model drift reflection interval in minutes (0 = disabled)
 	daemonCleanupEnabled      bool   // Enable periodic session cleanup
 	daemonCleanupInterval     int    // Session cleanup interval in minutes (0 = disabled)
@@ -160,6 +161,7 @@ func init() {
 	daemonRunCmd.Flags().BoolVar(&daemonReflect, "reflect", true, "Run kb reflect analysis on exit (default: true)")
 	daemonRunCmd.Flags().IntVar(&daemonReflectInterval, "reflect-interval", 60, "Periodic reflection interval in minutes (0 = disabled, default: 60)")
 	daemonRunCmd.Flags().BoolVar(&daemonReflectIssues, "reflect-issues", true, "Create beads issues for synthesis opportunities (default: true)")
+	daemonRunCmd.Flags().BoolVar(&daemonReflectOpen, "reflect-open", true, "Create beads issues for open investigation actions (default: true)")
 	daemonRunCmd.Flags().IntVar(&daemonModelDriftInterval, "reflect-model-drift-interval", 240, "Model drift reflection interval in minutes (0 = disabled, default: 240 = 4 hours)")
 	daemonRunCmd.Flags().BoolVar(&daemonCleanupEnabled, "cleanup-enabled", true, "Enable periodic session cleanup (default: true)")
 	daemonRunCmd.Flags().IntVar(&daemonCleanupInterval, "cleanup-interval", 360, "Session cleanup interval in minutes (0 = disabled, default: 360 = 6 hours)")
@@ -189,6 +191,7 @@ func daemonConfigFromFlags() daemon.Config {
 	config.ReflectEnabled = daemonReflectInterval > 0
 	config.ReflectInterval = time.Duration(daemonReflectInterval) * time.Minute
 	config.ReflectCreateIssues = daemonReflectIssues
+	config.ReflectOpenEnabled = daemonReflectOpen
 	config.ReflectModelDriftEnabled = daemonModelDriftInterval > 0
 	config.ReflectModelDriftInterval = time.Duration(daemonModelDriftInterval) * time.Minute
 	config.CleanupEnabled = daemonCleanupEnabled && daemonCleanupInterval > 0
@@ -285,6 +288,7 @@ func runDaemonLoop() error {
 	if config.ReflectEnabled {
 		fmt.Printf("  Reflect interval:  %s\n", formatDaemonDuration(config.ReflectInterval))
 		fmt.Printf("  Reflect issues:    %v\n", config.ReflectCreateIssues)
+		fmt.Printf("  Reflect open:      %v\n", config.ReflectOpenEnabled)
 	} else {
 		fmt.Println("  Reflect interval:  disabled")
 	}
