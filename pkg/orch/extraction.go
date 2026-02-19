@@ -969,6 +969,15 @@ func ValidateAndWriteContext(cfg *spawn.Config, force bool) (minimalPrompt strin
 // DispatchSpawn routes to the appropriate spawn mode function.
 // Handles inline, headless, claude, and tmux modes.
 func DispatchSpawn(input *SpawnInput, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task, serverURL string) error {
+	// Wire MCP config into opencode.json for OpenCode backend spawns.
+	// Claude backend handles MCP via --mcp-config CLI flag (see BuildClaudeLaunchCommand).
+	// OpenCode reads MCP config from opencode.json in the project directory.
+	if cfg.MCP != "" && cfg.SpawnMode != "claude" {
+		if err := spawn.EnsureOpenCodeMCP(cfg.ProjectDir, cfg.MCP); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to inject MCP config into opencode.json: %v\n", err)
+		}
+	}
+
 	// Spawn mode: inline (blocking TUI), tmux (opt-in for workers, default for orchestrators), claude (tmux), or headless (default for workers)
 	if input.Inline {
 		// Inline mode (blocking) - run in current terminal with TUI
