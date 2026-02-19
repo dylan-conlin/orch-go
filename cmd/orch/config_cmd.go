@@ -5,12 +5,11 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"text/template"
 
 	"github.com/dylan-conlin/orch-go/pkg/config"
+	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/spf13/cobra"
 )
@@ -207,72 +206,6 @@ func init() {
 	rootCmd.AddCommand(configCmd)
 }
 
-// PlistData holds the template data for generating the plist file.
-type PlistData struct {
-	Label            string
-	OrchPath         string
-	PollInterval     int
-	MaxAgents        int
-	IssueLabel       string
-	Verbose          bool
-	ReflectIssues    bool
-	ReflectOpen      bool
-	LogPath          string
-	WorkingDirectory string
-	PATH             string
-	Home             string
-}
-
-// plistTemplate is the launchd plist template for the orch daemon.
-const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>{{.Label}}</string>
-
-    <key>ProgramArguments</key>
-    <array>
-        <string>{{.OrchPath}}</string>
-        <string>daemon</string>
-        <string>run</string>
-        <string>--poll-interval</string>
-        <string>{{.PollInterval}}</string>
-        <string>--max-agents</string>
-        <string>{{.MaxAgents}}</string>
-        <string>--label</string>
-        <string>{{.IssueLabel}}</string>{{if .Verbose}}
-        <string>--verbose</string>{{end}}
-        <string>--reflect-issues={{.ReflectIssues}}</string>
-        <string>--reflect-open={{.ReflectOpen}}</string>
-    </array>
-
-    <key>RunAtLoad</key>
-    <true/>
-
-    <key>KeepAlive</key>
-    <true/>
-
-    <key>StandardOutPath</key>
-    <string>{{.LogPath}}</string>
-
-    <key>StandardErrorPath</key>
-    <string>{{.LogPath}}</string>
-
-    <key>WorkingDirectory</key>
-    <string>{{.WorkingDirectory}}</string>
-
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>{{.PATH}}</string>
-        <key>BEADS_NO_DAEMON</key>
-        <string>1</string>
-    </dict>
-</dict>
-</plist>
-`
-
 func runGeneratePlist() error {
 	cfg, err := userconfig.Load()
 	if err != nil {
@@ -284,23 +217,18 @@ func runGeneratePlist() error {
 		return fmt.Errorf("failed to build plist data: %w", err)
 	}
 
-	tmpl, err := template.New("plist").Parse(plistTemplate)
+	content, err := daemonconfig.GeneratePlistXML(data)
 	if err != nil {
-		return fmt.Errorf("failed to parse template: %w", err)
+		return fmt.Errorf("failed to generate plist: %w", err)
 	}
 
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return fmt.Errorf("failed to execute template: %w", err)
-	}
-
-	plistPath := getPlistPath()
+	plistPath := daemonconfig.GetPlistPath()
 
 	if configDryRun {
 		fmt.Printf("# Would write to: %s\n", plistPath)
 		fmt.Println("# Generated from: ~/.orch/config.yaml")
 		fmt.Println()
-		fmt.Println(buf.String())
+		fmt.Println(string(content))
 		return nil
 	}
 
@@ -311,13 +239,13 @@ func runGeneratePlist() error {
 
 	// Check if file exists and compare
 	existingContent, err := os.ReadFile(plistPath)
-	if err == nil && bytes.Equal(existingContent, buf.Bytes()) {
+	if err == nil && bytes.Equal(existingContent, content) {
 		fmt.Println("Plist is already up to date.")
 		return nil
 	}
 
 	// Write the new plist
-	if err := os.WriteFile(plistPath, buf.Bytes(), 0644); err != nil {
+	if err := os.WriteFile(plistPath, content, 0644); err != nil {
 		return fmt.Errorf("failed to write plist: %w", err)
 	}
 
@@ -329,23 +257,16 @@ func runGeneratePlist() error {
 	return nil
 }
 
-func buildPlistData(cfg *userconfig.Config) (*PlistData, error) {
+func buildPlistData(cfg *userconfig.Config) (*daemonconfig.PlistData, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	// Find orch binary path
-	orchPath := findOrchPath(home)
+	orchPath := daemonconfig.FindOrchPath(home)
+	pathStr := daemonconfig.BuildPATH(cfg.DaemonPath())
 
-	// Build PATH from config
-	pathDirs := cfg.DaemonPath()
-	// Add system paths
-	systemPaths := []string{"/usr/local/bin", "/usr/bin", "/bin"}
-	allPaths := append(pathDirs, systemPaths...)
-	pathStr := strings.Join(allPaths, ":")
-
-	return &PlistData{
+	return &daemonconfig.PlistData{
 		Label:            "com.orch.daemon",
 		OrchPath:         orchPath,
 		PollInterval:     cfg.DaemonPollInterval(),
@@ -359,34 +280,6 @@ func buildPlistData(cfg *userconfig.Config) (*PlistData, error) {
 		PATH:             pathStr,
 		Home:             home,
 	}, nil
-}
-
-func findOrchPath(home string) string {
-	// Check common locations
-	candidates := []string{
-		filepath.Join(home, "bin", "orch"),
-		filepath.Join(home, "go", "bin", "orch"),
-		filepath.Join(home, ".bun", "bin", "orch"),
-	}
-
-	for _, p := range candidates {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-
-	// Fall back to which
-	if path, err := exec.LookPath("orch"); err == nil {
-		return path
-	}
-
-	// Default to ~/bin/orch
-	return filepath.Join(home, "bin", "orch")
-}
-
-func getPlistPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Library", "LaunchAgents", "com.orch.daemon.plist")
 }
 
 func runShowConfig() error {
@@ -456,7 +349,7 @@ func runShowPlistConfig() error {
 	fmt.Println()
 	fmt.Printf("PATH:\n  %s\n", strings.ReplaceAll(data.PATH, ":", "\n  "))
 	fmt.Println()
-	fmt.Printf("Plist location:    %s\n", getPlistPath())
+	fmt.Printf("Plist location:    %s\n", daemonconfig.GetPlistPath())
 
 	return nil
 }

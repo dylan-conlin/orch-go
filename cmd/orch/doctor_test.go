@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
 )
 
 func TestServiceStatusJSON(t *testing.T) {
@@ -343,9 +345,9 @@ func TestParsePlistValues(t *testing.T) {
 </dict>
 </plist>`
 
-	values, err := parsePlistValues(plistContent)
+	values, err := daemonconfig.ParsePlistValues(plistContent)
 	if err != nil {
-		t.Fatalf("parsePlistValues() error = %v", err)
+		t.Fatalf("daemonconfig.ParsePlistValues() error = %v", err)
 	}
 
 	tests := []struct {
@@ -364,7 +366,7 @@ func TestParsePlistValues(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
 			if got := values[tt.key]; got != tt.expected {
-				t.Errorf("parsePlistValues()[%q] = %q, want %q", tt.key, got, tt.expected)
+				t.Errorf("daemonconfig.ParsePlistValues()[%q] = %q, want %q", tt.key, got, tt.expected)
 			}
 		})
 	}
@@ -386,18 +388,18 @@ func TestParsePlistValuesWithoutVerbose(t *testing.T) {
 </dict>
 </plist>`
 
-	values, err := parsePlistValues(plistContent)
+	values, err := daemonconfig.ParsePlistValues(plistContent)
 	if err != nil {
-		t.Fatalf("parsePlistValues() error = %v", err)
+		t.Fatalf("daemonconfig.ParsePlistValues() error = %v", err)
 	}
 
 	// Without --verbose flag, should be false
 	if values["verbose"] != "false" {
-		t.Errorf("parsePlistValues() verbose = %q, want \"false\"", values["verbose"])
+		t.Errorf("daemonconfig.ParsePlistValues() verbose = %q, want \"false\"", values["verbose"])
 	}
 
 	if values["poll_interval"] != "30" {
-		t.Errorf("parsePlistValues() poll_interval = %q, want \"30\"", values["poll_interval"])
+		t.Errorf("daemonconfig.ParsePlistValues() poll_interval = %q, want \"30\"", values["poll_interval"])
 	}
 }
 
@@ -415,16 +417,16 @@ func TestParsePlistValuesWithReflectIssuesTrue(t *testing.T) {
 </dict>
 </plist>`
 
-	values, err := parsePlistValues(plistContent)
+	values, err := daemonconfig.ParsePlistValues(plistContent)
 	if err != nil {
-		t.Fatalf("parsePlistValues() error = %v", err)
+		t.Fatalf("daemonconfig.ParsePlistValues() error = %v", err)
 	}
 
 	if values["reflect_issues"] != "true" {
-		t.Errorf("parsePlistValues() reflect_issues = %q, want \"true\"", values["reflect_issues"])
+		t.Errorf("daemonconfig.ParsePlistValues() reflect_issues = %q, want \"true\"", values["reflect_issues"])
 	}
 	if values["reflect_open"] != "false" {
-		t.Errorf("parsePlistValues() reflect_open = %q, want \"false\"", values["reflect_open"])
+		t.Errorf("daemonconfig.ParsePlistValues() reflect_open = %q, want \"false\"", values["reflect_open"])
 	}
 }
 

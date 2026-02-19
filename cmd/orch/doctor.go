@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -1025,7 +1026,7 @@ func checkPlistDrift() (*ConfigDriftReport, error) {
 	}
 
 	// Read actual plist
-	plistPath := getPlistPath()
+	plistPath := daemonconfig.GetPlistPath()
 	plistContent, err := os.ReadFile(plistPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -1038,7 +1039,7 @@ func checkPlistDrift() (*ConfigDriftReport, error) {
 	report.PlistFound = true
 
 	// Parse plist to extract values
-	actualValues, err := parsePlistValues(string(plistContent))
+	actualValues, err := daemonconfig.ParsePlistValues(string(plistContent))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse plist: %w", err)
 	}
@@ -1100,96 +1101,6 @@ func checkPlistDrift() (*ConfigDriftReport, error) {
 	return report, nil
 }
 
-// parsePlistValues extracts key values from the daemon plist.
-// Uses simple string parsing (not full XML parsing) since the plist has a known structure.
-func parsePlistValues(content string) (map[string]string, error) {
-	values := make(map[string]string)
-
-	// Extract ProgramArguments to parse flags
-	// Look for patterns like:
-	// <string>--poll-interval</string>
-	// <string>60</string>
-
-	// Parse poll-interval
-	if idx := strings.Index(content, "--poll-interval"); idx != -1 {
-		// Find the next <string> after this
-		remaining := content[idx:]
-		if start := strings.Index(remaining, "</string>"); start != -1 {
-			remaining = remaining[start+9:] // Skip past </string>
-			if strings.HasPrefix(strings.TrimSpace(remaining), "<string>") {
-				remaining = strings.TrimSpace(remaining)[8:] // Skip <string>
-				if end := strings.Index(remaining, "</string>"); end != -1 {
-					values["poll_interval"] = remaining[:end]
-				}
-			}
-		}
-	}
-
-	// Parse max-agents
-	if idx := strings.Index(content, "--max-agents"); idx != -1 {
-		remaining := content[idx:]
-		if start := strings.Index(remaining, "</string>"); start != -1 {
-			remaining = remaining[start+9:]
-			if strings.HasPrefix(strings.TrimSpace(remaining), "<string>") {
-				remaining = strings.TrimSpace(remaining)[8:]
-				if end := strings.Index(remaining, "</string>"); end != -1 {
-					values["max_agents"] = remaining[:end]
-				}
-			}
-		}
-	}
-
-	// Parse label (--label flag value)
-	if idx := strings.Index(content, "--label"); idx != -1 {
-		remaining := content[idx:]
-		if start := strings.Index(remaining, "</string>"); start != -1 {
-			remaining = remaining[start+9:]
-			if strings.HasPrefix(strings.TrimSpace(remaining), "<string>") {
-				remaining = strings.TrimSpace(remaining)[8:]
-				if end := strings.Index(remaining, "</string>"); end != -1 {
-					values["label"] = remaining[:end]
-				}
-			}
-		}
-	}
-
-	// Parse verbose (presence of --verbose flag)
-	values["verbose"] = "false"
-	if strings.Contains(content, "<string>--verbose</string>") {
-		values["verbose"] = "true"
-	}
-
-	// Parse reflect-issues (--reflect-issues=true/false)
-	values["reflect_issues"] = "true" // Default
-	if idx := strings.Index(content, "--reflect-issues="); idx != -1 {
-		remaining := content[idx+17:] // Skip "--reflect-issues="
-		if end := strings.Index(remaining, "</string>"); end != -1 {
-			values["reflect_issues"] = remaining[:end]
-		}
-	}
-
-	// Parse reflect-open (--reflect-open=true/false)
-	values["reflect_open"] = "true" // Default
-	if idx := strings.Index(content, "--reflect-open="); idx != -1 {
-		remaining := content[idx+15:] // Skip "--reflect-open="
-		if end := strings.Index(remaining, "</string>"); end != -1 {
-			values["reflect_open"] = remaining[:end]
-		}
-	}
-
-	// Parse WorkingDirectory
-	if idx := strings.Index(content, "<key>WorkingDirectory</key>"); idx != -1 {
-		remaining := content[idx:]
-		if start := strings.Index(remaining, "<string>"); start != -1 {
-			remaining = remaining[start+8:]
-			if end := strings.Index(remaining, "</string>"); end != -1 {
-				values["working_directory"] = remaining[:end]
-			}
-		}
-	}
-
-	return values, nil
-}
 
 // DocDebtReport contains the results of doc debt detection.
 type DocDebtReport struct {

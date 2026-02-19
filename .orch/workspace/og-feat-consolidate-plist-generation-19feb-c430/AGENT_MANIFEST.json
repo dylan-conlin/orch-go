@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-consolidate-plist-generation-19feb-c430",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1107",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "2bf5f8bcfbe2e13dfb2246a8d9a7a9525e74edb1",
+  "spawn_time": "2026-02-19T12:44:17-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

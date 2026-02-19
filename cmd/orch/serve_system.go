@@ -10,11 +10,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
+	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/port"
@@ -783,7 +783,7 @@ func handleConfigDrift(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	plistPath := getPlistPath()
+	plistPath := daemonconfig.GetPlistPath()
 	configPath := userconfig.ConfigPath()
 
 	resp := DriftStatusAPIResponse{
@@ -843,7 +843,7 @@ func handleConfigRegenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	plistPath := getPlistPath()
+	plistPath := daemonconfig.GetPlistPath()
 
 	err := regeneratePlistAndKickDaemon()
 	resp := RegenerateAPIResponse{
@@ -866,18 +866,12 @@ func handleConfigRegenerate(w http.ResponseWriter, r *http.Request) {
 // regeneratePlistAndKickDaemon generates plist from config and restarts the daemon.
 // This is shared by PUT /api/config/daemon and POST /api/config/regenerate.
 func regeneratePlistAndKickDaemon() error {
-	cfg, err := userconfig.Load()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-
-	// Generate plist content
 	plistContent, err := generatePlistContent()
 	if err != nil {
 		return fmt.Errorf("failed to generate plist: %w", err)
 	}
 
-	plistPath := getPlistPath()
+	plistPath := daemonconfig.GetPlistPath()
 
 	// Ensure parent directory exists
 	if err := os.MkdirAll(filepath.Dir(plistPath), 0755); err != nil {
@@ -896,8 +890,6 @@ func regeneratePlistAndKickDaemon() error {
 	}
 
 	// Kick the daemon to reload the plist
-	// Uses launchctl kickstart -k to force restart
-	_ = cfg // Suppress unused warning
 	cmd := exec.Command("launchctl", "kickstart", "-k", fmt.Sprintf("gui/%d/com.orch.daemon", os.Getuid()))
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to kick daemon: %w", err)
@@ -906,157 +898,20 @@ func regeneratePlistAndKickDaemon() error {
 	return nil
 }
 
-// generatePlistContent generates plist content from config.
-// This is a helper that mirrors the logic from config_cmd.go but returns bytes.
+// generatePlistContent generates plist content from config using the consolidated daemonconfig package.
 func generatePlistContent() ([]byte, error) {
 	cfg, err := userconfig.Load()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	data, err := buildPlistDataForAPI(cfg)
+	data, err := buildPlistData(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build plist data: %w", err)
 	}
 
-	tmpl, err := template.New("plist").Parse(plistTemplateAPI)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse template: %w", err)
-	}
-
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return nil, fmt.Errorf("failed to execute template: %w", err)
-	}
-
-	return buf.Bytes(), nil
+	return daemonconfig.GeneratePlistXML(data)
 }
-
-// PlistDataAPI is a copy of PlistData for use in serve_system.go
-// to avoid import cycles with main package.
-type PlistDataAPI struct {
-	Label            string
-	OrchPath         string
-	PollInterval     int
-	MaxAgents        int
-	IssueLabel       string
-	Verbose          bool
-	ReflectIssues    bool
-	ReflectOpen      bool
-	LogPath          string
-	WorkingDirectory string
-	PATH             string
-	Home             string
-}
-
-// buildPlistDataForAPI builds plist template data from config.
-// This mirrors buildPlistData from config_cmd.go.
-func buildPlistDataForAPI(cfg *userconfig.Config) (*PlistDataAPI, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	// Find orch binary path
-	orchPath := findOrchPathForAPI(home)
-
-	// Build PATH from config
-	pathDirs := cfg.DaemonPath()
-	// Add system paths
-	systemPaths := []string{"/usr/local/bin", "/usr/bin", "/bin"}
-	allPaths := append(pathDirs, systemPaths...)
-	pathStr := strings.Join(allPaths, ":")
-
-	return &PlistDataAPI{
-		Label:            "com.orch.daemon",
-		OrchPath:         orchPath,
-		PollInterval:     cfg.DaemonPollInterval(),
-		MaxAgents:        cfg.DaemonMaxAgents(),
-		IssueLabel:       cfg.DaemonLabel(),
-		Verbose:          cfg.DaemonVerbose(),
-		ReflectIssues:    cfg.DaemonReflectIssues(),
-		ReflectOpen:      cfg.DaemonReflectOpen(),
-		LogPath:          filepath.Join(home, ".orch", "daemon.log"),
-		WorkingDirectory: cfg.DaemonWorkingDirectory(),
-		PATH:             pathStr,
-		Home:             home,
-	}, nil
-}
-
-// findOrchPathForAPI finds the orch binary path.
-// This mirrors findOrchPath from config_cmd.go.
-func findOrchPathForAPI(home string) string {
-	candidates := []string{
-		filepath.Join(home, "bin", "orch"),
-		filepath.Join(home, "go", "bin", "orch"),
-		filepath.Join(home, ".bun", "bin", "orch"),
-	}
-
-	for _, p := range candidates {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-
-	// Fall back to which
-	if path, err := exec.LookPath("orch"); err == nil {
-		return path
-	}
-
-	// Default to ~/bin/orch
-	return filepath.Join(home, "bin", "orch")
-}
-
-// plistTemplateAPI is the launchd plist template.
-// This is a copy of plistTemplate from config_cmd.go to avoid import issues.
-const plistTemplateAPI = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>{{.Label}}</string>
-
-    <key>ProgramArguments</key>
-    <array>
-        <string>{{.OrchPath}}</string>
-        <string>daemon</string>
-        <string>run</string>
-        <string>--poll-interval</string>
-        <string>{{.PollInterval}}</string>
-        <string>--max-agents</string>
-        <string>{{.MaxAgents}}</string>
-        <string>--label</string>
-        <string>{{.IssueLabel}}</string>{{if .Verbose}}
-        <string>--verbose</string>{{end}}
-        <string>--reflect-issues={{.ReflectIssues}}</string>
-        <string>--reflect-open={{.ReflectOpen}}</string>
-    </array>
-
-    <key>RunAtLoad</key>
-    <true/>
-
-    <key>KeepAlive</key>
-    <true/>
-
-    <key>StandardOutPath</key>
-    <string>{{.LogPath}}</string>
-
-    <key>StandardErrorPath</key>
-    <string>{{.LogPath}}</string>
-
-    <key>WorkingDirectory</key>
-    <string>{{.WorkingDirectory}}</string>
-
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>{{.PATH}}</string>
-        <key>BEADS_NO_DAEMON</key>
-        <string>1</string>
-    </dict>
-</dict>
-</plist>
-`
 
 // FileAPIResponse is the JSON structure returned by /api/file.
 type FileAPIResponse struct {
