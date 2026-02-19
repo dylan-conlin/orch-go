@@ -22,6 +22,7 @@ kb reflect --type stale
 kb reflect --type open
 kb reflect --type drift
 kb reflect --type promote
+kb reflect --type model-drift
 ```
 
 Use `kb-reflect` skill mechanics for worker-level triage trees and disposition details. This guide defines orchestrator-level session protocol: when to run, what lane to choose, and how to measure results.
@@ -32,12 +33,12 @@ Use `kb-reflect` skill mechanics for worker-level triage trees and disposition d
 
 Run a session when **any one** of these triggers is true:
 
-| Trigger | Threshold | Why It Exists |
-|---------|-----------|---------------|
-| **Volume** | >=10 new investigations since last reflection | Prevents backlog buildup |
-| **Recurrence** | >=3 investigations in 14 days for one coherent problem family | Catches repeat rediscovery early |
-| **Milestone** | Major feature/epic completion OR repeated constraint surfacing | Converts delivery learnings into durable artifacts |
-| **Time-floor** | 14 days since last reflection | Safety backstop when event triggers are quiet |
+| Trigger        | Threshold                                                      | Why It Exists                                      |
+| -------------- | -------------------------------------------------------------- | -------------------------------------------------- |
+| **Volume**     | >=10 new investigations since last reflection                  | Prevents backlog buildup                           |
+| **Recurrence** | >=3 investigations in 14 days for one coherent problem family  | Catches repeat rediscovery early                   |
+| **Milestone**  | Major feature/epic completion OR repeated constraint surfacing | Converts delivery learnings into durable artifacts |
+| **Time-floor** | 14 days since last reflection                                  | Safety backstop when event triggers are quiet      |
 
 If multiple triggers fire, prioritize the one with highest Amnesia Tax impact (Section 4).
 
@@ -52,13 +53,14 @@ Each session uses a two-lane model:
 
 ### Available primary lanes
 
-| Lane | Typical Command | Primary Outcome |
-|------|------------------|-----------------|
-| **synthesis** | `kb reflect --type synthesis` | Consolidate repeated investigations into guide/decision |
-| **promote** | `kb reflect --type promote` | Promote quick entries into durable decisions/constraints |
-| **stale** | `kb reflect --type stale` | Refresh/archive uncited decisions |
-| **drift** | `kb reflect --type drift` | Resolve constraints diverging from actual practice |
-| **open** | `kb reflect --type open` | Close pending investigation actions |
+| Lane            | Typical Command                 | Primary Outcome                                          |
+| --------------- | ------------------------------- | -------------------------------------------------------- |
+| **synthesis**   | `kb reflect --type synthesis`   | Consolidate repeated investigations into guide/decision  |
+| **promote**     | `kb reflect --type promote`     | Promote quick entries into durable decisions/constraints |
+| **stale**       | `kb reflect --type stale`       | Refresh/archive uncited decisions                        |
+| **drift**       | `kb reflect --type drift`       | Resolve constraints diverging from actual practice       |
+| **model-drift** | `kb reflect --type model-drift` | Update stale models to match current system reality      |
+| **open**        | `kb reflect --type open`        | Close pending investigation actions                      |
 
 ### Rotation rule
 
@@ -66,6 +68,8 @@ Each session uses a two-lane model:
 2. Select the lane with highest-scoring candidate.
 3. If top lanes are close, rotate away from previous session lane to avoid starvation.
 4. Always reserve maintenance time for urgent stale/open items.
+
+**Integration note:** model-drift can run as a maintenance lane (20-30%) or become the primary lane when ATS > 7.
 
 ---
 
@@ -85,6 +89,14 @@ Each session uses a two-lane model:
 3. Record rationale for defer/discard to improve future scoring quality.
 4. Keep maintenance sweep bounded (urgent stale/open only).
 
+### Model-drift workflow
+
+1. Run `kb reflect --type model-drift`.
+2. For each stale model, verify whether the core mechanism is still accurate.
+3. Quick-fix file renames/moves in `code_refs` when paths changed.
+4. If severe drift (>50% code_refs stale), spawn architect to re-evaluate the model.
+5. Close resulting model-update issues via `orch complete --explain`.
+
 ### End
 
 1. Produce **1-3 durable outputs** (guide, decision, constraint update, or issue).
@@ -102,23 +114,25 @@ Use ATS to rank candidates by rediscovery cost, not raw count:
 
 ### Scoring dimensions
 
-| Dimension | Score Range | Practical scoring guide |
-|-----------|-------------|-------------------------|
-| **Recurrence** | 0-3 | 0=single mention, 1=occasional, 2=repeated, 3=frequent cluster in recent window |
-| **Delay Cost** | 0-3 | 0=small annoyance, 1=minor time tax, 2=recurring context loss, 3=major repeated rework |
-| **Blast Radius** | 0-2 | 0=one session/agent, 1=multiple sessions in one area, 2=cross-area impact |
-| **Preventability** | 0-2 | 0=hard to prevent, 1=partially preventable, 2=clear intervention likely to reduce repeats |
-| **Noise Penalty** | 0-2 | 0=coherent family, 1=some ambiguity, 2=likely keyword collision/mixed topic noise |
+| Dimension          | Score Range | Practical scoring guide                                                                   |
+| ------------------ | ----------- | ----------------------------------------------------------------------------------------- |
+| **Recurrence**     | 0-3         | 0=single mention, 1=occasional, 2=repeated, 3=frequent cluster in recent window           |
+| **Delay Cost**     | 0-3         | 0=small annoyance, 1=minor time tax, 2=recurring context loss, 3=major repeated rework    |
+| **Blast Radius**   | 0-2         | 0=one session/agent, 1=multiple sessions in one area, 2=cross-area impact                 |
+| **Preventability** | 0-2         | 0=hard to prevent, 1=partially preventable, 2=clear intervention likely to reduce repeats |
+| **Noise Penalty**  | 0-2         | 0=coherent family, 1=some ambiguity, 2=likely keyword collision/mixed topic noise         |
 
 ### Practical examples
 
-| Candidate | Example scoring | ATS | Decision hint |
-|-----------|-----------------|-----|---------------|
-| Repeated session handoff confusion across orchestrator runs | Recurrence 3, Delay 3, Radius 2, Preventability 2, Noise 0 | **10** | Primary lane now (high confidence, high leverage) |
-| One stale decision with no current usage signal | Recurrence 0, Delay 1, Radius 0, Preventability 1, Noise 1 | **1** | Maintenance sweep or defer |
-| Constraint drift appearing in multiple active workstreams with mixed evidence | Recurrence 2, Delay 2, Radius 2, Preventability 1, Noise 1 | **6** | Strong candidate; validate coherence before promote |
+| Candidate                                                                     | Example scoring                                            | ATS    | Decision hint                                       |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------- | ------ | --------------------------------------------------- |
+| Repeated session handoff confusion across orchestrator runs                   | Recurrence 3, Delay 3, Radius 2, Preventability 2, Noise 0 | **10** | Primary lane now (high confidence, high leverage)   |
+| One stale decision with no current usage signal                               | Recurrence 0, Delay 1, Radius 0, Preventability 1, Noise 1 | **1**  | Maintenance sweep or defer                          |
+| Constraint drift appearing in multiple active workstreams with mixed evidence | Recurrence 2, Delay 2, Radius 2, Preventability 1, Noise 1 | **6**  | Strong candidate; validate coherence before promote |
 
 Rule of thumb: prioritize ATS 7+ first, ATS 4-6 second, ATS <=3 only when quick-win or maintenance-critical.
+
+**Model-drift ATS guidance:** Recurrence 2-3, Delay 2, Radius 1-2, Preventability 2, Noise 0 is typical, yielding ATS 7-9 (high priority).
 
 ---
 
@@ -126,12 +140,12 @@ Rule of thumb: prioritize ATS 7+ first, ATS 4-6 second, ATS <=3 only when quick-
 
 Track quality over quantity.
 
-| Metric | How to read it | Healthy direction |
-|--------|----------------|-------------------|
-| **Repeat Investigation Rate (RIR)** | Repeat investigations per top problem family | Downward trend |
-| **Rediscovery Latency** | Median days between first and repeat investigation | Upward trend (repeats happen later) |
-| **Promotion Yield Quality** | % of promoted artifacts cited within 30 days | Upward trend |
-| **Reflection Throughput Quality** | Durable outputs per session (target 1-3) | Stable 1-3 high-value outputs; avoid output inflation |
+| Metric                              | How to read it                                     | Healthy direction                                     |
+| ----------------------------------- | -------------------------------------------------- | ----------------------------------------------------- |
+| **Repeat Investigation Rate (RIR)** | Repeat investigations per top problem family       | Downward trend                                        |
+| **Rediscovery Latency**             | Median days between first and repeat investigation | Upward trend (repeats happen later)                   |
+| **Promotion Yield Quality**         | % of promoted artifacts cited within 30 days       | Upward trend                                          |
+| **Reflection Throughput Quality**   | Durable outputs per session (target 1-3)           | Stable 1-3 high-value outputs; avoid output inflation |
 
 Reflection is working when RIR decreases and citation/follow-through improve without creating a growing open backlog.
 
