@@ -142,10 +142,13 @@ Progress tracking via bd comment is NOT available.
 🚨 SESSION COMPLETE PROTOCOL:
 Complete your session in this EXACT order:
 
+⚠️ **NEVER use git add -A or git add .** — the workspace often has unrelated changes (.autorebuild.lock, .beads/, build/).
+Stage ONLY the specific files you created or modified for your task, by name.
+
 {{if eq .Tier "light"}}
 1. **COMMIT YOUR WORK:**
    ` + "```bash" + `
-   git add -A
+   git add <files you changed>
    git commit -m "feat: [brief description of changes]"
    ` + "```" + `
 2. Run: ` + "`/exit`" + ` to close the agent session
@@ -157,7 +160,7 @@ Complete your session in this EXACT order:
    - Delta (what changed)
 2. **COMMIT YOUR WORK:**
    ` + "```bash" + `
-   git add -A
+   git add <files you changed>
    git commit -m "feat: [brief description of changes]"
    ` + "```" + `
 3. Run: ` + "`/exit`" + ` to close the agent session
@@ -179,10 +182,13 @@ Do NOT skip this - the orchestrator monitors via beads comments.
 🚨 SESSION COMPLETE PROTOCOL (READ NOW, DO AT END):
 Complete your session in this EXACT order:
 
+⚠️ **NEVER use git add -A or git add .** — the workspace often has unrelated changes (.autorebuild.lock, .beads/, build/).
+Stage ONLY the specific files you created or modified for your task, by name.
+
 {{if eq .Tier "light"}}
 1. **COMMIT YOUR WORK:**
    ` + "```bash" + `
-   git add -A
+   git add <files you changed>
    git commit -m "feat: [brief description of changes] ({{.BeadsID}})"
    ` + "```" + `
 2. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
@@ -195,7 +201,7 @@ Complete your session in this EXACT order:
    - Delta (what changed)
 2. **COMMIT YOUR WORK:**
    ` + "```bash" + `
-   git add -A
+   git add <files you changed>
    git commit -m "feat: [brief description of changes] ({{.BeadsID}})"
    ` + "```" + `
 3. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
@@ -405,27 +411,29 @@ CONTEXT AVAILABLE:
 🚨 FINAL STEP - SESSION COMPLETE PROTOCOL:
 Complete your session in this EXACT order:
 
+⚠️ **NEVER use git add -A or git add .** — stage ONLY your task files by name.
+
 {{if .NoTrack}}
 {{if eq .Tier "light"}}
-1. **COMMIT YOUR WORK:** ` + "`git add -A && git commit -m \"feat: [description]\"`" + `
+1. **COMMIT YOUR WORK:** ` + "`git add <files you changed> && git commit -m \"feat: [description]\"`" + `
 2. ` + "`/exit`" + `
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
 {{else}}
 1. Create SYNTHESIS.md in your workspace
-2. **COMMIT YOUR WORK:** ` + "`git add -A && git commit -m \"feat: [description]\"`" + `
+2. **COMMIT YOUR WORK:** ` + "`git add <files you changed> && git commit -m \"feat: [description]\"`" + `
 3. ` + "`/exit`" + `
 {{end}}
 {{else}}
 {{if eq .Tier "light"}}
-1. **COMMIT YOUR WORK:** ` + "`git add -A && git commit -m \"feat: [description] ({{.BeadsID}})\"`" + `
+1. **COMMIT YOUR WORK:** ` + "`git add <files you changed> && git commit -m \"feat: [description] ({{.BeadsID}})\"`" + `
 2. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
 3. ` + "`/exit`" + `
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
 {{else}}
 1. Create SYNTHESIS.md in your workspace
-2. **COMMIT YOUR WORK:** ` + "`git add -A && git commit -m \"feat: [description] ({{.BeadsID}})\"`" + `
+2. **COMMIT YOUR WORK:** ` + "`git add <files you changed> && git commit -m \"feat: [description] ({{.BeadsID}})\"`" + `
 3. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
 4. ` + "`/exit`" + `
 {{end}}

@@ -391,7 +391,7 @@ Test skill content.
 		"Validation: tests",
 		"CREATE SYNTHESIS.md",
 		"COMMIT YOUR WORK",
-		"git add -A",
+		"git add <files you changed>",
 		"git commit -m",
 	}
 
