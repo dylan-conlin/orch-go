@@ -208,6 +208,13 @@ func runStatus(serverURL string) error {
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
 
+	sessionStatusMap := make(map[string]opencode.SessionStatusInfo)
+	if status, err := client.GetAllSessionStatus(); err == nil {
+		sessionStatusMap = status
+	} else {
+		fmt.Fprintf(os.Stderr, "Warning: failed to fetch session status: %v\n", err)
+	}
+
 	// Build a map of session ID -> session for quick lookup
 	sessionMap := make(map[string]*opencode.Session)
 	// Also build a map of beadsID -> session for matching
@@ -221,7 +228,7 @@ func runStatus(serverURL string) error {
 		// Only consider recently active sessions for beads matching
 		updatedAt := time.Unix(s.Time.Updated/1000, 0)
 		if now.Sub(updatedAt) <= maxIdleTime {
-			beadsID := extractBeadsIDFromTitle(s.Title)
+			beadsID := beadsIDFromSession(s)
 			if beadsID != "" {
 				beadsToSession[beadsID] = s
 			}
@@ -271,8 +278,21 @@ func runStatus(serverURL string) error {
 					updatedAt := time.Unix(s.Time.Updated/1000, 0)
 					info.Runtime = formatDuration(now.Sub(createdAt))
 					info.LastActivity = updatedAt
-					info.Title = s.Title
-					info.IsProcessing = isSessionLikelyProcessing(client, s.ID, updatedAt, now)
+					if info.Title == "" {
+						info.Title = workspaceNameFromSession(s)
+					}
+					if info.ProjectDir == "" {
+						if projectDir := projectDirFromWorkspacePath(workspacePathFromSession(s)); projectDir != "" {
+							info.ProjectDir = projectDir
+						} else if s.Directory != "" {
+							info.ProjectDir = s.Directory
+						}
+					}
+					if statusInfo, ok := sessionStatusMap[s.ID]; ok {
+						info.IsProcessing = statusInfo.IsBusy() || statusInfo.IsRetrying()
+					} else {
+						info.IsProcessing = isSessionLikelyProcessing(client, s.ID, updatedAt, now)
+					}
 				} else {
 					info.SessionID = "api-stalled"
 				}

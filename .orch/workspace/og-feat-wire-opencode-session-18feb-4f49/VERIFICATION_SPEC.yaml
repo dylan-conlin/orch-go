@@ -1,0 +1,24 @@
+# Verification Specification
+# Generated: 2026-02-18
+
+verification:
+  tests:
+    command: 'go test ./cmd/orch/...'
+    expected: 'cmd/orch tests pass'
+    result: '✓ PASS - ok   github.com/dylan-conlin/orch-go/cmd/orch 4.207s'
+
+  manual_steps:
+    - description: 'Not run (no manual verification requested)'
+      command: 'not run'
+      result: 'N/A'
+
+deliverables:
+  - file: 'cmd/orch/serve_agents.go'
+    change: 'Use OpenCode session metadata and /session/status for agent discovery'
+  - file: 'cmd/orch/status_cmd.go'
+    change: 'Use session metadata and /session/status for processing detection'
+  - file: 'cmd/orch/session_metadata.go'
+    change: 'Add helpers for session metadata and workspace/project derivation'
+
+notes:
+  - 'Session metadata is preferred when available; workspace/title fallback retained'
