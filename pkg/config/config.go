@@ -26,6 +26,13 @@ type Config struct {
 	Servers   map[string]int    `yaml:"servers,omitempty"`
 }
 
+// ConfigMeta tracks which YAML keys were explicitly set.
+type ConfigMeta struct {
+	Explicit         map[string]bool
+	ExplicitClaude   map[string]bool
+	ExplicitOpenCode map[string]bool
+}
+
 // ClaudeConfig holds settings for Claude mode spawning.
 type ClaudeConfig struct {
 	Model       string `yaml:"model"`        // "opus" | "sonnet" | "haiku"
@@ -61,6 +68,37 @@ func Load(projectDir string) (*Config, error) {
 	cfg.ApplyDefaults()
 
 	return &cfg, nil
+}
+
+// LoadWithMeta loads the project configuration and tracks explicit YAML keys.
+func LoadWithMeta(projectDir string) (*Config, *ConfigMeta, error) {
+	configPath := DefaultPath(projectDir)
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	var raw map[string]any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil, nil, fmt.Errorf("failed to parse config metadata: %w", err)
+	}
+
+	meta := &ConfigMeta{
+		Explicit:         explicitKeys(raw),
+		ExplicitClaude:   explicitKeys(raw["claude"]),
+		ExplicitOpenCode: explicitKeys(raw["opencode"]),
+	}
+
+	// Apply defaults for backward compatibility
+	cfg.ApplyDefaults()
+
+	return &cfg, meta, nil
 }
 
 // Save saves the project configuration to .orch/config.yaml.
@@ -122,4 +160,23 @@ func (c *Config) GetServerPort(service string) (int, bool) {
 	}
 	port, ok := c.Servers[service]
 	return port, ok
+}
+
+func explicitKeys(value any) map[string]bool {
+	keys := map[string]bool{}
+
+	switch typed := value.(type) {
+	case map[string]any:
+		for key := range typed {
+			keys[key] = true
+		}
+	case map[interface{}]interface{}:
+		for key := range typed {
+			if keyName, ok := key.(string); ok {
+				keys[keyName] = true
+			}
+		}
+	}
+
+	return keys
 }

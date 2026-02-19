@@ -50,6 +50,62 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
+func TestLoadWithMeta(t *testing.T) {
+	// Create temp directory with config
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, ".orch", "config.yaml")
+
+	// Ensure .orch directory exists
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		t.Fatalf("Failed to create .orch dir: %v", err)
+	}
+
+	// Write sample config
+	content := `spawn_mode: claude
+claude:
+  model: opus
+opencode:
+  server: http://127.0.0.1:4096
+servers:
+  web: 5173
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	// Load config with metadata
+	_, meta, err := LoadWithMeta(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadWithMeta() failed: %v", err)
+	}
+
+	if meta == nil {
+		t.Fatal("LoadWithMeta() returned nil meta")
+	}
+
+	if !meta.Explicit["spawn_mode"] {
+		t.Error("Expected spawn_mode to be explicit")
+	}
+	if !meta.Explicit["claude"] {
+		t.Error("Expected claude to be explicit")
+	}
+	if !meta.Explicit["opencode"] {
+		t.Error("Expected opencode to be explicit")
+	}
+	if !meta.Explicit["servers"] {
+		t.Error("Expected servers to be explicit")
+	}
+	if !meta.ExplicitClaude["model"] {
+		t.Error("Expected claude.model to be explicit")
+	}
+	if meta.ExplicitClaude["tmux_session"] {
+		t.Error("Did not expect claude.tmux_session to be explicit")
+	}
+	if !meta.ExplicitOpenCode["server"] {
+		t.Error("Expected opencode.server to be explicit")
+	}
+}
+
 func TestLoadConfigMissing(t *testing.T) {
 	tmpDir := t.TempDir()
 

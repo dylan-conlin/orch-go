@@ -129,6 +129,17 @@ type Config struct {
 	Session SessionConfig `yaml:"session,omitempty"`
 }
 
+// ConfigMeta tracks which YAML keys were explicitly set.
+type ConfigMeta struct {
+	Explicit                            map[string]bool
+	ExplicitNotifications               map[string]bool
+	ExplicitReflect                     map[string]bool
+	ExplicitDaemon                      map[string]bool
+	ExplicitSession                     map[string]bool
+	ExplicitSessionOrchestratorCheckpts map[string]bool
+	ExplicitSessionAgentCheckpts        map[string]bool
+}
+
 // ConfigPath returns the path to the user config file.
 func ConfigPath() string {
 	home, _ := os.UserHomeDir()
@@ -153,6 +164,49 @@ func Load() (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// LoadWithMeta loads the user configuration and tracks explicit YAML keys.
+func LoadWithMeta() (*Config, *ConfigMeta, error) {
+	data, err := os.ReadFile(ConfigPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return DefaultConfig(), &ConfigMeta{
+				Explicit:                            map[string]bool{},
+				ExplicitNotifications:               map[string]bool{},
+				ExplicitReflect:                     map[string]bool{},
+				ExplicitDaemon:                      map[string]bool{},
+				ExplicitSession:                     map[string]bool{},
+				ExplicitSessionOrchestratorCheckpts: map[string]bool{},
+				ExplicitSessionAgentCheckpts:        map[string]bool{},
+			}, nil
+		}
+		return nil, nil, err
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, nil, err
+	}
+
+	var raw map[string]any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil, nil, err
+	}
+
+	sessionRaw := mapValue(raw["session"])
+
+	meta := &ConfigMeta{
+		Explicit:                            explicitKeys(raw),
+		ExplicitNotifications:               explicitKeys(raw["notifications"]),
+		ExplicitReflect:                     explicitKeys(raw["reflect"]),
+		ExplicitDaemon:                      explicitKeys(raw["daemon"]),
+		ExplicitSession:                     explicitKeys(raw["session"]),
+		ExplicitSessionOrchestratorCheckpts: explicitKeys(sessionRaw["orchestrator_checkpoints"]),
+		ExplicitSessionAgentCheckpts:        explicitKeys(sessionRaw["agent_checkpoints"]),
+	}
+
+	return &cfg, meta, nil
 }
 
 // DefaultConfig returns a config with sensible defaults.
@@ -499,4 +553,42 @@ func (d *DocDebt) UndocumentedCommands() []DocDebtEntry {
 		}
 	}
 	return result
+}
+
+func explicitKeys(value any) map[string]bool {
+	keys := map[string]bool{}
+
+	switch typed := value.(type) {
+	case map[string]any:
+		for key := range typed {
+			keys[key] = true
+		}
+	case map[interface{}]interface{}:
+		for key := range typed {
+			if keyName, ok := key.(string); ok {
+				keys[keyName] = true
+			}
+		}
+	}
+
+	return keys
+}
+
+func mapValue(value any) map[string]any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return typed
+	case map[interface{}]interface{}:
+		result := map[string]any{}
+		for key, val := range typed {
+			keyName, ok := key.(string)
+			if !ok {
+				continue
+			}
+			result[keyName] = val
+		}
+		return result
+	default:
+		return nil
+	}
 }

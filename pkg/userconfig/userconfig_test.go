@@ -118,6 +118,102 @@ notifications:
 	}
 }
 
+func TestLoadWithMetaExistingConfig(t *testing.T) {
+	// Save original home and restore after test
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create config directory and file
+	configDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	configContent := `backend: opencode
+default_model: gpt4o
+default_tier: full
+notifications:
+  enabled: false
+reflect:
+  enabled: false
+daemon:
+  label: custom:ready
+session:
+  orchestrator_checkpoints:
+    warning_minutes: 300
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	_, meta, err := LoadWithMeta()
+	if err != nil {
+		t.Fatalf("LoadWithMeta() error = %v, want nil", err)
+	}
+
+	if meta == nil {
+		t.Fatal("LoadWithMeta() returned nil meta")
+	}
+
+	if !meta.Explicit["backend"] {
+		t.Error("Expected backend to be explicit")
+	}
+	if !meta.Explicit["default_model"] {
+		t.Error("Expected default_model to be explicit")
+	}
+	if !meta.Explicit["default_tier"] {
+		t.Error("Expected default_tier to be explicit")
+	}
+	if !meta.Explicit["notifications"] {
+		t.Error("Expected notifications to be explicit")
+	}
+	if !meta.Explicit["reflect"] {
+		t.Error("Expected reflect to be explicit")
+	}
+	if !meta.Explicit["daemon"] {
+		t.Error("Expected daemon to be explicit")
+	}
+	if !meta.Explicit["session"] {
+		t.Error("Expected session to be explicit")
+	}
+	if !meta.ExplicitNotifications["enabled"] {
+		t.Error("Expected notifications.enabled to be explicit")
+	}
+	if !meta.ExplicitReflect["enabled"] {
+		t.Error("Expected reflect.enabled to be explicit")
+	}
+	if !meta.ExplicitDaemon["label"] {
+		t.Error("Expected daemon.label to be explicit")
+	}
+	if !meta.ExplicitSessionOrchestratorCheckpts["warning_minutes"] {
+		t.Error("Expected session.orchestrator_checkpoints.warning_minutes to be explicit")
+	}
+}
+
+func TestLoadWithMetaMissingConfig(t *testing.T) {
+	// Save original home and restore after test
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	_, meta, err := LoadWithMeta()
+	if err != nil {
+		t.Fatalf("LoadWithMeta() error = %v, want nil", err)
+	}
+
+	if meta == nil {
+		t.Fatal("LoadWithMeta() returned nil meta")
+	}
+
+	if len(meta.Explicit) != 0 {
+		t.Errorf("Expected no explicit keys, got %d", len(meta.Explicit))
+	}
+}
+
 func TestSave(t *testing.T) {
 	// Save original home and restore after test
 	originalHome := os.Getenv("HOME")
