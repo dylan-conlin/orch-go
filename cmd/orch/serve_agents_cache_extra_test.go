@@ -429,6 +429,60 @@ func TestHandleCacheInvalidate(t *testing.T) {
 	globalBeadsCache.mu.RUnlock()
 }
 
+func TestBuildWorkspaceCacheSkipsArchived(t *testing.T) {
+	tmpDir := t.TempDir()
+	wsDir := filepath.Join(tmpDir, ".orch", "workspace")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir: %v", err)
+	}
+
+	// Create an active workspace
+	activeWs := filepath.Join(wsDir, "og-feat-active-19feb")
+	if err := os.MkdirAll(activeWs, 0755); err != nil {
+		t.Fatalf("Failed to create active workspace: %v", err)
+	}
+	spawnContext := `You were spawned from beads issue: **proj-abc1**
+PROJECT_DIR: ` + tmpDir
+	if err := os.WriteFile(filepath.Join(activeWs, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+		t.Fatalf("Failed to create SPAWN_CONTEXT.md: %v", err)
+	}
+
+	// Create archived directory with a workspace inside
+	archivedDir := filepath.Join(wsDir, "archived")
+	archivedWs := filepath.Join(archivedDir, "og-feat-old-18feb")
+	if err := os.MkdirAll(archivedWs, 0755); err != nil {
+		t.Fatalf("Failed to create archived workspace: %v", err)
+	}
+	archivedContext := `You were spawned from beads issue: **proj-def2**
+PROJECT_DIR: ` + tmpDir
+	if err := os.WriteFile(filepath.Join(archivedWs, "SPAWN_CONTEXT.md"), []byte(archivedContext), 0644); err != nil {
+		t.Fatalf("Failed to create archived SPAWN_CONTEXT.md: %v", err)
+	}
+
+	cache := buildWorkspaceCache(tmpDir)
+
+	// Active workspace should be found
+	if _, ok := cache.beadsToWorkspace["proj-abc1"]; !ok {
+		t.Error("Expected active workspace proj-abc1 in cache")
+	}
+
+	// Archived workspace should NOT be found
+	if _, ok := cache.beadsToWorkspace["proj-def2"]; ok {
+		t.Error("Archived workspace proj-def2 should not be in cache")
+	}
+
+	// workspaceEntries should not include archived directory
+	for _, entry := range cache.workspaceEntries {
+		if entry.Name() == "archived" {
+			t.Error("workspaceEntries should not contain 'archived' directory")
+		}
+	}
+
+	if len(cache.workspaceEntries) != 1 {
+		t.Errorf("Expected 1 workspace entry, got %d", len(cache.workspaceEntries))
+	}
+}
+
 func TestHandleCacheInvalidateMethodNotAllowed(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/cache/invalidate", nil)
 	w := httptest.NewRecorder()

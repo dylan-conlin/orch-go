@@ -621,17 +621,22 @@ func buildWorkspaceCache(projectDir string) *workspaceCache {
 		workspaceEntryToPath: make(map[string]string),
 	}
 
-	entries, err := os.ReadDir(cache.workspaceDir)
+	allEntries, err := os.ReadDir(cache.workspaceDir)
 	if err != nil {
 		return cache // Empty cache if directory doesn't exist
+	}
+
+	// Filter out archived directory and non-directories upfront
+	var entries []os.DirEntry
+	for _, entry := range allEntries {
+		if entry.IsDir() && entry.Name() != "archived" {
+			entries = append(entries, entry)
+		}
 	}
 	cache.workspaceEntries = entries
 
 	// Single scan: extract beads ID and project dir from each workspace
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
 
 		dirName := entry.Name()
 		dirPath := filepath.Join(cache.workspaceDir, dirName)

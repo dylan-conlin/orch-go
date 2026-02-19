@@ -164,6 +164,11 @@ func findWorkspaceForIssue(beadsID, workspaceDir, projectDir string) string {
 			continue
 		}
 
+		// Skip archived directory - only scan active workspaces
+		if entry.Name() == "archived" {
+			continue
+		}
+
 		wsPath := filepath.Join(workspaceDir, entry.Name())
 		spawnContext := filepath.Join(wsPath, "SPAWN_CONTEXT.md")
 

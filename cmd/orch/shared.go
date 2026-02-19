@@ -157,6 +157,11 @@ func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentNam
 			continue
 		}
 
+		// Skip archived directory - only scan active workspaces
+		if entry.Name() == "archived" {
+			continue
+		}
+
 		dirName := entry.Name()
 		dirPath := filepath.Join(workspaceDir, dirName)
 

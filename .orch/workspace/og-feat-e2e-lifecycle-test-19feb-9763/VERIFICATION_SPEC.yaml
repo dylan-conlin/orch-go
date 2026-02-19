@@ -1,0 +1,5 @@
+commands:
+  - command: go test ./cmd/orch -run TestContract_E2ELifecycle_SpawnVisibleCompleteGone
+    expectation: TestContract_E2ELifecycle_SpawnVisibleCompleteGone passes
+manual_steps: []
+notes: Added contract test covering spawn to visible to complete to gone lifecycle.

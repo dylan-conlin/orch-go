@@ -131,6 +131,57 @@ func TestContract_TrackedAgent_CompletedGoneFromStatus(t *testing.T) {
 	}
 }
 
+// --- Scenario 2b: E2E lifecycle (spawn → visible → complete → gone) ---
+
+func TestContract_E2ELifecycle_SpawnVisibleCompleteGone(t *testing.T) {
+	beadsID := "orch-go-e2e1"
+	sessionID := "sess-e2e1"
+
+	// Spawn → visible
+	issues := []beads.Issue{
+		{ID: beadsID, Title: "E2E lifecycle", Status: "in_progress", Labels: []string{"orch:agent"}},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		beadsID: {
+			BeadsID:       beadsID,
+			SessionID:     sessionID,
+			ProjectDir:    "/tmp/project",
+			WorkspaceName: "og-feat-e2e-lifecycle-19feb-acde",
+			Skill:         "feature-impl",
+			Tier:          "light",
+			SpawnMode:     "opencode",
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{
+		sessionID: {Type: "busy"},
+	}
+	phases := map[string]string{
+		beadsID: "Implementing - Running lifecycle",
+	}
+
+	results := joinWithReasonCodes(issues, manifests, liveness, phases)
+	if len(results) != 1 {
+		t.Fatalf("Contract: expected 1 agent after spawn, got %d", len(results))
+	}
+	if results[0].Status != "active" {
+		t.Errorf("Contract: spawned agent status = %q, want active", results[0].Status)
+	}
+
+	// Complete (Phase: Complete reported, issue still open)
+	status := determineAgentStatus(false, true, "", "active")
+	if status != "completed" {
+		t.Errorf("Contract: phase-complete agent status = %q, want completed", status)
+	}
+
+	// Gone (issue closed → filtered out)
+	closed := filterActiveIssues([]beads.Issue{
+		{ID: beadsID, Status: "closed", Labels: []string{"orch:agent"}},
+	})
+	if len(closed) != 0 {
+		t.Fatalf("Contract: completed agent must be gone from active issues, got %d", len(closed))
+	}
+}
+
 // --- Scenario 3: --no-track agent → visible in orch sessions, NOT in orch status ---
 
 func TestContract_NoTrack_NotInOrcheStatus(t *testing.T) {

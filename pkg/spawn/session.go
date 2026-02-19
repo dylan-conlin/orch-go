@@ -404,6 +404,10 @@ func LookupManifestsByBeadsIDs(projectDir string, beadsIDs []string) (map[string
 		if !entry.IsDir() {
 			continue
 		}
+		// Skip archived directory - only scan active workspaces
+		if entry.Name() == "archived" {
+			continue
+		}
 		workspacePath := filepath.Join(workspaceRoot, entry.Name())
 		manifest, err := ReadAgentManifest(workspacePath)
 		if err != nil {
