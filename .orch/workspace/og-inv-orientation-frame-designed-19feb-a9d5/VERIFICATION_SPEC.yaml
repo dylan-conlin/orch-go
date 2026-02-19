@@ -1,0 +1,38 @@
+verification:
+  type: investigation
+  issue: orch-go-1121
+
+  claims:
+    - description: "Completion gate (GateAccretion) is implemented and integrated"
+      evidence: "pkg/verify/accretion.go exists, GateAccretion constant at check.go:26, integrated at check.go:413-426"
+      verification: "go test ./pkg/verify/ -run TestVerifyAccretion -v"
+      result: "7/7 tests pass"
+
+    - description: "Coaching plugin has accretion detection with tiered warnings"
+      evidence: "plugins/coaching.ts:1416-1512 implements accretion detection on edit/write tools, with AccretionState tracking and tiered injection"
+      verification: "grep -n 'accretion' plugins/coaching.ts | wc -l returns 30+ matches"
+      result: "Full implementation with warning + strong warning messages"
+
+    - description: "CLAUDE.md documents accretion boundaries"
+      evidence: "CLAUDE.md:120-124 has Accretion Boundaries section"
+      verification: "grep 'Accretion Boundaries' CLAUDE.md"
+      result: "Section present"
+
+    - description: "Spawn gate is warning-only, NOT blocking"
+      evidence: "pkg/orch/extraction.go:387 comments 'Warning shown but spawn proceeds (non-blocking)', CheckHotspot result discarded at line 389"
+      verification: "grep 'non-blocking' pkg/orch/extraction.go"
+      result: "Confirmed warning-only"
+
+    - description: "No --force-hotspot flag exists"
+      evidence: "grep for force-hotspot/forceHotspot across cmd/orch/ returns no matches"
+      verification: "grep -r 'force.hotspot' cmd/orch/"
+      result: "No matches"
+
+  gap_summary:
+    shipped: ["Completion Gates (Layer 2)", "Coaching Plugin (Layer 3)", "CLAUDE.md Boundaries (Layer 4)"]
+    partial: ["Spawn Gates (Layer 1) - detection exists, blocking not implemented"]
+    not_started: []
+
+  manual_steps:
+    - "Review probe at .kb/models/completion-verification/probes/2026-02-19-probe-accretion-enforcement-gap-analysis.md"
+    - "Decide whether to prioritize spawn gate blocking implementation"
