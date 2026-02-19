@@ -84,6 +84,28 @@ SPAWN TIER: {{.Tier}}
    Document your findings, decisions, and learnings in SYNTHESIS.md before completing.
 {{end}}
 {{end}}
+{{if .ReworkFeedback}}
+## 🔄 REWORK CONTEXT (Attempt #{{.ReworkNumber}})
+
+**This is rework** — a prior agent attempted this task but the work was insufficient.
+
+### What Was Wrong
+{{.ReworkFeedback}}
+
+### Prior Attempt Summary
+{{.PriorSynthesis}}
+
+### Prior Workspace
+Full prior artifacts at: {{.PriorWorkspace}}
+
+### Rework Instructions
+1. Read the feedback above carefully
+2. Read the prior SYNTHESIS.md for full context on what was tried
+3. Focus specifically on the identified gaps
+4. Do NOT re-do work that was correct — build on it
+5. Report via ` + "`bd comment {{.BeadsID}} \"Phase: Planning - Rework #{{.ReworkNumber}}: [brief plan]\"`" + `
+
+{{end}}
 {{if .KBContext}}
 {{.KBContext}}
 {{end}}
@@ -112,21 +134,32 @@ This is an ad-hoc spawn without beads issue tracking.
 Progress tracking via bd comment is NOT available.
 
 🚨 SESSION COMPLETE PROTOCOL:
-After your final commit, BEFORE typing anything else:
-
-⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
-   - Your orchestrator will handle pushing to remote after review
-   - Running ` + "`git push`" + ` can trigger deploys that disrupt production systems
-   - Worker rule: Commit your work, call ` + "`/exit`" + `. Don't push.
+Complete your session in this EXACT order:
 
 {{if eq .Tier "light"}}
-1. Run: ` + "`/exit`" + ` to close the agent session
+1. **COMMIT YOUR WORK:**
+   ` + "```bash" + `
+   git add -A
+   git commit -m "feat: [brief description of changes]"
+   ` + "```" + `
+2. Run: ` + "`/exit`" + ` to close the agent session
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
 {{else}}
-1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. Run: ` + "`/exit`" + ` to close the agent session
+1. **CREATE SYNTHESIS.md** in your workspace with:
+   - Plain-Language Summary (what was built/found)
+   - Delta (what changed)
+2. **COMMIT YOUR WORK:**
+   ` + "```bash" + `
+   git add -A
+   git commit -m "feat: [brief description of changes]"
+   ` + "```" + `
+3. Run: ` + "`/exit`" + ` to close the agent session
 {{end}}
+
+⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
+   - Your orchestrator will handle pushing to remote after review
+   - Worker rule: Commit your work, call ` + "`/exit`" + `. Don't push.
 {{else}}
 🚨 CRITICAL - FIRST 3 ACTIONS:
 You MUST do these within your first 3 tool calls:
@@ -138,23 +171,35 @@ If Phase is not reported within first 3 actions, you will be flagged as unrespon
 Do NOT skip this - the orchestrator monitors via beads comments.
 
 🚨 SESSION COMPLETE PROTOCOL (READ NOW, DO AT END):
-After your final commit, BEFORE typing anything else:
-
-⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
-   - Your orchestrator will handle pushing to remote after review
-   - Running ` + "`git push`" + ` can trigger deploys that disrupt production systems
-   - Worker rule: Commit your work, call ` + "`/exit`" + `. Don't push.
+Complete your session in this EXACT order:
 
 {{if eq .Tier "light"}}
-1. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
-2. Run: ` + "`/exit`" + ` to close the agent session
+1. **COMMIT YOUR WORK:**
+   ` + "```bash" + `
+   git add -A
+   git commit -m "feat: [brief description of changes] ({{.BeadsID}})"
+   ` + "```" + `
+2. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
+3. Run: ` + "`/exit`" + ` to close the agent session
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
 {{else}}
-1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
-3. Run: ` + "`/exit`" + ` to close the agent session
+1. **CREATE SYNTHESIS.md** in your workspace with:
+   - Plain-Language Summary (what was built/found)
+   - Delta (what changed)
+2. **COMMIT YOUR WORK:**
+   ` + "```bash" + `
+   git add -A
+   git commit -m "feat: [brief description of changes] ({{.BeadsID}})"
+   ` + "```" + `
+3. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
+4. Run: ` + "`/exit`" + ` to close the agent session
 {{end}}
+
+⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
+   - Your orchestrator will handle pushing to remote after review
+   - Worker rule: Commit your work, report Phase: Complete, call ` + "`/exit`" + `. Don't push.
+
 ⚠️ Work is NOT complete until Phase: Complete is reported.
 ⚠️ The orchestrator cannot close this issue until you report Phase: Complete.
 {{end}}
@@ -352,35 +397,36 @@ CONTEXT AVAILABLE:
 {{.ServerContext}}
 {{end}}
 🚨 FINAL STEP - SESSION COMPLETE PROTOCOL:
-After your final commit, BEFORE doing anything else:
-
-⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
-   - Your orchestrator will handle pushing to remote after review
-   - Running ` + "`git push`" + ` can trigger deploys that disrupt production systems
-   - Worker rule: Commit your work, call ` + "`/exit`" + `. Don't push.
+Complete your session in this EXACT order:
 
 {{if .NoTrack}}
 {{if eq .Tier "light"}}
-1. ` + "`/exit`" + `
+1. **COMMIT YOUR WORK:** ` + "`git add -A && git commit -m \"feat: [description]\"`" + `
+2. ` + "`/exit`" + `
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
 {{else}}
-1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. ` + "`/exit`" + `
+1. Create SYNTHESIS.md in your workspace
+2. **COMMIT YOUR WORK:** ` + "`git add -A && git commit -m \"feat: [description]\"`" + `
+3. ` + "`/exit`" + `
 {{end}}
 {{else}}
 {{if eq .Tier "light"}}
-1. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
-2. ` + "`/exit`" + `
+1. **COMMIT YOUR WORK:** ` + "`git add -A && git commit -m \"feat: [description] ({{.BeadsID}})\"`" + `
+2. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
+3. ` + "`/exit`" + `
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
 {{else}}
-1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
-3. ` + "`/exit`" + `
+1. Create SYNTHESIS.md in your workspace
+2. **COMMIT YOUR WORK:** ` + "`git add -A && git commit -m \"feat: [description] ({{.BeadsID}})\"`" + `
+3. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
+4. ` + "`/exit`" + `
 {{end}}
 {{end}}
-⚠️ Your work is NOT complete until you run these commands.
+
+⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
+⚠️ Your work is NOT complete until Phase: Complete is reported (or /exit for --no-track).
 `
 
 // StripBeadsInstructions removes beads-specific instructions from skill content.
@@ -509,6 +555,10 @@ type contextData struct {
 	NoTrack               bool   // When true, omit beads instructions from spawn context
 	IsBug                 bool   // When true, this is a bug issue with reproduction info
 	ReproSteps            string // Reproduction steps from bug issue
+	ReworkFeedback        string // Rework instructions from orchestrator
+	ReworkNumber          int    // Rework attempt number
+	PriorSynthesis        string // TLDR + Delta from prior SYNTHESIS.md
+	PriorWorkspace        string // Path to archived prior workspace
 	DesignWorkspace       string // Design workspace name for ui-design-session handoff
 	DesignMockupPath      string // Path to approved mockup
 	DesignPromptPath      string // Path to design prompt
@@ -574,6 +624,10 @@ func GenerateContext(cfg *Config) (string, error) {
 		NoTrack:               cfg.NoTrack,
 		IsBug:                 cfg.IsBug,
 		ReproSteps:            cfg.ReproSteps,
+		ReworkFeedback:        cfg.ReworkFeedback,
+		ReworkNumber:          cfg.ReworkNumber,
+		PriorSynthesis:        cfg.PriorSynthesis,
+		PriorWorkspace:        cfg.PriorWorkspace,
 		DesignWorkspace:       cfg.DesignWorkspace,
 		DesignMockupPath:      cfg.DesignMockupPath,
 		DesignPromptPath:      cfg.DesignPromptPath,
@@ -676,6 +730,18 @@ func WriteContext(cfg *Config) error {
 	}
 	if err := WriteAgentManifest(workspacePath, manifest); err != nil {
 		return fmt.Errorf("failed to write agent manifest: %w", err)
+	}
+
+	// Write prior workspace reference for rework spawns (if provided)
+	if cfg.PriorWorkspace != "" {
+		priorWorkspacePath := filepath.Join(workspacePath, ".prior_workspace")
+		content := cfg.PriorWorkspace
+		if !strings.HasSuffix(content, "\n") {
+			content += "\n"
+		}
+		if err := os.WriteFile(priorWorkspacePath, []byte(content), 0644); err != nil {
+			return fmt.Errorf("failed to write prior workspace file: %w", err)
+		}
 	}
 
 	return nil

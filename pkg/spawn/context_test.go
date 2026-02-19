@@ -390,7 +390,8 @@ Test skill content.
 		"Mode: tdd",
 		"Validation: tests",
 		"CREATE SYNTHESIS.md",
-		"SYNTHESIS.md is created and committed",
+		"COMMIT YOUR WORK",
+		"git add -A",
 	}
 
 	for _, check := range checks {
@@ -1617,13 +1618,13 @@ func TestGenerateContext_NoPushGuidance(t *testing.T) {
 			t.Error("expected content to contain 'NEVER run `git push`' guidance")
 		}
 
-		// Should contain rationale about production systems
-		if !strings.Contains(content, "trigger deploys that disrupt production systems") {
-			t.Error("expected content to explain why pushing is prohibited")
+		// Should contain rationale (workers commit only)
+		if !strings.Contains(content, "Workers commit locally only") {
+			t.Error("expected content to explain workers commit locally only")
 		}
 
 		// Should contain the worker rule
-		if !strings.Contains(content, "Worker rule: Commit your work, call `/exit`. Don't push") {
+		if !strings.Contains(content, "Worker rule: Commit your work") {
 			t.Error("expected content to contain worker rule statement")
 		}
 
