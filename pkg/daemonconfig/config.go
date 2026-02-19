@@ -1,0 +1,125 @@
+// Package daemonconfig provides daemon configuration defaults and types.
+package daemonconfig
+
+import "time"
+
+// Config holds configuration for the daemon.
+type Config struct {
+	// PollInterval is the time between polling cycles (0 = run once).
+	PollInterval time.Duration
+
+	// MaxAgents is the maximum number of concurrent agents (0 = no limit).
+	MaxAgents int
+
+	// MaxSpawnsPerHour is the maximum number of spawns allowed per hour (0 = no limit).
+	// This prevents runaway spawning when many issues are batch-labeled as triage:ready.
+	MaxSpawnsPerHour int
+
+	// Label filters issues to only those with this label (empty = no filter).
+	Label string
+
+	// SpawnDelay is the delay between spawns to avoid rate limits.
+	SpawnDelay time.Duration
+
+	// DryRun shows what would be processed without spawning.
+	DryRun bool
+
+	// Verbose enables detailed output.
+	Verbose bool
+
+	// ReflectEnabled controls whether periodic reflection analysis is enabled.
+	// When enabled, the daemon will run kb reflect periodically.
+	ReflectEnabled bool
+
+	// ReflectInterval is how often to run kb reflect (0 = disabled).
+	// Default is 1 hour.
+	ReflectInterval time.Duration
+
+	// ReflectCreateIssues controls whether reflection creates beads issues
+	// for synthesis opportunities (topics with 10+ investigations).
+	ReflectCreateIssues bool
+
+	// ReflectOpenEnabled controls whether reflection creates issues for open
+	// investigation actions (Next: items older than 3 days).
+	ReflectOpenEnabled bool
+
+	// ReflectModelDriftEnabled controls whether model drift reflection is enabled.
+	// When enabled, the daemon will scan staleness events and create model maintenance issues.
+	ReflectModelDriftEnabled bool
+
+	// ReflectModelDriftInterval is how often to run model drift reflection (0 = disabled).
+	// Default is 4 hours.
+	ReflectModelDriftInterval time.Duration
+
+	// CleanupEnabled controls whether periodic session cleanup is enabled.
+	// When enabled, the daemon will run session cleanup periodically.
+	CleanupEnabled bool
+
+	// CleanupInterval is how often to run session cleanup (0 = disabled).
+	// Default is 6 hours.
+	CleanupInterval time.Duration
+
+	// CleanupAgeDays is the age threshold in days for session cleanup.
+	// Sessions older than this will be deleted. Default is 7 days.
+	CleanupAgeDays int
+
+	// CleanupPreserveOrchestrator if true, skips orchestrator sessions.
+	// Default is true to avoid disrupting orchestrator sessions.
+	CleanupPreserveOrchestrator bool
+
+	// CleanupServerURL is the OpenCode server URL for cleanup operations.
+	// Defaults to http://127.0.0.1:4096.
+	CleanupServerURL string
+
+	// RecoveryEnabled controls whether stuck agent recovery is enabled.
+	// When enabled, the daemon will detect idle agents and attempt auto-resume.
+	RecoveryEnabled bool
+
+	// RecoveryInterval is how often to check for stuck agents (0 = disabled).
+	// Default is 5 minutes.
+	RecoveryInterval time.Duration
+
+	// RecoveryIdleThreshold is how long an agent must be idle before recovery.
+	// Default is 10 minutes.
+	RecoveryIdleThreshold time.Duration
+
+	// RecoveryRateLimit is minimum time between resume attempts per agent.
+	// Default is 1 hour to prevent infinite loops.
+	RecoveryRateLimit time.Duration
+
+	// VerificationPauseThreshold is the maximum number of agents that can be marked
+	// ready-for-review before pausing for human verification. When the daemon marks
+	// this many issues as ready-for-review without human verification (manual orch complete),
+	// it will pause spawning until Dylan explicitly resumes. Set to 0 to disable (no pause).
+	// Default is 3.
+	VerificationPauseThreshold int
+}
+
+// DefaultConfig returns sensible defaults for daemon configuration.
+func DefaultConfig() Config {
+	return Config{
+		PollInterval:                15 * time.Second, // Faster polling for responsive dashboard updates
+		MaxAgents:                   3,
+		MaxSpawnsPerHour:            20, // Prevents runaway spawning
+		Label:                       "triage:ready",
+		SpawnDelay:                  3 * time.Second, // Reduced from 10s - dedup cache prevents duplicates
+		DryRun:                      false,
+		Verbose:                     false,
+		ReflectEnabled:              true,
+		ReflectInterval:             time.Hour, // Hourly by default
+		ReflectCreateIssues:         true,
+		ReflectOpenEnabled:          true,
+		ReflectModelDriftEnabled:    true,
+		ReflectModelDriftInterval:   4 * time.Hour,
+		CleanupEnabled:              true,
+		CleanupInterval:             6 * time.Hour, // Every 6 hours by default
+		CleanupAgeDays:              7,             // 7 days threshold
+		CleanupPreserveOrchestrator: true,          // Preserve orchestrator sessions
+		CleanupServerURL:            "http://127.0.0.1:4096",
+		RecoveryEnabled:             true,
+		RecoveryInterval:            5 * time.Minute,  // Check every 5 minutes
+		RecoveryIdleThreshold:       10 * time.Minute, // Idle >10min triggers recovery
+		RecoveryRateLimit:           time.Hour,        // 1 resume per agent per hour
+		VerificationPauseThreshold:  3,                // Pause after 3 auto-completions
+	}
+}

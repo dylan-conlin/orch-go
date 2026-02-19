@@ -60,10 +60,26 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessionStatusMap := make(map[string]opencode.SessionStatusInfo)
-	if status, err := client.GetAllSessionStatus(); err != nil {
-		log.Printf("Warning: failed to fetch session status: %v", err)
-	} else {
-		sessionStatusMap = status
+	if len(untracked) > 0 {
+		seenIDs := make(map[string]struct{}, len(untracked))
+		sessionIDs := make([]string, 0, len(untracked))
+		for _, entry := range untracked {
+			if entry.Session.ID == "" {
+				continue
+			}
+			if _, exists := seenIDs[entry.Session.ID]; exists {
+				continue
+			}
+			seenIDs[entry.Session.ID] = struct{}{}
+			sessionIDs = append(sessionIDs, entry.Session.ID)
+		}
+		if len(sessionIDs) > 0 {
+			if status, err := client.GetSessionStatusByIDs(sessionIDs); err != nil {
+				log.Printf("Warning: failed to fetch session status: %v", err)
+			} else {
+				sessionStatusMap = status
+			}
+		}
 	}
 
 	responses := make([]SessionAPIResponse, 0, len(untracked))

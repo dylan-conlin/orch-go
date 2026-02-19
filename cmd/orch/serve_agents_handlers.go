@@ -61,8 +61,24 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessionStatusMap := make(map[string]opencode.SessionStatusInfo)
-	if status, err := client.GetAllSessionStatus(); err == nil {
-		sessionStatusMap = status
+	if len(trackedAgents) > 0 {
+		seenIDs := make(map[string]struct{}, len(trackedAgents))
+		sessionIDs := make([]string, 0, len(trackedAgents))
+		for _, tracked := range trackedAgents {
+			if tracked.SessionID == "" {
+				continue
+			}
+			if _, exists := seenIDs[tracked.SessionID]; exists {
+				continue
+			}
+			seenIDs[tracked.SessionID] = struct{}{}
+			sessionIDs = append(sessionIDs, tracked.SessionID)
+		}
+		if len(sessionIDs) > 0 {
+			if status, err := client.GetSessionStatusByIDs(sessionIDs); err == nil {
+				sessionStatusMap = status
+			}
+		}
 	}
 
 	// Workspace cache for enrichment (synthesis, investigation)
