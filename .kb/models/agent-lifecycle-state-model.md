@@ -1,14 +1,14 @@
 # Model: Agent Lifecycle State Model
 
 **Domain:** Agent Lifecycle / State Management
-**Last Updated:** 2026-02-13
-**Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display
+**Last Updated:** 2026-02-20
+**Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display. Updated Feb 2026 after major restructuring (registry elimination, two-lane architecture, single-pass query engine).
 
 ---
 
 ## Summary (30 seconds)
 
-Agent state exists across **four independent layers** (tmux windows, OpenCode in-memory, OpenCode on-disk, beads comments). These layers fall into two distinct categories: **state layers** (beads, workspace files) that represent what work was done, and **infrastructure layers** (OpenCode sessions, tmux windows) that represent transient execution resources. The dashboard reconciles these via a **Priority Cascade**: check beads issue status first (highest authority), then Phase comments, then registry state, then session existence. Status can appear "wrong" at the dashboard level while being "correct" at each individual layer - this is a measurement artifact from combining multiple sources of truth.
+Agent state exists across **four independent layers** (tmux windows, OpenCode in-memory, OpenCode on-disk, beads comments). These layers fall into two distinct categories: **state layers** (beads, workspace files) that represent what work was done, and **infrastructure layers** (OpenCode sessions, tmux windows) that represent transient execution resources. The dashboard reconciles these via a **Priority Cascade**: check beads issue status first (highest authority), then Phase comments, then SYNTHESIS.md existence, then session status. Agents are discovered via a **two-lane architecture**: tracked work (beads-first via `queryTrackedAgents`) and untracked sessions (OpenCode session list). Status can appear "wrong" at the dashboard level while being "correct" at each individual layer - this is a measurement artifact from combining multiple sources of truth.
 
 ---
 
@@ -26,7 +26,7 @@ Agent state is distributed across four independent systems:
 | **OpenCode in-memory** | **Infrastructure** | Server process                     | Until restart       | Session ID, current status      | Medium (operational)   |
 | **Tmux windows**       | **Infrastructure** | Runtime (volatile)                 | Until window closed | Agent visible, window ID        | Low (UI only)          |
 
-**Key insight:** The registry (`~/.orch/registry.json`) was a fifth layer attempting to cache all four, which caused drift. The solution is to query authoritative sources directly and reconcile at query time.
+**Key insight:** A registry (`~/.orch/registry.json`) was historically a fifth layer attempting to cache all four, which caused drift. It was **eliminated entirely** in Feb 2026 (see two-lane ADR). The solution is to query authoritative sources directly via a single-pass query engine with explicit reason codes for any missing data. Architecture lint tests structurally prevent registry recreation.
 
 ### Source of Truth by Concern
 
@@ -62,6 +62,19 @@ The four-layer model (above) conflates two fundamentally different concerns. Rec
 
 See: `.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md` for the full decision and implementation plan.
 
+### Two-Lane Discovery Architecture
+
+Tracked work and untracked sessions are queried via separate paths (Feb 2026):
+
+| Lane | Query Path | What's Visible | Source of Truth |
+|------|------------|----------------|-----------------|
+| **Tracked work** | `orch status`, dashboard `/api/agents` | Agents with beads_id | Beads issues |
+| **Untracked sessions** | `orch sessions`, `/api/sessions` | Orchestrator sessions, ad-hoc, `--no-track` | OpenCode session list |
+
+The single-pass query engine (`queryTrackedAgents()` in `cmd/orch/query_tracked.go`) replaces ad-hoc multi-source reconciliation. Every missing field has an explicit reason code (`MissingBinding`, `MissingSession`, `SessionDead`, `MissingPhase`).
+
+See: `.kb/decisions/2026-02-18-two-lane-agent-discovery.md`
+
 ### State Transitions
 
 **Normal lifecycle:**
@@ -69,9 +82,9 @@ See: `.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md` for the full d
 ```
 spawned (orch spawn)
     ↓
-Registry entry created (Status: running)
+AGENT_MANIFEST.json written to workspace (binding: beads_id ↔ session_id ↔ project_dir)
 OpenCode session created
-Beads issue created (Status: open)
+Beads issue created/tagged (Status: open)
 Tmux window created (if --tmux)
     ↓
 working (agent executes task)
@@ -83,13 +96,25 @@ Phase: Complete reached (agent declares done)
 SYNTHESIS.md written (if full tier)
 Git commits created
     ↓
-orch complete runs (orchestrator verification)
+orch complete runs (orchestrator verification, 14 verification gates)
 Verifies deliverables exist
 Closes beads issue (Status: closed)
     ↓
 completed (dashboard shows blue badge)
 Session may remain in OpenCode storage
 Tmux window may remain open
+```
+
+**Awaiting-cleanup path:**
+
+```
+spawned → working → Phase: Complete reported
+    ↓
+Agent session dies (context exhaustion, crash)
+    ↓
+determineAgentStatus: Phase: Complete + session dead → "awaiting-cleanup"
+    ↓
+Dashboard shows awaiting-cleanup (needs orch complete)
 ```
 
 **Abandoned path:**
@@ -99,7 +124,6 @@ spawned → running
     ↓
 orch abandon (human judgment)
     ↓
-Registry updated (Status: abandoned)
 Beads issue remains open (NOT closed)
     ↓
 Dashboard shows abandoned (yellow badge)
@@ -111,9 +135,11 @@ Session remains in OpenCode
 1. **Phase: Complete is agent's declaration** - Only agent can reach this, not orchestrator
 2. **Beads issue closed = canonical completion** - All status queries defer to beads
 3. **Session existence ≠ agent still working** - Sessions persist indefinitely
-4. **Status checks don't mutate state** - Calculation is read-only, no side effects
-5. **Multiple sources must be reconciled** - No single source has complete truth
+4. **Status checks don't mutate state** - `determineAgentStatus()` is a pure function, no side effects
+5. **Multiple sources must be reconciled** - No single source has complete truth; query engine joins with reason codes
 6. **Tmux windows are UI layer only** - Not authoritative for state
+7. **No persistent lifecycle caches** - Only in-memory, process-local caches with short TTLs allowed. Disk-backed state (registry, sessions.json, state.db) is structurally prohibited by architecture lint tests
+8. **Silent failures must be visible** - Every missing field gets an explicit reason code, never empty metadata
 
 ---
 
@@ -137,19 +163,21 @@ Session remains in OpenCode
 
 **NOT the fix:** Deleting OpenCode session (treats symptom, not cause)
 
-### Failure Mode 2: "Dead" Agents That Actually Completed
+### Failure Mode 2: Completed Agents Showing Wrong Status
 
-**Symptom:** Dashboard shows "dead", but work is done and beads issue closed
+**Symptom:** Agent completed work but dashboard shows unexpected status
 
-**Root cause:** Session cleanup happened before dashboard queried, cascade reached session check
+**Root cause:** Completion signals exist but session is dead, creating ambiguity
 
-**Why it happens:**
+**How the Priority Cascade handles this (current):**
 
-- Agent completed, beads issue closed
-- Session cleanup ran (manual or automatic)
-- Dashboard cascade: beads check → no issue (closed) → session check → no session → "dead"
+- If beads issue closed → "completed" (Priority 1, regardless of session state)
+- If Phase: Complete + session dead → "awaiting-cleanup" (Priority 2, needs orch complete)
+- If Phase: Complete + session alive → "completed" (Priority 3)
+- If SYNTHESIS.md exists + session dead → "awaiting-cleanup" (Priority 4)
+- If SYNTHESIS.md exists + session alive → "completed" (Priority 5)
 
-**Fix (Jan 8):** Priority Cascade puts beads/Phase check before session existence check
+**Fix (Jan 8, refined Feb 2026):** Priority Cascade puts beads/Phase check before session existence check. The `awaiting-cleanup` status (added Feb 2026) distinguishes completed-but-orphaned agents from truly dead agents.
 
 ### Failure Mode 3: Agent Went Idle But Not Complete
 
@@ -221,19 +249,19 @@ Session remains in OpenCode
 **This enables:** Agents can pause/wait without being marked complete
 **This constrains:** Agents that crash without reporting phase look "incomplete"
 
-### Why Registry Caused Drift?
+### Why Registry Was Eliminated (Historical)
 
-**Constraint:** Registry attempted to cache all four layers, but updates were async and incomplete
+**Background:** A registry (`~/.orch/registry.json`) attempted to cache all four layers, but updates were async and incomplete. This caused 6 weeks of drift bugs (Dec 21 - Feb 18, 2026).
 
-**Implication:** Registry state diverged from authoritative sources
-
-**Root cause:**
+**Root cause of drift:**
 
 - Beads issues closed via `bd close` (not `orch complete`) → registry not updated
 - OpenCode sessions persist → registry shows "dead" when session exists
 - Tmux windows close → registry still shows "running"
 
-**Fix:** Query authoritative sources directly, use registry only for orchestrator-set metadata (abandoned status)
+**Resolution (Feb 18, 2026):** Registry eliminated entirely. Replaced by single-pass query engine that queries beads → workspace manifests → OpenCode directly. Architecture lint tests (`architecture_lint_test.go`) structurally prevent recreation of `pkg/registry/`, `pkg/cache/`, `registry.json`, `sessions.json`, or `state.db`.
+
+See: `.kb/decisions/2026-02-18-two-lane-agent-discovery.md`
 
 ---
 
@@ -277,6 +305,18 @@ Session remains in OpenCode
 - Three-bucket ownership model (Own/Accept/Lobby) referenced
 - Decision: `.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md`
 
+**Feb 18, 2026: Major Restructuring — Registry Elimination & Two-Lane Architecture**
+
+- Registry (`~/.orch/registry.json`, `pkg/session/registry.go`) eliminated entirely (529+ lines removed)
+- Single-pass query engine (`queryTrackedAgents()`) built in `cmd/orch/query_tracked.go`
+- Two-lane architecture: tracked work (beads-first) vs untracked sessions (OpenCode-first)
+- `serve_agents.go` (~1700 lines) extracted into 8+ smaller files (`serve_agents_*.go`)
+- Architecture lint tests added to prevent registry recreation
+- `AGENT_MANIFEST.json` replaces registry entries as workspace-local binding
+- Decision: `.kb/decisions/2026-02-18-two-lane-agent-discovery.md`
+- Priority Cascade expanded with `awaiting-cleanup` status
+- Verification suite expanded to 14 gates (git diff, accretion, build, visual, test evidence, etc.)
+
 ---
 
 ## References
@@ -287,6 +327,7 @@ Session remains in OpenCode
 - `2026-01-06-inv-cross-project-agent-visibility.md` - Multi-project discovery
 - `2025-12-26-inv-registry-drift-analysis.md` - Why registry caching failed
 - `2025-12-22-inv-completion-detection-race-condition.md` - Session idle ≠ complete
+- `2026-02-18-design-agent-observability-rethink.md` - Beads-first design leading to two-lane
 - ...and 13 others
 
 **Decisions Informed by This Model:**
@@ -294,7 +335,8 @@ Session remains in OpenCode
 - Beads as canonical source of truth (completion)
 - Priority Cascade for status calculation
 - Four-layer architecture (no single source)
-- Registry demoted to metadata only
+- Two-lane agent discovery (`.kb/decisions/2026-02-18-two-lane-agent-discovery.md`)
+- Registry elimination — structurally prevented from returning
 - State vs infrastructure distinction (`.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md`)
 
 **Related Models:**
@@ -302,6 +344,7 @@ Session remains in OpenCode
 - `.kb/models/dashboard-agent-status.md` - How Priority Cascade calculates status
 - `.kb/models/opencode-session-lifecycle.md` - How OpenCode sessions work
 - `.kb/models/spawn-architecture.md` - How agents are created
+- `.kb/models/completion-verification.md` - How verification gates work
 
 **Related Guides:**
 
@@ -311,7 +354,10 @@ Session remains in OpenCode
 
 **Primary Evidence (Verify These):**
 
-- `cmd/orch/serve_agents.go` - Status calculation implementation (~1400 lines)
-- `pkg/session/registry.go` - Session registry structure (metadata only)
-- `pkg/verify/check.go` - Phase parsing from beads comments
+- `cmd/orch/serve_agents_status.go` - Priority Cascade implementation (`determineAgentStatus()`)
+- `cmd/orch/query_tracked.go` - Single-pass query engine (`queryTrackedAgents()`)
+- `cmd/orch/serve_agents_handlers.go` - Dashboard API handlers
+- `cmd/orch/serve_agents_discovery.go` - Workspace and investigation discovery
+- `pkg/verify/check.go` - Completion verification (14 gates)
+- `cmd/orch/architecture_lint_test.go` - Structural guardrails preventing registry recreation
 - `.beads/issues.jsonl` - Canonical completion source
