@@ -231,23 +231,7 @@ SESSION SCOPE: Medium (estimated [1-2h / 2-4h / 4-6h+])
 
 
 AUTHORITY:
-**You have authority to decide:**
-- Implementation details (how to structure code, naming, file organization)
-- Testing strategies (which tests to write, test frameworks to use)
-- Refactoring within scope (improving code quality without changing behavior)
-- Tool/library selection within established patterns (using tools already in project)
-- Documentation structure and wording
-
-**You must escalate to orchestrator when:**
-- Architectural decisions needed (changing system structure, adding new patterns)
-- Scope boundaries unclear (unsure if something is IN vs OUT scope)
-- Requirements ambiguous (multiple valid interpretations exist)
-- Blocked by external dependencies (missing access, broken tools, unclear context)
-- Major trade-offs discovered (performance vs maintainability, security vs usability)
-- Task estimation significantly wrong (2h task is actually 8h)
-
-**When uncertain:** Err on side of escalation. Document question in workspace, set Status: QUESTION, and wait for orchestrator response. Better to ask than guess wrong.
-
+Authority delegation rules are provided via skill guidance (worker-base skill).
 **Full criteria:** See ` + "`.kb/guides/decision-authority.md`" + ` for the complete decision tree and examples.
 
 **Surface Before Circumvent:**
@@ -440,6 +424,53 @@ Complete your session in this EXACT order:
 ⚠️ Your work is NOT complete until Phase: Complete is reported (or /exit for --no-track).
 `
 
+// skillContentData holds the data context for processing skill content templates.
+// Skill content files (SKILL.md) can contain Go template variables that need to be
+// replaced with spawn-specific values before injection into SPAWN_CONTEXT.md.
+type skillContentData struct {
+	BeadsID string // The beads issue ID for progress tracking
+	Tier    string // Spawn tier: "light" or "full"
+}
+
+// ProcessSkillContentTemplate processes Go template variables in skill content.
+// Skill content (from SKILL.md files) may contain template variables like {{.BeadsID}}
+// and conditionals like {{if eq .Tier "light"}}. This function processes those
+// templates using the spawn-specific data context before the skill content is
+// injected into SPAWN_CONTEXT.md.
+//
+// If template parsing or execution fails, returns the original content unchanged
+// (fail-open behavior to avoid breaking spawns for minor template issues).
+func ProcessSkillContentTemplate(content string, beadsID string, tier string) string {
+	if content == "" {
+		return content
+	}
+
+	// Quick check: if content doesn't contain template syntax, skip processing
+	if !strings.Contains(content, "{{") {
+		return content
+	}
+
+	tmpl, err := template.New("skill_content").Parse(content)
+	if err != nil {
+		// Template parse error - return original content
+		// This can happen if skill content has malformed templates
+		return content
+	}
+
+	data := skillContentData{
+		BeadsID: beadsID,
+		Tier:    tier,
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		// Template execution error - return original content
+		return content
+	}
+
+	return buf.String()
+}
+
 // StripBeadsInstructions removes beads-specific instructions from skill content.
 // This is used when NoTrack=true to avoid confusing agents with beads commands
 // that won't work (since there's no beads issue to track against).
@@ -597,6 +628,12 @@ func GenerateContext(cfg *Config) (string, error) {
 	skillContent := cfg.SkillContent
 	if cfg.NoTrack && skillContent != "" {
 		skillContent = StripBeadsInstructions(skillContent)
+	}
+
+	// Process template variables in skill content (e.g., {{.BeadsID}}, {{if eq .Tier ...}})
+	// This must happen AFTER stripping beads instructions but BEFORE injection into context
+	if skillContent != "" {
+		skillContent = ProcessSkillContentTemplate(skillContent, cfg.BeadsID, cfg.Tier)
 	}
 
 	// Generate cluster summary for area awareness
