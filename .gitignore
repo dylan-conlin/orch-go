@@ -27,3 +27,7 @@ tmp/
 
 # Dev/Ops mode (local state, not committed)
 .dev-mode
+
+# Local build/config state
+.autorebuild.lock
+opencode.json
