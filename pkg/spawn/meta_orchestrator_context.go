@@ -224,9 +224,16 @@ func GenerateMetaOrchestratorContext(cfg *Config) (string, error) {
 		priorHandoffPath = findPriorMetaOrchestratorHandoffExcluding(cfg.ProjectDir, cfg.WorkspaceName)
 	}
 
+	// Process template variables in skill content (e.g., {{.BeadsID}}, {{if eq .Tier ...}})
+	// Meta-orchestrators don't have BeadsID or Tier, but process anyway for consistency
+	skillContent := cfg.SkillContent
+	if skillContent != "" {
+		skillContent = ProcessSkillContentTemplate(skillContent, cfg.BeadsID, cfg.Tier)
+	}
+
 	data := metaOrchestratorContextData{
 		SkillName:          cfg.SkillName,
-		SkillContent:       cfg.SkillContent,
+		SkillContent:       skillContent,
 		ProjectDir:         cfg.ProjectDir,
 		WorkspacePath:      cfg.WorkspacePath(),
 		WorkspaceName:      cfg.WorkspaceName,

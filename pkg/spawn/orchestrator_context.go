@@ -170,10 +170,17 @@ func GenerateOrchestratorContext(cfg *Config) (string, error) {
 		registeredProjects = GenerateRegisteredProjectsContext()
 	}
 
+	// Process template variables in skill content (e.g., {{.BeadsID}}, {{if eq .Tier ...}})
+	// Orchestrators don't have BeadsID or Tier, but process anyway for consistency
+	skillContent := cfg.SkillContent
+	if skillContent != "" {
+		skillContent = ProcessSkillContentTemplate(skillContent, cfg.BeadsID, cfg.Tier)
+	}
+
 	data := orchestratorContextData{
 		SessionGoal:               cfg.SessionGoal,
 		SkillName:                 cfg.SkillName,
-		SkillContent:              cfg.SkillContent,
+		SkillContent:              skillContent,
 		ProjectDir:                cfg.ProjectDir,
 		WorkspacePath:             cfg.WorkspacePath(),
 		WorkspaceName:             cfg.WorkspaceName,

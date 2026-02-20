@@ -355,14 +355,14 @@ func TestConfigPaths(t *testing.T) {
 
 func TestGenerateContext(t *testing.T) {
 	cfg := &Config{
-		Task:             "implement spawn command",
-		SkillName:        "feature-impl",
-		Project:          "orch-go",
-		ProjectDir:       "/Users/test/orch-go",
-		BeadsID:          "orch-go-123",
-		Phases:           "implementation,validation",
-		Mode:             "tdd",
-		Validation:       "tests",
+		Task:       "implement spawn command",
+		SkillName:  "feature-impl",
+		Project:    "orch-go",
+		ProjectDir: "/Users/test/orch-go",
+		BeadsID:    "orch-go-123",
+		Phases:     "implementation,validation",
+		Mode:       "tdd",
+		Validation: "tests",
 		SkillContent: `---
 name: feature-impl
 ---
@@ -422,11 +422,11 @@ func TestGenerateContext_NoSkill(t *testing.T) {
 func TestWriteContext(t *testing.T) {
 	tempDir := t.TempDir()
 	cfg := &Config{
-		Task:             "test task",
-		Project:          "test",
-		ProjectDir:       tempDir,
-		WorkspaceName:    "og-test-19dec",
-		BeadsID:          "test-123",
+		Task:          "test task",
+		Project:       "test",
+		ProjectDir:    tempDir,
+		WorkspaceName: "og-test-19dec",
+		BeadsID:       "test-123",
 	}
 
 	if err := WriteContext(cfg); err != nil {
@@ -1920,6 +1920,188 @@ func TestGenerateContext_InvestigationDeliverableGating(t *testing.T) {
 		}
 		if !strings.Contains(content, "SET UP investigation file") {
 			t.Error("codebase-audit spawn should contain investigation deliverable")
+		}
+	})
+}
+
+func TestProcessSkillContentTemplate(t *testing.T) {
+	t.Run("processes BeadsID template variable", func(t *testing.T) {
+		input := `# Skill Content
+
+Report progress via:
+` + "```" + `bash
+bd comment {{.BeadsID}} "Phase: Planning"
+bd comment {{.BeadsID}} "Phase: Complete"
+` + "```" + `
+`
+		result := ProcessSkillContentTemplate(input, "orch-go-1234", "full")
+
+		// Should replace {{.BeadsID}} with actual beads ID
+		if strings.Contains(result, "{{.BeadsID}}") {
+			t.Error("expected {{.BeadsID}} to be replaced, but it still appears in output")
+		}
+		if !strings.Contains(result, "bd comment orch-go-1234 \"Phase: Planning\"") {
+			t.Error("expected beads ID to be substituted in bd comment command")
+		}
+		if !strings.Contains(result, "bd comment orch-go-1234 \"Phase: Complete\"") {
+			t.Error("expected beads ID to be substituted in all bd comment commands")
+		}
+	})
+
+	t.Run("processes Tier conditional", func(t *testing.T) {
+		input := `# Skill Content
+
+{{if eq .Tier "light"}}
+SYNTHESIS.md is NOT required.
+{{else}}
+SYNTHESIS.md IS required.
+{{end}}
+`
+		// Test with light tier
+		resultLight := ProcessSkillContentTemplate(input, "test-123", "light")
+		if !strings.Contains(resultLight, "NOT required") {
+			t.Error("expected light tier conditional to render 'NOT required' branch")
+		}
+		if strings.Contains(resultLight, "IS required") {
+			t.Error("expected light tier to NOT render 'IS required' branch")
+		}
+
+		// Test with full tier
+		resultFull := ProcessSkillContentTemplate(input, "test-123", "full")
+		if !strings.Contains(resultFull, "IS required") {
+			t.Error("expected full tier conditional to render 'IS required' branch")
+		}
+		if strings.Contains(resultFull, "NOT required") {
+			t.Error("expected full tier to NOT render 'NOT required' branch")
+		}
+	})
+
+	t.Run("returns original content when no template syntax present", func(t *testing.T) {
+		input := "Plain content with no template variables"
+		result := ProcessSkillContentTemplate(input, "test-123", "full")
+		if result != input {
+			t.Error("expected content without template syntax to be returned unchanged")
+		}
+	})
+
+	t.Run("returns original content for empty input", func(t *testing.T) {
+		result := ProcessSkillContentTemplate("", "test-123", "full")
+		if result != "" {
+			t.Error("expected empty input to return empty output")
+		}
+	})
+
+	t.Run("handles malformed template gracefully", func(t *testing.T) {
+		// Missing closing brace
+		input := "Content with {{.BeadsID malformed template"
+		result := ProcessSkillContentTemplate(input, "test-123", "full")
+		// Should return original content (fail-open behavior)
+		if result != input {
+			t.Error("expected malformed template to return original content")
+		}
+	})
+
+	t.Run("handles undefined fields gracefully", func(t *testing.T) {
+		// Template referencing field not in skillContentData
+		input := "Content with {{.UndefinedField}}"
+		result := ProcessSkillContentTemplate(input, "test-123", "full")
+		// Should return original content (fail-open behavior)
+		if result != input {
+			t.Error("expected undefined field to return original content")
+		}
+	})
+}
+
+func TestGenerateContext_ProcessesSkillContentTemplates(t *testing.T) {
+	// Skill content containing template variables that need processing
+	skillContent := `---
+name: test-skill
+---
+
+# Test Skill
+
+## Progress Tracking
+
+Report progress:
+` + "```" + `bash
+bd comment {{.BeadsID}} "Phase: Planning"
+bd comment {{.BeadsID}} "Phase: Complete"
+` + "```" + `
+
+## Tier-Specific Guidance
+
+{{if eq .Tier "light"}}
+Light tier: Skip SYNTHESIS.md
+{{else}}
+Full tier: Create SYNTHESIS.md
+{{end}}
+`
+
+	t.Run("processes skill content templates for tracked spawn", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "test task",
+			SkillName:     "test-skill",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-test-skill-20feb",
+			SkillContent:  skillContent,
+			BeadsID:       "orch-go-5678",
+			NoTrack:       false,
+			Tier:          TierFull,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should have replaced {{.BeadsID}} with actual beads ID
+		if strings.Contains(content, "{{.BeadsID}}") {
+			t.Error("expected {{.BeadsID}} to be processed, but literal template syntax still appears")
+		}
+		if !strings.Contains(content, "bd comment orch-go-5678 \"Phase: Planning\"") {
+			t.Error("expected beads ID to be substituted in skill content")
+		}
+
+		// Should have resolved tier conditional (full tier)
+		if strings.Contains(content, "{{if eq .Tier") || strings.Contains(content, "{{else}}") || strings.Contains(content, "{{end}}") {
+			t.Error("expected tier conditionals to be resolved, but template syntax still appears")
+		}
+		if !strings.Contains(content, "Full tier: Create SYNTHESIS.md") {
+			t.Error("expected full tier branch to be rendered")
+		}
+		if strings.Contains(content, "Light tier: Skip SYNTHESIS.md") {
+			t.Error("expected light tier branch to NOT be rendered for full tier spawn")
+		}
+	})
+
+	t.Run("processes skill content templates for light tier spawn", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "quick task",
+			SkillName:     "test-skill",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-test-light-20feb",
+			SkillContent:  skillContent,
+			BeadsID:       "orch-go-9999",
+			NoTrack:       false,
+			Tier:          TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should have resolved tier conditional (light tier)
+		if strings.Contains(content, "{{if eq .Tier") {
+			t.Error("expected tier conditionals to be resolved, but template syntax still appears")
+		}
+		if !strings.Contains(content, "Light tier: Skip SYNTHESIS.md") {
+			t.Error("expected light tier branch to be rendered")
+		}
+		if strings.Contains(content, "Full tier: Create SYNTHESIS.md") {
+			t.Error("expected full tier branch to NOT be rendered for light tier spawn")
 		}
 	})
 }
