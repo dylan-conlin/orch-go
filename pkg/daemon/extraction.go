@@ -1,4 +1,5 @@
 // Package daemon provides autonomous overnight processing capabilities.
+// Extraction logic handles pre-spawn hotspot detection and automatic extraction issue creation.
 package daemon
 
 import (
