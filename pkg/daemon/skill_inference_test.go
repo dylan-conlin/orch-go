@@ -210,3 +210,60 @@ func TestInferSkillFromIssue_DescriptionHeuristic(t *testing.T) {
 		})
 	}
 }
+
+// TestInferModelFromSkill tests skill-to-model mapping.
+func TestInferModelFromSkill(t *testing.T) {
+	tests := []struct {
+		skill string
+		want  string
+	}{
+		// Deep reasoning skills → opus
+		{"systematic-debugging", "opus"},
+		{"investigation", "opus"},
+		{"architect", "opus"},
+		{"codebase-audit", "opus"},
+		{"research", "opus"},
+
+		// Implementation skills → sonnet (default)
+		{"feature-impl", "sonnet"},
+		{"issue-creation", "sonnet"},
+
+		// Unknown skills → sonnet (default)
+		{"unknown-skill", "sonnet"},
+		{"", "sonnet"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.skill, func(t *testing.T) {
+			got := InferModelFromSkill(tt.skill)
+			if got != tt.want {
+				t.Errorf("InferModelFromSkill(%q) = %q, want %q", tt.skill, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestInferModelFromSkill_DefaultModel verifies the default model constant.
+func TestInferModelFromSkill_DefaultModel(t *testing.T) {
+	if DefaultSkillModel != "sonnet" {
+		t.Errorf("DefaultSkillModel = %q, want %q", DefaultSkillModel, "sonnet")
+	}
+}
+
+// TestSkillModelMapping_AllOpusSkillsCovered verifies all opus skills are in the mapping.
+func TestSkillModelMapping_AllOpusSkillsCovered(t *testing.T) {
+	opusSkills := []string{
+		"systematic-debugging",
+		"investigation",
+		"architect",
+		"codebase-audit",
+		"research",
+	}
+
+	for _, skill := range opusSkills {
+		model := InferModelFromSkill(skill)
+		if model != "opus" {
+			t.Errorf("Expected opus for skill %q, got %q", skill, model)
+		}
+	}
+}

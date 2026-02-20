@@ -19,6 +19,7 @@ type RejectedIssue struct {
 type PreviewResult struct {
 	Issue           *Issue
 	Skill           string
+	Model           string           // Inferred model alias (e.g., "opus", "sonnet")
 	Message         string
 	RateLimited     bool             // True if rate limit would prevent spawning
 	RateStatus      string           // Rate limit status message (e.g., "5/20 spawns in last hour")
@@ -112,6 +113,7 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 
 	result.Issue = spawnable
 	result.Skill = skill
+	result.Model = InferModelFromSkill(skill)
 
 	// Check for hotspot warnings if checker is configured
 	if d.HotspotChecker != nil {

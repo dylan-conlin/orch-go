@@ -26,6 +26,7 @@ type OnceResult struct {
 	Processed bool
 	Issue     *Issue
 	Skill     string
+	Model     string // Inferred model alias (e.g., "opus", "sonnet")
 	Message   string
 	Error     error
 
@@ -90,7 +91,7 @@ type Daemon struct {
 	// listIssuesFunc is used for testing - allows mocking bd list
 	listIssuesFunc func() ([]Issue, error)
 	// spawnFunc is used for testing - allows mocking orch work
-	spawnFunc func(beadsID string) error
+	spawnFunc func(beadsID string, model string) error
 	// listCompletedAgentsFunc is used for testing - allows mocking completed agents list
 	listCompletedAgentsFunc func(CompletionConfig) ([]CompletedAgent, error)
 	// reflectFunc is used for testing - allows mocking kb reflect
@@ -456,6 +457,9 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		return nil, fmt.Errorf("failed to infer skill: %w", err)
 	}
 
+	// Infer model from skill type
+	inferredModel := InferModelFromSkill(skill)
+
 	// Check for critical hotspots requiring pre-extraction.
 	// If the issue targets a file >1500 lines, spawn an extraction agent first
 	// and block the original issue until extraction completes.
@@ -496,6 +500,7 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 				Priority:  1,
 			}
 			skill = "feature-impl"
+			inferredModel = InferModelFromSkill(skill)
 			extractionSpawned = true
 		}
 	}
@@ -513,6 +518,7 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 			Processed: false,
 			Issue:     issue,
 			Skill:     skill,
+			Model:     inferredModel,
 			Message:   fmt.Sprintf("Existing session found for %s - skipping to prevent duplicate", issue.ID),
 		}, nil
 	}
@@ -533,6 +539,7 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 				Processed: false,
 				Issue:     issue,
 				Skill:     skill,
+				Model:     inferredModel,
 				Message:   fmt.Sprintf("Skipping %s - title matches recently spawned %s", issue.ID, dupID),
 			}, nil
 		}
@@ -547,6 +554,7 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 			Processed: false,
 			Issue:     issue,
 			Skill:     skill,
+			Model:     inferredModel,
 			Message:   fmt.Sprintf("Skipping %s - duplicate of in_progress issue %s with same title", issue.ID, dup.ID),
 		}, nil
 	}
@@ -567,6 +575,7 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 					Processed: false,
 					Issue:     issue,
 					Skill:     skill,
+					Model:     inferredModel,
 					Message:   fmt.Sprintf("Issue %s is already %s - skipping to prevent duplicate", issue.ID, currentStatus),
 				}, nil
 			}
@@ -584,6 +593,7 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 				Processed: false,
 				Issue:     issue,
 				Skill:     skill,
+				Model:     inferredModel,
 				Message:   "At capacity - no slots available",
 			}, nil
 		}
@@ -619,6 +629,7 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 			Processed: false,
 			Issue:     issue,
 			Skill:     skill,
+			Model:     inferredModel,
 			Error:     fmt.Errorf("failed to mark issue as in_progress: %w", err),
 			Message:   fmt.Sprintf("Failed to update beads status for %s - skipping spawn to prevent duplicates", issue.ID),
 		}, nil
@@ -631,8 +642,8 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		d.SpawnedIssues.MarkSpawnedWithTitle(issue.ID, issue.Title)
 	}
 
-	// Spawn the work
-	if err := d.spawnFunc(issue.ID); err != nil {
+	// Spawn the work with inferred model
+	if err := d.spawnFunc(issue.ID, inferredModel); err != nil {
 		// Track spawn failure for health card visibility
 		if d.SpawnFailureTracker != nil {
 			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("Spawn failed: %v", err))
@@ -655,6 +666,7 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 				Processed: false,
 				Issue:     issue,
 				Skill:     skill,
+				Model:     inferredModel,
 				Error:     fmt.Errorf("spawn failed (%w) and rollback failed: %v - issue may be orphaned", err, rollbackErr),
 				Message:   fmt.Sprintf("CRITICAL: spawn failed and status rollback failed for %s - issue may be orphaned", issue.ID),
 			}, nil
@@ -671,6 +683,7 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 			Processed: false,
 			Issue:     issue,
 			Skill:     skill,
+			Model:     inferredModel,
 			Error:     err,
 			Message:   fmt.Sprintf("Failed to spawn: %v", err),
 		}, nil
@@ -690,6 +703,7 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		Processed:         true,
 		Issue:             issue,
 		Skill:             skill,
+		Model:             inferredModel,
 		Message:           fmt.Sprintf("Spawned work on %s", issue.ID),
 		ExtractionSpawned: extractionSpawned,
 		OriginalIssueID:   originalIssueID,
@@ -731,6 +745,9 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 		return nil, nil, fmt.Errorf("failed to infer skill: %w", err)
 	}
 
+	// Infer model from skill type
+	inferredModel := InferModelFromSkill(skill)
+
 	// Session-level dedup: Check if there's an existing OpenCode session for this issue.
 	// This prevents duplicate spawns when:
 	// 1. SpawnedIssueTracker TTL expires but agent is still running
@@ -744,6 +761,7 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 			Processed: false,
 			Issue:     issue,
 			Skill:     skill,
+			Model:     inferredModel,
 			Message:   fmt.Sprintf("Existing session found for %s - skipping to prevent duplicate", issue.ID),
 		}, nil, nil
 	}
@@ -759,6 +777,7 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 				Processed: false,
 				Issue:     issue,
 				Skill:     skill,
+				Model:     inferredModel,
 				Message:   fmt.Sprintf("Skipping %s - title matches recently spawned %s", issue.ID, dupID),
 			}, nil, nil
 		}
@@ -771,6 +790,7 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 			Processed: false,
 			Issue:     issue,
 			Skill:     skill,
+			Model:     inferredModel,
 			Message:   fmt.Sprintf("Skipping %s - duplicate of in_progress issue %s with same title", issue.ID, dup.ID),
 		}, nil, nil
 	}
@@ -788,6 +808,7 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 					Processed: false,
 					Issue:     issue,
 					Skill:     skill,
+					Model:     inferredModel,
 					Message:   fmt.Sprintf("Issue %s is already %s - skipping to prevent duplicate", issue.ID, currentStatus),
 				}, nil, nil
 			}
@@ -803,6 +824,7 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 				Processed: false,
 				Issue:     issue,
 				Skill:     skill,
+				Model:     inferredModel,
 				Message:   "At capacity - no slots available",
 			}, nil, nil
 		}
@@ -838,6 +860,7 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 			Processed: false,
 			Issue:     issue,
 			Skill:     skill,
+			Model:     inferredModel,
 			Error:     fmt.Errorf("failed to mark issue as in_progress: %w", err),
 			Message:   fmt.Sprintf("Failed to update beads status for %s - skipping spawn to prevent duplicates", issue.ID),
 		}, nil, nil
@@ -850,8 +873,8 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 		d.SpawnedIssues.MarkSpawnedWithTitle(issue.ID, issue.Title)
 	}
 
-	// Spawn the work
-	if err := d.spawnFunc(issue.ID); err != nil {
+	// Spawn the work with inferred model
+	if err := d.spawnFunc(issue.ID, inferredModel); err != nil {
 		// Track spawn failure for health card visibility
 		if d.SpawnFailureTracker != nil {
 			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("Spawn failed: %v", err))
@@ -874,6 +897,7 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 				Processed: false,
 				Issue:     issue,
 				Skill:     skill,
+				Model:     inferredModel,
 				Error:     fmt.Errorf("spawn failed (%w) and rollback failed: %v - issue may be orphaned", err, rollbackErr),
 				Message:   fmt.Sprintf("CRITICAL: spawn failed and status rollback failed for %s - issue may be orphaned", issue.ID),
 			}, nil, nil
@@ -890,6 +914,7 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 			Processed: false,
 			Issue:     issue,
 			Skill:     skill,
+			Model:     inferredModel,
 			Error:     err,
 			Message:   fmt.Sprintf("Failed to spawn: %v", err),
 		}, nil, nil
@@ -909,6 +934,7 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 		Processed: true,
 		Issue:     issue,
 		Skill:     skill,
+		Model:     inferredModel,
 		Message:   fmt.Sprintf("Spawned work on %s", issue.ID),
 	}, slot, nil
 }

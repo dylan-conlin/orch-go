@@ -699,10 +699,11 @@ func runDaemonLoop() error {
 					result.Issue.Title,
 				)
 			} else {
-				fmt.Printf("[%s] Spawned: %s (%s) - %s\n",
+				fmt.Printf("[%s] Spawned: %s (%s, %s) - %s\n",
 					timestamp,
 					result.Issue.ID,
 					result.Skill,
+					result.Model,
 					result.Issue.Title,
 				)
 			}
@@ -711,6 +712,7 @@ func runDaemonLoop() error {
 			eventData := map[string]interface{}{
 				"beads_id": result.Issue.ID,
 				"skill":    result.Skill,
+				"model":    result.Model,
 				"title":    result.Issue.Title,
 				"count":    processed,
 			}
@@ -808,6 +810,7 @@ func runDaemonDryRun() error {
 		fmt.Printf("  Project:  %s\n", projectName)
 		fmt.Println(daemon.FormatPreview(result.Issue))
 		fmt.Printf("\nInferred skill: %s\n", result.Skill)
+		fmt.Printf("Inferred model: %s\n", result.Model)
 
 		// Display hotspot warnings if any
 		if result.HasHotspotWarnings() {
@@ -861,6 +864,7 @@ func runDaemonOnce() error {
 	fmt.Printf("  Title:  %s\n", result.Issue.Title)
 	fmt.Printf("  Type:   %s\n", result.Issue.IssueType)
 	fmt.Printf("  Skill:  %s\n", result.Skill)
+	fmt.Printf("  Model:  %s\n", result.Model)
 
 	// Log the spawn
 	logger := events.NewLogger(events.DefaultLogPath())
@@ -905,6 +909,7 @@ func runDaemonPreview() error {
 		fmt.Printf("  Project:  %s\n", projectName)
 		fmt.Println(daemon.FormatPreview(result.Issue))
 		fmt.Printf("\nInferred skill: %s\n", result.Skill)
+		fmt.Printf("Inferred model: %s\n", result.Model)
 
 		// Display hotspot warnings if any
 		if result.HasHotspotWarnings() {

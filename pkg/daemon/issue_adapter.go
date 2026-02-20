@@ -347,8 +347,14 @@ func FindInProgressByTitle(title string) *Issue {
 
 // SpawnWork spawns work on a beads issue using orch work command.
 // This is the default implementation that shells out to orch.
-func SpawnWork(beadsID string) error {
-	cmd := exec.Command("orch", "work", beadsID)
+// If model is non-empty, it passes --model to orch work for model-aware routing.
+func SpawnWork(beadsID string, model string) error {
+	args := []string{"work"}
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+	args = append(args, beadsID)
+	cmd := exec.Command("orch", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to spawn work: %w: %s", err, string(output))

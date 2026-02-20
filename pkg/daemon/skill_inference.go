@@ -232,6 +232,30 @@ func InferSkillFromIssue(issue *Issue) (string, error) {
 	return inferredSkill, nil
 }
 
+// DefaultSkillModel is the model used when no skill-specific mapping exists.
+const DefaultSkillModel = "sonnet"
+
+// skillModelMapping maps skill names to model aliases.
+// Skills requiring deep reasoning get opus; implementation skills get sonnet.
+var skillModelMapping = map[string]string{
+	"systematic-debugging": "opus",
+	"investigation":        "opus",
+	"architect":            "opus",
+	"codebase-audit":       "opus",
+	"research":             "opus",
+}
+
+// InferModelFromSkill returns the appropriate model alias for a given skill.
+// Deep reasoning skills (debugging, investigation, architecture) → opus.
+// Implementation skills (feature-impl, issue-creation) → sonnet (default).
+// Unknown skills → sonnet (default).
+func InferModelFromSkill(skill string) string {
+	if model, ok := skillModelMapping[skill]; ok {
+		return model
+	}
+	return DefaultSkillModel
+}
+
 // logSkillInference logs a skill inference event to events.jsonl.
 // This is a separate function to allow testing InferSkillFromIssue without filesystem dependencies.
 func logSkillInference(issueID, inferredSkill, issueType, title string,

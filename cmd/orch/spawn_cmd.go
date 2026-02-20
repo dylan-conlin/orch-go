@@ -219,6 +219,7 @@ Examples:
 
 func init() {
 	workCmd.Flags().BoolVar(&workInline, "inline", false, "Run inline (blocking) with TUI")
+	workCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet) or provider/model format")
 }
 
 // InferSkillFromIssueType maps issue types to appropriate skills.
