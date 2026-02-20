@@ -1,0 +1,8 @@
+commands:
+  - command: go test ./pkg/daemon -run TestDaemon_SpawnIssue_StatusUpdateFailureReleasesSlot
+    expected: ok
+  - command: go build ./cmd/orch/
+    expected: succeed
+  - command: go vet ./cmd/orch/
+    expected: no output
+manual: []

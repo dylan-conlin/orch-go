@@ -510,204 +510,12 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 	// 1. SpawnedIssueTracker TTL expires (5min/6h) but agent is still running
 	// 2. Status update to "in_progress" failed silently
 	// 3. Multiple daemon instances try to spawn the same issue
-	if HasExistingSessionForBeadsID(issue.ID) {
-		if d.Config.Verbose {
-			fmt.Printf("  DEBUG: Skipping %s (existing OpenCode session found)\n", issue.ID)
-		}
-		return &OnceResult{
-			Processed: false,
-			Issue:     issue,
-			Skill:     skill,
-			Model:     inferredModel,
-			Message:   fmt.Sprintf("Existing session found for %s - skipping to prevent duplicate", issue.ID),
-		}, nil
+	result, _, err := d.spawnIssue(issue, skill, inferredModel)
+	if result != nil && extractionSpawned {
+		result.ExtractionSpawned = true
+		result.OriginalIssueID = originalIssueID
 	}
-
-	// CONTENT-AWARE DEDUP: Check if another issue with the same title is already in_progress.
-	// This catches the case where multiple beads issues are created with identical content
-	// (different IDs, same title). Without this, the daemon would spawn each one because
-	// all other dedup layers are keyed on issue ID.
-	//
-	// Layer 1 (in-memory): Check SpawnedIssueTracker title index for recently-spawned titles.
-	// This is fast and catches duplicates within the same daemon instance.
-	if d.SpawnedIssues != nil {
-		if spawned, dupID := d.SpawnedIssues.IsTitleSpawned(issue.Title); spawned && dupID != issue.ID {
-			if d.Config.Verbose {
-				fmt.Printf("  DEBUG: Skipping %s (title matches recently spawned %s)\n", issue.ID, dupID)
-			}
-			return &OnceResult{
-				Processed: false,
-				Issue:     issue,
-				Skill:     skill,
-				Model:     inferredModel,
-				Message:   fmt.Sprintf("Skipping %s - title matches recently spawned %s", issue.ID, dupID),
-			}, nil
-		}
-	}
-	// Layer 2 (persistent): Check beads database for in_progress issues with same title.
-	// This survives daemon restarts and catches duplicates across daemon instances.
-	if dup := FindInProgressByTitle(issue.Title); dup != nil && dup.ID != issue.ID {
-		if d.Config.Verbose {
-			fmt.Printf("  DEBUG: Skipping %s (content duplicate of in_progress %s)\n", issue.ID, dup.ID)
-		}
-		return &OnceResult{
-			Processed: false,
-			Issue:     issue,
-			Skill:     skill,
-			Model:     inferredModel,
-			Message:   fmt.Sprintf("Skipping %s - duplicate of in_progress issue %s with same title", issue.ID, dup.ID),
-		}, nil
-	}
-
-	// FRESH STATUS CHECK: Re-fetch the issue's current status from beads.
-	// This catches the TOCTOU race where another daemon process marked this issue
-	// as in_progress between our ListReadyIssues() call and now. Without this check,
-	// UpdateBeadsStatus is idempotent (setting in_progress when already in_progress
-	// succeeds), so two concurrent daemon processes can both spawn the same issue.
-	// This was the root cause of the Feb 15 2026 orch-go-09cc duplicate spawn incident.
-	if d.getIssueStatusFunc != nil {
-		if currentStatus, err := d.getIssueStatusFunc(issue.ID); err == nil {
-			if currentStatus != "open" {
-				if d.Config.Verbose {
-					fmt.Printf("  DEBUG: Skipping %s (status is %s, expected open)\n", issue.ID, currentStatus)
-				}
-				return &OnceResult{
-					Processed: false,
-					Issue:     issue,
-					Skill:     skill,
-					Model:     inferredModel,
-					Message:   fmt.Sprintf("Issue %s is already %s - skipping to prevent duplicate", issue.ID, currentStatus),
-				}, nil
-			}
-		}
-		// On error, continue to spawn (fail-open to avoid blocking work).
-		// The UpdateBeadsStatus call below provides the persistent dedup gate.
-	}
-
-	// If pool is configured, acquire a slot first
-	var slot *Slot
-	if d.Pool != nil {
-		slot = d.Pool.TryAcquire()
-		if slot == nil {
-			return &OnceResult{
-				Processed: false,
-				Issue:     issue,
-				Skill:     skill,
-				Model:     inferredModel,
-				Message:   "At capacity - no slots available",
-			}, nil
-		}
-		slot.BeadsID = issue.ID
-	}
-
-	// PRIMARY DEDUP: Update beads status to in_progress BEFORE spawning.
-	// This makes the beads database (source of truth) immediately reflect that
-	// the issue is being worked on. This prevents duplicate spawns even if:
-	// - SpawnedIssueTracker TTL expires (6 hours)
-	// - Daemon restarts (in-memory tracker lost)
-	// - Multiple daemon instances poll simultaneously
-	// The status update happens synchronously before spawn to ensure immediate visibility.
-	//
-	// CRITICAL: If status update fails, we MUST NOT spawn. Spawning without persistent
-	// tracking leads to duplicate spawns when SpawnedIssueTracker TTL expires or daemon restarts.
-	// Fail-fast here prevents the Feb 14 2026 incident where 10 duplicate spawns occurred
-	// because UpdateBeadsStatus was failing silently.
-	updateStatus := d.updateBeadsStatusFunc
-	if updateStatus == nil {
-		updateStatus = UpdateBeadsStatus
-	}
-	if err := updateStatus(issue.ID, "in_progress"); err != nil {
-		// Track failure for health card visibility
-		if d.SpawnFailureTracker != nil {
-			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("UpdateBeadsStatus failed: %v", err))
-		}
-		// Release slot on status update failure
-		if d.Pool != nil && slot != nil {
-			d.Pool.Release(slot)
-		}
-		return &OnceResult{
-			Processed: false,
-			Issue:     issue,
-			Skill:     skill,
-			Model:     inferredModel,
-			Error:     fmt.Errorf("failed to mark issue as in_progress: %w", err),
-			Message:   fmt.Sprintf("Failed to update beads status for %s - skipping spawn to prevent duplicates", issue.ID),
-		}, nil
-	}
-
-	// SECONDARY DEDUP: Mark issue as spawned in memory (with title for content dedup).
-	// This catches the race window between beads update and subprocess spawn completion.
-	// Title tracking prevents duplicate content spawns within the same daemon instance.
-	if d.SpawnedIssues != nil {
-		d.SpawnedIssues.MarkSpawnedWithTitle(issue.ID, issue.Title)
-	}
-
-	// Spawn the work with inferred model
-	if err := d.spawnFunc(issue.ID, inferredModel); err != nil {
-		// Track spawn failure for health card visibility
-		if d.SpawnFailureTracker != nil {
-			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("Spawn failed: %v", err))
-		}
-		// On spawn failure, roll back beads status to open
-		// CRITICAL: If rollback fails, return immediately. Rollback failure indicates
-		// database issues (connectivity, beads daemon unavailability, etc.) that need
-		// immediate attention. Continuing would leave the issue in an inconsistent state
-		// (marked in_progress but spawn failed), blocking future spawns and orphaning the issue.
-		if rollbackErr := UpdateBeadsStatus(issue.ID, "open"); rollbackErr != nil {
-			// Log as ERROR (not warning) - this is a critical failure
-			fmt.Fprintf(os.Stderr, "ERROR: Failed to rollback status for %s after spawn failure: %v\n", issue.ID, rollbackErr)
-			// Track rollback failure for health metrics
-			if d.SpawnFailureTracker != nil {
-				d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("Rollback failed for %s: %v", issue.ID, rollbackErr))
-			}
-			// Return rollback error immediately - don't continue cleanup
-			// The rollback error is more critical than the spawn error
-			return &OnceResult{
-				Processed: false,
-				Issue:     issue,
-				Skill:     skill,
-				Model:     inferredModel,
-				Error:     fmt.Errorf("spawn failed (%w) and rollback failed: %v - issue may be orphaned", err, rollbackErr),
-				Message:   fmt.Sprintf("CRITICAL: spawn failed and status rollback failed for %s - issue may be orphaned", issue.ID),
-			}, nil
-		}
-		// Unmark from tracker so issue can be retried
-		if d.SpawnedIssues != nil {
-			d.SpawnedIssues.Unmark(issue.ID)
-		}
-		// Release slot on spawn failure
-		if d.Pool != nil && slot != nil {
-			d.Pool.Release(slot)
-		}
-		return &OnceResult{
-			Processed: false,
-			Issue:     issue,
-			Skill:     skill,
-			Model:     inferredModel,
-			Error:     err,
-			Message:   fmt.Sprintf("Failed to spawn: %v", err),
-		}, nil
-	}
-
-	// Record successful spawn for rate limiting
-	if d.RateLimiter != nil {
-		d.RateLimiter.RecordSpawn()
-	}
-
-	// Record successful spawn for failure tracking
-	if d.SpawnFailureTracker != nil {
-		d.SpawnFailureTracker.RecordSuccess()
-	}
-
-	return &OnceResult{
-		Processed:         true,
-		Issue:             issue,
-		Skill:             skill,
-		Model:             inferredModel,
-		Message:           fmt.Sprintf("Spawned work on %s", issue.ID),
-		ExtractionSpawned: extractionSpawned,
-		OriginalIssueID:   originalIssueID,
-	}, nil
+	return result, err
 }
 
 // OnceWithSlot processes a single issue and returns the acquired slot.
@@ -748,9 +556,13 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 	// Infer model from skill type
 	inferredModel := InferModelFromSkill(skill)
 
+	return d.spawnIssue(issue, skill, inferredModel)
+}
+
+func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*OnceResult, *Slot, error) {
 	// Session-level dedup: Check if there's an existing OpenCode session for this issue.
 	// This prevents duplicate spawns when:
-	// 1. SpawnedIssueTracker TTL expires but agent is still running
+	// 1. SpawnedIssueTracker TTL expires (5min/6h) but agent is still running
 	// 2. Status update to "in_progress" failed silently
 	// 3. Multiple daemon instances try to spawn the same issue
 	if HasExistingSessionForBeadsID(issue.ID) {
@@ -767,7 +579,12 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 	}
 
 	// CONTENT-AWARE DEDUP: Check if another issue with the same title is already in_progress.
-	// (See Once() for detailed comments on these two layers.)
+	// This catches the case where multiple beads issues are created with identical content
+	// (different IDs, same title). Without this, the daemon would spawn each one because
+	// all other dedup layers are keyed on issue ID.
+	//
+	// Layer 1 (in-memory): Check SpawnedIssueTracker title index for recently-spawned titles.
+	// This is fast and catches duplicates within the same daemon instance.
 	if d.SpawnedIssues != nil {
 		if spawned, dupID := d.SpawnedIssues.IsTitleSpawned(issue.Title); spawned && dupID != issue.ID {
 			if d.Config.Verbose {
@@ -782,6 +599,8 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 			}, nil, nil
 		}
 	}
+	// Layer 2 (persistent): Check beads database for in_progress issues with same title.
+	// This survives daemon restarts and catches duplicates across daemon instances.
 	if dup := FindInProgressByTitle(issue.Title); dup != nil && dup.ID != issue.ID {
 		if d.Config.Verbose {
 			fmt.Printf("  DEBUG: Skipping %s (content duplicate of in_progress %s)\n", issue.ID, dup.ID)
@@ -797,7 +616,10 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 
 	// FRESH STATUS CHECK: Re-fetch the issue's current status from beads.
 	// This catches the TOCTOU race where another daemon process marked this issue
-	// as in_progress between our ListReadyIssues() call and now.
+	// as in_progress between our ListReadyIssues() call and now. Without this check,
+	// UpdateBeadsStatus is idempotent (setting in_progress when already in_progress
+	// succeeds), so two concurrent daemon processes can both spawn the same issue.
+	// This was the root cause of the Feb 15 2026 orch-go-09cc duplicate spawn incident.
 	if d.getIssueStatusFunc != nil {
 		if currentStatus, err := d.getIssueStatusFunc(issue.ID); err == nil {
 			if currentStatus != "open" {
@@ -813,6 +635,8 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 				}, nil, nil
 			}
 		}
+		// On error, continue to spawn (fail-open to avoid blocking work).
+		// The UpdateBeadsStatus call below provides the persistent dedup gate.
 	}
 
 	// If pool is configured, acquire a slot first

@@ -682,6 +682,45 @@ func TestDaemon_Once_ProcessesOneIssue(t *testing.T) {
 	}
 }
 
+func TestDaemon_SpawnIssue_StatusUpdateFailureReleasesSlot(t *testing.T) {
+	pool := NewWorkerPool(1)
+	spawnCalled := false
+	d := &Daemon{
+		Pool: pool,
+		spawnFunc: func(beadsID string, model string) error {
+			spawnCalled = true
+			return nil
+		},
+		updateBeadsStatusFunc: func(beadsID string, status string) error {
+			return fmt.Errorf("update failed")
+		},
+	}
+
+	issue := &Issue{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"}
+	result, slot, err := d.spawnIssue(issue, "feature-impl", "sonnet")
+	if err != nil {
+		t.Fatalf("spawnIssue() unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("spawnIssue() expected result on status update failure")
+	}
+	if result.Processed {
+		t.Error("spawnIssue() expected Processed=false on status update failure")
+	}
+	if result.Error == nil {
+		t.Error("spawnIssue() expected Error to be set on status update failure")
+	}
+	if spawnCalled {
+		t.Error("spawnIssue() should not call spawnFunc when status update fails")
+	}
+	if slot != nil {
+		t.Error("spawnIssue() expected nil slot on status update failure")
+	}
+	if pool.Active() != 0 {
+		t.Errorf("Pool.Active() = %d, want 0 (slot should be released on error)", pool.Active())
+	}
+}
+
 func TestDaemon_Run_EmptyQueue(t *testing.T) {
 	d := &Daemon{
 		listIssuesFunc: func() ([]Issue, error) {
