@@ -1,0 +1,37 @@
+deliverables:
+  - path: .kb/models/orchestration-cost-economics/probes/2026-02-20-model-drift-stale-references-audit.md
+    type: probe
+    status: complete
+    description: Model drift probe with 8 tests against current code
+
+verification:
+  build:
+    command: go build ./cmd/orch/
+    expected: Success (no errors)
+    result: PASS
+
+  probe_structure:
+    required_sections:
+      - Question
+      - What I Tested
+      - What I Observed
+      - Model Impact
+    all_present: true
+
+  evidence_quality:
+    file_existence_checks: 4 (backend.go, decision, ~/.anthropic/, auth.json)
+    code_inspections: 4 (resolve.go, model.go, claude.go, extraction.go)
+    build_verification: 1 (go build ./cmd/orch/)
+    total_tests: 8
+
+  verdict: CONTRADICTS + EXTENDS
+  contradicted_claims:
+    - "pkg/spawn/backend.go as dual spawn implementation (file deleted)"
+    - "~/.anthropic/ as OAuth token storage (directory deleted)"
+    - "Gemini Flash as active model option (banned in code)"
+    - "Primary path is OpenCode API (default is now Claude backend)"
+  extended_with:
+    - "OpenAI/Codex as first-class provider (12 aliases)"
+    - "Centralized ResolvedSpawnSettings with provenance"
+    - "allow_anthropic_opencode override flag"
+    - "Project/user model config system"
