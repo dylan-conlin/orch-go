@@ -19,6 +19,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/orch"
+	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
@@ -565,6 +566,9 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 	applyResolvedSpawnMode(input, resolved.Settings.SpawnMode.Value)
 
+	// 5b. Apply progressive skill disclosure (section filtering)
+	skillContent = skills.FilterSkillSections(skillContent, buildSectionFilter(spawnPhases, resolved.Settings.Mode.Value))
+
 	// 6. Gather spawn context
 	kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, err := orch.GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, skillName, spawnSkipArtifactCheck, spawnGateOnGap, spawnSkipGapGate, spawnGapThreshold)
 	if err != nil {
@@ -803,4 +807,27 @@ func isInfrastructureWork(task string, beadsID string) bool {
 		}
 	}
 	return false
+}
+
+// buildSectionFilter creates a SectionFilter from spawn flags.
+// Returns nil when no filtering is needed (backward compatible).
+func buildSectionFilter(phases, mode string) *skills.SectionFilter {
+	var phasesList []string
+	if phases != "" {
+		for _, p := range strings.Split(phases, ",") {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				phasesList = append(phasesList, p)
+			}
+		}
+	}
+
+	filter := &skills.SectionFilter{
+		Phases: phasesList,
+		Mode:   mode,
+	}
+	if filter.IsEmpty() {
+		return nil
+	}
+	return filter
 }
