@@ -1,0 +1,53 @@
+version: "1.0"
+title: "Spawn gate blocking for CRITICAL hotspots"
+issue: "orch-go-1128"
+
+behaviors:
+  - description: "feature-impl and systematic-debugging skills are blocked when targeting CRITICAL files (>1500 lines)"
+    acceptance_criteria:
+      - id: AC-001
+        criterion: "CheckHotspot returns error when skill is feature-impl and hotspot is CRITICAL"
+        evidence: "go test ./pkg/spawn/gates/ -run TestCheckHotspot_CriticalBlocksFeatureImpl -v → PASS"
+      - id: AC-002
+        criterion: "CheckHotspot returns error when skill is systematic-debugging and hotspot is CRITICAL"
+        evidence: "go test ./pkg/spawn/gates/ -run TestCheckHotspot_CriticalBlocksSystematicDebugging -v → PASS"
+
+  - description: "Read-only/strategic skills are exempt from CRITICAL hotspot blocking"
+    acceptance_criteria:
+      - id: AC-003
+        criterion: "architect, investigation, capture-knowledge, codebase-audit skills are not blocked"
+        evidence: "go test ./pkg/spawn/gates/ -run 'TestCheckHotspot_CriticalExempts' -v → all 4 PASS"
+
+  - description: "--force-hotspot flag bypasses the blocking gate"
+    acceptance_criteria:
+      - id: AC-004
+        criterion: "CheckHotspot returns no error when forceHotspot=true even with CRITICAL hotspot"
+        evidence: "go test ./pkg/spawn/gates/ -run TestCheckHotspot_ForceHotspotBypassesBlock -v → PASS"
+
+  - description: "CRITICAL threshold is >1500 lines for bloat-size hotspots"
+    acceptance_criteria:
+      - id: AC-005
+        criterion: "1501+ lines sets HasCriticalHotspot=true, 1500 lines does not"
+        evidence: "go test ./cmd/orch/ -run TestCheckSpawnHotspots_CriticalBloatDetection -v → all 4 subtests PASS"
+
+  - description: "Non-critical hotspots still show warning but don't block"
+    acceptance_criteria:
+      - id: AC-006
+        criterion: "CheckHotspot returns result without error for non-critical hotspots"
+        evidence: "go test ./pkg/spawn/gates/ -run TestCheckHotspot_WithHotspots_NonCritical -v → PASS"
+
+  - description: "CLAUDE.md accurately describes spawn gate blocking behavior"
+    acceptance_criteria:
+      - id: AC-007
+        criterion: "Accretion Boundaries section lists blocked skills, exempt skills, and --force-hotspot"
+        evidence: "grep 'feature-impl.*systematic-debugging.*blocked' CLAUDE.md confirms"
+
+verification_commands:
+  - command: "go build ./cmd/orch/"
+    expected: "Clean build with no errors"
+  - command: "go vet ./cmd/orch/"
+    expected: "No vet warnings"
+  - command: "go test ./pkg/spawn/gates/ -v"
+    expected: "All tests pass including new blocking/exemption/force tests"
+  - command: "go test ./cmd/orch/ -run TestCheckSpawnHotspots_CriticalBloat -v"
+    expected: "All 4 subtests pass"

@@ -351,7 +351,7 @@ func inferMCPFromBeadsIssue(issue *beads.Issue) string {
 // RunPreFlightChecks performs all pre-spawn validation checks.
 // Returns usage check result for telemetry, or error if any check fails.
 // hotspotCheckFunc is passed from cmd/orch to avoid circular dependencies.
-func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification bool, bypassReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error)) (*gates.UsageCheckResult, error) {
+func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, bypassReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error)) (*gates.UsageCheckResult, error) {
 	// Check for --bypass-triage flag (required for manual spawns)
 	// Daemon-driven spawns skip this check (issue already triaged)
 	if err := gates.CheckTriageBypass(input.DaemonDriven, bypassTriage, input.SkillName, input.Task); err != nil {
@@ -383,10 +383,13 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 	}
 
 	// STRATEGIC-FIRST ORCHESTRATION: Check for hotspots in task target area
-	// In hotspot areas (5+ bugs, persistent failures), strategic approach is recommended
-	// Warning shown but spawn proceeds (non-blocking)
+	// Blocks implementation skills (feature-impl, systematic-debugging) on CRITICAL files (>1500 lines).
+	// Exempt: architect, investigation, capture-knowledge, codebase-audit (read-only/strategic skills).
+	// Override: --force-hotspot flag bypasses the block.
 	if hotspotCheckFunc != nil {
-		gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, hotspotCheckFunc)
+		if _, err := gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, forceHotspot, hotspotCheckFunc); err != nil {
+			return nil, err
+		}
 	}
 
 	return usageCheckResult, nil

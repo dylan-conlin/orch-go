@@ -585,10 +585,12 @@ func intToStr(n int) string {
 
 // SpawnHotspotResult contains the result of checking hotspots for a spawn task.
 type SpawnHotspotResult struct {
-	HasHotspots     bool      `json:"has_hotspots"`
-	MatchedHotspots []Hotspot `json:"matched_hotspots,omitempty"`
-	MaxScore        int       `json:"max_score"`
-	Warning         string    `json:"warning,omitempty"`
+	HasHotspots        bool      `json:"has_hotspots"`
+	HasCriticalHotspot bool      `json:"has_critical_hotspot"`         // True when any matched bloat-size file >1500 lines
+	MatchedHotspots    []Hotspot `json:"matched_hotspots,omitempty"`
+	CriticalFiles      []string  `json:"critical_files,omitempty"`     // File paths of CRITICAL hotspots (>1500 lines)
+	MaxScore           int       `json:"max_score"`
+	Warning            string    `json:"warning,omitempty"`
 }
 
 // extractPathsFromTask extracts file/directory paths from a task description.
@@ -750,6 +752,11 @@ func checkSpawnHotspots(task string, hotspots []Hotspot) *SpawnHotspotResult {
 			result.MatchedHotspots = append(result.MatchedHotspots, h)
 			if h.Score > result.MaxScore {
 				result.MaxScore = h.Score
+			}
+			// Track CRITICAL hotspots: bloat-size files >1500 lines
+			if h.Type == "bloat-size" && h.Score > 1500 {
+				result.HasCriticalHotspot = true
+				result.CriticalFiles = append(result.CriticalFiles, h.Path)
 			}
 		}
 	}

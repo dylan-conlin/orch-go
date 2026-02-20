@@ -121,7 +121,10 @@ orch spawn --bypass-triage --mode claude --model opus --tmux feature-impl "task"
 
 **Rule:** Files >1,500 lines require extraction before feature additions. Run `orch hotspot` to check current bloated files. If modifying large files, see `.kb/guides/code-extraction-patterns.md` for extraction workflow.
 
-**Enforcement:** Spawn gates block feature-impl on CRITICAL files; completion gates warn on additions >50 lines to files >800 lines. Full architecture: `.kb/investigations/2026-02-14-inv-architect-design-accretion-gravity-enforcement.md`
+**Enforcement:**
+- **Spawn gates (blocking):** `feature-impl` and `systematic-debugging` skills are blocked from spawning when targeting CRITICAL files (>1,500 lines). Exempt skills: `architect`, `investigation`, `capture-knowledge`, `codebase-audit`. Override: `--force-hotspot` flag.
+- **Completion gates (warning):** Warn on additions >50 lines to files >800 lines.
+- Full architecture: `.kb/investigations/2026-02-14-inv-architect-design-accretion-gravity-enforcement.md`
 
 ## Architectural Constraints
 

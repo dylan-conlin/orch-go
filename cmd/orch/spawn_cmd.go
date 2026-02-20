@@ -52,6 +52,7 @@ var (
 	spawnDesignWorkspace    string // Design workspace name for ui-design-session → feature-impl handoff
 	spawnBypassVerification bool   // Bypass verification gate for independent parallel work
 	spawnBypassReason       string // Justification for bypassing verification gate
+	spawnForceHotspot       bool   // Bypass CRITICAL hotspot blocking gate
 	spawnOrientationFrame   string // Why Dylan cares about this work (spawn-time frame)
 	spawnModeSet            bool   // Tracks whether --mode was explicitly set
 	spawnValidationSet      bool   // Tracks whether --validation was explicitly set
@@ -179,6 +180,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnDesignWorkspace, "design-workspace", "", "Design workspace name from ui-design-session for handoff to feature-impl (e.g., 'og-design-ready-queue-08jan')")
 	spawnCmd.Flags().BoolVar(&spawnBypassVerification, "bypass-verification", false, "Bypass verification gate for independent parallel work (requires --bypass-reason)")
 	spawnCmd.Flags().StringVar(&spawnBypassReason, "bypass-reason", "", "Justification for bypassing verification gate (required with --bypass-verification)")
+	spawnCmd.Flags().BoolVar(&spawnForceHotspot, "force-hotspot", false, "Bypass CRITICAL hotspot blocking gate (for implementation skills targeting >1500-line files)")
 	spawnCmd.Flags().StringVar(&spawnOrientationFrame, "orientation-frame", "", "Why Dylan cares about this work (defaults to task description)")
 }
 
@@ -487,9 +489,14 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		if err != nil || result == nil {
 			return nil, err
 		}
-		return &gates.HotspotResult{HasHotspots: result.HasHotspots, Warning: result.Warning}, nil
+		return &gates.HotspotResult{
+			HasHotspots:        result.HasHotspots,
+			HasCriticalHotspot: result.HasCriticalHotspot,
+			Warning:            result.Warning,
+			CriticalFiles:      result.CriticalFiles,
+		}, nil
 	}
-	usageCheckResult, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnBypassVerification, spawnBypassReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc)
+	usageCheckResult, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnBypassVerification, spawnForceHotspot, spawnBypassReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc)
 	if err != nil {
 		return err
 	}

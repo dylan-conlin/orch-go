@@ -546,3 +546,47 @@ func TestCheckSpawnHotspots_CriticalVsHighSeverity(t *testing.T) {
 		})
 	}
 }
+
+// TestCheckSpawnHotspots_CriticalBloatDetection validates that bloat-size files
+// >1500 lines set HasCriticalHotspot and CriticalFiles.
+func TestCheckSpawnHotspots_CriticalBloatDetection(t *testing.T) {
+	tests := []struct {
+		name             string
+		lines            int
+		expectCritical   bool
+	}{
+		{"1501 lines is critical", 1501, true},
+		{"2000 lines is critical", 2000, true},
+		{"1500 lines is not critical", 1500, false},
+		{"800 lines is not critical", 800, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hotspots := []Hotspot{
+				{
+					Path:           "cmd/orch/big_file.go",
+					Type:           "bloat-size",
+					Score:          tt.lines,
+					Recommendation: generateBloatRecommendation("big_file.go", tt.lines),
+				},
+			}
+
+			result := checkSpawnHotspots("fix cmd/orch/big_file.go", hotspots)
+			if !result.HasHotspots {
+				t.Fatal("Expected hotspot match")
+			}
+			if result.HasCriticalHotspot != tt.expectCritical {
+				t.Errorf("Lines=%d: HasCriticalHotspot=%v, want %v",
+					tt.lines, result.HasCriticalHotspot, tt.expectCritical)
+			}
+			if tt.expectCritical {
+				if len(result.CriticalFiles) == 0 {
+					t.Error("Expected CriticalFiles to be populated for critical hotspot")
+				} else if result.CriticalFiles[0] != "cmd/orch/big_file.go" {
+					t.Errorf("Expected CriticalFiles[0] = %q, got %q", "cmd/orch/big_file.go", result.CriticalFiles[0])
+				}
+			}
+		})
+	}
+}

@@ -136,10 +136,15 @@ func runRework(beadsID, feedback string) error {
 		if err != nil || result == nil {
 			return nil, err
 		}
-		return &gates.HotspotResult{HasHotspots: result.HasHotspots, Warning: result.Warning}, nil
+		return &gates.HotspotResult{
+			HasHotspots:        result.HasHotspots,
+			HasCriticalHotspot: result.HasCriticalHotspot,
+			Warning:            result.Warning,
+			CriticalFiles:      result.CriticalFiles,
+		}, nil
 	}
 
-	usageCheckResult, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, false, "", 0, extractBeadsIDFromTitle, hotspotCheckFunc)
+	usageCheckResult, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, false, false, "", 0, extractBeadsIDFromTitle, hotspotCheckFunc)
 	if err != nil {
 		return err
 	}
