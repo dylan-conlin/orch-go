@@ -1,0 +1,48 @@
+version: "1"
+workspace: og-inv-model-drift-probe-20feb-ae6e
+issue: orch-go-1103
+
+verification:
+  type: probe
+  tier: full
+
+deliverables:
+  - path: .kb/models/spawn-architecture/probes/2026-02-20-spawn-architecture-structural-drift.md
+    type: probe
+    description: "Probe documenting structural drift in spawn-architecture model"
+    verdict: "contradicts (registry removed, config.go restructured, atomic spawn, manifest) + extends (resolve.go, claude.go, context variants)"
+
+  - path: .kb/models/model-access-spawn-paths/probes/2026-02-20-backend-resolution-architecture-drift.md
+    type: probe
+    description: "Probe documenting backend resolution architecture drift"
+    verdict: "contradicts (function locations, priority chain, flash blocking) + extends (6-level precedence, advisory infra detection, allow_anthropic_opencode)"
+
+  - path: .kb/models/spawn-architecture.md
+    type: model-update
+    description: "Updated spawn flow, metadata, state transitions, primary evidence, evolution"
+
+  - path: .kb/models/model-access-spawn-paths.md
+    type: model-update
+    description: "Updated backend priority, infra detection, critical invariants, flash constraint, evidence"
+
+tests_run:
+  - command: "go test ./pkg/spawn/ -run TestResolve_BugClass13 -count=1 -v"
+    result: "PASS (4/4 subtests)"
+    verifies: "--backend claude implies tmux spawn mode"
+
+  - command: "go test ./pkg/spawn/ -run TestResolve_AnthropicModelBlockedOnOpenCodeByDefault -v"
+    result: "PASS"
+    verifies: "Anthropic models blocked on opencode backend by default"
+
+manual_verification:
+  - check: "rg selectBackend --type go returns 0 results in pkg/spawn/"
+    result: "Confirmed — function no longer exists"
+
+  - check: "rg detectInfrastructureWork --type go returns 0 results in pkg/spawn/"
+    result: "Confirmed — function moved to pkg/orch/extraction.go"
+
+  - check: "wc -l pkg/spawn/context.go shows ~1315 lines (model claimed ~400)"
+    result: "Confirmed — 1315 lines, 3.3x growth"
+
+  - check: "ls pkg/spawn/config.go confirms file exists (staleness detector said deleted)"
+    result: "Confirmed — 457 lines, file exists"

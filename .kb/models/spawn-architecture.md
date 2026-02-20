@@ -1,14 +1,14 @@
 # Model: Spawn Architecture
 
 **Domain:** Agent Spawning / Workspace Creation
-**Last Updated:** 2026-01-12
-**Synthesized From:** 36 investigations (Dec 2025 - Jan 2026) into spawn implementation, context generation, tier system, and triage friction
+**Last Updated:** 2026-02-20
+**Synthesized From:** 36 investigations (Dec 2025 - Jan 2026) into spawn implementation, context generation, tier system, and triage friction. Updated Feb 2026 via drift probe.
 
 ---
 
 ## Summary (30 seconds)
 
-Spawn evolved through 5 phases from basic CLI integration to daemon-driven automation with triage friction. The architecture creates a workspace with SPAWN_CONTEXT.md embedding skill content + task description + kb context, then launches an OpenCode session. The tier system (light/full) determines whether SYNTHESIS.md is required at completion. Triage friction (`--bypass-triage` flag) intentionally makes manual spawns harder to encourage daemon-driven workflow.
+Spawn evolved through 5 phases from basic CLI integration to daemon-driven automation with triage friction. The architecture creates a workspace with SPAWN_CONTEXT.md embedding skill content + task description + kb context, then launches a session via two-phase atomic spawn with rollback. Spawn settings are resolved via `pkg/spawn/resolve.go` with 6-level precedence and per-setting provenance tracking. The tier system (light/full) determines whether SYNTHESIS.md is required at completion. Triage friction (`--bypass-triage` flag) intentionally makes manual spawns harder to encourage daemon-driven workflow.
 
 ---
 
@@ -21,42 +21,64 @@ orch spawn <skill> "task"
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  1. SKILL RESOLUTION                                            │
+│  1. SETTINGS RESOLUTION (pkg/spawn/resolve.go)                  │
+│     Resolve backend, model, tier, spawn mode, MCP, mode, etc.  │
+│     Precedence: CLI > beads labels > project config >           │
+│                 user config > heuristics > defaults              │
+│     Each setting tracked with SettingSource provenance          │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  2. SKILL RESOLUTION                                            │
 │     Load ~/.claude/skills/{category}/{skill}/SKILL.md           │
 │     Extract phases, constraints, requirements                   │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  2. BEADS ISSUE CREATION (unless --no-track)                    │
+│  3. BEADS ISSUE CREATION (unless --no-track)                    │
 │     bd create "{task}" --type {inferred-from-skill}             │
 │     Returns beads ID (e.g., orch-go-abc1)                       │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  3. KB CONTEXT GATHERING                                        │
+│  4. KB CONTEXT GATHERING                                        │
 │     kb context "{task keywords}"                                │
 │     Finds relevant constraints, decisions, investigations       │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  4. WORKSPACE CREATION                                          │
+│  5. ATOMIC SPAWN PHASE 1 (pkg/spawn/atomic.go)                  │
+│     Tag beads issue with orch:agent label                       │
+│     Create workspace + AGENT_MANIFEST.json + dotfiles           │
+│     (Rollback all writes on failure)                            │
+│                                                                  │
 │     .orch/workspace/{name}/                                     │
-│     ├── SPAWN_CONTEXT.md   (skill + task + context)            │
-│     ├── .tier              (light/full)                        │
-│     ├── .session_id        (OpenCode session ID)               │
-│     ├── .beads_id          (beads issue ID)                    │
-│     ├── .spawn_time        (timestamp)                         │
-│     └── .spawn_mode        (headless/tmux/inline)              │
+│     ├── SPAWN_CONTEXT.md      (skill + task + context)          │
+│     ├── AGENT_MANIFEST.json   (canonical agent identity)        │
+│     ├── .tier                 (light/full)                      │
+│     ├── .beads_id             (beads issue ID)                  │
+│     ├── .spawn_time           (timestamp)                       │
+│     └── .spawn_mode           (headless/tmux/claude)            │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  5. OPENCODE SESSION                                            │
-│     opencode run --model {model} --title "{name} [{beads-id}]"  │
-│     Headless by default (HTTP API), --tmux for TUI             │
+│  6. SESSION CREATION (backend-dependent)                         │
+│     OpenCode: opencode run --model {model}                      │
+│     Claude:   cat SPAWN_CONTEXT.md | claude --dangerously...    │
+│     Headless by default; --backend claude implies tmux           │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  7. ATOMIC SPAWN PHASE 2 (pkg/spawn/atomic.go)                  │
+│     Write .session_id                                           │
+│     Update AGENT_MANIFEST.json with session ID                  │
+│     (Best-effort: session already running)                      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -80,12 +102,16 @@ orch spawn <skill> "task"
 - Git commits with changes
 ```
 
-**Workspace metadata files:**
+**Workspace metadata (canonical: AGENT_MANIFEST.json):**
+- `AGENT_MANIFEST.json` - Canonical source of agent identity and spawn-time context
+- Read path: `ReadAgentManifestWithFallback()` → OpenCode session metadata → AGENT_MANIFEST.json → dotfiles (legacy)
+
+**Legacy dotfiles (still written for backward compatibility):**
 - `.tier` - "light" or "full" (determines SYNTHESIS.md requirement)
 - `.session_id` - OpenCode session ID for `orch send`
 - `.beads_id` - Issue tracking ID for `orch complete`
-- `.spawn_time` - ISO timestamp for age calculations
-- `.spawn_mode` - Which spawn mode was used
+- `.spawn_time` - Timestamp for age calculations
+- `.spawn_mode` - Which spawn backend was used
 
 ### State Transitions
 
@@ -94,17 +120,17 @@ orch spawn <skill> "task"
 ```
 Command invoked (orch spawn)
     ↓
+Settings resolved (backend, model, tier, spawn mode)
+    ↓
 Skill loaded + beads issue created
     ↓
 KB context gathered
     ↓
-Workspace created (.orch/workspace/{name}/)
+Atomic Phase 1: Tag beads + write workspace (rollback on failure)
     ↓
-SPAWN_CONTEXT.md generated
+Session created (OpenCode API or Claude CLI)
     ↓
-OpenCode session created
-    ↓
-Registry entry added (Status: running)
+Atomic Phase 2: Write session ID + update manifest
     ↓
 Agent starts working
 ```
@@ -250,6 +276,15 @@ Agent works in: ~/target-project/
 - Daemon-driven workflow as default
 - Event logging for bypass analysis
 
+**Phase 6: Atomic Spawn + Resolved Settings (Jan-Feb 2026)**
+- Registry removed; AGENT_MANIFEST.json replaces dotfiles as canonical metadata
+- `pkg/spawn/resolve.go` centralizes all settings resolution with provenance
+- Two-phase atomic spawn with rollback on failure (`pkg/spawn/atomic.go`)
+- `--backend claude` implies tmux spawn mode (derived setting)
+- Flash models blocked entirely at resolve layer
+- Context file variants: SPAWN_CONTEXT.md, ORCHESTRATOR_CONTEXT.md, META_ORCHESTRATOR_CONTEXT.md
+- Hotspot gating blocks spawns targeting CRITICAL files (>1500 lines)
+
 ---
 
 ## References
@@ -278,6 +313,10 @@ Agent works in: ~/target-project/
 
 **Primary Evidence (Verify These):**
 - `cmd/orch/spawn_cmd.go` - Main spawn command implementation (~800 lines)
-- `pkg/spawn/context.go` - SPAWN_CONTEXT.md generation (~400 lines)
-- `pkg/spawn/config.go` - SpawnConfig struct and validation
+- `pkg/spawn/context.go` - SPAWN_CONTEXT.md generation (~1300 lines)
+- `pkg/spawn/config.go` - Config struct, tier defaults, skill mappings (~460 lines)
+- `pkg/spawn/resolve.go` - Settings resolution with 6-level precedence and provenance (~490 lines)
+- `pkg/spawn/atomic.go` - Two-phase atomic spawn with rollback (~120 lines)
+- `pkg/spawn/claude.go` - Claude CLI backend (tmux spawn, MCP wiring) (~155 lines)
+- `pkg/spawn/session.go` - Session management, AGENT_MANIFEST.json read/write
 - `pkg/skills/loader.go` - Skill discovery and loading

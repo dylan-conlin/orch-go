@@ -1,8 +1,8 @@
 # Model: Model Access and Spawn Paths
 
 **Domain:** Agent Spawning / Model Selection
-**Last Updated:** 2026-01-12
-**Synthesized From:** 5 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations) spanning Jan 8-12, 2026
+**Last Updated:** 2026-02-20
+**Synthesized From:** 5 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations) spanning Jan 8-12, 2026. Updated Feb 2026 via drift probe.
 
 ---
 
@@ -56,21 +56,29 @@ User → orch spawn --backend claude → claude CLI fork → Anthropic API (with
 
 ### Key Components
 
-**Backend Selection Priority (pkg/spawn/config.go):**
+**Backend Selection Priority (pkg/spawn/resolve.go:resolveBackend):**
 ```
-1. Explicit --backend flag (highest priority)
-2. Auto-apply for infrastructure work (keywords detected)
-   → Sets --backend claude --tmux automatically
-3. Model-based auto-selection
-   → opus/sonnet → opencode
-   → flash/pro → opencode
-4. Default: opencode
+1. CLI --backend flag (highest priority)
+2. Model-derived requirement (openai/google/deepseek → opencode)
+3. Project config spawn_mode
+4. User config backend
+5. Infrastructure heuristic → claude (advisory when overridden)
+6. Default: opencode
 ```
 
-**Infrastructure Work Detection:**
+Note: Infrastructure detection is now **advisory** — when higher-priority settings
+(CLI, model requirement, project/user config) specify a different backend,
+infrastructure detection only emits a warning instead of overriding.
+
+**Additional derived behavior:**
+- `--backend claude` implies tmux spawn mode (unless `--headless` explicitly set)
+- Anthropic models on opencode blocked by default (override: `allow_anthropic_opencode: true` in user config)
+- Flash models blocked entirely at resolve layer
+
+**Infrastructure Work Detection (pkg/orch/extraction.go:isInfrastructureWork):**
 - Scans task description + beads issue for keywords
-- Keywords: "opencode", "spawn", "daemon", "registry", "orch serve", "overmind", "dashboard"
-- Auto-applies `--backend claude --tmux` flags
+- Keywords (22): "opencode", "orch-go", "pkg/spawn", "pkg/opencode", "pkg/verify", "pkg/state", "cmd/orch", "spawn_cmd.go", "serve.go", "status.go", "main.go", "dashboard", "agent-card", "agents.ts", "daemon.ts", "skillc", "skill.yaml", "SPAWN_CONTEXT", "spawn system", "spawn logic", "spawn template", "orchestration infrastructure", "orchestration system"
+- Auto-applies `--backend claude` (which implies tmux) when no higher-priority setting overrides
 - Prevents agents from killing themselves (e.g., restarting OpenCode during spawn)
 
 ### State Transitions
@@ -79,22 +87,25 @@ User → orch spawn --backend claude → claude CLI fork → Anthropic API (with
 ```
 orch spawn feature-impl "task"
     ↓
-Backend: opencode (default)
+Settings resolved via pkg/spawn/resolve.go
     ↓
-Model: claude-sonnet-4-5 (default since Jan 9, was gemini-3-flash before TPM limits)
+Backend: opencode (default)
+Model: anthropic/claude-sonnet-4-5-20250929 (default)
     ↓
 Headless session via HTTP API
     ↓
 Dashboard visibility
 ```
 
-**Infrastructure spawn (auto-detected):**
+**Infrastructure spawn (auto-detected, advisory):**
 ```
 orch spawn systematic-debugging "fix opencode server crash"
     ↓
-Keyword detected: "opencode"
+Keyword detected: "opencode" (pkg/orch/extraction.go)
     ↓
-Auto-apply: --backend claude --tmux
+No higher-priority backend setting → auto-apply: backend=claude
+    ↓
+claude backend implies tmux (derived)
     ↓
 Tmux session via Claude CLI
     ↓
@@ -105,9 +116,11 @@ Survives OpenCode server restart
 ```
 orch spawn --backend claude --model opus architect "complex design"
     ↓
-Backend: claude (explicit override)
+Backend: claude (explicit CLI flag)
     ↓
 Model: opus (Max subscription)
+    ↓
+Tmux implied by claude backend
     ↓
 Tmux session, highest quality
 ```
@@ -116,19 +129,26 @@ Tmux session, highest quality
 
 1. **Never spawn OpenCode infrastructure work without --backend claude --tmux**
    - Violation: Agent kills itself mid-execution when server restarts
+   - Now auto-detected: infrastructure keywords trigger `--backend claude` which implies tmux
 
-2. **Infrastructure detection runs before model auto-selection**
-   - Priority 2.5 (between explicit flags and model-based selection)
-   - Ensures auto-apply happens even without explicit --backend
+2. **Infrastructure detection is advisory, not overriding (changed Feb 2026)**
+   - Runs at priority 5 (below CLI, model requirement, project config, user config)
+   - When higher-priority setting present, emits warning instead of overriding
+   - Ensures explicit user choices are always respected
 
-3. **Opus only accessible via Claude CLI backend**
-   - API requests to Opus fail with auth error
-   - Fingerprinting checks more than headers (TLS, HTTP/2 frames, ordering)
+3. **Anthropic models blocked on OpenCode by default**
+   - API requests to Anthropic models on opencode return error
+   - Override: `allow_anthropic_opencode: true` in user config (`~/.orch/config.yaml`)
+   - Opus specifically requires Claude CLI backend (fingerprinting blocks API)
 
 4. **Escape hatch provides true independence**
    - Claude CLI binary ≠ OpenCode server
    - Tmux session persists across service restarts
    - Different authentication path (Max subscription OAuth)
+
+5. **Flash models are blocked entirely (added Feb 2026)**
+   - `validateModel()` returns error for any flash model
+   - Supersedes the Gemini Flash TPM limit constraint — no workaround needed
 
 ---
 
@@ -268,33 +288,18 @@ OpenCode HTTP API provides:
 **This enables:** Cost-effective high-concurrency spawning via API path
 **This constrains:** Escape hatch limited to critical work due to ergonomic overhead
 
-### Constraint 5: Gemini Flash TPM Limits Block Tool-Heavy Agents
+### Constraint 5: Gemini Flash Blocked Entirely (Updated Feb 2026)
 
-**Why we can't use Gemini Flash as default:**
+**Previous state (Jan 2026):** Flash had 2,000 req/min TPM limit making it unreliable for agents.
 
-Google imposes 2,000 requests/minute limit on Gemini Flash 3 (Paid Tier 2):
-- Tool-heavy agents (investigation, systematic-debugging) make 35+ tool calls/second
-- Each tool use (Read, Grep, Bash, etc.) = one API request
-- Single agent can hit 2,000 req/min limit
-- Retry logic slows spawns to crawl
+**Current state (Feb 2026):** Flash models are **blocked at the resolve layer**. `validateModel()` in `pkg/spawn/resolve.go` returns an error for any flash model. No workaround available or needed.
 
-**Evidence:** Investigation `2026-01-09-debug-gemini-flash-rate-limiting.md`
+**Why the change:** Flash TPM limits caused enough reliability problems that it was easier to block Flash entirely than to manage rate limiting. Sonnet is the default model.
 
-**Implication:** Forced switch to Sonnet on Jan 9, 2026
-- Lost "free" model (Gemini via AI Studio)
-- Gained reliability (no rate limit throttling)
-- Lost cost visibility (no tracking of Sonnet spend)
-- Created new constraint: unknown budget trajectory
+**This supersedes:** Tier 3 application, rate limit workarounds, retry tolerance questions.
 
-**Workarounds attempted:**
-1. Apply for Tier 3 (20,000 req/min) - Status: Pending
-2. Use Sonnet instead - Status: Current solution
-3. Tolerate retry delays - Status: Unacceptable for production
-
-**Strategic question enabled:** "Should we invest in Tier 3 or accept Sonnet costs?"
-
-**This enables:** Google to manage API load across users
-**This constrains:** Cannot use Gemini Flash for tool-heavy agents without Tier 3
+**This enables:** Clean error messages instead of subtle rate limiting failures
+**This constrains:** Cannot use any Flash model for agent work
 
 ### Constraint 6: Community Workarounds are Fragile Cat-and-Mouse
 
@@ -415,6 +420,16 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - Cost/quality/reliability tradeoffs explicit
 - Strategic questions about model usage surfaced
 
+**Jan-Feb 2026:** Backend resolution refactored
+- `selectBackend()` and `detectInfrastructureWork()` removed from config.go
+- Backend selection moved to `pkg/spawn/resolve.go:resolveBackend()` with 6-level precedence
+- Infrastructure detection moved to `pkg/orch/extraction.go:isInfrastructureWork()`
+- Infrastructure detection became advisory (warns instead of overriding when explicit settings present)
+- Flash models blocked entirely at resolve layer (validateModel returns error)
+- `--backend claude` now implies tmux spawn mode
+- `allow_anthropic_opencode: true` user config override added
+- Expanded infrastructure keywords from 8 to 22
+
 ---
 
 ## References
@@ -437,10 +452,12 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - `.kb/models/dashboard-agent-status.md` - How status is calculated (relates to session state constraint)
 
 **Primary Evidence (Verify These):**
-- `pkg/spawn/config.go:selectBackend()` - Backend selection priority cascade
-- `pkg/spawn/config.go:detectInfrastructureWork()` - Keyword detection logic
-- `CLAUDE.md` lines 130-170 - Dual spawn mode documentation
-- `~/.claude/skills/meta/orchestrator/SKILL.md` line 625 - "Why escape hatch exists" section
+- `pkg/spawn/resolve.go:resolveBackend()` - Backend selection 6-level precedence
+- `pkg/spawn/resolve.go:Resolve()` - Central settings resolution entry point
+- `pkg/spawn/resolve.go:validateModel()` - Flash blocking, model compatibility
+- `pkg/orch/extraction.go:isInfrastructureWork()` - Keyword detection logic (22 keywords)
+- `CLAUDE.md` - Dual spawn mode documentation
+- `~/.claude/skills/meta/orchestrator/SKILL.md` - Orchestrator skill (recompiled Feb 18 2026)
 
 **Cost evidence:**
 - Claude Max: $200/mo flat (unlimited Opus via CLI)
