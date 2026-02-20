@@ -20,6 +20,13 @@ const (
 	TierFull  = "full"  // Full spawn - requires SYNTHESIS.md for knowledge externalization
 )
 
+// Scope constants define session scope levels.
+const (
+	ScopeSmall  = "small"
+	ScopeMedium = "medium"
+	ScopeLarge  = "large"
+)
+
 // SkillTierDefaults maps skills to their default tier.
 // Skills that produce knowledge artifacts default to "full".
 // Skills that primarily produce code changes default to "light".
@@ -221,6 +228,11 @@ type Config struct {
 
 	// SpawnMode specifies the spawn backend: "opencode" or "claude"
 	SpawnMode string
+
+	// Scope specifies the session scope: "small", "medium", or "large"
+	// Parsed from task description or set via --scope flag
+	// Affects checkpoint recommendations in SPAWN_CONTEXT.md
+	Scope string
 
 	// Design handoff fields (for ui-design-session → feature-impl handoff)
 	// DesignWorkspace is the workspace name from a prior ui-design-session spawn

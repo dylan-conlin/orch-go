@@ -1,0 +1,32 @@
+verification:
+  type: bug-fix
+  issue: orch-go-1138
+
+  reproduction:
+    description: "Spawn template always injects SESSION SCOPE: Medium regardless of task-specified scope"
+    steps:
+      - "Generate spawn context with task containing 'SESSION SCOPE: Small'"
+      - "Check template output for SESSION SCOPE line"
+    before_fix: "Template always outputs 'SESSION SCOPE: Medium (estimated [1-2h / 2-4h / 4-6h+])'"
+    after_fix: "Template outputs 'SESSION SCOPE: Small (text edits only)' when task specifies Small"
+
+  automated_tests:
+    command: "go test ./pkg/spawn/ -run 'TestParseScopeFromTask|TestResolveScope|TestGenerateContext_SessionScope' -v"
+    expected: "11 tests pass"
+    covers:
+      - "ParseScopeFromTask: 7 cases (small/medium/large/case-insensitive/no-scope/empty/multiline)"
+      - "ResolveScope: 4 cases (explicit-priority/task-parse/default/normalization)"
+      - "GenerateContext_SessionScope: 4 cases (small/large/parsed/default-medium)"
+
+  behavioral:
+    - "Task with 'SESSION SCOPE: Small' → template outputs 'SESSION SCOPE: Small (text edits only)'"
+    - "Task with 'SESSION SCOPE: Large' → template outputs 'SESSION SCOPE: Large (estimated [4-6h+])'"
+    - "Task with no scope → template outputs 'SESSION SCOPE: Medium' (backward compatible)"
+    - "Explicit --scope large overrides task-specified scope"
+
+  files_changed:
+    - pkg/spawn/config.go: "Added Scope field to Config, scope constants"
+    - pkg/spawn/context.go: "Added ParseScopeFromTask, ResolveScope, scope-conditional template"
+    - pkg/spawn/context_test.go: "Added 3 test functions (11 test cases)"
+    - pkg/orch/extraction.go: "Added Scope to SpawnContext and BuildSpawnConfig, deduped parseSessionScope"
+    - cmd/orch/spawn_cmd.go: "Added --scope flag, threaded scope through SpawnContext"

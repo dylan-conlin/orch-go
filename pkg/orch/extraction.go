@@ -67,6 +67,7 @@ type SpawnContext struct {
 	UsageInfo          *spawn.UsageInfo
 	SpawnBackend       string
 	Tier               string
+	Scope              string
 	DesignMockupPath   string
 	DesignPromptPath   string
 	DesignNotes        string
@@ -94,7 +95,7 @@ type GapCheckResult struct {
 
 // ansiRegex matches ANSI escape sequences (colors, formatting, etc.)
 var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-var sessionScopeRegex = regexp.MustCompile(`(?mi)^\s*session\s+scope:\s*([^\r\n]+)`)
+// sessionScopeRegex moved to pkg/spawn.regexSessionScope (canonical location)
 
 // InferSkillFromIssueType maps issue types to appropriate skills.
 // Returns an error for types that cannot be spawned (e.g., epic) or unknown types.
@@ -153,7 +154,7 @@ func inferTierFromTask(task string) string {
 		return ""
 	}
 
-	if scope := parseSessionScope(task); scope != "" {
+	if scope := spawn.ParseScopeFromTask(task); scope != "" {
 		switch scope {
 		case "medium", "large", "full", "4-6h", "4-6h+", "2-4h":
 			return spawn.TierFull
@@ -193,21 +194,8 @@ func inferTierFromTask(task string) string {
 	return ""
 }
 
-func parseSessionScope(task string) string {
-	matches := sessionScopeRegex.FindStringSubmatch(task)
-	if len(matches) < 2 {
-		return ""
-	}
-	scope := strings.TrimSpace(strings.ToLower(matches[1]))
-	if scope == "" {
-		return ""
-	}
-	fields := strings.Fields(scope)
-	if len(fields) == 0 {
-		return ""
-	}
-	return fields[0]
-}
+// parseSessionScope is now delegated to spawn.ParseScopeFromTask
+// to avoid duplicating regex and parsing logic across packages.
 
 func containsAny(text string, terms []string) bool {
 	for _, term := range terms {
@@ -879,6 +867,7 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 		ResolvedSettings:   ctx.ResolvedSettings,
 		MCP:                mcp,
 		Tier:               ctx.Tier,
+		Scope:              ctx.Scope,
 		NoTrack:            noTrack || ctx.IsOrchestrator || ctx.IsMetaOrchestrator,
 		SkipArtifactCheck:  skipArtifactCheck,
 		KBContext:          ctx.KBContext,
@@ -915,6 +904,11 @@ func ValidateAndWriteContext(cfg *spawn.Config, force bool) (minimalPrompt strin
 	// Warn about large contexts (but don't block)
 	if shouldWarn, warning := spawn.ShouldWarnAboutSize(cfg); shouldWarn {
 		fmt.Fprintf(os.Stderr, "%s", warning)
+	}
+
+	// Warn if task text references a different beads ID than the tracking issue
+	if warning := spawn.ValidateBeadsIDConsistency(cfg.Task, cfg.BeadsID); warning != "" {
+		fmt.Fprintf(os.Stderr, "%s\n", warning)
 	}
 
 	// Check for existing workspace before writing context

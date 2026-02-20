@@ -53,6 +53,7 @@ var (
 	spawnBypassVerification bool   // Bypass verification gate for independent parallel work
 	spawnBypassReason       string // Justification for bypassing verification gate
 	spawnForceHotspot       bool   // Bypass CRITICAL hotspot blocking gate
+	spawnScope              string // Session scope: small, medium, large
 	spawnModeSet            bool   // Tracks whether --mode was explicitly set
 	spawnValidationSet      bool   // Tracks whether --validation was explicitly set
 )
@@ -180,6 +181,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnBypassVerification, "bypass-verification", false, "Bypass verification gate for independent parallel work (requires --bypass-reason)")
 	spawnCmd.Flags().StringVar(&spawnBypassReason, "bypass-reason", "", "Justification for bypassing verification gate (required with --bypass-verification)")
 	spawnCmd.Flags().BoolVar(&spawnForceHotspot, "force-hotspot", false, "Bypass CRITICAL hotspot blocking gate (for implementation skills targeting >1500-line files)")
+	spawnCmd.Flags().StringVar(&spawnScope, "scope", "", "Session scope: small, medium, large (parsed from task if not set)")
 }
 
 var (
@@ -599,6 +601,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		UsageInfo:          usageInfo,
 		SpawnBackend:       resolved.Settings.Backend.Value,
 		Tier:               resolved.Settings.Tier.Value,
+		Scope:              spawnScope,
 		DesignMockupPath:   designMockupPath,
 		DesignPromptPath:   designPromptPath,
 		DesignNotes:        designNotes,

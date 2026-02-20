@@ -38,7 +38,43 @@ var (
 	regexBeadsReportedCriteria = regexp.MustCompile(`(?i)\*\*Reported\*\*.*bd\s+comment`)
 	regexBeadsIDPlaceholder    = regexp.MustCompile(`bd\s+(comment|close|show)\s+<beads-id>`)
 	regexMultiNewline          = regexp.MustCompile(`\n{3,}`)
+	regexSessionScope          = regexp.MustCompile(`(?mi)^\s*session\s+scope:\s*([^\r\n]+)`)
+	// regexBeadsIDInText matches beads-like IDs in text: project-prefix followed by hyphen and digits.
+	// Examples: pw-8972, orch-go-1141, pw-123
+	regexBeadsIDInText = regexp.MustCompile(`\b([a-z][\w-]*-\d+)\b`)
 )
+
+// ParseScopeFromTask extracts a session scope value from a task description.
+// Looks for patterns like "SESSION SCOPE: Small" or "Session scope: Large".
+// Returns the lowercase first word of the scope value (e.g., "small", "medium", "large"),
+// or empty string if no scope is found.
+func ParseScopeFromTask(task string) string {
+	matches := regexSessionScope.FindStringSubmatch(task)
+	if len(matches) < 2 {
+		return ""
+	}
+	scope := strings.TrimSpace(strings.ToLower(matches[1]))
+	if scope == "" {
+		return ""
+	}
+	fields := strings.Fields(scope)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
+// ResolveScope determines the session scope for a spawn.
+// Priority: explicit scope parameter > parsed from task > default "medium".
+func ResolveScope(explicitScope, task string) string {
+	if explicitScope != "" {
+		return strings.ToLower(explicitScope)
+	}
+	if parsed := ParseScopeFromTask(task); parsed != "" {
+		return parsed
+	}
+	return ScopeMedium
+}
 
 // CreateScreenshotsDir creates the screenshots/ subdirectory in a workspace.
 // This directory is for agent-produced visual artifacts (e.g., UI screenshots for verification).
@@ -225,9 +261,15 @@ CONTEXT: [See task description]
 
 PROJECT_DIR: {{.ProjectDir}}
 
-SESSION SCOPE: Medium (estimated [1-2h / 2-4h / 4-6h+])
+{{if eq .Scope "small"}}SESSION SCOPE: Small (text edits only)
+- Lightweight session - focus on precise, targeted changes
+{{else if eq .Scope "large"}}SESSION SCOPE: Large (estimated [4-6h+])
+- Extended session
+- Recommend checkpoint after Phase 1 if session exceeds 3 hours
+{{else}}SESSION SCOPE: Medium (estimated [1-2h / 2-4h / 4-6h+])
 - Default estimation
 - Recommend checkpoint after Phase 1 if session exceeds 2 hours
+{{end}}
 
 
 AUTHORITY:
@@ -593,6 +635,7 @@ type contextData struct {
 	ClusterSummary        string // Area awareness: cluster summary from orch tree --cluster <area> --format summary
 	ConfigResolution      string
 	Tier                  string
+	Scope                 string // Session scope: "small", "medium", or "large"
 	ServerContext         string
 	NoTrack               bool   // When true, omit beads instructions from spawn context
 	IsBug                 bool   // When true, this is a bug issue with reproduction info
@@ -663,6 +706,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		ClusterSummary:        clusterSummary,
 		ConfigResolution:      FormatResolvedSpawnSettings(cfg.ResolvedSettings),
 		Tier:                  cfg.Tier,
+		Scope:                 ResolveScope(cfg.Scope, cfg.Task),
 		ServerContext:         serverContext,
 		NoTrack:               cfg.NoTrack,
 		IsBug:                 cfg.IsBug,
@@ -710,6 +754,13 @@ func WriteContext(cfg *Config) error {
 	if cfg.Tier != TierLight {
 		if err := EnsureSynthesisTemplate(cfg.ProjectDir); err != nil {
 			return fmt.Errorf("failed to ensure synthesis template: %w", err)
+		}
+	}
+
+	// Ensure PROBE.md template exists in the project (for probe-type spawns)
+	if cfg.HasInjectedModels {
+		if err := EnsureProbeTemplate(cfg.ProjectDir); err != nil {
+			return fmt.Errorf("failed to ensure probe template: %w", err)
 		}
 	}
 
@@ -813,6 +864,93 @@ func EnsureSynthesisTemplate(projectDir string) error {
 	}
 
 	return nil
+}
+
+// EnsureProbeTemplate ensures the PROBE.md template exists in the project.
+// If the project doesn't have .orch/templates/PROBE.md, it creates one from
+// the DefaultProbeTemplate in probes.go.
+func EnsureProbeTemplate(projectDir string) error {
+	templatesDir := filepath.Join(projectDir, ".orch", "templates")
+	templatePath := filepath.Join(templatesDir, "PROBE.md")
+
+	// Check if template already exists
+	if _, err := os.Stat(templatePath); err == nil {
+		return nil // Template exists, nothing to do
+	}
+
+	// Create templates directory if needed
+	if err := os.MkdirAll(templatesDir, 0755); err != nil {
+		return fmt.Errorf("failed to create templates directory: %w", err)
+	}
+
+	// Write the default template
+	if err := os.WriteFile(templatePath, []byte(DefaultProbeTemplate), 0644); err != nil {
+		return fmt.Errorf("failed to write probe template: %w", err)
+	}
+
+	return nil
+}
+
+// extractProjectPrefix extracts the project prefix from a beads ID.
+// Given "pw-8972", returns "pw". Given "orch-go-1141", returns "orch-go".
+// The prefix is everything before the final hyphen-number sequence.
+func extractProjectPrefix(beadsID string) string {
+	// Find the last occurrence of -<digits> and take everything before it
+	for i := len(beadsID) - 1; i >= 0; i-- {
+		if beadsID[i] == '-' {
+			// Check if everything after the hyphen is digits
+			suffix := beadsID[i+1:]
+			allDigits := true
+			for _, c := range suffix {
+				if c < '0' || c > '9' {
+					allDigits = false
+					break
+				}
+			}
+			if allDigits && len(suffix) > 0 {
+				return beadsID[:i]
+			}
+		}
+	}
+	return beadsID
+}
+
+// ValidateBeadsIDConsistency checks if the task text references a beads ID
+// from the same project that differs from the tracking beads ID.
+// Returns a warning message if a mismatch is detected, empty string otherwise.
+//
+// This catches a class of spawn bugs where the task description references
+// one issue (e.g., "fix pw-8972") but the --issue flag tracks a different
+// issue (e.g., pw-8975), leading to confusing SPAWN_CONTEXT where the TASK
+// line says one thing but bd comment instructions reference another.
+func ValidateBeadsIDConsistency(task string, beadsID string) string {
+	if beadsID == "" {
+		return ""
+	}
+
+	trackingPrefix := extractProjectPrefix(beadsID)
+
+	// Find all beads-like IDs in the task text
+	matches := regexBeadsIDInText.FindAllString(strings.ToLower(task), -1)
+	for _, match := range matches {
+		matchPrefix := extractProjectPrefix(match)
+
+		// Only check IDs from the same project (same prefix)
+		if matchPrefix != trackingPrefix {
+			continue
+		}
+
+		// Same project, check if it's the same ID
+		if match != strings.ToLower(beadsID) {
+			return fmt.Sprintf(
+				"Warning: task text references %s but tracking issue is %s (same project prefix %q). "+
+					"This may cause agent confusion — TASK line will say %s but bd comment instructions will use %s.",
+				match, beadsID, trackingPrefix, match, beadsID,
+			)
+		}
+	}
+
+	return ""
 }
 
 // DefaultSynthesisTemplate is the embedded SYNTHESIS.md template content.

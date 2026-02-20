@@ -2295,3 +2295,323 @@ Some other content.
 		t.Error("expected 'Surface Before Circumvent' section to be preserved in spawn template")
 	}
 }
+
+func TestEnsureProbeTemplate(t *testing.T) {
+	t.Run("creates template when missing", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		// Ensure template doesn't exist initially
+		templatePath := filepath.Join(tempDir, ".orch", "templates", "PROBE.md")
+		if _, err := os.Stat(templatePath); !os.IsNotExist(err) {
+			t.Fatal("template should not exist initially")
+		}
+
+		// Call EnsureProbeTemplate
+		if err := EnsureProbeTemplate(tempDir); err != nil {
+			t.Fatalf("EnsureProbeTemplate failed: %v", err)
+		}
+
+		// Check template was created
+		if _, err := os.Stat(templatePath); os.IsNotExist(err) {
+			t.Error("template should exist after EnsureProbeTemplate")
+		}
+
+		// Check content has required sections
+		content, err := os.ReadFile(templatePath)
+		if err != nil {
+			t.Fatalf("failed to read template: %v", err)
+		}
+
+		if !strings.Contains(string(content), "## Question") {
+			t.Error("template should contain Question section")
+		}
+		if !strings.Contains(string(content), "## What I Tested") {
+			t.Error("template should contain 'What I Tested' section")
+		}
+		if !strings.Contains(string(content), "## What I Observed") {
+			t.Error("template should contain 'What I Observed' section")
+		}
+		if !strings.Contains(string(content), "## Model Impact") {
+			t.Error("template should contain 'Model Impact' section")
+		}
+	})
+
+	t.Run("does not overwrite existing template", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		// Create templates directory and custom template
+		templatesDir := filepath.Join(tempDir, ".orch", "templates")
+		if err := os.MkdirAll(templatesDir, 0755); err != nil {
+			t.Fatalf("failed to create templates dir: %v", err)
+		}
+
+		customContent := "# Custom Probe Template\n\nThis is a custom template."
+		templatePath := filepath.Join(templatesDir, "PROBE.md")
+		if err := os.WriteFile(templatePath, []byte(customContent), 0644); err != nil {
+			t.Fatalf("failed to write custom template: %v", err)
+		}
+
+		// Call EnsureProbeTemplate
+		if err := EnsureProbeTemplate(tempDir); err != nil {
+			t.Fatalf("EnsureProbeTemplate failed: %v", err)
+		}
+
+		// Check content was NOT overwritten
+		content, err := os.ReadFile(templatePath)
+		if err != nil {
+			t.Fatalf("failed to read template: %v", err)
+		}
+
+		if string(content) != customContent {
+			t.Error("existing template should not be overwritten")
+		}
+	})
+}
+
+func TestWriteContext_CreatesProbeTemplate(t *testing.T) {
+	tempDir := t.TempDir()
+	cfg := &Config{
+		Task:              "test probe task",
+		Project:           "test",
+		ProjectDir:        tempDir,
+		WorkspaceName:     "og-test-probe-19dec",
+		BeadsID:           "test-123",
+		HasInjectedModels: true,
+	}
+
+	if err := WriteContext(cfg); err != nil {
+		t.Fatalf("WriteContext failed: %v", err)
+	}
+
+	// Check PROBE.md template was created
+	templatePath := filepath.Join(tempDir, ".orch", "templates", "PROBE.md")
+	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
+		t.Error("WriteContext should create PROBE.md template when HasInjectedModels is true")
+	}
+}
+
+func TestValidateBeadsIDConsistency(t *testing.T) {
+	t.Run("no issue flag and no ID in task", func(t *testing.T) {
+		warning := ValidateBeadsIDConsistency("explore the codebase", "orch-go-123")
+		if warning != "" {
+			t.Errorf("expected no warning, got: %s", warning)
+		}
+	})
+
+	t.Run("task mentions same beads ID as issue flag", func(t *testing.T) {
+		warning := ValidateBeadsIDConsistency("fix bug in pw-8972", "pw-8972")
+		if warning != "" {
+			t.Errorf("expected no warning when IDs match, got: %s", warning)
+		}
+	})
+
+	t.Run("task mentions different beads ID than issue flag", func(t *testing.T) {
+		warning := ValidateBeadsIDConsistency("fix bug in pw-8972", "pw-8975")
+		if warning == "" {
+			t.Error("expected warning when task mentions different beads ID than issue flag")
+		}
+		if !strings.Contains(warning, "pw-8972") {
+			t.Errorf("warning should mention the mismatched ID pw-8972, got: %s", warning)
+		}
+		if !strings.Contains(warning, "pw-8975") {
+			t.Errorf("warning should mention the tracking ID pw-8975, got: %s", warning)
+		}
+	})
+
+	t.Run("task with no beads-like IDs", func(t *testing.T) {
+		warning := ValidateBeadsIDConsistency("implement dark mode for the app", "orch-go-456")
+		if warning != "" {
+			t.Errorf("expected no warning for task without beads-like IDs, got: %s", warning)
+		}
+	})
+
+	t.Run("task mentions beads ID with different project prefix", func(t *testing.T) {
+		// Task mentions pw-8972 but tracking issue is orch-go-456
+		// Different project prefixes - the pw-8972 is just a reference, not a tracking conflict
+		warning := ValidateBeadsIDConsistency("investigate pw-8972 error", "orch-go-456")
+		if warning != "" {
+			t.Errorf("expected no warning for cross-project reference, got: %s", warning)
+		}
+	})
+
+	t.Run("task mentions same-project beads ID that conflicts", func(t *testing.T) {
+		// Task mentions pw-123 but tracking issue is pw-456 (same project prefix "pw")
+		warning := ValidateBeadsIDConsistency("fix bug described in pw-123", "pw-456")
+		if warning == "" {
+			t.Error("expected warning when task mentions same-project beads ID that conflicts")
+		}
+	})
+
+	t.Run("empty beads ID skips validation", func(t *testing.T) {
+		warning := ValidateBeadsIDConsistency("fix pw-123 bug", "")
+		if warning != "" {
+			t.Errorf("expected no warning when beads ID is empty, got: %s", warning)
+		}
+	})
+}
+
+func TestParseScopeFromTask(t *testing.T) {
+	tests := []struct {
+		name string
+		task string
+		want string
+	}{
+		{
+			name: "parses small scope",
+			task: "SESSION SCOPE: Small (text edits only)",
+			want: "small",
+		},
+		{
+			name: "parses medium scope",
+			task: "SESSION SCOPE: Medium (estimated [1-2h / 2-4h / 4-6h+])",
+			want: "medium",
+		},
+		{
+			name: "parses large scope",
+			task: "SESSION SCOPE: Large (estimated [4-6h+])",
+			want: "large",
+		},
+		{
+			name: "case insensitive",
+			task: "session scope: SMALL",
+			want: "small",
+		},
+		{
+			name: "no scope returns empty",
+			task: "Fix the bug in login flow",
+			want: "",
+		},
+		{
+			name: "empty task returns empty",
+			task: "",
+			want: "",
+		},
+		{
+			name: "scope in multiline task",
+			task: "Fix the login bug\nSESSION SCOPE: Large\nMore details here",
+			want: "large",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseScopeFromTask(tt.task)
+			if got != tt.want {
+				t.Errorf("ParseScopeFromTask(%q) = %q, want %q", tt.task, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveScope(t *testing.T) {
+	tests := []struct {
+		name          string
+		explicitScope string
+		task          string
+		want          string
+	}{
+		{
+			name:          "explicit scope takes priority",
+			explicitScope: "large",
+			task:          "SESSION SCOPE: Small",
+			want:          "large",
+		},
+		{
+			name:          "parses from task when no explicit scope",
+			explicitScope: "",
+			task:          "SESSION SCOPE: Small (text edits only)",
+			want:          "small",
+		},
+		{
+			name:          "defaults to medium when no scope specified",
+			explicitScope: "",
+			task:          "Fix the login bug",
+			want:          "medium",
+		},
+		{
+			name:          "explicit scope normalized to lowercase",
+			explicitScope: "LARGE",
+			task:          "",
+			want:          "large",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResolveScope(tt.explicitScope, tt.task)
+			if got != tt.want {
+				t.Errorf("ResolveScope(%q, %q) = %q, want %q", tt.explicitScope, tt.task, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenerateContext_SessionScope(t *testing.T) {
+	// Test that the spawn template respects task-specified scope
+	// This is the core bug fix: template was always emitting "Medium"
+
+	tests := []struct {
+		name     string
+		scope    string
+		task     string
+		wantIn   string // substring that should appear
+		wantOut  string // substring that should NOT appear
+	}{
+		{
+			name:    "explicit small scope in template",
+			scope:   "small",
+			task:    "Fix typo",
+			wantIn:  "SESSION SCOPE: Small (text edits only)",
+			wantOut: "SESSION SCOPE: Medium",
+		},
+		{
+			name:    "explicit large scope in template",
+			scope:   "large",
+			task:    "Major refactor",
+			wantIn:  "SESSION SCOPE: Large (estimated [4-6h+])",
+			wantOut: "SESSION SCOPE: Medium",
+		},
+		{
+			name:    "scope parsed from task description",
+			scope:   "",
+			task:    "Fix something\nSESSION SCOPE: Small\nMore details",
+			wantIn:  "SESSION SCOPE: Small (text edits only)",
+			wantOut: "SESSION SCOPE: Medium",
+		},
+		{
+			name:    "defaults to medium when no scope",
+			scope:   "",
+			task:    "Fix a bug",
+			wantIn:  "SESSION SCOPE: Medium (estimated [1-2h / 2-4h / 4-6h+])",
+			wantOut: "SESSION SCOPE: Small",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a temporary directory for the test
+			tmpDir := t.TempDir()
+
+			cfg := &Config{
+				Task:       tt.task,
+				Scope:      tt.scope,
+				ProjectDir: tmpDir,
+				SkillName:  "feature-impl",
+				Tier:       TierLight,
+				NoTrack:    true,
+			}
+
+			content, err := GenerateContext(cfg)
+			if err != nil {
+				t.Fatalf("GenerateContext failed: %v", err)
+			}
+
+			if !strings.Contains(content, tt.wantIn) {
+				t.Errorf("expected template to contain %q, but it didn't.\nContent:\n%s", tt.wantIn, content)
+			}
+			if tt.wantOut != "" && strings.Contains(content, tt.wantOut) {
+				t.Errorf("expected template NOT to contain %q, but it did.\nContent:\n%s", tt.wantOut, content)
+			}
+		})
+	}
+}
