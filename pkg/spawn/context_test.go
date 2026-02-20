@@ -2105,3 +2105,67 @@ Full tier: Create SYNTHESIS.md
 		}
 	})
 }
+
+func TestGenerateContext_AuthorityDedupWithWorkerBase(t *testing.T) {
+	// Simulate worker-base skill content with Authority Delegation section
+	// This is what gets injected when a skill depends on worker-base
+	workerBaseSkillContent := `---
+name: feature-impl
+---
+
+# Feature Implementation
+
+## Authority Delegation
+
+**You have authority to decide:**
+- Implementation details (how to structure code, naming, file organization)
+- Testing strategies (which tests to write, test frameworks to use)
+- Refactoring within scope (improving code quality without changing behavior)
+
+**You must escalate to orchestrator when:**
+- Architectural decisions needed
+- Scope boundaries unclear
+
+## Other Section
+
+Some other content.
+`
+
+	cfg := &Config{
+		Task:          "implement feature X",
+		SkillName:     "feature-impl",
+		Project:       "test-project",
+		ProjectDir:    "/tmp/test",
+		WorkspaceName: "og-feat-test-20feb",
+		SkillContent:  workerBaseSkillContent,
+		BeadsID:       "orch-go-dedup-test",
+		NoTrack:       false,
+		Tier:          TierFull,
+	}
+
+	content, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
+	}
+
+	// "You have authority to decide" should appear exactly once (from skill content, not template)
+	count := strings.Count(content, "You have authority to decide")
+	if count != 1 {
+		t.Errorf("expected 'You have authority to decide' to appear exactly 1 time, got %d", count)
+	}
+
+	// The AUTHORITY section in template should reference worker-base, not repeat content
+	if !strings.Contains(content, "Authority delegation rules are provided via skill guidance") {
+		t.Error("expected AUTHORITY section to reference worker-base skill guidance")
+	}
+
+	// The authority content should appear in the SKILL GUIDANCE section
+	if !strings.Contains(content, "SKILL GUIDANCE (feature-impl)") {
+		t.Error("expected skill guidance section to be present")
+	}
+
+	// Surface Before Circumvent should still be in the template (unique to spawn context)
+	if !strings.Contains(content, "Surface Before Circumvent") {
+		t.Error("expected 'Surface Before Circumvent' section to be preserved in spawn template")
+	}
+}
