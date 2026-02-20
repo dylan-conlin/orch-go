@@ -53,7 +53,6 @@ var (
 	spawnBypassVerification bool   // Bypass verification gate for independent parallel work
 	spawnBypassReason       string // Justification for bypassing verification gate
 	spawnForceHotspot       bool   // Bypass CRITICAL hotspot blocking gate
-	spawnOrientationFrame   string // Why Dylan cares about this work (spawn-time frame)
 	spawnModeSet            bool   // Tracks whether --mode was explicitly set
 	spawnValidationSet      bool   // Tracks whether --validation was explicitly set
 )
@@ -181,7 +180,6 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnBypassVerification, "bypass-verification", false, "Bypass verification gate for independent parallel work (requires --bypass-reason)")
 	spawnCmd.Flags().StringVar(&spawnBypassReason, "bypass-reason", "", "Justification for bypassing verification gate (required with --bypass-verification)")
 	spawnCmd.Flags().BoolVar(&spawnForceHotspot, "force-hotspot", false, "Bypass CRITICAL hotspot blocking gate (for implementation skills targeting >1500-line files)")
-	spawnCmd.Flags().StringVar(&spawnOrientationFrame, "orientation-frame", "", "Why Dylan cares about this work (defaults to task description)")
 }
 
 var (
@@ -582,7 +580,6 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// 10. Build spawn context
 	ctx := &orch.SpawnContext{
 		Task:               task,
-		OrientationFrame:   spawnOrientationFrame,
 		SkillName:          skillName,
 		ProjectDir:         projectDir,
 		ProjectName:        projectName,

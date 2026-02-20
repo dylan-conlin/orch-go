@@ -53,9 +53,6 @@ func CreateScreenshotsDir(workspacePath string) error {
 // SpawnContextTemplate is the basic structure for SPAWN_CONTEXT.md.
 // This is a simplified version of the Python template.
 const SpawnContextTemplate = `TASK: {{.Task}}
-
-ORIENTATION_FRAME:
-{{.OrientationFrame}}
 {{if .DesignWorkspace}}
 ## DESIGN REFERENCE
 
@@ -549,7 +546,6 @@ func StripBeadsInstructions(content string) string {
 // contextData holds template data for SPAWN_CONTEXT.md.
 type contextData struct {
 	Task                  string
-	OrientationFrame      string
 	BeadsID               string
 	ProjectDir            string
 	WorkspaceName         string
@@ -587,11 +583,6 @@ func GenerateContext(cfg *Config) (string, error) {
 		return "", fmt.Errorf("failed to parse template: %w", err)
 	}
 
-	orientationFrame := strings.TrimSpace(cfg.OrientationFrame)
-	if orientationFrame == "" {
-		orientationFrame = cfg.Task
-	}
-
 	// Generate investigation slug from task
 	slug := generateSlug(cfg.Task, 5)
 
@@ -619,7 +610,6 @@ func GenerateContext(cfg *Config) (string, error) {
 
 	data := contextData{
 		Task:                  cfg.Task,
-		OrientationFrame:      orientationFrame,
 		BeadsID:               cfg.BeadsID,
 		ProjectDir:            cfg.ProjectDir,
 		WorkspaceName:         cfg.WorkspaceName,

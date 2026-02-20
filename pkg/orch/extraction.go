@@ -45,7 +45,6 @@ type SpawnInput struct {
 // This accumulates values as we progress through the spawn pipeline.
 type SpawnContext struct {
 	Task               string
-	OrientationFrame   string
 	SkillName          string
 	ProjectDir         string
 	ProjectName        string
@@ -866,13 +865,8 @@ func LoadDesignArtifacts(designWorkspace, projectDir string) (mockupPath, prompt
 
 // BuildSpawnConfig constructs the spawn.Config from SpawnContext.
 func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, noTrack, skipArtifactCheck bool) *spawn.Config {
-	orientationFrame := strings.TrimSpace(ctx.OrientationFrame)
-	if orientationFrame == "" {
-		orientationFrame = ctx.Task
-	}
 	return &spawn.Config{
 		Task:               ctx.Task,
-		OrientationFrame:   orientationFrame,
 		SkillName:          ctx.SkillName,
 		Project:            ctx.ProjectName,
 		ProjectDir:         ctx.ProjectDir,
@@ -946,10 +940,7 @@ func ValidateAndWriteContext(cfg *spawn.Config, force bool) (minimalPrompt strin
 
 	// Record orientation frame in beads comments at spawn time
 	if !cfg.NoTrack && !cfg.IsOrchestrator && !cfg.IsMetaOrchestrator && cfg.BeadsID != "" {
-		frame := strings.TrimSpace(cfg.OrientationFrame)
-		if frame == "" {
-			frame = strings.TrimSpace(cfg.Task)
-		}
+		frame := strings.TrimSpace(cfg.Task)
 		if frame != "" {
 			if err := addBeadsComment(cfg.BeadsID, fmt.Sprintf("FRAME: %s", frame)); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to add frame comment: %v\n", err)

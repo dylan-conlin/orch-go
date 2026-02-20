@@ -356,7 +356,6 @@ func TestConfigPaths(t *testing.T) {
 func TestGenerateContext(t *testing.T) {
 	cfg := &Config{
 		Task:             "implement spawn command",
-		OrientationFrame: "why this matters",
 		SkillName:        "feature-impl",
 		Project:          "orch-go",
 		ProjectDir:       "/Users/test/orch-go",
@@ -382,7 +381,6 @@ Test skill content.
 	// Check key sections are present
 	checks := []string{
 		"TASK: implement spawn command",
-		"ORIENTATION_FRAME:\nwhy this matters",
 		"PROJECT_DIR: /Users/test/orch-go",
 		"bd comment orch-go-123",
 		"SKILL GUIDANCE (feature-impl)",
@@ -425,7 +423,6 @@ func TestWriteContext(t *testing.T) {
 	tempDir := t.TempDir()
 	cfg := &Config{
 		Task:             "test task",
-		OrientationFrame: "",
 		Project:          "test",
 		ProjectDir:       tempDir,
 		WorkspaceName:    "og-test-19dec",
@@ -451,8 +448,8 @@ func TestWriteContext(t *testing.T) {
 	if !strings.Contains(string(content), "TASK: test task") {
 		t.Error("context file should contain task")
 	}
-	if !strings.Contains(string(content), "ORIENTATION_FRAME:\ntest task") {
-		t.Error("context file should contain orientation frame")
+	if !strings.Contains(string(content), "TASK: test task") {
+		t.Error("context file should contain task")
 	}
 }
 

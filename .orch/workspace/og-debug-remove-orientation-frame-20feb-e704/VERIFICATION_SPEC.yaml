@@ -1,0 +1,27 @@
+verification:
+  build:
+    command: "go build ./cmd/orch/"
+    expected: "clean exit (no errors)"
+    result: PASS
+  vet:
+    command: "go vet ./cmd/orch/"
+    expected: "clean exit (no errors)"
+    result: PASS
+  spawn_tests:
+    command: "go test ./pkg/spawn/ -run 'TestGenerateContext|TestWriteContext|TestConfig'"
+    expected: "24 tests pass"
+    result: PASS
+  cmd_tests:
+    command: "go test ./cmd/orch/..."
+    expected: "all tests pass"
+    result: PASS
+  no_remaining_references:
+    command: "grep -r 'OrientationFrame' --include='*.go' (excluding completion.go)"
+    expected: "zero matches outside completion.go"
+    result: PASS
+  beads_frame_preserved:
+    description: "getOrientationFrame() in completion.go reads FRAME from beads comments - intentionally kept"
+    result: VERIFIED
+  template_clean:
+    description: "ORIENTATION_FRAME section removed from SpawnContextTemplate"
+    result: VERIFIED

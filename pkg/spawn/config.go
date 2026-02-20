@@ -96,9 +96,6 @@ func DefaultIncludeServersForSkill(skillName string) bool {
 type Config struct {
 	// Task description
 	Task string
-	// OrientationFrame captures "why Dylan cares" in Dylan's terms.
-	// Defaults to Task if not provided by the orchestrator.
-	OrientationFrame string
 	// SkillName is the name of the skill to use (e.g., "investigation", "feature-impl")
 	SkillName string
 	// Project name (e.g., "orch-go")

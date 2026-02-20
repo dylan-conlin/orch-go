@@ -246,7 +246,6 @@ func runRework(beadsID, feedback string) error {
 
 	ctx := &orch.SpawnContext{
 		Task:              task,
-		OrientationFrame:  "",
 		SkillName:         skillName,
 		ProjectDir:        projectDir,
 		ProjectName:       projectName,
