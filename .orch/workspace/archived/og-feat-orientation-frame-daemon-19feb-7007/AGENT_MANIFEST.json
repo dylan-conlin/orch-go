@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-orientation-frame-daemon-19feb-7007",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1120",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "7e38a6b45bba781fa53983d762ee08f8774e6495",
+  "spawn_time": "2026-02-19T14:10:12-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-wire-mcp-flag-19feb-fd93",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1125",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "8b9e90ea741d3317c8f8c941882612282ec2b842",
+  "spawn_time": "2026-02-19T15:38:35-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

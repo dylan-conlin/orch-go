@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-remove-glass-browser-19feb-11f2",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1124",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "36ccf28dd9052e26a56590a5e8e3b5433ae6101a",
+  "spawn_time": "2026-02-19T15:19:23-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

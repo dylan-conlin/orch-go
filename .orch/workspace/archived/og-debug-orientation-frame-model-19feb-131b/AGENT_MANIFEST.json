@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-debug-orientation-frame-model-19feb-131b",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-1115",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "f3c14f4a895547e3f9bfa5738cafd85f2e65761d",
+  "spawn_time": "2026-02-19T14:00:46-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}
