@@ -147,7 +147,11 @@ func TestResolve_BugClass01_ProjectConfigDefaultsDoNotOverrideUserBackend(t *tes
 	}
 }
 
-func TestResolve_BugClass02_ClaudeBackendAutoResolvesNonAnthropicModel(t *testing.T) {
+// TestResolve_BugClass02_NonAnthropicModelAutoRoutesBackend verifies that
+// when project config says backend=claude but user config model is non-anthropic,
+// model-aware routing auto-switches backend to opencode (model determines backend).
+// This replaces the old behavior where the model was overridden to match the backend.
+func TestResolve_BugClass02_NonAnthropicModelAutoRoutesBackend(t *testing.T) {
 	input := baseResolveInput()
 	input.ProjectConfig = &config.Config{SpawnMode: BackendClaude}
 	input.ProjectConfigMeta = ProjectConfigMeta{SpawnMode: true}
@@ -158,18 +162,19 @@ func TestResolve_BugClass02_ClaudeBackendAutoResolvesNonAnthropicModel(t *testin
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	// Model should be auto-resolved to default Anthropic model
-	if settings.Model.Value != model.DefaultModel.Format() {
-		t.Fatalf("Model.Value = %q, want %q", settings.Model.Value, model.DefaultModel.Format())
+	// Model-aware routing: model determines backend. Backend auto-routes to opencode.
+	if settings.Backend.Value != BackendOpenCode {
+		t.Fatalf("Backend.Value = %q, want %q (model-aware routing: openai model → opencode)", settings.Backend.Value, BackendOpenCode)
 	}
-	if settings.Model.Source != SourceDerived {
-		t.Fatalf("Model.Source = %q, want %q", settings.Model.Source, SourceDerived)
+	if settings.Backend.Source != SourceDerived {
+		t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceDerived)
 	}
-	if settings.Model.Detail != "backend-compatibility" {
-		t.Fatalf("Model.Detail = %q, want %q", settings.Model.Detail, "backend-compatibility")
+	// Model should NOT be overridden (it's the user's preference)
+	if settings.Model.Value != "openai/gpt-4o" {
+		t.Fatalf("Model.Value = %q, want %q (model should be preserved)", settings.Model.Value, "openai/gpt-4o")
 	}
-	if !containsWarning(settings.Warnings, "Auto-resolved model to") {
-		t.Fatalf("Warnings = %v, want auto-resolve warning", settings.Warnings)
+	if !containsWarning(settings.Warnings, "Auto-routed backend to opencode") {
+		t.Fatalf("Warnings = %v, want auto-route warning", settings.Warnings)
 	}
 }
 
@@ -456,14 +461,16 @@ func TestResolve_BugClass13_ClaudeBackendImpliesTmuxSpawnMode(t *testing.T) {
 	if settings.SpawnMode.Source != SourceDerived {
 		t.Fatalf("SpawnMode.Source = %q, want %q", settings.SpawnMode.Source, SourceDerived)
 	}
-	if settings.SpawnMode.Detail != "claude-backend-implies-tmux" {
-		t.Fatalf("SpawnMode.Detail = %q, want %q", settings.SpawnMode.Detail, "claude-backend-implies-tmux")
+	if settings.SpawnMode.Detail != "claude-backend-requires-tmux" {
+		t.Fatalf("SpawnMode.Detail = %q, want %q", settings.SpawnMode.Detail, "claude-backend-requires-tmux")
 	}
 }
 
-// TestResolve_BugClass13b_ExplicitHeadlessOverridesClaudeBackend verifies that
-// explicit --headless flag is honored even with --backend claude.
-func TestResolve_BugClass13b_ExplicitHeadlessOverridesClaudeBackend(t *testing.T) {
+// TestResolve_BugClass13b_ClaudeBackendOverridesHeadless verifies that
+// claude backend always overrides headless to tmux, even with explicit --headless.
+// Claude backend physically requires a tmux window (SpawnClaude creates tmux window
+// + claude CLI). Headless mode uses OpenCode HTTP API which is incompatible.
+func TestResolve_BugClass13b_ClaudeBackendOverridesHeadless(t *testing.T) {
 	input := baseResolveInput()
 	input.CLI.Backend = BackendClaude
 	input.CLI.Headless = true
@@ -472,11 +479,12 @@ func TestResolve_BugClass13b_ExplicitHeadlessOverridesClaudeBackend(t *testing.T
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if settings.SpawnMode.Value != SpawnModeHeadless {
-		t.Fatalf("SpawnMode.Value = %q, want %q (explicit --headless should override)", settings.SpawnMode.Value, SpawnModeHeadless)
+	// Claude backend requires tmux - headless is physically incompatible
+	if settings.SpawnMode.Value != SpawnModeTmux {
+		t.Fatalf("SpawnMode.Value = %q, want %q (claude backend requires tmux, headless incompatible)", settings.SpawnMode.Value, SpawnModeTmux)
 	}
-	if settings.SpawnMode.Source != SourceCLI {
-		t.Fatalf("SpawnMode.Source = %q, want %q", settings.SpawnMode.Source, SourceCLI)
+	if settings.SpawnMode.Source != SourceDerived {
+		t.Fatalf("SpawnMode.Source = %q, want %q", settings.SpawnMode.Source, SourceDerived)
 	}
 }
 
@@ -583,20 +591,20 @@ func TestResolve_BugClass14_FlashProjectConfigFallsThrough(t *testing.T) {
 	if settings.Model.Source != SourceUserConfig {
 		t.Fatalf("Model.Source = %q, want %q (should fall through to user config)", settings.Model.Source, SourceUserConfig)
 	}
-	// Backend should auto-switch from opencode to claude (anthropic model incompatible with opencode)
+	// Backend should auto-route from opencode to claude (anthropic model requires claude)
 	if settings.Backend.Value != BackendClaude {
-		t.Fatalf("Backend.Value = %q, want %q (should auto-switch for anthropic model)", settings.Backend.Value, BackendClaude)
+		t.Fatalf("Backend.Value = %q, want %q (should auto-route for anthropic model)", settings.Backend.Value, BackendClaude)
 	}
 	if settings.Backend.Source != SourceDerived {
 		t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceDerived)
 	}
-	// Should get warning about auto-switching
-	if !containsWarning(settings.Warnings, "Auto-switched backend to claude") {
-		t.Fatalf("Warnings = %v, want auto-switch warning", settings.Warnings)
+	// Should get warning about auto-routing
+	if !containsWarning(settings.Warnings, "Auto-routed backend to claude") {
+		t.Fatalf("Warnings = %v, want auto-route warning", settings.Warnings)
 	}
-	// Claude backend should imply tmux spawn mode
+	// Claude backend should require tmux spawn mode
 	if settings.SpawnMode.Value != SpawnModeTmux {
-		t.Fatalf("SpawnMode.Value = %q, want %q (claude backend implies tmux)", settings.SpawnMode.Value, SpawnModeTmux)
+		t.Fatalf("SpawnMode.Value = %q, want %q (claude backend requires tmux)", settings.SpawnMode.Value, SpawnModeTmux)
 	}
 }
 
@@ -801,6 +809,99 @@ func TestResolve_BugClass15_ModelAwareBackendRouting(t *testing.T) {
 		}
 		if settings.SpawnMode.Value != SpawnModeTmux {
 			t.Fatalf("SpawnMode.Value = %q, want %q (claude backend implies tmux)", settings.SpawnMode.Value, SpawnModeTmux)
+		}
+	})
+
+	t.Run("user config opencode backend auto-routes to claude for anthropic model", func(t *testing.T) {
+		// User config says backend=opencode, but model resolves to anthropic (default).
+		// Model-aware routing should auto-switch backend to claude.
+		// This generalizes BugClass14 (which only worked for project config).
+		input := baseResolveInput()
+		input.UserConfig = &userconfig.Config{Backend: BackendOpenCode}
+		input.UserConfigMeta = UserConfigMeta{Backend: true}
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v, want auto-route to claude", err)
+		}
+		if settings.Backend.Value != BackendClaude {
+			t.Fatalf("Backend.Value = %q, want %q (anthropic model should auto-route to claude)", settings.Backend.Value, BackendClaude)
+		}
+		if settings.Backend.Source != SourceDerived {
+			t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceDerived)
+		}
+		if settings.Backend.Detail != "model-provider-routing" {
+			t.Fatalf("Backend.Detail = %q, want %q", settings.Backend.Detail, "model-provider-routing")
+		}
+	})
+
+	t.Run("user config default_model codex auto-routes to opencode", func(t *testing.T) {
+		// User config says default_model=codex, no explicit backend.
+		// Default backend is claude, but model-aware routing should auto-switch
+		// backend to opencode since codex is an OpenAI model.
+		input := baseResolveInput()
+		input.UserConfig = &userconfig.Config{DefaultModel: "codex"}
+		input.UserConfigMeta = UserConfigMeta{DefaultModel: true}
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v, want auto-route to opencode", err)
+		}
+		if settings.Backend.Value != BackendOpenCode {
+			t.Fatalf("Backend.Value = %q, want %q (codex model should auto-route to opencode)", settings.Backend.Value, BackendOpenCode)
+		}
+		if settings.Backend.Source != SourceDerived {
+			t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceDerived)
+		}
+		// Model should remain codex (not overridden to anthropic)
+		if !strings.Contains(settings.Model.Value, "codex") {
+			t.Fatalf("Model.Value = %q, want codex variant (model should not be overridden)", settings.Model.Value)
+		}
+	})
+
+	t.Run("daemon path headless with claude backend resolves to tmux", func(t *testing.T) {
+		// Daemon calls orch work which passes headless=true.
+		// When backend resolves to claude, spawn mode MUST be tmux
+		// because claude backend physically requires tmux (SpawnClaude creates tmux window).
+		input := baseResolveInput()
+		input.CLI.Headless = true
+		// No explicit backend or model → default is claude backend + anthropic model
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if settings.Backend.Value != BackendClaude {
+			t.Fatalf("Backend.Value = %q, want %q", settings.Backend.Value, BackendClaude)
+		}
+		// Even though headless was passed, claude backend requires tmux
+		if settings.SpawnMode.Value != SpawnModeTmux {
+			t.Fatalf("SpawnMode.Value = %q, want %q (claude backend requires tmux, headless incompatible)", settings.SpawnMode.Value, SpawnModeTmux)
+		}
+		if settings.SpawnMode.Source != SourceDerived {
+			t.Fatalf("SpawnMode.Source = %q, want %q", settings.SpawnMode.Source, SourceDerived)
+		}
+	})
+
+	t.Run("project config claude backend with non-anthropic model auto-routes backend", func(t *testing.T) {
+		// Project config says backend=claude, user config says model=gpt-4o.
+		// Model-aware routing: model determines backend (unless --backend CLI flag).
+		// Project config backend is not CLI, so model wins → backend routes to opencode.
+		input := baseResolveInput()
+		input.ProjectConfig = &config.Config{SpawnMode: BackendClaude}
+		input.ProjectConfigMeta = ProjectConfigMeta{SpawnMode: true}
+		input.UserConfig = &userconfig.Config{DefaultModel: "gpt-4o"}
+		input.UserConfigMeta = UserConfigMeta{DefaultModel: true}
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if settings.Backend.Value != BackendOpenCode {
+			t.Fatalf("Backend.Value = %q, want %q (model-aware routing: openai model → opencode backend)", settings.Backend.Value, BackendOpenCode)
+		}
+		if settings.Model.Value != "openai/gpt-4o" {
+			t.Fatalf("Model.Value = %q, want %q (model should not be overridden)", settings.Model.Value, "openai/gpt-4o")
 		}
 	})
 }

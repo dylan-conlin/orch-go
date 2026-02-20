@@ -144,29 +144,32 @@ func Resolve(input ResolveInput) (ResolvedSpawnSettings, error) {
 		resolvedModel = model.ResolveWithConfig(result.Model.Value, nil)
 	}
 
-	// Auto-resolve: when backend is claude but resolved model is non-anthropic
-	// (and model was not explicitly set via CLI), override to default Anthropic model.
-	// This handles cross-project spawns where the project defaults to OpenAI but
-	// the user explicitly chose --backend claude.
-	if result.Backend.Value == BackendClaude && resolvedModel.Provider != "anthropic" && result.Model.Source != SourceCLI {
+	allowAnthropicOpenCode := input.UserConfig != nil && input.UserConfigMeta.AllowAnthropicOpenCode && input.UserConfig.AllowAnthropicOpenCode
+
+	// Model-aware backend routing (primary routing logic).
+	// When backend was NOT explicitly set via CLI, the model's provider determines
+	// the backend. This generalizes the BugClass14 symmetric auto-resolve to work
+	// for any backend source (project config, user config, heuristic, default).
+	// CLI --backend remains as hard override.
+	// Decision: kb-2d62ef
+	if result.Backend.Source != SourceCLI {
+		if required, ok := modelBackendRequirement(resolvedModel); ok && required != result.Backend.Value {
+			// Skip auto-routing if user explicitly allows anthropic on opencode
+			if !(resolvedModel.Provider == "anthropic" && allowAnthropicOpenCode) {
+				result.Backend = ResolvedSetting{Value: required, Source: SourceDerived, Detail: "model-provider-routing"}
+				result.Warnings = append(result.Warnings, fmt.Sprintf("Auto-routed backend to %s (model %s is %s provider)", required, resolvedModel.ModelID, resolvedModel.Provider))
+			}
+		}
+	}
+
+	// When backend IS from CLI and is claude, but model is non-anthropic from
+	// a lower precedence source, override the model to match the backend.
+	// The user explicitly chose --backend claude, so the backend wins.
+	if result.Backend.Source == SourceCLI && result.Backend.Value == BackendClaude &&
+		resolvedModel.Provider != "anthropic" && result.Model.Source != SourceCLI {
 		resolvedModel = model.DefaultModel
 		result.Model = ResolvedSetting{Value: resolvedModel.Format(), Source: SourceDerived, Detail: "backend-compatibility"}
 		result.Warnings = append(result.Warnings, fmt.Sprintf("Auto-resolved model to %s (claude backend requires Anthropic model)", resolvedModel.ModelID))
-	}
-
-	allowAnthropicOpenCode := input.UserConfig != nil && input.UserConfigMeta.AllowAnthropicOpenCode && input.UserConfig.AllowAnthropicOpenCode
-
-	// Symmetric auto-resolve: when backend is opencode (from project config) and the
-	// resolved model is anthropic from a lower precedence level (user config or default),
-	// switch backend to claude. This handles the cascade where project config
-	// opencode.model was rejected by validateModel (e.g., flash blocked for agents)
-	// and the fallback model is anthropic, which isn't compatible with opencode backend.
-	// Only triggers for project-config backend to avoid affecting default or user-config backends.
-	if result.Backend.Value == BackendOpenCode && resolvedModel.Provider == "anthropic" &&
-		result.Model.Source != SourceCLI && !allowAnthropicOpenCode &&
-		result.Backend.Source == SourceProjectConfig && result.Model.Source != SourceProjectConfig {
-		result.Backend = ResolvedSetting{Value: BackendClaude, Source: SourceDerived, Detail: "model-compatibility"}
-		result.Warnings = append(result.Warnings, fmt.Sprintf("Auto-switched backend to claude (model %s is Anthropic, incompatible with opencode)", resolvedModel.ModelID))
 	}
 
 	if err := validateModelCompatibility(result.Backend.Value, resolvedModel, allowAnthropicOpenCode); err != nil {
@@ -192,12 +195,14 @@ func Resolve(input ResolveInput) (ResolvedSpawnSettings, error) {
 	result.Mode = resolveMode(input)
 	result.Validation = resolveValidation(input)
 
-	// When backend is claude and spawn mode was not explicitly set,
-	// override to tmux because claude backend requires a terminal (tmux window).
-	// This ensures --backend claude alone implies tmux visibility without
-	// requiring the user to also pass --tmux.
-	if result.Backend.Value == BackendClaude && result.SpawnMode.Source == SourceDefault {
-		result.SpawnMode = ResolvedSetting{Value: SpawnModeTmux, Source: SourceDerived, Detail: "claude-backend-implies-tmux"}
+	// When backend is claude and spawn mode is headless, override to tmux.
+	// Claude backend physically requires a tmux window (SpawnClaude creates
+	// tmux window + claude CLI). Headless mode uses OpenCode HTTP API which
+	// is incompatible with claude backend. This is a technical requirement,
+	// not a preference - headless + claude cannot work.
+	// This also fixes the daemon path where orch work passes headless=true.
+	if result.Backend.Value == BackendClaude && result.SpawnMode.Value == SpawnModeHeadless {
+		result.SpawnMode = ResolvedSetting{Value: SpawnModeTmux, Source: SourceDerived, Detail: "claude-backend-requires-tmux"}
 	}
 
 	return result, nil
