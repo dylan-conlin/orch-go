@@ -178,6 +178,14 @@ func Resolve(input ResolveInput) (ResolvedSpawnSettings, error) {
 	result.Mode = resolveMode(input)
 	result.Validation = resolveValidation(input)
 
+	// When backend is claude and spawn mode was not explicitly set,
+	// override to tmux because claude backend requires a terminal (tmux window).
+	// This ensures --backend claude alone implies tmux visibility without
+	// requiring the user to also pass --tmux.
+	if result.Backend.Value == BackendClaude && result.SpawnMode.Source == SourceDefault {
+		result.SpawnMode = ResolvedSetting{Value: SpawnModeTmux, Source: SourceDerived, Detail: "claude-backend-implies-tmux"}
+	}
+
 	return result, nil
 }
 

@@ -426,6 +426,85 @@ func TestResolve_BugClass12_CLIBackendClaudeAutoResolvesOpenAIDefault(t *testing
 	}
 }
 
+// TestResolve_BugClass13_ClaudeBackendImpliesTmuxSpawnMode reproduces
+// orch-go-1129: --backend claude alone should default spawn mode to tmux,
+// not headless. Without this, DispatchSpawn hits the headless path before
+// reaching the claude routing check.
+func TestResolve_BugClass13_ClaudeBackendImpliesTmuxSpawnMode(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Backend = BackendClaude
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.SpawnMode.Value != SpawnModeTmux {
+		t.Fatalf("SpawnMode.Value = %q, want %q (claude backend should imply tmux)", settings.SpawnMode.Value, SpawnModeTmux)
+	}
+	if settings.SpawnMode.Source != SourceDerived {
+		t.Fatalf("SpawnMode.Source = %q, want %q", settings.SpawnMode.Source, SourceDerived)
+	}
+	if settings.SpawnMode.Detail != "claude-backend-implies-tmux" {
+		t.Fatalf("SpawnMode.Detail = %q, want %q", settings.SpawnMode.Detail, "claude-backend-implies-tmux")
+	}
+}
+
+// TestResolve_BugClass13b_ExplicitHeadlessOverridesClaudeBackend verifies that
+// explicit --headless flag is honored even with --backend claude.
+func TestResolve_BugClass13b_ExplicitHeadlessOverridesClaudeBackend(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Backend = BackendClaude
+	input.CLI.Headless = true
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.SpawnMode.Value != SpawnModeHeadless {
+		t.Fatalf("SpawnMode.Value = %q, want %q (explicit --headless should override)", settings.SpawnMode.Value, SpawnModeHeadless)
+	}
+	if settings.SpawnMode.Source != SourceCLI {
+		t.Fatalf("SpawnMode.Source = %q, want %q", settings.SpawnMode.Source, SourceCLI)
+	}
+}
+
+// TestResolve_BugClass13c_ExplicitTmuxWithClaudeBackendStaysExplicit verifies that
+// --backend claude --tmux results in tmux from CLI source (not derived).
+func TestResolve_BugClass13c_ExplicitTmuxWithClaudeBackendStaysExplicit(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Backend = BackendClaude
+	input.CLI.Tmux = true
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.SpawnMode.Value != SpawnModeTmux {
+		t.Fatalf("SpawnMode.Value = %q, want %q", settings.SpawnMode.Value, SpawnModeTmux)
+	}
+	if settings.SpawnMode.Source != SourceCLI {
+		t.Fatalf("SpawnMode.Source = %q, want %q (explicit --tmux should be CLI source)", settings.SpawnMode.Source, SourceCLI)
+	}
+}
+
+// TestResolve_BugClass13d_InfraEscapeHatchAlsoImpliesTmux verifies that
+// infrastructure-detected claude backend (heuristic) also implies tmux.
+func TestResolve_BugClass13d_InfraEscapeHatchAlsoImpliesTmux(t *testing.T) {
+	input := baseResolveInput()
+	input.InfrastructureDetected = true
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.Backend.Value != BackendClaude {
+		t.Fatalf("Backend.Value = %q, want %q", settings.Backend.Value, BackendClaude)
+	}
+	if settings.SpawnMode.Value != SpawnModeTmux {
+		t.Fatalf("SpawnMode.Value = %q, want %q (infra escape hatch should imply tmux)", settings.SpawnMode.Value, SpawnModeTmux)
+	}
+}
+
 // TestResolve_BugClass12b_CLIBackendClaudeWithExplicitModelStillErrors verifies
 // that --backend claude + explicit --model gpt-4o still errors (user explicitly chose incompatible combo).
 func TestResolve_BugClass12b_CLIBackendClaudeWithExplicitModelStillErrors(t *testing.T) {
