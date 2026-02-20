@@ -2106,6 +2106,132 @@ Full tier: Create SYNTHESIS.md
 	})
 }
 
+func TestGenerateContext_RealWorldSkillContentTemplateProcessing(t *testing.T) {
+	// Regression test: mirrors the real worker-base SKILL.md pattern with
+	// 13+ {{.BeadsID}} references and tier conditionals. This catches the
+	// original bug where skill content was injected as raw markdown without
+	// template processing (orch-go-1136).
+	skillContent := `---
+name: worker-base
+---
+
+# Worker Base Patterns
+
+## Progress Tracking
+
+` + "```" + `bash
+bd comment {{.BeadsID}} "Phase: Planning - Analyzing codebase structure"
+bd comment {{.BeadsID}} "Phase: Implementing - Adding authentication middleware"
+bd comment {{.BeadsID}} "Phase: Complete - All tests passing, ready for review"
+
+bd comment {{.BeadsID}} "Phase: BLOCKED - Need clarification on API contract"
+
+bd comment {{.BeadsID}} "Phase: QUESTION - Should we use JWT or session-based auth?"
+` + "```" + `
+
+` + "```" + `bash
+bd comment {{.BeadsID}} "Found performance bottleneck in database query"
+bd comment {{.BeadsID}} "investigation_path: .kb/investigations/2026-02-11-perf-issue.md"
+` + "```" + `
+
+- Example: ` + "`" + `bd comment {{.BeadsID}} "Phase: Complete - Tests: go test"` + "`" + `
+- Example: ` + "`" + `bd comment {{.BeadsID}} "Phase: Complete - Tests: npm test"` + "`" + `
+- Example: ` + "`" + `bd comment {{.BeadsID}} "Phase: Complete - Tests: make test"` + "`" + `
+
+1. Report via ` + "`" + `bd comment {{.BeadsID}} "Phase: Planning - [brief description]"` + "`" + `
+
+## Session Complete Protocol
+
+{{if eq .Tier "light"}}
+
+1. Author/update VERIFICATION_SPEC.yaml in workspace root.
+2. Run: ` + "`" + `bd comment {{.BeadsID}} "Phase: Complete"` + "`" + `
+3. Commit remaining changes
+{{else}}
+
+1. Author/update VERIFICATION_SPEC.yaml in workspace root.
+2. Run: ` + "`" + `bd comment {{.BeadsID}} "Phase: Complete"` + "`" + `
+3. Ensure SYNTHESIS.md is created
+4. Commit all remaining changes
+   {{end}}
+`
+
+	t.Run("full tier processes all template variables", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "implement feature",
+			SkillName:     "test-worker-skill",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-20feb",
+			SkillContent:  skillContent,
+			BeadsID:       "orch-go-1136",
+			NoTrack:       false,
+			Tier:          TierFull,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// CRITICAL: No literal {{.BeadsID}} should remain anywhere in the output
+		if strings.Contains(content, "{{.BeadsID}}") {
+			count := strings.Count(content, "{{.BeadsID}}")
+			t.Errorf("expected 0 literal {{.BeadsID}} in output, found %d", count)
+		}
+
+		// All BeadsID references should be resolved to the actual ID
+		if !strings.Contains(content, "bd comment orch-go-1136") {
+			t.Error("expected beads ID to be substituted in skill content")
+		}
+
+		// No raw template conditionals should remain
+		if strings.Contains(content, "{{if eq .Tier") {
+			t.Error("expected tier conditionals to be resolved")
+		}
+		if strings.Contains(content, "{{else}}") {
+			t.Error("expected {{else}} to be resolved")
+		}
+
+		// Full tier should show SYNTHESIS.md required, not light tier branch
+		if !strings.Contains(content, "Ensure SYNTHESIS.md is created") {
+			t.Error("expected full tier branch content")
+		}
+		if strings.Contains(content, "Commit remaining changes\n{{else}}") {
+			t.Error("expected only full tier branch to be rendered")
+		}
+	})
+
+	t.Run("light tier resolves conditionals correctly", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "quick fix",
+			SkillName:     "test-worker-skill",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-light-20feb",
+			SkillContent:  skillContent,
+			BeadsID:       "orch-go-9876",
+			NoTrack:       false,
+			Tier:          TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// No raw template syntax should remain
+		if strings.Contains(content, "{{") {
+			t.Error("expected all template syntax to be resolved in final output")
+		}
+
+		// Light tier should NOT show SYNTHESIS.md creation
+		if strings.Contains(content, "Ensure SYNTHESIS.md is created") {
+			t.Error("expected light tier to NOT show SYNTHESIS.md instruction from skill content")
+		}
+	})
+}
+
 func TestGenerateContext_AuthorityDedupWithWorkerBase(t *testing.T) {
 	// Simulate worker-base skill content with Authority Delegation section
 	// This is what gets injected when a skill depends on worker-base
