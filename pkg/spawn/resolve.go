@@ -155,6 +155,20 @@ func Resolve(input ResolveInput) (ResolvedSpawnSettings, error) {
 	}
 
 	allowAnthropicOpenCode := input.UserConfig != nil && input.UserConfigMeta.AllowAnthropicOpenCode && input.UserConfig.AllowAnthropicOpenCode
+
+	// Symmetric auto-resolve: when backend is opencode (from project config) and the
+	// resolved model is anthropic from a lower precedence level (user config or default),
+	// switch backend to claude. This handles the cascade where project config
+	// opencode.model was rejected by validateModel (e.g., flash blocked for agents)
+	// and the fallback model is anthropic, which isn't compatible with opencode backend.
+	// Only triggers for project-config backend to avoid affecting default or user-config backends.
+	if result.Backend.Value == BackendOpenCode && resolvedModel.Provider == "anthropic" &&
+		result.Model.Source != SourceCLI && !allowAnthropicOpenCode &&
+		result.Backend.Source == SourceProjectConfig && result.Model.Source != SourceProjectConfig {
+		result.Backend = ResolvedSetting{Value: BackendClaude, Source: SourceDerived, Detail: "model-compatibility"}
+		result.Warnings = append(result.Warnings, fmt.Sprintf("Auto-switched backend to claude (model %s is Anthropic, incompatible with opencode)", resolvedModel.ModelID))
+	}
+
 	if err := validateModelCompatibility(result.Backend.Value, resolvedModel, allowAnthropicOpenCode); err != nil {
 		return result, err
 	}
@@ -245,26 +259,28 @@ func resolveModel(input ResolveInput, backend string, aliasMap map[string]string
 	if input.ProjectConfig != nil {
 		if backend == BackendClaude && input.ProjectConfigMeta.ClaudeModel && input.ProjectConfig.Claude.Model != "" {
 			resolved := model.ResolveWithConfig(input.ProjectConfig.Claude.Model, aliasMap)
-			if err := validateModel(resolved); err != nil {
-				return ResolvedSetting{}, err
+			if err := validateModel(resolved); err == nil {
+				return ResolvedSetting{Value: resolved.Format(), Source: SourceProjectConfig}, nil
 			}
-			return ResolvedSetting{Value: resolved.Format(), Source: SourceProjectConfig}, nil
+			// Fall through: project config model rejected by validation (e.g., flash blocked for agents).
+			// Try next precedence level instead of hard-failing.
 		}
 		if backend == BackendOpenCode && input.ProjectConfigMeta.OpenCodeModel && input.ProjectConfig.OpenCode.Model != "" {
 			resolved := model.ResolveWithConfig(input.ProjectConfig.OpenCode.Model, aliasMap)
-			if err := validateModel(resolved); err != nil {
-				return ResolvedSetting{}, err
+			if err := validateModel(resolved); err == nil {
+				return ResolvedSetting{Value: resolved.Format(), Source: SourceProjectConfig}, nil
 			}
-			return ResolvedSetting{Value: resolved.Format(), Source: SourceProjectConfig}, nil
+			// Fall through: project config model rejected by validation (e.g., flash blocked for agents).
+			// Try next precedence level instead of hard-failing.
 		}
 	}
 
 	if input.UserConfig != nil && input.UserConfigMeta.DefaultModel && input.UserConfig.DefaultModel != "" {
 		resolved := model.ResolveWithConfig(input.UserConfig.DefaultModel, aliasMap)
-		if err := validateModel(resolved); err != nil {
-			return ResolvedSetting{}, err
+		if err := validateModel(resolved); err == nil {
+			return ResolvedSetting{Value: resolved.Format(), Source: SourceUserConfig}, nil
 		}
-		return ResolvedSetting{Value: resolved.Format(), Source: SourceUserConfig}, nil
+		// Fall through: user config model rejected by validation.
 	}
 
 	resolved := model.DefaultModel

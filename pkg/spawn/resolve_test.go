@@ -539,3 +539,91 @@ func TestResolve_BugClass11c_UserDefaultModelFallbackWhenNoProjectConfig(t *test
 		t.Fatalf("Model.Source = %q, want %q", settings.Model.Source, SourceUserConfig)
 	}
 }
+
+// TestResolve_BugClass14_FlashProjectConfigFallsThrough reproduces orch-go-1145:
+// project config opencode.model=flash hits validateModel() gate, which should
+// fall through to user config default_model instead of hard-failing.
+// Without this fix, the daemon gets 857 consecutive spawn failures because
+// resolveModel returns an error instead of trying the next precedence level.
+func TestResolve_BugClass14_FlashProjectConfigFallsThrough(t *testing.T) {
+	input := baseResolveInput()
+	// Simulate the exact daemon config that caused 857 failures:
+	// Project config: spawn_mode=opencode, opencode.model=flash
+	// User config: backend=claude, default_model=opus
+	input.ProjectConfig = &config.Config{
+		SpawnMode: BackendOpenCode,
+		OpenCode:  config.OpenCodeConfig{Model: "flash"},
+	}
+	input.ProjectConfigMeta = ProjectConfigMeta{SpawnMode: true, OpenCodeModel: true}
+	input.UserConfig = &userconfig.Config{Backend: BackendClaude, DefaultModel: "opus"}
+	input.UserConfigMeta = UserConfigMeta{Backend: false, DefaultModel: true}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v, want graceful fallthrough from flash to opus", err)
+	}
+	// Model should fall through from flash (rejected) to opus (user config)
+	if !strings.Contains(settings.Model.Value, "opus") {
+		t.Fatalf("Model.Value = %q, want opus variant (flash should fall through)", settings.Model.Value)
+	}
+	if settings.Model.Source != SourceUserConfig {
+		t.Fatalf("Model.Source = %q, want %q (should fall through to user config)", settings.Model.Source, SourceUserConfig)
+	}
+	// Backend should auto-switch from opencode to claude (anthropic model incompatible with opencode)
+	if settings.Backend.Value != BackendClaude {
+		t.Fatalf("Backend.Value = %q, want %q (should auto-switch for anthropic model)", settings.Backend.Value, BackendClaude)
+	}
+	if settings.Backend.Source != SourceDerived {
+		t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceDerived)
+	}
+	// Should get warning about auto-switching
+	if !containsWarning(settings.Warnings, "Auto-switched backend to claude") {
+		t.Fatalf("Warnings = %v, want auto-switch warning", settings.Warnings)
+	}
+	// Claude backend should imply tmux spawn mode
+	if settings.SpawnMode.Value != SpawnModeTmux {
+		t.Fatalf("SpawnMode.Value = %q, want %q (claude backend implies tmux)", settings.SpawnMode.Value, SpawnModeTmux)
+	}
+}
+
+// TestResolve_BugClass14b_FlashProjectConfigNoUserFallback verifies that
+// when flash is rejected and no user config model exists, DefaultModel is used.
+func TestResolve_BugClass14b_FlashProjectConfigNoUserFallback(t *testing.T) {
+	input := baseResolveInput()
+	input.ProjectConfig = &config.Config{
+		SpawnMode: BackendOpenCode,
+		OpenCode:  config.OpenCodeConfig{Model: "flash"},
+	}
+	input.ProjectConfigMeta = ProjectConfigMeta{SpawnMode: true, OpenCodeModel: true}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v, want fallthrough to DefaultModel", err)
+	}
+	// Should fall through to DefaultModel (sonnet)
+	if settings.Model.Value != model.DefaultModel.Format() {
+		t.Fatalf("Model.Value = %q, want %q", settings.Model.Value, model.DefaultModel.Format())
+	}
+	if settings.Model.Source != SourceDefault {
+		t.Fatalf("Model.Source = %q, want %q", settings.Model.Source, SourceDefault)
+	}
+	// Backend should auto-switch to claude (anthropic model on opencode)
+	if settings.Backend.Value != BackendClaude {
+		t.Fatalf("Backend.Value = %q, want %q", settings.Backend.Value, BackendClaude)
+	}
+}
+
+// TestResolve_BugClass14c_FlashCLIModelStillErrors verifies that
+// explicit --model flash still returns an error (user explicitly chose it).
+func TestResolve_BugClass14c_FlashCLIModelStillErrors(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Model = "flash"
+
+	_, err := Resolve(input)
+	if err == nil {
+		t.Fatal("Resolve() error = nil, want validation error for explicit flash")
+	}
+	if !strings.Contains(err.Error(), "flash models are not supported") {
+		t.Fatalf("Resolve() error = %q, want flash validation error", err)
+	}
+}
