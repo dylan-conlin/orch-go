@@ -1,0 +1,39 @@
+verification:
+  type: probe
+  project_dir: /Users/dylanconlin/Documents/personal/orch-go
+  
+  test_commands: []  # No code changes to test
+  
+  manual_verification:
+    - step: "Verify fix commit exists"
+      status: VERIFIED
+      evidence: "git log 3fc539bb4 shows: 2026-02-20 09:04:24 fix: remove ORIENTATION_FRAME from SPAWN_CONTEXT.md template (orch-go-1130)"
+    
+    - step: "Verify template no longer has ORIENTATION_FRAME section"
+      status: VERIFIED
+      evidence: "grep -n 'ORIENTATION_FRAME' pkg/spawn/context.go returns no matches"
+    
+    - step: "Verify new spawns don't have duplication"
+      status: VERIFIED
+      evidence: "grep -c 'ORIENTATION_FRAME' .orch/workspace/og-arch-opencode-mcp-hot-20feb-9333/SPAWN_CONTEXT.md returns 0"
+    
+    - step: "Verify audit evidence was from before fix"
+      status: VERIFIED
+      evidence: "pw-debug-fix-verification-run-19feb-fffe created Feb 19 16:24, fix committed Feb 20 09:04"
+    
+    - step: "Verify FRAME beads comment is preserved (correct location)"
+      status: VERIFIED
+      evidence: "extraction.go:941-948 still records FRAME: comment in beads for orchestrator completion review"
+
+  deliverables:
+    - path: ".kb/models/spawn-architecture/probes/2026-02-20-probe-orientation-frame-dedup-verification.md"
+      description: "Probe documenting verification that ORIENTATION_FRAME dedup was already fixed"
+      exists: true
+    - path: ".orch/workspace/og-arch-dedup-orientation-frame-20feb-0cc2/SYNTHESIS.md"
+      description: "Session synthesis documenting findings"
+      exists: true
+
+notes: |
+  This issue (orch-go-1135) was created based on audit evidence from workspaces created
+  BEFORE the fix (orch-go-1130) was deployed. The fix was committed on Feb 20 09:04,
+  but the audit examined Feb 19 workspaces. Issue should be closed as already-fixed.

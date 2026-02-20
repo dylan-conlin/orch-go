@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"os/exec"
 	"testing"
 )
 
@@ -133,20 +135,20 @@ func TestShouldCountFile(t *testing.T) {
 		{"pkg/spawn/spawn.go", true},
 		{"web/src/components/App.tsx", true},
 		{"internal/service/handler.go", true},
-		
+
 		// Should not count - test files
 		{"cmd/orch/main_test.go", false},
 		{"web/src/App.test.ts", false},
 		{"web/src/App.test.js", false},
-		
+
 		// Should not count - generated/vendor
 		{"vendor/github.com/pkg/errors/errors.go", false},
 		{"internal/generated/proto.go", false},
-		
+
 		// Should not count - documentation
 		{"README.md", false},
 		{"docs/architecture.txt", false},
-		
+
 		// Should not count - config
 		{"package.json", false},
 		{"go.mod", false},
@@ -340,10 +342,10 @@ func TestMatchPathToHotspots(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		path           string
-		expectedMatch  bool
-		expectedScore  int
+		name          string
+		path          string
+		expectedMatch bool
+		expectedScore int
 	}{
 		{
 			name:          "exact match",
@@ -514,9 +516,9 @@ func TestCheckSpawnHotspots_CmdOrchMainGo(t *testing.T) {
 // result in appropriate severity levels in warnings.
 func TestCheckSpawnHotspots_CriticalVsHighSeverity(t *testing.T) {
 	tests := []struct {
-		name           string
-		score          int
-		expectedLevel  string // CRITICAL, HIGH, or MODERATE
+		name          string
+		score         int
+		expectedLevel string // CRITICAL, HIGH, or MODERATE
 	}{
 		{"score 10 is critical", 10, "CRITICAL"},
 		{"score 49 is critical", 49, "CRITICAL"},
@@ -551,9 +553,9 @@ func TestCheckSpawnHotspots_CriticalVsHighSeverity(t *testing.T) {
 // >1500 lines set HasCriticalHotspot and CriticalFiles.
 func TestCheckSpawnHotspots_CriticalBloatDetection(t *testing.T) {
 	tests := []struct {
-		name             string
-		lines            int
-		expectCritical   bool
+		name           string
+		lines          int
+		expectCritical bool
 	}{
 		{"1501 lines is critical", 1501, true},
 		{"2000 lines is critical", 2000, true},
@@ -589,4 +591,81 @@ func TestCheckSpawnHotspots_CriticalBloatDetection(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRunHotspotCheckForSpawn_IncludesBloatAnalysis verifies that bloat-size
+// hotspots (files >800 lines) are included in spawn-time hotspot checks.
+// This tests the integration - that RunHotspotCheckForSpawn actually calls
+// analyzeBloatFiles and includes bloat results in the check.
+func TestRunHotspotCheckForSpawn_IncludesBloatAnalysis(t *testing.T) {
+	// This test validates that the bloat analysis is performed during spawn checks.
+	// We can't easily test with real file system, so we test the internal function
+	// composition by checking that analyzeBloatFiles results are included.
+
+	// Create a temporary directory with a large file
+	tempDir := t.TempDir()
+
+	// Create a Go file with >1500 lines (CRITICAL threshold)
+	largeContent := "package main\n\nfunc main() {}\n"
+	for i := 0; i < 1600; i++ {
+		largeContent += "// line " + string(rune('0'+i%10)) + "\n"
+	}
+
+	largePath := tempDir + "/large_file.go"
+	if err := writeFile(largePath, largeContent); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Initialize git repo (required for fix commit analysis)
+	if err := initGitRepo(tempDir); err != nil {
+		t.Skipf("Skipping test - could not init git: %v", err)
+	}
+
+	// Run the spawn hotspot check with a task that references the large file
+	result, err := RunHotspotCheckForSpawn(tempDir, "fix bug in large_file.go")
+	if err != nil {
+		t.Fatalf("RunHotspotCheckForSpawn error: %v", err)
+	}
+
+	// Verify that the bloat-size hotspot was detected
+	if result == nil {
+		t.Fatal("Expected non-nil result - bloat-size hotspot should be detected")
+	}
+
+	if !result.HasHotspots {
+		t.Error("Expected HasHotspots=true for large file")
+	}
+
+	// Check for bloat-size type in matched hotspots
+	foundBloat := false
+	for _, h := range result.MatchedHotspots {
+		if h.Type == "bloat-size" {
+			foundBloat = true
+			if h.Score < 1500 {
+				t.Errorf("Expected bloat-size score > 1500, got %d", h.Score)
+			}
+			break
+		}
+	}
+
+	if !foundBloat {
+		t.Error("Expected bloat-size hotspot in matched results - RunHotspotCheckForSpawn should include bloat analysis")
+	}
+
+	// Verify CRITICAL detection for >1500 lines
+	if !result.HasCriticalHotspot {
+		t.Error("Expected HasCriticalHotspot=true for file >1500 lines")
+	}
+}
+
+// Helper to write file
+func writeFile(path, content string) error {
+	return os.WriteFile(path, []byte(content), 0644)
+}
+
+// Helper to initialize a minimal git repo
+func initGitRepo(dir string) error {
+	cmd := exec.Command("git", "init")
+	cmd.Dir = dir
+	return cmd.Run()
 }

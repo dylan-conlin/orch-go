@@ -86,17 +86,17 @@ type Hotspot struct {
 
 // HotspotReport is the complete analysis output.
 type HotspotReport struct {
-	GeneratedAt          string    `json:"generated_at"`
-	AnalysisPeriod       string    `json:"analysis_period"`
-	FixThreshold         int       `json:"fix_threshold"`
-	InvThreshold         int       `json:"inv_threshold"`
-	BloatThreshold       int       `json:"bloat_threshold"`
-	Hotspots             []Hotspot `json:"hotspots"`
-	TotalFixCommits      int       `json:"total_fix_commits"`
-	TotalInvestigations  int       `json:"total_investigations"`
-	TotalBloatedFiles    int       `json:"total_bloated_files"`
-	TotalCouplingClusters int      `json:"total_coupling_clusters"`
-	HasArchitectWork     bool      `json:"has_architect_work"`
+	GeneratedAt           string    `json:"generated_at"`
+	AnalysisPeriod        string    `json:"analysis_period"`
+	FixThreshold          int       `json:"fix_threshold"`
+	InvThreshold          int       `json:"inv_threshold"`
+	BloatThreshold        int       `json:"bloat_threshold"`
+	Hotspots              []Hotspot `json:"hotspots"`
+	TotalFixCommits       int       `json:"total_fix_commits"`
+	TotalInvestigations   int       `json:"total_investigations"`
+	TotalBloatedFiles     int       `json:"total_bloated_files"`
+	TotalCouplingClusters int       `json:"total_coupling_clusters"`
+	HasArchitectWork      bool      `json:"has_architect_work"`
 }
 
 func runHotspot() error {
@@ -586,9 +586,9 @@ func intToStr(n int) string {
 // SpawnHotspotResult contains the result of checking hotspots for a spawn task.
 type SpawnHotspotResult struct {
 	HasHotspots        bool      `json:"has_hotspots"`
-	HasCriticalHotspot bool      `json:"has_critical_hotspot"`         // True when any matched bloat-size file >1500 lines
+	HasCriticalHotspot bool      `json:"has_critical_hotspot"` // True when any matched bloat-size file >1500 lines
 	MatchedHotspots    []Hotspot `json:"matched_hotspots,omitempty"`
-	CriticalFiles      []string  `json:"critical_files,omitempty"`     // File paths of CRITICAL hotspots (>1500 lines)
+	CriticalFiles      []string  `json:"critical_files,omitempty"` // File paths of CRITICAL hotspots (>1500 lines)
 	MaxScore           int       `json:"max_score"`
 	Warning            string    `json:"warning,omitempty"`
 }
@@ -815,6 +815,7 @@ func RunHotspotCheckForSpawn(projectDir, task string) (*SpawnHotspotResult, erro
 		AnalysisPeriod: fmt.Sprintf("Last %d days", 28), // Default to 28 days
 		FixThreshold:   5,                               // Default threshold
 		InvThreshold:   3,                               // Default threshold
+		BloatThreshold: 800,                             // Default bloat threshold
 		Hotspots:       []Hotspot{},
 	}
 
@@ -831,6 +832,10 @@ func RunHotspotCheckForSpawn(projectDir, task string) (*SpawnHotspotResult, erro
 	// Analyze coupling clusters
 	couplingHotspots, _, _ := analyzeCouplingClusters(projectDir, 28)
 	report.Hotspots = append(report.Hotspots, couplingHotspots...)
+
+	// Analyze file sizes for bloat detection (CRITICAL files >1500 lines trigger spawn blocking)
+	bloatHotspots, _, _ := analyzeBloatFiles(projectDir, 800)
+	report.Hotspots = append(report.Hotspots, bloatHotspots...)
 
 	if len(report.Hotspots) == 0 {
 		return nil, nil
