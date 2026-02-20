@@ -1,0 +1,53 @@
+# Verification Specification: MCP Hot-Reload Race Condition Fix
+
+design_document: .kb/models/opencode-fork/probes/2026-02-20-probe-mcp-hot-reload-production-failure.md
+
+## Observable Behaviors
+
+### Primary Behavior
+After `MCP.watchConfig()` returns, the file watcher is guaranteed to be ready and will detect any subsequent writes to opencode.json.
+
+### Secondary Behaviors
+- Existing MCP tests continue to pass
+- InstanceBootstrap properly awaits watcher initialization
+
+## Acceptance Criteria
+
+### AC-001: Watcher Ready on Return
+- Behavior: Watcher is ready when watchConfig() returns
+- Condition: Config changes written immediately after watchConfig() are detected
+- Threshold: Boolean pass/fail
+- Evidence: New test "watcher is ready immediately after watchConfig returns"
+
+### AC-002: All Tests Pass
+- Behavior: No regression in existing functionality  
+- Condition: All OpenCode tests pass
+- Threshold: 0 failures
+- Evidence: `bun test` output
+
+## Failure Modes
+
+### FM-001: Config Change Missed
+- Symptom: MCP server doesn't load despite config being written
+- Root Cause: watchConfig() returned before watcher was ready
+- Diagnostic: Check logs for "config watcher started" timestamp vs config write timestamp
+- Fix: Ensure watchConfig() is awaited and awaits configWatcherState()
+
+## Evidence Requirements
+
+| Criterion | Evidence Type | Artifact |
+|-----------|---------------|----------|
+| AC-001 | test output | `bun test test/mcp/config-watcher.test.ts` - "watcher is ready immediately" test passes |
+| AC-002 | test output | `bun test` - 1116 pass, 0 fail |
+
+## Commands Run
+
+```bash
+# MCP watcher tests including new regression test
+bun test test/mcp/config-watcher.test.ts
+# Result: 5 pass, 0 fail
+
+# Full test suite
+bun test
+# Result: 1116 pass, 5 skip, 0 fail
+```
