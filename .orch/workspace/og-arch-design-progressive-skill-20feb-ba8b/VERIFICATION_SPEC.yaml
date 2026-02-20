@@ -1,0 +1,36 @@
+verification_spec:
+  type: architect-design
+  issue: orch-go-1139
+
+  observable_behaviors:
+    - description: "Design investigation produced with section annotation format, filtering algorithm, and 4-phase implementation plan"
+      verified: true
+
+  acceptance_criteria:
+    - id: AC-001
+      description: "Investigation file exists in .kb/investigations/ with design- prefix"
+      condition: "File .kb/investigations/2026-02-20-design-progressive-skill-disclosure.md exists and has Phase: Complete"
+      verified: true
+      evidence: "File created at /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2026-02-20-design-progressive-skill-disclosure.md"
+
+    - id: AC-002
+      description: "Design addresses all 4 design questions from task"
+      condition: "Investigation covers: section declaration format, filtering location, worker-base handling, skillc compatibility"
+      verified: true
+      evidence: "Fork 1 (filtering location) → loader.go; Fork 2 (section declaration) → @section HTML comments; Fork 3 (annotation format) → key=value pairs; Fork 4 (worker-base) → keep as-is for now"
+
+    - id: AC-003
+      description: "Probe file confirms/extends spawn-architecture model"
+      condition: "Probe documents actual token measurements and extends model with filtering pipeline stage"
+      verified: true
+      evidence: "Probe at .kb/models/spawn-architecture/probes/2026-02-20-probe-progressive-skill-disclosure-design.md"
+
+    - id: AC-004
+      description: "Design includes implementation-ready file targets and acceptance criteria"
+      condition: "Investigation has File Targets table and testable acceptance criteria"
+      verified: true
+      evidence: "5 file targets listed, 6 acceptance criteria defined"
+
+  manual_verification:
+    - "Orchestrator reviews investigation for architectural soundness"
+    - "Orchestrator validates @section annotation format is compatible with skillc passthrough"
