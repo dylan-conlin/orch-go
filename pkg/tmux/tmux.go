@@ -424,7 +424,10 @@ func EnsureWorkersSession(projectName, projectDir string) (string, error) {
 	// -s: session name
 	// -n: initial window name (servers)
 	// -c: working directory
-	cmd := exec.Command("tmux", "new-session", "-d", "-s", sessionName, "-n", "servers", "-c", projectDir)
+	cmd, err := tmuxCommand("new-session", "-d", "-s", sessionName, "-n", "servers", "-c", projectDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to create tmux command: %w", err)
+	}
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("failed to create session: %w", err)
 	}
@@ -455,7 +458,10 @@ func EnsureOrchestratorSession() (string, error) {
 
 	// Create new orchestrator session
 	// Note: We don't specify a working directory - orchestrators work across projects
-	cmd := exec.Command("tmux", "new-session", "-d", "-s", OrchestratorSessionName, "-n", "main")
+	cmd, err := tmuxCommand("new-session", "-d", "-s", OrchestratorSessionName, "-n", "main")
+	if err != nil {
+		return "", fmt.Errorf("failed to create tmux command: %w", err)
+	}
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("failed to create orchestrator session: %w", err)
 	}
@@ -480,7 +486,10 @@ func EnsureMetaOrchestratorSession() (string, error) {
 
 	// Create new meta-orchestrator session
 	// Note: We don't specify a working directory - meta-orchestrators work across projects
-	cmd := exec.Command("tmux", "new-session", "-d", "-s", MetaOrchestratorSessionName, "-n", "main")
+	cmd, err := tmuxCommand("new-session", "-d", "-s", MetaOrchestratorSessionName, "-n", "main")
+	if err != nil {
+		return "", fmt.Errorf("failed to create tmux command: %w", err)
+	}
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("failed to create meta-orchestrator session: %w", err)
 	}
@@ -499,11 +508,14 @@ func CreateWindow(sessionName, windowName, workDir string) (windowTarget string,
 	// -d: detached
 	// -P: print info
 	// -F: format output
-	cmd := exec.Command("tmux", "new-window",
+	cmd, err := tmuxCommand("new-window",
 		"-t", sessionName,
 		"-n", windowName,
 		"-c", workDir,
 		"-d", "-P", "-F", "#{window_index}:#{window_id}")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create tmux command: %w", err)
+	}
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -526,13 +538,19 @@ func CreateWindow(sessionName, windowName, workDir string) (windowTarget string,
 
 // SendKeys sends keystrokes to a tmux window.
 func SendKeys(windowTarget string, keys string) error {
-	cmd := exec.Command("tmux", "send-keys", "-t", windowTarget, keys)
+	cmd, err := tmuxCommand("send-keys", "-t", windowTarget, keys)
+	if err != nil {
+		return fmt.Errorf("failed to create tmux command: %w", err)
+	}
 	return cmd.Run()
 }
 
 // SendKeysLiteral sends keystrokes in literal mode (no special char interpretation).
 func SendKeysLiteral(windowTarget, keys string) error {
-	cmd := exec.Command("tmux", "send-keys", "-t", windowTarget, "-l", keys)
+	cmd, err := tmuxCommand("send-keys", "-t", windowTarget, "-l", keys)
+	if err != nil {
+		return fmt.Errorf("failed to create tmux command: %w", err)
+	}
 	return cmd.Run()
 }
 
@@ -543,19 +561,28 @@ func SendEnter(windowTarget string) error {
 
 // SelectWindow selects (focuses) a window.
 func SelectWindow(windowTarget string) error {
-	cmd := exec.Command("tmux", "select-window", "-t", windowTarget)
+	cmd, err := tmuxCommand("select-window", "-t", windowTarget)
+	if err != nil {
+		return fmt.Errorf("failed to create tmux command: %w", err)
+	}
 	return cmd.Run()
 }
 
 // KillSession kills a tmux session.
 func KillSession(sessionName string) error {
-	cmd := exec.Command("tmux", "kill-session", "-t", sessionName)
+	cmd, err := tmuxCommand("kill-session", "-t", sessionName)
+	if err != nil {
+		return fmt.Errorf("failed to create tmux command: %w", err)
+	}
 	return cmd.Run()
 }
 
 // GetPaneContent captures the content of a tmux pane.
 func GetPaneContent(windowTarget string) (string, error) {
-	cmd := exec.Command("tmux", "capture-pane", "-t", windowTarget, "-p")
+	cmd, err := tmuxCommand("capture-pane", "-t", windowTarget, "-p")
+	if err != nil {
+		return "", fmt.Errorf("failed to create tmux command: %w", err)
+	}
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -644,7 +671,10 @@ func WindowExists(windowTarget string) bool {
 	sessionName := parts[0]
 	windowIndex := parts[1]
 
-	cmd := exec.Command("tmux", "list-windows", "-t", sessionName, "-F", "#{window_index}")
+	cmd, err := tmuxCommand("list-windows", "-t", sessionName, "-F", "#{window_index}")
+	if err != nil {
+		return false
+	}
 	output, err := cmd.Output()
 	if err != nil {
 		return false
@@ -660,32 +690,41 @@ func WindowExists(windowTarget string) bool {
 
 // KillWindow closes a tmux window by target (session:window format).
 func KillWindow(windowTarget string) error {
-	cmd := exec.Command("tmux", "kill-window", "-t", windowTarget)
+	cmd, err := tmuxCommand("kill-window", "-t", windowTarget)
+	if err != nil {
+		return fmt.Errorf("failed to create tmux command: %w", err)
+	}
 	return cmd.Run()
 }
 
 // KillWindowByID closes a tmux window by its unique ID (e.g., "@1234").
 func KillWindowByID(windowID string) error {
-	cmd := exec.Command("tmux", "kill-window", "-t", windowID)
+	cmd, err := tmuxCommand("kill-window", "-t", windowID)
+	if err != nil {
+		return fmt.Errorf("failed to create tmux command: %w", err)
+	}
 	return cmd.Run()
 }
 
 // BuildAttachCommand creates the tmux command for attaching to a window.
 // insideTmux should be true if the current process is running inside a tmux session.
-func BuildAttachCommand(windowTarget string, insideTmux bool) *exec.Cmd {
+func BuildAttachCommand(windowTarget string, insideTmux bool) (*exec.Cmd, error) {
 	if insideTmux {
 		// Inside tmux: switch client to the new window
-		return exec.Command("tmux", "switch-client", "-t", windowTarget)
+		return tmuxCommand("switch-client", "-t", windowTarget)
 	}
 	// Outside tmux: attach to the session/window
-	return exec.Command("tmux", "attach-session", "-t", windowTarget)
+	return tmuxCommand("attach-session", "-t", windowTarget)
 }
 
 // Attach attaches the current terminal to a tmux window.
 // If already inside tmux, it switches the client to the target window.
 // If outside tmux, it attaches to the session/window.
 func Attach(windowTarget string) error {
-	cmd := BuildAttachCommand(windowTarget, os.Getenv("TMUX") != "")
+	cmd, err := BuildAttachCommand(windowTarget, os.Getenv("TMUX") != "")
+	if err != nil {
+		return fmt.Errorf("failed to create tmux command: %w", err)
+	}
 
 	// Connect stdin/stdout/stderr so tmux can take over the terminal
 	cmd.Stdin = os.Stdin
@@ -697,7 +736,10 @@ func Attach(windowTarget string) error {
 
 // ListWorkersSessions returns all tmux sessions starting with "workers-".
 func ListWorkersSessions() ([]string, error) {
-	cmd := exec.Command("tmux", "list-sessions", "-F", "#{session_name}")
+	cmd, err := tmuxCommand("list-sessions", "-F", "#{session_name}")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tmux command: %w", err)
+	}
 	output, err := cmd.Output()
 	if err != nil {
 		// If no sessions exist, tmux returns error 1
@@ -716,7 +758,10 @@ func ListWorkersSessions() ([]string, error) {
 
 // ListWindowIDs returns all window IDs in a session.
 func ListWindowIDs(sessionName string) ([]string, error) {
-	cmd := exec.Command("tmux", "list-windows", "-t", sessionName, "-F", "#{window_id}")
+	cmd, err := tmuxCommand("list-windows", "-t", sessionName, "-F", "#{window_id}")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tmux command: %w", err)
+	}
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list windows: %w", err)
@@ -743,7 +788,10 @@ type WindowInfo struct {
 // ListWindows returns all windows in a session with their details.
 func ListWindows(sessionName string) ([]WindowInfo, error) {
 	// Format: index:id:name
-	cmd := exec.Command("tmux", "list-windows", "-t", sessionName, "-F", "#{window_index}:#{window_id}:#{window_name}")
+	cmd, err := tmuxCommand("list-windows", "-t", sessionName, "-F", "#{window_index}:#{window_id}:#{window_name}")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tmux command: %w", err)
+	}
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list windows: %w", err)
@@ -875,7 +923,10 @@ func FindWindowByBeadsIDAllSessions(beadsID string) (*WindowInfo, string, error)
 // Returns true if the window is still present in any tmux session.
 func WindowExistsByID(windowID string) bool {
 	// Query all tmux windows to find this ID
-	cmd := exec.Command("tmux", "list-windows", "-a", "-F", "#{window_id}")
+	cmd, err := tmuxCommand("list-windows", "-a", "-F", "#{window_id}")
+	if err != nil {
+		return false
+	}
 	output, err := cmd.Output()
 	if err != nil {
 		// If tmux isn't running or no sessions exist, window doesn't exist
@@ -895,13 +946,17 @@ func WindowExistsByID(windowID string) bool {
 // If lines is 0, captures all visible content.
 func CaptureLines(windowTarget string, lines int) ([]string, error) {
 	var cmd *exec.Cmd
+	var cmdErr error
 	if lines > 0 {
 		// Capture last N lines using negative start offset
 		startLine := fmt.Sprintf("-%d", lines)
-		cmd = exec.Command("tmux", "capture-pane", "-t", windowTarget, "-p", "-S", startLine)
+		cmd, cmdErr = tmuxCommand("capture-pane", "-t", windowTarget, "-p", "-S", startLine)
 	} else {
 		// Capture visible pane
-		cmd = exec.Command("tmux", "capture-pane", "-t", windowTarget, "-p")
+		cmd, cmdErr = tmuxCommand("capture-pane", "-t", windowTarget, "-p")
+	}
+	if cmdErr != nil {
+		return nil, fmt.Errorf("failed to create tmux command: %w", cmdErr)
 	}
 
 	output, err := cmd.Output()

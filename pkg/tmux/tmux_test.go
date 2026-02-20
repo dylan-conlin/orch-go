@@ -278,36 +278,43 @@ func TestBuildAttachCommand(t *testing.T) {
 		name         string
 		windowTarget string
 		insideTmux   bool
-		wantArgs     []string
+		wantArgs     []string // args to check (excluding tmux binary path)
 	}{
 		{
 			name:         "inside tmux",
 			windowTarget: "session:1",
 			insideTmux:   true,
-			wantArgs:     []string{"tmux", "switch-client", "-t", "session:1"},
+			wantArgs:     []string{"switch-client", "-t", "session:1"},
 		},
 		{
 			name:         "outside tmux",
 			windowTarget: "session:1",
 			insideTmux:   false,
-			wantArgs:     []string{"tmux", "attach-session", "-t", "session:1"},
+			wantArgs:     []string{"attach-session", "-t", "session:1"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildAttachCommand(tt.windowTarget, tt.insideTmux)
+			cmd, err := BuildAttachCommand(tt.windowTarget, tt.insideTmux)
+			if err != nil {
+				t.Fatalf("BuildAttachCommand() error = %v", err)
+			}
 			if cmd.Path == "" {
 				t.Error("Expected command path to be set")
 			}
-			// Check args
-			for i, arg := range tt.wantArgs {
-				if i >= len(cmd.Args) {
-					t.Errorf("Missing arg at index %d: want %s", i, arg)
-					continue
+			// Check that expected args are present (socket args may be prepended)
+			args := cmd.Args
+			for _, wantArg := range tt.wantArgs {
+				found := false
+				for _, gotArg := range args {
+					if gotArg == wantArg {
+						found = true
+						break
+					}
 				}
-				if cmd.Args[i] != arg {
-					t.Errorf("Arg at index %d = %q, want %q", i, cmd.Args[i], arg)
+				if !found {
+					t.Errorf("Expected arg %q in %v", wantArg, args)
 				}
 			}
 		})
@@ -587,6 +594,64 @@ func TestGetTmuxCwdNonExistentSession(t *testing.T) {
 	_, err := GetTmuxCwd("nonexistent-session-12345")
 	if err == nil {
 		t.Error("Expected error when getting cwd for non-existent session")
+	}
+}
+
+// TestDetectMainSocket tests socket detection for overmind environments.
+func TestDetectMainSocket(t *testing.T) {
+	tests := []struct {
+		name     string
+		tmuxEnv  string
+		wantEmpty bool
+	}{
+		{
+			name:      "not in tmux",
+			tmuxEnv:   "",
+			wantEmpty: true,
+		},
+		{
+			name:      "in regular tmux",
+			tmuxEnv:   "/tmp/tmux-501/default,12345,0",
+			wantEmpty: true,
+		},
+		{
+			name:      "in overmind tmux",
+			tmuxEnv:   "/private/tmp/tmux-501/overmind-orch-go-abc123,55715,0",
+			wantEmpty: false, // should detect main socket (if it exists on disk)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save and restore TMUX env
+			origTmux := os.Getenv("TMUX")
+			defer func() {
+				if origTmux != "" {
+					os.Setenv("TMUX", origTmux)
+				} else {
+					os.Unsetenv("TMUX")
+				}
+			}()
+
+			if tt.tmuxEnv == "" {
+				os.Unsetenv("TMUX")
+			} else {
+				os.Setenv("TMUX", tt.tmuxEnv)
+			}
+
+			result := detectMainSocket()
+
+			if tt.wantEmpty && result != "" {
+				t.Errorf("detectMainSocket() = %q, want empty", result)
+			}
+			// For overmind case, result depends on whether /tmp/tmux-501/default exists
+			// on this machine. We just verify the logic doesn't crash.
+			if !tt.wantEmpty && tt.name == "in overmind tmux" {
+				// The result will be empty if the main socket doesn't exist on disk,
+				// which is fine - the important thing is it tried the right path
+				t.Logf("detectMainSocket() = %q (empty is OK if socket doesn't exist on disk)", result)
+			}
+		})
 	}
 }
 

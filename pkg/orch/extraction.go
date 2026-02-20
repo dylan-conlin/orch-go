@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -1475,8 +1474,7 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 	}
 
 	// Focus the newly created window
-	selectCmd := exec.Command("tmux", "select-window", "-t", windowTarget)
-	if err := selectCmd.Run(); err != nil {
+	if err := tmux.SelectWindow(windowTarget); err != nil {
 		// Non-fatal - window was created successfully
 		fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
 	}
@@ -1550,8 +1548,7 @@ func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 	}
 
 	// Focus the newly created window
-	selectCmd := exec.Command("tmux", "select-window", "-t", result.Window)
-	if err := selectCmd.Run(); err != nil {
+	if err := tmux.SelectWindow(result.Window); err != nil {
 		// Non-fatal
 		fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
 	}

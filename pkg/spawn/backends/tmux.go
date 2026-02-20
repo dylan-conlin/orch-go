@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -108,8 +107,7 @@ func (b *TmuxBackend) Spawn(ctx context.Context, req *SpawnRequest) (*Result, er
 	}
 
 	// Focus the newly created window
-	selectCmd := exec.Command("tmux", "select-window", "-t", windowTarget)
-	if err := selectCmd.Run(); err != nil {
+	if err := tmux.SelectWindow(windowTarget); err != nil {
 		// Non-fatal - window was created successfully
 		fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
 	}
