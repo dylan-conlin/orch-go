@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-implement-progressive-skill-20feb-2bcb",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1151",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "199e98c0549c9833ff9385704a1653cc36df5dd2",
+  "spawn_time": "2026-02-20T15:03:06-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

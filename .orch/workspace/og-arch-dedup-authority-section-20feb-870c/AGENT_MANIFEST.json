@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-arch-dedup-authority-section-20feb-870c",
+  "skill": "architect",
+  "beads_id": "orch-go-1137",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "fb169131a09efaaba4a33125844007ac22e7f5ac",
+  "spawn_time": "2026-02-20T13:52:38-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "ses_382f59dfbffe3kQno8Z4nPDoqm"
+}

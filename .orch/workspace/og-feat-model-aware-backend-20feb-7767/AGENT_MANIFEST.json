@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-feat-model-aware-backend-20feb-7767",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1147",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "fb169131a09efaaba4a33125844007ac22e7f5ac",
+  "spawn_time": "2026-02-20T13:52:48-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "ses_382f574fbffeU5kkTXH0EDCaf0"
+}

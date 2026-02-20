@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-inv-model-drift-probe-20feb-1bd9",
+  "skill": "investigation",
+  "beads_id": "orch-go-1101",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "3fc539bb4a7743ac240250110234e9b07af5b4e4",
+  "spawn_time": "2026-02-20T09:24:17-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

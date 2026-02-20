@@ -1,0 +1,62 @@
+observable_behaviors:
+  - description: "FilterSkillSections strips @section-annotated sections not matching the filter"
+  - description: "Nil/empty filter returns content unchanged (backward compatible)"
+  - description: "Spawn pipeline applies filtering between settings resolution and context building"
+  - description: "Section markers in skill sources survive skillc deployment"
+
+acceptance_criteria:
+  - id: AC-001
+    description: "go test ./pkg/skills/... passes all 21 tests including 11 new filtering tests"
+    command: "go test ./pkg/skills/... -count=1"
+    expected: "PASS"
+  - id: AC-002
+    description: "go build ./cmd/orch/ succeeds (spawn wiring compiles)"
+    command: "go build ./cmd/orch/"
+    expected: "exit 0"
+  - id: AC-003
+    description: "go vet ./cmd/orch/ passes"
+    command: "go vet ./cmd/orch/"
+    expected: "exit 0"
+  - id: AC-004
+    description: "feature-impl --phases impl --mode direct achieves 20%+ token savings"
+    result: "22% savings (1967 tokens of 8872 total)"
+  - id: AC-005
+    description: "Unfiltered spawns produce identical output (no --phases = no filtering)"
+    result: "FilterSkillSections with nil filter returns content unchanged (tested)"
+
+evidence:
+  - criterion: AC-001
+    type: test_output
+    result: "ok github.com/dylan-conlin/orch-go/pkg/skills 0.007s"
+  - criterion: AC-002
+    type: build_output
+    result: "exit 0, no errors"
+  - criterion: AC-003
+    type: vet_output
+    result: "exit 0, no warnings"
+  - criterion: AC-004
+    type: measurement
+    result: |
+      feature-impl full: 8872 tokens
+      --phases impl,val --mode tdd: 7280 tokens (18% savings)
+      --phases impl,val --mode direct: 7211 tokens (19% savings)
+      --phases impl --mode direct: 6905 tokens (22% savings)
+      architect autonomous: 10382 tokens (9% savings)
+      architect interactive: 8612 tokens (25% savings)
+
+files_changed:
+  - path: pkg/skills/loader.go
+    action: modified
+    description: "Added SectionFilter, FilterSkillSections(), LoadSkillFiltered(), parseSectionAttrs(), sectionMatches()"
+  - path: pkg/skills/loader_test.go
+    action: modified
+    description: "Added 11 new tests for section filtering"
+  - path: cmd/orch/spawn_cmd.go
+    action: modified
+    description: "Added skills import, filtering call between resolve and context build, buildSectionFilter() helper"
+  - path: ~/orch-knowledge/skills/src/worker/feature-impl/.skillc/SKILL.md.template
+    action: modified
+    description: "Added 9 @section markers for phases and modes"
+  - path: ~/orch-knowledge/skills/src/worker/architect/.skillc/SKILL.md.template
+    action: modified
+    description: "Added 2 @section markers for spawn-mode (autonomous/interactive)"

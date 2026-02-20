@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-design-progressive-skill-20feb-ba8b",
+  "skill": "architect",
+  "beads_id": "orch-go-1139",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "f31916618108408651b76ef8d0a38cfcae5cedc3",
+  "spawn_time": "2026-02-20T14:31:18-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

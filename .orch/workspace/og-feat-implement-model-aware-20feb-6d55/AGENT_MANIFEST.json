@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-implement-model-aware-20feb-6d55",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1147",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "fb169131a09efaaba4a33125844007ac22e7f5ac",
+  "spawn_time": "2026-02-20T13:54:35-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

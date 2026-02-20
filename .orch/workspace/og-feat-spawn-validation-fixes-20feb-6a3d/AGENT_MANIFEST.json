@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-spawn-validation-fixes-20feb-6a3d",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1141",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "f1b284d3f3f1c03ef25dd9a03caa83f358922766",
+  "spawn_time": "2026-02-20T14:47:16-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

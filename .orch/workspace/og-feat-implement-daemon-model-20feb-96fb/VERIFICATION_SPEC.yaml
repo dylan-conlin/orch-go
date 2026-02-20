@@ -1,0 +1,57 @@
+---
+title: Daemon Model Inference from Skill Type
+issue: orch-go-1148
+tier: light
+
+observable_behaviors:
+  - id: B1
+    description: InferModelFromSkill maps deep-reasoning skills to opus
+    acceptance_criteria:
+      - id: AC-001
+        criterion: systematic-debugging, investigation, architect, codebase-audit, research all return "opus"
+        evidence: "go test ./pkg/daemon/ -run TestInferModelFromSkill -count=1 → PASS"
+
+  - id: B2
+    description: InferModelFromSkill maps implementation skills to sonnet (default)
+    acceptance_criteria:
+      - id: AC-002
+        criterion: feature-impl, issue-creation, unknown skills, empty string all return "sonnet"
+        evidence: "go test ./pkg/daemon/ -run TestInferModelFromSkill -count=1 → PASS"
+
+  - id: B3
+    description: Model is threaded through daemon spawn path
+    acceptance_criteria:
+      - id: AC-003
+        criterion: OnceResult.Model is populated after successful/failed spawns
+        evidence: "go test ./pkg/daemon/ -count=1 → all 6.389s pass (23 spawnFunc closures updated)"
+
+  - id: B4
+    description: Preview shows inferred model alongside skill
+    acceptance_criteria:
+      - id: AC-004
+        criterion: orch daemon preview output includes "Inferred model:" line
+        evidence: "Code review of cmd/orch/daemon.go:runDaemonPreview"
+
+  - id: B5
+    description: SpawnWork passes --model to orch work subprocess
+    acceptance_criteria:
+      - id: AC-005
+        criterion: SpawnWork builds args with --model flag when model is non-empty
+        evidence: "Code review of pkg/daemon/issue_adapter.go:SpawnWork"
+
+  - id: B6
+    description: workCmd accepts --model flag
+    acceptance_criteria:
+      - id: AC-006
+        criterion: orch work --model opus <id> sets spawnModel for resolve pipeline
+        evidence: "go build ./cmd/orch/ clean; code review of cmd/orch/spawn_cmd.go workCmd init()"
+
+test_commands:
+  - "go test ./pkg/daemon/ -count=1"
+  - "go test ./cmd/orch/ -count=1"
+  - "go build ./cmd/orch/"
+  - "go vet ./cmd/orch/"
+  - "go vet ./pkg/daemon/"
+
+manual_verification:
+  - "Run orch daemon preview with triage:ready issues and verify model appears in output"

@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-arch-opencode-mcp-hot-20feb-9333",
+  "skill": "architect",
+  "beads_id": "orch-go-1134",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "d772cd45cbec594233db9175c47199dc4da8f462",
+  "spawn_time": "2026-02-20T13:28:23-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "ses_3830bd03affeeIvAUbonKDVUOd"
+}

@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-arch-dedup-orientation-frame-20feb-0cc2",
+  "skill": "architect",
+  "beads_id": "orch-go-1135",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "d772cd45cbec594233db9175c47199dc4da8f462",
+  "spawn_time": "2026-02-20T13:28:33-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "ses_3830ba8ddffe8Tqof553xWhx2W"
+}
