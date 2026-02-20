@@ -252,7 +252,11 @@ func resolveBackend(input ResolveInput, resolvedModel model.ModelSpec, modelSet 
 		return ResolvedSetting{Value: BackendClaude, Source: SourceHeuristic, Detail: "infra-escape-hatch"}, warnings, nil
 	}
 
-	return ResolvedSetting{Value: BackendOpenCode, Source: SourceDefault}, warnings, nil
+	// Default backend is now claude since the default model is Anthropic (sonnet).
+	// This became mandatory when Anthropic banned subscription OAuth in third-party tools (Feb 19 2026).
+	// OpenCode + Anthropic models is a dead path without allow_anthropic_opencode override.
+	// Decision: kb-2d62ef
+	return ResolvedSetting{Value: BackendClaude, Source: SourceDefault}, warnings, nil
 }
 
 func resolveModel(input ResolveInput, backend string, aliasMap map[string]string) (ResolvedSetting, error) {
@@ -379,8 +383,15 @@ func buildModelAliasMap(projectCfg *config.Config, projectMeta ProjectConfigMeta
 }
 
 func modelBackendRequirement(resolvedModel model.ModelSpec) (string, bool) {
+	// Non-Anthropic providers require OpenCode backend (Claude CLI can't run them)
 	if resolvedModel.Provider == "openai" || resolvedModel.Provider == "google" || resolvedModel.Provider == "deepseek" {
 		return BackendOpenCode, true
+	}
+	// Anthropic models route to Claude CLI backend by default
+	// This became mandatory when Anthropic banned subscription OAuth in third-party tools (Feb 19 2026)
+	// OpenCode + Anthropic models = dead path unless allow_anthropic_opencode override is set
+	if resolvedModel.Provider == "anthropic" {
+		return BackendClaude, true
 	}
 	return "", false
 }

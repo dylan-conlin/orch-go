@@ -95,14 +95,16 @@ func TestResolve_PrecedenceLayers(t *testing.T) {
 	})
 
 	t.Run("default backend", func(t *testing.T) {
+		// Default backend is now claude since default model is Anthropic (sonnet).
+		// Decision kb-2d62ef: Anthropic banned subscription OAuth in third-party tools (Feb 19 2026).
 		input := baseResolveInput()
 
 		settings, err := Resolve(input)
 		if err != nil {
 			t.Fatalf("Resolve() error = %v", err)
 		}
-		if settings.Backend.Value != BackendOpenCode {
-			t.Fatalf("Backend.Value = %q, want %q", settings.Backend.Value, BackendOpenCode)
+		if settings.Backend.Value != BackendClaude {
+			t.Fatalf("Backend.Value = %q, want %q", settings.Backend.Value, BackendClaude)
 		}
 		if settings.Backend.Source != SourceDefault {
 			t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceDefault)
@@ -236,28 +238,36 @@ func TestResolve_BugClass04_ProjectConfigPerBackendModelUsed(t *testing.T) {
 }
 
 func TestResolve_BugClass05_ProjectDefaultFlashNotExplicit(t *testing.T) {
+	// Test that non-explicit project config model (OpenCodeModel: false) is ignored.
+	// Uses gpt-4o as user default since opencode backend + anthropic model is now blocked.
 	input := baseResolveInput()
 	input.CLI.Backend = BackendOpenCode
 	input.ProjectConfig = &config.Config{OpenCode: config.OpenCodeConfig{Model: "flash"}}
 	input.ProjectConfigMeta = ProjectConfigMeta{OpenCodeModel: false}
+	// Need a non-Anthropic default model since opencode backend is explicit
+	input.UserConfig = &userconfig.Config{DefaultModel: "gpt-4o"}
+	input.UserConfigMeta = UserConfigMeta{DefaultModel: true}
 
 	settings, err := Resolve(input)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if settings.Model.Value != model.DefaultModel.Format() {
-		t.Fatalf("Model.Value = %q, want %q", settings.Model.Value, model.DefaultModel.Format())
+	// Falls through to user config model (gpt-4o) since project config is not explicit
+	if settings.Model.Value != "openai/gpt-4o" {
+		t.Fatalf("Model.Value = %q, want %q", settings.Model.Value, "openai/gpt-4o")
 	}
-	if settings.Model.Source != SourceDefault {
-		t.Fatalf("Model.Source = %q, want %q", settings.Model.Source, SourceDefault)
+	if settings.Model.Source != SourceUserConfig {
+		t.Fatalf("Model.Source = %q, want %q", settings.Model.Source, SourceUserConfig)
 	}
 }
 
 func TestResolve_BugClass06_InfraEscapeHatchDoesNotOverrideExplicitBackend(t *testing.T) {
+	// Test that explicit user config backend is honored even when infrastructure is detected.
+	// Uses gpt-4o as model since opencode backend + anthropic model is now blocked.
 	input := baseResolveInput()
 	input.InfrastructureDetected = true
-	input.UserConfig = &userconfig.Config{Backend: BackendOpenCode}
-	input.UserConfigMeta = UserConfigMeta{Backend: true}
+	input.UserConfig = &userconfig.Config{Backend: BackendOpenCode, DefaultModel: "gpt-4o"}
+	input.UserConfigMeta = UserConfigMeta{Backend: true, DefaultModel: true}
 
 	settings, err := Resolve(input)
 	if err != nil {
@@ -355,6 +365,8 @@ func TestResolve_BugClass10_UserDefaultModelNotInjectedAsCLI(t *testing.T) {
 // CLI.Model (highest priority), silently overriding project config.
 func TestResolve_BugClass11_ProjectConfigModelOverridesUserDefaultModel(t *testing.T) {
 	input := baseResolveInput()
+	// Explicit backend required for opencode.model to be used (default is now claude)
+	input.CLI.Backend = BackendOpenCode
 	// Simulate: project config has opencode.model = "gpt-4o"
 	input.ProjectConfig = &config.Config{OpenCode: config.OpenCodeConfig{Model: "gpt-4o"}}
 	input.ProjectConfigMeta = ProjectConfigMeta{OpenCodeModel: true}
@@ -523,8 +535,10 @@ func TestResolve_BugClass12b_CLIBackendClaudeWithExplicitModelStillErrors(t *tes
 
 // TestResolve_BugClass11c_UserDefaultModelFallbackWhenNoProjectConfig verifies
 // user config default_model is used when no project config model is set.
+// Requires explicit backend=opencode since default backend is now claude.
 func TestResolve_BugClass11c_UserDefaultModelFallbackWhenNoProjectConfig(t *testing.T) {
 	input := baseResolveInput()
+	input.CLI.Backend = BackendOpenCode // Explicit backend to use OpenAI model
 	input.UserConfig = &userconfig.Config{DefaultModel: "gpt-4o"}
 	input.UserConfigMeta = UserConfigMeta{DefaultModel: true}
 
@@ -626,4 +640,167 @@ func TestResolve_BugClass14c_FlashCLIModelStillErrors(t *testing.T) {
 	if !strings.Contains(err.Error(), "flash models are not supported") {
 		t.Fatalf("Resolve() error = %q, want flash validation error", err)
 	}
+}
+
+// TestResolve_BugClass15_ModelAwareBackendRouting tests model-aware backend routing.
+// Decision kb-2d62ef: Anthropic models auto-route to claude backend,
+// non-Anthropic models auto-route to opencode backend.
+// This became mandatory when Anthropic banned subscription OAuth in third-party tools (Feb 19 2026).
+func TestResolve_BugClass15_ModelAwareBackendRouting(t *testing.T) {
+	t.Run("explicit anthropic model routes to claude backend", func(t *testing.T) {
+		input := baseResolveInput()
+		input.CLI.Model = "opus"
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if settings.Backend.Value != BackendClaude {
+			t.Fatalf("Backend.Value = %q, want %q (anthropic model should route to claude)", settings.Backend.Value, BackendClaude)
+		}
+		if settings.Backend.Source != SourceDerived {
+			t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceDerived)
+		}
+		if settings.Backend.Detail != "model-requirement" {
+			t.Fatalf("Backend.Detail = %q, want %q", settings.Backend.Detail, "model-requirement")
+		}
+	})
+
+	t.Run("explicit sonnet model routes to claude backend", func(t *testing.T) {
+		input := baseResolveInput()
+		input.CLI.Model = "sonnet"
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if settings.Backend.Value != BackendClaude {
+			t.Fatalf("Backend.Value = %q, want %q (anthropic model should route to claude)", settings.Backend.Value, BackendClaude)
+		}
+		if settings.Backend.Source != SourceDerived {
+			t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceDerived)
+		}
+	})
+
+	t.Run("explicit haiku model routes to claude backend", func(t *testing.T) {
+		input := baseResolveInput()
+		input.CLI.Model = "haiku"
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if settings.Backend.Value != BackendClaude {
+			t.Fatalf("Backend.Value = %q, want %q (anthropic model should route to claude)", settings.Backend.Value, BackendClaude)
+		}
+	})
+
+	t.Run("explicit openai model routes to opencode backend", func(t *testing.T) {
+		input := baseResolveInput()
+		input.CLI.Model = "gpt-4o"
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if settings.Backend.Value != BackendOpenCode {
+			t.Fatalf("Backend.Value = %q, want %q (openai model should route to opencode)", settings.Backend.Value, BackendOpenCode)
+		}
+		if settings.Backend.Source != SourceDerived {
+			t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceDerived)
+		}
+		if settings.Backend.Detail != "model-requirement" {
+			t.Fatalf("Backend.Detail = %q, want %q", settings.Backend.Detail, "model-requirement")
+		}
+	})
+
+	t.Run("explicit codex model routes to opencode backend", func(t *testing.T) {
+		input := baseResolveInput()
+		input.CLI.Model = "codex"
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if settings.Backend.Value != BackendOpenCode {
+			t.Fatalf("Backend.Value = %q, want %q (openai codex model should route to opencode)", settings.Backend.Value, BackendOpenCode)
+		}
+	})
+
+	t.Run("explicit deepseek model routes to opencode backend", func(t *testing.T) {
+		input := baseResolveInput()
+		input.CLI.Model = "deepseek"
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if settings.Backend.Value != BackendOpenCode {
+			t.Fatalf("Backend.Value = %q, want %q (deepseek model should route to opencode)", settings.Backend.Value, BackendOpenCode)
+		}
+	})
+
+	t.Run("default backend is claude (since default model is anthropic)", func(t *testing.T) {
+		input := baseResolveInput()
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if settings.Backend.Value != BackendClaude {
+			t.Fatalf("Backend.Value = %q, want %q (default should be claude since default model is anthropic)", settings.Backend.Value, BackendClaude)
+		}
+		if settings.Backend.Source != SourceDefault {
+			t.Fatalf("Backend.Source = %q, want %q", settings.Backend.Source, SourceDefault)
+		}
+		// Verify default model is anthropic sonnet
+		if !strings.Contains(settings.Model.Value, "sonnet") {
+			t.Fatalf("Model.Value = %q, want sonnet variant (default model)", settings.Model.Value)
+		}
+	})
+
+	t.Run("explicit CLI backend overrides model-aware routing", func(t *testing.T) {
+		// User explicitly chose opencode backend, but uses anthropic model
+		// This should error (incompatible combo) unless allow_anthropic_opencode is set
+		input := baseResolveInput()
+		input.CLI.Backend = BackendOpenCode
+		input.CLI.Model = "sonnet"
+
+		_, err := Resolve(input)
+		if err == nil {
+			t.Fatal("Resolve() error = nil, want compatibility error for explicit incompatible combo")
+		}
+		if !strings.Contains(err.Error(), "allow_anthropic_opencode") {
+			t.Fatalf("Resolve() error = %q, want hint about allow_anthropic_opencode override", err)
+		}
+	})
+
+	t.Run("explicit CLI backend claude with openai model errors", func(t *testing.T) {
+		// User explicitly chose claude backend with openai model - incompatible
+		input := baseResolveInput()
+		input.CLI.Backend = BackendClaude
+		input.CLI.Model = "gpt-4o"
+
+		_, err := Resolve(input)
+		if err == nil {
+			t.Fatal("Resolve() error = nil, want compatibility error")
+		}
+		if !strings.Contains(err.Error(), "backend claude does not support provider openai") {
+			t.Fatalf("Resolve() error = %q, want compatibility error", err)
+		}
+	})
+
+	t.Run("anthropic model implies tmux spawn mode", func(t *testing.T) {
+		// When anthropic model routes to claude backend, spawn mode should be tmux
+		input := baseResolveInput()
+		input.CLI.Model = "opus"
+
+		settings, err := Resolve(input)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if settings.SpawnMode.Value != SpawnModeTmux {
+			t.Fatalf("SpawnMode.Value = %q, want %q (claude backend implies tmux)", settings.SpawnMode.Value, SpawnModeTmux)
+		}
+	})
 }
