@@ -1,14 +1,14 @@
 # Model: Orchestration Cost Economics
 
 **Domain:** Agent Orchestration / Model Selection / Cost Management
-**Last Updated:** 2026-01-28
-**Synthesized From:** 15 investigations, 25+ kb quick entries, and decisions spanning Nov 2025 - Jan 2026
+**Last Updated:** 2026-02-20
+**Synthesized From:** 15 investigations, 25+ kb quick entries, decisions spanning Nov 2025 - Jan 2026, and probe 2026-02-20-model-drift-stale-references-audit
 
 ---
 
 ## Summary (30 seconds)
 
-Agent orchestration cost is driven by three factors: **model pricing** (10-100x variance), **access restrictions** (fingerprinting, OAuth blocking), and **visibility** (lack of tracking caused $402 surprise spend). The Jan 2026 cost crisis revealed that headless spawning without cost visibility leads to runaway spend. DeepSeek V3 at $0.25/$0.38/MTok is now a **viable primary option** after testing confirmed stable function calling (contradicting earlier "unstable" documentation).
+Agent orchestration cost is driven by three factors: **model pricing** (10-100x variance), **access restrictions** (fingerprinting, OAuth blocking), and **visibility** (lack of tracking caused $402 surprise spend). The Jan 2026 cost crisis revealed that headless spawning without cost visibility leads to runaway spend. As of Feb 2026, the **default spawn path is Claude backend + Max subscription** (Sonnet via Claude CLI), making the $200/mo flat rate the primary economic path — not just the escape hatch. The provider ecosystem has expanded to 4 providers (Anthropic, Google, OpenAI/Codex, DeepSeek) with centralized config resolution (`pkg/spawn/resolve.go`) and model-aware backend routing.
 
 ---
 
@@ -24,6 +24,10 @@ Agent orchestration cost is driven by three factors: **model pricing** (10-100x 
 | Jan 18, 2026 | Discover $402 spent in ~2 weeks | $70-80/day burn rate |
 | Jan 18, 2026 | Switch back to Max subscription default | $200/mo flat |
 | Jan 19, 2026 | Test confirms DeepSeek V3 function calling works | New viable option |
+| Feb 2026 | Flash models banned for agent work | `validateModel()` gate in resolve.go |
+| Feb 2026 | OpenAI/Codex added as first-class provider | 12 model aliases, OpenCode backend |
+| Feb 2026 | Centralized `ResolvedSpawnSettings` with provenance | Multi-file resolver replaces monolithic backend.go |
+| Feb 2026 | Default backend changed to Claude (Sonnet default) | Max subscription is now primary path |
 
 ---
 
@@ -31,13 +35,14 @@ Agent orchestration cost is driven by three factors: **model pricing** (10-100x 
 
 | Model | Input $/MTok | Output $/MTok | Access Method | Notes |
 |-------|--------------|---------------|---------------|-------|
-| **DeepSeek V3** | $0.25 | $0.38 | API | **10-65x cheaper, function calling works** |
-| DeepSeek R1 | $0.45 | $2.15 | API | Reasoning model, function calling experimental |
-| Gemini Flash | ~$0.10-0.30 | Variable | API/Free tier | 2,000 req/min limit blocks tool-heavy agents |
-| Claude Haiku | $1.00 | $5.00 | API | Fast, lightweight |
-| Claude Sonnet | $3.00 | $15.00 | API | Doubles at >200K context |
-| Claude Opus | $5.00 | $25.00 | API or Max+CLI | Highest quality |
-| **Claude Max** | $200/mo flat | - | Claude CLI only | Unlimited Sonnet + Opus |
+| **DeepSeek V3** | $0.25 | $0.38 | OpenCode API | **10-65x cheaper, function calling works** |
+| DeepSeek R1 | $0.45 | $2.15 | OpenCode API | Reasoning model, function calling experimental |
+| ~~Gemini Flash~~ | ~$0.10-0.30 | Variable | ~~API/Free tier~~ | **BANNED for agent work** (`validateModel()` gate) |
+| Claude Haiku | $1.00 | $5.00 | Claude CLI (Max) | Fast, lightweight |
+| Claude Sonnet | $3.00 | $15.00 | Claude CLI (Max) | **Default model** (claude-sonnet-4-5-20250929) |
+| Claude Opus | $5.00 | $25.00 | Claude CLI (Max) | Highest quality, requires Claude backend |
+| **Claude Max** | $200/mo flat | - | Claude CLI only | Unlimited Sonnet + Opus. **Now the default path.** |
+| OpenAI GPT-5 | Variable | Variable | OpenCode API | First-class provider (12 aliases including Codex) |
 
 ### Cost Equivalence Points
 
@@ -215,18 +220,17 @@ Switched from free Gemini to paid Sonnet on Jan 9 with **no cost tracking**:
 
 **Result:** $402 spent in ~2 weeks without awareness, ramping to $70-80/day.
 
-### The Solution (Not Yet Implemented)
+### Current Status (Feb 2026): Partially Addressed
 
-**Hybrid approach recommended:**
-1. **Local token counting** - Calculate from OpenCode session metadata, per-spawn granularity
-2. **Anthropic Usage API** - `/v1/billing/cost` for ground truth (returns "Not Found" currently)
-3. **Budget alerts** - Warn at 80%, critical at 95%, auto-switch at 100%
+**Token counting exists** (`cmd/orch/tokens.go`): `orch tokens` shows per-session and aggregate token counts (input, output, cache read, reasoning). This addresses visibility for context usage monitoring.
 
-**Pricing for local calculation (Sonnet 4.5):**
-- Input: $3.00/MTok
-- Output: $15.00/MTok
-- Cache write: $3.75/MTok
-- Cache read: $0.30/MTok
+**Still missing:**
+- Dollar-cost calculation from token counts (model-specific pricing)
+- Per-spawn cost aggregation
+- Budget alerts (80%/95%/100% thresholds)
+- Anthropic Usage API integration (`/v1/billing/cost`)
+
+**Mitigated by architecture change:** Since the default path is now Max subscription (flat $200/mo), the cost visibility gap is less urgent — there's no pay-per-token surprise. The gap becomes relevant again when using non-Max paths (DeepSeek, OpenAI API).
 
 **Source:** `.kb/investigations/archived/2026-01-12-inv-sonnet-cost-tracking-requirements.md`, `.kb/investigations/2026-01-18-inv-add-api-cost-tracking-widget.md`
 
@@ -234,43 +238,72 @@ Switched from free Gemini to paid Sonnet on Jan 9 with **no cost tracking**:
 
 ## Spawn Path Economics
 
-### Current Architecture (Dual Spawn)
+### Current Architecture (Feb 2026)
+
+The dual spawn architecture has been refactored from monolithic `backend.go` into a centralized resolver system (`pkg/spawn/resolve.go`) with model-aware backend routing.
 
 | Path | Backend | Models | Cost | Use When |
 |------|---------|--------|------|----------|
-| **Primary** | OpenCode API | Sonnet, DeepSeek, Gemini | Pay-per-token | Normal work |
-| **Escape Hatch** | Claude CLI | Opus, Sonnet (Max) | $200/mo flat | Infrastructure, high-quality |
+| **Primary (default)** | Claude CLI | Sonnet, Opus, Haiku (Anthropic) | $200/mo flat (Max) | All Anthropic model work |
+| **Alternative** | OpenCode API | DeepSeek, OpenAI/Codex, Gemini Pro | Pay-per-token | Non-Anthropic providers, cost optimization |
+| **Override** | OpenCode API + `allow_anthropic_opencode` | Any | Pay-per-token | Explicit user config override |
+
+**Key change from Jan 2026:** The primary/escape-hatch distinction has inverted. Claude backend + Max is now the *default*, not the escape hatch. The infrastructure escape hatch still exists (`InfrastructureDetected` → auto-select Claude backend) but is now redundant since Claude is already the default.
 
 ### Economic Decision Tree
 
 ```
-Is this infrastructure work (orch, opencode, spawn system)?
-  → YES: Use escape hatch (Claude CLI + Max) - independence matters
-  → NO: Continue...
+What provider is the model?
+  → Anthropic: Claude backend (default, Max subscription)
+  → OpenAI/Codex: OpenCode backend (auto-routed)
+  → DeepSeek: OpenCode backend (auto-routed)
+  → Google: OpenCode backend (auto-routed, Flash BANNED)
+
+Need Anthropic model via OpenCode backend?
+  → Set allow_anthropic_opencode: true in ~/.orch/user.yaml
+  → Warning: bypasses fingerprinting protection, may fail
 
 Is cost the primary constraint?
-  → YES: Use DeepSeek V3 ($0.25/$0.38/MTok)
-  → NO: Continue...
+  → YES: Use DeepSeek V3 ($0.25/$0.38/MTok) via OpenCode backend
+  → NO: Use Sonnet via Max subscription (default)
 
 Is highest quality needed?
-  → YES: Use Opus via Max subscription
-  → NO: Use Sonnet or DeepSeek V3
+  → YES: Use Opus via Max subscription (Claude backend)
+  → NO: Use Sonnet (default) or DeepSeek V3
 ```
 
-**Source:** `.kb/models/model-access-spawn-paths.md`, `.kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md`
+**Source:** `pkg/spawn/resolve.go` (centralized resolver), `.kb/models/model-access-spawn-paths.md`
+
+### Config Resolution System (Feb 2026)
+
+Spawn settings are now resolved via `ResolvedSpawnSettings` with full provenance tracking. Each setting (backend, model, tier, spawn mode, MCP, mode, validation) records its source:
+
+**Precedence (highest to lowest):**
+1. CLI flags (`--backend`, `--model`, etc.)
+2. Beads labels (e.g., `needs:playwright`)
+3. Project config (`.orch/config.yaml` — per-backend model, spawn mode)
+4. User config (`~/.orch/user.yaml` — default model, backend, tier)
+5. Heuristics (infrastructure detection, task scope inference, skill defaults)
+6. Defaults (Claude backend, Sonnet model, headless mode)
+
+**Model-aware backend routing:** When backend is not explicitly set via CLI, the model's provider determines the backend automatically. Anthropic models → Claude backend. Non-Anthropic models → OpenCode backend. This generalizes the dual-spawn architecture into provider-based routing.
+
+**Implementation:** `pkg/spawn/resolve.go` (resolver), `pkg/spawn/claude.go` (Claude backend), `pkg/spawn/opencode_mcp.go` (OpenCode backend)
 
 ---
 
 ## Alternatives Evaluated
 
-### OpenAI ChatGPT Pro ($200/mo)
+### OpenAI/Codex (First-Class Provider, Feb 2026)
 
-- Codex CLI available (terminal agent like Claude Code)
-- OAuth has bugs, less mature than Claude Code
-- No API access included (same as Anthropic Max)
-- Viable backup if Anthropic restricts further
+**Status:** Promoted from "backup alternative" to first-class provider in the model alias system.
 
-**Source:** `.kb/investigations/archived/2026-01-18-inv-research-compare-openai-chatgpt-pro-anthropic-max.md`
+- 12 model aliases: `gpt`, `gpt4o`, `gpt-4o`, `gpt4o-mini`, `gpt-5`, `gpt5-latest`, `gpt-5-mini`, `o3`, `o3-mini`, `codex`, `codex-mini`, `codex-max`, `codex-latest`, `codex-5.1`, `codex-5.2`
+- Routed to OpenCode backend automatically via `modelBackendRequirement()`
+- Codex CLI available (terminal agent like Claude Code, GPT Pro OAuth path)
+- ChatGPT Pro ($200/mo) — no API access included (same as Anthropic Max)
+
+**Source:** `pkg/model/model.go` (aliases), `pkg/spawn/resolve.go` (routing), `.kb/investigations/archived/2026-01-18-inv-research-compare-openai-chatgpt-pro-anthropic-max.md`
 
 ### OpenCode Zen (Cooperative Buying Pool)
 
@@ -301,7 +334,7 @@ Is highest quality needed?
 
 ### Q: When to use escape hatch (Max subscription)?
 
-**A:** Infrastructure work (fixing orch/opencode itself), complex architecture decisions, or when API is rate-limited.
+**A:** Max subscription via Claude backend is now the **default**, not the escape hatch. The infrastructure escape hatch (`InfrastructureDetected` flag) still exists but is redundant since Claude is already the default backend. The real question is now "when to use non-Anthropic providers?" — answer: when cost optimization matters or when you need OpenAI/Codex-specific capabilities.
 
 ### Q: Is second Max subscription needed?
 
@@ -313,7 +346,7 @@ Is highest quality needed?
 
 ### C1: Anthropic Protects Claude Code Revenue
 
-Fingerprinting blocks third-party tools from Max subscription. This is intentional product strategy, not a bug. Expect continued enforcement.
+Fingerprinting blocks third-party tools from Max subscription. This is intentional product strategy, not a bug. Expect continued enforcement. The `allow_anthropic_opencode: true` user config option provides an explicit escape hatch, but Anthropic models on OpenCode backend are blocked by default in code (`validateModelCompatibility()`).
 
 ### C2: Cost Visibility Required Before API Usage
 
@@ -328,9 +361,9 @@ The $402 surprise proves: never use pay-per-token without cost tracking. Impleme
 - Complex multi-file refactoring → Prefer Claude
 - Architecture decisions → Prefer Opus (reasoning quality matters)
 
-### C4: Gemini Flash TPM Limits Block Tool-Heavy Work
+### C4: Gemini Flash Banned for Agent Work
 
-2,000 req/min limit hit by single investigation agent (35+ tool calls/sec). Not viable for primary orchestration.
+Originally blocked by 2,000 req/min TPM limit. Now **explicitly banned** in code via `validateModel()` in `pkg/spawn/resolve.go` — any Flash model (Google provider + "flash" in model ID) returns a hard error. This is enforced at spawn resolution time, not just a recommendation.
 
 ---
 
@@ -339,7 +372,7 @@ The $402 surprise proves: never use pay-per-token without cost tracking. Impleme
 ### Decisions
 - `.kb/decisions/2026-01-09-abandon-claude-max-oauth-use-gemini-primary.md`
 - `.kb/decisions/2026-01-13-cancel-second-claude-max-subscription.md`
-- `.kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md`
+- ~~`.kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md`~~ (DELETED — decision absorbed into code patterns in `pkg/spawn/resolve.go`)
 
 ### Investigations
 - `.kb/investigations/archived/2026-01-28-inv-download-analyze-https-she-llac.md` - Credit formula, free cache reads, value multipliers
@@ -358,10 +391,14 @@ The $402 surprise proves: never use pay-per-token without cost tracking. Impleme
 ### Test Evidence
 - `.orch/workspace/og-inv-test-deepseek-v3-19jan-25d3/SYNTHESIS.md` - DeepSeek V3 function calling test
 
+### Probes
+- `.kb/models/orchestration-cost-economics/probes/2026-02-20-model-drift-stale-references-audit.md` — Identified 3 deleted references, stale spawn path economics, expanded provider ecosystem
+
 **Primary Evidence (Verify These):**
 - Anthropic billing dashboard - Actual spend history showing $402 in ~2 weeks
-- `~/.anthropic/` - OAuth token storage showing Max subscription authentication
+- `~/.local/share/opencode/auth.json` - Auth token storage (replaces deleted `~/.anthropic/`)
 - DeepSeek API documentation - Current pricing ($0.25/$0.38/MTok) and function calling status
-- `.kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md` - Economic decision
-- `pkg/spawn/backend.go` - Dual spawn path implementation (OpenCode API vs Claude CLI)
+- `pkg/spawn/resolve.go` - Centralized spawn resolver with provenance tracking (replaces deleted `pkg/spawn/backend.go`)
+- `pkg/model/model.go` - Model alias ecosystem (4 providers, 30+ aliases)
+- `cmd/orch/tokens.go` - Token counting implementation
 - she-llac.com credit formula reverse engineering - Internal credit system documentation
