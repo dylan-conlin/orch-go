@@ -1,178 +1,209 @@
 # Model: Completion Verification Architecture
 
 **Domain:** Completion / Verification / Quality Gates
-**Last Updated:** 2026-01-14
-**Synthesized From:** 31 investigations + completion.md guide on verification layers, UI approval gates, cross-project detection, escalation model, targeted bypasses
+**Last Updated:** 2026-02-20
+**Synthesized From:** 31 investigations, 14 probes, completion.md guide, end-to-end infrastructure audit (Feb 20, 2026)
 
 ---
 
 ## Summary (30 seconds)
 
-Completion verification operates through **three independent gates** (Phase, Evidence, Approval) that check different aspects of "done". Phase gate verifies agent claims completion, Evidence gate requires visual/test proof in beads comments, Approval gate (UI changes only) requires human sign-off. Verification is **tier-aware**: light tier checks Phase + commits, full tier adds SYNTHESIS.md, orchestrator tier checks SESSION_HANDOFF.md instead. The **5-tier escalation model** surfaces knowledge-producing work (investigation/architect/research) for mandatory orchestrator review before auto-closing. Cross-project detection uses SPAWN_CONTEXT.md to determine which directory to verify in. **Targeted bypasses** (`--skip-{gate} "reason"`) replace blanket `--force`, allowing specific gates to be skipped while others still run.
+Completion verification operates through **14 gates** organized into **4 verification levels** (V0–V3). Each level is a strict superset of the one below: V0 (Acknowledge) checks only that the agent reported completion; V1 (Artifacts) adds deliverable and constraint checks; V2 (Evidence) adds test evidence, build, and git diff checks; V3 (Behavioral) adds visual verification and human observation gates. The verification level is determined at spawn time from skill type and issue type, stored in AGENT_MANIFEST.json, and flows through to `orch complete`. **Targeted bypasses** (`--skip-{gate} "reason"`) remain as an escape hatch for edge cases, but well-configured spawns should require zero skip flags. The daemon runs the same `VerifyCompletionFull()` pipeline with threshold-based pause to prevent unchecked auto-completion.
 
 ---
 
 ## Core Mechanism
 
-### Three-Layer Verification
+### The 14 Gates
 
-Each layer checks a different question:
+| # | Gate | Constant | What It Checks |
+|---|------|----------|----------------|
+| 1 | Phase Complete | `phase_complete` | Agent reported "Phase: Complete" via beads comment |
+| 2 | Synthesis | `synthesis` | SYNTHESIS.md exists and is non-empty (skipped for light tier and knowledge-producing skills) |
+| 3 | Handoff Content | `handoff_content` | SESSION_HANDOFF.md has TLDR & Outcome filled (orchestrator tier only) |
+| 4 | Skill Output | `skill_output` | Required skill outputs exist (from skill.yaml `outputs.required`) |
+| 5 | Phase Gates | `phase_gate` | Required skill phases were reported in beads comments |
+| 6 | Constraint | `constraint` | Constraint patterns from SPAWN_CONTEXT match actual files |
+| 7 | Decision Patch Limit | `decision_patch_limit` | Decision patch count within limits |
+| 8 | Test Evidence | `test_evidence` | Evidence of actual test execution in beads comments (anti-theater detection) |
+| 9 | Git Diff | `git_diff` | Git changes match SYNTHESIS.md claims |
+| 10 | Build | `build` | Project compiles (`go build ./...`) — the only unfakeable gate |
+| 11 | Accretion | `accretion` | File size growth within limits (accretion boundary enforcement) |
+| 12 | Visual Verification | `visual_verification` | Screenshot/Playwright evidence for web/ changes, with risk assessment |
+| 13 | Explain-Back | `explain_back` | Orchestrator explains what was built and why (gate1/comprehension) |
+| 14 | Behavioral | `behavioral` | Human confirms behavior was observed working (gate2, V3 only) |
 
-| Layer | Question | Blocks Completion? | Checked By |
-|-------|----------|-------------------|------------|
-| **Phase Gate** | Did agent claim completion? | Yes | `bd comment` search for "Phase: Complete" |
-| **Evidence Gate** | Does proof exist? | Yes | Beads comment search for screenshots/test output |
-| **Approval Gate** | Did human verify? | Yes (UI only) | Beads comment search for "APPROVED" or --approve flag |
+**Key design property:** Gates are structurally independent but functionally level-selective. Each gate can fail independently, and all applicable gates must pass (or be explicitly skipped). The verification level determines which subset of gates fires.
 
-**Key insight:** Gates are **independent and cumulative**. All must pass. Phase without Evidence = incomplete. Evidence without Approval (for UI) = incomplete.
+**Source:** `pkg/verify/check.go` — constants at top, `VerifyCompletionFull()` orchestrates all gates
 
-### Phase Gate
+### Four Verification Levels (V0–V3)
+
+The 14 gates are organized into four levels, each a strict superset of the level below:
+
+| Level | Name | Gates That Fire | Typical Work |
+|-------|------|----------------|--------------|
+| **V0** | Acknowledge | Phase Complete | Config changes, README updates, issue creation |
+| **V1** | Artifacts | V0 + Synthesis, Handoff Content, Skill Output, Phase Gates, Constraint, Decision Patch Limit | Investigations, architect designs, research, audits |
+| **V2** | Evidence | V1 + Test Evidence, Git Diff, Build, Accretion | Feature implementation, bug fixes, debugging |
+| **V3** | Behavioral | V2 + Visual Verification, Explain-Back, Behavioral | UI features, user-facing changes, critical behavioral modifications |
+
+**Level determination:** `V_default = max(skill_level, issue_type_level)`
+
+| Skill | Default Level |
+|-------|--------------|
+| issue-creation | V0 |
+| investigation, architect, research, codebase-audit, design-session | V1 |
+| feature-impl, systematic-debugging, reliability-testing | V2 |
+| (any with web/ changes detected) | auto-elevated to V3 |
+
+| Issue Type | Minimum Level |
+|------------|--------------|
+| task, question | no minimum |
+| investigation, probe | V1 |
+| feature, bug, decision | V2 |
+
+**Override:** Orchestrator can declare `--verify-level V0` at spawn time to override defaults.
+
+**Source:** Design in `.kb/investigations/2026-02-20-inv-architect-verification-levels.md`, current implementation in `pkg/verify/check.go`, spawn tier defaults in `pkg/spawn/config.go`
+
+### Phase Gate (Gate 1)
 
 **What:** Verifies agent reported completion via beads comment.
 
-**Check:**
-```go
-comments := beads.GetComments(beadsID)
-for _, comment := range comments {
-    if strings.Contains(comment.Text, "Phase: Complete") {
-        return true
-    }
-}
-return false  // Gate fails
-```
+**Implementation:** Uses regex `(?i)Phase:\s*(\w+)(?:\s*[-–—]\s*(.*))?` to parse latest phase from comments. Returns `PhaseStatus{Phase, Summary, Found, PhaseReportedAt}`.
 
-**Why it exists:** Agent's claim of completion is the first signal. Without this, we're guessing if agent thinks it's done.
+**Source:** `pkg/verify/beads_api.go:ParsePhaseFromComments()`
 
-**What it doesn't check:** Whether work is actually complete, just whether agent claims it is.
+### Test Evidence Gate (Gate 8)
 
-**Source:** `pkg/verify/phase.go`
+**What:** Detects actual test execution evidence in beads comments, with anti-theater mechanisms.
 
-### Evidence Gate
+**True positive patterns (22):** Framework-specific output with counts — `go test ./... - PASS`, `ok package 0.123s`, `--- PASS: TestName`, `15 passing, 0 failing`, `pytest - 15 passed`, `cargo test - ok`, `playwright test - 5 passed`.
 
-**What:** Verifies visual or test evidence exists for UI/feature work.
+**False positive patterns (11):** Vague claims without evidence — `tests pass` (no count), `all tests pass`, `verified tests pass`, `tests should pass`, `assuming tests pass`, `tests will pass`, `tests are passing`. These are explicitly rejected.
 
-**Check:**
-```go
-comments := beads.GetComments(beadsID)
-hasScreenshot := false
-hasTestOutput := false
+**Exemptions:**
+- Markdown-only changes (no test harness needed)
+- Files outside project directory (no local test harness available)
+- No code changes detected (only config/docs changed)
+- Skills excluded: investigation, architect, research, design-session, codebase-audit, issue-creation
 
-for _, comment := range comments {
-    if containsImageURL(comment.Text) || contains(comment.Text, "screenshot") {
-        hasScreenshot = true
-    }
-    if contains(comment.Text, "test output") || contains(comment.Text, "✓") {
-        hasTestOutput = true
-    }
-}
+**Source:** `pkg/verify/test_evidence.go` — patterns at lines 79-136, `HasTestExecutionEvidence()` for detection, `VerifyTestEvidenceForCompletion()` for the completion flow
 
-// UI work requires screenshot, feature work requires tests
-if isUIWork && !hasScreenshot {
-    return ErrMissingEvidence
-}
-if isFeatureWork && !hasTestOutput {
-    return ErrMissingEvidence
-}
-```
+### Visual Verification Gate (Gate 12)
 
-**Why it exists:** Agents can claim "I tested it" without actually testing. Evidence gate requires proof in comments.
+**What:** Requires screenshot/Playwright evidence for UI changes, with risk-based assessment.
 
-**What it doesn't check:** Whether evidence is correct, just whether it exists.
+**Risk assessment heuristics:**
+- `WebRiskNone` — No web changes → gate skipped
+- `WebRiskLow` — Trivial CSS changes (≤10 lines) → NO verification needed
+- `WebRiskMedium` — Component/layout changes → verification REQUIRED
+- `WebRiskHigh` — New routes, major UX changes → verification REQUIRED
 
-**Source:** `pkg/verify/evidence.go`
+**Human approval patterns:** `✅ APPROVED`, `UI APPROVED`, `LGTM UI`, `I approve the UI/visual/changes`
 
-### Approval Gate (UI Changes Only)
+**Source:** `pkg/verify/visual.go` — risk assessment at `AssessWebChangeRisk()`, evidence detection at `HasVisualVerificationEvidence()`, approval at `HasHumanApproval()`
 
-**What:** Requires explicit human approval for UI modifications.
+### Checkpoint Tiers (Gates 13–14)
 
-**Check:**
-```go
-// UI work = modified files under web/
-if !modifiedWebFiles(workspace) {
-    return nil  // Not UI work, skip approval
-}
+**What:** Human comprehension and behavioral verification at completion time.
 
-comments := beads.GetComments(beadsID)
-for _, comment := range comments {
-    if matchesApprovalPattern(comment.Text) {
-        return nil  // Approved
-    }
-}
+| Checkpoint Tier | Issue Types | Gate1 (Explain-Back) | Gate2 (Behavioral) |
+|----------------|-------------|---------------------|-------------------|
+| Tier 1 | feature, bug, decision | Required | Required |
+| Tier 2 | investigation, probe | Required | Not required |
+| Tier 3 | task, question, other | Not required | Not required |
 
-// Also check for --approve flag
-if cliArgs.Approve {
-    addComment(beadsID, "APPROVED by --approve flag")
-    return nil
-}
+**Implementation:**
+- Gate1: Requires `--explain "text"` on `orch complete` — orchestrator explains what was built
+- Gate2: Requires `--verified` flag — orchestrator confirms behavior observed
+- Both stored as checkpoint records in `~/.orch/verification-checkpoints.jsonl`
 
-return ErrRequiresApproval  // Gate fails
-```
-
-**Approval patterns:**
-- "APPROVED"
-- "lgtm"
-- "looks good"
-- "ship it"
-
-**Why it exists:** Agents can claim visual verification without actually doing it. Human approval gate prevents "agent renders wrong → thinks done → human discovers wrong" problem.
-
-**Why only UI changes:** Code changes have test evidence, refactors have no behavior change. UI requires subjective judgment ("does this look right?").
-
-**Source:** `pkg/verify/visual.go`
+**Source:** `pkg/checkpoint/checkpoint.go:TierForIssueType()`, `RequiresGate2()`
 
 ### Tier-Aware Verification
 
-Different workspace tiers have different requirements:
+Three workspace tiers route to different verification flows:
 
-| Tier | Artifact Required | Beads Checks | Phase Reporting | Handoff Update |
-|------|-------------------|--------------|-----------------|----------------|
-| **light** | None | Yes (status, comments) | Yes | Optional prompt |
-| **full** | SYNTHESIS.md | Yes | Yes | Optional prompt |
-| **orchestrator** | SESSION_HANDOFF.md | No | No | N/A |
+| Tier | Artifact Required | Beads Checks | Phase Reporting | Flow |
+|------|-------------------|--------------|-----------------|------|
+| **light** | None | Yes | Yes | `verifyLight()` — Phase + commits, skips SYNTHESIS.md |
+| **full** | SYNTHESIS.md | Yes | Yes | `verifyFull()` — All applicable gates |
+| **orchestrator** | SESSION_HANDOFF.md | No | No | `VerifyOrchestratorCompletion()` — Handoff only |
 
 **Implementation:**
 ```go
-func VerifyCompletionWithTier(workspace string) error {
-    tier := readTierFile(workspace)
-
-    switch tier {
-    case "light":
-        return verifyLight(workspace)  // Phase + commits
-    case "full":
-        return verifyFull(workspace)   // Phase + commits + SYNTHESIS.md
-    case "orchestrator":
-        return verifyOrchestrator(workspace)  // SESSION_HANDOFF.md only
-    default:
-        return verifyFull(workspace)   // Default to full
-    }
+tier := readTierFile(workspace)  // reads .tier file in workspace
+switch tier {
+case "light":
+    // Phase + commits, synthesis auto-skipped
+case "full":
+    // All gates for the verification level
+case "orchestrator":
+    // SESSION_HANDOFF.md checks only
 }
 ```
 
-**Why tiers matter:**
-- Light tier: Quick fixes, no investigation needed
-- Full tier: Complex work requiring understanding artifacts
-- Orchestrator tier: Different artifact (SESSION_HANDOFF.md), no beads tracking
-
 **Source:** `pkg/verify/check.go:VerifyCompletionWithTier()`
+
+### Targeted Bypass System
+
+Each gate can be individually bypassed with a required reason (min 10 characters):
+
+```bash
+--skip-test-evidence --skip-reason "markdown-only change, no tests applicable"
+--skip-build --skip-reason "CI will catch build, local toolchain broken"
+--skip-visual --skip-reason "CSS-only change verified via diff review"
+```
+
+**Constraint:** Bypass events are logged to `~/.orch/events.jsonl` with gate name, reason, beads ID, and skill for observability. `orch stats` shows pass/fail/bypass rates per gate.
+
+**Source:** `cmd/orch/complete_cmd.go:SkipConfig`, `getSkipConfig()`, `logSkipEvents()`
+
+### Daemon Verification Integration
+
+The daemon runs the same verification pipeline as manual `orch complete`:
+
+1. `ProcessCompletion()` calls `VerifyCompletionFull()` before marking anything
+2. `VerificationTracker.IsPaused()` checks threshold-based pause (default: 3 failures before pause)
+3. `SeedFromBacklog()` persists tracker state across daemon restarts
+4. Signal file `~/.orch/daemon-verification.signal` bridges human verification to daemon awareness
+
+**Source:** `pkg/daemon/daemon.go` (ProcessCompletion, line ~342-380), `pkg/daemon/verification_tracker.go`
+
+### Escalation Model
+
+After verification passes, escalation determines human attention level:
+
+| Level | Meaning | When |
+|-------|---------|------|
+| `EscalationNone` | Auto-complete silently | Simple tasks, all gates pass |
+| `EscalationInfo` | Auto-complete, log for review | Knowledge work without recommendations |
+| `EscalationReview` | Auto-complete, queue for mandatory review | Knowledge work with recommendations, non-success outcome |
+| `EscalationBlock` | DO NOT auto-complete | Visual needs approval, verification failed |
+| `EscalationFailed` | Failure state | Verification gates failed |
+
+**Knowledge-producing skills** (investigation, architect, research, design-session, codebase-audit, issue-creation) always surface for at least `EscalationInfo`.
+
+**Source:** `pkg/verify/escalation.go:DetermineEscalation()`, `IsKnowledgeProducingSkill()`
 
 ### Activity Feed Persistence
 
-The activity feed for completed agents remains viewable after completion via a hybrid persistent layer:
-*   **Storage:** Proxied from OpenCode's `/session/:sessionID/messages` API.
-*   **Reconciliation:** Historical messages are transformed into SSE-compatible events and merged with any real-time events stored in the frontend cache.
-*   **Caching:** The dashboard uses a per-session Map cache for historical events to reduce redundant API calls during a browser session.
+Completed agent activity remains viewable via hybrid persistent layer:
+- **Storage:** Proxied from OpenCode's `/session/:sessionID/messages` API
+- **Reconciliation:** Historical messages transformed into SSE-compatible events
+- **Caching:** Per-session Map cache in dashboard frontend
 
 **Source:** `cmd/orch/serve_agents.go:handleSessionMessages()`
 
 ### Progressive Handoff Updates
 
-To prevent knowledge loss at session end (**Capture at Context**), `orch complete` triggers interactive prompts for active orchestrator sessions.
-
-**The Flow:**
-1.  **Verify:** standard verification gates run for the worker agent.
-2.  **Prompt:** Orchestrator is prompted for the worker's outcome and a 1-line key finding.
-3.  **Inject:** The outcome is automatically inserted into the active session's `SESSION_HANDOFF.md` Spawns table.
-4.  **Close:** Beads issue is closed only after handoff update (or skip).
+`orch complete` triggers interactive prompts for active orchestrator sessions:
+1. Standard verification gates run for the worker agent
+2. Orchestrator prompted for worker's outcome and key finding
+3. Outcome auto-inserted into SESSION_HANDOFF.md Spawns table
+4. Beads issue closed only after handoff update (or skip)
 
 **Source:** `cmd/orch/session.go:UpdateHandoffAfterComplete()`
 
@@ -180,208 +211,159 @@ To prevent knowledge loss at session end (**Capture at Context**), `orch complet
 
 ## Why This Fails
 
-### 1. Evidence Gate False Positive
+### 1. Evidence Gate False Positive (Adversarial Agent)
 
+**What happens:** Agent writes "go test ./... - PASS (47 tests)" in a beads comment without actually running tests.
 
-**What happens:** Agent passes Evidence gate without actual visual verification.
+**Root cause:** Test evidence gate checks for evidence *patterns* in comments, not actual test execution. The only gate that executes something real is Build (`go build ./...`).
 
-**Root cause:** Agent generates screenshot placeholder text ("Screenshot attached") without actually attaching screenshot. Evidence gate searches for keyword "screenshot", finds it, passes.
+**Why detection is hard:** The anti-theater patterns catch vague claims ("tests pass") but cannot distinguish fabricated framework-specific output from real output.
 
-**Why detection is hard:** Text-based keyword matching can't distinguish placeholder from actual proof.
+**Mitigation:** V3 level adds human behavioral observation. For V2, the Build gate catches compilation failures but not test failures. Future: actually run tests as a gate.
 
-**Fix:** Approval gate for UI changes. Even if Evidence passes, human must verify via --approve.
+### 2. Visual Verification Evidence Without Approval
 
-**Why this matters:** False positive on Evidence gate means broken UI ships thinking it's verified.
+**What happens:** Agent passes visual evidence gate by writing "screenshot captured" without actual screenshot. Human approval gate not triggered because risk assessment classified changes as Low.
 
-### 2. Approval Gate Bypass
+**Root cause:** Risk assessment heuristics (CSS-only ≤10 lines → Low) can misclassify impactful visual changes.
 
-**What happens:** Non-UI changes accidentally avoid approval gate.
-
-**Root cause:** File path detection (`modifiedWebFiles()`) misclassifies files. `web-utils/` not under `web/`, approval skipped.
-
-**Why detection is hard:** File structure varies across projects. Heuristics (path contains "web") can miss edge cases.
-
-**Fix:** Explicit skill-based detection. `feature-impl` with UI flag requires approval, regardless of file paths.
-
-**Future:** Skill manifest declares "requires_ui_approval: true".
+**Fix:** Override with `--verify-level V3` for known-sensitive UI work. Skill manifest `requires_ui_approval: true` (future).
 
 ### 3. Cross-Project Verification Wrong Directory
 
 **What happens:** Verification runs in wrong directory, checks wrong tests, reports false failure.
 
-**Root cause:** `SPAWN_CONTEXT.md` missing PROJECT_DIR, fallback uses workspace location (orch-go), but agent worked in orch-cli.
+**Root cause:** SPAWN_CONTEXT.md missing PROJECT_DIR, fallback uses workspace location (orch-go), but agent worked in a different repo.
 
-**Why detection is hard:** Workspace location != work location. No guaranteed signal of where work happened.
+**Fix:** `orch spawn --workdir` explicitly sets PROJECT_DIR in SPAWN_CONTEXT.md. Verification reads it. Make --workdir mandatory for cross-project spawns.
 
-**Fix:** `orch spawn --workdir` explicitly sets PROJECT_DIR in SPAWN_CONTEXT.md. Verification reads it.
+**Source:** Cross-project logic integrated into `pkg/verify/check.go`
 
-**Prevention:** Make --workdir mandatory for cross-project spawns, fail spawn if missing.
+### 4. Coaching Plugin Coverage Gap
+
+**What happens:** Behavioral monitoring (coaching plugin) only works for OpenCode API spawns. Claude CLI/tmux spawns (the "escape hatch" for critical work) have NO behavioral monitoring.
+
+**Implication:** Critical infrastructure work — exactly when monitoring matters most — runs unmonitored.
 
 ---
 
 ## Constraints
 
-### Why Three Gates Instead of One?
+### Why 14 Gates Instead of 1?
 
-**Constraint:** Verification checks Phase AND Evidence AND Approval separately.
+**Constraint:** Verification checks 14 independent aspects of "done."
 
-**Implication:** Agent can pass Phase gate but fail Evidence gate. Each failure has different fix.
+**Implication:** Each gate can fail independently. Failure diagnostics are precise (which gate failed, why).
 
-**Workaround:** None needed - this is the design.
+**This enables:** Targeted bypass per gate, level-based gate selection, data-driven improvement via per-gate metrics
+**This constrains:** Cannot simplify to single pass/fail without losing diagnostics
 
-**This enables:** Precise diagnostics for each failure mode (phase/evidence/approval)
-**This constrains:** Cannot simplify to single pass/fail check
+### Why Levels Over Gates as Primary Concept?
 
----
+**Constraint:** The 14 gates exist but are organized into 4 levels (V0–V3).
 
-### Why Approval Only for UI Changes?
+**Implication:** Orchestrators think in levels ("this needs V2 verification"), not individual gates.
 
-**Constraint:** Approval gate only applies to files under `web/`.
+**This enables:** Zero-flag completions for well-configured spawns, shared vocabulary between human and orchestrator
+**This constrains:** Auto-skip logic scattered across 6 files should be consolidated into level-based routing
 
-**Implication:** Backend changes auto-close even if agent claims visual verification.
+### Why Build Is Unconditional?
 
-**Workaround:** Manually check if suspicious, or spawn with custom verification requirements.
+**Constraint:** The Build gate fires for any completion that changed Go files, regardless of verification level.
 
-**This enables:** Backend work to complete without human bottleneck
-**This constrains:** Cannot require human approval for non-UI changes without custom config
+**Implication:** Even V0 (Acknowledge) runs Build if Go files changed. A broken build should always be caught.
 
----
+**This enables:** The only unfakeable verification signal (actually executes `go build ./...`)
+**This constrains:** Cannot skip Build via verification levels, only via explicit `--skip-build`
 
 ### Why Knowledge Work Surfaces, Not Auto-Closes?
 
-**Constraint:** investigation/architect/research agents surface for review even if all gates pass.
+**Constraint:** Investigation/architect/research agents surface for review even if all gates pass.
 
-**Implication:** Can't batch-close knowledge work overnight. Orchestrator must review next session.
-
-**Workaround:** None needed - synthesis is the point.
+**Implication:** Cannot batch-close knowledge work overnight. Orchestrator must review next session.
 
 **This enables:** Knowledge synthesis opportunity, findings integration into mental model
 **This constrains:** Cannot batch-close knowledge work without orchestrator review
 
 ---
 
-### Why Tier-Aware Verification?
+## Verification Spectrum
 
-**Constraint:** Orchestrator tier skips beads checks entirely.
+| Verification Level | What's Checked | What Could Be Gamed |
+|---|---|---|
+| Agent claims completion | Strong (Phase gate + regex parsing) | Agent could write "Phase: Complete" prematurely |
+| Artifacts exist | Strong (file existence checks) | Agent could create empty/placeholder files |
+| Tests were run | Strong (anti-theater patterns reject vague claims) | Agent could fabricate framework-specific output |
+| Binary compiles | Strong (actually runs `go build`) | Cannot be faked |
+| Tests pass | Partial (checks for evidence in comments, doesn't RUN tests) | Agent could write passing output without running |
+| Smoke test | Missing | No automated smoke/integration test execution |
+| Live e2e | Missing | Checks for Playwright evidence but doesn't execute |
+| Adversarial | Missing | No verification against intentionally deceptive agents |
 
-**Implication:** Can't use standard verification flow for orchestrator sessions.
-
-**Workaround:** `VerifyCompletionWithTier()` routes to tier-specific verification.
-
-**This enables:** Different verification logic for orchestrator vs worker tiers
-**This constrains:** Cannot use single verification flow for all work types
+**Key insight:** The system is strong at "does it exist?" verification but weak at "did it actually execute?" verification. The only unfakeable signal is `go build`.
 
 ---
 
 ## Evolution
 
 ### Phase 1: Basic Verification (Dec 2025)
-
-**What existed:** Phase gate only. Check for "Phase: Complete" comment, close beads issue.
-
-**Gap:** No evidence checking, no UI approval, auto-closed everything.
-
-**Trigger:** Agents claimed "tested, works" but shipped broken UI.
+Phase gate only. Check for "Phase: Complete" comment, close beads issue. **Gap:** No evidence checking, auto-closed everything.
 
 ### Phase 2: Evidence Gate (Dec 26-28, 2025)
-
-**What changed:** Added Evidence gate for visual/test proof. Search comments for screenshots, test output.
-
-**Investigations:** 4 investigations on false claims, evidence patterns, keyword matching.
-
-**Key insight:** Agents can claim verification without doing it. Evidence gate requires proof.
+Added evidence gate for visual/test proof. **Key insight:** Agents claim "tested, works" without doing it.
 
 ### Phase 3: Approval Gate (Dec 29-31, 2025)
-
-**What changed:** Added human approval requirement for UI changes. --approve flag or "APPROVED" comment.
-
-**Investigations:** 6 investigations on UI verification failures, approval patterns, bypass attempts.
-
-**Key insight:** Even with Evidence gate, agents can attach wrong screenshot. Human approval is final gate for subjective quality.
+Added human approval for UI changes. **Key insight:** Even with evidence, agents can attach wrong screenshot.
 
 ### Phase 4: 5-Tier Escalation (Jan 2-4, 2026)
-
-**What changed:** Knowledge-producing work (investigation/architect/research) surfaces for review instead of auto-closing.
-
-**Investigations:** 8 investigations on completion rates, synthesis gaps, knowledge loss.
-
-**Key insight:** Auto-closing knowledge work means findings never get synthesized. Surfacing forces orchestrator engagement.
+Knowledge-producing work surfaces for review instead of auto-closing. **Key insight:** Auto-closing knowledge work means findings never get synthesized.
 
 ### Phase 5: Cross-Project Verification (Jan 5-7, 2026)
-
-**What changed:** Detection of project directory from SPAWN_CONTEXT.md, verification runs in correct directory.
-
-**Investigations:** 4 investigations on verification failures, wrong directory detection, test path issues.
-
-**Key insight:** Workspace location != work location. Must read spawn context to know where work happened.
+Detection of project directory from SPAWN_CONTEXT.md. **Key insight:** Workspace location ≠ work location.
 
 ### Phase 6: Targeted Bypasses (Jan 14, 2026)
-
-**What changed:** Replaced blanket `--force` with targeted `--skip-{gate}` flags. Each gate can be bypassed individually with a required reason.
-
-**New flags:**
-- `--skip-phase "reason"` - Skip phase completion check
-- `--skip-commits "reason"` - Skip git commits check
-- `--skip-test-evidence "reason"` - Skip test evidence requirement
-- `--skip-visual "reason"` - Skip visual verification
-- `--skip-synthesis "reason"` - Skip SYNTHESIS.md check
-- `--skip-decision-patch "reason"` - Skip decision impact check
-
-**Constraint:** Reason must be ≥10 characters. Bypass events logged for observability.
-
-**Key insight:** 55% of completions used `--force` to bypass ALL gates due to false positives. Targeted bypasses let agents skip specific failing gates while still running others.
-
-**Verification metrics:** `orch stats` now shows pass/fail/bypass rates per gate, enabling data-driven improvement.
-
-**Additional fixes in this phase:**
-- Cross-repo file detection via mtime (files outside project verified by modification time)
-- Markdown-only work exempted from test_evidence gate
-- Zero spawn_time handled gracefully (skip with warning for legacy workspaces)
+Replaced blanket `--force` with targeted `--skip-{gate}` flags. 55% of completions had used `--force` due to false positives.
 
 ### Phase 7: Pure-Noise Gate Removal (Feb 2026)
+Removed 3 gates identified as pure noise through friction analysis of 1,008 bypass events:
+- `agent_running` (∞:1 bypass:fail ratio, 183 bypasses, 0 failures)
+- `model_connection` (71:1 ratio)
+- `commit_evidence` (11.8:1 ratio, redundant with git_diff gate)
 
-**What changed:** Removed three gates identified as pure noise through friction analysis: `agent_running`, `model_connection`, and `commit_evidence`.
-
-**Investigation:** Probe 2026-02-13 analyzed 1,008 bypass events and 403 failure events across all gates. Three gates showed extreme bypass:fail ratios indicating they never caught real defects:
-- `agent_running`: ∞:1 ratio (183 bypasses, 0 failures) - never caught anything, 94% bypassed for GPT model compatibility
-- `model_connection`: 71:1 ratio (71 bypasses, 1 failure) - almost never caught anything
-- `commit_evidence`: 11.8:1 ratio (59 bypasses, 5 failures) - redundant with `git_diff` gate which already validates commits
-
-**Key insight:** Gates that generate only bypass noise without catching defects should be removed entirely, not softened. These three gates were removed from both the verification code and CLI skip flags.
+### Phase 8: Verification Levels Design (Feb 20, 2026)
+Unified three implicit level systems (spawn tier, checkpoint tier, skill-based auto-skips) into four explicit verification levels (V0–V3). Design complete, implementation pending.
 
 ---
 
 ## References
 
 **Guide:**
-- `.kb/guides/completion.md` - Procedural guide (commands, workflows, troubleshooting)
+- `.kb/guides/completion.md` — Procedural guide (commands, workflows, troubleshooting)
+- `.kb/guides/completion-gates.md` — Gate-specific reference
 
 **Investigations:**
-- Completion.md references 10 investigations from Dec 2025 - Jan 2026
-- Additional 16+ investigations on evidence gates, approval patterns, cross-project detection
+- `.kb/investigations/2026-02-20-audit-verification-infrastructure-end-to-end.md` — 14-gate inventory (authoritative)
+- `.kb/investigations/2026-02-20-inv-architect-verification-levels.md` — V0-V3 levels design
+- `.kb/decisions/2026-02-20-verification-levels-v0-v3.md` — Verification levels decision record
 
-**Decisions:**
-- (Check for completion-related decisions in .kb/decisions/)
+**Probes:**
+- `probes/2026-02-20-probe-verification-infrastructure-audit.md` — Full infrastructure audit
+- `probes/2026-02-20-probe-verification-levels-design.md` — Levels design probe
 
 **Models:**
-- `.kb/models/agent-lifecycle-state-model.md` - Where completion fits in agent lifecycle
-- `.kb/models/orchestrator-session-lifecycle.md` - How orchestrator completion differs
-- `.kb/models/spawn-architecture.md` - How SPAWN_CONTEXT.md sets PROJECT_DIR
+- `.kb/models/completion-lifecycle.md` — Where completion fits in agent lifecycle
+- `.kb/models/orchestrator-session-lifecycle.md` — How orchestrator completion differs
+- `.kb/models/spawn-architecture.md` — How SPAWN_CONTEXT.md sets PROJECT_DIR
 
 **Source code:**
-- `pkg/verify/check.go` - Main verification entry point, VerifyCompletionWithTier()
-- `pkg/verify/phase.go` - Phase gate implementation
-- `pkg/verify/evidence.go` - Evidence gate implementation
-- `pkg/verify/visual.go` - Approval gate implementation (UI verification)
-- `pkg/verify/cross_project.go` - Project directory detection
-- `pkg/verify/escalation.go` - 5-tier escalation model
-- `cmd/orch/complete.go` - Complete command orchestration
-
-**Primary Evidence (Verify These):**
-- `pkg/verify/check.go:VerifyCompletionWithTier()` - Three-gate verification with tier-aware routing
-- `pkg/verify/phase.go` - Phase gate checking for "Phase: Complete" in beads comments
-- `pkg/verify/evidence.go` - Evidence gate requiring visual/test proof in comments
-- `pkg/verify/visual.go` - Approval gate for UI changes (web/ files detection)
-- `pkg/verify/escalation.go` - 5-tier escalation (investigation/architect/research surface for review)
-- `cmd/orch/complete.go` - Complete command showing targeted --skip-{gate} flags
-- `.beads/issues.jsonl` - Beads comments showing Phase: Complete signals
+- `pkg/verify/check.go` — Main verification entry point, 14 gate constants, `VerifyCompletionFull()`, tier routing
+- `pkg/verify/beads_api.go` — Phase comment parsing (`ParsePhaseFromComments()`), beads integration
+- `pkg/verify/test_evidence.go` — Test evidence detection with anti-theater patterns
+- `pkg/verify/visual.go` — Visual verification with risk assessment and approval patterns
+- `pkg/verify/escalation.go` — 5-tier escalation model, `IsKnowledgeProducingSkill()`
+- `pkg/checkpoint/checkpoint.go` — Checkpoint tier enforcement (gate1/gate2 by issue type)
+- `cmd/orch/complete_cmd.go` — Complete command orchestration, SkipConfig, CLI flags, 24-step completion flow
+- `cmd/orch/complete_pipeline.go` — Pipeline phase functions
+- `cmd/orch/complete_verify.go` — SkipConfig integration
+- `pkg/daemon/daemon.go` — Daemon verification integration (`ProcessCompletion()`)
+- `pkg/daemon/verification_tracker.go` — Threshold-based pause for daemon auto-completion
