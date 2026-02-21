@@ -1,0 +1,53 @@
+verification:
+  type: probe
+  model: model-access-spawn-paths
+  probe_path: .kb/models/model-access-spawn-paths/probes/2026-02-21-probe-gpt-model-spawn-e2e-verification.md
+
+  tests_run:
+    - name: "tmux + codex (opencode backend)"
+      command: "./orch spawn --bypass-triage --backend opencode --model codex --tmux hello 'say hello and exit'"
+      expected: "Tmux window created, agent receives prompt"
+      actual: "FAIL - opencode attach lacks --model flag, exits with usage, 15s timeout"
+
+    - name: "headless + codex (opencode backend)"
+      command: "./orch spawn --bypass-triage --backend opencode --model codex --headless --no-track hello 'say hello'"
+      expected: "Session created, agent processes messages"
+      actual: "PASS - Session ses_37f404..., 11 messages processed"
+
+    - name: "headless + gpt-5 (opencode backend)"
+      command: "./orch spawn --bypass-triage --backend opencode --model gpt-5 --headless --no-track hello 'say hello'"
+      expected: "Session created, agent processes messages"
+      actual: "FAIL - Session created but 0 responses (model not configured in OpenCode)"
+
+    - name: "headless + gpt-5.2 (opencode backend)"
+      command: "./orch spawn --bypass-triage --backend opencode --model gpt5-latest --headless --no-track hello 'say hello'"
+      expected: "Session created, agent processes messages"
+      actual: "PASS - Session ses_37f3f0..., 5 messages processed"
+
+  bugs_found:
+    - id: "opencode-attach-no-model-flag"
+      severity: high
+      description: "opencode attach CLI does not support --model flag; BuildOpencodeAttachCommand adds it anyway, causing silent failure"
+      impact: "ALL tmux+opencode spawns with non-default model are broken"
+
+    - id: "gpt-5-alias-unconfigured"
+      severity: medium
+      description: "gpt-5 alias resolves to openai/gpt-5 which is not in OpenCode's provider config"
+      impact: "Silent zombie sessions - created but never process messages"
+
+    - id: "no-model-existence-validation"
+      severity: low
+      description: "Spawn pipeline doesn't validate model ID exists in OpenCode config"
+      impact: "Any typo or missing model creates zombie session"
+
+  model_impact:
+    confirms:
+      - "Non-Anthropic providers require OpenCode backend (routing works correctly)"
+    contradicts:
+      - "Tmux escape hatch provides true independence - only works for claude backend, broken for opencode+model"
+    extends:
+      - "Tmux+opencode model selection is broken via BuildOpencodeAttachCommand"
+      - "Silent zombie sessions from unconfigured models (gpt-5)"
+
+  manual_verification:
+    - "Orchestrator should verify the 3 test sessions (codex, gpt-5, gpt-5.2) via orch status or OpenCode dashboard"
