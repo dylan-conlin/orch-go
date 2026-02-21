@@ -1,0 +1,42 @@
+name: Tradeoff Visibility for Non-Code-Reading Orchestrator
+type: design-investigation
+beads_id: orch-go-1158
+
+observable_behaviors:
+  primary: "Design investigation identifies 7 tradeoff classes, 6 surfacing gaps, and recommends a 4-layer defense with 3 layers implementable now"
+  secondary:
+    - "Probe against agent-lifecycle-state-model extends the model with tradeoff visibility dimension"
+    - "3 blocking questions created as beads entities for orchestrator decision"
+    - "3 implementation tasks created for the 3 recommended layers"
+
+acceptance_criteria:
+  - id: AC-001
+    name: "Investigation produced with complete architect format"
+    condition: ".kb/investigations/2026-02-20-design-tradeoff-visibility-for-non-code-reading-orchestrator.md exists with Problem Framing, Exploration, Synthesis, Recommendations sections"
+    evidence: "file existence"
+  - id: AC-002
+    name: "Probe extends agent-lifecycle-state-model"
+    condition: ".kb/models/agent-lifecycle-state-model/probes/2026-02-20-tradeoff-visibility-gap-analysis.md has Status: Complete and Model Impact section"
+    evidence: "file content"
+  - id: AC-003
+    name: "Blocking questions tracked"
+    condition: "orch-go-1159, orch-go-1160, orch-go-1161 exist as question type issues"
+    evidence: "bd show output"
+  - id: AC-004
+    name: "Implementation work tracked"
+    condition: "orch-go-1162, orch-go-1163, orch-go-1164 exist as feature type issues"
+    evidence: "bd show output"
+  - id: AC-005
+    name: "All forks navigated with substrate trace"
+    condition: "4 forks in investigation each have SUBSTRATE section, RECOMMENDATION, Trade-off accepted, and When this would change"
+    evidence: "investigation file content"
+
+verification_commands:
+  - command: "test -f .kb/investigations/2026-02-20-design-tradeoff-visibility-for-non-code-reading-orchestrator.md && echo PASS"
+    expected: "PASS"
+  - command: "test -f .kb/models/agent-lifecycle-state-model/probes/2026-02-20-tradeoff-visibility-gap-analysis.md && echo PASS"
+    expected: "PASS"
+  - command: "grep -c 'Phase: Complete' .kb/investigations/2026-02-20-design-tradeoff-visibility-for-non-code-reading-orchestrator.md"
+    expected: "1"
+
+manual_verification: "none required - design investigation, not implementation"
