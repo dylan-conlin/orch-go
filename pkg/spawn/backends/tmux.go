@@ -48,11 +48,25 @@ func (b *TmuxBackend) Spawn(ctx context.Context, req *SpawnRequest) (*Result, er
 		return nil, fmt.Errorf("failed to create tmux window: %w", err)
 	}
 
-	// Build opencode command using tmux package
+	// Pre-create session via HTTP API when model is specified.
+	// opencode attach doesn't support --model, so we create the session first
+	// (HTTP API accepts model) and then attach to it by session ID.
+	var preCreatedSessionID string
+	client := opencode.NewClient(req.ServerURL)
+	if req.Config.Model != "" {
+		sessionTitle := req.Config.WorkspaceName
+		resp, err := client.CreateSession(sessionTitle, req.Config.ProjectDir, req.Config.Model, nil, 0)
+		if err != nil {
+			return nil, fmt.Errorf("failed to pre-create session with model %s: %w", req.Config.Model, err)
+		}
+		preCreatedSessionID = resp.ID
+	}
+
+	// Build opencode attach command (no --model; session ID used for pre-created sessions)
 	opencodeCmd := tmux.BuildOpencodeAttachCommand(&tmux.OpencodeAttachConfig{
 		ServerURL:  req.ServerURL,
 		ProjectDir: req.Config.ProjectDir,
-		Model:      req.Config.Model,
+		SessionID:  preCreatedSessionID,
 	})
 
 	// Send command and execute
@@ -69,12 +83,15 @@ func (b *TmuxBackend) Spawn(ctx context.Context, req *SpawnRequest) (*Result, er
 		return nil, fmt.Errorf("failed to start opencode: %w", err)
 	}
 
-	// Capture session ID from API with retry (OpenCode may not have registered yet)
-	// Uses 3 attempts with 500ms initial delay, doubling each time (500ms, 1s, 2s)
-	// Matches by directory + creation time (within 30s), not by title
-	client := opencode.NewClient(req.ServerURL)
-	sessionID, _ := client.FindRecentSessionWithRetry(req.Config.ProjectDir, 3, 500*time.Millisecond)
-	// Note: We silently ignore errors here since window_id is sufficient for tmux monitoring
+	// Determine session ID: use pre-created ID if available, otherwise discover from API
+	sessionID := preCreatedSessionID
+	if sessionID == "" {
+		// Capture session ID from API with retry (OpenCode may not have registered yet)
+		// Uses 3 attempts with 500ms initial delay, doubling each time (500ms, 1s, 2s)
+		// Matches by directory + creation time (within 30s), not by title
+		sessionID, _ = client.FindRecentSessionWithRetry(req.Config.ProjectDir, 3, 500*time.Millisecond)
+		// Note: We silently ignore errors here since window_id is sufficient for tmux monitoring
+	}
 
 	// Send prompt
 	sendCfg := tmux.DefaultSendPromptConfig()

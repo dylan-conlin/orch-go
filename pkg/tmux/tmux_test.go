@@ -110,7 +110,6 @@ func TestBuildOpencodeAttachCommand(t *testing.T) {
 	cfg := &OpencodeAttachConfig{
 		ServerURL:  "http://localhost:4096",
 		ProjectDir: "/home/user/project",
-		Model:      "anthropic/claude-opus",
 		SessionID:  "ses_123",
 	}
 
@@ -120,8 +119,6 @@ func TestBuildOpencodeAttachCommand(t *testing.T) {
 		"http://localhost:4096",
 		"--dir",
 		"/home/user/project",
-		"--model",
-		"anthropic/claude-opus",
 		"--session",
 		"ses_123",
 	}
@@ -130,6 +127,25 @@ func TestBuildOpencodeAttachCommand(t *testing.T) {
 		if !strings.Contains(got, part) {
 			t.Errorf("BuildOpencodeAttachCommand() = %q, want to contain %q", got, part)
 		}
+	}
+
+	// Verify --model is NOT included (opencode attach doesn't support it)
+	if strings.Contains(got, "--model") {
+		t.Errorf("BuildOpencodeAttachCommand() = %q, should NOT contain --model (unsupported by opencode attach)", got)
+	}
+}
+
+func TestBuildOpencodeAttachCommandNoSession(t *testing.T) {
+	cfg := &OpencodeAttachConfig{
+		ServerURL:  "http://localhost:4096",
+		ProjectDir: "/home/user/project",
+	}
+
+	got := BuildOpencodeAttachCommand(cfg)
+
+	// Should not include --session when no session ID
+	if strings.Contains(got, "--session") {
+		t.Errorf("BuildOpencodeAttachCommand() = %q, should NOT contain --session when empty", got)
 	}
 }
 
@@ -503,7 +519,6 @@ func TestBuildOpencodeAttachCommandEnv(t *testing.T) {
 	cfg := &OpencodeAttachConfig{
 		ServerURL:  "http://localhost:4096",
 		ProjectDir: "/home/user/project",
-		Model:      "anthropic/claude-opus",
 	}
 
 	cmd := BuildOpencodeAttachCommand(cfg)

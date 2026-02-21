@@ -253,11 +253,14 @@ type SpawnConfig struct {
 // OpencodeAttachConfig holds configuration for spawning an agent in attach mode.
 // This is the preferred approach for TUI spawning - it connects to a shared
 // server, making sessions visible via API while still showing the TUI.
+//
+// Note: Model is not included here because opencode attach doesn't support --model.
+// When a non-default model is needed, pre-create the session via the HTTP API
+// (which accepts model) and pass the resulting session ID here.
 type OpencodeAttachConfig struct {
 	ServerURL  string // http://127.0.0.1:4096
 	ProjectDir string
-	Model      string
-	SessionID  string // optional: continue existing session
+	SessionID  string // optional: attach to pre-created or existing session
 }
 
 // BuildOpencodeAttachCommand creates the opencode command string for tmux spawning.
@@ -265,6 +268,10 @@ type OpencodeAttachConfig struct {
 // sessions visible via API (enabling session ID capture, orch status, resume).
 // OpenCode commit 18b26856a fixed Session.create to respect the directory parameter.
 // Sets ORCH_WORKER=1 so agents know they are orch-managed workers.
+//
+// Note: Model is NOT passed to opencode attach (it doesn't support --model).
+// When a non-default model is needed, the caller should pre-create the session
+// via the HTTP API (which accepts model) and pass the session ID here.
 func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
 	opencodeBin := resolveOpencodeBin()
 
@@ -272,12 +279,7 @@ func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
 	// This makes sessions visible via API for session ID capture
 	cmd := fmt.Sprintf("ORCH_WORKER=1 %s attach %q --dir %q", opencodeBin, cfg.ServerURL, cfg.ProjectDir)
 
-	// Add model if provided
-	if cfg.Model != "" {
-		cmd += fmt.Sprintf(" --model %q", cfg.Model)
-	}
-
-	// Continue existing session if provided
+	// Continue existing session if provided (used for pre-created sessions with model)
 	if cfg.SessionID != "" {
 		cmd += fmt.Sprintf(" --session %q", cfg.SessionID)
 	}
