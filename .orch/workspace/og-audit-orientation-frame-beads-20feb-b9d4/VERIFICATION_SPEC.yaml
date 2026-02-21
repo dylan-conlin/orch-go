@@ -1,0 +1,51 @@
+# Verification Spec for orch-go-1165
+# Beads Fork & Integration Architecture Audit
+
+type: audit
+tier: full
+
+deliverables:
+  - path: .kb/models/beads-integration-architecture/probes/2026-02-20-beads-fork-integration-audit.md
+    type: probe
+    description: Model probe documenting 4 contradictions, 3 confirmations, 1 extension
+
+  - path: .kb/investigations/2026-02-20-inv-audit-beads-fork-integration.md
+    type: investigation
+    description: Full audit with fork inventory, staleness assessment, 7 recommendations
+
+  - path: .orch/workspace/og-audit-orientation-frame-beads-20feb-b9d4/SYNTHESIS.md
+    type: synthesis
+    description: Session synthesis with plain-language summary
+
+verification:
+  gate1_explain_back:
+    summary: >
+      Audited the beads fork (43 commits beyond upstream) and orch-go integration.
+      Found the Dec 2025 "clean slate" decision was reversed within 9 days — 6 fork
+      features are actively used, 5 more are implicitly depended on. The integration
+      model references 5 non-existent files, has wrong socket path, and states an
+      unenforced constraint. Core architecture claim (RPC-first with CLI fallback)
+      is confirmed accurate.
+    key_findings:
+      - "43 fork commits, all post-clean-slate decision, never formally documented"
+      - "5 of 6 model source file references point to deleted/renamed files"
+      - "Socket path in model (~/.beads/daemon.sock) is wrong; actual is .beads/bd.sock"
+      - "11 exec.Command('bd') calls violate model's 'never shell out directly' constraint"
+      - "6 fork features actively used, 5 implicitly depended on, 6 unused"
+
+  gate2_behavioral:
+    not_applicable: true
+    reason: "Audit/research task — no code changes to verify behaviorally"
+
+  manual_steps: []
+
+  recommendations:
+    high:
+      - "Supersede clean-slate decision with new decision documenting active fork"
+      - "Update model file references (5 of 6 are wrong)"
+      - "Fix socket path in model"
+    medium:
+      - "Migrate 5-7 exec.Command('bd') calls to BeadsClient interface"
+      - "Establish upstream contribution strategy for generally-useful fixes"
+    low:
+      - "Evaluate unused fork features for removal or adoption"
