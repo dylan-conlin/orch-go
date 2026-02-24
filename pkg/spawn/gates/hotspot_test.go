@@ -334,6 +334,131 @@ func TestIsBlockingSkill(t *testing.T) {
 	}
 }
 
+// --- Additional coverage tests ---
+
+func TestCheckHotspot_CheckerReturnsError(t *testing.T) {
+	// When checker returns an error, CheckHotspot should gracefully return nil
+	checker := func(dir, task string) (*HotspotResult, error) {
+		return nil, fmt.Errorf("hotspot analysis failed")
+	}
+	result, err := CheckHotspot("/some/dir", "some task", "feature-impl", false, false, "", checker, nil)
+	if err != nil {
+		t.Errorf("expected nil error on checker failure, got: %v", err)
+	}
+	if result != nil {
+		t.Errorf("expected nil result on checker failure, got: %v", result)
+	}
+}
+
+func TestCheckHotspot_DaemonDrivenBypassesCriticalBlock(t *testing.T) {
+	// Daemon-driven spawns return result even for CRITICAL hotspots without blocking.
+	// The daemon handles hotspot routing at its own layer (architect escalation).
+	checker := func(dir, task string) (*HotspotResult, error) {
+		return &HotspotResult{
+			HasHotspots:        true,
+			HasCriticalHotspot: true,
+			Warning:            "CRITICAL hotspot warning",
+			CriticalFiles:      []string{"cmd/orch/main.go"},
+		}, nil
+	}
+	result, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", true, false, "", checker, nil)
+	if err != nil {
+		t.Fatalf("daemon-driven should bypass CRITICAL block, got error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected result for daemon-driven CRITICAL hotspot")
+	}
+	if !result.HasCriticalHotspot {
+		t.Error("expected HasCriticalHotspot to be true")
+	}
+}
+
+func TestCheckHotspot_MultipleCriticalFilesInError(t *testing.T) {
+	// When multiple files are CRITICAL, error message should list them all.
+	checker := func(dir, task string) (*HotspotResult, error) {
+		return &HotspotResult{
+			HasHotspots:        true,
+			HasCriticalHotspot: true,
+			Warning:            "CRITICAL hotspot warning",
+			CriticalFiles:      []string{"cmd/orch/main.go", "pkg/daemon/daemon.go"},
+		}, nil
+	}
+	_, err := CheckHotspot("/some/dir", "refactor multiple files", "feature-impl", false, false, "", checker, nil)
+	if err == nil {
+		t.Fatal("expected error for CRITICAL hotspot with multiple files")
+	}
+	if !strContains(err.Error(), "cmd/orch/main.go") {
+		t.Errorf("error should mention cmd/orch/main.go, got: %v", err)
+	}
+	if !strContains(err.Error(), "pkg/daemon/daemon.go") {
+		t.Errorf("error should mention pkg/daemon/daemon.go, got: %v", err)
+	}
+}
+
+func TestCheckHotspot_ForceHotspotNoEffectWhenNotCritical(t *testing.T) {
+	// --force-hotspot with a non-critical hotspot should proceed normally
+	// (force flag only matters when there's a CRITICAL block to bypass).
+	checker := func(dir, task string) (*HotspotResult, error) {
+		return &HotspotResult{
+			HasHotspots:        true,
+			HasCriticalHotspot: false,
+			Warning:            "non-critical warning",
+		}, nil
+	}
+	result, err := CheckHotspot("/some/dir", "some task", "feature-impl", false, true, "orch-go-1184", checker, nil)
+	if err != nil {
+		t.Fatalf("non-critical hotspot with force flag should not error, got: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected result for non-critical hotspot")
+	}
+}
+
+func TestCheckHotspot_ForceHotspotNonBlockingSkill(t *testing.T) {
+	// --force-hotspot with exempt skill should proceed normally even with CRITICAL hotspot.
+	checker := func(dir, task string) (*HotspotResult, error) {
+		return &HotspotResult{
+			HasHotspots:        true,
+			HasCriticalHotspot: true,
+			Warning:            "CRITICAL hotspot warning",
+			CriticalFiles:      []string{"cmd/orch/main.go"},
+		}, nil
+	}
+	result, err := CheckHotspot("/some/dir", "review architecture", "architect", false, true, "", checker, nil)
+	if err != nil {
+		t.Fatalf("exempt skill should not be blocked even with CRITICAL hotspot, got: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected result for exempt skill with CRITICAL hotspot")
+	}
+}
+
+func TestCheckHotspot_ResultFieldsPreserved(t *testing.T) {
+	// Verify that the result returned preserves all fields from the checker.
+	checker := func(dir, task string) (*HotspotResult, error) {
+		return &HotspotResult{
+			HasHotspots:        true,
+			HasCriticalHotspot: false,
+			Warning:            "test warning",
+			CriticalFiles:      []string{},
+			MatchedFiles:       []string{"pkg/spawn/context.go", "pkg/spawn/config.go"},
+		}, nil
+	}
+	result, err := CheckHotspot("/some/dir", "update spawn", "feature-impl", false, false, "", checker, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if len(result.MatchedFiles) != 2 {
+		t.Errorf("expected 2 matched files, got %d", len(result.MatchedFiles))
+	}
+	if result.MatchedFiles[0] != "pkg/spawn/context.go" {
+		t.Errorf("expected first matched file to be 'pkg/spawn/context.go', got %q", result.MatchedFiles[0])
+	}
+}
+
 func strContains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }

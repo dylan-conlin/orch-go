@@ -535,6 +535,93 @@ func TestOnceExcluding_ArchitectEscalation_SkipsWithExplicitSkillLabel(t *testin
 	}
 }
 
+// --- FindMatchingHotspot additional edge cases ---
+
+func TestFindMatchingHotspot_ReturnsFirstMatch(t *testing.T) {
+	// When multiple files match different hotspots, the first match should be returned.
+	files := []string{"pkg/daemon/daemon.go", "cmd/orch/spawn_cmd.go"}
+	hotspots := []HotspotWarning{
+		{Path: "pkg/daemon/daemon.go", Type: "fix-density", Score: 8},
+		{Path: "cmd/orch/spawn_cmd.go", Type: "bloat-size", Score: 12},
+	}
+
+	match := FindMatchingHotspot(files, hotspots)
+	if match == nil {
+		t.Fatal("FindMatchingHotspot() returned nil, expected match")
+	}
+	// First file in the list matches, so it should return that hotspot
+	if match.Path != "pkg/daemon/daemon.go" {
+		t.Errorf("expected first match 'pkg/daemon/daemon.go', got %q", match.Path)
+	}
+	if match.Score != 8 {
+		t.Errorf("expected score 8, got %d", match.Score)
+	}
+}
+
+func TestFindMatchingHotspot_MultipleHotspotsOnSameFile(t *testing.T) {
+	// A file could theoretically appear as multiple hotspot types.
+	// The first matching hotspot entry should be returned.
+	files := []string{"pkg/daemon/daemon.go"}
+	hotspots := []HotspotWarning{
+		{Path: "pkg/daemon/daemon.go", Type: "fix-density", Score: 8},
+		{Path: "pkg/daemon/daemon.go", Type: "investigation-cluster", Score: 5},
+	}
+
+	match := FindMatchingHotspot(files, hotspots)
+	if match == nil {
+		t.Fatal("FindMatchingHotspot() returned nil, expected match")
+	}
+	if match.Type != "fix-density" {
+		t.Errorf("expected first hotspot type 'fix-density', got %q", match.Type)
+	}
+}
+
+func TestFindMatchingHotspot_SecondFileMatchesFirstHotspot(t *testing.T) {
+	// First file doesn't match any hotspot, second file does.
+	files := []string{"pkg/clean/clean.go", "pkg/daemon/daemon.go"}
+	hotspots := []HotspotWarning{
+		{Path: "pkg/daemon/daemon.go", Type: "fix-density", Score: 8},
+	}
+
+	match := FindMatchingHotspot(files, hotspots)
+	if match == nil {
+		t.Fatal("FindMatchingHotspot() returned nil, expected match on second file")
+	}
+	if match.Path != "pkg/daemon/daemon.go" {
+		t.Errorf("expected match on 'pkg/daemon/daemon.go', got %q", match.Path)
+	}
+}
+
+// --- CheckArchitectEscalation: escalation fields ---
+
+func TestCheckArchitectEscalation_EscalationFieldsPopulated(t *testing.T) {
+	checker := &mockEscalationChecker{
+		hotspots: []HotspotWarning{
+			{Path: "cmd/orch/spawn_cmd.go", Type: "bloat-size", Score: 1200},
+		},
+	}
+
+	issue := &Issue{
+		ID:        "proj-10",
+		Title:     "Refactor cmd/orch/spawn_cmd.go for readability",
+		IssueType: "task",
+	}
+
+	result := CheckArchitectEscalation(issue, "feature-impl", checker)
+	if result == nil {
+		t.Fatal("expected escalation result")
+	}
+	if result.HotspotFile != "cmd/orch/spawn_cmd.go" {
+		t.Errorf("HotspotFile = %q, want 'cmd/orch/spawn_cmd.go'", result.HotspotFile)
+	}
+	if result.HotspotType != "bloat-size" {
+		t.Errorf("HotspotType = %q, want 'bloat-size'", result.HotspotType)
+	}
+	if result.HotspotScore != 1200 {
+		t.Errorf("HotspotScore = %d, want 1200", result.HotspotScore)
+	}
+}
+
 // --- Mock implementation ---
 
 // mockEscalationChecker implements HotspotChecker for architect escalation tests.

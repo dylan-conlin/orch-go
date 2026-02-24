@@ -160,6 +160,185 @@ func TestVerifyAccretionForCompletion(t *testing.T) {
 	}
 }
 
+func TestVerifyAccretionForCompletion_NilInputs(t *testing.T) {
+	// Both empty workspace and projectDir should return nil
+	result := VerifyAccretionForCompletion("", "/some/dir")
+	if result != nil {
+		t.Error("expected nil when workspacePath is empty")
+	}
+
+	result = VerifyAccretionForCompletion("/some/workspace", "")
+	if result != nil {
+		t.Error("expected nil when projectDir is empty")
+	}
+
+	result = VerifyAccretionForCompletion("", "")
+	if result != nil {
+		t.Error("expected nil when both are empty")
+	}
+}
+
+func TestVerifyAccretionForCompletion_BoundaryValues(t *testing.T) {
+	// Test boundary values: exactly 800, exactly 1500, exactly 50 delta
+	tmpDir, err := os.MkdirTemp("", "accretion-boundary-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	if err := initGitRepo(tmpDir); err != nil {
+		t.Fatalf("failed to init git repo: %v", err)
+	}
+
+	// Note: the accretion check uses currentLines (post-modification total), not initial size.
+	// Threshold checks: currentLines > 800 (warning), currentLines > 1500 (critical).
+	// Delta threshold: netDelta >= 50 (AccretionDeltaThreshold).
+	// So "initial 1450 + 50 added = 1500 current" is NOT > 1500, no error.
+	// And "initial 1452 + 50 added = ~1502 current" IS > 1500, error.
+	tests := []struct {
+		name         string
+		initialLines int
+		addLines     int
+		removeLines  int
+		expectPassed bool
+		expectErrors int
+	}{
+		{
+			name:         "current ~850 lines (800+50) = warning zone (above 800)",
+			initialLines: 800,
+			addLines:     50,
+			removeLines:  0,
+			expectPassed: true,
+			expectErrors: 0,
+		},
+		{
+			name:         "49 net additions = below delta threshold, no check",
+			initialLines: 900,
+			addLines:     49,
+			removeLines:  0,
+			expectPassed: true,
+			expectErrors: 0,
+		},
+		{
+			name:         "current ~1450 lines (1400+50) = warning only, not critical",
+			initialLines: 1400,
+			addLines:     50,
+			removeLines:  0,
+			expectPassed: true,
+			expectErrors: 0,
+		},
+		{
+			name:         "current ~1550 lines (1500+50) = critical (above 1500)",
+			initialLines: 1500,
+			addLines:     50,
+			removeLines:  0,
+			expectPassed: false,
+			expectErrors: 1,
+		},
+		{
+			name:         "current ~1551 lines (1501+50) = critical (well above 1500)",
+			initialLines: 1501,
+			addLines:     50,
+			removeLines:  0,
+			expectPassed: false,
+			expectErrors: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanGitRepo(t, tmpDir)
+
+			createFileWithLines(t, tmpDir, "boundary.go", tt.initialLines)
+			commitFiles(t, tmpDir, "Initial commit")
+			modifyFile(t, tmpDir, "boundary.go", tt.addLines, tt.removeLines)
+
+			result := VerifyAccretionForCompletion(tmpDir, tmpDir)
+			if result == nil {
+				t.Fatal("expected non-nil result")
+			}
+
+			if result.Passed != tt.expectPassed {
+				t.Errorf("Passed = %v, want %v (errors: %v, warnings: %v)",
+					result.Passed, tt.expectPassed, result.Errors, result.Warnings)
+			}
+
+			if len(result.Errors) != tt.expectErrors {
+				t.Errorf("expected %d errors, got %d: %v", tt.expectErrors, len(result.Errors), result.Errors)
+			}
+		})
+	}
+}
+
+func TestVerifyAccretionForCompletion_NonGoSourceFiles(t *testing.T) {
+	// Accretion check should work for non-Go source files too (e.g., .ts, .py)
+	tmpDir, err := os.MkdirTemp("", "accretion-nongo-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	if err := initGitRepo(tmpDir); err != nil {
+		t.Fatalf("failed to init git repo: %v", err)
+	}
+
+	// Create a large TypeScript file
+	createFileWithLines(t, tmpDir, "large.ts", 1600)
+	commitFiles(t, tmpDir, "Initial commit")
+
+	// Add significant lines
+	modifyFile(t, tmpDir, "large.ts", 60, 5)
+
+	result := VerifyAccretionForCompletion(tmpDir, tmpDir)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	// Should trigger error (>1500 lines with >50 net additions)
+	if result.Passed {
+		t.Error("expected Passed=false for large .ts file exceeding critical threshold")
+	}
+	if len(result.Errors) == 0 {
+		t.Error("expected at least one error for large .ts file")
+	}
+}
+
+func TestVerifyAccretionForCompletion_ExcludesVendorFiles(t *testing.T) {
+	// Files in vendor/ should be excluded from accretion checks
+	tmpDir, err := os.MkdirTemp("", "accretion-vendor-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	if err := initGitRepo(tmpDir); err != nil {
+		t.Fatalf("failed to init git repo: %v", err)
+	}
+
+	// Create vendor directory and a large file
+	vendorDir := filepath.Join(tmpDir, "vendor", "pkg")
+	if err := os.MkdirAll(vendorDir, 0755); err != nil {
+		t.Fatalf("failed to create vendor dir: %v", err)
+	}
+
+	// Create a large vendor file
+	createFileWithLines(t, filepath.Join(tmpDir, "vendor", "pkg"), "lib.go", 2000)
+	commitFiles(t, tmpDir, "Initial commit")
+
+	// Add significant lines to vendor file
+	modifyFile(t, filepath.Join(tmpDir, "vendor", "pkg"), "lib.go", 100, 5)
+
+	result := VerifyAccretionForCompletion(tmpDir, tmpDir)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	// Should pass because vendor files are excluded
+	if !result.Passed {
+		t.Errorf("expected Passed=true for vendor file, got errors: %v", result.Errors)
+	}
+}
+
 func TestIsSourceFile(t *testing.T) {
 	tests := []struct {
 		path     string
