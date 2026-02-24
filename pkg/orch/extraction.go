@@ -68,6 +68,8 @@ type SpawnContext struct {
 	SpawnBackend       string
 	Tier               string
 	Scope              string
+	HotspotArea        bool
+	HotspotFiles       []string
 	DesignMockupPath   string
 	DesignPromptPath   string
 	DesignNotes        string
@@ -335,13 +337,13 @@ func inferMCPFromBeadsIssue(issue *beads.Issue) string {
 }
 
 // RunPreFlightChecks performs all pre-spawn validation checks.
-// Returns usage check result for telemetry, or error if any check fails.
+// Returns usage check result for telemetry, hotspot result for context injection, or error if any check fails.
 // hotspotCheckFunc is passed from cmd/orch to avoid circular dependencies.
-func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, architectRef, bypassReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error)) (*gates.UsageCheckResult, error) {
+func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, architectRef, bypassReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error)) (*gates.UsageCheckResult, *gates.HotspotResult, error) {
 	// Check for --bypass-triage flag (required for manual spawns)
 	// Daemon-driven spawns skip this check (issue already triaged)
 	if err := gates.CheckTriageBypass(input.DaemonDriven, bypassTriage, input.SkillName, input.Task); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Log the triage bypass for Phase 2 review (only for manual bypasses, not daemon-driven)
@@ -353,36 +355,39 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 	// Block spawn if unverified Tier 1 work exists (prevents cascade pattern)
 	// Independent parallel work can use --bypass-verification to override
 	if err := gates.CheckVerificationGate(bypassVerification, bypassReason); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Check concurrency limit before spawning
 	if err := gates.CheckConcurrency(input.ServerURL, maxAgents, extractBeadsIDFunc); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Proactive rate limit monitoring: warn at 80%, block at 95%
 	usageCheckResult, usageErr := gates.CheckRateLimit()
 	if usageErr != nil {
 		// usageErr contains formatted blocking message
-		return nil, usageErr
+		return nil, nil, usageErr
 	}
 
 	// STRATEGIC-FIRST ORCHESTRATION: Check for hotspots in task target area
 	// Blocks implementation skills (feature-impl, systematic-debugging) on CRITICAL files (>1500 lines).
 	// Exempt: architect, investigation, capture-knowledge, codebase-audit (read-only/strategic skills).
 	// Override: --force-hotspot --architect-ref <issue-id> bypasses the block with proof of architect review.
+	var hotspotResult *gates.HotspotResult
 	if hotspotCheckFunc != nil {
 		var architectVerifier gates.ArchitectVerifier
 		if architectRef != "" {
 			architectVerifier = buildArchitectVerifier()
 		}
-		if _, err := gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, forceHotspot, architectRef, hotspotCheckFunc, architectVerifier); err != nil {
-			return nil, err
+		var err error
+		hotspotResult, err = gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, forceHotspot, architectRef, hotspotCheckFunc, architectVerifier)
+		if err != nil {
+			return nil, nil, err
 		}
 	}
 
-	return usageCheckResult, nil
+	return usageCheckResult, hotspotResult, nil
 }
 
 // buildArchitectVerifier creates a function that validates an architect issue reference.
@@ -927,6 +932,8 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 		IsMetaOrchestrator: ctx.IsMetaOrchestrator,
 		UsageInfo:          ctx.UsageInfo,
 		SpawnMode:          ctx.SpawnBackend,
+		HotspotArea:        ctx.HotspotArea,
+		HotspotFiles:       ctx.HotspotFiles,
 		DesignWorkspace:    "", // Will be set by caller if needed
 		DesignMockupPath:   ctx.DesignMockupPath,
 		DesignPromptPath:   ctx.DesignPromptPath,

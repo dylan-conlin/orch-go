@@ -494,14 +494,20 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		if err != nil || result == nil {
 			return nil, err
 		}
+		// Extract all matched file paths for context injection
+		var matchedFiles []string
+		for _, h := range result.MatchedHotspots {
+			matchedFiles = append(matchedFiles, h.Path)
+		}
 		return &gates.HotspotResult{
 			HasHotspots:        result.HasHotspots,
 			HasCriticalHotspot: result.HasCriticalHotspot,
 			Warning:            result.Warning,
 			CriticalFiles:      result.CriticalFiles,
+			MatchedFiles:       matchedFiles,
 		}, nil
 	}
-	usageCheckResult, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnBypassVerification, spawnForceHotspot, spawnArchitectRef, spawnBypassReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc)
+	usageCheckResult, hotspotResult, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnBypassVerification, spawnForceHotspot, spawnArchitectRef, spawnBypassReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc)
 	if err != nil {
 		return err
 	}
@@ -610,6 +616,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		SpawnBackend:       resolved.Settings.Backend.Value,
 		Tier:               resolved.Settings.Tier.Value,
 		Scope:              spawnScope,
+		HotspotArea:        hotspotResult != nil && hotspotResult.HasHotspots,
+		HotspotFiles:       hotspotFilesFromResult(hotspotResult),
 		DesignMockupPath:   designMockupPath,
 		DesignPromptPath:   designPromptPath,
 		DesignNotes:        designNotes,
@@ -633,6 +641,15 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		return err
 	}
 	return nil
+}
+
+// hotspotFilesFromResult extracts all matched file paths from a hotspot result.
+// Returns nil if result is nil or has no matched hotspots.
+func hotspotFilesFromResult(result *gates.HotspotResult) []string {
+	if result == nil {
+		return nil
+	}
+	return result.MatchedFiles
 }
 
 // dirExists returns true if the path exists and is a directory.

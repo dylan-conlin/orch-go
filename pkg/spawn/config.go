@@ -234,6 +234,12 @@ type Config struct {
 	// Affects checkpoint recommendations in SPAWN_CONTEXT.md
 	Scope string
 
+	// Hotspot area fields (injected from pre-flight hotspot check)
+	// When true, the task targets files in a hotspot area (high churn/complexity/coupling)
+	HotspotArea bool
+	// HotspotFiles lists the specific files identified as hotspots
+	HotspotFiles []string
+
 	// Design handoff fields (for ui-design-session → feature-impl handoff)
 	// DesignWorkspace is the workspace name from a prior ui-design-session spawn
 	DesignWorkspace string

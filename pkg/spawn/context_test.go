@@ -2615,3 +2615,84 @@ func TestGenerateContext_SessionScope(t *testing.T) {
 		})
 	}
 }
+
+func TestGenerateContext_HotspotArea(t *testing.T) {
+	cfg := &Config{
+		Task:         "investigate spawn architecture",
+		SkillName:    "investigation",
+		ProjectDir:   "/tmp/test-project",
+		WorkspaceName: "test-workspace",
+		BeadsID:      "test-123",
+		Tier:         TierLight,
+		HotspotArea:  true,
+		HotspotFiles: []string{"cmd/orch/spawn_cmd.go", "pkg/daemon/daemon.go"},
+	}
+
+	content, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
+	}
+
+	// Should contain hotspot warning section
+	if !strings.Contains(content, "HOTSPOT AREA") {
+		t.Error("expected content to contain 'HOTSPOT AREA' section")
+	}
+
+	// Should list hotspot files
+	if !strings.Contains(content, "cmd/orch/spawn_cmd.go") {
+		t.Error("expected content to contain hotspot file 'cmd/orch/spawn_cmd.go'")
+	}
+	if !strings.Contains(content, "pkg/daemon/daemon.go") {
+		t.Error("expected content to contain hotspot file 'pkg/daemon/daemon.go'")
+	}
+
+	// Should contain routing guidance
+	if !strings.Contains(content, "architect") {
+		t.Error("expected content to contain architect routing recommendation")
+	}
+}
+
+func TestGenerateContext_NoHotspotArea(t *testing.T) {
+	cfg := &Config{
+		Task:         "investigate spawn architecture",
+		SkillName:    "investigation",
+		ProjectDir:   "/tmp/test-project",
+		WorkspaceName: "test-workspace",
+		BeadsID:      "test-123",
+		Tier:         TierLight,
+		HotspotArea:  false,
+	}
+
+	content, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
+	}
+
+	// Should NOT contain hotspot section when HotspotArea is false
+	if strings.Contains(content, "HOTSPOT AREA") {
+		t.Error("expected content NOT to contain 'HOTSPOT AREA' when HotspotArea is false")
+	}
+}
+
+func TestGenerateContext_HotspotAreaEmptyFiles(t *testing.T) {
+	cfg := &Config{
+		Task:         "investigate spawn architecture",
+		SkillName:    "investigation",
+		ProjectDir:   "/tmp/test-project",
+		WorkspaceName: "test-workspace",
+		BeadsID:      "test-123",
+		Tier:         TierLight,
+		HotspotArea:  true,
+		HotspotFiles: []string{},
+	}
+
+	content, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
+	}
+
+	// Should still contain the hotspot warning section even with no specific files
+	if !strings.Contains(content, "HOTSPOT AREA") {
+		t.Error("expected content to contain 'HOTSPOT AREA' section even with empty files list")
+	}
+}

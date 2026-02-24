@@ -11,9 +11,10 @@ import (
 // lives in cmd/orch/hotspot.go.
 type HotspotResult struct {
 	HasHotspots        bool
-	HasCriticalHotspot bool // True when any matched hotspot is CRITICAL (>1500 lines)
+	HasCriticalHotspot bool     // True when any matched hotspot is CRITICAL (>1500 lines)
 	Warning            string
 	CriticalFiles      []string // File paths of CRITICAL hotspots
+	MatchedFiles       []string // All matched hotspot file/topic paths (for context injection)
 }
 
 // HotspotChecker is a function that runs hotspot analysis for a given project directory and task.

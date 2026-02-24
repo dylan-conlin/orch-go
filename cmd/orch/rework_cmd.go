@@ -136,15 +136,20 @@ func runRework(beadsID, feedback string) error {
 		if err != nil || result == nil {
 			return nil, err
 		}
+		var matchedFiles []string
+		for _, h := range result.MatchedHotspots {
+			matchedFiles = append(matchedFiles, h.Path)
+		}
 		return &gates.HotspotResult{
 			HasHotspots:        result.HasHotspots,
 			HasCriticalHotspot: result.HasCriticalHotspot,
 			Warning:            result.Warning,
 			CriticalFiles:      result.CriticalFiles,
+			MatchedFiles:       matchedFiles,
 		}, nil
 	}
 
-	usageCheckResult, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, false, false, "", "", 0, extractBeadsIDFromTitle, hotspotCheckFunc)
+	usageCheckResult, hotspotResult, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, false, false, "", "", 0, extractBeadsIDFromTitle, hotspotCheckFunc)
 	if err != nil {
 		return err
 	}
@@ -267,6 +272,8 @@ func runRework(beadsID, feedback string) error {
 		UsageInfo:         usageInfo,
 		SpawnBackend:      resolved.Settings.Backend.Value,
 		Tier:              resolved.Settings.Tier.Value,
+		HotspotArea:       hotspotResult != nil && hotspotResult.HasHotspots,
+		HotspotFiles:      hotspotFilesFromResult(hotspotResult),
 	}
 
 	cfg := orch.BuildSpawnConfig(ctx, "", resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, false, false)

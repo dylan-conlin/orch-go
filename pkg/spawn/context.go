@@ -151,6 +151,16 @@ Full prior artifacts at: {{.PriorWorkspace}}
 {{if .ClusterSummary}}
 {{.ClusterSummary}}
 {{end}}
+{{if .HotspotArea}}
+## HOTSPOT AREA WARNING
+
+⚠️ This task targets files in a **hotspot area** (high churn, complexity, or coupling).
+{{if .HotspotFiles}}
+**Hotspot files:**
+{{range .HotspotFiles}}- ` + "`{{.}}`" + `
+{{end}}{{end}}
+**Investigation routing:** If your findings affect these files, recommend ` + "`architect`" + ` follow-up instead of direct ` + "`feature-impl`" + `. Hotspot areas require architectural review before implementation changes.
+{{end}}
 {{if .IsBug}}
 ## REPRODUCTION (BUG FIX)
 
@@ -644,10 +654,12 @@ type contextData struct {
 	ReworkNumber          int    // Rework attempt number
 	PriorSynthesis        string // TLDR + Delta from prior SYNTHESIS.md
 	PriorWorkspace        string // Path to archived prior workspace
-	DesignWorkspace       string // Design workspace name for ui-design-session handoff
-	DesignMockupPath      string // Path to approved mockup
-	DesignPromptPath      string // Path to design prompt
-	DesignNotes           string // Notes from design session
+	HotspotArea           bool     // Task targets a hotspot area
+	HotspotFiles          []string // Files identified as hotspots
+	DesignWorkspace       string   // Design workspace name for ui-design-session handoff
+	DesignMockupPath      string   // Path to approved mockup
+	DesignPromptPath      string   // Path to design prompt
+	DesignNotes           string   // Notes from design session
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -715,6 +727,8 @@ func GenerateContext(cfg *Config) (string, error) {
 		ReworkNumber:          cfg.ReworkNumber,
 		PriorSynthesis:        cfg.PriorSynthesis,
 		PriorWorkspace:        cfg.PriorWorkspace,
+		HotspotArea:           cfg.HotspotArea,
+		HotspotFiles:          cfg.HotspotFiles,
 		DesignWorkspace:       cfg.DesignWorkspace,
 		DesignMockupPath:      cfg.DesignMockupPath,
 		DesignPromptPath:      cfg.DesignPromptPath,
