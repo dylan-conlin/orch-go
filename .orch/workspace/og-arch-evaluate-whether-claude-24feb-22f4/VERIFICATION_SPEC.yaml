@@ -1,0 +1,48 @@
+# Verification Specification: Claude Code Plan Mode Feature-Impl Integration Evaluation
+# Design Document: .kb/investigations/2026-02-24-design-evaluate-plan-mode-feature-impl-integration.md
+
+observable_behaviors:
+  - name: "Investigation produces clear recommendation with substrate trace"
+    description: "Investigation file contains recommendation section citing principles, models, and decisions"
+    verified: true
+    evidence: "Investigation file has Substrate Trace section citing Gate Over Remind, Surfacing Over Browsing, daemon-autonomous-operation model, and dual spawn architecture decision"
+
+  - name: "All 4 evaluation dimensions addressed"
+    description: "Phase model alignment, daemon compatibility, quality comparison, and phase reporting interaction all analyzed"
+    verified: true
+    evidence: "Investigation has Fork 1 (alignment), Fork 2 (daemon), Fork 3 (quality), Fork 4 (reporting) — all with options, substrate consultation, and recommendations"
+
+  - name: "Probe file tests model claims"
+    description: "Probe in agent-lifecycle-state-model confirms/extends model regarding plan mode lifecycle incompatibility"
+    verified: true
+    evidence: "Probe confirms model's continuous observability assumption, extends with new incompatibility class (Claude Code features designed for interactive use)"
+
+acceptance_criteria:
+  - id: "AC-001"
+    criterion: "Recommendation is actionable — tells orchestrator exactly what to do"
+    threshold: "Boolean pass/fail"
+    status: "PASS"
+    evidence: "Recommendation: Do NOT integrate. Alternative: strengthen prompt-level enforcement with 3 specific steps."
+
+  - id: "AC-002"
+    criterion: "Daemon compatibility analysis uses actual code evidence"
+    threshold: "Boolean pass/fail"
+    status: "PASS"
+    evidence: "References daemon.go SpawnWork() at line 352, identifies headless spawn path, documents plan mode approval gate mechanics from web research"
+
+  - id: "AC-003"
+    criterion: "Trade-offs explicitly documented"
+    threshold: "Boolean pass/fail"
+    status: "PASS"
+    evidence: "Trade-off accepted section: 'We sacrifice plan mode's tool-level enforcement of read-only during planning'. Change conditions: 3 specific Claude Code changes that would alter recommendation."
+
+failure_modes:
+  - id: "FM-001"
+    name: "Recommendation adopted but plan mode evolves"
+    symptom: "Claude Code adds --plan-only flag, making headless plan mode possible"
+    diagnostic: "Check Claude Code release notes for plan mode changes"
+    fix: "Re-evaluate recommendation — all 3 change conditions must be true simultaneously"
+
+manual_verification:
+  - step: "Orchestrator reviews investigation and confirms recommendation aligns with system architecture"
+    required: true
