@@ -1,0 +1,24 @@
+type: investigation
+tier: light
+
+verification:
+  automated:
+    - description: "Investigation file exists and is well-formed"
+      command: "test -f .kb/investigations/2026-02-24-spike-claude-code-hooks-orchestrator-guard.md && head -5 .kb/investigations/2026-02-24-spike-claude-code-hooks-orchestrator-guard.md"
+      expected: "Contains title and metadata"
+
+  manual:
+    - description: "Investigation answers the spike question: Can hooks intercept tool calls?"
+      evidence: "Finding 1-6 document PreToolUse capabilities, matchers, denial mechanism, existing patterns"
+      result: "YES - fully feasible via PreToolUse permissionDecision:deny"
+    - description: "Design for orchestrator-guard hook is actionable"
+      evidence: "Design section includes script architecture, settings.json integration, exceptions, and implementation recommendations"
+      result: "~100 line Python script + 2 new PreToolUse entries, estimated 2h"
+    - description: "Existing infrastructure validates approach"
+      evidence: "gate-bd-close.py already uses identical pattern (PreToolUse + CLAUDE_CONTEXT + permissionDecision:deny)"
+      result: "Pattern is production-tested, not theoretical"
+
+deliverables:
+  - path: ".kb/investigations/2026-02-24-spike-claude-code-hooks-orchestrator-guard.md"
+    type: investigation
+    description: "Spike findings: Claude Code hooks can enforce orchestrator action constraints via PreToolUse deny"
