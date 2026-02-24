@@ -522,6 +522,16 @@ func runComplete(identifier, workdir string) error {
 		isClosed = false
 	}
 
+	// Ensure tmux window cleanup runs on all exit paths.
+	// This prevents phantom tmux windows when verification gates cause early returns.
+	// Skip only when the agent is detected as still running (liveness check).
+	var skipTmuxCleanup bool
+	defer func() {
+		if !skipTmuxCleanup {
+			cleanupTmuxWindow(isOrchestratorSession, agentName, beadsID, identifier)
+		}
+	}()
+
 	// Checkpoint verification gate (Verifiability-first enforcement)
 	// Tier-aware: Tier 1 requires both gates, Tier 2 requires gate1 only, Tier 3 no checkpoint.
 	if !isUntracked && !completeForce && issue != nil {
@@ -844,6 +854,7 @@ func runComplete(identifier, workdir string) error {
 
 				// Check if stdin is a terminal for interactive prompting
 				if !term.IsTerminal(int(os.Stdin.Fd())) {
+					skipTmuxCleanup = true
 					return fmt.Errorf("agent still running and stdin is not a terminal; use --force to complete anyway")
 				}
 
@@ -852,11 +863,13 @@ func runComplete(identifier, workdir string) error {
 				reader := bufio.NewReader(os.Stdin)
 				response, err := reader.ReadString('\n')
 				if err != nil {
+					skipTmuxCleanup = true
 					return fmt.Errorf("failed to read response: %w", err)
 				}
 
 				response = strings.TrimSpace(strings.ToLower(response))
 				if response != "y" && response != "yes" {
+					skipTmuxCleanup = true
 					return fmt.Errorf("aborted: agent still running")
 				}
 
@@ -1151,33 +1164,7 @@ func runComplete(identifier, workdir string) error {
 		fmt.Println("Skipped workspace archival (--no-archive)")
 	}
 
-	// Clean up tmux window if it exists (prevents phantom accumulation)
-	// For orchestrators, search by workspace name; for regular agents, search by beads ID
-	var window *tmux.WindowInfo
-	var tmuxSessionName string
-	var findErr error
-
-	if isOrchestratorSession {
-		// Orchestrator windows only contain workspace names, not beads IDs
-		window, tmuxSessionName, findErr = tmux.FindWindowByWorkspaceNameAllSessions(agentName)
-	} else {
-		// Worker windows contain beads IDs in format [beadsID]
-		var windowSearchID string
-		if beadsID != "" {
-			windowSearchID = beadsID
-		} else {
-			windowSearchID = identifier
-		}
-		window, tmuxSessionName, findErr = tmux.FindWindowByBeadsIDAllSessions(windowSearchID)
-	}
-
-	if findErr == nil && window != nil {
-		if err := tmux.KillWindow(window.Target); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to close tmux window %s: %v\n", window.Target, err)
-		} else {
-			fmt.Printf("Closed tmux window: %s:%s\n", tmuxSessionName, window.Name)
-		}
-	}
+	// tmux window cleanup is handled by defer (see cleanupTmuxWindow)
 
 	// Auto-rebuild if agent committed Go changes (in the beads project)
 	if hasGoChangesInRecentCommits(beadsProjectDir) {
