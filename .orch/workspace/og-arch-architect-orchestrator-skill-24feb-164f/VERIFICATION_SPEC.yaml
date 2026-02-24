@@ -1,0 +1,50 @@
+---
+# Verification Specification: Orchestrator Skill Behavioral Compliance Investigation
+type: investigation
+workspace: og-arch-architect-orchestrator-skill-24feb-164f
+issue: orch-go-1178
+
+observable_behaviors:
+  primary: Investigation identifies root cause of action non-compliance and provides structural recommendations for skill rewrite
+  secondary:
+    - Probe extends orchestrator-session-lifecycle model with new failure mode
+    - Concrete implementation spec for two-layer fix (prompt + infrastructure)
+
+acceptance_criteria:
+  - id: AC-001
+    name: Root cause diagnosis
+    condition: Investigation must identify WHY identity compliance differs from action compliance with evidence
+    evidence: Investigation Finding 1 — mechanistic comparison table with 6 dimensions
+    status: PASS
+
+  - id: AC-002
+    name: Signal ratio quantification
+    condition: Investigation must quantify the competing instruction disadvantage with specific numbers
+    evidence: Investigation Finding 2 — 17:1 signal ratio (500 words promoting Task tool vs 30 constraining)
+    status: PASS
+
+  - id: AC-003
+    name: Infrastructure gap identification
+    condition: Investigation must identify that action space is described not enforced
+    evidence: Investigation Finding 3 — Tool Action Space is markdown table, all tools remain available
+    status: PASS
+
+  - id: AC-004
+    name: Actionable recommendations
+    condition: Recommendations must be concrete enough for a feature-impl agent to execute
+    evidence: Layer 1 spec includes exact markdown content for action-identity fusion block, affordance replacement pattern, length target (<450 lines)
+    status: PASS
+
+  - id: AC-005
+    name: Probe extends model
+    condition: Probe must confirm, contradict, or extend at least one model claim
+    evidence: Probe extends model with 2 new claims — "described not enforced" and "competing instruction hierarchy" failure mode. Confirms 2 existing claims.
+    status: PASS
+
+manual_verification:
+  - step: Read investigation D.E.K.N. summary — does it answer the question in one sentence?
+    expected: "Yes — Delta clearly states identity is additive while actions are subtractive"
+  - step: Check that investigation has Phase Complete
+    expected: "Investigation metadata shows Phase: Complete, Status: Complete"
+  - step: Check probe status
+    expected: "Probe shows Status: Complete"
