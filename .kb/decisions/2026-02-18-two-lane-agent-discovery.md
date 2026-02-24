@@ -1,6 +1,7 @@
 # Decision: Two-Lane Agent Discovery Architecture
 
 **Date:** 2026-02-18
+**Amended:** 2026-02-24 (claude-backend liveness gap)
 **Status:** Accepted
 **Deciders:** Dylan, Architect Agent (og-arch-write-adr-two-18feb-8fab)
 **Context Issue:** orch-go-1081
@@ -36,6 +37,7 @@ These are the exact gaps that triggered cache-building in January. Without addre
 | **Beads** | Lifecycle for tracked work (exists/done) | Session liveness, infrastructure state |
 | **Workspace manifest** | Binding (beads_id ↔ session_id ↔ project_dir) | Work state, completion status |
 | **OpenCode** | Session liveness only (busy/idle/dead) | Work completion, agent identity |
+| **Phase comments** | Liveness proxy for agents without OpenCode sessions | Authoritative lifecycle (that's beads) |
 | **Tmux** | Presentation layer | Any state whatsoever |
 
 **No other persisted lifecycle state allowed.** Any new `pkg/state/`, `pkg/registry/`, `pkg/cache/`, or `sessions.json` triggers CI lint failure (see Regression Guardrails).
@@ -227,6 +229,11 @@ func queryTrackedAgents(projectDirs []string) ([]AgentStatus, error) {
 | Cross-project `--workdir` | `orch status` | Correct `project_dir` | — |
 | Concurrent spawns (5x) | `orch status` | All 5 visible, no duplicates | — |
 | Server restart | `orch status` | Agents survive, no ghosts | — |
+| Claude-backend agent spawned | `orch status` | Visible, `status=active` (via phase) | `no_phase_reported` if no phase yet |
+| Claude-backend agent with Phase comment | `orch status` | `status=active`, `reason=phase_reported` | — |
+| Claude-backend agent completed | `orch status` | `status=completed`, `reason=phase_complete` | — |
+| Claude-backend agent, recently spawned (<5min) | `orch status` | `status=active`, `reason=recently_spawned` | — |
+| Claude-backend agent, no phase, >5min | `orch status` | `status=dead`, `reason=no_phase_reported` | — |
 | New `pkg/state/` file added | CI | Lint failure, blocked | — |
 
 ## Consequences
@@ -254,6 +261,62 @@ func queryTrackedAgents(projectDirs []string) ([]AgentStatus, error) {
 
 The ADR should note this as a future simplification but not depend on it. This decision works with current OpenCode capabilities.
 
+## Amendment: Claude-Backend Liveness Gap (2026-02-24)
+
+**Context Issue:** orch-go-1185, orch-go-1186
+**Probes:**
+- `.kb/models/agent-lifecycle-state-model/probes/2026-02-24-probe-claude-spawn-dashboard-visibility-gap.md`
+- `.kb/models/agent-lifecycle-state-model/probes/2026-02-24-probe-tmux-liveness-two-lane-violation.md`
+
+### The Gap
+
+The original decision assumed all tracked agents have OpenCode sessions. When `runSpawnClaude` was introduced (Feb 21), it created a third spawn path that bypasses OpenCode entirely — the Claude CLI runs directly in tmux, with no OpenCode session created.
+
+This means:
+- No `.session_id` dotfile written
+- No `session_id` in the workspace manifest
+- The query engine's OpenCode liveness check returns `missing_session`
+- Dashboard shows these agents as `"dead"` even when actively working
+
+As of Feb 24, 30% of claude-mode agents (32 of 105) hit this gap.
+
+### Failed Approach: Tmux Liveness (orch-go-1182/1183)
+
+The initial fix attempted to use tmux window existence as a liveness signal for claude-backend agents. This violated two invariants from this decision:
+
+1. **Domain Boundaries violation:** Tmux owns "Presentation layer" and does NOT own "Any state whatsoever." The tmux liveness check mapped `tmux window exists → active` and `tmux window missing → dead`, using tmux as a state oracle.
+
+2. **Cache TTL violation:** The fix required a 10-second TTL cache to paper over tmux command unreliability. The Performance Without Drift table allows 1-5 second TTLs. The need to exceed the allowed range was itself the signal that the approach was wrong.
+
+The oscillation was structural, not incidental: the dashboard server runs inside overmind (which uses its own tmux), requiring socket override logic that races with 3+ tmux shell-outs per agent check.
+
+### Resolution: Phase-Based Liveness (orch-go-1185)
+
+Phase comments from beads serve as the liveness proxy for agents without OpenCode sessions:
+
+| Condition | Status | Reason |
+|-----------|--------|--------|
+| Phase comment exists (not "Complete") | `active` | `phase_reported` |
+| Phase: Complete | `completed` | `phase_complete` |
+| Recently spawned (<5 min), no phase yet | `active` | `recently_spawned` |
+| No phase, >5 min since spawn | `dead` | `no_phase_reported` |
+
+**Why this works:**
+- Phase comments come from beads (authoritative per this decision)
+- The `phases` map is already computed and passed to `joinWithReasonCodes()` — zero additional data fetching
+- Worker-base skill enforces phase reporting within first 3 tool calls, providing a reliable heartbeat
+- The 5-minute grace period covers the gap between spawn and first tool call
+
+**What was reverted:** The tmux liveness check (orch-go-1182) and the 10-second cache (orch-go-1183) were both removed.
+
+### Updated Domain Ownership
+
+The Domain Boundaries table now includes Phase Comments as a liveness source. This is not a new state layer — phases are beads comments, which are already the source of truth for work lifecycle. The query engine simply reads an additional field from data it already fetches.
+
+### Invariant Added to Agent Lifecycle Model
+
+**Invariant 9:** "Claude-backend agents use phase comments as liveness proxy — NOT tmux window checks."
+
 ## References
 
 - `.kb/investigations/2025-12-21-synthesis-registry-evolution-and-orch-identity.md` — Full cycle history
@@ -262,3 +325,5 @@ The ADR should note this as a future simplification but not depend on it. This d
 - `.kb/decisions/2026-01-12-registry-is-spawn-cache.md` — The decision that defended the registry (now superseded)
 - orch-go-1074 — 238 dead agents from partial state
 - orch-go-1058 — Strategic question that led to beads-first
+- orch-go-1185 — Phase-based liveness for claude-backend agents (reverts orch-go-1182/1183)
+- orch-go-1186 — This amendment documenting the gap
