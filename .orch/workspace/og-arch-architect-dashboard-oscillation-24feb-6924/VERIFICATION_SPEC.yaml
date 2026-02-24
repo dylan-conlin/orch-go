@@ -1,0 +1,57 @@
+---
+# Verification Specification: Dashboard Oscillation Architectural Analysis
+# Issue: orch-go-1184
+
+type: architect-investigation
+tier: full
+
+deliverables:
+  investigation:
+    path: ".kb/investigations/2026-02-24-design-dashboard-oscillation-tmux-liveness-architectural-analysis.md"
+    status: complete
+    has_phase_complete: true
+    sections_present:
+      - "Design Question"
+      - "Problem Framing"
+      - "Exploration (Fork Navigation)"
+      - "Synthesis"
+      - "Recommendations"
+      - "Implementation Plan"
+
+  probe:
+    path: ".kb/models/agent-lifecycle-state-model/probes/2026-02-24-probe-tmux-liveness-two-lane-violation.md"
+    status: complete
+    model: agent-lifecycle-state-model
+    confirms:
+      - "Invariant 6: Tmux windows are UI layer only"
+      - "Invariant 7: No persistent lifecycle caches with short TTLs"
+    extends:
+      - "Phase comments serve as liveness proxy for claude-backend agents"
+
+  synthesis:
+    path: ".orch/workspace/og-arch-architect-dashboard-oscillation-24feb-6924/SYNTHESIS.md"
+    status: complete
+    has_plain_language_summary: true
+
+forks_navigated:
+  - fork: "Does tmux liveness violate the two-lane decision?"
+    recommendation: "Yes, clear violation — tmux used as state source"
+    substrate: "Two-lane decision line 39, No Local Agent State principle"
+
+  - fork: "Should runSpawnClaude call AtomicSpawnPhase2?"
+    recommendation: "No — no real OpenCode session exists, phantom ID creates ghost state"
+    substrate: "Two-lane atomic spawn section, escape hatch independence"
+
+  - fork: "What liveness signal should claude-backend agents use?"
+    recommendation: "Phase comments as heartbeat — zero-cost, authoritative, two-lane compliant"
+    substrate: "Two-lane beads ownership, No Local Agent State principle"
+
+acceptance_criteria:
+  - "3 decision forks navigated with substrate traces"
+  - "Investigation produced with implementation plan"
+  - "Probe confirms model invariant violations"
+  - "Recommendation is actionable (includes code snippets, file targets)"
+
+manual_verification:
+  - "Orchestrator reviews recommendation and decides whether to promote to decision"
+  - "Orchestrator spawns feature-impl to implement the revert + phase-based liveness"
