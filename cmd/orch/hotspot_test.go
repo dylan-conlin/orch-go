@@ -512,6 +512,91 @@ func TestCheckSpawnHotspots_CmdOrchMainGo(t *testing.T) {
 	}
 }
 
+// TestCheckSpawnHotspots_CouplingClusterMatchInTaskText validates that coupling-cluster
+// hotspots are matched when the concept name appears in the task text, even without
+// an explicit file path.
+func TestCheckSpawnHotspots_CouplingClusterMatchInTaskText(t *testing.T) {
+	hotspots := []Hotspot{
+		{
+			Path:         "daemon",
+			Type:         "coupling-cluster",
+			Score:        180,
+			RelatedFiles: []string{"cmd/orch/daemon.go", "pkg/daemon/daemon.go", "web/src/lib/stores/daemon.ts"},
+		},
+	}
+
+	tests := []struct {
+		name          string
+		task          string
+		shouldMatch   bool
+		expectedScore int
+	}{
+		{
+			name:          "concept name in task text",
+			task:          "refactor the daemon lifecycle management",
+			shouldMatch:   true,
+			expectedScore: 180,
+		},
+		{
+			name:          "concept name with related file path",
+			task:          "fix issue in cmd/orch/daemon.go",
+			shouldMatch:   true,
+			expectedScore: 180,
+		},
+		{
+			name:          "unrelated task",
+			task:          "add new authentication feature",
+			shouldMatch:   false,
+			expectedScore: 0,
+		},
+		{
+			name:          "case insensitive match",
+			task:          "Debug the Daemon spawn logic",
+			shouldMatch:   true,
+			expectedScore: 180,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := checkSpawnHotspots(tt.task, hotspots)
+			if result.HasHotspots != tt.shouldMatch {
+				t.Errorf("checkSpawnHotspots(%q) HasHotspots = %v, want %v",
+					tt.task, result.HasHotspots, tt.shouldMatch)
+			}
+			if result.MaxScore != tt.expectedScore {
+				t.Errorf("checkSpawnHotspots(%q) MaxScore = %d, want %d",
+					tt.task, result.MaxScore, tt.expectedScore)
+			}
+		})
+	}
+}
+
+// TestCheckSpawnHotspots_MixedTypes validates that multiple hotspot types are all matched
+// when relevant to the task.
+func TestCheckSpawnHotspots_MixedTypes(t *testing.T) {
+	hotspots := []Hotspot{
+		{Path: "cmd/orch/spawn_cmd.go", Type: "fix-density", Score: 7},
+		{Path: "cmd/orch/spawn_cmd.go", Type: "bloat-size", Score: 1800},
+		{Path: "spawn", Type: "coupling-cluster", Score: 120, RelatedFiles: []string{"cmd/orch/spawn_cmd.go", "pkg/spawn/config.go"}},
+	}
+
+	result := checkSpawnHotspots("fix bug in cmd/orch/spawn_cmd.go", hotspots)
+	if !result.HasHotspots {
+		t.Fatal("expected HasHotspots=true")
+	}
+	if len(result.MatchedHotspots) < 2 {
+		t.Errorf("expected at least 2 matched hotspots (fix-density + bloat-size), got %d", len(result.MatchedHotspots))
+	}
+	// Should detect CRITICAL from bloat-size >1500
+	if !result.HasCriticalHotspot {
+		t.Error("expected HasCriticalHotspot=true for bloat-size 1800")
+	}
+	if result.MaxScore != 1800 {
+		t.Errorf("MaxScore = %d, want 1800", result.MaxScore)
+	}
+}
+
 // TestCheckSpawnHotspots_CriticalVsHighSeverity validates that different scores
 // result in appropriate severity levels in warnings.
 func TestCheckSpawnHotspots_CriticalVsHighSeverity(t *testing.T) {

@@ -248,6 +248,60 @@ func TestFormatHotspotWarnings_MultipleWarnings(t *testing.T) {
 	}
 }
 
+func TestFormatHotspotWarnings_SeverityIcons(t *testing.T) {
+	// The icons differ by severity: 🔸 (low), 🟡 (medium, score>=7), 🔴 (critical, score>=10)
+	tests := []struct {
+		name     string
+		score    int
+		wantIcon string
+	}{
+		{"low score gets orange diamond", 3, "🔸"},
+		{"score 6 gets orange diamond", 6, "🔸"},
+		{"score 7 gets yellow circle", 7, "🟡"},
+		{"score 9 gets yellow circle", 9, "🟡"},
+		{"score 10 gets red circle", 10, "🔴"},
+		{"score 15 gets red circle", 15, "🔴"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			warnings := []HotspotWarning{
+				{Path: "test.go", Type: "fix-density", Score: tt.score},
+			}
+			result := FormatHotspotWarnings(warnings)
+			if !contains(result, tt.wantIcon) {
+				t.Errorf("Score %d: expected icon %q in output, got:\n%s", tt.score, tt.wantIcon, result)
+			}
+		})
+	}
+}
+
+func TestFormatHotspotWarnings_RecommendationContent(t *testing.T) {
+	// Test that recommendation text is included when provided
+	warnings := []HotspotWarning{
+		{Path: "test.go", Type: "fix-density", Score: 5, Recommendation: "Consider refactoring"},
+	}
+	result := FormatHotspotWarnings(warnings)
+	if !contains(result, "Consider refactoring") {
+		t.Error("FormatHotspotWarnings() should include recommendation text")
+	}
+}
+
+func TestFormatHotspotWarnings_NoRecommendation(t *testing.T) {
+	// When recommendation is empty, should still format correctly
+	warnings := []HotspotWarning{
+		{Path: "test.go", Type: "fix-density", Score: 5, Recommendation: ""},
+	}
+	result := FormatHotspotWarnings(warnings)
+	if !contains(result, "test.go") {
+		t.Error("FormatHotspotWarnings() should still include file path without recommendation")
+	}
+	// Should NOT contain the recommendation arrow
+	if contains(result, "└─") {
+		t.Error("FormatHotspotWarnings() should not include recommendation prefix when empty")
+	}
+}
+
 // =============================================================================
 // Tests for GenerateHotspotRecommendation
 // =============================================================================

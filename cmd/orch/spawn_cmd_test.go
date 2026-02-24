@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dylan-conlin/orch-go/pkg/model"
+	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 )
 
 func TestValidateModeModelCombo(t *testing.T) {
@@ -328,5 +329,54 @@ func TestLoadUserConfigAndWarningMalformedConfig(t *testing.T) {
 	}
 	if userCfg != nil {
 		t.Fatalf("expected nil config on error")
+	}
+}
+
+// --- hotspotFilesFromResult tests ---
+
+func TestHotspotFilesFromResult_NilResult(t *testing.T) {
+	files := hotspotFilesFromResult(nil)
+	if files != nil {
+		t.Errorf("expected nil for nil result, got %v", files)
+	}
+}
+
+func TestHotspotFilesFromResult_EmptyMatchedFiles(t *testing.T) {
+	result := &gates.HotspotResult{
+		HasHotspots:   true,
+		MatchedFiles:  nil,
+	}
+	files := hotspotFilesFromResult(result)
+	if files != nil {
+		t.Errorf("expected nil for nil MatchedFiles, got %v", files)
+	}
+}
+
+func TestHotspotFilesFromResult_WithMatchedFiles(t *testing.T) {
+	result := &gates.HotspotResult{
+		HasHotspots:  true,
+		MatchedFiles: []string{"cmd/orch/spawn_cmd.go", "pkg/daemon/daemon.go"},
+	}
+	files := hotspotFilesFromResult(result)
+	if len(files) != 2 {
+		t.Fatalf("expected 2 files, got %d", len(files))
+	}
+	if files[0] != "cmd/orch/spawn_cmd.go" {
+		t.Errorf("files[0] = %q, want 'cmd/orch/spawn_cmd.go'", files[0])
+	}
+	if files[1] != "pkg/daemon/daemon.go" {
+		t.Errorf("files[1] = %q, want 'pkg/daemon/daemon.go'", files[1])
+	}
+}
+
+func TestHotspotFilesFromResult_NoHotspotsStillReturnsFiles(t *testing.T) {
+	// Even if HasHotspots is false, we return MatchedFiles as-is
+	result := &gates.HotspotResult{
+		HasHotspots:  false,
+		MatchedFiles: []string{"some/file.go"},
+	}
+	files := hotspotFilesFromResult(result)
+	if len(files) != 1 {
+		t.Errorf("expected 1 file, got %d", len(files))
 	}
 }
