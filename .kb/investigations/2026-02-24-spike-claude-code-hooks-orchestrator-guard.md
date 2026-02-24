@@ -1,6 +1,6 @@
 # Spike: Claude Code Hooks for Orchestrator Action Enforcement
 
-**Question:** Can Claude Code hooks intercept tool calls for orchestrator action enforcement? Is PreToolUse feasible for blocking prohibited tool usage (Task tool, Edit/Write, bd close) in orchestrator sessions?
+**Question:** Can Claude Code hooks intercept tool calls for orchestrator action enforcement? Is PreToolUse feasible for blocking prohibited tool usage (Task tool, Edit/Write, bd close) in orchestrator sessions? Is there a simpler built-in mechanism?
 
 **Started:** 2026-02-24
 **Updated:** 2026-02-24
@@ -12,17 +12,93 @@
 
 ---
 
-## TL;DR: Fully Feasible
+## TL;DR: Two Mechanisms, Use Both
 
-Claude Code's `PreToolUse` hook can intercept any tool call, see tool name + input, and **deny execution with a reason message injected into the agent's context**. This is exactly the mechanism needed for Layer 2 enforcement. An existing hook (`gate-bd-close.py`) already demonstrates the pattern. Session detection via `CLAUDE_CONTEXT` env var is already implemented.
+Claude Code provides **two** enforcement mechanisms for Layer 2:
 
-**Estimated implementation effort:** ~2 hours (one Python script + settings.json update)
+1. **`--disallowedTools` CLI flag** — removes tools entirely from the agent's toolset at spawn time. Simpler, more deterministic, zero runtime cost. Best for blanket tool restrictions (Task, Edit, Write, NotebookEdit).
+
+2. **`PreToolUse` hook** — intercepts tool calls at runtime with conditional logic. Best for command-level restrictions within an allowed tool (e.g., blocking `bd close` within Bash while allowing other Bash commands).
+
+**Recommended approach:** `--disallowedTools` as primary enforcement (Layer 2a) + PreToolUse hook for Bash command gating (Layer 2b). Implementation: ~1 hour total — one-line change to `BuildClaudeLaunchCommand` + small hook for bd close.
 
 ---
 
 ## Findings
 
-### Finding 1: PreToolUse Hook Has Full Interception Capability
+### Finding 1: `--disallowedTools` CLI Flag Removes Tools at Spawn Time
+
+**Evidence:** The `claude` CLI accepts `--disallowedTools` (alias `--disallowed-tools`) to deny specific tools for the entire session:
+
+```bash
+claude --disallowedTools "Task,Edit,Write,NotebookEdit" --dangerously-skip-permissions
+```
+
+This removes the tools from the agent's available toolset entirely — the agent never sees them, can't attempt to use them, and receives no error. The tools simply don't exist in that session's tool inventory.
+
+Additionally, `--allowedTools` (whitelist) and `--tools` (explicit full list) are available for even stricter control.
+
+**Source:** `claude --help` output, Claude Code permissions documentation
+
+**Significance:** This is strictly superior to hooks for blanket tool restrictions because:
+- Zero runtime overhead (no hook fires per tool call)
+- No bypass risk (tool doesn't exist, not just denied)
+- No error/denial messages to confuse the agent
+- No Python script to maintain
+- Scoped to spawned sessions only (doesn't affect interactive sessions)
+
+---
+
+### Finding 2: orch-go Already Has the Injection Point
+
+**Evidence:** `pkg/spawn/claude.go:71` constructs the Claude launch command:
+
+```go
+return fmt.Sprintf("export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s",
+    claudeContext, contextPath, mcpFlag)
+```
+
+Adding `--disallowedTools` is a one-line change. The `claudeContext` variable already distinguishes orchestrator from worker sessions (line 104-112):
+
+```go
+switch {
+case cfg.IsMetaOrchestrator:
+    claudeContext = "meta-orchestrator"
+case cfg.IsOrchestrator:
+    claudeContext = "orchestrator"
+default:
+    claudeContext = "worker"
+}
+```
+
+**Source:** `pkg/spawn/claude.go` lines 57-72, 76-129
+
+**Significance:** The implementation is trivial — add a `disallowedTools` string based on `cfg.IsOrchestrator` and append it to the command.
+
+---
+
+### Finding 3: PreToolUse Hook Needed Only for Bash Command Gating
+
+**Evidence:** `--disallowedTools` works at the tool level (Task, Edit, Write) but cannot distinguish between Bash commands. Orchestrators need Bash for legitimate commands (`orch spawn`, `orch complete`, `bd create`, `bd show`, `kb context`, `git status`), but should be blocked from specific Bash commands like `bd close`.
+
+PreToolUse hooks can inspect the `tool_input.command` field for Bash calls:
+
+```json
+{
+  "tool_name": "Bash",
+  "tool_input": { "command": "bd close orch-go-1234" }
+}
+```
+
+An existing hook (`gate-bd-close.py`) already demonstrates this exact pattern — reading stdin JSON, checking `CLAUDE_CONTEXT`, inspecting the command via regex, and returning `permissionDecision: "deny"` with a reason.
+
+**Source:** `~/.orch/hooks/gate-bd-close.py`, Claude Code hooks documentation
+
+**Significance:** The hook approach is needed only for the `bd close` → `orch complete` enforcement. All other tool-level restrictions use the simpler `--disallowedTools` flag.
+
+---
+
+### Finding 4: PreToolUse Has Full Interception Capability
 
 **Evidence:** Claude Code supports 17 hook event types. `PreToolUse` fires before every tool call and provides:
 
@@ -41,188 +117,115 @@ Claude Code's `PreToolUse` hook can intercept any tool call, see tool name + inp
 }
 ```
 
-Three response mechanisms available:
+Response mechanisms:
 1. **`permissionDecision: "deny"`** — Cancels the tool call, sends reason to Claude as error
 2. **`permissionDecision: "allow"`** — Proceeds without permission prompt
 3. **`permissionDecision: "ask"`** — Shows permission prompt to user
 4. **Exit code 2** — Blocks action, stderr fed back to Claude
-5. **`updatedInput`** — Can modify tool input before execution (not needed here)
+5. **`updatedInput`** — Can modify tool input before execution
+
+Three handler types: `command` (shell script), `prompt` (single LLM call), `agent` (multi-turn subagent).
 
 **Source:** Claude Code hooks documentation, verified against existing hooks in `~/.claude/settings.json`
 
-**Significance:** PreToolUse provides everything Layer 2 needs: tool name identification, input inspection, and denial with contextual feedback.
+**Significance:** PreToolUse is the right mechanism for command-level gating within Bash.
 
 ---
 
-### Finding 2: Matchers Target Specific Tools by Name
+### Finding 5: Session Detection Already Implemented
 
-**Evidence:** Hook configuration uses regex matchers on tool names:
-
-```json
-{
-  "PreToolUse": [
-    { "matcher": "Task", "hooks": [...] },
-    { "matcher": "Edit|Write", "hooks": [...] },
-    { "matcher": "Bash", "hooks": [...] }
-  ]
-}
-```
-
-Tool names that can be matched: `Task`, `Edit`, `Write`, `Read`, `Bash`, `Glob`, `Grep`, `NotebookEdit`, `mcp__*` (MCP tools).
-
-**Source:** `~/.claude/settings.json` — existing hooks already use matchers: `"Bash"`, `"Edit|Write"`, `"Read|Glob|Grep"`
-
-**Significance:** Each prohibited tool can have a targeted hook. No need for a single catch-all — matchers provide precise targeting.
-
----
-
-### Finding 3: Existing Hook Demonstrates Exact Pattern Needed
-
-**Evidence:** `~/.orch/hooks/gate-bd-close.py` already:
-1. Reads JSON from stdin (tool_name, tool_input)
-2. Checks `CLAUDE_CONTEXT` env var for session type
-3. Inspects bash command content via regex
-4. Returns `permissionDecision: "deny"` with detailed reason
-
-Key detection code (line 124-126):
-```python
-context = os.environ.get("CLAUDE_CONTEXT", "")
-if context != "worker":
-    return None
-```
-
-The orchestrator-guard hook inverts this: instead of gating workers, it gates orchestrators.
-
-**Source:** `~/.orch/hooks/gate-bd-close.py` (191 lines, fully functional)
-
-**Significance:** The implementation pattern is proven and production-tested. The new hook is structurally identical — only the detection logic and tool targets differ.
-
----
-
-### Finding 4: Session Detection Already Implemented
-
-**Evidence:** `CLAUDE_CONTEXT` env var is set by `orch spawn`:
+**Evidence:** `CLAUDE_CONTEXT` env var is set by `orch spawn` (`pkg/spawn/claude.go:104-112`):
 - `"worker"` — worker agents (feature-impl, investigation, etc.)
 - `"orchestrator"` — orchestrator agents
 - `"meta-orchestrator"` — meta-orchestrator agents
 - Empty/unset — interactive Claude Code sessions (human at keyboard)
 
-The `load-orchestration-context.py` hook (line 496-497) already reads this:
-```python
-ctx = os.environ.get('CLAUDE_CONTEXT', '')
-return ctx in ('worker', 'orchestrator', 'meta-orchestrator')
-```
+Multiple existing hooks already read this: `load-orchestration-context.py`, `gate-bd-close.py`.
 
-**Source:** `~/.orch/hooks/load-orchestration-context.py`, `~/.orch/hooks/gate-bd-close.py`
+**Source:** `pkg/spawn/claude.go`, `~/.orch/hooks/load-orchestration-context.py`, `~/.orch/hooks/gate-bd-close.py`
 
-**Significance:** No new detection mechanism needed. `CLAUDE_CONTEXT == "orchestrator"` is the reliable signal.
+**Significance:** No new detection mechanism needed. Both `--disallowedTools` (via Config flags) and hooks (via env var) can detect orchestrator sessions.
 
 ---
 
-### Finding 5: Three Handler Types Available (Command, Prompt, Agent)
+### Finding 6: `--disallowedTools` vs PreToolUse Hook — Head-to-Head
 
-**Evidence:** Claude Code hooks support three handler types:
+**Evidence:** Comparison of the two enforcement mechanisms:
 
-| Type | Description | Use Case |
-|------|-------------|----------|
-| `command` | Shell script, JSON stdin/stdout | Deterministic rules (our case) |
-| `prompt` | Single LLM call (Haiku default) | Fuzzy intent detection |
-| `agent` | Multi-turn subagent with tools | Complex evaluation |
+| Dimension | `--disallowedTools` (CLI flag) | PreToolUse hook |
+|---|---|---|
+| **Enforcement** | Tool removed from toolset | Tool call intercepted at runtime |
+| **Granularity** | Per-tool (Task, Edit, Write) | Per-command within a tool |
+| **Bypass risk** | None (tool doesn't exist) | None (hook fires every call) |
+| **Error UX** | Agent never sees tool | Agent tries, gets denied + reason |
+| **Runtime cost** | Zero | ~50-100ms per matching tool call |
+| **Implementation** | One-line change to spawn code | ~50 line Python script |
+| **Scope** | Only spawned sessions (not interactive) | All sessions (needs CLAUDE_CONTEXT check) |
+| **Exceptions** | No (blanket per-tool) | Yes (conditional logic) |
+| **Maintenance** | Inline with Go code | Separate Python script |
+| **"Pain as signal"** | No feedback (tool absent) | Denial reason injected into context |
 
-For orchestrator-guard, `command` type is correct — the rules are deterministic (if orchestrator + prohibited tool → deny). No LLM evaluation needed.
+**Source:** Claude Code CLI help, hooks documentation, existing hook implementations
 
-**Source:** Claude Code hooks documentation
-
-**Significance:** `command` type is fastest (<100ms), most reliable, and appropriate for enforcement rules.
-
----
-
-### Finding 6: Denial Reason Is Injected as Context to Claude
-
-**Evidence:** When a PreToolUse hook returns `permissionDecision: "deny"`, the `permissionDecisionReason` string is fed back to Claude as an error message. This means the agent:
-1. Sees that its tool call was blocked
-2. Receives the reason explaining WHY it was blocked
-3. Gets guidance on what to do instead
-
-This is the "pain as signal" pattern from the investigation — the violation message appears in the agent's context immediately when the prohibited tool is used.
-
-**Source:** Claude Code docs; verified behavior via `gate-bd-close.py` which uses this pattern
-
-**Significance:** The hook doesn't just block — it teaches. The denial reason can include the correct alternative (`orch spawn` instead of Task tool), creating real-time behavioral correction.
+**Significance:** `--disallowedTools` is superior for tool-level blocking (simpler, no runtime cost, no bypass). PreToolUse is superior for command-level blocking (can inspect Bash commands). Using both covers the full enforcement surface.
 
 ---
 
-## Design: Orchestrator-Guard Hook
+## Revised Design: Hybrid Approach
 
-### Architecture
+### Layer 2a: `--disallowedTools` at Spawn Time (Primary)
 
-```
-PreToolUse event
-    │
-    ├── matcher: "Task"
-    │   └── orchestrator-guard.py → deny if CLAUDE_CONTEXT == "orchestrator"
-    │       reason: "Use orch spawn, not Task tool"
-    │
-    ├── matcher: "Edit|Write"
-    │   └── orchestrator-guard.py → deny if CLAUDE_CONTEXT == "orchestrator"
-    │       reason: "Orchestrators don't edit code. Delegate via orch spawn"
-    │
-    └── matcher: "Bash" (extends existing)
-        └── orchestrator-guard.py → deny if CLAUDE_CONTEXT == "orchestrator"
-            and command matches "bd close" → reason: "Use orch complete, not bd close"
-```
+**Change in `pkg/spawn/claude.go`:**
 
-### Single Script, Multiple Matchers
+```go
+func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp string) string {
+    mcpFlag := ""
+    // ... existing MCP logic ...
 
-One script handles all three cases — the `tool_name` field in stdin differentiates:
-
-```python
-#!/usr/bin/env python3
-"""
-Orchestrator-Guard Hook: Enforce action space constraints for orchestrator sessions.
-
-PreToolUse hook that blocks orchestrator agents from using worker-level tools:
-- Task tool → should use orch spawn
-- Edit/Write → orchestrators don't edit code
-- bd close → should use orch complete
-
-Detection: CLAUDE_CONTEXT == "orchestrator" (set by orch spawn)
-"""
-
-TOOL_VIOLATIONS = {
-    "Task": {
-        "reason": (
-            "⚠️ ORCHESTRATOR ACTION VIOLATION: Task tool is not available to orchestrators.\n\n"
-            "Orchestrators delegate work via:\n"
-            "  - `orch spawn SKILL \"task\"` — spawn a worker agent\n"
-            "  - `bd create --title \"...\" -l triage:ready` — create work for daemon to spawn\n\n"
-            "The Task tool launches Claude Code subagents. Orchestrators use orch spawn\n"
-            "which provides skill context, beads tracking, and verification gates."
-        )
-    },
-    "Edit": {
-        "reason": (
-            "⚠️ ORCHESTRATOR ACTION VIOLATION: Edit tool is not available to orchestrators.\n\n"
-            "Orchestrators don't write or edit code. To make code changes:\n"
-            "  - `orch spawn feature-impl \"description\"` — delegate to a worker\n"
-            "  - `orch spawn systematic-debugging \"description\"` — delegate debugging\n\n"
-            "Your role: ORIENT → DELEGATE → RECONNECT (never implement)."
-        )
-    },
-    "Write": {
-        "reason": (
-            "⚠️ ORCHESTRATOR ACTION VIOLATION: Write tool is not available to orchestrators.\n\n"
-            "Orchestrators don't create code files. To create files:\n"
-            "  - `orch spawn feature-impl \"description\"` — delegate to a worker\n\n"
-            "Exception: Writing to .kb/ files (investigations, decisions) is allowed."
-        )
+    // Orchestrator tool restrictions: remove worker-level tools
+    disallowFlag := ""
+    if claudeContext == "orchestrator" || claudeContext == "meta-orchestrator" {
+        disallowFlag = " --disallowedTools 'Task,Edit,Write,NotebookEdit'"
     }
-}
 
-# Bash command patterns that are prohibited for orchestrators
-BASH_VIOLATIONS = {
-    r"^\s*bd\s+close\b": {
-        "reason": (
+    return fmt.Sprintf("export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s",
+        claudeContext, contextPath, mcpFlag, disallowFlag)
+}
+```
+
+**Tools blocked for orchestrators:**
+- `Task` — must use `orch spawn` / `bd create -l triage:ready`
+- `Edit` — orchestrators don't edit code
+- `Write` — orchestrators don't create code files
+- `NotebookEdit` — orchestrators don't edit notebooks
+
+**Tools remaining available:**
+- `Bash` — needed for `orch spawn`, `orch complete`, `bd create`, `bd show`, `kb context`, `git status`
+- `Read` — needed for reading .kb/ files, CLAUDE.md, SYNTHESIS.md
+- `Glob` — needed for finding knowledge artifacts
+- `Grep` — needed for searching knowledge artifacts
+- `WebFetch` / `WebSearch` — needed for research
+
+**Write exception for .kb/ files:** Not needed with `--disallowedTools` because orchestrators write knowledge files via Bash (`kb quick decide`, etc.) and don't typically use the Write tool directly. If this becomes a problem, fall back to the hook approach for Write only.
+
+### Layer 2b: PreToolUse Hook for `bd close` (Supplementary)
+
+**Modify existing `gate-bd-close.py`** or create new `orchestrator-guard.py`:
+
+```python
+# In PreToolUse hook for Bash matcher:
+# Block 'bd close' for orchestrator sessions → redirect to 'orch complete'
+
+context = os.environ.get("CLAUDE_CONTEXT", "")
+if context not in ("orchestrator", "meta-orchestrator"):
+    return None  # Only gate orchestator sessions
+
+command = input_data.get("tool_input", {}).get("command", "")
+
+if re.match(r'^\s*bd\s+close\b', command):
+    return {
+        "permissionDecision": "deny",
+        "permissionDecisionReason": (
             "⚠️ ORCHESTRATOR ACTION VIOLATION: Use `orch complete`, not `bd close`.\n\n"
             "`orch complete <agent-id>` runs verification gates before closing:\n"
             "  - Gate 1 (explain-back): What was built and why?\n"
@@ -230,138 +233,80 @@ BASH_VIOLATIONS = {
             "`bd close` bypasses these gates. Always use `orch complete` for agent work."
         )
     }
-}
 ```
 
-### Settings.json Integration
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.orch/hooks/orchestrator-guard.py",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.orch/hooks/orchestrator-guard.py",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.orch/hooks/orchestrator-guard.py",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "$HOME/.orch/hooks/gate-bd-close.py",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "$HOME/.orch/hooks/pre-commit-knowledge-gate.py",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-### Exceptions (Write Tool)
-
-The Write tool denial should exclude `.kb/` paths — orchestrators legitimately write investigation files, decisions, and probes:
-
-```python
-if tool_name == "Write":
-    file_path = tool_input.get("file_path", "")
-    if "/.kb/" in file_path or file_path.endswith(".md"):
-        return None  # Allow knowledge file writes
-```
-
-### Graduated Response (Future Enhancement)
-
-The investigation recommends graduated response (warn → stronger warn → block). The initial implementation should use immediate denial because:
-1. Graduated response requires state tracking across tool calls (complexity)
-2. The denial message IS the "pain as signal" — it teaches the correct behavior
-3. If needed later, a counter could be added via a temp file per session
+This can either extend the existing `gate-bd-close.py` (which currently only gates worker architect/orchestrator skills without kn entries) or be a new script.
 
 ---
 
 ## Structured Uncertainty
 
 **What's tested:**
-- ✅ PreToolUse hook can deny tool calls with contextual reasons (verified via existing gate-bd-close.py)
-- ✅ `CLAUDE_CONTEXT` env var exists and is set correctly by orch spawn
-- ✅ Matchers can target specific tools by name (verified via settings.json)
-- ✅ Denial reason is injected into agent context (documented behavior, verified via existing hooks)
+- ✅ `--disallowedTools` flag exists and accepts tool names (verified via `claude --help`)
+- ✅ `BuildClaudeLaunchCommand` is the single injection point for CLI flags (verified via code)
+- ✅ `CLAUDE_CONTEXT` env var exists and differentiates session types (verified via code)
+- ✅ PreToolUse hook can deny Bash commands with contextual reasons (verified via gate-bd-close.py)
 
 **What's untested:**
-- ⚠️ Whether the Task tool matcher actually fires (no existing PreToolUse hook targets "Task" — all existing ones target "Bash", "Edit|Write", "Read|Glob|Grep")
-- ⚠️ Whether denying Task tool causes graceful degradation or confuses the agent
-- ⚠️ Performance impact of adding a 4th PreToolUse hook (should be negligible at 5s timeout)
-- ⚠️ Whether Write tool exception for .kb/ paths is sufficient (might need SYNTHESIS.md, VERIFICATION_SPEC.yaml paths too)
+- ⚠️ Whether `--disallowedTools` works correctly when piped via stdin (`cat file | claude --disallowedTools ...`) — standard CLI behavior, likely fine but untested
+- ⚠️ Whether removing the Task tool causes the agent to attempt workarounds (e.g., using Bash to run `claude` directly) — unlikely but possible
+- ⚠️ Whether orchestrators need Write tool for VERIFICATION_SPEC.yaml or SYNTHESIS.md — if so, either allow Write or have workers handle these files
+- ⚠️ Whether `--disallowedTools` interacts correctly with `--dangerously-skip-permissions` — both are permission-related flags
 
 **What would change this:**
-- If Claude Code hooks don't fire for subagent-spawning tools (would need to verify Task specifically)
-- If `CLAUDE_CONTEXT` is not available inside hook processes (would need SessionStart hook to set it via CLAUDE_ENV_FILE)
+- If `--disallowedTools` doesn't work with piped input, fall back to hook-only approach
+- If orchestrators need Write for specific files, use hook with exceptions instead of blanket `--disallowedTools`
+- If `--dangerously-skip-permissions` overrides `--disallowedTools`, use hooks as the enforcement layer
 
 ---
 
 ## Implementation Recommendations
 
-### Recommendation: Build the orchestrator-guard.py hook
+### Recommended: Hybrid `--disallowedTools` + Hook
 
-**Authority:** implementation (follows directly from Layer 2 recommendation in parent investigation)
+**Authority:** implementation (follows from Layer 2 in parent investigation)
 
-**Effort:** ~2 hours
-- Script: ~100 lines Python (modeled on gate-bd-close.py)
-- Settings: Add 2 new PreToolUse entries + extend existing Bash entry
-- Testing: Manual test with orchestrator session
+**Effort:** ~1 hour total
 
-**Implementation order:**
-1. Create `~/.orch/hooks/orchestrator-guard.py`
-2. Add PreToolUse entries for `Task` and `Edit|Write` matchers
-3. Add orchestrator-guard.py to existing `Bash` matcher
-4. Test with `CLAUDE_CONTEXT=orchestrator` in a test session
-5. Deploy to orchestrator sessions via orch spawn env var
+**Step 1 (Layer 2a):** Modify `pkg/spawn/claude.go` (~10 lines)
+- Add `disallowedTools` logic to `BuildClaudeLaunchCommand`
+- Update `BuildClaudeLaunchCommand` tests in `claude_test.go`
+- Gate on `claudeContext == "orchestrator" || claudeContext == "meta-orchestrator"`
 
-### Risk: CLAUDE_CONTEXT Propagation
+**Step 2 (Layer 2b):** Modify `~/.orch/hooks/gate-bd-close.py` (~20 lines)
+- Add orchestrator-specific `bd close` → `orch complete` gating
+- Currently gates on `CLAUDE_CONTEXT == "worker"` for kn entries; add `"orchestrator"` check for bd close
 
-Verify that `CLAUDE_CONTEXT` is available to hook processes. The env var is set in the spawning environment, but hooks might run in a different process context. If not available:
-- **Fallback:** Use SessionStart hook to detect orchestrator context and write to `$CLAUDE_ENV_FILE` for persistence
-- **Alternative:** Check for orchestrator skill markers in the transcript path or cwd
+**Step 3:** Manual test
+- Spawn an orchestrator session
+- Verify Task tool is absent
+- Verify Edit/Write tools are absent
+- Verify `bd close` is denied with reason
+- Verify `orch spawn`, `bd create`, `kb context` all work
+
+### Risk: Write Tool for Knowledge Files
+
+If orchestrators use Write tool for `.kb/` files (investigation files, probes), `--disallowedTools "Write"` would break this. Mitigations:
+1. **Primary:** Orchestrators write knowledge via `kb quick` commands (Bash), not Write tool
+2. **Fallback:** Remove Write from `--disallowedTools` and use hook with .kb/ exception instead
+3. **Monitor:** After deployment, check if orchestrator sessions fail on Write attempts
 
 ---
 
 ## References
 
 **Files Examined:**
+- `pkg/spawn/claude.go` — BuildClaudeLaunchCommand, SpawnClaude (injection point for --disallowedTools)
 - `~/.claude/settings.json` — Current hook configuration (13+ hooks across 6 event types)
-- `~/.orch/hooks/gate-bd-close.py` — Existing PreToolUse deny pattern (exact template for new hook)
+- `~/.orch/hooks/gate-bd-close.py` — Existing PreToolUse deny pattern
 - `~/.orch/hooks/load-orchestration-context.py` — Session type detection via CLAUDE_CONTEXT
-- Claude Code hooks documentation — PreToolUse API, matchers, response format
+- `claude --help` — CLI flags including --disallowedTools, --allowedTools, --tools, --permission-mode
 
 **Parent Investigation:**
 - `.kb/investigations/2026-02-24-design-orchestrator-skill-behavioral-compliance.md` — Layer 2 recommendation that this spike validates
 
 **Key API Surface:**
+- CLI: `--disallowedTools` (blanket tool removal), `--allowedTools` (whitelist), `--tools` (explicit list), `--permission-mode`
 - PreToolUse: matcher (regex on tool name), stdin JSON (tool_name, tool_input), response (permissionDecision: allow|deny|ask)
 - Environment: CLAUDE_CONTEXT, CLAUDE_PROJECT_DIR, CLAUDE_ENV_FILE
 - Handler types: command (shell), prompt (single LLM), agent (multi-turn subagent)
