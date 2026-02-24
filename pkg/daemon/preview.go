@@ -17,14 +17,15 @@ type RejectedIssue struct {
 
 // PreviewResult contains the result of a preview operation.
 type PreviewResult struct {
-	Issue           *Issue
-	Skill           string
-	Model           string           // Inferred model alias (e.g., "opus", "sonnet")
-	Message         string
-	RateLimited     bool             // True if rate limit would prevent spawning
-	RateStatus      string           // Rate limit status message (e.g., "5/20 spawns in last hour")
-	HotspotWarnings []HotspotWarning // Warnings about hotspot areas this issue may touch
-	RejectedIssues  []RejectedIssue  // Issues that were rejected with reasons
+	Issue              *Issue
+	Skill              string
+	Model              string           // Inferred model alias (e.g., "opus", "sonnet")
+	Message            string
+	RateLimited        bool             // True if rate limit would prevent spawning
+	RateStatus         string           // Rate limit status message (e.g., "5/20 spawns in last hour")
+	HotspotWarnings    []HotspotWarning // Warnings about hotspot areas this issue may touch
+	RejectedIssues     []RejectedIssue  // Issues that were rejected with reasons
+	ArchitectEscalated bool             // True if skill would be escalated from impl to architect
 }
 
 // HasHotspotWarnings returns true if there are any hotspot warnings.
@@ -118,6 +119,14 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 	// Check for hotspot warnings if checker is configured
 	if d.HotspotChecker != nil {
 		result.HotspotWarnings = CheckHotspotsForIssue(spawnable, d.HotspotChecker)
+
+		// Check if architect escalation would apply
+		escalation := CheckArchitectEscalation(spawnable, skill, d.HotspotChecker)
+		if escalation != nil {
+			result.Skill = "architect"
+			result.Model = InferModelFromSkill("architect")
+			result.ArchitectEscalated = true
+		}
 	}
 
 	return result, nil

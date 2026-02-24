@@ -36,6 +36,11 @@ type OnceResult struct {
 	// OriginalIssueID is set when ExtractionSpawned is true, containing the ID of the
 	// original issue that will be spawned after extraction completes.
 	OriginalIssueID string
+
+	// ArchitectEscalated indicates that the skill was escalated from an implementation skill
+	// (feature-impl or systematic-debugging) to architect because the issue targets a hotspot area.
+	// This implements Layer 2 of hotspot enforcement (daemon-level skill routing).
+	ArchitectEscalated bool
 }
 
 // Daemon manages autonomous issue processing.
@@ -90,8 +95,12 @@ type Daemon struct {
 
 	// listIssuesFunc is used for testing - allows mocking bd list
 	listIssuesFunc func() ([]Issue, error)
+	// ProjectRegistry resolves issue ID prefixes to project directories.
+	// When set, the daemon passes --workdir to orch work for cross-project issues.
+	ProjectRegistry *ProjectRegistry
+
 	// spawnFunc is used for testing - allows mocking orch work
-	spawnFunc func(beadsID string, model string) error
+	spawnFunc func(beadsID, model, workdir string) error
 	// listCompletedAgentsFunc is used for testing - allows mocking completed agents list
 	listCompletedAgentsFunc func(CompletionConfig) ([]CompletedAgent, error)
 	// reflectFunc is used for testing - allows mocking kb reflect
@@ -505,15 +514,39 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		}
 	}
 
+	// Layer 2: Architect escalation for hotspot areas.
+	// If the issue targets a hotspot area (any type, not just bloat-size >1500)
+	// and the skill is an implementation skill (feature-impl, systematic-debugging),
+	// escalate to architect for architectural review before implementation.
+	// This only applies when extraction didn't already happen (extraction handles the most critical case).
+	architectEscalated := false
+	if !extractionSpawned && d.HotspotChecker != nil {
+		escalation := CheckArchitectEscalation(issue, skill, d.HotspotChecker)
+		if escalation != nil {
+			if d.Config.Verbose {
+				fmt.Printf("  Architect escalation: %s targets hotspot %s (%s, score=%d)\n",
+					issue.ID, escalation.HotspotFile, escalation.HotspotType, escalation.HotspotScore)
+			}
+			skill = "architect"
+			inferredModel = InferModelFromSkill(skill)
+			architectEscalated = true
+		}
+	}
+
 	// Session-level dedup: Check if there's an existing OpenCode session for this issue.
 	// This prevents duplicate spawns when:
 	// 1. SpawnedIssueTracker TTL expires (5min/6h) but agent is still running
 	// 2. Status update to "in_progress" failed silently
 	// 3. Multiple daemon instances try to spawn the same issue
 	result, _, err := d.spawnIssue(issue, skill, inferredModel)
-	if result != nil && extractionSpawned {
-		result.ExtractionSpawned = true
-		result.OriginalIssueID = originalIssueID
+	if result != nil {
+		if extractionSpawned {
+			result.ExtractionSpawned = true
+			result.OriginalIssueID = originalIssueID
+		}
+		if architectEscalated {
+			result.ArchitectEscalated = true
+		}
 	}
 	return result, err
 }
@@ -697,8 +730,14 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 		d.SpawnedIssues.MarkSpawnedWithTitle(issue.ID, issue.Title)
 	}
 
-	// Spawn the work with inferred model
-	if err := d.spawnFunc(issue.ID, inferredModel); err != nil {
+	// Resolve project directory for cross-project issues
+	var workdir string
+	if d.ProjectRegistry != nil {
+		workdir = d.ProjectRegistry.Resolve(issue.ID)
+	}
+
+	// Spawn the work with inferred model and optional workdir
+	if err := d.spawnFunc(issue.ID, inferredModel, workdir); err != nil {
 		// Track spawn failure for health card visibility
 		if d.SpawnFailureTracker != nil {
 			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("Spawn failed: %v", err))

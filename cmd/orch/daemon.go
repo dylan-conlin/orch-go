@@ -244,6 +244,16 @@ func runDaemonLoop() error {
 	config := daemonConfigFromFlags()
 	d := daemon.NewWithConfig(config)
 
+	// Initialize project registry for cross-project issue resolution.
+	// If kb projects list fails (kb not installed, no projects), daemon still works
+	// but spawns everything into the current directory.
+	registry, err := daemon.NewProjectRegistry()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: project registry unavailable: %v\n", err)
+	} else {
+		d.ProjectRegistry = registry
+	}
+
 	// NOTE: Extraction system disabled. HotspotChecker is not set, so the
 	// extraction gate in Once() and hotspot warnings in Preview() are skipped.
 	// The daemon goes straight from polling bd ready to spawning issues.
@@ -698,6 +708,14 @@ func runDaemonLoop() error {
 					result.OriginalIssueID,
 					result.Issue.Title,
 				)
+			} else if result.ArchitectEscalated {
+				fmt.Printf("[%s] Architect escalation: %s (%s, %s) - %s\n",
+					timestamp,
+					result.Issue.ID,
+					result.Skill,
+					result.Model,
+					result.Issue.Title,
+				)
 			} else {
 				fmt.Printf("[%s] Spawned: %s (%s, %s) - %s\n",
 					timestamp,
@@ -719,6 +737,9 @@ func runDaemonLoop() error {
 			if result.ExtractionSpawned {
 				eventData["extraction"] = true
 				eventData["original_issue"] = result.OriginalIssueID
+			}
+			if result.ArchitectEscalated {
+				eventData["architect_escalated"] = true
 			}
 			event := events.Event{
 				Type:      "daemon.spawn",
@@ -811,6 +832,9 @@ func runDaemonDryRun() error {
 		fmt.Println(daemon.FormatPreview(result.Issue))
 		fmt.Printf("\nInferred skill: %s\n", result.Skill)
 		fmt.Printf("Inferred model: %s\n", result.Model)
+		if result.ArchitectEscalated {
+			fmt.Println("⚠️  Architect escalation: implementation skill escalated to architect (hotspot area)")
+		}
 
 		// Display hotspot warnings if any
 		if result.HasHotspotWarnings() {
@@ -833,6 +857,14 @@ func runDaemonDryRun() error {
 func runDaemonOnce() error {
 	config := daemonConfigFromFlags()
 	d := daemon.NewWithConfig(config)
+
+	// Initialize project registry for cross-project issue resolution
+	registry, err := daemon.NewProjectRegistry()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: project registry unavailable: %v\n", err)
+	} else {
+		d.ProjectRegistry = registry
+	}
 
 	// Seed verification tracker with unverified backlog
 	seedVerificationTracker(d)
