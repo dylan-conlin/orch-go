@@ -658,6 +658,313 @@ func TestRunHotspotCheckForSpawn_IncludesBloatAnalysis(t *testing.T) {
 	}
 }
 
+// --- Tests for bloat-size matching in matchPathToHotspots ---
+
+func TestMatchPathToHotspots_BloatSize(t *testing.T) {
+	hotspots := []Hotspot{
+		{Path: "cmd/orch/spawn_cmd.go", Type: "bloat-size", Score: 1800},
+		{Path: "pkg/daemon/daemon.go", Type: "bloat-size", Score: 900},
+	}
+
+	tests := []struct {
+		name          string
+		path          string
+		expectedMatch bool
+		expectedScore int
+	}{
+		{
+			name:          "exact file match",
+			path:          "cmd/orch/spawn_cmd.go",
+			expectedMatch: true,
+			expectedScore: 1800,
+		},
+		{
+			name:          "directory contains bloated file",
+			path:          "cmd/orch/",
+			expectedMatch: true,
+			expectedScore: 1800,
+		},
+		{
+			name:          "different file in pkg",
+			path:          "pkg/daemon/daemon.go",
+			expectedMatch: true,
+			expectedScore: 900,
+		},
+		{
+			name:          "unrelated file",
+			path:          "pkg/model/model.go",
+			expectedMatch: false,
+			expectedScore: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matched, score := matchPathToHotspots(tt.path, hotspots)
+			if matched != tt.expectedMatch {
+				t.Errorf("matchPathToHotspots(%q) matched = %v, want %v", tt.path, matched, tt.expectedMatch)
+			}
+			if score != tt.expectedScore {
+				t.Errorf("matchPathToHotspots(%q) score = %d, want %d", tt.path, score, tt.expectedScore)
+			}
+		})
+	}
+}
+
+// --- Tests for coupling-cluster matching via task text ---
+
+func TestCheckSpawnHotspots_CouplingClusterViaTaskText(t *testing.T) {
+	hotspots := []Hotspot{
+		{
+			Path:         "daemon",
+			Type:         "coupling-cluster",
+			Score:        180,
+			RelatedFiles: []string{"cmd/orch/daemon.go", "pkg/daemon/daemon.go"},
+		},
+	}
+
+	tests := []struct {
+		name        string
+		task        string
+		shouldMatch bool
+	}{
+		{
+			name:        "topic appears in task text",
+			task:        "refactor daemon error handling",
+			shouldMatch: true,
+		},
+		{
+			name:        "topic in task with other words",
+			task:        "the daemon module needs retry logic",
+			shouldMatch: true,
+		},
+		{
+			name:        "related file referenced in task",
+			task:        "fix cmd/orch/daemon.go race condition",
+			shouldMatch: true,
+		},
+		{
+			name:        "unrelated task",
+			task:        "add pagination to status command",
+			shouldMatch: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := checkSpawnHotspots(tt.task, hotspots)
+			if result.HasHotspots != tt.shouldMatch {
+				t.Errorf("checkSpawnHotspots(%q) HasHotspots = %v, want %v",
+					tt.task, result.HasHotspots, tt.shouldMatch)
+			}
+			if tt.shouldMatch && len(result.MatchedHotspots) == 0 {
+				t.Error("expected matched hotspots when HasHotspots is true")
+			}
+			if tt.shouldMatch && result.MatchedHotspots[0].Type != "coupling-cluster" {
+				t.Errorf("expected coupling-cluster type, got %q", result.MatchedHotspots[0].Type)
+			}
+		})
+	}
+}
+
+// --- Tests for bloat-size directory containment in checkSpawnHotspots ---
+
+func TestCheckSpawnHotspots_BloatSizeDirectoryContainment(t *testing.T) {
+	hotspots := []Hotspot{
+		{
+			Path:           "cmd/orch/spawn_cmd.go",
+			Type:           "bloat-size",
+			Score:          1800,
+			Recommendation: "CRITICAL: spawn_cmd.go needs extraction",
+		},
+	}
+
+	tests := []struct {
+		name           string
+		task           string
+		shouldMatch    bool
+		expectCritical bool
+	}{
+		{
+			name:           "exact file in task",
+			task:           "fix cmd/orch/spawn_cmd.go validation",
+			shouldMatch:    true,
+			expectCritical: true,
+		},
+		{
+			name:           "directory reference matches",
+			task:           "reorganize cmd/orch/ package",
+			shouldMatch:    true,
+			expectCritical: true,
+		},
+		{
+			name:           "unrelated file in same dir",
+			task:           "fix cmd/orch/status_cmd.go",
+			shouldMatch:    false,
+			expectCritical: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := checkSpawnHotspots(tt.task, hotspots)
+			if result.HasHotspots != tt.shouldMatch {
+				t.Errorf("checkSpawnHotspots(%q) HasHotspots = %v, want %v",
+					tt.task, result.HasHotspots, tt.shouldMatch)
+			}
+			if result.HasCriticalHotspot != tt.expectCritical {
+				t.Errorf("checkSpawnHotspots(%q) HasCriticalHotspot = %v, want %v",
+					tt.task, result.HasCriticalHotspot, tt.expectCritical)
+			}
+		})
+	}
+}
+
+// --- Test for multiple hotspot types in one task ---
+
+func TestCheckSpawnHotspots_MultipleHotspotTypes(t *testing.T) {
+	hotspots := []Hotspot{
+		{
+			Path:           "cmd/orch/spawn_cmd.go",
+			Type:           "fix-density",
+			Score:          12,
+			Recommendation: "CRITICAL: fix churn",
+		},
+		{
+			Path:           "cmd/orch/spawn_cmd.go",
+			Type:           "bloat-size",
+			Score:          1800,
+			Recommendation: "CRITICAL: needs extraction",
+		},
+		{
+			Path:         "spawn",
+			Type:         "coupling-cluster",
+			Score:        45,
+			RelatedFiles: []string{"cmd/orch/spawn_cmd.go", "pkg/spawn/config.go"},
+		},
+	}
+
+	result := checkSpawnHotspots("refactor spawn logic in cmd/orch/spawn_cmd.go", hotspots)
+
+	if !result.HasHotspots {
+		t.Fatal("expected HasHotspots=true for multi-type match")
+	}
+
+	// Should match all three hotspot types
+	if len(result.MatchedHotspots) != 3 {
+		t.Errorf("expected 3 matched hotspots (fix-density + bloat-size + coupling-cluster), got %d", len(result.MatchedHotspots))
+	}
+
+	// Should detect CRITICAL from bloat-size >1500
+	if !result.HasCriticalHotspot {
+		t.Error("expected HasCriticalHotspot=true (bloat-size >1500)")
+	}
+
+	// CriticalFiles should contain the bloated file
+	if len(result.CriticalFiles) == 0 {
+		t.Error("expected CriticalFiles to be populated")
+	}
+
+	// MaxScore should be the highest (1800 from bloat-size)
+	if result.MaxScore != 1800 {
+		t.Errorf("expected MaxScore=1800, got %d", result.MaxScore)
+	}
+
+	// Warning should be non-empty
+	if result.Warning == "" {
+		t.Error("expected non-empty warning")
+	}
+}
+
+// --- Test for coupling-cluster matching via RelatedFiles ---
+
+func TestMatchPathToHotspots_CouplingClusterRelatedFiles(t *testing.T) {
+	hotspots := []Hotspot{
+		{
+			Path:         "agent-status",
+			Type:         "coupling-cluster",
+			Score:        60,
+			RelatedFiles: []string{"cmd/orch/serve_agents.go", "web/src/lib/stores/agents.ts"},
+		},
+	}
+
+	tests := []struct {
+		name          string
+		path          string
+		expectedMatch bool
+	}{
+		{
+			name:          "exact related file match",
+			path:          "cmd/orch/serve_agents.go",
+			expectedMatch: true,
+		},
+		{
+			name:          "directory containing related file",
+			path:          "cmd/orch/",
+			expectedMatch: true,
+		},
+		{
+			name:          "web related file",
+			path:          "web/src/lib/stores/agents.ts",
+			expectedMatch: true,
+		},
+		{
+			name:          "unrelated file",
+			path:          "pkg/model/model.go",
+			expectedMatch: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matched, _ := matchPathToHotspots(tt.path, hotspots)
+			if matched != tt.expectedMatch {
+				t.Errorf("matchPathToHotspots(%q) matched = %v, want %v", tt.path, matched, tt.expectedMatch)
+			}
+		})
+	}
+}
+
+// --- Test checkSpawnHotspots with empty hotspots ---
+
+func TestCheckSpawnHotspots_NoHotspots(t *testing.T) {
+	result := checkSpawnHotspots("fix cmd/orch/main.go", nil)
+	if result.HasHotspots {
+		t.Error("expected HasHotspots=false with nil hotspots")
+	}
+	if result.HasCriticalHotspot {
+		t.Error("expected HasCriticalHotspot=false with nil hotspots")
+	}
+
+	result = checkSpawnHotspots("fix cmd/orch/main.go", []Hotspot{})
+	if result.HasHotspots {
+		t.Error("expected HasHotspots=false with empty hotspots")
+	}
+}
+
+// --- Test formatHotspotWarning edge cases ---
+
+func TestFormatHotspotWarning_NoHotspots(t *testing.T) {
+	result := &SpawnHotspotResult{
+		HasHotspots: false,
+	}
+	warning := formatHotspotWarning(result)
+	if warning != "" {
+		t.Errorf("expected empty warning for no hotspots, got: %s", warning)
+	}
+}
+
+func TestFormatHotspotWarning_EmptyMatchedHotspots(t *testing.T) {
+	result := &SpawnHotspotResult{
+		HasHotspots:     true,
+		MatchedHotspots: []Hotspot{},
+	}
+	warning := formatHotspotWarning(result)
+	if warning != "" {
+		t.Errorf("expected empty warning for empty matched hotspots, got: %s", warning)
+	}
+}
+
 // Helper to write file
 func writeFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0644)
