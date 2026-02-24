@@ -144,7 +144,7 @@ func runRework(beadsID, feedback string) error {
 		}, nil
 	}
 
-	usageCheckResult, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, false, false, "", 0, extractBeadsIDFromTitle, hotspotCheckFunc)
+	usageCheckResult, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, false, false, "", "", 0, extractBeadsIDFromTitle, hotspotCheckFunc)
 	if err != nil {
 		return err
 	}

@@ -54,6 +54,7 @@ var (
 	spawnBypassVerification bool   // Bypass verification gate for independent parallel work
 	spawnBypassReason       string // Justification for bypassing verification gate
 	spawnForceHotspot       bool   // Bypass CRITICAL hotspot blocking gate
+	spawnArchitectRef       string // Architect issue reference (required with --force-hotspot)
 	spawnScope              string // Session scope: small, medium, large
 	spawnModeSet            bool   // Tracks whether --mode was explicitly set
 	spawnValidationSet      bool   // Tracks whether --validation was explicitly set
@@ -181,7 +182,8 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnDesignWorkspace, "design-workspace", "", "Design workspace name from ui-design-session for handoff to feature-impl (e.g., 'og-design-ready-queue-08jan')")
 	spawnCmd.Flags().BoolVar(&spawnBypassVerification, "bypass-verification", false, "Bypass verification gate for independent parallel work (requires --bypass-reason)")
 	spawnCmd.Flags().StringVar(&spawnBypassReason, "bypass-reason", "", "Justification for bypassing verification gate (required with --bypass-verification)")
-	spawnCmd.Flags().BoolVar(&spawnForceHotspot, "force-hotspot", false, "Bypass CRITICAL hotspot blocking gate (for implementation skills targeting >1500-line files)")
+	spawnCmd.Flags().BoolVar(&spawnForceHotspot, "force-hotspot", false, "Bypass CRITICAL hotspot blocking gate (requires --architect-ref)")
+	spawnCmd.Flags().StringVar(&spawnArchitectRef, "architect-ref", "", "Architect issue ID proving area was reviewed (required with --force-hotspot)")
 	spawnCmd.Flags().StringVar(&spawnScope, "scope", "", "Session scope: small, medium, large (parsed from task if not set)")
 }
 
@@ -221,6 +223,7 @@ Examples:
 func init() {
 	workCmd.Flags().BoolVar(&workInline, "inline", false, "Run inline (blocking) with TUI")
 	workCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet) or provider/model format")
+	workCmd.Flags().StringVar(&spawnWorkdir, "workdir", "", "Target project directory (for cross-project work)")
 }
 
 // InferSkillFromIssueType maps issue types to appropriate skills.
@@ -498,7 +501,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 			CriticalFiles:      result.CriticalFiles,
 		}, nil
 	}
-	usageCheckResult, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnBypassVerification, spawnForceHotspot, spawnBypassReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc)
+	usageCheckResult, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnBypassVerification, spawnForceHotspot, spawnArchitectRef, spawnBypassReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc)
 	if err != nil {
 		return err
 	}

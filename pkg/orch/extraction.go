@@ -337,7 +337,7 @@ func inferMCPFromBeadsIssue(issue *beads.Issue) string {
 // RunPreFlightChecks performs all pre-spawn validation checks.
 // Returns usage check result for telemetry, or error if any check fails.
 // hotspotCheckFunc is passed from cmd/orch to avoid circular dependencies.
-func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, bypassReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error)) (*gates.UsageCheckResult, error) {
+func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, architectRef, bypassReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error)) (*gates.UsageCheckResult, error) {
 	// Check for --bypass-triage flag (required for manual spawns)
 	// Daemon-driven spawns skip this check (issue already triaged)
 	if err := gates.CheckTriageBypass(input.DaemonDriven, bypassTriage, input.SkillName, input.Task); err != nil {
@@ -371,14 +371,56 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 	// STRATEGIC-FIRST ORCHESTRATION: Check for hotspots in task target area
 	// Blocks implementation skills (feature-impl, systematic-debugging) on CRITICAL files (>1500 lines).
 	// Exempt: architect, investigation, capture-knowledge, codebase-audit (read-only/strategic skills).
-	// Override: --force-hotspot flag bypasses the block.
+	// Override: --force-hotspot --architect-ref <issue-id> bypasses the block with proof of architect review.
 	if hotspotCheckFunc != nil {
-		if _, err := gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, forceHotspot, hotspotCheckFunc); err != nil {
+		var architectVerifier gates.ArchitectVerifier
+		if architectRef != "" {
+			architectVerifier = buildArchitectVerifier()
+		}
+		if _, err := gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, forceHotspot, architectRef, hotspotCheckFunc, architectVerifier); err != nil {
 			return nil, err
 		}
 	}
 
 	return usageCheckResult, nil
+}
+
+// buildArchitectVerifier creates a function that validates an architect issue reference.
+// Checks: issue exists, was spawned with architect skill, and is closed.
+func buildArchitectVerifier() gates.ArchitectVerifier {
+	return func(issueID string) error {
+		issue, err := verify.GetIssue(issueID)
+		if err != nil {
+			return fmt.Errorf("--architect-ref %s: issue not found", issueID)
+		}
+
+		// Check if issue was spawned with architect skill
+		if !isArchitectIssue(issue) {
+			return fmt.Errorf("--architect-ref %s: not an architect issue (type=%s)", issueID, issue.IssueType)
+		}
+
+		// Check if architect review is complete
+		if issue.Status != "closed" {
+			return fmt.Errorf("--architect-ref %s: architect review not complete (status=%s)", issueID, issue.Status)
+		}
+
+		return nil
+	}
+}
+
+// isArchitectIssue returns true if the issue was spawned with the architect skill.
+// Checks for skill:architect label or "architect:" in the title (from CreateBeadsIssue pattern).
+func isArchitectIssue(issue *verify.Issue) bool {
+	for _, label := range issue.Labels {
+		if label == "skill:architect" {
+			return true
+		}
+	}
+	// Check title pattern: "[project] architect: task"
+	if strings.Contains(strings.ToLower(issue.Title), "architect:") {
+		return true
+	}
+	return false
 }
 
 // ResolveProjectDirectory determines the project directory and name.

@@ -8,6 +8,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
 func TestDetermineSpawnBackend_ExplicitBackendWins(t *testing.T) {
@@ -285,6 +286,69 @@ func TestDetermineSpawnBackend_InvalidBackend(t *testing.T) {
 	_, err := DetermineSpawnBackend(sonnet, "some task", "", "", "invalid", "")
 	if err == nil {
 		t.Fatal("expected error for invalid backend value")
+	}
+}
+
+func TestIsArchitectIssue(t *testing.T) {
+	tests := []struct {
+		name  string
+		issue *verify.Issue
+		want  bool
+	}{
+		{
+			name: "skill:architect label",
+			issue: &verify.Issue{
+				Title:     "some task",
+				IssueType: "task",
+				Labels:    []string{"skill:architect"},
+			},
+			want: true,
+		},
+		{
+			name: "architect in title",
+			issue: &verify.Issue{
+				Title:     "[orch-go] architect: design extraction first",
+				IssueType: "task",
+				Labels:    nil,
+			},
+			want: true,
+		},
+		{
+			name: "feature-impl issue",
+			issue: &verify.Issue{
+				Title:     "[orch-go] feature-impl: add hotspot gate",
+				IssueType: "task",
+				Labels:    []string{"skill:feature-impl"},
+			},
+			want: false,
+		},
+		{
+			name: "no labels or architect title",
+			issue: &verify.Issue{
+				Title:     "fix something",
+				IssueType: "bug",
+				Labels:    nil,
+			},
+			want: false,
+		},
+		{
+			name: "architect label among others",
+			issue: &verify.Issue{
+				Title:     "review hotspot area",
+				IssueType: "task",
+				Labels:    []string{"priority:high", "skill:architect", "area:spawn"},
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isArchitectIssue(tt.issue)
+			if got != tt.want {
+				t.Errorf("isArchitectIssue() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
