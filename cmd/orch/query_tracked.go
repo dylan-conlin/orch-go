@@ -8,7 +8,17 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
+
+// checkTmuxWindowLiveness checks if a tmux window exists for the given workspace name.
+// Package-level variable to allow test injection.
+var checkTmuxWindowLiveness = defaultCheckTmuxWindowLiveness
+
+func defaultCheckTmuxWindowLiveness(workspaceName string) bool {
+	window, _, err := tmux.FindWindowByWorkspaceNameAllSessions(workspaceName)
+	return err == nil && window != nil
+}
 
 // AgentStatus represents the status of a tracked agent with explicit reason codes
 // for any missing or partial data. This is the output of the single-pass query engine.
@@ -294,6 +304,19 @@ func joinWithReasonCodes(
 
 		// Step 2: Check session ID
 		if manifest.SessionID == "" {
+			// Claude-backend agents don't have OpenCode sessions.
+			// Their liveness signal is the tmux window.
+			if manifest.SpawnMode == "claude" && manifest.WorkspaceName != "" {
+				if checkTmuxWindowLiveness(manifest.WorkspaceName) {
+					agent.Status = "active"
+					agent.Reason = "tmux_window_alive"
+				} else {
+					agent.Status = "dead"
+					agent.Reason = "tmux_window_missing"
+				}
+				results = append(results, agent)
+				continue
+			}
 			agent.MissingSession = true
 			agent.Status = "unknown"
 			agent.Reason = "missing_session"

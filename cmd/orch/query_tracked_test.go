@@ -526,6 +526,127 @@ func TestFilterActiveIssues(t *testing.T) {
 	}
 }
 
+func TestJoinWithReasonCodes_ClaudeBackendTmuxAlive(t *testing.T) {
+	// Claude-backend agent with no session ID but tmux window alive should be "active"
+	oldFn := checkTmuxWindowLiveness
+	defer func() { checkTmuxWindowLiveness = oldFn }()
+	checkTmuxWindowLiveness = func(workspaceName string) bool {
+		return workspaceName == "og-feat-my-task-21feb-abcd" // simulate window exists
+	}
+
+	issues := []beads.Issue{
+		{ID: "orch-go-1100", Title: "Claude tmux agent", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1100": {
+			BeadsID:       "orch-go-1100",
+			SessionID:     "", // No session ID (claude backend doesn't create one)
+			ProjectDir:    "/tmp/project",
+			SpawnMode:     "claude",
+			WorkspaceName: "og-feat-my-task-21feb-abcd",
+			Skill:         "feature-impl",
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{}
+	phases := map[string]string{
+		"orch-go-1100": "Implementing - Working on feature",
+	}
+
+	results := joinWithReasonCodes(issues, manifests, liveness, phases)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "active" {
+		t.Errorf("expected Status active for claude agent with tmux window, got %s", r.Status)
+	}
+	if r.Reason != "tmux_window_alive" {
+		t.Errorf("expected Reason tmux_window_alive, got %q", r.Reason)
+	}
+	if r.MissingSession {
+		t.Error("claude-backend agent should not be marked MissingSession")
+	}
+	if r.SpawnMode != "claude" {
+		t.Errorf("expected SpawnMode claude, got %q", r.SpawnMode)
+	}
+	if r.Phase != "Implementing - Working on feature" {
+		t.Errorf("expected Phase 'Implementing - Working on feature', got %q", r.Phase)
+	}
+}
+
+func TestJoinWithReasonCodes_ClaudeBackendTmuxDead(t *testing.T) {
+	// Claude-backend agent with no session ID and no tmux window should be "dead"
+	oldFn := checkTmuxWindowLiveness
+	defer func() { checkTmuxWindowLiveness = oldFn }()
+	checkTmuxWindowLiveness = func(workspaceName string) bool {
+		return false // simulate window does not exist
+	}
+
+	issues := []beads.Issue{
+		{ID: "orch-go-1200", Title: "Dead claude agent", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1200": {
+			BeadsID:       "orch-go-1200",
+			SessionID:     "",
+			ProjectDir:    "/tmp/project",
+			SpawnMode:     "claude",
+			WorkspaceName: "og-feat-dead-task-21feb-efgh",
+			Skill:         "investigation",
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{}
+
+	results := joinWithReasonCodes(issues, manifests, liveness, nil)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "dead" {
+		t.Errorf("expected Status dead for claude agent without tmux window, got %s", r.Status)
+	}
+	if r.Reason != "tmux_window_missing" {
+		t.Errorf("expected Reason tmux_window_missing, got %q", r.Reason)
+	}
+	if r.MissingSession {
+		t.Error("claude-backend agent should not be marked MissingSession")
+	}
+}
+
+func TestJoinWithReasonCodes_NonClaudeNoSession(t *testing.T) {
+	// Non-claude agent with no session ID should still be "unknown" (existing behavior)
+	issues := []beads.Issue{
+		{ID: "orch-go-1300", Title: "Non-claude no session", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1300": {
+			BeadsID:    "orch-go-1300",
+			SessionID:  "",
+			ProjectDir: "/tmp/project",
+			SpawnMode:  "opencode", // Not claude
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{}
+
+	results := joinWithReasonCodes(issues, manifests, liveness, nil)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if !r.MissingSession {
+		t.Error("expected MissingSession=true for non-claude agent")
+	}
+	if r.Status != "unknown" {
+		t.Errorf("expected Status unknown, got %s", r.Status)
+	}
+	if r.Reason != "missing_session" {
+		t.Errorf("expected Reason missing_session, got %q", r.Reason)
+	}
+}
+
 func TestListTrackedIssuesCLIFiltersClosed(t *testing.T) {
 	oldFn := fallbackListWithLabelFn
 	defer func() { fallbackListWithLabelFn = oldFn }()
