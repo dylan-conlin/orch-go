@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -15,9 +17,50 @@ import (
 // Package-level variable to allow test injection.
 var checkTmuxWindowLiveness = defaultCheckTmuxWindowLiveness
 
+// tmuxLivenessCache caches tmux window liveness results with a short TTL.
+// This prevents oscillation when multiple endpoints (/api/agents, /api/beads/graph,
+// /api/attention) independently check tmux state within the same dashboard poll cycle.
+// Without caching, each tmux check shells out multiple times (list-sessions, has-session,
+// list-windows per session), and intermittent failures cause inconsistent results across
+// endpoints, making the dashboard oscillate between correct status and 'unassigned'.
+var tmuxLivenessCache = struct {
+	mu      sync.RWMutex
+	entries map[string]tmuxLivenessCacheEntry
+	ttl     time.Duration
+}{
+	entries: make(map[string]tmuxLivenessCacheEntry),
+	ttl:     10 * time.Second,
+}
+
+type tmuxLivenessCacheEntry struct {
+	alive     bool
+	checkedAt time.Time
+}
+
 func defaultCheckTmuxWindowLiveness(workspaceName string) bool {
+	// Check cache first
+	tmuxLivenessCache.mu.RLock()
+	if entry, ok := tmuxLivenessCache.entries[workspaceName]; ok {
+		if time.Since(entry.checkedAt) < tmuxLivenessCache.ttl {
+			tmuxLivenessCache.mu.RUnlock()
+			return entry.alive
+		}
+	}
+	tmuxLivenessCache.mu.RUnlock()
+
+	// Cache miss or expired — check tmux
 	window, _, err := tmux.FindWindowByWorkspaceNameAllSessions(workspaceName)
-	return err == nil && window != nil
+	alive := err == nil && window != nil
+
+	// Store result
+	tmuxLivenessCache.mu.Lock()
+	tmuxLivenessCache.entries[workspaceName] = tmuxLivenessCacheEntry{
+		alive:     alive,
+		checkedAt: time.Now(),
+	}
+	tmuxLivenessCache.mu.Unlock()
+
+	return alive
 }
 
 // AgentStatus represents the status of a tracked agent with explicit reason codes

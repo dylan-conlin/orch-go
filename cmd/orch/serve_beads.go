@@ -11,7 +11,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/graph"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -1037,19 +1036,42 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 }
 
 // buildActiveAgentMap returns a map of beads_id -> active agent info.
-// Queries OpenCode sessions and tmux windows for running agents,
-// then enriches with phase from beads comments.
+// Uses the trackedAgentsCache as the primary source for agent data (phase, model),
+// which ensures consistency with /api/agents. Falls back to direct OpenCode/tmux
+// queries for agents not in the cache (e.g., untracked sessions).
+//
+// Before orch-go-1183: this function independently queried tmux via ListWorkersSessions()
+// and ListWindows(), which could return different results from the tmux liveness check
+// in queryTrackedAgents, causing the dashboard to oscillate between correct status
+// and 'unassigned' on every poll cycle.
 func buildActiveAgentMap() map[string]*ActiveAgentInfo {
 	result := make(map[string]*ActiveAgentInfo)
 	now := time.Now()
 
-	// 1. OpenCode sessions (primary agent source)
+	// 1. Tracked agents from cache (primary source, consistent with /api/agents)
+	// This uses the same data as queryTrackedAgents, preventing oscillation
+	// between /api/beads/graph and /api/agents when tmux checks are flaky.
+	projectDirs := uniqueProjectDirs(append([]string{sourceDir}, getKBProjectsFn()...))
+	if tracked, err := globalTrackedAgentsCache.get(projectDirs); err == nil {
+		for _, agent := range tracked {
+			if agent.BeadsID == "" {
+				continue
+			}
+			info := &ActiveAgentInfo{
+				Phase: agent.Phase,
+				Model: agent.Model,
+			}
+			result[agent.BeadsID] = info
+		}
+	}
+
+	// 2. OpenCode sessions (catches agents not tracked in beads)
 	client := opencode.NewClient(serverURL)
 	sessions, err := client.ListSessions("")
 	if err == nil {
 		for _, s := range sessions {
 			beadsID := extractBeadsIDFromTitle(s.Title)
-			if beadsID == "" {
+			if beadsID == "" || result[beadsID] != nil {
 				continue
 			}
 			createdAt := time.Unix(s.Time.Created/1000, 0)
@@ -1059,28 +1081,29 @@ func buildActiveAgentMap() map[string]*ActiveAgentInfo {
 		}
 	}
 
-	// 2. Tmux windows (catches Claude CLI agents not in OpenCode)
-	workersSessions, _ := tmux.ListWorkersSessions()
-	for _, sessionName := range workersSessions {
-		windows, _ := tmux.ListWindows(sessionName)
-		for _, win := range windows {
-			if win.Name == "servers" || win.Name == "zsh" {
+	// 3. Enrich tracked agents with runtime from OpenCode sessions
+	if err == nil {
+		for _, s := range sessions {
+			beadsID := extractBeadsIDFromTitle(s.Title)
+			if beadsID == "" {
 				continue
 			}
-			beadsID := extractBeadsIDFromWindowName(win.Name)
-			if beadsID != "" && result[beadsID] == nil {
-				result[beadsID] = &ActiveAgentInfo{}
+			if info, ok := result[beadsID]; ok && info.Runtime == "" {
+				createdAt := time.Unix(s.Time.Created/1000, 0)
+				info.Runtime = formatDuration(now.Sub(createdAt))
 			}
 		}
 	}
 
-	// 3. Enrich with phase from beads comments
-	beadsIDs := make([]string, 0, len(result))
-	for id := range result {
-		beadsIDs = append(beadsIDs, id)
+	// 4. Enrich with phase from beads comments for any agents missing phase
+	beadsIDsNeedingPhase := make([]string, 0)
+	for id, info := range result {
+		if info.Phase == "" {
+			beadsIDsNeedingPhase = append(beadsIDsNeedingPhase, id)
+		}
 	}
-	if len(beadsIDs) > 0 {
-		commentsMap := globalBeadsCache.getComments(beadsIDs, nil)
+	if len(beadsIDsNeedingPhase) > 0 {
+		commentsMap := globalBeadsCache.getComments(beadsIDsNeedingPhase, nil)
 		for id, comments := range commentsMap {
 			if info, ok := result[id]; ok {
 				phaseStatus := verify.ParsePhaseFromComments(comments)
