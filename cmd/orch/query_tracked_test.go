@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -526,16 +527,10 @@ func TestFilterActiveIssues(t *testing.T) {
 	}
 }
 
-func TestJoinWithReasonCodes_ClaudeBackendTmuxAlive(t *testing.T) {
-	// Claude-backend agent with no session ID but tmux window alive should be "active"
-	oldFn := checkTmuxWindowLiveness
-	defer func() { checkTmuxWindowLiveness = oldFn }()
-	checkTmuxWindowLiveness = func(workspaceName string) bool {
-		return workspaceName == "og-feat-my-task-21feb-abcd" // simulate window exists
-	}
-
+func TestJoinWithReasonCodes_ClaudeBackendWithPhase(t *testing.T) {
+	// Claude-backend agent with a phase comment should be "active" with reason "phase_reported"
 	issues := []beads.Issue{
-		{ID: "orch-go-1100", Title: "Claude tmux agent", Status: "in_progress"},
+		{ID: "orch-go-1100", Title: "Claude agent with phase", Status: "in_progress"},
 	}
 	manifests := map[string]*spawn.AgentManifest{
 		"orch-go-1100": {
@@ -545,6 +540,7 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxAlive(t *testing.T) {
 			SpawnMode:     "claude",
 			WorkspaceName: "og-feat-my-task-21feb-abcd",
 			Skill:         "feature-impl",
+			SpawnTime:     "2026-02-24T10:00:00Z",
 		},
 	}
 	liveness := map[string]opencode.SessionStatusInfo{}
@@ -559,10 +555,10 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxAlive(t *testing.T) {
 	}
 	r := results[0]
 	if r.Status != "active" {
-		t.Errorf("expected Status active for claude agent with tmux window, got %s", r.Status)
+		t.Errorf("expected Status active for claude agent with phase, got %s", r.Status)
 	}
-	if r.Reason != "tmux_window_alive" {
-		t.Errorf("expected Reason tmux_window_alive, got %q", r.Reason)
+	if r.Reason != "phase_reported" {
+		t.Errorf("expected Reason phase_reported, got %q", r.Reason)
 	}
 	if r.MissingSession {
 		t.Error("claude-backend agent should not be marked MissingSession")
@@ -575,14 +571,80 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxAlive(t *testing.T) {
 	}
 }
 
-func TestJoinWithReasonCodes_ClaudeBackendTmuxDead(t *testing.T) {
-	// Claude-backend agent with no session ID and no tmux window should be "dead"
-	oldFn := checkTmuxWindowLiveness
-	defer func() { checkTmuxWindowLiveness = oldFn }()
-	checkTmuxWindowLiveness = func(workspaceName string) bool {
-		return false // simulate window does not exist
+func TestJoinWithReasonCodes_ClaudeBackendPhaseComplete(t *testing.T) {
+	// Claude-backend agent with Phase: Complete should be "completed"
+	issues := []beads.Issue{
+		{ID: "orch-go-1150", Title: "Completed claude agent", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1150": {
+			BeadsID:       "orch-go-1150",
+			SessionID:     "",
+			ProjectDir:    "/tmp/project",
+			SpawnMode:     "claude",
+			WorkspaceName: "og-feat-done-task-21feb-abcd",
+			Skill:         "feature-impl",
+			SpawnTime:     "2026-02-24T08:00:00Z",
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{}
+	phases := map[string]string{
+		"orch-go-1150": "Complete - All tests passing, ready for review",
 	}
 
+	results := joinWithReasonCodes(issues, manifests, liveness, phases)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "completed" {
+		t.Errorf("expected Status completed for claude agent with Phase: Complete, got %s", r.Status)
+	}
+	if r.Reason != "phase_complete" {
+		t.Errorf("expected Reason phase_complete, got %q", r.Reason)
+	}
+	if r.Phase != "Complete - All tests passing, ready for review" {
+		t.Errorf("expected Phase 'Complete - All tests passing, ready for review', got %q", r.Phase)
+	}
+}
+
+func TestJoinWithReasonCodes_ClaudeBackendRecentlySpawned(t *testing.T) {
+	// Claude-backend agent with no phase but spawned recently should be "active"
+	recentTime := time.Now().Add(-2 * time.Minute).Format(time.RFC3339)
+	issues := []beads.Issue{
+		{ID: "orch-go-1160", Title: "Just-spawned claude agent", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1160": {
+			BeadsID:       "orch-go-1160",
+			SessionID:     "",
+			ProjectDir:    "/tmp/project",
+			SpawnMode:     "claude",
+			WorkspaceName: "og-feat-new-task-24feb-abcd",
+			Skill:         "feature-impl",
+			SpawnTime:     recentTime,
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{}
+	// No phase yet - agent just started
+
+	results := joinWithReasonCodes(issues, manifests, liveness, nil)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "active" {
+		t.Errorf("expected Status active for recently spawned claude agent, got %s", r.Status)
+	}
+	if r.Reason != "recently_spawned" {
+		t.Errorf("expected Reason recently_spawned, got %q", r.Reason)
+	}
+}
+
+func TestJoinWithReasonCodes_ClaudeBackendNoPhaseStale(t *testing.T) {
+	// Claude-backend agent with no phase and old spawn time should be "dead"
 	issues := []beads.Issue{
 		{ID: "orch-go-1200", Title: "Dead claude agent", Status: "in_progress"},
 	}
@@ -594,6 +656,7 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxDead(t *testing.T) {
 			SpawnMode:     "claude",
 			WorkspaceName: "og-feat-dead-task-21feb-efgh",
 			Skill:         "investigation",
+			SpawnTime:     "2026-02-20T10:00:00Z", // > 5 min ago
 		},
 	}
 	liveness := map[string]opencode.SessionStatusInfo{}
@@ -605,10 +668,10 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxDead(t *testing.T) {
 	}
 	r := results[0]
 	if r.Status != "dead" {
-		t.Errorf("expected Status dead for claude agent without tmux window, got %s", r.Status)
+		t.Errorf("expected Status dead for claude agent without phase and stale spawn, got %s", r.Status)
 	}
-	if r.Reason != "tmux_window_missing" {
-		t.Errorf("expected Reason tmux_window_missing, got %q", r.Reason)
+	if r.Reason != "no_phase_reported" {
+		t.Errorf("expected Reason no_phase_reported, got %q", r.Reason)
 	}
 	if r.MissingSession {
 		t.Error("claude-backend agent should not be marked MissingSession")
