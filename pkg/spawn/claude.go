@@ -68,7 +68,13 @@ func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp string) string {
 		}
 	}
 
-	return fmt.Sprintf("export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s", claudeContext, contextPath, mcpFlag)
+	// Orchestrator tool restrictions: remove worker-level tools that orchestrators should not use
+	disallowFlag := ""
+	if claudeContext == "orchestrator" || claudeContext == "meta-orchestrator" {
+		disallowFlag = " --disallowedTools 'Task,Edit,Write,NotebookEdit'"
+	}
+
+	return fmt.Sprintf("export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s", claudeContext, contextPath, mcpFlag, disallowFlag)
 }
 
 // SpawnClaude launches a Claude Code agent in a tmux window.

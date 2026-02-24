@@ -245,13 +245,52 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			},
 		},
 		{
-			name:        "orchestrator context",
+			name:        "orchestrator context includes disallowedTools",
 			contextPath: "/tmp/workspace/ORCHESTRATOR_CONTEXT.md",
 			claudeCtx:   "orchestrator",
 			mcp:         "",
 			wantContains: []string{
 				"export CLAUDE_CONTEXT=orchestrator",
 				"ORCHESTRATOR_CONTEXT.md",
+				"--disallowedTools",
+				"Task",
+				"Edit",
+				"Write",
+				"NotebookEdit",
+			},
+		},
+		{
+			name:        "meta-orchestrator context includes disallowedTools",
+			contextPath: "/tmp/workspace/META_ORCHESTRATOR_CONTEXT.md",
+			claudeCtx:   "meta-orchestrator",
+			mcp:         "",
+			wantContains: []string{
+				"export CLAUDE_CONTEXT=meta-orchestrator",
+				"--disallowedTools",
+				"Task",
+			},
+		},
+		{
+			name:        "worker context does NOT include disallowedTools",
+			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
+			claudeCtx:   "worker",
+			mcp:         "",
+			wantContains: []string{
+				"export CLAUDE_CONTEXT=worker",
+			},
+			wantExcludes: []string{
+				"--disallowedTools",
+				"--mcp-config",
+			},
+		},
+		{
+			name:        "orchestrator with MCP includes both flags",
+			contextPath: "/tmp/workspace/ORCHESTRATOR_CONTEXT.md",
+			claudeCtx:   "orchestrator",
+			mcp:         "playwright",
+			wantContains: []string{
+				"--disallowedTools",
+				"--mcp-config",
 			},
 		},
 	}
