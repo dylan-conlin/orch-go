@@ -1,0 +1,37 @@
+verification_level: V0
+type: investigation
+
+automated_checks:
+  - name: probe_file_exists
+    command: "test -f .kb/models/agent-lifecycle-state-model/probes/2026-02-24-probe-claude-spawn-dashboard-visibility-gap.md"
+    expected: "exit code 0"
+    result: "PASS"
+
+  - name: probe_has_all_sections
+    command: "grep -c '## Question\\|## What I Tested\\|## What I Observed\\|## Model Impact' .kb/models/agent-lifecycle-state-model/probes/2026-02-24-probe-claude-spawn-dashboard-visibility-gap.md"
+    expected: "4"
+    result: "PASS - all 4 required probe sections present"
+
+  - name: synthesis_exists
+    command: "test -f .orch/workspace/og-inv-investigate-work-graph-24feb-fc8a/SYNTHESIS.md"
+    expected: "exit code 0"
+    result: "PASS"
+
+manual_verification:
+  - name: gap_documented
+    description: "Probe documents the specific code path gap (runSpawnClaude never calls AtomicSpawnPhase2)"
+    verified: true
+
+  - name: impact_quantified
+    description: "32/105 claude-mode agents affected, with clear before/after date split (Feb 20-21)"
+    verified: true
+
+  - name: fix_options_provided
+    description: "Three fix options documented with architectural trade-offs"
+    verified: true
+
+key_findings:
+  - "runSpawnClaude at pkg/orch/extraction.go:1526 never calls AtomicSpawnPhase2 - no session_id written"
+  - "queryTrackedAgents at query_tracked.go:296 marks missing session_id as unknown/dead"
+  - "32 of 105 claude-mode workspaces affected (all post Feb-20)"
+  - "SpawnMode field exists in manifest but unused by query engine - natural fix discriminator"
