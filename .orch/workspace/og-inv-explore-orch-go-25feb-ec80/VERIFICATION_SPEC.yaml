@@ -1,0 +1,30 @@
+verification:
+  type: investigation-probe
+  issue: orch-go-1232
+
+  deliverables:
+    - path: .kb/models/dashboard-architecture/probes/2026-02-25-probe-dashboard-web-ui-framework-and-responsive-patterns.md
+      description: Comprehensive probe documenting web UI framework, CSS approach, responsive patterns, component structure, and theming
+      verification: File exists with all 4 required sections (Question, What I Tested, What I Observed, Model Impact)
+
+    - path: .orch/workspace/og-inv-explore-orch-go-25feb-ec80/SYNTHESIS.md
+      description: Session synthesis with plain-language summary
+      verification: File exists with TLDR, Delta, and Evidence sections
+
+  model_impact:
+    confirms:
+      - "Svelte 5 web UI (verified runes syntax)"
+      - "Two-mode design is mutually exclusive (operational vs historical)"
+      - "SSE Events auto-connect, Agentlog is opt-in"
+      - "Progressive disclosure via collapsed panels"
+      - "Event panels max-h-64"
+    extends:
+      - "Full CSS/theming stack: shadcn-svelte + Tailwind v3 + HSL CSS variables + 28 JSON themes"
+      - "Responsive breakpoint map: 5-tier grid (1→2→3→4→5 cols)"
+      - "Component architecture: 40+ components in 6 categories, 25+ stores"
+      - "SPA architecture: adapter-static with Vite proxy"
+      - "State persistence: localStorage for UI preferences"
+
+  manual_verification:
+    - "Review probe for accuracy against model claims"
+    - "Confirm component counts are reasonable (can spot-check with find/wc)"
