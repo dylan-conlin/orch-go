@@ -38,7 +38,7 @@
 		</button>
 		{#if expanded}
 			<div class="p-2">
-				<div class="grid gap-2 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+				<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
 					{#each $services.services as service (service.name)}
 						<ServiceCard {service} project={$services.project} />
 					{/each}
