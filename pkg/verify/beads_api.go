@@ -205,6 +205,14 @@ func CloseIssue(beadsID, reason string) error {
 	return beads.FallbackClose(beadsID, reason)
 }
 
+// ForceCloseIssue closes a beads issue with --force, bypassing bd's Phase: Complete check.
+// Used when orch complete has already verified or explicitly skipped the phase_complete gate
+// (via --skip-phase-complete or --force), to avoid a double-gate where both orch and bd
+// independently check for Phase: Complete.
+func ForceCloseIssue(beadsID, reason string) error {
+	return beads.FallbackForceClose(beadsID, reason)
+}
+
 // UpdateIssueStatus updates the status of a beads issue.
 // It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
 // Uses beads.DefaultDir if set to ensure cross-project operations work correctly.

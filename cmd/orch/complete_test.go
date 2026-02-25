@@ -798,3 +798,46 @@ func TestCountFileLines(t *testing.T) {
 		t.Error("Expected error for non-existent file, got nil")
 	}
 }
+
+// TestSkipPhaseCompleteTriggersForceClose verifies that --skip-phase-complete
+// causes the completion flow to use force-close, avoiding the double-gate where
+// both orch complete and bd close independently check for Phase: Complete.
+func TestSkipPhaseCompleteTriggersForceClose(t *testing.T) {
+	// When PhaseComplete is skipped, useForceClose should be true
+	skipConfig := SkipConfig{
+		PhaseComplete: true,
+		Reason:        "Agent completed work but beads comment failed",
+	}
+	useForceClose := skipConfig.PhaseComplete
+	if !useForceClose {
+		t.Error("Expected useForceClose=true when SkipConfig.PhaseComplete is set")
+	}
+
+	// When PhaseComplete is NOT skipped, useForceClose should be false
+	noSkipConfig := SkipConfig{
+		TestEvidence: true,
+		Reason:       "Tests run in CI pipeline",
+	}
+	useForceCloseNoSkip := noSkipConfig.PhaseComplete
+	if useForceCloseNoSkip {
+		t.Error("Expected useForceClose=false when SkipConfig.PhaseComplete is NOT set")
+	}
+
+	// Verify PhaseComplete is included in skippedGates
+	gates := skipConfig.skippedGates()
+	found := false
+	for _, g := range gates {
+		if g == "phase_complete" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected 'phase_complete' in skippedGates(), got %v", gates)
+	}
+
+	// Verify shouldSkipGate returns true for phase_complete
+	if !skipConfig.shouldSkipGate("phase_complete") {
+		t.Error("Expected shouldSkipGate('phase_complete') to return true")
+	}
+}

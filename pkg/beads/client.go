@@ -1008,6 +1008,28 @@ func FallbackClose(id, reason string) error {
 	return nil
 }
 
+// FallbackForceClose closes an issue via bd CLI with --force flag.
+// This bypasses bd's Phase: Complete and pinned checks, used when orch complete
+// has already verified (or explicitly skipped) those gates.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
+func FallbackForceClose(id, reason string) error {
+	args := []string{"close", id, "--force"}
+	if reason != "" {
+		args = append(args, "--reason", reason)
+	}
+
+	cmd := exec.Command(getBdPath(), args...)
+	setupFallbackEnv(cmd)
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd close --force failed: %w: %s", err, string(output))
+	}
+	return nil
+}
+
 // FallbackCreate creates an issue via bd CLI.
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.

@@ -54,6 +54,7 @@ var (
 	completeSkipPhaseComplete  bool
 	completeSkipHandoffContent bool
 	completeSkipExplainBack    bool
+	completeSkipAccretion      bool
 	completeSkipReason         string // Required for all --skip-* flags (min 10 chars)
 
 	// Explain-back flag: orchestrator provides explanation text
@@ -121,6 +122,7 @@ Use --skip-{gate} with --skip-reason to bypass specific gates:
   --skip-phase-complete   Skip Phase: Complete gate
   --skip-handoff-content  Skip handoff content validation (orchestrator only)
   --skip-explain-back     Skip explain-back verification gate
+  --skip-accretion        Skip accretion (file size growth) gate
 
 Each --skip-* flag requires --skip-reason with a minimum of 10 characters
 explaining why the gate is being bypassed. Bypasses are logged for audit.
@@ -184,6 +186,7 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipPhaseComplete, "skip-phase-complete", false, "Skip Phase: Complete verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipHandoffContent, "skip-handoff-content", false, "Skip handoff content validation gate for orchestrators (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipExplainBack, "skip-explain-back", false, "Skip explain-back verification gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipAccretion, "skip-accretion", false, "Skip accretion (file size growth) verification gate (requires --skip-reason)")
 	completeCmd.Flags().StringVar(&completeSkipReason, "skip-reason", "", "Reason for skip (required for all --skip-* flags, min 10 chars)")
 
 	// Explain-back flag
@@ -207,6 +210,7 @@ type SkipConfig struct {
 	PhaseComplete  bool
 	HandoffContent bool
 	ExplainBack    bool
+	Accretion      bool
 	Reason         string // Required reason for skips
 }
 
@@ -214,7 +218,8 @@ type SkipConfig struct {
 func (c SkipConfig) hasAnySkip() bool {
 	return c.TestEvidence || c.Visual || c.GitDiff || c.Synthesis ||
 		c.Build || c.Constraint || c.PhaseGate || c.SkillOutput ||
-		c.DecisionPatch || c.PhaseComplete || c.HandoffContent || c.ExplainBack
+		c.DecisionPatch || c.PhaseComplete || c.HandoffContent || c.ExplainBack ||
+		c.Accretion
 }
 
 // skippedGates returns a list of gate names that are being skipped.
@@ -256,6 +261,9 @@ func (c SkipConfig) skippedGates() []string {
 	if c.ExplainBack {
 		gates = append(gates, verify.GateExplainBack)
 	}
+	if c.Accretion {
+		gates = append(gates, verify.GateAccretion)
+	}
 	return gates
 }
 
@@ -286,6 +294,8 @@ func (c SkipConfig) shouldSkipGate(gate string) bool {
 		return c.HandoffContent
 	case verify.GateExplainBack:
 		return c.ExplainBack
+	case verify.GateAccretion:
+		return c.Accretion
 	default:
 		return false
 	}
@@ -306,6 +316,7 @@ func getSkipConfig() SkipConfig {
 		PhaseComplete:  completeSkipPhaseComplete,
 		HandoffContent: completeSkipHandoffContent,
 		ExplainBack:    completeSkipExplainBack,
+		Accretion:      completeSkipAccretion,
 		Reason:         completeSkipReason,
 	}
 }
@@ -1070,8 +1081,18 @@ func runComplete(identifier, workdir string) error {
 	// Close the beads issue if not already closed
 	// Skip for untracked agents and orchestrator sessions (they have no beads issue to close)
 	if !isClosed && !isUntracked && beadsID != "" {
-		if err := verify.CloseIssue(beadsID, reason); err != nil {
-			return fmt.Errorf("failed to close issue: %w", err)
+		// Use force-close when orch complete has already verified or explicitly skipped
+		// the phase_complete gate. This avoids the double-gate where both orch and bd
+		// independently check for Phase: Complete.
+		useForceClose := completeForce || skipConfig.PhaseComplete
+		var closeErr error
+		if useForceClose {
+			closeErr = verify.ForceCloseIssue(beadsID, reason)
+		} else {
+			closeErr = verify.CloseIssue(beadsID, reason)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("failed to close issue: %w", closeErr)
 		}
 		fmt.Printf("Closed beads issue: %s\n", beadsID)
 

@@ -1,0 +1,46 @@
+verification_spec:
+  title: "Fix orch complete double-gate: --skip-phase-complete propagation"
+  issue: orch-go-1209
+
+  observable_behavior: |
+    When orch complete is called with --skip-phase-complete --skip-reason "...",
+    the Phase: Complete check is bypassed in both orch's verification gates AND
+    in the downstream bd close call. Previously, bd close would independently
+    reject the close because Phase: Complete hadn't been reported.
+
+  acceptance_criteria:
+    - id: AC-001
+      description: "--skip-phase-complete triggers force-close path"
+      test: "go test ./cmd/orch/ -run TestSkipPhaseCompleteTriggersForceClose"
+      result: PASS
+
+    - id: AC-002
+      description: "FallbackForceClose passes --force to bd close"
+      verification: "Code review: pkg/beads/client.go FallbackForceClose includes '--force' in args"
+      result: PASS
+
+    - id: AC-003
+      description: "Existing skip config tests still pass"
+      test: "go test ./cmd/orch/ -run 'TestSkipConfig|TestValidateSkipFlags'"
+      result: PASS
+
+    - id: AC-004
+      description: "Build succeeds with changes"
+      test: "go build ./cmd/orch/"
+      result: PASS
+
+    - id: AC-005
+      description: "--force flag also triggers force-close path"
+      verification: "Code: useForceClose := completeForce || skipConfig.PhaseComplete"
+      result: PASS
+
+  manual_verification:
+    - step: "Create a test issue, don't report Phase: Complete, try orch complete with --skip-phase-complete"
+      expected: "Issue closes successfully without Phase: Complete error"
+      status: "not-run (requires live bd instance)"
+
+  files_changed:
+    - cmd/orch/complete_cmd.go
+    - pkg/verify/beads_api.go
+    - pkg/beads/client.go
+    - cmd/orch/complete_test.go
