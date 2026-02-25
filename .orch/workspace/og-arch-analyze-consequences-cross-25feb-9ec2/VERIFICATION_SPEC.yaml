@@ -1,0 +1,46 @@
+---
+title: Cross-Repo Orchestration Consequences Analysis
+type: architect-probe
+status: complete
+
+verification:
+  commands_run:
+    - command: "kb projects list --json"
+      expected: "scs-special-projects NOT in list"
+      observed: "18 projects listed, scs-special-projects absent, child repos present"
+
+    - command: "cat scs-special-projects/.beads/config.yaml"
+      expected: "issue-prefix defined or commented out"
+      observed: "issue-prefix commented out, no explicit prefix"
+
+  code_reviewed:
+    - file: "pkg/daemon/project_resolution.go"
+      claim: "ProjectRegistry builds from kb projects list"
+      confirmed: true
+
+    - file: "pkg/daemon/issue_adapter.go:408-446"
+      claim: "ListReadyIssuesMultiProject iterates all registered projects"
+      confirmed: true
+
+    - file: "pkg/daemon/completion_processing.go:85-137"
+      claim: "Completion processing is single-project only"
+      confirmed: true
+
+    - file: "cmd/orch/serve_beads.go:464-501"
+      claim: "Dashboard beads API accepts project_dir param"
+      confirmed: true
+
+    - file: "cmd/orch/spawn_cmd.go:394-407"
+      claim: "orch work --workdir sets beads.DefaultDir"
+      confirmed: true
+
+  key_findings:
+    - "7 components already support cross-repo orchestration"
+    - "8 gaps identified, prioritized P0 through P3"
+    - "Critical asymmetry: can POLL+SPAWN cross-project but not COMPLETE"
+    - "2 P0 gaps are pure configuration (no code changes)"
+    - "2 P1 gaps require medium engineering work"
+
+manual_steps_required:
+  - "Register scs-special-projects: cd ~/Documents/work/SendCutSend/scs-special-projects && kb init"
+  - "Set issue prefix: add issue-prefix: scs-sp to .beads/config.yaml"
