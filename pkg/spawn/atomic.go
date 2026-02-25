@@ -15,13 +15,6 @@ type AtomicSpawnOpts struct {
 	ServerURL string
 }
 
-// AtomicSpawnResult holds the output of a successful atomic spawn.
-type AtomicSpawnResult struct {
-	SessionID     string
-	WorkspacePath string
-	ManifestPath  string
-}
-
 // AtomicSpawnPhase1 performs the common pre-session writes:
 //  1. Tag beads issue with orch:agent label
 //  2. Write workspace (SPAWN_CONTEXT.md, dotfiles, AGENT_MANIFEST.json)
