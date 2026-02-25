@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -265,5 +266,199 @@ func TestSkillModelMapping_AllOpusSkillsCovered(t *testing.T) {
 		if model != "opus" {
 			t.Errorf("Expected opus for skill %q, got %q", skill, model)
 		}
+	}
+}
+
+func TestInferSkill(t *testing.T) {
+	tests := []struct {
+		issueType string
+		wantSkill string
+		wantErr   bool
+	}{
+		{"bug", "architect", false}, // Default: understand before fixing (Premise Before Solution)
+		{"feature", "feature-impl", false},
+		{"task", "feature-impl", false},
+		{"investigation", "investigation", false},
+		{"epic", "", true},
+		{"unknown", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.issueType, func(t *testing.T) {
+			got, err := InferSkill(tt.issueType)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("InferSkill(%q) error = %v, wantErr %v", tt.issueType, err, tt.wantErr)
+				return
+			}
+			if got != tt.wantSkill {
+				t.Errorf("InferSkill(%q) = %q, want %q", tt.issueType, got, tt.wantSkill)
+			}
+		})
+	}
+}
+
+func TestInferSkillFromLabels(t *testing.T) {
+	tests := []struct {
+		labels    []string
+		wantSkill string
+	}{
+		{[]string{"skill:research"}, "research"},
+		{[]string{"priority:P0", "skill:investigation"}, "investigation"},
+		{[]string{"priority:P0", "triage:ready"}, ""},
+		{[]string{}, ""},
+		{nil, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%v", tt.labels), func(t *testing.T) {
+			got := InferSkillFromLabels(tt.labels)
+			if got != tt.wantSkill {
+				t.Errorf("InferSkillFromLabels(%v) = %q, want %q", tt.labels, got, tt.wantSkill)
+			}
+		})
+	}
+}
+
+func TestInferSkillFromTitle(t *testing.T) {
+	tests := []struct {
+		title     string
+		wantSkill string
+	}{
+		// No prefix - should return empty
+		{"Fix dashboard bug", ""},
+		{"Add synthesis feature", ""},
+
+		// Architect prefix variations
+		{"Architect: Design accretion gravity enforcement infrastructure", "architect"},
+		{"architect: some design work", "architect"},
+		{"ARCHITECT: Design system", "architect"},
+
+		// Debug/Systematic-debugging prefix
+		{"Debug: Fix spawn issue", "systematic-debugging"},
+		{"debug: something broken", "systematic-debugging"},
+		{"Fix: Broken test", "systematic-debugging"},
+		{"Systematic-debugging: Issue with daemon", "systematic-debugging"},
+
+		// Investigation prefix
+		{"Investigation: How does X work", "investigation"},
+		{"Investigate: Dashboard status", "investigation"},
+		{"investigation: something to understand", "investigation"},
+
+		// Research prefix
+		{"Research: Best practices for auth", "research"},
+		{"research: compare options", "research"},
+
+		// Feature/Implementation prefix
+		{"Feature: Add new dashboard", "feature-impl"},
+		{"Implement: New API endpoint", "feature-impl"},
+		{"feature-impl: Build something", "feature-impl"},
+
+		// Edge cases
+		{"", ""},
+		{"No colon in title", ""},
+		{"Unknown: Skill name", ""},
+		{"Architect:", "architect"}, // No text after colon - still valid skill prefix
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.title, func(t *testing.T) {
+			got := InferSkillFromTitle(tt.title)
+			if got != tt.wantSkill {
+				t.Errorf("InferSkillFromTitle(%q) = %q, want %q", tt.title, got, tt.wantSkill)
+			}
+		})
+	}
+}
+
+func TestInferSkillFromIssue(t *testing.T) {
+	tests := []struct {
+		name      string
+		issue     *Issue
+		wantSkill string
+		wantErr   bool
+	}{
+		{
+			name:      "nil issue",
+			issue:     nil,
+			wantSkill: "",
+			wantErr:   true,
+		},
+		{
+			name:      "skill label takes priority",
+			issue:     &Issue{Labels: []string{"skill:research"}, Title: "Some task", IssueType: "task"},
+			wantSkill: "research",
+			wantErr:   false,
+		},
+
+		{
+			name:      "falls back to issue type",
+			issue:     &Issue{Labels: []string{}, Title: "Fix the bug", IssueType: "bug"},
+			wantSkill: "architect", // Default: understand before fixing
+			wantErr:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := InferSkillFromIssue(tt.issue)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("InferSkillFromIssue() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.wantSkill {
+				t.Errorf("InferSkillFromIssue() = %q, want %q", got, tt.wantSkill)
+			}
+		})
+	}
+}
+
+func TestInferMCPFromLabels(t *testing.T) {
+	tests := []struct {
+		labels  []string
+		wantMCP string
+	}{
+		{[]string{"needs:playwright"}, "playwright"},
+		{[]string{"priority:P0", "needs:playwright"}, "playwright"},
+		{[]string{"triage:ready", "needs:playwright", "skill:feature-impl"}, "playwright"},
+		{[]string{"priority:P0", "triage:ready"}, ""},
+		{[]string{"skill:research"}, ""},
+		{[]string{}, ""},
+		{nil, ""},
+		// needs: label with unknown value should not return MCP
+		{[]string{"needs:unknown"}, ""},
+		// Multiple needs labels - first matching one wins
+		{[]string{"needs:playwright", "needs:browser"}, "playwright"},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%v", tt.labels), func(t *testing.T) {
+			got := InferMCPFromLabels(tt.labels)
+			if got != tt.wantMCP {
+				t.Errorf("InferMCPFromLabels(%v) = %q, want %q", tt.labels, got, tt.wantMCP)
+			}
+		})
+	}
+}
+
+// TestOriginalBugReproduction verifies the fix for orch-go-4mu.
+// Issue titled "Architect: Design accretion gravity enforcement infrastructure"
+// was incorrectly inferred as "investigation" instead of "architect".
+func TestOriginalBugReproduction(t *testing.T) {
+	issue := &Issue{
+		ID:          "orch-go-4mu",
+		Title:       "Architect: Design accretion gravity enforcement infrastructure",
+		Description: "",
+		IssueType:   "task",
+		Labels:      []string{},
+	}
+
+	got, err := InferSkillFromIssue(issue)
+	if err != nil {
+		t.Fatalf("InferSkillFromIssue() unexpected error: %v", err)
+	}
+
+	want := "architect"
+	if got != want {
+		t.Errorf("InferSkillFromIssue() = %q, want %q (bug reproduction failed - title prefix not detected)", got, want)
 	}
 }
