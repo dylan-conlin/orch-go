@@ -183,7 +183,7 @@ func printTokensSummary(output TokensSummaryOutput) {
 	for _, s := range output.Sessions {
 		beadsID := s.BeadsID
 		if beadsID == "" {
-			beadsID = s.SessionID[:12]
+			beadsID = shortID(s.SessionID)
 		}
 
 		input := "-"

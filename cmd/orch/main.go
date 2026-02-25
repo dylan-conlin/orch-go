@@ -128,13 +128,13 @@ func runVersionSource() {
 	// Compare hashes
 	if gitHash == "unknown" {
 		fmt.Println("\n⚠️  Git hash not embedded (dev build)")
-		fmt.Printf("current HEAD: %s\n", currentHash[:12])
+		fmt.Printf("current HEAD: %s\n", shortID(currentHash))
 	} else if currentHash == gitHash {
 		fmt.Println("\nstatus: ✓ UP TO DATE")
 	} else {
 		fmt.Println("\nstatus: ⚠️  STALE")
-		fmt.Printf("binary hash:  %s\n", gitHash[:12])
-		fmt.Printf("current HEAD: %s\n", currentHash[:12])
+		fmt.Printf("binary hash:  %s\n", shortID(gitHash))
+		fmt.Printf("current HEAD: %s\n", shortID(currentHash))
 		fmt.Printf("\nrebuild: cd %s && make install\n", sourceDir)
 	}
 }

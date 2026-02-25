@@ -636,7 +636,7 @@ func TestLivenessWarningMessage(t *testing.T) {
 		if opencodeLive {
 			detail := "OpenCode session"
 			if sessionID != "" {
-				detail += " (" + sessionID[:12] + ")"
+				detail += " (" + shortID(sessionID) + ")"
 			}
 			runningDetails = append(runningDetails, detail)
 		}
@@ -684,7 +684,7 @@ func TestLivenessWarningMessage(t *testing.T) {
 		if opencodeLive {
 			detail := "OpenCode session"
 			if sessionID != "" {
-				detail += " (" + sessionID[:12] + ")"
+				detail += " (" + shortID(sessionID) + ")"
 			}
 			runningDetails = append(runningDetails, detail)
 		}

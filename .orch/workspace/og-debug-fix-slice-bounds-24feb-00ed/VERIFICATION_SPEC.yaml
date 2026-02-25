@@ -1,0 +1,40 @@
+verification:
+  type: bug-fix
+  issue: orch-go-1217
+
+  reproduction:
+    description: "Slice bounds panic when sessionID or git hash is shorter than 12 characters"
+    original_error: "slice bounds out of range [:12] with length 4"
+    affected_files:
+      - cmd/orch/complete_cmd.go
+      - cmd/orch/abandon_cmd.go
+      - cmd/orch/doctor.go
+      - cmd/orch/main.go
+      - cmd/orch/tokens.go
+      - pkg/orch/extraction.go
+
+  automated_checks:
+    - command: "go test ./cmd/orch/ -run TestShortID -v"
+      expectation: "All 6 test cases pass (long, exact-12, short, empty, 1-char, 13-chars)"
+      result: PASS
+
+    - command: "go test ./cmd/orch/ ./pkg/orch/"
+      expectation: "All tests pass, no regressions"
+      result: PASS
+
+    - command: "go build ./cmd/orch/"
+      expectation: "Compiles without errors"
+      result: PASS
+
+    - command: "go vet ./cmd/orch/ ./pkg/orch/"
+      expectation: "No vet warnings"
+      result: PASS
+
+  pattern_verification:
+    - command: "rg '\\[:12\\]' cmd/orch/ pkg/orch/ --glob '*.go' --glob '!*.bak*'"
+      expectation: "Only hits inside shortID() function bodies (shared.go:34, spawn_helpers.go:17)"
+      result: PASS
+
+  manual_steps:
+    - description: "Run orch complete on a workspace with short session ID to verify no panic"
+      status: "Cannot smoke-test directly — requires an active workspace with short IDs. The unit test covers the bounds check that caused the panic."

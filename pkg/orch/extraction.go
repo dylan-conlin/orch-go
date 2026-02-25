@@ -546,7 +546,7 @@ func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isO
 							return "", fmt.Errorf("issue %s is already in_progress with active agent (session %s). Use 'orch send %s' to interact or 'orch abandon %s' to restart", beadsID, s.ID, s.ID, beadsID)
 						}
 						// Session exists but is stale - log and continue (allow respawn)
-						fmt.Fprintf(os.Stderr, "Note: found stale session %s for issue %s (no activity in 30m)\n", s.ID[:12], beadsID)
+						fmt.Fprintf(os.Stderr, "Note: found stale session %s for issue %s (no activity in 30m)\n", shortID(s.ID), beadsID)
 					}
 				}
 				// No active session - check if Phase: Complete was reported

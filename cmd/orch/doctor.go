@@ -128,7 +128,7 @@ func runDoctor() error {
 			return nil // Not an error, just a warning
 		}
 		if status.Stale {
-			fmt.Printf("⚠️  STALE: binary=%s HEAD=%s\n", status.BinaryHash[:12], status.CurrentHash[:12])
+			fmt.Printf("⚠️  STALE: binary=%s HEAD=%s\n", shortID(status.BinaryHash), shortID(status.CurrentHash))
 			fmt.Printf("   rebuild: cd %s && make install\n", status.SourceDir)
 			os.Exit(1)
 		}
@@ -181,7 +181,7 @@ func runDoctor() error {
 		binaryServiceStatus.Details = binaryStatus.Error
 	} else if binaryStatus.Stale {
 		binaryServiceStatus.Running = false
-		binaryServiceStatus.Details = fmt.Sprintf("STALE (binary=%s, HEAD=%s)", binaryStatus.BinaryHash[:12], binaryStatus.CurrentHash[:12])
+		binaryServiceStatus.Details = fmt.Sprintf("STALE (binary=%s, HEAD=%s)", shortID(binaryStatus.BinaryHash), shortID(binaryStatus.CurrentHash))
 		binaryServiceStatus.FixAction = fmt.Sprintf("cd %s && make install", binaryStatus.SourceDir)
 		report.Healthy = false
 	} else {
@@ -927,7 +927,7 @@ func printSessionsCrossReferenceReport(report *SessionsCrossReferenceReport, pro
 				title = "(untitled)"
 			}
 			age := time.Since(time.Unix(s.Time.Created/1000, 0))
-			fmt.Printf("  - %s: %s (%.0f days old)\n", sessionID[:12], title, age.Hours()/24)
+			fmt.Printf("  - %s: %s (%.0f days old)\n", shortID(sessionID), title, age.Hours()/24)
 		}
 		fmt.Println()
 	}
@@ -941,7 +941,7 @@ func printSessionsCrossReferenceReport(report *SessionsCrossReferenceReport, pro
 				title = "(untitled)"
 			}
 			idleTime := time.Since(time.Unix(s.Time.Updated/1000, 0))
-			fmt.Printf("  - %s: %s (idle %.0f min)\n", sessionID[:12], title, idleTime.Minutes())
+			fmt.Printf("  - %s: %s (idle %.0f min)\n", shortID(sessionID), title, idleTime.Minutes())
 		}
 		fmt.Println()
 	}
@@ -1228,7 +1228,7 @@ func runHealthCheckWithNotifications(notifier *notify.Notifier, previousHealth m
 		binaryServiceStatus.Details = binaryStatus.Error
 	} else if binaryStatus.Stale {
 		binaryServiceStatus.Running = false
-		binaryServiceStatus.Details = fmt.Sprintf("STALE (binary=%s, HEAD=%s)", binaryStatus.BinaryHash[:12], binaryStatus.CurrentHash[:12])
+		binaryServiceStatus.Details = fmt.Sprintf("STALE (binary=%s, HEAD=%s)", shortID(binaryStatus.BinaryHash), shortID(binaryStatus.CurrentHash))
 		report.Healthy = false
 	} else {
 		binaryServiceStatus.Running = true

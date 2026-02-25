@@ -25,6 +25,15 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
+// shortID returns the first 12 characters of an ID string for display.
+// If the string is shorter than 12 characters, it returns the full string.
+func shortID(s string) string {
+	if len(s) <= 12 {
+		return s
+	}
+	return s[:12]
+}
+
 // extractBeadsIDFromTitle extracts beads ID from an OpenCode session title.
 // Looks for patterns like "[beads-id]" at the end of the title.
 func extractBeadsIDFromTitle(title string) string {

@@ -856,7 +856,7 @@ func runComplete(identifier, workdir string) error {
 				if liveness.OpencodeLive {
 					detail := "OpenCode session"
 					if liveness.SessionID != "" {
-						detail += " (" + liveness.SessionID[:12] + ")"
+						detail += " (" + shortID(liveness.SessionID) + ")"
 					}
 					runningDetails = append(runningDetails, detail)
 				}
@@ -1152,9 +1152,9 @@ func runComplete(identifier, workdir string) error {
 				client := opencode.NewClient(serverURL)
 				if err := client.DeleteSession(sessionID); err != nil {
 					// Non-fatal - session might already be deleted or not exist
-					fmt.Fprintf(os.Stderr, "Warning: failed to delete OpenCode session %s: %v\n", sessionID[:12], err)
+					fmt.Fprintf(os.Stderr, "Warning: failed to delete OpenCode session %s: %v\n", shortID(sessionID), err)
 				} else {
-					fmt.Printf("Deleted OpenCode session: %s\n", sessionID[:12])
+					fmt.Printf("Deleted OpenCode session: %s\n", shortID(sessionID))
 				}
 			}
 		}

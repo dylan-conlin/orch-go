@@ -8,6 +8,15 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
+// shortID returns the first 12 characters of an ID string for display.
+// If the string is shorter than 12 characters, it returns the full string.
+func shortID(s string) string {
+	if len(s) <= 12 {
+		return s
+	}
+	return s[:12]
+}
+
 // ansiRegex matches ANSI escape sequences (colors, formatting, etc.)
 var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 

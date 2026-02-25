@@ -127,7 +127,7 @@ func runAbandon(beadsID, reason, workdir string) error {
 		agentName = aName
 		sessionID = spawn.ReadSessionID(wPath)
 		if sessionID != "" {
-			fmt.Printf("Found agent workspace: %s (session: %s)\n", agentName, sessionID[:12])
+			fmt.Printf("Found agent workspace: %s (session: %s)\n", agentName, shortID(sessionID))
 		} else {
 			fmt.Printf("Found agent workspace: %s\n", agentName)
 		}
@@ -187,7 +187,7 @@ func runAbandon(beadsID, reason, workdir string) error {
 		fmt.Printf("Found tmux window: %s\n", windowInfo.Target)
 	}
 	if sessionID != "" {
-		fmt.Printf("Found OpenCode session: %s\n", sessionID[:12])
+		fmt.Printf("Found OpenCode session: %s\n", shortID(sessionID))
 	}
 
 	// If neither found, warn but still allow abandonment
@@ -222,7 +222,7 @@ func runAbandon(beadsID, reason, workdir string) error {
 	// Delete the OpenCode session if it exists
 	// This prevents abandoned agents from appearing in `orch status`
 	if sessionID != "" {
-		fmt.Printf("Deleting OpenCode session: %s\n", sessionID[:12])
+		fmt.Printf("Deleting OpenCode session: %s\n", shortID(sessionID))
 		if err := client.DeleteSession(sessionID); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to delete OpenCode session: %v\n", err)
 		} else {
