@@ -4,10 +4,39 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 )
+
+// mockAccount represents an account for testing.
+type mockAccount struct {
+	role      string
+	configDir string
+}
+
+// mockAccountConfig implements AccountConfigProvider for testing.
+type mockAccountConfig struct {
+	accounts map[string]mockAccount
+}
+
+func (m *mockAccountConfig) GetAccounts() map[string]AccountInfo2 {
+	result := make(map[string]AccountInfo2)
+	for name, acc := range m.accounts {
+		result[name] = AccountInfo2{Role: acc.role, ConfigDir: acc.configDir}
+	}
+	return result
+}
+
+func (m *mockAccountConfig) GetDefault() string {
+	for name, acc := range m.accounts {
+		if acc.role == "primary" {
+			return name
+		}
+	}
+	return ""
+}
 
 func baseResolveInput() ResolveInput {
 	return ResolveInput{
@@ -939,5 +968,238 @@ func TestResolve_AccountDefaultEmpty(t *testing.T) {
 		if settings.Account.Source != SourceDefault {
 			t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceDefault)
 		}
+	}
+}
+
+// ============================================================================
+// Account Heuristic Routing Tests (Phase 2)
+// ============================================================================
+
+func TestResolve_AccountHeuristic_WorkFirstWhenHealthy(t *testing.T) {
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
+			return &account.CapacityInfo{FiveHourRemaining: 87, SevenDayRemaining: 72}
+		case "personal":
+			return &account.CapacityInfo{FiveHourRemaining: 95, SevenDayRemaining: 88}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.Account.Value != "work" {
+		t.Fatalf("Account.Value = %q, want %q (work-first when healthy)", settings.Account.Value, "work")
+	}
+	if settings.Account.Source != SourceHeuristic {
+		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceHeuristic)
+	}
+	if !strings.Contains(settings.Account.Detail, "primary-healthy") {
+		t.Fatalf("Account.Detail = %q, want contains 'primary-healthy'", settings.Account.Detail)
+	}
+}
+
+func TestResolve_AccountHeuristic_SpilloverWhenWorkLow(t *testing.T) {
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
+			// Work is low on 5-hour capacity (15% remaining < 20% threshold)
+			return &account.CapacityInfo{FiveHourRemaining: 15, SevenDayRemaining: 72}
+		case "personal":
+			return &account.CapacityInfo{FiveHourRemaining: 95, SevenDayRemaining: 88}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.Account.Value != "personal" {
+		t.Fatalf("Account.Value = %q, want %q (spillover when work is low)", settings.Account.Value, "personal")
+	}
+	if settings.Account.Source != SourceHeuristic {
+		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceHeuristic)
+	}
+	if !strings.Contains(settings.Account.Detail, "spillover-activated") {
+		t.Fatalf("Account.Detail = %q, want contains 'spillover-activated'", settings.Account.Detail)
+	}
+}
+
+func TestResolve_AccountHeuristic_BothExhaustedUsesPrimary(t *testing.T) {
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
+			return &account.CapacityInfo{FiveHourRemaining: 10, SevenDayRemaining: 5}
+		case "personal":
+			return &account.CapacityInfo{FiveHourRemaining: 8, SevenDayRemaining: 3}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.Account.Value != "work" {
+		t.Fatalf("Account.Value = %q, want %q (both exhausted, use primary)", settings.Account.Value, "work")
+	}
+	if settings.Account.Source != SourceHeuristic {
+		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceHeuristic)
+	}
+	if !strings.Contains(settings.Account.Detail, "all-exhausted") {
+		t.Fatalf("Account.Detail = %q, want contains 'all-exhausted'", settings.Account.Detail)
+	}
+}
+
+func TestResolve_AccountHeuristic_CapacityFetchFailsUsesPrimary(t *testing.T) {
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal"},
+		},
+	}
+	// CapacityFetcher returns nil (fetch failed)
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.Account.Value != "work" {
+		t.Fatalf("Account.Value = %q, want %q (fail-open to primary)", settings.Account.Value, "work")
+	}
+	if settings.Account.Source != SourceHeuristic {
+		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceHeuristic)
+	}
+}
+
+func TestResolve_AccountHeuristic_CLIOverridesHeuristic(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Account = "personal"
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		// Work is healthy, but CLI explicitly chose personal
+		return &account.CapacityInfo{FiveHourRemaining: 87, SevenDayRemaining: 72}
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.Account.Value != "personal" {
+		t.Fatalf("Account.Value = %q, want %q (CLI overrides heuristic)", settings.Account.Value, "personal")
+	}
+	if settings.Account.Source != SourceCLI {
+		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceCLI)
+	}
+}
+
+func TestResolve_AccountHeuristic_NoCapacityFetcherUsesDefault(t *testing.T) {
+	// When no CapacityFetcher is set, fall back to default behavior (no heuristic)
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work": {role: "primary", configDir: "~/.claude"},
+		},
+	}
+	// No CapacityFetcher set
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.Account.Value != "work" {
+		t.Fatalf("Account.Value = %q, want %q", settings.Account.Value, "work")
+	}
+	if settings.Account.Source != SourceDefault {
+		t.Fatalf("Account.Source = %q, want %q (no capacity fetcher = default)", settings.Account.Source, SourceDefault)
+	}
+}
+
+func TestResolve_AccountHeuristic_WorkLowOn7Day(t *testing.T) {
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
+			// Work is low on 7-day capacity
+			return &account.CapacityInfo{FiveHourRemaining: 80, SevenDayRemaining: 15}
+		case "personal":
+			return &account.CapacityInfo{FiveHourRemaining: 95, SevenDayRemaining: 88}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.Account.Value != "personal" {
+		t.Fatalf("Account.Value = %q, want %q (spillover when work 7-day low)", settings.Account.Value, "personal")
+	}
+}
+
+func TestResolve_AccountHeuristic_CapacityError(t *testing.T) {
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
+			return &account.CapacityInfo{Error: "token refresh failed"}
+		case "personal":
+			return &account.CapacityInfo{FiveHourRemaining: 95, SevenDayRemaining: 88}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	// When work capacity has error, it's treated as unhealthy → spillover
+	if settings.Account.Value != "personal" {
+		t.Fatalf("Account.Value = %q, want %q (spillover when work has error)", settings.Account.Value, "personal")
 	}
 }

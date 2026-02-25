@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -409,4 +410,55 @@ func resolveShortBeadsID(id string) (string, error) {
 	}
 
 	return issue.ID, nil
+}
+
+// Process-level capacity cache shared across spawn/rework commands.
+// Since each orch command is a short-lived process, the cache ensures
+// multiple resolve calls within the same process don't re-fetch capacity.
+var processCapacityCache *account.CapacityCache
+
+// buildCapacityFetcher returns a function that checks account capacity
+// using a process-level cache. The fetcher calls GetAccountCapacity on
+// cache miss and caches the result for 5 minutes.
+//
+// Returns nil if no saved accounts are configured (no routing needed).
+func buildCapacityFetcher() func(string) *account.CapacityInfo {
+	cfg, err := account.LoadConfig()
+	if err != nil || len(cfg.Accounts) < 2 {
+		// No routing needed with 0 or 1 accounts
+		return nil
+	}
+
+	// Check if any accounts have routing roles configured
+	hasRoles := false
+	for _, acc := range cfg.Accounts {
+		if acc.Role == "primary" || acc.Role == "spillover" {
+			hasRoles = true
+			break
+		}
+	}
+	if !hasRoles {
+		return nil
+	}
+
+	// Lazy-init the process-level cache
+	if processCapacityCache == nil {
+		processCapacityCache = account.NewCapacityCache(5 * time.Minute)
+	}
+
+	return func(name string) *account.CapacityInfo {
+		// Check cache first
+		if cached := processCapacityCache.Get(name); cached != nil {
+			return cached
+		}
+
+		// Cache miss — fetch from API
+		capacity, err := account.GetAccountCapacity(name)
+		if err != nil || capacity == nil {
+			return nil
+		}
+
+		processCapacityCache.Set(name, capacity)
+		return capacity
+	}
 }

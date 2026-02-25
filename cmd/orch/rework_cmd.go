@@ -203,6 +203,7 @@ func runRework(beadsID, feedback string) error {
 		SkillName:              skillName,
 		IsOrchestrator:         false,
 		InfrastructureDetected: orch.IsInfrastructureWork(task, beadsID),
+		CapacityFetcher:        buildCapacityFetcher(),
 	}
 	resolved, err := orch.ResolveSpawnSettings(resolveInput)
 	if err != nil {

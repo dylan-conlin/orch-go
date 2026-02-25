@@ -572,6 +572,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		SkillName:              skillName,
 		IsOrchestrator:         isOrchestrator,
 		InfrastructureDetected: isInfrastructureWork(task, beadsID),
+		CapacityFetcher:        buildCapacityFetcher(),
 	}
 	resolved, err := orch.ResolveSpawnSettings(resolveInput)
 	if err != nil {

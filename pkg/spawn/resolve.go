@@ -2,6 +2,7 @@ package spawn
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
@@ -9,6 +10,37 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 )
+
+// AccountInfo2 holds the routing-relevant fields of an account.
+// Named AccountInfo2 to avoid collision with account.AccountInfo.
+type AccountInfo2 struct {
+	Role      string // "primary", "spillover", or ""
+	ConfigDir string // e.g. "~/.claude-personal"
+}
+
+// AccountConfigProvider abstracts account config access for testability.
+// In production, this wraps account.Config. In tests, it's a mock.
+type AccountConfigProvider interface {
+	GetAccounts() map[string]AccountInfo2
+	GetDefault() string
+}
+
+// liveAccountConfig wraps account.Config for production use.
+type liveAccountConfig struct {
+	cfg *account.Config
+}
+
+func (l *liveAccountConfig) GetAccounts() map[string]AccountInfo2 {
+	result := make(map[string]AccountInfo2)
+	for name, acc := range l.cfg.Accounts {
+		result[name] = AccountInfo2{Role: acc.Role, ConfigDir: acc.ConfigDir}
+	}
+	return result
+}
+
+func (l *liveAccountConfig) GetDefault() string {
+	return l.cfg.Default
+}
 
 // SettingSource indicates where a resolved setting came from.
 type SettingSource string
@@ -99,6 +131,16 @@ type ResolveInput struct {
 	SkillName              string
 	IsOrchestrator         bool
 	InfrastructureDetected bool
+
+	// AccountConfig provides account routing data (role, config_dir).
+	// When nil, resolveAccount loads from disk via account.LoadConfig().
+	AccountConfig AccountConfigProvider
+
+	// CapacityFetcher returns cached capacity for a named account.
+	// When set, resolveAccount uses heuristic routing (work-first, personal-spillover).
+	// When nil, resolveAccount falls back to default (primary account without capacity check).
+	// The caller (daemon) typically wraps a CapacityCache.Get here.
+	CapacityFetcher func(name string) *account.CapacityInfo
 }
 
 // Resolve computes the resolved spawn settings with provenance.
@@ -371,33 +413,95 @@ func resolveValidation(input ResolveInput) ResolvedSetting {
 }
 
 // resolveAccount determines which account to use for Claude CLI spawns.
-// Phase 1: CLI flag only. Phase 2 will add capacity-aware routing.
-// Returns empty account for non-Claude backends (OpenCode uses its own auth).
+//
+// Precedence:
+//  1. CLI flag: --account work                → Source: cli-flag
+//  2. Heuristic: capacity-aware routing       → Source: heuristic
+//  3. Default: first primary account          → Source: default
+//
+// The heuristic (when CapacityFetcher is set):
+//   - Check primary accounts first (sorted by name for determinism)
+//   - If any primary is healthy (>20% on both limits): use it
+//   - If all primaries are low: check spillover accounts
+//   - If a spillover is healthy: use it
+//   - If all exhausted: use first primary (still has most headroom with higher tier)
+//   - If capacity fetch fails (nil): use first primary (fail-open)
 func resolveAccount(input ResolveInput) ResolvedSetting {
 	// CLI flag has highest precedence
 	if input.CLI.Account != "" {
 		return ResolvedSetting{Value: input.CLI.Account, Source: SourceCLI}
 	}
 
-	// Default: first account with role=primary, falling back to "work"
-	cfg, err := account.LoadConfig()
-	if err != nil || len(cfg.Accounts) == 0 {
+	// Load account config (from injected provider or disk)
+	var provider AccountConfigProvider
+	if input.AccountConfig != nil {
+		provider = input.AccountConfig
+	} else {
+		cfg, err := account.LoadConfig()
+		if err != nil || len(cfg.Accounts) == 0 {
+			return ResolvedSetting{Value: "", Source: SourceDefault}
+		}
+		provider = &liveAccountConfig{cfg: cfg}
+	}
+
+	accounts := provider.GetAccounts()
+	if len(accounts) == 0 {
 		return ResolvedSetting{Value: "", Source: SourceDefault}
 	}
 
-	// Find first primary account
-	for name, acc := range cfg.Accounts {
-		if acc.Role == "primary" {
-			return ResolvedSetting{Value: name, Source: SourceDefault, Detail: "primary-account"}
+	// Categorize accounts by role
+	var primaries, spillovers []string
+	for name, info := range accounts {
+		switch info.Role {
+		case "spillover":
+			spillovers = append(spillovers, name)
+		default:
+			// "primary" or "" (backward compat: no role = primary candidate)
+			primaries = append(primaries, name)
 		}
 	}
 
-	// No primary role set - use default account from config
-	if cfg.Default != "" {
-		return ResolvedSetting{Value: cfg.Default, Source: SourceDefault, Detail: "config-default"}
+	// Sort for deterministic selection
+	sort.Strings(primaries)
+	sort.Strings(spillovers)
+
+	// If no primaries, use default
+	if len(primaries) == 0 {
+		defaultName := provider.GetDefault()
+		if defaultName != "" {
+			return ResolvedSetting{Value: defaultName, Source: SourceDefault, Detail: "config-default"}
+		}
+		return ResolvedSetting{Value: "", Source: SourceDefault}
 	}
 
-	return ResolvedSetting{Value: "", Source: SourceDefault}
+	// When no CapacityFetcher, fall back to default behavior (no heuristic)
+	if input.CapacityFetcher == nil {
+		return ResolvedSetting{Value: primaries[0], Source: SourceDefault, Detail: "primary-account"}
+	}
+
+	// Heuristic routing: work-first, personal-spillover
+	// Check primary accounts
+	for _, name := range primaries {
+		capacity := input.CapacityFetcher(name)
+		if capacity != nil && capacity.IsHealthy() {
+			detail := fmt.Sprintf("primary-healthy-5h:%.0f%%-7d:%.0f%%",
+				capacity.FiveHourRemaining, capacity.SevenDayRemaining)
+			return ResolvedSetting{Value: name, Source: SourceHeuristic, Detail: detail}
+		}
+	}
+
+	// All primaries are low/errored — check spillover accounts
+	for _, name := range spillovers {
+		capacity := input.CapacityFetcher(name)
+		if capacity != nil && capacity.IsHealthy() {
+			detail := fmt.Sprintf("spillover-activated-5h:%.0f%%-7d:%.0f%%",
+				capacity.FiveHourRemaining, capacity.SevenDayRemaining)
+			return ResolvedSetting{Value: name, Source: SourceHeuristic, Detail: detail}
+		}
+	}
+
+	// All exhausted: use first primary (highest tier, most headroom)
+	return ResolvedSetting{Value: primaries[0], Source: SourceHeuristic, Detail: "all-exhausted-using-primary"}
 }
 
 func buildModelAliasMap(projectCfg *config.Config, projectMeta ProjectConfigMeta, userCfg *userconfig.Config, userMeta UserConfigMeta) map[string]string {
