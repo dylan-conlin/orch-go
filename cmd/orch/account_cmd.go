@@ -100,15 +100,33 @@ func runAccountList() error {
 		return nil
 	}
 
-	fmt.Printf("%-15s %-35s %-10s\n", "NAME", "EMAIL", "DEFAULT")
-	fmt.Printf("%s\n", strings.Repeat("-", 65))
+	// Determine recommended account (without capacity fetcher — uses role-based default)
+	recommended := account.RecommendAccount(accounts, nil)
+
+	fmt.Printf("%-12s %-35s %-6s %-12s %-15s\n", "NAME", "EMAIL", "TIER", "ROLE", "STATUS")
+	fmt.Printf("%s\n", strings.Repeat("-", 82))
 
 	for _, acc := range accounts {
-		def := ""
-		if acc.IsDefault {
-			def = "✓"
+		tier := acc.Tier
+		if tier == "" {
+			tier = "-"
 		}
-		fmt.Printf("%-15s %-35s %-10s\n", acc.Name, acc.Email, def)
+		role := acc.Role
+		if role == "" {
+			role = "-"
+		}
+		status := ""
+		if acc.Name == recommended {
+			status = "[RECOMMENDED]"
+		}
+		if acc.IsDefault {
+			if status != "" {
+				status += " default"
+			} else {
+				status = "default"
+			}
+		}
+		fmt.Printf("%-12s %-35s %-6s %-12s %-15s\n", acc.Name, acc.Email, tier, role, status)
 	}
 
 	return nil

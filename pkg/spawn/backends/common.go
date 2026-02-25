@@ -200,6 +200,7 @@ func PrintSpawnSummary(result *Result, req *SpawnRequest) {
 		fmt.Printf("  Workspace:  %s\n", req.Config.WorkspaceName)
 		fmt.Printf("  Beads ID:   %s\n", req.BeadsID)
 		fmt.Printf("  Model:      %s\n", req.Config.Model)
+		printAccountProvenance(req)
 		if req.Config.MCP != "" {
 			fmt.Printf("  MCP:        %s\n", req.Config.MCP)
 		}
@@ -220,6 +221,7 @@ func PrintSpawnSummary(result *Result, req *SpawnRequest) {
 			fmt.Printf("  Workspace:  %s\n", req.Config.WorkspaceName)
 			fmt.Printf("  Beads ID:   %s\n", req.BeadsID)
 			fmt.Printf("  Model:      %s\n", req.Config.Model)
+			printAccountProvenance(req)
 			if req.Config.MCP != "" {
 				fmt.Printf("  MCP:        %s\n", req.Config.MCP)
 			}
@@ -229,4 +231,18 @@ func PrintSpawnSummary(result *Result, req *SpawnRequest) {
 			fmt.Printf("  Context:    %s\n", FormatContextQualitySummary(req.Config.GapAnalysis))
 		}
 	}
+}
+
+// printAccountProvenance prints the account selection provenance line.
+// Only prints when an account is set (Claude backend with account routing).
+func printAccountProvenance(req *SpawnRequest) {
+	if req.Config.Account == "" {
+		return
+	}
+	acctSetting := req.Config.ResolvedSettings.Account
+	provenance := fmt.Sprintf("source: %s", acctSetting.Source)
+	if acctSetting.Detail != "" {
+		provenance += fmt.Sprintf(", detail: %s", acctSetting.Detail)
+	}
+	fmt.Printf("  Account:    %s (%s)\n", req.Config.Account, provenance)
 }

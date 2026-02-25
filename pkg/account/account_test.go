@@ -1062,6 +1062,109 @@ func TestSaveOpenCodeAuth_NoExistingFile(t *testing.T) {
 	}
 }
 
+// ============================================================================
+// RecommendAccount Tests
+// ============================================================================
+
+func TestRecommendAccount_NoPrimaries(t *testing.T) {
+	accounts := []AccountInfo{
+		{Name: "spillover1", Role: "spillover"},
+	}
+	got := RecommendAccount(accounts, nil)
+	if got != "" {
+		t.Errorf("RecommendAccount() = %q, want empty (no primaries)", got)
+	}
+}
+
+func TestRecommendAccount_EmptyAccounts(t *testing.T) {
+	got := RecommendAccount(nil, nil)
+	if got != "" {
+		t.Errorf("RecommendAccount() = %q, want empty", got)
+	}
+}
+
+func TestRecommendAccount_SinglePrimary(t *testing.T) {
+	accounts := []AccountInfo{
+		{Name: "work", Role: "primary", Tier: "20x"},
+	}
+	got := RecommendAccount(accounts, nil)
+	if got != "work" {
+		t.Errorf("RecommendAccount() = %q, want %q", got, "work")
+	}
+}
+
+func TestRecommendAccount_PrimaryWithoutRole(t *testing.T) {
+	// Backward compat: no role = primary candidate
+	accounts := []AccountInfo{
+		{Name: "old-account", Role: "", Tier: ""},
+	}
+	got := RecommendAccount(accounts, nil)
+	if got != "old-account" {
+		t.Errorf("RecommendAccount() = %q, want %q", got, "old-account")
+	}
+}
+
+func TestRecommendAccount_WithCapacityFetcher_PrimaryHealthy(t *testing.T) {
+	accounts := []AccountInfo{
+		{Name: "work", Role: "primary", Tier: "20x"},
+		{Name: "personal", Role: "spillover", Tier: "5x"},
+	}
+	fetcher := func(name string) *CapacityInfo {
+		if name == "work" {
+			return &CapacityInfo{FiveHourRemaining: 87, SevenDayRemaining: 72}
+		}
+		return &CapacityInfo{FiveHourRemaining: 95, SevenDayRemaining: 88}
+	}
+	got := RecommendAccount(accounts, fetcher)
+	if got != "work" {
+		t.Errorf("RecommendAccount() = %q, want %q (primary is healthy)", got, "work")
+	}
+}
+
+func TestRecommendAccount_WithCapacityFetcher_PrimaryLow_SpilloverHealthy(t *testing.T) {
+	accounts := []AccountInfo{
+		{Name: "work", Role: "primary", Tier: "20x"},
+		{Name: "personal", Role: "spillover", Tier: "5x"},
+	}
+	fetcher := func(name string) *CapacityInfo {
+		if name == "work" {
+			return &CapacityInfo{FiveHourRemaining: 10, SevenDayRemaining: 15}
+		}
+		return &CapacityInfo{FiveHourRemaining: 95, SevenDayRemaining: 88}
+	}
+	got := RecommendAccount(accounts, fetcher)
+	if got != "personal" {
+		t.Errorf("RecommendAccount() = %q, want %q (spillover activated)", got, "personal")
+	}
+}
+
+func TestRecommendAccount_WithCapacityFetcher_AllExhausted(t *testing.T) {
+	accounts := []AccountInfo{
+		{Name: "work", Role: "primary", Tier: "20x"},
+		{Name: "personal", Role: "spillover", Tier: "5x"},
+	}
+	fetcher := func(name string) *CapacityInfo {
+		return &CapacityInfo{FiveHourRemaining: 5, SevenDayRemaining: 3}
+	}
+	got := RecommendAccount(accounts, fetcher)
+	if got != "work" {
+		t.Errorf("RecommendAccount() = %q, want %q (all exhausted, use primary)", got, "work")
+	}
+}
+
+func TestRecommendAccount_DeterministicSorting(t *testing.T) {
+	// Multiple primaries — should pick alphabetically first
+	accounts := []AccountInfo{
+		{Name: "charlie", Role: "primary"},
+		{Name: "alpha", Role: "primary"},
+		{Name: "bravo", Role: "primary"},
+	}
+	got := RecommendAccount(accounts, nil)
+	if got != "alpha" {
+		t.Errorf("RecommendAccount() = %q, want %q (alphabetical sort)", got, "alpha")
+	}
+}
+
 // TestAutoSwitchCustomThresholds tests that custom thresholds are respected.
 func TestAutoSwitchCustomThresholds(t *testing.T) {
 	// Test with more aggressive thresholds

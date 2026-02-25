@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -271,6 +272,9 @@ type AccountInfo struct {
 	Email     string
 	IsDefault bool
 	IsActive  bool
+	Tier      string // Subscription tier: "5x", "20x"
+	Role      string // Routing role: "primary", "spillover"
+	ConfigDir string // Claude CLI config directory
 }
 
 // ListAccountInfo returns account info for all saved accounts.
@@ -299,10 +303,66 @@ func ListAccountInfo() ([]AccountInfo, error) {
 			Email:     acc.Email,
 			IsDefault: cfg.Default == name,
 			IsActive:  currentEmail != "" && acc.Email == currentEmail,
+			Tier:      acc.Tier,
+			Role:      acc.Role,
+			ConfigDir: acc.ConfigDir,
 		})
 	}
 
 	return result, nil
+}
+
+// RecommendAccount returns the name of the recommended account for spawning.
+// Uses the same work-first algorithm as resolveAccount:
+//  1. Primary accounts checked first (sorted by name for determinism)
+//  2. If a capacity fetcher is provided, use capacity-aware routing
+//  3. Without capacity data, recommend first primary account
+//
+// Returns empty string if no accounts are configured.
+func RecommendAccount(accounts []AccountInfo, capacityFetcher func(string) *CapacityInfo) string {
+	if len(accounts) == 0 {
+		return ""
+	}
+
+	var primaries, spillovers []string
+	for _, acc := range accounts {
+		switch acc.Role {
+		case "spillover":
+			spillovers = append(spillovers, acc.Name)
+		default:
+			primaries = append(primaries, acc.Name)
+		}
+	}
+
+	sort.Strings(primaries)
+	sort.Strings(spillovers)
+
+	if len(primaries) == 0 {
+		return ""
+	}
+
+	if capacityFetcher == nil {
+		return primaries[0]
+	}
+
+	// Check primary accounts first
+	for _, name := range primaries {
+		capacity := capacityFetcher(name)
+		if capacity != nil && capacity.IsHealthy() {
+			return name
+		}
+	}
+
+	// All primaries are low — check spillover accounts
+	for _, name := range spillovers {
+		capacity := capacityFetcher(name)
+		if capacity != nil && capacity.IsHealthy() {
+			return name
+		}
+	}
+
+	// All exhausted: recommend first primary (highest tier, most headroom)
+	return primaries[0]
 }
 
 // tokenRequest represents the OAuth token refresh request body.
