@@ -1,0 +1,36 @@
+verification:
+  type: audit
+  scope: architecture (verification infrastructure)
+
+  automated:
+    - gate: investigation_file_exists
+      command: "test -f .kb/investigations/2026-02-20-audit-verification-infrastructure-end-to-end.md"
+      expected: "file exists with 7 findings"
+      status: passed
+    - gate: probe_file_exists
+      command: "test -f .kb/models/completion-verification/probes/2026-02-20-probe-verification-infrastructure-audit.md"
+      expected: "file exists with model impact analysis"
+      status: passed
+    - gate: synthesis_exists
+      command: "test -f .orch/workspace/og-audit-orientation-frame-ve-20feb-a7fc/SYNTHESIS.md"
+      expected: "file exists with TLDR and delta"
+      status: passed
+
+  manual:
+    - gate: investigation_completeness
+      check: "Investigation covers all 6 audit areas from task (pkg/verify, completion, daemon, test evidence, dry-run, coaching)"
+      status: covered
+    - gate: model_contradiction_documented
+      check: "Probe documents specific contradictions (3 vs 14 gates, deleted files)"
+      status: documented
+    - gate: verification_spectrum_mapped
+      check: "Investigation maps each verification level with coverage status"
+      status: mapped
+    - gate: recommendations_actionable
+      check: "Recommendations have authority classification and implementation sequence"
+      status: included
+
+  not_applicable:
+    - "No code changes (audit-only session)"
+    - "No tests to run"
+    - "No build verification needed"

@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-add-tmux-liveness-24feb-250c",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1182",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "39062cf71f29a444b6add72f9386159818bb2572",
+  "spawn_time": "2026-02-24T11:02:25-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

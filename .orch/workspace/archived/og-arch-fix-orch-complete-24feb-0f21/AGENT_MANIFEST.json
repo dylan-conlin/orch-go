@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-fix-orch-complete-24feb-0f21",
+  "skill": "architect",
+  "beads_id": "orch-go-1208",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "1f139b1dd1f9f3cd9cb05f6f1b00d8d48903af64",
+  "spawn_time": "2026-02-24T16:31:47-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

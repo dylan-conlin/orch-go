@@ -1,0 +1,37 @@
+verification:
+  automated:
+    - command: "go build ./cmd/orch/"
+      expected: "clean build, no errors"
+      result: "PASS"
+    - command: "go vet ./cmd/orch/ ./pkg/spawn/ ./pkg/spawn/gates/ ./pkg/orch/"
+      expected: "no vet issues"
+      result: "PASS"
+    - command: "go test ./pkg/spawn/ -run TestGenerateContext_HotspotArea -v"
+      expected: "3 tests pass: HotspotArea, NoHotspotArea, HotspotAreaEmptyFiles"
+      result: "PASS - all 3 tests pass"
+    - command: "go test ./pkg/spawn/"
+      expected: "all spawn package tests pass"
+      result: "PASS"
+    - command: "go test ./pkg/spawn/gates/"
+      expected: "all gates package tests pass"
+      result: "PASS"
+    - command: "go test ./cmd/orch/"
+      expected: "all cmd/orch tests pass"
+      result: "PASS"
+    - command: "go test ./pkg/daemon/"
+      expected: "all daemon tests pass (no regressions)"
+      result: "PASS"
+
+  manual:
+    - step: "Verify SPAWN_CONTEXT template renders hotspot section with files"
+      expected: "HOTSPOT AREA WARNING section appears with file list and architect routing guidance"
+      result: "Verified via ad-hoc Go program - template renders correctly"
+
+  files_changed:
+    - pkg/spawn/config.go: "Added HotspotArea bool and HotspotFiles []string to Config"
+    - pkg/spawn/context.go: "Added fields to contextData, template section, and GenerateContext wiring"
+    - pkg/spawn/gates/hotspot.go: "Added MatchedFiles []string to HotspotResult"
+    - pkg/orch/extraction.go: "Added fields to SpawnContext, BuildSpawnConfig, changed RunPreFlightChecks return signature"
+    - cmd/orch/spawn_cmd.go: "Capture hotspot result, populate MatchedFiles, wire into SpawnContext"
+    - cmd/orch/rework_cmd.go: "Same wiring as spawn_cmd.go"
+    - pkg/spawn/context_test.go: "3 new tests for hotspot context injection"

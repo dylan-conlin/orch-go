@@ -214,7 +214,7 @@ func TestDaemon_OnceMarksSpawned(t *testing.T) {
 				{ID: "issue-1", Title: "Test Issue", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		},
-		spawnFunc: func(beadsID string, model string) error {
+		spawnFunc: func(beadsID, model, workdir string) error {
 			spawnCount++
 			return nil
 		},
@@ -251,7 +251,7 @@ func TestDaemon_OnceUnmarksOnFailure(t *testing.T) {
 				{ID: "issue-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		},
-		spawnFunc: func(beadsID string, model string) error {
+		spawnFunc: func(beadsID, model, workdir string) error {
 			// Verify issue is marked as spawned DURING spawn call
 			if !tracker.IsSpawned(beadsID) {
 				t.Error("issue should be marked as spawned during spawnFunc call")
@@ -387,7 +387,7 @@ func TestDaemon_ContentDedupSkipsDuplicateTitle(t *testing.T) {
 				{ID: "issue-dup", Title: "Extract spawn flags phase 1", Priority: 0, IssueType: "task", Status: "open"},
 			}, nil
 		},
-		spawnFunc: func(beadsID string, model string) error {
+		spawnFunc: func(beadsID, model, workdir string) error {
 			spawnCount++
 			return nil
 		},
@@ -422,7 +422,7 @@ func TestDaemon_ContentDedupAllowsDifferentTitle(t *testing.T) {
 				{ID: "issue-new", Title: "Add new feature X", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		},
-		spawnFunc: func(beadsID string, model string) error {
+		spawnFunc: func(beadsID, model, workdir string) error {
 			spawnCount++
 			return nil
 		},
@@ -461,7 +461,7 @@ func TestDaemon_PreventsDuplicateSpawns(t *testing.T) {
 				{ID: "issue-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		},
-		spawnFunc: func(beadsID string, model string) error {
+		spawnFunc: func(beadsID, model, workdir string) error {
 			spawnCount++
 			return nil
 		},

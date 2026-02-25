@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-arch-orch-complete-kills-24feb-6502",
+  "skill": "architect",
+  "beads_id": "orch-go-1216",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "583233085d6cab4b749fbd2f9043a1078d676967",
+  "spawn_time": "2026-02-24T20:16:33-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@704"
+}

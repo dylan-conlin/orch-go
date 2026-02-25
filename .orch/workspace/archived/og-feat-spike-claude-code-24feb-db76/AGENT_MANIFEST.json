@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-spike-claude-code-24feb-db76",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1181",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "4cb0158bda05f93ab08df8561ad6429a84044e68",
+  "spawn_time": "2026-02-24T11:06:04-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

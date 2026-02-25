@@ -147,7 +147,6 @@ func NewWithConfig(config Config) *Daemon {
 		VerificationTracker:       NewVerificationTracker(config.VerificationPauseThreshold),
 		SpawnFailureTracker:       NewSpawnFailureTracker(),
 		CompletionFailureTracker:  NewCompletionFailureTracker(),
-		listIssuesFunc:            ListReadyIssues,
 		spawnFunc:                 SpawnWork,
 		reflectFunc:               DefaultRunReflection,
 		openReflectFunc:           RunOpenReflection,
@@ -182,7 +181,6 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		resumeAttempts:            make(map[string]time.Time),
 		VerificationTracker:       NewVerificationTracker(config.VerificationPauseThreshold),
 		SpawnFailureTracker:       NewSpawnFailureTracker(),
-		listIssuesFunc:            ListReadyIssues,
 		spawnFunc:                 SpawnWork,
 		reflectFunc:               DefaultRunReflection,
 		openReflectFunc:           RunOpenReflection,
@@ -200,6 +198,20 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		d.RateLimiter = NewRateLimiter(config.MaxSpawnsPerHour)
 	}
 	return d
+}
+
+// resolveListIssuesFunc returns the appropriate list function based on configuration.
+// Priority: explicit mock (tests) > multi-project (registry set) > single-project.
+func (d *Daemon) resolveListIssuesFunc() func() ([]Issue, error) {
+	if d.listIssuesFunc != nil {
+		return d.listIssuesFunc
+	}
+	if d.ProjectRegistry != nil {
+		return func() ([]Issue, error) {
+			return ListReadyIssuesMultiProject(d.ProjectRegistry)
+		}
+	}
+	return ListReadyIssues
 }
 
 // NextIssue returns the next spawnable issue from the queue.
@@ -224,7 +236,7 @@ func (d *Daemon) NextIssue() (*Issue, error) {
 // have the label themselves. This implements the user mental model that labeling
 // an epic means "process this entire epic".
 func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
-	issues, err := d.listIssuesFunc()
+	issues, err := d.resolveListIssuesFunc()()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list issues: %w", err)
 	}
@@ -654,7 +666,15 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 	// succeeds), so two concurrent daemon processes can both spawn the same issue.
 	// This was the root cause of the Feb 15 2026 orch-go-09cc duplicate spawn incident.
 	if d.getIssueStatusFunc != nil {
-		if currentStatus, err := d.getIssueStatusFunc(issue.ID); err == nil {
+		var currentStatus string
+		var statusErr error
+		if issue.ProjectDir != "" && d.updateBeadsStatusFunc == nil {
+			// Cross-project issue: check status in the target project
+			currentStatus, statusErr = GetBeadsIssueStatusForProject(issue.ID, issue.ProjectDir)
+		} else {
+			currentStatus, statusErr = d.getIssueStatusFunc(issue.ID)
+		}
+		if statusErr == nil {
 			if currentStatus != "open" {
 				if d.Config.Verbose {
 					fmt.Printf("  DEBUG: Skipping %s (status is %s, expected open)\n", issue.ID, currentStatus)
@@ -702,7 +722,13 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 	// because UpdateBeadsStatus was failing silently.
 	updateStatus := d.updateBeadsStatusFunc
 	if updateStatus == nil {
-		updateStatus = UpdateBeadsStatus
+		if issue.ProjectDir != "" {
+			updateStatus = func(beadsID, status string) error {
+				return UpdateBeadsStatusForProject(beadsID, status, issue.ProjectDir)
+			}
+		} else {
+			updateStatus = UpdateBeadsStatus
+		}
 	}
 	if err := updateStatus(issue.ID, "in_progress"); err != nil {
 		// Track failure for health card visibility
@@ -730,11 +756,8 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 		d.SpawnedIssues.MarkSpawnedWithTitle(issue.ID, issue.Title)
 	}
 
-	// Resolve project directory for cross-project issues
-	var workdir string
-	if d.ProjectRegistry != nil {
-		workdir = d.ProjectRegistry.Resolve(issue.ID)
-	}
+	// Use project directory from issue (set during multi-project polling)
+	workdir := issue.ProjectDir
 
 	// Spawn the work with inferred model and optional workdir
 	if err := d.spawnFunc(issue.ID, inferredModel, workdir); err != nil {
@@ -747,7 +770,7 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 		// database issues (connectivity, beads daemon unavailability, etc.) that need
 		// immediate attention. Continuing would leave the issue in an inconsistent state
 		// (marked in_progress but spawn failed), blocking future spawns and orphaning the issue.
-		if rollbackErr := UpdateBeadsStatus(issue.ID, "open"); rollbackErr != nil {
+		if rollbackErr := UpdateBeadsStatusForProject(issue.ID, "open", issue.ProjectDir); rollbackErr != nil {
 			// Log as ERROR (not warning) - this is a critical failure
 			fmt.Fprintf(os.Stderr, "ERROR: Failed to rollback status for %s after spawn failure: %v\n", issue.ID, rollbackErr)
 			// Track rollback failure for health metrics

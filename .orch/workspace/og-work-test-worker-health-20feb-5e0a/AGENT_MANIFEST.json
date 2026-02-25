@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-work-test-worker-health-20feb-5e0a",
+  "skill": "hello",
+  "beads_id": "orch-go-untracked-1771630943",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "565d2a9fda5dbf8fccbf9d580767496645a8b1df",
+  "spawn_time": "2026-02-20T15:42:25-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

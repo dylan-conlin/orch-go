@@ -1,0 +1,30 @@
+issue: orch-go-1183
+skill: systematic-debugging
+title: "Fix regression: dashboard oscillates between correct agent status and 'unassigned'"
+
+verification:
+  build:
+    - command: "go build ./cmd/orch/"
+      expect: "exit 0"
+    - command: "go vet ./cmd/orch/"
+      expect: "exit 0"
+
+  tests:
+    - command: "go test ./cmd/orch/ -count=1"
+      expect: "PASS"
+
+  code_review:
+    - file: "cmd/orch/query_tracked.go"
+      check: "tmuxLivenessCache with 10s TTL and RWMutex"
+    - file: "cmd/orch/serve_beads.go"
+      check: "buildActiveAgentMap uses globalTrackedAgentsCache instead of direct tmux calls"
+    - file: "cmd/orch/serve_beads.go"
+      check: "No tmux import (removed unused dependency)"
+
+  smoke_test:
+    description: "Dashboard no longer oscillates between correct status and 'unassigned'"
+    steps:
+      - "Start orch serve and open dashboard"
+      - "Observe work graph with active claude-backend agent"
+      - "Watch 3+ consecutive poll cycles (90s)"
+      - "Agent status should remain consistent (no flicker to 'unassigned')"

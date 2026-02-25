@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-supersede-stale-kb-24feb-f96e",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1213",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "32c739ec555047bde67a92aac0f4f9c0bb4cf3d8",
+  "spawn_time": "2026-02-24T17:57:35-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}

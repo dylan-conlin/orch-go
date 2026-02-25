@@ -348,10 +348,14 @@ func FindInProgressByTitle(title string) *Issue {
 // SpawnWork spawns work on a beads issue using orch work command.
 // This is the default implementation that shells out to orch.
 // If model is non-empty, it passes --model to orch work for model-aware routing.
-func SpawnWork(beadsID string, model string) error {
+// If workdir is non-empty, it passes --workdir for cross-project spawning.
+func SpawnWork(beadsID, model, workdir string) error {
 	args := []string{"work"}
 	if model != "" {
 		args = append(args, "--model", model)
+	}
+	if workdir != "" {
+		args = append(args, "--workdir", workdir)
 	}
 	args = append(args, beadsID)
 	cmd := exec.Command("orch", args...)
@@ -360,6 +364,163 @@ func SpawnWork(beadsID string, model string) error {
 		return fmt.Errorf("failed to spawn work: %w: %s", err, string(output))
 	}
 	return nil
+}
+
+// ListReadyIssuesForProject retrieves ready issues from a specific project directory.
+// Tags each returned issue with ProjectDir so the caller knows which project it came from.
+func ListReadyIssuesForProject(projectDir string) ([]Issue, error) {
+	// Try RPC first
+	socketPath, err := beads.FindSocketPath(projectDir)
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			beadsIssues, err := client.Ready(&beads.ReadyArgs{Limit: 0})
+			if err == nil {
+				issues := convertBeadsIssues(beadsIssues)
+				for i := range issues {
+					issues[i].ProjectDir = projectDir
+				}
+				return issues, nil
+			}
+		}
+	}
+
+	// Fallback to CLI with Dir set
+	cmd := exec.Command("bd", "ready", "--json", "--limit", "0")
+	cmd.Env = os.Environ()
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run bd ready in %s: %w", projectDir, err)
+	}
+
+	var issues []Issue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return nil, fmt.Errorf("failed to parse issues from %s: %w", projectDir, err)
+	}
+	for i := range issues {
+		issues[i].ProjectDir = projectDir
+	}
+	return issues, nil
+}
+
+// ListReadyIssuesMultiProject retrieves ready issues from all registered projects.
+// Deduplicates by issue ID. Clears ProjectDir for issues from the current project
+// (no --workdir needed). Falls back to ListReadyIssues when registry is nil.
+func ListReadyIssuesMultiProject(registry *ProjectRegistry) ([]Issue, error) {
+	if registry == nil {
+		return ListReadyIssues()
+	}
+
+	seen := make(map[string]bool)
+	var allIssues []Issue
+
+	for _, proj := range registry.Projects() {
+		issues, err := ListReadyIssuesForProject(proj.Dir)
+		if err != nil {
+			// Log warning but continue with other projects
+			fmt.Fprintf(os.Stderr, "Warning: failed to list issues for %s: %v\n", proj.Dir, err)
+			continue
+		}
+		for _, issue := range issues {
+			if seen[issue.ID] {
+				continue
+			}
+			seen[issue.ID] = true
+			// Clear ProjectDir for current-project issues (no workdir needed)
+			if issue.ProjectDir == registry.CurrentDir() {
+				issue.ProjectDir = ""
+			}
+			allIssues = append(allIssues, issue)
+		}
+	}
+
+	// If no projects returned any issues, fall back to local query
+	// This handles the case where the registry has projects but none have beads sockets
+	if len(allIssues) == 0 && len(registry.Projects()) > 0 {
+		return ListReadyIssues()
+	}
+
+	return allIssues, nil
+}
+
+// UpdateBeadsStatusForProject updates the status of a beads issue in a specific project.
+// When projectDir is empty, delegates to UpdateBeadsStatus (current project).
+func UpdateBeadsStatusForProject(beadsID, status, projectDir string) error {
+	if projectDir == "" {
+		return UpdateBeadsStatus(beadsID, status)
+	}
+
+	// Try RPC first
+	socketPath, err := beads.FindSocketPath(projectDir)
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			statusPtr := &status
+			_, err := client.Update(&beads.UpdateArgs{
+				ID:     beadsID,
+				Status: statusPtr,
+			})
+			if err == nil {
+				return nil
+			}
+		}
+	}
+
+	// Fallback to CLI with Dir set
+	args := []string{"update", beadsID}
+	if status != "" {
+		args = append(args, "--status", status)
+	}
+	cmd := exec.Command("bd", args...)
+	cmd.Env = os.Environ()
+	cmd.Dir = projectDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd update failed in %s: %w: %s", projectDir, err, string(output))
+	}
+	return nil
+}
+
+// GetBeadsIssueStatusForProject fetches the current status of a beads issue in a specific project.
+// When projectDir is empty, delegates to GetBeadsIssueStatus (current project).
+func GetBeadsIssueStatusForProject(beadsID, projectDir string) (string, error) {
+	if projectDir == "" {
+		return GetBeadsIssueStatus(beadsID)
+	}
+
+	// Try RPC first
+	socketPath, err := beads.FindSocketPath(projectDir)
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			issue, err := client.Show(beadsID)
+			if err == nil {
+				return issue.Status, nil
+			}
+		}
+	}
+
+	// Fallback to CLI with Dir set
+	cmd := exec.Command("bd", "show", beadsID, "--json")
+	cmd.Env = os.Environ()
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("bd show failed in %s: %w", projectDir, err)
+	}
+
+	var issues []beads.Issue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return "", fmt.Errorf("failed to parse bd show output from %s: %w", projectDir, err)
+	}
+	if len(issues) == 0 {
+		return "", fmt.Errorf("issue not found in %s: %s", projectDir, beadsID)
+	}
+	return issues[0].Status, nil
 }
 
 // UpdateBeadsStatus updates the status of a beads issue.

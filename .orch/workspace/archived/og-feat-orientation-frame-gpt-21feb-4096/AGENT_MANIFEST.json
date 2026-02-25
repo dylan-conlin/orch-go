@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-orientation-frame-gpt-21feb-4096",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1176",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "bddbf229be03d32d98f851882810f4ff97bada6d",
+  "spawn_time": "2026-02-21T07:26:34-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

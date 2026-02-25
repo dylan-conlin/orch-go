@@ -570,8 +570,8 @@ func runDaemonLoop() error {
 			}
 		}
 
-		// Get ready issues count for status
-		readyIssues, _ := daemon.ListReadyIssues()
+		// Get ready issues count for status (multi-project when registry available)
+		readyIssues, _ := daemon.ListReadyIssuesMultiProject(d.ProjectRegistry)
 		readyCount := len(readyIssues)
 
 		// Write daemon status file AFTER reconciliation and completions so counts are accurate

@@ -1,0 +1,23 @@
+kind: VerificationSpec
+version: 1
+agent: og-arch-orientation-frame-dylan-20feb-9c0f
+issue: orch-go-1157
+
+verification_type: design  # No code changes; design investigation
+
+evidence:
+  - type: investigation_file
+    path: .kb/investigations/2026-02-20-inv-architect-verification-levels.md
+    expectation: "Investigation has Phase: Complete, all 5 architect phases documented"
+  - type: probe_file
+    path: .kb/models/completion-verification/probes/2026-02-20-probe-verification-levels-design.md
+    expectation: "Probe has Status: Complete, model impact documented"
+  - type: design_completeness
+    expectation: "Investigation covers: level taxonomy (V0-V3), gate mapping, declaration mechanism, SkipConfig replacement, tradeoff visibility integration, judgment-driven explain/verify"
+
+manual_steps:
+  - description: "Orchestrator reviews investigation and decides whether to promote to decision"
+  - description: "If promoted, implementation follows Phase 1-4 in investigation's Phasing section"
+
+gate1_support: "Designed verification levels V0-V3 that unify three implicit level systems (spawn tier, checkpoint tier, skill-based auto-skips) into a shared vocabulary. Each level determines which of the 14 existing gates fire at completion time. V0=acknowledge, V1=artifacts, V2=evidence, V3=behavioral. Default level inferred from skill+issue type; orchestrator can override via --verify-level flag."
+gate2_support: "N/A - design investigation, no behavioral verification needed"

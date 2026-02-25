@@ -1,0 +1,36 @@
+verification:
+  build:
+    command: "go build ./cmd/orch/"
+    result: "PASS - no errors"
+  vet:
+    command: "go vet ./cmd/orch/"
+    result: "PASS - no warnings"
+  tests:
+    command: "go test ./cmd/orch/ ./pkg/account/"
+    result: "PASS - all tests pass (cmd/orch 2.7s, pkg/account cached)"
+  no_pkg_usage_references:
+    command: "grep -r 'pkg/usage' --include='*.go' ."
+    result: "PASS - zero references to deleted package"
+
+changes:
+  - file: cmd/orch/main.go
+    what: "Rewrote runUsage() to call account.ListAccountsWithCapacity(), show both accounts with usage bars and switch recommendation"
+  - file: cmd/orch/status_cmd.go
+    what: "Rewrote getAccountUsage() to use account.ListAccountsWithCapacity() for live capacity data"
+  - file: cmd/orch/serve_system.go
+    what: "Rewrote handleUsage() to use account.GetCurrentCapacity() instead of usage.FetchUsage()"
+  - file: pkg/usage/usage.go
+    what: "DELETED - duplicated pkg/account logic, had ms/s expiry bug (line 146: Unix seconds vs milliseconds)"
+  - file: pkg/usage/usage_test.go
+    what: "DELETED - tests for removed package"
+
+kb_supersedes:
+  - id: kb-3d18d2
+    issue: "Claimed 'Default model is Sonnet' - WRONG, should be opus"
+    action: "Superseded by kb-f08d57"
+  - id: kb-d8898a
+    issue: "Redundant with kb-2d62ef, created alongside incorrect entries"
+    action: "Marked obsolete"
+  - id: kb-76fb52
+    issue: "Redundant with kb-2d62ef, created alongside incorrect entries"
+    action: "Marked obsolete"

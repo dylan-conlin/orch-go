@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-debug-fix-regression-dashboard-24feb-6724",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-1183",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "6d5c6a8710d3a8a7b7aa491ba4f8040fef92cb53",
+  "spawn_time": "2026-02-24T11:27:17-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

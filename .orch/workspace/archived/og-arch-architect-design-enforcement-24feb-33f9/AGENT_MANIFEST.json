@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-architect-design-enforcement-24feb-33f9",
+  "skill": "architect",
+  "beads_id": "orch-go-1187",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "5f1dbf131f19a8911837082271e0ff37cb3163b4",
+  "spawn_time": "2026-02-24T11:56:24-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

@@ -1,0 +1,20 @@
+deliverables:
+  - path: cmd/orch/complete_cleanup.go
+    description: Extracted cleanupTmuxWindow function
+    exists: true
+  - path: cmd/orch/complete_cleanup_test.go
+    description: Tests for tmux cleanup function
+    exists: true
+  - path: cmd/orch/complete_cmd.go
+    description: Added defer cleanup, removed old inline block
+    modified: true
+
+verification:
+  build: go build ./cmd/orch/
+  vet: go vet ./cmd/orch/
+  tests:
+    - go test ./cmd/orch/ -run TestCleanupTmux -v
+    - go test ./cmd/orch/ -run TestOrchestrator -v
+
+root_cause: tmux cleanup at line 1154 of runComplete() was unreachable when verification gates caused early returns (12+ return paths before cleanup)
+fix: defer cleanupTmuxWindow() with skipTmuxCleanup flag for liveness-check exits

@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-arch-orientation-frame-dylan-20feb-9c0f",
+  "skill": "architect",
+  "beads_id": "orch-go-1157",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "b87fa055cb46498bd82979537b12d74e39483917",
+  "spawn_time": "2026-02-20T18:43:22-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101"
+}

@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-feat-deduplicate-daemon-go-20feb-5c74",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1122",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "827c45e65837c98e5bd529542a880612270529ba",
+  "spawn_time": "2026-02-20T15:51:09-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode",
+  "model": "openai/gpt-5.2-codex",
+  "session_id": "ses_382891b06ffea4pQy1NBO6Q7ac"
+}

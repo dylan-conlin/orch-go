@@ -1,0 +1,11 @@
+{
+  "workspace_name": "og-feat-hotspot-layer-daemon-24feb-9db5",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1189",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "ec7d2df1739124b959eea95efc3b2eb83f1c04a8",
+  "spawn_time": "2026-02-24T12:12:31-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-sonnet-4-5-20250929"
+}
