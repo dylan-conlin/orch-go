@@ -309,7 +309,7 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 		// Session cleanup logic has been removed from orch-go. Only tmux window cleanup remains.
 
 		// 1. Close stale tmux windows (no active session behind them)
-		windowsClosed, err = cleanStaleTmuxWindows(serverURL, dryRun, preserveOrchestrator)
+		windowsClosed, err = cleanStaleTmuxWindows(serverURL, projectDir, dryRun, preserveOrchestrator)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clean stale tmux windows: %v\n", err)
 		}
@@ -400,10 +400,56 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 // cleanUntrackedDiskSessions has been removed - OpenCode now handles session cleanup via TTL
 // (see opencode-fork commit f3c3865)
 
+// staleTmuxWindow represents a tmux window identified as stale.
+type staleTmuxWindow struct {
+	window      *tmux.WindowInfo
+	sessionName string
+	beadsID     string
+}
+
+// classifyTmuxWindows identifies tmux windows that are stale (no active OpenCode session
+// and no open beads issue). This protects daemon-spawned Claude CLI agents that have
+// tmux windows but no corresponding OpenCode sessions.
+func classifyTmuxWindows(
+	windows []tmux.WindowInfo,
+	sessionName string,
+	activeBeadsIDs map[string]bool,
+	openIssues map[string]*verify.Issue,
+) (stale []staleTmuxWindow, protected int) {
+	for _, w := range windows {
+		// Skip known non-agent windows
+		if w.Name == "servers" || w.Name == "zsh" {
+			continue
+		}
+
+		beadsID := extractBeadsIDFromWindowName(w.Name)
+		if beadsID == "" {
+			continue
+		}
+
+		// Has an active OpenCode session? Not stale.
+		if activeBeadsIDs[beadsID] {
+			continue
+		}
+
+		// Has an open beads issue? Protected (likely Claude CLI daemon spawn).
+		if _, isOpen := openIssues[beadsID]; isOpen {
+			protected++
+			continue
+		}
+
+		// Window is truly stale (no OpenCode session AND beads issue not open)
+		windowCopy := w
+		stale = append(stale, staleTmuxWindow{&windowCopy, sessionName, beadsID})
+	}
+	return stale, protected
+}
+
 // cleanStaleTmuxWindows finds and closes tmux windows with no active OpenCode session backing them.
+// Windows with open beads issues are protected (handles Claude CLI daemon spawns).
 // If preserveOrchestrator is true, windows in orchestrator/meta-orchestrator sessions are skipped.
 // Returns the number of windows closed and any error encountered.
-func cleanStaleTmuxWindows(serverURL string, dryRun bool, preserveOrchestrator bool) (int, error) {
+func cleanStaleTmuxWindows(serverURL string, projectDir string, dryRun bool, preserveOrchestrator bool) (int, error) {
 	client := opencode.NewClient(serverURL)
 	now := time.Now()
 	const maxIdleTime = 30 * time.Minute
@@ -429,12 +475,16 @@ func cleanStaleTmuxWindows(serverURL string, dryRun bool, preserveOrchestrator b
 
 	fmt.Printf("  Found %d active OpenCode sessions\n", len(activeBeadsIDs))
 
-	// Scan all workers sessions for stale windows
-	var staleWindows []struct {
-		window      *tmux.WindowInfo
-		sessionName string
-		beadsID     string
+	// Get open beads issues to protect active agents without OpenCode sessions
+	// (e.g., Claude CLI daemon spawns)
+	openIssues, err := verify.ListOpenIssuesWithDir(projectDir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to check beads issues (needed to protect active agents): %w", err)
 	}
+
+	// Scan all workers sessions and classify windows
+	var allStale []staleTmuxWindow
+	totalProtected := 0
 
 	skippedOrch := 0
 	workersSessions, _ := tmux.ListWorkersSessions()
@@ -450,43 +500,29 @@ func cleanStaleTmuxWindows(serverURL string, dryRun bool, preserveOrchestrator b
 			continue
 		}
 
-		for _, w := range windows {
-			// Skip known non-agent windows
-			if w.Name == "servers" || w.Name == "zsh" {
-				continue
-			}
-
-			beadsID := extractBeadsIDFromWindowName(w.Name)
-			if beadsID == "" {
-				continue
-			}
-
-			// If beads ID is not in active sessions, the window is stale
-			if !activeBeadsIDs[beadsID] {
-				windowCopy := w
-				staleWindows = append(staleWindows, struct {
-					window      *tmux.WindowInfo
-					sessionName string
-					beadsID     string
-				}{&windowCopy, sessionName, beadsID})
-			}
-		}
+		stale, protected := classifyTmuxWindows(windows, sessionName, activeBeadsIDs, openIssues)
+		allStale = append(allStale, stale...)
+		totalProtected += protected
 	}
 
 	if skippedOrch > 0 {
 		fmt.Printf("  Skipped %d orchestrator sessions (--preserve-orchestrator)\n", skippedOrch)
 	}
 
-	if len(staleWindows) == 0 {
+	if totalProtected > 0 {
+		fmt.Printf("  Protected %d windows with open beads issues (no OpenCode session)\n", totalProtected)
+	}
+
+	if len(allStale) == 0 {
 		fmt.Println("  No stale tmux windows found")
 		return 0, nil
 	}
 
-	fmt.Printf("  Found %d stale tmux windows:\n", len(staleWindows))
+	fmt.Printf("  Found %d stale tmux windows:\n", len(allStale))
 
 	// Close stale windows
 	closed := 0
-	for _, pw := range staleWindows {
+	for _, pw := range allStale {
 		if dryRun {
 			fmt.Printf("    [DRY-RUN] Would close: %s:%s\n", pw.sessionName, pw.window.Name)
 			closed++
