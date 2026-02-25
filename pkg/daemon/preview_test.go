@@ -32,6 +32,26 @@ func TestFormatPreview(t *testing.T) {
 	}
 }
 
+func TestDaemon_Preview_NilListIssuesFunc(t *testing.T) {
+	// Regression test: Preview() must not panic when listIssuesFunc is nil.
+	// This is the production path — resolveListIssuesFunc() falls back to ListReadyIssues.
+	d := NewWithConfig(Config{})
+
+	// This would panic with "nil pointer dereference" before the fix
+	// because preview.go called d.listIssuesFunc() directly instead of
+	// d.resolveListIssuesFunc(). We don't check the result since
+	// ListReadyIssues calls the real bd CLI — we just verify no panic.
+	result, err := d.Preview()
+	// If bd is not available, we'll get an error — that's fine, no panic is the goal
+	if err != nil {
+		t.Logf("Preview() returned error (expected without bd): %v", err)
+		return
+	}
+	if result == nil {
+		t.Error("Preview() returned nil result without error")
+	}
+}
+
 func TestDaemon_Preview_NoIssues(t *testing.T) {
 	d := &Daemon{
 		listIssuesFunc: func() ([]Issue, error) {

@@ -62,7 +62,7 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 	}
 
 	// Get all issues and categorize them
-	issues, err := d.listIssuesFunc()
+	issues, err := d.resolveListIssuesFunc()()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list issues: %w", err)
 	}
