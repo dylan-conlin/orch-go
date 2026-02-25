@@ -320,61 +320,146 @@ func generateFixRecommendation(file string, count int) string {
 	return fmt.Sprintf("MODERATE: Review %s for design improvements - shows fix accumulation", filepath.Base(file))
 }
 
-// analyzeInvestigationClusters uses kb reflect to find investigation clusters.
+// analyzeInvestigationClusters scans .kb/investigations/ directly and clusters
+// by meaningful keywords extracted from filenames, filtering out generic stop words.
 func analyzeInvestigationClusters(projectDir string, threshold int) ([]Hotspot, int, error) {
-	// Run kb reflect --type synthesis --format json
-	cmd := exec.Command("kb", "reflect", "--type", "synthesis", "--format", "json")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
+	kbDir := filepath.Join(projectDir, ".kb", "investigations")
+	entries, err := os.ReadDir(kbDir)
 	if err != nil {
-		// kb reflect might not be installed or might fail
-		// This is not a fatal error - just skip this analysis
+		// .kb/investigations/ might not exist
 		return nil, 0, nil
 	}
 
-	// Parse JSON output
-	var reflectResult struct {
-		Synthesis []struct {
-			Topic   string   `json:"topic"`
-			Count   int      `json:"count"`
-			Files   []string `json:"files"`
-			Urgency string   `json:"urgency"`
-		} `json:"synthesis"`
-	}
-
-	if err := json.Unmarshal(output, &reflectResult); err != nil {
-		// Try parsing as array directly (different kb versions)
-		var synthesisList []struct {
-			Topic   string   `json:"topic"`
-			Count   int      `json:"count"`
-			Files   []string `json:"files"`
-			Urgency string   `json:"urgency"`
-		}
-		if err := json.Unmarshal(output, &synthesisList); err != nil {
-			return nil, 0, nil // Silent failure - kb output format might differ
-		}
-		reflectResult.Synthesis = synthesisList
-	}
-
-	var hotspots []Hotspot
+	// Extract keywords from each investigation file and map keyword → files
+	keywordToFiles := make(map[string][]string)
 	totalInv := 0
 
-	for _, s := range reflectResult.Synthesis {
-		totalInv += s.Count
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		totalInv++
 
-		if s.Count >= threshold {
+		keywords := extractInvestigationKeywords(entry.Name())
+		seen := make(map[string]bool) // deduplicate within single file
+		for _, kw := range keywords {
+			if !seen[kw] {
+				keywordToFiles[kw] = append(keywordToFiles[kw], entry.Name())
+				seen[kw] = true
+			}
+		}
+	}
+
+	// Build hotspots from keyword clusters meeting threshold
+	var hotspots []Hotspot
+	for keyword, files := range keywordToFiles {
+		if len(files) >= threshold {
 			hotspots = append(hotspots, Hotspot{
-				Path:           s.Topic,
+				Path:           keyword,
 				Type:           "investigation-cluster",
-				Score:          s.Count,
-				Details:        fmt.Sprintf("%d investigations on topic '%s'", s.Count, s.Topic),
-				RelatedFiles:   s.Files,
-				Recommendation: generateInvestigationRecommendation(s.Topic, s.Count, s.Urgency),
+				Score:          len(files),
+				Details:        fmt.Sprintf("%d investigations on topic '%s'", len(files), keyword),
+				RelatedFiles:   files,
+				Recommendation: generateInvestigationRecommendation(keyword, len(files), ""),
 			})
 		}
 	}
 
+	// Sort by score descending for deterministic output
+	sort.Slice(hotspots, func(i, j int) bool {
+		if hotspots[i].Score != hotspots[j].Score {
+			return hotspots[i].Score > hotspots[j].Score
+		}
+		return hotspots[i].Path < hotspots[j].Path
+	})
+
 	return hotspots, totalInv, nil
+}
+
+// extractInvestigationKeywords extracts meaningful topic keywords from an
+// investigation filename by stripping date/type prefixes and filtering stop words.
+// Example: "2026-02-19-design-coupling-hotspot-analysis-system.md" → ["coupling", "hotspot", "analysis", "system"]
+func extractInvestigationKeywords(filename string) []string {
+	// Strip .md extension
+	name := strings.TrimSuffix(filename, ".md")
+
+	// Strip date prefix (YYYY-MM-DD-)
+	if len(name) > 11 && name[4] == '-' && name[7] == '-' && name[10] == '-' {
+		name = name[11:]
+	}
+
+	// Strip type prefix (inv-, design-, audit-, spike-, synthesis-, debug-)
+	typePrefixes := []string{"inv-", "design-", "audit-", "spike-", "synthesis-", "debug-"}
+	for _, prefix := range typePrefixes {
+		if strings.HasPrefix(name, prefix) {
+			name = name[len(prefix):]
+			break
+		}
+	}
+
+	// Strip secondary type/priority prefixes (p0-, p1-, p2-)
+	for _, prefix := range []string{"p0-", "p1-", "p2-", "p3-", "p4-"} {
+		if strings.HasPrefix(name, prefix) {
+			name = name[len(prefix):]
+			break
+		}
+	}
+
+	// Split on hyphens
+	tokens := strings.Split(name, "-")
+
+	// Filter stop words and empty tokens
+	var keywords []string
+	for _, token := range tokens {
+		if token != "" && !isInvestigationStopWord(token) {
+			keywords = append(keywords, token)
+		}
+	}
+
+	return keywords
+}
+
+// isInvestigationStopWord returns true if a word is too generic to be a meaningful
+// investigation topic keyword.
+func isInvestigationStopWord(word string) bool {
+	w := strings.ToLower(word)
+	_, found := investigationStopWords[w]
+	return found
+}
+
+// investigationStopWords contains words that are too generic for investigation clustering.
+// These are common English words plus investigation-naming conventions that don't
+// represent coherent topic areas.
+var investigationStopWords = map[string]bool{
+	// Common English
+	"a": true, "an": true, "the": true, "and": true, "or": true, "but": true,
+	"in": true, "on": true, "at": true, "to": true, "for": true, "of": true,
+	"with": true, "by": true, "from": true, "as": true, "is": true, "was": true,
+	"are": true, "be": true, "been": true, "being": true, "have": true, "has": true,
+	"had": true, "do": true, "does": true, "did": true, "will": true, "would": true,
+	"could": true, "should": true, "may": true, "might": true, "can": true,
+	"not": true, "no": true, "all": true, "each": true, "every": true,
+	"this": true, "that": true, "these": true, "those": true,
+	"it": true, "its": true, "vs": true, "about": true, "before": true, "after": true,
+	"how": true, "why": true, "what": true, "when": true, "where": true,
+	"need": true, "needs": true,
+
+	// Generic investigation/task verbs
+	"add": true, "fix": true, "implement": true, "integrate": true,
+	"investigate": true, "review": true, "check": true, "update": true,
+	"create": true, "remove": true, "move": true, "change": true,
+	"test": true, "verify": true, "validate": true, "ensure": true,
+	"enhance": true, "improve": true, "refactor": true, "consider": true,
+	"use": true, "using": true, "used": true, "scope": true,
+	"document": true, "comprehensive": true, "design": true, "audit": true,
+
+	// Generic descriptors
+	"new": true, "old": true, "current": true, "existing": true,
+	"phase": true, "step": true, "process": true, "approach": true,
+	"into": true, "ready": true, "during": true,
+
+	// Project-specific generics (appear in nearly all investigation filenames)
+	"orch": true, "go": true,
 }
 
 // generateInvestigationRecommendation creates a recommendation based on investigation patterns.

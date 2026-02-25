@@ -1221,3 +1221,172 @@ func initGitRepo(dir string) error {
 	cmd.Dir = dir
 	return cmd.Run()
 }
+
+func TestExtractInvestigationKeywords(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		expected []string
+	}{
+		{
+			name:     "standard investigation with date and type prefix",
+			filename: "2026-02-19-design-coupling-hotspot-analysis-system.md",
+			expected: []string{"coupling", "hotspot", "analysis", "system"},
+		},
+		{
+			name:     "investigation with inv prefix",
+			filename: "2026-01-04-inv-integrate-hotspot-detection-into-orch.md",
+			expected: []string{"hotspot", "detection"},
+		},
+		{
+			name:     "investigation with audit prefix",
+			filename: "2026-01-03-audit-comprehensive-orch-go-bugs-reliability-architecture.md",
+			expected: []string{"bugs", "reliability", "architecture"},
+		},
+		{
+			name:     "investigation with generic terms filtered",
+			filename: "2026-01-03-inv-document-changelog-pattern-ecosystem-expansion.md",
+			expected: []string{"changelog", "pattern", "ecosystem", "expansion"},
+		},
+		{
+			name:     "spike type prefix",
+			filename: "2026-02-24-spike-claude-code-hooks-orchestrator-guard.md",
+			expected: []string{"claude", "code", "hooks", "orchestrator", "guard"},
+		},
+		{
+			name:     "filters comprehensive, document, integrate",
+			filename: "2026-02-14-audit-comprehensive-orch-go-codebase-audit.md",
+			expected: []string{"codebase"},
+		},
+		{
+			name:     "doctor topic preserved",
+			filename: "2025-12-26-inv-add-orch-doctor-command-check.md",
+			expected: []string{"doctor", "command"},
+		},
+		{
+			name:     "workers topic preserved",
+			filename: "2025-12-22-inv-workers-stall-during-build-phase.md",
+			expected: []string{"workers", "stall", "build"},
+		},
+		{
+			name:     "handoff topic preserved",
+			filename: "2025-12-22-inv-orch-handoff-generates-stale-incorrect.md",
+			expected: []string{"handoff", "generates", "stale", "incorrect"},
+		},
+		{
+			name:     "p0 prefix stripped",
+			filename: "2026-01-09-inv-p0-implement-orch-doctor-health.md",
+			expected: []string{"doctor", "health"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractInvestigationKeywords(tt.filename)
+			if len(result) != len(tt.expected) {
+				t.Errorf("extractInvestigationKeywords(%q) = %v (len %d), want %v (len %d)",
+					tt.filename, result, len(result), tt.expected, len(tt.expected))
+				return
+			}
+			for i, kw := range result {
+				if kw != tt.expected[i] {
+					t.Errorf("extractInvestigationKeywords(%q)[%d] = %q, want %q",
+						tt.filename, i, kw, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestIsInvestigationStopWord(t *testing.T) {
+	// These should be filtered out
+	stopWords := []string{
+		"comprehensive", "document", "integrate", "design",
+		"investigate", "add", "fix", "implement",
+		"into", "review", "check", "update",
+		"orch", "go", "the", "and", "for",
+		"new", "use", "how", "why", "what",
+	}
+	for _, word := range stopWords {
+		if !isInvestigationStopWord(word) {
+			t.Errorf("isInvestigationStopWord(%q) = false, want true", word)
+		}
+	}
+
+	// These should NOT be filtered out
+	keepWords := []string{
+		"doctor", "workers", "handoff", "entropy",
+		"daemon", "spawn", "hotspot", "coupling",
+		"auth", "token", "session", "config",
+		"changelog", "dashboard", "status",
+	}
+	for _, word := range keepWords {
+		if isInvestigationStopWord(word) {
+			t.Errorf("isInvestigationStopWord(%q) = true, want false", word)
+		}
+	}
+}
+
+func TestAnalyzeInvestigationClusters_DirectScan(t *testing.T) {
+	// Create a temp directory with mock investigation files
+	tempDir := t.TempDir()
+	kbDir := tempDir + "/.kb/investigations"
+	if err := os.MkdirAll(kbDir, 0755); err != nil {
+		t.Fatalf("Failed to create kb dir: %v", err)
+	}
+
+	// Create mock investigation files that should cluster on "doctor"
+	doctorFiles := []string{
+		"2025-12-26-inv-add-orch-doctor-command-check.md",
+		"2026-01-09-inv-p0-implement-orch-doctor-health.md",
+		"2026-01-10-inv-p0-implement-orch-doctor-health.md",
+	}
+	for _, f := range doctorFiles {
+		if err := os.WriteFile(kbDir+"/"+f, []byte("# Test\n"), 0644); err != nil {
+			t.Fatalf("Failed to create file: %v", err)
+		}
+	}
+
+	// Create files that would falsely cluster on "comprehensive" with old approach
+	compFiles := []string{
+		"2026-01-03-audit-comprehensive-orch-go-bugs-reliability-architecture.md",
+		"2026-01-15-inv-add-comprehensive-orch-clean-all.md",
+		"2026-02-14-audit-comprehensive-orch-go-codebase-audit.md",
+	}
+	for _, f := range compFiles {
+		if err := os.WriteFile(kbDir+"/"+f, []byte("# Test\n"), 0644); err != nil {
+			t.Fatalf("Failed to create file: %v", err)
+		}
+	}
+
+	hotspots, totalInv, err := analyzeInvestigationClusters(tempDir, 3)
+	if err != nil {
+		t.Fatalf("analyzeInvestigationClusters error: %v", err)
+	}
+
+	if totalInv != 6 {
+		t.Errorf("totalInv = %d, want 6", totalInv)
+	}
+
+	// "doctor" should be a hotspot (3 investigations)
+	foundDoctor := false
+	foundComprehensive := false
+	for _, h := range hotspots {
+		if h.Path == "doctor" {
+			foundDoctor = true
+			if h.Score != 3 {
+				t.Errorf("doctor score = %d, want 3", h.Score)
+			}
+		}
+		if h.Path == "comprehensive" {
+			foundComprehensive = true
+		}
+	}
+
+	if !foundDoctor {
+		t.Errorf("Expected 'doctor' hotspot, got: %v", hotspots)
+	}
+	if foundComprehensive {
+		t.Error("Should NOT have 'comprehensive' hotspot - it's a generic stop word")
+	}
+}
