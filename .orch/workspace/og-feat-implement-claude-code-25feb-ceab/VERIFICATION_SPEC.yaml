@@ -1,0 +1,40 @@
+verification:
+  type: feature-impl
+  issue: orch-go-1156
+
+  tests:
+    command: "cd ~/.orch/hooks && python3 -m pytest tests/test_gate_orchestrator_code_access.py -v"
+    expected: "all 101 tests PASS"
+    result: "101 passed in 0.13s"
+
+  smoke_test:
+    commands:
+      - description: "Orchestrator reading .go file (should deny)"
+        command: "echo '{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/path/to/main.go\"},\"hook_event_name\":\"PreToolUse\"}' | CLAUDE_CONTEXT=orchestrator python3 ~/.orch/hooks/gate-orchestrator-code-access.py"
+        expected: "JSON with permissionDecision: deny"
+        result: "deny with frame guard message"
+      - description: "Orchestrator reading .md file (should allow)"
+        command: "echo '{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/path/to/.kb/investigation.md\"},\"hook_event_name\":\"PreToolUse\"}' | CLAUDE_CONTEXT=orchestrator python3 ~/.orch/hooks/gate-orchestrator-code-access.py"
+        expected: "no output (allow)"
+        result: "no output (allowed)"
+      - description: "Worker reading .go file (should allow)"
+        command: "echo '{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/path/to/main.go\"},\"hook_event_name\":\"PreToolUse\"}' | CLAUDE_CONTEXT=worker python3 ~/.orch/hooks/gate-orchestrator-code-access.py"
+        expected: "no output (allow)"
+        result: "no output (allowed)"
+      - description: "Orchestrator editing .css file (should deny)"
+        command: "echo '{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"/path/to/styles.css\"},\"hook_event_name\":\"PreToolUse\"}' | CLAUDE_CONTEXT=orchestrator python3 ~/.orch/hooks/gate-orchestrator-code-access.py"
+        expected: "JSON with permissionDecision: deny"
+        result: "deny with frame guard message"
+
+  deliverables:
+    - path: ~/.orch/hooks/gate-orchestrator-code-access.py
+      description: "PreToolUse hook that blocks Read/Edit on code files for orchestrator/meta-orchestrator sessions. Uses allowlist approach (non-code extensions allowed, everything else blocked). 172 lines."
+      status: created
+    - path: ~/.orch/hooks/tests/test_gate_orchestrator_code_access.py
+      description: "101 pytest tests covering code/non-code detection, orchestrator/worker/no-context gates, edge cases, integration tests for main() entry point."
+      status: created
+    - path: ~/.claude/settings.json
+      description: "Registered hook as PreToolUse matcher for Read|Edit tools."
+      status: modified
+
+  manual_verification: "N/A - automated tests and smoke tests cover all paths. Live verification requires spawning an orchestrator session."
