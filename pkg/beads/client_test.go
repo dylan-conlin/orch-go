@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -1450,6 +1451,73 @@ func findSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// TestFallbackList_IncludesLimitFlag verifies that FallbackList passes --limit 0
+// to the bd CLI to avoid the default limit of 50 issues.
+// Uses a mock shell script as the bd executable to capture and verify arguments.
+func TestFallbackList_IncludesLimitFlag(t *testing.T) {
+	// Save and restore original BdPath and DefaultDir
+	originalBdPath := BdPath
+	originalDefaultDir := DefaultDir
+	defer func() {
+		BdPath = originalBdPath
+		DefaultDir = originalDefaultDir
+	}()
+
+	tmpDir := t.TempDir()
+	DefaultDir = tmpDir
+
+	// Create a mock bd script that records args and returns valid JSON
+	argsFile := filepath.Join(tmpDir, "bd_args")
+	mockBd := filepath.Join(tmpDir, "mock_bd")
+	script := fmt.Sprintf(`#!/bin/sh
+echo "$@" > %s
+echo '[{"id":"test-1","title":"Test Issue","status":"open","priority":0,"issue_type":"task"}]'
+`, argsFile)
+	if err := os.WriteFile(mockBd, []byte(script), 0755); err != nil {
+		t.Fatalf("failed to write mock bd: %v", err)
+	}
+	BdPath = mockBd
+
+	t.Run("no status filter includes --limit 0", func(t *testing.T) {
+		issues, err := FallbackList("")
+		if err != nil {
+			t.Fatalf("FallbackList failed: %v", err)
+		}
+		if len(issues) != 1 {
+			t.Errorf("expected 1 issue, got %d", len(issues))
+		}
+
+		// Verify the args passed to bd
+		argsBytes, err := os.ReadFile(argsFile)
+		if err != nil {
+			t.Fatalf("failed to read args file: %v", err)
+		}
+		args := strings.TrimSpace(string(argsBytes))
+		if args != "list --json --limit 0" {
+			t.Errorf("bd called with args %q, want %q", args, "list --json --limit 0")
+		}
+	})
+
+	t.Run("with status filter includes --limit 0", func(t *testing.T) {
+		issues, err := FallbackList("open")
+		if err != nil {
+			t.Fatalf("FallbackList failed: %v", err)
+		}
+		if len(issues) != 1 {
+			t.Errorf("expected 1 issue, got %d", len(issues))
+		}
+
+		argsBytes, err := os.ReadFile(argsFile)
+		if err != nil {
+			t.Fatalf("failed to read args file: %v", err)
+		}
+		args := strings.TrimSpace(string(argsBytes))
+		if args != "list --json --limit 0 --status open" {
+			t.Errorf("bd called with args %q, want %q", args, "list --json --limit 0 --status open")
+		}
+	})
 }
 
 func TestResolveBdPath(t *testing.T) {

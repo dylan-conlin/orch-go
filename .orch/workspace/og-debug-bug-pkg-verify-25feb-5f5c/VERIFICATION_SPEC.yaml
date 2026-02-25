@@ -1,0 +1,28 @@
+verification:
+  automated:
+    - name: "FallbackList includes --limit 0"
+      command: "go test ./pkg/beads/ -run TestFallbackList_IncludesLimitFlag -v"
+      expect: "PASS"
+    - name: "All beads package tests pass"
+      command: "go test ./pkg/beads/ -v"
+      expect: "PASS"
+    - name: "All verify package tests pass"
+      command: "go test ./pkg/verify/ -v"
+      expect: "PASS"
+    - name: "Clean build"
+      command: "go build ./..."
+      expect: "exit 0"
+
+  manual:
+    - name: "Reproduction no longer reproduces"
+      description: |
+        Before fix: `bd list --json | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"` returns 50
+        After fix: FallbackList now passes --limit 0, so the Go code gets all 497 issues
+      verified: true
+
+  smoke_test:
+    description: |
+      Compared `bd list --json` (50 issues) vs `bd list --json --limit 0` (497 issues).
+      The fix adds --limit 0 to FallbackList, matching the behavior of FallbackListWithLabel
+      and FallbackListByParent which already had it.
+    result: "PASS"

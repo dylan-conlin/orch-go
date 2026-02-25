@@ -814,7 +814,7 @@ func FallbackShowWithDir(id, dir string) (*Issue, error) {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackList(status string) ([]Issue, error) {
-	args := []string{"list", "--json"}
+	args := []string{"list", "--json", "--limit", "0"}
 	if status != "" {
 		args = append(args, "--status", status)
 	}
