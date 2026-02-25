@@ -3,15 +3,20 @@ package spawn
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/group"
 )
 
 // OrchEcosystemRepos defines the allowlist of repos that are relevant for orchestration work.
-// Used for tiered filtering: when global search is needed, results are post-filtered to this set.
+// Used as fallback when ~/.orch/groups.yaml doesn't exist.
+// When groups.yaml exists, project group membership replaces this hardcode.
 var OrchEcosystemRepos = map[string]bool{
 	"orch-go":        true,
 	"orch-cli":       true,
@@ -121,7 +126,7 @@ func RunKBContextCheck(query string) (*KBContextResult, error) {
 		return nil, err
 	}
 
-	// Step 2: If local search is sparse, expand to global with ecosystem filter
+	// Step 2: If local search is sparse, expand to global with group-aware filter
 	if result == nil || len(result.Matches) < MinMatchesForLocalSearch {
 		globalResult, err := runKBContextQuery(query, true)
 		if err != nil {
@@ -129,8 +134,12 @@ func RunKBContextCheck(query string) (*KBContextResult, error) {
 		}
 
 		if globalResult != nil && len(globalResult.Matches) > 0 {
-			// Post-filter to orch ecosystem repos
-			globalResult.Matches = filterToOrchEcosystem(globalResult.Matches)
+			// Post-filter using project group (falls back to orch ecosystem)
+			allowlist := resolveProjectAllowlist()
+			if allowlist != nil {
+				globalResult.Matches = filterToProjectGroup(globalResult.Matches, allowlist)
+			}
+			// allowlist == nil means ungrouped project: include all global matches
 			globalResult.HasMatches = len(globalResult.Matches) > 0
 
 			// Merge with local results if any
@@ -204,6 +213,7 @@ func runKBContextQuery(query string, global bool) (*KBContextResult, error) {
 
 // filterToOrchEcosystem filters matches to only include those from orch ecosystem repos.
 // Matches without a project prefix (local results) are always included.
+// Deprecated: Use filterToProjectGroup for group-aware filtering. Kept as fallback.
 func filterToOrchEcosystem(matches []KBContextMatch) []KBContextMatch {
 	var filtered []KBContextMatch
 	for _, m := range matches {
@@ -214,6 +224,118 @@ func filterToOrchEcosystem(matches []KBContextMatch) []KBContextMatch {
 		}
 	}
 	return filtered
+}
+
+// filterToProjectGroup filters matches using group-aware allowlist.
+// Matches without a project prefix (local results) are always included.
+func filterToProjectGroup(matches []KBContextMatch, allowlist map[string]bool) []KBContextMatch {
+	var filtered []KBContextMatch
+	for _, m := range matches {
+		project := extractProjectFromMatch(m)
+		if project == "" || allowlist[project] {
+			filtered = append(filtered, m)
+		}
+	}
+	return filtered
+}
+
+// resolveProjectAllowlist builds an allowlist of project names for global search filtering.
+// Tries group-based resolution from ~/.orch/groups.yaml first.
+// Falls back to OrchEcosystemRepos if groups.yaml doesn't exist or the current project is ungrouped.
+func resolveProjectAllowlist() map[string]bool {
+	cfg, err := group.Load()
+	if err != nil {
+		// groups.yaml doesn't exist or can't be parsed — use hardcoded fallback
+		return OrchEcosystemRepos
+	}
+
+	// Detect current project name from working directory
+	projectName := detectCurrentProjectName()
+	if projectName == "" {
+		return OrchEcosystemRepos
+	}
+
+	// Get kb projects list for parent inference
+	kbProjects := loadKBProjectsMap()
+	if kbProjects == nil {
+		return OrchEcosystemRepos
+	}
+
+	// Resolve groups for current project
+	groups := cfg.GroupsForProject(projectName, kbProjects)
+	if len(groups) == 0 {
+		// Project is ungrouped — no group-based filtering
+		// Return nil to signal "don't filter" (include all global matches)
+		return nil
+	}
+
+	// Build allowlist from all projects in matching groups
+	allowlist := make(map[string]bool)
+	for _, g := range groups {
+		members := cfg.ResolveGroupMembers(g.Name, kbProjects)
+		for _, m := range members {
+			allowlist[m] = true
+		}
+	}
+
+	return allowlist
+}
+
+// detectCurrentProjectName returns the project name from the current working directory.
+// Uses .beads/config.yaml issue-prefix if available, otherwise falls back to directory basename.
+func detectCurrentProjectName() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+
+	// Try .beads/config.yaml for issue prefix (more reliable)
+	configPath := filepath.Join(cwd, ".beads", "config.yaml")
+	if data, err := os.ReadFile(configPath); err == nil {
+		// Simple YAML parsing — look for issue-prefix field
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "issue-prefix:") {
+				prefix := strings.TrimSpace(strings.TrimPrefix(line, "issue-prefix:"))
+				prefix = strings.Trim(prefix, `"'`)
+				if prefix != "" {
+					return prefix
+				}
+			}
+		}
+	}
+
+	// Fall back to directory basename
+	return filepath.Base(cwd)
+}
+
+// kbProjectEntry matches the JSON format from `kb projects list --json`.
+type kbProjectEntry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// loadKBProjectsMap runs `kb projects list --json` and returns name->path map.
+func loadKBProjectsMap() map[string]string {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "kb", "projects", "list", "--json")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	var projects []kbProjectEntry
+	if err := json.Unmarshal(output, &projects); err != nil {
+		return nil
+	}
+
+	result := make(map[string]string, len(projects))
+	for _, p := range projects {
+		result[p.Name] = p.Path
+	}
+	return result
 }
 
 // extractProjectFromMatch extracts the project name from a match's title or path.

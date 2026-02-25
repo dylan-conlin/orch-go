@@ -1,0 +1,25 @@
+verification:
+  automated:
+    - command: "go test ./pkg/group/ -v"
+      expectation: "12 tests pass covering explicit membership, parent inference, self-membership, ungrouped, multi-group, siblings, and member resolution"
+    - command: "go test ./pkg/spawn/ -count=1"
+      expectation: "All spawn tests pass including new TestFilterToProjectGroup and TestDetectCurrentProjectName"
+    - command: "go vet ./..."
+      expectation: "No vet errors"
+    - command: "go build ./cmd/orch/"
+      expectation: "Binary compiles cleanly"
+
+  manual:
+    - step: "Verify ~/.orch/groups.yaml exists with orch (explicit) and scs (parent) groups"
+      command: "cat ~/.orch/groups.yaml"
+    - step: "Verify fallback behavior: rename groups.yaml, spawn should still work with OrchEcosystemRepos"
+      note: "Not tested in CI but code path preserved"
+
+  key_behaviors:
+    - "GroupsForProject('toolshed', kbProjects) returns scs group via parent inference"
+    - "GroupsForProject('orch-go', kbProjects) returns orch group via explicit list"
+    - "GroupsForProject('dotfiles', kbProjects) returns empty (ungrouped)"
+    - "SiblingsOf('orch-go') returns [orch-cli, kb-cli, orch-knowledge, beads, kn, opencode]"
+    - "SiblingsOf('toolshed') returns [scs-special-projects, price-watch, sendassist, scs-slack, specs-platform]"
+    - "RunKBContextCheck falls back to OrchEcosystemRepos when groups.yaml missing"
+    - "Ungrouped projects get no filtering on global search (nil allowlist)"

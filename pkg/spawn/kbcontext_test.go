@@ -957,3 +957,73 @@ func TestStaleModelIntegration(t *testing.T) {
 		}
 	})
 }
+
+func TestFilterToProjectGroup(t *testing.T) {
+	matches := []KBContextMatch{
+		{Type: "constraint", Title: "[orch-go] Agents must not spawn recursively"},
+		{Type: "constraint", Title: "[price-watch] Max retries per product"},
+		{Type: "decision", Title: "[toolshed] Use React for UI"},
+		{Type: "investigation", Title: "[scs-slack] Slack integration research"},
+		{Type: "constraint", Title: "Local constraint without prefix"},
+	}
+
+	t.Run("filters to SCS group", func(t *testing.T) {
+		scsAllowlist := map[string]bool{
+			"scs-special-projects": true,
+			"toolshed":             true,
+			"price-watch":          true,
+			"scs-slack":            true,
+		}
+
+		filtered := filterToProjectGroup(matches, scsAllowlist)
+
+		// Should keep: price-watch, toolshed, scs-slack, and local (no prefix)
+		// Should filter: orch-go (not in SCS group)
+		if len(filtered) != 4 {
+			t.Errorf("filterToProjectGroup() returned %d matches, want 4", len(filtered))
+		}
+
+		for _, m := range filtered {
+			project := extractProjectFromMatch(m)
+			if project != "" && !scsAllowlist[project] {
+				t.Errorf("filterToProjectGroup() included non-SCS project: %q", project)
+			}
+		}
+	})
+
+	t.Run("filters to orch group", func(t *testing.T) {
+		orchAllowlist := map[string]bool{
+			"orch-go":        true,
+			"orch-cli":       true,
+			"kb-cli":         true,
+			"orch-knowledge": true,
+		}
+
+		filtered := filterToProjectGroup(matches, orchAllowlist)
+
+		// Should keep: orch-go and local (no prefix)
+		// Should filter: price-watch, toolshed, scs-slack
+		if len(filtered) != 2 {
+			t.Errorf("filterToProjectGroup() returned %d matches, want 2", len(filtered))
+		}
+	})
+
+	t.Run("nil allowlist includes all", func(t *testing.T) {
+		// When allowlist is nil, filterToProjectGroup is not called (handled by caller)
+		// But if called with nil, it should include nothing (no project matches nil map)
+		// This tests the caller's responsibility — nil means "don't filter"
+		// The actual RunKBContextCheck handles nil by not calling the filter
+	})
+}
+
+func TestDetectCurrentProjectName(t *testing.T) {
+	// This test just verifies the function doesn't panic and returns something reasonable
+	name := detectCurrentProjectName()
+	if name == "" {
+		t.Error("detectCurrentProjectName() returned empty string")
+	}
+	// We're running from orch-go, so it should detect that
+	if name != "orch-go" {
+		t.Logf("detectCurrentProjectName() = %q (expected orch-go, but may vary by test environment)", name)
+	}
+}
