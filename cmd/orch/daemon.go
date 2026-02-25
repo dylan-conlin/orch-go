@@ -235,6 +235,15 @@ func runDaemonLoop() error {
 		return runDaemonDryRun()
 	}
 
+	// Acquire PID lock to ensure single daemon instance.
+	// This prevents multiple daemon processes from accumulating silently
+	// and fighting over the status file and spawns.
+	pidLock, err := daemon.AcquirePIDLock()
+	if err != nil {
+		return fmt.Errorf("cannot start daemon: %w", err)
+	}
+	defer pidLock.Release()
+
 	// Get current directory for completion processing
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -612,6 +621,7 @@ func runDaemonLoop() error {
 		}
 
 		status := daemon.DaemonStatus{
+			PID: os.Getpid(),
 			Capacity: daemon.CapacityStatus{
 				Max:       config.MaxAgents,
 				Active:    d.ActiveCount(),

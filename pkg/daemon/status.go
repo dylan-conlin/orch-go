@@ -13,6 +13,9 @@ import (
 // This is written to ~/.orch/daemon-status.json on each poll cycle
 // to enable serve.go to expose daemon health without IPC.
 type DaemonStatus struct {
+	// PID is the process ID of the running daemon.
+	PID int `json:"pid,omitempty"`
+
 	// Capacity holds the agent pool capacity information.
 	Capacity CapacityStatus `json:"capacity"`
 
