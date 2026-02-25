@@ -233,7 +233,7 @@ func buildWorkCmd() *cobra.Command {
 		Long: `Start work on a beads issue by inferring the skill from the issue type.
 
 The skill is automatically determined from the issue type:
-  - bug         → architect (understand before fixing; use skill:systematic-debugging label for clear bugs)
+  - bug         → systematic-debugging
   - feature     → feature-impl
   - task        → feature-impl
   - investigation → investigation

@@ -1,0 +1,25 @@
+verification:
+  test_command: "go test ./pkg/daemon/ ./cmd/orch/ -run TestInferSkill -v"
+  test_result: "PASS - all inference tests pass with bug→systematic-debugging"
+
+  smoke_test:
+    description: "Verify daemon preview shows systematic-debugging for bug-type issues"
+    command: "go test ./cmd/orch/ -run TestInferSkillFromIssueType -v"
+    expected: "bug maps to systematic-debugging (not architect)"
+    result: "PASS"
+
+  build_verification:
+    command: "go build ./..."
+    result: "PASS - clean build"
+
+  files_changed:
+    - pkg/daemon/skill_inference.go  # InferSkill bug→systematic-debugging
+    - pkg/daemon/skill_inference_test.go  # Updated test expectations
+    - cmd/orch/spawn_cmd.go  # InferSkillFromIssueType + help text
+    - cmd/orch/work_test.go  # Updated test expectation
+    - cmd/gendoc/main.go  # Updated help text
+
+  root_cause: "InferSkill and InferSkillFromIssueType both had hardcoded bug→architect mapping"
+  fix: "Changed both functions to return systematic-debugging for bug type"
+
+  manual_steps: []

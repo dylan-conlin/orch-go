@@ -201,7 +201,7 @@ var workCmd = &cobra.Command{
 	Long: `Start work on a beads issue by inferring the skill from the issue type.
 
 The skill is automatically determined from the issue type:
-  - bug         → architect (understand before fixing; use skill:systematic-debugging label for clear bugs)
+  - bug         → systematic-debugging
   - feature     → feature-impl
   - task        → feature-impl
   - investigation → investigation
@@ -239,9 +239,7 @@ func init() {
 func InferSkillFromIssueType(issueType string) (string, error) {
 	switch issueType {
 	case "bug":
-		// Default to architect: understand before fixing
-		// Use skill:systematic-debugging label for clear, isolated bugs
-		return "architect", nil
+		return "systematic-debugging", nil
 	case "feature":
 		return "feature-impl", nil
 	case "task":

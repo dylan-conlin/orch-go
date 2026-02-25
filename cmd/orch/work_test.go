@@ -11,9 +11,9 @@ func TestInferSkillFromIssueType(t *testing.T) {
 		wantSkill string
 	}{
 		{
-			name:      "bug maps to architect (understand before fixing)",
+			name:      "bug maps to systematic-debugging",
 			issueType: "bug",
-			wantSkill: "architect",
+			wantSkill: "systematic-debugging",
 		},
 		{
 			name:      "feature maps to feature-impl",
