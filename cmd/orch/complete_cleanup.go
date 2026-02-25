@@ -34,10 +34,10 @@ func cleanupTmuxWindow(isOrchestratorSession bool, agentName, beadsID, identifie
 	}
 
 	if window != nil {
-		if err := tmux.KillWindow(window.Target); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to close tmux window %s: %v\n", window.Target, err)
+		if err := tmux.KillWindowByID(window.ID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close tmux window %s (%s): %v\n", window.ID, window.Name, err)
 		} else {
-			fmt.Printf("Closed tmux window: %s:%s\n", tmuxSessionName, window.Name)
+			fmt.Printf("Closed tmux window: %s:%s (%s)\n", tmuxSessionName, window.Name, window.ID)
 		}
 	}
 }

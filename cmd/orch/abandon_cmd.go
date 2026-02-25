@@ -198,8 +198,8 @@ func runAbandon(beadsID, reason, workdir string) error {
 
 	// Optionally kill the tmux window if it exists
 	if windowInfo != nil {
-		fmt.Printf("Killing tmux window: %s\n", windowInfo.Target)
-		if err := tmux.KillWindow(windowInfo.Target); err != nil {
+		fmt.Printf("Killing tmux window: %s (%s)\n", windowInfo.Name, windowInfo.ID)
+		if err := tmux.KillWindowByID(windowInfo.ID); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to kill tmux window: %v\n", err)
 		}
 	}

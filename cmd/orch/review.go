@@ -918,10 +918,10 @@ func runReviewDone(project string) error {
 
 		// Clean up tmux window if it exists
 		if window, sessionName, err := tmux.FindWindowByBeadsIDAllSessions(c.BeadsID); err == nil && window != nil {
-			if err := tmux.KillWindow(window.Target); err != nil {
+			if err := tmux.KillWindowByID(window.ID); err != nil {
 				fmt.Printf("  Warning: failed to close tmux window: %v\n", err)
 			} else {
-				fmt.Printf("  Closed tmux window: %s:%s\n", sessionName, window.Name)
+				fmt.Printf("  Closed tmux window: %s:%s (%s)\n", sessionName, window.Name, window.ID)
 			}
 		}
 

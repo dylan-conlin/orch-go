@@ -493,12 +493,12 @@ func cleanStaleTmuxWindows(serverURL string, dryRun bool, preserveOrchestrator b
 			continue
 		}
 
-		if err := tmux.KillWindow(pw.window.Target); err != nil {
-			fmt.Fprintf(os.Stderr, "    Warning: failed to close %s: %v\n", pw.window.Name, err)
+		if err := tmux.KillWindowByID(pw.window.ID); err != nil {
+			fmt.Fprintf(os.Stderr, "    Warning: failed to close %s (%s): %v\n", pw.window.Name, pw.window.ID, err)
 			continue
 		}
 
-		fmt.Printf("    Closed: %s:%s\n", pw.sessionName, pw.window.Name)
+		fmt.Printf("    Closed: %s:%s (%s)\n", pw.sessionName, pw.window.Name, pw.window.ID)
 		closed++
 	}
 
