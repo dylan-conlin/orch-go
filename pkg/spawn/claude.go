@@ -14,7 +14,7 @@ import (
 var mcpPresets = map[string]MCPServerConfig{
 	"playwright": {
 		Command: "npx",
-		Args:    []string{"-y", "@playwright/mcp@latest"},
+		Args:    []string{"-y", "@playwright/mcp@latest", "--cdp-endpoint", "http://localhost:9222"},
 	},
 }
 
@@ -84,7 +84,7 @@ func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir string)
 		disallowFlag = " --disallowedTools 'Task,Edit,Write,NotebookEdit'"
 	}
 
-	return fmt.Sprintf("%sexport CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s", accountPrefix, claudeContext, contextPath, mcpFlag, disallowFlag)
+	return fmt.Sprintf("%sexport ORCH_SPAWNED=1; export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s", accountPrefix, claudeContext, contextPath, mcpFlag, disallowFlag)
 }
 
 // SpawnClaude launches a Claude Code agent in a tmux window.

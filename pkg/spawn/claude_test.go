@@ -215,6 +215,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			mcp:         "",
 			configDir:   "",
 			wantContains: []string{
+				"export ORCH_SPAWNED=1",
 				"export CLAUDE_CONTEXT=worker",
 				"cat \"/tmp/workspace/SPAWN_CONTEXT.md\"",
 				"claude --dangerously-skip-permissions",
