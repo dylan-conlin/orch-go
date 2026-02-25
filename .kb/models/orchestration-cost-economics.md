@@ -14,35 +14,35 @@ Agent orchestration cost is driven by three factors: **model pricing** (10-100x 
 
 ## The Cost Problem Timeline
 
-| Date | Event | Impact |
-|------|-------|--------|
-| Dec 2025 | Gemini Flash (free) as default | $0/mo, hit 2,000 req/min TPM limit |
-| Jan 9, 2026 | Switch to Sonnet API (pay-per-token) | Unknown cost, no tracking |
-| Jan 9, 2026 | Anthropic blocks OAuth for third-party tools | Can't use Max subscription via OpenCode |
-| Jan 12, 2026 | Investigation identifies cost tracking need | Never implemented |
-| Jan 13, 2026 | Cancel second Max subscription | $2,400/year savings |
-| Jan 18, 2026 | Discover $402 spent in ~2 weeks | $70-80/day burn rate |
-| Jan 18, 2026 | Switch back to Max subscription default | $200/mo flat |
-| Jan 19, 2026 | Test confirms DeepSeek V3 function calling works | New viable option |
-| Feb 2026 | Flash models banned for agent work | `validateModel()` gate in resolve.go |
-| Feb 2026 | OpenAI/Codex added as first-class provider | 12 model aliases, OpenCode backend |
-| Feb 2026 | Centralized `ResolvedSpawnSettings` with provenance | Multi-file resolver replaces monolithic backend.go |
-| Feb 2026 | Default backend changed to Claude (Sonnet default) | Max subscription is now primary path |
+| Date         | Event                                               | Impact                                             |
+|--------------|-----------------------------------------------------|----------------------------------------------------|
+| Dec 2025     | Gemini Flash (free) as default                      | $0/mo, hit 2,000 req/min TPM limit                 |
+| Jan 9, 2026  | Switch to Sonnet API (pay-per-token)                | Unknown cost, no tracking                          |
+| Jan 9, 2026  | Anthropic blocks OAuth for third-party tools        | Can't use Max subscription via OpenCode            |
+| Jan 12, 2026 | Investigation identifies cost tracking need         | Never implemented                                  |
+| Jan 13, 2026 | Cancel second Max subscription                      | $2,400/year savings                                |
+| Jan 18, 2026 | Discover $402 spent in ~2 weeks                     | $70-80/day burn rate                               |
+| Jan 18, 2026 | Switch back to Max subscription default             | $200/mo flat                                       |
+| Jan 19, 2026 | Test confirms DeepSeek V3 function calling works    | New viable option                                  |
+| Feb 2026     | Flash models banned for agent work                  | `validateModel()` gate in resolve.go               |
+| Feb 2026     | OpenAI/Codex added as first-class provider          | 12 model aliases, OpenCode backend                 |
+| Feb 2026     | Centralized `ResolvedSpawnSettings` with provenance | Multi-file resolver replaces monolithic backend.go |
+| Feb 2026     | Default backend changed to Claude (Sonnet default)  | Max subscription is now primary path               |
 
 ---
 
 ## Model Pricing Comparison
 
-| Model | Input $/MTok | Output $/MTok | Access Method | Notes |
-|-------|--------------|---------------|---------------|-------|
-| **DeepSeek V3** | $0.25 | $0.38 | OpenCode API | **10-65x cheaper, function calling works** |
-| DeepSeek R1 | $0.45 | $2.15 | OpenCode API | Reasoning model, function calling experimental |
-| ~~Gemini Flash~~ | ~$0.10-0.30 | Variable | ~~API/Free tier~~ | **BANNED for agent work** (`validateModel()` gate) |
-| Claude Haiku | $1.00 | $5.00 | Claude CLI (Max) | Fast, lightweight |
-| Claude Sonnet | $3.00 | $15.00 | Claude CLI (Max) | **Default model** (claude-sonnet-4-5-20250929) |
-| Claude Opus | $5.00 | $25.00 | Claude CLI (Max) | Highest quality, requires Claude backend |
-| **Claude Max** | $200/mo flat | - | Claude CLI only | Unlimited Sonnet + Opus. **Now the default path.** |
-| OpenAI GPT-5 | Variable | Variable | OpenCode API | First-class provider (12 aliases including Codex) |
+| Model            | Input $/MTok | Output $/MTok | Access Method     | Notes                                              |
+|------------------|--------------|---------------|-------------------|----------------------------------------------------|
+| **DeepSeek V3**  | $0.25        | $0.38         | OpenCode API      | **10-65x cheaper, function calling works**         |
+| DeepSeek R1      | $0.45        | $2.15         | OpenCode API      | Reasoning model, function calling experimental     |
+| ~~Gemini Flash~~ | ~$0.10-0.30  | Variable      | ~~API/Free tier~~ | **BANNED for agent work** (`validateModel()` gate) |
+| Claude Haiku     | $1.00        | $5.00         | Claude CLI (Max)  | Fast, lightweight                                  |
+| Claude Sonnet    | $3.00        | $15.00        | Claude CLI (Max)  | **Default model** (claude-sonnet-4-5-20250929)     |
+| Claude Opus      | $5.00        | $25.00        | Claude CLI (Max)  | Highest quality, requires Claude backend           |
+| **Claude Max**   | $200/mo flat | -             | Claude CLI only   | Unlimited Sonnet + Opus. **Now the default path.** |
+| OpenAI GPT-5     | Variable     | Variable      | OpenCode API      | First-class provider (12 aliases including Codex)  |
 
 ### Cost Equivalence Points
 
@@ -69,39 +69,39 @@ credits_used = ceil(input_tokens × input_rate + output_tokens × output_rate)
 
 **Per-model credit rates:**
 
-| Model | Input Rate | Output Rate |
-|-------|------------|-------------|
-| Haiku | 2/15 (0.133) | 10/15 (0.667) |
-| Sonnet | 6/15 (0.4) | 30/15 (2.0) |
-| Opus | 10/15 (0.667) | 50/15 (3.333) |
+| Model  | Input Rate    | Output Rate   |
+|--------|---------------|---------------|
+| Haiku  | 2/15 (0.133)  | 10/15 (0.667) |
+| Sonnet | 6/15 (0.4)    | 30/15 (2.0)   |
+| Opus   | 10/15 (0.667) | 50/15 (3.333) |
 
 ### Actual Limits vs Marketing Claims
 
-| Plan | Marketing | 5-Hour Session | Weekly Limit | Actual Ratio |
-|------|-----------|----------------|--------------|--------------|
-| Pro ($20) | 1× | 550,000 | 5,000,000 | baseline |
-| Max 5× ($100) | 5× | 3,300,000 | 41,666,700 | **6× session, 8.33× weekly** |
-| Max 20× ($200) | 20× | 11,000,000 | 83,333,300 | **20× session, 16.67× weekly** |
+| Plan           | Marketing | 5-Hour Session | Weekly Limit | Actual Ratio                   |
+|----------------|-----------|----------------|--------------|--------------------------------|
+| Pro ($20)      | 1×        | 550,000        | 5,000,000    | baseline                       |
+| Max 5× ($100)  | 5×        | 3,300,000      | 41,666,700   | **6× session, 8.33× weekly**   |
+| Max 20× ($200) | 20×       | 11,000,000     | 83,333,300   | **20× session, 16.67× weekly** |
 
 **Key insight:** Max 5× actually **overdelivers** (6× session, 8.33× weekly) while Max 20× **underdelivers** on weekly (16.67× instead of 20×). The 5× plan may offer better value per dollar.
 
 ### Cache Pricing: Subscription Advantage
 
-| Operation | API Cost | Subscription Cost |
-|-----------|----------|-------------------|
-| Cache read | 10% of input rate | **FREE** |
-| Cache write (5-min) | 1.25× input rate | Regular input price |
-| Cache write (1-hour) | 2× input rate | Regular input price |
+| Operation            | API Cost          | Subscription Cost   |
+|----------------------|-------------------|---------------------|
+| Cache read           | 10% of input rate | **FREE**            |
+| Cache write (5-min)  | 1.25× input rate  | Regular input price |
+| Cache write (1-hour) | 2× input rate     | Regular input price |
 
 **This is massive for agentic work:** Our tool-heavy orchestration (dozens of tool calls per agent turn) generates heavy cache hits. Free cache reads mean warm-cache scenarios deliver up to **36× value over API**.
 
 ### Value Multipliers (API Equivalent)
 
-| Plan | Monthly Cost | API Equivalent Value | Multiplier |
-|------|-------------|---------------------|------------|
-| Pro | $20 | $163 | 8.1× |
-| Max 5× | $100 | $1,354 | 13.5× |
-| Max 20× | $200 | $2,708 | 13.5× |
+| Plan    | Monthly Cost | API Equivalent Value | Multiplier |
+|---------|--------------|----------------------|------------|
+| Pro     | $20          | $163                 | 8.1×       |
+| Max 5×  | $100         | $1,354               | 13.5×      |
+| Max 20× | $200         | $2,708               | 13.5×      |
 
 **Validation:** Our Jan 18 discovery showed $70-80/day API burn rate (~$2,100-2,400/mo). At 13.5× value multiplier, our $200/mo Max subscription delivers ~$2,708 equivalent API value - right at our burn rate. External validation of cost decision.
 
@@ -127,12 +127,12 @@ credits_used = ceil(input_tokens × input_rate + output_tokens × output_rate)
 
 #### Failed Bypass Timeline (Jan 8-9, 2026)
 
-| Time | Attempt | Result |
-|------|---------|--------|
-| Jan 8 PM | Opus 4.5 fingerprint spoofing | Failed - "authorized for use with Claude Code only" |
-| Jan 8 PM | Direct header injection | Failed - sophisticated detection, broke other models |
-| Jan 9 AM | opencode-anthropic-auth@0.0.7 plugin | Worked briefly, then blocked |
-| Jan 9 PM | Community coordination attempts | All failed within hours |
+| Time     | Attempt                              | Result                                               |
+|----------|--------------------------------------|------------------------------------------------------|
+| Jan 8 PM | Opus 4.5 fingerprint spoofing        | Failed - "authorized for use with Claude Code only"  |
+| Jan 8 PM | Direct header injection              | Failed - sophisticated detection, broke other models |
+| Jan 9 AM | opencode-anthropic-auth@0.0.7 plugin | Worked briefly, then blocked                         |
+| Jan 9 PM | Community coordination attempts      | All failed within hours                              |
 
 **Conclusion:** Cat-and-mouse is not a viable strategy. Anthropic's detection is actively maintained.
 
@@ -140,10 +140,10 @@ credits_used = ceil(input_tokens × input_rate + output_tokens × output_rate)
 
 **⚠️ There are TWO distinct limit types, and they behave differently:**
 
-| Limit Type | Scope | Docker Bypass? | Resets |
-|------------|-------|----------------|--------|
-| **Request-rate limits** | Device (Statsig fingerprint) | ✅ YES | Immediately with new fingerprint |
-| **Weekly usage quota** | Account | ❌ NO | Weekly (Sunday) |
+| Limit Type              | Scope                        | Docker Bypass? | Resets                           |
+|-------------------------|------------------------------|----------------|----------------------------------|
+| **Request-rate limits** | Device (Statsig fingerprint) | ✅ YES         | Immediately with new fingerprint |
+| **Weekly usage quota**  | Account                      | ❌ NO          | Weekly (Sunday)                  |
 
 **Request-rate limits:** Per-device throttling based on Statsig fingerprint. Fresh Docker container = fresh fingerprint = no throttling.
 
@@ -197,12 +197,12 @@ credits_used = ceil(input_tokens × input_rate + output_tokens × output_rate)
 
 ### Revised Recommendation
 
-| Workload | Recommended Model | Cost |
-|----------|-------------------|------|
-| Standard investigation/feature work | DeepSeek V3 | $0.25/$0.38/MTok |
-| Complex reasoning, architecture | Claude Opus (via Max) | $200/mo flat |
-| Tool-heavy bursts (>2000 req/min) | Sonnet API or Max | Variable |
-| Cost-insensitive, highest quality | Claude Opus | $5/$25/MTok |
+| Workload                            | Recommended Model     | Cost             |
+|-------------------------------------|-----------------------|------------------|
+| Standard investigation/feature work | DeepSeek V3           | $0.25/$0.38/MTok |
+| Complex reasoning, architecture     | Claude Opus (via Max) | $200/mo flat     |
+| Tool-heavy bursts (>2000 req/min)   | Sonnet API or Max     | Variable         |
+| Cost-insensitive, highest quality   | Claude Opus           | $5/$25/MTok      |
 
 **Source:** `.orch/workspace/og-inv-test-deepseek-v3-19jan-25d3/SYNTHESIS.md`
 
@@ -242,11 +242,11 @@ Switched from free Gemini to paid Sonnet on Jan 9 with **no cost tracking**:
 
 The dual spawn architecture has been refactored from monolithic `backend.go` into a centralized resolver system (`pkg/spawn/resolve.go`) with model-aware backend routing.
 
-| Path | Backend | Models | Cost | Use When |
-|------|---------|--------|------|----------|
-| **Primary (default)** | Claude CLI | Sonnet, Opus, Haiku (Anthropic) | $200/mo flat (Max) | All Anthropic model work |
-| **Alternative** | OpenCode API | DeepSeek, OpenAI/Codex, Gemini Pro | Pay-per-token | Non-Anthropic providers, cost optimization |
-| **Override** | OpenCode API + `allow_anthropic_opencode` | Any | Pay-per-token | Explicit user config override |
+| Path                  | Backend                                   | Models                             | Cost               | Use When                                   |
+|-----------------------|-------------------------------------------|------------------------------------|--------------------|--------------------------------------------|
+| **Primary (default)** | Claude CLI                                | Sonnet, Opus, Haiku (Anthropic)    | $200/mo flat (Max) | All Anthropic model work                   |
+| **Alternative**       | OpenCode API                              | DeepSeek, OpenAI/Codex, Gemini Pro | Pay-per-token      | Non-Anthropic providers, cost optimization |
+| **Override**          | OpenCode API + `allow_anthropic_opencode` | Any                                | Pay-per-token      | Explicit user config override              |
 
 **Key change from Jan 2026:** The primary/escape-hatch distinction has inverted. Claude backend + Max is now the *default*, not the escape hatch. The infrastructure escape hatch still exists (`InfrastructureDetected` → auto-select Claude backend) but is now redundant since Claude is already the default.
 
