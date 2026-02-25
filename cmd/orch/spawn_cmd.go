@@ -392,6 +392,20 @@ func applyResolvedSpawnMode(input *orch.SpawnInput, spawnMode string) {
 }
 
 func runWork(serverURL, beadsID string, inline bool) error {
+	// For cross-project work (--workdir set), redirect beads lookups to the target
+	// project directory. Without this, verify.GetIssue() and beads.FindSocketPath("")
+	// use the current directory's .beads/ database, which doesn't contain the
+	// cross-project issue — causing silent spawn failures (orch-go-1230).
+	if spawnWorkdir != "" {
+		absWorkdir, err := filepath.Abs(spawnWorkdir)
+		if err != nil {
+			return fmt.Errorf("failed to resolve workdir: %w", err)
+		}
+		prevDefaultDir := beads.DefaultDir
+		beads.DefaultDir = absWorkdir
+		defer func() { beads.DefaultDir = prevDefaultDir }()
+	}
+
 	// Get issue details from verify (for description)
 	issue, err := verify.GetIssue(beadsID)
 	if err != nil {

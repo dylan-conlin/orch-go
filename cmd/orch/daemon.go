@@ -807,6 +807,11 @@ func runDaemonDryRun() error {
 	config := daemonConfigFromFlags()
 	d := daemon.NewWithConfig(config)
 
+	// Initialize project registry for cross-project issue visibility
+	if registry, err := daemon.NewProjectRegistry(); err == nil {
+		d.ProjectRegistry = registry
+	}
+
 	// NOTE: Extraction system disabled. Hotspot checking not configured.
 	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
 
@@ -929,6 +934,11 @@ func runDaemonOnce() error {
 func runDaemonPreview() error {
 	config := daemonConfigFromFlags()
 	d := daemon.NewWithConfig(config)
+
+	// Initialize project registry for cross-project issue visibility
+	if registry, err := daemon.NewProjectRegistry(); err == nil {
+		d.ProjectRegistry = registry
+	}
 
 	// NOTE: Extraction system disabled. Hotspot checking not configured.
 	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
