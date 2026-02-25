@@ -16,7 +16,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/session"
-	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -541,50 +540,43 @@ func getPhaseAndTask(beadsID string) (phase, task string) {
 
 // getAccountUsage fetches usage info for all configured accounts.
 func getAccountUsage() []AccountUsage {
-	var accounts []AccountUsage
+	var result []AccountUsage
 
-	// Get current account usage
-	currentUsage := usage.FetchUsage()
-	if currentUsage.Error == "" && currentUsage.SevenDay != nil {
-		current := AccountUsage{
-			Name:        "current",
-			Email:       currentUsage.Email,
-			UsedPercent: currentUsage.SevenDay.Utilization,
-			IsActive:    true,
-		}
-		if currentUsage.SevenDay.ResetsAt != nil {
-			current.ResetTime = currentUsage.SevenDay.TimeUntilReset()
-		}
-		accounts = append(accounts, current)
-	}
-
-	// Try to get saved accounts info (without switching)
-	cfg, err := account.LoadConfig()
-	if err == nil {
-		for name, acc := range cfg.Accounts {
-			if acc.Source == "saved" {
-				// Check if this is the current account (by email match)
-				isCurrentAccount := false
-				for i := range accounts {
-					if accounts[i].Email == acc.Email {
-						accounts[i].Name = name // Update name to the saved account name
-						isCurrentAccount = true
-						break
-					}
-				}
-				if !isCurrentAccount {
-					// Add as a saved account (no live usage data without switching)
-					accounts = append(accounts, AccountUsage{
-						Name:     name,
-						Email:    acc.Email,
-						IsActive: false,
-					})
+	// Identify active account by checking OpenCode auth refresh token
+	activeEmail := ""
+	if auth, authErr := account.LoadOpenCodeAuth(); authErr == nil && auth.Anthropic.Access != "" {
+		cfg, cfgErr := account.LoadConfig()
+		if cfgErr == nil {
+			for _, acc := range cfg.Accounts {
+				if acc.RefreshToken == auth.Anthropic.Refresh {
+					activeEmail = acc.Email
+					break
 				}
 			}
 		}
 	}
 
-	return accounts
+	accounts, err := account.ListAccountsWithCapacity()
+	if err != nil {
+		return result
+	}
+
+	for _, awc := range accounts {
+		au := AccountUsage{
+			Name:     awc.Name,
+			Email:    awc.Email,
+			IsActive: awc.Email != "" && awc.Email == activeEmail,
+		}
+		if awc.Capacity != nil && awc.Capacity.Error == "" {
+			au.UsedPercent = awc.Capacity.SevenDayUsed
+			if awc.Capacity.SevenDayResets != nil {
+				au.ResetTime = timeUntilReset(awc.Capacity.SevenDayResets)
+			}
+		}
+		result = append(result, au)
+	}
+
+	return result
 }
 
 // getSessionMetrics computes drift detection metrics for the current orchestrator session.

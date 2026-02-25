@@ -6,9 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"github.com/spf13/cobra"
 )
 
@@ -172,16 +173,16 @@ func runMonitor(serverURL string) error {
 }
 
 // ============================================================================
-// Usage Tracking (Placeholder - defers to Python for now)
+// Usage Tracking
 // ============================================================================
 
 var usageCmd = &cobra.Command{
 	Use:   "usage",
-	Short: "Show Claude Max usage limits",
-	Long: `Show Claude Max weekly usage limits.
+	Short: "Show Claude Max usage for all accounts",
+	Long: `Show Claude Max usage for all saved accounts side-by-side.
 
-Reads OAuth token from OpenCode's auth.json and fetches usage data
-from the Anthropic API.`,
+Fetches live capacity data for each account in ~/.orch/accounts.yaml
+and recommends which account to switch to if the current one is low.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runUsage()
 	},
@@ -192,7 +193,150 @@ func init() {
 }
 
 func runUsage() error {
-	info := usage.FetchUsage()
-	fmt.Println(usage.FormatDisplay(info))
+	accounts, err := account.ListAccountsWithCapacity()
+	if err != nil {
+		return fmt.Errorf("failed to fetch account capacity: %w", err)
+	}
+
+	if len(accounts) == 0 {
+		fmt.Println("No saved accounts. Run: orch account add <name>")
+		return nil
+	}
+
+	// Identify active account by checking OpenCode auth
+	activeEmail := ""
+	if auth, authErr := account.LoadOpenCodeAuth(); authErr == nil && auth.Anthropic.Access != "" {
+		// Match refresh token to saved account
+		cfg, cfgErr := account.LoadConfig()
+		if cfgErr == nil {
+			for _, acc := range cfg.Accounts {
+				if acc.RefreshToken == auth.Anthropic.Refresh {
+					activeEmail = acc.Email
+					break
+				}
+			}
+		}
+	}
+
+	fmt.Println("Claude Max Usage")
+	fmt.Println(strings.Repeat("-", 60))
+
+	var bestSwitch string
+	var bestHeadroom float64
+
+	for _, awc := range accounts {
+		isActive := awc.Email != "" && awc.Email == activeEmail
+		marker := "  "
+		if isActive {
+			marker = "> "
+		}
+
+		label := awc.Name
+		if awc.Email != "" {
+			label = fmt.Sprintf("%s (%s)", awc.Name, awc.Email)
+		}
+
+		fmt.Printf("\n%s%s", marker, label)
+		if isActive {
+			fmt.Print("  [active]")
+		}
+		if awc.IsDefault {
+			fmt.Print("  [default]")
+		}
+		fmt.Println()
+
+		if awc.Capacity == nil || awc.Capacity.Error != "" {
+			errMsg := "unknown"
+			if awc.Capacity != nil {
+				errMsg = awc.Capacity.Error
+			}
+			fmt.Printf("    Error: %s\n", errMsg)
+			continue
+		}
+
+		c := awc.Capacity
+
+		// 5-hour bar
+		fmt.Printf("    5-hour:  %s %.0f%% used", usageBar(c.FiveHourUsed), c.FiveHourUsed)
+		if c.FiveHourResets != nil {
+			fmt.Printf("  (resets %s)", timeUntilReset(c.FiveHourResets))
+		}
+		fmt.Println()
+
+		// Weekly bar
+		fmt.Printf("    Weekly:  %s %.0f%% used", usageBar(c.SevenDayUsed), c.SevenDayUsed)
+		if c.SevenDayResets != nil {
+			fmt.Printf("  (resets %s)", timeUntilReset(c.SevenDayResets))
+		}
+		fmt.Println()
+
+		// Track best non-active account for switch recommendation
+		if !isActive {
+			headroom := minFloat(c.FiveHourRemaining, c.SevenDayRemaining)
+			if headroom > bestHeadroom {
+				bestHeadroom = headroom
+				bestSwitch = awc.Name
+			}
+		}
+	}
+
+	// Switch recommendation
+	// Find active account's headroom
+	var activeHeadroom float64
+	for _, awc := range accounts {
+		isActive := awc.Email != "" && awc.Email == activeEmail
+		if isActive && awc.Capacity != nil && awc.Capacity.Error == "" {
+			activeHeadroom = minFloat(awc.Capacity.FiveHourRemaining, awc.Capacity.SevenDayRemaining)
+			break
+		}
+	}
+
+	if bestSwitch != "" && activeHeadroom < 20 && bestHeadroom > activeHeadroom+10 {
+		fmt.Printf("\nRecommendation: switch to '%s' (%.0f%% headroom vs %.0f%%)\n", bestSwitch, bestHeadroom, activeHeadroom)
+		fmt.Printf("  Run: orch account switch %s\n", bestSwitch)
+	}
+
+	fmt.Println()
 	return nil
+}
+
+// usageBar returns a 20-char visual bar representing usage percentage.
+func usageBar(pct float64) string {
+	const barLen = 20
+	filled := int(pct / 100.0 * barLen)
+	if filled > barLen {
+		filled = barLen
+	}
+	if filled < 0 {
+		filled = 0
+	}
+	return "[" + strings.Repeat("#", filled) + strings.Repeat(".", barLen-filled) + "]"
+}
+
+// minFloat returns the smaller of two float64 values.
+func minFloat(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// timeUntilReset returns a human-readable duration until a reset time.
+func timeUntilReset(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	d := time.Until(*t)
+	if d <= 0 {
+		return "now"
+	}
+	hours := int(d.Hours())
+	mins := int(d.Minutes()) % 60
+	if hours >= 24 {
+		return fmt.Sprintf("%dd %dh", hours/24, hours%24)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, mins)
+	}
+	return fmt.Sprintf("%dm", mins)
 }

@@ -19,7 +19,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
-	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 )
 
@@ -45,30 +44,29 @@ func handleUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info := usage.FetchUsage()
+	capacity, _ := account.GetCurrentCapacity()
 
 	resp := UsageAPIResponse{}
 
-	if info.Error != "" {
-		resp.Error = info.Error
+	if capacity == nil || capacity.Error != "" {
+		errMsg := "failed to fetch capacity"
+		if capacity != nil {
+			errMsg = capacity.Error
+		}
+		resp.Error = errMsg
 	} else {
-		resp.Account = info.Email
-		resp.AccountName = lookupAccountName(info.Email)
-		if info.FiveHour != nil {
-			resp.FiveHour = &info.FiveHour.Utilization
-			resp.FiveHourReset = info.FiveHour.TimeUntilReset()
+		resp.Account = capacity.Email
+		resp.AccountName = lookupAccountName(capacity.Email)
+		resp.FiveHour = &capacity.FiveHourUsed
+		fiveHourReset := timeUntilReset(capacity.FiveHourResets)
+		if fiveHourReset != "" {
+			resp.FiveHourReset = fiveHourReset
 		}
-		// else: FiveHour remains nil (JSON: null) indicating data unavailable
-		if info.SevenDay != nil {
-			resp.Weekly = &info.SevenDay.Utilization
-			resp.WeeklyReset = info.SevenDay.TimeUntilReset()
+		resp.Weekly = &capacity.SevenDayUsed
+		weeklyReset := timeUntilReset(capacity.SevenDayResets)
+		if weeklyReset != "" {
+			resp.WeeklyReset = weeklyReset
 		}
-		// else: Weekly remains nil (JSON: null) indicating data unavailable
-		if info.SevenDayOpus != nil {
-			resp.WeeklyOpus = &info.SevenDayOpus.Utilization
-			resp.WeeklyOpusReset = info.SevenDayOpus.TimeUntilReset()
-		}
-		// else: WeeklyOpus remains nil (JSON: null) indicating data unavailable
 	}
 
 	w.Header().Set("Content-Type", "application/json")
