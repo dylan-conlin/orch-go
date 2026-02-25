@@ -1,0 +1,48 @@
+verification:
+  type: bug-fix
+  issue: orch-go-1229
+
+  reproduction:
+    description: "Build output directories cause false positive hotspot detections that block spawns"
+    steps:
+      - "Run: go run ./cmd/orch/ hotspot --json"
+      - "Check for .svelte-kit/, .opencode/, public/assets/ paths in bloat-size hotspots"
+    before_fix: ".opencode/plugin/coaching.ts (1570 lines) and .svelte-kit/ files appeared as CRITICAL bloat hotspots"
+    after_fix: "Zero build output paths appear in hotspot results"
+
+  acceptance_criteria:
+    - id: AC-001
+      description: "analyzeBloatFiles skips all build output directories during filesystem walk"
+      verified: true
+      evidence: "TestAnalyzeBloatFiles_SkipsBuildOutputDirs passes - creates large files in 10 skip dirs, only source file detected"
+
+    - id: AC-002
+      description: "shouldCountFile rejects paths from all build output directories"
+      verified: true
+      evidence: "TestShouldCountFile passes with 13 new build output path cases (all return false)"
+
+    - id: AC-003
+      description: "skipBloatDirs contains all 13 required directory names"
+      verified: true
+      evidence: "TestSkipBloatDirs_Coverage passes"
+
+    - id: AC-004
+      description: "buildOutputPrefixes contains all 12 required path prefixes"
+      verified: true
+      evidence: "TestBuildOutputPrefixes_Coverage passes"
+
+    - id: AC-005
+      description: "orch hotspot --json produces zero false positives from build output"
+      verified: true
+      evidence: "Live run against orch-go repo: 30 bloat hotspots, all legitimate source files"
+
+    - id: AC-006
+      description: "All existing hotspot tests continue to pass"
+      verified: true
+      evidence: "51 hotspot-related tests pass (0.171s)"
+
+  commands_run:
+    - "go build ./cmd/orch/"
+    - "go vet ./cmd/orch/"
+    - "go test -v -run 'Hotspot|ShouldCount|...' ./cmd/orch/ (51 tests PASS)"
+    - "go run ./cmd/orch/ hotspot --json (verified zero false positives)"

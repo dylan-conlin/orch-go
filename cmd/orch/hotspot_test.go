@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 )
 
@@ -152,6 +153,25 @@ func TestShouldCountFile(t *testing.T) {
 		// Should not count - config
 		{"package.json", false},
 		{"go.mod", false},
+
+		// Should not count - build output directories
+		{".svelte-kit/output/server/chunks/index4.js", false},
+		{".svelte-kit/output/server/index.js", false},
+		{"dist/bundle.js", false},
+		{"build/output.js", false},
+		{"__pycache__/module.cpython-310.pyc", false},
+		{".next/server/pages/index.js", false},
+		{".nuxt/dist/server.js", false},
+		{".output/server/index.mjs", false},
+
+		// Should not count - tool/workspace directories
+		{".opencode/plugin/coaching.ts", false},
+		{".orch/workspace/session/file.go", false},
+		{".beads/issues.jsonl", false},
+
+		// Should not count - precompiled assets
+		{"public/assets/main.css", false},
+		{"public/assets/vendor.css", false},
 	}
 
 	for _, tt := range tests {
@@ -740,6 +760,108 @@ func TestRunHotspotCheckForSpawn_IncludesBloatAnalysis(t *testing.T) {
 	// Verify CRITICAL detection for >1500 lines
 	if !result.HasCriticalHotspot {
 		t.Error("Expected HasCriticalHotspot=true for file >1500 lines")
+	}
+}
+
+// TestAnalyzeBloatFiles_SkipsBuildOutputDirs verifies that analyzeBloatFiles
+// skips build output and tool directories when walking the filesystem.
+func TestAnalyzeBloatFiles_SkipsBuildOutputDirs(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create a large Go source file (should be detected)
+	srcDir := tempDir + "/cmd/orch"
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		t.Fatalf("Failed to create src dir: %v", err)
+	}
+	largeSource := "package main\n"
+	for i := 0; i < 900; i++ {
+		largeSource += "// line\n"
+	}
+	if err := os.WriteFile(srcDir+"/main.go", []byte(largeSource), 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	// Create large files in directories that should be SKIPPED
+	skipDirFiles := map[string]string{
+		".svelte-kit/output/server/chunks/index4.js": "js",
+		".opencode/plugin/coaching.ts":               "ts",
+		"dist/bundle.js":                             "js",
+		"build/output.css":                           "css",
+		"__pycache__/module.py":                      "py",
+		".next/server/pages/index.js":                "js",
+		".orch/workspace/session/file.go":            "go",
+		".beads/hooks/on_close":                      "sh",
+		"node_modules/pkg/index.js":                  "js",
+		"vendor/github.com/pkg/errors.go":            "go",
+	}
+	for relPath, ext := range skipDirFiles {
+		dir := tempDir + "/" + filepath.Dir(relPath)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("Failed to create dir %s: %v", dir, err)
+		}
+		content := "// large file\n"
+		for i := 0; i < 900; i++ {
+			content += "// line\n"
+		}
+		if err := os.WriteFile(tempDir+"/"+relPath, []byte(content), 0644); err != nil {
+			t.Fatalf("Failed to create file %s (%s): %v", relPath, ext, err)
+		}
+	}
+
+	hotspots, totalBloat, err := analyzeBloatFiles(tempDir, 800)
+	if err != nil {
+		t.Fatalf("analyzeBloatFiles error: %v", err)
+	}
+
+	// Should find only the source file, not the build output files
+	if totalBloat != 1 {
+		t.Errorf("totalBloat = %d, want 1 (only cmd/orch/main.go)", totalBloat)
+		for _, h := range hotspots {
+			t.Logf("  detected: %s (%d lines)", h.Path, h.Score)
+		}
+	}
+
+	// Verify the detected file is the source file
+	if len(hotspots) > 0 {
+		if hotspots[0].Path != "cmd/orch/main.go" {
+			t.Errorf("expected hotspot at cmd/orch/main.go, got %s", hotspots[0].Path)
+		}
+	}
+}
+
+// TestSkipBloatDirs_Coverage verifies that all required directories are in the skip list.
+func TestSkipBloatDirs_Coverage(t *testing.T) {
+	requiredDirs := []string{
+		".git", "node_modules", "vendor",
+		".svelte-kit", "dist", "build", "__pycache__",
+		".next", ".nuxt", ".output",
+		".opencode", ".orch", ".beads",
+	}
+	for _, dir := range requiredDirs {
+		if !skipBloatDirs[dir] {
+			t.Errorf("skipBloatDirs missing %q", dir)
+		}
+	}
+}
+
+// TestBuildOutputPrefixes_Coverage verifies that all required prefixes are in the list.
+func TestBuildOutputPrefixes_Coverage(t *testing.T) {
+	requiredPrefixes := []string{
+		"vendor/", ".svelte-kit/", "dist/", "build/", "__pycache__/",
+		".opencode/", ".orch/", ".beads/", ".next/", ".nuxt/", ".output/",
+		"public/assets/",
+	}
+	for _, prefix := range requiredPrefixes {
+		found := false
+		for _, p := range buildOutputPrefixes {
+			if p == prefix {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("buildOutputPrefixes missing %q", prefix)
+		}
 	}
 }
 

@@ -33,6 +33,45 @@ var defaultExclusions = []string{
 	"go.sum",
 }
 
+// skipBloatDirs are directory names excluded from bloat scanning (filepath.Walk).
+// These contain build output, tool files, or vendored code that shouldn't be
+// flagged as source code hotspots.
+var skipBloatDirs = map[string]bool{
+	".git":         true,
+	"node_modules": true,
+	"vendor":       true,
+	// Build output directories
+	".svelte-kit": true,
+	"dist":        true,
+	"build":       true,
+	"__pycache__":  true,
+	".next":       true,
+	".nuxt":       true,
+	".output":     true,
+	// Tool/workspace directories (not source code)
+	".opencode": true,
+	".orch":     true,
+	".beads":    true,
+}
+
+// buildOutputPrefixes are path prefixes for directories that contain build output,
+// tool files, or vendored code. Used by shouldCountFileWithExclusions to filter
+// paths from git log (which bypass the filepath.Walk directory skip).
+var buildOutputPrefixes = []string{
+	"vendor/",
+	".svelte-kit/",
+	"dist/",
+	"build/",
+	"__pycache__/",
+	".opencode/",
+	".orch/",
+	".beads/",
+	".next/",
+	".nuxt/",
+	".output/",
+	"public/assets/",
+}
+
 var hotspotCmd = &cobra.Command{
 	Use:   "hotspot",
 	Short: "Detect areas needing architect intervention",
@@ -269,9 +308,14 @@ func shouldCountFileWithExclusions(path string, exclusions []string) bool {
 	if strings.HasSuffix(path, "_test.go") || strings.HasSuffix(path, ".test.ts") || strings.HasSuffix(path, ".test.js") {
 		return false
 	}
-	// Skip generated files
-	if strings.Contains(path, "/generated/") || strings.HasPrefix(path, "vendor/") {
+	// Skip generated files and build output directories
+	if strings.Contains(path, "/generated/") {
 		return false
+	}
+	for _, prefix := range buildOutputPrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return false
+		}
 	}
 	// Skip documentation
 	if strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".txt") {
@@ -486,8 +530,7 @@ func analyzeBloatFiles(projectDir string, threshold int) ([]Hotspot, int, error)
 
 		// Skip directories
 		if info.IsDir() {
-			// Skip common non-source directories
-			if info.Name() == ".git" || info.Name() == "node_modules" || info.Name() == "vendor" {
+			if skipBloatDirs[info.Name()] {
 				return filepath.SkipDir
 			}
 			return nil
