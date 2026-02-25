@@ -66,16 +66,16 @@ func TestVerifyAccretionForCompletion(t *testing.T) {
 			expectWarnings: 1,
 		},
 		{
-			name: "file >1500 lines with +50 net lines triggers error",
+			name: "pre-existing bloated file >1500 lines downgrades to warning",
 			setupFiles: map[string]int{
 				"large.go": 1600,
 			},
 			modifyFiles: map[string]fileModification{
 				"large.go": {addLines: 70, removeLines: 10},
 			},
-			expectPassed:   false,
-			expectErrors:   1,
-			expectWarnings: 0,
+			expectPassed:   true,
+			expectErrors:   0,
+			expectWarnings: 1, // pre-existing bloat warning
 		},
 		{
 			name: "extraction work (net negative delta) passes",
@@ -90,7 +90,7 @@ func TestVerifyAccretionForCompletion(t *testing.T) {
 			expectWarnings: 1, // extraction auto-pass warning
 		},
 		{
-			name: "multiple files, mixed results",
+			name: "multiple files, mixed results (pre-existing bloat is warning)",
 			setupFiles: map[string]int{
 				"ok.go":       500,
 				"warning.go":  900,
@@ -101,9 +101,9 @@ func TestVerifyAccretionForCompletion(t *testing.T) {
 				"warning.go":  {addLines: 60, removeLines: 5},
 				"critical.go": {addLines: 80, removeLines: 10},
 			},
-			expectPassed:   false,
-			expectErrors:   1, // critical.go
-			expectWarnings: 1, // warning.go
+			expectPassed:   true,
+			expectErrors:   0,
+			expectWarnings: 2, // critical.go (pre-existing bloat) + warning.go
 		},
 		{
 			name: "net negative across all files passes",
@@ -282,7 +282,7 @@ func TestVerifyAccretionForCompletion_NonGoSourceFiles(t *testing.T) {
 		t.Fatalf("failed to init git repo: %v", err)
 	}
 
-	// Create a large TypeScript file
+	// Create a large TypeScript file (pre-existing bloat - already >1500 before agent)
 	createFileWithLines(t, tmpDir, "large.ts", 1600)
 	commitFiles(t, tmpDir, "Initial commit")
 
@@ -294,12 +294,12 @@ func TestVerifyAccretionForCompletion_NonGoSourceFiles(t *testing.T) {
 		t.Fatal("expected non-nil result")
 	}
 
-	// Should trigger error (>1500 lines with >50 net additions)
-	if result.Passed {
-		t.Error("expected Passed=false for large .ts file exceeding critical threshold")
+	// Pre-existing bloat should pass (downgraded to warning), not block
+	if !result.Passed {
+		t.Errorf("expected Passed=true for pre-existing bloated .ts file, got errors: %v", result.Errors)
 	}
-	if len(result.Errors) == 0 {
-		t.Error("expected at least one error for large .ts file")
+	if len(result.Warnings) == 0 {
+		t.Error("expected at least one warning for pre-existing bloated .ts file")
 	}
 }
 
@@ -336,6 +336,80 @@ func TestVerifyAccretionForCompletion_ExcludesVendorFiles(t *testing.T) {
 	// Should pass because vendor files are excluded
 	if !result.Passed {
 		t.Errorf("expected Passed=true for vendor file, got errors: %v", result.Errors)
+	}
+}
+
+func TestVerifyAccretionForCompletion_AgentCausedBloat(t *testing.T) {
+	// When agent's changes PUSH a file over the critical threshold, it should still block
+	tmpDir, err := os.MkdirTemp("", "accretion-agent-bloat-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	if err := initGitRepo(tmpDir); err != nil {
+		t.Fatalf("failed to init git repo: %v", err)
+	}
+
+	// File starts at 1400 lines (below critical threshold)
+	createFileWithLines(t, tmpDir, "growing.go", 1400)
+	commitFiles(t, tmpDir, "Initial commit")
+
+	// Agent adds 120 lines → pushes to ~1520 (over 1500 threshold)
+	modifyFile(t, tmpDir, "growing.go", 120, 0)
+
+	result := VerifyAccretionForCompletion(tmpDir, tmpDir)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	// Agent-caused bloat should block completion
+	if result.Passed {
+		t.Error("expected Passed=false when agent pushes file over critical threshold")
+	}
+	if len(result.Errors) != 1 {
+		t.Errorf("expected 1 error, got %d: %v", len(result.Errors), result.Errors)
+	}
+}
+
+func TestVerifyAccretionForCompletion_PreExistingBloatDetailed(t *testing.T) {
+	// Detailed test: file already >1500 lines before agent's changes should NOT block
+	tmpDir, err := os.MkdirTemp("", "accretion-preexisting-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	if err := initGitRepo(tmpDir); err != nil {
+		t.Fatalf("failed to init git repo: %v", err)
+	}
+
+	// File starts at 2000 lines (well above critical threshold)
+	createFileWithLines(t, tmpDir, "legacy.go", 2000)
+	commitFiles(t, tmpDir, "Initial commit")
+
+	// Agent adds 100 lines to an already-bloated file
+	modifyFile(t, tmpDir, "legacy.go", 100, 0)
+
+	result := VerifyAccretionForCompletion(tmpDir, tmpDir)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	// Pre-existing bloat: should pass with warning, NOT block
+	if !result.Passed {
+		t.Errorf("expected Passed=true for pre-existing bloat, got errors: %v", result.Errors)
+	}
+	if len(result.Errors) != 0 {
+		t.Errorf("expected 0 errors for pre-existing bloat, got %d: %v", len(result.Errors), result.Errors)
+	}
+	if len(result.Warnings) != 1 {
+		t.Errorf("expected 1 warning for pre-existing bloat, got %d: %v", len(result.Warnings), result.Warnings)
+	}
+
+	// Verify warning message contains "pre-existing bloat"
+	if len(result.Warnings) > 0 && !strings.Contains(result.Warnings[0], "pre-existing bloat") {
+		t.Errorf("expected warning to contain 'pre-existing bloat', got: %s", result.Warnings[0])
 	}
 }
 

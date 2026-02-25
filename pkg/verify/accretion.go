@@ -102,17 +102,31 @@ func VerifyAccretionForCompletion(workspacePath, projectDir string) *AccretionRe
 			continue
 		}
 
+		// Calculate pre-change line count to distinguish pre-existing bloat from agent-caused bloat
+		preChangeLines := change.CurrentLines - change.NetDelta
+
 		// Check if file is in accretion risk zone
 		if change.CurrentLines > AccretionCriticalThreshold {
-			// CRITICAL: >1,500 lines + adding >50 lines → hard gate (error)
-			change.IsRisk = true
-			change.Severity = "critical"
-			result.RiskFiles = append(result.RiskFiles, change)
-			result.Passed = false
-			result.Errors = append(result.Errors,
-				fmt.Sprintf("CRITICAL accretion: %s is %d lines (+%d added, %d total). Files >%d lines require extraction before additions. See `orch hotspot` and `.kb/guides/code-extraction-patterns.md`",
-					change.Path, change.CurrentLines-change.NetDelta, change.NetDelta, change.CurrentLines,
-					AccretionCriticalThreshold))
+			if preChangeLines > AccretionCriticalThreshold {
+				// File was ALREADY over critical threshold before agent's changes.
+				// Downgrade to warning - agent didn't cause the bloat.
+				change.IsRisk = true
+				change.Severity = "warning"
+				result.RiskFiles = append(result.RiskFiles, change)
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("Accretion warning (pre-existing bloat): %s was already %d lines before this change (+%d added, %d total). File needs extraction but agent didn't cause the bloat. See `orch hotspot`",
+						change.Path, preChangeLines, change.NetDelta, change.CurrentLines))
+			} else {
+				// Agent's changes PUSHED file over critical threshold → hard gate (error)
+				change.IsRisk = true
+				change.Severity = "critical"
+				result.RiskFiles = append(result.RiskFiles, change)
+				result.Passed = false
+				result.Errors = append(result.Errors,
+					fmt.Sprintf("CRITICAL accretion: %s is %d lines (+%d added, %d total). Files >%d lines require extraction before additions. See `orch hotspot` and `.kb/guides/code-extraction-patterns.md`",
+						change.Path, preChangeLines, change.NetDelta, change.CurrentLines,
+						AccretionCriticalThreshold))
+			}
 		} else if change.CurrentLines > AccretionWarningThreshold {
 			// WARNING: >800 lines + adding >50 lines → soft signal (warning)
 			change.IsRisk = true
@@ -120,7 +134,7 @@ func VerifyAccretionForCompletion(workspacePath, projectDir string) *AccretionRe
 			result.RiskFiles = append(result.RiskFiles, change)
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("Accretion warning: %s is %d lines (+%d added, %d total). Consider extraction before further growth. See `orch hotspot`",
-					change.Path, change.CurrentLines-change.NetDelta, change.NetDelta, change.CurrentLines))
+					change.Path, preChangeLines, change.NetDelta, change.CurrentLines))
 		}
 	}
 
