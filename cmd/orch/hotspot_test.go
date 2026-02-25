@@ -1055,6 +1055,166 @@ func writeFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
+// --- Tests for basename/suffix matching in matchPathToHotspots ---
+
+func TestMatchPathToHotspots_BasenameSuffixMatch(t *testing.T) {
+	tests := []struct {
+		name          string
+		path          string
+		hotspots      []Hotspot
+		expectedMatch bool
+		expectedScore int
+	}{
+		{
+			name:          "basename matches fix-density full path",
+			path:          "complete_cmd.go",
+			hotspots:      []Hotspot{{Path: "cmd/orch/complete_cmd.go", Type: "fix-density", Score: 12}},
+			expectedMatch: true,
+			expectedScore: 12,
+		},
+		{
+			name:          "partial path suffix matches fix-density",
+			path:          "orch/complete_cmd.go",
+			hotspots:      []Hotspot{{Path: "cmd/orch/complete_cmd.go", Type: "fix-density", Score: 12}},
+			expectedMatch: true,
+			expectedScore: 12,
+		},
+		{
+			name:          "basename matches bloat-size full path",
+			path:          "hotspot.go",
+			hotspots:      []Hotspot{{Path: "cmd/orch/hotspot.go", Type: "bloat-size", Score: 1800}},
+			expectedMatch: true,
+			expectedScore: 1800,
+		},
+		{
+			name:          "partial path suffix matches bloat-size",
+			path:          "orch/hotspot.go",
+			hotspots:      []Hotspot{{Path: "cmd/orch/hotspot.go", Type: "bloat-size", Score: 1800}},
+			expectedMatch: true,
+			expectedScore: 1800,
+		},
+		{
+			name:          "unrelated basename does not match",
+			path:          "main.go",
+			hotspots:      []Hotspot{{Path: "cmd/orch/complete_cmd.go", Type: "fix-density", Score: 12}},
+			expectedMatch: false,
+			expectedScore: 0,
+		},
+		{
+			name:          "exact match still works",
+			path:          "cmd/orch/complete_cmd.go",
+			hotspots:      []Hotspot{{Path: "cmd/orch/complete_cmd.go", Type: "fix-density", Score: 12}},
+			expectedMatch: true,
+			expectedScore: 12,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matched, score := matchPathToHotspots(tt.path, tt.hotspots)
+			if matched != tt.expectedMatch {
+				t.Errorf("matchPathToHotspots(%q) matched = %v, want %v", tt.path, matched, tt.expectedMatch)
+			}
+			if score != tt.expectedScore {
+				t.Errorf("matchPathToHotspots(%q) score = %d, want %d", tt.path, score, tt.expectedScore)
+			}
+		})
+	}
+}
+
+func TestMatchPathToHotspots_CouplingClusterRelatedFilesSuffix(t *testing.T) {
+	hotspots := []Hotspot{
+		{
+			Path:         "agent-status",
+			Type:         "coupling-cluster",
+			Score:        60,
+			RelatedFiles: []string{"cmd/orch/serve_agents.go", "web/src/lib/stores/agents.ts"},
+		},
+	}
+
+	tests := []struct {
+		name          string
+		path          string
+		expectedMatch bool
+	}{
+		{
+			name:          "basename matches related file",
+			path:          "serve_agents.go",
+			expectedMatch: true,
+		},
+		{
+			name:          "partial suffix matches related file",
+			path:          "orch/serve_agents.go",
+			expectedMatch: true,
+		},
+		{
+			name:          "unrelated basename",
+			path:          "main.go",
+			expectedMatch: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matched, _ := matchPathToHotspots(tt.path, hotspots)
+			if matched != tt.expectedMatch {
+				t.Errorf("matchPathToHotspots(%q) matched = %v, want %v", tt.path, matched, tt.expectedMatch)
+			}
+		})
+	}
+}
+
+// TestCheckSpawnHotspots_BasenameInTaskText validates the end-to-end flow:
+// task text contains bare filename → extractPathsFromTask extracts it → matchPathToHotspots matches via suffix.
+func TestCheckSpawnHotspots_BasenameInTaskText(t *testing.T) {
+	hotspots := []Hotspot{
+		{
+			Path:           "cmd/orch/complete_cmd.go",
+			Type:           "bloat-size",
+			Score:          1800,
+			Recommendation: "CRITICAL: complete_cmd.go needs extraction",
+		},
+		{
+			Path:           "cmd/orch/complete_cmd.go",
+			Type:           "fix-density",
+			Score:          12,
+			Recommendation: "CRITICAL: fix churn in complete_cmd.go",
+		},
+	}
+
+	tests := []struct {
+		name        string
+		task        string
+		shouldMatch bool
+	}{
+		{
+			name:        "bare filename in task text",
+			task:        "fix validation in complete_cmd.go",
+			shouldMatch: true,
+		},
+		{
+			name:        "full path still works",
+			task:        "fix cmd/orch/complete_cmd.go validation",
+			shouldMatch: true,
+		},
+		{
+			name:        "unrelated file",
+			task:        "fix main.go startup",
+			shouldMatch: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := checkSpawnHotspots(tt.task, hotspots)
+			if result.HasHotspots != tt.shouldMatch {
+				t.Errorf("checkSpawnHotspots(%q) HasHotspots = %v, want %v",
+					tt.task, result.HasHotspots, tt.shouldMatch)
+			}
+		})
+	}
+}
+
 // Helper to initialize a minimal git repo
 func initGitRepo(dir string) error {
 	cmd := exec.Command("git", "init")

@@ -646,6 +646,29 @@ func isLikelyNotAPath(s string) bool {
 	return false
 }
 
+// pathOrSuffixMatch returns true if path matches target via exact match,
+// suffix match (e.g., "complete_cmd.go" matches "cmd/orch/complete_cmd.go"),
+// or directory containment.
+func pathOrSuffixMatch(path, target string) bool {
+	if path == target {
+		return true
+	}
+	// Suffix match: "complete_cmd.go" matches "cmd/orch/complete_cmd.go"
+	// Also handles partial paths: "orch/complete_cmd.go" matches "cmd/orch/complete_cmd.go"
+	if strings.HasSuffix(target, "/"+path) {
+		return true
+	}
+	// Directory containment: "cmd/orch/" contains "cmd/orch/complete_cmd.go"
+	if strings.HasSuffix(path, "/") && strings.HasPrefix(target, path) {
+		return true
+	}
+	// Reverse: hotspot is a directory containing the path
+	if strings.HasSuffix(target, "/") && strings.HasPrefix(path, target) {
+		return true
+	}
+	return false
+}
+
 // matchPathToHotspots checks if a path matches any hotspot.
 // Returns true and the highest matching score if a match is found.
 func matchPathToHotspots(path string, hotspots []Hotspot) (bool, int) {
@@ -655,18 +678,8 @@ func matchPathToHotspots(path string, hotspots []Hotspot) (bool, int) {
 	for _, h := range hotspots {
 		switch h.Type {
 		case "fix-density":
-			// For fix-density, check for:
-			// 1. Exact file match
-			// 2. Path is a directory that contains the hotspot file
-			// 3. Hotspot is a directory that the path is in
-			if path == h.Path {
-				// Exact match
-				matched = true
-			} else if strings.HasSuffix(path, "/") && strings.HasPrefix(h.Path, path) {
-				// Path is a directory containing the hotspot
-				matched = true
-			} else if strings.HasSuffix(h.Path, "/") && strings.HasPrefix(path, h.Path) {
-				// Hotspot is a directory containing the path
+			// For fix-density, check for exact, suffix, or directory containment match
+			if pathOrSuffixMatch(path, h.Path) {
 				matched = true
 			}
 			if matched && h.Score > maxScore {
@@ -681,15 +694,8 @@ func matchPathToHotspots(path string, hotspots []Hotspot) (bool, int) {
 				}
 			}
 		case "bloat-size":
-			// For bloat-size, check for exact file match or directory containment
-			if path == h.Path {
-				// Exact match
-				matched = true
-			} else if strings.HasSuffix(path, "/") && strings.HasPrefix(h.Path, path) {
-				// Path is a directory containing the hotspot file
-				matched = true
-			} else if strings.HasSuffix(h.Path, "/") && strings.HasPrefix(path, h.Path) {
-				// Hotspot is a directory containing the path
+			// For bloat-size, check for exact, suffix, or directory containment match
+			if pathOrSuffixMatch(path, h.Path) {
 				matched = true
 			}
 			if matched && h.Score > maxScore {
@@ -701,9 +707,9 @@ func matchPathToHotspots(path string, hotspots []Hotspot) (bool, int) {
 			if strings.Contains(strings.ToLower(path), strings.ToLower(h.Path)) {
 				matched = true
 			}
-			// Also check related files for exact or directory matches
+			// Also check related files for exact, suffix, or directory matches
 			for _, rf := range h.RelatedFiles {
-				if path == rf || (strings.HasSuffix(path, "/") && strings.HasPrefix(rf, path)) {
+				if pathOrSuffixMatch(path, rf) {
 					matched = true
 					break
 				}
