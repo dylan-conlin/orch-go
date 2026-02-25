@@ -2,11 +2,14 @@ package daemonconfig
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"text/template"
+
+	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 )
 
 // PlistData holds the template data for generating the launchd plist file.
@@ -118,6 +121,45 @@ func BuildPATH(configPaths []string) string {
 	systemPaths := []string{"/usr/local/bin", "/usr/bin", "/bin"}
 	allPaths := append(configPaths, systemPaths...)
 	return strings.Join(allPaths, ":")
+}
+
+// BuildPlistData constructs PlistData from userconfig, resolving paths and
+// applying daemon config defaults. This is the single source of truth for
+// mapping userconfig → plist template data.
+func BuildPlistData(cfg *userconfig.Config) (*PlistData, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	dcfg := FromUserConfig(cfg)
+	orchPath := FindOrchPath(home)
+	pathStr := BuildPATH(cfg.DaemonPath())
+
+	return &PlistData{
+		Label:            "com.orch.daemon",
+		OrchPath:         orchPath,
+		PollInterval:     int(dcfg.PollInterval.Seconds()),
+		MaxAgents:        dcfg.MaxAgents,
+		IssueLabel:       dcfg.Label,
+		Verbose:          dcfg.Verbose,
+		ReflectIssues:    dcfg.ReflectCreateIssues,
+		ReflectOpen:      dcfg.ReflectOpenEnabled,
+		LogPath:          filepath.Join(home, ".orch", "daemon.log"),
+		WorkingDirectory: cfg.DaemonWorkingDirectory(),
+		PATH:             pathStr,
+		Home:             home,
+	}, nil
+}
+
+// GeneratePlist loads userconfig, builds PlistData, and renders the plist XML.
+// Convenience function combining BuildPlistData + GeneratePlistXML.
+func GeneratePlist(cfg *userconfig.Config) ([]byte, error) {
+	data, err := BuildPlistData(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build plist data: %w", err)
+	}
+	return GeneratePlistXML(data)
 }
 
 // ParsePlistValues extracts key values from the daemon plist content.

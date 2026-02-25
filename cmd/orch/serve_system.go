@@ -903,12 +903,7 @@ func generatePlistContent() ([]byte, error) {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	data, err := buildPlistData(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build plist data: %w", err)
-	}
-
-	return daemonconfig.GeneratePlistXML(data)
+	return daemonconfig.GeneratePlist(cfg)
 }
 
 // FileAPIResponse is the JSON structure returned by /api/file.

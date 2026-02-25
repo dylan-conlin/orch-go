@@ -212,12 +212,7 @@ func runGeneratePlist() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	data, err := buildPlistData(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to build plist data: %w", err)
-	}
-
-	content, err := daemonconfig.GeneratePlistXML(data)
+	content, err := daemonconfig.GeneratePlist(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to generate plist: %w", err)
 	}
@@ -255,32 +250,6 @@ func runGeneratePlist() error {
 	fmt.Println("  launchctl kickstart -k gui/$(id -u)/com.orch.daemon")
 
 	return nil
-}
-
-func buildPlistData(cfg *userconfig.Config) (*daemonconfig.PlistData, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	dcfg := daemonconfig.FromUserConfig(cfg)
-	orchPath := daemonconfig.FindOrchPath(home)
-	pathStr := daemonconfig.BuildPATH(cfg.DaemonPath())
-
-	return &daemonconfig.PlistData{
-		Label:            "com.orch.daemon",
-		OrchPath:         orchPath,
-		PollInterval:     int(dcfg.PollInterval.Seconds()),
-		MaxAgents:        dcfg.MaxAgents,
-		IssueLabel:       dcfg.Label,
-		Verbose:          dcfg.Verbose,
-		ReflectIssues:    dcfg.ReflectCreateIssues,
-		ReflectOpen:      dcfg.ReflectOpenEnabled,
-		LogPath:          filepath.Join(home, ".orch", "daemon.log"),
-		WorkingDirectory: cfg.DaemonWorkingDirectory(),
-		PATH:             pathStr,
-		Home:             home,
-	}, nil
 }
 
 func runShowConfig() error {
@@ -330,7 +299,7 @@ func runShowPlistConfig() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	data, err := buildPlistData(cfg)
+	data, err := daemonconfig.BuildPlistData(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to build plist data: %w", err)
 	}

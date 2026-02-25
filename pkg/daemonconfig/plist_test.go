@@ -3,6 +3,8 @@ package daemonconfig
 import (
 	"strings"
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 )
 
 func TestGeneratePlistXML(t *testing.T) {
@@ -259,6 +261,68 @@ func TestParsePlistValuesReflectFlags(t *testing.T) {
 	}
 	if values["reflect_open"] != "false" {
 		t.Errorf("ParsePlistValues() reflect_open = %q, want \"false\"", values["reflect_open"])
+	}
+}
+
+func TestBuildPlistData(t *testing.T) {
+	cfg := &userconfig.Config{}
+	data, err := BuildPlistData(cfg)
+	if err != nil {
+		t.Fatalf("BuildPlistData() error = %v", err)
+	}
+
+	// Should set the standard label
+	if data.Label != "com.orch.daemon" {
+		t.Errorf("Label = %q, want %q", data.Label, "com.orch.daemon")
+	}
+
+	// OrchPath should be non-empty
+	if data.OrchPath == "" {
+		t.Error("OrchPath should not be empty")
+	}
+
+	// Should use defaults from FromUserConfig (which reads userconfig accessor defaults)
+	dcfg := FromUserConfig(cfg)
+	if data.PollInterval != int(dcfg.PollInterval.Seconds()) {
+		t.Errorf("PollInterval = %d, want %d", data.PollInterval, int(dcfg.PollInterval.Seconds()))
+	}
+	if data.MaxAgents != dcfg.MaxAgents {
+		t.Errorf("MaxAgents = %d, want %d", data.MaxAgents, dcfg.MaxAgents)
+	}
+
+	// LogPath should contain .orch/daemon.log
+	if !strings.Contains(data.LogPath, ".orch/daemon.log") {
+		t.Errorf("LogPath = %q, should contain .orch/daemon.log", data.LogPath)
+	}
+
+	// PATH should contain system paths
+	if !strings.Contains(data.PATH, "/usr/bin") {
+		t.Errorf("PATH = %q, should contain /usr/bin", data.PATH)
+	}
+}
+
+func TestGeneratePlist(t *testing.T) {
+	cfg := &userconfig.Config{}
+	result, err := GeneratePlist(cfg)
+	if err != nil {
+		t.Fatalf("GeneratePlist() error = %v", err)
+	}
+
+	content := string(result)
+
+	// Should be valid XML
+	if !strings.HasPrefix(content, "<?xml version=\"1.0\"") {
+		t.Error("Expected XML header")
+	}
+
+	// Should contain the standard label
+	if !strings.Contains(content, "<string>com.orch.daemon</string>") {
+		t.Error("Expected com.orch.daemon label")
+	}
+
+	// Should contain daemon run command
+	if !strings.Contains(content, "<string>daemon</string>") {
+		t.Error("Expected daemon command in plist")
 	}
 }
 
