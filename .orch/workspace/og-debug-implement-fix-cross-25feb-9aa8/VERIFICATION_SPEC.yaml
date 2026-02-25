@@ -1,0 +1,32 @@
+verification:
+  type: behavioral
+  issue: orch-go-1231
+
+  build:
+    command: "go build ./cmd/orch/"
+    expected: "exit 0"
+    result: PASS
+
+  tests:
+    - command: "go test ./cmd/orch/ -run TestServe -count=1"
+      expected: "ok"
+      result: PASS
+    - command: "go test ./cmd/orch/ -count=1 -timeout 120s"
+      expected: "ok (all tests pass)"
+      result: "PASS - 2.844s"
+    - command: "go test ./pkg/beads/ -count=1"
+      expected: "ok"
+      result: PASS
+
+  smoke_test:
+    description: "Cross-project in_progress issues show active_agent data instead of 'unassigned'"
+    steps:
+      - "make install && orch-dashboard restart"
+      - "curl -sk 'https://localhost:3348/api/beads/graph?project_dir=/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/toolshed'"
+      - "Check in_progress issues have active_agent field populated"
+    before_fix: "toolshed-148, 163, 164, 165 all returned active_agent: null"
+    after_fix: "All 4 toolshed in_progress issues return active_agent with model data"
+    result: PASS
+
+  reproduction_verified: true
+  reproduction_notes: "Cross-project toolshed issues now show active_agent data (phase, model) instead of null/unassigned"

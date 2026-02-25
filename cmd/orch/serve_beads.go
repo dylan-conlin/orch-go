@@ -1065,9 +1065,11 @@ func buildActiveAgentMap() map[string]*ActiveAgentInfo {
 		}
 	}
 
-	// 2. OpenCode sessions (catches agents not tracked in beads)
+	// 2. OpenCode sessions across all projects (catches agents not tracked in beads)
+	// Uses listSessionsAcrossProjects to include cross-project sessions (e.g., toolshed
+	// agents) that are invisible with client.ListSessions("") which only queries the default project.
 	client := opencode.NewClient(serverURL)
-	sessions, err := client.ListSessions("")
+	sessions, err := listSessionsAcrossProjects(client, sourceDir)
 	if err == nil {
 		for _, s := range sessions {
 			beadsID := extractBeadsIDFromTitle(s.Title)

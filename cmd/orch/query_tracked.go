@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -59,7 +60,8 @@ type AgentStatus struct {
 // This function never returns silent empty metadata.
 func queryTrackedAgents(projectDirs []string) ([]AgentStatus, error) {
 	// Step 1: Start from beads (source of truth for what work exists)
-	issues, err := listTrackedIssues()
+	// Pass projectDirs to query beads across all known projects, not just local.
+	issues, err := listTrackedIssues(projectDirs)
 	if err != nil {
 		return nil, fmt.Errorf("beads query failed: %w", err)
 	}
@@ -99,9 +101,50 @@ func queryTrackedAgents(projectDirs []string) ([]AgentStatus, error) {
 	return joinWithReasonCodes(issues, manifests, liveness, phases), nil
 }
 
-// listTrackedIssues queries beads for all in-progress issues tagged with orch:agent.
-// This is the entry point for the tracked work lane.
-func listTrackedIssues() ([]beads.Issue, error) {
+// listTrackedIssues queries beads for all in-progress issues tagged with orch:agent
+// across all known project directories. This ensures cross-project issues (e.g.,
+// toolshed-* issues tracked from orch-go) are visible in agent status and work-graph.
+func listTrackedIssues(projectDirs []string) ([]beads.Issue, error) {
+	// Query local project first (primary)
+	issues, err := listTrackedIssuesLocal()
+	if err != nil {
+		return nil, err
+	}
+
+	// Build dedup set from local results
+	seen := make(map[string]bool, len(issues))
+	for _, issue := range issues {
+		seen[issue.ID] = true
+	}
+
+	// Query each additional project directory
+	for _, dir := range projectDirs {
+		if dir == "" {
+			continue
+		}
+		// Skip if this is the same as local project (already queried)
+		if filepath.Clean(dir) == filepath.Clean(sourceDir) {
+			continue
+		}
+		projectIssues, err := listTrackedIssuesForDir(dir)
+		if err != nil {
+			// Log but don't fail — graceful degradation
+			log.Printf("Warning: failed to list tracked issues for %s: %v", dir, err)
+			continue
+		}
+		for _, issue := range projectIssues {
+			if !seen[issue.ID] {
+				seen[issue.ID] = true
+				issues = append(issues, issue)
+			}
+		}
+	}
+
+	return filterActiveIssues(issues), nil
+}
+
+// listTrackedIssuesLocal queries the local project's beads for orch:agent tagged issues.
+func listTrackedIssuesLocal() ([]beads.Issue, error) {
 	// Try RPC client first
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
@@ -113,7 +156,7 @@ func listTrackedIssues() ([]beads.Issue, error) {
 				Limit:     0,
 			})
 			if err == nil {
-				return filterActiveIssues(issues), nil
+				return issues, nil
 			}
 			// Fall through to CLI fallback
 		}
@@ -121,6 +164,29 @@ func listTrackedIssues() ([]beads.Issue, error) {
 
 	// CLI fallback
 	return listTrackedIssuesCLI()
+}
+
+// listTrackedIssuesForDir queries beads in a specific project directory for orch:agent tagged issues.
+func listTrackedIssuesForDir(dir string) ([]beads.Issue, error) {
+	// Try RPC client first for the target directory
+	socketPath, err := beads.FindSocketPath(dir)
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if connErr := client.Connect(); connErr == nil {
+			defer client.Close()
+			issues, err := client.List(&beads.ListArgs{
+				LabelsAny: []string{"orch:agent"},
+				Limit:     0,
+			})
+			if err == nil {
+				return issues, nil
+			}
+			// Fall through to CLI fallback
+		}
+	}
+
+	// CLI fallback: use bd list -l orch:agent with WorkDir set to target project
+	return beads.FallbackListWithLabelInDir("orch:agent", dir)
 }
 
 // listTrackedIssuesCLI queries beads via bd CLI for orch:agent tagged issues.

@@ -871,6 +871,36 @@ func FallbackListWithLabel(label string) ([]Issue, error) {
 	return issues, nil
 }
 
+// FallbackListWithLabelInDir retrieves issues with a specific label via bd CLI,
+// running in the specified directory. This enables querying beads in other projects.
+func FallbackListWithLabelInDir(label, dir string) ([]Issue, error) {
+	if label == "" {
+		return []Issue{}, nil
+	}
+
+	args := []string{"list", "--json", "--limit", "0", "-l", label}
+
+	cmd := exec.Command(getBdPath(), args...)
+	setupFallbackEnv(cmd)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("bd list -l %s in %s failed: %w: %s", label, dir, err, string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("bd list -l %s in %s failed: %w", label, dir, err)
+	}
+
+	var issues []Issue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return nil, fmt.Errorf("failed to parse bd list output: %w", err)
+	}
+
+	return issues, nil
+}
+
 // FallbackListByIDs retrieves specific issues by ID via bd CLI.
 // Uses --id and --all flags to fetch issues regardless of status.
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
