@@ -482,8 +482,8 @@ func TestOnceExcluding_ArchitectEscalation_SkipsNonHotspotIssues(t *testing.T) {
 	if result.Skill != "feature-impl" {
 		t.Errorf("result.Skill = %q, want 'feature-impl' (no escalation)", result.Skill)
 	}
-	if spawnedModel != "sonnet" {
-		t.Errorf("spawnFunc model = %q, want 'sonnet' (feature-impl default)", spawnedModel)
+	if spawnedModel != "" {
+		t.Errorf("spawnFunc model = %q, want empty string (resolve pipeline handles default for feature-impl)", spawnedModel)
 	}
 	if result.ArchitectEscalated {
 		t.Error("result.ArchitectEscalated should be false (no hotspot match)")

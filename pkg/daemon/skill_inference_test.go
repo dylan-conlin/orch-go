@@ -225,13 +225,13 @@ func TestInferModelFromSkill(t *testing.T) {
 		{"codebase-audit", "opus"},
 		{"research", "opus"},
 
-		// Implementation skills → sonnet (default)
-		{"feature-impl", "sonnet"},
-		{"issue-creation", "sonnet"},
+		// Implementation skills → empty (resolve pipeline handles default)
+		{"feature-impl", ""},
+		{"issue-creation", ""},
 
-		// Unknown skills → sonnet (default)
-		{"unknown-skill", "sonnet"},
-		{"", "sonnet"},
+		// Unknown skills → empty (resolve pipeline handles default)
+		{"unknown-skill", ""},
+		{"", ""},
 	}
 
 	for _, tt := range tests {
@@ -244,10 +244,12 @@ func TestInferModelFromSkill(t *testing.T) {
 	}
 }
 
-// TestInferModelFromSkill_DefaultModel verifies the default model constant.
-func TestInferModelFromSkill_DefaultModel(t *testing.T) {
-	if DefaultSkillModel != "sonnet" {
-		t.Errorf("DefaultSkillModel = %q, want %q", DefaultSkillModel, "sonnet")
+// TestInferModelFromSkill_NoDefaultOverride verifies non-mapped skills return empty string
+// to let the resolve pipeline respect user config default_model.
+func TestInferModelFromSkill_NoDefaultOverride(t *testing.T) {
+	got := InferModelFromSkill("feature-impl")
+	if got != "" {
+		t.Errorf("InferModelFromSkill(\"feature-impl\") = %q, want empty string (resolve pipeline handles default)", got)
 	}
 }
 

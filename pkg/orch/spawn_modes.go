@@ -463,7 +463,13 @@ func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 		return err
 	}
 
-	// Orchestrator sessions use workspace artifacts for tracking
+	// Atomic spawn Phase 2: write window ID as session tracking breadcrumb.
+	// Claude backend doesn't have an OpenCode session ID, but the tmux window ID
+	// provides lifecycle visibility (detect if process died vs still running).
+	claudeAtomicOpts := &spawn.AtomicSpawnOpts{Config: cfg, BeadsID: beadsID}
+	if err := spawn.AtomicSpawnPhase2(claudeAtomicOpts, result.WindowID); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to update manifest with window ID: %v\n", err)
+	}
 
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())

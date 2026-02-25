@@ -232,9 +232,6 @@ func InferSkillFromIssue(issue *Issue) (string, error) {
 	return inferredSkill, nil
 }
 
-// DefaultSkillModel is the model used when no skill-specific mapping exists.
-const DefaultSkillModel = "sonnet"
-
 // skillModelMapping maps skill names to model aliases.
 // Skills requiring deep reasoning get opus; implementation skills get sonnet.
 var skillModelMapping = map[string]string{
@@ -247,13 +244,18 @@ var skillModelMapping = map[string]string{
 
 // InferModelFromSkill returns the appropriate model alias for a given skill.
 // Deep reasoning skills (debugging, investigation, architecture) → opus.
-// Implementation skills (feature-impl, issue-creation) → sonnet (default).
-// Unknown skills → sonnet (default).
+// Implementation skills (feature-impl, issue-creation) → empty string (use resolve pipeline defaults).
+// Unknown skills → empty string (use resolve pipeline defaults).
+//
+// Returns empty string when the skill has no explicit model requirement.
+// This allows the resolve pipeline (pkg/spawn/resolve.go) to respect user config
+// default_model instead of the daemon overriding it with a hardcoded default.
+// Only skills with explicit requirements in skillModelMapping get a model override.
 func InferModelFromSkill(skill string) string {
 	if model, ok := skillModelMapping[skill]; ok {
 		return model
 	}
-	return DefaultSkillModel
+	return "" // Let resolve pipeline handle default model selection
 }
 
 // logSkillInference logs a skill inference event to events.jsonl.
