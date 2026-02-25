@@ -71,7 +71,10 @@ func (e *TokenRefreshError) ActionableGuidance() string {
 type Account struct {
 	Email        string `yaml:"email"`
 	RefreshToken string `yaml:"refresh_token"`
-	Source       string `yaml:"source"` // "saved", "opencode", "keychain", "docker"
+	Source       string `yaml:"source"`     // "saved", "opencode", "keychain", "docker"
+	Tier         string `yaml:"tier,omitempty"`       // Subscription tier: "5x", "20x"
+	Role         string `yaml:"role,omitempty"`       // Routing role: "primary", "spillover"
+	ConfigDir    string `yaml:"config_dir,omitempty"` // Claude CLI config directory (e.g., "~/.claude-personal")
 }
 
 // Config holds the accounts configuration.
@@ -188,6 +191,20 @@ func (c *Config) Save(name string, acc Account, setDefault bool) {
 	if setDefault || c.Default == "" {
 		c.Default = name
 	}
+}
+
+// GetConfigDir returns the config_dir for a named account.
+// Returns empty string if account not found or has no config_dir set.
+func GetConfigDir(name string) string {
+	cfg, err := LoadConfig()
+	if err != nil || name == "" {
+		return ""
+	}
+	acc, ok := cfg.Accounts[name]
+	if !ok {
+		return ""
+	}
+	return acc.ConfigDir
 }
 
 // OpenCodeAuth represents the OpenCode auth.json structure.

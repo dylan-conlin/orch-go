@@ -54,7 +54,17 @@ func MCPConfigJSON(preset string) (string, bool) {
 // - Pipes the context file to claude (no --file flag exists)
 // - Uses --dangerously-skip-permissions to avoid blocking on edit prompts
 // - When MCP is set, adds --mcp-config with the appropriate JSON config
-func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp string) string {
+// - When configDir is set (and differs from default ~/.claude), injects
+//   CLAUDE_CONFIG_DIR env var and unsets CLAUDE_CODE_OAUTH_TOKEN for account isolation
+func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir string) string {
+	// Account isolation prefix: when configDir is set and non-default,
+	// unset the OAuth token and set CLAUDE_CONFIG_DIR so the Claude CLI
+	// uses the correct account's config directory.
+	accountPrefix := ""
+	if configDir != "" && configDir != "~/.claude" {
+		accountPrefix = fmt.Sprintf("unset CLAUDE_CODE_OAUTH_TOKEN; export CLAUDE_CONFIG_DIR=%s; ", configDir)
+	}
+
 	// Base command: export CLAUDE_CONTEXT=X; cat CONTEXT.md | claude --dangerously-skip-permissions
 	mcpFlag := ""
 	if mcp != "" {
@@ -74,7 +84,7 @@ func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp string) string {
 		disallowFlag = " --disallowedTools 'Task,Edit,Write,NotebookEdit'"
 	}
 
-	return fmt.Sprintf("export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s", claudeContext, contextPath, mcpFlag, disallowFlag)
+	return fmt.Sprintf("%sexport CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s", accountPrefix, claudeContext, contextPath, mcpFlag, disallowFlag)
 }
 
 // SpawnClaude launches a Claude Code agent in a tmux window.
@@ -117,7 +127,7 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 		claudeContext = "worker"
 	}
 
-	launchCmd := BuildClaudeLaunchCommand(contextPath, claudeContext, cfg.MCP)
+	launchCmd := BuildClaudeLaunchCommand(contextPath, claudeContext, cfg.MCP, cfg.AccountConfigDir)
 
 	if err := tmux.SendKeys(windowTarget, launchCmd); err != nil {
 		return nil, fmt.Errorf("failed to send launch command: %w", err)

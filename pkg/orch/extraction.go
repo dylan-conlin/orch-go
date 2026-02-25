@@ -63,6 +63,8 @@ type SpawnContext struct {
 	PriorSynthesis     string
 	PriorWorkspace     string
 	UsageInfo          *spawn.UsageInfo
+	Account            string
+	AccountConfigDir   string
 	SpawnBackend       string
 	Tier               string
 	Scope              string
@@ -922,6 +924,8 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 		IsOrchestrator:     ctx.IsOrchestrator,
 		IsMetaOrchestrator: ctx.IsMetaOrchestrator,
 		UsageInfo:          ctx.UsageInfo,
+		Account:            ctx.Account,
+		AccountConfigDir:   ctx.AccountConfigDir,
 		SpawnMode:          ctx.SpawnBackend,
 		HotspotArea:        ctx.HotspotArea,
 		HotspotFiles:       ctx.HotspotFiles,

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
@@ -47,6 +48,7 @@ type ResolvedSpawnSettings struct {
 	MCP        ResolvedSetting
 	Mode       ResolvedSetting
 	Validation ResolvedSetting
+	Account    ResolvedSetting
 	Warnings   []string
 }
 
@@ -59,6 +61,7 @@ type CLISettings struct {
 	Validation    string
 	ValidationSet bool
 	MCP           string
+	Account       string
 	Light         bool
 	Full          bool
 	Headless      bool
@@ -194,6 +197,7 @@ func Resolve(input ResolveInput) (ResolvedSpawnSettings, error) {
 	result.MCP = resolveMCP(input)
 	result.Mode = resolveMode(input)
 	result.Validation = resolveValidation(input)
+	result.Account = resolveAccount(input)
 
 	// When backend is claude and spawn mode is headless, override to tmux.
 	// Claude backend physically requires a tmux window (SpawnClaude creates
@@ -364,6 +368,36 @@ func resolveValidation(input ResolveInput) ResolvedSetting {
 		return ResolvedSetting{Value: input.CLI.Validation, Source: SourceCLI}
 	}
 	return ResolvedSetting{Value: "tests", Source: SourceDefault}
+}
+
+// resolveAccount determines which account to use for Claude CLI spawns.
+// Phase 1: CLI flag only. Phase 2 will add capacity-aware routing.
+// Returns empty account for non-Claude backends (OpenCode uses its own auth).
+func resolveAccount(input ResolveInput) ResolvedSetting {
+	// CLI flag has highest precedence
+	if input.CLI.Account != "" {
+		return ResolvedSetting{Value: input.CLI.Account, Source: SourceCLI}
+	}
+
+	// Default: first account with role=primary, falling back to "work"
+	cfg, err := account.LoadConfig()
+	if err != nil || len(cfg.Accounts) == 0 {
+		return ResolvedSetting{Value: "", Source: SourceDefault}
+	}
+
+	// Find first primary account
+	for name, acc := range cfg.Accounts {
+		if acc.Role == "primary" {
+			return ResolvedSetting{Value: name, Source: SourceDefault, Detail: "primary-account"}
+		}
+	}
+
+	// No primary role set - use default account from config
+	if cfg.Default != "" {
+		return ResolvedSetting{Value: cfg.Default, Source: SourceDefault, Detail: "config-default"}
+	}
+
+	return ResolvedSetting{Value: "", Source: SourceDefault}
 }
 
 func buildModelAliasMap(projectCfg *config.Config, projectMeta ProjectConfigMeta, userCfg *userconfig.Config, userMeta UserConfigMeta) map[string]string {

@@ -1,0 +1,40 @@
+verification:
+  - name: "Build succeeds"
+    command: "go build ./cmd/orch/"
+    expect: "exit code 0"
+    status: passed
+
+  - name: "Go vet clean"
+    command: "go vet ./cmd/orch/ ./pkg/account/ ./pkg/spawn/ ./pkg/orch/"
+    expect: "exit code 0"
+    status: passed
+
+  - name: "Account schema tests pass"
+    command: "go test ./pkg/account/ -run 'TestSaveAndLoadConfig_WithTierRoleConfigDir|TestSaveAndLoadConfig_BackwardCompatible|TestGetConfigDir' -v"
+    expect: "3 tests PASS"
+    status: passed
+
+  - name: "BuildClaudeLaunchCommand tests pass (including configDir injection)"
+    command: "go test ./pkg/spawn/ -run TestBuildClaudeLaunchCommand -v"
+    expect: "11 tests PASS (including 4 new configDir tests)"
+    status: passed
+
+  - name: "Account resolve tests pass"
+    command: "go test ./pkg/spawn/ -run 'TestResolve_AccountCLIFlag|TestResolve_AccountDefaultEmpty' -v"
+    expect: "2 tests PASS"
+    status: passed
+
+  - name: "Full package test suites pass"
+    command: "go test ./pkg/account/ ./pkg/spawn/ ./pkg/orch/ ./cmd/orch/"
+    expect: "all 4 packages PASS"
+    status: passed
+
+  - name: "Backward compatibility - accounts without new fields"
+    command: "go test ./pkg/account/ -run TestSaveAndLoadConfig_BackwardCompatible -v"
+    expect: "Accounts without tier/role/config_dir default to empty strings"
+    status: passed
+
+manual_verification:
+  - name: "Smoke test --account flag"
+    description: "Run 'orch spawn --help' and verify --account flag is listed"
+    status: pending

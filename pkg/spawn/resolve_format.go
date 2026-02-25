@@ -20,6 +20,7 @@ func FormatResolvedSpawnSettings(settings ResolvedSpawnSettings) string {
 		formatResolvedSetting("MCP", settings.MCP, "none"),
 		formatResolvedSetting("Mode", settings.Mode, "unknown"),
 		formatResolvedSetting("Validation", settings.Validation, "unknown"),
+		formatResolvedSetting("Account", settings.Account, "none"),
 	}
 
 	return strings.Join(lines, "\n")
@@ -45,6 +46,9 @@ func hasResolvedSettings(settings ResolvedSpawnSettings) bool {
 		return true
 	}
 	if settings.Validation.Value != "" || settings.Validation.Source != "" {
+		return true
+	}
+	if settings.Account.Value != "" || settings.Account.Source != "" {
 		return true
 	}
 	return len(settings.Warnings) > 0

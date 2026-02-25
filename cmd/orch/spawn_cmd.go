@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/model"
@@ -55,6 +56,7 @@ var (
 	spawnBypassReason       string // Justification for bypassing verification gate
 	spawnForceHotspot       bool   // Bypass CRITICAL hotspot blocking gate
 	spawnArchitectRef       string // Architect issue reference (required with --force-hotspot)
+	spawnAccount            string // Account name for Claude CLI spawns (overrides auto-selection)
 	spawnScope              string // Session scope: small, medium, large
 	spawnModeSet            bool   // Tracks whether --mode was explicitly set
 	spawnValidationSet      bool   // Tracks whether --validation was explicitly set
@@ -185,6 +187,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnForceHotspot, "force-hotspot", false, "Bypass CRITICAL hotspot blocking gate (requires --architect-ref)")
 	spawnCmd.Flags().StringVar(&spawnArchitectRef, "architect-ref", "", "Architect issue ID proving area was reviewed (required with --force-hotspot)")
 	spawnCmd.Flags().StringVar(&spawnScope, "scope", "", "Session scope: small, medium, large (parsed from task if not set)")
+	spawnCmd.Flags().StringVar(&spawnAccount, "account", "", "Account name for Claude CLI spawns (e.g., 'work', 'personal')")
 }
 
 var (
@@ -552,6 +555,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 			Validation:    spawnValidation,
 			ValidationSet: spawnValidationSet,
 			MCP:           spawnMCP,
+			Account:       spawnAccount,
 			Light:         spawnLight,
 			Full:          spawnFull,
 			Headless:      input.Headless,
@@ -594,6 +598,10 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	designMockupPath, designPromptPath, designNotes := orch.LoadDesignArtifacts(spawnDesignWorkspace, projectDir)
 
 	// 10. Build spawn context
+	// Resolve account configDir from the resolved account name
+	resolvedAccountName := resolved.Settings.Account.Value
+	resolvedAccountConfigDir := account.GetConfigDir(resolvedAccountName)
+
 	ctx := &orch.SpawnContext{
 		Task:               task,
 		SkillName:          skillName,
@@ -613,6 +621,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		IsBug:              isBug,
 		ReproSteps:         reproSteps,
 		UsageInfo:          usageInfo,
+		Account:            resolvedAccountName,
+		AccountConfigDir:   resolvedAccountConfigDir,
 		SpawnBackend:       resolved.Settings.Backend.Value,
 		Tier:               resolved.Settings.Tier.Value,
 		Scope:              spawnScope,

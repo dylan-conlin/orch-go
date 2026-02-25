@@ -226,6 +226,11 @@ type Config struct {
 	// Used for telemetry and monitoring. May be nil if usage check failed.
 	UsageInfo *UsageInfo
 
+	// Account is the resolved account name for Claude CLI spawns
+	Account string
+	// AccountConfigDir is the resolved config directory for the account (e.g., ~/.claude-personal)
+	AccountConfigDir string
+
 	// SpawnMode specifies the spawn backend: "opencode" or "claude"
 	SpawnMode string
 

@@ -204,6 +204,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 		contextPath  string
 		claudeCtx    string
 		mcp          string
+		configDir    string
 		wantContains []string
 		wantExcludes []string
 	}{
@@ -212,6 +213,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
 			claudeCtx:   "worker",
 			mcp:         "",
+			configDir:   "",
 			wantContains: []string{
 				"export CLAUDE_CONTEXT=worker",
 				"cat \"/tmp/workspace/SPAWN_CONTEXT.md\"",
@@ -219,6 +221,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			},
 			wantExcludes: []string{
 				"--mcp-config",
+				"CLAUDE_CONFIG_DIR",
 			},
 		},
 		{
@@ -226,6 +229,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
 			claudeCtx:   "worker",
 			mcp:         "playwright",
+			configDir:   "",
 			wantContains: []string{
 				"export CLAUDE_CONTEXT=worker",
 				"claude --dangerously-skip-permissions",
@@ -240,6 +244,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
 			claudeCtx:   "worker",
 			mcp:         "/path/to/custom-mcp.json",
+			configDir:   "",
 			wantContains: []string{
 				"--mcp-config '/path/to/custom-mcp.json'",
 			},
@@ -249,6 +254,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			contextPath: "/tmp/workspace/ORCHESTRATOR_CONTEXT.md",
 			claudeCtx:   "orchestrator",
 			mcp:         "",
+			configDir:   "",
 			wantContains: []string{
 				"export CLAUDE_CONTEXT=orchestrator",
 				"ORCHESTRATOR_CONTEXT.md",
@@ -264,6 +270,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			contextPath: "/tmp/workspace/META_ORCHESTRATOR_CONTEXT.md",
 			claudeCtx:   "meta-orchestrator",
 			mcp:         "",
+			configDir:   "",
 			wantContains: []string{
 				"export CLAUDE_CONTEXT=meta-orchestrator",
 				"--disallowedTools",
@@ -275,12 +282,14 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
 			claudeCtx:   "worker",
 			mcp:         "",
+			configDir:   "",
 			wantContains: []string{
 				"export CLAUDE_CONTEXT=worker",
 			},
 			wantExcludes: []string{
 				"--disallowedTools",
 				"--mcp-config",
+				"CLAUDE_CONFIG_DIR",
 			},
 		},
 		{
@@ -288,8 +297,55 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			contextPath: "/tmp/workspace/ORCHESTRATOR_CONTEXT.md",
 			claudeCtx:   "orchestrator",
 			mcp:         "playwright",
+			configDir:   "",
 			wantContains: []string{
 				"--disallowedTools",
+				"--mcp-config",
+			},
+		},
+		{
+			name:        "non-default configDir injects CLAUDE_CONFIG_DIR and unsets token",
+			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
+			claudeCtx:   "worker",
+			mcp:         "",
+			configDir:   "~/.claude-personal",
+			wantContains: []string{
+				"unset CLAUDE_CODE_OAUTH_TOKEN",
+				"export CLAUDE_CONFIG_DIR=~/.claude-personal",
+				"export CLAUDE_CONTEXT=worker",
+			},
+		},
+		{
+			name:        "default configDir does NOT inject CLAUDE_CONFIG_DIR",
+			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
+			claudeCtx:   "worker",
+			mcp:         "",
+			configDir:   "~/.claude",
+			wantExcludes: []string{
+				"CLAUDE_CONFIG_DIR",
+				"unset CLAUDE_CODE_OAUTH_TOKEN",
+			},
+		},
+		{
+			name:        "empty configDir does NOT inject CLAUDE_CONFIG_DIR",
+			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
+			claudeCtx:   "worker",
+			mcp:         "",
+			configDir:   "",
+			wantExcludes: []string{
+				"CLAUDE_CONFIG_DIR",
+				"unset CLAUDE_CODE_OAUTH_TOKEN",
+			},
+		},
+		{
+			name:        "configDir with MCP - both injected",
+			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
+			claudeCtx:   "worker",
+			mcp:         "playwright",
+			configDir:   "~/.claude-personal",
+			wantContains: []string{
+				"unset CLAUDE_CODE_OAUTH_TOKEN",
+				"export CLAUDE_CONFIG_DIR=~/.claude-personal",
 				"--mcp-config",
 			},
 		},
@@ -297,7 +353,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp)
+			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir)
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {

@@ -132,6 +132,164 @@ func TestSaveAndLoadConfig(t *testing.T) {
 }
 
 // ============================================================================
+// Account Schema Tests (Tier, Role, ConfigDir fields)
+// ============================================================================
+
+func TestSaveAndLoadConfig_WithTierRoleConfigDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	orchDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("Failed to create .orch dir: %v", err)
+	}
+
+	cfg := &Config{
+		Accounts: map[string]Account{
+			"work": {
+				Email:        "work@example.com",
+				RefreshToken: "work-token",
+				Source:       "saved",
+				Tier:         "20x",
+				Role:         "primary",
+				ConfigDir:    "~/.claude",
+			},
+			"personal": {
+				Email:        "personal@example.com",
+				RefreshToken: "personal-token",
+				Source:       "saved",
+				Tier:         "5x",
+				Role:         "spillover",
+				ConfigDir:    "~/.claude-personal",
+			},
+		},
+		Default: "personal",
+	}
+
+	if err := SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+
+	loaded, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	work := loaded.Accounts["work"]
+	if work.Tier != "20x" {
+		t.Errorf("work.Tier = %q, want %q", work.Tier, "20x")
+	}
+	if work.Role != "primary" {
+		t.Errorf("work.Role = %q, want %q", work.Role, "primary")
+	}
+	if work.ConfigDir != "~/.claude" {
+		t.Errorf("work.ConfigDir = %q, want %q", work.ConfigDir, "~/.claude")
+	}
+
+	personal := loaded.Accounts["personal"]
+	if personal.Tier != "5x" {
+		t.Errorf("personal.Tier = %q, want %q", personal.Tier, "5x")
+	}
+	if personal.Role != "spillover" {
+		t.Errorf("personal.Role = %q, want %q", personal.Role, "spillover")
+	}
+	if personal.ConfigDir != "~/.claude-personal" {
+		t.Errorf("personal.ConfigDir = %q, want %q", personal.ConfigDir, "~/.claude-personal")
+	}
+}
+
+func TestSaveAndLoadConfig_BackwardCompatible(t *testing.T) {
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	orchDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("Failed to create .orch dir: %v", err)
+	}
+
+	// Save config WITHOUT new fields (backward compat)
+	cfg := &Config{
+		Accounts: map[string]Account{
+			"old": {
+				Email:        "old@example.com",
+				RefreshToken: "old-token",
+				Source:       "saved",
+			},
+		},
+		Default: "old",
+	}
+
+	if err := SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+
+	loaded, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	old := loaded.Accounts["old"]
+	if old.Tier != "" {
+		t.Errorf("old.Tier = %q, want empty (backward compat)", old.Tier)
+	}
+	if old.Role != "" {
+		t.Errorf("old.Role = %q, want empty (backward compat)", old.Role)
+	}
+	if old.ConfigDir != "" {
+		t.Errorf("old.ConfigDir = %q, want empty (backward compat)", old.ConfigDir)
+	}
+}
+
+func TestGetConfigDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	orchDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("Failed to create .orch dir: %v", err)
+	}
+
+	cfg := &Config{
+		Accounts: map[string]Account{
+			"work": {
+				Email:     "work@example.com",
+				Source:    "saved",
+				ConfigDir: "~/.claude",
+			},
+			"personal": {
+				Email:     "personal@example.com",
+				Source:    "saved",
+				ConfigDir: "~/.claude-personal",
+			},
+		},
+		Default: "work",
+	}
+
+	if err := SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+
+	if got := GetConfigDir("work"); got != "~/.claude" {
+		t.Errorf("GetConfigDir(work) = %q, want %q", got, "~/.claude")
+	}
+	if got := GetConfigDir("personal"); got != "~/.claude-personal" {
+		t.Errorf("GetConfigDir(personal) = %q, want %q", got, "~/.claude-personal")
+	}
+	if got := GetConfigDir("nonexistent"); got != "" {
+		t.Errorf("GetConfigDir(nonexistent) = %q, want empty", got)
+	}
+	if got := GetConfigDir(""); got != "" {
+		t.Errorf("GetConfigDir('') = %q, want empty", got)
+	}
+}
+
+// ============================================================================
 // Capacity Info Tests
 // ============================================================================
 
