@@ -184,37 +184,6 @@ Before marking Phase: Complete, you MUST:
 📋 AD-HOC SPAWN (--no-track):
 This is an ad-hoc spawn without beads issue tracking.
 Progress tracking via bd comment is NOT available.
-
-🚨 SESSION COMPLETE PROTOCOL:
-Complete your session in this EXACT order:
-
-⚠️ **NEVER use git add -A or git add .** — the workspace often has unrelated changes (.autorebuild.lock, .beads/, build/).
-Stage ONLY the specific files you created or modified for your task, by name.
-
-{{if eq .Tier "light"}}
-1. **COMMIT YOUR WORK:**
-   ` + "```bash" + `
-   git add <files you changed>
-   git commit -m "feat: [brief description of changes]"
-   ` + "```" + `
-2. Run: ` + "`/exit`" + ` to close the agent session
-
-⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
-{{else}}
-1. **CREATE SYNTHESIS.md** in your workspace with:
-   - Plain-Language Summary (what was built/found)
-   - Delta (what changed)
-2. **COMMIT YOUR WORK:**
-   ` + "```bash" + `
-   git add <files you changed>
-   git commit -m "feat: [brief description of changes]"
-   ` + "```" + `
-3. Run: ` + "`/exit`" + ` to close the agent session
-{{end}}
-
-⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
-   - Your orchestrator will handle pushing to remote after review
-   - Worker rule: Commit your work, call ` + "`/exit`" + `. Don't push.
 {{else}}
 🚨 CRITICAL - FIRST 3 ACTIONS:
 You MUST do these within your first 3 tool calls:
@@ -224,42 +193,6 @@ You MUST do these within your first 3 tool calls:
 
 If Phase is not reported within first 3 actions, you will be flagged as unresponsive.
 Do NOT skip this - the orchestrator monitors via beads comments.
-
-🚨 SESSION COMPLETE PROTOCOL (READ NOW, DO AT END):
-Complete your session in this EXACT order:
-
-⚠️ **NEVER use git add -A or git add .** — the workspace often has unrelated changes (.autorebuild.lock, .beads/, build/).
-Stage ONLY the specific files you created or modified for your task, by name.
-
-{{if eq .Tier "light"}}
-1. **COMMIT YOUR WORK:**
-   ` + "```bash" + `
-   git add <files you changed>
-   git commit -m "feat: [brief description of changes] ({{.BeadsID}})"
-   ` + "```" + `
-2. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
-3. Run: ` + "`/exit`" + ` to close the agent session
-
-⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
-{{else}}
-1. **CREATE SYNTHESIS.md** in your workspace with:
-   - Plain-Language Summary (what was built/found)
-   - Delta (what changed)
-2. **COMMIT YOUR WORK:**
-   ` + "```bash" + `
-   git add <files you changed>
-   git commit -m "feat: [brief description of changes] ({{.BeadsID}})"
-   ` + "```" + `
-3. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
-4. Run: ` + "`/exit`" + ` to close the agent session
-{{end}}
-
-⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
-   - Your orchestrator will handle pushing to remote after review
-   - Worker rule: Commit your work, report Phase: Complete, call ` + "`/exit`" + `. Don't push.
-
-⚠️ Work is NOT complete until Phase: Complete is reported.
-⚠️ The orchestrator cannot close this issue until you report Phase: Complete.
 {{end}}
 
 {{if not .NoTrack}}
@@ -374,39 +307,6 @@ Signal orchestrator when blocked:
 - Add '**Status:** QUESTION - [question]' when needing input
 {{end}}{{else}}Track progress via beads comments. Call /exit to close agent session when done.
 {{end}}
-{{if not .NoTrack}}
-
-## BEADS PROGRESS TRACKING (PREFERRED)
-
-You were spawned from beads issue: **{{.BeadsID}}**
-
-**Use ` + "`bd comment`" + ` for progress updates instead of workspace-only tracking:**
-
-` + "```bash" + `
-# Report progress at phase transitions
-bd comment {{.BeadsID}} "Phase: Planning - Analyzing codebase structure"
-bd comment {{.BeadsID}} "Phase: Implementing - Adding authentication middleware"
-bd comment {{.BeadsID}} "Phase: Complete - All tests passing, ready for review"
-
-# Report blockers immediately
-bd comment {{.BeadsID}} "BLOCKED: Need clarification on API contract"
-
-# Report questions
-bd comment {{.BeadsID}} "QUESTION: Should we use JWT or session-based auth?"
-` + "```" + `
-
-**When to comment:**
-- Phase transitions (Planning → Implementing → Testing → Complete)
-- Significant milestones or findings
-- Blockers or questions requiring orchestrator input
-- Completion summary with deliverables
-
-**Why beads comments:** Creates permanent, searchable progress history linked to the issue. Orchestrator can track progress across sessions via ` + "`bd show {{.BeadsID}}`" + `.
-
-⛔ **NEVER run ` + "`bd close`" + `** - Only the orchestrator closes issues via ` + "`orch complete`" + `.
-   - Workers report ` + "`Phase: Complete`" + `, orchestrator verifies and closes
-   - Running ` + "`bd close`" + ` bypasses verification and breaks tracking
-{{end}}
 
 {{if .SkillContent}}
 ## SKILL GUIDANCE ({{.SkillName}})
@@ -476,7 +376,8 @@ Complete your session in this EXACT order:
 {{end}}
 
 ⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
-⚠️ Your work is NOT complete until Phase: Complete is reported (or /exit for --no-track).
+{{if not .NoTrack}}⛔ **NEVER run ` + "`bd close`" + `** - Only the orchestrator closes issues via ` + "`orch complete`" + `.
+{{end}}⚠️ Your work is NOT complete until Phase: Complete is reported (or /exit for --no-track).
 `
 
 // skillContentData holds the data context for processing skill content templates.

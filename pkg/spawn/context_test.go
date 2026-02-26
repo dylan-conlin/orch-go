@@ -1621,14 +1621,9 @@ func TestGenerateContext_NoPushGuidance(t *testing.T) {
 			t.Error("expected content to explain workers commit locally only")
 		}
 
-		// Should contain the worker rule
-		if !strings.Contains(content, "Worker rule: Commit your work") {
-			t.Error("expected content to contain worker rule statement")
-		}
-
-		// Should mention orchestrator handles pushing
-		if !strings.Contains(content, "orchestrator will handle pushing to remote") {
-			t.Error("expected content to explain orchestrator role in pushing")
+		// Should indicate work completeness requirement
+		if !strings.Contains(content, "Work is NOT complete until Phase: Complete is reported") {
+			t.Error("expected content to contain work completeness requirement")
 		}
 	})
 
@@ -1653,9 +1648,9 @@ func TestGenerateContext_NoPushGuidance(t *testing.T) {
 			t.Error("expected content to contain no-push guidance for no-track spawn")
 		}
 
-		// Should contain worker rule
-		if !strings.Contains(content, "Worker rule:") {
-			t.Error("expected content to contain worker rule for no-track spawn")
+		// Should indicate work completeness requirement
+		if !strings.Contains(content, "Work is NOT complete until Phase: Complete is reported") {
+			t.Error("expected content to contain work completeness requirement for no-track spawn")
 		}
 	})
 }
@@ -1731,17 +1726,12 @@ func TestGenerateContext_NoTrack(t *testing.T) {
 			t.Error("expected content to NOT contain ad-hoc spawn indicator for tracked spawn")
 		}
 
-		// Should contain beads tracking section
-		if !strings.Contains(content, "## BEADS PROGRESS TRACKING") {
-			t.Error("expected content to contain beads tracking section for tracked spawn")
-		}
-
-		// Should contain bd comment instructions with correct beads ID
+		// Should contain bd comment instructions with correct beads ID (in FIRST 3 ACTIONS or FINAL STEP)
 		if !strings.Contains(content, "bd comment test-123") {
 			t.Error("expected content to contain bd comment instructions with beads ID")
 		}
 
-		// Should contain bd close warning
+		// Should contain bd close warning (in FINAL STEP)
 		if !strings.Contains(content, "NEVER run `bd close`") {
 			t.Error("expected content to contain bd close warning")
 		}
