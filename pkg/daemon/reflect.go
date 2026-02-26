@@ -127,7 +127,7 @@ func RunReflection() (*ReflectSuggestions, error) {
 // which will automatically create beads issues for all types at their respective thresholds
 // (synthesis ≥10, defect-class ≥3, open ≥3 days).
 func RunReflectionWithOptions(createIssues bool) (*ReflectSuggestions, error) {
-	args := []string{"reflect", "--format", "json"}
+	args := []string{"reflect", "--global", "--format", "json"}
 	if createIssues {
 		args = append(args, "--create-issue")
 	}
@@ -338,7 +338,7 @@ func DefaultRunReflection(createIssues bool) (*ReflectResult, error) {
 
 // RunModelDriftReflection executes kb reflect --type model-drift and returns raw entries.
 func RunModelDriftReflection() ([]json.RawMessage, error) {
-	args := []string{"reflect", "--type", "model-drift", "--format", "json"}
+	args := []string{"reflect", "--global", "--type", "model-drift", "--format", "json"}
 	cmd := exec.Command("kb", args...)
 	output, err := cmd.Output()
 	if err != nil {
@@ -349,7 +349,7 @@ func RunModelDriftReflection() ([]json.RawMessage, error) {
 
 // RunOpenReflection executes kb reflect --type open --create-issue.
 func RunOpenReflection() error {
-	args := []string{"reflect", "--type", "open", "--create-issue", "--format", "json"}
+	args := []string{"reflect", "--global", "--type", "open", "--create-issue", "--format", "json"}
 	cmd := exec.Command("kb", args...)
 	if _, err := cmd.Output(); err != nil {
 		return fmt.Errorf("failed to run kb reflect open: %w", err)
