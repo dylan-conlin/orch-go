@@ -1,14 +1,14 @@
 # Model: Beads Integration Architecture
 
 **Domain:** Beads Integration / Issue Tracking / RPC Client
-**Last Updated:** 2026-01-12
+**Last Updated:** 2026-02-26
 **Synthesized From:** 28 investigations + beads-integration.md guide (synthesized from 17 investigations, Dec 2025 - Jan 2026) on RPC client design, CLI fallback, auto-tracking protocol, performance optimization
 
 ---
 
 ## Summary (30 seconds)
 
-Beads integration uses **RPC-first with CLI fallback** pattern: try native Go RPC client (fast, no process spawn), fall back to CLI subprocess if daemon unavailable. The integration operates at **three points in agent lifecycle**: spawn (create issue), work (report phase via comments), complete (close with reason). **Auto-tracking** creates issues automatically unless `--no-track` flag set. The RPC client lives in **pkg/beads** (never shell out with `exec.Command` directly) and provides 10x performance improvement over CLI (single RPC call vs subprocess spawn + JSON parse).
+Beads integration uses **RPC-first with CLI fallback** pattern: try JSON-over-Unix-socket RPC client (fast, no process spawn), fall back to CLI subprocess if daemon unavailable. The integration operates at **three points in agent lifecycle**: spawn (create issue), work (report phase via comments), complete (close with reason). **Auto-tracking** creates issues automatically unless `--no-track` flag set. The `pkg/beads` package provides a `BeadsClient` interface with two implementations: `Client` (RPC daemon) and `CLIClient` (bd CLI subprocess). The RPC client provides 10x performance improvement over CLI (single RPC call vs subprocess spawn + JSON parse).
 
 ---
 
@@ -16,38 +16,59 @@ Beads integration uses **RPC-first with CLI fallback** pattern: try native Go RP
 
 ### RPC-First with CLI Fallback
 
-**Two-layer client:**
+**Architecture:** `pkg/beads` exposes a `BeadsClient` interface (`interface.go`) with two implementations:
+- `Client` (`client.go`) — JSON-over-Unix-socket RPC to the beads daemon
+- `CLIClient` (`cli_client.go`) — shells out to `bd` CLI commands
+
+**RPC Client:**
 
 ```go
 // pkg/beads/client.go
 
 type Client struct {
-    rpcClient *rpc.Client  // Primary: native Go RPC
-    fallback  bool         // Use CLI if RPC unavailable
+    mu            sync.Mutex
+    conn          net.Conn
+    socketPath    string
+    timeout       time.Duration
+    cwd           string // Working directory for operations
+    autoReconnect bool
+    maxRetries    int
 }
 
-func NewClient() *Client {
-    client := &Client{}
+// Socket is per-project at .beads/bd.sock (NOT global ~/.beads/daemon.sock)
+func FindSocketPath(dir string) (string, error) {
+    // Walks up directory tree looking for .beads/bd.sock
+    // If dir empty, uses DefaultDir or current working directory
+}
 
-    // Try RPC connection
-    conn, err := net.Dial("unix", "~/.beads/daemon.sock")
-    if err == nil {
-        client.rpcClient = rpc.NewClient(conn)
-        return client
-    }
-
-    // RPC unavailable, use CLI fallback
-    client.fallback = true
-    return client
+func NewClient(socketPath string, opts ...Option) *Client {
+    // Options: WithTimeout, WithCwd, WithAutoReconnect
 }
 
 func (c *Client) Show(id string) (*Issue, error) {
-    if c.fallback {
-        return fallbackShow(id)  // exec.Command("bd", "show", id)
-    }
-    return c.rpcClient.Call("Beads.Show", id)
+    // JSON request/response protocol over Unix socket
+    resp, err := c.execute(OpShow, ShowArgs{ID: id})
+    // Handles both array and single-object response formats
 }
 ```
+
+**CLI Client:**
+
+```go
+// pkg/beads/cli_client.go
+
+type CLIClient struct {
+    WorkDir string // Working directory for bd commands
+    BdPath  string // Path to bd executable
+    Env     []string
+}
+
+func NewCLIClient(opts ...CLIOption) *CLIClient {
+    // Options: WithWorkDir, WithBdPath, WithEnv
+}
+```
+
+**Standalone Fallback functions** also exist in `client.go` (e.g., `FallbackReady()`, `FallbackShow()`, `FallbackClose()`) for callers that don't use the interface pattern.
 
 **Performance difference:**
 
@@ -58,7 +79,7 @@ func (c *Client) Show(id string) (*Issue, error) {
 
 **Dashboard impact:** Before RPC client (Dec 2025), dashboard made 100+ CLI calls per status refresh = 5-10s load time. After RPC (Dec 26), same calls take 200-500ms.
 
-**Source:** `pkg/beads/client.go`, `pkg/beads/fallback.go`
+**Source:** `pkg/beads/client.go`, `pkg/beads/cli_client.go`, `pkg/beads/interface.go`
 
 ### Three Integration Points
 
@@ -104,7 +125,7 @@ Dashboard shows blue "completed" badge
 
 **Key insight:** Beads is the **authoritative source for completion**. OpenCode sessions persist indefinitely. Session existence != agent done. Only beads matters.
 
-**Source:** `pkg/beads/lifecycle.go`
+**Source:** `pkg/beads/client.go` (RPC methods: `Create`, `AddComment`, `CloseIssue`), `pkg/beads/cli_client.go` (CLI equivalents)
 
 ### Auto-Tracking Protocol
 
@@ -113,24 +134,22 @@ Dashboard shows blue "completed" badge
 **Opt-out:** `--no-track` flag skips issue creation.
 
 ```go
-func Spawn(skill, task string, opts SpawnOpts) error {
-    var beadsID string
+// cmd/orch/spawn_cmd.go calls pkg/orch/extraction.go
 
-    if !opts.NoTrack {
-        // Auto-create issue
-        issue, err := beads.Create(CreateOpts{
-            Title: task,
-            Type:  inferTypeFromSkill(skill),  // investigation→task, etc.
-        })
-        beadsID = issue.ID
-    }
+// SetupBeadsTracking handles issue creation/reuse based on flags
+func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string,
+    isOrchestrator, isMetaOrchestrator bool, serverURL string,
+    noTrack bool, workspaceName string,
+    createBeadsFn func(string, string, string) (string, error)) (string, error) {
+    // If --issue flag provided, use existing issue
+    // If --no-track, return empty beadsID
+    // Otherwise, auto-create via CreateBeadsIssue()
+}
 
-    // Embed beads ID in spawn context
-    ctx := GenerateContext(skill, task, beadsID)
-    writeSpawnContext(workspace, ctx)
-
-    // Spawn agent
-    return opencode.Spawn(workspace, ctx)
+// CreateBeadsIssue creates a new beads issue for spawn tracking
+func CreateBeadsIssue(projectName, skillName, task string) (string, error) {
+    // Uses beads RPC client or CLI fallback to create issue
+    // Returns issue ID like "orch-go-abc1"
 }
 ```
 
@@ -144,7 +163,7 @@ func Spawn(skill, task string, opts SpawnOpts) error {
 - Cross-project spawns where issue exists in target project
 - Temporary debugging agents
 
-**Source:** `pkg/spawn/tracking.go`
+**Source:** `pkg/orch/extraction.go` (`SetupBeadsTracking`, `CreateBeadsIssue`), `cmd/orch/spawn_cmd.go` (flag wiring)
 
 ### Beads ID Format
 
@@ -155,31 +174,23 @@ func Spawn(skill, task string, opts SpawnOpts) error {
 - `kb-cli-xyz9` - Issue in kb-cli project
 - `snap-def2` - Issue in snap project
 
-**How project prefix determined:**
-
-```go
-func getProjectPrefix() string {
-    // Read .beads/config.json
-    cfg := readBeadsConfig()
-    return cfg.ProjectName
-}
-```
+**How project prefix determined:** Configured in `.beads/config.json` per project. The `bd create` command generates the ID using the project prefix plus a 4-character hash.
 
 **Why project prefix matters:**
 - Enables cross-project operation (orch-go orchestrator managing kb-cli work)
 - Prevents ID collisions (abc1 in orch-go != abc1 in kb-cli)
 - Provides context at a glance (see issue ID, know which project)
 
-**Source:** `pkg/beads/id.go`
+**Source:** `pkg/beads/types.go` (Issue struct with ID field)
 
 ### RPC vs CLI Decision Tree
 
-**When to use RPC:**
+**When to use RPC (`Client`):**
 - High-frequency calls (dashboard polling, status checks)
 - Multiple calls in sequence (list + show + comments)
 - Performance-sensitive paths (daemon poll loop)
 
-**When CLI fallback acceptable:**
+**When CLI fallback acceptable (`CLIClient` or `Fallback*` functions):**
 - One-time operations (manual spawn, complete)
 - User-initiated commands (not automated loops)
 - When RPC client unavailable (daemon not running)
@@ -187,12 +198,20 @@ func getProjectPrefix() string {
 **Implementation:**
 
 ```go
-// Always use pkg/beads, not exec.Command("bd")
+// Use BeadsClient interface for code that needs either backend
 import "orch-go/pkg/beads"
 
-// Client auto-selects RPC or CLI
-client := beads.NewClient()
-issues, err := client.Ready(10)  // Uses RPC if available, CLI otherwise
+// RPC client (preferred for performance-sensitive paths)
+socketPath, err := beads.FindSocketPath("")  // Walks up to find .beads/bd.sock
+client := beads.NewClient(socketPath, beads.WithAutoReconnect(2))
+if err := client.Connect(); err == nil {
+    defer client.Close()
+    issues, err := client.Ready(&beads.ReadyArgs{})
+}
+
+// CLI client (when daemon unavailable or for simple operations)
+cliClient := beads.NewCLIClient(beads.WithWorkDir("/path/to/project"))
+issues, err := cliClient.Ready(&beads.ReadyArgs{})
 ```
 
 **Anti-pattern:**
@@ -204,7 +223,7 @@ output, _ := cmd.Output()
 issues := parseJSON(output)
 ```
 
-**Source:** `pkg/beads/client.go`
+**Source:** `pkg/beads/client.go`, `pkg/beads/cli_client.go`
 
 ---
 
@@ -212,11 +231,11 @@ issues := parseJSON(output)
 
 ### 1. RPC Client Unavailable
 
-**What happens:** RPC calls fail, client falls back to CLI, performance degrades.
+**What happens:** RPC calls fail, caller must fall back to CLI, performance degrades.
 
-**Root cause:** Beads daemon not running. RPC socket `~/.beads/daemon.sock` doesn't exist.
+**Root cause:** Beads daemon not running. Per-project socket `.beads/bd.sock` doesn't exist.
 
-**Why detection is hard:** Fallback is silent. No warning that RPC failed. User sees slow performance, doesn't know why.
+**Why detection is hard:** Code using `Fallback*` functions degrades silently. Callers using `Client` directly get explicit connection errors.
 
 **Fix:** Start beads daemon: `bd daemon start` or ensure launchd starts it on boot.
 
@@ -320,7 +339,7 @@ output, _ := cmd.Output()
 
 ### Phase 2: RPC Client (Dec 25-26, 2025)
 
-**What changed:** Native Go RPC client with CLI fallback. 10x performance improvement.
+**What changed:** JSON-over-Unix-socket RPC client with CLI fallback. 10x performance improvement.
 
 **Investigations:** 8 investigations on RPC protocol, socket connection, error handling, fallback logic.
 
@@ -350,6 +369,12 @@ output, _ := cmd.Output()
 
 **Key insight:** Scattered `exec.Command("bd")` calls create maintenance burden, prevent optimization, make testing hard.
 
+### Phase 6: BeadsClient Interface (Feb 2026)
+
+**What changed:** Introduced `BeadsClient` interface with `Client` (RPC) and `CLIClient` (CLI) implementations. Added `MockClient` for testing. Socket path changed from global `~/.beads/daemon.sock` to per-project `.beads/bd.sock` with directory walk-up discovery.
+
+**Key insight:** Interface abstraction enables clean dependency injection and testability without sacrificing the RPC-first performance pattern.
+
 ---
 
 ## References
@@ -371,17 +396,17 @@ output, _ := cmd.Output()
 - `.kb/models/completion-verification/model.md` - How completion closes beads issues
 
 **Source code:**
-- `pkg/beads/client.go` - RPC client with CLI fallback
-- `pkg/beads/fallback.go` - CLI subprocess implementations
-- `pkg/beads/lifecycle.go` - Create/comment/close integration points
-- `pkg/beads/id.go` - Beads ID parsing and project detection
-- `pkg/spawn/tracking.go` - Auto-tracking logic
-- `cmd/orch/spawn.go` - Spawn command with --no-track, --issue flags
+- `pkg/beads/client.go` - RPC client + standalone Fallback* functions
+- `pkg/beads/cli_client.go` - CLIClient implementation (bd CLI subprocess)
+- `pkg/beads/interface.go` - BeadsClient interface definition
+- `pkg/beads/types.go` - Issue, Comment, Stats types and RPC protocol types
+- `pkg/orch/extraction.go` - SetupBeadsTracking and CreateBeadsIssue
+- `cmd/orch/spawn_cmd.go` - Spawn command with --no-track, --issue flags
 
 **Primary Evidence (Verify These):**
-- `pkg/beads/client.go` - RPC-first with CLI fallback pattern (NewClient showing connection attempt)
-- `pkg/beads/fallback.go` - exec.Command("bd") subprocess implementations for CLI fallback
-- `pkg/beads/lifecycle.go` - Three integration points (spawn/work/complete) with beads API calls
-- `~/.beads/daemon.sock` - Unix socket for RPC communication (when daemon running)
-- `cmd/orch/spawn.go` - Auto-tracking implementation with --no-track opt-out
+- `pkg/beads/client.go` - RPC client with JSON-over-socket protocol (NewClient, FindSocketPath, execute)
+- `pkg/beads/cli_client.go` - CLIClient struct implementing BeadsClient via bd CLI
+- `pkg/beads/interface.go` - BeadsClient interface (Ready, Show, List, Create, AddComment, CloseIssue, etc.)
+- `.beads/bd.sock` - Per-project Unix socket for RPC communication (when daemon running)
+- `cmd/orch/spawn_cmd.go` - Auto-tracking implementation with --no-track opt-out
 - `.beads/issues.jsonl` - Authoritative issue storage showing beads ID format
