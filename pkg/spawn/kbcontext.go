@@ -114,12 +114,20 @@ func ExtractKeywords(task string, maxWords int) string {
 	return strings.Join(words, " ")
 }
 
-// RunKBContextCheck runs 'kb context' with tiered search strategy:
-// 1. First query current project (no --global) for targeted results
-// 2. If sparse (<3 matches), expand to global search with orch ecosystem filter
-// 3. Apply per-category limits to prevent context flood
-// Returns nil if no matches found or if kb command fails.
+// RunKBContextCheck runs 'kb context' with tiered search strategy using the current working directory.
+// For cross-project spawns (--workdir), use RunKBContextCheckForDir instead.
 func RunKBContextCheck(query string) (*KBContextResult, error) {
+	return RunKBContextCheckForDir(query, "")
+}
+
+// RunKBContextCheckForDir runs 'kb context' with tiered search strategy:
+// 1. First query current project (no --global) for targeted results
+// 2. If sparse (<3 matches), expand to global search with group-aware filter
+// 3. Apply per-category limits to prevent context flood
+// projectDir controls which project's groups are used for global search filtering.
+// When empty, falls back to os.Getwd().
+// Returns nil if no matches found or if kb command fails.
+func RunKBContextCheckForDir(query string, projectDir string) (*KBContextResult, error) {
 	// Step 1: Try current project first (no --global flag)
 	result, err := runKBContextQuery(query, false)
 	if err != nil {
@@ -135,7 +143,7 @@ func RunKBContextCheck(query string) (*KBContextResult, error) {
 
 		if globalResult != nil && len(globalResult.Matches) > 0 {
 			// Post-filter using project group (falls back to orch ecosystem)
-			allowlist := resolveProjectAllowlist()
+			allowlist := resolveProjectAllowlistForDir(projectDir)
 			if allowlist != nil {
 				globalResult.Matches = filterToProjectGroup(globalResult.Matches, allowlist)
 			}
@@ -239,18 +247,25 @@ func filterToProjectGroup(matches []KBContextMatch, allowlist map[string]bool) [
 	return filtered
 }
 
-// resolveProjectAllowlist builds an allowlist of project names for global search filtering.
+// resolveProjectAllowlist builds an allowlist using the current working directory.
+// For cross-project spawns, use resolveProjectAllowlistForDir instead.
+func resolveProjectAllowlist() map[string]bool {
+	return resolveProjectAllowlistForDir("")
+}
+
+// resolveProjectAllowlistForDir builds an allowlist of project names for global search filtering.
+// projectDir controls which project's groups are used. When empty, falls back to os.Getwd().
 // Tries group-based resolution from ~/.orch/groups.yaml first.
 // Falls back to OrchEcosystemRepos if groups.yaml doesn't exist or the current project is ungrouped.
-func resolveProjectAllowlist() map[string]bool {
+func resolveProjectAllowlistForDir(projectDir string) map[string]bool {
 	cfg, err := group.Load()
 	if err != nil {
 		// groups.yaml doesn't exist or can't be parsed — use hardcoded fallback
 		return OrchEcosystemRepos
 	}
 
-	// Detect current project name from working directory
-	projectName := detectCurrentProjectName()
+	// Detect project name from directory
+	projectName := detectProjectNameFromDir(projectDir)
 	if projectName == "" {
 		return OrchEcosystemRepos
 	}
@@ -282,15 +297,25 @@ func resolveProjectAllowlist() map[string]bool {
 }
 
 // detectCurrentProjectName returns the project name from the current working directory.
-// Uses .beads/config.yaml issue-prefix if available, otherwise falls back to directory basename.
+// Deprecated: Use detectProjectNameFromDir for explicit directory control.
 func detectCurrentProjectName() string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return ""
+	return detectProjectNameFromDir("")
+}
+
+// detectProjectNameFromDir returns the project name from the given directory.
+// Uses .beads/config.yaml issue-prefix if available, otherwise falls back to directory basename.
+// When dir is empty, falls back to os.Getwd().
+func detectProjectNameFromDir(dir string) string {
+	if dir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return ""
+		}
+		dir = cwd
 	}
 
 	// Try .beads/config.yaml for issue prefix (more reliable)
-	configPath := filepath.Join(cwd, ".beads", "config.yaml")
+	configPath := filepath.Join(dir, ".beads", "config.yaml")
 	if data, err := os.ReadFile(configPath); err == nil {
 		// Simple YAML parsing — look for issue-prefix field
 		for _, line := range strings.Split(string(data), "\n") {
@@ -306,7 +331,7 @@ func detectCurrentProjectName() string {
 	}
 
 	// Fall back to directory basename
-	return filepath.Base(cwd)
+	return filepath.Base(dir)
 }
 
 // kbProjectEntry matches the JSON format from `kb projects list --json`.

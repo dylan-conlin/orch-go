@@ -171,13 +171,13 @@ func gatherKBContext(task, projectDir string, stalenessMeta *StalenessEventMeta)
 		return ""
 	}
 
-	// Run kb context check
-	result, err := RunKBContextCheck(keywords)
+	// Run kb context check (use projectDir for cross-project group resolution)
+	result, err := RunKBContextCheckForDir(keywords, projectDir)
 	if err != nil || result == nil || !result.HasMatches {
 		// Try with broader search (single keyword)
 		broadKeywords := ExtractKeywords(task, 1)
 		if broadKeywords != "" && broadKeywords != keywords {
-			result, err = RunKBContextCheck(broadKeywords)
+			result, err = RunKBContextCheckForDir(broadKeywords, projectDir)
 		}
 	}
 

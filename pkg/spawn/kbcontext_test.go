@@ -1027,3 +1027,60 @@ func TestDetectCurrentProjectName(t *testing.T) {
 		t.Logf("detectCurrentProjectName() = %q (expected orch-go, but may vary by test environment)", name)
 	}
 }
+
+func TestDetectProjectNameFromDir(t *testing.T) {
+	t.Run("empty dir falls back to cwd", func(t *testing.T) {
+		name := detectProjectNameFromDir("")
+		if name == "" {
+			t.Error("detectProjectNameFromDir(\"\") returned empty string")
+		}
+		// Should match detectCurrentProjectName behavior
+		cwdName := detectCurrentProjectName()
+		if name != cwdName {
+			t.Errorf("detectProjectNameFromDir(\"\") = %q, want %q (same as detectCurrentProjectName)", name, cwdName)
+		}
+	})
+
+	t.Run("explicit dir uses basename", func(t *testing.T) {
+		// Create a temp dir to simulate a project directory
+		tmpDir := t.TempDir()
+		name := detectProjectNameFromDir(tmpDir)
+		// Should return the basename of the temp directory
+		if name == "" {
+			t.Error("detectProjectNameFromDir(tmpDir) returned empty string")
+		}
+	})
+
+	t.Run("dir with beads config uses issue-prefix", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		beadsDir := tmpDir + "/.beads"
+		if err := os.MkdirAll(beadsDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// Write config with issue-prefix
+		if err := os.WriteFile(beadsDir+"/config.yaml", []byte("issue-prefix: toolshed\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		name := detectProjectNameFromDir(tmpDir)
+		if name != "toolshed" {
+			t.Errorf("detectProjectNameFromDir() = %q, want \"toolshed\"", name)
+		}
+	})
+
+	t.Run("cross-project dir detects different project", func(t *testing.T) {
+		// This is the core bug test: when spawning from orch-go with --workdir pointing elsewhere,
+		// the function should return the target project name, not the calling process's project.
+		cwdName := detectProjectNameFromDir("")
+		otherDir := t.TempDir() + "/other-project"
+		if err := os.MkdirAll(otherDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		otherName := detectProjectNameFromDir(otherDir)
+		if otherName == cwdName {
+			t.Errorf("detectProjectNameFromDir(otherDir) should differ from cwd, both returned %q", cwdName)
+		}
+		if otherName != "other-project" {
+			t.Errorf("detectProjectNameFromDir(otherDir) = %q, want \"other-project\"", otherName)
+		}
+	})
+}

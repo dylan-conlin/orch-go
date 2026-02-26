@@ -1133,8 +1133,8 @@ func runPreSpawnKBCheckFull(task, projectDir string, stalenessMeta *spawn.Stalen
 
 	fmt.Printf("Checking kb context for: %q\n", keywords)
 
-	// Run kb context check
-	result, err := spawn.RunKBContextCheck(keywords)
+	// Run kb context check (use projectDir for cross-project group resolution)
+	result, err := spawn.RunKBContextCheckForDir(keywords, projectDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: kb context check failed: %v\n", err)
 		return gcr
@@ -1145,7 +1145,7 @@ func runPreSpawnKBCheckFull(task, projectDir string, stalenessMeta *spawn.Stalen
 		firstKeyword := spawn.ExtractKeywords(task, 1)
 		if firstKeyword != "" && firstKeyword != keywords {
 			fmt.Printf("Trying broader search for: %q\n", firstKeyword)
-			result, err = spawn.RunKBContextCheck(firstKeyword)
+			result, err = spawn.RunKBContextCheckForDir(firstKeyword, projectDir)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: kb context check failed: %v\n", err)
 				return gcr
