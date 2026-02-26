@@ -329,6 +329,40 @@ orch complete <id>
 
 ---
 
+## Knowledge Maintenance (Touchpoint 1)
+
+After probe verdicts and before the explain-back gate, `orch complete` surfaces relevant quick entries from the knowledge base for the orchestrator to review.
+
+### How It Works
+
+1. **Keyword extraction** from skill name, issue title, and phase summary
+2. **Quick entry filtering** via `kb quick list --json` matched against keywords
+3. **Interactive review** of top 5 most relevant entries
+
+### Actions Available
+
+| Action | Key | Effect |
+|--------|-----|--------|
+| Promote | `p` | Runs `kb promote <id> --no-editor` → formal decision |
+| Obsolete | `o` | Runs `kb quick obsolete <id> --reason "..."` → marks outdated |
+| Skip | Enter | No action |
+| Quit | `q` | End review early |
+
+### When It Runs
+
+- Tracked worker agents only (not orchestrator sessions, not untracked)
+- Skipped when `--force` is used
+- Non-fatal: failures produce warnings but don't block completion
+- Non-interactive mode (pipes/daemon): shows count but skips prompts
+
+### Design Reference
+
+`.kb/decisions/2026-02-25-continuous-knowledge-maintenance.md`
+
+**Code reference:** `cmd/orch/knowledge_maintenance.go`
+
+---
+
 ## Daemon Auto-Completion
 
 The daemon can auto-complete agents that report Phase: Complete, governed by the escalation model.

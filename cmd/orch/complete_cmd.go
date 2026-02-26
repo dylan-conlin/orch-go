@@ -992,6 +992,25 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
+	// Knowledge maintenance step (Touchpoint 1: Completion Review)
+	// Surface relevant quick entries for the orchestrator to promote, obsolete, or skip.
+	// This closes the feedback loop: workers create entries → completion reviews → promoted/superseded.
+	// See: .kb/decisions/2026-02-25-continuous-knowledge-maintenance.md
+	if !isOrchestratorSession && !isUntracked && !completeForce {
+		var issueTitle string
+		if issue != nil {
+			issueTitle = issue.Title
+		}
+		var phaseSummary string
+		if completionResultSet && completionResult.Phase.Found {
+			phaseSummary = completionResult.Phase.Summary
+		}
+		if err := RunKnowledgeMaintenance(skillName, issueTitle, phaseSummary, os.Stdout, os.Stdin); err != nil {
+			// Non-fatal: knowledge maintenance is advisory, not a gate
+			fmt.Fprintf(os.Stderr, "Warning: knowledge maintenance failed: %v\n", err)
+		}
+	}
+
 	// Explain-back verification gate
 	// After all verification passes, require human to explain what was built and why.
 	// This creates an unfakeable verification gate - can't rubber-stamp a conversational explanation.
