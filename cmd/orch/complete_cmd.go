@@ -1141,6 +1141,13 @@ func runComplete(identifier, workdir string) error {
 	}
 	fmt.Printf("Reason: %s\n", reason)
 
+	// Auto-create implementation issue for architect completions.
+	// When an architect agent's SYNTHESIS recommends action, create a triage:ready
+	// follow-up issue so the daemon picks it up for implementation.
+	if !isUntracked && !isOrchestratorSession && workspacePath != "" {
+		maybeAutoCreateImplementationIssue(skillName, beadsID, workspacePath)
+	}
+
 	// Export activity to ACTIVITY.json for archival (Tier 2 persistence)
 	// This is done BEFORE deleting the session (needs API access) and BEFORE archiving.
 	// Only for non-orchestrator sessions - orchestrators export transcript separately.
