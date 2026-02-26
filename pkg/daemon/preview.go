@@ -121,7 +121,7 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 		result.HotspotWarnings = CheckHotspotsForIssue(spawnable, d.HotspotChecker)
 
 		// Check if architect escalation would apply
-		escalation := CheckArchitectEscalation(spawnable, skill, d.HotspotChecker)
+		escalation := CheckArchitectEscalation(spawnable, skill, d.HotspotChecker, d.PriorArchitectFinder)
 		if escalation != nil {
 			result.Skill = "architect"
 			result.Model = InferModelFromSkill("architect")

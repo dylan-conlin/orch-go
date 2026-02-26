@@ -368,14 +368,15 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 	// Blocks implementation skills (feature-impl, systematic-debugging) on CRITICAL files (>1500 lines).
 	// Exempt: architect, investigation, capture-knowledge, codebase-audit (read-only/strategic skills).
 	// Override: --force-hotspot --architect-ref <issue-id> bypasses the block with proof of architect review.
+	// Auto-detection: searches for closed architect issues covering the critical files.
 	var hotspotResult *gates.HotspotResult
 	if hotspotCheckFunc != nil {
-		var architectVerifier gates.ArchitectVerifier
-		if architectRef != "" {
-			architectVerifier = buildArchitectVerifier()
-		}
+		// Always build verifier — needed for both explicit --architect-ref and auto-detection
+		architectVerifier := buildArchitectVerifier()
+		// Build finder for auto-detection of prior architect reviews
+		architectFinder := buildArchitectFinder()
 		var err error
-		hotspotResult, err = gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, forceHotspot, architectRef, hotspotCheckFunc, architectVerifier)
+		hotspotResult, err = gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, forceHotspot, architectRef, hotspotCheckFunc, architectVerifier, architectFinder)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -405,6 +406,112 @@ func buildArchitectVerifier() gates.ArchitectVerifier {
 
 		return nil
 	}
+}
+
+// buildArchitectFinder creates a function that searches for closed architect issues
+// covering the given critical files. Used for automatic hotspot gate bypass when
+// an architect has already reviewed the area.
+func buildArchitectFinder() gates.ArchitectFinder {
+	return func(criticalFiles []string) (string, error) {
+		return FindPriorArchitectReview(criticalFiles)
+	}
+}
+
+// FindPriorArchitectReview searches for a closed architect issue that reviewed
+// any of the given critical files. Returns the issue ID if found, empty string if none.
+//
+// Matching strategy: extract basenames and path components from critical files,
+// then check closed architect issue titles for mentions of these terms.
+func FindPriorArchitectReview(criticalFiles []string) (string, error) {
+	if len(criticalFiles) == 0 {
+		return "", nil
+	}
+
+	// Build search terms from critical file paths
+	searchTerms := extractSearchTerms(criticalFiles)
+	if len(searchTerms) == 0 {
+		return "", nil
+	}
+
+	// Query beads for closed architect issues
+	socketPath, err := beads.FindSocketPath("")
+	if err != nil {
+		return "", nil // Graceful degradation
+	}
+	client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+	defer client.Close()
+
+	issues, err := client.List(&beads.ListArgs{
+		Status: "closed",
+		Labels: []string{"skill:architect"},
+	})
+	if err != nil {
+		return "", nil // Graceful degradation
+	}
+
+	// Also search by title pattern for architect issues without the label
+	titleIssues, err := client.List(&beads.ListArgs{
+		Status: "closed",
+		Title:  "architect:",
+	})
+	if err == nil {
+		// Merge, dedup by ID
+		seen := make(map[string]bool)
+		for _, i := range issues {
+			seen[i.ID] = true
+		}
+		for _, i := range titleIssues {
+			if !seen[i.ID] {
+				issues = append(issues, i)
+			}
+		}
+	}
+
+	// Find the first issue whose title matches any search term
+	for _, issue := range issues {
+		titleLower := strings.ToLower(issue.Title)
+		for _, term := range searchTerms {
+			if strings.Contains(titleLower, term) {
+				return issue.ID, nil
+			}
+		}
+	}
+
+	return "", nil
+}
+
+// extractSearchTerms builds a list of search terms from critical file paths.
+// For "cmd/orch/main.go" → ["main.go", "cmd/orch/main.go"]
+// For "pkg/daemon/daemon.go" → ["daemon.go", "pkg/daemon/daemon.go"]
+// For "pkg/orch/extraction.go" → ["extraction.go", "pkg/orch/extraction.go"]
+func extractSearchTerms(criticalFiles []string) []string {
+	seen := make(map[string]bool)
+	var terms []string
+
+	for _, file := range criticalFiles {
+		normalized := strings.ToLower(strings.TrimSpace(file))
+		if normalized == "" {
+			continue
+		}
+
+		// Add the full path
+		if !seen[normalized] {
+			terms = append(terms, normalized)
+			seen[normalized] = true
+		}
+
+		// Add the basename (e.g., "daemon.go")
+		parts := strings.Split(normalized, "/")
+		basename := parts[len(parts)-1]
+		// Strip .go extension for broader matching (e.g., "extraction" matches "extraction.go structure analysis")
+		nameOnly := strings.TrimSuffix(basename, ".go")
+		if nameOnly != "" && !seen[nameOnly] {
+			terms = append(terms, nameOnly)
+			seen[nameOnly] = true
+		}
+	}
+
+	return terms
 }
 
 // isArchitectIssue returns true if the issue was spawned with the architect skill.

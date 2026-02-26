@@ -125,7 +125,7 @@ func TestCheckArchitectEscalation_EscalatesFeatureImpl(t *testing.T) {
 		IssueType: "feature",
 	}
 
-	result := CheckArchitectEscalation(issue, "feature-impl", checker)
+	result := CheckArchitectEscalation(issue, "feature-impl", checker, nil)
 	if result == nil {
 		t.Fatal("CheckArchitectEscalation() returned nil, expected escalation")
 	}
@@ -153,7 +153,7 @@ func TestCheckArchitectEscalation_EscalatesSystematicDebugging(t *testing.T) {
 		IssueType: "bug",
 	}
 
-	result := CheckArchitectEscalation(issue, "systematic-debugging", checker)
+	result := CheckArchitectEscalation(issue, "systematic-debugging", checker, nil)
 	if result == nil {
 		t.Fatal("CheckArchitectEscalation() returned nil, expected escalation")
 	}
@@ -178,7 +178,7 @@ func TestCheckArchitectEscalation_SkipsExemptSkills(t *testing.T) {
 	exemptSkills := []string{"architect", "investigation", "research", "codebase-audit", "kb-reflect"}
 	for _, skill := range exemptSkills {
 		t.Run(skill, func(t *testing.T) {
-			result := CheckArchitectEscalation(issue, skill, checker)
+			result := CheckArchitectEscalation(issue, skill, checker, nil)
 			if result != nil {
 				t.Errorf("CheckArchitectEscalation() for skill %q returned non-nil, expected nil (exempt)", skill)
 			}
@@ -199,7 +199,7 @@ func TestCheckArchitectEscalation_SkipsExtractionIssues(t *testing.T) {
 		IssueType: "task",
 	}
 
-	result := CheckArchitectEscalation(issue, "feature-impl", checker)
+	result := CheckArchitectEscalation(issue, "feature-impl", checker, nil)
 	if result != nil {
 		t.Error("CheckArchitectEscalation() should skip extraction issues (title starts with 'Extract ')")
 	}
@@ -219,7 +219,7 @@ func TestCheckArchitectEscalation_SkipsExplicitSkillLabel(t *testing.T) {
 		Labels:    []string{"skill:feature-impl"},
 	}
 
-	result := CheckArchitectEscalation(issue, "feature-impl", checker)
+	result := CheckArchitectEscalation(issue, "feature-impl", checker, nil)
 	if result != nil {
 		t.Error("CheckArchitectEscalation() should skip when issue has explicit skill:* label")
 	}
@@ -238,7 +238,7 @@ func TestCheckArchitectEscalation_NoTargetFiles(t *testing.T) {
 		IssueType: "feature",
 	}
 
-	result := CheckArchitectEscalation(issue, "feature-impl", checker)
+	result := CheckArchitectEscalation(issue, "feature-impl", checker, nil)
 	if result != nil {
 		t.Error("CheckArchitectEscalation() should return nil when no target files can be inferred")
 	}
@@ -255,7 +255,7 @@ func TestCheckArchitectEscalation_NoHotspots(t *testing.T) {
 		IssueType: "feature",
 	}
 
-	result := CheckArchitectEscalation(issue, "feature-impl", checker)
+	result := CheckArchitectEscalation(issue, "feature-impl", checker, nil)
 	if result != nil {
 		t.Error("CheckArchitectEscalation() should return nil when no hotspots exist")
 	}
@@ -274,7 +274,7 @@ func TestCheckArchitectEscalation_NoMatchingHotspot(t *testing.T) {
 		IssueType: "feature",
 	}
 
-	result := CheckArchitectEscalation(issue, "feature-impl", checker)
+	result := CheckArchitectEscalation(issue, "feature-impl", checker, nil)
 	if result != nil {
 		t.Error("CheckArchitectEscalation() should return nil when no inferred files match hotspots")
 	}
@@ -282,7 +282,7 @@ func TestCheckArchitectEscalation_NoMatchingHotspot(t *testing.T) {
 
 func TestCheckArchitectEscalation_NilIssue(t *testing.T) {
 	checker := &mockEscalationChecker{}
-	result := CheckArchitectEscalation(nil, "feature-impl", checker)
+	result := CheckArchitectEscalation(nil, "feature-impl", checker, nil)
 	if result != nil {
 		t.Error("CheckArchitectEscalation() should return nil for nil issue")
 	}
@@ -290,7 +290,7 @@ func TestCheckArchitectEscalation_NilIssue(t *testing.T) {
 
 func TestCheckArchitectEscalation_NilChecker(t *testing.T) {
 	issue := &Issue{ID: "proj-8", Title: "test", IssueType: "feature"}
-	result := CheckArchitectEscalation(issue, "feature-impl", nil)
+	result := CheckArchitectEscalation(issue, "feature-impl", nil, nil)
 	if result != nil {
 		t.Error("CheckArchitectEscalation() should return nil for nil checker")
 	}
@@ -307,7 +307,7 @@ func TestCheckArchitectEscalation_CheckerError(t *testing.T) {
 		IssueType: "feature",
 	}
 
-	result := CheckArchitectEscalation(issue, "feature-impl", checker)
+	result := CheckArchitectEscalation(issue, "feature-impl", checker, nil)
 	if result != nil {
 		t.Error("CheckArchitectEscalation() should return nil on checker error (graceful degradation)")
 	}
@@ -607,7 +607,7 @@ func TestCheckArchitectEscalation_EscalationFieldsPopulated(t *testing.T) {
 		IssueType: "task",
 	}
 
-	result := CheckArchitectEscalation(issue, "feature-impl", checker)
+	result := CheckArchitectEscalation(issue, "feature-impl", checker, nil)
 	if result == nil {
 		t.Fatal("expected escalation result")
 	}
@@ -619,6 +619,85 @@ func TestCheckArchitectEscalation_EscalationFieldsPopulated(t *testing.T) {
 	}
 	if result.HotspotScore != 1200 {
 		t.Errorf("HotspotScore = %d, want 1200", result.HotspotScore)
+	}
+}
+
+// --- Prior architect finder tests ---
+
+func TestCheckArchitectEscalation_SkipsWhenPriorArchitectExists(t *testing.T) {
+	checker := &mockEscalationChecker{
+		hotspots: []HotspotWarning{
+			{Path: "pkg/daemon/daemon.go", Type: "fix-density", Score: 8},
+		},
+	}
+
+	issue := &Issue{
+		ID:        "proj-prior-1",
+		Title:     "Add retry logic to pkg/daemon/daemon.go",
+		IssueType: "feature",
+	}
+
+	// Prior architect finder returns a matching closed architect issue
+	finder := func(files []string) (string, error) {
+		for _, f := range files {
+			if f == "pkg/daemon/daemon.go" {
+				return "orch-go-1119", nil
+			}
+		}
+		return "", nil
+	}
+
+	result := CheckArchitectEscalation(issue, "feature-impl", checker, finder)
+	if result != nil {
+		t.Error("CheckArchitectEscalation() should return nil when prior architect review exists")
+	}
+}
+
+func TestCheckArchitectEscalation_EscalatesWhenFinderReturnsEmpty(t *testing.T) {
+	checker := &mockEscalationChecker{
+		hotspots: []HotspotWarning{
+			{Path: "pkg/daemon/daemon.go", Type: "fix-density", Score: 8},
+		},
+	}
+
+	issue := &Issue{
+		ID:        "proj-prior-2",
+		Title:     "Add retry logic to pkg/daemon/daemon.go",
+		IssueType: "feature",
+	}
+
+	// Prior architect finder returns no match
+	finder := func(files []string) (string, error) {
+		return "", nil
+	}
+
+	result := CheckArchitectEscalation(issue, "feature-impl", checker, finder)
+	if result == nil {
+		t.Fatal("CheckArchitectEscalation() should escalate when no prior architect found")
+	}
+}
+
+func TestCheckArchitectEscalation_EscalatesWhenFinderErrors(t *testing.T) {
+	checker := &mockEscalationChecker{
+		hotspots: []HotspotWarning{
+			{Path: "pkg/daemon/daemon.go", Type: "fix-density", Score: 8},
+		},
+	}
+
+	issue := &Issue{
+		ID:        "proj-prior-3",
+		Title:     "Add retry logic to pkg/daemon/daemon.go",
+		IssueType: "feature",
+	}
+
+	// Prior architect finder returns an error (graceful degradation)
+	finder := func(files []string) (string, error) {
+		return "", fmt.Errorf("beads query failed")
+	}
+
+	result := CheckArchitectEscalation(issue, "feature-impl", checker, finder)
+	if result == nil {
+		t.Fatal("CheckArchitectEscalation() should escalate when finder errors (graceful degradation)")
 	}
 }
 

@@ -392,3 +392,62 @@ func TestDetermineSpawnTier_TaskScopeSignals(t *testing.T) {
 		})
 	}
 }
+
+// --- extractSearchTerms tests ---
+
+func TestExtractSearchTerms(t *testing.T) {
+	tests := []struct {
+		name     string
+		files    []string
+		contains []string // expected terms that should be in result
+	}{
+		{
+			name:     "single file with full path",
+			files:    []string{"pkg/orch/extraction.go"},
+			contains: []string{"pkg/orch/extraction.go", "extraction"},
+		},
+		{
+			name:     "basename only",
+			files:    []string{"daemon.go"},
+			contains: []string{"daemon"},
+		},
+		{
+			name:     "multiple files",
+			files:    []string{"cmd/orch/main.go", "pkg/daemon/daemon.go"},
+			contains: []string{"cmd/orch/main.go", "main", "pkg/daemon/daemon.go", "daemon"},
+		},
+		{
+			name:     "empty list",
+			files:    []string{},
+			contains: []string{},
+		},
+		{
+			name:     "empty string in list",
+			files:    []string{""},
+			contains: []string{},
+		},
+		{
+			name:     "case normalization",
+			files:    []string{"Cmd/Orch/Main.Go"},
+			contains: []string{"cmd/orch/main.go", "main"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			terms := extractSearchTerms(tt.files)
+			for _, expected := range tt.contains {
+				found := false
+				for _, term := range terms {
+					if term == expected {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("extractSearchTerms(%v) missing expected term %q, got %v", tt.files, expected, terms)
+				}
+			}
+		})
+	}
+}

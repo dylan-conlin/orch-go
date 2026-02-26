@@ -51,6 +51,11 @@ func FindMatchingHotspot(inferredFiles []string, hotspots []HotspotWarning) *Hot
 	return nil
 }
 
+// PriorArchitectFinder searches for a closed architect issue that reviewed the given files.
+// Returns the issue ID if found, empty string if no prior architect review exists.
+// Used to skip daemon escalation when an architect has already reviewed the area.
+type PriorArchitectFinder func(files []string) (string, error)
+
 // CheckArchitectEscalation determines if an implementation skill issue should be
 // escalated to architect because it targets a hotspot area.
 //
@@ -59,8 +64,12 @@ func FindMatchingHotspot(inferredFiles []string, hotspots []HotspotWarning) *Hot
 //   - Layer 2 (daemon escalation): Routes implementation skills to architect when targeting ANY hotspot
 //   - Layer 3 (completion gate): Warns on additions >50 lines to files >800 lines
 //
-// Returns nil if no escalation is needed (no target files inferred, no hotspots, or skill is exempt).
-func CheckArchitectEscalation(issue *Issue, skill string, checker HotspotChecker) *ArchitectEscalation {
+// If priorArchitectFinder is non-nil and finds a completed architect review covering the
+// matched hotspot file, escalation is skipped (architect already reviewed the area).
+//
+// Returns nil if no escalation is needed (no target files inferred, no hotspots, skill is exempt,
+// or prior architect review exists).
+func CheckArchitectEscalation(issue *Issue, skill string, checker HotspotChecker, priorArchitectFinder PriorArchitectFinder) *ArchitectEscalation {
 	if issue == nil || checker == nil {
 		return nil
 	}
@@ -96,6 +105,14 @@ func CheckArchitectEscalation(issue *Issue, skill string, checker HotspotChecker
 	match := FindMatchingHotspot(files, hotspots)
 	if match == nil {
 		return nil
+	}
+
+	// Check if a prior architect review already covers this hotspot area
+	if priorArchitectFinder != nil {
+		foundRef, findErr := priorArchitectFinder([]string{match.Path})
+		if findErr == nil && foundRef != "" {
+			return nil // Prior architect review exists — skip escalation
+		}
 	}
 
 	return &ArchitectEscalation{

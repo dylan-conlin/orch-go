@@ -26,6 +26,11 @@ type HotspotChecker func(projectDir, task string) (*HotspotResult, error)
 // The caller constructs this from verify.GetIssue to keep the gates package decoupled.
 type ArchitectVerifier func(issueID string) error
 
+// ArchitectFinder searches for a closed architect issue that reviewed the given critical files.
+// Returns the issue ID if a matching prior architect review is found, empty string if none exists.
+// This enables automatic bypass of the hotspot gate when an architect has already reviewed the area.
+type ArchitectFinder func(criticalFiles []string) (string, error)
+
 // blockingSkills are skills that modify code and should be blocked on CRITICAL hotspots.
 // Read-only/strategic skills are exempt because they need to READ hotspot files.
 var blockingSkills = map[string]bool{
@@ -43,8 +48,10 @@ func IsBlockingSkill(skillName string) bool {
 // daemonDriven spawns suppress output (triage already happened).
 // forceHotspot bypasses the blocking gate but requires architectRef with a verified closed
 // architect issue (validated via architectVerifier).
+// architectFinder enables automatic bypass: when no explicit --force-hotspot is provided,
+// the gate searches for a prior closed architect review covering the critical files.
 // Returns error if skill is blocked by CRITICAL hotspot and requirements are not met.
-func CheckHotspot(projectDir, task, skillName string, daemonDriven, forceHotspot bool, architectRef string, checker HotspotChecker, architectVerifier ArchitectVerifier) (*HotspotResult, error) {
+func CheckHotspot(projectDir, task, skillName string, daemonDriven, forceHotspot bool, architectRef string, checker HotspotChecker, architectVerifier ArchitectVerifier, architectFinder ArchitectFinder) (*HotspotResult, error) {
 	if projectDir == "" || checker == nil {
 		return nil, nil
 	}
@@ -81,6 +88,28 @@ func CheckHotspot(projectDir, task, skillName string, daemonDriven, forceHotspot
 			fmt.Fprintln(os.Stderr, "")
 			return result, nil
 		}
+
+		// Auto-detect prior architect review before blocking
+		if architectFinder != nil {
+			foundRef, findErr := architectFinder(result.CriticalFiles)
+			if findErr == nil && foundRef != "" {
+				// Verify the auto-detected architect issue
+				if architectVerifier != nil {
+					if verifyErr := architectVerifier(foundRef); verifyErr == nil {
+						fmt.Fprintf(os.Stderr, "✓ Auto-detected prior architect review: %s — bypassing CRITICAL hotspot block\n", foundRef)
+						fmt.Fprintln(os.Stderr, "")
+						return result, nil
+					}
+					// Verification failed — fall through to block
+				} else {
+					// No verifier available — trust the finder result
+					fmt.Fprintf(os.Stderr, "✓ Auto-detected prior architect review: %s — bypassing CRITICAL hotspot block\n", foundRef)
+					fmt.Fprintln(os.Stderr, "")
+					return result, nil
+				}
+			}
+		}
+
 		criticalList := strings.Join(result.CriticalFiles, ", ")
 		return result, fmt.Errorf("CRITICAL hotspot: %s exceeds 1500 lines. Spawn architect to design extraction first, or use --force-hotspot --architect-ref <issue-id> to override.\nBlocked files: %s", criticalList, criticalList)
 	}

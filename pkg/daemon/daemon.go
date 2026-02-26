@@ -58,6 +58,10 @@ type Daemon struct {
 	// If set, Preview will include hotspot warnings.
 	HotspotChecker HotspotChecker
 
+	// PriorArchitectFinder searches for closed architect issues covering given files.
+	// If set and returns a match, daemon skips architect escalation for that area.
+	PriorArchitectFinder PriorArchitectFinder
+
 	// SpawnedIssues tracks issue IDs that have been spawned but may not yet
 	// have their beads status updated to in_progress. This prevents the race
 	// condition where the daemon spawns duplicate agents for the same issue
@@ -533,7 +537,7 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 	// This only applies when extraction didn't already happen (extraction handles the most critical case).
 	architectEscalated := false
 	if !extractionSpawned && d.HotspotChecker != nil {
-		escalation := CheckArchitectEscalation(issue, skill, d.HotspotChecker)
+		escalation := CheckArchitectEscalation(issue, skill, d.HotspotChecker, d.PriorArchitectFinder)
 		if escalation != nil {
 			if d.Config.Verbose {
 				fmt.Printf("  Architect escalation: %s targets hotspot %s (%s, score=%d)\n",
