@@ -13,7 +13,9 @@
 # Decision: Load-Bearing Guidance Data Model
 
 **Date:** 2026-01-08
-**Status:** Accepted
+**Status:** Archived (never implemented)
+**Archived:** 2026-02-26
+**Archive Reason:** Never implemented. The `load_bearing[]` array in skill.yaml and `skillc protected` command were never built. Skill integrity is now maintained through skillc checksums and the existing verification pipeline rather than pattern-based protection.
 
 **Extracted-From:** N/A
 **Supersedes:** N/A

@@ -1,8 +1,10 @@
 # Decision: Orchestrator Lifecycle Without Beads Tracking
 
 **Date:** 2026-01-05
-**Status:** Proposed
+**Status:** Archived (never implemented)
 **Context:** Establishing how orchestrator sessions should be tracked without using beads issue lifecycle
+**Archived:** 2026-02-26
+**Archive Reason:** Never implemented. Orchestrators continue using beads tracking. The session registry (`~/.orch/sessions.json`) was never built. Current system works adequately with beads for all agent types.
 
 ## Decision
 

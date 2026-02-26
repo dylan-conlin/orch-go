@@ -1,8 +1,10 @@
 # Decision: Single-Agent Review Command
 
 **Date:** 2025-12-21
-**Status:** Proposed
+**Status:** Archived (never implemented)
 **Decision Maker:** Dylan (orchestrator review needed)
+**Archived:** 2026-02-26
+**Archive Reason:** Never implemented. `orch complete` evolved with verification pipeline (complete_pipeline.go) instead of `--preview` flag. The two-gate verification model (explain-back + behavioral) supersedes this single-agent review concept.
 
 ## Context
 
