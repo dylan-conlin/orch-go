@@ -1,0 +1,41 @@
+# Verification Specification: Code Review Gate Design
+# Design: .kb/investigations/2026-02-25-design-code-review-gate-for-completion-pipeline.md
+
+deliverables:
+  investigation:
+    path: .kb/investigations/2026-02-25-design-code-review-gate-for-completion-pipeline.md
+    status: created
+    verification: "File exists and contains 5 navigated forks with substrate traces"
+
+  decision_record:
+    path: .kb/decisions/2026-02-25-no-code-review-gate-expand-execution-verification.md
+    status: created
+    verification: "File exists with recommendation, rejected alternatives, and consequences"
+
+  probe:
+    path: .kb/models/completion-verification/probes/2026-02-25-probe-code-review-gate-design.md
+    status: complete
+    verification: "Probe has Status: Complete, tests 3 model claims, extends model with gate taxonomy"
+
+  follow_up_issues:
+    created:
+      - orch-go-1248: "Expand build gate to include go vet"
+      - orch-go-1249: "Add hotspot advisory warnings to orch complete"
+      - orch-go-1250: "Update completion-verification model with three-type gate taxonomy"
+
+gates_checked:
+  - gate: phase_complete
+    evidence: "bd comment orch-go-1247 'Phase: Complete' will be reported"
+  - gate: skill_output
+    evidence: "Investigation artifact created with design- prefix per architect skill"
+  - gate: synthesis
+    evidence: "SYNTHESIS.md created in workspace"
+
+manual_verification:
+  gate1_explain_back: |
+    Recommend: Don't add code review gate to completion pipeline.
+    Agent code review is a closed loop (Provenance violation), contradicts phased adversarial verification decision.
+    Instead: expand build gate with go vet (free, execution-based) and add hotspot advisory warnings.
+  gate2_behavioral: |
+    Design-only session. No behavioral verification needed.
+    Artifacts exist and contain substantive analysis (not templates).
