@@ -1069,6 +1069,14 @@ func runComplete(identifier, workdir string) error {
 		printVerificationChecklist(checklist)
 	}
 
+	// Surface hotspot advisory for modified files (informational, not a gate)
+	// Shows the orchestrator which modified files are in known hotspot areas.
+	if beadsProjectDir != "" && !isOrchestratorSession {
+		if advisory := RunHotspotAdvisoryForCompletion(beadsProjectDir); advisory != "" {
+			fmt.Print(advisory)
+		}
+	}
+
 	// Update session handoff with spawn completion info (Capture at Context principle)
 	// This is only for worker agents, not orchestrator sessions (which manage their own handoffs)
 	if !isOrchestratorSession && agentName != "" && beadsID != "" {

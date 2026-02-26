@@ -1,14 +1,14 @@
 # Model: Completion Verification Architecture
 
 **Domain:** Completion / Verification / Quality Gates
-**Last Updated:** 2026-02-20
-**Synthesized From:** 31 investigations, 14 probes, completion.md guide, end-to-end infrastructure audit (Feb 20, 2026)
+**Last Updated:** 2026-02-26
+**Synthesized From:** 31 investigations, 15 probes, completion.md guide, end-to-end infrastructure audit (Feb 20, 2026), code review gate design (Feb 25, 2026)
 
 ---
 
 ## Summary (30 seconds)
 
-Completion verification operates through **14 gates** organized into **4 verification levels** (V0–V3). Each level is a strict superset of the one below: V0 (Acknowledge) checks only that the agent reported completion; V1 (Artifacts) adds deliverable and constraint checks; V2 (Evidence) adds test evidence, build, and git diff checks; V3 (Behavioral) adds visual verification and human observation gates. The verification level is determined at spawn time from skill type and issue type, stored in AGENT_MANIFEST.json, and flows through to `orch complete`. **Targeted bypasses** (`--skip-{gate} "reason"`) remain as an escape hatch for edge cases, but well-configured spawns should require zero skip flags. The daemon runs the same `VerifyCompletionFull()` pipeline with threshold-based pause to prevent unchecked auto-completion.
+Completion verification operates through **14 gates** organized into **4 verification levels** (V0–V3) and classified by **3 gate types** (execution, evidence, judgment). Each level is a strict superset of the one below: V0 (Acknowledge) checks only that the agent reported completion; V1 (Artifacts) adds deliverable and constraint checks; V2 (Evidence) adds test evidence, build, and git diff checks; V3 (Behavioral) adds visual verification and human observation gates. The three gate types define what kind of verification each gate provides: **execution-based** gates produce provenance (binary pass/fail from running code), **evidence-based** gates check claims against patterns (anti-theater detection), and **judgment-based** gates require human comprehension. The verification level is determined at spawn time from skill type and issue type, stored in AGENT_MANIFEST.json, and flows through to `orch complete`. **Targeted bypasses** (`--skip-{gate} "reason"`) remain as an escape hatch for edge cases, but well-configured spawns should require zero skip flags. The daemon runs the same `VerifyCompletionFull()` pipeline with threshold-based pause to prevent unchecked auto-completion.
 
 ---
 
@@ -16,26 +16,46 @@ Completion verification operates through **14 gates** organized into **4 verific
 
 ### The 14 Gates
 
-| # | Gate | Constant | What It Checks |
-|---|------|----------|----------------|
-| 1 | Phase Complete | `phase_complete` | Agent reported "Phase: Complete" via beads comment |
-| 2 | Synthesis | `synthesis` | SYNTHESIS.md exists and is non-empty (skipped for light tier and knowledge-producing skills) |
-| 3 | Handoff Content | `handoff_content` | SESSION_HANDOFF.md has TLDR & Outcome filled (orchestrator tier only) |
-| 4 | Skill Output | `skill_output` | Required skill outputs exist (from skill.yaml `outputs.required`) |
-| 5 | Phase Gates | `phase_gate` | Required skill phases were reported in beads comments |
-| 6 | Constraint | `constraint` | Constraint patterns from SPAWN_CONTEXT match actual files |
-| 7 | Decision Patch Limit | `decision_patch_limit` | Decision patch count within limits |
-| 8 | Test Evidence | `test_evidence` | Evidence of actual test execution in beads comments (anti-theater detection) |
-| 9 | Git Diff | `git_diff` | Git changes match SYNTHESIS.md claims |
-| 10 | Build | `build` | Project compiles (`go build ./...`) — the only unfakeable gate |
-| 11 | Accretion | `accretion` | File size growth within limits (accretion boundary enforcement) |
-| 12 | Visual Verification | `visual_verification` | Screenshot/Playwright evidence for web/ changes, with risk assessment |
-| 13 | Explain-Back | `explain_back` | Orchestrator explains what was built and why (gate1/comprehension) |
-| 14 | Behavioral | `behavioral` | Human confirms behavior was observed working (gate2, V3 only) |
+| # | Gate | Constant | Type | What It Checks |
+|---|------|----------|------|----------------|
+| 1 | Phase Complete | `phase_complete` | Evidence | Agent reported "Phase: Complete" via beads comment |
+| 2 | Synthesis | `synthesis` | Evidence | SYNTHESIS.md exists and is non-empty (skipped for light tier and knowledge-producing skills) |
+| 3 | Handoff Content | `handoff_content` | Evidence | SESSION_HANDOFF.md has TLDR & Outcome filled (orchestrator tier only) |
+| 4 | Skill Output | `skill_output` | Evidence | Required skill outputs exist (from skill.yaml `outputs.required`) |
+| 5 | Phase Gates | `phase_gate` | Evidence | Required skill phases were reported in beads comments |
+| 6 | Constraint | `constraint` | Evidence | Constraint patterns from SPAWN_CONTEXT match actual files |
+| 7 | Decision Patch Limit | `decision_patch_limit` | Evidence | Decision patch count within limits |
+| 8 | Test Evidence | `test_evidence` | Evidence | Evidence of actual test execution in beads comments (anti-theater detection) |
+| 9 | Git Diff | `git_diff` | Evidence | Git changes match SYNTHESIS.md claims |
+| 10 | Build | `build` | Execution | Project compiles (`go build ./...`) — the only unfakeable gate |
+| 11 | Accretion | `accretion` | Evidence | File size growth within limits (accretion boundary enforcement) |
+| 12 | Visual Verification | `visual_verification` | Evidence | Screenshot/Playwright evidence for web/ changes, with risk assessment |
+| 13 | Explain-Back | `explain_back` | Judgment | Orchestrator explains what was built and why (gate1/comprehension) |
+| 14 | Behavioral | `behavioral` | Judgment | Human confirms behavior was observed working (gate2, V3 only) |
 
 **Key design property:** Gates are structurally independent but functionally level-selective. Each gate can fail independently, and all applicable gates must pass (or be explicitly skipped). The verification level determines which subset of gates fires.
 
 **Source:** `pkg/verify/check.go` — constants at top, `VerifyCompletionFull()` orchestrates all gates
+
+### Gate Type Taxonomy
+
+The 14 gates fall into three types based on what kind of verification they provide:
+
+| Gate Type | Gates | Produces | Provenance? |
+|---|---|---|---|
+| **Execution-based** | Build (#10) | Binary pass/fail from running code | ✓ Verifiable, deterministic |
+| **Evidence-based** | Phase Complete (#1), Synthesis (#2), Handoff Content (#3), Skill Output (#4), Phase Gates (#5), Constraint (#6), Decision Patch Limit (#7), Test Evidence (#8), Git Diff (#9), Accretion (#11), Visual Verification (#12) | Pattern match against claims | Partial — detects theater, not correctness |
+| **Judgment-based** | Explain-Back (#13), Behavioral (#14) | Human comprehension/observation | Human only — valid because human takes responsibility |
+
+**Why this taxonomy matters:**
+
+- **Execution-based gates produce truth.** The output is independent of opinion — code compiles or it doesn't. These are the only unfakeable gates. Expanding this type (e.g., `go vet`, `staticcheck`) increases verification strength without adding judgment.
+- **Evidence-based gates check claims.** They detect theater (vague "tests pass" vs. concrete output) and verify artifacts exist, but cannot verify correctness. An agent can fabricate framework-specific test output that passes these gates.
+- **Judgment-based gates require humans.** Explain-back forces comprehension. Behavioral forces observation. These are valid precisely because a human performs them and takes responsibility for the judgment.
+
+**Excluded type — Agent judgment:** The pipeline deliberately excludes agent-judgment gates (e.g., AI code review). Agent reviewing agent code is a closed loop — same model family, same blind spots, no provenance chain. It produces opinion that neither the orchestrator nor Dylan can independently verify. See decision: `.kb/decisions/2026-02-25-no-code-review-gate-expand-execution-verification.md`.
+
+**Source:** Investigation `.kb/investigations/2026-02-25-design-code-review-gate-for-completion-pipeline.md`, probe `probes/2026-02-25-probe-code-review-gate-design.md`
 
 ### Four Verification Levels (V0–V3)
 
@@ -276,6 +296,17 @@ Completed agent activity remains viewable via hybrid persistent layer:
 **This enables:** The only unfakeable verification signal (actually executes `go build ./...`)
 **This constrains:** Cannot skip Build via verification levels, only via explicit `--skip-build`
 
+### Why No Agent-Judgment Gates?
+
+**Constraint:** The pipeline contains execution, evidence, and judgment gates — but no agent-judgment gates (e.g., AI code review).
+
+**Implication:** Agent reviewing agent code is a closed loop. Same model family, same blind spots, no provenance chain. The output is opinion, not evidence.
+
+**This enables:** Clean separation between machine verification (execution), structural checks (evidence), and human responsibility (judgment)
+**This constrains:** Cannot add AI code review or similar agent-opinion gates without violating provenance. The fix for "nobody reads the diff" is expanding execution-based gates (go vet, staticcheck), not adding agent judgment.
+
+**Source:** Decision `.kb/decisions/2026-02-25-no-code-review-gate-expand-execution-verification.md`
+
 ### Why Knowledge Work Surfaces, Not Auto-Closes?
 
 **Constraint:** Investigation/architect/research agents surface for review even if all gates pass.
@@ -300,7 +331,7 @@ Completed agent activity remains viewable via hybrid persistent layer:
 | Live e2e | Missing | Checks for Playwright evidence but doesn't execute |
 | Adversarial | Missing | No verification against intentionally deceptive agents |
 
-**Key insight:** The system is strong at "does it exist?" verification but weak at "did it actually execute?" verification. The only unfakeable signal is `go build`.
+**Key insight:** The system is strong at "does it exist?" verification (evidence-based gates) but weak at "did it actually execute?" verification. Only 1 of 14 gates is execution-based (`go build`). Expanding execution-based gates (go vet, staticcheck, actually running tests) would increase the unfakeable verification surface without adding agent-judgment complexity.
 
 ---
 
@@ -333,6 +364,9 @@ Removed 3 gates identified as pure noise through friction analysis of 1,008 bypa
 ### Phase 8: Verification Levels Design (Feb 20, 2026)
 Unified three implicit level systems (spawn tier, checkpoint tier, skill-based auto-skips) into four explicit verification levels (V0–V3). Design complete, implementation pending.
 
+### Phase 9: Gate Type Taxonomy (Feb 25, 2026)
+Classified all 14 gates into three types (execution/evidence/judgment) based on what kind of verification they provide. Established that agent-judgment gates are excluded by design — the fix for verification gaps is expanding execution-based gates, not adding agent opinion. **Key insight:** The "sharp boundary at execution" (only Build actually runs code) is real and is the right place to expand.
+
 ---
 
 ## References
@@ -344,7 +378,9 @@ Unified three implicit level systems (spawn tier, checkpoint tier, skill-based a
 **Investigations:**
 - `.kb/investigations/2026-02-20-audit-verification-infrastructure-end-to-end.md` — 14-gate inventory (authoritative)
 - `.kb/investigations/2026-02-20-inv-architect-verification-levels.md` — V0-V3 levels design
+- `.kb/investigations/2026-02-25-design-code-review-gate-for-completion-pipeline.md` — Gate type taxonomy origin, code review analysis
 - `.kb/decisions/2026-02-20-verification-levels-v0-v3.md` — Verification levels decision record
+- `.kb/decisions/2026-02-25-no-code-review-gate-expand-execution-verification.md` — No agent-judgment gates, expand execution instead
 
 **Probes:**
 - `probes/2026-02-20-probe-verification-infrastructure-audit.md` — Full infrastructure audit
