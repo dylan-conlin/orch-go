@@ -1,8 +1,8 @@
 # Model: Agent Lifecycle State Model
 
 **Domain:** Agent Lifecycle / State Management
-**Last Updated:** 2026-02-20
-**Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display. Updated Feb 2026 after major restructuring (registry elimination, two-lane architecture, single-pass query engine).
+**Last Updated:** 2026-02-25
+**Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display. Updated Feb 2026 after major restructuring (registry elimination, two-lane architecture, single-pass query engine). Updated Feb 25 after phase-based liveness, cross-project querying, and verification gate additions.
 
 ---
 
@@ -73,6 +73,16 @@ Tracked work and untracked sessions are queried via separate paths (Feb 2026):
 
 The single-pass query engine (`queryTrackedAgents()` in `cmd/orch/query_tracked.go`) replaces ad-hoc multi-source reconciliation. Every missing field has an explicit reason code (`MissingBinding`, `MissingSession`, `SessionDead`, `MissingPhase`).
 
+**Cross-project querying (Feb 25):** `queryTrackedAgents()` accepts `projectDirs []string` and queries beads across all known project directories (not just local). This ensures cross-project agents (e.g., toolshed issues tracked from orch-go) are visible in status and work-graph. Each directory is queried independently with graceful degradation on failure.
+
+**Phase-based liveness for claude-backend agents (Feb 24-25):** Claude CLI agents have no OpenCode session, so the query engine uses a third liveness strategy: phase comments as heartbeat. When `SpawnMode == "claude"` and `SessionID == ""`:
+- Phase: Complete reported → status "completed"
+- Any phase reported → status "active" (reason: `phase_reported`)
+- Recently spawned (<5 min) → status "active" (reason: `recently_spawned`)
+- No phase, not recent → status "dead" (reason: `no_phase_reported`)
+
+This replaced a prior tmux liveness check (orch-go-1182→1183→1185) that violated Invariant 6 by using tmux windows as state. See probe: `probes/2026-02-24-probe-tmux-liveness-two-lane-violation.md`.
+
 See: `.kb/decisions/2026-02-18-two-lane-agent-discovery.md`
 
 ### State Transitions
@@ -96,9 +106,13 @@ Phase: Complete reached (agent declares done)
 SYNTHESIS.md written (if full tier)
 Git commits created
     ↓
-orch complete runs (orchestrator verification, 14 verification gates)
-Verifies deliverables exist
+orch complete runs (orchestrator verification, 15 verification gates)
+Verifies deliverables exist (15 gates: phase, synthesis, constraints, phase gates,
+    skill outputs, visual, test evidence, git diff, accretion, build, vet, decision patches,
+    explain-back, session handoff, handoff content)
+Runs knowledge maintenance (kb maintenance check)
 Closes beads issue (Status: closed)
+Defers tmux window cleanup (prevents phantom windows)
     ↓
 completed (dashboard shows blue badge)
 Session may remain in OpenCode storage
@@ -212,7 +226,7 @@ Session remains in OpenCode
 - Dashboard running from `orch-go` only sees `orch-go/.orch/workspace/`
 - Cross-project discovery requires querying OpenCode sessions for unique directories
 
-**Fix (Jan 6):** Multi-project workspace cache built from OpenCode session directories
+**Fix (Jan 6, updated Feb 25):** `queryTrackedAgents()` accepts `projectDirs []string` and queries beads + workspace manifests across all known project directories. No cache — direct queries with graceful degradation per directory.
 
 ---
 
@@ -315,7 +329,20 @@ See: `.kb/decisions/2026-02-18-two-lane-agent-discovery.md`
 - `AGENT_MANIFEST.json` replaces registry entries as workspace-local binding
 - Decision: `.kb/decisions/2026-02-18-two-lane-agent-discovery.md`
 - Priority Cascade expanded with `awaiting-cleanup` status
-- Verification suite expanded to 14 gates (git diff, accretion, build, visual, test evidence, etc.)
+- Verification suite expanded to 14 gates (git diff, accretion, build, visual, test evidence, etc.) → 15 gates (vet added Feb 25)
+
+**Feb 20-25, 2026: Liveness Rethink & Gate Expansion**
+
+- Phase-based liveness replaces tmux liveness for claude-backend agents (orch-go-1182→1183→1185)
+  - Tmux liveness check violated Invariant 6 (tmux as state) and caused dashboard oscillation
+  - Phase comments now serve as heartbeat: any reported phase = active, no phase + not recent = dead
+  - See probe: `probes/2026-02-24-probe-tmux-liveness-two-lane-violation.md`
+- Cross-project querying: `queryTrackedAgents()` now queries beads across all known project directories (orch-go-1231)
+- `GateVet` added to completion verification (15 gates total, orch-go-1248)
+- Knowledge maintenance step added to `orch complete` flow (orch-go-1243)
+- Deferred tmux window cleanup prevents phantom windows during completion
+- Completion backlog detection and stall tracking added to dashboard monitoring
+- TTL-based beads cache (`serve_agents_cache.go`) prevents excessive bd process spawning
 
 ---
 
@@ -354,10 +381,12 @@ See: `.kb/decisions/2026-02-18-two-lane-agent-discovery.md`
 
 **Primary Evidence (Verify These):**
 
-- `cmd/orch/serve_agents_status.go` - Priority Cascade implementation (`determineAgentStatus()`)
-- `cmd/orch/query_tracked.go` - Single-pass query engine (`queryTrackedAgents()`)
+- `cmd/orch/serve_agents_status.go` - Priority Cascade implementation (`determineAgentStatus()`), stall tracking, completion backlog detection
+- `cmd/orch/query_tracked.go` - Single-pass query engine (`queryTrackedAgents()`), phase-based liveness for claude-backend agents, cross-project beads querying
 - `cmd/orch/serve_agents_handlers.go` - Dashboard API handlers
 - `cmd/orch/serve_agents_discovery.go` - Workspace and investigation discovery
-- `pkg/verify/check.go` - Completion verification (14 gates)
+- `cmd/orch/serve_agents_cache.go` - TTL-based beads cache (prevents excessive bd process spawning from dashboard polls)
+- `pkg/verify/check.go` - Completion verification (15 gates, including `GateVet` added Feb 2026)
+- `cmd/orch/complete_cmd.go` - Completion pipeline orchestrator (knowledge maintenance step, deferred tmux cleanup)
 - `cmd/orch/architecture_lint_test.go` - Structural guardrails preventing registry recreation
 - `.beads/issues.jsonl` - Canonical completion source
