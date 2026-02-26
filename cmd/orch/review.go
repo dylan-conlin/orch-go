@@ -592,6 +592,10 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 		} else {
 			fmt.Println("No pending completions")
 		}
+		// Still show triage nudge even when no completions pending
+		if triageCount := getTriageReviewCount(); triageCount > 0 {
+			fmt.Printf("\n%s", formatTriageSummary(triageCount))
+		}
 		return nil
 	}
 
@@ -702,6 +706,11 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 		fmt.Printf("\nTo complete agents with issues:\n")
 		fmt.Printf("  orch-go complete <beads-id>         # If Phase: Complete reported\n")
 		fmt.Printf("  orch-go complete <beads-id> --force # Skip phase verification\n")
+	}
+
+	// Hygiene nudge: show triage:review count
+	if triageCount := getTriageReviewCount(); triageCount > 0 {
+		fmt.Printf("\n%s", formatTriageSummary(triageCount))
 	}
 
 	return nil
