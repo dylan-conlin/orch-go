@@ -32,6 +32,9 @@ type ReflectSuggestions struct {
 
 	// Refine suggestions for kn entries that refine existing principles.
 	Refine []RefineSuggestion `json:"refine,omitempty"`
+
+	// DefectClass patterns detected across investigations.
+	DefectClass []DefectClassSuggestion `json:"defect_class,omitempty"`
 }
 
 // SynthesisSuggestion represents a topic with multiple investigations.
@@ -63,6 +66,16 @@ type DriftSuggestion struct {
 	Suggestion string `json:"suggestion"`
 }
 
+// DefectClassSuggestion represents a recurring defect mechanism across investigations.
+type DefectClassSuggestion struct {
+	DefectClass    string   `json:"defect_class"`
+	Count          int      `json:"count"`
+	WindowDays     int      `json:"window_days"`
+	Investigations []string `json:"investigations"`
+	Suggestion     string   `json:"suggestion"`
+	IssueCreated   bool     `json:"issue_created,omitempty"`
+}
+
 // RefineSuggestion represents a kn entry that refines an existing principle.
 type RefineSuggestion struct {
 	ID         string   `json:"id"`
@@ -74,12 +87,13 @@ type RefineSuggestion struct {
 
 // kbReflectOutput represents the raw output from kb reflect --format json.
 type kbReflectOutput struct {
-	Synthesis  []SynthesisSuggestion `json:"synthesis,omitempty"`
-	Promote    []PromoteSuggestion   `json:"promote,omitempty"`
-	Stale      []StaleSuggestion     `json:"stale,omitempty"`
-	Drift      []DriftSuggestion     `json:"drift,omitempty"`
-	ModelDrift []json.RawMessage     `json:"model_drift,omitempty"`
-	Refine     []kbRefineOutput      `json:"refine,omitempty"`
+	Synthesis   []SynthesisSuggestion   `json:"synthesis,omitempty"`
+	Promote     []PromoteSuggestion     `json:"promote,omitempty"`
+	Stale       []StaleSuggestion       `json:"stale,omitempty"`
+	Drift       []DriftSuggestion       `json:"drift,omitempty"`
+	ModelDrift  []json.RawMessage       `json:"model_drift,omitempty"`
+	Refine      []kbRefineOutput        `json:"refine,omitempty"`
+	DefectClass []DefectClassSuggestion `json:"defect_class,omitempty"`
 }
 
 // kbRefineOutput represents the raw refine entry from kb reflect.
@@ -109,12 +123,13 @@ func RunReflection() (*ReflectSuggestions, error) {
 }
 
 // RunReflectionWithOptions executes kb reflect with configurable options.
-// If createIssues is true, it passes --type synthesis --create-issue to kb reflect
-// which will automatically create beads issues for topics with 10+ investigations.
+// If createIssues is true, it passes --create-issue to kb reflect
+// which will automatically create beads issues for all types at their respective thresholds
+// (synthesis ≥10, defect-class ≥3, open ≥3 days).
 func RunReflectionWithOptions(createIssues bool) (*ReflectSuggestions, error) {
 	args := []string{"reflect", "--format", "json"}
 	if createIssues {
-		args = append(args, "--type", "synthesis", "--create-issue")
+		args = append(args, "--create-issue")
 	}
 
 	cmd := exec.Command("kb", args...)
@@ -147,13 +162,14 @@ func RunReflectionWithOptions(createIssues bool) (*ReflectSuggestions, error) {
 	}
 
 	suggestions := &ReflectSuggestions{
-		Timestamp:  time.Now().UTC(),
-		Synthesis:  rawOutput.Synthesis,
-		Promote:    rawOutput.Promote,
-		Stale:      rawOutput.Stale,
-		Drift:      rawOutput.Drift,
-		ModelDrift: rawOutput.ModelDrift,
-		Refine:     refine,
+		Timestamp:   time.Now().UTC(),
+		Synthesis:   rawOutput.Synthesis,
+		Promote:     rawOutput.Promote,
+		Stale:       rawOutput.Stale,
+		Drift:       rawOutput.Drift,
+		ModelDrift:  rawOutput.ModelDrift,
+		Refine:      refine,
+		DefectClass: rawOutput.DefectClass,
 	}
 
 	return suggestions, nil
@@ -213,7 +229,7 @@ func (s *ReflectSuggestions) HasSuggestions() bool {
 	if s == nil {
 		return false
 	}
-	return len(s.Synthesis) > 0 || len(s.Promote) > 0 || len(s.Stale) > 0 || len(s.Drift) > 0 || len(s.ModelDrift) > 0 || len(s.Refine) > 0
+	return len(s.Synthesis) > 0 || len(s.Promote) > 0 || len(s.Stale) > 0 || len(s.Drift) > 0 || len(s.ModelDrift) > 0 || len(s.Refine) > 0 || len(s.DefectClass) > 0
 }
 
 // TotalCount returns the total number of suggestions across all categories.
@@ -221,7 +237,7 @@ func (s *ReflectSuggestions) TotalCount() int {
 	if s == nil {
 		return 0
 	}
-	return len(s.Synthesis) + len(s.Promote) + len(s.Stale) + len(s.Drift) + len(s.ModelDrift) + len(s.Refine)
+	return len(s.Synthesis) + len(s.Promote) + len(s.Stale) + len(s.Drift) + len(s.ModelDrift) + len(s.Refine) + len(s.DefectClass)
 }
 
 // Summary returns a human-readable summary of suggestions.
@@ -248,6 +264,13 @@ func (s *ReflectSuggestions) Summary() string {
 	}
 	if len(s.Refine) > 0 {
 		parts = append(parts, fmt.Sprintf("%d principle refinements", len(s.Refine)))
+	}
+	if len(s.DefectClass) > 0 {
+		noun := "patterns"
+		if len(s.DefectClass) == 1 {
+			noun = "pattern"
+		}
+		parts = append(parts, fmt.Sprintf("%d defect-class %s", len(s.DefectClass), noun))
 	}
 
 	result := ""
