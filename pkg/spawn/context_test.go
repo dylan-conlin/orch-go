@@ -1622,7 +1622,7 @@ func TestGenerateContext_NoPushGuidance(t *testing.T) {
 		}
 
 		// Should indicate work completeness requirement
-		if !strings.Contains(content, "Work is NOT complete until Phase: Complete is reported") {
+		if !strings.Contains(content, "work is NOT complete until Phase: Complete is reported") {
 			t.Error("expected content to contain work completeness requirement")
 		}
 	})
@@ -1649,7 +1649,7 @@ func TestGenerateContext_NoPushGuidance(t *testing.T) {
 		}
 
 		// Should indicate work completeness requirement
-		if !strings.Contains(content, "Work is NOT complete until Phase: Complete is reported") {
+		if !strings.Contains(content, "work is NOT complete until Phase: Complete is reported") {
 			t.Error("expected content to contain work completeness requirement for no-track spawn")
 		}
 	})
