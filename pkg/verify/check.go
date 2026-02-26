@@ -25,6 +25,7 @@ const (
 	GateGitDiff            = "git_diff"             // Git diff doesn't match claims
 	GateAccretion          = "accretion"            // File size accretion detected
 	GateBuild              = "build"                // Project build failed
+	GateVet                = "vet"                  // Go vet failed
 	GateDecisionPatchLimit = "decision_patch_limit" // Decision patch limit exceeded
 	GateExplainBack        = "explain_back"         // Human explanation of what was built required
 )
@@ -425,15 +426,20 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 		}
 	}
 
-	// Verify build for Go projects
-	// This gates completion when Go files are modified but the project doesn't build
+	// Verify build and vet for Go projects
+	// This gates completion when Go files are modified but the project doesn't build or vet
 	// Note: This check is still relevant for orchestrators if they make code changes
 	buildResult := VerifyBuildForCompletion(workspacePath, projectDir)
 	if buildResult != nil {
 		if !buildResult.Passed {
 			result.Passed = false
 			result.Errors = append(result.Errors, buildResult.Errors...)
-			result.GatesFailed = append(result.GatesFailed, GateBuild)
+			if !buildResult.BuildPassed {
+				result.GatesFailed = append(result.GatesFailed, GateBuild)
+			}
+			if !buildResult.VetPassed {
+				result.GatesFailed = append(result.GatesFailed, GateVet)
+			}
 		}
 		result.Warnings = append(result.Warnings, buildResult.Warnings...)
 	}

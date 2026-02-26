@@ -2,6 +2,7 @@ package verify
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -278,6 +279,193 @@ func TestVerifyBuildForCompletion_NonGoProject(t *testing.T) {
 	// Should return nil for non-Go project
 	if result != nil {
 		t.Errorf("VerifyBuildForCompletion() should return nil for non-Go project, got %+v", result)
+	}
+}
+
+func TestRunGoVet_Clean(t *testing.T) {
+	// Create a minimal Go project that passes vet
+	tempDir := t.TempDir()
+	goMod := "module test\ngo 1.21\n"
+	if err := os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte(goMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mainGo := "package main\n\nfunc main() {}\n"
+	if err := os.WriteFile(filepath.Join(tempDir, "main.go"), []byte(mainGo), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := RunGoVet(tempDir)
+	if err != nil {
+		t.Errorf("RunGoVet() on clean project returned error: %v, output: %s", err, output)
+	}
+}
+
+func TestRunGoVet_WithIssues(t *testing.T) {
+	// Create a Go project with a vet issue (unreachable code)
+	tempDir := t.TempDir()
+	goMod := "module test\ngo 1.21\n"
+	if err := os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte(goMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Printf format mismatch is a classic vet catch
+	mainGo := `package main
+
+import "fmt"
+
+func main() {
+	fmt.Printf("%d", "not-a-number")
+}
+`
+	if err := os.WriteFile(filepath.Join(tempDir, "main.go"), []byte(mainGo), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := RunGoVet(tempDir)
+	if err == nil {
+		t.Error("RunGoVet() on project with vet issues should return error")
+	}
+	if output == "" {
+		t.Error("RunGoVet() should return output describing the vet issue")
+	}
+}
+
+func TestRunGoVet_NonexistentDir(t *testing.T) {
+	_, err := RunGoVet("/nonexistent/path")
+	if err == nil {
+		t.Error("RunGoVet() on nonexistent directory should return error")
+	}
+}
+
+func TestVerifyBuild_VetFailure(t *testing.T) {
+	// Create a Go project that builds but fails vet
+	tempDir := t.TempDir()
+	projectDir := filepath.Join(tempDir, "go-project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	goMod := "module test\ngo 1.21\n"
+	if err := os.WriteFile(filepath.Join(projectDir, "go.mod"), []byte(goMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Printf format mismatch: builds fine, fails vet
+	mainGo := `package main
+
+import "fmt"
+
+func main() {
+	fmt.Printf("%d", "not-a-number")
+}
+`
+	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte(mainGo), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Initialize a git repo with a commit so HasGoChangesInRecentCommits works
+	setupGitRepo(t, projectDir)
+
+	// Create workspace with feature-impl skill
+	workspacePath := filepath.Join(tempDir, "workspace")
+	if err := os.MkdirAll(workspacePath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	spawnContext := "TASK: Test\n\n## SKILL GUIDANCE (feature-impl)\n"
+	if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := VerifyBuild(workspacePath, projectDir)
+
+	// Build should pass
+	if !result.BuildPassed {
+		t.Error("BuildPassed should be true (code compiles)")
+	}
+
+	// Vet should fail
+	if result.VetPassed {
+		t.Error("VetPassed should be false (Printf format mismatch)")
+	}
+
+	// Overall should fail
+	if result.Passed {
+		t.Error("Passed should be false when vet fails")
+	}
+
+	// Should have vet-related errors
+	hasVetError := false
+	for _, e := range result.Errors {
+		if len(e) > 0 && (e == "'go vet ./...' failed" || len(e) > 4) {
+			hasVetError = true
+			break
+		}
+	}
+	if !hasVetError {
+		t.Errorf("Expected vet error messages, got: %v", result.Errors)
+	}
+}
+
+func TestVerifyBuild_BuildAndVetPass(t *testing.T) {
+	// Create a clean Go project
+	tempDir := t.TempDir()
+	projectDir := filepath.Join(tempDir, "go-project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	goMod := "module test\ngo 1.21\n"
+	if err := os.WriteFile(filepath.Join(projectDir, "go.mod"), []byte(goMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mainGo := "package main\n\nfunc main() {}\n"
+	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte(mainGo), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Initialize a git repo with a commit
+	setupGitRepo(t, projectDir)
+
+	// Create workspace with feature-impl skill
+	workspacePath := filepath.Join(tempDir, "workspace")
+	if err := os.MkdirAll(workspacePath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	spawnContext := "TASK: Test\n\n## SKILL GUIDANCE (feature-impl)\n"
+	if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := VerifyBuild(workspacePath, projectDir)
+
+	if !result.BuildPassed {
+		t.Errorf("BuildPassed should be true, errors: %v", result.Errors)
+	}
+	if !result.VetPassed {
+		t.Errorf("VetPassed should be true, errors: %v", result.Errors)
+	}
+	if !result.Passed {
+		t.Errorf("Passed should be true, errors: %v", result.Errors)
+	}
+}
+
+// setupGitRepo initializes a git repo with two commits so HasGoChangesInRecentCommits
+// can detect changes via HEAD~1..HEAD. The first commit is empty (with --allow-empty),
+// and the second commit includes all files in the directory.
+func setupGitRepo(t *testing.T, dir string) {
+	t.Helper()
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "commit", "--allow-empty", "-m", "initial empty"},
+		{"git", "add", "."},
+		{"git", "commit", "-m", "add files"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("setupGitRepo: %v failed: %v\n%s", args, err, out)
+		}
 	}
 }
 

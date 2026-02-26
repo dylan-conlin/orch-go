@@ -9,14 +9,17 @@ import (
 	"strings"
 )
 
-// BuildVerificationResult represents the result of checking if the project builds.
+// BuildVerificationResult represents the result of checking if the project builds and passes vet.
 type BuildVerificationResult struct {
-	Passed       bool     // Whether the build succeeded
-	HasGoFiles   bool     // Whether Go files exist in the project
-	BuildOutput  string   // Output from the build command (truncated if long)
-	Errors       []string // Error messages (blocking)
-	Warnings     []string // Warning messages (non-blocking)
-	SkillName    string   // Skill that was used
+	Passed      bool     // Whether all checks (build + vet) succeeded
+	BuildPassed bool     // Whether go build succeeded
+	VetPassed   bool     // Whether go vet succeeded
+	HasGoFiles  bool     // Whether Go files exist in the project
+	BuildOutput string   // Output from the build command (truncated if long)
+	VetOutput   string   // Output from the vet command (truncated if long)
+	Errors      []string // Error messages (blocking)
+	Warnings    []string // Warning messages (non-blocking)
+	SkillName   string   // Skill that was used
 }
 
 // Skills that require build verification before completion.
@@ -146,17 +149,35 @@ func RunGoBuild(projectDir string) (string, error) {
 	return output, err
 }
 
-// VerifyBuild checks if the Go project builds successfully.
+// RunGoVet runs 'go vet ./...' in the project directory.
+// Returns the vet output and any error that occurred.
+func RunGoVet(projectDir string) (string, error) {
+	cmd := exec.Command("go", "vet", "./...")
+	cmd.Dir = projectDir
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+
+	// Combine stdout and stderr
+	output := stdout.String() + stderr.String()
+
+	return output, err
+}
+
+// VerifyBuild checks if the Go project builds and passes vet.
 // This is a gate that blocks completion if Go files were modified
-// but the project fails to build.
+// but the project fails to build or vet.
 //
 // The verification passes if:
 // 1. The project is not a Go project (no go.mod or .go files), OR
 // 2. No Go files were modified in recent commits, OR
 // 3. The skill is not an implementation-focused skill, OR
-// 4. The project builds successfully with 'go build ./...'
+// 4. The project builds successfully with 'go build ./...' AND passes 'go vet ./...'
 func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
-	result := BuildVerificationResult{Passed: true}
+	result := BuildVerificationResult{Passed: true, BuildPassed: true, VetPassed: true}
 
 	// Extract skill name for skill-based gating
 	skillName, _ := ExtractSkillNameFromSpawnContext(workspacePath)
@@ -190,12 +211,32 @@ func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
 
 	if err != nil {
 		result.Passed = false
+		result.BuildPassed = false
+		result.VetPassed = false // not run
 		result.Errors = append(result.Errors,
 			"'go build ./...' failed",
 			"Build must pass before completion",
 		)
 		if output != "" {
 			result.Errors = append(result.Errors, "Build output: "+result.BuildOutput)
+		}
+		// Skip vet if build fails - vet errors would be noise
+		return result
+	}
+
+	// Run go vet (only if build succeeded)
+	vetOutput, vetErr := RunGoVet(projectDir)
+	result.VetOutput = truncateOutput(vetOutput, 500)
+
+	if vetErr != nil {
+		result.Passed = false
+		result.VetPassed = false
+		result.Errors = append(result.Errors,
+			"'go vet ./...' failed",
+			"Vet must pass before completion",
+		)
+		if vetOutput != "" {
+			result.Errors = append(result.Errors, "Vet output: "+result.VetOutput)
 		}
 	}
 
