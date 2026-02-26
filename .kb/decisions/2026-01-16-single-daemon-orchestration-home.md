@@ -1,7 +1,13 @@
 # Decision: Single Daemon with Orchestration Home
 
+<!-- Lineage (fill only when applicable) -->
+**Extracted-From:** 
+**Supersedes:** 
+**Superseded-By:** `.kb/decisions/2026-02-25-project-group-model.md`
+
+
 **Date:** 2026-01-16
-**Status:** Accepted
+**Status:** Superseded
 **Context:** Daemon architecture for multi-project orchestration
 
 ## Problem

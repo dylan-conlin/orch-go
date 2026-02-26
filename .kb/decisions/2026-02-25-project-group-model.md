@@ -4,7 +4,7 @@
 **Date:** 2026-02-25
 **Affects:** spawn kb context, daemon polling, account routing, dashboard filtering
 **Investigation:** `.kb/investigations/2026-02-25-design-project-group-model.md`
-**Supersedes:** `.kb/decisions/2026-01-16-single-daemon-orchestration-home.md` (partially — daemon already does cross-project polling)
+**Supersedes:** `.kb/decisions/2026-01-16-single-daemon-orchestration-home.md`
 
 ---
 
