@@ -42,6 +42,7 @@ type SpawnInput struct {
 // This accumulates values as we progress through the spawn pipeline.
 type SpawnContext struct {
 	Task               string
+	OrientationFrame   string // Separate context from task title (e.g., issue description)
 	SkillName          string
 	ProjectDir         string
 	ProjectName        string
@@ -894,6 +895,7 @@ func LoadDesignArtifacts(designWorkspace, projectDir string) (mockupPath, prompt
 func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, noTrack, skipArtifactCheck bool) *spawn.Config {
 	return &spawn.Config{
 		Task:               ctx.Task,
+		OrientationFrame:   ctx.OrientationFrame,
 		SkillName:          ctx.SkillName,
 		Project:            ctx.ProjectName,
 		ProjectDir:         ctx.ProjectDir,
@@ -975,9 +977,14 @@ func ValidateAndWriteContext(cfg *spawn.Config, force bool) (minimalPrompt strin
 		return "", nil, fmt.Errorf("failed to write spawn context: %w", atomicErr)
 	}
 
-	// Record orientation frame in beads comments at spawn time
+	// Record orientation frame in beads comments at spawn time.
+	// Use OrientationFrame (issue description) if available for richer context;
+	// fall back to Task (issue title) for manual spawns without separate framing.
 	if !cfg.NoTrack && !cfg.IsOrchestrator && !cfg.IsMetaOrchestrator && cfg.BeadsID != "" {
-		frame := strings.TrimSpace(cfg.Task)
+		frame := strings.TrimSpace(cfg.OrientationFrame)
+		if frame == "" {
+			frame = strings.TrimSpace(cfg.Task)
+		}
 		if frame != "" {
 			if err := addBeadsComment(cfg.BeadsID, fmt.Sprintf("FRAME: %s", frame)); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to add frame comment: %v\n", err)

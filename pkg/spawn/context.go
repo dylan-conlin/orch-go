@@ -89,6 +89,9 @@ func CreateScreenshotsDir(workspacePath string) error {
 // SpawnContextTemplate is the basic structure for SPAWN_CONTEXT.md.
 // This is a simplified version of the Python template.
 const SpawnContextTemplate = `TASK: {{.Task}}
+{{if .OrientationFrame}}
+ORIENTATION_FRAME: {{.OrientationFrame}}
+{{end}}
 {{if .DesignWorkspace}}
 ## DESIGN REFERENCE
 
@@ -660,6 +663,7 @@ type contextData struct {
 	DesignMockupPath      string   // Path to approved mockup
 	DesignPromptPath      string   // Path to design prompt
 	DesignNotes           string   // Notes from design session
+	OrientationFrame      string   // Additional task context (from issue description), rendered as separate section
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -733,6 +737,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		DesignMockupPath:      cfg.DesignMockupPath,
 		DesignPromptPath:      cfg.DesignPromptPath,
 		DesignNotes:           cfg.DesignNotes,
+		OrientationFrame:      cfg.OrientationFrame,
 	}
 
 	var buf bytes.Buffer

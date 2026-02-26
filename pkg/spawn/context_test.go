@@ -2696,3 +2696,77 @@ func TestGenerateContext_HotspotAreaEmptyFiles(t *testing.T) {
 		t.Error("expected content to contain 'HOTSPOT AREA' section even with empty files list")
 	}
 }
+
+func TestGenerateContext_OrientationFrame(t *testing.T) {
+	t.Run("includes ORIENTATION_FRAME section when set", func(t *testing.T) {
+		cfg := &Config{
+			Task:             "Fix daemon spawn prompt construction",
+			OrientationFrame: "The daemon currently puts the FRAME beads comment as the TASK field, causing workspace names to start with orientation-frame.",
+			SkillName:        "systematic-debugging",
+			ProjectDir:       "/tmp/test-project",
+			WorkspaceName:    "test-workspace",
+			BeadsID:          "test-123",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// TASK should be just the title
+		if !strings.Contains(content, "TASK: Fix daemon spawn prompt construction") {
+			t.Error("expected TASK to contain issue title")
+		}
+
+		// ORIENTATION_FRAME should be a separate section
+		if !strings.Contains(content, "ORIENTATION_FRAME: The daemon currently puts") {
+			t.Error("expected content to contain ORIENTATION_FRAME section with description")
+		}
+	})
+
+	t.Run("omits ORIENTATION_FRAME section when empty", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "Fix daemon spawn prompt",
+			SkillName:     "systematic-debugging",
+			ProjectDir:    "/tmp/test-project",
+			WorkspaceName: "test-workspace",
+			BeadsID:       "test-123",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		if strings.Contains(content, "ORIENTATION_FRAME:") {
+			t.Error("expected no ORIENTATION_FRAME section when OrientationFrame is empty")
+		}
+	})
+
+	t.Run("TASK field does not include description text", func(t *testing.T) {
+		cfg := &Config{
+			Task:             "Short title",
+			OrientationFrame: "Long description with lots of context about the issue",
+			SkillName:        "feature-impl",
+			ProjectDir:       "/tmp/test-project",
+			WorkspaceName:    "test-workspace",
+			BeadsID:          "test-123",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// TASK should only contain the title, not the description
+		if strings.Contains(content, "TASK: Short title\nLong description") {
+			t.Error("TASK field should not contain description text")
+		}
+		if !strings.Contains(content, "TASK: Short title") {
+			t.Error("TASK should contain the title")
+		}
+		if !strings.Contains(content, "ORIENTATION_FRAME: Long description") {
+			t.Error("description should be in ORIENTATION_FRAME section")
+		}
+	})
+}

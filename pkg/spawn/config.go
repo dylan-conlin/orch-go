@@ -170,6 +170,11 @@ type Config struct {
 	// Used for surfacing gaps in dashboard and tracking patterns.
 	GapAnalysis *GapAnalysis
 
+	// OrientationFrame provides contextual framing for the task, separate from the task title.
+	// When populated (typically from beads issue description), it appears as an ORIENTATION_FRAME
+	// section in SPAWN_CONTEXT.md, keeping the TASK field concise (issue title only).
+	OrientationFrame string
+
 	// IsBug indicates whether the associated beads issue is a bug type.
 	// When true, ReproSteps will be included in SPAWN_CONTEXT.md.
 	IsBug bool

@@ -193,6 +193,11 @@ func init() {
 var (
 	// Work command flags
 	workInline bool // Run inline (blocking) with TUI
+
+	// spawnOrientationFrame holds separate context from the task title.
+	// Set by runWork from the beads issue description, rendered as
+	// ORIENTATION_FRAME: section in SPAWN_CONTEXT.md (separate from TASK:).
+	spawnOrientationFrame string
 )
 
 var workCmd = &cobra.Command{
@@ -436,11 +441,11 @@ func runWork(serverURL, beadsID string, inline bool) error {
 		}
 	}
 
-	// Use issue title and description as the task for full context
+	// Use issue title as the TASK (concise, drives workspace name slug).
+	// Issue description goes into a separate ORIENTATION_FRAME section in SPAWN_CONTEXT.md.
+	// This prevents long descriptions from polluting workspace names (e.g., "orientation-frame-...").
 	task := issue.Title
-	if issue.Description != "" {
-		task = issue.Title + "\n\n" + issue.Description
-	}
+	spawnOrientationFrame = issue.Description
 
 	// Set the spawnIssue flag so runSpawnWithSkillInternal uses the existing issue
 	spawnIssue = beadsID
@@ -617,6 +622,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 
 	ctx := &orch.SpawnContext{
 		Task:               task,
+		OrientationFrame:   spawnOrientationFrame,
 		SkillName:          skillName,
 		ProjectDir:         projectDir,
 		ProjectName:        projectName,
