@@ -1,0 +1,31 @@
+verification:
+  type: investigation-audit
+  issue: orch-go-yx2c
+
+  automated_checks:
+    - name: probe_file_exists
+      command: "test -f .kb/models/orchestrator-session-lifecycle/probes/2026-02-26-probe-decision-staleness-audit-37-decisions.md && echo PASS"
+      expected: "PASS"
+    - name: synthesis_file_exists
+      command: "test -f .orch/workspace/og-inv-orientation-frame-knowledge-26feb-c755/SYNTHESIS.md && echo PASS"
+      expected: "PASS"
+    - name: probe_has_four_sections
+      command: "grep -c '## Question\\|## What I Tested\\|## What I Observed\\|## Model Impact' .kb/models/orchestrator-session-lifecycle/probes/2026-02-26-probe-decision-staleness-audit-37-decisions.md"
+      expected: "4"
+    - name: all_37_decisions_covered
+      command: "grep -c '| [0-9]' .orch/workspace/og-inv-orientation-frame-knowledge-26feb-c755/SYNTHESIS.md"
+      expected: ">=37"
+
+  manual_checks:
+    - description: "Verify each of the 37 decisions appears in exactly one category (A, B, C, or D)"
+    - description: "Verify model impact findings are actionable (session registry deleted, hierarchy outdated)"
+    - description: "Confirm recommended follow-up actions are reasonable"
+
+  outcomes:
+    decisions_audited: 37
+    category_a_valid: 19
+    category_b_archived: 6
+    category_c_stale: 5
+    category_d_process: 7
+    model_contradictions_found: 2
+    model_extensions_found: 1
