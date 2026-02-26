@@ -1,36 +1,29 @@
 # Model: Orchestrator Session Lifecycle
 
 **Domain:** Orchestrator / Meta-Orchestration / Session Management
-**Last Updated:** 2026-01-12
-**Synthesized From:** 40 investigations (Dec 21, 2025 - Jan 7, 2026) on orchestrator session boundaries, completion verification, frame collapse, checkpoint discipline, and hierarchical completion model
+**Last Updated:** 2026-02-26
+**Synthesized From:** 40 investigations (Dec 21, 2025 - Jan 7, 2026) on orchestrator session boundaries, completion verification, frame collapse, checkpoint discipline, and hierarchical completion model. Updated Feb 2026 per probe findings: removed deleted session registry references, updated hierarchy to strategic comprehender pattern.
 
 ---
 
 ## Summary (30 seconds)
 
-Orchestrator sessions operate in a **three-tier hierarchy** (meta-orchestrator → orchestrator → worker) where each level is completed by the level above. Orchestrators produce **SESSION_HANDOFF.md** (not SYNTHESIS.md) and **wait** for completion (not /exit). They track via **session registry** (not beads) because orchestrators manage conversations, not work items. Frame collapse occurs when orchestrators drop levels and do work below their station - detected externally, not self-diagnosed. Checkpoint discipline uses duration thresholds (2h/3h/4h) as a proxy for context exhaustion.
+Orchestrator sessions use a **strategic comprehender** pattern where the orchestrator's role is understanding, not coordination (daemon handles coordination). Orchestrators produce **SESSION_HANDOFF.md** (not SYNTHESIS.md) and **wait** for completion (not /exit). Agent state is derived at query time from **four independent sources** (OpenCode sessions, tmux windows, beads issues, workspaces) — no persistent local state like registries. Frame collapse occurs when orchestrators drop levels and do work below their station - detected externally, not self-diagnosed. Checkpoint discipline uses duration thresholds (2h/3h/4h) as a proxy for context exhaustion.
 
 ---
 
 ## Core Mechanism
 
-### Three-Tier Hierarchy
+### Strategic Comprehender Pattern
 
-Orchestration operates across three distinct levels:
+The orchestrator role is **strategic comprehension** — understanding, not coordination (daemon handles coordination). The hierarchy has two operational levels:
 
 ```
 ┌─────────────────────────┐
-│   Meta-Orchestrator     │  ← Dylan (human)
-│   Strategic decisions   │     - Decides WHICH focus
-│   Spawns orchestrators  │     - Reviews handoffs
+│   Dylan (human)         │  ← Strategic comprehender
+│   + Orchestrator skill  │     - ORIENT → DELEGATE → RECONNECT
+│   Understanding         │     - Reviews handoffs, provides direction
 └────────────┬────────────┘     - Completes orchestrators
-             │ spawns/completes
-             ▼
-┌─────────────────────────┐
-│    Orchestrator         │  ← Claude agent (policy skill)
-│    Strategic comprehension │  - COMPREHEND → TRIAGE → SYNTHESIZE
-│    SESSION_HANDOFF.md   │     - Spawns workers
-└────────────┬────────────┘     - Synthesizes results
              │ spawns/completes
              ▼
 ┌─────────────────────────┐
@@ -38,9 +31,13 @@ Orchestration operates across three distinct levels:
 │    Implementation       │     - Executes specific task
 │    SYNTHESIS.md         │     - Reports Phase: Complete
 └─────────────────────────┘
+
+Daemon (autonomous)        ← Coordinates: polls bd ready, auto-spawns
 ```
 
-**Key invariant:** Each level is completed by the level above. Workers don't self-terminate; orchestrators complete them. Orchestrators don't self-terminate; the meta-orchestrator completes them.
+**Key invariant:** Each level is completed by the level above. Workers don't self-terminate; orchestrators complete them. The daemon handles tactical coordination (spawning from triage queue), freeing the orchestrator to focus on comprehension.
+
+**Historical note:** An earlier three-tier hierarchy (meta-orchestrator → orchestrator → worker) was collapsed into this pattern when the "strategic orchestrator" model (Jan 2026) recognized that orchestrators should comprehend, not coordinate.
 
 ### Session Types and Boundaries
 
@@ -67,34 +64,27 @@ Orchestrators are detected via **skill metadata**, not explicit flags:
 | Skill type | `skill-type: worker` | `skill-type: policy` or `orchestrator` |
 | Context file | SPAWN_CONTEXT.md | ORCHESTRATOR_CONTEXT.md |
 | Completion artifact | SYNTHESIS.md | SESSION_HANDOFF.md |
-| Beads tracking | Required | Skipped (uses session registry) |
+| Beads tracking | Required | Optional (orchestrators manage conversations, not work items) |
 | Default spawn mode | Headless | Tmux (visible) |
 | Completion signal | `Phase: Complete` + `/exit` | SESSION_HANDOFF.md + wait |
 | Workspace prefix | `og-work-*`, `og-feat-*` | `og-orch-*` |
 
 **Key insight:** Skills with `skill-type: policy` trigger orchestrator context generation, which sets behavioral mode through framing, not instructions.
 
-### Session Registry vs Beads
+### State Derivation (No Local Agent State)
 
-**Beads tracks work items.** Issues represent tasks to be completed with dependencies, priorities, status transitions.
+Agent state is derived at query time from four authoritative sources — no persistent local registries or caches:
 
-**Session registry tracks conversations.** Orchestrators aren't issues being worked on - they're interactive sessions managing work.
+| Source | What it provides | Authority |
+|--------|-----------------|-----------|
+| **Beads issues** | Work status, dependencies, phase comments | Highest (canonical completion) |
+| **OpenCode sessions** | Session existence, activity, messages | Infrastructure layer |
+| **Tmux windows** | Visual liveness, process existence | UI layer only |
+| **Workspace files** | `.tier`, `.session_id`, SYNTHESIS.md | Filesystem record |
 
-**Session registry structure** (`~/.orch/sessions.json`):
+**Architectural constraint:** `pkg/registry/`, `pkg/cache/`, and `sessions.json` are forbidden by architecture lint tests (`architecture_lint_test.go`). If queries are slow, fix the authoritative source — do not build projections.
 
-| Field | Purpose |
-|-------|---------|
-| `workspace_name` | Unique identifier (og-orch-goal-05jan-a1b2) |
-| `session_id` | OpenCode session ID |
-| `spawn_time` | When session started |
-| `project_dir` | Project the session is managing |
-| `status` | active/completed/abandoned |
-
-**Why separate tracking:**
-- Orchestrators manage multiple issues (not themselves an issue)
-- Session lifecycle independent of any single work item
-- Cross-project operation (orch-knowledge orchestrator managing orch-go work)
-- Completion means "conversation ended", not "task finished"
+**Historical note:** A session registry (`~/.orch/sessions.json`, `pkg/session/registry.go`) existed Jan 2026 but was removed due to false positive completion detection and drift. The "no local agent state" constraint was established to prevent recurrence.
 
 ### Checkpoint Discipline
 
@@ -167,30 +157,32 @@ Meta frame:          "What is the orchestrator struggling with?"
 
 **Fix:** Template updated Jan 2026 to instruct "write SESSION_HANDOFF.md and WAIT".
 
-### 3. Session Registry Drift
+### 3. State Derivation Disagreement
 
-**What happens:** `~/.orch/sessions.json` shows status "active" for completed sessions.
+**What happens:** Different state sources disagree about agent status (e.g., beads says "closed" but OpenCode session still shows "busy").
 
-**Root cause:** `orch complete` didn't update session registry status (only closed beads issues or removed registry entries).
+**Root cause:** Four independent state sources have no coordination protocol. Each updates independently.
 
-**Why it matters:** Stale active sessions accumulate, `orch status` shows ghost sessions, registry becomes unreliable.
+**Why it matters:** Dashboard can show conflicting status, requiring priority cascade to resolve (beads > Phase comments > SYNTHESIS.md > session status).
 
-**Fix:** `orch complete` now updates status to "completed", `orch abandon` updates to "abandoned" - sessions preserved for history, not removed.
+**Mitigation:** The agent-lifecycle-state-model defines a Priority Cascade for resolving disagreements. Beads issue status is the highest authority.
+
+**Historical note:** This replaced the earlier "Session Registry Drift" failure mode. The registry itself was removed; the underlying problem (state disagreement) persists in distributed form.
 
 ---
 
 ## Constraints
 
-### Why Orchestrators Skip Beads Tracking?
+### Why Orchestrators Have Optional Beads Tracking?
 
-**Constraint:** Orchestrators are tracked via session registry, not beads issues.
+**Constraint:** Orchestrators manage conversations, not work items. Beads tracking is optional for orchestrator sessions.
 
-**Implication:** `orch spawn orchestrator` doesn't create beads issue, `orch complete` doesn't check beads for orchestrator tier.
+**Implication:** Orchestrator state is derived from OpenCode sessions, workspace files, and tmux windows rather than beads issues.
 
-**Workaround:** If you need work tracking for an orchestrator session, create manual beads issue and reference it in workspace metadata.
+**Workaround:** If you need work tracking for an orchestrator session, create a beads issue and reference it in workspace metadata.
 
-**This enables:** Separation between conversation tracking (sessions) and work tracking (beads)
-**This constrains:** Cannot use `bd` commands to track orchestrator progress
+**This enables:** Separation between conversation management and work tracking
+**This constrains:** Orchestrator progress not visible via `bd show` unless manual issue created
 
 ---
 
@@ -245,7 +237,7 @@ Meta frame:          "What is the orchestrator struggling with?"
 
 ### Phase 2: Spawnable Orchestrators (Dec 26-30, 2025)
 
-**What changed:** Added orchestrator tier, ORCHESTRATOR_CONTEXT.md template, SESSION_HANDOFF.md artifact, session registry.
+**What changed:** Added orchestrator tier, ORCHESTRATOR_CONTEXT.md template, SESSION_HANDOFF.md artifact, session registry (later removed — see Phase 7).
 
 **Investigations:** 12 investigations on orchestrator session boundaries, completion patterns, skill detection.
 
@@ -310,6 +302,16 @@ Meta frame:          "What is the orchestrator struggling with?"
 
 **Reference:** Line 75 of this document explains skill-type:policy detection; this clarifies the mechanism.
 
+### Phase 7: Registry Removal and No-Local-State Constraint (Feb 2026)
+
+**What changed:** Session registry (`~/.orch/sessions.json`, `pkg/session/registry.go`) was deleted. Architecture lint test added to forbid re-introduction. Agent state is now derived at query time from four authoritative sources (OpenCode sessions, tmux windows, beads issues, workspaces).
+
+**Why removed:** Registry caused false positive completion detection and drift — stale "active" entries accumulated, `orch status` showed ghost sessions. The fundamental problem was maintaining a fifth state source that could disagree with the authoritative four.
+
+**Key insight:** "No local agent state" is an architectural constraint, not a temporary simplification. If queries are slow, fix the authoritative source.
+
+**Reference:** `cmd/orch/architecture_lint_test.go` — enforces the constraint; probe `2026-02-26-probe-decision-staleness-audit-37-decisions.md` — identified the staleness.
+
 ### Status: Resume Protocol Implementation (Jan 13, 2026)
 
 **Current implementation status:** Resume protocol is partially implemented with two distinct commands:
@@ -320,7 +322,7 @@ Meta frame:          "What is the orchestrator struggling with?"
 | `orch resume <id>` | Resume PAUSED agent by sending continuation prompt | ✅ Implemented (Dec 2025) |
 
 **What exists:**
-- Session registry supports workspace/session lookups
+- Workspace files and OpenCode sessions support lookups
 - ORCHESTRATOR_CONTEXT.md template includes resume guidance
 - `orch session resume` discovers and displays handoffs (with --for-injection mode for hooks)
 - `orch resume` can resume workers (beads ID) or orchestrators (--workspace flag)
@@ -355,14 +357,14 @@ Meta frame:          "What is the orchestrator struggling with?"
 
 **Source code:**
 - `pkg/spawn/orchestrator_context.go` - ORCHESTRATOR_CONTEXT.md generation
-- `pkg/session/registry.go` - Session registry management
+- `pkg/session/session.go` - Session management utilities
 - `cmd/orch/complete_cmd.go` - Tier-aware completion flow
 - `pkg/verify/check.go` - VerifyCompletionWithTier()
+- `cmd/orch/architecture_lint_test.go` - Enforces no-local-state constraint (forbids sessions.json, registry)
 
 **Primary Evidence (Verify These):**
 - `pkg/spawn/orchestrator_context.go` - Orchestrator vs worker context generation logic
-- `pkg/session/registry.go` - Session registry structure showing status tracking for orchestrators
 - `cmd/orch/complete_cmd.go` - Tier-aware completion routing (orchestrator vs worker vs light)
 - `pkg/verify/check.go:VerifyCompletionWithTier()` - Three-tier verification logic
 - `cmd/orch/session.go` - Session management commands (start, status, resume)
-- `~/.orch/sessions.json` - Session registry file showing active orchestrator sessions
+- `cmd/orch/architecture_lint_test.go` - Lint test forbidding sessions.json and registry packages
