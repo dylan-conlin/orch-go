@@ -219,7 +219,7 @@ grep -n "WorkspacePath" /Users/dylanconlin/Documents/personal/orch-go/cmd/orch/s
 
 **Related Artifacts:**
 - **Investigation:** .kb/investigations/2026-01-09-inv-create-orchestrator-workspace-session-start.md - Related to orchestrator workspace creation
-- **Model:** .kb/models/workspace-lifecycle-model.md - Context on workspace lifecycle and paths
+- **Model:** .kb/models/workspace-lifecycle-model/model.md - Context on workspace lifecycle and paths
 
 ---
 

@@ -158,7 +158,7 @@ Question emerges → OPEN → Investigation spawned → INVESTIGATING → Unders
 
 - **Investigation:** `.kb/investigations/2026-01-18-inv-design-questions-first-class-entities.md`
 - **Guide:** `.kb/guides/understanding-artifact-lifecycle.md` (Understanding section as answered questions)
-- **Model:** `.kb/models/beads-integration-architecture.md` (dependency mechanics)
+- **Model:** `.kb/models/beads-integration-architecture/model.md` (dependency mechanics)
 - **Concrete example:** Epic orch-go-erdw created without premise validation - questions as entities would have prevented spawn
 
 ## Related Decisions

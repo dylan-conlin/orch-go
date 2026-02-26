@@ -127,7 +127,7 @@ No synthesis is needed for these 12 investigations. They were already synthesize
 
 - ⚠️ Why kb reflect scans synthesized/ folder (didn't examine kb reflect source code)
 - ⚠️ Whether there's a configuration option to exclude synthesized/ (didn't check kb reflect documentation thoroughly)
-- ⚠️ Whether the model at `.kb/models/extract-patterns.md` needs updating (assumed guide update was sufficient)
+- ⚠️ Whether the model at `.kb/models/extract-patterns/model.md` needs updating (assumed guide update was sufficient)
 
 **What would change this:**
 
@@ -199,7 +199,7 @@ No synthesis is needed for these 12 investigations. They were already synthesize
 - `.kb/investigations/archived/2026-01-04-inv-extract-clean-cmd-go-main.md` - Verified synthesis complete (archived)
 - `.kb/investigations/synthesized/code-extraction-patterns/2026-01-08-inv-synthesize-extract-investigations-13-synthesis.md` - Prior synthesis that did the work
 - `.kb/guides/code-extraction-patterns.md` - Verified all patterns documented
-- `.kb/models/extract-patterns.md` - Verified model updated
+- `.kb/models/extract-patterns/model.md` - Verified model updated
 
 **Commands Run:**
 ```bash
@@ -215,7 +215,7 @@ git status --short .kb/investigations/2026-02-14-inv-synthesize-extract-investig
 
 **Related Artifacts:**
 - **Guide:** `.kb/guides/code-extraction-patterns.md` - Contains all patterns from 12 investigations
-- **Model:** `.kb/models/extract-patterns.md` - High-level extraction pattern model
+- **Model:** `.kb/models/extract-patterns/model.md` - High-level extraction pattern model
 - **Prior Synthesis:** `.kb/investigations/synthesized/code-extraction-patterns/2026-01-08-inv-synthesize-extract-investigations-13-synthesis.md` - Documented synthesis completion
 
 ---

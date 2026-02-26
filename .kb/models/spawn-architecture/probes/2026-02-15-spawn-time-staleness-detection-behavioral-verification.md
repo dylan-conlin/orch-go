@@ -24,7 +24,7 @@ The spawn-time model staleness detection (implemented in orch-go-2qj) claims to:
 
 ### Test Setup
 
-**Target Model:** Spawn Architecture (.kb/models/spawn-architecture.md)
+**Target Model:** Spawn Architecture (.kb/models/spawn-architecture/model.md)
 
 - Last Updated: 2026-01-12
 - Contains code references in "Primary Evidence (Verify These)" section

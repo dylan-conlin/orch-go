@@ -1,6 +1,6 @@
 # Probe: Does `bd-sync-safe.sh` leave direct read commands immediately usable after sync?
 
-**Model:** /Users/dylanconlin/Documents/personal/orch-go/.kb/models/beads-integration-architecture.md
+**Model:** /Users/dylanconlin/Documents/personal/orch-go/.kb/models/beads-integration-architecture/model.md
 **Date:** 2026-02-09
 **Status:** Complete
 

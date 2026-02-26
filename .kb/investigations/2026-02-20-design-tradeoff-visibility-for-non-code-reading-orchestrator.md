@@ -332,7 +332,7 @@ This layer is **not recommended for immediate implementation** — it requires t
 ## References
 
 - `.kb/decisions/2026-02-18-two-lane-agent-discovery.md` — The decision that resolved the registry drift
-- `.kb/models/agent-lifecycle-state-model.md` — The model that should have caught the drift earlier
+- `.kb/models/agent-lifecycle-state-model/model.md` — The model that should have caught the drift earlier
 - `.kb/investigations/2025-12-21-synthesis-registry-evolution-and-orch-identity.md` — Full drift cycle narrative
 - `~/.kb/principles.md` — Gate Over Remind, Capture at Context, Surfacing Over Browsing, Infrastructure Over Instruction
 - `.kb/models/agent-lifecycle-state-model/probes/2026-02-20-tradeoff-visibility-gap-analysis.md` — Companion probe

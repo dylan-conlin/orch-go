@@ -11,7 +11,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** These gates were identified by the probe as pure noise (∞:1, 71:1, and 11.8:1 bypass:fail ratios) but had already been removed from the code in a prior cleanup. The task is to document their removal in the completion-verification model, not remove code.
 
-**Next:** Update .kb/models/completion-verification.md to document that these gates were removed due to noise patterns, verify build/tests pass.
+**Next:** Update .kb/models/completion-verification/model.md to document that these gates were removed due to noise patterns, verify build/tests pass.
 
 **Authority:** implementation - Documentation update within existing patterns, no code changes needed
 
@@ -106,7 +106,7 @@ Guidelines:
 
 **Answer to Investigation Question:**
 
-The three gates (agent_running, model_connection, commit_evidence) are not defined anywhere in the current codebase. They were already removed from pkg/verify/check.go and cmd/orch/complete_cmd.go in a prior cleanup. The only remaining work is to update .kb/models/completion-verification.md to document their removal in the Evolution section, explaining why they were removed (pure noise with ∞:1, 71:1, and 11.8:1 bypass:fail ratios). No code changes are needed.
+The three gates (agent_running, model_connection, commit_evidence) are not defined anywhere in the current codebase. They were already removed from pkg/verify/check.go and cmd/orch/complete_cmd.go in a prior cleanup. The only remaining work is to update .kb/models/completion-verification/model.md to document their removal in the Evolution section, explaining why they were removed (pure noise with ∞:1, 71:1, and 11.8:1 bypass:fail ratios). No code changes are needed.
 
 ---
 
@@ -156,7 +156,7 @@ Classify each recommendation by authority level to route to the appropriate deci
 
 ### Recommended Approach ⭐
 
-**Document Removal in Model** - Update .kb/models/completion-verification.md Evolution section to document that agent_running, model_connection, and commit_evidence gates were removed due to pure noise patterns identified in probe analysis.
+**Document Removal in Model** - Update .kb/models/completion-verification/model.md Evolution section to document that agent_running, model_connection, and commit_evidence gates were removed due to pure noise patterns identified in probe analysis.
 
 **Why this approach:**
 - Prevents future confusion when investigators search for gate implementations

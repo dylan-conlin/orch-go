@@ -81,7 +81,7 @@ The original decision's Phase 3 was "File upstream issues." That's now replaced 
 
 ## Evidence
 
-- Fork model: `.kb/models/opencode-fork.md`
+- Fork model: `.kb/models/opencode-fork/model.md`
 - Fork investigation: `.kb/investigations/2026-02-13-inv-build-model-opencode-fork.md`
 - Original decision: `.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md`
 - Phase 1-2 completion: agents orch-go-l1s (clean), orch-go-352 (registry)

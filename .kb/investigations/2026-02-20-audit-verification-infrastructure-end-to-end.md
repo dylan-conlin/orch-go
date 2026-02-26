@@ -32,7 +32,7 @@
 
 | Investigation | Relationship | Verified | Conflicts |
 |---|---|---|---|
-| `.kb/models/completion-verification.md` (model, 2026-01-14) | Contradicts (model significantly stale) | Yes - against source code | 3 deleted files, 3 vs 14 gates, wrong pseudocode |
+| `.kb/models/completion-verification/model.md` (model, 2026-01-14) | Contradicts (model significantly stale) | Yes - against source code | 3 deleted files, 3 vs 14 gates, wrong pseudocode |
 | `~/orch-knowledge/kb/models/control-plane-bootstrap.md` (model, 2026-02-15) | Confirms (enforcement theater pattern) | Yes - applies to verification spectrum gap | None |
 | `~/orch-knowledge/kb/models/verifiability-first-development.md` (model, 2026-02-03) | Extends (audit maps spectrum) | Yes - maps paradigm to concrete gates | None |
 | `.kb/models/completion-verification/probes/2026-02-13-friction-gate-inventory-all-subsystems.md` | Extends | Partially (consistent with 14-gate finding) | None |
@@ -84,7 +84,7 @@
 | "Gates are independent and cumulative" | Confirmed — all checked, all reported | **Correct** |
 | "Knowledge work surfaces for review" | Confirmed — escalation model works | **Correct** |
 
-**Source:** `.kb/models/completion-verification.md` compared against current `pkg/verify/` codebase.
+**Source:** `.kb/models/completion-verification/model.md` compared against current `pkg/verify/` codebase.
 
 **Significance:** The model is useful as historical context (evolution section) but misleading as current documentation. Anyone reading the model would think there are 3 gates checking 3 things; the reality is 14 gates checking 14 things with tier-aware routing and anti-theater mechanisms.
 
@@ -308,13 +308,13 @@ The verification vocabulary gap is clear: the system needs a way to express "tes
 - `pkg/daemon/verification_tracker.go` — Threshold pause mechanism
 - `.opencode/plugin/coaching.ts` — Behavioral detection
 - `cmd/orch/serve_coaching.go` — Worker health metrics API
-- `.kb/models/completion-verification.md` — Model being probed
+- `.kb/models/completion-verification/model.md` — Model being probed
 - `~/orch-knowledge/kb/models/control-plane-bootstrap.md` — Enforcement theater model
 - `~/orch-knowledge/kb/models/verifiability-first-development.md` — Verification paradigm
 
 **Related Artifacts:**
 - **Probe:** `.kb/models/completion-verification/probes/2026-02-20-probe-verification-infrastructure-audit.md`
-- **Model:** `.kb/models/completion-verification.md` (needs rewrite)
+- **Model:** `.kb/models/completion-verification/model.md` (needs rewrite)
 - **Decision:** `.kb/decisions/2026-02-14-verifiability-first-hard-constraint.md`
 
 ---

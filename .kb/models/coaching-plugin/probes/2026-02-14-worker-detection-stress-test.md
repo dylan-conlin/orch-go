@@ -2,7 +2,7 @@
 
 **Status:** Complete
 **Date:** 2026-02-14
-**Related Model:** [Coaching Plugin](../.kb/models/coaching-plugin.md)
+**Related Model:** [Coaching Plugin](../.kb/models/coaching-plugin/model.md)
 
 ## Question
 

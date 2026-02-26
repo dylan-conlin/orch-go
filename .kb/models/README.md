@@ -8,24 +8,18 @@ Models are where orchestrators externalize the mental models they build through 
 
 ## When to Create a Model
 
-**Creation threshold:** 15+ investigations on a single topic (investigation cluster).
+**Creation threshold:** 3+ investigations on a single topic.
 
-**Four-factor test (all required):**
-1. **HOT** - Cluster exists (15+ investigations)
-2. **COMPLEX** - Has failure modes, constraints, state transitions
-3. **OWNED** - Our system internals (not external tools)
-4. **STRATEGIC_VALUE** - "Enable/constrain" answers save hours vs minutes
+Models are "building blocks of understanding" — composable context that orchestrators and architects combine to frame design work. The threshold is intentionally low because models gain value through use, not through waiting.
 
-**Hard floor:** Never below 10 investigations. Between 10-15, must pass four-factor test with clear justification.
+**Three-factor test (all required):**
+1. **CONVERGING** - 3+ investigations on the topic show a coherent mechanism emerging
+2. **COMPLEX** - Has failure modes, constraints, state transitions (not just a single fact)
+3. **REUSABLE** - You'd point an orchestrator or architect at this to set up a design conversation
 
-**Watch signals** (not creation triggers - these indicate a topic to monitor):
-- 3+ investigations on same topic starting to converge
-- Same confusion recurs across sessions
-- Multiple downstream decisions/epics reference the same understanding
+**The test:** Can you explain the mechanism in 1-2 paragraphs, and would combining this with 1-2 other models give someone enough context to make design decisions?
 
-**The test:** Can you explain the mechanism in 1-2 paragraphs? If yes, you understand it enough to model it - but wait for the cluster threshold before creating.
-
-**Anti-pattern:** 3 investigations → "let's create a model." Models are synthesis artifacts. 3 investigations don't provide enough perspective. Use a decision or guide instead.
+**Anti-pattern:** Creating a model from a single investigation. One investigation is a finding. Three investigations showing the same mechanism from different angles is understanding worth externalizing.
 
 ---
 
@@ -66,21 +60,35 @@ Model evolves (as system changes)
 
 ---
 
-## Naming Convention
+## Directory Convention
 
-`{domain}-{component}.md`
+Each model is a directory containing `model.md` and optionally `probes/`:
+
+```
+.kb/models/
+  {domain}-{component}/
+    model.md              ← the model content
+    probes/               ← evidence gathered against this model
+      2026-02-25-probe-description.md
+```
 
 **Examples:**
-- `dashboard-agent-status.md` - How dashboard calculates agent status
-- `agent-lifecycle.md` - Agent state transitions and completion
-- `spawn-lifecycle.md` - How spawn process works
-- `beads-integration.md` - How orch ↔ beads interaction works
+- `dashboard-architecture/model.md` - How dashboard works
+- `spawn-architecture/model.md` - How spawn process works
+- `completion-verification/model.md` - How completion gates work
+
+**Why directories:** Navigable with `ls`, co-locates model with its evidence (probes), consistent structure across all models.
 
 ---
 
 ## Template
 
-Use `TEMPLATE.md` in this directory as starting point.
+Use `TEMPLATE.md` in this directory as a starting point. To create a new model:
+
+```bash
+mkdir -p .kb/models/{name}/probes
+cp .kb/models/TEMPLATE.md .kb/models/{name}/model.md
+```
 
 **Required sections:**
 - Summary (30-second overview)
@@ -141,7 +149,7 @@ Trust code over models. When model and code conflict, code wins. Update the mode
 
 **How we know models work:**
 
-1. ✅ Orchestrators create models after synthesizing 15+ investigations (passing four-factor test)
+1. ✅ Orchestrators create models after synthesizing 3+ investigations
 2. ✅ Dylan asks sharper questions because constraints are explicit
 3. ✅ Decisions reference models for context
 4. ✅ Duplicate investigations decrease (model answers the question)
@@ -156,5 +164,5 @@ Trust code over models. When model and code conflict, code wins. Update the mode
 ## Related Artifacts
 
 **Decision:** `.kb/decisions/2026-01-12-models-as-understanding-artifacts.md` - Why models exist
-**Principle:** `~/.kb/principles.md` - Understanding Through Engagement
+**Principle:** `~/.kb/principles.md` (symlink → `~/orch-knowledge/kb/principles.md`) - Understanding Through Engagement
 **Decisions:** `.kb/decisions/2026-01-07-synthesis-is-strategic-orchestrator-work.md` - Synthesis is orchestrator work

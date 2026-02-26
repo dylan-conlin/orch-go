@@ -196,7 +196,7 @@ The 10 synthesis investigations reveal a **mature, repeatable synthesis workflow
 **Recommended consolidation:**
 - Create `.kb/guides/synthesis-workflow.md` documenting the 5-step synthesis process
 - File kb reflect issues: exclude archived/synthesized directories, improve clustering
-- Update `.kb/models/kb-reflect-cluster-hygiene.md` with findings from these 10 syntheses
+- Update `.kb/models/kb-reflect-cluster-hygiene/model.md` with findings from these 10 syntheses
 - No additional synthesis needed - the pattern is already well-established through practice
 
 ---
@@ -265,7 +265,7 @@ Classify each recommendation by authority level to route to the appropriate deci
 
 **Implementation sequence:**
 1. Create `.kb/guides/synthesis-workflow.md` with 5-step process, guide-first pattern, archival workflow
-2. Update `.kb/models/kb-reflect-cluster-hygiene.md` with findings about archived/synthesized scanning and lexical clustering
+2. Update `.kb/models/kb-reflect-cluster-hygiene/model.md` with findings about archived/synthesized scanning and lexical clustering
 3. Create beads issue for kb-cli to exclude archived/synthesized directories from synthesis detection
 4. Document investigation velocity as system health metric in synthesis guide
 
@@ -289,7 +289,7 @@ Classify each recommendation by authority level to route to the appropriate deci
 
 **What to implement first:**
 - Create `.kb/guides/synthesis-workflow.md` documenting the 5-step process (highest impact, prevents rediscovery)
-- Update `.kb/models/kb-reflect-cluster-hygiene.md` with archived/synthesized directory issue
+- Update `.kb/models/kb-reflect-cluster-hygiene/model.md` with archived/synthesized directory issue
 - File kb-cli issue for synthesis detection improvements
 
 **Things to watch out for:**
@@ -335,7 +335,7 @@ bd comment orch-go-v3d "investigation_path: /Users/dylanconlin/Documents/persona
 ```
 
 **Related Artifacts:**
-- **Model:** `.kb/models/kb-reflect-cluster-hygiene.md` - Should be updated with findings about archived/synthesized scanning
+- **Model:** `.kb/models/kb-reflect-cluster-hygiene/model.md` - Should be updated with findings about archived/synthesized scanning
 - **Guides Created by Syntheses:** `.kb/guides/status.md`, `.kb/guides/daemon.md`, `.kb/guides/dashboard.md`, `.kb/guides/orchestrator-session-management.md`, `.kb/guides/spawn.md`, `.kb/guides/verification.md`, `.kb/guides/completion.md`, `.kb/guides/background-services-performance.md`, `.kb/guides/code-extraction-patterns.md`
 
 ---

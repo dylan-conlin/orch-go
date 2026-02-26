@@ -144,7 +144,7 @@ Secondary SSE (agentlog) → Opt-in via "Follow" button
 ## Related
 
 - **Guide:** `.kb/guides/opencode.md` - Procedural OpenCode usage
-- **Model:** `.kb/models/opencode-session-lifecycle.md` - Session state transitions
+- **Model:** `.kb/models/opencode-session-lifecycle/model.md` - Session state transitions
 - **Existing constraint:** "SSE busy->idle cannot detect true agent completion" (kb context)
 
 ---

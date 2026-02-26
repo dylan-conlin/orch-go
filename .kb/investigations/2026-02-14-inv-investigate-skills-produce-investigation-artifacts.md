@@ -304,7 +304,7 @@ grep "SKILL GUIDANCE" .orch/workspace/og-feat-*/SPAWN_CONTEXT.md
 
 **Related Artifacts:**
 - **Investigation:** `.kb/investigations/2026-02-14-inv-synthesize-synthesize-investigations-10-synthesis.md` - Synthesis work showing 29 clusters needing consolidation
-- **Model:** `.kb/models/kb-reflect-cluster-hygiene.md` - kb reflect behavior and synthesis patterns
+- **Model:** `.kb/models/kb-reflect-cluster-hygiene/model.md` - kb reflect behavior and synthesis patterns
 
 ---
 

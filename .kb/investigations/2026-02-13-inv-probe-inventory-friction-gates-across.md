@@ -31,7 +31,7 @@
 | Investigation | Relationship | Verified | Conflicts |
 |--------------|--------------|----------|-----------|
 | .kb/models/completion-verification/probes/2026-02-09-friction-bypass-analysis-post-targeted-skips.md | extends | yes | No conflicts — prior finding that test_evidence and synthesis are noisiest confirmed and quantified |
-| .kb/models/completion-verification.md | extends | yes | Model documents 3 verification layers but actual system has 48 gates across 3 subsystems |
+| .kb/models/completion-verification/model.md | extends | yes | Model documents 3 verification layers but actual system has 48 gates across 3 subsystems |
 
 ---
 
@@ -179,7 +179,7 @@ rg --type go "IsSpawnableType\|triage\|MaxSpawns\|TTL" pkg/daemon/
 ```
 
 **Related Artifacts:**
-- **Model:** `.kb/models/completion-verification.md` — Extended with cross-subsystem inventory
+- **Model:** `.kb/models/completion-verification/model.md` — Extended with cross-subsystem inventory
 - **Prior Probe:** `.kb/models/completion-verification/probes/2026-02-09-friction-bypass-analysis-post-targeted-skips.md` — Confirmed and deepened
 - **New Probe:** `.kb/models/completion-verification/probes/2026-02-13-friction-gate-inventory-all-subsystems.md` — Complete inventory with classifications
 

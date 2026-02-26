@@ -60,7 +60,7 @@ Guidelines:
 
 **Evidence:** Current dashboard-architecture.md lines 245-249 show Jan 7, 2026 entry only includes "Operational vs Historical modes, Mode toggle with localStorage persistence, Conditional rendering based on mode"
 
-**Source:** `.kb/models/dashboard-architecture.md:245-249`
+**Source:** `.kb/models/dashboard-architecture/model.md:245-249`
 
 **Significance:** This is incomplete - Jan 7 included multiple significant changes beyond the two-mode design.
 
@@ -189,7 +189,7 @@ The Evolution section needs to add follow-orchestrator functionality including: 
 ## References
 
 **Files Examined:**
-- `.kb/models/dashboard-architecture.md` - Current Evolution section being updated
+- `.kb/models/dashboard-architecture/model.md` - Current Evolution section being updated
 - `.kb/investigations/2026-01-07-inv-dashboard-beads-follow-orchestrator-tmux.md` - Source investigation for follow-orchestrator feature
 - `.kb/investigations/2026-01-14-inv-meta-failure-decision-documentation-gap.md` - Meta-analysis that identified this gap
 
@@ -205,7 +205,7 @@ grep -r "follow.*orchestrator" .kb/investigations/
 **Related Artifacts:**
 - **Investigation:** `.kb/investigations/2026-01-07-inv-dashboard-beads-follow-orchestrator-tmux.md` - Primary source for follow-orchestrator details
 - **Investigation:** `.kb/investigations/2026-01-14-inv-meta-failure-decision-documentation-gap.md` - Meta-analysis identifying this documentation gap
-- **Model:** `.kb/models/dashboard-architecture.md` - Target file being updated
+- **Model:** `.kb/models/dashboard-architecture/model.md` - Target file being updated
 
 ---
 

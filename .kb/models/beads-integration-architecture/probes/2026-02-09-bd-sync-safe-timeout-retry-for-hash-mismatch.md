@@ -1,6 +1,6 @@
 # Probe: Can `bd-sync-safe.sh` recover from hash-mismatch import stalls without manual kill/retry?
 
-**Model:** /Users/dylanconlin/Documents/personal/orch-go/.kb/models/beads-integration-architecture.md
+**Model:** /Users/dylanconlin/Documents/personal/orch-go/.kb/models/beads-integration-architecture/model.md
 **Date:** 2026-02-09
 **Status:** Complete
 

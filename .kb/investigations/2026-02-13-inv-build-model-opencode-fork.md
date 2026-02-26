@@ -31,7 +31,7 @@
 | Investigation | Relationship | Verified | Conflicts |
 |--------------|--------------|----------|-----------|
 | ~/Documents/personal/opencode/.kb/investigations/2026-02-11-inv-opencode-fork-resource-audit-investigate.md | extends | yes | No conflicts — resource audit confirms Instance has TTL but Session does not |
-| .kb/models/agent-lifecycle-state-model.md | extends | yes | Model says "Sessions persist indefinitely" — confirmed by code (no TTL, no auto-delete) |
+| .kb/models/agent-lifecycle-state-model/model.md | extends | yes | Model says "Sessions persist indefinitely" — confirmed by code (no TTL, no auto-delete) |
 
 ---
 
@@ -181,8 +181,8 @@ git merge-base --is-ancestor upstream/dev HEAD
 
 **Related Artifacts:**
 - **Decision:** `.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md` — Parent decision identifying these three features
-- **Model:** `.kb/models/opencode-fork.md` — Model created by this investigation
-- **Model:** `.kb/models/agent-lifecycle-state-model.md` — Lifecycle model that depends on session behavior
+- **Model:** `.kb/models/opencode-fork/model.md` — Model created by this investigation
+- **Model:** `.kb/models/agent-lifecycle-state-model/model.md` — Lifecycle model that depends on session behavior
 
 ---
 
@@ -199,4 +199,4 @@ git merge-base --is-ancestor upstream/dev HEAD
 **2026-02-13:** Investigation completed
 - Status: Complete
 - Key outcome: All three features are feasible; status endpoint already exists; metadata API is 1-2 hours; TTL is 2-4 hours
-- Deliverable: Model created at `.kb/models/opencode-fork.md`
+- Deliverable: Model created at `.kb/models/opencode-fork/model.md`

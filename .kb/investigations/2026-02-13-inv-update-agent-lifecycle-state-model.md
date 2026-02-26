@@ -30,7 +30,7 @@
 | Investigation | Relationship | Verified | Conflicts |
 |--------------|--------------|----------|-----------|
 | `.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md` | implements | Yes - read decision doc | None |
-| `.kb/models/agent-lifecycle-state-model.md` (pre-update) | extends | Yes - read model | None |
+| `.kb/models/agent-lifecycle-state-model/model.md` (pre-update) | extends | Yes - read model | None |
 
 ## Findings
 
@@ -38,7 +38,7 @@
 
 **Evidence:** Original table had Layer/Storage/Lifecycle/What It Knows/Authority Level columns but no categorization of state vs infrastructure.
 
-**Source:** `.kb/models/agent-lifecycle-state-model.md:21-27` (pre-update)
+**Source:** `.kb/models/agent-lifecycle-state-model/model.md:21-27` (pre-update)
 
 **Significance:** Without explicit categorization, readers can't tell which layers orch should own vs merely use.
 
@@ -83,7 +83,7 @@ The model was updated by: (1) adding a Category column to the four-layer table l
 ## References
 
 **Files Examined:**
-- `.kb/models/agent-lifecycle-state-model.md` - The model being updated
+- `.kb/models/agent-lifecycle-state-model/model.md` - The model being updated
 - `.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md` - The decision driving this update
 
 **Related Artifacts:**

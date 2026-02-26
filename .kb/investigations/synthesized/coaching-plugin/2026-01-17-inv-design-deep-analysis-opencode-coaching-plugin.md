@@ -364,7 +364,7 @@ The coaching plugin IS the nervous system—it implements "Pain as Signal" by de
 - `.kb/investigations/2026-01-17-inv-design-review-coaching-plugin-failures.md` - Failure root cause analysis
 - `.kb/investigations/2026-01-17-inv-investigate-missing-coaching-metrics-frame.md` - Missing metrics investigation
 - `.kb/investigations/2026-01-17-inv-design-agent-self-health-context.md` - Agent self-health design
-- `.kb/models/context-injection.md` - Context injection architecture model
+- `.kb/models/context-injection/model.md` - Context injection architecture model
 - `.kb/guides/resilient-infrastructure-patterns.md` - Pain as Signal principle
 - `CLAUDE.md` - Pain as Signal architectural principle
 
@@ -388,7 +388,7 @@ grep -r "coaching" /Users/dylanconlin/Documents/personal
 
 **Related Artifacts:**
 - **Guide:** `.kb/guides/opencode-plugins.md` - Plugin system reference
-- **Model:** `.kb/models/context-injection.md` - Context injection architecture
+- **Model:** `.kb/models/context-injection/model.md` - Context injection architecture
 - **Investigation:** `.kb/investigations/2026-01-17-inv-design-agent-self-health-context.md` - Pain as Signal design
 - **Investigation:** `.kb/investigations/2026-01-17-inv-fix-detectworkersession-caching-bug-coaching.md` - Caching bug fix
 

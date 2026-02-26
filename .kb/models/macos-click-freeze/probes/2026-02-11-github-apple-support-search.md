@@ -1,6 +1,6 @@
 # Probe: Is macOS Sequoia click freeze a known widespread bug?
 
-**Model:** .kb/models/macos-click-freeze.md
+**Model:** .kb/models/macos-click-freeze/model.md
 **Date:** 2026-02-11
 **Status:** Complete
 

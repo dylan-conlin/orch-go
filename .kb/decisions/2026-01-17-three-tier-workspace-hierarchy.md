@@ -90,5 +90,5 @@ Interactive sessions use daily directories because humans think in "days of work
   - `.kb/investigations/2026-01-06-inv-workspace-session-architecture.md`
   - `.kb/investigations/2026-01-05-inv-orchestrator-workspaces-clear-visual-distinction.md`
   - `.kb/investigations/2026-01-09-inv-create-orchestrator-workspace-session-start.md`
-- **Model:** `.kb/models/workspace-lifecycle-model.md`
+- **Model:** `.kb/models/workspace-lifecycle-model/model.md`
 - **Guide:** `.kb/guides/workspace-lifecycle.md`

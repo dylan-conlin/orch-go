@@ -380,9 +380,9 @@ go run scripts/analyze_prompt_patterns.go
 ```
 
 **Related Artifacts:**
-- **Model:** .kb/models/spawn-architecture.md - Spawn architecture model (findings extend this model)
-- **Model:** .kb/models/daemon-autonomous-operation.md - Daemon operation model (findings confirm daemon routing value)
-- **Model:** .kb/models/completion-verification.md - Completion verification model (stuck agents relate to verification gaps)
+- **Model:** .kb/models/spawn-architecture/model.md - Spawn architecture model (findings extend this model)
+- **Model:** .kb/models/daemon-autonomous-operation/model.md - Daemon operation model (findings confirm daemon routing value)
+- **Model:** .kb/models/completion-verification/model.md - Completion verification model (stuck agents relate to verification gaps)
 - **Guide:** .kb/guides/spawn.md - Spawn guide (template improvements should be applied here)
 - **Template:** pkg/spawn/templates/SPAWN_CONTEXT.md - Spawn context template (target for exit criteria/scope improvements)
 

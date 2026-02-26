@@ -1,6 +1,6 @@
 # Probe: Does skhd's CGEventTap registration mechanism explain click event corruption?
 
-**Model:** .kb/models/macos-click-freeze.md
+**Model:** .kb/models/macos-click-freeze/model.md
 **Date:** 2026-02-12
 **Status:** Complete
 

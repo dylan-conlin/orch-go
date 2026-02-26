@@ -1,0 +1,240 @@
+<!--
+D.E.K.N. Summary - 30-second handoff for fresh Claude
+Fill this at the END of your investigation, before marking Complete.
+-->
+
+## Summary (D.E.K.N.)
+
+**Delta:** 12 status investigations consolidated: guide updated with 2 new findings (session cleanup on complete, drift metrics). 10 investigations ready for archival.
+
+**Evidence:** Guide `.kb/guides/status.md` now includes sections 6-7 covering Jan 6-7 findings. Source Investigations table updated with 12 entries.
+
+**Knowledge:** Incremental synthesis (update existing guide) is more efficient than full re-synthesis. Archive candidates confirmed: 10 investigations fully superseded.
+
+**Next:** Archive 10 superseded investigations (A1-A10 proposals below). Orchestrator approval required.
+
+**Promote to Decision:** recommend-no (maintenance consolidation, not architectural)
+
+---
+
+# Investigation: Synthesize Status Investigations (12)
+
+**Question:** Do the 12 status investigations require synthesis, or is existing synthesis sufficient with incremental updates?
+
+**Started:** 2026-01-08
+**Updated:** 2026-01-08
+**Owner:** Agent og-work-synthesize-status-investigations-08jan-7353
+**Phase:** Complete
+**Next Step:** None (proposals ready for orchestrator review)
+**Status:** Complete
+
+**Extracted-From:** N/A
+**Supersedes:** N/A
+**Superseded-By:** N/A
+
+---
+
+## Findings
+
+### Finding 1: Prior Synthesis Already Exists (Jan 6)
+
+**Evidence:** `.kb/investigations/2026-01-06-inv-synthesize-status-investigations.md` synthesized 10 investigations and created `.kb/guides/status.md` (308 lines, comprehensive reference).
+
+**Source:** 
+- `2026-01-06-inv-synthesize-status-investigations.md` - synthesis investigation
+- `.kb/guides/status.md` - authoritative guide created
+
+**Significance:** The heavy lifting is done. This synthesis task only needs to handle 2 new investigations, not re-do all 12.
+
+---
+
+### Finding 2: Two New Investigations Since Jan 6 Synthesis
+
+**Evidence:** 
+1. `2026-01-06-inv-orch-status-shows-completed-agents.md` - Identified `orch complete` doesn't delete OpenCode sessions, causing completed agents to appear in status until 30-min window expires
+2. `2026-01-07-inv-orch-status-surface-drift-metrics.md` - Added SESSION METRICS section showing time in session, last spawn, spawn count
+
+**Source:** Files dated after Jan 6 synthesis
+
+**Significance:** These two findings need to be added to the guide for completeness.
+
+---
+
+### Finding 3: Investigations Have Varying Archival Readiness
+
+**Evidence:** Analysis of 12 investigations:
+
+| Investigation | Disposition |
+|--------------|-------------|
+| 2025-12-20-inv-enhance-status-command-swarm-progress.md | Superseded by guide Section "Key Evolution #1" |
+| 2025-12-21-inv-investigate-orch-status-showing-stale.md | Superseded by guide Section "Stale Session Problem" |
+| 2025-12-21-inv-orch-status-showing-stale-sessions.md | Superseded by guide Section "Stale Session Problem" |
+| 2025-12-22-debug-orch-status-stale-sessions.md | Superseded by guide Section "Key Evolution #2" |
+| 2025-12-22-inv-update-orch-status-use-islive.md | Incomplete template - never finished |
+| 2025-12-23-inv-orch-status-can-detect-active.md | Superseded by guide Section "Active Detection" |
+| 2025-12-23-inv-orch-status-shows-active-agents.md | Superseded by guide Section "Title Format" |
+| 2025-12-23-inv-orch-status-takes-11-seconds.md | Superseded by guide Section "Performance" |
+| 2025-12-24-inv-fix-status-filter-test-expects.md | Already resolved, minimal content |
+| 2026-01-05-debug-fix-orch-status-showing-different.md | Superseded by guide Section "Cross-Project Visibility" |
+| 2026-01-06-inv-orch-status-shows-completed-agents.md | NEW - needs guide integration |
+| 2026-01-07-inv-orch-status-surface-drift-metrics.md | NEW - needs guide integration |
+
+**Source:** Review of each investigation file
+
+**Significance:** 8 investigations are fully superseded by the guide. 2 are new (need integration). 1 synthesis investigation is meta. 1 is incomplete/orphaned.
+
+---
+
+## Synthesis
+
+**Key Insights:**
+
+1. **Incremental update, not re-synthesis** - The Jan 6 synthesis created a comprehensive guide. The 2 new investigations represent incremental additions, not fundamental changes.
+
+2. **Two new topics for guide:**
+   - **Session Cleanup on Complete:** `orch complete` should delete OpenCode sessions (like `orch abandon` does) - pattern from `abandon_cmd.go:165-174`
+   - **Session Drift Metrics:** SESSION METRICS section added showing orchestrator session state
+
+3. **Archive candidates exist** - 8 investigations are fully captured in the guide with no unique value remaining. Archiving reduces future agent confusion.
+
+**Answer to Investigation Question:**
+
+The 12 investigations do NOT require full re-synthesis. The existing `.kb/guides/status.md` is comprehensive. Required actions:
+1. Update guide with 2 new findings (session cleanup, drift metrics)
+2. Archive 8 superseded investigations
+3. Keep 2026-01-06 synthesis investigation as reference
+4. Disposition unclear for incomplete 2025-12-22-inv-update-orch-status-use-islive.md
+
+---
+
+## Structured Uncertainty
+
+**What's tested:**
+
+- ✅ Prior synthesis exists and is comprehensive (verified: read full 308-line guide)
+- ✅ Two investigations are dated after synthesis (verified: file dates)
+- ✅ Supersession analysis is accurate (verified: compared each investigation D.E.K.N. to guide sections)
+
+**What's untested:**
+
+- ⚠️ Whether archiving investigations breaks any citation links
+- ⚠️ Whether the two new findings are fully accurate (didn't re-test implementations)
+
+**What would change this:**
+
+- Finding would be wrong if guide has significant gaps not covered by the 10 investigations
+- Finding would be incomplete if there are additional status investigations not in the list of 12
+
+---
+
+## Proposed Actions
+
+### Update Actions (COMPLETED)
+| ID | Target | Change | Reason | Status |
+|----|--------|--------|--------|--------|
+| U1 | `.kb/guides/status.md` | Add Section 6: "Session Cleanup on Complete" | Document orch complete session cleanup gap | ✅ Done |
+| U2 | `.kb/guides/status.md` | Add Section 7: "Session Drift Metrics" | Document SESSION METRICS section | ✅ Done |
+| U3 | `.kb/guides/status.md` | Update "Last verified" date to 2026-01-08 | Guide updated | ✅ Done |
+| U4 | `.kb/guides/status.md` | Add two new investigations to Source Investigations table | Complete reference | ✅ Done |
+
+### Archive Actions
+| ID | Target | Reason | Approved |
+|----|--------|--------|----------|
+| A1 | `2025-12-20-inv-enhance-status-command-swarm-progress.md` | Superseded by guide - all content in "Key Evolution #1" | [ ] |
+| A2 | `2025-12-21-inv-investigate-orch-status-showing-stale.md` | Superseded by guide - all content in "Stale Session Problem" | [ ] |
+| A3 | `2025-12-21-inv-orch-status-showing-stale-sessions.md` | Superseded by guide - all content in "Stale Session Problem" | [ ] |
+| A4 | `2025-12-22-debug-orch-status-stale-sessions.md` | Superseded by guide - all content in "Key Evolution #2" | [ ] |
+| A5 | `2025-12-22-inv-update-orch-status-use-islive.md` | Incomplete template - never finished, no value | [ ] |
+| A6 | `2025-12-23-inv-orch-status-can-detect-active.md` | Superseded by guide - all content in "Active Detection" | [ ] |
+| A7 | `2025-12-23-inv-orch-status-shows-active-agents.md` | Superseded by guide - all content in "Title Format" | [ ] |
+| A8 | `2025-12-23-inv-orch-status-takes-11-seconds.md` | Superseded by guide - all content in "Performance" | [ ] |
+| A9 | `2025-12-24-inv-fix-status-filter-test-expects.md` | Issue was already resolved before agent spawned, minimal content | [ ] |
+| A10 | `2026-01-05-debug-fix-orch-status-showing-different.md` | Superseded by guide - all content in "Cross-Project Visibility" | [ ] |
+
+### Keep Actions
+| ID | Target | Reason | Approved |
+|----|--------|--------|----------|
+| K1 | `2026-01-06-inv-synthesize-status-investigations.md` | Meta-synthesis investigation - documents why guide was created | [ ] |
+| K2 | `2026-01-06-inv-orch-status-shows-completed-agents.md` | New finding to integrate, then archive | [ ] |
+| K3 | `2026-01-07-inv-orch-status-surface-drift-metrics.md` | New finding to integrate, then archive | [ ] |
+
+**Summary:** 17 proposals (4 update ✅ DONE, 10 archive PENDING, 3 keep)
+**High priority:** Archive actions A1-A10 (guide updates already complete)
+
+---
+
+## Implementation Recommendations
+
+### Recommended Approach ⭐
+
+**Incremental Guide Update + Selective Archive** - Update the guide with 2 new sections, then archive superseded investigations.
+
+**Why this approach:**
+- Guide is authoritative reference - keep it current
+- Archiving reduces future agent confusion
+- Preserves synthesis investigation as meta-reference
+
+**Trade-offs accepted:**
+- Archived investigations may lose some nuance
+- Archive links from other artifacts would break (acceptable - guide replaces them)
+
+**Implementation sequence:**
+1. Update `.kb/guides/status.md` with new sections (U1-U4)
+2. Move archived investigations to `.kb/investigations/archived/` (A1-A10)
+3. Commit changes
+
+---
+
+## References
+
+**Files Examined:**
+- All 12 status investigations listed in spawn context
+- `.kb/guides/status.md` - existing authoritative guide
+- `2026-01-06-inv-synthesize-status-investigations.md` - prior synthesis
+
+**Commands Run:**
+```bash
+# Chronicle for evolution timeline
+kb chronicle "status"
+
+# List investigations for comparison
+ls -la .kb/investigations/ | grep status
+```
+
+**Related Artifacts:**
+- **Guide:** `.kb/guides/status.md` - Authoritative reference (to be updated)
+- **Prior Synthesis:** `.kb/investigations/2026-01-06-inv-synthesize-status-investigations.md`
+
+---
+
+## Investigation History
+
+**2026-01-08:** Investigation started
+- Initial question: Do 12 status investigations need synthesis?
+- Context: kb reflect flagged 12 investigations on "status" topic
+
+**2026-01-08:** Found prior synthesis exists
+- Jan 6 synthesis already created comprehensive guide
+- Only 2 new investigations since synthesis
+
+**2026-01-08:** Investigation completed (first pass)
+- Status: Complete
+- Key outcome: Identified incremental update needed + archive 10 superseded investigations
+
+**2026-01-08:** Guide updates completed (second pass - this agent)
+- Updated `.kb/guides/status.md` with sections 6-7
+- Updated Source Investigations table
+- Archive proposals ready for orchestrator approval
+
+---
+
+## Self-Review
+
+- [x] Real test performed (not code review) - Read all 12 investigations and compared to guide
+- [x] Conclusion from evidence (not speculation) - Based on actual file contents
+- [x] Question answered - Explained that incremental update is needed, not re-synthesis
+- [x] File complete - All sections filled
+- [x] D.E.K.N. filled - Summary section complete
+- [x] Proposed Actions section completed with structured proposals
+
+**Self-Review Status:** PASSED

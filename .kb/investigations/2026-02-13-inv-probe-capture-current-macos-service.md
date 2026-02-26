@@ -34,7 +34,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 | Investigation | Relationship | Verified | Conflicts |
 |--------------|--------------|----------|-----------|
-| .kb/models/macos-click-freeze.md | probe against | yes | Phase 2 state inverted (skhd/yabai), H5 weakened |
+| .kb/models/macos-click-freeze/model.md | probe against | yes | Phase 2 state inverted (skhd/yabai), H5 weakened |
 | .kb/models/macos-click-freeze/probes/2026-02-12-skhd-event-tap-source-analysis.md | extends | pending | skhd is disabled, so its event tap is irrelevant to current freeze |
 
 ---
@@ -146,7 +146,7 @@ The actual service state differs from the model in two critical ways: (1) skhd i
 ## References
 
 **Files Examined:**
-- `.kb/models/macos-click-freeze.md` - The model being probed
+- `.kb/models/macos-click-freeze/model.md` - The model being probed
 
 **Commands Run:**
 ```bash
@@ -162,7 +162,7 @@ ls ~/Library/LaunchAgents/
 ```
 
 **Related Artifacts:**
-- **Model:** `.kb/models/macos-click-freeze.md` - Model being probed
+- **Model:** `.kb/models/macos-click-freeze/model.md` - Model being probed
 - **Probe:** `.kb/models/macos-click-freeze/probes/2026-02-13-service-state-freeze-recurrence.md` - Probe artifact from this investigation
 
 ---

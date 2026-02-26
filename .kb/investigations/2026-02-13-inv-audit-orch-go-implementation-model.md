@@ -297,7 +297,7 @@ Grep "InferSkill" --type go  # Found in pkg/daemon/skill_inference.go
 **Related Artifacts:**
 - **Phase 1:** `.kb/investigations/2026-02-13-inv-audit-model-probe-investigation-claims.md` — Documentation audit this extends
 - **Restoration:** `.kb/investigations/2026-02-13-inv-restore-models-probes-go-infrastructure.md` — How probes.go was restored
-- **Model:** `.kb/models/spawn-architecture.md` — Spawn architecture model referenced by probe system
+- **Model:** `.kb/models/spawn-architecture/model.md` — Spawn architecture model referenced by probe system
 
 ---
 

@@ -354,7 +354,7 @@ These are settled. Don't re-investigate:
 
 ## Related Documentation
 
-- **Model:** `.kb/models/workspace-lifecycle-model.md` - Comprehensive workspace lifecycle model
+- **Model:** `.kb/models/workspace-lifecycle-model/model.md` - Comprehensive workspace lifecycle model
 - **Guide:** `.kb/guides/agent-lifecycle.md` - Agent state management
 - **Guide:** `.kb/guides/completion.md` - Completion verification
 - **Decision:** `.kb/decisions/2026-01-17-three-tier-workspace-hierarchy.md` - Workspace type decision

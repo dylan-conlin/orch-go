@@ -111,7 +111,7 @@ Additionally, stash_delete is also bound to ctrl+d (line 785).
 
 **Answer to Investigation Question:**
 
-Rebind `session_delete` from `ctrl+d` to `<leader>d`. This eliminates the triple-bind conflict while maintaining a memorable, semantically appropriate keybinding. The two-key leader sequence (ctrl+x, d) is much less likely to be triggered accidentally than the single ctrl+d, addressing the muscle-memory deletion vector identified in `.kb/models/session-deletion-vectors.md` (Vector #3).
+Rebind `session_delete` from `ctrl+d` to `<leader>d`. This eliminates the triple-bind conflict while maintaining a memorable, semantically appropriate keybinding. The two-key leader sequence (ctrl+x, d) is much less likely to be triggered accidentally than the single ctrl+d, addressing the muscle-memory deletion vector identified in `.kb/models/session-deletion-vectors/model.md` (Vector #3).
 
 ---
 
@@ -224,7 +224,7 @@ Classify each recommendation by authority level to route to the appropriate deci
 
 **Files Examined:**
 - `/Users/dylanconlin/Documents/personal/opencode/packages/opencode/src/config/config.ts:771-878` - Keybinding configuration, identified triple-bind and applied fix
-- `.kb/models/session-deletion-vectors.md` - Root cause analysis showing Vector #3 (Ctrl+D keybind conflict)
+- `.kb/models/session-deletion-vectors/model.md` - Root cause analysis showing Vector #3 (Ctrl+D keybind conflict)
 
 **Commands Run:**
 ```bash

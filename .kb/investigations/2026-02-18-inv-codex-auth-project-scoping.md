@@ -16,9 +16,9 @@
 
 | Investigation | Relationship | Verified | Conflicts |
 | --- | --- | --- | --- |
-| .kb/models/opencode-fork.md | extends | yes | None - model claims about fork architecture confirmed |
-| .kb/models/opencode-session-lifecycle.md | extends | yes | None - session persistence claims confirmed |
-| .kb/models/model-access-spawn-paths.md | unrelated | N/A | Different topic (Opus access), not Codex |
+| .kb/models/opencode-fork/model.md | extends | yes | None - model claims about fork architecture confirmed |
+| .kb/models/opencode-session-lifecycle/model.md | extends | yes | None - session persistence claims confirmed |
+| .kb/models/model-access-spawn-paths/model.md | unrelated | N/A | Different topic (Opus access), not Codex |
 
 ---
 

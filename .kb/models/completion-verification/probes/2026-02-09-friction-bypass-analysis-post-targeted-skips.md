@@ -1,6 +1,6 @@
 # Probe: Are completion gates catching defects or generating bypass noise after targeted skips?
 
-**Model:** `.kb/models/completion-verification.md`
+**Model:** `.kb/models/completion-verification/model.md`
 **Date:** 2026-02-09
 **Status:** Complete
 

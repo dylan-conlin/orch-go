@@ -1,6 +1,6 @@
 # Probe: extraction.go Hotspot Analysis
 
-**Model:** Code Extraction Patterns (`../.kb/models/extract-patterns.md`)
+**Model:** Code Extraction Patterns (`../.kb/models/extract-patterns/model.md`)
 **Date:** 2026-02-19
 **Status:** Complete
 **Triggered By:** extraction.go is #1 hotspot — 2011 lines, 22 commits in 28 days

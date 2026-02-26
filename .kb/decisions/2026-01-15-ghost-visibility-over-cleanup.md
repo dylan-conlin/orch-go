@@ -98,5 +98,5 @@ Affects:
 
 ## References
 
-- `.kb/models/agent-lifecycle-state-model.md` - Four-layer architecture that makes cleanup complex
+- `.kb/models/agent-lifecycle-state-model/model.md` - Four-layer architecture that makes cleanup complex
 - Meta-orchestrator session 2026-01-15 - Original discussion

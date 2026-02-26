@@ -109,5 +109,5 @@ The V0-V3 decision established "spawn-only immutability" — verification level 
 
 - Investigation: `.kb/investigations/2026-02-25-design-code-review-gate-for-completion-pipeline.md`
 - Probe: `.kb/models/completion-verification/probes/2026-02-25-probe-code-review-gate-design.md`
-- Model: `.kb/models/completion-verification.md`
+- Model: `.kb/models/completion-verification/model.md`
 - Prior decisions: verifiability-first, V0-V3 levels, phased adversarial verification

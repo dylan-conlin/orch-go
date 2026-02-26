@@ -285,11 +285,11 @@ The architectural approach for event-sourced monitoring in orch-go is:
 - `.kb/investigations/2026-01-04-inv-phase-extract-sse-connection-manager.md` - Consolidation
 - `.kb/investigations/2026-01-05-inv-dashboard-connection-pool-exhaustion-sse.md` - Connection limits
 - `.kb/guides/opencode.md` - Existing OpenCode guide
-- `.kb/models/opencode-session-lifecycle.md` - Session lifecycle model
+- `.kb/models/opencode-session-lifecycle/model.md` - Session lifecycle model
 
 **Related Artifacts:**
 - **Guide:** `.kb/guides/opencode.md` - Already references SSE monitoring
-- **Model:** `.kb/models/opencode-session-lifecycle.md` - Session state transitions
+- **Model:** `.kb/models/opencode-session-lifecycle/model.md` - Session state transitions
 - **Constraint:** "SSE busy->idle cannot detect true agent completion" (kb context) - Established constraint
 
 ---

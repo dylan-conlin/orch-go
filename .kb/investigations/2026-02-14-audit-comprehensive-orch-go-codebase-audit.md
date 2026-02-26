@@ -240,7 +240,7 @@
 
 **Stale .kb/ references (40+ files):**
 - `.kb/guides/dual-spawn-mode-implementation.md:120` references `pkg/registry/registry.go`
-- `.kb/models/agent-lifecycle-state-model.md:296` references registry structure
+- `.kb/models/agent-lifecycle-state-model/model.md:296` references registry structure
 - `.kb/decisions/2026-01-09-dual-spawn-mode-architecture.md:119` has full "Registry" section
 - `.kb/investigations/2025-12-20-inv-orch-add-agent-registry-persistent.md` - entire investigation now obsolete
 
@@ -432,8 +432,8 @@ Six weeks after the prior audit, orch-go has made significant architectural prog
 - **Investigation:** `.kb/investigations/2026-01-03-audit-comprehensive-orch-go-bugs-reliability-architecture.md` - Prior audit (extends)
 - **Decision:** `.kb/decisions/2026-02-14-lifecycle-ownership-own-accept-build.md` - Registry elimination
 - **Decision:** `.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md` - Lifecycle boundaries
-- **Model:** `.kb/models/agent-lifecycle-state-model.md` - Lifecycle state model (confirmed)
-- **Model:** `.kb/models/spawn-architecture.md` - Spawn architecture (confirmed)
+- **Model:** `.kb/models/agent-lifecycle-state-model/model.md` - Lifecycle state model (confirmed)
+- **Model:** `.kb/models/spawn-architecture/model.md` - Spawn architecture (confirmed)
 
 ---
 

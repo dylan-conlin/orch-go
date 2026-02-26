@@ -81,7 +81,7 @@ The beads fork at `~/Documents/personal/beads` has **43 commits beyond upstream*
 
 ### 3. Model Staleness Assessment
 
-**File: `.kb/models/beads-integration-architecture.md`**
+**File: `.kb/models/beads-integration-architecture/model.md`**
 Last updated: 2026-01-12
 
 | Model Claim | Status | Reality |
@@ -212,7 +212,7 @@ grep -rn "question\|dedup\|Force.*bool\|investigation.*type\|graph.*--all\|absor
 
 ## Related
 
-- **Model:** `.kb/models/beads-integration-architecture.md` (needs update)
+- **Model:** `.kb/models/beads-integration-architecture/model.md` (needs update)
 - **Decision:** `.kb/decisions/2025-12-21-beads-oss-relationship-clean-slate.md` (needs superseding)
 - **Guide:** `.kb/guides/beads-integration.md` (mostly accurate, needs minor updates)
 - **Probe:** `.kb/models/beads-integration-architecture/probes/2026-02-20-beads-fork-integration-audit.md`

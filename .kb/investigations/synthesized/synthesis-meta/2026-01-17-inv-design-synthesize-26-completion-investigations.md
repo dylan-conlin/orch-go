@@ -10,7 +10,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Knowledge:** Current architecture lacks a canonical agent identity; gates independently implement workspace/project resolution, causing inconsistent behavior. 55% of completions used --force bypass, indicating gate reliability issues.
 
-**Next:** Recommend Agent Manifest pattern (spawn-time metadata snapshot), git-commit-based change detection, and evidence collection phase before gate verification. Update model at `.kb/models/completion-verification.md`.
+**Next:** Recommend Agent Manifest pattern (spawn-time metadata snapshot), git-commit-based change detection, and evidence collection phase before gate verification. Update model at `.kb/models/completion-verification/model.md`.
 
 **Promote to Decision:** recommend-yes - This identifies architectural patterns that should guide future verification work and prevent churn.
 
@@ -307,7 +307,7 @@ The architectural improvements proposed in the Recommendations section address t
 
 **Files Examined:**
 - `pkg/verify/check.go` - Main verification logic, gate constants
-- `.kb/models/completion-verification.md` - Current architecture model
+- `.kb/models/completion-verification/model.md` - Current architecture model
 - `.kb/guides/completion.md` - Completion workflow guide
 
 **Investigations Analyzed:**
@@ -320,7 +320,7 @@ The architectural improvements proposed in the Recommendations section address t
 - `2026-01-15-inv-verify-test-first-gate-implementation.md`
 
 **Related Artifacts:**
-- **Model:** `.kb/models/completion-verification.md` - Should be updated with these findings
+- **Model:** `.kb/models/completion-verification/model.md` - Should be updated with these findings
 - **Guide:** `.kb/guides/completion.md` - Reference for current workflow
 - **Decision (proposed):** `.kb/decisions/verification-agent-manifest.md` - If recommendations accepted
 

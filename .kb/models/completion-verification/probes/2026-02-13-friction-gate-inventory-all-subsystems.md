@@ -1,6 +1,6 @@
 # Probe: Inventory all friction gates across spawn, completion, and daemon — assess defect-catching vs noise
 
-**Model:** `.kb/models/completion-verification.md`
+**Model:** `.kb/models/completion-verification/model.md`
 **Date:** 2026-02-13
 **Status:** Complete
 

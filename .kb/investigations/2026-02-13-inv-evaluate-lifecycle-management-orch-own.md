@@ -33,9 +33,9 @@
 | `.kb/decisions/2026-01-12-registry-is-spawn-cache.md` | extends | Yes - registry methods still unused | None |
 | `.kb/decisions/2026-01-14-two-tier-cleanup-pattern.md` | extends | Yes - event + periodic cleanup pattern confirmed | None |
 | `.kb/decisions/2026-01-14-infrastructure-complexity-justified.md` | extends | Yes - complexity still justified, but can be redistributed | None |
-| `.kb/models/agent-lifecycle-state-model.md` | deepens | Yes - four-layer model confirmed | Reframes: 2 layers are state, 2 are infrastructure |
-| `.kb/models/opencode-session-lifecycle.md` | deepens | Yes - all constraints still apply | None |
-| `.kb/models/completion-lifecycle.md` | confirms | Yes - Phase: Complete still canonical | None |
+| `.kb/models/agent-lifecycle-state-model/model.md` | deepens | Yes - four-layer model confirmed | Reframes: 2 layers are state, 2 are infrastructure |
+| `.kb/models/opencode-session-lifecycle/model.md` | deepens | Yes - all constraints still apply | None |
+| `.kb/models/completion-verification/model.md` | confirms | Yes - Phase: Complete still canonical | None |
 
 ---
 
@@ -246,7 +246,7 @@ Orch should adopt a **three-bucket ownership model**:
    - Session State HTTP endpoint: Issue explaining SSE-only limitation
 
 4. **Phase 4: Formalize state model** (architectural, 1 day)
-   - Update `.kb/models/agent-lifecycle-state-model.md` to distinguish state (beads, workspace) from infrastructure (OpenCode, tmux)
+   - Update `.kb/models/agent-lifecycle-state-model/model.md` to distinguish state (beads, workspace) from infrastructure (OpenCode, tmux)
    - Document the three-bucket ownership model as a decision
 
 ### Alternative Approaches Considered
@@ -303,12 +303,12 @@ Orch should adopt a **three-bucket ownership model**:
 - `pkg/verify/check.go` - Phase parsing and deliverable verification
 
 **Models Read:**
-- `.kb/models/agent-lifecycle-state-model.md` - Four-layer state model
-- `.kb/models/opencode-session-lifecycle.md` - Session persistence, completion detection
-- `.kb/models/spawn-architecture.md` - Spawn flow, workspace creation
-- `.kb/models/completion-lifecycle.md` - Completion chain, verification bottleneck
-- `.kb/models/model-access-spawn-paths.md` - Dual backend architecture
-- `.kb/models/workspace-lifecycle-model.md` - Workspace tiers, archival
+- `.kb/models/agent-lifecycle-state-model/model.md` - Four-layer state model
+- `.kb/models/opencode-session-lifecycle/model.md` - Session persistence, completion detection
+- `.kb/models/spawn-architecture/model.md` - Spawn flow, workspace creation
+- `.kb/models/completion-verification/model.md` - Completion chain, verification bottleneck
+- `.kb/models/model-access-spawn-paths/model.md` - Dual backend architecture
+- `.kb/models/workspace-lifecycle-model/model.md` - Workspace tiers, archival
 
 **Decisions Read:**
 - `.kb/decisions/2026-01-12-registry-is-spawn-cache.md` - Registry demoted to spawn-cache
@@ -323,7 +323,7 @@ Orch should adopt a **three-bucket ownership model**:
 
 **Related Artifacts:**
 - **Decision to create:** `.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md`
-- **Model to update:** `.kb/models/agent-lifecycle-state-model.md` (add state vs infrastructure distinction)
+- **Model to update:** `.kb/models/agent-lifecycle-state-model/model.md` (add state vs infrastructure distinction)
 
 ---
 

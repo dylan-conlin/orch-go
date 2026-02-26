@@ -309,7 +309,7 @@ The completion pipeline should consist of:
 
 ## Source Investigations and Evidence
 
-- Completion-verification model: `.kb/models/completion-verification.md`
+- Completion-verification model: `.kb/models/completion-verification/model.md`
 - V0-V3 decision: `.kb/decisions/2026-02-20-verification-levels-v0-v3.md`
 - Verifiability-first decision: `.kb/decisions/2026-02-14-verifiability-first-hard-constraint.md`
 - Phased adversarial verification decision: Prior knowledge (from kb context)

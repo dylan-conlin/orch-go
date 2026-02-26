@@ -354,7 +354,7 @@ go test ./pkg/orch/...  # passes (0.010s)
 **Related Artifacts:**
 - `.kb/investigations/2026-01-04-inv-design-analyze-pkg-daemon-daemon.md` — daemon.go extraction plan (reference pattern)
 - `.kb/guides/code-extraction-patterns.md` — Extraction guide
-- `.kb/models/extract-patterns.md` — Extraction patterns model
+- `.kb/models/extract-patterns/model.md` — Extraction patterns model
 - `.kb/models/extract-patterns/probes/2026-02-19-probe-extraction-go-hotspot-analysis.md` — Companion probe
 
 ---

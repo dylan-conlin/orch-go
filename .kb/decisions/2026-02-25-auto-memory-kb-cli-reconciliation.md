@@ -140,6 +140,6 @@ Rejected because auto-memory has no governance, no discoverability by other agen
 ## References
 
 - Claude Code memory docs: `~/.claude/docs/official/claude-code/memory.md`
-- Context Injection Architecture: `.kb/models/context-injection.md`
+- Context Injection Architecture: `.kb/models/context-injection/model.md`
 - Knowledge Placement Table: `~/.claude/CLAUDE.md` (section: "Knowledge Placement")
 - Current auto-memory: `~/.claude-personal/projects/-Users-dylanconlin-Documents-personal-orch-go/memory/MEMORY.md`

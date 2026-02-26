@@ -150,7 +150,7 @@ Three gaps in the current system:
 
 **Format:**
 ```jsonl
-{"timestamp":"2026-02-15T10:30:00Z","model":".kb/models/completion-verification.md","changed_files":["cmd/orch/complete_cmd.go"],"deleted_files":["pkg/verify/phase.go"],"spawn_id":"og-feat-xyz","agent_skill":"feature-impl"}
+{"timestamp":"2026-02-15T10:30:00Z","model":".kb/models/completion-verification/model.md","changed_files":["cmd/orch/complete_cmd.go"],"deleted_files":["pkg/verify/phase.go"],"spawn_id":"og-feat-xyz","agent_skill":"feature-impl"}
 ```
 
 **Why not extend gap-tracker:** Semantically different. Context gaps = missing knowledge. Model staleness = outdated knowledge. Different detection mechanisms, different remediation paths.
@@ -188,7 +188,7 @@ When `orch complete` runs, it already checks git diff. Add:
 3. If modified files appear in model code_refs, output:
    ```
    NOTE: Modified files referenced by models:
-   - cmd/orch/complete_cmd.go → .kb/models/completion-verification.md
+   - cmd/orch/complete_cmd.go → .kb/models/completion-verification/model.md
    Consider updating affected models.
    ```
 

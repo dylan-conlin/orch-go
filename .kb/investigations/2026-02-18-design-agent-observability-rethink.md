@@ -320,7 +320,7 @@ type Agent struct {
 
 ## References
 
-- `.kb/models/agent-lifecycle-state-model.md` — State vs infrastructure distinction
+- `.kb/models/agent-lifecycle-state-model/model.md` — State vs infrastructure distinction
 - `.orch/workspace/archived/og-arch-cross-project-agents-07jan-1844/SYNTHESIS.md` — kb projects integration
 - `.orch/workspace/archived/og-inv-dashboard-blind-claude-17feb-24d6-213340/SYNTHESIS.md` — Scan ordering bug
 - `.orch/workspace/archived/og-debug-fix-dashboard-blind-17feb-1b59/SYNTHESIS.md` — Fix that didn't stick

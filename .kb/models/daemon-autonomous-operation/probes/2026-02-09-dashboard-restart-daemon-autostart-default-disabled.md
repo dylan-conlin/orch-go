@@ -1,6 +1,6 @@
 # Probe: Does `orch-dashboard restart` auto-start daemon by default?
 
-**Model:** `.kb/models/daemon-autonomous-operation.md`
+**Model:** `.kb/models/daemon-autonomous-operation/model.md`
 **Date:** 2026-02-09
 **Status:** Complete
 

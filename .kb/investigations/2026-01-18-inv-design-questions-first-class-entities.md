@@ -166,7 +166,7 @@ But questions DO need:
 
 **Source:**
 - `.beads/.beads/issues.jsonl` - existing issue structure
-- `.kb/models/beads-integration-architecture.md:69-105` - three integration points
+- `.kb/models/beads-integration-architecture/model.md:69-105` - three integration points
 - beads CLI: `bd create`, `bd ready`, `bd show`
 
 **Significance:** Questions are "lightweight" beads entities - they need lifecycle and dependencies but not the work-tracking baggage (assignee, estimate, verification). This suggests a new entity type with simpler schema.
@@ -195,7 +195,7 @@ Current system gaps:
 
 **Source:**
 - `~/.kb/principles.md` - Gate Over Remind principle
-- `.kb/models/beads-integration-architecture.md:149-195` - dependency mechanics
+- `.kb/models/beads-integration-architecture/model.md:149-195` - dependency mechanics
 - `bd ready` output format
 
 **Significance:** To make questions gate work, they need entity status. Reminders ("don't start until question answered") fail under cognitive load. Gates ("bd ready excludes question-blocked items") work.
@@ -440,8 +440,8 @@ Current system gaps:
 
 **Files Examined:**
 - `.kb/guides/understanding-artifact-lifecycle.md` - Understanding progression (Epic Model → Understanding → Model)
-- `.kb/models/beads-integration-architecture.md` - Beads RPC/CLI, lifecycle, dependencies
-- `.kb/models/dashboard-architecture.md` - Dashboard views and architecture
+- `.kb/models/beads-integration-architecture/model.md` - Beads RPC/CLI, lifecycle, dependencies
+- `.kb/models/dashboard-architecture/model.md` - Dashboard views and architecture
 - `.kb/investigations/2026-01-13-inv-analyze-understanding-artifact-architecture-epic.md` - Epic Model analysis
 - `.kb/investigations/2026-01-07-inv-epic-readiness-gate-understanding-section.md` - Understanding section implementation
 - `.kb/investigations/2025-12-20-inv-orch-add-question-command.md` - Question extraction command
@@ -462,7 +462,7 @@ grep -r "Probes Sent" .
 
 **Related Artifacts:**
 - **Guide:** `.kb/guides/understanding-artifact-lifecycle.md` - Documents current understanding progression
-- **Model:** `.kb/models/beads-integration-architecture.md` - Beads integration patterns
+- **Model:** `.kb/models/beads-integration-architecture/model.md` - Beads integration patterns
 - **Investigation:** `.kb/investigations/2026-01-13-inv-analyze-understanding-artifact-architecture-epic.md` - Prior art on understanding artifacts
 
 ---

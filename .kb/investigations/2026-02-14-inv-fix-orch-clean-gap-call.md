@@ -105,7 +105,7 @@ The phrase "no extra API calls needed" is incorrect - heuristic #2 DOES make an 
 - Risk: HIGH
 - Status: OPEN
 
-**Source:** `/Users/dylanconlin/Documents/personal/orch-go/.kb/models/session-deletion-vectors.md:73`
+**Source:** `/Users/dylanconlin/Documents/personal/orch-go/.kb/models/session-deletion-vectors/model.md:73`
 
 **Significance:** This confirms the bug is known, high-risk, and has clear reproduction steps. Fix is well-scoped.
 

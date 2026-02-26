@@ -1,6 +1,6 @@
 # Probe: Does synthesis dedup fail closed on JSON parse errors?
 
-**Model:** `.kb/models/beads-integration-architecture.md`
+**Model:** `.kb/models/beads-integration-architecture/model.md`
 **Date:** 2026-02-08
 **Status:** Complete
 

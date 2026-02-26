@@ -544,8 +544,8 @@ Spawn time:           Completion time:
 - `~/orch-knowledge/skills/src/meta/orchestrator/.skillc/SKILL.md.template` — Skill template (614 lines)
 - `~/orch-knowledge/skills/src/meta/orchestrator/.skillc/skill.yaml` — Skill metadata and load-bearing patterns
 - `~/orch-knowledge/skills/src/meta/orchestrator/.skillc/reference/tools-and-commands.md` — Reference material
-- `.kb/models/orchestrator-session-lifecycle.md` — Orchestrator session lifecycle model
-- `.kb/models/completion-verification.md` — Completion verification architecture model
+- `.kb/models/orchestrator-session-lifecycle/model.md` — Orchestrator session lifecycle model
+- `.kb/models/completion-verification/model.md` — Completion verification architecture model
 - `.kb/decisions/2026-02-14-verifiability-first-hard-constraint.md` — Two-gate verification constraint
 - `.kb/investigations/2026-01-10-inv-trace-verification-bottleneck-story-system.md` — Verification bottleneck story
 - `.kb/investigations/2026-01-06-inv-diagnose-orchestrator-skill-18-completion.md` — Orchestrator completion rate
