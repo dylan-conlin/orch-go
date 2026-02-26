@@ -1,14 +1,14 @@
 # Model: Orchestration Cost Economics
 
 **Domain:** Agent Orchestration / Model Selection / Cost Management
-**Last Updated:** 2026-02-20
-**Synthesized From:** 15 investigations, 25+ kb quick entries, decisions spanning Nov 2025 - Jan 2026, and probe 2026-02-20-model-drift-stale-references-audit
+**Last Updated:** 2026-02-25
+**Synthesized From:** 15 investigations, 25+ kb quick entries, decisions spanning Nov 2025 - Feb 2026, probes 2026-02-20 (stale references audit) and 2026-02-24 (account distribution design)
 
 ---
 
 ## Summary (30 seconds)
 
-Agent orchestration cost is driven by three factors: **model pricing** (10-100x variance), **access restrictions** (fingerprinting, OAuth blocking), and **visibility** (lack of tracking caused $402 surprise spend). The Jan 2026 cost crisis revealed that headless spawning without cost visibility leads to runaway spend. As of Feb 2026, the **default spawn path is Claude backend + Max subscription** (Sonnet via Claude CLI), making the $200/mo flat rate the primary economic path — not just the escape hatch. The provider ecosystem has expanded to 4 providers (Anthropic, Google, OpenAI/Codex, DeepSeek) with centralized config resolution (`pkg/spawn/resolve.go`) and model-aware backend routing.
+Agent orchestration cost is driven by three factors: **model pricing** (10-100x variance), **access restrictions** (fingerprinting, OAuth blocking), and **visibility** (lack of tracking caused $402 surprise spend). The Jan 2026 cost crisis revealed that headless spawning without cost visibility leads to runaway spend. As of Feb 2026, the **default spawn path is Claude backend + Max subscription** (Sonnet via Claude CLI), making the $200/mo flat rate the primary economic path — not just the escape hatch. The provider ecosystem spans 4 providers (Anthropic, Google, OpenAI/Codex, DeepSeek) with centralized config resolution (`pkg/spawn/resolve.go`) and model-aware backend routing. **Per-spawn account distribution** (Feb 20-21) enables capacity-aware routing across multiple Max accounts via `CLAUDE_CONFIG_DIR` injection, with the `Account` field tracked as a first-class resolved setting with provenance.
 
 ---
 
@@ -27,7 +27,10 @@ Agent orchestration cost is driven by three factors: **model pricing** (10-100x 
 | Feb 2026     | Flash models banned for agent work                  | `validateModel()` gate in resolve.go               |
 | Feb 2026     | OpenAI/Codex added as first-class provider          | 12 model aliases, OpenCode backend                 |
 | Feb 2026     | Centralized `ResolvedSpawnSettings` with provenance | Multi-file resolver replaces monolithic backend.go |
-| Feb 2026     | Default backend changed to Claude (Sonnet default)  | Max subscription is now primary path               |
+| Feb 19, 2026 | Anthropic bans subscription OAuth in third-party tools | OpenCode + Anthropic = dead path without override |
+| Feb 20, 2026 | Default backend changed to Claude (Sonnet default)  | Max subscription is now primary path (commit 21b543524) |
+| Feb 20, 2026 | Account distribution Phase 1: schema + CLI + env injection | Per-spawn account selection via `CLAUDE_CONFIG_DIR` |
+| Feb 21, 2026 | Account distribution Phase 2: capacity cache + heuristic routing | Automatic account routing based on remaining capacity |
 
 ---
 
@@ -220,17 +223,22 @@ Switched from free Gemini to paid Sonnet on Jan 9 with **no cost tracking**:
 
 **Result:** $402 spent in ~2 weeks without awareness, ramping to $70-80/day.
 
-### Current Status (Feb 2026): Partially Addressed
+### Current Status (Feb 2026): Substantially Mitigated
 
-**Token counting exists** (`cmd/orch/tokens.go`): `orch tokens` shows per-session and aggregate token counts (input, output, cache read, reasoning). This addresses visibility for context usage monitoring.
+**Token counting exists** (`cmd/orch/tokens.go`, 336 lines): `orch tokens` shows per-session and aggregate token counts (input, output, cache read, reasoning). Supports `--all` (include completed), `--json`, and per-session detail views. Queries `pkg/opencode.TokenStats` from OpenCode API.
+
+**Account capacity tracking exists** (`pkg/account/account.go`): `ShouldAutoSwitch()` checks capacity thresholds (`FiveHourRemaining`, `SevenDayRemaining` percentages) and capacity-aware spawn routing automatically avoids exhausted accounts.
 
 **Still missing:**
 - Dollar-cost calculation from token counts (model-specific pricing)
 - Per-spawn cost aggregation
 - Budget alerts (80%/95%/100% thresholds)
-- Anthropic Usage API integration (`/v1/billing/cost`)
 
-**Mitigated by architecture change:** Since the default path is now Max subscription (flat $200/mo), the cost visibility gap is less urgent — there's no pay-per-token surprise. The gap becomes relevant again when using non-Max paths (DeepSeek, OpenAI API).
+**Largely mitigated by architecture changes:**
+1. Default path is Max subscription (flat $200/mo) — no pay-per-token surprise
+2. Per-spawn account distribution prevents single-account quota exhaustion
+3. Token counting provides session-level visibility for Max credit consumption
+4. The gap only matters when using non-Max paths (DeepSeek, OpenAI API)
 
 **Source:** `.kb/investigations/archived/2026-01-12-inv-sonnet-cost-tracking-requirements.md`, `.kb/investigations/2026-01-18-inv-add-api-cost-tracking-widget.md`
 
@@ -240,7 +248,7 @@ Switched from free Gemini to paid Sonnet on Jan 9 with **no cost tracking**:
 
 ### Current Architecture (Feb 2026)
 
-The dual spawn architecture has been refactored from monolithic `backend.go` into a centralized resolver system (`pkg/spawn/resolve.go`) with model-aware backend routing.
+The dual spawn architecture has been refactored from monolithic `backend.go` into a centralized resolver system (`pkg/spawn/resolve.go`) with model-aware backend routing and per-spawn account distribution.
 
 | Path                  | Backend                                   | Models                             | Cost               | Use When                                   |
 |-----------------------|-------------------------------------------|------------------------------------|--------------------|--------------------------------------------|
@@ -250,6 +258,31 @@ The dual spawn architecture has been refactored from monolithic `backend.go` int
 
 **Key change from Jan 2026:** The primary/escape-hatch distinction has inverted. Claude backend + Max is now the *default*, not the escape hatch. The infrastructure escape hatch still exists (`InfrastructureDetected` → auto-select Claude backend) but is now redundant since Claude is already the default.
 
+### Account Distribution (Feb 2026)
+
+Per-spawn account selection enables capacity-aware routing across multiple Max accounts. This addresses the weekly quota exhaustion problem — when one account nears its limit, spawns automatically route to accounts with remaining capacity.
+
+**Account schema** (`~/.orch/accounts.yaml`):
+
+| Field      | Purpose                                          | Example                    |
+|------------|--------------------------------------------------|----------------------------|
+| `email`    | Account identifier                               | `dylan@sendcutsend.com`    |
+| `tier`     | Subscription tier (affects quota)                 | `20x`, `5x`               |
+| `role`     | Routing priority                                  | `primary`, `spillover`     |
+| `config_dir` | Claude CLI config directory for account isolation | `~/.claude-personal`     |
+
+**How it works:**
+
+1. `ResolvedSpawnSettings` includes an `Account` field with provenance tracking
+2. Resolution precedence: CLI flag (`--account`) > capacity-aware heuristic > default (first primary account)
+3. Heuristic checks: `FiveHourRemaining` and `SevenDayRemaining` percentages (healthy ≥ 20%)
+4. `BuildClaudeLaunchCommand()` in `pkg/spawn/claude.go` injects `CLAUDE_CONFIG_DIR` and unsets `CLAUDE_CODE_OAUTH_TOKEN` when using a non-default account
+5. Two independent auth mechanisms: OpenCode OAuth (`~/.local/share/opencode/auth.json`, global) vs Claude CLI config dir (`CLAUDE_CONFIG_DIR`, per-spawn)
+
+**Routing strategy:** Work-first (primary accounts), personal-spillover (fallback when primary exhausted).
+
+**Source:** `pkg/spawn/resolve.go` (account resolution), `pkg/spawn/claude.go` (env var injection), `pkg/account/account.go` (capacity checking)
+
 ### Economic Decision Tree
 
 ```
@@ -258,6 +291,12 @@ What provider is the model?
   → OpenAI/Codex: OpenCode backend (auto-routed)
   → DeepSeek: OpenCode backend (auto-routed)
   → Google: OpenCode backend (auto-routed, Flash BANNED)
+
+Which account? (Claude backend only)
+  → Auto: capacity-aware heuristic routes to healthiest account
+  → --account work: force specific account (CLI override)
+  → Primary accounts checked first, spillover accounts as fallback
+  → Healthy threshold: ≥20% remaining on both 5-hour and 7-day limits
 
 Need Anthropic model via OpenCode backend?
   → Set allow_anthropic_opencode: true in ~/.orch/user.yaml
@@ -276,7 +315,7 @@ Is highest quality needed?
 
 ### Config Resolution System (Feb 2026)
 
-Spawn settings are now resolved via `ResolvedSpawnSettings` with full provenance tracking. Each setting (backend, model, tier, spawn mode, MCP, mode, validation) records its source:
+Spawn settings are now resolved via `ResolvedSpawnSettings` with full provenance tracking. Each setting (backend, model, tier, spawn mode, MCP, mode, validation, **account**) records its source:
 
 **Precedence (highest to lowest):**
 1. CLI flags (`--backend`, `--model`, etc.)
@@ -340,6 +379,10 @@ Spawn settings are now resolved via `ResolvedSpawnSettings` with full provenance
 
 **A:** No. Cancelled Jan 13. Opus gate forced lighter consumption patterns. Can re-subscribe in 5 minutes if needed.
 
+### Q: How does multi-account routing work economically?
+
+**A:** Two Max accounts (work 20×, personal 5×) provide $300/mo total capacity. The spawn resolver routes based on remaining capacity — primary accounts first, spillover when exhausted. This extends effective weekly quota by ~40% (5× account adds 41.6M weekly credits on top of work account's 83.3M). The `CLAUDE_CONFIG_DIR` env var injection in `pkg/spawn/claude.go` enables per-spawn account isolation without global state switching.
+
 ---
 
 ## Constraints
@@ -393,12 +436,15 @@ Originally blocked by 2,000 req/min TPM limit. Now **explicitly banned** in code
 
 ### Probes
 - `.kb/models/orchestration-cost-economics/probes/2026-02-20-model-drift-stale-references-audit.md` — Identified 3 deleted references, stale spawn path economics, expanded provider ecosystem
+- `.kb/models/orchestration-cost-economics/probes/2026-02-24-probe-automatic-account-distribution-design.md` — Verified per-spawn account infrastructure gaps, designed CLAUDE_CONFIG_DIR injection
 
 **Primary Evidence (Verify These):**
 - Anthropic billing dashboard - Actual spend history showing $402 in ~2 weeks
-- `~/.local/share/opencode/auth.json` - Auth token storage (replaces deleted `~/.anthropic/`)
+- `~/.local/share/opencode/auth.json` - Auth token storage for OpenCode backend (NOT used by Claude CLI backend)
 - DeepSeek API documentation - Current pricing ($0.25/$0.38/MTok) and function calling status
-- `pkg/spawn/resolve.go` - Centralized spawn resolver with provenance tracking (replaces deleted `pkg/spawn/backend.go`)
+- `pkg/spawn/resolve.go` - Centralized spawn resolver with provenance tracking (8 settings including Account)
+- `pkg/spawn/claude.go` - Claude CLI launch command with CLAUDE_CONFIG_DIR account injection
+- `pkg/account/account.go` - Account schema (Tier, Role, ConfigDir), capacity checking, auto-switch
 - `pkg/model/model.go` - Model alias ecosystem (4 providers, 30+ aliases)
-- `cmd/orch/tokens.go` - Token counting implementation
+- `cmd/orch/tokens.go` - Token counting implementation (input, output, cache read, reasoning per session)
 - she-llac.com credit formula reverse engineering - Internal credit system documentation
