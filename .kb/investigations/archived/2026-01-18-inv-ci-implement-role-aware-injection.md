@@ -50,7 +50,7 @@ Guidelines:
 **Patches-Decision:** N/A
 **Extracted-From:** N/A
 **Supersedes:** `.kb/investigations/2026-01-17-inv-ci-implement-role-aware-injection.md` (duplicate investigation of same issue)
-**Superseded-By:** N/A
+**Superseded-By:** /Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2026-01-17-role-aware-hook-filtering.md
 
 ---
 

@@ -32,7 +32,7 @@ Fill this at the END of your investigation, before marking Complete.
 **Patches-Decision:** N/A - New architectural concept
 **Extracted-From:** N/A
 **Supersedes:** N/A
-**Superseded-By:** N/A
+**Superseded-By:** /Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2026-01-18-questions-as-first-class-entities.md
 
 ---
 

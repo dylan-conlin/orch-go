@@ -50,7 +50,7 @@ Guidelines:
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
 **Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Superseded-By:** /Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2026-01-18-unified-binary-resolution.md
 
 ---
 

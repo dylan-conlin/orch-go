@@ -1,5 +1,11 @@
 # Decision: Questions as First-Class Entities
 
+<!-- Lineage (fill only when applicable) -->
+**Extracted-From:** 
+**Supersedes:** /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2026-01-18-inv-design-questions-first-class-entities.md
+**Superseded-By:** 
+
+
 **Date:** 2026-01-18
 **Status:** Accepted
 **Context:** Synthesized from investigation on questions-based epic gating and artifact lifecycle analysis

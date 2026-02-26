@@ -17,7 +17,7 @@
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
+**Supersedes:** /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2026-01-18-inv-ci-implement-role-aware-injection.md
 **Superseded-By:** [Path to artifact that replaced this, if applicable]
 
 ---

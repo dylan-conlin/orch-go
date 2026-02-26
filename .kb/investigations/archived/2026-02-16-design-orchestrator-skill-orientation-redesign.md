@@ -14,6 +14,12 @@
 
 # Investigation: Design Orchestrator Skill Orientation Redesign
 
+<!-- Lineage (fill only when applicable) -->
+**Extracted-From:** 
+**Supersedes:** 
+**Superseded-By:** /Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2026-02-16-orchestrator-skill-orientation-redesign.md
+
+
 **Question:** How should the orchestrator skill be reorganized so its frame is "keep Dylan oriented at every moment" instead of "what the orchestrator does"?
 
 **Started:** 2026-02-16
