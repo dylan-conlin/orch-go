@@ -232,6 +232,33 @@ Default tier is determined by skill:
 
 ---
 
+## Two-Phase Atomic Spawn (Feb 2026)
+
+Spawn executes in two phases with rollback on failure:
+
+**Phase 1 (common):** Beads issue creation + workspace setup. Rolls back (deletes issue + workspace) on failure. All four backends share this phase.
+
+**Phase 2 (per-backend):** Session creation varies by backend:
+
+| Backend | Phase 2 behavior |
+|---------|-----------------|
+| **opencode** (headless) | Creates OpenCode session via HTTP API, sends prompt |
+| **opencode** (tmux) | Creates tmux window, runs `opencode attach` |
+| **claude** | Creates tmux window, runs `claude` CLI — **no OpenCode session** |
+| **inline** | Runs `opencode run` in current terminal |
+
+**Claude backend note:** `runSpawnClaude` never calls `AtomicSpawnPhase2`, so the manifest has no `session_id`. This is by design — Claude CLI is the escape hatch that doesn't depend on OpenCode.
+
+### Non-Default Models in Tmux Mode
+
+`opencode attach` CLI doesn't support a `--model` flag. For tmux spawns with non-default models, pre-create the OpenCode session via HTTP API (which accepts model), then attach by session ID. This avoids modifying the OpenCode fork.
+
+### Worker Detection Chain
+
+Worker sessions are detected through a four-stage chain: HTTP header → session metadata → plugin hook → `detectWorkerSession`. Verified operational Feb 2026 (stress test: 50+ tool calls emitted correct `context_usage` worker metric, zero orchestrator metrics).
+
+---
+
 ## What Gets Generated
 
 ### SPAWN_CONTEXT.md

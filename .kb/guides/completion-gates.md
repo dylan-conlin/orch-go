@@ -422,8 +422,21 @@ If you need to add a new gate:
 
 ---
 
+## Human Verification Gate (Post-Completion)
+
+After automated gates pass, `orch complete` has a two-gate human verification model:
+
+**Gate 1 (explain-back):** The orchestrator must articulate what was built and why in their own words before work is marked verified. Reading is not understanding — explain-back is unfakeable verification of comprehension.
+
+**Gate 2 (behavioral, Tier 1 only):** The orchestrator confirms the behavior is verified (e.g., running the feature, seeing the fix).
+
+**Anti-pattern — batch-completing:** Batch-completing Tier 1 features as light tier during high-velocity sessions violates verifiability-first. Velocity pressure causes treating the review queue as something to clear rather than verify. Same root cause as entropy spiral — local correctness assumed without behavioral verification.
+
+---
+
 ## History
 
+- **Feb 2026:** Added human verification gate (explain-back) and batch completion anti-pattern
 - **Jan 4, 2026:** Created after auditing all gates following the Dec 27 - Jan 2 spiral
 - **Jan 4, 2026:** Repro verification gate disabled (was blocking completions)
 - **Jan 4, 2026:** Dependency check gate disabled (was blocking completions)

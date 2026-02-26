@@ -84,7 +84,11 @@ Agent state is derived at query time from four authoritative sources — no pers
 
 **Architectural constraint:** `pkg/registry/`, `pkg/cache/`, and `sessions.json` are forbidden by architecture lint tests (`architecture_lint_test.go`). If queries are slow, fix the authoritative source — do not build projections.
 
-**Historical note:** A session registry (`~/.orch/sessions.json`, `pkg/session/registry.go`) existed Jan 2026 but was removed due to false positive completion detection and drift. The "no local agent state" constraint was established to prevent recurrence.
+**Historical note:** A session registry (`~/.orch/sessions.json`, `pkg/registry/`) existed Jan 2026 but was removed Feb 2026 due to false positive completion detection and drift. Replaced by `pkg/session/registry.go` for any remaining session lookup needs. The "no local agent state" constraint was established to prevent recurrence. Note: 40+ .kb/ docs still reference the deleted `pkg/registry/` package.
+
+**Liveness gap — Claude-backend agents:** `queryTrackedAgents` only checks OpenCode sessions for liveness. Claude-backend agents (spawned via `runSpawnClaude`) bypass OpenCode entirely — they have no OpenCode session, so manifest has no `session_id`. The query engine marks `missing_session` as dead, causing ~30%+ of claude-mode agents to appear dead even when running in tmux. Phase comments from beads serve as a liveness proxy for these agents, filling the gap without introducing new state layers.
+
+**Session status API:** `GET /session/status` exists in the OpenCode fork and returns `Record<string, idle|busy|retry>`. Use this instead of SSE-only polling for session state — zero OpenCode changes needed.
 
 ### Checkpoint Discipline
 
@@ -222,6 +226,31 @@ Meta frame:          "What is the orchestrator struggling with?"
 
 **This enables:** Orchestrator autonomy for productive flow continuation
 **This constrains:** Cannot enforce hard session limits, relies on orchestrator judgment
+
+---
+
+### Lifecycle Ownership Boundaries (Feb 2026)
+
+**Context:** ~8,800 lines of lifecycle code, ~40% compensating for OpenCode gaps. The four-layer model conflates state (beads, workspace) with infrastructure (sessions, tmux).
+
+**Three-bucket model:**
+
+| Bucket | What it covers | Examples |
+|--------|---------------|----------|
+| **OWN** | Gates and tracking we control | Verification gates, phase tracking, workspace management, beads integration |
+| **ACCEPT** | Infrastructure we use but don't control | Session persistence (OpenCode), SSE completion events, dual backend support |
+| **LOBBY** | Gaps we want upstream to fix | Session TTL, metadata API improvements, state endpoint enhancements |
+
+**Reference:** `.kb/decisions/2026-02-13-lifecycle-ownership-boundaries.md`
+
+### Session Identity (Feb 2026)
+
+**Hybrid model:** Derive identity from OpenCode session ID (`ses_xxxxx`), enrich with optional orch session label.
+
+- OpenCode session ID is available with zero friction — use as default correlation key
+- Optional `orch session label` command adds human-readable names
+- Dashboard timeline shows label if exists, falls back to session ID + time range
+- Tool-agnostic: if we switch from OpenCode, just change where session ID comes from
 
 ---
 
