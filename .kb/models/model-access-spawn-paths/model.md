@@ -1,14 +1,14 @@
 # Model: Model Access and Spawn Paths
 
 **Domain:** Agent Spawning / Model Selection
-**Last Updated:** 2026-02-20
-**Synthesized From:** 5 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations) spanning Jan 8-12, 2026. Updated Feb 2026 via drift probe.
+**Last Updated:** 2026-02-25
+**Synthesized From:** 5 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations) spanning Jan 8-12, 2026. Updated Feb 2026 via drift probes and model drift agent.
 
 ---
 
 ## Summary (30 seconds)
 
-Anthropic restricts Opus 4.5 access via fingerprinting that blocks API usage but allows Claude Code CLI with Max subscription. This constraint forced a **dual spawn architecture**: primary path (OpenCode API + Sonnet/Flash, headless, high concurrency) and escape hatch (Claude CLI + Opus, tmux, crash-resistant). The escape hatch exists because critical infrastructure work (fixing the spawn system itself) can't depend on what might fail. Model choice now encodes reliability requirements, not just quality preferences.
+Anthropic banned subscription OAuth in third-party tools (Feb 19, 2026), making **Claude CLI the default backend** for Anthropic models (was previously the escape hatch). The architecture now uses **model-aware backend routing**: Anthropic models → Claude CLI (tmux), non-Anthropic models (Google, OpenAI, DeepSeek) → OpenCode API (headless). Account routing is capacity-aware with primary/spillover accounts and a health threshold (>20%). The escape hatch pattern remains for infrastructure work, but is now advisory — higher-priority settings (CLI, model requirement, project/user config) take precedence.
 
 ---
 
@@ -16,66 +16,92 @@ Anthropic restricts Opus 4.5 access via fingerprinting that blocks API usage but
 
 ### Available Models and Access Methods
 
-**Anthropic Models:**
-- **Opus 4.5** (`claude-opus-4-5-20251101`) - Highest quality, restricted access
-- **Sonnet 4.5** (`claude-sonnet-4-5-20250929`) - Balanced quality/speed
+**Anthropic Models (default, via Claude CLI):**
+- **Opus 4.5** (`claude-opus-4-5-20251101`) - Highest quality, Max subscription
+- **Sonnet 4.5** (`claude-sonnet-4-5-20250929`) - Default model, balanced quality/speed
 - **Haiku** - Fast, lower cost
 
-**Gemini Models:**
-- **Flash 3** (`gemini-3-flash-preview`) - Fast, cheap, but 2,000 req/min TPM limit (Paid Tier 2)
+**Gemini Models (via OpenCode API):**
+- **Flash** - BLOCKED at resolve layer (`validateModel` returns error for any flash model)
 - **Pro** - Higher quality Gemini option
+
+**OpenAI Models (via OpenCode API):**
+- **GPT-4o**, **GPT-4o-mini** - General purpose
+- **GPT-5.x** (alias: gpt-5 → gpt-5.2) - Latest generation
+- **o3**, **o3-mini** - Reasoning models
+- **Codex** models - Whitelisted via Codex plugin
+
+**DeepSeek Models (via OpenCode API):**
+- **deepseek-chat**, **deepseek-reasoner** (alias: "reasoning")
 
 ### Access Patterns
 
-**Pattern 1: OpenCode API (Primary Path)**
+**Pattern 1: Claude CLI (Default for Anthropic Models)**
 ```
-User → orch spawn → OpenCode HTTP API (localhost:4096) → Anthropic/Gemini API
+User → orch spawn → Claude CLI (tmux) → Anthropic API (Max subscription fingerprint)
+```
+
+**Characteristics:**
+- Tmux window (visual progress, survives server restarts)
+- Opus 4.5 access with Max subscription
+- Flat $200/mo (unlimited usage)
+- **Default since Feb 19, 2026** (Anthropic banned subscription OAuth in third-party tools)
+- **Independence:** Does not depend on OpenCode server
+- Dashboard visibility limited (tmux-only agents need reconciliation)
+
+**Pattern 2: OpenCode API (For Non-Anthropic Models)**
+```
+User → orch spawn --model gpt-5 → OpenCode HTTP API (localhost:4096) → OpenAI/Google/DeepSeek API
 ```
 
 **Characteristics:**
 - Headless (no UI, returns immediately)
 - High concurrency (5+ agents simultaneously)
 - Dashboard visibility via SSE
-- Pay-per-token pricing (unknown current spend, switched to Sonnet Jan 9)
-- **Constraint:** Cannot use Opus (fingerprinting blocks it)
-- **Constraint:** Gemini Flash has 2,000 req/min TPM limit (tool-heavy agents hit it)
+- Pay-per-token pricing
+- **Required for:** Google, OpenAI, DeepSeek models (Claude CLI can only run Anthropic)
 - **Dependency:** OpenCode server must be running
-
-**Pattern 2: Claude CLI (Escape Hatch)**
-```
-User → orch spawn --backend claude → claude CLI fork → Anthropic API (with fingerprint)
-```
-
-**Characteristics:**
-- Tmux window (visual progress)
-- Lower concurrency (manual tracking)
-- Opus 4.5 access (Max subscription required)
-- Flat $200/mo (unlimited usage)
-- **Independence:** Survives OpenCode server crashes
-- **Trade-off:** No dashboard visibility, manual lifecycle
+- **Anthropic models blocked** unless `allow_anthropic_opencode: true` in user config
 
 ### Key Components
 
 **Backend Selection Priority (pkg/spawn/resolve.go:resolveBackend):**
 ```
 1. CLI --backend flag (highest priority)
-2. Model-derived requirement (openai/google/deepseek → opencode)
+2. Model-derived requirement (anthropic → claude; openai/google/deepseek → opencode)
 3. Project config spawn_mode
 4. User config backend
 5. Infrastructure heuristic → claude (advisory when overridden)
-6. Default: opencode
+6. Default: claude (since default model is Anthropic Sonnet)
 ```
 
-Note: Infrastructure detection is now **advisory** — when higher-priority settings
+Note: Infrastructure detection is **advisory** — when higher-priority settings
 (CLI, model requirement, project/user config) specify a different backend,
 infrastructure detection only emits a warning instead of overriding.
 
+**Model-aware backend routing (post-resolve, Decision: kb-2d62ef):**
+After initial backend resolution, if backend was NOT from CLI, the model's provider
+overrides the backend: Anthropic → claude, non-Anthropic → opencode.
+This is the primary routing mechanism since the Anthropic OAuth ban.
+
 **Additional derived behavior:**
-- `--backend claude` implies tmux spawn mode (unless `--headless` explicitly set)
+- `--backend claude` implies tmux spawn mode (auto-switch from headless)
 - Anthropic models on opencode blocked by default (override: `allow_anthropic_opencode: true` in user config)
 - Flash models blocked entirely at resolve layer
+- When CLI says `--backend claude` but model is non-Anthropic (from lower precedence), model auto-resolves to Sonnet
 
-**Infrastructure Work Detection (pkg/orch/extraction.go:isInfrastructureWork):**
+**Account Routing (pkg/spawn/resolve.go:resolveAccount):**
+```
+1. CLI --account flag (highest priority)
+2. Heuristic: capacity-aware routing (when CapacityFetcher set)
+   - Check primary accounts first (sorted deterministically)
+   - If any primary >20% capacity on both limits → use it
+   - Else check spillover accounts
+   - Else fallback to first primary (fail-open)
+3. Default: first primary account
+```
+
+**Infrastructure Work Detection (cmd/orch/spawn_cmd.go:isInfrastructureWork):**
 - Scans task description + beads issue for keywords
 - Keywords (22): "opencode", "orch-go", "pkg/spawn", "pkg/opencode", "pkg/verify", "pkg/state", "cmd/orch", "spawn_cmd.go", "serve.go", "status.go", "main.go", "dashboard", "agent-card", "agents.ts", "daemon.ts", "skillc", "skill.yaml", "SPAWN_CONTEXT", "spawn system", "spawn logic", "spawn template", "orchestration infrastructure", "orchestration system"
 - Auto-applies `--backend claude` (which implies tmux) when no higher-priority setting overrides
@@ -83,25 +109,37 @@ infrastructure detection only emits a warning instead of overriding.
 
 ### State Transitions
 
-**Normal spawn (OpenCode):**
+**Normal spawn (Anthropic model, default):**
 ```
 orch spawn feature-impl "task"
     ↓
 Settings resolved via pkg/spawn/resolve.go
     ↓
-Backend: opencode (default)
 Model: anthropic/claude-sonnet-4-5-20250929 (default)
+Backend: claude (derived from model provider)
     ↓
-Headless session via HTTP API
+Claude CLI in tmux window
     ↓
-Dashboard visibility
+Account: capacity-aware routing (primary → spillover → first primary)
+```
+
+**Non-Anthropic model spawn:**
+```
+orch spawn --model gpt-5 feature-impl "task"
+    ↓
+Model: openai/gpt-5.2 (CLI flag, alias resolved)
+Backend: opencode (derived from model provider)
+    ↓
+Headless session via OpenCode HTTP API
+    ↓
+Dashboard visibility via SSE
 ```
 
 **Infrastructure spawn (auto-detected, advisory):**
 ```
 orch spawn systematic-debugging "fix opencode server crash"
     ↓
-Keyword detected: "opencode" (pkg/orch/extraction.go)
+Keyword detected: "opencode" (cmd/orch/spawn_cmd.go)
     ↓
 No higher-priority backend setting → auto-apply: backend=claude
     ↓
@@ -423,12 +461,29 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 **Jan-Feb 2026:** Backend resolution refactored
 - `selectBackend()` and `detectInfrastructureWork()` removed from config.go
 - Backend selection moved to `pkg/spawn/resolve.go:resolveBackend()` with 6-level precedence
-- Infrastructure detection moved to `pkg/orch/extraction.go:isInfrastructureWork()`
+- Infrastructure detection moved to `cmd/orch/spawn_cmd.go:isInfrastructureWork()`
 - Infrastructure detection became advisory (warns instead of overriding when explicit settings present)
 - Flash models blocked entirely at resolve layer (validateModel returns error)
 - `--backend claude` now implies tmux spawn mode
 - `allow_anthropic_opencode: true` user config override added
 - Expanded infrastructure keywords from 8 to 22
+
+**Feb 19, 2026:** Anthropic OAuth ban reshaped architecture
+- Anthropic banned subscription OAuth in third-party tools (OpenCode uses OAuth)
+- Default backend changed from `opencode` to `claude` (default model is Anthropic Sonnet)
+- Model-aware backend routing became primary mechanism (Decision: kb-2d62ef)
+- Claude CLI → primary path (was escape hatch); OpenCode → multi-model access path
+- Anthropic models on OpenCode blocked by default (override available)
+
+**Feb 20-25, 2026:** Account distribution + modular extraction
+- Account routing with capacity-aware primary/spillover heuristic (3-phase implementation)
+- `resolveAccount()` checks primary accounts first, then spillover, fail-open to first primary
+- Bug-type issues route to `systematic-debugging` (was `architect`)
+- GPT-5 alias remapped to `gpt-5.2` to prevent zombie sessions
+- Pre-create session for tmux spawns with non-default models
+- Cross-project spawn fixes: beads DefaultDir, projectDir through kb context
+- `--force-hotspot` requires `--architect-ref` with verified closed architect issue
+- `--disallowedTools` enforcement + PreToolUse hook for `bd close` gating
 
 ---
 
@@ -449,23 +504,29 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - Infrastructure detection auto-applies escape hatch flags
 
 **Related models:**
-- `.kb/models/dashboard-agent-status.md` - How status is calculated (relates to session state constraint)
+- `.kb/models/spawn-architecture/model.md` - Full spawn pipeline and workspace lifecycle
+- `.kb/models/agent-lifecycle-state-model/model.md` - How status is calculated
 
 **Primary Evidence (Verify These):**
-- `pkg/spawn/resolve.go:resolveBackend()` - Backend selection 6-level precedence
-- `pkg/spawn/resolve.go:Resolve()` - Central settings resolution entry point
+- `pkg/spawn/resolve.go:resolveBackend()` - Backend selection 6-level precedence (~55 lines)
+- `pkg/spawn/resolve.go:Resolve()` - Central settings resolution entry point (~110 lines)
+- `pkg/spawn/resolve.go:resolveAccount()` - Capacity-aware account routing (~75 lines)
 - `pkg/spawn/resolve.go:validateModel()` - Flash blocking, model compatibility
-- `pkg/orch/extraction.go:isInfrastructureWork()` - Keyword detection logic (22 keywords)
+- `pkg/spawn/resolve.go:modelBackendRequirement()` - Model→backend mapping
+- `cmd/orch/spawn_cmd.go:isInfrastructureWork()` - Keyword detection logic (22 keywords)
+- `pkg/orch/extraction.go:ResolveSpawnSettings()` - Resolve wrapper with logging
+- `pkg/orch/spawn_modes.go:DispatchSpawn()` - Mode routing (inline/headless/tmux/claude)
+- `pkg/model/model.go` - Model aliases and default model definition
 - `CLAUDE.md` - Dual spawn mode documentation
-- `~/.claude/skills/meta/orchestrator/SKILL.md` - Orchestrator skill (recompiled Feb 18 2026)
 
 **Cost evidence:**
-- Claude Max: $200/mo flat (unlimited Opus via CLI)
-- Anthropic API: Unknown current spend (switched to Sonnet Jan 9, no tracking)
-- Gemini API: Free via AI Studio (but 2,000 req/min limit hit)
-- Gemini Tier 3: Pending (20,000 req/min, would enable Flash as primary)
+- Claude Max: $200/mo flat (unlimited Opus via CLI) - Now default path
+- Anthropic API via OpenCode: Blocked by default (OAuth ban Feb 19, 2026)
+- Non-Anthropic API: Pay-per-token via OpenCode (OpenAI, Google, DeepSeek)
+- Flash models: Blocked entirely (not a cost issue, reliability issue)
 
 **Failure evidence:**
 - Zombie agents: orch-go-mo0ja, orch-go-pzi2i, orch-go-aoei0 (Jan 8)
 - Header injection broke Gemini spawns (Jan 8, reverted)
 - OpenCode crash killed infrastructure agent (Jan 11, before auto-detection)
+- GPT-5 alias zombie sessions (Feb 2026, fixed by remapping to gpt-5.2)

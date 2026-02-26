@@ -1,14 +1,14 @@
 # Model: Spawn Architecture
 
 **Domain:** Agent Spawning / Workspace Creation
-**Last Updated:** 2026-02-20
-**Synthesized From:** 36 investigations (Dec 2025 - Jan 2026) into spawn implementation, context generation, tier system, and triage friction. Updated Feb 2026 via drift probe.
+**Last Updated:** 2026-02-25
+**Synthesized From:** 36 investigations (Dec 2025 - Jan 2026) into spawn implementation, context generation, tier system, and triage friction. Updated Feb 2026 via drift probes and model drift agent.
 
 ---
 
 ## Summary (30 seconds)
 
-Spawn evolved through 5 phases from basic CLI integration to daemon-driven automation with triage friction. The architecture creates a workspace with SPAWN_CONTEXT.md embedding skill content + task description + kb context, then launches a session via two-phase atomic spawn with rollback. Spawn settings are resolved via `pkg/spawn/resolve.go` with 6-level precedence and per-setting provenance tracking. The tier system (light/full) determines whether SYNTHESIS.md is required at completion. Triage friction (`--bypass-triage` flag) intentionally makes manual spawns harder to encourage daemon-driven workflow.
+Spawn evolved through 7 phases from basic CLI integration to a modular, gate-driven architecture with capacity-aware account routing. The architecture creates a workspace with SPAWN_CONTEXT.md embedding skill content + task description + kb context, then launches a session via two-phase atomic spawn with rollback. Spawn settings are resolved via `pkg/spawn/resolve.go` with 6-level precedence and per-setting provenance tracking. The spawn pipeline is split across three packages: `pkg/spawn/` (config, resolution, context generation), `pkg/spawn/gates/` (pre-spawn validation), `pkg/spawn/backends/` (backend abstraction), and `pkg/orch/` (pipeline orchestration and mode dispatch). The tier system (light/full) determines whether SYNTHESIS.md is required at completion. Claude CLI is the default backend since Anthropic banned subscription OAuth in third-party tools (Feb 19, 2026).
 
 ---
 
@@ -26,33 +26,47 @@ orch spawn <skill> "task"
 │     Precedence: CLI > beads labels > project config >           │
 │                 user config > heuristics > defaults              │
 │     Each setting tracked with SettingSource provenance          │
+│     Model-aware backend routing: Anthropic→claude, others→OC   │
+│     Account routing: capacity-aware primary/spillover           │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  2. SKILL RESOLUTION                                            │
+│  2. SKILL RESOLUTION (pkg/skills/loader.go)                     │
 │     Load ~/.claude/skills/{category}/{skill}/SKILL.md           │
+│     Load dependencies (e.g., worker-base)                       │
 │     Extract phases, constraints, requirements                   │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  3. BEADS ISSUE CREATION (unless --no-track)                    │
+│  3. SPAWN GATES (pkg/spawn/gates/)                              │
+│     Hotspot check: block spawns targeting CRITICAL files        │
+│     Triage gate: require --bypass-triage for manual spawns      │
+│     Rate limit gate: check account capacity                     │
+│     Concurrency gate: limit concurrent agents                   │
+│     Verification gate: check verification requirements          │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  4. BEADS ISSUE CREATION (unless --no-track)                    │
 │     bd create "{task}" --type {inferred-from-skill}             │
 │     Returns beads ID (e.g., orch-go-abc1)                       │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  4. KB CONTEXT GATHERING                                        │
-│     kb context "{task keywords}"                                │
+│  5. KB CONTEXT GATHERING (pkg/spawn/kbcontext.go)               │
+│     kb context "{task keywords}" --global                       │
 │     Finds relevant constraints, decisions, investigations       │
+│     Gap analysis scores context quality (pkg/spawn/gap.go)      │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  5. ATOMIC SPAWN PHASE 1 (pkg/spawn/atomic.go)                  │
-│     Tag beads issue with orch:agent label                       │
+│  6. ATOMIC SPAWN PHASE 1 (pkg/spawn/atomic.go)                  │
+│     Tag beads issue with orch:agent label (via beads socket)    │
 │     Create workspace + AGENT_MANIFEST.json + dotfiles           │
 │     (Rollback all writes on failure)                            │
 │                                                                  │
@@ -67,15 +81,17 @@ orch spawn <skill> "task"
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  6. SESSION CREATION (backend-dependent)                         │
-│     OpenCode: opencode run --model {model}                      │
-│     Claude:   cat SPAWN_CONTEXT.md | claude --dangerously...    │
-│     Headless by default; --backend claude implies tmux           │
+│  7. MODE DISPATCH (pkg/orch/spawn_modes.go)                     │
+│     Claude:   SpawnClaude() → tmux + Claude CLI                 │
+│     Headless: OpenCode HTTP API (startHeadlessSession)          │
+│     Tmux:     OpenCode TUI in tmux window                       │
+│     Inline:   OpenCode TUI blocking in current terminal         │
+│     Default: Claude backend → tmux; OpenCode backend → headless │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  7. ATOMIC SPAWN PHASE 2 (pkg/spawn/atomic.go)                  │
+│  8. ATOMIC SPAWN PHASE 2 (pkg/spawn/atomic.go)                  │
 │     Write .session_id                                           │
 │     Update AGENT_MANIFEST.json with session ID                  │
 │     (Best-effort: session already running)                      │
@@ -135,7 +151,7 @@ Atomic Phase 2: Write session ID + update manifest
 Agent starts working
 ```
 
-**Cross-project spawn:**
+**Cross-project spawn (fixed Feb 25, 2026):**
 
 ```
 cd ~/orchestrator-project
@@ -143,8 +159,8 @@ cd ~/orchestrator-project
 orch spawn --workdir ~/target-project investigation "task"
     ↓
 Workspace created in: ~/target-project/.orch/workspace/
-Beads issue created in: ~/orchestrator-project/.beads/
-Session directory: ~/orchestrator-project/ (BUG - should be target)
+Beads DefaultDir set to: ~/orchestrator-project/.beads/
+projectDir threaded through kb context for correct resolution
 Agent works in: ~/target-project/
 ```
 
@@ -156,6 +172,9 @@ Agent works in: ~/target-project/
 4. **Skill content stripped for --no-track** - Beads instructions removed when not tracking
 5. **Session scoping is per-project** - `orch send` only works within same directory hash
 6. **Token estimation at 4 chars/token** - Warning at 100k, error at 150k
+7. **Model-aware backend routing** - Backend determined by model provider unless CLI overrides (Decision: kb-2d62ef)
+8. **Claude backend implies tmux** - Claude CLI physically requires tmux window; headless + claude auto-switches to tmux
+9. **Account routing is capacity-aware** - Primary accounts checked first; spillover activated when primaries exhausted (>20% threshold)
 
 ---
 
@@ -285,6 +304,20 @@ Agent works in: ~/target-project/
 - Context file variants: SPAWN_CONTEXT.md, ORCHESTRATOR_CONTEXT.md, META_ORCHESTRATOR_CONTEXT.md
 - Hotspot gating blocks spawns targeting CRITICAL files (>1500 lines)
 
+**Phase 7: Modular Extraction + Account Distribution (Feb 2026)**
+- Extracted `pkg/orch/spawn_modes.go` + `pkg/orch/spawn_helpers.go` from `extraction.go` (-644 lines)
+- New `pkg/spawn/gates/` subdirectory: hotspot, triage, ratelimit, concurrency, verification gates
+- New `pkg/spawn/backends/` subdirectory: backend interface + common/headless/inline/tmux implementations
+- Account distribution with capacity-aware routing (3 phases: schema+CLI+env → cache+heuristic → logging)
+- `resolveAccount()` routes between primary/spillover accounts based on capacity fetcher
+- Cross-project spawn fixes: `beads.DefaultDir` set correctly, `projectDir` threaded through kb context
+- Bug-type issues now route to `systematic-debugging` skill (was `architect`)
+- `--force-hotspot` requires `--architect-ref` with verified closed architect issue
+- `--disallowedTools` enforcement + PreToolUse hook for `bd close` gating
+- Claude CLI became default backend (Anthropic banned subscription OAuth in third-party tools Feb 19)
+- Pre-create session for tmux spawns with non-default models
+- GPT-5 alias remapped to `gpt-5.2` to prevent zombie sessions
+
 ---
 
 ## References
@@ -304,19 +337,26 @@ Agent works in: ~/target-project/
 - KB context gathering (prevent duplicate work)
 
 **Related Models:**
-- `.kb/models/opencode-session-lifecycle/model.md` - How sessions work after spawn creates them
-- `.kb/models/dashboard-agent-status.md` - How spawned agents' status is calculated
+- `.kb/models/model-access-spawn-paths/model.md` - Model selection, backend routing, escape hatch
+- `.kb/models/agent-lifecycle-state-model/model.md` - How spawned agents' status is calculated
 
 **Related Guides:**
 - `.kb/guides/spawn.md` - How to use spawn command (procedural)
 - `.kb/guides/daemon.md` - How daemon auto-spawns (procedural)
 
 **Primary Evidence (Verify These):**
-- `cmd/orch/spawn_cmd.go` - Main spawn command implementation (~800 lines)
-- `pkg/spawn/context.go` - SPAWN_CONTEXT.md generation (~1300 lines)
+- `cmd/orch/spawn_cmd.go` - Main spawn command + infrastructure detection (~876 lines)
+- `pkg/orch/extraction.go` - Spawn pipeline types and functions (~1437 lines)
+- `pkg/orch/spawn_modes.go` - Mode dispatch: inline/headless/tmux/claude (~529 lines)
+- `pkg/orch/spawn_helpers.go` - Helper utilities for spawn pipeline (~148 lines)
+- `pkg/spawn/context.go` - SPAWN_CONTEXT.md generation (~1200 lines)
+- `pkg/spawn/kbcontext.go` - KB context gathering and formatting (~1100 lines)
 - `pkg/spawn/config.go` - Config struct, tier defaults, skill mappings (~460 lines)
-- `pkg/spawn/resolve.go` - Settings resolution with 6-level precedence and provenance (~490 lines)
-- `pkg/spawn/atomic.go` - Two-phase atomic spawn with rollback (~120 lines)
-- `pkg/spawn/claude.go` - Claude CLI backend (tmux spawn, MCP wiring) (~155 lines)
+- `pkg/spawn/resolve.go` - Settings resolution with 6-level precedence, account routing (~580 lines)
+- `pkg/spawn/atomic.go` - Two-phase atomic spawn with rollback (~114 lines)
+- `pkg/spawn/claude.go` - Claude CLI backend (tmux spawn, MCP wiring) (~172 lines)
+- `pkg/spawn/gap.go` - Context gap analysis and quality scoring
 - `pkg/spawn/session.go` - Session management, AGENT_MANIFEST.json read/write
-- `pkg/skills/loader.go` - Skill discovery and loading
+- `pkg/spawn/gates/` - Pre-spawn validation gates (hotspot, triage, ratelimit, concurrency, verification)
+- `pkg/spawn/backends/` - Backend abstraction layer (backend interface, common, headless, inline, tmux)
+- `pkg/skills/loader.go` - Skill discovery, loading, dependency composition
