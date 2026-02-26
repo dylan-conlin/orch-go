@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for the orch daemon's autonomous agent spawning system. This guide synthesizes learnings from 33 investigations conducted between Dec 2025 - Jan 2026.
 
-**Last verified:** Jan 7, 2026
+**Last verified:** Feb 26, 2026
 
 ---
 
@@ -85,6 +85,30 @@ Daemon infers skill from issue type (NOT labels):
 | `task` | `feature-impl` | Generic implementation work |
 | `epic` | (not spawnable) | Container for child issues |
 | `chore` | (not spawnable) | Non-agent maintenance work |
+
+### Model Inference by Skill Type
+
+The daemon infers model from skill type for optimal cost/quality tradeoffs:
+
+| Skill Category | Model | Rationale |
+|---------------|-------|-----------|
+| Deep reasoning (investigation, architect, debugging, audit, research) | Opus | Requires thorough analysis |
+| Implementation (feature-impl, issue-creation) | Sonnet | Execution-focused work |
+| Default (unmapped skills) | Sonnet | Conservative default |
+
+### Triage Routing Success Rate
+
+Spawn prompt audit found daemon-routed (`triage:ready`) agents succeed **9.4x** more often than direct spawns. This strongly supports the daemon-first workflow.
+
+### Model Compatibility Constraints
+
+Not all models can follow the orch worker agent protocol:
+
+| Model | Result | Issue |
+|-------|--------|-------|
+| Opus / Sonnet | Works reliably | Primary models |
+| GPT-5.2-codex | **Failed** (3/3 agents stalled) | Hallucinated constraints, excessive token consumption, failed session close |
+| gpt-4o | **Failed** | Spawns but never starts working — can't handle agentic workflows |
 
 **To control skill selection:** Set the correct issue type when creating:
 ```bash

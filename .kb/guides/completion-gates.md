@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for all gates that block `orch complete`. Read this before debugging completion issues or adding new gates.
 
-**Last verified:** Jan 4, 2026
+**Last verified:** Feb 26, 2026
 
 ---
 
@@ -431,6 +431,8 @@ After automated gates pass, `orch complete` has a two-gate human verification mo
 **Gate 2 (behavioral, Tier 1 only):** The orchestrator confirms the behavior is verified (e.g., running the feature, seeing the fix).
 
 **Anti-pattern — batch-completing:** Batch-completing Tier 1 features as light tier during high-velocity sessions violates verifiability-first. Velocity pressure causes treating the review queue as something to clear rather than verify. Same root cause as entropy spiral — local correctness assumed without behavioral verification.
+
+**Anti-pattern — closing without verifying deployed artifacts:** Four P1 issues were closed with "Phase: Complete" but: skill never deployed (checksum mismatch), VerificationTracker never wired (dead code), checkpoint file never created. Locally-correct agent work that doesn't compose into a working system. **Lesson:** "Phase: Complete" means agent believes it's done, not that the system-level integration works. Verification must check deployed artifacts, not just local code changes.
 
 ---
 

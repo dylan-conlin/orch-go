@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for model selection, aliases, and provider architecture in orch-go. Synthesized from 10 investigations spanning Dec 20, 2025 - Jan 4, 2026.
 
-**Last verified:** Jan 6, 2026
+**Last verified:** Feb 26, 2026
 
 ---
 
@@ -97,6 +97,35 @@ var DefaultModel = ModelSpec{
 - Matches user expectation for high-quality agents
 
 **Historical note:** Default was briefly Gemini 3 Flash during development, causing confusion. Changed to Opus to align with orchestrator guidance (Dec 2025).
+
+---
+
+## Model-Aware Backend Routing (Feb 2026)
+
+Models auto-route to the correct backend based on provider:
+
+| Provider | Backend | Spawn Mode |
+|----------|---------|------------|
+| Anthropic (opus, sonnet, haiku) | Claude CLI | Tmux (always) |
+| Google (flash, pro) | OpenCode | Headless or tmux |
+| OpenAI (codex, gpt-5) | OpenCode | Headless or tmux |
+
+**Constraint:** Anthropic models must never be spawned via OpenCode backend — Anthropic banned subscription OAuth in third-party tools (Feb 19, 2026). The `--backend` CLI flag overrides auto-routing.
+
+### Model Capability Requirements
+
+Not all models can follow the orch worker agent protocol:
+
+| Model | Compatibility | Notes |
+|-------|--------------|-------|
+| Claude Opus / Sonnet | Reliable | Primary models for all work |
+| GPT-5.2-codex | **Unreliable** | Hallucinated constraints, excessive token use, failed session close (3/3 agents stalled) |
+| gpt-4o | **Incompatible** | Spawns but never starts working — can't handle agentic workflows |
+| Gemini Flash | Usable for simple tasks | Cost-effective for large context but lower reasoning |
+
+### Daemon Model Inference
+
+The daemon infers model from skill type: opus for deep-reasoning skills (investigation, architect, debugging), sonnet for implementation skills (feature-impl, issue-creation). Model-drift issues use a **spawn-count threshold** (3 stale spawns) rather than time-based, measuring actual impact.
 
 ---
 

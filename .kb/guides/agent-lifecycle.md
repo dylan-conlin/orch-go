@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for agent state management, display, and coordination in the orch-go system.
 
-**Last verified:** Jan 17, 2026
+**Last verified:** Feb 26, 2026
 
 **Synthesized from:** 45+ investigations (Dec 20, 2025 - Jan 17, 2026)
 
@@ -460,6 +460,48 @@ function formatDuration(isoDate: string | null): string {
 
 ---
 
+## Agent Liveness Detection
+
+### Phase-Based Liveness (Feb 2026)
+
+Agent liveness is determined by **beads phase comments**, not tmux or OpenCode session state.
+
+| Backend | Liveness Signal | Why |
+|---------|----------------|-----|
+| OpenCode (headless) | OpenCode session status | Has session_id in manifest |
+| Claude CLI (tmux) | Beads phase comments | No OpenCode session exists |
+
+**Why not tmux liveness:** Tmux liveness violated the two-lane decision (tmux is UI-only, not state). Phase comments are the authoritative heartbeat — they work for all backends without tmux dependency.
+
+**Known gap:** `queryTrackedAgents` only checks OpenCode sessions for liveness. Claude-backend agents with no OpenCode session appear dead even when running in tmux. Phase comments from beads fill this gap as a liveness proxy.
+
+### Scan Ordering (serve_agents.go)
+
+Scan ordering determines which state layer claims an agent first — the first scan to find a beads_id wins the duplicate check, and subsequent scans defer. **Tmux scan must run before completed workspace scan** or tmux agents get misidentified as completed.
+
+### Query Engine Internals
+
+- `queryTrackedAgents` extracts phase from beads comments via **per-issue RPC calls** (no batch API exists). Acceptable for typical agent counts (<20).
+- Uses `beads.FallbackListWithLabel` for CLI fallback, consistent with existing Fallback* pattern in `pkg/beads/client.go`.
+
+---
+
+## No Local Agent State (Invariant)
+
+orch-go must not maintain local agent state — no registries, projection DBs, SSE materializers, or caches for agent discovery. Query beads and OpenCode directly.
+
+**Five failed iterations:** registry.json, sessions.json, state.db, workspace cache, and multi-source reconciliation all drifted from reality, causing ghost agents, phantom status, and days of debugging. The fix is structural extraction (strangler fig) — create attractor packages via extraction, agents naturally route there without caching.
+
+---
+
+## Skill Compliance Lessons
+
+### Textual-Only Delegation Constraints Don't Work
+
+Textual-only orchestrator delegation constraints in skills failed. An agent collapsed into implementation within 30 seconds of an ambiguous directive ("work toward the focus"). The orchestrator skill's action space table had zero enforcement — pre-response orientation checks never surfaced. **Lesson:** Behavioral constraints require enforcement mechanisms (hooks, gates), not just instructional text.
+
+---
+
 ## Key Decisions (Settled)
 
 These are settled. Don't re-investigate:
@@ -470,6 +512,8 @@ These are settled. Don't re-investigate:
 - **SYNTHESIS.md is fallback for untracked agents** - when no beads issue exists
 - **Dual-mode architecture (tmux + HTTP)** - each serves distinct, irreplaceable needs
 - **Stable sort using spawned_at** - prevents card jostling in Active/Recent sections
+- **Phase-based liveness over tmux liveness** - works for all backends, no tmux dependency
+- **No local agent state** - query authoritative sources directly, never cache agent state
 
 ---
 
