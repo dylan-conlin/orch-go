@@ -183,21 +183,32 @@ type EscapeHatchStats struct {
 // VerificationStats tracks completion verification metrics
 // Enables identifying miscalibrated gates (high fail + high force = false positive pattern)
 type VerificationStats struct {
-	TotalAttempts  int                      `json:"total_attempts"`     // Total completion attempts
-	PassedFirstTry int                      `json:"passed_first_try"`   // Passed verification on first try
-	Bypassed       int                      `json:"bypassed"`           // Used --force to bypass failures
-	PassRate       float64                  `json:"pass_rate"`          // % passed first try
-	BypassRate     float64                  `json:"bypass_rate"`        // % bypassed with --force
-	FailuresByGate []GateFailureStats       `json:"failures_by_gate"`   // Breakdown by gate type
-	BySkill        []SkillVerificationStats `json:"by_skill,omitempty"` // Optional: breakdown by skill
+	TotalAttempts  int                      `json:"total_attempts"`              // Total completion attempts
+	PassedFirstTry int                      `json:"passed_first_try"`            // Passed verification on first try
+	Bypassed       int                      `json:"bypassed"`                    // Used --force to bypass failures
+	SkipBypassed   int                      `json:"skip_bypassed"`               // Bypassed via --skip-* flags
+	AutoSkipped    int                      `json:"auto_skipped"`                // Auto-skipped by skill-class/file exemption
+	PassRate       float64                  `json:"pass_rate"`                   // % passed first try
+	BypassRate     float64                  `json:"bypass_rate"`                 // % bypassed with --force
+	FailuresByGate []GateFailureStats       `json:"failures_by_gate"`            // Breakdown by gate type
+	BySkill        []SkillVerificationStats `json:"by_skill,omitempty"`          // Optional: breakdown by skill
+	BypassReasons  []BypassReasonEntry      `json:"bypass_reasons,omitempty"`    // Reasons given for --skip-* bypasses
 }
 
 // GateFailureStats tracks failure count for a specific verification gate
 type GateFailureStats struct {
-	Gate        string  `json:"gate"`         // Gate name (test_evidence, git_diff, visual_verification, phase_complete)
-	FailCount   int     `json:"fail_count"`   // Times this gate failed
-	BypassCount int     `json:"bypass_count"` // Times this gate was bypassed
-	FailRate    float64 `json:"fail_rate"`    // % of attempts that failed this gate
+	Gate          string  `json:"gate"`            // Gate name (test_evidence, git_diff, visual_verification, phase_complete)
+	FailCount     int     `json:"fail_count"`      // Times this gate failed
+	BypassCount   int     `json:"bypass_count"`    // Times this gate was bypassed (--force or --skip-*)
+	AutoSkipCount int     `json:"auto_skip_count"` // Times this gate was auto-skipped by exemption
+	FailRate      float64 `json:"fail_rate"`       // % of attempts that failed this gate
+}
+
+// BypassReasonEntry tracks a specific gate+reason combination for --skip-* bypasses
+type BypassReasonEntry struct {
+	Gate   string `json:"gate"`
+	Reason string `json:"reason"`
+	Count  int    `json:"count"`
 }
 
 // SkillVerificationStats tracks verification metrics per skill
@@ -333,7 +344,9 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 	// Track verification stats
 	// gateFailures tracks how many times each gate failed across all verification.failed events
 	gateFailures := make(map[string]int)                          // gate -> failure count
-	gatesBypassed := make(map[string]int)                         // gate -> bypass count (from agent.completed with forced=true)
+	gatesBypassed := make(map[string]int)                         // gate -> bypass count (from agent.completed with forced=true, or verification.bypassed)
+	gatesAutoSkipped := make(map[string]int)                      // gate -> auto-skip count (from verification.auto_skipped)
+	bypassReasons := make(map[string]int)                         // "gate|reason" -> count (from verification.bypassed)
 	skillVerification := make(map[string]*SkillVerificationStats) // skill -> verification stats
 
 	// Count events within analysis window for EventsAnalyzed
@@ -764,6 +777,33 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 					// Attempts are counted via agent.completed events
 				}
 			}
+
+		case "verification.bypassed":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
+			report.VerificationStats.SkipBypassed++
+			if data := event.Data; data != nil {
+				if gate, ok := data["gate"].(string); ok && gate != "" {
+					gatesBypassed[gate]++
+					// Track reason for this gate bypass
+					reason, _ := data["reason"].(string)
+					bypassReasons[gate+"|"+reason]++
+				}
+			}
+
+		case "verification.auto_skipped":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
+			report.VerificationStats.AutoSkipped++
+			if data := event.Data; data != nil {
+				if gate, ok := data["gate"].(string); ok && gate != "" {
+					gatesAutoSkipped[gate]++
+				}
+			}
 		}
 	}
 
@@ -818,8 +858,8 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 		report.VerificationStats.BypassRate = float64(report.VerificationStats.Bypassed) / float64(report.VerificationStats.TotalAttempts) * 100
 	}
 
-	// Build gate failure stats - combine failures and bypasses
-	// Collect all unique gates from both maps
+	// Build gate failure stats - combine failures, bypasses, and auto-skips
+	// Collect all unique gates from all maps
 	allGates := make(map[string]bool)
 	for gate := range gateFailures {
 		allGates[gate] = true
@@ -827,11 +867,15 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 	for gate := range gatesBypassed {
 		allGates[gate] = true
 	}
+	for gate := range gatesAutoSkipped {
+		allGates[gate] = true
+	}
 	for gate := range allGates {
 		gateStats := GateFailureStats{
-			Gate:        gate,
-			FailCount:   gateFailures[gate],
-			BypassCount: gatesBypassed[gate],
+			Gate:          gate,
+			FailCount:     gateFailures[gate],
+			BypassCount:   gatesBypassed[gate],
+			AutoSkipCount: gatesAutoSkipped[gate],
 		}
 		if report.VerificationStats.TotalAttempts > 0 {
 			gateStats.FailRate = float64(gateStats.FailCount) / float64(report.VerificationStats.TotalAttempts) * 100
@@ -841,6 +885,25 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 	// Sort gates by fail count descending
 	sort.Slice(report.VerificationStats.FailuresByGate, func(i, j int) bool {
 		return report.VerificationStats.FailuresByGate[i].FailCount > report.VerificationStats.FailuresByGate[j].FailCount
+	})
+
+	// Build bypass reasons list from tracked gate|reason pairs
+	for key, count := range bypassReasons {
+		parts := strings.SplitN(key, "|", 2)
+		gate := parts[0]
+		reason := ""
+		if len(parts) > 1 {
+			reason = parts[1]
+		}
+		report.VerificationStats.BypassReasons = append(report.VerificationStats.BypassReasons, BypassReasonEntry{
+			Gate:   gate,
+			Reason: reason,
+			Count:  count,
+		})
+	}
+	// Sort bypass reasons by count descending
+	sort.Slice(report.VerificationStats.BypassReasons, func(i, j int) bool {
+		return report.VerificationStats.BypassReasons[i].Count > report.VerificationStats.BypassReasons[j].Count
 	})
 
 	// Build skill verification stats
@@ -1054,27 +1117,55 @@ func outputStatsText(report *StatsReport) error {
 		}
 	}
 
-	// Verification stats (if any completion attempts exist)
-	if report.VerificationStats.TotalAttempts > 0 {
+	// Verification stats (if any completion attempts or bypass events exist)
+	hasVerificationData := report.VerificationStats.TotalAttempts > 0 ||
+		report.VerificationStats.SkipBypassed > 0 ||
+		report.VerificationStats.AutoSkipped > 0
+	if hasVerificationData {
 		fmt.Println()
 		fmt.Println("✅ VERIFICATION GATES")
-		fmt.Printf("  Total attempts:   %d\n", report.VerificationStats.TotalAttempts)
-		fmt.Printf("  Passed 1st try:   %d (%.1f%%)\n", report.VerificationStats.PassedFirstTry, report.VerificationStats.PassRate)
-		fmt.Printf("  Bypassed (--force): %d (%.1f%%)\n", report.VerificationStats.Bypassed, report.VerificationStats.BypassRate)
+		if report.VerificationStats.TotalAttempts > 0 {
+			fmt.Printf("  Total attempts:     %d\n", report.VerificationStats.TotalAttempts)
+			fmt.Printf("  Passed 1st try:     %d (%.1f%%)\n", report.VerificationStats.PassedFirstTry, report.VerificationStats.PassRate)
+			fmt.Printf("  Bypassed (--force): %d (%.1f%%)\n", report.VerificationStats.Bypassed, report.VerificationStats.BypassRate)
+		}
+		if report.VerificationStats.SkipBypassed > 0 {
+			fmt.Printf("  Skipped (--skip-*): %d gate bypass events\n", report.VerificationStats.SkipBypassed)
+		}
+		if report.VerificationStats.AutoSkipped > 0 {
+			fmt.Printf("  Auto-skipped:       %d (skill-class/file exemptions)\n", report.VerificationStats.AutoSkipped)
+		}
 
-		// Gate breakdown (if there are failures)
+		// Gate breakdown (if there are any gate-level stats)
 		if len(report.VerificationStats.FailuresByGate) > 0 {
 			fmt.Println()
 			fmt.Println("  Gate Breakdown:")
-			fmt.Printf("  %-25s %8s %8s %10s\n", "Gate", "Failed", "Bypassed", "Fail Rate")
-			fmt.Println("  " + strings.Repeat("-", 55))
+			fmt.Printf("  %-25s %8s %8s %10s %10s\n", "Gate", "Failed", "Bypassed", "AutoSkip", "Fail Rate")
+			fmt.Println("  " + strings.Repeat("-", 65))
 			for _, gate := range report.VerificationStats.FailuresByGate {
-				fmt.Printf("  %-25s %8d %8d %9.1f%%\n",
+				fmt.Printf("  %-25s %8d %8d %10d %9.1f%%\n",
 					gate.Gate,
 					gate.FailCount,
 					gate.BypassCount,
+					gate.AutoSkipCount,
 					gate.FailRate,
 				)
+			}
+		}
+
+		// Bypass reasons (if any --skip-* bypasses with reasons exist)
+		if len(report.VerificationStats.BypassReasons) > 0 {
+			fmt.Println()
+			fmt.Println("  Bypass Reasons (--skip-*):")
+			for _, br := range report.VerificationStats.BypassReasons {
+				reason := br.Reason
+				if reason == "" {
+					reason = "(no reason)"
+				}
+				if len(reason) > 50 {
+					reason = reason[:47] + "..."
+				}
+				fmt.Printf("    %-20s %dx  %s\n", br.Gate, br.Count, reason)
 			}
 		}
 

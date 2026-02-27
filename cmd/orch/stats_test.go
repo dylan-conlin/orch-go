@@ -975,3 +975,110 @@ func TestAggregateStatsVerificationBySkill(t *testing.T) {
 		t.Errorf("expected investigation pass rate 100%%, got %.1f%%", invStats.PassRate)
 	}
 }
+
+func TestAggregateStatsVerificationBypassed(t *testing.T) {
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// Spawns
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-1",
+		}},
+		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 6200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-2",
+		}},
+		{Type: "session.spawned", SessionID: "ses_3", Timestamp: now - 5200, Data: map[string]interface{}{
+			"skill": "investigation", "beads_id": "test-3",
+		}},
+		// verification.bypassed events (from --skip-* flags)
+		// test-1 skipped test_evidence and git_diff
+		{Type: "verification.bypassed", SessionID: "test-1", Timestamp: now - 3000, Data: map[string]interface{}{
+			"beads_id": "test-1", "gate": "test_evidence", "reason": "Tests run in CI pipeline", "skill": "feature-impl",
+		}},
+		{Type: "verification.bypassed", SessionID: "test-1", Timestamp: now - 3000, Data: map[string]interface{}{
+			"beads_id": "test-1", "gate": "git_diff", "reason": "Tests run in CI pipeline", "skill": "feature-impl",
+		}},
+		// test-2 skipped synthesis
+		{Type: "verification.bypassed", SessionID: "test-2", Timestamp: now - 2500, Data: map[string]interface{}{
+			"beads_id": "test-2", "gate": "synthesis", "reason": "Docs-only change", "skill": "feature-impl",
+		}},
+		// verification.auto_skipped event
+		{Type: "verification.auto_skipped", SessionID: "test-3", Timestamp: now - 2000, Data: map[string]interface{}{
+			"beads_id": "test-3", "gate": "test_evidence", "reason": "investigation skill exemption", "skill": "investigation",
+		}},
+		// Completions
+		{Type: "agent.completed", Timestamp: now - 1500, Data: map[string]interface{}{
+			"beads_id": "test-1", "verification_passed": true, "skill": "feature-impl",
+		}},
+		{Type: "agent.completed", Timestamp: now - 1000, Data: map[string]interface{}{
+			"beads_id": "test-2", "verification_passed": true, "skill": "feature-impl",
+		}},
+		{Type: "agent.completed", Timestamp: now - 500, Data: map[string]interface{}{
+			"beads_id": "test-3", "verification_passed": true, "skill": "investigation",
+		}},
+	}
+
+	report := aggregateStats(events, 7, true)
+
+	// Should count 3 skip-bypassed gate events
+	if report.VerificationStats.SkipBypassed != 3 {
+		t.Errorf("expected 3 skip-bypassed events, got %d", report.VerificationStats.SkipBypassed)
+	}
+
+	// Should count 1 auto-skipped event
+	if report.VerificationStats.AutoSkipped != 1 {
+		t.Errorf("expected 1 auto-skipped event, got %d", report.VerificationStats.AutoSkipped)
+	}
+
+	// Gate bypass breakdown should include gates from verification.bypassed events
+	var testEvidenceStats *GateFailureStats
+	var gitDiffStats *GateFailureStats
+	var synthesisStats *GateFailureStats
+	for i := range report.VerificationStats.FailuresByGate {
+		gate := &report.VerificationStats.FailuresByGate[i]
+		switch gate.Gate {
+		case "test_evidence":
+			testEvidenceStats = gate
+		case "git_diff":
+			gitDiffStats = gate
+		case "synthesis":
+			synthesisStats = gate
+		}
+	}
+
+	if testEvidenceStats == nil {
+		t.Fatal("test_evidence gate not found in breakdown")
+	}
+	// test_evidence: bypassed 1 time via --skip-*, auto-skipped 1 time
+	if testEvidenceStats.BypassCount != 1 {
+		t.Errorf("expected test_evidence to have 1 bypass, got %d", testEvidenceStats.BypassCount)
+	}
+	if testEvidenceStats.AutoSkipCount != 1 {
+		t.Errorf("expected test_evidence to have 1 auto-skip, got %d", testEvidenceStats.AutoSkipCount)
+	}
+
+	if gitDiffStats == nil {
+		t.Fatal("git_diff gate not found in breakdown")
+	}
+	if gitDiffStats.BypassCount != 1 {
+		t.Errorf("expected git_diff to have 1 bypass, got %d", gitDiffStats.BypassCount)
+	}
+
+	if synthesisStats == nil {
+		t.Fatal("synthesis gate not found in breakdown")
+	}
+	if synthesisStats.BypassCount != 1 {
+		t.Errorf("expected synthesis to have 1 bypass, got %d", synthesisStats.BypassCount)
+	}
+
+	// Check bypass reasons are tracked
+	if len(report.VerificationStats.BypassReasons) == 0 {
+		t.Fatal("expected bypass reasons to be populated")
+	}
+
+	// Should have 2 unique gate+reason combos:
+	// test_evidence|Tests run in CI pipeline, git_diff|Tests run in CI pipeline, synthesis|Docs-only change
+	if len(report.VerificationStats.BypassReasons) != 3 {
+		t.Errorf("expected 3 bypass reason entries, got %d", len(report.VerificationStats.BypassReasons))
+	}
+}
