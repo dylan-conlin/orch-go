@@ -150,16 +150,10 @@ func MonitorClaude(windowTarget string) (string, error) {
 }
 
 // SendClaude sends keys to the Claude agent's tmux pane, followed by Enter.
+// Uses SendTextAndSubmit with a delay between text and Enter to ensure
+// the TUI processes the pasted text before the submit keystroke arrives.
 func SendClaude(windowTarget, keys string) error {
-	// Use literal mode to handle special characters in the message
-	if err := tmux.SendKeysLiteral(windowTarget, keys); err != nil {
-		return fmt.Errorf("failed to send keys: %w", err)
-	}
-	// Send Enter to submit the message
-	if err := tmux.SendEnter(windowTarget); err != nil {
-		return fmt.Errorf("failed to send enter: %w", err)
-	}
-	return nil
+	return tmux.SendTextAndSubmit(windowTarget, keys, tmux.DefaultSendDelay)
 }
 
 // AbandonClaude kills the tmux window running the Claude agent.

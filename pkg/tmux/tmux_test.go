@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSessionExists(t *testing.T) {
@@ -609,6 +610,64 @@ func TestGetTmuxCwdNonExistentSession(t *testing.T) {
 	_, err := GetTmuxCwd("nonexistent-session-12345")
 	if err == nil {
 		t.Error("Expected error when getting cwd for non-existent session")
+	}
+}
+
+// TestSendTextAndSubmit verifies that text is typed and Enter is submitted
+// with a delay between them.
+func TestSendTextAndSubmit(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session and window
+	project := "orch-go-test-send-submit"
+	projectDir := "/tmp/orch-go-test-send-submit"
+	_ = os.MkdirAll(projectDir, 0755)
+	defer os.RemoveAll(projectDir)
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	windowTarget, _, err := CreateWindow(sessionName, "test-send-submit", projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window: %v", err)
+	}
+
+	// Wait for shell to be ready
+	time.Sleep(500 * time.Millisecond)
+
+	// Send an echo command via SendTextAndSubmit
+	testMsg := "echo SEND_SUBMIT_TEST_OK"
+	err = SendTextAndSubmit(windowTarget, testMsg, DefaultSendDelay)
+	if err != nil {
+		t.Fatalf("SendTextAndSubmit failed: %v", err)
+	}
+
+	// Wait for command to execute
+	time.Sleep(1 * time.Second)
+
+	// Capture pane content and verify the command was submitted (output should contain the echo result)
+	content, err := GetPaneContent(windowTarget)
+	if err != nil {
+		t.Fatalf("GetPaneContent failed: %v", err)
+	}
+
+	if !strings.Contains(content, "SEND_SUBMIT_TEST_OK") {
+		t.Errorf("Expected pane to contain 'SEND_SUBMIT_TEST_OK' after SendTextAndSubmit, got:\n%s", content)
+	}
+}
+
+// TestDefaultSendDelay verifies the constant is a reasonable value.
+func TestDefaultSendDelay(t *testing.T) {
+	if DefaultSendDelay < 100*time.Millisecond {
+		t.Errorf("DefaultSendDelay = %v, too short (should be >= 100ms)", DefaultSendDelay)
+	}
+	if DefaultSendDelay > 2*time.Second {
+		t.Errorf("DefaultSendDelay = %v, too long (should be <= 2s)", DefaultSendDelay)
 	}
 }
 

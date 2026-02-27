@@ -116,6 +116,14 @@ func sendViaOpenCodeAPI(client *opencode.Client, sessionID, identifier, message 
 // sendViaTmux sends a message to a tmux window using send-keys.
 // This is used as a fallback when the OpenCode session ID cannot be resolved.
 func sendViaTmux(windowInfo *tmux.WindowInfo, identifier, message string) error {
+	// Prefer stable window ID (@xxx) over session:index target.
+	// Window indices can change when windows are created/destroyed,
+	// but window IDs are stable for the lifetime of the window.
+	target := windowInfo.ID
+	if target == "" {
+		target = windowInfo.Target
+	}
+
 	// Log the send event
 	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{
@@ -127,22 +135,21 @@ func sendViaTmux(windowInfo *tmux.WindowInfo, identifier, message string) error 
 			"method":        "tmux",
 			"window_target": windowInfo.Target,
 			"window_id":     windowInfo.ID,
+			"target_used":   target,
 		},
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	// Send the message using tmux send-keys in literal mode
-	if err := tmux.SendKeysLiteral(windowInfo.Target, message); err != nil {
+	// Send text and submit with delay between text and Enter.
+	// Without the delay, Enter gets processed before the TUI has fully ingested
+	// the pasted text, causing the message to sit in the input without submitting.
+	// This matches the Python orch-cli pattern (send.py:101-110).
+	if err := tmux.SendTextAndSubmit(target, message, tmux.DefaultSendDelay); err != nil {
 		return fmt.Errorf("failed to send message via tmux: %w", err)
 	}
 
-	// Send Enter to submit the message
-	if err := tmux.SendEnter(windowInfo.Target); err != nil {
-		return fmt.Errorf("failed to send enter via tmux: %w", err)
-	}
-
-	fmt.Printf("✓ Message sent to %s (via tmux %s)\n", identifier, windowInfo.Target)
+	fmt.Printf("✓ Message sent to %s (via tmux %s)\n", identifier, target)
 	return nil
 }

@@ -561,6 +561,35 @@ func SendEnter(windowTarget string) error {
 	return SendKeys(windowTarget, "Enter")
 }
 
+// SendTextAndSubmit sends literal text to a tmux pane, waits for the TUI to process it,
+// then sends Enter to submit. The delay between text and Enter is critical — without it,
+// Enter gets processed before the TUI has fully ingested the pasted text, causing the
+// message to sit in the input area without submitting.
+//
+// This matches the Python orch-cli's proven pattern (send.py:101-110).
+func SendTextAndSubmit(windowTarget, text string, delay time.Duration) error {
+	// Send text in literal mode (handles special characters safely)
+	if err := SendKeysLiteral(windowTarget, text); err != nil {
+		return fmt.Errorf("failed to send text: %w", err)
+	}
+
+	// Wait for TUI to process the pasted text before sending Enter.
+	// Without this delay, Enter arrives before the TUI event loop has finished
+	// processing the literal characters, causing the submit to be missed.
+	time.Sleep(delay)
+
+	// Send Enter to submit
+	if err := SendEnter(windowTarget); err != nil {
+		return fmt.Errorf("failed to send enter: %w", err)
+	}
+
+	return nil
+}
+
+// DefaultSendDelay is the delay between typing text and pressing Enter in a TUI pane.
+// 500ms is reliable for most cases; the Python orch-cli uses 1s for extra safety.
+const DefaultSendDelay = 500 * time.Millisecond
+
 // SelectWindow selects (focuses) a window.
 func SelectWindow(windowTarget string) error {
 	cmd, err := tmuxCommand("select-window", "-t", windowTarget)

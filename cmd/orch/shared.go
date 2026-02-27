@@ -213,6 +213,14 @@ func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentNam
 }
 
 // resolveSessionID resolves an identifier to an OpenCode session ID.
+// isOpenCodeSessionID returns true if the string looks like a valid OpenCode session ID.
+// OpenCode session IDs start with "ses_". Tmux window IDs start with "@" and should
+// not be treated as OpenCode sessions. Claude-backend agents store window IDs
+// in workspace session_id files, not OpenCode session IDs.
+func isOpenCodeSessionID(id string) bool {
+	return strings.HasPrefix(id, "ses_")
+}
+
 // The identifier can be:
 // 1. A full OpenCode session ID (ses_xxx) - verified against API, returned if valid
 // 2. A beads ID (project-xxxx) - looked up via workspace SPAWN_CONTEXT.md or API
@@ -244,9 +252,12 @@ func resolveSessionID(serverURL, identifier string) (string, error) {
 	workspacePath, _ := findWorkspaceByBeadsID(projectDir, identifier)
 	if workspacePath != "" {
 		sessionID := spawn.ReadSessionID(workspacePath)
-		if sessionID != "" {
+		if sessionID != "" && isOpenCodeSessionID(sessionID) {
 			return sessionID, nil
 		}
+		// If session_id is a tmux window ID (@xxx) or other non-OpenCode format,
+		// skip it and fall through to tmux lookup. Claude-backend agents store
+		// window IDs in session_id, not OpenCode session IDs.
 	}
 
 	// Strategy 2: Direct workspace name match (for workspace name identifiers)
@@ -256,7 +267,7 @@ func resolveSessionID(serverURL, identifier string) (string, error) {
 			if entry.IsDir() && strings.Contains(entry.Name(), identifier) {
 				wp := filepath.Join(workspaceBase, entry.Name())
 				sessionID := spawn.ReadSessionID(wp)
-				if sessionID != "" {
+				if sessionID != "" && isOpenCodeSessionID(sessionID) {
 					return sessionID, nil
 				}
 			}
@@ -300,10 +311,19 @@ func resolveSessionID(serverURL, identifier string) (string, error) {
 
 // findTmuxWindowByIdentifier searches for a tmux window matching the identifier.
 // The identifier can be a beads ID, workspace name, or partial match.
+// Searches workers sessions, orchestrator session, and meta-orchestrator session.
 func findTmuxWindowByIdentifier(identifier string) (*tmux.WindowInfo, error) {
 	sessions, err := tmux.ListWorkersSessions()
 	if err != nil {
 		return nil, err
+	}
+
+	// Also search orchestrator and meta-orchestrator sessions
+	if tmux.SessionExists(tmux.OrchestratorSessionName) {
+		sessions = append(sessions, tmux.OrchestratorSessionName)
+	}
+	if tmux.SessionExists(tmux.MetaOrchestratorSessionName) {
+		sessions = append(sessions, tmux.MetaOrchestratorSessionName)
 	}
 
 	for _, session := range sessions {
