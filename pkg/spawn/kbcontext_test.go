@@ -104,6 +104,82 @@ func TestExtractKeywords(t *testing.T) {
 	}
 }
 
+func TestExtractKeywordsWithContext(t *testing.T) {
+	tests := []struct {
+		name             string
+		task             string
+		orientationFrame string
+		maxWords         int
+		wantWords        []string // Check these words are present
+		notWords         []string // Check these words are NOT present
+	}{
+		{
+			name:             "uses frame domain terms when title has generic words",
+			task:             "Architect: fix kb context query derivation",
+			orientationFrame: "Pricing KPI redesign needs better query derivation for cross-domain spawns",
+			maxWords:         5,
+			wantWords:        []string{"context", "query", "pricing", "kpi"},
+			notWords:         []string{"architect", "fix"},
+		},
+		{
+			name:             "frame adds domain terms not in title",
+			task:             "Redesign dashboard metrics",
+			orientationFrame: "Toolshed pricing comparison needs new KPI tracking for competitor analysis",
+			maxWords:         5,
+			wantWords:        []string{"dashboard", "metrics", "toolshed", "pricing"},
+			notWords:         []string{"redesign"},
+		},
+		{
+			name:             "empty frame falls back to title-only extraction",
+			task:             "Add rate limiting to the API",
+			orientationFrame: "",
+			maxWords:         3,
+			wantWords:        []string{"rate", "limiting", "api"},
+			notWords:         []string{"add"},
+		},
+		{
+			name:             "deduplicates words appearing in both title and frame",
+			task:             "Fix pricing dashboard",
+			orientationFrame: "The pricing module has a dashboard rendering bug",
+			maxWords:         5,
+			wantWords:        []string{"pricing", "dashboard"},
+		},
+		{
+			name:             "respects maxWords across combined sources",
+			task:             "Architect: pricing KPI redesign for toolshed",
+			orientationFrame: "Full redesign of toolshed competitor pricing comparison with new metrics",
+			maxWords:         4,
+			wantWords:        []string{"pricing", "kpi", "toolshed"},
+		},
+		{
+			name:             "strips skill prefixes from frame too",
+			task:             "Debug: spawn fails",
+			orientationFrame: "Investigation: orientation frame keywords dropped from spawn context assembly",
+			maxWords:         5,
+			wantWords:        []string{"spawn", "orientation", "frame", "keywords"},
+			notWords:         []string{"debug", "investigation"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ExtractKeywordsWithContext(tt.task, tt.orientationFrame, tt.maxWords)
+
+			for _, word := range tt.wantWords {
+				if !strings.Contains(result, word) {
+					t.Errorf("ExtractKeywordsWithContext() = %q, want word %q to be present", result, word)
+				}
+			}
+
+			for _, word := range tt.notWords {
+				if strings.Contains(result, word) {
+					t.Errorf("ExtractKeywordsWithContext() = %q, word %q should not be present", result, word)
+				}
+			}
+		})
+	}
+}
+
 func TestParseKBContextOutput(t *testing.T) {
 	tests := []struct {
 		name        string

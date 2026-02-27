@@ -29,7 +29,10 @@ var OrchEcosystemRepos = map[string]bool{
 
 // MinMatchesForLocalSearch is the threshold below which we expand to global search.
 // If local search returns fewer matches than this, we try global with ecosystem filter.
-const MinMatchesForLocalSearch = 3
+// Set to 5 (raised from 3) because projects with rich knowledge bases (e.g., orch-go
+// with 280+ investigations) trivially hit a low threshold with single-keyword matches
+// on generic terms like "architect", preventing cross-project search for domain-specific content.
+const MinMatchesForLocalSearch = 5
 
 // MaxMatchesPerCategory limits results per category to prevent context flood.
 const MaxMatchesPerCategory = 20
@@ -143,6 +146,56 @@ func ExtractKeywords(task string, maxWords int) string {
 	}
 
 	return strings.Join(words, " ")
+}
+
+// ExtractKeywordsWithContext extracts keywords from both task title AND orientation frame.
+// The title provides the primary keywords; the frame provides additional domain-specific terms
+// that disambiguate cross-domain spawns (e.g., "pricing KPI" from a frame when the title only says
+// "fix kb context query"). Keywords are deduplicated and capped at maxWords.
+func ExtractKeywordsWithContext(task, orientationFrame string, maxWords int) string {
+	if orientationFrame == "" {
+		return ExtractKeywords(task, maxWords)
+	}
+
+	// Extract keywords from title first (these get priority)
+	titleKeywords := ExtractKeywords(task, maxWords)
+
+	// Extract more keywords from the orientation frame
+	// Use a larger pool to find domain-specific terms
+	frameKeywords := ExtractKeywords(orientationFrame, maxWords*2)
+
+	if titleKeywords == "" && frameKeywords == "" {
+		return ""
+	}
+	if titleKeywords == "" {
+		return ExtractKeywords(orientationFrame, maxWords)
+	}
+	if frameKeywords == "" {
+		return titleKeywords
+	}
+
+	// Combine: title keywords first, then frame keywords for additional domain terms
+	seen := make(map[string]bool)
+	var combined []string
+
+	for _, w := range strings.Fields(titleKeywords) {
+		if !seen[w] {
+			seen[w] = true
+			combined = append(combined, w)
+		}
+	}
+	for _, w := range strings.Fields(frameKeywords) {
+		if !seen[w] {
+			seen[w] = true
+			combined = append(combined, w)
+		}
+	}
+
+	if len(combined) > maxWords {
+		combined = combined[:maxWords]
+	}
+
+	return strings.Join(combined, " ")
 }
 
 // regexScopedFilePath matches file paths with directory separators and extensions.

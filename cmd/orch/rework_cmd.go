@@ -90,6 +90,7 @@ func runRework(beadsID, feedback string) error {
 	}
 
 	task := issue.Title
+	reworkOrientationFrame := issue.Description
 	if issue.Description != "" {
 		task = issue.Title + "\n\n" + issue.Description
 	}
@@ -212,7 +213,7 @@ func runRework(beadsID, feedback string) error {
 	}
 	applyResolvedSpawnMode(input, resolved.Settings.SpawnMode.Value)
 
-	kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, _, err := orch.GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, skillName, false, false, false, 0)
+	kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, _, err := orch.GatherSpawnContext(skillContent, task, reworkOrientationFrame, beadsID, projectDir, workspaceName, skillName, false, false, false, 0)
 	if err != nil {
 		return err
 	}

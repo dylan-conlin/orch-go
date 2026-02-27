@@ -784,7 +784,9 @@ func ResolveSpawnSettings(input spawn.ResolveInput) (ResolvedSpawnResult, error)
 
 // GatherSpawnContext gathers KB context and performs gap analysis.
 // Returns context string, gap analysis, model injection info, or error.
-func GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, skillName string, skipArtifactCheck, gateOnGap, skipGapGate bool, gapThreshold int) (
+// orientationFrame provides additional domain context (e.g., from beads issue description)
+// for richer keyword extraction in cross-domain spawns.
+func GatherSpawnContext(skillContent, task, orientationFrame, beadsID, projectDir, workspaceName, skillName string, skipArtifactCheck, gateOnGap, skipGapGate bool, gapThreshold int) (
 	kbContext string,
 	gapAnalysis *spawn.GapAnalysis,
 	hasInjectedModels bool,
@@ -813,7 +815,7 @@ func GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, 
 		gapAnalysis = spawn.AnalyzeGaps(nil, task, projectDir)
 	} else {
 		// Fall back to default kb context check with full gap analysis
-		gapResult := runPreSpawnKBCheckFull(task, projectDir, stalenessMeta)
+		gapResult := runPreSpawnKBCheckFull(task, orientationFrame, projectDir, stalenessMeta)
 		kbContext = gapResult.Context
 		gapAnalysis = gapResult.GapAnalysis
 
@@ -1257,19 +1259,28 @@ func extractPrimaryModelPath(formatResult *spawn.KBContextFormatResult) string {
 // runPreSpawnKBCheck runs kb context check before spawning an agent.
 // Returns formatted context string to include in SPAWN_CONTEXT.md, or empty string if no matches.
 // Also performs gap analysis and displays warnings for sparse or missing context.
-func runPreSpawnKBCheck(task, projectDir string, stalenessMeta *spawn.StalenessEventMeta) string {
-	result := runPreSpawnKBCheckFull(task, projectDir, stalenessMeta)
+func runPreSpawnKBCheck(task, orientationFrame, projectDir string, stalenessMeta *spawn.StalenessEventMeta) string {
+	result := runPreSpawnKBCheckFull(task, orientationFrame, projectDir, stalenessMeta)
 	return result.Context
 }
 
 // runPreSpawnKBCheckFull runs kb context check with full gap analysis results.
 // This allows callers to access gap analysis for gating decisions.
-func runPreSpawnKBCheckFull(task, projectDir string, stalenessMeta *spawn.StalenessEventMeta) *GapCheckResult {
+// orientationFrame provides additional domain context (e.g., beads issue description)
+// for richer keyword extraction in cross-domain spawns.
+func runPreSpawnKBCheckFull(task, orientationFrame, projectDir string, stalenessMeta *spawn.StalenessEventMeta) *GapCheckResult {
 	gcr := &GapCheckResult{}
 
-	// Extract keywords from task description
-	// Try with 3 keywords first (more specific), fall back to 1 keyword (more broad)
-	keywords := spawn.ExtractKeywords(task, 3)
+	// Extract keywords from task description + orientation frame
+	// When frame is available, use 5 keywords (richer query) from combined sources;
+	// otherwise fall back to 3 keywords from title only.
+	// Fall back to 1 keyword (broad) if multi-keyword extraction yields nothing.
+	var keywords string
+	if orientationFrame != "" {
+		keywords = spawn.ExtractKeywordsWithContext(task, orientationFrame, 5)
+	} else {
+		keywords = spawn.ExtractKeywords(task, 3)
+	}
 	if keywords == "" {
 		// Perform gap analysis even when no keywords extracted
 		gcr.GapAnalysis = spawn.AnalyzeGaps(nil, task, projectDir)

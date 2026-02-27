@@ -639,7 +639,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	skillContent = skills.FilterSkillSections(skillContent, buildSectionFilter(spawnPhases, resolved.Settings.Mode.Value))
 
 	// 6. Gather spawn context
-	kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, crossRepoModelDir, err := orch.GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, skillName, spawnSkipArtifactCheck, spawnGateOnGap, spawnSkipGapGate, spawnGapThreshold)
+	kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, crossRepoModelDir, err := orch.GatherSpawnContext(skillContent, task, spawnOrientationFrame, beadsID, projectDir, workspaceName, skillName, spawnSkipArtifactCheck, spawnGateOnGap, spawnSkipGapGate, spawnGapThreshold)
 	if err != nil {
 		return err
 	}
