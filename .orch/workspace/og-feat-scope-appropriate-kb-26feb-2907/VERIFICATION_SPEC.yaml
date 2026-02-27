@@ -1,0 +1,24 @@
+verification:
+  automated:
+    - command: "go test ./pkg/spawn/ -run 'TestTaskIsScoped|TestFilterForScopedTask|TestScopedMaxKBContextChars' -count=1 -v"
+      expect: "PASS"
+      description: "New unit tests for scoped task detection and filtering"
+    - command: "go test ./pkg/spawn/ -count=1"
+      expect: "PASS"
+      description: "Full spawn package test suite passes"
+    - command: "go build ./pkg/spawn/"
+      expect: "exit 0"
+      description: "Spawn package compiles cleanly"
+
+  manual:
+    - description: "Spawn a scoped task (e.g., orch spawn feature-impl 'Fix bug in pkg/spawn/context.go:47') and verify console output shows 'Scoped task detected: filtered X → Y matches'"
+    - description: "Spawn a non-scoped task (e.g., orch spawn feature-impl 'Add rate limiting') and verify no scoped filtering occurs"
+    - description: "Verify that constraints and decisions still appear in SPAWN_CONTEXT.md for scoped tasks, while models/guides/investigations do not"
+
+  files_changed:
+    - path: pkg/spawn/kbcontext.go
+      changes: "Added TaskIsScoped(), FilterForScopedTask(), ScopedMaxKBContextChars constant, regexScopedFilePath regex"
+    - path: pkg/spawn/kbcontext_test.go
+      changes: "Added TestTaskIsScoped (12 cases), TestFilterForScopedTask (3 tests), TestScopedMaxKBContextChars"
+    - path: pkg/orch/extraction.go
+      changes: "Integrated scope detection into runPreSpawnKBCheckFull - filters matches and reduces char budget for scoped tasks"

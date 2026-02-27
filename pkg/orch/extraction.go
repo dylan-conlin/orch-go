@@ -57,6 +57,7 @@ type SpawnContext struct {
 	GapAnalysis        *spawn.GapAnalysis
 	HasInjectedModels  bool
 	PrimaryModelPath   string
+	CrossRepoModelDir  string
 	IsBug              bool
 	ReproSteps         string
 	ReworkFeedback     string
@@ -68,6 +69,7 @@ type SpawnContext struct {
 	AccountConfigDir   string
 	SpawnBackend       string
 	Tier               string
+	VerifyLevel        string // Explicit verification level override (V0-V3)
 	Scope              string
 	HotspotArea        bool
 	HotspotFiles       []string
@@ -774,6 +776,7 @@ func GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, 
 	gapAnalysis *spawn.GapAnalysis,
 	hasInjectedModels bool,
 	primaryModelPath string,
+	crossRepoModelDir string,
 	err error) {
 	stalenessMeta := &spawn.StalenessEventMeta{
 		SpawnID:    workspaceName,
@@ -782,7 +785,7 @@ func GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, 
 
 	if skipArtifactCheck {
 		fmt.Println("Skipping context check (--skip-artifact-check)")
-		return "", nil, false, "", nil
+		return "", nil, false, "", "", nil
 	}
 
 	// Parse skill requirements to determine what context to gather
@@ -808,12 +811,13 @@ func GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, 
 				// Extract primary model path from KB context result
 				primaryModelPath = extractPrimaryModelPath(gapResult.FormatResult)
 			}
+			crossRepoModelDir = gapResult.FormatResult.CrossRepoModelDir
 		}
 	}
 
 	// Check gap gating - may block spawn if context quality is too low
 	if err := checkGapGating(gapAnalysis, gateOnGap, skipGapGate, gapThreshold); err != nil {
-		return "", nil, false, "", err
+		return "", nil, false, "", "", err
 	}
 
 	// Record gap for learning loop (if gaps detected)
@@ -841,7 +845,7 @@ func GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, 
 		}
 	}
 
-	return kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, nil
+	return kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, crossRepoModelDir, nil
 }
 
 // ExtractBugReproInfo extracts reproduction steps if the issue is a bug.
@@ -1000,6 +1004,16 @@ func LoadDesignArtifacts(designWorkspace, projectDir string) (mockupPath, prompt
 
 // BuildSpawnConfig constructs the spawn.Config from SpawnContext.
 func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, noTrack, skipArtifactCheck bool) *spawn.Config {
+	// Infer verify level if not explicitly set
+	verifyLevel := ctx.VerifyLevel
+	if verifyLevel == "" {
+		issueType := ""
+		if ctx.IsBug {
+			issueType = "bug"
+		}
+		verifyLevel = spawn.DefaultVerifyLevel(ctx.SkillName, issueType)
+	}
+
 	return &spawn.Config{
 		Task:               ctx.Task,
 		OrientationFrame:   ctx.OrientationFrame,
@@ -1016,12 +1030,14 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 		ResolvedSettings:   ctx.ResolvedSettings,
 		MCP:                mcp,
 		Tier:               ctx.Tier,
+		VerifyLevel:        verifyLevel,
 		Scope:              ctx.Scope,
 		NoTrack:            noTrack || ctx.IsOrchestrator || ctx.IsMetaOrchestrator,
 		SkipArtifactCheck:  skipArtifactCheck,
 		KBContext:          ctx.KBContext,
 		HasInjectedModels:  ctx.HasInjectedModels,
 		PrimaryModelPath:   ctx.PrimaryModelPath,
+		CrossRepoModelDir:  ctx.CrossRepoModelDir,
 		IncludeServers:     spawn.DefaultIncludeServersForSkill(ctx.SkillName),
 		GapAnalysis:        ctx.GapAnalysis,
 		IsBug:              ctx.IsBug,
@@ -1283,8 +1299,25 @@ func runPreSpawnKBCheckFull(task, projectDir string, stalenessMeta *spawn.Stalen
 	// No interactive prompt needed; context is automatically included
 	fmt.Printf("Found %d relevant context entries - including in spawn context.\n", len(result.Matches))
 
+	// Scope-appropriate filtering: when task targets specific files, strip heavyweight
+	// categories (models, guides, investigations, open questions) and use reduced budget.
+	// Saves 1,000-4,000 tokens per prompt for scoped tasks.
+	maxChars := spawn.MaxKBContextChars
+	if spawn.TaskIsScoped(task) {
+		originalCount := len(result.Matches)
+		result.Matches = spawn.FilterForScopedTask(result.Matches)
+		result.HasMatches = len(result.Matches) > 0
+		maxChars = spawn.ScopedMaxKBContextChars
+		fmt.Printf("Scoped task detected: filtered %d → %d matches (budget: %dk chars)\n",
+			originalCount, len(result.Matches), maxChars/1000)
+		if !result.HasMatches {
+			fmt.Println("No relevant context after scoped filtering.")
+			return gcr
+		}
+	}
+
 	// Format context with limit and capture full result (includes HasInjectedModels)
-	formatResult := spawn.FormatContextForSpawnWithLimitAndMeta(result, spawn.MaxKBContextChars, projectDir, stalenessMeta)
+	formatResult := spawn.FormatContextForSpawnWithLimitAndMeta(result, maxChars, projectDir, stalenessMeta)
 	gcr.FormatResult = formatResult
 
 	// Include gap summary in spawn context if there are significant gaps

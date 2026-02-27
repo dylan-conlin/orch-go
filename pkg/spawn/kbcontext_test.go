@@ -1084,3 +1084,167 @@ func TestDetectProjectNameFromDir(t *testing.T) {
 		}
 	})
 }
+
+func TestTaskIsScoped(t *testing.T) {
+	tests := []struct {
+		name string
+		task string
+		want bool
+	}{
+		{
+			name: "file path with extension",
+			task: "Fix the bug in pkg/spawn/context.go",
+			want: true,
+		},
+		{
+			name: "file path with line number",
+			task: "Change error message at cmd/orch/spawn_cmd.go:234",
+			want: true,
+		},
+		{
+			name: "deep file path",
+			task: "Update the constant in pkg/spawn/kbcontext.go",
+			want: true,
+		},
+		{
+			name: "relative file path",
+			task: "Edit ./cmd/orch/main.go to add flag",
+			want: true,
+		},
+		{
+			name: "typescript file path",
+			task: "Fix the React component in src/components/Dashboard.tsx",
+			want: true,
+		},
+		{
+			name: "generic task no file paths",
+			task: "Add rate limiting to the API",
+			want: false,
+		},
+		{
+			name: "abstract refactoring task",
+			task: "Refactor the spawn pipeline for better modularity",
+			want: false,
+		},
+		{
+			name: "package-level task without file",
+			task: "Fix the flaky test in the spawn package",
+			want: false,
+		},
+		{
+			name: "high-level feature",
+			task: "Implement scope-appropriate kb context injection for targeted tasks",
+			want: false,
+		},
+		{
+			name: "multiple file paths",
+			task: "Rename function in pkg/orch/extraction.go and pkg/spawn/context.go",
+			want: true,
+		},
+		{
+			name: "empty task",
+			task: "",
+			want: false,
+		},
+		{
+			name: "url should not match",
+			task: "Check the docs at https://example.com/api/v2",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := TaskIsScoped(tt.task)
+			if got != tt.want {
+				t.Errorf("TaskIsScoped(%q) = %v, want %v", tt.task, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFilterForScopedTask(t *testing.T) {
+	matches := []KBContextMatch{
+		{Type: "constraint", Title: "No infinite loops", Reason: "Safety"},
+		{Type: "decision", Title: "Use TDD", Reason: "Quality"},
+		{Type: "model", Title: "Spawn Architecture", Path: "/path/to/model.md"},
+		{Type: "guide", Title: "How Spawn Works", Path: "/path/to/guide.md"},
+		{Type: "investigation", Title: "Auth flow analysis", Path: "/path/to/inv.md"},
+		{Type: "failed-attempt", Title: "Tried Redis", Reason: "Too complex"},
+		{Type: "open-question", Title: "Should we use SQLite?"},
+	}
+
+	filtered := FilterForScopedTask(matches)
+
+	// Should keep constraints, decisions, and failed attempts
+	// Should drop models, guides, investigations, and open questions
+	typeCount := make(map[string]int)
+	for _, m := range filtered {
+		typeCount[m.Type]++
+	}
+
+	if typeCount["constraint"] != 1 {
+		t.Errorf("expected 1 constraint, got %d", typeCount["constraint"])
+	}
+	if typeCount["decision"] != 1 {
+		t.Errorf("expected 1 decision, got %d", typeCount["decision"])
+	}
+	if typeCount["failed-attempt"] != 1 {
+		t.Errorf("expected 1 failed-attempt, got %d", typeCount["failed-attempt"])
+	}
+	if typeCount["model"] != 0 {
+		t.Errorf("expected 0 models for scoped task, got %d", typeCount["model"])
+	}
+	if typeCount["guide"] != 0 {
+		t.Errorf("expected 0 guides for scoped task, got %d", typeCount["guide"])
+	}
+	if typeCount["investigation"] != 0 {
+		t.Errorf("expected 0 investigations for scoped task, got %d", typeCount["investigation"])
+	}
+	if typeCount["open-question"] != 0 {
+		t.Errorf("expected 0 open-questions for scoped task, got %d", typeCount["open-question"])
+	}
+
+	// Total should be 3 (constraint + decision + failed-attempt)
+	if len(filtered) != 3 {
+		t.Errorf("FilterForScopedTask() returned %d matches, want 3", len(filtered))
+	}
+}
+
+func TestFilterForScopedTask_EmptyInput(t *testing.T) {
+	filtered := FilterForScopedTask(nil)
+	if len(filtered) != 0 {
+		t.Errorf("FilterForScopedTask(nil) returned %d matches, want 0", len(filtered))
+	}
+
+	filtered = FilterForScopedTask([]KBContextMatch{})
+	if len(filtered) != 0 {
+		t.Errorf("FilterForScopedTask([]) returned %d matches, want 0", len(filtered))
+	}
+}
+
+func TestFilterForScopedTask_OnlyConstraints(t *testing.T) {
+	matches := []KBContextMatch{
+		{Type: "constraint", Title: "C1"},
+		{Type: "constraint", Title: "C2"},
+	}
+
+	filtered := FilterForScopedTask(matches)
+	if len(filtered) != 2 {
+		t.Errorf("FilterForScopedTask() returned %d matches, want 2", len(filtered))
+	}
+}
+
+func TestScopedMaxKBContextChars(t *testing.T) {
+	// Verify the scoped budget is smaller than the default
+	if ScopedMaxKBContextChars >= MaxKBContextChars {
+		t.Errorf("ScopedMaxKBContextChars (%d) should be smaller than MaxKBContextChars (%d)",
+			ScopedMaxKBContextChars, MaxKBContextChars)
+	}
+
+	// Verify it's at least large enough for a reasonable number of constraints + decisions
+	// 15k chars ≈ 3,750 tokens — enough for ~30 constraints/decisions
+	if ScopedMaxKBContextChars < 10000 {
+		t.Errorf("ScopedMaxKBContextChars (%d) is too small for practical use", ScopedMaxKBContextChars)
+	}
+}

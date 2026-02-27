@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -37,6 +38,11 @@ const MaxMatchesPerCategory = 20
 // Set to ~80k chars which is approximately 20k tokens (using 4 chars/token ratio).
 // This leaves room for other spawn context elements (skills, CLAUDE.md, template).
 const MaxKBContextChars = 80000
+
+// ScopedMaxKBContextChars is the reduced character budget for scoped tasks.
+// Scoped tasks target specific files/locations and don't need model summaries,
+// guides, or investigations. 15k chars ≈ 3,750 tokens — enough for constraints + decisions.
+const ScopedMaxKBContextChars = 15000
 
 // CharsPerToken is a conservative estimate for token calculation.
 // Claude typically uses ~4 chars per token for English text.
@@ -75,6 +81,7 @@ type KBContextFormatResult struct {
 	HasInjectedModels bool     // Whether model content (summary/invariants/failures) was injected
 	PrimaryModelPath  string   // File path of the first model (when HasInjectedModels is true)
 	HasStaleModels    bool     // Whether any served models have stale file references
+	CrossRepoModelDir string   // When non-empty, the primary model lives in a different repo than ProjectDir
 }
 
 // StalenessResult holds the result of checking a model's staleness.
@@ -112,6 +119,45 @@ func ExtractKeywords(task string, maxWords int) string {
 	}
 
 	return strings.Join(words, " ")
+}
+
+// regexScopedFilePath matches file paths with directory separators and extensions.
+// Matches: pkg/spawn/context.go, cmd/orch/main.go, src/components/Dashboard.tsx
+// Does not match: URLs (https://...), plain words, package names without extensions.
+var regexScopedFilePath = regexp.MustCompile(`(?:^|[\s"'` + "`" + `(])(?:\./)?[a-zA-Z_][\w.-]*/[\w./-]+\.\w{1,5}(?::\d+)?(?:[\s"'` + "`" + `),]|$)`)
+
+// TaskIsScoped detects if a task description targets specific files or code locations.
+// Returns true when the task contains file paths (e.g., pkg/spawn/context.go).
+// Scoped tasks get reduced kb context to save tokens — models, guides, investigations,
+// and open questions are stripped since the agent is working on specific code.
+func TaskIsScoped(task string) bool {
+	if task == "" {
+		return false
+	}
+	return regexScopedFilePath.MatchString(task)
+}
+
+// FilterForScopedTask removes heavyweight kb context categories that aren't needed
+// for file-targeted tasks. Keeps constraints (always relevant), decisions (prevent
+// re-deciding), and failed attempts (prevent repeating mistakes). Drops models
+// (summaries/probes/invariants), guides, investigations, and open questions.
+func FilterForScopedTask(matches []KBContextMatch) []KBContextMatch {
+	if len(matches) == 0 {
+		return nil
+	}
+	// Categories to keep for scoped tasks
+	keepTypes := map[string]bool{
+		"constraint":     true,
+		"decision":       true,
+		"failed-attempt": true,
+	}
+	var filtered []KBContextMatch
+	for _, m := range matches {
+		if keepTypes[m.Type] {
+			filtered = append(filtered, m)
+		}
+	}
+	return filtered
 }
 
 // RunKBContextCheck runs 'kb context' with tiered search strategy using the current working directory.
@@ -667,6 +713,9 @@ func FormatContextForSpawnWithLimitAndMeta(result *KBContextResult, maxChars int
 		primaryModelPath = models[0].Path
 	}
 
+	// Detect cross-repo model situation
+	crossRepoModelDir := DetectCrossRepoModel(primaryModelPath, projectDir)
+
 	// Check if we need to truncate
 	if len(content) <= maxChars {
 		return &KBContextFormatResult{
@@ -678,6 +727,7 @@ func FormatContextForSpawnWithLimitAndMeta(result *KBContextResult, maxChars int
 			HasInjectedModels: hasInjectedModelContent(models),
 			PrimaryModelPath:  primaryModelPath,
 			HasStaleModels:    hasStaleModels,
+			CrossRepoModelDir: crossRepoModelDir,
 		}
 	}
 
@@ -775,6 +825,7 @@ func FormatContextForSpawnWithLimitAndMeta(result *KBContextResult, maxChars int
 		HasInjectedModels: hasInjectedModelContent(models),
 		PrimaryModelPath:  primaryModelPath,
 		HasStaleModels:    hasStaleModels,
+		CrossRepoModelDir: crossRepoModelDir,
 	}
 }
 
@@ -920,6 +971,57 @@ func hasInjectedModelContent(models []KBContextMatch) bool {
 		}
 	}
 	return false
+}
+
+// DetectCrossRepoModel checks if the primary model path is in a different git repo
+// than the project directory. Returns the model's repo root directory if cross-repo,
+// or empty string if same-repo or if detection fails.
+//
+// This catches the case where `--workdir` points to repo A but the model being probed
+// lives in repo B. Without this detection, probe files get created in the wrong repo.
+func DetectCrossRepoModel(primaryModelPath, projectDir string) string {
+	if primaryModelPath == "" || projectDir == "" {
+		return ""
+	}
+
+	// Normalize paths
+	absModelPath, err := filepath.Abs(primaryModelPath)
+	if err != nil {
+		return ""
+	}
+	absProjectDir, err := filepath.Abs(projectDir)
+	if err != nil {
+		return ""
+	}
+
+	// Check if model path is under project directory
+	if strings.HasPrefix(absModelPath, absProjectDir+string(filepath.Separator)) {
+		return "" // Same repo, no cross-repo issue
+	}
+
+	// Model is outside project dir - find the model's repo root
+	// Walk up from the model path to find the nearest .git directory
+	modelDir := filepath.Dir(absModelPath)
+	for modelDir != "/" && modelDir != "." {
+		gitDir := filepath.Join(modelDir, ".git")
+		if info, err := os.Stat(gitDir); err == nil && (info.IsDir() || info.Mode().IsRegular()) {
+			return modelDir
+		}
+		modelDir = filepath.Dir(modelDir)
+	}
+
+	// Couldn't find git root, but model is still outside project dir
+	// Return the directory containing .kb/ as a reasonable guess
+	modelDir = filepath.Dir(absModelPath)
+	for modelDir != "/" && modelDir != "." {
+		kbDir := filepath.Join(modelDir, ".kb")
+		if info, err := os.Stat(kbDir); err == nil && info.IsDir() {
+			return modelDir
+		}
+		modelDir = filepath.Dir(modelDir)
+	}
+
+	return "" // Can't determine model repo
 }
 
 func formatModelMatchForSpawn(match KBContextMatch, projectDir string, stalenessMeta *StalenessEventMeta) (string, bool) {
