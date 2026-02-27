@@ -1,8 +1,8 @@
 # Model: Model Access and Spawn Paths
 
 **Domain:** Agent Spawning / Model Selection
-**Last Updated:** 2026-02-25
-**Synthesized From:** 5 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations) spanning Jan 8-12, 2026. Updated Feb 2026 via drift probes and model drift agent.
+**Last Updated:** 2026-02-27
+**Synthesized From:** 5 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations) spanning Jan 8-12, 2026. Updated Feb 2026-27 via drift probes and model drift agent.
 
 ---
 
@@ -485,6 +485,13 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - `--force-hotspot` requires `--architect-ref` with verified closed architect issue
 - `--disallowedTools` enforcement + PreToolUse hook for `bd close` gating
 
+**Feb 25-27, 2026:** Cross-repo support + verification levels
+- BEADS_DIR env var injection in Claude CLI spawns for cross-repo phase reporting
+- Account isolation: unset `CLAUDE_CODE_OAUTH_TOKEN` + set `CLAUDE_CONFIG_DIR` for non-default accounts
+- V0-V3 verification levels replace binary tier (model → claude backend is unchanged)
+- Agreements gate added to spawn pipeline (non-blocking warning-only)
+- GatherSpawnContext signature extended with `orientationFrame` parameter
+
 ---
 
 ## References
@@ -514,8 +521,9 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - `pkg/spawn/resolve.go:validateModel()` - Flash blocking, model compatibility
 - `pkg/spawn/resolve.go:modelBackendRequirement()` - Model→backend mapping
 - `cmd/orch/spawn_cmd.go:isInfrastructureWork()` - Keyword detection logic (22 keywords)
-- `pkg/orch/extraction.go:ResolveSpawnSettings()` - Resolve wrapper with logging
+- `pkg/orch/extraction.go:ResolveSpawnSettings()` - Resolve wrapper with logging (~1614 lines total)
 - `pkg/orch/spawn_modes.go:DispatchSpawn()` - Mode routing (inline/headless/tmux/claude)
+- `pkg/spawn/claude.go:BuildClaudeLaunchCommand()` - Claude CLI with account isolation + BEADS_DIR injection
 - `pkg/model/model.go` - Model aliases and default model definition
 - `CLAUDE.md` - Dual spawn mode documentation
 

@@ -1,14 +1,14 @@
 # Model: Spawn Architecture
 
 **Domain:** Agent Spawning / Workspace Creation
-**Last Updated:** 2026-02-25
-**Synthesized From:** 36 investigations (Dec 2025 - Jan 2026) into spawn implementation, context generation, tier system, and triage friction. Updated Feb 2026 via drift probes and model drift agent.
+**Last Updated:** 2026-02-27
+**Synthesized From:** 36 investigations (Dec 2025 - Jan 2026) into spawn implementation, context generation, tier system, and triage friction. Updated Feb 2026-27 via drift probes and model drift agent.
 
 ---
 
 ## Summary (30 seconds)
 
-Spawn evolved through 7 phases from basic CLI integration to a modular, gate-driven architecture with capacity-aware account routing. The architecture creates a workspace with SPAWN_CONTEXT.md embedding skill content + task description + kb context, then launches a session via two-phase atomic spawn with rollback. Spawn settings are resolved via `pkg/spawn/resolve.go` with 6-level precedence and per-setting provenance tracking. The spawn pipeline is split across three packages: `pkg/spawn/` (config, resolution, context generation), `pkg/spawn/gates/` (pre-spawn validation), `pkg/spawn/backends/` (backend abstraction), and `pkg/orch/` (pipeline orchestration and mode dispatch). The tier system (light/full) determines whether SYNTHESIS.md is required at completion. Claude CLI is the default backend since Anthropic banned subscription OAuth in third-party tools (Feb 19, 2026).
+Spawn evolved through 8 phases from basic CLI integration to a modular, gate-driven architecture with capacity-aware account routing, verification levels, and cross-repo support. The architecture creates a workspace with SPAWN_CONTEXT.md embedding skill content + task description + kb context + orientation frame, then launches a session via two-phase atomic spawn with rollback. Spawn settings are resolved via `pkg/spawn/resolve.go` with 6-level precedence and per-setting provenance tracking. The spawn pipeline is split across three packages: `pkg/spawn/` (config, resolution, context generation), `pkg/spawn/gates/` (pre-spawn validation including hotspot, triage, ratelimit, concurrency, verification, and agreements gates), `pkg/spawn/backends/` (backend abstraction), and `pkg/orch/` (pipeline orchestration and mode dispatch). The V0-V3 verification level system (replacing light/full tier) determines completion gate requirements. Claude CLI is the default backend since Anthropic banned subscription OAuth in third-party tools (Feb 19, 2026).
 
 ---
 
@@ -46,6 +46,7 @@ orch spawn <skill> "task"
 │     Rate limit gate: check account capacity                     │
 │     Concurrency gate: limit concurrent agents                   │
 │     Verification gate: check verification requirements          │
+│     Agreements gate: warn on kb agreement violations (non-block)│
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
@@ -58,9 +59,11 @@ orch spawn <skill> "task"
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  5. KB CONTEXT GATHERING (pkg/spawn/kbcontext.go)               │
-│     kb context "{task keywords}" --global                       │
-│     Finds relevant constraints, decisions, investigations       │
-│     Gap analysis scores context quality (pkg/spawn/gap.go)      │
+│     ExtractKeywordsWithContext(task, orientationFrame, 5)       │
+│     kb context "{keywords}" --global                            │
+│     Scoped tasks: filter to constraints/decisions only (15k cap)│
+│     Gap analysis with wrong-project detection (pkg/spawn/gap.go)│
+│     MinMatchesForLocalSearch=5 before expanding to global       │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
@@ -102,24 +105,28 @@ orch spawn <skill> "task"
 
 **SPAWN_CONTEXT.md structure:**
 ```markdown
-# TASK: {task description}
+TASK: {task title}
 
-# SKILL CONTEXT:
-{full SKILL.md content embedded}
+ORIENTATION_FRAME: {issue description / strategic framing}
 
-# BEADS ISSUE:
-{issue details if --issue provided}
+SPAWN TIER: {light/full}
 
-# KB CONTEXT:
-{relevant constraints, decisions, investigations}
+CONFIG RESOLUTION: {backend, model, tier, spawn mode, MCP, mode, validation}
 
-# DELIVERABLES:
-- {workspace}/SYNTHESIS.md (if full tier)
-- Git commits with changes
+SKILL GUIDANCE: {full SKILL.md content, section-filtered by phases/mode}
+
+PRIOR KNOWLEDGE (from kb context): {constraints, decisions, models, investigations}
+
+HOTSPOT AREA WARNING: {if targeting hotspot files}
+
+VERIFICATION REQUIREMENTS: {V0-V3 level and gate requirements}
+
+DELIVERABLES: {workspace files, commits}
 ```
 
 **Workspace metadata (canonical: AGENT_MANIFEST.json):**
 - `AGENT_MANIFEST.json` - Canonical source of agent identity and spawn-time context
+- Includes `verify_level` field (V0-V3) for completion gate selection
 - Read path: `ReadAgentManifestWithFallback()` → OpenCode session metadata → AGENT_MANIFEST.json → dotfiles (legacy)
 
 **Legacy dotfiles (still written for backward compatibility):**
@@ -175,6 +182,9 @@ Agent works in: ~/target-project/
 7. **Model-aware backend routing** - Backend determined by model provider unless CLI overrides (Decision: kb-2d62ef)
 8. **Claude backend implies tmux** - Claude CLI physically requires tmux window; headless + claude auto-switches to tmux
 9. **Account routing is capacity-aware** - Primary accounts checked first; spillover activated when primaries exhausted (>20% threshold)
+10. **V0-V3 verification levels are strict subsets** - V0⊂V1⊂V2⊂V3; level set at spawn, enforced at completion
+11. **Cross-repo spawns inject BEADS_DIR** - Without this, `bd comment` in cross-repo agents targets wrong project
+12. **Orientation frame is separate from task title** - Title drives workspace name slug; frame provides strategic context without polluting names
 
 ---
 
@@ -250,16 +260,22 @@ Agent works in: ~/target-project/
 **This enables:** Scalable automation via daemon
 **This constrains:** Ad-hoc spawning is discouraged
 
-### Why Two-Tier System Instead of Always Requiring SYNTHESIS.md?
+### Why V0-V3 Verification Levels Instead of Binary Tier?
 
-**Constraint:** Light work (bug fixes, small features) doesn't need full synthesis
+**Constraint:** Binary light/full tier was too coarse — SYNTHESIS.md requirement doesn't capture the spectrum of verification needs (test evidence, visual verification, explain-back)
 
-**Implication:** Tier determines completion requirements
+**Implication:** V0-V3 levels determine which completion gates fire. Defaults derived from skill + issue type (max of both). `--verify-level` flag overrides.
 
-**Workaround:** Skills set default tier, `--tier` flag overrides
+**V0 (Acknowledge):** Phase Complete only
+**V1 (Artifacts):** V0 + deliverable/constraint checks
+**V2 (Evidence):** V1 + test evidence, build logs, git diff
+**V3 (Behavioral):** V2 + visual verification, explain-back
 
-**This enables:** Appropriate documentation for work complexity
-**This constrains:** Must decide tier at spawn (can't change mid-flight)
+**Skill defaults:** issue-creation→V0, investigation/architect→V1, feature-impl/systematic-debugging→V2
+**Issue type minimums:** feature/bug→V2, investigation→V1
+
+**This enables:** Graduated verification matching work complexity
+**This constrains:** Must decide level at spawn (persisted in AGENT_MANIFEST.json)
 
 ---
 
@@ -318,6 +334,29 @@ Agent works in: ~/target-project/
 - Pre-create session for tmux spawns with non-default models
 - GPT-5 alias remapped to `gpt-5.2` to prevent zombie sessions
 
+**Phase 8: Verification Levels + Cross-Repo Quality + Context Intelligence (Feb 25-27, 2026)**
+- V0-V3 verification levels replace binary light/full tier (`pkg/spawn/verify_level.go`)
+  - Defaults from skill + issue type (max of both); `--verify-level` flag overrides
+  - Persisted in AGENT_MANIFEST.json; completion gates check via `ShouldRunGate()`
+- Agreements gate added to spawn pipeline (`pkg/spawn/gates/agreements.go`)
+  - Runs `kb agreements check --json`; warning-only (non-blocking), graduated to blocking after 30 days
+- Wrong-project knowledge detection in gap analysis (`pkg/spawn/gap.go`)
+  - `countWrongProjectMatches()` penalizes quality score when cross-repo matches dominate
+  - Global `~/.kb/` correctly excluded from wrong-project classification
+- Orientation frame separates task title from strategic context
+  - Issue title → TASK (concise, drives workspace name); description → ORIENTATION_FRAME
+  - FRAME beads comments appended when present
+- `ExtractKeywordsWithContext()` dual-source keyword extraction (`pkg/spawn/kbcontext.go`)
+  - Title keywords get priority; frame keywords provide domain disambiguation
+  - Skill-prefix stripping prevents infrastructure terms from polluting queries
+- Scope-appropriate kb context filtering (`pkg/spawn/kbcontext.go`)
+  - File-targeted tasks get constraints/decisions only (15k char cap vs 80k default)
+  - `TaskIsScoped()` detects directory-qualified file paths in task
+- `MinMatchesForLocalSearch` raised from 3 to 5
+  - Rich KBs (280+ investigations) trivially hit low threshold on generic terms
+- BEADS_DIR env var injection for cross-repo Claude CLI spawns (`pkg/spawn/claude.go`)
+  - Enables `bd comment` to target correct project in cross-repo agents
+
 ---
 
 ## References
@@ -345,18 +384,19 @@ Agent works in: ~/target-project/
 - `.kb/guides/daemon.md` - How daemon auto-spawns (procedural)
 
 **Primary Evidence (Verify These):**
-- `cmd/orch/spawn_cmd.go` - Main spawn command + infrastructure detection (~876 lines)
-- `pkg/orch/extraction.go` - Spawn pipeline types and functions (~1437 lines)
+- `cmd/orch/spawn_cmd.go` - Main spawn command + infrastructure detection (~930 lines)
+- `pkg/orch/extraction.go` - Spawn pipeline types and functions (~1614 lines)
 - `pkg/orch/spawn_modes.go` - Mode dispatch: inline/headless/tmux/claude (~529 lines)
 - `pkg/orch/spawn_helpers.go` - Helper utilities for spawn pipeline (~148 lines)
 - `pkg/spawn/context.go` - SPAWN_CONTEXT.md generation (~1200 lines)
-- `pkg/spawn/kbcontext.go` - KB context gathering and formatting (~1100 lines)
-- `pkg/spawn/config.go` - Config struct, tier defaults, skill mappings (~460 lines)
+- `pkg/spawn/kbcontext.go` - KB context gathering, keyword extraction, scoped filtering (~1100 lines)
+- `pkg/spawn/config.go` - Config struct, tier defaults, skill mappings, verify level (~460 lines)
 - `pkg/spawn/resolve.go` - Settings resolution with 6-level precedence, account routing (~580 lines)
 - `pkg/spawn/atomic.go` - Two-phase atomic spawn with rollback (~114 lines)
-- `pkg/spawn/claude.go` - Claude CLI backend (tmux spawn, MCP wiring) (~172 lines)
-- `pkg/spawn/gap.go` - Context gap analysis and quality scoring
-- `pkg/spawn/session.go` - Session management, AGENT_MANIFEST.json read/write
-- `pkg/spawn/gates/` - Pre-spawn validation gates (hotspot, triage, ratelimit, concurrency, verification)
+- `pkg/spawn/claude.go` - Claude CLI backend (tmux spawn, MCP wiring, BEADS_DIR injection) (~172 lines)
+- `pkg/spawn/gap.go` - Context gap analysis, quality scoring, wrong-project detection
+- `pkg/spawn/session.go` - Session management, AGENT_MANIFEST.json with verify_level field
+- `pkg/spawn/verify_level.go` - V0-V3 level definitions, defaults, comparison functions (~103 lines)
+- `pkg/spawn/gates/` - Pre-spawn validation gates (hotspot, triage, ratelimit, concurrency, verification, agreements)
 - `pkg/spawn/backends/` - Backend abstraction layer (backend interface, common, headless, inline, tmux)
 - `pkg/skills/loader.go` - Skill discovery, loading, dependency composition
