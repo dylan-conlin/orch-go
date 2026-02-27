@@ -191,65 +191,102 @@ func TestSummarizeDelta(t *testing.T) {
 	}
 }
 
-// TestExtractBeadsIDFromWorkspace tests extracting beads ID from SPAWN_CONTEXT.md.
+// TestExtractBeadsIDFromWorkspace tests extracting beads ID from workspace files.
 func TestExtractBeadsIDFromWorkspace(t *testing.T) {
-	tests := []struct {
-		name           string
-		contextContent string
-		wantID         string
-	}{
-		{
-			name: "standard beads issue format",
-			contextContent: `TASK: Test task
+	t.Run("prefers .beads_id file", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		// Write .beads_id file
+		if err := os.WriteFile(filepath.Join(tmpDir, ".beads_id"), []byte("orch-go-abcd"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		// Also write AGENT_MANIFEST.json with different ID to prove priority
+		if err := os.WriteFile(filepath.Join(tmpDir, "AGENT_MANIFEST.json"), []byte(`{"beads_id": "orch-go-wxyz"}`), 0644); err != nil {
+			t.Fatal(err)
+		}
+		got := extractBeadsIDFromWorkspace(tmpDir)
+		if got != "orch-go-abcd" {
+			t.Errorf("extractBeadsIDFromWorkspace() = %q, want %q", got, "orch-go-abcd")
+		}
+	})
+
+	t.Run("falls back to AGENT_MANIFEST.json", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		// Write AGENT_MANIFEST.json only
+		if err := os.WriteFile(filepath.Join(tmpDir, "AGENT_MANIFEST.json"), []byte(`{"workspace_name": "og-feat-test", "beads_id": "orch-go-n1wi", "skill": "feature-impl"}`), 0644); err != nil {
+			t.Fatal(err)
+		}
+		got := extractBeadsIDFromWorkspace(tmpDir)
+		if got != "orch-go-n1wi" {
+			t.Errorf("extractBeadsIDFromWorkspace() = %q, want %q", got, "orch-go-n1wi")
+		}
+	})
+
+	t.Run("falls back to SPAWN_CONTEXT.md legacy format", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		content := `TASK: Test task
 
 ## BEADS PROGRESS TRACKING
 
 You were spawned from beads issue: **orch-go-pe5d.2**
 
-Use bd comment for progress updates.`,
-			wantID: "orch-go-pe5d.2",
-		},
-		{
-			name: "beads issue with backticks",
-			contextContent: `TASK: Another task
+Use bd comment for progress updates.`
+		if err := os.WriteFile(filepath.Join(tmpDir, "SPAWN_CONTEXT.md"), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		got := extractBeadsIDFromWorkspace(tmpDir)
+		if got != "orch-go-pe5d.2" {
+			t.Errorf("extractBeadsIDFromWorkspace() = %q, want %q", got, "orch-go-pe5d.2")
+		}
+	})
 
-beads issue: ` + "`snap-abc123`",
-			wantID: "snap-abc123",
-		},
-		{
-			name: "no beads issue",
-			contextContent: `TASK: Untracked task
+	t.Run("returns empty when no sources exist", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		got := extractBeadsIDFromWorkspace(tmpDir)
+		if got != "" {
+			t.Errorf("extractBeadsIDFromWorkspace() = %q, want empty", got)
+		}
+	})
 
-No beads tracking for this one.`,
-			wantID: "",
-		},
-		{
-			name: "spawned from beads issue format",
-			contextContent: `TASK: Feature work
+	t.Run("handles SPAWN_CONTEXT.md without beads issue line", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		// This is the current template format - no "beads issue:" line
+		content := `TASK: orch review shows 'no beads tracking'
 
-## BEADS PROGRESS TRACKING (PREFERRED)
+bd comment orch-go-yjyl "Phase: Planning - investigating"`
+		if err := os.WriteFile(filepath.Join(tmpDir, "SPAWN_CONTEXT.md"), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		got := extractBeadsIDFromWorkspace(tmpDir)
+		if got != "" {
+			t.Errorf("extractBeadsIDFromWorkspace() = %q, want empty (SPAWN_CONTEXT.md has no 'beads issue:' line)", got)
+		}
+	})
 
-You were spawned from beads issue: **orch-cli-xyz99**
+	t.Run("beads issue with backticks in SPAWN_CONTEXT.md", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		content := "TASK: Another task\n\nbeads issue: `snap-abc123`"
+		if err := os.WriteFile(filepath.Join(tmpDir, "SPAWN_CONTEXT.md"), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		got := extractBeadsIDFromWorkspace(tmpDir)
+		if got != "snap-abc123" {
+			t.Errorf("extractBeadsIDFromWorkspace() = %q, want %q", got, "snap-abc123")
+		}
+	})
 
-Use bd comment for updates.`,
-			wantID: "orch-cli-xyz99",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create temp workspace
-			tmpDir := t.TempDir()
-			if err := os.WriteFile(filepath.Join(tmpDir, "SPAWN_CONTEXT.md"), []byte(tt.contextContent), 0644); err != nil {
-				t.Fatalf("Failed to write SPAWN_CONTEXT.md: %v", err)
-			}
-
-			got := extractBeadsIDFromWorkspace(tmpDir)
-			if got != tt.wantID {
-				t.Errorf("extractBeadsIDFromWorkspace() = %q, want %q", got, tt.wantID)
-			}
-		})
-	}
+	t.Run("empty .beads_id file falls through to manifest", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(tmpDir, ".beads_id"), []byte(""), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(tmpDir, "AGENT_MANIFEST.json"), []byte(`{"beads_id": "orch-go-fallback"}`), 0644); err != nil {
+			t.Fatal(err)
+		}
+		got := extractBeadsIDFromWorkspace(tmpDir)
+		if got != "orch-go-fallback" {
+			t.Errorf("extractBeadsIDFromWorkspace() = %q, want %q", got, "orch-go-fallback")
+		}
+	})
 }
 
 // TestCountBulletPoints verifies bullet point counting.

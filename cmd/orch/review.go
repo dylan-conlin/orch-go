@@ -374,8 +374,46 @@ func filterClosedIssues(candidates []CompletionInfo) []CompletionInfo {
 	return results
 }
 
-// extractBeadsIDFromWorkspace extracts the beads ID from SPAWN_CONTEXT.md
+// extractBeadsIDFromWorkspace extracts the beads ID from workspace files.
+// Checks sources in order of reliability:
+// 1. .beads_id file (written directly by spawn code)
+// 2. AGENT_MANIFEST.json (has beads_id field)
+// 3. SPAWN_CONTEXT.md "beads issue:" pattern (legacy fallback)
 func extractBeadsIDFromWorkspace(workspacePath string) string {
+	// Source 1: .beads_id file (most reliable - written directly by spawn code)
+	beadsIDPath := filepath.Join(workspacePath, ".beads_id")
+	if data, err := os.ReadFile(beadsIDPath); err == nil {
+		id := strings.TrimSpace(string(data))
+		if id != "" {
+			return id
+		}
+	}
+
+	// Source 2: AGENT_MANIFEST.json
+	manifestPath := filepath.Join(workspacePath, "AGENT_MANIFEST.json")
+	if data, err := os.ReadFile(manifestPath); err == nil {
+		// Simple extraction - avoid importing encoding/json just for one field
+		// Look for "beads_id": "value" in the JSON
+		content := string(data)
+		if idx := strings.Index(content, `"beads_id"`); idx != -1 {
+			// Find the value after the colon
+			rest := content[idx+len(`"beads_id"`):]
+			// Skip whitespace and colon
+			rest = strings.TrimLeft(rest, " \t\n:")
+			// Extract quoted value
+			if len(rest) > 0 && rest[0] == '"' {
+				end := strings.Index(rest[1:], `"`)
+				if end > 0 {
+					id := rest[1 : end+1]
+					if id != "" {
+						return id
+					}
+				}
+			}
+		}
+	}
+
+	// Source 3: SPAWN_CONTEXT.md (legacy fallback for older workspaces)
 	spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
 	content, err := os.ReadFile(spawnContextPath)
 	if err != nil {
