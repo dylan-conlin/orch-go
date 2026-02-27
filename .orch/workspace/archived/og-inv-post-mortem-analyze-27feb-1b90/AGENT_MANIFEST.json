@@ -1,0 +1,13 @@
+{
+  "workspace_name": "og-inv-post-mortem-analyze-27feb-1b90",
+  "skill": "investigation",
+  "beads_id": "orch-go-ge7i",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "2b34177f8c717452ac4672568543d4e29e96be6a",
+  "spawn_time": "2026-02-27T14:28:53-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@565",
+  "verify_level": "V1"
+}

@@ -1,0 +1,13 @@
+{
+  "workspace_name": "og-inv-investigate-spawn-context-27feb-2fa5",
+  "skill": "investigation",
+  "beads_id": "orch-go-gd6r",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "f6e276ddeb01844c85d3e10a4c71948fe70ee961",
+  "spawn_time": "2026-02-27T00:53:38-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@446",
+  "verify_level": "V1"
+}
