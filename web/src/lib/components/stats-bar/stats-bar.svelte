@@ -271,26 +271,23 @@
 		{#if $daemon?.verification}
 			{@const v = $daemon.verification}
 			{@const vCount = v.completions_since_verification}
-			{@const vThreshold = v.threshold}
+			{#if vCount > 0 || v.is_paused}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
 						<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="verification-indicator">
 							<span class="text-lg">🛡️</span>
 							<span class="inline-flex items-baseline gap-1">
-								<span class="text-xl font-bold" class:text-amber-500={vCount > 0}>
-									{vCount}/{vThreshold}
+								<span class="text-xl font-bold" class:text-amber-500={v.is_paused}>
+									{vCount}
 								</span>
-								<span class="text-xs text-muted-foreground">since verify</span>
-								{#if v.is_paused}
-									<span class="text-xs text-amber-500">paused</span>
-								{/if}
+								<span class="text-xs" class:text-amber-500={v.is_paused} class:text-muted-foreground={!v.is_paused}>to review{#if v.is_paused} (paused){/if}</span>
 							</span>
 						</span>
 					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
-					<p>{vCount} completion{vCount === 1 ? '' : 's'} since last verification (threshold: {vThreshold})</p>
+					<p>{vCount} completion{vCount === 1 ? '' : 's'} since last verification (threshold: {v.threshold})</p>
 					{#if v.remaining_before_pause > 0}
 						<p class="text-xs text-muted-foreground">{v.remaining_before_pause} remaining before daemon pauses</p>
 					{:else if v.is_paused}
@@ -301,6 +298,7 @@
 					{/if}
 				</Tooltip.Content>
 			</Tooltip.Root>
+			{/if}
 		{/if}
 
 		<!-- Daemon indicator (clickable to show config) -->

@@ -645,8 +645,8 @@
 								· last poll {$daemon.last_poll_ago}
 							{/if}
 							· {daemonQueueSummary($daemon)}
-							{#if $daemon.verification}
-								· <span class:text-amber-400={$daemon.verification.is_paused}>{$daemon.verification.completions_since_verification}/{$daemon.verification.threshold} since verify{#if $daemon.verification.is_paused} (paused){/if}</span>
+							{#if $daemon.verification && ($daemon.verification.completions_since_verification > 0 || $daemon.verification.is_paused)}
+								· <span class:text-amber-400={$daemon.verification.is_paused}>{$daemon.verification.completions_since_verification} to review{#if $daemon.verification.is_paused} (paused){/if}</span>
 							{/if}
 						{/if}
 					</span>
