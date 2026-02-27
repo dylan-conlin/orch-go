@@ -121,10 +121,12 @@ orch spawn --bypass-triage --mode claude --model opus --tmux feature-impl "task"
 
 **Rule:** Files >1,500 lines require extraction before feature additions. Run `orch hotspot` to check current bloated files. If modifying large files, see `.kb/guides/code-extraction-patterns.md` for extraction workflow.
 
-**Enforcement:**
-- **Spawn gates (blocking):** `feature-impl` and `systematic-debugging` skills are blocked from spawning when targeting CRITICAL files (>1,500 lines). Exempt skills: `architect`, `investigation`, `capture-knowledge`, `codebase-audit`. Override: `--force-hotspot` flag.
+**Enforcement (three-layer):**
+- **Layer 1 — Spawn gates (blocking):** `feature-impl` and `systematic-debugging` skills are blocked from spawning when targeting CRITICAL files (>1,500 lines). Exempt skills: `architect`, `investigation`, `capture-knowledge`, `codebase-audit`. Override: `--force-hotspot --architect-ref <closed-architect-issue>`. Auto-bypass when prior architect review exists.
+- **Layer 2 — Daemon escalation:** Daemon routes feature-impl/systematic-debugging to architect when issue targets hotspot files.
+- **Layer 3 — Spawn context advisory:** Hotspot info injected into SPAWN_CONTEXT.md for agent awareness.
 - **Completion gates (warning):** Warn on additions >50 lines to files >800 lines.
-- Full architecture: `.kb/investigations/2026-02-14-inv-architect-design-accretion-gravity-enforcement.md`
+- Decision: `.kb/decisions/2026-02-26-three-layer-hotspot-enforcement.md`
 
 ## Architectural Constraints
 
