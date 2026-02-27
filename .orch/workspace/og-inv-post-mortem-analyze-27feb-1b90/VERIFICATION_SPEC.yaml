@@ -1,0 +1,34 @@
+---
+# VERIFICATION_SPEC.yaml — Post-Mortem Communication Breakdown Analysis
+workspace: og-inv-post-mortem-analyze-27feb-1b90
+issue: orch-go-ge7i
+skill: investigation
+
+verification:
+  gate1_explain_back:
+    summary: >
+      Analyzed 3 session transcripts where communication broke down between orchestrators
+      in Toolshed and Price Watch projects. Found 21 individual failures across 7 categories.
+      The agreement system catches the root cause (stale cross-project context) but 5 of 7
+      downstream failure categories are in-session behavioral issues that agreements can't address.
+    key_deliverables:
+      - path: .kb/investigations/2026-02-27-postmortem-communication-breakdown-sessions.md
+        description: Full post-mortem with per-session breakdowns, failure taxonomy, and gap analysis
+      - path: .kb/models/orchestrator-session-lifecycle/probes/2026-02-27-probe-communication-breakdown-postmortem-3-sessions.md
+        description: Model probe extending orchestrator-session-lifecycle model
+
+  gate2_behavioral:
+    type: investigation
+    evidence:
+      - what: Read all 3 session transcripts in full
+        result: 21 failures cataloged with line-number references across 7 categories
+      - what: Reviewed kb agreements system implementation
+        result: 5 built-in + 5 custom agreements, non-blocking spawn gate, stale-shadow detection
+      - what: Mapped each failure category against agreement system capabilities
+        result: 1 category addressed well (stale context), 1 partially, 5 unaddressed
+    manual_steps: []
+
+outcomes:
+  - "7-category failure taxonomy: stale context, frame guard rigidity, user as message bus, CLI cascade, premature action, role confusion, follow-through gaps"
+  - "Agreements catch root cause (stale context / stale-shadow) which triggered entire cascade"
+  - "5 gap recommendations: diagnostic mode, cross-repo context bridge, all-at-once gate reporting, promise tracking, consumer-side agreement checks"
