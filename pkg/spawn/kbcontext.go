@@ -199,14 +199,14 @@ func RunKBContextCheck(query string) (*KBContextResult, error) {
 // Returns nil if no matches found or if kb command fails.
 func RunKBContextCheckForDir(query string, projectDir string) (*KBContextResult, error) {
 	// Step 1: Try current project first (no --global flag)
-	result, err := runKBContextQuery(query, false)
+	result, err := runKBContextQuery(query, false, projectDir)
 	if err != nil {
 		return nil, err
 	}
 
 	// Step 2: If local search is sparse, expand to global with group-aware filter
 	if result == nil || len(result.Matches) < MinMatchesForLocalSearch {
-		globalResult, err := runKBContextQuery(query, true)
+		globalResult, err := runKBContextQuery(query, true, projectDir)
 		if err != nil {
 			return nil, err
 		}
@@ -247,7 +247,9 @@ func RunKBContextCheckForDir(query string, projectDir string) (*KBContextResult,
 // runKBContextQuery runs a single kb context query with optional --global flag.
 // Uses a 5-second timeout to prevent infinite hangs from kb context --global
 // scanning large directories like ~/Documents.
-func runKBContextQuery(query string, global bool) (*KBContextResult, error) {
+// projectDir sets the working directory for the kb command. When non-empty,
+// local (non-global) queries search the target project's .kb/ instead of process CWD.
+func runKBContextQuery(query string, global bool, projectDir string) (*KBContextResult, error) {
 	// Create context with timeout to prevent hangs
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -257,6 +259,11 @@ func runKBContextQuery(query string, global bool) (*KBContextResult, error) {
 		cmd = exec.CommandContext(ctx, "kb", "context", "--global", query)
 	} else {
 		cmd = exec.CommandContext(ctx, "kb", "context", query)
+	}
+
+	// Set working directory to target project so local search hits correct .kb/
+	if projectDir != "" {
+		cmd.Dir = projectDir
 	}
 
 	output, err := cmd.Output()

@@ -1354,3 +1354,29 @@ func TestDetectCrossRepoModel(t *testing.T) {
 		})
 	}
 }
+
+func TestRunKBContextQueryProjectDir(t *testing.T) {
+	// Skip if kb command is not available
+	if _, err := os.Stat(os.ExpandEnv("$HOME/.bun/bin/kb")); err != nil {
+		t.Skip("kb command not available, skipping integration test")
+	}
+
+	// Use a temp dir with no .kb/ — local search should find nothing
+	emptyDir := t.TempDir()
+
+	// Query with projectDir pointing to empty dir — should return nil (no .kb/ to search)
+	result, err := runKBContextQuery("spawn context", false, emptyDir)
+	if err != nil {
+		t.Fatalf("runKBContextQuery with projectDir returned error: %v", err)
+	}
+	if result != nil {
+		t.Errorf("runKBContextQuery with empty projectDir should return nil, got %d matches", len(result.Matches))
+	}
+
+	// Query with empty projectDir (uses CWD = orch-go) — may find results from orch-go .kb/
+	// We just verify it doesn't crash; actual results depend on CWD having .kb/
+	_, err = runKBContextQuery("spawn context", false, "")
+	if err != nil {
+		t.Fatalf("runKBContextQuery with empty projectDir returned error: %v", err)
+	}
+}
