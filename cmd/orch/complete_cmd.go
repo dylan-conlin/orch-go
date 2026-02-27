@@ -554,6 +554,9 @@ func runComplete(identifier, workdir string) error {
 
 	// Checkpoint verification gate (Verifiability-first enforcement)
 	// Tier-aware: Tier 1 requires both gates, Tier 2 requires gate1 only, Tier 3 no checkpoint.
+	// Failures are collected (not early-returned) so all gates are reported at once.
+	var checkpointErrors []string
+	var checkpointGatesFailed []string
 	if !isUntracked && !completeForce && issue != nil {
 		tier := checkpoint.TierForIssueType(issue.IssueType)
 
@@ -565,12 +568,9 @@ func runComplete(identifier, workdir string) error {
 				// Continue with completion - checkpoint check is advisory for now
 			} else if !hasGate1 && !skipConfig.ExplainBack && completeExplain == "" {
 				// No checkpoint exists, explain-back not being skipped, and no --explain text provided
-				fmt.Fprintf(os.Stderr, "❌ Comprehension gate (gate1) missing for Tier %d work (%s)\n", tier, issue.IssueType)
-				fmt.Fprintf(os.Stderr, "\nTier %d work requires comprehension verification:\n", tier)
-				fmt.Fprintf(os.Stderr, "  orch complete %s --explain 'Built X because Y, verified by Z'\n", beadsID)
-				fmt.Fprintf(os.Stderr, "\nOr bypass with:\n")
-				fmt.Fprintf(os.Stderr, "  --skip-explain-back --skip-reason \"...\"\n")
-				return fmt.Errorf("verification checkpoint required for Tier %d work", tier)
+				checkpointGatesFailed = append(checkpointGatesFailed, verify.GateExplainBack)
+				checkpointErrors = append(checkpointErrors,
+					fmt.Sprintf("comprehension gate (gate1) missing for Tier %d work (%s) — use --explain 'Built X because Y'", tier, issue.IssueType))
 			} else if hasGate1 {
 				fmt.Println("✓ Comprehension gate (gate1) passed")
 			}
@@ -582,12 +582,9 @@ func runComplete(identifier, workdir string) error {
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to check gate2 checkpoint: %v\n", err)
 			} else if !hasGate2 && !completeVerified {
-				fmt.Fprintf(os.Stderr, "❌ Behavioral verification (gate2) missing for Tier 1 work (%s)\n", issue.IssueType)
-				fmt.Fprintf(os.Stderr, "\nTier 1 work (features/bugs/decisions) requires behavioral verification:\n")
-				fmt.Fprintf(os.Stderr, "  orch complete %s --verified --explain '...'\n", beadsID)
-				fmt.Fprintf(os.Stderr, "\nThe --verified flag confirms the orchestrator has verified the agent's behavior,\n")
-				fmt.Fprintf(os.Stderr, "not just comprehended what was built.\n")
-				return fmt.Errorf("behavioral verification (gate2) required for Tier 1 work")
+				checkpointGatesFailed = append(checkpointGatesFailed, "verified")
+				checkpointErrors = append(checkpointErrors,
+					fmt.Sprintf("behavioral verification (gate2) missing for Tier 1 work (%s) — use --verified", issue.IssueType))
 			} else if hasGate2 {
 				fmt.Println("✓ Behavioral verification (gate2) passed")
 			}
@@ -689,15 +686,23 @@ func runComplete(identifier, workdir string) error {
 					fmt.Fprintf(os.Stderr, "Warning: failed to log verification failure event: %v\n", err)
 				}
 
-				fmt.Fprintf(os.Stderr, "Cannot complete orchestrator session - verification failed:\n")
-				for _, e := range result.Errors {
-					fmt.Fprintf(os.Stderr, "  - %s\n", e)
+				fmt.Fprintf(os.Stderr, "Cannot complete orchestrator session - %d gate(s) failed:\n", len(gatesFailed))
+				for i, e := range result.Errors {
+					gate := ""
+					if i < len(result.GatesFailed) {
+						gate = result.GatesFailed[i]
+					}
+					if gate != "" {
+						fmt.Fprintf(os.Stderr, "  ❌ %s: %s\n", gate, e)
+					} else {
+						fmt.Fprintf(os.Stderr, "  ❌ %s\n", e)
+					}
 				}
 				fmt.Fprintf(os.Stderr, "\nOrchestrator must fill SESSION_HANDOFF.md with:\n")
 				fmt.Fprintf(os.Stderr, "  - TLDR section (actual content, not placeholder)\n")
 				fmt.Fprintf(os.Stderr, "  - Outcome field (success, partial, blocked, or failed)\n")
 				fmt.Fprintf(os.Stderr, "Or use --skip-handoff-content --skip-reason \"...\" to bypass\n")
-				return fmt.Errorf("verification failed")
+				return fmt.Errorf("verification failed: %d gate(s)", len(gatesFailed))
 			}
 			fmt.Println("Completion signal: SESSION_HANDOFF.md verified (content validated)")
 		} else if !isUntracked {
@@ -770,6 +775,14 @@ func runComplete(identifier, workdir string) error {
 				}
 			}
 
+			// Merge checkpoint gate failures into verification result
+			// so all failures are reported together in one pass.
+			if len(checkpointGatesFailed) > 0 {
+				result.GatesFailed = append(result.GatesFailed, checkpointGatesFailed...)
+				result.Errors = append(result.Errors, checkpointErrors...)
+				result.Passed = false
+			}
+
 			if !result.Passed {
 				verificationPassed = false
 				gatesFailed = result.GatesFailed
@@ -786,13 +799,31 @@ func runComplete(identifier, workdir string) error {
 					fmt.Fprintf(os.Stderr, "Warning: failed to log verification failure event: %v\n", err)
 				}
 
-				fmt.Fprintf(os.Stderr, "Cannot complete agent - verification failed:\n")
-				for _, e := range result.Errors {
-					fmt.Fprintf(os.Stderr, "  - %s\n", e)
+				fmt.Fprintf(os.Stderr, "Cannot complete agent - %d gate(s) failed:\n", len(gatesFailed))
+				for i, e := range result.Errors {
+					gate := ""
+					if i < len(result.GatesFailed) {
+						gate = result.GatesFailed[i]
+					}
+					if gate != "" {
+						fmt.Fprintf(os.Stderr, "  ❌ %s: %s\n", gate, e)
+					} else {
+						fmt.Fprintf(os.Stderr, "  ❌ %s\n", e)
+					}
 				}
-				fmt.Fprintf(os.Stderr, "\nAgent must run: bd comment %s \"Phase: Complete - <summary>\"\n", beadsID)
-				fmt.Fprintf(os.Stderr, "Or use --skip-<gate> --skip-reason to bypass specific gates\n")
-				return fmt.Errorf("verification failed")
+				// Print fix hints
+				fmt.Fprintf(os.Stderr, "\nTo fix:\n")
+				fmt.Fprintf(os.Stderr, "  orch complete %s", beadsID)
+				for _, g := range gatesFailed {
+					if g == verify.GateExplainBack {
+						fmt.Fprintf(os.Stderr, " --explain '...'")
+					} else if g == "verified" {
+						fmt.Fprintf(os.Stderr, " --verified")
+					}
+				}
+				fmt.Fprintln(os.Stderr)
+				fmt.Fprintf(os.Stderr, "  Use --skip-<gate> --skip-reason \"...\" to bypass specific gates\n")
+				return fmt.Errorf("verification failed: %d gate(s)", len(gatesFailed))
 			}
 
 			// Print constraint warnings

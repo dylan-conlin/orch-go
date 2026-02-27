@@ -303,10 +303,9 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 
 	result.VerifyLevel = verifyLevel
 
-	// If standard verification failed, no need to check further gates
-	if !result.Passed {
-		return result, nil
-	}
+	// Continue checking ALL gates even if earlier ones failed.
+	// This collects all failures at once so callers can fix everything in one pass
+	// instead of retrying 8+ times for sequential gate failures.
 
 	// Verify backend deliverables (opencode transcript or tmux capture)
 	// This is informational (warnings only), not gated by level
@@ -516,6 +515,8 @@ func verifyCompletionWithLevelAndComments(beadsID, workspacePath, tier, verifyLe
 	}
 
 	// --- V0 gate: Phase Complete ---
+	// Note: Gate failures no longer early-return. All gates are collected so callers
+	// see every failure at once instead of fixing them one at a time.
 	result.GatesRun = append(result.GatesRun, GatePhaseComplete)
 	var status PhaseStatus
 	var err error
@@ -527,7 +528,7 @@ func verifyCompletionWithLevelAndComments(beadsID, workspacePath, tier, verifyLe
 			result.Passed = false
 			result.Errors = append(result.Errors, fmt.Sprintf("failed to get phase status: %v", err))
 			result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
-			return result, nil
+			return result, nil // API error: can't proceed without phase data
 		}
 	}
 
@@ -538,15 +539,11 @@ func verifyCompletionWithLevelAndComments(beadsID, workspacePath, tier, verifyLe
 		result.Errors = append(result.Errors,
 			fmt.Sprintf("agent has not reported any Phase status for %s", beadsID))
 		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
-		return result, nil
-	}
-
-	if !strings.EqualFold(status.Phase, "Complete") {
+	} else if !strings.EqualFold(status.Phase, "Complete") {
 		result.Passed = false
 		result.Errors = append(result.Errors,
 			fmt.Sprintf("agent phase is '%s', not 'Complete' (beads: %s)", status.Phase, beadsID))
 		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
-		return result, nil
 	}
 
 	// --- V1 gate: Synthesis ---
@@ -620,6 +617,7 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 
 	// Standard worker verification: beads-based phase tracking
 	// Get phase status (using pre-fetched comments if available)
+	// Gate failures no longer early-return so all gates are reported at once.
 	var status PhaseStatus
 	var err error
 	if comments != nil {
@@ -630,7 +628,7 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 			result.Passed = false
 			result.Errors = append(result.Errors, fmt.Sprintf("failed to get phase status: %v", err))
 			result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
-			return result, nil
+			return result, nil // API error: can't proceed without phase data
 		}
 	}
 
@@ -642,15 +640,11 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 		result.Errors = append(result.Errors,
 			fmt.Sprintf("agent has not reported any Phase status for %s", beadsID))
 		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
-		return result, nil
-	}
-
-	if !strings.EqualFold(status.Phase, "Complete") {
+	} else if !strings.EqualFold(status.Phase, "Complete") {
 		result.Passed = false
 		result.Errors = append(result.Errors,
 			fmt.Sprintf("agent phase is '%s', not 'Complete' (beads: %s)", status.Phase, beadsID))
 		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
-		return result, nil
 	}
 
 	// Check for SYNTHESIS.md (only for full tier AND code-producing skills)

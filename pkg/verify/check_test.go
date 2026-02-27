@@ -1698,3 +1698,118 @@ func TestSynthesisGateAutoSkipForKnowledgeProducingSkills(t *testing.T) {
 		})
 	}
 }
+
+// TestVerifyCompletionFullCollectsAllGateFailures verifies that VerifyCompletionFullWithComments
+// reports ALL gate failures at once, not just the first one. This prevents sequential retry loops
+// where the caller must fix one gate failure at a time.
+func TestVerifyCompletionFullCollectsAllGateFailures(t *testing.T) {
+	t.Run("phase_complete failure still runs V1+ gates", func(t *testing.T) {
+		// Setup: workspace with no Phase: Complete and missing SYNTHESIS.md
+		tmpDir := t.TempDir()
+		workspacePath := tmpDir
+
+		// Create SPAWN_CONTEXT.md with a skill that requires synthesis
+		spawnCtx := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+		if err := os.WriteFile(spawnCtx, []byte("## SKILL GUIDANCE (feature-impl)\ntest"), 0644); err != nil {
+			t.Fatalf("failed to write SPAWN_CONTEXT.md: %v", err)
+		}
+
+		// Create .verify_level file for V2 (runs more gates)
+		verifyLevelPath := filepath.Join(workspacePath, ".verify_level")
+		if err := os.WriteFile(verifyLevelPath, []byte("V2"), 0644); err != nil {
+			t.Fatalf("failed to write .verify_level: %v", err)
+		}
+
+		// No Phase: Complete comment → phase_complete gate should fail
+		// No SYNTHESIS.md → synthesis gate should fail
+		comments := []Comment{
+			{Text: "Phase: Planning - just started"},
+		}
+
+		result, err := VerifyCompletionFullWithComments("test-123", workspacePath, tmpDir, "", "", comments)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if result.Passed {
+			t.Fatal("expected verification to fail")
+		}
+
+		// The key assertion: BOTH phase_complete AND synthesis should be in GatesFailed
+		gateSet := make(map[string]bool)
+		for _, g := range result.GatesFailed {
+			gateSet[g] = true
+		}
+
+		if !gateSet[GatePhaseComplete] {
+			t.Errorf("expected %s in GatesFailed, got: %v", GatePhaseComplete, result.GatesFailed)
+		}
+		if !gateSet[GateSynthesis] {
+			t.Errorf("expected %s in GatesFailed, got: %v", GateSynthesis, result.GatesFailed)
+		}
+
+		// Should have at least 2 failures
+		if len(result.GatesFailed) < 2 {
+			t.Errorf("expected at least 2 gate failures, got %d: %v", len(result.GatesFailed), result.GatesFailed)
+		}
+	})
+
+	t.Run("V0 failure plus V1 failures collected together", func(t *testing.T) {
+		// Setup: workspace where Phase: Complete is NOT reported and SYNTHESIS.md missing
+		// Both V0 and V1 gates should fail and be reported together
+		tmpDir := t.TempDir()
+		workspacePath := tmpDir
+
+		// Create SPAWN_CONTEXT.md with feature-impl skill
+		spawnCtx := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+		if err := os.WriteFile(spawnCtx, []byte("## SKILL GUIDANCE (feature-impl)\ntest"), 0644); err != nil {
+			t.Fatalf("failed to write SPAWN_CONTEXT.md: %v", err)
+		}
+
+		// V1 level to enable synthesis and constraint gates
+		verifyLevelPath := filepath.Join(workspacePath, ".verify_level")
+		if err := os.WriteFile(verifyLevelPath, []byte("V1"), 0644); err != nil {
+			t.Fatalf("failed to write .verify_level: %v", err)
+		}
+
+		// Phase is "Implementing" (not Complete) → V0 fails
+		// No SYNTHESIS.md → V1 synthesis fails
+		comments := []Comment{
+			{Text: "Phase: Implementing - still working"},
+		}
+
+		result, err := VerifyCompletionFullWithComments("test-123", workspacePath, tmpDir, "", "", comments)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if result.Passed {
+			t.Fatal("expected verification to fail")
+		}
+
+		// Should collect failures from BOTH V0 and V1
+		gateSet := make(map[string]bool)
+		for _, g := range result.GatesFailed {
+			gateSet[g] = true
+		}
+
+		if !gateSet[GatePhaseComplete] {
+			t.Errorf("expected %s in GatesFailed, got: %v", GatePhaseComplete, result.GatesFailed)
+		}
+		if !gateSet[GateSynthesis] {
+			t.Errorf("expected %s in GatesFailed, got: %v", GateSynthesis, result.GatesFailed)
+		}
+
+		// Should have at least 2 failures
+		if len(result.GatesFailed) < 2 {
+			t.Errorf("expected at least 2 gate failures (phase_complete + synthesis), got %d: %v",
+				len(result.GatesFailed), result.GatesFailed)
+		}
+
+		// Each failure should have a corresponding error message
+		if len(result.Errors) < len(result.GatesFailed) {
+			t.Errorf("expected at least %d error messages for %d failed gates, got %d",
+				len(result.GatesFailed), len(result.GatesFailed), len(result.Errors))
+		}
+	})
+}

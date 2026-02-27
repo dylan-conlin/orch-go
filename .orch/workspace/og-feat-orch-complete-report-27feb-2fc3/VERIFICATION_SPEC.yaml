@@ -1,0 +1,16 @@
+verification:
+  commands_run:
+    - "go test ./pkg/verify/ -run TestVerifyCompletionFullCollectsAllGateFailures -v"
+    - "go test ./pkg/verify/ -count=1"
+    - "go test ./cmd/orch/ -count=1"
+    - "go build ./cmd/orch/"
+    - "go vet ./cmd/orch/"
+  expectations:
+    - All verify package tests pass (including 2 new collect-all tests)
+    - All cmd/orch tests pass (no regressions)
+    - Build and vet clean
+  changes_summary:
+    - "pkg/verify/check.go: Removed early-return on V0 gate failure in verifyCompletionWithLevelAndComments and VerifyCompletionWithTierAndComments. Removed early-return in VerifyCompletionFullWithComments when initial verification fails. All gates now run and collect failures."
+    - "cmd/orch/complete_cmd.go: Checkpoint gates (gate1/gate2) now collect failures instead of early-returning. Failures are merged with VerifyCompletionFull results. Error output improved to show all failures with gate names."
+    - "pkg/verify/check_test.go: Added TestVerifyCompletionFullCollectsAllGateFailures with 2 subtests."
+  manual_verification: none required
