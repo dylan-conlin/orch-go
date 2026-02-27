@@ -135,10 +135,11 @@ var (
 	daemonReflectIssues       bool   // Create beads issues for synthesis opportunities
 	daemonReflectOpen         bool   // Create beads issues for open investigation actions
 	daemonModelDriftInterval  int    // Periodic model drift reflection interval in minutes (0 = disabled)
-	daemonCleanupEnabled      bool   // Enable periodic session cleanup
-	daemonCleanupInterval     int    // Session cleanup interval in minutes (0 = disabled)
-	daemonCleanupAge          int    // Session age threshold in days for cleanup
-	daemonCleanupPreserveOrch bool   // Preserve orchestrator sessions during cleanup
+	daemonKnowledgeHealthInterval int  // Knowledge health check interval in minutes (0 = disabled)
+	daemonCleanupEnabled         bool // Enable periodic session cleanup
+	daemonCleanupInterval        int  // Session cleanup interval in minutes (0 = disabled)
+	daemonCleanupAge             int  // Session age threshold in days for cleanup
+	daemonCleanupPreserveOrch    bool // Preserve orchestrator sessions during cleanup
 )
 
 func init() {
@@ -163,6 +164,7 @@ func init() {
 	daemonRunCmd.Flags().BoolVar(&daemonReflectIssues, "reflect-issues", true, "Create beads issues for synthesis opportunities (default: true)")
 	daemonRunCmd.Flags().BoolVar(&daemonReflectOpen, "reflect-open", true, "Create beads issues for open investigation actions (default: true)")
 	daemonRunCmd.Flags().IntVar(&daemonModelDriftInterval, "reflect-model-drift-interval", 240, "Model drift reflection interval in minutes (0 = disabled, default: 240 = 4 hours)")
+	daemonRunCmd.Flags().IntVar(&daemonKnowledgeHealthInterval, "knowledge-health-interval", 120, "Knowledge health check interval in minutes (0 = disabled, default: 120 = 2 hours)")
 	daemonRunCmd.Flags().BoolVar(&daemonCleanupEnabled, "cleanup-enabled", true, "Enable periodic session cleanup (default: true)")
 	daemonRunCmd.Flags().IntVar(&daemonCleanupInterval, "cleanup-interval", 360, "Session cleanup interval in minutes (0 = disabled, default: 360 = 6 hours)")
 	daemonRunCmd.Flags().IntVar(&daemonCleanupAge, "cleanup-age", 7, "Session age threshold in days for cleanup (default: 7)")
@@ -194,6 +196,8 @@ func daemonConfigFromFlags() daemon.Config {
 	config.ReflectOpenEnabled = daemonReflectOpen
 	config.ReflectModelDriftEnabled = daemonModelDriftInterval > 0
 	config.ReflectModelDriftInterval = time.Duration(daemonModelDriftInterval) * time.Minute
+	config.KnowledgeHealthEnabled = daemonKnowledgeHealthInterval > 0
+	config.KnowledgeHealthInterval = time.Duration(daemonKnowledgeHealthInterval) * time.Minute
 	config.CleanupEnabled = daemonCleanupEnabled && daemonCleanupInterval > 0
 	config.CleanupInterval = time.Duration(daemonCleanupInterval) * time.Minute
 	config.CleanupAgeDays = daemonCleanupAge
@@ -316,6 +320,11 @@ func runDaemonLoop() error {
 	} else {
 		fmt.Println("  Model drift:       disabled")
 	}
+	if config.KnowledgeHealthEnabled {
+		fmt.Printf("  Knowledge health:  %s (threshold: %d entries)\n", formatDaemonDuration(config.KnowledgeHealthInterval), config.KnowledgeHealthThreshold)
+	} else {
+		fmt.Println("  Knowledge health:  disabled")
+	}
 	if config.CleanupEnabled {
 		fmt.Printf("  Cleanup interval:  %s\n", formatDaemonDuration(config.CleanupInterval))
 		fmt.Printf("  Cleanup age:       %d days\n", config.CleanupAgeDays)
@@ -417,6 +426,22 @@ func runDaemonLoop() error {
 				fmt.Printf("[%s] Model drift: %s\n", timestamp, result.Message)
 			} else if daemonVerbose {
 				fmt.Printf("[%s] Model drift: no updates\n", timestamp)
+			}
+		}
+
+		// Run periodic knowledge health check if due
+		var knowledgeHealthSnapshot *daemon.KnowledgeHealthSnapshot
+		if result := d.RunPeriodicKnowledgeHealth(); result != nil {
+			if result.Error != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Knowledge health error: %v\n", timestamp, result.Error)
+			} else if result.ThresholdExceeded {
+				fmt.Printf("[%s] ⚠️  %s\n", timestamp, result.Message)
+			} else if daemonVerbose {
+				fmt.Printf("[%s] %s\n", timestamp, result.Message)
+			}
+			if result.Error == nil {
+				snapshot := result.Snapshot()
+				knowledgeHealthSnapshot = &snapshot
 			}
 		}
 
@@ -635,6 +660,7 @@ func runDaemonLoop() error {
 			Verification:       verificationSnapshot,
 			SpawnFailures:      spawnFailureSnapshot,
 			CompletionFailures: completionFailureSnapshot,
+			KnowledgeHealth:    knowledgeHealthSnapshot,
 		}
 		if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
 			fmt.Fprintf(os.Stderr, "Warning: failed to write status file: %v\n", err)

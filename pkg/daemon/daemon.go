@@ -74,6 +74,9 @@ type Daemon struct {
 	// lastModelDriftReflect tracks when model drift reflection was last run.
 	lastModelDriftReflect time.Time
 
+	// lastKnowledgeHealth tracks when knowledge health was last checked.
+	lastKnowledgeHealth time.Time
+
 	// lastCleanup tracks when session cleanup was last run for periodic cleanup.
 	lastCleanup time.Time
 
@@ -133,6 +136,10 @@ type Daemon struct {
 	getIssueStatusFunc func(beadsID string) (string, error)
 	// updateBeadsStatusFunc is used for testing - allows mocking UpdateBeadsStatus
 	updateBeadsStatusFunc func(beadsID string, status string) error
+	// knowledgeHealthFunc is used for testing - allows mocking kb quick list
+	knowledgeHealthFunc func() (*KnowledgeHealthResult, error)
+	// knowledgeHealthIssueFunc is used for testing - allows mocking issue creation
+	knowledgeHealthIssueFunc func(result *KnowledgeHealthResult) error
 	// cleanupFunc is used for testing - allows mocking cleanup behavior
 	cleanupFunc func(config Config) (int, string, error)
 }

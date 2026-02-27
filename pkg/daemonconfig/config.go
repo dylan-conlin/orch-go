@@ -93,6 +93,19 @@ type Config struct {
 	// it will pause spawning until Dylan explicitly resumes. Set to 0 to disable (no pause).
 	// Default is 3.
 	VerificationPauseThreshold int
+
+	// KnowledgeHealthEnabled controls whether periodic knowledge health checks are enabled.
+	// When enabled, the daemon counts active kb quick entries during idle cycles
+	// and flags accumulation without promotion.
+	KnowledgeHealthEnabled bool
+
+	// KnowledgeHealthInterval is how often to run the knowledge health check (0 = disabled).
+	// Default is 2 hours.
+	KnowledgeHealthInterval time.Duration
+
+	// KnowledgeHealthThreshold is the number of active quick entries that triggers
+	// a triage:review issue for knowledge maintenance. Default is 50.
+	KnowledgeHealthThreshold int
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -121,5 +134,8 @@ func DefaultConfig() Config {
 		RecoveryIdleThreshold:       10 * time.Minute, // Idle >10min triggers recovery
 		RecoveryRateLimit:           time.Hour,        // 1 resume per agent per hour
 		VerificationPauseThreshold:  3,                // Pause after 3 auto-completions
+		KnowledgeHealthEnabled:     true,
+		KnowledgeHealthInterval:    2 * time.Hour, // Every 2 hours
+		KnowledgeHealthThreshold:   50,            // Flag when 50+ active entries
 	}
 }

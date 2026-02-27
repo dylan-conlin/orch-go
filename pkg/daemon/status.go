@@ -48,6 +48,10 @@ type DaemonStatus struct {
 	// CompletionFailures holds completion processing failure tracking information.
 	// Surfaced to enable health card alerting when daemon stops processing completions.
 	CompletionFailures *CompletionFailureSnapshot `json:"completion_failures,omitempty"`
+
+	// KnowledgeHealth holds the latest knowledge health check snapshot.
+	// Surfaced to enable dashboard visibility into quick entry accumulation.
+	KnowledgeHealth *KnowledgeHealthSnapshot `json:"knowledge_health,omitempty"`
 }
 
 // VerificationStatusSnapshot is a snapshot of verification tracking state.
