@@ -280,13 +280,13 @@ func (c *CLIClient) Update(args *UpdateArgs) (*Issue, error) {
 
 // AddLabel adds a label to an issue.
 func (c *CLIClient) AddLabel(id, label string) error {
-	cmd := c.bdCommand("label", id, label)
+	cmd := c.bdCommand("label", "add", id, label)
 	return cmd.Run()
 }
 
 // RemoveLabel removes a label from an issue.
 func (c *CLIClient) RemoveLabel(id, label string) error {
-	cmd := c.bdCommand("unlabel", id, label)
+	cmd := c.bdCommand("label", "remove", id, label)
 	return cmd.Run()
 }
 

@@ -65,3 +65,44 @@ func TestCLIClient_ImplementsBeadsClient(t *testing.T) {
 	var _ BeadsClient = (*CLIClient)(nil)
 	var _ BeadsClient = NewCLIClient()
 }
+
+func TestCLIClient_LabelCommands(t *testing.T) {
+	c := NewCLIClient(WithBdPath("/custom/bd"))
+
+	tests := []struct {
+		name     string
+		buildCmd func() []string
+		wantArgs []string
+	}{
+		{
+			name: "AddLabel uses bd label add",
+			buildCmd: func() []string {
+				cmd := c.bdCommand("label", "add", "issue-1", "triage:ready")
+				return cmd.Args
+			},
+			wantArgs: []string{"/custom/bd", "label", "add", "issue-1", "triage:ready"},
+		},
+		{
+			name: "RemoveLabel uses bd label remove",
+			buildCmd: func() []string {
+				cmd := c.bdCommand("label", "remove", "issue-1", "triage:review")
+				return cmd.Args
+			},
+			wantArgs: []string{"/custom/bd", "label", "remove", "issue-1", "triage:review"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.buildCmd()
+			if len(got) != len(tt.wantArgs) {
+				t.Fatalf("args length = %d, want %d: %v", len(got), len(tt.wantArgs), got)
+			}
+			for i, arg := range tt.wantArgs {
+				if got[i] != arg {
+					t.Errorf("args[%d] = %q, want %q", i, got[i], arg)
+				}
+			}
+		})
+	}
+}
