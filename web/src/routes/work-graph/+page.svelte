@@ -319,7 +319,7 @@
 			// Closed issues are excluded below via the issueNode.status check (workGraph scope=open
 			// means closed issues aren't in the graph at all).
 			if (agent.status !== 'active' && agent.status !== 'awaiting-cleanup' && agent.status !== 'completed') continue;
-			if (agent.phase?.toLowerCase() !== 'complete') continue;
+			if (!agent.phase?.toLowerCase().startsWith('complete')) continue;
 
 			const issueNode = nodesById.get(beadsId);
 			if (!issueNode || issueNode.source !== 'beads') continue;
