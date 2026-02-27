@@ -205,6 +205,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 		claudeCtx    string
 		mcp          string
 		configDir    string
+		beadsDir     string
 		wantContains []string
 		wantExcludes []string
 	}{
@@ -350,11 +351,46 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 				"--mcp-config",
 			},
 		},
+		{
+			name:        "cross-repo beadsDir injects BEADS_DIR",
+			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
+			claudeCtx:   "worker",
+			mcp:         "",
+			configDir:   "",
+			beadsDir:    "/Users/test/orch-go/.beads",
+			wantContains: []string{
+				"export BEADS_DIR=/Users/test/orch-go/.beads",
+				"export CLAUDE_CONTEXT=worker",
+			},
+		},
+		{
+			name:        "empty beadsDir does NOT inject BEADS_DIR",
+			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
+			claudeCtx:   "worker",
+			mcp:         "",
+			configDir:   "",
+			beadsDir:    "",
+			wantExcludes: []string{
+				"BEADS_DIR",
+			},
+		},
+		{
+			name:        "cross-repo beadsDir with configDir - both injected",
+			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
+			claudeCtx:   "worker",
+			mcp:         "",
+			configDir:   "~/.claude-personal",
+			beadsDir:    "/Users/test/orch-go/.beads",
+			wantContains: []string{
+				"export CLAUDE_CONFIG_DIR=~/.claude-personal",
+				"export BEADS_DIR=/Users/test/orch-go/.beads",
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir)
+			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir, tt.beadsDir)
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {

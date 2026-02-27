@@ -56,13 +56,24 @@ func MCPConfigJSON(preset string) (string, bool) {
 // - When MCP is set, adds --mcp-config with the appropriate JSON config
 // - When configDir is set (and differs from default ~/.claude), injects
 //   CLAUDE_CONFIG_DIR env var and unsets CLAUDE_CODE_OAUTH_TOKEN for account isolation
-func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir string) string {
+// - When beadsDir is set (cross-repo spawn), injects BEADS_DIR env var so
+//   bd comment/show commands reach the source project's beads database
+func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsDir string) string {
 	// Account isolation prefix: when configDir is set and non-default,
 	// unset the OAuth token and set CLAUDE_CONFIG_DIR so the Claude CLI
 	// uses the correct account's config directory.
 	accountPrefix := ""
 	if configDir != "" && configDir != "~/.claude" {
 		accountPrefix = fmt.Sprintf("unset CLAUDE_CODE_OAUTH_TOKEN; export CLAUDE_CONFIG_DIR=%s; ", configDir)
+	}
+
+	// Cross-repo beads prefix: when beadsDir is set, inject BEADS_DIR so
+	// bd commands (comment, show) reach the source project's beads database.
+	// Without this, cross-repo agents can't report Phase: Complete because
+	// bd defaults to the .beads/ in the current working directory.
+	beadsDirPrefix := ""
+	if beadsDir != "" {
+		beadsDirPrefix = fmt.Sprintf("export BEADS_DIR=%s; ", beadsDir)
 	}
 
 	// Base command: export CLAUDE_CONTEXT=X; cat CONTEXT.md | claude --dangerously-skip-permissions
@@ -84,7 +95,7 @@ func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir string)
 		disallowFlag = " --disallowedTools 'Task,Edit,Write,NotebookEdit'"
 	}
 
-	return fmt.Sprintf("%sexport ORCH_SPAWNED=1; export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s", accountPrefix, claudeContext, contextPath, mcpFlag, disallowFlag)
+	return fmt.Sprintf("%s%sexport ORCH_SPAWNED=1; export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s", accountPrefix, beadsDirPrefix, claudeContext, contextPath, mcpFlag, disallowFlag)
 }
 
 // SpawnClaude launches a Claude Code agent in a tmux window.
@@ -127,7 +138,7 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 		claudeContext = "worker"
 	}
 
-	launchCmd := BuildClaudeLaunchCommand(contextPath, claudeContext, cfg.MCP, cfg.AccountConfigDir)
+	launchCmd := BuildClaudeLaunchCommand(contextPath, claudeContext, cfg.MCP, cfg.AccountConfigDir, cfg.BeadsDir)
 
 	if err := tmux.SendKeys(windowTarget, launchCmd); err != nil {
 		return nil, fmt.Errorf("failed to send launch command: %w", err)

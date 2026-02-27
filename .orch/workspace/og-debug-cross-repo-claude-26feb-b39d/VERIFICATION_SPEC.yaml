@@ -1,0 +1,33 @@
+tests:
+  - name: "BuildClaudeLaunchCommand injects BEADS_DIR for cross-repo spawns"
+    command: "go test ./pkg/spawn/ -run TestBuildClaudeLaunchCommand/cross-repo_beadsDir_injects_BEADS_DIR -v -count=1"
+    expected: "PASS"
+  - name: "BuildClaudeLaunchCommand excludes BEADS_DIR when empty"
+    command: "go test ./pkg/spawn/ -run 'TestBuildClaudeLaunchCommand/empty_beadsDir' -v -count=1"
+    expected: "PASS"
+  - name: "BuildClaudeLaunchCommand handles both configDir and beadsDir"
+    command: "go test ./pkg/spawn/ -run 'TestBuildClaudeLaunchCommand/cross-repo_beadsDir_with_configDir' -v -count=1"
+    expected: "PASS"
+  - name: "All spawn package tests pass"
+    command: "go test ./pkg/spawn/ -count=1"
+    expected: "PASS"
+  - name: "All cmd/orch tests pass"
+    command: "go test ./cmd/orch/ -count=1 -timeout 60s"
+    expected: "PASS"
+  - name: "Build succeeds"
+    command: "go build ./cmd/orch/"
+    expected: "no errors"
+
+manual:
+  - name: "BEADS_DIR env var enables cross-project bd comment"
+    description: |
+      Verified manually: running `bd comment orch-go-nw73 "test"` from kb-cli directory
+      with BEADS_DIR=/Users/dylanconlin/Documents/personal/orch-go/.beads succeeds.
+      Without BEADS_DIR, bd returns "no issue found".
+
+smoke_test:
+  description: |
+    Cannot fully smoke-test without spawning a real cross-repo agent (requires tmux session,
+    Claude CLI, and a target repo). The unit test for BuildClaudeLaunchCommand verifies the
+    BEADS_DIR injection. The manual bd comment test verifies the env var mechanism works.
+    Next cross-repo claude-mode spawn will be the real smoke test.

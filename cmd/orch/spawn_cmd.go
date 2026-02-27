@@ -557,6 +557,23 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		return err
 	}
 
+	// 4b. Detect cross-repo beads: when --workdir is set, the agent works in a
+	// different directory than where the beads issue was created. The agent's bd
+	// commands would fail because bd looks in .beads/ of the cwd by default.
+	// Capture the source beads directory for BEADS_DIR env var injection.
+	var crossRepoBeadsDir string
+	if spawnWorkdir != "" && beadsID != "" {
+		sourceDir := beads.DefaultDir
+		if sourceDir == "" {
+			sourceDir, _ = os.Getwd()
+		}
+		sourceBeadsDir := filepath.Join(sourceDir, ".beads")
+		targetBeadsDir := filepath.Join(projectDir, ".beads")
+		if sourceBeadsDir != targetBeadsDir {
+			crossRepoBeadsDir = sourceBeadsDir
+		}
+	}
+
 	// 5. Resolve spawn settings (centralized resolver)
 	projectCfg, projectMeta, err := config.LoadWithMeta(projectDir)
 	if err != nil {
@@ -665,6 +682,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		DesignMockupPath:   designMockupPath,
 		DesignPromptPath:   designPromptPath,
 		DesignNotes:        designNotes,
+		BeadsDir:           crossRepoBeadsDir,
 	}
 
 	// 11. Build spawn config

@@ -118,6 +118,12 @@ type Config struct {
 	// BeadsID is the beads issue ID for lifecycle tracking
 	BeadsID string
 
+	// BeadsDir is the absolute path to the .beads/ directory containing the tracked issue.
+	// Set for cross-repo spawns where the agent works in a different project directory
+	// than where the beads issue was created. When set, BEADS_DIR env var is injected
+	// into the Claude CLI launch command so bd comment/show commands reach the correct database.
+	BeadsDir string
+
 	// Feature-impl configuration
 	Phases     string // Comma-separated phases (e.g., "implementation,validation")
 	Mode       string // Implementation mode: "tdd" or "direct"

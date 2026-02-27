@@ -76,6 +76,10 @@ type SpawnContext struct {
 	DesignMockupPath   string
 	DesignPromptPath   string
 	DesignNotes        string
+	// BeadsDir is the absolute path to the .beads/ directory for cross-repo spawns.
+	// When the beads issue is in a different project than the agent's working directory,
+	// this is set so BEADS_DIR env var can be injected into the Claude CLI launch command.
+	BeadsDir string
 }
 
 // ResolvedSpawnResult holds resolved spawn settings and the parsed model spec.
@@ -1058,6 +1062,7 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 		DesignMockupPath:   ctx.DesignMockupPath,
 		DesignPromptPath:   ctx.DesignPromptPath,
 		DesignNotes:        ctx.DesignNotes,
+		BeadsDir:           ctx.BeadsDir,
 	}
 }
 
