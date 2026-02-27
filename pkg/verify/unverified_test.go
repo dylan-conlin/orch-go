@@ -98,6 +98,85 @@ func TestListUnverifiedWork_LatestCheckpointWins(t *testing.T) {
 	}
 }
 
+func TestProjectFromBeadsID(t *testing.T) {
+	tests := []struct {
+		name    string
+		beadsID string
+		want    string
+	}{
+		{"two-part project", "orch-go-abc1", "orch-go"},
+		{"single-word project", "beads-12ab", "beads"},
+		{"short prefix", "pw-ed7h", "pw"},
+		{"multi-hyphen project", "some-long-name-a1b2", "some-long-name"},
+		{"empty ID", "", "unknown"},
+		{"no hyphen", "abc1", "abc1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := projectFromBeadsID(tt.beadsID)
+			if got != tt.want {
+				t.Errorf("projectFromBeadsID(%q) = %q, want %q", tt.beadsID, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFormatProjectBreakdown_Empty(t *testing.T) {
+	result := FormatProjectBreakdown(nil)
+	if result != "" {
+		t.Errorf("FormatProjectBreakdown(nil) = %q, want empty string", result)
+	}
+}
+
+func TestFormatProjectBreakdown_SingleProject(t *testing.T) {
+	items := []UnverifiedItem{
+		{BeadsID: "orch-go-abc1"},
+		{BeadsID: "orch-go-def2"},
+		{BeadsID: "orch-go-ghi3"},
+	}
+	result := FormatProjectBreakdown(items)
+	if result != " (orch-go: 3)" {
+		t.Errorf("FormatProjectBreakdown = %q, want %q", result, " (orch-go: 3)")
+	}
+}
+
+func TestFormatProjectBreakdown_MultipleProjects(t *testing.T) {
+	items := []UnverifiedItem{
+		{BeadsID: "orch-go-abc1"},
+		{BeadsID: "orch-go-def2"},
+		{BeadsID: "orch-go-ghi3"},
+		{BeadsID: "orch-go-jkl4"},
+		{BeadsID: "toolshed-mno5"},
+		{BeadsID: "toolshed-pqr6"},
+		{BeadsID: "toolshed-stu7"},
+		{BeadsID: "opencode-vwx8"},
+		{BeadsID: "opencode-yza9"},
+		{BeadsID: "opencode-bcd0"},
+	}
+	result := FormatProjectBreakdown(items)
+	// orch-go: 4 is highest, then opencode and toolshed tied at 3 (alphabetical)
+	expected := " (orch-go: 4, opencode: 3, toolshed: 3)"
+	if result != expected {
+		t.Errorf("FormatProjectBreakdown = %q, want %q", result, expected)
+	}
+}
+
+func TestProjectBreakdown_Counts(t *testing.T) {
+	items := []UnverifiedItem{
+		{BeadsID: "orch-go-abc1"},
+		{BeadsID: "orch-go-def2"},
+		{BeadsID: "pw-ghi3"},
+	}
+	counts := ProjectBreakdown(items)
+	if counts["orch-go"] != 2 {
+		t.Errorf("orch-go count = %d, want 2", counts["orch-go"])
+	}
+	if counts["pw"] != 1 {
+		t.Errorf("pw count = %d, want 1", counts["pw"])
+	}
+}
+
 func TestUnverifiedItem_Fields(t *testing.T) {
 	item := UnverifiedItem{
 		BeadsID:   "orch-go-abc",

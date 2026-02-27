@@ -3,6 +3,10 @@
 package verify
 
 import (
+	"fmt"
+	"sort"
+	"strings"
+
 	"github.com/dylan-conlin/orch-go/pkg/checkpoint"
 )
 
@@ -125,4 +129,62 @@ func CountUnverifiedWorkWithDir(projectDir string) (int, error) {
 		return 0, err
 	}
 	return len(items), nil
+}
+
+// ProjectBreakdown groups unverified items by project name extracted from beads IDs.
+// Returns a map from project name to count, sorted by count descending.
+func ProjectBreakdown(items []UnverifiedItem) map[string]int {
+	counts := make(map[string]int)
+	for _, item := range items {
+		project := projectFromBeadsID(item.BeadsID)
+		counts[project]++
+	}
+	return counts
+}
+
+// FormatProjectBreakdown returns a parenthesized per-project count string.
+// Example: " (orch-go: 4, toolshed: 3, opencode: 3)"
+// Returns empty string if items is empty.
+func FormatProjectBreakdown(items []UnverifiedItem) string {
+	if len(items) == 0 {
+		return ""
+	}
+
+	counts := ProjectBreakdown(items)
+
+	// Sort by count descending, then by project name for stability
+	type pc struct {
+		project string
+		count   int
+	}
+	sorted := make([]pc, 0, len(counts))
+	for p, c := range counts {
+		sorted = append(sorted, pc{p, c})
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].count != sorted[j].count {
+			return sorted[i].count > sorted[j].count
+		}
+		return sorted[i].project < sorted[j].project
+	})
+
+	parts := make([]string, len(sorted))
+	for i, s := range sorted {
+		parts[i] = fmt.Sprintf("%s: %d", s.project, s.count)
+	}
+	return " (" + strings.Join(parts, ", ") + ")"
+}
+
+// projectFromBeadsID extracts the project name from a beads ID.
+// Beads IDs follow the format: project-xxxx (e.g., "orch-go-3anf", "pw-ed7h").
+// The last hyphen-separated segment is the hash; everything before it is the project.
+func projectFromBeadsID(beadsID string) string {
+	if beadsID == "" {
+		return "unknown"
+	}
+	lastHyphen := strings.LastIndex(beadsID, "-")
+	if lastHyphen <= 0 {
+		return beadsID
+	}
+	return beadsID[:lastHyphen]
 }

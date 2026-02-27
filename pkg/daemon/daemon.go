@@ -616,21 +616,22 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 }
 
 func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*OnceResult, *Slot, error) {
-	// Session-level dedup: Check if there's an existing OpenCode session for this issue.
+	// Session-level dedup: Check if there's an existing OpenCode session OR tmux window.
 	// This prevents duplicate spawns when:
 	// 1. SpawnedIssueTracker TTL expires (5min/6h) but agent is still running
 	// 2. Status update to "in_progress" failed silently
 	// 3. Multiple daemon instances try to spawn the same issue
+	// 4. Claude CLI backend: agent runs in tmux without OpenCode session
 	if HasExistingSessionForBeadsID(issue.ID) {
 		if d.Config.Verbose {
-			fmt.Printf("  DEBUG: Skipping %s (existing OpenCode session found)\n", issue.ID)
+			fmt.Printf("  DEBUG: Skipping %s (existing session or tmux window found)\n", issue.ID)
 		}
 		return &OnceResult{
 			Processed: false,
 			Issue:     issue,
 			Skill:     skill,
 			Model:     inferredModel,
-			Message:   fmt.Sprintf("Existing session found for %s - skipping to prevent duplicate", issue.ID),
+			Message:   fmt.Sprintf("Existing session/window found for %s - skipping to prevent duplicate", issue.ID),
 		}, nil, nil
 	}
 

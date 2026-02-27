@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
 // SessionDedupConfig holds configuration for session deduplication.
@@ -123,9 +125,45 @@ func initDefaultSessionDedupChecker() *SessionDedupChecker {
 }
 
 // HasExistingSessionForBeadsID checks if there's an existing OpenCode session
-// for the given beads ID using the default checker.
+// OR tmux window for the given beads ID using the default checker.
 // This is the main entry point for session dedup checking in daemon.Once().
+//
+// Checks two layers:
+// 1. OpenCode API sessions (headless backend)
+// 2. Tmux windows across all sessions (Claude CLI backend)
+//
+// The tmux check is critical because Claude CLI spawns create tmux windows
+// WITHOUT OpenCode sessions. Without this, the entire session dedup layer
+// is bypassed for Claude backend spawns.
 func HasExistingSessionForBeadsID(beadsID string) bool {
+	if beadsID == "" {
+		return false
+	}
+
+	// Layer 1: Check OpenCode sessions (headless backend)
 	checker := initDefaultSessionDedupChecker()
-	return checker.HasExistingSession(beadsID)
+	if checker.HasExistingSession(beadsID) {
+		return true
+	}
+
+	// Layer 2: Check tmux windows (Claude CLI backend)
+	// Claude CLI spawns create tmux windows with beads ID in the window name
+	// but do NOT create OpenCode sessions, so Layer 1 misses them entirely.
+	if HasExistingTmuxWindowForBeadsID(beadsID) {
+		return true
+	}
+
+	return false
+}
+
+// HasExistingTmuxWindowForBeadsID checks if a tmux window with the given
+// beads ID exists in any tmux session (workers, orchestrator, meta-orchestrator).
+// Returns true if found, false otherwise. Fails-open on tmux errors.
+func HasExistingTmuxWindowForBeadsID(beadsID string) bool {
+	window, _, err := tmux.FindWindowByBeadsIDAllSessions(beadsID)
+	if err != nil {
+		// Fail-open: if tmux isn't running or has errors, allow spawn
+		return false
+	}
+	return window != nil
 }

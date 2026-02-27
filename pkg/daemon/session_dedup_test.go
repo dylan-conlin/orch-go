@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"testing"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
 func TestHasExistingSession(t *testing.T) {
@@ -222,5 +225,88 @@ func TestExtractBeadsIDFromSessionTitle_Additional(t *testing.T) {
 				t.Errorf("extractBeadsIDFromSessionTitle(%q) = %q, want %q", tt.title, got, tt.wantID)
 			}
 		})
+	}
+}
+
+// tmuxAvailable checks if tmux is installed and runnable.
+func tmuxAvailable() bool {
+	_, err := exec.LookPath("tmux")
+	return err == nil
+}
+
+func TestHasExistingTmuxWindowForBeadsID_NoWindow(t *testing.T) {
+	if !tmuxAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// A random beads ID that doesn't exist in any tmux window
+	got := HasExistingTmuxWindowForBeadsID("test-nonexistent-xyz-999")
+	if got {
+		t.Error("HasExistingTmuxWindowForBeadsID() = true for nonexistent beads ID, want false")
+	}
+}
+
+func TestHasExistingTmuxWindowForBeadsID_WindowExists(t *testing.T) {
+	if !tmuxAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test tmux session with workers- prefix (required by ListWorkersSessions)
+	// and a window named with a beads ID
+	testSession := "workers-test-dedup"
+	testBeadsID := "test-dedup-beads-abc123"
+	testWindowName := tmux.BuildWindowName("og-test-dedup-27feb", "investigation", testBeadsID)
+
+	// Create the session with a window named with the beads ID
+	cmd := exec.Command("tmux", "new-session", "-d", "-s", testSession, "-n", testWindowName)
+	if err := cmd.Run(); err != nil {
+		t.Skipf("Could not create test tmux session: %v", err)
+	}
+	// Ensure cleanup
+	defer exec.Command("tmux", "kill-session", "-t", testSession).Run()
+
+	// Now verify the tmux dedup check finds it
+	got := HasExistingTmuxWindowForBeadsID(testBeadsID)
+	if !got {
+		t.Error("HasExistingTmuxWindowForBeadsID() = false for existing tmux window, want true")
+	}
+}
+
+func TestHasExistingSessionForBeadsID_TmuxFallback(t *testing.T) {
+	if !tmuxAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Set up a mock OpenCode server that returns NO sessions
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]sessionResponse{})
+	}))
+	defer server.Close()
+
+	// Override the default checker to use our mock server
+	oldChecker := defaultSessionDedupChecker
+	defaultSessionDedupChecker = NewSessionDedupChecker(SessionDedupConfig{
+		ServerURL: server.URL,
+		MaxAge:    6 * time.Hour,
+	})
+	defer func() { defaultSessionDedupChecker = oldChecker }()
+
+	// Create a tmux window with a beads ID (workers- prefix required by ListWorkersSessions)
+	testSession := "workers-test-dedup-fallback"
+	testBeadsID := "test-dedup-fallback-xyz789"
+	testWindowName := tmux.BuildWindowName("og-test-fallback-27feb", "investigation", testBeadsID)
+
+	cmd := exec.Command("tmux", "new-session", "-d", "-s", testSession, "-n", testWindowName)
+	if err := cmd.Run(); err != nil {
+		t.Skipf("Could not create test tmux session: %v", err)
+	}
+	defer exec.Command("tmux", "kill-session", "-t", testSession).Run()
+
+	// The combined check should find the tmux window even though
+	// OpenCode reports no sessions (this is the exact bug scenario)
+	got := HasExistingSessionForBeadsID(testBeadsID)
+	if !got {
+		t.Error("HasExistingSessionForBeadsID() = false when OpenCode has no sessions but tmux window exists, want true")
 	}
 }

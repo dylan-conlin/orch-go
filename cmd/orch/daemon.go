@@ -12,6 +12,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -207,6 +208,16 @@ func daemonConfigFromFlags() daemon.Config {
 	return config
 }
 
+// verificationBreakdown returns a per-project breakdown string for verification messages.
+// Best-effort: returns empty string on error so the primary count always displays.
+func verificationBreakdown() string {
+	items, err := verify.ListUnverifiedWork()
+	if err != nil || len(items) == 0 {
+		return ""
+	}
+	return verify.FormatProjectBreakdown(items)
+}
+
 // seedVerificationTracker seeds the tracker with the backlog count.
 // Called after daemon construction, before entering the main loop.
 func seedVerificationTracker(d *daemon.Daemon) {
@@ -222,12 +233,13 @@ func seedVerificationTracker(d *daemon.Daemon) {
 
 	if count > 0 {
 		d.VerificationTracker.SeedFromBacklog(count)
-		fmt.Printf("  Verification backlog: %d unverified completions from previous sessions\n", count)
+		breakdown := verificationBreakdown()
+		fmt.Printf("  Verification backlog: %d unverified completions from previous sessions%s\n", count, breakdown)
 
 		if d.VerificationTracker.IsPaused() {
 			status := d.VerificationTracker.Status()
-			fmt.Printf("  Warning: Verification pause: backlog exceeds threshold (%d/%d)\n",
-				count, status.Threshold)
+			fmt.Printf("  Warning: Verification pause: backlog exceeds threshold (%d/%d)%s\n",
+				count, status.Threshold, breakdown)
 			fmt.Println("  Run 'orch daemon resume' after reviewing completed work")
 		}
 	}
@@ -395,8 +407,9 @@ func runDaemonLoop() error {
 		if d.VerificationTracker != nil {
 			verifyStatus := d.VerificationTracker.Status()
 			if d.VerificationTracker.IsPaused() {
-				fmt.Printf("[%s] Verification pause: %d unverified completions, threshold is %d\n",
-					timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
+				breakdown := verificationBreakdown()
+				fmt.Printf("[%s] Verification pause: %d unverified completions, threshold is %d%s\n",
+					timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
 				fmt.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work to continue\n", timestamp)
 				time.Sleep(config.PollInterval)
 				continue
@@ -573,8 +586,9 @@ func runDaemonLoop() error {
 					if d.VerificationTracker != nil {
 						if shouldPause := d.VerificationTracker.RecordCompletion(); shouldPause {
 							verifyStatus := d.VerificationTracker.Status()
-							fmt.Printf("[%s] ⚠️  Verification threshold reached: %d/%d agents ready for review\n",
-								timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
+							breakdown := verificationBreakdown()
+							fmt.Printf("[%s] ⚠️  Verification threshold reached: %d/%d agents ready for review%s\n",
+								timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
 							fmt.Printf("[%s]    Daemon will pause spawning on next cycle\n", timestamp)
 							fmt.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work\n", timestamp)
 						}
@@ -853,8 +867,9 @@ func runDaemonDryRun() error {
 	if d.VerificationTracker != nil {
 		verifyStatus := d.VerificationTracker.Status()
 		if d.VerificationTracker.IsPaused() {
-			fmt.Printf("[DRY-RUN] Verification pause: %d unverified completions, threshold is %d\n",
-				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
+			breakdown := verificationBreakdown()
+			fmt.Printf("[DRY-RUN] Verification pause: %d unverified completions, threshold is %d%s\n",
+				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
 		} else if verifyStatus.IsEnabled() {
 			fmt.Printf("[DRY-RUN] Verification check: %d/%d unverified completions\n",
 				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
@@ -914,8 +929,9 @@ func runDaemonOnce() error {
 	if d.VerificationTracker != nil {
 		verifyStatus := d.VerificationTracker.Status()
 		if d.VerificationTracker.IsPaused() {
-			fmt.Printf("Verification pause: %d unverified completions, threshold is %d\n",
-				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
+			breakdown := verificationBreakdown()
+			fmt.Printf("Verification pause: %d unverified completions, threshold is %d%s\n",
+				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
 			fmt.Println("  Run 'orch daemon resume' after reviewing completed work to continue")
 		} else if verifyStatus.IsEnabled() {
 			fmt.Printf("Verification check: %d/%d unverified completions, proceeding\n",
