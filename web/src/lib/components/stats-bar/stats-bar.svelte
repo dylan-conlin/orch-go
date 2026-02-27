@@ -16,7 +16,6 @@
 	import { servers } from '$lib/stores/servers';
 	import { beads, reviewQueue } from '$lib/stores/beads';
 	import { daemon, getDaemonEmoji, getDaemonCapacity } from '$lib/stores/daemon';
-	import { verification, type VerificationOverrideTrend } from '$lib/stores/verification';
 	import { dashboardMode } from '$lib/stores/dashboard-mode';
 	import { filters, orchestratorContext, type TimeFilter } from '$lib/stores/context';
 
@@ -49,15 +48,6 @@
 		}
 	}
 
-	function formatOverrideTrend(trend?: VerificationOverrideTrend): string {
-		if (!trend) return '';
-		const arrow = trend.direction === 'up' ? '↗' : trend.direction === 'down' ? '↘' : '→';
-		const delta = Math.abs(trend.delta);
-		if (delta === 0) {
-			return `${arrow} flat vs prior ${trend.window_days}d`;
-		}
-		return `${arrow} ${delta} vs prior ${trend.window_days}d`;
-	}
 </script>
 
 <!-- Compact Stats Bar with Mode Toggle -->
@@ -277,19 +267,22 @@
 			</Tooltip.Root>
 		{/if}
 
-		<!-- Verification status indicator -->
-		{#if $verification}
+		<!-- Verification status indicator (uses daemon API completions_since_verification) -->
+		{#if $daemon?.verification}
+			{@const v = $daemon.verification}
+			{@const vCount = v.completions_since_verification}
+			{@const vThreshold = v.threshold}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
 						<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="verification-indicator">
 							<span class="text-lg">🛡️</span>
 							<span class="inline-flex items-baseline gap-1">
-								<span class="text-xl font-bold" class:text-amber-500={$verification.unverified_count > 0}>
-									{$verification.unverified_count}
+								<span class="text-xl font-bold" class:text-amber-500={vCount > 0}>
+									{vCount}/{vThreshold}
 								</span>
-								<span class="text-xs text-muted-foreground">unverified</span>
-								{#if $verification.daemon_paused}
+								<span class="text-xs text-muted-foreground">since verify</span>
+								{#if v.is_paused}
 									<span class="text-xs text-amber-500">paused</span>
 								{/if}
 							</span>
@@ -297,19 +290,14 @@
 					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
-					<p>{$verification.unverified_count} completion{$verification.unverified_count === 1 ? '' : 's'} awaiting verification</p>
-					{#if $verification.heartbeat_ago}
-						<p class="text-xs text-muted-foreground">Heartbeat: {$verification.heartbeat_ago} ago</p>
-					{:else}
-						<p class="text-xs text-muted-foreground">Heartbeat: none recorded</p>
+					<p>{vCount} completion{vCount === 1 ? '' : 's'} since last verification (threshold: {vThreshold})</p>
+					{#if v.remaining_before_pause > 0}
+						<p class="text-xs text-muted-foreground">{v.remaining_before_pause} remaining before daemon pauses</p>
+					{:else if v.is_paused}
+						<p class="text-xs text-amber-500">Daemon paused — verification needed</p>
 					{/if}
-					{#if $verification.daemon_running}
-						<p class="text-xs text-muted-foreground">Daemon: {$verification.daemon_status}{#if $verification.daemon_paused} (paused){/if}</p>
-					{:else}
-						<p class="text-xs text-muted-foreground">Daemon: stopped</p>
-					{/if}
-					{#if $verification.override_trend}
-						<p class="text-xs text-muted-foreground">Overrides: {$verification.override_trend.current_count} ({formatOverrideTrend($verification.override_trend)})</p>
+					{#if v.last_verification_ago}
+						<p class="text-xs text-muted-foreground">Last verified: {v.last_verification_ago} ago</p>
 					{/if}
 				</Tooltip.Content>
 			</Tooltip.Root>
