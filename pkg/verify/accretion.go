@@ -32,6 +32,24 @@ type FileAccretionInfo struct {
 	Severity     string // "critical" (>1500), "warning" (>800), or "ok"
 }
 
+// nonSourceDirs are directory path segments excluded from accretion checks.
+// These contain tool files, build output, or vendored code—not application source.
+// Keep in sync with skipBloatDirs/buildOutputPrefixes in cmd/orch/hotspot.go.
+var nonSourceDirs = []string{
+	"vendor/",
+	"node_modules/",
+	"dist/",
+	"build/",
+	".opencode/",
+	".orch/",
+	".beads/",
+	".svelte-kit/",
+	"__pycache__/",
+	".next/",
+	".nuxt/",
+	".output/",
+}
+
 // Accretion thresholds (matches hotspot analysis in cmd/orch/hotspot.go).
 const (
 	AccretionWarningThreshold  = 800  // Files >800 lines trigger warnings
@@ -240,13 +258,12 @@ func isSourceFile(path string) bool {
 	// Normalize path separators for consistent matching
 	normalizedPath := filepath.ToSlash(path)
 
-	// Exclude vendor and dependencies
-	// Check for these directories anywhere in the path (start, middle, or as a segment)
-	if strings.Contains(normalizedPath, "vendor/") ||
-		strings.Contains(normalizedPath, "node_modules/") ||
-		strings.Contains(normalizedPath, "dist/") ||
-		strings.Contains(normalizedPath, "build/") {
-		return false
+	// Exclude vendor, dependencies, and non-source directories.
+	// Keep in sync with skipBloatDirs/buildOutputPrefixes in cmd/orch/hotspot.go.
+	for _, dir := range nonSourceDirs {
+		if strings.Contains(normalizedPath, dir) {
+			return false
+		}
 	}
 
 	// Exclude generated files

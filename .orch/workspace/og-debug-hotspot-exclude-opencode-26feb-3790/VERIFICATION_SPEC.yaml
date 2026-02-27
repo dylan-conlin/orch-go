@@ -1,0 +1,22 @@
+verification:
+  type: automated
+  commands:
+    - name: "Unit tests - accretion + isSourceFile"
+      command: "go test ./pkg/verify/ -run 'TestVerifyAccretion|TestIsSourceFile|TestGetFileLineCount' -v"
+      expect: "PASS"
+      note: "Requires temporarily moving untracked test files from concurrent agents: architectural_choices_test.go, synthesis_parser_test.go"
+
+    - name: "isSourceFile excludes .opencode/plugin/"
+      command: "go test ./pkg/verify/ -run 'TestIsSourceFile/.opencode' -v"
+      expect: "PASS"
+
+  smoke_test:
+    description: "Verify .opencode/plugin/ files do not appear in hotspot output"
+    command: "orch hotspot --json | python3 -c \"import json,sys; data=json.load(sys.stdin); matches=[h for h in data['hotspots'] if '.opencode' in h['path']]; print('PASS: no .opencode matches' if not matches else f'FAIL: {matches}')\""
+    expect: "PASS: no .opencode matches"
+    note: "Requires orch binary to build (may fail due to concurrent extraction.go changes)"
+
+  reproduction_verified:
+    original_bug: ".opencode/plugin/ files counted as source in accretion verification"
+    verification: "isSourceFile('.opencode/plugin/coaching.ts') now returns false (was true before fix)"
+    test_coverage: "8 new test cases for non-source directory exclusions"

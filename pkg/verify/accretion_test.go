@@ -427,6 +427,17 @@ func TestIsSourceFile(t *testing.T) {
 		{"node_modules/lib/file.ts", false},
 		{"dist/bundle.js", false},
 		{"build/output.go", false},
+		// Tool/workspace directories (deployed copies, not source code)
+		{".opencode/plugin/coaching.ts", false},
+		{".opencode/plugin/slow-find-warn.ts", false},
+		{".orch/workspace/agent-123/SYNTHESIS.md", false},
+		{".beads/hooks/on_close", false},
+		// Build output directories
+		{".svelte-kit/output/server/chunks/index.js", false},
+		{"__pycache__/module.py", false},
+		{".next/server/pages/index.js", false},
+		{".nuxt/dist/server.js", false},
+		{".output/server/index.js", false},
 		{"types.gen.go", false},
 		{"api.gen.ts", false},
 		{"proto.pb.go", false},
