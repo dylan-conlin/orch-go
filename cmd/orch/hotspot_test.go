@@ -154,7 +154,7 @@ func TestShouldCountFile(t *testing.T) {
 		{"package.json", false},
 		{"go.mod", false},
 
-		// Should not count - build output directories
+		// Should not count - build output directories (root-level)
 		{".svelte-kit/output/server/chunks/index4.js", false},
 		{".svelte-kit/output/server/index.js", false},
 		{"dist/bundle.js", false},
@@ -163,6 +163,14 @@ func TestShouldCountFile(t *testing.T) {
 		{".next/server/pages/index.js", false},
 		{".nuxt/dist/server.js", false},
 		{".output/server/index.mjs", false},
+
+		// Should not count - build output directories (nested under parent)
+		{"web/.svelte-kit/output/server/chunks/index4.js", false},
+		{"web/.svelte-kit/generated/root.js", false},
+		{"apps/web/dist/bundle.js", false},
+		{"packages/ui/build/output.js", false},
+		{"apps/web/.next/server/pages/index.js", false},
+		{"frontend/.nuxt/dist/server.js", false},
 
 		// Should not count - tool/workspace directories
 		{".opencode/plugin/coaching.ts", false},
@@ -784,6 +792,7 @@ func TestAnalyzeBloatFiles_SkipsBuildOutputDirs(t *testing.T) {
 	// Create large files in directories that should be SKIPPED
 	skipDirFiles := map[string]string{
 		".svelte-kit/output/server/chunks/index4.js": "js",
+		"web/.svelte-kit/generated/root.js":          "js", // nested under parent dir
 		".opencode/plugin/coaching.ts":               "ts",
 		"dist/bundle.js":                             "js",
 		"build/output.css":                           "css",
@@ -844,23 +853,61 @@ func TestSkipBloatDirs_Coverage(t *testing.T) {
 	}
 }
 
-// TestBuildOutputPrefixes_Coverage verifies that all required prefixes are in the list.
-func TestBuildOutputPrefixes_Coverage(t *testing.T) {
+// TestContainsSkippedDir verifies path-segment matching for nested build output dirs.
+func TestContainsSkippedDir(t *testing.T) {
+	tests := []struct {
+		path     string
+		expected bool
+	}{
+		// Root-level build output
+		{".svelte-kit/output/server/index.js", true},
+		{"dist/bundle.js", true},
+		{"node_modules/pkg/index.js", true},
+		{"vendor/github.com/pkg/errors.go", true},
+		{".opencode/plugin/coaching.ts", true},
+		{".orch/workspace/file.go", true},
+		{".beads/issues.jsonl", true},
+
+		// Nested build output (the key fix)
+		{"web/.svelte-kit/output/server/chunks/index4.js", true},
+		{"web/.svelte-kit/generated/root.js", true},
+		{"apps/web/dist/bundle.js", true},
+		{"packages/ui/build/output.js", true},
+		{"apps/web/.next/server/pages/index.js", true},
+		{"frontend/.nuxt/dist/server.js", true},
+		{"deeply/nested/path/.svelte-kit/output/foo.js", true},
+
+		// Source files (should NOT be skipped)
+		{"cmd/orch/main.go", false},
+		{"pkg/spawn/spawn.go", false},
+		{"web/src/components/App.tsx", false},
+		{"internal/service/handler.go", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			result := containsSkippedDir(tt.path)
+			if result != tt.expected {
+				t.Errorf("containsSkippedDir(%q) = %v, want %v", tt.path, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestAdditionalSkipPrefixes_Coverage verifies that multi-segment prefixes are present.
+func TestAdditionalSkipPrefixes_Coverage(t *testing.T) {
 	requiredPrefixes := []string{
-		"vendor/", ".svelte-kit/", "dist/", "build/", "__pycache__/",
-		".opencode/", ".orch/", ".beads/", ".next/", ".nuxt/", ".output/",
 		"public/assets/",
 	}
 	for _, prefix := range requiredPrefixes {
 		found := false
-		for _, p := range buildOutputPrefixes {
+		for _, p := range additionalSkipPrefixes {
 			if p == prefix {
 				found = true
 				break
 			}
 		}
 		if !found {
-			t.Errorf("buildOutputPrefixes missing %q", prefix)
+			t.Errorf("additionalSkipPrefixes missing %q", prefix)
 		}
 	}
 }

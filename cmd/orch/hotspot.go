@@ -54,21 +54,10 @@ var skipBloatDirs = map[string]bool{
 	".beads":    true,
 }
 
-// buildOutputPrefixes are path prefixes for directories that contain build output,
-// tool files, or vendored code. Used by shouldCountFileWithExclusions to filter
-// paths from git log (which bypass the filepath.Walk directory skip).
-var buildOutputPrefixes = []string{
-	"vendor/",
-	".svelte-kit/",
-	"dist/",
-	"build/",
-	"__pycache__/",
-	".opencode/",
-	".orch/",
-	".beads/",
-	".next/",
-	".nuxt/",
-	".output/",
+// additionalSkipPrefixes are multi-segment path prefixes that can't be expressed
+// as single directory names. Used alongside containsSkippedDir for defense-in-depth
+// filtering of git log paths.
+var additionalSkipPrefixes = []string{
 	"public/assets/",
 }
 
@@ -294,6 +283,20 @@ func matchesExclusionPattern(path, pattern string) bool {
 	return false
 }
 
+// containsSkippedDir returns true if any directory component in the path
+// matches a directory name in skipBloatDirs. This handles nested build output
+// directories (e.g., "web/.svelte-kit/output/foo.js") that prefix-based checks miss.
+func containsSkippedDir(path string) bool {
+	dir := filepath.Dir(path)
+	for dir != "." && dir != "/" {
+		if skipBloatDirs[filepath.Base(dir)] {
+			return true
+		}
+		dir = filepath.Dir(dir)
+	}
+	return false
+}
+
 // shouldCountFileWithExclusions returns true if the file should be counted in hotspot analysis,
 // considering the provided exclusion patterns.
 func shouldCountFileWithExclusions(path string, exclusions []string) bool {
@@ -312,7 +315,12 @@ func shouldCountFileWithExclusions(path string, exclusions []string) bool {
 	if strings.Contains(path, "/generated/") {
 		return false
 	}
-	for _, prefix := range buildOutputPrefixes {
+	// Check if any path segment is a build output / tool directory
+	if containsSkippedDir(path) {
+		return false
+	}
+	// Check additional multi-segment prefixes
+	for _, prefix := range additionalSkipPrefixes {
 		if strings.HasPrefix(path, prefix) {
 			return false
 		}
