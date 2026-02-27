@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -63,6 +64,111 @@ func (c *contextCache) getCachedCwd() (string, error) {
 	return cwd, nil
 }
 
+// invalidate forces the next getCachedCwd to fetch fresh data.
+func (c *contextCache) invalidate() {
+	c.mu.Lock()
+	c.fetchedAt = time.Time{} // Zero time = always stale
+	c.mu.Unlock()
+}
+
+// --- Context SSE Broadcaster ---
+// Pushes context changes to connected dashboard clients in real-time,
+// eliminating the need for frequent polling.
+
+// contextBroadcaster manages SSE clients subscribed to context changes.
+type contextBroadcaster struct {
+	mu      sync.RWMutex
+	clients map[chan ContextAPIResponse]struct{}
+}
+
+var globalContextBroadcaster = &contextBroadcaster{
+	clients: make(map[chan ContextAPIResponse]struct{}),
+}
+
+// subscribe registers a client channel for context change events.
+func (b *contextBroadcaster) subscribe() chan ContextAPIResponse {
+	ch := make(chan ContextAPIResponse, 1) // Buffered to prevent blocking broadcaster
+	b.mu.Lock()
+	b.clients[ch] = struct{}{}
+	b.mu.Unlock()
+	return ch
+}
+
+// unsubscribe removes a client channel.
+func (b *contextBroadcaster) unsubscribe(ch chan ContextAPIResponse) {
+	b.mu.Lock()
+	delete(b.clients, ch)
+	b.mu.Unlock()
+	close(ch)
+}
+
+// broadcast sends a context change to all connected clients.
+func (b *contextBroadcaster) broadcast(ctx ContextAPIResponse) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	for ch := range b.clients {
+		// Non-blocking send: drop if client is behind
+		select {
+		case ch <- ctx:
+		default:
+		}
+	}
+}
+
+// --- Tmux Follower Integration ---
+// The follower polls tmux at 500ms and pushes context changes via SSE.
+
+var globalContextFollower *tmux.FollowerState
+
+// startContextFollower starts the tmux follower that detects project changes
+// and pushes them to connected SSE clients.
+func startContextFollower() {
+	opts := tmux.DefaultFollowerOptions()
+	// Reduce stability threshold to 1 for faster detection.
+	// The old threshold of 2 added 500ms latency to prevent "flicker",
+	// but with SSE push the frontend handles rapid changes gracefully.
+	opts.StabilityThreshold = 1
+
+	globalContextFollower = tmux.NewFollower(opts)
+
+	globalContextFollower.SetOnChange(func(event tmux.ProjectChangeEvent) {
+		// Invalidate the cache so GET /api/context returns fresh data immediately
+		globalContextCache.invalidate()
+
+		// Build the context response
+		resp := buildContextResponse(event.Cwd, event.ProjectDir)
+
+		// Push to all connected SSE clients
+		globalContextBroadcaster.broadcast(resp)
+
+		fmt.Printf("[context-follower] Project changed: %s → %s\n",
+			filepath.Base(event.PrevDir), filepath.Base(event.ProjectDir))
+	})
+
+	globalContextFollower.SetOnError(func(err error) {
+		// Silently ignore errors - tmux may not be available
+	})
+
+	globalContextFollower.Start()
+	fmt.Println("Started context follower (polling tmux every 500ms, SSE push enabled)")
+}
+
+// buildContextResponse creates a ContextAPIResponse from cwd and projectDir.
+func buildContextResponse(cwd, projectDir string) ContextAPIResponse {
+	resp := ContextAPIResponse{
+		Cwd:        cwd,
+		ProjectDir: projectDir,
+	}
+	if projectDir != "" {
+		resp.Project = filepath.Base(projectDir)
+		configs := tmux.DefaultMultiProjectConfigs()
+		resp.IncludedProjects = tmux.GetIncludedProjects(resp.Project, configs)
+	}
+	return resp
+}
+
+// --- HTTP Handlers ---
+
 // handleContext returns the current orchestrator context for dashboard filtering.
 // This enables "follow the orchestrator" mode where the dashboard auto-filters
 // to show only agents from the project the orchestrator is currently working in.
@@ -105,16 +211,102 @@ func handleContext(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleContextNotify accepts a POST to force an immediate context refresh.
+// Called by the tmux after-select-window hook for instant notification.
+// This bypasses the 500ms tmux polling interval.
+func handleContextNotify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Invalidate cache to force fresh tmux query
+	globalContextCache.invalidate()
+
+	// Fetch fresh context
+	cwd, err := tmux.GetTmuxCwd(tmux.OrchestratorSessionName)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "error": err.Error()})
+		return
+	}
+
+	// Update cache with fresh data
+	globalContextCache.mu.Lock()
+	globalContextCache.cwd = cwd
+	globalContextCache.fetchedAt = time.Now()
+	globalContextCache.mu.Unlock()
+
+	// Build and broadcast the context
+	projectDir := findProjectDirInline(cwd)
+	resp := buildContextResponse(cwd, projectDir)
+	globalContextBroadcaster.broadcast(resp)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"project": resp.Project,
+	})
+}
+
+// handleContextEvents streams context changes via SSE.
+// Clients subscribe and receive real-time notifications when the orchestrator
+// switches tmux windows (and thus projects).
+func handleContextEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Subscribe to context changes
+	ch := globalContextBroadcaster.subscribe()
+	defer globalContextBroadcaster.unsubscribe(ch)
+
+	// Send the current context immediately so the client has initial state
+	cwd, err := globalContextCache.getCachedCwd()
+	if err == nil {
+		projectDir := findProjectDirInline(cwd)
+		initialCtx := buildContextResponse(cwd, projectDir)
+		data, _ := json.Marshal(initialCtx)
+		fmt.Fprintf(w, "event: context.changed\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	ctx := r.Context()
+
+	// Stream context changes to client
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ctxResp, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(ctxResp)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "event: context.changed\ndata: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
+}
+
 // findProjectDir walks up from cwd to find a directory containing .beads/ or .orch/.
 // This is a local copy to avoid import cycle with pkg/tmux.
 func findProjectDir(cwd string) string {
-	// Delegate to tmux package's implementation
-	opts := tmux.DefaultFollowerOptions()
-	follower := tmux.NewFollower(opts)
-	_ = follower // We just need the package to be imported for findProjectDir
-
-	// For now, use a simple inline implementation to avoid export issues
-	// This duplicates the logic but avoids circular dependencies
 	return findProjectDirInline(cwd)
 }
 

@@ -239,6 +239,9 @@ func runServe(portNum int) error {
 	// Initialize timeline cache
 	globalTimelineCache = newTimelineCache()
 
+	// Start context follower for real-time project change detection via SSE push
+	startContextFollower()
+
 	mux := http.NewServeMux()
 
 	// CORS middleware wrapper
@@ -334,6 +337,12 @@ func runServe(portNum int) error {
 	// GET /api/daemon - returns daemon status (running, capacity, last poll)
 	mux.HandleFunc("/api/daemon", corsHandler(handleDaemon))
 
+	// POST /api/daemon/resume - write resume signal to unpause daemon
+	mux.HandleFunc("/api/daemon/resume", corsHandler(handleDaemonResume))
+
+	// POST /api/issues/close - close a beads issue and notify daemon
+	mux.HandleFunc("/api/issues/close", corsHandler(handleCloseIssue))
+
 	// GET /api/verification - verification status summary
 	mux.HandleFunc("/api/verification", corsHandler(handleVerification))
 
@@ -382,6 +391,12 @@ func runServe(portNum int) error {
 
 	// GET /api/context - returns current tmux cwd and resolved projects for "follow orchestrator" filtering
 	mux.HandleFunc("/api/context", corsHandler(handleContext))
+
+	// POST /api/context/notify - webhook for tmux hook to trigger instant context refresh
+	mux.HandleFunc("/api/context/notify", corsHandler(handleContextNotify))
+
+	// GET /api/events/context - SSE stream for real-time context changes
+	mux.HandleFunc("/api/events/context", corsHandler(handleContextEvents))
 
 	// GET /api/coaching - returns orchestrator behavioral coaching metrics
 	mux.HandleFunc("/api/coaching", corsHandler(handleCoaching))

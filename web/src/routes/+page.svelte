@@ -132,9 +132,9 @@
 		// Load section state from localStorage (sync, instant)
 		loadSectionState();
 
-		// Start context polling if followOrchestrator is enabled
+		// Start context SSE for real-time follow mode (replaces 2s polling)
 		if ($filters.followOrchestrator) {
-			orchestratorContext.startPolling(2000); // Poll every 2 seconds
+			orchestratorContext.startPolling(); // Now uses SSE push internally
 		}
 
 		// Set up filter query string callback for SSE-triggered fetches
@@ -226,11 +226,11 @@
 		orchestratorContext.stopPolling();
 	});
 
-	// React to followOrchestrator changes - start/stop context polling
+	// React to followOrchestrator changes - start/stop context SSE
 	$: {
 		if (typeof window !== 'undefined') {
 			if ($filters.followOrchestrator) {
-				orchestratorContext.startPolling(2000);
+				orchestratorContext.startPolling(); // Now uses SSE push internally
 			} else {
 				orchestratorContext.stopPolling();
 			}

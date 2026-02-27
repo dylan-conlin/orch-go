@@ -56,17 +56,19 @@ function saveFilterState(state: FilterState) {
 	}
 }
 
-// Context store
+// Context store - now uses SSE push for real-time updates
 function createContextStore() {
 	const { subscribe, set } = writable<OrchestratorContext>({});
 
-	let pollInterval: ReturnType<typeof setInterval> | null = null;
+	let eventSource: EventSource | null = null;
+	let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+	let fallbackPollInterval: ReturnType<typeof setInterval> | null = null;
 
 	return {
 		subscribe,
 		set,
 
-		// Fetch current context from API
+		// Fetch current context from API (used for initial load and fallback)
 		async fetch(): Promise<void> {
 			try {
 				const response = await fetch(`${API_BASE}/api/context`);
@@ -81,25 +83,85 @@ function createContextStore() {
 			}
 		},
 
-		// Start polling for context changes (500ms default)
-		startPolling(intervalMs: number = 500): void {
-			if (pollInterval) return;
-			
-			// Initial fetch
-			this.fetch();
-			
-			// Poll at interval
-			pollInterval = setInterval(() => {
-				this.fetch();
-			}, intervalMs);
+		// Retry: force a fresh fetch (used by work-graph retry button)
+		async retry(): Promise<void> {
+			return this.fetch();
 		},
 
-		// Stop polling
-		stopPolling(): void {
-			if (pollInterval) {
-				clearInterval(pollInterval);
-				pollInterval = null;
+		// Connect to SSE for real-time context push notifications.
+		// Falls back to polling at a slow interval if SSE fails.
+		connectSSE(): void {
+			if (eventSource) return; // Already connected
+
+			eventSource = new EventSource(`${API_BASE}/api/events/context`);
+
+			eventSource.addEventListener('context.changed', (event: MessageEvent) => {
+				try {
+					const data = JSON.parse(event.data);
+					set(data);
+				} catch (e) {
+					console.error('Failed to parse context event:', e);
+				}
+			});
+
+			eventSource.onerror = () => {
+				// SSE disconnected - clean up and fall back to polling
+				eventSource?.close();
+				eventSource = null;
+
+				// Start fallback polling
+				this.startFallbackPolling();
+
+				// Try to reconnect SSE after delay
+				if (reconnectTimeout) clearTimeout(reconnectTimeout);
+				reconnectTimeout = setTimeout(() => {
+					this.stopFallbackPolling();
+					this.connectSSE();
+				}, 5000);
+			};
+		},
+
+		// Disconnect SSE and stop all polling
+		disconnectSSE(): void {
+			if (reconnectTimeout) {
+				clearTimeout(reconnectTimeout);
+				reconnectTimeout = null;
 			}
+			if (eventSource) {
+				eventSource.close();
+				eventSource = null;
+			}
+			this.stopFallbackPolling();
+		},
+
+		// Start slow fallback polling (30s) - only used when SSE is unavailable
+		startFallbackPolling(): void {
+			if (fallbackPollInterval) return;
+			fallbackPollInterval = setInterval(() => {
+				this.fetch();
+			}, 30000);
+		},
+
+		// Stop fallback polling
+		stopFallbackPolling(): void {
+			if (fallbackPollInterval) {
+				clearInterval(fallbackPollInterval);
+				fallbackPollInterval = null;
+			}
+		},
+
+		// Legacy: Start polling for context changes (kept for backwards compat)
+		// Now just connects SSE + starts slow fallback
+		startPolling(intervalMs: number = 2000): void {
+			// Initial fetch for immediate data
+			this.fetch();
+			// Connect SSE for real-time updates
+			this.connectSSE();
+		},
+
+		// Legacy: Stop polling (kept for backwards compat)
+		stopPolling(): void {
+			this.disconnectSSE();
 		},
 	};
 }
