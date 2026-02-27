@@ -46,6 +46,41 @@ func TestExtractKeywords(t *testing.T) {
 			wantWords: []string{"spawn", "context", "generation"},
 			notWords:  []string{"fix", "the", "to"}, // "include" is not a stop word
 		},
+		{
+			name:      "strips architect skill prefix",
+			task:      "Architect: Redesign pricing comparison KPIs",
+			maxWords:  3,
+			wantWords: []string{"pricing", "comparison", "kpis"},
+			notWords:  []string{"architect", "redesign"}, // skill name and action verb
+		},
+		{
+			name:      "strips debug skill prefix",
+			task:      "Debug: Fix spawn context kb relevance",
+			maxWords:  3,
+			wantWords: []string{"spawn", "context", "relevance"},
+			notWords:  []string{"debug"}, // skill name stripped
+		},
+		{
+			name:      "strips investigate skill prefix",
+			task:      "Investigate: Why toolshed metrics are inaccurate",
+			maxWords:  5,
+			wantWords: []string{"toolshed", "metrics", "inaccurate"},
+			notWords:  []string{"investigate"}, // skill name stripped
+		},
+		{
+			name:      "filters skill names as stop words without prefix",
+			task:      "architect review of spawn refactor plan",
+			maxWords:  5,
+			wantWords: []string{"review", "spawn", "plan"},
+			notWords:  []string{"architect", "refactor"}, // skill name and action verb
+		},
+		{
+			name:      "preserves domain keywords when no skill prefix",
+			task:      "Add user authentication to the web dashboard",
+			maxWords:  3,
+			wantWords: []string{"user", "authentication", "web"},
+			notWords:  []string{"add"}, // "add" is a stop word
+		},
 	}
 
 	for _, tt := range tests {

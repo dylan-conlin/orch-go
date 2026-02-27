@@ -1108,14 +1108,19 @@ func ValidateAndWriteContext(cfg *spawn.Config, force bool) (minimalPrompt strin
 	// Record orientation frame in beads comments at spawn time.
 	// Use OrientationFrame (issue description) if available for richer context;
 	// fall back to Task (issue title) for manual spawns without separate framing.
+	// Skip writing if a FRAME comment already exists (e.g., added by orchestrator before spawn).
 	if !cfg.NoTrack && !cfg.IsOrchestrator && !cfg.IsMetaOrchestrator && cfg.BeadsID != "" {
-		frame := strings.TrimSpace(cfg.OrientationFrame)
-		if frame == "" {
-			frame = strings.TrimSpace(cfg.Task)
-		}
-		if frame != "" {
-			if err := addBeadsComment(cfg.BeadsID, fmt.Sprintf("FRAME: %s", frame)); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to add frame comment: %v\n", err)
+		existingFrame := spawn.ExtractFrameFromBeadsComments(cfg.BeadsID)
+		if existingFrame == "" {
+			// No existing FRAME — write one from OrientationFrame or Task
+			frame := strings.TrimSpace(cfg.OrientationFrame)
+			if frame == "" {
+				frame = strings.TrimSpace(cfg.Task)
+			}
+			if frame != "" {
+				if err := addBeadsComment(cfg.BeadsID, fmt.Sprintf("FRAME: %s", frame)); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to add frame comment: %v\n", err)
+				}
 			}
 		}
 	}

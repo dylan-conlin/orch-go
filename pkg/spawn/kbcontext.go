@@ -92,21 +92,45 @@ type StalenessResult struct {
 	LastUpdated  string   // The model's Last Updated date
 }
 
+// regexSkillPrefix matches "SkillName:" prefix patterns at the start of task titles.
+// Many task titles follow the form "Architect: Redesign pricing KPIs" where the skill
+// name is a prefix. Stripping this prevents skill names from polluting kb context queries.
+var regexSkillPrefix = regexp.MustCompile(`(?i)^(architect|investigation|investigate|debug|debugging|research|audit|feature[- ]?impl|systematic[- ]?debugging|codebase[- ]?audit|design[- ]?session|reliability[- ]?testing|issue[- ]?creation)\s*[:]\s*`)
+
 // ExtractKeywords extracts meaningful keywords from a task description for kb context query.
 // Uses the same stop word filtering as generateSlug but returns more words for better search.
+// Strips skill name prefixes (e.g., "Architect: Redesign pricing KPIs" → "Redesign pricing KPIs")
+// and filters out skill-related terms that would match infrastructure knowledge instead of
+// domain-specific topics.
 func ExtractKeywords(task string, maxWords int) string {
-	// Stop words to exclude
+	// Strip "Skill:" prefix pattern — these match infrastructure knowledge, not domain topics
+	cleaned := regexSkillPrefix.ReplaceAllString(task, "")
+
+	// Stop words to exclude — includes common articles, verbs, AND skill/infrastructure
+	// terms that match orch-go knowledge entries instead of task-specific domain topics
 	stopWords := map[string]bool{
+		// Articles and conjunctions
 		"the": true, "a": true, "an": true, "and": true, "or": true,
+		// Prepositions
 		"for": true, "to": true, "in": true, "on": true, "at": true,
+		// Be verbs
 		"is": true, "are": true, "was": true, "were": true, "be": true,
+		// Demonstratives and pronouns
 		"this": true, "that": true, "with": true, "from": true, "of": true,
+		// Common action verbs (already present)
 		"add": true, "implement": true, "create": true, "update": true, "fix": true,
 		"new": true, "should": true, "can": true, "will": true, "need": true,
+		// Skill names — these match kb entries about the skill itself,
+		// not about the domain the task targets
+		"architect": true, "investigation": true, "investigate": true,
+		"debug": true, "debugging": true, "research": true, "audit": true,
+		"feature": true, "impl": true, "systematic": true, "quick": true,
+		// Common action verbs used as task prefixes that match infrastructure decisions
+		"redesign": true, "refactor": true, "optimize": true, "analyze": true,
 	}
 
 	// Extract words (lowercase, alphanumeric only)
-	matches := regexAlphanumeric.FindAllString(strings.ToLower(task), -1)
+	matches := regexAlphanumeric.FindAllString(strings.ToLower(cleaned), -1)
 
 	var words []string
 	for _, word := range matches {

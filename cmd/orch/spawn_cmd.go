@@ -449,6 +449,19 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	task := issue.Title
 	spawnOrientationFrame = issue.Description
 
+	// Also check for FRAME beads comments — these contain strategic context added by the
+	// orchestrator after issue creation. If the issue description is empty but a FRAME
+	// comment exists, use it as the orientation frame. If both exist, append the FRAME
+	// comment for richer context.
+	if frame := spawn.ExtractFrameFromBeadsComments(beadsID); frame != "" {
+		if spawnOrientationFrame == "" {
+			spawnOrientationFrame = frame
+		} else if !strings.Contains(spawnOrientationFrame, frame) {
+			// Append FRAME comment if it adds new information beyond the description
+			spawnOrientationFrame = spawnOrientationFrame + "\n\n**Orchestrator Frame:** " + frame
+		}
+	}
+
 	// Set the spawnIssue flag so runSpawnWithSkillInternal uses the existing issue
 	spawnIssue = beadsID
 

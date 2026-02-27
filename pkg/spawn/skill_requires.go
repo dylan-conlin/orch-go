@@ -221,6 +221,8 @@ type beadsComment struct {
 
 // gatherBeadsIssueContext fetches beads issue details and formats them.
 // Returns formatted issue context or empty string if issue not found.
+// FRAME comments (prefixed with "FRAME:") are shown prominently and untruncated
+// since they contain strategic context from the orchestrator.
 func gatherBeadsIssueContext(beadsID string) string {
 	if beadsID == "" {
 		return ""
@@ -245,19 +247,44 @@ func gatherBeadsIssueContext(beadsID string) string {
 	// Get any notes/comments on the issue
 	comments, err := getBeadsComments(beadsID)
 	if err == nil && len(comments) > 0 {
-		sb.WriteString("\n**Comments:**\n")
-		// Show last 5 comments (most recent context)
-		startIdx := 0
-		if len(comments) > 5 {
-			startIdx = len(comments) - 5
-		}
-		for _, comment := range comments[startIdx:] {
-			// Truncate long comments
-			text := comment.Text
-			if len(text) > 200 {
-				text = text[:200] + "..."
+		// Extract FRAME comments separately — show prominently and untruncated
+		var frameComments []string
+		var regularComments []beadsComment
+		for _, comment := range comments {
+			text := strings.TrimSpace(comment.Text)
+			if strings.HasPrefix(text, "FRAME:") {
+				frame := strings.TrimSpace(strings.TrimPrefix(text, "FRAME:"))
+				if frame != "" {
+					frameComments = append(frameComments, frame)
+				}
+			} else {
+				regularComments = append(regularComments, comment)
 			}
-			sb.WriteString(fmt.Sprintf("- %s\n", text))
+		}
+
+		// Show FRAME comments first, prominently
+		if len(frameComments) > 0 {
+			sb.WriteString("\n**Strategic Frame:**\n")
+			for _, frame := range frameComments {
+				sb.WriteString(fmt.Sprintf("%s\n", frame))
+			}
+		}
+
+		// Show last 5 regular comments (most recent context)
+		if len(regularComments) > 0 {
+			sb.WriteString("\n**Comments:**\n")
+			startIdx := 0
+			if len(regularComments) > 5 {
+				startIdx = len(regularComments) - 5
+			}
+			for _, comment := range regularComments[startIdx:] {
+				// Truncate long comments
+				text := comment.Text
+				if len(text) > 200 {
+					text = text[:200] + "..."
+				}
+				sb.WriteString(fmt.Sprintf("- %s\n", text))
+			}
 		}
 	}
 
@@ -337,6 +364,32 @@ func getBeadsComments(beadsID string) ([]beadsComment, error) {
 		result[i] = beadsComment{Text: c.Text}
 	}
 	return result, nil
+}
+
+// ExtractFrameFromBeadsComments retrieves the most recent FRAME annotation from beads comments.
+// FRAME comments (prefixed with "FRAME:") contain strategic context added by the orchestrator.
+// Returns empty string if no frame is found or comments cannot be retrieved.
+// This is used during spawn to include orchestrator framing in OrientationFrame,
+// ensuring spawned agents see strategic context without needing to run `bd show`.
+func ExtractFrameFromBeadsComments(beadsID string) string {
+	if beadsID == "" {
+		return ""
+	}
+
+	comments, err := getBeadsComments(beadsID)
+	if err != nil || len(comments) == 0 {
+		return ""
+	}
+
+	// Scan from newest to oldest for FRAME comment
+	for i := len(comments) - 1; i >= 0; i-- {
+		text := strings.TrimSpace(comments[i].Text)
+		if strings.HasPrefix(text, "FRAME:") {
+			return strings.TrimSpace(strings.TrimPrefix(text, "FRAME:"))
+		}
+	}
+
+	return ""
 }
 
 // gatherPriorWorkContext loads files matching patterns and extracts TLDRs.
