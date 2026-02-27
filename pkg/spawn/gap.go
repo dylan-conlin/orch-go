@@ -3,6 +3,8 @@ package spawn
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -32,6 +34,9 @@ const (
 
 	// GapTypeNoDecisions indicates context was found but no prior decisions.
 	GapTypeNoDecisions GapType = "no_decisions"
+
+	// GapTypeWrongProject indicates matches were found from a different project than the target.
+	GapTypeWrongProject GapType = "wrong_project"
 )
 
 // GapSeverity indicates how significant the detected gap is.
@@ -82,11 +87,14 @@ type MatchStatistics struct {
 	DecisionCount      int
 	InvestigationCount int
 	GuideCount         int
+	WrongProjectCount  int // Matches detected as belonging to a different project
 }
 
 // AnalyzeGaps analyzes a KB context result for potential gaps.
 // Returns a GapAnalysis with detected gaps and context quality score.
-func AnalyzeGaps(result *KBContextResult, query string) *GapAnalysis {
+// projectDir is the target project directory; when non-empty, matches are checked
+// for project relevance (detects wrong-project knowledge injection).
+func AnalyzeGaps(result *KBContextResult, query string, projectDir string) *GapAnalysis {
 	analysis := &GapAnalysis{
 		Query: query,
 		Gaps:  []Gap{},
@@ -107,7 +115,28 @@ func AnalyzeGaps(result *KBContextResult, query string) *GapAnalysis {
 
 	// Count matches by type
 	stats := countMatchesByType(result.Matches)
+
+	// Check for wrong-project matches (cross-repo knowledge injection)
+	if projectDir != "" {
+		stats.WrongProjectCount = countWrongProjectMatches(result.Matches, projectDir)
+	}
 	analysis.MatchStats = stats
+
+	// Check for wrong-project knowledge injection
+	if stats.WrongProjectCount > 0 {
+		ratio := float64(stats.WrongProjectCount) / float64(stats.TotalMatches)
+		severity := GapSeverityWarning
+		if ratio > 0.5 {
+			severity = GapSeverityCritical
+		}
+		analysis.HasGaps = true
+		analysis.Gaps = append(analysis.Gaps, Gap{
+			Type:        GapTypeWrongProject,
+			Severity:    severity,
+			Description: fmt.Sprintf("%d of %d matches are from wrong project - context may not be relevant", stats.WrongProjectCount, stats.TotalMatches),
+			Suggestion:  "Verify kb context is searching the correct project directory (check CWD for cross-repo spawns)",
+		})
+	}
 
 	// Check for sparse context
 	if stats.TotalMatches < MinMatchesForGapDetection {
@@ -170,20 +199,27 @@ func countMatchesByType(matches []KBContextMatch) MatchStatistics {
 
 // calculateContextQuality returns a 0-100 score based on match statistics.
 // Scoring:
-// - Base points for having any matches
+// - Base points for having any matches (only correct-project matches count)
 // - Bonus points for constraints (most important)
 // - Bonus points for decisions
 // - Bonus points for investigations
+// - Wrong-project matches reduce score proportionally
 // - Capped at 100
 func calculateContextQuality(stats MatchStatistics) int {
 	if stats.TotalMatches == 0 {
 		return 0
 	}
 
+	// If all matches are from wrong project, quality is 0
+	effectiveMatches := stats.TotalMatches - stats.WrongProjectCount
+	if effectiveMatches <= 0 {
+		return 0
+	}
+
 	score := 0
 
 	// Base points: 10 per match, up to 50
-	basePoints := stats.TotalMatches * 10
+	basePoints := effectiveMatches * 10
 	if basePoints > 50 {
 		basePoints = 50
 	}
@@ -216,12 +252,77 @@ func calculateContextQuality(stats MatchStatistics) int {
 		score += investigationBonus
 	}
 
+	// If some matches are from wrong project, apply proportional penalty
+	// to category bonuses (wrong-project matches inflate category counts)
+	if stats.WrongProjectCount > 0 && stats.TotalMatches > 0 {
+		relevanceRatio := float64(effectiveMatches) / float64(stats.TotalMatches)
+		// Scale the category bonuses (not base points, which already use effectiveMatches)
+		categoryBonus := score - basePoints
+		scaledBonus := int(float64(categoryBonus) * relevanceRatio)
+		score = basePoints + scaledBonus
+	}
+
 	// Cap at 100
 	if score > 100 {
 		score = 100
 	}
 
 	return score
+}
+
+// countWrongProjectMatches counts matches whose file paths indicate they belong
+// to a different project than the target. Only matches with Path fields pointing
+// to project-specific .kb/ directories are checked. Global knowledge (~/.kb/)
+// and matches without paths (kn entries) are not flagged.
+func countWrongProjectMatches(matches []KBContextMatch, projectDir string) int {
+	if projectDir == "" {
+		return 0
+	}
+
+	absProjectDir, err := filepath.Abs(projectDir)
+	if err != nil {
+		return 0
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	globalKBDir := ""
+	if homeDir != "" {
+		globalKBDir = filepath.Join(homeDir, ".kb")
+	}
+
+	count := 0
+	for _, m := range matches {
+		if isWrongProjectMatch(m, absProjectDir, globalKBDir) {
+			count++
+		}
+	}
+	return count
+}
+
+// isWrongProjectMatch checks if a single match belongs to a different project.
+// Returns true when the match has a Path pointing to a .kb/ directory
+// that is NOT under the target projectDir and NOT under the global ~/.kb/.
+func isWrongProjectMatch(m KBContextMatch, absProjectDir, globalKBDir string) bool {
+	if m.Path == "" {
+		return false // Can't determine project from matches without paths
+	}
+
+	// If path is under the target project dir, it's correct
+	if strings.HasPrefix(m.Path, absProjectDir+string(filepath.Separator)) {
+		return false
+	}
+
+	// If path is under the user's global ~/.kb, it's acceptable (shared knowledge)
+	if globalKBDir != "" && strings.HasPrefix(m.Path, globalKBDir+string(filepath.Separator)) {
+		return false
+	}
+
+	// Path contains .kb/ but isn't under target project or global — it's from another project
+	if strings.Contains(m.Path, string(filepath.Separator)+".kb"+string(filepath.Separator)) {
+		return true
+	}
+
+	return false
 }
 
 // FormatGapWarning formats gap analysis as a warning message for display.
@@ -488,6 +589,7 @@ type MatchStatsAPI struct {
 	ConstraintCount    int `json:"constraints"`
 	DecisionCount      int `json:"decisions"`
 	InvestigationCount int `json:"investigations"`
+	WrongProjectCount  int `json:"wrong_project,omitempty"`
 }
 
 // ToAPIResponse converts GapAnalysis to a JSON-serializable API response.
@@ -505,6 +607,7 @@ func (g *GapAnalysis) ToAPIResponse() GapAPIResponse {
 		ConstraintCount:    g.MatchStats.ConstraintCount,
 		DecisionCount:      g.MatchStats.DecisionCount,
 		InvestigationCount: g.MatchStats.InvestigationCount,
+		WrongProjectCount:  g.MatchStats.WrongProjectCount,
 	}
 
 	for _, gap := range g.Gaps {

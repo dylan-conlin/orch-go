@@ -1,12 +1,14 @@
 package spawn
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestAnalyzeGaps_NilResult(t *testing.T) {
-	analysis := AnalyzeGaps(nil, "test")
+	analysis := AnalyzeGaps(nil, "test", "")
 
 	if !analysis.HasGaps {
 		t.Error("expected HasGaps=true for nil result")
@@ -32,7 +34,7 @@ func TestAnalyzeGaps_EmptyResult(t *testing.T) {
 		Matches:    []KBContextMatch{},
 	}
 
-	analysis := AnalyzeGaps(result, "test")
+	analysis := AnalyzeGaps(result, "test", "")
 
 	if !analysis.HasGaps {
 		t.Error("expected HasGaps=true for empty result")
@@ -51,7 +53,7 @@ func TestAnalyzeGaps_SparseContext(t *testing.T) {
 		},
 	}
 
-	analysis := AnalyzeGaps(result, "test")
+	analysis := AnalyzeGaps(result, "test", "")
 
 	if !analysis.HasGaps {
 		t.Error("expected HasGaps=true for sparse context")
@@ -103,7 +105,7 @@ func TestAnalyzeGaps_GoodCoverage(t *testing.T) {
 		},
 	}
 
-	analysis := AnalyzeGaps(result, "test")
+	analysis := AnalyzeGaps(result, "test", "")
 
 	// With good coverage, there should be no gaps
 	if analysis.HasGaps {
@@ -141,7 +143,7 @@ func TestAnalyzeGaps_NoConstraints(t *testing.T) {
 		},
 	}
 
-	analysis := AnalyzeGaps(result, "test")
+	analysis := AnalyzeGaps(result, "test", "")
 
 	// Should have no constraints gap (info level)
 	foundNoConstraints := false
@@ -701,6 +703,250 @@ func TestGapAnalysis_ToAPIResponse(t *testing.T) {
 	}
 	if resp.Gaps[0].Type != "no_constraints" {
 		t.Errorf("Gaps[0].Type = %s, want 'no_constraints'", resp.Gaps[0].Type)
+	}
+}
+
+func TestIsWrongProjectMatch(t *testing.T) {
+	tests := []struct {
+		name          string
+		match         KBContextMatch
+		absProjectDir string
+		globalKBDir   string
+		want          bool
+	}{
+		{
+			name:          "no path - cannot determine",
+			match:         KBContextMatch{Type: "constraint", Title: "C1"},
+			absProjectDir: "/home/user/projects/toolshed",
+			globalKBDir:   "/home/user/.kb",
+			want:          false,
+		},
+		{
+			name:          "correct project path",
+			match:         KBContextMatch{Type: "model", Path: "/home/user/projects/toolshed/.kb/models/pricing/model.md"},
+			absProjectDir: "/home/user/projects/toolshed",
+			globalKBDir:   "/home/user/.kb",
+			want:          false,
+		},
+		{
+			name:          "wrong project path",
+			match:         KBContextMatch{Type: "model", Path: "/home/user/projects/orch-go/.kb/models/spawn-architecture/model.md"},
+			absProjectDir: "/home/user/projects/toolshed",
+			globalKBDir:   "/home/user/.kb",
+			want:          true,
+		},
+		{
+			name:          "global kb path - acceptable",
+			match:         KBContextMatch{Type: "decision", Path: "/home/user/.kb/decisions/2026-02-01-auth.md"},
+			absProjectDir: "/home/user/projects/toolshed",
+			globalKBDir:   "/home/user/.kb",
+			want:          false,
+		},
+		{
+			name:          "path without .kb - not flagged",
+			match:         KBContextMatch{Type: "guide", Path: "/home/user/projects/docs/guide.md"},
+			absProjectDir: "/home/user/projects/toolshed",
+			globalKBDir:   "/home/user/.kb",
+			want:          false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isWrongProjectMatch(tt.match, tt.absProjectDir, tt.globalKBDir)
+			if got != tt.want {
+				t.Errorf("isWrongProjectMatch() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAnalyzeGaps_WrongProject(t *testing.T) {
+	// Simulate toolshed spawn receiving orch-go knowledge
+	result := &KBContextResult{
+		Query:      "pricing strategy",
+		HasMatches: true,
+		Matches: []KBContextMatch{
+			{Type: "model", Title: "Spawn Architecture", Path: "/home/user/projects/orch-go/.kb/models/spawn-architecture/model.md"},
+			{Type: "model", Title: "Dashboard Architecture", Path: "/home/user/projects/orch-go/.kb/models/dashboard/model.md"},
+			{Type: "guide", Title: "Model Selection Guide", Path: "/home/user/projects/orch-go/.kb/guides/model-selection.md"},
+			{Type: "decision", Title: "Slide-out panel", Path: "/home/user/projects/orch-go/.kb/decisions/2026-02-01-slide-out.md"},
+			{Type: "constraint", Title: "Dashboard max-h-64"},
+		},
+	}
+
+	analysis := AnalyzeGaps(result, "pricing strategy", "/home/user/projects/toolshed")
+
+	// Should detect wrong-project matches
+	if analysis.MatchStats.WrongProjectCount != 4 {
+		t.Errorf("expected WrongProjectCount=4, got %d", analysis.MatchStats.WrongProjectCount)
+	}
+
+	// Should have a wrong_project gap
+	foundWrongProject := false
+	for _, gap := range analysis.Gaps {
+		if gap.Type == GapTypeWrongProject {
+			foundWrongProject = true
+			// 4 of 5 matches are wrong-project (>50%), should be critical
+			if gap.Severity != GapSeverityCritical {
+				t.Errorf("expected GapSeverityCritical for majority wrong-project, got %s", gap.Severity)
+			}
+		}
+	}
+	if !foundWrongProject {
+		t.Error("expected GapTypeWrongProject gap")
+	}
+
+	// Quality score should be very low (only 1 valid match out of 5, and it has no path)
+	if analysis.ContextQuality > 20 {
+		t.Errorf("expected ContextQuality <= 20 for mostly wrong-project matches, got %d", analysis.ContextQuality)
+	}
+}
+
+func TestAnalyzeGaps_AllWrongProject(t *testing.T) {
+	// All matches from wrong project — quality should be 0
+	result := &KBContextResult{
+		Query:      "pricing",
+		HasMatches: true,
+		Matches: []KBContextMatch{
+			{Type: "model", Title: "Spawn Architecture", Path: "/home/user/projects/orch-go/.kb/models/spawn/model.md"},
+			{Type: "decision", Title: "Some decision", Path: "/home/user/projects/orch-go/.kb/decisions/dec.md"},
+			{Type: "investigation", Title: "Some inv", Path: "/home/user/projects/orch-go/.kb/investigations/inv.md"},
+		},
+	}
+
+	analysis := AnalyzeGaps(result, "pricing", "/home/user/projects/toolshed")
+
+	if analysis.ContextQuality != 0 {
+		t.Errorf("expected ContextQuality=0 when all matches wrong-project, got %d", analysis.ContextQuality)
+	}
+	if analysis.MatchStats.WrongProjectCount != 3 {
+		t.Errorf("expected WrongProjectCount=3, got %d", analysis.MatchStats.WrongProjectCount)
+	}
+}
+
+func TestAnalyzeGaps_NoProjectDir(t *testing.T) {
+	// When projectDir is empty, wrong-project detection is skipped
+	result := &KBContextResult{
+		Query:      "test",
+		HasMatches: true,
+		Matches: []KBContextMatch{
+			{Type: "model", Title: "Some model", Path: "/some/other/project/.kb/models/model.md"},
+			{Type: "constraint", Title: "C1"},
+			{Type: "decision", Title: "D1"},
+		},
+	}
+
+	analysis := AnalyzeGaps(result, "test", "")
+
+	// No wrong-project detection without projectDir
+	if analysis.MatchStats.WrongProjectCount != 0 {
+		t.Errorf("expected WrongProjectCount=0 without projectDir, got %d", analysis.MatchStats.WrongProjectCount)
+	}
+}
+
+func TestAnalyzeGaps_MixedCorrectAndWrong(t *testing.T) {
+	// Use real home dir so global .kb/ detection works
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("cannot determine home directory")
+	}
+	globalKBPath := filepath.Join(homeDir, ".kb", "decisions", "global.md")
+	projectDir := filepath.Join(homeDir, "projects", "toolshed")
+
+	// Mix of correct-project and wrong-project matches
+	result := &KBContextResult{
+		Query:      "pricing",
+		HasMatches: true,
+		Matches: []KBContextMatch{
+			// Correct project
+			{Type: "model", Title: "Toolshed Architecture", Path: filepath.Join(projectDir, ".kb", "models", "arch", "model.md")},
+			{Type: "decision", Title: "Toolshed decision", Path: filepath.Join(projectDir, ".kb", "decisions", "dec.md")},
+			// Wrong project
+			{Type: "model", Title: "Orch-go model", Path: filepath.Join(homeDir, "projects", "orch-go", ".kb", "models", "model.md")},
+			// Global (acceptable)
+			{Type: "decision", Title: "Global decision", Path: globalKBPath},
+			// No path (benefit of doubt)
+			{Type: "constraint", Title: "Some constraint"},
+		},
+	}
+
+	analysis := AnalyzeGaps(result, "pricing", projectDir)
+
+	if analysis.MatchStats.WrongProjectCount != 1 {
+		t.Errorf("expected WrongProjectCount=1, got %d", analysis.MatchStats.WrongProjectCount)
+	}
+	// 1 of 5 wrong = 20%, should be warning not critical
+	foundWrongProject := false
+	for _, gap := range analysis.Gaps {
+		if gap.Type == GapTypeWrongProject {
+			foundWrongProject = true
+			if gap.Severity != GapSeverityWarning {
+				t.Errorf("expected GapSeverityWarning for minority wrong-project, got %s", gap.Severity)
+			}
+		}
+	}
+	if !foundWrongProject {
+		t.Error("expected GapTypeWrongProject gap")
+	}
+
+	// Quality should still be reasonable since most matches are correct
+	if analysis.ContextQuality < 40 {
+		t.Errorf("expected ContextQuality >= 40 for mostly-correct matches, got %d", analysis.ContextQuality)
+	}
+}
+
+func TestCalculateContextQuality_WrongProject(t *testing.T) {
+	tests := []struct {
+		name     string
+		stats    MatchStatistics
+		minScore int
+		maxScore int
+	}{
+		{
+			name: "all wrong project",
+			stats: MatchStatistics{
+				TotalMatches:      5,
+				ConstraintCount:   2,
+				DecisionCount:     2,
+				WrongProjectCount: 5,
+			},
+			minScore: 0,
+			maxScore: 0,
+		},
+		{
+			name: "half wrong project reduces score",
+			stats: MatchStatistics{
+				TotalMatches:       6,
+				ConstraintCount:    2,
+				DecisionCount:      2,
+				InvestigationCount: 2,
+				WrongProjectCount:  3,
+			},
+			minScore: 20,
+			maxScore: 55, // Roughly half of the ~100 max
+		},
+		{
+			name: "no wrong project - same as before",
+			stats: MatchStatistics{
+				TotalMatches:       6,
+				ConstraintCount:    2,
+				DecisionCount:      2,
+				InvestigationCount: 2,
+				WrongProjectCount:  0,
+			},
+			minScore: 80,
+			maxScore: 100,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			score := calculateContextQuality(tt.stats)
+			if score < tt.minScore || score > tt.maxScore {
+				t.Errorf("calculateContextQuality() = %d, want between %d and %d", score, tt.minScore, tt.maxScore)
+			}
+		})
 	}
 }
 

@@ -164,7 +164,7 @@ func gatherKBContext(task, projectDir string, stalenessMeta *StalenessEventMeta)
 	keywords := ExtractKeywords(task, 3)
 	if keywords == "" {
 		// Perform gap analysis even when no keywords extracted
-		gapAnalysis := AnalyzeGaps(nil, task)
+		gapAnalysis := AnalyzeGaps(nil, task, projectDir)
 		if gapAnalysis.ShouldWarnAboutGaps() {
 			fmt.Fprintf(os.Stderr, "\n%s\n", gapAnalysis.FormatGapWarning())
 		}
@@ -182,7 +182,7 @@ func gatherKBContext(task, projectDir string, stalenessMeta *StalenessEventMeta)
 	}
 
 	// Perform gap analysis
-	gapAnalysis := AnalyzeGaps(result, keywords)
+	gapAnalysis := AnalyzeGaps(result, keywords, projectDir)
 	if gapAnalysis.ShouldWarnAboutGaps() {
 		fmt.Fprintf(os.Stderr, "\n%s\n", gapAnalysis.FormatGapWarning())
 	}

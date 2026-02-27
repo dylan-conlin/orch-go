@@ -801,7 +801,7 @@ func GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, 
 		kbContext = spawn.GatherRequiredContext(requires, task, beadsID, projectDir, stalenessMeta)
 		// For skill-driven context, create a basic gap analysis from the results
 		// This is a placeholder - skills may provide their own gap info
-		gapAnalysis = spawn.AnalyzeGaps(nil, task)
+		gapAnalysis = spawn.AnalyzeGaps(nil, task, projectDir)
 	} else {
 		// Fall back to default kb context check with full gap analysis
 		gapResult := runPreSpawnKBCheckFull(task, projectDir, stalenessMeta)
@@ -1263,7 +1263,7 @@ func runPreSpawnKBCheckFull(task, projectDir string, stalenessMeta *spawn.Stalen
 	keywords := spawn.ExtractKeywords(task, 3)
 	if keywords == "" {
 		// Perform gap analysis even when no keywords extracted
-		gcr.GapAnalysis = spawn.AnalyzeGaps(nil, task)
+		gcr.GapAnalysis = spawn.AnalyzeGaps(nil, task, projectDir)
 		if gcr.GapAnalysis.ShouldWarnAboutGaps() {
 			// Use prominent warning format for better visibility
 			fmt.Fprintf(os.Stderr, "%s", gcr.GapAnalysis.FormatProminentWarning())
@@ -1294,7 +1294,7 @@ func runPreSpawnKBCheckFull(task, projectDir string, stalenessMeta *spawn.Stalen
 	}
 
 	// Perform gap analysis to detect context gaps
-	gcr.GapAnalysis = spawn.AnalyzeGaps(result, keywords)
+	gcr.GapAnalysis = spawn.AnalyzeGaps(result, keywords, projectDir)
 	if gcr.GapAnalysis.ShouldWarnAboutGaps() {
 		// Use prominent warning format for better visibility
 		fmt.Fprintf(os.Stderr, "%s", gcr.GapAnalysis.FormatProminentWarning())
