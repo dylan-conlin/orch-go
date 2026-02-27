@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-feat-promote-decision-three-26feb-3c22",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1196",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "a2767b46a5b5b059cb3813cfb858743015b51f69",
+  "spawn_time": "2026-02-26T21:18:38-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@348"
+}

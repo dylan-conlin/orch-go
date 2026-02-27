@@ -1,0 +1,13 @@
+{
+  "workspace_name": "og-feat-update-knowledge-placement-26feb-de1d",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1240",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "ae0e58f42e0e2370cba6ec2f0cf7f00021a7f803",
+  "spawn_time": "2026-02-26T21:57:23-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@389",
+  "verify_level": "V2"
+}

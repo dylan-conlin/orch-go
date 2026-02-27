@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-debug-hotspot-exclude-svelte-26feb-996b",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-1116",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "195e57518331319255757aec7db4139f01704beb",
+  "spawn_time": "2026-02-26T21:16:48-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@342"
+}
