@@ -337,13 +337,14 @@ func inferMCPFromBeadsIssue(issue *beads.Issue) string {
 }
 
 // RunPreFlightChecks performs all pre-spawn validation checks.
-// Returns usage check result for telemetry, hotspot result for context injection, or error if any check fails.
-// hotspotCheckFunc is passed from cmd/orch to avoid circular dependencies.
-func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, architectRef, bypassReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error)) (*gates.UsageCheckResult, *gates.HotspotResult, error) {
+// Returns usage check result for telemetry, hotspot result for context injection,
+// agreements result for telemetry, or error if any check fails.
+// hotspotCheckFunc and agreementsCheckFunc are passed from cmd/orch to avoid circular dependencies.
+func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, architectRef, bypassReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error)) (*gates.UsageCheckResult, *gates.HotspotResult, *gates.AgreementsResult, error) {
 	// Check for --bypass-triage flag (required for manual spawns)
 	// Daemon-driven spawns skip this check (issue already triaged)
 	if err := gates.CheckTriageBypass(input.DaemonDriven, bypassTriage, input.SkillName, input.Task); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Log the triage bypass for Phase 2 review (only for manual bypasses, not daemon-driven)
@@ -355,19 +356,19 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 	// Block spawn if unverified Tier 1 work exists (prevents cascade pattern)
 	// Independent parallel work can use --bypass-verification to override
 	if err := gates.CheckVerificationGate(bypassVerification, bypassReason); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Check concurrency limit before spawning
 	if err := gates.CheckConcurrency(input.ServerURL, maxAgents, extractBeadsIDFunc); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Proactive rate limit monitoring: warn at 80%, block at 95%
 	usageCheckResult, usageErr := gates.CheckRateLimit()
 	if usageErr != nil {
 		// usageErr contains formatted blocking message
-		return nil, nil, usageErr
+		return nil, nil, nil, usageErr
 	}
 
 	// STRATEGIC-FIRST ORCHESTRATION: Check for hotspots in task target area
@@ -384,11 +385,19 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 		var err error
 		hotspotResult, err = gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, forceHotspot, architectRef, hotspotCheckFunc, architectVerifier, architectFinder)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 
-	return usageCheckResult, hotspotResult, nil
+	// KB AGREEMENTS CHECK: Warning-only gate (Phase 3).
+	// Displays agreement failures as warnings but never blocks spawn.
+	// Daemon-driven spawns suppress output but still return result for telemetry.
+	var agreementsResult *gates.AgreementsResult
+	if agreementsCheckFunc != nil {
+		agreementsResult, _ = gates.CheckAgreements(preCheckDir, input.DaemonDriven, agreementsCheckFunc)
+	}
+
+	return usageCheckResult, hotspotResult, agreementsResult, nil
 }
 
 // buildArchitectVerifier creates a function that validates an architect issue reference.

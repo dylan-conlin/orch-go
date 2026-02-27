@@ -857,3 +857,61 @@ func generateSlug(text string) string {
 
 	return slug
 }
+
+// kbAgreementCheckResult mirrors the JSON output of kb agreements check --json.
+type kbAgreementCheckResult struct {
+	AgreementID string `json:"agreement_id"`
+	Title       string `json:"title"`
+	Severity    string `json:"severity"`
+	Pass        bool   `json:"pass"`
+	Message     string `json:"message"`
+}
+
+// buildAgreementsChecker creates a function that runs kb agreements check --json
+// in a given project directory and returns parsed results.
+func buildAgreementsChecker() func(string) (*gates.AgreementsResult, error) {
+	return func(projectDir string) (*gates.AgreementsResult, error) {
+		cmd := exec.Command("kb", "agreements", "check", "--json")
+		cmd.Dir = projectDir
+
+		output, err := cmd.Output()
+		if err != nil {
+			// kb agreements check exits non-zero on failures, but still outputs JSON.
+			// Only treat as error if we can't get any output.
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				// Exit code 1 or 2 means checks failed but JSON was produced
+				if len(output) == 0 {
+					return nil, fmt.Errorf("kb agreements check failed: %s", string(exitErr.Stderr))
+				}
+				// Fall through to parse the JSON output
+			} else {
+				return nil, fmt.Errorf("kb agreements check: %w", err)
+			}
+		}
+
+		var checks []kbAgreementCheckResult
+		if err := json.Unmarshal(output, &checks); err != nil {
+			return nil, fmt.Errorf("failed to parse kb agreements check output: %w", err)
+		}
+
+		result := &gates.AgreementsResult{
+			Total: len(checks),
+		}
+
+		for _, check := range checks {
+			if check.Pass {
+				result.Passed++
+			} else {
+				result.Failed++
+				result.Failures = append(result.Failures, gates.AgreementFailure{
+					AgreementID: check.AgreementID,
+					Title:       check.Title,
+					Severity:    check.Severity,
+					Message:     check.Message,
+				})
+			}
+		}
+
+		return result, nil
+	}
+}

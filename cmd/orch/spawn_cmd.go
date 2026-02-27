@@ -547,7 +547,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 			MatchedFiles:       matchedFiles,
 		}, nil
 	}
-	usageCheckResult, hotspotResult, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnBypassVerification, spawnForceHotspot, spawnArchitectRef, spawnBypassReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc)
+	agreementsCheckFunc := buildAgreementsChecker()
+	usageCheckResult, hotspotResult, _, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnBypassVerification, spawnForceHotspot, spawnArchitectRef, spawnBypassReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc)
 	if err != nil {
 		return err
 	}
