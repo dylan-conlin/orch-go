@@ -1,0 +1,32 @@
+verification:
+  automated:
+    - command: "go test ./pkg/daemon/ -run TestInferSkill -v"
+      expect: "PASS"
+      description: "All 62 InferSkill tests pass including 7 new reproduction cases"
+    - command: "go vet ./pkg/daemon/"
+      expect: "exit 0"
+      description: "No vet issues in daemon package"
+    - command: "go build ./cmd/orch/"
+      expect: "exit 0"
+      description: "Binary builds cleanly"
+
+  reproduction:
+    - scenario: "orch-go-3wga: 'Investigate Claude Code --worktree flag' type=task"
+      before: "Inferred as feature-impl (wrong)"
+      after: "Inferred as investigation (correct)"
+      test: "TestInferSkillFromIssue_TitleKeywordDetection/orch-go-3wga"
+
+    - scenario: "orch-go-cp52: 'Design orchestrator diagnostic mode' type=task"
+      before: "Inferred as feature-impl (wrong)"
+      after: "Inferred as architect (correct)"
+      test: "TestInferSkillFromIssue_TitleKeywordDetection/orch-go-cp52"
+
+  model_inference:
+    - skill: investigation
+      expected_model: opus
+      verified: true
+    - skill: architect
+      expected_model: opus
+      verified: true
+
+  manual: []

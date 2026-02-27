@@ -326,8 +326,8 @@ func TestInferSkillFromTitle(t *testing.T) {
 		title     string
 		wantSkill string
 	}{
-		// No prefix - should return empty
-		{"Fix dashboard bug", ""},
+		// No colon prefix but first-word keyword detection
+		{"Fix dashboard bug", "systematic-debugging"},
 		{"Add synthesis feature", ""},
 
 		// Architect prefix variations
@@ -354,6 +354,13 @@ func TestInferSkillFromTitle(t *testing.T) {
 		{"Feature: Add new dashboard", "feature-impl"},
 		{"Implement: New API endpoint", "feature-impl"},
 		{"feature-impl: Build something", "feature-impl"},
+
+		// First-word keyword detection (no colon prefix)
+		{"Investigate Claude Code --worktree flag for agent isolation", "investigation"},
+		{"Design orchestrator diagnostic mode: time-limited read-only code access", "architect"},
+		{"Explore caching options for daemon", "investigation"},
+		{"Broken CI pipeline after upgrade", "systematic-debugging"},
+		{"Debug the flaky test in spawn_test.go", "systematic-debugging"},
 
 		// Edge cases
 		{"", ""},
@@ -437,6 +444,111 @@ func TestInferMCPFromLabels(t *testing.T) {
 			got := InferMCPFromLabels(tt.labels)
 			if got != tt.wantMCP {
 				t.Errorf("InferMCPFromLabels(%v) = %q, want %q", tt.labels, got, tt.wantMCP)
+			}
+		})
+	}
+}
+
+// TestInferSkillFromIssue_TitleKeywordDetection verifies that titles with
+// investigation/architect/debug keywords (without colon prefix) get correct skills.
+// Reproduces: orch-go-3wga (investigate→feature-impl), orch-go-cp52 (design→feature-impl).
+func TestInferSkillFromIssue_TitleKeywordDetection(t *testing.T) {
+	tests := []struct {
+		name    string
+		issue   *Issue
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "orch-go-3wga: investigate title → investigation (was feature-impl)",
+			issue: &Issue{
+				ID:        "orch-go-3wga",
+				Title:     "Investigate Claude Code --worktree flag for agent isolation",
+				IssueType: "task",
+				Labels:    []string{},
+			},
+			want: "investigation",
+		},
+		{
+			name: "orch-go-cp52: design title → architect (was feature-impl)",
+			issue: &Issue{
+				ID:        "orch-go-cp52",
+				Title:     "Design orchestrator diagnostic mode: time-limited read-only code access",
+				IssueType: "task",
+				Labels:    []string{},
+			},
+			want: "architect",
+		},
+		{
+			name: "explore title → investigation",
+			issue: &Issue{
+				ID:        "test-explore",
+				Title:     "Explore alternative spawn backends",
+				IssueType: "task",
+				Labels:    []string{},
+			},
+			want: "investigation",
+		},
+		{
+			name: "fix title → systematic-debugging",
+			issue: &Issue{
+				ID:        "test-fix",
+				Title:     "Fix daemon skill inference bug",
+				IssueType: "task",
+				Labels:    []string{},
+			},
+			want: "systematic-debugging",
+		},
+		{
+			name: "label still overrides title keyword",
+			issue: &Issue{
+				ID:        "test-label-override",
+				Title:     "Investigate something",
+				IssueType: "task",
+				Labels:    []string{"skill:feature-impl"},
+			},
+			want: "feature-impl",
+		},
+		{
+			name: "model inference: investigation gets opus",
+			issue: &Issue{
+				ID:        "test-model-inv",
+				Title:     "Investigate spawn failures",
+				IssueType: "task",
+				Labels:    []string{},
+			},
+			want: "investigation", // InferModelFromSkill("investigation") → "opus"
+		},
+		{
+			name: "model inference: architect gets opus",
+			issue: &Issue{
+				ID:        "test-model-arch",
+				Title:     "Design new API contract",
+				IssueType: "task",
+				Labels:    []string{},
+			},
+			want: "architect", // InferModelFromSkill("architect") → "opus"
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := InferSkillFromIssue(tt.issue)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("InferSkillFromIssue() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("InferSkillFromIssue() = %q, want %q", got, tt.want)
+			}
+
+			// Verify model inference for skills that should get opus
+			model := InferModelFromSkill(got)
+			switch got {
+			case "investigation", "architect", "systematic-debugging":
+				if model != "opus" {
+					t.Errorf("InferModelFromSkill(%q) = %q, want opus", got, model)
+				}
 			}
 		})
 	}

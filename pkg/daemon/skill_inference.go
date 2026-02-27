@@ -78,36 +78,67 @@ func InferMCPFromLabels(labels []string) string {
 
 // InferSkillFromTitle detects skills from issue title patterns.
 // Returns the skill name if a known pattern is matched, or empty string otherwise.
-// Supports patterns like "Architect: Design system" or "Debug: Fix issue".
+//
+// Detection order:
+//  1. Colon-prefix pattern: "Architect: Design system" → architect
+//  2. First-word keyword: "Investigate Claude Code --worktree" → investigation
+//
+// The first-word check catches titles that use natural language (no colon prefix)
+// like "Design orchestrator diagnostic mode" or "Investigate spawn failures".
 func InferSkillFromTitle(title string) string {
 	if title == "" {
 		return ""
 	}
 
-	// Check for "SkillName: ..." pattern
+	// Check for "SkillName: ..." colon-prefix pattern
 	parts := strings.SplitN(title, ":", 2)
-	if len(parts) < 2 {
+	if len(parts) >= 2 {
+		// Extract and normalize the potential skill name
+		skillPrefix := strings.ToLower(strings.TrimSpace(parts[0]))
+
+		// Map single-word title prefixes to known skills
+		prefixMap := map[string]string{
+			"architect":            "architect",
+			"design":              "architect",
+			"debug":                "systematic-debugging",
+			"investigation":        "investigation",
+			"investigate":          "investigation",
+			"explore":              "investigation",
+			"research":             "research",
+			"feature":              "feature-impl",
+			"implement":            "feature-impl",
+			"fix":                  "systematic-debugging",
+			"broken":               "systematic-debugging",
+			"systematic-debugging": "systematic-debugging",
+			"feature-impl":         "feature-impl",
+		}
+
+		if skill, ok := prefixMap[skillPrefix]; ok {
+			return skill
+		}
+	}
+
+	// First-word keyword detection for natural language titles
+	// e.g., "Investigate Claude Code --worktree flag" → investigation
+	// e.g., "Design orchestrator diagnostic mode" → architect
+	lower := strings.ToLower(title)
+	words := strings.Fields(lower)
+	if len(words) == 0 {
 		return ""
 	}
 
-	// Extract and normalize the potential skill name
-	skillPrefix := strings.ToLower(strings.TrimSpace(parts[0]))
-
-	// Map title prefixes to known skills
-	skillMap := map[string]string{
-		"architect":            "architect",
-		"debug":                "systematic-debugging",
-		"investigation":        "investigation",
-		"investigate":          "investigation",
-		"research":             "research",
-		"feature":              "feature-impl",
-		"implement":            "feature-impl",
-		"fix":                  "systematic-debugging",
-		"systematic-debugging": "systematic-debugging",
-		"feature-impl":         "feature-impl",
+	firstWordMap := map[string]string{
+		"investigate":   "investigation",
+		"investigation": "investigation",
+		"explore":       "investigation",
+		"design":        "architect",
+		"architect":     "architect",
+		"debug":         "systematic-debugging",
+		"fix":           "systematic-debugging",
+		"broken":        "systematic-debugging",
 	}
 
-	if skill, ok := skillMap[skillPrefix]; ok {
+	if skill, ok := firstWordMap[words[0]]; ok {
 		return skill
 	}
 
