@@ -1,0 +1,41 @@
+verification:
+  type: investigation
+  skill: investigation
+  beads_id: orch-go-1goo
+
+outcomes:
+  - name: probe_created
+    description: Probe file exists with all 4 required sections
+    evidence: .kb/models/spawn-architecture/probes/2026-02-27-probe-cross-repo-spawn-context-quality-audit.md
+    status: pass
+
+  - name: cwd_bug_confirmed
+    description: runKBContextQuery confirmed to use process CWD, not projectDir
+    evidence: |
+      kbcontext.go:250 - exec.Command without cmd.Dir
+      kb context from orch-go CWD returns orch-go knowledge
+      kb context from toolshed CWD returns toolshed knowledge
+    status: pass
+
+  - name: real_spawn_evidence
+    description: Real toolshed SPAWN_CONTEXT.md files contain wrong-project knowledge
+    evidence: |
+      to-feat-ai-pricing-strategy-27feb-c64d/SPAWN_CONTEXT.md lines 53-178
+      Contains orch-go Dashboard Architecture model instead of Toolshed Architecture
+    status: pass
+
+  - name: gap_analysis_false_positive
+    description: Gap analysis scores high on wrong-project knowledge
+    evidence: |
+      events.jsonl: toolshed-74 gap_context_quality=90, toolshed-98=95
+      Content is 100% from wrong project
+    status: pass
+
+  - name: issues_created
+    description: Discovered work tracked as beads issues
+    evidence: |
+      orch-go-t3ll (P1 bug) - CWD fix
+      orch-go-3go1 (P2 bug) - gap analysis false positive
+    status: pass
+
+manual_steps: []

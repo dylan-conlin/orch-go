@@ -1,0 +1,13 @@
+{
+  "workspace_name": "og-arch-design-skip-flag-27feb-5dd2",
+  "skill": "architect",
+  "beads_id": "orch-go-f06i",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "8155077911c98b76771e15507c2ea18f198f968b",
+  "spawn_time": "2026-02-27T14:21:46-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@563",
+  "verify_level": "V1"
+}

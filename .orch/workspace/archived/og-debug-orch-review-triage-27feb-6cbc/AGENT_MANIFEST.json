@@ -1,0 +1,13 @@
+{
+  "workspace_name": "og-debug-orch-review-triage-27feb-6cbc",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-qku1",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "e16fe66648212ee71a2ce89d6c5cf7d13d02d6c6",
+  "spawn_time": "2026-02-27T10:09:29-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@456",
+  "verify_level": "V2"
+}

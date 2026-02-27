@@ -1,0 +1,43 @@
+version: "1"
+issue: orch-go-8p44
+type: audit
+tier: full
+
+verification:
+  gate1:
+    description: "Orchestrator can explain what was audited and the key findings"
+    checks:
+      - "Investigation file exists at .kb/investigations/2026-02-27-audit-ux-dashboard-views.md"
+      - "SYNTHESIS.md has Plain-Language Summary explaining verification count mismatch"
+      - "Gap analysis table covers all 11 operational needs across both views"
+      - "Consolidation recommendation with phased plan (3 phases, 7 issues)"
+      - "5 screenshots captured at 1280px and 666px viewports"
+  gate2:
+    description: "Behavioral verification — audit findings are accurate"
+    manual_checks:
+      - "Verify: curl -sk https://localhost:3348/api/daemon shows completions_since_verification > 0 while /api/verification shows unverified_count: 0"
+      - "Verify: Work graph at /work-graph shows no event feed (no lifecycle events visible)"
+      - "Verify: Work graph has no agent status indicators on tree nodes"
+      - "Verify: Dashboard at / shows '0 unverified paused' in stats bar despite daemon being paused"
+
+evidence:
+  screenshots:
+    - ".kb/investigations/screenshots/2026-02-27-audit-dashboard-views/dashboard-ops-1280.png"
+    - ".kb/investigations/screenshots/2026-02-27-audit-dashboard-views/dashboard-ops-mode-1280.png"
+    - ".kb/investigations/screenshots/2026-02-27-audit-dashboard-views/dashboard-ops-666.png"
+    - ".kb/investigations/screenshots/2026-02-27-audit-dashboard-views/work-graph-1280.png"
+    - ".kb/investigations/screenshots/2026-02-27-audit-dashboard-views/work-graph-666.png"
+  api_evidence:
+    - "curl -sk https://localhost:3348/api/daemon → completions_since_verification: 10, is_paused: true"
+    - "curl -sk https://localhost:3348/api/verification → unverified_count: 0, daemon_paused: true"
+  axe_core:
+    dashboard: "2 violations (1 critical, 1 serious/34 nodes)"
+    work_graph: "3 violations (1 critical, 2 serious/42 nodes)"
+
+deliverables:
+  - path: ".kb/investigations/2026-02-27-audit-ux-dashboard-views.md"
+    description: "Full UX audit investigation with 13 findings, gap analysis, consolidation plan"
+  - path: ".orch/workspace/og-work-audit-orch-go-27feb-950e/SYNTHESIS.md"
+    description: "Session synthesis with recommendation"
+  - path: ".kb/investigations/screenshots/2026-02-27-audit-dashboard-views/"
+    description: "5 baseline screenshots across both views at 2 viewports"

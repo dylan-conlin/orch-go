@@ -1,0 +1,13 @@
+{
+  "workspace_name": "og-work-audit-orch-go-27feb-950e",
+  "skill": "ux-audit",
+  "beads_id": "orch-go-8p44",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "6739ba147d759234bda73d24777f1d50b27b0c46",
+  "spawn_time": "2026-02-27T09:54:33-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@454",
+  "verify_level": "V1"
+}

@@ -1,0 +1,43 @@
+# Verification Specification: Skip-Flag Reason Tracking Design
+# Design Document: .kb/investigations/2026-02-27-design-skip-flag-reason-tracking.md
+
+type: architect-design
+skill: architect
+tier: full
+
+observable_behaviors:
+  primary: "Design investigation produced with 5 decision forks navigated, recommendations with substrate trace, and implementation-ready file targets"
+
+acceptance_criteria:
+  AC-001:
+    description: "Investigation file exists with complete design"
+    condition: ".kb/investigations/2026-02-27-design-skip-flag-reason-tracking.md exists with Status, Problem Statement, Decision Forks, Recommendations sections"
+    verification: "file exists and has >200 lines"
+
+  AC-002:
+    description: "All 5 decision forks navigated with substrate reasoning"
+    condition: "Each fork has Options, Substrate says, RECOMMENDATION, and Trade-off accepted"
+    verification: "grep for 'RECOMMENDATION:' returns 5 matches"
+
+  AC-003:
+    description: "File targets identified for implementation"
+    condition: "7 files listed with specific change descriptions"
+    verification: "File Targets table has 7 rows"
+
+  AC-004:
+    description: "Acceptance criteria defined and testable"
+    condition: "9 acceptance criteria with specific CLI commands and expected outcomes"
+    verification: "count checkbox items in Acceptance Criteria section"
+
+  AC-005:
+    description: "Design follows existing patterns"
+    condition: "Recommendations reference --skip-reason (complete) and --bypass-reason (spawn) as precedents"
+    verification: "grep for 'skip-reason' and 'bypass-reason' in investigation"
+
+evidence:
+  - type: "file existence"
+    artifact: ".kb/investigations/2026-02-27-design-skip-flag-reason-tracking.md"
+  - type: "file existence"
+    artifact: ".orch/workspace/og-arch-design-skip-flag-27feb-5dd2/SYNTHESIS.md"
+
+manual_steps: []

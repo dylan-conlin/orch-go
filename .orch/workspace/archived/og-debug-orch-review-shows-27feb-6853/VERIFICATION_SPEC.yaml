@@ -1,0 +1,43 @@
+version: 1
+issue: orch-go-yjyl
+title: "Fix: orch review shows 'no beads tracking' for agents with beads issues"
+
+automated_checks:
+  - name: Go build
+    command: go build ./cmd/orch/
+    expectation: exits 0, no errors
+    result: PASS
+
+  - name: Go test - extractBeadsIDFromWorkspace
+    command: go test -run TestExtractBeadsIDFromWorkspace ./cmd/orch/ -v
+    expectation: all 7 test cases pass (priority, fallback, legacy, empty)
+    result: PASS (0.013s)
+
+  - name: Go test - all review tests
+    command: go test -run "TestExtract|TestReview|TestGroup|TestFilter|TestSummarize|TestCount" ./cmd/orch/ -v
+    expectation: all tests pass
+    result: PASS (0.116s)
+
+manual_checks:
+  - name: Smoke test - orch review shows beads IDs
+    description: |
+      Build and run orch review. All agents with beads issues should show
+      their beads ID in parentheses. No agents should show "(no beads tracking)"
+      unless they are genuinely untracked.
+    command: go build -o /tmp/orch-test ./cmd/orch/ && /tmp/orch-test review --limit 5
+    expectation: |
+      All listed agents show beads IDs like (orch-go-xxxx).
+      No "(no beads tracking)" in output for tracked agents.
+    result: PASS - 5 agents all showed correct beads IDs (orch-go-qk30, orch-go-eqjn, orch-go-1245, orch-go-zct5, orch-go-gd6r)
+
+reproduction:
+  original_bug: |
+    orch review displays '(no beads tracking)' for agents that have beads issues.
+    Root cause: extractBeadsIDFromWorkspace() only parsed SPAWN_CONTEXT.md for
+    "beads issue:" patterns, but the current spawn template doesn't include that text.
+    The beads ID was reliably stored in .beads_id files and AGENT_MANIFEST.json but
+    these were never checked.
+  verification: |
+    After fix, orch review correctly reads .beads_id and AGENT_MANIFEST.json before
+    falling back to SPAWN_CONTEXT.md parsing. All 5 tested workspaces show correct
+    beads IDs.

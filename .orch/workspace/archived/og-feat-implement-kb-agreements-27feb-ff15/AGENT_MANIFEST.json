@@ -1,0 +1,13 @@
+{
+  "workspace_name": "og-feat-implement-kb-agreements-27feb-ff15",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-n1wi",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "1862c1b7375b18f3775705cb1eee966eb8cda1e0",
+  "spawn_time": "2026-02-27T13:58:17-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@555",
+  "verify_level": "V2"
+}

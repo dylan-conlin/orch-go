@@ -1,0 +1,13 @@
+{
+  "workspace_name": "og-debug-orchestrator-agents-task-27feb-4bdf",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-2crn",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "8155077911c98b76771e15507c2ea18f198f968b",
+  "spawn_time": "2026-02-27T14:14:34-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@560",
+  "verify_level": "V2"
+}

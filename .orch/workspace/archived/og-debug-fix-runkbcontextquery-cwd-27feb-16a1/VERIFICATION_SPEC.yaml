@@ -1,0 +1,44 @@
+verification:
+  type: bug-fix
+  issue: orch-go-t3ll
+
+  reproduction:
+    description: >
+      runKBContextQuery runs kb context from process CWD, not target projectDir.
+      When daemon (running from orch-go) spawns for toolshed, local search hits
+      orch-go .kb/ instead of toolshed .kb/. If >=3 results found locally,
+      global search is never reached.
+    fixed: true
+    verification: >
+      Integration test TestRunKBContextQueryProjectDir confirms that calling
+      runKBContextQuery with projectDir=tempDir (no .kb/) returns nil,
+      proving cmd.Dir is respected. Previously, process CWD .kb/ would be
+      searched regardless of projectDir.
+
+  tests:
+    - command: "go test ./pkg/spawn/ -run TestRunKBContextQueryProjectDir -v"
+      expected: "PASS"
+      actual: "PASS (0.01s)"
+    - command: "go test ./pkg/spawn/"
+      expected: "ok (no regressions)"
+      actual: "ok github.com/dylan-conlin/orch-go/pkg/spawn 0.492s"
+    - command: "go build ./cmd/orch/"
+      expected: "BUILD OK"
+      actual: "BUILD OK"
+
+  code_changes:
+    - file: pkg/spawn/kbcontext.go
+      description: >
+        Added projectDir parameter to runKBContextQuery. Set cmd.Dir = projectDir
+        when non-empty. Updated both call sites in RunKBContextCheckForDir.
+    - file: pkg/spawn/kbcontext_test.go
+      description: >
+        Added TestRunKBContextQueryProjectDir integration test verifying
+        projectDir controls kb context search directory.
+
+  smoke_test:
+    description: >
+      Cannot fully smoke-test cross-repo daemon spawn in CI, but the fix is
+      structural: cmd.Dir is now set from projectDir, which was already correctly
+      passed by all callers (pkg/orch/extraction.go:1277, pkg/spawn/skill_requires.go:175).
+      The integration test verifies the CWD behavior change directly.
