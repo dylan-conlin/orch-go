@@ -194,6 +194,85 @@ func TestParseInvestigationPathFromComments(t *testing.T) {
 	}
 }
 
+func TestParseProbePathFromComments(t *testing.T) {
+	tests := []struct {
+		name     string
+		comments []Comment
+		want     string
+	}{
+		{
+			name:     "no probe path",
+			comments: []Comment{{Text: "Phase: Complete - done"}},
+			want:     "",
+		},
+		{
+			name:     "has probe path",
+			comments: []Comment{{Text: "probe_path: /home/user/orch-go/.kb/models/spawn/probes/2026-02-26-test.md"}},
+			want:     "/home/user/orch-go/.kb/models/spawn/probes/2026-02-26-test.md",
+		},
+		{
+			name: "latest probe path wins",
+			comments: []Comment{
+				{Text: "probe_path: /old/path.md"},
+				{Text: "probe_path: /new/path.md"},
+			},
+			want: "/new/path.md",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseProbePathFromComments(tt.comments)
+			if got != tt.want {
+				t.Errorf("ParseProbePathFromComments() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckCrossRepoDeliverable(t *testing.T) {
+	tests := []struct {
+		name       string
+		comments   []Comment
+		projectDir string
+		want       string
+	}{
+		{
+			name:       "same-repo probe - no cross-repo",
+			comments:   []Comment{{Text: "probe_path: /home/user/orch-go/.kb/models/spawn/probes/test.md"}},
+			projectDir: "/home/user/orch-go",
+			want:       "",
+		},
+		{
+			name:       "cross-repo probe detected",
+			comments:   []Comment{{Text: "probe_path: /home/user/orch-go/.kb/models/spawn/probes/test.md"}},
+			projectDir: "/home/user/kb-cli",
+			want:       "/home/user/orch-go/.kb/models/spawn/probes/test.md",
+		},
+		{
+			name:       "cross-repo investigation detected",
+			comments:   []Comment{{Text: "investigation_path: /home/user/orch-go/.kb/investigations/test.md"}},
+			projectDir: "/home/user/kb-cli",
+			want:       "/home/user/orch-go/.kb/investigations/test.md",
+		},
+		{
+			name:       "no paths - no cross-repo",
+			comments:   []Comment{{Text: "Phase: Complete - done"}},
+			projectDir: "/home/user/orch-go",
+			want:       "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CheckCrossRepoDeliverable(tt.comments, tt.projectDir)
+			if got != tt.want {
+				t.Errorf("CheckCrossRepoDeliverable() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestVerificationResult(t *testing.T) {
 	t.Run("empty result defaults to passed", func(t *testing.T) {
 		result := VerificationResult{Passed: true}

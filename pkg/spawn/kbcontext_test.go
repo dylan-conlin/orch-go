@@ -1248,3 +1248,74 @@ func TestScopedMaxKBContextChars(t *testing.T) {
 		t.Errorf("ScopedMaxKBContextChars (%d) is too small for practical use", ScopedMaxKBContextChars)
 	}
 }
+
+func TestDetectCrossRepoModel(t *testing.T) {
+	// Create temp dirs to simulate git repos
+	repoA := t.TempDir()
+	repoB := t.TempDir()
+
+	// Set up .git in repoA (simulates a git repo)
+	if err := os.MkdirAll(repoA+"/.git", 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Set up .git in repoB
+	if err := os.MkdirAll(repoB+"/.git", 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Set up .kb/models in repoB for model path
+	modelDir := repoB + "/.kb/models/spawn-architecture"
+	if err := os.MkdirAll(modelDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name             string
+		primaryModelPath string
+		projectDir       string
+		wantCrossRepo    bool
+		wantDir          string
+	}{
+		{
+			name:             "same repo - no cross-repo",
+			primaryModelPath: repoA + "/.kb/models/spawn-architecture/model.md",
+			projectDir:       repoA,
+			wantCrossRepo:    false,
+		},
+		{
+			name:             "different repos - cross-repo detected",
+			primaryModelPath: repoB + "/.kb/models/spawn-architecture/model.md",
+			projectDir:       repoA,
+			wantCrossRepo:    true,
+			wantDir:          repoB,
+		},
+		{
+			name:             "empty model path",
+			primaryModelPath: "",
+			projectDir:       repoA,
+			wantCrossRepo:    false,
+		},
+		{
+			name:             "empty project dir",
+			primaryModelPath: repoB + "/.kb/models/spawn-architecture/model.md",
+			projectDir:       "",
+			wantCrossRepo:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := DetectCrossRepoModel(tt.primaryModelPath, tt.projectDir)
+			if tt.wantCrossRepo {
+				if got == "" {
+					t.Errorf("DetectCrossRepoModel() = empty, want %q", tt.wantDir)
+				} else if got != tt.wantDir {
+					t.Errorf("DetectCrossRepoModel() = %q, want %q", got, tt.wantDir)
+				}
+			} else {
+				if got != "" {
+					t.Errorf("DetectCrossRepoModel() = %q, want empty", got)
+				}
+			}
+		})
+	}
+}

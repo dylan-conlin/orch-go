@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ import (
 var (
 	regexPhaseComment             = regexp.MustCompile(`(?i)Phase:\s*(\w+)(?:\s*[-–—]\s*(.*))?`)
 	regexInvestigationPathComment = regexp.MustCompile(`(?i)investigation_path:\s*(.+)`)
+	regexProbePathComment         = regexp.MustCompile(`(?i)probe_path:\s*(.+)`)
 )
 
 // Comment is an alias for beads.Comment for compatibility.
@@ -157,6 +159,39 @@ func ParseInvestigationPathFromComments(comments []Comment) string {
 	}
 
 	return latestPath
+}
+
+// ParseProbePathFromComments extracts the probe file path from comments.
+// Looks for comments matching "probe_path: <path>" pattern.
+// Returns empty string if no probe_path comment is found.
+func ParseProbePathFromComments(comments []Comment) string {
+	var latestPath string
+
+	for _, comment := range comments {
+		matches := regexProbePathComment.FindStringSubmatch(comment.Text)
+		if len(matches) >= 2 {
+			latestPath = strings.TrimSpace(matches[1])
+		}
+	}
+
+	return latestPath
+}
+
+// CheckCrossRepoDeliverable checks if a reported probe or investigation path
+// is outside the agent's project directory, indicating a cross-repo deliverable.
+// Returns the path if cross-repo, empty string otherwise.
+func CheckCrossRepoDeliverable(comments []Comment, projectDir string) string {
+	probePath := ParseProbePathFromComments(comments)
+	if probePath != "" && !strings.HasPrefix(probePath, projectDir+string(filepath.Separator)) {
+		return probePath
+	}
+
+	invPath := ParseInvestigationPathFromComments(comments)
+	if invPath != "" && !strings.HasPrefix(invPath, projectDir+string(filepath.Separator)) {
+		return invPath
+	}
+
+	return ""
 }
 
 // GetPhaseStatus retrieves the current phase status for a beads issue.

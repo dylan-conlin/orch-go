@@ -2760,3 +2760,57 @@ func TestGenerateContext_OrientationFrame(t *testing.T) {
 		}
 	})
 }
+
+func TestGenerateContext_CrossRepoModelWarning(t *testing.T) {
+	t.Run("includes cross-repo warning when CrossRepoModelDir set", func(t *testing.T) {
+		cfg := &Config{
+			Task:              "probe spawn model",
+			SkillName:         "investigation",
+			Project:           "kb-cli",
+			ProjectDir:        "/home/user/kb-cli",
+			WorkspaceName:     "kc-inv-probe-spawn-26feb-abcd",
+			BeadsID:           "kb-cli-42",
+			HasInjectedModels: true,
+			CrossRepoModelDir: "/home/user/orch-go",
+			Tier:              TierFull,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext() error: %v", err)
+		}
+
+		if !strings.Contains(content, "CROSS-REPO MODEL") {
+			t.Error("expected CROSS-REPO MODEL warning in context")
+		}
+		if !strings.Contains(content, "/home/user/orch-go") {
+			t.Error("expected model repo path in cross-repo warning")
+		}
+		if !strings.Contains(content, "/home/user/kb-cli") {
+			t.Error("expected workdir path in cross-repo warning")
+		}
+	})
+
+	t.Run("no cross-repo warning when same repo", func(t *testing.T) {
+		cfg := &Config{
+			Task:              "probe spawn model",
+			SkillName:         "investigation",
+			Project:           "orch-go",
+			ProjectDir:        "/home/user/orch-go",
+			WorkspaceName:     "og-inv-probe-spawn-26feb-abcd",
+			BeadsID:           "orch-go-42",
+			HasInjectedModels: true,
+			CrossRepoModelDir: "", // Same repo
+			Tier:              TierFull,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext() error: %v", err)
+		}
+
+		if strings.Contains(content, "CROSS-REPO MODEL") {
+			t.Error("should NOT have CROSS-REPO MODEL warning when same repo")
+		}
+	})
+}

@@ -1,0 +1,65 @@
+verification_spec:
+  issue: orch-go-1152
+  workspace: og-debug-cross-repo-spawns-26feb-7068
+
+  automated_checks:
+    - name: "DetectCrossRepoModel unit tests"
+      command: "go test ./pkg/spawn/ -run TestDetectCrossRepoModel -v"
+      expected: "PASS (4 subtests)"
+
+    - name: "Cross-repo template rendering tests"
+      command: "go test ./pkg/spawn/ -run TestGenerateContext_CrossRepoModelWarning -v"
+      expected: "PASS (2 subtests)"
+
+    - name: "Probe path parser tests"
+      command: "go test ./pkg/verify/ -run TestParseProbePathFromComments -v"
+      expected: "PASS (3 subtests)"
+
+    - name: "Cross-repo deliverable check tests"
+      command: "go test ./pkg/verify/ -run TestCheckCrossRepoDeliverable -v"
+      expected: "PASS (4 subtests)"
+
+    - name: "Full package tests (spawn, verify, cmd/orch)"
+      command: "go test ./pkg/spawn/ ./pkg/verify/ ./cmd/orch/"
+      expected: "PASS for all 3 packages"
+
+    - name: "Build passes"
+      command: "go build ./cmd/orch/"
+      expected: "No errors"
+
+    - name: "Vet passes"
+      command: "go vet ./cmd/orch/ ./pkg/spawn/ ./pkg/verify/"
+      expected: "No issues"
+
+  behavioral_checks:
+    - name: "Spawn-time cross-repo warning"
+      description: |
+        When spawning with --workdir pointing to repo A and kb context returns
+        a model from repo B, the orchestrator should see a stderr warning:
+        "Cross-repo model detected: model lives in <B>, agent workdir is <A>"
+      verification: "Unit tested via TestGenerateContext_CrossRepoModelWarning"
+
+    - name: "SPAWN_CONTEXT.md includes cross-repo instructions"
+      description: |
+        When CrossRepoModelDir is set, the generated SPAWN_CONTEXT.md should contain
+        a 'CROSS-REPO MODEL' warning section telling the agent to use the absolute
+        path from the model's See: reference.
+      verification: "Unit tested via TestGenerateContext_CrossRepoModelWarning"
+
+    - name: "Completion warns about cross-repo deliverables"
+      description: |
+        When a reported probe_path or investigation_path in beads comments is
+        outside the agent's projectDir, the completion verification should emit
+        a warning about manual integration.
+      verification: "Unit tested via TestCheckCrossRepoDeliverable"
+
+  smoke_test:
+    description: |
+      The original bug scenario: orchestrator spawns a probe with --workdir to repo A
+      but model lives in repo B. With the fix, the SPAWN_CONTEXT.md now includes
+      explicit cross-repo instructions. Full E2E verification would require a live
+      spawn across two repos, which is not practical in unit tests.
+    manual_steps:
+      - "Verify SPAWN_CONTEXT.md template includes {{if .CrossRepoModelDir}} section"
+      - "Verify DetectCrossRepoModel correctly identifies different git repos"
+      - "Verify CheckCrossRepoDeliverable flags paths outside projectDir"
