@@ -57,6 +57,7 @@ var (
 	spawnForceHotspot       bool   // Bypass CRITICAL hotspot blocking gate
 	spawnArchitectRef       string // Architect issue reference (required with --force-hotspot)
 	spawnAccount            string // Account name for Claude CLI spawns (overrides auto-selection)
+	spawnVerifyLevel        string // Verification level override (V0-V3)
 	spawnScope              string // Session scope: small, medium, large
 	spawnModeSet            bool   // Tracks whether --mode was explicitly set
 	spawnValidationSet      bool   // Tracks whether --validation was explicitly set
@@ -188,6 +189,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnArchitectRef, "architect-ref", "", "Architect issue ID proving area was reviewed (required with --force-hotspot)")
 	spawnCmd.Flags().StringVar(&spawnScope, "scope", "", "Session scope: small, medium, large (parsed from task if not set)")
 	spawnCmd.Flags().StringVar(&spawnAccount, "account", "", "Account name for Claude CLI spawns (e.g., 'work', 'personal')")
+	spawnCmd.Flags().StringVar(&spawnVerifyLevel, "verify-level", "", "Verification level override (V0=acknowledge, V1=artifacts, V2=evidence, V3=behavioral)")
 }
 
 var (
@@ -485,6 +487,11 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		return err
 	}
 
+	// Validate --verify-level flag if provided
+	if spawnVerifyLevel != "" && !spawn.IsValidVerifyLevel(spawnVerifyLevel) {
+		return fmt.Errorf("invalid --verify-level %q: must be V0, V1, V2, or V3", spawnVerifyLevel)
+	}
+
 	// Build input parameter struct
 	input := &orch.SpawnInput{
 		ServerURL:    serverURL,
@@ -601,9 +608,15 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	skillContent = skills.FilterSkillSections(skillContent, buildSectionFilter(spawnPhases, resolved.Settings.Mode.Value))
 
 	// 6. Gather spawn context
-	kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, err := orch.GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, skillName, spawnSkipArtifactCheck, spawnGateOnGap, spawnSkipGapGate, spawnGapThreshold)
+	kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, crossRepoModelDir, err := orch.GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, skillName, spawnSkipArtifactCheck, spawnGateOnGap, spawnSkipGapGate, spawnGapThreshold)
 	if err != nil {
 		return err
+	}
+
+	// 6b. Warn orchestrator about cross-repo model situation
+	if crossRepoModelDir != "" {
+		fmt.Fprintf(os.Stderr, "⚠️  Cross-repo model detected: model lives in %s, agent workdir is %s\n", crossRepoModelDir, projectDir)
+		fmt.Fprintf(os.Stderr, "   Agent will be instructed to create probe in model's repo, not workdir.\n")
 	}
 
 	// 7. Extract bug reproduction info
@@ -636,6 +649,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		KBContext:          kbContext,
 		GapAnalysis:        gapAnalysis,
 		HasInjectedModels:  hasInjectedModels,
+		CrossRepoModelDir:  crossRepoModelDir,
 		PrimaryModelPath:   primaryModelPath,
 		IsBug:              isBug,
 		ReproSteps:         reproSteps,
@@ -644,6 +658,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		AccountConfigDir:   resolvedAccountConfigDir,
 		SpawnBackend:       resolved.Settings.Backend.Value,
 		Tier:               resolved.Settings.Tier.Value,
+		VerifyLevel:        spawnVerifyLevel,
 		Scope:              spawnScope,
 		HotspotArea:        hotspotResult != nil && hotspotResult.HasHotspots,
 		HotspotFiles:       hotspotFilesFromResult(hotspotResult),

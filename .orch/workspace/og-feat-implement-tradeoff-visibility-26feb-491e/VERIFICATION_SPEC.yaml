@@ -1,0 +1,55 @@
+verification:
+  automated:
+    - name: "Build passes"
+      command: "go build ./cmd/orch/"
+      expected: "exit 0"
+      result: "PASS"
+
+    - name: "Go vet passes"
+      command: "go vet ./cmd/orch/"
+      expected: "exit 0"
+      result: "PASS"
+
+    - name: "Synthesis parser test - ArchitecturalChoices field"
+      command: "go test ./pkg/verify/ -run TestParseSynthesis_ArchitecturalChoices -count=1"
+      expected: "PASS (3 subtests)"
+      result: "PASS"
+
+    - name: "Architectural choices verification gate"
+      command: "go test ./pkg/verify/ -run TestVerifyArchitecturalChoices -count=1"
+      expected: "PASS (8 subtests)"
+      result: "PASS"
+
+    - name: "RequiresArchitecturalChoicesGate routing"
+      command: "go test ./pkg/verify/ -run TestRequiresArchitecturalChoicesGate -count=1"
+      expected: "PASS (7 subtests)"
+      result: "PASS"
+
+    - name: "ExtractArchitecturalChoicesContent extraction"
+      command: "go test ./pkg/verify/ -run TestExtractArchitecturalChoicesContent -count=1"
+      expected: "PASS (3 subtests)"
+      result: "PASS"
+
+    - name: "Level tests (V0-V3 include new gate)"
+      command: "go test ./pkg/verify/ -run TestGatesForLevel -count=1"
+      expected: "PASS (6 subtests)"
+      result: "PASS"
+
+    - name: "All verify package tests"
+      command: "go test ./pkg/verify/ -count=1"
+      expected: "PASS"
+      result: "PASS"
+
+    - name: "All cmd/orch tests"
+      command: "go test ./cmd/orch/ -count=1"
+      expected: "PASS"
+      result: "PASS"
+
+  manual:
+    - name: "Model Pressure Points populated"
+      check: ".kb/models/agent-lifecycle-state-model/model.md has Pressure Points section with 7 entries"
+      result: "VERIFIED"
+
+    - name: "SYNTHESIS.md template updated"
+      check: ".orch/templates/SYNTHESIS.md includes Architectural Choices section between Evidence and Knowledge"
+      result: "VERIFIED"

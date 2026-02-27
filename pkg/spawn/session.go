@@ -198,6 +198,11 @@ type AgentManifest struct {
 
 	// SessionID is the OpenCode session ID (empty for claude backend which has no OpenCode session)
 	SessionID string `json:"session_id,omitempty"`
+
+	// VerifyLevel is the verification level declared at spawn time (V0-V3).
+	// Determines which gates fire during completion verification.
+	// Empty for pre-V0-V3 workspaces (falls back to inference from skill).
+	VerifyLevel string `json:"verify_level,omitempty"`
 }
 
 // WriteAgentManifest writes the agent manifest JSON to the workspace directory.

@@ -279,6 +279,22 @@ See: `.kb/decisions/2026-02-18-two-lane-agent-discovery.md`
 
 ---
 
+## Pressure Points
+
+Common feature requests or operational changes that would violate this model's invariants. Use these to evaluate whether a proposed change is architecturally safe.
+
+| If Asked To... | Architectural Risk | Invariant at Risk |
+|----------------|-------------------|-------------------|
+| Cache agent state locally (registry, projection DB, state.db) | Drift from authoritative sources; recreates the 6-week registry cycle (Dec 21 - Feb 18) | #7: No persistent lifecycle caches |
+| Infer completion from session idle/dead | False positives; session idle has many causes (paused, waiting, crashed, context exhausted) | #3: Session existence ≠ agent still working |
+| Add a fifth state layer | Reconciliation complexity increases quadratically; every new layer drifts independently | #5: Multiple sources must be reconciled |
+| Use tmux window presence for agent status | Tmux is UI-only; windows can close independently of work completion | #6: Tmux windows are UI layer only |
+| Mutate state during status checks | Side effects in queries cause unpredictable state transitions and ordering bugs | #4: Status checks don't mutate state |
+| Skip reason codes for missing data | Silent failures accumulate; operators can't distinguish "not found" from "not checked" | #8: Silent failures must be visible |
+| Let workers close their own beads issues | Bypasses verification gates; breaks the orchestrator-reviews-worker hierarchy | #2: Beads issue closed = canonical completion |
+
+---
+
 ## Evolution
 
 **Dec 20-21, 2025: Initial Implementation**

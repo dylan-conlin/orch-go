@@ -247,11 +247,16 @@ DELIVERABLES (REQUIRED):
 {{if .HasInjectedModels}}
 2. **SET UP probe file:** This is confirmatory work against an existing model.
    - Model content was injected in PRIOR KNOWLEDGE section above
-   - Create probe file in model's probes/ directory
+   - Create probe file in model's probes/ directory (use the absolute path from the ` + "`See:`" + ` reference)
    - Use probe template structure: Question, What I Tested, What I Observed, Model Impact
    - Your probe should confirm, contradict, or extend the model's claims
+{{if .CrossRepoModelDir}}
+   - ⚠️ **CROSS-REPO MODEL:** The model lives in ` + "`{{.CrossRepoModelDir}}`" + `, NOT in your working directory (` + "`{{.ProjectDir}}`" + `).
+     Create the probe file using the **absolute path** from the model's ` + "`See:`" + ` reference in PRIOR KNOWLEDGE above.
+     Your workspace and SYNTHESIS.md remain in {{.ProjectDir}}.
+{{end}}
 {{if not .NoTrack}}
-   - **IMPORTANT:** After creating probe file, report the path via:
+   - **IMPORTANT:** After creating probe file, report the **absolute** path via:
      ` + "`bd comment {{.BeadsID}} \"probe_path: /path/to/probe.md\"`" + `
 {{end}}
 {{else}}
@@ -540,7 +545,8 @@ type contextData struct {
 	SkillContent          string
 	InvestigationSlug     string
 	ProducesInvestigation bool
-	HasInjectedModels     bool // When true, this spawn has model content injected for probing
+	HasInjectedModels     bool   // When true, this spawn has model content injected for probing
+	CrossRepoModelDir     string // When non-empty, model lives in a different repo than ProjectDir
 	Phases                string
 	Mode                  string
 	Validation            string
@@ -615,6 +621,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		InvestigationSlug:     slug,
 		ProducesInvestigation: DefaultProducesInvestigationForSkill(cfg.SkillName, cfg.Phases),
 		HasInjectedModels:     cfg.HasInjectedModels,
+		CrossRepoModelDir:     cfg.CrossRepoModelDir,
 		Phases:                cfg.Phases,
 		Mode:                  cfg.Mode,
 		Validation:            cfg.Validation,
@@ -741,6 +748,7 @@ func WriteContext(cfg *Config) error {
 		Tier:          cfg.Tier,
 		SpawnMode:     cfg.SpawnMode,
 		Model:         cfg.Model,
+		VerifyLevel:   cfg.VerifyLevel,
 	}
 	if err := WriteAgentManifest(workspacePath, manifest); err != nil {
 		return fmt.Errorf("failed to write agent manifest: %w", err)

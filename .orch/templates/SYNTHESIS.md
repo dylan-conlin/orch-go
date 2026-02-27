@@ -27,6 +27,7 @@ incomplete sections, and the cognitive load of reconstructing what you observed.
 | TLDR | Last (after you know what happened) |
 | Delta | During work (as you create/modify files) |
 | Evidence | During work (as you observe things) |
+| Architectural Choices | During work (as you make tradeoff decisions) |
 | Knowledge | After implementation (patterns noticed) |
 | Next | After validation (what should happen) |
 | Unexplored | Anytime (capture questions as they emerge) |
@@ -69,6 +70,24 @@ incomplete sections, and the cognitive load of reconstructing what you observed.
 go test ./... 
 # PASS: all tests passing
 ```
+
+---
+
+## Architectural Choices
+
+<!--
+Document tradeoffs made during this session. Required for architect, feature-impl,
+and systematic-debugging skills. For each choice:
+
+### [Choice description]
+- **What I chose:** [approach taken]
+- **What I rejected:** [alternative not taken]
+- **Why:** [rationale]
+- **Risk accepted:** [what could go wrong with this choice]
+
+If no architectural choices were made, write:
+"No architectural choices — task was within existing patterns."
+-->
 
 ---
 

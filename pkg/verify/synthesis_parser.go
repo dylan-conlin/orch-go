@@ -36,6 +36,9 @@ type Synthesis struct {
 	AreasToExplore      []string // Areas worth exploring further
 	Uncertainties       []string // What remains unclear
 
+	// Architectural Choices section (tradeoff visibility)
+	ArchitecturalChoices string // Raw content of the "Architectural Choices" section
+
 	// Parsed fields for easy access
 	Recommendation string   // Extracted from Next section (close, continue, escalate)
 	NextActions    []string // Follow-up items
@@ -80,6 +83,9 @@ func ParseSynthesis(workspacePath string) (*Synthesis, error) {
 
 	// Parse Next Actions (follow-up items)
 	s.NextActions = extractNextActions(content)
+
+	// Parse Architectural Choices section (tradeoff visibility)
+	s.ArchitecturalChoices = extractSection(content, "Architectural Choices")
 
 	// Parse Unexplored Questions section
 	unexploredSection := extractSection(content, "Unexplored Questions")

@@ -211,7 +211,7 @@ func runRework(beadsID, feedback string) error {
 	}
 	applyResolvedSpawnMode(input, resolved.Settings.SpawnMode.Value)
 
-	kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, err := orch.GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, skillName, false, false, false, 0)
+	kbContext, gapAnalysis, hasInjectedModels, primaryModelPath, _, err := orch.GatherSpawnContext(skillContent, task, beadsID, projectDir, workspaceName, skillName, false, false, false, 0)
 	if err != nil {
 		return err
 	}

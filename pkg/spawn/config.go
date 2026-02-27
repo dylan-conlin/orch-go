@@ -140,6 +140,11 @@ type Config struct {
 	// Full tier requires SYNTHESIS.md for knowledge externalization
 	Tier string
 
+	// VerifyLevel specifies the verification level (V0-V3).
+	// Determines which gates fire during completion verification.
+	// If empty, inferred from skill + issue type at spawn time.
+	VerifyLevel string
+
 	// NoTrack opts out of beads issue tracking (ad-hoc work)
 	NoTrack bool
 
@@ -157,6 +162,11 @@ type Config struct {
 	// PrimaryModelPath is the file path to the primary model when HasInjectedModels is true.
 	// Used to determine probe file location (.kb/models/{model-name}/probes/).
 	PrimaryModelPath string
+
+	// CrossRepoModelDir is non-empty when the primary model lives in a different repo
+	// than ProjectDir. Contains the absolute path to the model's repo root.
+	// Used to add explicit cross-repo deliverable instructions in SPAWN_CONTEXT.md.
+	CrossRepoModelDir string
 
 	// IncludeServers controls whether server context is included in SPAWN_CONTEXT.md
 	// Default is based on skill type (true for UI-focused skills)

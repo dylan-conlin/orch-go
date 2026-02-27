@@ -54,8 +54,9 @@ var (
 	completeSkipPhaseComplete  bool
 	completeSkipHandoffContent bool
 	completeSkipExplainBack    bool
-	completeSkipAccretion      bool
-	completeSkipReason         string // Required for all --skip-* flags (min 10 chars)
+	completeSkipAccretion           bool
+	completeSkipArchitecturalChoices bool
+	completeSkipReason              string // Required for all --skip-* flags (min 10 chars)
 
 	// Explain-back flag: orchestrator provides explanation text
 	completeExplain string
@@ -187,6 +188,7 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipHandoffContent, "skip-handoff-content", false, "Skip handoff content validation gate for orchestrators (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipExplainBack, "skip-explain-back", false, "Skip explain-back verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipAccretion, "skip-accretion", false, "Skip accretion (file size growth) verification gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipArchitecturalChoices, "skip-architectural-choices", false, "Skip architectural choices verification gate (requires --skip-reason)")
 	completeCmd.Flags().StringVar(&completeSkipReason, "skip-reason", "", "Reason for skip (required for all --skip-* flags, min 10 chars)")
 
 	// Explain-back flag
@@ -209,9 +211,10 @@ type SkipConfig struct {
 	DecisionPatch  bool
 	PhaseComplete  bool
 	HandoffContent bool
-	ExplainBack    bool
-	Accretion      bool
-	Reason         string // Required reason for skips
+	ExplainBack          bool
+	Accretion            bool
+	ArchitecturalChoices bool
+	Reason               string // Required reason for skips
 }
 
 // hasAnySkip returns true if any skip flag is set.
@@ -219,7 +222,7 @@ func (c SkipConfig) hasAnySkip() bool {
 	return c.TestEvidence || c.Visual || c.GitDiff || c.Synthesis ||
 		c.Build || c.Constraint || c.PhaseGate || c.SkillOutput ||
 		c.DecisionPatch || c.PhaseComplete || c.HandoffContent || c.ExplainBack ||
-		c.Accretion
+		c.Accretion || c.ArchitecturalChoices
 }
 
 // skippedGates returns a list of gate names that are being skipped.
@@ -264,6 +267,9 @@ func (c SkipConfig) skippedGates() []string {
 	if c.Accretion {
 		gates = append(gates, verify.GateAccretion)
 	}
+	if c.ArchitecturalChoices {
+		gates = append(gates, verify.GateArchitecturalChoices)
+	}
 	return gates
 }
 
@@ -296,6 +302,8 @@ func (c SkipConfig) shouldSkipGate(gate string) bool {
 		return c.ExplainBack
 	case verify.GateAccretion:
 		return c.Accretion
+	case verify.GateArchitecturalChoices:
+		return c.ArchitecturalChoices
 	default:
 		return false
 	}
@@ -315,9 +323,10 @@ func getSkipConfig() SkipConfig {
 		DecisionPatch:  completeSkipDecisionPatch,
 		PhaseComplete:  completeSkipPhaseComplete,
 		HandoffContent: completeSkipHandoffContent,
-		ExplainBack:    completeSkipExplainBack,
-		Accretion:      completeSkipAccretion,
-		Reason:         completeSkipReason,
+		ExplainBack:          completeSkipExplainBack,
+		Accretion:            completeSkipAccretion,
+		ArchitecturalChoices: completeSkipArchitecturalChoices,
+		Reason:               completeSkipReason,
 	}
 }
 
@@ -989,6 +998,15 @@ func runComplete(identifier, workdir string) error {
 		probeVerdicts := verify.FindProbesForWorkspace(workspacePath, beadsProjectDir)
 		if len(probeVerdicts) > 0 {
 			fmt.Print(verify.FormatProbeVerdicts(probeVerdicts))
+		}
+	}
+
+	// Surface architectural choices for orchestrator review (Layer 3: completion surfacing)
+	// When agents declare tradeoffs in SYNTHESIS.md, bring them to the orchestrator
+	// during completion so they can engage with the tradeoff (not just rubber-stamp).
+	if workspacePath != "" && !isOrchestratorSession {
+		if choicesOutput := verify.FormatArchitecturalChoicesForCompletion(workspacePath); choicesOutput != "" {
+			fmt.Print(choicesOutput)
 		}
 	}
 
@@ -1991,6 +2009,7 @@ func buildVerificationChecklist(
 	appendItem("skill output", gateStatus(verify.GateSkillOutput))
 	appendItem("decision patch limit", gateStatus(verify.GateDecisionPatchLimit))
 	appendItem("accretion", gateStatus(verify.GateAccretion))
+	appendItem("architectural choices", gateStatus(verify.GateArchitecturalChoices))
 
 	return items
 }

@@ -37,7 +37,9 @@ type VerificationResult struct {
 	Warnings    []string // Warnings that don't block completion
 	Phase       PhaseStatus
 	GatesFailed []string // Names of gates that failed (for event tracking)
+	GatesRun    []string // Names of gates that were run (for debugging)
 	Skill       string   // Skill name extracted from workspace
+	VerifyLevel string   // Verification level used (V0-V3, empty if legacy)
 }
 
 // Tier constants for orchestrator spawns.
@@ -275,72 +277,74 @@ func VerifyCompletionForReview(beadsID, workspacePath, tier, serverURL string, c
 // VerifyCompletionFullWithComments is like VerifyCompletionFull but accepts pre-fetched comments.
 // This avoids O(n) beads API calls when verifying multiple completions in batch.
 // If comments is nil, comments will be fetched from beads API.
+//
+// Gate selection is driven by verification level (V0-V3) from the agent manifest.
+// Each level is a strict superset: V0 ⊂ V1 ⊂ V2 ⊂ V3.
+// The level is read from the workspace manifest; if not set, it falls back to
+// inference from skill name (for backward compatibility with pre-V0-V3 workspaces).
 func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, serverURL string, comments []Comment) (VerificationResult, error) {
 	// Determine tier if not provided (needed for orchestrator check below)
 	if tier == "" && workspacePath != "" {
 		tier = ReadTierFromWorkspace(workspacePath)
 	}
 
-	// First run standard verification (uses comments for phase status)
-	result, err := VerifyCompletionWithTierAndComments(beadsID, workspacePath, tier, comments)
+	// Determine verification level from workspace manifest
+	verifyLevel := ""
+	if workspacePath != "" {
+		verifyLevel = ReadVerifyLevelFromWorkspace(workspacePath)
+	}
+
+	// First run standard verification (uses comments for phase status + synthesis check)
+	// This handles Phase: Complete gate and SYNTHESIS.md gate (both level-aware)
+	result, err := verifyCompletionWithLevelAndComments(beadsID, workspacePath, tier, verifyLevel, comments)
 	if err != nil {
 		return result, err
 	}
 
-	// If standard verification failed, no need to check constraints
+	result.VerifyLevel = verifyLevel
+
+	// If standard verification failed, no need to check further gates
 	if !result.Passed {
 		return result, nil
 	}
 
 	// Verify backend deliverables (opencode transcript or tmux capture)
+	// This is informational (warnings only), not gated by level
 	if !isOrchestrator(tier) && workspacePath != "" {
 		backendResult := VerifyBackendDeliverables(workspacePath, beadsID, serverURL, "")
 		if backendResult != nil {
-			// Merge warnings (backend checks currently don't block unless we decide otherwise)
 			result.Warnings = append(result.Warnings, backendResult.Warnings...)
-			if !backendResult.Passed {
-				// For now, we don't block completion on backend check failures
-				// to avoid breaking existing workflows, but we log the warnings.
-				// If we want to block, we would set result.Passed = false here.
-			}
 		}
 	}
 
-	// Skip constraint verification if no workspace
-	if workspacePath == "" {
-		return result, nil
-	}
-
-	// Skip constraint verification if no project dir
-	if projectDir == "" {
+	// Skip remaining gates if no workspace or project dir
+	if workspacePath == "" || projectDir == "" {
 		return result, nil
 	}
 
 	// Check if this is an orchestrator tier spawn
 	isOrch := isOrchestrator(tier)
 
-	// Verify skill constraints from SPAWN_CONTEXT.md
-	// Skip for orchestrator tier since they use ORCHESTRATOR_CONTEXT.md
-	if !isOrch {
+	// --- V1 gates: Artifacts ---
+
+	// Constraint gate (V1+)
+	if !isOrch && ShouldRunGate(verifyLevel, GateConstraint) {
+		result.GatesRun = append(result.GatesRun, GateConstraint)
 		constraintResult, err := VerifyConstraintsForCompletion(workspacePath, projectDir)
 		if err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify constraints: %v", err))
-			// Continue to phase gate verification even if constraints failed to parse
+		} else if !constraintResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, constraintResult.Errors...)
+			result.GatesFailed = append(result.GatesFailed, GateConstraint)
 		} else {
-			// Merge constraint results
-			if !constraintResult.Passed {
-				result.Passed = false
-				result.Errors = append(result.Errors, constraintResult.Errors...)
-				result.GatesFailed = append(result.GatesFailed, GateConstraint)
-			}
 			result.Warnings = append(result.Warnings, constraintResult.Warnings...)
 		}
 	}
 
-	// Verify phase gates from SPAWN_CONTEXT.md
-	// This checks that required phases were reported in beads comments
-	// Skip for orchestrator tier (beads-dependent)
-	if !isOrch {
+	// Phase gate (V1+)
+	if !isOrch && ShouldRunGate(verifyLevel, GatePhaseGate) {
+		result.GatesRun = append(result.GatesRun, GatePhaseGate)
 		phaseGateResult, err := VerifyPhaseGatesForCompletionWithComments(workspacePath, beadsID, comments)
 		if err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify phase gates: %v", err))
@@ -351,40 +355,52 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 		}
 	}
 
-	// Verify skill outputs from skill.yaml outputs.required section
-	// This is the "skillc verify" integration - checks that required skill outputs exist
-	skillOutputResult, err := VerifySkillOutputsForCompletion(workspacePath, projectDir)
-	if err != nil {
-		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify skill outputs: %v", err))
-	} else if skillOutputResult != nil {
-		// Only add results if skill had outputs.required defined
-		if !skillOutputResult.Passed {
+	// Skill output gate (V1+)
+	if ShouldRunGate(verifyLevel, GateSkillOutput) {
+		result.GatesRun = append(result.GatesRun, GateSkillOutput)
+		skillOutputResult, err := VerifySkillOutputsForCompletion(workspacePath, projectDir)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify skill outputs: %v", err))
+		} else if skillOutputResult != nil && !skillOutputResult.Passed {
 			result.Passed = false
 			result.Errors = append(result.Errors, skillOutputResult.Errors...)
 			result.GatesFailed = append(result.GatesFailed, GateSkillOutput)
+		} else if skillOutputResult != nil {
+			result.Warnings = append(result.Warnings, skillOutputResult.Warnings...)
 		}
-		result.Warnings = append(result.Warnings, skillOutputResult.Warnings...)
 	}
 
-	// Verify visual verification for web/ changes
-	// This gates completion when web files are modified without visual verification evidence
-	// Skip for orchestrator tier (beads-dependent)
-	if !isOrch {
-		visualResult := VerifyVisualVerificationForCompletionWithComments(beadsID, workspacePath, projectDir, comments)
-		if visualResult != nil {
-			if !visualResult.Passed {
+	// Decision patch limit gate (V1+)
+	if !isOrch && ShouldRunGate(verifyLevel, GateDecisionPatchLimit) {
+		result.GatesRun = append(result.GatesRun, GateDecisionPatchLimit)
+		decisionPatchResult := VerifyDecisionPatchCount(workspacePath, projectDir)
+		if decisionPatchResult != nil {
+			if !decisionPatchResult.Passed {
 				result.Passed = false
-				result.Errors = append(result.Errors, visualResult.Errors...)
-				result.GatesFailed = append(result.GatesFailed, GateVisualVerify)
+				result.Errors = append(result.Errors, decisionPatchResult.Errors...)
+				result.GatesFailed = append(result.GatesFailed, GateDecisionPatchLimit)
 			}
-			result.Warnings = append(result.Warnings, visualResult.Warnings...)
+			result.Warnings = append(result.Warnings, decisionPatchResult.Warnings...)
 		}
 	}
 
-	// Verify test execution evidence for code changes
-	// This gates completion when code files are modified without test execution evidence
-	// Skip for orchestrator tier (beads-dependent)
-	if !isOrch {
+	// Architectural choices gate (V1+)
+	// Gates architect, feature-impl, and systematic-debugging on declaring tradeoffs
+	if !isOrch && ShouldRunGate(verifyLevel, GateArchitecturalChoices) && tier != "light" {
+		result.GatesRun = append(result.GatesRun, GateArchitecturalChoices)
+		archChoicesResult := VerifyArchitecturalChoices(workspacePath, result.Skill)
+		if archChoicesResult != nil && !archChoicesResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, archChoicesResult.Errors...)
+			result.GatesFailed = append(result.GatesFailed, GateArchitecturalChoices)
+		}
+	}
+
+	// --- V2 gates: Evidence ---
+
+	// Test evidence gate (V2+)
+	if !isOrch && ShouldRunGate(verifyLevel, GateTestEvidence) {
+		result.GatesRun = append(result.GatesRun, GateTestEvidence)
 		testEvidenceResult := VerifyTestEvidenceForCompletionWithComments(beadsID, workspacePath, projectDir, comments)
 		if testEvidenceResult != nil {
 			if !testEvidenceResult.Passed {
@@ -396,10 +412,9 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 		}
 	}
 
-	// Verify git diff against SYNTHESIS claims
-	// This detects false positives where agent claims to modify files but didn't
-	// Skip for orchestrator tier (they produce SESSION_HANDOFF.md, not SYNTHESIS.md)
-	if !isOrch {
+	// Git diff gate (V2+)
+	if !isOrch && ShouldRunGate(verifyLevel, GateGitDiff) {
+		result.GatesRun = append(result.GatesRun, GateGitDiff)
 		gitDiffResult := VerifyGitDiffForCompletion(workspacePath, projectDir)
 		if gitDiffResult != nil {
 			if !gitDiffResult.Passed {
@@ -411,10 +426,28 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 		}
 	}
 
-	// Verify accretion (file size growth) for non-orchestrator tiers
-	// This gates completion when agents add >50 lines to already-large files (>800 or >1500 lines)
-	// Skip for orchestrator tier (orchestrators don't write code)
-	if !isOrch {
+	// Build and vet gates (V2+)
+	if ShouldRunGate(verifyLevel, GateBuild) {
+		result.GatesRun = append(result.GatesRun, GateBuild)
+		buildResult := VerifyBuildForCompletion(workspacePath, projectDir)
+		if buildResult != nil {
+			if !buildResult.Passed {
+				result.Passed = false
+				result.Errors = append(result.Errors, buildResult.Errors...)
+				if !buildResult.BuildPassed {
+					result.GatesFailed = append(result.GatesFailed, GateBuild)
+				}
+				if !buildResult.VetPassed {
+					result.GatesFailed = append(result.GatesFailed, GateVet)
+				}
+			}
+			result.Warnings = append(result.Warnings, buildResult.Warnings...)
+		}
+	}
+
+	// Accretion gate (V2+)
+	if !isOrch && ShouldRunGate(verifyLevel, GateAccretion) {
+		result.GatesRun = append(result.GatesRun, GateAccretion)
 		accretionResult := VerifyAccretionForCompletion(workspacePath, projectDir)
 		if accretionResult != nil {
 			if !accretionResult.Passed {
@@ -426,36 +459,122 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 		}
 	}
 
-	// Verify build and vet for Go projects
-	// This gates completion when Go files are modified but the project doesn't build or vet
-	// Note: This check is still relevant for orchestrators if they make code changes
-	buildResult := VerifyBuildForCompletion(workspacePath, projectDir)
-	if buildResult != nil {
-		if !buildResult.Passed {
-			result.Passed = false
-			result.Errors = append(result.Errors, buildResult.Errors...)
-			if !buildResult.BuildPassed {
-				result.GatesFailed = append(result.GatesFailed, GateBuild)
+	// --- V3 gates: Behavioral ---
+
+	// Visual verification gate (V3+)
+	if !isOrch && ShouldRunGate(verifyLevel, GateVisualVerify) {
+		result.GatesRun = append(result.GatesRun, GateVisualVerify)
+		visualResult := VerifyVisualVerificationForCompletionWithComments(beadsID, workspacePath, projectDir, comments)
+		if visualResult != nil {
+			if !visualResult.Passed {
+				result.Passed = false
+				result.Errors = append(result.Errors, visualResult.Errors...)
+				result.GatesFailed = append(result.GatesFailed, GateVisualVerify)
 			}
-			if !buildResult.VetPassed {
-				result.GatesFailed = append(result.GatesFailed, GateVet)
-			}
+			result.Warnings = append(result.Warnings, visualResult.Warnings...)
 		}
-		result.Warnings = append(result.Warnings, buildResult.Warnings...)
 	}
 
-	// Verify decision patch count (prevent launchd-style patch accumulation)
-	// After N patches to same decision, require architect review before more patches
-	// Skip for orchestrator tier (they don't produce investigation patches)
-	if !isOrch {
-		decisionPatchResult := VerifyDecisionPatchCount(workspacePath, projectDir)
-		if decisionPatchResult != nil {
-			if !decisionPatchResult.Passed {
+	// Note: Explain-back gate (GateExplainBack) is handled at the orch complete command level,
+	// not in the verification pipeline. It requires orchestrator interaction (--explain flag).
+
+	// Cross-repo deliverable check (informational warning)
+	// If probe/investigation path is outside projectDir, the orchestrator needs to know
+	// so they can manually integrate the artifact into the correct repo.
+	if !isOrch && projectDir != "" && len(comments) > 0 {
+		crossRepoPath := CheckCrossRepoDeliverable(comments, projectDir)
+		if crossRepoPath != "" {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Cross-repo deliverable detected: %s is outside project dir %s. Manual integration may be required.", crossRepoPath, projectDir))
+		}
+	}
+
+	return result, nil
+}
+
+// verifyCompletionWithLevelAndComments is the level-aware standard verification.
+// It checks Phase: Complete (V0+) and SYNTHESIS.md (V1+) using the verification level.
+// Called by VerifyCompletionFullWithComments.
+func verifyCompletionWithLevelAndComments(beadsID, workspacePath, tier, verifyLevel string, comments []Comment) (VerificationResult, error) {
+	result := VerificationResult{
+		Passed: true,
+	}
+
+	// Extract skill name for tracking
+	if workspacePath != "" {
+		result.Skill, _ = ExtractSkillNameFromSpawnContext(workspacePath)
+	}
+
+	// Determine tier if not provided
+	if tier == "" && workspacePath != "" {
+		tier = ReadTierFromWorkspace(workspacePath)
+	}
+
+	// Orchestrator tier: skip beads-dependent checks, verify SESSION_HANDOFF.md instead
+	if tier == TierOrchestrator {
+		return VerifyOrchestratorCompletion(workspacePath), nil
+	}
+
+	// --- V0 gate: Phase Complete ---
+	result.GatesRun = append(result.GatesRun, GatePhaseComplete)
+	var status PhaseStatus
+	var err error
+	if comments != nil {
+		status = ParsePhaseFromComments(comments)
+	} else {
+		status, err = GetPhaseStatus(beadsID)
+		if err != nil {
+			result.Passed = false
+			result.Errors = append(result.Errors, fmt.Sprintf("failed to get phase status: %v", err))
+			result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
+			return result, nil
+		}
+	}
+
+	result.Phase = status
+
+	if !status.Found {
+		result.Passed = false
+		result.Errors = append(result.Errors,
+			fmt.Sprintf("agent has not reported any Phase status for %s", beadsID))
+		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
+		return result, nil
+	}
+
+	if !strings.EqualFold(status.Phase, "Complete") {
+		result.Passed = false
+		result.Errors = append(result.Errors,
+			fmt.Sprintf("agent phase is '%s', not 'Complete' (beads: %s)", status.Phase, beadsID))
+		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
+		return result, nil
+	}
+
+	// --- V1 gate: Synthesis ---
+	// Uses level-based gating: only runs at V1+ (replaces tier-based "light" skip)
+	if workspacePath != "" && ShouldRunGate(verifyLevel, GateSynthesis) {
+		result.GatesRun = append(result.GatesRun, GateSynthesis)
+		skillName := result.Skill
+		if skillName == "" {
+			skillName, _ = ExtractSkillNameFromSpawnContext(workspacePath)
+		}
+
+		// Auto-skip for knowledge-producing skills - their artifacts ARE the deliverable
+		if IsKnowledgeProducingSkill(skillName) {
+			logAutoSkip(beadsID, workspacePath, GateSynthesis,
+				skillName+" skill produces knowledge artifacts, not SYNTHESIS.md",
+				skillName)
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("synthesis gate auto-skipped for %s skill", strings.ToLower(skillName)))
+		} else {
+			ok, err := VerifySynthesis(workspacePath)
+			if err != nil {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SYNTHESIS.md: %v", err))
+			} else if !ok {
 				result.Passed = false
-				result.Errors = append(result.Errors, decisionPatchResult.Errors...)
-				result.GatesFailed = append(result.GatesFailed, GateDecisionPatchLimit)
+				result.Errors = append(result.Errors,
+					fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath))
+				result.GatesFailed = append(result.GatesFailed, GateSynthesis)
 			}
-			result.Warnings = append(result.Warnings, decisionPatchResult.Warnings...)
 		}
 	}
 
@@ -477,6 +596,8 @@ func VerifyCompletionWithTier(beadsID string, workspacePath string, tier string)
 
 // VerifyCompletionWithTierAndComments is like VerifyCompletionWithTier but accepts pre-fetched comments.
 // If comments is nil, comments will be fetched from beads API.
+// NOTE: This legacy function uses tier-based gating. New callers should use
+// VerifyCompletionFullWithComments which uses verification levels (V0-V3).
 func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, tier string, comments []Comment) (VerificationResult, error) {
 	result := VerificationResult{
 		Passed: true,
