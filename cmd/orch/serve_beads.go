@@ -1013,7 +1013,7 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 	// Enrich nodes with active agent data for in-progress issues.
 	// This enables the frontend to show which agent is working on each issue
 	// via the active_agent field (phase, runtime, model).
-	activeAgentMap := buildActiveAgentMap()
+	activeAgentMap := getCachedActiveAgentMap()
 	for i := range nodes {
 		if info, ok := activeAgentMap[nodes[i].ID]; ok {
 			nodes[i].ActiveAgent = info
@@ -1035,6 +1035,40 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// activeAgentMapCache caches the result of buildActiveAgentMap with a short TTL.
+// This avoids redundant OpenCode HTTP calls and beads comment fetches on every
+// /api/beads/graph request.
+var activeAgentMapCache struct {
+	mu        sync.RWMutex
+	data      map[string]*ActiveAgentInfo
+	fetchedAt time.Time
+	ttl       time.Duration
+}
+
+func init() {
+	activeAgentMapCache.ttl = 15 * time.Second
+}
+
+// getCachedActiveAgentMap returns cached active agent data or rebuilds if stale.
+func getCachedActiveAgentMap() map[string]*ActiveAgentInfo {
+	activeAgentMapCache.mu.RLock()
+	if activeAgentMapCache.data != nil && time.Since(activeAgentMapCache.fetchedAt) < activeAgentMapCache.ttl {
+		result := activeAgentMapCache.data
+		activeAgentMapCache.mu.RUnlock()
+		return result
+	}
+	activeAgentMapCache.mu.RUnlock()
+
+	data := buildActiveAgentMap()
+
+	activeAgentMapCache.mu.Lock()
+	activeAgentMapCache.data = data
+	activeAgentMapCache.fetchedAt = time.Now()
+	activeAgentMapCache.mu.Unlock()
+
+	return data
+}
+
 // buildActiveAgentMap returns a map of beads_id -> active agent info.
 // Uses the trackedAgentsCache as the primary source for agent data (phase, model),
 // which ensures consistency with /api/agents. Falls back to direct OpenCode/tmux
@@ -1045,33 +1079,57 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 // in queryTrackedAgents, causing the dashboard to oscillate between correct status
 // and 'unassigned' on every poll cycle.
 func buildActiveAgentMap() map[string]*ActiveAgentInfo {
-	result := make(map[string]*ActiveAgentInfo)
 	now := time.Now()
 
-	// 1. Tracked agents from cache (primary source, consistent with /api/agents)
-	// This uses the same data as queryTrackedAgents, preventing oscillation
-	// between /api/beads/graph and /api/agents when tmux checks are flaky.
-	projectDirs := uniqueProjectDirs(append([]string{sourceDir}, getKBProjectsFn()...))
-	if tracked, err := globalTrackedAgentsCache.get(projectDirs); err == nil {
-		for _, agent := range tracked {
+	// Run steps 1 (tracked agents) and 2 (OpenCode sessions) in parallel
+	// since they are independent data sources.
+	type trackedResult struct {
+		agents []AgentStatus
+		err    error
+	}
+	type sessionsResult struct {
+		sessions []opencode.Session
+		err      error
+	}
+
+	trackedCh := make(chan trackedResult, 1)
+	sessionsCh := make(chan sessionsResult, 1)
+
+	// Step 1: Tracked agents from cache (primary source, consistent with /api/agents)
+	go func() {
+		projectDirs := uniqueProjectDirs(append([]string{sourceDir}, getKBProjectsFn()...))
+		tracked, err := globalTrackedAgentsCache.get(projectDirs)
+		trackedCh <- trackedResult{agents: tracked, err: err}
+	}()
+
+	// Step 2: OpenCode sessions across all projects
+	go func() {
+		client := opencode.NewClient(serverURL)
+		sessions, err := listSessionsAcrossProjects(client, sourceDir)
+		sessionsCh <- sessionsResult{sessions: sessions, err: err}
+	}()
+
+	// Collect results
+	trackedRes := <-trackedCh
+	sessionsRes := <-sessionsCh
+
+	// Merge tracked agents into result map
+	result := make(map[string]*ActiveAgentInfo)
+	if trackedRes.err == nil {
+		for _, agent := range trackedRes.agents {
 			if agent.BeadsID == "" {
 				continue
 			}
-			info := &ActiveAgentInfo{
+			result[agent.BeadsID] = &ActiveAgentInfo{
 				Phase: agent.Phase,
 				Model: agent.Model,
 			}
-			result[agent.BeadsID] = info
 		}
 	}
 
-	// 2. OpenCode sessions across all projects (catches agents not tracked in beads)
-	// Uses listSessionsAcrossProjects to include cross-project sessions (e.g., toolshed
-	// agents) that are invisible with client.ListSessions("") which only queries the default project.
-	client := opencode.NewClient(serverURL)
-	sessions, err := listSessionsAcrossProjects(client, sourceDir)
-	if err == nil {
-		for _, s := range sessions {
+	// Merge OpenCode sessions (for agents not tracked in beads)
+	if sessionsRes.err == nil {
+		for _, s := range sessionsRes.sessions {
 			beadsID := extractBeadsIDFromTitle(s.Title)
 			if beadsID == "" || result[beadsID] != nil {
 				continue
@@ -1081,11 +1139,9 @@ func buildActiveAgentMap() map[string]*ActiveAgentInfo {
 				Runtime: formatDuration(now.Sub(createdAt)),
 			}
 		}
-	}
 
-	// 3. Enrich tracked agents with runtime from OpenCode sessions
-	if err == nil {
-		for _, s := range sessions {
+		// Step 3: Enrich tracked agents with runtime from OpenCode sessions
+		for _, s := range sessionsRes.sessions {
 			beadsID := extractBeadsIDFromTitle(s.Title)
 			if beadsID == "" {
 				continue
@@ -1097,7 +1153,7 @@ func buildActiveAgentMap() map[string]*ActiveAgentInfo {
 		}
 	}
 
-	// 4. Enrich with phase from beads comments for any agents missing phase
+	// Step 4: Enrich with phase from beads comments for any agents missing phase
 	beadsIDsNeedingPhase := make([]string, 0)
 	for id, info := range result {
 		if info.Phase == "" {

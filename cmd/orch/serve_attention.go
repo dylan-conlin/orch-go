@@ -10,11 +10,55 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/attention"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
+
+// attentionCache caches the full attention API response with a TTL.
+// Keyed by project_dir + role to avoid cross-project/cross-role stale data.
+type attentionCache struct {
+	mu        sync.RWMutex
+	responses map[string]*attentionCacheEntry
+	ttl       time.Duration
+}
+
+type attentionCacheEntry struct {
+	response  AttentionAPIResponse
+	fetchedAt time.Time
+}
+
+func newAttentionCache(ttl time.Duration) *attentionCache {
+	return &attentionCache{
+		responses: make(map[string]*attentionCacheEntry),
+		ttl:       ttl,
+	}
+}
+
+func (c *attentionCache) get(key string) (AttentionAPIResponse, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	entry, ok := c.responses[key]
+	if !ok || time.Since(entry.fetchedAt) > c.ttl {
+		return AttentionAPIResponse{}, false
+	}
+	return entry.response, true
+}
+
+func (c *attentionCache) set(key string, resp AttentionAPIResponse) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.responses[key] = &attentionCacheEntry{
+		response:  resp,
+		fetchedAt: time.Now(),
+	}
+}
+
+// globalAttentionCache caches attention responses for 15 seconds.
+// This prevents 11 parallel collectors from running on every dashboard poll.
+var globalAttentionCache = newAttentionCache(15 * time.Second)
 
 // handleLikelyDone returns LIKELY_DONE attention signals for the dashboard.
 // These are issues with recent commits but no active workspace, suggesting
@@ -151,6 +195,17 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 		projectDir = sourceDir
 	}
 
+	// Check response cache first (15s TTL) to avoid running 11 collectors on every poll
+	cacheKey := fmt.Sprintf("%s|%s|%d", projectDir, role, recentlyClosedHours)
+	if cached, ok := globalAttentionCache.get(cacheKey); ok {
+		if debug {
+			log.Printf("attention: cache hit key=%s", cacheKey)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(cached)
+		return
+	}
+
 	// Get beads client (RPC or CLI fallback)
 	// Note: Must check beadsClient before assigning to interface to avoid
 	// Go's nil interface gotcha (interface with nil data is not == nil)
@@ -253,30 +308,43 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 
-	// Collect from all sources
-	allItems := []attention.AttentionItem{}
+	// Collect from all sources in parallel.
+	// Each collector makes external calls (CLI, HTTP, git) so parallelism is critical
+	// for reducing wall-clock time from sum-of-all to max-of-slowest.
+	type collectorResult struct {
+		index int
+		items []attention.AttentionItem
+		err   error
+	}
+	resultsCh := make(chan collectorResult, len(collectors))
 	for i, collector := range collectors {
-		items, err := collector.Collect(role)
-		if err != nil {
-			// Log error but continue with other collectors
-			// This ensures partial results if one collector fails
+		go func(idx int, c attention.Collector) {
+			items, err := c.Collect(role)
+			resultsCh <- collectorResult{index: idx, items: items, err: err}
+		}(i, collector)
+	}
+
+	allItems := []attention.AttentionItem{}
+	for range collectors {
+		res := <-resultsCh
+		if res.err != nil {
 			if debug {
-				src := fmt.Sprintf("collector[%d]=%T", i, collector)
-				if i < len(sources) {
-					src = sources[i]
+				src := fmt.Sprintf("collector[%d]", res.index)
+				if res.index < len(sources) {
+					src = sources[res.index]
 				}
-				log.Printf("attention: collect error source=%s err=%v", src, err)
+				log.Printf("attention: collect error source=%s err=%v", src, res.err)
 			}
 			continue
 		}
 		if debug {
-			src := fmt.Sprintf("collector[%d]=%T", i, collector)
-			if i < len(sources) {
-				src = sources[i]
+			src := fmt.Sprintf("collector[%d]", res.index)
+			if res.index < len(sources) {
+				src = sources[res.index]
 			}
-			log.Printf("attention: collected source=%s count=%d by_signal=%v", src, len(items), countBySignal(items))
+			log.Printf("attention: collected source=%s count=%d by_signal=%v", src, len(res.items), countBySignal(res.items))
 		}
-		allItems = append(allItems, items...)
+		allItems = append(allItems, res.items...)
 	}
 	if debug {
 		log.Printf("attention: collected total=%d by_signal=%v", len(allItems), countBySignal(allItems))
@@ -360,6 +428,9 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 		Role:        role,
 		CollectedAt: time.Now().Format(time.RFC3339),
 	}
+
+	// Cache the response for subsequent requests within the TTL window
+	globalAttentionCache.set(cacheKey, response)
 
 	// Return JSON response
 	w.Header().Set("Content-Type", "application/json")
