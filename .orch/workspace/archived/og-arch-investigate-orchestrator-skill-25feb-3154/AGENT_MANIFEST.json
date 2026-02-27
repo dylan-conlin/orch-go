@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-arch-investigate-orchestrator-skill-25feb-3154",
+  "skill": "architect",
+  "beads_id": "orch-go-1233",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "bab667fd6700157177da8137521812f9d60137df",
+  "spawn_time": "2026-02-25T13:07:58-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@111"
+}

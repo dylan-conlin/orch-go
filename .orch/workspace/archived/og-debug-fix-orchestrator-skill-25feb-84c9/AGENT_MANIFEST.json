@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-debug-fix-orchestrator-skill-25feb-84c9",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-1234",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "2c37ce3b4cb1c54c661a59edae02a2948bfe3ebd",
+  "spawn_time": "2026-02-25T13:17:31-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@114"
+}

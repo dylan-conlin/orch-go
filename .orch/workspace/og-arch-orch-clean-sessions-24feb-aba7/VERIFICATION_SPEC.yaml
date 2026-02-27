@@ -1,0 +1,39 @@
+verification:
+  type: bug-fix
+  issue: orch-go-1221
+
+  reproduction:
+    description: "orch clean --sessions kills active daemon-spawned Claude CLI tmux windows"
+    steps:
+      - "Daemon spawns agent via Claude CLI in tmux (no OpenCode session)"
+      - "Run orch clean --sessions"
+      - "Before fix: window killed (classified as stale)"
+      - "After fix: window protected (beads issue is in_progress)"
+
+  automated_tests:
+    - name: TestClassifyTmuxWindows
+      command: "go test ./cmd/orch/ -run TestClassifyTmuxWindows -v"
+      expected: "8/8 subtests PASS"
+      covers:
+        - "Window with active OpenCode session is not stale"
+        - "Window with open beads issue but no OpenCode session is protected"
+        - "Window with closed beads issue and no OpenCode session is stale"
+        - "Mixed: one protected by beads, one stale"
+        - "servers and zsh windows are always skipped"
+        - "Window without beads ID is skipped"
+        - "Window with both OpenCode session and open beads is not stale"
+        - "Daemon-spawned Claude CLI agent scenario (exact reproduction case)"
+
+  build_verification:
+    - command: "go build ./cmd/orch/"
+      expected: "clean build"
+    - command: "go vet ./cmd/orch/"
+      expected: "no warnings"
+
+  regression_tests:
+    - command: "go test ./cmd/orch/ -run TestClean -v"
+      expected: "all existing clean tests still pass"
+
+  manual_verification:
+    description: "With daemon-spawned agents running, orch clean --sessions --dry-run should show 'Protected N windows with open beads issues'"
+    status: "not-run (requires active daemon agents)"

@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-feat-update-orchestrator-session-26feb-e015",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-23sj",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "3d43992bb07aef88eba3436036f0930f71466a3e",
+  "spawn_time": "2026-02-26T14:43:37-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@300"
+}

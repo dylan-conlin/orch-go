@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-arch-design-code-review-25feb-9272",
+  "skill": "architect",
+  "beads_id": "orch-go-1247",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "5e7a6a1c10bc41e8e37d5337a4d9b305099a2195",
+  "spawn_time": "2026-02-25T17:30:34-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@140"
+}

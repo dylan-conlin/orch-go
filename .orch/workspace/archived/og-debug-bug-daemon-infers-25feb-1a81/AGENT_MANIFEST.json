@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-debug-bug-daemon-infers-25feb-1a81",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-1211",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "d09f93ad1c6782eace8dca2a096ce57998ab6751",
+  "spawn_time": "2026-02-25T07:38:17-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@76"
+}

@@ -1,0 +1,31 @@
+verification:
+  automated:
+    - check: "Gate 2 no longer references 'Run it, see it work' or 'Reproduce original bug'"
+      command: "grep -c 'Run it, see it work' ~/.claude/skills/SKILL.md"
+      expected: "0 (no matches)"
+      result: "PASS - old wording removed"
+    - check: "Gate 2 references orch complete as verification method"
+      command: "grep 'orch complete.*passes' ~/.claude/skills/SKILL.md"
+      expected: "matches for features and bug fixes rows"
+      result: "PASS - both rows reference orch complete"
+    - check: "Frame guard explanation present in Gate 2"
+      command: "grep 'frame guard' ~/.claude/skills/SKILL.md"
+      expected: "at least 1 match"
+      result: "PASS - explanatory text present"
+    - check: "Pacing table updated (no 'Glance at diff')"
+      command: "grep 'Glance at diff' ~/.claude/skills/SKILL.md"
+      expected: "0 matches"
+      result: "PASS - replaced with 'orch complete auto-gates'"
+    - check: "Template source matches deployed output"
+      command: "diff sections between template and deployed SKILL.md"
+      expected: "Gate 2 and Pacing sections identical"
+      result: "PASS - skillc deploy produced matching output"
+
+  manual:
+    - step: "Next orchestrator session should not attempt to read code files for Gate 2 verification"
+      expected: "Orchestrator follows new Gate 2 guidance using orch complete + SYNTHESIS.md review"
+
+  reproduction:
+    original_bug: "Gate 2 says 'Run it, see it work' but frame guard blocks code reads, creating a loop"
+    verification: "Gate 2 now explicitly says 'NOT by reading code' and lists frame-guard-compatible verification methods"
+    status: "RESOLVED"

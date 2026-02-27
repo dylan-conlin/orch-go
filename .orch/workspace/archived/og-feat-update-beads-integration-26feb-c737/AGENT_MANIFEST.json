@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-feat-update-beads-integration-26feb-c737",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1167",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "1a9edf7a25df9f199cd6078dad4f7da5506af25b",
+  "spawn_time": "2026-02-26T14:34:05-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@294"
+}

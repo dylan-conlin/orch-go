@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-feat-consolidate-quick-entry-25feb-98b0",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1252",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "7bf542c4b786be0f8e2f29ab0bdb4274d6d7836f",
+  "spawn_time": "2026-02-25T17:57:47-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@197"
+}

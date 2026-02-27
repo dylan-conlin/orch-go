@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-feat-architect-design-kb-26feb-a301",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-u6eg",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "b498b4791ee78fe17a5d1e6fd3c941df6db0abcd",
+  "spawn_time": "2026-02-26T14:44:51-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@305"
+}

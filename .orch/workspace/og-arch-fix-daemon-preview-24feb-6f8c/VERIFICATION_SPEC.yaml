@@ -1,0 +1,36 @@
+artifact: VERIFICATION_SPEC
+issue: orch-go-1210
+title: Fix daemon preview nil pointer crash at preview.go:65
+
+verification:
+  automated:
+    - name: Regression test passes
+      command: go test ./pkg/daemon/ -run TestDaemon_Preview_NilListIssuesFunc -v
+      expected: PASS (no panic)
+      result: PASS - returns error from bd CLI (expected), no nil dereference
+
+    - name: All daemon tests pass
+      command: go test ./pkg/daemon/ -v -count=1
+      expected: All tests pass
+      result: PASS - all tests pass (6.7s)
+
+    - name: Build succeeds
+      command: go build ./cmd/orch/
+      expected: Clean build
+      result: PASS - no errors
+
+    - name: Vet passes
+      command: go vet ./pkg/daemon/
+      expected: No issues
+      result: PASS - clean
+
+  reproduction:
+    before_fix: "orch daemon preview crashes with: runtime error: invalid memory address or nil pointer dereference at preview.go:65"
+    after_fix: "orch daemon preview returns issue list or 'No spawnable issues' message (no crash)"
+    verified: true
+
+files_changed:
+  - path: pkg/daemon/preview.go
+    change: "Line 65: d.listIssuesFunc() -> d.resolveListIssuesFunc()()"
+  - path: pkg/daemon/preview_test.go
+    change: "Added TestDaemon_Preview_NilListIssuesFunc regression test"

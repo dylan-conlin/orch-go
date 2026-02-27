@@ -1,0 +1,43 @@
+verification:
+  type: behavioral
+
+  automated_checks:
+    - name: "Script accepts 4 arguments"
+      command: "bash ~/.local/bin/sync-workers-session.sh orchestrator /tmp 1234 /dev/ttys999 2>&1; echo $?"
+      expected: "exit 0 (no matching workers session, exits gracefully)"
+
+    - name: "Non-orchestrator session exits immediately"
+      command: "bash ~/.local/bin/sync-workers-session.sh workers-foo /tmp 1234 /dev/ttys000 2>&1; echo $?"
+      expected: "exit 0 (guard clause)"
+
+    - name: "Config reads tmux_session from orch-go"
+      command: "grep tmux_session /Users/dylanconlin/Documents/personal/orch-go/.orch/config.yaml"
+      expected: "contains 'workers-orch-go'"
+
+    - name: "Config reads tmux_session from scs-special-projects"
+      command: "grep tmux_session /Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/.orch/config.yaml"
+      expected: "contains 'workers-toolshed'"
+
+    - name: "Hook passes format arguments"
+      command: "tmux show-hooks -g | grep after-select-window"
+      expected: "contains '#{session_name} #{pane_current_path} #{pane_pid} #{client_tty}'"
+
+  manual_verification:
+    - name: "End-to-end Ghostty follow"
+      steps:
+        - "Switch orchestrator to orch-go window (window 3)"
+        - "Verify workers Ghostty shows workers-orch-go session"
+        - "Switch orchestrator to toolshed window (window 5)"
+        - "Verify workers Ghostty shows workers-toolshed session"
+        - "Switch back to orch-go"
+        - "Verify workers Ghostty follows back to workers-orch-go"
+      expected: "Workers Ghostty window follows each switch within ~1 second"
+
+  root_cause:
+    bug_1: "run-shell -b loses tmux client context — display-message inside background scripts resolves to arbitrary client"
+    bug_2: "Directory basename 'scs-special-projects' doesn't match workers session name 'workers-toolshed'"
+
+  fix_summary:
+    - "Pass tmux context as arguments via hook format expansion (expanded in correct context)"
+    - "Add config-based session name resolution (claude.tmux_session in .orch/config.yaml)"
+    - "3-tier fallback: config → basename → unique reverse lookup"

@@ -1,0 +1,29 @@
+verification:
+  type: feature-impl
+  issue: orch-go-1198
+
+  tests:
+    command: "go test ./cmd/orch/ -run 'TestClassify|TestExtract.*Concept|TestFilter.*Cross|TestIsHealthy|TestGenerate.*Coupling|TestParseGitLog.*Coupling|TestBuild.*Coupling|TestCoupling|TestMatch.*Coupling' -v -count=1"
+    expected: "all PASS"
+    result: "all PASS (0.108s)"
+
+  smoke_test:
+    command: "orch hotspot --json | python3 -c \"import json,sys; d=json.load(sys.stdin); clusters=[h for h in d['hotspots'] if h['type']=='coupling-cluster']; print(f'clusters: {len(clusters)}')\""
+    expected: "clusters: 5+ (daemon, spawn, verify, etc.)"
+    result: "15 total clusters, top 5: daemon(75), spawn(74), orch(54), verify(42), beads(33)"
+
+  deliverables:
+    - path: cmd/orch/hotspot_coupling.go
+      description: "Core coupling analysis: git log parsing, cross-surface filtering, concept extraction, scoring (~390 lines)"
+      status: committed
+    - path: cmd/orch/hotspot_coupling_test.go
+      description: "Unit tests for classifyLayer, extractConcept, isHealthyCoupling, buildCouplingClusters, scoreCouplingCluster, etc."
+      status: committed
+    - path: cmd/orch/hotspot.go
+      description: "Integration: TotalCouplingClusters in report, analyzeCouplingClusters call, coupling icon, pathOrSuffixMatch refactor"
+      status: committed
+    - path: cmd/orch/hotspot_test.go
+      description: "Integration tests: coupling-cluster matching via task text, related files, mixed types, suffix matching"
+      status: committed
+
+  manual_verification: "N/A - automated tests cover all coupling analysis logic"

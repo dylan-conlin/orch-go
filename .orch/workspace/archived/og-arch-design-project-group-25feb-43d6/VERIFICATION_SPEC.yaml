@@ -1,0 +1,36 @@
+type: architect-design
+deliverable: investigation-with-recommendations
+beads_id: orch-go-1235
+
+observable_behaviors:
+  - description: "Investigation file exists with Complete phase and all 5 architect phases documented"
+    verification: "cat .kb/investigations/2026-02-25-design-project-group-model.md | head -5"
+    expected: "Phase: Complete"
+  - description: "Probe file exists confirming/extending daemon-autonomous-operation model"
+    verification: "cat .kb/models/daemon-autonomous-operation/probes/2026-02-25-probe-project-group-model-design.md | head -5"
+    expected: "Status: Complete"
+
+acceptance_criteria:
+  - id: AC-001
+    description: "Design addresses all three converging needs: sibling kb context, parent-child relationships, daemon scoping"
+    verification: manual
+    evidence: "Investigation sections: Fork 3 (kb context), Fork 2 (parent-child), Fork 4 (daemon)"
+  - id: AC-002
+    description: "Config format defined with concrete YAML example"
+    verification: manual
+    evidence: "Investigation section: Config ~/.orch/groups.yaml"
+  - id: AC-003
+    description: "Cascade to each consumer documented (kb, daemon, dashboard, accounts)"
+    verification: manual
+    evidence: "Investigation section: How Groups Cascade table"
+  - id: AC-004
+    description: "Implementation-ready with file targets and acceptance criteria"
+    verification: manual
+    evidence: "Investigation section: Implementation-Ready Checklist"
+  - id: AC-005
+    description: "Decision forks navigated with substrate trace"
+    verification: manual
+    evidence: "5 forks in Exploration section, each with Substrate says + Recommendation"
+
+no_code_changes: true
+note: "This is an architect design investigation, no code was written. Implementation should be done via feature-impl skill."

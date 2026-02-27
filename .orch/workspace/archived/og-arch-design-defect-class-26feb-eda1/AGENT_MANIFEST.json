@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-arch-design-defect-class-26feb-eda1",
+  "skill": "architect",
+  "beads_id": "orch-go-1265",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "504f0dfb7d44f6bcaf244388fe645c2ef575ffc1",
+  "spawn_time": "2026-02-26T10:23:17-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@242"
+}

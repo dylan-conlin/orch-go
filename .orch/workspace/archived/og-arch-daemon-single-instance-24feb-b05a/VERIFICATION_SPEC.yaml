@@ -1,0 +1,39 @@
+name: daemon-single-instance-guard
+issue: orch-go-1223
+
+observable_behaviors:
+  - Second `orch daemon run` invocation fails with "cannot start daemon: daemon already running: PID <N>"
+  - Stale PID files from crashed daemons are automatically cleaned up
+  - PID lock is released on clean shutdown (SIGINT/SIGTERM)
+  - PID appears in daemon-status.json
+
+acceptance_criteria:
+  - id: AC-001
+    name: Single instance enforcement
+    condition: Starting a second daemon while one is running MUST fail with exit code 1
+    verified: true
+    evidence: "Manual test - second daemon exits with 'cannot start daemon: daemon already running: PID 17650'"
+
+  - id: AC-002
+    name: Stale PID cleanup
+    condition: If PID file exists but process is dead, daemon MUST start successfully
+    verified: true
+    evidence: "TestAcquirePIDLock_StalePIDCleanup passes - writes dead PID, verifies acquire succeeds"
+
+  - id: AC-003
+    name: Clean shutdown cleanup
+    condition: PID file MUST be removed when daemon exits cleanly (SIGINT/SIGTERM)
+    verified: true
+    evidence: "Manual test - after timeout/SIGINT, 'PID file cleaned up' confirmed"
+
+  - id: AC-004
+    name: Unit tests
+    condition: All 9 new tests and all existing tests MUST pass
+    verified: true
+    evidence: "go test ./pkg/daemon/... - PASS (6.534s), go test ./cmd/orch/... - PASS (3.273s)"
+
+test_commands:
+  - command: "go test ./pkg/daemon/ -run 'TestAcquirePIDLock|TestPIDLock|TestIsProcessAlive' -v -count=1"
+    expectation: "9 tests pass"
+  - command: "go build ./cmd/orch/ && go vet ./cmd/orch/"
+    expectation: "No errors"

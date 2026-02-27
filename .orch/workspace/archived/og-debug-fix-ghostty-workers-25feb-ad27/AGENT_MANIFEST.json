@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-debug-fix-ghostty-workers-25feb-ad27",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-1253",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "2569239a478398908444e6540ffbf3fe12b61f0a",
+  "spawn_time": "2026-02-25T18:33:26-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@206"
+}

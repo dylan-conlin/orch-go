@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-arch-urgent-hotspot-gate-25feb-001d",
+  "skill": "architect",
+  "beads_id": "orch-go-1229",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "3df18ef64c8215c76b377479b06470f2bdc0fb7f",
+  "spawn_time": "2026-02-25T10:53:42-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@95"
+}

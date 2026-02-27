@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-feat-implement-account-distribution-24feb-1c3d",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1220",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "92aa9e19f38adf40801c4eaf42c96aa72f1a529f",
+  "spawn_time": "2026-02-24T22:29:58-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@69"
+}

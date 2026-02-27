@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-feat-add-go-vet-25feb-3248",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1248",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "8b750197633d9752dda427fa6b4ccfed7c95c07a",
+  "spawn_time": "2026-02-25T18:15:06-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@199"
+}

@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-feat-skillc-deploy-auto-25feb-a61e",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-1259",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "eb794d2f6c6601bc7439b4120056204becb33d47",
+  "spawn_time": "2026-02-25T21:55:23-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@217"
+}

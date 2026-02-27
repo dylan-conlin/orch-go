@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-inv-orientation-frame-kb-26feb-81dc",
+  "skill": "investigation",
+  "beads_id": "orch-go-05w8",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "937332e0977df4c57ca99c147a0adc81f6424648",
+  "spawn_time": "2026-02-26T14:23:49-08:00",
+  "tier": "full",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@290"
+}

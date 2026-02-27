@@ -1,0 +1,41 @@
+verification_spec:
+  title: "Orchestrator Skill Cross-Project Injection Failure Investigation"
+  type: investigation
+  issue: orch-go-1233
+
+  observable_behaviors:
+    - description: "Two root causes identified and documented in probe file"
+      verified: true
+      evidence: "Simulated hook behavior with CLAUDE_CONTEXT=orchestrator — confirmed is_spawned_agent() returns True for interactive sessions"
+
+    - description: "Three specific fix changes documented with before/after code"
+      verified: true
+      evidence: "Probe file contains 3 concrete changes: claude.go ORCH_SPAWNED, is_spawned_agent() logic, main() restructure"
+
+  acceptance_criteria:
+    - id: AC-001
+      description: "Root cause of skill non-injection in non-orch-go projects identified"
+      status: pass
+      evidence: "Two bugs found: (1) is_spawned_agent() conflates spawned/interactive orchestrators, (2) skill loading gated behind .orch/ directory"
+
+    - id: AC-002
+      description: "End-to-end injection mechanism mapped"
+      status: pass
+      evidence: "Traced cc() → CLAUDE_CONFIG_DIR → settings.json → SessionStart hooks → load-orchestration-context.py → is_spawned_agent() exit"
+
+    - id: AC-003
+      description: "Two approaches evaluated with clear recommendation"
+      status: pass
+      evidence: "Approach A (fix hook) recommended over Approach B (cc wrapper injection) with 5 supporting reasons"
+
+    - id: AC-004
+      description: "Probe file created extending orchestrator-session-lifecycle model"
+      status: pass
+      evidence: ".kb/models/orchestrator-session-lifecycle/probes/2026-02-25-probe-orchestrator-skill-cross-project-injection-failure.md"
+
+  manual_steps:
+    - description: "Implement the 3 recommended changes and verify skill loads in non-orch-go project"
+      type: follow-up
+      owner: feature-impl agent
+
+  notes: "Investigation only — no code changes made. Three specific changes recommended for a feature-impl follow-up."

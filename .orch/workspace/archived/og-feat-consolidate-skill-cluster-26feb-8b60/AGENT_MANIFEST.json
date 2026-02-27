@@ -1,0 +1,12 @@
+{
+  "workspace_name": "og-feat-consolidate-skill-cluster-26feb-8b60",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-rrpo",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "f746466277a93bbcd577815db6d603e6d8b06859",
+  "spawn_time": "2026-02-26T14:44:37-08:00",
+  "tier": "light",
+  "spawn_mode": "claude",
+  "model": "anthropic/claude-opus-4-5-20251101",
+  "session_id": "@304"
+}
