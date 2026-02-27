@@ -210,3 +210,4 @@ Not all skills accrete. Knowledge-producing skills need to READ hotspot files to
 **Decisions informed by this model:**
 - CLAUDE.md "Accretion Boundaries" section — Files >1,500 lines require extraction before feature additions
 - Three-layer hotspot enforcement (--architect-ref + daemon escalation + spawn context injection)
+- `.kb/decisions/2026-02-26-two-layer-action-compliance.md` — Infrastructure + prompt enforcement for orchestrator action constraints
