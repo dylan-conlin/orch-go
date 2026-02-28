@@ -73,15 +73,18 @@ func (d *Daemon) RateLimitMessage() string {
 	return msg
 }
 
-// ReconcileWithOpenCode synchronizes the worker pool with actual OpenCode sessions.
-// This prevents the pool from becoming stuck at capacity when agents complete
-// without the daemon knowing (e.g., overnight runs, crashes, manual kills).
+// ReconcileActiveAgents synchronizes the worker pool with actual running agents
+// across ALL backends (OpenCode sessions AND tmux windows).
+//
+// Uses the configurable activeCountFunc which defaults to CombinedActiveCount().
+// This ensures tmux-based agents (Claude CLI backend) are counted toward capacity,
+// preventing the pool from resetting to 0 every poll cycle and allowing unlimited spawns.
 //
 // Also cleans up stale entries from the spawned issue tracker.
 //
 // Should be called at the start of each poll cycle.
 // Returns the number of slots freed due to reconciliation, or 0 if no pool.
-func (d *Daemon) ReconcileWithOpenCode() int {
+func (d *Daemon) ReconcileActiveAgents() int {
 	// Clean up stale spawned issue entries (older than TTL)
 	if d.SpawnedIssues != nil {
 		d.SpawnedIssues.CleanStale()
@@ -91,9 +94,20 @@ func (d *Daemon) ReconcileWithOpenCode() int {
 		return 0
 	}
 
-	// Get actual count from OpenCode API
-	actualCount := DefaultActiveCount()
+	// Get actual count from all backends (OpenCode + tmux)
+	countFunc := d.activeCountFunc
+	if countFunc == nil {
+		countFunc = CombinedActiveCount
+	}
+	actualCount := countFunc()
 
 	// Reconcile pool with actual count
 	return d.Pool.Reconcile(actualCount)
+}
+
+// ReconcileWithOpenCode is the legacy name for ReconcileActiveAgents.
+// Kept for backward compatibility with cmd/orch/daemon.go caller.
+// Now uses CombinedActiveCount (OpenCode + tmux) instead of just DefaultActiveCount.
+func (d *Daemon) ReconcileWithOpenCode() int {
+	return d.ReconcileActiveAgents()
 }

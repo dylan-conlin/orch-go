@@ -142,6 +142,10 @@ type Daemon struct {
 	knowledgeHealthIssueFunc func(result *KnowledgeHealthResult) error
 	// cleanupFunc is used for testing - allows mocking cleanup behavior
 	cleanupFunc func(config Config) (int, string, error)
+	// activeCountFunc returns the number of active agents for pool reconciliation.
+	// Default: CombinedActiveCount (counts both OpenCode sessions and tmux windows).
+	// Override for testing to avoid real HTTP/tmux calls.
+	activeCountFunc func() int
 }
 
 // New creates a new Daemon instance with default configuration.
@@ -169,6 +173,7 @@ func NewWithConfig(config Config) *Daemon {
 		modelDriftMetadataLoader:  LoadModelDriftMetadata,
 		modelDriftCommitCounter:   DefaultModelDriftCommitCounter,
 		getIssueStatusFunc:        GetBeadsIssueStatus,
+		activeCountFunc:           CombinedActiveCount,
 	}
 	d.modelDriftReflectFunc = d.RunModelDriftReflection
 	// Initialize worker pool if MaxAgents is set
@@ -202,6 +207,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		modelDriftMetadataLoader:  LoadModelDriftMetadata,
 		modelDriftCommitCounter:   DefaultModelDriftCommitCounter,
 		getIssueStatusFunc:        GetBeadsIssueStatus,
+		activeCountFunc:           CombinedActiveCount,
 	}
 	d.modelDriftReflectFunc = d.RunModelDriftReflection
 	// Initialize rate limiter if MaxSpawnsPerHour is set

@@ -102,12 +102,33 @@ func CheckConcurrency(serverURL string, maxAgentsFlag int, extractBeadsID func(s
 		beadsIDs = append(beadsIDs, beadsID)
 	}
 
-	// Phase 2: Batch check which beads issues are closed
+	// Phase 2: Add tmux-based agents (Claude CLI backend)
+	// These agents run in tmux windows WITHOUT OpenCode sessions.
+	// Without this, tmux agents are invisible to the concurrency check.
+	seenBeadsIDs := make(map[string]bool)
+	for _, sd := range sessionList {
+		seenBeadsIDs[sd.beadsID] = true
+	}
+	tmuxAgents := daemon.CountActiveTmuxAgents()
+	for beadsID := range tmuxAgents {
+		if seenBeadsIDs[beadsID] {
+			continue // Already counted from OpenCode session
+		}
+		// Tmux agents are "running" by definition (window exists = process active)
+		sessionList = append(sessionList, sessionData{
+			beadsID:   beadsID,
+			updatedAt: now, // Window exists = recently active
+			status:    "running",
+		})
+		beadsIDs = append(beadsIDs, beadsID)
+	}
+
+	// Phase 3: Batch check which beads issues are closed
 	// This prevents counting agents whose work is already complete
 	// (issue closed) but whose OpenCode session is still lingering
 	closedIssues := daemon.GetClosedIssuesBatch(beadsIDs)
 
-	// Phase 3: Count active agents, excluding closed issues
+	// Phase 4: Count active agents, excluding closed issues
 	activeCount := 0
 	for _, sd := range sessionList {
 		// Skip sessions whose beads issues are closed
