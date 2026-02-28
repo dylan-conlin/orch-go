@@ -103,58 +103,30 @@ type Daemon struct {
 	// This prevents silent failure when CompletionOnce persistently fails (e.g., beads database issues).
 	CompletionFailureTracker *CompletionFailureTracker
 
-	// listIssuesFunc is used for testing - allows mocking bd list
-	listIssuesFunc func() ([]Issue, error)
+	// Issues queries beads issues for the spawn pipeline.
+	Issues IssueQuerier
 	// ProjectRegistry resolves issue ID prefixes to project directories.
 	// When set, the daemon passes --workdir to orch work for cross-project issues.
 	ProjectRegistry *ProjectRegistry
 
-	// spawnFunc is used for testing - allows mocking orch work
-	spawnFunc func(beadsID, model, workdir string) error
-	// listCompletedAgentsFunc is used for testing - allows mocking completed agents list
-	listCompletedAgentsFunc func(CompletionConfig) ([]CompletedAgent, error)
-	// reflectFunc is used for testing - allows mocking kb reflect
-	reflectFunc func(createIssues bool) (*ReflectResult, error)
-	// openReflectFunc is used for testing - allows mocking kb reflect open
-	openReflectFunc func() error
-	// modelDriftReflectFunc is used for testing - allows mocking model drift reflection
-	modelDriftReflectFunc func() (*ModelDriftResult, error)
-	// modelDriftEventReader is used for testing - allows mocking staleness event reads
-	modelDriftEventReader func(path string) ([]spawn.StalenessEvent, error)
-	// modelDriftMetadataLoader is used for testing - allows mocking model metadata loading
-	modelDriftMetadataLoader func(modelPath string) (ModelDriftMetadata, error)
-	// modelDriftCommitCounter is used for testing - allows mocking commit counting
-	modelDriftCommitCounter func(projectDir, lastUpdated string, files []string) (int, error)
-	// listEpicChildrenFunc is used for testing - allows mocking ListEpicChildren
-	listEpicChildrenFunc func(epicID string) ([]Issue, error)
-	// listIssuesWithLabelFunc is used for testing - allows mocking ListIssuesWithLabel
-	listIssuesWithLabelFunc func(label string) ([]Issue, error)
-	// createExtractionIssueFunc is used for testing - allows mocking extraction issue creation
-	createExtractionIssueFunc func(task string, parentIssueID string) (string, error)
-	// createModelDriftIssueFunc is used for testing - allows mocking model drift issue creation
-	createModelDriftIssueFunc func(args ModelDriftIssueCreateArgs) (string, error)
-	// getIssueStatusFunc is used for fresh status checks before spawning.
-	// This fetches the CURRENT status from beads to catch the TOCTOU race where
-	// another daemon process has already marked the issue as in_progress.
-	getIssueStatusFunc func(beadsID string) (string, error)
-	// updateBeadsStatusFunc is used for testing - allows mocking UpdateBeadsStatus
-	updateBeadsStatusFunc func(beadsID string, status string) error
-	// knowledgeHealthFunc is used for testing - allows mocking kb quick list
-	knowledgeHealthFunc func() (*KnowledgeHealthResult, error)
-	// knowledgeHealthIssueFunc is used for testing - allows mocking issue creation
-	knowledgeHealthIssueFunc func(result *KnowledgeHealthResult) error
-	// cleanupFunc is used for testing - allows mocking cleanup behavior
-	cleanupFunc func(config Config) (int, string, error)
-	// activeCountFunc returns the number of active agents for pool reconciliation.
-	// Default: CombinedActiveCount (counts both OpenCode sessions and tmux windows).
-	// Override for testing to avoid real HTTP/tmux calls.
-	activeCountFunc func() int
-	// getActiveAgentsFunc is used for testing - allows mocking GetActiveAgents
-	getActiveAgentsFunc func() ([]ActiveAgent, error)
-	// hasExistingSessionFunc is used for testing - allows mocking HasExistingSessionForBeadsID
-	hasExistingSessionFunc func(beadsID string) bool
-	// updateBeadsStatusForOrphanFunc is used for testing - allows mocking status reset during orphan recovery
-	updateBeadsStatusForOrphanFunc func(beadsID, status string) error
+	// Spawner spawns agent work.
+	Spawner Spawner
+	// Completions finds completed agents.
+	Completions CompletionFinder
+	// Reflector runs knowledge reflection.
+	Reflector Reflector
+	// ModelDrift provides I/O for model drift analysis.
+	ModelDrift ModelDriftStore
+	// KnowledgeHealth provides knowledge health operations.
+	KnowledgeHealth KnowledgeHealthService
+	// Cleaner cleans up stale sessions.
+	Cleaner SessionCleaner
+	// ActiveCounter counts active agents for pool reconciliation.
+	ActiveCounter ActiveCounter
+	// Agents discovers agents for orphan detection and recovery.
+	Agents AgentDiscoverer
+	// StatusUpdater updates beads issue status.
+	StatusUpdater IssueUpdater
 }
 
 // New creates a new Daemon instance with default configuration.
@@ -165,26 +137,23 @@ func New() *Daemon {
 // NewWithConfig creates a new Daemon instance with the given configuration.
 func NewWithConfig(config Config) *Daemon {
 	d := &Daemon{
-		Config:                    config,
-		SpawnedIssues:             NewSpawnedIssueTracker(),
-		resumeAttempts:            make(map[string]time.Time),
-		VerificationTracker:       NewVerificationTracker(config.VerificationPauseThreshold),
-		SpawnFailureTracker:       NewSpawnFailureTracker(),
-		CompletionFailureTracker:  NewCompletionFailureTracker(),
-		spawnFunc:                 SpawnWork,
-		reflectFunc:               DefaultRunReflection,
-		openReflectFunc:           RunOpenReflection,
-		listEpicChildrenFunc:      ListEpicChildren,
-		listIssuesWithLabelFunc:   ListIssuesWithLabel,
-		createExtractionIssueFunc: DefaultCreateExtractionIssue,
-		createModelDriftIssueFunc: DefaultCreateModelDriftIssue,
-		modelDriftEventReader:     readStalenessEvents,
-		modelDriftMetadataLoader:  LoadModelDriftMetadata,
-		modelDriftCommitCounter:   DefaultModelDriftCommitCounter,
-		getIssueStatusFunc:        GetBeadsIssueStatus,
-		activeCountFunc:           CombinedActiveCount,
+		Config:                  config,
+		SpawnedIssues:           NewSpawnedIssueTracker(),
+		resumeAttempts:          make(map[string]time.Time),
+		VerificationTracker:     NewVerificationTracker(config.VerificationPauseThreshold),
+		SpawnFailureTracker:     NewSpawnFailureTracker(),
+		CompletionFailureTracker: NewCompletionFailureTracker(),
+		Issues:                  &defaultIssueQuerier{},
+		Spawner:                 &defaultSpawner{},
+		Completions:             &defaultCompletionFinder{},
+		Reflector:               &defaultReflector{},
+		ModelDrift:              &defaultModelDriftStore{},
+		KnowledgeHealth:         &defaultKnowledgeHealthService{},
+		Cleaner:                 &defaultSessionCleaner{},
+		ActiveCounter:           &defaultActiveCounter{},
+		Agents:                  &defaultAgentDiscoverer{},
+		StatusUpdater:           &defaultIssueUpdater{},
 	}
-	d.modelDriftReflectFunc = d.RunModelDriftReflection
 	// Initialize worker pool if MaxAgents is set
 	if config.MaxAgents > 0 {
 		d.Pool = NewWorkerPool(config.MaxAgents)
@@ -850,6 +819,26 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 		Model:     inferredModel,
 		Message:   fmt.Sprintf("Spawned work on %s", issue.ID),
 	}, slot, nil
+}
+
+// SetReflectFunc sets the reflection function for testing.
+func (d *Daemon) SetReflectFunc(f func(createIssues bool) (*ReflectResult, error)) {
+	d.reflectFunc = f
+}
+
+// SetCleanupFunc sets the cleanup function for testing.
+func (d *Daemon) SetCleanupFunc(f func(config Config) (int, string, error)) {
+	d.cleanupFunc = f
+}
+
+// SetKnowledgeHealthFunc sets the knowledge health check function for testing.
+func (d *Daemon) SetKnowledgeHealthFunc(f func() (*KnowledgeHealthResult, error)) {
+	d.knowledgeHealthFunc = f
+}
+
+// SetGetActiveAgentsFunc sets the active agents function for testing.
+func (d *Daemon) SetGetActiveAgentsFunc(f func() ([]ActiveAgent, error)) {
+	d.getActiveAgentsFunc = f
 }
 
 // ReleaseSlot releases a previously acquired slot.
