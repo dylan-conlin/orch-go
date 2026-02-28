@@ -1,8 +1,8 @@
 # Model: Agent Lifecycle State Model
 
 **Domain:** Agent Lifecycle / State Management
-**Last Updated:** 2026-02-27
-**Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display. Updated Feb 2026 after major restructuring (registry elimination, two-lane architecture, single-pass query engine). Updated Feb 25 after phase-based liveness, cross-project querying, and verification gate additions. Updated Feb 27 after V0-V3 verification levels, all-at-once gate failure reporting, architectural choices gate, auto-implementation issue creation, and `pkg/agent/` formal types package.
+**Last Updated:** 2026-02-28
+**Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display. Updated Feb 2026 after major restructuring (registry elimination, two-lane architecture, single-pass query engine). Updated Feb 25 after phase-based liveness, cross-project querying, and verification gate additions. Updated Feb 27 after V0-V3 verification levels, all-at-once gate failure reporting, architectural choices gate, auto-implementation issue creation, and `pkg/agent/` formal types package. Updated Feb 28 after full LifecycleManager implementation, lifecycle adapter wiring (complete, abandon, orphan GC), model impact advisory, and daemon orphan recovery.
 
 ---
 
@@ -64,7 +64,7 @@ orphaned → abandoned      (force_abandon)
 - `LifecycleManager` interface — Coordinates transitions across all four layers. Does NOT store agent state (Invariant #7). Methods: `BeginSpawn`, `ActivateSpawn`, `Complete`, `Abandon`, `ForceComplete`, `ForceAbandon`, `DetectOrphans`, `CurrentState`.
 - `OrphanDetectionResult` / `OrphanedAgent` — GC scan results with reason codes and retry recommendations.
 
-**Implementation status (Feb 27):** `lifecycle_impl.go` exists with partial implementation (compilation error: missing `ActivateSpawn` method). Types, interfaces, tests, and filters are complete and tested.
+**Implementation status (Feb 28):** `lifecycle_impl.go` is **fully implemented** (662 lines) with all LifecycleManager methods: `BeginSpawn`, `ActivateSpawn`, `Complete`, `Abandon`, `ForceComplete`, `ForceAbandon`, `DetectOrphans`, `CurrentState`. Comprehensive test suite in `lifecycle_manager_test.go` (~1,726 lines). The cmd layer bridges to `pkg/agent` via `lifecycle_adapters.go` which provides concrete implementations of `BeadsClient`, `OpenCodeClient`, `TmuxClient`, `EventLogger`, and `WorkspaceManager` interfaces, wrapping the real packages (`pkg/beads`, `pkg/opencode`, `pkg/tmux`, `pkg/events`, `pkg/spawn`) with compile-time interface compliance checks.
 
 **Filter functions** (`filters.go`):
 
@@ -151,16 +151,18 @@ Phase: Complete reached (agent declares done)
 SYNTHESIS.md written (if full tier)
 Git commits created
     ↓
-orch complete runs (orchestrator verification)
+orch complete runs (orchestrator verification, wired to LifecycleManager.Complete)
 Verification uses V0-V3 levels (read from workspace manifest, default V1):
     V0: phase_complete
-    V1: + synthesis, session_handoff, handoff_content, skill_output, phase_gate,
+    V1: + synthesis, handoff_content, skill_output, phase_gate,
         constraint, decision_patch_limit, architectural_choices
     V2: + test_evidence, git_diff, build, vet, accretion
     V3: + visual_verification, explain_back
+    (session_handoff checked inline for orchestrator tier, not in level system)
 All gate failures collected and reported at once (no early-return)
 Runs knowledge maintenance (kb maintenance check)
-Closes beads issue (Status: closed)
+Surfaces model impact advisory (cross-references synthesis keywords against .kb/models/)
+Closes beads issue (Status: closed) via LifecycleManager.Complete
 Auto-creates implementation issue for architect completions (triage:ready)
 Exports session activity to workspace (ACTIVITY.json)
 Defers tmux window cleanup (prevents phantom windows)
@@ -187,12 +189,25 @@ Dashboard shows awaiting-cleanup (needs orch complete)
 ```
 spawned → running
     ↓
-orch abandon (human judgment)
+orch abandon (human judgment, wired to LifecycleManager.Abandon)
     ↓
 Beads issue remains open (NOT closed)
     ↓
 Dashboard shows abandoned (yellow badge)
 Session remains in OpenCode
+```
+
+**Orphan recovery path (Feb 28):**
+
+```
+spawned → working → stalled (no phase reported, no live execution)
+    ↓
+Daemon orphan detection (periodic scan, 2h threshold)
+  OR orch clean --orphans (manual GC)
+    ↓
+LifecycleManager.DetectOrphans() scans for in_progress + no liveness signals
+    ↓
+ForceAbandon or ForceComplete based on evidence
 ```
 
 ### Critical Invariants
@@ -396,7 +411,7 @@ Common feature requests or operational changes that would violate this model's i
 - `AGENT_MANIFEST.json` replaces registry entries as workspace-local binding
 - Decision: `.kb/decisions/2026-02-18-two-lane-agent-discovery.md`
 - Priority Cascade expanded with `awaiting-cleanup` status
-- Verification suite expanded to 14 gates (git diff, accretion, build, visual, test evidence, etc.) → 16 gates (vet Feb 25, architectural_choices Feb 27)
+- Verification suite expanded to 16 gates across V0-V3 (vet Feb 25, architectural_choices Feb 27, session_handoff checked inline for orchestrator tier)
 
 **Feb 20-25, 2026: Liveness Rethink & Gate Expansion**
 
@@ -425,6 +440,34 @@ Common feature requests or operational changes that would violate this model's i
 - Contract tests (`contract_two_lane_test.go`) enforce 12-scenario acceptance matrix
 - Verify package cleanup: `git_commits.go`, `synthesis_content.go`, `stale_bug.go` deleted (logic consolidated)
 - Deleted packages: `pkg/registry/`, `pkg/servers/`, `pkg/experiment/`, `pkg/usage/`
+
+**Feb 27-28, 2026: Full LifecycleManager Wiring & Orphan GC**
+
+- `lifecycle_impl.go` completed (662 lines) — all LifecycleManager methods fully implemented:
+  - `BeginSpawn`/`ActivateSpawn` (two-phase spawn with rollback)
+  - `Complete` (coordinates beads close, session export, workspace archival, event logging)
+  - `Abandon` (beads status reset, tmux cleanup, event logging)
+  - `ForceComplete`/`ForceAbandon` (GC-initiated transitions for orphaned agents)
+  - `DetectOrphans` (scans for in_progress issues with no live execution, 2h threshold)
+  - `CurrentState` (derives state from authoritative sources)
+- `lifecycle_adapters.go` added — bridges real packages to `pkg/agent` interfaces:
+  - `beadsAdapter` wraps `pkg/beads.CLIClient` → `agent.BeadsClient`
+  - `openCodeAdapter` wraps `pkg/opencode.Client` → `agent.OpenCodeClient`
+  - `tmuxAdapter` wraps `pkg/tmux` → `agent.TmuxClient`
+  - `eventLoggerAdapter` wraps `pkg/events` → `agent.EventLogger`
+  - `workspaceAdapter` wraps `pkg/spawn` → `agent.WorkspaceManager`
+  - Compile-time interface compliance checks via `var _ Interface = (*Impl)(nil)`
+- `orch complete` wired to `LifecycleManager.Complete()` (replaces direct beads/session/event calls)
+- `orch abandon` wired to `LifecycleManager.Abandon()` (replaces direct beads manipulation)
+- `orch clean --orphans` wired to `LifecycleManager.DetectOrphans()` + `ForceAbandon`/`ForceComplete`
+- Daemon orphan recovery: periodic scan for stuck in_progress issues + auto-recovery
+- Daemon stop/restart subcommands added
+- Model impact advisory added to orch complete (cross-references synthesis keywords against .kb/models/)
+- `orch orient` command added for session start orientation
+- Skip flags require `--skip-reason` (minimum 10 characters); `--force` deprecated
+- Cross-project ghost agent fix: auto-resolve abandon for agents from other projects
+- Duplicate workspace resolution: prefer SYNTHESIS.md + newest spawn time
+- Comprehensive test suite: `lifecycle_manager_test.go` (~1,726 lines)
 
 ---
 
@@ -466,8 +509,10 @@ Common feature requests or operational changes that would violate this model's i
 - `pkg/agent/types.go` - Formal lifecycle states (7), transitions (6), `AgentRef`, `TransitionEvent`, `EffectResult`, orphan detection types
 - `pkg/agent/lifecycle.go` - `LifecycleManager` interface (coordinator, not cache), client interfaces (`BeadsClient`, `OpenCodeClient`, `TmuxClient`, `EventLogger`, `WorkspaceManager`)
 - `pkg/agent/spawn.go` - `SpawnInput` (lifecycle spawn parameters), `SpawnHandle` (two-phase spawn with rollback)
-- `pkg/agent/lifecycle_impl.go` - Partial `LifecycleManager` implementation (WIP: missing `ActivateSpawn`)
+- `pkg/agent/lifecycle_impl.go` - **Full** `LifecycleManager` implementation (662 lines): BeginSpawn, ActivateSpawn, Complete, Abandon, ForceComplete, ForceAbandon, DetectOrphans, CurrentState
+- `pkg/agent/lifecycle_manager_test.go` - Comprehensive test suite (~1,726 lines) covering all transitions, effect tracking, rollback, orphan detection
 - `pkg/agent/filters.go` - `IsActiveForConcurrency()`, `IsVisibleByDefault()` with threshold-based filtering
+- `cmd/orch/lifecycle_adapters.go` - Bridges real packages (beads, opencode, tmux, events, spawn) to `pkg/agent` interfaces with compile-time compliance checks
 - `cmd/orch/serve_agents_status.go` - Priority Cascade implementation (`determineAgentStatus()`), stall tracking, completion backlog detection
 - `cmd/orch/query_tracked.go` - Single-pass query engine (`queryTrackedAgents()`), phase-based liveness for claude-backend agents, cross-project beads querying
 - `cmd/orch/serve_agents_handlers.go` - Dashboard API handlers
@@ -475,7 +520,11 @@ Common feature requests or operational changes that would violate this model's i
 - `cmd/orch/serve_agents_cache.go` - TTL-based beads cache (prevents excessive bd process spawning from dashboard polls)
 - `pkg/verify/check.go` - Completion verification (16 gates across V0-V3, including `GateArchitecturalChoices`)
 - `pkg/verify/level.go` - V0-V3 gate level definitions and `ShouldRunGate()` query function
-- `cmd/orch/complete_cmd.go` - Completion pipeline orchestrator (knowledge maintenance step, deferred tmux cleanup)
+- `cmd/orch/complete_cmd.go` - Completion pipeline orchestrator (wired to LifecycleManager.Complete, knowledge maintenance, model impact advisory, deferred tmux cleanup)
+- `cmd/orch/complete_model_impact.go` - Model impact advisory (cross-references synthesis keywords against .kb/models/)
+- `cmd/orch/abandon_cmd.go` - Abandon command (wired to LifecycleManager.Abandon)
+- `cmd/orch/clean_cmd.go` - Clean command with `--orphans` flag (wired to LifecycleManager.DetectOrphans + ForceAbandon/ForceComplete)
+- `cmd/orch/daemon.go` - Daemon with orphan recovery, stop/restart subcommands
 - `cmd/orch/architecture_lint_test.go` - Structural guardrails preventing registry recreation (forbidden packages/files)
 - `cmd/orch/contract_two_lane_test.go` - 12-scenario acceptance matrix enforcing two-lane architecture contract
 - `.beads/issues.jsonl` - Canonical completion source
