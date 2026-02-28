@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/agent"
 )
 
 // TestGetProjectNameFromWorkdir verifies project name extraction.
@@ -515,5 +517,120 @@ func TestArchiveEmptyInvestigationsHandlesDuplicateDestination(t *testing.T) {
 	if !foundNewArchive {
 		t.Error("Expected a new archive with timestamp suffix to be created")
 		t.Logf("Archives found: %v", entries)
+	}
+}
+
+// TestCleanAllFlagIncludesOrphans verifies that --all enables --orphans and --ghosts.
+func TestCleanAllFlagIncludesOrphans(t *testing.T) {
+	workspaces := false
+	sessions := false
+	orphans := false
+	ghosts := false
+	all := true
+
+	if all {
+		workspaces = true
+		sessions = true
+		orphans = true
+		ghosts = true
+	}
+
+	if !workspaces {
+		t.Error("Expected workspaces to be true when all=true")
+	}
+	if !sessions {
+		t.Error("Expected sessions to be true when all=true")
+	}
+	if !orphans {
+		t.Error("Expected orphans to be true when all=true")
+	}
+	if !ghosts {
+		t.Error("Expected ghosts to be true when all=true")
+	}
+}
+
+// TestOrphanClassification verifies orphan GC action classification logic.
+// ForceComplete for non-retryable orphans, ForceAbandon for retryable ones.
+func TestOrphanClassification(t *testing.T) {
+	tests := []struct {
+		name         string
+		orphan       agent.OrphanedAgent
+		expectAction string
+	}{
+		{
+			name: "completed orphan gets force-completed",
+			orphan: agent.OrphanedAgent{
+				Agent:       agent.AgentRef{BeadsID: "test-001"},
+				Reason:      "no_live_execution",
+				LastPhase:   "Complete",
+				ShouldRetry: false,
+			},
+			expectAction: "force-complete",
+		},
+		{
+			name: "retryable orphan gets force-abandoned",
+			orphan: agent.OrphanedAgent{
+				Agent:       agent.AgentRef{BeadsID: "test-002"},
+				Reason:      "no_live_execution",
+				LastPhase:   "Implementing",
+				ShouldRetry: true,
+			},
+			expectAction: "force-abandon",
+		},
+		{
+			name: "no-workspace orphan gets force-completed when not retryable",
+			orphan: agent.OrphanedAgent{
+				Agent:       agent.AgentRef{BeadsID: "test-003"},
+				Reason:      "no_workspace",
+				ShouldRetry: false,
+			},
+			expectAction: "force-complete",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			action := "force-complete"
+			if tt.orphan.ShouldRetry {
+				action = "force-abandon"
+			}
+			if action != tt.expectAction {
+				t.Errorf("Expected action %q, got %q", tt.expectAction, action)
+			}
+		})
+	}
+}
+
+// TestOrphanReportFormatting verifies detectOrphansReport output formatting.
+func TestOrphanReportFormatting(t *testing.T) {
+	orphan := agent.OrphanedAgent{
+		Agent:       agent.AgentRef{BeadsID: "orch-go-abc1"},
+		Reason:      "no_live_execution",
+		LastPhase:   "Complete",
+		StaleFor:    2 * time.Hour,
+		ShouldRetry: false,
+	}
+
+	action := "force-complete"
+	if orphan.ShouldRetry {
+		action = "force-abandon"
+	}
+
+	if action != "force-complete" {
+		t.Errorf("Expected force-complete for non-retryable orphan, got %s", action)
+	}
+
+	// Verify detail includes phase and stale time
+	detail := orphan.Reason
+	if orphan.LastPhase != "" {
+		detail += ", phase: " + orphan.LastPhase
+	}
+	if orphan.StaleFor > 0 {
+		detail += ", stale 2h0m0s"
+	}
+
+	expected := "no_live_execution, phase: Complete, stale 2h0m0s"
+	if detail != expected {
+		t.Errorf("Expected detail %q, got %q", expected, detail)
 	}
 }

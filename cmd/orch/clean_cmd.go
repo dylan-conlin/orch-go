@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/agent"
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -23,6 +25,8 @@ var (
 	cleanDryRun               bool
 	cleanWorkspaces           bool
 	cleanSessions             bool
+	cleanOrphans              bool
+	cleanGhosts               bool
 	cleanWorkspaceDays        int
 	cleanSessionDays          int
 	cleanPreserveOrchestrator bool
@@ -32,7 +36,7 @@ var (
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
 	Short: "Clean up stale workspaces and tmux windows",
-	Long: `Clean up stale agent resources (workspaces, tmux windows).
+	Long: `Clean up stale agent resources (workspaces, tmux windows, orphaned agents).
 
 NOTE: OpenCode session cleanup is now handled automatically via TTL (opencode-fork commit f3c3865).
 The --sessions flag now only cleans stale tmux windows. OpenCode sessions are managed by the server.
@@ -43,7 +47,9 @@ anything. Workspace directories are archived (moved to archived/), never deleted
 Cleanup actions:
   --workspaces        Archive old completed workspaces and empty investigation files
   --sessions          Clean stale tmux windows (OpenCode sessions are auto-cleaned by server)
-  --all               Enable all cleanup actions (workspaces + sessions)
+  --orphans           Detect and GC orphaned agents via LifecycleManager (ForceComplete/ForceAbandon)
+  --ghosts            Remove stale orch:agent labels from cross-project issues with no active agent
+  --all               Enable all cleanup actions (workspaces + sessions + orphans + ghosts)
 
 Age thresholds:
   --workspace-days N  Set age threshold for --workspaces (default: 7)
@@ -52,21 +58,25 @@ Protection options:
   --preserve-orchestrator  Skip orchestrator/meta-orchestrator workspaces and sessions
 
 Examples:
-  orch clean                    # List completed agents (no changes)
+  orch clean                    # List completed agents and orphans (no changes)
   orch clean --dry-run          # Preview mode (same as default)
   orch clean --all              # Comprehensive cleanup
   orch clean --all --dry-run    # Preview comprehensive cleanup
   orch clean --all --preserve-orchestrator  # Clean everything except orchestrator sessions
   orch clean --sessions         # Clean stale tmux windows
+  orch clean --orphans          # GC orphaned agents via lifecycle transitions
   orch clean --workspaces       # Archive old workspaces and empty investigations
-  orch clean --workspaces --workspace-days 14  # Archive workspaces older than 14 days`,
+  orch clean --workspaces --workspace-days 14  # Archive workspaces older than 14 days
+  orch clean --ghosts            # Remove stale orch:agent labels from cross-project dead agents`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// If --all is specified, enable all cleanup flags
 		if cleanAll {
 			cleanWorkspaces = true
 			cleanSessions = true
+			cleanOrphans = true
+			cleanGhosts = true
 		}
-		return runClean(cleanDryRun, cleanWorkspaces, cleanSessions, cleanWorkspaceDays, cleanSessionDays, cleanPreserveOrchestrator)
+		return runClean(cleanDryRun, cleanWorkspaces, cleanSessions, cleanOrphans, cleanGhosts, cleanWorkspaceDays, cleanSessionDays, cleanPreserveOrchestrator)
 	},
 }
 
@@ -75,6 +85,8 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "Enable all cleanup actions (workspaces + sessions)")
 	cleanCmd.Flags().BoolVar(&cleanWorkspaces, "workspaces", false, "Archive old completed workspaces and empty investigation files")
 	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Clean stale tmux windows (OpenCode sessions are auto-cleaned by server)")
+	cleanCmd.Flags().BoolVar(&cleanOrphans, "orphans", false, "Detect and GC orphaned agents via LifecycleManager (ForceComplete/ForceAbandon)")
+	cleanCmd.Flags().BoolVar(&cleanGhosts, "ghosts", false, "Remove stale orch:agent labels from cross-project issues with no active agent")
 	cleanCmd.Flags().IntVar(&cleanWorkspaceDays, "workspace-days", 7, "Age threshold in days for --workspaces (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanSessionDays, "session-days", 7, "Age threshold in days for --sessions (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanPreserveOrchestrator, "preserve-orchestrator", false, "Skip orchestrator/meta-orchestrator workspaces and sessions")
@@ -259,37 +271,52 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 	return cleanable
 }
 
-func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int, sessionDays int, preserveOrchestrator bool) error {
+func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, doGhosts bool, workspaceDays int, sessionDays int, preserveOrchestrator bool) error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	// Default mode (no flags): scan and report completed workspaces
-	if !doWorkspaces && !doSessions {
+	// Default mode (no flags): scan and report completed workspaces + orphaned agents
+	if !doWorkspaces && !doSessions && !doOrphans && !doGhosts {
 		fmt.Println("Scanning workspaces for completed agents...")
 		beadsChecker := NewDefaultBeadsStatusChecker()
 		cleanableWorkspaces := findCleanableWorkspaces(projectDir, beadsChecker)
 
 		fmt.Printf("\nFound %d completed workspaces\n", len(cleanableWorkspaces))
 
-		if len(cleanableWorkspaces) == 0 {
-			fmt.Println("No completed agents found")
+		if len(cleanableWorkspaces) > 0 {
+			fmt.Printf("\nCompleted workspaces:\n")
+			for _, ws := range cleanableWorkspaces {
+				fmt.Printf("  %s (%s)\n", ws.Name, ws.Reason)
+			}
+		}
+
+		// Also report orphaned agents (detection only, no GC)
+		orphanReport, err := detectOrphansReport(projectDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: orphan detection failed: %v\n", err)
+		} else if len(orphanReport) > 0 {
+			fmt.Printf("\nOrphaned agents (%d):\n", len(orphanReport))
+			for _, line := range orphanReport {
+				fmt.Printf("  %s\n", line)
+			}
+		}
+
+		if len(cleanableWorkspaces) == 0 && len(orphanReport) == 0 {
+			fmt.Println("No completed or orphaned agents found")
 			return nil
 		}
 
-		fmt.Printf("\nCompleted workspaces:\n")
-		for _, ws := range cleanableWorkspaces {
-			fmt.Printf("  %s (%s)\n", ws.Name, ws.Reason)
-		}
-
-		fmt.Printf("\nNote: Use --workspaces, --sessions, or --all to clean up resources.\n")
+		fmt.Printf("\nNote: Use --workspaces, --sessions, --orphans, or --all to clean up resources.\n")
 		return nil
 	}
 
 	// Track cleanup stats
 	var workspacesArchived, investigationsArchived int
 	var windowsClosed, untrackedSessionsDeleted, staleSessionsDeleted int
+	var orphansForceCompleted, orphansForceAbandoned int
+	var ghostsCleaned int
 
 	// --workspaces: Archive old workspaces + empty investigations
 	if doWorkspaces {
@@ -320,6 +347,22 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 		staleSessionsDeleted = 0
 	}
 
+	// --orphans: Detect and GC orphaned agents via LifecycleManager
+	if doOrphans {
+		orphansForceCompleted, orphansForceAbandoned, err = runOrphanGC(projectDir, dryRun, preserveOrchestrator)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: orphan GC failed: %v\n", err)
+		}
+	}
+
+	// --ghosts: Remove stale orch:agent labels from cross-project dead agents
+	if doGhosts {
+		ghostsCleaned, err = cleanGhostAgents(projectDir, dryRun)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: ghost cleanup failed: %v\n", err)
+		}
+	}
+
 	// Dry-run summary
 	if dryRun {
 		fmt.Printf("\nDry run complete.")
@@ -342,12 +385,25 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 				fmt.Printf(" Would delete %d stale sessions.", staleSessionsDeleted)
 			}
 		}
+		if doOrphans {
+			if orphansForceCompleted > 0 {
+				fmt.Printf(" Would force-complete %d orphaned agents.", orphansForceCompleted)
+			}
+			if orphansForceAbandoned > 0 {
+				fmt.Printf(" Would force-abandon %d orphaned agents.", orphansForceAbandoned)
+			}
+		}
+		if doGhosts {
+			if ghostsCleaned > 0 {
+				fmt.Printf(" Would remove orch:agent label from %d cross-project ghost agents.", ghostsCleaned)
+			}
+		}
 		fmt.Println()
 		return nil
 	}
 
 	// Log event if any cleanup actions were taken
-	totalCleaned := workspacesArchived + investigationsArchived + windowsClosed + untrackedSessionsDeleted + staleSessionsDeleted
+	totalCleaned := workspacesArchived + investigationsArchived + windowsClosed + untrackedSessionsDeleted + staleSessionsDeleted + orphansForceCompleted + orphansForceAbandoned + ghostsCleaned
 	if totalCleaned > 0 {
 		projectName := filepath.Base(projectDir)
 		logger := events.NewLogger(events.DefaultLogPath())
@@ -360,9 +416,14 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 				"windows_closed":             windowsClosed,
 				"untracked_sessions_deleted": untrackedSessionsDeleted,
 				"stale_sessions_deleted":     staleSessionsDeleted,
+				"orphans_force_completed":    orphansForceCompleted,
+				"orphans_force_abandoned":    orphansForceAbandoned,
 				"project":                    projectName,
 				"clean_workspaces":           doWorkspaces,
 				"clean_sessions":             doSessions,
+				"clean_orphans":              doOrphans,
+				"clean_ghosts":              doGhosts,
+				"ghosts_cleaned":            ghostsCleaned,
 				"workspace_days":             workspaceDays,
 				"session_days":               sessionDays,
 			},
@@ -389,6 +450,15 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 		}
 		if staleSessionsDeleted > 0 {
 			fmt.Printf("Deleted %d stale sessions\n", staleSessionsDeleted)
+		}
+		if orphansForceCompleted > 0 {
+			fmt.Printf("Force-completed %d orphaned agents\n", orphansForceCompleted)
+		}
+		if orphansForceAbandoned > 0 {
+			fmt.Printf("Force-abandoned %d orphaned agents (will retry via respawn)\n", orphansForceAbandoned)
+		}
+		if ghostsCleaned > 0 {
+			fmt.Printf("Removed orch:agent label from %d cross-project ghost agents\n", ghostsCleaned)
 		}
 	}
 
@@ -930,4 +1000,199 @@ func fallbackWorkspaceSpawnTime(workspacePath string) (time.Time, string) {
 	return time.Time{}, ""
 }
 
+// detectOrphansReport runs orphan detection and returns formatted report lines.
+// Used in default mode (no flags) for reporting only — no GC actions taken.
+func detectOrphansReport(projectDir string) ([]string, error) {
+	lm := buildLifecycleManager(projectDir, serverURL, "", "")
+	result, err := lm.DetectOrphans([]string{projectDir}, 30*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	if len(result.Orphans) == 0 {
+		return nil, nil
+	}
+
+	var lines []string
+	for _, orphan := range result.Orphans {
+		action := "force-complete"
+		if orphan.ShouldRetry {
+			action = "force-abandon"
+		}
+		detail := orphan.Reason
+		if orphan.LastPhase != "" {
+			detail += fmt.Sprintf(", phase: %s", orphan.LastPhase)
+		}
+		if orphan.StaleFor > 0 {
+			detail += fmt.Sprintf(", stale %v", orphan.StaleFor.Round(time.Minute))
+		}
+		lines = append(lines, fmt.Sprintf("%s → %s (%s)", orphan.Agent.BeadsID, action, detail))
+	}
+	return lines, nil
+}
+
+// runOrphanGC detects orphaned agents and performs lifecycle GC transitions.
+// Uses LifecycleManager.DetectOrphans to find agents tagged orch:agent with no live
+// execution, then applies ForceComplete (for completed orphans) or ForceAbandon
+// (for retryable orphans) to clean up state consistently.
+func runOrphanGC(projectDir string, dryRun bool, preserveOrchestrator bool) (forceCompleted int, forceAbandoned int, err error) {
+	fmt.Println("\nScanning for orphaned agents...")
+
+	// Build lifecycle manager for detection (agentName/beadsID not needed for DetectOrphans)
+	lm := buildLifecycleManager(projectDir, serverURL, "", "")
+
+	result, err := lm.DetectOrphans([]string{projectDir}, 30*time.Minute)
+	if err != nil {
+		return 0, 0, fmt.Errorf("orphan detection failed: %w", err)
+	}
+
+	fmt.Printf("  Scanned %d tracked agents in %v\n", result.Scanned, result.Elapsed.Round(time.Millisecond))
+
+	if len(result.Orphans) == 0 {
+		fmt.Println("  No orphaned agents found")
+		return 0, 0, nil
+	}
+
+	fmt.Printf("  Found %d orphaned agents:\n", len(result.Orphans))
+
+	for _, orphan := range result.Orphans {
+		// Skip orchestrator workspaces if requested
+		if preserveOrchestrator && orphan.Agent.WorkspacePath != "" && isOrchestratorWorkspace(orphan.Agent.WorkspacePath) {
+			fmt.Printf("    Skipped (orchestrator): %s\n", orphan.Agent.BeadsID)
+			continue
+		}
+
+		action := "force-complete"
+		if orphan.ShouldRetry {
+			action = "force-abandon"
+		}
+
+		// Format details for output
+		detail := orphan.Reason
+		if orphan.LastPhase != "" {
+			detail += fmt.Sprintf(", phase: %s", orphan.LastPhase)
+		}
+		if orphan.StaleFor > 0 {
+			detail += fmt.Sprintf(", stale %v", orphan.StaleFor.Round(time.Minute))
+		}
+
+		if dryRun {
+			fmt.Printf("    [DRY-RUN] Would %s: %s (%s)\n", action, orphan.Agent.BeadsID, detail)
+			if orphan.ShouldRetry {
+				forceAbandoned++
+			} else {
+				forceCompleted++
+			}
+			continue
+		}
+
+		// Build per-agent lifecycle manager (workspace adapter needs agent-specific params)
+		agentLM := buildLifecycleManager(projectDir, serverURL, orphan.Agent.WorkspaceName, orphan.Agent.BeadsID)
+
+		var event *agent.TransitionEvent
+		if orphan.ShouldRetry {
+			event, err = agentLM.ForceAbandon(orphan.Agent)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "    Warning: force-abandon failed for %s: %v\n", orphan.Agent.BeadsID, err)
+				continue
+			}
+			if event.Success {
+				fmt.Printf("    Force-abandoned: %s (will retry via respawn)\n", orphan.Agent.BeadsID)
+				forceAbandoned++
+			}
+		} else {
+			reason := fmt.Sprintf("GC: orphaned agent (%s)", detail)
+			event, err = agentLM.ForceComplete(orphan.Agent, reason)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "    Warning: force-complete failed for %s: %v\n", orphan.Agent.BeadsID, err)
+				continue
+			}
+			if event.Success {
+				fmt.Printf("    Force-completed: %s (%s)\n", orphan.Agent.BeadsID, detail)
+				forceCompleted++
+			}
+		}
+
+		// Report effect details
+		for _, e := range event.Effects {
+			if e.Critical && !e.Success {
+				fmt.Fprintf(os.Stderr, "    Warning: %s/%s failed for %s: %v\n", e.Subsystem, e.Operation, orphan.Agent.BeadsID, e.Error)
+			}
+		}
+		for _, w := range event.Warnings {
+			fmt.Fprintf(os.Stderr, "    Warning: %s\n", w)
+		}
+	}
+
+	return forceCompleted, forceAbandoned, nil
+}
+
 // NOTE: extractBeadsIDFromWorkspace is defined in review.go
+
+// cleanGhostAgents finds cross-project beads issues with stale orch:agent labels
+// and removes the label. A "ghost" is an issue that appears in orch status via
+// cross-project beads query (orch:agent label + in_progress) but has no active
+// agent working on it (no workspace, no session).
+//
+// Ghost agents are caused by agents that died without proper cleanup — the
+// orch:agent label was never removed. This makes them permanently visible in
+// orch status with no way to dismiss them.
+func cleanGhostAgents(currentProjectDir string, dryRun bool) (int, error) {
+	projectDirs := getKBProjectsFn()
+	if len(projectDirs) == 0 {
+		return 0, nil
+	}
+
+	client := opencode.NewClient(opencode.DefaultServerURL)
+	cleaned := 0
+
+	for _, dir := range projectDirs {
+		// Skip current project — local orphans are handled by --orphans
+		if filepath.Clean(dir) == filepath.Clean(currentProjectDir) {
+			continue
+		}
+
+		// Find orch:agent labeled issues in this project
+		issues, err := beads.FallbackListWithLabelInDir("orch:agent", dir)
+		if err != nil {
+			continue
+		}
+
+		for _, issue := range issues {
+			if issue.Status != "open" && issue.Status != "in_progress" {
+				continue
+			}
+
+			// Check if there's an active workspace for this issue
+			wPath, _ := findWorkspaceByBeadsID(dir, issue.ID)
+
+			// Check if there's an active OpenCode session
+			hasSession := false
+			if wPath != "" {
+				sessionID := spawn.ReadSessionID(wPath)
+				if sessionID != "" {
+					hasSession = client.SessionExists(sessionID)
+				}
+			}
+
+			// If no workspace and no session, this is a ghost
+			if wPath == "" || !hasSession {
+				if dryRun {
+					fmt.Printf("  Ghost: %s in %s (%s)\n", issue.ID, filepath.Base(dir), issue.Title)
+					cleaned++
+					continue
+				}
+
+				// Remove orch:agent label via bd CLI in target directory
+				removeLabelErr := beads.FallbackRemoveLabelInDir(issue.ID, "orch:agent", dir)
+				if removeLabelErr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to remove orch:agent from %s: %v\n", issue.ID, removeLabelErr)
+					continue
+				}
+				fmt.Printf("  Cleaned ghost: %s in %s\n", issue.ID, filepath.Base(dir))
+				cleaned++
+			}
+		}
+	}
+
+	return cleaned, nil
+}
