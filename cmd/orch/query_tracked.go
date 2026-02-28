@@ -33,7 +33,8 @@ type AgentStatus struct {
 	SpawnMode     string `json:"spawn_mode,omitempty"`
 
 	// Phase (from beads comments)
-	Phase string `json:"phase,omitempty"` // "Planning", "Implementing", "Complete", etc.
+	Phase           string     `json:"phase,omitempty"`              // "Planning", "Implementing", "Complete", etc.
+	PhaseReportedAt *time.Time `json:"phase_reported_at,omitempty"` // When the latest phase comment was posted
 
 	// Liveness (from OpenCode)
 	Status string `json:"status"` // "active", "idle", "retrying", "unknown"
@@ -82,7 +83,7 @@ func queryTrackedAgents(projectDirs []string) ([]AgentStatus, error) {
 	}
 
 	// Step 3: Extract latest phase from beads comments
-	phases := extractLatestPhases(beadsIDs)
+	phases, phaseTimestamps := extractLatestPhases(beadsIDs)
 
 	// Step 4: Batch check session liveness
 	sessionIDs := extractSessionIDs(manifests)
@@ -98,7 +99,7 @@ func queryTrackedAgents(projectDirs []string) ([]AgentStatus, error) {
 	}
 
 	// Step 5: Join with explicit reason codes
-	return joinWithReasonCodes(issues, manifests, liveness, phases), nil
+	return joinWithReasonCodes(issues, manifests, liveness, phases, phaseTimestamps), nil
 }
 
 // listTrackedIssues queries beads for all in-progress issues tagged with orch:agent
@@ -250,11 +251,13 @@ func extractSessionIDs(manifests map[string]*spawn.AgentManifest) []string {
 }
 
 // extractLatestPhases fetches beads comments for each issue and extracts the
-// most recent "Phase:" comment. Returns a map of beadsID → phase string.
+// most recent "Phase:" comment. Returns a map of beadsID → phase string
+// and a map of beadsID → phase timestamp.
 // Comment fetch failures are non-fatal: issues with failed fetches simply
 // won't appear in the map (and will get MissingPhase=true in the join).
-func extractLatestPhases(beadsIDs []string) map[string]string {
+func extractLatestPhases(beadsIDs []string) (map[string]string, map[string]time.Time) {
 	phases := make(map[string]string, len(beadsIDs))
+	timestamps := make(map[string]time.Time, len(beadsIDs))
 
 	// Try RPC client first for batch efficiency
 	socketPath, err := beads.FindSocketPath("")
@@ -267,11 +270,15 @@ func extractLatestPhases(beadsIDs []string) map[string]string {
 				if err != nil {
 					continue
 				}
-				if phase := latestPhaseFromComments(comments); phase != "" {
+				phase, ts := latestPhaseWithTimestamp(comments)
+				if phase != "" {
 					phases[id] = phase
 				}
+				if !ts.IsZero() {
+					timestamps[id] = ts
+				}
 			}
-			return phases
+			return phases, timestamps
 		}
 	}
 
@@ -281,11 +288,15 @@ func extractLatestPhases(beadsIDs []string) map[string]string {
 		if err != nil {
 			continue
 		}
-		if phase := latestPhaseFromComments(comments); phase != "" {
+		phase, ts := latestPhaseWithTimestamp(comments)
+		if phase != "" {
 			phases[id] = phase
 		}
+		if !ts.IsZero() {
+			timestamps[id] = ts
+		}
 	}
-	return phases
+	return phases, timestamps
 }
 
 // latestPhaseFromComments extracts the phase from the most recent "Phase:" comment.
@@ -298,6 +309,24 @@ func latestPhaseFromComments(comments []beads.Comment) string {
 		}
 	}
 	return ""
+}
+
+// latestPhaseWithTimestamp extracts the phase and its timestamp from the most recent
+// "Phase:" comment. Returns ("", zero time) if no phase comment found.
+func latestPhaseWithTimestamp(comments []beads.Comment) (string, time.Time) {
+	for i := len(comments) - 1; i >= 0; i-- {
+		if strings.HasPrefix(comments[i].Text, "Phase:") {
+			phase := strings.TrimSpace(strings.TrimPrefix(comments[i].Text, "Phase:"))
+			var ts time.Time
+			if comments[i].CreatedAt != "" {
+				if t, err := time.Parse(time.RFC3339, comments[i].CreatedAt); err == nil {
+					ts = t
+				}
+			}
+			return phase, ts
+		}
+	}
+	return "", time.Time{}
 }
 
 // unknownLiveness creates a liveness map where every session has "unknown" status.
@@ -320,9 +349,16 @@ func joinWithReasonCodes(
 	manifests map[string]*spawn.AgentManifest,
 	liveness map[string]opencode.SessionStatusInfo,
 	phases map[string]string,
+	phaseTimestamps ...map[string]time.Time,
 ) []AgentStatus {
 	if len(issues) == 0 {
 		return nil
+	}
+
+	// Extract optional phase timestamps (variadic for backward compat with tests)
+	var tsMap map[string]time.Time
+	if len(phaseTimestamps) > 0 {
+		tsMap = phaseTimestamps[0]
 	}
 
 	results := make([]AgentStatus, 0, len(issues))
@@ -338,6 +374,13 @@ func joinWithReasonCodes(
 			agent.Phase = phase
 		} else {
 			agent.MissingPhase = true
+		}
+
+		// Populate phase timestamp
+		if tsMap != nil {
+			if ts, ok := tsMap[issue.ID]; ok {
+				agent.PhaseReportedAt = &ts
+			}
 		}
 
 		// Step 1: Look up workspace manifest binding

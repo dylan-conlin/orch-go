@@ -85,6 +85,9 @@ type Daemon struct {
 	// lastOrphanDetection tracks when orphan detection was last run.
 	lastOrphanDetection time.Time
 
+	// lastPhaseTimeout tracks when phase timeout detection was last run.
+	lastPhaseTimeout time.Time
+
 	// resumeAttempts tracks when we last attempted to resume each agent (by beads ID).
 	// Prevents infinite resume loops by rate-limiting to 1 attempt per hour per agent.
 	resumeAttempts map[string]time.Time

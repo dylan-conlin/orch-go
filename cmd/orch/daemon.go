@@ -196,6 +196,8 @@ var (
 	daemonCleanupPreserveOrch    bool // Preserve orchestrator sessions during cleanup
 	daemonOrphanDetectionInterval int // Orphan detection interval in minutes (0 = disabled)
 	daemonOrphanAgeThreshold      int // Orphan age threshold in minutes
+	daemonPhaseTimeoutInterval    int // Phase timeout check interval in minutes (0 = disabled)
+	daemonPhaseTimeoutThreshold   int // Phase timeout threshold in minutes
 )
 
 func init() {
@@ -229,6 +231,8 @@ func init() {
 		cmd.Flags().BoolVar(&daemonCleanupPreserveOrch, "cleanup-preserve-orchestrator", true, "Preserve orchestrator sessions during cleanup (default: true)")
 		cmd.Flags().IntVar(&daemonOrphanDetectionInterval, "orphan-detection-interval", 30, "Orphan detection interval in minutes (0 = disabled, default: 30)")
 		cmd.Flags().IntVar(&daemonOrphanAgeThreshold, "orphan-age-threshold", 60, "How long (minutes) before issue is considered orphaned (default: 60)")
+		cmd.Flags().IntVar(&daemonPhaseTimeoutInterval, "phase-timeout-interval", 5, "Phase timeout check interval in minutes (0 = disabled, default: 5)")
+		cmd.Flags().IntVar(&daemonPhaseTimeoutThreshold, "phase-timeout-threshold", 30, "Minutes without phase update before flagging as unresponsive (default: 30)")
 		cmd.Flags().MarkHidden("max-agents")
 	}
 
@@ -266,6 +270,9 @@ func daemonConfigFromFlags() daemon.Config {
 	config.OrphanDetectionEnabled = daemonOrphanDetectionInterval > 0
 	config.OrphanDetectionInterval = time.Duration(daemonOrphanDetectionInterval) * time.Minute
 	config.OrphanAgeThreshold = time.Duration(daemonOrphanAgeThreshold) * time.Minute
+	config.PhaseTimeoutEnabled = daemonPhaseTimeoutInterval > 0
+	config.PhaseTimeoutInterval = time.Duration(daemonPhaseTimeoutInterval) * time.Minute
+	config.PhaseTimeoutThreshold = time.Duration(daemonPhaseTimeoutThreshold) * time.Minute
 
 	return config
 }
@@ -490,6 +497,7 @@ func runDaemonLoop() error {
 		// Run all periodic maintenance tasks (reflection, cleanup, recovery, etc.)
 		periodicResult := runPeriodicTasks(d, timestamp, daemonVerbose, logger)
 		knowledgeHealthSnapshot := periodicResult.KnowledgeHealthSnapshot
+		phaseTimeoutSnapshot := periodicResult.PhaseTimeoutSnapshot
 
 		// Process completions: mark Phase: Complete agents as ready-for-review
 		// This signals they're waiting for orchestrator review. Uses the escalation model:
@@ -634,6 +642,7 @@ func runDaemonLoop() error {
 			SpawnFailures:      spawnFailureSnapshot,
 			CompletionFailures: completionFailureSnapshot,
 			KnowledgeHealth:    knowledgeHealthSnapshot,
+			PhaseTimeout:       phaseTimeoutSnapshot,
 		}
 		if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
 			fmt.Fprintf(os.Stderr, "Warning: failed to write status file: %v\n", err)

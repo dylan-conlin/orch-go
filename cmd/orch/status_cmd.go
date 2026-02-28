@@ -37,6 +37,8 @@ const (
 	processingCheckMaxAge = 5 * time.Minute
 	// Treat session metrics as stale if no activity in this window
 	sessionMetricsStaleAfter = session.DefaultInactivityTimeout
+	// Flag agents as unresponsive if no phase update in this window
+	phaseTimeoutThreshold = 30 * time.Minute
 )
 
 var statusCmd = &cobra.Command{
@@ -105,6 +107,7 @@ type AgentInfo struct {
 	IsProcessing    bool                          `json:"is_processing,omitempty"`     // True if session is actively generating a response
 	IsCompleted     bool                          `json:"is_completed,omitempty"`      // True if beads issue is closed
 	IsStalled       bool                          `json:"is_stalled,omitempty"`        // True if no token progress for 3+ minutes
+	IsUnresponsive  bool                          `json:"is_unresponsive,omitempty"`   // True if no phase update for 30+ minutes
 	Tokens          *opencode.TokenStats          `json:"tokens,omitempty"`            // Token usage for the session
 	ContextRisk     *verify.ContextExhaustionRisk `json:"context_risk,omitempty"`      // Context exhaustion risk assessment
 	PhaseReportedAt *time.Time                    `json:"phase_reported_at,omitempty"` // Timestamp when latest phase was reported
@@ -273,6 +276,7 @@ func runStatus(serverURL string) error {
 		// 1. Running (processing) agents
 		// 2. RECENT agents with Phase: Complete (need review)
 		// 3. Agents with Phase: BLOCKED or QUESTION (need attention)
+		// 4. Unresponsive agents (no phase update in 30+ minutes)
 		if !statusAll {
 			isRunning := agentItem.IsProcessing
 
@@ -288,7 +292,15 @@ func runStatus(serverURL string) error {
 				strings.EqualFold(agentItem.Phase, "BLOCKED") ||
 				strings.EqualFold(agentItem.Phase, "QUESTION")
 
-			if !isRunning && !needsAttention {
+			// Check phase timeout for unresponsive detection
+			// This is done before filtering so unresponsive agents always show in compact mode
+			isUnresponsive := false
+			if agentItem.PhaseReportedAt != nil && !isComplete &&
+				time.Since(*agentItem.PhaseReportedAt) > phaseTimeoutThreshold {
+				isUnresponsive = true
+			}
+
+			if !isRunning && !needsAttention && !isUnresponsive {
 				continue
 			}
 		}
@@ -379,6 +391,20 @@ func runStatus(serverURL string) error {
 		}
 	}
 
+	// Detect unresponsive agents (phase timeout)
+	for i := range filteredAgents {
+		agent := &filteredAgents[i]
+		if agent.IsPhantom || agent.IsCompleted {
+			continue
+		}
+		if strings.HasPrefix(agent.Phase, "Complete") {
+			continue
+		}
+		if agent.PhaseReportedAt != nil && time.Since(*agent.PhaseReportedAt) > phaseTimeoutThreshold {
+			agent.IsUnresponsive = true
+		}
+	}
+
 	// Check infrastructure health
 	infraHealth := checkInfrastructureHealth()
 
@@ -441,6 +467,9 @@ func agentStatusToAgentInfo(tracked AgentStatus, now time.Time) AgentInfo {
 	// Map phase - extract just the phase name for the Phase field
 	if tracked.Phase != "" {
 		info.Phase = tracked.Phase
+	}
+	if tracked.PhaseReportedAt != nil {
+		info.PhaseReportedAt = tracked.PhaseReportedAt
 	}
 
 	// Surface reason codes
@@ -948,6 +977,9 @@ func getAgentStatus(agent AgentInfo) string {
 	}
 	if agent.IsPhantom {
 		return "phantom"
+	}
+	if agent.IsUnresponsive {
+		return "⚠️ UNRESPONSIVE"
 	}
 	if agent.IsStalled {
 		return "⚠️ STALLED"

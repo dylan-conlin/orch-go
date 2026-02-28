@@ -119,6 +119,20 @@ type Config struct {
 	// OrphanAgeThreshold is how long an issue must be in_progress with no agent
 	// before it's considered orphaned and reset to open. Default is 1 hour.
 	OrphanAgeThreshold time.Duration
+
+	// PhaseTimeoutEnabled controls whether periodic phase timeout detection is enabled.
+	// When enabled, the daemon detects agents that have an active session but haven't
+	// reported a new phase comment within PhaseTimeoutThreshold. These agents are
+	// surfaced as "unresponsive" in orch status and daemon logs.
+	PhaseTimeoutEnabled bool
+
+	// PhaseTimeoutInterval is how often to check for unresponsive agents (0 = disabled).
+	// Default is 5 minutes.
+	PhaseTimeoutInterval time.Duration
+
+	// PhaseTimeoutThreshold is how long an agent can go without a phase update
+	// before being flagged as unresponsive. Default is 30 minutes.
+	PhaseTimeoutThreshold time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -153,5 +167,8 @@ func DefaultConfig() Config {
 		OrphanDetectionEnabled:      true,
 		OrphanDetectionInterval:     30 * time.Minute, // Check every 30 minutes
 		OrphanAgeThreshold:          time.Hour,        // 1 hour before considering orphaned
+		PhaseTimeoutEnabled:         true,
+		PhaseTimeoutInterval:        5 * time.Minute,  // Check every 5 minutes
+		PhaseTimeoutThreshold:       30 * time.Minute, // Flag after 30 minutes without phase update
 	}
 }

@@ -16,6 +16,7 @@ import (
 // periodicTasksResult holds outputs from periodic tasks needed downstream.
 type periodicTasksResult struct {
 	KnowledgeHealthSnapshot *daemon.KnowledgeHealthSnapshot
+	PhaseTimeoutSnapshot    *daemon.PhaseTimeoutSnapshot
 }
 
 // runPeriodicTasks runs all periodic maintenance tasks and handles their output.
@@ -55,6 +56,15 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 	// Orphan detection
 	if r := d.RunPeriodicOrphanDetection(); r != nil {
 		handleOrphanDetectionResult(r, timestamp, verbose, logger)
+	}
+
+	// Phase timeout detection
+	if r := d.RunPeriodicPhaseTimeout(); r != nil {
+		handlePhaseTimeoutResult(r, timestamp, verbose, logger)
+		if r.Error == nil {
+			snapshot := r.Snapshot()
+			result.PhaseTimeoutSnapshot = &snapshot
+		}
 	}
 
 	return result
@@ -148,6 +158,30 @@ func handleOrphanDetectionResult(r *daemon.OrphanDetectionResult, timestamp stri
 		})
 	} else if verbose {
 		fmt.Printf("[%s] Orphan detection: no orphans found\n", timestamp)
+	}
+}
+
+func handlePhaseTimeoutResult(r *daemon.PhaseTimeoutResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Phase timeout error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.phase_timeout", map[string]interface{}{
+			"unresponsive": 0,
+			"error":        r.Error.Error(),
+			"message":      r.Message,
+		})
+	} else if r.UnresponsiveCount > 0 {
+		fmt.Printf("[%s] \u26a0\ufe0f  %s\n", timestamp, r.Message)
+		agentIDs := make([]string, 0, len(r.Agents))
+		for _, a := range r.Agents {
+			agentIDs = append(agentIDs, a.BeadsID)
+		}
+		logDaemonEvent(logger, "daemon.phase_timeout", map[string]interface{}{
+			"unresponsive": r.UnresponsiveCount,
+			"agents":       agentIDs,
+			"message":      r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] Phase timeout: all agents responsive\n", timestamp)
 	}
 }
 

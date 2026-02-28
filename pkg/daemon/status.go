@@ -52,6 +52,10 @@ type DaemonStatus struct {
 	// KnowledgeHealth holds the latest knowledge health check snapshot.
 	// Surfaced to enable dashboard visibility into quick entry accumulation.
 	KnowledgeHealth *KnowledgeHealthSnapshot `json:"knowledge_health,omitempty"`
+
+	// PhaseTimeout holds the latest phase timeout detection snapshot.
+	// Surfaced to show unresponsive agent count in daemon status and dashboard.
+	PhaseTimeout *PhaseTimeoutSnapshot `json:"phase_timeout,omitempty"`
 }
 
 // VerificationStatusSnapshot is a snapshot of verification tracking state.

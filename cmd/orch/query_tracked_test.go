@@ -504,6 +504,63 @@ func TestLatestPhaseFromComments(t *testing.T) {
 	}
 }
 
+func TestLatestPhaseWithTimestamp(t *testing.T) {
+	tests := []struct {
+		name      string
+		comments  []beads.Comment
+		wantPhase string
+		wantTime  bool // whether we expect a non-zero timestamp
+	}{
+		{
+			name:      "no comments",
+			comments:  nil,
+			wantPhase: "",
+			wantTime:  false,
+		},
+		{
+			name: "phase with valid timestamp",
+			comments: []beads.Comment{
+				{Text: "Phase: Planning - Reading code", CreatedAt: "2026-02-28T10:30:00Z"},
+			},
+			wantPhase: "Planning - Reading code",
+			wantTime:  true,
+		},
+		{
+			name: "phase with empty timestamp",
+			comments: []beads.Comment{
+				{Text: "Phase: Implementing - Adding feature", CreatedAt: ""},
+			},
+			wantPhase: "Implementing - Adding feature",
+			wantTime:  false,
+		},
+		{
+			name: "multiple phases returns latest with timestamp",
+			comments: []beads.Comment{
+				{Text: "Phase: Planning - start", CreatedAt: "2026-02-28T09:00:00Z"},
+				{Text: "Phase: Implementing - work", CreatedAt: "2026-02-28T10:00:00Z"},
+				{Text: "Phase: Complete - done", CreatedAt: "2026-02-28T11:00:00Z"},
+			},
+			wantPhase: "Complete - done",
+			wantTime:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			phase, ts := latestPhaseWithTimestamp(tt.comments)
+			if phase != tt.wantPhase {
+				t.Errorf("phase = %q, want %q", phase, tt.wantPhase)
+			}
+			if tt.wantTime && ts.IsZero() {
+				t.Error("expected non-zero timestamp")
+			}
+			if !tt.wantTime && !ts.IsZero() {
+				t.Error("expected zero timestamp")
+			}
+		})
+	}
+}
+
 func TestFilterActiveIssues(t *testing.T) {
 	issues := []beads.Issue{
 		{ID: "id-1", Status: "open"},
@@ -707,6 +764,64 @@ func TestJoinWithReasonCodes_NonClaudeNoSession(t *testing.T) {
 	}
 	if r.Reason != "missing_session" {
 		t.Errorf("expected Reason missing_session, got %q", r.Reason)
+	}
+}
+
+func TestJoinWithReasonCodes_PhaseTimestamps(t *testing.T) {
+	// When phase timestamps are provided, PhaseReportedAt should be populated
+	issues := []beads.Issue{
+		{ID: "orch-go-1400", Title: "Agent with phase timestamp", Status: "in_progress"},
+		{ID: "orch-go-1401", Title: "Agent without timestamp", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1400": {
+			BeadsID:   "orch-go-1400",
+			SessionID: "sess-1400",
+		},
+		"orch-go-1401": {
+			BeadsID:   "orch-go-1401",
+			SessionID: "sess-1401",
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{
+		"sess-1400": {Type: "busy"},
+		"sess-1401": {Type: "busy"},
+	}
+	phases := map[string]string{
+		"orch-go-1400": "Implementing - working",
+		"orch-go-1401": "Planning - reading",
+	}
+	ts := time.Date(2026, 2, 28, 10, 30, 0, 0, time.UTC)
+	phaseTimestamps := map[string]time.Time{
+		"orch-go-1400": ts,
+		// orch-go-1401 has no timestamp
+	}
+
+	results := joinWithReasonCodes(issues, manifests, liveness, phases, phaseTimestamps)
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+
+	// Agent with timestamp
+	r1 := results[0]
+	if r1.BeadsID == "orch-go-1401" {
+		r1 = results[1]
+	}
+	if r1.PhaseReportedAt == nil {
+		t.Fatal("expected PhaseReportedAt to be set for orch-go-1400")
+	}
+	if !r1.PhaseReportedAt.Equal(ts) {
+		t.Errorf("expected PhaseReportedAt %v, got %v", ts, *r1.PhaseReportedAt)
+	}
+
+	// Agent without timestamp
+	r2 := results[1]
+	if r2.BeadsID == "orch-go-1400" {
+		r2 = results[0]
+	}
+	if r2.PhaseReportedAt != nil {
+		t.Errorf("expected nil PhaseReportedAt for orch-go-1401, got %v", *r2.PhaseReportedAt)
 	}
 }
 

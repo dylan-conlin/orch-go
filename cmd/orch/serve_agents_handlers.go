@@ -86,6 +86,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	// Stalled threshold for phase-based stall detection
 	stalledThreshold := 15 * time.Minute
+	// Unresponsive threshold: no phase update for 30+ minutes
+	unresponsiveThreshold := 30 * time.Minute
 
 	// Convert tracked agents to API response format
 	agents := make([]AgentAPIResponse, 0, len(trackedAgents))
@@ -173,10 +175,15 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 						agents[i].PhaseReportedAt = phaseStatus.PhaseReportedAt.Format(time.RFC3339)
 					}
 
-					// Stalled detection
+					// Stalled detection (15+ min without phase update)
 					if agents[i].Status == "active" && phaseStatus.PhaseReportedAt != nil {
-						if now.Sub(*phaseStatus.PhaseReportedAt) > stalledThreshold {
+						elapsed := now.Sub(*phaseStatus.PhaseReportedAt)
+						if elapsed > stalledThreshold {
 							agents[i].IsStalled = true
+						}
+						// Unresponsive detection (30+ min without phase update)
+						if elapsed > unresponsiveThreshold {
+							agents[i].IsUnresponsive = true
 						}
 					}
 				}

@@ -23,6 +23,7 @@ type AgentAPIResponse struct {
 	IsProcessing         bool                 `json:"is_processing,omitempty"` // True if actively generating response
 	IsStale              bool                 `json:"is_stale,omitempty"`      // True if agent is older than beadsFetchThreshold (beads data not fetched)
 	IsStalled            bool                 `json:"is_stalled,omitempty"`    // True if active agent has same phase for 15+ minutes (advisory)
+	IsUnresponsive       bool                 `json:"is_unresponsive,omitempty"` // True if no phase update for 30+ minutes
 	SpawnedAt            string               `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
 	UpdatedAt            string               `json:"updated_at,omitempty"`    // ISO 8601 timestamp
 	Synthesis            *SynthesisResponse   `json:"synthesis,omitempty"`
