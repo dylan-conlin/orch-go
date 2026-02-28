@@ -1,0 +1,38 @@
+verification:
+  automated:
+    - command: "go test ./pkg/agent/ -v -run TestAbandon"
+      expected: "11 tests pass (PASS)"
+      result: "PASS - all 11 abandon tests pass"
+    - command: "go test ./pkg/agent/ -v"
+      expected: "22 tests pass (11 new + 11 existing)"
+      result: "PASS - ok github.com/dylan-conlin/orch-go/pkg/agent 0.006s"
+    - command: "go vet ./pkg/agent/"
+      expected: "No issues"
+      result: "PASS - clean"
+    - command: "go build ./cmd/orch/"
+      expected: "Build succeeds"
+      result: "PASS - BUILD OK"
+
+  critical_assertions:
+    - "orch:agent label is removed on Abandon (TestAbandon_RemovesOrchAgentLabel_Critical)"
+    - "assignee is cleared on Abandon (TestAbandon_ClearsAssignee_Critical)"
+    - "beads status reset to open on Abandon (TestAbandon_HappyPath)"
+    - "beads label removal failure → critical failure, not silent (TestAbandon_BeadsLabelRemovalFails_ReturnsCriticalError)"
+    - "tmux/session failures → non-critical warnings (TestAbandon_TmuxKillFails_NonCriticalWarning)"
+
+  ghost_agent_bug:
+    root_cause: "abandon_cmd.go never removes orch:agent label or clears assignee"
+    fix: "lifecycleManager.Abandon() removes orch:agent label (critical) and clears assignee (critical)"
+    regression_test: "TestAbandon_RemovesOrchAgentLabel_Critical and TestAbandon_ClearsAssignee_Critical"
+
+  files_changed:
+    - pkg/agent/lifecycle_impl.go (new - concrete LifecycleManager implementation)
+    - pkg/agent/lifecycle_manager_test.go (new - 11 tests for Abandon transition)
+
+  manual_steps: []
+
+  notes: |
+    The implementation adds the concrete lifecycleManager struct and Abandon method.
+    Other methods (Complete, ForceComplete, ForceAbandon, DetectOrphans, CurrentState)
+    are stubbed with TODOs for their respective follow-up issues (orch-go-hbtr, orch-go-vp6u).
+    The abandon_cmd.go is NOT modified — wiring happens in a separate integration step.
