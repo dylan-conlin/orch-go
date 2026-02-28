@@ -155,16 +155,19 @@ func (m *mockEventLogger) Log(eventType string, data map[string]interface{}) err
 }
 
 type mockWorkspaceManager struct {
-	archived       []string
-	failureReports map[string]string // path → reason
-	existing       map[string]bool
-	failOn         map[string]error
+	archived        []string
+	failureReports  map[string]string // path → reason
+	existing        map[string]bool
+	sessionIDs      map[string]string // path → sessionID
+	removed         []string
+	failOn          map[string]error
 }
 
 func newMockWorkspaceManager() *mockWorkspaceManager {
 	return &mockWorkspaceManager{
 		failureReports: make(map[string]string),
 		existing:       make(map[string]bool),
+		sessionIDs:     make(map[string]string),
 		failOn:         make(map[string]error),
 	}
 }
@@ -187,6 +190,22 @@ func (m *mockWorkspaceManager) WriteFailureReport(workspacePath, reason string) 
 
 func (m *mockWorkspaceManager) Exists(workspacePath string) bool {
 	return m.existing[workspacePath]
+}
+
+func (m *mockWorkspaceManager) WriteSessionID(workspacePath, sessionID string) error {
+	if err, ok := m.failOn["write_session_id:"+workspacePath]; ok {
+		return err
+	}
+	m.sessionIDs[workspacePath] = sessionID
+	return nil
+}
+
+func (m *mockWorkspaceManager) Remove(workspacePath string) error {
+	if err, ok := m.failOn["remove:"+workspacePath]; ok {
+		return err
+	}
+	m.removed = append(m.removed, workspacePath)
+	return nil
 }
 
 // --- Helper to build a standard test LifecycleManager ---
@@ -522,5 +541,311 @@ func TestAbandon_TimestampSet(t *testing.T) {
 
 	if event.Timestamp.Before(before) || event.Timestamp.After(after) {
 		t.Error("timestamp should be within test execution window")
+	}
+}
+
+// --- BeginSpawn Tests ---
+
+func TestBeginSpawn_HappyPath_Tracked(t *testing.T) {
+	mgr, bc, _, _, _, _ := testManager()
+
+	input := SpawnInput{
+		BeadsID:       "proj-123",
+		WorkspaceName: "og-feat-test-27feb-abc1",
+		WorkspacePath: "/tmp/.orch/workspace/og-feat-test-27feb-abc1",
+		ProjectDir:    "/tmp/proj",
+		SpawnMode:     "opencode",
+	}
+
+	handle, err := mgr.BeginSpawn(input)
+	if err != nil {
+		t.Fatalf("BeginSpawn() returned error: %v", err)
+	}
+
+	if handle == nil {
+		t.Fatal("expected non-nil handle")
+	}
+
+	// Verify beads was tagged
+	// The mock doesn't track adds directly, but the effect should be recorded
+	if len(handle.Event().Effects) != 1 {
+		t.Fatalf("expected 1 effect, got %d", len(handle.Event().Effects))
+	}
+	if handle.Event().Effects[0].Subsystem != "beads" {
+		t.Errorf("expected beads subsystem, got %q", handle.Event().Effects[0].Subsystem)
+	}
+	if handle.Event().Effects[0].Operation != "add_label" {
+		t.Errorf("expected add_label operation, got %q", handle.Event().Effects[0].Operation)
+	}
+	if !handle.Event().Effects[0].Success {
+		t.Error("expected beads add_label to succeed")
+	}
+
+	// Verify agent ref
+	if handle.Agent.BeadsID != "proj-123" {
+		t.Errorf("BeadsID: got %q, want %q", handle.Agent.BeadsID, "proj-123")
+	}
+
+	// Verify rollback removes label
+	handle.SafeRollback()
+	labels := bc.labelsRemoved["proj-123"]
+	found := false
+	for _, l := range labels {
+		if l == "orch:agent" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("rollback should remove orch:agent label")
+	}
+}
+
+func TestBeginSpawn_HappyPath_NoTrack(t *testing.T) {
+	mgr, _, _, _, _, _ := testManager()
+
+	input := SpawnInput{
+		WorkspaceName: "og-feat-test-27feb-abc1",
+		WorkspacePath: "/tmp/.orch/workspace/og-feat-test-27feb-abc1",
+		ProjectDir:    "/tmp/proj",
+		SpawnMode:     "opencode",
+		NoTrack:       true,
+	}
+
+	handle, err := mgr.BeginSpawn(input)
+	if err != nil {
+		t.Fatalf("BeginSpawn() returned error: %v", err)
+	}
+
+	// No effects when NoTrack (beads tagging skipped)
+	if len(handle.Event().Effects) != 0 {
+		t.Errorf("expected 0 effects for NoTrack spawn, got %d", len(handle.Event().Effects))
+	}
+}
+
+func TestBeginSpawn_InvalidInput(t *testing.T) {
+	mgr, _, _, _, _, _ := testManager()
+
+	input := SpawnInput{
+		// Missing required fields
+		BeadsID: "proj-123",
+	}
+
+	_, err := mgr.BeginSpawn(input)
+	if err == nil {
+		t.Error("expected error for invalid input")
+	}
+}
+
+func TestBeginSpawn_BeadsTagFails_ReturnsError(t *testing.T) {
+	mgr, bc, _, _, _, _ := testManager()
+	bc.failOn["add_label:proj-123"] = fmt.Errorf("beads daemon unreachable")
+
+	input := SpawnInput{
+		BeadsID:       "proj-123",
+		WorkspaceName: "og-feat-test-27feb-abc1",
+		WorkspacePath: "/tmp/.orch/workspace/og-feat-test-27feb-abc1",
+		ProjectDir:    "/tmp/proj",
+		SpawnMode:     "opencode",
+	}
+
+	_, err := mgr.BeginSpawn(input)
+	if err == nil {
+		t.Error("expected error when beads tag fails")
+	}
+}
+
+// --- ActivateSpawn Tests ---
+
+func TestActivateSpawn_HappyPath(t *testing.T) {
+	mgr, _, _, _, el, wm := testManager()
+
+	input := SpawnInput{
+		BeadsID:       "proj-123",
+		WorkspaceName: "og-feat-test-27feb-abc1",
+		WorkspacePath: "/tmp/.orch/workspace/og-feat-test-27feb-abc1",
+		ProjectDir:    "/tmp/proj",
+		SpawnMode:     "opencode",
+		NoTrack:       true, // skip beads for simplicity
+	}
+
+	handle, err := mgr.BeginSpawn(input)
+	if err != nil {
+		t.Fatalf("BeginSpawn() returned error: %v", err)
+	}
+
+	event, err := mgr.ActivateSpawn(handle, "session-456")
+	if err != nil {
+		t.Fatalf("ActivateSpawn() returned error: %v", err)
+	}
+
+	// Verify transition metadata
+	if event.Transition != TransitionSpawn {
+		t.Errorf("Transition: got %q, want %q", event.Transition, TransitionSpawn)
+	}
+	if event.FromState != StateSpawning {
+		t.Errorf("FromState: got %q, want %q", event.FromState, StateSpawning)
+	}
+	if event.ToState != StateActive {
+		t.Errorf("ToState: got %q, want %q", event.ToState, StateActive)
+	}
+	if event.Agent.SessionID != "session-456" {
+		t.Errorf("SessionID: got %q, want %q", event.Agent.SessionID, "session-456")
+	}
+	if !event.Success {
+		t.Error("expected Success=true")
+	}
+	if event.Timestamp.IsZero() {
+		t.Error("expected non-zero timestamp")
+	}
+
+	// Verify session ID written to workspace
+	if wm.sessionIDs["/tmp/.orch/workspace/og-feat-test-27feb-abc1"] != "session-456" {
+		t.Errorf("session ID not written to workspace")
+	}
+
+	// Verify event logged
+	if len(el.events) != 1 {
+		t.Fatalf("expected 1 event logged, got %d", len(el.events))
+	}
+	if el.events[0]["_type"] != "session.spawned" {
+		t.Errorf("expected event type 'session.spawned', got %q", el.events[0]["_type"])
+	}
+}
+
+func TestActivateSpawn_EmptySessionID(t *testing.T) {
+	mgr, _, _, _, el, wm := testManager()
+
+	input := SpawnInput{
+		BeadsID:       "proj-123",
+		WorkspaceName: "og-feat-test-27feb-abc1",
+		WorkspacePath: "/tmp/.orch/workspace/og-feat-test-27feb-abc1",
+		ProjectDir:    "/tmp/proj",
+		SpawnMode:     "claude",
+		NoTrack:       true,
+	}
+
+	handle, _ := mgr.BeginSpawn(input)
+	event, err := mgr.ActivateSpawn(handle, "")
+	if err != nil {
+		t.Fatalf("ActivateSpawn() returned error: %v", err)
+	}
+
+	// Empty session ID means no workspace write for session ID
+	if len(wm.sessionIDs) != 0 {
+		t.Error("should not write session ID when empty")
+	}
+
+	// Event should still be logged
+	if len(el.events) != 1 {
+		t.Errorf("expected 1 event logged, got %d", len(el.events))
+	}
+
+	if !event.Success {
+		t.Error("expected Success=true")
+	}
+}
+
+func TestActivateSpawn_NilHandle(t *testing.T) {
+	mgr, _, _, _, _, _ := testManager()
+
+	_, err := mgr.ActivateSpawn(nil, "session-123")
+	if err == nil {
+		t.Error("expected error for nil handle")
+	}
+}
+
+func TestActivateSpawn_SessionIDWriteFails_NonCritical(t *testing.T) {
+	mgr, _, _, _, _, wm := testManager()
+	wm.failOn["write_session_id:/tmp/.orch/workspace/og-feat-test-27feb-abc1"] = fmt.Errorf("disk full")
+
+	input := SpawnInput{
+		BeadsID:       "proj-123",
+		WorkspaceName: "og-feat-test-27feb-abc1",
+		WorkspacePath: "/tmp/.orch/workspace/og-feat-test-27feb-abc1",
+		ProjectDir:    "/tmp/proj",
+		SpawnMode:     "opencode",
+		NoTrack:       true,
+	}
+
+	handle, _ := mgr.BeginSpawn(input)
+	event, err := mgr.ActivateSpawn(handle, "session-456")
+	if err != nil {
+		t.Fatalf("ActivateSpawn() should not return error, got: %v", err)
+	}
+
+	// Session ID write failure is non-critical (session already running)
+	if !event.Success {
+		t.Error("expected Success=true — session ID write is non-critical")
+	}
+	if len(event.Warnings) == 0 {
+		t.Error("expected warning about session ID write failure")
+	}
+}
+
+func TestSpawnFullLifecycle_BeginThenActivate(t *testing.T) {
+	mgr, _, _, _, el, wm := testManager()
+
+	input := SpawnInput{
+		BeadsID:       "proj-123",
+		WorkspaceName: "og-feat-test-27feb-abc1",
+		WorkspacePath: "/tmp/.orch/workspace/og-feat-test-27feb-abc1",
+		ProjectDir:    "/tmp/proj",
+		SpawnMode:     "opencode",
+		NoTrack:       true,
+	}
+
+	// Phase 1: BeginSpawn
+	handle, err := mgr.BeginSpawn(input)
+	if err != nil {
+		t.Fatalf("BeginSpawn() error: %v", err)
+	}
+
+	// Simulate: caller creates session here (not lifecycle's concern)
+
+	// Phase 2: ActivateSpawn
+	event, err := mgr.ActivateSpawn(handle, "session-789")
+	if err != nil {
+		t.Fatalf("ActivateSpawn() error: %v", err)
+	}
+
+	// Full lifecycle should produce a single coherent TransitionEvent
+	if event.Transition != TransitionSpawn {
+		t.Errorf("Transition: got %q, want %q", event.Transition, TransitionSpawn)
+	}
+	if event.FromState != StateSpawning {
+		t.Errorf("FromState: got %q, want %q", event.FromState, StateSpawning)
+	}
+	if event.ToState != StateActive {
+		t.Errorf("ToState: got %q, want %q", event.ToState, StateActive)
+	}
+	if !event.Success {
+		t.Error("expected successful transition")
+	}
+
+	// Effects from both phases should be in the event
+	// Phase 2: workspace write + event log
+	subsystems := make(map[string]bool)
+	for _, e := range event.Effects {
+		subsystems[e.Subsystem] = true
+	}
+
+	if !subsystems["workspace"] {
+		t.Error("missing workspace effect from Phase 2")
+	}
+	if !subsystems["events"] {
+		t.Error("missing events effect from Phase 2")
+	}
+
+	// Verify session ID written
+	if wm.sessionIDs["/tmp/.orch/workspace/og-feat-test-27feb-abc1"] != "session-789" {
+		t.Error("session ID not written")
+	}
+
+	// Verify event logged
+	if len(el.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(el.events))
+	}
+	if el.events[0]["session_id"] != "session-789" {
+		t.Errorf("logged session_id: got %q, want %q", el.events[0]["session_id"], "session-789")
 	}
 }

@@ -12,6 +12,22 @@ import (
 // Architectural constraint: This is a coordinator, not a cache.
 // See: .kb/models/agent-lifecycle-state-model/model.md (Invariant #7)
 type LifecycleManager interface {
+	// BeginSpawn performs Phase 1 of the spawn transition (Spawning state).
+	// Tags beads issue with orch:agent label (if tracked).
+	// Returns a SpawnHandle with rollback capability. The caller is responsible for:
+	//   1. Workspace content generation (via pkg/spawn)
+	//   2. Session/window creation (via backend)
+	//   3. Calling ActivateSpawn on success, or handle.Rollback() on failure
+	//
+	// The handle accumulates EffectResults so the full Spawning → Active
+	// transition is captured in a single TransitionEvent.
+	BeginSpawn(input SpawnInput) (*SpawnHandle, error)
+
+	// ActivateSpawn performs Phase 2 of the spawn transition (Spawning → Active).
+	// Records session ID in workspace metadata and finalizes the TransitionEvent.
+	// The sessionID may be empty for Claude-mode agents (tmux window ID is used instead).
+	ActivateSpawn(handle *SpawnHandle, sessionID string) (*TransitionEvent, error)
+
 	// Complete performs all side effects for the Complete transition.
 	// Precondition: verification gates have already passed (caller's responsibility).
 	// The lifecycle manager owns cleanup, not verification.
@@ -71,4 +87,12 @@ type WorkspaceManager interface {
 	Archive(workspacePath string) error
 	WriteFailureReport(workspacePath, reason string) error
 	Exists(workspacePath string) bool
+
+	// WriteSessionID writes the session ID to the workspace dotfile.
+	// Used during ActivateSpawn (Phase 2) after session creation.
+	WriteSessionID(workspacePath, sessionID string) error
+
+	// Remove deletes the workspace directory.
+	// Used during spawn rollback when session creation fails.
+	Remove(workspacePath string) error
 }

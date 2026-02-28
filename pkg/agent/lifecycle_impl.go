@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -29,6 +30,78 @@ func NewLifecycleManager(
 		events:    events,
 		workspace: workspace,
 	}
+}
+
+// BeginSpawn performs Phase 1 of the spawn transition.
+// Tags the beads issue with orch:agent (if tracked) and returns a SpawnHandle
+// with rollback capability. The caller must:
+//   1. Generate workspace content (via pkg/spawn.WriteContext)
+//   2. Create session/window (via backend)
+//   3. Call ActivateSpawn on success, or handle.Rollback() on failure
+//
+// Effect ordering:
+//  1. [critical if tracked] beads: add orch:agent label
+func (m *lifecycleManager) BeginSpawn(input SpawnInput) (*SpawnHandle, error) {
+	if err := input.Validate(); err != nil {
+		return nil, err
+	}
+
+	agent := input.ToAgentRef()
+	var cleanups []func()
+
+	handle := NewSpawnHandle(agent, func() {
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			cleanups[i]()
+		}
+	})
+
+	// 1. Tag beads issue with orch:agent (skip if NoTrack)
+	if !input.NoTrack && input.BeadsID != "" {
+		m.runEffect(handle.Event(), "beads", "add_label", true, func() error {
+			return m.beads.AddLabel(input.BeadsID, "orch:agent")
+		})
+		cleanups = append(cleanups, func() {
+			_ = m.beads.RemoveLabel(input.BeadsID, "orch:agent")
+		})
+
+		if handle.Event().HasCriticalFailure() {
+			handle.SafeRollback()
+			return nil, handle.Event().Effects[len(handle.Event().Effects)-1].Error
+		}
+	}
+
+	return handle, nil
+}
+
+// ActivateSpawn performs Phase 2 of the spawn transition (Spawning → Active).
+// Records the session ID in workspace metadata and logs the spawn event.
+//
+// Effect ordering:
+//  1. [non-critical] workspace: write session ID
+//  2. [non-critical] events: log session.spawned
+func (m *lifecycleManager) ActivateSpawn(handle *SpawnHandle, sessionID string) (*TransitionEvent, error) {
+	if handle == nil {
+		return nil, fmt.Errorf("nil SpawnHandle")
+	}
+
+	// 1. Write session ID to workspace (non-critical — session already exists)
+	if sessionID != "" && handle.Agent.WorkspacePath != "" {
+		m.runEffect(handle.Event(), "workspace", "write_session_id", false, func() error {
+			return m.workspace.WriteSessionID(handle.Agent.WorkspacePath, sessionID)
+		})
+	}
+
+	// 2. Log spawn event
+	m.runEffect(handle.Event(), "events", "log_spawned", false, func() error {
+		return m.events.Log("session.spawned", map[string]interface{}{
+			"beads_id":   handle.Agent.BeadsID,
+			"workspace":  handle.Agent.WorkspaceName,
+			"session_id": sessionID,
+			"spawn_mode": handle.Agent.SpawnMode,
+		})
+	})
+
+	return handle.Finalize(sessionID), nil
 }
 
 // Abandon performs all side effects for the Abandon transition.
