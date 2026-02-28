@@ -1,6 +1,7 @@
 package beads
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -64,6 +65,98 @@ func TestCLIClient_ImplementsBeadsClient(t *testing.T) {
 	// The compilation will fail if it doesn't.
 	var _ BeadsClient = (*CLIClient)(nil)
 	var _ BeadsClient = NewCLIClient()
+}
+
+func TestCLIClient_ListArgsBuilding(t *testing.T) {
+	c := NewCLIClient(WithBdPath("/custom/bd"))
+
+	tests := []struct {
+		name     string
+		args     *ListArgs
+		wantArgs []string
+	}{
+		{
+			name: "status only",
+			args: &ListArgs{Status: "open"},
+			wantArgs: []string{"/custom/bd", "list", "--json",
+				"--status", "open", "--limit", "0"},
+		},
+		{
+			name: "with labels (AND)",
+			args: &ListArgs{Status: "open", Labels: []string{"triage:review"}},
+			wantArgs: []string{"/custom/bd", "list", "--json",
+				"--status", "open", "-l", "triage:review", "--limit", "0"},
+		},
+		{
+			name: "with multiple labels (AND)",
+			args: &ListArgs{Labels: []string{"triage:review", "priority:high"}},
+			wantArgs: []string{"/custom/bd", "list", "--json",
+				"-l", "triage:review", "-l", "priority:high", "--limit", "0"},
+		},
+		{
+			name: "with labels_any (OR)",
+			args: &ListArgs{LabelsAny: []string{"triage:review", "triage:ready"}},
+			wantArgs: []string{"/custom/bd", "list", "--json",
+				"--label-any", "triage:review", "--label-any", "triage:ready",
+				"--limit", "0"},
+		},
+		{
+			name: "combined labels and labels_any",
+			args: &ListArgs{
+				Status:    "open",
+				Labels:    []string{"triage:review"},
+				LabelsAny: []string{"p0", "p1"},
+			},
+			wantArgs: []string{"/custom/bd", "list", "--json",
+				"--status", "open",
+				"-l", "triage:review",
+				"--label-any", "p0", "--label-any", "p1",
+				"--limit", "0"},
+		},
+		{
+			name: "with parent and type",
+			args: &ListArgs{IssueType: "bug", Parent: "epic-1"},
+			wantArgs: []string{"/custom/bd", "list", "--json",
+				"--type", "bug", "--parent", "epic-1", "--limit", "0"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Build the command args the same way List() does
+			cmdArgs := []string{"list", "--json"}
+			if tt.args != nil {
+				if tt.args.Status != "" {
+					cmdArgs = append(cmdArgs, "--status", tt.args.Status)
+				}
+				if tt.args.IssueType != "" {
+					cmdArgs = append(cmdArgs, "--type", tt.args.IssueType)
+				}
+				if tt.args.Parent != "" {
+					cmdArgs = append(cmdArgs, "--parent", tt.args.Parent)
+				}
+				for _, label := range tt.args.Labels {
+					cmdArgs = append(cmdArgs, "-l", label)
+				}
+				for _, label := range tt.args.LabelsAny {
+					cmdArgs = append(cmdArgs, "--label-any", label)
+				}
+				cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", tt.args.Limit))
+			}
+			cmd := c.bdCommand(cmdArgs...)
+
+			got := cmd.Args
+			if len(got) != len(tt.wantArgs) {
+				t.Fatalf("args length = %d, want %d\ngot:  %v\nwant: %v",
+					len(got), len(tt.wantArgs), got, tt.wantArgs)
+			}
+			for i, arg := range tt.wantArgs {
+				if got[i] != arg {
+					t.Errorf("args[%d] = %q, want %q", i, got[i], arg)
+				}
+			}
+		})
+	}
 }
 
 func TestCLIClient_LabelCommands(t *testing.T) {

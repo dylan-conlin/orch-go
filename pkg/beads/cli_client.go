@@ -135,6 +135,12 @@ func (c *CLIClient) List(args *ListArgs) ([]Issue, error) {
 		if args.Parent != "" {
 			cmdArgs = append(cmdArgs, "--parent", args.Parent)
 		}
+		for _, label := range args.Labels {
+			cmdArgs = append(cmdArgs, "-l", label)
+		}
+		for _, label := range args.LabelsAny {
+			cmdArgs = append(cmdArgs, "--label-any", label)
+		}
 		// Always include limit when args provided to override CLI default (50).
 		// Use 0 for unlimited.
 		cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", args.Limit))
