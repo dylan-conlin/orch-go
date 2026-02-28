@@ -90,6 +90,8 @@
 	let focusedBeadsId: string | undefined = undefined; // Current focus beads ID for auto-scoping
 	let groupByMode: GroupByMode = 'priority';
 
+	const API_BASE = 'https://localhost:3348';
+
 	interface ReadyToCompleteItem {
 		id: string;
 		title: string;
@@ -98,10 +100,14 @@
 		runtime?: string;
 		tokenTotal: number | null;
 		completionAt: string;
+		tldr?: string;
+		deltaSummary?: string;
 	}
 
 	let readyToCompleteItems: ReadyToCompleteItem[] = [];
 	let readyToCompleteIds = new Set<string>();
+	let acknowledging = new Set<string>();
+	let acknowledgingAll = false;
 	
 	// Persist groupBy mode in localStorage
 	const GROUP_BY_KEY = 'work-graph-group-by';
@@ -282,6 +288,31 @@
 	// Sync running agents from agents store to WIP store
 	$: wip.setRunningAgents($agents);
 
+	// Build agent lookup by beads_id for tree node badges
+	let agentsByBeadsId = new Map<string, Agent>();
+	$: {
+		const map = new Map<string, Agent>();
+		for (const agent of $agents || []) {
+			if (agent.beads_id) {
+				// Keep the most relevant agent per beads_id (prefer active over completed)
+				const existing = map.get(agent.beads_id);
+				if (!existing || agentPriority(agent) > agentPriority(existing)) {
+					map.set(agent.beads_id, agent);
+				}
+			}
+		}
+		agentsByBeadsId = map;
+	}
+
+	function agentPriority(agent: Agent): number {
+		if (agent.status === 'active' && agent.is_processing) return 5;
+		if (agent.status === 'active') return 4;
+		if (agent.status === 'awaiting-cleanup') return 3;
+		if (agent.status === 'completed') return 2;
+		if (agent.status === 'dead') return 1;
+		return 0;
+	}
+
 	// Disconnect SSE and stop polling on unmount
 	onDestroy(() => {
 		disconnectSSE();
@@ -336,6 +367,8 @@
 				runtime: agent.runtime,
 				tokenTotal: getAgentTokenTotal(agent),
 				completionAt,
+				tldr: agent.synthesis?.tldr,
+				deltaSummary: agent.synthesis?.delta_summary,
 			};
 
 			const existing = queueByIssue.get(beadsId);
@@ -578,6 +611,65 @@
 		return ms;
 	}
 
+	async function acknowledgeItem(beadsId: string): Promise<void> {
+		if (acknowledging.has(beadsId)) return;
+		acknowledging = new Set([...acknowledging, beadsId]);
+		try {
+			const response = await fetch(`${API_BASE}/api/issues/close`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					beads_id: beadsId,
+					reason: 'Acknowledged via dashboard completion review',
+				}),
+			});
+			const data = await response.json();
+			if (!data.success) {
+				console.error(`Failed to close ${beadsId}:`, data.error);
+			}
+		} catch (err) {
+			console.error(`Failed to acknowledge ${beadsId}:`, err);
+		} finally {
+			acknowledging = new Set([...acknowledging].filter(id => id !== beadsId));
+			triggerEventDrivenRefresh().catch(console.error);
+		}
+	}
+
+	async function acknowledgeAll(): Promise<void> {
+		if (acknowledgingAll || readyToCompleteItems.length === 0) return;
+		acknowledgingAll = true;
+		try {
+			const ids = readyToCompleteItems.map(item => item.id);
+			const response = await fetch(`${API_BASE}/api/issues/close-batch`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					beads_ids: ids,
+					reason: 'Batch acknowledged via dashboard completion review',
+				}),
+			});
+			const data = await response.json();
+			if (data.total_failed > 0) {
+				const failed = data.results.filter((r: { success: boolean }) => !r.success);
+				console.error('Some issues failed to close:', failed);
+			}
+		} catch (err) {
+			console.error('Failed to batch acknowledge:', err);
+		} finally {
+			acknowledgingAll = false;
+			triggerEventDrivenRefresh().catch(console.error);
+		}
+	}
+
+	async function resumeDaemon(): Promise<void> {
+		try {
+			await fetch(`${API_BASE}/api/daemon/resume`, { method: 'POST' });
+			await daemon.fetch();
+		} catch (err) {
+			console.error('Failed to resume daemon:', err);
+		}
+	}
+
 	// Cycle group mode order for 'g' shortcut
 	const groupOrder: GroupByMode[] = ['priority', 'area', 'effort', 'dep-chain'];
 
@@ -813,6 +905,7 @@
 								edges={$workGraph?.edges || []}
 							excludeIds={readyToCompleteIds}
 								wipItems={$wipItems}
+								{agentsByBeadsId}
 								onToggleExpansion={handleToggleExpansion}
 								onSetFocus={handleSetFocus}
 							/>
