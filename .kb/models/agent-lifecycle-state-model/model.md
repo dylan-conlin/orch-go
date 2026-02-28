@@ -2,13 +2,13 @@
 
 **Domain:** Agent Lifecycle / State Management
 **Last Updated:** 2026-02-28
-**Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display. Updated Feb 2026 after major restructuring (registry elimination, two-lane architecture, single-pass query engine). Updated Feb 25 after phase-based liveness, cross-project querying, and verification gate additions. Updated Feb 27 after V0-V3 verification levels, all-at-once gate failure reporting, architectural choices gate, auto-implementation issue creation, and `pkg/agent/` formal types package. Updated Feb 28 after full LifecycleManager implementation, lifecycle adapter wiring (complete, abandon, orphan GC), model impact advisory, and daemon orphan recovery.
+**Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display. Updated Feb 2026 after major restructuring (registry elimination, two-lane architecture, single-pass query engine). Updated Feb 25 after phase-based liveness, cross-project querying, and verification gate additions. Updated Feb 27 after V0-V3 verification levels, all-at-once gate failure reporting, architectural choices gate, auto-implementation issue creation, and `pkg/agent/` formal types package. Updated Feb 28 after full LifecycleManager implementation, lifecycle adapter wiring (complete, abandon, orphan GC), model impact advisory, and daemon orphan recovery. Updated late Feb 28 for model drift correction: rework lifecycle path (`orch rework` bypasses LifecycleManager), phase timeout detection, `TrackedIssue`/`WorkspaceInfo` types, completion pipeline extraction (architect/cleanup/hotspot), daemon periodic task expansion, status_cmd.go extraction, and new commands (rework, review orphans, orient).
 
 ---
 
 ## Summary (30 seconds)
 
-Agent state exists across **four independent layers** (tmux windows, OpenCode in-memory, OpenCode on-disk, beads comments). These layers fall into two distinct categories: **state layers** (beads, workspace files) that represent what work was done, and **infrastructure layers** (OpenCode sessions, tmux windows) that represent transient execution resources. The lifecycle state machine is now formally codified in `pkg/agent/` with typed states (7), transitions (6), and validation. The dashboard reconciles these via a **Priority Cascade**: check beads issue status first (highest authority), then Phase comments, then SYNTHESIS.md existence, then session status. Agents are discovered via a **two-lane architecture**: tracked work (beads-first via `queryTrackedAgents`) and untracked sessions (OpenCode session list). Status can appear "wrong" at the dashboard level while being "correct" at each individual layer - this is a measurement artifact from combining multiple sources of truth.
+Agent state exists across **four independent layers** (tmux windows, OpenCode in-memory, OpenCode on-disk, beads comments). These layers fall into two distinct categories: **state layers** (beads, workspace files) that represent what work was done, and **infrastructure layers** (OpenCode sessions, tmux windows) that represent transient execution resources. The lifecycle state machine is formally codified in `pkg/agent/` with typed states (7), transitions (6), and validation. Additionally, `orch rework` provides a **completed → active** path that bypasses `LifecycleManager` by directly manipulating beads status (reopen + rework label + new workspace). The dashboard reconciles layers via a **Priority Cascade**: check beads issue status first (highest authority), then Phase comments, then SYNTHESIS.md existence, then session status. Agents are discovered via a **two-lane architecture**: tracked work (beads-first via `queryTrackedAgents`) and untracked sessions (OpenCode session list). **Phase timeout detection** (30-minute threshold in `status_cmd.go`, daemon-driven periodic checks in `pkg/daemon/phase_timeout.go`) flags agents that stop reporting phase updates as unresponsive. Status can appear "wrong" at the dashboard level while being "correct" at each individual layer - this is a measurement artifact from combining multiple sources of truth.
 
 ---
 
@@ -63,6 +63,8 @@ orphaned → abandoned      (force_abandon)
 - `SpawnHandle` — Two-phase spawn pattern: `BeginSpawn()` returns a handle with rollback capability; caller creates session/window between phases; `ActivateSpawn()` finalizes the Spawning → Active transition. Accumulates `EffectResult`s across both phases into a single `TransitionEvent`.
 - `LifecycleManager` interface — Coordinates transitions across all four layers. Does NOT store agent state (Invariant #7). Methods: `BeginSpawn`, `ActivateSpawn`, `Complete`, `Abandon`, `ForceComplete`, `ForceAbandon`, `DetectOrphans`, `CurrentState`.
 - `OrphanDetectionResult` / `OrphanedAgent` — GC scan results with reason codes and retry recommendations.
+- `TrackedIssue` — Beads issue returned by `ListByLabel`, used by `DetectOrphans` to find agents tagged with `orch:agent`.
+- `WorkspaceInfo` — Workspace metadata (name, path, beads ID, session ID, spawn mode, spawn time), used by `DetectOrphans` to join workspace data with beads issues.
 
 **Implementation status (Feb 28):** `lifecycle_impl.go` is **fully implemented** (662 lines) with all LifecycleManager methods: `BeginSpawn`, `ActivateSpawn`, `Complete`, `Abandon`, `ForceComplete`, `ForceAbandon`, `DetectOrphans`, `CurrentState`. Comprehensive test suite in `lifecycle_manager_test.go` (~1,726 lines). The cmd layer bridges to `pkg/agent` via `lifecycle_adapters.go` which provides concrete implementations of `BeadsClient`, `OpenCodeClient`, `TmuxClient`, `EventLogger`, and `WorkspaceManager` interfaces, wrapping the real packages (`pkg/beads`, `pkg/opencode`, `pkg/tmux`, `pkg/events`, `pkg/spawn`) with compile-time interface compliance checks.
 
@@ -208,6 +210,37 @@ Daemon orphan detection (periodic scan, 2h threshold)
 LifecycleManager.DetectOrphans() scans for in_progress + no liveness signals
     ↓
 ForceAbandon or ForceComplete based on evidence
+```
+
+**Rework path (Feb 27):**
+
+```
+completed (beads closed, workspace archived)
+    ↓
+orch rework <beads-id> "feedback" --bypass-triage
+    ↓
+Reopens beads issue (closed → open → in_progress)
+Adds rework:<N> label
+Records REWORK #N comment
+Finds prior workspace (archived) for synthesis extraction
+Creates NEW workspace with rework context (prior synthesis + feedback)
+Spawns fresh agent via orch spawn pipeline
+    ↓
+active (new agent working on same beads issue)
+```
+
+**Note:** Rework does NOT go through `LifecycleManager`. It directly manipulates beads status via `verify.UpdateIssueStatus()` and spawns through the standard `orch.DispatchSpawn()` pipeline. This means the formal state machine (6 transitions) doesn't cover rework — it's an out-of-band transition from a terminal state back to active. The `events.LogAgentReworked()` event captures this for tracking.
+
+**Phase timeout detection (Feb 28):**
+
+```
+spawned → working → no phase update for 30+ minutes
+    ↓
+status_cmd.go flags as "unresponsive" (phaseTimeoutThreshold = 30min)
+Daemon periodic scan (pkg/daemon/phase_timeout.go) detects + escalates
+    ↓
+Dashboard shows timeout warning
+Orchestrator investigates (may abandon or send message)
 ```
 
 ### Critical Invariants
@@ -358,6 +391,7 @@ Common feature requests or operational changes that would violate this model's i
 | Mutate state during status checks | Side effects in queries cause unpredictable state transitions and ordering bugs | #4: Status checks don't mutate state |
 | Skip reason codes for missing data | Silent failures accumulate; operators can't distinguish "not found" from "not checked" | #8: Silent failures must be visible |
 | Let workers close their own beads issues | Bypasses verification gates; breaks the orchestrator-reviews-worker hierarchy | #2: Beads issue closed = canonical completion |
+| Route rework through LifecycleManager | Currently bypassed intentionally — rework is a terminal→active transition not in the 6-transition model; formalizing would add complexity for a low-frequency operation | State machine completeness |
 
 ---
 
@@ -469,6 +503,35 @@ Common feature requests or operational changes that would violate this model's i
 - Duplicate workspace resolution: prefer SYNTHESIS.md + newest spawn time
 - Comprehensive test suite: `lifecycle_manager_test.go` (~1,726 lines)
 
+**Late Feb 2026: Rework Lifecycle, Phase Timeout Detection, Completion Pipeline Extraction**
+
+- `orch rework` command added — reopens closed beads issues with rework context, spawns new agent with prior synthesis and feedback
+  - Rework lifecycle bypasses `LifecycleManager` (directly manipulates beads status)
+  - Tracks rework iteration count via `rework:<N>` labels and `REWORK #N` comments
+  - `events.LogAgentReworked()` event for tracking
+- `orch review orphans` command — surfaces closed architect designs with no follow-up implementation issues
+- `orch orient` command — session start orientation with decision context per ready issue
+- Phase timeout detection:
+  - `status_cmd.go` (1,398 lines) extracted with compact mode (age-based filtering), `--project` filtering, `phaseTimeoutThreshold = 30min`
+  - `pkg/daemon/phase_timeout.go` — daemon periodic phase timeout detection and escalation
+  - Agents without phase updates for 30+ minutes flagged as unresponsive
+- Completion pipeline expanded:
+  - `complete_architect.go` — auto-create implementation issue on architect completion
+  - `complete_cleanup.go` — deferred cleanup step extraction
+  - `complete_hotspot.go` — hotspot detection during completion (warns on accretion to large files)
+- Daemon periodic tasks expanded (`daemon_periodic.go` extracted from `daemon.go`):
+  - Model drift reflection (`pkg/daemon/model_drift_reflection.go`)
+  - Knowledge health monitoring (`pkg/daemon/knowledge_health.go`)
+  - Orphan lifecycle management (`pkg/daemon/orphan_lifecycle.go`, `pkg/daemon/orphan_detector.go`)
+  - Phase timeout detection (`pkg/daemon/phase_timeout.go`)
+  - `periodicTasksResult` struct aggregates snapshots (KnowledgeHealth, PhaseTimeout)
+- Serve layer expansion:
+  - `serve_agents_activity.go` — activity data serving
+  - `serve_agents_events.go` — SSE event streaming for dashboard
+  - `serve_agents_gap.go` — gap analysis for stale models
+  - `serve_agents_types.go` — shared types for serve layer
+  - `serve_agents_cache_handler.go` — cache invalidation handler
+
 ---
 
 ## References
@@ -506,25 +569,44 @@ Common feature requests or operational changes that would violate this model's i
 
 **Primary Evidence (Verify These):**
 
-- `pkg/agent/types.go` - Formal lifecycle states (7), transitions (6), `AgentRef`, `TransitionEvent`, `EffectResult`, orphan detection types
+- `pkg/agent/types.go` - Formal lifecycle states (7), transitions (6), `AgentRef`, `TransitionEvent`, `EffectResult`, `TrackedIssue`, `WorkspaceInfo`, orphan detection types
 - `pkg/agent/lifecycle.go` - `LifecycleManager` interface (coordinator, not cache), client interfaces (`BeadsClient`, `OpenCodeClient`, `TmuxClient`, `EventLogger`, `WorkspaceManager`)
 - `pkg/agent/spawn.go` - `SpawnInput` (lifecycle spawn parameters), `SpawnHandle` (two-phase spawn with rollback)
 - `pkg/agent/lifecycle_impl.go` - **Full** `LifecycleManager` implementation (662 lines): BeginSpawn, ActivateSpawn, Complete, Abandon, ForceComplete, ForceAbandon, DetectOrphans, CurrentState
 - `pkg/agent/lifecycle_manager_test.go` - Comprehensive test suite (~1,726 lines) covering all transitions, effect tracking, rollback, orphan detection
 - `pkg/agent/filters.go` - `IsActiveForConcurrency()`, `IsVisibleByDefault()` with threshold-based filtering
 - `cmd/orch/lifecycle_adapters.go` - Bridges real packages (beads, opencode, tmux, events, spawn) to `pkg/agent` interfaces with compile-time compliance checks
+- `cmd/orch/lifecycle_adapters_test.go` - Tests for lifecycle adapter interface compliance
 - `cmd/orch/serve_agents_status.go` - Priority Cascade implementation (`determineAgentStatus()`), stall tracking, completion backlog detection
 - `cmd/orch/query_tracked.go` - Single-pass query engine (`queryTrackedAgents()`), phase-based liveness for claude-backend agents, cross-project beads querying
 - `cmd/orch/serve_agents_handlers.go` - Dashboard API handlers
 - `cmd/orch/serve_agents_discovery.go` - Workspace and investigation discovery
 - `cmd/orch/serve_agents_cache.go` - TTL-based beads cache (prevents excessive bd process spawning from dashboard polls)
+- `cmd/orch/serve_agents_activity.go` - Activity data serving for dashboard
+- `cmd/orch/serve_agents_events.go` - SSE event streaming for dashboard
+- `cmd/orch/serve_agents_gap.go` - Gap analysis for stale models
+- `cmd/orch/serve_agents_types.go` - Shared types for serve layer
+- `cmd/orch/serve_agents_cache_handler.go` - Cache invalidation handler
+- `cmd/orch/status_cmd.go` - CLI status command (1,398 lines): compact mode, `--project` filtering, `phaseTimeoutThreshold = 30min`, `--json` output
 - `pkg/verify/check.go` - Completion verification (16 gates across V0-V3, including `GateArchitecturalChoices`)
 - `pkg/verify/level.go` - V0-V3 gate level definitions and `ShouldRunGate()` query function
 - `cmd/orch/complete_cmd.go` - Completion pipeline orchestrator (wired to LifecycleManager.Complete, knowledge maintenance, model impact advisory, deferred tmux cleanup)
+- `cmd/orch/complete_architect.go` - Auto-create implementation issue on architect completion
+- `cmd/orch/complete_cleanup.go` - Deferred cleanup step extraction
+- `cmd/orch/complete_hotspot.go` - Hotspot detection during completion (warns on accretion to large files)
 - `cmd/orch/complete_model_impact.go` - Model impact advisory (cross-references synthesis keywords against .kb/models/)
 - `cmd/orch/abandon_cmd.go` - Abandon command (wired to LifecycleManager.Abandon)
 - `cmd/orch/clean_cmd.go` - Clean command with `--orphans` flag (wired to LifecycleManager.DetectOrphans + ForceAbandon/ForceComplete)
-- `cmd/orch/daemon.go` - Daemon with orphan recovery, stop/restart subcommands
+- `cmd/orch/rework_cmd.go` - Rework command: reopens closed issue, adds rework context, spawns new agent (bypasses LifecycleManager)
+- `cmd/orch/orient_cmd.go` - Session start orientation with decision context per ready issue
+- `cmd/orch/review_orphans.go` - Surface closed architect designs with no follow-up implementation issues
+- `cmd/orch/daemon.go` - Daemon with orphan recovery, stop/restart subcommands, phase timeout detection
+- `cmd/orch/daemon_periodic.go` - Extracted periodic task scheduler (reflection, model drift, knowledge health, cleanup, recovery, orphan detection, phase timeout)
+- `pkg/daemon/phase_timeout.go` - Phase timeout detection and escalation logic
+- `pkg/daemon/orphan_detector.go` - Orphan detection: finds agents with no liveness signals
+- `pkg/daemon/orphan_lifecycle.go` - Orphan lifecycle management (auto-recovery decisions)
+- `pkg/daemon/model_drift_reflection.go` - Periodic model staleness detection and spawn event emission
+- `pkg/daemon/knowledge_health.go` - Knowledge base health monitoring
 - `cmd/orch/architecture_lint_test.go` - Structural guardrails preventing registry recreation (forbidden packages/files)
 - `cmd/orch/contract_two_lane_test.go` - 12-scenario acceptance matrix enforcing two-lane architecture contract
 - `.beads/issues.jsonl` - Canonical completion source
