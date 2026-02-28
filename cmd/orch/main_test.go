@@ -24,12 +24,12 @@ func TestGetMaxAgentsDefault(t *testing.T) {
 		}
 	}()
 
-	// Clear env var, pass 0 for flag (not set)
+	// Clear env var, pass -1 for flag (not set)
 	os.Unsetenv("ORCH_MAX_AGENTS")
 
-	got := gates.GetMaxAgents(0)
+	got := gates.GetMaxAgents(-1)
 	if got != gates.DefaultMaxAgents {
-		t.Errorf("gates.GetMaxAgents(0) = %d, want default %d", got, gates.DefaultMaxAgents)
+		t.Errorf("gates.GetMaxAgents(-1) = %d, want default %d", got, gates.DefaultMaxAgents)
 	}
 }
 
@@ -66,12 +66,12 @@ func TestGetMaxAgentsEnvVar(t *testing.T) {
 		}
 	}()
 
-	// Set env to 15, pass 0 for flag (not set)
+	// Set env to 15, pass -1 for flag (not set)
 	os.Setenv("ORCH_MAX_AGENTS", "15")
 
-	got := gates.GetMaxAgents(0)
+	got := gates.GetMaxAgents(-1)
 	if got != 15 {
-		t.Errorf("gates.GetMaxAgents(0) = %d, want 15 (env value)", got)
+		t.Errorf("gates.GetMaxAgents(-1) = %d, want 15 (env value)", got)
 	}
 }
 
@@ -87,12 +87,12 @@ func TestGetMaxAgentsInvalidEnvVar(t *testing.T) {
 		}
 	}()
 
-	// Set invalid env, pass 0 for flag (not set)
+	// Set invalid env, pass -1 for flag (not set)
 	os.Setenv("ORCH_MAX_AGENTS", "not-a-number")
 
-	got := gates.GetMaxAgents(0)
+	got := gates.GetMaxAgents(-1)
 	if got != gates.DefaultMaxAgents {
-		t.Errorf("gates.GetMaxAgents(0) = %d, want default %d (invalid env)", got, gates.DefaultMaxAgents)
+		t.Errorf("gates.GetMaxAgents(-1) = %d, want default %d (invalid env)", got, gates.DefaultMaxAgents)
 	}
 }
 

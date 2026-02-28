@@ -18,17 +18,20 @@ import (
 const DefaultMaxAgents = 5
 
 // GetMaxAgents returns the effective maximum agents limit.
-// Priority: flagValue (non-zero) > ORCH_MAX_AGENTS env var > DefaultMaxAgents constant.
-// Returns 0 if limit is explicitly disabled (flag set to 0).
+// Priority: flagValue (if >= 0) > ORCH_MAX_AGENTS env var > DefaultMaxAgents constant.
+// A negative flagValue means "not set" (use env var or default).
+// Returns 0 to disable the limit (unlimited).
 func GetMaxAgents(flagValue int) int {
-	// If flag was explicitly set (non-zero), use it
-	if flagValue != 0 {
+	// If flag was explicitly set (non-negative), use it directly.
+	// 0 = unlimited (disabled), >0 = specific limit.
+	// Negative values mean "not set" (sentinel from CLI flag default of -1).
+	if flagValue >= 0 {
 		return flagValue
 	}
 
 	// Check environment variable
 	if envVal := os.Getenv("ORCH_MAX_AGENTS"); envVal != "" {
-		if val, err := strconv.Atoi(envVal); err == nil {
+		if val, err := strconv.Atoi(envVal); err == nil && val >= 0 {
 			return val
 		}
 		// Invalid value - fall through to default
@@ -39,7 +42,8 @@ func GetMaxAgents(flagValue int) int {
 }
 
 // CheckConcurrency checks if spawning a new agent would exceed the concurrency limit.
-// serverURL is the OpenCode server URL. maxAgentsFlag is the --max-agents flag value (0 = use default).
+// serverURL is the OpenCode server URL. maxAgentsFlag is the --max-agents flag value
+// (-1 = use default/env, 0 = unlimited, >0 = specific limit).
 // extractBeadsID extracts a beads ID from a session title string.
 // Returns nil if spawning is allowed, or an error if at the limit.
 func CheckConcurrency(serverURL string, maxAgentsFlag int, extractBeadsID func(string) string) error {

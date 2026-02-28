@@ -41,7 +41,7 @@ var (
 	spawnNoTrack            bool   // Opt-out of beads tracking
 	spawnMCP                string // MCP server config (e.g., "playwright")
 	spawnSkipArtifactCheck  bool   // Bypass pre-spawn kb context check
-	spawnMaxAgents          int    // Maximum concurrent agents (0 = use default or env var)
+	spawnMaxAgents          int    // Maximum concurrent agents (-1 = use default or env var, 0 = unlimited)
 	spawnAutoInit           bool   // Auto-initialize .orch and .beads if missing
 	spawnLight              bool   // Light tier spawn (skips SYNTHESIS.md requirement)
 	spawnFull               bool   // Full tier spawn (requires SYNTHESIS.md)
@@ -173,7 +173,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
 	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
-	spawnCmd.Flags().IntVar(&spawnMaxAgents, "max-agents", 0, "Maximum concurrent agents (default 5, 0 to disable limit, or use ORCH_MAX_AGENTS env var)")
+	spawnCmd.Flags().IntVar(&spawnMaxAgents, "max-agents", -1, "Maximum concurrent agents (default 5, 0 to disable limit, or use ORCH_MAX_AGENTS env var)")
 	spawnCmd.Flags().BoolVar(&spawnAutoInit, "auto-init", false, "Auto-initialize .orch and .beads if missing")
 	spawnCmd.Flags().BoolVar(&spawnLight, "light", false, "Light tier spawn (skips SYNTHESIS.md requirement on completion)")
 	spawnCmd.Flags().BoolVar(&spawnFull, "full", false, "Full tier spawn (requires SYNTHESIS.md for knowledge externalization)")

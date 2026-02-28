@@ -9,41 +9,29 @@ import (
 )
 
 // IsActiveForConcurrency determines if an agent should count toward the concurrency limit.
-// Uses an aggressive 1-hour threshold - only agents with recent activity count against the limit.
-//
-// This prevents ghost agents (idle >1h) from blocking new spawns.
+// Only running agents count — idle agents are not consuming resources and should not
+// block new spawns.
 //
 // Parameters:
 //   - status: agent status (e.g., "running", "idle", "dead")
-//   - lastActivity: timestamp of the agent's last activity
+//   - lastActivity: timestamp of the agent's last activity (unused, kept for API compat)
 //   - phase: current phase from beads comments (e.g., "Planning", "Complete")
 //
 // Returns true if the agent should count toward the concurrency limit.
 //
 // Rules:
-//  1. Running agents always count
-//  2. Phase: Complete agents never count (they're done, just need cleanup)
-//  3. Idle agents count only if active within last hour
+//  1. Phase: Complete agents never count (they're done, just need cleanup)
+//  2. Only running agents count
+//  3. Idle agents never count (not consuming resources)
 func IsActiveForConcurrency(status string, lastActivity time.Time, phase string) bool {
-	now := time.Now()
-	oneHour := 1 * time.Hour
-
-	// Running agents always count
-	if status == "running" {
-		return true
-	}
-
 	// Phase: Complete agents don't count (they're done, just need orchestrator action)
 	if strings.EqualFold(phase, "Complete") {
 		return false
 	}
 
-	// Idle agents count if they've been active within the last hour
-	if status == "idle" && now.Sub(lastActivity) < oneHour {
-		return true
-	}
-
-	return false
+	// Only running agents count toward the concurrency limit.
+	// Idle agents are not consuming resources and should not block new spawns.
+	return status == "running"
 }
 
 // IsVisibleByDefault determines if an agent should be shown in the default status view.
