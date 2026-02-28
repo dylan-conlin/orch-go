@@ -1,14 +1,14 @@
 # Model: Orchestration Cost Economics
 
 **Domain:** Agent Orchestration / Model Selection / Cost Management
-**Last Updated:** 2026-02-25
-**Synthesized From:** 15 investigations, 25+ kb quick entries, decisions spanning Nov 2025 - Feb 2026, probes 2026-02-20 (stale references audit) and 2026-02-24 (account distribution design)
+**Last Updated:** 2026-02-27
+**Synthesized From:** 15 investigations, 25+ kb quick entries, decisions spanning Nov 2025 - Feb 2026, probes 2026-02-20 (stale references audit) and 2026-02-24 (account distribution design), drift update 2026-02-27 (alias counts, cross-repo BEADS_DIR injection, Gemini 3 Flash)
 
 ---
 
 ## Summary (30 seconds)
 
-Agent orchestration cost is driven by three factors: **model pricing** (10-100x variance), **access restrictions** (fingerprinting, OAuth blocking), and **visibility** (lack of tracking caused $402 surprise spend). The Jan 2026 cost crisis revealed that headless spawning without cost visibility leads to runaway spend. As of Feb 2026, the **default spawn path is Claude backend + Max subscription** (Sonnet via Claude CLI), making the $200/mo flat rate the primary economic path — not just the escape hatch. The provider ecosystem spans 4 providers (Anthropic, Google, OpenAI/Codex, DeepSeek) with centralized config resolution (`pkg/spawn/resolve.go`) and model-aware backend routing. **Per-spawn account distribution** (Feb 20-21) enables capacity-aware routing across multiple Max accounts via `CLAUDE_CONFIG_DIR` injection, with the `Account` field tracked as a first-class resolved setting with provenance.
+Agent orchestration cost is driven by three factors: **model pricing** (10-100x variance), **access restrictions** (fingerprinting, OAuth blocking), and **visibility** (lack of tracking caused $402 surprise spend). The Jan 2026 cost crisis revealed that headless spawning without cost visibility leads to runaway spend. As of Feb 2026, the **default spawn path is Claude backend + Max subscription** (Sonnet via Claude CLI), making the $200/mo flat rate the primary economic path — not just the escape hatch. The provider ecosystem spans 4 providers (Anthropic, Google, OpenAI/Codex, DeepSeek) with centralized config resolution (`pkg/spawn/resolve.go`) and model-aware backend routing — now 39 aliases across providers (up from ~30). **Per-spawn account distribution** (Feb 20-21) enables capacity-aware routing across multiple Max accounts via `CLAUDE_CONFIG_DIR` injection, with the `Account` field tracked as a first-class resolved setting with provenance. Cross-repo spawns now also inject `BEADS_DIR` for phase reporting back to the source project.
 
 ---
 
@@ -25,12 +25,13 @@ Agent orchestration cost is driven by three factors: **model pricing** (10-100x 
 | Jan 18, 2026 | Switch back to Max subscription default             | $200/mo flat                                       |
 | Jan 19, 2026 | Test confirms DeepSeek V3 function calling works    | New viable option                                  |
 | Feb 2026     | Flash models banned for agent work                  | `validateModel()` gate in resolve.go               |
-| Feb 2026     | OpenAI/Codex added as first-class provider          | 12 model aliases, OpenCode backend                 |
+| Feb 2026     | OpenAI/Codex added as first-class provider          | 20 model aliases, OpenCode backend                 |
 | Feb 2026     | Centralized `ResolvedSpawnSettings` with provenance | Multi-file resolver replaces monolithic backend.go |
 | Feb 19, 2026 | Anthropic bans subscription OAuth in third-party tools | OpenCode + Anthropic = dead path without override |
 | Feb 20, 2026 | Default backend changed to Claude (Sonnet default)  | Max subscription is now primary path (commit 21b543524) |
 | Feb 20, 2026 | Account distribution Phase 1: schema + CLI + env injection | Per-spawn account selection via `CLAUDE_CONFIG_DIR` |
 | Feb 21, 2026 | Account distribution Phase 2: capacity cache + heuristic routing | Automatic account routing based on remaining capacity |
+| Feb 26, 2026 | Cross-repo BEADS_DIR injection in `BuildClaudeLaunchCommand()` | Agents spawned in foreign repos can report Phase: Complete back to source project |
 
 ---
 
@@ -40,7 +41,7 @@ Agent orchestration cost is driven by three factors: **model pricing** (10-100x 
 |------------------|--------------|---------------|-------------------|----------------------------------------------------|
 | **DeepSeek V3**  | $0.25        | $0.38         | OpenCode API      | **10-65x cheaper, function calling works**         |
 | DeepSeek R1      | $0.45        | $2.15         | OpenCode API      | Reasoning model, function calling experimental     |
-| ~~Gemini Flash~~ | ~$0.10-0.30  | Variable      | ~~API/Free tier~~ | **BANNED for agent work** (`validateModel()` gate) |
+| ~~Gemini Flash~~ | ~$0.10-0.30  | Variable      | ~~API/Free tier~~ | **BANNED for agent work** (`validateModel()` gate). Default flash alias now targets `gemini-3-flash-preview`. |
 | Claude Haiku     | $1.00        | $5.00         | Claude CLI (Max)  | Fast, lightweight                                  |
 | Claude Sonnet    | $3.00        | $15.00        | Claude CLI (Max)  | **Default model** (claude-sonnet-4-5-20250929)     |
 | Claude Opus      | $5.00        | $25.00        | Claude CLI (Max)  | Highest quality, requires Claude backend           |
@@ -276,7 +277,7 @@ Per-spawn account selection enables capacity-aware routing across multiple Max a
 1. `ResolvedSpawnSettings` includes an `Account` field with provenance tracking
 2. Resolution precedence: CLI flag (`--account`) > capacity-aware heuristic > default (first primary account)
 3. Heuristic checks: `FiveHourRemaining` and `SevenDayRemaining` percentages (healthy ≥ 20%)
-4. `BuildClaudeLaunchCommand()` in `pkg/spawn/claude.go` injects `CLAUDE_CONFIG_DIR` and unsets `CLAUDE_CODE_OAUTH_TOKEN` when using a non-default account
+4. `BuildClaudeLaunchCommand()` in `pkg/spawn/claude.go` injects `CLAUDE_CONFIG_DIR` and unsets `CLAUDE_CODE_OAUTH_TOKEN` when using a non-default account. Also injects `BEADS_DIR` for cross-repo spawns so `bd comment` reaches the source project's beads database.
 5. Two independent auth mechanisms: OpenCode OAuth (`~/.local/share/opencode/auth.json`, global) vs Claude CLI config dir (`CLAUDE_CONFIG_DIR`, per-spawn)
 
 **Routing strategy:** Work-first (primary accounts), personal-spillover (fallback when primary exhausted).
@@ -337,7 +338,7 @@ Spawn settings are now resolved via `ResolvedSpawnSettings` with full provenance
 
 **Status:** Promoted from "backup alternative" to first-class provider in the model alias system.
 
-- 12 model aliases: `gpt`, `gpt4o`, `gpt-4o`, `gpt4o-mini`, `gpt-5`, `gpt5-latest`, `gpt-5-mini`, `o3`, `o3-mini`, `codex`, `codex-mini`, `codex-max`, `codex-latest`, `codex-5.1`, `codex-5.2`
+- 20 model aliases including GPT-5.x series: `gpt`, `gpt4o`, `gpt-4o`, `gpt4o-mini`, `gpt-4o-mini`, `gpt5`, `gpt-5`, `gpt-5.1`, `gpt-5.2`, `gpt5-latest`, `gpt5-mini`, `gpt-5-mini`, `o3`, `o3-mini`, `codex`, `codex-mini`, `codex-max`, `codex-latest`, `codex-5.1`, `codex-5.2`
 - Routed to OpenCode backend automatically via `modelBackendRequirement()`
 - Codex CLI available (terminal agent like Claude Code, GPT Pro OAuth path)
 - ChatGPT Pro ($200/mo) — no API access included (same as Anthropic Max)
@@ -443,8 +444,8 @@ Originally blocked by 2,000 req/min TPM limit. Now **explicitly banned** in code
 - `~/.local/share/opencode/auth.json` - Auth token storage for OpenCode backend (NOT used by Claude CLI backend)
 - DeepSeek API documentation - Current pricing ($0.25/$0.38/MTok) and function calling status
 - `pkg/spawn/resolve.go` - Centralized spawn resolver with provenance tracking (8 settings including Account)
-- `pkg/spawn/claude.go` - Claude CLI launch command with CLAUDE_CONFIG_DIR account injection
+- `pkg/spawn/claude.go` - Claude CLI launch command with CLAUDE_CONFIG_DIR account injection and BEADS_DIR cross-repo injection
 - `pkg/account/account.go` - Account schema (Tier, Role, ConfigDir), capacity checking, auto-switch
-- `pkg/model/model.go` - Model alias ecosystem (4 providers, 30+ aliases)
+- `pkg/model/model.go` - Model alias ecosystem (4 providers, 39 aliases)
 - `cmd/orch/tokens.go` - Token counting implementation (input, output, cache read, reasoning per session)
 - she-llac.com credit formula reverse engineering - Internal credit system documentation
