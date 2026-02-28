@@ -1,0 +1,22 @@
+version: 1
+tests:
+  - name: orient package tests pass
+    command: go test ./pkg/orient/ -v
+    expect: PASS
+  - name: go vet clean
+    command: go vet ./cmd/orch/ ./pkg/orient/
+    expect: no output (clean)
+  - name: orient --days 1 shows "Last 24h:" header
+    command: go build ./cmd/orch/ && ./orch orient --days 1 2>&1 | head -4
+    expect: contains "Last 24h:"
+  - name: orient --days 3 shows "Last 3d:" header
+    command: ./orch orient --days 3 2>&1 | head -4
+    expect: contains "Last 3d:"
+  - name: different --days values produce different counts
+    command: |
+      d1=$(./orch orient --days 1 2>&1 | grep Completions)
+      d7=$(./orch orient --days 7 2>&1 | grep Completions)
+      [ "$d1" != "$d7" ] && echo "PASS: different windows show different counts"
+    expect: PASS
+manual:
+  - Verify orient output is consumed correctly by orchestrator skill

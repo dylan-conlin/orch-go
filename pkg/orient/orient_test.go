@@ -59,11 +59,51 @@ func TestThroughputFromEvents_FiltersByDays(t *testing.T) {
 	if tp.Spawns != 1 {
 		t.Errorf("expected 1 spawn in 1-day window, got %d", tp.Spawns)
 	}
+	if tp.Days != 1 {
+		t.Errorf("expected Days=1, got %d", tp.Days)
+	}
+
+	// 3-day window includes event exactly at boundary (cutoff uses strict less-than)
+	tp3 := ComputeThroughput(events, now, 3)
+	if tp3.Spawns != 2 {
+		t.Errorf("expected 2 spawns in 3-day window (72h event is at boundary, included), got %d", tp3.Spawns)
+	}
+
+	// 2-day window should exclude 72h-old event
+	tp2 := ComputeThroughput(events, now, 2)
+	if tp2.Spawns != 1 {
+		t.Errorf("expected 1 spawn in 2-day window, got %d", tp2.Spawns)
+	}
+	if tp2.Days != 2 {
+		t.Errorf("expected Days=2, got %d", tp2.Days)
+	}
+}
+
+func TestFormatThroughput_DaysHeader(t *testing.T) {
+	tests := []struct {
+		days     int
+		expected string
+	}{
+		{1, "Last 24h:"},
+		{3, "Last 3d:"},
+		{7, "Last 7d:"},
+	}
+
+	for _, tc := range tests {
+		data := &OrientationData{
+			Throughput: Throughput{Days: tc.days},
+		}
+		output := FormatOrientation(data)
+		if !strings.Contains(output, tc.expected) {
+			t.Errorf("days=%d: expected %q in output, got:\n%s", tc.days, tc.expected, output)
+		}
+	}
 }
 
 func TestFormatOrientation(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{
+			Days:           1,
 			Spawns:         3,
 			Completions:    2,
 			Abandonments:   1,
@@ -89,6 +129,9 @@ func TestFormatOrientation(t *testing.T) {
 	// Check all sections present
 	if !strings.Contains(output, "SESSION ORIENTATION") {
 		t.Error("missing SESSION ORIENTATION header")
+	}
+	if !strings.Contains(output, "Last 24h:") {
+		t.Error("missing 'Last 24h:' header for days=1")
 	}
 	if !strings.Contains(output, "Completions: 2") {
 		t.Error("missing completions count")

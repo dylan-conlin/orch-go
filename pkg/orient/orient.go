@@ -15,6 +15,7 @@ type Event struct {
 
 // Throughput holds aggregate throughput metrics for a time window.
 type Throughput struct {
+	Days           int
 	Spawns         int
 	Completions    int
 	Abandonments   int
@@ -44,6 +45,7 @@ func ComputeThroughput(events []Event, now time.Time, days int) Throughput {
 	cutoffUnix := cutoff.Unix()
 
 	var tp Throughput
+	tp.Days = days
 	var totalDuration float64
 	var durationCount int
 
@@ -101,7 +103,11 @@ func FormatOrientation(data *OrientationData) string {
 }
 
 func formatThroughput(b *strings.Builder, tp *Throughput) {
-	b.WriteString("Since last session:\n")
+	if tp.Days == 1 {
+		b.WriteString("Last 24h:\n")
+	} else {
+		b.WriteString(fmt.Sprintf("Last %dd:\n", tp.Days))
+	}
 	b.WriteString(fmt.Sprintf("   Completions: %d | Abandonments: %d | In-progress: %d\n",
 		tp.Completions, tp.Abandonments, tp.InProgress))
 	if tp.AvgDurationMin > 0 {
