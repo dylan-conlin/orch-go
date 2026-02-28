@@ -10,6 +10,7 @@
 	import { IssueSidePanel } from '$lib/components/issue-side-panel';
 	import { CloseIssueModal } from '$lib/components/close-issue-modal';
 	import { orchestratorContext } from '$lib/stores/context';
+	import type { Agent } from '$lib/stores/agents';
 	import {
 		type GroupHeader,
 		type DepSectionHeader,
@@ -18,6 +19,7 @@
 		findNodeById,
 		formatRelatedIssueList,
 		formatStatusLabel,
+		getAgentBadge,
 		getAgentStatusIcon,
 		getAttentionBadge,
 		getDependencyExplanation,
@@ -44,6 +46,7 @@
 	export let edges: GraphEdge[] = [];
 	export let wipItems: WIPItem[] = [];
 	export let excludeIds: Set<string> = new Set();
+	export let agentsByBeadsId: Map<string, Agent> = new Map();
 	export let onToggleExpansion: (nodeId: string, expanded: boolean) => void = () => {};
 	export let onSetFocus: (beadsId: string, title: string) => void = () => {};
 
@@ -1080,6 +1083,8 @@
 			{@const inProgressSubline = getInProgressSubline(node, runningAgentDetailsByIssueId)}
 			{@const progressSnapshot = getProgressSnapshot(node)}
 			{@const depPrefix = depPrefixMap.get(node.id)}
+			{@const nodeAgent = agentsByBeadsId.get(node.id)}
+			{@const agentBadge = nodeAgent ? getAgentBadge(nodeAgent) : null}
 			<!-- Tree Node - L0: Row -->
 			<div
 				class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.status.toLowerCase() === 'in_progress' ? 'border-l-2 border-blue-500/60 bg-blue-500/5' : 'border-l border-transparent'} {node.absorbed_by ? 'opacity-50' : ''} {feedback === 'priority' ? 'action-feedback-priority' : ''} {feedback === 'queue' ? 'action-feedback-queue' : ''}"
@@ -1165,6 +1170,17 @@
 								{progressSnapshot.done}/{progressSnapshot.total}
 							</span>
 						</div>
+					{/if}
+
+					<!-- Agent badge (if any) -->
+					{#if agentBadge}
+						<span
+							class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded border shrink-0 {agentBadge.color}"
+							title="Agent: {nodeAgent?.skill || nodeAgent?.status || 'unknown'}"
+						>
+							<span class={nodeAgent?.is_processing ? 'animate-pulse' : ''}>{agentBadge.icon}</span>
+							{agentBadge.label}
+						</span>
 					{/if}
 
 					<!-- Attention badge (if any) -->

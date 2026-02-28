@@ -386,3 +386,87 @@ export function getAgentStatusIcon(agent: any): { icon: string; color: string } 
   }
   return { icon: '▶', color: 'text-blue-500' }
 }
+
+export interface AgentBadgeConfig {
+  icon: string
+  label: string
+  color: string // Tailwind classes for the badge
+}
+
+/**
+ * Get badge config for an agent associated with a tree node.
+ * Returns null if no badge should be shown.
+ */
+export function getAgentBadge(agent: {
+  status: string
+  phase?: string
+  is_processing?: boolean
+  is_stalled?: boolean
+}): AgentBadgeConfig | null {
+  if (!agent) return null
+
+  const phase = agent.phase?.toLowerCase() || ''
+
+  // Active agent that's processing
+  if (agent.status === 'active' && agent.is_processing) {
+    return {
+      icon: '◉',
+      label: phase || 'running',
+      color: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+    }
+  }
+
+  // Active agent (not processing but still alive)
+  if (agent.status === 'active') {
+    if (phase === 'complete') {
+      return {
+        icon: '✓',
+        label: 'done',
+        color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+      }
+    }
+    return {
+      icon: '▶',
+      label: phase || 'active',
+      color: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    }
+  }
+
+  // Completed agent
+  if (agent.status === 'completed') {
+    return {
+      icon: '✓',
+      label: 'completed',
+      color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+    }
+  }
+
+  // Awaiting cleanup
+  if (agent.status === 'awaiting-cleanup') {
+    return {
+      icon: '✓',
+      label: 'cleanup',
+      color: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
+    }
+  }
+
+  // Dead agent
+  if (agent.status === 'dead') {
+    return {
+      icon: '✕',
+      label: 'dead',
+      color: 'bg-red-500/10 text-red-400 border-red-500/20',
+    }
+  }
+
+  // Stalled agent
+  if (agent.is_stalled) {
+    return {
+      icon: '⏸',
+      label: 'stalled',
+      color: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+    }
+  }
+
+  return null
+}
