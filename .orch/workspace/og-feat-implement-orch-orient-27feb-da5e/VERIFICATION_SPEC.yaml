@@ -1,0 +1,42 @@
+verification:
+  level: V1
+
+  automated:
+    - name: "pkg/orient tests pass"
+      command: "go test ./pkg/orient/ -v"
+      expected: "PASS (17 tests)"
+      result: "PASS - 17/17 tests pass"
+
+    - name: "cmd/orch orient tests pass"
+      command: "go test ./cmd/orch/ -run TestParseBdReadyForOrient -v"
+      expected: "PASS (3 tests)"
+      result: "PASS - 3/3 tests pass"
+
+    - name: "Build succeeds"
+      command: "go build ./cmd/orch/"
+      expected: "No errors"
+      result: "Clean build, no errors"
+
+    - name: "go vet clean"
+      command: "go vet ./cmd/orch/ && go vet ./pkg/orient/"
+      expected: "No warnings"
+      result: "No warnings"
+
+    - name: "Smoke test produces output"
+      command: "go run ./cmd/orch/ orient"
+      expected: "SESSION ORIENTATION header with throughput, ready work, models, stale warnings"
+      result: "Correct structured output with all 5 sections"
+
+  manual:
+    - name: "Output suitable for orchestrator consumption"
+      description: "Verify output can be incorporated into conversational session start"
+      evidence: "Smoke test output is structured text with clear section headers"
+
+  acceptance_criteria:
+    - "orch orient produces structured output with throughput, ready issues, models, freshness warnings"
+    - "Output displays ≤3 relevant models, truncated summaries"
+    - "Output displays ≤2 freshness warnings"
+    - "Freshness warnings for models >14 days old with no probes in 30 days"
+    - "All sections are advisory — command doesn't block on any failure"
+    - "Output is suitable for orchestrator conversational presentation"
+    - "Model summaries extracted from .kb/models/{name}/model.md Summary sections"
