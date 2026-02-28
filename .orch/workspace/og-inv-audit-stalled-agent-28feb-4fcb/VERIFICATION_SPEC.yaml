@@ -1,0 +1,41 @@
+verification:
+  type: investigation
+  issue: orch-go-0jgj
+  tier: full
+
+  deliverables:
+    - path: .kb/investigations/2026-02-28-audit-stalled-agent-failure-patterns.md
+      description: "Full investigation with 6-mode failure taxonomy, frequency counts, correlations, and recommendations"
+      verification: "File exists, contains 6 failure categories with evidence"
+      status: complete
+
+    - path: .kb/models/agent-lifecycle-state-model/probes/2026-02-28-probe-stalled-agent-failure-pattern-audit.md
+      description: "Probe extending agent lifecycle state model with new failure modes"
+      verification: "File exists, contains Question/What I Tested/What I Observed/Model Impact sections"
+      status: complete
+
+    - path: .orch/workspace/og-inv-audit-stalled-agent-28feb-4fcb/SYNTHESIS.md
+      description: "Session synthesis with Plain-Language Summary"
+      verification: "File exists, contains TLDR and plain-language summary"
+      status: complete
+
+  assertions:
+    - description: "Investigation covers at least 10 stalled agent instances"
+      evidence: "Investigation examines 19 true stalls + 194 compliance gaps + 228 silent failures = 441+ agents analyzed"
+      status: pass
+
+    - description: "Taxonomy is evidence-backed with specific workspace names and beads IDs"
+      evidence: "Each failure mode includes specific workspace names, beads IDs, model info, and phase data"
+      status: pass
+
+    - description: "Recommendations are actionable for orchestrator-level diagnostic design"
+      evidence: "8 recommendations provided in 3 tiers: immediate (3), medium (3), strategic (2)"
+      status: pass
+
+  tests_run:
+    - command: "find + bd show workspace scan"
+      result: "1786 workspaces scanned, 441 manifested agents categorized"
+
+  manual_verification_needed:
+    - "Orchestrator should confirm the 6 failure modes align with observed patterns"
+    - "Confirm whether model protocol gating recommendation is acceptable"
