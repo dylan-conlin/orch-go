@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/agent"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -60,10 +61,8 @@ func init() {
 }
 
 func runAbandon(beadsID, reason, workdir string) error {
-	// Strategy: Use workspace and beads state to route abandonment
-	// Fall back to direct discovery if workspace is missing
+	// --- Phase 1: Resolve project directory ---
 
-	// Determine project directory - use --workdir if provided, otherwise current directory
 	var projectDir string
 	var err error
 	if workdir != "" {
@@ -71,13 +70,11 @@ func runAbandon(beadsID, reason, workdir string) error {
 		if err != nil {
 			return fmt.Errorf("failed to resolve workdir path: %w", err)
 		}
-		// Verify directory exists
 		if stat, err := os.Stat(projectDir); err != nil {
 			return fmt.Errorf("workdir does not exist: %s", projectDir)
 		} else if !stat.IsDir() {
 			return fmt.Errorf("workdir is not a directory: %s", projectDir)
 		}
-		// Set DefaultDir for beads client to find the correct socket
 		beads.DefaultDir = projectDir
 	} else {
 		projectDir, err = os.Getwd()
@@ -86,16 +83,14 @@ func runAbandon(beadsID, reason, workdir string) error {
 		}
 	}
 
-	// Check if this is an untracked agent (no beads issue exists)
+	// --- Phase 2: Validate beads issue (tracked agents only) ---
+
 	isUntracked := isUntrackedBeadsID(beadsID)
 
-	// For tracked agents, verify the beads issue exists
 	var issue *verify.Issue
 	if !isUntracked {
-		var err error
 		issue, err = verify.GetIssue(beadsID)
 		if err != nil {
-			// Provide helpful error message for cross-project issues
 			projectName := filepath.Base(projectDir)
 			issuePrefix := strings.Split(beadsID, "-")[0]
 			if len(strings.Split(beadsID, "-")) > 1 {
@@ -114,13 +109,14 @@ func runAbandon(beadsID, reason, workdir string) error {
 		fmt.Printf("Note: %s is an untracked agent (no beads issue)\n", beadsID)
 	}
 
+	// --- Phase 3: Discover agent resources ---
+
 	client := opencode.NewClient(serverURL)
 
-	var windowInfo *tmux.WindowInfo
 	var sessionID string
 	var workspacePath, agentName string
 
-	// Look up workspace by beads ID for session ID and metadata
+	// Look up workspace by beads ID
 	wPath, aName := findWorkspaceByBeadsID(projectDir, beadsID)
 	if wPath != "" {
 		workspacePath = wPath
@@ -133,31 +129,8 @@ func runAbandon(beadsID, reason, workdir string) error {
 		}
 	}
 
-	// Discovery: find tmux window
-	if windowInfo == nil {
-		// Try searching by beads ID first (for worker sessions)
-		sessions, _ := tmux.ListWorkersSessions()
-		for _, session := range sessions {
-			window, err := tmux.FindWindowByBeadsID(session, beadsID)
-			if err == nil && window != nil {
-				windowInfo = window
-				break
-			}
-		}
-
-		// If beads ID search failed and we have a workspace, check if it's an orchestrator
-		// Orchestrator windows only contain workspace names, not beads IDs
-		if windowInfo == nil && workspacePath != "" && isOrchestratorWorkspace(workspacePath) {
-			// Search by workspace name for orchestrator sessions
-			window, _, err := tmux.FindWindowByWorkspaceNameAllSessions(agentName)
-			if err == nil && window != nil {
-				windowInfo = window
-			}
-		}
-	}
-
 	if sessionID == "" {
-		// Check for OpenCode session
+		// Fall back to OpenCode session search
 		allSessions, _ := client.ListSessions(projectDir)
 		for _, s := range allSessions {
 			if strings.Contains(s.Title, beadsID) || extractBeadsIDFromTitle(s.Title) == beadsID {
@@ -168,7 +141,6 @@ func runAbandon(beadsID, reason, workdir string) error {
 	}
 
 	if workspacePath == "" || agentName == "" {
-		// Find workspace for logging
 		wPath, aName := findWorkspaceByBeadsID(projectDir, beadsID)
 		if workspacePath == "" {
 			workspacePath = wPath
@@ -179,32 +151,21 @@ func runAbandon(beadsID, reason, workdir string) error {
 	}
 
 	if agentName == "" {
-		agentName = beadsID // Use beads ID as fallback
+		agentName = beadsID
 	}
 
-	// Report what we found
-	if windowInfo != nil {
-		fmt.Printf("Found tmux window: %s\n", windowInfo.Target)
-	}
 	if sessionID != "" {
 		fmt.Printf("Found OpenCode session: %s\n", shortID(sessionID))
 	}
 
-	// If neither found, warn but still allow abandonment
-	if windowInfo == nil && sessionID == "" {
-		fmt.Printf("Note: No active tmux window or OpenCode session found for %s\n", beadsID)
+	if sessionID == "" {
+		fmt.Printf("Note: No active OpenCode session found for %s\n", beadsID)
 		fmt.Printf("The agent may have already exited.\n")
 	}
 
-	// Optionally kill the tmux window if it exists
-	if windowInfo != nil {
-		fmt.Printf("Killing tmux window: %s (%s)\n", windowInfo.Name, windowInfo.ID)
-		if err := tmux.KillWindowByID(windowInfo.ID); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to kill tmux window: %v\n", err)
-		}
-	}
+	// --- Phase 4: Export session transcript BEFORE lifecycle transition ---
+	// Transcript export must happen before the session is deleted.
 
-	// Export session transcript before deletion (for post-mortem analysis)
 	if sessionID != "" && workspacePath != "" {
 		transcript, err := client.ExportSessionTranscript(sessionID)
 		if err != nil {
@@ -219,133 +180,116 @@ func runAbandon(beadsID, reason, workdir string) error {
 		}
 	}
 
-	// Delete the OpenCode session if it exists
-	// This prevents abandoned agents from appearing in `orch status`
-	if sessionID != "" {
-		fmt.Printf("Deleting OpenCode session: %s\n", shortID(sessionID))
-		if err := client.DeleteSession(sessionID); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to delete OpenCode session: %v\n", err)
-		} else {
-			fmt.Printf("Deleted OpenCode session\n")
-		}
-	}
+	// --- Phase 5: Execute lifecycle transition ---
 
-	// Generate FAILURE_REPORT.md if reason is provided
-	if reason != "" && workspacePath != "" {
-		// Ensure the failure report template exists in the project
-		if err := spawn.EnsureFailureReportTemplate(projectDir); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to ensure failure report template: %v\n", err)
-		}
-
-		// Generate and write the failure report
-		// For untracked agents, issue is nil so use empty title
-		issueTitle := ""
-		if issue != nil {
-			issueTitle = issue.Title
-		}
-		reportPath, err := spawn.WriteFailureReport(workspacePath, agentName, beadsID, reason, issueTitle)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to write failure report: %v\n", err)
-		} else {
-			fmt.Printf("Generated failure report: %s\n", reportPath)
-		}
-	}
-
-	// Log the abandonment
-	logger := events.NewLogger(events.DefaultLogPath())
-	eventData := map[string]interface{}{
-		"beads_id":  beadsID,
-		"agent_id":  agentName,
-		"untracked": isUntracked,
-	}
-	if windowInfo != nil {
-		eventData["window_id"] = windowInfo.ID
-		eventData["window_target"] = windowInfo.Target
-	}
-	if sessionID != "" {
-		eventData["session_id"] = sessionID
-	}
-	if workspacePath != "" {
-		eventData["workspace_path"] = workspacePath
-	}
-	if reason != "" {
-		eventData["reason"] = reason
-	}
-	event := events.Event{
-		Type:      "agent.abandoned",
-		Timestamp: time.Now().Unix(),
-		Data:      eventData,
-	}
-	if err := logger.Log(event); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
-	}
-
-	// Reset beads status to open so respawn works without manual bd update
-	// Skip for untracked agents (no beads issue to update)
 	if !isUntracked {
-		if err := verify.UpdateIssueStatus(beadsID, "open"); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to reset beads status: %v\n", err)
-		} else {
-			fmt.Printf("Reset beads status: in_progress → open\n")
-		}
-	}
-
-	// Log abandonment with telemetry for model performance tracking
-	logger = events.NewLogger(events.DefaultLogPath())
-	abandonedData := events.AgentAbandonedData{
-		BeadsID:   beadsID,
-		Workspace: agentName,
-		Reason:    reason,
-		Outcome:   "abandoned",
-	}
-
-	// Collect telemetry (duration and tokens) if workspace is available
-	if workspacePath != "" {
-		// Read spawn time from manifest (falls back to dotfiles)
-		manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
-		if spawnTime := manifest.ParseSpawnTime(); !spawnTime.IsZero() {
-			abandonedData.DurationSeconds = int(time.Since(spawnTime).Seconds())
+		// Tracked agents: use LifecycleManager for correct state transition.
+		// This handles the critical orch:agent label removal (ghost agent fix),
+		// assignee clearing, status reset, and all cleanup effects.
+		agentRef := agent.AgentRef{
+			BeadsID:       beadsID,
+			WorkspaceName: agentName,
+			WorkspacePath: workspacePath,
+			SessionID:     sessionID,
+			ProjectDir:    projectDir,
 		}
 
-		// Read session ID and get token usage (.session_id stays separate)
-		sessionIDStr := spawn.ReadSessionID(workspacePath)
-		if sessionIDStr != "" {
-			client := opencode.NewClient("http://127.0.0.1:4096")
-			tokenStats, tokErr := client.GetSessionTokens(sessionIDStr)
-			if tokErr == nil && tokenStats != nil {
-				abandonedData.TokensInput = tokenStats.InputTokens
-				abandonedData.TokensOutput = tokenStats.OutputTokens
-			}
+		lm := buildLifecycleManager(projectDir, serverURL, agentName, beadsID)
+		event, err := lm.Abandon(agentRef, reason)
+		if err != nil {
+			return fmt.Errorf("abandon transition failed: %w", err)
 		}
 
-		// Try to read skill from SPAWN_CONTEXT.md
-		spawnContextFile := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
-		contextBytes, readErr := os.ReadFile(spawnContextFile)
-		if readErr == nil {
-			// Simple extraction of skill from "SKILL GUIDANCE (skill-name)"
-			contextStr := string(contextBytes)
-			if strings.Contains(contextStr, "## SKILL GUIDANCE") {
-				// Try to extract skill name from the section header
-				lines := strings.Split(contextStr, "\n")
-				for _, line := range lines {
-					if strings.Contains(line, "## SKILL GUIDANCE") {
-						// Format: "## SKILL GUIDANCE (feature-impl)"
-						if start := strings.Index(line, "("); start != -1 {
-							if end := strings.Index(line[start:], ")"); end != -1 {
-								abandonedData.Skill = line[start+1 : start+end]
-							}
-						}
-						break
-					}
+		// Report lifecycle effects
+		for _, e := range event.Effects {
+			if e.Success {
+				switch e.Operation {
+				case "remove_label":
+					fmt.Printf("Removed orch:agent label\n")
+				case "clear_assignee":
+					fmt.Printf("Cleared assignee\n")
+				case "update_status":
+					fmt.Printf("Reset beads status: in_progress → open\n")
+				case "kill_window":
+					fmt.Printf("Killed tmux window\n")
+				case "delete_session":
+					fmt.Printf("Deleted OpenCode session\n")
+				case "write_failure_report":
+					fmt.Printf("Generated failure report\n")
 				}
 			}
 		}
+
+		// Report warnings (non-critical failures)
+		for _, w := range event.Warnings {
+			fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+		}
+
+		// Report critical failures
+		if !event.Success {
+			for _, e := range event.Effects {
+				if e.Critical && !e.Success {
+					fmt.Fprintf(os.Stderr, "Error: %s/%s failed: %v\n", e.Subsystem, e.Operation, e.Error)
+				}
+			}
+		}
+	} else {
+		// Untracked agents: no beads operations needed, just cleanup.
+		// Kill tmux window if found
+		window, _, _ := tmux.FindWindowByWorkspaceNameAllSessions(agentName)
+		if window != nil {
+			fmt.Printf("Killing tmux window: %s (%s)\n", window.Name, window.ID)
+			if err := tmux.KillWindowByID(window.ID); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to kill tmux window: %v\n", err)
+			}
+		}
+
+		// Delete OpenCode session
+		if sessionID != "" {
+			fmt.Printf("Deleting OpenCode session: %s\n", shortID(sessionID))
+			if err := client.DeleteSession(sessionID); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to delete OpenCode session: %v\n", err)
+			} else {
+				fmt.Printf("Deleted OpenCode session\n")
+			}
+		}
+
+		// Generate failure report
+		if reason != "" && workspacePath != "" {
+			_ = spawn.EnsureFailureReportTemplate(projectDir)
+			issueTitle := ""
+			if issue != nil {
+				issueTitle = issue.Title
+			}
+			reportPath, err := spawn.WriteFailureReport(workspacePath, agentName, beadsID, reason, issueTitle)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to write failure report: %v\n", err)
+			} else {
+				fmt.Printf("Generated failure report: %s\n", reportPath)
+			}
+		}
+
+		// Log abandonment event
+		logger := events.NewLogger(events.DefaultLogPath())
+		if err := logger.Log(events.Event{
+			Type:      "agent.abandoned",
+			Timestamp: time.Now().Unix(),
+			Data: map[string]interface{}{
+				"beads_id":  beadsID,
+				"workspace": agentName,
+				"reason":    reason,
+				"untracked": true,
+			},
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+		}
 	}
 
-	logErr := logger.LogAgentAbandoned(abandonedData)
-	if logErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to log abandonment event: %v\n", logErr)
-	}
+	// --- Phase 6: Telemetry (model performance tracking) ---
+
+	logAbandonmentTelemetry(beadsID, agentName, reason, workspacePath)
+
+	// --- Phase 7: Summary ---
 
 	fmt.Printf("Abandoned agent: %s\n", agentName)
 	fmt.Printf("  Beads ID: %s\n", beadsID)
@@ -359,4 +303,56 @@ func runAbandon(beadsID, reason, workdir string) error {
 	}
 
 	return nil
+}
+
+// logAbandonmentTelemetry collects duration, tokens, and skill info, then logs
+// an agent.abandoned telemetry event for model performance tracking.
+func logAbandonmentTelemetry(beadsID, agentName, reason, workspacePath string) {
+	logger := events.NewLogger(events.DefaultLogPath())
+	abandonedData := events.AgentAbandonedData{
+		BeadsID:   beadsID,
+		Workspace: agentName,
+		Reason:    reason,
+		Outcome:   "abandoned",
+	}
+
+	if workspacePath != "" {
+		manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+		if spawnTime := manifest.ParseSpawnTime(); !spawnTime.IsZero() {
+			abandonedData.DurationSeconds = int(time.Since(spawnTime).Seconds())
+		}
+
+		sessionIDStr := spawn.ReadSessionID(workspacePath)
+		if sessionIDStr != "" {
+			oc := opencode.NewClient("http://127.0.0.1:4096")
+			tokenStats, tokErr := oc.GetSessionTokens(sessionIDStr)
+			if tokErr == nil && tokenStats != nil {
+				abandonedData.TokensInput = tokenStats.InputTokens
+				abandonedData.TokensOutput = tokenStats.OutputTokens
+			}
+		}
+
+		spawnContextFile := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+		contextBytes, readErr := os.ReadFile(spawnContextFile)
+		if readErr == nil {
+			contextStr := string(contextBytes)
+			if strings.Contains(contextStr, "## SKILL GUIDANCE") {
+				lines := strings.Split(contextStr, "\n")
+				for _, line := range lines {
+					if strings.Contains(line, "## SKILL GUIDANCE") {
+						if start := strings.Index(line, "("); start != -1 {
+							if end := strings.Index(line[start:], ")"); end != -1 {
+								abandonedData.Skill = line[start+1 : start+end]
+							}
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if err := logger.LogAgentAbandoned(abandonedData); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log abandonment telemetry: %v\n", err)
+	}
 }
