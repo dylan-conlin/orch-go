@@ -1,0 +1,47 @@
+verification:
+  commands_run:
+    - "go build ./cmd/orch/"
+    - "go build ./pkg/verify/"
+    - "go vet ./pkg/verify/"
+    - "go vet ./cmd/orch/"
+    - "go test ./pkg/verify/ -run 'TestGatesForLevel|TestShouldRunGate|TestSynthesisGate|TestVerifyCompletionFull' -v"
+
+  tests_passed:
+    - TestGatesForLevel_V0
+    - TestGatesForLevel_V1  # Updated: GateSynthesis removed from V1
+    - TestGatesForLevel_V2  # Updated: GateSynthesis added to V2
+    - TestGatesForLevel_V3
+    - TestGatesForLevel_Superset
+    - TestGatesForLevel_UnknownDefaultsV1
+    - TestShouldRunGate  # V1+synthesis now returns false
+    - TestSynthesisGateFilteredByVerifyLevel  # Replaced TestSynthesisGateAutoSkipForKnowledgeProducingSkills
+    - TestVerifyCompletionFullCollectsAllGateFailures  # Updated to use AGENT_MANIFEST.json with V2
+
+  changes:
+    - file: pkg/verify/level.go
+      what: Moved GateSynthesis from V1 to V2
+      why: V1 knowledge-producing skills (investigation, architect, etc.) don't produce SYNTHESIS.md — level filtering now handles this instead of internal auto-skip
+
+    - file: pkg/verify/check.go
+      what: |
+        1. Removed IsKnowledgeProducingSkill auto-skip at line 559-564 (VerifyCompletionFullWithComments path)
+        2. Removed IsKnowledgeProducingSkill auto-skip at line 660-664 (VerifyCompletionWithTierAndComments path)
+        3. Converted legacy tier-based synthesis check to use ShouldRunGate() + ReadVerifyLevelFromWorkspace()
+      why: Trust ShouldRunGate() level filtering instead of internal skill-based bypasses
+
+    - file: pkg/verify/test_evidence.go
+      what: Removed dead logAutoSkip function and unused events import
+      why: Function was only called from the removed auto-skip code paths
+
+    - file: pkg/verify/level_test.go
+      what: Updated V1 gate expectations (removed GateSynthesis) and ShouldRunGate test (V1+synthesis=false)
+
+    - file: pkg/verify/check_test.go
+      what: |
+        1. Renamed TestSynthesisGateAutoSkipForKnowledgeProducingSkills → TestSynthesisGateFilteredByVerifyLevel
+        2. Tests now verify synthesis excluded by level (V1) rather than by skill-based auto-skip
+        3. Updated TestVerifyCompletionFullCollectsAllGateFailures to use AGENT_MANIFEST.json with V2
+        4. Added fmt import
+
+  pre_existing_issues:
+    - "skip_test.go: Untracked file referencing removed SkipConfig — pre-existing, from parallel agent"

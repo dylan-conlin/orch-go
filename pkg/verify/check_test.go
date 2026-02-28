@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1595,55 +1596,62 @@ Done.
 	})
 }
 
-func TestSynthesisGateAutoSkipForKnowledgeProducingSkills(t *testing.T) {
-	// Create temporary workspace
-	tmpDir := t.TempDir()
-
-	// Write .tier file (full tier to ensure synthesis would normally be required)
-	tierPath := filepath.Join(tmpDir, ".tier")
-	if err := os.WriteFile(tierPath, []byte("full"), 0644); err != nil {
-		t.Fatalf("failed to write .tier file: %v", err)
-	}
-
+func TestSynthesisGateFilteredByVerifyLevel(t *testing.T) {
 	tests := []struct {
 		name               string
 		skillName          string
+		verifyLevel        string
 		shouldRequireSynth bool
 	}{
 		{
-			name:               "investigation skill should auto-skip synthesis",
+			name:               "V1 investigation skill skips synthesis via level filtering",
 			skillName:          "investigation",
+			verifyLevel:        "V1",
 			shouldRequireSynth: false,
 		},
 		{
-			name:               "architect skill should auto-skip synthesis",
+			name:               "V1 architect skill skips synthesis via level filtering",
 			skillName:          "architect",
+			verifyLevel:        "V1",
 			shouldRequireSynth: false,
 		},
 		{
-			name:               "research skill should auto-skip synthesis",
+			name:               "V1 research skill skips synthesis via level filtering",
 			skillName:          "research",
+			verifyLevel:        "V1",
 			shouldRequireSynth: false,
 		},
 		{
-			name:               "codebase-audit skill should auto-skip synthesis",
+			name:               "V1 codebase-audit skill skips synthesis via level filtering",
 			skillName:          "codebase-audit",
+			verifyLevel:        "V1",
 			shouldRequireSynth: false,
 		},
 		{
-			name:               "feature-impl skill should require synthesis",
+			name:               "V2 feature-impl skill requires synthesis",
 			skillName:          "feature-impl",
+			verifyLevel:        "V2",
 			shouldRequireSynth: true,
 		},
 		{
-			name:               "systematic-debugging skill should require synthesis",
+			name:               "V2 systematic-debugging skill requires synthesis",
 			skillName:          "systematic-debugging",
+			verifyLevel:        "V2",
 			shouldRequireSynth: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+
+			// Write AGENT_MANIFEST.json with verify_level
+			manifestContent := fmt.Sprintf(`{"skill":"%s","verify_level":"%s","tier":"full"}`, tt.skillName, tt.verifyLevel)
+			manifestPath := filepath.Join(tmpDir, "AGENT_MANIFEST.json")
+			if err := os.WriteFile(manifestPath, []byte(manifestContent), 0644); err != nil {
+				t.Fatalf("failed to write AGENT_MANIFEST.json: %v", err)
+			}
+
 			// Write SPAWN_CONTEXT.md with skill name
 			spawnContextPath := filepath.Join(tmpDir, "SPAWN_CONTEXT.md")
 			spawnContext := "## SKILL GUIDANCE (" + tt.skillName + ")\n\nSome context here."
@@ -1665,9 +1673,8 @@ func TestSynthesisGateAutoSkipForKnowledgeProducingSkills(t *testing.T) {
 			if tt.shouldRequireSynth {
 				// Should fail without SYNTHESIS.md
 				if result.Passed {
-					t.Errorf("expected verification to fail (require SYNTHESIS.md) for %s, but it passed", tt.skillName)
+					t.Errorf("expected verification to fail (require SYNTHESIS.md) for %s at %s, but it passed", tt.skillName, tt.verifyLevel)
 				}
-				// Check that GateSynthesis is in failed gates
 				hasSynthesisGate := false
 				for _, gate := range result.GatesFailed {
 					if gate == GateSynthesis {
@@ -1679,20 +1686,15 @@ func TestSynthesisGateAutoSkipForKnowledgeProducingSkills(t *testing.T) {
 					t.Errorf("expected GateSynthesis in failed gates for %s, got: %v", tt.skillName, result.GatesFailed)
 				}
 			} else {
-				// Should pass without SYNTHESIS.md (auto-skipped)
+				// V1 skills should pass — synthesis gate not run at V1
 				if !result.Passed {
-					t.Errorf("expected verification to pass (auto-skip synthesis) for %s, got errors: %v", tt.skillName, result.Errors)
+					t.Errorf("expected verification to pass for %s at %s (synthesis not in V1), got errors: %v", tt.skillName, tt.verifyLevel, result.Errors)
 				}
-				// Check for auto-skip warning
-				hasAutoSkipWarning := false
-				for _, warning := range result.Warnings {
-					if strings.Contains(warning, "synthesis gate auto-skipped") {
-						hasAutoSkipWarning = true
-						break
+				// Synthesis gate should NOT be in GatesRun
+				for _, gate := range result.GatesRun {
+					if gate == GateSynthesis {
+						t.Errorf("synthesis gate should not run at %s for %s", tt.verifyLevel, tt.skillName)
 					}
-				}
-				if !hasAutoSkipWarning {
-					t.Errorf("expected auto-skip warning for %s, got warnings: %v", tt.skillName, result.Warnings)
 				}
 			}
 		})
@@ -1703,7 +1705,7 @@ func TestSynthesisGateAutoSkipForKnowledgeProducingSkills(t *testing.T) {
 // reports ALL gate failures at once, not just the first one. This prevents sequential retry loops
 // where the caller must fix one gate failure at a time.
 func TestVerifyCompletionFullCollectsAllGateFailures(t *testing.T) {
-	t.Run("phase_complete failure still runs V1+ gates", func(t *testing.T) {
+	t.Run("phase_complete failure still runs V2+ gates", func(t *testing.T) {
 		// Setup: workspace with no Phase: Complete and missing SYNTHESIS.md
 		tmpDir := t.TempDir()
 		workspacePath := tmpDir
@@ -1714,10 +1716,10 @@ func TestVerifyCompletionFullCollectsAllGateFailures(t *testing.T) {
 			t.Fatalf("failed to write SPAWN_CONTEXT.md: %v", err)
 		}
 
-		// Create .verify_level file for V2 (runs more gates)
-		verifyLevelPath := filepath.Join(workspacePath, ".verify_level")
-		if err := os.WriteFile(verifyLevelPath, []byte("V2"), 0644); err != nil {
-			t.Fatalf("failed to write .verify_level: %v", err)
+		// Write AGENT_MANIFEST.json with V2 verify_level (synthesis gate is at V2)
+		manifestPath := filepath.Join(workspacePath, "AGENT_MANIFEST.json")
+		if err := os.WriteFile(manifestPath, []byte(`{"skill":"feature-impl","verify_level":"V2","tier":"full"}`), 0644); err != nil {
+			t.Fatalf("failed to write AGENT_MANIFEST.json: %v", err)
 		}
 
 		// No Phase: Complete comment → phase_complete gate should fail
@@ -1754,9 +1756,9 @@ func TestVerifyCompletionFullCollectsAllGateFailures(t *testing.T) {
 		}
 	})
 
-	t.Run("V0 failure plus V1 failures collected together", func(t *testing.T) {
+	t.Run("V0 failure plus V2 failures collected together", func(t *testing.T) {
 		// Setup: workspace where Phase: Complete is NOT reported and SYNTHESIS.md missing
-		// Both V0 and V1 gates should fail and be reported together
+		// Both V0 and V2 gates should fail and be reported together
 		tmpDir := t.TempDir()
 		workspacePath := tmpDir
 
@@ -1766,14 +1768,14 @@ func TestVerifyCompletionFullCollectsAllGateFailures(t *testing.T) {
 			t.Fatalf("failed to write SPAWN_CONTEXT.md: %v", err)
 		}
 
-		// V1 level to enable synthesis and constraint gates
-		verifyLevelPath := filepath.Join(workspacePath, ".verify_level")
-		if err := os.WriteFile(verifyLevelPath, []byte("V1"), 0644); err != nil {
-			t.Fatalf("failed to write .verify_level: %v", err)
+		// Write AGENT_MANIFEST.json with V2 verify_level (synthesis gate is at V2)
+		manifestPath := filepath.Join(workspacePath, "AGENT_MANIFEST.json")
+		if err := os.WriteFile(manifestPath, []byte(`{"skill":"feature-impl","verify_level":"V2","tier":"full"}`), 0644); err != nil {
+			t.Fatalf("failed to write AGENT_MANIFEST.json: %v", err)
 		}
 
 		// Phase is "Implementing" (not Complete) → V0 fails
-		// No SYNTHESIS.md → V1 synthesis fails
+		// No SYNTHESIS.md → V2 synthesis fails
 		comments := []Comment{
 			{Text: "Phase: Implementing - still working"},
 		}
@@ -1787,7 +1789,7 @@ func TestVerifyCompletionFullCollectsAllGateFailures(t *testing.T) {
 			t.Fatal("expected verification to fail")
 		}
 
-		// Should collect failures from BOTH V0 and V1
+		// Should collect failures from BOTH V0 and V2
 		gateSet := make(map[string]bool)
 		for _, g := range result.GatesFailed {
 			gateSet[g] = true

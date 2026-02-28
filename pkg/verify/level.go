@@ -9,7 +9,6 @@ var gatesByLevel = map[string][]string{
 		GatePhaseComplete,
 	},
 	spawn.VerifyV1: {
-		GateSynthesis,
 		GateHandoffContent,
 		GateSkillOutput,
 		GatePhaseGate,
@@ -18,6 +17,7 @@ var gatesByLevel = map[string][]string{
 		GateArchitecturalChoices,
 	},
 	spawn.VerifyV2: {
+		GateSynthesis,
 		GateTestEvidence,
 		GateGitDiff,
 		GateBuild,

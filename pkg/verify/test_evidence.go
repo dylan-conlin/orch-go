@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
@@ -569,23 +568,3 @@ func VerifyTestEvidenceForCompletionWithComments(beadsID, workspacePath, project
 	return &result
 }
 
-// logAutoSkip logs a verification.auto_skipped event to events.jsonl for observability.
-// This tracks when gates are automatically skipped due to skill-class or file type exemptions.
-func logAutoSkip(beadsID, workspacePath, gate, reason, skillName string) {
-	// Avoid logging if no beads ID (untracked spawns)
-	if beadsID == "" {
-		return
-	}
-
-	// Use the default event logger
-	logger := events.NewDefaultLogger()
-
-	// Log the auto-skip event (silently fail on error to avoid breaking verification flow)
-	_ = logger.LogVerificationAutoSkipped(events.VerificationBypassedData{
-		BeadsID:   beadsID,
-		Workspace: workspacePath,
-		Gate:      gate,
-		Reason:    reason,
-		Skill:     skillName,
-	})
-}

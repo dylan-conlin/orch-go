@@ -546,32 +546,18 @@ func verifyCompletionWithLevelAndComments(beadsID, workspacePath, tier, verifyLe
 		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
 	}
 
-	// --- V1 gate: Synthesis ---
-	// Uses level-based gating: only runs at V1+ (replaces tier-based "light" skip)
+	// --- V2 gate: Synthesis ---
+	// Uses level-based gating: only runs at V2+ (knowledge-producing V1 skills excluded by level)
 	if workspacePath != "" && ShouldRunGate(verifyLevel, GateSynthesis) {
 		result.GatesRun = append(result.GatesRun, GateSynthesis)
-		skillName := result.Skill
-		if skillName == "" {
-			skillName, _ = ExtractSkillNameFromSpawnContext(workspacePath)
-		}
-
-		// Auto-skip for knowledge-producing skills - their artifacts ARE the deliverable
-		if IsKnowledgeProducingSkill(skillName) {
-			logAutoSkip(beadsID, workspacePath, GateSynthesis,
-				skillName+" skill produces knowledge artifacts, not SYNTHESIS.md",
-				skillName)
-			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("synthesis gate auto-skipped for %s skill", strings.ToLower(skillName)))
-		} else {
-			ok, err := VerifySynthesis(workspacePath)
-			if err != nil {
-				result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SYNTHESIS.md: %v", err))
-			} else if !ok {
-				result.Passed = false
-				result.Errors = append(result.Errors,
-					fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath))
-				result.GatesFailed = append(result.GatesFailed, GateSynthesis)
-			}
+		ok, err := VerifySynthesis(workspacePath)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SYNTHESIS.md: %v", err))
+		} else if !ok {
+			result.Passed = false
+			result.Errors = append(result.Errors,
+				fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath))
+			result.GatesFailed = append(result.GatesFailed, GateSynthesis)
 		}
 	}
 
@@ -647,33 +633,18 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
 	}
 
-	// Check for SYNTHESIS.md (only for full tier AND code-producing skills)
-	// Knowledge-producing skills (investigation, architect, research, etc.) produce
-	// artifacts as their deliverable - SYNTHESIS.md is redundant
-	if workspacePath != "" && tier != "light" {
-		// Check if skill requires synthesis
-		skillName := result.Skill
-		if skillName == "" {
-			skillName, _ = ExtractSkillNameFromSpawnContext(workspacePath)
-		}
-
-		// Auto-skip for knowledge-producing skills - their artifacts ARE the deliverable
-		if IsKnowledgeProducingSkill(skillName) {
-			logAutoSkip(beadsID, workspacePath, GateSynthesis,
-				skillName+" skill produces knowledge artifacts, not SYNTHESIS.md",
-				skillName)
-			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("synthesis gate auto-skipped for %s skill", strings.ToLower(skillName)))
-		} else {
-			ok, err := VerifySynthesis(workspacePath)
-			if err != nil {
-				result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SYNTHESIS.md: %v", err))
-			} else if !ok {
-				result.Passed = false
-				result.Errors = append(result.Errors,
-					fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath))
-				result.GatesFailed = append(result.GatesFailed, GateSynthesis)
-			}
+	// Check for SYNTHESIS.md — uses level-based gating via ShouldRunGate
+	verifyLevel := ReadVerifyLevelFromWorkspace(workspacePath)
+	if workspacePath != "" && ShouldRunGate(verifyLevel, GateSynthesis) {
+		result.GatesRun = append(result.GatesRun, GateSynthesis)
+		ok, err := VerifySynthesis(workspacePath)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SYNTHESIS.md: %v", err))
+		} else if !ok {
+			result.Passed = false
+			result.Errors = append(result.Errors,
+				fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath))
+			result.GatesFailed = append(result.GatesFailed, GateSynthesis)
 		}
 	}
 

@@ -17,15 +17,14 @@ func TestGatesForLevel_V0(t *testing.T) {
 
 func TestGatesForLevel_V1(t *testing.T) {
 	gates := GatesForLevel(spawn.VerifyV1)
-	// V1 (Artifacts): V0 + Synthesis, Handoff Content, Skill Output, Phase Gates, Constraint, Decision Patch Limit, Architectural Choices
+	// V1 (Artifacts): V0 + Handoff Content, Skill Output, Phase Gates, Constraint, Decision Patch Limit, Architectural Choices
 	expected := map[string]bool{
-		GatePhaseComplete:       true,
-		GateSynthesis:           true,
-		GateHandoffContent:      true,
-		GateSkillOutput:         true,
-		GatePhaseGate:           true,
-		GateConstraint:          true,
-		GateDecisionPatchLimit:  true,
+		GatePhaseComplete:        true,
+		GateHandoffContent:       true,
+		GateSkillOutput:          true,
+		GatePhaseGate:            true,
+		GateConstraint:           true,
+		GateDecisionPatchLimit:   true,
 		GateArchitecturalChoices: true,
 	}
 	assertGateSet(t, "V1", gates, expected)
@@ -139,9 +138,9 @@ func TestShouldRunGate(t *testing.T) {
 		{spawn.VerifyV0, GateTestEvidence, false},
 		{spawn.VerifyV0, GateVisualVerify, false},
 
-		// V1 runs artifact gates but not evidence gates
+		// V1 runs artifact gates but not synthesis or evidence gates
 		{spawn.VerifyV1, GatePhaseComplete, true},
-		{spawn.VerifyV1, GateSynthesis, true},
+		{spawn.VerifyV1, GateSynthesis, false},
 		{spawn.VerifyV1, GateConstraint, true},
 		{spawn.VerifyV1, GateTestEvidence, false},
 		{spawn.VerifyV1, GateBuild, false},
