@@ -1,0 +1,38 @@
+verification:
+  automated:
+    - command: "go build ./cmd/orch/"
+      expectation: "Compiles without errors"
+      result: "PASS"
+    - command: "go vet ./cmd/orch/"
+      expectation: "No static analysis issues"
+      result: "PASS"
+    - command: "go test ./cmd/orch/ -run TestExtractModelKeywords -v"
+      expectation: "4/4 subtests pass - keywords extracted from dir names and domains"
+      result: "PASS"
+    - command: "go test ./cmd/orch/ -run TestMatchSynthesisToModels -v"
+      expectation: "4/4 subtests pass - correct matches and non-matches"
+      result: "PASS"
+    - command: "go test ./cmd/orch/ -run TestFormatModelImpactAdvisory -v"
+      expectation: "2/2 subtests pass - empty for nil, formatted for matches"
+      result: "PASS"
+    - command: "go test ./cmd/orch/ -run TestDiscoverModels -v"
+      expectation: "Discovers models from temp dir, skips archived"
+      result: "PASS"
+    - command: "go test ./cmd/orch/ -run TestRunModelImpactAdvisory -v"
+      expectation: "End-to-end: synthesis with spawn keywords matches spawn model"
+      result: "PASS"
+    - command: "go test ./cmd/orch/ -count=1"
+      expectation: "Full test suite passes (no regressions)"
+      result: "PASS (4.852s)"
+
+  manual:
+    - step: "Run orch complete on an agent with SYNTHESIS.md mentioning spawn/completion topics"
+      expectation: "MODEL IMPACT advisory box appears listing relevant models"
+
+  deliverables:
+    - path: "cmd/orch/complete_model_impact.go"
+      description: "Model-impact advisory logic: discover models, extract keywords, match against synthesis, format advisory"
+    - path: "cmd/orch/complete_model_impact_test.go"
+      description: "5 test functions with 11 test cases covering keyword extraction, matching, formatting, discovery, and end-to-end"
+    - path: "cmd/orch/complete_cmd.go"
+      description: "Wired RunModelImpactAdvisory call after hotspot advisory (informational, not a gate)"

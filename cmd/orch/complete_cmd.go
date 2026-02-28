@@ -1133,6 +1133,14 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
+	// Surface model-impact advisory (informational, not a gate)
+	// Cross-references SYNTHESIS.md with .kb/models/ to flag models that may need updating.
+	if beadsProjectDir != "" && workspacePath != "" && !isOrchestratorSession {
+		if advisory := RunModelImpactAdvisory(beadsProjectDir, workspacePath); advisory != "" {
+			fmt.Print(advisory)
+		}
+	}
+
 	// Update session handoff with spawn completion info (Capture at Context principle)
 	// This is only for worker agents, not orchestrator sessions (which manage their own handoffs)
 	if !isOrchestratorSession && agentName != "" && beadsID != "" {
