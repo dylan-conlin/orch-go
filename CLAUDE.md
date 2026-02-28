@@ -308,6 +308,22 @@ orch version
 - **SSE parsing**: Event type is inside JSON data, not `event:` prefix
 - **Beads integration**: Shells out to `bd` CLI, doesn't use API directly
 - **OpenCode auth**: Reads from `~/.local/share/opencode/auth.json`
+- **Edit tool + tab indentation**: Svelte files in `web/src/` and Go files use tab indentation. The Read tool's line-number prefix uses a tab delimiter that collides with content tabs, causing Edit tool "String to replace not found" errors. See "Tab-Indented File Editing" section below.
+
+## Tab-Indented File Editing
+
+**Problem:** The Read tool outputs `line_number→[TAB][content]`. When file content also starts with tabs (Svelte, Go, Makefile), adjacent tabs create ambiguity. Agents construct `old_string` with the wrong number of leading tabs, and Edit fails.
+
+**Files affected in this project:** All `.svelte` files in `web/src/` use tab indentation. Go files use tabs per `gofmt` convention.
+
+**Workarounds (in order of preference):**
+
+1. **Include more context lines** in `old_string` — multi-line matches are less ambiguous than single-line matches with leading tabs
+2. **Check exact whitespace first:** `head -20 file.svelte | cat -vet` — tabs display as `^I`, making them countable
+3. **Use Write tool** for small files (<100 lines) — rewrite the entire file to avoid tab-matching issues
+4. **Use sed via Bash** for surgical line edits: `sed -i '' '10s/old/new/' file.svelte`
+
+**Prevention:** Before editing any tab-indented file, verify the indentation with `cat -vet` on the relevant lines. Do not rely solely on the Read tool output to count leading tabs.
 
 ## Common Commands
 

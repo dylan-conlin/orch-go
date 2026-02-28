@@ -1,0 +1,58 @@
+---
+# Verification Spec for: Worker friction - Edit tool tab-indentation collision
+# Issue: orch-go-6al9
+# Agent: og-debug-worker-friction-edit-27feb-3215
+
+verification_type: documentation
+scope: CLAUDE.md guidance for tab-indented file editing
+
+reproduction:
+  description: |
+    Claude Code Edit tool fails on tab-indented files due to Read tool line-prefix
+    tab delimiter colliding with content tab characters.
+  steps:
+    - Read a tab-indented Svelte file with Read tool
+    - Observe adjacent tabs in output (delimiter + content indent)
+    - Note visual ambiguity in line_number→TAB TAB content format
+  observed: |
+    badge.svelte line 2 Read output: "     2→\timport { cn }..."
+    Delimiter tab (→) immediately adjacent to content tab — indistinguishable.
+    cat -vet shows: "^Iimport { cn }..." — exactly ONE tab, clearly countable.
+  files_verified:
+    - web/src/lib/components/ui/badge/badge.svelte
+    - web/src/routes/+page.svelte
+
+fix_applied:
+  type: documentation-mitigation
+  description: |
+    Added "Tab-Indented File Editing" section to CLAUDE.md with:
+    - Problem description (Read tool tab delimiter collision)
+    - Affected files (Svelte in web/src/, Go files)
+    - Ranked workarounds (multi-line context, cat -vet, Write tool, sed)
+    - Prevention guidance
+  files_modified:
+    - CLAUDE.md
+
+verification_checks:
+  - name: CLAUDE.md contains tab guidance
+    command: grep -c "Tab-Indented File Editing" CLAUDE.md
+    expected: "1"
+  - name: Gotchas section references tab issue
+    command: grep -c "Edit tool + tab indentation" CLAUDE.md
+    expected: "1"
+  - name: Workarounds section exists
+    command: grep -c "cat -vet" CLAUDE.md
+    expected: "2"
+  - name: Svelte files still use tabs (problem unchanged)
+    command: head -2 web/src/lib/components/ui/badge/badge.svelte | cat -vet | grep -c "\\^I"
+    expected: "1"
+
+limitations:
+  - This is a Claude Code platform limitation, not an orch-go code bug
+  - Guidance-based mitigation depends on workers reading CLAUDE.md
+  - No automated enforcement — workers may still encounter the issue before reading guidance
+  - Cross-repo skill template update needed for broader coverage (documented as CROSS_REPO_ISSUE)
+
+manual_verification:
+  - Confirm CLAUDE.md "Tab-Indented File Editing" section is readable and actionable
+  - Confirm cross-repo issue for worker-base skill template was captured in SYNTHESIS.md
