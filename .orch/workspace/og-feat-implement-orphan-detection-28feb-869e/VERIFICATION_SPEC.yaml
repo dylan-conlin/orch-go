@@ -1,0 +1,41 @@
+verification:
+  issue: orch-go-vp6u
+  title: "Implement orphan detection + GC transitions in pkg/agent/lifecycle.go"
+
+  automated:
+    - name: "All pkg/agent tests pass"
+      command: "go test ./pkg/agent/ -count=1"
+      expected: "ok"
+      actual: "ok - 74 tests pass (0.004s)"
+
+    - name: "Full binary builds"
+      command: "go build ./cmd/orch/"
+      expected: "no errors"
+      actual: "no errors"
+
+    - name: "go vet clean"
+      command: "go vet ./pkg/agent/ && go vet ./cmd/orch/"
+      expected: "no warnings"
+      actual: "no warnings"
+
+  behavioral:
+    - name: "ForceComplete transitions from Orphaned to Completed"
+      evidence: "TestForceComplete_HappyPath verifies transition metadata, beads close, label removal, session/tmux cleanup, workspace archive, event logging"
+
+    - name: "ForceAbandon transitions from Orphaned to Abandoned"
+      evidence: "TestForceAbandon_HappyPath verifies label removal, assignee clear, status reset, cleanup, failure report, event logging"
+
+    - name: "DetectOrphans correctly identifies orphaned agents"
+      evidence: "10 tests cover: no agents, active session, Claude tmux window, dead session, phase complete, triage:ready, threshold, closed issues, no workspace, multi-project"
+
+    - name: "Claude agents with live tmux windows are NOT classified as orphaned"
+      evidence: "TestDetectOrphans_ClaudeAgentWithTmuxWindow_NotOrphaned — directly addresses the 'clean killing Claude agents' bug"
+
+    - name: "OpenCode agents with live sessions are NOT classified as orphaned"
+      evidence: "TestDetectOrphans_ActiveOpenCodeSession_NotOrphaned"
+
+  deliverables:
+    - "pkg/agent/lifecycle_impl.go: ForceComplete, ForceAbandon, DetectOrphans + helpers"
+    - "pkg/agent/lifecycle.go: ListByLabel on BeadsClient, ScanWorkspaces on WorkspaceManager"
+    - "pkg/agent/types.go: TrackedIssue, WorkspaceInfo types"
+    - "pkg/agent/lifecycle_manager_test.go: 18 new tests (ForceComplete: 3, ForceAbandon: 4, DetectOrphans: 11)"

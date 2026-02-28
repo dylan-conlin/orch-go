@@ -206,6 +206,41 @@ type OrphanDetectionResult struct {
 	Elapsed time.Duration
 }
 
+// TrackedIssue represents a beads issue returned by ListByLabel.
+// Used by DetectOrphans to find agents tagged with orch:agent.
+type TrackedIssue struct {
+	// BeadsID is the issue identifier.
+	BeadsID string
+
+	// Status is the issue status (e.g., "open", "in_progress", "closed").
+	Status string
+
+	// Labels are the issue's labels (e.g., ["orch:agent", "triage:ready"]).
+	Labels []string
+}
+
+// WorkspaceInfo represents metadata about an agent workspace.
+// Used by DetectOrphans to join workspace data with beads issues.
+type WorkspaceInfo struct {
+	// Name is the workspace directory name.
+	Name string
+
+	// Path is the full path to the workspace directory.
+	Path string
+
+	// BeadsID is the beads issue ID from the manifest.
+	BeadsID string
+
+	// SessionID is the OpenCode session ID (empty for Claude-mode agents).
+	SessionID string
+
+	// SpawnMode is the spawn backend: "opencode" or "claude".
+	SpawnMode string
+
+	// SpawnTime is when the agent was spawned.
+	SpawnTime time.Time
+}
+
 // OrphanedAgent represents an agent detected as orphaned by GC.
 type OrphanedAgent struct {
 	// Agent is the reference to the orphaned agent.

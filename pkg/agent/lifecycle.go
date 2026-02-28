@@ -62,6 +62,10 @@ type BeadsClient interface {
 	ClearAssignee(beadsID string) error
 	CloseIssue(beadsID, reason string) error
 	GetComments(beadsID string) ([]string, error)
+
+	// ListByLabel returns all issues with the given label.
+	// Used by DetectOrphans to find agents tagged with orch:agent.
+	ListByLabel(label string) ([]TrackedIssue, error)
 }
 
 // OpenCodeClient abstracts OpenCode session operations for lifecycle transitions.
@@ -95,4 +99,8 @@ type WorkspaceManager interface {
 	// Remove deletes the workspace directory.
 	// Used during spawn rollback when session creation fails.
 	Remove(workspacePath string) error
+
+	// ScanWorkspaces reads all workspace directories under projectDir/.orch/workspace/
+	// and returns metadata from their manifests. Used by DetectOrphans.
+	ScanWorkspaces(projectDir string) ([]WorkspaceInfo, error)
 }

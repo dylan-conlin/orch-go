@@ -9,11 +9,13 @@ import (
 // --- Mock implementations of the interfaces ---
 
 type mockBeadsClient struct {
-	labelsRemoved  map[string][]string
-	statusUpdated  map[string]string
+	labelsRemoved   map[string][]string
+	statusUpdated   map[string]string
 	assigneeCleared []string
-	issuesClosed   map[string]string
-	failOn         map[string]error // key: "operation:beadsID"
+	issuesClosed    map[string]string
+	comments        map[string][]string  // beadsID → comments
+	trackedIssues   []TrackedIssue       // returned by ListByLabel
+	failOn          map[string]error     // key: "operation:beadsID"
 }
 
 func newMockBeadsClient() *mockBeadsClient {
@@ -21,6 +23,7 @@ func newMockBeadsClient() *mockBeadsClient {
 		labelsRemoved:  make(map[string][]string),
 		statusUpdated:  make(map[string]string),
 		issuesClosed:   make(map[string]string),
+		comments:       make(map[string][]string),
 		failOn:         make(map[string]error),
 	}
 }
@@ -69,7 +72,17 @@ func (m *mockBeadsClient) CloseIssue(beadsID, reason string) error {
 }
 
 func (m *mockBeadsClient) GetComments(beadsID string) ([]string, error) {
+	if comments, ok := m.comments[beadsID]; ok {
+		return comments, nil
+	}
 	return nil, nil
+}
+
+func (m *mockBeadsClient) ListByLabel(label string) ([]TrackedIssue, error) {
+	if err, ok := m.failOn["list_by_label:"+label]; ok {
+		return nil, err
+	}
+	return m.trackedIssues, nil
 }
 
 type mockOpenCodeClient struct {
@@ -160,6 +173,7 @@ type mockWorkspaceManager struct {
 	existing        map[string]bool
 	sessionIDs      map[string]string // path → sessionID
 	removed         []string
+	workspaces      map[string][]WorkspaceInfo // projectDir → workspaces
 	failOn          map[string]error
 }
 
@@ -168,6 +182,7 @@ func newMockWorkspaceManager() *mockWorkspaceManager {
 		failureReports: make(map[string]string),
 		existing:       make(map[string]bool),
 		sessionIDs:     make(map[string]string),
+		workspaces:     make(map[string][]WorkspaceInfo),
 		failOn:         make(map[string]error),
 	}
 }
@@ -206,6 +221,13 @@ func (m *mockWorkspaceManager) Remove(workspacePath string) error {
 	}
 	m.removed = append(m.removed, workspacePath)
 	return nil
+}
+
+func (m *mockWorkspaceManager) ScanWorkspaces(projectDir string) ([]WorkspaceInfo, error) {
+	if err, ok := m.failOn["scan_workspaces:"+projectDir]; ok {
+		return nil, err
+	}
+	return m.workspaces[projectDir], nil
 }
 
 // --- Helper to build a standard test LifecycleManager ---
@@ -1162,5 +1184,543 @@ func TestComplete_TimestampSet(t *testing.T) {
 
 	if event.Timestamp.Before(before) || event.Timestamp.After(after) {
 		t.Error("timestamp should be within test execution window")
+	}
+}
+
+// --- ForceComplete Tests ---
+
+func TestForceComplete_HappyPath(t *testing.T) {
+	mgr, bc, oc, tc, el, wm := testManager()
+	agent := testAgent()
+
+	oc.sessions[agent.SessionID] = true
+	tc.windows[agent.WorkspaceName] = true
+	wm.existing[agent.WorkspacePath] = true
+
+	event, err := mgr.ForceComplete(agent, "GC: orphaned agent with Phase: Complete")
+	if err != nil {
+		t.Fatalf("ForceComplete() returned error: %v", err)
+	}
+
+	// Verify transition metadata — key difference from Complete: from StateOrphaned
+	if event.Transition != TransitionForceComplete {
+		t.Errorf("expected transition %s, got %s", TransitionForceComplete, event.Transition)
+	}
+	if event.FromState != StateOrphaned {
+		t.Errorf("expected from state %s, got %s", StateOrphaned, event.FromState)
+	}
+	if event.ToState != StateCompleted {
+		t.Errorf("expected to state %s, got %s", StateCompleted, event.ToState)
+	}
+	if !event.Success {
+		t.Error("expected Success=true")
+	}
+
+	// CRITICAL: beads issue must be closed
+	if _, ok := bc.issuesClosed[agent.BeadsID]; !ok {
+		t.Fatal("beads issue was NOT closed")
+	}
+
+	// orch:agent label must be removed
+	labels := bc.labelsRemoved[agent.BeadsID]
+	found := false
+	for _, l := range labels {
+		if l == "orch:agent" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("orch:agent label was NOT removed")
+	}
+
+	// Session deleted
+	if len(oc.deleted) != 1 || oc.deleted[0] != agent.SessionID {
+		t.Errorf("expected session %s deleted, got %v", agent.SessionID, oc.deleted)
+	}
+
+	// Tmux window killed
+	if len(tc.killed) != 1 || tc.killed[0] != agent.WorkspaceName {
+		t.Errorf("expected window %s killed, got %v", agent.WorkspaceName, tc.killed)
+	}
+
+	// Workspace archived
+	if len(wm.archived) != 1 || wm.archived[0] != agent.WorkspacePath {
+		t.Errorf("expected workspace archived, got %v", wm.archived)
+	}
+
+	// Event logged
+	if len(el.events) != 1 {
+		t.Fatalf("expected 1 event logged, got %d", len(el.events))
+	}
+	if el.events[0]["_type"] != "agent.force_completed" {
+		t.Errorf("expected event type 'agent.force_completed', got %q", el.events[0]["_type"])
+	}
+}
+
+func TestForceComplete_BeadsCloseFails_CriticalError(t *testing.T) {
+	mgr, bc, _, _, _, _ := testManager()
+	agent := testAgent()
+	bc.failOn["close_issue:"+agent.BeadsID] = fmt.Errorf("beads down")
+
+	event, err := mgr.ForceComplete(agent, "GC")
+	if err != nil {
+		t.Fatalf("ForceComplete() should not return error, got: %v", err)
+	}
+	if event.Success {
+		t.Error("expected Success=false when critical close fails")
+	}
+}
+
+func TestForceComplete_NoSession_SkipsSessionCleanup(t *testing.T) {
+	mgr, _, oc, _, _, _ := testManager()
+	agent := testAgent()
+	agent.SessionID = "" // Claude-mode agent
+
+	event, err := mgr.ForceComplete(agent, "GC")
+	if err != nil {
+		t.Fatalf("ForceComplete() returned error: %v", err)
+	}
+	if !event.Success {
+		t.Error("expected Success=true")
+	}
+	if len(oc.deleted) != 0 {
+		t.Error("should not delete sessions for claude-mode agent")
+	}
+}
+
+// --- ForceAbandon Tests ---
+
+func TestForceAbandon_HappyPath(t *testing.T) {
+	mgr, bc, oc, tc, el, wm := testManager()
+	agent := testAgent()
+
+	oc.sessions[agent.SessionID] = true
+	tc.windows[agent.WorkspaceName] = true
+	wm.existing[agent.WorkspacePath] = true
+
+	event, err := mgr.ForceAbandon(agent)
+	if err != nil {
+		t.Fatalf("ForceAbandon() returned error: %v", err)
+	}
+
+	// Verify transition metadata — key difference from Abandon: from StateOrphaned
+	if event.Transition != TransitionForceAbandon {
+		t.Errorf("expected transition %s, got %s", TransitionForceAbandon, event.Transition)
+	}
+	if event.FromState != StateOrphaned {
+		t.Errorf("expected from state %s, got %s", StateOrphaned, event.FromState)
+	}
+	if event.ToState != StateAbandoned {
+		t.Errorf("expected to state %s, got %s", StateAbandoned, event.ToState)
+	}
+	if !event.Success {
+		t.Error("expected Success=true")
+	}
+
+	// CRITICAL: orch:agent label removed (ghost agent fix)
+	labels := bc.labelsRemoved[agent.BeadsID]
+	found := false
+	for _, l := range labels {
+		if l == "orch:agent" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("orch:agent label was NOT removed")
+	}
+
+	// Assignee cleared
+	assigneeCleared := false
+	for _, id := range bc.assigneeCleared {
+		if id == agent.BeadsID {
+			assigneeCleared = true
+		}
+	}
+	if !assigneeCleared {
+		t.Fatal("assignee was NOT cleared")
+	}
+
+	// Status reset to open (for respawn)
+	if bc.statusUpdated[agent.BeadsID] != "open" {
+		t.Errorf("expected status 'open', got %q", bc.statusUpdated[agent.BeadsID])
+	}
+
+	// Session deleted
+	if len(oc.deleted) != 1 {
+		t.Errorf("expected 1 session deleted, got %d", len(oc.deleted))
+	}
+
+	// Tmux window killed
+	if len(tc.killed) != 1 {
+		t.Errorf("expected 1 window killed, got %d", len(tc.killed))
+	}
+
+	// Event logged as force_abandoned
+	if len(el.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(el.events))
+	}
+	if el.events[0]["_type"] != "agent.force_abandoned" {
+		t.Errorf("expected 'agent.force_abandoned', got %q", el.events[0]["_type"])
+	}
+}
+
+func TestForceAbandon_BeadsLabelRemoveFails_CriticalError(t *testing.T) {
+	mgr, bc, _, _, _, _ := testManager()
+	agent := testAgent()
+	bc.failOn["remove_label:"+agent.BeadsID] = fmt.Errorf("beads down")
+
+	event, err := mgr.ForceAbandon(agent)
+	if err != nil {
+		t.Fatalf("ForceAbandon() should not return error, got: %v", err)
+	}
+	if event.Success {
+		t.Error("expected Success=false when critical label removal fails")
+	}
+}
+
+func TestForceAbandon_NoSession_SkipsSessionCleanup(t *testing.T) {
+	mgr, _, oc, _, _, _ := testManager()
+	agent := testAgent()
+	agent.SessionID = "" // Claude-mode agent
+
+	event, err := mgr.ForceAbandon(agent)
+	if err != nil {
+		t.Fatalf("ForceAbandon() returned error: %v", err)
+	}
+	if !event.Success {
+		t.Error("expected Success=true")
+	}
+	if len(oc.deleted) != 0 {
+		t.Error("should not delete sessions for claude-mode agent")
+	}
+}
+
+func TestForceAbandon_WritesFailureReport(t *testing.T) {
+	mgr, _, _, _, _, wm := testManager()
+	agent := testAgent()
+	wm.existing[agent.WorkspacePath] = true
+
+	_, err := mgr.ForceAbandon(agent)
+	if err != nil {
+		t.Fatalf("ForceAbandon() returned error: %v", err)
+	}
+
+	// ForceAbandon should write a failure report explaining GC action
+	if _, ok := wm.failureReports[agent.WorkspacePath]; !ok {
+		t.Error("expected failure report to be written for GC abandonment")
+	}
+}
+
+// --- DetectOrphans Tests ---
+
+func TestDetectOrphans_NoTrackedAgents_EmptyResult(t *testing.T) {
+	mgr, _, _, _, _, _ := testManager()
+
+	result, err := mgr.DetectOrphans([]string{"/tmp/proj"}, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("DetectOrphans() returned error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if len(result.Orphans) != 0 {
+		t.Errorf("expected 0 orphans, got %d", len(result.Orphans))
+	}
+}
+
+func TestDetectOrphans_ActiveOpenCodeSession_NotOrphaned(t *testing.T) {
+	mgr, bc, oc, _, _, wm := testManager()
+
+	// Agent tracked in beads with in_progress status
+	bc.trackedIssues = []TrackedIssue{
+		{BeadsID: "proj-001", Status: "in_progress", Labels: []string{"orch:agent"}},
+	}
+
+	// Workspace exists with session ID
+	wm.workspaces["/tmp/proj"] = []WorkspaceInfo{
+		{
+			Name:      "og-feat-test-27feb-abc1",
+			Path:      "/tmp/proj/.orch/workspace/og-feat-test-27feb-abc1",
+			BeadsID:   "proj-001",
+			SessionID: "session-100",
+			SpawnMode: "opencode",
+			SpawnTime: time.Now().Add(-1 * time.Hour),
+		},
+	}
+
+	// OpenCode session is alive
+	oc.sessions["session-100"] = true
+
+	result, err := mgr.DetectOrphans([]string{"/tmp/proj"}, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("DetectOrphans() returned error: %v", err)
+	}
+	if len(result.Orphans) != 0 {
+		t.Errorf("agent with live session should NOT be orphaned, got %d orphans", len(result.Orphans))
+	}
+	if result.Scanned != 1 {
+		t.Errorf("expected 1 scanned, got %d", result.Scanned)
+	}
+}
+
+func TestDetectOrphans_ClaudeAgentWithTmuxWindow_NotOrphaned(t *testing.T) {
+	mgr, bc, _, tc, _, wm := testManager()
+
+	// Claude-mode agent (no OpenCode session, uses tmux)
+	bc.trackedIssues = []TrackedIssue{
+		{BeadsID: "proj-002", Status: "in_progress", Labels: []string{"orch:agent"}},
+	}
+	wm.workspaces["/tmp/proj"] = []WorkspaceInfo{
+		{
+			Name:      "og-feat-test-27feb-def2",
+			Path:      "/tmp/proj/.orch/workspace/og-feat-test-27feb-def2",
+			BeadsID:   "proj-002",
+			SessionID: "", // No OpenCode session
+			SpawnMode: "claude",
+			SpawnTime: time.Now().Add(-2 * time.Hour),
+		},
+	}
+
+	// Tmux window exists — Claude agent is alive
+	tc.windows["og-feat-test-27feb-def2"] = true
+
+	result, err := mgr.DetectOrphans([]string{"/tmp/proj"}, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("DetectOrphans() returned error: %v", err)
+	}
+	if len(result.Orphans) != 0 {
+		t.Errorf("Claude agent with live tmux window should NOT be orphaned, got %d orphans", len(result.Orphans))
+	}
+}
+
+func TestDetectOrphans_DeadSessionNoPhase_Orphaned(t *testing.T) {
+	mgr, bc, _, _, _, wm := testManager()
+
+	bc.trackedIssues = []TrackedIssue{
+		{BeadsID: "proj-003", Status: "in_progress", Labels: []string{"orch:agent"}},
+	}
+	wm.workspaces["/tmp/proj"] = []WorkspaceInfo{
+		{
+			Name:      "og-feat-test-27feb-ghi3",
+			Path:      "/tmp/proj/.orch/workspace/og-feat-test-27feb-ghi3",
+			BeadsID:   "proj-003",
+			SessionID: "session-dead",
+			SpawnMode: "opencode",
+			SpawnTime: time.Now().Add(-2 * time.Hour),
+		},
+	}
+
+	// Session does NOT exist, no tmux window, no phase
+	// (oc.sessions is empty, tc.windows is empty, bc.comments is empty)
+
+	result, err := mgr.DetectOrphans([]string{"/tmp/proj"}, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("DetectOrphans() returned error: %v", err)
+	}
+	if len(result.Orphans) != 1 {
+		t.Fatalf("expected 1 orphan, got %d", len(result.Orphans))
+	}
+	orphan := result.Orphans[0]
+	if orphan.Agent.BeadsID != "proj-003" {
+		t.Errorf("expected BeadsID 'proj-003', got %q", orphan.Agent.BeadsID)
+	}
+	if orphan.Reason != "no_live_execution" {
+		t.Errorf("expected reason 'no_live_execution', got %q", orphan.Reason)
+	}
+	if orphan.ShouldRetry {
+		t.Error("agent without triage:ready label should not be retried")
+	}
+}
+
+func TestDetectOrphans_PhaseComplete_ShouldNotRetry(t *testing.T) {
+	mgr, bc, _, _, _, wm := testManager()
+
+	bc.trackedIssues = []TrackedIssue{
+		{BeadsID: "proj-004", Status: "in_progress", Labels: []string{"orch:agent"}},
+	}
+	bc.comments["proj-004"] = []string{
+		"Phase: Planning - started",
+		"Phase: Complete - All tests passing",
+	}
+	wm.workspaces["/tmp/proj"] = []WorkspaceInfo{
+		{
+			Name:      "og-feat-test-27feb-jkl4",
+			Path:      "/tmp/proj/.orch/workspace/og-feat-test-27feb-jkl4",
+			BeadsID:   "proj-004",
+			SessionID: "session-gone",
+			SpawnMode: "opencode",
+			SpawnTime: time.Now().Add(-3 * time.Hour),
+		},
+	}
+
+	result, err := mgr.DetectOrphans([]string{"/tmp/proj"}, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("DetectOrphans() returned error: %v", err)
+	}
+	if len(result.Orphans) != 1 {
+		t.Fatalf("expected 1 orphan, got %d", len(result.Orphans))
+	}
+	orphan := result.Orphans[0]
+	if orphan.LastPhase != "Complete" {
+		t.Errorf("expected LastPhase 'Complete', got %q", orphan.LastPhase)
+	}
+	if orphan.ShouldRetry {
+		t.Error("Phase: Complete agent should NOT be retried")
+	}
+}
+
+func TestDetectOrphans_TriageReadyLabel_ShouldRetry(t *testing.T) {
+	mgr, bc, _, _, _, wm := testManager()
+
+	bc.trackedIssues = []TrackedIssue{
+		{BeadsID: "proj-005", Status: "in_progress", Labels: []string{"orch:agent", "triage:ready"}},
+	}
+	wm.workspaces["/tmp/proj"] = []WorkspaceInfo{
+		{
+			Name:      "og-feat-test-27feb-mno5",
+			Path:      "/tmp/proj/.orch/workspace/og-feat-test-27feb-mno5",
+			BeadsID:   "proj-005",
+			SessionID: "",
+			SpawnMode: "opencode",
+			SpawnTime: time.Now().Add(-1 * time.Hour),
+		},
+	}
+
+	result, err := mgr.DetectOrphans([]string{"/tmp/proj"}, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("DetectOrphans() returned error: %v", err)
+	}
+	if len(result.Orphans) != 1 {
+		t.Fatalf("expected 1 orphan, got %d", len(result.Orphans))
+	}
+	if !result.Orphans[0].ShouldRetry {
+		t.Error("agent with triage:ready label should be retried")
+	}
+}
+
+func TestDetectOrphans_UnderThreshold_NotOrphaned(t *testing.T) {
+	mgr, bc, _, _, _, wm := testManager()
+
+	// Agent spawned recently (5 min ago), no session but under threshold
+	bc.trackedIssues = []TrackedIssue{
+		{BeadsID: "proj-006", Status: "in_progress", Labels: []string{"orch:agent"}},
+	}
+	wm.workspaces["/tmp/proj"] = []WorkspaceInfo{
+		{
+			Name:      "og-feat-test-27feb-pqr6",
+			Path:      "/tmp/proj/.orch/workspace/og-feat-test-27feb-pqr6",
+			BeadsID:   "proj-006",
+			SessionID: "session-gone",
+			SpawnMode: "opencode",
+			SpawnTime: time.Now().Add(-5 * time.Minute), // Only 5 minutes old
+		},
+	}
+
+	result, err := mgr.DetectOrphans([]string{"/tmp/proj"}, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("DetectOrphans() returned error: %v", err)
+	}
+	if len(result.Orphans) != 0 {
+		t.Errorf("agent under threshold should NOT be orphaned, got %d orphans", len(result.Orphans))
+	}
+}
+
+func TestDetectOrphans_ClosedIssues_Filtered(t *testing.T) {
+	mgr, bc, _, _, _, wm := testManager()
+
+	// Include both in_progress and closed issues
+	bc.trackedIssues = []TrackedIssue{
+		{BeadsID: "proj-007", Status: "in_progress", Labels: []string{"orch:agent"}},
+		{BeadsID: "proj-008", Status: "closed", Labels: []string{"orch:agent"}},
+	}
+	wm.workspaces["/tmp/proj"] = []WorkspaceInfo{
+		{
+			Name:      "og-feat-test-27feb-stu7",
+			Path:      "/tmp/proj/.orch/workspace/og-feat-test-27feb-stu7",
+			BeadsID:   "proj-007",
+			SpawnMode: "opencode",
+			SpawnTime: time.Now().Add(-2 * time.Hour),
+		},
+	}
+
+	result, err := mgr.DetectOrphans([]string{"/tmp/proj"}, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("DetectOrphans() returned error: %v", err)
+	}
+	// Only in_progress issue should be scanned
+	if result.Scanned != 1 {
+		t.Errorf("expected 1 scanned (only in_progress), got %d", result.Scanned)
+	}
+}
+
+func TestDetectOrphans_BeadsQueryFails_ReturnsError(t *testing.T) {
+	mgr, bc, _, _, _, _ := testManager()
+	bc.failOn["list_by_label:orch:agent"] = fmt.Errorf("beads unreachable")
+
+	_, err := mgr.DetectOrphans([]string{"/tmp/proj"}, 30*time.Minute)
+	if err == nil {
+		t.Error("expected error when beads query fails")
+	}
+}
+
+func TestDetectOrphans_NoWorkspaceMatch_Orphaned(t *testing.T) {
+	mgr, bc, _, _, _, wm := testManager()
+
+	bc.trackedIssues = []TrackedIssue{
+		{BeadsID: "proj-009", Status: "in_progress", Labels: []string{"orch:agent"}},
+	}
+	// No matching workspace
+	wm.workspaces["/tmp/proj"] = []WorkspaceInfo{}
+
+	result, err := mgr.DetectOrphans([]string{"/tmp/proj"}, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("DetectOrphans() returned error: %v", err)
+	}
+	if len(result.Orphans) != 1 {
+		t.Fatalf("expected 1 orphan (no workspace), got %d", len(result.Orphans))
+	}
+	if result.Orphans[0].Reason != "no_workspace" {
+		t.Errorf("expected reason 'no_workspace', got %q", result.Orphans[0].Reason)
+	}
+}
+
+func TestDetectOrphans_MultipleProjects(t *testing.T) {
+	mgr, bc, _, _, _, wm := testManager()
+
+	bc.trackedIssues = []TrackedIssue{
+		{BeadsID: "proj-010", Status: "in_progress", Labels: []string{"orch:agent"}},
+		{BeadsID: "proj-011", Status: "in_progress", Labels: []string{"orch:agent"}},
+	}
+
+	// Workspace in first project
+	wm.workspaces["/tmp/proj1"] = []WorkspaceInfo{
+		{
+			Name:      "og-feat-a-27feb-aaa1",
+			Path:      "/tmp/proj1/.orch/workspace/og-feat-a-27feb-aaa1",
+			BeadsID:   "proj-010",
+			SpawnMode: "opencode",
+			SpawnTime: time.Now().Add(-2 * time.Hour),
+		},
+	}
+	// Workspace in second project
+	wm.workspaces["/tmp/proj2"] = []WorkspaceInfo{
+		{
+			Name:      "og-feat-b-27feb-bbb2",
+			Path:      "/tmp/proj2/.orch/workspace/og-feat-b-27feb-bbb2",
+			BeadsID:   "proj-011",
+			SpawnMode: "opencode",
+			SpawnTime: time.Now().Add(-2 * time.Hour),
+		},
+	}
+
+	result, err := mgr.DetectOrphans([]string{"/tmp/proj1", "/tmp/proj2"}, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("DetectOrphans() returned error: %v", err)
+	}
+	if result.Scanned != 2 {
+		t.Errorf("expected 2 scanned, got %d", result.Scanned)
+	}
+	if len(result.Orphans) != 2 {
+		t.Errorf("expected 2 orphans, got %d", len(result.Orphans))
 	}
 }
