@@ -40,9 +40,14 @@ verification:
       evidence: "stats_cmd.go aggregates overrideReasons map from 4 event types, displays OverrideStats section with type breakdown and reasons"
 
     - id: ac-8
+      description: "orch stats consumes verification.bypassed events (closing existing gap)"
+      status: pass
+      evidence: "stats_cmd.go:843-856 handles verification.bypassed case, increments SkipBypassed counter, tracks gate+reason in bypassReasons map. Committed in e1571cbb4."
+
+    - id: ac-9
       description: "All reasons have min 10 char validation"
       status: pass
-      evidence: "spawn_cmd.go and complete_cmd.go both check len(reason) < 10"
+      evidence: "spawn_cmd.go:526-527 checks len(spawnReason) < 10; complete_cmd.go:379-380 checks len(completeReason) < 10"
 
   files_modified:
     - cmd/orch/spawn_cmd.go
