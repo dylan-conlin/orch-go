@@ -143,6 +143,41 @@ func TestMaxVerifyLevel(t *testing.T) {
 	}
 }
 
+func TestVerifyLevelForTier(t *testing.T) {
+	tests := []struct {
+		name       string
+		tier       string
+		skillLevel string
+		want       string
+	}{
+		// Light tier caps to V0 regardless of skill default
+		{"light_caps_V2_to_V0", TierLight, VerifyV2, VerifyV0},
+		{"light_caps_V1_to_V0", TierLight, VerifyV1, VerifyV0},
+		{"light_keeps_V0", TierLight, VerifyV0, VerifyV0},
+
+		// Full tier does not cap
+		{"full_keeps_V2", TierFull, VerifyV2, VerifyV2},
+		{"full_keeps_V1", TierFull, VerifyV1, VerifyV1},
+		{"full_keeps_V3", TierFull, VerifyV3, VerifyV3},
+
+		// Empty tier (unknown) does not cap
+		{"empty_tier_keeps_V2", "", VerifyV2, VerifyV2},
+		{"empty_tier_keeps_V1", "", VerifyV1, VerifyV1},
+
+		// Unknown tier does not cap (conservative: don't reduce verification)
+		{"unknown_tier_keeps_V2", "custom", VerifyV2, VerifyV2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := VerifyLevelForTier(tt.tier, tt.skillLevel)
+			if got != tt.want {
+				t.Errorf("VerifyLevelForTier(%q, %q) = %q, want %q", tt.tier, tt.skillLevel, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsValidVerifyLevel(t *testing.T) {
 	tests := []struct {
 		level string

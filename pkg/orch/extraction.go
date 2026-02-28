@@ -1027,6 +1027,10 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 			issueType = "bug"
 		}
 		verifyLevel = spawn.DefaultVerifyLevel(ctx.SkillName, issueType)
+
+		// Apply tier-based capping to inferred levels only.
+		// Explicit --verify-level overrides are respected as-is.
+		verifyLevel = spawn.VerifyLevelForTier(ctx.Tier, verifyLevel)
 	}
 
 	return &spawn.Config{

@@ -93,6 +93,27 @@ func MaxVerifyLevel(a, b string) string {
 	return b
 }
 
+// TierMaxVerifyLevel maps spawn tiers to their maximum allowed verification level.
+// Light tier caps at V0 (acknowledge only) since light spawns skip synthesis/knowledge gates.
+var TierMaxVerifyLevel = map[string]string{
+	TierLight: VerifyV0, // Light tier: minimal verification, no synthesis
+	// TierFull: no cap (full verification applies)
+}
+
+// VerifyLevelForTier returns the effective verify level after applying tier-based capping.
+// If the tier has a maximum level defined, the result is min(skillLevel, tierMax).
+// Unknown or empty tiers do not cap (returns skillLevel unchanged).
+func VerifyLevelForTier(tier, skillLevel string) string {
+	tierMax, ok := TierMaxVerifyLevel[tier]
+	if !ok {
+		return skillLevel // No cap for this tier
+	}
+	if CompareVerifyLevels(skillLevel, tierMax) > 0 {
+		return tierMax
+	}
+	return skillLevel
+}
+
 // IsValidVerifyLevel returns true if the level string is a valid verification level.
 func IsValidVerifyLevel(level string) bool {
 	_, ok := verifyLevelOrder[level]
