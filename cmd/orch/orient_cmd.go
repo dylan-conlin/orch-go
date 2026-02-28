@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -57,6 +58,9 @@ func runOrient() error {
 
 	// 2. Ready issues from bd ready
 	data.ReadyIssues = collectReadyIssues()
+
+	// 2b. Decision context per ready issue from kb context
+	enrichIssuesWithKBContext(data.ReadyIssues)
 
 	// 3. Model freshness from .kb/models/
 	modelsDir := filepath.Join(projectDir, ".kb", "models")
@@ -216,6 +220,30 @@ func collectFocus() string {
 		return ""
 	}
 	return f.Goal
+}
+
+// enrichIssuesWithKBContext queries `kb context` for each ready issue and attaches
+// relevant decisions, constraints, and failed attempts.
+func enrichIssuesWithKBContext(issues []orient.ReadyIssue) {
+	for i := range issues {
+		entries := queryKBContextForIssue(issues[i].Title)
+		issues[i].KBContext = orient.SelectTopEntries(entries, 2)
+	}
+}
+
+// queryKBContextForIssue calls `kb context "<title>" --format json` with a timeout
+// and parses the result.
+func queryKBContextForIssue(title string) []orient.KBEntry {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "kb", "context", title, "--format", "json")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	return orient.ParseKBContext(output, 1)
 }
 
 // collectInProgressCount runs `bd list --status=in_progress` and counts lines.

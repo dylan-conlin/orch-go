@@ -25,9 +25,10 @@ type Throughput struct {
 
 // ReadyIssue represents a beads issue ready for work.
 type ReadyIssue struct {
-	ID       string
-	Title    string
-	Priority string
+	ID        string
+	Title     string
+	Priority  string
+	KBContext []KBEntry // Relevant decisions, constraints, and failed attempts
 }
 
 // OrientationData holds all data needed to render session orientation.
@@ -123,6 +124,10 @@ func formatReadyIssues(b *strings.Builder, issues []ReadyIssue) {
 	} else {
 		for _, issue := range issues {
 			b.WriteString(fmt.Sprintf("   [%s] %s (%s)\n", issue.Priority, issue.Title, issue.ID))
+			for _, entry := range issue.KBContext {
+				content := truncateSummary(entry.Content, 80)
+				b.WriteString(fmt.Sprintf("      %s: %s\n", entry.Type, content))
+			}
 		}
 	}
 	b.WriteString("\n")
