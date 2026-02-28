@@ -12,6 +12,10 @@ export interface AgentLogEvent {
 		title?: string;
 		error?: string;
 		status?: string;
+		beads_id?: string;
+		skill?: string;
+		task?: string;
+		outcome?: string;
 	};
 }
 
