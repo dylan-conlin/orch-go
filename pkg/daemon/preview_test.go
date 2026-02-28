@@ -54,9 +54,9 @@ func TestDaemon_Preview_NilListIssuesFunc(t *testing.T) {
 
 func TestDaemon_Preview_NoIssues(t *testing.T) {
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{}, nil
-		},
+		}},
 	}
 
 	result, err := d.Preview()
@@ -73,11 +73,11 @@ func TestDaemon_Preview_NoIssues(t *testing.T) {
 
 func TestDaemon_Preview_HasIssues(t *testing.T) {
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Test issue", Priority: 1, IssueType: "feature", Status: "open"},
 			}, nil
-		},
+		}},
 	}
 
 	result, err := d.Preview()
@@ -98,7 +98,7 @@ func TestDaemon_Preview_HasIssues(t *testing.T) {
 func TestDaemon_Preview_ShowsRejectionReasons(t *testing.T) {
 	// Test that Preview returns rejection reasons for non-spawnable issues
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Missing type", Priority: 0, IssueType: "", Status: "open"},
 				{ID: "proj-2", Title: "Epic type", Priority: 1, IssueType: "epic", Status: "open"},
@@ -106,7 +106,7 @@ func TestDaemon_Preview_ShowsRejectionReasons(t *testing.T) {
 				{ID: "proj-4", Title: "In progress", Priority: 3, IssueType: "feature", Status: "in_progress"},
 				{ID: "proj-5", Title: "Spawnable", Priority: 4, IssueType: "bug", Status: "open"},
 			}, nil
-		},
+		}},
 	}
 
 	result, err := d.Preview()
@@ -162,12 +162,12 @@ func TestDaemon_Preview_ShowsMissingLabelRejection(t *testing.T) {
 	// Test that Preview shows rejection reason for missing label
 	d := &Daemon{
 		Config: Config{Label: "triage:ready"},
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "No label", Priority: 0, IssueType: "feature", Status: "open", Labels: []string{}},
 				{ID: "proj-2", Title: "Has label", Priority: 1, IssueType: "feature", Status: "open", Labels: []string{"triage:ready"}},
 			}, nil
-		},
+		}},
 	}
 
 	result, err := d.Preview()
@@ -232,11 +232,11 @@ func TestFormatRejectedIssues_Empty(t *testing.T) {
 func TestDaemon_Preview_RateLimited(t *testing.T) {
 	d := &Daemon{
 		Config: Config{MaxSpawnsPerHour: 1},
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
-		},
+		}},
 	}
 	d.RateLimiter = NewRateLimiter(1)
 
@@ -268,14 +268,16 @@ func TestDaemon_Preview_RateLimited(t *testing.T) {
 func TestPreview_EpicWithTriageReadyShowsHelpfulMessage(t *testing.T) {
 	d := &Daemon{
 		Config: Config{Label: "triage:ready"},
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{ID: "proj-epic", Title: "Epic", IssueType: "epic", Status: "open", Labels: []string{"triage:ready"}},
-			}, nil
-		},
-		// Mock to return no children, isolating the test from real data
-		listEpicChildrenFunc: func(epicID string) ([]Issue, error) {
-			return []Issue{}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "proj-epic", Title: "Epic", IssueType: "epic", Status: "open", Labels: []string{"triage:ready"}},
+				}, nil
+			},
+			// Mock to return no children, isolating the test from real data
+			ListEpicChildrenFunc: func(epicID string) ([]Issue, error) {
+				return []Issue{}, nil
+			},
 		},
 	}
 

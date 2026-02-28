@@ -120,12 +120,12 @@ func (d *Daemon) RunPeriodicKnowledgeHealth() *KnowledgeHealthResult {
 		return nil
 	}
 
-	checkFunc := d.knowledgeHealthFunc
-	if checkFunc == nil {
-		checkFunc = DefaultKnowledgeHealthCheck
+	kh := d.KnowledgeHealth
+	if kh == nil {
+		kh = &defaultKnowledgeHealthService{}
 	}
 
-	result, err := checkFunc()
+	result, err := kh.Check()
 	if err != nil {
 		return &KnowledgeHealthResult{
 			Error:   err,
@@ -139,11 +139,7 @@ func (d *Daemon) RunPeriodicKnowledgeHealth() *KnowledgeHealthResult {
 		result.Message = fmt.Sprintf("Knowledge accumulation: %d active entries (threshold: %d)", result.TotalActive, d.Config.KnowledgeHealthThreshold)
 
 		// Create issue for knowledge maintenance
-		issueFunc := d.knowledgeHealthIssueFunc
-		if issueFunc == nil {
-			issueFunc = DefaultCreateKnowledgeHealthIssue
-		}
-		if err := issueFunc(result); err != nil {
+		if err := kh.CreateIssue(result); err != nil {
 			result.Error = err
 			result.Message += fmt.Sprintf(" (issue creation failed: %v)", err)
 		}

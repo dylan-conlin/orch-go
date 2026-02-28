@@ -12,10 +12,10 @@ func TestRunPeriodicCleanupRunsWhenDue(t *testing.T) {
 			CleanupEnabled:  true,
 			CleanupInterval: time.Minute,
 		},
-		cleanupFunc: func(config Config) (int, string, error) {
+		Cleaner: &mockSessionCleaner{CleanupFunc: func(config Config) (int, string, error) {
 			called++
 			return 2, "Closed 2 stale tmux windows", nil
-		},
+		}},
 	}
 
 	result := d.RunPeriodicCleanup()
@@ -44,10 +44,10 @@ func TestRunPeriodicCleanupSkipsWhenNotDue(t *testing.T) {
 			CleanupInterval: time.Hour,
 		},
 		lastCleanup: time.Now(),
-		cleanupFunc: func(config Config) (int, string, error) {
+		Cleaner: &mockSessionCleaner{CleanupFunc: func(config Config) (int, string, error) {
 			called++
 			return 1, "Closed 1 stale tmux window", nil
-		},
+		}},
 	}
 
 	result := d.RunPeriodicCleanup()

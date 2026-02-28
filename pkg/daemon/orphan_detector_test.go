@@ -93,8 +93,10 @@ func TestDaemon_RunPeriodicOrphanDetection_GetAgentsError(t *testing.T) {
 			OrphanDetectionInterval: 30 * time.Minute,
 			OrphanAgeThreshold:      time.Hour,
 		},
-		getActiveAgentsFunc: func() ([]ActiveAgent, error) {
-			return nil, fmt.Errorf("beads unavailable")
+		Agents: &mockAgentDiscoverer{
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
+				return nil, fmt.Errorf("beads unavailable")
+			},
 		},
 	}
 	result := d.RunPeriodicOrphanDetection()
@@ -115,25 +117,29 @@ func TestDaemon_RunPeriodicOrphanDetection_DetectsOrphan(t *testing.T) {
 			OrphanAgeThreshold:      time.Hour,
 		},
 		SpawnedIssues: NewSpawnedIssueTracker(),
-		getActiveAgentsFunc: func() ([]ActiveAgent, error) {
-			return []ActiveAgent{
-				{
-					BeadsID:   "orphan-001",
-					Phase:     "Planning",
-					UpdatedAt: time.Now().Add(-2 * time.Hour), // 2h idle
-					Title:     "Orphaned task",
-				},
-			}, nil
+		Agents: &mockAgentDiscoverer{
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
+				return []ActiveAgent{
+					{
+						BeadsID:   "orphan-001",
+						Phase:     "Planning",
+						UpdatedAt: time.Now().Add(-2 * time.Hour), // 2h idle
+						Title:     "Orphaned task",
+					},
+				}, nil
+			},
+			HasExistingSessionFunc: func(beadsID string) bool {
+				return false // No session exists - orphan
+			},
 		},
-		hasExistingSessionFunc: func(beadsID string) bool {
-			return false // No session exists - orphan
-		},
-		updateBeadsStatusForOrphanFunc: func(beadsID, status string) error {
-			resetCalled[beadsID] = true
-			if status != "open" {
-				t.Errorf("Expected status 'open', got '%s'", status)
-			}
-			return nil
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID, status string) error {
+				resetCalled[beadsID] = true
+				if status != "open" {
+					t.Errorf("Expected status 'open', got '%s'", status)
+				}
+				return nil
+			},
 		},
 	}
 
@@ -162,18 +168,20 @@ func TestDaemon_RunPeriodicOrphanDetection_SkipsActiveAgent(t *testing.T) {
 			OrphanDetectionInterval: 30 * time.Minute,
 			OrphanAgeThreshold:      time.Hour,
 		},
-		getActiveAgentsFunc: func() ([]ActiveAgent, error) {
-			return []ActiveAgent{
-				{
-					BeadsID:   "active-001",
-					Phase:     "Implementing",
-					UpdatedAt: time.Now().Add(-2 * time.Hour),
-					Title:     "Active task",
-				},
-			}, nil
-		},
-		hasExistingSessionFunc: func(beadsID string) bool {
-			return true // Has active session - NOT an orphan
+		Agents: &mockAgentDiscoverer{
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
+				return []ActiveAgent{
+					{
+						BeadsID:   "active-001",
+						Phase:     "Implementing",
+						UpdatedAt: time.Now().Add(-2 * time.Hour),
+						Title:     "Active task",
+					},
+				}, nil
+			},
+			HasExistingSessionFunc: func(beadsID string) bool {
+				return true // Has active session - NOT an orphan
+			},
 		},
 	}
 
@@ -196,18 +204,20 @@ func TestDaemon_RunPeriodicOrphanDetection_SkipsTooNew(t *testing.T) {
 			OrphanDetectionInterval: 30 * time.Minute,
 			OrphanAgeThreshold:      time.Hour,
 		},
-		getActiveAgentsFunc: func() ([]ActiveAgent, error) {
-			return []ActiveAgent{
-				{
-					BeadsID:   "new-001",
-					Phase:     "Planning",
-					UpdatedAt: time.Now().Add(-30 * time.Minute), // Only 30m old
-					Title:     "New task",
-				},
-			}, nil
-		},
-		hasExistingSessionFunc: func(beadsID string) bool {
-			return false
+		Agents: &mockAgentDiscoverer{
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
+				return []ActiveAgent{
+					{
+						BeadsID:   "new-001",
+						Phase:     "Planning",
+						UpdatedAt: time.Now().Add(-30 * time.Minute), // Only 30m old
+						Title:     "New task",
+					},
+				}, nil
+			},
+			HasExistingSessionFunc: func(beadsID string) bool {
+				return false
+			},
 		},
 	}
 
@@ -227,18 +237,20 @@ func TestDaemon_RunPeriodicOrphanDetection_SkipsPhaseComplete(t *testing.T) {
 			OrphanDetectionInterval: 30 * time.Minute,
 			OrphanAgeThreshold:      time.Hour,
 		},
-		getActiveAgentsFunc: func() ([]ActiveAgent, error) {
-			return []ActiveAgent{
-				{
-					BeadsID:   "complete-001",
-					Phase:     "Complete",
-					UpdatedAt: time.Now().Add(-2 * time.Hour),
-					Title:     "Completed task",
-				},
-			}, nil
-		},
-		hasExistingSessionFunc: func(beadsID string) bool {
-			return false
+		Agents: &mockAgentDiscoverer{
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
+				return []ActiveAgent{
+					{
+						BeadsID:   "complete-001",
+						Phase:     "Complete",
+						UpdatedAt: time.Now().Add(-2 * time.Hour),
+						Title:     "Completed task",
+					},
+				}, nil
+			},
+			HasExistingSessionFunc: func(beadsID string) bool {
+				return false
+			},
 		},
 	}
 
@@ -258,21 +270,25 @@ func TestDaemon_RunPeriodicOrphanDetection_UpdateStatusError(t *testing.T) {
 			OrphanDetectionInterval: 30 * time.Minute,
 			OrphanAgeThreshold:      time.Hour,
 		},
-		getActiveAgentsFunc: func() ([]ActiveAgent, error) {
-			return []ActiveAgent{
-				{
-					BeadsID:   "orphan-001",
-					Phase:     "Planning",
-					UpdatedAt: time.Now().Add(-2 * time.Hour),
-					Title:     "Orphaned task",
-				},
-			}, nil
+		Agents: &mockAgentDiscoverer{
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
+				return []ActiveAgent{
+					{
+						BeadsID:   "orphan-001",
+						Phase:     "Planning",
+						UpdatedAt: time.Now().Add(-2 * time.Hour),
+						Title:     "Orphaned task",
+					},
+				}, nil
+			},
+			HasExistingSessionFunc: func(beadsID string) bool {
+				return false
+			},
 		},
-		hasExistingSessionFunc: func(beadsID string) bool {
-			return false
-		},
-		updateBeadsStatusForOrphanFunc: func(beadsID, status string) error {
-			return fmt.Errorf("beads update failed")
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID, status string) error {
+				return fmt.Errorf("beads update failed")
+			},
 		},
 	}
 
@@ -296,20 +312,24 @@ func TestDaemon_RunPeriodicOrphanDetection_MultipleAgentsMixed(t *testing.T) {
 			OrphanAgeThreshold:      time.Hour,
 		},
 		SpawnedIssues: NewSpawnedIssueTracker(),
-		getActiveAgentsFunc: func() ([]ActiveAgent, error) {
-			return []ActiveAgent{
-				{BeadsID: "orphan-1", Phase: "Planning", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "Orphan 1"},
-				{BeadsID: "active-1", Phase: "Implementing", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "Active 1"},
-				{BeadsID: "new-1", Phase: "Planning", UpdatedAt: time.Now().Add(-30 * time.Minute), Title: "New 1"},
-				{BeadsID: "orphan-2", Phase: "Testing", UpdatedAt: time.Now().Add(-3 * time.Hour), Title: "Orphan 2"},
-				{BeadsID: "complete-1", Phase: "Complete", UpdatedAt: time.Now().Add(-5 * time.Hour), Title: "Complete 1"},
-			}, nil
+		Agents: &mockAgentDiscoverer{
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
+				return []ActiveAgent{
+					{BeadsID: "orphan-1", Phase: "Planning", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "Orphan 1"},
+					{BeadsID: "active-1", Phase: "Implementing", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "Active 1"},
+					{BeadsID: "new-1", Phase: "Planning", UpdatedAt: time.Now().Add(-30 * time.Minute), Title: "New 1"},
+					{BeadsID: "orphan-2", Phase: "Testing", UpdatedAt: time.Now().Add(-3 * time.Hour), Title: "Orphan 2"},
+					{BeadsID: "complete-1", Phase: "Complete", UpdatedAt: time.Now().Add(-5 * time.Hour), Title: "Complete 1"},
+				}, nil
+			},
+			HasExistingSessionFunc: func(beadsID string) bool {
+				return beadsID == "active-1" // Only active-1 has a session
+			},
 		},
-		hasExistingSessionFunc: func(beadsID string) bool {
-			return beadsID == "active-1" // Only active-1 has a session
-		},
-		updateBeadsStatusForOrphanFunc: func(beadsID, status string) error {
-			return nil
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID, status string) error {
+				return nil
+			},
 		},
 	}
 
@@ -332,10 +352,12 @@ func TestDaemon_RunPeriodicOrphanDetection_EmptyBeadsID(t *testing.T) {
 			OrphanDetectionInterval: 30 * time.Minute,
 			OrphanAgeThreshold:      time.Hour,
 		},
-		getActiveAgentsFunc: func() ([]ActiveAgent, error) {
-			return []ActiveAgent{
-				{BeadsID: "", Phase: "Planning", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "No ID"},
-			}, nil
+		Agents: &mockAgentDiscoverer{
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
+				return []ActiveAgent{
+					{BeadsID: "", Phase: "Planning", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "No ID"},
+				}, nil
+			},
 		},
 	}
 
@@ -358,8 +380,10 @@ func TestDaemon_RunPeriodicOrphanDetection_NoAgents(t *testing.T) {
 			OrphanDetectionInterval: 30 * time.Minute,
 			OrphanAgeThreshold:      time.Hour,
 		},
-		getActiveAgentsFunc: func() ([]ActiveAgent, error) {
-			return nil, nil
+		Agents: &mockAgentDiscoverer{
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
+				return nil, nil
+			},
 		},
 	}
 
@@ -390,16 +414,20 @@ func TestDaemon_RunPeriodicOrphanDetection_UnmarksFromSpawnedIssues(t *testing.T
 			OrphanAgeThreshold:      time.Hour,
 		},
 		SpawnedIssues: tracker,
-		getActiveAgentsFunc: func() ([]ActiveAgent, error) {
-			return []ActiveAgent{
-				{BeadsID: "orphan-001", Phase: "Planning", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "Orphan"},
-			}, nil
+		Agents: &mockAgentDiscoverer{
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
+				return []ActiveAgent{
+					{BeadsID: "orphan-001", Phase: "Planning", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "Orphan"},
+				}, nil
+			},
+			HasExistingSessionFunc: func(beadsID string) bool {
+				return false
+			},
 		},
-		hasExistingSessionFunc: func(beadsID string) bool {
-			return false
-		},
-		updateBeadsStatusForOrphanFunc: func(beadsID, status string) error {
-			return nil
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID, status string) error {
+				return nil
+			},
 		},
 	}
 
@@ -480,8 +508,10 @@ func TestDaemon_RunPeriodicOrphanDetection_UpdatesTimestamp(t *testing.T) {
 			OrphanDetectionInterval: 30 * time.Minute,
 			OrphanAgeThreshold:      time.Hour,
 		},
-		getActiveAgentsFunc: func() ([]ActiveAgent, error) {
-			return nil, nil
+		Agents: &mockAgentDiscoverer{
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
+				return nil, nil
+			},
 		},
 	}
 

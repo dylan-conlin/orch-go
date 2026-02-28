@@ -83,9 +83,11 @@ func TestDaemon_RunPeriodicReflection_NotDue(t *testing.T) {
 			ReflectCreateIssues: true,
 		},
 		lastReflect: time.Now(), // Just ran
-		reflectFunc: func(createIssues bool) (*ReflectResult, error) {
-			reflectCalled = true
-			return &ReflectResult{}, nil
+		Reflector: &mockReflector{
+			ReflectFunc: func(createIssues bool) (*ReflectResult, error) {
+				reflectCalled = true
+				return &ReflectResult{}, nil
+			},
 		},
 	}
 
@@ -94,7 +96,7 @@ func TestDaemon_RunPeriodicReflection_NotDue(t *testing.T) {
 		t.Error("RunPeriodicReflection() should return nil when not due")
 	}
 	if reflectCalled {
-		t.Error("reflectFunc should not be called when not due")
+		t.Error("Reflector.Reflect should not be called when not due")
 	}
 }
 
@@ -108,16 +110,18 @@ func TestDaemon_RunPeriodicReflection_Due(t *testing.T) {
 			ReflectCreateIssues: true,
 		},
 		lastReflect: time.Now().Add(-2 * time.Hour), // 2 hours ago (due)
-		reflectFunc: func(createIssues bool) (*ReflectResult, error) {
-			reflectCalled = true
-			createIssuesValue = createIssues
-			return &ReflectResult{
-				Suggestions: &ReflectSuggestions{
-					Synthesis: []SynthesisSuggestion{{Topic: "test", Count: 5}},
-				},
-				Saved:   true,
-				Message: "Test reflection",
-			}, nil
+		Reflector: &mockReflector{
+			ReflectFunc: func(createIssues bool) (*ReflectResult, error) {
+				reflectCalled = true
+				createIssuesValue = createIssues
+				return &ReflectResult{
+					Suggestions: &ReflectSuggestions{
+						Synthesis: []SynthesisSuggestion{{Topic: "test", Count: 5}},
+					},
+					Saved:   true,
+					Message: "Test reflection",
+				}, nil
+			},
 		},
 	}
 
@@ -126,7 +130,7 @@ func TestDaemon_RunPeriodicReflection_Due(t *testing.T) {
 		t.Fatal("RunPeriodicReflection() should return result when due")
 	}
 	if !reflectCalled {
-		t.Error("reflectFunc should be called when due")
+		t.Error("Reflector.Reflect should be called when due")
 	}
 	if !createIssuesValue {
 		t.Error("createIssues should be true based on config")
@@ -145,12 +149,14 @@ func TestDaemon_RunPeriodicReflection_OpenEnabled(t *testing.T) {
 			ReflectOpenEnabled: true,
 		},
 		lastReflect: time.Now().Add(-2 * time.Hour),
-		reflectFunc: func(createIssues bool) (*ReflectResult, error) {
-			return &ReflectResult{}, nil
-		},
-		openReflectFunc: func() error {
-			openCalled = true
-			return nil
+		Reflector: &mockReflector{
+			ReflectFunc: func(createIssues bool) (*ReflectResult, error) {
+				return &ReflectResult{}, nil
+			},
+			ReflectOpenFunc: func() error {
+				openCalled = true
+				return nil
+			},
 		},
 	}
 
@@ -159,7 +165,7 @@ func TestDaemon_RunPeriodicReflection_OpenEnabled(t *testing.T) {
 		t.Fatal("RunPeriodicReflection() should return result when due")
 	}
 	if !openCalled {
-		t.Error("openReflectFunc should be called when ReflectOpenEnabled is true")
+		t.Error("Reflector.ReflectOpen should be called when ReflectOpenEnabled is true")
 	}
 }
 
@@ -171,8 +177,10 @@ func TestDaemon_RunPeriodicReflection_Error(t *testing.T) {
 			ReflectCreateIssues: false,
 		},
 		lastReflect: time.Time{}, // Never run
-		reflectFunc: func(createIssues bool) (*ReflectResult, error) {
-			return nil, fmt.Errorf("kb reflect failed")
+		Reflector: &mockReflector{
+			ReflectFunc: func(createIssues bool) (*ReflectResult, error) {
+				return nil, fmt.Errorf("kb reflect failed")
+			},
 		},
 	}
 
@@ -267,14 +275,14 @@ func TestDefaultConfig_IncludesReflect(t *testing.T) {
 	}
 }
 
-func TestNewWithConfig_InitializesReflectFunc(t *testing.T) {
+func TestNewWithConfig_InitializesReflector(t *testing.T) {
 	config := Config{
 		ReflectEnabled:  true,
 		ReflectInterval: time.Hour,
 	}
 	d := NewWithConfig(config)
 
-	if d.reflectFunc == nil {
-		t.Error("NewWithConfig() should initialize reflectFunc")
+	if d.Reflector == nil {
+		t.Error("NewWithConfig() should initialize Reflector")
 	}
 }

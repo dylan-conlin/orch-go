@@ -168,15 +168,15 @@ func TestRateLimiter_Status(t *testing.T) {
 func TestDaemon_OnceExcluding_RateLimited(t *testing.T) {
 	d := &Daemon{
 		Config: Config{MaxSpawnsPerHour: 2},
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
-		},
-		spawnFunc: func(id, model, workdir string) error { return nil },
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
+		}},
+		Spawner:       &mockSpawner{SpawnWorkFunc: func(id, model, workdir string) error { return nil }},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
 			return nil // Mock: always succeed
-		},
+		}},
 	}
 	d.RateLimiter = NewRateLimiter(2)
 

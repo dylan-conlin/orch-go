@@ -6,9 +6,9 @@ import (
 
 func TestNextIssue_EmptyQueue(t *testing.T) {
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{}, nil
-		},
+		}},
 	}
 
 	issue, err := d.NextIssue()
@@ -22,13 +22,13 @@ func TestNextIssue_EmptyQueue(t *testing.T) {
 
 func TestNextIssue_ReturnsHighestPriority(t *testing.T) {
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-3", Title: "Low priority", Priority: 2, IssueType: "feature"},
 				{ID: "proj-1", Title: "High priority", Priority: 0, IssueType: "bug"},
 				{ID: "proj-2", Title: "Medium priority", Priority: 1, IssueType: "task"},
 			}, nil
-		},
+		}},
 	}
 
 	issue, err := d.NextIssue()
@@ -45,12 +45,12 @@ func TestNextIssue_ReturnsHighestPriority(t *testing.T) {
 
 func TestNextIssue_SkipsNonSpawnableTypes(t *testing.T) {
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Epic", Priority: 0, IssueType: "epic"},
 				{ID: "proj-2", Title: "Feature", Priority: 1, IssueType: "feature"},
 			}, nil
-		},
+		}},
 	}
 
 	issue, err := d.NextIssue()
@@ -67,12 +67,12 @@ func TestNextIssue_SkipsNonSpawnableTypes(t *testing.T) {
 
 func TestNextIssue_SkipsBlockedIssues(t *testing.T) {
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Blocked", Priority: 0, IssueType: "feature", Status: "blocked"},
 				{ID: "proj-2", Title: "Open", Priority: 1, IssueType: "feature", Status: "open"},
 			}, nil
-		},
+		}},
 	}
 
 	issue, err := d.NextIssue()
@@ -91,12 +91,12 @@ func TestNextIssue_SkipsInProgressIssues(t *testing.T) {
 	// This test verifies that in_progress issues are SKIPPED to prevent duplicate spawns.
 	// Even though bd ready returns both open and in_progress issues, we only spawn for open ones.
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "In Progress", Priority: 0, IssueType: "feature", Status: "in_progress", Labels: []string{"triage:ready"}},
 				{ID: "proj-2", Title: "Open", Priority: 1, IssueType: "feature", Status: "open", Labels: []string{"triage:ready"}},
 			}, nil
-		},
+		}},
 		Config: Config{Label: "triage:ready"},
 	}
 
@@ -121,13 +121,13 @@ func TestNextIssueExcluding_SkipsExcludedIssues(t *testing.T) {
 	// This is critical for the daemon to skip issues that failed to spawn
 	// (e.g., due to failure report gate) and continue with other issues.
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
 				{ID: "proj-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
 				{ID: "proj-3", Title: "Third", Priority: 2, IssueType: "feature", Status: "open"},
 			}, nil
-		},
+		}},
 	}
 
 	// Skip the first issue (simulating failure report gate blocked it)
@@ -149,13 +149,13 @@ func TestNextIssueExcluding_SkipsExcludedIssues(t *testing.T) {
 func TestNextIssueExcluding_SkipsMultipleExcludedIssues(t *testing.T) {
 	// Test that multiple excluded issues are all skipped.
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
 				{ID: "proj-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
 				{ID: "proj-3", Title: "Third", Priority: 2, IssueType: "feature", Status: "open"},
 			}, nil
-		},
+		}},
 	}
 
 	// Skip multiple issues
@@ -177,12 +177,12 @@ func TestNextIssueExcluding_SkipsMultipleExcludedIssues(t *testing.T) {
 func TestNextIssueExcluding_ReturnsNilWhenAllExcluded(t *testing.T) {
 	// Test that NextIssueExcluding returns nil when all issues are excluded.
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
 				{ID: "proj-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
 			}, nil
-		},
+		}},
 	}
 
 	// Skip all issues
@@ -201,12 +201,12 @@ func TestNextIssueExcluding_ReturnsNilWhenAllExcluded(t *testing.T) {
 func TestNextIssueExcluding_NilSkipWorksLikeNextIssue(t *testing.T) {
 	// Test that passing nil skip set works like NextIssue (returns first issue).
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
 				{ID: "proj-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
 			}, nil
-		},
+		}},
 	}
 
 	issue, err := d.NextIssueExcluding(nil)
@@ -251,12 +251,12 @@ func TestNextIssue_FiltersbyLabel(t *testing.T) {
 	config := Config{Label: "triage:ready"}
 	d := &Daemon{
 		Config: config,
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "No label", Priority: 0, IssueType: "feature", Labels: []string{}},
 				{ID: "proj-2", Title: "With label", Priority: 1, IssueType: "feature", Labels: []string{"triage:ready"}},
 			}, nil
-		},
+		}},
 	}
 
 	issue, err := d.NextIssue()
@@ -276,12 +276,12 @@ func TestNextIssue_NoLabelFilter(t *testing.T) {
 	config := Config{Label: ""}
 	d := &Daemon{
 		Config: config,
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "No label", Priority: 0, IssueType: "feature", Labels: []string{}},
 				{ID: "proj-2", Title: "With label", Priority: 1, IssueType: "feature", Labels: []string{"triage:ready"}},
 			}, nil
-		},
+		}},
 	}
 
 	issue, err := d.NextIssue()

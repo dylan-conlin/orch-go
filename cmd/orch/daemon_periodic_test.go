@@ -13,6 +13,76 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 )
 
+// --- Test mock types implementing daemon interfaces for external tests ---
+
+type testReflector struct {
+	reflectFunc     func(createIssues bool) (*daemon.ReflectResult, error)
+	reflectOpenFunc func() error
+}
+
+func (r *testReflector) Reflect(createIssues bool) (*daemon.ReflectResult, error) {
+	if r.reflectFunc != nil {
+		return r.reflectFunc(createIssues)
+	}
+	return &daemon.ReflectResult{}, nil
+}
+
+func (r *testReflector) ReflectOpen() error {
+	if r.reflectOpenFunc != nil {
+		return r.reflectOpenFunc()
+	}
+	return nil
+}
+
+type testSessionCleaner struct {
+	cleanupFunc func(config daemon.Config) (int, string, error)
+}
+
+func (c *testSessionCleaner) Cleanup(config daemon.Config) (int, string, error) {
+	if c.cleanupFunc != nil {
+		return c.cleanupFunc(config)
+	}
+	return 0, "", nil
+}
+
+type testKnowledgeHealthService struct {
+	checkFunc       func() (*daemon.KnowledgeHealthResult, error)
+	createIssueFunc func(result *daemon.KnowledgeHealthResult) error
+}
+
+func (s *testKnowledgeHealthService) Check() (*daemon.KnowledgeHealthResult, error) {
+	if s.checkFunc != nil {
+		return s.checkFunc()
+	}
+	return &daemon.KnowledgeHealthResult{}, nil
+}
+
+func (s *testKnowledgeHealthService) CreateIssue(result *daemon.KnowledgeHealthResult) error {
+	if s.createIssueFunc != nil {
+		return s.createIssueFunc(result)
+	}
+	return nil
+}
+
+type testAgentDiscoverer struct {
+	getActiveAgentsFunc    func() ([]daemon.ActiveAgent, error)
+	hasExistingSessionFunc func(beadsID string) bool
+}
+
+func (d *testAgentDiscoverer) GetActiveAgents() ([]daemon.ActiveAgent, error) {
+	if d.getActiveAgentsFunc != nil {
+		return d.getActiveAgentsFunc()
+	}
+	return nil, nil
+}
+
+func (d *testAgentDiscoverer) HasExistingSession(beadsID string) bool {
+	if d.hasExistingSessionFunc != nil {
+		return d.hasExistingSessionFunc(beadsID)
+	}
+	return false
+}
+
 func TestRunPeriodicTasks_NothingDue(t *testing.T) {
 	// All periodic tasks disabled — should return empty result, no events
 	config := daemon.DefaultConfig()
@@ -45,9 +115,11 @@ func TestRunPeriodicTasks_ReflectionError(t *testing.T) {
 	config.OrphanDetectionEnabled = false
 
 	d := daemon.NewWithConfig(config)
-	d.SetReflectFunc(func(createIssues bool) (*daemon.ReflectResult, error) {
-		return nil, fmt.Errorf("reflect failed")
-	})
+	d.Reflector = &testReflector{
+		reflectFunc: func(createIssues bool) (*daemon.ReflectResult, error) {
+			return nil, fmt.Errorf("reflect failed")
+		},
+	}
 
 	tmpDir := t.TempDir()
 	logger := events.NewLogger(filepath.Join(tmpDir, "events.jsonl"))
@@ -81,9 +153,11 @@ func TestRunPeriodicTasks_CleanupLogsEvent(t *testing.T) {
 	config.OrphanDetectionEnabled = false
 
 	d := daemon.NewWithConfig(config)
-	d.SetCleanupFunc(func(cfg daemon.Config) (int, string, error) {
-		return 3, "Deleted 3 stale sessions", nil
-	})
+	d.Cleaner = &testSessionCleaner{
+		cleanupFunc: func(cfg daemon.Config) (int, string, error) {
+			return 3, "Deleted 3 stale sessions", nil
+		},
+	}
 
 	tmpDir := t.TempDir()
 	eventsPath := filepath.Join(tmpDir, "events.jsonl")
@@ -124,13 +198,15 @@ func TestRunPeriodicTasks_KnowledgeHealthSnapshot(t *testing.T) {
 	config.OrphanDetectionEnabled = false
 
 	d := daemon.NewWithConfig(config)
-	d.SetKnowledgeHealthFunc(func() (*daemon.KnowledgeHealthResult, error) {
-		return &daemon.KnowledgeHealthResult{
-			TotalActive: 25,
-			ByType:      map[string]int{"decision": 10, "constraint": 15},
-			Message:     "Knowledge health: 25 active entries",
-		}, nil
-	})
+	d.KnowledgeHealth = &testKnowledgeHealthService{
+		checkFunc: func() (*daemon.KnowledgeHealthResult, error) {
+			return &daemon.KnowledgeHealthResult{
+				TotalActive: 25,
+				ByType:      map[string]int{"decision": 10, "constraint": 15},
+				Message:     "Knowledge health: 25 active entries",
+			}, nil
+		},
+	}
 
 	tmpDir := t.TempDir()
 	logger := events.NewLogger(filepath.Join(tmpDir, "events.jsonl"))
@@ -211,9 +287,11 @@ func TestRunPeriodicTasks_OrphanDetectionLogsEvent(t *testing.T) {
 
 	d := daemon.NewWithConfig(config)
 	// Mock GetActiveAgents to return no agents
-	d.SetGetActiveAgentsFunc(func() ([]daemon.ActiveAgent, error) {
-		return nil, nil
-	})
+	d.Agents = &testAgentDiscoverer{
+		getActiveAgentsFunc: func() ([]daemon.ActiveAgent, error) {
+			return nil, nil
+		},
+	}
 
 	tmpDir := t.TempDir()
 	eventsPath := filepath.Join(tmpDir, "events.jsonl")

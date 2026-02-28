@@ -8,20 +8,16 @@ import (
 func TestSpawnedIssueTracker_MarkAndCheck(t *testing.T) {
 	tracker := NewSpawnedIssueTracker()
 
-	// Initially not spawned
 	if tracker.IsSpawned("issue-1") {
 		t.Error("issue-1 should not be spawned initially")
 	}
 
-	// Mark as spawned
 	tracker.MarkSpawned("issue-1")
 
-	// Now it should be spawned
 	if !tracker.IsSpawned("issue-1") {
 		t.Error("issue-1 should be spawned after marking")
 	}
 
-	// Other issues should not be affected
 	if tracker.IsSpawned("issue-2") {
 		t.Error("issue-2 should not be spawned")
 	}
@@ -42,7 +38,6 @@ func TestSpawnedIssueTracker_Unmark(t *testing.T) {
 }
 
 func TestSpawnedIssueTracker_TTL(t *testing.T) {
-	// Use short TTL for testing
 	tracker := NewSpawnedIssueTrackerWithTTL(50 * time.Millisecond)
 
 	tracker.MarkSpawned("issue-1")
@@ -50,10 +45,8 @@ func TestSpawnedIssueTracker_TTL(t *testing.T) {
 		t.Error("issue-1 should be spawned immediately after marking")
 	}
 
-	// Wait for TTL to expire
 	time.Sleep(60 * time.Millisecond)
 
-	// Should now be considered not spawned (stale)
 	if tracker.IsSpawned("issue-1") {
 		t.Error("issue-1 should not be spawned after TTL expires")
 	}
@@ -69,13 +62,10 @@ func TestSpawnedIssueTracker_CleanStale(t *testing.T) {
 		t.Errorf("expected 2 tracked issues, got %d", tracker.Count())
 	}
 
-	// Wait for TTL to expire
 	time.Sleep(60 * time.Millisecond)
 
-	// Add a fresh one
 	tracker.MarkSpawned("issue-3")
 
-	// Clean stale
 	removed := tracker.CleanStale()
 	if removed != 2 {
 		t.Errorf("expected 2 removed, got %d", removed)
@@ -93,15 +83,13 @@ func TestSpawnedIssueTracker_CleanStale(t *testing.T) {
 func TestSpawnedIssueTracker_ReconcileWithIssues(t *testing.T) {
 	tracker := NewSpawnedIssueTracker()
 
-	// Mark some issues as spawned
-	tracker.MarkSpawned("issue-1") // Will transition to in_progress
-	tracker.MarkSpawned("issue-2") // Will remain open
-	tracker.MarkSpawned("issue-3") // Will transition to closed (not in open list)
+	tracker.MarkSpawned("issue-1")
+	tracker.MarkSpawned("issue-2")
+	tracker.MarkSpawned("issue-3")
 
-	// Simulate beads returning only open issues (issue-2 still open, others transitioned)
 	openIssues := []Issue{
 		{ID: "issue-2", Status: "open"},
-		{ID: "issue-4", Status: "open"}, // A different open issue
+		{ID: "issue-4", Status: "open"},
 	}
 
 	removed := tracker.ReconcileWithIssues(openIssues)
@@ -109,12 +97,10 @@ func TestSpawnedIssueTracker_ReconcileWithIssues(t *testing.T) {
 		t.Errorf("expected 2 removed (issue-1 and issue-3), got %d", removed)
 	}
 
-	// issue-2 should still be tracked (still open)
 	if !tracker.IsSpawned("issue-2") {
 		t.Error("issue-2 should still be tracked (still open)")
 	}
 
-	// issue-1 and issue-3 should be removed (no longer open)
 	if tracker.IsSpawned("issue-1") {
 		t.Error("issue-1 should be removed (transitioned to in_progress)")
 	}
@@ -135,7 +121,6 @@ func TestSpawnedIssueTracker_TrackedIDs(t *testing.T) {
 		t.Errorf("expected 3 tracked IDs, got %d", len(ids))
 	}
 
-	// Check all IDs are present (order not guaranteed)
 	idSet := make(map[string]bool)
 	for _, id := range ids {
 		idSet[id] = true
@@ -150,7 +135,6 @@ func TestSpawnedIssueTracker_TrackedIDs(t *testing.T) {
 func TestSpawnedIssueTracker_ConcurrentAccess(t *testing.T) {
 	tracker := NewSpawnedIssueTracker()
 
-	// Run concurrent operations
 	done := make(chan bool)
 	for i := 0; i < 10; i++ {
 		go func(id int) {
@@ -162,34 +146,27 @@ func TestSpawnedIssueTracker_ConcurrentAccess(t *testing.T) {
 		}(i)
 	}
 
-	// Wait for all goroutines
 	for i := 0; i < 10; i++ {
 		<-done
 	}
-
-	// Should complete without race conditions
-	// (race detector will catch issues if run with -race)
 }
 
-// TestDaemon_SkipsRecentlySpawnedIssues tests that NextIssue skips issues
-// that have been recently spawned but status not yet updated in beads.
 func TestDaemon_SkipsRecentlySpawnedIssues(t *testing.T) {
 	tracker := NewSpawnedIssueTracker()
 	d := &Daemon{
 		SpawnedIssues: tracker,
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{ID: "issue-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
-				{ID: "issue-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "issue-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
+					{ID: "issue-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
+				}, nil
+			},
 		},
-		// No label filter - match existing test patterns
 	}
 
-	// Mark issue-1 as recently spawned
 	tracker.MarkSpawned("issue-1")
 
-	// NextIssue should skip issue-1 and return issue-2
 	issue, err := d.NextIssue()
 	if err != nil {
 		t.Fatalf("NextIssue() error: %v", err)
@@ -202,24 +179,28 @@ func TestDaemon_SkipsRecentlySpawnedIssues(t *testing.T) {
 	}
 }
 
-// TestDaemon_OnceMarkSpawned tests that Once marks issue as spawned before
-// calling spawnFunc and unmarks on failure.
 func TestDaemon_OnceMarksSpawned(t *testing.T) {
 	tracker := NewSpawnedIssueTracker()
 	spawnCount := 0
 	d := &Daemon{
 		SpawnedIssues: tracker,
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{ID: "issue-1", Title: "Test Issue", Priority: 0, IssueType: "feature", Status: "open"},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "issue-1", Title: "Test Issue", Priority: 0, IssueType: "feature", Status: "open"},
+				}, nil
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
-			spawnCount++
-			return nil
+		Spawner: &mockSpawner{
+			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+				spawnCount++
+				return nil
+			},
 		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID string, status string) error {
+				return nil
+			},
 		},
 	}
 
@@ -231,32 +212,33 @@ func TestDaemon_OnceMarksSpawned(t *testing.T) {
 		t.Error("Once() should have processed an issue")
 	}
 	if spawnCount == 0 {
-		t.Error("spawnFunc should have been called")
+		t.Error("Spawner should have been called")
 	}
 
-	// Issue should still be marked after successful spawn
 	if !tracker.IsSpawned("issue-1") {
 		t.Error("issue should remain marked after successful spawn")
 	}
 }
 
-// TestDaemon_OnceUnmarksOnFailure tests that Once unmarks issue if spawn fails.
 func TestDaemon_OnceUnmarksOnFailure(t *testing.T) {
 	tracker := NewSpawnedIssueTracker()
 
 	d := &Daemon{
 		SpawnedIssues: tracker,
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{ID: "issue-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "issue-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+				}, nil
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
-			// Verify issue is marked as spawned DURING spawn call
-			if !tracker.IsSpawned(beadsID) {
-				t.Error("issue should be marked as spawned during spawnFunc call")
-			}
-			return errSpawnFailed // Simulate failure
+		Spawner: &mockSpawner{
+			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+				if !tracker.IsSpawned(beadsID) {
+					t.Error("issue should be marked as spawned during Spawner call")
+				}
+				return errSpawnFailed
+			},
 		},
 	}
 
@@ -268,7 +250,6 @@ func TestDaemon_OnceUnmarksOnFailure(t *testing.T) {
 		t.Error("Once() should not have processed (spawn failed)")
 	}
 
-	// Issue should be unmarked after failed spawn (can be retried)
 	if tracker.IsSpawned("issue-1") {
 		t.Error("issue should be unmarked after failed spawn")
 	}
@@ -284,14 +265,11 @@ func (e *spawnError) Error() string {
 	return e.msg
 }
 
-// TestSpawnedIssueTracker_TitleDedup tests content-aware dedup via title tracking.
 func TestSpawnedIssueTracker_TitleDedup(t *testing.T) {
 	tracker := NewSpawnedIssueTracker()
 
-	// Mark issue with title
 	tracker.MarkSpawnedWithTitle("issue-1", "Extract spawn flags phase 1")
 
-	// Same title should be detected as spawned
 	spawned, dupID := tracker.IsTitleSpawned("Extract spawn flags phase 1")
 	if !spawned {
 		t.Error("title should be detected as spawned")
@@ -300,13 +278,11 @@ func TestSpawnedIssueTracker_TitleDedup(t *testing.T) {
 		t.Errorf("dupID = %q, want %q", dupID, "issue-1")
 	}
 
-	// Different title should not be detected
 	spawned, _ = tracker.IsTitleSpawned("Different task")
 	if spawned {
 		t.Error("different title should not be detected as spawned")
 	}
 
-	// Case-insensitive match
 	spawned, dupID = tracker.IsTitleSpawned("extract spawn flags phase 1")
 	if !spawned {
 		t.Error("title matching should be case-insensitive")
@@ -316,87 +292,76 @@ func TestSpawnedIssueTracker_TitleDedup(t *testing.T) {
 	}
 }
 
-// TestSpawnedIssueTracker_TitleDedup_TTL tests that title tracking respects TTL.
 func TestSpawnedIssueTracker_TitleDedup_TTL(t *testing.T) {
 	tracker := NewSpawnedIssueTrackerWithTTL(50 * time.Millisecond)
 
 	tracker.MarkSpawnedWithTitle("issue-1", "Extract spawn flags")
 
-	// Should be detected immediately
 	spawned, _ := tracker.IsTitleSpawned("Extract spawn flags")
 	if !spawned {
 		t.Error("title should be detected immediately after marking")
 	}
 
-	// Wait for TTL to expire
 	time.Sleep(60 * time.Millisecond)
 
-	// Should no longer be detected
 	spawned, _ = tracker.IsTitleSpawned("Extract spawn flags")
 	if spawned {
 		t.Error("title should not be detected after TTL expires")
 	}
 }
 
-// TestSpawnedIssueTracker_TitleDedup_Unmark tests that Unmark cleans up title index.
 func TestSpawnedIssueTracker_TitleDedup_Unmark(t *testing.T) {
 	tracker := NewSpawnedIssueTracker()
 
 	tracker.MarkSpawnedWithTitle("issue-1", "Some task")
 
-	// Should be detected
 	spawned, _ := tracker.IsTitleSpawned("Some task")
 	if !spawned {
 		t.Error("title should be detected")
 	}
 
-	// Unmark the issue
 	tracker.Unmark("issue-1")
 
-	// Title should also be cleaned up
 	spawned, _ = tracker.IsTitleSpawned("Some task")
 	if spawned {
 		t.Error("title should not be detected after unmark")
 	}
 }
 
-// TestSpawnedIssueTracker_TitleDedup_EmptyTitle tests edge cases with empty titles.
 func TestSpawnedIssueTracker_TitleDedup_EmptyTitle(t *testing.T) {
 	tracker := NewSpawnedIssueTracker()
 
-	// Mark with empty title should not panic or cause issues
 	tracker.MarkSpawnedWithTitle("issue-1", "")
 
-	// Checking empty title should return false
 	spawned, _ := tracker.IsTitleSpawned("")
 	if spawned {
 		t.Error("empty title should not be detected as spawned")
 	}
 }
 
-// TestDaemon_ContentDedupSkipsDuplicateTitle tests that Once() skips issues
-// whose title matches a recently-spawned issue (in-memory layer).
 func TestDaemon_ContentDedupSkipsDuplicateTitle(t *testing.T) {
 	tracker := NewSpawnedIssueTracker()
 	spawnCount := 0
 
 	d := &Daemon{
 		SpawnedIssues: tracker,
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{ID: "issue-dup", Title: "Extract spawn flags phase 1", Priority: 0, IssueType: "task", Status: "open"},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "issue-dup", Title: "Extract spawn flags phase 1", Priority: 0, IssueType: "task", Status: "open"},
+				}, nil
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
-			spawnCount++
-			return nil
+		Spawner: &mockSpawner{
+			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+				spawnCount++
+				return nil
+			},
 		},
 	}
 
-	// Pre-mark a different issue ID with the same title
 	tracker.MarkSpawnedWithTitle("issue-original", "Extract spawn flags phase 1")
 
-	// Once should skip issue-dup because its title matches issue-original
 	result, err := d.Once()
 	if err != nil {
 		t.Fatalf("Once() error: %v", err)
@@ -405,36 +370,38 @@ func TestDaemon_ContentDedupSkipsDuplicateTitle(t *testing.T) {
 		t.Error("Once() should not process duplicate title")
 	}
 	if spawnCount != 0 {
-		t.Errorf("spawnFunc should not have been called, got %d calls", spawnCount)
+		t.Errorf("Spawner should not have been called, got %d calls", spawnCount)
 	}
 }
 
-// TestDaemon_ContentDedupAllowsDifferentTitle tests that Once() allows issues
-// with different titles even when another issue is tracked.
 func TestDaemon_ContentDedupAllowsDifferentTitle(t *testing.T) {
 	tracker := NewSpawnedIssueTracker()
 	spawnCount := 0
 
 	d := &Daemon{
 		SpawnedIssues: tracker,
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{ID: "issue-new", Title: "Add new feature X", Priority: 0, IssueType: "feature", Status: "open"},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "issue-new", Title: "Add new feature X", Priority: 0, IssueType: "feature", Status: "open"},
+				}, nil
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
-			spawnCount++
-			return nil
+		Spawner: &mockSpawner{
+			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+				spawnCount++
+				return nil
+			},
 		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID string, status string) error {
+				return nil
+			},
 		},
 	}
 
-	// Pre-mark a different title
 	tracker.MarkSpawnedWithTitle("issue-other", "Extract spawn flags phase 1")
 
-	// Once should process issue-new because title is different
 	result, err := d.Once()
 	if err != nil {
 		t.Fatalf("Once() error: %v", err)
@@ -443,52 +410,52 @@ func TestDaemon_ContentDedupAllowsDifferentTitle(t *testing.T) {
 		t.Errorf("Once() should process issue with different title, got message: %s", result.Message)
 	}
 	if spawnCount != 1 {
-		t.Errorf("spawnFunc should have been called once, got %d", spawnCount)
+		t.Errorf("Spawner should have been called once, got %d", spawnCount)
 	}
 }
 
-// TestDaemon_PreventsDuplicateSpawns is an integration test that verifies
-// the entire flow prevents duplicate spawns during the race window.
 func TestDaemon_PreventsDuplicateSpawns(t *testing.T) {
 	tracker := NewSpawnedIssueTracker()
 	spawnCount := 0
 
 	d := &Daemon{
 		SpawnedIssues: tracker,
-		listIssuesFunc: func() ([]Issue, error) {
-			// Same issue appears in every poll (simulating race condition)
-			return []Issue{
-				{ID: "issue-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "issue-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+				}, nil
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
-			spawnCount++
-			return nil
+		Spawner: &mockSpawner{
+			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+				spawnCount++
+				return nil
+			},
 		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID string, status string) error {
+				return nil
+			},
 		},
 	}
 
-	// First spawn should succeed
 	result1, _ := d.Once()
 	if !result1.Processed {
 		t.Error("First Once() should have processed")
 	}
 	if spawnCount != 1 {
-		t.Errorf("spawnFunc should have been called once, got %d", spawnCount)
+		t.Errorf("Spawner should have been called once, got %d", spawnCount)
 	}
 
-	// Second spawn should be skipped (issue already spawned)
 	result2, _ := d.Once()
 	if result2.Processed {
 		t.Error("Second Once() should not process (issue already spawned)")
 	}
 	if spawnCount != 1 {
-		t.Errorf("spawnFunc should still be 1 call, got %d", spawnCount)
+		t.Errorf("Spawner should still be 1 call, got %d", spawnCount)
 	}
 
-	// Message should indicate no issues available
 	if result2.Message != "No spawnable issues in queue" {
 		t.Errorf("Expected 'No spawnable issues in queue', got %q", result2.Message)
 	}

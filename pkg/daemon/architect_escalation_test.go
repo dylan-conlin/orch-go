@@ -321,29 +321,38 @@ func TestOnceExcluding_ArchitectEscalation_EscalatesFeatureImpl(t *testing.T) {
 	var spawnedID, spawnedModel string
 	d := &Daemon{
 		Config: Config{Verbose: true},
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{
-					ID:        "proj-1",
-					Title:     "Add retry logic to pkg/daemon/daemon.go",
-					Priority:  2,
-					IssueType: "feature",
-					Status:    "open",
-				},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{
+						ID:        "proj-1",
+						Title:     "Add retry logic to pkg/daemon/daemon.go",
+						Priority:  2,
+						IssueType: "feature",
+						Status:    "open",
+					},
+				}, nil
+			},
+			GetIssueStatusFunc: func(beadsID string) (string, error) {
+				return "open", nil
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
-			spawnedID = beadsID
-			spawnedModel = model
-			return nil
+		Spawner: &mockSpawner{
+			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+				spawnedID = beadsID
+				spawnedModel = model
+				return nil
+			},
 		},
 		HotspotChecker: &mockEscalationChecker{
 			hotspots: []HotspotWarning{
 				{Path: "pkg/daemon/daemon.go", Type: "fix-density", Score: 8},
 			},
 		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID string, status string) error {
+				return nil
+			},
 		},
 	}
 
@@ -390,20 +399,30 @@ func TestOnceExcluding_ArchitectEscalation_ExtractionTakesPrecedence(t *testing.
 	var spawnedID string
 	d := &Daemon{
 		Config: Config{Verbose: true},
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{
-					ID:        "proj-1",
-					Title:     "Add feature to cmd/orch/spawn_cmd.go",
-					Priority:  2,
-					IssueType: "feature",
-					Status:    "open",
-				},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{
+						ID:        "proj-1",
+						Title:     "Add feature to cmd/orch/spawn_cmd.go",
+						Priority:  2,
+						IssueType: "feature",
+						Status:    "open",
+					},
+				}, nil
+			},
+			GetIssueStatusFunc: func(beadsID string) (string, error) {
+				return "open", nil
+			},
+			CreateExtractionIssueFunc: func(task, parentID string) (string, error) {
+				return "proj-ext1", nil
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
-			spawnedID = beadsID
-			return nil
+		Spawner: &mockSpawner{
+			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+				spawnedID = beadsID
+				return nil
+			},
 		},
 		HotspotChecker: &mockEscalationChecker{
 			hotspots: []HotspotWarning{
@@ -411,11 +430,10 @@ func TestOnceExcluding_ArchitectEscalation_ExtractionTakesPrecedence(t *testing.
 				{Path: "cmd/orch/spawn_cmd.go", Type: "bloat-size", Score: 2000},
 			},
 		},
-		createExtractionIssueFunc: func(task, parentID string) (string, error) {
-			return "proj-ext1", nil
-		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID string, status string) error {
+				return nil
+			},
 		},
 	}
 
@@ -445,28 +463,35 @@ func TestOnceExcluding_ArchitectEscalation_SkipsNonHotspotIssues(t *testing.T) {
 	// Issues targeting non-hotspot files should proceed normally as feature-impl.
 	var spawnedModel string
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{
-					ID:        "proj-1",
-					Title:     "Add feature to pkg/clean/clean.go",
-					Priority:  2,
-					IssueType: "feature",
-					Status:    "open",
-				},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{
+						ID:        "proj-1",
+						Title:     "Add feature to pkg/clean/clean.go",
+						Priority:  2,
+						IssueType: "feature",
+						Status:    "open",
+					},
+				}, nil
+			},
+			GetIssueStatusFunc: func(beadsID string) (string, error) { return "open", nil },
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
-			spawnedModel = model
-			return nil
+		Spawner: &mockSpawner{
+			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+				spawnedModel = model
+				return nil
+			},
 		},
 		HotspotChecker: &mockEscalationChecker{
 			hotspots: []HotspotWarning{
 				{Path: "pkg/daemon/daemon.go", Type: "fix-density", Score: 8},
 			},
 		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID string, status string) error {
+				return nil
+			},
 		},
 	}
 
@@ -493,28 +518,35 @@ func TestOnceExcluding_ArchitectEscalation_SkipsNonHotspotIssues(t *testing.T) {
 func TestOnceExcluding_ArchitectEscalation_SkipsWithExplicitSkillLabel(t *testing.T) {
 	// Issues with explicit skill:feature-impl label should NOT be escalated.
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{
-					ID:        "proj-1",
-					Title:     "Add feature to pkg/daemon/daemon.go",
-					Priority:  2,
-					IssueType: "feature",
-					Status:    "open",
-					Labels:    []string{"skill:feature-impl", "triage:ready"},
-				},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{
+						ID:        "proj-1",
+						Title:     "Add feature to pkg/daemon/daemon.go",
+						Priority:  2,
+						IssueType: "feature",
+						Status:    "open",
+						Labels:    []string{"skill:feature-impl", "triage:ready"},
+					},
+				}, nil
+			},
+			GetIssueStatusFunc: func(beadsID string) (string, error) { return "open", nil },
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
-			return nil
+		Spawner: &mockSpawner{
+			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+				return nil
+			},
 		},
 		HotspotChecker: &mockEscalationChecker{
 			hotspots: []HotspotWarning{
 				{Path: "pkg/daemon/daemon.go", Type: "fix-density", Score: 8},
 			},
 		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID string, status string) error {
+				return nil
+			},
 		},
 	}
 

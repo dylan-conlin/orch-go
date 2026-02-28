@@ -27,7 +27,11 @@ func (d *Daemon) RunPeriodicReflection() *ReflectResult {
 		return nil
 	}
 
-	result, err := d.reflectFunc(d.Config.ReflectCreateIssues)
+	reflector := d.Reflector
+	if reflector == nil {
+		reflector = &defaultReflector{}
+	}
+	result, err := reflector.Reflect(d.Config.ReflectCreateIssues)
 	if err != nil {
 		return &ReflectResult{
 			Error:   err,
@@ -36,11 +40,7 @@ func (d *Daemon) RunPeriodicReflection() *ReflectResult {
 	}
 
 	if d.Config.ReflectOpenEnabled {
-		openReflectFunc := d.openReflectFunc
-		if openReflectFunc == nil {
-			openReflectFunc = RunOpenReflection
-		}
-		if err := openReflectFunc(); err != nil {
+		if err := reflector.ReflectOpen(); err != nil {
 			return &ReflectResult{
 				Suggestions: result.Suggestions,
 				Saved:       result.Saved,
@@ -101,12 +101,12 @@ func (d *Daemon) RunPeriodicCleanup() *CleanupResult {
 		return nil
 	}
 
-	cleanupFunc := d.cleanupFunc
-	if cleanupFunc == nil {
-		cleanupFunc = defaultCleanup
+	cleaner := d.Cleaner
+	if cleaner == nil {
+		cleaner = &defaultSessionCleaner{}
 	}
 
-	deleted, message, err := cleanupFunc(d.Config)
+	deleted, message, err := cleaner.Cleanup(d.Config)
 	if err != nil {
 		return &CleanupResult{
 			Deleted: deleted,

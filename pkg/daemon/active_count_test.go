@@ -100,8 +100,8 @@ func TestDaemonReconcileWithActiveCountFunc(t *testing.T) {
 		t.Fatal("Expected to acquire 3 slots")
 	}
 
-	// Set custom active count function that reports 3 active (simulating tmux agents)
-	d.activeCountFunc = func() int { return 3 }
+	// Set custom active counter that reports 3 active (simulating tmux agents)
+	d.ActiveCounter = &mockActiveCounter{CountFunc: func() int { return 3 }}
 
 	freed := d.ReconcileActiveAgents()
 	if freed != 0 {
@@ -112,7 +112,7 @@ func TestDaemonReconcileWithActiveCountFunc(t *testing.T) {
 	}
 
 	// Now simulate the old bug: active count returns 0 (only checking OpenCode)
-	d.activeCountFunc = func() int { return 0 }
+	d.ActiveCounter = &mockActiveCounter{CountFunc: func() int { return 0 }}
 
 	freed = d.ReconcileActiveAgents()
 	if freed != 3 {
@@ -132,7 +132,7 @@ func TestDaemonReconcileDefaultCountIncludesTmux(t *testing.T) {
 	config.MaxAgents = 3
 	d := NewWithConfig(config)
 
-	if d.activeCountFunc == nil {
-		t.Fatal("activeCountFunc should be set to CombinedActiveCount by default")
+	if d.ActiveCounter == nil {
+		t.Fatal("ActiveCounter should be set to defaultActiveCounter by default")
 	}
 }

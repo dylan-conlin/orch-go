@@ -8,9 +8,9 @@ import (
 
 func TestDaemon_Once_NoIssues(t *testing.T) {
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{}, nil
-		},
+		}},
 	}
 
 	result, err := d.Once()
@@ -28,21 +28,21 @@ func TestDaemon_Once_NoIssues(t *testing.T) {
 func TestDaemon_Once_ProcessesOneIssue(t *testing.T) {
 	spawnCalled := false
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
-		},
-		spawnFunc: func(beadsID, model, workdir string) error {
+		}},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			spawnCalled = true
 			if beadsID != "proj-1" {
 				t.Errorf("spawnFunc called with %q, want 'proj-1'", beadsID)
 			}
 			return nil
-		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
-		},
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
 	}
 
 	result, err := d.Once()
@@ -65,13 +65,13 @@ func TestDaemon_SpawnIssue_StatusUpdateFailureReleasesSlot(t *testing.T) {
 	spawnCalled := false
 	d := &Daemon{
 		Pool: pool,
-		spawnFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			spawnCalled = true
 			return nil
-		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
 			return fmt.Errorf("update failed")
-		},
+		}},
 	}
 
 	issue := &Issue{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"}
@@ -101,12 +101,12 @@ func TestDaemon_SpawnIssue_StatusUpdateFailureReleasesSlot(t *testing.T) {
 
 func TestDaemon_Run_EmptyQueue(t *testing.T) {
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{}, nil
-		},
+		}},
 	}
 
-	results, err := d.Run(10) // Max 10 iterations
+	results, err := d.Run(10)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -124,24 +124,23 @@ func TestDaemon_Run_ProcessesAllIssues(t *testing.T) {
 	}
 
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
-			// Return remaining issues
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			if callCount >= len(issues) {
 				return []Issue{}, nil
 			}
 			remaining := issues[callCount:]
 			return remaining, nil
-		},
-		spawnFunc: func(beadsID, model, workdir string) error {
+		}},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			callCount++
 			return nil
-		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
-		},
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
 	}
 
-	results, err := d.Run(10) // Max 10 iterations
+	results, err := d.Run(10)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -155,23 +154,22 @@ func TestDaemon_Run_ProcessesAllIssues(t *testing.T) {
 
 func TestDaemon_Run_RespectsMaxIterations(t *testing.T) {
 	callCount := 0
-	// Infinite queue (always returns same issue)
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Infinite", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
-		},
-		spawnFunc: func(beadsID, model, workdir string) error {
+		}},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			callCount++
 			return nil
-		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
-		},
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
 	}
 
-	results, err := d.Run(5) // Max 5 iterations
+	results, err := d.Run(5)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -217,7 +215,6 @@ func TestDaemon_AtCapacity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			config := Config{MaxAgents: tt.maxAgents}
 			d := NewWithConfig(config)
-			// Simulate active agents by acquiring slots from pool
 			if d.Pool != nil {
 				activeCount := tt.activeFunc()
 				for i := 0; i < activeCount; i++ {
@@ -243,14 +240,13 @@ func TestDaemon_AvailableSlots(t *testing.T) {
 		{"some active", 3, func() int { return 1 }, 2},
 		{"at capacity", 3, func() int { return 3 }, 0},
 		{"over capacity", 3, func() int { return 5 }, 0},
-		{"no limit", 0, func() int { return 100 }, 100}, // Returns high number when no limit
+		{"no limit", 0, func() int { return 100 }, 100},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := Config{MaxAgents: tt.maxAgents}
 			d := NewWithConfig(config)
-			// Simulate active agents by acquiring slots from pool
 			if d.Pool != nil {
 				activeCount := tt.activeFunc()
 				for i := 0; i < activeCount; i++ {
@@ -270,7 +266,6 @@ func TestDaemon_AvailableSlots(t *testing.T) {
 func TestDefaultConfig(t *testing.T) {
 	config := DefaultConfig()
 
-	// Check sensible defaults
 	if config.PollInterval <= 0 {
 		t.Error("DefaultConfig() PollInterval should be positive")
 	}
@@ -318,7 +313,7 @@ func TestNewWithConfig_CreatesPool(t *testing.T) {
 
 func TestNewWithConfig_NoPoolWhenNoLimit(t *testing.T) {
 	config := Config{
-		MaxAgents: 0, // No limit
+		MaxAgents: 0,
 	}
 	d := NewWithConfig(config)
 
@@ -330,14 +325,13 @@ func TestNewWithConfig_NoPoolWhenNoLimit(t *testing.T) {
 func TestNewWithPool(t *testing.T) {
 	pool := NewWorkerPool(5)
 	config := Config{
-		MaxAgents: 10, // This should be ignored when pool is provided
+		MaxAgents: 10,
 	}
 	d := NewWithPool(config, pool)
 
 	if d.Pool != pool {
 		t.Error("NewWithPool() should use provided pool")
 	}
-	// The pool's max should be 5, not 10
 	if d.Pool.MaxWorkers() != 5 {
 		t.Errorf("Pool.MaxWorkers() = %d, want 5 (from provided pool)", d.Pool.MaxWorkers())
 	}
@@ -351,7 +345,6 @@ func TestDaemon_AtCapacity_WithPool(t *testing.T) {
 		t.Error("AtCapacity() should be false when pool is empty")
 	}
 
-	// Acquire slots
 	slot1 := pool.TryAcquire()
 	slot2 := pool.TryAcquire()
 
@@ -410,7 +403,7 @@ func TestDaemon_PoolStatus(t *testing.T) {
 }
 
 func TestDaemon_PoolStatus_NilPool(t *testing.T) {
-	d := &Daemon{} // No pool
+	d := &Daemon{}
 
 	status := d.PoolStatus()
 	if status != nil {
@@ -423,17 +416,17 @@ func TestDaemon_Once_WithPool_AcquiresSlot(t *testing.T) {
 
 	d := &Daemon{
 		Pool: pool,
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
-		},
-		spawnFunc: func(beadsID, model, workdir string) error {
+		}},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			return nil
-		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
-		},
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
 	}
 
 	result, err := d.Once()
@@ -444,7 +437,6 @@ func TestDaemon_Once_WithPool_AcquiresSlot(t *testing.T) {
 		t.Error("Once() expected Processed=true")
 	}
 
-	// Pool should have one active slot
 	if pool.Active() != 1 {
 		t.Errorf("Pool.Active() = %d, want 1", pool.Active())
 	}
@@ -452,20 +444,19 @@ func TestDaemon_Once_WithPool_AcquiresSlot(t *testing.T) {
 
 func TestDaemon_Once_WithPool_AtCapacity(t *testing.T) {
 	pool := NewWorkerPool(1)
-	// Fill the pool
 	pool.TryAcquire()
 
 	d := &Daemon{
 		Pool: pool,
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
-		},
-		spawnFunc: func(beadsID, model, workdir string) error {
+		}},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			t.Error("spawnFunc should not be called when at capacity")
 			return nil
-		},
+		}},
 	}
 
 	result, err := d.Once()
@@ -484,14 +475,14 @@ func TestDaemon_Once_WithPool_ReleasesSlotOnError(t *testing.T) {
 	pool := NewWorkerPool(2)
 	d := &Daemon{
 		Pool: pool,
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
-		},
-		spawnFunc: func(beadsID, model, workdir string) error {
+		}},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			return fmt.Errorf("spawn failed")
-		},
+		}},
 	}
 
 	result, err := d.Once()
@@ -502,7 +493,6 @@ func TestDaemon_Once_WithPool_ReleasesSlotOnError(t *testing.T) {
 		t.Error("Once() expected Processed=false on spawn error")
 	}
 
-	// Pool should have released the slot on error
 	if pool.Active() != 0 {
 		t.Errorf("Pool.Active() = %d, want 0 (slot should be released on error)", pool.Active())
 	}
@@ -513,18 +503,18 @@ func TestDaemon_OnceWithSlot_ReturnsSlot(t *testing.T) {
 	spawnCount := 0
 	d := &Daemon{
 		Pool: pool,
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
-		},
-		spawnFunc: func(beadsID, model, workdir string) error {
+		}},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			spawnCount++
 			return nil
-		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
-		},
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
 	}
 
 	result, slot, err := d.OnceWithSlot()
@@ -541,7 +531,6 @@ func TestDaemon_OnceWithSlot_ReturnsSlot(t *testing.T) {
 		t.Errorf("Slot.BeadsID = %q, want 'proj-1'", slot.BeadsID)
 	}
 
-	// Release the slot
 	d.ReleaseSlot(slot)
 	if pool.Active() != 0 {
 		t.Errorf("Pool.Active() = %d after release, want 0", pool.Active())
@@ -550,18 +539,18 @@ func TestDaemon_OnceWithSlot_ReturnsSlot(t *testing.T) {
 
 func TestDaemon_OnceWithSlot_NoPool(t *testing.T) {
 	d := &Daemon{
-		Pool: nil, // No pool
-		listIssuesFunc: func() ([]Issue, error) {
+		Pool: nil,
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
-		},
-		spawnFunc: func(beadsID, model, workdir string) error {
+		}},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			return nil
-		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
-		},
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
 	}
 
 	result, slot, err := d.OnceWithSlot()
@@ -598,7 +587,6 @@ func TestDaemon_ReleaseSlot_NoPool(t *testing.T) {
 func TestDaemon_ReconcileWithOpenCode_NoPool(t *testing.T) {
 	d := &Daemon{Pool: nil}
 
-	// Should return 0 when no pool
 	freed := d.ReconcileWithOpenCode()
 	if freed != 0 {
 		t.Errorf("ReconcileWithOpenCode() = %d, want 0 (no pool)", freed)
@@ -606,10 +594,7 @@ func TestDaemon_ReconcileWithOpenCode_NoPool(t *testing.T) {
 }
 
 func TestDaemon_ReconcileWithOpenCode_WithPool(t *testing.T) {
-	// This test verifies the pool integration, not the HTTP call itself.
-	// Pool.Reconcile is tested separately.
 	pool := NewWorkerPool(3)
-	// Acquire 3 slots to fill the pool
 	pool.TryAcquire()
 	pool.TryAcquire()
 	pool.TryAcquire()
@@ -618,19 +603,12 @@ func TestDaemon_ReconcileWithOpenCode_WithPool(t *testing.T) {
 		Pool: pool,
 	}
 
-	// ReconcileWithOpenCode calls DefaultActiveCount which makes HTTP call.
-	// The actual count depends on whether OpenCode is running.
-	// What we verify: the method doesn't panic and returns a reasonable value.
 	freed := d.ReconcileWithOpenCode()
 
-	// If OpenCode is running, freed could be 0-3 depending on actual sessions.
-	// If not running, freed will be 3 (reconcile to 0).
-	// Either way, freed should be between 0 and 3.
 	if freed < 0 || freed > 3 {
 		t.Errorf("ReconcileWithOpenCode() freed = %d, want 0-3", freed)
 	}
 
-	// Active + freed should equal 3 (what we started with)
 	if pool.Active()+freed != 3 {
 		t.Errorf("Pool.Active() + freed = %d + %d = %d, want 3",
 			pool.Active(), freed, pool.Active()+freed)
@@ -641,27 +619,23 @@ func TestDaemon_ReconcileWithOpenCode_WithPool(t *testing.T) {
 // Tests for Fresh Status Check (TOCTOU race prevention)
 // =============================================================================
 
-// TestDaemon_Once_FreshStatusCheck_SkipsInProgressIssue verifies that the fresh
-// beads status check prevents spawning an issue that another daemon process
-// already marked as in_progress. This was the root cause of the Feb 15 2026
-// orch-go-09cc duplicate spawn incident (TOCTOU race between concurrent daemons).
 func TestDaemon_Once_FreshStatusCheck_SkipsInProgressIssue(t *testing.T) {
 	spawnCalled := false
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
-			// List returns the issue as "open" (stale cached status)
-			return []Issue{
-				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+				}, nil
+			},
+			GetIssueStatusFunc: func(beadsID string) (string, error) {
+				return "in_progress", nil
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			spawnCalled = true
 			return nil
-		},
-		// Fresh status check reveals the issue is already in_progress
-		getIssueStatusFunc: func(beadsID string) (string, error) {
-			return "in_progress", nil
-		},
+		}},
 	}
 
 	result, err := d.Once()
@@ -679,26 +653,26 @@ func TestDaemon_Once_FreshStatusCheck_SkipsInProgressIssue(t *testing.T) {
 	}
 }
 
-// TestDaemon_Once_FreshStatusCheck_AllowsOpenIssue verifies that an issue
-// with status "open" in both cached and fresh checks proceeds to spawn.
 func TestDaemon_Once_FreshStatusCheck_AllowsOpenIssue(t *testing.T) {
 	spawnCalled := false
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+				}, nil
+			},
+			GetIssueStatusFunc: func(beadsID string) (string, error) {
+				return "open", nil
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			spawnCalled = true
 			return nil
-		},
-		getIssueStatusFunc: func(beadsID string) (string, error) {
-			return "open", nil // Fresh status check confirms issue is still open
-		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
-		},
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
 	}
 
 	result, err := d.Once()
@@ -713,28 +687,26 @@ func TestDaemon_Once_FreshStatusCheck_AllowsOpenIssue(t *testing.T) {
 	}
 }
 
-// TestDaemon_Once_FreshStatusCheck_FailOpenOnError verifies that if the
-// fresh status check fails (beads unavailable), the daemon continues to spawn
-// (fail-open). This prevents beads outages from blocking all daemon work.
 func TestDaemon_Once_FreshStatusCheck_FailOpenOnError(t *testing.T) {
 	spawnCalled := false
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+				}, nil
+			},
+			GetIssueStatusFunc: func(beadsID string) (string, error) {
+				return "", fmt.Errorf("beads daemon unavailable")
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			spawnCalled = true
 			return nil
-		},
-		// Fresh status check fails (beads unavailable)
-		getIssueStatusFunc: func(beadsID string) (string, error) {
-			return "", fmt.Errorf("beads daemon unavailable")
-		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
-		},
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
 	}
 
 	result, err := d.Once()
@@ -749,25 +721,21 @@ func TestDaemon_Once_FreshStatusCheck_FailOpenOnError(t *testing.T) {
 	}
 }
 
-// TestDaemon_Once_FreshStatusCheck_NilFunc verifies that the daemon works
-// when getIssueStatusFunc is nil (backwards compatibility with tests that
-// construct Daemon structs directly without setting all func fields).
 func TestDaemon_Once_FreshStatusCheck_NilFunc(t *testing.T) {
 	spawnCalled := false
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
-		},
-		spawnFunc: func(beadsID, model, workdir string) error {
+		}},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			spawnCalled = true
 			return nil
-		},
-		// getIssueStatusFunc is nil (not set)
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
-		},
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
 	}
 
 	result, err := d.Once()
@@ -775,10 +743,10 @@ func TestDaemon_Once_FreshStatusCheck_NilFunc(t *testing.T) {
 		t.Fatalf("Once() unexpected error: %v", err)
 	}
 	if !result.Processed {
-		t.Error("Once() should process when getIssueStatusFunc is nil")
+		t.Error("Once() should process when Issues has no GetIssueStatusFunc")
 	}
 	if !spawnCalled {
-		t.Error("spawnFunc should be called when getIssueStatusFunc is nil")
+		t.Error("spawnFunc should be called when Issues has no GetIssueStatusFunc")
 	}
 }
 
@@ -786,42 +754,33 @@ func TestDaemon_Once_FreshStatusCheck_NilFunc(t *testing.T) {
 // Tests for Concurrent Daemon Dedup
 // =============================================================================
 
-// TestDaemon_ConcurrentDaemonDedup simulates the exact scenario from the
-// Feb 15 2026 incident: two daemon instances (daemon run + daemon once)
-// racing to spawn the same issue. The first daemon's UpdateBeadsStatus
-// makes the issue in_progress, which the second daemon's fresh status
-// check should detect.
 func TestDaemon_ConcurrentDaemonDedup(t *testing.T) {
-	// Shared state simulating beads database
 	issueStatus := "open"
 	spawnCount := 0
 
-	makeStatusFunc := func() func(string) (string, error) {
-		return func(beadsID string) (string, error) {
-			return issueStatus, nil
-		}
-	}
-
 	makeDaemon := func() *Daemon {
 		return &Daemon{
-			listIssuesFunc: func() ([]Issue, error) {
-				return []Issue{
-					{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
-				}, nil
+			Issues: &mockIssueQuerier{
+				ListReadyIssuesFunc: func() ([]Issue, error) {
+					return []Issue{
+						{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+					}, nil
+				},
+				GetIssueStatusFunc: func(beadsID string) (string, error) {
+					return issueStatus, nil
+				},
 			},
-			spawnFunc: func(beadsID, model, workdir string) error {
+			Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 				spawnCount++
 				return nil
-			},
-			getIssueStatusFunc: makeStatusFunc(),
-			updateBeadsStatusFunc: func(beadsID string, status string) error {
-				issueStatus = status // Update shared state
+			}},
+			StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+				issueStatus = status
 				return nil
-			},
+			}},
 		}
 	}
 
-	// Daemon 1 spawns the issue
 	d1 := makeDaemon()
 	result1, err := d1.Once()
 	if err != nil {
@@ -831,10 +790,8 @@ func TestDaemon_ConcurrentDaemonDedup(t *testing.T) {
 		t.Error("Daemon 1 should have processed the issue")
 	}
 
-	// Simulate beads status update (would happen via UpdateBeadsStatus in production)
 	issueStatus = "in_progress"
 
-	// Daemon 2 (new instance, no shared memory) tries the same issue
 	d2 := makeDaemon()
 	result2, err := d2.Once()
 	if err != nil {
@@ -854,32 +811,32 @@ func TestDaemon_ConcurrentDaemonDedup(t *testing.T) {
 // =============================================================================
 
 func TestDaemon_Once_CrossProject_UsesProjectDir(t *testing.T) {
-	// When an issue has ProjectDir set (from multi-project polling),
-	// spawnFunc should receive it as the workdir parameter.
 	var capturedWorkdir string
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{
-					ID:         "bd-123",
-					Title:      "Fix beads bug",
-					Priority:   0,
-					IssueType:  "bug",
-					Status:     "open",
-					ProjectDir: "/home/user/beads",
-				},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{
+						ID:         "bd-123",
+						Title:      "Fix beads bug",
+						Priority:   0,
+						IssueType:  "bug",
+						Status:     "open",
+						ProjectDir: "/home/user/beads",
+					},
+				}, nil
+			},
+			GetIssueStatusFunc: func(beadsID string) (string, error) {
+				return "open", nil
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			capturedWorkdir = workdir
 			return nil
-		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
-		},
-		getIssueStatusFunc: func(beadsID string) (string, error) {
-			return "open", nil
-		},
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
 	}
 
 	result, err := d.Once()
@@ -895,32 +852,31 @@ func TestDaemon_Once_CrossProject_UsesProjectDir(t *testing.T) {
 }
 
 func TestDaemon_Once_LocalProject_NoWorkdir(t *testing.T) {
-	// When an issue has empty ProjectDir (local project), spawnFunc
-	// should receive empty workdir.
 	var capturedWorkdir string
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{
-					ID:        "orch-go-456",
-					Title:     "Add feature",
-					Priority:  0,
-					IssueType: "feature",
-					Status:    "open",
-					// ProjectDir is empty (zero value) — local project
-				},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{
+						ID:        "orch-go-456",
+						Title:     "Add feature",
+						Priority:  0,
+						IssueType: "feature",
+						Status:    "open",
+					},
+				}, nil
+			},
+			GetIssueStatusFunc: func(beadsID string) (string, error) {
+				return "open", nil
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
 			capturedWorkdir = workdir
 			return nil
-		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
-		},
-		getIssueStatusFunc: func(beadsID string) (string, error) {
-			return "open", nil
-		},
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
 	}
 
 	result, err := d.Once()
@@ -935,31 +891,30 @@ func TestDaemon_Once_LocalProject_NoWorkdir(t *testing.T) {
 	}
 }
 
-func TestDaemon_resolveListIssuesFunc_MockTakesPrecedence(t *testing.T) {
+func TestDaemon_resolveIssueQuerier_MockTakesPrecedence(t *testing.T) {
 	mockCalled := false
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			mockCalled = true
 			return []Issue{}, nil
-		},
+		}},
 		ProjectRegistry: &ProjectRegistry{
 			prefixToDir: map[string]string{"bd": "/home/user/beads"},
 			currentDir:  "/home/user/orch-go",
 		},
 	}
 
-	fn := d.resolveListIssuesFunc()
-	_, _ = fn()
+	q := d.resolveIssueQuerier()
+	_, _ = q.ListReadyIssues()
 	if !mockCalled {
-		t.Error("resolveListIssuesFunc should prefer explicit mock over ProjectRegistry")
+		t.Error("resolveIssueQuerier should prefer explicit mock over ProjectRegistry")
 	}
 }
 
-func TestDaemon_resolveListIssuesFunc_NilFallsToDefault(t *testing.T) {
-	// When listIssuesFunc is nil and no registry, should return ListReadyIssues
+func TestDaemon_resolveIssueQuerier_NilFallsToDefault(t *testing.T) {
 	d := &Daemon{}
-	fn := d.resolveListIssuesFunc()
-	if fn == nil {
-		t.Fatal("resolveListIssuesFunc should not return nil")
+	q := d.resolveIssueQuerier()
+	if q == nil {
+		t.Fatal("resolveIssueQuerier should not return nil")
 	}
 }

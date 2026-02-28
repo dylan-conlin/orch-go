@@ -97,12 +97,7 @@ func (d *Daemon) RunPeriodicModelDriftReflection() *ModelDriftResult {
 		return nil
 	}
 
-	reflectFunc := d.modelDriftReflectFunc
-	if reflectFunc == nil {
-		reflectFunc = d.RunModelDriftReflection
-	}
-
-	result, err := reflectFunc()
+	result, err := d.RunModelDriftReflection()
 	if err != nil {
 		if result == nil {
 			return &ModelDriftResult{
@@ -122,12 +117,12 @@ func (d *Daemon) RunPeriodicModelDriftReflection() *ModelDriftResult {
 
 // RunModelDriftReflection scans staleness events and creates model-maintenance issues.
 func (d *Daemon) RunModelDriftReflection() (*ModelDriftResult, error) {
-	reader := d.modelDriftEventReader
-	if reader == nil {
-		reader = readStalenessEvents
+	store := d.ModelDrift
+	if store == nil {
+		store = &defaultModelDriftStore{}
 	}
 
-	events, err := reader(spawn.DefaultStalenessEventPath())
+	events, err := store.ReadStalenessEvents(spawn.DefaultStalenessEventPath())
 	if err != nil {
 		result := &ModelDriftResult{
 			Error:   err,
@@ -189,11 +184,8 @@ func (d *Daemon) RunModelDriftReflection() (*ModelDriftResult, error) {
 		return &ModelDriftResult{Message: "Model drift reflection: no models exceeded threshold"}, nil
 	}
 
-	listIssues := d.listIssuesWithLabelFunc
-	if listIssues == nil {
-		listIssues = ListIssuesWithLabel
-	}
-	openIssues, err := listIssues(modelDriftLabel)
+	querier := d.resolveIssueQuerier()
+	openIssues, err := querier.ListIssuesWithLabel(modelDriftLabel)
 	if err != nil {
 		result := &ModelDriftResult{
 			Error:   err,
@@ -217,15 +209,6 @@ func (d *Daemon) RunModelDriftReflection() (*ModelDriftResult, error) {
 	existingModels := existingModelKeys(openIssues)
 	existingDomains := existingDomainKeys(openIssues)
 
-	loader := d.modelDriftMetadataLoader
-	if loader == nil {
-		loader = LoadModelDriftMetadata
-	}
-	commitCounter := d.modelDriftCommitCounter
-	if commitCounter == nil {
-		commitCounter = DefaultModelDriftCommitCounter
-	}
-
 	groups := map[string]*modelDriftGroup{}
 	skipped := 0
 	for _, candidate := range candidates {
@@ -234,7 +217,7 @@ func (d *Daemon) RunModelDriftReflection() (*ModelDriftResult, error) {
 			continue
 		}
 
-		metadata, metaErr := loader(candidate.ModelPath)
+		metadata, metaErr := store.LoadMetadata(candidate.ModelPath)
 		if metaErr != nil {
 			metadata = fallbackModelMetadata(candidate.ModelPath)
 		}
@@ -245,7 +228,7 @@ func (d *Daemon) RunModelDriftReflection() (*ModelDriftResult, error) {
 			metadata.DomainKey = normalizeDomainKey(metadata.Domain)
 		}
 
-		commitCount, err := commitCounter(metadata.ProjectDir, metadata.LastUpdated, candidate.Changed)
+		commitCount, err := store.CountCommits(metadata.ProjectDir, metadata.LastUpdated, candidate.Changed)
 		if err != nil {
 			commitCount = len(candidate.Changed)
 		}
@@ -286,11 +269,6 @@ func (d *Daemon) RunModelDriftReflection() (*ModelDriftResult, error) {
 		return ordered[i].Domain < ordered[j].Domain
 	})
 
-	createIssue := d.createModelDriftIssueFunc
-	if createIssue == nil {
-		createIssue = DefaultCreateModelDriftIssue
-	}
-
 	allowed := modelDriftBackpressureLimit - openCount
 	created := []string{}
 	for _, group := range ordered {
@@ -301,7 +279,7 @@ func (d *Daemon) RunModelDriftReflection() (*ModelDriftResult, error) {
 			skipped++
 			continue
 		}
-		issueID, err := createIssue(ModelDriftIssueCreateArgs{
+		issueID, err := store.CreateIssue(ModelDriftIssueCreateArgs{
 			Title:       fmt.Sprintf("Model drift: %s", group.Domain),
 			Description: formatModelDriftIssueDescription(group),
 			Priority:    group.Priority,

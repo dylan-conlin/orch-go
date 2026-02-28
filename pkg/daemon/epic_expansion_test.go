@@ -85,20 +85,22 @@ func TestNextIssue_EpicChildrenIncludedInSpawnQueue(t *testing.T) {
 
 	d := &Daemon{
 		Config: Config{Label: "triage:ready"},
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{ID: "proj-epic", Title: "Epic", IssueType: "epic", Labels: []string{"triage:ready"}},
-				{ID: "proj-1", Title: "Feature without label", IssueType: "feature", Status: "open", Labels: []string{}},
-			}, nil
-		},
-		listEpicChildrenFunc: func(epicID string) ([]Issue, error) {
-			epicChildCalled = true
-			if epicID == "proj-epic" {
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
 				return []Issue{
-					{ID: "proj-child-1", Title: "Child 1", IssueType: "task", Status: "open"},
+					{ID: "proj-epic", Title: "Epic", IssueType: "epic", Labels: []string{"triage:ready"}},
+					{ID: "proj-1", Title: "Feature without label", IssueType: "feature", Status: "open", Labels: []string{}},
 				}, nil
-			}
-			return []Issue{}, nil
+			},
+			ListEpicChildrenFunc: func(epicID string) ([]Issue, error) {
+				epicChildCalled = true
+				if epicID == "proj-epic" {
+					return []Issue{
+						{ID: "proj-child-1", Title: "Child 1", IssueType: "task", Status: "open"},
+					}, nil
+				}
+				return []Issue{}, nil
+			},
 		},
 	}
 
@@ -179,15 +181,17 @@ func TestCheckRejectionReasonWithEpicChildren_EpicWithLabelExplains(t *testing.T
 func TestExpandTriageReadyEpics_FiltersClosedChildren(t *testing.T) {
 	d := &Daemon{
 		Config: Config{Label: "triage:ready", Verbose: true},
-		listEpicChildrenFunc: func(epicID string) ([]Issue, error) {
-			if epicID == "proj-epic" {
-				return []Issue{
-					{ID: "proj-child-1", Title: "Open Child", IssueType: "feature", Status: "open"},
-					{ID: "proj-child-2", Title: "Closed Child", IssueType: "feature", Status: "closed"},
-					{ID: "proj-child-3", Title: "In Progress Child", IssueType: "feature", Status: "in_progress"},
-				}, nil
-			}
-			return []Issue{}, nil
+		Issues: &mockIssueQuerier{
+			ListEpicChildrenFunc: func(epicID string) ([]Issue, error) {
+				if epicID == "proj-epic" {
+					return []Issue{
+						{ID: "proj-child-1", Title: "Open Child", IssueType: "feature", Status: "open"},
+						{ID: "proj-child-2", Title: "Closed Child", IssueType: "feature", Status: "closed"},
+						{ID: "proj-child-3", Title: "In Progress Child", IssueType: "feature", Status: "in_progress"},
+					}, nil
+				}
+				return []Issue{}, nil
+			},
 		},
 	}
 
@@ -236,8 +240,10 @@ func TestExpandTriageReadyEpics_FiltersClosedChildren(t *testing.T) {
 func TestExpandTriageReadyEpics_ListChildrenError(t *testing.T) {
 	d := &Daemon{
 		Config: Config{Label: "triage:ready"},
-		listEpicChildrenFunc: func(epicID string) ([]Issue, error) {
-			return nil, fmt.Errorf("simulated error listing children")
+		Issues: &mockIssueQuerier{
+			ListEpicChildrenFunc: func(epicID string) ([]Issue, error) {
+				return nil, fmt.Errorf("simulated error listing children")
+			},
 		},
 	}
 

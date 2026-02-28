@@ -392,11 +392,11 @@ func TestDaemon_Preview_WithHotspotChecker(t *testing.T) {
 	}
 
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Fix status", Priority: 0, IssueType: "bug", Status: "open"},
 			}, nil
-		},
+		}},
 		HotspotChecker: checker,
 	}
 
@@ -417,11 +417,11 @@ func TestDaemon_Preview_WithHotspotChecker(t *testing.T) {
 func TestDaemon_Preview_NoHotspotChecker(t *testing.T) {
 	// When no hotspot checker is configured, Preview should still work
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Fix bug", Priority: 0, IssueType: "bug", Status: "open"},
 			}, nil
-		},
+		}},
 		// HotspotChecker is nil
 	}
 
@@ -447,11 +447,11 @@ func TestDaemon_Preview_HotspotCheckerError(t *testing.T) {
 	}
 
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Fix bug", Priority: 0, IssueType: "bug", Status: "open"},
 			}, nil
-		},
+		}},
 		HotspotChecker: checker,
 	}
 

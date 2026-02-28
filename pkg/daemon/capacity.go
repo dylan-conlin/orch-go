@@ -95,11 +95,11 @@ func (d *Daemon) ReconcileActiveAgents() int {
 	}
 
 	// Get actual count from all backends (OpenCode + tmux)
-	countFunc := d.activeCountFunc
-	if countFunc == nil {
-		countFunc = CombinedActiveCount
+	counter := d.ActiveCounter
+	if counter == nil {
+		counter = &defaultActiveCounter{}
 	}
-	actualCount := countFunc()
+	actualCount := counter.Count()
 
 	// Reconcile pool with actual count
 	return d.Pool.Reconcile(actualCount)

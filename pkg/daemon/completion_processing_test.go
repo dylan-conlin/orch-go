@@ -22,8 +22,10 @@ func TestDefaultCompletionConfig(t *testing.T) {
 
 func TestDaemon_ListCompletedAgents_Empty(t *testing.T) {
 	d := &Daemon{
-		listCompletedAgentsFunc: func(config CompletionConfig) ([]CompletedAgent, error) {
-			return []CompletedAgent{}, nil
+		Completions: &mockCompletionFinder{
+			ListCompletedAgentsFunc: func(config CompletionConfig) ([]CompletedAgent, error) {
+				return []CompletedAgent{}, nil
+			},
 		},
 	}
 
@@ -39,11 +41,13 @@ func TestDaemon_ListCompletedAgents_Empty(t *testing.T) {
 
 func TestDaemon_ListCompletedAgents_ReturnsAgents(t *testing.T) {
 	d := &Daemon{
-		listCompletedAgentsFunc: func(config CompletionConfig) ([]CompletedAgent, error) {
-			return []CompletedAgent{
-				{BeadsID: "proj-1", Title: "First", PhaseSummary: "Done!"},
-				{BeadsID: "proj-2", Title: "Second", PhaseSummary: "Complete"},
-			}, nil
+		Completions: &mockCompletionFinder{
+			ListCompletedAgentsFunc: func(config CompletionConfig) ([]CompletedAgent, error) {
+				return []CompletedAgent{
+					{BeadsID: "proj-1", Title: "First", PhaseSummary: "Done!"},
+					{BeadsID: "proj-2", Title: "Second", PhaseSummary: "Complete"},
+				}, nil
+			},
 		},
 	}
 
@@ -65,8 +69,10 @@ func TestDaemon_ListCompletedAgents_ReturnsAgents(t *testing.T) {
 
 func TestDaemon_CompletionOnce_NoAgents(t *testing.T) {
 	d := &Daemon{
-		listCompletedAgentsFunc: func(config CompletionConfig) ([]CompletedAgent, error) {
-			return []CompletedAgent{}, nil
+		Completions: &mockCompletionFinder{
+			ListCompletedAgentsFunc: func(config CompletionConfig) ([]CompletedAgent, error) {
+				return []CompletedAgent{}, nil
+			},
 		},
 	}
 
@@ -86,10 +92,12 @@ func TestDaemon_CompletionOnce_NoAgents(t *testing.T) {
 func TestDaemon_CompletionOnce_DryRun(t *testing.T) {
 	closeIssuesCalled := false
 	d := &Daemon{
-		listCompletedAgentsFunc: func(config CompletionConfig) ([]CompletedAgent, error) {
-			return []CompletedAgent{
-				{BeadsID: "proj-1", Title: "Test", Status: "in_progress", PhaseSummary: "All done"},
-			}, nil
+		Completions: &mockCompletionFinder{
+			ListCompletedAgentsFunc: func(config CompletionConfig) ([]CompletedAgent, error) {
+				return []CompletedAgent{
+					{BeadsID: "proj-1", Title: "Test", Status: "in_progress", PhaseSummary: "All done"},
+				}, nil
+			},
 		},
 	}
 
@@ -114,12 +122,14 @@ func TestDaemon_CompletionOnce_DryRun(t *testing.T) {
 
 func TestDaemon_PreviewCompletions(t *testing.T) {
 	d := &Daemon{
-		listCompletedAgentsFunc: func(config CompletionConfig) ([]CompletedAgent, error) {
-			return []CompletedAgent{
-				{BeadsID: "proj-1", Title: "First", PhaseSummary: "Done"},
-				{BeadsID: "proj-2", Title: "Second", PhaseSummary: "Complete"},
-				{BeadsID: "proj-3", Title: "Third", PhaseSummary: "Finished"},
-			}, nil
+		Completions: &mockCompletionFinder{
+			ListCompletedAgentsFunc: func(config CompletionConfig) ([]CompletedAgent, error) {
+				return []CompletedAgent{
+					{BeadsID: "proj-1", Title: "First", PhaseSummary: "Done"},
+					{BeadsID: "proj-2", Title: "Second", PhaseSummary: "Complete"},
+					{BeadsID: "proj-3", Title: "Third", PhaseSummary: "Finished"},
+				}, nil
+			},
 		},
 	}
 

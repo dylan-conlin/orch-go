@@ -75,8 +75,8 @@ type CompletionLoopResult struct {
 // ListCompletedAgents finds all agents that have reported Phase: Complete
 // but whose beads issues are still open or in_progress.
 func (d *Daemon) ListCompletedAgents(config CompletionConfig) ([]CompletedAgent, error) {
-	if d.listCompletedAgentsFunc != nil {
-		return d.listCompletedAgentsFunc(config)
+	if d.Completions != nil {
+		return d.Completions.ListCompletedAgents(config)
 	}
 	return ListCompletedAgentsDefault(config)
 }

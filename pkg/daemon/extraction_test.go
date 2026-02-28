@@ -514,38 +514,44 @@ func TestOnceExcluding_AutoExtraction_SpawnsExtractionWhenCriticalHotspot(t *tes
 	spawnedID := ""
 	d := &Daemon{
 		Config: Config{Verbose: true},
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{
-					ID:        "proj-1",
-					Title:     "Add feature to cmd/orch/spawn_cmd.go",
-					Priority:  2,
-					IssueType: "feature",
-					Status:    "open",
-				},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{
+						ID:        "proj-1",
+						Title:     "Add feature to cmd/orch/spawn_cmd.go",
+						Priority:  2,
+						IssueType: "feature",
+						Status:    "open",
+					},
+				}, nil
+			},
+			CreateExtractionIssueFunc: func(task, parentID string) (string, error) {
+				// Verify the extraction task was generated correctly
+				if parentID != "proj-1" {
+					t.Errorf("CreateExtractionIssue parentID = %q, want 'proj-1'", parentID)
+				}
+				if !strings.Contains(task, "Extract") {
+					t.Errorf("CreateExtractionIssue task should contain 'Extract', got: %s", task)
+				}
+				return "proj-ext1", nil
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
-			spawnedID = beadsID
-			return nil
+		Spawner: &mockSpawner{
+			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+				spawnedID = beadsID
+				return nil
+			},
 		},
 		HotspotChecker: &mockDaemonHotspotChecker{
 			hotspots: []HotspotWarning{
 				{Path: "cmd/orch/spawn_cmd.go", Type: "bloat-size", Score: 2000},
 			},
 		},
-		createExtractionIssueFunc: func(task, parentID string) (string, error) {
-			// Verify the extraction task was generated correctly
-			if parentID != "proj-1" {
-				t.Errorf("createExtractionIssue parentID = %q, want 'proj-1'", parentID)
-			}
-			if !strings.Contains(task, "Extract") {
-				t.Errorf("createExtractionIssue task should contain 'Extract', got: %s", task)
-			}
-			return "proj-ext1", nil
-		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID string, status string) error {
+				return nil // Mock: always succeed
+			},
 		},
 	}
 
@@ -559,7 +565,7 @@ func TestOnceExcluding_AutoExtraction_SpawnsExtractionWhenCriticalHotspot(t *tes
 
 	// Should have spawned the extraction issue, not the original
 	if spawnedID != "proj-ext1" {
-		t.Errorf("spawnFunc called with %q, want 'proj-ext1' (extraction issue)", spawnedID)
+		t.Errorf("Spawner called with %q, want 'proj-ext1' (extraction issue)", spawnedID)
 	}
 	if !result.ExtractionSpawned {
 		t.Error("OnceResult.ExtractionSpawned should be true")
@@ -576,20 +582,24 @@ func TestOnceExcluding_AutoExtraction_SkipsWhenNoCriticalHotspot(t *testing.T) {
 	// When hotspot check finds no CRITICAL files, spawn normally.
 	spawnedID := ""
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{
-					ID:        "proj-1",
-					Title:     "Add feature to pkg/daemon/daemon.go",
-					Priority:  2,
-					IssueType: "feature",
-					Status:    "open",
-				},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{
+						ID:        "proj-1",
+						Title:     "Add feature to pkg/daemon/daemon.go",
+						Priority:  2,
+						IssueType: "feature",
+						Status:    "open",
+					},
+				}, nil
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
-			spawnedID = beadsID
-			return nil
+		Spawner: &mockSpawner{
+			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+				spawnedID = beadsID
+				return nil
+			},
 		},
 		HotspotChecker: &mockDaemonHotspotChecker{
 			hotspots: []HotspotWarning{
@@ -597,8 +607,10 @@ func TestOnceExcluding_AutoExtraction_SkipsWhenNoCriticalHotspot(t *testing.T) {
 				{Path: "pkg/daemon/daemon.go", Type: "bloat-size", Score: 1200},
 			},
 		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID string, status string) error {
+				return nil // Mock: always succeed
+			},
 		},
 	}
 
@@ -612,7 +624,7 @@ func TestOnceExcluding_AutoExtraction_SkipsWhenNoCriticalHotspot(t *testing.T) {
 
 	// Should have spawned the original issue normally
 	if spawnedID != "proj-1" {
-		t.Errorf("spawnFunc called with %q, want 'proj-1' (original issue)", spawnedID)
+		t.Errorf("Spawner called with %q, want 'proj-1' (original issue)", spawnedID)
 	}
 	if result.ExtractionSpawned {
 		t.Error("OnceResult.ExtractionSpawned should be false")
@@ -625,28 +637,32 @@ func TestOnceExcluding_AutoExtraction_FailsFastOnExtractionFailure(t *testing.T)
 	spawnedID := ""
 	d := &Daemon{
 		Config: Config{Verbose: true},
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{
-					ID:        "proj-1",
-					Title:     "Add feature to cmd/orch/spawn_cmd.go",
-					Priority:  2,
-					IssueType: "feature",
-					Status:    "open",
-				},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{
+						ID:        "proj-1",
+						Title:     "Add feature to cmd/orch/spawn_cmd.go",
+						Priority:  2,
+						IssueType: "feature",
+						Status:    "open",
+					},
+				}, nil
+			},
+			CreateExtractionIssueFunc: func(task, parentID string) (string, error) {
+				return "", fmt.Errorf("bd create failed: command not found")
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
-			spawnedID = beadsID
-			return nil
+		Spawner: &mockSpawner{
+			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+				spawnedID = beadsID
+				return nil
+			},
 		},
 		HotspotChecker: &mockDaemonHotspotChecker{
 			hotspots: []HotspotWarning{
 				{Path: "cmd/orch/spawn_cmd.go", Type: "bloat-size", Score: 2000},
 			},
-		},
-		createExtractionIssueFunc: func(task, parentID string) (string, error) {
-			return "", fmt.Errorf("bd create failed: command not found")
 		},
 	}
 
@@ -665,7 +681,7 @@ func TestOnceExcluding_AutoExtraction_FailsFastOnExtractionFailure(t *testing.T)
 
 	// Should not have spawned the original issue
 	if spawnedID != "" {
-		t.Errorf("spawnFunc should not be called when extraction fails, but was called with %q", spawnedID)
+		t.Errorf("Spawner should not be called when extraction fails, but was called with %q", spawnedID)
 	}
 
 	// Should have a message explaining the skip
@@ -678,23 +694,29 @@ func TestOnceExcluding_AutoExtraction_SkipsWhenNoHotspotChecker(t *testing.T) {
 	// When HotspotChecker is nil, no extraction check happens.
 	spawnedID := ""
 	d := &Daemon{
-		listIssuesFunc: func() ([]Issue, error) {
-			return []Issue{
-				{
-					ID:        "proj-1",
-					Title:     "Add feature to cmd/orch/spawn_cmd.go",
-					Priority:  2,
-					IssueType: "feature",
-					Status:    "open",
-				},
-			}, nil
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{
+						ID:        "proj-1",
+						Title:     "Add feature to cmd/orch/spawn_cmd.go",
+						Priority:  2,
+						IssueType: "feature",
+						Status:    "open",
+					},
+				}, nil
+			},
 		},
-		spawnFunc: func(beadsID, model, workdir string) error {
-			spawnedID = beadsID
-			return nil
+		Spawner: &mockSpawner{
+			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+				spawnedID = beadsID
+				return nil
+			},
 		},
-		updateBeadsStatusFunc: func(beadsID string, status string) error {
-			return nil // Mock: always succeed
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID string, status string) error {
+				return nil // Mock: always succeed
+			},
 		},
 		// HotspotChecker is nil
 	}
@@ -709,7 +731,7 @@ func TestOnceExcluding_AutoExtraction_SkipsWhenNoHotspotChecker(t *testing.T) {
 
 	// Should have spawned normally without extraction check
 	if spawnedID != "proj-1" {
-		t.Errorf("spawnFunc called with %q, want 'proj-1'", spawnedID)
+		t.Errorf("Spawner called with %q, want 'proj-1'", spawnedID)
 	}
 	if result.ExtractionSpawned {
 		t.Error("OnceResult.ExtractionSpawned should be false when no checker")

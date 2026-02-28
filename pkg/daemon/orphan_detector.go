@@ -74,12 +74,12 @@ func (d *Daemon) RunPeriodicOrphanDetection() *OrphanDetectionResult {
 	}
 
 	// Get all in_progress agents
-	getAgents := d.getActiveAgentsFunc
-	if getAgents == nil {
-		getAgents = GetActiveAgents
+	agentDiscoverer := d.Agents
+	if agentDiscoverer == nil {
+		agentDiscoverer = &defaultAgentDiscoverer{}
 	}
 
-	agents, err := getAgents()
+	agents, err := agentDiscoverer.GetActiveAgents()
 	if err != nil {
 		return &OrphanDetectionResult{
 			Error:   err,
@@ -87,14 +87,9 @@ func (d *Daemon) RunPeriodicOrphanDetection() *OrphanDetectionResult {
 		}
 	}
 
-	hasSession := d.hasExistingSessionFunc
-	if hasSession == nil {
-		hasSession = HasExistingSessionForBeadsID
-	}
-
-	updateStatus := d.updateBeadsStatusForOrphanFunc
-	if updateStatus == nil {
-		updateStatus = UpdateBeadsStatus
+	statusUpdater := d.StatusUpdater
+	if statusUpdater == nil {
+		statusUpdater = &defaultIssueUpdater{}
 	}
 
 	reset := 0
@@ -122,7 +117,7 @@ func (d *Daemon) RunPeriodicOrphanDetection() *OrphanDetectionResult {
 		}
 
 		// THE KEY CHECK: Does this issue have an actual agent working on it?
-		if hasSession(agent.BeadsID) {
+		if agentDiscoverer.HasExistingSession(agent.BeadsID) {
 			// Agent exists - not an orphan (recovery handles idle agents)
 			skipped++
 			continue
@@ -135,7 +130,7 @@ func (d *Daemon) RunPeriodicOrphanDetection() *OrphanDetectionResult {
 				agent.BeadsID, idleTime.Round(time.Minute))
 		}
 
-		if err := updateStatus(agent.BeadsID, "open"); err != nil {
+		if err := statusUpdater.UpdateStatus(agent.BeadsID, "open"); err != nil {
 			if d.Config.Verbose {
 				fmt.Printf("  Failed to reset orphan %s: %v\n", agent.BeadsID, err)
 			}

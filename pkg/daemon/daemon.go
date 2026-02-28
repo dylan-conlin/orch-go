@@ -10,7 +10,6 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
-	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // Config holds configuration for the daemon.
@@ -169,25 +168,23 @@ func NewWithConfig(config Config) *Daemon {
 // This is useful for sharing a pool across daemon instances or for testing.
 func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 	d := &Daemon{
-		Config:                    config,
-		Pool:                      pool,
-		SpawnedIssues:             NewSpawnedIssueTracker(),
-		resumeAttempts:            make(map[string]time.Time),
-		VerificationTracker:       NewVerificationTracker(config.VerificationPauseThreshold),
-		SpawnFailureTracker:       NewSpawnFailureTracker(),
-		spawnFunc:                 SpawnWork,
-		reflectFunc:               DefaultRunReflection,
-		openReflectFunc:           RunOpenReflection,
-		listIssuesWithLabelFunc:   ListIssuesWithLabel,
-		createExtractionIssueFunc: DefaultCreateExtractionIssue,
-		createModelDriftIssueFunc: DefaultCreateModelDriftIssue,
-		modelDriftEventReader:     readStalenessEvents,
-		modelDriftMetadataLoader:  LoadModelDriftMetadata,
-		modelDriftCommitCounter:   DefaultModelDriftCommitCounter,
-		getIssueStatusFunc:        GetBeadsIssueStatus,
-		activeCountFunc:           CombinedActiveCount,
+		Config:              config,
+		Pool:                pool,
+		SpawnedIssues:       NewSpawnedIssueTracker(),
+		resumeAttempts:      make(map[string]time.Time),
+		VerificationTracker: NewVerificationTracker(config.VerificationPauseThreshold),
+		SpawnFailureTracker: NewSpawnFailureTracker(),
+		Issues:              &defaultIssueQuerier{},
+		Spawner:             &defaultSpawner{},
+		Completions:         &defaultCompletionFinder{},
+		Reflector:           &defaultReflector{},
+		ModelDrift:          &defaultModelDriftStore{},
+		KnowledgeHealth:     &defaultKnowledgeHealthService{},
+		Cleaner:             &defaultSessionCleaner{},
+		ActiveCounter:       &defaultActiveCounter{},
+		Agents:              &defaultAgentDiscoverer{},
+		StatusUpdater:       &defaultIssueUpdater{},
 	}
-	d.modelDriftReflectFunc = d.RunModelDriftReflection
 	// Initialize rate limiter if MaxSpawnsPerHour is set
 	if config.MaxSpawnsPerHour > 0 {
 		d.RateLimiter = NewRateLimiter(config.MaxSpawnsPerHour)
@@ -195,18 +192,18 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 	return d
 }
 
-// resolveListIssuesFunc returns the appropriate list function based on configuration.
-// Priority: explicit mock (tests) > multi-project (registry set) > single-project.
-func (d *Daemon) resolveListIssuesFunc() func() ([]Issue, error) {
-	if d.listIssuesFunc != nil {
-		return d.listIssuesFunc
-	}
-	if d.ProjectRegistry != nil {
-		return func() ([]Issue, error) {
-			return ListReadyIssuesMultiProject(d.ProjectRegistry)
+// resolveIssueQuerier returns the effective IssueQuerier.
+// If Issues is set, returns it directly.
+// If only ProjectRegistry is set (no custom Issues), wraps it into a defaultIssueQuerier.
+func (d *Daemon) resolveIssueQuerier() IssueQuerier {
+	if d.Issues != nil {
+		// If it's the default querier, update its registry pointer lazily
+		if dq, ok := d.Issues.(*defaultIssueQuerier); ok {
+			dq.registry = d.ProjectRegistry
 		}
+		return d.Issues
 	}
-	return ListReadyIssues
+	return &defaultIssueQuerier{registry: d.ProjectRegistry}
 }
 
 // NextIssue returns the next spawnable issue from the queue.
@@ -231,7 +228,7 @@ func (d *Daemon) NextIssue() (*Issue, error) {
 // have the label themselves. This implements the user mental model that labeling
 // an epic means "process this entire epic".
 func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
-	issues, err := d.resolveListIssuesFunc()()
+	issues, err := d.resolveIssueQuerier().ListReadyIssues()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list issues: %w", err)
 	}
@@ -362,12 +359,9 @@ func (d *Daemon) expandTriageReadyEpics(issues []Issue) ([]Issue, map[string]boo
 	}
 
 	// Expand each epic by fetching its children
-	listChildren := d.listEpicChildrenFunc
-	if listChildren == nil {
-		listChildren = ListEpicChildren
-	}
+	querier := d.resolveIssueQuerier()
 	for _, epicID := range epicsToExpand {
-		children, err := listChildren(epicID)
+		children, err := querier.ListEpicChildren(epicID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to list children of epic %s: %w", epicID, err)
 		}
@@ -484,11 +478,7 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 	if d.HotspotChecker != nil {
 		extraction := CheckExtractionNeeded(issue, d.HotspotChecker)
 		if extraction != nil && extraction.Needed {
-			createFunc := d.createExtractionIssueFunc
-			if createFunc == nil {
-				createFunc = DefaultCreateExtractionIssue
-			}
-			extractionID, err := createFunc(extraction.ExtractionTask, issue.ID)
+			extractionID, err := d.resolveIssueQuerier().CreateExtractionIssue(extraction.ExtractionTask, issue.ID)
 			if err != nil {
 				// Extraction gate is non-negotiable: if setup fails, skip the issue
 				// and return error (fail-fast). Do not proceed with normal spawn.
@@ -661,14 +651,14 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 	// UpdateBeadsStatus is idempotent (setting in_progress when already in_progress
 	// succeeds), so two concurrent daemon processes can both spawn the same issue.
 	// This was the root cause of the Feb 15 2026 orch-go-09cc duplicate spawn incident.
-	if d.getIssueStatusFunc != nil {
+	if d.Issues != nil {
 		var currentStatus string
 		var statusErr error
-		if issue.ProjectDir != "" && d.updateBeadsStatusFunc == nil {
+		if issue.ProjectDir != "" {
 			// Cross-project issue: check status in the target project
 			currentStatus, statusErr = GetBeadsIssueStatusForProject(issue.ID, issue.ProjectDir)
 		} else {
-			currentStatus, statusErr = d.getIssueStatusFunc(issue.ID)
+			currentStatus, statusErr = d.Issues.GetIssueStatus(issue.ID)
 		}
 		if statusErr == nil {
 			if currentStatus != "open" {
@@ -716,17 +706,20 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 	// tracking leads to duplicate spawns when SpawnedIssueTracker TTL expires or daemon restarts.
 	// Fail-fast here prevents the Feb 14 2026 incident where 10 duplicate spawns occurred
 	// because UpdateBeadsStatus was failing silently.
-	updateStatus := d.updateBeadsStatusFunc
-	if updateStatus == nil {
-		if issue.ProjectDir != "" {
-			updateStatus = func(beadsID, status string) error {
+	// Resolve status updater: for cross-project issues with the default updater,
+	// use the project-specific variant.
+	statusUpdater := d.StatusUpdater
+	if statusUpdater == nil {
+		statusUpdater = &defaultIssueUpdater{}
+	}
+	if issue.ProjectDir != "" {
+		if _, isDefault := statusUpdater.(*defaultIssueUpdater); isDefault {
+			statusUpdater = issueUpdaterFunc(func(beadsID, status string) error {
 				return UpdateBeadsStatusForProject(beadsID, status, issue.ProjectDir)
-			}
-		} else {
-			updateStatus = UpdateBeadsStatus
+			})
 		}
 	}
-	if err := updateStatus(issue.ID, "in_progress"); err != nil {
+	if err := statusUpdater.UpdateStatus(issue.ID, "in_progress"); err != nil {
 		// Track failure for health card visibility
 		if d.SpawnFailureTracker != nil {
 			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("UpdateBeadsStatus failed: %v", err))
@@ -756,7 +749,11 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 	workdir := issue.ProjectDir
 
 	// Spawn the work with inferred model and optional workdir
-	if err := d.spawnFunc(issue.ID, inferredModel, workdir); err != nil {
+	spawner := d.Spawner
+	if spawner == nil {
+		spawner = &defaultSpawner{}
+	}
+	if err := spawner.SpawnWork(issue.ID, inferredModel, workdir); err != nil {
 		// Track spawn failure for health card visibility
 		if d.SpawnFailureTracker != nil {
 			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("Spawn failed: %v", err))
@@ -821,24 +818,12 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 	}, slot, nil
 }
 
-// SetReflectFunc sets the reflection function for testing.
-func (d *Daemon) SetReflectFunc(f func(createIssues bool) (*ReflectResult, error)) {
-	d.reflectFunc = f
-}
+// issueUpdaterFunc adapts a function to the IssueUpdater interface.
+// Used for cross-project status updates that need a different target directory.
+type issueUpdaterFunc func(beadsID, status string) error
 
-// SetCleanupFunc sets the cleanup function for testing.
-func (d *Daemon) SetCleanupFunc(f func(config Config) (int, string, error)) {
-	d.cleanupFunc = f
-}
-
-// SetKnowledgeHealthFunc sets the knowledge health check function for testing.
-func (d *Daemon) SetKnowledgeHealthFunc(f func() (*KnowledgeHealthResult, error)) {
-	d.knowledgeHealthFunc = f
-}
-
-// SetGetActiveAgentsFunc sets the active agents function for testing.
-func (d *Daemon) SetGetActiveAgentsFunc(f func() ([]ActiveAgent, error)) {
-	d.getActiveAgentsFunc = f
+func (f issueUpdaterFunc) UpdateStatus(beadsID, status string) error {
+	return f(beadsID, status)
 }
 
 // ReleaseSlot releases a previously acquired slot.

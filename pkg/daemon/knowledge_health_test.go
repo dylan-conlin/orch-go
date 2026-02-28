@@ -81,10 +81,10 @@ func TestDaemon_RunPeriodicKnowledgeHealth_NotDue(t *testing.T) {
 			KnowledgeHealthInterval: 2 * time.Hour,
 		},
 		lastKnowledgeHealth: time.Now(),
-		knowledgeHealthFunc: func() (*KnowledgeHealthResult, error) {
+		KnowledgeHealth: &mockKnowledgeHealthService{CheckFunc: func() (*KnowledgeHealthResult, error) {
 			called = true
 			return &KnowledgeHealthResult{}, nil
-		},
+		}},
 	}
 
 	result := d.RunPeriodicKnowledgeHealth()
@@ -92,7 +92,7 @@ func TestDaemon_RunPeriodicKnowledgeHealth_NotDue(t *testing.T) {
 		t.Error("RunPeriodicKnowledgeHealth() should return nil when not due")
 	}
 	if called {
-		t.Error("knowledgeHealthFunc should not be called when not due")
+		t.Error("KnowledgeHealth.Check should not be called when not due")
 	}
 }
 
@@ -105,7 +105,7 @@ func TestDaemon_RunPeriodicKnowledgeHealth_Due(t *testing.T) {
 			KnowledgeHealthThreshold: 20,
 		},
 		lastKnowledgeHealth: time.Now().Add(-3 * time.Hour),
-		knowledgeHealthFunc: func() (*KnowledgeHealthResult, error) {
+		KnowledgeHealth: &mockKnowledgeHealthService{CheckFunc: func() (*KnowledgeHealthResult, error) {
 			called = true
 			return &KnowledgeHealthResult{
 				TotalActive: 15,
@@ -114,7 +114,7 @@ func TestDaemon_RunPeriodicKnowledgeHealth_Due(t *testing.T) {
 					"constraint": 5,
 				},
 			}, nil
-		},
+		}},
 	}
 
 	result := d.RunPeriodicKnowledgeHealth()
@@ -122,7 +122,7 @@ func TestDaemon_RunPeriodicKnowledgeHealth_Due(t *testing.T) {
 		t.Fatal("RunPeriodicKnowledgeHealth() should return result when due")
 	}
 	if !called {
-		t.Error("knowledgeHealthFunc should be called when due")
+		t.Error("KnowledgeHealth.Check should be called when due")
 	}
 	if result.TotalActive != 15 {
 		t.Errorf("TotalActive = %d, want 15", result.TotalActive)
@@ -138,9 +138,9 @@ func TestDaemon_RunPeriodicKnowledgeHealth_Error(t *testing.T) {
 			KnowledgeHealthEnabled:  true,
 			KnowledgeHealthInterval: 2 * time.Hour,
 		},
-		knowledgeHealthFunc: func() (*KnowledgeHealthResult, error) {
+		KnowledgeHealth: &mockKnowledgeHealthService{CheckFunc: func() (*KnowledgeHealthResult, error) {
 			return nil, fmt.Errorf("kb quick list failed")
-		},
+		}},
 	}
 
 	result := d.RunPeriodicKnowledgeHealth()
@@ -160,18 +160,20 @@ func TestDaemon_RunPeriodicKnowledgeHealth_ThresholdExceeded(t *testing.T) {
 			KnowledgeHealthInterval:  2 * time.Hour,
 			KnowledgeHealthThreshold: 20,
 		},
-		knowledgeHealthFunc: func() (*KnowledgeHealthResult, error) {
-			return &KnowledgeHealthResult{
-				TotalActive: 50,
-				ByType: map[string]int{
-					"decision":   35,
-					"constraint": 15,
-				},
-			}, nil
-		},
-		knowledgeHealthIssueFunc: func(result *KnowledgeHealthResult) error {
-			issueCalled = true
-			return nil
+		KnowledgeHealth: &mockKnowledgeHealthService{
+			CheckFunc: func() (*KnowledgeHealthResult, error) {
+				return &KnowledgeHealthResult{
+					TotalActive: 50,
+					ByType: map[string]int{
+						"decision":   35,
+						"constraint": 15,
+					},
+				}, nil
+			},
+			CreateIssueFunc: func(result *KnowledgeHealthResult) error {
+				issueCalled = true
+				return nil
+			},
 		},
 	}
 
@@ -183,7 +185,7 @@ func TestDaemon_RunPeriodicKnowledgeHealth_ThresholdExceeded(t *testing.T) {
 		t.Error("ThresholdExceeded should be true when total exceeds threshold")
 	}
 	if !issueCalled {
-		t.Error("knowledgeHealthIssueFunc should be called when threshold exceeded")
+		t.Error("KnowledgeHealth.CreateIssue should be called when threshold exceeded")
 	}
 }
 
@@ -195,18 +197,20 @@ func TestDaemon_RunPeriodicKnowledgeHealth_ThresholdNotExceeded(t *testing.T) {
 			KnowledgeHealthInterval:  2 * time.Hour,
 			KnowledgeHealthThreshold: 50,
 		},
-		knowledgeHealthFunc: func() (*KnowledgeHealthResult, error) {
-			return &KnowledgeHealthResult{
-				TotalActive: 15,
-				ByType: map[string]int{
-					"decision":   10,
-					"constraint": 5,
-				},
-			}, nil
-		},
-		knowledgeHealthIssueFunc: func(result *KnowledgeHealthResult) error {
-			issueCalled = true
-			return nil
+		KnowledgeHealth: &mockKnowledgeHealthService{
+			CheckFunc: func() (*KnowledgeHealthResult, error) {
+				return &KnowledgeHealthResult{
+					TotalActive: 15,
+					ByType: map[string]int{
+						"decision":   10,
+						"constraint": 5,
+					},
+				}, nil
+			},
+			CreateIssueFunc: func(result *KnowledgeHealthResult) error {
+				issueCalled = true
+				return nil
+			},
 		},
 	}
 
@@ -218,7 +222,7 @@ func TestDaemon_RunPeriodicKnowledgeHealth_ThresholdNotExceeded(t *testing.T) {
 		t.Error("ThresholdExceeded should be false when total below threshold")
 	}
 	if issueCalled {
-		t.Error("knowledgeHealthIssueFunc should NOT be called when threshold not exceeded")
+		t.Error("KnowledgeHealth.CreateIssue should NOT be called when threshold not exceeded")
 	}
 }
 
