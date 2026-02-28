@@ -63,8 +63,8 @@ func handleVerification(w http.ResponseWriter, r *http.Request) {
 		resp.HeartbeatAgo = formatDurationAgo(time.Since(heartbeatAt))
 	}
 
-	// Daemon pause state
-	status, err := daemon.ReadStatusFile()
+	// Daemon pause state (validates PID liveness to detect stale files)
+	status, err := daemon.ReadValidatedStatusFile()
 	if err == nil && status != nil {
 		resp.DaemonRunning = true
 		resp.DaemonStatus = status.Status

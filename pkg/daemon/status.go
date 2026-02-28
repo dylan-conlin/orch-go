@@ -146,6 +146,23 @@ func ReadStatusFile() (*DaemonStatus, error) {
 	return &status, nil
 }
 
+// ReadValidatedStatusFile reads the daemon status file and validates that the
+// daemon process is actually alive. Returns nil, nil if the file exists but
+// the daemon process is dead (stale file from unclean shutdown).
+func ReadValidatedStatusFile() (*DaemonStatus, error) {
+	status, err := ReadStatusFile()
+	if err != nil {
+		return nil, err
+	}
+
+	// If PID is recorded and the process is dead, the file is stale
+	if status.PID > 0 && !isProcessAlive(status.PID) {
+		return nil, nil
+	}
+
+	return status, nil
+}
+
 // RemoveStatusFile removes the daemon status file.
 // Called when the daemon shuts down cleanly.
 func RemoveStatusFile() error {

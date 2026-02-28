@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
+	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -120,6 +121,7 @@ type InfraServiceStatus struct {
 
 // DaemonStatus represents the status from daemon-status.json.
 type DaemonStatus struct {
+	PID            int    `json:"pid,omitempty"`
 	Status         string `json:"status"`
 	LastPoll       string `json:"last_poll,omitempty"`
 	LastSpawn      string `json:"last_spawn,omitempty"`
@@ -1305,6 +1307,7 @@ func tcpDialTimeoutImpl(addr string, timeout time.Duration) (interface{ Close() 
 }
 
 // readDaemonStatus reads the daemon status from ~/.orch/daemon-status.json.
+// Validates PID liveness to avoid reporting stale status from dead daemons.
 func readDaemonStatus() *DaemonStatus {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -1319,6 +1322,11 @@ func readDaemonStatus() *DaemonStatus {
 
 	var status DaemonStatus
 	if err := json.Unmarshal(data, &status); err != nil {
+		return nil
+	}
+
+	// Check PID liveness — stale files from crashed daemons should not report as running
+	if status.PID > 0 && !daemon.IsProcessAlive(status.PID) {
 		return nil
 	}
 

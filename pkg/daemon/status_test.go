@@ -289,6 +289,106 @@ func TestDaemonStatus_ZeroLastSpawn(t *testing.T) {
 	}
 }
 
+func TestReadValidatedStatusFile_StaleFile(t *testing.T) {
+	// Simulate stale daemon-status.json from a crashed daemon:
+	// file exists with a PID that is no longer alive.
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Write a status file with a PID that definitely doesn't exist.
+	status := DaemonStatus{
+		PID:      999999,
+		Status:   "running",
+		LastPoll: time.Now().Add(-10 * time.Minute),
+		Capacity: CapacityStatus{Max: 3, Active: 1, Available: 2},
+	}
+	if err := WriteStatusFile(status); err != nil {
+		t.Fatalf("WriteStatusFile failed: %v", err)
+	}
+
+	// ReadValidatedStatusFile should return nil (stale file)
+	validated, err := ReadValidatedStatusFile()
+	if err != nil {
+		t.Fatalf("ReadValidatedStatusFile returned error: %v", err)
+	}
+	if validated != nil {
+		t.Errorf("ReadValidatedStatusFile should return nil for dead PID, got status=%q", validated.Status)
+	}
+}
+
+func TestReadValidatedStatusFile_LiveProcess(t *testing.T) {
+	// Status file with current process PID should be considered valid.
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	status := DaemonStatus{
+		PID:      os.Getpid(), // Current process - definitely alive
+		Status:   "running",
+		LastPoll: time.Now(),
+		Capacity: CapacityStatus{Max: 3, Active: 0, Available: 3},
+	}
+	if err := WriteStatusFile(status); err != nil {
+		t.Fatalf("WriteStatusFile failed: %v", err)
+	}
+
+	validated, err := ReadValidatedStatusFile()
+	if err != nil {
+		t.Fatalf("ReadValidatedStatusFile returned error: %v", err)
+	}
+	if validated == nil {
+		t.Fatal("ReadValidatedStatusFile should return status for live process")
+	}
+	if validated.Status != "running" {
+		t.Errorf("Status = %q, want %q", validated.Status, "running")
+	}
+}
+
+func TestReadValidatedStatusFile_NoPID(t *testing.T) {
+	// Status file with PID=0 (not set) should still be considered valid
+	// for backward compatibility with old daemon versions that didn't write PID.
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	status := DaemonStatus{
+		PID:      0, // No PID recorded
+		Status:   "running",
+		LastPoll: time.Now(),
+	}
+	if err := WriteStatusFile(status); err != nil {
+		t.Fatalf("WriteStatusFile failed: %v", err)
+	}
+
+	validated, err := ReadValidatedStatusFile()
+	if err != nil {
+		t.Fatalf("ReadValidatedStatusFile returned error: %v", err)
+	}
+	if validated == nil {
+		t.Fatal("ReadValidatedStatusFile should return status when PID is not set (backward compat)")
+	}
+}
+
+func TestReadValidatedStatusFile_NoFile(t *testing.T) {
+	// When no status file exists, should return error.
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	validated, err := ReadValidatedStatusFile()
+	if err == nil {
+		t.Fatal("ReadValidatedStatusFile should return error when no file exists")
+	}
+	if validated != nil {
+		t.Error("ReadValidatedStatusFile should return nil status when no file exists")
+	}
+}
+
 func TestDetermineStatus_VerificationPause(t *testing.T) {
 	pollInterval := time.Minute
 	lastPoll := time.Now()

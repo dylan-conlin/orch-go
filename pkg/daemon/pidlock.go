@@ -112,8 +112,13 @@ func (l *PIDLock) Release() error {
 	return nil
 }
 
-// isProcessAlive checks if a process with the given PID is running.
+// IsProcessAlive checks if a process with the given PID is running.
 // Uses kill(pid, 0) which checks for process existence without sending a signal.
+func IsProcessAlive(pid int) bool {
+	return isProcessAlive(pid)
+}
+
+// isProcessAlive is the unexported implementation.
 func isProcessAlive(pid int) bool {
 	if pid <= 0 {
 		return false

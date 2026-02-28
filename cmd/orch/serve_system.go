@@ -413,8 +413,8 @@ func handleDaemon(w http.ResponseWriter, r *http.Request) {
 		Running: false,
 	}
 
-	// Try to read daemon status file
-	status, err := daemon.ReadStatusFile()
+	// Try to read daemon status file (validates PID liveness to detect stale files)
+	status, err := daemon.ReadValidatedStatusFile()
 	if err == nil && status != nil {
 		resp.Running = true
 		resp.Status = status.Status
