@@ -1,0 +1,43 @@
+# Verification Specification: Gate Friction Landscape Analysis
+#
+# Design Document: .kb/investigations/2026-02-28-design-orientation-frame-gate-friction-biggest.md
+
+observable_behaviors:
+  primary: "Analysis identifies root cause of gate friction (107 bypasses, 1943 auto-skips) as incomplete V0-V3 migration with 6 concrete implementation tasks"
+  secondary:
+    - "Every recommendation traces to specific code paths in pkg/verify/ and actual bypass data from orch stats"
+    - "Investigation patches existing V0-V3 decision with migration completion plan"
+
+acceptance_criteria:
+  AC-001:
+    behavior: "Investigation file exists with complete D.E.K.N. summary, 6+ findings, and implementation recommendations"
+    condition: "File at .kb/investigations/2026-02-28-design-orientation-frame-gate-friction-biggest.md has Status: Complete"
+    threshold: "Boolean pass/fail"
+
+  AC-002:
+    behavior: "SYNTHESIS.md created with plain-language summary"
+    condition: "SYNTHESIS.md in workspace has non-empty Plain-Language Summary section"
+    threshold: "Boolean pass/fail"
+
+  AC-003:
+    behavior: "Implementation issues created in beads for each recommended change"
+    condition: "6 beads issues created with specific file targets and task descriptions"
+    threshold: "6 issues minimum"
+
+  AC-004:
+    behavior: "All recommendations reference actual code paths and stats data"
+    condition: "No speculative recommendations — every proposal traces to file:line or orch stats output"
+    threshold: "Boolean pass/fail"
+
+failure_modes:
+  FM-001:
+    symptom: "Recommendations are speculative without code evidence"
+    root_cause: "Analysis didn't read the actual gate implementations"
+    diagnostic: "Check if investigation references specific file paths and line numbers"
+    fix: "Re-read pkg/verify/ files and correlate with orch stats data"
+
+evidence_requirements:
+  AC-001: "File exists with complete content"
+  AC-002: "SYNTHESIS.md created in workspace"
+  AC-003: "bd list showing created issues"
+  AC-004: "Investigation findings section with Source: file:line references"
