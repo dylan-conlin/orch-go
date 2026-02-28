@@ -2,13 +2,13 @@
 
 **Domain:** Agent Lifecycle / State Management
 **Last Updated:** 2026-02-27
-**Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display. Updated Feb 2026 after major restructuring (registry elimination, two-lane architecture, single-pass query engine). Updated Feb 25 after phase-based liveness, cross-project querying, and verification gate additions. Updated Feb 27 after V0-V3 verification levels, all-at-once gate failure reporting, architectural choices gate, and auto-implementation issue creation.
+**Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display. Updated Feb 2026 after major restructuring (registry elimination, two-lane architecture, single-pass query engine). Updated Feb 25 after phase-based liveness, cross-project querying, and verification gate additions. Updated Feb 27 after V0-V3 verification levels, all-at-once gate failure reporting, architectural choices gate, auto-implementation issue creation, and `pkg/agent/` formal types package.
 
 ---
 
 ## Summary (30 seconds)
 
-Agent state exists across **four independent layers** (tmux windows, OpenCode in-memory, OpenCode on-disk, beads comments). These layers fall into two distinct categories: **state layers** (beads, workspace files) that represent what work was done, and **infrastructure layers** (OpenCode sessions, tmux windows) that represent transient execution resources. The dashboard reconciles these via a **Priority Cascade**: check beads issue status first (highest authority), then Phase comments, then SYNTHESIS.md existence, then session status. Agents are discovered via a **two-lane architecture**: tracked work (beads-first via `queryTrackedAgents`) and untracked sessions (OpenCode session list). Status can appear "wrong" at the dashboard level while being "correct" at each individual layer - this is a measurement artifact from combining multiple sources of truth.
+Agent state exists across **four independent layers** (tmux windows, OpenCode in-memory, OpenCode on-disk, beads comments). These layers fall into two distinct categories: **state layers** (beads, workspace files) that represent what work was done, and **infrastructure layers** (OpenCode sessions, tmux windows) that represent transient execution resources. The lifecycle state machine is now formally codified in `pkg/agent/` with typed states (7), transitions (6), and validation. The dashboard reconciles these via a **Priority Cascade**: check beads issue status first (highest authority), then Phase comments, then SYNTHESIS.md existence, then session status. Agents are discovered via a **two-lane architecture**: tracked work (beads-first via `queryTrackedAgents`) and untracked sessions (OpenCode session list). Status can appear "wrong" at the dashboard level while being "correct" at each individual layer - this is a measurement artifact from combining multiple sources of truth.
 
 ---
 
@@ -27,6 +27,51 @@ Agent state is distributed across four independent systems:
 | **Tmux windows**       | **Infrastructure** | Runtime (volatile)                 | Until window closed | Agent visible, window ID        | Low (UI only)          |
 
 **Key insight:** A registry (`~/.orch/registry.json`) was historically a fifth layer attempting to cache all four, which caused drift. It was **eliminated entirely** in Feb 2026 (see two-lane ADR). The solution is to query authoritative sources directly via a single-pass query engine with explicit reason codes for any missing data. Architecture lint tests structurally prevent registry recreation.
+
+### Formal State Machine (`pkg/agent/`)
+
+The lifecycle state machine is codified in `pkg/agent/` (added Feb 27, 2026). This package provides typed states, transitions, and validation — replacing the previously implicit state model spread across `determineAgentStatus()` and `complete_cmd.go`.
+
+**States (7):**
+
+| State | Type | Description |
+|-------|------|-------------|
+| `spawning` | Transient | During `orch spawn` execution |
+| `active` | Normal | Agent is working |
+| `phase_complete` | Normal | Agent declared done, awaiting `orch complete` |
+| `completing` | Transient | During `orch complete` execution |
+| `completed` | Terminal | Beads issue closed |
+| `abandoned` | Terminal | Beads reset to open, respawnable |
+| `orphaned` | Detected | GC finds in_progress with no live execution |
+
+**Transitions (6):**
+
+```
+spawning → active         (spawn)
+active → phase_complete   (phase_complete)
+phase_complete → completed (complete, via completing)
+active → abandoned        (abandon)
+orphaned → completed      (force_complete)
+orphaned → abandoned      (force_abandon)
+```
+
+**Key types:**
+
+- `AgentRef` — Query handle assembled from authoritative sources (NOT stored state). Contains BeadsID, WorkspaceName, SessionID, ProjectDir, SpawnMode.
+- `TransitionEvent` — Records a state change with its side effects (`EffectResult` per subsystem: beads, opencode, tmux, workspace, events). Tracks critical vs non-critical failures.
+- `SpawnInput` — Lifecycle-relevant spawn parameters, decoupled from content generation (`spawn.Config`). Validates required fields and converts to `AgentRef`.
+- `SpawnHandle` — Two-phase spawn pattern: `BeginSpawn()` returns a handle with rollback capability; caller creates session/window between phases; `ActivateSpawn()` finalizes the Spawning → Active transition. Accumulates `EffectResult`s across both phases into a single `TransitionEvent`.
+- `LifecycleManager` interface — Coordinates transitions across all four layers. Does NOT store agent state (Invariant #7). Methods: `BeginSpawn`, `ActivateSpawn`, `Complete`, `Abandon`, `ForceComplete`, `ForceAbandon`, `DetectOrphans`, `CurrentState`.
+- `OrphanDetectionResult` / `OrphanedAgent` — GC scan results with reason codes and retry recommendations.
+
+**Implementation status (Feb 27):** `lifecycle_impl.go` exists with partial implementation (compilation error: missing `ActivateSpawn` method). Types, interfaces, tests, and filters are complete and tested.
+
+**Filter functions** (`filters.go`):
+
+- `IsActiveForConcurrency()` — 1-hour threshold; running always counts, Phase: Complete never counts
+- `IsVisibleByDefault()` — 4-hour threshold; running and Phase: Complete always visible
+
+**Architectural constraint:** `LifecycleManager` is a coordinator, not a cache. After any method returns, the manager holds no agent state. This enforces Invariant #7 at the type level.
 
 ### Source of Truth by Concern
 
@@ -351,7 +396,7 @@ Common feature requests or operational changes that would violate this model's i
 - `AGENT_MANIFEST.json` replaces registry entries as workspace-local binding
 - Decision: `.kb/decisions/2026-02-18-two-lane-agent-discovery.md`
 - Priority Cascade expanded with `awaiting-cleanup` status
-- Verification suite expanded to 14 gates (git diff, accretion, build, visual, test evidence, etc.) → 15 gates (vet added Feb 25)
+- Verification suite expanded to 14 gates (git diff, accretion, build, visual, test evidence, etc.) → 16 gates (vet Feb 25, architectural_choices Feb 27)
 
 **Feb 20-25, 2026: Liveness Rethink & Gate Expansion**
 
@@ -360,11 +405,26 @@ Common feature requests or operational changes that would violate this model's i
   - Phase comments now serve as heartbeat: any reported phase = active, no phase + not recent = dead
   - See probe: `probes/2026-02-24-probe-tmux-liveness-two-lane-violation.md`
 - Cross-project querying: `queryTrackedAgents()` now queries beads across all known project directories (orch-go-1231)
-- `GateVet` added to completion verification (15 gates total, orch-go-1248)
+- `GateVet` added to completion verification (orch-go-1248)
+- `GateArchitecturalChoices` added at V1 (16 gates total)
 - Knowledge maintenance step added to `orch complete` flow (orch-go-1243)
 - Deferred tmux window cleanup prevents phantom windows during completion
 - Completion backlog detection and stall tracking added to dashboard monitoring
 - TTL-based beads cache (`serve_agents_cache.go`) prevents excessive bd process spawning
+
+**Feb 27, 2026: Formal Types Package & Gate Expansion**
+
+- `pkg/agent/` created with typed lifecycle states, transitions, and validation (`types.go`, `lifecycle.go`, `filters.go`)
+- 7 states formalized: spawning, active, phase_complete, completing, completed, abandoned, orphaned
+- 6 transitions with `ValidateTransition()` function enforcing from→to rules
+- `LifecycleManager` interface defines coordinator pattern (no stored state, enforcing Invariant #7)
+- `AgentRef` as query handle (not stored state), `TransitionEvent` with per-effect tracking
+- `OrphanDetectionResult` types for GC-initiated lifecycle operations
+- `GateArchitecturalChoices` added at V1 (16 gates total across V0-V3)
+- Auto-implementation issue creation for architect completions
+- Contract tests (`contract_two_lane_test.go`) enforce 12-scenario acceptance matrix
+- Verify package cleanup: `git_commits.go`, `synthesis_content.go`, `stale_bug.go` deleted (logic consolidated)
+- Deleted packages: `pkg/registry/`, `pkg/servers/`, `pkg/experiment/`, `pkg/usage/`
 
 ---
 
@@ -390,7 +450,7 @@ Common feature requests or operational changes that would violate this model's i
 
 **Related Models:**
 
-- `.kb/models/dashboard-agent-status.md` - How Priority Cascade calculates status
+- `.kb/models/archived/dashboard-agent-status.md` - How Priority Cascade calculates status (archived — superseded by this model + dashboard-architecture)
 - `.kb/models/opencode-session-lifecycle/model.md` - How OpenCode sessions work
 - `.kb/models/spawn-architecture/model.md` - How agents are created
 - `.kb/models/completion-verification/model.md` - How verification gates work
@@ -403,12 +463,19 @@ Common feature requests or operational changes that would violate this model's i
 
 **Primary Evidence (Verify These):**
 
+- `pkg/agent/types.go` - Formal lifecycle states (7), transitions (6), `AgentRef`, `TransitionEvent`, `EffectResult`, orphan detection types
+- `pkg/agent/lifecycle.go` - `LifecycleManager` interface (coordinator, not cache), client interfaces (`BeadsClient`, `OpenCodeClient`, `TmuxClient`, `EventLogger`, `WorkspaceManager`)
+- `pkg/agent/spawn.go` - `SpawnInput` (lifecycle spawn parameters), `SpawnHandle` (two-phase spawn with rollback)
+- `pkg/agent/lifecycle_impl.go` - Partial `LifecycleManager` implementation (WIP: missing `ActivateSpawn`)
+- `pkg/agent/filters.go` - `IsActiveForConcurrency()`, `IsVisibleByDefault()` with threshold-based filtering
 - `cmd/orch/serve_agents_status.go` - Priority Cascade implementation (`determineAgentStatus()`), stall tracking, completion backlog detection
 - `cmd/orch/query_tracked.go` - Single-pass query engine (`queryTrackedAgents()`), phase-based liveness for claude-backend agents, cross-project beads querying
 - `cmd/orch/serve_agents_handlers.go` - Dashboard API handlers
 - `cmd/orch/serve_agents_discovery.go` - Workspace and investigation discovery
 - `cmd/orch/serve_agents_cache.go` - TTL-based beads cache (prevents excessive bd process spawning from dashboard polls)
-- `pkg/verify/check.go` - Completion verification (15 gates, including `GateVet` added Feb 2026)
+- `pkg/verify/check.go` - Completion verification (16 gates across V0-V3, including `GateArchitecturalChoices`)
+- `pkg/verify/level.go` - V0-V3 gate level definitions and `ShouldRunGate()` query function
 - `cmd/orch/complete_cmd.go` - Completion pipeline orchestrator (knowledge maintenance step, deferred tmux cleanup)
-- `cmd/orch/architecture_lint_test.go` - Structural guardrails preventing registry recreation
+- `cmd/orch/architecture_lint_test.go` - Structural guardrails preventing registry recreation (forbidden packages/files)
+- `cmd/orch/contract_two_lane_test.go` - 12-scenario acceptance matrix enforcing two-lane architecture contract
 - `.beads/issues.jsonl` - Canonical completion source
