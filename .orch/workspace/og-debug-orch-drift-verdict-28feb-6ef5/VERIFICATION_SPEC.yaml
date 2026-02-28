@@ -1,0 +1,39 @@
+verification:
+  type: behavioral
+  issue: orch-go-pg0m
+  description: "orch drift verdict should show 'unverified' for goal-only focus instead of false 'on track'"
+
+  reproduction:
+    before:
+      command: "orch drift"
+      expected: "Shows '✓ On track' unconditionally when focus has no beads ID"
+      focus_state: "goal-only (no beads_id)"
+    after:
+      command: "orch drift"
+      expected: "Shows 'ALIGNMENT UNVERIFIED (goal-only focus)' with active work grouped by skill"
+      focus_state: "goal-only (no beads_id)"
+
+  automated:
+    - name: "Unit tests - CheckDrift verdict values"
+      command: "go test ./pkg/focus/ -v -run TestCheckDrift"
+      expected: "PASS - all 3 subtests verify verdict field values"
+    - name: "Vet check"
+      command: "go vet ./pkg/focus/ ./cmd/orch/"
+      expected: "No output (clean)"
+    - name: "Build succeeds"
+      command: "go build ./cmd/orch/"
+      expected: "No errors"
+
+  manual:
+    - step: "Run 'orch drift' with a goal-only focus (no --issue)"
+      expected: "Output header says 'ALIGNMENT UNVERIFIED' not 'ON TRACK'"
+    - step: "Run 'orch drift --json' with a goal-only focus"
+      expected: "JSON contains 'verdict': 'unverified' and non-empty 'reason'"
+    - step: "Set focus with specific issue: orch focus 'test' --issue some-id"
+      expected: "orch drift shows 'ON TRACK' or 'DRIFT DETECTED' based on match"
+
+  outcomes:
+    - "Goal-only focus no longer produces unconditionally positive verdict"
+    - "Verdict field added to DriftResult with 4 values: on-track, drifting, unverified, no-focus"
+    - "ActiveWork type replaces raw []string for richer drift comparison"
+    - "CLI output shows active work grouped by skill for human review"

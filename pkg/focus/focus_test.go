@@ -207,37 +207,52 @@ func TestCheckDrift(t *testing.T) {
 	}
 
 	// Case 1: Working on the focused issue - no drift
-	activeIssues := []string{"proj-123"}
-	drift := store.CheckDrift(activeIssues)
+	activeWork := []ActiveWork{{BeadsID: "proj-123"}}
+	drift := store.CheckDrift(activeWork)
 	if drift.IsDrifting {
 		t.Error("expected no drift when working on focused issue")
+	}
+	if drift.Verdict != "on-track" {
+		t.Errorf("expected verdict 'on-track', got %q", drift.Verdict)
 	}
 	if drift.FocusedIssue != "proj-123" {
 		t.Errorf("expected focused issue 'proj-123', got %q", drift.FocusedIssue)
 	}
 
 	// Case 2: Working on different issue - drift detected
-	activeIssues = []string{"proj-456"}
-	drift = store.CheckDrift(activeIssues)
+	activeWork = []ActiveWork{{BeadsID: "proj-456", Title: "Some other work"}}
+	drift = store.CheckDrift(activeWork)
 	if !drift.IsDrifting {
 		t.Error("expected drift when working on different issue")
+	}
+	if drift.Verdict != "drifting" {
+		t.Errorf("expected verdict 'drifting', got %q", drift.Verdict)
 	}
 	if len(drift.ActiveIssues) != 1 || drift.ActiveIssues[0] != "proj-456" {
 		t.Errorf("expected active issues [proj-456], got %v", drift.ActiveIssues)
 	}
 
-	// Case 3: No active work - also considered drift
-	activeIssues = []string{}
-	drift = store.CheckDrift(activeIssues)
+	// Case 3: No active work - also considered drift (focused issue not being worked on)
+	drift = store.CheckDrift([]ActiveWork{})
 	if !drift.IsDrifting {
 		t.Error("expected drift when no active work")
 	}
+	if drift.Verdict != "drifting" {
+		t.Errorf("expected verdict 'drifting', got %q", drift.Verdict)
+	}
 
 	// Case 4: Focus includes active issue among others - no drift
-	activeIssues = []string{"proj-456", "proj-123", "proj-789"}
-	drift = store.CheckDrift(activeIssues)
+	activeWork = []ActiveWork{
+		{BeadsID: "proj-456"},
+		{BeadsID: "proj-123"},
+		{BeadsID: "proj-789"},
+	}
+	drift = store.CheckDrift(activeWork)
 	if drift.IsDrifting {
 		t.Error("expected no drift when focused issue is among active issues")
+	}
+	if drift.Verdict != "on-track" {
+		t.Errorf("expected verdict 'on-track', got %q", drift.Verdict)
 	}
 }
 
@@ -252,9 +267,12 @@ func TestCheckDriftNoFocus(t *testing.T) {
 	}
 
 	// No focus set
-	drift := store.CheckDrift([]string{"proj-123"})
+	drift := store.CheckDrift([]ActiveWork{{BeadsID: "proj-123"}})
 	if drift.IsDrifting {
 		t.Error("expected no drift when no focus is set")
+	}
+	if drift.Verdict != "no-focus" {
+		t.Errorf("expected verdict 'no-focus', got %q", drift.Verdict)
 	}
 	if drift.FocusedIssue != "" {
 		t.Errorf("expected empty focused issue, got %q", drift.FocusedIssue)
@@ -262,6 +280,8 @@ func TestCheckDriftNoFocus(t *testing.T) {
 }
 
 // TestCheckDriftFocusWithoutBeadsID verifies drift when focus has no beads ID.
+// This was the core bug: verdict was unconditionally "on track" when focus had
+// no beads ID, defeating the purpose of drift detection.
 func TestCheckDriftFocusWithoutBeadsID(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "focus.json")
@@ -273,16 +293,36 @@ func TestCheckDriftFocusWithoutBeadsID(t *testing.T) {
 
 	// Set focus without beads ID
 	focus := &Focus{
-		Goal: "Learn something",
+		Goal: "System reliability — no new features",
 	}
 	if err := store.Set(focus); err != nil {
 		t.Fatalf("failed to set focus: %v", err)
 	}
 
-	// Any active work is fine when focus has no specific issue
-	drift := store.CheckDrift([]string{"proj-123", "proj-456"})
-	if drift.IsDrifting {
-		t.Error("expected no drift when focus has no specific issue")
+	// With active work, verdict should be "unverified" (not blindly "on track")
+	activeWork := []ActiveWork{
+		{BeadsID: "proj-123", Title: "Add new widget feature", Type: "feature"},
+		{BeadsID: "proj-456", Title: "Fix daemon crash", Type: "bug"},
+	}
+	drift := store.CheckDrift(activeWork)
+	if drift.Verdict != "unverified" {
+		t.Errorf("expected verdict 'unverified' for goal-only focus with active work, got %q", drift.Verdict)
+	}
+	if drift.Reason == "" {
+		t.Error("expected non-empty reason for unverified verdict")
+	}
+	if drift.Goal != "System reliability — no new features" {
+		t.Errorf("expected goal in result, got %q", drift.Goal)
+	}
+	// ActiveWorkDetails should contain the enriched work items
+	if len(drift.ActiveWorkDetails) != 2 {
+		t.Errorf("expected 2 active work details, got %d", len(drift.ActiveWorkDetails))
+	}
+
+	// With no active work, should be "on-track" (nothing to drift from)
+	drift = store.CheckDrift([]ActiveWork{})
+	if drift.Verdict != "on-track" {
+		t.Errorf("expected verdict 'on-track' for goal-only focus with no work, got %q", drift.Verdict)
 	}
 }
 
@@ -297,7 +337,7 @@ func TestSuggestNext(t *testing.T) {
 	}
 
 	// Case 1: No focus set
-	suggestion := store.SuggestNext([]string{})
+	suggestion := store.SuggestNext([]ActiveWork{})
 	if suggestion.Action != "set-focus" {
 		t.Errorf("expected action 'set-focus', got %q", suggestion.Action)
 	}
@@ -312,7 +352,7 @@ func TestSuggestNext(t *testing.T) {
 	}
 
 	// Case 2: Focus set, no active work
-	suggestion = store.SuggestNext([]string{})
+	suggestion = store.SuggestNext([]ActiveWork{})
 	if suggestion.Action != "start-work" {
 		t.Errorf("expected action 'start-work', got %q", suggestion.Action)
 	}
@@ -321,13 +361,13 @@ func TestSuggestNext(t *testing.T) {
 	}
 
 	// Case 3: Already working on focused issue
-	suggestion = store.SuggestNext([]string{"proj-123"})
+	suggestion = store.SuggestNext([]ActiveWork{{BeadsID: "proj-123"}})
 	if suggestion.Action != "continue" {
 		t.Errorf("expected action 'continue', got %q", suggestion.Action)
 	}
 
 	// Case 4: Working on wrong issue (drift)
-	suggestion = store.SuggestNext([]string{"proj-456"})
+	suggestion = store.SuggestNext([]ActiveWork{{BeadsID: "proj-456"}})
 	if suggestion.Action != "refocus" {
 		t.Errorf("expected action 'refocus', got %q", suggestion.Action)
 	}

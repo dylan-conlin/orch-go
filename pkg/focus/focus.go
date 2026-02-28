@@ -30,16 +30,43 @@ type Focus struct {
 	SetAt string `json:"set_at"`
 }
 
+// ActiveWork represents an active work item with optional details.
+type ActiveWork struct {
+	// BeadsID is the beads issue ID
+	BeadsID string `json:"beads_id"`
+
+	// Title is the human-readable issue title (empty if lookup failed)
+	Title string `json:"title,omitempty"`
+
+	// Type is the issue type: bug, feature, task, etc. (empty if lookup failed)
+	Type string `json:"type,omitempty"`
+}
+
 // DriftResult represents the result of a drift check.
 type DriftResult struct {
-	// IsDrifting is true if active work doesn't align with focus
+	// IsDrifting is true if active work doesn't align with focus.
+	// For goal-only focus (no beads ID), this is true when active work
+	// exists but alignment cannot be verified.
 	IsDrifting bool `json:"is_drifting"`
+
+	// Verdict is a structured assessment: "on-track", "drifting", "unverified", "no-focus"
+	// - "on-track": focused issue is among active work
+	// - "drifting": focused issue is NOT among active work
+	// - "unverified": focus is goal-only, can't verify alignment programmatically
+	// - "no-focus": no focus is set
+	Verdict string `json:"verdict"`
+
+	// Reason explains why the verdict was reached
+	Reason string `json:"reason"`
 
 	// FocusedIssue is the beads ID from the current focus (if any)
 	FocusedIssue string `json:"focused_issue,omitempty"`
 
 	// ActiveIssues are the beads IDs of currently active work
 	ActiveIssues []string `json:"active_issues,omitempty"`
+
+	// ActiveWorkDetails contains enriched details about active work items
+	ActiveWorkDetails []ActiveWork `json:"active_work,omitempty"`
 
 	// Goal is the current focus goal
 	Goal string `json:"goal,omitempty"`
@@ -173,26 +200,48 @@ func (s *Store) Clear() error {
 
 // CheckDrift compares active work against the current focus.
 // Returns a DriftResult indicating whether work is aligned with focus.
-func (s *Store) CheckDrift(activeIssues []string) DriftResult {
+//
+// When focus has a specific beads ID, checks if that ID is among active work.
+// When focus has only a goal (no beads ID), the verdict is "unverified" because
+// alignment can't be determined programmatically — the caller should review
+// active work details against the focus goal.
+func (s *Store) CheckDrift(activeWork []ActiveWork) DriftResult {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	// Extract beads IDs for backward compat
+	var activeIssues []string
+	for _, w := range activeWork {
+		activeIssues = append(activeIssues, w.BeadsID)
+	}
+
 	result := DriftResult{
-		ActiveIssues: activeIssues,
+		ActiveIssues:      activeIssues,
+		ActiveWorkDetails: activeWork,
 	}
 
 	// No focus set = no drift possible
 	if s.focus == nil {
 		result.IsDrifting = false
+		result.Verdict = "no-focus"
+		result.Reason = "No focus set"
 		return result
 	}
 
 	result.Goal = s.focus.Goal
 	result.FocusedIssue = s.focus.BeadsID
 
-	// Focus without specific issue = any work is fine
+	// Focus without specific beads ID = can't verify alignment programmatically
 	if s.focus.BeadsID == "" {
+		if len(activeWork) == 0 {
+			result.IsDrifting = false
+			result.Verdict = "on-track"
+			result.Reason = "No active work"
+			return result
+		}
 		result.IsDrifting = false
+		result.Verdict = "unverified"
+		result.Reason = "Focus has no specific issue — review active work against goal"
 		return result
 	}
 
@@ -200,17 +249,25 @@ func (s *Store) CheckDrift(activeIssues []string) DriftResult {
 	for _, issue := range activeIssues {
 		if issue == s.focus.BeadsID {
 			result.IsDrifting = false
+			result.Verdict = "on-track"
+			result.Reason = "Focused issue is among active work"
 			return result
 		}
 	}
 
 	// Focused issue not found in active work = drift
 	result.IsDrifting = true
+	result.Verdict = "drifting"
+	if len(activeWork) == 0 {
+		result.Reason = "No active work on focused issue"
+	} else {
+		result.Reason = "Active work does not include focused issue"
+	}
 	return result
 }
 
 // SuggestNext recommends the next action based on current state.
-func (s *Store) SuggestNext(activeIssues []string) Suggestion {
+func (s *Store) SuggestNext(activeWork []ActiveWork) Suggestion {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -224,6 +281,12 @@ func (s *Store) SuggestNext(activeIssues []string) Suggestion {
 
 	suggestion := Suggestion{
 		Goal: s.focus.Goal,
+	}
+
+	// Extract IDs for comparison
+	var activeIssues []string
+	for _, w := range activeWork {
+		activeIssues = append(activeIssues, w.BeadsID)
 	}
 
 	// Focus with specific issue
@@ -240,7 +303,7 @@ func (s *Store) SuggestNext(activeIssues []string) Suggestion {
 		}
 
 		// Check if any work is active
-		if len(activeIssues) == 0 {
+		if len(activeWork) == 0 {
 			suggestion.Action = "start-work"
 			suggestion.Description = "No active work. Start work on focused issue: " + s.focus.BeadsID
 			return suggestion
@@ -253,7 +316,7 @@ func (s *Store) SuggestNext(activeIssues []string) Suggestion {
 	}
 
 	// Focus without specific issue - any work is fine
-	if len(activeIssues) == 0 {
+	if len(activeWork) == 0 {
 		suggestion.Action = "start-work"
 		suggestion.Description = "No active work. Start working toward: " + s.focus.Goal
 		return suggestion
