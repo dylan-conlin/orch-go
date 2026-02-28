@@ -26,6 +26,7 @@ for each issue in priority order.
 
 Subcommands:
   run      Process issues continuously with polling
+  status   Show daemon running state with PID liveness check
   stop     Stop the running daemon
   restart  Stop and restart the daemon
   once     Process a single issue and exit
@@ -125,6 +126,22 @@ Examples:
 	},
 }
 
+var daemonStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show daemon running state with PID liveness check",
+	Long: `Show the current daemon status including PID liveness validation.
+
+Reads the daemon status file (~/.orch/daemon-status.json) and validates
+that the daemon process is actually alive. Detects stale status files
+from crashed daemons that would otherwise report false "running" state.
+
+Examples:
+  orch daemon status`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runDaemonStatus()
+	},
+}
+
 var daemonStopCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "Stop the running daemon",
@@ -183,6 +200,7 @@ var (
 
 func init() {
 	daemonCmd.AddCommand(daemonRunCmd)
+	daemonCmd.AddCommand(daemonStatusCmd)
 	daemonCmd.AddCommand(daemonStopCmd)
 	daemonCmd.AddCommand(daemonRestartCmd)
 	daemonCmd.AddCommand(daemonOnceCmd)
@@ -1055,6 +1073,18 @@ func runReflectionAnalysis(verbose bool) {
 			fmt.Printf("Suggestions saved to: %s\n", daemon.SuggestionsPath())
 		}
 	}
+}
+
+func runDaemonStatus() error {
+	info := daemon.GetStatusInfo()
+
+	// Clean up stale status file if detected
+	if info.StaleFile {
+		daemon.RemoveStatusFile()
+	}
+
+	fmt.Print(daemon.FormatStatusInfo(info))
+	return nil
 }
 
 func runDaemonStop() error {
