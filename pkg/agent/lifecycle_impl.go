@@ -198,9 +198,91 @@ func (m *lifecycleManager) Abandon(agent AgentRef, reason string) (*TransitionEv
 
 // Complete performs all side effects for the Complete transition.
 // Precondition: verification gates have already passed (caller's responsibility).
+// The lifecycle manager owns cleanup, not verification.
+//
+// Effect ordering:
+//  1. [critical]     beads: close issue (the primary lifecycle operation)
+//  2. [non-critical] beads: remove orch:agent label (prevents ghost agent visibility)
+//  3. [non-critical] tmux: kill window (if exists)
+//  4. [non-critical] opencode: delete session (if exists)
+//  5. [non-critical] workspace: archive (move to archived/)
+//  6. [non-critical] events: log agent.completed
 func (m *lifecycleManager) Complete(agent AgentRef, reason string) (*TransitionEvent, error) {
-	// TODO: Implement in orch-go-hbtr
-	return nil, nil
+	event := &TransitionEvent{
+		Transition: TransitionComplete,
+		Agent:      agent,
+		FromState:  StatePhaseComplete,
+		ToState:    StateCompleted,
+		Timestamp:  time.Now(),
+		Reason:     reason,
+	}
+
+	// --- Critical effects (beads state) ---
+
+	// 1. Close the beads issue — THE primary Complete operation.
+	if agent.BeadsID != "" {
+		m.runEffect(event, "beads", "close_issue", true, func() error {
+			return m.beads.CloseIssue(agent.BeadsID, reason)
+		})
+	}
+
+	// --- Non-critical effects (cleanup) ---
+
+	// 2. Remove orch:agent label so bd list -l orch:agent returns only active agents.
+	if agent.BeadsID != "" {
+		m.runEffect(event, "beads", "remove_label", false, func() error {
+			return m.beads.RemoveLabel(agent.BeadsID, "orch:agent")
+		})
+	}
+
+	// 3. Kill tmux window if it exists.
+	if agent.WorkspaceName != "" {
+		m.runEffect(event, "tmux", "kill_window", false, func() error {
+			exists, err := m.tmux.WindowExists(agent.WorkspaceName)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				return nil
+			}
+			return m.tmux.KillWindow(agent.WorkspaceName)
+		})
+	}
+
+	// 4. Delete OpenCode session if it exists.
+	if agent.SessionID != "" {
+		m.runEffect(event, "opencode", "delete_session", false, func() error {
+			exists, err := m.opencode.SessionExists(agent.SessionID)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				return nil
+			}
+			return m.opencode.DeleteSession(agent.SessionID)
+		})
+	}
+
+	// 5. Archive workspace if it exists.
+	if agent.WorkspacePath != "" {
+		m.runEffect(event, "workspace", "archive", false, func() error {
+			return m.workspace.Archive(agent.WorkspacePath)
+		})
+	}
+
+	// 6. Log completion event.
+	m.runEffect(event, "events", "log_completed", false, func() error {
+		return m.events.Log("agent.completed", map[string]interface{}{
+			"beads_id":  agent.BeadsID,
+			"workspace": agent.WorkspaceName,
+			"reason":    reason,
+		})
+	})
+
+	// Set overall success based on critical effects
+	event.Success = !event.HasCriticalFailure()
+
+	return event, nil
 }
 
 // ForceComplete performs GC-initiated completion for orphaned agents.

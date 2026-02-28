@@ -849,3 +849,318 @@ func TestSpawnFullLifecycle_BeginThenActivate(t *testing.T) {
 		t.Errorf("logged session_id: got %q, want %q", el.events[0]["session_id"], "session-789")
 	}
 }
+
+// --- Complete Tests ---
+
+func TestComplete_HappyPath(t *testing.T) {
+	mgr, bc, oc, tc, el, wm := testManager()
+	agent := testAgent()
+
+	// Set up existing resources
+	oc.sessions[agent.SessionID] = true
+	tc.windows[agent.WorkspaceName] = true
+	wm.existing[agent.WorkspacePath] = true
+
+	event, err := mgr.Complete(agent, "All tests passing, deliverables verified")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	// Verify transition metadata
+	if event.Transition != TransitionComplete {
+		t.Errorf("expected transition %s, got %s", TransitionComplete, event.Transition)
+	}
+	if event.FromState != StatePhaseComplete {
+		t.Errorf("expected from state %s, got %s", StatePhaseComplete, event.FromState)
+	}
+	if event.ToState != StateCompleted {
+		t.Errorf("expected to state %s, got %s", StateCompleted, event.ToState)
+	}
+	if event.Reason != "All tests passing, deliverables verified" {
+		t.Errorf("expected reason, got %q", event.Reason)
+	}
+	if !event.Success {
+		t.Error("expected Success=true")
+	}
+	if event.Timestamp.IsZero() {
+		t.Error("expected non-zero timestamp")
+	}
+
+	// CRITICAL: beads issue must be closed
+	if reason, ok := bc.issuesClosed[agent.BeadsID]; !ok {
+		t.Fatal("beads issue was NOT closed")
+	} else if reason != "All tests passing, deliverables verified" {
+		t.Errorf("close reason: got %q", reason)
+	}
+
+	// CRITICAL: orch:agent label must be removed (prevents ghost agents)
+	labels, ok := bc.labelsRemoved[agent.BeadsID]
+	if !ok {
+		t.Fatal("orch:agent label was NOT removed — ghost agent bug")
+	}
+	found := false
+	for _, l := range labels {
+		if l == "orch:agent" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("orch:agent label was NOT in removed labels")
+	}
+
+	// Verify session deleted
+	if len(oc.deleted) != 1 || oc.deleted[0] != agent.SessionID {
+		t.Errorf("expected session %s deleted, got %v", agent.SessionID, oc.deleted)
+	}
+
+	// Verify tmux window killed
+	if len(tc.killed) != 1 || tc.killed[0] != agent.WorkspaceName {
+		t.Errorf("expected window %s killed, got %v", agent.WorkspaceName, tc.killed)
+	}
+
+	// Verify workspace archived
+	if len(wm.archived) != 1 || wm.archived[0] != agent.WorkspacePath {
+		t.Errorf("expected workspace archived, got %v", wm.archived)
+	}
+
+	// Verify event logged
+	if len(el.events) != 1 {
+		t.Fatalf("expected 1 event logged, got %d", len(el.events))
+	}
+	if el.events[0]["_type"] != "agent.completed" {
+		t.Errorf("expected event type 'agent.completed', got %q", el.events[0]["_type"])
+	}
+}
+
+func TestComplete_ClosesBeadsIssue_Critical(t *testing.T) {
+	mgr, bc, _, _, _, _ := testManager()
+	agent := testAgent()
+
+	_, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	if _, ok := bc.issuesClosed[agent.BeadsID]; !ok {
+		t.Fatal("beads issue was NOT closed — primary Complete operation missing")
+	}
+}
+
+func TestComplete_RemovesOrchAgentLabel(t *testing.T) {
+	mgr, bc, _, _, _, _ := testManager()
+	agent := testAgent()
+
+	_, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	labels := bc.labelsRemoved[agent.BeadsID]
+	for _, l := range labels {
+		if l == "orch:agent" {
+			return // Test passes
+		}
+	}
+	t.Fatal("GHOST AGENT BUG: orch:agent label not removed on complete")
+}
+
+func TestComplete_NoSession_SkipsSessionCleanup(t *testing.T) {
+	mgr, bc, oc, _, _, _ := testManager()
+	agent := testAgent()
+	agent.SessionID = "" // Claude-mode agent, no OpenCode session
+
+	event, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	if !event.Success {
+		t.Error("expected Success=true when no session")
+	}
+
+	// Session operations should be skipped
+	if len(oc.deleted) != 0 {
+		t.Errorf("expected no sessions deleted, got %v", oc.deleted)
+	}
+
+	// Beads operations should still happen
+	if _, ok := bc.issuesClosed[agent.BeadsID]; !ok {
+		t.Error("beads issue should still be closed")
+	}
+}
+
+func TestComplete_BeadsCloseFails_ReturnsCriticalError(t *testing.T) {
+	mgr, bc, _, _, _, _ := testManager()
+	agent := testAgent()
+
+	bc.failOn["close_issue:"+agent.BeadsID] = fmt.Errorf("beads socket down")
+
+	event, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() should not return error (effects are tracked), got: %v", err)
+	}
+
+	if event.Success {
+		t.Error("expected Success=false when critical beads close fails")
+	}
+	if !event.HasCriticalFailure() {
+		t.Error("expected HasCriticalFailure()=true")
+	}
+}
+
+func TestComplete_TmuxKillFails_NonCriticalWarning(t *testing.T) {
+	mgr, _, _, tc, _, _ := testManager()
+	agent := testAgent()
+	tc.windows[agent.WorkspaceName] = true
+	tc.failOn["kill_window:"+agent.WorkspaceName] = fmt.Errorf("window not found")
+
+	event, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	// Tmux failure is non-critical
+	if !event.Success {
+		t.Error("expected Success=true — tmux kill is non-critical")
+	}
+	if len(event.Warnings) == 0 {
+		t.Error("expected warning about tmux failure")
+	}
+}
+
+func TestComplete_ArchiveFails_NonCriticalWarning(t *testing.T) {
+	mgr, _, _, _, _, wm := testManager()
+	agent := testAgent()
+	wm.existing[agent.WorkspacePath] = true
+	wm.failOn["archive:"+agent.WorkspacePath] = fmt.Errorf("permission denied")
+
+	event, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	if !event.Success {
+		t.Error("expected Success=true — archive is non-critical")
+	}
+	if len(event.Warnings) == 0 {
+		t.Error("expected warning about archive failure")
+	}
+}
+
+func TestComplete_SessionDeleteFails_NonCriticalWarning(t *testing.T) {
+	mgr, _, oc, _, _, _ := testManager()
+	agent := testAgent()
+	oc.sessions[agent.SessionID] = true
+	oc.failOn["delete_session:"+agent.SessionID] = fmt.Errorf("API error")
+
+	event, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	if !event.Success {
+		t.Error("expected Success=true — session delete is non-critical")
+	}
+	if len(event.Warnings) == 0 {
+		t.Error("expected warning about session deletion failure")
+	}
+}
+
+func TestComplete_EventLogFails_NonCriticalWarning(t *testing.T) {
+	mgr, _, _, _, el, _ := testManager()
+	agent := testAgent()
+	el.failOn = fmt.Errorf("disk full")
+
+	event, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	if !event.Success {
+		t.Error("expected Success=true — event logging is non-critical")
+	}
+}
+
+func TestComplete_EffectsOrder(t *testing.T) {
+	mgr, _, oc, tc, _, wm := testManager()
+	agent := testAgent()
+	oc.sessions[agent.SessionID] = true
+	tc.windows[agent.WorkspaceName] = true
+	wm.existing[agent.WorkspacePath] = true
+
+	event, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	// Check that we have effects from all subsystems
+	subsystems := make(map[string]bool)
+	for _, e := range event.Effects {
+		subsystems[e.Subsystem] = true
+	}
+
+	if !subsystems["beads"] {
+		t.Error("missing beads effects")
+	}
+	if !subsystems["opencode"] {
+		t.Error("missing opencode effects")
+	}
+	if !subsystems["tmux"] {
+		t.Error("missing tmux effects")
+	}
+	if !subsystems["events"] {
+		t.Error("missing events effects")
+	}
+	if !subsystems["workspace"] {
+		t.Error("missing workspace effects")
+	}
+
+	// Verify beads close_issue is the first effect (critical path first)
+	if event.Effects[0].Subsystem != "beads" || event.Effects[0].Operation != "close_issue" {
+		t.Errorf("first effect should be beads/close_issue, got %s/%s",
+			event.Effects[0].Subsystem, event.Effects[0].Operation)
+	}
+}
+
+func TestComplete_NoWorkspace_SkipsArchive(t *testing.T) {
+	mgr, bc, _, _, _, wm := testManager()
+	agent := testAgent()
+	agent.WorkspacePath = ""
+	agent.WorkspaceName = ""
+
+	event, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	if !event.Success {
+		t.Error("expected Success=true")
+	}
+
+	// Workspace archive should be skipped
+	if len(wm.archived) != 0 {
+		t.Errorf("expected no archives, got %v", wm.archived)
+	}
+
+	// Beads operations should still happen
+	if _, ok := bc.issuesClosed[agent.BeadsID]; !ok {
+		t.Error("beads issue should still be closed")
+	}
+}
+
+func TestComplete_TimestampSet(t *testing.T) {
+	mgr, _, _, _, _, _ := testManager()
+	agent := testAgent()
+
+	before := time.Now()
+	event, err := mgr.Complete(agent, "done")
+	after := time.Now()
+
+	if err != nil {
+		t.Fatalf("Complete() returned error: %v", err)
+	}
+
+	if event.Timestamp.Before(before) || event.Timestamp.After(after) {
+		t.Error("timestamp should be within test execution window")
+	}
+}
