@@ -8,7 +8,7 @@
 
 ## Plain-Language Summary
 
-Updated the agent-lifecycle-state-model to reflect the new `pkg/agent/` types package that formally codifies the lifecycle state machine (7 states, 6 transitions, validation rules). Previously the state model was implicit — spread across `determineAgentStatus()`, `complete_cmd.go`, and skill documentation. Now it's a typed Go package with `ValidateTransition()`, `LifecycleManager` interface, and `AgentRef` query handles. Also corrected the verification gate count from 15 to 16 (GateArchitecturalChoices added at V1), fixed the archived dashboard-agent-status model reference, added `contract_two_lane_test.go` and `pkg/verify/level.go` to primary evidence, and documented the major package deletions (9 packages removed) in the evolution timeline.
+Updated the agent-lifecycle-state-model to reflect the new `pkg/agent/` types package that formally codifies the lifecycle state machine (7 states, 6 transitions, validation rules). Previously the state model was implicit — spread across `determineAgentStatus()`, `complete_cmd.go`, and skill documentation. Now it's a typed Go package with `ValidateTransition()`, `LifecycleManager` interface, and `AgentRef` query handles. Also corrected the verification gate count from 15 to 16 (GateArchitecturalChoices added at V1), fixed the archived dashboard-agent-status model reference, added `contract_two_lane_test.go` and `pkg/verify/level.go` to primary evidence, and documented the package deletions (4 packages removed: registry, servers, experiment, usage) and verify file consolidation (3 files) in the evolution timeline.
 
 ## Verification Contract
 
