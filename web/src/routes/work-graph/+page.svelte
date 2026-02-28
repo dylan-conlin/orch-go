@@ -713,25 +713,91 @@
 			{:else}
 				<div class="h-full min-h-0 flex flex-col">
 					{#if readyToCompleteItems.length > 0}
+						<!-- Daemon Paused Banner -->
+						{#if $daemon?.verification?.is_paused}
+							<div
+								class="mx-2 mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 flex items-center justify-between"
+								data-testid="daemon-paused-banner"
+							>
+								<div class="flex items-center gap-2">
+									<span class="text-amber-400 text-sm">⏸</span>
+									<span class="text-sm text-amber-300">Daemon paused — {$daemon.verification.completions_since_verification} completions awaiting review</span>
+								</div>
+								<div class="flex items-center gap-2">
+									<button
+										type="button"
+										onclick={acknowledgeAll}
+										disabled={acknowledgingAll}
+										class="px-2.5 py-1 text-xs font-medium text-amber-200 border border-amber-500/40 rounded hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+										data-testid="acknowledge-all-button"
+									>
+										{acknowledgingAll ? 'Closing...' : `Close All (${readyToCompleteItems.length})`}
+									</button>
+									<button
+										type="button"
+										onclick={resumeDaemon}
+										class="px-2.5 py-1 text-xs font-medium text-emerald-300 border border-emerald-500/40 rounded hover:bg-emerald-500/20 transition-colors"
+										data-testid="resume-daemon-button"
+									>
+										Resume
+									</button>
+								</div>
+							</div>
+						{/if}
+
 						<div
-							class="mx-2 mt-2 mb-2 rounded-md border border-emerald-500/30 bg-emerald-500/5"
+							class="mx-2 {$daemon?.verification?.is_paused ? 'mt-1' : 'mt-2'} mb-2 rounded-md border border-emerald-500/30 bg-emerald-500/5"
 							data-testid="ready-to-complete-section"
 						>
 							<div class="px-3 py-2 border-b border-emerald-500/20 flex items-center justify-between gap-4">
 								<div class="text-sm font-semibold text-emerald-400">Ready to Complete</div>
-								<div class="text-xs text-emerald-300/80">{readyToCompleteItems.length} awaiting review · oldest first</div>
+								<div class="flex items-center gap-3">
+									<span class="text-xs text-emerald-300/80">{readyToCompleteItems.length} awaiting review · oldest first</span>
+									{#if !$daemon?.verification?.is_paused && readyToCompleteItems.length > 1}
+										<button
+											type="button"
+											onclick={acknowledgeAll}
+											disabled={acknowledgingAll}
+											class="px-2 py-0.5 text-xs font-medium text-emerald-300 border border-emerald-500/30 rounded hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+											data-testid="acknowledge-all-compact-button"
+										>
+											{acknowledgingAll ? 'Closing...' : 'Close All'}
+										</button>
+									{/if}
+								</div>
 							</div>
-							<div class="max-h-36 overflow-y-auto">
+							<div class="max-h-48 overflow-y-auto">
 								{#each readyToCompleteItems as item (item.id)}
 									<div
-										class="px-3 py-2 border-b border-emerald-500/10 last:border-b-0 flex items-center gap-3 text-xs"
+										class="px-3 py-2 border-b border-emerald-500/10 last:border-b-0"
 										data-testid={`ready-to-complete-row-${item.id}`}
 									>
-										<span class="font-mono text-emerald-300 min-w-[120px]">{item.id}</span>
-										<span class="text-foreground text-sm flex-1 truncate">{item.title}</span>
-										<span class="text-muted-foreground whitespace-nowrap">{item.runtime || 'runtime unknown'}</span>
-										<span class="text-muted-foreground whitespace-nowrap">{formatTokenTotal(item.tokenTotal)}</span>
-										<span class="text-emerald-200/80 whitespace-nowrap">completed {formatRelativeTime(item.completionAt)}</span>
+										<div class="flex items-center gap-3 text-xs">
+											<span class="font-mono text-emerald-300 min-w-[120px]">{item.id}</span>
+											<span class="text-foreground text-sm flex-1 truncate">{item.title}</span>
+											<span class="text-muted-foreground whitespace-nowrap">{item.runtime || 'runtime unknown'}</span>
+											<span class="text-muted-foreground whitespace-nowrap">{formatTokenTotal(item.tokenTotal)}</span>
+											<span class="text-emerald-200/80 whitespace-nowrap">completed {formatRelativeTime(item.completionAt)}</span>
+											<button
+												type="button"
+												onclick={() => acknowledgeItem(item.id)}
+												disabled={acknowledging.has(item.id) || acknowledgingAll}
+												class="px-2 py-0.5 text-xs font-medium text-emerald-300 border border-emerald-500/30 rounded hover:bg-emerald-500/20 transition-colors disabled:opacity-50 flex-shrink-0"
+												data-testid={`acknowledge-button-${item.id}`}
+											>
+												{acknowledging.has(item.id) ? '...' : 'Close'}
+											</button>
+										</div>
+										{#if item.tldr || item.deltaSummary}
+											<div class="mt-1 ml-[132px] flex items-center gap-3 text-xs text-muted-foreground">
+												{#if item.tldr}
+													<span class="truncate max-w-[400px]" title={item.tldr}>{item.tldr}</span>
+												{/if}
+												{#if item.deltaSummary}
+													<span class="text-emerald-400/60 whitespace-nowrap">{item.deltaSummary}</span>
+												{/if}
+											</div>
+										{/if}
 									</div>
 								{/each}
 							</div>
