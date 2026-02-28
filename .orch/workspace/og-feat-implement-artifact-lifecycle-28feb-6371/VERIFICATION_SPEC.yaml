@@ -1,0 +1,52 @@
+verification:
+  type: implementation
+  target_repo: ~/Documents/personal/kb-cli
+
+  deliverables:
+    - path: cmd/kb/lifecycle.go
+      description: "LifecycleState type with 9 states, DeriveMarkdownState(), DeriveQuickEntryState(), helper functions"
+      verification: "go build ./cmd/kb/ succeeds"
+
+    - path: cmd/kb/lifecycle_test.go
+      description: "65 tests covering state derivation priority, all 9 states, edge cases"
+      verification: "go test -run 'TestLifecycle|TestDerive|TestIsStatus|TestIsNext|TestIsTemplate|TestExtractLifecycle' passes"
+
+    - path: cmd/kb/reflect.go
+      description: "Refactored 11 find*Candidates() to use lifecycle state queries instead of inline exclusion patches"
+      verification: "go test -run 'TestFind|TestReflect' passes (same 1 pre-existing failure)"
+
+  commands_run:
+    - "go build ./cmd/kb/"
+    - "go vet ./cmd/kb/"
+    - "go test ./cmd/kb/ -count=1"
+    - "go test ./cmd/kb/ -run 'TestLifecycle...' -v"
+    - "go test ./cmd/kb/ -run 'TestFind|TestReflect' -v"
+
+  test_results:
+    lifecycle_tests: "65/65 passed"
+    reflect_tests: "All pass except 1 pre-existing failure (TestFindOpenCandidatesFiltersByAge)"
+    full_suite: "Same 3 pre-existing failures only (TestCreateGuide, TestTruncateSummary, TestFindOpenCandidatesFiltersByAge)"
+    go_vet: "Clean"
+    go_build: "Clean"
+
+  pre_existing_failures:
+    - TestCreateGuide: "Missing Lineage section in template"
+    - TestTruncateSummary: "Truncation behavior difference"
+    - TestFindOpenCandidatesFiltersByAge: "Age calculation issue with test setup"
+
+  refactoring_summary:
+    functions_refactored:
+      - "findSynthesisCandidates: isArchivedOrSynthesizedDir → DeriveMarkdownState().IsTerminal()"
+      - "findHighCitationEntries: isArchivedOrSynthesizedDir → DeriveMarkdownState().IsTerminal()"
+      - "findStaleCandidates: isArchivedOrSynthesizedDir → DeriveMarkdownState().IsTerminal()"
+      - "findOpenCandidates: 5 inline checks → DeriveMarkdownState() == StateActive"
+      - "findDefectClassCandidates: isArchivedOrSynthesizedDir → DeriveMarkdownState().IsTerminal()"
+      - "findInvestigationPromotionCandidates: isArchivedOrSynthesizedDir + actioned check → DeriveMarkdownState() state check"
+      - "findInvestigationAuthorityCandidates: 4 inline checks → DeriveMarkdownState() == StateActive"
+      - "findPromoteCandidates: status check → DeriveQuickEntryState() == StateActive"
+      - "findDriftCandidates: status check → DeriveQuickEntryState() != StateActive"
+      - "findRefineCandidates: status check → DeriveQuickEntryState() != StateActive"
+      - "findSkillCandidates: status check → DeriveQuickEntryState() != StateActive"
+    preserved:
+      - "isArchivedOrSynthesizedDir(): still used in context.go"
+      - "isTemplatePlaceholder(): still used in issue creation defensive check"
