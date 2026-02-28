@@ -8,7 +8,7 @@
 
 ## Summary (30 seconds)
 
-Anthropic banned subscription OAuth in third-party tools (Feb 19, 2026), making **Claude CLI the default backend** for Anthropic models (was previously the escape hatch). The architecture now uses **model-aware backend routing**: Anthropic models → Claude CLI (tmux), non-Anthropic models (Google, OpenAI, DeepSeek) → OpenCode API (headless). Account routing is capacity-aware with primary/spillover accounts and a health threshold (>20%). The escape hatch pattern remains for infrastructure work, but is now advisory — higher-priority settings (CLI, model requirement, project/user config) take precedence.
+Anthropic banned subscription OAuth in third-party tools (Feb 19, 2026), making **Claude CLI the default backend** for Anthropic models (was previously the "escape hatch"). The architecture now uses **model-aware backend routing**: Anthropic models → Claude CLI (tmux), non-Anthropic models (Google, OpenAI, DeepSeek) → OpenCode API (headless). Account routing is capacity-aware with primary/spillover accounts and a health threshold (>20%). Infrastructure independence — originally the escape hatch's key benefit — is now the default behavior since Claude CLI is the primary backend.
 
 ---
 
@@ -150,7 +150,7 @@ Tmux session via Claude CLI
 Survives OpenCode server restart
 ```
 
-**Explicit escape hatch:**
+**Explicit backend + model override:**
 ```
 orch spawn --backend claude --model opus architect "complex design"
     ↓
@@ -179,7 +179,7 @@ Tmux session, highest quality
    - Override: `allow_anthropic_opencode: true` in user config (`~/.orch/config.yaml`)
    - Opus specifically requires Claude CLI backend (fingerprinting blocks API)
 
-4. **Escape hatch provides true independence**
+4. **Claude CLI provides true independence**
    - Claude CLI binary ≠ OpenCode server
    - Tmux session persists across service restarts
    - Different authentication path (Max subscription OAuth)
@@ -251,7 +251,7 @@ Anthropic's auth gate checks multiple fingerprints:
 
 **Implication:** Bypassing the gate requires either:
 1. Proxying through actual Claude Code binary (complex)
-2. Using Claude CLI with Max subscription (current escape hatch)
+2. Using Claude CLI with Max subscription (current default backend)
 3. Accepting Sonnet/Flash as primary models
 
 **Strategic question enabled:** "Is Opus quality worth $200/mo flat cost vs pay-per-token Sonnet/Flash?"
@@ -261,27 +261,24 @@ Anthropic's auth gate checks multiple fingerprints:
 
 ### Constraint 2: Critical Paths Need Independence
 
-**Why escape hatch exists:**
+**Why backend independence matters:**
 
-When building infrastructure the primary path depends on, failure cascades:
+When building infrastructure, failure cascades if the build depends on that infrastructure:
 - Fixing OpenCode → spawned via OpenCode → fix restarts server → agent dies → fix incomplete
 - Debugging spawn system → spawned via spawn system → meta-circular trap
 
-**Architectural principle:** Critical paths require secondary mechanisms that don't depend on what can fail
+**Architectural principle:** Critical paths require mechanisms that don't depend on what can fail
 
-**Trade-offs accepted:**
-- Escape hatch has less automation (no dashboard)
-- Lower concurrency (manual tmux tracking)
-- Flat cost model (Max subscription)
+**Current state (Feb 2026):** Claude CLI became the default backend, so infrastructure independence is now the default rather than an opt-in escape hatch. Non-Anthropic model work still uses OpenCode API.
 
-**When this matters:**
+**When this especially matters:**
 - Building/fixing orch-go spawn system
 - Debugging OpenCode server crashes
 - Dashboard/monitoring infrastructure work
 - Daemon implementation
 
-**This enables:** Infrastructure work to complete even when primary path fails
-**This constrains:** Must maintain two spawn paths (complexity cost)
+**This enables:** Infrastructure work completes even when OpenCode fails (by default)
+**This constrains:** Must maintain two spawn backends (complexity cost)
 
 ### Constraint 3: OpenCode Doesn't Expose Session State
 
@@ -319,12 +316,12 @@ OpenCode HTTP API provides:
 - But: No dashboard visibility
 - But: Manual tmux management doesn't scale
 
-**Strategic question enabled:** "Should we shift more work to escape hatch to optimize cost?"
+**Strategic question enabled:** "What's the cost-optimal split between Claude CLI and OpenCode API?"
 
-**Current answer:** No - headless primary path provides better ergonomics for most work. Reserve escape hatch for critical infrastructure.
+**Current answer (Feb 2026):** Claude CLI is the default ($200/mo flat for unlimited Anthropic models). OpenCode API used only for non-Anthropic models (pay-per-token).
 
-**This enables:** Cost-effective high-concurrency spawning via API path
-**This constrains:** Escape hatch limited to critical work due to ergonomic overhead
+**This enables:** Predictable cost for most work via Max subscription
+**This constrains:** Non-Anthropic model work still incurs per-token costs
 
 ### Constraint 5: Gemini Flash Blocked Entirely (Updated Feb 2026)
 
@@ -512,10 +509,10 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - `.kb/investigations/2026-01-12-inv-sonnet-cost-tracking-requirements.md` - Cost visibility gap, tracking requirements, strategic questions blocked
 
 **Decisions informed by this model:**
-- Dual spawn architecture (primary + escape hatch)
-- Never spawn infrastructure work via OpenCode
+- Dual spawn backends (Claude CLI primary + OpenCode multi-model)
+- Infrastructure work uses Claude CLI by default (independent of OpenCode)
 - Opus access requires Max subscription + Claude CLI
-- Infrastructure detection auto-applies escape hatch flags
+- Infrastructure detection auto-applies Claude CLI backend
 
 **Related models:**
 - `.kb/models/spawn-architecture/model.md` - Full spawn pipeline and workspace lifecycle

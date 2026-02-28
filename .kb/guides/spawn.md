@@ -364,7 +364,7 @@ Spawn executes in two phases with rollback on failure:
 | **claude** | Creates tmux window, runs `claude` CLI — **no OpenCode session** |
 | **inline** | Runs `opencode run` in current terminal |
 
-**Claude backend note:** `runSpawnClaude` never calls `AtomicSpawnPhase2`, so the manifest has no `session_id`. This is by design — Claude CLI is the escape hatch that doesn't depend on OpenCode.
+**Claude backend note:** `runSpawnClaude` never calls `AtomicSpawnPhase2`, so the manifest has no `session_id`. This is by design — Claude CLI is the primary backend and doesn't depend on OpenCode.
 
 ### Non-Default Models in Tmux Mode
 

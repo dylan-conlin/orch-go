@@ -67,30 +67,28 @@ An effective escape hatch must be:
 
 **Context:** Building observability infrastructure while OpenCode server crashes
 
-**Primary path (daemon):**
-- Execution: OpenCode HTTP API → headless agents
-- Benefits: High concurrency, automated, batch processing
-- Dependency: OpenCode server must be running
-- Failure: Server crashes → all agents die → can't build fixes
-
-**Escape hatch (manual):**
+**Primary path (Claude CLI, current default since Feb 2026):**
 - Execution: Claude CLI → tmux windows → direct process
-- Benefits: Crash-resistant, visible, can intervene
-- Independence: Doesn't use OpenCode server
-- Cost: Manual management, lower concurrency
+- Benefits: Crash-resistant, visible, can intervene, independent of OpenCode
+- Dependency: Claude Max subscription only
+- This is now the default for all Anthropic model work
+
+**Secondary path (OpenCode API, for non-Anthropic models):**
+- Execution: OpenCode HTTP API → headless agents
+- Benefits: High concurrency, dashboard visibility, multi-model support
+- Dependency: OpenCode server must be running
+- Failure: Server crashes → headless agents die
 
 **Usage:**
 ```bash
-# Primary (normal workflow)
-bd create "task" -l triage:ready
-orch daemon run
+# Primary (Claude CLI — default for Anthropic models)
+orch spawn --bypass-triage feature-impl "fix crash recovery" --issue ID
 
-# Escape hatch (critical infrastructure work)
-orch spawn --bypass-triage --mode claude --model opus --tmux \
-  feature-impl "fix crash recovery" --issue ID
+# Secondary (OpenCode API — for non-Anthropic models)
+orch spawn --bypass-triage --model gpt-5 feature-impl "task" --issue ID
 ```
 
-**Outcome:** Agents survived 3 server crashes, completed observability fixes
+**Origin (Jan 10, 2026):** Claude CLI was originally the "escape hatch" when OpenCode was the primary path. Agents survived 3 server crashes, completing observability fixes. After Anthropic banned subscription OAuth in third-party tools (Feb 19, 2026), Claude CLI became the default backend, making infrastructure independence the default rather than an opt-in escape.
 
 ### Example 2: Overmind Supervision
 
@@ -271,13 +269,13 @@ An escape hatch is working when:
 - Agents were building the fixes for crash recovery
 - Death spiral: can't fix crashes because crashes kill the fixes
 
-**Escape hatch activation:**
+**Claude CLI activation (was "escape hatch" at the time):**
 ```bash
 # Abandoned crashed opencode agents
 orch abandon orch-go-uyveu orch-go-vtf1s orch-go-b6hwn
 
-# Respawned with escape hatch
-orch spawn --bypass-triage --mode claude --model opus --tmux \
+# Respawned with Claude CLI backend
+orch spawn --bypass-triage --backend claude --model opus \
   feature-impl "P0: Implement orch doctor" --issue orch-go-uyveu
 
 # Result: Agents survived subsequent crashes, continued working
@@ -289,7 +287,7 @@ orch spawn --bypass-triage --mode claude --model opus --tmux \
 - Independent of OpenCode server
 - Building the supervision infrastructure that will prevent future crashes
 
-**Lesson:** Escape hatch broke the death spiral. The "old spawn path" wasn't legacy - it was disaster recovery.
+**Lesson:** Claude CLI broke the death spiral. This experience proved the value of backend independence, which became the default architecture when Claude CLI was promoted to primary backend (Feb 19, 2026).
 
 ---
 
@@ -297,5 +295,5 @@ orch spawn --bypass-triage --mode claude --model opus --tmux \
 
 - **kb-bf4f55:** Constraint "Critical paths need independent escape hatches"
 - **kb-d562c9:** Decision to use claude+opus+tmux for critical infrastructure
-- **CLAUDE.md:** "Dual Spawn Modes: Resilience by Design" section
+- **CLAUDE.md:** "Spawn Backends" section
 - **Origin issue:** orch-go-95vz4 (Dashboard Reliability Infrastructure epic)

@@ -58,55 +58,54 @@ pkg/
     └── question.go     # Parse pending questions from agent output
 ```
 
-## Dual Spawn Modes: Resilience by Design
+## Spawn Backends
 
-orch supports two spawn modes for redundancy:
+orch uses two backends for agent spawning, selected automatically via model-aware routing:
 
-### Primary Path (Daemon + OpenCode API)
+### Primary Path: Claude CLI (Tmux)
 
 ```bash
+# Default — Anthropic models route here automatically
+orch spawn --bypass-triage feature-impl "task" --issue ID
+
+# Daemon also uses Claude CLI for Anthropic models
 bd create "task" --type task -l triage:ready
-orch daemon run  # Auto-spawns via opencode API, headless
+orch daemon run
 ```
 
-**Use for:** Normal workflow, high concurrency, batch processing
-
-**Characteristics:**
-
-- Headless (no tmux window)
-- High concurrency (5+ agents)
-- Depends on OpenCode server (localhost:4096)
-- Daemon-managed lifecycle
-
-### Escape Hatch (Manual + Claude CLI)
-
-```bash
-orch spawn --bypass-triage --mode claude --model opus --tmux feature-impl "task" --issue ID
-```
-
-**Use for:**
-
-- 🔥 Building infrastructure the primary path depends on
-- 🔧 Debugging when OpenCode server is unstable
-- 🎯 Critical work that can't afford to lose progress to crashes
-- 👁️ Work requiring visual monitoring
+**Use for:** All Anthropic model work (opus, sonnet, haiku) — this is the default
 
 **Characteristics:**
 
 - Tmux window (visible progress)
-- Independent of OpenCode server
-- Crash-resistant (agents survive service restarts)
-- Manual lifecycle management
+- Independent of OpenCode server (crash-resistant)
+- Claude Max subscription ($200/mo flat, unlimited)
+- Daemon-managed or manual lifecycle
 
-### Architectural Principle: Critical Paths Need Escape Hatches
+**History:** Was originally the "escape hatch" (Jan 2026). Became the default backend on Feb 19, 2026 when Anthropic banned subscription OAuth in third-party tools, making Claude CLI the only path for Anthropic models.
 
-**Pattern discovered Jan 10, 2026:** When building observability infrastructure, OpenCode server crashed repeatedly (3 times in 1 hour), killing all agents working on the fixes. Switched to `--mode claude --tmux` for critical agents (orch doctor, overmind supervision, dashboard integration), which survived crashes and completed the work.
+### Multi-Model Path: OpenCode API (Headless)
 
-**General rule:** When infrastructure can fail, critical paths need independent secondary paths that:
+```bash
+# For non-Anthropic models only
+orch spawn --bypass-triage --model gpt-5 feature-impl "task" --issue ID
+```
 
-1. **Don't depend on what failed** (claude CLI ≠ opencode server)
-2. **Provide visibility** (tmux vs headless)
-3. **Can complete the work** (opus for quality)
+**Use for:** Non-Anthropic models (Google, OpenAI, DeepSeek)
+
+**Characteristics:**
+
+- Headless (no tmux window), returns immediately
+- High concurrency (5+ agents)
+- Depends on OpenCode server (localhost:4096)
+- Dashboard visibility via SSE
+- Pay-per-token pricing
+
+### Architectural Principle: Backend Independence
+
+**Pattern discovered Jan 10, 2026:** When building observability infrastructure, OpenCode server crashed repeatedly (3 times in 1 hour), killing all agents working on the fixes. Claude CLI agents in tmux survived crashes and completed the work.
+
+**General rule:** Critical paths need independent secondary mechanisms. The Claude CLI backend provides this naturally — it doesn't depend on OpenCode server, so infrastructure work is crash-resistant by default.
 
 ### Architectural Principle: Pain as Signal
 
@@ -147,7 +146,7 @@ Query beads and OpenCode directly. If queries are slow, fix the authoritative so
 | Beads integration        | `beads-integration.md`                 | bd commands failing, issue tracking                     |
 | Skill system             | `skill-system.md`                      | Skill not loading, wrong behavior                       |
 | Daemon                   | `daemon.md`                            | Auto-spawn issues, triage workflow                      |
-| Resilient infrastructure | `resilient-infrastructure-patterns.md` | Building/fixing critical infrastructure, escape hatches |
+| Resilient infrastructure | `resilient-infrastructure-patterns.md` | Building/fixing critical infrastructure, backend independence |
 
 These guides synthesize 280+ investigations into authoritative references. Created Jan 4, 2026 after repeatedly re-investigating documented problems.
 
