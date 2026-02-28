@@ -27,6 +27,7 @@ func TestDefaultVerifyLevel_SkillDefaults(t *testing.T) {
 		// V0 skills
 		{"issue-creation", "", VerifyV0},
 		{"issue-creation", "task", VerifyV0},
+		{"capture-knowledge", "", VerifyV0},
 
 		// V1 skills
 		{"investigation", "", VerifyV1},
@@ -34,11 +35,16 @@ func TestDefaultVerifyLevel_SkillDefaults(t *testing.T) {
 		{"research", "", VerifyV1},
 		{"codebase-audit", "", VerifyV1},
 		{"design-session", "", VerifyV1},
+		{"probe", "", VerifyV1},
+		{"ux-audit", "", VerifyV1},
 
 		// V2 skills
 		{"feature-impl", "", VerifyV2},
 		{"systematic-debugging", "", VerifyV2},
 		{"reliability-testing", "", VerifyV2},
+
+		// V3 skills
+		{"debug-with-playwright", "", VerifyV3},
 
 		// Unknown skill defaults to V1 (conservative)
 		{"unknown-skill", "", VerifyV1},

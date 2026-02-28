@@ -21,7 +21,8 @@ var verifyLevelOrder = map[string]int{
 // SkillVerifyLevelDefaults maps skills to their default verification level.
 var SkillVerifyLevelDefaults = map[string]string{
 	// V0: Acknowledge — minimal verification
-	"issue-creation": VerifyV0,
+	"issue-creation":    VerifyV0,
+	"capture-knowledge": VerifyV0,
 
 	// V1: Artifacts — knowledge-producing skills
 	"investigation":  VerifyV1,
@@ -29,11 +30,16 @@ var SkillVerifyLevelDefaults = map[string]string{
 	"research":       VerifyV1,
 	"codebase-audit": VerifyV1,
 	"design-session": VerifyV1,
+	"probe":          VerifyV1,
+	"ux-audit":       VerifyV1,
 
 	// V2: Evidence — implementation-focused skills
 	"feature-impl":         VerifyV2,
 	"systematic-debugging": VerifyV2,
 	"reliability-testing":  VerifyV2,
+
+	// V3: Behavioral — visual/interactive verification required
+	"debug-with-playwright": VerifyV3,
 }
 
 // IssueTypeMinVerifyLevel maps issue types to their minimum verification level.
