@@ -1026,6 +1026,33 @@ No code references here.
 			t.Error("checkModelStaleness() should report deleted file")
 		}
 	})
+
+	t.Run("expands tilde paths correctly", func(t *testing.T) {
+		// Create a temp file in the home directory to reference
+		home, err := os.UserHomeDir()
+		if err != nil {
+			t.Skip("cannot get home dir")
+		}
+		// Use a file that definitely exists in home
+		testContent := `# Model: Test
+**Last Updated:** 2099-01-01
+
+**Primary Evidence:**
+- ` + "`~/.zshrc`" + ` - Shell config
+`
+		result, err := checkModelStaleness(testContent, "../..")
+		if err != nil {
+			t.Fatalf("checkModelStaleness() error = %v", err)
+		}
+		// If ~/.zshrc exists, it should NOT be reported as deleted
+		if _, statErr := os.Stat(home + "/.zshrc"); statErr == nil {
+			for _, df := range result.DeletedFiles {
+				if df == "~/.zshrc" {
+					t.Error("checkModelStaleness() should expand ~ paths — reported ~/.zshrc as deleted but file exists")
+				}
+			}
+		}
+	})
 }
 
 func TestStaleModelIntegration(t *testing.T) {

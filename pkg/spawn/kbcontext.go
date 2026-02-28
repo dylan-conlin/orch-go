@@ -1443,7 +1443,13 @@ func checkModelStaleness(modelContent string, projectDir string) (*StalenessResu
 	// Check each referenced file
 	for _, ref := range codeRefs {
 		filePath := ref
-		if !strings.HasPrefix(filePath, "/") {
+		if strings.HasPrefix(filePath, "~/") {
+			// Expand tilde to home directory
+			home, err := os.UserHomeDir()
+			if err == nil {
+				filePath = filepath.Join(home, filePath[2:])
+			}
+		} else if !strings.HasPrefix(filePath, "/") {
 			// Make relative paths absolute
 			filePath = fmt.Sprintf("%s/%s", projectDir, ref)
 		}
