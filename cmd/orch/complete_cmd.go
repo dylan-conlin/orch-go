@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/activity"
+	"github.com/dylan-conlin/orch-go/pkg/agent"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/checkpoint"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
@@ -1160,50 +1161,6 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
-	// Close the beads issue if not already closed
-	// Skip for untracked agents and orchestrator sessions (they have no beads issue to close)
-	if !isClosed && !isUntracked && beadsID != "" {
-		// Use force-close when orch complete has already verified or explicitly skipped
-		// the phase_complete gate. This avoids the double-gate where both orch and bd
-		// independently check for Phase: Complete.
-		useForceClose := completeForce || skipConfig.PhaseComplete
-		var closeErr error
-		if useForceClose {
-			closeErr = verify.ForceCloseIssue(beadsID, reason)
-		} else {
-			closeErr = verify.CloseIssue(beadsID, reason)
-		}
-		if closeErr != nil {
-			return fmt.Errorf("failed to close issue: %w", closeErr)
-		}
-		fmt.Printf("Closed beads issue: %s\n", beadsID)
-
-		// Remove triage:ready label on successful completion
-		// This ensures failed/abandoned agents leave issues in ready queue for daemon retry
-		if err := verify.RemoveTriageReadyLabel(beadsID); err != nil {
-			// Non-critical - the issue may not have had this label
-			// or it was already removed
-		}
-
-		// Remove orch:agent label so bd list -l orch:agent returns only active agents
-		if err := verify.RemoveOrchAgentLabel(beadsID); err != nil {
-			// Non-critical - label may not exist or already removed
-		}
-
-		// Signal human verification to daemon.
-		// This resets the completion counter and unpauses the daemon if it was paused.
-		// We use a file-based signal so orch complete doesn't need direct access to the daemon instance.
-		if err := daemon.WriteVerificationSignal(); err != nil {
-			// Log warning but don't fail completion - the issue is already closed
-			fmt.Fprintf(os.Stderr, "Warning: failed to signal human verification to daemon: %v\n", err)
-		}
-	} else if isOrchestratorSession {
-		fmt.Printf("Completed orchestrator session: %s\n", agentName)
-	} else if isUntracked {
-		fmt.Printf("Cleaned up untracked agent: %s\n", identifier)
-	}
-	fmt.Printf("Reason: %s\n", reason)
-
 	// Auto-create implementation issue for architect completions.
 	// When an architect agent's SYNTHESIS recommends action, create a triage:ready
 	// follow-up issue so the daemon picks it up for implementation.
@@ -1211,70 +1168,125 @@ func runComplete(identifier, workdir string) error {
 		maybeAutoCreateImplementationIssue(skillName, beadsID, workspacePath)
 	}
 
-	// Export activity to ACTIVITY.json for archival (Tier 2 persistence)
-	// This is done BEFORE deleting the session (needs API access) and BEFORE archiving.
-	// Only for non-orchestrator sessions - orchestrators export transcript separately.
+	// --- Pre-lifecycle operations (need session/workspace alive) ---
+
+	// Export activity to ACTIVITY.json for archival (Tier 2 persistence).
+	// Must happen BEFORE lifecycle transition deletes the session and archives workspace.
 	if workspacePath != "" && !isOrchestratorSession {
-		sessionFile := filepath.Join(workspacePath, ".session_id")
-		if data, err := os.ReadFile(sessionFile); err == nil {
-			sessionID := strings.TrimSpace(string(data))
-			if sessionID != "" {
-				if activityPath, err := activity.ExportToWorkspace(sessionID, workspacePath, serverURL); err != nil {
-					// Non-fatal - activity export is for archival only
-					fmt.Fprintf(os.Stderr, "Warning: failed to export activity: %v\n", err)
-				} else if activityPath != "" {
-					fmt.Printf("Exported activity: %s\n", filepath.Base(activityPath))
-				}
+		sid := spawn.ReadSessionID(workspacePath)
+		if sid != "" {
+			if activityPath, err := activity.ExportToWorkspace(sid, workspacePath, serverURL); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to export activity: %v\n", err)
+			} else if activityPath != "" {
+				fmt.Printf("Exported activity: %s\n", filepath.Base(activityPath))
 			}
 		}
 	}
 
-	// Delete OpenCode session to prevent ghost agents in orch status
-	// This is done after closing the beads issue but before cleanup, so if
-	// deletion fails, the issue is still properly closed.
-	if workspacePath != "" {
-		// Try to get session ID from workspace .session_id file
-		sessionFile := filepath.Join(workspacePath, ".session_id")
-		if data, err := os.ReadFile(sessionFile); err == nil {
-			sessionID := strings.TrimSpace(string(data))
-			if sessionID != "" {
-				client := opencode.NewClient(serverURL)
-				if err := client.DeleteSession(sessionID); err != nil {
-					// Non-fatal - session might already be deleted or not exist
-					fmt.Fprintf(os.Stderr, "Warning: failed to delete OpenCode session %s: %v\n", shortID(sessionID), err)
-				} else {
-					fmt.Printf("Deleted OpenCode session: %s\n", shortID(sessionID))
-				}
-			}
-		}
-	}
-
-	// For orchestrator sessions, export transcript before cleanup
+	// For orchestrator sessions, export transcript before lifecycle transition
 	if workspacePath != "" && isOrchestratorSession {
-		// Use agentName (workspace name) as identifier for orchestrator transcript export
 		if err := exportOrchestratorTranscript(workspacePath, beadsProjectDir, agentName); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to export orchestrator transcript: %v\n", err)
 		}
 	}
 
-	// Archive workspace after successful completion (unless --no-archive is set)
-	// This happens after all workspace reads (session deletion, transcript export)
-	// but before tmux cleanup. The workspace is moved to .orch/workspace/archived/
-	var archivedPath string
-	if workspacePath != "" && !completeNoArchive {
-		var err error
-		archivedPath, err = archiveWorkspace(workspacePath, beadsProjectDir)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to archive workspace: %v\n", err)
-		} else {
-			fmt.Printf("Archived workspace: %s\n", filepath.Base(archivedPath))
+	// --- Execute lifecycle transition via LifecycleManager ---
+	// Same pattern as abandon wireup: LifecycleManager.Complete handles beads close,
+	// orch:agent label removal, session deletion, workspace archival, tmux kill, and
+	// event logging as a coordinated transition with critical/non-critical effect tracking.
 
-		}
-	} else if completeNoArchive && workspacePath != "" {
-		fmt.Println("Skipped workspace archival (--no-archive)")
+	// Read session ID for AgentRef (needed by session deletion effect).
+	sessionID := spawn.ReadSessionID(workspacePath)
+
+	// Build AgentRef. WorkspacePath controls archive effect: empty when --no-archive.
+	lifecycleWorkspacePath := workspacePath
+	if completeNoArchive {
+		lifecycleWorkspacePath = ""
 	}
 
-	// tmux window cleanup is handled by defer (see cleanupTmuxWindow)
+	agentRef := agent.AgentRef{
+		BeadsID:       beadsID,
+		WorkspaceName: agentName,
+		WorkspacePath: lifecycleWorkspacePath,
+		SessionID:     sessionID,
+		ProjectDir:    beadsProjectDir,
+	}
+
+	// Use LifecycleManager for all agent types:
+	// - Tracked agents: full transition (beads close + cleanup)
+	// - Untracked/orchestrator: cleanup only (BeadsID empty -> beads effects skipped)
+	if !isClosed || isOrchestratorSession || isUntracked {
+		if isOrchestratorSession || isUntracked {
+			agentRef.BeadsID = ""
+		}
+
+		lm := buildLifecycleManager(beadsProjectDir, serverURL, agentName, beadsID)
+		event, err := lm.Complete(agentRef, reason)
+		if err != nil {
+			return fmt.Errorf("complete transition failed: %w", err)
+		}
+
+		// Report lifecycle effects
+		for _, e := range event.Effects {
+			if e.Success {
+				switch e.Operation {
+				case "close_issue":
+					fmt.Printf("Closed beads issue: %s\n", beadsID)
+				case "remove_label":
+					fmt.Printf("Removed orch:agent label\n")
+				case "kill_window":
+					fmt.Printf("Killed tmux window\n")
+				case "delete_session":
+					fmt.Printf("Deleted OpenCode session: %s\n", shortID(sessionID))
+				case "archive":
+					fmt.Printf("Archived workspace: %s\n", agentName)
+				}
+			}
+		}
+
+		// Report warnings (non-critical failures)
+		for _, w := range event.Warnings {
+			fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+		}
+
+		// Report critical failures (beads close is the only critical effect)
+		if !event.Success {
+			for _, e := range event.Effects {
+				if e.Critical && !e.Success {
+					return fmt.Errorf("failed to close issue: %v", e.Error)
+				}
+			}
+		}
+
+		// LifecycleManager handled tmux cleanup — skip deferred cleanup
+		skipTmuxCleanup = true
+	}
+
+	if isOrchestratorSession {
+		fmt.Printf("Completed orchestrator session: %s\n", agentName)
+	} else if isUntracked {
+		fmt.Printf("Cleaned up untracked agent: %s\n", identifier)
+	}
+	fmt.Printf("Reason: %s\n", reason)
+
+	// Post-lifecycle operations (not in LifecycleManager)
+
+	// Remove triage:ready label on successful completion (tracked agents only).
+	if !isClosed && !isUntracked && beadsID != "" {
+		if err := verify.RemoveTriageReadyLabel(beadsID); err != nil {
+			// Non-critical - the issue may not have had this label
+		}
+
+		// Signal human verification to daemon.
+		// Resets the completion counter and unpauses daemon if paused.
+		if err := daemon.WriteVerificationSignal(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to signal human verification to daemon: %v\n", err)
+		}
+	}
+
+	if completeNoArchive && workspacePath != "" {
+		fmt.Println("Skipped workspace archival (--no-archive)")
+	}
 
 	// Auto-rebuild if agent committed Go changes (in the beads project)
 	if hasGoChangesInRecentCommits(beadsProjectDir) {
