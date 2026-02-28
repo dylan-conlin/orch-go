@@ -1,0 +1,40 @@
+---
+# Verification Specification for LIGHT/V2 Conflict Resolution
+# Design document: .kb/investigations/2026-02-27-design-light-tier-v2-verification-conflict-resolution.md
+
+type: architect
+skill: architect
+beads_id: orch-go-i9qi
+
+observable_behaviors:
+  - description: "Investigation produced with clear recommendation"
+    verified: true
+    evidence: ".kb/investigations/2026-02-27-design-light-tier-v2-verification-conflict-resolution.md created with Option A recommendation"
+  - description: "Probe confirms model invariant violation"
+    verified: true
+    evidence: ".kb/models/completion-verification/probes/2026-02-27-probe-light-tier-v2-verification-conflict.md confirms 'zero skip flags' invariant violated"
+
+acceptance_criteria:
+  - id: AC-001
+    description: "Investigation identifies root cause of LIGHT/V2 conflict"
+    condition: "Investigation documents that feature-impl defaults to TierLight + V2, creating contradictory synthesis requirements"
+    passed: true
+  - id: AC-002
+    description: "Three options analyzed with substrate-informed recommendation"
+    condition: "Options A, B, C evaluated against V0-V3 decision doc principles"
+    passed: true
+  - id: AC-003
+    description: "Recommendation preserves V2 for tracked work via issue type minimums"
+    condition: "DefaultVerifyLevel('feature-impl', 'feature') still returns V2 after proposed change"
+    passed: true
+
+implementation_ready:
+  problem_statement: true
+  approach: true
+  file_targets: true  # verify_level.go, check.go
+  acceptance_criteria: true
+  out_of_scope: true
+
+manual_steps_required:
+  - "Orchestrator review and decision acceptance"
+  - "Spawn feature-impl agent to implement the change"
