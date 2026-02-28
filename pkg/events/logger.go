@@ -44,6 +44,8 @@ const (
 	EventTypeSpawnSkillInferred = "spawn.skill_inferred"
 	// EventTypeAccretionDelta indicates file growth/shrinkage during an agent session.
 	EventTypeAccretionDelta = "accretion.delta"
+	// EventTypeHotspotBypassed indicates a CRITICAL hotspot blocking gate was bypassed via --force-hotspot.
+	EventTypeHotspotBypassed = "spawn.hotspot_bypassed"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -214,6 +216,7 @@ type AgentCompletedData struct {
 	Workspace          string   `json:"workspace,omitempty"`
 	Reason             string   `json:"reason,omitempty"`
 	Forced             bool     `json:"forced"`
+	ForceReason        string   `json:"force_reason,omitempty"` // Reason for --force override (separate from close reason)
 	Untracked          bool     `json:"untracked"`
 	Orchestrator       bool     `json:"orchestrator"`
 	VerificationPassed bool     `json:"verification_passed"`      // Did verification pass on first try?
@@ -239,6 +242,9 @@ func (l *Logger) LogAgentCompleted(data AgentCompletedData) error {
 	}
 	if data.Workspace != "" {
 		eventData["workspace"] = data.Workspace
+	}
+	if data.ForceReason != "" {
+		eventData["force_reason"] = data.ForceReason
 	}
 	if len(data.GatesBypassed) > 0 {
 		eventData["gates_bypassed"] = data.GatesBypassed

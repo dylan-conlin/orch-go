@@ -23,15 +23,19 @@ func CheckTriageBypass(daemonDriven, bypassTriage bool, skillName, task string) 
 // LogTriageBypass logs a triage bypass event to events.jsonl for Phase 2 review.
 // This tracks how often manual spawns occur vs daemon-driven spawns.
 // Should be called when bypassTriage is true and daemonDriven is false.
-func LogTriageBypass(skillName, task string) {
+func LogTriageBypass(skillName, task, reason string) {
 	logger := events.NewLogger(events.DefaultLogPath())
+	data := map[string]interface{}{
+		"skill": skillName,
+		"task":  task,
+	}
+	if reason != "" {
+		data["reason"] = reason
+	}
 	event := events.Event{
 		Type:      "spawn.triage_bypassed",
 		Timestamp: time.Now().Unix(),
-		Data: map[string]interface{}{
-			"skill": skillName,
-			"task":  task,
-		},
+		Data:      data,
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log triage bypass: %v\n", err)

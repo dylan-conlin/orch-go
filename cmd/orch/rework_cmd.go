@@ -151,7 +151,7 @@ func runRework(beadsID, feedback string) error {
 	}
 
 	agreementsCheckFunc := buildAgreementsChecker()
-	usageCheckResult, hotspotResult, _, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, false, false, "", "", 0, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc)
+	usageCheckResult, hotspotResult, _, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, false, false, "", "", "", 0, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc)
 	if err != nil {
 		return err
 	}
@@ -279,7 +279,7 @@ func runRework(beadsID, feedback string) error {
 		HotspotFiles:      hotspotFilesFromResult(hotspotResult),
 	}
 
-	cfg := orch.BuildSpawnConfig(ctx, "", resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, false, false)
+	cfg := orch.BuildSpawnConfig(ctx, "", resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, false, false, "")
 	minimalPrompt, rollback, err := orch.ValidateAndWriteContext(cfg, false)
 	if err != nil {
 		return err

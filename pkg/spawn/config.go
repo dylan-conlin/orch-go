@@ -154,6 +154,9 @@ type Config struct {
 	// NoTrack opts out of beads issue tracking (ad-hoc work)
 	NoTrack bool
 
+	// NoTrackReason is the justification for --no-track (min 10 chars when set)
+	NoTrackReason string
+
 	// SkipArtifactCheck bypasses pre-spawn kb context check
 	SkipArtifactCheck bool
 

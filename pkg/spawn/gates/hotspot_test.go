@@ -7,7 +7,7 @@ import (
 )
 
 func TestCheckHotspot_NilChecker(t *testing.T) {
-	result, err := CheckHotspot("/some/dir", "some task", "feature-impl", false, false, "", nil, nil, nil)
+	result, err := CheckHotspot("/some/dir", "some task", "feature-impl", false, false, "", "", nil, nil, nil)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -21,7 +21,7 @@ func TestCheckHotspot_EmptyDir(t *testing.T) {
 		t.Fatal("checker should not be called with empty dir")
 		return nil, nil
 	}
-	result, err := CheckHotspot("", "some task", "feature-impl", false, false, "", checker, nil, nil)
+	result, err := CheckHotspot("", "some task", "feature-impl", false, false, "", "", checker, nil, nil)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestCheckHotspot_NoHotspots(t *testing.T) {
 	checker := func(dir, task string) (*HotspotResult, error) {
 		return nil, nil
 	}
-	result, err := CheckHotspot("/some/dir", "some task", "feature-impl", false, false, "", checker, nil, nil)
+	result, err := CheckHotspot("/some/dir", "some task", "feature-impl", false, false, "", "", checker, nil, nil)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestCheckHotspot_WithHotspots_NonCritical(t *testing.T) {
 			Warning:            "test warning",
 		}, nil
 	}
-	result, err := CheckHotspot("/some/dir", "some task", "feature-impl", false, false, "", checker, nil, nil)
+	result, err := CheckHotspot("/some/dir", "some task", "feature-impl", false, false, "", "", checker, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error for non-critical hotspot: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestCheckHotspot_DaemonDrivenSilent(t *testing.T) {
 			Warning:     "test warning",
 		}, nil
 	}
-	result, err := CheckHotspot("/some/dir", "some task", "feature-impl", true, false, "", checker, nil, nil)
+	result, err := CheckHotspot("/some/dir", "some task", "feature-impl", true, false, "", "", checker, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestCheckHotspot_CriticalBlocksFeatureImpl(t *testing.T) {
 			CriticalFiles:      []string{"cmd/orch/main.go"},
 		}, nil
 	}
-	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, false, "", checker, nil, nil)
+	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, false, "", "", checker, nil, nil)
 	if err == nil {
 		t.Fatal("expected error for CRITICAL hotspot with feature-impl skill")
 	}
@@ -112,7 +112,7 @@ func TestCheckHotspot_CriticalBlocksSystematicDebugging(t *testing.T) {
 			CriticalFiles:      []string{"pkg/big/file.go"},
 		}, nil
 	}
-	_, err := CheckHotspot("/some/dir", "debug pkg/big/file.go", "systematic-debugging", false, false, "", checker, nil, nil)
+	_, err := CheckHotspot("/some/dir", "debug pkg/big/file.go", "systematic-debugging", false, false, "", "", checker, nil, nil)
 	if err == nil {
 		t.Fatal("expected error for CRITICAL hotspot with systematic-debugging skill")
 	}
@@ -127,7 +127,7 @@ func TestCheckHotspot_CriticalExemptsArchitect(t *testing.T) {
 			CriticalFiles:      []string{"cmd/orch/main.go"},
 		}, nil
 	}
-	result, err := CheckHotspot("/some/dir", "review cmd/orch/main.go", "architect", false, false, "", checker, nil, nil)
+	result, err := CheckHotspot("/some/dir", "review cmd/orch/main.go", "architect", false, false, "", "", checker, nil, nil)
 	if err != nil {
 		t.Fatalf("architect should be exempt from CRITICAL hotspot blocking, got: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestCheckHotspot_CriticalExemptsInvestigation(t *testing.T) {
 			CriticalFiles:      []string{"cmd/orch/main.go"},
 		}, nil
 	}
-	_, err := CheckHotspot("/some/dir", "investigate cmd/orch/main.go", "investigation", false, false, "", checker, nil, nil)
+	_, err := CheckHotspot("/some/dir", "investigate cmd/orch/main.go", "investigation", false, false, "", "", checker, nil, nil)
 	if err != nil {
 		t.Fatalf("investigation should be exempt from CRITICAL hotspot blocking, got: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestCheckHotspot_CriticalExemptsCaptureKnowledge(t *testing.T) {
 			CriticalFiles:      []string{"cmd/orch/main.go"},
 		}, nil
 	}
-	_, err := CheckHotspot("/some/dir", "capture knowledge about main.go", "capture-knowledge", false, false, "", checker, nil, nil)
+	_, err := CheckHotspot("/some/dir", "capture knowledge about main.go", "capture-knowledge", false, false, "", "", checker, nil, nil)
 	if err != nil {
 		t.Fatalf("capture-knowledge should be exempt, got: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestCheckHotspot_CriticalExemptsCodebaseAudit(t *testing.T) {
 			CriticalFiles:      []string{"cmd/orch/main.go"},
 		}, nil
 	}
-	_, err := CheckHotspot("/some/dir", "audit codebase", "codebase-audit", false, false, "", checker, nil, nil)
+	_, err := CheckHotspot("/some/dir", "audit codebase", "codebase-audit", false, false, "", "", checker, nil, nil)
 	if err != nil {
 		t.Fatalf("codebase-audit should be exempt, got: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestCheckHotspot_ForceHotspotRequiresArchitectRef(t *testing.T) {
 		}, nil
 	}
 	// forceHotspot=true but no architect ref → should error
-	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, true, "", checker, nil, nil)
+	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, true, "", "", checker, nil, nil)
 	if err == nil {
 		t.Fatal("expected error when --force-hotspot used without --architect-ref")
 	}
@@ -218,7 +218,7 @@ func TestCheckHotspot_ForceHotspotWithArchitectRefVerified(t *testing.T) {
 		}
 		return nil // Valid closed architect issue
 	}
-	result, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, true, "orch-go-1184", checker, verifier, nil)
+	result, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, true, "orch-go-1184", "", checker, verifier, nil)
 	if err != nil {
 		t.Fatalf("--force-hotspot with valid --architect-ref should succeed, got: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestCheckHotspot_ForceHotspotWithArchitectRefNotFound(t *testing.T) {
 	verifier := func(issueID string) error {
 		return fmt.Errorf("--architect-ref %s: issue not found", issueID)
 	}
-	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, true, "orch-go-9999", checker, verifier, nil)
+	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, true, "orch-go-9999", "", checker, verifier, nil)
 	if err == nil {
 		t.Fatal("expected error when architect ref issue not found")
 	}
@@ -260,7 +260,7 @@ func TestCheckHotspot_ForceHotspotWithArchitectRefWrongType(t *testing.T) {
 	verifier := func(issueID string) error {
 		return fmt.Errorf("--architect-ref %s: not an architect issue (skill=feature-impl)", issueID)
 	}
-	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, true, "orch-go-1182", checker, verifier, nil)
+	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, true, "orch-go-1182", "", checker, verifier, nil)
 	if err == nil {
 		t.Fatal("expected error when architect ref is not an architect issue")
 	}
@@ -281,7 +281,7 @@ func TestCheckHotspot_ForceHotspotWithArchitectRefNotClosed(t *testing.T) {
 	verifier := func(issueID string) error {
 		return fmt.Errorf("--architect-ref %s: architect review not complete (status=in_progress)", issueID)
 	}
-	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, true, "orch-go-1184", checker, verifier, nil)
+	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, true, "orch-go-1184", "", checker, verifier, nil)
 	if err == nil {
 		t.Fatal("expected error when architect ref issue is not closed")
 	}
@@ -300,7 +300,7 @@ func TestCheckHotspot_ForceHotspotNilVerifier(t *testing.T) {
 		}, nil
 	}
 	// architectRef provided but verifier is nil (should still succeed — allows offline/test scenarios)
-	result, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, true, "orch-go-1184", checker, nil, nil)
+	result, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, true, "orch-go-1184", "", checker, nil, nil)
 	if err != nil {
 		t.Fatalf("--force-hotspot with ref but nil verifier should succeed, got: %v", err)
 	}
@@ -341,7 +341,7 @@ func TestCheckHotspot_CheckerReturnsError(t *testing.T) {
 	checker := func(dir, task string) (*HotspotResult, error) {
 		return nil, fmt.Errorf("hotspot analysis failed")
 	}
-	result, err := CheckHotspot("/some/dir", "some task", "feature-impl", false, false, "", checker, nil, nil)
+	result, err := CheckHotspot("/some/dir", "some task", "feature-impl", false, false, "", "", checker, nil, nil)
 	if err != nil {
 		t.Errorf("expected nil error on checker failure, got: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestCheckHotspot_DaemonDrivenBypassesCriticalBlock(t *testing.T) {
 			CriticalFiles:      []string{"cmd/orch/main.go"},
 		}, nil
 	}
-	result, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", true, false, "", checker, nil, nil)
+	result, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", true, false, "", "", checker, nil, nil)
 	if err != nil {
 		t.Fatalf("daemon-driven should bypass CRITICAL block, got error: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestCheckHotspot_MultipleCriticalFilesInError(t *testing.T) {
 			CriticalFiles:      []string{"cmd/orch/main.go", "pkg/daemon/daemon.go"},
 		}, nil
 	}
-	_, err := CheckHotspot("/some/dir", "refactor multiple files", "feature-impl", false, false, "", checker, nil, nil)
+	_, err := CheckHotspot("/some/dir", "refactor multiple files", "feature-impl", false, false, "", "", checker, nil, nil)
 	if err == nil {
 		t.Fatal("expected error for CRITICAL hotspot with multiple files")
 	}
@@ -405,7 +405,7 @@ func TestCheckHotspot_ForceHotspotNoEffectWhenNotCritical(t *testing.T) {
 			Warning:            "non-critical warning",
 		}, nil
 	}
-	result, err := CheckHotspot("/some/dir", "some task", "feature-impl", false, true, "orch-go-1184", checker, nil, nil)
+	result, err := CheckHotspot("/some/dir", "some task", "feature-impl", false, true, "orch-go-1184", "", checker, nil, nil)
 	if err != nil {
 		t.Fatalf("non-critical hotspot with force flag should not error, got: %v", err)
 	}
@@ -424,7 +424,7 @@ func TestCheckHotspot_ForceHotspotNonBlockingSkill(t *testing.T) {
 			CriticalFiles:      []string{"cmd/orch/main.go"},
 		}, nil
 	}
-	result, err := CheckHotspot("/some/dir", "review architecture", "architect", false, true, "", checker, nil, nil)
+	result, err := CheckHotspot("/some/dir", "review architecture", "architect", false, true, "", "", checker, nil, nil)
 	if err != nil {
 		t.Fatalf("exempt skill should not be blocked even with CRITICAL hotspot, got: %v", err)
 	}
@@ -444,7 +444,7 @@ func TestCheckHotspot_ResultFieldsPreserved(t *testing.T) {
 			MatchedFiles:       []string{"pkg/spawn/context.go", "pkg/spawn/config.go"},
 		}, nil
 	}
-	result, err := CheckHotspot("/some/dir", "update spawn", "feature-impl", false, false, "", checker, nil, nil)
+	result, err := CheckHotspot("/some/dir", "update spawn", "feature-impl", false, false, "", "", checker, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -484,7 +484,7 @@ func TestCheckHotspot_AutoDetectPriorArchitect(t *testing.T) {
 		}
 		return fmt.Errorf("unexpected issue: %s", issueID)
 	}
-	result, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, false, "", checker, verifier, finder)
+	result, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, false, "", "", checker, verifier, finder)
 	if err != nil {
 		t.Fatalf("auto-detected architect review should bypass block, got: %v", err)
 	}
@@ -506,7 +506,7 @@ func TestCheckHotspot_AutoDetectNoMatchStillBlocks(t *testing.T) {
 	finder := func(criticalFiles []string) (string, error) {
 		return "", nil // No prior architect found
 	}
-	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, false, "", checker, nil, finder)
+	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, false, "", "", checker, nil, finder)
 	if err == nil {
 		t.Fatal("expected error when no prior architect found")
 	}
@@ -528,7 +528,7 @@ func TestCheckHotspot_AutoDetectFinderErrorStillBlocks(t *testing.T) {
 	finder := func(criticalFiles []string) (string, error) {
 		return "", fmt.Errorf("beads query failed")
 	}
-	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, false, "", checker, nil, finder)
+	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, false, "", "", checker, nil, finder)
 	if err == nil {
 		t.Fatal("expected error when finder fails")
 	}
@@ -553,7 +553,7 @@ func TestCheckHotspot_AutoDetectVerificationFailsStillBlocks(t *testing.T) {
 	verifier := func(issueID string) error {
 		return fmt.Errorf("architect review not complete (status=in_progress)")
 	}
-	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, false, "", checker, verifier, finder)
+	_, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, false, "", "", checker, verifier, finder)
 	if err == nil {
 		t.Fatal("expected error when auto-detected architect fails verification")
 	}
@@ -575,7 +575,7 @@ func TestCheckHotspot_AutoDetectNilVerifierTrustsFinder(t *testing.T) {
 	finder := func(criticalFiles []string) (string, error) {
 		return "orch-go-1184", nil
 	}
-	result, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, false, "", checker, nil, finder)
+	result, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, false, "", "", checker, nil, finder)
 	if err != nil {
 		t.Fatalf("auto-detected architect with nil verifier should succeed, got: %v", err)
 	}
@@ -602,7 +602,7 @@ func TestCheckHotspot_ForceHotspotTakesPrecedenceOverAutoDetect(t *testing.T) {
 	verifier := func(issueID string) error {
 		return nil
 	}
-	result, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, true, "orch-go-1184", checker, verifier, finder)
+	result, err := CheckHotspot("/some/dir", "fix cmd/orch/main.go", "feature-impl", false, true, "orch-go-1184", "", checker, verifier, finder)
 	if err != nil {
 		t.Fatalf("explicit force-hotspot should succeed, got: %v", err)
 	}

@@ -59,6 +59,7 @@ var (
 	spawnAccount            string // Account name for Claude CLI spawns (overrides auto-selection)
 	spawnVerifyLevel        string // Verification level override (V0-V3)
 	spawnScope              string // Session scope: small, medium, large
+	spawnReason             string // Reason for override flag usage (--bypass-triage, --force-hotspot, --no-track)
 	spawnModeSet            bool   // Tracks whether --mode was explicitly set
 	spawnValidationSet      bool   // Tracks whether --validation was explicitly set
 )
@@ -190,6 +191,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnScope, "scope", "", "Session scope: small, medium, large (parsed from task if not set)")
 	spawnCmd.Flags().StringVar(&spawnAccount, "account", "", "Account name for Claude CLI spawns (e.g., 'work', 'personal')")
 	spawnCmd.Flags().StringVar(&spawnVerifyLevel, "verify-level", "", "Verification level override (V0=acknowledge, V1=artifacts, V2=evidence, V3=behavioral)")
+	spawnCmd.Flags().StringVar(&spawnReason, "reason", "", "Reason for override flags (--bypass-triage, --force-hotspot, --no-track). Min 10 chars.")
 }
 
 var (
@@ -505,6 +507,27 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		return fmt.Errorf("invalid --verify-level %q: must be V0, V1, V2, or V3", spawnVerifyLevel)
 	}
 
+	// Validate --reason is provided for override flags (min 10 chars)
+	if !daemonDriven {
+		needsReason := spawnBypassTriage || spawnForceHotspot || spawnNoTrack
+		if needsReason && spawnReason == "" {
+			var flags []string
+			if spawnBypassTriage {
+				flags = append(flags, "--bypass-triage")
+			}
+			if spawnForceHotspot {
+				flags = append(flags, "--force-hotspot")
+			}
+			if spawnNoTrack {
+				flags = append(flags, "--no-track")
+			}
+			return fmt.Errorf("--reason is required when using %s (min 10 chars)", strings.Join(flags, ", "))
+		}
+		if needsReason && len(spawnReason) < 10 {
+			return fmt.Errorf("--reason must be at least 10 characters (got %d)", len(spawnReason))
+		}
+	}
+
 	// Build input parameter struct
 	input := &orch.SpawnInput{
 		ServerURL:    serverURL,
@@ -548,7 +571,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		}, nil
 	}
 	agreementsCheckFunc := buildAgreementsChecker()
-	usageCheckResult, hotspotResult, _, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnBypassVerification, spawnForceHotspot, spawnArchitectRef, spawnBypassReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc)
+	usageCheckResult, hotspotResult, _, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnBypassVerification, spawnForceHotspot, spawnArchitectRef, spawnBypassReason, spawnReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc)
 	if err != nil {
 		return err
 	}
@@ -700,7 +723,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 
 	// 11. Build spawn config
-	cfg := orch.BuildSpawnConfig(ctx, spawnPhases, resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, spawnNoTrack, spawnSkipArtifactCheck)
+	cfg := orch.BuildSpawnConfig(ctx, spawnPhases, resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, spawnNoTrack, spawnSkipArtifactCheck, spawnReason)
 
 	// 13. Validate and write context (atomic spawn Phase 1: beads tag + workspace)
 	minimalPrompt, rollback, err := orch.ValidateAndWriteContext(cfg, spawnForce)

@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/events"
 )
 
 // HotspotResult contains the result of a spawn hotspot check.
@@ -51,7 +54,7 @@ func IsBlockingSkill(skillName string) bool {
 // architectFinder enables automatic bypass: when no explicit --force-hotspot is provided,
 // the gate searches for a prior closed architect review covering the critical files.
 // Returns error if skill is blocked by CRITICAL hotspot and requirements are not met.
-func CheckHotspot(projectDir, task, skillName string, daemonDriven, forceHotspot bool, architectRef string, checker HotspotChecker, architectVerifier ArchitectVerifier, architectFinder ArchitectFinder) (*HotspotResult, error) {
+func CheckHotspot(projectDir, task, skillName string, daemonDriven, forceHotspot bool, architectRef, reason string, checker HotspotChecker, architectVerifier ArchitectVerifier, architectFinder ArchitectFinder) (*HotspotResult, error) {
 	if projectDir == "" || checker == nil {
 		return nil, nil
 	}
@@ -86,6 +89,7 @@ func CheckHotspot(projectDir, task, skillName string, daemonDriven, forceHotspot
 
 			fmt.Fprintf(os.Stderr, "✓ --force-hotspot: Bypassing CRITICAL hotspot block (architect-ref: %s)\n", architectRef)
 			fmt.Fprintln(os.Stderr, "")
+			LogHotspotBypass(skillName, task, architectRef, reason, result.CriticalFiles)
 			return result, nil
 		}
 
@@ -124,4 +128,29 @@ func CheckHotspot(projectDir, task, skillName string, daemonDriven, forceHotspot
 	fmt.Fprintln(os.Stderr, "")
 
 	return result, nil
+}
+
+// LogHotspotBypass logs a spawn.hotspot_bypassed event to events.jsonl.
+// This tracks when CRITICAL hotspot blocking gates are bypassed via --force-hotspot.
+func LogHotspotBypass(skillName, task, architectRef, reason string, criticalFiles []string) {
+	logger := events.NewLogger(events.DefaultLogPath())
+	data := map[string]interface{}{
+		"skill":         skillName,
+		"task":          task,
+		"architect_ref": architectRef,
+	}
+	if reason != "" {
+		data["reason"] = reason
+	}
+	if len(criticalFiles) > 0 {
+		data["critical_files"] = criticalFiles
+	}
+	event := events.Event{
+		Type:      events.EventTypeHotspotBypassed,
+		Timestamp: time.Now().Unix(),
+		Data:      data,
+	}
+	if err := logger.Log(event); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log hotspot bypass: %v\n", err)
+	}
 }

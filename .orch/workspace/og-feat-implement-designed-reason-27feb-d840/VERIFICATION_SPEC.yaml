@@ -1,0 +1,63 @@
+verification:
+  type: feature-impl
+  beads_id: orch-go-ug9b
+  architect_ref: orch-go-f06i
+
+  acceptance_criteria:
+    - id: ac-1
+      description: "orch spawn --bypass-triage without --reason fails"
+      status: pass
+      evidence: "Validation block in spawn_cmd.go:runSpawnWithSkillInternal checks needsReason && spawnReason == '' and returns error"
+
+    - id: ac-2
+      description: "orch spawn --bypass-triage --reason 'urgent fix' succeeds and emits spawn.triage_bypassed with reason"
+      status: pass
+      evidence: "triage.go:LogTriageBypass accepts reason param, includes in event data when non-empty"
+
+    - id: ac-3
+      description: "orch spawn --force-hotspot --architect-ref X --reason 'reviewed' emits spawn.hotspot_bypassed with reason"
+      status: pass
+      evidence: "hotspot.go:LogHotspotBypass emits EventTypeHotspotBypassed with reason, skill, task, architect_ref, critical_files"
+
+    - id: ac-4
+      description: "orch spawn --no-track --reason 'testing config' includes no_track_reason in session.spawned"
+      status: pass
+      evidence: "common.go:LogSpawnEvent includes no_track_reason in event data when NoTrack && NoTrackReason != ''"
+
+    - id: ac-5
+      description: "orch complete X --force --reason 'agent died' includes force_reason in agent.completed"
+      status: pass
+      evidence: "complete_cmd.go sets completedData.ForceReason = completeReason when completeForce is true; logger.go includes force_reason in event data"
+
+    - id: ac-6
+      description: "orch complete X --force without --reason fails"
+      status: pass
+      evidence: "complete_cmd.go validation block requires --reason with min 10 chars when --force is used"
+
+    - id: ac-7
+      description: "orch stats shows Override Reasons section when bypass events exist"
+      status: pass
+      evidence: "stats_cmd.go aggregates overrideReasons map from 4 event types, displays OverrideStats section with type breakdown and reasons"
+
+    - id: ac-8
+      description: "All reasons have min 10 char validation"
+      status: pass
+      evidence: "spawn_cmd.go and complete_cmd.go both check len(reason) < 10"
+
+  files_modified:
+    - cmd/orch/spawn_cmd.go
+    - cmd/orch/complete_cmd.go
+    - cmd/orch/rework_cmd.go
+    - cmd/orch/stats_cmd.go
+    - pkg/events/logger.go
+    - pkg/spawn/gates/triage.go
+    - pkg/spawn/gates/hotspot.go
+    - pkg/spawn/config.go
+    - pkg/spawn/backends/common.go
+    - pkg/orch/extraction.go
+
+  tests_modified:
+    - pkg/spawn/gates/hotspot_test.go
+
+  build_status: pass
+  test_status: pass

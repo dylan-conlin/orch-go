@@ -370,8 +370,14 @@ func runComplete(identifier, workdir string) error {
 		return err
 	}
 
-	// Show deprecation warning for --force
+	// Show deprecation warning for --force and validate --reason requirement
 	if completeForce {
+		if completeReason == "" {
+			return fmt.Errorf("--reason is required when using --force (min 10 chars)")
+		}
+		if len(completeReason) < 10 {
+			return fmt.Errorf("--reason must be at least 10 characters (got %d)", len(completeReason))
+		}
 		fmt.Fprintln(os.Stderr, "⚠️  DEPRECATED: --force is deprecated. Use targeted --skip-* flags instead.")
 		fmt.Fprintln(os.Stderr, "   Example: --skip-test-evidence --skip-reason \"Tests run in CI\"")
 		fmt.Fprintln(os.Stderr, "   This flag will be removed in a future version.")
@@ -1368,9 +1374,12 @@ func runComplete(identifier, workdir string) error {
 	if agentName != "" {
 		completedData.Workspace = agentName
 	}
-	// If completion was forced, record which gates were bypassed
+	// If completion was forced, record which gates were bypassed and reason
 	if completeForce && len(gatesFailed) > 0 {
 		completedData.GatesBypassed = gatesFailed
+	}
+	if completeForce && completeReason != "" {
+		completedData.ForceReason = completeReason
 	}
 	if err := logger.LogAgentCompleted(completedData); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)

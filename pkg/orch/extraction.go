@@ -340,7 +340,7 @@ func inferMCPFromBeadsIssue(issue *beads.Issue) string {
 // Returns usage check result for telemetry, hotspot result for context injection,
 // agreements result for telemetry, or error if any check fails.
 // hotspotCheckFunc and agreementsCheckFunc are passed from cmd/orch to avoid circular dependencies.
-func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, architectRef, bypassReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error)) (*gates.UsageCheckResult, *gates.HotspotResult, *gates.AgreementsResult, error) {
+func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, architectRef, bypassReason, overrideReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error)) (*gates.UsageCheckResult, *gates.HotspotResult, *gates.AgreementsResult, error) {
 	// Check for --bypass-triage flag (required for manual spawns)
 	// Daemon-driven spawns skip this check (issue already triaged)
 	if err := gates.CheckTriageBypass(input.DaemonDriven, bypassTriage, input.SkillName, input.Task); err != nil {
@@ -349,7 +349,7 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 
 	// Log the triage bypass for Phase 2 review (only for manual bypasses, not daemon-driven)
 	if !input.DaemonDriven && bypassTriage {
-		gates.LogTriageBypass(input.SkillName, input.Task)
+		gates.LogTriageBypass(input.SkillName, input.Task, overrideReason)
 	}
 
 	// Check verification gate (Phase 3: Session Continuity Gate)
@@ -383,7 +383,7 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 		// Build finder for auto-detection of prior architect reviews
 		architectFinder := buildArchitectFinder()
 		var err error
-		hotspotResult, err = gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, forceHotspot, architectRef, hotspotCheckFunc, architectVerifier, architectFinder)
+		hotspotResult, err = gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, forceHotspot, architectRef, overrideReason, hotspotCheckFunc, architectVerifier, architectFinder)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -1018,7 +1018,7 @@ func LoadDesignArtifacts(designWorkspace, projectDir string) (mockupPath, prompt
 }
 
 // BuildSpawnConfig constructs the spawn.Config from SpawnContext.
-func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, noTrack, skipArtifactCheck bool) *spawn.Config {
+func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, noTrack, skipArtifactCheck bool, noTrackReason string) *spawn.Config {
 	// Infer verify level if not explicitly set
 	verifyLevel := ctx.VerifyLevel
 	if verifyLevel == "" {
@@ -1048,6 +1048,7 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 		VerifyLevel:        verifyLevel,
 		Scope:              ctx.Scope,
 		NoTrack:            noTrack || ctx.IsOrchestrator || ctx.IsMetaOrchestrator,
+		NoTrackReason:      noTrackReason,
 		SkipArtifactCheck:  skipArtifactCheck,
 		KBContext:          ctx.KBContext,
 		HasInjectedModels:  ctx.HasInjectedModels,

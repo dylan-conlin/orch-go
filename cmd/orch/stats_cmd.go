@@ -113,6 +113,7 @@ type StatsReport struct {
 	SessionStats      SessionStatsSummary               `json:"session_stats,omitempty"`
 	EscapeHatchStats  EscapeHatchStats                  `json:"escape_hatch_stats,omitempty"`
 	VerificationStats VerificationStats                 `json:"verification_stats,omitempty"`
+	OverrideStats     OverrideStats                    `json:"override_stats,omitempty"`
 	CoachingStats     map[string]coaching.MetricSummary `json:"coaching_stats,omitempty"`
 }
 
@@ -218,6 +219,27 @@ type SkillVerificationStats struct {
 	PassedFirstTry int     `json:"passed_first_try"`
 	Bypassed       int     `json:"bypassed"`
 	PassRate       float64 `json:"pass_rate"`
+}
+
+// OverrideStats tracks reasons given for safety-override flags
+// Surfaces patterns in why operators bypass gates (e.g., "daemon unreliable" → systemic issue vs "urgent fix")
+type OverrideStats struct {
+	TotalOverrides int                   `json:"total_overrides"`
+	ByType         []OverrideTypeEntry   `json:"by_type,omitempty"`
+	TopReasons     []OverrideReasonEntry `json:"top_reasons,omitempty"`
+}
+
+// OverrideTypeEntry tracks override count per type
+type OverrideTypeEntry struct {
+	Type    string                `json:"type"`    // e.g., "triage_bypassed", "force_complete", "hotspot_bypassed", "no_track"
+	Count   int                   `json:"count"`
+	Reasons []OverrideReasonEntry `json:"reasons,omitempty"`
+}
+
+// OverrideReasonEntry tracks a specific reason and its frequency
+type OverrideReasonEntry struct {
+	Reason string `json:"reason"`
+	Count  int    `json:"count"`
 }
 
 // AccountSpawnBreakdown tracks spawns per Claude Max account
@@ -349,6 +371,10 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 	bypassReasons := make(map[string]int)                         // "gate|reason" -> count (from verification.bypassed)
 	skillVerification := make(map[string]*SkillVerificationStats) // skill -> verification stats
 
+	// Track override reasons across all override types
+	// key: "type|reason", value: count
+	overrideReasons := make(map[string]int)
+
 	// Count events within analysis window for EventsAnalyzed
 	eventsInWindow := 0
 
@@ -381,6 +407,15 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 				}
 				if a, ok := data["usage_account"].(string); ok && a != "" {
 					account = a
+				}
+			}
+
+			// Track no_track override reason (within analysis window)
+			if event.Timestamp >= cutoffDays {
+				if data := event.Data; data != nil {
+					if reason, ok := data["no_track_reason"].(string); ok && reason != "" {
+						overrideReasons["no_track|"+reason]++
+					}
 				}
 			}
 
@@ -559,6 +594,12 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 				if s, ok := data["skill"].(string); ok && s != "" {
 					eventSkill = s
 				}
+				// Track force_reason for override stats
+				if wasForced {
+					if reason, ok := data["force_reason"].(string); ok && reason != "" {
+						overrideReasons["force_complete|"+reason]++
+					}
+				}
 			}
 
 			// Check if untracked:
@@ -724,6 +765,27 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 				continue
 			}
 			report.DaemonStats.TriageBypassed++
+			// Track override reason
+			if data := event.Data; data != nil {
+				if reason, ok := data["reason"].(string); ok && reason != "" {
+					overrideReasons["triage_bypassed|"+reason]++
+				}
+			}
+
+		case "spawn.hotspot_bypassed":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
+			// Track override reason
+			if data := event.Data; data != nil {
+				reason, _ := data["reason"].(string)
+				if reason != "" {
+					overrideReasons["hotspot_bypassed|"+reason]++
+				} else {
+					overrideReasons["hotspot_bypassed|"]++
+				}
+			}
 
 		case "agent.wait.complete":
 			// Skip events outside the --days window
@@ -916,6 +978,50 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 	// Sort by total attempts descending
 	sort.Slice(report.VerificationStats.BySkill, func(i, j int) bool {
 		return report.VerificationStats.BySkill[i].TotalAttempts > report.VerificationStats.BySkill[j].TotalAttempts
+	})
+
+	// Build override stats from tracked override reasons
+	overrideByType := make(map[string]map[string]int) // type -> reason -> count
+	for key, count := range overrideReasons {
+		parts := strings.SplitN(key, "|", 2)
+		overrideType := parts[0]
+		reason := ""
+		if len(parts) > 1 {
+			reason = parts[1]
+		}
+		if _, exists := overrideByType[overrideType]; !exists {
+			overrideByType[overrideType] = make(map[string]int)
+		}
+		overrideByType[overrideType][reason] += count
+		report.OverrideStats.TotalOverrides += count
+	}
+	for overrideType, reasons := range overrideByType {
+		entry := OverrideTypeEntry{Type: overrideType}
+		for reason, count := range reasons {
+			entry.Count += count
+			if reason != "" {
+				entry.Reasons = append(entry.Reasons, OverrideReasonEntry{
+					Reason: reason,
+					Count:  count,
+				})
+			}
+		}
+		sort.Slice(entry.Reasons, func(i, j int) bool {
+			return entry.Reasons[i].Count > entry.Reasons[j].Count
+		})
+		report.OverrideStats.ByType = append(report.OverrideStats.ByType, entry)
+	}
+	sort.Slice(report.OverrideStats.ByType, func(i, j int) bool {
+		return report.OverrideStats.ByType[i].Count > report.OverrideStats.ByType[j].Count
+	})
+	// Build flattened top reasons list
+	for _, entry := range report.OverrideStats.ByType {
+		for _, reason := range entry.Reasons {
+			report.OverrideStats.TopReasons = append(report.OverrideStats.TopReasons, reason)
+		}
+	}
+	sort.Slice(report.OverrideStats.TopReasons, func(i, j int) bool {
+		return report.OverrideStats.TopReasons[i].Count > report.OverrideStats.TopReasons[j].Count
 	})
 
 	// Calculate rates
@@ -1183,6 +1289,28 @@ func outputStatsText(report *StatsReport) error {
 					sv.Bypassed,
 					sv.PassRate,
 				)
+			}
+		}
+	}
+
+	// Override reasons (if any override events with reasons exist)
+	if report.OverrideStats.TotalOverrides > 0 {
+		fmt.Println()
+		fmt.Println("🔓 OVERRIDE REASONS")
+		fmt.Printf("  Total overrides with reasons: %d\n", report.OverrideStats.TotalOverrides)
+		fmt.Println()
+		for _, entry := range report.OverrideStats.ByType {
+			fmt.Printf("  %s (%d):\n", entry.Type, entry.Count)
+			if len(entry.Reasons) > 0 {
+				for _, reason := range entry.Reasons {
+					r := reason.Reason
+					if len(r) > 55 {
+						r = r[:52] + "..."
+					}
+					fmt.Printf("    %dx  %s\n", reason.Count, r)
+				}
+			} else {
+				fmt.Println("    (no reasons recorded)")
 			}
 		}
 	}

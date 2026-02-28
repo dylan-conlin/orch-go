@@ -160,6 +160,11 @@ func LogSpawnEvent(sessionID string, req *SpawnRequest, mode string, extraData m
 		eventData["mcp"] = req.Config.MCP
 	}
 
+	// Add no_track_reason if present in config
+	if req.Config.NoTrack && req.Config.NoTrackReason != "" {
+		eventData["no_track_reason"] = req.Config.NoTrackReason
+	}
+
 	// Add extra data (e.g., retry_attempts, window info for tmux)
 	for k, v := range extraData {
 		eventData[k] = v
