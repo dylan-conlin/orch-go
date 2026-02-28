@@ -141,6 +141,8 @@ var (
 	daemonCleanupInterval        int  // Session cleanup interval in minutes (0 = disabled)
 	daemonCleanupAge             int  // Session age threshold in days for cleanup
 	daemonCleanupPreserveOrch    bool // Preserve orchestrator sessions during cleanup
+	daemonOrphanDetectionInterval int // Orphan detection interval in minutes (0 = disabled)
+	daemonOrphanAgeThreshold      int // Orphan age threshold in minutes
 )
 
 func init() {
@@ -170,6 +172,8 @@ func init() {
 	daemonRunCmd.Flags().IntVar(&daemonCleanupInterval, "cleanup-interval", 360, "Session cleanup interval in minutes (0 = disabled, default: 360 = 6 hours)")
 	daemonRunCmd.Flags().IntVar(&daemonCleanupAge, "cleanup-age", 7, "Session age threshold in days for cleanup (default: 7)")
 	daemonRunCmd.Flags().BoolVar(&daemonCleanupPreserveOrch, "cleanup-preserve-orchestrator", true, "Preserve orchestrator sessions during cleanup (default: true)")
+	daemonRunCmd.Flags().IntVar(&daemonOrphanDetectionInterval, "orphan-detection-interval", 30, "Orphan detection interval in minutes (0 = disabled, default: 30)")
+	daemonRunCmd.Flags().IntVar(&daemonOrphanAgeThreshold, "orphan-age-threshold", 60, "How long (minutes) before issue is considered orphaned (default: 60)")
 	// Mark max-agents as hidden since --concurrency is the preferred name
 	daemonRunCmd.Flags().MarkHidden("max-agents")
 
@@ -204,6 +208,9 @@ func daemonConfigFromFlags() daemon.Config {
 	config.CleanupAgeDays = daemonCleanupAge
 	config.CleanupPreserveOrchestrator = daemonCleanupPreserveOrch
 	config.CleanupServerURL = serverURL
+	config.OrphanDetectionEnabled = daemonOrphanDetectionInterval > 0
+	config.OrphanDetectionInterval = time.Duration(daemonOrphanDetectionInterval) * time.Minute
+	config.OrphanAgeThreshold = time.Duration(daemonOrphanAgeThreshold) * time.Minute
 
 	return config
 }
@@ -350,6 +357,11 @@ func runDaemonLoop() error {
 		fmt.Printf("  Recovery rate:     %s (per agent)\n", formatDaemonDuration(config.RecoveryRateLimit))
 	} else {
 		fmt.Println("  Recovery interval: disabled")
+	}
+	if config.OrphanDetectionEnabled {
+		fmt.Printf("  Orphan detection:  %s (age threshold: %s)\n", formatDaemonDuration(config.OrphanDetectionInterval), formatDaemonDuration(config.OrphanAgeThreshold))
+	} else {
+		fmt.Println("  Orphan detection:  disabled")
 	}
 	if config.VerificationPauseThreshold > 0 {
 		fmt.Printf("  Verify threshold:  %d (pause after N unverified completions)\n", config.VerificationPauseThreshold)
@@ -529,6 +541,42 @@ func runDaemonLoop() error {
 				}
 			} else if daemonVerbose {
 				fmt.Printf("[%s] Recovery: no stuck agents found\n", timestamp)
+			}
+		}
+
+		// Orphan detection: reset in_progress issues with no active agent
+		if orphanResult := d.RunPeriodicOrphanDetection(); orphanResult != nil {
+			if orphanResult.Error != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Orphan detection error: %v\n", timestamp, orphanResult.Error)
+				event := events.Event{
+					Type:      "daemon.orphan_detection",
+					Timestamp: time.Now().Unix(),
+					Data: map[string]interface{}{
+						"reset":   0,
+						"skipped": orphanResult.SkippedCount,
+						"error":   orphanResult.Error.Error(),
+						"message": orphanResult.Message,
+					},
+				}
+				if err := logger.Log(event); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log orphan detection error event: %v\n", err)
+				}
+			} else if orphanResult.ResetCount > 0 {
+				fmt.Printf("[%s] Orphan detection: %s\n", timestamp, orphanResult.Message)
+				event := events.Event{
+					Type:      "daemon.orphan_detection",
+					Timestamp: time.Now().Unix(),
+					Data: map[string]interface{}{
+						"reset":   orphanResult.ResetCount,
+						"skipped": orphanResult.SkippedCount,
+						"message": orphanResult.Message,
+					},
+				}
+				if err := logger.Log(event); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log orphan detection event: %v\n", err)
+				}
+			} else if daemonVerbose {
+				fmt.Printf("[%s] Orphan detection: no orphans found\n", timestamp)
 			}
 		}
 

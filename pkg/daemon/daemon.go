@@ -83,6 +83,9 @@ type Daemon struct {
 	// lastRecovery tracks when recovery was last run for periodic recovery.
 	lastRecovery time.Time
 
+	// lastOrphanDetection tracks when orphan detection was last run.
+	lastOrphanDetection time.Time
+
 	// resumeAttempts tracks when we last attempted to resume each agent (by beads ID).
 	// Prevents infinite resume loops by rate-limiting to 1 attempt per hour per agent.
 	resumeAttempts map[string]time.Time
@@ -146,6 +149,12 @@ type Daemon struct {
 	// Default: CombinedActiveCount (counts both OpenCode sessions and tmux windows).
 	// Override for testing to avoid real HTTP/tmux calls.
 	activeCountFunc func() int
+	// getActiveAgentsFunc is used for testing - allows mocking GetActiveAgents
+	getActiveAgentsFunc func() ([]ActiveAgent, error)
+	// hasExistingSessionFunc is used for testing - allows mocking HasExistingSessionForBeadsID
+	hasExistingSessionFunc func(beadsID string) bool
+	// updateBeadsStatusForOrphanFunc is used for testing - allows mocking status reset during orphan recovery
+	updateBeadsStatusForOrphanFunc func(beadsID, status string) error
 }
 
 // New creates a new Daemon instance with default configuration.

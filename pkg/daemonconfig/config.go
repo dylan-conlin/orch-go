@@ -106,6 +106,19 @@ type Config struct {
 	// KnowledgeHealthThreshold is the number of active quick entries that triggers
 	// a triage:review issue for knowledge maintenance. Default is 50.
 	KnowledgeHealthThreshold int
+
+	// OrphanDetectionEnabled controls whether periodic orphan detection is enabled.
+	// When enabled, the daemon detects in_progress issues with no active agent
+	// (no OpenCode session, no tmux window) and resets them to open for respawning.
+	OrphanDetectionEnabled bool
+
+	// OrphanDetectionInterval is how often to check for orphaned issues (0 = disabled).
+	// Default is 30 minutes.
+	OrphanDetectionInterval time.Duration
+
+	// OrphanAgeThreshold is how long an issue must be in_progress with no agent
+	// before it's considered orphaned and reset to open. Default is 1 hour.
+	OrphanAgeThreshold time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -134,8 +147,11 @@ func DefaultConfig() Config {
 		RecoveryIdleThreshold:       10 * time.Minute, // Idle >10min triggers recovery
 		RecoveryRateLimit:           time.Hour,        // 1 resume per agent per hour
 		VerificationPauseThreshold:  3,                // Pause after 3 auto-completions
-		KnowledgeHealthEnabled:     true,
-		KnowledgeHealthInterval:    2 * time.Hour, // Every 2 hours
-		KnowledgeHealthThreshold:   50,            // Flag when 50+ active entries
+		KnowledgeHealthEnabled:      true,
+		KnowledgeHealthInterval:     2 * time.Hour, // Every 2 hours
+		KnowledgeHealthThreshold:    50,            // Flag when 50+ active entries
+		OrphanDetectionEnabled:      true,
+		OrphanDetectionInterval:     30 * time.Minute, // Check every 30 minutes
+		OrphanAgeThreshold:          time.Hour,        // 1 hour before considering orphaned
 	}
 }
