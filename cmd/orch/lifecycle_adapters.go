@@ -62,7 +62,10 @@ func (a *beadsAdapter) ClearAssignee(beadsID string) error {
 }
 
 func (a *beadsAdapter) CloseIssue(beadsID, reason string) error {
-	return a.client.CloseIssue(beadsID, reason)
+	// Use force-close to avoid double-gate: LifecycleManager.Complete is called AFTER
+	// orch complete's verification gates have passed, so bd's own Phase: Complete check
+	// is redundant and would fail when --skip-phase-complete was used.
+	return beads.FallbackForceClose(beadsID, reason)
 }
 
 func (a *beadsAdapter) GetComments(beadsID string) ([]string, error) {
@@ -73,6 +76,27 @@ func (a *beadsAdapter) GetComments(beadsID string) ([]string, error) {
 	result := make([]string, len(comments))
 	for i, c := range comments {
 		result[i] = c.Text
+	}
+	return result, nil
+}
+
+func (a *beadsAdapter) ListByLabel(label string) ([]agent.TrackedIssue, error) {
+	issues, err := a.client.List(&beads.ListArgs{Status: "open", Limit: 0})
+	if err != nil {
+		return nil, err
+	}
+	var result []agent.TrackedIssue
+	for _, issue := range issues {
+		for _, l := range issue.Labels {
+			if l == label {
+				result = append(result, agent.TrackedIssue{
+					BeadsID: issue.ID,
+					Status:  issue.Status,
+					Labels:  issue.Labels,
+				})
+				break
+			}
+		}
 	}
 	return result, nil
 }
@@ -186,6 +210,39 @@ func (a *workspaceAdapter) WriteSessionID(workspacePath, sessionID string) error
 
 func (a *workspaceAdapter) Remove(workspacePath string) error {
 	return os.RemoveAll(workspacePath)
+}
+
+func (a *workspaceAdapter) ScanWorkspaces(projectDir string) ([]agent.WorkspaceInfo, error) {
+	wsDir := projectDir + "/.orch/workspace"
+	entries, err := os.ReadDir(wsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var result []agent.WorkspaceInfo
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == "archived" {
+			continue
+		}
+		wsPath := wsDir + "/" + entry.Name()
+		info := agent.WorkspaceInfo{
+			Name: entry.Name(),
+			Path: wsPath,
+		}
+		if data, err := os.ReadFile(wsPath + "/.beads_id"); err == nil {
+			info.BeadsID = string(data)
+		}
+		if data, err := os.ReadFile(wsPath + "/.session_id"); err == nil {
+			info.SessionID = string(data)
+		}
+		if data, err := os.ReadFile(wsPath + "/.spawn_mode"); err == nil {
+			info.SpawnMode = string(data)
+		}
+		result = append(result, info)
+	}
+	return result, nil
 }
 
 // --- Factory ---

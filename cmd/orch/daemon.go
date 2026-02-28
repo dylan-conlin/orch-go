@@ -26,6 +26,8 @@ for each issue in priority order.
 
 Subcommands:
   run      Process issues continuously with polling
+  stop     Stop the running daemon
+  restart  Stop and restart the daemon
   once     Process a single issue and exit
   preview  Show what would be processed next without processing
   reflect  Run kb reflect analysis and store suggestions`,
@@ -123,6 +125,40 @@ Examples:
 	},
 }
 
+var daemonStopCmd = &cobra.Command{
+	Use:   "stop",
+	Short: "Stop the running daemon",
+	Long: `Stop the running daemon by sending SIGTERM and waiting for graceful shutdown.
+
+The daemon will finish any in-progress spawn cycle before exiting.
+If the daemon doesn't stop within 10 seconds, an error is returned.
+
+Examples:
+  orch daemon stop`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runDaemonStop()
+	},
+}
+
+var daemonRestartCmd = &cobra.Command{
+	Use:   "restart",
+	Short: "Stop and restart the daemon",
+	Long: `Stop the running daemon and start a new one with the current flags.
+
+Equivalent to running 'orch daemon stop' followed by 'orch daemon run'.
+All flags from 'daemon run' are available (--concurrency, --poll-interval, etc.).
+
+If no daemon is currently running, starts a new one directly.
+
+Examples:
+  orch daemon restart                        # Restart with default flags
+  orch daemon restart --concurrency 5        # Restart with new concurrency
+  orch daemon restart --poll-interval 30     # Restart with new poll interval`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runDaemonRestart()
+	},
+}
+
 var (
 	// Daemon flags
 	daemonDelay               int    // Delay between spawns in seconds
@@ -147,35 +183,36 @@ var (
 
 func init() {
 	daemonCmd.AddCommand(daemonRunCmd)
+	daemonCmd.AddCommand(daemonStopCmd)
+	daemonCmd.AddCommand(daemonRestartCmd)
 	daemonCmd.AddCommand(daemonOnceCmd)
 	daemonCmd.AddCommand(daemonPreviewCmd)
 	daemonCmd.AddCommand(daemonReflectCmd)
 	daemonCmd.AddCommand(daemonResumeCmd)
 
-	// Spawn delay between issues
-	daemonRunCmd.Flags().IntVar(&daemonDelay, "delay", 3, "Delay between spawns in seconds")
-	daemonRunCmd.Flags().BoolVar(&daemonDryRun, "dry-run", false, "Preview mode - show what would be processed without spawning")
-
-	// New flags for continuous polling
-	daemonRunCmd.Flags().IntVar(&daemonPollInterval, "poll-interval", 15, "Poll interval in seconds (0 = run once and exit)")
-	daemonRunCmd.Flags().IntVarP(&daemonMaxAgents, "concurrency", "c", 3, "Maximum concurrent agents (0 = no limit)")
-	daemonRunCmd.Flags().IntVar(&daemonMaxAgents, "max-agents", 3, "Maximum concurrent agents (alias for --concurrency)")
-	daemonRunCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
-	daemonRunCmd.Flags().BoolVarP(&daemonVerbose, "verbose", "v", false, "Enable verbose output")
-	daemonRunCmd.Flags().BoolVar(&daemonReflect, "reflect", true, "Run kb reflect analysis on exit (default: true)")
-	daemonRunCmd.Flags().IntVar(&daemonReflectInterval, "reflect-interval", 60, "Periodic reflection interval in minutes (0 = disabled, default: 60)")
-	daemonRunCmd.Flags().BoolVar(&daemonReflectIssues, "reflect-issues", true, "Create beads issues for synthesis opportunities (default: true)")
-	daemonRunCmd.Flags().BoolVar(&daemonReflectOpen, "reflect-open", true, "Create beads issues for open investigation actions (default: true)")
-	daemonRunCmd.Flags().IntVar(&daemonModelDriftInterval, "reflect-model-drift-interval", 240, "Model drift reflection interval in minutes (0 = disabled, default: 240 = 4 hours)")
-	daemonRunCmd.Flags().IntVar(&daemonKnowledgeHealthInterval, "knowledge-health-interval", 120, "Knowledge health check interval in minutes (0 = disabled, default: 120 = 2 hours)")
-	daemonRunCmd.Flags().BoolVar(&daemonCleanupEnabled, "cleanup-enabled", true, "Enable periodic session cleanup (default: true)")
-	daemonRunCmd.Flags().IntVar(&daemonCleanupInterval, "cleanup-interval", 360, "Session cleanup interval in minutes (0 = disabled, default: 360 = 6 hours)")
-	daemonRunCmd.Flags().IntVar(&daemonCleanupAge, "cleanup-age", 7, "Session age threshold in days for cleanup (default: 7)")
-	daemonRunCmd.Flags().BoolVar(&daemonCleanupPreserveOrch, "cleanup-preserve-orchestrator", true, "Preserve orchestrator sessions during cleanup (default: true)")
-	daemonRunCmd.Flags().IntVar(&daemonOrphanDetectionInterval, "orphan-detection-interval", 30, "Orphan detection interval in minutes (0 = disabled, default: 30)")
-	daemonRunCmd.Flags().IntVar(&daemonOrphanAgeThreshold, "orphan-age-threshold", 60, "How long (minutes) before issue is considered orphaned (default: 60)")
-	// Mark max-agents as hidden since --concurrency is the preferred name
-	daemonRunCmd.Flags().MarkHidden("max-agents")
+	// Register daemon run flags on both run and restart commands
+	for _, cmd := range []*cobra.Command{daemonRunCmd, daemonRestartCmd} {
+		cmd.Flags().IntVar(&daemonDelay, "delay", 3, "Delay between spawns in seconds")
+		cmd.Flags().BoolVar(&daemonDryRun, "dry-run", false, "Preview mode - show what would be processed without spawning")
+		cmd.Flags().IntVar(&daemonPollInterval, "poll-interval", 15, "Poll interval in seconds (0 = run once and exit)")
+		cmd.Flags().IntVarP(&daemonMaxAgents, "concurrency", "c", 3, "Maximum concurrent agents (0 = no limit)")
+		cmd.Flags().IntVar(&daemonMaxAgents, "max-agents", 3, "Maximum concurrent agents (alias for --concurrency)")
+		cmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
+		cmd.Flags().BoolVarP(&daemonVerbose, "verbose", "v", false, "Enable verbose output")
+		cmd.Flags().BoolVar(&daemonReflect, "reflect", true, "Run kb reflect analysis on exit (default: true)")
+		cmd.Flags().IntVar(&daemonReflectInterval, "reflect-interval", 60, "Periodic reflection interval in minutes (0 = disabled, default: 60)")
+		cmd.Flags().BoolVar(&daemonReflectIssues, "reflect-issues", true, "Create beads issues for synthesis opportunities (default: true)")
+		cmd.Flags().BoolVar(&daemonReflectOpen, "reflect-open", true, "Create beads issues for open investigation actions (default: true)")
+		cmd.Flags().IntVar(&daemonModelDriftInterval, "reflect-model-drift-interval", 240, "Model drift reflection interval in minutes (0 = disabled, default: 240 = 4 hours)")
+		cmd.Flags().IntVar(&daemonKnowledgeHealthInterval, "knowledge-health-interval", 120, "Knowledge health check interval in minutes (0 = disabled, default: 120 = 2 hours)")
+		cmd.Flags().BoolVar(&daemonCleanupEnabled, "cleanup-enabled", true, "Enable periodic session cleanup (default: true)")
+		cmd.Flags().IntVar(&daemonCleanupInterval, "cleanup-interval", 360, "Session cleanup interval in minutes (0 = disabled, default: 360 = 6 hours)")
+		cmd.Flags().IntVar(&daemonCleanupAge, "cleanup-age", 7, "Session age threshold in days for cleanup (default: 7)")
+		cmd.Flags().BoolVar(&daemonCleanupPreserveOrch, "cleanup-preserve-orchestrator", true, "Preserve orchestrator sessions during cleanup (default: true)")
+		cmd.Flags().IntVar(&daemonOrphanDetectionInterval, "orphan-detection-interval", 30, "Orphan detection interval in minutes (0 = disabled, default: 30)")
+		cmd.Flags().IntVar(&daemonOrphanAgeThreshold, "orphan-age-threshold", 60, "How long (minutes) before issue is considered orphaned (default: 60)")
+		cmd.Flags().MarkHidden("max-agents")
+	}
 
 	// Add label filter to preview and once commands (share the same variable)
 	daemonPreviewCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
@@ -1018,6 +1055,46 @@ func runReflectionAnalysis(verbose bool) {
 			fmt.Printf("Suggestions saved to: %s\n", daemon.SuggestionsPath())
 		}
 	}
+}
+
+func runDaemonStop() error {
+	pid := daemon.ReadPIDFromLockFile()
+	if pid > 0 {
+		fmt.Printf("Stopping daemon (PID %d)...\n", pid)
+	} else {
+		fmt.Println("Stopping daemon...")
+	}
+
+	err := daemon.StopDaemon(daemon.StopOptions{})
+	if err == daemon.ErrNoDaemonRunning {
+		fmt.Println("No daemon is currently running.")
+		return nil
+	}
+	if err == daemon.ErrStopTimeout {
+		return fmt.Errorf("daemon (PID %d) did not stop within timeout - it may need to be killed manually", pid)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to stop daemon: %w", err)
+	}
+
+	fmt.Println("Daemon stopped.")
+	return nil
+}
+
+func runDaemonRestart() error {
+	// Try to stop existing daemon first (ignore "not running" error)
+	pid := daemon.ReadPIDFromLockFile()
+	if pid > 0 && daemon.IsProcessAlive(pid) {
+		fmt.Printf("Stopping existing daemon (PID %d)...\n", pid)
+		err := daemon.StopDaemon(daemon.StopOptions{})
+		if err != nil && err != daemon.ErrNoDaemonRunning {
+			return fmt.Errorf("failed to stop existing daemon: %w", err)
+		}
+		fmt.Println("Daemon stopped.")
+	}
+
+	fmt.Println("Starting new daemon...")
+	return runDaemonLoop()
 }
 
 func runDaemonResume() error {
