@@ -1,8 +1,8 @@
 # Model: Agent Lifecycle State Model
 
 **Domain:** Agent Lifecycle / State Management
-**Last Updated:** 2026-02-25
-**Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display. Updated Feb 2026 after major restructuring (registry elimination, two-lane architecture, single-pass query engine). Updated Feb 25 after phase-based liveness, cross-project querying, and verification gate additions.
+**Last Updated:** 2026-02-27
+**Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display. Updated Feb 2026 after major restructuring (registry elimination, two-lane architecture, single-pass query engine). Updated Feb 25 after phase-based liveness, cross-project querying, and verification gate additions. Updated Feb 27 after V0-V3 verification levels, all-at-once gate failure reporting, architectural choices gate, and auto-implementation issue creation.
 
 ---
 
@@ -106,12 +106,18 @@ Phase: Complete reached (agent declares done)
 SYNTHESIS.md written (if full tier)
 Git commits created
     ↓
-orch complete runs (orchestrator verification, 15 verification gates)
-Verifies deliverables exist (15 gates: phase, synthesis, constraints, phase gates,
-    skill outputs, visual, test evidence, git diff, accretion, build, vet, decision patches,
-    explain-back, session handoff, handoff content)
+orch complete runs (orchestrator verification)
+Verification uses V0-V3 levels (read from workspace manifest, default V1):
+    V0: phase_complete
+    V1: + synthesis, session_handoff, handoff_content, skill_output, phase_gate,
+        constraint, decision_patch_limit, architectural_choices
+    V2: + test_evidence, git_diff, build, vet, accretion
+    V3: + visual_verification, explain_back
+All gate failures collected and reported at once (no early-return)
 Runs knowledge maintenance (kb maintenance check)
 Closes beads issue (Status: closed)
+Auto-creates implementation issue for architect completions (triage:ready)
+Exports session activity to workspace (ACTIVITY.json)
 Defers tmux window cleanup (prevents phantom windows)
     ↓
 completed (dashboard shows blue badge)
