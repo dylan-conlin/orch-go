@@ -973,6 +973,48 @@ func WindowExistsByID(windowID string) bool {
 	return false
 }
 
+// GetPaneCurrentCommand returns the current foreground command running in a window's pane.
+// Uses the window's unique ID (e.g., "@1234") for targeting.
+// Returns the command name (e.g., "claude", "zsh", "node").
+//
+// Note: On macOS with tmux 3.5+, this may report "zsh" even when a child process
+// (like claude) is running in the foreground. Use GetPanePID + child process
+// checking for more reliable liveness detection.
+func GetPaneCurrentCommand(windowID string) (string, error) {
+	cmd, err := tmuxCommand("list-panes", "-t", windowID, "-F", "#{pane_current_command}")
+	if err != nil {
+		return "", fmt.Errorf("failed to create tmux command: %w", err)
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get pane command for %s: %w", windowID, err)
+	}
+	// Take first line (first pane — windows typically have one pane)
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		return "", fmt.Errorf("no pane found for window %s", windowID)
+	}
+	return lines[0], nil
+}
+
+// GetPanePID returns the PID of the process running in a window's first pane.
+// Uses the window's unique ID (e.g., "@1234") for targeting.
+func GetPanePID(windowID string) (string, error) {
+	cmd, err := tmuxCommand("list-panes", "-t", windowID, "-F", "#{pane_pid}")
+	if err != nil {
+		return "", fmt.Errorf("failed to create tmux command: %w", err)
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get pane PID for %s: %w", windowID, err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		return "", fmt.Errorf("no pane found for window %s", windowID)
+	}
+	return lines[0], nil
+}
+
 // CaptureLines captures the last N lines from a tmux pane.
 // If lines is 0, captures all visible content.
 func CaptureLines(windowTarget string, lines int) ([]string, error) {

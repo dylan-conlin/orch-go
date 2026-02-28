@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -400,6 +401,60 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, workspaceDays int
 // cleanUntrackedDiskSessions has been removed - OpenCode now handles session cleanup via TTL
 // (see opencode-fork commit f3c3865)
 
+// PaneProcessChecker determines if a tmux window's pane has an active (non-shell) process.
+// This is used as a last-resort safety check before classifying a window as stale.
+type PaneProcessChecker interface {
+	HasActiveProcess(windowID string) bool
+}
+
+// DefaultPaneProcessChecker checks process liveness via two signals:
+// 1. tmux pane_current_command — if a non-shell process is in the foreground, the pane is active
+// 2. child process detection — if the pane's shell has child processes, an agent is running
+//
+// The dual approach is needed because macOS tmux may report "zsh" for pane_current_command
+// even when a child process (like claude) is actively running in the foreground.
+type DefaultPaneProcessChecker struct{}
+
+// idleShellCommands are process names that indicate a pane is idle (no agent running).
+// These are shells that remain after an agent process exits.
+var idleShellCommands = map[string]bool{
+	"zsh": true, "bash": true, "sh": true, "fish": true,
+	"-zsh": true, "-bash": true, "-sh": true, "login": true,
+}
+
+// HasActiveProcess checks if a tmux window has an active agent process.
+// Uses two signals: pane_current_command and child process detection.
+// Returns true (conservative) if the check fails, to avoid killing active agents.
+func (c *DefaultPaneProcessChecker) HasActiveProcess(windowID string) bool {
+	// Signal 1: Check pane_current_command — if it's not a shell, something is running.
+	cmd, err := tmux.GetPaneCurrentCommand(windowID)
+	if err != nil {
+		// Can't determine — be conservative, assume alive
+		return true
+	}
+	if !idleShellCommands[cmd] {
+		return true
+	}
+
+	// Signal 2: pane_current_command shows a shell, but on macOS this can be
+	// unreliable when child processes (claude, opencode) are running.
+	// Check if the pane's shell PID has any child processes.
+	pid, err := tmux.GetPanePID(windowID)
+	if err != nil {
+		// Can't determine — be conservative, assume alive
+		return true
+	}
+	return hasChildProcesses(pid)
+}
+
+// hasChildProcesses checks if a process has any child processes.
+// Uses pgrep -P which returns exit 0 if children found, 1 if not.
+func hasChildProcesses(pid string) bool {
+	cmd := exec.Command("pgrep", "-P", pid)
+	err := cmd.Run()
+	return err == nil // exit 0 = children found
+}
+
 // staleTmuxWindow represents a tmux window identified as stale.
 type staleTmuxWindow struct {
 	window      *tmux.WindowInfo
@@ -407,14 +462,19 @@ type staleTmuxWindow struct {
 	beadsID     string
 }
 
-// classifyTmuxWindows identifies tmux windows that are stale (no active OpenCode session
-// and no open beads issue). This protects daemon-spawned Claude CLI agents that have
-// tmux windows but no corresponding OpenCode sessions.
+// classifyTmuxWindows identifies tmux windows that are stale (no active OpenCode session,
+// no open beads issue, and no running process). This protects daemon-spawned Claude CLI
+// agents that have tmux windows but no corresponding OpenCode sessions.
+//
+// The process checker is the last-resort safety net: even if OpenCode has zero sessions
+// (e.g., server restarted) and the beads issue is closed, a window with a running agent
+// process (claude, opencode, etc.) will be protected from cleanup.
 func classifyTmuxWindows(
 	windows []tmux.WindowInfo,
 	sessionName string,
 	activeBeadsIDs map[string]bool,
 	openIssues map[string]*verify.Issue,
+	processChecker PaneProcessChecker,
 ) (stale []staleTmuxWindow, protected int) {
 	for _, w := range windows {
 		// Skip known non-agent windows
@@ -438,7 +498,15 @@ func classifyTmuxWindows(
 			continue
 		}
 
-		// Window is truly stale (no OpenCode session AND beads issue not open)
+		// Has an active process running in the pane? Protected.
+		// This catches Claude CLI agents that have no OpenCode session and whose
+		// beads issue may be closed, but are still actively running.
+		if processChecker != nil && processChecker.HasActiveProcess(w.ID) {
+			protected++
+			continue
+		}
+
+		// Window is truly stale (no OpenCode session AND beads issue not open AND no active process)
 		windowCopy := w
 		stale = append(stale, staleTmuxWindow{&windowCopy, sessionName, beadsID})
 	}
@@ -486,6 +554,8 @@ func cleanStaleTmuxWindows(serverURL string, projectDir string, dryRun bool, pre
 	var allStale []staleTmuxWindow
 	totalProtected := 0
 
+	processChecker := &DefaultPaneProcessChecker{}
+
 	skippedOrch := 0
 	workersSessions, _ := tmux.ListWorkersSessions()
 	for _, sessionName := range workersSessions {
@@ -500,7 +570,7 @@ func cleanStaleTmuxWindows(serverURL string, projectDir string, dryRun bool, pre
 			continue
 		}
 
-		stale, protected := classifyTmuxWindows(windows, sessionName, activeBeadsIDs, openIssues)
+		stale, protected := classifyTmuxWindows(windows, sessionName, activeBeadsIDs, openIssues, processChecker)
 		allStale = append(allStale, stale...)
 		totalProtected += protected
 	}
