@@ -1,0 +1,50 @@
+# Verification Spec for orch-go-6al9
+# Worker friction: Edit tool fails on tab-indented Svelte files
+
+type: bug-fix-verification
+issue: orch-go-6al9
+
+reproduction:
+  original_steps:
+    - "Read a tab-indented Svelte file with Read tool"
+    - "Attempt Edit with old_string containing tab-indented content"
+    - "Edit fails with 'String to replace not found'"
+
+  verification_performed:
+    - description: "Multi-line Edit on 1-tab depth content (badge.svelte, 17 lines)"
+      result: PASS
+      detail: "3-line old_string with tab-indented content matched and replaced successfully"
+
+    - description: "Single-line Edit on 1-tab depth content (badge.svelte)"
+      result: PASS
+      detail: "import line with 1 tab indentation edited and reverted successfully"
+
+    - description: "Single-line Edit on 2-tab depth content (badge.svelte)"
+      result: PASS
+      detail: "variant?: Variant; with 2 tabs edited and reverted successfully"
+
+    - description: "Single-line Edit on 3-tab depth content (+page.svelte, 875 lines)"
+      result: PASS
+      detail: "localStorage.setItem line with 3 tabs edited and reverted successfully"
+
+    - description: "Clean revert verification"
+      result: PASS
+      detail: "git diff web/src/ shows no changes — all test edits cleanly reverted"
+
+fix_location:
+  file: CLAUDE.md
+  section: "Tab-Indented File Editing"
+  commit: "3d7507e87"
+  committed_by: "og-debug-worker-friction-edit-27feb-3215 (prior agent)"
+
+mitigation_approach: documentation
+rationale: >
+  Claude Code platform limitation — Read tool tab delimiter format cannot be changed
+  from orch-go. CLAUDE.md guidance primes agents on the issue, preventing the failure
+  pattern. All 10 edit operations (5 edits + 5 reverts) succeeded with guidance loaded.
+
+remaining_gaps:
+  - description: "Worker-base skill in orch-knowledge lacks this guidance"
+    type: cross-repo
+    priority: P3
+    action: "CROSS_REPO_ISSUE in SYNTHESIS.md for orchestrator to create"
