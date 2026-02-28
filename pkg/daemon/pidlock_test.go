@@ -36,12 +36,15 @@ func TestAcquirePIDLock_DoubleAcquireFails(t *testing.T) {
 	tmpDir := t.TempDir()
 	lockPath := filepath.Join(tmpDir, "daemon.pid")
 
-	// Write our own PID to simulate a running daemon
-	// (since we ARE running, kill(pid,0) will report alive)
-	currentPID := os.Getpid()
-	os.WriteFile(lockPath, []byte(strconv.Itoa(currentPID)), 0644)
+	// First acquire should succeed
+	lock1, err := AcquirePIDLockAt(lockPath)
+	if err != nil {
+		t.Fatalf("first acquire failed: %v", err)
+	}
+	defer lock1.Release()
 
-	_, err := AcquirePIDLockAt(lockPath)
+	// Second acquire (same process) should fail because flock is held
+	_, err = AcquirePIDLockAt(lockPath)
 	if err == nil {
 		t.Fatal("expected error for double acquire, got nil")
 	}
@@ -54,18 +57,14 @@ func TestAcquirePIDLock_StalePIDCleanup(t *testing.T) {
 	tmpDir := t.TempDir()
 	lockPath := filepath.Join(tmpDir, "daemon.pid")
 
-	// Write a PID that definitely doesn't exist (PID 2 is typically kernel, but
-	// use a very high PID that's almost certainly not running)
+	// Write a stale PID file (no flock held). This simulates a crash
+	// where the process died and the kernel released the flock.
 	stalePID := 4194300 // Near max PID on most systems
 	os.WriteFile(lockPath, []byte(strconv.Itoa(stalePID)), 0644)
 
-	// Should succeed because the stale process isn't alive
+	// Should succeed because no flock is held (file content is irrelevant)
 	lock, err := AcquirePIDLockAt(lockPath)
 	if err != nil {
-		// If by extreme coincidence this PID is alive, skip the test
-		if isErrDaemonAlreadyRunning(err) {
-			t.Skipf("PID %d unexpectedly alive, skipping stale PID test", stalePID)
-		}
 		t.Fatalf("expected no error, got: %v", err)
 	}
 	defer lock.Release()
@@ -82,10 +81,10 @@ func TestAcquirePIDLock_InvalidPIDContent(t *testing.T) {
 	tmpDir := t.TempDir()
 	lockPath := filepath.Join(tmpDir, "daemon.pid")
 
-	// Write garbage content
+	// Write garbage content (no flock held)
 	os.WriteFile(lockPath, []byte("not-a-pid"), 0644)
 
-	// Should succeed - invalid content is treated as stale
+	// Should succeed - no flock is held regardless of file content
 	lock, err := AcquirePIDLockAt(lockPath)
 	if err != nil {
 		t.Fatalf("expected no error for invalid PID content, got: %v", err)
@@ -102,7 +101,7 @@ func TestPIDLock_Release(t *testing.T) {
 		t.Fatalf("failed to acquire lock: %v", err)
 	}
 
-	// Release should remove the file
+	// Release should close fd (releasing flock) and remove the file
 	if err := lock.Release(); err != nil {
 		t.Fatalf("failed to release lock: %v", err)
 	}
@@ -126,7 +125,7 @@ func TestPIDLock_ReleaseAllowsReacquire(t *testing.T) {
 		t.Fatalf("release failed: %v", err)
 	}
 
-	// Should be able to acquire again
+	// Should be able to acquire again (flock released when fd closed)
 	lock2, err := AcquirePIDLockAt(lockPath)
 	if err != nil {
 		t.Fatalf("reacquire after release failed: %v", err)
@@ -141,7 +140,7 @@ func TestPIDLock_ReleaseNilSafe(t *testing.T) {
 	}
 }
 
-func TestPIDLock_ReleaseOnlyOwnPID(t *testing.T) {
+func TestPIDLock_ReleaseDoubleCallSafe(t *testing.T) {
 	tmpDir := t.TempDir()
 	lockPath := filepath.Join(tmpDir, "daemon.pid")
 
@@ -150,15 +149,52 @@ func TestPIDLock_ReleaseOnlyOwnPID(t *testing.T) {
 		t.Fatalf("failed to acquire lock: %v", err)
 	}
 
-	// Overwrite the PID file with a different PID (simulating another process taking over)
-	os.WriteFile(lockPath, []byte("99999"), 0644)
+	// Double release should not panic or error
+	if err := lock.Release(); err != nil {
+		t.Fatalf("first release failed: %v", err)
+	}
+	if err := lock.Release(); err != nil {
+		t.Fatalf("second release should not error, got: %v", err)
+	}
+}
 
-	// Release should NOT remove the file since it's not our PID
-	lock.Release()
+func TestPIDLock_FlockReleasedOnProcessExit(t *testing.T) {
+	// This test verifies that a stale PID file (from a crashed process)
+	// does NOT prevent lock acquisition, because flock is kernel-managed
+	// and released on process exit.
+	tmpDir := t.TempDir()
+	lockPath := filepath.Join(tmpDir, "daemon.pid")
 
-	// File should still exist
-	if _, err := os.Stat(lockPath); os.IsNotExist(err) {
-		t.Error("PID file should NOT be removed when PID doesn't match")
+	// Simulate crash: write PID file but don't hold flock
+	os.WriteFile(lockPath, []byte("12345"), 0644)
+
+	// Lock acquisition should succeed (no flock held)
+	lock, err := AcquirePIDLockAt(lockPath)
+	if err != nil {
+		t.Fatalf("should acquire lock over stale file: %v", err)
+	}
+	defer lock.Release()
+}
+
+func TestReadPIDFromLockFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	lockPath := filepath.Join(tmpDir, "daemon.pid")
+
+	// No file → 0
+	if pid := ReadPIDFromLockFileAt(lockPath); pid != 0 {
+		t.Errorf("expected 0 for missing file, got %d", pid)
+	}
+
+	// Valid PID content
+	os.WriteFile(lockPath, []byte("42"), 0644)
+	if pid := ReadPIDFromLockFileAt(lockPath); pid != 42 {
+		t.Errorf("expected 42, got %d", pid)
+	}
+
+	// Invalid content → 0
+	os.WriteFile(lockPath, []byte("not-a-pid"), 0644)
+	if pid := ReadPIDFromLockFileAt(lockPath); pid != 0 {
+		t.Errorf("expected 0 for invalid content, got %d", pid)
 	}
 }
 
