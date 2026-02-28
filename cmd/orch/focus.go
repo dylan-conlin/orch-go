@@ -188,11 +188,11 @@ var driftCmd = &cobra.Command{
 	Short: "Check if current work aligns with focus",
 	Long: `Check if current work aligns with the north star focus.
 
-Compares active agents/issues against the focused issue (if set) to detect drift.
-Useful for staying on track during multi-project work.
+Queries tracked agents via beads and groups by skill, showing task titles
+and phases. Compares against focus to detect drift.
 
 Examples:
-  orch-go drift         # Check for drift
+  orch-go drift         # Alignment analysis
   orch-go drift --json  # Output in JSON format`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDrift()
@@ -205,19 +205,71 @@ func init() {
 	driftCmd.Flags().BoolVar(&driftJSON, "json", false, "Output in JSON format")
 }
 
+// DriftAnalysis is the rich output type for the drift command.
+type DriftAnalysis struct {
+	Goal           string            `json:"goal,omitempty"`
+	FocusedIssue   string            `json:"focused_issue,omitempty"`
+	IsDrifting     bool              `json:"is_drifting"`
+	Verdict        string            `json:"verdict"` // "on-track", "drifting", "unverified", "no-focus"
+	Reason         string            `json:"reason"`
+	Groups         []DriftSkillGroup `json:"groups,omitempty"`
+	AgentCount     int               `json:"agent_count"`
+	UntrackedCount int               `json:"untracked_count"`
+}
+
+// DriftSkillGroup groups agents by skill for display.
+type DriftSkillGroup struct {
+	Skill  string       `json:"skill"`
+	Agents []DriftAgent `json:"agents"`
+}
+
+// DriftAgent is a compact representation of an agent for drift output.
+type DriftAgent struct {
+	BeadsID string `json:"beads_id"`
+	Title   string `json:"title"`
+	Phase   string `json:"phase,omitempty"`
+	Status  string `json:"status"`
+}
+
 func runDrift() error {
 	store, err := focus.New("")
 	if err != nil {
 		return fmt.Errorf("failed to load focus: %w", err)
 	}
 
-	// Get active issues from OpenCode sessions
-	activeIssues := getActiveIssues()
+	// Get current project directory
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get working directory: %w", err)
+	}
 
-	result := store.CheckDrift(activeIssues)
+	// Query tracked agents (beads-first, with workspace manifests and liveness)
+	projectDirs := uniqueProjectDirs(append([]string{projectDir}, getKBProjectsFn()...))
+	trackedAgents, err := queryTrackedAgents(projectDirs)
+	if err != nil {
+		return fmt.Errorf("failed to query tracked agents: %w", err)
+	}
+
+	// Count untracked sessions for context
+	untrackedCount := countUntrackedSessions(projectDir)
+
+	// Build ActiveWork for drift check
+	activeWork := make([]focus.ActiveWork, 0, len(trackedAgents))
+	for _, agent := range trackedAgents {
+		activeWork = append(activeWork, focus.ActiveWork{
+			BeadsID: agent.BeadsID,
+			Title:   agent.Title,
+		})
+	}
+
+	// Check drift against focus
+	driftResult := store.CheckDrift(activeWork)
+
+	// Build analysis
+	analysis := buildDriftAnalysis(driftResult, trackedAgents, untrackedCount)
 
 	if driftJSON {
-		data, err := json.MarshalIndent(result, "", "  ")
+		data, err := json.MarshalIndent(analysis, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal result: %w", err)
 		}
@@ -225,40 +277,145 @@ func runDrift() error {
 		return nil
 	}
 
-	// No focus set
-	if result.Goal == "" {
-		fmt.Println("No focus set - nothing to drift from")
-		fmt.Println("\nSet a focus with: orch-go focus \"your goal\"")
-		return nil
-	}
-
-	// Report drift status
-	if result.IsDrifting {
-		fmt.Printf("⚠️  Drifting!\n")
-		fmt.Printf("   Focus:  %s\n", result.Goal)
-		if result.FocusedIssue != "" {
-			fmt.Printf("   Target: %s\n", result.FocusedIssue)
-		}
-		if len(result.ActiveIssues) > 0 {
-			fmt.Printf("   Active: %s\n", strings.Join(result.ActiveIssues, ", "))
-		} else {
-			fmt.Printf("   Active: (no active work)\n")
-		}
-		fmt.Println("\nConsider switching to focused work or clearing focus if priorities changed.")
-	} else {
-		fmt.Printf("✓ On track\n")
-		fmt.Printf("   Focus: %s\n", result.Goal)
-		if len(result.ActiveIssues) > 0 {
-			fmt.Printf("   Active: %s\n", strings.Join(result.ActiveIssues, ", "))
-		}
-	}
-
+	printDriftAnalysis(analysis)
 	return nil
 }
 
-// getActiveIssues returns the beads IDs of currently active work.
-// Uses OpenCode API to list active sessions and extracts beads IDs from session titles.
-func getActiveIssues() []string {
+// buildDriftAnalysis creates a rich analysis from tracked agents and drift result.
+func buildDriftAnalysis(driftResult focus.DriftResult, agents []AgentStatus, untrackedCount int) DriftAnalysis {
+	analysis := DriftAnalysis{
+		Goal:           driftResult.Goal,
+		FocusedIssue:   driftResult.FocusedIssue,
+		IsDrifting:     driftResult.IsDrifting,
+		Verdict:        driftResult.Verdict,
+		Reason:         driftResult.Reason,
+		AgentCount:     len(agents),
+		UntrackedCount: untrackedCount,
+	}
+
+	// Group agents by skill
+	skillMap := make(map[string][]DriftAgent)
+	for _, agent := range agents {
+		skill := agent.Skill
+		if skill == "" {
+			skill = "(unknown)"
+		}
+		da := DriftAgent{
+			BeadsID: agent.BeadsID,
+			Title:   agent.Title,
+			Phase:   agent.Phase,
+			Status:  agent.Status,
+		}
+		skillMap[skill] = append(skillMap[skill], da)
+	}
+
+	// Sort skill groups by count (descending), then name
+	type kv struct {
+		skill  string
+		agents []DriftAgent
+	}
+	var sorted []kv
+	for skill, agents := range skillMap {
+		sorted = append(sorted, kv{skill, agents})
+	}
+	// Sort: largest groups first, then alphabetically
+	for i := 0; i < len(sorted); i++ {
+		for j := i + 1; j < len(sorted); j++ {
+			if len(sorted[j].agents) > len(sorted[i].agents) ||
+				(len(sorted[j].agents) == len(sorted[i].agents) && sorted[j].skill < sorted[i].skill) {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+			}
+		}
+	}
+
+	for _, kv := range sorted {
+		analysis.Groups = append(analysis.Groups, DriftSkillGroup{
+			Skill:  kv.skill,
+			Agents: kv.agents,
+		})
+	}
+
+	return analysis
+}
+
+// printDriftAnalysis formats the analysis for terminal output.
+func printDriftAnalysis(a DriftAnalysis) {
+	// No focus set
+	if a.Verdict == "no-focus" {
+		fmt.Println("No focus set - nothing to drift from")
+		if a.AgentCount > 0 {
+			fmt.Printf("\n%d tracked agents active (set focus to check alignment)\n", a.AgentCount)
+		}
+		fmt.Println("\nSet a focus with: orch-go focus \"your goal\"")
+		return
+	}
+
+	// Header with verdict
+	switch a.Verdict {
+	case "drifting":
+		fmt.Println("DRIFT DETECTED")
+	case "unverified":
+		fmt.Println("ALIGNMENT UNVERIFIED (goal-only focus)")
+	default:
+		fmt.Println("ON TRACK")
+	}
+	fmt.Printf("  Focus: %s\n", truncate(a.Goal, 100))
+	if a.FocusedIssue != "" {
+		fmt.Printf("  Target: %s\n", a.FocusedIssue)
+	}
+
+	// No active work
+	if a.AgentCount == 0 {
+		fmt.Println("\n  (no tracked agents)")
+		if a.UntrackedCount > 0 {
+			fmt.Printf("  %d untracked sessions (use 'orch sessions' to view)\n", a.UntrackedCount)
+		}
+		return
+	}
+
+	// Agent groups by skill
+	fmt.Printf("\nActive Work (%d tracked):\n", a.AgentCount)
+	for _, group := range a.Groups {
+		fmt.Printf("\n  %s (%d):\n", group.Skill, len(group.Agents))
+		for _, agent := range group.Agents {
+			phase := agent.Phase
+			if phase == "" {
+				phase = agent.Status
+			}
+			// Truncate phase to just the first part (before " - ")
+			if idx := strings.Index(phase, " - "); idx > 0 {
+				phase = phase[:idx]
+			}
+			fmt.Printf("    %-16s  %-50s  %s\n", agent.BeadsID, truncate(agent.Title, 50), phase)
+		}
+	}
+
+	// Footer
+	if a.UntrackedCount > 0 {
+		fmt.Printf("\n  + %d untracked sessions (use 'orch sessions' to view)\n", a.UntrackedCount)
+	}
+}
+
+// countUntrackedSessions counts OpenCode sessions that don't map to tracked beads issues.
+func countUntrackedSessions(projectDir string) int {
+	client := opencode.NewClient(opencode.DefaultServerURL)
+	sessions, err := client.ListSessions(projectDir)
+	if err != nil {
+		return 0
+	}
+
+	count := 0
+	for _, s := range sessions {
+		if extractBeadsIDFromTitle(s.Title) == "" {
+			count++
+		}
+	}
+	return count
+}
+
+// getActiveWork returns active work items from OpenCode sessions.
+// Extracts beads IDs from session titles and returns them as ActiveWork.
+func getActiveWork() []focus.ActiveWork {
 	// Get current directory for project context
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -272,16 +429,16 @@ func getActiveIssues() []string {
 		return nil
 	}
 
-	var issues []string
+	var work []focus.ActiveWork
 	for _, session := range sessions {
 		// Extract beads ID from session title (format: "workspace [beads-id]")
 		beadsID := extractBeadsIDFromTitle(session.Title)
 		if beadsID != "" {
-			issues = append(issues, beadsID)
+			work = append(work, focus.ActiveWork{BeadsID: beadsID})
 		}
 	}
 
-	return issues
+	return work
 }
 
 // ============================================================================
@@ -319,13 +476,13 @@ func runNext() error {
 		return fmt.Errorf("failed to load focus: %w", err)
 	}
 
-	// Get active issues from OpenCode sessions
-	activeIssues := getActiveIssues()
+	// Get active work from OpenCode sessions
+	activeWork := getActiveWork()
 
 	// Get ready issues from beads for additional context
 	readyIssues := getReadyIssues()
 
-	suggestion := store.SuggestNext(activeIssues)
+	suggestion := store.SuggestNext(activeWork)
 
 	if nextJSON {
 		data, err := json.MarshalIndent(suggestion, "", "  ")

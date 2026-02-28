@@ -133,14 +133,14 @@ func handleFocus(w http.ResponseWriter, r *http.Request) {
 		client := opencode.NewClient(serverURL)
 		sessions, _ := client.ListSessions("")
 
-		var activeIssues []string
+		var activeWork []focus.ActiveWork
 		for _, s := range sessions {
 			if beadsID := extractBeadsIDFromTitle(s.Title); beadsID != "" {
-				activeIssues = append(activeIssues, beadsID)
+				activeWork = append(activeWork, focus.ActiveWork{BeadsID: beadsID})
 			}
 		}
 
-		drift := store.CheckDrift(activeIssues)
+		drift := store.CheckDrift(activeWork)
 		resp.IsDrifting = drift.IsDrifting
 	}
 

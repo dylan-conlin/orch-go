@@ -275,8 +275,8 @@ func gatherHandoffData() (*HandoffData, error) {
 	// Get focus info
 	if focusStore, err := focus.New(""); err == nil {
 		if f := focusStore.Get(); f != nil {
-			activeIssues := getActiveIssues()
-			drift := focusStore.CheckDrift(activeIssues)
+			activeWork := getActiveWork()
+			drift := focusStore.CheckDrift(activeWork)
 			data.Focus = &FocusInfo{
 				Goal:      f.Goal,
 				BeadsID:   f.BeadsID,
