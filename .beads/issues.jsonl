@@ -1,2 +1,2 @@
 {"id":"test-1","title":"test issue","status":"open","priority":0,"issue_type":"task","created_at":"0001-01-01T00:00:00Z","updated_at":"0001-01-01T00:00:00Z"}
-{"id":"test-2","title":"remote issue"}
+{"id":"test-2","title":"remote issue","status":"open","priority":0,"issue_type":"task","created_at":"0001-01-01T00:00:00Z","updated_at":"0001-01-01T00:00:00Z"}
