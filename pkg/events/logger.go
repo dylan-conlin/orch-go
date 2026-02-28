@@ -40,6 +40,9 @@ const (
 	EventTypeVerificationAutoSkipped = "verification.auto_skipped"
 	// EventTypeAgentAbandoned indicates an agent was abandoned via orch abandon.
 	EventTypeAgentAbandoned = "agent.abandoned"
+	// EventTypeAgentAbandonedTelemetry is enriched telemetry for abandonments (skill, tokens, duration).
+	// Separate from agent.abandoned to avoid double-counting in stats.
+	EventTypeAgentAbandonedTelemetry = "agent.abandoned.telemetry"
 	// EventTypeSpawnSkillInferred indicates a skill was inferred for an issue spawn.
 	EventTypeSpawnSkillInferred = "spawn.skill_inferred"
 	// EventTypeAccretionDelta indicates file growth/shrinkage during an agent session.
@@ -329,11 +332,14 @@ type AgentAbandonedData struct {
 	Outcome         string `json:"outcome,omitempty"`          // Always "abandoned"
 }
 
-// LogAgentAbandoned logs an agent abandonment event with telemetry.
+// LogAgentAbandoned logs enriched abandonment telemetry (skill, tokens, duration).
+// This uses EventTypeAgentAbandonedTelemetry ("agent.abandoned.telemetry") to avoid
+// double-counting with the primary agent.abandoned event emitted by LifecycleManager
+// or the direct emit in abandon_cmd.go for untracked agents.
 func (l *Logger) LogAgentAbandoned(data AgentAbandonedData) error {
 	eventData := map[string]interface{}{
 		"reason":  data.Reason,
-		"outcome": "abandoned", // Always abandoned for this event type
+		"outcome": "abandoned",
 	}
 	if data.BeadsID != "" {
 		eventData["beads_id"] = data.BeadsID
@@ -355,7 +361,7 @@ func (l *Logger) LogAgentAbandoned(data AgentAbandonedData) error {
 	}
 
 	return l.Log(Event{
-		Type:      EventTypeAgentAbandoned,
+		Type:      EventTypeAgentAbandonedTelemetry,
 		SessionID: data.BeadsID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,

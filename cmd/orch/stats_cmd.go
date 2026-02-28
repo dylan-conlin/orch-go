@@ -350,6 +350,13 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 	// 2. Use the latest event for duration calculation
 	completedBeadsIDs := make(map[string]bool) // beads_id -> true if already counted
 
+	// Track unique abandonments by beads_id to avoid double-counting.
+	// orch abandon emits two agent.abandoned events per abandonment:
+	// one from LifecycleManager (basic data) and one from telemetry (enriched with skill/tokens).
+	// Additionally, the same issue may be abandoned multiple times (retries).
+	// We only count each unique beads_id once.
+	abandonedBeadsIDs := make(map[string]bool) // beads_id -> true if already counted
+
 	// Track workspace -> session mapping for orchestrator completions
 	// (orchestrators don't have beads_id, they use workspace for correlation)
 	workspaceToSession := make(map[string]string) // workspace -> session_id (pseudo)
@@ -732,8 +739,19 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 
 			isUntracked := isUntrackedSpawn(beadsID) || untrackedSessions[sessionID]
 
-			// Only count if tracked OR includeUntracked is set
-			if !isUntracked || includeUntracked {
+			// Deduplicate abandonments by beads_id:
+			// orch abandon emits two agent.abandoned events per abandonment
+			// (LifecycleManager + telemetry). We only count unique beads_ids.
+			deduplicationKey := beadsID
+			if beadsID == "" {
+				// Fall back to timestamp-based key for events without beads_id
+				deduplicationKey = fmt.Sprintf("ts:%d", event.Timestamp)
+			}
+			alreadyCounted := abandonedBeadsIDs[deduplicationKey]
+
+			// Only count if tracked OR includeUntracked is set, AND not already counted
+			if (!isUntracked || includeUntracked) && !alreadyCounted {
+				abandonedBeadsIDs[deduplicationKey] = true
 				report.Summary.TotalAbandonments++
 				// Update skill abandonments
 				if sessionID != "" {

@@ -1082,3 +1082,86 @@ func TestAggregateStatsVerificationBypassed(t *testing.T) {
 		t.Errorf("expected 3 bypass reason entries, got %d", len(report.VerificationStats.BypassReasons))
 	}
 }
+
+func TestAggregateStatsAbandonmentDeduplication(t *testing.T) {
+	// Regression test: orch abandon emits TWO agent.abandoned events per abandonment
+	// (one from LifecycleManager, one from telemetry). Stats must deduplicate by beads_id.
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// Spawn an architect agent
+		{Type: "session.spawned", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill": "architect", "beads_id": "test-arch-1", "workspace": "og-arch-test-1",
+		}},
+		// Spawn a feature-impl agent
+		{Type: "session.spawned", SessionID: "ses_fi1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-fi-1",
+		}},
+		// Abandon architect: event 1 (from LifecycleManager - no skill field)
+		{Type: "agent.abandoned", Timestamp: now - 3600, Data: map[string]interface{}{
+			"beads_id": "test-arch-1", "workspace": "og-arch-test-1", "reason": "stuck",
+		}},
+		// Abandon architect: event 2 (from telemetry - has skill field)
+		// In production this would be agent.abandoned.telemetry after the fix,
+		// but this tests the dedup safety net for existing events in events.jsonl
+		{Type: "agent.abandoned", Timestamp: now - 3600, Data: map[string]interface{}{
+			"beads_id": "test-arch-1", "workspace": "og-arch-test-1", "reason": "stuck", "skill": "architect",
+		}},
+		// Abandon feature-impl: event 1
+		{Type: "agent.abandoned", Timestamp: now - 1800, Data: map[string]interface{}{
+			"beads_id": "test-fi-1", "reason": "died",
+		}},
+		// Abandon feature-impl: event 2 (duplicate)
+		{Type: "agent.abandoned", Timestamp: now - 1800, Data: map[string]interface{}{
+			"beads_id": "test-fi-1", "reason": "died", "skill": "feature-impl",
+		}},
+	}
+
+	report := aggregateStats(events, 7, true)
+
+	// Should count 2 unique abandonments (not 4)
+	if report.Summary.TotalAbandonments != 2 {
+		t.Errorf("expected 2 unique abandonments, got %d (duplicate events not deduplicated)", report.Summary.TotalAbandonments)
+	}
+
+	// Check per-skill counts are also deduplicated
+	for _, s := range report.SkillStats {
+		switch s.Skill {
+		case "architect":
+			if s.Abandonments != 1 {
+				t.Errorf("expected 1 architect abandonment, got %d", s.Abandonments)
+			}
+		case "feature-impl":
+			if s.Abandonments != 1 {
+				t.Errorf("expected 1 feature-impl abandonment, got %d", s.Abandonments)
+			}
+		}
+	}
+}
+
+func TestAggregateStatsAbandonmentRetries(t *testing.T) {
+	// Test: same beads_id abandoned multiple times (retries) counts as one abandonment
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		{Type: "session.spawned", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill": "architect", "beads_id": "test-retry-1", "workspace": "og-arch-retry-1",
+		}},
+		// Abandoned 3 times (agent retried and failed)
+		{Type: "agent.abandoned", Timestamp: now - 5400, Data: map[string]interface{}{
+			"beads_id": "test-retry-1", "reason": "stuck attempt 1",
+		}},
+		{Type: "agent.abandoned", Timestamp: now - 3600, Data: map[string]interface{}{
+			"beads_id": "test-retry-1", "reason": "stuck attempt 2",
+		}},
+		{Type: "agent.abandoned", Timestamp: now - 1800, Data: map[string]interface{}{
+			"beads_id": "test-retry-1", "reason": "stuck attempt 3",
+		}},
+	}
+
+	report := aggregateStats(events, 7, true)
+
+	if report.Summary.TotalAbandonments != 1 {
+		t.Errorf("expected 1 unique abandonment for retried issue, got %d", report.Summary.TotalAbandonments)
+	}
+}
