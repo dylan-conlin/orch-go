@@ -1,8 +1,8 @@
 # Model: Spawn Architecture
 
 **Domain:** Agent Spawning / Workspace Creation
-**Last Updated:** 2026-02-27
-**Synthesized From:** 36 investigations (Dec 2025 - Jan 2026) into spawn implementation, context generation, tier system, and triage friction. Updated Feb 2026-27 via drift probes and model drift agent.
+**Last Updated:** 2026-02-28
+**Synthesized From:** 36 investigations (Dec 2025 - Jan 2026) into spawn implementation, context generation, tier system, and triage friction. Updated Feb 2026-27-28 via drift probes and model drift agent.
 
 ---
 
@@ -185,6 +185,10 @@ Agent works in: ~/target-project/
 10. **V0-V3 verification levels are strict subsets** - V0⊂V1⊂V2⊂V3; level set at spawn, enforced at completion
 11. **Cross-repo spawns inject BEADS_DIR** - Without this, `bd comment` in cross-repo agents targets wrong project
 12. **Orientation frame is separate from task title** - Title drives workspace name slug; frame provides strategic context without polluting names
+13. **CLAUDE_CONTEXT env var set explicitly on all spawn paths** - Workers get "worker", orchestrators get "orchestrator", meta-orchestrators get "meta-orchestrator". Prevents inherited env from triggering wrong hooks.
+14. **Safety-override flags require --reason** - `--bypass-triage`, `--force-hotspot`, `--no-track` require `--reason` with min 10 chars (daemon-driven spawns exempt). Reasons persisted in events.jsonl.
+15. **Concurrency gate counts only running agents** - Idle agents (>10 min since last message) don't count against the cap. `--max-agents 0` means unlimited (flag default -1 = "not set").
+16. **Concurrency gate includes tmux agents** - Claude CLI agents in tmux windows (no OpenCode session) are counted via `daemon.CountActiveTmuxAgents()` to prevent invisible agents from being uncapped.
 
 ---
 
@@ -357,6 +361,20 @@ Agent works in: ~/target-project/
 - BEADS_DIR env var injection for cross-repo Claude CLI spawns (`pkg/spawn/claude.go`)
   - Enables `bd comment` to target correct project in cross-repo agents
 
+**Phase 9: Safety Gates + Environment Isolation (Feb 27-28, 2026)**
+- `--reason` flag required for safety-override flags (`--bypass-triage`, `--force-hotspot`, `--no-track`)
+  - Min 10 chars, persisted in events.jsonl alongside existing events
+  - Daemon-driven spawns exempt (daemon has its own triage logic)
+- Concurrency gate fixes:
+  - Only counts running agents (idle >10min excluded) — prevents 15 idle agents from blocking new spawns
+  - `--max-agents 0` means unlimited; flag default changed to -1 as sentinel for "not set"
+  - Tmux agents (Claude CLI backend) now counted via `daemon.CountActiveTmuxAgents()`
+  - Batch beads-closed check prevents counting completed agents
+- `CLAUDE_CONTEXT` env var explicitly set on all spawn paths (`pkg/spawn/config.go:ClaudeContext()`)
+  - Workers get "worker", orchestrators get "orchestrator", meta-orchestrators get "meta-orchestrator"
+  - Fixed bug where OpenCode backend spawns (tmux, inline) inherited parent's CLAUDE_CONTEXT
+  - Claude CLI path already had this; now all backends aligned
+
 ---
 
 ## References
@@ -384,16 +402,16 @@ Agent works in: ~/target-project/
 - `.kb/guides/daemon.md` - How daemon auto-spawns (procedural)
 
 **Primary Evidence (Verify These):**
-- `cmd/orch/spawn_cmd.go` - Main spawn command + infrastructure detection (~930 lines)
-- `pkg/orch/extraction.go` - Spawn pipeline types and functions (~1614 lines)
-- `pkg/orch/spawn_modes.go` - Mode dispatch: inline/headless/tmux/claude (~529 lines)
+- `cmd/orch/spawn_cmd.go` - Main spawn command + infrastructure detection (~952 lines)
+- `pkg/orch/extraction.go` - Spawn pipeline types and functions (~1615 lines)
+- `pkg/orch/spawn_modes.go` - Mode dispatch: inline/headless/tmux/claude (~530 lines)
 - `pkg/orch/spawn_helpers.go` - Helper utilities for spawn pipeline (~148 lines)
-- `pkg/spawn/context.go` - SPAWN_CONTEXT.md generation (~1200 lines)
-- `pkg/spawn/kbcontext.go` - KB context gathering, keyword extraction, scoped filtering (~1100 lines)
-- `pkg/spawn/config.go` - Config struct, tier defaults, skill mappings, verify level (~460 lines)
-- `pkg/spawn/resolve.go` - Settings resolution with 6-level precedence, account routing (~580 lines)
-- `pkg/spawn/atomic.go` - Two-phase atomic spawn with rollback (~114 lines)
-- `pkg/spawn/claude.go` - Claude CLI backend (tmux spawn, MCP wiring, BEADS_DIR injection) (~172 lines)
+- `pkg/spawn/context.go` - SPAWN_CONTEXT.md generation (~1418 lines)
+- `pkg/spawn/kbcontext.go` - KB context gathering, keyword extraction, scoped filtering (~1485 lines)
+- `pkg/spawn/config.go` - Config struct, tier defaults, skill mappings, CLAUDE_CONTEXT (~519 lines)
+- `pkg/spawn/resolve.go` - Settings resolution with 6-level precedence, account routing (~661 lines)
+- `pkg/spawn/atomic.go` - Two-phase atomic spawn with rollback (~113 lines)
+- `pkg/spawn/claude.go` - Claude CLI backend (tmux spawn, MCP wiring, BEADS_DIR injection) (~165 lines)
 - `pkg/spawn/gap.go` - Context gap analysis, quality scoring, wrong-project detection
 - `pkg/spawn/session.go` - Session management, AGENT_MANIFEST.json with verify_level field
 - `pkg/spawn/verify_level.go` - V0-V3 level definitions, defaults, comparison functions (~103 lines)

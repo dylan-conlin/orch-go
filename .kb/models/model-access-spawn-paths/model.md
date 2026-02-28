@@ -1,8 +1,8 @@
 # Model: Model Access and Spawn Paths
 
 **Domain:** Agent Spawning / Model Selection
-**Last Updated:** 2026-02-27
-**Synthesized From:** 5 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations) spanning Jan 8-12, 2026. Updated Feb 2026-27 via drift probes and model drift agent.
+**Last Updated:** 2026-02-28
+**Synthesized From:** 5 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations) spanning Jan 8-12, 2026. Updated Feb 2026-27-28 via drift probes and model drift agent.
 
 ---
 
@@ -492,6 +492,13 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - Agreements gate added to spawn pipeline (non-blocking warning-only)
 - GatherSpawnContext signature extended with `orientationFrame` parameter
 
+**Feb 27-28, 2026:** Safety gates + environment isolation
+- `--reason` flag required for safety-override flags (`--bypass-triage`, `--force-hotspot`, `--no-track`); min 10 chars, events.jsonl persistence
+- Concurrency gate now counts only running agents (idle excluded) and includes tmux agents (Claude CLI backend)
+- `--max-agents 0` means unlimited; flag sentinel changed to -1
+- `CLAUDE_CONTEXT` env var explicitly set on all spawn paths (worker/orchestrator/meta-orchestrator)
+  - Fixed bug where OpenCode backend spawns inherited parent CLAUDE_CONTEXT, triggering wrong hooks
+
 ---
 
 ## References
@@ -521,10 +528,13 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - `pkg/spawn/resolve.go:validateModel()` - Flash blocking, model compatibility
 - `pkg/spawn/resolve.go:modelBackendRequirement()` - Model→backend mapping
 - `cmd/orch/spawn_cmd.go:isInfrastructureWork()` - Keyword detection logic (22 keywords)
-- `pkg/orch/extraction.go:ResolveSpawnSettings()` - Resolve wrapper with logging (~1614 lines total)
-- `pkg/orch/spawn_modes.go:DispatchSpawn()` - Mode routing (inline/headless/tmux/claude)
-- `pkg/spawn/claude.go:BuildClaudeLaunchCommand()` - Claude CLI with account isolation + BEADS_DIR injection
-- `pkg/model/model.go` - Model aliases and default model definition
+- `cmd/orch/spawn_cmd.go` - `--reason` flag validation for safety-override flags (~952 lines total)
+- `pkg/orch/extraction.go:ResolveSpawnSettings()` - Resolve wrapper with logging (~1615 lines total)
+- `pkg/orch/spawn_modes.go:DispatchSpawn()` - Mode routing (inline/headless/tmux/claude) (~530 lines)
+- `pkg/spawn/claude.go:BuildClaudeLaunchCommand()` - Claude CLI with account isolation + BEADS_DIR injection (~165 lines)
+- `pkg/spawn/config.go:ClaudeContext()` - CLAUDE_CONTEXT env var resolution (worker/orchestrator/meta-orchestrator)
+- `pkg/spawn/gates/concurrency.go:CheckConcurrency()` - Concurrency gate with tmux agent counting (~198 lines)
+- `pkg/model/model.go` - Model aliases and default model definition (~167 lines)
 - `CLAUDE.md` - Dual spawn mode documentation
 
 **Cost evidence:**
