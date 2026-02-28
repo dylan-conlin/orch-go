@@ -1,0 +1,59 @@
+verification:
+  type: bug-fix
+  issue: orch-go-9uvw
+  repo: kb-cli
+
+  reproduction:
+    description: >
+      Non-knowledge files (a11y snapshots, HTML dumps) score highest in kb search results
+      because they contain many domain words in raw page dumps, drowning out actual
+      knowledge artifacts.
+    verified_fixed: true
+    verification_method: >
+      Ran TestSearchExcludesA11ySnapshotFiles (creates a11y-snapshot file with 100 lines
+      of keyword-rich content alongside a knowledge file; verifies only the knowledge file
+      appears in results). Ran TestSearchExcludesScreenshotsDirectory (verifies files in
+      screenshots/ dirs are excluded). Ran TestSearchSizePenaltyDampensLargeFiles (verifies
+      1000-line file scores lower than 12-line file). Also verified via live kb search that
+      no a11y/dump files appear in results for "pricing" and "dashboard" queries.
+
+  tests:
+    command: "cd ~/Documents/personal/kb-cli && go test ./cmd/kb/ -run 'TestSearchExcludes|TestIsNon|TestSearchSizeP' -v -count=1"
+    results:
+      total: 12
+      passed: 12
+      failed: 0
+    key_tests:
+      - name: TestSearchExcludesA11ySnapshotFiles
+        status: pass
+        description: a11y snapshot files are excluded from search results
+      - name: TestSearchExcludesScreenshotsDirectory
+        status: pass
+        description: Files in screenshots/ directories are excluded
+      - name: TestSearchSizePenaltyDampensLargeFiles
+        status: pass
+        description: Large files (1000+ lines) score lower than small knowledge files
+      - name: TestIsNonKnowledgeFile
+        status: pass
+        subtests:
+          - "a11y_snapshot: pass"
+          - "html_dump: pass"
+          - "raw_dump: pass"
+          - "normal_investigation: pass (not excluded)"
+          - "normal_decision: pass (not excluded)"
+          - "file_in_screenshots_dir: pass"
+          - "file_in_captures_dir: pass"
+          - "file_in_snapshots_dir: pass"
+
+  smoke_test:
+    command: "kb search pricing"
+    result: "26 results, all legitimate knowledge artifacts. No a11y snapshots or HTML dumps."
+
+  commits:
+    - hash: af3d5bd
+      message: "fix: fix diminishing returns bug + add non-knowledge search tests (orch-go-9uvw)"
+      files:
+        - cmd/kb/search.go
+        - cmd/kb/search_test.go
+
+  manual_steps: none
