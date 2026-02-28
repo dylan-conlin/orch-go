@@ -90,6 +90,24 @@ func runAbandon(beadsID, reason, workdir string) error {
 	var issue *verify.Issue
 	if !isUntracked {
 		issue, err = verify.GetIssue(beadsID)
+		if err != nil && workdir == "" {
+			// Local lookup failed and no --workdir specified.
+			// Auto-resolve by searching registered kb projects.
+			resolvedDir, beadsIssue := resolveProjectDirForBeadsID(beadsID)
+			if resolvedDir != "" && beadsIssue != nil {
+				fmt.Printf("Auto-resolved cross-project issue: %s in %s\n", beadsID, resolvedDir)
+				projectDir = resolvedDir
+				beads.DefaultDir = resolvedDir
+				issue = &verify.Issue{
+					ID:        beadsIssue.ID,
+					Title:     beadsIssue.Title,
+					Status:    beadsIssue.Status,
+					IssueType: beadsIssue.IssueType,
+					Labels:    beadsIssue.Labels,
+				}
+				err = nil
+			}
+		}
 		if err != nil {
 			projectName := filepath.Base(projectDir)
 			issuePrefix := strings.Split(beadsID, "-")[0]

@@ -1226,6 +1226,21 @@ func FallbackRemoveLabel(id, label string) error {
 	return nil
 }
 
+// FallbackRemoveLabelInDir removes a label from an issue via bd CLI,
+// running in the specified directory. This enables cross-project label operations.
+func FallbackRemoveLabelInDir(id, label, dir string) error {
+	cmd := exec.Command(getBdPath(), "update", id, "--remove-label", label)
+	setupFallbackEnv(cmd)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd remove-label failed: %w: %s", err, string(output))
+	}
+	return nil
+}
+
 // CheckBlockingDependencies checks if an issue has any blocking dependencies.
 // Returns a list of blocking dependencies if any exist, or nil if the issue can be worked on.
 // Uses RPC client if available, falls back to CLI otherwise.
