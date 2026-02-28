@@ -1,6 +1,7 @@
 # Design: Eliminate Recurring Config Drift Between Claude Code Config Directories
 
 **Phase:** Complete
+**Status:** Complete
 **Date:** 2026-02-27
 **Trigger:** Task tool guard hook added to `~/.claude/settings.json` didn't appear in `~/.claude-personal/settings.json`, causing orchestrator sessions launched via `cc personal` to have no Task tool blocking.
 

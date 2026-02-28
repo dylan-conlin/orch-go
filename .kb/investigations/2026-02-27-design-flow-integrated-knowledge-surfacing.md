@@ -5,6 +5,8 @@ date: 2026-02-27
 triggers: ["session conversation about flow state, model drift, and verification trust"]
 ---
 
+**Status:** Active
+
 # Design: Flow-Integrated Knowledge Surfacing
 
 ## Problem Statement

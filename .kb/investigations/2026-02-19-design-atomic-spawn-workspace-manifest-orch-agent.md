@@ -2,6 +2,7 @@
 
 **Date:** 2026-02-19
 **Phase:** Complete
+**Status:** Complete
 **Issue:** orch-go-1083
 **ADR:** .kb/decisions/2026-02-18-two-lane-agent-discovery.md
 

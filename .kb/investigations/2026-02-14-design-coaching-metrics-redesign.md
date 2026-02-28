@@ -3,6 +3,7 @@
 **Date:** 2026-02-14
 **Type:** Architecture Design
 **Phase:** Complete
+**Status:** Complete
 **Issue:** orch-go-0pc
 **Scope:** Plugin metrics, orch stats integration, session-start auto-surfacing
 

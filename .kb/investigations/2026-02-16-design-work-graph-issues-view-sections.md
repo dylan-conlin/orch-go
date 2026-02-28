@@ -2,6 +2,7 @@
 
 **Date:** 2026-02-16
 **Phase:** Complete
+**Status:** Complete
 **Trigger:** Triple-rendering bug — issues appearing in Ready to Complete, In Progress, AND the main tree simultaneously
 **Scope:** Work-graph Issues view only (not Artifacts tab, Completed tab, or other dashboard views)
 

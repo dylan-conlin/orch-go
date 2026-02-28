@@ -6,6 +6,8 @@ triggers: ["architect session for orch-go-pgjz, building on design investigation
 **Phase:** Complete
 ---
 
+**Status:** Complete
+
 # Design: Implementation Architecture for Flow-Integrated Knowledge Surfacing
 
 ## Design Question

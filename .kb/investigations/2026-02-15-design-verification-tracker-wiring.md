@@ -4,6 +4,7 @@
 **Type:** Architecture Design
 **Issue:** orch-go-ydzu
 **Phase:** Complete
+**Status:** Complete
 
 ## Design Question
 
