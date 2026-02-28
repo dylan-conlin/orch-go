@@ -85,3 +85,50 @@ func TestHandleCloseIssue_InvalidJSON(t *testing.T) {
 		t.Error("Expected success=false for invalid JSON")
 	}
 }
+
+func TestHandleCloseIssueBatchMethodNotAllowed(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/issues/close-batch", nil)
+	w := httptest.NewRecorder()
+
+	handleCloseIssueBatch(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status 405, got %d", w.Code)
+	}
+}
+
+func TestHandleCloseIssueBatchEmptyIDs(t *testing.T) {
+	body, _ := json.Marshal(CloseIssueBatchRequest{BeadsIDs: []string{}})
+	req := httptest.NewRequest(http.MethodPost, "/api/issues/close-batch", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	handleCloseIssueBatch(w, req)
+
+	var resp CloseIssueBatchResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if len(resp.Results) != 0 {
+		t.Errorf("Expected 0 results, got %d", len(resp.Results))
+	}
+	if resp.TotalClosed != 0 {
+		t.Errorf("Expected 0 closed, got %d", resp.TotalClosed)
+	}
+}
+
+func TestHandleCloseIssueBatchInvalidJSON(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/issues/close-batch", bytes.NewReader([]byte("not json")))
+	w := httptest.NewRecorder()
+
+	handleCloseIssueBatch(w, req)
+
+	var resp CloseIssueBatchResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if len(resp.Results) != 0 {
+		t.Errorf("Expected 0 results for invalid JSON, got %d", len(resp.Results))
+	}
+}

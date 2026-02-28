@@ -343,6 +343,9 @@ func runServe(portNum int) error {
 	// POST /api/issues/close - close a beads issue and notify daemon
 	mux.HandleFunc("/api/issues/close", corsHandler(handleCloseIssue))
 
+	// POST /api/issues/close-batch - close multiple issues and reset daemon counter
+	mux.HandleFunc("/api/issues/close-batch", corsHandler(handleCloseIssueBatch))
+
 	// GET /api/verification - verification status summary
 	mux.HandleFunc("/api/verification", corsHandler(handleVerification))
 
