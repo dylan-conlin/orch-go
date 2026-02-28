@@ -1,0 +1,35 @@
+deliverables:
+  - path: cmd/orch/review_orphans.go
+    description: "orch review orphans subcommand implementation"
+    exists: true
+  - path: cmd/orch/review_orphans_test.go
+    description: "Unit tests for orphans subcommand"
+    exists: true
+
+tests:
+  command: "go test ./cmd/orch/ -run 'TestOrphan|TestHasImplementation|TestFormatOrphans|TestIsArchitectBeads|TestReviewOrphansCommand|TestHumanAgeSinceTime' -count=1 -v"
+  result: "PASS - 16 test cases across 6 test functions"
+  coverage:
+    - TestOrphanItemFromIssue: converts beads.Issue to OrphanItem with age
+    - TestHasImplementationFollowUp: detects title-pattern refs (5 cases)
+    - TestFormatOrphansList: display formatting (empty + populated)
+    - TestHumanAgeSinceTime: age formatting (4 cases)
+    - TestIsArchitectBeadsIssue: architect issue detection (5 cases)
+    - TestReviewOrphansCommandExists: subcommand registration + flag
+
+build:
+  command: "go build ./cmd/orch/ && go vet ./cmd/orch/"
+  result: "PASS - no errors"
+
+smoke_test:
+  command: "go run ./cmd/orch/ review orphans"
+  result: "26 closed architect designs, 24 orphaned - correctly filters and displays"
+
+regression:
+  command: "go test ./cmd/orch/ -run 'TestReview|TestTriage|TestComplete' -count=1"
+  result: "PASS - no regressions in existing review/triage/complete tests"
+
+manual_verification:
+  - "orch review orphans --help shows correct usage and flags"
+  - "orch review orphans lists orphaned architect designs with age and TLDR"
+  - "--create-follow-up flag is registered (not tested live to avoid side effects)"
