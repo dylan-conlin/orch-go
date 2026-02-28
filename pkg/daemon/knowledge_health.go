@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -87,7 +88,22 @@ func DefaultKnowledgeHealthCheck() (*KnowledgeHealthResult, error) {
 
 // DefaultCreateKnowledgeHealthIssue creates a triage:review issue when
 // knowledge entry accumulation exceeds the threshold.
+// Skips creation if an open knowledge maintenance issue already exists.
 func DefaultCreateKnowledgeHealthIssue(result *KnowledgeHealthResult) error {
+	// Dedup: check for existing open knowledge maintenance issue
+	listCmd := exec.Command("bd", "list", "--status=open", "-l", "area:knowledge")
+	listOutput, err := listCmd.Output()
+	if err == nil {
+		lines := strings.Split(string(listOutput), "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "Knowledge maintenance:") {
+				// Already have an open issue — skip creation
+				return nil
+			}
+		}
+	}
+	// If bd list fails, proceed with creation (fail-open)
+
 	title := fmt.Sprintf("Knowledge maintenance: %d active quick entries need promotion/pruning", result.TotalActive)
 	cmd := exec.Command("bd", "create",
 		"--title", title,
