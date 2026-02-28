@@ -1,6 +1,7 @@
 package orient
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -213,6 +214,89 @@ func TestFormatOrientation_NoStaleModels(t *testing.T) {
 	// Stale models section should not appear when empty
 	if strings.Contains(output, "Stale models") {
 		t.Error("stale models section should not appear when none are stale")
+	}
+}
+
+func TestOrientationDataJSON(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{
+			Days:           1,
+			Completions:    5,
+			Abandonments:   2,
+			InProgress:     3,
+			AvgDurationMin: 25,
+		},
+		RelevantModels: []ModelFreshness{
+			{Name: "test-model", Summary: "A test model.", AgeDays: 1, HasRecentProbes: true},
+		},
+		StaleModels: []ModelFreshness{
+			{Name: "old-model", AgeDays: 30, HasRecentProbes: false},
+		},
+		FocusGoal: "Ship orient",
+	}
+
+	b, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("failed to marshal OrientationData: %v", err)
+	}
+
+	// Verify key JSON fields exist
+	jsonStr := string(b)
+	for _, key := range []string{
+		`"completions":5`,
+		`"abandonments":2`,
+		`"in_progress":3`,
+		`"avg_duration_min":25`,
+		`"focus_goal":"Ship orient"`,
+		`"name":"test-model"`,
+		`"name":"old-model"`,
+		`"age_days":30`,
+		`"has_recent_probes":true`,
+	} {
+		if !strings.Contains(jsonStr, key) {
+			t.Errorf("JSON missing expected key %q in:\n%s", key, jsonStr)
+		}
+	}
+
+	// Verify ready_issues is omitted when nil
+	if strings.Contains(jsonStr, "ready_issues") {
+		t.Error("ready_issues should be omitted when nil")
+	}
+
+	// Round-trip: unmarshal back
+	var decoded OrientationData
+	if err := json.Unmarshal(b, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if decoded.Throughput.Completions != 5 {
+		t.Errorf("round-trip: expected completions=5, got %d", decoded.Throughput.Completions)
+	}
+	if decoded.FocusGoal != "Ship orient" {
+		t.Errorf("round-trip: expected focus 'Ship orient', got %q", decoded.FocusGoal)
+	}
+	if len(decoded.RelevantModels) != 1 || decoded.RelevantModels[0].Name != "test-model" {
+		t.Error("round-trip: relevant models mismatch")
+	}
+}
+
+func TestOrientationDataJSON_SkipReady(t *testing.T) {
+	// Simulates --skip-ready: ReadyIssues is nil
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1, Completions: 3},
+		FocusGoal:  "Test",
+	}
+
+	b, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	jsonStr := string(b)
+	if strings.Contains(jsonStr, "ready_issues") {
+		t.Error("ready_issues should be omitted with skip-ready")
+	}
+	if !strings.Contains(jsonStr, `"completions":3`) {
+		t.Error("throughput should still be present")
 	}
 }
 

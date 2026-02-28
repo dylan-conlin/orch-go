@@ -18,7 +18,9 @@ import (
 )
 
 var (
-	orientDays int
+	orientDays      int
+	orientJSON      bool
+	orientSkipReady bool
 )
 
 var orientCmd = &cobra.Command{
@@ -36,8 +38,10 @@ conversationally at session start. Surfaces:
 Designed for orchestrator consumption, not direct human use.
 
 Examples:
-  orch orient           # Default orientation (last 1 day)
-  orch orient --days 3  # Throughput from last 3 days`,
+  orch orient              # Default orientation (last 1 day)
+  orch orient --days 3     # Throughput from last 3 days
+  orch orient --json       # JSON output for programmatic consumption
+  orch orient --skip-ready # Skip ready issues (when frontier covers them)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runOrient()
 	},
@@ -45,6 +49,8 @@ Examples:
 
 func init() {
 	orientCmd.Flags().IntVar(&orientDays, "days", 1, "Number of days for throughput analysis")
+	orientCmd.Flags().BoolVar(&orientJSON, "json", false, "Output as JSON for programmatic consumption")
+	orientCmd.Flags().BoolVar(&orientSkipReady, "skip-ready", false, "Skip ready issues collection (use when frontier provides them)")
 }
 
 func runOrient() error {
@@ -56,11 +62,13 @@ func runOrient() error {
 	// 1. Throughput from events.jsonl
 	data.Throughput = collectThroughput(now)
 
-	// 2. Ready issues from bd ready
-	data.ReadyIssues = collectReadyIssues()
+	// 2. Ready issues from bd ready (skippable when frontier provides them)
+	if !orientSkipReady {
+		data.ReadyIssues = collectReadyIssues()
 
-	// 2b. Decision context per ready issue from kb context
-	enrichIssuesWithKBContext(data.ReadyIssues)
+		// 2b. Decision context per ready issue from kb context
+		enrichIssuesWithKBContext(data.ReadyIssues)
+	}
 
 	// 3. Model freshness from .kb/models/
 	modelsDir := filepath.Join(projectDir, ".kb", "models")
@@ -78,6 +86,12 @@ func runOrient() error {
 
 	// 5. In-progress count from bd
 	data.Throughput.InProgress = collectInProgressCount()
+
+	if orientJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(data)
+	}
 
 	fmt.Print(orient.FormatOrientation(data))
 	return nil

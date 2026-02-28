@@ -24,12 +24,12 @@ const (
 
 // ModelFreshness holds freshness metadata for a single knowledge model.
 type ModelFreshness struct {
-	Name            string
-	Summary         string
-	LastUpdated     time.Time
-	AgeDays         int
-	HasRecentProbes bool
-	LatestProbeDate time.Time
+	Name            string    `json:"name"`
+	Summary         string    `json:"summary,omitempty"`
+	LastUpdated     time.Time `json:"last_updated"`
+	AgeDays         int       `json:"age_days"`
+	HasRecentProbes bool      `json:"has_recent_probes"`
+	LatestProbeDate time.Time `json:"latest_probe_date,omitempty"`
 }
 
 // IsStale returns true if the model exceeds the staleness threshold

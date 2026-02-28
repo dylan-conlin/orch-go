@@ -6,9 +6,9 @@ import (
 
 // KBEntry represents a single knowledge base entry relevant to an issue.
 type KBEntry struct {
-	Type    string // "constraint", "decision", "attempt"
-	Content string
-	Reason  string
+	Type    string `json:"type"`    // "constraint", "decision", "attempt"
+	Content string `json:"content"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // kbContextJSON mirrors the JSON output of `kb context --format json`.

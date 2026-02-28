@@ -15,29 +15,29 @@ type Event struct {
 
 // Throughput holds aggregate throughput metrics for a time window.
 type Throughput struct {
-	Days           int
-	Spawns         int
-	Completions    int
-	Abandonments   int
-	InProgress     int
-	AvgDurationMin int
+	Days           int `json:"days"`
+	Spawns         int `json:"spawns"`
+	Completions    int `json:"completions"`
+	Abandonments   int `json:"abandonments"`
+	InProgress     int `json:"in_progress"`
+	AvgDurationMin int `json:"avg_duration_min"`
 }
 
 // ReadyIssue represents a beads issue ready for work.
 type ReadyIssue struct {
-	ID        string
-	Title     string
-	Priority  string
-	KBContext []KBEntry // Relevant decisions, constraints, and failed attempts
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Priority  string    `json:"priority"`
+	KBContext []KBEntry `json:"kb_context,omitempty"` // Relevant decisions, constraints, and failed attempts
 }
 
 // OrientationData holds all data needed to render session orientation.
 type OrientationData struct {
-	Throughput     Throughput
-	ReadyIssues    []ReadyIssue
-	RelevantModels []ModelFreshness
-	StaleModels    []ModelFreshness
-	FocusGoal      string
+	Throughput     Throughput       `json:"throughput"`
+	ReadyIssues    []ReadyIssue     `json:"ready_issues,omitempty"`
+	RelevantModels []ModelFreshness `json:"relevant_models,omitempty"`
+	StaleModels    []ModelFreshness `json:"stale_models,omitempty"`
+	FocusGoal      string           `json:"focus_goal,omitempty"`
 }
 
 // ComputeThroughput aggregates events within the given day window.
