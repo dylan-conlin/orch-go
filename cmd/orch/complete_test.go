@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
 // TestOrchestratorWorkspaceDetection verifies that orchestrator workspaces are detected
@@ -271,236 +273,6 @@ func TestOrchestratorCompletionWithoutHandoff(t *testing.T) {
 	// Verify SESSION_HANDOFF.md is NOT present (should fail completion)
 	if hasSessionHandoff(found) {
 		t.Error("Incomplete orchestrator should not have SESSION_HANDOFF.md")
-	}
-}
-
-// TestSkipConfigHasAnySkip tests the hasAnySkip method.
-func TestSkipConfigHasAnySkip(t *testing.T) {
-	tests := []struct {
-		name   string
-		config SkipConfig
-		want   bool
-	}{
-		{
-			name:   "empty config",
-			config: SkipConfig{},
-			want:   false,
-		},
-		{
-			name:   "only reason set",
-			config: SkipConfig{Reason: "some reason"},
-			want:   false,
-		},
-		{
-			name:   "test evidence skip",
-			config: SkipConfig{TestEvidence: true, Reason: "test reason"},
-			want:   true,
-		},
-		{
-			name:   "visual skip",
-			config: SkipConfig{Visual: true, Reason: "test reason"},
-			want:   true,
-		},
-		{
-			name:   "git diff skip",
-			config: SkipConfig{GitDiff: true, Reason: "test reason"},
-			want:   true,
-		},
-		{
-			name:   "synthesis skip",
-			config: SkipConfig{Synthesis: true, Reason: "test reason"},
-			want:   true,
-		},
-		{
-			name:   "build skip",
-			config: SkipConfig{Build: true, Reason: "test reason"},
-			want:   true,
-		},
-		{
-			name:   "multiple skips",
-			config: SkipConfig{TestEvidence: true, GitDiff: true, Reason: "test"},
-			want:   true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := tt.config.hasAnySkip()
-			if got != tt.want {
-				t.Errorf("hasAnySkip() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-// TestSkipConfigSkippedGates tests the skippedGates method.
-func TestSkipConfigSkippedGates(t *testing.T) {
-	tests := []struct {
-		name   string
-		config SkipConfig
-		want   []string
-	}{
-		{
-			name:   "empty config",
-			config: SkipConfig{},
-			want:   nil,
-		},
-		{
-			name:   "single skip - test evidence",
-			config: SkipConfig{TestEvidence: true},
-			want:   []string{"test_evidence"},
-		},
-		{
-			name:   "single skip - visual",
-			config: SkipConfig{Visual: true},
-			want:   []string{"visual_verification"},
-		},
-		{
-			name:   "multiple skips",
-			config: SkipConfig{TestEvidence: true, GitDiff: true, Synthesis: true},
-			want:   []string{"test_evidence", "git_diff", "synthesis"},
-		},
-		{
-			name: "all skips",
-			config: SkipConfig{
-				TestEvidence:  true,
-				Visual:        true,
-				GitDiff:       true,
-				Synthesis:     true,
-				Build:         true,
-				Constraint:    true,
-				PhaseGate:     true,
-				SkillOutput:   true,
-				DecisionPatch: true,
-				PhaseComplete: true,
-			},
-			want: []string{
-				"test_evidence",
-				"visual_verification",
-				"git_diff",
-				"synthesis",
-				"build",
-				"constraint",
-				"phase_gate",
-				"skill_output",
-				"decision_patch_limit",
-				"phase_complete",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := tt.config.skippedGates()
-			if len(got) != len(tt.want) {
-				t.Errorf("skippedGates() = %v, want %v", got, tt.want)
-				return
-			}
-			for i, g := range got {
-				if g != tt.want[i] {
-					t.Errorf("skippedGates()[%d] = %s, want %s", i, g, tt.want[i])
-				}
-			}
-		})
-	}
-}
-
-// TestSkipConfigShouldSkipGate tests the shouldSkipGate method.
-func TestSkipConfigShouldSkipGate(t *testing.T) {
-	config := SkipConfig{
-		TestEvidence: true,
-		GitDiff:      true,
-		Synthesis:    false,
-		Build:        true,
-	}
-
-	tests := []struct {
-		gate string
-		want bool
-	}{
-		{"test_evidence", true},
-		{"git_diff", true},
-		{"build", true},
-		{"synthesis", false},
-		{"visual_verification", false},
-		{"constraint", false},
-		{"unknown_gate", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.gate, func(t *testing.T) {
-			got := config.shouldSkipGate(tt.gate)
-			if got != tt.want {
-				t.Errorf("shouldSkipGate(%s) = %v, want %v", tt.gate, got, tt.want)
-			}
-		})
-	}
-}
-
-// TestValidateSkipFlags tests the skip flag validation logic.
-func TestValidateSkipFlags(t *testing.T) {
-	tests := []struct {
-		name    string
-		config  SkipConfig
-		wantErr string
-	}{
-		{
-			name:    "no skips - no error",
-			config:  SkipConfig{},
-			wantErr: "",
-		},
-		{
-			name:    "no skips with reason - no error",
-			config:  SkipConfig{Reason: "some reason"},
-			wantErr: "",
-		},
-		{
-			name:    "skip without reason - error",
-			config:  SkipConfig{TestEvidence: true},
-			wantErr: "--skip-reason is required when using --skip-* flags",
-		},
-		{
-			name:    "skip with short reason - error",
-			config:  SkipConfig{TestEvidence: true, Reason: "short"},
-			wantErr: "--skip-reason must be at least 10 characters (got 5)",
-		},
-		{
-			name:    "skip with 9 char reason - error",
-			config:  SkipConfig{TestEvidence: true, Reason: "123456789"},
-			wantErr: "--skip-reason must be at least 10 characters (got 9)",
-		},
-		{
-			name:    "skip with 10 char reason - ok",
-			config:  SkipConfig{TestEvidence: true, Reason: "1234567890"},
-			wantErr: "",
-		},
-		{
-			name:    "skip with long reason - ok",
-			config:  SkipConfig{TestEvidence: true, Reason: "This is a valid reason for skipping the test evidence gate"},
-			wantErr: "",
-		},
-		{
-			name:    "multiple skips with valid reason - ok",
-			config:  SkipConfig{TestEvidence: true, GitDiff: true, Reason: "Docs-only change"},
-			wantErr: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateSkipFlags(tt.config)
-			if tt.wantErr == "" {
-				if err != nil {
-					t.Errorf("validateSkipFlags() unexpected error: %v", err)
-				}
-			} else {
-				if err == nil {
-					t.Errorf("validateSkipFlags() expected error containing %q, got nil", tt.wantErr)
-				} else if err.Error() != tt.wantErr {
-					t.Errorf("validateSkipFlags() error = %q, want %q", err.Error(), tt.wantErr)
-				}
-			}
-		})
 	}
 }
 
@@ -804,7 +576,7 @@ func TestCountFileLines(t *testing.T) {
 // both orch complete and bd close independently check for Phase: Complete.
 func TestSkipPhaseCompleteTriggersForceClose(t *testing.T) {
 	// When PhaseComplete is skipped, useForceClose should be true
-	skipConfig := SkipConfig{
+	skipConfig := verify.SkipConfig{
 		PhaseComplete: true,
 		Reason:        "Agent completed work but beads comment failed",
 	}
@@ -814,7 +586,7 @@ func TestSkipPhaseCompleteTriggersForceClose(t *testing.T) {
 	}
 
 	// When PhaseComplete is NOT skipped, useForceClose should be false
-	noSkipConfig := SkipConfig{
+	noSkipConfig := verify.SkipConfig{
 		TestEvidence: true,
 		Reason:       "Tests run in CI pipeline",
 	}
@@ -823,8 +595,8 @@ func TestSkipPhaseCompleteTriggersForceClose(t *testing.T) {
 		t.Error("Expected useForceClose=false when SkipConfig.PhaseComplete is NOT set")
 	}
 
-	// Verify PhaseComplete is included in skippedGates
-	gates := skipConfig.skippedGates()
+	// Verify PhaseComplete is included in SkippedGates
+	gates := skipConfig.SkippedGates()
 	found := false
 	for _, g := range gates {
 		if g == "phase_complete" {
@@ -833,11 +605,11 @@ func TestSkipPhaseCompleteTriggersForceClose(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("Expected 'phase_complete' in skippedGates(), got %v", gates)
+		t.Errorf("Expected 'phase_complete' in SkippedGates(), got %v", gates)
 	}
 
-	// Verify shouldSkipGate returns true for phase_complete
-	if !skipConfig.shouldSkipGate("phase_complete") {
-		t.Error("Expected shouldSkipGate('phase_complete') to return true")
+	// Verify ShouldSkipGate returns true for phase_complete
+	if !skipConfig.ShouldSkipGate("phase_complete") {
+		t.Error("Expected ShouldSkipGate('phase_complete') to return true")
 	}
 }

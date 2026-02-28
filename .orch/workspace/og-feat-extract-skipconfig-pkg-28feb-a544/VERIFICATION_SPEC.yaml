@@ -1,0 +1,18 @@
+verification:
+  automated:
+    - description: "pkg/verify tests pass (including new skip tests)"
+      command: "go test ./pkg/verify/ -run 'TestSkipConfig|TestValidateSkipFlags' -count=1"
+      expected: "PASS"
+    - description: "cmd/orch tests pass (SkipConfig references updated)"
+      command: "go test ./cmd/orch/ -run 'TestSkipPhaseComplete' -count=1"
+      expected: "PASS"
+    - description: "Full build succeeds"
+      command: "go build ./cmd/orch/"
+      expected: "no errors"
+    - description: "go vet passes on affected packages"
+      command: "go vet ./cmd/orch/ ./pkg/verify/"
+      expected: "no errors"
+  manual:
+    - description: "verify.SkipConfig type exists in pkg/verify/skip.go"
+    - description: "No SkipConfig type definition remains in cmd/orch/complete_cmd.go"
+    - description: "All cmd/orch references use verify.SkipConfig and exported methods"

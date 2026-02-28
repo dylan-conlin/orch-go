@@ -199,120 +199,9 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeVerified, "verified", false, "Record behavioral verification (gate2) - confirms orchestrator verified agent behavior (required for Tier 1 work)")
 }
 
-// SkipConfig holds the configuration for which verification gates to skip.
-type SkipConfig struct {
-	TestEvidence   bool
-	Visual         bool
-	GitDiff        bool
-	Synthesis      bool
-	Build          bool
-	Constraint     bool
-	PhaseGate      bool
-	SkillOutput    bool
-	DecisionPatch  bool
-	PhaseComplete  bool
-	HandoffContent bool
-	ExplainBack          bool
-	Accretion            bool
-	ArchitecturalChoices bool
-	Reason               string // Required reason for skips
-}
-
-// hasAnySkip returns true if any skip flag is set.
-func (c SkipConfig) hasAnySkip() bool {
-	return c.TestEvidence || c.Visual || c.GitDiff || c.Synthesis ||
-		c.Build || c.Constraint || c.PhaseGate || c.SkillOutput ||
-		c.DecisionPatch || c.PhaseComplete || c.HandoffContent || c.ExplainBack ||
-		c.Accretion || c.ArchitecturalChoices
-}
-
-// skippedGates returns a list of gate names that are being skipped.
-func (c SkipConfig) skippedGates() []string {
-	var gates []string
-	if c.TestEvidence {
-		gates = append(gates, verify.GateTestEvidence)
-	}
-	if c.Visual {
-		gates = append(gates, verify.GateVisualVerify)
-	}
-	if c.GitDiff {
-		gates = append(gates, verify.GateGitDiff)
-	}
-	if c.Synthesis {
-		gates = append(gates, verify.GateSynthesis)
-	}
-	if c.Build {
-		gates = append(gates, verify.GateBuild)
-	}
-	if c.Constraint {
-		gates = append(gates, verify.GateConstraint)
-	}
-	if c.PhaseGate {
-		gates = append(gates, verify.GatePhaseGate)
-	}
-	if c.SkillOutput {
-		gates = append(gates, verify.GateSkillOutput)
-	}
-	if c.DecisionPatch {
-		gates = append(gates, verify.GateDecisionPatchLimit)
-	}
-	if c.PhaseComplete {
-		gates = append(gates, verify.GatePhaseComplete)
-	}
-	if c.HandoffContent {
-		gates = append(gates, verify.GateHandoffContent)
-	}
-	if c.ExplainBack {
-		gates = append(gates, verify.GateExplainBack)
-	}
-	if c.Accretion {
-		gates = append(gates, verify.GateAccretion)
-	}
-	if c.ArchitecturalChoices {
-		gates = append(gates, verify.GateArchitecturalChoices)
-	}
-	return gates
-}
-
-// shouldSkipGate returns true if the given gate should be skipped.
-func (c SkipConfig) shouldSkipGate(gate string) bool {
-	switch gate {
-	case verify.GateTestEvidence:
-		return c.TestEvidence
-	case verify.GateVisualVerify:
-		return c.Visual
-	case verify.GateGitDiff:
-		return c.GitDiff
-	case verify.GateSynthesis:
-		return c.Synthesis
-	case verify.GateBuild:
-		return c.Build
-	case verify.GateConstraint:
-		return c.Constraint
-	case verify.GatePhaseGate:
-		return c.PhaseGate
-	case verify.GateSkillOutput:
-		return c.SkillOutput
-	case verify.GateDecisionPatchLimit:
-		return c.DecisionPatch
-	case verify.GatePhaseComplete:
-		return c.PhaseComplete
-	case verify.GateHandoffContent:
-		return c.HandoffContent
-	case verify.GateExplainBack:
-		return c.ExplainBack
-	case verify.GateAccretion:
-		return c.Accretion
-	case verify.GateArchitecturalChoices:
-		return c.ArchitecturalChoices
-	default:
-		return false
-	}
-}
-
 // getSkipConfig builds the skip configuration from command-line flags.
-func getSkipConfig() SkipConfig {
-	return SkipConfig{
+func getSkipConfig() verify.SkipConfig {
+	return verify.SkipConfig{
 		TestEvidence:   completeSkipTestEvidence,
 		Visual:         completeSkipVisual,
 		GitDiff:        completeSkipGitDiff,
@@ -331,27 +220,10 @@ func getSkipConfig() SkipConfig {
 	}
 }
 
-// validateSkipFlags validates that --skip-reason is provided when --skip-* flags are used.
-func validateSkipFlags(skipConfig SkipConfig) error {
-	if !skipConfig.hasAnySkip() {
-		return nil
-	}
-
-	if skipConfig.Reason == "" {
-		return fmt.Errorf("--skip-reason is required when using --skip-* flags")
-	}
-
-	if len(skipConfig.Reason) < 10 {
-		return fmt.Errorf("--skip-reason must be at least 10 characters (got %d)", len(skipConfig.Reason))
-	}
-
-	return nil
-}
-
 // logSkipEvents logs verification.bypassed events for all skipped gates.
-func logSkipEvents(skipConfig SkipConfig, beadsID, workspace, skill string) {
+func logSkipEvents(skipConfig verify.SkipConfig, beadsID, workspace, skill string) {
 	logger := events.NewLogger(events.DefaultLogPath())
-	for _, gate := range skipConfig.skippedGates() {
+	for _, gate := range skipConfig.SkippedGates() {
 		if err := logger.LogVerificationBypassed(events.VerificationBypassedData{
 			BeadsID:   beadsID,
 			Workspace: workspace,
@@ -367,7 +239,7 @@ func logSkipEvents(skipConfig SkipConfig, beadsID, workspace, skill string) {
 func runComplete(identifier, workdir string) error {
 	// Validate skip flags before doing anything else
 	skipConfig := getSkipConfig()
-	if err := validateSkipFlags(skipConfig); err != nil {
+	if err := verify.ValidateSkipFlags(skipConfig); err != nil {
 		return err
 	}
 
@@ -636,13 +508,13 @@ func runComplete(identifier, workdir string) error {
 			completionResultSet = true
 
 			// Apply skip config to filter out bypassed gates
-			if skipConfig.hasAnySkip() && !result.Passed {
+			if skipConfig.HasAnySkip() && !result.Passed {
 				var filteredErrors []string
 				var filteredGates []string
 				var skippedGatesFound []string
 
 				for _, gate := range result.GatesFailed {
-					if skipConfig.shouldSkipGate(gate) {
+					if skipConfig.ShouldSkipGate(gate) {
 						skippedGatesFound = append(skippedGatesFound, gate)
 						fmt.Printf("⚠️  Bypassing gate: %s (reason: %s)\n", gate, skipConfig.Reason)
 					} else {
@@ -731,13 +603,13 @@ func runComplete(identifier, workdir string) error {
 			skillName = result.Skill
 
 			// If skip flags are set, filter out the skipped gates from failures
-			if skipConfig.hasAnySkip() && !result.Passed {
+			if skipConfig.HasAnySkip() && !result.Passed {
 				var filteredErrors []string
 				var filteredGates []string
 				var skippedGatesFound []string
 
 				for _, gate := range result.GatesFailed {
-					if skipConfig.shouldSkipGate(gate) {
+					if skipConfig.ShouldSkipGate(gate) {
 						skippedGatesFound = append(skippedGatesFound, gate)
 						fmt.Printf("⚠️  Bypassing gate: %s (reason: %s)\n", gate, skipConfig.Reason)
 					} else {
@@ -2000,7 +1872,7 @@ func buildVerificationChecklist(
 	issueType string,
 	tier string,
 	isOrchestrator bool,
-	skipConfig SkipConfig,
+	skipConfig verify.SkipConfig,
 	gate1Complete bool,
 	gate2Complete bool,
 ) []verificationChecklistItem {
@@ -2013,7 +1885,7 @@ func buildVerificationChecklist(
 	}
 
 	gateStatus := func(gate string) string {
-		if skipConfig.shouldSkipGate(gate) {
+		if skipConfig.ShouldSkipGate(gate) {
 			return "skipped"
 		}
 		for _, failed := range result.GatesFailed {
