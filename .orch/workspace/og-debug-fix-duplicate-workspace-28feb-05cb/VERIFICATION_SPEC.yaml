@@ -1,0 +1,32 @@
+verification:
+  type: behavioral
+  issue: orch-go-qbfv
+
+  reproduction:
+    description: "orch complete resolves workspace by beads ID but when duplicate spawns create two workspaces for the same ID, it picks the wrong one"
+    verified: true
+    method: "Confirmed real duplicate workspaces (og-feat-add-live-event-27feb-b001 and og-feat-add-live-event-28feb-b00f) both have beads ID orch-go-twrn. Old code returned 27feb (alphabetically first). New code would return 28feb (newer spawn time)."
+
+  automated_tests:
+    command: "go test -run 'TestFindWorkspaceForIssue|TestPickBestWorkspacePath|TestReadSpawnTime' ./pkg/daemon/ -v"
+    result: "PASS: 6 tests (0.013s)"
+    tests:
+      - TestFindWorkspaceForIssue_PrefersSynthesis
+      - TestFindWorkspaceForIssue_PrefersNewestWhenNoSynthesis
+      - TestFindWorkspaceForIssue_SynthesisBeatsNewer
+      - TestPickBestWorkspacePath
+      - TestReadSpawnTime
+      - TestFindWorkspaceForIssue_NoWorkspaceDir
+
+  regression:
+    command: "go test ./pkg/daemon/ -v"
+    result: "PASS: all daemon tests (8.289s)"
+
+  manual_steps:
+    - "Build blocked by pre-existing clean_cmd.go errors from parallel agent (not from this change)"
+    - "cmd/orch/shared.go changes follow identical pattern to daemon changes, verified by go vet on daemon"
+
+  files_changed:
+    - cmd/orch/shared.go
+    - pkg/daemon/completion_processing.go
+    - pkg/daemon/issue_adapter_test.go

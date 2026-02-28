@@ -1,6 +1,8 @@
 package daemon
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
@@ -242,5 +244,130 @@ func TestFindWorkspaceForIssue_NoWorkspaceDir(t *testing.T) {
 	result := findWorkspaceForIssue("proj-123", "/nonexistent/path", "")
 	if result != "" {
 		t.Errorf("findWorkspaceForIssue() = %q, want empty string for nonexistent dir", result)
+	}
+}
+
+func TestFindWorkspaceForIssue_PrefersSynthesis(t *testing.T) {
+	// When duplicate workspaces exist for the same beads ID,
+	// should prefer the one with SYNTHESIS.md
+	tmpDir := t.TempDir()
+	wsDir := filepath.Join(tmpDir, ".orch", "workspace")
+
+	// Create two workspaces that both reference the same beads ID
+	ws1 := filepath.Join(wsDir, "og-feat-task-27feb-aaaa")
+	ws2 := filepath.Join(wsDir, "og-feat-task-28feb-bbbb")
+	if err := os.MkdirAll(ws1, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(ws2, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both have SPAWN_CONTEXT.md referencing same beads ID
+	ctx := "bd comment proj-abc \"Phase: Planning\"\n"
+	os.WriteFile(filepath.Join(ws1, "SPAWN_CONTEXT.md"), []byte(ctx), 0644)
+	os.WriteFile(filepath.Join(ws2, "SPAWN_CONTEXT.md"), []byte(ctx), 0644)
+
+	// Only ws2 has SYNTHESIS.md (completed work)
+	os.WriteFile(filepath.Join(ws2, "SYNTHESIS.md"), []byte("# Synthesis\n"), 0644)
+
+	// ws1 has older spawn time, ws2 has newer
+	os.WriteFile(filepath.Join(ws1, ".spawn_time"), []byte("1000000000"), 0644)
+	os.WriteFile(filepath.Join(ws2, ".spawn_time"), []byte("2000000000"), 0644)
+
+	result := findWorkspaceForIssue("proj-abc", wsDir, "")
+	if result != ws2 {
+		t.Errorf("findWorkspaceForIssue() = %q, want %q (workspace with SYNTHESIS.md)", result, ws2)
+	}
+}
+
+func TestFindWorkspaceForIssue_PrefersNewestWhenNoSynthesis(t *testing.T) {
+	// When neither workspace has SYNTHESIS.md, prefer most recent spawn time
+	tmpDir := t.TempDir()
+	wsDir := filepath.Join(tmpDir, ".orch", "workspace")
+
+	ws1 := filepath.Join(wsDir, "og-feat-task-27feb-aaaa")
+	ws2 := filepath.Join(wsDir, "og-feat-task-28feb-bbbb")
+	os.MkdirAll(ws1, 0755)
+	os.MkdirAll(ws2, 0755)
+
+	ctx := "bd comment proj-abc \"Phase: Planning\"\n"
+	os.WriteFile(filepath.Join(ws1, "SPAWN_CONTEXT.md"), []byte(ctx), 0644)
+	os.WriteFile(filepath.Join(ws2, "SPAWN_CONTEXT.md"), []byte(ctx), 0644)
+
+	// ws1 is older, ws2 is newer
+	os.WriteFile(filepath.Join(ws1, ".spawn_time"), []byte("1000000000"), 0644)
+	os.WriteFile(filepath.Join(ws2, ".spawn_time"), []byte("2000000000"), 0644)
+
+	result := findWorkspaceForIssue("proj-abc", wsDir, "")
+	if result != ws2 {
+		t.Errorf("findWorkspaceForIssue() = %q, want %q (most recent workspace)", result, ws2)
+	}
+}
+
+func TestFindWorkspaceForIssue_SynthesisBeatsNewer(t *testing.T) {
+	// SYNTHESIS.md should win even if it's on the older workspace
+	tmpDir := t.TempDir()
+	wsDir := filepath.Join(tmpDir, ".orch", "workspace")
+
+	wsOld := filepath.Join(wsDir, "og-feat-task-27feb-aaaa")
+	wsNew := filepath.Join(wsDir, "og-feat-task-28feb-bbbb")
+	os.MkdirAll(wsOld, 0755)
+	os.MkdirAll(wsNew, 0755)
+
+	ctx := "bd comment proj-abc \"Phase: Planning\"\n"
+	os.WriteFile(filepath.Join(wsOld, "SPAWN_CONTEXT.md"), []byte(ctx), 0644)
+	os.WriteFile(filepath.Join(wsNew, "SPAWN_CONTEXT.md"), []byte(ctx), 0644)
+
+	// Old workspace has SYNTHESIS.md, new one doesn't
+	os.WriteFile(filepath.Join(wsOld, "SYNTHESIS.md"), []byte("# Done\n"), 0644)
+	os.WriteFile(filepath.Join(wsOld, ".spawn_time"), []byte("1000000000"), 0644)
+	os.WriteFile(filepath.Join(wsNew, ".spawn_time"), []byte("2000000000"), 0644)
+
+	result := findWorkspaceForIssue("proj-abc", wsDir, "")
+	if result != wsOld {
+		t.Errorf("findWorkspaceForIssue() = %q, want %q (workspace with SYNTHESIS.md wins over newer)", result, wsOld)
+	}
+}
+
+func TestPickBestWorkspacePath(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create 3 workspace directories
+	ws1 := filepath.Join(tmpDir, "ws1")
+	ws2 := filepath.Join(tmpDir, "ws2")
+	ws3 := filepath.Join(tmpDir, "ws3")
+	os.MkdirAll(ws1, 0755)
+	os.MkdirAll(ws2, 0755)
+	os.MkdirAll(ws3, 0755)
+
+	// ws1: no synthesis, oldest
+	os.WriteFile(filepath.Join(ws1, ".spawn_time"), []byte("1000"), 0644)
+	// ws2: has synthesis, middle
+	os.WriteFile(filepath.Join(ws2, ".spawn_time"), []byte("2000"), 0644)
+	os.WriteFile(filepath.Join(ws2, "SYNTHESIS.md"), []byte("done"), 0644)
+	// ws3: no synthesis, newest
+	os.WriteFile(filepath.Join(ws3, ".spawn_time"), []byte("3000"), 0644)
+
+	result := pickBestWorkspacePath([]string{ws1, ws2, ws3})
+	if result != ws2 {
+		t.Errorf("pickBestWorkspacePath() = %q, want %q (SYNTHESIS.md wins)", result, ws2)
+	}
+}
+
+func TestReadSpawnTime(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Valid spawn time
+	os.WriteFile(filepath.Join(tmpDir, ".spawn_time"), []byte("1772217838171079000\n"), 0644)
+	got := readSpawnTime(tmpDir)
+	if got != 1772217838171079000 {
+		t.Errorf("readSpawnTime() = %d, want 1772217838171079000", got)
+	}
+
+	// Missing file returns 0
+	got = readSpawnTime(filepath.Join(tmpDir, "nonexistent"))
+	if got != 0 {
+		t.Errorf("readSpawnTime() for missing dir = %d, want 0", got)
 	}
 }

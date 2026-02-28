@@ -104,6 +104,20 @@ func isUntrackedBeadsID(beadsID string) bool {
 	return strings.Contains(beadsID, "-untracked-")
 }
 
+// resolveProjectDirForBeadsID attempts to find the project directory that contains
+// a beads issue by trying each registered kb project. Returns the project directory
+// and issue if found, or empty string and nil if not found in any project.
+// This enables cross-project operations (abandon, clean) without requiring --workdir.
+func resolveProjectDirForBeadsID(beadsID string) (string, *beads.Issue) {
+	for _, dir := range getKBProjectsFn() {
+		issue, err := beads.FallbackShowWithDir(beadsID, dir)
+		if err == nil && issue != nil {
+			return dir, issue
+		}
+	}
+	return "", nil
+}
+
 // formatBeadsIDForDisplay formats untracked beads IDs to be human-readable.
 // Converts "orch-go-untracked-1768090360" to "untracked-Jan15-1823".
 // Regular beads IDs are returned unchanged.
@@ -154,6 +168,8 @@ func extractProjectFromBeadsID(beadsID string) string {
 // findWorkspaceByBeadsID searches for a workspace directory spawned from the beads ID.
 // Looks in .orch/workspace/ for directories that match the beads ID in their name
 // or contain a SPAWN_CONTEXT.md with "spawned from beads issue: **beadsID**".
+// When multiple workspaces match (duplicate spawns), prefers the one with SYNTHESIS.md,
+// then the most recently spawned (by .spawn_time file).
 // Returns the workspace path and agent name (directory name) if found.
 func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentName string) {
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
@@ -161,6 +177,12 @@ func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentNam
 	if err != nil {
 		return "", ""
 	}
+
+	type candidate struct {
+		path string
+		name string
+	}
+	var candidates []candidate
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -175,41 +197,105 @@ func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentNam
 		dirName := entry.Name()
 		dirPath := filepath.Join(workspaceDir, dirName)
 
+		matched := false
+
 		// Check if the beads ID is in the directory name
 		// Workspace names follow format: og-feat-description-21dec
 		// Beads ID format: project-xxxx (e.g., orch-go-3anf)
 		if strings.Contains(dirName, beadsID) {
-			return dirPath, dirName
+			matched = true
 		}
 
 		// Check AGENT_MANIFEST.json for beads_id (primary, falls back to .beads_id dotfile)
-		manifest := spawn.ReadAgentManifestWithFallback(dirPath)
-		if manifest.BeadsID == beadsID {
-			return dirPath, dirName
+		if !matched {
+			manifest := spawn.ReadAgentManifestWithFallback(dirPath)
+			if manifest.BeadsID == beadsID {
+				matched = true
+			}
 		}
 
 		// Check SPAWN_CONTEXT.md for authoritative "spawned from beads issue" line
 		// This is more precise than just checking if beadsID appears anywhere
-		spawnContextPath := filepath.Join(dirPath, "SPAWN_CONTEXT.md")
-		if content, err := os.ReadFile(spawnContextPath); err == nil {
-			contentStr := string(content)
-			// Look for the authoritative beads issue declaration
-			// Pattern: "spawned from beads issue: **orch-go-xxxx**" or similar
-			for _, line := range strings.Split(contentStr, "\n") {
-				lineLower := strings.ToLower(line)
-				if strings.Contains(lineLower, "spawned from beads issue:") {
-					if strings.Contains(line, beadsID) {
-						return dirPath, dirName
+		if !matched {
+			spawnContextPath := filepath.Join(dirPath, "SPAWN_CONTEXT.md")
+			if content, err := os.ReadFile(spawnContextPath); err == nil {
+				contentStr := string(content)
+				// Look for the authoritative beads issue declaration
+				// Pattern: "spawned from beads issue: **orch-go-xxxx**" or similar
+				for _, line := range strings.Split(contentStr, "\n") {
+					lineLower := strings.ToLower(line)
+					if strings.Contains(lineLower, "spawned from beads issue:") {
+						if strings.Contains(line, beadsID) {
+							matched = true
+						}
+						break
 					}
-					// Found the authoritative line but beads ID doesn't match
-					// Don't continue searching this file - this workspace has a different ID
-					break
 				}
 			}
 		}
+
+		if matched {
+			candidates = append(candidates, candidate{path: dirPath, name: dirName})
+		}
 	}
 
-	return "", ""
+	if len(candidates) == 0 {
+		return "", ""
+	}
+	if len(candidates) == 1 {
+		return candidates[0].path, candidates[0].name
+	}
+
+	// Multiple candidates: prefer workspace with SYNTHESIS.md, then most recent spawn time
+	bestIdx := 0
+	bestHasSynthesis := false
+	bestSpawnTime := workspaceSpawnTime(candidates[0].path)
+	if _, err := os.Stat(filepath.Join(candidates[0].path, "SYNTHESIS.md")); err == nil {
+		bestHasSynthesis = true
+	}
+
+	for i := 1; i < len(candidates); i++ {
+		c := candidates[i]
+		hasSynthesis := false
+		if _, err := os.Stat(filepath.Join(c.path, "SYNTHESIS.md")); err == nil {
+			hasSynthesis = true
+		}
+
+		// Prefer SYNTHESIS.md
+		if hasSynthesis && !bestHasSynthesis {
+			bestIdx = i
+			bestHasSynthesis = hasSynthesis
+			bestSpawnTime = workspaceSpawnTime(c.path)
+			continue
+		}
+		if !hasSynthesis && bestHasSynthesis {
+			continue
+		}
+
+		// Tiebreak: most recent spawn time
+		spawnTime := workspaceSpawnTime(c.path)
+		if spawnTime > bestSpawnTime {
+			bestIdx = i
+			bestHasSynthesis = hasSynthesis
+			bestSpawnTime = spawnTime
+		}
+	}
+
+	return candidates[bestIdx].path, candidates[bestIdx].name
+}
+
+// workspaceSpawnTime reads the .spawn_time file from a workspace directory.
+// Returns the Unix nanosecond timestamp, or 0 if not found.
+func workspaceSpawnTime(wsPath string) int64 {
+	data, err := os.ReadFile(filepath.Join(wsPath, ".spawn_time"))
+	if err != nil {
+		return 0
+	}
+	t, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return t
 }
 
 // resolveSessionID resolves an identifier to an OpenCode session ID.

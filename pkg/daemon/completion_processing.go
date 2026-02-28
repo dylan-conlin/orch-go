@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -159,6 +160,8 @@ func findWorkspaceForIssue(beadsID, workspaceDir, projectDir string) string {
 		return ""
 	}
 
+	var candidates []string
+
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -180,11 +183,70 @@ func findWorkspaceForIssue(beadsID, workspaceDir, projectDir string) string {
 
 		// Look for beads ID in spawn context (e.g., "bd comment <id>" or "--issue <id>")
 		if strings.Contains(string(data), beadsID) {
-			return wsPath
+			candidates = append(candidates, wsPath)
 		}
 	}
 
-	return ""
+	if len(candidates) == 0 {
+		return ""
+	}
+	if len(candidates) == 1 {
+		return candidates[0]
+	}
+
+	// Multiple candidates: prefer workspace with SYNTHESIS.md, then most recent spawn time
+	return pickBestWorkspacePath(candidates)
+}
+
+// pickBestWorkspacePath selects the best workspace path from multiple candidates.
+// Priority: 1) has SYNTHESIS.md (completed work), 2) most recent .spawn_time.
+func pickBestWorkspacePath(paths []string) string {
+	best := 0
+	bestHasSynthesis := false
+	bestSpawnTime := readSpawnTime(paths[0])
+	if _, err := os.Stat(filepath.Join(paths[0], "SYNTHESIS.md")); err == nil {
+		bestHasSynthesis = true
+	}
+
+	for i := 1; i < len(paths); i++ {
+		hasSynthesis := false
+		if _, err := os.Stat(filepath.Join(paths[i], "SYNTHESIS.md")); err == nil {
+			hasSynthesis = true
+		}
+
+		if hasSynthesis && !bestHasSynthesis {
+			best = i
+			bestHasSynthesis = hasSynthesis
+			bestSpawnTime = readSpawnTime(paths[i])
+			continue
+		}
+		if !hasSynthesis && bestHasSynthesis {
+			continue
+		}
+
+		spawnTime := readSpawnTime(paths[i])
+		if spawnTime > bestSpawnTime {
+			best = i
+			bestHasSynthesis = hasSynthesis
+			bestSpawnTime = spawnTime
+		}
+	}
+
+	return paths[best]
+}
+
+// readSpawnTime reads the .spawn_time file from a workspace directory.
+// Returns the Unix nanosecond timestamp, or 0 if not found.
+func readSpawnTime(wsPath string) int64 {
+	data, err := os.ReadFile(filepath.Join(wsPath, ".spawn_time"))
+	if err != nil {
+		return 0
+	}
+	t, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return t
 }
 
 // ProcessCompletion verifies and marks a single completed agent as ready-for-review.
