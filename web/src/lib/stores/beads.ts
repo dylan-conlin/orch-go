@@ -35,15 +35,14 @@ export interface BeadsReadyResponse {
 }
 
 // Review queue issue from /api/beads/review-queue
+// Uses verify.ListUnverifiedWork() as the canonical source — same as daemon counter
 export interface ReviewQueueIssue {
   id: string
   title: string
-  priority: number
   issue_type: string
-  status: string
-  labels?: string[]
-  created_at?: string
-  updated_at?: string
+  tier: number    // 1=feature/bug, 2=investigation, 3=task
+  gate1: boolean  // Comprehension gate passed
+  gate2: boolean  // Behavioral gate passed
 }
 
 // Review queue response from /api/beads/review-queue

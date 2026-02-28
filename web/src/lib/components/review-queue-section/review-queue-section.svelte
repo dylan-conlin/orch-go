@@ -23,25 +23,37 @@
 		return `${titles.join(', ')} +${issues.length - 2}`;
 	}
 
-	function getPriorityClass(priority: number): string {
-		switch (priority) {
-			case 0: return 'text-red-500';
+	function getTierLabel(tier: number): string {
+		switch (tier) {
+			case 1: return 'T1';
+			case 2: return 'T2';
+			case 3: return 'T3';
+			default: return 'T?';
+		}
+	}
+
+	function getTierClass(tier: number): string {
+		switch (tier) {
 			case 1: return 'text-orange-500';
 			case 2: return 'text-yellow-500';
+			case 3: return 'text-muted-foreground';
 			default: return 'text-muted-foreground';
 		}
 	}
 
-	function getIssueTime(issue: ReviewQueueIssue): number {
-		if (issue.updated_at) return new Date(issue.updated_at).getTime();
-		if (issue.created_at) return new Date(issue.created_at).getTime();
-		return 0;
+	function getGateStatus(issue: ReviewQueueIssue): string {
+		if (issue.tier === 1) {
+			if (!issue.gate1 && !issue.gate2) return 'needs both gates';
+			if (!issue.gate1) return 'needs comprehension';
+			if (!issue.gate2) return 'needs behavioral';
+		} else if (issue.tier === 2) {
+			if (!issue.gate1) return 'needs comprehension';
+		}
+		return '';
 	}
 
 	$: sortedIssues = ($reviewQueue?.issues || []).slice().sort((a, b) => {
-		if (a.priority !== b.priority) return a.priority - b.priority;
-		const timeDiff = getIssueTime(a) - getIssueTime(b);
-		if (timeDiff !== 0) return timeDiff;
+		if (a.tier !== b.tier) return a.tier - b.tier;
 		return a.id.localeCompare(b.id);
 	});
 </script>
@@ -79,8 +91,8 @@
 				<div class="space-y-1">
 					{#each sortedIssues as issue (issue.id)}
 						<div class="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50" data-testid="review-issue-{issue.id}">
-							<span class="flex-shrink-0 text-xs font-medium {getPriorityClass(issue.priority)}">
-								P{issue.priority}
+							<span class="flex-shrink-0 text-xs font-medium {getTierClass(issue.tier)}">
+								{getTierLabel(issue.tier)}
 							</span>
 							<span class="flex-1 truncate" title={issue.title}>
 								{issue.title}
@@ -88,15 +100,8 @@
 							<Badge variant="outline" class="h-5 px-1.5 text-xs flex-shrink-0">
 								{issue.issue_type}
 							</Badge>
-							{#if issue.labels && issue.labels.length > 0}
-								{#each issue.labels.slice(0, 1) as label}
-									<Badge variant="secondary" class="h-5 px-1.5 text-xs flex-shrink-0">
-										{label}
-									</Badge>
-								{/each}
-								{#if issue.labels.length > 1}
-									<span class="text-xs text-muted-foreground">+{issue.labels.length - 1}</span>
-								{/if}
+							{#if getGateStatus(issue)}
+								<span class="text-xs text-amber-500 flex-shrink-0">{getGateStatus(issue)}</span>
 							{/if}
 							<span class="text-xs text-muted-foreground flex-shrink-0 font-mono">
 								{issue.id}

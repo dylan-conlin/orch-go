@@ -22,8 +22,8 @@ type projectCacheEntry struct {
 	readyIssues    []beads.Issue
 	readyFetchedAt time.Time
 
-	reviewQueueIssues []beads.Issue
-	reviewFetchedAt   time.Time
+	reviewQueueItems []verify.UnverifiedItem
+	reviewFetchedAt  time.Time
 
 	graphIssues    []beads.Issue
 	graphFetchedAt time.Time
@@ -239,88 +239,36 @@ func (c *beadsStatsCache) getReadyIssues(projectDir string) ([]beads.Issue, erro
 	return issues, nil
 }
 
-// getReviewQueueIssues returns cached review queue issues or fetches fresh if stale.
-// Review queue issues are in_progress issues labeled daemon:ready-review.
-func (c *beadsStatsCache) getReviewQueueIssues(projectDir string) ([]beads.Issue, error) {
+// getReviewQueueItems returns cached unverified work items or fetches fresh if stale.
+// Uses verify.ListUnverifiedWorkWithDir() as the canonical source of truth —
+// the same source the daemon uses to seed its verification counter.
+// This ensures the review queue count matches the header's "to review" count.
+func (c *beadsStatsCache) getReviewQueueItems(projectDir string) ([]verify.UnverifiedItem, error) {
 	entry := c.getOrCreateEntry(projectDir)
 
 	c.mu.RLock()
-	if entry.reviewQueueIssues != nil && time.Since(entry.reviewFetchedAt) < c.reviewTTL {
-		result := entry.reviewQueueIssues
+	if entry.reviewQueueItems != nil && time.Since(entry.reviewFetchedAt) < c.reviewTTL {
+		result := entry.reviewQueueItems
 		c.mu.RUnlock()
 		return result, nil
 	}
 	c.mu.RUnlock()
 
-	// Determine the directory to use
-	workDir := projectDir
-	if workDir == "" {
-		workDir = beads.DefaultDir
-	}
-
-	// Fetch fresh review queue issues
-	var issues []beads.Issue
-	var err error
-
-	// Check if socket exists before attempting RPC to avoid slow timeout on dead daemon.
-	socketPath, findErr := beads.FindSocketPath(workDir)
-	socketExists := findErr == nil && socketPath != ""
-	if socketExists {
-		if _, statErr := os.Stat(socketPath); statErr != nil {
-			socketExists = false
-		}
-	}
-
-	// Thread-safe cleanup of stale beadsClient when socket disappears.
-	beadsClientMu.Lock()
-	if !socketExists && beadsClient != nil {
-		beadsClient.Close()
-		beadsClient = nil
-	}
-
-	// Reinitialize beadsClient if socket reappears and client is nil.
-	if socketExists && beadsClient == nil && socketPath != "" {
-		beadsClient = beads.NewClient(socketPath,
-			beads.WithAutoReconnect(3),
-			beads.WithTimeout(5*time.Second),
-		)
-	}
-
-	// Capture client reference under lock for use after unlock
-	currentClient := beadsClient
-	beadsClientMu.Unlock()
-
-	listArgs := &beads.ListArgs{
-		Status: "in_progress",
-		Labels: []string{"daemon:ready-review"},
-	}
-
-	// For non-default projects, always use CLI client with project dir
-	if projectDir != "" && projectDir != beads.DefaultDir {
-		cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
-		issues, err = cliClient.List(listArgs)
-	} else if currentClient != nil && socketExists {
-		issues, err = currentClient.List(listArgs)
-		if err != nil {
-			// Fallback to CLI on RPC error
-			cliClient := beads.NewCLIClient(beads.WithWorkDir(workDir))
-			issues, err = cliClient.List(listArgs)
-		}
-	} else {
-		cliClient := beads.NewCLIClient(beads.WithWorkDir(workDir))
-		issues, err = cliClient.List(listArgs)
-	}
-
+	// Fetch fresh unverified work items from the canonical source
+	items, err := verify.ListUnverifiedWorkWithDir(projectDir)
 	if err != nil {
 		return nil, err
 	}
+	if items == nil {
+		items = []verify.UnverifiedItem{}
+	}
 
 	c.mu.Lock()
-	entry.reviewQueueIssues = issues
+	entry.reviewQueueItems = items
 	entry.reviewFetchedAt = time.Now()
 	c.mu.Unlock()
 
-	return issues, nil
+	return items, nil
 }
 
 // getGraphIssues returns cached graph issues or fetches fresh if stale.
@@ -518,16 +466,14 @@ type BeadsReadyAPIResponse struct {
 	Error      string               `json:"error,omitempty"`
 }
 
-// ReviewQueueIssueResponse represents an issue ready for review.
+// ReviewQueueIssueResponse represents a completion awaiting verification review.
 type ReviewQueueIssueResponse struct {
-	ID        string   `json:"id"`
-	Title     string   `json:"title"`
-	Priority  int      `json:"priority"`
-	IssueType string   `json:"issue_type"`
-	Status    string   `json:"status"`
-	Labels    []string `json:"labels,omitempty"`
-	CreatedAt string   `json:"created_at,omitempty"`
-	UpdatedAt string   `json:"updated_at,omitempty"`
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	IssueType string `json:"issue_type"`
+	Tier      int    `json:"tier"`  // 1=feature/bug, 2=investigation, 3=task
+	Gate1     bool   `json:"gate1"` // Comprehension gate passed
+	Gate2     bool   `json:"gate2"` // Behavioral gate passed
 }
 
 // BeadsReviewQueueResponse is the JSON structure returned by /api/beads/review-queue.
@@ -592,7 +538,10 @@ func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleBeadsReviewQueue returns list of issues awaiting review (daemon:ready-review label).
+// handleBeadsReviewQueue returns completions awaiting verification review.
+// Uses verify.ListUnverifiedWork() — the same canonical source the daemon uses
+// to seed its verification counter. This ensures the review queue count matches
+// the header's "to review" count.
 // The cache has a 15s TTL to balance freshness with performance.
 // Query params:
 //   - project_dir: Optional project directory to query. If not provided, uses default.
@@ -604,7 +553,7 @@ func handleBeadsReviewQueue(w http.ResponseWriter, r *http.Request) {
 
 	projectDir := r.URL.Query().Get("project_dir")
 
-	issues, err := globalBeadsStatsCache.getReviewQueueIssues(projectDir)
+	items, err := globalBeadsStatsCache.getReviewQueueItems(projectDir)
 	if err != nil {
 		resp := BeadsReviewQueueResponse{
 			Issues:     []ReviewQueueIssueResponse{},
@@ -617,17 +566,15 @@ func handleBeadsReviewQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reviewIssues := make([]ReviewQueueIssueResponse, 0, len(issues))
-	for _, issue := range issues {
+	reviewIssues := make([]ReviewQueueIssueResponse, 0, len(items))
+	for _, item := range items {
 		reviewIssues = append(reviewIssues, ReviewQueueIssueResponse{
-			ID:        issue.ID,
-			Title:     issue.Title,
-			Priority:  issue.Priority,
-			IssueType: issue.IssueType,
-			Status:    issue.Status,
-			Labels:    issue.Labels,
-			CreatedAt: issue.CreatedAt,
-			UpdatedAt: issue.UpdatedAt,
+			ID:        item.BeadsID,
+			Title:     item.Title,
+			IssueType: item.IssueType,
+			Tier:      item.Tier,
+			Gate1:     item.Gate1,
+			Gate2:     item.Gate2,
 		})
 	}
 
