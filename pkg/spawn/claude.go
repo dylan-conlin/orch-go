@@ -127,18 +127,7 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 	// 4. Launch claude using the context file
 	contextPath := cfg.ContextFilePath()
 
-	// Determine CLAUDE_CONTEXT env var to signal hooks to skip duplicate injection
-	var claudeContext string
-	switch {
-	case cfg.IsMetaOrchestrator:
-		claudeContext = "meta-orchestrator"
-	case cfg.IsOrchestrator:
-		claudeContext = "orchestrator"
-	default:
-		claudeContext = "worker"
-	}
-
-	launchCmd := BuildClaudeLaunchCommand(contextPath, claudeContext, cfg.MCP, cfg.AccountConfigDir, cfg.BeadsDir)
+	launchCmd := BuildClaudeLaunchCommand(contextPath, cfg.ClaudeContext(), cfg.MCP, cfg.AccountConfigDir, cfg.BeadsDir)
 
 	if err := tmux.SendKeys(windowTarget, launchCmd); err != nil {
 		return nil, fmt.Errorf("failed to send launch command: %w", err)

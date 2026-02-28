@@ -64,9 +64,10 @@ func (b *TmuxBackend) Spawn(ctx context.Context, req *SpawnRequest) (*Result, er
 
 	// Build opencode attach command (no --model; session ID used for pre-created sessions)
 	opencodeCmd := tmux.BuildOpencodeAttachCommand(&tmux.OpencodeAttachConfig{
-		ServerURL:  req.ServerURL,
-		ProjectDir: req.Config.ProjectDir,
-		SessionID:  preCreatedSessionID,
+		ServerURL:     req.ServerURL,
+		ProjectDir:    req.Config.ProjectDir,
+		SessionID:     preCreatedSessionID,
+		ClaudeContext: req.Config.ClaudeContext(),
 	})
 
 	// Send command and execute

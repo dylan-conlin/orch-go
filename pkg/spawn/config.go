@@ -480,6 +480,22 @@ func generateProjectPrefix(projectName string) string {
 	return result
 }
 
+// ClaudeContext returns the CLAUDE_CONTEXT env var value for this spawn.
+// This determines which hooks fire in the spawned agent:
+// - "worker" for worker agents (default)
+// - "orchestrator" for orchestrator agents
+// - "meta-orchestrator" for meta-orchestrator agents
+func (c *Config) ClaudeContext() string {
+	switch {
+	case c.IsMetaOrchestrator:
+		return "meta-orchestrator"
+	case c.IsOrchestrator:
+		return "orchestrator"
+	default:
+		return "worker"
+	}
+}
+
 // WorkspacePath returns the full path to the workspace directory.
 func (c *Config) WorkspacePath() string {
 	return filepath.Join(c.ProjectDir, ".orch", "workspace", c.WorkspaceName)

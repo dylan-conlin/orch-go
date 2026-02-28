@@ -258,16 +258,18 @@ type SpawnConfig struct {
 // When a non-default model is needed, pre-create the session via the HTTP API
 // (which accepts model) and pass the resulting session ID here.
 type OpencodeAttachConfig struct {
-	ServerURL  string // http://127.0.0.1:4096
-	ProjectDir string
-	SessionID  string // optional: attach to pre-created or existing session
+	ServerURL    string // http://127.0.0.1:4096
+	ProjectDir   string
+	SessionID    string // optional: attach to pre-created or existing session
+	ClaudeContext string // "worker", "orchestrator", or "meta-orchestrator"
 }
 
 // BuildOpencodeAttachCommand creates the opencode command string for tmux spawning.
 // Uses "opencode attach <url> --dir <project>" to connect to shared server, making
 // sessions visible via API (enabling session ID capture, orch status, resume).
 // OpenCode commit 18b26856a fixed Session.create to respect the directory parameter.
-// Sets ORCH_WORKER=1 so agents know they are orch-managed workers.
+// Sets ORCH_WORKER=1 and CLAUDE_CONTEXT so agents know they are orch-managed
+// and hooks can distinguish worker vs orchestrator sessions.
 //
 // Note: Model is NOT passed to opencode attach (it doesn't support --model).
 // When a non-default model is needed, the caller should pre-create the session
@@ -275,9 +277,16 @@ type OpencodeAttachConfig struct {
 func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
 	opencodeBin := resolveOpencodeBin()
 
+	// Determine CLAUDE_CONTEXT value (default to "worker" if not set)
+	claudeContext := cfg.ClaudeContext
+	if claudeContext == "" {
+		claudeContext = "worker"
+	}
+
 	// Use attach mode with --dir to connect to shared server
 	// This makes sessions visible via API for session ID capture
-	cmd := fmt.Sprintf("ORCH_WORKER=1 %s attach %q --dir %q", opencodeBin, cfg.ServerURL, cfg.ProjectDir)
+	// CLAUDE_CONTEXT is set explicitly to prevent inheriting orchestrator context from parent
+	cmd := fmt.Sprintf("ORCH_WORKER=1 CLAUDE_CONTEXT=%s %s attach %q --dir %q", claudeContext, opencodeBin, cfg.ServerURL, cfg.ProjectDir)
 
 	// Continue existing session if provided (used for pre-created sessions with model)
 	if cfg.SessionID != "" {

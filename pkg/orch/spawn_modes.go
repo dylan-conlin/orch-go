@@ -329,9 +329,10 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 
 	// Build opencode attach command (no --model; session ID used for pre-created sessions)
 	opencodeCmd := tmux.BuildOpencodeAttachCommand(&tmux.OpencodeAttachConfig{
-		ServerURL:  serverURL,
-		ProjectDir: cfg.ProjectDir,
-		SessionID:  preCreatedSessionID,
+		ServerURL:     serverURL,
+		ProjectDir:    cfg.ProjectDir,
+		SessionID:     preCreatedSessionID,
+		ClaudeContext: cfg.ClaudeContext(),
 	})
 
 	// Send command and execute

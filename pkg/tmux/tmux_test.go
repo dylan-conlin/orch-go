@@ -109,9 +109,10 @@ func TestBuildSpawnCommand(t *testing.T) {
 
 func TestBuildOpencodeAttachCommand(t *testing.T) {
 	cfg := &OpencodeAttachConfig{
-		ServerURL:  "http://localhost:4096",
-		ProjectDir: "/home/user/project",
-		SessionID:  "ses_123",
+		ServerURL:     "http://localhost:4096",
+		ProjectDir:    "/home/user/project",
+		SessionID:     "ses_123",
+		ClaudeContext: "worker",
 	}
 
 	got := BuildOpencodeAttachCommand(cfg)
@@ -122,6 +123,7 @@ func TestBuildOpencodeAttachCommand(t *testing.T) {
 		"/home/user/project",
 		"--session",
 		"ses_123",
+		"CLAUDE_CONTEXT=worker",
 	}
 
 	for _, part := range wantParts {
@@ -515,7 +517,7 @@ func TestBuildSpawnCommandEnv(t *testing.T) {
 	}
 }
 
-// TestBuildOpencodeAttachCommandEnv verifies ORCH_WORKER=1 is prefixed in the command string.
+// TestBuildOpencodeAttachCommandEnv verifies ORCH_WORKER=1 and CLAUDE_CONTEXT are prefixed in the command string.
 func TestBuildOpencodeAttachCommandEnv(t *testing.T) {
 	cfg := &OpencodeAttachConfig{
 		ServerURL:  "http://localhost:4096",
@@ -524,9 +526,42 @@ func TestBuildOpencodeAttachCommandEnv(t *testing.T) {
 
 	cmd := BuildOpencodeAttachCommand(cfg)
 
-	// Check that the command starts with ORCH_WORKER=1
-	if !strings.HasPrefix(cmd, "ORCH_WORKER=1 ") {
-		t.Errorf("BuildOpencodeAttachCommand() should start with 'ORCH_WORKER=1 ', got: %q", cmd)
+	// Check that ORCH_WORKER=1 is set
+	if !strings.Contains(cmd, "ORCH_WORKER=1") {
+		t.Errorf("BuildOpencodeAttachCommand() should contain 'ORCH_WORKER=1', got: %q", cmd)
+	}
+
+	// Check that CLAUDE_CONTEXT defaults to worker when not set
+	if !strings.Contains(cmd, "CLAUDE_CONTEXT=worker") {
+		t.Errorf("BuildOpencodeAttachCommand() should default to 'CLAUDE_CONTEXT=worker', got: %q", cmd)
+	}
+}
+
+// TestBuildOpencodeAttachCommandClaudeContext verifies CLAUDE_CONTEXT is set correctly for different roles.
+func TestBuildOpencodeAttachCommandClaudeContext(t *testing.T) {
+	tests := []struct {
+		name          string
+		claudeContext string
+		want          string
+	}{
+		{"worker", "worker", "CLAUDE_CONTEXT=worker"},
+		{"orchestrator", "orchestrator", "CLAUDE_CONTEXT=orchestrator"},
+		{"meta-orchestrator", "meta-orchestrator", "CLAUDE_CONTEXT=meta-orchestrator"},
+		{"empty defaults to worker", "", "CLAUDE_CONTEXT=worker"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &OpencodeAttachConfig{
+				ServerURL:     "http://localhost:4096",
+				ProjectDir:    "/home/user/project",
+				ClaudeContext: tt.claudeContext,
+			}
+			cmd := BuildOpencodeAttachCommand(cfg)
+			if !strings.Contains(cmd, tt.want) {
+				t.Errorf("BuildOpencodeAttachCommand() = %q, want to contain %q", cmd, tt.want)
+			}
+		})
 	}
 }
 

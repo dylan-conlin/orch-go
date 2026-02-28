@@ -28,8 +28,9 @@ func (b *InlineBackend) Spawn(ctx context.Context, req *SpawnRequest) (*Result, 
 	cmd := client.BuildSpawnCommand(req.MinimalPrompt, sessionTitle, req.Config.Model)
 	cmd.Stderr = os.Stderr
 	cmd.Dir = req.Config.ProjectDir
-	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
-	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
+	// Set ORCH_WORKER=1 so agents know they are orch-managed workers.
+	// Set CLAUDE_CONTEXT explicitly to prevent inheriting orchestrator context from parent.
+	cmd.Env = append(os.Environ(), "ORCH_WORKER=1", "CLAUDE_CONTEXT="+req.Config.ClaudeContext())
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
