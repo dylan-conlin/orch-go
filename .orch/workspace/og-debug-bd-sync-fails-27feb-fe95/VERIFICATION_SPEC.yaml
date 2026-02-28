@@ -1,0 +1,47 @@
+version: 1
+issue: orch-go-swcg
+title: "Fix: bd sync fails when concurrent agents leave unstaged changes"
+
+automated_checks:
+  - name: Go build (beads)
+    command: cd ~/Documents/personal/beads && go build ./cmd/bd/
+    expectation: exits 0, no errors
+    result: PASS
+
+  - name: Go vet (beads)
+    command: cd ~/Documents/personal/beads && go vet ./cmd/bd/
+    expectation: exits 0, no warnings
+    result: PASS
+
+  - name: Reproduction test (git pull without --autostash)
+    command: |
+      # In a repo with dirty working tree and pull.rebase=true:
+      git pull origin master
+    expectation: "fails with 'cannot pull with rebase: You have unstaged changes'"
+    result: PASS (error confirmed, exit 128)
+
+  - name: Fix verification (git pull --autostash)
+    command: |
+      # Same dirty working tree:
+      git pull --autostash origin master
+    expectation: "succeeds, stashes dirty files, pulls, unstashes"
+    result: PASS (autostash created, applied, dirty files preserved)
+
+  - name: Smoke test (bd sync with dirty working tree)
+    command: cd ~/Documents/personal/orch-go && bd sync
+    expectation: "sync completes without error despite 12+ modified tracked files"
+    result: PASS (sync complete, all dirty files preserved)
+
+manual_checks:
+  - name: Beads binary installed
+    description: |
+      Updated bd binary built and installed to ~/bin/bd.
+      Verify with: bd --version (should show "dev" build)
+    expectation: bd binary reflects the fix
+    status: PASS (installed, version 0.41.0 dev)
+
+notes: |
+  Cross-repo fix: change is in ~/Documents/personal/beads/cmd/bd/sync_git.go,
+  not orch-go. The fix adds --autostash to git pull in the gitPull() function.
+  Pre-existing test failures in beads (internal/rpc, internal/storage/sqlite)
+  are unrelated to this change.
