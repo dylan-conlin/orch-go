@@ -179,12 +179,13 @@ func buildVerificationChecklist(
 	return items
 }
 
-func printVerificationChecklist(items []verificationChecklistItem) {
+func printVerificationChecklist(items []verificationChecklistItem, trustTier TrustTier) {
 	if len(items) == 0 {
 		return
 	}
 
 	fmt.Println("\n--- Verification Checklist ---")
+	fmt.Printf("  Trust: %s\n", formatTrustTier(trustTier))
 	for _, item := range items {
 		fmt.Printf("  [%s] %s\n", formatChecklistStatus(item.Status), item.Label)
 	}

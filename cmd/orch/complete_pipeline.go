@@ -615,7 +615,14 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 			issueType = target.Issue.IssueType
 		}
 		checklist := buildVerificationChecklist(outcome.Result, issueType, tier, target.IsOrchestratorSession, skipConfig, gate1Complete, gate2Complete)
-		printVerificationChecklist(checklist)
+
+		// Compute trust calibration tier from review tier + bypass signals
+		reviewTier := ""
+		if target.WorkspacePath != "" && !target.IsOrchestratorSession {
+			reviewTier = verify.ReadReviewTierFromWorkspace(target.WorkspacePath)
+		}
+		trustTier := ComputeTrustTier(reviewTier, skipConfig, completeForce)
+		printVerificationChecklist(checklist, trustTier)
 	}
 
 	// Surface hotspot advisory for modified files (informational, not a gate)
