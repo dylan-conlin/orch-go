@@ -404,9 +404,13 @@
 			{#if agent.is_stale}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
-						<Badge variant="outline" class="h-4 px-1 text-[10px] text-muted-foreground">
-							📦
-						</Badge>
+						{#snippet child({ props })}
+							<span {...props}>
+								<Badge variant="outline" class="h-4 px-1 text-[10px] text-muted-foreground">
+									📦
+								</Badge>
+							</span>
+						{/snippet}
 					</Tooltip.Trigger>
 					<Tooltip.Content>
 						<p class="font-medium">Stale Agent</p>
@@ -424,9 +428,13 @@
 			{#if agent.context_risk}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
-						<Badge variant="destructive" class="h-4 px-1 text-[10px] {agent.context_risk.level === 'critical' ? 'bg-red-600' : 'bg-orange-500'}">
-							{agent.context_risk.level === 'critical' ? '🚨 CRITICAL' : '⚠️ AT-RISK'}
-						</Badge>
+						{#snippet child({ props })}
+							<span {...props}>
+								<Badge variant="destructive" class="h-4 px-1 text-[10px] {agent.context_risk?.level === 'critical' ? 'bg-red-600' : 'bg-orange-500'}">
+									{agent.context_risk?.level === 'critical' ? '🚨 CRITICAL' : '⚠️ AT-RISK'}
+								</Badge>
+							</span>
+						{/snippet}
 					</Tooltip.Trigger>
 					<Tooltip.Content class="max-w-xs">
 						<p class="font-medium {agent.context_risk.level === 'critical' ? 'text-red-500' : 'text-orange-500'}">
@@ -449,7 +457,9 @@
 			{#if healthIndicator}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
-						<span class={healthIndicator.colorClass}>{healthIndicator.emoji}</span>
+						{#snippet child({ props })}
+							<span {...props} class={healthIndicator.colorClass}>{healthIndicator.emoji}</span>
+						{/snippet}
 					</Tooltip.Trigger>
 					<Tooltip.Content>
 						<p class={`font-medium ${healthIndicator.colorClass}`}>{healthIndicator.label}</p>
@@ -462,7 +472,9 @@
 			{#if agentHotspot}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
-						<span class="text-orange-500 animate-pulse">🔥</span>
+						{#snippet child({ props })}
+							<span {...props} class="text-orange-500 animate-pulse">🔥</span>
+						{/snippet}
 					</Tooltip.Trigger>
 					<Tooltip.Content>
 						<p class="font-medium text-orange-500">Hotspot Area</p>
@@ -479,7 +491,9 @@
 			{#if contextIndicator}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
-						<span class={contextIndicator.colorClass}>{contextIndicator.emoji}</span>
+						{#snippet child({ props })}
+							<span {...props} class={contextIndicator.colorClass}>{contextIndicator.emoji}</span>
+						{/snippet}
 					</Tooltip.Trigger>
 					<Tooltip.Content>
 						<p>{contextIndicator.label}</p>
@@ -497,7 +511,9 @@
 		{#if displayState === 'dead'}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<span class="text-red-500">💀</span>
+					{#snippet child({ props })}
+						<span {...props} class="text-red-500">💀</span>
+					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
 					<p class="font-medium text-red-500">Dead Agent</p>
@@ -510,7 +526,9 @@
 		{:else if displayState === 'awaiting-cleanup'}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<span class="text-amber-500">🧹</span>
+					{#snippet child({ props })}
+						<span {...props} class="text-amber-500">🧹</span>
+					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
 					<p class="font-medium text-amber-500">Awaiting Cleanup</p>
@@ -523,7 +541,9 @@
 		{:else if agent.is_stalled}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<span class="text-orange-500">⏱️</span>
+					{#snippet child({ props })}
+						<span {...props} class="text-orange-500">⏱️</span>
+					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
 					<p class="font-medium text-orange-500">Stalled Agent</p>
@@ -536,7 +556,9 @@
 		{:else if displayState === 'running'}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-500"></span>
+					{#snippet child({ props })}
+						<span {...props} class="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-500"></span>
+					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
 					<p class="font-medium text-yellow-500">{getExpressiveStatus(agent.current_activity)}</p>
@@ -546,7 +568,9 @@
 		{:else if displayState === 'ready-for-review'}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<span class="h-1.5 w-1.5 rounded-full bg-blue-500"></span>
+					{#snippet child({ props })}
+						<span {...props} class="h-1.5 w-1.5 rounded-full bg-blue-500"></span>
+					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
 					<p class="font-medium text-blue-500">Ready for Review</p>
@@ -559,7 +583,9 @@
 		{:else if displayState === 'idle'}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<span class="h-1.5 w-1.5 rounded-full bg-orange-500/70"></span>
+					{#snippet child({ props })}
+						<span {...props} class="h-1.5 w-1.5 rounded-full bg-orange-500/70"></span>
+					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
 					<p class="font-medium text-orange-500">Idle</p>
@@ -572,7 +598,9 @@
 		{:else if agent.status === 'active'}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<span class="h-1 w-1 rounded-full bg-green-500"></span>
+					{#snippet child({ props })}
+						<span {...props} class="h-1 w-1 rounded-full bg-green-500"></span>
+					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
 					<p class="font-medium text-green-500">Active</p>
@@ -582,7 +610,9 @@
 		{/if}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<span class="cursor-default">{agent.runtime || formatDuration(agent.spawned_at)}</span>
+					{#snippet child({ props })}
+						<span {...props} class="cursor-default">{agent.runtime || formatDuration(agent.spawned_at)}</span>
+					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
 					<p>Spawned: {agent.spawned_at ? new Date(agent.spawned_at).toLocaleString() : 'Unknown'}</p>
@@ -639,9 +669,13 @@
 		{#if agent.model}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<Badge variant="outline" class="h-4 px-1 text-[10px] text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-700">
-						{formatModelBadge(agent.model)}
-					</Badge>
+					{#snippet child({ props })}
+						<span {...props}>
+							<Badge variant="outline" class="h-4 px-1 text-[10px] text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-700">
+								{formatModelBadge(agent.model!)}
+							</Badge>
+						</span>
+					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
 					<p class="text-xs">Model: {agent.model}</p>
@@ -651,13 +685,17 @@
 		{#if agent.beads_id}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<button
-						type="button"
-						onclick={copyBeadsId}
-						class="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-					>
-						{copiedBeadsId ? '✓ copied' : agent.beads_id}
-					</button>
+					{#snippet child({ props })}
+						<span
+							{...props}
+							role="button"
+							tabindex={-1}
+							onclick={copyBeadsId}
+							class="text-[10px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+						>
+							{copiedBeadsId ? '✓ copied' : agent.beads_id}
+						</span>
+					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
 					<p>Click to copy</p>
@@ -678,9 +716,11 @@
 					</p>
 					<Tooltip.Root>
 						<Tooltip.Trigger>
-							<span class="text-[9px] text-red-400/70 shrink-0">
-								crashed/stuck
-							</span>
+							{#snippet child({ props })}
+								<span {...props} class="text-[9px] text-red-400/70 shrink-0">
+									crashed/stuck
+								</span>
+							{/snippet}
 						</Tooltip.Trigger>
 						<Tooltip.Content>
 							<p class="font-medium text-red-500">Agent Unresponsive</p>
@@ -704,9 +744,11 @@
 					</p>
 					<Tooltip.Root>
 						<Tooltip.Trigger>
-							<span class="text-[9px] text-orange-400/70 shrink-0">
-								may need attention
-							</span>
+							{#snippet child({ props })}
+								<span {...props} class="text-[9px] text-orange-400/70 shrink-0">
+									may need attention
+								</span>
+							{/snippet}
 						</Tooltip.Trigger>
 						<Tooltip.Content>
 							<p class="font-medium text-orange-500">Progress Stalled</p>
@@ -729,9 +771,11 @@
 					</p>
 					<Tooltip.Root>
 						<Tooltip.Trigger>
-							<span class="text-[9px] text-muted-foreground/70 shrink-0">
-								{agent.runtime || formatDuration(agent.spawned_at)}
-							</span>
+							{#snippet child({ props })}
+								<span {...props} class="text-[9px] text-muted-foreground/70 shrink-0">
+									{agent.runtime || formatDuration(agent.spawned_at)}
+								</span>
+							{/snippet}
 						</Tooltip.Trigger>
 						<Tooltip.Content>
 							<p>Agent reported Phase: Complete</p>
@@ -748,9 +792,11 @@
 					</p>
 					<Tooltip.Root>
 						<Tooltip.Trigger>
-							<span class="text-[9px] text-muted-foreground/70 shrink-0">
-								waiting
-							</span>
+							{#snippet child({ props })}
+								<span {...props} class="text-[9px] text-muted-foreground/70 shrink-0">
+									waiting
+								</span>
+							{/snippet}
 						</Tooltip.Trigger>
 						<Tooltip.Content>
 							<p class="font-medium text-orange-500">Agent Idle</p>
@@ -791,9 +837,13 @@
 			{#if hasOutcomeDetails(agent.synthesis.outcome)}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
-						<Badge variant={getShortOutcome(agent.synthesis.outcome) === 'success' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px]">
-							{getShortOutcome(agent.synthesis.outcome)}
-						</Badge>
+						{#snippet child({ props })}
+							<span {...props}>
+								<Badge variant={getShortOutcome(agent.synthesis?.outcome ?? '') === 'success' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px]">
+									{getShortOutcome(agent.synthesis?.outcome ?? "")}
+								</Badge>
+							</span>
+						{/snippet}
 					</Tooltip.Trigger>
 					<Tooltip.Content class="max-w-xs">
 						<p>{agent.synthesis.outcome}</p>
