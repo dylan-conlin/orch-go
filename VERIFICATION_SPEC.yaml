@@ -1,35 +1,29 @@
-task: Implement daemon agreement check periodic task
-beads_id: orch-go-mri5
-date: 2026-02-28
+task: DSL design principles research
+beads_id: orch-go-pqs6
+date: 2026-03-01
 
 verification:
-  build:
-    command: "go build ./cmd/orch/"
-    result: PASS
-  vet:
-    command: "go vet ./..."
-    result: PASS
-  tests:
-    command: "go test ./pkg/daemon/ -run 'Agreement|AutoCreate' -v"
-    result: "15 tests PASS"
-  full_suite:
-    command: "go test ./pkg/daemon/"
-    result: "PASS (8.075s)"
-  daemonconfig:
-    command: "go test ./pkg/daemonconfig/"
-    result: "PASS"
-
-deliverables:
-  new_files:
-    - pkg/daemon/agreement_check.go      # Types, service interface, check/dedup/create logic, daemon methods
-    - pkg/daemon/agreement_check_test.go  # 15 tests covering all paths
-  modified_files:
-    - pkg/daemonconfig/config.go          # AgreementCheckEnabled + AgreementCheckInterval config fields
-    - pkg/daemon/daemon.go                # lastAgreementCheck state field, AgreementCheck service field, defaults in constructors
-    - pkg/daemon/interfaces.go            # defaultAgreementCheckService implementation
-    - pkg/daemon/mock_test.go             # mockAgreementCheckService for testing
-    - cmd/orch/daemon_periodic.go         # Handler + snapshot collection in runPeriodicTasks
-    - cmd/orch/daemon.go                  # Snapshot wiring into status file
-    - pkg/daemon/status.go                # AgreementCheckSnapshot field in DaemonStatus
+  type: investigation
+  deliverables:
+    - path: .kb/investigations/2026-03-01-dsl-design-principles-natural-language-embedded.md
+      exists: true
+      description: Investigation into DSL design principles for natural-language-embedded specifications
+      sections_present:
+        - "D.E.K.N. Summary"
+        - "Prior Work"
+        - "Finding 1: The Specification Spectrum"
+        - "Finding 2: Seven Precedent Systems"
+        - "Finding 3: Three Design Principles"
+        - "Finding 4: Five Failure Modes"
+        - "Finding 5: The Emerging Pattern"
+        - "Test Performed"
+        - "Conclusion"
+  tests_run:
+    - command: "web research across academic, industry, and open-source sources"
+      result: "7 precedent systems identified, 3 design principles extracted, 5 failure modes catalogued"
+  leave_it_better:
+    - action: "kb quick decide on RFC 2119 + markdown + constraint-based pattern for document-DSLs"
+      id: kb-2d2e24
+    - stale_artifacts: "No stale artifacts encountered"
 
 manual_verification: none
