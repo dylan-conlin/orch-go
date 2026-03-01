@@ -1,29 +1,38 @@
-task: DSL design principles research
-beads_id: orch-go-pqs6
+task: Implement orch skill lint command (5 static analysis rules)
+beads_id: orch-go-12cf
 date: 2026-03-01
 
 verification:
-  type: investigation
-  deliverables:
-    - path: .kb/investigations/2026-03-01-dsl-design-principles-natural-language-embedded.md
-      exists: true
-      description: Investigation into DSL design principles for natural-language-embedded specifications
-      sections_present:
-        - "D.E.K.N. Summary"
-        - "Prior Work"
-        - "Finding 1: The Specification Spectrum"
-        - "Finding 2: Seven Precedent Systems"
-        - "Finding 3: Three Design Principles"
-        - "Finding 4: Five Failure Modes"
-        - "Finding 5: The Emerging Pattern"
-        - "Test Performed"
-        - "Conclusion"
-  tests_run:
-    - command: "web research across academic, industry, and open-source sources"
-      result: "7 precedent systems identified, 3 design principles extracted, 5 failure modes catalogued"
-  leave_it_better:
-    - action: "kb quick decide on RFC 2119 + markdown + constraint-based pattern for document-DSLs"
-      id: kb-2d2e24
-    - stale_artifacts: "No stale artifacts encountered"
+  automated:
+    - command: "go test ./pkg/skill/ -v"
+      expectation: "12 tests pass (2-3 per rule x 5 rules + 1 integration)"
+    - command: "go vet ./pkg/skill/ ./cmd/orch/"
+      expectation: "No issues"
+    - command: "go build ./cmd/orch/"
+      expectation: "Clean build"
 
-manual_verification: none
+  manual:
+    - step: "go run ./cmd/orch/ skill lint orchestrator"
+      expectation: "Produces real output with cosmetic-redundancy warning and dead-constraint info"
+    - step: "go run ./cmd/orch/ skill lint feature-impl"
+      expectation: "Runs without error, shows dead-constraint info"
+
+  rules_implemented:
+    - name: must-density
+      threshold: ">3 per 100 words"
+      source: "DSL design principles investigation"
+    - name: cosmetic-redundancy
+      threshold: "same phrase >2 times"
+      source: "Defense-in-depth investigation"
+    - name: section-sprawl
+      threshold: ">30 total constraints"
+      source: "DSL general-purpose drift"
+    - name: signal-imbalance
+      threshold: "same behavior term >3 constraint lines"
+      source: "Framework investigation (17:1 ratio)"
+    - name: dead-constraint
+      threshold: "any constraint without test coverage"
+      source: "Defense-in-depth investigation"
+
+  leave_it_better:
+    - stale_artifacts: "No stale artifacts encountered"
