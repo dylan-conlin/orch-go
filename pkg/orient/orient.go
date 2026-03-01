@@ -60,7 +60,13 @@ func ComputeThroughput(events []Event, now time.Time, days int) Throughput {
 		case "agent.completed":
 			tp.Completions++
 			if e.Data != nil {
-				if d, ok := e.Data["duration_minutes"]; ok {
+				// Check duration_seconds (current event format) first, then duration_minutes (legacy)
+				if d, ok := e.Data["duration_seconds"]; ok {
+					if df, ok := d.(float64); ok {
+						totalDuration += df / 60.0
+						durationCount++
+					}
+				} else if d, ok := e.Data["duration_minutes"]; ok {
 					if df, ok := d.(float64); ok {
 						totalDuration += df
 						durationCount++

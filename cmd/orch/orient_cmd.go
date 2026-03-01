@@ -260,18 +260,26 @@ func queryKBContextForIssue(title string) []orient.KBEntry {
 	return orient.ParseKBContext(output, 1)
 }
 
-// collectInProgressCount runs `bd list --status=in_progress` and counts lines.
+// collectInProgressCount runs `bd list --status=in_progress` and counts issue lines.
 func collectInProgressCount() int {
 	cmd := exec.Command("bd", "list", "--status=in_progress")
 	output, err := cmd.Output()
 	if err != nil {
 		return 0
 	}
+	return parseInProgressCount(string(output))
+}
 
+// parseInProgressCount counts issue lines from `bd list --status=in_progress` output.
+// Lines start with issue IDs (e.g., "orch-go-abc1 [P2] [feature] in_progress ...").
+func parseInProgressCount(output string) int {
 	count := 0
-	for _, line := range strings.Split(string(output), "\n") {
+	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
-		if line != "" && len(line) >= 3 && line[0] >= '0' && line[0] <= '9' {
+		if line == "" {
+			continue
+		}
+		if strings.Contains(line, " in_progress ") {
 			count++
 		}
 	}

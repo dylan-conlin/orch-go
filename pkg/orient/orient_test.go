@@ -40,6 +40,35 @@ func TestThroughputFromEvents(t *testing.T) {
 	}
 }
 
+func TestThroughputFromEvents_DurationSeconds(t *testing.T) {
+	now := time.Now()
+	oneDayAgo := now.Add(-12 * time.Hour)
+
+	// Test with duration_seconds (current event format from LogAgentCompleted)
+	events := []Event{
+		{Type: "session.spawned", Timestamp: oneDayAgo.Unix()},
+		{Type: "session.spawned", Timestamp: oneDayAgo.Unix()},
+		{Type: "agent.completed", Timestamp: now.Unix(), Data: map[string]interface{}{
+			"duration_seconds": 1800.0, // 30 minutes
+		}},
+		{Type: "agent.completed", Timestamp: now.Unix(), Data: map[string]interface{}{
+			"duration_seconds": 2760.0, // 46 minutes
+		}},
+	}
+
+	tp := ComputeThroughput(events, now, 1)
+
+	if tp.Spawns != 2 {
+		t.Errorf("expected 2 spawns, got %d", tp.Spawns)
+	}
+	if tp.Completions != 2 {
+		t.Errorf("expected 2 completions, got %d", tp.Completions)
+	}
+	if tp.AvgDurationMin != 38 {
+		t.Errorf("expected avg duration 38 min, got %d", tp.AvgDurationMin)
+	}
+}
+
 func TestThroughputFromEvents_Empty(t *testing.T) {
 	tp := ComputeThroughput(nil, time.Now(), 1)
 	if tp.Spawns != 0 || tp.Completions != 0 || tp.Abandonments != 0 {

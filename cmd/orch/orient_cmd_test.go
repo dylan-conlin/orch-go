@@ -56,6 +56,42 @@ func TestParseBdReadyForOrient_NoReadyIssues(t *testing.T) {
 	}
 }
 
+func TestCollectInProgressCount_Parsing(t *testing.T) {
+	// Simulate bd list --status=in_progress output format
+	tests := []struct {
+		name     string
+		output   string
+		expected int
+	}{
+		{
+			name: "multiple in_progress issues",
+			output: `orch-go-iphg [P2] [feature] in_progress @og-feat-checkpoint - Add synthesis checkpoint
+orch-go-h8ji [P2] [task] in_progress @og-feat-update - Update orchestrator skill
+orch-go-03e8 [P2] [feature] in_progress @og-feat-phase - Add review tier constants`,
+			expected: 3,
+		},
+		{
+			name:     "no issues",
+			output:   "",
+			expected: 0,
+		},
+		{
+			name:     "single issue",
+			output:   `orch-go-po2j [P2] [bug] in_progress @og-debug - Bug fix`,
+			expected: 1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			count := parseInProgressCount(tc.output)
+			if count != tc.expected {
+				t.Errorf("expected %d, got %d", tc.expected, count)
+			}
+		})
+	}
+}
+
 func TestSelectRelevantModels(t *testing.T) {
 	models := []struct {
 		name    string
