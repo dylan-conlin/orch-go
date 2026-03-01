@@ -1203,3 +1203,128 @@ func TestResolve_AccountHeuristic_CapacityError(t *testing.T) {
 		t.Fatalf("Account.Value = %q, want %q (spillover when work has error)", settings.Account.Value, "personal")
 	}
 }
+
+// --- Effort resolution tests ---
+
+func TestResolve_EffortCLIOverride(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Effort = "low"
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.Effort.Value != "low" {
+		t.Fatalf("Effort.Value = %q, want %q", settings.Effort.Value, "low")
+	}
+	if settings.Effort.Source != SourceCLI {
+		t.Fatalf("Effort.Source = %q, want %q", settings.Effort.Source, SourceCLI)
+	}
+}
+
+func TestResolve_EffortLightTierDefault(t *testing.T) {
+	input := baseResolveInput()
+	input.SkillName = "feature-impl" // light tier skill
+	input.CLI.Light = true
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.Effort.Value != EffortMedium {
+		t.Fatalf("Effort.Value = %q, want %q for light tier", settings.Effort.Value, EffortMedium)
+	}
+	if settings.Effort.Source != SourceHeuristic {
+		t.Fatalf("Effort.Source = %q, want %q", settings.Effort.Source, SourceHeuristic)
+	}
+	if settings.Effort.Detail != "tier-light" {
+		t.Fatalf("Effort.Detail = %q, want %q", settings.Effort.Detail, "tier-light")
+	}
+}
+
+func TestResolve_EffortFullTierDefault(t *testing.T) {
+	input := baseResolveInput()
+	input.SkillName = "investigation" // full tier skill
+	input.CLI.Full = true
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.Effort.Value != EffortHigh {
+		t.Fatalf("Effort.Value = %q, want %q for full tier", settings.Effort.Value, EffortHigh)
+	}
+	if settings.Effort.Source != SourceHeuristic {
+		t.Fatalf("Effort.Source = %q, want %q", settings.Effort.Source, SourceHeuristic)
+	}
+	if settings.Effort.Detail != "tier-full" {
+		t.Fatalf("Effort.Detail = %q, want %q", settings.Effort.Detail, "tier-full")
+	}
+}
+
+func TestResolve_EffortCLIOverridesTierHeuristic(t *testing.T) {
+	input := baseResolveInput()
+	input.SkillName = "feature-impl" // light tier = medium default
+	input.CLI.Effort = "high"        // CLI override
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.Effort.Value != "high" {
+		t.Fatalf("Effort.Value = %q, want %q (CLI should override tier heuristic)", settings.Effort.Value, "high")
+	}
+	if settings.Effort.Source != SourceCLI {
+		t.Fatalf("Effort.Source = %q, want %q", settings.Effort.Source, SourceCLI)
+	}
+}
+
+func TestResolve_EffortInvalidValue(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Effort = "turbo"
+
+	_, err := Resolve(input)
+	if err == nil {
+		t.Fatal("Resolve() error = nil, want validation error for invalid effort")
+	}
+	if !strings.Contains(err.Error(), "invalid --effort") {
+		t.Fatalf("Resolve() error = %q, want 'invalid --effort' message", err)
+	}
+}
+
+func TestResolve_EffortCaseInsensitive(t *testing.T) {
+	input := baseResolveInput()
+	input.CLI.Effort = "HIGH"
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if settings.Effort.Value != "high" {
+		t.Fatalf("Effort.Value = %q, want %q (should be normalized to lowercase)", settings.Effort.Value, "high")
+	}
+}
+
+func TestIsValidEffort(t *testing.T) {
+	tests := []struct {
+		effort string
+		valid  bool
+	}{
+		{"low", true},
+		{"medium", true},
+		{"high", true},
+		{"LOW", true},
+		{"Medium", true},
+		{"HIGH", true},
+		{"", false},
+		{"turbo", false},
+		{"max", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.effort, func(t *testing.T) {
+			if got := IsValidEffort(tt.effort); got != tt.valid {
+				t.Errorf("IsValidEffort(%q) = %v, want %v", tt.effort, got, tt.valid)
+			}
+		})
+	}
+}

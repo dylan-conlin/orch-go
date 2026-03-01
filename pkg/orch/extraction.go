@@ -83,6 +83,9 @@ type SpawnContext struct {
 	// PriorCompletions contains formatted markdown about prior completed agents
 	// that worked on the same beads issue. Prevents agents from re-doing completed work.
 	PriorCompletions string
+	// MaxTurns limits the number of agentic turns for Claude CLI spawns.
+	// When > 0, passes --max-turns to prevent runaway agents. 0 = unlimited.
+	MaxTurns int
 }
 
 // ResolvedSpawnResult holds resolved spawn settings and the parsed model spec.
@@ -1074,6 +1077,7 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 		UsageInfo:          ctx.UsageInfo,
 		Account:            ctx.Account,
 		AccountConfigDir:   ctx.AccountConfigDir,
+		Effort:             ctx.ResolvedSettings.Effort.Value,
 		SpawnMode:          ctx.SpawnBackend,
 		HotspotArea:        ctx.HotspotArea,
 		HotspotFiles:       ctx.HotspotFiles,
@@ -1083,6 +1087,7 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 		DesignNotes:        ctx.DesignNotes,
 		BeadsDir:           ctx.BeadsDir,
 		PriorCompletions:   ctx.PriorCompletions,
+		MaxTurns:           ctx.MaxTurns,
 	}
 }
 

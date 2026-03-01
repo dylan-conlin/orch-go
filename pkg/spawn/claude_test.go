@@ -415,7 +415,112 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir, tt.beadsDir, tt.beadsID)
+			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir, tt.beadsDir, tt.beadsID, "", 0)
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(cmd, want) {
+					t.Errorf("command missing %q\nGot: %s", want, cmd)
+				}
+			}
+			for _, exclude := range tt.wantExcludes {
+				if strings.Contains(cmd, exclude) {
+					t.Errorf("command should not contain %q\nGot: %s", exclude, cmd)
+				}
+			}
+		})
+	}
+}
+
+// TestBuildClaudeLaunchCommandMaxTurns tests --max-turns flag injection.
+func TestBuildClaudeLaunchCommandMaxTurns(t *testing.T) {
+	tests := []struct {
+		name         string
+		maxTurns     int
+		wantContains []string
+		wantExcludes []string
+	}{
+		{
+			name:     "zero maxTurns omits flag",
+			maxTurns: 0,
+			wantExcludes: []string{
+				"--max-turns",
+			},
+		},
+		{
+			name:     "positive maxTurns adds flag",
+			maxTurns: 150,
+			wantContains: []string{
+				"--max-turns 150",
+			},
+		},
+		{
+			name:     "small maxTurns for light tier",
+			maxTurns: 30,
+			wantContains: []string{
+				"--max-turns 30",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", tt.maxTurns)
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(cmd, want) {
+					t.Errorf("command missing %q\nGot: %s", want, cmd)
+				}
+			}
+			for _, exclude := range tt.wantExcludes {
+				if strings.Contains(cmd, exclude) {
+					t.Errorf("command should not contain %q\nGot: %s", exclude, cmd)
+				}
+			}
+		})
+	}
+}
+
+// TestBuildClaudeLaunchCommandEffort tests --effort flag injection.
+func TestBuildClaudeLaunchCommandEffort(t *testing.T) {
+	tests := []struct {
+		name         string
+		effort       string
+		wantContains []string
+		wantExcludes []string
+	}{
+		{
+			name:   "empty effort omits flag",
+			effort: "",
+			wantExcludes: []string{
+				"--effort",
+			},
+		},
+		{
+			name:   "high effort adds flag",
+			effort: "high",
+			wantContains: []string{
+				"--effort high",
+			},
+		},
+		{
+			name:   "medium effort adds flag",
+			effort: "medium",
+			wantContains: []string{
+				"--effort medium",
+			},
+		},
+		{
+			name:   "low effort adds flag",
+			effort: "low",
+			wantContains: []string{
+				"--effort low",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", tt.effort, 0)
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {

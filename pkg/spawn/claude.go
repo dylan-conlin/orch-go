@@ -58,7 +58,9 @@ func MCPConfigJSON(preset string) (string, bool) {
 //   CLAUDE_CONFIG_DIR env var and unsets CLAUDE_CODE_OAUTH_TOKEN for account isolation
 // - When beadsDir is set (cross-repo spawn), injects BEADS_DIR env var so
 //   bd comment/show commands reach the source project's beads database
-func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsDir, beadsID string) string {
+// - When effort is set, adds --effort flag for reasoning effort optimization
+// - When maxTurns > 0, adds --max-turns flag to prevent runaway agents
+func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsDir, beadsID, effort string, maxTurns int) string {
 	// Account isolation prefix: when configDir is set and non-default,
 	// unset the OAuth token and set CLAUDE_CONFIG_DIR so the Claude CLI
 	// uses the correct account's config directory.
@@ -102,7 +104,19 @@ func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsD
 		beadsIDPrefix = fmt.Sprintf("export ORCH_BEADS_ID=%s; ", beadsID)
 	}
 
-	return fmt.Sprintf("%s%s%sexport ORCH_SPAWNED=1; export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s", accountPrefix, beadsDirPrefix, beadsIDPrefix, claudeContext, contextPath, mcpFlag, disallowFlag)
+	// Effort flag: controls reasoning effort level for cost/speed optimization.
+	effortFlag := ""
+	if effort != "" {
+		effortFlag = fmt.Sprintf(" --effort %s", effort)
+	}
+
+	// Max turns flag: prevents runaway agents by limiting agentic turns.
+	maxTurnsFlag := ""
+	if maxTurns > 0 {
+		maxTurnsFlag = fmt.Sprintf(" --max-turns %d", maxTurns)
+	}
+
+	return fmt.Sprintf("%s%s%sexport ORCH_SPAWNED=1; export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s%s%s", accountPrefix, beadsDirPrefix, beadsIDPrefix, claudeContext, contextPath, effortFlag, mcpFlag, disallowFlag, maxTurnsFlag)
 }
 
 // SpawnClaude launches a Claude Code agent in a tmux window.
@@ -134,7 +148,7 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 	// 4. Launch claude using the context file
 	contextPath := cfg.ContextFilePath()
 
-	launchCmd := BuildClaudeLaunchCommand(contextPath, cfg.ClaudeContext(), cfg.MCP, cfg.AccountConfigDir, cfg.BeadsDir, cfg.BeadsID)
+	launchCmd := BuildClaudeLaunchCommand(contextPath, cfg.ClaudeContext(), cfg.MCP, cfg.AccountConfigDir, cfg.BeadsDir, cfg.BeadsID, cfg.Effort, cfg.MaxTurns)
 
 	if err := tmux.SendKeys(windowTarget, launchCmd); err != nil {
 		return nil, fmt.Errorf("failed to send launch command: %w", err)

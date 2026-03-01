@@ -59,6 +59,8 @@ var (
 	spawnAccount            string // Account name for Claude CLI spawns (overrides auto-selection)
 	spawnVerifyLevel        string // Verification level override (V0-V3)
 	spawnScope              string // Session scope: small, medium, large
+	spawnEffort             string // Claude CLI effort level: low, medium, high
+	spawnMaxTurns           int    // Max agentic turns for Claude CLI (0 = unlimited)
 	spawnReason             string // Reason for override flag usage (--bypass-triage, --force-hotspot, --no-track)
 	spawnModeSet            bool   // Tracks whether --mode was explicitly set
 	spawnValidationSet      bool   // Tracks whether --validation was explicitly set
@@ -192,6 +194,8 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnAccount, "account", "", "Account name for Claude CLI spawns (e.g., 'work', 'personal')")
 	spawnCmd.Flags().StringVar(&spawnVerifyLevel, "verify-level", "", "Verification level override (V0=acknowledge, V1=artifacts, V2=evidence, V3=behavioral)")
 	spawnCmd.Flags().StringVar(&spawnReason, "reason", "", "Reason for override flags (--bypass-triage, --force-hotspot, --no-track). Min 10 chars.")
+	spawnCmd.Flags().StringVar(&spawnEffort, "effort", "", "Claude CLI effort level (low, medium, high). Default: auto from skill tier.")
+	spawnCmd.Flags().IntVar(&spawnMaxTurns, "max-turns", 0, "Max agentic turns for Claude CLI spawns (0 = unlimited). Prevents runaway agents.")
 }
 
 var (
@@ -507,6 +511,11 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		return fmt.Errorf("invalid --verify-level %q: must be V0, V1, V2, or V3", spawnVerifyLevel)
 	}
 
+	// Validate --effort flag if provided
+	if spawnEffort != "" && !spawn.IsValidEffort(spawnEffort) {
+		return fmt.Errorf("invalid --effort %q: must be low, medium, or high", spawnEffort)
+	}
+
 	// Validate --reason is provided for override flags (min 10 chars)
 	if !daemonDriven {
 		needsReason := spawnBypassTriage || spawnForceHotspot || spawnNoTrack
@@ -634,6 +643,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 			ValidationSet: spawnValidationSet,
 			MCP:           spawnMCP,
 			Account:       spawnAccount,
+			Effort:        spawnEffort,
 			Light:         spawnLight,
 			Full:          spawnFull,
 			Headless:      input.Headless,
@@ -727,6 +737,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		DesignNotes:        designNotes,
 		BeadsDir:           crossRepoBeadsDir,
 		PriorCompletions:   priorCompletions,
+		MaxTurns:           spawnMaxTurns,
 	}
 
 	// 11. Build spawn config

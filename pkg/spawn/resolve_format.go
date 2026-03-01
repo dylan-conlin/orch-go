@@ -21,6 +21,7 @@ func FormatResolvedSpawnSettings(settings ResolvedSpawnSettings) string {
 		formatResolvedSetting("Mode", settings.Mode, "unknown"),
 		formatResolvedSetting("Validation", settings.Validation, "unknown"),
 		formatResolvedSetting("Account", settings.Account, "none"),
+		formatResolvedSetting("Effort", settings.Effort, "default"),
 	}
 
 	return strings.Join(lines, "\n")

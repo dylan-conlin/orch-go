@@ -81,6 +81,7 @@ type ResolvedSpawnSettings struct {
 	Mode       ResolvedSetting
 	Validation ResolvedSetting
 	Account    ResolvedSetting
+	Effort     ResolvedSetting
 	Warnings   []string
 }
 
@@ -94,6 +95,7 @@ type CLISettings struct {
 	ValidationSet bool
 	MCP           string
 	Account       string
+	Effort        string // Effort level: low, medium, high
 	Light         bool
 	Full          bool
 	Headless      bool
@@ -150,6 +152,10 @@ func Resolve(input ResolveInput) (ResolvedSpawnSettings, error) {
 
 	if input.CLI.Light && input.CLI.Full {
 		return result, fmt.Errorf("cannot set both --light and --full")
+	}
+
+	if input.CLI.Effort != "" && !IsValidEffort(input.CLI.Effort) {
+		return result, fmt.Errorf("invalid --effort %q: must be low, medium, or high", input.CLI.Effort)
 	}
 
 	if countTrue(input.CLI.Inline, input.CLI.Tmux, input.CLI.Headless) > 1 {
@@ -240,6 +246,7 @@ func Resolve(input ResolveInput) (ResolvedSpawnSettings, error) {
 	result.Mode = resolveMode(input)
 	result.Validation = resolveValidation(input)
 	result.Account = resolveAccount(input)
+	result.Effort = resolveEffort(input, result.Tier.Value)
 
 	// When backend is claude and spawn mode is headless, override to tmux.
 	// Claude backend physically requires a tmux window (SpawnClaude creates
@@ -410,6 +417,48 @@ func resolveValidation(input ResolveInput) ResolvedSetting {
 		return ResolvedSetting{Value: input.CLI.Validation, Source: SourceCLI}
 	}
 	return ResolvedSetting{Value: "tests", Source: SourceDefault}
+}
+
+// Effort level constants for Claude CLI --effort flag.
+const (
+	EffortLow    = "low"
+	EffortMedium = "medium"
+	EffortHigh   = "high"
+)
+
+// IsValidEffort returns true if the effort level is valid.
+func IsValidEffort(effort string) bool {
+	switch strings.ToLower(effort) {
+	case EffortLow, EffortMedium, EffortHigh:
+		return true
+	}
+	return false
+}
+
+// resolveEffort determines the effort level for Claude CLI spawns.
+//
+// Precedence:
+//  1. CLI flag: --effort high                  → Source: cli-flag
+//  2. Heuristic: tier-based default            → Source: heuristic
+//  3. Default: empty (no --effort flag passed) → Source: default
+//
+// Tier-based heuristic (skill-tier optimization):
+//   - light tier → "medium" (faster/cheaper for implementation tasks)
+//   - full tier  → "high"  (maximum reasoning for investigation/architecture)
+func resolveEffort(input ResolveInput, resolvedTier string) ResolvedSetting {
+	if input.CLI.Effort != "" {
+		return ResolvedSetting{Value: strings.ToLower(input.CLI.Effort), Source: SourceCLI}
+	}
+
+	// Tier-based heuristic: optimize effort based on task complexity
+	switch resolvedTier {
+	case TierLight:
+		return ResolvedSetting{Value: EffortMedium, Source: SourceHeuristic, Detail: "tier-light"}
+	case TierFull:
+		return ResolvedSetting{Value: EffortHigh, Source: SourceHeuristic, Detail: "tier-full"}
+	}
+
+	return ResolvedSetting{Value: "", Source: SourceDefault}
 }
 
 // resolveAccount determines which account to use for Claude CLI spawns.

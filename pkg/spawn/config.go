@@ -255,6 +255,16 @@ type Config struct {
 	// AccountConfigDir is the resolved config directory for the account (e.g., ~/.claude-personal)
 	AccountConfigDir string
 
+	// Effort specifies the Claude CLI effort level: "low", "medium", "high"
+	// When set, adds --effort flag to the Claude CLI launch command.
+	// Optimized by skill tier: light tier → medium, full tier → high.
+	Effort string
+
+	// MaxTurns limits the number of agentic turns for Claude CLI spawns.
+	// When > 0, passes --max-turns to the Claude CLI to prevent runaway agents.
+	// When 0, no limit is applied (Claude CLI default).
+	MaxTurns int
+
 	// SpawnMode specifies the spawn backend: "opencode" or "claude"
 	SpawnMode string
 
