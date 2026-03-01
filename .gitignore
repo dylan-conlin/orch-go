@@ -9,8 +9,15 @@ build/
 /orch-test-*
 /test-*
 
+# Build artifacts in cmd/
+cmd/orch/orch
+
 # Backup files
 *.bak
+*.bak2
+
+# Private keys / certificates (never track)
+pkg/certs/
 
 # macOS
 .DS_Store
