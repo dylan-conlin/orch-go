@@ -1436,6 +1436,15 @@ func checkModelStaleness(modelContent string, projectDir string) (*StalenessResu
 	}
 	result.LastUpdated = lastUpdated
 
+	// Parse date and add 1 day to avoid same-day boundary false positives.
+	// git log --since=YYYY-MM-DD includes all commits from midnight of that day,
+	// but the model was updated at some point during that day, so earlier same-day
+	// commits would appear as "changed" even though the model already accounts for them.
+	sinceDate := lastUpdated
+	if t, err := time.Parse("2006-01-02", lastUpdated); err == nil {
+		sinceDate = t.AddDate(0, 0, 1).Format("2006-01-02")
+	}
+
 	// Extract code references
 	codeRefs := extractCodeRefs(modelContent)
 	if len(codeRefs) == 0 {
@@ -1468,7 +1477,7 @@ func checkModelStaleness(modelContent string, projectDir string) (*StalenessResu
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, "git", "log", "--since="+lastUpdated, "--oneline", "--", ref)
+		cmd := exec.CommandContext(ctx, "git", "log", "--since="+sinceDate, "--oneline", "--", ref)
 		cmd.Dir = projectDir
 		output, err := cmd.Output()
 		if err != nil {

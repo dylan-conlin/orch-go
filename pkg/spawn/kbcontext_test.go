@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestExtractKeywords(t *testing.T) {
@@ -968,9 +969,11 @@ func TestCheckModelStaleness(t *testing.T) {
 	// We'll test with the actual repo's files for realistic scenarios
 
 	t.Run("detects no staleness for future date", func(t *testing.T) {
-		// Use a far-future date that will definitely have no commits
+		// Use a far-future date that will definitely have no commits.
+		// Note: avoid 2099-12-31 because +1 day (for same-day boundary fix) produces
+		// 2100-01-01 which triggers a git date overflow bug.
 		testContent := `# Model: Test
-**Last Updated:** 2099-12-31
+**Last Updated:** 2098-12-31
 
 **Primary Evidence:**
 - ` + "`pkg/spawn/kbcontext.go`" + ` - This file (guaranteed to exist)
@@ -1064,6 +1067,31 @@ No code references here.
 				if df == "~/.zshrc" {
 					t.Error("checkModelStaleness() should expand ~ paths — reported ~/.zshrc as deleted but file exists")
 				}
+			}
+		}
+	})
+
+	t.Run("no false positive for same-day commits", func(t *testing.T) {
+		// Bug: git log --since=YYYY-MM-DD includes all commits from midnight of that day.
+		// If Last Updated is today, commits from earlier today should NOT trigger staleness
+		// because the model was updated today and already accounts for them.
+		// Fix: we add 1 day to --since, so --since=tomorrow excludes all of today's commits.
+		today := time.Now().Format("2006-01-02")
+		testContent := `# Model: Test
+**Last Updated:** ` + today + `
+
+**Primary Evidence:**
+- ` + "`pkg/spawn/kbcontext.go`" + ` - This file (has commits today)
+`
+		result, err := checkModelStaleness(testContent, "../..")
+		if err != nil {
+			t.Fatalf("checkModelStaleness() error = %v", err)
+		}
+		// Should NOT report kbcontext.go as changed — model was updated today
+		for _, cf := range result.ChangedFiles {
+			if cf == "pkg/spawn/kbcontext.go" {
+				t.Error("checkModelStaleness() false positive: reported same-day commit as changed. " +
+					"Model Last Updated is today, so today's commits should not trigger staleness.")
 			}
 		}
 	})
