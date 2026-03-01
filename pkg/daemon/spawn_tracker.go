@@ -2,6 +2,10 @@
 package daemon
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +40,16 @@ type SpawnedIssueTracker struct {
 	// Default is 6 hours - matching typical agent work duration.
 	// This provides backup protection when session-level dedup fails.
 	TTL time.Duration
+
+	// filePath is the path to the JSON file for disk persistence.
+	// When empty, the tracker operates in-memory only (test mode).
+	filePath string
+}
+
+// spawnCacheFile is the JSON representation of the spawn tracker state on disk.
+type spawnCacheFile struct {
+	Spawned       map[string]time.Time `json:"spawned"`
+	SpawnedTitles map[string]string    `json:"spawned_titles"`
 }
 
 // NewSpawnedIssueTracker creates a new tracker with the default 6 hour TTL.
@@ -59,12 +73,38 @@ func NewSpawnedIssueTrackerWithTTL(ttl time.Duration) *SpawnedIssueTracker {
 	}
 }
 
+// NewSpawnedIssueTrackerWithFile creates a disk-backed tracker that survives daemon restarts.
+// On creation, it loads any existing state from the file and cleans stale entries.
+// On every mutation, it persists state to disk.
+// Disk errors are logged but don't block operation (fail-open).
+func NewSpawnedIssueTrackerWithFile(filePath string) *SpawnedIssueTracker {
+	t := &SpawnedIssueTracker{
+		spawned:       make(map[string]time.Time),
+		spawnedTitles: make(map[string]string),
+		TTL:           6 * time.Hour,
+		filePath:      filePath,
+	}
+	t.loadFromFile()
+	t.CleanStale()
+	return t
+}
+
+// DefaultSpawnCachePath returns the default path for the spawn dedup cache file.
+func DefaultSpawnCachePath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".orch", "spawn_cache.json")
+}
+
 // MarkSpawned records that an issue has been spawned.
 // Call this immediately before calling SpawnWork.
 func (t *SpawnedIssueTracker) MarkSpawned(issueID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.spawned[issueID] = time.Now()
+	t.saveLocked()
 }
 
 // MarkSpawnedWithTitle records that an issue has been spawned, including its title
@@ -80,6 +120,7 @@ func (t *SpawnedIssueTracker) MarkSpawnedWithTitle(issueID, title string) {
 			t.spawnedTitles[normalized] = issueID
 		}
 	}
+	t.saveLocked()
 }
 
 // IsTitleSpawned returns true if an issue with this title was recently spawned (within TTL).
@@ -108,10 +149,68 @@ func (t *SpawnedIssueTracker) IsTitleSpawned(title string) (bool, string) {
 	if !spawned || time.Since(spawnTime) > t.TTL {
 		// Stale - clean up
 		delete(t.spawnedTitles, normalized)
+		t.saveLocked()
 		return false, ""
 	}
 
 	return true, issueID
+}
+
+// loadFromFile reads the spawn cache from disk into the tracker's in-memory maps.
+// Called once during construction. Fail-open: errors are logged, tracker starts empty.
+func (t *SpawnedIssueTracker) loadFromFile() {
+	if t.filePath == "" {
+		return
+	}
+	data, err := os.ReadFile(t.filePath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "spawn-tracker: failed to read cache %s: %v\n", t.filePath, err)
+		}
+		return
+	}
+	var cache spawnCacheFile
+	if err := json.Unmarshal(data, &cache); err != nil {
+		fmt.Fprintf(os.Stderr, "spawn-tracker: failed to parse cache %s: %v\n", t.filePath, err)
+		return
+	}
+	if cache.Spawned != nil {
+		t.spawned = cache.Spawned
+	}
+	if cache.SpawnedTitles != nil {
+		t.spawnedTitles = cache.SpawnedTitles
+	}
+}
+
+// saveLocked writes the tracker's in-memory state to disk.
+// Must be called while t.mu is held. Fail-open: errors are logged.
+func (t *SpawnedIssueTracker) saveLocked() {
+	if t.filePath == "" {
+		return
+	}
+	cache := spawnCacheFile{
+		Spawned:       t.spawned,
+		SpawnedTitles: t.spawnedTitles,
+	}
+	data, err := json.Marshal(cache)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "spawn-tracker: failed to marshal cache: %v\n", err)
+		return
+	}
+	dir := filepath.Dir(t.filePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "spawn-tracker: failed to create dir %s: %v\n", dir, err)
+		return
+	}
+	// Atomic write: write to temp file then rename
+	tmp := t.filePath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "spawn-tracker: failed to write cache %s: %v\n", tmp, err)
+		return
+	}
+	if err := os.Rename(tmp, t.filePath); err != nil {
+		fmt.Fprintf(os.Stderr, "spawn-tracker: failed to rename cache %s: %v\n", t.filePath, err)
+	}
 }
 
 // normalizeTitle normalizes a title for comparison.
@@ -134,6 +233,7 @@ func (t *SpawnedIssueTracker) IsSpawned(issueID string) bool {
 	if time.Since(spawnTime) > t.TTL {
 		// Stale entry - remove it and return false
 		delete(t.spawned, issueID)
+		t.saveLocked()
 		return false
 	}
 
@@ -152,6 +252,7 @@ func (t *SpawnedIssueTracker) Unmark(issueID string) {
 			delete(t.spawnedTitles, title)
 		}
 	}
+	t.saveLocked()
 }
 
 // CleanStale removes entries older than TTL.
@@ -173,6 +274,9 @@ func (t *SpawnedIssueTracker) CleanStale() int {
 		if _, exists := t.spawned[id]; !exists {
 			delete(t.spawnedTitles, title)
 		}
+	}
+	if removed > 0 {
+		t.saveLocked()
 	}
 	return removed
 }
@@ -199,6 +303,9 @@ func (t *SpawnedIssueTracker) ReconcileWithIssues(openIssues []Issue) int {
 			delete(t.spawned, id)
 			removed++
 		}
+	}
+	if removed > 0 {
+		t.saveLocked()
 	}
 
 	return removed

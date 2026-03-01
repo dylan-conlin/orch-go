@@ -1,6 +1,8 @@
 package daemon
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -371,6 +373,138 @@ func TestDaemon_ContentDedupSkipsDuplicateTitle(t *testing.T) {
 	}
 	if spawnCount != 0 {
 		t.Errorf("Spawner should not have been called, got %d calls", spawnCount)
+	}
+}
+
+func TestSpawnedIssueTracker_FilePersistence(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "spawn_cache.json")
+
+	// Create tracker, mark some issues
+	tracker1 := NewSpawnedIssueTrackerWithFile(cachePath)
+	tracker1.MarkSpawnedWithTitle("issue-1", "Build feature X")
+	tracker1.MarkSpawned("issue-2")
+
+	// Verify file exists
+	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+		t.Fatal("cache file should exist after MarkSpawned")
+	}
+
+	// Create a new tracker from the same file (simulates daemon restart)
+	tracker2 := NewSpawnedIssueTrackerWithFile(cachePath)
+
+	if !tracker2.IsSpawned("issue-1") {
+		t.Error("issue-1 should be loaded from disk")
+	}
+	if !tracker2.IsSpawned("issue-2") {
+		t.Error("issue-2 should be loaded from disk")
+	}
+	if tracker2.IsSpawned("issue-3") {
+		t.Error("issue-3 should not exist")
+	}
+
+	// Title dedup should also survive
+	spawned, dupID := tracker2.IsTitleSpawned("Build feature X")
+	if !spawned {
+		t.Error("title dedup should survive restart")
+	}
+	if dupID != "issue-1" {
+		t.Errorf("dupID = %q, want %q", dupID, "issue-1")
+	}
+}
+
+func TestSpawnedIssueTracker_FilePersistence_Unmark(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "spawn_cache.json")
+
+	tracker1 := NewSpawnedIssueTrackerWithFile(cachePath)
+	tracker1.MarkSpawned("issue-1")
+	tracker1.MarkSpawned("issue-2")
+	tracker1.Unmark("issue-1")
+
+	// Restart
+	tracker2 := NewSpawnedIssueTrackerWithFile(cachePath)
+	if tracker2.IsSpawned("issue-1") {
+		t.Error("issue-1 should not be present after unmark + restart")
+	}
+	if !tracker2.IsSpawned("issue-2") {
+		t.Error("issue-2 should survive restart")
+	}
+}
+
+func TestSpawnedIssueTracker_FilePersistence_StaleCleanedOnLoad(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "spawn_cache.json")
+
+	// Write a cache file with an entry that has an old timestamp
+	oldTime := time.Now().Add(-7 * time.Hour) // older than 6h TTL
+	cacheData := `{"spawned":{"issue-old":"` + oldTime.Format(time.RFC3339Nano) + `","issue-fresh":"` + time.Now().Format(time.RFC3339Nano) + `"},"spawned_titles":{}}`
+	if err := os.WriteFile(cachePath, []byte(cacheData), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tracker := NewSpawnedIssueTrackerWithFile(cachePath)
+	if tracker.IsSpawned("issue-old") {
+		t.Error("stale entry should be cleaned on load")
+	}
+	if !tracker.IsSpawned("issue-fresh") {
+		t.Error("fresh entry should survive load")
+	}
+}
+
+func TestSpawnedIssueTracker_FilePersistence_CorruptFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "spawn_cache.json")
+
+	// Write corrupt data
+	if err := os.WriteFile(cachePath, []byte("not json"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should not panic, starts empty (fail-open)
+	tracker := NewSpawnedIssueTrackerWithFile(cachePath)
+	if tracker.Count() != 0 {
+		t.Errorf("tracker should start empty on corrupt file, got %d", tracker.Count())
+	}
+
+	// Should still work normally after corrupt load
+	tracker.MarkSpawned("issue-1")
+	if !tracker.IsSpawned("issue-1") {
+		t.Error("tracker should work after corrupt file recovery")
+	}
+}
+
+func TestSpawnedIssueTracker_FilePersistence_MissingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "spawn_cache.json")
+
+	// No file exists — should start empty without error
+	tracker := NewSpawnedIssueTrackerWithFile(cachePath)
+	if tracker.Count() != 0 {
+		t.Errorf("tracker should start empty when no file, got %d", tracker.Count())
+	}
+}
+
+func TestSpawnedIssueTracker_InMemoryNoPersistence(t *testing.T) {
+	// Existing constructors should NOT write files
+	tracker := NewSpawnedIssueTracker()
+	tracker.MarkSpawned("issue-1")
+	// No crash, no file written — this is the test (no assertions needed beyond no panic)
+	if !tracker.IsSpawned("issue-1") {
+		t.Error("in-memory tracker should still work")
+	}
+}
+
+func TestDefaultSpawnCachePath(t *testing.T) {
+	path := DefaultSpawnCachePath()
+	if path == "" {
+		t.Skip("cannot determine home dir")
+	}
+	if filepath.Base(path) != "spawn_cache.json" {
+		t.Errorf("expected spawn_cache.json, got %s", filepath.Base(path))
+	}
+	if filepath.Base(filepath.Dir(path)) != ".orch" {
+		t.Errorf("expected .orch dir, got %s", filepath.Dir(path))
 	}
 }
 

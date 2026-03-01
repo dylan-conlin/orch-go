@@ -146,9 +146,15 @@ func New() *Daemon {
 
 // NewWithConfig creates a new Daemon instance with the given configuration.
 func NewWithConfig(config Config) *Daemon {
+	// Use disk-backed spawn tracker to survive daemon restarts.
+	// Falls back to in-memory if path resolution fails.
+	spawnTracker := NewSpawnedIssueTracker()
+	if cachePath := DefaultSpawnCachePath(); cachePath != "" {
+		spawnTracker = NewSpawnedIssueTrackerWithFile(cachePath)
+	}
 	d := &Daemon{
 		Config:                  config,
-		SpawnedIssues:           NewSpawnedIssueTracker(),
+		SpawnedIssues:           spawnTracker,
 		resumeAttempts:          make(map[string]time.Time),
 		VerificationTracker:     NewVerificationTracker(config.VerificationPauseThreshold),
 		SpawnFailureTracker:     NewSpawnFailureTracker(),
@@ -178,10 +184,14 @@ func NewWithConfig(config Config) *Daemon {
 // NewWithPool creates a new Daemon instance with an explicit worker pool.
 // This is useful for sharing a pool across daemon instances or for testing.
 func NewWithPool(config Config, pool *WorkerPool) *Daemon {
+	spawnTracker := NewSpawnedIssueTracker()
+	if cachePath := DefaultSpawnCachePath(); cachePath != "" {
+		spawnTracker = NewSpawnedIssueTrackerWithFile(cachePath)
+	}
 	d := &Daemon{
 		Config:              config,
 		Pool:                pool,
-		SpawnedIssues:       NewSpawnedIssueTracker(),
+		SpawnedIssues:       spawnTracker,
 		resumeAttempts:      make(map[string]time.Time),
 		VerificationTracker: NewVerificationTracker(config.VerificationPauseThreshold),
 		SpawnFailureTracker: NewSpawnFailureTracker(),
