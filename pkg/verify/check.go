@@ -385,7 +385,7 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 
 	// Architectural choices gate (V1+)
 	// Gates architect, feature-impl, and systematic-debugging on declaring tradeoffs
-	if !isOrch && ShouldRunGate(verifyLevel, GateArchitecturalChoices) && tier != "light" {
+	if !isOrch && ShouldRunGate(verifyLevel, GateArchitecturalChoices) {
 		result.GatesRun = append(result.GatesRun, GateArchitecturalChoices)
 		archChoicesResult := VerifyArchitecturalChoices(workspacePath, result.Skill)
 		if archChoicesResult != nil && !archChoicesResult.Passed {
