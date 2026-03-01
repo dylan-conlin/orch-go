@@ -138,10 +138,12 @@ func (d *Daemon) RunPeriodicOrphanDetection() *OrphanDetectionResult {
 			continue
 		}
 
-		// Unmark from SpawnedIssues tracker so it can be respawned
-		if d.SpawnedIssues != nil {
-			d.SpawnedIssues.Unmark(agent.BeadsID)
-		}
+		// NOTE: We intentionally do NOT call d.SpawnedIssues.Unmark() here.
+		// The spawn cache entry provides a natural cooldown (6h TTL) that prevents
+		// thrash loops where an agent dies, gets orphan-detected, status resets to
+		// "open", and the daemon immediately respawns it. The TTL expiry will
+		// eventually allow respawn. This was the root cause of duplicate spawns
+		// during overnight runs (orch-go-ahif).
 
 		orphans = append(orphans, OrphanedIssue{
 			BeadsID:  agent.BeadsID,

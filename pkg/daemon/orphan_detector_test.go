@@ -399,7 +399,10 @@ func TestDaemon_RunPeriodicOrphanDetection_NoAgents(t *testing.T) {
 	}
 }
 
-func TestDaemon_RunPeriodicOrphanDetection_UnmarksFromSpawnedIssues(t *testing.T) {
+func TestDaemon_RunPeriodicOrphanDetection_RetainsSpawnCacheEntry(t *testing.T) {
+	// After fix orch-go-ahif: orphan detection resets beads status to "open"
+	// but does NOT call Unmark(). The spawn cache entry provides a natural cooldown
+	// (6h TTL) that prevents thrash loops where agents die and are immediately respawned.
 	tracker := NewSpawnedIssueTracker()
 	tracker.MarkSpawned("orphan-001")
 
@@ -436,8 +439,11 @@ func TestDaemon_RunPeriodicOrphanDetection_UnmarksFromSpawnedIssues(t *testing.T
 		t.Fatal("Should have reset 1 orphan")
 	}
 
-	if tracker.IsSpawned("orphan-001") {
-		t.Error("Orphan-001 should have been unmarked from SpawnedIssues tracker")
+	// Key assertion: spawn cache entry should be RETAINED (not unmarked).
+	// This prevents the daemon from immediately respawning the orphaned issue.
+	// The TTL will eventually allow respawn after the cooldown period.
+	if !tracker.IsSpawned("orphan-001") {
+		t.Error("Orphan-001 should STILL be in SpawnedIssues tracker (cooldown prevents immediate respawn)")
 	}
 }
 

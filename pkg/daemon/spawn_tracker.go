@@ -36,6 +36,11 @@ type SpawnedIssueTracker struct {
 	// each one because ID-based dedup treats them as distinct.
 	spawnedTitles map[string]string
 
+	// spawnCounts maps issue ID to the number of times it has been spawned.
+	// This provides visibility into thrashing — issues that are repeatedly
+	// spawned and fail. Counts survive TTL expiry via disk persistence.
+	spawnCounts map[string]int
+
 	// TTL is how long to keep entries before considering them stale.
 	// Default is 6 hours - matching typical agent work duration.
 	// This provides backup protection when session-level dedup fails.
@@ -50,6 +55,7 @@ type SpawnedIssueTracker struct {
 type spawnCacheFile struct {
 	Spawned       map[string]time.Time `json:"spawned"`
 	SpawnedTitles map[string]string    `json:"spawned_titles"`
+	SpawnCounts   map[string]int       `json:"spawn_counts,omitempty"`
 }
 
 // NewSpawnedIssueTracker creates a new tracker with the default 6 hour TTL.
@@ -60,6 +66,7 @@ func NewSpawnedIssueTracker() *SpawnedIssueTracker {
 	return &SpawnedIssueTracker{
 		spawned:       make(map[string]time.Time),
 		spawnedTitles: make(map[string]string),
+		spawnCounts:   make(map[string]int),
 		TTL:           6 * time.Hour,
 	}
 }
@@ -69,6 +76,7 @@ func NewSpawnedIssueTrackerWithTTL(ttl time.Duration) *SpawnedIssueTracker {
 	return &SpawnedIssueTracker{
 		spawned:       make(map[string]time.Time),
 		spawnedTitles: make(map[string]string),
+		spawnCounts:   make(map[string]int),
 		TTL:           ttl,
 	}
 }
@@ -81,6 +89,7 @@ func NewSpawnedIssueTrackerWithFile(filePath string) *SpawnedIssueTracker {
 	t := &SpawnedIssueTracker{
 		spawned:       make(map[string]time.Time),
 		spawnedTitles: make(map[string]string),
+		spawnCounts:   make(map[string]int),
 		TTL:           6 * time.Hour,
 		filePath:      filePath,
 	}
@@ -104,6 +113,7 @@ func (t *SpawnedIssueTracker) MarkSpawned(issueID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.spawned[issueID] = time.Now()
+	t.spawnCounts[issueID]++
 	t.saveLocked()
 }
 
@@ -114,6 +124,11 @@ func (t *SpawnedIssueTracker) MarkSpawnedWithTitle(issueID, title string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.spawned[issueID] = time.Now()
+	t.spawnCounts[issueID]++
+	count := t.spawnCounts[issueID]
+	if count >= 3 {
+		fmt.Fprintf(os.Stderr, "spawn-tracker: WARNING: issue %s spawned %d times (possible thrashing)\n", issueID, count)
+	}
 	if title != "" {
 		normalized := normalizeTitle(title)
 		if normalized != "" {
@@ -180,6 +195,10 @@ func (t *SpawnedIssueTracker) loadFromFile() {
 	if cache.SpawnedTitles != nil {
 		t.spawnedTitles = cache.SpawnedTitles
 	}
+	if cache.SpawnCounts != nil {
+		t.spawnCounts = cache.SpawnCounts
+	}
+	fmt.Fprintf(os.Stderr, "spawn-tracker: loaded cache with %d entries from %s\n", len(t.spawned), t.filePath)
 }
 
 // saveLocked writes the tracker's in-memory state to disk.
@@ -191,6 +210,7 @@ func (t *SpawnedIssueTracker) saveLocked() {
 	cache := spawnCacheFile{
 		Spawned:       t.spawned,
 		SpawnedTitles: t.spawnedTitles,
+		SpawnCounts:   t.spawnCounts,
 	}
 	data, err := json.Marshal(cache)
 	if err != nil {
@@ -328,4 +348,12 @@ func (t *SpawnedIssueTracker) TrackedIDs() []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+// SpawnCount returns how many times an issue has been spawned.
+// This count survives daemon restarts via disk persistence.
+func (t *SpawnedIssueTracker) SpawnCount(issueID string) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.spawnCounts[issueID]
 }
