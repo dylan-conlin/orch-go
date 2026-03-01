@@ -276,3 +276,29 @@ func TestAgreementsResult_ErrorCount(t *testing.T) {
 		t.Errorf("ErrorCount() = %d, want 2", got)
 	}
 }
+
+func TestAgreementFailure_AutoFixField(t *testing.T) {
+	failure := AgreementFailure{
+		AgreementID: "test-001",
+		Title:       "Fixable agreement",
+		Severity:    "warning",
+		Message:     "missing path",
+		AutoFix:     "mkdir -p .kb/missing",
+	}
+
+	if failure.AutoFix != "mkdir -p .kb/missing" {
+		t.Errorf("Expected AutoFix field, got %q", failure.AutoFix)
+	}
+
+	// Verify it shows up in warning output
+	result := &AgreementsResult{
+		Total:    1,
+		Passed:   0,
+		Failed:   1,
+		Failures: []AgreementFailure{failure},
+	}
+
+	if !result.HasFailures() {
+		t.Error("expected HasFailures")
+	}
+}

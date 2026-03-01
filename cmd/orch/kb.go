@@ -865,6 +865,7 @@ type kbAgreementCheckResult struct {
 	Severity    string `json:"severity"`
 	Pass        bool   `json:"pass"`
 	Message     string `json:"message"`
+	AutoFix     string `json:"auto_fix,omitempty"`
 }
 
 // buildAgreementsChecker creates a function that runs kb agreements check --json
@@ -908,6 +909,7 @@ func buildAgreementsChecker() func(string) (*gates.AgreementsResult, error) {
 					Title:       check.Title,
 					Severity:    check.Severity,
 					Message:     check.Message,
+					AutoFix:     check.AutoFix,
 				})
 			}
 		}

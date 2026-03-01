@@ -11,6 +11,7 @@ type AgreementFailure struct {
 	Title       string `json:"title"`
 	Severity    string `json:"severity"` // "error" or "warning"
 	Message     string `json:"message"`
+	AutoFix     string `json:"auto_fix,omitempty"`
 }
 
 // AgreementsResult contains the result of running kb agreements check.
@@ -108,6 +109,9 @@ func showAgreementsWarning(result *AgreementsResult) {
 		fmt.Fprintf(os.Stderr, "   %s %s: %s\n", icon, f.AgreementID, f.Title)
 		if f.Message != "" {
 			fmt.Fprintf(os.Stderr, "     %s\n", f.Message)
+		}
+		if f.AutoFix != "" {
+			fmt.Fprintf(os.Stderr, "     fix: %s\n", f.AutoFix)
 		}
 	}
 	fmt.Fprintf(os.Stderr, "   Run 'kb agreements check' for details\n\n")
