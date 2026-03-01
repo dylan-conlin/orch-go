@@ -73,6 +73,7 @@ func init() {
 	rootCmd.AddCommand(backlogCmd)
 	rootCmd.AddCommand(orientCmd)
 	rootCmd.AddCommand(hookCmd)
+	rootCmd.AddCommand(debriefCmd)
 }
 
 var (
