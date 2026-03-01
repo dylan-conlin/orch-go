@@ -632,6 +632,21 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 		}
 	}
 
+	// Surface synthesis checkpoint (informational, not a gate)
+	if !target.IsOrchestratorSession && !target.IsUntracked {
+		var issueTitle string
+		if target.Issue != nil {
+			issueTitle = target.Issue.Title
+		}
+		var phaseSummary string
+		if outcome.ResultSet && outcome.Result.Phase.Found {
+			phaseSummary = outcome.Result.Phase.Summary
+		}
+		if advisory := RunSynthesisCheckpoint(outcome.SkillName, issueTitle, phaseSummary); advisory != "" {
+			fmt.Print(advisory)
+		}
+	}
+
 	// Update session handoff with spawn completion info
 	if !target.IsOrchestratorSession && target.AgentName != "" && target.BeadsID != "" {
 		if err := UpdateHandoffAfterComplete(target.BeadsProjectDir, target.AgentName, target.BeadsID, outcome.SkillName); err != nil {

@@ -1,0 +1,30 @@
+verification:
+  automated:
+    - command: "go build ./cmd/orch/"
+      expectation: "Build succeeds with no errors"
+      result: "PASS - clean build"
+    - command: "go vet ./cmd/orch/"
+      expectation: "No vet warnings"
+      result: "PASS - no issues"
+    - command: "go test ./cmd/orch/ -run 'TestFindMatchingSynthesisTopics|TestFormatSynthesisCheckpoint|TestSuggestionsAreFresh' -count=1 -v"
+      expectation: "All 11 new tests pass"
+      result: "PASS - 11/11 tests pass"
+    - command: "go test ./cmd/orch/ -count=1"
+      expectation: "Full test suite passes with no regressions"
+      result: "PASS - ok (3.375s)"
+
+  manual:
+    - step: "Run orch complete on a tracked agent with cached reflect suggestions containing synthesis topics that match the agent's work keywords"
+      expectation: "SYNTHESIS CHECKPOINT advisory box is displayed showing matching topics with investigation counts"
+    - step: "Run orch complete on an agent whose keywords don't match any synthesis topics"
+      expectation: "No synthesis checkpoint advisory is displayed"
+    - step: "Run orch complete on an orchestrator session"
+      expectation: "Synthesis checkpoint is skipped (orchestrator sessions excluded)"
+
+  files_changed:
+    - path: "cmd/orch/complete_synthesis.go"
+      description: "New file: synthesis checkpoint trigger logic (findMatchingSynthesisTopics, formatSynthesisCheckpointAdvisory, suggestionsAreFresh, RunSynthesisCheckpoint)"
+    - path: "cmd/orch/complete_synthesis_test.go"
+      description: "New file: 11 tests covering topic matching, formatting, freshness, and edge cases"
+    - path: "cmd/orch/complete_pipeline.go"
+      description: "Added RunSynthesisCheckpoint call to runCompletionAdvisories (informational advisory, not a gate)"
