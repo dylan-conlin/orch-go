@@ -8,25 +8,52 @@ import (
 
 func TestCollectWhatHappened(t *testing.T) {
 	events := []SessionEvent{
-		{Type: "agent.completed", Timestamp: time.Now().Unix(), Data: map[string]interface{}{"beads_id": "orch-go-abc1", "skill": "feature-impl"}},
-		{Type: "session.spawned", Timestamp: time.Now().Unix(), Data: map[string]interface{}{"title": "investigate X"}},
-		{Type: "agent.abandoned", Timestamp: time.Now().Unix(), Data: map[string]interface{}{"beads_id": "orch-go-def2", "reason": "stuck in loop"}},
+		{Type: "agent.completed", Timestamp: time.Now().Unix(), Data: map[string]interface{}{
+			"beads_id": "orch-go-abc1",
+			"skill":    "feature-impl",
+			"reason":   "Added JWT auth middleware with refresh tokens",
+		}},
+		{Type: "session.spawned", Timestamp: time.Now().Unix(), Data: map[string]interface{}{
+			"beads_id": "orch-go-xyz9",
+			"skill":    "investigation",
+			"task":     "investigate auth patterns",
+		}},
+		{Type: "agent.abandoned", Timestamp: time.Now().Unix(), Data: map[string]interface{}{
+			"beads_id": "orch-go-def2",
+			"reason":   "stuck in loop",
+		}},
 	}
 
 	lines := CollectWhatHappened(events)
-	if len(lines) == 0 {
-		t.Fatal("expected non-empty What Happened lines")
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines (one per event), got %d: %v", len(lines), lines)
 	}
 
-	joined := strings.Join(lines, "\n")
-	if !strings.Contains(joined, "Completed") {
-		t.Errorf("expected completion line, got: %s", joined)
+	// Completions show skill + beads_id + reason
+	if !strings.Contains(lines[0], "feature-impl") {
+		t.Errorf("expected skill in completion line, got: %s", lines[0])
 	}
-	if !strings.Contains(joined, "Spawned") {
-		t.Errorf("expected spawn line, got: %s", joined)
+	if !strings.Contains(lines[0], "orch-go-abc1") {
+		t.Errorf("expected beads_id in completion line, got: %s", lines[0])
 	}
-	if !strings.Contains(joined, "Abandoned") {
-		t.Errorf("expected abandon line, got: %s", joined)
+	if !strings.Contains(lines[0], "Added JWT auth") {
+		t.Errorf("expected reason in completion line, got: %s", lines[0])
+	}
+
+	// Spawns show skill + task
+	if !strings.Contains(lines[1], "investigation") {
+		t.Errorf("expected skill in spawn line, got: %s", lines[1])
+	}
+	if !strings.Contains(lines[1], "investigate auth patterns") {
+		t.Errorf("expected task in spawn line, got: %s", lines[1])
+	}
+
+	// Abandonments show beads_id + reason
+	if !strings.Contains(lines[2], "orch-go-def2") {
+		t.Errorf("expected beads_id in abandon line, got: %s", lines[2])
+	}
+	if !strings.Contains(lines[2], "stuck in loop") {
+		t.Errorf("expected reason in abandon line, got: %s", lines[2])
 	}
 }
 
@@ -65,22 +92,17 @@ func TestRenderDebrief(t *testing.T) {
 		Duration: "~3h",
 		Focus:    "Ship debrief command",
 		WhatHappened: []string{
-			"Completed orch-go-abc1 (feature-impl)",
-			"Spawned 2 agents",
+			"Completed: `feature-impl` (orch-go-abc1) — Added JWT auth",
+			"Spawned: `investigation` — investigate auth patterns",
 		},
 		WhatChanged: []string{
-			"Decided to use .kb/sessions/ for debrief artifacts",
+			"Added JWT auth middleware with refresh tokens",
 		},
 		InFlight: []string{
 			"orch-go-def2: fix bug Y (in_progress)",
 		},
 		WhatsNext: []string{
 			"Integrate debrief into orch orient",
-		},
-		Health: HealthData{
-			Checkpoint:    "ok",
-			FrameCollapse: "none",
-			DiscoveredWork: "none",
 		},
 	}
 
@@ -94,12 +116,12 @@ func TestRenderDebrief(t *testing.T) {
 		t.Error("expected focus line")
 	}
 
-	// Check sections
+	// Check sections present
 	if !strings.Contains(output, "## What Happened") {
 		t.Error("expected What Happened section")
 	}
-	if !strings.Contains(output, "Completed orch-go-abc1") {
-		t.Error("expected completion line in output")
+	if !strings.Contains(output, "feature-impl") {
+		t.Error("expected skill in output")
 	}
 
 	if !strings.Contains(output, "## What Changed") {
@@ -114,8 +136,9 @@ func TestRenderDebrief(t *testing.T) {
 		t.Error("expected What's Next section")
 	}
 
-	if !strings.Contains(output, "## Session Health") {
-		t.Error("expected Session Health section")
+	// Health section should NOT be present
+	if strings.Contains(output, "Session Health") {
+		t.Error("Health section should be removed")
 	}
 }
 
@@ -123,11 +146,6 @@ func TestRenderDebriefEmptySections(t *testing.T) {
 	data := &DebriefData{
 		Date:  "2026-02-28",
 		Focus: "testing",
-		Health: HealthData{
-			Checkpoint:    "ok",
-			FrameCollapse: "none",
-			DiscoveredWork: "none",
-		},
 	}
 
 	output := RenderDebrief(data)
@@ -135,6 +153,60 @@ func TestRenderDebriefEmptySections(t *testing.T) {
 	// Empty sections should have placeholder
 	if !strings.Contains(output, "- (none)") {
 		t.Error("expected placeholder for empty sections")
+	}
+}
+
+func TestCollectWhatChangedFromEvents(t *testing.T) {
+	events := []SessionEvent{
+		{Type: "agent.completed", Timestamp: time.Now().Unix(), Data: map[string]interface{}{
+			"beads_id": "orch-go-abc1",
+			"skill":    "feature-impl",
+			"reason":   "Added JWT auth middleware with refresh tokens",
+		}},
+		{Type: "agent.completed", Timestamp: time.Now().Unix(), Data: map[string]interface{}{
+			"beads_id": "orch-go-def2",
+			"skill":    "investigation",
+			"reason":   "Investigated auth patterns and documented findings",
+		}},
+		{Type: "session.spawned", Timestamp: time.Now().Unix(), Data: map[string]interface{}{
+			"task": "some spawn",
+		}},
+	}
+
+	lines := CollectWhatChanged(events)
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines (one per completion), got %d: %v", len(lines), lines)
+	}
+	if !strings.Contains(lines[0], "Added JWT auth") {
+		t.Errorf("expected reason text, got: %s", lines[0])
+	}
+	if !strings.Contains(lines[1], "Investigated auth") {
+		t.Errorf("expected reason text, got: %s", lines[1])
+	}
+}
+
+func TestCollectWhatChangedEmpty(t *testing.T) {
+	lines := CollectWhatChanged(nil)
+	if len(lines) != 0 {
+		t.Errorf("expected empty lines, got %d", len(lines))
+	}
+}
+
+func TestCollectWhatChangedSkipsDuplicateBeadsID(t *testing.T) {
+	events := []SessionEvent{
+		{Type: "agent.completed", Timestamp: time.Now().Unix(), Data: map[string]interface{}{
+			"beads_id": "orch-go-abc1",
+			"reason":   "First completion",
+		}},
+		{Type: "agent.completed", Timestamp: time.Now().Unix(), Data: map[string]interface{}{
+			"beads_id": "orch-go-abc1",
+			"reason":   "Duplicate completion",
+		}},
+	}
+
+	lines := CollectWhatChanged(events)
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 line (deduped), got %d: %v", len(lines), lines)
 	}
 }
 
@@ -183,5 +255,33 @@ func TestDebriefFilePath(t *testing.T) {
 	expected := "/project/.kb/sessions/2026-02-28-debrief.md"
 	if path != expected {
 		t.Errorf("expected %q, got %q", expected, path)
+	}
+}
+
+func TestFormatDuration(t *testing.T) {
+	tests := []struct {
+		name     string
+		duration time.Duration
+		expected string
+	}{
+		{"zero returns empty", 0, ""},
+		{"30 seconds returns empty", 30 * time.Second, ""},
+		{"5 minutes", 5 * time.Minute, "~5m"},
+		{"90 minutes", 90 * time.Minute, "~1h"},
+		{"3 hours", 3 * time.Hour, "~3h"},
+		{"23 hours", 23 * time.Hour, "~23h"},
+		{"exactly 24 hours is stale", 24 * time.Hour, ""},
+		{"25 hours is stale", 25 * time.Hour, ""},
+		{"954 hours is stale", 954 * time.Hour, ""},
+		{"negative returns empty", -1 * time.Hour, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := FormatDuration(tt.duration)
+			if result != tt.expected {
+				t.Errorf("FormatDuration(%v): expected %q, got %q", tt.duration, tt.expected, result)
+			}
+		})
 	}
 }

@@ -28,13 +28,6 @@ type InFlightIssue struct {
 	Status string `json:"status"`
 }
 
-// HealthData captures session health indicators.
-type HealthData struct {
-	Checkpoint     string `json:"checkpoint"`
-	FrameCollapse  string `json:"frame_collapse"`
-	DiscoveredWork string `json:"discovered_work"`
-}
-
 // DebriefData holds all data needed to render a session debrief.
 type DebriefData struct {
 	Date         string   `json:"date"`
@@ -44,7 +37,6 @@ type DebriefData struct {
 	WhatChanged  []string `json:"what_changed,omitempty"`
 	InFlight     []string `json:"in_flight,omitempty"`
 	WhatsNext    []string `json:"whats_next,omitempty"`
-	Health       HealthData `json:"health"`
 }
 
 // DebriefFilePath returns the file path for a debrief on the given date.
@@ -81,12 +73,6 @@ func RenderDebrief(data *DebriefData) string {
 	b.WriteString("## What's Next\n\n")
 	writeListNumbered(&b, data.WhatsNext)
 
-	// Session Health
-	b.WriteString("## Session Health\n\n")
-	b.WriteString(fmt.Sprintf("- **Checkpoint discipline:** %s\n", data.Health.Checkpoint))
-	b.WriteString(fmt.Sprintf("- **Frame collapse:** %s\n", data.Health.FrameCollapse))
-	b.WriteString(fmt.Sprintf("- **Discovered work:** %s\n", data.Health.DiscoveredWork))
-
 	return b.String()
 }
 
@@ -112,76 +98,142 @@ func writeListNumbered(b *strings.Builder, items []string) {
 	b.WriteString("\n")
 }
 
-// CollectWhatHappened summarizes session events into human-readable lines.
-// Deduplicates by beads_id and limits detail to keep output readable.
+// CollectWhatHappened produces one line per event with skill, title, and context.
+// Deduplicates completions and abandonments by beads_id.
 func CollectWhatHappened(events []SessionEvent) []string {
 	if len(events) == 0 {
 		return nil
 	}
 
 	var lines []string
-	completionSet := make(map[string]string) // beadsID -> skill
-	spawnCount := 0
-	abandonSet := make(map[string]string) // beadsID -> reason
+	seen := make(map[string]bool)
 
 	for _, e := range events {
 		switch e.Type {
 		case "agent.completed":
 			beadsID, _ := e.Data["beads_id"].(string)
-			skill, _ := e.Data["skill"].(string)
-			if beadsID != "" {
-				if _, exists := completionSet[beadsID]; !exists || skill != "" {
-					completionSet[beadsID] = skill
-				}
+			if beadsID != "" && seen[beadsID] {
+				continue
 			}
+			if beadsID != "" {
+				seen[beadsID] = true
+			}
+			skill, _ := e.Data["skill"].(string)
+			reason, _ := e.Data["reason"].(string)
+			lines = append(lines, formatCompletionLine(beadsID, skill, reason))
+
 		case "session.spawned":
-			spawnCount++
+			beadsID, _ := e.Data["beads_id"].(string)
+			if beadsID != "" && seen[beadsID] {
+				continue
+			}
+			if beadsID != "" {
+				seen[beadsID] = true
+			}
+			skill, _ := e.Data["skill"].(string)
+			task, _ := e.Data["task"].(string)
+			lines = append(lines, formatSpawnLine(skill, task))
+
 		case "agent.abandoned":
 			beadsID, _ := e.Data["beads_id"].(string)
-			reason, _ := e.Data["reason"].(string)
-			if beadsID != "" {
-				if _, exists := abandonSet[beadsID]; !exists {
-					abandonSet[beadsID] = reason
-				}
+			if beadsID != "" && seen[beadsID] {
+				continue
 			}
+			if beadsID != "" {
+				seen[beadsID] = true
+			}
+			reason, _ := e.Data["reason"].(string)
+			lines = append(lines, formatAbandonLine(beadsID, reason))
 		}
-	}
-
-	if len(completionSet) > 0 {
-		lines = append(lines, formatAgentSummary("Completed", completionSet))
-	}
-	if spawnCount > 0 {
-		lines = append(lines, fmt.Sprintf("Spawned %d agent(s)", spawnCount))
-	}
-	if len(abandonSet) > 0 {
-		lines = append(lines, formatAgentSummary("Abandoned", abandonSet))
 	}
 
 	return lines
 }
 
-// formatAgentSummary formats a map of beadsID->skill/reason into a concise summary.
-// Shows count and up to maxDetail individual items.
-func formatAgentSummary(verb string, agents map[string]string) string {
-	const maxDetail = 5
-	count := len(agents)
+// formatCompletionLine renders a single completion event.
+// Format: "Completed: `skill` (beads_id) — reason summary"
+func formatCompletionLine(beadsID, skill, reason string) string {
+	var parts []string
+	parts = append(parts, "Completed:")
+	if skill != "" {
+		parts = append(parts, fmt.Sprintf("`%s`", skill))
+	}
+	if beadsID != "" {
+		parts = append(parts, fmt.Sprintf("(%s)", beadsID))
+	}
+	line := strings.Join(parts, " ")
+	if reason != "" {
+		line += " — " + truncate(reason, 120)
+	}
+	return line
+}
 
-	var details []string
-	for id, extra := range agents {
-		if len(details) >= maxDetail {
-			break
-		}
-		if extra != "" {
-			details = append(details, fmt.Sprintf("%s (%s)", id, extra))
-		} else {
-			details = append(details, id)
-		}
+// formatSpawnLine renders a single spawn event.
+// Format: "Spawned: `skill` — task description"
+func formatSpawnLine(skill, task string) string {
+	var parts []string
+	parts = append(parts, "Spawned:")
+	if skill != "" {
+		parts = append(parts, fmt.Sprintf("`%s`", skill))
+	}
+	line := strings.Join(parts, " ")
+	if task != "" {
+		line += " — " + truncate(task, 120)
+	}
+	return line
+}
+
+// formatAbandonLine renders a single abandon event.
+// Format: "Abandoned: beads_id — reason"
+func formatAbandonLine(beadsID, reason string) string {
+	line := "Abandoned:"
+	if beadsID != "" {
+		line += " " + beadsID
+	}
+	if reason != "" {
+		line += " — " + reason
+	}
+	return line
+}
+
+// truncate shortens a string to maxLen, appending "..." if truncated.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+// CollectWhatChanged extracts the reason/explain-back text from agent.completed
+// events. These describe what each agent actually accomplished.
+// Deduplicates by beads_id.
+func CollectWhatChanged(events []SessionEvent) []string {
+	if len(events) == 0 {
+		return nil
 	}
 
-	if count <= maxDetail {
-		return fmt.Sprintf("%s %d: %s", verb, count, strings.Join(details, ", "))
+	var lines []string
+	seen := make(map[string]bool)
+
+	for _, e := range events {
+		if e.Type != "agent.completed" {
+			continue
+		}
+		beadsID, _ := e.Data["beads_id"].(string)
+		if beadsID != "" && seen[beadsID] {
+			continue
+		}
+		if beadsID != "" {
+			seen[beadsID] = true
+		}
+		reason, _ := e.Data["reason"].(string)
+		if reason == "" {
+			continue
+		}
+		lines = append(lines, reason)
 	}
-	return fmt.Sprintf("%s %d: %s, ... (+%d more)", verb, count, strings.Join(details, ", "), count-maxDetail)
+
+	return lines
 }
 
 // CollectInFlight formats in-flight issues into debrief lines.
@@ -209,6 +261,28 @@ func FilterEventsToday(events []SessionEvent, now time.Time) []SessionEvent {
 		}
 	}
 	return filtered
+}
+
+// MaxReasonableDuration is the maximum session duration that makes sense for a
+// daily debrief. Durations exceeding this are from stale session data and should
+// be omitted rather than showing nonsensical values like "~954h".
+const MaxReasonableDuration = 24 * time.Hour
+
+// FormatDuration formats a session duration for debrief display.
+// Returns empty string for zero, negative, sub-minute, or stale (>24h) durations.
+func FormatDuration(d time.Duration) string {
+	if d <= 0 || d >= MaxReasonableDuration {
+		return ""
+	}
+	hours := int(d.Hours())
+	if hours > 0 {
+		return fmt.Sprintf("~%dh", hours)
+	}
+	mins := int(d.Minutes())
+	if mins > 0 {
+		return fmt.Sprintf("~%dm", mins)
+	}
+	return ""
 }
 
 // ParseMultiValue splits a semicolon-delimited string into trimmed values.

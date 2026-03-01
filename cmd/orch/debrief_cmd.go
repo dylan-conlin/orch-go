@@ -83,11 +83,6 @@ func runDebrief(focusOverride string) error {
 
 	data := &debrief.DebriefData{
 		Date: dateStr,
-		Health: debrief.HealthData{
-			Checkpoint:     "ok",
-			FrameCollapse:  "none",
-			DiscoveredWork: "none",
-		},
 	}
 
 	// 1. Focus: flag > session goal > fallback
@@ -100,8 +95,8 @@ func runDebrief(focusOverride string) error {
 	events := loadDebriefEvents(now)
 	data.WhatHappened = debrief.CollectWhatHappened(events)
 
-	// 4. What Changed: --changed flag + auto-detected from git
-	data.WhatChanged = collectDebriefChanged()
+	// 4. What Changed: --changed flag + completion reasons from events
+	data.WhatChanged = collectDebriefChanged(events)
 
 	// 5. What's In Flight from bd list --status=in_progress
 	data.InFlight = collectDebriefInFlight()
@@ -176,16 +171,7 @@ func collectDebriefDuration() string {
 	if !store.IsActive() {
 		return ""
 	}
-	d := store.Duration()
-	hours := int(d.Hours())
-	if hours > 0 {
-		return fmt.Sprintf("~%dh", hours)
-	}
-	mins := int(d.Minutes())
-	if mins > 0 {
-		return fmt.Sprintf("~%dm", mins)
-	}
-	return ""
+	return debrief.FormatDuration(store.Duration())
 }
 
 // loadDebriefEvents reads events.jsonl and filters to today.
@@ -222,8 +208,8 @@ func loadDebriefEvents(now time.Time) []debrief.SessionEvent {
 	return debrief.FilterEventsToday(events, now)
 }
 
-// collectDebriefChanged merges --changed flag with auto-detected changes from git.
-func collectDebriefChanged() []string {
+// collectDebriefChanged merges --changed flag with completion reasons from events.
+func collectDebriefChanged(events []debrief.SessionEvent) []string {
 	var items []string
 
 	// User-provided via --changed flag
@@ -231,35 +217,8 @@ func collectDebriefChanged() []string {
 		items = append(items, debrief.ParseMultiValue(debriefChanged)...)
 	}
 
-	// Auto-detect: recent kb quick entries from git log (today's commits)
-	gitItems := collectGitChanges()
-	items = append(items, gitItems...)
-
-	return items
-}
-
-// collectGitChanges looks at today's commits for .kb/ changes as signals
-// of what changed (decisions, constraints, knowledge).
-func collectGitChanges() []string {
-	today := time.Now().Format("2006-01-02")
-	cmd := exec.Command("git", "log", "--since="+today, "--oneline", "--diff-filter=A", "--", ".kb/")
-	output, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-
-	var items []string
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		// Strip commit hash prefix (first word)
-		parts := strings.SplitN(line, " ", 2)
-		if len(parts) == 2 {
-			items = append(items, parts[1])
-		}
-	}
+	// Auto-detect: completion reasons from agent.completed events
+	items = append(items, debrief.CollectWhatChanged(events)...)
 
 	return items
 }
