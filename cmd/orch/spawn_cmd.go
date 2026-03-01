@@ -682,6 +682,12 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// 9. Load design artifacts
 	designMockupPath, designPromptPath, designNotes := orch.LoadDesignArtifacts(spawnDesignWorkspace, projectDir)
 
+	// 9b. Gather prior art for overlapping work
+	priorCompletions := ""
+	if beadsID != "" && !spawnNoTrack {
+		priorCompletions = spawn.GatherPriorArt(beadsID, projectDir, nil)
+	}
+
 	// 10. Build spawn context
 	// Resolve account configDir from the resolved account name
 	resolvedAccountName := resolved.Settings.Account.Value
@@ -720,6 +726,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		DesignPromptPath:   designPromptPath,
 		DesignNotes:        designNotes,
 		BeadsDir:           crossRepoBeadsDir,
+		PriorCompletions:   priorCompletions,
 	}
 
 	// 11. Build spawn config

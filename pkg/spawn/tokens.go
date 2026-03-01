@@ -128,8 +128,14 @@ func EstimateContextTokens(cfg *Config) *TokenEstimate {
 		components["prior_workspace"] = EstimateTokens(priorWorkspaceSize)
 	}
 
+	// Prior completions (prior art injection)
+	priorCompletionsSize := len(cfg.PriorCompletions)
+	if priorCompletionsSize > 0 {
+		components["prior_completions"] = EstimateTokens(priorCompletionsSize)
+	}
+
 	// Calculate total
-	totalChars := baseTemplateSize + taskSize + skillSize + kbContextSize + serverContextSize + reworkFeedbackSize + priorSynthesisSize + priorWorkspaceSize
+	totalChars := baseTemplateSize + taskSize + skillSize + kbContextSize + serverContextSize + reworkFeedbackSize + priorSynthesisSize + priorWorkspaceSize + priorCompletionsSize
 	totalTokens := 0
 	for _, tokens := range components {
 		totalTokens += tokens

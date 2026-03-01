@@ -148,6 +148,9 @@ Full prior artifacts at: {{.PriorWorkspace}}
 5. Report via ` + "`bd comment {{.BeadsID}} \"Phase: Planning - Rework #{{.ReworkNumber}}: [brief plan]\"`" + `
 
 {{end}}
+{{if .PriorCompletions}}
+{{.PriorCompletions}}
+{{end}}
 {{if .KBContext}}
 {{.KBContext}}
 {{end}}
@@ -571,6 +574,7 @@ type contextData struct {
 	DesignPromptPath      string   // Path to design prompt
 	DesignNotes           string   // Notes from design session
 	OrientationFrame      string   // Additional task context (from issue description), rendered as separate section
+	PriorCompletions      string   // Prior completed agent work on same issue
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -646,6 +650,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		DesignPromptPath:      cfg.DesignPromptPath,
 		DesignNotes:           cfg.DesignNotes,
 		OrientationFrame:      cfg.OrientationFrame,
+		PriorCompletions:      cfg.PriorCompletions,
 	}
 
 	var buf bytes.Buffer

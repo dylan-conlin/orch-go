@@ -80,6 +80,9 @@ type SpawnContext struct {
 	// When the beads issue is in a different project than the agent's working directory,
 	// this is set so BEADS_DIR env var can be injected into the Claude CLI launch command.
 	BeadsDir string
+	// PriorCompletions contains formatted markdown about prior completed agents
+	// that worked on the same beads issue. Prevents agents from re-doing completed work.
+	PriorCompletions string
 }
 
 // ResolvedSpawnResult holds resolved spawn settings and the parsed model spec.
@@ -1079,6 +1082,7 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 		DesignPromptPath:   ctx.DesignPromptPath,
 		DesignNotes:        ctx.DesignNotes,
 		BeadsDir:           ctx.BeadsDir,
+		PriorCompletions:   ctx.PriorCompletions,
 	}
 }
 

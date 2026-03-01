@@ -278,6 +278,11 @@ type Config struct {
 	DesignPromptPath string
 	// DesignNotes are notes from the design session SYNTHESIS.md
 	DesignNotes string
+
+	// PriorCompletions contains formatted markdown about prior completed agents
+	// that worked on the same beads issue. Injected into SPAWN_CONTEXT.md to prevent
+	// agents from re-doing work that was already completed.
+	PriorCompletions string
 }
 
 // UsageInfo contains account usage data at spawn time.
