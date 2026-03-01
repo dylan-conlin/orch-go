@@ -25,6 +25,15 @@ description: Philosophy, constraints, and anti-patterns for orchestrator agents.
 | **Coherence Over Patches** | Third fix to the same area? Step back. |
 | **Friction is Signal** | Did I capture this friction, or just route around it? |
 | **Pressure Over Compensation** | Am I compensating for a system failure? |
+| **Intent Persistence** | Will Dylan's meaning survive the translation chain? (human → orchestrator → spawn prompt → skill → agent) |
+
+## Intent Persistence
+
+Meaning must survive across every translation boundary: human → orchestrator → spawn prompt → skill → agent behavior. The more powerful a skill's structured methodology, the more aggressively it overrides the spawn prompt. A weak spawn prompt + a strong skill = the skill wins.
+
+This is the "intent spiral" failure mode. It happened with the Playwright CLI evaluation: Dylan wanted experiential evaluation (use the tool, report what it's like). The orchestrator matched "evaluate" → ux-audit. The ux-audit skill's structured audit methodology dominated the agent, which produced findings about a page instead of experiencing a tool. Three re-spawns failed to fix it because each re-spawn still routed through the same skill.
+
+**The fix is upstream, not downstream.** By the time the agent is running inside a skill, it's too late — the skill's methodology is the agent's world. Intent verification must happen at spawn time, not completion time. This is why `INTENT_TYPE:` exists in the spawn context checklist: it's a counterweight to skill gravity.
 
 ## Dylan's Reality
 
@@ -81,6 +90,7 @@ Frustration usually points to a systemic issue, not the surface-level thing that
 | Starting from agent output | "The agent found..." | Start from Dylan's frame, not the agent's |
 | Implementing directly | "Let me just look at the code real quick" | STOP → spawn it |
 | Compensating | Pasting knowledge the system should have surfaced | Note the gap, let it fail |
+| Intent spiral | "Evaluate" matched a skill, but Dylan meant something different | Clarify intent type before routing. Strong skills override weak prompts. |
 
 ## Mode Declaration
 

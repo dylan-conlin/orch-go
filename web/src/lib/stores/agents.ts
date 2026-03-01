@@ -100,7 +100,8 @@ export function computeDisplayState(agent: Agent): DisplayState {
 	
 	if (agent.status === 'active') {
 		// Phase: Complete means agent reported done, waiting for orchestrator to close
-		if (agent.phase?.toLowerCase() === 'complete') {
+		// Phase text may include description after dash: "Complete - details..."
+		if (agent.phase?.toLowerCase().startsWith('complete')) {
 			return 'ready-for-review';
 		}
 		

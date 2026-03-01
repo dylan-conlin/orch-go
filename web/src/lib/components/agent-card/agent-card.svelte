@@ -117,9 +117,20 @@
 		}
 	}
 
+	/**
+	 * Extract just the phase name from a phase string like "Complete - details..."
+	 */
+	function getPhaseLabel(phase?: string): string {
+		if (!phase) return '';
+		// Phase format: "PhaseName - description..." or just "PhaseName"
+		const dashIndex = phase.indexOf(' - ');
+		return dashIndex > 0 ? phase.substring(0, dashIndex) : phase;
+	}
+
 	function getPhaseVariant(phase?: string): 'default' | 'secondary' | 'outline' {
 		if (!phase) return 'outline';
-		switch (phase.toLowerCase()) {
+		const label = getPhaseLabel(phase).toLowerCase();
+		switch (label) {
 			case 'complete':
 				return 'default';
 			case 'implementing':
@@ -379,7 +390,7 @@
 <button
 	type="button"
 	onclick={handleClick}
-	class="group relative w-full cursor-pointer rounded border bg-card p-2 text-left transition-all duration-500 hover:border-primary/50 hover:shadow-sm {displayState === 'running' ? 'border-yellow-500 shadow-md shadow-yellow-500/20' : displayState === 'ready-for-review' ? 'border-blue-500 shadow-md shadow-blue-500/20' : displayState === 'dead' ? 'border-red-500 shadow-md shadow-red-500/20' : displayState === 'awaiting-cleanup' ? 'border-amber-500 shadow-md shadow-amber-500/20' : agent.is_stalled ? 'border-orange-500 shadow-md shadow-orange-500/20' : displayState === 'idle' ? 'border-orange-500/50' : ''} {isSelected ? 'ring-2 ring-primary border-primary' : ''}"
+	class="group relative w-full cursor-pointer overflow-hidden rounded border bg-card p-2 text-left transition-all duration-500 hover:border-primary/50 hover:shadow-sm {displayState === 'running' ? 'border-yellow-500 shadow-md shadow-yellow-500/20' : displayState === 'ready-for-review' ? 'border-blue-500 shadow-md shadow-blue-500/20' : displayState === 'dead' ? 'border-red-500 shadow-md shadow-red-500/20' : displayState === 'awaiting-cleanup' ? 'border-amber-500 shadow-md shadow-amber-500/20' : agent.is_stalled ? 'border-orange-500 shadow-md shadow-orange-500/20' : displayState === 'idle' ? 'border-orange-500/50' : ''} {isSelected ? 'ring-2 ring-primary border-primary' : ''}"
 >
 	<!-- Status indicator bar at top - color reflects display state -->
 	<div class={`absolute left-0 top-0 h-0.5 w-full rounded-t transition-colors duration-500 ${displayState === 'running' ? 'bg-yellow-500' : displayState === 'ready-for-review' ? 'bg-blue-500' : displayState === 'dead' ? 'bg-red-500' : displayState === 'awaiting-cleanup' ? 'bg-amber-500' : agent.is_stalled ? 'bg-orange-500' : displayState === 'idle' ? 'bg-orange-500' : getStatusColor(agent.status)}`}></div>
@@ -407,7 +418,7 @@
 				</Tooltip.Root>
 			{:else if agent.phase}
 				<Badge variant={getPhaseVariant(agent.phase)} class="h-4 px-1 text-[10px]">
-					{agent.phase}
+					{getPhaseLabel(agent.phase)}
 				</Badge>
 			{/if}
 			{#if agent.context_risk}
@@ -517,7 +528,7 @@
 				<Tooltip.Content>
 					<p class="font-medium text-orange-500">Stalled Agent</p>
 					<p class="text-xs text-muted-foreground">
-						Same phase ({agent.phase || 'unknown'}) for 15+ minutes.<br />
+						Same phase ({getPhaseLabel(agent.phase) || 'unknown'}) for 15+ minutes.<br />
 						May be stuck, blocked, or waiting for input.
 					</p>
 				</Tooltip.Content>
@@ -689,7 +700,7 @@
 				<div class="flex items-center gap-1">
 					<span class="text-[10px]">⏱️</span>
 					<p class="flex-1 truncate text-[10px] text-orange-400 font-medium">
-						Stuck at {agent.phase || 'current phase'} for 15+ min
+						Stuck at {getPhaseLabel(agent.phase) || 'current phase'} for 15+ min
 					</p>
 					<Tooltip.Root>
 						<Tooltip.Trigger>
@@ -700,7 +711,7 @@
 						<Tooltip.Content>
 							<p class="font-medium text-orange-500">Progress Stalled</p>
 							<p class="text-xs text-muted-foreground">
-								Agent has been at phase "{agent.phase}" for 15+ minutes.<br />
+								Agent has been at phase "{getPhaseLabel(agent.phase)}" for 15+ minutes.<br />
 								May be blocked, waiting for input, or stuck in a loop.
 							</p>
 							<p class="text-xs text-muted-foreground mt-1">
@@ -799,9 +810,18 @@
 	<!-- Abandoned agents footer - reserve space for consistency -->
 	{#if agent.status === 'abandoned'}
 		<div class="mt-1.5 border-t border-border/50 pt-1.5">
-			<p class="text-[10px] leading-tight text-red-500/70">
-				{agent.close_reason || 'Agent was abandoned'}
-			</p>
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					{#snippet child({ props })}
+						<p {...props} class="text-[10px] leading-tight text-red-500/70 line-clamp-2 cursor-default">
+							{agent.close_reason || 'Agent was abandoned'}
+						</p>
+					{/snippet}
+				</Tooltip.Trigger>
+				<Tooltip.Content class="max-w-xs">
+					<p>{agent.close_reason || 'Agent was abandoned'}</p>
+				</Tooltip.Content>
+			</Tooltip.Root>
 		</div>
 	{/if}
 </button>

@@ -12,8 +12,14 @@ BUILD something    → feature-impl (configure phases)
 DESIGN decisions   → architect (trade-offs, recommendations)
 FIX broken thing   → systematic-debugging (cause clear)
 UNDERSTAND         → probe (model exists) | investigation (no model) | research (external)
+TRY/EXPERIENCE     → experiential-eval (agent uses the tool, reports qualitatively)
+COMPARE approaches → head-to-head (structured comparison, same task both ways)
 EVALUATE UI/UX     → ux-audit (requires --mcp playwright)
 ```
+
+**TRY vs EVALUATE:** "Evaluate Playwright CLI" could mean either. `ux-audit` produces structured findings about a page. `experiential-eval` has the agent use a tool interactively and report on friction, capability, and tradeoffs. The verb "evaluate" is ambiguous — clarify intent before routing.
+
+**The intent persistence problem:** Powerful skills override weak spawn prompts. When a skill has structured methodology (like ux-audit's audit framework), it will dominate agent behavior regardless of what the spawn prompt says. The more structured the skill, the more important it is that routing was correct. If you're unsure, the spawn prompt needs an explicit `INTENT_TYPE:` to counterbalance skill gravity.
 
 **Probe vs Investigation:** Model exists in `.kb/models/{name}/` → spawn probe into `.kb/models/{name}/probes/`. No model exists → spawn investigation into `.kb/investigations/`.
 
@@ -48,6 +54,7 @@ EVALUATE UI/UX     → ux-audit (requires --mcp playwright)
 Every spawn prompt must include:
 
 - [ ] `ORIENTATION_FRAME:` — Why Dylan cares (his words)
+- [ ] `INTENT_TYPE:` — What kind of work: `produce` (code/artifact), `experience` (use a tool, report back), or `compare` (try both, report tradeoffs). This counterbalances skill gravity — a structured skill will dominate agent behavior, so intent must be explicit.
 - [ ] `PROJECT_DIR:` — Absolute path
 - [ ] `SESSION SCOPE:` — What the agent is doing
 - [ ] Scope boundaries — Explicit IN and OUT lists
@@ -67,6 +74,7 @@ Add `--mcp playwright` for any UI work (required for `ux-audit`).
 Before labeling `triage:ready`, verify:
 
 - [ ] Type is clear (bug, feature, investigation, question)
+- [ ] Intent type is explicit — agent will USE the thing, not BUILD around it (for experiential work)
 - [ ] No blocking dependencies (`bd show <id>`)
 - [ ] Strategic premise validated — no open questions blocking this
 - [ ] Scope well-defined — agent can complete without clarification
