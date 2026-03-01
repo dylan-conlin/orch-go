@@ -526,7 +526,7 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - `pkg/spawn/resolve.go:modelBackendRequirement()` - Model→backend mapping
 - `cmd/orch/spawn_cmd.go:isInfrastructureWork()` - Keyword detection logic (22 keywords)
 - `cmd/orch/spawn_cmd.go` - `--reason` flag validation for safety-override flags (~952 lines total)
-- `pkg/orch/extraction.go:ResolveSpawnSettings()` - Resolve wrapper with logging (~1615 lines total)
+- `pkg/orch/extraction.go:ResolveSpawnSettings()` - Resolve wrapper with logging (~1619 lines total)
 - `pkg/orch/spawn_modes.go:DispatchSpawn()` - Mode routing (inline/headless/tmux/claude) (~530 lines)
 - `pkg/spawn/claude.go:BuildClaudeLaunchCommand()` - Claude CLI with account isolation + BEADS_DIR injection (~165 lines)
 - `pkg/spawn/config.go:ClaudeContext()` - CLAUDE_CONTEXT env var resolution (worker/orchestrator/meta-orchestrator)

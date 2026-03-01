@@ -2,7 +2,7 @@
 
 **Domain:** Agent Spawning / Workspace Creation
 **Last Updated:** 2026-02-28
-**Synthesized From:** 36 investigations (Dec 2025 - Jan 2026) into spawn implementation, context generation, tier system, and triage friction. Updated Feb 2026-27-28 via drift probes and model drift agent.
+**Synthesized From:** 36 investigations (Dec 2025 - Jan 2026) into spawn implementation, context generation, tier system, and triage friction. Updated Feb 2026-28 via drift probes and model drift agent (tier-based verify level capping, expanded skill defaults).
 
 ---
 
@@ -182,7 +182,7 @@ Agent works in: ~/target-project/
 7. **Model-aware backend routing** - Backend determined by model provider unless CLI overrides (Decision: kb-2d62ef)
 8. **Claude backend implies tmux** - Claude CLI physically requires tmux window; headless + claude auto-switches to tmux
 9. **Account routing is capacity-aware** - Primary accounts checked first; spillover activated when primaries exhausted (>20% threshold)
-10. **V0-V3 verification levels are strict subsets** - V0⊂V1⊂V2⊂V3; level set at spawn, enforced at completion
+10. **V0-V3 verification levels are strict subsets** - V0⊂V1⊂V2⊂V3; level set at spawn, enforced at completion. **Tier-based capping:** Light tier caps verify level at V0 regardless of skill default (via `VerifyLevelForTier()`). Only applies to inferred levels; explicit `--verify-level` overrides are respected.
 11. **Cross-repo spawns inject BEADS_DIR** - Without this, `bd comment` in cross-repo agents targets wrong project
 12. **Orientation frame is separate from task title** - Title drives workspace name slug; frame provides strategic context without polluting names
 13. **CLAUDE_CONTEXT env var set explicitly on all spawn paths** - Workers get "worker", orchestrators get "orchestrator", meta-orchestrators get "meta-orchestrator". Prevents inherited env from triggering wrong hooks.
@@ -275,8 +275,9 @@ Agent works in: ~/target-project/
 **V2 (Evidence):** V1 + test evidence, build logs, git diff
 **V3 (Behavioral):** V2 + visual verification, explain-back
 
-**Skill defaults:** issue-creation→V0, investigation/architect→V1, feature-impl/systematic-debugging→V2
-**Issue type minimums:** feature/bug→V2, investigation→V1
+**Skill defaults:** issue-creation/capture-knowledge→V0, investigation/architect/research/codebase-audit/design-session/probe/ux-audit→V1, feature-impl/systematic-debugging/reliability-testing→V2, debug-with-playwright→V3
+**Issue type minimums:** feature/bug/decision→V2, investigation/probe→V1
+**Tier capping:** Light tier→max V0 (via `TierMaxVerifyLevel`); full tier→no cap
 
 **This enables:** Graduated verification matching work complexity
 **This constrains:** Must decide level at spawn (persisted in AGENT_MANIFEST.json)
@@ -374,6 +375,11 @@ Agent works in: ~/target-project/
   - Workers get "worker", orchestrators get "orchestrator", meta-orchestrators get "meta-orchestrator"
   - Fixed bug where OpenCode backend spawns (tmux, inline) inherited parent's CLAUDE_CONTEXT
   - Claude CLI path already had this; now all backends aligned
+- Tier-based verify level capping (`pkg/spawn/verify_level.go:VerifyLevelForTier()`)
+  - Light tier caps at V0 (acknowledge only), full tier uncapped
+  - Applied to inferred levels in `BuildSpawnConfig()`; explicit `--verify-level` overrides respected
+- Expanded skill verify level defaults:
+  - Added: capture-knowledge→V0, probe→V1, ux-audit→V1, debug-with-playwright→V3
 
 ---
 
@@ -403,7 +409,7 @@ Agent works in: ~/target-project/
 
 **Primary Evidence (Verify These):**
 - `cmd/orch/spawn_cmd.go` - Main spawn command + infrastructure detection (~952 lines)
-- `pkg/orch/extraction.go` - Spawn pipeline types and functions (~1615 lines)
+- `pkg/orch/extraction.go` - Spawn pipeline types and functions (~1619 lines)
 - `pkg/orch/spawn_modes.go` - Mode dispatch: inline/headless/tmux/claude (~530 lines)
 - `pkg/orch/spawn_helpers.go` - Helper utilities for spawn pipeline (~148 lines)
 - `pkg/spawn/context.go` - SPAWN_CONTEXT.md generation (~1418 lines)
@@ -414,7 +420,20 @@ Agent works in: ~/target-project/
 - `pkg/spawn/claude.go` - Claude CLI backend (tmux spawn, MCP wiring, BEADS_DIR injection) (~165 lines)
 - `pkg/spawn/gap.go` - Context gap analysis, quality scoring, wrong-project detection
 - `pkg/spawn/session.go` - Session management, AGENT_MANIFEST.json with verify_level field
-- `pkg/spawn/verify_level.go` - V0-V3 level definitions, defaults, comparison functions (~103 lines)
+- `pkg/spawn/verify_level.go` - V0-V3 level definitions, defaults, tier-based capping, comparison functions (~130 lines)
+- `pkg/spawn/errors.go` - Error type definitions and handling (~261 lines)
+- `pkg/spawn/orchestrator_context.go` - Orchestrator SPAWN_CONTEXT generation (~656 lines)
+- `pkg/spawn/meta_orchestrator_context.go` - Meta-orchestrator context generation (~415 lines)
+- `pkg/spawn/skill_requires.go` - Skill requirement validation (~634 lines)
+- `pkg/spawn/learning.go` - Learning/knowledge context injection (~975 lines)
+- `pkg/spawn/verification_spec.go` - VERIFICATION_SPEC.yaml handling (~377 lines)
+- `pkg/spawn/tokens.go` - Token estimation and management (~236 lines)
+- `pkg/spawn/staleness_events.go` - Model staleness event emission at spawn time (~191 lines)
+- `pkg/spawn/rework.go` - Rework/retry logic (~174 lines)
+- `pkg/spawn/probes.go` - Probe generation/management (~203 lines)
+- `pkg/spawn/ecosystem.go` - Ecosystem/environment setup (~112 lines)
+- `pkg/spawn/resolve_format.go` - Format resolution helpers (~74 lines)
+- `pkg/spawn/opencode_mcp.go` - OpenCode MCP integration (~73 lines)
 - `pkg/spawn/gates/` - Pre-spawn validation gates (hotspot, triage, ratelimit, concurrency, verification, agreements)
 - `pkg/spawn/backends/` - Backend abstraction layer (backend interface, common, headless, inline, tmux)
-- `pkg/skills/loader.go` - Skill discovery, loading, dependency composition
+- `pkg/skills/loader.go` - Skill discovery, loading, dependency composition (~334 lines)
