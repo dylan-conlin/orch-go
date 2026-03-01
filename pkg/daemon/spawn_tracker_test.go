@@ -639,6 +639,48 @@ func TestSpawnedIssueTracker_SpawnCount_FilePersistence(t *testing.T) {
 
 // TestDaemon_OrphanDetectionPreservesSpawnCache is an integration test that verifies
 // the full cycle: spawn → orphan detection → spawn attempt blocked by cache.
+// TestSpawnedIssueTracker_CleanStale_RemovesSpawnCounts verifies that CleanStale
+// removes spawnCounts entries for issues that are no longer in the spawned map.
+func TestSpawnedIssueTracker_CleanStale_RemovesSpawnCounts(t *testing.T) {
+	tracker := NewSpawnedIssueTrackerWithTTL(50 * time.Millisecond)
+
+	// Spawn issues multiple times to build up counts
+	tracker.MarkSpawned("issue-1")
+	tracker.MarkSpawned("issue-1")
+	tracker.MarkSpawned("issue-2")
+
+	if count := tracker.SpawnCount("issue-1"); count != 2 {
+		t.Fatalf("issue-1 spawn count should be 2, got %d", count)
+	}
+	if count := tracker.SpawnCount("issue-2"); count != 1 {
+		t.Fatalf("issue-2 spawn count should be 1, got %d", count)
+	}
+
+	// Let TTL expire for issue-1 and issue-2
+	time.Sleep(60 * time.Millisecond)
+
+	// Add a fresh issue
+	tracker.MarkSpawned("issue-3")
+
+	removed := tracker.CleanStale()
+	if removed != 2 {
+		t.Errorf("expected 2 removed, got %d", removed)
+	}
+
+	// spawnCounts for stale issues should be cleaned
+	if count := tracker.SpawnCount("issue-1"); count != 0 {
+		t.Errorf("issue-1 spawn count should be 0 after cleanup, got %d", count)
+	}
+	if count := tracker.SpawnCount("issue-2"); count != 0 {
+		t.Errorf("issue-2 spawn count should be 0 after cleanup, got %d", count)
+	}
+
+	// Fresh issue's count should survive
+	if count := tracker.SpawnCount("issue-3"); count != 1 {
+		t.Errorf("issue-3 spawn count should be 1, got %d", count)
+	}
+}
+
 func TestDaemon_OrphanDetectionPreservesSpawnCache(t *testing.T) {
 	tracker := NewSpawnedIssueTracker()
 	spawnCount := 0

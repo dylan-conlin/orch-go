@@ -38,7 +38,8 @@ type SpawnedIssueTracker struct {
 
 	// spawnCounts maps issue ID to the number of times it has been spawned.
 	// This provides visibility into thrashing — issues that are repeatedly
-	// spawned and fail. Counts survive TTL expiry via disk persistence.
+	// spawned and fail. Counts survive daemon restarts via disk persistence
+	// but are cleaned when the associated spawn entry expires from TTL.
 	spawnCounts map[string]int
 
 	// TTL is how long to keep entries before considering them stale.
@@ -293,6 +294,12 @@ func (t *SpawnedIssueTracker) CleanStale() int {
 	for title, id := range t.spawnedTitles {
 		if _, exists := t.spawned[id]; !exists {
 			delete(t.spawnedTitles, title)
+		}
+	}
+	// Clean spawn counts for issues no longer tracked
+	for id := range t.spawnCounts {
+		if _, exists := t.spawned[id]; !exists {
+			delete(t.spawnCounts, id)
 		}
 	}
 	if removed > 0 {
