@@ -261,6 +261,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 
 - `work <issue-id>` - Spawn from beads issue with skill inference
 - `daemon run` - Run autonomous processing in foreground
+- `daemon run --replace` - Stop existing daemon first, then start (graceful takeover)
 - `daemon preview` - Show what would be spawned
 
 ### Server Management

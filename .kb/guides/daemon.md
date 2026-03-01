@@ -205,9 +205,12 @@ orch status  # Shows "Active: X/Y" where Y is max capacity
 
 ```bash
 orch daemon run
-orch daemon run --verbose  # Show debug output
+orch daemon run --replace         # Stop existing daemon first (graceful takeover)
+orch daemon run --verbose         # Show debug output
 orch daemon run --poll-interval 30  # Override poll interval (seconds)
 ```
+
+**Graceful takeover with `--replace`:** When you want to restart the daemon with new flags or after rebuilding, `--replace` stops the existing instance before acquiring the PID lock. This avoids the "cannot start daemon: already running" error without needing a separate `daemon stop` first. Equivalent to `daemon stop && daemon run` but atomic.
 
 ### Preview Mode
 
@@ -271,9 +274,11 @@ tail -f ~/.orch/daemon.log
 
 **After rebuilding:**
 ```bash
-make install-restart  # Builds, installs, restarts daemon
+make install-restart  # Builds, installs, restarts daemon (launchd)
 # OR
 make install && launchctl kickstart -k gui/$(id -u)/com.orch.daemon
+# OR (foreground daemon)
+make install && orch daemon run --replace  # Graceful takeover with new binary
 ```
 
 ---
@@ -511,9 +516,10 @@ make install-restart
 
 **Cause (from 2025-12-24):** Race condition between startlock release and flock acquisition.
 
-**Fix:** Use single launchd-managed daemon. If manual spawns needed:
+**Fix:** Use single launchd-managed daemon. For foreground use, `--replace` handles graceful takeover:
 ```bash
-orch daemon run --once  # Process single issue and exit
+orch daemon run --replace  # Stop existing, start new (graceful takeover)
+orch daemon run --once     # Process single issue and exit
 ```
 
 ### "Beads daemon not running, slow API"
@@ -567,6 +573,7 @@ From investigations, these design decisions were made:
 | Auto-completion via CompletionOnce | Free capacity slots without orchestrator | Jan 2026 |
 | Two-tier reflection (synthesis+open) | Only high-signal types auto-create issues | Jan 2026 |
 | No beads daemon auto-start | Caching solves API latency; daemons are per-project | Jan 2026 |
+| `--replace` flag for graceful takeover | Avoids manual stop/start; atomic daemon restart | Feb 2026 |
 
 ---
 

@@ -1,0 +1,49 @@
+id: daemon-feature-docs
+title: "Daemon features documented in guide and CLAUDE.md"
+description: >
+  When daemon.go adds new flags or commands, the corresponding documentation
+  in .kb/guides/daemon.md and the CLAUDE.md Automation section must be updated.
+  This catches the pattern where features land in code but artifacts don't get
+  updated, making the feature invisible to future agents and orchestrators.
+created: 2026-02-28
+severity: warning
+failure_mode: stale-shadow
+
+parties:
+  source:
+    project: orch-go
+    artifact: cmd/orch/daemon.go
+    description: "Daemon CLI flags and commands"
+  consumer:
+    project: orch-go
+    artifact: .kb/guides/daemon.md, CLAUDE.md
+    description: "Daemon documentation for agents and humans"
+
+contract: >
+  New daemon run/restart/once flags defined in cmd/orch/daemon.go must appear
+  in .kb/guides/daemon.md within the same commit or a follow-up commit.
+  The CLAUDE.md Automation section should list all daemon subcommands.
+
+check:
+  type: command
+  run: |
+    # Extract flag names from Cobra flag registrations in daemon.go
+    # Pattern: .Flags().XxxVar(..., "flag-name", ...) or .Flags().XxxVarP(..., "flag-name", ...)
+    # Excludes hidden flags (marked with MarkHidden)
+    HIDDEN=$(grep -oP 'MarkHidden\("\K[^"]+' cmd/orch/daemon.go 2>/dev/null)
+    FLAGS=$(grep -oP 'Flags\(\)\.\w+Var[P]?\([^,]+,\s*"\K[a-z][-a-z]*' cmd/orch/daemon.go | sort -u)
+    GUIDE=".kb/guides/daemon.md"
+    MISSING=""
+    for flag in $FLAGS; do
+      # Skip hidden flags
+      echo "$HIDDEN" | grep -qx "$flag" && continue
+      if ! grep -q "\-\-$flag" "$GUIDE" 2>/dev/null; then
+        MISSING="$MISSING --$flag"
+      fi
+    done
+    if [ -n "$MISSING" ]; then
+      echo "Flags in daemon.go missing from daemon guide:$MISSING"
+      exit 2
+    fi
+    echo "All daemon flags documented"
+    exit 0

@@ -1,6 +1,32 @@
-commands:
-  - cmd: 'pwd'
-    expected: 'Prints repository root path.'
-  - cmd: 'go test ./pkg/session'
-    expected: 'All session package tests pass.'
-manual_checks: []
+task: Wire --replace flag into artifact ecosystem
+issue: orch-go-5ay4
+tier: light
+
+deliverables:
+  - path: CLAUDE.md
+    change: Added "daemon run --replace" to Automation section
+    verified: true
+
+  - path: .kb/guides/daemon.md
+    change: |
+      Added --replace to "Running the Daemon" section with explanation,
+      "After rebuilding" section with alternative path,
+      "Multiple daemons spawning" troubleshooting with --replace fix,
+      Key Decisions table with Feb 2026 entry
+    verified: true
+
+  - path: ~/.claude/skills/meta/orchestrator/SKILL.md
+    change: Added --replace reference to daemon restart line
+    verified: true
+    note: Outside repo, not committed here
+
+  - path: .kb/agreements/daemon-feature-docs.yaml
+    change: New kb agreement checking daemon flags appear in guide
+    verified: true
+
+checks:
+  - command: kb agreements check
+    result: "PASS daemon-feature-docs"
+
+  - description: Agreement extracts 21 flags from daemon.go, all found in guide
+    result: No missing flags detected
