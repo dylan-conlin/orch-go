@@ -423,7 +423,7 @@ func TestGetCompletionsForReviewWorkspaceBased(t *testing.T) {
 	}
 
 	// Note: We can't easily test getCompletionsForReview() here because it uses os.Getwd()
-	// and calls verify.VerifyCompletion which shells out to bd. But we can verify that
+	// and calls verify.VerifyCompletionForReview which shells out to bd. But we can verify that
 	// the workspace detection logic (checking for SYNTHESIS.md) is correct.
 
 	// Verify SYNTHESIS.md exists in ws1

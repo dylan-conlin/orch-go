@@ -220,20 +220,13 @@ func validateOutcomeField(content string) bool {
 	return false
 }
 
-// VerifyCompletion checks if an agent is ready for completion.
-// Returns a VerificationResult with any errors or warnings.
-// Uses VerifyCompletionWithTier with an empty tier (reads from workspace).
-func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult, error) {
-	return VerifyCompletionWithTier(beadsID, workspacePath, "")
-}
-
 // isOrchestrator returns true if the tier is TierOrchestrator.
 func isOrchestrator(tier string) bool {
 	return tier == TierOrchestrator
 }
 
 // VerifyCompletionFull checks if an agent is ready for completion including skill constraints
-// and phase gates. This extends VerifyCompletion with:
+// and phase gates. This extends the standard verification with:
 // 1. Constraint verification from SPAWN_CONTEXT.md (file patterns must match)
 // 2. Phase gate verification (required phases must be reported via beads comments)
 // 3. Skill output verification from skill.yaml outputs.required section
@@ -251,20 +244,31 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier, serverURL st
 // It checks only the essential requirements (Phase: Complete, SYNTHESIS.md) and skips
 // expensive checks (git diff, go build) that are deferred to orch complete.
 // This enables O(1) verification per workspace instead of O(n) git/build commands.
+//
+// Uses the level-aware verification path (V0-V3) for consistent gate behavior
+// with VerifyCompletionFullWithComments used by orch complete.
 func VerifyCompletionForReview(beadsID, workspacePath, tier, serverURL string, comments []Comment) (VerificationResult, error) {
 	// Determine tier if not provided
 	if tier == "" && workspacePath != "" {
 		tier = ReadTierFromWorkspace(workspacePath)
 	}
 
-	// First run standard verification (uses comments for phase status)
-	result, err := VerifyCompletionWithTierAndComments(beadsID, workspacePath, tier, comments)
+	// Determine verification level from workspace manifest
+	verifyLevel := ""
+	if workspacePath != "" {
+		verifyLevel = ReadVerifyLevelFromWorkspace(workspacePath)
+	}
+
+	// Run level-aware standard verification (Phase: Complete + SYNTHESIS.md gates)
+	result, err := verifyCompletionWithLevelAndComments(beadsID, workspacePath, tier, verifyLevel, comments)
 	if err != nil {
 		return result, err
 	}
 
+	result.VerifyLevel = verifyLevel
+
 	// Verify backend deliverables (opencode transcript or tmux capture)
-	if tier != TierOrchestrator && workspacePath != "" && result.Passed {
+	if !isOrchestrator(tier) && workspacePath != "" && result.Passed {
 		backendResult := VerifyBackendDeliverables(workspacePath, beadsID, serverURL, "")
 		if backendResult != nil {
 			result.Warnings = append(result.Warnings, backendResult.Warnings...)
@@ -548,93 +552,6 @@ func verifyCompletionWithLevelAndComments(beadsID, workspacePath, tier, verifyLe
 
 	// --- V2 gate: Synthesis ---
 	// Uses level-based gating: only runs at V2+ (knowledge-producing V1 skills excluded by level)
-	if workspacePath != "" && ShouldRunGate(verifyLevel, GateSynthesis) {
-		result.GatesRun = append(result.GatesRun, GateSynthesis)
-		ok, err := VerifySynthesis(workspacePath)
-		if err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SYNTHESIS.md: %v", err))
-		} else if !ok {
-			result.Passed = false
-			result.Errors = append(result.Errors,
-				fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath))
-			result.GatesFailed = append(result.GatesFailed, GateSynthesis)
-		}
-	}
-
-	return result, nil
-}
-
-// VerifyCompletionWithTier checks if an agent is ready for completion.
-// The tier parameter specifies the spawn tier ("light", "full", or "orchestrator").
-// If tier is empty, it will be read from the workspace's .tier file.
-// Light tier spawns skip the SYNTHESIS.md requirement.
-// Orchestrator tier spawns:
-//   - Skip beads-dependent phase checks (orchestrators manage sessions, not issues)
-//   - Check SESSION_HANDOFF.md instead of SYNTHESIS.md
-//
-// Returns a VerificationResult with any errors or warnings.
-func VerifyCompletionWithTier(beadsID string, workspacePath string, tier string) (VerificationResult, error) {
-	return VerifyCompletionWithTierAndComments(beadsID, workspacePath, tier, nil)
-}
-
-// VerifyCompletionWithTierAndComments is like VerifyCompletionWithTier but accepts pre-fetched comments.
-// If comments is nil, comments will be fetched from beads API.
-// NOTE: This legacy function uses tier-based gating. New callers should use
-// VerifyCompletionFullWithComments which uses verification levels (V0-V3).
-func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, tier string, comments []Comment) (VerificationResult, error) {
-	result := VerificationResult{
-		Passed: true,
-	}
-
-	// Extract skill name for tracking
-	if workspacePath != "" {
-		result.Skill, _ = ExtractSkillNameFromSpawnContext(workspacePath)
-	}
-
-	// Determine tier if not provided
-	if tier == "" && workspacePath != "" {
-		tier = ReadTierFromWorkspace(workspacePath)
-	}
-
-	// Orchestrator tier: skip beads-dependent checks, verify SESSION_HANDOFF.md instead
-	if tier == TierOrchestrator {
-		return VerifyOrchestratorCompletion(workspacePath), nil
-	}
-
-	// Standard worker verification: beads-based phase tracking
-	// Get phase status (using pre-fetched comments if available)
-	// Gate failures no longer early-return so all gates are reported at once.
-	var status PhaseStatus
-	var err error
-	if comments != nil {
-		status = ParsePhaseFromComments(comments)
-	} else {
-		status, err = GetPhaseStatus(beadsID)
-		if err != nil {
-			result.Passed = false
-			result.Errors = append(result.Errors, fmt.Sprintf("failed to get phase status: %v", err))
-			result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
-			return result, nil // API error: can't proceed without phase data
-		}
-	}
-
-	result.Phase = status
-
-	// Check if Phase: Complete was reported
-	if !status.Found {
-		result.Passed = false
-		result.Errors = append(result.Errors,
-			fmt.Sprintf("agent has not reported any Phase status for %s", beadsID))
-		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
-	} else if !strings.EqualFold(status.Phase, "Complete") {
-		result.Passed = false
-		result.Errors = append(result.Errors,
-			fmt.Sprintf("agent phase is '%s', not 'Complete' (beads: %s)", status.Phase, beadsID))
-		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
-	}
-
-	// Check for SYNTHESIS.md — uses level-based gating via ShouldRunGate
-	verifyLevel := ReadVerifyLevelFromWorkspace(workspacePath)
 	if workspacePath != "" && ShouldRunGate(verifyLevel, GateSynthesis) {
 		result.GatesRun = append(result.GatesRun, GateSynthesis)
 		ok, err := VerifySynthesis(workspacePath)

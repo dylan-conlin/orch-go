@@ -991,7 +991,7 @@ Completed orchestrator session for feature X.
 
 func TestVerifyOrchestratorCompletion(t *testing.T) {
 	t.Run("fails without workspace path", func(t *testing.T) {
-		result, err := VerifyCompletionWithTier("", "", TierOrchestrator)
+		result, err := verifyCompletionWithLevelAndComments("", "", TierOrchestrator, "", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1011,7 +1011,7 @@ func TestVerifyOrchestratorCompletion(t *testing.T) {
 			t.Fatalf("failed to write tier file: %v", err)
 		}
 
-		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
+		result, err := verifyCompletionWithLevelAndComments("", tmpDir, TierOrchestrator, "", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1031,7 +1031,7 @@ func TestVerifyOrchestratorCompletion(t *testing.T) {
 			t.Fatalf("failed to write handoff file: %v", err)
 		}
 
-		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
+		result, err := verifyCompletionWithLevelAndComments("", tmpDir, TierOrchestrator, "", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1067,7 +1067,7 @@ Made significant progress on the implementation.
 			t.Fatalf("failed to write handoff file: %v", err)
 		}
 
-		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
+		result, err := verifyCompletionWithLevelAndComments("", tmpDir, TierOrchestrator, "", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1096,7 +1096,7 @@ Brief session summary that completed all required work.
 			t.Fatalf("failed to write handoff file: %v", err)
 		}
 
-		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
+		result, err := verifyCompletionWithLevelAndComments("", tmpDir, TierOrchestrator, "", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1128,7 +1128,7 @@ Notes for next session.
 			t.Fatalf("failed to write handoff file: %v", err)
 		}
 
-		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
+		result, err := verifyCompletionWithLevelAndComments("", tmpDir, TierOrchestrator, "", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1164,7 +1164,7 @@ Completed session.
 		}
 
 		// Call with empty beadsID - should still work for orchestrator tier
-		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
+		result, err := verifyCompletionWithLevelAndComments("", tmpDir, TierOrchestrator, "", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1665,9 +1665,9 @@ func TestSynthesisGateFilteredByVerifyLevel(t *testing.T) {
 			}
 
 			// Run verification (without SYNTHESIS.md to see if it's required)
-			result, err := VerifyCompletionWithTierAndComments("test-bead", tmpDir, "full", comments)
+			result, err := verifyCompletionWithLevelAndComments("test-bead", tmpDir, "full", tt.verifyLevel, comments)
 			if err != nil {
-				t.Fatalf("VerifyCompletionWithTierAndComments() error = %v", err)
+				t.Fatalf("verifyCompletionWithLevelAndComments() error = %v", err)
 			}
 
 			if tt.shouldRequireSynth {
