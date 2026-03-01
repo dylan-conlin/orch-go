@@ -502,7 +502,7 @@ const PreFilledSessionHandoffTemplate = `# Session Handoff
 - {constraint} - why it matters
 
 ### Externalized
-- ` + "`kn decide \"X\" --reason \"Y\"`" + ` - [if applicable]
+- ` + "`kb quick decide \"X\" --reason \"Y\"`" + ` - [if applicable]
 - ` + "`.kb/decisions/YYYY-MM-DD-*.md`" + ` - [if created]
 
 ### Artifacts Created

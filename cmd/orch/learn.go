@@ -86,11 +86,11 @@ var learnActCmd = &cobra.Command{
 	Long: `Run the suggested command for a recurring gap.
 
 The index corresponds to the suggestion number shown by 'orch learn'.
-This will execute the suggested kn, bd, or orch command.
+This will execute the suggested kb, bd, or orch command.
 
 Example:
-  orch learn           # Shows: [1] auth (3x) - suggest: kn decide...
-  orch learn act 1     # Runs the kn decide command for auth`,
+  orch learn           # Shows: [1] auth (3x) - suggest: kb quick decide...
+  orch learn act 1     # Runs the kb quick decide command for auth`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runLearnAct(args[0])
@@ -113,7 +113,7 @@ Resolution types:
   custom            - Any other resolution (requires details)
 
 Example:
-  orch learn           # Shows: [1] auth (3x) - suggest: kn decide...
+  orch learn           # Shows: [1] auth (3x) - suggest: kb quick decide...
   orch learn resolve 1 added_knowledge
   orch learn resolve 2 wont_fix "Not relevant to current project"`,
 	Args: cobra.RangeArgs(2, 3),

@@ -942,10 +942,10 @@ go test ./...
 ### Constraints Discovered
 - Constraint 1 - Why it matters
 
-### Externalized via ` + "`kn`" + `
-- ` + "`kn decide \"X\" --reason \"Y\"`" + ` - [if applicable]
-- ` + "`kn constraint \"X\" --reason \"Y\"`" + ` - [if applicable]
-- ` + "`kn tried \"X\" --failed \"Y\"`" + ` - [if applicable]
+### Externalized via ` + "`kb quick`" + `
+- ` + "`kb quick decide \"X\" --reason \"Y\"`" + ` - [if applicable]
+- ` + "`kb quick constrain \"X\" --reason \"Y\"`" + ` - [if applicable]
+- ` + "`kb quick tried \"X\" --failed \"Y\"`" + ` - [if applicable]
 
 ---
 

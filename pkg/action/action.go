@@ -603,7 +603,7 @@ func FormatPatterns(patterns []ActionPattern) string {
 
 	sb.WriteString("╠══════════════════════════════════════════════════════════════════════════════╣\n")
 	sb.WriteString("║  These patterns may indicate knowledge gaps or system limitations            ║\n")
-	sb.WriteString("║  Consider: kn tried \"[action]\" --failed \"[why]\"                              ║\n")
+	sb.WriteString("║  Consider: kb quick tried \"[action]\" --failed \"[why]\"                         ║\n")
 	sb.WriteString("╚══════════════════════════════════════════════════════════════════════════════╝\n")
 
 	return sb.String()
@@ -617,15 +617,15 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-// SuggestKnEntry returns a suggested kn command based on a pattern.
-func (p *ActionPattern) SuggestKnEntry() string {
+// SuggestKbEntry returns a suggested kb quick command based on a pattern.
+func (p *ActionPattern) SuggestKbEntry() string {
 	switch p.Outcome {
 	case OutcomeEmpty:
-		return fmt.Sprintf(`kn tried "%s on %s" --failed "Returns empty - target doesn't exist or has no content"`, p.Tool, p.Target)
+		return fmt.Sprintf(`kb quick tried "%s on %s" --failed "Returns empty - target doesn't exist or has no content"`, p.Tool, p.Target)
 	case OutcomeError:
-		return fmt.Sprintf(`kn tried "%s on %s" --failed "Action fails repeatedly - investigate cause"`, p.Tool, p.Target)
+		return fmt.Sprintf(`kb quick tried "%s on %s" --failed "Action fails repeatedly - investigate cause"`, p.Tool, p.Target)
 	case OutcomeFallback:
-		return fmt.Sprintf(`kn constrain "Avoid %s on %s" --reason "Requires fallback - prefer alternative approach"`, p.Tool, p.Target)
+		return fmt.Sprintf(`kb quick constrain "Avoid %s on %s" --reason "Requires fallback - prefer alternative approach"`, p.Tool, p.Target)
 	default:
 		return ""
 	}

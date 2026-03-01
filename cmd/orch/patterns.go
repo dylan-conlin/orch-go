@@ -517,7 +517,7 @@ func collectActionPatterns() ([]DetectedPattern, error) {
 		}
 
 		// Add suggestion from action pattern
-		if suggestion := ap.SuggestKnEntry(); suggestion != "" {
+		if suggestion := ap.SuggestKbEntry(); suggestion != "" {
 			pattern.Suggestion = suggestion
 		}
 

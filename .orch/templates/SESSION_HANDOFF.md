@@ -89,8 +89,8 @@ incomplete sections, and the cognitive load of reconstructing what happened.
 - {constraint} - why it matters
 
 ### Externalized
-- `kn decide "X" --reason "Y"` - [if applicable]
-- `kn constraint "X" --reason "Y"` - [if applicable]
+- `kb quick decide "X" --reason "Y"` - [if applicable]
+- `kb quick constrain "X" --reason "Y"` - [if applicable]
 - `.kb/decisions/YYYY-MM-DD-*.md` - [if created]
 
 ### Artifacts Created

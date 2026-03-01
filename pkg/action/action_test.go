@@ -297,7 +297,7 @@ func TestFormatPatterns_Empty(t *testing.T) {
 	}
 }
 
-func TestActionPattern_SuggestKnEntry(t *testing.T) {
+func TestActionPattern_SuggestKbEntry(t *testing.T) {
 	tests := []struct {
 		name     string
 		pattern  ActionPattern
@@ -310,7 +310,7 @@ func TestActionPattern_SuggestKnEntry(t *testing.T) {
 				Target:  "*.md",
 				Outcome: OutcomeEmpty,
 			},
-			expected: `kn tried "Read on *.md" --failed "Returns empty - target doesn't exist or has no content"`,
+			expected: `kb quick tried "Read on *.md" --failed "Returns empty - target doesn't exist or has no content"`,
 		},
 		{
 			name: "error outcome",
@@ -319,7 +319,7 @@ func TestActionPattern_SuggestKnEntry(t *testing.T) {
 				Target:  "git status",
 				Outcome: OutcomeError,
 			},
-			expected: `kn tried "Bash on git status" --failed "Action fails repeatedly - investigate cause"`,
+			expected: `kb quick tried "Bash on git status" --failed "Action fails repeatedly - investigate cause"`,
 		},
 		{
 			name: "fallback outcome",
@@ -328,15 +328,15 @@ func TestActionPattern_SuggestKnEntry(t *testing.T) {
 				Target:  "*.md",
 				Outcome: OutcomeFallback,
 			},
-			expected: `kn constrain "Avoid Read on *.md" --reason "Requires fallback - prefer alternative approach"`,
+			expected: `kb quick constrain "Avoid Read on *.md" --reason "Requires fallback - prefer alternative approach"`,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.pattern.SuggestKnEntry()
+			got := tt.pattern.SuggestKbEntry()
 			if got != tt.expected {
-				t.Errorf("SuggestKnEntry() = %q, want %q", got, tt.expected)
+				t.Errorf("SuggestKbEntry() = %q, want %q", got, tt.expected)
 			}
 		})
 	}

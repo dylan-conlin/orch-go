@@ -142,7 +142,7 @@ func printSpawnSummaryWithGapWarning(gapAnalysis *spawn.GapAnalysis) {
 		fmt.Fprintf(os.Stderr, "│  ⚠️  GAP WARNING: Agent spawned with limited context         │\n")
 		fmt.Fprintf(os.Stderr, "├─────────────────────────────────────────────────────────────┤\n")
 		fmt.Fprintf(os.Stderr, "│  Agent may compensate by guessing patterns/conventions.    │\n")
-		fmt.Fprintf(os.Stderr, "│  Consider: kn decide / kn constrain / kb create            │\n")
+		fmt.Fprintf(os.Stderr, "│  Consider: kb quick decide / kb quick constrain             │\n")
 		fmt.Fprintf(os.Stderr, "└─────────────────────────────────────────────────────────────┘\n")
 	}
 }
