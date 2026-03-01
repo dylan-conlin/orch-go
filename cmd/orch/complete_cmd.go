@@ -4,6 +4,7 @@
 // Pipeline phases are in complete_pipeline.go:
 //   resolveCompletionTarget → executeVerificationGates → runCompletionAdvisories → executeLifecycleTransition
 // Helper functions are in complete_actions.go.
+// Post-lifecycle helpers (cache, rebuild, telemetry, accretion) are in complete_postlifecycle.go.
 package main
 
 import (
