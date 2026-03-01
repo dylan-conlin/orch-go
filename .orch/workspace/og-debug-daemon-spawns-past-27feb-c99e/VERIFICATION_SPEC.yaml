@@ -1,0 +1,40 @@
+issue: orch-go-4uz
+title: "Daemon spawns past concurrency cap because status API reports all agents as idle"
+type: bug-fix
+
+verification:
+  build:
+    command: "go build ./cmd/orch/"
+    expect: "exit 0"
+
+  vet:
+    command: "go vet ./pkg/daemon/ ./pkg/spawn/gates/ ./cmd/orch/"
+    expect: "exit 0"
+
+  tests:
+    - command: "go test ./pkg/daemon/ -run TestPoolReconcileDoesNotResetWhenTmuxAgentsExist -v"
+      expect: "PASS"
+      validates: "Pool is not reset to 0 when tmux agents exist"
+
+    - command: "go test ./pkg/daemon/ -run TestDaemonReconcileWithActiveCountFunc -v"
+      expect: "PASS"
+      validates: "Daemon uses injectable activeCountFunc for reconciliation"
+
+    - command: "go test ./pkg/daemon/ -run TestDaemonReconcileDefaultCountIncludesTmux -v"
+      expect: "PASS"
+      validates: "Default activeCountFunc is CombinedActiveCount"
+
+    - command: "go test ./pkg/daemon/ -run TestExtractBeadsIDFromWindowName -v"
+      expect: "PASS"
+      validates: "Beads ID extraction from tmux window names"
+
+    - command: "go test ./pkg/spawn/gates/ -v"
+      expect: "PASS"
+      validates: "Concurrency gate compiles and existing tests pass"
+
+files_changed:
+  - pkg/daemon/active_count.go
+  - pkg/daemon/active_count_test.go
+  - pkg/daemon/daemon.go
+  - pkg/daemon/capacity.go
+  - pkg/spawn/gates/concurrency.go
