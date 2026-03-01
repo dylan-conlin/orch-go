@@ -1,0 +1,19 @@
+verification:
+  type: knowledge-artifact
+  deliverables:
+    - path: .kb/decisions/2026-02-28-atc-not-conductor-orchestrator-reframe.md
+      exists: true
+      description: Decision record documenting ATC-not-conductor orchestrator reframe
+  checks:
+    - name: decision-record-structure
+      command: "head -5 .kb/decisions/2026-02-28-atc-not-conductor-orchestrator-reframe.md"
+      expect: "Contains title, date, status, deciders fields"
+    - name: extends-strategic-orchestrator
+      command: "grep -c 'strategic-orchestrator-model' .kb/decisions/2026-02-28-atc-not-conductor-orchestrator-reframe.md"
+      expect: "At least 1 reference"
+    - name: decision-committed
+      command: "git log --oneline -1 -- .kb/decisions/2026-02-28-atc-not-conductor-orchestrator-reframe.md"
+      expect: "Shows commit"
+  manual_verification:
+    - "Review that the ATC vs conductor framing is clear and actionable"
+    - "Verify relationship table connects to existing decisions accurately"
