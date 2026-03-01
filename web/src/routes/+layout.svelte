@@ -4,6 +4,7 @@
 	import { connectionStatus } from '$lib/stores/agents';
 	import { usage } from '$lib/stores/usage';
 	import { theme, mode, getEffective } from '$lib/stores/theme';
+	import { page } from '$app/stores';
 	import { ThemeToggle } from '$lib/components/theme-toggle';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Snippet } from 'svelte';
@@ -57,9 +58,21 @@
 						<span class="text-sm font-semibold">Swarm</span>
 					</a>
 					<nav class="flex items-center gap-1">
-						<a href="/" class="px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Dashboard</a>
-						<a href="/work-graph" class="px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Work Graph</a>
-						<a href="/knowledge-tree" class="px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Knowledge Tree</a>
+						<a
+							href="/"
+							class="px-2 py-1 text-xs font-medium transition-colors {$page.url.pathname === '/' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+							aria-current={$page.url.pathname === '/' ? 'page' : undefined}
+						>Dashboard</a>
+						<a
+							href="/work-graph"
+							class="px-2 py-1 text-xs font-medium transition-colors {$page.url.pathname === '/work-graph' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+							aria-current={$page.url.pathname === '/work-graph' ? 'page' : undefined}
+						>Work Graph</a>
+						<a
+							href="/knowledge-tree"
+							class="px-2 py-1 text-xs font-medium transition-colors {$page.url.pathname === '/knowledge-tree' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+							aria-current={$page.url.pathname === '/knowledge-tree' ? 'page' : undefined}
+						>Knowledge Tree</a>
 					</nav>
 				</div>
 				<div class="flex flex-1 items-center justify-end gap-3">
