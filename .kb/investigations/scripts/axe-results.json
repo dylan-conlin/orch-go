@@ -1,0 +1,134 @@
+{
+  "summary": {
+    "violationCount": 3,
+    "passCount": 16,
+    "incompleteCount": 1,
+    "inapplicableCount": 42
+  },
+  "violations": [
+    {
+      "id": "color-contrast",
+      "impact": "serious",
+      "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.11/color-contrast?application=axeAPI",
+      "nodeCount": 59,
+      "tags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "nodes": [
+        {
+          "target": [
+            "nav > a[href=\"/\"]"
+          ],
+          "html": "<a href=\"/\" class=\"px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors\">Dashboard</a>",
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.45 (foreground color: #8a8a8a, background color: #ffffff, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "target": [
+            "a[href$=\"work-graph\"]"
+          ],
+          "html": "<a href=\"/work-graph\" class=\"px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors\">Work Graph</a>",
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.45 (foreground color: #8a8a8a, background color: #ffffff, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "target": [
+            "a[href$=\"knowledge-tree\"]"
+          ],
+          "html": "<a href=\"/knowledge-tree\" class=\"px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors\">Knowledge Tree</a>",
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.45 (foreground color: #8a8a8a, background color: #ffffff, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "target": [
+            "#bits-s1"
+          ],
+          "html": "<span id=\"bits-s1\" data-state=\"closed\" data-delay-duration=\"700\" data-tooltip-trigger=\"\" tabindex=\"0\" type=\"button\" class=\"inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-default\"><span class=\"h-1.5 w-1.5 rounded-full bg-green-500\"></span> connected</span>",
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.45 (foreground color: #8a8a8a, background color: #ffffff, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "target": [
+            ".p-0\\.5 > .py-1.hover\\:text-foreground.px-2"
+          ],
+          "html": "<button class=\"px-2 py-1 rounded text-xs font-medium transition-colors text-muted-foreground hover:text-foreground\">📦 History</button>",
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.16 (foreground color: #8a8a8a, background color: #f5f5f5, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+        }
+      ]
+    },
+    {
+      "id": "nested-interactive",
+      "impact": "serious",
+      "description": "Ensure interactive controls are not nested as they are not always announced by screen readers or can cause focus problems for assistive technologies",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.11/nested-interactive?application=axeAPI",
+      "nodeCount": 8,
+      "tags": [
+        "wcag2a",
+        "wcag412"
+      ],
+      "nodes": [
+        {
+          "target": [
+            ".border-red-500.shadow-red-500\\/20.hover\\:border-primary\\/50:nth-child(1)"
+          ],
+          "html": "<button type=\"button\" class=\"group relative w-full cursor-pointer rounded border bg-card p-2 text-left transition-all duration-500 hover:border-primary/50 hover:shadow-sm border-red-500 shadow-md shadow-red-500/20 \">",
+          "failureSummary": "Fix any of the following:\n  Element has focusable descendants"
+        },
+        {
+          "target": [
+            "#bits-c35"
+          ],
+          "html": "<button id=\"bits-c35\" data-state=\"closed\" data-delay-duration=\"700\" data-tooltip-trigger=\"\" tabindex=\"0\" type=\"button\"><button type=\"button\" class=\"text-[10px] text-muted-foreground hover:text-foreground transition-colors\">orch-go-d5g6</button><!----></button>",
+          "failureSummary": "Fix any of the following:\n  Element has focusable descendants"
+        },
+        {
+          "target": [
+            ".border-red-500.shadow-red-500\\/20.hover\\:border-primary\\/50:nth-child(2)"
+          ],
+          "html": "<button type=\"button\" class=\"group relative w-full cursor-pointer rounded border bg-card p-2 text-left transition-all duration-500 hover:border-primary/50 hover:shadow-sm border-red-500 shadow-md shadow-red-500/20 \">",
+          "failureSummary": "Fix any of the following:\n  Element has focusable descendants"
+        },
+        {
+          "target": [
+            "#bits-c49"
+          ],
+          "html": "<button id=\"bits-c49\" data-state=\"closed\" data-delay-duration=\"700\" data-tooltip-trigger=\"\" tabindex=\"0\" type=\"button\"><button type=\"button\" class=\"text-[10px] text-muted-foreground hover:text-foreground transition-colors\">orch-go-mzqk</button><!----></button>",
+          "failureSummary": "Fix any of the following:\n  Element has focusable descendants"
+        },
+        {
+          "target": [
+            ".border-amber-500.shadow-amber-500\\/20.hover\\:border-primary\\/50:nth-child(1)"
+          ],
+          "html": "<button type=\"button\" class=\"group relative w-full cursor-pointer rounded border bg-card p-2 text-left transition-all duration-500 hover:border-primary/50 hover:shadow-sm border-amber-500 shadow-md shadow-amber-500/20 \">",
+          "failureSummary": "Fix any of the following:\n  Element has focusable descendants"
+        }
+      ]
+    },
+    {
+      "id": "select-name",
+      "impact": "critical",
+      "description": "Ensure select element has an accessible name",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.11/select-name?application=axeAPI",
+      "nodeCount": 1,
+      "tags": [
+        "wcag2a",
+        "wcag412"
+      ],
+      "nodes": [
+        {
+          "target": [
+            "select"
+          ],
+          "html": "<select class=\"h-6 rounded border border-input bg-background px-1.5 text-xs cursor-pointer\" data-testid=\"time-filter\">",
+          "failureSummary": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+        }
+      ]
+    }
+  ],
+  "incomplete": [
+    {
+      "id": "color-contrast",
+      "impact": "serious",
+      "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+      "nodeCount": 11
+    }
+  ]
+}
