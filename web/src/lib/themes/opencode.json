@@ -74,8 +74,8 @@
       "light": "lightStep12"
     },
     "textMuted": {
-      "dark": "darkStep11",
-      "light": "lightStep11"
+      "dark": "#878787",
+      "light": "#6F6F6F"
     },
     "background": {
       "dark": "darkStep1",

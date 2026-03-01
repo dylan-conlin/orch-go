@@ -81,7 +81,7 @@
       "dark": "neutral-200"
     },
     "textMuted": {
-      "light": "neutral-500",
+      "light": "#6E6E7B",
       "dark": "neutral-400"
     },
     "background": {

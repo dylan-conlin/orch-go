@@ -31,7 +31,7 @@
     "success": { "dark": "rainGreenHi", "light": "rainGreenDim" },
     "info": { "dark": "alertBlue", "light": "alertBlue" },
     "text": { "dark": "rainGreenHi", "light": "lightText" },
-    "textMuted": { "dark": "rainGray", "light": "lightGray" },
+    "textMuted": { "dark": "rainGray", "light": "#58645A" },
     "background": { "dark": "matrixInk0", "light": "lightBg" },
     "backgroundPanel": { "dark": "matrixInk1", "light": "lightPaper" },
     "backgroundElement": { "dark": "matrixInk2", "light": "lightInk1" },

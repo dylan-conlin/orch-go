@@ -66,8 +66,8 @@
       "light": "black"
     },
     "textMuted": {
-      "dark": "base600",
-      "light": "base600"
+      "dark": "#908F8A",
+      "light": "#656460"
     },
     "background": {
       "dark": "black",

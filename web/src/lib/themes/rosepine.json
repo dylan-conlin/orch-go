@@ -63,8 +63,8 @@
       "light": "#575279"
     },
     "textMuted": {
-      "dark": "muted",
-      "light": "dawnMuted"
+      "dark": "#8E8BA3",
+      "light": "#6B667A"
     },
     "background": {
       "dark": "base",

@@ -50,8 +50,8 @@
       "light": "nightOwlFg"
     },
     "textMuted": {
-      "dark": "nightOwlMuted",
-      "light": "nightOwlMuted"
+      "dark": "#718FA6",
+      "light": "#718FA6"
     },
     "background": {
       "dark": "nightOwlBg",

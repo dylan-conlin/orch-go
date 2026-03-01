@@ -34,7 +34,7 @@
     "success": "darkAdded",
     "info": "darkTag",
     "text": "darkFg",
-    "textMuted": "darkFgMuted",
+    "textMuted": "#787F8D",
     "background": "darkBg",
     "backgroundPanel": "darkPanel",
     "backgroundElement": "darkBgAlt",

@@ -52,8 +52,8 @@
       "light": "base00"
     },
     "textMuted": {
-      "dark": "base01",
-      "light": "base1"
+      "dark": "#879EA5",
+      "light": "#5C6A6A"
     },
     "background": {
       "dark": "base03",

@@ -31,7 +31,7 @@
     "success": { "dark": "lotusGreen", "light": "lotusGreen" },
     "info": { "dark": "waveAqua", "light": "waveAqua" },
     "text": { "dark": "fujiWhite", "light": "lightText" },
-    "textMuted": { "dark": "fujiGray", "light": "lightGray" },
+    "textMuted": { "dark": "#A2A29A", "light": "#685E56" },
     "background": { "dark": "sumiInk0", "light": "lightBg" },
     "backgroundPanel": { "dark": "sumiInk1", "light": "lightPaper" },
     "backgroundElement": { "dark": "sumiInk2", "light": "#E3DCD2" },

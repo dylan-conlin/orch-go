@@ -51,8 +51,8 @@
       "light": "#292d3e"
     },
     "textMuted": {
-      "dark": "comment",
-      "light": "#8796b0"
+      "dark": "#9BA0BA",
+      "light": "#576784"
     },
     "background": {
       "dark": "#292d3e",

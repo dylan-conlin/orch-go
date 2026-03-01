@@ -48,7 +48,7 @@
     },
     "textMuted": {
       "dark": "vesperMuted",
-      "light": "vesperMuted"
+      "light": "#626262"
     },
     "background": {
       "dark": "vesperBg",

@@ -52,8 +52,8 @@
       "light": "#3f3f3f"
     },
     "textMuted": {
-      "dark": "fgMuted",
-      "light": "#6f6f6f"
+      "dark": "#DBDBDB",
+      "light": "#686868"
     },
     "background": {
       "dark": "bg",

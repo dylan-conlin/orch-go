@@ -64,8 +64,8 @@
       "light": "lightFg"
     },
     "textMuted": {
-      "dark": "darkFgMuted",
-      "light": "lightFgMuted"
+      "dark": "#A3B7C0",
+      "light": "#556974"
     },
     "background": {
       "dark": "darkBg",

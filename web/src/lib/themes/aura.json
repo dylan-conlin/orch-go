@@ -23,7 +23,7 @@
     "success": "cyan",
     "info": "purple",
     "text": "darkFg",
-    "textMuted": "darkFgMuted",
+    "textMuted": "#808080",
     "background": "darkBg",
     "backgroundPanel": "darkBgPanel",
     "backgroundElement": "darkBgPanel",
