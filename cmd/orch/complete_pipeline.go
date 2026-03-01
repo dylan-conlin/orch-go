@@ -694,6 +694,21 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 
 	// --- Pre-lifecycle operations (need session/workspace alive) ---
 
+	// Collect telemetry BEFORE lifecycle transition, because lm.Complete()
+	// archives the workspace (moves it to archived/), making the manifest
+	// unreadable at the original path.
+	var durationSecs, tokensIn, tokensOut int
+	var telemetryOutcome string
+	if target.WorkspacePath != "" {
+		durationSecs, tokensIn, tokensOut, telemetryOutcome = collectCompletionTelemetry(target.WorkspacePath, completeForce, outcome.Passed)
+	}
+
+	// Collect accretion delta before archival (same reason as telemetry above)
+	var accretionData *events.AccretionDeltaData
+	if target.WorkspacePath != "" && target.BeadsProjectDir != "" {
+		accretionData = collectAccretionDelta(target.BeadsProjectDir, target.WorkspacePath)
+	}
+
 	// Export activity to ACTIVITY.json for archival
 	if target.WorkspacePath != "" && !target.IsOrchestratorSession {
 		sid := spawn.ReadSessionID(target.WorkspacePath)
@@ -867,14 +882,7 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 		}
 	}
 
-	// Collect telemetry
-	var durationSecs, tokensIn, tokensOut int
-	var telemetryOutcome string
-	if target.WorkspacePath != "" {
-		durationSecs, tokensIn, tokensOut, telemetryOutcome = collectCompletionTelemetry(target.WorkspacePath, completeForce, outcome.Passed)
-	}
-
-	// Log the completion with verification metadata
+	// Log the completion with verification metadata (telemetry collected pre-lifecycle above)
 	logger := events.NewLogger(events.DefaultLogPath())
 	completedData := events.AgentCompletedData{
 		Reason:             reason,
@@ -904,16 +912,14 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	// Collect and log accretion delta metrics
-	if target.WorkspacePath != "" && target.BeadsProjectDir != "" {
-		if accretionData := collectAccretionDelta(target.BeadsProjectDir, target.WorkspacePath); accretionData != nil {
-			accretionData.BeadsID = target.BeadsID
-			accretionData.Workspace = target.AgentName
-			accretionData.Skill = outcome.SkillName
+	// Log accretion delta metrics (collected pre-lifecycle above)
+	if accretionData != nil {
+		accretionData.BeadsID = target.BeadsID
+		accretionData.Workspace = target.AgentName
+		accretionData.Skill = outcome.SkillName
 
-			if err := logger.LogAccretionDelta(*accretionData); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to log accretion delta: %v\n", err)
-			}
+		if err := logger.LogAccretionDelta(*accretionData); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to log accretion delta: %v\n", err)
 		}
 	}
 
