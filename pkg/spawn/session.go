@@ -265,19 +265,24 @@ func AgentManifestPath(workspacePath string) string {
 
 // ReadAgentManifestWithFallback reads the agent manifest from the workspace directory.
 // Tries multiple sources in order:
-// 1. OpenCode session metadata (if session_id exists and OpenCode is reachable)
-// 2. AGENT_MANIFEST.json (if it exists)
+// 1. AGENT_MANIFEST.json (authoritative — written atomically at spawn time)
+// 2. OpenCode session metadata (fallback for pre-manifest workspaces)
 // 3. Individual dotfiles (.beads_id, .tier, .spawn_time, .spawn_mode) for backward compatibility
 // Always returns a non-nil manifest (fields may be empty if nothing is readable).
+//
+// AGENT_MANIFEST.json is the primary source because it is written during spawn Phase 1
+// from the definitive cfg.BeadsID and cannot be corrupted by session ID discovery races.
+// OpenCode session metadata can have incorrect beads_id when FindRecentSessionWithRetry
+// in the tmux backend matches the wrong session during concurrent spawns.
 func ReadAgentManifestWithFallback(workspacePath string) *AgentManifest {
-	// Try OpenCode session metadata first (preferred source)
-	if manifest := readFromOpenCodeMetadata(workspacePath); manifest != nil {
+	// Primary: AGENT_MANIFEST.json (written at spawn time, authoritative source)
+	manifest, err := ReadAgentManifest(workspacePath)
+	if err == nil {
 		return manifest
 	}
 
-	// Fallback 1: Read from AGENT_MANIFEST.json
-	manifest, err := ReadAgentManifest(workspacePath)
-	if err == nil {
+	// Fallback 1: OpenCode session metadata (for pre-manifest workspaces)
+	if manifest := readFromOpenCodeMetadata(workspacePath); manifest != nil {
 		return manifest
 	}
 

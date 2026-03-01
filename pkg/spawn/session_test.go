@@ -483,6 +483,42 @@ func TestReadAgentManifestWithFallback_EmptyDir(t *testing.T) {
 	}
 }
 
+func TestReadAgentManifestWithFallback_ManifestOverridesDotfiles(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Write AGENT_MANIFEST.json with one beads_id
+	manifest := AgentManifest{
+		WorkspaceName: "og-feat-test-01mar-abc1",
+		Skill:         "feature-impl",
+		BeadsID:       "orch-go-correct",
+		ProjectDir:    "/Users/test/orch-go",
+		SpawnTime:     "2026-03-01T10:00:00Z",
+		Tier:          TierFull,
+	}
+	if err := WriteAgentManifest(tmpDir, manifest); err != nil {
+		t.Fatalf("WriteAgentManifest failed: %v", err)
+	}
+
+	// Write dotfiles with a DIFFERENT beads_id (simulates stale data)
+	os.WriteFile(filepath.Join(tmpDir, ".beads_id"), []byte("orch-go-wrong"), 0644)
+	os.WriteFile(filepath.Join(tmpDir, ".tier"), []byte("light\n"), 0644)
+
+	// ReadAgentManifestWithFallback should use manifest (primary), NOT dotfiles
+	result := ReadAgentManifestWithFallback(tmpDir)
+	if result.BeadsID != "orch-go-correct" {
+		t.Errorf("BeadsID: got %q, want %q — manifest should take priority over dotfiles",
+			result.BeadsID, "orch-go-correct")
+	}
+	if result.Tier != TierFull {
+		t.Errorf("Tier: got %q, want %q — manifest should take priority over dotfiles",
+			result.Tier, TierFull)
+	}
+}
+
 func TestParseSpawnTime(t *testing.T) {
 	tests := []struct {
 		name      string
