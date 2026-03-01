@@ -139,6 +139,40 @@ func TestValidateOutput_NonJSON(t *testing.T) {
 	}
 }
 
+func TestValidateOutput_Stop_ValidBlock(t *testing.T) {
+	output := `{"decision": "block", "reason": "Must report Phase: Complete"}`
+	result := ValidateOutput("Stop", []byte(output), 0)
+	if result.Decision != DecisionBlock {
+		t.Errorf("expected BLOCK, got %s", result.Decision)
+	}
+	if result.Reason != "Must report Phase: Complete" {
+		t.Errorf("expected reason, got %q", result.Reason)
+	}
+}
+
+func TestValidateOutput_Stop_ValidAllow(t *testing.T) {
+	output := `{"decision": "allow", "reason": "Phase: Complete found"}`
+	result := ValidateOutput("Stop", []byte(output), 0)
+	if result.Decision != DecisionAllow {
+		t.Errorf("expected ALLOW, got %s", result.Decision)
+	}
+}
+
+func TestValidateOutput_Stop_EmptyOutput(t *testing.T) {
+	result := ValidateOutput("Stop", []byte(""), 0)
+	if result.Decision != DecisionAllow {
+		t.Errorf("expected ALLOW for empty output, got %s", result.Decision)
+	}
+}
+
+func TestValidateOutput_Stop_WithHSO(t *testing.T) {
+	output := `{"hookSpecificOutput": {"permissionDecision": "deny"}}`
+	result := ValidateOutput("Stop", []byte(output), 0)
+	if len(result.Warnings) == 0 {
+		t.Error("expected warning about hookSpecificOutput in Stop output")
+	}
+}
+
 func TestFormatExpectedSchema(t *testing.T) {
 	schema := FormatExpectedSchema("PreToolUse")
 	if !containsStr(schema, "hookSpecificOutput") {

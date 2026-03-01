@@ -206,6 +206,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 		mcp          string
 		configDir    string
 		beadsDir     string
+		beadsID      string
 		wantContains []string
 		wantExcludes []string
 	}{
@@ -224,6 +225,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			wantExcludes: []string{
 				"--mcp-config",
 				"CLAUDE_CONFIG_DIR",
+				"ORCH_BEADS_ID",
 			},
 		},
 		{
@@ -386,11 +388,34 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 				"export BEADS_DIR=/Users/test/orch-go/.beads",
 			},
 		},
+		{
+			name:        "beadsID injects ORCH_BEADS_ID",
+			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
+			claudeCtx:   "worker",
+			mcp:         "",
+			configDir:   "",
+			beadsID:     "orch-go-puat",
+			wantContains: []string{
+				"export ORCH_BEADS_ID=orch-go-puat",
+				"export ORCH_SPAWNED=1",
+			},
+		},
+		{
+			name:        "empty beadsID does NOT inject ORCH_BEADS_ID",
+			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
+			claudeCtx:   "worker",
+			mcp:         "",
+			configDir:   "",
+			beadsID:     "",
+			wantExcludes: []string{
+				"ORCH_BEADS_ID",
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir, tt.beadsDir)
+			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir, tt.beadsDir, tt.beadsID)
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {

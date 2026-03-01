@@ -30,7 +30,11 @@ func (b *InlineBackend) Spawn(ctx context.Context, req *SpawnRequest) (*Result, 
 	cmd.Dir = req.Config.ProjectDir
 	// Set ORCH_WORKER=1 so agents know they are orch-managed workers.
 	// Set CLAUDE_CONTEXT explicitly to prevent inheriting orchestrator context from parent.
-	cmd.Env = append(os.Environ(), "ORCH_WORKER=1", "CLAUDE_CONTEXT="+req.Config.ClaudeContext())
+	env := []string{"ORCH_WORKER=1", "CLAUDE_CONTEXT=" + req.Config.ClaudeContext()}
+	if req.BeadsID != "" {
+		env = append(env, "ORCH_BEADS_ID="+req.BeadsID)
+	}
+	cmd.Env = append(os.Environ(), env...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

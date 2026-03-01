@@ -75,8 +75,10 @@ func ValidateOutput(event string, stdout []byte, exitCode int) *ValidationResult
 		validatePostToolUseOutput(result, raw)
 	case "UserPromptSubmit":
 		validateUserPromptSubmitOutput(result, raw)
+	case "Stop":
+		validateStopOutput(result, raw)
 	default:
-		// For other events (SessionStart, SessionEnd, PreCompact, Stop),
+		// For other events (SessionStart, SessionEnd, PreCompact),
 		// there's no specific output schema — just check for basic fields
 		validateGenericOutput(result, raw)
 	}
@@ -219,6 +221,39 @@ func validateUserPromptSubmitOutput(result *ValidationResult, raw map[string]int
 	}
 }
 
+// validateStopOutput validates output for Stop hooks.
+// Expected format: {"decision": "block", "reason": "..."} or exit 0 with no output to allow.
+// Same as PostToolUse format but with "allow" also being a valid decision.
+func validateStopOutput(result *ValidationResult, raw map[string]interface{}) {
+	// Check for top-level decision
+	if decision, has := raw["decision"]; has {
+		dStr, _ := decision.(string)
+		switch strings.ToLower(dStr) {
+		case "block":
+			result.Decision = DecisionBlock
+		case "allow":
+			result.Decision = DecisionAllow
+		default:
+			result.Decision = DecisionAllow
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("unrecognized decision value: '%s' (Stop supports 'block' or 'allow')", dStr))
+		}
+	} else {
+		result.Decision = DecisionAllow
+	}
+
+	// Check for PreToolUse-style output used in Stop (common mistake)
+	if _, hasHSO := raw["hookSpecificOutput"]; hasHSO {
+		result.Warnings = append(result.Warnings,
+			"'hookSpecificOutput' found in Stop output — Stop uses top-level 'decision' field, not hookSpecificOutput")
+	}
+
+	// Extract reason
+	if reason, has := raw["reason"]; has {
+		result.Reason, _ = reason.(string)
+	}
+}
+
 // validateGenericOutput validates output for events without specific schemas.
 func validateGenericOutput(result *ValidationResult, raw map[string]interface{}) {
 	// Check for common output patterns
@@ -263,6 +298,10 @@ func FormatExpectedSchema(event string) string {
 		return `Expected UserPromptSubmit output format:
   {"additionalContext": "..."}
   or {"decision": "block"}`
+	case "Stop":
+		return `Expected Stop output format:
+  {"decision": "block", "reason": "..."}
+  or exit 0 with no output to allow stopping`
 	default:
 		return fmt.Sprintf("No specific output schema for %s — text output is passed as context", event)
 	}

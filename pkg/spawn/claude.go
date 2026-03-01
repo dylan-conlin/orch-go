@@ -58,7 +58,7 @@ func MCPConfigJSON(preset string) (string, bool) {
 //   CLAUDE_CONFIG_DIR env var and unsets CLAUDE_CODE_OAUTH_TOKEN for account isolation
 // - When beadsDir is set (cross-repo spawn), injects BEADS_DIR env var so
 //   bd comment/show commands reach the source project's beads database
-func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsDir string) string {
+func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsDir, beadsID string) string {
 	// Account isolation prefix: when configDir is set and non-default,
 	// unset the OAuth token and set CLAUDE_CONFIG_DIR so the Claude CLI
 	// uses the correct account's config directory.
@@ -95,7 +95,14 @@ func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsD
 		disallowFlag = " --disallowedTools 'Task,Edit,Write,NotebookEdit'"
 	}
 
-	return fmt.Sprintf("%s%sexport ORCH_SPAWNED=1; export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s", accountPrefix, beadsDirPrefix, claudeContext, contextPath, mcpFlag, disallowFlag)
+	// Beads ID prefix: when beadsID is set, export ORCH_BEADS_ID so Stop hooks
+	// can reliably find the beads issue without parsing messages.
+	beadsIDPrefix := ""
+	if beadsID != "" {
+		beadsIDPrefix = fmt.Sprintf("export ORCH_BEADS_ID=%s; ", beadsID)
+	}
+
+	return fmt.Sprintf("%s%s%sexport ORCH_SPAWNED=1; export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s", accountPrefix, beadsDirPrefix, beadsIDPrefix, claudeContext, contextPath, mcpFlag, disallowFlag)
 }
 
 // SpawnClaude launches a Claude Code agent in a tmux window.
@@ -127,7 +134,7 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 	// 4. Launch claude using the context file
 	contextPath := cfg.ContextFilePath()
 
-	launchCmd := BuildClaudeLaunchCommand(contextPath, cfg.ClaudeContext(), cfg.MCP, cfg.AccountConfigDir, cfg.BeadsDir)
+	launchCmd := BuildClaudeLaunchCommand(contextPath, cfg.ClaudeContext(), cfg.MCP, cfg.AccountConfigDir, cfg.BeadsDir, cfg.BeadsID)
 
 	if err := tmux.SendKeys(windowTarget, launchCmd); err != nil {
 		return nil, fmt.Errorf("failed to send launch command: %w", err)

@@ -1,32 +1,49 @@
-task: Wire --replace flag into artifact ecosystem
-issue: orch-go-5ay4
+task: Prototype Stop hook for Phase Complete enforcement
+issue: orch-go-puat
 tier: light
 
 deliverables:
-  - path: CLAUDE.md
-    change: Added "daemon run --replace" to Automation section
+  - path: ~/.orch/hooks/enforce-phase-complete.py
+    change: New Stop hook script that blocks worker agent exit unless Phase Complete reported
     verified: true
 
-  - path: .kb/guides/daemon.md
-    change: |
-      Added --replace to "Running the Daemon" section with explanation,
-      "After rebuilding" section with alternative path,
-      "Multiple daemons spawning" troubleshooting with --replace fix,
-      Key Decisions table with Feb 2026 entry
+  - path: ~/.claude/settings.json
+    change: Registered Stop hook in settings.json Stop event (was empty array)
     verified: true
 
-  - path: ~/.claude/skills/meta/orchestrator/SKILL.md
-    change: Added --replace reference to daemon restart line
+  - path: pkg/spawn/claude.go
+    change: Added ORCH_BEADS_ID env var export to BuildClaudeLaunchCommand
     verified: true
-    note: Outside repo, not committed here
 
-  - path: .kb/agreements/daemon-feature-docs.yaml
-    change: New kb agreement checking daemon flags appear in guide
+  - path: pkg/spawn/claude_test.go
+    change: 2 new test cases for ORCH_BEADS_ID injection and exclusion
+    verified: true
+
+  - path: pkg/spawn/backends/inline.go
+    change: Added ORCH_BEADS_ID to inline backend environment
+    verified: true
+
+  - path: pkg/hook/schema.go
+    change: Added validateStopOutput() function and Stop to FormatExpectedSchema
+    verified: true
+
+  - path: pkg/hook/schema_test.go
+    change: 4 new test cases for Stop hook schema validation
     verified: true
 
 checks:
-  - command: kb agreements check
-    result: "PASS daemon-feature-docs"
+  - command: go test ./pkg/spawn/ -run TestBuildClaudeLaunchCommand
+    result: 16/16 PASS
 
-  - description: Agreement extracts 21 flags from daemon.go, all found in guide
-    result: No missing flags detected
+  - command: go test ./pkg/hook/
+    result: 49/49 PASS
+
+  - command: go build ./cmd/orch/
+    result: PASS
+
+  - command: Manual hook tests (6 scenarios)
+    result: All pass (non-worker allow, worker+phase allow, worker-no-phase block, escape hatch allow, beads-found allow, beads-not-found block)
+
+manual_verification_needed:
+  - Live agent test with spawned worker to verify Stop hook fires
+  - Verify stop_hook_active loop prevention in real Claude Code session
