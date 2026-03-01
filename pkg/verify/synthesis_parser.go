@@ -11,7 +11,7 @@ import (
 
 // Pre-compiled regex patterns for synthesis parsing
 var (
-	regexRecommendation  = regexp.MustCompile(`(?m)\*\*Recommendation:\*\*\s*(\w+)`)
+	regexRecommendation  = regexp.MustCompile(`(?m)\*\*Recommendation:\*\*\s*([\w][\w-]*)`)
 	regexNumberedPattern = regexp.MustCompile(`^\d+\.`)
 )
 

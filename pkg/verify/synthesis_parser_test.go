@@ -7,6 +7,89 @@ import (
 	"testing"
 )
 
+func TestExtractRecommendation(t *testing.T) {
+	tests := []struct {
+		name        string
+		nextSection string
+		want        string
+	}{
+		{
+			name:        "simple word recommendation",
+			nextSection: "**Recommendation:** close",
+			want:        "close",
+		},
+		{
+			name:        "hyphenated recommendation",
+			nextSection: "**Recommendation:** spawn-follow-up",
+			want:        "spawn-follow-up",
+		},
+		{
+			name:        "escalate recommendation",
+			nextSection: "**Recommendation:** escalate",
+			want:        "escalate",
+		},
+		{
+			name:        "resume recommendation",
+			nextSection: "**Recommendation:** resume",
+			want:        "resume",
+		},
+		{
+			name:        "no recommendation",
+			nextSection: "Nothing here",
+			want:        "",
+		},
+		{
+			name:        "recommendation in multiline context",
+			nextSection: "Some intro text.\n\n**Recommendation:** spawn-follow-up\n\nMore details here.",
+			want:        "spawn-follow-up",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractRecommendation(tt.nextSection)
+			if got != tt.want {
+				t.Errorf("extractRecommendation() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseSynthesis_HyphenatedRecommendation(t *testing.T) {
+	content := `# Session Synthesis
+
+**Agent:** test-agent
+**Issue:** orch-go-1234
+**Outcome:** success
+
+## TLDR
+
+Fixed the widget.
+
+---
+
+## Next (What Should Happen)
+
+**Recommendation:** spawn-follow-up
+
+- Create follow-up issue for remaining work
+`
+	tmpDir := t.TempDir()
+	synthesisPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+	if err := os.WriteFile(synthesisPath, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write SYNTHESIS.md: %v", err)
+	}
+
+	s, err := ParseSynthesis(tmpDir)
+	if err != nil {
+		t.Fatalf("ParseSynthesis failed: %v", err)
+	}
+
+	if s.Recommendation != "spawn-follow-up" {
+		t.Errorf("Recommendation = %q, want %q", s.Recommendation, "spawn-follow-up")
+	}
+}
+
 func TestParseSynthesis_ArchitecturalChoices(t *testing.T) {
 	tests := []struct {
 		name    string

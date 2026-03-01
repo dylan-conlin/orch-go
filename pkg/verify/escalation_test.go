@@ -366,6 +366,29 @@ func TestExplainEscalation_CleanCompletion(t *testing.T) {
 	}
 }
 
+func TestDetermineEscalation_HyphenatedRecommendationFromParser(t *testing.T) {
+	// End-to-end: parsed "spawn-follow-up" from synthesis should trigger escalation.
+	// This is the bug reproduction: \w+ regex truncated "spawn-follow-up" to "spawn",
+	// so hasSignificantRecommendations never matched.
+	input := EscalationInput{
+		VerificationPassed: true,
+		SkillName:          "feature-impl",
+		Outcome:            "success",
+		Recommendation:     "spawn-follow-up",
+		FileCount:          5,
+	}
+
+	got := DetermineEscalation(input)
+	if got != EscalationInfo {
+		t.Errorf("DetermineEscalation(recommendation='spawn-follow-up') = %v, want EscalationInfo", got)
+	}
+
+	// Verify hasSignificantRecommendations returns true
+	if !hasSignificantRecommendations(input) {
+		t.Error("hasSignificantRecommendations() = false for 'spawn-follow-up', want true")
+	}
+}
+
 // Test the decision tree order of precedence
 func TestDetermineEscalation_Precedence(t *testing.T) {
 	// Verification failure should override everything
