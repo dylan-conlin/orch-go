@@ -281,14 +281,16 @@ func uniqueProjectDirs(dirs []string) []string {
 	return result
 }
 
-// listActiveIssues retrieves active issues (open or in_progress) across project directories.
+// listActiveIssues retrieves active issues (open, in_progress, or blocked) across project directories.
 // Returns a map of beadsID -> Issue, plus beadsID -> projectDir for cross-project lookups.
 //
-// This includes both "open" and "in_progress" statuses because:
+// This includes "open", "in_progress", and "blocked" statuses because:
 // - Auto-created issues (spawn without --issue) may not get updated to in_progress
 // - The UpdateIssueStatus call can fail silently during spawn
 // - Filtering only in_progress causes newly spawned agents to be invisible in the dashboard
 //   while orch status (which uses workspace/session discovery) can see them
+// - Blocked issues represent agents waiting on dependencies and must remain visible
+//   in the dashboard, otherwise they silently vanish
 func listActiveIssues(projectDirs []string) (map[string]*verify.Issue, map[string]string) {
 	issues := make(map[string]*verify.Issue)
 	projectDirsByID := make(map[string]string)
@@ -302,7 +304,7 @@ func listActiveIssues(projectDirs []string) (map[string]*verify.Issue, map[strin
 
 		for id, issue := range openIssues {
 			status := strings.ToLower(issue.Status)
-			if status == "open" || status == "in_progress" {
+			if status == "open" || status == "in_progress" || status == "blocked" {
 				issues[id] = issue
 			}
 		}
@@ -319,7 +321,7 @@ func listActiveIssues(projectDirs []string) (map[string]*verify.Issue, map[strin
 
 		for id, issue := range openIssues {
 			status := strings.ToLower(issue.Status)
-			if status == "open" || status == "in_progress" {
+			if status == "open" || status == "in_progress" || status == "blocked" {
 				if _, exists := issues[id]; !exists {
 					issues[id] = issue
 					projectDirsByID[id] = projectDir

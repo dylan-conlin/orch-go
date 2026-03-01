@@ -213,8 +213,8 @@ func TestListActiveIssuesSingleProject(t *testing.T) {
 	}
 
 	issues, projectDirs := listActiveIssues([]string{"/tmp/project"})
-	if len(projectDirs) != 2 {
-		t.Fatalf("Expected 2 project dirs (open + in_progress), got %d", len(projectDirs))
+	if len(projectDirs) != 3 {
+		t.Fatalf("Expected 3 project dirs (open + in_progress + blocked), got %d", len(projectDirs))
 	}
 	if _, ok := issues["orch-go-active"]; !ok {
 		t.Fatal("Expected in_progress issue to be included")
@@ -222,8 +222,8 @@ func TestListActiveIssuesSingleProject(t *testing.T) {
 	if _, ok := issues["orch-go-open"]; !ok {
 		t.Fatal("Expected open issue to be included (newly spawned agents may have open status)")
 	}
-	if _, ok := issues["orch-go-blocked"]; ok {
-		t.Fatal("Expected blocked issue to be excluded")
+	if _, ok := issues["orch-go-blocked"]; !ok {
+		t.Fatal("Expected blocked issue to be included (blocked agents should be visible in dashboard)")
 	}
 	if _, ok := issues["orch-go-closed"]; ok {
 		t.Fatal("Expected closed issue to be excluded")
@@ -277,7 +277,9 @@ func TestListActiveIssuesEmptyProjectDirs(t *testing.T) {
 
 	listOpenIssues = func() (map[string]*verify.Issue, error) {
 		return map[string]*verify.Issue{
-			"orch-go-active": {ID: "orch-go-active", Status: "in_progress"},
+			"orch-go-active":  {ID: "orch-go-active", Status: "in_progress"},
+			"orch-go-blocked": {ID: "orch-go-blocked", Status: "blocked"},
+			"orch-go-closed":  {ID: "orch-go-closed", Status: "closed"},
 		}, nil
 	}
 	listOpenIssuesWithDir = func(projectDir string) (map[string]*verify.Issue, error) {
@@ -290,6 +292,12 @@ func TestListActiveIssuesEmptyProjectDirs(t *testing.T) {
 	}
 	if _, ok := issues["orch-go-active"]; !ok {
 		t.Fatal("Expected in_progress issue to be included")
+	}
+	if _, ok := issues["orch-go-blocked"]; !ok {
+		t.Fatal("Expected blocked issue to be included (blocked agents should be visible in dashboard)")
+	}
+	if _, ok := issues["orch-go-closed"]; ok {
+		t.Fatal("Expected closed issue to be excluded")
 	}
 }
 
