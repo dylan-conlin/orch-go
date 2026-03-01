@@ -882,6 +882,20 @@ No code references here`,
 			want: []string{"pkg/test.go"},
 		},
 		{
+			name: "stops at code_refs close marker excludes cross-project refs",
+			content: `**Primary Evidence (Verify These):**
+<!-- code_refs: machine-parseable file references for staleness detection -->
+- ` + "`pkg/spawn/staleness_events.go`" + ` — Staleness event recording
+- ` + "`pkg/spawn/kbcontext.go`" + ` — Spawn-time detection
+- ` + "`cmd/orch/focus.go:186-205`" + ` — Drift command
+<!-- /code_refs -->
+
+**Cross-project evidence:**
+- ` + "`kb-cli/.kb/agreements/*.yaml`" + ` — Cross-boundary contracts
+- ` + "`kb-cli/cmd/kb/agreements.go`" + ` — Agreements implementation`,
+			want: []string{"pkg/spawn/staleness_events.go", "pkg/spawn/kbcontext.go", "cmd/orch/focus.go"},
+		},
+		{
 			name: "skips non-file backtick content",
 			content: `**Primary Evidence:**
 - ` + "`pkg/test.go`" + ` - Test file

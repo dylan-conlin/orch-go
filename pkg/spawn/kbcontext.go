@@ -1339,9 +1339,12 @@ func extractCodeRefs(content string) []string {
 			continue
 		}
 
-		// End of section (next ## heading or blank lines followed by **)
+		// End of section (next ## heading, or explicit code_refs close marker)
 		if inPrimaryEvidence {
 			if strings.HasPrefix(trimmed, "##") || strings.HasPrefix(trimmed, "# ") {
+				break
+			}
+			if strings.Contains(trimmed, "<!-- /code_refs") {
 				break
 			}
 		}
