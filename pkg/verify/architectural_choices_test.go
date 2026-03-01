@@ -106,28 +106,6 @@ Designed the thing.
 			wantPassed: true,
 		},
 		{
-			name:  "investigation skill - not gated",
-			skill: "investigation",
-			content: `# Session Synthesis
-
-## TLDR
-
-Investigated something.
-`,
-			wantPassed: true,
-		},
-		{
-			name:  "capture-knowledge skill - not gated",
-			skill: "capture-knowledge",
-			content: `# Session Synthesis
-
-## TLDR
-
-Captured knowledge.
-`,
-			wantPassed: true,
-		},
-		{
 			name:  "systematic-debugging with missing choices",
 			skill: "systematic-debugging",
 			content: `# Session Synthesis
@@ -144,12 +122,6 @@ Found root cause.
 `,
 			wantPassed: false,
 			wantError:  true,
-		},
-		{
-			name:       "empty skill - not gated",
-			skill:      "",
-			content:    "# Session Synthesis\n\n## TLDR\n\nDone.\n",
-			wantPassed: true,
 		},
 	}
 
@@ -178,27 +150,13 @@ Found root cause.
 	}
 }
 
-func TestRequiresArchitecturalChoicesGate(t *testing.T) {
-	tests := []struct {
-		skill string
-		want  bool
-	}{
-		{"architect", true},
-		{"feature-impl", true},
-		{"systematic-debugging", true},
-		{"investigation", false},
-		{"capture-knowledge", false},
-		{"research", false},
-		{"", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.skill, func(t *testing.T) {
-			got := RequiresArchitecturalChoicesGate(tt.skill)
-			if got != tt.want {
-				t.Errorf("RequiresArchitecturalChoicesGate(%q) = %v, want %v", tt.skill, got, tt.want)
-			}
-		})
+func TestVerifyArchitecturalChoices_NoSynthesis(t *testing.T) {
+	// When SYNTHESIS.md doesn't exist, the gate passes —
+	// the synthesis gate handles the missing file separately.
+	tmpDir := t.TempDir()
+	result := VerifyArchitecturalChoices(tmpDir, "feature-impl")
+	if !result.Passed {
+		t.Errorf("Expected pass when SYNTHESIS.md missing, got errors: %v", result.Errors)
 	}
 }
 

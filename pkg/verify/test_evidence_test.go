@@ -5,43 +5,6 @@ import (
 	"time"
 )
 
-func TestIsSkillRequiringTestEvidence(t *testing.T) {
-	tests := []struct {
-		name      string
-		skillName string
-		want      bool
-	}{
-		// Skills requiring test evidence
-		{"feature-impl requires", "feature-impl", true},
-		{"systematic-debugging requires", "systematic-debugging", true},
-		{"reliability-testing requires", "reliability-testing", true},
-
-		// Skills excluded from test evidence
-		{"investigation excluded", "investigation", false},
-		{"architect excluded", "architect", false},
-		{"research excluded", "research", false},
-		{"design-session excluded", "design-session", false},
-		{"codebase-audit excluded", "codebase-audit", false},
-		{"issue-creation excluded", "issue-creation", false},
-		{"writing-skills excluded", "writing-skills", false},
-
-		// Edge cases
-		{"empty skill", "", false},
-		{"unknown skill", "unknown-skill", false},
-		{"case insensitive", "Feature-Impl", true},
-		{"case insensitive lower", "FEATURE-IMPL", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := IsSkillRequiringTestEvidence(tt.skillName)
-			if got != tt.want {
-				t.Errorf("IsSkillRequiringTestEvidence(%q) = %v, want %v", tt.skillName, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestHasTestExecutionEvidence(t *testing.T) {
 	tests := []struct {
 		name     string

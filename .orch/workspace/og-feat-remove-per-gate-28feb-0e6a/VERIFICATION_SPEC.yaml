@@ -1,0 +1,26 @@
+verification:
+  commands_run:
+    - "go build ./cmd/orch/"
+    - "go build ./..."
+    - "go vet ./pkg/verify/"
+    - "go test ./pkg/verify/ -count=1"
+    - "go test ./pkg/verify/ -run 'TestGatesForLevel|TestShouldRunGate|TestVerifyCompletionFull' -v -count=1"
+  assertions:
+    - "All 4 per-gate skill include/exclude maps removed"
+    - "All 4 IsSkillRequiring*/RequiresArchitecturalChoicesGate functions removed"
+    - "Verify* functions run unconditionally - callers gate via ShouldRunGate()"
+    - "ForCompletion wrappers no longer filter by skill"
+    - "grep for removed symbols returns 0 matches across *.go files"
+    - "go build ./... succeeds (no compilation errors)"
+    - "go vet ./pkg/verify/ succeeds"
+    - "go test ./pkg/verify/ all pass (7.4s)"
+  files_changed:
+    - pkg/verify/test_evidence.go
+    - pkg/verify/visual.go
+    - pkg/verify/build_verification.go
+    - pkg/verify/architectural_choices.go
+    - pkg/verify/test_evidence_test.go
+    - pkg/verify/visual_test.go
+    - pkg/verify/build_verification_test.go
+    - pkg/verify/architectural_choices_test.go
+  manual_verification: none required

@@ -11,23 +11,6 @@ import (
 // GateArchitecturalChoices is the gate name for architectural choices verification.
 const GateArchitecturalChoices = "architectural_choices"
 
-// skillsRequiringArchitecturalChoices lists skills that must declare architectural
-// choices in SYNTHESIS.md. These are skills that make implementation decisions where
-// tradeoffs could be silently buried in code.
-var skillsRequiringArchitecturalChoices = map[string]bool{
-	"architect":            true,
-	"feature-impl":         true,
-	"systematic-debugging": true,
-}
-
-// RequiresArchitecturalChoicesGate returns true if the given skill must declare
-// architectural choices in SYNTHESIS.md. Knowledge-producing skills (investigation,
-// capture-knowledge, research) are exempt because their tradeoffs are lower-risk
-// (they produce artifacts, not code changes).
-func RequiresArchitecturalChoicesGate(skill string) bool {
-	return skillsRequiringArchitecturalChoices[strings.ToLower(skill)]
-}
-
 // VerifyArchitecturalChoices checks if SYNTHESIS.md contains an "Architectural Choices"
 // section for skills that require tradeoff declaration. Returns a passing result for
 // skills not subject to this gate.
@@ -38,10 +21,8 @@ func RequiresArchitecturalChoicesGate(skill string) bool {
 func VerifyArchitecturalChoices(workspacePath, skill string) *VerificationResult {
 	result := &VerificationResult{Passed: true}
 
-	// Only gate specific skills
-	if !RequiresArchitecturalChoicesGate(skill) {
-		return result
-	}
+	// Gate selection is handled by the verify level system (V0-V3) in check.go.
+	// This function runs unconditionally when called — the caller decides whether to invoke it.
 
 	// Try to parse SYNTHESIS.md
 	synthesis, err := ParseSynthesis(workspacePath)

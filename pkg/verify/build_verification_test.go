@@ -7,43 +7,6 @@ import (
 	"testing"
 )
 
-func TestIsSkillRequiringBuildVerification(t *testing.T) {
-	tests := []struct {
-		name      string
-		skillName string
-		want      bool
-	}{
-		// Skills requiring build verification
-		{"feature-impl requires", "feature-impl", true},
-		{"systematic-debugging requires", "systematic-debugging", true},
-		{"reliability-testing requires", "reliability-testing", true},
-
-		// Skills excluded from build verification
-		{"investigation excluded", "investigation", false},
-		{"architect excluded", "architect", false},
-		{"research excluded", "research", false},
-		{"design-session excluded", "design-session", false},
-		{"codebase-audit excluded", "codebase-audit", false},
-		{"issue-creation excluded", "issue-creation", false},
-		{"writing-skills excluded", "writing-skills", false},
-
-		// Edge cases
-		{"empty skill", "", false},
-		{"unknown skill", "unknown-skill", false},
-		{"case insensitive", "Feature-Impl", true},
-		{"case insensitive lower", "FEATURE-IMPL", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := IsSkillRequiringBuildVerification(tt.skillName)
-			if got != tt.want {
-				t.Errorf("IsSkillRequiringBuildVerification(%q) = %v, want %v", tt.skillName, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestIsGoProject(t *testing.T) {
 	// Create temp directories for testing
 	tempDir := t.TempDir()
@@ -469,8 +432,8 @@ func setupGitRepo(t *testing.T, dir string) {
 	}
 }
 
-func TestVerifyBuildForCompletion_ExcludedSkill(t *testing.T) {
-	// Create a temp directory structure
+func TestVerifyBuildForCompletion_NoGitChanges(t *testing.T) {
+	// Create a Go project without git — no recent Go changes means nil result
 	tempDir := t.TempDir()
 	projectDir := filepath.Join(tempDir, "go-project")
 	if err := os.MkdirAll(projectDir, 0755); err != nil {
@@ -481,7 +444,7 @@ func TestVerifyBuildForCompletion_ExcludedSkill(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create a workspace with investigation skill (excluded)
+	// Create a workspace
 	workspacePath := filepath.Join(tempDir, "workspace")
 	if err := os.MkdirAll(workspacePath, 0755); err != nil {
 		t.Fatal(err)
@@ -496,8 +459,8 @@ func TestVerifyBuildForCompletion_ExcludedSkill(t *testing.T) {
 
 	result := VerifyBuildForCompletion(workspacePath, projectDir)
 
-	// Should return nil for excluded skill
+	// Should return nil when no Go changes detected (no git repo)
 	if result != nil {
-		t.Errorf("VerifyBuildForCompletion() should return nil for excluded skill, got %+v", result)
+		t.Errorf("VerifyBuildForCompletion() should return nil when no Go changes, got %+v", result)
 	}
 }

@@ -13,63 +13,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
-// Skills that require visual verification when modifying web/ files.
-// Only skills that are explicitly about UI work should require visual verification.
-// Non-UI skills (architects, investigations, debugging) may incidentally modify web/
-// files as part of broader work - these shouldn't require visual verification.
-var skillsRequiringVisualVerification = map[string]bool{
-	"feature-impl": true, // UI features need visual verification
-	// Note: We don't include all possible UI skills - the default is permissive.
-	// If a skill is not in this list and modifies web/ files, we assume it's incidental.
-}
-
-// Skills that are explicitly excluded from visual verification requirements.
-// These skills are known to work on web/ files incidentally (not as primary UI work).
-var skillsExcludedFromVisualVerification = map[string]bool{
-	"architect":            true, // Design work may touch web/ files
-	"investigation":        true, // Research may examine/modify web/ files
-	"systematic-debugging": true, // Debugging may touch web/ files
-	"research":             true, // Research doesn't do UI work
-	"codebase-audit":       true, // Audits may touch any files
-	"reliability-testing":  true, // Testing may touch any files
-	"design-session":       true, // Design sessions don't do UI implementation
-	"issue-creation":       true, // Issue creation doesn't do UI work
-	"writing-skills":       true, // Skill writing may touch web/ examples
-}
-
-// IsSkillRequiringVisualVerification determines if a skill requires visual verification
-// for web/ file changes.
-//
-// The logic is:
-// 1. If skill is explicitly excluded (architect, investigation, etc.) -> false
-// 2. If skill is explicitly included (feature-impl) -> true
-// 3. If skill is unknown -> false (permissive default to avoid false positives)
-//
-// This approach prevents false positives from architects/investigations that modify
-// web/ files incidentally as part of broader work.
-func IsSkillRequiringVisualVerification(skillName string) bool {
-	// Empty skill name means we couldn't determine the skill - be permissive
-	if skillName == "" {
-		return false
-	}
-
-	// Normalize skill name to lowercase for comparison
-	skillName = strings.ToLower(skillName)
-
-	// Check explicit exclusions first
-	if skillsExcludedFromVisualVerification[skillName] {
-		return false
-	}
-
-	// Check explicit inclusions
-	if skillsRequiringVisualVerification[skillName] {
-		return true
-	}
-
-	// Unknown skill - be permissive to avoid false positives
-	return false
-}
-
 // WebChangeRisk represents the risk level of web/ file changes.
 // Risk determines whether visual verification is required:
 // - LOW: Trivial changes (CSS properties, colors) - no verification required
@@ -807,17 +750,10 @@ func VerifyVisualVerificationWithComments(beadsID, workspacePath, projectDir str
 		return result
 	}
 
-	// Check skill type - only UI-focused skills require visual verification
-	skillName, _ := ExtractSkillNameFromSpawnContext(workspacePath)
-	if !IsSkillRequiringVisualVerification(skillName) {
-		// Non-UI skill modifying web/ files - this is incidental, not UI work
-		// Skip visual verification requirement
-		result.Warnings = append(result.Warnings,
-			"web/ files modified by non-UI skill ("+skillName+") - visual verification not required")
-		return result
-	}
+	// Gate selection is handled by the verify level system (V0-V3) in check.go.
+	// This function runs unconditionally when called — the caller decides whether to invoke it.
 
-	// UI-focused skill (feature-impl) - assess risk level of web changes
+	// Assess risk level of web changes
 	webChanges, err := GetWebChangesWithStats(projectDir, workspacePath)
 	if err != nil {
 		result.Warnings = append(result.Warnings, "failed to get web change stats: "+err.Error())

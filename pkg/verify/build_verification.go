@@ -22,53 +22,6 @@ type BuildVerificationResult struct {
 	SkillName   string   // Skill that was used
 }
 
-// Skills that require build verification before completion.
-// Only implementation-focused skills that may modify Go code need build verification.
-var skillsRequiringBuildVerification = map[string]bool{
-	"feature-impl":         true, // Primary implementation skill
-	"systematic-debugging": true, // Debug fixes should build
-	"reliability-testing":  true, // Testing skill may modify code
-}
-
-// Skills explicitly excluded from build verification requirements.
-// These skills may modify files but typically don't break builds.
-var skillsExcludedFromBuildVerification = map[string]bool{
-	"investigation":  true, // Research skill, produces investigations
-	"architect":      true, // Design skill, produces decisions
-	"research":       true, // External research, no code changes
-	"design-session": true, // Scoping skill, produces epics
-	"codebase-audit": true, // Audit skill, produces reports
-	"issue-creation": true, // Triage skill, creates issues
-	"writing-skills": true, // Meta skill, modifies skills not Go code
-}
-
-// IsSkillRequiringBuildVerification determines if a skill requires build verification.
-//
-// The logic is:
-// 1. If skill is explicitly excluded (investigation, architect, etc.) -> false
-// 2. If skill is explicitly included (feature-impl, debugging) -> true
-// 3. If skill is unknown -> false (permissive default)
-func IsSkillRequiringBuildVerification(skillName string) bool {
-	if skillName == "" {
-		return false
-	}
-
-	skillName = strings.ToLower(skillName)
-
-	// Check explicit exclusions first
-	if skillsExcludedFromBuildVerification[skillName] {
-		return false
-	}
-
-	// Check explicit inclusions
-	if skillsRequiringBuildVerification[skillName] {
-		return true
-	}
-
-	// Unknown skill - be permissive
-	return false
-}
-
 // IsGoProject checks if the project directory contains Go files.
 // Looks for go.mod or any .go files in common locations.
 func IsGoProject(projectDir string) bool {
@@ -179,16 +132,12 @@ func RunGoVet(projectDir string) (string, error) {
 func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
 	result := BuildVerificationResult{Passed: true, BuildPassed: true, VetPassed: true}
 
-	// Extract skill name for skill-based gating
+	// Extract skill name for tracking
 	skillName, _ := ExtractSkillNameFromSpawnContext(workspacePath)
 	result.SkillName = skillName
 
-	// Check if skill requires build verification
-	if !IsSkillRequiringBuildVerification(skillName) {
-		result.Warnings = append(result.Warnings,
-			"skill '"+skillName+"' does not require build verification")
-		return result
-	}
+	// Gate selection is handled by the verify level system (V0-V3) in check.go.
+	// This function runs unconditionally when called — the caller decides whether to invoke it.
 
 	// Check if this is a Go project
 	result.HasGoFiles = IsGoProject(projectDir)
@@ -262,12 +211,7 @@ func VerifyBuildForCompletion(workspacePath, projectDir string) *BuildVerificati
 		return nil
 	}
 
-	// Return nil if skill doesn't require build verification
-	if !IsSkillRequiringBuildVerification(result.SkillName) {
-		return nil
-	}
-
-	// Return nil if no Go changes (after checking skill - we want the skill warning)
+	// Return nil if no Go changes
 	if !HasGoChangesInRecentCommits(projectDir) {
 		return nil
 	}
