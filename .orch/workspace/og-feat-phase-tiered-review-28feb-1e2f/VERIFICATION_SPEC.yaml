@@ -1,0 +1,22 @@
+verification:
+  automated:
+    - command: "go test ./pkg/spawn/ -run 'TestReviewTier|TestDefaultReviewTier|TestCompareReviewTier|TestMaxReviewTier|TestIsValidReviewTier' -count=1 -v"
+      expect: "PASS (39 subtests)"
+      result: PASS
+    - command: "go test ./pkg/verify/ -run 'TestReadReviewTier' -count=1 -v"
+      expect: "PASS (3 subtests)"
+      result: PASS
+    - command: "go test ./pkg/spawn/ -count=1"
+      expect: "ok (no regressions)"
+      result: PASS
+    - command: "go test ./pkg/verify/ -count=1"
+      expect: "ok (no regressions)"
+      result: PASS
+    - command: "go vet ./pkg/spawn/ ./pkg/verify/"
+      expect: "clean"
+      result: PASS
+    - command: "go build ./cmd/orch/"
+      expect: "success"
+      result: PASS
+
+  manual: []

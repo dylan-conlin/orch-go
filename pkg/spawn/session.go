@@ -203,6 +203,11 @@ type AgentManifest struct {
 	// Determines which gates fire during completion verification.
 	// Empty for pre-V0-V3 workspaces (falls back to inference from skill).
 	VerifyLevel string `json:"verify_level,omitempty"`
+
+	// ReviewTier is the orchestrator review tier declared at spawn time (auto/scan/review/deep).
+	// Determines how thoroughly the orchestrator reviews completion.
+	// Empty for pre-review-tier workspaces (falls back to inference from skill).
+	ReviewTier string `json:"review_tier,omitempty"`
 }
 
 // WriteAgentManifest writes the agent manifest JSON to the workspace directory.

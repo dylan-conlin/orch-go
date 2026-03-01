@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"os"
 	"testing"
 
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -167,6 +168,64 @@ func TestShouldRunGate(t *testing.T) {
 				t.Errorf("ShouldRunGate(%q, %q) = %v, want %v", tt.level, tt.gate, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestReadReviewTierFromWorkspace_ManifestHasReviewTier(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "review-tier-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	manifest := spawn.AgentManifest{
+		WorkspaceName: "og-feat-test",
+		Skill:         "investigation",
+		ReviewTier:    spawn.ReviewDeep,
+	}
+	if err := spawn.WriteAgentManifest(tmpDir, manifest); err != nil {
+		t.Fatalf("WriteAgentManifest failed: %v", err)
+	}
+
+	got := ReadReviewTierFromWorkspace(tmpDir)
+	if got != spawn.ReviewDeep {
+		t.Errorf("ReadReviewTierFromWorkspace() = %q, want %q", got, spawn.ReviewDeep)
+	}
+}
+
+func TestReadReviewTierFromWorkspace_FallbackToSkill(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "review-tier-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Manifest without ReviewTier — should infer from skill
+	manifest := spawn.AgentManifest{
+		WorkspaceName: "og-feat-test",
+		Skill:         "feature-impl",
+	}
+	if err := spawn.WriteAgentManifest(tmpDir, manifest); err != nil {
+		t.Fatalf("WriteAgentManifest failed: %v", err)
+	}
+
+	got := ReadReviewTierFromWorkspace(tmpDir)
+	if got != spawn.ReviewReview {
+		t.Errorf("ReadReviewTierFromWorkspace() = %q, want %q (inferred from feature-impl)", got, spawn.ReviewReview)
+	}
+}
+
+func TestReadReviewTierFromWorkspace_NoManifest(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "review-tier-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// No manifest at all — conservative default
+	got := ReadReviewTierFromWorkspace(tmpDir)
+	if got != spawn.ReviewReview {
+		t.Errorf("ReadReviewTierFromWorkspace() = %q, want %q (conservative default)", got, spawn.ReviewReview)
 	}
 }
 

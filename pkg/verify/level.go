@@ -86,3 +86,20 @@ func ReadVerifyLevelFromWorkspace(workspacePath string) string {
 
 	return spawn.VerifyV1 // Conservative default
 }
+
+// ReadReviewTierFromWorkspace reads the review tier from the workspace manifest.
+// Falls back to inferring from skill name if not set in manifest.
+// Returns ReviewReview as the conservative default.
+func ReadReviewTierFromWorkspace(workspacePath string) string {
+	manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+	if manifest.ReviewTier != "" {
+		return manifest.ReviewTier
+	}
+
+	// Fallback: infer from skill name (for pre-review-tier workspaces)
+	if manifest.Skill != "" {
+		return spawn.DefaultReviewTier(manifest.Skill, "")
+	}
+
+	return spawn.ReviewReview // Conservative default
+}
