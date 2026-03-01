@@ -39,12 +39,11 @@ type CompletionTarget struct {
 
 // VerificationOutcome holds the results of verification gate execution.
 type VerificationOutcome struct {
-	Passed          bool
-	GatesFailed     []string
-	SkillName       string
-	Result          verify.VerificationResult
-	ResultSet       bool
-	SkipTmuxCleanup bool
+	Passed      bool
+	GatesFailed []string
+	SkillName   string
+	Result      verify.VerificationResult
+	ResultSet   bool
 }
 
 // AdvisoryResults holds the results of running completion advisories.
@@ -437,7 +436,6 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 				fmt.Fprintf(os.Stderr, "⚠️  Agent appears still running: %s\n", strings.Join(runningDetails, ", "))
 
 				if !term.IsTerminal(int(os.Stdin.Fd())) {
-					outcome.SkipTmuxCleanup = true
 					return outcome, fmt.Errorf("agent still running and stdin is not a terminal; use --force to complete anyway")
 				}
 
@@ -445,13 +443,11 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 				reader := bufio.NewReader(os.Stdin)
 				response, err := reader.ReadString('\n')
 				if err != nil {
-					outcome.SkipTmuxCleanup = true
 					return outcome, fmt.Errorf("failed to read response: %w", err)
 				}
 
 				response = strings.TrimSpace(strings.ToLower(response))
 				if response != "y" && response != "yes" {
-					outcome.SkipTmuxCleanup = true
 					return outcome, fmt.Errorf("aborted: agent still running")
 				}
 

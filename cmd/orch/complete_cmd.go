@@ -254,20 +254,12 @@ func runComplete(identifier, workdir string) error {
 		return err
 	}
 
-	// Ensure tmux window cleanup runs on all exit paths.
-	// Skip only when the agent is detected as still running (liveness check)
-	// or when LifecycleManager handled cleanup.
-	var skipTmuxCleanup bool
-	defer func() {
-		if !skipTmuxCleanup {
-			cleanupTmuxWindow(target.IsOrchestratorSession, target.AgentName, target.BeadsID, identifier)
-		}
-	}()
-
 	// Phase 2: Execute verification gates
 	outcome, err := executeVerificationGates(target, skipConfig)
-	skipTmuxCleanup = outcome.SkipTmuxCleanup
 	if err != nil {
+		// Don't kill tmux window on gate failure — preserve evidence for recovery.
+		// The window stays alive so the orchestrator can inspect, re-run gates,
+		// or send follow-up messages without re-spawning.
 		return err
 	}
 
@@ -279,11 +271,14 @@ func runComplete(identifier, workdir string) error {
 
 	// Phase 4: Execute lifecycle transition
 	lifecycleCleanedUp, err := executeLifecycleTransition(target, outcome, advisories)
-	if lifecycleCleanedUp {
-		skipTmuxCleanup = true
-	}
 	if err != nil {
 		return err
+	}
+
+	// Clean up tmux window only after all gates pass and lifecycle transition succeeds.
+	// Skip if LifecycleManager already handled cleanup (it kills the window as part of Complete()).
+	if !lifecycleCleanedUp {
+		cleanupTmuxWindow(target.IsOrchestratorSession, target.AgentName, target.BeadsID, identifier)
 	}
 
 	return nil
