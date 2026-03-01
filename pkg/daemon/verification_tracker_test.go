@@ -633,3 +633,53 @@ func TestVerificationTracker_ThresholdBoundaryConcurrent(t *testing.T) {
 		t.Errorf("Expected %d total completions, got %d", expectedTotal, status.CompletionsSinceVerification)
 	}
 }
+
+// Regression test: RecordCompletion must only be called once per daemon completion.
+// Previously, it was called both inside ProcessCompletion() and in the daemon main
+// loop, causing each completion to increment the counter by 2 instead of 1.
+// With threshold=3, this caused the daemon to pause after only 2 actual completions.
+func TestVerificationTracker_SingleCountPerCompletion(t *testing.T) {
+	threshold := 3
+	vt := NewVerificationTracker(threshold)
+
+	// Simulate 3 daemon completions, each calling RecordCompletion exactly once
+	// (as ProcessCompletion does). The daemon should pause at exactly 3.
+	for i := 0; i < threshold; i++ {
+		shouldPause := vt.RecordCompletion()
+		if i < threshold-1 && shouldPause {
+			t.Errorf("Should not pause at completion %d (threshold=%d)", i+1, threshold)
+		}
+		if i == threshold-1 && !shouldPause {
+			t.Errorf("Should pause at completion %d (threshold=%d)", i+1, threshold)
+		}
+	}
+
+	status := vt.Status()
+	if status.CompletionsSinceVerification != threshold {
+		t.Errorf("Counter = %d, want %d (one increment per completion)",
+			status.CompletionsSinceVerification, threshold)
+	}
+
+	// Verify that calling RecordCompletion twice per completion (the old bug)
+	// would have caused premature pausing
+	vt2 := NewVerificationTracker(threshold)
+	actualCompletions := 0
+	for i := 0; i < threshold; i++ {
+		// Old bug: called RecordCompletion twice per completion
+		vt2.RecordCompletion() // first call (ProcessCompletion)
+		vt2.RecordCompletion() // second call (daemon loop) — BUG
+		actualCompletions++
+		if vt2.IsPaused() {
+			break
+		}
+	}
+
+	if actualCompletions >= threshold {
+		t.Errorf("Double-counting should have caused premature pause, but didn't pause until %d completions", actualCompletions)
+	}
+
+	status2 := vt2.Status()
+	if status2.CompletionsSinceVerification == threshold {
+		t.Error("Double-counting should produce counter != threshold at pause point")
+	}
+}

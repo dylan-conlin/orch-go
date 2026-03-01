@@ -548,17 +548,20 @@ func runDaemonLoop() error {
 					fmt.Printf("[%s] Ready for review: %s (escalation=%s)\n",
 						timestamp, cr.BeadsID, cr.Escalation)
 
-					// Record completion for verification tracking
-					// This increments the counter and may pause daemon if threshold reached
-					if d.VerificationTracker != nil {
-						if shouldPause := d.VerificationTracker.RecordCompletion(); shouldPause {
-							verifyStatus := d.VerificationTracker.Status()
-							breakdown := verificationBreakdown()
-							fmt.Printf("[%s] ⚠️  Verification threshold reached: %d/%d agents ready for review%s\n",
-								timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
-							fmt.Printf("[%s]    Daemon will pause spawning on next cycle\n", timestamp)
-							fmt.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work\n", timestamp)
-						}
+					// NOTE: RecordCompletion() is called inside ProcessCompletion()
+					// (completion_processing.go). Do NOT call it again here — that
+					// caused a double-counting bug where each completion incremented
+					// the counter by 2, making the daemon pause at half the expected
+					// number of completions.
+
+					// Check if verification tracker was paused by ProcessCompletion
+					if d.VerificationTracker != nil && d.VerificationTracker.IsPaused() {
+						verifyStatus := d.VerificationTracker.Status()
+						breakdown := verificationBreakdown()
+						fmt.Printf("[%s] ⚠️  Verification threshold reached: %d/%d agents ready for review%s\n",
+							timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
+						fmt.Printf("[%s]    Daemon will pause spawning on next cycle\n", timestamp)
+						fmt.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work\n", timestamp)
 					}
 
 					// Log the completion

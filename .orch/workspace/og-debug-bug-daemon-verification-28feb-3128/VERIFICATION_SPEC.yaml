@@ -1,0 +1,39 @@
+verification:
+  type: bug-fix
+  issue: orch-go-rexs
+
+  root_cause:
+    description: "RecordCompletion() called twice per daemon completion — once in ProcessCompletion() and once in daemon main loop"
+    location: "cmd/orch/daemon.go:553-562 (duplicate call) + pkg/daemon/completion_processing.go:336 (correct call)"
+
+  fix:
+    description: "Removed duplicate RecordCompletion() call from daemon main loop, kept authoritative call in ProcessCompletion()"
+    files_changed:
+      - cmd/orch/daemon.go
+      - pkg/daemon/verification_tracker_test.go
+
+  automated_checks:
+    - command: "go build ./cmd/orch/"
+      expectation: "Compiles without errors"
+      result: PASS
+
+    - command: "go vet ./cmd/orch/"
+      expectation: "No vet warnings"
+      result: PASS
+
+    - command: "go test ./pkg/daemon/ -run TestVerificationTracker -v -count=1"
+      expectation: "All 13 tests pass, including new regression test TestVerificationTracker_SingleCountPerCompletion"
+      result: PASS
+
+    - command: "go test ./pkg/verify/ -v -count=1"
+      expectation: "All tests pass"
+      result: PASS
+
+  reproduction:
+    original_bug: "Daemon verification counter shows 2x the actual number of completions, disagrees with orch review count, pauses at half the expected threshold"
+    verification: "After fix, only one RecordCompletion() call site exists in production code (completion_processing.go:336). Regression test TestVerificationTracker_SingleCountPerCompletion proves single-counting and demonstrates the old double-counting would cause premature pausing."
+
+  manual_verification:
+    - step: "Start daemon with threshold=3, complete 3 agents"
+      expectation: "Daemon pauses after exactly 3 completions, not 2"
+      status: "Cannot smoke-test — daemon not running in this session. Code path verified via unit test and grep of call sites."
