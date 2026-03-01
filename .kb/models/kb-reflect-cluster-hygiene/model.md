@@ -1,7 +1,7 @@
 # Model: kb reflect Cluster Hygiene
 
 **Domain:** Knowledge system maintenance / synthesis triage
-**Last Updated:** 2026-02-25
+**Last Updated:** 2026-02-28
 **Synthesized From:** Top synthesis clusters (`feature`, `agents`, `quick`) and 10 synthesis investigations (Jan-Feb 2026)
 
 ---
@@ -53,9 +53,15 @@ Redundant investigations are closed by metadata, not deletion:
 
 ## Why This Fails
 
-### Failure Mode 1: Lexical collision
+### Failure Mode 1: Lexical collision (MITIGATED 2026-02-28)
 
 `feature` clusters can mix tiering behavior, cross-repo implementation tasks, and decision-gate debugging. Treating them as one topic creates noisy synthesis.
+
+**Mitigation:** Two-pass subclustering added to `findSynthesisCandidates`. Clusters with 5+ investigations (`InvestigationSubclusterThreshold`) are split by qualifying word (the next meaningful word after the primary keyword in each filename). For example, a "context" mega-cluster splits into "context-spawn" (3 files) and "context-window" (3 files). Small clusters (<5) are unchanged to preserve legitimate grouping. Subclusters with <3 files merge back to parent.
+
+**Functions added:** `extractQualifyingWord()`, `subclusterInvestigations()` in `reflect.go`
+
+**Source:** orch-go-jlar
 
 ### Failure Mode 2: Time-drifted conclusions
 
