@@ -199,6 +199,7 @@ var (
 	daemonOrphanAgeThreshold      int // Orphan age threshold in minutes
 	daemonPhaseTimeoutInterval    int // Phase timeout check interval in minutes (0 = disabled)
 	daemonPhaseTimeoutThreshold   int // Phase timeout threshold in minutes
+	daemonAgreementCheckInterval  int // Agreement check interval in minutes (0 = disabled)
 	daemonReplace                 bool // Stop existing daemon before starting (graceful takeover)
 )
 
@@ -238,6 +239,7 @@ func init() {
 		cmd.Flags().IntVar(&daemonOrphanAgeThreshold, "orphan-age-threshold", 60, "How long (minutes) before issue is considered orphaned (default: 60)")
 		cmd.Flags().IntVar(&daemonPhaseTimeoutInterval, "phase-timeout-interval", 5, "Phase timeout check interval in minutes (0 = disabled, default: 5)")
 		cmd.Flags().IntVar(&daemonPhaseTimeoutThreshold, "phase-timeout-threshold", 30, "Minutes without phase update before flagging as unresponsive (default: 30)")
+		cmd.Flags().IntVar(&daemonAgreementCheckInterval, "agreement-check-interval", 30, "Agreement check interval in minutes (0 = disabled, default: 30)")
 		cmd.Flags().MarkHidden("max-agents")
 	}
 
@@ -278,6 +280,8 @@ func daemonConfigFromFlags() daemon.Config {
 	config.PhaseTimeoutEnabled = daemonPhaseTimeoutInterval > 0
 	config.PhaseTimeoutInterval = time.Duration(daemonPhaseTimeoutInterval) * time.Minute
 	config.PhaseTimeoutThreshold = time.Duration(daemonPhaseTimeoutThreshold) * time.Minute
+	config.AgreementCheckEnabled = daemonAgreementCheckInterval > 0
+	config.AgreementCheckInterval = time.Duration(daemonAgreementCheckInterval) * time.Minute
 
 	return config
 }
