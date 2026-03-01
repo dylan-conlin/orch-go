@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for the orch daemon's autonomous agent spawning system. This guide synthesizes learnings from 33 investigations conducted between Dec 2025 - Jan 2026.
 
-**Last verified:** Feb 26, 2026
+**Last verified:** Mar 1, 2026
 
 ---
 
@@ -37,7 +37,8 @@ The daemon is an autonomous agent spawner that:
 | `issue_adapter.go` | ~90 | Beads integration |
 | `issue_queue.go` | ~60 | Issue filtering logic |
 | `active_count.go` | ~160 | OpenCode session counting |
-| `spawn_tracker.go` | ~150 | Spawn tracking for dedup |
+| `spawn_tracker.go` | ~360 | Spawn tracking: ID dedup (L1), title dedup (L3), disk persistence, thrash detection |
+| `session_dedup.go` | ~140 | Session/tmux existence checking (L2) |
 
 ### Poll Loop Flow
 
@@ -156,28 +157,64 @@ The daemon uses a semaphore-based worker pool:
 
 **Key insight (from 2025-12-26 investigation):** Pool tracks spawns internally but must reconcile with OpenCode to avoid stale capacity. The daemon calls `ReconcileWithOpenCode()` at the start of each poll cycle.
 
-### SpawnedIssueTracker (Duplicate Prevention)
+### Spawn Dedup Architecture (6-Layer)
 
-**From 2026-01-06 investigation:** The daemon can spawn duplicate agents for the same issue due to a race condition:
-1. Daemon polls beads, finds issue with `triage:ready`
-2. Spawns agent via `orch work <id>`
-3. Status update to `in_progress` happens AFTER spawn initialization
-4. Before status updates, next poll sees issue still as "open" → spawns again
+The daemon prevents duplicate spawns via 6 sequential dedup layers in `spawnIssue()` (pkg/daemon/daemon.go). These layers accumulated over 9 tactical fixes (Jan-Mar 2026), each patching a gap in the previous layer.
 
-**Fix:** `SpawnedIssueTracker` in `pkg/daemon/spawn_tracker.go` tracks issue IDs immediately before calling `spawnFunc`:
-- 5-minute TTL allows entries to expire naturally
-- `CleanStale()` called during `ReconcileWithOpenCode()`
-- On spawn failure, issue is unmarked to allow retry
+#### Dedup Pipeline (Execution Order)
 
-**Behavior:**
-```go
-// Before spawn
-daemon.SpawnedIssues.Mark(issueID)
-err := daemon.spawnFunc(issueID)
-if err != nil {
-    daemon.SpawnedIssues.Unmark(issueID)  // Allow retry
-}
-```
+| Layer | Check | Fail Mode | Nature |
+|-------|-------|-----------|--------|
+| L1 | SpawnedIssueTracker (ID-based, 6h TTL) | Blocks spawn | Heuristic |
+| L2 | Session/Tmux existence check | Blocks spawn (fail-open if API down) | Heuristic |
+| L3 | Title dedup (in-memory, TTL-coupled) | Blocks spawn | Heuristic |
+| L4 | Title dedup (beads DB query) | Blocks spawn (fail-open) | Structural-ish |
+| L5 | Fresh beads status re-check | Blocks spawn (fail-open) | Structural |
+| L6 | UpdateStatus("in_progress") | **Fail-fast** | Structural (PRIMARY) |
+
+**Key properties:**
+- L6 is the only fail-fast layer — if it fails, spawn is aborted
+- L2, L4, L5 are fail-open — they allow spawn if their backing service is unavailable
+- L1-L3 are in-memory heuristics that survive daemon restarts via disk persistence (`~/.orch/spawn_cache.json`)
+
+#### SpawnedIssueTracker (L1)
+
+`pkg/daemon/spawn_tracker.go` tracks issue IDs and titles immediately before spawn:
+- **6-hour TTL** matches typical agent work duration (backup protection when session-level dedup fails)
+- Disk-backed via `~/.orch/spawn_cache.json` (survives daemon restarts)
+- `CleanStale()` called during capacity reconciliation
+- Includes spawn count tracking for thrash detection (warns at 3+ spawns)
+
+#### Session/Tmux Dedup (L2)
+
+`pkg/daemon/session_dedup.go` checks for existing OpenCode sessions AND tmux windows for the issue:
+- Queries OpenCode API for active sessions matching the beads ID
+- Falls back to tmux window name matching if API unavailable
+- Fail-open: if both checks fail, spawn proceeds (relies on downstream layers)
+
+#### Title Dedup (L3/L4)
+
+Catches content duplicates where different beads issues have identical titles:
+- L3: In-memory normalized title map (fast, but lost on restart without disk persistence)
+- L4: Beads DB query via `FindInProgressByTitle()` (persistent, but fail-open)
+
+#### Fresh Status + Atomic Update (L5/L6)
+
+- L5 re-queries beads for current status (guards against stale data from poll)
+- L6 sets status to `in_progress` — fail-fast if update fails
+
+#### Orphan Detector Interaction
+
+The orphan detector (`pkg/daemon/orphan_detector.go`) resets dead agents' issues from `in_progress` → `open` but **intentionally does NOT clear spawn cache entries**. This prevents thrash loops where an issue is repeatedly spawned and fails. The trade-off: legitimate retries are blocked for the remainder of the 6h TTL.
+
+#### Known Limitations
+
+- **Correlated failures:** When beads is unavailable, L4, L5, and L6 all degrade simultaneously
+- **No atomic CAS:** L5 and L6 are separate operations with a TOCTOU race window
+- **Unbounded spawnCounts:** The spawn count map grows indefinitely (minor leak)
+- **ReconcileWithIssues() is dead code:** Exists in spawn_tracker.go but never called from production
+
+**Structural redesign recommended:** See `.kb/investigations/2026-03-01-inv-structural-review-daemon-dedup-after.md` for architect analysis recommending CAS-based primary gate with advisory-only heuristic layers.
 
 ### Configuration
 
@@ -460,7 +497,7 @@ orch daemon run --cross-project  # Poll all kb-registered projects
 4. Daemon is running? `launchctl list | grep orch`
 5. At capacity? `orch status`
 6. Issue has blocking dependencies? `bd show <id> --deps`
-7. Issue already recently spawned? (SpawnedIssueTracker TTL)
+7. Issue already recently spawned? (6h TTL in spawn cache, or active session/tmux window)
 
 **Use preview to diagnose:**
 ```bash
@@ -482,14 +519,15 @@ make install-restart
 
 ### "Daemon spawned duplicate agents for same issue"
 
-**Cause (from 2026-01-06):** Race condition between spawn initiation and beads status update. Daemon polls, spawns, but status isn't `in_progress` until after spawn initialization completes.
+**Cause:** Race condition between spawn initiation and beads status update, or content duplicates (different IDs, same title).
 
-**Fix:** `SpawnedIssueTracker` with 5-minute TTL tracks issues immediately before spawn. See "Capacity Management" section.
+**Fix:** 6-layer dedup pipeline in `spawnIssue()`. See "Spawn Dedup Architecture" section.
 
 **If still happening:**
 1. Check daemon binary is recent: `make install-restart`
-2. Verify SpawnedIssueTracker in logs: look for "already recently spawned"
-3. TTL may need adjustment if spawns take >5 minutes
+2. Verify dedup in logs: look for "already recently spawned" (L1), "session exists" (L2), "title already spawned" (L3/L4)
+3. Check if beads was unavailable (degrades L4, L5, L6 simultaneously)
+4. Check `~/.orch/spawn_cache.json` for current tracked entries
 
 ### "Daemon capacity stuck at max"
 
@@ -577,10 +615,14 @@ From investigations, these design decisions were made:
 | --limit 0 for bd ready | Default 10 misses issues | Jan 2026 |
 | Parent-child unblocked when in_progress | Epics should start children | Jan 2026 |
 | Periodic kb reflect | Auto-surface synthesis opportunities | Jan 2026 |
-| SpawnedIssueTracker (5-min TTL) | Prevent duplicate spawns from race condition | Jan 2026 |
+| SpawnedIssueTracker (6h TTL, disk-backed) | Prevent duplicate spawns; 6h matches agent work duration | Jan 2026 (TTL updated Feb 2026) |
 | Auto-completion via CompletionOnce | Free capacity slots without orchestrator | Jan 2026 |
 | Two-tier reflection (synthesis+open) | Only high-signal types auto-create issues | Jan 2026 |
 | No beads daemon auto-start | Caching solves API latency; daemons are per-project | Jan 2026 |
+| Session/tmux dedup (L2) | Check active sessions before spawn; fail-open | Jan 2026 |
+| Content-aware title dedup (L3/L4) | Catch duplicate issues with different IDs, same title | Feb 2026 |
+| Fresh status re-check + atomic update (L5/L6) | Structural gate as final dedup authority | Feb 2026 |
+| Orphan detector retains spawn cache | Prevents thrash loops after agent death | Mar 2026 |
 | `--replace` flag for graceful takeover | Avoids manual stop/start; atomic daemon restart | Feb 2026 |
 
 ---
@@ -623,3 +665,4 @@ This guide consolidates learnings from 33 investigations:
 - 2026-01-04: Structure analysis, rejection reason visibility
 - 2026-01-06: Parent-child deps, periodic reflect, cross-project design, auto-completion integration, duplicate spawn prevention, --limit 0 fix, two-tier reflection
 - 2026-01-07: Beads daemon auto-start analysis, synthesis update
+- 2026-03-01: Structural review of daemon dedup — 6 layers mapped, architect redesign recommended
