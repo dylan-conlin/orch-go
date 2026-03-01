@@ -1,49 +1,35 @@
-task: Prototype Stop hook for Phase Complete enforcement
-issue: orch-go-puat
-tier: light
+task: Implement daemon agreement check periodic task
+beads_id: orch-go-mri5
+date: 2026-02-28
+
+verification:
+  build:
+    command: "go build ./cmd/orch/"
+    result: PASS
+  vet:
+    command: "go vet ./..."
+    result: PASS
+  tests:
+    command: "go test ./pkg/daemon/ -run 'Agreement|AutoCreate' -v"
+    result: "15 tests PASS"
+  full_suite:
+    command: "go test ./pkg/daemon/"
+    result: "PASS (8.075s)"
+  daemonconfig:
+    command: "go test ./pkg/daemonconfig/"
+    result: "PASS"
 
 deliverables:
-  - path: ~/.orch/hooks/enforce-phase-complete.py
-    change: New Stop hook script that blocks worker agent exit unless Phase Complete reported
-    verified: true
+  new_files:
+    - pkg/daemon/agreement_check.go      # Types, service interface, check/dedup/create logic, daemon methods
+    - pkg/daemon/agreement_check_test.go  # 15 tests covering all paths
+  modified_files:
+    - pkg/daemonconfig/config.go          # AgreementCheckEnabled + AgreementCheckInterval config fields
+    - pkg/daemon/daemon.go                # lastAgreementCheck state field, AgreementCheck service field, defaults in constructors
+    - pkg/daemon/interfaces.go            # defaultAgreementCheckService implementation
+    - pkg/daemon/mock_test.go             # mockAgreementCheckService for testing
+    - cmd/orch/daemon_periodic.go         # Handler + snapshot collection in runPeriodicTasks
+    - cmd/orch/daemon.go                  # Snapshot wiring into status file
+    - pkg/daemon/status.go                # AgreementCheckSnapshot field in DaemonStatus
 
-  - path: ~/.claude/settings.json
-    change: Registered Stop hook in settings.json Stop event (was empty array)
-    verified: true
-
-  - path: pkg/spawn/claude.go
-    change: Added ORCH_BEADS_ID env var export to BuildClaudeLaunchCommand
-    verified: true
-
-  - path: pkg/spawn/claude_test.go
-    change: 2 new test cases for ORCH_BEADS_ID injection and exclusion
-    verified: true
-
-  - path: pkg/spawn/backends/inline.go
-    change: Added ORCH_BEADS_ID to inline backend environment
-    verified: true
-
-  - path: pkg/hook/schema.go
-    change: Added validateStopOutput() function and Stop to FormatExpectedSchema
-    verified: true
-
-  - path: pkg/hook/schema_test.go
-    change: 4 new test cases for Stop hook schema validation
-    verified: true
-
-checks:
-  - command: go test ./pkg/spawn/ -run TestBuildClaudeLaunchCommand
-    result: 16/16 PASS
-
-  - command: go test ./pkg/hook/
-    result: 49/49 PASS
-
-  - command: go build ./cmd/orch/
-    result: PASS
-
-  - command: Manual hook tests (6 scenarios)
-    result: All pass (non-worker allow, worker+phase allow, worker-no-phase block, escape hatch allow, beads-found allow, beads-not-found block)
-
-manual_verification_needed:
-  - Live agent test with spawned worker to verify Stop hook fires
-  - Verify stop_hook_active loop prevention in real Claude Code session
+manual_verification: none

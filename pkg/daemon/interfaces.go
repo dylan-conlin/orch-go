@@ -131,6 +131,21 @@ func (s *defaultKnowledgeHealthService) CreateIssue(result *KnowledgeHealthResul
 	return DefaultCreateKnowledgeHealthIssue(result)
 }
 
+// defaultAgreementCheckService is the production AgreementCheckService.
+type defaultAgreementCheckService struct{}
+
+func (s *defaultAgreementCheckService) Check() (*AgreementCheckResult, error) {
+	return DefaultAgreementCheck()
+}
+
+func (s *defaultAgreementCheckService) CreateIssue(failure AgreementFailureDetail) error {
+	return DefaultCreateAgreementIssue(failure)
+}
+
+func (s *defaultAgreementCheckService) HasOpenIssue(agreementID string) (bool, error) {
+	return DefaultHasOpenAgreementIssue(agreementID)
+}
+
 // defaultSessionCleaner is the production SessionCleaner.
 type defaultSessionCleaner struct{}
 

@@ -163,6 +163,34 @@ func (m *mockKnowledgeHealthService) CreateIssue(result *KnowledgeHealthResult) 
 	return nil
 }
 
+// mockAgreementCheckService implements AgreementCheckService for tests.
+type mockAgreementCheckService struct {
+	CheckFunc        func() (*AgreementCheckResult, error)
+	CreateIssueFunc  func(failure AgreementFailureDetail) error
+	HasOpenIssueFunc func(agreementID string) (bool, error)
+}
+
+func (m *mockAgreementCheckService) Check() (*AgreementCheckResult, error) {
+	if m.CheckFunc != nil {
+		return m.CheckFunc()
+	}
+	return &AgreementCheckResult{}, nil
+}
+
+func (m *mockAgreementCheckService) CreateIssue(failure AgreementFailureDetail) error {
+	if m.CreateIssueFunc != nil {
+		return m.CreateIssueFunc(failure)
+	}
+	return nil
+}
+
+func (m *mockAgreementCheckService) HasOpenIssue(agreementID string) (bool, error) {
+	if m.HasOpenIssueFunc != nil {
+		return m.HasOpenIssueFunc(agreementID)
+	}
+	return false, nil
+}
+
 // mockSessionCleaner implements SessionCleaner for tests.
 type mockSessionCleaner struct {
 	CleanupFunc func(config Config) (int, string, error)

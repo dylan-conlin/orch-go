@@ -133,6 +133,15 @@ type Config struct {
 	// PhaseTimeoutThreshold is how long an agent can go without a phase update
 	// before being flagged as unresponsive. Default is 30 minutes.
 	PhaseTimeoutThreshold time.Duration
+
+	// AgreementCheckEnabled controls whether periodic agreement checking is enabled.
+	// When enabled, the daemon runs kb agreements check periodically and auto-creates
+	// beads issues for failing error-severity agreements (with label-based dedup).
+	AgreementCheckEnabled bool
+
+	// AgreementCheckInterval is how often to run agreement checks (0 = disabled).
+	// Default is 30 minutes.
+	AgreementCheckInterval time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -170,5 +179,7 @@ func DefaultConfig() Config {
 		PhaseTimeoutEnabled:         true,
 		PhaseTimeoutInterval:        5 * time.Minute,  // Check every 5 minutes
 		PhaseTimeoutThreshold:       30 * time.Minute, // Flag after 30 minutes without phase update
+		AgreementCheckEnabled:       true,
+		AgreementCheckInterval:      30 * time.Minute, // Check every 30 minutes
 	}
 }

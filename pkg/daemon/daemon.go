@@ -92,6 +92,9 @@ type Daemon struct {
 	// lastQuestionDetection tracks when QUESTION phase detection was last run.
 	lastQuestionDetection time.Time
 
+	// lastAgreementCheck tracks when agreement checking was last run.
+	lastAgreementCheck time.Time
+
 	// questionNotified tracks which agents have been notified about QUESTION phase.
 	// Prevents duplicate notifications. Cleaned when agent leaves QUESTION phase.
 	questionNotified map[string]time.Time
@@ -129,6 +132,8 @@ type Daemon struct {
 	ModelDrift modeldrift.Store
 	// KnowledgeHealth provides knowledge health operations.
 	KnowledgeHealth KnowledgeHealthService
+	// AgreementCheck provides agreement checking operations.
+	AgreementCheck AgreementCheckService
 	// Cleaner cleans up stale sessions.
 	Cleaner SessionCleaner
 	// ActiveCounter counts active agents for pool reconciliation.
@@ -165,6 +170,7 @@ func NewWithConfig(config Config) *Daemon {
 		Reflector:               &defaultReflector{},
 		ModelDrift:              modeldrift.NewDefaultStore(),
 		KnowledgeHealth:         &defaultKnowledgeHealthService{},
+		AgreementCheck:          &defaultAgreementCheckService{},
 		Cleaner:                 &defaultSessionCleaner{},
 		ActiveCounter:           &defaultActiveCounter{},
 		Agents:                  &defaultAgentDiscoverer{},
@@ -201,6 +207,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		Reflector:           &defaultReflector{},
 		ModelDrift:          modeldrift.NewDefaultStore(),
 		KnowledgeHealth:     &defaultKnowledgeHealthService{},
+		AgreementCheck:      &defaultAgreementCheckService{},
 		Cleaner:             &defaultSessionCleaner{},
 		ActiveCounter:       &defaultActiveCounter{},
 		Agents:              &defaultAgentDiscoverer{},

@@ -516,6 +516,7 @@ func runDaemonLoop() error {
 		knowledgeHealthSnapshot := periodicResult.KnowledgeHealthSnapshot
 		phaseTimeoutSnapshot := periodicResult.PhaseTimeoutSnapshot
 		questionDetectionSnapshot := periodicResult.QuestionDetectionSnapshot
+		agreementCheckSnapshot := periodicResult.AgreementCheckSnapshot
 
 		// Process completions: mark Phase: Complete agents as ready-for-review
 		// This signals they're waiting for orchestrator review. Uses the escalation model:
@@ -665,6 +666,7 @@ func runDaemonLoop() error {
 			KnowledgeHealth:    knowledgeHealthSnapshot,
 			PhaseTimeout:       phaseTimeoutSnapshot,
 			QuestionDetection:  questionDetectionSnapshot,
+			AgreementCheck:     agreementCheckSnapshot,
 		}
 		if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
 			fmt.Fprintf(os.Stderr, "Warning: failed to write status file: %v\n", err)

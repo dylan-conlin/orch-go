@@ -16,9 +16,10 @@ import (
 
 // periodicTasksResult holds outputs from periodic tasks needed downstream.
 type periodicTasksResult struct {
-	KnowledgeHealthSnapshot      *daemon.KnowledgeHealthSnapshot
-	PhaseTimeoutSnapshot         *daemon.PhaseTimeoutSnapshot
-	QuestionDetectionSnapshot    *daemon.QuestionDetectionSnapshot
+	KnowledgeHealthSnapshot   *daemon.KnowledgeHealthSnapshot
+	PhaseTimeoutSnapshot      *daemon.PhaseTimeoutSnapshot
+	QuestionDetectionSnapshot *daemon.QuestionDetectionSnapshot
+	AgreementCheckSnapshot    *daemon.AgreementCheckSnapshot
 }
 
 // runPeriodicTasks runs all periodic maintenance tasks and handles their output.
@@ -75,6 +76,15 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		if r.Error == nil {
 			snapshot := r.Snapshot()
 			result.QuestionDetectionSnapshot = &snapshot
+		}
+	}
+
+	// Agreement check
+	if r := d.RunPeriodicAgreementCheck(); r != nil {
+		handleAgreementCheckResult(r, timestamp, verbose, logger)
+		if r.Error == nil {
+			snapshot := r.Snapshot()
+			result.AgreementCheckSnapshot = &snapshot
 		}
 	}
 
@@ -234,6 +244,32 @@ func handleQuestionDetectionResult(r *daemon.QuestionDetectionResult, timestamp 
 		})
 	} else if verbose {
 		fmt.Printf("[%s] Question detection: %s\n", timestamp, r.Message)
+	}
+}
+
+func handleAgreementCheckResult(r *daemon.AgreementCheckResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Agreement check error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.agreement_check", map[string]interface{}{
+			"total":          0,
+			"passed":         0,
+			"failed":         0,
+			"issues_created": 0,
+			"error":          r.Error.Error(),
+			"message":        r.Message,
+		})
+	} else if r.IssuesCreated > 0 || r.Failed > 0 {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		logDaemonEvent(logger, "daemon.agreement_check", map[string]interface{}{
+			"total":          r.Total,
+			"passed":         r.Passed,
+			"failed":         r.Failed,
+			"issues_created": r.IssuesCreated,
+			"skipped":        r.Skipped,
+			"message":        r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
 	}
 }
 

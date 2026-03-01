@@ -60,6 +60,10 @@ type DaemonStatus struct {
 	// QuestionDetection holds the latest QUESTION phase detection snapshot.
 	// Surfaced to show agents waiting for user input in daemon status and dashboard.
 	QuestionDetection *QuestionDetectionSnapshot `json:"question_detection,omitempty"`
+
+	// AgreementCheck holds the latest agreement check snapshot.
+	// Surfaced to show agreement health in daemon status and dashboard.
+	AgreementCheck *AgreementCheckSnapshot `json:"agreement_check,omitempty"`
 }
 
 // VerificationStatusSnapshot is a snapshot of verification tracking state.
