@@ -1,29 +1,43 @@
-task: DSL design principles research
-beads_id: orch-go-pqs6
+task: Extract extraction.go into 7 domain files per architect plan
+beads_id: orch-go-mben
 date: 2026-03-01
 
 verification:
-  type: investigation
+  type: refactoring
   deliverables:
-    - path: .kb/investigations/2026-03-01-dsl-design-principles-natural-language-embedded.md
-      exists: true
-      description: Investigation into DSL design principles for natural-language-embedded specifications
-      sections_present:
-        - "D.E.K.N. Summary"
-        - "Prior Work"
-        - "Finding 1: The Specification Spectrum"
-        - "Finding 2: Seven Precedent Systems"
-        - "Finding 3: Three Design Principles"
-        - "Finding 4: Five Failure Modes"
-        - "Finding 5: The Emerging Pattern"
-        - "Test Performed"
-        - "Conclusion"
+    - path: pkg/orch/spawn_pipeline.go
+      description: "Core pipeline functions (480 lines, was extraction.go at 1632)"
+    - path: pkg/orch/spawn_types.go
+      description: "SpawnInput, SpawnContext, ResolvedSpawnResult, GapCheckResult (76 lines)"
+    - path: pkg/orch/spawn_inference.go
+      description: "Skill/tier inference, model validation (128 lines)"
+    - path: pkg/orch/spawn_preflight.go
+      description: "Pre-flight validation gates, architect verification (162 lines)"
+    - path: pkg/orch/spawn_kb_context.go
+      description: "KB context gathering, gap analysis (171 lines)"
+    - path: pkg/orch/spawn_backend.go
+      description: "Backend routing, infrastructure detection (117 lines)"
+    - path: pkg/orch/spawn_beads.go
+      description: "Beads issue lifecycle management (114 lines)"
+    - path: pkg/orch/spawn_design.go
+      description: "Design artifact reading (86 lines)"
+    - path: pkg/orch/spawn_backend_test.go
+      description: "Backend tests from extraction_test.go (286 lines)"
+    - path: pkg/orch/spawn_preflight_test.go
+      description: "Preflight tests from extraction_test.go (127 lines)"
+    - path: pkg/orch/spawn_inference_test.go
+      description: "Inference tests from extraction_test.go (48 lines)"
   tests_run:
-    - command: "web research across academic, industry, and open-source sources"
-      result: "7 precedent systems identified, 3 design principles extracted, 5 failure modes catalogued"
+    - command: "go build ./pkg/orch/"
+      result: "PASS"
+    - command: "go build ./cmd/orch/"
+      result: "PASS"
+    - command: "go vet ./pkg/orch/ && go vet ./cmd/orch/"
+      result: "PASS"
+    - command: "go test ./pkg/orch/ -count=1"
+      result: "ok github.com/dylan-conlin/orch-go/pkg/orch 0.010s - 35 tests passed"
   leave_it_better:
-    - action: "kb quick decide on RFC 2119 + markdown + constraint-based pattern for document-DSLs"
-      id: kb-2d2e24
+    - action: "Fixed unused import in cmd/orch/doctor_sessions.go (pre-existing from another extraction)"
     - stale_artifacts: "No stale artifacts encountered"
 
 manual_verification: none
