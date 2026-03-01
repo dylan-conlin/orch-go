@@ -48,6 +48,7 @@ to run once and exit (legacy behavior).
 
 Examples:
   orch-go daemon run                        # Continuous polling (default 60s)
+  orch-go daemon run --replace              # Stop existing daemon first, then start
   orch-go daemon run --poll-interval 30     # Poll every 30 seconds
   orch-go daemon run --poll-interval 0      # Run once and exit
   orch-go daemon run --concurrency 5        # Allow up to 5 concurrent agents
@@ -198,6 +199,7 @@ var (
 	daemonOrphanAgeThreshold      int // Orphan age threshold in minutes
 	daemonPhaseTimeoutInterval    int // Phase timeout check interval in minutes (0 = disabled)
 	daemonPhaseTimeoutThreshold   int // Phase timeout threshold in minutes
+	daemonReplace                 bool // Stop existing daemon before starting (graceful takeover)
 )
 
 func init() {
@@ -209,6 +211,9 @@ func init() {
 	daemonCmd.AddCommand(daemonPreviewCmd)
 	daemonCmd.AddCommand(daemonReflectCmd)
 	daemonCmd.AddCommand(daemonResumeCmd)
+
+	// --replace is only on daemon run (daemon restart already has this behavior)
+	daemonRunCmd.Flags().BoolVar(&daemonReplace, "replace", false, "Stop existing daemon before starting (graceful takeover)")
 
 	// Register daemon run flags on both run and restart commands
 	for _, cmd := range []*cobra.Command{daemonRunCmd, daemonRestartCmd} {
@@ -318,6 +323,18 @@ func runDaemonLoop() error {
 	// Handle dry-run mode
 	if daemonDryRun {
 		return runDaemonDryRun()
+	}
+
+	// If --replace, stop existing daemon before acquiring lock
+	if daemonReplace {
+		pid := daemon.ReadPIDFromLockFile()
+		if pid > 0 && daemon.IsProcessAlive(pid) {
+			fmt.Printf("Replacing existing daemon (PID %d)...\n", pid)
+			if err := daemon.StopDaemon(daemon.StopOptions{}); err != nil && err != daemon.ErrNoDaemonRunning {
+				return fmt.Errorf("failed to stop existing daemon: %w", err)
+			}
+			fmt.Println("Previous daemon stopped.")
+		}
 	}
 
 	// Acquire PID lock to ensure single daemon instance.
