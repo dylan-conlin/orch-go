@@ -86,6 +86,9 @@ type SpawnContext struct {
 	// MaxTurns limits the number of agentic turns for Claude CLI spawns.
 	// When > 0, passes --max-turns to prevent runaway agents. 0 = unlimited.
 	MaxTurns int
+	// Settings is the path to a settings.json file for Claude CLI.
+	// When set, adds --settings flag for worker hook isolation.
+	Settings string
 }
 
 // ResolvedSpawnResult holds resolved spawn settings and the parsed model spec.
@@ -1088,6 +1091,7 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 		BeadsDir:           ctx.BeadsDir,
 		PriorCompletions:   ctx.PriorCompletions,
 		MaxTurns:           ctx.MaxTurns,
+		Settings:           ctx.Settings,
 	}
 }
 

@@ -62,6 +62,7 @@ var (
 	spawnEffort             string // Claude CLI effort level: low, medium, high
 	spawnMaxTurns           int    // Max agentic turns for Claude CLI (0 = unlimited)
 	spawnReason             string // Reason for override flag usage (--bypass-triage, --force-hotspot, --no-track)
+	spawnSettings           string // Path to settings.json for Claude CLI (worker hook isolation)
 	spawnModeSet            bool   // Tracks whether --mode was explicitly set
 	spawnValidationSet      bool   // Tracks whether --validation was explicitly set
 )
@@ -196,6 +197,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnReason, "reason", "", "Reason for override flags (--bypass-triage, --force-hotspot, --no-track). Min 10 chars.")
 	spawnCmd.Flags().StringVar(&spawnEffort, "effort", "", "Claude CLI effort level (low, medium, high). Default: auto from skill tier.")
 	spawnCmd.Flags().IntVar(&spawnMaxTurns, "max-turns", 0, "Max agentic turns for Claude CLI spawns (0 = unlimited). Prevents runaway agents.")
+	spawnCmd.Flags().StringVar(&spawnSettings, "settings", "", "Path to settings.json for Claude CLI (enables worker hook isolation)")
 }
 
 var (
@@ -738,6 +740,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		BeadsDir:           crossRepoBeadsDir,
 		PriorCompletions:   priorCompletions,
 		MaxTurns:           spawnMaxTurns,
+		Settings:           spawnSettings,
 	}
 
 	// 11. Build spawn config

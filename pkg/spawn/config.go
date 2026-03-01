@@ -293,6 +293,11 @@ type Config struct {
 	// that worked on the same beads issue. Injected into SPAWN_CONTEXT.md to prevent
 	// agents from re-doing work that was already completed.
 	PriorCompletions string
+
+	// Settings is the path to a settings.json file for Claude CLI.
+	// When set, adds --settings flag to the Claude CLI launch command.
+	// Used for worker hook isolation - workers can use different hooks than the orchestrator.
+	Settings string
 }
 
 // UsageInfo contains account usage data at spawn time.
