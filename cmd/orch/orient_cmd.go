@@ -30,6 +30,7 @@ var orientCmd = &cobra.Command{
 conversationally at session start. Surfaces:
 
   - Recent throughput (completions, abandonments, avg duration)
+  - Previous session summary (from latest debrief in .kb/sessions/)
   - Ready work from beads (bd ready)
   - Relevant models matching ready work
   - Stale model warnings (>14 days without probes)
@@ -62,15 +63,19 @@ func runOrient() error {
 	// 1. Throughput from events.jsonl
 	data.Throughput = collectThroughput(now)
 
-	// 2. Ready issues from bd ready (skippable when frontier provides them)
+	// 2. Previous session from latest debrief
+	sessionsDir := filepath.Join(projectDir, ".kb", "sessions")
+	data.PreviousSession = collectPreviousSession(sessionsDir)
+
+	// 3. Ready issues from bd ready (skippable when frontier provides them)
 	if !orientSkipReady {
 		data.ReadyIssues = collectReadyIssues()
 
-		// 2b. Decision context per ready issue from kb context
+		// 3b. Decision context per ready issue from kb context
 		enrichIssuesWithKBContext(data.ReadyIssues)
 	}
 
-	// 3. Model freshness from .kb/models/
+	// 4. Model freshness from .kb/models/
 	modelsDir := filepath.Join(projectDir, ".kb", "models")
 	allModels, err := orient.ScanModelFreshness(modelsDir)
 	if err == nil {
@@ -81,10 +86,10 @@ func runOrient() error {
 		data.StaleModels = orient.FilterStaleModels(allModels, 2)
 	}
 
-	// 4. Focus
+	// 5. Focus
 	data.FocusGoal = collectFocus()
 
-	// 5. In-progress count from bd
+	// 6. In-progress count from bd
 	data.Throughput.InProgress = collectInProgressCount()
 
 	if orientJSON {
@@ -221,6 +226,21 @@ func selectRelevantModels(models []orient.ModelFreshness, maxCount int) []orient
 	}
 
 	return candidates
+}
+
+// collectPreviousSession finds and parses the most recent session debrief.
+func collectPreviousSession(sessionsDir string) *orient.DebriefSummary {
+	path, err := orient.FindLatestDebrief(sessionsDir)
+	if err != nil {
+		return nil
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+
+	return orient.ParseDebriefSummary(string(content))
 }
 
 // collectFocus reads the current focus goal.

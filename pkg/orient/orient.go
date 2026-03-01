@@ -33,11 +33,12 @@ type ReadyIssue struct {
 
 // OrientationData holds all data needed to render session orientation.
 type OrientationData struct {
-	Throughput     Throughput       `json:"throughput"`
-	ReadyIssues    []ReadyIssue     `json:"ready_issues,omitempty"`
-	RelevantModels []ModelFreshness `json:"relevant_models,omitempty"`
-	StaleModels    []ModelFreshness `json:"stale_models,omitempty"`
-	FocusGoal      string           `json:"focus_goal,omitempty"`
+	Throughput      Throughput       `json:"throughput"`
+	PreviousSession *DebriefSummary  `json:"previous_session,omitempty"`
+	ReadyIssues     []ReadyIssue     `json:"ready_issues,omitempty"`
+	RelevantModels  []ModelFreshness `json:"relevant_models,omitempty"`
+	StaleModels     []ModelFreshness `json:"stale_models,omitempty"`
+	FocusGoal       string           `json:"focus_goal,omitempty"`
 }
 
 // ComputeThroughput aggregates events within the given day window.
@@ -93,6 +94,9 @@ func FormatOrientation(data *OrientationData) string {
 
 	// Throughput section
 	formatThroughput(&b, &data.Throughput)
+
+	// Previous session section (from debrief)
+	b.WriteString(FormatPreviousSession(data.PreviousSession))
 
 	// Ready work section
 	formatReadyIssues(&b, data.ReadyIssues)
