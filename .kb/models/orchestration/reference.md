@@ -159,11 +159,12 @@ At least one per completion:
 
 ### Session End
 
-1. Commit all work
-2. `bd sync`
-3. Ensure git clean
-4. `orch review` — confirm no dangling completions
-5. `bd list --status=in_progress` — confirm no stale in-progress work
+1. `orch debrief` — generate session debrief from events, git, in-flight work
+2. Commit all work (including the debrief)
+3. `bd sync`
+4. Ensure git clean
+5. `orch review` — confirm no dangling completions
+6. `bd list --status=in_progress` — confirm no stale in-progress work
 
 ### Cross-Session
 
