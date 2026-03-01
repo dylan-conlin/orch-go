@@ -1,0 +1,21 @@
+verification:
+  type: documentation
+  deliverables:
+    - path: .kb/guides/system-metaphors.md
+      description: Guide cataloging system metaphors as comprehension aids
+      verified: true
+  checks:
+    - description: Guide follows existing guide format (title, purpose, last verified, sections)
+      result: pass
+      evidence: Matches format of resilient-infrastructure-patterns.md and agent-lifecycle.md
+    - description: All 7 metaphor domains documented with term tables
+      result: pass
+      evidence: Biological, Military, Gates, Spatial, Navigation, Knowledge, Ecological sections
+    - description: Extension guidelines provided
+      result: pass
+      evidence: "Guidelines for Extending Metaphors" section with do/don't patterns
+    - description: Quick reference ownership table included
+      result: pass
+      evidence: "Which Domain Owns What" table at end of guide
+  manual_steps: []
+  notes: Documentation-only deliverable, no code changes, no tests applicable
