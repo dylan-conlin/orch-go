@@ -419,6 +419,10 @@ Each agent produces a SYNTHESIS.md following D.E.K.N.:
 - `orch complete <id> --force` if work is done
 - `orch abandon <id>` if work is incomplete
 
+**Important:** `orch abandon` must remove the `orch:agent` label AND assignee from the beads issue, not just reset status. Otherwise the issue remains invisible to future daemon spawning.
+
+**Important:** `orch clean` must check tmux pane process liveness before closing windows. A window may appear idle but still have an active Claude Code process.
+
 ### "Lots of zombie agents in dashboard"
 
 **Cause:** Agents finished but `orch complete` was never run.

@@ -40,6 +40,27 @@ orch complete <id>
 
 ---
 
+## Verification Levels (V0-V3)
+
+Gates are organized into verification levels that map to spawn tier and skill type:
+
+| Level | Gates | When Used |
+|-------|-------|-----------|
+| **V0** | Phase: Complete only | Knowledge skills (investigation, architect, capture-knowledge) |
+| **V1** | V0 + test evidence, build | Light tier implementation |
+| **V2** | V1 + SYNTHESIS.md, git diff | Full tier implementation |
+| **V3** | V2 + visual verification | UI-modifying implementation (web/ changes) |
+
+**Trust calibration:** The effective verification tier derives from `reviewTier` + bypass signals, not issue type directly.
+
+**Known gap:** `tier` and `verify_level` can disagree on SYNTHESIS.md requirement — feature-impl may map to light tier (no synthesis) but V2 level (requires synthesis). Resolution: tier file in workspace is authoritative.
+
+**Known gap:** `orch complete` has zero probe awareness — probe verdicts in SYNTHESIS.md are never parsed or merged back to models.
+
+**See:** `.kb/decisions/2026-02-20-verification-levels-v0-v3.md`
+
+---
+
 ## Gate Reference
 
 ### 1. Phase: Complete (BLOCKING)

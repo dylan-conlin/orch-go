@@ -522,6 +522,14 @@ orch daemon run --replace  # Stop existing, start new (graceful takeover)
 orch daemon run --once     # Process single issue and exit
 ```
 
+### "Daemon shows as running but isn't"
+
+**Cause:** `handleDaemon`/`readDaemonStatus` check `daemon-status.json` file existence but don't verify PID liveness. After an unclean shutdown (crash, SIGKILL), the status file persists with stale data.
+
+**Fix:** Status readers must check PID liveness (e.g., `kill -0 <pid>`) in addition to file existence. If PID is dead, treat daemon as stopped regardless of status file content.
+
+**Related:** The extraction convergence constraint also applies to daemon — never create an extraction for a file if extraction was already attempted and the file is still above threshold.
+
 ### "Beads daemon not running, slow API"
 
 **From 2026-01-07 investigation:** Dashboard API can be slow (6.5s) on first request if beads daemon not running.
