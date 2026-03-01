@@ -25,6 +25,9 @@ web/.svelte-kit/
 web/build/
 tmp/
 
+# Agent workspace artifacts (ephemeral, per-session)
+.orch/workspace/
+
 # Dev/Ops mode (local state, not committed)
 .dev-mode
 

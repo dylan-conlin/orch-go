@@ -1,8 +1,0 @@
-version: 1
-tests:
-  - name: not_run
-    command: ''
-    expected: 'Not run (documentation-only change)'
-manual:
-  - step: 'Review updated model-drift lane guidance in reflection sessions guide'
-    expected: 'model-drift lane, ATS guidance, workflow, and integration note present'

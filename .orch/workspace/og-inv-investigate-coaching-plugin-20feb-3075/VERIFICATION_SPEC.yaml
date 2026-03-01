@@ -1,7 +1,0 @@
-version: 1
-commands:
-  - command: rg "detectWorkerSession|trackWorkerHealth|context_usage|tool_failure_rate|time_in_phase|commit_gap" .opencode/plugins/coaching.ts
-    expected: Output shows worker detection and worker health metric references in coaching plugin.
-manual_steps: []
-notes:
-  - Evidence gathered via Read tool on .opencode/plugins/coaching.ts.

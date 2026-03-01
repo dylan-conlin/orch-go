@@ -1,4 +1,0 @@
-commands:
-  - cmd: 'go test ./cmd/orch -run "TestListInProgressIssues|TestHandleAgents|TestBeadsCache"'
-    expected: 'Targeted serve_agents tests pass.'
-manual_checks: []

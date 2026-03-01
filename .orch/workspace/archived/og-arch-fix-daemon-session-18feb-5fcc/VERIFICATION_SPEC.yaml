@@ -1,4 +1,0 @@
-commands:
-  - cmd: 'go test ./pkg/daemon -run TestRunPeriodicCleanup'
-    expected: 'Daemon cleanup tests pass.'
-manual_checks: []

@@ -1,7 +1,0 @@
-commands:
-  - name: tests
-    command: ""
-    expected: "Not run (config alias change only)."
-manual:
-  - step: "None"
-notes: "No automated tests executed for this refactor-only change."

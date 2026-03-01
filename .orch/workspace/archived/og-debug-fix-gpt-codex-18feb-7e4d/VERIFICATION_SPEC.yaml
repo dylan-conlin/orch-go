@@ -1,9 +1,0 @@
-verification:
-  commands:
-    - command: "go test ./pkg/spawn/ -run TestGenerateContext -v"
-      expect: "PASS"
-    - command: "go test ./pkg/orch/"
-      expect: "ok"
-  manual_checks:
-    - "Verify generated SPAWN_CONTEXT.md contains explicit 'git add -A' and 'git commit -m' in all 3 completion sections"
-  notes: "Fix was applied by prior agent in ec0545c8. This agent verified correctness and added stronger test assertion."

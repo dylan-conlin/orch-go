@@ -1,7 +1,0 @@
-version: 1
-validation:
-  commands:
-    - command: go test ./pkg/config ./pkg/userconfig
-      expected: All tests pass
-  manual_steps:
-    - None
