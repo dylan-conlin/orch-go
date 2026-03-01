@@ -89,6 +89,13 @@ type Daemon struct {
 	// lastPhaseTimeout tracks when phase timeout detection was last run.
 	lastPhaseTimeout time.Time
 
+	// lastQuestionDetection tracks when QUESTION phase detection was last run.
+	lastQuestionDetection time.Time
+
+	// questionNotified tracks which agents have been notified about QUESTION phase.
+	// Prevents duplicate notifications. Cleaned when agent leaves QUESTION phase.
+	questionNotified map[string]time.Time
+
 	// resumeAttempts tracks when we last attempted to resume each agent (by beads ID).
 	// Prevents infinite resume loops by rate-limiting to 1 attempt per hour per agent.
 	resumeAttempts map[string]time.Time

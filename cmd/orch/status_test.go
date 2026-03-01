@@ -683,3 +683,64 @@ func TestPrintInfrastructureHealth(t *testing.T) {
 		})
 	}
 }
+
+func TestPhaseName(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"QUESTION", "QUESTION"},
+		{"QUESTION - Should we use JWT?", "QUESTION"},
+		{"BLOCKED - Need API key", "BLOCKED"},
+		{"Complete - All tests pass", "Complete"},
+		{"Implementing - Adding auth middleware", "Implementing"},
+		{"Planning", "Planning"},
+		{"", ""},
+		{"  QUESTION  ", "QUESTION"},
+		{"QUESTION - ", "QUESTION"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := phaseName(tt.input)
+			if got != tt.want {
+				t.Errorf("phaseName(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCompactModeShowsQuestionAgents(t *testing.T) {
+	// Verify that agents with "QUESTION - detail text" pass the needsAttention filter
+	// This tests the fix for the EqualFold bug where detail text prevented matching
+
+	agent := AgentInfo{
+		Phase:   "QUESTION - Should we use JWT or session-based auth?",
+		BeadsID: "test-123",
+	}
+
+	// The needsAttention logic from runStatus
+	isComplete := strings.HasPrefix(agent.Phase, "Complete")
+	isRecent := true
+	needsAttention := (isComplete && isRecent) ||
+		strings.EqualFold(phaseName(agent.Phase), "BLOCKED") ||
+		strings.EqualFold(phaseName(agent.Phase), "QUESTION")
+
+	if !needsAttention {
+		t.Error("Agent with 'QUESTION - detail' phase should pass needsAttention filter")
+	}
+}
+
+func TestCompactModeShowsBlockedAgents(t *testing.T) {
+	agent := AgentInfo{
+		Phase:   "BLOCKED - Need clarification on API contract",
+		BeadsID: "test-456",
+	}
+
+	needsAttention := strings.EqualFold(phaseName(agent.Phase), "BLOCKED") ||
+		strings.EqualFold(phaseName(agent.Phase), "QUESTION")
+
+	if !needsAttention {
+		t.Error("Agent with 'BLOCKED - detail' phase should pass needsAttention filter")
+	}
+}

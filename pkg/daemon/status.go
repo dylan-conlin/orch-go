@@ -56,6 +56,10 @@ type DaemonStatus struct {
 	// PhaseTimeout holds the latest phase timeout detection snapshot.
 	// Surfaced to show unresponsive agent count in daemon status and dashboard.
 	PhaseTimeout *PhaseTimeoutSnapshot `json:"phase_timeout,omitempty"`
+
+	// QuestionDetection holds the latest QUESTION phase detection snapshot.
+	// Surfaced to show agents waiting for user input in daemon status and dashboard.
+	QuestionDetection *QuestionDetectionSnapshot `json:"question_detection,omitempty"`
 }
 
 // VerificationStatusSnapshot is a snapshot of verification tracking state.

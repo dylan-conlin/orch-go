@@ -289,8 +289,8 @@ func runStatus(serverURL string) error {
 			}
 
 			needsAttention := (isComplete && isRecent) ||
-				strings.EqualFold(agentItem.Phase, "BLOCKED") ||
-				strings.EqualFold(agentItem.Phase, "QUESTION")
+				strings.EqualFold(phaseName(agentItem.Phase), "BLOCKED") ||
+				strings.EqualFold(phaseName(agentItem.Phase), "QUESTION")
 
 			// Check phase timeout for unresponsive detection
 			// This is done before filtering so unresponsive agents always show in compact mode
@@ -550,6 +550,17 @@ func extractDateFromWorkspaceName(name string) time.Time {
 	}
 
 	return parsedDate
+}
+
+// phaseName extracts the phase keyword from a full phase string.
+// Phase strings look like "QUESTION - Should we use JWT?" or "Implementing - Adding auth".
+// Returns just the keyword part (e.g., "QUESTION", "Implementing").
+// Returns the full string if there's no " - " separator.
+func phaseName(phase string) string {
+	if idx := strings.Index(phase, " - "); idx >= 0 {
+		return strings.TrimSpace(phase[:idx])
+	}
+	return strings.TrimSpace(phase)
 }
 
 // getPhaseAndTask retrieves the current phase and task description from beads.

@@ -11,12 +11,14 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/notify"
 )
 
 // periodicTasksResult holds outputs from periodic tasks needed downstream.
 type periodicTasksResult struct {
-	KnowledgeHealthSnapshot *daemon.KnowledgeHealthSnapshot
-	PhaseTimeoutSnapshot    *daemon.PhaseTimeoutSnapshot
+	KnowledgeHealthSnapshot      *daemon.KnowledgeHealthSnapshot
+	PhaseTimeoutSnapshot         *daemon.PhaseTimeoutSnapshot
+	QuestionDetectionSnapshot    *daemon.QuestionDetectionSnapshot
 }
 
 // runPeriodicTasks runs all periodic maintenance tasks and handles their output.
@@ -64,6 +66,15 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		if r.Error == nil {
 			snapshot := r.Snapshot()
 			result.PhaseTimeoutSnapshot = &snapshot
+		}
+	}
+
+	// QUESTION phase detection and notification
+	if r := d.RunPeriodicQuestionDetection(); r != nil {
+		handleQuestionDetectionResult(r, timestamp, verbose, logger)
+		if r.Error == nil {
+			snapshot := r.Snapshot()
+			result.QuestionDetectionSnapshot = &snapshot
 		}
 	}
 
@@ -182,6 +193,47 @@ func handlePhaseTimeoutResult(r *daemon.PhaseTimeoutResult, timestamp string, ve
 		})
 	} else if verbose {
 		fmt.Printf("[%s] Phase timeout: all agents responsive\n", timestamp)
+	}
+}
+
+func handleQuestionDetectionResult(r *daemon.QuestionDetectionResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Question detection error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.question_detection", map[string]interface{}{
+			"new":     0,
+			"total":   0,
+			"error":   r.Error.Error(),
+			"message": r.Message,
+		})
+		return
+	}
+
+	if len(r.NewQuestions) > 0 {
+		// Send desktop notification for each new question
+		notifier := notify.Default()
+		for _, q := range r.NewQuestions {
+			questionText := q.Question
+			if questionText == "" {
+				questionText = q.Phase
+			}
+			fmt.Printf("[%s] Agent QUESTION: %s - %s\n", timestamp, q.BeadsID, questionText)
+			if err := notifier.QuestionPending(q.BeadsID, questionText); err != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Failed to send question notification: %v\n", timestamp, err)
+			}
+		}
+
+		agentIDs := make([]string, 0, len(r.NewQuestions))
+		for _, q := range r.NewQuestions {
+			agentIDs = append(agentIDs, q.BeadsID)
+		}
+		logDaemonEvent(logger, "daemon.question_detected", map[string]interface{}{
+			"new":     len(r.NewQuestions),
+			"total":   r.TotalQuestions,
+			"agents":  agentIDs,
+			"message": r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] Question detection: %s\n", timestamp, r.Message)
 	}
 }
 

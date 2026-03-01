@@ -85,6 +85,20 @@ func (n *Notifier) ServiceCrashed(serviceName string, projectPath string) error 
 	return n.backend.Notify(title, message, "")
 }
 
+// QuestionPending sends a notification that an agent has a pending question.
+// Returns nil immediately if notifications are disabled.
+func (n *Notifier) QuestionPending(beadsID, questionText string) error {
+	if !n.enabled {
+		return nil
+	}
+	title := fmt.Sprintf("Agent Question: %s", beadsID)
+	message := questionText
+	if len(message) > 200 {
+		message = message[:197] + "..."
+	}
+	return n.backend.Notify(title, message, "")
+}
+
 // IsEnabled returns whether notifications are enabled.
 func (n *Notifier) IsEnabled() bool {
 	return n.enabled
