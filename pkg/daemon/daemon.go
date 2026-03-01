@@ -10,6 +10,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
+	"github.com/dylan-conlin/orch-go/pkg/modeldrift"
 )
 
 // Config holds configuration for the daemon.
@@ -118,7 +119,7 @@ type Daemon struct {
 	// Reflector runs knowledge reflection.
 	Reflector Reflector
 	// ModelDrift provides I/O for model drift analysis.
-	ModelDrift ModelDriftStore
+	ModelDrift modeldrift.Store
 	// KnowledgeHealth provides knowledge health operations.
 	KnowledgeHealth KnowledgeHealthService
 	// Cleaner cleans up stale sessions.
@@ -149,7 +150,7 @@ func NewWithConfig(config Config) *Daemon {
 		Spawner:                 &defaultSpawner{},
 		Completions:             &defaultCompletionFinder{},
 		Reflector:               &defaultReflector{},
-		ModelDrift:              &defaultModelDriftStore{},
+		ModelDrift:              modeldrift.NewDefaultStore(),
 		KnowledgeHealth:         &defaultKnowledgeHealthService{},
 		Cleaner:                 &defaultSessionCleaner{},
 		ActiveCounter:           &defaultActiveCounter{},
@@ -181,7 +182,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		Spawner:             &defaultSpawner{},
 		Completions:         &defaultCompletionFinder{},
 		Reflector:           &defaultReflector{},
-		ModelDrift:          &defaultModelDriftStore{},
+		ModelDrift:          modeldrift.NewDefaultStore(),
 		KnowledgeHealth:     &defaultKnowledgeHealthService{},
 		Cleaner:             &defaultSessionCleaner{},
 		ActiveCounter:       &defaultActiveCounter{},

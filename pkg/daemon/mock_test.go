@@ -107,7 +107,7 @@ func (m *mockReflector) ReflectOpen() error {
 	return nil
 }
 
-// mockModelDriftStore implements ModelDriftStore for tests.
+// mockModelDriftStore implements modeldrift.Store for tests.
 type mockModelDriftStore struct {
 	ReadStalenessEventsFunc func(path string) ([]spawn.StalenessEvent, error)
 	LoadMetadataFunc        func(modelPath string) (ModelDriftMetadata, error)

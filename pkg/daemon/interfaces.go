@@ -3,9 +3,6 @@
 // Each interface replaces one or more mock function fields with a typed contract.
 package daemon
 
-import (
-	"github.com/dylan-conlin/orch-go/pkg/spawn"
-)
 
 // IssueQuerier reads beads issues for the daemon spawn pipeline.
 type IssueQuerier interface {
@@ -35,14 +32,6 @@ type CompletionFinder interface {
 type Reflector interface {
 	Reflect(createIssues bool) (*ReflectResult, error)
 	ReflectOpen() error
-}
-
-// ModelDriftStore provides I/O for model drift analysis.
-type ModelDriftStore interface {
-	ReadStalenessEvents(path string) ([]spawn.StalenessEvent, error)
-	LoadMetadata(modelPath string) (ModelDriftMetadata, error)
-	CountCommits(projectDir, lastUpdated string, files []string) (int, error)
-	CreateIssue(args ModelDriftIssueCreateArgs) (string, error)
 }
 
 // KnowledgeHealthService provides knowledge health operations.
@@ -129,25 +118,6 @@ func (r *defaultReflector) Reflect(createIssues bool) (*ReflectResult, error) {
 
 func (r *defaultReflector) ReflectOpen() error {
 	return RunOpenReflection()
-}
-
-// defaultModelDriftStore is the production ModelDriftStore.
-type defaultModelDriftStore struct{}
-
-func (s *defaultModelDriftStore) ReadStalenessEvents(path string) ([]spawn.StalenessEvent, error) {
-	return readStalenessEvents(path)
-}
-
-func (s *defaultModelDriftStore) LoadMetadata(modelPath string) (ModelDriftMetadata, error) {
-	return LoadModelDriftMetadata(modelPath)
-}
-
-func (s *defaultModelDriftStore) CountCommits(projectDir, lastUpdated string, files []string) (int, error) {
-	return DefaultModelDriftCommitCounter(projectDir, lastUpdated, files)
-}
-
-func (s *defaultModelDriftStore) CreateIssue(args ModelDriftIssueCreateArgs) (string, error) {
-	return DefaultCreateModelDriftIssue(args)
 }
 
 // defaultKnowledgeHealthService is the production KnowledgeHealthService.

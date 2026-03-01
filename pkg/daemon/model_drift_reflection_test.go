@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/modeldrift"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
@@ -62,3 +63,6 @@ func TestDaemon_RunPeriodicModelDriftReflection_Due(t *testing.T) {
 		t.Error("lastModelDriftReflect should be updated after running")
 	}
 }
+
+// Ensure mockModelDriftStore satisfies modeldrift.Store at compile time.
+var _ modeldrift.Store = (*mockModelDriftStore)(nil)
