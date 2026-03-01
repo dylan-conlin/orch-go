@@ -1,0 +1,38 @@
+verification:
+  description: "End-to-end validation of orch orient command"
+
+  automated_checks:
+    - name: "pkg/orient unit tests"
+      command: "go test ./pkg/orient/ -v -count=1"
+      result: "PASS - 30 tests passed (0.006s)"
+
+    - name: "cmd/orch orient_cmd tests"
+      command: "go test ./cmd/orch/ -run Orient -v -count=1"
+      result: "PASS - 3 tests passed (0.010s)"
+
+    - name: "go vet"
+      command: "go vet ./cmd/orch/ ./pkg/orient/"
+      result: "Clean - no issues"
+
+  e2e_checks:
+    - name: "Text output (default)"
+      command: "orch orient"
+      result: "All 5 sections rendered: throughput (183 completions, 25 abandonments, 3 in-progress), ready issues (3 with KB context), relevant models (3), stale models (2), focus goal"
+
+    - name: "JSON output"
+      command: "orch orient --json"
+      result: "Valid JSON with all fields populated. kb_context attached to ready issues with constraint and attempt entries."
+
+    - name: "--days flag"
+      command: "orch orient --days 3 --skip-ready"
+      result: "Window correctly expanded (384 completions over 3d vs 183 over 1d). Header shows 'Last 3d:'"
+
+    - name: "--skip-ready flag"
+      command: "orch orient --skip-ready"
+      result: "Ready issues section shows 'No issues ready' - collection correctly skipped"
+
+  observations:
+    - "avg_duration_min=0 is correct - no completion events have duration_seconds/duration_minutes data in the last 24h"
+    - "Completions (183) > Spawns (114) in 1d window is expected - some spawns occurred >24h ago while completions fell within window"
+    - "KB context enrichment working - constraints and failed attempts surfaced per ready issue"
+    - "Model freshness scan working - 3 relevant models (1d old), 2 stale models (24d, 43d)"
