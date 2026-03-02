@@ -381,8 +381,10 @@ Meta frame:          "What is the orchestrator struggling with?"
 - `.kb/guides/orchestrator-session-management.md` - Procedural guide (commands, debugging, workflows)
 
 **Models:**
+- `.kb/models/decidability-graph/model.md` - **Structural foundation**: explains WHY the authority hierarchy exists (context-scoping, not capability). This model's authority assumptions depend on that model's premises.
 - `.kb/models/agent-lifecycle-state-model/model.md` - Worker lifecycle (related but different tier)
 - `.kb/models/spawn-architecture/model.md` - How spawn determines orchestrator vs worker context
+- `.kb/models/model-relationships/model.md` - How models relate to each other (structural/mechanistic/taxonomic functions)
 
 **Source code:**
 - `pkg/spawn/orchestrator_context.go` - ORCHESTRATOR_CONTEXT.md generation
