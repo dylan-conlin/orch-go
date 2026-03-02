@@ -1160,8 +1160,9 @@ func createFollowUpIssue(title string, sourceWorkspace string) error {
 		return fmt.Errorf("bd command not found: %w", err)
 	}
 
-	// Run bd create with triage:review label (needs orchestrator review before spawning)
-	args := []string{"create", title, "-d", description, "-l", "triage:review"}
+	// Run bd create with triage:ready label — discovered work filed during orchestrator
+	// review has already been reviewed; it's ready for daemon pickup, not further triage.
+	args := []string{"create", title, "-d", description, "-l", "triage:ready"}
 	cmd := exec.Command(bdPath, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
