@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -13,6 +14,9 @@ import (
 // VerificationAPIResponse is the JSON structure returned by /api/verification.
 type VerificationAPIResponse struct {
 	UnverifiedCount int                   `json:"unverified_count"`
+	HeartbeatAt     string                `json:"heartbeat_at,omitempty"`
+	HeartbeatAgo    string                `json:"heartbeat_ago,omitempty"`
+	DaemonPaused    bool                  `json:"daemon_paused"`
 	DaemonRunning   bool                  `json:"daemon_running"`
 	DaemonStatus    string                `json:"daemon_status,omitempty"`
 	OverrideTrend   *verify.OverrideTrend `json:"override_trend,omitempty"`
@@ -52,11 +56,21 @@ func handleVerification(w http.ResponseWriter, r *http.Request) {
 		resp.UnverifiedCount = count
 	}
 
-	// Daemon state (validates PID liveness to detect stale files)
+	// Heartbeat age (last human verification signal)
+	heartbeatAt, err := daemon.ReadVerificationSignal()
+	if err == nil && !heartbeatAt.IsZero() {
+		resp.HeartbeatAt = heartbeatAt.Format(time.RFC3339)
+		resp.HeartbeatAgo = formatDurationAgo(time.Since(heartbeatAt))
+	}
+
+	// Daemon pause state (validates PID liveness to detect stale files)
 	status, err := daemon.ReadValidatedStatusFile()
 	if err == nil && status != nil {
 		resp.DaemonRunning = true
 		resp.DaemonStatus = status.Status
+		if status.Verification != nil {
+			resp.DaemonPaused = status.Verification.IsPaused
+		}
 	}
 
 	// Override trend (verification bypasses)

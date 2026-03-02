@@ -13,6 +13,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/control"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -109,6 +110,24 @@ Examples:
 	},
 }
 
+var daemonResumeCmd = &cobra.Command{
+	Use:   "resume",
+	Short: "Resume daemon after verification pause",
+	Long: `Resume the daemon after reviewing completed work.
+
+When the daemon marks N issues as ready-for-review without human verification (manual orch complete),
+it pauses spawning to enforce the verifiability-first constraint. After reviewing the
+completed work, run this command to reset the completion counter and resume operation.
+
+The daemon checks for the resume signal on each poll cycle and automatically resumes.
+
+Examples:
+  orch daemon resume          # Resume after reviewing completed work`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runDaemonResume()
+	},
+}
+
 var daemonStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show daemon running state with PID liveness check",
@@ -193,6 +212,7 @@ func init() {
 	daemonCmd.AddCommand(daemonOnceCmd)
 	daemonCmd.AddCommand(daemonPreviewCmd)
 	daemonCmd.AddCommand(daemonReflectCmd)
+	daemonCmd.AddCommand(daemonResumeCmd)
 
 	// --replace is only on daemon run (daemon restart already has this behavior)
 	daemonRunCmd.Flags().BoolVar(&daemonReplace, "replace", false, "Stop existing daemon before starting (graceful takeover)")
@@ -267,6 +287,47 @@ func daemonConfigFromFlags() daemon.Config {
 	return config
 }
 
+// verificationBreakdown returns a per-project breakdown string for verification messages.
+// Best-effort: returns empty string on error so the primary count always displays.
+func verificationBreakdown() string {
+	items, err := verify.ListUnverifiedWork()
+	if err != nil || len(items) == 0 {
+		return ""
+	}
+	return verify.FormatProjectBreakdown(items)
+}
+
+// seedVerificationTracker seeds the tracker with the backlog IDs.
+// Called after daemon construction, before entering the main loop.
+func seedVerificationTracker(d *daemon.Daemon) {
+	if d.VerificationTracker == nil {
+		return
+	}
+
+	items, err := verify.ListUnverifiedWork()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not seed verification tracker: %v\n", err)
+		return
+	}
+
+	if len(items) > 0 {
+		ids := make([]string, len(items))
+		for i, item := range items {
+			ids[i] = item.BeadsID
+		}
+		d.VerificationTracker.SeedFromBacklog(ids)
+		breakdown := verify.FormatProjectBreakdown(items)
+		fmt.Printf("  Verification backlog: %d unverified completions from previous sessions%s\n", len(items), breakdown)
+
+		if d.VerificationTracker.IsPaused() {
+			status := d.VerificationTracker.Status()
+			fmt.Printf("  Warning: Verification pause: backlog exceeds threshold (%d/%d)%s\n",
+				len(items), status.Threshold, breakdown)
+			fmt.Println("  Run 'orch daemon resume' after reviewing completed work")
+		}
+	}
+}
+
 func runDaemonLoop() error {
 	// Handle dry-run mode
 	if daemonDryRun {
@@ -325,6 +386,9 @@ func runDaemonLoop() error {
 	// extraction gate in Once() and hotspot warnings in Preview() are skipped.
 	// The daemon goes straight from polling bd ready to spawning issues.
 	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
+
+	// Seed verification tracker with unverified backlog from previous sessions
+	seedVerificationTracker(d)
 
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -395,6 +459,11 @@ func runDaemonLoop() error {
 	} else {
 		fmt.Println("  Orphan detection:  disabled")
 	}
+	if config.VerificationPauseThreshold > 0 {
+		fmt.Printf("  Verify threshold:  %d (pause after N unverified completions)\n", config.VerificationPauseThreshold)
+	} else {
+		fmt.Println("  Verify threshold:  disabled")
+	}
 	fmt.Println()
 
 	// Main polling loop
@@ -416,6 +485,47 @@ func runDaemonLoop() error {
 		// Must happen before status write so status shows accurate counts.
 		if freed := d.ReconcileWithOpenCode(); freed > 0 && daemonVerbose {
 			fmt.Printf("[%s] Reconciled: freed %d stale slots\n", timestamp, freed)
+		}
+
+		// Check for verification signal (human ran `orch complete`)
+		// This resets the counter and unpauses the daemon.
+		if d.VerificationTracker != nil {
+			if verified, err := daemon.CheckAndClearVerificationSignal(); err != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Warning: failed to check verification signal: %v\n", timestamp, err)
+			} else if verified {
+				d.VerificationTracker.RecordHumanVerification()
+				fmt.Printf("[%s] ✅ Human verification detected - verification counter reset\n", timestamp)
+			}
+		}
+
+		// Check for resume signal (manual resume command)
+		// This allows Dylan to resume the daemon without running orch complete.
+		if d.VerificationTracker != nil {
+			if resumed, err := daemon.CheckAndClearResumeSignal(); err != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Warning: failed to check resume signal: %v\n", timestamp, err)
+			} else if resumed {
+				d.VerificationTracker.Resume()
+				fmt.Printf("[%s] ✅ Daemon resumed manually - verification counter reset\n", timestamp)
+			}
+		}
+
+		// Check verification pause BEFORE spawning
+		// This enforces the verifiability-first constraint by pausing after N agents
+		// are marked ready-for-review without human verification (manual orch complete).
+		if d.VerificationTracker != nil {
+			verifyStatus := d.VerificationTracker.Status()
+			if d.VerificationTracker.IsPaused() {
+				breakdown := verificationBreakdown()
+				fmt.Printf("[%s] Verification pause: %d unverified completions, threshold is %d%s\n",
+					timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
+				fmt.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work to continue\n", timestamp)
+				time.Sleep(config.PollInterval)
+				continue
+			}
+			if verifyStatus.IsEnabled() {
+				fmt.Printf("[%s] Verification check: %d/%d unverified completions, proceeding\n",
+					timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
+			}
 		}
 
 		// Run all periodic maintenance tasks (reflection, cleanup, recovery, etc.)
@@ -474,6 +584,22 @@ func runDaemonLoop() error {
 					fmt.Printf("[%s] Ready for review: %s (escalation=%s)\n",
 						timestamp, cr.BeadsID, cr.Escalation)
 
+					// NOTE: RecordCompletion() is called inside ProcessCompletion()
+					// (completion_processing.go). Do NOT call it again here — that
+					// caused a double-counting bug where each completion incremented
+					// the counter by 2, making the daemon pause at half the expected
+					// number of completions.
+
+					// Check if verification tracker was paused by ProcessCompletion
+					if d.VerificationTracker != nil && d.VerificationTracker.IsPaused() {
+						verifyStatus := d.VerificationTracker.Status()
+						breakdown := verificationBreakdown()
+						fmt.Printf("[%s] ⚠️  Verification threshold reached: %d/%d agents ready for review%s\n",
+							timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
+						fmt.Printf("[%s]    Daemon will pause spawning on next cycle\n", timestamp)
+						fmt.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work\n", timestamp)
+					}
+
 					// Log the completion
 					event := events.Event{
 						Type:      "daemon.complete",
@@ -503,6 +629,22 @@ func runDaemonLoop() error {
 		readyCount := len(readyIssues)
 
 		// Write daemon status file AFTER reconciliation and completions so counts are accurate
+		var verificationSnapshot *daemon.VerificationStatusSnapshot
+		isPaused := false
+		if d.VerificationTracker != nil {
+			verifyStatus := d.VerificationTracker.Status()
+			isPaused = verifyStatus.IsPaused
+			if verifyStatus.IsEnabled() {
+				verificationSnapshot = &daemon.VerificationStatusSnapshot{
+					IsPaused:                     verifyStatus.IsPaused,
+					CompletionsSinceVerification: verifyStatus.CompletionsSinceVerification,
+					Threshold:                    verifyStatus.Threshold,
+					LastVerification:             verifyStatus.LastVerification,
+					RemainingBeforePause:         verifyStatus.RemainingBeforePause(),
+				}
+			}
+		}
+
 		// Capture spawn failure snapshot for health card visibility
 		var spawnFailureSnapshot *daemon.SpawnFailureSnapshot
 		if d.SpawnFailureTracker != nil {
@@ -534,7 +676,8 @@ func runDaemonLoop() error {
 			LastSpawn:          lastSpawn,
 			LastCompletion:     lastCompletion,
 			ReadyCount:         readyCount,
-			Status:             daemon.DetermineStatus(pollTime, config.PollInterval),
+			Status:             daemon.DetermineStatus(pollTime, config.PollInterval, isPaused),
+			Verification:       verificationSnapshot,
 			SpawnFailures:      spawnFailureSnapshot,
 			CompletionFailures: completionFailureSnapshot,
 			KnowledgeHealth:    knowledgeHealthSnapshot,
@@ -721,9 +864,25 @@ func runDaemonDryRun() error {
 	// NOTE: Extraction system disabled. Hotspot checking not configured.
 	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
 
+	// Seed verification tracker with unverified backlog
+	seedVerificationTracker(d)
+
 	result, err := d.Preview()
 	if err != nil {
 		return fmt.Errorf("preview error: %w", err)
+	}
+
+	// Show verification status in dry-run output
+	if d.VerificationTracker != nil {
+		verifyStatus := d.VerificationTracker.Status()
+		if d.VerificationTracker.IsPaused() {
+			breakdown := verificationBreakdown()
+			fmt.Printf("[DRY-RUN] Verification pause: %d unverified completions, threshold is %d%s\n",
+				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
+		} else if verifyStatus.IsEnabled() {
+			fmt.Printf("[DRY-RUN] Verification check: %d/%d unverified completions\n",
+				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
+		}
 	}
 
 	fmt.Println("[DRY-RUN] Would process the following issue:")
@@ -772,6 +931,23 @@ func runDaemonOnce() error {
 		d.ProjectRegistry = registry
 	}
 
+	// Seed verification tracker with unverified backlog
+	seedVerificationTracker(d)
+
+	// Show verification status before spawning
+	if d.VerificationTracker != nil {
+		verifyStatus := d.VerificationTracker.Status()
+		if d.VerificationTracker.IsPaused() {
+			breakdown := verificationBreakdown()
+			fmt.Printf("Verification pause: %d unverified completions, threshold is %d%s\n",
+				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
+			fmt.Println("  Run 'orch daemon resume' after reviewing completed work to continue")
+		} else if verifyStatus.IsEnabled() {
+			fmt.Printf("Verification check: %d/%d unverified completions, proceeding\n",
+				verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
+		}
+	}
+
 	result, err := d.Once()
 	if err != nil {
 		return fmt.Errorf("daemon error: %w", err)
@@ -817,6 +993,9 @@ func runDaemonPreview() error {
 
 	// NOTE: Extraction system disabled. Hotspot checking not configured.
 	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
+
+	// Seed verification tracker with unverified backlog
+	seedVerificationTracker(d)
 
 	result, err := d.Preview()
 	if err != nil {
@@ -998,3 +1177,17 @@ func runDaemonRestart() error {
 	return runDaemonLoop()
 }
 
+func runDaemonResume() error {
+	fmt.Println("Sending resume signal to daemon...")
+
+	if err := daemon.WriteResumeSignal(); err != nil {
+		return fmt.Errorf("failed to write resume signal: %w", err)
+	}
+
+	fmt.Println("✅ Resume signal sent")
+	fmt.Println()
+	fmt.Println("The daemon will detect the signal on the next poll cycle and resume operation.")
+	fmt.Println("The verification counter will be reset, allowing the daemon to continue spawning.")
+
+	return nil
+}

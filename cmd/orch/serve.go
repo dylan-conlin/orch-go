@@ -337,6 +337,9 @@ func runServe(portNum int) error {
 	// GET /api/daemon - returns daemon status (running, capacity, last poll)
 	mux.HandleFunc("/api/daemon", corsHandler(handleDaemon))
 
+	// POST /api/daemon/resume - write resume signal to unpause daemon
+	mux.HandleFunc("/api/daemon/resume", corsHandler(handleDaemonResume))
+
 	// POST /api/issues/close - close a beads issue and notify daemon
 	mux.HandleFunc("/api/issues/close", corsHandler(handleCloseIssue))
 

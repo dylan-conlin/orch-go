@@ -132,6 +132,24 @@ func TestFormatStatusInfo_Running(t *testing.T) {
 	}
 }
 
+func TestFormatStatusInfo_Paused(t *testing.T) {
+	info := StatusInfo{
+		Running: true,
+		PID:     42,
+		Status:  "paused",
+		Capacity: CapacityStatus{Max: 3},
+		Verification: &VerificationStatusSnapshot{
+			IsPaused:                     true,
+			CompletionsSinceVerification: 5,
+			Threshold:                    3,
+		},
+	}
+	result := FormatStatusInfo(info)
+	if !strings.Contains(result, "PAUSED") {
+		t.Errorf("FormatStatusInfo should show PAUSED for verification pause, got %q", result)
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		d    time.Duration

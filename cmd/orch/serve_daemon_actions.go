@@ -5,8 +5,40 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
+
+// DaemonResumeResponse is the response for POST /api/daemon/resume.
+type DaemonResumeResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+// handleDaemonResume writes a resume signal to unpause the daemon.
+// This is the API equivalent of `orch daemon resume`.
+func handleDaemonResume(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := daemon.WriteResumeSignal(); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(DaemonResumeResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to write resume signal: %v", err),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(DaemonResumeResponse{
+		Success: true,
+		Message: "Resume signal sent - daemon will resume on next poll cycle",
+	})
+}
 
 // CloseIssueRequest is the request body for POST /api/issues/close.
 type CloseIssueRequest struct {
@@ -21,7 +53,8 @@ type CloseIssueResponse struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// handleCloseIssue closes a beads issue.
+// handleCloseIssue closes a beads issue and writes a verification signal
+// to notify the daemon that human verification has occurred.
 func handleCloseIssue(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -61,6 +94,10 @@ func handleCloseIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Write verification signal so daemon knows human reviewed something
+	// Best effort - don't fail the close if signal write fails
+	_ = daemon.WriteVerificationSignal()
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(CloseIssueResponse{
 		Success: true,
@@ -88,7 +125,8 @@ type CloseIssueBatchResponse struct {
 	TotalFailed int                     `json:"total_failed"`
 }
 
-// handleCloseIssueBatch closes multiple beads issues.
+// handleCloseIssueBatch closes multiple beads issues and writes a single
+// verification signal to reset the daemon's completions_since_verification counter.
 func handleCloseIssueBatch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -140,6 +178,12 @@ func handleCloseIssueBatch(w http.ResponseWriter, r *http.Request) {
 			})
 			totalClosed++
 		}
+	}
+
+	// Write verification signal once after all closes
+	// This resets the daemon's completions_since_verification counter
+	if totalClosed > 0 {
+		_ = daemon.WriteVerificationSignal()
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -10,6 +10,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/activity"
 	"github.com/dylan-conlin/orch-go/pkg/agent"
+	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -154,6 +155,11 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 	if !target.IsClosed && !target.IsUntracked && target.BeadsID != "" {
 		if err := verify.RemoveTriageReadyLabel(target.BeadsID); err != nil {
 			// Non-critical
+		}
+
+		// Signal human verification to daemon
+		if err := daemon.WriteVerificationSignal(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to signal human verification to daemon: %v\n", err)
 		}
 	}
 

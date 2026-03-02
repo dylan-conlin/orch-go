@@ -87,6 +87,13 @@ type Config struct {
 	// Default is 1 hour to prevent infinite loops.
 	RecoveryRateLimit time.Duration
 
+	// VerificationPauseThreshold is the maximum number of agents that can be marked
+	// ready-for-review before pausing for human verification. When the daemon marks
+	// this many issues as ready-for-review without human verification (manual orch complete),
+	// it will pause spawning until Dylan explicitly resumes. Set to 0 to disable (no pause).
+	// Default is 3.
+	VerificationPauseThreshold int
+
 	// KnowledgeHealthEnabled controls whether periodic knowledge health checks are enabled.
 	// When enabled, the daemon counts active kb quick entries during idle cycles
 	// and flags accumulation without promotion.
@@ -169,6 +176,7 @@ func DefaultConfig() Config {
 		RecoveryInterval:            5 * time.Minute,  // Check every 5 minutes
 		RecoveryIdleThreshold:       10 * time.Minute, // Idle >10min triggers recovery
 		RecoveryRateLimit:           time.Hour,        // 1 resume per agent per hour
+		VerificationPauseThreshold:  5,                // Pause after 5 unique auto-completions
 		KnowledgeHealthEnabled:      true,
 		KnowledgeHealthInterval:     2 * time.Hour, // Every 2 hours
 		KnowledgeHealthThreshold:    50,            // Flag when 50+ active entries
