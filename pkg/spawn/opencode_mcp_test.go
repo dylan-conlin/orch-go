@@ -27,6 +27,26 @@ func TestOpenCodeMCPPresets(t *testing.T) {
 		}
 	})
 
+	t.Run("playwright preset includes output-dir flag", func(t *testing.T) {
+		preset := opencodeMCPPresets["playwright"]
+		found := false
+		for i, arg := range preset.Command {
+			if arg == "--output-dir" {
+				if i+1 >= len(preset.Command) {
+					t.Fatal("--output-dir flag has no value")
+				}
+				if preset.Command[i+1] != ".orch/screenshots" {
+					t.Errorf("--output-dir value = %q, want %q", preset.Command[i+1], ".orch/screenshots")
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("playwright preset missing --output-dir flag")
+		}
+	})
+
 	t.Run("unknown preset returns false", func(t *testing.T) {
 		_, ok := opencodeMCPPresets["nonexistent"]
 		if ok {

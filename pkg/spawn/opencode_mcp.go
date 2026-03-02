@@ -21,7 +21,7 @@ type OpenCodeMCPServerConfig struct {
 var opencodeMCPPresets = map[string]OpenCodeMCPServerConfig{
 	"playwright": {
 		Type:    "local",
-		Command: []string{"npx", "-y", "@playwright/mcp@latest"},
+		Command: []string{"npx", "-y", "@playwright/mcp@latest", "--output-dir", ".orch/screenshots"},
 		Enabled: true,
 	},
 }
