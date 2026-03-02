@@ -1,23 +1,38 @@
-task: Add architecture lint to pre-commit hook + compilation gate for agents
-beads_id: orch-go-ptiq
+task: Re-enable circuit breaker with redesigned 3-layer heuristics
+beads_id: orch-go-cod2
 date: 2026-03-01
 
 verification:
   type: feature
   deliverables:
-    - path: scripts/pre-commit-exec-start-cleanup.sh
-      description: "Pre-commit gate: go build (compilation) + go test -run TestArchitectureLint (arch lint)"
+    - path: pkg/control/circuitbreaker.go
+      description: "Circuit breaker functions: Ack, Resume, HaltStatus, HeartbeatAge, CircuitBreakerStatus"
+    - path: pkg/control/circuitbreaker_test.go
+      description: "8 tests for circuit breaker functions"
+    - path: cmd/orch/control_cmd.go
+      description: "CLI commands: orch control ack, orch control resume, updated status"
+    - path: pkg/daemon/daemon.go
+      description: "Daemon halt-file check before spawning"
+    - path: pkg/daemon/circuitbreaker_test.go
+      description: "2 daemon integration tests for halt-file blocking"
   tests_run:
-    - command: "./scripts/pre-commit-exec-start-cleanup.sh (with staged Go file)"
-      result: "PASS - compilation gate + architecture lint passed in ~3s"
-    - command: "./scripts/pre-commit-exec-start-cleanup.sh (no staged Go files)"
-      result: "PASS - exits immediately (skip when irrelevant)"
+    - command: "go test ./pkg/control/ -run 'TestAck|TestHeartbeat|TestHalt|TestResume|TestCircuitBreaker|TestDefault' -v"
+      result: "PASS - 8 tests"
+    - command: "go test ./pkg/daemon/ -run 'TestOnceExcluding_HaltFile|TestOnceExcluding_NoHaltFile' -v"
+      result: "PASS - 2 tests"
+    - command: "go build ./cmd/orch/ && go vet ./cmd/orch/ ./pkg/control/ ./pkg/daemon/"
+      result: "PASS - builds clean, no vet warnings"
   integration:
-    - description: "bd shim at .git/hooks/pre-commit already calls scripts/pre-commit-exec-start-cleanup.sh if executable"
-      evidence: "Line: if [ -x scripts/pre-commit-exec-start-cleanup.sh ]; then"
+    - description: "Post-commit hook re-enabled in .git/hooks/post-commit"
+      evidence: "Uncommented: [ -x $HOME/.orch/hooks/control-plane-post-commit.sh ] && ..."
+    - description: "Shell hook renamed from .disabled to active"
+      evidence: "~/.orch/hooks/control-plane-post-commit.sh (was .disabled)"
+    - description: "Heartbeat refreshed (was 13+ days stale)"
+      evidence: "touch ~/.orch/heartbeat"
+  manual_verification:
+    - step: "orch control ack → 'Heartbeat acknowledged.'"
+    - step: "orch control status → shows circuit breaker OK + heartbeat age"
+    - step: "echo 'reason: test' > ~/.orch/halt → orch control status → HALTED"
+    - step: "orch control resume → clears halt + refreshes heartbeat"
   leave_it_better:
     - stale_artifacts: "No stale artifacts encountered"
-  notes:
-    - "Script skips entirely when no Go files are staged (fast path for non-Go commits)"
-    - "Uses -count=1 to prevent test caching (ensures fresh architecture check)"
-    - "Existing architecture_lint_test.go enforces two-lane ADR constraints"

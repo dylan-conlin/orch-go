@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/control"
 	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
 	"github.com/dylan-conlin/orch-go/pkg/modeldrift"
 )
@@ -162,7 +163,7 @@ func NewWithConfig(config Config) *Daemon {
 		SpawnedIssues:           spawnTracker,
 		resumeAttempts:          make(map[string]time.Time),
 		VerificationTracker:     NewVerificationTracker(config.VerificationPauseThreshold),
-		SpawnFailureTracker:     NewSpawnFailureTracker(),
+		SpawnFailureTracker:     NewSpawnFailureTrackerWithThreshold(config.MaxIssueFailures),
 		CompletionFailureTracker: NewCompletionFailureTracker(),
 		Issues:                  &defaultIssueQuerier{},
 		Spawner:                 &defaultSpawner{},
@@ -293,6 +294,17 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 				fmt.Printf("  DEBUG: Skipping %s (recently spawned, awaiting status update)\n", issue.ID)
 			}
 			continue
+		}
+		// Skip issues that have exceeded the per-issue spawn failure threshold.
+		// This prevents infinite spawn failure loops (e.g., cross-repo issues that
+		// can't be resolved locally keep failing every poll cycle).
+		if d.SpawnFailureTracker != nil {
+			if broken, count, reason := d.SpawnFailureTracker.IsIssueCircuitBroken(issue.ID); broken {
+				if d.Config.Verbose {
+					fmt.Printf("  DEBUG: Skipping %s (circuit-broken: %d failures, last: %s)\n", issue.ID, count, reason)
+				}
+				continue
+			}
 		}
 		// Skip non-spawnable types
 		if !IsSpawnableType(issue.IssueType) {
@@ -436,6 +448,18 @@ func (d *Daemon) Once() (*OnceResult, error) {
 // If a worker pool is configured, it acquires a slot before spawning.
 // If a rate limiter is configured, it checks the hourly limit before spawning.
 func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
+	// Check circuit breaker halt BEFORE any other checks.
+	// The post-commit hook writes ~/.orch/halt when thresholds are exceeded.
+	// This is the primary safety mechanism for autonomous drift detection.
+	halt, haltErr := control.HaltStatus(control.DefaultHaltPath())
+	if haltErr == nil && halt.Halted {
+		return &OnceResult{
+			Processed: false,
+			Message: fmt.Sprintf("Circuit breaker HALTED: %s (triggered by %s). Resume with: orch control resume",
+				halt.Reason, halt.TriggeredBy),
+		}, nil
+	}
+
 	// Check verification pause BEFORE any other checks (including rate limit).
 	// This enforces the verifiability-first constraint: daemon pauses after N
 	// auto-completions without human verification.
@@ -765,9 +789,11 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 		}
 	}
 	if err := statusUpdater.UpdateStatus(issue.ID, "in_progress"); err != nil {
-		// Track failure for health card visibility
+		// Track failure for health card visibility (global + per-issue)
 		if d.SpawnFailureTracker != nil {
-			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("UpdateBeadsStatus failed: %v", err))
+			reason := fmt.Sprintf("UpdateBeadsStatus failed: %v", err)
+			d.SpawnFailureTracker.RecordFailure(reason)
+			d.SpawnFailureTracker.RecordIssueFailure(issue.ID, reason)
 		}
 		// Release slot on status update failure
 		if d.Pool != nil && slot != nil {
@@ -799,9 +825,11 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 		spawner = &defaultSpawner{}
 	}
 	if err := spawner.SpawnWork(issue.ID, inferredModel, workdir); err != nil {
-		// Track spawn failure for health card visibility
+		// Track spawn failure for health card visibility (global + per-issue)
 		if d.SpawnFailureTracker != nil {
-			d.SpawnFailureTracker.RecordFailure(fmt.Sprintf("Spawn failed: %v", err))
+			reason := fmt.Sprintf("Spawn failed: %v", err)
+			d.SpawnFailureTracker.RecordFailure(reason)
+			d.SpawnFailureTracker.RecordIssueFailure(issue.ID, reason)
 		}
 		// On spawn failure, roll back beads status to open
 		// CRITICAL: If rollback fails, return immediately. Rollback failure indicates
@@ -849,9 +877,10 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 		d.RateLimiter.RecordSpawn()
 	}
 
-	// Record successful spawn for failure tracking
+	// Record successful spawn for failure tracking (global + per-issue)
 	if d.SpawnFailureTracker != nil {
 		d.SpawnFailureTracker.RecordSuccess()
+		d.SpawnFailureTracker.ClearIssueFailures(issue.ID)
 	}
 
 	return &OnceResult{

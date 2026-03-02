@@ -21,7 +21,9 @@ protected from modification using macOS chflags uchg.
 Commands:
   lock     Apply chflags uchg to all control plane files
   unlock   Remove chflags uchg from all control plane files
-  status   Show lock state of all control plane files`,
+  status   Show lock state of all control plane files
+  ack      Signal human presence (touch heartbeat)
+  resume   Clear circuit breaker halt and signal human presence`,
 }
 
 var controlLockCmd = &cobra.Command{
@@ -49,14 +51,36 @@ with 'orch control lock' when done.`,
 
 var controlStatusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Show lock state of control plane files",
+	Short: "Show lock state and circuit breaker status",
 	RunE:  runControlStatus,
+}
+
+var controlAckCmd = &cobra.Command{
+	Use:   "ack",
+	Short: "Signal human presence (touch heartbeat)",
+	Long: `Touch the heartbeat file to signal that a human is actively monitoring.
+
+The circuit breaker's unverified velocity check uses heartbeat staleness
+to detect autonomous drift. Run this periodically to acknowledge that
+you are reviewing agent output.`,
+	RunE: runControlAck,
+}
+
+var controlResumeCmd = &cobra.Command{
+	Use:   "resume",
+	Short: "Clear circuit breaker halt and signal human presence",
+	Long: `Clear the halt file written by the circuit breaker and touch the
+heartbeat to signal human presence. The daemon will resume spawning
+on its next poll cycle.`,
+	RunE: runControlResume,
 }
 
 func init() {
 	controlCmd.AddCommand(controlLockCmd)
 	controlCmd.AddCommand(controlUnlockCmd)
 	controlCmd.AddCommand(controlStatusCmd)
+	controlCmd.AddCommand(controlAckCmd)
+	controlCmd.AddCommand(controlResumeCmd)
 }
 
 func settingsPath() string {
@@ -142,8 +166,61 @@ func runControlStatus(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "\nControl plane: PARTIAL (%d/%d locked)\n", locked, total)
 	}
 
+	// Circuit breaker status
+	cbStatus, err := control.CircuitBreakerStatus(control.DefaultHaltPath(), control.DefaultHeartbeatPath())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\nCircuit breaker: ERR (%v)\n", err)
+		return nil
+	}
+
+	fmt.Fprintln(os.Stderr)
+	if cbStatus.Halted {
+		fmt.Fprintf(os.Stderr, "Circuit breaker: HALTED\n")
+		fmt.Fprintf(os.Stderr, "  Reason:  %s\n", cbStatus.HaltReason)
+		fmt.Fprintf(os.Stderr, "  Trigger: %s\n", cbStatus.HaltTrigger)
+		fmt.Fprintf(os.Stderr, "  Resume:  orch control resume\n")
+	} else {
+		fmt.Fprintf(os.Stderr, "Circuit breaker: OK\n")
+	}
+	fmt.Fprintf(os.Stderr, "  Heartbeat: %s ago\n", formatDuration(cbStatus.HeartbeatAge))
+
 	return nil
 }
+
+func runControlAck(cmd *cobra.Command, args []string) error {
+	if err := control.Ack(control.DefaultHeartbeatPath()); err != nil {
+		return fmt.Errorf("touching heartbeat: %w", err)
+	}
+	fmt.Fprintln(os.Stderr, "Heartbeat acknowledged.")
+
+	// Show current circuit breaker status
+	cbStatus, err := control.CircuitBreakerStatus(control.DefaultHaltPath(), control.DefaultHeartbeatPath())
+	if err != nil {
+		return nil // ack succeeded, status is bonus info
+	}
+	if cbStatus.Halted {
+		fmt.Fprintf(os.Stderr, "Note: circuit breaker is HALTED (%s). Run 'orch control resume' to clear.\n", cbStatus.HaltReason)
+	}
+	return nil
+}
+
+func runControlResume(cmd *cobra.Command, args []string) error {
+	// Check if actually halted first (for messaging)
+	halt, _ := control.HaltStatus(control.DefaultHaltPath())
+
+	if err := control.Resume(control.DefaultHaltPath(), control.DefaultHeartbeatPath()); err != nil {
+		return fmt.Errorf("resuming: %w", err)
+	}
+
+	if halt.Halted {
+		fmt.Fprintf(os.Stderr, "Circuit breaker cleared (was: %s).\n", halt.Reason)
+	} else {
+		fmt.Fprintln(os.Stderr, "Not halted. Heartbeat refreshed.")
+	}
+	return nil
+}
+
+// formatDuration is declared in wait.go — reused here for heartbeat age display.
 
 // shortPath replaces $HOME prefix with ~ for display.
 func shortPath(path, home string) string {
