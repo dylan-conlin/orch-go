@@ -1,38 +1,32 @@
-task: Re-enable circuit breaker with redesigned 3-layer heuristics
-beads_id: orch-go-cod2
-date: 2026-03-01
+task: Write research skill - experimental methodology for agent-driven behavioral science
+beads_id: orch-go-z1ib
+date: 2026-03-02
 
 verification:
   type: feature
   deliverables:
-    - path: pkg/control/circuitbreaker.go
-      description: "Circuit breaker functions: Ack, Resume, HaltStatus, HeartbeatAge, CircuitBreakerStatus"
-    - path: pkg/control/circuitbreaker_test.go
-      description: "8 tests for circuit breaker functions"
-    - path: cmd/orch/control_cmd.go
-      description: "CLI commands: orch control ack, orch control resume, updated status"
-    - path: pkg/daemon/daemon.go
-      description: "Daemon halt-file check before spawning"
-    - path: pkg/daemon/circuitbreaker_test.go
-      description: "2 daemon integration tests for halt-file blocking"
+    - path: ~/orch-knowledge/skills/src/worker/experiment/.skillc/skill.yaml
+      description: "Skill metadata: name, params (hypothesis, prior_work, constraint_under_test), deliverables, verification requirements"
+    - path: ~/orch-knowledge/skills/src/worker/experiment/.skillc/SKILL.md.template
+      description: "Five-phase methodology: hypothesis, experimental design, run trials, analysis, prior work check + structured uncertainty"
+    - path: ~/orch-knowledge/skills/src/worker/experiment/SKILL.md
+      description: "Compiled skill output (2771 tokens, 92.4% of 3000 budget)"
+    - path: ~/.claude/skills/skills/src/worker/experiment/SKILL.md
+      description: "Deployed skill available to Claude Code"
   tests_run:
-    - command: "go test ./pkg/control/ -run 'TestAck|TestHeartbeat|TestHalt|TestResume|TestCircuitBreaker|TestDefault' -v"
-      result: "PASS - 8 tests"
-    - command: "go test ./pkg/daemon/ -run 'TestOnceExcluding_HaltFile|TestOnceExcluding_NoHaltFile' -v"
-      result: "PASS - 2 tests"
-    - command: "go build ./cmd/orch/ && go vet ./cmd/orch/ ./pkg/control/ ./pkg/daemon/"
-      result: "PASS - builds clean, no vet warnings"
-  integration:
-    - description: "Post-commit hook re-enabled in .git/hooks/post-commit"
-      evidence: "Uncommented: [ -x $HOME/.orch/hooks/control-plane-post-commit.sh ] && ..."
-    - description: "Shell hook renamed from .disabled to active"
-      evidence: "~/.orch/hooks/control-plane-post-commit.sh (was .disabled)"
-    - description: "Heartbeat refreshed (was 13+ days stale)"
-      evidence: "touch ~/.orch/heartbeat"
+    - command: "cd ~/orch-knowledge/skills/src/worker/experiment && skillc build"
+      result: "PASS - Compiled, 2771 tokens (92.4% of 3000 budget)"
+    - command: "cd ~/orch-knowledge/skills/src/worker/experiment && skillc check"
+      result: "PASS - all validations passed"
+    - command: "cd ~/orch-knowledge/skills/src/worker/experiment && skillc lint .skillc/SKILL.md.template"
+      result: "PASS - 0 warnings, 1 info (dead-constraint expected for new skill)"
+    - command: "cd ~/orch-knowledge && skillc deploy --target ~/.claude/skills/"
+      result: "PASS - 15/15 skills deployed including experiment"
+  committed:
+    repo: "~/orch-knowledge"
+    message: "feat: add experiment skill for controlled agent behavioral testing (orch-go-z1ib)"
   manual_verification:
-    - step: "orch control ack → 'Heartbeat acknowledged.'"
-    - step: "orch control status → shows circuit breaker OK + heartbeat age"
-    - step: "echo 'reason: test' > ~/.orch/halt → orch control status → HALTED"
-    - step: "orch control resume → clears halt + refreshes heartbeat"
+    - step: "Spawn experiment agent and verify skillc test integration works end-to-end"
   leave_it_better:
     - stale_artifacts: "No stale artifacts encountered"
+    - knowledge: "No new knowledge to externalize - skill codifies existing methodology"
