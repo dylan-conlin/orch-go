@@ -41,3 +41,6 @@ tmp/
 # Local build/config state
 .autorebuild.lock
 opencode.json
+
+# Playwright CLI runtime artifacts
+.playwright-cli/
