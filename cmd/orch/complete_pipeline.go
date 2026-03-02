@@ -232,7 +232,7 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 							}
 						}
 
-						issue, err := beads.FallbackCreate(title, "", "task", 2, []string{"triage:review"})
+						issue, err := beads.FallbackCreate(title, "", "task", 2, []string{"triage:ready"})
 						if err != nil {
 							fmt.Fprintf(os.Stderr, "  Failed to create issue: %v\n", err)
 						} else {

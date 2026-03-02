@@ -62,6 +62,59 @@ func TestFormatTriageList(t *testing.T) {
 	if !containsStr(output, "P3") {
 		t.Error("expected output to contain P3")
 	}
+
+	// Default items (no daemon:ready-review) should show [new] tag
+	if !containsStr(output, "[new]") {
+		t.Error("expected output to contain [new] tag for non-completed items")
+	}
+}
+
+// TestTriageItemFromIssue_CompletedWork verifies detection of completed agent work.
+func TestTriageItemFromIssue_CompletedWork(t *testing.T) {
+	t.Run("with daemon:ready-review label", func(t *testing.T) {
+		issue := beads.Issue{
+			ID:        "orch-go-abc1",
+			Title:     "completed agent task",
+			Priority:  2,
+			IssueType: "task",
+			Labels:    []string{"triage:review", "daemon:ready-review"},
+		}
+		item := triageItemFromIssue(issue)
+		if !item.IsCompletedWork {
+			t.Error("expected IsCompletedWork=true for issue with daemon:ready-review label")
+		}
+	})
+
+	t.Run("without daemon:ready-review label", func(t *testing.T) {
+		issue := beads.Issue{
+			ID:        "orch-go-abc2",
+			Title:     "discovered work item",
+			Priority:  2,
+			IssueType: "task",
+			Labels:    []string{"triage:review"},
+		}
+		item := triageItemFromIssue(issue)
+		if item.IsCompletedWork {
+			t.Error("expected IsCompletedWork=false for issue without daemon:ready-review label")
+		}
+	})
+}
+
+// TestFormatTriageList_OriginTags verifies [new] vs [completed] display tags.
+func TestFormatTriageList_OriginTags(t *testing.T) {
+	items := []TriageItem{
+		{ID: "orch-go-c1", Title: "completed work", Priority: 2, IssueType: "task", IsCompletedWork: true},
+		{ID: "orch-go-d1", Title: "discovered work", Priority: 2, IssueType: "task", IsCompletedWork: false},
+	}
+
+	output := formatTriageList(items)
+
+	if !containsStr(output, "[completed]") {
+		t.Error("expected output to contain [completed] tag for completed work")
+	}
+	if !containsStr(output, "[new]") {
+		t.Error("expected output to contain [new] tag for discovered work")
+	}
 }
 
 // TestFormatTriageSummary verifies the hygiene nudge summary.

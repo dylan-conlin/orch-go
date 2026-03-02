@@ -21,12 +21,13 @@ var (
 
 // TriageItem represents a beads issue in triage:review state.
 type TriageItem struct {
-	ID        string
-	Title     string
-	Priority  int
-	IssueType string
-	Age       string // Human-readable age (e.g., "5d", "2h")
-	CreatedAt time.Time
+	ID             string
+	Title          string
+	Priority       int
+	IssueType      string
+	Age            string // Human-readable age (e.g., "5d", "2h")
+	CreatedAt      time.Time
+	IsCompletedWork bool // True if daemon:ready-review label present (agent completed work on this)
 }
 
 var reviewTriageCmd = &cobra.Command{
@@ -62,6 +63,14 @@ func triageItemFromIssue(issue beads.Issue) TriageItem {
 		Title:     issue.Title,
 		Priority:  issue.Priority,
 		IssueType: issue.IssueType,
+	}
+
+	// Check if this is completed agent work (has daemon:ready-review label)
+	for _, label := range issue.Labels {
+		if label == "daemon:ready-review" {
+			item.IsCompletedWork = true
+			break
+		}
 	}
 
 	// Parse creation time for age calculation
@@ -107,7 +116,11 @@ func formatTriageList(items []TriageItem) string {
 		if item.Age != "" {
 			ageStr = fmt.Sprintf(" (%s old)", item.Age)
 		}
-		b.WriteString(fmt.Sprintf("  %2d. [P%d] [%s] %s%s\n", i+1, item.Priority, typeTag, item.ID, ageStr))
+		originTag := "new"
+		if item.IsCompletedWork {
+			originTag = "completed"
+		}
+		b.WriteString(fmt.Sprintf("  %2d. [P%d] [%s] [%s] %s%s\n", i+1, item.Priority, typeTag, originTag, item.ID, ageStr))
 		// Truncate long titles
 		title := item.Title
 		if len(title) > 90 {
@@ -215,7 +228,11 @@ func runReviewTriage(nonInteractive bool) error {
 	skipped := 0
 
 	for _, item := range items {
-		fmt.Printf("  [P%d] [%s] %s\n", item.Priority, item.IssueType, item.ID)
+		originTag := "new"
+		if item.IsCompletedWork {
+			originTag = "completed"
+		}
+		fmt.Printf("  [P%d] [%s] [%s] %s\n", item.Priority, item.IssueType, originTag, item.ID)
 		fmt.Printf("  %s\n", truncateTitle(item.Title, 90))
 		fmt.Print("  Decision [r/c/d/s/q]: ")
 
