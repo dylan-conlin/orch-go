@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/control"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
@@ -100,6 +101,14 @@ Examples:
 }
 
 func runSessionStart(goal string) error {
+	// Auto-lock control plane at session start to ensure agents spawned
+	// during this session can't modify settings.json or enforcement hooks.
+	if n, err := control.EnsureLocked(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to lock control plane: %v\n", err)
+	} else if n > 0 {
+		fmt.Fprintf(os.Stderr, "Control plane: locked %d unlocked files\n", n)
+	}
+
 	store, err := session.New("")
 	if err != nil {
 		return fmt.Errorf("failed to load session: %w", err)

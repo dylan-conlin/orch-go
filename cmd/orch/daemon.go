@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/control"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -296,28 +297,32 @@ func verificationBreakdown() string {
 	return verify.FormatProjectBreakdown(items)
 }
 
-// seedVerificationTracker seeds the tracker with the backlog count.
+// seedVerificationTracker seeds the tracker with the backlog IDs.
 // Called after daemon construction, before entering the main loop.
 func seedVerificationTracker(d *daemon.Daemon) {
 	if d.VerificationTracker == nil {
 		return
 	}
 
-	count, err := daemon.CountUnverifiedCompletions()
+	items, err := verify.ListUnverifiedWork()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not seed verification tracker: %v\n", err)
 		return
 	}
 
-	if count > 0 {
-		d.VerificationTracker.SeedFromBacklog(count)
-		breakdown := verificationBreakdown()
-		fmt.Printf("  Verification backlog: %d unverified completions from previous sessions%s\n", count, breakdown)
+	if len(items) > 0 {
+		ids := make([]string, len(items))
+		for i, item := range items {
+			ids[i] = item.BeadsID
+		}
+		d.VerificationTracker.SeedFromBacklog(ids)
+		breakdown := verify.FormatProjectBreakdown(items)
+		fmt.Printf("  Verification backlog: %d unverified completions from previous sessions%s\n", len(items), breakdown)
 
 		if d.VerificationTracker.IsPaused() {
 			status := d.VerificationTracker.Status()
 			fmt.Printf("  Warning: Verification pause: backlog exceeds threshold (%d/%d)%s\n",
-				count, status.Threshold, breakdown)
+				len(items), status.Threshold, breakdown)
 			fmt.Println("  Run 'orch daemon resume' after reviewing completed work")
 		}
 	}
@@ -349,6 +354,14 @@ func runDaemonLoop() error {
 		return fmt.Errorf("cannot start daemon: %w", err)
 	}
 	defer pidLock.Release()
+
+	// Auto-lock control plane at daemon launch to ensure agents can't
+	// modify settings.json or enforcement hooks during autonomous operation.
+	if n, err := control.EnsureLocked(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to lock control plane: %v\n", err)
+	} else if n > 0 {
+		fmt.Fprintf(os.Stderr, "Control plane: locked %d unlocked files\n", n)
+	}
 
 	// Get current directory for completion processing
 	projectDir, err := os.Getwd()

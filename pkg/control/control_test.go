@@ -289,6 +289,80 @@ func TestUnlockMissingFile(t *testing.T) {
 	}
 }
 
+func TestEnsureLocked(t *testing.T) {
+	tmpDir := t.TempDir()
+	hooksDir := filepath.Join(tmpDir, "hooks")
+	if err := os.MkdirAll(hooksDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	hookFile := filepath.Join(hooksDir, "gate.py")
+	if err := os.WriteFile(hookFile, []byte("# hook"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	settingsPath := filepath.Join(tmpDir, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	settingsContent := `{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "` + hookFile + `"
+          }
+        ]
+      }
+    ]
+  }
+}`
+	if err := os.WriteFile(settingsPath, []byte(settingsContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Override HOME so DefaultSettingsPath() points to our tmp dir
+	t.Setenv("HOME", tmpDir)
+
+	// First call should lock both files
+	n, err := EnsureLocked()
+	if err != nil {
+		t.Fatalf("EnsureLocked failed: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("expected 2 files locked, got %d", n)
+	}
+
+	// Second call should lock 0 (already locked)
+	n, err = EnsureLocked()
+	if err != nil {
+		t.Fatalf("EnsureLocked (second call) failed: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0 files locked on second call, got %d", n)
+	}
+
+	// Clean up: unlock files so tmpDir cleanup works
+	Unlock([]string{settingsPath, hookFile})
+}
+
+func TestEnsureLocked_NoSettings(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// No settings.json exists — should return 0, nil
+	n, err := EnsureLocked()
+	if err != nil {
+		t.Fatalf("EnsureLocked should not error when settings.json missing: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0, got %d", n)
+	}
+}
+
 func TestFileStatus_Missing(t *testing.T) {
 	status, err := FileStatus("/nonexistent/file")
 	if err != nil {

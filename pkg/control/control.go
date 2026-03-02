@@ -133,6 +133,34 @@ func Lock(files []string) error {
 	return nil
 }
 
+// EnsureLocked discovers control plane files and locks any that are unlocked.
+// Returns the number of files locked and any error. If settings.json doesn't
+// exist, returns (0, nil) — the control plane is optional.
+func EnsureLocked() (int, error) {
+	sp := DefaultSettingsPath()
+	if _, err := os.Stat(sp); os.IsNotExist(err) {
+		return 0, nil
+	}
+
+	files, err := DiscoverControlPlaneFiles(sp)
+	if err != nil {
+		return 0, fmt.Errorf("discovering control plane: %w", err)
+	}
+
+	locked := 0
+	for _, f := range files {
+		status, err := FileStatus(f)
+		if err != nil || !status.Exists || status.Locked {
+			continue
+		}
+		if err := exec.Command("chflags", "uchg", f).Run(); err != nil {
+			return locked, fmt.Errorf("locking %s: %w", f, err)
+		}
+		locked++
+	}
+	return locked, nil
+}
+
 // Unlock removes the uchg flag from the given files, allowing modification.
 func Unlock(files []string) error {
 	for _, f := range files {
