@@ -145,9 +145,11 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 	}
 
 	// Phase 1: Scan workspaces and collect candidates with beads IDs
+	// Scans across all kb-registered project directories for cross-project visibility.
 	type candidateWorkspace struct {
 		dirName      string
 		dirPath      string
+		projectDir   string // Project directory this workspace belongs to
 		hasSynthesis bool
 		isLightTier  bool
 		lightBeadsID string
@@ -161,96 +163,112 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 	var beadsIDsToFetch []string
 	beadsIDSet := make(map[string]bool) // Deduplicate beads IDs
 
-	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
-	entries, _ := os.ReadDir(workspaceDir)
-
 	// Track light-tier beads IDs separately for batch fetching
 	var lightTierBeadsIDs []string
 	lightTierBeadsIDSet := make(map[string]bool)
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	// Build list of project directories to scan.
+	// Start with cwd, then add all kb-registered projects (deduplicated).
+	projectDirsToScan := []string{projectDir}
+	seenProjectDirs := map[string]bool{projectDir: true}
+	for _, proj := range getKBProjectsWithNames() {
+		if proj.Path != "" && !seenProjectDirs[proj.Path] {
+			seenProjectDirs[proj.Path] = true
+			projectDirsToScan = append(projectDirsToScan, proj.Path)
 		}
+	}
 
-		dirName := entry.Name()
-		dirPath := filepath.Join(workspaceDir, dirName)
+	// Track beads ID -> project dir for cross-project comment fetching
+	beadsIDProjectDirs := make(map[string]string)
 
-		// Check for SYNTHESIS.md (full-tier completion)
-		synthesisPath := filepath.Join(dirPath, "SYNTHESIS.md")
-		hasSynthesis := false
-		if _, err := os.Stat(synthesisPath); err == nil {
-			hasSynthesis = true
-		}
+	for _, scanDir := range projectDirsToScan {
+		workspaceDir := filepath.Join(scanDir, ".orch", "workspace")
+		entries, _ := os.ReadDir(workspaceDir)
 
-		// Check if this is a light-tier workspace (tier in manifest, fallback to dotfiles)
-		// Note: We check isLightTierWorkspace here, NOT isLightTierComplete
-		// The Phase: Complete check is deferred until after batch fetching
-		isLightTier := isLightTierWorkspace(dirPath)
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
 
-		// Skip workspaces that are neither full-tier with synthesis nor light-tier
-		if !hasSynthesis && !isLightTier {
-			continue
-		}
+			dirName := entry.Name()
+			dirPath := filepath.Join(workspaceDir, dirName)
 
-		// Get workspace modification time from directory
-		dirInfo, err := entry.Info()
-		modTime := time.Now()
-		if err == nil {
-			modTime = dirInfo.ModTime()
-		}
+			// Check for SYNTHESIS.md (full-tier completion)
+			synthesisPath := filepath.Join(dirPath, "SYNTHESIS.md")
+			hasSynthesis := false
+			if _, err := os.Stat(synthesisPath); err == nil {
+				hasSynthesis = true
+			}
 
-		// Early filter: Skip workspaces that are definitely stale (older than StaleThreshold)
-		// This avoids fetching comments for old workspaces that will be filtered out anyway.
-		// The stale check later refines this based on Phase status.
-		// Note: We can't determine Phase yet (need comments), but we can skip very old workspaces.
-		isDefinitelyStale := time.Since(modTime) > StaleThreshold
-		if isDefinitelyStale && !hasSynthesis {
-			// Skip light-tier workspaces that are definitely stale
-			// Full-tier workspaces (with SYNTHESIS.md) are always processed for synthesis review
-			continue
-		}
+			// Check if this is a light-tier workspace (tier in manifest, fallback to dotfiles)
+			// Note: We check isLightTierWorkspace here, NOT isLightTierComplete
+			// The Phase: Complete check is deferred until after batch fetching
+			isLightTier := isLightTierWorkspace(dirPath)
 
-		// Extract beads ID from SPAWN_CONTEXT.md
-		beadsID := extractBeadsIDFromWorkspace(dirPath)
+			// Skip workspaces that are neither full-tier with synthesis nor light-tier
+			if !hasSynthesis && !isLightTier {
+				continue
+			}
 
-		// Extract skill from workspace name
-		skill := extractSkillFromTitle(dirName)
+			// Get workspace modification time from directory
+			dirInfo, err := entry.Info()
+			modTime := time.Now()
+			if err == nil {
+				modTime = dirInfo.ModTime()
+			}
 
-		// Detect if agent is untracked
-		isUntracked := isUntrackedBeadsID(beadsID)
+			// Early filter: Skip workspaces that are definitely stale (older than StaleThreshold)
+			// This avoids fetching comments for old workspaces that will be filtered out anyway.
+			// The stale check later refines this based on Phase status.
+			// Note: We can't determine Phase yet (need comments), but we can skip very old workspaces.
+			isDefinitelyStale := time.Since(modTime) > StaleThreshold
+			if isDefinitelyStale && !hasSynthesis {
+				// Skip light-tier workspaces that are definitely stale
+				// Full-tier workspaces (with SYNTHESIS.md) are always processed for synthesis review
+				continue
+			}
 
-		workspaceCandidates = append(workspaceCandidates, candidateWorkspace{
-			dirName:      dirName,
-			dirPath:      dirPath,
-			hasSynthesis: hasSynthesis,
-			isLightTier:  isLightTier, // Note: this is now the workspace tier, not completion status
-			lightBeadsID: beadsID,     // Store beads ID for light-tier workspaces
-			beadsID:      beadsID,
-			skill:        skill,
-			modTime:      modTime,
-			isUntracked:  isUntracked,
-		})
+			// Extract beads ID from SPAWN_CONTEXT.md
+			beadsID := extractBeadsIDFromWorkspace(dirPath)
 
-		// Collect beads IDs for batch fetching (skip untracked and empty)
-		if beadsID != "" && !isUntracked && !beadsIDSet[beadsID] {
-			beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
-			beadsIDSet[beadsID] = true
-		}
+			// Extract skill from workspace name
+			skill := extractSkillFromTitle(dirName)
 
-		// Also collect light-tier beads IDs for Phase: Complete check
-		if isLightTier && beadsID != "" && !isUntracked && !lightTierBeadsIDSet[beadsID] {
-			lightTierBeadsIDs = append(lightTierBeadsIDs, beadsID)
-			lightTierBeadsIDSet[beadsID] = true
+			// Detect if agent is untracked
+			isUntracked := isUntrackedBeadsID(beadsID)
+
+			workspaceCandidates = append(workspaceCandidates, candidateWorkspace{
+				dirName:      dirName,
+				dirPath:      dirPath,
+				projectDir:   scanDir,
+				hasSynthesis: hasSynthesis,
+				isLightTier:  isLightTier, // Note: this is now the workspace tier, not completion status
+				lightBeadsID: beadsID,     // Store beads ID for light-tier workspaces
+				beadsID:      beadsID,
+				skill:        skill,
+				modTime:      modTime,
+				isUntracked:  isUntracked,
+			})
+
+			// Collect beads IDs for batch fetching (skip untracked and empty)
+			if beadsID != "" && !isUntracked && !beadsIDSet[beadsID] {
+				beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
+				beadsIDSet[beadsID] = true
+				beadsIDProjectDirs[beadsID] = scanDir
+			}
+
+			// Also collect light-tier beads IDs for Phase: Complete check
+			if isLightTier && beadsID != "" && !isUntracked && !lightTierBeadsIDSet[beadsID] {
+				lightTierBeadsIDs = append(lightTierBeadsIDs, beadsID)
+				lightTierBeadsIDSet[beadsID] = true
+			}
 		}
 	}
 
 	// Phase 2: Batch fetch all comments for tracked workspaces
-	// This single batch call replaces O(n * 4+) individual GetComments calls
-	// (each workspace potentially called GetComments for phase, test evidence,
-	// visual verification, phase gates, AND light-tier completion checks).
+	// Uses project-dir-aware fetching for cross-project beads lookups.
 	// Note: beadsIDsToFetch includes both full-tier and light-tier beads IDs
-	commentsMap := verify.GetCommentsBatch(beadsIDsToFetch)
+	commentsMap := verify.GetCommentsBatchWithProjectDirs(beadsIDsToFetch, beadsIDProjectDirs)
 
 	// Phase 3: Verify each workspace using cached comments
 	var candidates []CompletionInfo
@@ -274,7 +292,7 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 			WorkspaceID:   ws.dirName,
 			WorkspacePath: ws.dirPath,
 			BeadsID:       ws.beadsID,
-			Project:       extractProject(projectDir),
+			Project:       extractProject(ws.projectDir),
 			Skill:         ws.skill,
 			ModTime:       ws.modTime,
 			IsUntracked:   ws.isUntracked,

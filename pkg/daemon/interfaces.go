@@ -103,9 +103,18 @@ func (s *defaultSpawner) SpawnWork(beadsID, model, workdir string) error {
 }
 
 // defaultCompletionFinder is the production CompletionFinder.
-type defaultCompletionFinder struct{}
+// When registry is set, it populates config.ProjectDirs for cross-project scanning.
+type defaultCompletionFinder struct {
+	registry *ProjectRegistry
+}
 
 func (f *defaultCompletionFinder) ListCompletedAgents(config CompletionConfig) ([]CompletedAgent, error) {
+	// If registry is available and ProjectDirs not already set, populate from registry
+	if f.registry != nil && len(config.ProjectDirs) == 0 {
+		for _, entry := range f.registry.Projects() {
+			config.ProjectDirs = append(config.ProjectDirs, entry.Dir)
+		}
+	}
 	return ListCompletedAgentsDefault(config)
 }
 

@@ -36,6 +36,12 @@ type CompletionConfig struct {
 	// ServerURL is the OpenCode server URL.
 	// Used for mode-aware backend verification.
 	ServerURL string
+
+	// ProjectDirs lists all project directories to scan for completions.
+	// When non-empty, the completion scanner queries each project's beads
+	// database and workspace directory, enabling cross-project completion
+	// detection. When empty, only the local project (ProjectDir/cwd) is scanned.
+	ProjectDirs []string
 }
 
 // DefaultCompletionConfig returns sensible defaults for completion configuration.
@@ -75,17 +81,42 @@ type CompletionLoopResult struct {
 
 // ListCompletedAgents finds all agents that have reported Phase: Complete
 // but whose beads issues are still open or in_progress.
+// When ProjectRegistry is available, lazily wires it into the default
+// completion finder for cross-project scanning.
 func (d *Daemon) ListCompletedAgents(config CompletionConfig) ([]CompletedAgent, error) {
 	if d.Completions != nil {
+		// Lazily wire ProjectRegistry into default completion finder
+		if dcf, ok := d.Completions.(*defaultCompletionFinder); ok {
+			dcf.registry = d.ProjectRegistry
+		}
 		return d.Completions.ListCompletedAgents(config)
 	}
 	return ListCompletedAgentsDefault(config)
 }
 
 // ListCompletedAgentsDefault is the default implementation that queries beads.
+// When config.ProjectDirs is non-empty, scans all listed projects for completions.
+// Otherwise, scans only the local project (config.ProjectDir or cwd).
 func ListCompletedAgentsDefault(config CompletionConfig) ([]CompletedAgent, error) {
-	// Get all open/in_progress issues
-	openIssues, err := verify.ListOpenIssues()
+	if len(config.ProjectDirs) > 0 {
+		return listCompletedAgentsMultiProject(config)
+	}
+	return listCompletedAgentsSingleProject(config, "", "")
+}
+
+// listCompletedAgentsSingleProject scans a single project's beads database
+// and workspace directory for completed agents.
+// If projectDir is empty, uses config.ProjectDir or cwd.
+// If workspaceDir is empty, uses config.WorkspaceDir or derives from projectDir.
+func listCompletedAgentsSingleProject(config CompletionConfig, projectDir, workspaceDir string) ([]CompletedAgent, error) {
+	// Get all open/in_progress issues from this project's beads database
+	var openIssues map[string]*verify.Issue
+	var err error
+	if projectDir != "" {
+		openIssues, err = verify.ListOpenIssuesWithDir(projectDir)
+	} else {
+		openIssues, err = verify.ListOpenIssues()
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to list open issues: %w", err)
 	}
@@ -100,8 +131,27 @@ func ListCompletedAgentsDefault(config CompletionConfig) ([]CompletedAgent, erro
 		beadsIDs = append(beadsIDs, id)
 	}
 
-	// Fetch comments for all issues in batch
-	commentMap := verify.GetCommentsBatch(beadsIDs)
+	// Fetch comments — use project-dir-aware variant for cross-project
+	var commentMap map[string][]verify.Comment
+	if projectDir != "" {
+		projectDirs := make(map[string]string, len(beadsIDs))
+		for _, id := range beadsIDs {
+			projectDirs[id] = projectDir
+		}
+		commentMap = verify.GetCommentsBatchWithProjectDirs(beadsIDs, projectDirs)
+	} else {
+		commentMap = verify.GetCommentsBatch(beadsIDs)
+	}
+
+	// Resolve workspace dir for finding agent workspaces
+	effectiveWorkspaceDir := workspaceDir
+	if effectiveWorkspaceDir == "" {
+		effectiveWorkspaceDir = config.WorkspaceDir
+	}
+	effectiveProjectDir := projectDir
+	if effectiveProjectDir == "" {
+		effectiveProjectDir = config.ProjectDir
+	}
 
 	var completed []CompletedAgent
 
@@ -123,7 +173,7 @@ func ListCompletedAgentsDefault(config CompletionConfig) ([]CompletedAgent, erro
 		}
 
 		// Found a completed agent - look for its workspace
-		workspacePath := findWorkspaceForIssue(id, config.WorkspaceDir, config.ProjectDir)
+		workspacePath := findWorkspaceForIssue(id, effectiveWorkspaceDir, effectiveProjectDir)
 
 		completed = append(completed, CompletedAgent{
 			BeadsID:       id,
@@ -135,6 +185,35 @@ func ListCompletedAgentsDefault(config CompletionConfig) ([]CompletedAgent, erro
 	}
 
 	return completed, nil
+}
+
+// listCompletedAgentsMultiProject scans all project directories in config.ProjectDirs
+// for completed agents. Each project's beads database and workspace directory are
+// queried independently, and results are merged with deduplication by beads ID.
+func listCompletedAgentsMultiProject(config CompletionConfig) ([]CompletedAgent, error) {
+	seen := make(map[string]bool)
+	var allCompleted []CompletedAgent
+
+	for _, projectDir := range config.ProjectDirs {
+		wsDir := filepath.Join(projectDir, ".orch", "workspace")
+		completed, err := listCompletedAgentsSingleProject(config, projectDir, wsDir)
+		if err != nil {
+			// Log but continue — one project's beads failure shouldn't block others
+			if config.Verbose {
+				fmt.Printf("  Warning: failed to scan completions in %s: %v\n", projectDir, err)
+			}
+			continue
+		}
+
+		for _, agent := range completed {
+			if !seen[agent.BeadsID] {
+				seen[agent.BeadsID] = true
+				allCompleted = append(allCompleted, agent)
+			}
+		}
+	}
+
+	return allCompleted, nil
 }
 
 // findWorkspaceForIssue tries to find the workspace directory for a beads issue.
