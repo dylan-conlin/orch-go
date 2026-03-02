@@ -74,7 +74,11 @@ func runRework(beadsID, feedback string) error {
 	if err != nil {
 		return err
 	}
+	// Save and defer-restore beads.DefaultDir so error paths don't leave it
+	// pointing at the wrong project. Matches spawn_cmd.go:419-421 pattern.
+	prevDefaultDir := beads.DefaultDir
 	beads.DefaultDir = projectDir
+	defer func() { beads.DefaultDir = prevDefaultDir }()
 
 	issue, err := verify.GetIssue(beadsID)
 	if err != nil {

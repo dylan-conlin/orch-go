@@ -63,6 +63,11 @@ func init() {
 func runAbandon(beadsID, reason, workdir string) error {
 	// --- Phase 1: Resolve project directory ---
 
+	// Save and defer-restore beads.DefaultDir so error paths don't leave it
+	// pointing at the wrong project. Matches spawn_cmd.go:419-421 pattern.
+	prevDefaultDir := beads.DefaultDir
+	defer func() { beads.DefaultDir = prevDefaultDir }()
+
 	var projectDir string
 	var err error
 	if workdir != "" {
