@@ -20,9 +20,15 @@ import (
 type VerificationTracker struct {
 	mu sync.RWMutex
 
-	// completionsSinceVerification tracks how many agents have been marked
-	// ready-for-review since the last human verification.
+	// completionsSinceVerification tracks how many unique agents have been
+	// marked ready-for-review since the last human verification.
 	completionsSinceVerification int
+
+	// seenIDs tracks which beads IDs have already been counted toward the
+	// threshold. This prevents the same agent from being counted multiple
+	// times across poll cycles (the agent stays in ListCompletedAgents
+	// results until human-reviewed, but should only count once).
+	seenIDs map[string]bool
 
 	// lastVerification is when the last human verification occurred.
 	// This is when Dylan manually ran `orch complete`.
@@ -45,13 +51,15 @@ func NewVerificationTracker(threshold int) *VerificationTracker {
 		lastVerification:             time.Now(), // Start with current time
 		isPaused:                     false,
 		completionsSinceVerification: 0,
+		seenIDs:                      make(map[string]bool),
 	}
 }
 
-// RecordCompletion increments the completion counter.
-// This should be called when the daemon marks an issue as ready-for-review.
+// RecordCompletion records an agent completion by beads ID.
+// Only increments the counter for IDs not previously seen, preventing the same
+// agent from being counted multiple times across poll cycles.
 // Returns true if the threshold was reached and daemon should pause.
-func (vt *VerificationTracker) RecordCompletion() bool {
+func (vt *VerificationTracker) RecordCompletion(beadsID string) bool {
 	vt.mu.Lock()
 	defer vt.mu.Unlock()
 
@@ -59,6 +67,12 @@ func (vt *VerificationTracker) RecordCompletion() bool {
 	if vt.threshold == 0 {
 		return false
 	}
+
+	// Deduplicate: only count each beads ID once
+	if vt.seenIDs[beadsID] {
+		return vt.isPaused
+	}
+	vt.seenIDs[beadsID] = true
 
 	vt.completionsSinceVerification++
 
@@ -78,6 +92,7 @@ func (vt *VerificationTracker) RecordHumanVerification() {
 	defer vt.mu.Unlock()
 
 	vt.completionsSinceVerification = 0
+	vt.seenIDs = make(map[string]bool)
 	vt.lastVerification = time.Now()
 	vt.isPaused = false
 }
@@ -106,13 +121,16 @@ func (vt *VerificationTracker) Status() VerificationStatus {
 // SeedFromBacklog sets the completion counter to reflect existing
 // unverified backlog. Call after construction, before entering the
 // main loop, to make the tracker aware of work completed before
-// this daemon session started.
-func (vt *VerificationTracker) SeedFromBacklog(unverifiedCount int) {
+// this daemon session started. Accepts beads IDs for deduplication.
+func (vt *VerificationTracker) SeedFromBacklog(beadsIDs []string) {
 	vt.mu.Lock()
 	defer vt.mu.Unlock()
 
-	vt.completionsSinceVerification = unverifiedCount
-	if vt.threshold > 0 && unverifiedCount >= vt.threshold {
+	for _, id := range beadsIDs {
+		vt.seenIDs[id] = true
+	}
+	vt.completionsSinceVerification = len(vt.seenIDs)
+	if vt.threshold > 0 && vt.completionsSinceVerification >= vt.threshold {
 		vt.isPaused = true
 	}
 }
@@ -124,8 +142,9 @@ func (vt *VerificationTracker) Resume() {
 	vt.mu.Lock()
 	defer vt.mu.Unlock()
 
-	// Reset counter and unpause
+	// Reset counter, seen set, and unpause
 	vt.completionsSinceVerification = 0
+	vt.seenIDs = make(map[string]bool)
 	vt.lastVerification = time.Now()
 	vt.isPaused = false
 }

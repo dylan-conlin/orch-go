@@ -176,7 +176,7 @@ func DefaultConfig() Config {
 		RecoveryInterval:            5 * time.Minute,  // Check every 5 minutes
 		RecoveryIdleThreshold:       10 * time.Minute, // Idle >10min triggers recovery
 		RecoveryRateLimit:           time.Hour,        // 1 resume per agent per hour
-		VerificationPauseThreshold:  3,                // Pause after 3 auto-completions
+		VerificationPauseThreshold:  5,                // Pause after 5 unique auto-completions
 		KnowledgeHealthEnabled:      true,
 		KnowledgeHealthInterval:     2 * time.Hour, // Every 2 hours
 		KnowledgeHealthThreshold:    50,            // Flag when 50+ active entries

@@ -331,9 +331,9 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 		}
 
 		// Record auto-completion for verification tracking.
-		// This increments the counter and may trigger pause if threshold reached.
+		// Only increments if this beads ID hasn't been counted yet (dedup across poll cycles).
 		if d.VerificationTracker != nil {
-			shouldPause := d.VerificationTracker.RecordCompletion()
+			shouldPause := d.VerificationTracker.RecordCompletion(agent.BeadsID)
 			if shouldPause && config.Verbose {
 				status := d.VerificationTracker.Status()
 				fmt.Printf("    Verification pause triggered: %d/%d auto-completions. Resume with: orch daemon resume\n",

@@ -2,6 +2,7 @@
 package daemon
 
 import (
+	"fmt"
 	"os"
 	"sync"
 	"testing"
@@ -52,7 +53,7 @@ func TestVerificationTracker_RecordCompletion(t *testing.T) {
 
 			var shouldPause bool
 			for i := 0; i < tt.completions; i++ {
-				shouldPause = vt.RecordCompletion()
+				shouldPause = vt.RecordCompletion(fmt.Sprintf("agent-%d", i))
 			}
 
 			// Check final pause signal
@@ -60,9 +61,9 @@ func TestVerificationTracker_RecordCompletion(t *testing.T) {
 				// Only check last call for pause signal
 				vt2 := NewVerificationTracker(tt.threshold)
 				for i := 0; i < tt.completions-1; i++ {
-					vt2.RecordCompletion()
+					vt2.RecordCompletion(fmt.Sprintf("agent-%d", i))
 				}
-				lastPause := vt2.RecordCompletion()
+				lastPause := vt2.RecordCompletion(fmt.Sprintf("agent-%d", tt.completions-1))
 				if lastPause != tt.expectPause {
 					t.Errorf("RecordCompletion() pause signal = %v, want %v", lastPause, tt.expectPause)
 				}
@@ -97,7 +98,7 @@ func TestVerificationTracker_RecordHumanVerification(t *testing.T) {
 
 	// Record some completions to trigger pause
 	for i := 0; i < 3; i++ {
-		vt.RecordCompletion()
+		vt.RecordCompletion(fmt.Sprintf("agent-%d", i))
 	}
 
 	if !vt.IsPaused() {
@@ -125,6 +126,16 @@ func TestVerificationTracker_RecordHumanVerification(t *testing.T) {
 		status.LastVerification.After(afterVerification) {
 		t.Errorf("LastVerification timestamp not updated correctly: %v", status.LastVerification)
 	}
+
+	// After RecordHumanVerification, same IDs should count again (seenIDs cleared)
+	shouldPause := vt.RecordCompletion("agent-0")
+	if shouldPause {
+		t.Error("Should not pause on first completion after RecordHumanVerification")
+	}
+	if vt.Status().CompletionsSinceVerification != 1 {
+		t.Errorf("Expected 1 completion after re-recording previously seen ID, got %d",
+			vt.Status().CompletionsSinceVerification)
+	}
 }
 
 func TestVerificationTracker_Resume(t *testing.T) {
@@ -132,7 +143,7 @@ func TestVerificationTracker_Resume(t *testing.T) {
 
 	// Record completions to trigger pause
 	for i := 0; i < 3; i++ {
-		vt.RecordCompletion()
+		vt.RecordCompletion(fmt.Sprintf("agent-%d", i))
 	}
 
 	if !vt.IsPaused() {
@@ -204,7 +215,7 @@ func TestVerificationStatus_RemainingBeforePause(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			vt := NewVerificationTracker(tt.threshold)
 			for i := 0; i < tt.completions; i++ {
-				vt.RecordCompletion()
+				vt.RecordCompletion(fmt.Sprintf("agent-%d", i))
 			}
 
 			status := vt.Status()
@@ -279,23 +290,23 @@ func TestResumeSignal_MultipleWrites(t *testing.T) {
 	}
 }
 
-// Pressure test: Concurrent RecordCompletion calls
+// Pressure test: Concurrent RecordCompletion calls with unique IDs
 func TestVerificationTracker_ConcurrentRecordCompletion(t *testing.T) {
 	threshold := 3
 	vt := NewVerificationTracker(threshold)
 
-	// Launch many goroutines calling RecordCompletion concurrently
+	// Launch many goroutines calling RecordCompletion with unique IDs concurrently
 	numGoroutines := 100
 	results := make(chan bool, numGoroutines)
 	var wg sync.WaitGroup
 
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
-		go func() {
+		go func(idx int) {
 			defer wg.Done()
-			shouldPause := vt.RecordCompletion()
+			shouldPause := vt.RecordCompletion(fmt.Sprintf("agent-%d", idx))
 			results <- shouldPause
-		}()
+		}(i)
 	}
 
 	wg.Wait()
@@ -312,7 +323,7 @@ func TestVerificationTracker_ConcurrentRecordCompletion(t *testing.T) {
 	// Verify tracker state
 	status := vt.Status()
 
-	// All 100 completions should be recorded
+	// All 100 unique completions should be recorded
 	if status.CompletionsSinceVerification != numGoroutines {
 		t.Errorf("Expected %d completions, got %d", numGoroutines, status.CompletionsSinceVerification)
 	}
@@ -323,7 +334,6 @@ func TestVerificationTracker_ConcurrentRecordCompletion(t *testing.T) {
 	}
 
 	// At least one goroutine should have received pause signal (when threshold was hit)
-	// Due to concurrent access, multiple goroutines might see the pause signal
 	if pauseCount == 0 {
 		t.Error("Expected at least one goroutine to receive pause signal")
 	}
@@ -344,7 +354,7 @@ func TestVerificationTracker_ConcurrentMixedOperations(t *testing.T) {
 			defer wg.Done()
 			switch idx % 4 {
 			case 0:
-				vt.RecordCompletion()
+				vt.RecordCompletion(fmt.Sprintf("agent-%d", idx))
 			case 1:
 				vt.IsPaused()
 			case 2:
@@ -374,16 +384,16 @@ func TestVerificationTracker_RapidPauseResumeCycles(t *testing.T) {
 
 	// Perform rapid pause/resume cycles
 	for cycle := 0; cycle < 100; cycle++ {
-		// Record completions to trigger pause
+		// Record completions to trigger pause (unique IDs per cycle)
 		for i := 0; i < threshold; i++ {
-			vt.RecordCompletion()
+			vt.RecordCompletion(fmt.Sprintf("cycle%d-agent%d", cycle, i))
 		}
 
 		if !vt.IsPaused() {
 			t.Fatalf("Expected pause after %d completions in cycle %d", threshold, cycle)
 		}
 
-		// Resume immediately
+		// Resume immediately (clears seenIDs)
 		vt.Resume()
 
 		if vt.IsPaused() {
@@ -406,17 +416,17 @@ func TestVerificationTracker_ConcurrentPauseResume(t *testing.T) {
 	var wg sync.WaitGroup
 	numIterations := 1000
 
-	// Goroutine 1: Continuously record completions
+	// Goroutine 1: Continuously record completions with unique IDs
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for i := 0; i < numIterations; i++ {
-			vt.RecordCompletion()
+			vt.RecordCompletion(fmt.Sprintf("agent-%d", i))
 			time.Sleep(1 * time.Microsecond)
 		}
 	}()
 
-	// Goroutine 2: Continuously resume
+	// Goroutine 2: Continuously resume (clears seenIDs, allowing re-counting)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -435,10 +445,6 @@ func TestVerificationTracker_ConcurrentPauseResume(t *testing.T) {
 			// Verify invariants
 			if status.CompletionsSinceVerification < 0 {
 				t.Errorf("Invalid completion count: %d", status.CompletionsSinceVerification)
-			}
-			if status.IsPaused && status.CompletionsSinceVerification < threshold {
-				// Note: This might trigger due to race - paused state might persist briefly
-				// after Resume, but counter should be reset
 			}
 		}
 	}()
@@ -460,15 +466,15 @@ func TestVerificationTracker_ConcurrentVerificationAndCompletion(t *testing.T) {
 	var wg sync.WaitGroup
 	numOps := 1000
 
-	// Goroutines recording completions
+	// Goroutines recording completions with unique IDs
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
-		go func() {
+		go func(goroutineIdx int) {
 			defer wg.Done()
 			for j := 0; j < numOps/10; j++ {
-				vt.RecordCompletion()
+				vt.RecordCompletion(fmt.Sprintf("g%d-agent-%d", goroutineIdx, j))
 			}
-		}()
+		}(i)
 	}
 
 	// Goroutines recording human verifications
@@ -490,59 +496,64 @@ func TestVerificationTracker_ConcurrentVerificationAndCompletion(t *testing.T) {
 	if status.CompletionsSinceVerification < 0 {
 		t.Errorf("Invalid final completion count: %d", status.CompletionsSinceVerification)
 	}
-	// Counter should be < threshold due to periodic resets from RecordHumanVerification
-	// (unless last operations were all RecordCompletion)
 }
 
 func TestVerificationTracker_SeedFromBacklog(t *testing.T) {
 	tests := []struct {
-		name           string
-		threshold      int
-		seedCount      int
-		expectPaused   bool
-		expectCounter  int
+		name          string
+		threshold     int
+		seedIDs       []string
+		expectPaused  bool
+		expectCounter int
 	}{
 		{
 			name:          "seed below threshold",
 			threshold:     3,
-			seedCount:     2,
+			seedIDs:       []string{"agent-1", "agent-2"},
 			expectPaused:  false,
 			expectCounter: 2,
 		},
 		{
 			name:          "seed at threshold triggers pause",
 			threshold:     3,
-			seedCount:     3,
+			seedIDs:       []string{"agent-1", "agent-2", "agent-3"},
 			expectPaused:  true,
 			expectCounter: 3,
 		},
 		{
 			name:          "seed above threshold triggers pause",
 			threshold:     3,
-			seedCount:     5,
+			seedIDs:       []string{"agent-1", "agent-2", "agent-3", "agent-4", "agent-5"},
 			expectPaused:  true,
 			expectCounter: 5,
 		},
 		{
 			name:          "seed with zero threshold (disabled)",
 			threshold:     0,
-			seedCount:     5,
+			seedIDs:       []string{"agent-1", "agent-2", "agent-3", "agent-4", "agent-5"},
 			expectPaused:  false,
 			expectCounter: 5,
 		},
 		{
-			name:          "seed zero count",
+			name:          "seed empty",
 			threshold:     3,
-			seedCount:     0,
+			seedIDs:       []string{},
 			expectPaused:  false,
 			expectCounter: 0,
+		},
+		{
+			name:          "seed with duplicate IDs deduplicates",
+			threshold:     3,
+			seedIDs:       []string{"agent-1", "agent-1", "agent-2"},
+			expectPaused:  false,
+			expectCounter: 2,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			vt := NewVerificationTracker(tt.threshold)
-			vt.SeedFromBacklog(tt.seedCount)
+			vt.SeedFromBacklog(tt.seedIDs)
 
 			if vt.IsPaused() != tt.expectPaused {
 				t.Errorf("IsPaused() = %v, want %v", vt.IsPaused(), tt.expectPaused)
@@ -558,15 +569,15 @@ func TestVerificationTracker_SeedFromBacklog(t *testing.T) {
 }
 
 func TestVerificationTracker_SeedThenRecord(t *testing.T) {
-	// Seed with 2 of 3, then record 1 more to hit threshold
+	// Seed with 2 IDs of 3 threshold, then record 1 new to hit threshold
 	vt := NewVerificationTracker(3)
-	vt.SeedFromBacklog(2)
+	vt.SeedFromBacklog([]string{"agent-1", "agent-2"})
 
 	if vt.IsPaused() {
 		t.Fatal("Should not be paused after seeding 2 with threshold 3")
 	}
 
-	shouldPause := vt.RecordCompletion()
+	shouldPause := vt.RecordCompletion("agent-3")
 	if !shouldPause {
 		t.Error("RecordCompletion should signal pause at threshold")
 	}
@@ -581,14 +592,32 @@ func TestVerificationTracker_SeedThenRecord(t *testing.T) {
 	}
 }
 
+// Test that seeded IDs are deduplicated when subsequently recorded
+func TestVerificationTracker_SeedThenRecordDuplicate(t *testing.T) {
+	vt := NewVerificationTracker(3)
+	vt.SeedFromBacklog([]string{"agent-1", "agent-2"})
+
+	// Recording a seeded ID should NOT increment counter
+	shouldPause := vt.RecordCompletion("agent-1")
+	if shouldPause {
+		t.Error("Recording seeded ID should not cause pause")
+	}
+
+	status := vt.Status()
+	if status.CompletionsSinceVerification != 2 {
+		t.Errorf("Expected 2 completions (seeded IDs only, duplicate ignored), got %d",
+			status.CompletionsSinceVerification)
+	}
+}
+
 // Pressure test: Threshold boundary concurrent access
 func TestVerificationTracker_ThresholdBoundaryConcurrent(t *testing.T) {
 	threshold := 3
 	vt := NewVerificationTracker(threshold)
 
-	// Pre-load to one below threshold
+	// Pre-load to one below threshold with unique IDs
 	for i := 0; i < threshold-1; i++ {
-		vt.RecordCompletion()
+		vt.RecordCompletion(fmt.Sprintf("preload-%d", i))
 	}
 
 	// Launch many goroutines trying to cross the threshold simultaneously
@@ -598,11 +627,11 @@ func TestVerificationTracker_ThresholdBoundaryConcurrent(t *testing.T) {
 
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
-		go func() {
+		go func(idx int) {
 			defer wg.Done()
-			shouldPause := vt.RecordCompletion()
+			shouldPause := vt.RecordCompletion(fmt.Sprintf("concurrent-%d", idx))
 			results <- shouldPause
-		}()
+		}(i)
 	}
 
 	wg.Wait()
@@ -634,52 +663,67 @@ func TestVerificationTracker_ThresholdBoundaryConcurrent(t *testing.T) {
 	}
 }
 
-// Regression test: RecordCompletion must only be called once per daemon completion.
-// Previously, it was called both inside ProcessCompletion() and in the daemon main
-// loop, causing each completion to increment the counter by 2 instead of 1.
-// With threshold=3, this caused the daemon to pause after only 2 actual completions.
-func TestVerificationTracker_SingleCountPerCompletion(t *testing.T) {
+// Regression test: RecordCompletion must only count unique beads IDs.
+// Previously, RecordCompletion used a plain counter without deduplication.
+// The same agent appearing across multiple poll cycles would increment the
+// counter each time, causing premature pause (1 agent × 3 cycles = threshold 3).
+func TestVerificationTracker_DeduplicatesByBeadsID(t *testing.T) {
 	threshold := 3
 	vt := NewVerificationTracker(threshold)
 
-	// Simulate 3 daemon completions, each calling RecordCompletion exactly once
-	// (as ProcessCompletion does). The daemon should pause at exactly 3.
-	for i := 0; i < threshold; i++ {
-		shouldPause := vt.RecordCompletion()
-		if i < threshold-1 && shouldPause {
-			t.Errorf("Should not pause at completion %d (threshold=%d)", i+1, threshold)
-		}
-		if i == threshold-1 && !shouldPause {
-			t.Errorf("Should pause at completion %d (threshold=%d)", i+1, threshold)
+	// Simulate the bug scenario: 1 agent across 3 poll cycles
+	// Each poll cycle finds the same agent and calls RecordCompletion
+	for cycle := 0; cycle < 3; cycle++ {
+		shouldPause := vt.RecordCompletion("orch-go-smha") // Same ID every cycle
+		if shouldPause {
+			t.Fatalf("Same agent across %d cycles should NOT trigger pause (threshold=%d)",
+				cycle+1, threshold)
 		}
 	}
 
+	// Counter should be 1 (one unique agent), not 3
 	status := vt.Status()
-	if status.CompletionsSinceVerification != threshold {
-		t.Errorf("Counter = %d, want %d (one increment per completion)",
-			status.CompletionsSinceVerification, threshold)
+	if status.CompletionsSinceVerification != 1 {
+		t.Errorf("Expected 1 unique completion, got %d (dedup failed)",
+			status.CompletionsSinceVerification)
 	}
 
-	// Verify that calling RecordCompletion twice per completion (the old bug)
-	// would have caused premature pausing
-	vt2 := NewVerificationTracker(threshold)
-	actualCompletions := 0
-	for i := 0; i < threshold; i++ {
-		// Old bug: called RecordCompletion twice per completion
-		vt2.RecordCompletion() // first call (ProcessCompletion)
-		vt2.RecordCompletion() // second call (daemon loop) — BUG
-		actualCompletions++
-		if vt2.IsPaused() {
-			break
-		}
+	// Now add 2 more UNIQUE agents to actually hit the threshold
+	vt.RecordCompletion("orch-go-abc1")
+	shouldPause := vt.RecordCompletion("orch-go-xyz2")
+	if !shouldPause {
+		t.Error("Should pause after 3 unique agents")
 	}
 
-	if actualCompletions >= threshold {
-		t.Errorf("Double-counting should have caused premature pause, but didn't pause until %d completions", actualCompletions)
+	status = vt.Status()
+	if status.CompletionsSinceVerification != 3 {
+		t.Errorf("Expected 3 unique completions, got %d",
+			status.CompletionsSinceVerification)
+	}
+}
+
+// Regression test: RecordCompletion with duplicate ID returns current pause state.
+// When an already-seen ID is recorded while paused, it should still return true.
+func TestVerificationTracker_DuplicateReturnsPausedState(t *testing.T) {
+	threshold := 2
+	vt := NewVerificationTracker(threshold)
+
+	vt.RecordCompletion("agent-1")
+	shouldPause := vt.RecordCompletion("agent-2") // Hits threshold
+	if !shouldPause {
+		t.Fatal("Should pause at threshold")
 	}
 
-	status2 := vt2.Status()
-	if status2.CompletionsSinceVerification == threshold {
-		t.Error("Double-counting should produce counter != threshold at pause point")
+	// Recording a duplicate while paused should return true (still paused)
+	stillPaused := vt.RecordCompletion("agent-1")
+	if !stillPaused {
+		t.Error("Duplicate record while paused should return true (paused state)")
+	}
+
+	// Counter should still be 2 (not incremented)
+	status := vt.Status()
+	if status.CompletionsSinceVerification != 2 {
+		t.Errorf("Expected 2 (duplicate not counted), got %d",
+			status.CompletionsSinceVerification)
 	}
 }
