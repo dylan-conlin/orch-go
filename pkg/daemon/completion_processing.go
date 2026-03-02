@@ -329,17 +329,6 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 			result.Error = fmt.Errorf("failed to mark ready for review: %w", err)
 			return result
 		}
-
-		// Record auto-completion for verification tracking.
-		// Only increments if this beads ID hasn't been counted yet (dedup across poll cycles).
-		if d.VerificationTracker != nil {
-			shouldPause := d.VerificationTracker.RecordCompletion(agent.BeadsID)
-			if shouldPause && config.Verbose {
-				status := d.VerificationTracker.Status()
-				fmt.Printf("    Verification pause triggered: %d/%d auto-completions. Resume with: orch daemon resume\n",
-					status.CompletionsSinceVerification, status.Threshold)
-			}
-		}
 	}
 
 	result.Processed = true

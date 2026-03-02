@@ -104,11 +104,6 @@ type Daemon struct {
 	// Prevents infinite resume loops by rate-limiting to 1 attempt per hour per agent.
 	resumeAttempts map[string]time.Time
 
-	// VerificationTracker tracks completions since last human verification and manages
-	// pause state when threshold is reached. This enforces the verifiability-first
-	// constraint by pausing autonomous operation after N completions without human review.
-	VerificationTracker *VerificationTracker
-
 	// SpawnFailureTracker tracks spawn failures to surface them in health metrics.
 	// This prevents silent failure when UpdateBeadsStatus persistently fails.
 	SpawnFailureTracker *SpawnFailureTracker
@@ -162,7 +157,6 @@ func NewWithConfig(config Config) *Daemon {
 		Config:                  config,
 		SpawnedIssues:           spawnTracker,
 		resumeAttempts:          make(map[string]time.Time),
-		VerificationTracker:     NewVerificationTracker(config.VerificationPauseThreshold),
 		SpawnFailureTracker:     NewSpawnFailureTrackerWithThreshold(config.MaxIssueFailures),
 		CompletionFailureTracker: NewCompletionFailureTracker(),
 		Issues:                  &defaultIssueQuerier{},
@@ -200,7 +194,6 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		Pool:                pool,
 		SpawnedIssues:       spawnTracker,
 		resumeAttempts:      make(map[string]time.Time),
-		VerificationTracker: NewVerificationTracker(config.VerificationPauseThreshold),
 		SpawnFailureTracker: NewSpawnFailureTrackerWithThreshold(config.MaxIssueFailures),
 		Issues:              &defaultIssueQuerier{},
 		Spawner:             &defaultSpawner{},
@@ -457,18 +450,6 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 			Processed: false,
 			Message: fmt.Sprintf("Circuit breaker HALTED: %s (triggered by %s). Resume with: orch control resume",
 				halt.Reason, halt.TriggeredBy),
-		}, nil
-	}
-
-	// Check verification pause BEFORE any other checks (including rate limit).
-	// This enforces the verifiability-first constraint: daemon pauses after N
-	// auto-completions without human verification.
-	if d.VerificationTracker != nil && d.VerificationTracker.IsPaused() {
-		status := d.VerificationTracker.Status()
-		return &OnceResult{
-			Processed: false,
-			Message: fmt.Sprintf("Paused for human verification (%d/%d auto-completions). Resume with: orch daemon resume",
-				status.CompletionsSinceVerification, status.Threshold),
 		}, nil
 	}
 

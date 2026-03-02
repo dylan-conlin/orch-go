@@ -8,37 +8,6 @@ import (
 	"testing"
 )
 
-func TestHandleDaemonResume_MethodNotAllowed(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/daemon/resume", nil)
-	w := httptest.NewRecorder()
-
-	handleDaemonResume(w, req)
-
-	if w.Code != http.StatusMethodNotAllowed {
-		t.Errorf("Expected status 405, got %d", w.Code)
-	}
-}
-
-func TestHandleDaemonResume_Success(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/api/daemon/resume", nil)
-	w := httptest.NewRecorder()
-
-	handleDaemonResume(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	var resp DaemonResumeResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatalf("Failed to decode response: %v", err)
-	}
-
-	if !resp.Success {
-		t.Errorf("Expected success=true, got false: %s", resp.Error)
-	}
-}
-
 func TestHandleCloseIssue_MethodNotAllowed(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/issues/close", nil)
 	w := httptest.NewRecorder()

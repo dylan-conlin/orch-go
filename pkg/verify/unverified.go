@@ -15,7 +15,6 @@ import (
 //
 // This is the canonical type for unverified work across all consumers:
 // - Spawn verification gate (blocks spawns)
-// - Daemon verification tracker (pauses autonomous spawning)
 // - Review command (displays pending completions)
 type UnverifiedItem struct {
 	BeadsID   string

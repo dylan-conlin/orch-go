@@ -54,9 +54,6 @@ func TestFromUserConfig_Defaults(t *testing.T) {
 	if result.CleanupEnabled != defaults.CleanupEnabled {
 		t.Errorf("CleanupEnabled = %v, want %v", result.CleanupEnabled, defaults.CleanupEnabled)
 	}
-	if result.VerificationPauseThreshold != defaults.VerificationPauseThreshold {
-		t.Errorf("VerificationPauseThreshold = %d, want %d", result.VerificationPauseThreshold, defaults.VerificationPauseThreshold)
-	}
 }
 
 func TestFromUserConfig_CustomValues(t *testing.T) {

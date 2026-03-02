@@ -37,9 +37,6 @@ type StatusInfo struct {
 	// StaleFile indicates the status file exists but the daemon process is dead.
 	StaleFile bool
 
-	// Verification holds verification pause information.
-	Verification *VerificationStatusSnapshot
-
 	// SpawnFailures holds spawn failure tracking information.
 	SpawnFailures *SpawnFailureSnapshot
 
@@ -79,7 +76,6 @@ func GetStatusInfo() StatusInfo {
 	info.LastSpawn = status.LastSpawn
 	info.LastCompletion = status.LastCompletion
 	info.ReadyCount = status.ReadyCount
-	info.Verification = status.Verification
 	info.SpawnFailures = status.SpawnFailures
 	info.CompletionFailures = status.CompletionFailures
 
@@ -112,11 +108,6 @@ func FormatStatusInfo(info StatusInfo) string {
 	if !info.LastCompletion.IsZero() {
 		result += fmt.Sprintf("  Last complete: %s (%s ago)\n",
 			info.LastCompletion.Format("15:04:05"), formatDuration(time.Since(info.LastCompletion)))
-	}
-
-	if info.Verification != nil && info.Verification.IsPaused {
-		result += fmt.Sprintf("  Verification: PAUSED (%d/%d unverified)\n",
-			info.Verification.CompletionsSinceVerification, info.Verification.Threshold)
 	}
 
 	if info.SpawnFailures != nil && info.SpawnFailures.ConsecutiveFailures > 0 {
