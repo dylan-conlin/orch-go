@@ -201,7 +201,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		SpawnedIssues:       spawnTracker,
 		resumeAttempts:      make(map[string]time.Time),
 		VerificationTracker: NewVerificationTracker(config.VerificationPauseThreshold),
-		SpawnFailureTracker: NewSpawnFailureTracker(),
+		SpawnFailureTracker: NewSpawnFailureTrackerWithThreshold(config.MaxIssueFailures),
 		Issues:              &defaultIssueQuerier{},
 		Spawner:             &defaultSpawner{},
 		Completions:         &defaultCompletionFinder{},

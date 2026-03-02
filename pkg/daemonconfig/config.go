@@ -142,6 +142,13 @@ type Config struct {
 	// AgreementCheckInterval is how often to run agreement checks (0 = disabled).
 	// Default is 30 minutes.
 	AgreementCheckInterval time.Duration
+
+	// MaxIssueFailures is the number of consecutive spawn failures for a single
+	// issue before it's circuit-broken (skipped in future poll cycles). This
+	// prevents infinite spawn failure loops from issues that persistently fail
+	// (e.g., cross-repo issues that can't be resolved locally). Default is 3.
+	// Set to 0 to disable per-issue circuit breaking.
+	MaxIssueFailures int
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -181,5 +188,6 @@ func DefaultConfig() Config {
 		PhaseTimeoutThreshold:       30 * time.Minute, // Flag after 30 minutes without phase update
 		AgreementCheckEnabled:       true,
 		AgreementCheckInterval:      30 * time.Minute, // Check every 30 minutes
+		MaxIssueFailures:            3,                // Circuit-break after 3 failures per issue
 	}
 }
