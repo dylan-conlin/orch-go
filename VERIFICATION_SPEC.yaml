@@ -1,39 +1,23 @@
-task: Implement chflags uchg immutability + orch control lock/unlock commands
-beads_id: orch-go-n1co
+task: Add architecture lint to pre-commit hook + compilation gate for agents
+beads_id: orch-go-ptiq
 date: 2026-03-01
 
 verification:
   type: feature
   deliverables:
-    - path: pkg/control/control.go
-      description: "Core control plane logic: discover files from settings.json, lock/unlock/status via chflags"
-    - path: pkg/control/control_test.go
-      description: "8 tests: discovery, env expansion, missing files, lock/unlock cycle, file status"
-    - path: cmd/orch/control_cmd.go
-      description: "CLI commands: orch control lock/unlock/status"
-    - path: cmd/orch/main.go
-      description: "Register controlCmd"
+    - path: scripts/pre-commit-exec-start-cleanup.sh
+      description: "Pre-commit gate: go build (compilation) + go test -run TestArchitectureLint (arch lint)"
   tests_run:
-    - command: "go test ./pkg/control/ -v -count=1"
-      result: "PASS - 8 tests (0.018s)"
-    - command: "go build ./cmd/orch/"
-      result: "PASS"
-    - command: "go vet ./pkg/control/ ./cmd/orch/"
-      result: "PASS (no output)"
-  smoke_tests:
-    - command: "go run ./cmd/orch/ control status"
-      result: "6 files discovered, all UNLOCKED"
-    - command: "go run ./cmd/orch/ control lock"
-      result: "6 files locked with uchg"
-    - command: "echo test >> ~/.claude/settings.json"
-      result: "operation not permitted (confirmed OS-level block)"
-    - command: "go run ./cmd/orch/ control unlock"
-      result: "6 files unlocked"
+    - command: "./scripts/pre-commit-exec-start-cleanup.sh (with staged Go file)"
+      result: "PASS - compilation gate + architecture lint passed in ~3s"
+    - command: "./scripts/pre-commit-exec-start-cleanup.sh (no staged Go files)"
+      result: "PASS - exits immediately (skip when irrelevant)"
+  integration:
+    - description: "bd shim at .git/hooks/pre-commit already calls scripts/pre-commit-exec-start-cleanup.sh if executable"
+      evidence: "Line: if [ -x scripts/pre-commit-exec-start-cleanup.sh ]; then"
   leave_it_better:
-    - action: "kb quick decide 'chflags uchg for control plane immutability' --reason 'OS-level, runtime-independent, zero workflow impact on agents'"
     - stale_artifacts: "No stale artifacts encountered"
   notes:
-    - "Pre-existing failures in cmd/orch (TestRunPeriodicTasks_*) are unrelated daemon tests"
-    - "Control plane files auto-discovered from settings.json enforcement hooks (PreToolUse, Stop)"
-
-manual_verification: none
+    - "Script skips entirely when no Go files are staged (fast path for non-Go commits)"
+    - "Uses -count=1 to prevent test caching (ensures fresh architecture check)"
+    - "Existing architecture_lint_test.go enforces two-lane ADR constraints"
