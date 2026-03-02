@@ -212,6 +212,10 @@ func (a *workspaceAdapter) Remove(workspacePath string) error {
 	return os.RemoveAll(workspacePath)
 }
 
+func (a *workspaceAdapter) HasLandedArtifacts(workspacePath, projectDir string) (bool, error) {
+	return spawn.HasLandedArtifacts(workspacePath, projectDir)
+}
+
 func (a *workspaceAdapter) ScanWorkspaces(projectDir string) ([]agent.WorkspaceInfo, error) {
 	wsDir := projectDir + "/.orch/workspace"
 	entries, err := os.ReadDir(wsDir)

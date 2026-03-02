@@ -580,6 +580,26 @@ func (m *lifecycleManager) DetectOrphans(projectDirs []string, threshold time.Du
 			shouldRetry = false
 		}
 
+		// Check for landed artifacts: agent committed work but crashed before Phase: Complete
+		hasLandedArtifacts := false
+		if !isPhaseComplete(lastPhase) && ws.Path != "" {
+			// Find the project dir for this workspace
+			projectDir := ""
+			for _, dir := range projectDirs {
+				wsDir := dir + "/.orch/workspace"
+				if strings.HasPrefix(ws.Path, wsDir) {
+					projectDir = dir
+					break
+				}
+			}
+			if projectDir != "" {
+				if landed, err := m.workspace.HasLandedArtifacts(ws.Path, projectDir); err == nil && landed {
+					hasLandedArtifacts = true
+					shouldRetry = false // Don't respawn — needs review
+				}
+			}
+		}
+
 		orphans = append(orphans, OrphanedAgent{
 			Agent: AgentRef{
 				BeadsID:       candidate.BeadsID,
@@ -588,10 +608,11 @@ func (m *lifecycleManager) DetectOrphans(projectDirs []string, threshold time.Du
 				SessionID:     ws.SessionID,
 				SpawnMode:     ws.SpawnMode,
 			},
-			Reason:      "no_live_execution",
-			LastPhase:   lastPhase,
-			StaleFor:    staleFor,
-			ShouldRetry: shouldRetry,
+			Reason:             "no_live_execution",
+			LastPhase:          lastPhase,
+			StaleFor:           staleFor,
+			ShouldRetry:        shouldRetry,
+			HasLandedArtifacts: hasLandedArtifacts,
 		})
 	}
 
@@ -639,6 +660,28 @@ func hasTriageReadyLabel(labels []string) bool {
 		}
 	}
 	return false
+}
+
+// FlagLandedArtifacts adds a beads comment and label to flag an orphaned agent
+// that crashed after committing work. This makes the agent visible in `orch review`
+// for human recovery instead of silently resetting it for respawn.
+func (m *lifecycleManager) FlagLandedArtifacts(agent AgentRef) error {
+	if agent.BeadsID == "" {
+		return fmt.Errorf("no beads ID for landed artifact flagging")
+	}
+
+	// Add label so orch review can filter for these
+	if err := m.beads.AddLabel(agent.BeadsID, "review:crashed-with-artifacts"); err != nil {
+		return fmt.Errorf("failed to add label: %w", err)
+	}
+
+	// Log event for observability
+	_ = m.events.Log("agent.crashed_with_artifacts", map[string]interface{}{
+		"beads_id":  agent.BeadsID,
+		"workspace": agent.WorkspaceName,
+	})
+
+	return nil
 }
 
 // CurrentState determines an agent's current lifecycle state.

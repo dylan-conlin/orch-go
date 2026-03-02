@@ -103,4 +103,9 @@ type WorkspaceManager interface {
 	// ScanWorkspaces reads all workspace directories under projectDir/.orch/workspace/
 	// and returns metadata from their manifests. Used by DetectOrphans.
 	ScanWorkspaces(projectDir string) ([]WorkspaceInfo, error)
+
+	// HasLandedArtifacts checks if an agent's workspace has committed work
+	// (git commits since the baseline SHA from AGENT_MANIFEST.json).
+	// Used to detect agents that crashed after doing work but before Phase: Complete.
+	HasLandedArtifacts(workspacePath, projectDir string) (bool, error)
 }

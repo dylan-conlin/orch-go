@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -434,4 +435,32 @@ func LookupManifestsByBeadsIDs(projectDir string, beadsIDs []string) (map[string
 	}
 
 	return result, nil
+}
+
+// HasLandedArtifacts checks whether an agent workspace has committed git changes
+// since its spawn baseline. This detects the "crashed with work" scenario:
+// agent committed deliverables but died before reporting Phase: Complete.
+//
+// Returns true if there are git commits between the manifest's GitBaseline and HEAD.
+// Returns false if no manifest, no baseline, or no commits found.
+func HasLandedArtifacts(workspacePath, projectDir string) (bool, error) {
+	manifest, err := ReadAgentManifest(workspacePath)
+	if err != nil {
+		return false, fmt.Errorf("no manifest: %w", err)
+	}
+
+	if manifest.GitBaseline == "" {
+		return false, nil
+	}
+
+	// Check for commits between baseline and HEAD
+	cmd := exec.Command("git", "log", "--oneline", manifest.GitBaseline+"..HEAD")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("git log failed: %w", err)
+	}
+
+	lines := strings.TrimSpace(string(output))
+	return lines != "", nil
 }

@@ -258,4 +258,8 @@ type OrphanedAgent struct {
 
 	// ShouldRetry indicates whether the issue should be respawned (based on triage:ready label).
 	ShouldRetry bool
+
+	// HasLandedArtifacts indicates the agent committed work (git changes since baseline)
+	// but crashed before reporting Phase: Complete. These orphans need review, not respawn.
+	HasLandedArtifacts bool
 }

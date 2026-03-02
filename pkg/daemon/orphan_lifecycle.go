@@ -11,6 +11,13 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/agent"
 )
 
+// LandedArtifactFlagger is an optional interface that LifecycleManager implementations
+// can support to flag orphaned agents that crashed with committed work.
+// This adds a beads comment and label so the agent shows up in `orch review`.
+type LandedArtifactFlagger interface {
+	FlagLandedArtifacts(agent agent.AgentRef) error
+}
+
 // LifecycleOrphanRecoveryResult contains the results of lifecycle-based orphan recovery.
 type LifecycleOrphanRecoveryResult struct {
 	// Scanned is the number of agents examined.
@@ -21,6 +28,9 @@ type LifecycleOrphanRecoveryResult struct {
 
 	// ForceAbandoned is the number of orphans that were force-abandoned (reset to open).
 	ForceAbandoned int
+
+	// FlaggedForReview is the number of orphans flagged as crashed-with-artifacts.
+	FlaggedForReview int
 
 	// Skipped is the number of orphans skipped (e.g., due to errors).
 	Skipped int
@@ -39,7 +49,7 @@ type LifecycleOrphanRecoveryResult struct {
 func (r *LifecycleOrphanRecoveryResult) Snapshot() OrphanDetectionSnapshot {
 	return OrphanDetectionSnapshot{
 		ResetCount:   r.ForceCompleted + r.ForceAbandoned,
-		SkippedCount: r.Skipped,
+		SkippedCount: r.Skipped + r.FlaggedForReview,
 		LastCheck:    time.Now(),
 	}
 }
@@ -75,6 +85,7 @@ func RunLifecycleOrphanRecovery(lm agent.LifecycleManager, projectDirs []string,
 
 	forceCompleted := 0
 	forceAbandoned := 0
+	flaggedForReview := 0
 	skipped := 0
 
 	for _, orphan := range result.Orphans {
@@ -103,8 +114,26 @@ func RunLifecycleOrphanRecovery(lm agent.LifecycleManager, projectDirs []string,
 				fmt.Printf("  Lifecycle orphan: force-completed %s (Phase: Complete, stale %v)\n",
 					orphan.Agent.BeadsID, orphan.StaleFor.Round(time.Minute))
 			}
+		} else if orphan.HasLandedArtifacts {
+			// Crashed with work: agent committed artifacts but died before Phase: Complete.
+			// Flag for human review instead of abandoning (which would lose context).
+			if flagger, ok := lm.(LandedArtifactFlagger); ok {
+				if err := flagger.FlagLandedArtifacts(orphan.Agent); err != nil {
+					if verbose {
+						fmt.Printf("  Lifecycle orphan: failed to flag landed artifacts for %s: %v\n",
+							orphan.Agent.BeadsID, err)
+					}
+					skipped++
+					continue
+				}
+			}
+			flaggedForReview++
+			if verbose {
+				fmt.Printf("  Lifecycle orphan: flagged for review %s (crashed with artifacts, phase=%s, stale %v)\n",
+					orphan.Agent.BeadsID, orphan.LastPhase, orphan.StaleFor.Round(time.Minute))
+			}
 		} else {
-			// Non-complete orphans → abandon for respawn
+			// Non-complete orphans with no artifacts → abandon for respawn
 			event, err := lm.ForceAbandon(orphan.Agent)
 			if err != nil || !event.Success {
 				if verbose {
@@ -127,12 +156,13 @@ func RunLifecycleOrphanRecovery(lm agent.LifecycleManager, projectDirs []string,
 	}
 
 	return &LifecycleOrphanRecoveryResult{
-		Scanned:        result.Scanned,
-		ForceCompleted: forceCompleted,
-		ForceAbandoned: forceAbandoned,
-		Skipped:        skipped,
-		Message: fmt.Sprintf("Lifecycle orphan recovery: %d force-completed, %d force-abandoned, %d skipped (of %d scanned)",
-			forceCompleted, forceAbandoned, skipped, result.Scanned),
+		Scanned:          result.Scanned,
+		ForceCompleted:   forceCompleted,
+		ForceAbandoned:   forceAbandoned,
+		FlaggedForReview: flaggedForReview,
+		Skipped:          skipped,
+		Message: fmt.Sprintf("Lifecycle orphan recovery: %d force-completed, %d force-abandoned, %d flagged-for-review, %d skipped (of %d scanned)",
+			forceCompleted, forceAbandoned, flaggedForReview, skipped, result.Scanned),
 		Elapsed: time.Since(start),
 	}
 }

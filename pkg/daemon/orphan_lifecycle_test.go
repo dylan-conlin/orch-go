@@ -8,11 +8,13 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/agent"
 )
 
-// mockLifecycleManager implements agent.LifecycleManager for tests.
+// mockLifecycleManager implements agent.LifecycleManager and LandedArtifactFlagger for tests.
 type mockLifecycleManager struct {
-	DetectOrphansFunc  func(projectDirs []string, threshold time.Duration) (*agent.OrphanDetectionResult, error)
-	ForceCompleteFunc  func(a agent.AgentRef, reason string) (*agent.TransitionEvent, error)
-	ForceAbandonFunc   func(a agent.AgentRef) (*agent.TransitionEvent, error)
+	DetectOrphansFunc        func(projectDirs []string, threshold time.Duration) (*agent.OrphanDetectionResult, error)
+	ForceCompleteFunc        func(a agent.AgentRef, reason string) (*agent.TransitionEvent, error)
+	ForceAbandonFunc         func(a agent.AgentRef) (*agent.TransitionEvent, error)
+	FlagLandedArtifactsFunc  func(a agent.AgentRef) error
+	FlaggedAgents            []string
 }
 
 func (m *mockLifecycleManager) BeginSpawn(input agent.SpawnInput) (*agent.SpawnHandle, error) {
@@ -50,6 +52,14 @@ func (m *mockLifecycleManager) ForceAbandon(a agent.AgentRef) (*agent.Transition
 		return m.ForceAbandonFunc(a)
 	}
 	return &agent.TransitionEvent{Success: true}, nil
+}
+
+func (m *mockLifecycleManager) FlagLandedArtifacts(a agent.AgentRef) error {
+	if m.FlagLandedArtifactsFunc != nil {
+		return m.FlagLandedArtifactsFunc(a)
+	}
+	m.FlaggedAgents = append(m.FlaggedAgents, a.BeadsID)
+	return nil
 }
 
 func TestRunLifecycleOrphanRecovery_DetectionError(t *testing.T) {
@@ -258,6 +268,64 @@ func TestRunLifecycleOrphanRecovery_Snapshot(t *testing.T) {
 	snapshot := result.Snapshot()
 	if snapshot.ResetCount != 2 {
 		t.Errorf("Snapshot.ResetCount = %d, want 2", snapshot.ResetCount)
+	}
+}
+
+func TestRunLifecycleOrphanRecovery_FlagsLandedArtifacts(t *testing.T) {
+	lm := &mockLifecycleManager{
+		DetectOrphansFunc: func(projectDirs []string, threshold time.Duration) (*agent.OrphanDetectionResult, error) {
+			return &agent.OrphanDetectionResult{
+				Scanned: 3,
+				Orphans: []agent.OrphanedAgent{
+					{
+						Agent:              agent.AgentRef{BeadsID: "orphan-with-work"},
+						LastPhase:          "Implementing",
+						StaleFor:           3 * time.Hour,
+						HasLandedArtifacts: true,
+					},
+				},
+			}, nil
+		},
+	}
+
+	result := RunLifecycleOrphanRecovery(lm, []string{"/tmp"}, time.Hour, false)
+	if result.Error != nil {
+		t.Errorf("Unexpected error: %v", result.Error)
+	}
+	if result.FlaggedForReview != 1 {
+		t.Errorf("FlaggedForReview = %d, want 1", result.FlaggedForReview)
+	}
+	if result.ForceAbandoned != 0 {
+		t.Errorf("ForceAbandoned = %d, want 0 (should flag, not abandon)", result.ForceAbandoned)
+	}
+	if len(lm.FlaggedAgents) != 1 || lm.FlaggedAgents[0] != "orphan-with-work" {
+		t.Errorf("FlaggedAgents = %v, want [orphan-with-work]", lm.FlaggedAgents)
+	}
+}
+
+func TestRunLifecycleOrphanRecovery_MixedWithLandedArtifacts(t *testing.T) {
+	lm := &mockLifecycleManager{
+		DetectOrphansFunc: func(projectDirs []string, threshold time.Duration) (*agent.OrphanDetectionResult, error) {
+			return &agent.OrphanDetectionResult{
+				Scanned: 5,
+				Orphans: []agent.OrphanedAgent{
+					{Agent: agent.AgentRef{BeadsID: "a1"}, LastPhase: "Complete", StaleFor: 2 * time.Hour},          // → force-complete
+					{Agent: agent.AgentRef{BeadsID: "a2"}, LastPhase: "Implementing", StaleFor: 3 * time.Hour, HasLandedArtifacts: true}, // → flag
+					{Agent: agent.AgentRef{BeadsID: "a3"}, LastPhase: "Planning", StaleFor: 4 * time.Hour},          // → abandon
+				},
+			}, nil
+		},
+	}
+
+	result := RunLifecycleOrphanRecovery(lm, []string{"/tmp"}, time.Hour, false)
+	if result.ForceCompleted != 1 {
+		t.Errorf("ForceCompleted = %d, want 1", result.ForceCompleted)
+	}
+	if result.FlaggedForReview != 1 {
+		t.Errorf("FlaggedForReview = %d, want 1", result.FlaggedForReview)
+	}
+	if result.ForceAbandoned != 1 {
+		t.Errorf("ForceAbandoned = %d, want 1", result.ForceAbandoned)
 	}
 }
 

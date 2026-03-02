@@ -1,7 +1,7 @@
 # Model: Decidability Graph
 
 **Domain:** Work Coordination / Authority Boundaries / Daemon Operation
-**Last Updated:** 2026-01-29
+**Last Updated:** 2026-03-01
 **Synthesized From:** Strategic Orchestrator Model, Questions as First-Class Entities decision, daemon overnight run observations, Petri net / HTN / Active Learning analogies
 
 ---
@@ -78,6 +78,8 @@ Edges carry authority requirements, not just data flow:
 
 **Key insight (discovered 2026-01-19):** The hierarchy isn't about reasoning capability - workers can do any kind of reasoning (factual, design, even framing) IF they have the right context loaded. The irreducible orchestrator function is **deciding what context to load**.
 
+**Empirical confirmation (2026-03-01):** Tested across 800+ archived workspaces. 8 strong cases of workers successfully challenging premises, designing against cognitive failure patterns, rejecting plausible solutions, making strategic recommendations, and performing cross-artifact synthesis — all when given adequate context. Zero cases of capability-limited failure; all failures trace to context gaps, mis-scoping, or skill/task mismatch. See `probes/2026-03-01-probe-context-scoping-irreducibility.md`.
+
 | Old Model | Refined Model |
 |-----------|---------------|
 | Workers *can't* answer framing questions | Workers *don't have context* to answer framing questions |
@@ -87,6 +89,16 @@ Edges carry authority requirements, not just data flow:
 
 **Why "spawn architect to think for me" felt wrong:**
 Not because architect can't think - but because orchestrator was abdicating the *scoping decision*. The question "what context does this need?" is the orchestrator's job. Once scoped, a worker can execute.
+
+**Context-scoping decomposes into three distinct functions:**
+
+| Function | Description | Delegatable? | Example |
+|----------|-------------|-------------|---------|
+| **Knowledge loading** | Deciding what models/decisions/investigations to include in spawn context | Yes (most common bottleneck) | Architect gets decidability-graph model → can reason about authority boundaries |
+| **Scope authorization** | Deciding what the agent can affect (create nodes but not blocking edges) | No (structural) | Worker discovers a blocking relationship but can only surface it, not create it |
+| **Aggregation position** | Being the convergence point where multiple agents' outputs become visible | No (emergent from information flow) | Orchestrator sees 11 investigation results simultaneously → detects drift pattern |
+
+Knowledge loading is what workers most commonly lack — and it's delegatable (load more context into the spawn). But scope authorization and aggregation position are structurally irreducible: a worker given all 11 registry investigations COULD produce the same drift detection, but deciding those 11 are the relevant set IS the synthesis. A worker that identifies "X blocks Y" CAN produce the insight, but authorizing the blocking edge requires orchestrator scope by design.
 
 **The authority chain is about scoping:**
 - Daemon: Executes pre-scoped work (context already defined by spawn)
@@ -481,6 +493,8 @@ orch frontier --json    # Output as JSON for scripting
 **2026-01-23:** Decidability fields exposed via CLI - `--resolution-type`, `--domain`, `--authority` flags added to beads. Authority filtering implemented in `bd ready --authority <level>`. See `.kb/investigations/archived/2026-01-23-inv-expose-decidability-fields-beads-cli.md`.
 
 **2026-01-29:** Frontier command implementation validated. Added stuck agent detection with beads status filtering to prevent false positives. Fixed skill inference alignment between frontier and status commands. See "Stuck Agent Detection" section and `.kb/guides/status.md` for integration details.
+
+**2026-03-01:** Probe confirmed context-scoping claim with strong empirical evidence (8 cases, 800+ workspaces, zero capability-limited failures). Extended model: "context-scoping" decomposed into three functions — knowledge loading (delegatable), scope authorization (structural), aggregation position (emergent). The first is what workers lack; the latter two are why orchestrators remain irreducible even when workers have full knowledge context. See `probes/2026-03-01-probe-context-scoping-irreducibility.md`.
 
 ---
 

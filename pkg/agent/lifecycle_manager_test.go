@@ -168,22 +168,24 @@ func (m *mockEventLogger) Log(eventType string, data map[string]interface{}) err
 }
 
 type mockWorkspaceManager struct {
-	archived        []string
-	failureReports  map[string]string // path → reason
-	existing        map[string]bool
-	sessionIDs      map[string]string // path → sessionID
-	removed         []string
-	workspaces      map[string][]WorkspaceInfo // projectDir → workspaces
-	failOn          map[string]error
+	archived         []string
+	failureReports   map[string]string // path → reason
+	existing         map[string]bool
+	sessionIDs       map[string]string // path → sessionID
+	removed          []string
+	workspaces       map[string][]WorkspaceInfo // projectDir → workspaces
+	landedArtifacts  map[string]bool            // workspacePath → has artifacts
+	failOn           map[string]error
 }
 
 func newMockWorkspaceManager() *mockWorkspaceManager {
 	return &mockWorkspaceManager{
-		failureReports: make(map[string]string),
-		existing:       make(map[string]bool),
-		sessionIDs:     make(map[string]string),
-		workspaces:     make(map[string][]WorkspaceInfo),
-		failOn:         make(map[string]error),
+		failureReports:  make(map[string]string),
+		existing:        make(map[string]bool),
+		sessionIDs:      make(map[string]string),
+		workspaces:      make(map[string][]WorkspaceInfo),
+		landedArtifacts: make(map[string]bool),
+		failOn:          make(map[string]error),
 	}
 }
 
@@ -228,6 +230,13 @@ func (m *mockWorkspaceManager) ScanWorkspaces(projectDir string) ([]WorkspaceInf
 		return nil, err
 	}
 	return m.workspaces[projectDir], nil
+}
+
+func (m *mockWorkspaceManager) HasLandedArtifacts(workspacePath, projectDir string) (bool, error) {
+	if err, ok := m.failOn["has_landed_artifacts:"+workspacePath]; ok {
+		return false, err
+	}
+	return m.landedArtifacts[workspacePath], nil
 }
 
 // --- Helper to build a standard test LifecycleManager ---
@@ -1722,5 +1731,120 @@ func TestDetectOrphans_MultipleProjects(t *testing.T) {
 	}
 	if len(result.Orphans) != 2 {
 		t.Errorf("expected 2 orphans, got %d", len(result.Orphans))
+	}
+}
+
+func TestDetectOrphans_LandedArtifacts_DetectedAndNotRetried(t *testing.T) {
+	mgr, bc, _, _, _, wm := testManager()
+
+	// Agent is in_progress with orch:agent label
+	bc.trackedIssues = []TrackedIssue{
+		{BeadsID: "orch-go-crashed1", Status: "in_progress", Labels: []string{"orch:agent", "triage:ready"}},
+	}
+	// No Phase: Complete comment
+	bc.comments["orch-go-crashed1"] = []string{"Phase: Implementing - Working on feature"}
+
+	// Workspace exists, spawned 2h ago
+	wm.workspaces["/tmp/proj"] = []WorkspaceInfo{
+		{
+			Name:      "og-feat-crashed-task-01mar-abc1",
+			Path:      "/tmp/proj/.orch/workspace/og-feat-crashed-task-01mar-abc1",
+			BeadsID:   "orch-go-crashed1",
+			SessionID: "session-dead",
+			SpawnMode: "claude",
+			SpawnTime: time.Now().Add(-2 * time.Hour),
+		},
+	}
+
+	// Agent has landed artifacts (committed work since baseline)
+	wm.landedArtifacts["/tmp/proj/.orch/workspace/og-feat-crashed-task-01mar-abc1"] = true
+
+	result, err := mgr.DetectOrphans([]string{"/tmp/proj"}, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("DetectOrphans() returned error: %v", err)
+	}
+
+	if len(result.Orphans) != 1 {
+		t.Fatalf("expected 1 orphan, got %d", len(result.Orphans))
+	}
+
+	orphan := result.Orphans[0]
+	if !orphan.HasLandedArtifacts {
+		t.Error("expected HasLandedArtifacts=true for crashed agent with committed work")
+	}
+	if orphan.ShouldRetry {
+		t.Error("orphan with landed artifacts should NOT be retried (needs review instead)")
+	}
+	if orphan.LastPhase != "Implementing" {
+		t.Errorf("expected last phase 'Implementing', got %q", orphan.LastPhase)
+	}
+}
+
+func TestDetectOrphans_NoLandedArtifacts_ShouldRetry(t *testing.T) {
+	mgr, bc, _, _, _, wm := testManager()
+
+	// Agent is in_progress, has triage:ready (eligible for respawn)
+	bc.trackedIssues = []TrackedIssue{
+		{BeadsID: "orch-go-empty1", Status: "in_progress", Labels: []string{"orch:agent", "triage:ready"}},
+	}
+	bc.comments["orch-go-empty1"] = []string{"Phase: Planning - Starting work"}
+
+	wm.workspaces["/tmp/proj"] = []WorkspaceInfo{
+		{
+			Name:      "og-feat-empty-task-01mar-def2",
+			Path:      "/tmp/proj/.orch/workspace/og-feat-empty-task-01mar-def2",
+			BeadsID:   "orch-go-empty1",
+			SpawnMode: "claude",
+			SpawnTime: time.Now().Add(-2 * time.Hour),
+		},
+	}
+
+	// No landed artifacts
+	wm.landedArtifacts["/tmp/proj/.orch/workspace/og-feat-empty-task-01mar-def2"] = false
+
+	result, err := mgr.DetectOrphans([]string{"/tmp/proj"}, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("DetectOrphans() returned error: %v", err)
+	}
+
+	if len(result.Orphans) != 1 {
+		t.Fatalf("expected 1 orphan, got %d", len(result.Orphans))
+	}
+
+	orphan := result.Orphans[0]
+	if orphan.HasLandedArtifacts {
+		t.Error("expected HasLandedArtifacts=false for agent with no committed work")
+	}
+	if !orphan.ShouldRetry {
+		t.Error("orphan without landed artifacts and with triage:ready should be retried")
+	}
+}
+
+func TestFlagLandedArtifacts_AddsLabelAndLogsEvent(t *testing.T) {
+	mgr, bc, _, _, el, _ := testManager()
+
+	agentRef := AgentRef{
+		BeadsID:       "orch-go-crashed1",
+		WorkspaceName: "og-feat-crashed-task-01mar-abc1",
+	}
+
+	err := mgr.FlagLandedArtifacts(agentRef)
+	if err != nil {
+		t.Fatalf("FlagLandedArtifacts() returned error: %v", err)
+	}
+
+	// Verify label was added
+	// Note: mockBeadsClient.AddLabel doesn't track additions, but it would return error on failure
+	_ = bc // label addition succeeded (no error)
+
+	// Verify event was logged
+	if len(el.events) != 1 {
+		t.Fatalf("expected 1 event logged, got %d", len(el.events))
+	}
+	if el.events[0]["_type"] != "agent.crashed_with_artifacts" {
+		t.Errorf("expected event type 'agent.crashed_with_artifacts', got %q", el.events[0]["_type"])
+	}
+	if el.events[0]["beads_id"] != "orch-go-crashed1" {
+		t.Errorf("expected beads_id 'orch-go-crashed1', got %q", el.events[0]["beads_id"])
 	}
 }
