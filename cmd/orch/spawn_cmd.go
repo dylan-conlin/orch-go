@@ -661,7 +661,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		BeadsID:                beadsID,
 		SkillName:              skillName,
 		IsOrchestrator:         isOrchestrator,
-		InfrastructureDetected: isInfrastructureWork(task, beadsID),
+		InfrastructureDetected: orch.IsInfrastructureWork(task, beadsID),
 		CapacityFetcher:        buildCapacityFetcher(),
 	}
 	resolved, err := orch.ResolveSpawnSettings(resolveInput)
@@ -912,41 +912,6 @@ func addUsageInfoToEventData(eventData map[string]interface{}, usageInfo *spawn.
 		eventData["usage_auto_switched"] = true
 		eventData["usage_switch_reason"] = usageInfo.SwitchReason
 	}
-}
-
-func isInfrastructureWork(task string, beadsID string) bool {
-	infrastructureKeywords := []string{
-		"opencode", "orch-go", "pkg/spawn", "pkg/opencode", "pkg/verify",
-		"pkg/state", "cmd/orch", "spawn_cmd.go", "serve.go", "status.go",
-		"main.go", "dashboard", "agent-card", "agents.ts", "daemon.ts",
-		"skillc", "skill.yaml", "SPAWN_CONTEXT", "spawn system",
-		"spawn logic", "spawn template", "orchestration infrastructure",
-		"orchestration system",
-	}
-	taskLower := strings.ToLower(task)
-	for _, keyword := range infrastructureKeywords {
-		if strings.Contains(taskLower, keyword) {
-			return true
-		}
-	}
-	if beadsID != "" {
-		issue, err := verify.GetIssue(beadsID)
-		if err == nil {
-			titleLower := strings.ToLower(issue.Title)
-			for _, keyword := range infrastructureKeywords {
-				if strings.Contains(titleLower, keyword) {
-					return true
-				}
-			}
-			descLower := strings.ToLower(issue.Description)
-			for _, keyword := range infrastructureKeywords {
-				if strings.Contains(descLower, keyword) {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
 
 // buildSectionFilter creates a SectionFilter from spawn flags.

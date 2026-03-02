@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dylan-conlin/orch-go/pkg/model"
+	"github.com/dylan-conlin/orch-go/pkg/orch"
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 )
 
@@ -229,9 +230,9 @@ func TestIsInfrastructureWork(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isInfrastructureWork(tt.task, tt.beadsID)
+			got := orch.IsInfrastructureWork(tt.task, tt.beadsID)
 			if got != tt.want {
-				t.Errorf("isInfrastructureWork(%q, %q) = %v, want %v", tt.task, tt.beadsID, got, tt.want)
+				t.Errorf("orch.IsInfrastructureWork(%q, %q) = %v, want %v", tt.task, tt.beadsID, got, tt.want)
 			}
 		})
 	}
