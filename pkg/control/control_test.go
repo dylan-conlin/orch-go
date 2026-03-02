@@ -41,7 +41,7 @@ func TestDiscoverControlPlaneFiles(t *testing.T) {
         ]
       },
       {
-        "matcher": "Read|Edit",
+        "matcher": "Read|Edit|Write",
         "hooks": [
           {
             "type": "command",
