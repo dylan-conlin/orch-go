@@ -140,6 +140,17 @@ func resolveCompletionTarget(identifier, workdir string) (CompletionTarget, erro
 		if projectDirFromWorkspace != "" && projectDirFromWorkspace != currentDir {
 			target.BeadsProjectDir = projectDirFromWorkspace
 			fmt.Printf("Auto-detected cross-project: %s\n", filepath.Base(target.BeadsProjectDir))
+		} else if manifest, err := spawn.ReadAgentManifest(target.WorkspacePath); err == nil && manifest.ProjectDir != "" {
+			// Fallback: try AGENT_MANIFEST.json ProjectDir when SPAWN_CONTEXT.md
+			// extraction fails or returns current dir. Handles cases where
+			// SPAWN_CONTEXT.md is missing/corrupted but manifest is intact.
+			cleanManifestDir := filepath.Clean(manifest.ProjectDir)
+			if cleanManifestDir != currentDir {
+				target.BeadsProjectDir = cleanManifestDir
+				fmt.Printf("Auto-detected cross-project (from manifest): %s\n", filepath.Base(target.BeadsProjectDir))
+			} else {
+				target.BeadsProjectDir = currentDir
+			}
 		} else {
 			target.BeadsProjectDir = currentDir
 		}

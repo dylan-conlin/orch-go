@@ -989,3 +989,83 @@ func TestVerifyGitDiff_WithAgentManifest(t *testing.T) {
 		t.Errorf("VerifyGitDiff() should pass using baseline SHA, errors: %v", result.Errors)
 	}
 }
+
+func TestVerifyGitDiff_CrossRepoBaselineDiscarded(t *testing.T) {
+	// When an agent is spawned from repo A to work in repo B, the AGENT_MANIFEST.json
+	// contains a git baseline SHA from repo A. Using that SHA in repo B fails because
+	// the SHA doesn't exist there. Verification should discard the baseline and fall
+	// back to spawn time when manifest.ProjectDir != the passed projectDir.
+
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not found in PATH")
+	}
+
+	// Create "spawning repo" (repo A - e.g., orch-go)
+	repoA := t.TempDir()
+	runGit := func(dir string, args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test", "GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test", "GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("git %v in %s failed: %v", args, filepath.Base(dir), err)
+		}
+	}
+
+	runGit(repoA, "init")
+	os.WriteFile(filepath.Join(repoA, "README.md"), []byte("# Repo A"), 0644)
+	runGit(repoA, "add", "README.md")
+	runGit(repoA, "commit", "-m", "initial repo A")
+
+	// Get baseline SHA from repo A
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = repoA
+	output, _ := cmd.Output()
+	repoABaseline := strings.TrimSpace(string(output))
+
+	// Create "target repo" (repo B - e.g., skillc)
+	repoB := t.TempDir()
+	runGit(repoB, "init")
+	os.WriteFile(filepath.Join(repoB, "README.md"), []byte("# Repo B"), 0644)
+	runGit(repoB, "add", "README.md")
+	runGit(repoB, "commit", "-m", "initial repo B")
+
+	// Sleep to ensure spawn time boundary
+	time.Sleep(gitTimestampGranularity)
+	spawnTime := time.Now()
+
+	// Simulate agent committing work in repo B after spawn
+	time.Sleep(gitTimestampGranularity)
+	os.WriteFile(filepath.Join(repoB, "skill.go"), []byte("package skill"), 0644)
+	runGit(repoB, "add", "skill.go")
+	runGit(repoB, "commit", "-m", "add skill.go")
+
+	// Create workspace (lives under repo A's .orch/workspace/)
+	workspaceDir := filepath.Join(repoA, ".orch", "workspace", "test-cross-repo")
+	os.MkdirAll(workspaceDir, 0755)
+
+	// Write AGENT_MANIFEST.json: ProjectDir=repoA (spawning repo), baseline=repoA SHA
+	manifest := spawn.AgentManifest{
+		WorkspaceName: "test-cross-repo",
+		GitBaseline:   repoABaseline,
+		ProjectDir:    repoA,
+		SpawnTime:     spawnTime.Format(time.RFC3339),
+	}
+	spawn.WriteAgentManifest(workspaceDir, manifest)
+
+	// Create SYNTHESIS.md claiming skill.go
+	synthesisContent := "# Session Synthesis\n## Delta\n- `skill.go`\n"
+	os.WriteFile(filepath.Join(workspaceDir, "SYNTHESIS.md"), []byte(synthesisContent), 0644)
+
+	// Test: VerifyGitDiff called with projectDir=repoB (the target repo)
+	// should discard the repoA baseline and use spawn time instead
+	result := VerifyGitDiff(workspaceDir, repoB)
+	if !result.Passed {
+		t.Errorf("VerifyGitDiff() should pass for cross-repo (discard mismatched baseline), errors: %v", result.Errors)
+	}
+	if len(result.ActualFiles) == 0 {
+		t.Errorf("VerifyGitDiff() should find skill.go in actual diff, actualFiles: %v", result.ActualFiles)
+	}
+}

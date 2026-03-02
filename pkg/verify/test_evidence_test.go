@@ -1,6 +1,9 @@
 package verify
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -542,6 +545,49 @@ func TestHasCodeChangesSinceSpawnForWorkspace(t *testing.T) {
 		result := HasCodeChangesSinceSpawnForWorkspace(projectDir, zeroTime, "")
 		if result {
 			t.Error("Expected false for zero spawn time (cannot determine changes without spawn time)")
+		}
+	})
+
+	t.Run("cross-repo workspace falls back to all commits", func(t *testing.T) {
+		// When workspace is outside projectDir (cross-repo), workspace filtering
+		// is bypassed and all commits since spawn time are checked.
+		if _, err := exec.LookPath("git"); err != nil {
+			t.Skip("git not found in PATH")
+		}
+
+		targetRepo := t.TempDir()
+		runGit := func(args ...string) {
+			cmd := exec.Command("git", args...)
+			cmd.Dir = targetRepo
+			cmd.Env = append(os.Environ(),
+				"GIT_AUTHOR_NAME=Test", "GIT_AUTHOR_EMAIL=test@test.com",
+				"GIT_COMMITTER_NAME=Test", "GIT_COMMITTER_EMAIL=test@test.com",
+			)
+			if err := cmd.Run(); err != nil {
+				t.Fatalf("git %v failed: %v", args, err)
+			}
+		}
+
+		runGit("init")
+		os.WriteFile(filepath.Join(targetRepo, "README.md"), []byte("# Repo"), 0644)
+		runGit("add", "README.md")
+		runGit("commit", "-m", "initial")
+
+		time.Sleep(1100 * time.Millisecond)
+		spawnTime := time.Now()
+		time.Sleep(1100 * time.Millisecond)
+
+		// Commit a code file after spawn time
+		os.WriteFile(filepath.Join(targetRepo, "main.go"), []byte("package main"), 0644)
+		runGit("add", "main.go")
+		runGit("commit", "-m", "add code")
+
+		// Workspace in a completely different directory (cross-repo)
+		crossRepoWorkspace := "/some/other/repo/.orch/workspace/agent-123"
+
+		result := HasCodeChangesSinceSpawnForWorkspace(targetRepo, spawnTime, crossRepoWorkspace)
+		if !result {
+			t.Error("Expected true for cross-repo workspace - should detect code changes via all-commits fallback")
 		}
 	})
 }

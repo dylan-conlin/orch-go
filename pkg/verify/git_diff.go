@@ -385,13 +385,26 @@ func VerifyGitDiff(workspacePath, projectDir string) GitDiffResult {
 		return result
 	}
 
-	// Get spawn time from workspace
+	// Get spawn time from workspace (.spawn_time dotfile)
 	spawnTime := spawn.ReadSpawnTime(workspacePath)
 
-	// Try to load AGENT_MANIFEST.json for git baseline
+	// Try to load AGENT_MANIFEST.json for git baseline and spawn metadata
 	var baseline string
 	if manifest, err := spawn.ReadAgentManifest(workspacePath); err == nil {
 		baseline = manifest.GitBaseline
+		// Cross-repo check: if the manifest's ProjectDir differs from the passed
+		// projectDir, the baseline SHA is from a different repo and won't exist
+		// in the target repo's git history. Discard it and fall back to spawn time.
+		// Use filepath.Clean to normalize trailing slashes for comparison.
+		if baseline != "" && manifest.ProjectDir != "" && filepath.Clean(manifest.ProjectDir) != filepath.Clean(projectDir) {
+			baseline = ""
+		}
+		// If spawn time dotfile is missing, fall back to manifest SpawnTime
+		if spawnTime.IsZero() && manifest.SpawnTime != "" {
+			if t, err := time.Parse(time.RFC3339, manifest.SpawnTime); err == nil {
+				spawnTime = t
+			}
+		}
 	}
 
 	// If spawn time is unavailable (zero) and we have no baseline, we cannot

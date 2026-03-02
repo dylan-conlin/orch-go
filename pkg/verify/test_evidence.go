@@ -176,6 +176,19 @@ func hasCodeChangesInWorkspaceCommits(projectDir, sinceStr, workspacePath string
 		}
 	}
 
+	// Cross-repo check: if workspace is outside projectDir (relative path starts
+	// with ".."), workspace filtering is meaningless — the workspace lives in a
+	// different repo. Fall back to checking all commits since spawn time.
+	if strings.HasPrefix(relWorkspace, "..") {
+		cmd := exec.Command("git", "log", "--name-only", "--since="+sinceStr, "--format=")
+		cmd.Dir = projectDir
+		output, err := cmd.Output()
+		if err != nil {
+			return false
+		}
+		return hasCodeChangesInFiles(string(output))
+	}
+
 	// Get commit hashes since spawn time that touch the workspace
 	cmd := exec.Command("git", "log", "--since="+sinceStr, "--format=%H", "--", relWorkspace)
 	cmd.Dir = projectDir
