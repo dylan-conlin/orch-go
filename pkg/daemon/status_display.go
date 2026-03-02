@@ -40,9 +40,6 @@ type StatusInfo struct {
 	// Verification holds verification pause information.
 	Verification *VerificationStatusSnapshot
 
-	// SpawnFailures holds spawn failure tracking information.
-	SpawnFailures *SpawnFailureSnapshot
-
 	// CompletionFailures holds completion processing failure tracking information.
 	CompletionFailures *CompletionFailureSnapshot
 }
@@ -80,7 +77,6 @@ func GetStatusInfo() StatusInfo {
 	info.LastCompletion = status.LastCompletion
 	info.ReadyCount = status.ReadyCount
 	info.Verification = status.Verification
-	info.SpawnFailures = status.SpawnFailures
 	info.CompletionFailures = status.CompletionFailures
 
 	return info
@@ -117,11 +113,6 @@ func FormatStatusInfo(info StatusInfo) string {
 	if info.Verification != nil && info.Verification.IsPaused {
 		result += fmt.Sprintf("  Verification: PAUSED (%d/%d unverified)\n",
 			info.Verification.CompletionsSinceVerification, info.Verification.Threshold)
-	}
-
-	if info.SpawnFailures != nil && info.SpawnFailures.ConsecutiveFailures > 0 {
-		result += fmt.Sprintf("  Spawn failures: %d consecutive (%s)\n",
-			info.SpawnFailures.ConsecutiveFailures, info.SpawnFailures.LastFailureReason)
 	}
 
 	if info.CompletionFailures != nil && info.CompletionFailures.ConsecutiveFailures > 0 {

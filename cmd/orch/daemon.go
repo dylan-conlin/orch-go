@@ -645,16 +645,6 @@ func runDaemonLoop() error {
 			}
 		}
 
-		// Capture spawn failure snapshot for health card visibility
-		var spawnFailureSnapshot *daemon.SpawnFailureSnapshot
-		if d.SpawnFailureTracker != nil {
-			snapshot := d.SpawnFailureTracker.Snapshot()
-			// Only include if there have been failures
-			if snapshot.TotalFailures > 0 {
-				spawnFailureSnapshot = &snapshot
-			}
-		}
-
 		// Capture completion failure snapshot for health card visibility
 		var completionFailureSnapshot *daemon.CompletionFailureSnapshot
 		if d.CompletionFailureTracker != nil {
@@ -678,7 +668,6 @@ func runDaemonLoop() error {
 			ReadyCount:         readyCount,
 			Status:             daemon.DetermineStatus(pollTime, config.PollInterval, isPaused),
 			Verification:       verificationSnapshot,
-			SpawnFailures:      spawnFailureSnapshot,
 			CompletionFailures: completionFailureSnapshot,
 			KnowledgeHealth:    knowledgeHealthSnapshot,
 			PhaseTimeout:       phaseTimeoutSnapshot,
