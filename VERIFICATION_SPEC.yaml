@@ -1,43 +1,39 @@
-task: Extract extraction.go into 7 domain files per architect plan
-beads_id: orch-go-mben
+task: Implement chflags uchg immutability + orch control lock/unlock commands
+beads_id: orch-go-n1co
 date: 2026-03-01
 
 verification:
-  type: refactoring
+  type: feature
   deliverables:
-    - path: pkg/orch/spawn_pipeline.go
-      description: "Core pipeline functions (480 lines, was extraction.go at 1632)"
-    - path: pkg/orch/spawn_types.go
-      description: "SpawnInput, SpawnContext, ResolvedSpawnResult, GapCheckResult (76 lines)"
-    - path: pkg/orch/spawn_inference.go
-      description: "Skill/tier inference, model validation (128 lines)"
-    - path: pkg/orch/spawn_preflight.go
-      description: "Pre-flight validation gates, architect verification (162 lines)"
-    - path: pkg/orch/spawn_kb_context.go
-      description: "KB context gathering, gap analysis (171 lines)"
-    - path: pkg/orch/spawn_backend.go
-      description: "Backend routing, infrastructure detection (117 lines)"
-    - path: pkg/orch/spawn_beads.go
-      description: "Beads issue lifecycle management (114 lines)"
-    - path: pkg/orch/spawn_design.go
-      description: "Design artifact reading (86 lines)"
-    - path: pkg/orch/spawn_backend_test.go
-      description: "Backend tests from extraction_test.go (286 lines)"
-    - path: pkg/orch/spawn_preflight_test.go
-      description: "Preflight tests from extraction_test.go (127 lines)"
-    - path: pkg/orch/spawn_inference_test.go
-      description: "Inference tests from extraction_test.go (48 lines)"
+    - path: pkg/control/control.go
+      description: "Core control plane logic: discover files from settings.json, lock/unlock/status via chflags"
+    - path: pkg/control/control_test.go
+      description: "8 tests: discovery, env expansion, missing files, lock/unlock cycle, file status"
+    - path: cmd/orch/control_cmd.go
+      description: "CLI commands: orch control lock/unlock/status"
+    - path: cmd/orch/main.go
+      description: "Register controlCmd"
   tests_run:
-    - command: "go build ./pkg/orch/"
-      result: "PASS"
+    - command: "go test ./pkg/control/ -v -count=1"
+      result: "PASS - 8 tests (0.018s)"
     - command: "go build ./cmd/orch/"
       result: "PASS"
-    - command: "go vet ./pkg/orch/ && go vet ./cmd/orch/"
-      result: "PASS"
-    - command: "go test ./pkg/orch/ -count=1"
-      result: "ok github.com/dylan-conlin/orch-go/pkg/orch 0.010s - 35 tests passed"
+    - command: "go vet ./pkg/control/ ./cmd/orch/"
+      result: "PASS (no output)"
+  smoke_tests:
+    - command: "go run ./cmd/orch/ control status"
+      result: "6 files discovered, all UNLOCKED"
+    - command: "go run ./cmd/orch/ control lock"
+      result: "6 files locked with uchg"
+    - command: "echo test >> ~/.claude/settings.json"
+      result: "operation not permitted (confirmed OS-level block)"
+    - command: "go run ./cmd/orch/ control unlock"
+      result: "6 files unlocked"
   leave_it_better:
-    - action: "Fixed unused import in cmd/orch/doctor_sessions.go (pre-existing from another extraction)"
+    - action: "kb quick decide 'chflags uchg for control plane immutability' --reason 'OS-level, runtime-independent, zero workflow impact on agents'"
     - stale_artifacts: "No stale artifacts encountered"
+  notes:
+    - "Pre-existing failures in cmd/orch (TestRunPeriodicTasks_*) are unrelated daemon tests"
+    - "Control plane files auto-discovered from settings.json enforcement hooks (PreToolUse, Stop)"
 
 manual_verification: none
