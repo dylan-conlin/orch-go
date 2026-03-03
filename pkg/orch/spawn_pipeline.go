@@ -308,6 +308,7 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp, browserT
 	return &spawn.Config{
 		Task:               ctx.Task,
 		OrientationFrame:   ctx.OrientationFrame,
+		IntentType:         ctx.IntentType,
 		SkillName:          ctx.SkillName,
 		Project:            ctx.ProjectName,
 		ProjectDir:         ctx.ProjectDir,

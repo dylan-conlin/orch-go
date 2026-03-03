@@ -21,6 +21,7 @@ type SpawnInput struct {
 type SpawnContext struct {
 	Task               string
 	OrientationFrame   string
+	IntentType         string
 	SkillName          string
 	ProjectDir         string
 	ProjectName        string

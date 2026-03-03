@@ -200,6 +200,12 @@ type Config struct {
 	// section in SPAWN_CONTEXT.md, keeping the TASK field concise (issue title only).
 	OrientationFrame string
 
+	// IntentType declares the orchestrator's desired outcome type for the spawn.
+	// Values: experience, produce, compare, investigate, fix, build, explore.
+	// Enforced by PreToolUse hook to prevent intent displacement across spawn boundary.
+	// See: .kb/investigations/2026-02-28-investigation-orchestrator-intent-spiral.md
+	IntentType string
+
 	// IsBug indicates whether the associated beads issue is a bug type.
 	// When true, ReproSteps will be included in SPAWN_CONTEXT.md.
 	IsBug bool

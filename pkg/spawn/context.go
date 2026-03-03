@@ -92,6 +92,9 @@ const SpawnContextTemplate = `TASK: {{.Task}}
 {{if .OrientationFrame}}
 ORIENTATION_FRAME: {{.OrientationFrame}}
 {{end}}
+{{- if .IntentType}}
+INTENT_TYPE: {{.IntentType}}
+{{end}}
 {{if .DesignWorkspace}}
 ## DESIGN REFERENCE
 
@@ -608,6 +611,7 @@ type contextData struct {
 	DesignPromptPath      string   // Path to design prompt
 	DesignNotes           string   // Notes from design session
 	OrientationFrame      string   // Additional task context (from issue description), rendered as separate section
+	IntentType            string   // Orchestrator's declared outcome type (experience, produce, compare, etc.)
 	PriorCompletions      string   // Prior completed agent work on same issue
 	BrowserAutomation     bool     // When true, playwright-cli browser automation is available
 }
@@ -686,6 +690,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		DesignPromptPath:      cfg.DesignPromptPath,
 		DesignNotes:           cfg.DesignNotes,
 		OrientationFrame:      cfg.OrientationFrame,
+		IntentType:            cfg.IntentType,
 		PriorCompletions:      cfg.PriorCompletions,
 		BrowserAutomation:     cfg.BrowserTool == "playwright-cli",
 	}

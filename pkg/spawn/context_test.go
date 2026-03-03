@@ -2775,6 +2775,73 @@ func TestGenerateContext_OrientationFrame(t *testing.T) {
 	})
 }
 
+func TestGenerateContext_IntentType(t *testing.T) {
+	t.Run("includes INTENT_TYPE section when set", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "Compare Playwright MCP vs CLI for UX audits",
+			IntentType:    "experience",
+			SkillName:     "investigation",
+			ProjectDir:    "/tmp/test-project",
+			WorkspaceName: "test-workspace",
+			BeadsID:       "test-123",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		if !strings.Contains(content, "INTENT_TYPE: experience") {
+			t.Error("expected content to contain INTENT_TYPE section")
+		}
+	})
+
+	t.Run("omits INTENT_TYPE section when empty", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "Fix daemon spawn",
+			SkillName:     "feature-impl",
+			ProjectDir:    "/tmp/test-project",
+			WorkspaceName: "test-workspace",
+			BeadsID:       "test-123",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		if strings.Contains(content, "INTENT_TYPE:") {
+			t.Error("expected no INTENT_TYPE section when IntentType is empty")
+		}
+	})
+
+	t.Run("INTENT_TYPE appears after ORIENTATION_FRAME", func(t *testing.T) {
+		cfg := &Config{
+			Task:             "Compare tools",
+			OrientationFrame: "Need experiential comparison",
+			IntentType:       "compare",
+			SkillName:        "investigation",
+			ProjectDir:       "/tmp/test-project",
+			WorkspaceName:    "test-workspace",
+			BeadsID:          "test-123",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		frameIdx := strings.Index(content, "ORIENTATION_FRAME:")
+		intentIdx := strings.Index(content, "INTENT_TYPE:")
+		if frameIdx < 0 || intentIdx < 0 {
+			t.Fatal("expected both ORIENTATION_FRAME and INTENT_TYPE in content")
+		}
+		if intentIdx < frameIdx {
+			t.Error("INTENT_TYPE should appear after ORIENTATION_FRAME")
+		}
+	})
+}
+
 func TestGenerateContext_CrossRepoModelWarning(t *testing.T) {
 	t.Run("includes cross-repo warning when CrossRepoModelDir set", func(t *testing.T) {
 		cfg := &Config{

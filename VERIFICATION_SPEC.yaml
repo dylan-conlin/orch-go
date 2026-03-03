@@ -1,34 +1,61 @@
-task: Gate skillc deploy with behavioral test baseline comparison
-beads_id: orch-go-ldcj
+task: "Spawn context validation hook — reject spawns missing ORIENTATION_FRAME/INTENT_TYPE"
+beads_id: orch-go-4k4d
 date: 2026-03-03
 
-verification:
-  type: feature (cross-repo: skillc)
-  deliverables:
-    - path: ~/Documents/personal/skillc/pkg/baseline/baseline.go
-      description: "Baseline save/load/gate logic"
-    - path: ~/Documents/personal/skillc/pkg/baseline/baseline_test.go
-      description: "9 unit tests for baseline package"
-    - path: ~/Documents/personal/skillc/cmd/skillc/deploy.go
-      description: "--behavioral, --force-behavioral, --behavioral-model flags"
-    - path: ~/Documents/personal/skillc/cmd/skillc/test_cmd.go
-      description: "--save-baseline flag for test command"
-    - path: ~/Documents/personal/skillc/cmd/skillc/main.go
-      description: "Updated help text with new flags"
-  tests_run:
-    - command: "cd ~/Documents/personal/skillc && go test ./pkg/baseline/ -v"
-      result: "PASS - 9 tests (save, load, gate logic, edge cases)"
-    - command: "cd ~/Documents/personal/skillc && go test ./..."
-      result: "PASS - all 9 packages"
-    - command: "cd ~/Documents/personal/skillc && go vet ./..."
-      result: "PASS"
-    - command: "skillc help | grep behavioral"
-      result: "PASS - shows --behavioral, --force-behavioral, --behavioral-model"
-  manual_verification:
-    - step: "Run skillc test --save-baseline -s <scenarios-dir> to create baseline"
-    - step: "Run skillc deploy --behavioral to verify gate runs tests"
-    - step: "Degrade a skill, verify deploy blocks on regression"
-    - step: "Use --force-behavioral to override"
-  leave_it_better:
-    - knowledge: "No new knowledge to externalize - direct implementation of known pattern"
-    - stale_artifacts: "No stale artifacts encountered"
+deliverables:
+  - name: "--intent flag on orch spawn"
+    files:
+      - cmd/orch/spawn_cmd.go
+      - pkg/orch/spawn_types.go
+      - pkg/orch/spawn_pipeline.go
+      - pkg/spawn/config.go
+    verified: true
+
+  - name: "INTENT_TYPE in SPAWN_CONTEXT.md template"
+    files:
+      - pkg/spawn/context.go
+    verified: true
+    evidence: "go test ./pkg/spawn/ -run TestGenerateContext_IntentType -v → 3/3 pass"
+
+  - name: "PreToolUse hook (gate-spawn-context-validation.py)"
+    files:
+      - ~/.orch/hooks/gate-spawn-context-validation.py
+    verified: true
+    evidence: "pytest test_gate_spawn_context_validation.py -v → 20/20 pass"
+
+  - name: "Hook tests"
+    files:
+      - ~/.orch/hooks/tests/test_gate_spawn_context_validation.py
+    verified: true
+
+  - name: "Hook registration in settings.json"
+    status: "MANUAL STEP REQUIRED"
+    reason: "settings.json is protected by Claude Code sandbox"
+    manual_step: |
+      Add to ~/.claude/settings.json under hooks.PreToolUse[matcher=Bash].hooks:
+        {
+          "type": "command",
+          "command": "$HOME/.orch/hooks/gate-spawn-context-validation.py",
+          "timeout": 10
+        }
+
+tests:
+  go:
+    command: "go test ./pkg/spawn/ -run TestGenerateContext_IntentType -v"
+    result: "3/3 passed"
+  python:
+    command: "cd ~/.orch/hooks/tests && python3 -m pytest test_gate_spawn_context_validation.py -v"
+    result: "20/20 passed"
+  build:
+    command: "go build ./cmd/orch/ && go vet ./cmd/orch/"
+    result: "clean"
+
+notes:
+  - "Valid intent types: build, compare, experience, explore, fix, investigate, produce"
+  - "--no-track spawns are exempt (ad-hoc work)"
+  - "Only gates orchestrator and meta-orchestrator sessions"
+  - "Workers pass through (they don't spawn)"
+
+leave_it_better:
+  knowledge: "kb-5ca788: decision on gate-spawn-context-validation.py enforcement"
+  stale_artifacts: "No stale artifacts encountered"
