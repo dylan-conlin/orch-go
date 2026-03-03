@@ -501,6 +501,10 @@ func agentStatusToAPIResponse(tracked AgentStatus) AgentAPIResponse {
 	case "retrying":
 		resp.Status = "active"
 		resp.IsProcessing = true
+	case "completed":
+		resp.Status = "completed"
+	case "dead":
+		resp.Status = "dead"
 	case "unknown":
 		if tracked.MissingBinding {
 			resp.Status = "dead"

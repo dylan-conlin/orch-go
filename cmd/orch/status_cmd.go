@@ -454,7 +454,7 @@ func agentStatusToAgentInfo(tracked AgentStatus, now time.Time) AgentInfo {
 		Task:       truncate(tracked.Title, 40),
 	}
 
-	// Map status
+	// Map status from query engine to display flags
 	switch tracked.Status {
 	case "active":
 		info.IsProcessing = true
@@ -462,6 +462,12 @@ func agentStatusToAgentInfo(tracked AgentStatus, now time.Time) AgentInfo {
 		// idle but not phantom (has session)
 	case "retrying":
 		info.IsProcessing = true // show as running with annotation
+	case "completed":
+		info.IsCompleted = true
+	case "dead":
+		// Agent with no liveness signal — distinct from "idle" (has session but not processing).
+		// Set IsPhantom so getAgentStatus returns "phantom" instead of misleading "idle".
+		info.IsPhantom = true
 	}
 
 	// Map phase - extract just the phase name for the Phase field

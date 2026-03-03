@@ -701,7 +701,12 @@ func TestJoinWithReasonCodes_ClaudeBackendRecentlySpawned(t *testing.T) {
 }
 
 func TestJoinWithReasonCodes_ClaudeBackendNoPhaseStale(t *testing.T) {
-	// Claude-backend agent with no phase and old spawn time should be "dead"
+	// Claude-backend agent with no phase, old spawn time, and no tmux window should be "dead"
+	// Mock tmux check to return false (window not alive)
+	oldCheck := checkTmuxWindowAlive
+	checkTmuxWindowAlive = func(workspaceName, projectDir string) bool { return false }
+	defer func() { checkTmuxWindowAlive = oldCheck }()
+
 	issues := []beads.Issue{
 		{ID: "orch-go-1200", Title: "Dead claude agent", Status: "in_progress"},
 	}
@@ -732,6 +737,101 @@ func TestJoinWithReasonCodes_ClaudeBackendNoPhaseStale(t *testing.T) {
 	}
 	if r.MissingSession {
 		t.Error("claude-backend agent should not be marked MissingSession")
+	}
+}
+
+func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
+	// Claude-backend agent with no phase, old spawn time, but tmux window IS alive
+	// should be "active" with reason "tmux_window_alive" — prevents false-idle detection.
+	oldCheck := checkTmuxWindowAlive
+	checkTmuxWindowAlive = func(workspaceName, projectDir string) bool {
+		// Verify correct arguments are passed
+		if workspaceName != "og-debug-browser-02mar-abcd" {
+			t.Errorf("unexpected workspaceName: %s", workspaceName)
+		}
+		if projectDir != "/tmp/project" {
+			t.Errorf("unexpected projectDir: %s", projectDir)
+		}
+		return true // tmux window exists
+	}
+	defer func() { checkTmuxWindowAlive = oldCheck }()
+
+	issues := []beads.Issue{
+		{ID: "orch-go-1250", Title: "Working but no phase", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1250": {
+			BeadsID:       "orch-go-1250",
+			SessionID:     "",
+			ProjectDir:    "/tmp/project",
+			SpawnMode:     "claude",
+			WorkspaceName: "og-debug-browser-02mar-abcd",
+			Skill:         "systematic-debugging",
+			SpawnTime:     "2026-02-20T10:00:00Z", // > 5 min ago
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{}
+
+	results := joinWithReasonCodes(issues, manifests, liveness, nil)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "active" {
+		t.Errorf("expected Status active for claude agent with tmux window alive, got %s", r.Status)
+	}
+	if r.Reason != "tmux_window_alive" {
+		t.Errorf("expected Reason tmux_window_alive, got %q", r.Reason)
+	}
+	if r.MissingSession {
+		t.Error("claude-backend agent should not be marked MissingSession")
+	}
+}
+
+func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackNotCheckedWhenPhaseExists(t *testing.T) {
+	// When a Claude-backend agent HAS a phase, the tmux fallback should NOT be called.
+	// This verifies that tmux is only a fallback, not the primary signal.
+	oldCheck := checkTmuxWindowAlive
+	tmuxCalled := false
+	checkTmuxWindowAlive = func(workspaceName, projectDir string) bool {
+		tmuxCalled = true
+		return true
+	}
+	defer func() { checkTmuxWindowAlive = oldCheck }()
+
+	issues := []beads.Issue{
+		{ID: "orch-go-1260", Title: "Agent with phase", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-1260": {
+			BeadsID:       "orch-go-1260",
+			SessionID:     "",
+			ProjectDir:    "/tmp/project",
+			SpawnMode:     "claude",
+			WorkspaceName: "og-feat-has-phase-02mar-efgh",
+			Skill:         "feature-impl",
+			SpawnTime:     "2026-02-20T10:00:00Z",
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{}
+	phases := map[string]string{
+		"orch-go-1260": "Implementing - Working on feature",
+	}
+
+	results := joinWithReasonCodes(issues, manifests, liveness, phases)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Status != "active" {
+		t.Errorf("expected Status active, got %s", results[0].Status)
+	}
+	if results[0].Reason != "phase_reported" {
+		t.Errorf("expected Reason phase_reported, got %q", results[0].Reason)
+	}
+	if tmuxCalled {
+		t.Error("tmux check should NOT be called when phase is present — tmux is only a fallback")
 	}
 }
 

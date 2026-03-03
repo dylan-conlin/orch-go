@@ -10,7 +10,28 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
+
+// checkTmuxWindowAlive checks if a tmux window exists for the given workspace.
+// Used as a fallback liveness signal for Claude CLI agents when phase-based
+// detection returns "dead" (no phase comment reported).
+//
+// This is NOT the primary liveness signal (that's beads phase comments).
+// It's a targeted fallback to prevent false-idle classification of agents
+// doing long-running work (e.g., browser automation) without phase updates.
+//
+// Makes one tmux list-windows call per invocation. No caching.
+// See: .kb/investigations/2026-02-24-design-dashboard-oscillation-tmux-liveness-architectural-analysis.md
+var checkTmuxWindowAlive = func(workspaceName, projectDir string) bool {
+	if workspaceName == "" || projectDir == "" {
+		return false
+	}
+	projectName := filepath.Base(projectDir)
+	sessionName := tmux.GetWorkersSessionName(projectName)
+	window, _ := tmux.FindWindowByWorkspaceName(sessionName, workspaceName)
+	return window != nil
+}
 
 // AgentStatus represents the status of a tracked agent with explicit reason codes
 // for any missing or partial data. This is the output of the single-pass query engine.
@@ -402,30 +423,39 @@ func joinWithReasonCodes(
 		agent.Model = manifest.Model
 		agent.SpawnMode = manifest.SpawnMode
 
-		// Step 2: Check session ID
-		if manifest.SessionID == "" {
-			// Claude-backend agents don't have OpenCode sessions.
-			// Use phase comments as heartbeat (beads-based liveness).
-			// See: .kb/investigations/2026-02-24-design-dashboard-oscillation-tmux-liveness-architectural-analysis.md
-			if manifest.SpawnMode == "claude" && manifest.WorkspaceName != "" {
-				spawnTime := manifest.ParseSpawnTime()
+		// Step 2: Route by spawn backend
+		// Claude-backend agents use phase comments + tmux fallback for liveness.
+		// They store tmux window IDs (e.g., "@1423") in session_id, NOT OpenCode
+		// session IDs. Must be checked BEFORE the OpenCode session liveness path.
+		// See: .kb/investigations/2026-02-24-design-dashboard-oscillation-tmux-liveness-architectural-analysis.md
+		if manifest.SpawnMode == "claude" && manifest.WorkspaceName != "" {
+			spawnTime := manifest.ParseSpawnTime()
 
-				if agent.Phase != "" && strings.HasPrefix(agent.Phase, "Complete") {
-					agent.Status = "completed"
-					agent.Reason = "phase_complete"
-				} else if agent.Phase != "" {
-					agent.Status = "active"
-					agent.Reason = "phase_reported"
-				} else if !spawnTime.IsZero() && time.Since(spawnTime) < 5*time.Minute {
-					agent.Status = "active"
-					agent.Reason = "recently_spawned"
-				} else {
-					agent.Status = "dead"
-					agent.Reason = "no_phase_reported"
-				}
-				results = append(results, agent)
-				continue
+			if agent.Phase != "" && strings.HasPrefix(agent.Phase, "Complete") {
+				agent.Status = "completed"
+				agent.Reason = "phase_complete"
+			} else if agent.Phase != "" {
+				agent.Status = "active"
+				agent.Reason = "phase_reported"
+			} else if !spawnTime.IsZero() && time.Since(spawnTime) < 5*time.Minute {
+				agent.Status = "active"
+				agent.Reason = "recently_spawned"
+			} else if checkTmuxWindowAlive(manifest.WorkspaceName, manifest.ProjectDir) {
+				// Fallback: no phase comment, but tmux window is alive.
+				// Agent is likely doing long-running work (e.g., browser automation)
+				// without posting phase updates. Better than false "dead".
+				agent.Status = "active"
+				agent.Reason = "tmux_window_alive"
+			} else {
+				agent.Status = "dead"
+				agent.Reason = "no_phase_reported"
 			}
+			results = append(results, agent)
+			continue
+		}
+
+		// Step 3: Check session ID for non-Claude agents
+		if manifest.SessionID == "" {
 			agent.MissingSession = true
 			agent.Status = "unknown"
 			agent.Reason = "missing_session"
