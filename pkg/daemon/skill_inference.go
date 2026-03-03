@@ -50,27 +50,24 @@ func InferSkillFromLabels(labels []string) string {
 	return ""
 }
 
-// InferMCPFromLabels extracts browser/tool requirements from needs:* labels.
-// Returns the tool name if found (e.g., "playwright" from "needs:playwright"),
-// or empty string if no browser automation label is present.
-//
-// Supported labels:
-//   - needs:playwright → returns "playwright" (playwright-cli browser automation)
+// InferBrowserToolFromLabels extracts browser tool requirements from needs:* labels.
+// Returns "playwright-cli" if needs:playwright label is found, or empty string otherwise.
 //
 // This allows daemon-spawned agents to automatically get browser automation context
 // (playwright-cli) when working on UI/CSS fixes that require visual verification.
-func InferMCPFromLabels(labels []string) string {
+func InferBrowserToolFromLabels(labels []string) string {
 	for _, label := range labels {
 		if strings.HasPrefix(label, "needs:") {
 			need := strings.TrimPrefix(label, "needs:")
 			switch need {
 			case "playwright":
-				return "playwright" // Triggers playwright-cli context injection
+				return "playwright-cli" // Triggers playwright-cli context injection
 			}
 		}
 	}
 	return ""
 }
+
 
 // InferSkillFromTitle detects skills from issue title patterns.
 // Returns the skill name if a known pattern is matched, or empty string otherwise.

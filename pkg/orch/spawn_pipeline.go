@@ -290,7 +290,7 @@ func BuildUsageInfo(usageCheckResult *gates.UsageCheckResult) *spawn.UsageInfo {
 }
 
 // BuildSpawnConfig constructs the spawn.Config from SpawnContext.
-func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, noTrack, skipArtifactCheck bool, noTrackReason string) *spawn.Config {
+func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp, browserTool string, noTrack, skipArtifactCheck bool, noTrackReason string) *spawn.Config {
 	// Infer verify level if not explicitly set
 	verifyLevel := ctx.VerifyLevel
 	if verifyLevel == "" {
@@ -320,6 +320,7 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp string, n
 		Model:              ctx.ResolvedModel.Format(),
 		ResolvedSettings:   ctx.ResolvedSettings,
 		MCP:                mcp,
+		BrowserTool:        browserTool,
 		Tier:               ctx.Tier,
 		VerifyLevel:        verifyLevel,
 		Scope:              ctx.Scope,

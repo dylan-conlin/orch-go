@@ -8,12 +8,15 @@ import (
 )
 
 func TestOpenCodeMCPPresets(t *testing.T) {
-	t.Run("playwright is NOT an MCP preset", func(t *testing.T) {
-		// playwright-cli is a standalone CLI tool, not an MCP server.
-		// It's handled via context injection, not opencode.json MCP config.
-		_, ok := opencodeMCPPresets["playwright"]
-		if ok {
-			t.Error("playwright found in opencodeMCPPresets, want not found (playwright-cli is not MCP)")
+	t.Run("playwright is an MCP preset for opt-in override", func(t *testing.T) {
+		// --mcp playwright adds Playwright MCP server (opt-in override).
+		// Default browser path is playwright-cli via BrowserTool field.
+		server, ok := opencodeMCPPresets["playwright"]
+		if !ok {
+			t.Fatal("playwright not found in opencodeMCPPresets, want found (opt-in MCP server)")
+		}
+		if server.Type != "stdio" {
+			t.Errorf("playwright type = %q, want %q", server.Type, "stdio")
 		}
 	})
 
@@ -26,11 +29,11 @@ func TestOpenCodeMCPPresets(t *testing.T) {
 }
 
 func TestEnsureOpenCodeMCP(t *testing.T) {
-	t.Run("playwright returns error (not an MCP preset)", func(t *testing.T) {
+	t.Run("playwright preset writes config", func(t *testing.T) {
 		dir := t.TempDir()
 		err := EnsureOpenCodeMCP(dir, "playwright")
-		if err == nil {
-			t.Error("expected error for playwright (not MCP), got nil")
+		if err != nil {
+			t.Fatalf("EnsureOpenCodeMCP('playwright') error = %v", err)
 		}
 	})
 

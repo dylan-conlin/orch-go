@@ -19,9 +19,16 @@ type OpenCodeMCPServerConfig struct {
 // opencodeMCPPresets maps known MCP preset names to their OpenCode server configurations.
 // Format matches OpenCode's opencode.json mcp config format.
 //
-// Note: "playwright" is NOT an MCP preset. playwright-cli is a standalone CLI tool
-// handled via context injection, not MCP server configuration. See IsPlaywrightCLI().
-var opencodeMCPPresets = map[string]OpenCodeMCPServerConfig{}
+// The default browser automation path is playwright-cli (standalone CLI tool),
+// configured via BrowserTool field. The "playwright" MCP preset below is an
+// opt-in override for interactive exploration via --mcp playwright.
+var opencodeMCPPresets = map[string]OpenCodeMCPServerConfig{
+	"playwright": {
+		Type:    "stdio",
+		Command: []string{"npx", "@anthropic-ai/mcp-server-playwright"},
+		Enabled: true,
+	},
+}
 
 // EnsureOpenCodeMCP reads (or creates) opencode.json in projectDir and merges
 // the named MCP preset into the "mcp" key. Preserves all existing config.

@@ -18,6 +18,7 @@ func FormatResolvedSpawnSettings(settings ResolvedSpawnSettings) string {
 		formatResolvedSetting("Tier", settings.Tier, "unknown"),
 		formatResolvedSetting("Spawn Mode", settings.SpawnMode, "unknown"),
 		formatResolvedSetting("MCP", settings.MCP, "none"),
+		formatResolvedSetting("Browser", settings.BrowserTool, "none"),
 		formatResolvedSetting("Mode", settings.Mode, "unknown"),
 		formatResolvedSetting("Validation", settings.Validation, "unknown"),
 		formatResolvedSetting("Account", settings.Account, "none"),

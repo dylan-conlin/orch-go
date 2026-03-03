@@ -174,7 +174,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnTmux, "tmux", false, "Run in tmux window (opt-in for visual monitoring)")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
-	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "Browser/MCP config (e.g., 'playwright' for playwright-cli browser automation)")
+	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server preset (e.g., 'playwright' for Playwright MCP server). Default browser path is playwright-cli via needs:playwright label")
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
 	spawnCmd.Flags().IntVar(&spawnMaxAgents, "max-agents", -1, "Maximum concurrent agents (default 5, 0 to disable limit, or use ORCH_MAX_AGENTS env var)")
 	spawnCmd.Flags().BoolVar(&spawnAutoInit, "auto-init", false, "Auto-initialize .orch and .beads if missing")
@@ -292,19 +292,18 @@ func inferSkillFromBeadsIssue(issue *beads.Issue) string {
 	return skill
 }
 
-// inferMCPFromBeadsIssue extracts browser/tool requirements from issue labels.
-// Returns the tool name if found (e.g., "playwright" from "needs:playwright"),
-// or empty string if no browser automation label is present.
+// inferBrowserToolFromBeadsIssue extracts browser tool requirements from issue labels.
+// Returns "playwright-cli" if needs:playwright label is found, or empty string otherwise.
 //
 // This allows daemon-spawned agents to automatically get browser automation context
 // (playwright-cli) when working on UI/CSS fixes that require visual verification.
-func inferMCPFromBeadsIssue(issue *beads.Issue) string {
+func inferBrowserToolFromBeadsIssue(issue *beads.Issue) string {
 	for _, label := range issue.Labels {
 		if strings.HasPrefix(label, "needs:") {
 			need := strings.TrimPrefix(label, "needs:")
 			switch need {
 			case "playwright":
-				return "playwright" // Triggers playwright-cli context injection
+				return "playwright-cli" // Triggers playwright-cli context injection
 			}
 		}
 	}
@@ -425,10 +424,10 @@ func runWork(serverURL, beadsID string, inline bool) error {
 		return fmt.Errorf("failed to get beads issue: %w", err)
 	}
 
-	// Infer skill and MCP from issue (labels, title pattern, then type)
-	// Use beads.Issue which has Labels for full skill/MCP inference
+	// Infer skill and browser tool from issue (labels, title pattern, then type)
+	// Use beads.Issue which has Labels for full skill/browser tool inference
 	var skillName string
-	var mcpServer string
+	var browserTool string
 	socketPath, connErr := beads.FindSocketPath("")
 	if connErr == nil {
 		beadsClient := beads.NewClient(socketPath)
@@ -437,7 +436,7 @@ func runWork(serverURL, beadsID string, inline bool) error {
 			beadsIssue, showErr := beadsClient.Show(beadsID)
 			if showErr == nil {
 				skillName = inferSkillFromBeadsIssue(beadsIssue)
-				mcpServer = inferMCPFromBeadsIssue(beadsIssue)
+				browserTool = inferBrowserToolFromBeadsIssue(beadsIssue)
 			}
 		}
 	}
@@ -483,8 +482,8 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	if spawnModel != "" {
 		fmt.Printf("  Model:  %s\n", spawnModel)
 	}
-	if mcpServer != "" {
-		fmt.Printf("  MCP:    %s\n", mcpServer)
+	if browserTool != "" {
+		fmt.Printf("  Browser: %s\n", browserTool)
 	}
 
 	// Work command is daemon-driven (issue already created and triaged)
@@ -742,7 +741,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 
 	// 11. Build spawn config
-	cfg := orch.BuildSpawnConfig(ctx, spawnPhases, resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, spawnNoTrack, spawnSkipArtifactCheck, spawnReason)
+	cfg := orch.BuildSpawnConfig(ctx, spawnPhases, resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, resolved.Settings.BrowserTool.Value, spawnNoTrack, spawnSkipArtifactCheck, spawnReason)
 
 	// 13. Validate and write context (atomic spawn Phase 1: beads tag + workspace)
 	minimalPrompt, rollback, err := orch.ValidateAndWriteContext(cfg, spawnForce)

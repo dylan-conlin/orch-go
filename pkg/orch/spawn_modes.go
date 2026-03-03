@@ -22,9 +22,9 @@ func DispatchSpawn(input *SpawnInput, cfg *spawn.Config, minimalPrompt, beadsID,
 	// Wire MCP config into opencode.json for OpenCode backend spawns.
 	// Claude backend handles MCP via --mcp-config CLI flag (see BuildClaudeLaunchCommand).
 	// OpenCode reads MCP config from opencode.json in the project directory.
-	// playwright-cli is NOT an MCP server — it's a standalone CLI tool handled via
-	// context injection in SPAWN_CONTEXT.md, so skip MCP config for it.
-	if cfg.MCP != "" && !spawn.IsPlaywrightCLI(cfg.MCP) && cfg.SpawnMode != "claude" {
+	// Browser automation via playwright-cli is handled separately via BrowserTool field
+	// and context injection, not through MCP config.
+	if cfg.MCP != "" && cfg.SpawnMode != "claude" {
 		if err := spawn.EnsureOpenCodeMCP(cfg.ProjectDir, cfg.MCP); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to inject MCP config into opencode.json: %v\n", err)
 		}

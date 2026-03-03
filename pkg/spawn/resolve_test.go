@@ -140,7 +140,7 @@ func TestResolve_PrecedenceLayers(t *testing.T) {
 		}
 	})
 
-	t.Run("beads label mcp", func(t *testing.T) {
+	t.Run("beads label browser tool", func(t *testing.T) {
 		input := baseResolveInput()
 		input.BeadsLabels = []string{"needs:playwright"}
 
@@ -148,11 +148,16 @@ func TestResolve_PrecedenceLayers(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Resolve() error = %v", err)
 		}
-		if settings.MCP.Value != "playwright" {
-			t.Fatalf("MCP.Value = %q, want %q", settings.MCP.Value, "playwright")
+		// needs:playwright sets BrowserTool, not MCP
+		if settings.BrowserTool.Value != "playwright-cli" {
+			t.Fatalf("BrowserTool.Value = %q, want %q", settings.BrowserTool.Value, "playwright-cli")
 		}
-		if settings.MCP.Source != SourceBeadsLabel {
-			t.Fatalf("MCP.Source = %q, want %q", settings.MCP.Source, SourceBeadsLabel)
+		if settings.BrowserTool.Source != SourceBeadsLabel {
+			t.Fatalf("BrowserTool.Source = %q, want %q", settings.BrowserTool.Source, SourceBeadsLabel)
+		}
+		// MCP should remain empty (not set by needs: labels)
+		if settings.MCP.Value != "" {
+			t.Fatalf("MCP.Value = %q, want empty (needs:playwright goes to BrowserTool)", settings.MCP.Value)
 		}
 	})
 }
@@ -356,20 +361,25 @@ func TestResolve_BugClass08_UserDefaultTierOnlyWhenExplicit(t *testing.T) {
 	}
 }
 
-func TestResolve_BugClass09_MCPPrecedenceCLIOverLabel(t *testing.T) {
+func TestResolve_BugClass09_MCPAndBrowserToolIndependent(t *testing.T) {
 	input := baseResolveInput()
 	input.CLI.MCP = "playwright"
-	input.BeadsLabels = []string{"needs:puppeteer"}
+	input.BeadsLabels = []string{"needs:playwright"}
 
 	settings, err := Resolve(input)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
+	// --mcp playwright goes to MCP (MCP server override)
 	if settings.MCP.Value != "playwright" {
 		t.Fatalf("MCP.Value = %q, want %q", settings.MCP.Value, "playwright")
 	}
 	if settings.MCP.Source != SourceCLI {
 		t.Fatalf("MCP.Source = %q, want %q", settings.MCP.Source, SourceCLI)
+	}
+	// needs:playwright goes to BrowserTool (default CLI path)
+	if settings.BrowserTool.Value != "playwright-cli" {
+		t.Fatalf("BrowserTool.Value = %q, want %q", settings.BrowserTool.Value, "playwright-cli")
 	}
 }
 

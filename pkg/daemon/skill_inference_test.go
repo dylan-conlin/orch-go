@@ -421,29 +421,29 @@ func TestInferSkillFromIssue(t *testing.T) {
 	}
 }
 
-func TestInferMCPFromLabels(t *testing.T) {
+func TestInferBrowserToolFromLabels(t *testing.T) {
 	tests := []struct {
-		labels  []string
-		wantMCP string
+		labels     []string
+		wantTool   string
 	}{
-		{[]string{"needs:playwright"}, "playwright"},
-		{[]string{"priority:P0", "needs:playwright"}, "playwright"},
-		{[]string{"triage:ready", "needs:playwright", "skill:feature-impl"}, "playwright"},
+		{[]string{"needs:playwright"}, "playwright-cli"},
+		{[]string{"priority:P0", "needs:playwright"}, "playwright-cli"},
+		{[]string{"triage:ready", "needs:playwright", "skill:feature-impl"}, "playwright-cli"},
 		{[]string{"priority:P0", "triage:ready"}, ""},
 		{[]string{"skill:research"}, ""},
 		{[]string{}, ""},
 		{nil, ""},
-		// needs: label with unknown value should not return MCP
+		// needs: label with unknown value should not return browser tool
 		{[]string{"needs:unknown"}, ""},
 		// Multiple needs labels - first matching one wins
-		{[]string{"needs:playwright", "needs:browser"}, "playwright"},
+		{[]string{"needs:playwright", "needs:browser"}, "playwright-cli"},
 	}
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%v", tt.labels), func(t *testing.T) {
-			got := InferMCPFromLabels(tt.labels)
-			if got != tt.wantMCP {
-				t.Errorf("InferMCPFromLabels(%v) = %q, want %q", tt.labels, got, tt.wantMCP)
+			got := InferBrowserToolFromLabels(tt.labels)
+			if got != tt.wantTool {
+				t.Errorf("InferBrowserToolFromLabels(%v) = %q, want %q", tt.labels, got, tt.wantTool)
 			}
 		})
 	}

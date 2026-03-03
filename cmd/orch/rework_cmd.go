@@ -283,7 +283,7 @@ func runRework(beadsID, feedback string) error {
 		HotspotFiles:      hotspotFilesFromResult(hotspotResult),
 	}
 
-	cfg := orch.BuildSpawnConfig(ctx, "", resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, false, false, "")
+	cfg := orch.BuildSpawnConfig(ctx, "", resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, resolved.Settings.BrowserTool.Value, false, false, "")
 	minimalPrompt, rollback, err := orch.ValidateAndWriteContext(cfg, false)
 	if err != nil {
 		return err
