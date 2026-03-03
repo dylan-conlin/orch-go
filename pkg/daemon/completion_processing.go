@@ -126,14 +126,15 @@ func listCompletedAgentsSingleProject(config CompletionConfig, projectDir, works
 		return nil, nil
 	}
 
-	// Filter out issues already labeled daemon:ready-review.
-	// These have already been processed by a previous completion cycle.
+	// Filter out issues already labeled daemon:ready-review or daemon:verification-failed.
+	// - daemon:ready-review: already processed by a previous completion cycle
+	// - daemon:verification-failed: exhausted verification retry budget, deferred for human review
 	// Without this filter, resume→re-detect→re-pause loops occur because
 	// the same cross-project Phase: Complete issues get re-counted after
 	// resume clears the VerificationTracker's seenIDs.
 	for id, issue := range openIssues {
 		for _, label := range issue.Labels {
-			if label == "daemon:ready-review" {
+			if label == LabelReadyReview || label == LabelVerificationFailed {
 				delete(openIssues, id)
 				break
 			}
@@ -441,7 +442,7 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 	// Mark issue as ready for review (unless dry run)
 	// Instead of auto-closing, add a label so Dylan can review via orchestrator
 	if !config.DryRun {
-		if err := verify.AddLabelWithDir(agent.BeadsID, "daemon:ready-review", effectiveProjectDir); err != nil {
+		if err := verify.AddLabelWithDir(agent.BeadsID, LabelReadyReview, effectiveProjectDir); err != nil {
 			result.Error = fmt.Errorf("failed to mark ready for review: %w", err)
 			return result
 		}
@@ -465,6 +466,11 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 
 // CompletionOnce runs a single iteration of the completion loop.
 // It finds all Phase: Complete agents and processes their completions.
+//
+// Verification retry budget: Each agent gets a limited number of verification
+// attempts (3 for local, 1 for cross-project). After exhausting the budget,
+// the agent is labeled daemon:verification-failed and excluded from future scans.
+// This prevents the infinite retry loop on verification failures.
 func (d *Daemon) CompletionOnce(config CompletionConfig) (*CompletionLoopResult, error) {
 	result := &CompletionLoopResult{}
 
@@ -482,6 +488,19 @@ func (d *Daemon) CompletionOnce(config CompletionConfig) (*CompletionLoopResult,
 	logger := events.NewDefaultLogger()
 
 	for _, agent := range completed {
+		isCrossProject := agent.ProjectDir != ""
+
+		// Check if this agent has exhausted its verification retry budget.
+		// Skip it entirely — the label filter in ListCompletedAgents should
+		// have caught it, but this is defense-in-depth for the race window
+		// between labeling and the next scan.
+		if d.VerificationRetryTracker != nil && d.VerificationRetryTracker.IsExhausted(agent.BeadsID, isCrossProject) {
+			if config.Verbose {
+				fmt.Printf("  Skipping %s (verification retry budget exhausted)\n", agent.BeadsID)
+			}
+			continue
+		}
+
 		if config.Verbose {
 			fmt.Printf("  Processing completion for %s: %s\n", agent.BeadsID, agent.Title)
 		}
@@ -491,10 +510,15 @@ func (d *Daemon) CompletionOnce(config CompletionConfig) (*CompletionLoopResult,
 
 		if compResult.Error != nil {
 			result.Errors = append(result.Errors, compResult.Error)
-			if config.Verbose {
-				fmt.Printf("    Error: %v (escalation=%s)\n", compResult.Error, compResult.Escalation)
-			}
+
+			// Track verification failure and check retry budget
+			d.handleVerificationFailure(agent, compResult, config)
 		} else if compResult.Processed {
+			// Successful completion — clear any prior retry tracking
+			if d.VerificationRetryTracker != nil {
+				d.VerificationRetryTracker.Clear(agent.BeadsID)
+			}
+
 			// Log successful auto-completion with escalation level
 			if err := logger.LogAutoCompletedWithEscalation(agent.BeadsID, compResult.CloseReason, compResult.Escalation.String()); err != nil && config.Verbose {
 				fmt.Printf("    Warning: failed to log completion event: %v\n", err)
@@ -506,6 +530,46 @@ func (d *Daemon) CompletionOnce(config CompletionConfig) (*CompletionLoopResult,
 	}
 
 	return result, nil
+}
+
+// handleVerificationFailure tracks a verification failure and applies the
+// daemon:verification-failed label when the retry budget is exhausted.
+func (d *Daemon) handleVerificationFailure(agent CompletedAgent, compResult CompletionResult, config CompletionConfig) {
+	if d.VerificationRetryTracker == nil {
+		if config.Verbose {
+			fmt.Printf("    Error: %v (escalation=%s)\n", compResult.Error, compResult.Escalation)
+		}
+		return
+	}
+
+	isCrossProject := agent.ProjectDir != ""
+	attempts := d.VerificationRetryTracker.RecordFailure(agent.BeadsID)
+	maxAttempts := MaxAttemptsFor(isCrossProject)
+
+	if attempts >= maxAttempts {
+		// Budget exhausted — label the issue so it's filtered out of future scans
+		effectiveProjectDir := agent.ProjectDir
+		if effectiveProjectDir == "" {
+			effectiveProjectDir = config.ProjectDir
+		}
+
+		if err := verify.AddLabelWithDir(agent.BeadsID, LabelVerificationFailed, effectiveProjectDir); err != nil {
+			// Log but don't fail — worst case, the in-memory tracker still prevents retries
+			fmt.Fprintf(os.Stderr, "    Warning: failed to label %s as %s: %v\n",
+				agent.BeadsID, LabelVerificationFailed, err)
+		}
+
+		projectType := "local"
+		if isCrossProject {
+			projectType = "cross-project"
+		}
+		fmt.Printf("    Verification failed (%s, attempt %d/%d): %s - deferred for human review\n",
+			projectType, attempts, maxAttempts, agent.BeadsID)
+		fmt.Printf("    Last error: %v\n", compResult.Error)
+	} else if config.Verbose {
+		fmt.Printf("    Error: %v (escalation=%s, attempt %d/%d)\n",
+			compResult.Error, compResult.Escalation, attempts, maxAttempts)
+	}
 }
 
 // CompletionLoop runs the completion processing loop continuously.

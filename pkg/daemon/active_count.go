@@ -94,8 +94,13 @@ func DefaultActiveCount() int {
 	return activeCount
 }
 
-// GetClosedIssuesBatch checks which beads IDs have closed issues.
-// Returns a map of beadsID -> true for closed issues.
+// GetClosedIssuesBatch checks which beads IDs have closed or done issues.
+// Returns a map of beadsID -> true for issues that should NOT count as active.
+// An issue is considered "not active" if:
+//   - Its status is "closed"
+//   - It has a daemon:verification-failed label (verification exhausted, deferred for human review)
+//   - It has a daemon:ready-review label (verification passed, waiting for orchestrator review)
+//
 // Uses beads RPC daemon for efficiency, falls back to CLI if needed.
 // Exported for use by checkConcurrencyLimit in spawn_cmd.go.
 func GetClosedIssuesBatch(beadsIDs []string) map[string]bool {
@@ -110,7 +115,7 @@ func GetClosedIssuesBatch(beadsIDs []string) map[string]bool {
 		client := beads.NewClient(socketPath, beads.WithAutoReconnect(2))
 		if err := client.Connect(); err == nil {
 			defer client.Close()
-			// Check each issue status
+			// Check each issue status and labels
 			for _, id := range beadsIDs {
 				issue, err := client.Show(id)
 				if err != nil {
@@ -118,7 +123,7 @@ func GetClosedIssuesBatch(beadsIDs []string) map[string]bool {
 					// (might have been deleted or never existed)
 					continue
 				}
-				if strings.EqualFold(issue.Status, "closed") {
+				if isIssueDone(issue.Status, issue.Labels) {
 					closed[id] = true
 				}
 			}
@@ -132,12 +137,26 @@ func GetClosedIssuesBatch(beadsIDs []string) map[string]bool {
 		if err != nil {
 			continue
 		}
-		if strings.EqualFold(issue.Status, "closed") {
+		if isIssueDone(issue.Status, issue.Labels) {
 			closed[id] = true
 		}
 	}
 
 	return closed
+}
+
+// isIssueDone returns true if an issue should not count as an active agent.
+// Checks both status (closed) and labels (daemon:verification-failed, daemon:ready-review).
+func isIssueDone(status string, labels []string) bool {
+	if strings.EqualFold(status, "closed") {
+		return true
+	}
+	for _, label := range labels {
+		if label == LabelVerificationFailed || label == LabelReadyReview {
+			return true
+		}
+	}
+	return false
 }
 
 // extractBeadsIDFromSessionTitle extracts beads ID from an OpenCode session title.

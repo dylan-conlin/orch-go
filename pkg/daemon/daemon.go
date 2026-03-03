@@ -112,6 +112,12 @@ type Daemon struct {
 	// This prevents silent failure when CompletionOnce persistently fails (e.g., beads database issues).
 	CompletionFailureTracker *CompletionFailureTracker
 
+	// VerificationRetryTracker tracks per-agent verification failures across poll cycles.
+	// After exhausting the retry budget (3 attempts for local, 1 for cross-project),
+	// the agent is labeled daemon:verification-failed and excluded from future scans.
+	// This prevents the infinite retry loop on verification failures.
+	VerificationRetryTracker *VerificationRetryTracker
+
 	// Issues queries beads issues for the spawn pipeline.
 	Issues IssueQuerier
 	// ProjectRegistry resolves issue ID prefixes to project directories.
@@ -159,6 +165,7 @@ func NewWithConfig(config Config) *Daemon {
 		resumeAttempts:          make(map[string]time.Time),
 		VerificationTracker:      NewVerificationTracker(config.VerificationPauseThreshold),
 		CompletionFailureTracker: NewCompletionFailureTracker(),
+		VerificationRetryTracker: NewVerificationRetryTracker(),
 		Issues:                  &defaultIssueQuerier{},
 		Spawner:                 &defaultSpawner{},
 		Completions:             &defaultCompletionFinder{},
