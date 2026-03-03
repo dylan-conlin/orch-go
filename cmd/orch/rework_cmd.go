@@ -279,8 +279,9 @@ func runRework(beadsID, feedback string) error {
 		UsageInfo:         usageInfo,
 		SpawnBackend:      resolved.Settings.Backend.Value,
 		Tier:              resolved.Settings.Tier.Value,
-		HotspotArea:       hotspotResult != nil && hotspotResult.HasHotspots,
-		HotspotFiles:      hotspotFilesFromResult(hotspotResult),
+		HotspotArea:          hotspotResult != nil && hotspotResult.HasHotspots,
+		HotspotFiles:         hotspotFilesFromResult(hotspotResult),
+		HotspotDefectClasses: DefectClassesForHotspots(hotspotFilesFromResult(hotspotResult)),
 	}
 
 	cfg := orch.BuildSpawnConfig(ctx, "", resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, resolved.Settings.BrowserTool.Value, false, false, "")

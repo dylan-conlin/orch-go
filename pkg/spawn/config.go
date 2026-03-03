@@ -284,6 +284,8 @@ type Config struct {
 	HotspotArea bool
 	// HotspotFiles lists the specific files identified as hotspots
 	HotspotFiles []string
+	// HotspotDefectClasses lists defect class names likely to manifest in the hotspot area
+	HotspotDefectClasses []string
 
 	// Design handoff fields (for ui-design-session → feature-impl handoff)
 	// DesignWorkspace is the workspace name from a prior ui-design-session spawn

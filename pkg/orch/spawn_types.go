@@ -49,8 +49,9 @@ type SpawnContext struct {
 	Tier               string
 	VerifyLevel        string
 	Scope              string
-	HotspotArea        bool
-	HotspotFiles       []string
+	HotspotArea          bool
+	HotspotFiles         []string
+	HotspotDefectClasses []string
 	DesignMockupPath   string
 	DesignPromptPath   string
 	DesignNotes        string

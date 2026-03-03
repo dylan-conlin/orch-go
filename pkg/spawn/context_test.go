@@ -2616,6 +2616,7 @@ func TestGenerateContext_HotspotArea(t *testing.T) {
 		Tier:         TierLight,
 		HotspotArea:  true,
 		HotspotFiles: []string{"cmd/orch/spawn_cmd.go", "pkg/daemon/daemon.go"},
+		HotspotDefectClasses: []string{"Class 2: Multi-Backend Blindness", "Class 6: Duplicate Action"},
 	}
 
 	content, err := GenerateContext(cfg)
@@ -2634,6 +2635,19 @@ func TestGenerateContext_HotspotArea(t *testing.T) {
 	}
 	if !strings.Contains(content, "pkg/daemon/daemon.go") {
 		t.Error("expected content to contain hotspot file 'pkg/daemon/daemon.go'")
+	}
+
+	// Should contain defect class names
+	if !strings.Contains(content, "Class 2: Multi-Backend Blindness") {
+		t.Error("expected content to contain defect class 'Class 2: Multi-Backend Blindness'")
+	}
+	if !strings.Contains(content, "Class 6: Duplicate Action") {
+		t.Error("expected content to contain defect class 'Class 6: Duplicate Action'")
+	}
+
+	// Should contain defect class taxonomy reference
+	if !strings.Contains(content, "defect-class-taxonomy") {
+		t.Error("expected content to contain reference to defect-class-taxonomy model")
 	}
 
 	// Should contain routing guidance

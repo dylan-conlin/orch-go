@@ -1559,3 +1559,62 @@ func TestAnalyzeInvestigationClusters_DirectScan(t *testing.T) {
 		t.Error("Should NOT have 'comprehensive' hotspot - it's a generic stop word")
 	}
 }
+
+func TestDefectClassesForHotspots_SpawnFiles(t *testing.T) {
+	classes := DefectClassesForHotspots([]string{"cmd/orch/spawn_cmd.go"})
+	if len(classes) == 0 {
+		t.Fatal("expected defect classes for spawn file")
+	}
+	// Should include Multi-Backend Blindness (spawn mapping)
+	found := false
+	for _, c := range classes {
+		if c == "Class 2: Multi-Backend Blindness" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected Class 2 for spawn file, got: %v", classes)
+	}
+}
+
+func TestDefectClassesForHotspots_NilFiles(t *testing.T) {
+	classes := DefectClassesForHotspots(nil)
+	if len(classes) != 0 {
+		t.Errorf("expected empty classes for nil files, got: %v", classes)
+	}
+}
+
+func TestDefectClassesForHotspots_NoMatch(t *testing.T) {
+	classes := DefectClassesForHotspots([]string{"README.md", "go.mod"})
+	if len(classes) != 0 {
+		t.Errorf("expected empty classes for non-matching files, got: %v", classes)
+	}
+}
+
+func TestDefectClassesForHotspots_MultipleFiles(t *testing.T) {
+	classes := DefectClassesForHotspots([]string{"spawn", "daemon", "complete"})
+	if len(classes) == 0 {
+		t.Fatal("expected defect classes for multiple hotspot areas")
+	}
+	// Should be sorted and deduplicated
+	for i := 1; i < len(classes); i++ {
+		if classes[i] <= classes[i-1] {
+			t.Errorf("classes not sorted: %v", classes)
+			break
+		}
+	}
+}
+
+func TestDefectClassesForHotspots_Deterministic(t *testing.T) {
+	// Same input should produce same output
+	a := DefectClassesForHotspots([]string{"spawn", "hotspot"})
+	b := DefectClassesForHotspots([]string{"spawn", "hotspot"})
+	if len(a) != len(b) {
+		t.Fatalf("non-deterministic: %v vs %v", a, b)
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			t.Errorf("non-deterministic at index %d: %q vs %q", i, a[i], b[i])
+		}
+	}
+}

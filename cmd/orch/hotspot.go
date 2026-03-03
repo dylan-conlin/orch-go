@@ -939,12 +939,74 @@ func formatHotspotWarning(result *SpawnHotspotResult) string {
 		sb.WriteString(line + "│\n")
 	}
 
+	// Add defect class information if available
+	var matchedFiles []string
+	for _, h := range result.MatchedHotspots {
+		matchedFiles = append(matchedFiles, h.Path)
+	}
+	defectClasses := DefectClassesForHotspots(matchedFiles)
+	if len(defectClasses) > 0 {
+		sb.WriteString("├─────────────────────────────────────────────────────────────────────────────┤\n")
+		sb.WriteString("│  🎯 LIKELY DEFECT CLASSES:                                                │\n")
+		for _, class := range defectClasses {
+			line := fmt.Sprintf("│     %s", class)
+			if len(line) < 78 {
+				line += strings.Repeat(" ", 78-len(line))
+			}
+			sb.WriteString(line + "│\n")
+		}
+	}
 	sb.WriteString("├─────────────────────────────────────────────────────────────────────────────┤\n")
 	sb.WriteString("│  💡 RECOMMENDATION: Consider spawning architect first to review design     │\n")
 	sb.WriteString("│     orch spawn architect \"Review design for [area]\"                        │\n")
 	sb.WriteString("└─────────────────────────────────────────────────────────────────────────────┘\n")
 
 	return sb.String()
+}
+
+// defectClassMapping maps file path keywords to likely defect classes.
+// Based on the defect class taxonomy in .kb/models/defect-class-taxonomy/model.md.
+// Key = keyword that appears in hotspot file/topic path.
+// Value = defect class names likely to manifest in that area.
+var defectClassMapping = map[string][]string{
+	"spawn":     {"Class 2: Multi-Backend Blindness", "Class 4: Cross-Project Boundary Bleed", "Class 6: Duplicate Action"},
+	"daemon":    {"Class 2: Multi-Backend Blindness", "Class 3: Stale Artifact Accumulation", "Class 6: Duplicate Action"},
+	"complete":  {"Class 1: Filter Amnesia", "Class 5: Contradictory Authority Signals", "Class 7: Premature Destruction"},
+	"verify":    {"Class 1: Filter Amnesia", "Class 5: Contradictory Authority Signals"},
+	"status":    {"Class 2: Multi-Backend Blindness", "Class 5: Contradictory Authority Signals"},
+	"hotspot":   {"Class 0: Scope Expansion", "Class 1: Filter Amnesia"},
+	"serve":     {"Class 1: Filter Amnesia", "Class 4: Cross-Project Boundary Bleed"},
+	"clean":     {"Class 3: Stale Artifact Accumulation", "Class 7: Premature Destruction"},
+	"tmux":      {"Class 2: Multi-Backend Blindness", "Class 7: Premature Destruction"},
+	"workspace": {"Class 3: Stale Artifact Accumulation", "Class 4: Cross-Project Boundary Bleed"},
+	"session":   {"Class 2: Multi-Backend Blindness", "Class 3: Stale Artifact Accumulation"},
+	"account":   {"Class 4: Cross-Project Boundary Bleed"},
+}
+
+// DefectClassesForHotspots returns the unique defect class names likely to manifest
+// for the given hotspot file/topic paths. Matches keywords in the path against
+// the defect class mapping table.
+func DefectClassesForHotspots(files []string) []string {
+	seen := make(map[string]bool)
+	var classes []string
+
+	for _, file := range files {
+		fileLower := strings.ToLower(file)
+		for keyword, classList := range defectClassMapping {
+			if strings.Contains(fileLower, keyword) {
+				for _, class := range classList {
+					if !seen[class] {
+						seen[class] = true
+						classes = append(classes, class)
+					}
+				}
+			}
+		}
+	}
+
+	// Sort for deterministic output (by class number)
+	sort.Strings(classes)
+	return classes
 }
 
 // RunHotspotCheckForSpawn runs hotspot analysis and checks task against results.

@@ -164,7 +164,12 @@ Full prior artifacts at: {{.PriorWorkspace}}
 {{if .HotspotFiles}}
 **Hotspot files:**
 {{range .HotspotFiles}}- ` + "`{{.}}`" + `
-{{end}}{{end}}
+{{end}}{{end}}{{if .HotspotDefectClasses}}
+**Likely defect classes (watch for these patterns):**
+{{range .HotspotDefectClasses}}- {{.}}
+{{end}}
+*Reference: .kb/models/defect-class-taxonomy/model.md*
+{{end}}
 **Investigation routing:** If your findings affect these files, recommend ` + "`architect`" + ` follow-up instead of direct ` + "`feature-impl`" + `. Hotspot areas require architectural review before implementation changes.
 {{end}}
 {{if .IsBug}}
@@ -597,6 +602,7 @@ type contextData struct {
 	PriorWorkspace        string // Path to archived prior workspace
 	HotspotArea           bool     // Task targets a hotspot area
 	HotspotFiles          []string // Files identified as hotspots
+	HotspotDefectClasses  []string // Defect classes likely for the hotspot area
 	DesignWorkspace       string   // Design workspace name for ui-design-session handoff
 	DesignMockupPath      string   // Path to approved mockup
 	DesignPromptPath      string   // Path to design prompt
@@ -674,6 +680,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		PriorWorkspace:        cfg.PriorWorkspace,
 		HotspotArea:           cfg.HotspotArea,
 		HotspotFiles:          cfg.HotspotFiles,
+		HotspotDefectClasses:  cfg.HotspotDefectClasses,
 		DesignWorkspace:       cfg.DesignWorkspace,
 		DesignMockupPath:      cfg.DesignMockupPath,
 		DesignPromptPath:      cfg.DesignPromptPath,
