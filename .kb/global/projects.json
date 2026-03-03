@@ -1,0 +1,80 @@
+{
+  "projects": [
+    {
+      "name": "kb-cli",
+      "path": "/Users/dylanconlin/Documents/personal/kb-cli"
+    },
+    {
+      "name": "orch-knowledge",
+      "path": "/Users/dylanconlin/orch-knowledge"
+    },
+    {
+      "name": ".doom.d",
+      "path": "/Users/dylanconlin/.doom.d"
+    },
+    {
+      "name": "snap",
+      "path": "/Users/dylanconlin/Documents/personal/snap"
+    },
+    {
+      "name": "beads",
+      "path": "/Users/dylanconlin/Documents/personal/beads"
+    },
+    {
+      "name": "agentlog",
+      "path": "/Users/dylanconlin/Documents/personal/agentlog"
+    },
+    {
+      "name": "orch-cli",
+      "path": "/Users/dylanconlin/Documents/personal/orch-cli"
+    },
+    {
+      "name": "beads-ui-svelte",
+      "path": "/Users/dylanconlin/Documents/personal/beads-ui-svelte"
+    },
+    {
+      "name": "dotfiles",
+      "path": "/Users/dylanconlin/Documents/dotfiles"
+    },
+    {
+      "name": "price-watch",
+      "path": "/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/price-watch"
+    },
+    {
+      "name": "kn",
+      "path": "/Users/dylanconlin/Documents/personal/kn"
+    },
+    {
+      "name": "opencode",
+      "path": "/Users/dylanconlin/Documents/personal/opencode"
+    },
+    {
+      "name": "specs-platform",
+      "path": "/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/specs-platform"
+    },
+    {
+      "name": "sendassist",
+      "path": "/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/sendassist"
+    },
+    {
+      "name": "blog",
+      "path": "/Users/dylanconlin/Documents/personal/blog"
+    },
+    {
+      "name": "scs-slack",
+      "path": "/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/scs-slack"
+    },
+    {
+      "name": "orch-go",
+      "path": "/Users/dylanconlin/Documents/personal/orch-go"
+    },
+    {
+      "name": "scs-special-projects",
+      "path": "/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects"
+    },
+    {
+      "name": "toolshed",
+      "path": "/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/toolshed"
+    }
+  ]
+}

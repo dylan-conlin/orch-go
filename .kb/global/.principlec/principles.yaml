@@ -1,0 +1,61 @@
+# Principles Manifest
+# Defines ordering and metadata for principle compilation
+
+name: meta-orchestration-principles
+description: Foundational values that guide design decisions across the system
+
+# Categories in compilation order
+categories:
+  - name: foundational
+    title: "LLM-First Principles"
+    description: "Fundamental constraints when working with LLMs. These apply to any LLM-based system, not just orchestration."
+    principles:
+      - provenance
+      - session-amnesia
+      - self-describing-artifacts
+      - progressive-disclosure
+      - surfacing-over-browsing
+      - evidence-hierarchy
+      - gate-over-remind
+      - capture-at-context
+      - track-actions-not-just-state
+      - pain-as-signal
+      - infrastructure-over-instruction
+      - identity-is-not-behavior
+      - asymmetric-velocity
+      - verification-bottleneck
+      - understanding-lag
+      - coherence-over-patches
+      - perspective-is-structural
+      - authority-is-scoping
+      - escalation-is-information-flow
+      - friction-is-signal
+      - ai-validation-loops
+      - defect-class-blindness
+      - redundancy-is-load-bearing
+      - legibility-over-compliance
+
+  - name: system-design
+    title: "System Design Principles"
+    description: "Architectural choices for this orchestration system. These are our design decisions, not universal constraints."
+    principles:
+      - local-first
+      - compose-over-monolith
+      - graceful-degradation
+      - share-patterns-not-tools
+      - observation-infrastructure
+      - escape-hatches
+
+  - name: meta
+    title: "Meta Principles"
+    description: "How we evolve the system itself."
+    principles:
+      - evolve-by-distinction
+      - reflection-before-action
+      - pressure-over-compensation
+      - understanding-through-engagement
+      - premise-before-solution
+      - strategic-first-orchestration
+
+# Provenance is compiled separately at the end
+# See: src/provenance.md (to be created)

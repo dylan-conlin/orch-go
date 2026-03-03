@@ -1,0 +1,19 @@
+# .orch/.gitignore template
+# Copy this to each project's .orch/.gitignore
+
+# Ignore ephemeral working state
+workspace/
+
+# Track durable artifacts (these lines ensure they're NOT ignored)
+!investigations/
+!decisions/
+!knowledge/
+
+# Ignore OS/editor artifacts
+.DS_Store
+*.swp
+*~
+
+# Ignore temporary files
+*.tmp
+*.bak
