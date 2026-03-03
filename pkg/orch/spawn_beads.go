@@ -21,7 +21,9 @@ func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isO
 	if skipBeadsForOrchestrator {
 		fmt.Println("Skipping beads tracking (orchestrator session)")
 	} else if noTrack {
-		fmt.Println("Skipping beads tracking (--no-track)")
+		fmt.Fprintf(os.Stderr, "⚠️  --no-track is deprecated and will be removed in a future release.\n")
+		fmt.Fprintf(os.Stderr, "   Created lightweight beads issue %s instead of synthetic ID.\n", beadsID)
+		fmt.Fprintf(os.Stderr, "   Lightweight issues auto-close on completion and skip non-essential verification.\n")
 	}
 	if !noTrack && !skipBeadsForOrchestrator && beadsIssueFlag != "" {
 		if stats, err := verify.GetFixAttemptStats(beadsID); err == nil && stats.IsRetryPattern() {
@@ -54,7 +56,7 @@ func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isO
 			}
 		}
 	}
-	if !noTrack && !skipBeadsForOrchestrator && beadsID != "" {
+	if !skipBeadsForOrchestrator && beadsID != "" {
 		if err := verify.UpdateIssueStatus(beadsID, "in_progress"); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to update beads issue status: %v\n", err)
 		}
@@ -72,7 +74,17 @@ func determineBeadsID(projectName, skillName, task, spawnIssue string, spawnNoTr
 		return resolveShortBeadsID(spawnIssue)
 	}
 	if spawnNoTrack {
-		return fmt.Sprintf("%s-untracked-%d", projectName, time.Now().Unix()), nil
+		// Create a real beads issue with tier:lightweight label instead of synthetic ID.
+		// This ensures --no-track agents are visible to orch status/complete/clean.
+		beadsID, err := createBeadsFn(projectName, skillName, task)
+		if err != nil {
+			return "", fmt.Errorf("failed to create lightweight beads issue: %w", err)
+		}
+		// Add tier:lightweight label to distinguish from fully-tracked issues
+		if err := beads.FallbackAddLabel(beadsID, "tier:lightweight"); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to add tier:lightweight label to %s: %v\n", beadsID, err)
+		}
+		return beadsID, nil
 	}
 	beadsID, err := createBeadsFn(projectName, skillName, task)
 	if err != nil {

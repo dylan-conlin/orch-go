@@ -815,12 +815,21 @@ func TestDetermineBeadsID(t *testing.T) {
 			wantErrContains: "not found",
 		},
 		{
-			name:          "no-track flag set",
+			name:          "no-track flag set - creates lightweight issue",
 			spawnIssue:    "",
 			spawnNoTrack:  true,
-			createBeadsFn: nil,                       // should not be called
-			wantID:        "test-project-untracked-", // prefix, exact timestamp will vary
+			createBeadsFn: mockCreateSuccess,         // now called to create real issue
+			wantID:        "test-abc123",              // real beads ID, not synthetic
 			wantErr:       false,
+		},
+		{
+			name:            "no-track flag set - create fails",
+			spawnIssue:      "",
+			spawnNoTrack:    true,
+			createBeadsFn:   mockCreateError,
+			wantID:          "",
+			wantErr:         true,
+			wantErrContains: "failed to create lightweight beads issue",
 		},
 		{
 			name:          "create beads issue succeeds",
@@ -858,13 +867,8 @@ func TestDetermineBeadsID(t *testing.T) {
 				}
 			}
 
-			// For no-track case, just verify it starts with the expected prefix
-			if tt.spawnNoTrack {
-				if !strings.HasPrefix(gotID, tt.wantID) {
-					t.Errorf("determineBeadsID() = %v, want prefix %v", gotID, tt.wantID)
-				}
-			} else if !tt.wantErr {
-				// For other successful cases, check exact match
+			if !tt.wantErr {
+				// Check exact match for all successful cases
 				if gotID != tt.wantID {
 					t.Errorf("determineBeadsID() = %v, want %v", gotID, tt.wantID)
 				}

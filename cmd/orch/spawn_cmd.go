@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
@@ -862,7 +861,12 @@ func determineBeadsID(projectName, skillName, task, spawnIssueFlag string, noTra
 		return resolveShortBeadsID(spawnIssueFlag)
 	}
 	if noTrack {
-		return fmt.Sprintf("%s-untracked-%d", projectName, time.Now().Unix()), nil
+		// Create a real beads issue with tier:lightweight label instead of synthetic ID.
+		beadsID, err := createBeadsFn(projectName, skillName, task)
+		if err != nil {
+			return "", fmt.Errorf("failed to create lightweight beads issue: %w", err)
+		}
+		return beadsID, nil
 	}
 	beadsID, err := createBeadsFn(projectName, skillName, task)
 	if err != nil {
