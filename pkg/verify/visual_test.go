@@ -204,6 +204,22 @@ func TestHasVisualVerificationEvidence(t *testing.T) {
 			wantMinLen: 1,
 		},
 		{
+			name: "playwright-cli screenshot mentioned",
+			comments: []Comment{
+				{Text: "Used playwright-cli screenshot to capture the dashboard"},
+			},
+			wantHas:    true,
+			wantMinLen: 1,
+		},
+		{
+			name: "playwright-cli snapshot mentioned",
+			comments: []Comment{
+				{Text: "Captured page snapshot via playwright-cli showing all elements render correctly"},
+			},
+			wantHas:    true,
+			wantMinLen: 1,
+		},
+		{
 			name: "no visual evidence",
 			comments: []Comment{
 				{Text: "Phase: Complete - All tests passing"},
@@ -318,6 +334,13 @@ func TestVisualEvidencePatterns(t *testing.T) {
 		{"checked in browser", true},
 		{"UI smoke test passed", true},
 		{"ran smoke test for UI", true},
+		// Playwright-CLI specific patterns
+		{"playwright-cli screenshot captured dashboard", true},
+		{"used playwright-cli to verify UI", true},
+		{"playwright-cli snapshot shows all elements render", true},
+		{"captured page snapshot showing form renders", true},
+		{"page snapshot verified layout correct", true},
+		{"snapshot captured via playwright-cli", true},
 		// Should not match
 		{"tests passing", false},
 		{"code review complete", false},

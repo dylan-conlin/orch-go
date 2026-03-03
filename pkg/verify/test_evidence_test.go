@@ -435,6 +435,13 @@ func TestTestEvidencePatternMatching(t *testing.T) {
 		{"vague with context", "all tests pass after changes", false},
 		{"vague with reason", "tests pass because I fixed the bug", false},
 
+		// playwright-cli is NOT test evidence (it's visual verification, not a test runner)
+		{"playwright-cli screenshot", "playwright-cli screenshot captured dashboard", false},
+		{"playwright-cli snapshot", "playwright-cli snapshot shows elements", false},
+		{"playwright-cli open", "playwright-cli open http://localhost:5188", false},
+		// playwright TEST runner IS test evidence (has test counts)
+		{"playwright test with count", "playwright test - 5 passed", true},
+
 		// Valid patterns WITH counts
 		{"valid all N tests pass", "all 15 tests pass", true},
 		{"valid all N tests passed", "all 42 tests passed", true},

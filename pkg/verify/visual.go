@@ -86,6 +86,10 @@ var visualEvidencePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)browser_take_screenshot`),
 	regexp.MustCompile(`(?i)browser_navigate`),
 	regexp.MustCompile(`(?i)playwright-cli`),
+	// Snapshot mentions (playwright-cli snapshot captures accessibility tree)
+	regexp.MustCompile(`(?i)page\s*snapshot`),
+	regexp.MustCompile(`(?i)captured\s+snapshot`),
+	regexp.MustCompile(`(?i)snapshot\s+captured`),
 	// Smoke test with UI context
 	regexp.MustCompile(`(?i)smoke\s*test.*ui`),
 	regexp.MustCompile(`(?i)ui.*smoke\s*test`),
