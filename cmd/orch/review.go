@@ -40,9 +40,8 @@ var reviewCmd = &cobra.Command{
 Without arguments: Shows actionable pending completions grouped by project.
 With beads-id: Shows detailed review for a single agent.
 
-By default, stale agents (in non-Complete phase for >24h) and untracked agents
-(spawned with --no-track) are excluded from the output. Use --stale to see them,
-or --all to see everything.
+By default, stale agents (in non-Complete phase for >24h) are excluded from
+the output. Use --stale to see them, or --all to see everything.
 
 Single-agent review shows:
   - SYNTHESIS.md summary (TLDR, outcome, recommendation)
@@ -51,10 +50,10 @@ Single-agent review shows:
   - Artifacts produced (investigations, design docs)
 
 Examples:
-  orch review                       # Actionable completions only (excludes stale/untracked)
+  orch review                       # Actionable completions only (excludes stale)
   orch review --limit 5             # Show at most 5 completions
-  orch review --all                 # Show everything including stale/untracked
-  orch review --stale               # Show only stale/untracked agents
+  orch review --all                 # Show everything including stale
+  orch review --stale               # Show only stale agents
   orch review orch-go-3anf          # Single agent: detailed review
   orch review -p orch-cli           # Filter by project
   orch review --needs               # Show failures only (shorthand for --needs-review)`,
@@ -100,8 +99,8 @@ func init() {
 	reviewCmd.Flags().StringVarP(&reviewProject, "project", "p", "", "Filter by project")
 	reviewCmd.Flags().BoolVar(&reviewNeedsReview, "needs-review", false, "Show failures only")
 	reviewCmd.Flags().BoolVar(&reviewNeedsReview, "needs", false, "Show failures only (shorthand for --needs-review)")
-	reviewCmd.Flags().BoolVar(&reviewStale, "stale", false, "Show stale/untracked agents only")
-	reviewCmd.Flags().BoolVar(&reviewAll, "all", false, "Show all agents including stale/untracked")
+	reviewCmd.Flags().BoolVar(&reviewStale, "stale", false, "Show stale agents only")
+	reviewCmd.Flags().BoolVar(&reviewAll, "all", false, "Show all agents including stale")
 	reviewCmd.Flags().IntVarP(&reviewLimit, "limit", "l", 0, "Maximum number of completions to show (0 = no limit)")
 	reviewDoneCmd.Flags().BoolVarP(&reviewDoneYes, "yes", "y", false, "Skip confirmation prompt")
 	reviewDoneCmd.Flags().BoolVar(&reviewNoPrompt, "no-prompt", false, "Skip recommendation prompts (auto-close without reviewing synthesis)")
@@ -121,7 +120,6 @@ type CompletionInfo struct {
 	Skill         string
 	Synthesis     *verify.Synthesis
 	ModTime       time.Time // Workspace modification time
-	IsUntracked   bool      // True if agent was spawned with --no-track
 	IsStale       bool      // True if agent is in non-Complete phase for >24h
 	IsLightTier   bool      // True if agent was spawned as light tier (no SYNTHESIS.md by design)
 }
@@ -156,7 +154,6 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 		beadsID      string
 		skill        string
 		modTime      time.Time
-		isUntracked  bool
 	}
 
 	var workspaceCandidates []candidateWorkspace
@@ -234,9 +231,6 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 			// Extract skill from workspace name
 			skill := extractSkillFromTitle(dirName)
 
-			// Detect if agent is untracked
-			isUntracked := isUntrackedBeadsID(beadsID)
-
 			workspaceCandidates = append(workspaceCandidates, candidateWorkspace{
 				dirName:      dirName,
 				dirPath:      dirPath,
@@ -247,18 +241,17 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 				beadsID:      beadsID,
 				skill:        skill,
 				modTime:      modTime,
-				isUntracked:  isUntracked,
 			})
 
-			// Collect beads IDs for batch fetching (skip untracked and empty)
-			if beadsID != "" && !isUntracked && !beadsIDSet[beadsID] {
+			// Collect beads IDs for batch fetching
+			if beadsID != "" && !beadsIDSet[beadsID] {
 				beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
 				beadsIDSet[beadsID] = true
 				beadsIDProjectDirs[beadsID] = scanDir
 			}
 
 			// Also collect light-tier beads IDs for Phase: Complete check
-			if isLightTier && beadsID != "" && !isUntracked && !lightTierBeadsIDSet[beadsID] {
+			if isLightTier && beadsID != "" && !lightTierBeadsIDSet[beadsID] {
 				lightTierBeadsIDs = append(lightTierBeadsIDs, beadsID)
 				lightTierBeadsIDSet[beadsID] = true
 			}
@@ -295,7 +288,6 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 			Project:       extractProject(ws.projectDir),
 			Skill:         ws.skill,
 			ModTime:       ws.modTime,
-			IsUntracked:   ws.isUntracked,
 			IsLightTier:   isLightComplete, // Now reflects actual completion status, not just tier
 		}
 
@@ -376,8 +368,8 @@ func filterClosedIssues(candidates []CompletionInfo) []CompletionInfo {
 	// Filter out closed issues (keep only those that exist in openIssueMap)
 	var results []CompletionInfo
 	for _, c := range candidates {
-		// Keep untracked agents (no beads issue to check)
-		if c.IsUntracked || c.BeadsID == "" {
+		// Keep agents without beads ID (no issue to check)
+		if c.BeadsID == "" {
 			results = append(results, c)
 			continue
 		}
@@ -574,35 +566,27 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 	// Track counts before filtering for summary
 	totalCount := len(completions)
 	staleCount := 0
-	untrackedCount := 0
-	staleOrUntrackedCount := 0 // Stale OR untracked (no double-counting)
 	for _, c := range completions {
 		if c.IsStale {
 			staleCount++
 		}
-		if c.IsUntracked {
-			untrackedCount++
-		}
-		if c.IsStale || c.IsUntracked {
-			staleOrUntrackedCount++
-		}
 	}
 
-	// Filter by stale/untracked status
-	// Default: exclude stale and untracked
-	// --stale: show only stale and untracked
+	// Filter by stale status
+	// Default: exclude stale
+	// --stale: show only stale
 	// --all: show everything
 	if !showAll {
 		var filtered []CompletionInfo
 		for _, c := range completions {
 			if staleOnly {
-				// Show only stale or untracked
-				if c.IsStale || c.IsUntracked {
+				// Show only stale
+				if c.IsStale {
 					filtered = append(filtered, c)
 				}
 			} else {
-				// Default: exclude stale and untracked
-				if !c.IsStale && !c.IsUntracked {
+				// Default: exclude stale
+				if !c.IsStale {
 					filtered = append(filtered, c)
 				}
 			}
@@ -687,9 +671,6 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 			if c.IsStale {
 				status = "STALE"
 			}
-			if c.IsUntracked {
-				status = "UNTRACKED"
-			}
 			if c.IsLightTier {
 				status = "LIGHT"
 			}
@@ -737,15 +718,15 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 
 	// Show hidden counts if not showing all
 	if !showAll && !staleOnly {
-		if staleOrUntrackedCount > 0 {
-			fmt.Printf("Hidden: %d stale/untracked (use --stale to view, --all to include)\n", staleOrUntrackedCount)
+		if staleCount > 0 {
+			fmt.Printf("Hidden: %d stale (use --stale to view, --all to include)\n", staleCount)
 		}
 	}
 
 	// Show total breakdown if viewing stale only
 	if staleOnly {
-		fmt.Printf("Showing: %d stale, %d untracked (may overlap)\n", staleCount, untrackedCount)
-		actionableCount := totalCount - staleOrUntrackedCount
+		fmt.Printf("Showing: %d stale\n", staleCount)
+		actionableCount := totalCount - staleCount
 		if actionableCount > 0 {
 			fmt.Printf("Actionable (hidden): %d (run without --stale to view)\n", actionableCount)
 		}

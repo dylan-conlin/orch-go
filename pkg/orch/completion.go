@@ -167,7 +167,6 @@ func RunExplainBackGate(
 	skipExplainBack bool,
 	skipReason string,
 	isOrchestratorSession bool,
-	isUntracked bool,
 	explanation string,
 	verified bool,
 	stdout io.Writer,
@@ -177,8 +176,8 @@ func RunExplainBackGate(
 		return nil
 	}
 
-	// Skip for untracked agents (no beads issue)
-	if isUntracked || beadsID == "" {
+	// Skip for agents without beads ID
+	if beadsID == "" {
 		return nil
 	}
 

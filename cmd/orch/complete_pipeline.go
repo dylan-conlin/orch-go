@@ -31,7 +31,6 @@ type CompletionTarget struct {
 	BeadsID               string
 	BeadsProjectDir       string
 	IsOrchestratorSession bool
-	IsUntracked           bool
 	Issue                 *verify.Issue
 	IsClosed              bool
 }
@@ -163,13 +162,14 @@ func resolveCompletionTarget(identifier, workdir string) (CompletionTarget, erro
 		beads.DefaultDir = target.BeadsProjectDir
 	}
 
-	// Check if this is an untracked agent
-	target.IsUntracked = target.IsOrchestratorSession ||
-		(target.BeadsID != "" && isUntrackedBeadsID(target.BeadsID)) ||
-		target.BeadsID == ""
-
-	// For tracked agents, verify the beads issue exists
-	if !target.IsUntracked {
+	// Verify the beads issue exists (orchestrator sessions and agents without beads ID skip this)
+	if target.IsOrchestratorSession {
+		fmt.Printf("Note: %s is an orchestrator session (no beads tracking)\n", target.AgentName)
+		target.IsClosed = false
+	} else if target.BeadsID == "" {
+		fmt.Printf("Note: %s has no beads ID\n", identifier)
+		target.IsClosed = false
+	} else {
 		issue, err := verify.GetIssue(target.BeadsID)
 		if err != nil {
 			projectName := filepath.Base(target.BeadsProjectDir)
@@ -187,12 +187,6 @@ func resolveCompletionTarget(identifier, workdir string) (CompletionTarget, erro
 		if target.IsClosed {
 			fmt.Printf("Issue %s is already closed in beads\n", target.BeadsID)
 		}
-	} else if target.IsOrchestratorSession {
-		fmt.Printf("Note: %s is an orchestrator session (no beads tracking)\n", target.AgentName)
-		target.IsClosed = false
-	} else {
-		fmt.Printf("Note: %s is an untracked agent (no beads issue)\n", identifier)
-		target.IsClosed = false
 	}
 
 	return target, nil
@@ -287,7 +281,7 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 	}
 
 	// Knowledge maintenance step (Touchpoint 1: Completion Review)
-	if !target.IsOrchestratorSession && !target.IsUntracked && !completeForce {
+	if !target.IsOrchestratorSession && target.BeadsID != "" && !completeForce {
 		var issueTitle string
 		if target.Issue != nil {
 			issueTitle = target.Issue.Title
@@ -310,7 +304,6 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 			skipConfig.ExplainBack,
 			skipConfig.Reason,
 			target.IsOrchestratorSession,
-			target.IsUntracked,
 			completeExplain,
 			completeVerified,
 			os.Stdout,
@@ -320,7 +313,7 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 	}
 
 	// Record gate2 checkpoint if --verified flag is set and explain-back gate didn't run
-	if completeVerified && !target.IsUntracked && !target.IsOrchestratorSession && target.BeadsID != "" {
+	if completeVerified && !target.IsOrchestratorSession && target.BeadsID != "" {
 		hasGate2, _ := checkpoint.HasGate2Checkpoint(target.BeadsID)
 		if !hasGate2 && priorGate1 && completeExplain == "" {
 			if err := orch.RecordGate2Checkpoint(target.BeadsID, os.Stdout); err != nil {
@@ -330,7 +323,7 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 	}
 
 	// Surface verification checklist before closing
-	if outcome.ResultSet && !target.IsUntracked {
+	if outcome.ResultSet && target.BeadsID != "" {
 		gate1Complete := false
 		gate2Complete := false
 		if target.BeadsID != "" && !target.IsOrchestratorSession {
@@ -371,7 +364,7 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 	}
 
 	// Surface synthesis checkpoint (informational, not a gate)
-	if !target.IsOrchestratorSession && !target.IsUntracked {
+	if !target.IsOrchestratorSession && target.BeadsID != "" {
 		var issueTitle string
 		if target.Issue != nil {
 			issueTitle = target.Issue.Title

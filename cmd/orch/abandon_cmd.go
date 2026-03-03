@@ -14,7 +14,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
-	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -88,48 +87,42 @@ func runAbandon(beadsID, reason, workdir string) error {
 		}
 	}
 
-	// --- Phase 2: Validate beads issue (tracked agents only) ---
-
-	isUntracked := isUntrackedBeadsID(beadsID)
+	// --- Phase 2: Validate beads issue ---
 
 	var issue *verify.Issue
-	if !isUntracked {
-		issue, err = verify.GetIssue(beadsID)
-		if err != nil && workdir == "" {
-			// Local lookup failed and no --workdir specified.
-			// Auto-resolve by searching registered kb projects.
-			resolvedDir, beadsIssue := resolveProjectDirForBeadsID(beadsID)
-			if resolvedDir != "" && beadsIssue != nil {
-				fmt.Printf("Auto-resolved cross-project issue: %s in %s\n", beadsID, resolvedDir)
-				projectDir = resolvedDir
-				beads.DefaultDir = resolvedDir
-				issue = &verify.Issue{
-					ID:        beadsIssue.ID,
-					Title:     beadsIssue.Title,
-					Status:    beadsIssue.Status,
-					IssueType: beadsIssue.IssueType,
-					Labels:    beadsIssue.Labels,
-				}
-				err = nil
+	issue, err = verify.GetIssue(beadsID)
+	if err != nil && workdir == "" {
+		// Local lookup failed and no --workdir specified.
+		// Auto-resolve by searching registered kb projects.
+		resolvedDir, beadsIssue := resolveProjectDirForBeadsID(beadsID)
+		if resolvedDir != "" && beadsIssue != nil {
+			fmt.Printf("Auto-resolved cross-project issue: %s in %s\n", beadsID, resolvedDir)
+			projectDir = resolvedDir
+			beads.DefaultDir = resolvedDir
+			issue = &verify.Issue{
+				ID:        beadsIssue.ID,
+				Title:     beadsIssue.Title,
+				Status:    beadsIssue.Status,
+				IssueType: beadsIssue.IssueType,
+				Labels:    beadsIssue.Labels,
 			}
+			err = nil
 		}
-		if err != nil {
-			projectName := filepath.Base(projectDir)
-			issuePrefix := strings.Split(beadsID, "-")[0]
-			if len(strings.Split(beadsID, "-")) > 1 {
-				issuePrefix = strings.Join(strings.Split(beadsID, "-")[:len(strings.Split(beadsID, "-"))-1], "-")
-			}
-			if issuePrefix != projectName {
-				return fmt.Errorf("failed to get beads issue %s: %w\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: orch abandon %s --workdir ~/path/to/%s", beadsID, err, issuePrefix, projectName, beadsID, issuePrefix)
-			}
-			return fmt.Errorf("failed to get beads issue: %w", err)
+	}
+	if err != nil {
+		projectName := filepath.Base(projectDir)
+		issuePrefix := strings.Split(beadsID, "-")[0]
+		if len(strings.Split(beadsID, "-")) > 1 {
+			issuePrefix = strings.Join(strings.Split(beadsID, "-")[:len(strings.Split(beadsID, "-"))-1], "-")
 		}
+		if issuePrefix != projectName {
+			return fmt.Errorf("failed to get beads issue %s: %w\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: orch abandon %s --workdir ~/path/to/%s", beadsID, err, issuePrefix, projectName, beadsID, issuePrefix)
+		}
+		return fmt.Errorf("failed to get beads issue: %w", err)
+	}
 
-		if issue.Status == "closed" {
-			return fmt.Errorf("issue %s is already closed - nothing to abandon", beadsID)
-		}
-	} else {
-		fmt.Printf("Note: %s is an untracked agent (no beads issue)\n", beadsID)
+	if issue.Status == "closed" {
+		return fmt.Errorf("issue %s is already closed - nothing to abandon", beadsID)
 	}
 
 	// --- Phase 3: Discover agent resources ---
@@ -205,106 +198,54 @@ func runAbandon(beadsID, reason, workdir string) error {
 
 	// --- Phase 5: Execute lifecycle transition ---
 
-	if !isUntracked {
-		// Tracked agents: use LifecycleManager for correct state transition.
-		// This handles the critical orch:agent label removal (ghost agent fix),
-		// assignee clearing, status reset, and all cleanup effects.
-		agentRef := agent.AgentRef{
-			BeadsID:       beadsID,
-			WorkspaceName: agentName,
-			WorkspacePath: workspacePath,
-			SessionID:     sessionID,
-			ProjectDir:    projectDir,
-		}
+	// Use LifecycleManager for correct state transition.
+	// This handles the critical orch:agent label removal (ghost agent fix),
+	// assignee clearing, status reset, and all cleanup effects.
+	agentRef := agent.AgentRef{
+		BeadsID:       beadsID,
+		WorkspaceName: agentName,
+		WorkspacePath: workspacePath,
+		SessionID:     sessionID,
+		ProjectDir:    projectDir,
+	}
 
-		lm := buildLifecycleManager(projectDir, serverURL, agentName, beadsID)
-		event, err := lm.Abandon(agentRef, reason)
-		if err != nil {
-			return fmt.Errorf("abandon transition failed: %w", err)
-		}
+	lm := buildLifecycleManager(projectDir, serverURL, agentName, beadsID)
+	event, err := lm.Abandon(agentRef, reason)
+	if err != nil {
+		return fmt.Errorf("abandon transition failed: %w", err)
+	}
 
-		// Report lifecycle effects
-		for _, e := range event.Effects {
-			if e.Success {
-				switch e.Operation {
-				case "remove_label":
-					fmt.Printf("Removed orch:agent label\n")
-				case "clear_assignee":
-					fmt.Printf("Cleared assignee\n")
-				case "update_status":
-					fmt.Printf("Reset beads status: in_progress → open\n")
-				case "kill_window":
-					fmt.Printf("Killed tmux window\n")
-				case "delete_session":
-					fmt.Printf("Deleted OpenCode session\n")
-				case "write_failure_report":
-					fmt.Printf("Generated failure report\n")
-				}
-			}
-		}
-
-		// Report warnings (non-critical failures)
-		for _, w := range event.Warnings {
-			fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
-		}
-
-		// Report critical failures
-		if !event.Success {
-			for _, e := range event.Effects {
-				if e.Critical && !e.Success {
-					fmt.Fprintf(os.Stderr, "Error: %s/%s failed: %v\n", e.Subsystem, e.Operation, e.Error)
-				}
-			}
-		}
-	} else {
-		// Untracked agents: no beads operations needed, just cleanup.
-		// Kill tmux window if found
-		window, _, _ := tmux.FindWindowByWorkspaceNameAllSessions(agentName)
-		if window != nil {
-			fmt.Printf("Killing tmux window: %s (%s)\n", window.Name, window.ID)
-			if err := tmux.KillWindowByID(window.ID); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to kill tmux window: %v\n", err)
-			}
-		}
-
-		// Delete OpenCode session
-		if sessionID != "" {
-			fmt.Printf("Deleting OpenCode session: %s\n", shortID(sessionID))
-			if err := client.DeleteSession(sessionID); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to delete OpenCode session: %v\n", err)
-			} else {
+	// Report lifecycle effects
+	for _, e := range event.Effects {
+		if e.Success {
+			switch e.Operation {
+			case "remove_label":
+				fmt.Printf("Removed orch:agent label\n")
+			case "clear_assignee":
+				fmt.Printf("Cleared assignee\n")
+			case "update_status":
+				fmt.Printf("Reset beads status: in_progress → open\n")
+			case "kill_window":
+				fmt.Printf("Killed tmux window\n")
+			case "delete_session":
 				fmt.Printf("Deleted OpenCode session\n")
+			case "write_failure_report":
+				fmt.Printf("Generated failure report\n")
 			}
 		}
+	}
 
-		// Generate failure report
-		if reason != "" && workspacePath != "" {
-			_ = spawn.EnsureFailureReportTemplate(projectDir)
-			issueTitle := ""
-			if issue != nil {
-				issueTitle = issue.Title
-			}
-			reportPath, err := spawn.WriteFailureReport(workspacePath, agentName, beadsID, reason, issueTitle)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to write failure report: %v\n", err)
-			} else {
-				fmt.Printf("Generated failure report: %s\n", reportPath)
-			}
-		}
+	// Report warnings (non-critical failures)
+	for _, w := range event.Warnings {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+	}
 
-		// Log abandonment event
-		logger := events.NewLogger(events.DefaultLogPath())
-		if err := logger.Log(events.Event{
-			Type:      "agent.abandoned",
-			Timestamp: time.Now().Unix(),
-			Data: map[string]interface{}{
-				"beads_id":  beadsID,
-				"workspace": agentName,
-				"reason":    reason,
-				"untracked": true,
-			},
-		}); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	// Report critical failures
+	if !event.Success {
+		for _, e := range event.Effects {
+			if e.Critical && !e.Success {
+				fmt.Fprintf(os.Stderr, "Error: %s/%s failed: %v\n", e.Subsystem, e.Operation, e.Error)
+			}
 		}
 	}
 
@@ -319,11 +260,7 @@ func runAbandon(beadsID, reason, workdir string) error {
 	if reason != "" {
 		fmt.Printf("  Reason: %s\n", reason)
 	}
-	if isUntracked {
-		fmt.Println("  (Untracked agent - no beads issue to respawn)")
-	} else {
-		fmt.Printf("  Use 'orch work %s' to restart work on this issue\n", beadsID)
-	}
+	fmt.Printf("  Use 'orch work %s' to restart work on this issue\n", beadsID)
 
 	return nil
 }

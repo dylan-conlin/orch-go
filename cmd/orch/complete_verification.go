@@ -24,7 +24,7 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 	// Checkpoint verification gate (Verifiability-first enforcement)
 	var checkpointErrors []string
 	var checkpointGatesFailed []string
-	if !target.IsUntracked && !completeForce && target.Issue != nil {
+	if !completeForce && target.Issue != nil {
 		tier := checkpoint.TierForIssueType(target.Issue.IssueType)
 
 		if checkpoint.RequiresCheckpoint(target.Issue.IssueType) {
@@ -55,7 +55,7 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 	}
 
 	// If --approve flag is set, add approval comment BEFORE verification
-	if completeApprove && !target.IsUntracked {
+	if completeApprove && target.BeadsID != "" {
 		approvalComment := "✅ APPROVED - Visual changes reviewed and approved by orchestrator"
 		if err := addApprovalComment(target.BeadsID, approvalComment); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to add approval comment: %v\n", err)
@@ -115,7 +115,7 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 				return outcome, fmt.Errorf("verification failed: %d gate(s)", len(result.GatesFailed))
 			}
 			fmt.Println("Completion signal: SESSION_HANDOFF.md verified (content validated)")
-		} else if !target.IsUntracked {
+		} else if target.BeadsID != "" {
 			// Regular agents use beads phase verification
 			if target.WorkspacePath != "" {
 				fmt.Printf("Workspace: %s\n", target.AgentName)
@@ -206,11 +206,11 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 				}
 			}
 		} else {
-			fmt.Println("Skipping phase verification (untracked agent)")
+			fmt.Println("Skipping phase verification (no beads ID)")
 		}
 	} else {
 		// --force was used, run verification anyway to capture which gates would have failed
-		if !target.IsOrchestratorSession && !target.IsUntracked {
+		if !target.IsOrchestratorSession && target.BeadsID != "" {
 			result, err := verify.VerifyCompletionFull(target.BeadsID, target.WorkspacePath, target.BeadsProjectDir, "", serverURL)
 			if err == nil {
 				outcome.SkillName = result.Skill
@@ -235,7 +235,7 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 	}
 
 	// Check liveness before closing - warn if agent appears still running
-	if !completeForce && !target.IsUntracked {
+	if !completeForce && target.BeadsID != "" {
 		phaseComplete := false
 		if !target.IsOrchestratorSession && target.BeadsID != "" {
 			phaseComplete, _ = verify.IsPhaseComplete(target.BeadsID)

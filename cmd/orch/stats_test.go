@@ -76,7 +76,7 @@ func TestParseEventsTimeFiltering(t *testing.T) {
 	}
 
 	// Time filtering happens in aggregateStats - verify that only recent events are counted
-	report := aggregateStats(parsed, 7, true)
+	report := aggregateStats(parsed, 7)
 	if report.Summary.TotalSpawns != 1 {
 		t.Errorf("expected 1 spawn in 7-day window, got %d", report.Summary.TotalSpawns)
 	}
@@ -97,7 +97,7 @@ func TestAggregateStats(t *testing.T) {
 		{Type: "agent.wait.timeout", Timestamp: now - 300, Data: map[string]interface{}{}},
 	}
 
-	report := aggregateStats(events, 7, true) // includeUntracked=true for backwards compat
+	report := aggregateStats(events, 7) // includeUntracked=true for backwards compat
 
 	// Test core metrics
 	if report.Summary.TotalSpawns != 3 {
@@ -161,7 +161,7 @@ func TestAggregateStats(t *testing.T) {
 
 func TestAggregateStatsEmptyEvents(t *testing.T) {
 	events := []StatsEvent{}
-	report := aggregateStats(events, 7, true)
+	report := aggregateStats(events, 7)
 
 	if report.Summary.TotalSpawns != 0 {
 		t.Errorf("expected 0 spawns, got %d", report.Summary.TotalSpawns)
@@ -201,7 +201,7 @@ func TestAggregateStatsEscapeHatch(t *testing.T) {
 		}},
 	}
 
-	report := aggregateStats(events, 7, true)
+	report := aggregateStats(events, 7)
 
 	// Test escape hatch totals
 	if report.EscapeHatchStats.TotalSpawns != 4 { // All 4 escape hatch spawns
@@ -319,7 +319,7 @@ func TestAggregateStatsCategoryBreakdown(t *testing.T) {
 		{Type: "agent.abandoned", Timestamp: now - 600, Data: map[string]interface{}{"beads_id": "test-3"}},
 	}
 
-	report := aggregateStats(events, 7, true) // includeUntracked=true for backwards compat
+	report := aggregateStats(events, 7) // includeUntracked=true for backwards compat
 
 	// Test task skill metrics
 	if report.Summary.TaskSpawns != 3 {
@@ -369,7 +369,7 @@ func TestAggregateStatsCoordinationExcludedFromOverallRate(t *testing.T) {
 		{Type: "session.spawned", SessionID: "ses_4", Timestamp: now - 1200, Data: map[string]interface{}{"skill": "meta-orchestrator", "beads_id": "test-4"}},
 	}
 
-	report := aggregateStats(events, 7, true) // includeUntracked=true for backwards compat
+	report := aggregateStats(events, 7) // includeUntracked=true for backwards compat
 
 	// Overall rate includes coordination skills (2/4 = 50%)
 	expectedOverall := 50.0
@@ -386,138 +386,6 @@ func TestAggregateStatsCoordinationExcludedFromOverallRate(t *testing.T) {
 	// Coordination rate is 0% (0/2)
 	if report.Summary.CoordinationCompletionRate != 0 {
 		t.Errorf("expected coordination completion rate 0%%, got %.1f%%", report.Summary.CoordinationCompletionRate)
-	}
-}
-
-func TestIsUntrackedSpawn(t *testing.T) {
-	tests := []struct {
-		beadsID  string
-		expected bool
-	}{
-		{"orch-go-abc123", false},
-		{"orch-go-untracked-abc123", true},
-		{"test-untracked-xyz", true},
-		{"untracked", true},
-		{"", false},
-		{"my-feature-impl-task", false},
-	}
-
-	for _, tt := range tests {
-		got := isUntrackedSpawn(tt.beadsID)
-		if got != tt.expected {
-			t.Errorf("isUntrackedSpawn(%q) = %v, want %v", tt.beadsID, got, tt.expected)
-		}
-	}
-}
-
-func TestAggregateStatsUntrackedExclusion(t *testing.T) {
-	now := time.Now().Unix()
-
-	events := []StatsEvent{
-		// Tracked spawns (should always count)
-		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{"skill": "feature-impl", "beads_id": "orch-go-abc123"}},
-		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 3600, Data: map[string]interface{}{"skill": "feature-impl", "beads_id": "orch-go-def456"}},
-		// Untracked spawns (should be excluded by default)
-		{Type: "session.spawned", SessionID: "ses_3", Timestamp: now - 1800, Data: map[string]interface{}{"skill": "investigation", "beads_id": "orch-go-untracked-ghi789"}},
-		{Type: "session.spawned", SessionID: "ses_4", Timestamp: now - 1200, Data: map[string]interface{}{"skill": "investigation", "beads_id": "test-untracked-jkl012"}},
-		// Completions
-		{Type: "agent.completed", Timestamp: now - 6000, Data: map[string]interface{}{"beads_id": "orch-go-abc123"}},
-		{Type: "agent.completed", Timestamp: now - 5000, Data: map[string]interface{}{"beads_id": "orch-go-untracked-ghi789"}},
-		// Abandonment
-		{Type: "agent.abandoned", Timestamp: now - 600, Data: map[string]interface{}{"beads_id": "test-untracked-jkl012"}},
-	}
-
-	// Test with includeUntracked=false (default behavior)
-	reportExcluded := aggregateStats(events, 7, false)
-
-	// Should only count 2 tracked spawns
-	if reportExcluded.Summary.TotalSpawns != 2 {
-		t.Errorf("expected 2 tracked spawns, got %d", reportExcluded.Summary.TotalSpawns)
-	}
-
-	// Should only count 1 tracked completion
-	if reportExcluded.Summary.TotalCompletions != 1 {
-		t.Errorf("expected 1 tracked completion, got %d", reportExcluded.Summary.TotalCompletions)
-	}
-
-	// Should count 0 abandonments (the abandonment was untracked)
-	if reportExcluded.Summary.TotalAbandonments != 0 {
-		t.Errorf("expected 0 tracked abandonments, got %d", reportExcluded.Summary.TotalAbandonments)
-	}
-
-	// Should track untracked spawns separately
-	if reportExcluded.Summary.UntrackedSpawns != 2 {
-		t.Errorf("expected 2 untracked spawns, got %d", reportExcluded.Summary.UntrackedSpawns)
-	}
-
-	// Should track untracked completions separately
-	if reportExcluded.Summary.UntrackedCompletions != 1 {
-		t.Errorf("expected 1 untracked completion, got %d", reportExcluded.Summary.UntrackedCompletions)
-	}
-
-	// Completion rate should be 50% (1/2 tracked)
-	expectedRate := 50.0
-	if reportExcluded.Summary.CompletionRate < expectedRate-0.1 || reportExcluded.Summary.CompletionRate > expectedRate+0.1 {
-		t.Errorf("expected completion rate ~%.1f%%, got %.1f%%", expectedRate, reportExcluded.Summary.CompletionRate)
-	}
-
-	// Test with includeUntracked=true
-	reportIncluded := aggregateStats(events, 7, true)
-
-	// Should count all 4 spawns
-	if reportIncluded.Summary.TotalSpawns != 4 {
-		t.Errorf("expected 4 total spawns, got %d", reportIncluded.Summary.TotalSpawns)
-	}
-
-	// Should count all 2 completions
-	if reportIncluded.Summary.TotalCompletions != 2 {
-		t.Errorf("expected 2 total completions, got %d", reportIncluded.Summary.TotalCompletions)
-	}
-
-	// Should count the 1 abandonment
-	if reportIncluded.Summary.TotalAbandonments != 1 {
-		t.Errorf("expected 1 total abandonment, got %d", reportIncluded.Summary.TotalAbandonments)
-	}
-}
-
-func TestAggregateStatsUntrackedSkillBreakdown(t *testing.T) {
-	now := time.Now().Unix()
-
-	events := []StatsEvent{
-		// Tracked feature-impl spawns
-		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{"skill": "feature-impl", "beads_id": "orch-go-abc123"}},
-		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 3600, Data: map[string]interface{}{"skill": "feature-impl", "beads_id": "orch-go-def456"}},
-		// Untracked feature-impl spawn
-		{Type: "session.spawned", SessionID: "ses_3", Timestamp: now - 1800, Data: map[string]interface{}{"skill": "feature-impl", "beads_id": "orch-go-untracked-ghi789"}},
-		// Completions for all
-		{Type: "agent.completed", Timestamp: now - 6000, Data: map[string]interface{}{"beads_id": "orch-go-abc123"}},
-		{Type: "agent.completed", Timestamp: now - 5000, Data: map[string]interface{}{"beads_id": "orch-go-def456"}},
-		{Type: "agent.completed", Timestamp: now - 4000, Data: map[string]interface{}{"beads_id": "orch-go-untracked-ghi789"}},
-	}
-
-	// Test with includeUntracked=false
-	report := aggregateStats(events, 7, false)
-
-	// Should only have feature-impl in skill stats with 2 spawns (not 3)
-	if len(report.SkillStats) != 1 {
-		t.Errorf("expected 1 skill, got %d", len(report.SkillStats))
-	}
-
-	if report.SkillStats[0].Skill != "feature-impl" {
-		t.Errorf("expected feature-impl skill, got %s", report.SkillStats[0].Skill)
-	}
-
-	if report.SkillStats[0].Spawns != 2 {
-		t.Errorf("expected 2 tracked spawns for feature-impl, got %d", report.SkillStats[0].Spawns)
-	}
-
-	if report.SkillStats[0].Completions != 2 {
-		t.Errorf("expected 2 tracked completions for feature-impl, got %d", report.SkillStats[0].Completions)
-	}
-
-	// Completion rate should be 100% for tracked feature-impl
-	if report.SkillStats[0].CompletionRate < 99.9 || report.SkillStats[0].CompletionRate > 100.1 {
-		t.Errorf("expected 100%% completion rate for feature-impl, got %.1f%%", report.SkillStats[0].CompletionRate)
 	}
 }
 
@@ -561,7 +429,7 @@ func TestAggregateStatsOrchestratorWorkspaceCorrelation(t *testing.T) {
 	}
 
 	// Test with includeUntracked=true (to include orchestrators)
-	report := aggregateStats(events, 7, true)
+	report := aggregateStats(events, 7)
 
 	// Should have all 3 spawns
 	if report.Summary.TotalSpawns != 3 {
@@ -651,7 +519,7 @@ func TestAggregateStatsDeduplicationByBeadsID(t *testing.T) {
 		{Type: "agent.completed", Timestamp: now - 2000, Data: map[string]interface{}{"beads_id": "orch-go-abc3"}},
 	}
 
-	report := aggregateStats(events, 7, true)
+	report := aggregateStats(events, 7)
 
 	// Should have 3 spawns (unique)
 	if report.Summary.TotalSpawns != 3 {
@@ -717,7 +585,7 @@ func TestAggregateStatsDeduplicationMixedEventTypes(t *testing.T) {
 		}},
 	}
 
-	report := aggregateStats(events, 7, true)
+	report := aggregateStats(events, 7)
 
 	// Should have 1 spawn
 	if report.Summary.TotalSpawns != 1 {
@@ -777,7 +645,7 @@ func TestAggregateStatsVerification(t *testing.T) {
 		}},
 	}
 
-	report := aggregateStats(events, 7, true)
+	report := aggregateStats(events, 7)
 
 	// Test verification stats
 	if report.VerificationStats.TotalAttempts != 3 {
@@ -844,7 +712,7 @@ func TestAggregateStatsVerificationGateBreakdown(t *testing.T) {
 		}},
 	}
 
-	report := aggregateStats(events, 7, true)
+	report := aggregateStats(events, 7)
 
 	// Check gate breakdown
 	if len(report.VerificationStats.FailuresByGate) == 0 {
@@ -924,7 +792,7 @@ func TestAggregateStatsVerificationBySkill(t *testing.T) {
 		}},
 	}
 
-	report := aggregateStats(events, 7, true)
+	report := aggregateStats(events, 7)
 
 	// Check skill breakdown
 	if len(report.VerificationStats.BySkill) != 2 {
@@ -1018,7 +886,7 @@ func TestAggregateStatsVerificationBypassed(t *testing.T) {
 		}},
 	}
 
-	report := aggregateStats(events, 7, true)
+	report := aggregateStats(events, 7)
 
 	// Should count 3 skip-bypassed gate events
 	if report.VerificationStats.SkipBypassed != 3 {
@@ -1117,7 +985,7 @@ func TestAggregateStatsAbandonmentDeduplication(t *testing.T) {
 		}},
 	}
 
-	report := aggregateStats(events, 7, true)
+	report := aggregateStats(events, 7)
 
 	// Should count 2 unique abandonments (not 4)
 	if report.Summary.TotalAbandonments != 2 {
@@ -1159,7 +1027,7 @@ func TestAggregateStatsAbandonmentRetries(t *testing.T) {
 		}},
 	}
 
-	report := aggregateStats(events, 7, true)
+	report := aggregateStats(events, 7)
 
 	if report.Summary.TotalAbandonments != 1 {
 		t.Errorf("expected 1 unique abandonment for retried issue, got %d", report.Summary.TotalAbandonments)

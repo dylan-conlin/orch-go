@@ -86,7 +86,7 @@ func handleApprove(w http.ResponseWriter, r *http.Request) {
 		approvalComment = "✅ APPROVED - Visual changes reviewed and approved via dashboard"
 	}
 
-	if beadsID != "" && !isUntrackedBeadsID(beadsID) {
+	if beadsID != "" {
 		if err := addApprovalComment(beadsID, approvalComment); err != nil {
 			// Log warning but don't fail - approval state update is still valuable
 			fmt.Fprintf(os.Stderr, "Warning: failed to add approval comment to %s: %v\n", beadsID, err)

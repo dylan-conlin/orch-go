@@ -15,7 +15,6 @@ import (
 // DefaultActiveCount returns the number of active agents by querying OpenCode API.
 // Counts only recently-active sessions (updated within the last 30 minutes) to avoid
 // counting stale sessions that persist indefinitely in OpenCode.
-// Excludes untracked agents (spawned with --no-track) which have "-untracked-" in their beads ID.
 // Excludes sessions whose beads issues are already closed (completed agents).
 func DefaultActiveCount() int {
 	// Use OpenCode API to count active sessions
@@ -61,10 +60,8 @@ func DefaultActiveCount() int {
 		}
 
 		// Extract beads ID from title (format: "workspace-name [beads-id]")
-		// Skip untracked agents which have "-untracked-" in their beads ID.
-		// These are ad-hoc spawns that shouldn't count against daemon capacity.
 		beadsID := extractBeadsIDFromSessionTitle(s.Title)
-		if beadsID == "" || isUntrackedBeadsID(beadsID) {
+		if beadsID == "" {
 			continue
 		}
 
@@ -171,19 +168,12 @@ func extractBeadsIDFromSessionTitle(title string) string {
 	return ""
 }
 
-// isUntrackedBeadsID returns true if the beads ID indicates an untracked agent.
-// Untracked agents are spawned with --no-track and have IDs like "project-untracked-1766695797".
-func isUntrackedBeadsID(beadsID string) bool {
-	return strings.Contains(beadsID, "-untracked-")
-}
-
 // CountActiveTmuxAgents returns beads IDs of orch-managed agents running in tmux windows.
 // This complements DefaultActiveCount() which only counts OpenCode sessions.
 // Claude CLI backend agents run in tmux windows WITHOUT OpenCode sessions,
 // making them invisible to DefaultActiveCount().
 //
 // Scans all worker sessions, the orchestrator session, and meta-orchestrator session.
-// Excludes untracked agents.
 func CountActiveTmuxAgents() map[string]bool {
 	activeBeadsIDs := make(map[string]bool)
 
@@ -210,7 +200,7 @@ func CountActiveTmuxAgents() map[string]bool {
 		}
 		for _, w := range windows {
 			beadsID := extractBeadsIDFromWindowName(w.Name)
-			if beadsID == "" || isUntrackedBeadsID(beadsID) {
+			if beadsID == "" {
 				continue
 			}
 			activeBeadsIDs[beadsID] = true
@@ -255,7 +245,7 @@ func CombinedActiveCount() int {
 					continue
 				}
 				beadsID := extractBeadsIDFromSessionTitle(s.Title)
-				if beadsID == "" || isUntrackedBeadsID(beadsID) {
+				if beadsID == "" {
 					continue
 				}
 				activeBeadsIDs[beadsID] = true

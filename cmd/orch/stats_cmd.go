@@ -16,10 +16,9 @@ import (
 )
 
 var (
-	statsDays             int
-	statsJSONOutput       bool
-	statsVerbose          bool
-	statsIncludeUntracked bool
+	statsDays       int
+	statsJSONOutput bool
+	statsVerbose    bool
 )
 
 // SkillCategory represents the type of work a skill does
@@ -48,13 +47,6 @@ func getSkillCategory(skill string) SkillCategory {
 	return TaskSkill
 }
 
-// isUntrackedSpawn returns true if the beads_id indicates an untracked spawn.
-// Untracked spawns have beads_ids containing "untracked" (e.g., "orch-go-untracked-abc123").
-// These are test/ad-hoc spawns that should be excluded from production metrics by default.
-func isUntrackedSpawn(beadsID string) bool {
-	return strings.Contains(beadsID, "untracked")
-}
-
 var statsCmd = &cobra.Command{
 	Use:   "stats",
 	Short: "Show aggregated agent statistics from events.jsonl",
@@ -67,13 +59,8 @@ Shows:
   - Skill effectiveness breakdown
   - Daemon health metrics
 
-By default, untracked spawns (test/ad-hoc work via --no-track) are excluded
-from completion rate calculations to show production metrics only.
-Use --include-untracked to include them.
-
 Examples:
-  orch stats                    # Show last 7 days (tracked spawns only)
-  orch stats --include-untracked  # Include test/ad-hoc spawns
+  orch stats                    # Show last 7 days
   orch stats --days 1           # Show last 24 hours
   orch stats --days 30          # Show last 30 days
   orch stats --json             # Output as JSON for scripting
@@ -87,8 +74,6 @@ func init() {
 	statsCmd.Flags().IntVar(&statsDays, "days", 7, "Number of days to analyze")
 	statsCmd.Flags().BoolVar(&statsJSONOutput, "json", false, "Output as JSON")
 	statsCmd.Flags().BoolVar(&statsVerbose, "verbose", false, "Show additional metrics")
-	statsCmd.Flags().BoolVar(&statsIncludeUntracked, "include-untracked", false, "Include untracked spawns in completion rate calculation")
-
 	rootCmd.AddCommand(statsCmd)
 }
 
@@ -133,10 +118,6 @@ type StatsSummary struct {
 	CoordinationSpawns         int     `json:"coordination_spawns"`
 	CoordinationCompletions    int     `json:"coordination_completions"`
 	CoordinationCompletionRate float64 `json:"coordination_completion_rate"`
-	// Untracked spawn metrics (test/ad-hoc work excluded from production metrics)
-	UntrackedSpawns      int  `json:"untracked_spawns"`
-	UntrackedCompletions int  `json:"untracked_completions"`
-	IncludesUntracked    bool `json:"includes_untracked"`
 }
 
 // SkillStatsSummary contains per-skill metrics
@@ -261,7 +242,7 @@ func runStats() error {
 	}
 
 	// Aggregate statistics
-	report := aggregateStats(events, statsDays, statsIncludeUntracked)
+	report := aggregateStats(events, statsDays)
 
 	// Output
 	if statsJSONOutput {
@@ -318,14 +299,13 @@ func parseEvents(path string) ([]StatsEvent, error) {
 	return events, nil
 }
 
-func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *StatsReport {
+func aggregateStats(events []StatsEvent, days int) *StatsReport {
 	report := &StatsReport{
 		GeneratedAt:    time.Now().Format(time.RFC3339),
 		AnalysisPeriod: fmt.Sprintf("Last %d days", days),
 		DaysAnalyzed:   days,
 		SkillStats:     []SkillStatsSummary{},
 	}
-	report.Summary.IncludesUntracked = includeUntracked
 
 	// Time window cutoffs
 	now := time.Now().Unix()
@@ -337,7 +317,6 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 	spawnTimes := make(map[string]int64)       // session_id -> timestamp
 	spawnSkills := make(map[string]string)     // session_id -> skill
 	spawnBeadsIDs := make(map[string]string)   // session_id -> beads_id
-	untrackedSessions := make(map[string]bool) // session_id -> true if untracked
 	skillCounts := make(map[string]*SkillStatsSummary)
 	var durations []float64
 
@@ -457,38 +436,20 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 				workspaceToSession[workspace] = effectiveSessionID
 			}
 
-			// Check if this is an untracked spawn
-			isUntracked := isUntrackedSpawn(beadsID)
-			if isUntracked {
-				untrackedSessions[effectiveSessionID] = true
-				// Only count untracked in window
-				if event.Timestamp >= cutoffDays {
-					report.Summary.UntrackedSpawns++
-				}
-			}
-
 			// Skip events outside the --days window for main stats
 			if event.Timestamp < cutoffDays {
 				continue
 			}
 
-			// Coordination skills (orchestrator, meta-orchestrator) are always counted
-			// even when untracked, since they're interactive sessions not task work.
-			// The --include-untracked flag affects overall metrics, not coordination skill tracking.
-			isCoordinationSkill := coordinationSkills[skill]
-
-			// Only count toward overall metrics if tracked OR includeUntracked OR coordination skill
-			if !isUntracked || includeUntracked || isCoordinationSkill {
-				report.Summary.TotalSpawns++
-				if skill != "" {
-					if _, exists := skillCounts[skill]; !exists {
-						skillCounts[skill] = &SkillStatsSummary{
-							Skill:    skill,
-							Category: getSkillCategory(skill),
-						}
+			report.Summary.TotalSpawns++
+			if skill != "" {
+				if _, exists := skillCounts[skill]; !exists {
+					skillCounts[skill] = &SkillStatsSummary{
+						Skill:    skill,
+						Category: getSkillCategory(skill),
 					}
-					skillCounts[skill].Spawns++
 				}
+				skillCounts[skill].Spawns++
 			}
 
 		case "session.completed":
@@ -514,13 +475,7 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 
 			alreadyCounted := completedBeadsIDs[deduplicationKey]
 
-			// Check if this is an untracked session
-			isUntracked := untrackedSessions[event.SessionID] || isUntrackedSpawn(sessionBeadsID)
-			if isUntracked && !alreadyCounted {
-				report.Summary.UntrackedCompletions++
-			}
-			// Only count if tracked OR includeUntracked is set, AND not already counted
-			if (!isUntracked || includeUntracked) && !alreadyCounted {
+			if !alreadyCounted {
 				completedBeadsIDs[deduplicationKey] = true
 				report.Summary.TotalCompletions++
 				// Calculate duration if we have spawn time
@@ -548,8 +503,6 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 			var beadsID string
 			var workspace string
 			var sessionID string
-			var isOrchestrator bool
-			var eventMarkedUntracked bool
 			// Verification metrics
 			var verificationPassed bool
 			var wasForced bool
@@ -566,14 +519,6 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 							break
 						}
 					}
-				}
-				// Check for orchestrator flag and workspace
-				if orch, ok := data["orchestrator"].(bool); ok && orch {
-					isOrchestrator = true
-				}
-				// Check if event itself is marked untracked
-				if unt, ok := data["untracked"].(bool); ok && unt {
-					eventMarkedUntracked = true
 				}
 				if w, ok := data["workspace"].(string); ok && w != "" {
 					workspace = w
@@ -609,18 +554,6 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 				}
 			}
 
-			// Check if untracked:
-			// 1. Event explicitly marked untracked
-			// 2. beads_id pattern contains "untracked"
-			// 3. Session was marked untracked at spawn time
-			// 4. Orchestrator completion that couldn't be correlated
-			isUntracked := eventMarkedUntracked || isUntrackedSpawn(beadsID) || untrackedSessions[sessionID]
-			if isOrchestrator && sessionID == "" && !isUntracked {
-				// Orchestrator completion that couldn't be correlated and isn't already marked
-				// Treat as untracked (most orchestrators are untracked by design)
-				isUntracked = true
-			}
-
 			// Deduplicate completions by beads_id:
 			// Multiple agent.completed events can exist for the same beads_id (e.g., from retries).
 			// We only count unique completions, but always update to use the latest event's
@@ -633,27 +566,8 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 
 			alreadyCounted := completedBeadsIDs[deduplicationKey]
 
-			// Track untracked completions (count events, not unique - for visibility)
-			if isUntracked && !isOrchestrator && !alreadyCounted {
-				// Don't double-count orchestrator completions as untracked
-				// (they're counted in their own category)
-				report.Summary.UntrackedCompletions++
-			}
-
-			// Check if this is a coordination skill (via correlated session)
-			var isCoordinationSkill bool
-			if sessionID != "" {
-				if skill, ok := spawnSkills[sessionID]; ok {
-					isCoordinationSkill = coordinationSkills[skill]
-				}
-			}
-
-			// Only count if tracked OR includeUntracked OR coordination skill
-			// Coordination skills are always counted for visibility, even when untracked
-			shouldCount := !isUntracked || includeUntracked || isCoordinationSkill
-
 			// Only count this completion if we haven't already counted this beads_id
-			if shouldCount && !alreadyCounted {
+			if !alreadyCounted {
 				completedBeadsIDs[deduplicationKey] = true
 				report.Summary.TotalCompletions++
 				// Update skill completions
@@ -668,7 +582,7 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 
 			// Always calculate/update duration using the latest event for this beads_id
 			// (even if we've already counted the completion, we want the latest timestamp)
-			if shouldCount && sessionID != "" {
+			if sessionID != "" {
 				if spawnTime, ok := spawnTimes[sessionID]; ok {
 					duration := float64(event.Timestamp-spawnTime) / 60.0
 					if duration > 0 && duration < 480 {
@@ -684,7 +598,7 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 			}
 
 			// Track verification metrics (only for unique completions)
-			if shouldCount && !alreadyCounted {
+			if !alreadyCounted {
 				report.VerificationStats.TotalAttempts++
 				if verificationPassed {
 					report.VerificationStats.PassedFirstTry++
@@ -737,8 +651,6 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 				}
 			}
 
-			isUntracked := isUntrackedSpawn(beadsID) || untrackedSessions[sessionID]
-
 			// Deduplicate abandonments by beads_id:
 			// orch abandon emits two agent.abandoned events per abandonment
 			// (LifecycleManager + telemetry). We only count unique beads_ids.
@@ -749,8 +661,7 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 			}
 			alreadyCounted := abandonedBeadsIDs[deduplicationKey]
 
-			// Only count if tracked OR includeUntracked is set, AND not already counted
-			if (!isUntracked || includeUntracked) && !alreadyCounted {
+			if !alreadyCounted {
 				abandonedBeadsIDs[deduplicationKey] = true
 				report.Summary.TotalAbandonments++
 				// Update skill abandonments
@@ -1133,11 +1044,7 @@ func outputStatsText(report *StatsReport) error {
 	// Core metrics
 	fmt.Println()
 	fmt.Println("🎯 CORE METRICS")
-	fmt.Printf("  Spawns:        %d", report.Summary.TotalSpawns)
-	if !report.Summary.IncludesUntracked && report.Summary.UntrackedSpawns > 0 {
-		fmt.Printf(" (excluding %d untracked)", report.Summary.UntrackedSpawns)
-	}
-	fmt.Println()
+	fmt.Printf("  Spawns:        %d\n", report.Summary.TotalSpawns)
 	fmt.Printf("  Completions:   %d (%.1f%%)\n", report.Summary.TotalCompletions, report.Summary.CompletionRate)
 	fmt.Printf("  Abandonments:  %d (%.1f%%)\n", report.Summary.TotalAbandonments, report.Summary.AbandonmentRate)
 	if report.Summary.AvgDurationMinutes > 0 {

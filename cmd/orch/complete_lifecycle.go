@@ -24,7 +24,7 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 	// Determine close reason
 	reason := completeReason
 	if reason == "" {
-		if !target.IsUntracked && target.BeadsID != "" {
+		if target.BeadsID != "" {
 			status, _ := verify.GetPhaseStatus(target.BeadsID)
 			if status.Summary != "" {
 				reason = status.Summary
@@ -40,7 +40,7 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 	}
 
 	// Auto-create implementation issue for architect completions
-	if !target.IsUntracked && !target.IsOrchestratorSession && target.WorkspacePath != "" {
+	if !target.IsOrchestratorSession && target.WorkspacePath != "" {
 		maybeAutoCreateImplementationIssue(outcome.SkillName, target.BeadsID, target.WorkspacePath)
 	}
 
@@ -96,8 +96,8 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 		ProjectDir:    target.BeadsProjectDir,
 	}
 
-	if !target.IsClosed || target.IsOrchestratorSession || target.IsUntracked {
-		if target.IsOrchestratorSession || target.IsUntracked {
+	if !target.IsClosed || target.IsOrchestratorSession {
+		if target.IsOrchestratorSession {
 			agentRef.BeadsID = ""
 		}
 
@@ -144,15 +144,13 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 
 	if target.IsOrchestratorSession {
 		fmt.Printf("Completed orchestrator session: %s\n", target.AgentName)
-	} else if target.IsUntracked {
-		fmt.Printf("Cleaned up untracked agent: %s\n", target.Identifier)
 	}
 	fmt.Printf("Reason: %s\n", reason)
 
 	// Post-lifecycle operations
 
 	// Remove triage:ready label on successful completion
-	if !target.IsClosed && !target.IsUntracked && target.BeadsID != "" {
+	if !target.IsClosed && target.BeadsID != "" {
 		if err := verify.RemoveTriageReadyLabel(target.BeadsID); err != nil {
 			// Non-critical
 		}
@@ -239,7 +237,7 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 	completedData := events.AgentCompletedData{
 		Reason:             reason,
 		Forced:             completeForce,
-		Untracked:          target.IsUntracked,
+		Untracked:          false,
 		Orchestrator:       target.IsOrchestratorSession,
 		VerificationPassed: outcome.Passed,
 		Skill:              outcome.SkillName,

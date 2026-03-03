@@ -314,7 +314,7 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, d
 
 	// Track cleanup stats
 	var workspacesArchived, investigationsArchived int
-	var windowsClosed, untrackedSessionsDeleted, staleSessionsDeleted int
+	var windowsClosed int
 	var orphansForceCompleted, orphansForceAbandoned int
 	var ghostsCleaned int
 
@@ -343,8 +343,6 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, d
 		}
 
 		// Session cleanup (steps 2-3) removed - OpenCode handles this via TTL
-		untrackedSessionsDeleted = 0
-		staleSessionsDeleted = 0
 	}
 
 	// --orphans: Detect and GC orphaned agents via LifecycleManager
@@ -378,13 +376,7 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, d
 			if windowsClosed > 0 {
 				fmt.Printf(" Would close %d stale tmux windows.", windowsClosed)
 			}
-			if untrackedSessionsDeleted > 0 {
-				fmt.Printf(" Would delete %d untracked sessions.", untrackedSessionsDeleted)
 			}
-			if staleSessionsDeleted > 0 {
-				fmt.Printf(" Would delete %d stale sessions.", staleSessionsDeleted)
-			}
-		}
 		if doOrphans {
 			if orphansForceCompleted > 0 {
 				fmt.Printf(" Would force-complete %d orphaned agents.", orphansForceCompleted)
@@ -403,7 +395,7 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, d
 	}
 
 	// Log event if any cleanup actions were taken
-	totalCleaned := workspacesArchived + investigationsArchived + windowsClosed + untrackedSessionsDeleted + staleSessionsDeleted + orphansForceCompleted + orphansForceAbandoned + ghostsCleaned
+	totalCleaned := workspacesArchived + investigationsArchived + windowsClosed + orphansForceCompleted + orphansForceAbandoned + ghostsCleaned
 	if totalCleaned > 0 {
 		projectName := filepath.Base(projectDir)
 		logger := events.NewLogger(events.DefaultLogPath())
@@ -414,8 +406,6 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, d
 				"workspaces_archived":        workspacesArchived,
 				"investigations_archived":    investigationsArchived,
 				"windows_closed":             windowsClosed,
-				"untracked_sessions_deleted": untrackedSessionsDeleted,
-				"stale_sessions_deleted":     staleSessionsDeleted,
 				"orphans_force_completed":    orphansForceCompleted,
 				"orphans_force_abandoned":    orphansForceAbandoned,
 				"project":                    projectName,
@@ -444,12 +434,6 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, d
 		}
 		if windowsClosed > 0 {
 			fmt.Printf("Closed %d stale tmux windows\n", windowsClosed)
-		}
-		if untrackedSessionsDeleted > 0 {
-			fmt.Printf("Deleted %d untracked sessions\n", untrackedSessionsDeleted)
-		}
-		if staleSessionsDeleted > 0 {
-			fmt.Printf("Deleted %d stale sessions\n", staleSessionsDeleted)
 		}
 		if orphansForceCompleted > 0 {
 			fmt.Printf("Force-completed %d orphaned agents\n", orphansForceCompleted)

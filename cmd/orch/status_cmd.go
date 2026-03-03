@@ -818,7 +818,7 @@ func printAgentsWideFormat(agents []AgentInfo) {
 		if source == "" {
 			source = "-"
 		}
-		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
+		beadsID := agent.BeadsID
 		if beadsID == "" {
 			beadsID = "-"
 		}
@@ -897,7 +897,7 @@ func printAgentsNarrowFormat(agents []AgentInfo) {
 		if source == "" {
 			source = "-"
 		}
-		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
+		beadsID := agent.BeadsID
 		if beadsID == "" {
 			beadsID = "-"
 		}
@@ -941,7 +941,7 @@ func printAgentsCardFormat(agents []AgentInfo) {
 		if source == "" {
 			source = "-"
 		}
-		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
+		beadsID := agent.BeadsID
 		if beadsID == "" {
 			beadsID = "-"
 		}

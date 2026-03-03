@@ -158,49 +158,6 @@ func TestExtractBeadsIDFromSessionTitle(t *testing.T) {
 	}
 }
 
-func TestIsUntrackedBeadsID(t *testing.T) {
-	tests := []struct {
-		name    string
-		beadsID string
-		want    bool
-	}{
-		{
-			name:    "tracked beads ID",
-			beadsID: "orch-go-3anf",
-			want:    false,
-		},
-		{
-			name:    "untracked beads ID",
-			beadsID: "orch-go-untracked-1766786808",
-			want:    true,
-		},
-		{
-			name:    "untracked with different project",
-			beadsID: "snap-untracked-1766770347",
-			want:    true,
-		},
-		{
-			name:    "empty string",
-			beadsID: "",
-			want:    false,
-		},
-		{
-			name:    "contains 'untracked' but not as segment",
-			beadsID: "my-untrackedfeature-xyz",
-			want:    false, // doesn't contain "-untracked-" with trailing hyphen
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := isUntrackedBeadsID(tt.beadsID)
-			if got != tt.want {
-				t.Errorf("isUntrackedBeadsID(%q) = %v, want %v", tt.beadsID, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestGetClosedIssuesBatch_EmptyInput(t *testing.T) {
 	// Empty input should return empty map
 	result := GetClosedIssuesBatch(nil)
