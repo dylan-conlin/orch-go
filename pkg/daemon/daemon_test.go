@@ -918,3 +918,126 @@ func TestDaemon_resolveIssueQuerier_NilFallsToDefault(t *testing.T) {
 		t.Fatal("resolveIssueQuerier should not return nil")
 	}
 }
+
+// =============================================================================
+// Tests for Sticky Spawn Failure Fix
+// =============================================================================
+
+// TestOnceExcluding_NonErrorSkip_ContinuesToNextIssue verifies that when
+// OnceExcluding returns a non-error skip for an issue (e.g., status already
+// in_progress), adding that issue to the skip map and calling again processes
+// the next issue in the queue. This is the core fix for sticky spawn failures:
+// non-error dedup returns must be skippable so lower-priority issues get tried.
+func TestOnceExcluding_NonErrorSkip_ContinuesToNextIssue(t *testing.T) {
+	spawnedIDs := []string{}
+	d := &Daemon{
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "issue-A", Title: "High priority", Priority: 0, IssueType: "feature", Status: "open"},
+					{ID: "issue-B", Title: "Lower priority", Priority: 1, IssueType: "task", Status: "open"},
+				}, nil
+			},
+			GetIssueStatusFunc: func(beadsID string) (string, error) {
+				// Issue A is already in_progress (dedup case)
+				if beadsID == "issue-A" {
+					return "in_progress", nil
+				}
+				return "open", nil
+			},
+		},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+			spawnedIDs = append(spawnedIDs, beadsID)
+			return nil
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
+	}
+
+	// First call: issue-A should be skipped (non-error: status is in_progress)
+	skip := make(map[string]bool)
+	result1, err := d.OnceExcluding(skip)
+	if err != nil {
+		t.Fatalf("OnceExcluding() error: %v", err)
+	}
+	if result1.Processed {
+		t.Fatal("OnceExcluding() should not process issue-A (status is in_progress)")
+	}
+	if result1.Issue == nil || result1.Issue.ID != "issue-A" {
+		t.Fatalf("OnceExcluding() should return issue-A, got %v", result1.Issue)
+	}
+	if result1.Error != nil {
+		t.Fatalf("OnceExcluding() non-error skip should have nil Error, got %v", result1.Error)
+	}
+
+	// Add issue-A to skip map (simulating what the daemon loop now does)
+	skip[result1.Issue.ID] = true
+
+	// Second call: issue-B should be tried and spawned
+	result2, err := d.OnceExcluding(skip)
+	if err != nil {
+		t.Fatalf("OnceExcluding() second call error: %v", err)
+	}
+	if !result2.Processed {
+		t.Fatalf("OnceExcluding() should process issue-B, got message: %s", result2.Message)
+	}
+	if result2.Issue == nil || result2.Issue.ID != "issue-B" {
+		t.Fatalf("OnceExcluding() should spawn issue-B, got %v", result2.Issue)
+	}
+	if len(spawnedIDs) != 1 || spawnedIDs[0] != "issue-B" {
+		t.Errorf("expected spawn of issue-B only, got %v", spawnedIDs)
+	}
+}
+
+// TestOnceExcluding_SpawnFailure_RetriedWithFreshSkipMap verifies that issues
+// that fail to spawn in one cycle are retried when called with a fresh skip map
+// (simulating the start of a new poll cycle).
+func TestOnceExcluding_SpawnFailure_RetriedWithFreshSkipMap(t *testing.T) {
+	callCount := 0
+	d := &Daemon{
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "issue-1", Title: "Retry test", Priority: 0, IssueType: "feature", Status: "open"},
+				}, nil
+			},
+		},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+			callCount++
+			if callCount == 1 {
+				return fmt.Errorf("transient spawn failure")
+			}
+			return nil // succeeds on retry
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
+	}
+
+	// Cycle 1: spawn fails
+	skip1 := make(map[string]bool)
+	result1, err := d.OnceExcluding(skip1)
+	if err != nil {
+		t.Fatalf("Cycle 1: OnceExcluding() error: %v", err)
+	}
+	if result1.Processed {
+		t.Fatal("Cycle 1: should not process (spawn failed)")
+	}
+	if result1.Error == nil {
+		t.Fatal("Cycle 1: should have Error set")
+	}
+
+	// Cycle 2: fresh skip map (simulates new poll cycle), should retry
+	skip2 := make(map[string]bool)
+	result2, err := d.OnceExcluding(skip2)
+	if err != nil {
+		t.Fatalf("Cycle 2: OnceExcluding() error: %v", err)
+	}
+	if !result2.Processed {
+		t.Fatalf("Cycle 2: should process on retry, got message: %s", result2.Message)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 spawn calls (fail + retry), got %d", callCount)
+	}
+}

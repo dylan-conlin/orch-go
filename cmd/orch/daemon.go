@@ -783,17 +783,25 @@ func runDaemonLoop() error {
 			}
 
 			if !result.Processed {
-				// Check if this is a spawn failure (not queue empty or capacity)
-				// If so, skip this issue and try the next one.
-				if result.Issue != nil && result.Error != nil {
+				// If result identifies a specific issue, skip it and try the next one.
+				// This handles both error cases (spawn failure, status update failure)
+				// and non-error skip cases (existing session, title dedup, status mismatch).
+				// Without this, a single high-priority dedup'd issue would break the
+				// inner loop and block all lower-priority issues from being tried.
+				if result.Issue != nil {
 					skippedThisCycle[result.Issue.ID] = true
-					fmt.Fprintf(os.Stderr, "[%s] Skipping %s: %v\n",
-						timestamp, result.Issue.ID, result.Error)
+					if result.Error != nil {
+						fmt.Fprintf(os.Stderr, "[%s] Skipping %s: %v\n",
+							timestamp, result.Issue.ID, result.Error)
+					} else if daemonVerbose {
+						fmt.Printf("[%s] Skipping %s: %s\n",
+							timestamp, result.Issue.ID, result.Message)
+					}
 					// Continue to try the next issue
 					continue
 				}
 
-				// No more issues or non-issue-specific error
+				// No more issues or non-issue-specific condition (rate limit, paused, etc.)
 				if daemonVerbose && spawnedThisCycle == 0 {
 					// Use the message from Once() which indicates why processing stopped
 					fmt.Printf("[%s] %s\n", timestamp, result.Message)
