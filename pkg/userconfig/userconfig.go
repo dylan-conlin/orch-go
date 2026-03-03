@@ -96,6 +96,10 @@ type DaemonConfig struct {
 	// Defaults to false if not specified.
 	ReflectOpen *bool `yaml:"reflect_open,omitempty"`
 
+	// VerificationPauseThreshold is the max unverified completions before daemon pauses.
+	// Defaults to 5 if not specified. Set to 0 to disable verification pause.
+	VerificationPauseThreshold *int `yaml:"verification_pause_threshold,omitempty"`
+
 	// WorkingDirectory is the directory the daemon runs from.
 	// Defaults to ~/Documents/personal/orch-go if not specified.
 	WorkingDirectory string `yaml:"working_directory,omitempty"`
@@ -326,6 +330,15 @@ func (c *Config) DaemonVerbose() bool {
 		return true // Default to verbose
 	}
 	return *c.Daemon.Verbose
+}
+
+// DaemonVerificationPauseThreshold returns the max unverified completions before daemon pauses.
+// Defaults to 5 if not configured. Returns 0 to disable.
+func (c *Config) DaemonVerificationPauseThreshold() int {
+	if c.Daemon.VerificationPauseThreshold == nil {
+		return 5
+	}
+	return *c.Daemon.VerificationPauseThreshold
 }
 
 // DaemonReflectIssues returns whether to create issues from kb reflect findings.

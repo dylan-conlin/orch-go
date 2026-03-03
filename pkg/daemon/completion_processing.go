@@ -126,6 +126,24 @@ func listCompletedAgentsSingleProject(config CompletionConfig, projectDir, works
 		return nil, nil
 	}
 
+	// Filter out issues already labeled daemon:ready-review.
+	// These have already been processed by a previous completion cycle.
+	// Without this filter, resume→re-detect→re-pause loops occur because
+	// the same cross-project Phase: Complete issues get re-counted after
+	// resume clears the VerificationTracker's seenIDs.
+	for id, issue := range openIssues {
+		for _, label := range issue.Labels {
+			if label == "daemon:ready-review" {
+				delete(openIssues, id)
+				break
+			}
+		}
+	}
+
+	if len(openIssues) == 0 {
+		return nil, nil
+	}
+
 	// Collect beads IDs for batch comment fetch
 	var beadsIDs []string
 	for id := range openIssues {

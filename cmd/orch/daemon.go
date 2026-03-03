@@ -128,6 +128,26 @@ Examples:
 	},
 }
 
+var daemonCleanStaleCmd = &cobra.Command{
+	Use:   "clean-stale",
+	Short: "Close orphaned cross-project completions that block verification pause",
+	Long: `Find and close beads issues from other projects that are stuck in
+Phase: Complete with daemon:ready-review label but will never be resolved
+through normal orch complete flow.
+
+This happens when projects are merged/archived but their beads databases
+still contain open issues. The daemon's cross-project completion scanner
+detects them every cycle, inflating the verification pause counter.
+
+Examples:
+  orch daemon clean-stale           # Show stale completions (dry run)
+  orch daemon clean-stale --close   # Close stale issues`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		closeStale, _ := cmd.Flags().GetBool("close")
+		return runDaemonCleanStale(closeStale)
+	},
+}
+
 var daemonStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show daemon running state with PID liveness check",
@@ -213,6 +233,9 @@ func init() {
 	daemonCmd.AddCommand(daemonPreviewCmd)
 	daemonCmd.AddCommand(daemonReflectCmd)
 	daemonCmd.AddCommand(daemonResumeCmd)
+	daemonCmd.AddCommand(daemonCleanStaleCmd)
+
+	daemonCleanStaleCmd.Flags().Bool("close", false, "Actually close stale issues (default: dry run)")
 
 	// --replace is only on daemon run (daemon restart already has this behavior)
 	daemonRunCmd.Flags().BoolVar(&daemonReplace, "replace", false, "Stop existing daemon before starting (graceful takeover)")
@@ -1223,6 +1246,90 @@ func runDaemonResume() error {
 	fmt.Println()
 	fmt.Println("The daemon will detect the signal on the next poll cycle and resume operation.")
 	fmt.Println("The verification counter will be reset, allowing the daemon to continue spawning.")
+
+	return nil
+}
+
+// runDaemonCleanStale finds and optionally closes orphaned cross-project completions.
+// These are issues from other projects that have Phase: Complete + daemon:ready-review
+// but will never be resolved via orch complete (project merged/archived).
+func runDaemonCleanStale(closeStale bool) error {
+	registry, err := daemon.NewProjectRegistry()
+	if err != nil {
+		return fmt.Errorf("failed to load project registry: %w", err)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	type staleIssue struct {
+		ID         string
+		Title      string
+		ProjectDir string
+		Project    string
+	}
+
+	var stale []staleIssue
+
+	for _, proj := range registry.Projects() {
+		issues, err := daemon.ListIssuesWithLabelForProject("daemon:ready-review", proj.Dir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to scan %s: %v\n", proj.Dir, err)
+			continue
+		}
+
+		for _, issue := range issues {
+			// Only flag cross-project issues (not the current project)
+			if proj.Dir == cwd {
+				continue
+			}
+			stale = append(stale, staleIssue{
+				ID:         issue.ID,
+				Title:      issue.Title,
+				ProjectDir: proj.Dir,
+				Project:    proj.Prefix,
+			})
+		}
+	}
+
+	if len(stale) == 0 {
+		fmt.Println("No stale cross-project completions found.")
+		return nil
+	}
+
+	fmt.Printf("Found %d stale cross-project completion(s):\n\n", len(stale))
+	for _, s := range stale {
+		fmt.Printf("  %s: %s\n    Project: %s (%s)\n", s.ID, s.Title, s.Project, s.ProjectDir)
+	}
+	fmt.Println()
+
+	if !closeStale {
+		fmt.Println("Run with --close to close these issues.")
+		return nil
+	}
+
+	closed := 0
+	for _, s := range stale {
+		if err := daemon.CloseIssueForProject(s.ID, s.ProjectDir, "Closed by orch daemon clean-stale: orphaned cross-project completion"); err != nil {
+			fmt.Fprintf(os.Stderr, "  Failed to close %s: %v\n", s.ID, err)
+			continue
+		}
+		fmt.Printf("  Closed: %s\n", s.ID)
+		closed++
+	}
+
+	fmt.Printf("\nClosed %d/%d stale completions.\n", closed, len(stale))
+
+	// Also send resume signal to unblock daemon
+	if closed > 0 {
+		if err := daemon.WriteResumeSignal(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to send resume signal: %v\n", err)
+		} else {
+			fmt.Println("Resume signal sent to daemon.")
+		}
+	}
 
 	return nil
 }

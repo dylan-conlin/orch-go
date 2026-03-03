@@ -41,7 +41,7 @@ func FromUserConfig(cfg *userconfig.Config) Config {
 		RecoveryIdleThreshold: defaults.RecoveryIdleThreshold,
 		RecoveryRateLimit:     defaults.RecoveryRateLimit,
 
-		VerificationPauseThreshold: defaults.VerificationPauseThreshold,
+		VerificationPauseThreshold: cfg.DaemonVerificationPauseThreshold(),
 
 		KnowledgeHealthEnabled:   defaults.KnowledgeHealthEnabled,
 		KnowledgeHealthInterval:  defaults.KnowledgeHealthInterval,

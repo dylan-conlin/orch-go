@@ -549,3 +549,85 @@ func UpdateBeadsStatus(beadsID, status string) error {
 	// Fallback to CLI if daemon unavailable
 	return beads.FallbackUpdate(beadsID, status)
 }
+
+// ListIssuesWithLabelForProject lists open/in_progress issues with a label in a specific project.
+func ListIssuesWithLabelForProject(label, projectDir string) ([]Issue, error) {
+	if projectDir == "" {
+		return ListIssuesWithLabel(label)
+	}
+
+	// Try RPC first
+	socketPath, err := beads.FindSocketPath(projectDir)
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			beadsIssues, err := client.List(&beads.ListArgs{
+				LabelsAny: []string{label},
+				Limit:     0,
+			})
+			if err == nil {
+				var filtered []Issue
+				for _, issue := range convertBeadsIssues(beadsIssues) {
+					if issue.Status == "open" || issue.Status == "in_progress" {
+						filtered = append(filtered, issue)
+					}
+				}
+				return filtered, nil
+			}
+		}
+	}
+
+	// Fallback to CLI
+	cmd := exec.Command("bd", "list", "--json", "--limit", "0", "-l", label)
+	cmd.Env = os.Environ()
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run bd list -l %s in %s: %w", label, projectDir, err)
+	}
+
+	var issues []Issue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return nil, fmt.Errorf("failed to parse issues: %w", err)
+	}
+
+	var filtered []Issue
+	for _, issue := range issues {
+		if issue.Status == "open" || issue.Status == "in_progress" {
+			filtered = append(filtered, issue)
+		}
+	}
+	return filtered, nil
+}
+
+// CloseIssueForProject closes a beads issue in a specific project directory.
+func CloseIssueForProject(beadsID, projectDir, reason string) error {
+	if projectDir == "" {
+		// Fallback to simple bd close
+		args := []string{"close", beadsID}
+		if reason != "" {
+			args = append(args, "--reason", reason)
+		}
+		cmd := exec.Command("bd", args...)
+		cmd.Env = os.Environ()
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("bd close failed: %w: %s", err, string(output))
+		}
+		return nil
+	}
+
+	args := []string{"close", beadsID}
+	if reason != "" {
+		args = append(args, "--reason", reason)
+	}
+	cmd := exec.Command("bd", args...)
+	cmd.Env = os.Environ()
+	cmd.Dir = projectDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd close failed in %s: %w: %s", projectDir, err, string(output))
+	}
+	return nil
+}
