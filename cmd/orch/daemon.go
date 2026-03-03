@@ -519,6 +519,32 @@ func runDaemonLoop() error {
 				fmt.Printf("[%s] Verification pause: %d unverified completions, threshold is %d%s\n",
 					timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
 				fmt.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work to continue\n", timestamp)
+
+				// Write status file during pause so last_poll stays fresh
+				// and status correctly shows "paused" instead of going stale.
+				pauseStatus := daemon.DaemonStatus{
+					PID: os.Getpid(),
+					Capacity: daemon.CapacityStatus{
+						Max:       config.MaxAgents,
+						Active:    d.ActiveCount(),
+						Available: d.AvailableSlots(),
+					},
+					LastPoll:       time.Now(),
+					LastSpawn:      lastSpawn,
+					LastCompletion: lastCompletion,
+					Status:         "paused",
+					Verification: &daemon.VerificationStatusSnapshot{
+						IsPaused:                     true,
+						CompletionsSinceVerification: verifyStatus.CompletionsSinceVerification,
+						Threshold:                    verifyStatus.Threshold,
+						LastVerification:             verifyStatus.LastVerification,
+						RemainingBeforePause:         verifyStatus.RemainingBeforePause(),
+					},
+				}
+				if err := daemon.WriteStatusFile(pauseStatus); err != nil && daemonVerbose {
+					fmt.Fprintf(os.Stderr, "Warning: failed to write status file: %v\n", err)
+				}
+
 				time.Sleep(config.PollInterval)
 				continue
 			}
@@ -654,6 +680,12 @@ func runDaemonLoop() error {
 				completionFailureSnapshot = &snapshot
 			}
 		}
+
+		// Refresh pollTime to reflect actual status write time.
+		// Processing (reconciliation, periodic tasks, completions, ready count)
+		// between cycle start and here can take significant time, causing
+		// DetermineStatus to see a stale pollTime and return "stalled" incorrectly.
+		pollTime = time.Now()
 
 		status := daemon.DaemonStatus{
 			PID: os.Getpid(),
