@@ -1,52 +1,60 @@
-task: "Coaching hooks — investigation drift and spawn ceremony nudges"
-beads_id: orch-go-g1xc
+task: "Automated system health properties — extend orch doctor with time-series tracking"
+beads_id: orch-go-bduk
 date: 2026-03-03
 
 deliverables:
-  - name: "Investigation drift coaching hook"
+  - name: "pkg/health package — snapshot types, JSONL storage, trend analysis"
     files:
-      - ~/.orch/hooks/nudge-orchestrator-investigation-drift.py
+      - pkg/health/health.go
+      - pkg/health/health_test.go
     verified: true
-    evidence: "pytest test_nudge_orchestrator_investigation_drift.py -v → 20/20 pass"
+    evidence: "go test ./pkg/health/ -v → 13/13 pass (0.006s)"
 
-  - name: "Spawn ceremony coaching hook"
+  - name: "doctor --health command — metric collection, display, alerts"
     files:
-      - ~/.orch/hooks/nudge-orchestrator-spawn-context.py
+      - cmd/orch/doctor_health.go
+      - cmd/orch/doctor_health_test.go
     verified: true
-    evidence: "pytest test_nudge_orchestrator_spawn_context.py -v → 25/25 pass"
+    evidence: "go test ./cmd/orch/ -run 'TestCountCommitTypes|TestTrendLabel|TestCollectHealthSnapshot|TestOutputHealth' -v → 8/8 pass"
 
-  - name: "Tests for both hooks"
+  - name: "doctor.go wiring — --health and --health-json flags"
     files:
-      - ~/.orch/hooks/tests/test_nudge_orchestrator_investigation_drift.py
-      - ~/.orch/hooks/tests/test_nudge_orchestrator_spawn_context.py
+      - cmd/orch/doctor.go
     verified: true
-
-  - name: "Hook registration in settings.json"
-    status: "MANUAL STEP REQUIRED"
-    reason: "settings.json has uchg flag, cannot be modified by agent"
-    manual_step: |
-      Add to ~/.claude/settings.json:
-
-      Under hooks.PreToolUse[matcher=Bash].hooks:
-        {"type": "command", "command": "$HOME/.orch/hooks/nudge-orchestrator-spawn-context.py", "timeout": 10}
-
-      Under hooks.PreToolUse[matcher=Read|Edit|Write].hooks:
-        {"type": "command", "command": "$HOME/.orch/hooks/nudge-orchestrator-investigation-drift.py", "timeout": 10}
+    evidence: "go build ./cmd/orch/ && go vet ./cmd/orch/ → clean"
 
 tests:
-  python:
-    command: "cd ~/.orch/hooks && python3 -m pytest tests/test_nudge_orchestrator_investigation_drift.py tests/test_nudge_orchestrator_spawn_context.py -v"
-    result: "45/45 passed in 0.14s"
+  go:
+    command: "go test ./pkg/health/ ./cmd/orch/ -count=1"
+    result: "both packages pass (pkg/health 0.006s, cmd/orch 3.590s)"
 
-notes:
-  - "Both hooks use allow+context pattern (coaching nudge, not deny)"
-  - "Investigation drift: tracks sequential .kb/investigation reads, nudges at 3+, escalates at 6+"
-  - "Spawn ceremony: detects orch spawn without prior kb context, coaching reminder"
-  - "State tracked via ~/.orch/hook-state/ temp files keyed by CLAUDE_SESSION_ID"
-  - "Spawn ceremony resets investigation drift counter (investigation→spawn transition)"
-  - "Escape hatch: --skip-artifact-check bypasses spawn ceremony nudge"
-  - "Only triggers for orchestrator/meta-orchestrator sessions (workers pass through)"
+smoke_tests:
+  - command: "go run ./cmd/orch/ doctor --health"
+    result: "Displays metric table with 6 metrics, trend arrows, and alerts"
+  - command: "go run ./cmd/orch/ doctor --health-json"
+    result: "Valid JSON with current snapshot, trends, and alerts array"
+
+metrics_tracked:
+  - "open_issues: total open issues from bd"
+  - "blocked_issues: blocked issues from bd"
+  - "stale_issues: open issues with no activity in 14+ days"
+  - "orphaned_issues: open issues with no activity in 7+ days"
+  - "bloated_files: source files over 800 lines (accretion threshold)"
+  - "fix_feat_ratio: ratio of fix: to feat: commits in 28-day window"
+
+alert_thresholds:
+  - "fix_feat_ratio > 2.0 → critical (maintenance mode)"
+  - "fix_feat_ratio > 1.5 → warn (approaching maintenance mode)"
+  - "stale_issues trending up and > 5 → warn"
+  - "bloated_files trending up → warn"
+  - "blocked/open ratio > 30% → warn (dependency bottleneck)"
+  - "orphaned_issues > 10 → warn"
+
+storage:
+  file: "~/.orch/health-snapshots.jsonl"
+  format: "JSONL (one JSON line per snapshot)"
+  retention: "append-only, no pruning yet"
 
 leave_it_better:
-  knowledge: "No new quick entries needed — hooks implement design from orch-go-89at"
+  knowledge: "kb quick decide: health snapshots stored as JSONL (kb-8a18f9)"
   stale_artifacts: "No stale artifacts encountered"

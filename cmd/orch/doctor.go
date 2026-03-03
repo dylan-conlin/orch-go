@@ -43,6 +43,8 @@ Use --config to detect drift between config.yaml and external config (plist).
 Use --docs to check for undocumented CLI commands (doc debt).
 Use --watch to continuously monitor services and send desktop notifications on failures.
 Use --defect-scan to scan codebase for Class 2 (Multi-Backend Blindness) and Class 5 (Contradictory Authority Signals) patterns.
+Use --health to track system health invariants over time with trend analysis.
+Use --health-json for machine-readable health output.
 
 Examples:
   orch doctor              # Check service health
@@ -53,7 +55,9 @@ Examples:
   orch doctor --config     # Check for config drift
   orch doctor --docs       # Check for undocumented CLI commands
   orch doctor --watch      # Continuous monitoring with notifications
-  orch doctor --defect-scan # Scan for Class 2 and Class 5 defect patterns`,
+  orch doctor --defect-scan # Scan for Class 2 and Class 5 defect patterns
+  orch doctor --health     # Track health invariants with trends and alerts
+  orch doctor --health-json # Health report as JSON`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDoctor()
 	},
@@ -135,6 +139,11 @@ func runDoctor() error {
 	// Handle --defect-scan flag for static analysis
 	if doctorDefectScan {
 		return runDefectScan()
+	}
+
+	// Handle --health or --health-json flag for time-series health monitoring
+	if doctorHealth || doctorHealthJSON {
+		return runDoctorHealth()
 	}
 
 	fmt.Println("orch doctor - Service Health Check")
