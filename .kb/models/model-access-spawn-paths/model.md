@@ -1,8 +1,8 @@
 # Model: Model Access and Spawn Paths
 
 **Domain:** Agent Spawning / Model Selection
-**Last Updated:** 2026-02-28
-**Synthesized From:** 5 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations) spanning Jan 8-12, 2026. Updated Feb 2026-27-28 via drift probes and model drift agent.
+**Last Updated:** 2026-03-02
+**Synthesized From:** 5 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations) spanning Jan 8-12, 2026. Updated Feb-Mar 2026 via drift probes, model drift agent, and token lifecycle probe.
 
 ---
 
@@ -106,6 +106,43 @@ This is the primary routing mechanism since the Anthropic OAuth ban.
 - Keywords (22): "opencode", "orch-go", "pkg/spawn", "pkg/opencode", "pkg/verify", "pkg/state", "cmd/orch", "spawn_cmd.go", "serve.go", "status.go", "main.go", "dashboard", "agent-card", "agents.ts", "daemon.ts", "skillc", "skill.yaml", "SPAWN_CONTEXT", "spawn system", "spawn logic", "spawn template", "orchestration infrastructure", "orchestration system"
 - Auto-applies `--backend claude` (which implies tmux) when no higher-priority setting overrides
 - Prevents agents from killing themselves (e.g., restarting OpenCode during spawn)
+
+### Token Lifecycle
+
+**Three independent auth systems maintain separate refresh token chains:**
+
+```
+┌─────────────────────────────────────────────────────┐
+│              Anthropic Auth Server                    │
+│  - Multiple refresh token chains per user            │
+│  - Access tokens: 8-hour lifetime (28800s)           │
+│  - Refresh tokens: rotate on every use               │
+│  - No grace period after rotation                    │
+└──────────┬─────────────────────────┬────────────────┘
+           │                         │
+      ┌────▼────┐              ┌────▼────┐
+      │ Chain A  │              │ Chain B  │
+      │ (orch)   │              │(Claude)  │
+      └────┬────┘              └────┬────┘
+           │                         │
+      ┌────▼──────────┐        ┌────▼──────────────────┐
+      │ accounts.yaml  │        │ macOS Keychain         │
+      │ ↓ syncs to     │        │ Claude Code-credentials│
+      │ auth.json      │        │ (per config dir)       │
+      └────────────────┘        └───────────────────────┘
+```
+
+| Property | Value | Evidence |
+|----------|-------|----------|
+| Access token lifetime | 8 hours (28800s) | API `expires_in` response field |
+| Refresh token rotation | Every use | Old token invalidated immediately on refresh |
+| Grace period after rotation | **None** | Old token → `invalid_grant` immediately |
+| Chain death threshold | Between 1-37 days unused | 37-day-old chain confirmed dead |
+| Cross-system independence | Yes | Different refresh tokens across all 3 systems |
+
+**Keepalive mechanism:** `orch usage` calls `GetAccountCapacity()` which calls `RefreshOAuthToken()` for every account, rotating all orch-managed chains. Running `orch usage` daily (or via launchd) keeps all orch account chains alive indefinitely.
+
+**Claude CLI keepalive:** Claude CLI auto-refreshes its keychain tokens when sessions start. Regular agent spawning keeps chains alive. Risk: less-used accounts (e.g., personal 5x) may go unused long enough for chain death.
 
 ### State Transitions
 
@@ -219,7 +256,31 @@ Tmux session, highest quality
 
 **Lesson:** Fingerprinting is more sophisticated than headers alone
 
-### Failure Mode 3: Infrastructure Work Kills Itself
+### Failure Mode 3: Token Chain Death (Stale Unused Account)
+
+**Symptom:** `invalid_grant` error when spawning with a specific account
+
+**Root Cause:** Account's refresh token chain went unused for too long (threshold between 1-37 days). Anthropic revokes the chain server-side.
+
+**Impact:** All systems holding that chain's token fail silently on next refresh attempt.
+
+**Recovery:** Browser re-auth (manual, cannot be automated). For orch: `orch account switch <name>` after re-auth. For Claude CLI: `claude --login` with appropriate `CLAUDE_CONFIG_DIR`.
+
+**Prevention:** `orch usage` as daily keepalive (refreshes all orch-managed chains). Regular agent spawning keeps Claude CLI chains alive.
+
+### Failure Mode 4: Token Chain Divergence (Cross-System Sharing)
+
+**Symptom:** One auth system suddenly gets `invalid_grant` after the other system works fine
+
+**Root Cause:** Two systems end up with the same refresh token (e.g., copying keychain token into accounts.yaml). One system refreshes, rotating the token. The other system's copy is now permanently stale.
+
+**Impact:** Whichever system refreshes first wins; the other's chain is broken.
+
+**Recovery:** Re-sync from the system that refreshed successfully, or browser re-auth.
+
+**Prevention:** Never share refresh tokens between orch (accounts.yaml) and Claude CLI (keychain). They must maintain independent chains.
+
+### Failure Mode 5: Infrastructure Work Kills Itself
 
 **Symptom:** Agent fixing OpenCode server crashes mid-execution
 
@@ -368,7 +429,27 @@ Community discovered workarounds for Anthropic's OAuth blocking:
 **This enables:** Stable, maintenance-free spawn system without workaround churn
 **This constrains:** Cannot use Opus via API regardless of community discoveries
 
-### Constraint 7: Cost Tracking Missing for Sonnet Usage
+### Constraint 7: Never Share Tokens Between Orch and Claude CLI
+
+**Why independent chains matter:**
+
+Orch (accounts.yaml → auth.json) and Claude CLI (macOS Keychain) maintain separate refresh token chains with Anthropic. Refresh tokens rotate on every use — old tokens are immediately invalidated with no grace period.
+
+**If tokens are shared between systems:**
+- System A refreshes, gets new token, old token dies
+- System B still holds old token → `invalid_grant` on next use
+- Whichever refreshes first wins; the other breaks
+
+**Evidence:** Probe `2026-03-02-probe-oauth-token-auto-refresh.md` — confirmed via destructive test (copied keychain token to accounts.yaml, orch rotated it, keychain chain broken).
+
+**Implication for `orch account switch`:** When switching accounts, orch syncs its token to OpenCode's auth.json. This is safe because OpenCode is downstream of orch (reads auth.json, doesn't refresh independently). But orch must NEVER sync tokens to/from Claude CLI's keychain.
+
+**Implication for `GetAccountCapacity()`:** This function refreshes tokens as a side effect. It is currently the only automated keepalive for orch-managed chains. Disabling or bypassing it would cause chain death for inactive accounts.
+
+**This enables:** Both systems refresh independently without breaking each other
+**This constrains:** Cannot consolidate to a single token store; must tolerate token drift between systems
+
+### Constraint 8: Cost Tracking Missing for Sonnet Usage
 
 **Why we don't know current spend:**
 
@@ -489,6 +570,14 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - Agreements gate added to spawn pipeline (non-blocking warning-only)
 - GatherSpawnContext signature extended with `orientationFrame` parameter
 
+**Mar 2, 2026:** Token lifecycle documented
+- Three independent auth systems mapped (accounts.yaml, auth.json, macOS Keychain)
+- Access token lifetime: 8 hours, refresh tokens rotate on every use, no grace period
+- Two new failure modes: chain death (non-use) and chain divergence (cross-system sharing)
+- `orch usage` confirmed as implicit keepalive (refreshes all account chains)
+- Constraint added: never share tokens between orch and Claude CLI
+- Probe: `2026-03-02-probe-oauth-token-auto-refresh.md`
+
 **Feb 27-28, 2026:** Safety gates + environment isolation
 - `--reason` flag required for safety-override flags (`--bypass-triage`, `--force-hotspot`, `--no-track`); min 10 chars, events.jsonl persistence
 - Concurrency gate now counts only running agents (idle excluded) and includes tmux agents (Claude CLI backend)
@@ -539,6 +628,13 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - Anthropic API via OpenCode: Blocked by default (OAuth ban Feb 19, 2026)
 - Non-Anthropic API: Pay-per-token via OpenCode (OpenAI, Google, DeepSeek)
 - Flash models: Blocked entirely (not a cost issue, reliability issue)
+
+**Token lifecycle evidence:**
+- `pkg/account/account.go:RefreshOAuthToken()` - Token refresh via Anthropic OAuth endpoint
+- `pkg/account/account.go:GetAccountCapacity()` - Implicit keepalive (refreshes all accounts)
+- `~/.orch/accounts.yaml` - Orch-managed refresh token chains
+- `~/.local/share/opencode/auth.json` - OpenCode active session tokens (synced from orch)
+- macOS Keychain `Claude Code-credentials*` entries - Claude CLI independent token chains
 
 **Failure evidence:**
 - Zombie agents: orch-go-mo0ja, orch-go-pzi2i, orch-go-aoei0 (Jan 8)
