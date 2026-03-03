@@ -127,6 +127,27 @@ func ReadPIDFromLockFileAt(lockPath string) int {
 	return pid
 }
 
+// IsDaemonRunningFromLock checks the PID lock file for a running daemon process.
+// Returns (true, pid) if the lock file contains a PID for a live process.
+// Returns (false, 0) if the lock file doesn't exist, is empty, or has a dead PID.
+// Used as a fallback when the status file is missing or stale (e.g., after SIGKILL
+// where the deferred status file cleanup was skipped).
+func IsDaemonRunningFromLock() (bool, int) {
+	return IsDaemonRunningFromLockAt(PIDLockPath())
+}
+
+// IsDaemonRunningFromLockAt checks a PID lock file at the given path.
+func IsDaemonRunningFromLockAt(lockPath string) (bool, int) {
+	pid := ReadPIDFromLockFileAt(lockPath)
+	if pid <= 0 {
+		return false, 0
+	}
+	if !isProcessAlive(pid) {
+		return false, 0
+	}
+	return true, pid
+}
+
 // readPIDFromFile reads the PID from an already-open file.
 func readPIDFromFile(f *os.File) int {
 	f.Seek(0, 0)

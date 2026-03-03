@@ -157,14 +157,31 @@ func ReadStatusFile() (*DaemonStatus, error) {
 // ReadValidatedStatusFile reads the daemon status file and validates that the
 // daemon process is actually alive. Returns nil, nil if the file exists but
 // the daemon process is dead (stale file from unclean shutdown).
+// Falls back to PID lock file when status file is missing or stale,
+// returning a minimal "starting" status for the SIGKILL restart window.
 func ReadValidatedStatusFile() (*DaemonStatus, error) {
 	status, err := ReadStatusFile()
 	if err != nil {
+		// No status file — check PID lock as fallback (SIGKILL restart window)
+		if running, pid := IsDaemonRunningFromLock(); running {
+			return &DaemonStatus{
+				PID:      pid,
+				Status:   "starting",
+				LastPoll: time.Now(),
+			}, nil
+		}
 		return nil, err
 	}
 
-	// If PID is recorded and the process is dead, the file is stale
+	// If PID is recorded and the process is dead, check for restarted daemon
 	if status.PID > 0 && !isProcessAlive(status.PID) {
+		if running, pid := IsDaemonRunningFromLock(); running && pid != status.PID {
+			return &DaemonStatus{
+				PID:      pid,
+				Status:   "starting",
+				LastPoll: time.Now(),
+			}, nil
+		}
 		return nil, nil
 	}
 

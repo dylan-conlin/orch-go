@@ -16,7 +16,7 @@ type StatusInfo struct {
 	// PID is the daemon process ID (0 if not running).
 	PID int
 
-	// Status is the operational state: "running", "stalled", "paused", or "stopped".
+	// Status is the operational state: "running", "stalled", "paused", "starting", or "stopped".
 	Status string
 
 	// Capacity holds worker pool capacity info.
@@ -47,6 +47,9 @@ type StatusInfo struct {
 // GetStatusInfo reads the daemon status file with PID liveness validation.
 // Returns StatusInfo with Running=false if daemon is not running.
 // Detects stale status files from crashed daemons.
+// Falls back to PID lock file when status file is missing or stale,
+// covering the SIGKILL restart window where the new daemon hasn't written
+// its first status update yet.
 func GetStatusInfo() StatusInfo {
 	info := StatusInfo{
 		Status: "stopped",
@@ -55,13 +58,28 @@ func GetStatusInfo() StatusInfo {
 	// Try to read status file
 	status, err := ReadStatusFile()
 	if err != nil {
-		// No status file — daemon not running
+		// No status file — check PID lock file as fallback.
+		// Daemon may be starting after SIGKILL (hasn't written status yet).
+		if running, pid := IsDaemonRunningFromLock(); running {
+			info.Running = true
+			info.PID = pid
+			info.Status = "starting"
+			return info
+		}
 		return info
 	}
 
 	// Check PID liveness
 	if status.PID > 0 && !isProcessAlive(status.PID) {
-		// Stale file from crashed daemon
+		// Status file PID is dead — but a new daemon may have started
+		// (SIGKILL restart: old status file remains, new PID lock written).
+		if running, pid := IsDaemonRunningFromLock(); running && pid != status.PID {
+			info.Running = true
+			info.PID = pid
+			info.Status = "starting"
+			return info
+		}
+		// Truly stale — no new daemon detected
 		info.StaleFile = true
 		info.PID = status.PID
 		return info
@@ -90,6 +108,10 @@ func FormatStatusInfo(info StatusInfo) string {
 
 	if !info.Running {
 		return "Daemon: stopped"
+	}
+
+	if info.Status == "starting" {
+		return fmt.Sprintf("Daemon: starting (PID %d)", info.PID)
 	}
 
 	result := fmt.Sprintf("Daemon: %s (PID %d)\n", info.Status, info.PID)

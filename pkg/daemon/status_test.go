@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -424,5 +425,77 @@ func TestDetermineStatus_VerificationPause(t *testing.T) {
 	got := DetermineStatus(stalledPoll, pollInterval, true)
 	if got != "paused" {
 		t.Errorf("Paused should take precedence over stalled, got %q", got)
+	}
+}
+
+// --- SIGKILL restart: ReadValidatedStatusFile with PID lock fallback ---
+
+func TestReadValidatedStatusFile_SIGKILLRestart_StaleStatusLiveLock(t *testing.T) {
+	// SIGKILL scenario: status file has dead PID, PID lock has live PID.
+	// Should return synthetic "starting" status instead of nil.
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Write stale status file (old daemon, dead PID)
+	status := DaemonStatus{
+		PID:      999999,
+		Status:   "running",
+		LastPoll: time.Now().Add(-10 * time.Minute),
+	}
+	if err := WriteStatusFile(status); err != nil {
+		t.Fatalf("WriteStatusFile failed: %v", err)
+	}
+
+	// Write PID lock file with live PID (new daemon)
+	lockPath := filepath.Join(tmpDir, ".orch", "daemon.pid")
+	if err := os.WriteFile(lockPath, []byte(fmt.Sprintf("%d", os.Getpid())), 0644); err != nil {
+		t.Fatalf("failed to write PID lock: %v", err)
+	}
+
+	validated, err := ReadValidatedStatusFile()
+	if err != nil {
+		t.Fatalf("ReadValidatedStatusFile returned error: %v", err)
+	}
+	if validated == nil {
+		t.Fatal("ReadValidatedStatusFile should return starting status, not nil")
+	}
+	if validated.Status != "starting" {
+		t.Errorf("Status = %q, want 'starting'", validated.Status)
+	}
+	if validated.PID != os.Getpid() {
+		t.Errorf("PID = %d, want %d", validated.PID, os.Getpid())
+	}
+}
+
+func TestReadValidatedStatusFile_SIGKILLRestart_NoStatusLiveLock(t *testing.T) {
+	// No status file, but PID lock has live PID (daemon starting up).
+	// Should return synthetic "starting" status instead of error.
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// No status file, but create PID lock with live PID
+	orchDir := filepath.Join(tmpDir, ".orch")
+	os.MkdirAll(orchDir, 0755)
+	lockPath := filepath.Join(orchDir, "daemon.pid")
+	if err := os.WriteFile(lockPath, []byte(fmt.Sprintf("%d", os.Getpid())), 0644); err != nil {
+		t.Fatalf("failed to write PID lock: %v", err)
+	}
+
+	validated, err := ReadValidatedStatusFile()
+	if err != nil {
+		t.Fatalf("ReadValidatedStatusFile returned error: %v", err)
+	}
+	if validated == nil {
+		t.Fatal("ReadValidatedStatusFile should return starting status, not nil")
+	}
+	if validated.Status != "starting" {
+		t.Errorf("Status = %q, want 'starting'", validated.Status)
+	}
+	if validated.PID != os.Getpid() {
+		t.Errorf("PID = %d, want %d", validated.PID, os.Getpid())
 	}
 }

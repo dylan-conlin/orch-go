@@ -1,7 +1,9 @@
 package daemon
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -147,6 +149,194 @@ func TestFormatStatusInfo_Paused(t *testing.T) {
 	result := FormatStatusInfo(info)
 	if !strings.Contains(result, "PAUSED") {
 		t.Errorf("FormatStatusInfo should show PAUSED for verification pause, got %q", result)
+	}
+}
+
+// --- SIGKILL restart tests: PID lock file fallback ---
+
+func TestGetStatusInfo_SIGKILLRestart_StaleStatusLiveLock(t *testing.T) {
+	// Simulates: old daemon SIGKILL'd (status file has dead PID),
+	// new daemon started (PID lock has current/live PID).
+	// Expected: status = "starting", not "stopped (stale)".
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Write stale status file from old daemon (dead PID)
+	status := DaemonStatus{
+		PID:      999999, // Dead PID
+		Status:   "running",
+		LastPoll: time.Now().Add(-10 * time.Minute),
+		Capacity: CapacityStatus{Max: 3, Active: 1, Available: 2},
+	}
+	if err := WriteStatusFile(status); err != nil {
+		t.Fatalf("WriteStatusFile failed: %v", err)
+	}
+
+	// Write PID lock file with live PID (simulates new daemon after restart)
+	lockPath := filepath.Join(tmpDir, ".orch", "daemon.pid")
+	if err := os.WriteFile(lockPath, []byte(fmt.Sprintf("%d", os.Getpid())), 0644); err != nil {
+		t.Fatalf("failed to write PID lock: %v", err)
+	}
+
+	info := GetStatusInfo()
+	if !info.Running {
+		t.Error("Should be running — new daemon detected via PID lock")
+	}
+	if info.StaleFile {
+		t.Error("Should not be stale — new daemon is starting")
+	}
+	if info.Status != "starting" {
+		t.Errorf("Status = %q, want 'starting'", info.Status)
+	}
+	if info.PID != os.Getpid() {
+		t.Errorf("PID = %d, want %d (from lock file)", info.PID, os.Getpid())
+	}
+}
+
+func TestGetStatusInfo_SIGKILLRestart_NoStatusLiveLock(t *testing.T) {
+	// Simulates: stale status file was already cleaned up,
+	// but new daemon is running (PID lock has live PID).
+	// Expected: status = "starting", not "stopped".
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// No status file exists, but PID lock file has live PID
+	orchDir := filepath.Join(tmpDir, ".orch")
+	os.MkdirAll(orchDir, 0755)
+	lockPath := filepath.Join(orchDir, "daemon.pid")
+	if err := os.WriteFile(lockPath, []byte(fmt.Sprintf("%d", os.Getpid())), 0644); err != nil {
+		t.Fatalf("failed to write PID lock: %v", err)
+	}
+
+	info := GetStatusInfo()
+	if !info.Running {
+		t.Error("Should be running — daemon detected via PID lock")
+	}
+	if info.Status != "starting" {
+		t.Errorf("Status = %q, want 'starting'", info.Status)
+	}
+	if info.PID != os.Getpid() {
+		t.Errorf("PID = %d, want %d", info.PID, os.Getpid())
+	}
+}
+
+func TestGetStatusInfo_TrulyStopped_StaleStatusDeadLock(t *testing.T) {
+	// Simulates: daemon crashed, no restart. Both status file and PID lock
+	// have dead PIDs. Expected: stale file detected, truly stopped.
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Write stale status file
+	status := DaemonStatus{
+		PID:    999999,
+		Status: "running",
+	}
+	if err := WriteStatusFile(status); err != nil {
+		t.Fatalf("WriteStatusFile failed: %v", err)
+	}
+
+	// Write PID lock file with same dead PID
+	lockPath := filepath.Join(tmpDir, ".orch", "daemon.pid")
+	if err := os.WriteFile(lockPath, []byte("999999"), 0644); err != nil {
+		t.Fatalf("failed to write PID lock: %v", err)
+	}
+
+	info := GetStatusInfo()
+	if info.Running {
+		t.Error("Should not be running — both status and lock have dead PID")
+	}
+	if !info.StaleFile {
+		t.Error("Should detect stale file")
+	}
+}
+
+func TestGetStatusInfo_TrulyStopped_StaleStatusNoLock(t *testing.T) {
+	// Simulates: daemon stopped gracefully (lock removed), but status
+	// file cleanup failed. Expected: stale file detected.
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Write stale status file with dead PID, no lock file
+	status := DaemonStatus{
+		PID:    999999,
+		Status: "running",
+	}
+	if err := WriteStatusFile(status); err != nil {
+		t.Fatalf("WriteStatusFile failed: %v", err)
+	}
+
+	info := GetStatusInfo()
+	if info.Running {
+		t.Error("Should not be running — no lock file, dead status PID")
+	}
+	if !info.StaleFile {
+		t.Error("Should detect stale file")
+	}
+}
+
+func TestFormatStatusInfo_Starting(t *testing.T) {
+	info := StatusInfo{
+		Running: true,
+		PID:     42,
+		Status:  "starting",
+	}
+	result := FormatStatusInfo(info)
+	if !strings.Contains(result, "starting") {
+		t.Errorf("FormatStatusInfo should show starting, got %q", result)
+	}
+	if !strings.Contains(result, "42") {
+		t.Errorf("FormatStatusInfo should show PID, got %q", result)
+	}
+	// Should NOT show capacity (not yet available during startup)
+	if strings.Contains(result, "agents active") {
+		t.Errorf("FormatStatusInfo should not show capacity during startup, got %q", result)
+	}
+}
+
+func TestIsDaemonRunningFromLock_LiveProcess(t *testing.T) {
+	tmpDir := t.TempDir()
+	lockPath := filepath.Join(tmpDir, "daemon.pid")
+
+	// Write current PID
+	os.WriteFile(lockPath, []byte(fmt.Sprintf("%d", os.Getpid())), 0644)
+
+	running, pid := IsDaemonRunningFromLockAt(lockPath)
+	if !running {
+		t.Error("Should detect running daemon from lock file")
+	}
+	if pid != os.Getpid() {
+		t.Errorf("PID = %d, want %d", pid, os.Getpid())
+	}
+}
+
+func TestIsDaemonRunningFromLock_DeadProcess(t *testing.T) {
+	tmpDir := t.TempDir()
+	lockPath := filepath.Join(tmpDir, "daemon.pid")
+
+	// Write dead PID
+	os.WriteFile(lockPath, []byte("999999"), 0644)
+
+	running, _ := IsDaemonRunningFromLockAt(lockPath)
+	if running {
+		t.Error("Should not detect running daemon for dead PID")
+	}
+}
+
+func TestIsDaemonRunningFromLock_NoFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	lockPath := filepath.Join(tmpDir, "daemon.pid")
+
+	running, _ := IsDaemonRunningFromLockAt(lockPath)
+	if running {
+		t.Error("Should not detect running daemon when no lock file")
 	}
 }
 
