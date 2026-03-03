@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -278,6 +279,94 @@ func TestDaemon_ListCompletedAgents_LazyRegistryWiring(t *testing.T) {
 
 	if !registryWired {
 		t.Error("ListCompletedAgents should lazily wire ProjectRegistry into defaultCompletionFinder")
+	}
+}
+
+func TestCompletedAgent_ProjectDirField(t *testing.T) {
+	// Verify ProjectDir is preserved on CompletedAgent
+	agent := CompletedAgent{
+		BeadsID:       "other-proj-123",
+		Title:         "Cross-project agent",
+		Status:        "in_progress",
+		PhaseSummary:  "Done",
+		WorkspacePath: "/path/to/other-proj/.orch/workspace/og-test",
+		ProjectDir:    "/path/to/other-proj",
+	}
+
+	if agent.ProjectDir != "/path/to/other-proj" {
+		t.Errorf("ProjectDir = %q, want '/path/to/other-proj'", agent.ProjectDir)
+	}
+}
+
+func TestCompletedAgent_ProjectDirEmpty_ForLocalProject(t *testing.T) {
+	// Local project agents have empty ProjectDir (falls back to config.ProjectDir)
+	agent := CompletedAgent{
+		BeadsID:    "orch-go-123",
+		Title:      "Local agent",
+		ProjectDir: "",
+	}
+
+	if agent.ProjectDir != "" {
+		t.Errorf("Local agent ProjectDir should be empty, got %q", agent.ProjectDir)
+	}
+}
+
+func TestProcessCompletion_UsesAgentProjectDir(t *testing.T) {
+	// Verify that ProcessCompletion uses agent.ProjectDir over config.ProjectDir.
+	// We can't run the full verification (needs beads), but we can test
+	// that the effective project dir logic works through the error message.
+	d := &Daemon{}
+
+	agent := CompletedAgent{
+		BeadsID:    "other-proj-456",
+		Title:      "Cross-project task",
+		ProjectDir: "/nonexistent/cross-project/dir",
+	}
+
+	config := CompletionConfig{
+		ProjectDir: "/daemon/home/dir",
+	}
+
+	// ProcessCompletion will fail because the dir doesn't exist,
+	// but the error should reference the agent's project dir, not config.ProjectDir
+	result := d.ProcessCompletion(agent, config)
+	if result.Error == nil {
+		t.Fatal("expected error from ProcessCompletion with nonexistent dir")
+	}
+
+	// The error should mention the cross-project dir, not the daemon home dir
+	errMsg := result.Error.Error()
+	if !strings.Contains(errMsg, "/nonexistent/cross-project/dir") {
+		t.Errorf("error should reference agent's ProjectDir, got: %s", errMsg)
+	}
+	if strings.Contains(errMsg, "/daemon/home/dir") {
+		t.Errorf("error should NOT reference config.ProjectDir, got: %s", errMsg)
+	}
+}
+
+func TestProcessCompletion_FallsBackToConfigProjectDir(t *testing.T) {
+	// When agent.ProjectDir is empty, should fall back to config.ProjectDir
+	d := &Daemon{}
+
+	agent := CompletedAgent{
+		BeadsID:    "orch-go-789",
+		Title:      "Local task",
+		ProjectDir: "", // empty = local project
+	}
+
+	config := CompletionConfig{
+		ProjectDir: "/nonexistent/daemon/home",
+	}
+
+	result := d.ProcessCompletion(agent, config)
+	if result.Error == nil {
+		t.Fatal("expected error from ProcessCompletion with nonexistent dir")
+	}
+
+	// The error should reference config.ProjectDir as the fallback
+	errMsg := result.Error.Error()
+	if !strings.Contains(errMsg, "/nonexistent/daemon/home") {
+		t.Errorf("error should reference config.ProjectDir as fallback, got: %s", errMsg)
 	}
 }
 

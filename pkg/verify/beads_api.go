@@ -337,6 +337,48 @@ func AddLabel(beadsID, label string) error {
 	return nil
 }
 
+// AddLabelWithDir adds a label to a beads issue in a specific project directory.
+// When projectDir is non-empty, it overrides beads.DefaultDir for this operation.
+// This is needed for cross-project daemon operations where the beads issue lives
+// in a different project than the daemon's working directory.
+func AddLabelWithDir(beadsID, label, projectDir string) error {
+	// Determine effective directory
+	effectiveDir := projectDir
+	if effectiveDir == "" {
+		effectiveDir = beads.DefaultDir
+	}
+
+	// Try RPC client first with auto-reconnect
+	socketPath, err := beads.FindSocketPath(effectiveDir)
+	if err == nil {
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if effectiveDir != "" {
+			opts = append(opts, beads.WithCwd(effectiveDir))
+		}
+		client := beads.NewClient(socketPath, opts...)
+		if connErr := client.Connect(); connErr == nil {
+			defer client.Close()
+			err := client.AddLabel(beadsID, label)
+			if err == nil {
+				return nil
+			}
+		}
+		// Fall through to CLI fallback on RPC error
+	}
+
+	// Fallback to CLI
+	cmd := exec.Command("bd", "label", "add", beadsID, label)
+	// Set BEADS_NO_DAEMON=1 to avoid daemon timeout in minimal envs
+	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+	if effectiveDir != "" {
+		cmd.Dir = effectiveDir
+	}
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("bd label add failed: %w (output: %s)", err, string(output))
+	}
+	return nil
+}
+
 // RemoveTriageReadyLabel removes the triage:ready label from a beads issue.
 // It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
 // This should be called after orch complete successfully closes the issue, not at spawn time.

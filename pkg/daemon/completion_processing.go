@@ -61,6 +61,7 @@ type CompletedAgent struct {
 	Status        string // open or in_progress
 	PhaseSummary  string // Summary from "Phase: Complete - <summary>"
 	WorkspacePath string // Path to agent workspace (if found)
+	ProjectDir    string // Source project directory (for cross-project operations)
 }
 
 // CompletionResult contains the result of processing a completion.
@@ -181,6 +182,7 @@ func listCompletedAgentsSingleProject(config CompletionConfig, projectDir, works
 			Status:        issue.Status,
 			PhaseSummary:  phaseStatus.Summary,
 			WorkspacePath: workspacePath,
+			ProjectDir:    projectDir,
 		})
 	}
 
@@ -339,19 +341,36 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 		BeadsID: agent.BeadsID,
 	}
 
+	// Use agent's project dir for cross-project operations, fall back to config
+	effectiveProjectDir := agent.ProjectDir
+	if effectiveProjectDir == "" {
+		effectiveProjectDir = config.ProjectDir
+	}
+
 	// Determine tier from workspace if available
 	tier := ""
 	if agent.WorkspacePath != "" {
 		tier = verify.ReadTierFromWorkspace(agent.WorkspacePath)
 	}
 
-	// Run full verification
-	verificationResult, err := verify.VerifyCompletionFull(
+	// Pre-fetch comments using the correct project directory.
+	// This avoids VerifyCompletionFullWithComments re-fetching from the wrong dir
+	// for cross-project agents (the daemon's cwd != the agent's project).
+	comments, err := verify.GetCommentsWithDir(agent.BeadsID, effectiveProjectDir)
+	if err != nil {
+		result.Error = fmt.Errorf("failed to fetch comments for %s (dir=%s): %w", agent.BeadsID, effectiveProjectDir, err)
+		result.Escalation = verify.EscalationFailed
+		return result
+	}
+
+	// Run full verification with pre-fetched comments
+	verificationResult, err := verify.VerifyCompletionFullWithComments(
 		agent.BeadsID,
 		agent.WorkspacePath,
-		config.ProjectDir,
+		effectiveProjectDir,
 		tier,
 		config.ServerURL,
+		comments,
 	)
 	if err != nil {
 		result.Error = fmt.Errorf("verification failed: %w", err)
@@ -374,7 +393,7 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 		synthesis,
 		agent.BeadsID,
 		agent.WorkspacePath,
-		config.ProjectDir,
+		effectiveProjectDir,
 	)
 	result.Escalation = escalation
 
@@ -404,7 +423,7 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 	// Mark issue as ready for review (unless dry run)
 	// Instead of auto-closing, add a label so Dylan can review via orchestrator
 	if !config.DryRun {
-		if err := verify.AddLabel(agent.BeadsID, "daemon:ready-review"); err != nil {
+		if err := verify.AddLabelWithDir(agent.BeadsID, "daemon:ready-review", effectiveProjectDir); err != nil {
 			result.Error = fmt.Errorf("failed to mark ready for review: %w", err)
 			return result
 		}
