@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -206,14 +207,63 @@ func TestFormatRejectedIssues(t *testing.T) {
 
 	output := FormatRejectedIssues(rejected)
 
-	if !strings.Contains(output, "Rejected issues:") {
-		t.Error("FormatRejectedIssues() missing header")
+	if !strings.Contains(output, "Rejected (2 issues):") {
+		t.Errorf("FormatRejectedIssues() missing grouped header, got: %s", output)
 	}
-	if !strings.Contains(output, "proj-1: missing type") {
-		t.Error("FormatRejectedIssues() missing proj-1 entry")
+	if !strings.Contains(output, "missing type (required for skill inference): 1") {
+		t.Errorf("FormatRejectedIssues() missing grouped reason count, got: %s", output)
 	}
-	if !strings.Contains(output, "proj-2: status is in_progress") {
-		t.Error("FormatRejectedIssues() missing proj-2 entry")
+	if !strings.Contains(output, "status is in_progress (already being worked on): 1") {
+		t.Errorf("FormatRejectedIssues() missing grouped reason count, got: %s", output)
+	}
+	// Should NOT contain individual issue IDs
+	if strings.Contains(output, "proj-1:") || strings.Contains(output, "proj-2:") {
+		t.Errorf("FormatRejectedIssues() should not list individual issue IDs, got: %s", output)
+	}
+}
+
+func TestFormatRejectedIssues_GroupsByReason(t *testing.T) {
+	// Simulate many issues rejected for the same reason (the actual bug scenario)
+	rejected := make([]RejectedIssue, 0, 205)
+	for i := 0; i < 180; i++ {
+		rejected = append(rejected, RejectedIssue{
+			Issue:  Issue{ID: fmt.Sprintf("proj-%d", i)},
+			Reason: "missing label 'triage:ready'",
+		})
+	}
+	for i := 0; i < 15; i++ {
+		rejected = append(rejected, RejectedIssue{
+			Issue:  Issue{ID: fmt.Sprintf("prog-%d", i)},
+			Reason: "status is in_progress (already being worked on)",
+		})
+	}
+	for i := 0; i < 10; i++ {
+		rejected = append(rejected, RejectedIssue{
+			Issue:  Issue{ID: fmt.Sprintf("other-%d", i)},
+			Reason: "status is blocked",
+		})
+	}
+
+	output := FormatRejectedIssues(rejected)
+
+	// Should show total count in header
+	if !strings.Contains(output, "Rejected (205 issues):") {
+		t.Errorf("expected 'Rejected (205 issues):' header, got: %s", output)
+	}
+	// Should group by reason with counts
+	if !strings.Contains(output, "missing label 'triage:ready': 180") {
+		t.Errorf("expected grouped count for missing label, got: %s", output)
+	}
+	if !strings.Contains(output, "status is in_progress (already being worked on): 15") {
+		t.Errorf("expected grouped count for in_progress, got: %s", output)
+	}
+	if !strings.Contains(output, "status is blocked: 10") {
+		t.Errorf("expected grouped count for blocked, got: %s", output)
+	}
+	// Output should be compact - only a few lines, not 205
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) > 6 {
+		t.Errorf("expected compact output (<=6 lines), got %d lines", len(lines))
 	}
 }
 

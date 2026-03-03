@@ -906,14 +906,20 @@ func runDaemonDryRun() error {
 		}
 	}
 
-	fmt.Println("[DRY-RUN] Would process the following issue:")
-	fmt.Println()
-
 	// Get current directory for context
 	projectDir, _ := os.Getwd()
 	projectName := filepath.Base(projectDir)
 
+	// Show queue summary: spawnable vs rejected counts
+	spawnableCount := 0
 	if result.Issue != nil {
+		spawnableCount = 1
+	}
+	rejectedCount := len(result.RejectedIssues)
+	fmt.Printf("[DRY-RUN] Queue: %d spawnable, %d rejected\n\n", spawnableCount, rejectedCount)
+
+	if result.Issue != nil {
+		fmt.Println("Next spawn:")
 		fmt.Printf("  Project:  %s\n", projectName)
 		fmt.Println(daemon.FormatPreview(result.Issue))
 		fmt.Printf("\nInferred skill: %s\n", result.Skill)
@@ -930,7 +936,7 @@ func runDaemonDryRun() error {
 		fmt.Println("No spawnable issues in queue")
 	}
 
-	// Display rejected issues with reasons
+	// Display rejected issues grouped by reason
 	if len(result.RejectedIssues) > 0 {
 		fmt.Print(daemon.FormatRejectedIssues(result.RejectedIssues))
 	}
@@ -1027,9 +1033,17 @@ func runDaemonPreview() error {
 	projectDir, _ := os.Getwd()
 	projectName := filepath.Base(projectDir)
 
+	// Show queue summary: spawnable vs rejected counts
+	spawnableCount := 0
+	if result.Issue != nil {
+		spawnableCount = 1
+	}
+	rejectedCount := len(result.RejectedIssues)
+	fmt.Printf("Queue: %d spawnable, %d rejected\n\n", spawnableCount, rejectedCount)
+
 	// Display spawnable issue if available
 	if result.Issue != nil {
-		fmt.Println("Spawnable issues:")
+		fmt.Println("Next spawn:")
 		fmt.Printf("  Project:  %s\n", projectName)
 		fmt.Println(daemon.FormatPreview(result.Issue))
 		fmt.Printf("\nInferred skill: %s\n", result.Skill)
@@ -1043,7 +1057,7 @@ func runDaemonPreview() error {
 		fmt.Println(result.Message)
 	}
 
-	// Display rejected issues with reasons
+	// Display rejected issues grouped by reason
 	if len(result.RejectedIssues) > 0 {
 		fmt.Print(daemon.FormatRejectedIssues(result.RejectedIssues))
 	}

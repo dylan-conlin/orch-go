@@ -216,16 +216,33 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-// FormatRejectedIssues formats rejected issues for display.
+// FormatRejectedIssues formats rejected issues as a grouped summary by reason.
+// Shows counts per rejection reason rather than individual issue IDs,
+// preventing agents from misreading the rejected list as queue depth.
 func FormatRejectedIssues(rejected []RejectedIssue) string {
 	if len(rejected) == 0 {
 		return ""
 	}
 
-	var sb strings.Builder
-	sb.WriteString("\nRejected issues:\n")
+	// Group by reason
+	reasonCounts := make(map[string]int)
+	var reasonOrder []string
 	for _, r := range rejected {
-		sb.WriteString(fmt.Sprintf("  %s: %s\n", r.Issue.ID, r.Reason))
+		if reasonCounts[r.Reason] == 0 {
+			reasonOrder = append(reasonOrder, r.Reason)
+		}
+		reasonCounts[r.Reason]++
+	}
+
+	// Sort by count descending for readability
+	sort.Slice(reasonOrder, func(i, j int) bool {
+		return reasonCounts[reasonOrder[i]] > reasonCounts[reasonOrder[j]]
+	})
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\nRejected (%d issues):\n", len(rejected)))
+	for _, reason := range reasonOrder {
+		sb.WriteString(fmt.Sprintf("  %s: %d\n", reason, reasonCounts[reason]))
 	}
 	return sb.String()
 }
