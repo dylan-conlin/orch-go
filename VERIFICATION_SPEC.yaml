@@ -1,61 +1,52 @@
-task: "Spawn context validation hook — reject spawns missing ORIENTATION_FRAME/INTENT_TYPE"
-beads_id: orch-go-4k4d
+task: "Coaching hooks — investigation drift and spawn ceremony nudges"
+beads_id: orch-go-g1xc
 date: 2026-03-03
 
 deliverables:
-  - name: "--intent flag on orch spawn"
+  - name: "Investigation drift coaching hook"
     files:
-      - cmd/orch/spawn_cmd.go
-      - pkg/orch/spawn_types.go
-      - pkg/orch/spawn_pipeline.go
-      - pkg/spawn/config.go
+      - ~/.orch/hooks/nudge-orchestrator-investigation-drift.py
     verified: true
+    evidence: "pytest test_nudge_orchestrator_investigation_drift.py -v → 20/20 pass"
 
-  - name: "INTENT_TYPE in SPAWN_CONTEXT.md template"
+  - name: "Spawn ceremony coaching hook"
     files:
-      - pkg/spawn/context.go
+      - ~/.orch/hooks/nudge-orchestrator-spawn-context.py
     verified: true
-    evidence: "go test ./pkg/spawn/ -run TestGenerateContext_IntentType -v → 3/3 pass"
+    evidence: "pytest test_nudge_orchestrator_spawn_context.py -v → 25/25 pass"
 
-  - name: "PreToolUse hook (gate-spawn-context-validation.py)"
+  - name: "Tests for both hooks"
     files:
-      - ~/.orch/hooks/gate-spawn-context-validation.py
-    verified: true
-    evidence: "pytest test_gate_spawn_context_validation.py -v → 20/20 pass"
-
-  - name: "Hook tests"
-    files:
-      - ~/.orch/hooks/tests/test_gate_spawn_context_validation.py
+      - ~/.orch/hooks/tests/test_nudge_orchestrator_investigation_drift.py
+      - ~/.orch/hooks/tests/test_nudge_orchestrator_spawn_context.py
     verified: true
 
   - name: "Hook registration in settings.json"
     status: "MANUAL STEP REQUIRED"
-    reason: "settings.json is protected by Claude Code sandbox"
+    reason: "settings.json has uchg flag, cannot be modified by agent"
     manual_step: |
-      Add to ~/.claude/settings.json under hooks.PreToolUse[matcher=Bash].hooks:
-        {
-          "type": "command",
-          "command": "$HOME/.orch/hooks/gate-spawn-context-validation.py",
-          "timeout": 10
-        }
+      Add to ~/.claude/settings.json:
+
+      Under hooks.PreToolUse[matcher=Bash].hooks:
+        {"type": "command", "command": "$HOME/.orch/hooks/nudge-orchestrator-spawn-context.py", "timeout": 10}
+
+      Under hooks.PreToolUse[matcher=Read|Edit|Write].hooks:
+        {"type": "command", "command": "$HOME/.orch/hooks/nudge-orchestrator-investigation-drift.py", "timeout": 10}
 
 tests:
-  go:
-    command: "go test ./pkg/spawn/ -run TestGenerateContext_IntentType -v"
-    result: "3/3 passed"
   python:
-    command: "cd ~/.orch/hooks/tests && python3 -m pytest test_gate_spawn_context_validation.py -v"
-    result: "20/20 passed"
-  build:
-    command: "go build ./cmd/orch/ && go vet ./cmd/orch/"
-    result: "clean"
+    command: "cd ~/.orch/hooks && python3 -m pytest tests/test_nudge_orchestrator_investigation_drift.py tests/test_nudge_orchestrator_spawn_context.py -v"
+    result: "45/45 passed in 0.14s"
 
 notes:
-  - "Valid intent types: build, compare, experience, explore, fix, investigate, produce"
-  - "--no-track spawns are exempt (ad-hoc work)"
-  - "Only gates orchestrator and meta-orchestrator sessions"
-  - "Workers pass through (they don't spawn)"
+  - "Both hooks use allow+context pattern (coaching nudge, not deny)"
+  - "Investigation drift: tracks sequential .kb/investigation reads, nudges at 3+, escalates at 6+"
+  - "Spawn ceremony: detects orch spawn without prior kb context, coaching reminder"
+  - "State tracked via ~/.orch/hook-state/ temp files keyed by CLAUDE_SESSION_ID"
+  - "Spawn ceremony resets investigation drift counter (investigation→spawn transition)"
+  - "Escape hatch: --skip-artifact-check bypasses spawn ceremony nudge"
+  - "Only triggers for orchestrator/meta-orchestrator sessions (workers pass through)"
 
 leave_it_better:
-  knowledge: "kb-5ca788: decision on gate-spawn-context-validation.py enforcement"
+  knowledge: "No new quick entries needed — hooks implement design from orch-go-89at"
   stale_artifacts: "No stale artifacts encountered"
