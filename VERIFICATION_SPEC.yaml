@@ -1,26 +1,26 @@
-task: Install playwright-cli globally and ensure PATH for spawned agents
-beads_id: orch-go-e1rz
+task: Add daily launchd keepalive job for OAuth token refresh
+beads_id: orch-go-5ef9
 date: 2026-03-02
 
 verification:
-  type: config
+  type: config + feature
   deliverables:
-    - path: ~/.bun/bin/playwright-cli
-      description: "Symlink to ~/claude-npm-global/bin/playwright-cli (v1.59.0-alpha)"
-    - path: ~/.bun/bin/playwright
-      description: "Symlink to ~/claude-npm-global/bin/playwright (v1.58.2)"
-    - path: ~/.claude/CLAUDE.md
-      description: "Updated CLI PATH Fix section with playwright symlinks"
+    - path: ~/Library/LaunchAgents/com.orch.token-keepalive.plist
+      description: "launchd plist running orch usage daily at 9am"
+    - path: cmd/orch/automation_cmd.go
+      description: "orch automation list command for job visibility"
   tests_run:
-    - command: "playwright-cli --version"
-      result: "PASS - 1.59.0-alpha-1771104257000"
-    - command: "playwright --version"
-      result: "PASS - Version 1.58.2"
-    - command: "ls -la ~/.bun/bin/playwright-cli"
-      result: "PASS - symlink to ~/claude-npm-global/bin/playwright-cli"
-    - command: "ls -la ~/.bun/bin/playwright"
-      result: "PASS - symlink to ~/claude-npm-global/bin/playwright"
-  manual_verification: []
+    - command: "go build ./cmd/orch/"
+      result: "PASS"
+    - command: "go vet ./cmd/orch/"
+      result: "PASS"
+    - command: "orch automation list"
+      result: "PASS - shows com.orch.token-keepalive as active"
+    - command: "launchctl list com.orch.token-keepalive"
+      result: "PASS - LastExitStatus 0, job loaded"
+  manual_verification:
+    - step: "Check ~/.orch/token-keepalive.log after 9am for orch usage output"
+    - step: "Run orch usage manually to confirm OAuth refresh still works"
   leave_it_better:
-    - knowledge: "kb quick decide - playwright-cli symlinked for spawned agent PATH"
+    - knowledge: "No new knowledge to externalize - implementing probe recommendation"
     - stale_artifacts: "No stale artifacts encountered"
