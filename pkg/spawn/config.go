@@ -157,6 +157,11 @@ type Config struct {
 	// If empty, inferred from skill + issue type at spawn time.
 	VerifyLevel string
 
+	// ReviewTier specifies the orchestrator review tier (auto/scan/review/deep).
+	// Determines how thoroughly the orchestrator reviews completion.
+	// If empty, inferred from skill + issue type at spawn time.
+	ReviewTier string
+
 	// NoTrack opts out of beads issue tracking (ad-hoc work)
 	NoTrack bool
 

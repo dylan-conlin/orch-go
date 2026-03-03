@@ -49,6 +49,8 @@ type SpawnContext struct {
 	SpawnBackend       string
 	Tier               string
 	VerifyLevel        string
+	ReviewTier         string
+	IssueType          string
 	Scope              string
 	HotspotArea          bool
 	HotspotFiles         []string

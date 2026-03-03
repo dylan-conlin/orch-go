@@ -348,6 +348,37 @@ func TestWriteAgentManifest_NoGitBaseline(t *testing.T) {
 	}
 }
 
+func TestWriteAgentManifest_ReviewTier(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	manifest := AgentManifest{
+		WorkspaceName: "og-feat-test-03mar-abc1",
+		Skill:         "feature-impl",
+		BeadsID:       "orch-go-xyz1",
+		ProjectDir:    "/Users/test/orch-go",
+		SpawnTime:     "2026-03-03T10:30:00Z",
+		Tier:          TierFull,
+		ReviewTier:    ReviewReview,
+	}
+
+	if err := WriteAgentManifest(tmpDir, manifest); err != nil {
+		t.Fatalf("WriteAgentManifest failed: %v", err)
+	}
+
+	readManifest, err := ReadAgentManifest(tmpDir)
+	if err != nil {
+		t.Fatalf("ReadAgentManifest failed: %v", err)
+	}
+
+	if readManifest.ReviewTier != ReviewReview {
+		t.Errorf("ReviewTier: got %q, want %q", readManifest.ReviewTier, ReviewReview)
+	}
+}
+
 func TestReadAgentManifest_NoFile(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
 	if err != nil {

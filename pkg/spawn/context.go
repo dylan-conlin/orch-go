@@ -796,6 +796,7 @@ func WriteContext(cfg *Config) error {
 		SpawnMode:     cfg.SpawnMode,
 		Model:         cfg.Model,
 		VerifyLevel:   cfg.VerifyLevel,
+		ReviewTier:    cfg.ReviewTier,
 	}
 	if err := WriteAgentManifest(workspacePath, manifest); err != nil {
 		return fmt.Errorf("failed to write agent manifest: %w", err)

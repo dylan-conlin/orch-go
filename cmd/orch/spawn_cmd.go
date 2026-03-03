@@ -57,6 +57,7 @@ var (
 	spawnArchitectRef       string // Architect issue reference (required with --force-hotspot)
 	spawnAccount            string // Account name for Claude CLI spawns (overrides auto-selection)
 	spawnVerifyLevel        string // Verification level override (V0-V3)
+	spawnReviewTier         string // Review tier override (auto/scan/review/deep)
 	spawnScope              string // Session scope: small, medium, large
 	spawnEffort             string // Claude CLI effort level: low, medium, high
 	spawnMaxTurns           int    // Max agentic turns for Claude CLI (0 = unlimited)
@@ -194,6 +195,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnScope, "scope", "", "Session scope: small, medium, large (parsed from task if not set)")
 	spawnCmd.Flags().StringVar(&spawnAccount, "account", "", "Account name for Claude CLI spawns (e.g., 'work', 'personal')")
 	spawnCmd.Flags().StringVar(&spawnVerifyLevel, "verify-level", "", "Verification level override (V0=acknowledge, V1=artifacts, V2=evidence, V3=behavioral)")
+	spawnCmd.Flags().StringVar(&spawnReviewTier, "review-tier", "", "Review tier override (auto=minimal, scan=quick, review=full, deep=behavioral)")
 	spawnCmd.Flags().StringVar(&spawnReason, "reason", "", "Reason for override flags (--bypass-triage, --force-hotspot, --no-track). Min 10 chars.")
 	spawnCmd.Flags().StringVar(&spawnEffort, "effort", "", "Claude CLI effort level (low, medium, high). Default: auto from skill tier.")
 	spawnCmd.Flags().IntVar(&spawnMaxTurns, "max-turns", 0, "Max agentic turns for Claude CLI spawns (0 = unlimited). Prevents runaway agents.")
@@ -209,6 +211,10 @@ var (
 	// Set by runWork from the beads issue description, rendered as
 	// ORIENTATION_FRAME: section in SPAWN_CONTEXT.md (separate from TASK:).
 	spawnOrientationFrame string
+
+	// spawnIssueType holds the beads issue type (feature, bug, task, etc.).
+	// Set by runWork from the beads issue, used for review tier inference.
+	spawnIssueType string
 )
 
 var workCmd = &cobra.Command{
@@ -470,6 +476,7 @@ func runWork(serverURL, beadsID string, inline bool) error {
 
 	// Set the spawnIssue flag so runSpawnWithSkillInternal uses the existing issue
 	spawnIssue = beadsID
+	spawnIssueType = issue.IssueType
 
 	// NOTE: Do NOT load user config default_model into spawnModel here.
 	// spawnModel maps to CLI.Model in the resolve pipeline (highest priority).
@@ -509,6 +516,11 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Validate --verify-level flag if provided
 	if spawnVerifyLevel != "" && !spawn.IsValidVerifyLevel(spawnVerifyLevel) {
 		return fmt.Errorf("invalid --verify-level %q: must be V0, V1, V2, or V3", spawnVerifyLevel)
+	}
+
+	// Validate --review-tier flag if provided
+	if spawnReviewTier != "" && !spawn.IsValidReviewTier(spawnReviewTier) {
+		return fmt.Errorf("invalid --review-tier %q: must be auto, scan, review, or deep", spawnReviewTier)
 	}
 
 	// Validate --effort flag if provided
@@ -741,6 +753,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		SpawnBackend:       resolved.Settings.Backend.Value,
 		Tier:               resolved.Settings.Tier.Value,
 		VerifyLevel:        spawnVerifyLevel,
+		ReviewTier:         spawnReviewTier,
+		IssueType:          spawnIssueType,
 		Scope:              spawnScope,
 		HotspotArea:          hotspotResult != nil && hotspotResult.HasHotspots,
 		HotspotFiles:         hotspotFilesFromResult(hotspotResult),

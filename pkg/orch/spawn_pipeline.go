@@ -305,6 +305,16 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp, browserT
 		verifyLevel = spawn.VerifyLevelForTier(ctx.Tier, verifyLevel)
 	}
 
+	// Infer review tier if not explicitly set
+	reviewTier := ctx.ReviewTier
+	if reviewTier == "" {
+		issueType := ctx.IssueType
+		if issueType == "" && ctx.IsBug {
+			issueType = "bug"
+		}
+		reviewTier = spawn.DefaultReviewTier(ctx.SkillName, issueType)
+	}
+
 	return &spawn.Config{
 		Task:               ctx.Task,
 		OrientationFrame:   ctx.OrientationFrame,
@@ -324,6 +334,7 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp, browserT
 		BrowserTool:        browserTool,
 		Tier:               ctx.Tier,
 		VerifyLevel:        verifyLevel,
+		ReviewTier:         reviewTier,
 		Scope:              ctx.Scope,
 		NoTrack:            noTrack || ctx.IsOrchestrator || ctx.IsMetaOrchestrator,
 		NoTrackReason:      noTrackReason,
