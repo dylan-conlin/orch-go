@@ -2,10 +2,13 @@ package daemon
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
@@ -16,10 +19,94 @@ func defaultCleanup(config Config) (int, string, error) {
 	if err != nil {
 		return 0, fmt.Sprintf("Cleanup failed: %v", err), err
 	}
-	if closed == 0 {
-		return 0, "No stale tmux windows found", nil
+
+	// Also expire old archived workspaces
+	expired := 0
+	if config.CleanupArchivedTTLDays > 0 {
+		projectDir, _ := os.Getwd()
+		if projectDir != "" {
+			expired, _ = expireArchivedWorkspaces(projectDir, config.CleanupArchivedTTLDays)
+		}
 	}
-	return closed, fmt.Sprintf("Closed %d stale tmux windows", closed), nil
+
+	total := closed + expired
+	if total == 0 {
+		return 0, "No stale resources found", nil
+	}
+
+	var parts []string
+	if closed > 0 {
+		parts = append(parts, fmt.Sprintf("closed %d stale tmux windows", closed))
+	}
+	if expired > 0 {
+		parts = append(parts, fmt.Sprintf("deleted %d expired archived workspaces", expired))
+	}
+	return total, fmt.Sprintf("Cleanup: %s", strings.Join(parts, ", ")), nil
+}
+
+// expireArchivedWorkspaces deletes archived workspaces older than ttlDays.
+// Uses spawn time from AGENT_MANIFEST.json or .spawn_time, falling back to dir modtime.
+func expireArchivedWorkspaces(projectDir string, ttlDays int) (int, error) {
+	archivedDir := filepath.Join(projectDir, ".orch", "workspace", "archived")
+
+	if _, err := os.Stat(archivedDir); os.IsNotExist(err) {
+		return 0, nil
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -ttlDays)
+
+	entries, err := os.ReadDir(archivedDir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read archived directory: %w", err)
+	}
+
+	deleted := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		dirPath := filepath.Join(archivedDir, entry.Name())
+
+		// Determine workspace age
+		var wsTime time.Time
+		manifest := spawn.ReadAgentManifestWithFallback(dirPath)
+		wsTime = manifest.ParseSpawnTime()
+
+		if wsTime.IsZero() {
+			wsTime = fallbackArchivedSpawnTime(dirPath)
+		}
+
+		if wsTime.IsZero() {
+			continue
+		}
+
+		if wsTime.After(cutoff) {
+			continue
+		}
+
+		if err := os.RemoveAll(dirPath); err != nil {
+			continue
+		}
+		deleted++
+	}
+
+	return deleted, nil
+}
+
+// fallbackArchivedSpawnTime tries .spawn_time file mtime, SPAWN_CONTEXT.md mtime,
+// AGENT_MANIFEST.json mtime, then directory mtime.
+func fallbackArchivedSpawnTime(dirPath string) time.Time {
+	candidates := []string{".spawn_time", "SPAWN_CONTEXT.md", spawn.AgentManifestFilename}
+	for _, name := range candidates {
+		if info, err := os.Stat(filepath.Join(dirPath, name)); err == nil {
+			return info.ModTime()
+		}
+	}
+	if info, err := os.Stat(dirPath); err == nil {
+		return info.ModTime()
+	}
+	return time.Time{}
 }
 
 // beadsStatusFunc is a function that returns the beads issue status for a given ID.

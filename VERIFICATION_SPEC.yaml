@@ -1,46 +1,35 @@
-task: "Randomized completion audit selection — unpredictable deep review flagging"
-beads_id: orch-go-rrf2
-date: 2026-03-03
+feature: TTL-based archived workspace expiry (30-day default)
+beads_id: orch-go-g7id
 
-deliverables:
-  - name: "orch audit command group (select, list, install, uninstall)"
-    files:
-      - cmd/orch/audit_cmd.go
-    verified: true
-    evidence: "go build ./cmd/orch/ && go vet ./cmd/orch/ → clean"
+verification:
+  automated:
+    - command: "go test ./cmd/orch/ -run TestCleanExpiredArchives -count=1 -v"
+      expects: "4 tests pass (basic, dry-run, no-dir, fallback-modtime)"
+    - command: "go test ./pkg/daemon/ -run TestExpireArchived -count=1 -v"
+      expects: "2 tests pass (basic, no-dir)"
+    - command: "go build ./cmd/orch/"
+      expects: "builds cleanly"
+    - command: "go vet ./cmd/orch/ ./pkg/daemon/ ./pkg/daemonconfig/"
+      expects: "no warnings"
 
-  - name: "Tests for selection logic and plist generation"
-    files:
-      - cmd/orch/audit_cmd_test.go
-    verified: true
-    evidence: "go test ./cmd/orch/ -run 'TestCrypto|TestHasLabel|TestAuditPlist|TestRecentClosed' -v → 7/7 pass"
+  manual:
+    - step: "Run orch clean --workspaces --dry-run in orch-go project"
+      expects: "Shows expired archived workspaces (if any >30 days old)"
+    - step: "Run orch clean --workspaces --archived-ttl 7 --dry-run"
+      expects: "Shows archived workspaces older than 7 days"
 
-  - name: "notify.Send generic method"
-    files:
-      - pkg/notify/notify.go
-    verified: true
-    evidence: "go build ./cmd/orch/ → clean (used by audit select)"
-
-  - name: "Launchd job registration in automation_cmd.go"
-    files:
-      - cmd/orch/automation_cmd.go
-    verified: true
-
-  - name: "Command registered in main.go"
-    files:
-      - cmd/orch/main.go
-    verified: true
+changes:
+  - file: cmd/orch/clean_cmd.go
+    what: "Added cleanExpiredArchives() function, --archived-ttl flag (default 30), wired into --workspaces flow"
+  - file: cmd/orch/clean_test.go
+    what: "Added 4 tests for cleanExpiredArchives (basic, dry-run, no-dir, modtime-fallback)"
+  - file: pkg/daemon/cleanup.go
+    what: "Extended defaultCleanup() to also expire archived workspaces, added expireArchivedWorkspaces()"
+  - file: pkg/daemon/cleanup_test.go
+    what: "Added 2 tests for expireArchivedWorkspaces"
+  - file: pkg/daemonconfig/config.go
+    what: "Added CleanupArchivedTTLDays field (default 30)"
 
 tests:
-  command: "go test ./cmd/orch/ -run 'TestCrypto|TestHasLabel|TestAuditPlist|TestRecentClosed' -v"
-  result: "7/7 pass (0.013s)"
-
-commands:
-  - "orch audit select — crypto/rand Fisher-Yates picks 2 from last 7d closed issues, labels audit:deep-review, sends notification"
-  - "orch audit list — shows currently flagged issues"
-  - "orch audit install — installs launchd job (every Monday 9am)"
-  - "orch audit uninstall — removes launchd job"
-
-leave_it_better:
-  knowledge: "kb quick decide: crypto/rand for audit selection (kb-644c09)"
-  stale_artifacts: "No stale artifacts encountered"
+  command: "go test ./cmd/orch/ -run TestCleanExpiredArchives -count=1 -v && go test ./pkg/daemon/ -run TestExpireArchived -count=1 -v"
+  result: "6/6 pass"

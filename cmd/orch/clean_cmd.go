@@ -31,6 +31,7 @@ var (
 	cleanSessionDays          int
 	cleanPreserveOrchestrator bool
 	cleanAll                  bool
+	cleanArchivedTTL          int
 )
 
 var cleanCmd = &cobra.Command{
@@ -53,6 +54,7 @@ Cleanup actions:
 
 Age thresholds:
   --workspace-days N  Set age threshold for --workspaces (default: 7)
+  --archived-ttl N    TTL in days for archived workspace expiry (default: 30)
 
 Protection options:
   --preserve-orchestrator  Skip orchestrator/meta-orchestrator workspaces and sessions
@@ -76,7 +78,7 @@ Examples:
 			cleanOrphans = true
 			cleanGhosts = true
 		}
-		return runClean(cleanDryRun, cleanWorkspaces, cleanSessions, cleanOrphans, cleanGhosts, cleanWorkspaceDays, cleanSessionDays, cleanPreserveOrchestrator)
+		return runClean(cleanDryRun, cleanWorkspaces, cleanSessions, cleanOrphans, cleanGhosts, cleanWorkspaceDays, cleanSessionDays, cleanPreserveOrchestrator, cleanArchivedTTL)
 	},
 }
 
@@ -89,6 +91,7 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanGhosts, "ghosts", false, "Remove stale orch:agent labels from cross-project issues with no active agent")
 	cleanCmd.Flags().IntVar(&cleanWorkspaceDays, "workspace-days", 7, "Age threshold in days for --workspaces (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanSessionDays, "session-days", 7, "Age threshold in days for --sessions (default: 7)")
+	cleanCmd.Flags().IntVar(&cleanArchivedTTL, "archived-ttl", 30, "TTL in days for archived workspace expiry (default: 30)")
 	cleanCmd.Flags().BoolVar(&cleanPreserveOrchestrator, "preserve-orchestrator", false, "Skip orchestrator/meta-orchestrator workspaces and sessions")
 }
 
@@ -271,7 +274,7 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 	return cleanable
 }
 
-func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, doGhosts bool, workspaceDays int, sessionDays int, preserveOrchestrator bool) error {
+func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, doGhosts bool, workspaceDays int, sessionDays int, preserveOrchestrator bool, archivedTTL int) error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -313,16 +316,21 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, d
 	}
 
 	// Track cleanup stats
-	var workspacesArchived, investigationsArchived int
+	var workspacesArchived, investigationsArchived, archivesExpired int
 	var windowsClosed int
 	var orphansForceCompleted, orphansForceAbandoned int
 	var ghostsCleaned int
 
-	// --workspaces: Archive old workspaces + empty investigations
+	// --workspaces: Archive old workspaces + empty investigations + expire old archives
 	if doWorkspaces {
 		workspacesArchived, err = archiveStaleWorkspaces(projectDir, workspaceDays, dryRun, preserveOrchestrator)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to archive stale workspaces: %v\n", err)
+		}
+
+		archivesExpired, err = cleanExpiredArchives(projectDir, archivedTTL, dryRun)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clean expired archives: %v\n", err)
 		}
 
 		investigationsArchived, err = archiveEmptyInvestigations(projectDir, dryRun)
@@ -368,6 +376,9 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, d
 			if workspacesArchived > 0 {
 				fmt.Printf(" Would archive %d stale workspaces.", workspacesArchived)
 			}
+			if archivesExpired > 0 {
+				fmt.Printf(" Would delete %d expired archived workspaces.", archivesExpired)
+			}
 			if investigationsArchived > 0 {
 				fmt.Printf(" Would archive %d empty investigations.", investigationsArchived)
 			}
@@ -395,7 +406,7 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, d
 	}
 
 	// Log event if any cleanup actions were taken
-	totalCleaned := workspacesArchived + investigationsArchived + windowsClosed + orphansForceCompleted + orphansForceAbandoned + ghostsCleaned
+	totalCleaned := workspacesArchived + archivesExpired + investigationsArchived + windowsClosed + orphansForceCompleted + orphansForceAbandoned + ghostsCleaned
 	if totalCleaned > 0 {
 		projectName := filepath.Base(projectDir)
 		logger := events.NewLogger(events.DefaultLogPath())
@@ -404,6 +415,7 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, d
 			Timestamp: time.Now().Unix(),
 			Data: map[string]interface{}{
 				"workspaces_archived":        workspacesArchived,
+				"archives_expired":           archivesExpired,
 				"investigations_archived":    investigationsArchived,
 				"windows_closed":             windowsClosed,
 				"orphans_force_completed":    orphansForceCompleted,
@@ -415,6 +427,7 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, d
 				"clean_ghosts":              doGhosts,
 				"ghosts_cleaned":            ghostsCleaned,
 				"workspace_days":             workspaceDays,
+				"archived_ttl_days":          archivedTTL,
 				"session_days":               sessionDays,
 			},
 		}
@@ -428,6 +441,9 @@ func runClean(dryRun bool, doWorkspaces bool, doSessions bool, doOrphans bool, d
 		fmt.Println()
 		if workspacesArchived > 0 {
 			fmt.Printf("Archived %d stale workspaces\n", workspacesArchived)
+		}
+		if archivesExpired > 0 {
+			fmt.Printf("Deleted %d expired archived workspaces\n", archivesExpired)
 		}
 		if investigationsArchived > 0 {
 			fmt.Printf("Archived %d empty investigation files\n", investigationsArchived)
@@ -982,6 +998,83 @@ func fallbackWorkspaceSpawnTime(workspacePath string) (time.Time, string) {
 	}
 
 	return time.Time{}, ""
+}
+
+// cleanExpiredArchives deletes archived workspaces older than ttlDays.
+// Uses .spawn_time (nanosecond epoch) or AGENT_MANIFEST.json SpawnTime,
+// falling back to directory modification time when neither exists.
+// Returns the number of workspaces deleted (or would-be-deleted in dry-run mode).
+func cleanExpiredArchives(projectDir string, ttlDays int, dryRun bool) (int, error) {
+	archivedDir := filepath.Join(projectDir, ".orch", "workspace", "archived")
+
+	if _, err := os.Stat(archivedDir); os.IsNotExist(err) {
+		return 0, nil
+	}
+
+	fmt.Printf("\nScanning for expired archived workspaces (older than %d days)...\n", ttlDays)
+
+	cutoff := time.Now().AddDate(0, 0, -ttlDays)
+
+	entries, err := os.ReadDir(archivedDir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read archived directory: %w", err)
+	}
+
+	deleted := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		dirPath := filepath.Join(archivedDir, entry.Name())
+
+		// Determine workspace age: manifest → .spawn_time → fallback to modtime
+		var wsTime time.Time
+
+		manifest := spawn.ReadAgentManifestWithFallback(dirPath)
+		wsTime = manifest.ParseSpawnTime()
+
+		if wsTime.IsZero() {
+			wsTime, _ = fallbackWorkspaceSpawnTime(dirPath)
+		}
+
+		// Last resort: directory modtime
+		if wsTime.IsZero() {
+			if info, err := os.Stat(dirPath); err == nil {
+				wsTime = info.ModTime()
+			}
+		}
+
+		if wsTime.IsZero() {
+			continue // Cannot determine age, skip
+		}
+
+		if wsTime.After(cutoff) {
+			continue // Not expired yet
+		}
+
+		age := time.Since(wsTime).Hours() / 24
+
+		if dryRun {
+			fmt.Printf("    [DRY-RUN] Would delete: %s (%.0f days old)\n", entry.Name(), age)
+			deleted++
+			continue
+		}
+
+		if err := os.RemoveAll(dirPath); err != nil {
+			fmt.Fprintf(os.Stderr, "    Warning: failed to delete %s: %v\n", entry.Name(), err)
+			continue
+		}
+
+		fmt.Printf("    Deleted: %s (%.0f days old)\n", entry.Name(), age)
+		deleted++
+	}
+
+	if deleted == 0 {
+		fmt.Println("  No expired archived workspaces found")
+	}
+
+	return deleted, nil
 }
 
 // detectOrphansReport runs orphan detection and returns formatted report lines.

@@ -71,6 +71,10 @@ type Config struct {
 	// Defaults to http://127.0.0.1:4096.
 	CleanupServerURL string
 
+	// CleanupArchivedTTLDays is the TTL in days for archived workspace expiry.
+	// Archived workspaces older than this are deleted. Default is 30 days.
+	CleanupArchivedTTLDays int
+
 	// RecoveryEnabled controls whether stuck agent recovery is enabled.
 	// When enabled, the daemon will detect idle agents and attempt auto-resume.
 	RecoveryEnabled bool
@@ -166,6 +170,7 @@ func DefaultConfig() Config {
 		CleanupAgeDays:              7,             // 7 days threshold
 		CleanupPreserveOrchestrator: true,          // Preserve orchestrator sessions
 		CleanupServerURL:            "http://127.0.0.1:4096",
+		CleanupArchivedTTLDays:      30, // 30-day TTL for archived workspace expiry
 		RecoveryEnabled:             true,
 		RecoveryInterval:            5 * time.Minute,  // Check every 5 minutes
 		RecoveryIdleThreshold:       10 * time.Minute, // Idle >10min triggers recovery

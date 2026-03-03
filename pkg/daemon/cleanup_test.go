@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -135,5 +137,63 @@ func TestRunPeriodicCleanupSkipsWhenNotDue(t *testing.T) {
 	}
 	if called != 0 {
 		t.Fatalf("RunPeriodicCleanup should not call cleanup func, got %d calls", called)
+	}
+}
+
+// TestExpireArchivedWorkspaces tests TTL-based deletion of old archived workspaces.
+func TestExpireArchivedWorkspaces(t *testing.T) {
+	tmpDir := t.TempDir()
+	archivedDir := filepath.Join(tmpDir, ".orch", "workspace", "archived")
+	if err := os.MkdirAll(archivedDir, 0755); err != nil {
+		t.Fatalf("Failed to create archived dir: %v", err)
+	}
+
+	// Create old workspace (40 days old via .spawn_time)
+	oldWs := filepath.Join(archivedDir, "og-feat-old-01jan")
+	if err := os.MkdirAll(oldWs, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+	oldTime := time.Now().AddDate(0, 0, -40)
+	if err := os.WriteFile(filepath.Join(oldWs, ".spawn_time"), []byte(fmt.Sprintf("%d", oldTime.UnixNano())), 0644); err != nil {
+		t.Fatalf("Failed to write spawn time: %v", err)
+	}
+
+	// Create recent workspace (5 days old)
+	recentWs := filepath.Join(archivedDir, "og-feat-recent-28feb")
+	if err := os.MkdirAll(recentWs, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+	recentTime := time.Now().AddDate(0, 0, -5)
+	if err := os.WriteFile(filepath.Join(recentWs, ".spawn_time"), []byte(fmt.Sprintf("%d", recentTime.UnixNano())), 0644); err != nil {
+		t.Fatalf("Failed to write spawn time: %v", err)
+	}
+
+	deleted, err := expireArchivedWorkspaces(tmpDir, 30)
+	if err != nil {
+		t.Fatalf("expireArchivedWorkspaces failed: %v", err)
+	}
+	if deleted != 1 {
+		t.Errorf("Expected 1 deleted, got %d", deleted)
+	}
+
+	// Old workspace should be gone
+	if _, err := os.Stat(oldWs); !os.IsNotExist(err) {
+		t.Error("Old workspace should have been deleted")
+	}
+	// Recent workspace should remain
+	if _, err := os.Stat(recentWs); os.IsNotExist(err) {
+		t.Error("Recent workspace should still exist")
+	}
+}
+
+// TestExpireArchivedWorkspaces_NoDir tests graceful handling when no archived dir exists.
+func TestExpireArchivedWorkspaces_NoDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	deleted, err := expireArchivedWorkspaces(tmpDir, 30)
+	if err != nil {
+		t.Fatalf("Should not fail when no archived dir: %v", err)
+	}
+	if deleted != 0 {
+		t.Errorf("Expected 0 deleted, got %d", deleted)
 	}
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -598,6 +599,131 @@ func TestOrphanClassification(t *testing.T) {
 				t.Errorf("Expected action %q, got %q", tt.expectAction, action)
 			}
 		})
+	}
+}
+
+// TestCleanExpiredArchives tests TTL-based deletion of old archived workspaces.
+func TestCleanExpiredArchives(t *testing.T) {
+	tmpDir := t.TempDir()
+	archivedDir := filepath.Join(tmpDir, ".orch", "workspace", "archived")
+	if err := os.MkdirAll(archivedDir, 0755); err != nil {
+		t.Fatalf("Failed to create archived dir: %v", err)
+	}
+
+	// Create an old archived workspace (40 days old via .spawn_time)
+	oldWs := filepath.Join(archivedDir, "og-feat-old-01jan")
+	if err := os.MkdirAll(oldWs, 0755); err != nil {
+		t.Fatalf("Failed to create old workspace: %v", err)
+	}
+	oldTime := time.Now().AddDate(0, 0, -40)
+	oldNanos := oldTime.UnixNano()
+	if err := os.WriteFile(filepath.Join(oldWs, ".spawn_time"), []byte(fmt.Sprintf("%d", oldNanos)), 0644); err != nil {
+		t.Fatalf("Failed to write spawn time: %v", err)
+	}
+
+	// Create a recent archived workspace (5 days old)
+	recentWs := filepath.Join(archivedDir, "og-feat-recent-28feb")
+	if err := os.MkdirAll(recentWs, 0755); err != nil {
+		t.Fatalf("Failed to create recent workspace: %v", err)
+	}
+	recentTime := time.Now().AddDate(0, 0, -5)
+	recentNanos := recentTime.UnixNano()
+	if err := os.WriteFile(filepath.Join(recentWs, ".spawn_time"), []byte(fmt.Sprintf("%d", recentNanos)), 0644); err != nil {
+		t.Fatalf("Failed to write spawn time: %v", err)
+	}
+
+	// Run cleanup with 30-day TTL
+	deleted, err := cleanExpiredArchives(tmpDir, 30, false)
+	if err != nil {
+		t.Fatalf("cleanExpiredArchives failed: %v", err)
+	}
+
+	if deleted != 1 {
+		t.Errorf("Expected 1 workspace deleted, got %d", deleted)
+	}
+
+	// Old workspace should be gone
+	if _, err := os.Stat(oldWs); !os.IsNotExist(err) {
+		t.Error("Old archived workspace should have been deleted")
+	}
+
+	// Recent workspace should still exist
+	if _, err := os.Stat(recentWs); os.IsNotExist(err) {
+		t.Error("Recent archived workspace should still exist")
+	}
+}
+
+// TestCleanExpiredArchivesDryRun tests that dry-run mode doesn't delete anything.
+func TestCleanExpiredArchivesDryRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	archivedDir := filepath.Join(tmpDir, ".orch", "workspace", "archived")
+	if err := os.MkdirAll(archivedDir, 0755); err != nil {
+		t.Fatalf("Failed to create archived dir: %v", err)
+	}
+
+	// Create an old archived workspace
+	oldWs := filepath.Join(archivedDir, "og-feat-old-01jan")
+	if err := os.MkdirAll(oldWs, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+	oldTime := time.Now().AddDate(0, 0, -40)
+	if err := os.WriteFile(filepath.Join(oldWs, ".spawn_time"), []byte(fmt.Sprintf("%d", oldTime.UnixNano())), 0644); err != nil {
+		t.Fatalf("Failed to write spawn time: %v", err)
+	}
+
+	// Run cleanup with dry-run
+	deleted, err := cleanExpiredArchives(tmpDir, 30, true)
+	if err != nil {
+		t.Fatalf("cleanExpiredArchives failed: %v", err)
+	}
+
+	if deleted != 1 {
+		t.Errorf("Expected 1 workspace reported, got %d", deleted)
+	}
+
+	// Workspace should still exist
+	if _, err := os.Stat(oldWs); os.IsNotExist(err) {
+		t.Error("Workspace should still exist after dry-run")
+	}
+}
+
+// TestCleanExpiredArchivesNoArchivedDir tests graceful handling when no archived directory exists.
+func TestCleanExpiredArchivesNoArchivedDir(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	deleted, err := cleanExpiredArchives(tmpDir, 30, false)
+	if err != nil {
+		t.Fatalf("cleanExpiredArchives should not fail when no archived dir: %v", err)
+	}
+	if deleted != 0 {
+		t.Errorf("Expected 0 deleted, got %d", deleted)
+	}
+}
+
+// TestCleanExpiredArchivesFallbackToModTime tests that dir modtime is used when no .spawn_time exists.
+func TestCleanExpiredArchivesFallbackToModTime(t *testing.T) {
+	tmpDir := t.TempDir()
+	archivedDir := filepath.Join(tmpDir, ".orch", "workspace", "archived")
+	if err := os.MkdirAll(archivedDir, 0755); err != nil {
+		t.Fatalf("Failed to create archived dir: %v", err)
+	}
+
+	// Create workspace with no .spawn_time, set modtime to 40 days ago
+	ws := filepath.Join(archivedDir, "og-feat-no-spawntime-01jan")
+	if err := os.MkdirAll(ws, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+	oldTime := time.Now().AddDate(0, 0, -40)
+	if err := os.Chtimes(ws, oldTime, oldTime); err != nil {
+		t.Fatalf("Failed to set modtime: %v", err)
+	}
+
+	deleted, err := cleanExpiredArchives(tmpDir, 30, false)
+	if err != nil {
+		t.Fatalf("cleanExpiredArchives failed: %v", err)
+	}
+	if deleted != 1 {
+		t.Errorf("Expected 1 workspace deleted (via modtime fallback), got %d", deleted)
 	}
 }
 
