@@ -6,7 +6,7 @@
 
 **Duration:** 30-60 minutes
 
-**Primary tools:** `browser_click`, `browser_hover`, `browser_snapshot`, `browser_take_screenshot`, `browser_evaluate`, `browser_console_messages`
+**Primary tools:** `playwright-cli click`, `playwright-cli hover`, `playwright-cli snapshot`, `playwright-cli screenshot`, `playwright-cli eval`, `playwright-cli` (console)
 
 ---
 
@@ -107,7 +107,7 @@ Four stages, executed sequentially:
 
 For each button and interactive element:
 
-1. **Use `browser_hover`** on the element
+1. **Use `playwright-cli hover`** on the element
 2. **Take snapshot** to check ARIA state changes
 3. **Take screenshot** for visual evidence
 
@@ -263,7 +263,7 @@ For each button and interactive element:
 
 **After all interactions, check for JavaScript errors:**
 
-Use `browser_console_messages` with level `error` to capture:
+Use `playwright-cli` (console) with level `error` to capture:
 
 - [ ] No JavaScript errors during normal interactions
 - [ ] No unhandled promise rejections
@@ -316,7 +316,7 @@ Use `browser_console_messages` with level `error` to capture:
 Most interaction bugs hide behind user actions. Click every button, hover every interactive element, submit forms with valid and invalid data. The default state is the least interesting.
 
 **Ignoring console errors**
-JavaScript errors during interaction are often the root cause of missing feedback states. Always check `browser_console_messages` after testing interactions.
+JavaScript errors during interaction are often the root cause of missing feedback states. Always check `playwright-cli` (console) after testing interactions.
 
 **Skipping loading state checks**
 Fast local networks mask loading state issues. Consider that production users may be on slower connections. If an operation takes data from an API, there should be a loading state — even if it's fast locally.

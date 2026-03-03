@@ -6,7 +6,7 @@
 
 **Duration:** 30-60 minutes
 
-**Primary tools:** `browser_evaluate` (computed styles), `browser_take_screenshot`, `browser_snapshot`
+**Primary tools:** `playwright-cli eval` (computed styles), `playwright-cli screenshot`, `playwright-cli snapshot`
 
 **Design reference:** `.kb/decisions/2026-02-21-toolshed-design-direction.md`
 
@@ -369,7 +369,7 @@
 ## Anti-Patterns
 
 **Checking colors by eye instead of computed styles**
-`rgb(15, 23, 42)` and `rgb(30, 41, 59)` look identical on screen but are different tokens. Always use `browser_evaluate` to get computed values.
+`rgb(15, 23, 42)` and `rgb(30, 41, 59)` look identical on screen but are different tokens. Always use `playwright-cli eval` to get computed values.
 
 **Reporting every color as a violation**
 Some color variance is acceptable (e.g., Tailwind utility classes applying slightly different opacities). Focus on meaningful deviations from the design system, not pixel-perfect matching.

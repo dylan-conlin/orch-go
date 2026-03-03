@@ -6,7 +6,7 @@
 
 **Duration:** 30-60 minutes
 
-**Primary tools:** `browser_snapshot`, `browser_evaluate` (axe-core), `browser_press_key`, `browser_click`
+**Primary tools:** `playwright-cli snapshot`, `playwright-cli eval` (axe-core), `playwright-cli press`, `playwright-cli click`
 
 ---
 
@@ -21,7 +21,7 @@ Four stages, executed sequentially:
 
 ---
 
-## Stage 1: Structural Review (via browser_snapshot)
+## Stage 1: Structural Review (via playwright-cli snapshot)
 
 **Take an accessibility snapshot at 1280px and analyze:**
 
@@ -184,7 +184,7 @@ async () => {
 
 **CSP might block CDN scripts.** Fallback approach:
 
-1. Check console for CSP errors: `browser_console_messages → level: "error"`
+1. Check console for CSP errors: `playwright-cli console → level: "error"`
 2. If CSP blocks:
    - Document: "axe-core CDN blocked by CSP — using structural review only"
    - Rely on Stage 1 (structural review) for accessibility findings
@@ -204,10 +204,10 @@ async () => {
 3. Verify focus moves in a logical order (top-to-bottom, left-to-right)
 4. Verify focus is VISIBLE (focus ring or outline on focused element)
 
-**How to test with Playwright MCP:**
+**How to test with playwright-cli:**
 ```
-browser_press_key → key: "Tab"     (advance focus)
-browser_snapshot                    (check which element has focus)
+playwright-cli press → key: "Tab"     (advance focus)
+playwright-cli snapshot                    (check which element has focus)
 ```
 
 Repeat Tab + snapshot cycle through major interactive elements (don't need to Tab through every element — 10-15 Tabs is sufficient for a focused audit).

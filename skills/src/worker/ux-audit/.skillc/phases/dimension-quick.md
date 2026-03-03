@@ -29,7 +29,7 @@
 
 ## Dimension 1: Visual Consistency (Surface Checks)
 
-**Using baseline screenshots and browser_evaluate:**
+**Using baseline screenshots and playwright-cli eval:**
 
 - [ ] Background color matches design system (check body background)
 - [ ] Card/panel surfaces are distinct from page background
@@ -165,7 +165,7 @@ async () => {
 
 ## Dimension 5: Navigation (Surface Checks)
 
-**Using accessibility snapshot and browser_click:**
+**Using accessibility snapshot and playwright-cli click:**
 
 - [ ] Current page is indicated in sidebar/nav (active state)
 - [ ] Page title reflects current location
@@ -180,7 +180,7 @@ async () => {
 
 ## Dimension 6: Interactive States (Surface Checks)
 
-**Using browser_hover and browser_click:**
+**Using playwright-cli hover and playwright-cli click:**
 
 - [ ] Buttons have visible hover states (hover over primary buttons)
 - [ ] Loading states exist for async operations (if observable)
@@ -189,7 +189,7 @@ async () => {
 
 **Console error check:**
 ```
-browser_console_messages → level: "error"
+playwright-cli console → level: "error"
 ```
 
 **Record:** Top 3 findings with severity. Note any JS console errors.
@@ -310,7 +310,7 @@ After scanning all 6 dimensions:
 ## Reproducibility
 
 **Auth:** {storageState/dev-login/cdp-tab}
-**Commands:** browser_navigate, browser_resize({widths}), browser_snapshot, browser_evaluate(axe-core)
+**Commands:** playwright-cli goto, playwright-cli resize({widths}), playwright-cli snapshot, playwright-cli eval(axe-core)
 **Re-audit schedule:** {recommended — weekly for active development, monthly for stable pages}
 
 ---

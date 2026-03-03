@@ -7,7 +7,7 @@
 ## Step 1: Navigate to Target Page
 
 ```
-browser_navigate → target URL from SPAWN_CONTEXT
+playwright-cli goto → target URL from SPAWN_CONTEXT
 ```
 
 **Verify page loaded:**
@@ -31,7 +31,7 @@ For local development with bypassed auth:
 
 ### cdp-tab
 For connecting to an existing authenticated browser tab:
-1. Use `browser_tabs` to list available tabs
+1. Use `playwright-cli tab-list` to list available tabs
 2. Select the tab with the target page
 3. Verify auth state via snapshot
 
@@ -47,32 +47,32 @@ For connecting to an existing authenticated browser tab:
 
 1. **1280px** (Desktop default)
    ```
-   browser_resize → width: 1280, height: 800
-   browser_take_screenshot → baseline-1280.png
+   playwright-cli resize → width: 1280, height: 800
+   playwright-cli screenshot → baseline-1280.png
    ```
 
 2. **1024px** (lg breakpoint)
    ```
-   browser_resize → width: 1024, height: 768
-   browser_take_screenshot → baseline-1024.png
+   playwright-cli resize → width: 1024, height: 768
+   playwright-cli screenshot → baseline-1024.png
    ```
 
 3. **768px** (md breakpoint — minor tweaks only)
    ```
-   browser_resize → width: 768, height: 1024
-   browser_take_screenshot → baseline-768.png
+   playwright-cli resize → width: 768, height: 1024
+   playwright-cli screenshot → baseline-768.png
    ```
 
 4. **640px** (sm breakpoint — first structural shift)
    ```
-   browser_resize → width: 640, height: 1136
-   browser_take_screenshot → baseline-640.png
+   playwright-cli resize → width: 640, height: 1136
+   playwright-cli screenshot → baseline-640.png
    ```
 
 5. **375px** (Mobile)
    ```
-   browser_resize → width: 375, height: 812
-   browser_take_screenshot → baseline-375.png
+   playwright-cli resize → width: 375, height: 812
+   playwright-cli screenshot → baseline-375.png
    ```
 
 **Screenshot storage:** Save to `.kb/investigations/screenshots/{date}-{page-slug}/`
@@ -83,8 +83,8 @@ For connecting to an existing authenticated browser tab:
 
 **At desktop viewport (1280px):**
 ```
-browser_resize → width: 1280, height: 800
-browser_snapshot → (captures a11y tree)
+playwright-cli resize → width: 1280, height: 800
+playwright-cli snapshot → (captures a11y tree)
 ```
 
 **Record from the snapshot:**
@@ -121,7 +121,7 @@ browser_snapshot → (captures a11y tree)
 
 **Return to desktop viewport for dimension audit:**
 ```
-browser_resize → width: 1280, height: 800
+playwright-cli resize → width: 1280, height: 800
 ```
 
 ---

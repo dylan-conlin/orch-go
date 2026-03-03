@@ -239,7 +239,7 @@ If you modified ANY file in `web/`:
 
 3. **Capture evidence per spec:**
    - Use Glass MCP `glass_screenshot` (if spawned with --mcp glass)
-   - Or Playwright MCP `browser_take_screenshot`
+   - Or `playwright-cli screenshot`
 
 4. **Document:**
    ```bash

@@ -326,7 +326,7 @@ Before completing, run: `git diff --name-only | grep "^web/"`
 
 If ANY files returned → Visual verification is REQUIRED:
 1. Rebuild server: `make install` then restart via `orch servers`
-2. Capture screenshot via Playwright MCP (`browser_take_screenshot` tool)
+2. Capture screenshot via `playwright-cli screenshot`
 3. Document evidence: `bd comment <beads-id> "Visual verification: [description]"`
 
 **⛔ Cannot mark Phase: Complete without visual evidence for web/ changes.**

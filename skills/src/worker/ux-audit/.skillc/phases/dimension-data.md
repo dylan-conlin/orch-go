@@ -6,7 +6,7 @@
 
 **Duration:** 30-60 minutes
 
-**Primary tools:** `browser_snapshot`, `browser_evaluate`, `browser_take_screenshot`
+**Primary tools:** `playwright-cli snapshot`, `playwright-cli eval`, `playwright-cli screenshot`
 
 ---
 

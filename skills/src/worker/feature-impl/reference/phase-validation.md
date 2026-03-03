@@ -17,7 +17,7 @@ git diff --name-only | grep "^web/"
 **If this returns ANY files → Visual Verification is MANDATORY.**
 
 You CANNOT mark Phase: Complete without:
-1. Screenshot captured via Playwright MCP
+1. Screenshot captured via `playwright-cli screenshot`
 2. Visual evidence described in `bd comment`
 
 **This is NOT optional. Tests passing does NOT verify UI renders correctly.**
@@ -39,11 +39,10 @@ You CANNOT mark Phase: Complete without:
    orch servers start <project>
    ```
 
-2. **Capture screenshot using Playwright MCP:**
+2. **Capture screenshot using playwright-cli:**
    ```bash
-   # Use the Playwright MCP server (must be spawned with --mcp playwright)
-   # Navigate to the page showing your changes
-   # Take screenshot using browser_take_screenshot tool
+   playwright-cli open http://localhost:5188/your-page
+   playwright-cli screenshot
    ```
 
 3. **Include evidence in completion:**
@@ -55,9 +54,9 @@ You CANNOT mark Phase: Complete without:
 bd comment <beads-id> "Phase: Complete - Added stats bar component. Screenshot captured showing new stats bar with 3 agents active, 2 completed. UI renders correctly at localhost:5188."
 ```
 
-**Critical:** If spawned without `--mcp playwright`, you MUST report this as a blocker:
+**Critical:** If `playwright-cli` is not available, you MUST report this as a blocker:
 ```bash
-bd comment <beads-id> "BLOCKED: UI changes require visual verification but agent not spawned with --mcp playwright"
+bd comment <beads-id> "BLOCKED: UI changes require visual verification but playwright-cli is not available"
 ```
 
 ---
@@ -213,7 +212,7 @@ Your completion comment MUST include actual test output, not just "tests passing
 - [ ] Ran `git diff --name-only | grep "^web/"` - confirmed web/ files modified
 - [ ] Server rebuilt (`make install`)
 - [ ] Server restarted (`orch servers stop/start`)
-- [ ] Screenshot captured via Playwright MCP (`browser_take_screenshot` tool)
+- [ ] Screenshot captured via `playwright-cli screenshot`
 - [ ] Screenshot evidence described in completion comment
 - [ ] `bd comment <beads-id> "Visual verification: [description of what screenshot shows]"`
 

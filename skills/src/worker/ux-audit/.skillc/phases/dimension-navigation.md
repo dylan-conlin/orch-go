@@ -6,7 +6,7 @@
 
 **Duration:** 30-60 minutes
 
-**Primary tools:** `browser_snapshot`, `browser_click`, `browser_navigate`, `browser_navigate_back`, `browser_take_screenshot`, `browser_evaluate`
+**Primary tools:** `playwright-cli snapshot`, `playwright-cli click`, `playwright-cli goto`, `playwright-cli go-back`, `playwright-cli screenshot`, `playwright-cli eval`
 
 ---
 
@@ -159,7 +159,7 @@ Four stages, executed sequentially:
 - [ ] Page state is preserved on back navigation (scroll position, filter state)
 - [ ] No infinite redirect loops when using back button
 
-**Test:** Navigate forward 2-3 pages, then use `browser_navigate_back` twice. Verify each page loads correctly.
+**Test:** Navigate forward 2-3 pages, then use `playwright-cli go-back` twice. Verify each page loads correctly.
 
 ### Deep Links / URL State
 

@@ -114,9 +114,11 @@ git diff --name-only | grep "^web/"
    orch servers start <project>
    ```
 
-2. **Capture screenshot via Playwright MCP:**
-   - Navigate to page showing your changes
-   - Use `browser_take_screenshot` tool
+2. **Capture screenshot via playwright-cli:**
+   ```bash
+   playwright-cli open http://localhost:5188/your-page
+   playwright-cli screenshot
+   ```
    - Screenshot MUST show the UI changes you made
 
 3. **Document evidence in beads:**
@@ -132,9 +134,9 @@ git diff --name-only | grep "^web/"
 - [ ] Interactions work (clicks, hover states, transitions)
 - [ ] No console errors in browser
 
-**⛔ If spawned WITHOUT `--mcp playwright`:**
+**⛔ If `playwright-cli` is not available:**
 ```bash
-bd comment <beads-id> "BLOCKED: UI changes require visual verification but agent not spawned with --mcp playwright"
+bd comment <beads-id> "BLOCKED: UI changes require visual verification but playwright-cli is not available"
 ```
 
 **Reference:** See `~/.claude/skills/worker/feature-impl/reference/tdd-best-practices.md` for:

@@ -6,7 +6,7 @@
 
 **Duration:** 30-60 minutes
 
-**Primary tools:** `browser_resize`, `browser_snapshot`, `browser_take_screenshot`, `browser_evaluate`
+**Primary tools:** `playwright-cli resize`, `playwright-cli snapshot`, `playwright-cli screenshot`, `playwright-cli eval`
 
 ---
 
@@ -33,7 +33,7 @@ Test each viewport sequentially. At each viewport:
 1. **Resize** the browser
 2. **Take screenshot** for visual evidence
 3. **Take snapshot** (a11y tree) to detect element visibility changes
-4. **Run overflow check** via `browser_evaluate`
+4. **Run overflow check** via `playwright-cli eval`
 5. **Document findings** before moving to next viewport
 
 **Order:** 1280px → 1024px → 768px → 640px → 375px

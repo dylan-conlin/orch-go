@@ -231,7 +231,7 @@ The spec defines what evidence is required. Capture it:
 | Evidence Type | How to Capture                        |
 | ------------- | ------------------------------------- |
 | Test output   | Copy terminal output or `tee` to file |
-| Screenshot    | Playwright MCP or Glass MCP           |
+| Screenshot    | `playwright-cli screenshot`           |
 | Log entry     | Extract from application logs         |
 | Metric        | Query from monitoring/DB              |
 

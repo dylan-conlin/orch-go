@@ -3,7 +3,7 @@ skill-type: procedure
 audience: worker
 spawnable: true
 category: analysis
-description: Systematic UI/UX audit using Playwright MCP with configurable dimensions (visual-consistency/responsive/accessibility/data-presentation/navigation/interactive-states/quick)
+description: Systematic UI/UX audit using playwright-cli with configurable dimensions (visual-consistency/responsive/accessibility/data-presentation/navigation/interactive-states/quick)
 token_budget: 35000  # Complex worker skill with 6 full dimensions + quick scan + browser context. Phase 3 adds 3 remaining dimensions (~5K tokens each).
 dependencies:
   - worker-base
@@ -33,17 +33,7 @@ allowed-tools:
   - Bash
   - Write
   - Edit
-  - mcp__playwright__browser_navigate
-  - mcp__playwright__browser_snapshot
-  - mcp__playwright__browser_take_screenshot
-  - mcp__playwright__browser_resize
-  - mcp__playwright__browser_click
-  - mcp__playwright__browser_hover
-  - mcp__playwright__browser_press_key
-  - mcp__playwright__browser_evaluate
-  - mcp__playwright__browser_console_messages
-  - mcp__playwright__browser_navigate_back
-  - mcp__playwright__browser_tabs
+  # playwright-cli commands are run via Bash tool
 deliverables:
   - type: investigation
     path: "{project}/.kb/investigations/{date}-audit-ux-{slug}.md"

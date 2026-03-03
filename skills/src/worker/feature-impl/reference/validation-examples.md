@@ -138,38 +138,37 @@ curl -X POST http://localhost:3000/api/feature \
 **Status:** ✅ Smoke test passed
 ```
 
-### Browser Automation with Playwright MCP
+### Browser Automation with playwright-cli
 
 **For automated smoke tests (UI features):**
 
-1. Navigate to feature URL:
-   ```
-   mcp__playwright__browser_navigate url="http://localhost:3000/feature"
+1. Open browser and navigate to feature URL:
+   ```bash
+   playwright-cli open http://localhost:3000/feature
    ```
 
 2. Get page state (accessibility tree):
-   ```
-   mcp__playwright__browser_snapshot
+   ```bash
+   playwright-cli snapshot
    ```
 
 3. Interact with elements using refs from snapshot:
-   ```
-   mcp__playwright__browser_click element="Submit button" ref="e12"
+   ```bash
+   playwright-cli click e12
    ```
 
 4. Capture screenshot evidence:
-   ```
-   mcp__playwright__browser_take_screenshot filename="smoke-test-feature.png"
+   ```bash
+   playwright-cli screenshot
    ```
 
 5. Clean up:
-   ```
-   mcp__playwright__browser_close
+   ```bash
+   playwright-cli close
    ```
 
 **Key points:**
-- Use `browser_snapshot` for semantic element refs (stable)
-- Screenshots save to `.playwright-mcp/` directory
+- Use `playwright-cli snapshot` for semantic element refs (stable)
 - Close browser when done to free resources
 
 ---

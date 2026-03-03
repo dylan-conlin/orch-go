@@ -17,7 +17,7 @@
 
 ## Skill Overview
 
-This skill performs systematic UI/UX audits using Playwright MCP tools. It evaluates web pages across six dimensions, producing an investigation file with severity-classified findings, screenshot evidence, and baseline metrics comparable across audits.
+This skill performs systematic UI/UX audits using playwright-cli. It evaluates web pages across six dimensions, producing an investigation file with severity-classified findings, screenshot evidence, and baseline metrics comparable across audits.
 
 **Six dimensions:**
 
