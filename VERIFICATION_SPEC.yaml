@@ -1,26 +1,34 @@
-task: Add daily launchd keepalive job for OAuth token refresh
-beads_id: orch-go-5ef9
-date: 2026-03-02
+task: Gate skillc deploy with behavioral test baseline comparison
+beads_id: orch-go-ldcj
+date: 2026-03-03
 
 verification:
-  type: config + feature
+  type: feature (cross-repo: skillc)
   deliverables:
-    - path: ~/Library/LaunchAgents/com.orch.token-keepalive.plist
-      description: "launchd plist running orch usage daily at 9am"
-    - path: cmd/orch/automation_cmd.go
-      description: "orch automation list command for job visibility"
+    - path: ~/Documents/personal/skillc/pkg/baseline/baseline.go
+      description: "Baseline save/load/gate logic"
+    - path: ~/Documents/personal/skillc/pkg/baseline/baseline_test.go
+      description: "9 unit tests for baseline package"
+    - path: ~/Documents/personal/skillc/cmd/skillc/deploy.go
+      description: "--behavioral, --force-behavioral, --behavioral-model flags"
+    - path: ~/Documents/personal/skillc/cmd/skillc/test_cmd.go
+      description: "--save-baseline flag for test command"
+    - path: ~/Documents/personal/skillc/cmd/skillc/main.go
+      description: "Updated help text with new flags"
   tests_run:
-    - command: "go build ./cmd/orch/"
+    - command: "cd ~/Documents/personal/skillc && go test ./pkg/baseline/ -v"
+      result: "PASS - 9 tests (save, load, gate logic, edge cases)"
+    - command: "cd ~/Documents/personal/skillc && go test ./..."
+      result: "PASS - all 9 packages"
+    - command: "cd ~/Documents/personal/skillc && go vet ./..."
       result: "PASS"
-    - command: "go vet ./cmd/orch/"
-      result: "PASS"
-    - command: "orch automation list"
-      result: "PASS - shows com.orch.token-keepalive as active"
-    - command: "launchctl list com.orch.token-keepalive"
-      result: "PASS - LastExitStatus 0, job loaded"
+    - command: "skillc help | grep behavioral"
+      result: "PASS - shows --behavioral, --force-behavioral, --behavioral-model"
   manual_verification:
-    - step: "Check ~/.orch/token-keepalive.log after 9am for orch usage output"
-    - step: "Run orch usage manually to confirm OAuth refresh still works"
+    - step: "Run skillc test --save-baseline -s <scenarios-dir> to create baseline"
+    - step: "Run skillc deploy --behavioral to verify gate runs tests"
+    - step: "Degrade a skill, verify deploy blocks on regression"
+    - step: "Use --force-behavioral to override"
   leave_it_better:
-    - knowledge: "No new knowledge to externalize - implementing probe recommendation"
+    - knowledge: "No new knowledge to externalize - direct implementation of known pattern"
     - stale_artifacts: "No stale artifacts encountered"
