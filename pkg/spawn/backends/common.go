@@ -150,6 +150,11 @@ func LogSpawnEvent(sessionID string, req *SpawnRequest, mode string, extraData m
 		eventData["session_id"] = sessionID
 	}
 
+	// Add account name if present
+	if req.Config.Account != "" {
+		eventData["account"] = req.Config.Account
+	}
+
 	// Add model if present
 	if req.Config.Model != "" {
 		eventData["model"] = req.Config.Model
