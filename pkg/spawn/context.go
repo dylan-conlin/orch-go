@@ -680,7 +680,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		DesignNotes:           cfg.DesignNotes,
 		OrientationFrame:      cfg.OrientationFrame,
 		PriorCompletions:      cfg.PriorCompletions,
-		BrowserAutomation:     IsPlaywrightCLI(cfg.MCP),
+		BrowserAutomation:     cfg.BrowserTool == "playwright-cli",
 	}
 
 	var buf bytes.Buffer

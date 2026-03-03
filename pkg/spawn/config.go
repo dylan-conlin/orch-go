@@ -138,8 +138,14 @@ type Config struct {
 	// ResolvedSettings captures spawn settings with provenance for SPAWN_CONTEXT.md
 	ResolvedSettings ResolvedSpawnSettings
 
-	// MCP configuration (e.g., "playwright" for browser automation via playwright-cli)
+	// MCP configuration for actual MCP server presets (e.g., custom MCP servers).
+	// This is NOT used for playwright-cli — see BrowserTool instead.
 	MCP string
+
+	// BrowserTool specifies the browser automation tool for this spawn.
+	// Default: "playwright-cli" (from needs:playwright label, injected via context).
+	// When set, the BROWSER AUTOMATION section is injected into SPAWN_CONTEXT.md.
+	BrowserTool string
 
 	// Tier specifies the spawn tier: "light" or "full"
 	// Light tier skips SYNTHESIS.md requirement on completion

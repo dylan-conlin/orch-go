@@ -125,7 +125,7 @@ func verificationEntriesForSkill(cfg *Config, tier string) []verificationSpecSke
 		return browserVerificationEntries(tier)
 	case isImplementationVerificationSkill(skill):
 		entries := implementationVerificationEntries(cfg, tier)
-		if strings.EqualFold(strings.TrimSpace(cfg.MCP), "playwright") {
+		if cfg.BrowserTool != "" {
 			entries = append(entries, browserVerificationEntries(tier)...)
 		}
 		return entries

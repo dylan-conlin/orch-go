@@ -73,16 +73,17 @@ type ResolvedSetting struct {
 
 // ResolvedSpawnSettings contains resolved spawn config values with provenance.
 type ResolvedSpawnSettings struct {
-	Backend    ResolvedSetting
-	Model      ResolvedSetting
-	Tier       ResolvedSetting
-	SpawnMode  ResolvedSetting
-	MCP        ResolvedSetting
-	Mode       ResolvedSetting
-	Validation ResolvedSetting
-	Account    ResolvedSetting
-	Effort     ResolvedSetting
-	Warnings   []string
+	Backend     ResolvedSetting
+	Model       ResolvedSetting
+	Tier        ResolvedSetting
+	SpawnMode   ResolvedSetting
+	MCP         ResolvedSetting
+	BrowserTool ResolvedSetting
+	Mode        ResolvedSetting
+	Validation  ResolvedSetting
+	Account     ResolvedSetting
+	Effort      ResolvedSetting
+	Warnings    []string
 }
 
 // CLISettings captures CLI flags with explicitness indicators.
@@ -243,6 +244,7 @@ func Resolve(input ResolveInput) (ResolvedSpawnSettings, error) {
 	result.SpawnMode = spawnModeSetting
 
 	result.MCP = resolveMCP(input)
+	result.BrowserTool = resolveBrowserTool(input)
 	result.Mode = resolveMode(input)
 	result.Validation = resolveValidation(input)
 	result.Account = resolveAccount(input)
@@ -398,7 +400,12 @@ func resolveMCP(input ResolveInput) ResolvedSetting {
 		return ResolvedSetting{Value: input.CLI.MCP, Source: SourceCLI}
 	}
 
-	if value, ok := mcpFromLabels(input.BeadsLabels); ok {
+	return ResolvedSetting{Value: "", Source: SourceDefault}
+}
+
+func resolveBrowserTool(input ResolveInput) ResolvedSetting {
+	// needs:playwright label → playwright-cli (default browser path)
+	if value, ok := browserToolFromLabels(input.BeadsLabels); ok {
 		return ResolvedSetting{Value: value, Source: SourceBeadsLabel, Detail: "needs:" + value}
 	}
 
@@ -615,12 +622,12 @@ func validateModel(resolvedModel model.ModelSpec) error {
 	return nil
 }
 
-func mcpFromLabels(labels []string) (string, bool) {
+func browserToolFromLabels(labels []string) (string, bool) {
 	for _, label := range labels {
 		if strings.HasPrefix(label, "needs:") {
 			value := strings.TrimSpace(strings.TrimPrefix(label, "needs:"))
-			if value != "" {
-				return value, true
+			if value == "playwright" {
+				return "playwright-cli", true
 			}
 		}
 	}
