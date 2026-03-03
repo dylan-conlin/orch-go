@@ -151,7 +151,7 @@ Examples:
   # Other options
   orch spawn --bypass-triage --model opus investigation "analyze code"
   orch spawn --bypass-triage --no-track investigation "exploratory work"
-  orch spawn --bypass-triage --mcp playwright feature-impl "add UI feature"
+  orch spawn --bypass-triage --mcp playwright feature-impl "add UI feature"  # injects playwright-cli context
   orch spawn --bypass-triage --workdir ~/other-project investigation "task"`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -174,7 +174,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnTmux, "tmux", false, "Run in tmux window (opt-in for visual monitoring)")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
-	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
+	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "Browser/MCP config (e.g., 'playwright' for playwright-cli browser automation)")
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
 	spawnCmd.Flags().IntVar(&spawnMaxAgents, "max-agents", -1, "Maximum concurrent agents (default 5, 0 to disable limit, or use ORCH_MAX_AGENTS env var)")
 	spawnCmd.Flags().BoolVar(&spawnAutoInit, "auto-init", false, "Auto-initialize .orch and .beads if missing")
@@ -292,21 +292,19 @@ func inferSkillFromBeadsIssue(issue *beads.Issue) string {
 	return skill
 }
 
-// inferMCPFromBeadsIssue extracts MCP server requirements from issue labels.
-// Returns the MCP server name if found (e.g., "playwright" from "needs:playwright"),
-// or empty string if no MCP-related label is present.
+// inferMCPFromBeadsIssue extracts browser/tool requirements from issue labels.
+// Returns the tool name if found (e.g., "playwright" from "needs:playwright"),
+// or empty string if no browser automation label is present.
 //
-// This allows daemon-spawned agents to automatically get browser access when
-// working on UI/CSS fixes that require visual verification.
+// This allows daemon-spawned agents to automatically get browser automation context
+// (playwright-cli) when working on UI/CSS fixes that require visual verification.
 func inferMCPFromBeadsIssue(issue *beads.Issue) string {
 	for _, label := range issue.Labels {
 		if strings.HasPrefix(label, "needs:") {
 			need := strings.TrimPrefix(label, "needs:")
-			// Map needs labels to MCP servers
 			switch need {
 			case "playwright":
-				return "playwright"
-				// Future: add more mappings as needed
+				return "playwright" // Triggers playwright-cli context injection
 			}
 		}
 	}

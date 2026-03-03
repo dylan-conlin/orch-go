@@ -18,13 +18,10 @@ type OpenCodeMCPServerConfig struct {
 
 // opencodeMCPPresets maps known MCP preset names to their OpenCode server configurations.
 // Format matches OpenCode's opencode.json mcp config format.
-var opencodeMCPPresets = map[string]OpenCodeMCPServerConfig{
-	"playwright": {
-		Type:    "local",
-		Command: []string{"npx", "-y", "@playwright/mcp@latest", "--output-dir", ".orch/screenshots"},
-		Enabled: true,
-	},
-}
+//
+// Note: "playwright" is NOT an MCP preset. playwright-cli is a standalone CLI tool
+// handled via context injection, not MCP server configuration. See IsPlaywrightCLI().
+var opencodeMCPPresets = map[string]OpenCodeMCPServerConfig{}
 
 // EnsureOpenCodeMCP reads (or creates) opencode.json in projectDir and merges
 // the named MCP preset into the "mcp" key. Preserves all existing config.

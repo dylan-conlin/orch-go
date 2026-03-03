@@ -8,42 +8,12 @@ import (
 )
 
 func TestOpenCodeMCPPresets(t *testing.T) {
-	t.Run("playwright preset has correct format", func(t *testing.T) {
-		preset, ok := opencodeMCPPresets["playwright"]
-		if !ok {
-			t.Fatal("playwright preset not found in opencodeMCPPresets")
-		}
-		if preset.Type != "local" {
-			t.Errorf("type = %q, want %q", preset.Type, "local")
-		}
-		if !preset.Enabled {
-			t.Error("enabled = false, want true")
-		}
-		if len(preset.Command) < 3 {
-			t.Fatalf("command has %d elements, want at least 3", len(preset.Command))
-		}
-		if preset.Command[0] != "npx" {
-			t.Errorf("command[0] = %q, want %q", preset.Command[0], "npx")
-		}
-	})
-
-	t.Run("playwright preset includes output-dir flag", func(t *testing.T) {
-		preset := opencodeMCPPresets["playwright"]
-		found := false
-		for i, arg := range preset.Command {
-			if arg == "--output-dir" {
-				if i+1 >= len(preset.Command) {
-					t.Fatal("--output-dir flag has no value")
-				}
-				if preset.Command[i+1] != ".orch/screenshots" {
-					t.Errorf("--output-dir value = %q, want %q", preset.Command[i+1], ".orch/screenshots")
-				}
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Error("playwright preset missing --output-dir flag")
+	t.Run("playwright is NOT an MCP preset", func(t *testing.T) {
+		// playwright-cli is a standalone CLI tool, not an MCP server.
+		// It's handled via context injection, not opencode.json MCP config.
+		_, ok := opencodeMCPPresets["playwright"]
+		if ok {
+			t.Error("playwright found in opencodeMCPPresets, want not found (playwright-cli is not MCP)")
 		}
 	})
 
@@ -56,44 +26,32 @@ func TestOpenCodeMCPPresets(t *testing.T) {
 }
 
 func TestEnsureOpenCodeMCP(t *testing.T) {
-	t.Run("creates opencode.json when missing", func(t *testing.T) {
+	t.Run("playwright returns error (not an MCP preset)", func(t *testing.T) {
 		dir := t.TempDir()
-		if err := EnsureOpenCodeMCP(dir, "playwright"); err != nil {
-			t.Fatalf("EnsureOpenCodeMCP() error = %v", err)
+		err := EnsureOpenCodeMCP(dir, "playwright")
+		if err == nil {
+			t.Error("expected error for playwright (not MCP), got nil")
 		}
+	})
 
-		// Read and verify the created file
-		data, err := os.ReadFile(filepath.Join(dir, "opencode.json"))
-		if err != nil {
-			t.Fatalf("failed to read opencode.json: %v", err)
-		}
-
-		var config map[string]interface{}
-		if err := json.Unmarshal(data, &config); err != nil {
-			t.Fatalf("invalid JSON: %v\nContent: %s", err, data)
-		}
-
-		// Verify mcp key exists
-		mcp, ok := config["mcp"].(map[string]interface{})
-		if !ok {
-			t.Fatalf("missing or invalid 'mcp' key in: %s", data)
-		}
-
-		// Verify playwright entry
-		pw, ok := mcp["playwright"].(map[string]interface{})
-		if !ok {
-			t.Fatalf("missing or invalid 'playwright' in mcp: %s", data)
-		}
-		if pw["type"] != "local" {
-			t.Errorf("playwright type = %v, want 'local'", pw["type"])
-		}
-		if pw["enabled"] != true {
-			t.Errorf("playwright enabled = %v, want true", pw["enabled"])
+	t.Run("unknown preset returns error", func(t *testing.T) {
+		dir := t.TempDir()
+		err := EnsureOpenCodeMCP(dir, "nonexistent")
+		if err == nil {
+			t.Error("expected error for unknown preset, got nil")
 		}
 	})
 
 	t.Run("merges into existing opencode.json preserving other keys", func(t *testing.T) {
 		dir := t.TempDir()
+
+		// Add a test preset temporarily
+		opencodeMCPPresets["test-server"] = OpenCodeMCPServerConfig{
+			Type:    "local",
+			Command: []string{"test-cmd"},
+			Enabled: true,
+		}
+		defer delete(opencodeMCPPresets, "test-server")
 
 		// Write an existing opencode.json with other config
 		existing := `{
@@ -104,7 +62,7 @@ func TestEnsureOpenCodeMCP(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := EnsureOpenCodeMCP(dir, "playwright"); err != nil {
+		if err := EnsureOpenCodeMCP(dir, "test-server"); err != nil {
 			t.Fatalf("EnsureOpenCodeMCP() error = %v", err)
 		}
 
@@ -132,94 +90,8 @@ func TestEnsureOpenCodeMCP(t *testing.T) {
 		if !ok {
 			t.Fatalf("missing mcp key")
 		}
-		if _, ok := mcp["playwright"]; !ok {
-			t.Error("playwright not added to mcp")
-		}
-	})
-
-	t.Run("merges into existing mcp preserving other servers", func(t *testing.T) {
-		dir := t.TempDir()
-
-		// Write an existing opencode.json with another MCP server
-		existing := `{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "some-other-server": {
-      "type": "local",
-      "command": ["some-cmd"],
-      "enabled": true
-    }
-  }
-}`
-		if err := os.WriteFile(filepath.Join(dir, "opencode.json"), []byte(existing), 0644); err != nil {
-			t.Fatal(err)
-		}
-
-		if err := EnsureOpenCodeMCP(dir, "playwright"); err != nil {
-			t.Fatalf("EnsureOpenCodeMCP() error = %v", err)
-		}
-
-		data, err := os.ReadFile(filepath.Join(dir, "opencode.json"))
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		var config map[string]interface{}
-		if err := json.Unmarshal(data, &config); err != nil {
-			t.Fatalf("invalid JSON: %v", err)
-		}
-
-		mcp := config["mcp"].(map[string]interface{})
-
-		// Verify existing server preserved
-		if _, ok := mcp["some-other-server"]; !ok {
-			t.Error("existing MCP server 'some-other-server' was lost")
-		}
-
-		// Verify new server added
-		if _, ok := mcp["playwright"]; !ok {
-			t.Error("playwright not added")
-		}
-	})
-
-	t.Run("no-op when preset already exists", func(t *testing.T) {
-		dir := t.TempDir()
-
-		// Write opencode.json that already has playwright
-		existing := `{
-  "mcp": {
-    "playwright": {
-      "type": "local",
-      "command": ["npx", "-y", "@playwright/mcp@latest"],
-      "enabled": true
-    }
-  }
-}`
-		if err := os.WriteFile(filepath.Join(dir, "opencode.json"), []byte(existing), 0644); err != nil {
-			t.Fatal(err)
-		}
-
-		if err := EnsureOpenCodeMCP(dir, "playwright"); err != nil {
-			t.Fatalf("EnsureOpenCodeMCP() error = %v", err)
-		}
-
-		// Verify file is still valid
-		data, err := os.ReadFile(filepath.Join(dir, "opencode.json"))
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		var config map[string]interface{}
-		if err := json.Unmarshal(data, &config); err != nil {
-			t.Fatalf("invalid JSON after no-op: %v", err)
-		}
-	})
-
-	t.Run("unknown preset returns error", func(t *testing.T) {
-		dir := t.TempDir()
-		err := EnsureOpenCodeMCP(dir, "nonexistent")
-		if err == nil {
-			t.Error("expected error for unknown preset, got nil")
+		if _, ok := mcp["test-server"]; !ok {
+			t.Error("test-server not added to mcp")
 		}
 	})
 }

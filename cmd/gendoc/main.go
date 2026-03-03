@@ -138,7 +138,7 @@ Examples:
   orch-go spawn --model opus investigation "explore the codebase"
   orch-go spawn --model flash investigation "explore the codebase"
   orch-go spawn --no-track investigation "exploratory work"
-  orch-go spawn --mcp playwright feature-impl "add UI feature"
+  orch-go spawn --mcp playwright feature-impl "add UI feature"  # injects playwright-cli context
   orch-go spawn --skip-artifact-check investigation "fresh start"`,
 		Run: noopRun,
 	}
@@ -150,7 +150,7 @@ Examples:
 	cmd.Flags().Bool("inline", false, "Run inline (blocking) with TUI")
 	cmd.Flags().String("model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	cmd.Flags().Bool("no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
-	cmd.Flags().String("mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
+	cmd.Flags().String("mcp", "", "Browser/MCP config (e.g., 'playwright' for playwright-cli browser automation)")
 	cmd.Flags().Bool("skip-artifact-check", false, "Bypass pre-spawn kb context check")
 
 	return cmd

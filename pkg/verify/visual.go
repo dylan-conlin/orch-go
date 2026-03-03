@@ -81,10 +81,11 @@ var visualEvidencePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)visually\s*verif`),
 	regexp.MustCompile(`(?i)browser\s*verif`),
 	regexp.MustCompile(`(?i)ui\s*verif`),
-	// Playwright/browser tool mentions
+	// Playwright/browser tool mentions (matches both MCP and CLI patterns)
 	regexp.MustCompile(`(?i)playwright`),
 	regexp.MustCompile(`(?i)browser_take_screenshot`),
 	regexp.MustCompile(`(?i)browser_navigate`),
+	regexp.MustCompile(`(?i)playwright-cli`),
 	// Smoke test with UI context
 	regexp.MustCompile(`(?i)smoke\s*test.*ui`),
 	regexp.MustCompile(`(?i)ui.*smoke\s*test`),

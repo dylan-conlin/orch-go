@@ -138,7 +138,7 @@ type Config struct {
 	// ResolvedSettings captures spawn settings with provenance for SPAWN_CONTEXT.md
 	ResolvedSettings ResolvedSpawnSettings
 
-	// MCP server configuration (e.g., "playwright" for browser automation)
+	// MCP configuration (e.g., "playwright" for browser automation via playwright-cli)
 	MCP string
 
 	// Tier specifies the spawn tier: "light" or "full"

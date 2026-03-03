@@ -11,11 +11,18 @@ import (
 // mcpPresets maps known MCP preset names to their server configurations.
 // Each preset defines the command and args needed to launch the MCP server.
 // Format matches Claude CLI's --mcp-config JSON format.
-var mcpPresets = map[string]MCPServerConfig{
-	"playwright": {
-		Command: "npx",
-		Args:    []string{"-y", "@playwright/mcp@latest", "--cdp-endpoint", "http://localhost:9222"},
-	},
+//
+// Note: "playwright" is NOT an MCP preset. playwright-cli is a standalone CLI tool
+// that agents use via Bash commands. It's handled via context injection in context.go,
+// not via --mcp-config. See IsPlaywrightCLI().
+var mcpPresets = map[string]MCPServerConfig{}
+
+// IsPlaywrightCLI returns true if the MCP value represents playwright-cli
+// (standalone CLI tool) rather than an MCP server. playwright-cli is handled
+// via context injection into SPAWN_CONTEXT.md, not via --mcp-config or
+// opencode.json MCP server configuration.
+func IsPlaywrightCLI(mcp string) bool {
+	return mcp == "playwright"
 }
 
 // MCPServerConfig defines the command to launch an MCP server.
@@ -81,8 +88,9 @@ func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsD
 
 	// Base command: export CLAUDE_CONTEXT=X; cat CONTEXT.md | claude --dangerously-skip-permissions
 	mcpFlag := ""
-	if mcp != "" {
-		// Check if it's a known preset
+	if mcp != "" && !IsPlaywrightCLI(mcp) {
+		// playwright-cli is handled via context injection, not MCP config.
+		// All other MCP values are treated as MCP server presets or raw config.
 		if configJSON, ok := MCPConfigJSON(mcp); ok {
 			// Use single quotes around JSON to avoid shell interpretation of double quotes
 			mcpFlag = fmt.Sprintf(" --mcp-config '%s'", configJSON)

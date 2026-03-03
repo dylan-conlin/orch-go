@@ -2,7 +2,6 @@
 package spawn
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -147,45 +146,14 @@ func TestSpawnClaudeSessionSelection(t *testing.T) {
 	}
 }
 
-// TestMCPConfigJSON tests that known MCP presets produce valid JSON configs.
+// TestMCPConfigJSON tests that MCP presets produce valid JSON configs.
 func TestMCPConfigJSON(t *testing.T) {
-	t.Run("playwright preset returns valid JSON", func(t *testing.T) {
-		configJSON, ok := MCPConfigJSON("playwright")
-		if !ok {
-			t.Fatal("MCPConfigJSON('playwright') returned false, want true")
-		}
-		if configJSON == "" {
-			t.Fatal("MCPConfigJSON('playwright') returned empty string")
-		}
-
-		// Verify it's valid JSON
-		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(configJSON), &parsed); err != nil {
-			t.Fatalf("MCPConfigJSON('playwright') returned invalid JSON: %v\nGot: %s", err, configJSON)
-		}
-
-		// Verify structure: {"mcpServers": {"playwright": {"command": "npx", "args": [...]}}}
-		servers, ok := parsed["mcpServers"].(map[string]interface{})
-		if !ok {
-			t.Fatalf("missing or invalid mcpServers key in: %s", configJSON)
-		}
-		pw, ok := servers["playwright"].(map[string]interface{})
-		if !ok {
-			t.Fatalf("missing or invalid playwright server in: %s", configJSON)
-		}
-		if pw["command"] != "npx" {
-			t.Errorf("playwright command = %v, want 'npx'", pw["command"])
-		}
-		args, ok := pw["args"].([]interface{})
-		if !ok || len(args) < 2 {
-			t.Fatalf("playwright args missing or too short: %v", pw["args"])
-		}
-		if args[0] != "-y" {
-			t.Errorf("playwright args[0] = %v, want '-y'", args[0])
-		}
-		argsStr, _ := args[1].(string)
-		if !strings.HasPrefix(argsStr, "@playwright/mcp") {
-			t.Errorf("playwright args[1] = %v, want prefix '@playwright/mcp'", args[1])
+	t.Run("playwright is NOT an MCP preset", func(t *testing.T) {
+		// playwright-cli is a standalone CLI tool, not an MCP server.
+		// It's handled via context injection, not --mcp-config.
+		_, ok := MCPConfigJSON("playwright")
+		if ok {
+			t.Error("MCPConfigJSON('playwright') returned true, want false (playwright-cli is not MCP)")
 		}
 	})
 
@@ -195,6 +163,24 @@ func TestMCPConfigJSON(t *testing.T) {
 			t.Error("MCPConfigJSON('nonexistent') returned true, want false")
 		}
 	})
+}
+
+// TestIsPlaywrightCLI tests the playwright-cli detection helper.
+func TestIsPlaywrightCLI(t *testing.T) {
+	tests := []struct {
+		mcp  string
+		want bool
+	}{
+		{"playwright", true},
+		{"", false},
+		{"some-mcp-server", false},
+		{"/path/to/config.json", false},
+	}
+	for _, tt := range tests {
+		if got := IsPlaywrightCLI(tt.mcp); got != tt.want {
+			t.Errorf("IsPlaywrightCLI(%q) = %v, want %v", tt.mcp, got, tt.want)
+		}
+	}
 }
 
 // TestBuildClaudeLaunchCommand tests command construction with and without MCP.
@@ -229,7 +215,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			},
 		},
 		{
-			name:        "playwright MCP preset",
+			name:        "playwright handled via context injection not MCP config",
 			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
 			claudeCtx:   "worker",
 			mcp:         "playwright",
@@ -237,10 +223,9 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			wantContains: []string{
 				"export CLAUDE_CONTEXT=worker",
 				"claude --dangerously-skip-permissions",
+			},
+			wantExcludes: []string{
 				"--mcp-config",
-				"mcpServers",
-				"playwright",
-				"@playwright/mcp",
 			},
 		},
 		{
@@ -297,13 +282,15 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			},
 		},
 		{
-			name:        "orchestrator with MCP includes both flags",
+			name:        "orchestrator with playwright skips MCP config",
 			contextPath: "/tmp/workspace/ORCHESTRATOR_CONTEXT.md",
 			claudeCtx:   "orchestrator",
 			mcp:         "playwright",
 			configDir:   "",
 			wantContains: []string{
 				"--disallowedTools",
+			},
+			wantExcludes: []string{
 				"--mcp-config",
 			},
 		},
@@ -342,7 +329,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			},
 		},
 		{
-			name:        "configDir with MCP - both injected",
+			name:        "configDir with playwright - configDir injected, no MCP config",
 			contextPath: "/tmp/workspace/SPAWN_CONTEXT.md",
 			claudeCtx:   "worker",
 			mcp:         "playwright",
@@ -350,6 +337,8 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			wantContains: []string{
 				"unset CLAUDE_CODE_OAUTH_TOKEN",
 				"export CLAUDE_CONFIG_DIR=~/.claude-personal",
+			},
+			wantExcludes: []string{
 				"--mcp-config",
 			},
 		},

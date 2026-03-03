@@ -352,6 +352,34 @@ CONTEXT AVAILABLE:
 
 {{.ServerContext}}
 {{end}}
+{{if .BrowserAutomation}}
+## BROWSER AUTOMATION (playwright-cli)
+
+You have **playwright-cli** available for browser automation. Use it via Bash commands (NOT MCP).
+
+**Quick reference:**
+` + "```" + `bash
+playwright-cli open <url>              # Open browser (daemon — stays running)
+playwright-cli screenshot --filename /tmp/screenshot.png  # Take screenshot
+playwright-cli click <ref>             # Click element by accessibility ref
+playwright-cli fill <ref> "text"       # Fill input field
+playwright-cli hover <ref>             # Hover over element
+playwright-cli select <ref> "value"    # Select dropdown option
+playwright-cli goto <url>              # Navigate to URL
+playwright-cli eval "document.title"   # Run simple JS expression
+playwright-cli console                 # View console logs
+playwright-cli network                 # View network requests
+playwright-cli close                   # Close browser session
+` + "```" + `
+
+**Key patterns:**
+- **Snapshots:** Element refs (e3, e12) are in ` + "`.playwright-cli/page-*.yml`" + ` files — read them to get refs for interaction
+- **Sessions:** Use ` + "`-s=name`" + ` for named sessions (e.g., ` + "`playwright-cli -s=dashboard open http://localhost:5188`" + `)
+- **Speed:** First command ~1.7s (browser startup), subsequent commands ~0.15s (daemon IPC)
+- **Screenshots:** Use ` + "`--full-page`" + ` flag for full page capture
+
+**For complex JS:** Use ` + "`playwright-cli run-code \"async page => { ... }\"`" + ` instead of ` + "`eval`" + `.
+{{end}}
 🚨 FINAL STEP - SESSION COMPLETE PROTOCOL:
 Complete your session in this EXACT order:
 
@@ -575,6 +603,7 @@ type contextData struct {
 	DesignNotes           string   // Notes from design session
 	OrientationFrame      string   // Additional task context (from issue description), rendered as separate section
 	PriorCompletions      string   // Prior completed agent work on same issue
+	BrowserAutomation     bool     // When true, playwright-cli browser automation is available
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -651,6 +680,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		DesignNotes:           cfg.DesignNotes,
 		OrientationFrame:      cfg.OrientationFrame,
 		PriorCompletions:      cfg.PriorCompletions,
+		BrowserAutomation:     IsPlaywrightCLI(cfg.MCP),
 	}
 
 	var buf bytes.Buffer
