@@ -279,7 +279,7 @@ func TestParseKBContextOutput(t *testing.T) {
 
 ## CONSTRAINTS (from kn)
 
-- [orch-knowledge] Orchestrators NEVER do spawnable work
+- [orch-go] Orchestrators NEVER do spawnable work
   Reason: Orchestrator doing task work blocks the entire system
 - [orch-cli] Worker agents must NEVER spawn other agents
   Reason: Recursive spawn testing incident
@@ -288,7 +288,7 @@ func TestParseKBContextOutput(t *testing.T) {
 
 ## DECISIONS (from kn)
 
-- [orch-knowledge] kn integrates via smart auto-inject in orch spawn
+- [orch-go] kn integrates via smart auto-inject in orch spawn
   Reason: Auto-inject prevents missing critical knowledge`,
 			wantCount:   4,
 			wantTypes:   []string{"constraint", "constraint", "constraint", "decision"},
@@ -468,8 +468,8 @@ func TestExtractProjectFromMatch(t *testing.T) {
 		},
 		{
 			name:  "extracts project with hyphen",
-			match: KBContextMatch{Title: "[orch-knowledge] Some decision"},
-			want:  "orch-knowledge",
+			match: KBContextMatch{Title: "[kb-cli] Some decision"},
+			want:  "kb-cli",
 		},
 		{
 			name:  "returns empty for no prefix",
@@ -505,7 +505,7 @@ func TestFilterToOrchEcosystem(t *testing.T) {
 		{Type: "constraint", Title: "[price-watch] Max retries per product"},
 		{Type: "decision", Title: "[kb-cli] Use YAML for config"},
 		{Type: "decision", Title: "[dotfiles] Zsh is the default shell"},
-		{Type: "investigation", Title: "[orch-knowledge] Pattern analysis"},
+		{Type: "investigation", Title: "[kn] Pattern analysis"},
 		{Type: "investigation", Title: "[beads] Issue tracking investigation"},
 		{Type: "investigation", Title: "[scs-slack] Slack integration research"},
 		{Type: "constraint", Title: "Local constraint without prefix"}, // Should be included
@@ -513,7 +513,7 @@ func TestFilterToOrchEcosystem(t *testing.T) {
 
 	filtered := filterToOrchEcosystem(matches)
 
-	// Should keep: orch-go, orch-cli, kb-cli, orch-knowledge, beads, and local (no prefix)
+	// Should keep: orch-go, orch-cli, kb-cli, kn, beads, and local (no prefix)
 	// Should filter: price-watch, dotfiles, scs-slack
 	expectedCount := 6
 	if len(filtered) != expectedCount {
@@ -525,7 +525,7 @@ func TestFilterToOrchEcosystem(t *testing.T) {
 		"[orch-go] Agents must not spawn recursively": true,
 		"[orch-cli] Worker agents must not spawn":     true,
 		"[kb-cli] Use YAML for config":                true,
-		"[orch-knowledge] Pattern analysis":           true,
+		"[kn] Pattern analysis":                       true,
 		"[beads] Issue tracking investigation":        true,
 		"Local constraint without prefix":             true,
 	}
@@ -1173,10 +1173,10 @@ func TestFilterToProjectGroup(t *testing.T) {
 
 	t.Run("filters to orch group", func(t *testing.T) {
 		orchAllowlist := map[string]bool{
-			"orch-go":        true,
-			"orch-cli":       true,
-			"kb-cli":         true,
-			"orch-knowledge": true,
+			"orch-go":  true,
+			"orch-cli": true,
+			"kb-cli":   true,
+			"kn":       true,
 		}
 
 		filtered := filterToProjectGroup(matches, orchAllowlist)

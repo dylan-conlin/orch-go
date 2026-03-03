@@ -22,8 +22,7 @@ var OrchEcosystemRepos = map[string]bool{
 	"orch-go":        true,
 	"orch-cli":       true,
 	"kb-cli":         true,
-	"orch-knowledge": true,
-	"beads":          true,
+	"beads": true,
 	"kn":             true,
 }
 

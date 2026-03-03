@@ -86,8 +86,8 @@ func ExtractSkillNameFromSpawnContext(workspacePath string) (string, error) {
 
 // FindSkillManifest locates and parses the skill.yaml file for a given skill.
 // Searches in standard locations:
-// 1. ~/.claude/skills/worker/{skill}/.skillc/skill.yaml
-// 2. ~/orch-knowledge/skills/src/worker/{skill}/.skillc/skill.yaml
+// 1. skills/src/worker/{skill}/.skillc/skill.yaml (project-relative, for orch-go)
+// 2. ~/.claude/skills/worker/{skill}/.skillc/skill.yaml (deployed skills)
 func FindSkillManifest(skillName string) (*SkillManifest, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -95,8 +95,10 @@ func FindSkillManifest(skillName string) (*SkillManifest, error) {
 	}
 
 	// Search paths in order of preference
+	// Project-relative path (orch-go/skills/src/) is checked first via cwd,
+	// then falls back to deployed skill locations under ~/.claude/skills/
 	searchPaths := []string{
-		filepath.Join(homeDir, "orch-knowledge", "skills", "src", "worker", skillName, ".skillc", "skill.yaml"),
+		filepath.Join(homeDir, "Documents", "personal", "orch-go", "skills", "src", "worker", skillName, ".skillc", "skill.yaml"),
 		filepath.Join(homeDir, ".claude", "skills", "worker", skillName, ".skillc", "skill.yaml"),
 		filepath.Join(homeDir, ".claude", "skills", "worker", skillName, "skill.yaml"),
 	}

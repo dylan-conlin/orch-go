@@ -368,7 +368,6 @@ func DefaultMultiProjectConfigs() []MultiProjectConfig {
 				"orch-cli",
 				"beads",
 				"kb-cli",
-				"orch-knowledge",
 				"opencode",
 				"price-watch", // Include price-watch agents when viewing from orch-go
 				"pw",          // Alias: price-watch directory uses "pw" beads ID prefix

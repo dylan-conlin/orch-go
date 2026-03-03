@@ -22,7 +22,7 @@ func TestGetIncludedProjects(t *testing.T) {
 			name:    "orch-go includes ecosystem repos and price-watch",
 			project: "orch-go",
 			// Should include all ecosystem repos plus price-watch/pw
-			expected: []string{"orch-go", "orch-cli", "beads", "kb-cli", "orch-knowledge", "opencode", "price-watch", "pw"},
+			expected: []string{"orch-go", "orch-cli", "beads", "kb-cli", "opencode", "price-watch", "pw"},
 		},
 		{
 			name:    "unknown project returns just itself",
