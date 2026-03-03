@@ -590,6 +590,17 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		return err
 	}
 
+	// Set beads.DefaultDir so loadBeadsLabels and other beads operations
+	// use the correct project directory for cross-project spawns.
+	// Without this, FindSocketPath("") falls back to CWD which may be a
+	// different project than where the beads issue lives (e.g., spawning
+	// pw-r6hk from orch-go with --workdir pointing to price-watch).
+	if spawnWorkdir != "" {
+		prevDefaultDir := beads.DefaultDir
+		beads.DefaultDir = projectDir
+		defer func() { beads.DefaultDir = prevDefaultDir }()
+	}
+
 	// 3. Load skill and generate workspace
 	skillContent, workspaceName, isOrchestrator, isMetaOrchestrator, err := orch.LoadSkillAndGenerateWorkspace(skillName, projectName, task, projectDir, spawnAutoInit, spawnNoTrack, ensureOrchScaffolding)
 	if err != nil {

@@ -383,6 +383,53 @@ func TestResolve_BugClass09_MCPAndBrowserToolIndependent(t *testing.T) {
 	}
 }
 
+// TestResolve_BrowserToolEndToEnd_LabelsToContextInjection verifies the full chain:
+// needs:playwright label → Resolve() → Config.BrowserTool → GenerateContext() → SPAWN_CONTEXT.md
+// This is a regression test for orch-go-vv7l where cross-project spawns lost labels,
+// causing 'Browser: none (source: default)' instead of 'Browser: playwright-cli'.
+func TestResolve_BrowserToolEndToEnd_LabelsToContextInjection(t *testing.T) {
+	// Step 1: Resolve with needs:playwright label
+	input := baseResolveInput()
+	input.BeadsLabels = []string{"needs:playwright"}
+
+	resolved, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+
+	// Step 2: Build Config as BuildSpawnConfig would
+	cfg := &Config{
+		Task:             "test task",
+		SkillName:        "investigation",
+		Project:          "test-project",
+		ProjectDir:       "/tmp/test-project",
+		WorkspaceName:    "test-workspace",
+		BeadsID:          "test-123",
+		Tier:             TierFull,
+		BrowserTool:      resolved.BrowserTool.Value,
+		ResolvedSettings: resolved,
+	}
+
+	// Step 3: Generate context
+	content, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext() error = %v", err)
+	}
+
+	// Step 4: Verify BROWSER AUTOMATION section is present
+	if !strings.Contains(content, "BROWSER AUTOMATION") {
+		t.Error("BROWSER AUTOMATION section not found in generated context")
+	}
+
+	// Step 5: Verify CONFIG RESOLUTION shows correct browser tool (not "none")
+	if !strings.Contains(content, "Browser: playwright-cli") {
+		t.Error("CONFIG RESOLUTION does not show 'Browser: playwright-cli'")
+	}
+	if strings.Contains(content, "Browser: none") {
+		t.Error("CONFIG RESOLUTION incorrectly shows 'Browser: none'")
+	}
+}
+
 func TestResolve_BugClass10_UserDefaultModelNotInjectedAsCLI(t *testing.T) {
 	input := baseResolveInput()
 	input.UserConfig = &userconfig.Config{Backend: BackendOpenCode, DefaultModel: "gpt-4o"}
