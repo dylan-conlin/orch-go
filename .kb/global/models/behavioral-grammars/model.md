@@ -1,7 +1,7 @@
 # Model: Behavioral Grammars
 
 **Created:** 2026-03-01
-**Status:** Active — 5 claims tested, 1 untested (Claim 4)
+**Status:** Active — 5 claims tested, 2 untested (Claims 4, 7)
 **Source:** Grammar Design Discipline synthesis (Dylan, Claude web session, Mar 1 2026)
 **Corroborated by:** Revert spiral investigation, behavioral testing baseline, grammar recovery validation, intent spiral investigation, constraint dilution threshold (Mar 1), emphasis language compliance (Mar 2), behavioral compliance identity/action gap (Feb 24), agent framework landscape survey (Mar 1), layered constraint enforcement design (Mar 2)
 
@@ -81,6 +81,16 @@ Human intent passes through: human → orchestrator → spawn prompt → skill �
 
 **Status: PARTIALLY CONFIRMED.** Anecdotal evidence (intent spiral) confirmed the mechanism. The behavioral compliance probe (Feb 24) identified a specific instance: system prompt → skill → user message creates a competing instruction hierarchy where the system prompt has structural priority (injected by platform, reinforced every turn) over skill content (user-level, static). Not yet tested with controlled boundary-count variation.
 
+### Claim 7: Human-agent grammar coupling creates a convergence attractor
+
+The human's verification and response patterns are also a behavioral grammar — a probability distribution over approvals, corrections, and silences conditioned on the agent's output. This human grammar co-evolves with the agent grammar through four feedback channels (within-session agent adaptation, cross-session agent shaping, within-session human adaptation, cross-session human learning), creating a convergence attractor where the dyad settles into mutual predictability that feels like smooth operation but may not correspond to correctness.
+
+**Test:** Measure verification depth (not just rate) over time within a session. If the human's verification shifts from evaluation to pattern-matching as the session progresses — while the system's output quality remains constant — the convergence attractor is operating.
+
+**Status:** Untested. Theoretical synthesis from existing findings.
+
+**Investigation:** `.kb/investigations/2026-03-03-inv-behavioral-grammar-coupling-theory.md`
+
 ## Design Dimensions (Framework)
 
 When designing or evaluating a behavioral grammar:
@@ -126,7 +136,7 @@ Behavioral grammars are subject to a recurring cycle (documented in revert spira
 ## Related
 
 - **Principles:** Redundancy is Load-Bearing, Legibility Over Compliance, Identity is Not Behavior, Infrastructure Over Instruction
-- **Investigations:** Revert spiral pattern, behavioral testing baseline, intent spiral, grammar recovery validation, behavioral compliance (Feb 24)
+- **Investigations:** Revert spiral pattern, behavioral testing baseline, intent spiral, grammar recovery validation, behavioral compliance (Feb 24), human-agent grammar coupling (Mar 3)
 - **Testing:** skillc test infrastructure (orch-go-4t8e, orch-go-0w6s, orch-go-oz1j)
 - **Probes (in `probes/`):**
   - `2026-02-24-probe-orchestrator-skill-behavioral-compliance.md` — Identity vs action compliance gap
