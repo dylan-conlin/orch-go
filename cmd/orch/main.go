@@ -76,6 +76,7 @@ func init() {
 	rootCmd.AddCommand(debriefCmd)
 	rootCmd.AddCommand(controlCmd)
 	rootCmd.AddCommand(automationCmd)
+	rootCmd.AddCommand(auditCmd)
 }
 
 var (

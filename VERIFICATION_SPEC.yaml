@@ -1,60 +1,46 @@
-task: "Automated system health properties — extend orch doctor with time-series tracking"
-beads_id: orch-go-bduk
+task: "Randomized completion audit selection — unpredictable deep review flagging"
+beads_id: orch-go-rrf2
 date: 2026-03-03
 
 deliverables:
-  - name: "pkg/health package — snapshot types, JSONL storage, trend analysis"
+  - name: "orch audit command group (select, list, install, uninstall)"
     files:
-      - pkg/health/health.go
-      - pkg/health/health_test.go
-    verified: true
-    evidence: "go test ./pkg/health/ -v → 13/13 pass (0.006s)"
-
-  - name: "doctor --health command — metric collection, display, alerts"
-    files:
-      - cmd/orch/doctor_health.go
-      - cmd/orch/doctor_health_test.go
-    verified: true
-    evidence: "go test ./cmd/orch/ -run 'TestCountCommitTypes|TestTrendLabel|TestCollectHealthSnapshot|TestOutputHealth' -v → 8/8 pass"
-
-  - name: "doctor.go wiring — --health and --health-json flags"
-    files:
-      - cmd/orch/doctor.go
+      - cmd/orch/audit_cmd.go
     verified: true
     evidence: "go build ./cmd/orch/ && go vet ./cmd/orch/ → clean"
 
+  - name: "Tests for selection logic and plist generation"
+    files:
+      - cmd/orch/audit_cmd_test.go
+    verified: true
+    evidence: "go test ./cmd/orch/ -run 'TestCrypto|TestHasLabel|TestAuditPlist|TestRecentClosed' -v → 7/7 pass"
+
+  - name: "notify.Send generic method"
+    files:
+      - pkg/notify/notify.go
+    verified: true
+    evidence: "go build ./cmd/orch/ → clean (used by audit select)"
+
+  - name: "Launchd job registration in automation_cmd.go"
+    files:
+      - cmd/orch/automation_cmd.go
+    verified: true
+
+  - name: "Command registered in main.go"
+    files:
+      - cmd/orch/main.go
+    verified: true
+
 tests:
-  go:
-    command: "go test ./pkg/health/ ./cmd/orch/ -count=1"
-    result: "both packages pass (pkg/health 0.006s, cmd/orch 3.590s)"
+  command: "go test ./cmd/orch/ -run 'TestCrypto|TestHasLabel|TestAuditPlist|TestRecentClosed' -v"
+  result: "7/7 pass (0.013s)"
 
-smoke_tests:
-  - command: "go run ./cmd/orch/ doctor --health"
-    result: "Displays metric table with 6 metrics, trend arrows, and alerts"
-  - command: "go run ./cmd/orch/ doctor --health-json"
-    result: "Valid JSON with current snapshot, trends, and alerts array"
-
-metrics_tracked:
-  - "open_issues: total open issues from bd"
-  - "blocked_issues: blocked issues from bd"
-  - "stale_issues: open issues with no activity in 14+ days"
-  - "orphaned_issues: open issues with no activity in 7+ days"
-  - "bloated_files: source files over 800 lines (accretion threshold)"
-  - "fix_feat_ratio: ratio of fix: to feat: commits in 28-day window"
-
-alert_thresholds:
-  - "fix_feat_ratio > 2.0 → critical (maintenance mode)"
-  - "fix_feat_ratio > 1.5 → warn (approaching maintenance mode)"
-  - "stale_issues trending up and > 5 → warn"
-  - "bloated_files trending up → warn"
-  - "blocked/open ratio > 30% → warn (dependency bottleneck)"
-  - "orphaned_issues > 10 → warn"
-
-storage:
-  file: "~/.orch/health-snapshots.jsonl"
-  format: "JSONL (one JSON line per snapshot)"
-  retention: "append-only, no pruning yet"
+commands:
+  - "orch audit select — crypto/rand Fisher-Yates picks 2 from last 7d closed issues, labels audit:deep-review, sends notification"
+  - "orch audit list — shows currently flagged issues"
+  - "orch audit install — installs launchd job (every Monday 9am)"
+  - "orch audit uninstall — removes launchd job"
 
 leave_it_better:
-  knowledge: "kb quick decide: health snapshots stored as JSONL (kb-8a18f9)"
+  knowledge: "kb quick decide: crypto/rand for audit selection (kb-644c09)"
   stale_artifacts: "No stale artifacts encountered"

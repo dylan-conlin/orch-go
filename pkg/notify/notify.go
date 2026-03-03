@@ -99,6 +99,15 @@ func (n *Notifier) QuestionPending(beadsID, questionText string) error {
 	return n.backend.Notify(title, message, "")
 }
 
+// Send sends a notification with the given title and message.
+// Returns nil immediately if notifications are disabled.
+func (n *Notifier) Send(title, message string) error {
+	if !n.enabled {
+		return nil
+	}
+	return n.backend.Notify(title, message, "")
+}
+
 // IsEnabled returns whether notifications are enabled.
 func (n *Notifier) IsEnabled() bool {
 	return n.enabled

@@ -17,6 +17,7 @@ var orchLaunchdJobs = []struct {
 	Description string
 }{
 	{"com.orch.token-keepalive", "Daily OAuth token refresh (keeps both accounts alive)"},
+	{"com.orch.audit-select", "Weekly randomized completion audit selection"},
 }
 
 var automationCmd = &cobra.Command{
