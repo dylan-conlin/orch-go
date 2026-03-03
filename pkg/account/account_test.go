@@ -1071,8 +1071,9 @@ func TestRecommendAccount_NoPrimaries(t *testing.T) {
 		{Name: "spillover1", Role: "spillover"},
 	}
 	got := RecommendAccount(accounts, nil)
-	if got != "" {
-		t.Errorf("RecommendAccount() = %q, want empty (no primaries)", got)
+	// With no primaries and no capacity data, recommend first available account
+	if got != "spillover1" {
+		t.Errorf("RecommendAccount() = %q, want %q (only available account)", got, "spillover1")
 	}
 }
 
@@ -1104,7 +1105,7 @@ func TestRecommendAccount_PrimaryWithoutRole(t *testing.T) {
 	}
 }
 
-func TestRecommendAccount_WithCapacityFetcher_PrimaryHealthy(t *testing.T) {
+func TestRecommendAccount_WithCapacityFetcher_HighestWeeklyWins(t *testing.T) {
 	accounts := []AccountInfo{
 		{Name: "work", Role: "primary", Tier: "20x"},
 		{Name: "personal", Role: "spillover", Tier: "5x"},
@@ -1116,12 +1117,13 @@ func TestRecommendAccount_WithCapacityFetcher_PrimaryHealthy(t *testing.T) {
 		return &CapacityInfo{FiveHourRemaining: 95, SevenDayRemaining: 88}
 	}
 	got := RecommendAccount(accounts, fetcher)
-	if got != "work" {
-		t.Errorf("RecommendAccount() = %q, want %q (primary is healthy)", got, "work")
+	// Personal wins: 88% weekly > 72% weekly
+	if got != "personal" {
+		t.Errorf("RecommendAccount() = %q, want %q (highest weekly headroom)", got, "personal")
 	}
 }
 
-func TestRecommendAccount_WithCapacityFetcher_PrimaryLow_SpilloverHealthy(t *testing.T) {
+func TestRecommendAccount_WithCapacityFetcher_PersonalMoreWeeklyHeadroom(t *testing.T) {
 	accounts := []AccountInfo{
 		{Name: "work", Role: "primary", Tier: "20x"},
 		{Name: "personal", Role: "spillover", Tier: "5x"},
@@ -1133,12 +1135,13 @@ func TestRecommendAccount_WithCapacityFetcher_PrimaryLow_SpilloverHealthy(t *tes
 		return &CapacityInfo{FiveHourRemaining: 95, SevenDayRemaining: 88}
 	}
 	got := RecommendAccount(accounts, fetcher)
+	// Personal wins: 88% weekly > 15% weekly
 	if got != "personal" {
-		t.Errorf("RecommendAccount() = %q, want %q (spillover activated)", got, "personal")
+		t.Errorf("RecommendAccount() = %q, want %q (personal has more weekly headroom)", got, "personal")
 	}
 }
 
-func TestRecommendAccount_WithCapacityFetcher_AllExhausted(t *testing.T) {
+func TestRecommendAccount_WithCapacityFetcher_EqualCapacityUsesAlphabetical(t *testing.T) {
 	accounts := []AccountInfo{
 		{Name: "work", Role: "primary", Tier: "20x"},
 		{Name: "personal", Role: "spillover", Tier: "5x"},
@@ -1147,8 +1150,9 @@ func TestRecommendAccount_WithCapacityFetcher_AllExhausted(t *testing.T) {
 		return &CapacityInfo{FiveHourRemaining: 5, SevenDayRemaining: 3}
 	}
 	got := RecommendAccount(accounts, fetcher)
-	if got != "work" {
-		t.Errorf("RecommendAccount() = %q, want %q (all exhausted, use primary)", got, "work")
+	// Equal capacity → alphabetical tie-break: "personal" < "work"
+	if got != "personal" {
+		t.Errorf("RecommendAccount() = %q, want %q (alphabetical tie-break)", got, "personal")
 	}
 }
 

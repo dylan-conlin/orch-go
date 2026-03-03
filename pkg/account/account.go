@@ -313,10 +313,11 @@ func ListAccountInfo() ([]AccountInfo, error) {
 }
 
 // RecommendAccount returns the name of the recommended account for spawning.
-// Uses the same work-first algorithm as resolveAccount:
-//  1. Primary accounts checked first (sorted by name for determinism)
-//  2. If a capacity fetcher is provided, use capacity-aware routing
-//  3. Without capacity data, recommend first primary account
+// Uses the same lowest-weekly-usage algorithm as resolveAccount:
+//  1. Collect capacity for all accounts (regardless of role)
+//  2. Pick the account with highest SevenDayRemaining (most weekly headroom)
+//  3. Tie-break: FiveHourRemaining, then alphabetical name
+//  4. Without capacity data, recommend first primary account
 //
 // Returns empty string if no accounts are configured.
 func RecommendAccount(accounts []AccountInfo, capacityFetcher func(string) *CapacityInfo) string {
@@ -324,45 +325,58 @@ func RecommendAccount(accounts []AccountInfo, capacityFetcher func(string) *Capa
 		return ""
 	}
 
-	var primaries, spillovers []string
+	// Collect all account names sorted for deterministic behavior
+	var allNames []string
 	for _, acc := range accounts {
-		switch acc.Role {
-		case "spillover":
-			spillovers = append(spillovers, acc.Name)
-		default:
-			primaries = append(primaries, acc.Name)
-		}
+		allNames = append(allNames, acc.Name)
 	}
-
-	sort.Strings(primaries)
-	sort.Strings(spillovers)
-
-	if len(primaries) == 0 {
-		return ""
-	}
+	sort.Strings(allNames)
 
 	if capacityFetcher == nil {
-		return primaries[0]
+		// Without capacity data, recommend first primary account (sorted for determinism)
+		var primaries []string
+		for _, acc := range accounts {
+			if acc.Role == "primary" || acc.Role == "" {
+				primaries = append(primaries, acc.Name)
+			}
+		}
+		sort.Strings(primaries)
+		if len(primaries) > 0 {
+			return primaries[0]
+		}
+		return allNames[0]
 	}
 
-	// Check primary accounts first
-	for _, name := range primaries {
-		capacity := capacityFetcher(name)
-		if capacity != nil && capacity.IsHealthy() {
-			return name
+	// Lowest-weekly-usage: pick account with most remaining weekly capacity
+	type candidate struct {
+		name     string
+		capacity *CapacityInfo
+	}
+	var candidates []candidate
+	for _, name := range allNames {
+		cap := capacityFetcher(name)
+		if cap != nil {
+			candidates = append(candidates, candidate{name: name, capacity: cap})
 		}
 	}
 
-	// All primaries are low — check spillover accounts
-	for _, name := range spillovers {
-		capacity := capacityFetcher(name)
-		if capacity != nil && capacity.IsHealthy() {
-			return name
-		}
+	if len(candidates) == 0 {
+		return allNames[0]
 	}
 
-	// All exhausted: recommend first primary (highest tier, most headroom)
-	return primaries[0]
+	// Sort: highest SevenDayRemaining first, then FiveHourRemaining, then name
+	sort.Slice(candidates, func(i, j int) bool {
+		ci, cj := candidates[i], candidates[j]
+		if ci.capacity.SevenDayRemaining != cj.capacity.SevenDayRemaining {
+			return ci.capacity.SevenDayRemaining > cj.capacity.SevenDayRemaining
+		}
+		if ci.capacity.FiveHourRemaining != cj.capacity.FiveHourRemaining {
+			return ci.capacity.FiveHourRemaining > cj.capacity.FiveHourRemaining
+		}
+		return ci.name < cj.name
+	})
+
+	return candidates[0].name
 }
 
 // tokenRequest represents the OAuth token refresh request body.

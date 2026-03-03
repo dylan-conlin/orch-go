@@ -140,7 +140,7 @@ type ResolveInput struct {
 	AccountConfig AccountConfigProvider
 
 	// CapacityFetcher returns cached capacity for a named account.
-	// When set, resolveAccount uses heuristic routing (work-first, personal-spillover).
+	// When set, resolveAccount uses lowest-weekly-usage routing (highest SevenDayRemaining wins).
 	// When nil, resolveAccount falls back to default (primary account without capacity check).
 	// The caller (daemon) typically wraps a CapacityCache.Get here.
 	CapacityFetcher func(name string) *account.CapacityInfo
@@ -472,16 +472,14 @@ func resolveEffort(input ResolveInput, resolvedTier string) ResolvedSetting {
 //
 // Precedence:
 //  1. CLI flag: --account work                → Source: cli-flag
-//  2. Heuristic: capacity-aware routing       → Source: heuristic
+//  2. Heuristic: lowest-weekly-usage routing  → Source: heuristic
 //  3. Default: first primary account          → Source: default
 //
 // The heuristic (when CapacityFetcher is set):
-//   - Check primary accounts first (sorted by name for determinism)
-//   - If any primary is healthy (>20% on both limits): use it
-//   - If all primaries are low: check spillover accounts
-//   - If a spillover is healthy: use it
-//   - If all exhausted: use first primary (still has most headroom with higher tier)
-//   - If capacity fetch fails (nil): use first primary (fail-open)
+//   - Collect capacity for all accounts (regardless of role)
+//   - Pick the account with highest SevenDayRemaining (most weekly headroom)
+//   - Tie-break: FiveHourRemaining, then alphabetical name
+//   - If all capacity fetches return nil: fail-open to first alphabetical
 func resolveAccount(input ResolveInput) ResolvedSetting {
 	// CLI flag has highest precedence
 	if input.CLI.Account != "" {
@@ -505,59 +503,60 @@ func resolveAccount(input ResolveInput) ResolvedSetting {
 		return ResolvedSetting{Value: "", Source: SourceDefault}
 	}
 
-	// Categorize accounts by role
-	var primaries, spillovers []string
-	for name, info := range accounts {
-		switch info.Role {
-		case "spillover":
-			spillovers = append(spillovers, name)
-		default:
-			// "primary" or "" (backward compat: no role = primary candidate)
-			primaries = append(primaries, name)
-		}
+	// Collect all account names sorted for deterministic behavior
+	var allNames []string
+	for name := range accounts {
+		allNames = append(allNames, name)
 	}
+	sort.Strings(allNames)
 
-	// Sort for deterministic selection
-	sort.Strings(primaries)
-	sort.Strings(spillovers)
-
-	// If no primaries, use default
-	if len(primaries) == 0 {
-		defaultName := provider.GetDefault()
-		if defaultName != "" {
-			return ResolvedSetting{Value: defaultName, Source: SourceDefault, Detail: "config-default"}
-		}
-		return ResolvedSetting{Value: "", Source: SourceDefault}
-	}
-
-	// When no CapacityFetcher, fall back to default behavior (no heuristic)
+	// When no CapacityFetcher, fall back to default behavior (no heuristic).
+	// Use first primary account for backward compat with manual spawns.
 	if input.CapacityFetcher == nil {
-		return ResolvedSetting{Value: primaries[0], Source: SourceDefault, Detail: "primary-account"}
+		for _, name := range allNames {
+			info := accounts[name]
+			if info.Role == "primary" || info.Role == "" {
+				return ResolvedSetting{Value: name, Source: SourceDefault, Detail: "primary-account"}
+			}
+		}
+		return ResolvedSetting{Value: allNames[0], Source: SourceDefault, Detail: "first-account"}
 	}
 
-	// Heuristic routing: work-first, personal-spillover
-	// Check primary accounts
-	for _, name := range primaries {
-		capacity := input.CapacityFetcher(name)
-		if capacity != nil && capacity.IsHealthy() {
-			detail := fmt.Sprintf("primary-healthy-5h:%.0f%%-7d:%.0f%%",
-				capacity.FiveHourRemaining, capacity.SevenDayRemaining)
-			return ResolvedSetting{Value: name, Source: SourceHeuristic, Detail: detail}
+	// Heuristic routing: lowest-weekly-usage-first (maximize weekly headroom parity).
+	// Collect capacity for all accounts, pick the one with most remaining weekly capacity.
+	type candidate struct {
+		name     string
+		capacity *account.CapacityInfo
+	}
+	var candidates []candidate
+	for _, name := range allNames {
+		cap := input.CapacityFetcher(name)
+		if cap != nil {
+			candidates = append(candidates, candidate{name: name, capacity: cap})
 		}
 	}
 
-	// All primaries are low/errored — check spillover accounts
-	for _, name := range spillovers {
-		capacity := input.CapacityFetcher(name)
-		if capacity != nil && capacity.IsHealthy() {
-			detail := fmt.Sprintf("spillover-activated-5h:%.0f%%-7d:%.0f%%",
-				capacity.FiveHourRemaining, capacity.SevenDayRemaining)
-			return ResolvedSetting{Value: name, Source: SourceHeuristic, Detail: detail}
-		}
+	if len(candidates) == 0 {
+		// All capacity fetches returned nil — fail-open to first alphabetical
+		return ResolvedSetting{Value: allNames[0], Source: SourceHeuristic, Detail: "all-capacity-unknown"}
 	}
 
-	// All exhausted: use first primary (highest tier, most headroom)
-	return ResolvedSetting{Value: primaries[0], Source: SourceHeuristic, Detail: "all-exhausted-using-primary"}
+	// Sort: highest SevenDayRemaining first, then FiveHourRemaining, then name
+	sort.Slice(candidates, func(i, j int) bool {
+		ci, cj := candidates[i], candidates[j]
+		if ci.capacity.SevenDayRemaining != cj.capacity.SevenDayRemaining {
+			return ci.capacity.SevenDayRemaining > cj.capacity.SevenDayRemaining
+		}
+		if ci.capacity.FiveHourRemaining != cj.capacity.FiveHourRemaining {
+			return ci.capacity.FiveHourRemaining > cj.capacity.FiveHourRemaining
+		}
+		return ci.name < cj.name
+	})
+
+	best := candidates[0]
+	detail := fmt.Sprintf("lowest-weekly-7d:%.0f%%-5h:%.0f%%",
+		best.capacity.SevenDayRemaining, best.capacity.FiveHourRemaining)
+	return ResolvedSetting{Value: best.name, Source: SourceHeuristic, Detail: detail}
 }
 
 func buildModelAliasMap(projectCfg *config.Config, projectMeta ProjectConfigMeta, userCfg *userconfig.Config, userMeta UserConfigMeta) map[string]string {

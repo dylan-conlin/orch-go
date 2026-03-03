@@ -1029,10 +1029,10 @@ func TestResolve_AccountDefaultEmpty(t *testing.T) {
 }
 
 // ============================================================================
-// Account Heuristic Routing Tests (Phase 2)
+// Account Heuristic Routing Tests (lowest-weekly-usage-first)
 // ============================================================================
 
-func TestResolve_AccountHeuristic_WorkFirstWhenHealthy(t *testing.T) {
+func TestResolve_AccountHeuristic_HighestWeeklyHeadroomWins(t *testing.T) {
 	input := baseResolveInput()
 	input.AccountConfig = &mockAccountConfig{
 		accounts: map[string]mockAccount{
@@ -1045,6 +1045,7 @@ func TestResolve_AccountHeuristic_WorkFirstWhenHealthy(t *testing.T) {
 		case "work":
 			return &account.CapacityInfo{FiveHourRemaining: 87, SevenDayRemaining: 72}
 		case "personal":
+			// Personal has more weekly headroom (88% > 72%)
 			return &account.CapacityInfo{FiveHourRemaining: 95, SevenDayRemaining: 88}
 		}
 		return nil
@@ -1054,18 +1055,19 @@ func TestResolve_AccountHeuristic_WorkFirstWhenHealthy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if settings.Account.Value != "work" {
-		t.Fatalf("Account.Value = %q, want %q (work-first when healthy)", settings.Account.Value, "work")
+	// New heuristic: personal wins because 88% weekly > 72% weekly
+	if settings.Account.Value != "personal" {
+		t.Fatalf("Account.Value = %q, want %q (highest weekly headroom)", settings.Account.Value, "personal")
 	}
 	if settings.Account.Source != SourceHeuristic {
 		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceHeuristic)
 	}
-	if !strings.Contains(settings.Account.Detail, "primary-healthy") {
-		t.Fatalf("Account.Detail = %q, want contains 'primary-healthy'", settings.Account.Detail)
+	if !strings.Contains(settings.Account.Detail, "lowest-weekly") {
+		t.Fatalf("Account.Detail = %q, want contains 'lowest-weekly'", settings.Account.Detail)
 	}
 }
 
-func TestResolve_AccountHeuristic_SpilloverWhenWorkLow(t *testing.T) {
+func TestResolve_AccountHeuristic_WorkWinsWhenMoreWeeklyHeadroom(t *testing.T) {
 	input := baseResolveInput()
 	input.AccountConfig = &mockAccountConfig{
 		accounts: map[string]mockAccount{
@@ -1076,7 +1078,67 @@ func TestResolve_AccountHeuristic_SpilloverWhenWorkLow(t *testing.T) {
 	input.CapacityFetcher = func(name string) *account.CapacityInfo {
 		switch name {
 		case "work":
-			// Work is low on 5-hour capacity (15% remaining < 20% threshold)
+			// Work has more weekly headroom (70% > 40%)
+			return &account.CapacityInfo{FiveHourRemaining: 80, SevenDayRemaining: 70}
+		case "personal":
+			return &account.CapacityInfo{FiveHourRemaining: 90, SevenDayRemaining: 40}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	// Work wins because 70% weekly > 40% weekly (role doesn't matter)
+	if settings.Account.Value != "work" {
+		t.Fatalf("Account.Value = %q, want %q (work has more weekly headroom)", settings.Account.Value, "work")
+	}
+	if settings.Account.Source != SourceHeuristic {
+		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceHeuristic)
+	}
+}
+
+func TestResolve_AccountHeuristic_WeeklyTieBreaksByFiveHour(t *testing.T) {
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
+			// Same weekly headroom, but personal has more 5h headroom
+			return &account.CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 60}
+		case "personal":
+			return &account.CapacityInfo{FiveHourRemaining: 80, SevenDayRemaining: 60}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	// Tie on weekly (both 60%), personal wins on 5h tie-break (80% > 50%)
+	if settings.Account.Value != "personal" {
+		t.Fatalf("Account.Value = %q, want %q (5h tie-break)", settings.Account.Value, "personal")
+	}
+}
+
+func TestResolve_AccountHeuristic_PersonalWinsWhenMoreWeeklyHeadroom(t *testing.T) {
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
 			return &account.CapacityInfo{FiveHourRemaining: 15, SevenDayRemaining: 72}
 		case "personal":
 			return &account.CapacityInfo{FiveHourRemaining: 95, SevenDayRemaining: 88}
@@ -1088,18 +1150,19 @@ func TestResolve_AccountHeuristic_SpilloverWhenWorkLow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
+	// Personal wins: 88% weekly > 72% weekly
 	if settings.Account.Value != "personal" {
-		t.Fatalf("Account.Value = %q, want %q (spillover when work is low)", settings.Account.Value, "personal")
+		t.Fatalf("Account.Value = %q, want %q (personal has more weekly headroom)", settings.Account.Value, "personal")
 	}
 	if settings.Account.Source != SourceHeuristic {
 		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceHeuristic)
 	}
-	if !strings.Contains(settings.Account.Detail, "spillover-activated") {
-		t.Fatalf("Account.Detail = %q, want contains 'spillover-activated'", settings.Account.Detail)
+	if !strings.Contains(settings.Account.Detail, "lowest-weekly") {
+		t.Fatalf("Account.Detail = %q, want contains 'lowest-weekly'", settings.Account.Detail)
 	}
 }
 
-func TestResolve_AccountHeuristic_BothExhaustedUsesPrimary(t *testing.T) {
+func TestResolve_AccountHeuristic_BothLowUsesHigherWeeklyHeadroom(t *testing.T) {
 	input := baseResolveInput()
 	input.AccountConfig = &mockAccountConfig{
 		accounts: map[string]mockAccount{
@@ -1121,18 +1184,19 @@ func TestResolve_AccountHeuristic_BothExhaustedUsesPrimary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
+	// Work wins: 5% weekly > 3% weekly (even when both are low)
 	if settings.Account.Value != "work" {
-		t.Fatalf("Account.Value = %q, want %q (both exhausted, use primary)", settings.Account.Value, "work")
+		t.Fatalf("Account.Value = %q, want %q (work has more weekly headroom even when both low)", settings.Account.Value, "work")
 	}
 	if settings.Account.Source != SourceHeuristic {
 		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceHeuristic)
 	}
-	if !strings.Contains(settings.Account.Detail, "all-exhausted") {
-		t.Fatalf("Account.Detail = %q, want contains 'all-exhausted'", settings.Account.Detail)
+	if !strings.Contains(settings.Account.Detail, "lowest-weekly") {
+		t.Fatalf("Account.Detail = %q, want contains 'lowest-weekly'", settings.Account.Detail)
 	}
 }
 
-func TestResolve_AccountHeuristic_CapacityFetchFailsUsesPrimary(t *testing.T) {
+func TestResolve_AccountHeuristic_CapacityFetchFailsUsesDefault(t *testing.T) {
 	input := baseResolveInput()
 	input.AccountConfig = &mockAccountConfig{
 		accounts: map[string]mockAccount{
@@ -1149,11 +1213,15 @@ func TestResolve_AccountHeuristic_CapacityFetchFailsUsesPrimary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if settings.Account.Value != "work" {
-		t.Fatalf("Account.Value = %q, want %q (fail-open to primary)", settings.Account.Value, "work")
+	// Fail-open: first alphabetical account when all capacity unknown
+	if settings.Account.Value != "personal" {
+		t.Fatalf("Account.Value = %q, want %q (fail-open to first alphabetical)", settings.Account.Value, "personal")
 	}
 	if settings.Account.Source != SourceHeuristic {
 		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceHeuristic)
+	}
+	if !strings.Contains(settings.Account.Detail, "all-capacity-unknown") {
+		t.Fatalf("Account.Detail = %q, want contains 'all-capacity-unknown'", settings.Account.Detail)
 	}
 }
 
@@ -1205,7 +1273,7 @@ func TestResolve_AccountHeuristic_NoCapacityFetcherUsesDefault(t *testing.T) {
 	}
 }
 
-func TestResolve_AccountHeuristic_WorkLowOn7Day(t *testing.T) {
+func TestResolve_AccountHeuristic_PersonalWinsWhenWorkWeeklyLow(t *testing.T) {
 	input := baseResolveInput()
 	input.AccountConfig = &mockAccountConfig{
 		accounts: map[string]mockAccount{
@@ -1216,7 +1284,6 @@ func TestResolve_AccountHeuristic_WorkLowOn7Day(t *testing.T) {
 	input.CapacityFetcher = func(name string) *account.CapacityInfo {
 		switch name {
 		case "work":
-			// Work is low on 7-day capacity
 			return &account.CapacityInfo{FiveHourRemaining: 80, SevenDayRemaining: 15}
 		case "personal":
 			return &account.CapacityInfo{FiveHourRemaining: 95, SevenDayRemaining: 88}
@@ -1228,8 +1295,9 @@ func TestResolve_AccountHeuristic_WorkLowOn7Day(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
+	// Personal wins: 88% weekly > 15% weekly
 	if settings.Account.Value != "personal" {
-		t.Fatalf("Account.Value = %q, want %q (spillover when work 7-day low)", settings.Account.Value, "personal")
+		t.Fatalf("Account.Value = %q, want %q (personal has more weekly headroom)", settings.Account.Value, "personal")
 	}
 }
 
@@ -1255,9 +1323,9 @@ func TestResolve_AccountHeuristic_CapacityError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	// When work capacity has error, it's treated as unhealthy → spillover
+	// Work has error (SevenDayRemaining=0), personal wins with 88% weekly
 	if settings.Account.Value != "personal" {
-		t.Fatalf("Account.Value = %q, want %q (spillover when work has error)", settings.Account.Value, "personal")
+		t.Fatalf("Account.Value = %q, want %q (personal wins when work has error)", settings.Account.Value, "personal")
 	}
 }
 
