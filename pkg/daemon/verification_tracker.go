@@ -58,6 +58,8 @@ func NewVerificationTracker(threshold int) *VerificationTracker {
 // RecordCompletion records an agent completion by beads ID.
 // Only increments the counter for IDs not previously seen, preventing the same
 // agent from being counted multiple times across poll cycles.
+// Skips untracked agents (beads ID containing "-untracked-") since they can't
+// be completed through orch complete and shouldn't count toward the threshold.
 // Returns true if the threshold was reached and daemon should pause.
 func (vt *VerificationTracker) RecordCompletion(beadsID string) bool {
 	vt.mu.Lock()
@@ -66,6 +68,12 @@ func (vt *VerificationTracker) RecordCompletion(beadsID string) bool {
 	// If threshold is 0, verification tracking is disabled - don't count
 	if vt.threshold == 0 {
 		return false
+	}
+
+	// Skip untracked agents - they have fake beads IDs and can't flow
+	// through orch complete, so counting them causes false pauses.
+	if isUntrackedBeadsID(beadsID) {
+		return vt.isPaused
 	}
 
 	// Deduplicate: only count each beads ID once
@@ -122,11 +130,16 @@ func (vt *VerificationTracker) Status() VerificationStatus {
 // unverified backlog. Call after construction, before entering the
 // main loop, to make the tracker aware of work completed before
 // this daemon session started. Accepts beads IDs for deduplication.
+// Skips untracked agents (beads ID containing "-untracked-") since they
+// can't be completed through orch complete and shouldn't inflate the count.
 func (vt *VerificationTracker) SeedFromBacklog(beadsIDs []string) {
 	vt.mu.Lock()
 	defer vt.mu.Unlock()
 
 	for _, id := range beadsIDs {
+		if isUntrackedBeadsID(id) {
+			continue
+		}
 		vt.seenIDs[id] = true
 	}
 	vt.completionsSinceVerification = len(vt.seenIDs)

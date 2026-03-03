@@ -702,6 +702,113 @@ func TestVerificationTracker_DeduplicatesByBeadsID(t *testing.T) {
 	}
 }
 
+// Regression test: RecordCompletion skips untracked beads IDs.
+// Untracked agents have fake beads IDs (e.g., "orch-go-untracked-1766695797")
+// and can't be completed through orch complete. Counting them inflates the
+// verification threshold and causes false pauses.
+func TestVerificationTracker_RecordCompletionSkipsUntracked(t *testing.T) {
+	threshold := 3
+	vt := NewVerificationTracker(threshold)
+
+	// Record 2 real completions
+	vt.RecordCompletion("orch-go-abc1")
+	vt.RecordCompletion("orch-go-xyz2")
+
+	// Record untracked agents — these should NOT count
+	vt.RecordCompletion("orch-go-untracked-1766695797")
+	vt.RecordCompletion("snap-untracked-1766770347")
+	vt.RecordCompletion("price-watch-untracked-1766800000")
+
+	// Should not be paused — only 2 real completions, threshold is 3
+	if vt.IsPaused() {
+		t.Error("Untracked agents should not count toward verification threshold")
+	}
+
+	status := vt.Status()
+	if status.CompletionsSinceVerification != 2 {
+		t.Errorf("Expected 2 completions (untracked excluded), got %d",
+			status.CompletionsSinceVerification)
+	}
+
+	// One more real completion should hit threshold
+	shouldPause := vt.RecordCompletion("orch-go-def3")
+	if !shouldPause {
+		t.Error("Should pause at threshold 3 with 3 real completions")
+	}
+}
+
+// Regression test: RecordCompletion returns current pause state for untracked IDs.
+// When paused, recording an untracked ID should still return true (paused).
+func TestVerificationTracker_UntrackedReturnsPausedState(t *testing.T) {
+	threshold := 2
+	vt := NewVerificationTracker(threshold)
+
+	// Hit threshold with real agents
+	vt.RecordCompletion("agent-1")
+	vt.RecordCompletion("agent-2")
+
+	if !vt.IsPaused() {
+		t.Fatal("Should be paused at threshold")
+	}
+
+	// Recording untracked while paused should return true (still paused)
+	stillPaused := vt.RecordCompletion("orch-go-untracked-1766695797")
+	if !stillPaused {
+		t.Error("Untracked record while paused should return true (paused state)")
+	}
+
+	// Counter should still be 2 (untracked not counted)
+	status := vt.Status()
+	if status.CompletionsSinceVerification != 2 {
+		t.Errorf("Expected 2 (untracked not counted), got %d",
+			status.CompletionsSinceVerification)
+	}
+}
+
+// Regression test: SeedFromBacklog skips untracked beads IDs.
+func TestVerificationTracker_SeedFromBacklogSkipsUntracked(t *testing.T) {
+	vt := NewVerificationTracker(3)
+
+	// Seed with a mix of real and untracked IDs
+	vt.SeedFromBacklog([]string{
+		"orch-go-abc1",
+		"orch-go-untracked-1766695797",
+		"orch-go-xyz2",
+		"snap-untracked-1766770347",
+	})
+
+	// Should only count 2 real IDs, not 4
+	if vt.IsPaused() {
+		t.Error("Untracked agents in backlog should not count toward threshold")
+	}
+
+	status := vt.Status()
+	if status.CompletionsSinceVerification != 2 {
+		t.Errorf("Expected 2 completions (untracked excluded from seed), got %d",
+			status.CompletionsSinceVerification)
+	}
+}
+
+// Regression test: SeedFromBacklog with only untracked IDs results in zero count.
+func TestVerificationTracker_SeedFromBacklogAllUntracked(t *testing.T) {
+	vt := NewVerificationTracker(3)
+
+	vt.SeedFromBacklog([]string{
+		"orch-go-untracked-1766695797",
+		"snap-untracked-1766770347",
+		"price-watch-untracked-1766800000",
+	})
+
+	status := vt.Status()
+	if status.CompletionsSinceVerification != 0 {
+		t.Errorf("Expected 0 completions (all untracked), got %d",
+			status.CompletionsSinceVerification)
+	}
+	if vt.IsPaused() {
+		t.Error("Should not be paused when all seeded IDs are untracked")
+	}
+}
+
 // Regression test: RecordCompletion with duplicate ID returns current pause state.
 // When an already-seen ID is recorded while paused, it should still return true.
 func TestVerificationTracker_DuplicateReturnsPausedState(t *testing.T) {
