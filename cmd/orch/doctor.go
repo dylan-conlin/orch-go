@@ -8,14 +8,15 @@ import (
 )
 
 var (
-	doctorFix       bool // Attempt to fix issues by starting services
-	doctorVerbose   bool // Show verbose output
-	doctorStaleOnly bool // Check stale binary only, exit with code 1 if stale
-	doctorSessions  bool // Cross-reference workspaces and OpenCode sessions
-	doctorConfig    bool // Check for config drift (plist vs config.yaml)
-	doctorDocs      bool // Check for undocumented CLI commands (doc debt)
-	doctorWatch     bool // Continuous monitoring with desktop notifications
-	doctorDaemon    bool // Run as self-healing background daemon
+	doctorFix        bool // Attempt to fix issues by starting services
+	doctorVerbose    bool // Show verbose output
+	doctorStaleOnly  bool // Check stale binary only, exit with code 1 if stale
+	doctorSessions   bool // Cross-reference workspaces and OpenCode sessions
+	doctorConfig     bool // Check for config drift (plist vs config.yaml)
+	doctorDocs       bool // Check for undocumented CLI commands (doc debt)
+	doctorWatch      bool // Continuous monitoring with desktop notifications
+	doctorDaemon     bool // Run as self-healing background daemon
+	doctorDefectScan bool // Scan for Class 2 and Class 5 defect patterns
 )
 
 const (
@@ -41,6 +42,7 @@ Use --sessions to cross-reference workspaces and OpenCode sessions for zombies.
 Use --config to detect drift between config.yaml and external config (plist).
 Use --docs to check for undocumented CLI commands (doc debt).
 Use --watch to continuously monitor services and send desktop notifications on failures.
+Use --defect-scan to scan codebase for Class 2 (Multi-Backend Blindness) and Class 5 (Contradictory Authority Signals) patterns.
 
 Examples:
   orch doctor              # Check service health
@@ -50,7 +52,8 @@ Examples:
   orch doctor --sessions   # Cross-reference workspaces and sessions
   orch doctor --config     # Check for config drift
   orch doctor --docs       # Check for undocumented CLI commands
-  orch doctor --watch      # Continuous monitoring with notifications`,
+  orch doctor --watch      # Continuous monitoring with notifications
+  orch doctor --defect-scan # Scan for Class 2 and Class 5 defect patterns`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDoctor()
 	},
@@ -65,6 +68,7 @@ func init() {
 	doctorCmd.Flags().BoolVar(&doctorDocs, "docs", false, "Check for undocumented CLI commands (doc debt)")
 	doctorCmd.Flags().BoolVarP(&doctorWatch, "watch", "w", false, "Continuous monitoring with desktop notifications")
 	doctorCmd.Flags().BoolVar(&doctorDaemon, "daemon", false, "Run as self-healing background daemon")
+	doctorCmd.Flags().BoolVar(&doctorDefectScan, "defect-scan", false, "Scan for Class 2 and Class 5 defect patterns")
 	doctorCmd.AddCommand(doctorInstallCmd)
 	doctorCmd.AddCommand(doctorUninstallCmd)
 	rootCmd.AddCommand(doctorCmd)
@@ -126,6 +130,11 @@ func runDoctor() error {
 	// Handle --daemon flag for self-healing background daemon
 	if doctorDaemon {
 		return runDoctorDaemon()
+	}
+
+	// Handle --defect-scan flag for static analysis
+	if doctorDefectScan {
+		return runDefectScan()
 	}
 
 	fmt.Println("orch doctor - Service Health Check")
