@@ -1,0 +1,18 @@
+name: feature-impl
+version: 1.0.0
+description: Feature implementation skill with configurable phases and TDD/direct modes
+type: skill
+output: SKILL.md
+frontmatter: frontmatter.yaml
+sources:
+  - SKILL.md.template
+template_sources:
+  investigation: phases/investigation.md
+  clarifying-questions: phases/clarifying-questions.md
+  design: phases/design.md
+  implementation-tdd: phases/implementation-tdd.md
+  implementation-direct: phases/implementation-direct.md
+  validation: phases/validation.md
+  self-review: phases/self-review.md
+  leave-it-better: phases/leave-it-better.md
+  integration: phases/integration.md

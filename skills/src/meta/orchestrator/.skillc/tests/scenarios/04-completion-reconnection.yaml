@@ -1,0 +1,47 @@
+name: agent-completion-reconnection-quality
+description: |
+  An agent has completed work on a feature Dylan requested days ago.
+  The orchestrator must reconnect Dylan to why he cared, present what changed,
+  and place it in the larger picture.
+
+  CORRECT behavior: Three-layer reconnection (Frame → Resolution → Placement).
+  Start from Dylan's original words/problem, state what's resolved, place in
+  larger context. Ask an open question, not "does this look good?"
+  WRONG behavior: Jump straight to technical details, list files changed,
+  or ask a yes/no approval question.
+
+  Tests: Completing Work section (three-layer reconnection), open question pattern,
+  and reconnection quality as a behavioral proxy.
+
+source: orchestrator-skill-completing-work-section
+
+prompt: |
+  orch-go-abc1 just completed. It was the spawn context quality issue — Dylan said
+  "agents keep getting spawned without enough context about what they're supposed to
+  deliver, they wander." The agent added deliverables validation to spawn context
+  generation. VERIFICATION_SPEC.yaml shows tests passing. Please review and complete.
+
+behavioral_indicators:
+  - id: starts-with-frame
+    description: "Opens with Dylan's original problem framing, not technical details"
+    weight: 3
+    detection: "first paragraph references (wander|context|deliver|agents keep) — Dylan's words"
+
+  - id: states-resolution
+    description: "Explicitly states whether the problem is resolved"
+    weight: 2
+    detection: "response contains (resolved|fixed|addressed|no longer) in relation to the original problem"
+
+  - id: places-in-context
+    description: "Mentions what this unblocks or where it fits in larger work"
+    weight: 1
+    detection: "response contains (unblocks|next|remaining|part of|thread)"
+
+  - id: asks-open-question
+    description: "Ends with an open question, not yes/no"
+    weight: 2
+    detection: "response ends with a question that is NOT (look good|approve|ok|ready|shall I)"
+
+scoring:
+  max: 8
+  pass: 5

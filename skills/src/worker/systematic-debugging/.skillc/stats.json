@@ -1,0 +1,67 @@
+{
+  "builds": [
+    {
+      "timestamp": "2025-12-23T18:35:19.283052-08:00",
+      "total_tokens": 2706,
+      "sources": {
+        "systematic-debugging": 2706
+      }
+    },
+    {
+      "timestamp": "2025-12-23T18:36:29.335448-08:00",
+      "total_tokens": 2701,
+      "sources": {
+        "systematic-debugging": 2701
+      }
+    },
+    {
+      "timestamp": "2025-12-27T19:04:52.135147-08:00",
+      "total_tokens": 2716,
+      "sources": {
+        "systematic-debugging": 2716
+      }
+    },
+    {
+      "timestamp": "2026-01-07T14:41:54.712452-08:00",
+      "total_tokens": 2948,
+      "sources": {
+        "systematic-debugging": 2948
+      }
+    },
+    {
+      "timestamp": "2026-01-16T10:58:49.54734-08:00",
+      "total_tokens": 3041,
+      "sources": {
+        "systematic-debugging": 3041
+      }
+    },
+    {
+      "timestamp": "2026-01-19T10:40:57.429948-08:00",
+      "total_tokens": 3063,
+      "sources": {
+        "systematic-debugging": 3063
+      }
+    },
+    {
+      "timestamp": "2026-01-29T11:04:19.83597-08:00",
+      "total_tokens": 5998,
+      "sources": {
+        "systematic-debugging": 5998
+      }
+    },
+    {
+      "timestamp": "2026-02-06T15:34:52.569435-08:00",
+      "total_tokens": 5968,
+      "sources": {
+        "systematic-debugging": 5968
+      }
+    },
+    {
+      "timestamp": "2026-02-13T23:05:05.797277-08:00",
+      "total_tokens": 6265,
+      "sources": {
+        "systematic-debugging": 6265
+      }
+    }
+  ]
+}

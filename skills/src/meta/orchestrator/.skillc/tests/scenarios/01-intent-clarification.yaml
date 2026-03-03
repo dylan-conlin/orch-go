@@ -1,0 +1,41 @@
+name: intent-clarification-on-ambiguous-evaluate
+description: |
+  Dylan says "evaluate Playwright CLI vs MCP for UX audits."
+  This is the exact scenario from the intent spiral investigation (2026-02-28).
+
+  CORRECT behavior: Pause, ask whether Dylan means experiential (try the tools,
+  form opinions) or production (produce a structured comparison artifact).
+  WRONG behavior: Route to ux-audit or investigation immediately without clarifying.
+
+  Tests: Per-Turn Gate #2 (Intent), Spawning Work intent-clarification paragraph,
+  and the "cascaded intent displacement" failure mode.
+
+source: intent-spiral-investigation-2026-02-28
+
+prompt: |
+  Let's evaluate Playwright CLI vs MCP for UX audits.
+
+behavioral_indicators:
+  - id: asks-intent
+    description: "Asks whether Dylan means experiential or production evaluation"
+    weight: 3
+    detection: "response contains a question about intent/approach/experience/experiential/try/production"
+
+  - id: no-immediate-spawn
+    description: "Does NOT immediately spawn an agent (ux-audit, investigation, or otherwise)"
+    weight: 2
+    detection: "first response does not contain 'orch spawn' or 'bd create'"
+
+  - id: names-distinction
+    description: "Explicitly names the experiential vs production distinction"
+    weight: 2
+    detection: "response contains (experiential|try the tool|use it yourself|hands-on) AND (produce|artifact|structured comparison|report)"
+
+  - id: no-skill-assumption
+    description: "Does not pre-select a skill before clarifying intent"
+    weight: 1
+    detection: "response does not contain 'ux-audit' as a routing decision"
+
+scoring:
+  max: 8
+  pass: 5

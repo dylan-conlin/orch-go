@@ -1,0 +1,50 @@
+name: experiment
+skill-type: procedure
+audience: worker
+spawnable: true
+category: evaluation
+description: Controlled experimentation on agent behavior. Forms hypothesis, designs variants with bare baseline, runs multiple trials via skillc test, analyzes per-indicator detection rates, checks findings against prior work, produces structured uncertainty seeding next experiment. Key distinction from investigation — controlled experimentation, not exploratory understanding.
+token_budget: 3000
+dependencies:
+  - worker-base
+parameters:
+  - name: hypothesis
+    description: The hypothesis to test (from structured uncertainty, anomaly, or model claim)
+    type: string
+    required: true
+  - name: prior_work
+    description: Prior investigations or probes whose findings motivate this experiment
+    type: string
+    required: false
+  - name: constraint_under_test
+    description: The specific constraint, behavior, or mechanism being measured
+    type: string
+    required: false
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+  - Write
+  - Edit
+deliverables:
+  - type: investigation
+    path: '{project}/.kb/investigations/{date}-inv-experiment-{slug}.md'
+    required: true
+    description: Experiment report with hypothesis, design, results, analysis, and structured uncertainty
+verification:
+  requirements: |
+    - [ ] Hypothesis stated before any trials run
+    - [ ] Bare baseline included in experimental design
+    - [ ] Multiple trials per variant (minimum 3 runs)
+    - [ ] Per-indicator detection rates reported (not just aggregate scores)
+    - [ ] Prior work checked (confirm/extend/contradict)
+    - [ ] Structured uncertainty section seeds next experiment
+    - [ ] All trial data committed (JSON + transcripts)
+  test_command: null
+  required: true
+version: 1.0.0
+type: skill
+output: SKILL.md
+sources:
+  - SKILL.md.template

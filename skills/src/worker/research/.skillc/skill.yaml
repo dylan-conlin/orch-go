@@ -1,0 +1,38 @@
+name: research
+skill-type: procedure
+audience: worker
+spawnable: true
+category: planning
+description: Web-based research producing structured recommendations with uncertainty assessment. Use for technology comparisons, best practices research, and option evaluation. Distinct from investigation skill (codebase exploration) - this is for external sources (docs, articles, tutorials).
+# Dependencies are resolved at spawn time by orch-go's LoadSkillWithDependencies.
+# Note: skillc doesn't support cross-directory deps yet, so compilation fails.
+dependencies:
+  - worker-base
+allowed-tools:
+- WebFetch
+- WebSearch
+- Read
+- Write
+- Edit
+
+deliverables:
+  investigation:
+    required: true
+    path: "{project}/.kb/investigations/{date}-research-{slug}.md"
+    description: Research artifact with options evaluated, recommendation, and structured uncertainty
+
+verification:
+  requirements:
+    - "Question clearly stated with requirements/constraints"
+    - "2+ options evaluated with pros/cons/evidence (URLs required)"
+    - "Clear recommendation (not 'it depends')"
+    - "Structured uncertainty complete (what's tested/untested/would change)"
+    - "Self-review checklist passed"
+    - "Research file committed to .kb/investigations/ with research- prefix"
+version: 1.0.0
+type: skill
+output: SKILL.md
+sources:
+  - SKILL.md.template
+# Template located in templates/ directory (progressive disclosure)
+# See templates/research.md for the research template

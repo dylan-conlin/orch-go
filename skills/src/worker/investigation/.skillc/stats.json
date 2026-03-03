@@ -1,0 +1,137 @@
+{
+  "builds": [
+    {
+      "timestamp": "2025-12-24T07:50:37.502489-08:00",
+      "total_tokens": 2269,
+      "sources": {
+        "investigation": 2269
+      }
+    },
+    {
+      "timestamp": "2025-12-25T20:45:03.058661-08:00",
+      "total_tokens": 2269,
+      "sources": {
+        "investigation": 2269
+      }
+    },
+    {
+      "timestamp": "2025-12-30T10:08:22.590776-08:00",
+      "total_tokens": 2643,
+      "sources": {
+        "investigation": 2643
+      }
+    },
+    {
+      "timestamp": "2026-01-07T14:41:54.682538-08:00",
+      "total_tokens": 2782,
+      "sources": {
+        "investigation": 2782
+      }
+    },
+    {
+      "timestamp": "2026-01-08T16:43:22.32336-08:00",
+      "total_tokens": 2782,
+      "sources": {
+        "investigation": 2782
+      }
+    },
+    {
+      "timestamp": "2026-01-08T16:44:47.421814-08:00",
+      "total_tokens": 2797,
+      "sources": {
+        "investigation": 2797
+      }
+    },
+    {
+      "timestamp": "2026-01-09T23:35:22.207474-08:00",
+      "total_tokens": 2935,
+      "sources": {
+        "investigation": 2935
+      }
+    },
+    {
+      "timestamp": "2026-01-15T07:56:41.272817-08:00",
+      "total_tokens": 3109,
+      "sources": {
+        "investigation": 3109
+      }
+    },
+    {
+      "timestamp": "2026-01-15T07:56:57.023513-08:00",
+      "total_tokens": 3109,
+      "sources": {
+        "investigation": 3109
+      }
+    },
+    {
+      "timestamp": "2026-01-17T01:46:40.408874-08:00",
+      "total_tokens": 1216,
+      "sources": {
+        "investigation": 1216
+      }
+    },
+    {
+      "timestamp": "2026-01-18T12:40:00.901397-08:00",
+      "total_tokens": 1216,
+      "sources": {
+        "investigation": 1216
+      }
+    },
+    {
+      "timestamp": "2026-01-19T10:40:12.274182-08:00",
+      "total_tokens": 1216,
+      "sources": {
+        "investigation": 1216
+      }
+    },
+    {
+      "timestamp": "2026-01-30T12:24:14.722043-08:00",
+      "total_tokens": 1216,
+      "sources": {
+        "investigation": 1216
+      }
+    },
+    {
+      "timestamp": "2026-02-04T11:50:23.694034-08:00",
+      "total_tokens": 1838,
+      "sources": {
+        "investigation": 1838
+      }
+    },
+    {
+      "timestamp": "2026-02-04T11:51:06.349047-08:00",
+      "total_tokens": 1838,
+      "sources": {
+        "investigation": 1838
+      }
+    },
+    {
+      "timestamp": "2026-02-04T11:51:33.413559-08:00",
+      "total_tokens": 2381,
+      "sources": {
+        "investigation": 2381
+      }
+    },
+    {
+      "timestamp": "2026-02-06T15:34:53.118313-08:00",
+      "total_tokens": 2381,
+      "sources": {
+        "investigation": 2381
+      }
+    },
+    {
+      "timestamp": "2026-02-08T23:41:30.603258-08:00",
+      "total_tokens": 3190,
+      "sources": {
+        "investigation": 3190
+      }
+    },
+    {
+      "timestamp": "2026-02-13T11:31:16.402549-08:00",
+      "total_tokens": 3190,
+      "sources": {
+        "investigation": 3190
+      }
+    }
+  ]
+}

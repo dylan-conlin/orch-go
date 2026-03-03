@@ -1,0 +1,44 @@
+name: complex-architectural-routing
+description: |
+  Dylan describes a problem that touches a hotspot file (>1500 lines) and
+  involves structural decisions across multiple packages.
+
+  CORRECT behavior: Route to architect skill, not feature-impl or investigation.
+  Reference the hotspot rule. Frame the architectural question clearly.
+  WRONG behavior: Spawn feature-impl directly, start investigating the code,
+  or spawn an investigation when the need is architectural design.
+
+  Tests: Per-Turn Gate #5 (Hotspot), Per-Turn Gate #6 (Accretion),
+  and skill selection accuracy for architectural work.
+
+source: orchestrator-skill-hotspot-rule
+
+prompt: |
+  The daemon.go file is getting unwieldy — it handles polling, spawning, dedup,
+  and status tracking all in one place. I want to split it into separate packages
+  but I'm not sure about the boundaries. The file is about 1600 lines now.
+
+behavioral_indicators:
+  - id: routes-to-architect
+    description: "Selects architect skill (not feature-impl or investigation)"
+    weight: 3
+    detection: "response contains 'architect' as skill selection AND does not contain 'feature-impl' as skill selection"
+
+  - id: references-hotspot
+    description: "Mentions the hotspot/accretion rule as reason for architect routing"
+    weight: 2
+    detection: "response contains (hotspot|accretion|1500 lines|1,500 lines|file size)"
+
+  - id: frames-architectural-question
+    description: "Articulates the design question (package boundaries) not just the symptom"
+    weight: 2
+    detection: "response contains (boundaries|separation|decomposition|extraction|package structure)"
+
+  - id: no-code-reading
+    description: "Does not read daemon.go itself (delegation gate)"
+    weight: 1
+    detection: "does not invoke Read tool on daemon.go"
+
+scoring:
+  max: 8
+  pass: 5

@@ -1,0 +1,66 @@
+name: design-session
+skill-type: procedure
+audience: worker
+spawnable: true
+category: planning
+description: Strategic scoping skill for turning vague ideas into actionable work. Gathers context autonomously, discusses scope interactively, then produces the appropriate artifact (epic, investigation, or decision) based on clarity level.
+# Dependencies are resolved at spawn time by orch-go's LoadSkillWithDependencies.
+# Note: skillc doesn't support cross-directory deps yet, so compilation fails.
+dependencies:
+  - worker-base
+  - decision-navigation
+
+parameters:
+  - name: topic
+    description: The feature, idea, or problem to scope (can be vague)
+    type: string
+    required: true
+  - name: skip-context
+    description: Skip Phase 1 context gathering (use when context already known)
+    type: boolean
+    required: false
+    default: false
+
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+  - Write
+  - Edit
+  - WebFetch
+  - question
+
+deliverables:
+  epic:
+    path: "beads issue with children"
+    required: false
+    description: When scope is clear and work decomposes into multiple discrete tasks
+
+  investigation:
+    path: ".kb/investigations/{date}-design-{slug}.md"
+    required: false
+    description: When unknowns remain and further exploration is needed
+
+  decision:
+    path: ".kb/decisions/{date}-{slug}.md"
+    required: false
+    description: When architectural choice must be made before proceeding
+
+  verification-spec:
+    path: ".kb/specifications/VERIFICATION-SPEC-{slug}.md"
+    required: false
+    description: Optional companion artifact with Observable Behaviors, Acceptance Criteria, Failure Modes, and Evidence Requirements for implementation agents
+
+verification:
+  requirements:
+    - "Phase 1 completed (context gathered OR skip-context flag used)"
+    - "Phase 2 completed (scope discussed, output type determined)"
+    - "Phase 3 completed (appropriate artifact produced)"
+    - "Leave it Better completed (at least one kn command OR noted as not applicable)"
+    - "All changes committed"
+version: 1.0.0
+type: skill
+output: SKILL.md
+sources:
+  - SKILL.md.template

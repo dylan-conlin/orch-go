@@ -1,0 +1,60 @@
+{
+  "builds": [
+    {
+      "timestamp": "2026-01-04T16:22:44.53131-08:00",
+      "total_tokens": 4580,
+      "sources": {
+        "meta-orchestrator": 4580
+      }
+    },
+    {
+      "timestamp": "2026-01-05T10:22:50.731287-08:00",
+      "total_tokens": 4751,
+      "sources": {
+        "meta-orchestrator": 4751
+      }
+    },
+    {
+      "timestamp": "2026-01-07T14:41:44.82525-08:00",
+      "total_tokens": 7476,
+      "sources": {
+        "meta-orchestrator": 7476
+      }
+    },
+    {
+      "timestamp": "2026-01-08T16:43:22.860822-08:00",
+      "total_tokens": 7476,
+      "sources": {
+        "meta-orchestrator": 7476
+      }
+    },
+    {
+      "timestamp": "2026-01-08T16:46:35.53934-08:00",
+      "total_tokens": 7476,
+      "sources": {
+        "meta-orchestrator": 7476
+      }
+    },
+    {
+      "timestamp": "2026-01-08T16:47:41.345963-08:00",
+      "total_tokens": 7476,
+      "sources": {
+        "meta-orchestrator": 7476
+      }
+    },
+    {
+      "timestamp": "2026-01-08T16:49:33.080446-08:00",
+      "total_tokens": 7484,
+      "sources": {
+        "meta-orchestrator": 7484
+      }
+    },
+    {
+      "timestamp": "2026-02-07T13:59:37.229022-08:00",
+      "total_tokens": 7626,
+      "sources": {
+        "meta-orchestrator": 7626
+      }
+    }
+  ]
+}

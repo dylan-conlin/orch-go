@@ -1,0 +1,47 @@
+name: feature-impl
+skill-type: procedure
+audience: worker
+spawnable: true
+category: implementation
+description: Unified feature implementation with configurable phases (investigation, clarifying-questions, design, implementation, validation, integration). Replaces test-driven-development, surgical-change, and feature-coordination skills. Use for any feature work with phases/mode/validation configured by orchestrator.
+token_budget: 5000  # Standard worker skill budget
+# Dependencies are resolved at spawn time by orch-go's LoadSkillWithDependencies.
+# Note: skillc doesn't support cross-directory deps yet, so compilation fails.
+dependencies:
+  - worker-base
+
+deliverables:
+  investigation:
+    required: false
+    description: "Investigation file (.kb/investigations/YYYY-MM-DD-inv-{topic}.md). Required when investigation phase included in configuration."
+
+  design:
+    required: false
+    description: "Design document (.kb/decisions/ or docs/plans/). Required when design phase included in configuration."
+
+  tests:
+    required: false
+    description: "Test files (location varies by project). Required when mode=tdd or validation=tests."
+
+  implementation:
+    required: false
+    description: "Source code changes. Required when implementation phase included in configuration."
+
+  validation-evidence:
+    required: false
+    description: "Validation evidence (smoke test results, test output, screenshots). Required when validation != none. Report via bd comment."
+
+verification:
+  requirements:
+    - "All configured phases completed (investigation findings, design docs, implementation, validation evidence as applicable)"
+    - "Tests pass OR validation evidence documented via bd comment (automated tests, smoke test, or multi-phase validation)"
+    - "Implementation matches design (if design phase used)"
+    - "No regressions introduced (existing functionality still works)"
+    - "All deliverables committed and reported via bd comment"
+version: 1.0.0
+type: skill
+output: SKILL.md
+sources:
+  - SKILL.md.template
+# Phase content now in reference docs (progressive disclosure)
+# See reference/phase-*.md for detailed guidance

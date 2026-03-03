@@ -1,0 +1,29 @@
+name: diagnostic
+skill-type: policy
+audience: orchestrator
+spawnable: false
+description: Loadable skill for system stabilization when orchestration is degraded. Layers on top of orchestrator skill — shifts priorities from delegation to stabilization, adds flight recorder protocol, restricts spawning, and provides triage playbook.
+version: 1.0.0
+token_budget: 3000
+type: skill
+output: SKILL.md
+dependencies:
+  - orchestrator
+sources:
+  - ../SKILL.md
+
+load_bearing:
+  # Flight recorder is the core innovation — context that survives crashes
+  - pattern: 'Flight Recorder'
+    provenance: '2026-02 Repeated OpenCode crashes lose conversation context; handoff document updated continuously is the only thing that survives'
+    severity: error
+
+  # Spawn restriction prevents cascading failures
+  - pattern: 'One agent at a time'
+    provenance: '2026-02 Parallel agents in degraded systems caused contaminated working trees, cascading build failures, and zombie processes'
+    severity: error
+
+  # Stabilization checklist order matters
+  - pattern: 'Stabilization Checklist'
+    provenance: '2026-02 Services must be up before cleaning zombies, zombies must be cleaned before canary test, etc.'
+    severity: warn

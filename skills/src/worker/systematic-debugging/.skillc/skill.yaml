@@ -1,0 +1,40 @@
+name: systematic-debugging
+skill-type: procedure
+audience: worker
+spawnable: true
+category: debugging
+description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes - four-phase framework (root cause investigation, pattern analysis, hypothesis testing, implementation) that ensures understanding before attempting solutions
+token_budget: 5000  # Standard worker skill budget
+# Dependencies are resolved at spawn time by orch-go's LoadSkillWithDependencies.
+# Note: skillc doesn't support cross-directory deps yet, so compilation fails.
+dependencies:
+  - worker-base
+
+deliverables:
+  investigation:
+    required: false
+    description: "Investigation file (.kb/investigations/{date}-debug-{slug}.md). Recommended for complex bugs, optional for simple fixes."
+
+  commit:
+    required: false
+    description: "Fix commit with root cause documented in message"
+
+verification:
+  requirements:
+    - "Root cause documented (investigation file OR detailed commit message)"
+    - "If fix implemented: tests pass AND smoke-test end-to-end"
+    - "No regression introduced"
+  test_command: null  # Agent specifies via bd comment
+  timeout: 300
+version: 1.0.0
+type: skill
+output: SKILL.md
+sources:
+  - intro.md
+  - error-visibility.md
+  - phases-overview.md
+  - visual-debugging.md
+  - investigation-file.md
+  - self-review.md
+  - fix-verify-cycle.md
+  - completion.md

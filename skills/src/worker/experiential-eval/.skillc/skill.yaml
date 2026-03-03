@@ -1,0 +1,37 @@
+name: experiential-eval
+skill-type: procedure
+audience: worker
+spawnable: true
+category: evaluation
+description: Use a tool or system firsthand and report qualitative experience. Intentionally lightweight — boundaries, not methodology.
+token_budget: 1500
+dependencies:
+  - worker-base
+parameters:
+  - name: tool
+    description: The tool/system/feature to experience
+    type: string
+    required: true
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+  - Write
+  - Edit
+deliverables:
+  - type: investigation
+    path: '{project}/.kb/investigations/{date}-eval-{slug}.md'
+    required: true
+verification:
+  requirements: |
+    - [ ] Agent actually USED the tool (not just read about it)
+    - [ ] Report covers: what worked, what didn't, what surprised
+    - [ ] Opinions are from firsthand experience, not documentation
+  test_command: null
+  required: true
+version: 1.0.0
+type: skill
+output: SKILL.md
+sources:
+  - SKILL.md.template

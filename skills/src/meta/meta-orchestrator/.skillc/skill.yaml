@@ -1,0 +1,26 @@
+name: meta-orchestrator
+skill-type: policy
+audience: meta-orchestrator
+spawnable: true
+category: meta
+description: Manages orchestrator sessions like orchestrators manage workers. Strategic focus, cross-project prioritization, handoff review, system evolution. Operates from a frame shift - thinking ABOUT orchestrators, not AS an orchestrator.
+token_budget: 20000
+version: 1.0.0
+# NOTE: This skill depends on 'orchestrator' at spawn time.
+# orch-go's LoadSkillWithDependencies prepends orchestrator content when spawning.
+# skillc doesn't support cross-directory deps, so we compile standalone.
+# The spawn_requires.dependencies field below declares the runtime dependency.
+
+spawn_requires:
+  dependencies:
+    - orchestrator  # Full orchestrator skill prepended at spawn time
+type: skill
+output: SKILL.md
+sources:
+  - intro.md
+  - understanding-orchestrators.md
+  - spawning-orchestrators.md
+  - reviewing-handoffs.md
+  - strategic-decisions.md
+  - guardrails.md
+  - completion.md

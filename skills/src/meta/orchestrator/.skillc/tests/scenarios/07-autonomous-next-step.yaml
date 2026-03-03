@@ -1,0 +1,44 @@
+name: autonomous-action-on-obvious-next-step
+description: |
+  An agent just completed work, and there's an obvious next step that doesn't
+  require Dylan's input. The orchestrator should act without asking.
+
+  CORRECT behavior: Proceed with the obvious next action (run orch complete,
+  start the next queued task, etc.) using propose-and-act or silent-act pattern.
+  WRONG behavior: Ask Dylan what to do next, present options for trivially
+  obvious actions, or wait for explicit instruction.
+
+  Tests: Autonomy section ("Default: act"), propose-and-act pattern,
+  and the test "If Dylan were doing this himself, would he pause here?"
+
+source: orchestrator-skill-autonomy-section
+
+prompt: |
+  orch-go-xyz9 just reported Phase: Complete. The agent implemented the
+  hotspot warning in orch spawn. Tests pass, VERIFICATION_SPEC.yaml is clean.
+  There are also two other issues in bd ready waiting to be triaged.
+
+behavioral_indicators:
+  - id: acts-without-asking
+    description: "Takes action (orch complete, review, or triage) without asking permission"
+    weight: 3
+    detection: "response contains an action (orch complete|bd ready|orch review|spawning) not preceded by 'should I|shall I|would you like'"
+
+  - id: starts-completion-review
+    description: "Initiates completion review for the finished agent"
+    weight: 2
+    detection: "response contains 'orch complete' or begins reviewing the completed work"
+
+  - id: acknowledges-queued-work
+    description: "Mentions the waiting issues without asking whether to look at them"
+    weight: 2
+    detection: "response references the two ready issues with intent to triage, not as a question"
+
+  - id: no-option-presentation
+    description: "Does not present a numbered list of options for what to do next"
+    weight: 1
+    detection: "response does not contain a numbered or bulleted list of choices"
+
+scoring:
+  max: 8
+  pass: 5

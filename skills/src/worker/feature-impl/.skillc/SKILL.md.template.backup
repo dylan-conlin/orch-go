@@ -1,0 +1,275 @@
+# Feature Implementation (Unified Framework)
+
+**For orchestrators:** Spawn via `orch spawn feature-impl "task" --phases "..." --mode ... --validation ...`
+
+**For workers:** You've been spawned to implement a feature using a phased approach with specific configuration.
+
+---
+
+## Your Configuration
+
+**Read from SPAWN_CONTEXT.md** to understand your configuration:
+
+- **Phases:** Which phases you'll proceed through (e.g., `investigation,clarifying-questions,design,implementation,validation`)
+- **Current Phase:** Determined by your progress (start with first configured phase)
+- **Implementation Mode:** `tdd` or `direct` (only relevant if implementation phase included)
+- **Validation Level:** `none`, `tests`, `smoke-test`, or `multi-phase` (only relevant if validation phase included)
+
+**Example configuration:**
+```
+Phases: design, implementation, validation
+Mode: tdd
+Validation: smoke-test
+```
+
+**This means you will:**
+1. Start with Design phase -> create design document
+2. Move to Implementation phase (TDD mode) -> write tests first, then code
+3. Finish with Validation phase (smoke-test level) -> run tests + manual verification
+
+---
+## When to Use Investigation Phase
+
+Investigation phase is OPTIONAL. Include it when:
+- Unfamiliar codebase/subsystem
+- Complex integration points unknown
+- Prior investigation >3 months old
+
+Skip investigation phase when:
+- Architecture well understood
+- Prior investigation exists and current
+- Simple, isolated change
+
+**Alternative:** For significant unknowns, spawn separate investigation agent first,
+then spawn feature-impl with `--phases implementation,validation` and reference
+to investigation findings.
+
+---
+
+
+## Deliverables
+
+**Required based on configuration:**
+
+| Configuration | Required |
+|---------------|----------|
+| investigation phase | Investigation file |
+| design phase | Design document |
+| implementation phase | Source code |
+| mode=tdd | Tests (write first) |
+| validation=tests | Tests |
+| validation=smoke-test | Validation evidence (reported via bd comment) |
+| validation=multi-phase | Phase checkpoints via bd comment |
+
+**See phase guidance for details.**
+
+---
+
+## Workflow
+
+Proceed through phases sequentially per your configuration.
+
+**Phases:** Investigation -> Clarifying Questions -> Design -> Implementation (TDD/direct) -> Validation -> Self-Review -> Integration
+
+**Follow current phase guidance below** (track progress via `bd comment <beads-id> "Phase: X - details"`).
+
+---
+
+## Step 0: Scope Enumeration (REQUIRED)
+
+**Purpose:** Prevent "Section Blindness" - implementing only part of spawn context while missing other requirements.
+
+**Before starting ANY phase work, you MUST:**
+
+### 1. Read ENTIRE SPAWN_CONTEXT
+
+Read your full SPAWN_CONTEXT.md from start to end. Don't skim. Don't stop at the first section that looks like work.
+
+### 2. Enumerate ALL Requirements
+
+List every discrete requirement/deliverable from the spawn context. Include:
+- Explicit deliverables (files, code, tests, documentation)
+- Implicit requirements (validation, testing, cleanup)
+- Items from ALL sections (not just `## Implementation` or similar)
+
+### 3. Report Scope via Beads
+
+```bash
+bd comment <beads-id> "Scope: 1. [requirement] 2. [requirement] 3. [requirement] ..."
+```
+
+**Example:**
+```bash
+bd comment ok-abc "Scope: 1. Add trace_path to scrape_job.metadata 2. Create Rails endpoint with CORS 3. Add UI link 4. Implement retention strategy (keep failures, first success per combo, random 5%) 5. Create cleanup rake task"
+```
+
+### 4. Flag Uncertainty
+
+If any of these are true, add to your comment:
+- Spawn context has multiple sections that look like separate work
+- Requirements seem incomplete or unclear
+- You're unsure if something is in scope
+
+```bash
+bd comment <beads-id> "Scope: 1. X 2. Y 3. Z -- QUESTION: Is the retention strategy section also in scope?"
+```
+
+**Wait for orchestrator confirmation if you flag uncertainty.**
+
+---
+
+### Why This Matters
+
+Agents have repeatedly:
+- Implemented `## Implementation` section while ignoring `## Retention Strategy`
+- Claimed "Phase: Complete" with partial work
+- Never flagged they were doing partial scope
+
+Forcing explicit enumeration catches this BEFORE implementation begins.
+
+---
+
+### Completion Criteria (Step 0)
+
+- [ ] Read full SPAWN_CONTEXT (all sections)
+- [ ] Enumerated ALL requirements (not just one section)
+- [ ] Reported scope via `bd comment`
+- [ ] Flagged any uncertainty (if applicable)
+
+**Once Step 0 complete -> Proceed to your first configured phase.**
+
+---
+
+## Phase-Specific Guidance
+
+**Below are the detailed instructions for each phase.** Read the section that matches your current phase.
+
+---
+
+<!-- SKILL-TEMPLATE: investigation --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: clarifying-questions --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: design --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: implementation-tdd --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: implementation-direct --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: validation --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: self-review --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: leave-it-better --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: integration --><!-- /SKILL-TEMPLATE -->
+
+---
+
+## Phase Transitions
+
+**After completing each phase:**
+
+1. Report progress: `bd comment <beads-id> "Phase: <new-phase> - <brief summary>"`
+2. Output: "Phase complete, moving to next phase"
+3. Continue to next phase guidance
+
+**Beads comments are the primary progress log.** The orchestrator monitors via `bd show <beads-id>`.
+
+---
+
+## Progress Tracking (Beads-First)
+
+**If SPAWN_CONTEXT includes a BEADS ISSUE section, use `bd comment` for progress:**
+
+```bash
+# Phase transitions (always comment)
+bd comment <issue-id> "Phase: Implementing - Starting TDD cycle for auth middleware"
+
+# Significant milestones
+bd comment <issue-id> "Milestone: Core API endpoints complete, tests passing"
+
+# Blockers (immediate)
+bd comment <issue-id> "BLOCKED: Need API contract clarification from orchestrator"
+
+# Questions
+bd comment <issue-id> "QUESTION: Should validation errors return 400 or 422?"
+
+# Completion
+bd comment <issue-id> "Phase: Complete - All tests passing. Deliverables: src/auth/*.ts, tests/auth/*.test.ts"
+```
+
+**Why beads comments matter:**
+- Orchestrator monitors progress via `bd show <beads-id>`
+- Progress history persists across sessions
+- Enables automated tracking and reporting
+- Comments are searchable across all issues
+
+---
+
+## Special Cases
+
+**Multi-Phase Validation:**
+- When validation=multi-phase: STOP at validation, report via `bd comment <beads-id> "AWAITING_VALIDATION - [details]"`
+- Wait for orchestrator approval before marking complete
+- See Validation phase for details
+
+**Mode Selection:**
+- TDD mode: Behavioral changes (write tests first)
+- Direct mode: Non-behavioral (refactoring, config, docs)
+- If SPAWN_CONTEXT specifies mode, use that mode
+
+**Skipped Phases:**
+- If phase not in configuration, skip its guidance
+- Follow only the phases specified in SPAWN_CONTEXT
+
+---
+
+## Completion Criteria
+
+- [ ] **Step 0 completed:** Scope enumerated and reported via `bd comment`
+- [ ] All configured phases completed
+- [ ] Each phase's completion criteria met
+- [ ] Self-review passed
+- [ ] **Leave it Better completed:** At least one `kn` command run OR noted as not applicable
+- [ ] All deliverables created
+- [ ] All changes committed: `git status` shows "nothing to commit"
+- [ ] Final status reported: `bd comment <beads-id> "Phase: Complete - [summary of deliverables]"`
+
+**If ANY unchecked, work is NOT complete.**
+
+**Final step:** After all criteria met:
+1. Close the beads issue: `bd close <beads-id> --reason "summary of what was done"`
+2. Call /exit to close agent session
+
+---
+
+## Troubleshooting
+
+**Stuck:** Re-read phase guidance, check SPAWN_CONTEXT. If blocked: `bd comment <beads-id> "BLOCKED: [reason]"`
+
+**Unclear requirements:** `bd comment <beads-id> "QUESTION: [question]"` and wait for clarification
+
+**Scope changes:** Document change, ask orchestrator via beads comment
+
+---
+
+## Related Skills
+
+- **investigation**, **systematic-debugging**, **architect** (for design exploration), **record-decision**, **code-review**

@@ -1,0 +1,67 @@
+# UX Audit
+
+<!-- SKILL-TEMPLATE: overview --><!-- /SKILL-TEMPLATE -->
+
+---
+
+## Audit Workflow
+
+**Phase 1: Setup & Baseline** → Authenticate, navigate, capture baseline screenshots at all viewports
+**Phase 2: Dimension Audit** → Execute dimension-specific checks per mode (quick/focused/full)
+**Phase 3: Synthesis** → Prioritize findings, calculate baseline metrics, compare with prior audits
+**Phase 4: Self-Review** → Verify evidence, check completeness, create beads issues
+
+---
+
+<!-- SKILL-TEMPLATE: phase-setup --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- DIMENSION-SPECIFIC CONTENT -->
+<!-- The build system will inject the appropriate dimension module here based on spawn configuration -->
+
+<!-- For mode=quick, use the quick dimension -->
+<!-- For mode=focused --dimensions "responsive,a11y", load those specific dimensions -->
+<!-- For mode=full, load all dimensions -->
+
+**Dimension-specific guidance below:**
+
+---
+
+<!-- SKILL-TEMPLATE: dimension-quick --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- Phase 2: Core dimensions (responsive, a11y, visual-consistency) -->
+
+<!-- SKILL-TEMPLATE: dimension-responsive --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: dimension-a11y --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: dimension-visual --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- Phase 3: Remaining dimensions (data-presentation, navigation, interactive-states) -->
+
+<!-- SKILL-TEMPLATE: dimension-data --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: dimension-navigation --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: dimension-interactive --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: self-review --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: leave-it-better --><!-- /SKILL-TEMPLATE -->

@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+FILE="${1:-skills/src/meta/orchestrator/.skillc/SKILL.md.template}"
+
+if [[ ! -f "$FILE" ]]; then
+  echo "ERROR: file not found: $FILE"
+  exit 2
+fi
+
+if ! command -v rg >/dev/null 2>&1; then
+  echo "ERROR: rg is required for lint"
+  exit 2
+fi
+
+# Thresholds tuned to detect gate inflation while allowing concise policy language.
+MAX_HARD_GATE_LINES="${MAX_HARD_GATE_LINES:-5}"
+MAX_DIRECTIVE_DENSITY="${MAX_DIRECTIVE_DENSITY:-0.025}"
+
+words=$(wc -w < "$FILE" | tr -d ' ')
+hard_gate_lines=$(rg -n -i 'HARD GATE|BLOCKS\b|Blocked means blocked|Do not skip' "$FILE" | wc -l | tr -d ' ')
+hard_directives=$(rg -o -N -i '\b(MUST|NEVER|ALWAYS)\b|STOP\.' "$FILE" | wc -l | tr -d ' ')
+
+if [[ "$words" -eq 0 ]]; then
+  echo "ERROR: empty file: $FILE"
+  exit 2
+fi
+
+directive_density=$(awk -v d="$hard_directives" -v w="$words" 'BEGIN { printf "%.6f", d / w }')
+
+fail=0
+
+# 1) Hard-gate inflation
+if [[ "$hard_gate_lines" -gt "$MAX_HARD_GATE_LINES" ]]; then
+  echo "FAIL hard-gate inflation: $hard_gate_lines lines (max $MAX_HARD_GATE_LINES)"
+  fail=1
+else
+  echo "PASS hard-gate lines: $hard_gate_lines <= $MAX_HARD_GATE_LINES"
+fi
+
+# 2) Directive density
+if awk -v x="$directive_density" -v y="$MAX_DIRECTIVE_DENSITY" 'BEGIN { exit !(x > y) }'; then
+  echo "FAIL directive density: $directive_density (max $MAX_DIRECTIVE_DENSITY)"
+  fail=1
+else
+  echo "PASS directive density: $directive_density <= $MAX_DIRECTIVE_DENSITY"
+fi
+
+# 3) Reference pointer integrity (orchestration model docs)
+missing_refs=0
+while IFS= read -r ref; do
+  # Strip surrounding backticks if present.
+  path="${ref//\`/}"
+  if [[ ! -f "$path" ]]; then
+    echo "FAIL missing reference: $path"
+    missing_refs=$((missing_refs + 1))
+  fi
+done < <(rg -o -N '\.kb/models/orchestration/[a-zA-Z0-9._/-]+\.md' "$FILE" | sort -u)
+
+if [[ "$missing_refs" -gt 0 ]]; then
+  fail=1
+else
+  echo "PASS orchestration references resolve"
+fi
+
+# 4) Consistency trap: "check all five" with non-five list.
+if rg -q -i 'check all five' "$FILE"; then
+  declared_five_count=$(awk '
+    BEGIN {watch=0; lines_after=0; count=0; bad=0}
+    /check all five/ {watch=1; lines_after=0; count=0; next}
+    watch==1 {
+      lines_after++
+      if ($0 ~ /^[[:space:]]*[0-9]+\./) count++
+      if (lines_after >= 20 || $0 ~ /^## / || $0 ~ /^### /) {
+        if (count != 5) bad=1
+        watch=0
+      }
+    }
+    END { if (watch==1 && count != 5) bad=1; print bad }
+  ' "$FILE")
+
+  if [[ "$declared_five_count" -ne 0 ]]; then
+    echo "FAIL consistency: found 'check all five' with non-5 enumerated items"
+    fail=1
+  else
+    echo "PASS consistency: 'check all five' matches item count"
+  fi
+fi
+
+echo ""
+echo "Summary"
+echo "- file: $FILE"
+echo "- words: $words"
+echo "- hard gate lines: $hard_gate_lines"
+echo "- hard directives: $hard_directives"
+echo "- directive density: $directive_density"
+
+if [[ "$fail" -ne 0 ]]; then
+  exit 1
+fi

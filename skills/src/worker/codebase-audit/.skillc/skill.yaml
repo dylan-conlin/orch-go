@@ -1,0 +1,48 @@
+name: codebase-audit
+skill-type: procedure
+audience: worker
+spawnable: true
+category: analysis
+description: Systematic codebase audit with configurable dimension (security/performance/tests/architecture/organizational/quick)
+token_budget: 15000  # Complex worker skill with multiple dimensions
+# Dependencies are resolved at spawn time by orch-go's LoadSkillWithDependencies.
+# Note: skillc doesn't support cross-directory deps yet, so compilation fails.
+dependencies:
+  - worker-base
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+  - Write
+  - Edit
+deliverables:
+  - type: investigation
+    path: "{project}/.kb/investigations/{date}-audit-{slug}.md"
+    required: true
+verification:
+  requirements: |
+    - [ ] Investigation file created with findings
+    - [ ] Pattern search commands documented (reproducibility)
+    - [ ] Evidence provided with concrete examples
+    - [ ] Recommendations prioritized by ROI
+    - [ ] Baseline metrics captured for re-audit
+  test_command: null
+  timeout: null
+  required: true
+version: 1.0.0
+type: skill
+output: SKILL.md
+sources:
+  - SKILL.md.template
+template_sources:
+  common-overview: phases/common-overview.md
+  mode-parallel: phases/mode-parallel.md
+  dimension-security: phases/dimension-security.md
+  dimension-performance: phases/dimension-performance.md
+  dimension-tests: phases/dimension-tests.md
+  dimension-architecture: phases/dimension-architecture.md
+  dimension-organizational: phases/dimension-organizational.md
+  dimension-quick: phases/dimension-quick.md
+  self-review: phases/self-review.md
+  leave-it-better: phases/leave-it-better.md

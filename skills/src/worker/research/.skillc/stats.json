@@ -1,0 +1,18 @@
+{
+  "builds": [
+    {
+      "timestamp": "2026-01-07T14:41:54.708753-08:00",
+      "total_tokens": 3817,
+      "sources": {
+        "research": 3817
+      }
+    },
+    {
+      "timestamp": "2026-02-13T23:05:06.976878-08:00",
+      "total_tokens": 4149,
+      "sources": {
+        "research": 4149
+      }
+    }
+  ]
+}

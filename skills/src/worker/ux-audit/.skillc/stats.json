@@ -1,0 +1,32 @@
+{
+  "builds": [
+    {
+      "timestamp": "2026-02-26T23:00:13.362626-08:00",
+      "total_tokens": 7099,
+      "sources": {
+        "ux-audit": 7099
+      }
+    },
+    {
+      "timestamp": "2026-02-26T23:08:49.237017-08:00",
+      "total_tokens": 16355,
+      "sources": {
+        "ux-audit": 16355
+      }
+    },
+    {
+      "timestamp": "2026-02-26T23:09:03.843163-08:00",
+      "total_tokens": 16355,
+      "sources": {
+        "ux-audit": 16355
+      }
+    },
+    {
+      "timestamp": "2026-02-26T23:47:08.315479-08:00",
+      "total_tokens": 24474,
+      "sources": {
+        "ux-audit": 24474
+      }
+    }
+  ]
+}

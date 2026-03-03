@@ -1,0 +1,47 @@
+name: unmapped-skill-handling
+description: |
+  Dylan requests work that doesn't cleanly map to any existing skill in the
+  routing table. There is no "experiential evaluation" or "tool comparison"
+  or "learning exercise" skill.
+
+  CORRECT behavior: Acknowledge the gap. Either (a) propose a freeform approach
+  with explicit framing of what the agent should do, or (b) select the closest
+  skill but explicitly note the mismatch and adjust the spawn prompt to
+  compensate. Do NOT silently force into the wrong skill.
+  WRONG behavior: Route to the closest skill without acknowledging the mismatch,
+  or over-engineer a solution (create a new skill, build infrastructure).
+
+  Tests: Intent spiral open question #3 ("does the skill system need a freeform
+  path?"), and graceful handling when routing table has no match.
+
+source: intent-spiral-investigation-open-q3
+
+prompt: |
+  I want to spend 30 minutes learning how Drizzle ORM migrations work by
+  actually running some against a test database. Not building anything —
+  just learning the tool.
+
+behavioral_indicators:
+  - id: acknowledges-no-exact-match
+    description: "Recognizes this doesn't map cleanly to an existing skill"
+    weight: 2
+    detection: "response contains (doesn't map|no exact skill|closest match|not a standard|freeform|experiential)"
+
+  - id: no-silent-misroute
+    description: "Does NOT silently route to investigation or feature-impl without comment"
+    weight: 3
+    detection: "if skill is mentioned, the mismatch is also acknowledged"
+
+  - id: preserves-experiential-intent
+    description: "Spawn prompt or description preserves 'learning by doing' intent"
+    weight: 2
+    detection: "response contains (learn|try|hands-on|run|experiment|explore) — not (document|analyze|investigate|produce)"
+
+  - id: no-overengineering
+    description: "Does not propose creating a new skill or building infrastructure"
+    weight: 1
+    detection: "response does not contain 'create a skill|new skill|build a'"
+
+scoring:
+  max: 8
+  pass: 5

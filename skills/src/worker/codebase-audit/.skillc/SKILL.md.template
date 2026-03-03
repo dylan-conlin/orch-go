@@ -1,0 +1,53 @@
+# Codebase Audit
+
+<!-- SKILL-TEMPLATE: common-overview --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- MODE-SPECIFIC CONTENT -->
+<!-- Use --parallel flag for comprehensive multi-agent audits -->
+
+<!-- SKILL-TEMPLATE: mode-parallel --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- DIMENSION-SPECIFIC CONTENT -->
+<!-- The build system will inject the appropriate dimension module here based on spawn configuration -->
+
+<!-- For backward compatibility with old skill names, detect dimension from SPAWN_CONTEXT -->
+<!-- If spawned as codebase-audit-security, auto-set dimension=security -->
+<!-- If spawned as codebase-audit --dimension performance, use that -->
+
+**Dimension-specific guidance below:**
+
+---
+
+<!-- SKILL-TEMPLATE: dimension-security --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: dimension-performance --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: dimension-tests --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: dimension-architecture --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: dimension-organizational --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: dimension-quick --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: self-review --><!-- /SKILL-TEMPLATE -->
+
+---
+
+<!-- SKILL-TEMPLATE: leave-it-better --><!-- /SKILL-TEMPLATE -->

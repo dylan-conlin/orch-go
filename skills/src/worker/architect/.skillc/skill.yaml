@@ -1,0 +1,56 @@
+name: architect
+skill-type: procedure
+audience: worker
+spawnable: true
+category: planning
+description: Strategic design skill for deciding what should exist. Use when design reasoning exceeds quick orchestrator chat. Produces investigations (with recommendations) that can be promoted to decisions. Distinct from investigation (understand what exists) - architect is for shaping the system.
+# Dependencies are resolved at spawn time by orch-go's LoadSkillWithDependencies.
+# Note: skillc doesn't support cross-directory deps yet, so compilation fails.
+dependencies:
+  - worker-base
+  - decision-navigation
+parameters:
+- name: topic
+  description: The design topic or question to address
+  type: string
+  required: true
+- name: mode
+  description: "autonomous (work to completion) or interactive (collaborative design with Dylan)"
+  type: string
+  required: false
+  default: autonomous
+allowed-tools:
+- Read
+- Glob
+- Grep
+- Bash
+- Write
+- Edit
+- WebFetch
+- WebSearch
+- question
+deliverables:
+- type: investigation
+  path: ".kb/investigations/{date}-design-{slug}.md"
+  required: true
+  description: Design investigation with exploration, trade-offs, and recommendations
+- type: decision
+  path: ".kb/decisions/{date}-{slug}.md"
+  required: false
+  description: Decision record - created when recommendation is accepted (promoted from investigation)
+verification:
+  requirements: |
+    - [ ] All 5 phases completed (Problem Framing, Exploration, Question Generation, Synthesis, Externalization)
+    - [ ] Recommendation made with trade-off analysis
+    - [ ] Discovered work tracked via beads (issues created for follow-up tasks)
+    - [ ] Investigation artifact produced
+    - [ ] All changes committed
+  test_command: null
+  required: true
+version: 1.0.0
+type: skill
+output: SKILL.md
+sources:
+  - SKILL.md.template
+# Mode-specific content in modes/ subdirectory for maintainability
+# Autonomous and Interactive modes have different 5-phase workflows

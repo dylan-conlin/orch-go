@@ -1,0 +1,68 @@
+name: investigation
+skill-type: procedure
+audience: worker
+spawnable: true
+category: investigation
+description: Record what you tested and observed; default to model-scoped probes when injected model claims are present, otherwise run a full investigation.
+token_budget: 5000 # Standard worker skill budget
+# Dependencies are resolved at spawn time by orch-go's LoadSkillWithDependencies.
+# Note: skillc doesn't support cross-directory deps yet, so compilation warns.
+dependencies:
+  - worker-base
+parameters:
+  - name: type
+    description: Investigation type (simple is the only recommended type)
+    type: string
+    required: false
+    default: simple
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+  - Write
+  - Edit
+deliverables:
+  - type: probe
+    path: '{project}/.kb/models/{model}/probes/{date}-{slug}.md'
+    required: false
+  - type: investigation
+    path: '{project}/.kb/investigations/{date}-inv-{slug}.md'
+    required: false
+verification:
+  requirements: |
+    - [ ] SPAWN_CONTEXT mode checked (injected model markers present/absent)
+    - [ ] Probe mode: probe file has Question, What I Tested, What I Observed, Model Impact
+    - [ ] Investigation mode: Prior-Work table present and conclusion based on real test
+    - [ ] Output artifact committed (probe or investigation)
+  test_command: null
+  required: true
+version: 1.0.0
+type: skill
+output: SKILL.md
+sources:
+  - intro.md
+  - workflow.md
+  - template.md
+  - prior-work.md
+  - self-review.md
+  - completion.md
+# Reference content extracted for progressive disclosure (situation-based)
+# See reference/*.md for detailed guidance loaded on-demand
+
+# Executable constraints - verified by orch complete
+outputs:
+  optional:
+    - pattern: '.kb/models/*/probes/{date}-*.md'
+      description: 'Model probe output when injected model content is present'
+    - pattern: '.kb/investigations/{date}-inv-*.md'
+      description: 'Investigation output when no injected model content is present'
+
+# Spawn-time behavior requirements
+spawn_requires:
+  authority_level: worker # Investigation agents have standard worker authority
+  kb_context: true # Gather kb context using task keywords
+  beads_tracking: true # Track progress via bd comment
+  servers: none # Investigation doesn't need local servers
+  synthesis: light # Light synthesis (investigation file IS the artifact)
+  phase_reporting: true # Report phases via bd comment

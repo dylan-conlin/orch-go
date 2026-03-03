@@ -1,0 +1,81 @@
+{
+  "builds": [
+    {
+      "timestamp": "2025-12-23T18:37:11.41061-08:00",
+      "total_tokens": 3398,
+      "sources": {
+        "architect": 3398
+      }
+    },
+    {
+      "timestamp": "2026-01-07T14:41:54.660948-08:00",
+      "total_tokens": 3543,
+      "sources": {
+        "architect": 3543
+      }
+    },
+    {
+      "timestamp": "2026-01-19T10:40:41.270601-08:00",
+      "total_tokens": 4021,
+      "sources": {
+        "architect": 4021
+      }
+    },
+    {
+      "timestamp": "2026-01-28T15:41:18.737999-08:00",
+      "total_tokens": 4159,
+      "sources": {
+        "architect": 4159
+      }
+    },
+    {
+      "timestamp": "2026-01-30T11:27:09.244425-08:00",
+      "total_tokens": 4199,
+      "sources": {
+        "architect": 4199
+      }
+    },
+    {
+      "timestamp": "2026-01-30T11:27:48.902729-08:00",
+      "total_tokens": 4199,
+      "sources": {
+        "architect": 4199
+      }
+    },
+    {
+      "timestamp": "2026-01-30T22:15:34.240638-08:00",
+      "total_tokens": 4922,
+      "sources": {
+        "architect": 4922
+      }
+    },
+    {
+      "timestamp": "2026-01-30T22:16:26.755144-08:00",
+      "total_tokens": 4922,
+      "sources": {
+        "architect": 4922
+      }
+    },
+    {
+      "timestamp": "2026-01-30T22:17:04.843478-08:00",
+      "total_tokens": 4922,
+      "sources": {
+        "architect": 4922
+      }
+    },
+    {
+      "timestamp": "2026-02-03T18:13:36.326933-08:00",
+      "total_tokens": 5587,
+      "sources": {
+        "architect": 5587
+      }
+    },
+    {
+      "timestamp": "2026-02-06T15:34:53.677502-08:00",
+      "total_tokens": 5566,
+      "sources": {
+        "architect": 5566
+      }
+    }
+  ]
+}

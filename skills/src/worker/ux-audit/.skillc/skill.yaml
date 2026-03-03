@@ -1,0 +1,81 @@
+name: ux-audit
+skill-type: procedure
+audience: worker
+spawnable: true
+category: analysis
+description: Systematic UI/UX audit using Playwright MCP with configurable dimensions (visual-consistency/responsive/accessibility/data-presentation/navigation/interactive-states/quick)
+token_budget: 35000  # Complex worker skill with 6 full dimensions + quick scan + browser context. Phase 3 adds 3 remaining dimensions (~5K tokens each).
+dependencies:
+  - worker-base
+parameters:
+  - name: mode
+    description: Audit depth (quick/focused/full)
+    type: string
+    required: false
+    default: full
+  - name: dimensions
+    description: Comma-separated dimensions for focused mode
+    type: string
+    required: false
+  - name: url
+    description: Target page URL
+    type: string
+    required: true
+  - name: auth
+    description: Auth method (storageState/dev-login/cdp-tab)
+    type: string
+    required: false
+    default: storageState
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+  - Write
+  - Edit
+  - mcp__playwright__browser_navigate
+  - mcp__playwright__browser_snapshot
+  - mcp__playwright__browser_take_screenshot
+  - mcp__playwright__browser_resize
+  - mcp__playwright__browser_click
+  - mcp__playwright__browser_hover
+  - mcp__playwright__browser_press_key
+  - mcp__playwright__browser_evaluate
+  - mcp__playwright__browser_console_messages
+  - mcp__playwright__browser_navigate_back
+  - mcp__playwright__browser_tabs
+deliverables:
+  - type: investigation
+    path: "{project}/.kb/investigations/{date}-audit-ux-{slug}.md"
+    required: true
+  - type: screenshots
+    path: "{project}/.kb/investigations/screenshots/{audit-slug}/"
+    required: true
+verification:
+  requirements: |
+    - [ ] Investigation file created with findings by dimension
+    - [ ] Baseline metrics captured (finding counts, axe-core results)
+    - [ ] Screenshots captured at all 5 viewports
+    - [ ] Each finding has severity, evidence, and recommendation
+    - [ ] "What Works Well" section present
+    - [ ] Comparison with prior audit (if exists)
+    - [ ] axe-core scan results included (accessibility dimension)
+  test_command: null
+  required: true
+version: 1.0.0
+type: skill
+output: SKILL.md
+sources:
+  - SKILL.md.template
+template_sources:
+  overview: phases/overview.md
+  phase-setup: phases/phase-setup.md
+  dimension-quick: phases/dimension-quick.md
+  dimension-responsive: phases/dimension-responsive.md
+  dimension-a11y: phases/dimension-a11y.md
+  dimension-visual: phases/dimension-visual.md
+  dimension-data: phases/dimension-data.md
+  dimension-navigation: phases/dimension-navigation.md
+  dimension-interactive: phases/dimension-interactive.md
+  self-review: phases/self-review.md
+  leave-it-better: phases/leave-it-better.md

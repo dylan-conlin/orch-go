@@ -1,0 +1,19 @@
+name: worker-base
+skill-type: foundation
+audience: worker
+spawnable: false
+composable: true
+category: foundation
+description: Common patterns for all worker skills. Provides authority delegation rules, beads progress tracking protocol, phase reporting instructions, status update patterns, and exit/completion protocol. Intended to be inherited via dependencies, not spawned directly.
+version: 1.0.0
+type: skill
+output: SKILL.md
+sources:
+  - intro.md
+  - authority.md
+  - hard-limits.md
+  - objection-protocol.md
+  - tracking.md
+  - phase-reporting.md
+  - discovered-work.md
+  - completion.md

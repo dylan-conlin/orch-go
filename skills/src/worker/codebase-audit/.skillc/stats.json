@@ -1,0 +1,39 @@
+{
+  "builds": [
+    {
+      "timestamp": "2025-12-29T12:51:52.059034-08:00",
+      "total_tokens": 12804,
+      "sources": {
+        "codebase-audit": 12804
+      }
+    },
+    {
+      "timestamp": "2026-01-07T14:41:54.664995-08:00",
+      "total_tokens": 12804,
+      "sources": {
+        "codebase-audit": 12804
+      }
+    },
+    {
+      "timestamp": "2026-01-08T16:41:44.017746-08:00",
+      "total_tokens": 12827,
+      "sources": {
+        "codebase-audit": 12827
+      }
+    },
+    {
+      "timestamp": "2026-01-19T10:41:21.161749-08:00",
+      "total_tokens": 12856,
+      "sources": {
+        "codebase-audit": 12856
+      }
+    },
+    {
+      "timestamp": "2026-02-13T23:05:07.582045-08:00",
+      "total_tokens": 13169,
+      "sources": {
+        "codebase-audit": 13169
+      }
+    }
+  ]
+}

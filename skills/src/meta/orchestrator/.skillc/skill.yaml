@@ -1,0 +1,41 @@
+name: orchestrator
+skill-type: policy
+audience: orchestrator
+spawnable: false
+description: Always-loaded runtime policy for orchestrator agents. Guides every turn. Reference docs loaded on demand.
+version: 3.0.0
+token_budget: 15000 # Restored monolithic January base (~2355 lines) + Feb-Mar forward-ports. Exceeds 15K budget — accepted tradeoff for experiential content richness.
+type: skill
+output: SKILL.md
+sources:
+  - SKILL.md.template
+
+# Load-bearing patterns: Hard-won guidance that MUST exist in compiled output.
+# Registered per .kb/decisions/2026-01-08-load-bearing-guidance-data-model.md
+# Run `skillc check` to verify patterns exist; missing patterns block deploy.
+#
+# v3 changes: Restored monolithic January base (pre-Feb-6 rollback) with Feb-Mar forward-ports.
+# Rich experiential content back in always-loaded skill. Reference docs still available on-demand.
+load_bearing:
+  # Core delegation rule
+  - pattern: 'You never implement'
+    provenance: '2025-11 orchestrator doing investigations led to 3-day derailment; system blocked while orchestrator had nose buried in files'
+    severity: error
+
+  # Anti-option-theater rule - Dylan shouldn't filter Claude's brainstorm
+  - pattern: 'Filter before presenting'
+    provenance: '2026-01-08 Dylan observed option theater pattern - orchestrator presented 3 options including one clearly worse; shifted cognitive load to Dylan for filtering'
+    evidence: 'orch-go-lv3yx epic description'
+    severity: warn
+
+  # System learning rule - January base uses "system failure" phrasing
+  - pattern: 'system fail'
+    provenance: '2025-12-25 Human compensating for system gaps prevents system learning; documented after Dylan repeatedly pasted context system should have surfaced'
+    evidence: '~/.kb/decisions/2025-12-25-pressure-over-compensation.md'
+    severity: warn
+
+  # Frame collapse detection - January base uses 5-minute rule
+  - pattern: '5-minute rule'
+    provenance: "2026-01-06 Dylan couldn't distinguish orchestrator context-gathering from frame collapse (doing worker work); external signals required"
+    evidence: '.kb/investigations/2026-01-06-inv-detect-orchestrator-frame-collapse-doing.md'
+    severity: warn

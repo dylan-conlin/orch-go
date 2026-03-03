@@ -1,0 +1,85 @@
+#!/bin/bash
+# ============================================================================
+# Pre-commit hook for orch-knowledge
+# ============================================================================
+#
+# Checks:
+# 1. Skill CLI references - validates commands referenced in skill files exist
+#
+# The bd (beads) pre-commit hook chains to this via pre-commit.old symlink.
+# ============================================================================
+
+# ============================================================================
+# Check skill CLI references when skill sources change
+# ============================================================================
+
+skills_src_changed=$(git diff --cached --name-only | grep -E '^skills/src/.*\.md$' || true)
+
+if [ -n "$skills_src_changed" ]; then
+    echo "🔍 Skill files changed, validating CLI references..."
+
+    if ! command -v orch &> /dev/null; then
+        echo "⚠️  Warning: orch command not found, skipping skill lint"
+        exit 0
+    fi
+
+    # Check if orch lint subcommand exists before running
+    if ! orch lint --help &> /dev/null; then
+        echo "⚠️  Warning: orch lint not available, skipping skill lint"
+        exit 0
+    fi
+
+    # Run orch lint --skills and capture output
+    lint_output=$(orch lint --skills 2>&1)
+    lint_exit=$?
+
+    if [ $lint_exit -ne 0 ]; then
+        echo "⚠️  Warning: orch lint --skills failed (exit $lint_exit), skipping"
+        exit 0
+    fi
+
+    # Check if issues were found (look for "Found N issues" in output)
+    if echo "$lint_output" | grep -q "Found [0-9]* issues"; then
+        echo "$lint_output"
+        echo ""
+        echo "❌ BLOCKED: Skill files reference invalid CLI commands"
+        echo ""
+        echo "Fix the issues above before committing."
+        echo ""
+        echo "Or bypass this check (NOT RECOMMENDED):"
+        echo "  git commit --no-verify"
+        exit 1
+    else
+        echo "✅ Skill CLI references valid"
+    fi
+fi
+
+# ============================================================================
+# Check orchestrator policy grammar drift when orchestrator skill changes
+# ============================================================================
+
+orchestrator_skill_changed=$(git diff --cached --name-only | grep -E '^skills/src/meta/orchestrator/.*\.md(\.template)?$' || true)
+
+if [ -n "$orchestrator_skill_changed" ]; then
+    echo "🔍 Orchestrator skill changed, checking grammar drift..."
+
+    if [ ! -x "scripts/lint-orchestrator-grammar" ]; then
+        echo "⚠️  Warning: scripts/lint-orchestrator-grammar not found/executable, skipping"
+        exit 0
+    fi
+
+    if ! scripts/lint-orchestrator-grammar skills/src/meta/orchestrator/.skillc/SKILL.md.template; then
+        echo ""
+        echo "❌ BLOCKED: Orchestrator grammar lint failed"
+        echo ""
+        echo "Fix lint failures above before committing."
+        echo ""
+        echo "Or bypass this check (NOT RECOMMENDED):"
+        echo "  git commit --no-verify"
+        exit 1
+    fi
+
+    echo "✅ Orchestrator grammar lint passed"
+fi
+
+exit 0
