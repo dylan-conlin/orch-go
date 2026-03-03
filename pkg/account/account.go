@@ -24,6 +24,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -313,16 +315,23 @@ func ListAccountInfo() ([]AccountInfo, error) {
 }
 
 // RecommendAccount returns the name of the recommended account for spawning.
-// Uses the same lowest-weekly-usage algorithm as resolveAccount:
+// Uses the same tier-weighted 5h headroom algorithm as resolveAccount:
 //  1. Collect capacity for all accounts (regardless of role)
-//  2. Pick the account with highest SevenDayRemaining (most weekly headroom)
-//  3. Tie-break: FiveHourRemaining, then alphabetical name
-//  4. Without capacity data, recommend first primary account
+//  2. Compute absolute 5h headroom = FiveHourRemaining% * tier_multiplier
+//  3. Pick the account with highest absolute 5h headroom
+//  4. Tie-break: tier-weighted weekly headroom, then alphabetical name
+//  5. Without capacity data, recommend first primary account
 //
 // Returns empty string if no accounts are configured.
 func RecommendAccount(accounts []AccountInfo, capacityFetcher func(string) *CapacityInfo) string {
 	if len(accounts) == 0 {
 		return ""
+	}
+
+	// Build tier lookup from accounts
+	tierByName := make(map[string]string)
+	for _, acc := range accounts {
+		tierByName[acc.Name] = acc.Tier
 	}
 
 	// Collect all account names sorted for deterministic behavior
@@ -347,16 +356,24 @@ func RecommendAccount(accounts []AccountInfo, capacityFetcher func(string) *Capa
 		return allNames[0]
 	}
 
-	// Lowest-weekly-usage: pick account with most remaining weekly capacity
+	// Tier-weighted 5h headroom: pick account with most absolute 5h capacity
 	type candidate struct {
-		name     string
-		capacity *CapacityInfo
+		name        string
+		capacity    *CapacityInfo
+		fiveHourAbs float64
+		weeklyAbs   float64
 	}
 	var candidates []candidate
 	for _, name := range allNames {
 		cap := capacityFetcher(name)
 		if cap != nil {
-			candidates = append(candidates, candidate{name: name, capacity: cap})
+			tier := ParseTierMultiplier(tierByName[name])
+			candidates = append(candidates, candidate{
+				name:        name,
+				capacity:    cap,
+				fiveHourAbs: cap.FiveHourRemaining * tier,
+				weeklyAbs:   cap.SevenDayRemaining * tier,
+			})
 		}
 	}
 
@@ -364,14 +381,14 @@ func RecommendAccount(accounts []AccountInfo, capacityFetcher func(string) *Capa
 		return allNames[0]
 	}
 
-	// Sort: highest SevenDayRemaining first, then FiveHourRemaining, then name
+	// Sort: highest absolute 5h headroom first, then absolute weekly, then name
 	sort.Slice(candidates, func(i, j int) bool {
 		ci, cj := candidates[i], candidates[j]
-		if ci.capacity.SevenDayRemaining != cj.capacity.SevenDayRemaining {
-			return ci.capacity.SevenDayRemaining > cj.capacity.SevenDayRemaining
+		if ci.fiveHourAbs != cj.fiveHourAbs {
+			return ci.fiveHourAbs > cj.fiveHourAbs
 		}
-		if ci.capacity.FiveHourRemaining != cj.capacity.FiveHourRemaining {
-			return ci.capacity.FiveHourRemaining > cj.capacity.FiveHourRemaining
+		if ci.weeklyAbs != cj.weeklyAbs {
+			return ci.weeklyAbs > cj.weeklyAbs
 		}
 		return ci.name < cj.name
 	})
@@ -827,6 +844,7 @@ type AccountWithCapacity struct {
 }
 
 // FindBestAccount returns the saved account with the most remaining capacity.
+// Uses tier-weighted 5-hour headroom as the primary metric.
 // Returns empty string if no accounts have healthy capacity.
 func FindBestAccount() (string, *CapacityInfo, error) {
 	cfg, err := LoadConfig()
@@ -836,6 +854,7 @@ func FindBestAccount() (string, *CapacityInfo, error) {
 
 	var bestName string
 	var bestCapacity *CapacityInfo
+	var bestAbsHeadroom float64 = -1
 
 	for name, acc := range cfg.Accounts {
 		if acc.Source != "saved" {
@@ -851,10 +870,13 @@ func FindBestAccount() (string, *CapacityInfo, error) {
 			continue
 		}
 
-		// Use 7-day remaining as primary metric
-		if bestCapacity == nil || capacity.SevenDayRemaining > bestCapacity.SevenDayRemaining {
+		// Tier-weighted 5-hour headroom as primary metric
+		tier := ParseTierMultiplier(acc.Tier)
+		absHeadroom := capacity.FiveHourRemaining * tier
+		if absHeadroom > bestAbsHeadroom {
 			bestName = name
 			bestCapacity = capacity
+			bestAbsHeadroom = absHeadroom
 		}
 	}
 
@@ -1055,4 +1077,19 @@ func min(a, b float64) float64 {
 		return a
 	}
 	return b
+}
+
+// ParseTierMultiplier parses a tier string like "5x" or "20x" into a float64 multiplier.
+// Returns 1.0 if the tier string is empty or unparseable (safe default).
+func ParseTierMultiplier(tier string) float64 {
+	tier = strings.TrimSpace(strings.ToLower(tier))
+	if tier == "" {
+		return 1.0
+	}
+	tier = strings.TrimSuffix(tier, "x")
+	val, err := strconv.ParseFloat(tier, 64)
+	if err != nil || val <= 0 {
+		return 1.0
+	}
+	return val
 }

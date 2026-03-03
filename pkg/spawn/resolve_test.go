@@ -14,6 +14,7 @@ import (
 type mockAccount struct {
 	role      string
 	configDir string
+	tier      string // e.g. "5x", "20x"
 }
 
 // mockAccountConfig implements AccountConfigProvider for testing.
@@ -24,7 +25,7 @@ type mockAccountConfig struct {
 func (m *mockAccountConfig) GetAccounts() map[string]AccountInfo2 {
 	result := make(map[string]AccountInfo2)
 	for name, acc := range m.accounts {
-		result[name] = AccountInfo2{Role: acc.role, ConfigDir: acc.configDir}
+		result[name] = AccountInfo2{Role: acc.role, ConfigDir: acc.configDir, Tier: acc.tier}
 	}
 	return result
 }
@@ -1029,7 +1030,7 @@ func TestResolve_AccountDefaultEmpty(t *testing.T) {
 }
 
 // ============================================================================
-// Account Heuristic Routing Tests (lowest-weekly-usage-first)
+// Account Heuristic Routing Tests (tier-weighted 5h headroom)
 // ============================================================================
 
 func TestResolve_AccountHeuristic_HighestWeeklyHeadroomWins(t *testing.T) {
@@ -1055,19 +1056,19 @@ func TestResolve_AccountHeuristic_HighestWeeklyHeadroomWins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	// New heuristic: personal wins because 88% weekly > 72% weekly
+	// Personal wins because 95 5h > 87 5h (tier-weighted, both default 1x)
 	if settings.Account.Value != "personal" {
-		t.Fatalf("Account.Value = %q, want %q (highest weekly headroom)", settings.Account.Value, "personal")
+		t.Fatalf("Account.Value = %q, want %q (highest 5h headroom)", settings.Account.Value, "personal")
 	}
 	if settings.Account.Source != SourceHeuristic {
 		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceHeuristic)
 	}
-	if !strings.Contains(settings.Account.Detail, "lowest-weekly") {
-		t.Fatalf("Account.Detail = %q, want contains 'lowest-weekly'", settings.Account.Detail)
+	if !strings.Contains(settings.Account.Detail, "5h-headroom") {
+		t.Fatalf("Account.Detail = %q, want contains '5h-headroom'", settings.Account.Detail)
 	}
 }
 
-func TestResolve_AccountHeuristic_WorkWinsWhenMoreWeeklyHeadroom(t *testing.T) {
+func TestResolve_AccountHeuristic_WorkWinsWhenMoreFiveHourHeadroom(t *testing.T) {
 	input := baseResolveInput()
 	input.AccountConfig = &mockAccountConfig{
 		accounts: map[string]mockAccount{
@@ -1078,10 +1079,10 @@ func TestResolve_AccountHeuristic_WorkWinsWhenMoreWeeklyHeadroom(t *testing.T) {
 	input.CapacityFetcher = func(name string) *account.CapacityInfo {
 		switch name {
 		case "work":
-			// Work has more weekly headroom (70% > 40%)
-			return &account.CapacityInfo{FiveHourRemaining: 80, SevenDayRemaining: 70}
-		case "personal":
+			// Work has more 5h headroom (90% > 40%)
 			return &account.CapacityInfo{FiveHourRemaining: 90, SevenDayRemaining: 40}
+		case "personal":
+			return &account.CapacityInfo{FiveHourRemaining: 40, SevenDayRemaining: 70}
 		}
 		return nil
 	}
@@ -1090,16 +1091,16 @@ func TestResolve_AccountHeuristic_WorkWinsWhenMoreWeeklyHeadroom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	// Work wins because 70% weekly > 40% weekly (role doesn't matter)
+	// Work wins because 90% 5h > 40% 5h (5h headroom is primary, not weekly)
 	if settings.Account.Value != "work" {
-		t.Fatalf("Account.Value = %q, want %q (work has more weekly headroom)", settings.Account.Value, "work")
+		t.Fatalf("Account.Value = %q, want %q (work has more 5h headroom)", settings.Account.Value, "work")
 	}
 	if settings.Account.Source != SourceHeuristic {
 		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceHeuristic)
 	}
 }
 
-func TestResolve_AccountHeuristic_WeeklyTieBreaksByFiveHour(t *testing.T) {
+func TestResolve_AccountHeuristic_FiveHourPrimary(t *testing.T) {
 	input := baseResolveInput()
 	input.AccountConfig = &mockAccountConfig{
 		accounts: map[string]mockAccount{
@@ -1122,9 +1123,9 @@ func TestResolve_AccountHeuristic_WeeklyTieBreaksByFiveHour(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	// Tie on weekly (both 60%), personal wins on 5h tie-break (80% > 50%)
+	// Personal wins on 5h headroom (80% > 50%, both default 1x tier)
 	if settings.Account.Value != "personal" {
-		t.Fatalf("Account.Value = %q, want %q (5h tie-break)", settings.Account.Value, "personal")
+		t.Fatalf("Account.Value = %q, want %q (5h headroom primary)", settings.Account.Value, "personal")
 	}
 }
 
@@ -1150,15 +1151,15 @@ func TestResolve_AccountHeuristic_PersonalWinsWhenMoreWeeklyHeadroom(t *testing.
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	// Personal wins: 88% weekly > 72% weekly
+	// Personal wins: 95 5h > 15 5h (tier-weighted, both default 1x)
 	if settings.Account.Value != "personal" {
-		t.Fatalf("Account.Value = %q, want %q (personal has more weekly headroom)", settings.Account.Value, "personal")
+		t.Fatalf("Account.Value = %q, want %q (personal has more 5h headroom)", settings.Account.Value, "personal")
 	}
 	if settings.Account.Source != SourceHeuristic {
 		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceHeuristic)
 	}
-	if !strings.Contains(settings.Account.Detail, "lowest-weekly") {
-		t.Fatalf("Account.Detail = %q, want contains 'lowest-weekly'", settings.Account.Detail)
+	if !strings.Contains(settings.Account.Detail, "5h-headroom") {
+		t.Fatalf("Account.Detail = %q, want contains '5h-headroom'", settings.Account.Detail)
 	}
 }
 
@@ -1184,15 +1185,15 @@ func TestResolve_AccountHeuristic_BothLowUsesHigherWeeklyHeadroom(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	// Work wins: 5% weekly > 3% weekly (even when both are low)
+	// Work wins: 10 5h > 8 5h (even when both are low, tier-weighted default 1x)
 	if settings.Account.Value != "work" {
-		t.Fatalf("Account.Value = %q, want %q (work has more weekly headroom even when both low)", settings.Account.Value, "work")
+		t.Fatalf("Account.Value = %q, want %q (work has more 5h headroom even when both low)", settings.Account.Value, "work")
 	}
 	if settings.Account.Source != SourceHeuristic {
 		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceHeuristic)
 	}
-	if !strings.Contains(settings.Account.Detail, "lowest-weekly") {
-		t.Fatalf("Account.Detail = %q, want contains 'lowest-weekly'", settings.Account.Detail)
+	if !strings.Contains(settings.Account.Detail, "5h-headroom") {
+		t.Fatalf("Account.Detail = %q, want contains '5h-headroom'", settings.Account.Detail)
 	}
 }
 
@@ -1295,9 +1296,9 @@ func TestResolve_AccountHeuristic_PersonalWinsWhenWorkWeeklyLow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	// Personal wins: 88% weekly > 15% weekly
+	// Personal wins: 95% 5h > 80% 5h (tier-weighted, both default 1x)
 	if settings.Account.Value != "personal" {
-		t.Fatalf("Account.Value = %q, want %q (personal has more weekly headroom)", settings.Account.Value, "personal")
+		t.Fatalf("Account.Value = %q, want %q (personal has more 5h headroom)", settings.Account.Value, "personal")
 	}
 }
 
@@ -1323,9 +1324,147 @@ func TestResolve_AccountHeuristic_CapacityError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	// Work has error (SevenDayRemaining=0), personal wins with 88% weekly
+	// Work has error (all remaining=0), personal wins with 95% 5h headroom
 	if settings.Account.Value != "personal" {
 		t.Fatalf("Account.Value = %q, want %q (personal wins when work has error)", settings.Account.Value, "personal")
+	}
+}
+
+// --- Tier-weighted routing tests ---
+
+func TestResolve_AccountHeuristic_TierWeightedWorkWins(t *testing.T) {
+	// THE BUG FIX TEST: 20x tier at 30% 5h remaining has more absolute capacity
+	// than 5x tier at 50% 5h remaining.
+	// Old behavior: personal wins (50% > 30% raw remaining)
+	// New behavior: work wins (30% * 20 = 600 > 50% * 5 = 250 absolute headroom)
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude", tier: "20x"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal", tier: "5x"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
+			return &account.CapacityInfo{FiveHourRemaining: 30, SevenDayRemaining: 14}
+		case "personal":
+			return &account.CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 43}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	// Work: 30% * 20 = 600 absolute 5h headroom
+	// Personal: 50% * 5 = 250 absolute 5h headroom
+	if settings.Account.Value != "work" {
+		t.Fatalf("Account.Value = %q, want %q (work has 600 vs 250 absolute 5h headroom)", settings.Account.Value, "work")
+	}
+	if settings.Account.Source != SourceHeuristic {
+		t.Fatalf("Account.Source = %q, want %q", settings.Account.Source, SourceHeuristic)
+	}
+	if !strings.Contains(settings.Account.Detail, "5h-headroom") {
+		t.Fatalf("Account.Detail = %q, want contains '5h-headroom'", settings.Account.Detail)
+	}
+	// Verify detail includes tier multiplier
+	if !strings.Contains(settings.Account.Detail, "20x") {
+		t.Fatalf("Account.Detail = %q, want contains '20x' tier info", settings.Account.Detail)
+	}
+}
+
+func TestResolve_AccountHeuristic_TierWeightedPersonalWins(t *testing.T) {
+	// When personal has enough absolute headroom advantage, it wins despite lower tier
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude", tier: "20x"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal", tier: "5x"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
+			// Work is nearly exhausted
+			return &account.CapacityInfo{FiveHourRemaining: 5, SevenDayRemaining: 86}
+		case "personal":
+			return &account.CapacityInfo{FiveHourRemaining: 92, SevenDayRemaining: 43}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	// Work: 5% * 20 = 100 absolute 5h headroom
+	// Personal: 92% * 5 = 460 absolute 5h headroom
+	if settings.Account.Value != "personal" {
+		t.Fatalf("Account.Value = %q, want %q (personal has 460 vs 100 absolute 5h headroom)", settings.Account.Value, "personal")
+	}
+}
+
+func TestResolve_AccountHeuristic_TierDefaultsToOne(t *testing.T) {
+	// When tier is not set, defaults to 1x — raw percentages used
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
+			return &account.CapacityInfo{FiveHourRemaining: 60, SevenDayRemaining: 70}
+		case "personal":
+			return &account.CapacityInfo{FiveHourRemaining: 40, SevenDayRemaining: 90}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	// No tier set → both 1x → work wins (60*1=60 > 40*1=40 5h headroom)
+	if settings.Account.Value != "work" {
+		t.Fatalf("Account.Value = %q, want %q (no tier, work has more raw 5h)", settings.Account.Value, "work")
+	}
+}
+
+func TestResolve_AccountHeuristic_FiveHourTieBreaksByWeekly(t *testing.T) {
+	// When absolute 5h headroom is tied, weekly headroom (tier-weighted) breaks tie
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude", tier: "20x"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal", tier: "5x"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
+			// Absolute 5h: 25% * 20 = 500
+			// Absolute weekly: 60% * 20 = 1200
+			return &account.CapacityInfo{FiveHourRemaining: 25, SevenDayRemaining: 60}
+		case "personal":
+			// Absolute 5h: 100% * 5 = 500 (same!)
+			// Absolute weekly: 90% * 5 = 450
+			return &account.CapacityInfo{FiveHourRemaining: 100, SevenDayRemaining: 90}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	// 5h tied at 500, work wins on weekly (1200 > 450)
+	if settings.Account.Value != "work" {
+		t.Fatalf("Account.Value = %q, want %q (5h tied, work wins on weekly)", settings.Account.Value, "work")
 	}
 }
 

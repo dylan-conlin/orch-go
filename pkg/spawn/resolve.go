@@ -16,6 +16,7 @@ import (
 type AccountInfo2 struct {
 	Role      string // "primary", "spillover", or ""
 	ConfigDir string // e.g. "~/.claude-personal"
+	Tier      string // e.g. "5x", "20x" — parsed via account.ParseTierMultiplier()
 }
 
 // AccountConfigProvider abstracts account config access for testability.
@@ -33,7 +34,7 @@ type liveAccountConfig struct {
 func (l *liveAccountConfig) GetAccounts() map[string]AccountInfo2 {
 	result := make(map[string]AccountInfo2)
 	for name, acc := range l.cfg.Accounts {
-		result[name] = AccountInfo2{Role: acc.Role, ConfigDir: acc.ConfigDir}
+		result[name] = AccountInfo2{Role: acc.Role, ConfigDir: acc.ConfigDir, Tier: acc.Tier}
 	}
 	return result
 }
@@ -140,7 +141,7 @@ type ResolveInput struct {
 	AccountConfig AccountConfigProvider
 
 	// CapacityFetcher returns cached capacity for a named account.
-	// When set, resolveAccount uses lowest-weekly-usage routing (highest SevenDayRemaining wins).
+	// When set, resolveAccount uses tier-weighted 5h headroom routing.
 	// When nil, resolveAccount falls back to default (primary account without capacity check).
 	// The caller (daemon) typically wraps a CapacityCache.Get here.
 	CapacityFetcher func(name string) *account.CapacityInfo
@@ -472,13 +473,14 @@ func resolveEffort(input ResolveInput, resolvedTier string) ResolvedSetting {
 //
 // Precedence:
 //  1. CLI flag: --account work                → Source: cli-flag
-//  2. Heuristic: lowest-weekly-usage routing  → Source: heuristic
+//  2. Heuristic: tier-weighted 5h headroom    → Source: heuristic
 //  3. Default: first primary account          → Source: default
 //
 // The heuristic (when CapacityFetcher is set):
-//   - Collect capacity for all accounts (regardless of role)
-//   - Pick the account with highest SevenDayRemaining (most weekly headroom)
-//   - Tie-break: FiveHourRemaining, then alphabetical name
+//   - Compute absolute 5-hour headroom = FiveHourRemaining% * tier_multiplier
+//   - Pick the account with highest absolute 5-hour headroom
+//   - Tie-break: tier-weighted weekly headroom, then alphabetical name
+//   - If 5-hour data unavailable (both 0): fall back to tier-weighted weekly
 //   - If all capacity fetches return nil: fail-open to first alphabetical
 func resolveAccount(input ResolveInput) ResolvedSetting {
 	// CLI flag has highest precedence
@@ -522,17 +524,28 @@ func resolveAccount(input ResolveInput) ResolvedSetting {
 		return ResolvedSetting{Value: allNames[0], Source: SourceDefault, Detail: "first-account"}
 	}
 
-	// Heuristic routing: lowest-weekly-usage-first (maximize weekly headroom parity).
-	// Collect capacity for all accounts, pick the one with most remaining weekly capacity.
+	// Heuristic routing: tier-weighted 5-hour headroom.
+	// The 5-hour window is what actually blocks agents, not weekly.
+	// Absolute headroom = (remaining %) * tier_multiplier.
 	type candidate struct {
-		name     string
-		capacity *account.CapacityInfo
+		name           string
+		capacity       *account.CapacityInfo
+		tierMultiplier float64
+		fiveHourAbs    float64 // FiveHourRemaining * tierMultiplier
+		weeklyAbs      float64 // SevenDayRemaining * tierMultiplier
 	}
 	var candidates []candidate
 	for _, name := range allNames {
 		cap := input.CapacityFetcher(name)
 		if cap != nil {
-			candidates = append(candidates, candidate{name: name, capacity: cap})
+			tier := account.ParseTierMultiplier(accounts[name].Tier)
+			candidates = append(candidates, candidate{
+				name:           name,
+				capacity:       cap,
+				tierMultiplier: tier,
+				fiveHourAbs:    cap.FiveHourRemaining * tier,
+				weeklyAbs:      cap.SevenDayRemaining * tier,
+			})
 		}
 	}
 
@@ -541,21 +554,22 @@ func resolveAccount(input ResolveInput) ResolvedSetting {
 		return ResolvedSetting{Value: allNames[0], Source: SourceHeuristic, Detail: "all-capacity-unknown"}
 	}
 
-	// Sort: highest SevenDayRemaining first, then FiveHourRemaining, then name
+	// Sort: highest absolute 5h headroom first, then absolute weekly, then name
 	sort.Slice(candidates, func(i, j int) bool {
 		ci, cj := candidates[i], candidates[j]
-		if ci.capacity.SevenDayRemaining != cj.capacity.SevenDayRemaining {
-			return ci.capacity.SevenDayRemaining > cj.capacity.SevenDayRemaining
+		if ci.fiveHourAbs != cj.fiveHourAbs {
+			return ci.fiveHourAbs > cj.fiveHourAbs
 		}
-		if ci.capacity.FiveHourRemaining != cj.capacity.FiveHourRemaining {
-			return ci.capacity.FiveHourRemaining > cj.capacity.FiveHourRemaining
+		if ci.weeklyAbs != cj.weeklyAbs {
+			return ci.weeklyAbs > cj.weeklyAbs
 		}
 		return ci.name < cj.name
 	})
 
 	best := candidates[0]
-	detail := fmt.Sprintf("lowest-weekly-7d:%.0f%%-5h:%.0f%%",
-		best.capacity.SevenDayRemaining, best.capacity.FiveHourRemaining)
+	detail := fmt.Sprintf("5h-headroom:%.1f(%.0f%%*%.0fx)-7d:%.1f(%.0f%%*%.0fx)",
+		best.fiveHourAbs, best.capacity.FiveHourRemaining, best.tierMultiplier,
+		best.weeklyAbs, best.capacity.SevenDayRemaining, best.tierMultiplier)
 	return ResolvedSetting{Value: best.name, Source: SourceHeuristic, Detail: detail}
 }
 

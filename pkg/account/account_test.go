@@ -1105,7 +1105,7 @@ func TestRecommendAccount_PrimaryWithoutRole(t *testing.T) {
 	}
 }
 
-func TestRecommendAccount_WithCapacityFetcher_HighestWeeklyWins(t *testing.T) {
+func TestRecommendAccount_WithCapacityFetcher_TierWeightedFiveHourWins(t *testing.T) {
 	accounts := []AccountInfo{
 		{Name: "work", Role: "primary", Tier: "20x"},
 		{Name: "personal", Role: "spillover", Tier: "5x"},
@@ -1117,13 +1117,13 @@ func TestRecommendAccount_WithCapacityFetcher_HighestWeeklyWins(t *testing.T) {
 		return &CapacityInfo{FiveHourRemaining: 95, SevenDayRemaining: 88}
 	}
 	got := RecommendAccount(accounts, fetcher)
-	// Personal wins: 88% weekly > 72% weekly
-	if got != "personal" {
-		t.Errorf("RecommendAccount() = %q, want %q (highest weekly headroom)", got, "personal")
+	// Work wins: 87%*20=1740 5h headroom > 95%*5=475 5h headroom
+	if got != "work" {
+		t.Errorf("RecommendAccount() = %q, want %q (work has 1740 vs 475 absolute 5h headroom)", got, "work")
 	}
 }
 
-func TestRecommendAccount_WithCapacityFetcher_PersonalMoreWeeklyHeadroom(t *testing.T) {
+func TestRecommendAccount_WithCapacityFetcher_PersonalWinsWhenWorkExhausted(t *testing.T) {
 	accounts := []AccountInfo{
 		{Name: "work", Role: "primary", Tier: "20x"},
 		{Name: "personal", Role: "spillover", Tier: "5x"},
@@ -1135,13 +1135,13 @@ func TestRecommendAccount_WithCapacityFetcher_PersonalMoreWeeklyHeadroom(t *test
 		return &CapacityInfo{FiveHourRemaining: 95, SevenDayRemaining: 88}
 	}
 	got := RecommendAccount(accounts, fetcher)
-	// Personal wins: 88% weekly > 15% weekly
+	// Personal wins: 95%*5=475 5h headroom > 10%*20=200 5h headroom
 	if got != "personal" {
-		t.Errorf("RecommendAccount() = %q, want %q (personal has more weekly headroom)", got, "personal")
+		t.Errorf("RecommendAccount() = %q, want %q (personal has 475 vs 200 absolute 5h headroom)", got, "personal")
 	}
 }
 
-func TestRecommendAccount_WithCapacityFetcher_EqualCapacityUsesAlphabetical(t *testing.T) {
+func TestRecommendAccount_WithCapacityFetcher_EqualRawCapacityTierBreaksTie(t *testing.T) {
 	accounts := []AccountInfo{
 		{Name: "work", Role: "primary", Tier: "20x"},
 		{Name: "personal", Role: "spillover", Tier: "5x"},
@@ -1150,9 +1150,9 @@ func TestRecommendAccount_WithCapacityFetcher_EqualCapacityUsesAlphabetical(t *t
 		return &CapacityInfo{FiveHourRemaining: 5, SevenDayRemaining: 3}
 	}
 	got := RecommendAccount(accounts, fetcher)
-	// Equal capacity → alphabetical tie-break: "personal" < "work"
-	if got != "personal" {
-		t.Errorf("RecommendAccount() = %q, want %q (alphabetical tie-break)", got, "personal")
+	// Same raw capacity but work: 5%*20=100, personal: 5%*5=25 → work wins
+	if got != "work" {
+		t.Errorf("RecommendAccount() = %q, want %q (work has higher tier-weighted headroom)", got, "work")
 	}
 }
 
@@ -1166,6 +1166,49 @@ func TestRecommendAccount_DeterministicSorting(t *testing.T) {
 	got := RecommendAccount(accounts, nil)
 	if got != "alpha" {
 		t.Errorf("RecommendAccount() = %q, want %q (alphabetical sort)", got, "alpha")
+	}
+}
+
+// ============================================================================
+// ParseTierMultiplier Tests
+// ============================================================================
+
+func TestParseTierMultiplier(t *testing.T) {
+	tests := []struct {
+		input string
+		want  float64
+	}{
+		{"5x", 5.0},
+		{"20x", 20.0},
+		{"1x", 1.0},
+		{"5X", 5.0},   // case-insensitive
+		{" 20x ", 20.0}, // whitespace trimmed
+		{"", 1.0},      // empty → default 1.0
+		{"invalid", 1.0}, // unparseable → default 1.0
+		{"0x", 1.0},    // zero → default 1.0
+		{"-5x", 1.0},   // negative → default 1.0
+	}
+	for _, tt := range tests {
+		got := ParseTierMultiplier(tt.input)
+		if got != tt.want {
+			t.Errorf("ParseTierMultiplier(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestRecommendAccount_WithCapacityFetcher_EqualAbsoluteUsesAlphabetical(t *testing.T) {
+	// Same tier, same capacity → alphabetical tie-break
+	accounts := []AccountInfo{
+		{Name: "work", Role: "primary", Tier: "5x"},
+		{Name: "personal", Role: "spillover", Tier: "5x"},
+	}
+	fetcher := func(name string) *CapacityInfo {
+		return &CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 50}
+	}
+	got := RecommendAccount(accounts, fetcher)
+	// Equal absolute headroom → "personal" < "work" alphabetically
+	if got != "personal" {
+		t.Errorf("RecommendAccount() = %q, want %q (alphabetical tie-break)", got, "personal")
 	}
 }
 
