@@ -1039,6 +1039,43 @@ func TestComplete_BeadsCloseFails_ReturnsCriticalError(t *testing.T) {
 	}
 }
 
+// TestComplete_LabelRemovedEvenWhenCloseIssueFails verifies that the orch:agent
+// label is still removed even when close_issue fails (e.g., issue already closed
+// by another path). This is the core of the ghost agent bug fix: all effects run
+// regardless of earlier critical failures.
+func TestComplete_LabelRemovedEvenWhenCloseIssueFails(t *testing.T) {
+	mgr, bc, _, _, _, _ := testManager()
+	agent := testAgent()
+
+	// Simulate issue already closed (close_issue will fail)
+	bc.failOn["close_issue:"+agent.BeadsID] = fmt.Errorf("issue already closed")
+
+	event, err := mgr.Complete(agent, "done")
+	if err != nil {
+		t.Fatalf("Complete() should not return error: %v", err)
+	}
+
+	// close_issue failed, so overall transition failed
+	if event.Success {
+		t.Error("expected Success=false when close_issue fails")
+	}
+
+	// But the orch:agent label MUST still be removed (non-critical effect runs
+	// regardless of critical failure). This prevents ghost agent accumulation.
+	labels := bc.labelsRemoved[agent.BeadsID]
+	found := false
+	for _, l := range labels {
+		if l == "orch:agent" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("GHOST AGENT BUG: orch:agent label not removed when close_issue fails. " +
+			"All effects must run regardless of earlier critical failures.")
+	}
+}
+
 func TestComplete_TmuxKillFails_NonCriticalWarning(t *testing.T) {
 	mgr, _, _, tc, _, _ := testManager()
 	agent := testAgent()

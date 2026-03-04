@@ -142,6 +142,20 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 		lifecycleCleanedUp = true
 	}
 
+	// Belt-and-suspenders: always ensure orch:agent label is removed on completion.
+	// Catches two failure modes:
+	// 1. IsClosed=true: lifecycle manager was skipped entirely (issue closed by
+	//    another path like daemon verification, and on_close hook's label removal
+	//    failed silently due to JSONL lock contention or similar)
+	// 2. IsClosed=false but lifecycle manager's non-critical remove_label effect
+	//    failed silently
+	// Removing a non-existent label is a no-op in beads.
+	if target.BeadsID != "" && !target.IsOrchestratorSession {
+		if err := verify.RemoveOrchAgentLabel(target.BeadsID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to remove orch:agent label: %v\n", err)
+		}
+	}
+
 	if target.IsOrchestratorSession {
 		fmt.Printf("Completed orchestrator session: %s\n", target.AgentName)
 	}

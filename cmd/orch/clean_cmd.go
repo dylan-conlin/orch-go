@@ -1215,15 +1215,39 @@ func runOrphanGC(projectDir string, dryRun bool, preserveOrchestrator bool) (for
 // orch status with no way to dismiss them.
 func cleanGhostAgents(currentProjectDir string, dryRun bool) (int, error) {
 	projectDirs := getKBProjectsFn()
-	if len(projectDirs) == 0 {
-		return 0, nil
-	}
-
 	client := opencode.NewClient(opencode.DefaultServerURL)
 	cleaned := 0
 
+	// Phase 1: Clean stale orch:agent labels on closed issues in the local project.
+	// These are missed by --orphans (which only looks at open/in_progress issues)
+	// and by the cross-project loop below (which skips the current project).
+	localIssues, err := beads.FallbackListWithLabel("orch:agent")
+	if err == nil {
+		for _, issue := range localIssues {
+			if strings.EqualFold(issue.Status, "closed") {
+				if dryRun {
+					fmt.Printf("  Stale label on closed issue: %s (%s)\n", issue.ID, issue.Title)
+					cleaned++
+					continue
+				}
+				if err := beads.FallbackRemoveLabel(issue.ID, "orch:agent"); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to remove orch:agent from %s: %v\n", issue.ID, err)
+				} else {
+					fmt.Printf("  Cleaned stale label: %s (closed)\n", issue.ID)
+					cleaned++
+				}
+			}
+		}
+	}
+
+	// Phase 2: Clean cross-project ghost agents (open/in_progress with no live agent,
+	// OR closed issues with stale labels).
+	if len(projectDirs) == 0 {
+		return cleaned, nil
+	}
+
 	for _, dir := range projectDirs {
-		// Skip current project — local orphans are handled by --orphans
+		// Skip current project — local issues handled in Phase 1 and by --orphans
 		if filepath.Clean(dir) == filepath.Clean(currentProjectDir) {
 			continue
 		}
@@ -1235,37 +1259,46 @@ func cleanGhostAgents(currentProjectDir string, dryRun bool) (int, error) {
 		}
 
 		for _, issue := range issues {
-			if issue.Status != "open" && issue.Status != "in_progress" {
-				continue
-			}
+			isGhost := false
+			reason := ""
 
-			// Check if there's an active workspace for this issue
-			wPath, _ := findWorkspaceByBeadsID(dir, issue.ID)
+			if strings.EqualFold(issue.Status, "closed") {
+				// Closed issue with stale label — always a ghost
+				isGhost = true
+				reason = "closed"
+			} else if issue.Status == "open" || issue.Status == "in_progress" {
+				// Check if there's an active workspace for this issue
+				wPath, _ := findWorkspaceByBeadsID(dir, issue.ID)
 
-			// Check if there's an active OpenCode session
-			hasSession := false
-			if wPath != "" {
-				sessionID := spawn.ReadSessionID(wPath)
-				if sessionID != "" {
-					hasSession = client.SessionExists(sessionID)
+				// Check if there's an active OpenCode session
+				hasSession := false
+				if wPath != "" {
+					sessionID := spawn.ReadSessionID(wPath)
+					if sessionID != "" {
+						hasSession = client.SessionExists(sessionID)
+					}
+				}
+
+				// If no workspace and no session, this is a ghost
+				if wPath == "" || !hasSession {
+					isGhost = true
+					reason = "no active agent"
 				}
 			}
 
-			// If no workspace and no session, this is a ghost
-			if wPath == "" || !hasSession {
+			if isGhost {
 				if dryRun {
-					fmt.Printf("  Ghost: %s in %s (%s)\n", issue.ID, filepath.Base(dir), issue.Title)
+					fmt.Printf("  Ghost: %s in %s (%s) [%s]\n", issue.ID, filepath.Base(dir), issue.Title, reason)
 					cleaned++
 					continue
 				}
 
-				// Remove orch:agent label via bd CLI in target directory
 				removeLabelErr := beads.FallbackRemoveLabelInDir(issue.ID, "orch:agent", dir)
 				if removeLabelErr != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to remove orch:agent from %s: %v\n", issue.ID, removeLabelErr)
 					continue
 				}
-				fmt.Printf("  Cleaned ghost: %s in %s\n", issue.ID, filepath.Base(dir))
+				fmt.Printf("  Cleaned ghost: %s in %s [%s]\n", issue.ID, filepath.Base(dir), reason)
 				cleaned++
 			}
 		}
