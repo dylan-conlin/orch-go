@@ -2,6 +2,7 @@
 package spawn
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -386,7 +387,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir, tt.beadsDir, tt.beadsID, "", 0, "")
+			cmd := BuildClaudeLaunchCommand(tt.contextPath, tt.claudeCtx, tt.mcp, tt.configDir, tt.beadsDir, tt.beadsID, "", 0, "", "")
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -435,7 +436,7 @@ func TestBuildClaudeLaunchCommandMaxTurns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", tt.maxTurns, "")
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", tt.maxTurns, "", "")
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -491,7 +492,7 @@ func TestBuildClaudeLaunchCommandEffort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", tt.effort, 0, "")
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", tt.effort, 0, "", "")
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {
@@ -505,6 +506,142 @@ func TestBuildClaudeLaunchCommandEffort(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBuildClaudeLaunchCommandSystemPromptFile tests --append-system-prompt injection.
+func TestBuildClaudeLaunchCommandSystemPromptFile(t *testing.T) {
+	tests := []struct {
+		name             string
+		systemPromptFile string
+		wantContains     []string
+		wantExcludes     []string
+	}{
+		{
+			name:             "empty systemPromptFile omits flags",
+			systemPromptFile: "",
+			wantExcludes: []string{
+				"--append-system-prompt",
+				"--disable-slash-commands",
+			},
+		},
+		{
+			name:             "systemPromptFile adds append-system-prompt with cat substitution",
+			systemPromptFile: "/tmp/workspace/SKILL_PROMPT.md",
+			wantContains: []string{
+				`--append-system-prompt "$(cat`,
+				"/tmp/workspace/SKILL_PROMPT.md",
+				"--disable-slash-commands",
+			},
+		},
+		{
+			name:             "systemPromptFile with spaces in path is quoted",
+			systemPromptFile: "/tmp/my workspace/SKILL_PROMPT.md",
+			wantContains: []string{
+				`--append-system-prompt "$(cat`,
+				"/tmp/my workspace/SKILL_PROMPT.md",
+				"--disable-slash-commands",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, "", tt.systemPromptFile)
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(cmd, want) {
+					t.Errorf("command missing %q\nGot: %s", want, cmd)
+				}
+			}
+			for _, exclude := range tt.wantExcludes {
+				if strings.Contains(cmd, exclude) {
+					t.Errorf("command should not contain %q\nGot: %s", exclude, cmd)
+				}
+			}
+		})
+	}
+}
+
+// TestWriteSkillPromptFile tests writing skill content to SKILL_PROMPT.md.
+func TestWriteSkillPromptFile(t *testing.T) {
+	t.Run("empty skill content is a no-op", func(t *testing.T) {
+		cfg := &Config{
+			ProjectDir:    t.TempDir(),
+			WorkspaceName: "test-workspace",
+			SkillContent:  "",
+		}
+		// Create workspace dir
+		os.MkdirAll(cfg.WorkspacePath(), 0755)
+
+		err := WriteSkillPromptFile(cfg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.SystemPromptFile != "" {
+			t.Errorf("SystemPromptFile should be empty for empty SkillContent, got %q", cfg.SystemPromptFile)
+		}
+	})
+
+	t.Run("writes skill content to SKILL_PROMPT.md", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		cfg := &Config{
+			ProjectDir:    tmpDir,
+			WorkspaceName: "test-workspace",
+			SkillContent:  "# Test Skill\n\nSome skill content here.",
+			BeadsID:       "test-123",
+			Tier:          "light",
+		}
+		os.MkdirAll(cfg.WorkspacePath(), 0755)
+
+		err := WriteSkillPromptFile(cfg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Verify SystemPromptFile is set
+		expectedPath := cfg.WorkspacePath() + "/SKILL_PROMPT.md"
+		if cfg.SystemPromptFile != expectedPath {
+			t.Errorf("SystemPromptFile = %q, want %q", cfg.SystemPromptFile, expectedPath)
+		}
+
+		// Verify file content
+		content, err := os.ReadFile(cfg.SystemPromptFile)
+		if err != nil {
+			t.Fatalf("failed to read SKILL_PROMPT.md: %v", err)
+		}
+		if !strings.Contains(string(content), "Test Skill") {
+			t.Errorf("SKILL_PROMPT.md missing skill content, got: %s", content)
+		}
+	})
+
+	t.Run("processes template variables", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		cfg := &Config{
+			ProjectDir:    tmpDir,
+			WorkspaceName: "test-workspace",
+			SkillContent:  "Report to {{.BeadsID}} at tier {{.Tier}}",
+			BeadsID:       "orch-go-abc1",
+			Tier:          "full",
+		}
+		os.MkdirAll(cfg.WorkspacePath(), 0755)
+
+		err := WriteSkillPromptFile(cfg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		content, err := os.ReadFile(cfg.SystemPromptFile)
+		if err != nil {
+			t.Fatalf("failed to read SKILL_PROMPT.md: %v", err)
+		}
+		got := string(content)
+		if !strings.Contains(got, "orch-go-abc1") {
+			t.Errorf("template variable {{.BeadsID}} not processed, got: %s", got)
+		}
+		if !strings.Contains(got, "full") {
+			t.Errorf("template variable {{.Tier}} not processed, got: %s", got)
+		}
+	})
 }
 
 // TestBuildClaudeLaunchCommandSettings tests --settings flag injection.
@@ -540,7 +677,7 @@ func TestBuildClaudeLaunchCommandSettings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, tt.settings)
+			cmd := BuildClaudeLaunchCommand("/tmp/SPAWN_CONTEXT.md", "worker", "", "", "", "", "", 0, tt.settings, "")
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(cmd, want) {

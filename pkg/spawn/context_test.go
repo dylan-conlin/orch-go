@@ -2895,3 +2895,66 @@ func TestGenerateContext_CrossRepoModelWarning(t *testing.T) {
 		}
 	})
 }
+
+func TestGenerateContext_SystemPromptFileOmitsSkillContent(t *testing.T) {
+	t.Run("skill content omitted when SystemPromptFile is set", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "implement feature",
+			SkillName:  "feature-impl",
+			Project:    "test-project",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-456",
+			SkillContent: `---
+name: feature-impl
+---
+
+# Feature Implementation
+
+Test skill content that should NOT appear.
+`,
+			SystemPromptFile: "/tmp/workspace/SKILL_PROMPT.md",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		if strings.Contains(content, "SKILL GUIDANCE") {
+			t.Error("SKILL GUIDANCE section should be omitted when SystemPromptFile is set")
+		}
+		if strings.Contains(content, "Test skill content that should NOT appear") {
+			t.Error("skill content should not be embedded when SystemPromptFile is set")
+		}
+	})
+
+	t.Run("skill content included when SystemPromptFile is empty", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "implement feature",
+			SkillName:  "feature-impl",
+			Project:    "test-project",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-456",
+			SkillContent: `---
+name: feature-impl
+---
+
+# Feature Implementation
+
+Test skill content that SHOULD appear.
+`,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		if !strings.Contains(content, "SKILL GUIDANCE") {
+			t.Error("SKILL GUIDANCE section should be present when SystemPromptFile is empty")
+		}
+		if !strings.Contains(content, "Test skill content that SHOULD appear") {
+			t.Error("skill content should be embedded when SystemPromptFile is empty")
+		}
+	})
+}

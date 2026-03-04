@@ -65,7 +65,9 @@ func MCPConfigJSON(preset string) (string, bool) {
 // - When effort is set, adds --effort flag for reasoning effort optimization
 // - When maxTurns > 0, adds --max-turns flag to prevent runaway agents
 // - When settings is set, adds --settings flag for worker hook isolation
-func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsDir, beadsID, effort string, maxTurns int, settings string) string {
+// - When systemPromptFile is set, adds --append-system-prompt with file content
+//   via command substitution and --disable-slash-commands to prevent auto-discovery
+func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsDir, beadsID, effort string, maxTurns int, settings, systemPromptFile string) string {
 	// Account isolation prefix: when configDir is set and non-default,
 	// unset the OAuth token and set CLAUDE_CONFIG_DIR so the Claude CLI
 	// uses the correct account's config directory.
@@ -128,7 +130,16 @@ func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsD
 		settingsFlag = fmt.Sprintf(" --settings %q", settings)
 	}
 
-	return fmt.Sprintf("%s%s%sexport ORCH_SPAWNED=1; export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s%s%s%s", accountPrefix, beadsDirPrefix, beadsIDPrefix, claudeContext, contextPath, effortFlag, mcpFlag, disallowFlag, maxTurnsFlag, settingsFlag)
+	// System prompt injection: when systemPromptFile is set, inject skill content
+	// at system prompt level via --append-system-prompt and prevent auto-discovery
+	// via --disable-slash-commands. Uses file-based command substitution to avoid
+	// shell escaping issues with skill content containing quotes/backticks.
+	systemPromptFlag := ""
+	if systemPromptFile != "" {
+		systemPromptFlag = fmt.Sprintf(` --append-system-prompt "$(cat %q)" --disable-slash-commands`, systemPromptFile)
+	}
+
+	return fmt.Sprintf("%s%s%sexport ORCH_SPAWNED=1; export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions%s%s%s%s%s%s", accountPrefix, beadsDirPrefix, beadsIDPrefix, claudeContext, contextPath, effortFlag, mcpFlag, disallowFlag, maxTurnsFlag, settingsFlag, systemPromptFlag)
 }
 
 // SpawnClaude launches a Claude Code agent in a tmux window.
@@ -160,7 +171,7 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 	// 4. Launch claude using the context file
 	contextPath := cfg.ContextFilePath()
 
-	launchCmd := BuildClaudeLaunchCommand(contextPath, cfg.ClaudeContext(), cfg.MCP, cfg.AccountConfigDir, cfg.BeadsDir, cfg.BeadsID, cfg.Effort, cfg.MaxTurns, cfg.Settings)
+	launchCmd := BuildClaudeLaunchCommand(contextPath, cfg.ClaudeContext(), cfg.MCP, cfg.AccountConfigDir, cfg.BeadsDir, cfg.BeadsID, cfg.Effort, cfg.MaxTurns, cfg.Settings, cfg.SystemPromptFile)
 
 	if err := tmux.SendKeys(windowTarget, launchCmd); err != nil {
 		return nil, fmt.Errorf("failed to send launch command: %w", err)

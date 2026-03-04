@@ -574,6 +574,32 @@ func StripBeadsInstructions(content string) string {
 	return output
 }
 
+// WriteSkillPromptFile writes compiled skill content to SKILL_PROMPT.md in the workspace directory.
+// This file is used by --append-system-prompt "$(cat SKILL_PROMPT.md)" for system-level injection.
+// The file path is set on cfg.SystemPromptFile for use by BuildClaudeLaunchCommand.
+// Returns nil if cfg.SkillContent is empty (no skill to write).
+func WriteSkillPromptFile(cfg *Config) error {
+	if cfg.SkillContent == "" {
+		return nil
+	}
+
+	skillContent := cfg.SkillContent
+	// Strip beads instructions when NoTrack is true
+	if cfg.NoTrack {
+		skillContent = StripBeadsInstructions(skillContent)
+	}
+	// Process template variables (e.g., {{.BeadsID}})
+	skillContent = ProcessSkillContentTemplate(skillContent, cfg.BeadsID, cfg.Tier)
+
+	promptPath := filepath.Join(cfg.WorkspacePath(), "SKILL_PROMPT.md")
+	if err := os.WriteFile(promptPath, []byte(skillContent), 0644); err != nil {
+		return fmt.Errorf("failed to write SKILL_PROMPT.md: %w", err)
+	}
+
+	cfg.SystemPromptFile = promptPath
+	return nil
+}
+
 // contextData holds template data for SPAWN_CONTEXT.md.
 type contextData struct {
 	Task                  string
@@ -632,18 +658,21 @@ func GenerateContext(cfg *Config) (string, error) {
 		serverContext = GenerateServerContext(cfg.ProjectDir)
 	}
 
-	// Strip beads instructions from skill content when NoTrack is true
-	// This prevents confusing agents with beads commands that won't work
-	skillContent := cfg.SkillContent
-	if cfg.NoTrack && skillContent != "" {
-		skillContent = StripBeadsInstructions(skillContent)
+	// When SystemPromptFile is set, skill content is injected at system prompt level
+	// via --append-system-prompt. Omit it from SPAWN_CONTEXT.md to prevent double-loading.
+	var skillContent string
+	if cfg.SystemPromptFile == "" {
+		// User-level injection: embed skill content in SPAWN_CONTEXT.md (current behavior)
+		skillContent = cfg.SkillContent
+		if cfg.NoTrack && skillContent != "" {
+			skillContent = StripBeadsInstructions(skillContent)
+		}
+		if skillContent != "" {
+			skillContent = ProcessSkillContentTemplate(skillContent, cfg.BeadsID, cfg.Tier)
+		}
 	}
-
-	// Process template variables in skill content (e.g., {{.BeadsID}}, {{if eq .Tier ...}})
-	// This must happen AFTER stripping beads instructions but BEFORE injection into context
-	if skillContent != "" {
-		skillContent = ProcessSkillContentTemplate(skillContent, cfg.BeadsID, cfg.Tier)
-	}
+	// When SystemPromptFile is set, skillContent remains empty — skill content
+	// is already written to SKILL_PROMPT.md and will be injected via CLI flag
 
 	// Generate cluster summary for area awareness
 	// Detect area from task description or beads issue labels

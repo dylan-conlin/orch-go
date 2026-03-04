@@ -317,6 +317,12 @@ type Config struct {
 	// When set, adds --settings flag to the Claude CLI launch command.
 	// Used for worker hook isolation - workers can use different hooks than the orchestrator.
 	Settings string
+
+	// SystemPromptFile is the path to compiled skill content for injection
+	// via --append-system-prompt. When set, skill content is NOT embedded in
+	// SPAWN_CONTEXT.md (prevents double-loading) and --disable-slash-commands
+	// is added to prevent auto-discovery (eliminates triple-loading).
+	SystemPromptFile string
 }
 
 // UsageInfo contains account usage data at spawn time.
