@@ -626,20 +626,27 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		return err
 	}
 
-	// 4b. Detect cross-repo beads: when --workdir is set, the agent works in a
-	// different directory than where the beads issue was created. The agent's bd
-	// commands would fail because bd looks in .beads/ of the cwd by default.
-	// Capture the source beads directory for BEADS_DIR env var injection.
-	var crossRepoBeadsDir string
-	if spawnWorkdir != "" && beadsID != "" {
-		sourceDir := beads.DefaultDir
-		if sourceDir == "" {
-			sourceDir, _ = os.Getwd()
+	// 4a. Cross-repo auto-labeling: when --workdir targets a different project
+	// and no --issue was provided, the issue was auto-created in the target project.
+	// Add tier:light label and cross-repo back-reference for traceability.
+	if spawnWorkdir != "" && beadsID != "" && spawnIssue == "" {
+		cwd, _ := os.Getwd()
+		if sourceProject := orch.DetectCrossRepo(cwd, projectDir); sourceProject != "" {
+			orch.ApplyCrossRepoLabels(beadsID, sourceProject)
+			fmt.Printf("🔗 Cross-repo: created local issue %s in %s (from %s)\n", beadsID, projectName, sourceProject)
 		}
-		sourceBeadsDir := filepath.Join(sourceDir, ".beads")
+	}
+
+	// 4b. Detect cross-repo beads: when --workdir is set AND --issue references the
+	// source project, the agent needs BEADS_DIR to report back to the source beads.
+	// Use CWD (not beads.DefaultDir which was already changed to target) as the source.
+	var crossRepoBeadsDir string
+	if spawnWorkdir != "" && beadsID != "" && spawnIssue != "" {
+		cwd, _ := os.Getwd()
+		cwdBeadsDir := filepath.Join(cwd, ".beads")
 		targetBeadsDir := filepath.Join(projectDir, ".beads")
-		if sourceBeadsDir != targetBeadsDir {
-			crossRepoBeadsDir = sourceBeadsDir
+		if cwdBeadsDir != targetBeadsDir {
+			crossRepoBeadsDir = cwdBeadsDir
 		}
 	}
 

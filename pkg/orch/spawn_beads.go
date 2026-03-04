@@ -113,6 +113,35 @@ func CreateBeadsIssue(projectName, skillName, task string) (string, error) {
 	return issue.ID, nil
 }
 
+// DetectCrossRepo checks if a spawn targets a different project than CWD.
+// Returns the source project name (CWD basename) if cross-repo, empty string otherwise.
+// Pure function for testability — callers pass CWD and resolved project dir.
+func DetectCrossRepo(cwd, projectDir string) string {
+	if cwd == "" || projectDir == "" {
+		return ""
+	}
+	cwdProject := filepath.Base(cwd)
+	targetProject := filepath.Base(projectDir)
+	if cwdProject == targetProject {
+		return ""
+	}
+	return cwdProject
+}
+
+// ApplyCrossRepoLabels adds cross-repo traceability metadata to a beads issue.
+// Adds tier:light label, cross-repo:<source> label, and a back-reference comment.
+func ApplyCrossRepoLabels(beadsID, sourceProject string) {
+	if err := beads.FallbackAddLabel(beadsID, "tier:light"); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to add tier:light label: %v\n", err)
+	}
+	if err := beads.FallbackAddLabel(beadsID, "cross-repo:"+sourceProject); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to add cross-repo label: %v\n", err)
+	}
+	if err := beads.FallbackAddComment(beadsID, fmt.Sprintf("Cross-repo spawn from %s", sourceProject)); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to add cross-repo comment: %v\n", err)
+	}
+}
+
 func resolveShortBeadsID(id string) (string, error) {
 	if strings.Contains(id, "-") {
 		return id, nil
