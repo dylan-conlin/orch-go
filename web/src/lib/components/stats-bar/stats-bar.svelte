@@ -51,7 +51,7 @@
 </script>
 
 <!-- Compact Stats Bar with Mode Toggle -->
-<div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-card px-4 py-2" data-testid="stats-bar">
+<div class="flex flex-wrap items-center gap-x-2 sm:gap-x-4 gap-y-1.5 rounded-lg border bg-card px-2 sm:px-4 py-2" data-testid="stats-bar">
 	<!-- Mode Toggle -->
 	<div class="flex items-center gap-1 rounded-md bg-muted p-0.5" data-testid="mode-toggle">
 		<button
@@ -123,16 +123,16 @@
 	</Tooltip.Root>
 
 	<!-- Secondary indicators group -->
-	<div class="flex items-center gap-4">
+	<div class="flex flex-wrap items-center gap-2 sm:gap-4">
 		<!-- Errors indicator -->
 		<Tooltip.Root>
 			<Tooltip.Trigger>
 				{#snippet child({ props })}
-					<span {...props} class="inline-flex items-center gap-2 cursor-default">
+					<span {...props} class="inline-flex items-center gap-1 sm:gap-2 cursor-default">
 						<span class="text-lg">❌</span>
 						<span class="inline-flex items-baseline gap-1">
 							<span class="text-xl font-bold" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
-							<span class="text-xs text-muted-foreground">errors</span>
+							<span class="text-xs text-muted-foreground hidden sm:inline">errors</span>
 						</span>
 					</span>
 				{/snippet}
@@ -146,13 +146,13 @@
 		<Tooltip.Root>
 			<Tooltip.Trigger>
 				{#snippet child({ props })}
-					<span {...props} class="inline-flex items-center gap-2 cursor-default">
+					<span {...props} class="inline-flex items-center gap-1 sm:gap-2 cursor-default">
 						<span class="text-lg">🟢</span>
 						<span class="inline-flex items-baseline gap-1">
 							<span class="text-xl font-bold" class:text-green-500={$activeAgents.length > 0}>{$activeAgents.length}</span>
-							<span class="text-xs text-muted-foreground">active</span>
+							<span class="text-xs text-muted-foreground hidden sm:inline">active</span>
 							{#if $deadAgents.length > 0}
-								<span class="text-xs text-red-500">(+{$deadAgents.length} need attention)</span>
+								<span class="text-xs text-red-500 hidden sm:inline">(+{$deadAgents.length} need attention)</span>
 							{/if}
 						</span>
 					</span>
@@ -171,7 +171,7 @@
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
-						<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="focus-indicator">
+						<span {...props} class="inline-flex items-center gap-1 sm:gap-2 cursor-default" data-testid="focus-indicator">
 							<span class="text-lg">{getDriftEmoji($focus)}</span>
 							<span class="inline-flex items-baseline gap-1">
 								<span class="text-xs truncate max-w-32" class:text-red-500={$focus.is_drifting} class:text-green-500={!$focus.is_drifting}>
@@ -195,11 +195,11 @@
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
-						<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="servers-indicator">
+						<span {...props} class="inline-flex items-center gap-1 sm:gap-2 cursor-default" data-testid="servers-indicator">
 							<span class="text-lg">{$servers.running_count > 0 ? '🖥️' : '💤'}</span>
 							<span class="inline-flex items-baseline gap-1">
 								<span class="text-xl font-bold" class:text-green-500={$servers.running_count > 0}>{$servers.running_count}</span>
-								<span class="text-xs text-muted-foreground">/{$servers.total_count} servers</span>
+								<span class="text-xs text-muted-foreground hidden sm:inline">/{$servers.total_count} servers</span>
 							</span>
 						</span>
 					{/snippet}
@@ -218,17 +218,17 @@
 					{#snippet child({ props })}
 						<button
 							{...props}
-							class="inline-flex items-center gap-2 cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 transition-colors"
+							class="inline-flex items-center gap-1 sm:gap-2 cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 transition-colors"
 							onclick={() => { readyQueueExpanded = !readyQueueExpanded; }}
 							data-testid="beads-indicator"
 						>
 							<span class="text-lg">📋</span>
 							<span class="inline-flex items-baseline gap-1">
 								<span class="text-xl font-bold" class:text-green-500={$beads.ready_issues > 0}>{$beads.ready_issues}</span>
-								<span class="text-xs text-muted-foreground">ready</span>
+								<span class="text-xs text-muted-foreground hidden sm:inline">ready</span>
 							</span>
 							{#if $beads.blocked_issues > 0}
-								<span class="text-xs text-red-500">({$beads.blocked_issues} blocked)</span>
+								<span class="text-xs text-red-500 hidden sm:inline">({$beads.blocked_issues} blocked)</span>
 							{/if}
 						</button>
 					{/snippet}
@@ -248,14 +248,14 @@
 					{#snippet child({ props })}
 						<button
 							{...props}
-							class="inline-flex items-center gap-2 cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 transition-colors"
+							class="inline-flex items-center gap-1 sm:gap-2 cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 transition-colors"
 							onclick={() => { reviewQueueExpanded = !reviewQueueExpanded; }}
 							data-testid="review-queue-indicator"
 						>
 							<span class="text-lg">✅</span>
 							<span class="inline-flex items-baseline gap-1">
 								<span class="text-xl font-bold" class:text-emerald-500={$reviewQueue.count > 0}>{$reviewQueue.count}</span>
-								<span class="text-xs text-muted-foreground">review</span>
+								<span class="text-xs text-muted-foreground hidden sm:inline">review</span>
 							</span>
 						</button>
 					{/snippet}
@@ -275,13 +275,13 @@
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
-						<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="verification-indicator">
+						<span {...props} class="inline-flex items-center gap-1 sm:gap-2 cursor-default" data-testid="verification-indicator">
 							<span class="text-lg">🛡️</span>
 							<span class="inline-flex items-baseline gap-1">
 								<span class="text-xl font-bold" class:text-amber-500={v.is_paused}>
 									{vCount}
 								</span>
-								<span class="text-xs" class:text-amber-500={v.is_paused} class:text-muted-foreground={!v.is_paused}>to review{#if v.is_paused} (paused){/if}</span>
+								<span class="text-xs hidden sm:inline" class:text-amber-500={v.is_paused} class:text-muted-foreground={!v.is_paused}>to review{#if v.is_paused} (paused){/if}</span>
 							</span>
 						</span>
 					{/snippet}
@@ -308,16 +308,16 @@
 					{#snippet child({ props })}
 						<button
 							{...props}
-							class="inline-flex items-center gap-2 cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 transition-colors"
+							class="inline-flex items-center gap-1 sm:gap-2 cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 transition-colors"
 							data-testid="daemon-indicator"
 						>
 							<span class="text-lg">{getDaemonEmoji($daemon)}</span>
 							<span class="inline-flex items-baseline gap-1">
 								{#if $daemon.running}
 									<span class="text-xl font-bold" class:text-green-500={$daemon.capacity_free > 0} class:text-red-500={$daemon.capacity_free === 0}>{getDaemonCapacity($daemon)}</span>
-									<span class="text-xs text-muted-foreground">slots</span>
+									<span class="text-xs text-muted-foreground hidden sm:inline">slots</span>
 								{:else}
-									<span class="text-xs text-muted-foreground">daemon</span>
+									<span class="text-xs text-muted-foreground hidden sm:inline">daemon</span>
 								{/if}
 							</span>
 						</button>

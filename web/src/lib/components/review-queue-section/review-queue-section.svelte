@@ -90,20 +90,20 @@
 			<div class="border-t p-2" data-testid="review-queue-content">
 				<div class="space-y-1">
 					{#each sortedIssues as issue (issue.id)}
-						<div class="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50" data-testid="review-issue-{issue.id}">
+						<div class="flex items-center gap-1 sm:gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50" data-testid="review-issue-{issue.id}">
 							<span class="flex-shrink-0 text-xs font-medium {getTierClass(issue.tier)}">
 								{getTierLabel(issue.tier)}
 							</span>
-							<span class="flex-1 truncate" title={issue.title}>
+							<span class="flex-1 truncate min-w-0" title={issue.title}>
 								{issue.title}
 							</span>
 							<Badge variant="outline" class="h-5 px-1.5 text-xs flex-shrink-0">
 								{issue.issue_type}
 							</Badge>
 							{#if getGateStatus(issue)}
-								<span class="text-xs text-amber-500 flex-shrink-0">{getGateStatus(issue)}</span>
+								<span class="text-xs text-amber-500 flex-shrink-0 hidden sm:inline">{getGateStatus(issue)}</span>
 							{/if}
-							<span class="text-xs text-muted-foreground flex-shrink-0 font-mono">
+							<span class="text-xs text-muted-foreground flex-shrink-0 font-mono hidden sm:inline">
 								{issue.id}
 							</span>
 						</div>

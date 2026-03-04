@@ -478,7 +478,7 @@
 			</div>
 			<div class="p-2">
 				{#if sortedActiveAgents.length > 0}
-					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+					<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
 						{#each sortedActiveAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 							<AgentCard {agent} />
 						{/each}
@@ -517,7 +517,7 @@
 				</button>
 				{#if sectionState.needsReview}
 					<div class="p-2">
-						<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+						<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
 							{#each sortedNeedsReviewAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 								<AgentCard {agent} />
 							{/each}
@@ -650,7 +650,7 @@
 				<div class="space-y-2" data-testid="agent-sections">
 					{#if activeOnly}
 						<!-- Active Only mode: show flat grid of active agents -->
-						<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" data-testid="agent-grid">
+						<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5" data-testid="agent-grid">
 						{#each sortedActiveAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 							<AgentCard {agent} />
 							{:else}
@@ -673,7 +673,7 @@
 								bind:expanded={sectionState.active}
 								variant="active"
 							>
-								<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+								<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
 									{#each sortedActiveAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 										<AgentCard {agent} />
 									{/each}
@@ -690,7 +690,7 @@
 								bind:expanded={sectionState.needsReview}
 								variant="needs-review"
 							>
-								<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+								<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
 									{#each sortedNeedsReviewAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 										<AgentCard {agent} />
 									{/each}
@@ -710,7 +710,7 @@
 								bind:expanded={sectionState.recent}
 								variant="recent"
 							>
-								<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+								<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
 									{#each sortedRecentAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 										<AgentCard {agent} />
 									{/each}
@@ -727,7 +727,7 @@
 								bind:expanded={sectionState.archive}
 								variant="archive"
 							>
-								<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+								<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
 									{#each sortedArchivedAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 										<AgentCard {agent} />
 									{/each}

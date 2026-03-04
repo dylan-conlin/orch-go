@@ -145,7 +145,7 @@
 							</Tooltip.Content>
 						</Tooltip.Root>
 					</div>
-					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+					<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 						{#each $deadAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 							<AgentCard {agent} />
 						{/each}
@@ -177,7 +177,7 @@
 							</Tooltip.Content>
 						</Tooltip.Root>
 					</div>
-					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+					<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 						{#each $awaitingCleanupAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 							<AgentCard {agent} />
 						{/each}
@@ -209,7 +209,7 @@
 							</Tooltip.Content>
 						</Tooltip.Root>
 					</div>
-					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+					<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 						{#each atRiskNotDead as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 							<AgentCard {agent} />
 						{/each}
@@ -241,7 +241,7 @@
 							</Tooltip.Content>
 						</Tooltip.Root>
 					</div>
-					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+					<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 						{#each $stalledAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 							<AgentCard {agent} />
 						{/each}

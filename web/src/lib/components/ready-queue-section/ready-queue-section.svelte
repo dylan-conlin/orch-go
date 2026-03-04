@@ -10,16 +10,16 @@
 
 	function getPreview(issues: ReadyIssue[]): string {
 		if (issues.length === 0) return '';
-		
+
 		const titles = issues.slice(0, 2).map(i => {
 			const title = i.title;
 			return title.length > 30 ? title.substring(0, 30) + '...' : title;
 		});
-		
+
 		if (issues.length <= 2) {
 			return titles.join(', ');
 		}
-		
+
 		return `${titles.join(', ')} +${issues.length - 2}`;
 	}
 
@@ -67,32 +67,32 @@
 				{:else}
 					<div class="space-y-1">
 						{#each $readyIssues.issues as issue (issue.id)}
-							<div class="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50" data-testid="ready-issue-{issue.id}">
+							<div class="flex items-center gap-1 sm:gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50" data-testid="ready-issue-{issue.id}">
 								<!-- Priority indicator -->
 								<span class="flex-shrink-0 text-xs font-medium {getPriorityClass(issue.priority)}">
 									P{issue.priority}
 								</span>
 								<!-- Issue title (truncated) -->
-								<span class="flex-1 truncate" title={issue.title}>
+								<span class="flex-1 truncate min-w-0" title={issue.title}>
 									{issue.title}
 								</span>
 								<!-- Issue type -->
 								<Badge variant="outline" class="h-5 px-1.5 text-xs flex-shrink-0">
 									{issue.issue_type}
 								</Badge>
-								<!-- Labels (show first 2, max) -->
+								<!-- Labels (hidden below sm:) -->
 								{#if issue.labels && issue.labels.length > 0}
 									{#each issue.labels.slice(0, 2) as label}
-										<Badge variant="secondary" class="h-5 px-1.5 text-xs flex-shrink-0">
+										<Badge variant="secondary" class="h-5 px-1.5 text-xs flex-shrink-0 hidden sm:inline-flex">
 											{label}
 										</Badge>
 									{/each}
 									{#if issue.labels.length > 2}
-										<span class="text-xs text-muted-foreground">+{issue.labels.length - 2}</span>
+										<span class="text-xs text-muted-foreground hidden sm:inline">+{issue.labels.length - 2}</span>
 									{/if}
 								{/if}
-								<!-- Issue ID -->
-								<span class="text-xs text-muted-foreground flex-shrink-0 font-mono">
+								<!-- Issue ID (hidden below sm:) -->
+								<span class="text-xs text-muted-foreground flex-shrink-0 font-mono hidden sm:inline">
 									{issue.id}
 								</span>
 							</div>
