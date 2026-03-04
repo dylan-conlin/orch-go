@@ -3,8 +3,8 @@ skill-type: policy
 audience: orchestrator
 spawnable: false
 description: Always-loaded runtime policy for orchestrator agents. Guides every turn. Reference docs loaded on demand.
-version: 3.0.0
-token_budget: 15000 # Restored monolithic January base (~2355 lines) + Feb-Mar forward-ports. Exceeds 15K budget — accepted tradeoff for experiential content richness.
+version: 4.0.0
+token_budget: 6000 # v4: stripped to ~420 lines. Knowledge transfer only (routing, vocabulary, legibility). ≤4 behavioral norms. Hook-enforced constraints removed.
 type: skill
 output: SKILL.md
 sources:
@@ -14,8 +14,11 @@ sources:
 # Registered per .kb/decisions/2026-01-08-load-bearing-guidance-data-model.md
 # Run `skillc check` to verify patterns exist; missing patterns block deploy.
 #
-# v3 changes: Restored monolithic January base (pre-Feb-6 rollback) with Feb-Mar forward-ports.
-# Rich experiential content back in always-loaded skill. Reference docs still available on-demand.
+# v4 changes: Evidence-driven simplification per behavioral grammars model.
+# Removed ~20 behavioral constraints (now hook-enforced, empirically non-functional in prompt).
+# Retained ~47 knowledge items (routing tables, vocabulary, intent distinctions) + ≤4 behavioral norms.
+# Hooks enforce: bash-write gate, git-remote gate, bd-close gate, investigation-drift nudge,
+# spawn-ceremony nudge, spawn-context validation gate.
 load_bearing:
   # Core delegation rule
   - pattern: 'You never implement'
