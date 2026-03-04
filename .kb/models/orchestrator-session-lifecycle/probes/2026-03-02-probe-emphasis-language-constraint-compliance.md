@@ -177,3 +177,9 @@ The combined 2/6 rate (33%) is above bare (0/6 combined) but below the 1C ceilin
 - Full investigation: this probe file
 - Prior work: `.kb/investigations/2026-03-01-inv-test-constraint-dilution-threshold.md` (sonnet dilution curve)
 - Prior work: `.kb/investigations/2026-03-02-inv-opus-dilution-curve-replication.md` (opus replication)
+
+---
+
+## ⚠️ Replication Failure Caveat (2026-03-04)
+
+**The underlying dilution curve (3/3→3/3→2/3→0/3) did not replicate under clean isolation (orch-go-zola).** This probe's findings depend on the dilution curve as baseline — specifically, the claim that behavioral constraints regress to bare parity at 10C. Since that baseline is unvalidated, the emphasis vs neutral comparison (which uses the same experimental framework) inherits the uncertainty. The directional finding (emphasis > neutral at high constraint counts) may still hold, but the specific threshold numbers and absolute compliance rates referenced from the dilution work are unreliable. N=3 per variant compounds this: the opus "confirmation" was noise matching noise at small sample sizes.

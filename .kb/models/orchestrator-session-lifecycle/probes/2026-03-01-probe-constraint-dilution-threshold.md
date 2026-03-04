@@ -82,3 +82,9 @@ skillc test --scenarios scenarios/ --bare --model sonnet --runs 3 --json --trans
 - This probe fills the gap: dilution is gradual (not a cliff), behavioral threshold is 2-5, knowledge threshold is higher
 - The aj58 recommendation to "apply 3-form to critical constraints" needs qualification: only viable if skill has ≤4 total behavioral constraints
 - Full investigation: .kb/investigations/2026-03-01-inv-test-constraint-dilution-threshold.md
+
+---
+
+## ⚠️ Replication Failure Caveat (2026-03-04)
+
+**The dilution curve (3/3→3/3→2/3→0/3) did not replicate under clean isolation (orch-go-zola).** Specific threshold numbers (behavioral budget ~2-4, degradation starts at 5, bare parity at 10) are unvalidated. The opus "confirmation" (identical curve shape) was noise matching noise at N=3 — two small-sample experiments agreeing does not constitute validation. All quantitative claims in this probe should be treated as directional hypotheses, not established findings.

@@ -131,3 +131,9 @@ All 5 success criteria from the spawn context were met autonomously.
 - Transcripts: `.orch/workspace/og-feat-validation-agent-autonomously-02mar-6a08/test-artifacts/transcripts/`
 - Scenarios: reused from prior experiment (archived workspace)
 - Variants: reused from prior experiment (archived workspace)
+
+---
+
+## ⚠️ Replication Failure Caveat (2026-03-04)
+
+**The dilution curve (3/3→3/3→2/3→0/3) did not replicate under clean isolation (orch-go-zola).** This investigation's central finding — "dilution curve is model-independent" — is invalidated: opus matching sonnet's curve at N=3 was noise matching noise, not confirmation. Two small-sample experiments producing the same pattern does not constitute replication when that pattern itself fails to replicate under controlled conditions. The specific claims about model-independent thresholds, the 2-5 constraint budget, and Finding 1's "fundamental property of how LLMs process competing constraints" are all unvalidated. The novel observations (Finding 3: cross-constraint generalization, Finding 4: opus lower variance) remain independently interesting but were also measured at N=3 and should be treated as hypotheses.
