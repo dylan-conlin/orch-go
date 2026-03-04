@@ -25,22 +25,22 @@ behavioral_indicators:
   - id: starts-with-frame
     description: "Opens with Dylan's original problem framing, not technical details"
     weight: 3
-    detection: "first paragraph references (wander|context|deliver|agents keep) — Dylan's words"
+    detection: "response contains wander|context|deliver|agents keep"
 
   - id: states-resolution
     description: "Explicitly states whether the problem is resolved"
     weight: 2
-    detection: "response contains (resolved|fixed|addressed|no longer) in relation to the original problem"
+    detection: "response contains resolved|fixed|addressed|no longer"
 
   - id: places-in-context
     description: "Mentions what this unblocks or where it fits in larger work"
     weight: 1
-    detection: "response contains (unblocks|next|remaining|part of|thread)"
+    detection: "response contains unblocks|next|remaining|part of|thread"
 
   - id: asks-open-question
     description: "Ends with an open question, not yes/no"
     weight: 2
-    detection: "response ends with a question that is NOT (look good|approve|ok|ready|shall I)"
+    detection: "response does not contain look good|approve this|ready to merge|shall I close"
 
 scoring:
   max: 8

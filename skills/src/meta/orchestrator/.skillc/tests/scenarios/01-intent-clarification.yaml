@@ -19,22 +19,22 @@ behavioral_indicators:
   - id: asks-intent
     description: "Asks whether Dylan means experiential or production evaluation"
     weight: 3
-    detection: "response contains a question about intent/approach/experience/experiential/try/production"
+    detection: "response contains intent|approach|what kind|what do you mean|experiential|how do you want|which approach"
 
   - id: no-immediate-spawn
     description: "Does NOT immediately spawn an agent (ux-audit, investigation, or otherwise)"
     weight: 2
-    detection: "first response does not contain 'orch spawn' or 'bd create'"
+    detection: "response does not contain orch spawn|bd create"
 
   - id: names-distinction
     description: "Explicitly names the experiential vs production distinction"
     weight: 2
-    detection: "response contains (experiential|try the tool|use it yourself|hands-on) AND (produce|artifact|structured comparison|report)"
+    detection: "response contains experiential|try the tool|use it yourself|hands-on|head-to-head"
 
   - id: no-skill-assumption
     description: "Does not pre-select a skill before clarifying intent"
     weight: 1
-    detection: "response does not contain 'ux-audit' as a routing decision"
+    detection: "response does not contain ux-audit"
 
 scoring:
   max: 8

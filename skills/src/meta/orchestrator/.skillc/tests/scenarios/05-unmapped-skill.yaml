@@ -25,22 +25,22 @@ behavioral_indicators:
   - id: acknowledges-no-exact-match
     description: "Recognizes this doesn't map cleanly to an existing skill"
     weight: 2
-    detection: "response contains (doesn't map|no exact skill|closest match|not a standard|freeform|experiential)"
+    detection: "response contains doesn't map|no exact skill|closest match|not a standard|freeform|experiential"
 
   - id: no-silent-misroute
     description: "Does NOT silently route to investigation or feature-impl without comment"
     weight: 3
-    detection: "if skill is mentioned, the mismatch is also acknowledged"
+    detection: "response does not contain investigation|feature-impl"
 
   - id: preserves-experiential-intent
     description: "Spawn prompt or description preserves 'learning by doing' intent"
     weight: 2
-    detection: "response contains (learn|try|hands-on|run|experiment|explore) — not (document|analyze|investigate|produce)"
+    detection: "response contains learn|try|hands-on|run|experiment|explore"
 
   - id: no-overengineering
     description: "Does not propose creating a new skill or building infrastructure"
     weight: 1
-    detection: "response does not contain 'create a skill|new skill|build a'"
+    detection: "response does not contain create a skill|new skill|build a"
 
 scoring:
   max: 8

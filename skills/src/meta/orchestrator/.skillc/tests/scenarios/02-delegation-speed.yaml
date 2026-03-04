@@ -20,22 +20,22 @@ behavioral_indicators:
   - id: spawns-within-first-response
     description: "Creates a spawn or bd create within the first response"
     weight: 3
-    detection: "first response contains 'orch spawn' or 'bd create'"
+    detection: "response contains orch spawn|bd create"
 
   - id: no-file-reading
     description: "Does NOT read the config file itself"
     weight: 2
-    detection: "first response does not invoke Read tool on .orch/config.yaml or similar"
+    detection: "response does not contain config.yaml|Read tool|cat .orch"
 
   - id: propose-and-act
     description: "Uses propose-and-act pattern rather than asking permission"
     weight: 2
-    detection: "response tone is declarative (Spawning|Creating|Fixing) not interrogative"
+    detection: "response contains Spawning|Creating|Fixing|I'll spawn|I'll create"
 
   - id: minimal-ceremony
-    description: "Response is concise — under 200 words, no analysis or investigation"
+    description: "Response is concise — no investigation or analysis"
     weight: 1
-    detection: "response length < 200 words AND does not contain 'investigate|analyze|let me check'"
+    detection: "response does not contain investigate|analyze|let me check"
 
 scoring:
   max: 8

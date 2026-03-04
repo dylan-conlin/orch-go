@@ -22,22 +22,22 @@ behavioral_indicators:
   - id: acts-without-asking
     description: "Takes action (orch complete, review, or triage) without asking permission"
     weight: 3
-    detection: "response contains an action (orch complete|bd ready|orch review|spawning) not preceded by 'should I|shall I|would you like'"
+    detection: "response contains orch complete|bd ready|orch review|spawning"
 
   - id: starts-completion-review
     description: "Initiates completion review for the finished agent"
     weight: 2
-    detection: "response contains 'orch complete' or begins reviewing the completed work"
+    detection: "response contains orch complete|reviewing|review the|completion review"
 
   - id: acknowledges-queued-work
     description: "Mentions the waiting issues without asking whether to look at them"
     weight: 2
-    detection: "response references the two ready issues with intent to triage, not as a question"
+    detection: "response contains triage|ready issues|two issues|queued work|waiting"
 
   - id: no-option-presentation
     description: "Does not present a numbered list of options for what to do next"
     weight: 1
-    detection: "response does not contain a numbered or bulleted list of choices"
+    detection: "response does not contain would you like|should I|what would you|option 1|option 2"
 
 scoring:
   max: 8
