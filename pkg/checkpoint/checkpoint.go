@@ -160,7 +160,7 @@ func TierForIssueType(issueType string) int {
 	switch issueType {
 	case "feature", "bug", "decision":
 		return 1
-	case "investigation", "probe":
+	case "investigation", "probe", "experiment":
 		return 2
 	default:
 		return 3

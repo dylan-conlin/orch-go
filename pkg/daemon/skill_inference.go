@@ -11,7 +11,7 @@ import (
 // IsSpawnableType returns true if the issue type can be spawned.
 func IsSpawnableType(issueType string) bool {
 	switch issueType {
-	case "bug", "feature", "task", "investigation":
+	case "bug", "feature", "task", "investigation", "experiment":
 		return true
 	default:
 		return false
@@ -32,6 +32,8 @@ func InferSkill(issueType string) (string, error) {
 	case "task":
 		return "feature-impl", nil
 	case "investigation":
+		return "investigation", nil
+	case "experiment":
 		return "investigation", nil
 	default:
 		return "", fmt.Errorf("cannot infer skill for issue type: %s", issueType)
@@ -97,6 +99,7 @@ func InferSkillFromTitle(title string) string {
 			"investigation":        "investigation",
 			"investigate":          "investigation",
 			"explore":              "investigation",
+			"experiment":           "investigation",
 			"research":             "research",
 			"feature":              "feature-impl",
 			"implement":            "feature-impl",
@@ -124,6 +127,7 @@ func InferSkillFromTitle(title string) string {
 		"investigate":   "investigation",
 		"investigation": "investigation",
 		"explore":       "investigation",
+		"experiment":    "investigation",
 		"design":        "architect",
 		"architect":     "architect",
 		"debug":         "systematic-debugging",
