@@ -12,6 +12,20 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
+// isBdTimeoutError returns true if the error is a bd command timeout.
+// Useful for logging and circuit breaker tracking.
+func isBdTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// exec.CommandContext kills the process on timeout, producing an ExitError
+	// with context.DeadlineExceeded as the underlying cause
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		_ = exitErr // The process was killed by context cancellation
+	}
+	return err.Error() == "signal: killed" || err.Error() == "context deadline exceeded"
+}
+
 // ListReadyIssues retrieves ready issues from beads (open or in_progress, no blockers).
 // It uses the beads RPC daemon if available, falling back to the bd CLI if not.
 // Uses WithAutoReconnect for resilience against transient connection issues.
@@ -40,9 +54,7 @@ func ListReadyIssues() ([]Issue, error) {
 // listReadyIssuesCLI retrieves ready issues by shelling out to bd CLI.
 func listReadyIssuesCLI() ([]Issue, error) {
 	// Use --limit 0 to get ALL ready issues (bd ready defaults to limit 10)
-	cmd := exec.Command("bd", "ready", "--json", "--limit", "0")
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
+	output, err := runBdCommand("ready", "--json", "--limit", "0")
 	if err != nil {
 		return nil, fmt.Errorf("failed to run bd ready: %w", err)
 	}
@@ -140,9 +152,7 @@ func ListIssuesWithLabel(label string) ([]Issue, error) {
 
 // listIssuesWithLabelCLI retrieves issues with a label by shelling out to bd CLI.
 func listIssuesWithLabelCLI(label string) ([]Issue, error) {
-	cmd := exec.Command("bd", "list", "--json", "--limit", "0", "-l", label)
-	cmd.Env = os.Environ()
-	output, err := cmd.Output()
+	output, err := runBdCommand("list", "--json", "--limit", "0", "-l", label)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run bd list -l %s: %w", label, err)
 	}
@@ -246,9 +256,7 @@ func countUnverifiedWithoutFiltering(checkpoints []checkpoint.Checkpoint) (int, 
 
 // showIssueCLI fetches a single issue using bd CLI (fallback when RPC unavailable).
 func showIssueCLI(beadsID string) (*beads.Issue, error) {
-	cmd := exec.Command("bd", "show", beadsID, "--json")
-	cmd.Env = os.Environ()
-	output, err := cmd.Output()
+	output, err := runBdCommand("show", beadsID, "--json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to run bd show: %w", err)
 	}
@@ -387,10 +395,7 @@ func ListReadyIssuesForProject(projectDir string) ([]Issue, error) {
 	}
 
 	// Fallback to CLI with Dir set
-	cmd := exec.Command("bd", "ready", "--json", "--limit", "0")
-	cmd.Env = os.Environ()
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
+	output, err := runBdCommandInDir(projectDir, "ready", "--json", "--limit", "0")
 	if err != nil {
 		return nil, fmt.Errorf("failed to run bd ready in %s: %w", projectDir, err)
 	}
@@ -474,10 +479,7 @@ func UpdateBeadsStatusForProject(beadsID, status, projectDir string) error {
 	if status != "" {
 		args = append(args, "--status", status)
 	}
-	cmd := exec.Command("bd", args...)
-	cmd.Env = os.Environ()
-	cmd.Dir = projectDir
-	output, err := cmd.CombinedOutput()
+	output, err := runBdCommandCombinedInDir(projectDir, args...)
 	if err != nil {
 		return fmt.Errorf("bd update failed in %s: %w: %s", projectDir, err, string(output))
 	}
@@ -505,10 +507,7 @@ func GetBeadsIssueStatusForProject(beadsID, projectDir string) (string, error) {
 	}
 
 	// Fallback to CLI with Dir set
-	cmd := exec.Command("bd", "show", beadsID, "--json")
-	cmd.Env = os.Environ()
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
+	output, err := runBdCommandInDir(projectDir, "show", beadsID, "--json")
 	if err != nil {
 		return "", fmt.Errorf("bd show failed in %s: %w", projectDir, err)
 	}
@@ -579,10 +578,7 @@ func ListIssuesWithLabelForProject(label, projectDir string) ([]Issue, error) {
 	}
 
 	// Fallback to CLI
-	cmd := exec.Command("bd", "list", "--json", "--limit", "0", "-l", label)
-	cmd.Env = os.Environ()
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
+	output, err := runBdCommandInDir(projectDir, "list", "--json", "--limit", "0", "-l", label)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run bd list -l %s in %s: %w", label, projectDir, err)
 	}
@@ -603,29 +599,20 @@ func ListIssuesWithLabelForProject(label, projectDir string) ([]Issue, error) {
 
 // CloseIssueForProject closes a beads issue in a specific project directory.
 func CloseIssueForProject(beadsID, projectDir, reason string) error {
+	args := []string{"close", beadsID}
+	if reason != "" {
+		args = append(args, "--reason", reason)
+	}
+
 	if projectDir == "" {
-		// Fallback to simple bd close
-		args := []string{"close", beadsID}
-		if reason != "" {
-			args = append(args, "--reason", reason)
-		}
-		cmd := exec.Command("bd", args...)
-		cmd.Env = os.Environ()
-		output, err := cmd.CombinedOutput()
+		output, err := runBdCommandCombined(args...)
 		if err != nil {
 			return fmt.Errorf("bd close failed: %w: %s", err, string(output))
 		}
 		return nil
 	}
 
-	args := []string{"close", beadsID}
-	if reason != "" {
-		args = append(args, "--reason", reason)
-	}
-	cmd := exec.Command("bd", args...)
-	cmd.Env = os.Environ()
-	cmd.Dir = projectDir
-	output, err := cmd.CombinedOutput()
+	output, err := runBdCommandCombinedInDir(projectDir, args...)
 	if err != nil {
 		return fmt.Errorf("bd close failed in %s: %w: %s", projectDir, err, string(output))
 	}

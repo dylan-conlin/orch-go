@@ -673,8 +673,35 @@ func runDaemonLoop() error {
 			}
 		}
 
+		// Check beads circuit breaker — if beads is unhealthy, skip polling and back off.
+		// This prevents the lock cascade where daemon keeps spawning bd processes
+		// that pile up behind a stuck JSONL lock.
+		if d.BeadsCircuitBreaker != nil && d.BeadsCircuitBreaker.IsOpen() {
+			backoff := d.BeadsCircuitBreaker.BackoffDuration()
+			failures := d.BeadsCircuitBreaker.ConsecutiveFailures()
+			fmt.Printf("[%s] ⚠️  Beads circuit breaker open: %d consecutive failures, backing off %s\n",
+				timestamp, failures, formatDaemonDuration(backoff))
+			select {
+			case <-ctx.Done():
+				fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
+				return nil
+			case <-time.After(backoff):
+				continue
+			}
+		}
+
 		// Get ready issues count for status (multi-project when registry available)
-		readyIssues, _ := daemon.ListReadyIssuesMultiProject(d.ProjectRegistry)
+		readyIssues, readyErr := daemon.ListReadyIssuesMultiProject(d.ProjectRegistry)
+		if readyErr != nil {
+			if d.BeadsCircuitBreaker != nil {
+				d.BeadsCircuitBreaker.RecordFailure()
+			}
+			fmt.Fprintf(os.Stderr, "[%s] ⚠️  Failed to list ready issues: %v\n", timestamp, readyErr)
+		} else {
+			if d.BeadsCircuitBreaker != nil {
+				d.BeadsCircuitBreaker.RecordSuccess()
+			}
+		}
 		readyCount := len(readyIssues)
 
 		// Write daemon status file AFTER reconciliation and completions so counts are accurate

@@ -4,6 +4,7 @@
 package verify
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -86,7 +87,9 @@ func GetCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
 // Sets BEADS_NO_DAEMON=1 to skip daemon connection attempts, avoiding 5s timeout
 // in launchd/minimal environments.
 func FallbackCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
-	cmd := exec.Command("bd", "comments", beadsID, "--json")
+	ctx, cancel := context.WithTimeout(context.Background(), beads.DefaultCLITimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "bd", "comments", beadsID, "--json")
 	// Set BEADS_NO_DAEMON=1 to avoid daemon timeout in minimal envs (launchd)
 	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
 	if projectDir != "" {
@@ -325,7 +328,9 @@ func AddLabel(beadsID, label string) error {
 	}
 
 	// Fallback to CLI
-	cmd := exec.Command("bd", "label", "add", beadsID, label)
+	ctx, cancel := context.WithTimeout(context.Background(), beads.DefaultCLITimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "bd", "label", "add", beadsID, label)
 	// Set BEADS_NO_DAEMON=1 to avoid daemon timeout in minimal envs
 	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
 	if beads.DefaultDir != "" {
@@ -367,7 +372,9 @@ func AddLabelWithDir(beadsID, label, projectDir string) error {
 	}
 
 	// Fallback to CLI
-	cmd := exec.Command("bd", "label", "add", beadsID, label)
+	ctx, cancel := context.WithTimeout(context.Background(), beads.DefaultCLITimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "bd", "label", "add", beadsID, label)
 	// Set BEADS_NO_DAEMON=1 to avoid daemon timeout in minimal envs
 	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
 	if effectiveDir != "" {

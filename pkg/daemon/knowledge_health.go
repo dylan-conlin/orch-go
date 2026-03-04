@@ -91,8 +91,7 @@ func DefaultKnowledgeHealthCheck() (*KnowledgeHealthResult, error) {
 // Skips creation if an open knowledge maintenance issue already exists.
 func DefaultCreateKnowledgeHealthIssue(result *KnowledgeHealthResult) error {
 	// Dedup: check for existing open knowledge maintenance issue
-	listCmd := exec.Command("bd", "list", "--status=open", "-l", "area:knowledge")
-	listOutput, err := listCmd.Output()
+	listOutput, err := runBdCommand("list", "--status=open", "-l", "area:knowledge")
 	if err == nil {
 		lines := strings.Split(string(listOutput), "\n")
 		for _, line := range lines {
@@ -105,14 +104,13 @@ func DefaultCreateKnowledgeHealthIssue(result *KnowledgeHealthResult) error {
 	// If bd list fails, proceed with creation (fail-open)
 
 	title := fmt.Sprintf("Knowledge maintenance: %d active quick entries need promotion/pruning", result.TotalActive)
-	cmd := exec.Command("bd", "create",
+	if _, err := runBdCommand("create",
 		"--title", title,
 		"--type", "task",
 		"--priority", "3",
 		"-l", "triage:review",
 		"-l", "area:knowledge",
-	)
-	if _, err := cmd.Output(); err != nil {
+	); err != nil {
 		return fmt.Errorf("failed to create knowledge health issue: %w", err)
 	}
 	return nil

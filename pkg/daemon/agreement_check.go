@@ -151,8 +151,7 @@ func shouldAutoCreate(failure AgreementFailureDetail) bool {
 // DefaultHasOpenAgreementIssue checks if an open issue already exists for the given agreement.
 func DefaultHasOpenAgreementIssue(agreementID string) (bool, error) {
 	label := fmt.Sprintf("agreement:%s", agreementID)
-	cmd := exec.Command("bd", "list", "--status=open", "-l", label)
-	output, err := cmd.Output()
+	output, err := runBdCommand("list", "--status=open", "-l", label)
 	if err != nil {
 		// If bd list fails, return false (fail-open: allow creation)
 		return false, nil
@@ -180,7 +179,7 @@ func DefaultCreateAgreementIssue(failure AgreementFailureDetail) error {
 	description := fmt.Sprintf("## Agreement Violation: %s\n\n**Severity:** %s\n**Agreement ID:** %s\n\n### Check Output\n%s\n\n### Fix Guidance\nFix the code or documentation to satisfy the agreement contract.\nAfter fixing, verify with: kb agreements check",
 		failure.Title, failure.Severity, failure.AgreementID, failure.Message)
 
-	cmd := exec.Command("bd", "create",
+	if _, err := runBdCommand("create",
 		"--title", title,
 		"--type", "task",
 		"--priority", priority,
@@ -188,8 +187,7 @@ func DefaultCreateAgreementIssue(failure AgreementFailureDetail) error {
 		"-l", "triage:ready",
 		"-l", agreementLabel,
 		"-l", "area:agreements",
-	)
-	if _, err := cmd.Output(); err != nil {
+	); err != nil {
 		return fmt.Errorf("failed to create agreement issue: %w", err)
 	}
 	return nil

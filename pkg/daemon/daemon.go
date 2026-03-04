@@ -144,6 +144,10 @@ type Daemon struct {
 	Agents AgentDiscoverer
 	// StatusUpdater updates beads issue status.
 	StatusUpdater IssueUpdater
+
+	// BeadsCircuitBreaker tracks consecutive bd command failures and provides
+	// exponential backoff to prevent lock cascade when beads is unhealthy.
+	BeadsCircuitBreaker *BeadsCircuitBreaker
 }
 
 // New creates a new Daemon instance with default configuration.
@@ -177,6 +181,7 @@ func NewWithConfig(config Config) *Daemon {
 		ActiveCounter:           &defaultActiveCounter{},
 		Agents:                  &defaultAgentDiscoverer{},
 		StatusUpdater:           &defaultIssueUpdater{},
+		BeadsCircuitBreaker:    NewBeadsCircuitBreaker(),
 	}
 	// Initialize worker pool if MaxAgents is set
 	if config.MaxAgents > 0 {

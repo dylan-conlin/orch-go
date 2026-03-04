@@ -3,6 +3,7 @@ package beads
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 func TestNewCLIClient(t *testing.T) {
@@ -40,7 +41,8 @@ func TestCLIClient_bdCommand(t *testing.T) {
 		WithBdPath("/custom/bd"),
 	)
 
-	cmd := c.bdCommand("show", "issue-123", "--json")
+	cmd, cancel := c.bdCommand("show", "issue-123", "--json")
+	defer cancel()
 
 	if cmd.Path != "/custom/bd" {
 		t.Errorf("cmd.Path = %q, want %q", cmd.Path, "/custom/bd")
@@ -143,7 +145,8 @@ func TestCLIClient_ListArgsBuilding(t *testing.T) {
 				}
 				cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", tt.args.Limit))
 			}
-			cmd := c.bdCommand(cmdArgs...)
+			cmd, cancel := c.bdCommand(cmdArgs...)
+			defer cancel()
 
 			got := cmd.Args
 			if len(got) != len(tt.wantArgs) {
@@ -170,7 +173,8 @@ func TestCLIClient_LabelCommands(t *testing.T) {
 		{
 			name: "AddLabel uses bd label add",
 			buildCmd: func() []string {
-				cmd := c.bdCommand("label", "add", "issue-1", "triage:ready")
+				cmd, cancel := c.bdCommand("label", "add", "issue-1", "triage:ready")
+				defer cancel()
 				return cmd.Args
 			},
 			wantArgs: []string{"/custom/bd", "label", "add", "issue-1", "triage:ready"},
@@ -178,7 +182,8 @@ func TestCLIClient_LabelCommands(t *testing.T) {
 		{
 			name: "RemoveLabel uses bd label remove",
 			buildCmd: func() []string {
-				cmd := c.bdCommand("label", "remove", "issue-1", "triage:review")
+				cmd, cancel := c.bdCommand("label", "remove", "issue-1", "triage:review")
+				defer cancel()
 				return cmd.Args
 			},
 			wantArgs: []string{"/custom/bd", "label", "remove", "issue-1", "triage:review"},
@@ -197,5 +202,31 @@ func TestCLIClient_LabelCommands(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCLIClient_DefaultTimeout(t *testing.T) {
+	if DefaultCLITimeout != 30*time.Second {
+		t.Errorf("DefaultCLITimeout = %s, want 30s", DefaultCLITimeout)
+	}
+}
+
+func TestCLIClient_WithCLITimeout(t *testing.T) {
+	c := NewCLIClient(WithCLITimeout(10 * time.Second))
+	if c.Timeout != 10*time.Second {
+		t.Errorf("Timeout = %s, want 10s", c.Timeout)
+	}
+}
+
+func TestCLIClient_TimeoutDefaultsWhenZero(t *testing.T) {
+	c := NewCLIClient()
+	if c.Timeout != 0 {
+		t.Errorf("Timeout = %s, want 0 (uses default)", c.Timeout)
+	}
+	// bdCommand should use DefaultCLITimeout when Timeout is 0
+	cmd, cancel := c.bdCommand("--version")
+	defer cancel()
+	if cmd == nil {
+		t.Fatal("expected non-nil command")
 	}
 }

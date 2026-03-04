@@ -4,8 +4,6 @@ package daemon
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 )
@@ -254,9 +252,7 @@ func CheckExtractionNeeded(issue *Issue, checker HotspotChecker) *ExtractionResu
 // Returns the new extraction issue ID.
 func DefaultCreateExtractionIssue(task string, parentIssueID string) (string, error) {
 	// Create extraction issue via bd create
-	cmd := exec.Command("bd", "create", task, "--type", "task", "--priority", "1", "-l", "triage:ready")
-	cmd.Env = os.Environ()
-	output, err := cmd.CombinedOutput()
+	output, err := runBdCommandCombined("create", task, "--type", "task", "--priority", "1", "-l", "triage:ready")
 	if err != nil {
 		return "", fmt.Errorf("failed to create extraction issue: %w: %s", err, string(output))
 	}
@@ -269,9 +265,7 @@ func DefaultCreateExtractionIssue(task string, parentIssueID string) (string, er
 
 	// Add dependency: parentIssueID depends on extractionID
 	// (extraction must complete before parent can be spawned)
-	depCmd := exec.Command("bd", "dep", "add", parentIssueID, extractionID)
-	depCmd.Env = os.Environ()
-	depOutput, err := depCmd.CombinedOutput()
+	depOutput, err := runBdCommandCombined("dep", "add", parentIssueID, extractionID)
 	if err != nil {
 		return extractionID, fmt.Errorf("created %s but failed to add dependency: %w: %s",
 			extractionID, err, string(depOutput))

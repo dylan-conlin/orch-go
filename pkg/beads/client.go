@@ -2,6 +2,7 @@ package beads
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -718,16 +719,39 @@ func setupFallbackEnv(cmd *exec.Cmd) {
 	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
 }
 
+// fallbackCmd creates a bd CLI command with timeout for fallback operations.
+// The returned cancel function MUST be called by the caller (typically via defer).
+// This prevents unkillable lock pileups when bd hangs on JSONL lock.
+func fallbackCmd(args ...string) (*exec.Cmd, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
+	cmd := exec.CommandContext(ctx, getBdPath(), args...)
+	setupFallbackEnv(cmd)
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
+	return cmd, cancel
+}
+
+// fallbackCmdInDir creates a bd CLI command with timeout in a specific directory.
+func fallbackCmdInDir(dir string, args ...string) (*exec.Cmd, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
+	cmd := exec.CommandContext(ctx, getBdPath(), args...)
+	setupFallbackEnv(cmd)
+	if dir != "" {
+		cmd.Dir = dir
+	} else if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
+	return cmd, cancel
+}
+
 // FallbackReady retrieves ready issues via bd CLI.
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackReady() ([]Issue, error) {
 	// Use --limit 0 to get ALL ready issues (bd ready defaults to limit 10)
-	cmd := exec.Command(getBdPath(), "ready", "--json", "--limit", "0")
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd("ready", "--json", "--limit", "0")
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -750,11 +774,8 @@ func FallbackReady() ([]Issue, error) {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackShow(id string) (*Issue, error) {
-	cmd := exec.Command(getBdPath(), "show", id, "--json")
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd("show", id, "--json")
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -782,13 +803,8 @@ func FallbackShow(id string) (*Issue, error) {
 // If dir is empty, uses DefaultDir if set, otherwise the current working directory.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackShowWithDir(id, dir string) (*Issue, error) {
-	cmd := exec.Command(getBdPath(), "show", id, "--json")
-	setupFallbackEnv(cmd)
-	if dir != "" {
-		cmd.Dir = dir
-	} else if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmdInDir(dir, "show", id, "--json")
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -819,11 +835,8 @@ func FallbackList(status string) ([]Issue, error) {
 		args = append(args, "--status", status)
 	}
 
-	cmd := exec.Command(getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd(args...)
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -850,11 +863,8 @@ func FallbackListWithLabel(label string) ([]Issue, error) {
 
 	args := []string{"list", "--json", "--limit", "0", "-l", label}
 
-	cmd := exec.Command(getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd(args...)
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -880,11 +890,8 @@ func FallbackListWithLabelInDir(label, dir string) ([]Issue, error) {
 
 	args := []string{"list", "--json", "--limit", "0", "-l", label}
 
-	cmd := exec.Command(getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if dir != "" {
-		cmd.Dir = dir
-	}
+	cmd, cancel := fallbackCmdInDir(dir, args...)
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -913,11 +920,8 @@ func FallbackListByIDs(ids []string) ([]Issue, error) {
 	// Use --id with comma-separated IDs and --all to include closed issues
 	args := []string{"list", "--json", "--all", "--id", strings.Join(ids, ",")}
 
-	cmd := exec.Command(getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd(args...)
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -946,11 +950,8 @@ func FallbackListByParent(parentID string) ([]Issue, error) {
 	// Use --limit 0 to get all children
 	args := []string{"list", "--json", "--limit", "0", "--parent", parentID}
 
-	cmd := exec.Command(getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd(args...)
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -971,11 +972,8 @@ func FallbackListByParent(parentID string) ([]Issue, error) {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackStats() (*Stats, error) {
-	cmd := exec.Command(getBdPath(), "stats", "--json")
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd("stats", "--json")
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -996,11 +994,8 @@ func FallbackStats() (*Stats, error) {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackComments(id string) ([]Comment, error) {
-	cmd := exec.Command(getBdPath(), "comments", id, "--json")
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd("comments", id, "--json")
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -1026,11 +1021,8 @@ func FallbackClose(id, reason string) error {
 		args = append(args, "--reason", reason)
 	}
 
-	cmd := exec.Command(getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd(args...)
+	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd close failed: %w: %s", err, string(output))
@@ -1048,11 +1040,8 @@ func FallbackForceClose(id, reason string) error {
 		args = append(args, "--reason", reason)
 	}
 
-	cmd := exec.Command(getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd(args...)
+	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd close --force failed: %w: %s", err, string(output))
@@ -1078,11 +1067,8 @@ func FallbackCreate(title, description, issueType string, priority int, labels [
 		args = append(args, "--label", label)
 	}
 
-	cmd := exec.Command(getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd(args...)
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -1117,13 +1103,8 @@ func FallbackCreateInDir(title, description, issueType string, priority int, lab
 		args = append(args, "--label", label)
 	}
 
-	cmd := exec.Command(getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if dir != "" {
-		cmd.Dir = dir
-	} else if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmdInDir(dir, args...)
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -1144,11 +1125,8 @@ func FallbackCreateInDir(title, description, issueType string, priority int, lab
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackAddComment(id, text string) error {
-	cmd := exec.Command(getBdPath(), "comments", "add", id, text)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd("comments", "add", id, text)
+	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd comments add failed: %w: %s", err, string(output))
@@ -1165,11 +1143,8 @@ func FallbackUpdate(id, status string) error {
 	if status != "" {
 		args = append(args, "--status", status)
 	}
-	cmd := exec.Command(getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd(args...)
+	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd update failed: %w: %s", err, string(output))
@@ -1182,11 +1157,8 @@ func FallbackUpdate(id, status string) error {
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackUpdateAssignee(id, assignee string) error {
 	args := []string{"update", id, "--assignee", assignee}
-	cmd := exec.Command(getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd(args...)
+	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd update assignee failed: %w: %s", err, string(output))
@@ -1198,11 +1170,8 @@ func FallbackUpdateAssignee(id, assignee string) error {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackAddLabel(id, label string) error {
-	cmd := exec.Command(getBdPath(), "update", id, "--add-label", label)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd("update", id, "--add-label", label)
+	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd add-label failed: %w: %s", err, string(output))
@@ -1214,11 +1183,8 @@ func FallbackAddLabel(id, label string) error {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackRemoveLabel(id, label string) error {
-	cmd := exec.Command(getBdPath(), "update", id, "--remove-label", label)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd, cancel := fallbackCmd("update", id, "--remove-label", label)
+	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd remove-label failed: %w: %s", err, string(output))
@@ -1229,11 +1195,8 @@ func FallbackRemoveLabel(id, label string) error {
 // FallbackRemoveLabelInDir removes a label from an issue via bd CLI,
 // running in the specified directory. This enables cross-project label operations.
 func FallbackRemoveLabelInDir(id, label, dir string) error {
-	cmd := exec.Command(getBdPath(), "update", id, "--remove-label", label)
-	setupFallbackEnv(cmd)
-	if dir != "" {
-		cmd.Dir = dir
-	}
+	cmd, cancel := fallbackCmdInDir(dir, "update", id, "--remove-label", label)
+	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd remove-label failed: %w: %s", err, string(output))

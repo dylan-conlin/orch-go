@@ -1,10 +1,18 @@
 package beads
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
+)
+
+const (
+	// DefaultCLITimeout is the default timeout for bd CLI commands.
+	// Prevents unkillable lock pileups when bd hangs on JSONL lock.
+	DefaultCLITimeout = 30 * time.Second
 )
 
 // CLIClient implements BeadsClient using bd CLI commands.
@@ -22,6 +30,11 @@ type CLIClient struct {
 	// Env is the environment for bd commands.
 	// If nil, inherits from os.Environ().
 	Env []string
+
+	// Timeout is the maximum duration for bd CLI commands.
+	// If zero, uses DefaultCLITimeout (30s).
+	// Prevents unkillable lock pileups when bd hangs on JSONL lock.
+	Timeout time.Duration
 }
 
 // CLIOption is a functional option for configuring CLIClient.
@@ -48,6 +61,13 @@ func WithEnv(env []string) CLIOption {
 	}
 }
 
+// WithCLITimeout sets the timeout for bd CLI commands.
+func WithCLITimeout(d time.Duration) CLIOption {
+	return func(c *CLIClient) {
+		c.Timeout = d
+	}
+}
+
 // NewCLIClient creates a new CLIClient with the given options.
 func NewCLIClient(opts ...CLIOption) *CLIClient {
 	c := &CLIClient{
@@ -59,9 +79,15 @@ func NewCLIClient(opts ...CLIOption) *CLIClient {
 	return c
 }
 
-// bdCommand creates an exec.Cmd for a bd command with proper configuration.
-func (c *CLIClient) bdCommand(args ...string) *exec.Cmd {
-	cmd := exec.Command(c.BdPath, args...)
+// bdCommand creates an exec.Cmd for a bd command with timeout and proper configuration.
+// The returned cancel function MUST be called by the caller (typically via defer).
+func (c *CLIClient) bdCommand(args ...string) (*exec.Cmd, context.CancelFunc) {
+	timeout := c.Timeout
+	if timeout == 0 {
+		timeout = DefaultCLITimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	cmd := exec.CommandContext(ctx, c.BdPath, args...)
 	if c.WorkDir != "" {
 		cmd.Dir = c.WorkDir
 	}
@@ -70,7 +96,7 @@ func (c *CLIClient) bdCommand(args ...string) *exec.Cmd {
 	} else {
 		cmd.Env = os.Environ()
 	}
-	return cmd
+	return cmd, cancel
 }
 
 // Ready retrieves issues that are ready for work.
@@ -87,7 +113,8 @@ func (c *CLIClient) Ready(args *ReadyArgs) ([]Issue, error) {
 	}
 	cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", limit))
 
-	cmd := c.bdCommand(cmdArgs...)
+	cmd, cancel := c.bdCommand(cmdArgs...)
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd ready failed: %w", err)
@@ -103,7 +130,8 @@ func (c *CLIClient) Ready(args *ReadyArgs) ([]Issue, error) {
 
 // Show retrieves a single issue by ID.
 func (c *CLIClient) Show(id string) (*Issue, error) {
-	cmd := c.bdCommand("show", id, "--json")
+	cmd, cancel := c.bdCommand("show", id, "--json")
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd show failed: %w", err)
@@ -146,7 +174,8 @@ func (c *CLIClient) List(args *ListArgs) ([]Issue, error) {
 		cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", args.Limit))
 	}
 
-	cmd := c.bdCommand(cmdArgs...)
+	cmd, cancel := c.bdCommand(cmdArgs...)
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd list failed: %w", err)
@@ -162,7 +191,8 @@ func (c *CLIClient) List(args *ListArgs) ([]Issue, error) {
 
 // Stats retrieves beads statistics.
 func (c *CLIClient) Stats() (*Stats, error) {
-	cmd := c.bdCommand("stats", "--json")
+	cmd, cancel := c.bdCommand("stats", "--json")
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd stats failed: %w", err)
@@ -178,7 +208,8 @@ func (c *CLIClient) Stats() (*Stats, error) {
 
 // Comments retrieves comments for an issue.
 func (c *CLIClient) Comments(id string) ([]Comment, error) {
-	cmd := c.bdCommand("comments", id, "--json")
+	cmd, cancel := c.bdCommand("comments", id, "--json")
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd comments failed: %w", err)
@@ -196,7 +227,8 @@ func (c *CLIClient) Comments(id string) ([]Comment, error) {
 // Note: The CLI client ignores the author parameter as bd CLI uses
 // the current user/agent automatically.
 func (c *CLIClient) AddComment(id, _, text string) error {
-	cmd := c.bdCommand("comment", id, text)
+	cmd, cancel := c.bdCommand("comment", id, text)
+	defer cancel()
 	return cmd.Run()
 }
 
@@ -207,7 +239,8 @@ func (c *CLIClient) CloseIssue(id, reason string) error {
 		args = append(args, "--reason", reason)
 	}
 
-	cmd := c.bdCommand(args...)
+	cmd, cancel := c.bdCommand(args...)
+	defer cancel()
 	return cmd.Run()
 }
 
@@ -234,7 +267,8 @@ func (c *CLIClient) Create(args *CreateArgs) (*Issue, error) {
 		cmdArgs = append(cmdArgs, "--parent", args.Parent)
 	}
 
-	cmd := c.bdCommand(cmdArgs...)
+	cmd, cancel := c.bdCommand(cmdArgs...)
+	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd create failed: %w", err)
@@ -274,7 +308,8 @@ func (c *CLIClient) Update(args *UpdateArgs) (*Issue, error) {
 		cmdArgs = append(cmdArgs, "--remove-label", label)
 	}
 
-	cmd := c.bdCommand(cmdArgs...)
+	cmd, cancel := c.bdCommand(cmdArgs...)
+	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("bd update failed: %w: %s", err, string(output))
@@ -286,13 +321,15 @@ func (c *CLIClient) Update(args *UpdateArgs) (*Issue, error) {
 
 // AddLabel adds a label to an issue.
 func (c *CLIClient) AddLabel(id, label string) error {
-	cmd := c.bdCommand("label", "add", id, label)
+	cmd, cancel := c.bdCommand("label", "add", id, label)
+	defer cancel()
 	return cmd.Run()
 }
 
 // RemoveLabel removes a label from an issue.
 func (c *CLIClient) RemoveLabel(id, label string) error {
-	cmd := c.bdCommand("label", "remove", id, label)
+	cmd, cancel := c.bdCommand("label", "remove", id, label)
+	defer cancel()
 	return cmd.Run()
 }
 
