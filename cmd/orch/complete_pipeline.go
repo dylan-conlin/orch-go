@@ -33,6 +33,7 @@ type CompletionTarget struct {
 	IsOrchestratorSession bool
 	Issue                 *verify.Issue
 	IsClosed              bool
+	ReviewTier            string // Effective review tier (auto/scan/review/deep)
 }
 
 // VerificationOutcome holds the results of verification gate execution.
@@ -194,8 +195,28 @@ func resolveCompletionTarget(identifier, workdir string) (CompletionTarget, erro
 
 // runCompletionAdvisories runs advisory gates: discovered work, probe verdicts,
 // architectural choices, knowledge maintenance, explain-back, and verification checklist.
+//
+// Review tier controls which advisories run:
+//   - auto:   auto-file discovered work (no prompt), skip knowledge maintenance + explain-back
+//   - scan:   print SYNTHESIS TLDR, interactive discovered work, skip knowledge maintenance + explain-back
+//   - review: full ceremony (current behavior)
+//   - deep:   full ceremony (current behavior)
 func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcome, skipConfig verify.SkipConfig) (AdvisoryResults, error) {
 	var advisories AdvisoryResults
+
+	isAutoTier := target.ReviewTier == "auto"
+	isScanTier := target.ReviewTier == "scan"
+	isLightReview := isAutoTier || isScanTier
+
+	// For scan tier: print SYNTHESIS TLDR upfront for quick context
+	if isScanTier && target.WorkspacePath != "" {
+		synthesis, err := verify.ParseSynthesis(target.WorkspacePath)
+		if err == nil && synthesis != nil && synthesis.TLDR != "" {
+			fmt.Println("\n--- SYNTHESIS TLDR ---")
+			fmt.Println(synthesis.TLDR)
+			fmt.Println("---------------------")
+		}
+	}
 
 	// Gate completion on discovered work disposition
 	if target.WorkspacePath != "" && !completeForce {
@@ -204,63 +225,78 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 			items := verify.CollectDiscoveredWork(synthesis)
 
 			if len(items) > 0 {
-				fmt.Println("\n--- Discovered Work Gate ---")
-
-				if synthesis.Recommendation != "" && synthesis.Recommendation != "close" {
-					fmt.Printf("Recommendation: %s\n", synthesis.Recommendation)
-				}
-
-				fmt.Printf("%d discovered work item(s) require disposition:\n", len(items))
-
-				if !term.IsTerminal(int(os.Stdin.Fd())) {
-					fmt.Println("(Skipping interactive prompts - stdin is not a terminal)")
-					fmt.Println("Use --force to complete without disposition, or run interactively")
-				} else {
-					result, err := verify.PromptDiscoveredWorkDisposition(items, os.Stdin, os.Stdout)
-					if err != nil {
-						return advisories, fmt.Errorf("discovered work disposition failed: %w\n\nCompletion blocked. Run again to disposition all items, or use --force to skip", err)
-					}
-
-					if !result.AllDispositioned {
-						return advisories, fmt.Errorf("not all discovered work items were dispositioned\n\nCompletion blocked. Run again to disposition all items, or use --force to skip")
-					}
-
-					// File issues for items marked 'y'
-					filedItems := result.FiledItems()
+				if isAutoTier {
+					// Auto tier: file all discovered work without prompting
+					fmt.Printf("\n--- Discovered Work (auto-filed, review tier: auto) ---\n")
 					createdCount := 0
-					for _, item := range filedItems {
-						title := strings.TrimPrefix(item.Description, "- ")
-						title = strings.TrimPrefix(title, "* ")
-						if len(title) > 3 && title[0] >= '0' && title[0] <= '9' && (title[1] == '.' || (title[1] >= '0' && title[1] <= '9' && title[2] == '.')) {
-							if idx := strings.Index(title, ". "); idx != -1 && idx < 4 {
-								title = title[idx+2:]
-							}
-						}
-
+					for _, item := range items {
+						title := cleanDiscoveredWorkTitle(item.Description)
 						issue, err := beads.FallbackCreate(title, "", "task", 2, []string{"triage:ready"})
 						if err != nil {
 							fmt.Fprintf(os.Stderr, "  Failed to create issue: %v\n", err)
 						} else {
-							fmt.Printf("  Created: %s - %s\n", issue.ID, title)
+							fmt.Printf("  Auto-filed: %s - %s\n", issue.ID, title)
 							createdCount++
 						}
 					}
-
 					if createdCount > 0 {
-						fmt.Printf("\n✓ Created %d follow-up issue(s)\n", createdCount)
+						fmt.Printf("✓ Auto-filed %d follow-up issue(s)\n", createdCount)
+					}
+					fmt.Println("---------------------------------")
+				} else {
+					// scan/review/deep: interactive disposition
+					fmt.Println("\n--- Discovered Work Gate ---")
+
+					if synthesis.Recommendation != "" && synthesis.Recommendation != "close" {
+						fmt.Printf("Recommendation: %s\n", synthesis.Recommendation)
 					}
 
-					if result.SkipAllReason != "" {
-						fmt.Printf("Skip-all reason: %s\n", result.SkipAllReason)
+					fmt.Printf("%d discovered work item(s) require disposition:\n", len(items))
+
+					if !term.IsTerminal(int(os.Stdin.Fd())) {
+						fmt.Println("(Skipping interactive prompts - stdin is not a terminal)")
+						fmt.Println("Use --force to complete without disposition, or run interactively")
+					} else {
+						result, err := verify.PromptDiscoveredWorkDisposition(items, os.Stdin, os.Stdout)
+						if err != nil {
+							return advisories, fmt.Errorf("discovered work disposition failed: %w\n\nCompletion blocked. Run again to disposition all items, or use --force to skip", err)
+						}
+
+						if !result.AllDispositioned {
+							return advisories, fmt.Errorf("not all discovered work items were dispositioned\n\nCompletion blocked. Run again to disposition all items, or use --force to skip")
+						}
+
+						// File issues for items marked 'y'
+						filedItems := result.FiledItems()
+						createdCount := 0
+						for _, item := range filedItems {
+							title := cleanDiscoveredWorkTitle(item.Description)
+
+							issue, err := beads.FallbackCreate(title, "", "task", 2, []string{"triage:ready"})
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "  Failed to create issue: %v\n", err)
+							} else {
+								fmt.Printf("  Created: %s - %s\n", issue.ID, title)
+								createdCount++
+							}
+						}
+
+						if createdCount > 0 {
+							fmt.Printf("\n✓ Created %d follow-up issue(s)\n", createdCount)
+						}
+
+						if result.SkipAllReason != "" {
+							fmt.Printf("Skip-all reason: %s\n", result.SkipAllReason)
+						}
+
+						skippedItems := result.SkippedItems()
+						if len(skippedItems) > 0 {
+							fmt.Printf("Skipped %d item(s)\n", len(skippedItems))
+						}
 					}
 
-					skippedItems := result.SkippedItems()
-					if len(skippedItems) > 0 {
-						fmt.Printf("Skipped %d item(s)\n", len(skippedItems))
-					}
+					fmt.Println("---------------------------------")
 				}
-
-				fmt.Println("---------------------------------")
 			}
 		}
 	}
@@ -281,7 +317,8 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 	}
 
 	// Knowledge maintenance step (Touchpoint 1: Completion Review)
-	if !target.IsOrchestratorSession && target.BeadsID != "" && !completeForce {
+	// Skipped for auto/scan tiers — these are lightweight completions
+	if !target.IsOrchestratorSession && target.BeadsID != "" && !completeForce && !isLightReview {
 		var issueTitle string
 		if target.Issue != nil {
 			issueTitle = target.Issue.Title
@@ -296,28 +333,31 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 	}
 
 	// Explain-back verification gate
-	priorGate1, _ := checkpoint.HasGate1Checkpoint(target.BeadsID)
-	if completeExplain != "" || !priorGate1 {
-		if err := orch.RunExplainBackGate(
-			target.BeadsID,
-			completeForce,
-			skipConfig.ExplainBack,
-			skipConfig.Reason,
-			target.IsOrchestratorSession,
-			completeExplain,
-			completeVerified,
-			os.Stdout,
-		); err != nil {
-			return advisories, err
+	// Skipped for auto/scan tiers — checkpoint gates handle this at the verification level
+	if !isLightReview {
+		priorGate1, _ := checkpoint.HasGate1Checkpoint(target.BeadsID)
+		if completeExplain != "" || !priorGate1 {
+			if err := orch.RunExplainBackGate(
+				target.BeadsID,
+				completeForce,
+				skipConfig.ExplainBack,
+				skipConfig.Reason,
+				target.IsOrchestratorSession,
+				completeExplain,
+				completeVerified,
+				os.Stdout,
+			); err != nil {
+				return advisories, err
+			}
 		}
-	}
 
-	// Record gate2 checkpoint if --verified flag is set and explain-back gate didn't run
-	if completeVerified && !target.IsOrchestratorSession && target.BeadsID != "" {
-		hasGate2, _ := checkpoint.HasGate2Checkpoint(target.BeadsID)
-		if !hasGate2 && priorGate1 && completeExplain == "" {
-			if err := orch.RecordGate2Checkpoint(target.BeadsID, os.Stdout); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to record gate2 checkpoint: %v\n", err)
+		// Record gate2 checkpoint if --verified flag is set and explain-back gate didn't run
+		if completeVerified && !target.IsOrchestratorSession && target.BeadsID != "" {
+			hasGate2, _ := checkpoint.HasGate2Checkpoint(target.BeadsID)
+			if !hasGate2 && priorGate1 && completeExplain == "" {
+				if err := orch.RecordGate2Checkpoint(target.BeadsID, os.Stdout); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to record gate2 checkpoint: %v\n", err)
+				}
 			}
 		}
 	}
@@ -340,12 +380,8 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 		}
 		checklist := buildVerificationChecklist(outcome.Result, issueType, tier, target.IsOrchestratorSession, skipConfig, gate1Complete, gate2Complete)
 
-		// Compute trust calibration tier from review tier + bypass signals
-		reviewTier := ""
-		if target.WorkspacePath != "" && !target.IsOrchestratorSession {
-			reviewTier = verify.ReadReviewTierFromWorkspace(target.WorkspacePath)
-		}
-		trustTier := ComputeTrustTier(reviewTier, skipConfig, completeForce)
+		// Use target.ReviewTier directly instead of re-reading from workspace
+		trustTier := ComputeTrustTier(target.ReviewTier, skipConfig, completeForce)
 		printVerificationChecklist(checklist, trustTier)
 	}
 
@@ -386,4 +422,16 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 	}
 
 	return advisories, nil
+}
+
+// cleanDiscoveredWorkTitle cleans up a discovered work item description for use as an issue title.
+func cleanDiscoveredWorkTitle(description string) string {
+	title := strings.TrimPrefix(description, "- ")
+	title = strings.TrimPrefix(title, "* ")
+	if len(title) > 3 && title[0] >= '0' && title[0] <= '9' && (title[1] == '.' || (title[1] >= '0' && title[1] <= '9' && title[2] == '.')) {
+		if idx := strings.Index(title, ". "); idx != -1 && idx < 4 {
+			title = title[idx+2:]
+		}
+	}
+	return title
 }

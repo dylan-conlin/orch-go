@@ -22,9 +22,11 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 	outcome.Passed = true
 
 	// Checkpoint verification gate (Verifiability-first enforcement)
+	// auto/scan review tiers skip checkpoint gates entirely
 	var checkpointErrors []string
 	var checkpointGatesFailed []string
-	if !completeForce && target.Issue != nil {
+	skipCheckpoints := target.ReviewTier == "auto" || target.ReviewTier == "scan"
+	if !completeForce && target.Issue != nil && !skipCheckpoints {
 		tier := checkpoint.TierForIssueType(target.Issue.IssueType)
 
 		if checkpoint.RequiresCheckpoint(target.Issue.IssueType) {
@@ -52,6 +54,8 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 				fmt.Println("✓ Behavioral verification (gate2) passed")
 			}
 		}
+	} else if skipCheckpoints && !completeForce && target.Issue != nil {
+		fmt.Printf("Checkpoint gates skipped (review tier: %s)\n", target.ReviewTier)
 	}
 
 	// If --approve flag is set, add approval comment BEFORE verification

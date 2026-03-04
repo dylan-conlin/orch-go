@@ -13,6 +13,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -51,6 +52,9 @@ var (
 
 	// Behavioral verification flag: orchestrator confirms agent behavior verified
 	completeVerified bool
+
+	// Review tier override flag
+	completeReviewTier string
 )
 
 var completeCmd = &cobra.Command{
@@ -184,6 +188,9 @@ func init() {
 
 	// Behavioral verification flag (gate2)
 	completeCmd.Flags().BoolVar(&completeVerified, "verified", false, "Record behavioral verification (gate2) - confirms orchestrator verified agent behavior (required for Tier 1 work)")
+
+	// Review tier override
+	completeCmd.Flags().StringVar(&completeReviewTier, "review-tier", "", "Override review tier (auto/scan/review/deep) — overrides manifest value")
 }
 
 // getSkipConfig builds the skip configuration from command-line flags.
@@ -260,6 +267,21 @@ func runComplete(identifier, workdir string) error {
 	target, err := resolveCompletionTarget(identifier, workdir)
 	if err != nil {
 		return err
+	}
+
+	// Resolve effective review tier: flag override > workspace manifest > default
+	if completeReviewTier != "" {
+		if !spawn.IsValidReviewTier(completeReviewTier) {
+			return fmt.Errorf("invalid review tier %q: must be auto, scan, review, or deep", completeReviewTier)
+		}
+		target.ReviewTier = completeReviewTier
+		fmt.Printf("Review tier: %s (override)\n", target.ReviewTier)
+	} else if target.WorkspacePath != "" && !target.IsOrchestratorSession {
+		target.ReviewTier = verify.ReadReviewTierFromWorkspace(target.WorkspacePath)
+		fmt.Printf("Review tier: %s\n", target.ReviewTier)
+	} else {
+		target.ReviewTier = spawn.ReviewReview // Conservative default
+		fmt.Printf("Review tier: %s (default)\n", target.ReviewTier)
 	}
 
 	// Phase 2: Execute verification gates
