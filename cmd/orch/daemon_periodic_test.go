@@ -83,6 +83,10 @@ func (d *testAgentDiscoverer) HasExistingSession(beadsID string) bool {
 	return false
 }
 
+func (d *testAgentDiscoverer) HasExistingSessionOrError(beadsID string) (bool, error) {
+	return d.HasExistingSession(beadsID), nil
+}
+
 func TestRunPeriodicTasks_NothingDue(t *testing.T) {
 	// All periodic tasks disabled — should return empty result, no events
 	config := daemon.DefaultConfig()

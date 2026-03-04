@@ -447,6 +447,124 @@ func TestDaemon_RunPeriodicOrphanDetection_RetainsSpawnCacheEntry(t *testing.T) 
 	}
 }
 
+// --- Fail-closed on session check error (orch-go-n20j) ---
+
+func TestDaemon_RunPeriodicOrphanDetection_FailClosedOnSessionCheckError(t *testing.T) {
+	// Regression test for orch-go-n20j: Daemon spawns duplicate workers overnight.
+	//
+	// Root cause: When OpenCode API and tmux are both down (overnight infrastructure
+	// instability), HasExistingSession returned false (fail-open), causing the orphan
+	// detector to incorrectly mark running agents as orphaned. After spawn cache TTL
+	// expired, the daemon would respawn the issue while the original agent was still running.
+	//
+	// Fix: The orphan detector now uses HasExistingSessionOrError which returns the error.
+	// On error, the orphan detector skips the issue (fail-closed) instead of resetting it.
+	resetCalled := false
+	d := &Daemon{
+		Config: Config{
+			OrphanDetectionEnabled:  true,
+			OrphanDetectionInterval: 30 * time.Minute,
+			OrphanAgeThreshold:      time.Hour,
+		},
+		Agents: &mockAgentDiscoverer{
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
+				return []ActiveAgent{
+					{
+						BeadsID:   "running-agent-001",
+						Phase:     "Implementing",
+						UpdatedAt: time.Now().Add(-2 * time.Hour), // Old enough to be orphan candidate
+						Title:     "Running task with infrastructure down",
+					},
+				}, nil
+			},
+			// Simulate infrastructure failure: session check returns error
+			HasExistingSessionOrErrorFunc: func(beadsID string) (bool, error) {
+				return false, fmt.Errorf("opencode session check failed: connection refused")
+			},
+		},
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID, status string) error {
+				resetCalled = true
+				return nil
+			},
+		},
+	}
+
+	result := d.RunPeriodicOrphanDetection()
+	if result == nil {
+		t.Fatal("Should return result")
+	}
+	if resetCalled {
+		t.Error("Should NOT have called UpdateStatus — fail-closed means we skip on session check errors")
+	}
+	if result.ResetCount != 0 {
+		t.Errorf("ResetCount = %d, want 0 (session check errored, should skip)", result.ResetCount)
+	}
+	if result.SkippedCount != 1 {
+		t.Errorf("SkippedCount = %d, want 1 (errored agent should be counted as skipped)", result.SkippedCount)
+	}
+}
+
+func TestDaemon_RunPeriodicOrphanDetection_MixedErrorAndOrphan(t *testing.T) {
+	// When some session checks error and others succeed, only the confirmed
+	// orphans (no session AND no error) should be reset. Errored ones are skipped.
+	resetIDs := map[string]bool{}
+	d := &Daemon{
+		Config: Config{
+			OrphanDetectionEnabled:  true,
+			OrphanDetectionInterval: 30 * time.Minute,
+			OrphanAgeThreshold:      time.Hour,
+		},
+		SpawnedIssues: NewSpawnedIssueTracker(),
+		Agents: &mockAgentDiscoverer{
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
+				return []ActiveAgent{
+					{BeadsID: "errored-001", Phase: "Planning", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "Errored agent"},
+					{BeadsID: "orphan-001", Phase: "Planning", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "Real orphan"},
+					{BeadsID: "active-001", Phase: "Implementing", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "Active agent"},
+				}, nil
+			},
+			HasExistingSessionOrErrorFunc: func(beadsID string) (bool, error) {
+				switch beadsID {
+				case "errored-001":
+					return false, fmt.Errorf("tmux session check failed: command not found")
+				case "orphan-001":
+					return false, nil // No session, no error — real orphan
+				case "active-001":
+					return true, nil // Has a session
+				}
+				return false, nil
+			},
+		},
+		StatusUpdater: &mockIssueUpdater{
+			UpdateStatusFunc: func(beadsID, status string) error {
+				resetIDs[beadsID] = true
+				return nil
+			},
+		},
+	}
+
+	result := d.RunPeriodicOrphanDetection()
+	if result == nil {
+		t.Fatal("Should return result")
+	}
+	if result.ResetCount != 1 {
+		t.Errorf("ResetCount = %d, want 1 (only orphan-001)", result.ResetCount)
+	}
+	if result.SkippedCount != 2 {
+		t.Errorf("SkippedCount = %d, want 2 (errored-001 + active-001)", result.SkippedCount)
+	}
+	if resetIDs["errored-001"] {
+		t.Error("Should NOT reset errored-001 — session check errored, fail-closed")
+	}
+	if !resetIDs["orphan-001"] {
+		t.Error("Should reset orphan-001 — confirmed orphan (no session, no error)")
+	}
+	if resetIDs["active-001"] {
+		t.Error("Should NOT reset active-001 — has active session")
+	}
+}
+
 // --- Config defaults test ---
 
 func TestDefaultConfig_IncludesOrphanDetection(t *testing.T) {

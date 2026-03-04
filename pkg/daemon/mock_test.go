@@ -217,8 +217,9 @@ func (m *mockActiveCounter) Count() int {
 
 // mockAgentDiscoverer implements AgentDiscoverer for tests.
 type mockAgentDiscoverer struct {
-	GetActiveAgentsFunc    func() ([]ActiveAgent, error)
-	HasExistingSessionFunc func(beadsID string) bool
+	GetActiveAgentsFunc         func() ([]ActiveAgent, error)
+	HasExistingSessionFunc      func(beadsID string) bool
+	HasExistingSessionOrErrorFunc func(beadsID string) (bool, error)
 }
 
 func (m *mockAgentDiscoverer) GetActiveAgents() ([]ActiveAgent, error) {
@@ -233,4 +234,12 @@ func (m *mockAgentDiscoverer) HasExistingSession(beadsID string) bool {
 		return m.HasExistingSessionFunc(beadsID)
 	}
 	return false
+}
+
+func (m *mockAgentDiscoverer) HasExistingSessionOrError(beadsID string) (bool, error) {
+	if m.HasExistingSessionOrErrorFunc != nil {
+		return m.HasExistingSessionOrErrorFunc(beadsID)
+	}
+	// Default: delegate to the bool-only version (no error)
+	return m.HasExistingSession(beadsID), nil
 }

@@ -54,6 +54,10 @@ type ActiveCounter interface {
 type AgentDiscoverer interface {
 	GetActiveAgents() ([]ActiveAgent, error)
 	HasExistingSession(beadsID string) bool
+	// HasExistingSessionOrError is the error-aware version of HasExistingSession.
+	// Returns (found, nil) on success, or (false, err) when session checks fail.
+	// Used by orphan detector to fail-closed on infrastructure errors.
+	HasExistingSessionOrError(beadsID string) (bool, error)
 }
 
 // --- Default implementations ---
@@ -178,4 +182,8 @@ func (d *defaultAgentDiscoverer) GetActiveAgents() ([]ActiveAgent, error) {
 
 func (d *defaultAgentDiscoverer) HasExistingSession(beadsID string) bool {
 	return HasExistingSessionForBeadsID(beadsID)
+}
+
+func (d *defaultAgentDiscoverer) HasExistingSessionOrError(beadsID string) (bool, error) {
+	return HasExistingSessionForBeadsIDWithError(beadsID)
 }

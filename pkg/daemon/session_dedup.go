@@ -3,6 +3,7 @@ package daemon
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -166,4 +167,49 @@ func HasExistingTmuxWindowForBeadsID(beadsID string) bool {
 		return false
 	}
 	return window != nil
+}
+
+// HasExistingSessionForBeadsIDWithError is the error-aware version of
+// HasExistingSessionForBeadsID. Instead of swallowing errors (fail-open),
+// it returns them so callers can decide how to handle infrastructure failures.
+//
+// Used by the orphan detector to fail-closed: when session checks error out
+// (e.g., OpenCode API down, tmux errors), the orphan detector should NOT
+// assume the agent is dead — it should skip the issue and retry later.
+func HasExistingSessionForBeadsIDWithError(beadsID string) (bool, error) {
+	if beadsID == "" {
+		return false, nil
+	}
+
+	// Layer 1: Check OpenCode sessions (headless backend)
+	checker := initDefaultSessionDedupChecker()
+	sessions, err := checker.listSessions()
+	if err != nil {
+		// Return error — let caller decide whether to fail-open or fail-closed
+		return false, fmt.Errorf("opencode session check failed: %w", err)
+	}
+
+	now := time.Now()
+	for _, s := range sessions {
+		sessionBeadsID := extractBeadsIDFromSessionTitle(s.Title)
+		if sessionBeadsID != beadsID {
+			continue
+		}
+		createdAt := time.Unix(s.Time.Created/1000, 0)
+		age := now.Sub(createdAt)
+		if age <= checker.config.MaxAge {
+			return true, nil
+		}
+	}
+
+	// Layer 2: Check tmux windows (Claude CLI backend)
+	window, _, err := tmux.FindWindowByBeadsIDAllSessions(beadsID)
+	if err != nil {
+		return false, fmt.Errorf("tmux session check failed: %w", err)
+	}
+	if window != nil {
+		return true, nil
+	}
+
+	return false, nil
 }

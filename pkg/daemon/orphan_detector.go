@@ -117,14 +117,30 @@ func (d *Daemon) RunPeriodicOrphanDetection() *OrphanDetectionResult {
 		}
 
 		// THE KEY CHECK: Does this issue have an actual agent working on it?
-		if agentDiscoverer.HasExistingSession(agent.BeadsID) {
+		// Uses error-aware version to fail-closed: if session checks error out
+		// (OpenCode API down, tmux errors), we do NOT assume the agent is dead.
+		// This prevents the orphan detector from incorrectly resetting running
+		// agents to "open" during infrastructure instability, which was the root
+		// cause of duplicate overnight spawns (orch-go-n20j).
+		found, sessionErr := agentDiscoverer.HasExistingSessionOrError(agent.BeadsID)
+		if sessionErr != nil {
+			// Fail-closed: infrastructure error means we can't confirm agent is dead.
+			// Skip this issue — retry on next orphan detection cycle.
+			if d.Config.Verbose {
+				fmt.Printf("  Skipping orphan check for %s: session check error: %v\n",
+					agent.BeadsID, sessionErr)
+			}
+			skipped++
+			continue
+		}
+		if found {
 			// Agent exists - not an orphan (recovery handles idle agents)
 			skipped++
 			continue
 		}
 
-		// No session and no tmux window - this is an orphan.
-		// Reset to open so daemon can respawn it.
+		// No session and no tmux window, AND session checks succeeded (no errors).
+		// This is a confirmed orphan. Reset to open so daemon can respawn it.
 		if d.Config.Verbose {
 			fmt.Printf("  Orphan detected: %s (idle %v, no session/window)\n",
 				agent.BeadsID, idleTime.Round(time.Minute))
