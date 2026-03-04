@@ -406,4 +406,4 @@ The fork uses SQLite + Drizzle ORM (migrated from JSON file storage). Database a
 - **Python orch-cli:** `~/Documents/personal/orch-cli` (fallback: `orch-py`)
 - **Beads:** Issue tracking via `bd` CLI
 - **Orchestrator skill:** `~/.claude/skills/meta/orchestrator/SKILL.md`
-- **orch-knowledge:** Skill sources, decisions, investigations
+- **orch-knowledge:** *(merged into orch-go — skills in `skills/src/`, knowledge in `.kb/`)*
