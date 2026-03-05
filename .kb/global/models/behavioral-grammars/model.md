@@ -1,9 +1,33 @@
 # Model: Behavioral Grammars
 
 **Created:** 2026-03-01
-**Status:** Active — 5 claims tested, 2 untested (Claims 4, 7)
+**Status:** Active — quantitative claims downgraded to directional hypotheses (Mar 4, 2026). See Measurement Validity section.
 **Source:** Grammar Design Discipline synthesis (Dylan, Claude web session, Mar 1 2026)
 **Corroborated by:** Revert spiral investigation, behavioral testing baseline, grammar recovery validation, intent spiral investigation, constraint dilution threshold (Mar 1), emphasis language compliance (Mar 2), behavioral compliance identity/action gap (Feb 24), agent framework landscape survey (Mar 1), layered constraint enforcement design (Mar 2)
+
+## ⚠️ Measurement Validity (Mar 4, 2026)
+
+**All quantitative claims in this model are downgraded from "confirmed" to "directional hypothesis pending re-measurement."** Three compounding issues invalidate the specific numbers:
+
+1. **Wrong injection level:** All skillc test measurements used `--system-prompt` which *replaces* the base Claude prompt. This is an isolated ceiling, not representative of production where skills load as user-level context. The ~4 behavioral constraint budget, 3-form saturation point, and dilution curve thresholds were measured in conditions that don't exist in production.
+
+2. **Intent ≠ action:** The `--print` harness measures what agents *say* they would do, not what they *do*. The Feb 24 probe proved these diverge (identity-action gap). Agents say "I delegate" while never calling `orch spawn`. All pass/fail scores are intent measurements, not behavioral ones.
+
+3. **Replication failure:** The dilution curve (3/3→3/3→2/3→0/3) did not replicate under clean isolation (orch-go-zola). N=3 per variant compounds this — the opus "confirmation" was noise matching noise.
+
+**What survives:** The directional insights remain valuable — constraints compete for attention, behavioral constraints are harder to enforce than knowledge constraints, emphasis language has more effect than neutral, situational pull overwhelms static reinforcement. These are robust observations across multiple sessions and models.
+
+**What's invalid:** Specific numbers (4 constraint budget, bare parity at 10C, 3-form saturation at N=21, 60%→0% delegation curve). The injection-level experiment (orch-go-pkp2, Mar 4) re-measured under three injection levels but the intent-only limitation (issue 2) still applies.
+
+**Injection-level experiment results (orch-go-pkp2, closed):**
+- System prompt (replaces base): 71.4% avg pass rate — confirmed as isolated ceiling
+- Appended system prompt: 58.3% — statistically equivalent to user-level, NOT an improvement
+- User message (current production): 56.0% — the actual production baseline
+- Density matters ~2x more than injection level (+29pp for 1C→5C vs -15pp for system→user)
+- Decision: `--append-system-prompt` not worth deploying. Invest in constraint density instead.
+- Full data: `.kb/investigations/2026-03-04-inv-injection-level-dilution-experiment.md`
+
+**Remaining gap:** All measurements are still intent-only (--print mode). Interactive testing (tool-call observation) needed to validate whether these patterns hold for actual behavior.
 
 ## What This Is
 
@@ -19,7 +43,7 @@ A rule in a formal grammar is binary (accept/reject). A rule in an LLM behaviora
 
 **Test:** Same constraint, same model, varying situational pull (boring task vs interesting task). Does violation rate correlate with task interest?
 
-**Status: CONFIRMED.** The dilution threshold experiment (Mar 1) demonstrated this directly: the same delegation constraint with identical 3-form reinforcement produces 8/8 at 1 competing constraint but regresses to 5/8 (bare parity) at 10 competing constraints. The constraint's effective strength is a function of attention competition, not just its own content. The emphasis language experiment (Mar 2) added a second variable: emphasis markers (MUST/NEVER/CRITICAL) provide measurable compliance lift over neutral language (should/consider), confirming that attention weight (via salience signals) modulates constraint strength probabilistically.
+**Status: DIRECTIONAL HYPOTHESIS.** Dilution and emphasis experiments showed directional signal (constraints compete for attention, emphasis > neutral) but specific numbers are invalid — measured with `--system-prompt` (isolated ceiling, not production) and `--print` (intent, not action). Dilution curve did not replicate. Re-measurement needed under production conditions.
 
 **Probes:** `probes/2026-03-01-probe-constraint-dilution-threshold.md`, `probes/2026-03-02-probe-emphasis-language-constraint-compliance.md`
 
@@ -31,7 +55,7 @@ LLM generation has distinct cognitive phases: situation recognition, approach pl
 
 **Evidence (existing):** Feb 6 compression removed 4 of 5 delegation rule instances. Delegation compliance degraded immediately. See principle: Redundancy is Load-Bearing.
 
-**Status: CONFIRMED with quantified saturation.** The redundancy saturation investigation (aj58) tested 1-form vs 3-form vs 5-form structural diversity. Results: 1-form achieves ceiling median but with variance for knowledge constraints; for behavioral constraints, 1-form is bare parity while 3-form achieves ceiling. Both constraint types saturate at 3 forms — 5 forms adds nothing. The saturation point is 3 structurally diverse forms (table + checklist + anti-patterns). However, this only holds when ≤4 total constraints compete for attention (see Claim 1 dilution findings).
+**Status: DIRECTIONAL HYPOTHESIS.** The redundancy saturation investigation (aj58) showed directional signal (more structural forms → better compliance, saturation somewhere around 3). But specific thresholds (3-form saturation, ≤4 co-resident budget) were measured under non-production conditions (isolated system prompt, intent-only). The qualitative insight (redundancy helps, with diminishing returns) is robust; the quantified saturation point is not.
 
 **Probes:** `probes/2026-03-01-probe-constraint-dilution-threshold.md`
 
@@ -41,7 +65,7 @@ Model priors are constant (LLMs want to help, solve directly). Situational pull 
 
 **Test:** Measure constraint violation rate across task complexity levels. If violations cluster at high-complexity tasks regardless of reinforcement density, situational pull is the dominant force.
 
-**Status: CONFIRMED.** The complexity investigation (xm5q) tested the same constraint with identical reinforcement across LOW/HIGH complexity tasks. Results: LOW 100% pass, HIGH 17% pass. The delegation rate drops from 83% to 0% as complexity increases — with the same constraint, same skill document, different complexity. The behavioral compliance probe (Feb 24) further established that the system prompt's competing instructions (17:1 signal ratio favoring Task tool) create a structural pull that prompt-level constraints cannot overcome. The agent framework landscape survey (Mar 1) confirmed this is a universal unsolved problem: all 8 surveyed frameworks have moved from prompt-level to infrastructure enforcement. The layered enforcement design (Mar 2) quantified: 87 behavioral constraints in the orchestrator skill, but the effective prompt budget is ~4. Infrastructure enforcement is not a preference but a necessity.
+**Status: DIRECTIONAL HYPOTHESIS (strong).** Multiple evidence sources converge: complexity investigation (xm5q) showed LOW 100% pass vs HIGH 17% pass. The Feb 24 probe showed system prompt structural priority over user-level content. The agent framework landscape survey found all 8 frameworks moved from prompt-level to infrastructure enforcement. The directional insight (situational pull overwhelms static reinforcement, infrastructure enforcement is necessary) is the strongest finding in this model. Specific numbers (83%→0%, 17:1 signal ratio, ~4 budget, 87 constraints) are artifacts of the measurement harness. The conclusion (infrastructure > prompting for behavioral constraints) stands independent of exact numbers.
 
 **Probes:** `probes/2026-02-24-probe-orchestrator-skill-behavioral-compliance.md`, `probes/2026-03-01-probe-agent-framework-behavioral-constraints-landscape.md`, `probes/2026-03-02-probe-layered-constraint-enforcement-design.md`
 
@@ -103,9 +127,9 @@ When designing or evaluating a behavioral grammar:
 | **Context budget** | How many tokens does this constraint cost? | Is reinforcement density proportional to risk? |
 | **Deliberate incompleteness** | Does the grammar force-route novel inputs? | Are there explicit gaps with "stop and ask" instructions? |
 | **Legibility** | Does this make behavior readable or just correct? | Does the human see what's happening, or just whether it passed a gate? |
-| **Constraint density** | How many constraints compete for attention in this document? | Behavioral: ≤4. Knowledge: ≤50. Beyond these, constraints regress to bare parity. |
-| **Emphasis framing** | Does the constraint use salience signals (MUST/NEVER/CRITICAL)? | Emphasis provides measurable lift at high density; neutral = bare parity at 10C. |
-| **Constraint type** | Is this behavioral (suppress default) or knowledge (add information)? | Behavioral constraints have ~4-constraint budget; knowledge constraints survive at 10+. |
+| **Constraint density** | How many constraints compete for attention in this document? | Behavioral constraints have a lower budget than knowledge constraints. At user level (production): 5C is the sweet spot (57-62% pass rate), 10C shows continued improvement (67%) not degradation. Density is the dominant variable (~2x impact vs injection level). |
+| **Emphasis framing** | Does the constraint use salience signals (MUST/NEVER/CRITICAL)? | Directional: emphasis > neutral at high density. Exact effect size TBD. |
+| **Constraint type** | Is this behavioral (suppress default) or knowledge (add information)? | Behavioral constraints degrade faster under competition than knowledge constraints. Exact budget TBD. |
 
 ## The Revert Spiral (Anti-Pattern)
 
@@ -119,25 +143,25 @@ Behavioral grammars are subject to a recurring cycle (documented in revert spira
 
 ## Open Questions
 
-1. **PARTIALLY ANSWERED:** What is the minimum reinforcement density for counter-instinctual constraints? **Answer:** 3 structurally diverse forms (table + checklist + anti-patterns) achieve ceiling compliance in isolation. But the effective budget is ~2-4 co-resident behavioral constraints before dilution degrades compliance. At 10 competing constraints, behavioral constraints regress to bare parity even with 3-form diversity. **Remaining:** What is the optimal allocation when only 4 behavioral constraints can survive? Which 4 matter most?
+1. **PARTIALLY ANSWERED:** What is the minimum reinforcement density for counter-instinctual constraints? The injection-level experiment (orch-go-pkp2) showed density is the dominant variable: 1C→5C gains +29pp pass rate, dwarfing injection-level effects. At user level (production): 1C=38%, 2C=62%, 5C=57%, 10C=67%. No cliff — gradual improvement with diminishing returns. But these are intent-only measurements (--print mode). Interactive testing still needed.
 
-2. **PARTIALLY ANSWERED:** Is weight the right mechanism for situational pull, or is something structurally different needed? **Answer:** Infrastructure enforcement (hooks, gates) is structurally different and necessary. The layered enforcement design (Mar 2) maps: hard behavioral → deny hooks, soft behavioral → coaching hooks, judgment → prompt (budgeted ≤4). The emphasis experiment shows emphasis language provides partial salience lift but cannot overcome dilution at scale. **Remaining:** Can coaching hooks (allow + contextual message) adequately handle the 28 soft behavioral constraints, or do some need hard gates?
+2. **PARTIALLY ANSWERED:** Is weight the right mechanism for situational pull, or is something structurally different needed? **Answer:** Infrastructure enforcement (hooks, gates) is structurally different and necessary. This conclusion is robust — supported by the agent framework landscape survey (8/8 frameworks converge on infrastructure) and direct observation of identity-action gap. The injection-level experiment confirmed: appending to system prompt provides no improvement over user-level (58.3% vs 56.0%). Only full system prompt replacement helps (71.4%), which isn't viable for production. **Remaining:** Interactive testing to validate whether intent-level patterns hold for actual tool-call behavior.
 
 3. Can detail corrections vs frame corrections be encoded in a grammar, or is that inherently human judgment? **Status:** Untested.
 
-4. **ANSWERED:** Does this model generalize across LLM providers and model families? **Answer:** YES. The opus replication (Mar 2) confirmed the dilution curve is model-independent — opus matches sonnet's pattern (cliff not gradual, bare parity at 10C). The agent framework landscape survey found all 8 frameworks converge on the same "interceptor over instructor" pattern regardless of underlying model. The dilution threshold and 3-form saturation appear to be properties of attention-based architectures, not specific models.
+4. **PARTIALLY ANSWERED:** Does this model generalize across LLM providers and model families? The agent framework landscape survey found all 8 frameworks converge on "interceptor over instructor" regardless of model — this is robust. The opus replication of the dilution curve is invalidated (same measurement issues as the original). Cross-model generalization of the qualitative pattern (infrastructure > prompting) holds; cross-model generalization of specific thresholds is untested.
 
 5. What would grammar-first skill authoring look like as deliberate practice? **Status:** Untested but the constraint taxonomy (hard behavioral / soft behavioral / judgment / knowledge) from the layered enforcement design provides a classification framework for authoring.
 
-6. **NEW:** What is the dilution curve shape? **Answer:** For behavioral constraints, it's a cliff not gradual: ceiling at 1-2C, variance at 5C, bare parity at 10C. For knowledge constraints, degradation is slower (functional at 10C). Emphasis language shifts the cliff rightward by ~1-2 constraint positions but doesn't eliminate it.
+6. **PARTIALLY ANSWERED:** What is the dilution curve shape? The injection-level experiment (orch-go-pkp2) measured across 3 levels × 4 densities. At user level (production-like): bare 43% → 1C 38% → 2C 62% → 5C 57% → 10C 67%. No cliff — gradual improvement, no bare parity. At system level (ceiling): 52% → 76% → 81% → 76% (slight regression at 10C suggesting dilution even at system level). The curve is monotonically improving (not cliff-shaped) but still intent-only measurement.
 
-7. **NEW:** Is emphasis language cosmetic or functional? **Answer:** Functional. At 10C, emphasis produces proposes-delegation 2/6 (combined across sessions) while neutral produces 0/3. Emphasis language serves as a salience signal that partially survives attention competition. But the effect is unreliable (high cross-session variance) and insufficient alone.
+7. **REOPENED:** Is emphasis language cosmetic or functional? Directional signal: emphasis > neutral at high density. Specific effect size (2/6 vs 0/3) is unreliable at N=3 and was measured under non-production conditions. Needs re-measurement.
 
 ## Related
 
 - **Principles:** Redundancy is Load-Bearing, Legibility Over Compliance, Identity is Not Behavior, Infrastructure Over Instruction
-- **Investigations:** Revert spiral pattern, behavioral testing baseline, intent spiral, grammar recovery validation, behavioral compliance (Feb 24), human-agent grammar coupling (Mar 3)
-- **Testing:** skillc test infrastructure (orch-go-4t8e, orch-go-0w6s, orch-go-oz1j)
+- **Investigations:** Revert spiral pattern, behavioral testing baseline, intent spiral, grammar recovery validation, behavioral compliance (Feb 24), human-agent grammar coupling (Mar 3), injection-level dilution experiment (Mar 4)
+- **Testing:** skillc test infrastructure (orch-go-4t8e, orch-go-0w6s, orch-go-oz1j, orch-go-pkp2)
 - **Probes (in `probes/`):**
   - `2026-02-24-probe-orchestrator-skill-behavioral-compliance.md` — Identity vs action compliance gap
   - `2026-03-01-probe-constraint-dilution-threshold.md` — Dilution curve: 3-form vs constraint count
