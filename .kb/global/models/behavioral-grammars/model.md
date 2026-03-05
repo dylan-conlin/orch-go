@@ -3,7 +3,7 @@
 **Created:** 2026-03-01
 **Status:** Active — quantitative claims downgraded to directional hypotheses (Mar 4, 2026). See Measurement Validity section.
 **Source:** Grammar Design Discipline synthesis (Dylan, Claude web session, Mar 1 2026)
-**Corroborated by:** Revert spiral investigation, behavioral testing baseline, grammar recovery validation, intent spiral investigation, constraint dilution threshold (Mar 1), emphasis language compliance (Mar 2), behavioral compliance identity/action gap (Feb 24), agent framework landscape survey (Mar 1), layered constraint enforcement design (Mar 2)
+**Corroborated by:** Revert spiral investigation, behavioral testing baseline, grammar recovery validation, intent spiral investigation, constraint dilution threshold (Mar 1), emphasis language compliance (Mar 2), behavioral compliance identity/action gap (Feb 24), agent framework landscape survey (Mar 1), layered constraint enforcement design (Mar 2), fabrication detection U-curve (Mar 4), injection-level dilution experiment (Mar 4)
 
 ## ⚠️ Measurement Validity (Mar 4, 2026)
 
@@ -11,7 +11,7 @@
 
 1. **Wrong injection level:** All skillc test measurements used `--system-prompt` which *replaces* the base Claude prompt. This is an isolated ceiling, not representative of production where skills load as user-level context. The ~4 behavioral constraint budget, 3-form saturation point, and dilution curve thresholds were measured in conditions that don't exist in production.
 
-2. **Intent ≠ action:** The `--print` harness measures what agents *say* they would do, not what they *do*. The Feb 24 probe proved these diverge (identity-action gap). Agents say "I delegate" while never calling `orch spawn`. All pass/fail scores are intent measurements, not behavioral ones.
+2. **Intent ≠ action:** The `--print` harness in quick mode measures what agents *say* they would do, not what they *do*. The Feb 24 probe proved these diverge (identity-action gap). Agents say "I delegate" while never calling `orch spawn`. All pass/fail scores to date are intent measurements, not behavioral ones. **Update (Mar 4):** `--test-mode full` now enables real tool execution via `--print --verbose --output-format stream-json`. The --print flag means "non-interactive, exit when done" — it does NOT disable tools. The quick mode explicitly disables tools (empty tools list). Action-based re-measurement is now possible but has not yet been performed on any claim in this model.
 
 3. **Replication failure:** The dilution curve (3/3→3/3→2/3→0/3) did not replicate under clean isolation (orch-go-zola). N=3 per variant compounds this — the opus "confirmation" was noise matching noise.
 
@@ -27,7 +27,16 @@
 - Decision: `--append-system-prompt` not worth deploying. Invest in constraint density instead.
 - Full data: `.kb/investigations/2026-03-04-inv-injection-level-dilution-experiment.md`
 
-**Remaining gap:** All measurements are still intent-only (--print mode). Interactive testing (tool-call observation) needed to validate whether these patterns hold for actual behavior.
+**Remaining gap:** All measurements to date are intent-only (--print quick mode). The `--test-mode full` tier now enables action-based measurement but no claims have been re-measured with it yet.
+
+**Fabrication experiment results (orch-go-wou2, closed, Mar 4):**
+- U-shaped curve: 5-10 constraints is the WORST zone for process over-application
+- `no-full-triage` indicator: bare 100% correct → 5C 20% → 10C 30% → current 70%
+- Classic fabrication (inventing references, claiming actions) near-zero across ALL variants
+- `acknowledges-limits` degrades monotonically: bare 77% → 5C 70% → 10C 70% → current 30%
+- The failure mode is process over-application, not fabrication — agents over-apply triage when they have process knowledge without situational calibration
+- **Implication for k3nu:** Grammar-first 4-constraint design must include urgency/override calibration alongside process rules. Process without calibration creates the U-shaped danger zone.
+- Full data: `.kb/investigations/2026-03-04-inv-fabrication-detection-low-constraint-counts.md`
 
 ## What This Is
 
@@ -43,7 +52,7 @@ A rule in a formal grammar is binary (accept/reject). A rule in an LLM behaviora
 
 **Test:** Same constraint, same model, varying situational pull (boring task vs interesting task). Does violation rate correlate with task interest?
 
-**Status: DIRECTIONAL HYPOTHESIS.** Dilution and emphasis experiments showed directional signal (constraints compete for attention, emphasis > neutral) but specific numbers are invalid — measured with `--system-prompt` (isolated ceiling, not production) and `--print` (intent, not action). Dilution curve did not replicate. Re-measurement needed under production conditions.
+**Status: DIRECTIONAL HYPOTHESIS, strengthened by U-curve.** Dilution and emphasis experiments showed directional signal (constraints compete for attention, emphasis > neutral) but specific numbers are invalid — measured with `--system-prompt` (isolated ceiling, not production) and `--print` (intent, not action). Dilution curve did not replicate. However, the fabrication experiment (wou2, N=10, user-level injection) revealed a U-shaped relationship: 5-10 constraints is WORSE than both bare and full skill. This confirms constraints compete probabilistically — intermediate density creates process over-application where agents have enough process knowledge to misapply but not enough context to calibrate.
 
 **Probes:** `probes/2026-03-01-probe-constraint-dilution-threshold.md`, `probes/2026-03-02-probe-emphasis-language-constraint-compliance.md`
 
@@ -127,7 +136,7 @@ When designing or evaluating a behavioral grammar:
 | **Context budget** | How many tokens does this constraint cost? | Is reinforcement density proportional to risk? |
 | **Deliberate incompleteness** | Does the grammar force-route novel inputs? | Are there explicit gaps with "stop and ask" instructions? |
 | **Legibility** | Does this make behavior readable or just correct? | Does the human see what's happening, or just whether it passed a gate? |
-| **Constraint density** | How many constraints compete for attention in this document? | Behavioral constraints have a lower budget than knowledge constraints. At user level (production): 5C is the sweet spot (57-62% pass rate), 10C shows continued improvement (67%) not degradation. Density is the dominant variable (~2x impact vs injection level). |
+| **Constraint density** | How many constraints compete for attention in this document? | Behavioral constraints have a lower budget than knowledge constraints. Overall pass rates improve with density (5C 57% → 10C 67%), but **situational judgment follows a U-curve**: 5-10C is the worst zone for process over-application. Process constraints need calibration constraints alongside them. Density is the dominant variable (~2x impact vs injection level). |
 | **Emphasis framing** | Does the constraint use salience signals (MUST/NEVER/CRITICAL)? | Directional: emphasis > neutral at high density. Exact effect size TBD. |
 | **Constraint type** | Is this behavioral (suppress default) or knowledge (add information)? | Behavioral constraints degrade faster under competition than knowledge constraints. Exact budget TBD. |
 
@@ -153,14 +162,14 @@ Behavioral grammars are subject to a recurring cycle (documented in revert spira
 
 5. What would grammar-first skill authoring look like as deliberate practice? **Status:** Untested but the constraint taxonomy (hard behavioral / soft behavioral / judgment / knowledge) from the layered enforcement design provides a classification framework for authoring.
 
-6. **PARTIALLY ANSWERED:** What is the dilution curve shape? The injection-level experiment (orch-go-pkp2) measured across 3 levels × 4 densities. At user level (production-like): bare 43% → 1C 38% → 2C 62% → 5C 57% → 10C 67%. No cliff — gradual improvement, no bare parity. At system level (ceiling): 52% → 76% → 81% → 76% (slight regression at 10C suggesting dilution even at system level). The curve is monotonically improving (not cliff-shaped) but still intent-only measurement.
+6. **SUBSTANTIALLY ANSWERED:** What is the dilution curve shape? **It depends on what you measure.** The injection-level experiment (orch-go-pkp2) showed monotonic improvement in overall pass rate: bare 43% → 1C 38% → 2C 62% → 5C 57% → 10C 67%. But the fabrication experiment (orch-go-wou2, N=10) revealed a **U-shaped curve on process over-application**: bare 100% correct → 5C 20% → 10C 30% → current 70% on the urgency-vs-process scenario. Overall scores improve with density, but situational judgment degrades at intermediate densities then recovers. The curve shape is monotonic for knowledge compliance but U-shaped for behavioral calibration. Both are intent-only measurements.
 
 7. **REOPENED:** Is emphasis language cosmetic or functional? Directional signal: emphasis > neutral at high density. Specific effect size (2/6 vs 0/3) is unreliable at N=3 and was measured under non-production conditions. Needs re-measurement.
 
 ## Related
 
 - **Principles:** Redundancy is Load-Bearing, Legibility Over Compliance, Identity is Not Behavior, Infrastructure Over Instruction
-- **Investigations:** Revert spiral pattern, behavioral testing baseline, intent spiral, grammar recovery validation, behavioral compliance (Feb 24), human-agent grammar coupling (Mar 3), injection-level dilution experiment (Mar 4)
+- **Investigations:** Revert spiral pattern, behavioral testing baseline, intent spiral, grammar recovery validation, behavioral compliance (Feb 24), human-agent grammar coupling (Mar 3), injection-level dilution experiment (Mar 4), fabrication detection U-curve (Mar 4)
 - **Testing:** skillc test infrastructure (orch-go-4t8e, orch-go-0w6s, orch-go-oz1j, orch-go-pkp2)
 - **Probes (in `probes/`):**
   - `2026-02-24-probe-orchestrator-skill-behavioral-compliance.md` — Identity vs action compliance gap

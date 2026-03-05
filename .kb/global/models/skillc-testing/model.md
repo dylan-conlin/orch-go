@@ -9,7 +9,7 @@
 
 ## Summary (30 seconds)
 
-Skillc test is a behavioral testing harness that measures whether a skill document changes an LLM's response distribution. It works by running the same scenario prompts with and without a skill (variant vs bare), scoring responses against detection patterns, and comparing pass rates. The harness uses Claude CLI's `--print` mode — single-turn, no tool execution, text-only output. The scoring engine supports four detection pattern types but only OR logic (pipe-separated alternatives). Experimental design uses variants (skill documents), scenarios (prompts + indicators), and multiple runs to measure lift over bare baseline.
+Skillc test is a behavioral testing harness that measures whether a skill document changes an LLM's response distribution. It works by running the same scenario prompts with and without a skill (variant vs bare), scoring responses against detection patterns, and comparing pass rates. The harness uses Claude CLI's `--print` mode (non-interactive, exit when done) with two tiers: quick (default, no tools, text output) for testing intent, and full (`--test-mode full`, tools enabled, stream-json output) for testing actual tool execution. The scoring engine supports four detection pattern types but only OR logic (pipe-separated alternatives). Experimental design uses variants (skill documents), scenarios (prompts + indicators), and multiple runs to measure lift over bare baseline.
 
 ---
 
@@ -110,11 +110,11 @@ claude --print \
 - `--output-format text` — Plain text response (not JSON)
 - `--dangerously-skip-permissions` — Skips permission prompts
 
-**Critical limitation:** `--print` mode cannot execute tools. The model receives tool definitions but can only describe what it *would* do, not actually do it. This means:
+**Important clarification:** `--print` mode CAN execute tools — it means "non-interactive, exit when done," not "no tools." The skillc quick mode (default) explicitly passes an empty tools list, which is what prevents tool execution. The `--test-mode full` tier enables tools and uses `--output-format stream-json` to capture real tool calls and results.
 
-- Scenarios testing tool *selection intent* work (e.g., "does the model mention spawning?")
-- Scenarios testing tool *execution outcomes* don't work (e.g., "does the model actually call orch spawn?")
-- Delegation scenarios must test delegation *intent* (proposes spawning) not delegation *action* (executes spawn command)
+- **Quick mode (default):** No tool execution. Tests intent — does the model *describe* the right action?
+- **Full mode (`--test-mode full`):** Real tool execution via `--print --verbose --output-format stream-json`. Tests action — does the model actually call the tool?
+- Delegation scenarios can test either intent (quick) or action (full) depending on test tier
 
 ### Environment Isolation
 
@@ -176,12 +176,14 @@ The runner creates a clean environment to prevent contamination:
 
 ### Why --print Mode Instead of Interactive?
 
-**Constraint:** The harness uses `--print` (single-turn, no tool execution) rather than interactive sessions.
+**Constraint:** The harness uses `--print` (non-interactive, exit when done) rather than interactive sessions.
 
-**Implication:** Cannot test tool execution, multi-turn conversation dynamics (beyond explicit multi-turn scenarios), or behaviors that emerge only through tool feedback loops.
+**Implication:** Single-turn (unless using explicit multi-turn scenarios). Cannot test behaviors that emerge only through extended interactive conversation.
 
-**This enables:** Fast execution (~10-30s per run), deterministic prompting, easy parallelization, no side effects
-**This constrains:** Cannot measure delegation *action* (only intent), cannot test tool-dependent behaviors
+**This enables:** Fast execution (~10-30s per run), deterministic prompting, easy parallelization
+**This constrains:** No interactive multi-turn dynamics, no human-in-the-loop behaviors
+
+**Note:** `--print` does NOT disable tools. The quick test tier disables tools explicitly (empty tools list). The full test tier (`--test-mode full`) enables real tool execution with stream-json output parsing.
 
 ### Why Pipe-Separated OR Only?
 
@@ -239,7 +241,7 @@ skillc test --scenarios scenarios/ --variant skill.md --model opus --runs 3
 
 ### Scenario Design Guidelines
 
-1. **Test intent, not execution** — `--print` can't execute tools. Test whether the model *describes* the right action, not whether it performs it.
+1. **Choose test tier by goal** — Quick mode (default) tests intent: does the model *describe* the right action? Full mode (`--test-mode full`) tests execution: does the model actually call the tool?
 2. **Use pipe-separated alternatives** — `response contains spawn|delegate|hand off` catches synonym variation.
 3. **Weight critical indicators higher** — The indicator that distinguishes skill-aware from bare behavior should have the highest weight.
 4. **Include "ceiling" scenarios** — Scenarios where bare already scores 8/8 verify the skill doesn't degrade baseline capabilities.
@@ -280,6 +282,8 @@ skillc test --scenarios scenarios/ --variant skill.md --dry-run
 2. Broken detection patterns → All 7 scenarios rewritten to pipe-separated format
 
 **Mar 4, 2026:** V4 orchestrator skill validated: 43/56 (77%) vs bare 35/56 (63%). +8 point lift confirmed after both bug fixes.
+
+**Mar 4, 2026:** Corrected --print misconception. `--print` does NOT disable tools — it means "non-interactive, exit when done." The quick test tier was explicitly disabling tools (empty tools list). Added `--test-mode full` tier: uses `--print --verbose --output-format stream-json` with tools enabled to capture real tool calls and results. This enables testing action, not just intent.
 
 ---
 
