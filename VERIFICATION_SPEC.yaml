@@ -1,24 +1,30 @@
-task: "Dashboard: surface daemon capacity state"
-beads_id: orch-go-98q6
+task: "Implement P3 coaching hooks: session-triage, completion-classification"
+beads_id: orch-go-2qrn
 
-verification:
-  automated:
-    - command: "curl -sk https://localhost:3348/api/daemon | python3 -c 'import json,sys; d=json.load(sys.stdin); assert all(k in d for k in [\"capacity_max\",\"capacity_used\",\"capacity_free\",\"ready_count\"])'"
-      expects: "API returns capacity_max, capacity_used, capacity_free, ready_count"
-    - command: "go test ./cmd/orch/ -run 'TestHandleDaemon|TestDaemonAPI' -v -count=1"
-      expects: "5 tests pass"
-
-changes:
-  - file: web/src/lib/components/stats-bar/stats-bar.svelte
-    what: "Daemon indicator shows capacity (X/Y agents) and queue count (Z queued) inline instead of behind dropdown. Queue count highlighted amber when at capacity (capacity_free === 0)."
-  - file: cmd/orch/serve_system_test.go
-    what: "3 new tests: TestHandleDaemonReturnsCapacityFields, TestHandleDaemonMethodNotAllowed, TestDaemonAPIResponseCapacityJSON"
-
-notes:
-  - "No Go API changes needed — /api/daemon already exposed all capacity fields"
-  - "No new store/type changes — daemon.ts DaemonStatus already has capacity_max, capacity_used, capacity_free, ready_count"
-  - "Key UX: when capacity_free === 0 and ready_count > 0, the 'queued' text turns amber — immediately explains why spawns aren't happening"
+deliverables:
+  - path: ~/.orch/hooks/nudge-orchestrator-session-triage.py
+    description: "SessionStart hook that surfaces pending triage:review issues"
+  - path: ~/.orch/hooks/nudge-completion-outcome-classification.py
+    description: "PreToolUse (Bash) hook that nudges outcome classification on orch complete"
+  - path: ~/.orch/hooks/tests/test_nudge_orchestrator_session_triage.py
+    description: "21 tests for session-triage hook"
+  - path: ~/.orch/hooks/tests/test_nudge_completion_outcome_classification.py
+    description: "27 tests for completion-classification hook"
 
 tests:
-  command: "go test ./cmd/orch/ -run 'TestHandleDaemon|TestDaemonAPI' -v -count=1"
-  result: "5/5 PASS (0.2s)"
+  command: "cd ~/.orch/hooks/tests && python3 -m pytest test_nudge_orchestrator_session_triage.py test_nudge_completion_outcome_classification.py -v"
+  result: "48 passed in 0.10s"
+
+manual_steps_required:
+  - description: "Register hooks in ~/.claude/settings.json"
+    reason: "macOS sandbox prevents worker agents from writing settings.json"
+    instructions: |
+      Add to PreToolUse -> Bash hooks array:
+        {"type": "command", "command": "$HOME/.orch/hooks/nudge-completion-outcome-classification.py", "timeout": 10}
+      Add new entry to SessionStart hooks array:
+        {"hooks": [{"type": "command", "command": "$HOME/.orch/hooks/nudge-orchestrator-session-triage.py", "timeout": 10}]}
+
+notes:
+  - "2 of 4 P3 hooks already existed: investigation-drift and spawn-context"
+  - "Both new hooks follow naming convention 'nudge-' (coaching, not gate)"
+  - "Existing hook tests still pass (45 passed for investigation-drift + spawn-context)"
