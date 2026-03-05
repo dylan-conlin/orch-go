@@ -43,3 +43,51 @@ func TestAgentAPIResponseJSONFormat(t *testing.T) {
 		t.Errorf("Expected recommendation 'close', got %v", synthData["recommendation"])
 	}
 }
+
+func TestAgentAPIResponseEscalationLevel(t *testing.T) {
+	tests := []struct {
+		name     string
+		level    string
+		expectIn bool // expect escalation_level in JSON output
+	}{
+		{"empty omitted", "", false},
+		{"none included", "none", true},
+		{"info included", "info", true},
+		{"review included", "review", true},
+		{"block included", "block", true},
+		{"failed included", "failed", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := AgentAPIResponse{
+				ID:              "test-agent",
+				Status:          "completed",
+				EscalationLevel: tt.level,
+			}
+
+			data, err := json.Marshal(agent)
+			if err != nil {
+				t.Fatalf("Failed to marshal: %v", err)
+			}
+
+			var result map[string]interface{}
+			if err := json.Unmarshal(data, &result); err != nil {
+				t.Fatalf("Failed to unmarshal: %v", err)
+			}
+
+			_, exists := result["escalation_level"]
+			if tt.expectIn && !exists {
+				t.Errorf("Expected escalation_level in JSON, got: %s", string(data))
+			}
+			if !tt.expectIn && exists {
+				t.Errorf("Expected escalation_level omitted from JSON, got: %s", string(data))
+			}
+			if tt.expectIn {
+				if got := result["escalation_level"].(string); got != tt.level {
+					t.Errorf("Expected escalation_level=%q, got %q", tt.level, got)
+				}
+			}
+		})
+	}
+}

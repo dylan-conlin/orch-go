@@ -120,12 +120,36 @@
 		escalation: EscalationLevel;
 	}
 
+	// Map server escalation level (5-tier) to client EscalationLevel (3-tier).
+	// Returns undefined if no server value, allowing client-side fallback.
+	function mapServerEscalation(serverLevel?: string): EscalationLevel | undefined {
+		if (!serverLevel) return undefined;
+		switch (serverLevel) {
+			case 'block':
+			case 'failed':
+				return 'blocked';
+			case 'review':
+				return 'review';
+			case 'none':
+			case 'info':
+				return 'safe';
+			default:
+				return undefined;
+		}
+	}
+
 	function computeEscalation(item: {
+		serverEscalation?: string;
 		outcome?: string;
 		recommendation?: string;
 		nextActions?: string[];
 		skill?: string;
 	}): EscalationLevel {
+		// Prefer server-computed escalation when available
+		const mapped = mapServerEscalation(item.serverEscalation);
+		if (mapped !== undefined) return mapped;
+
+		// Fallback to client-side approximation
 		if (item.outcome === 'failed' || item.outcome === 'blocked') return 'blocked';
 		if (item.outcome === 'partial') return 'review';
 		if (item.recommendation === 'escalate') return 'blocked';
@@ -411,6 +435,7 @@
 			if (!completionAt) continue;
 
 			const escalationInput = {
+				serverEscalation: agent.escalation_level,
 				outcome: agent.synthesis?.outcome,
 				recommendation: agent.synthesis?.recommendation,
 				nextActions: agent.synthesis?.next_actions,

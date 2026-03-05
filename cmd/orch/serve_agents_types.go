@@ -36,6 +36,7 @@ type AgentAPIResponse struct {
 	InvestigationContent string               `json:"investigation_content,omitempty"` // Raw investigation file content for inline rendering
 	CurrentActivity      string               `json:"current_activity,omitempty"`      // Last activity text from session messages
 	LastActivityAt       string               `json:"last_activity_at,omitempty"`      // ISO 8601 timestamp of last activity
+	EscalationLevel      string                        `json:"escalation_level,omitempty"`      // none, info, review, block, failed — server-computed escalation
 	Reason               string                        `json:"reason,omitempty"`                // Reason code for degraded/partial state (from query engine)
 	ContextRisk          *verify.ContextExhaustionRisk `json:"context_risk,omitempty"`          // Context exhaustion risk assessment
 }

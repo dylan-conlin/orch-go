@@ -252,6 +252,20 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+
+			// Compute server-side escalation level for completed agents.
+			// Uses DetermineEscalation with available data (avoids expensive
+			// DetermineEscalationFromCompletion which shells out to git).
+			if phaseComplete && agents[i].Synthesis != nil {
+				input := verify.EscalationInput{
+					VerificationPassed: true, // Phase: Complete implies verification ran
+					SkillName:          agents[i].Skill,
+					Outcome:            strings.ToLower(agents[i].Synthesis.Outcome),
+					Recommendation:     strings.ToLower(agents[i].Synthesis.Recommendation),
+					NextActions:        agents[i].Synthesis.NextActions,
+				}
+				agents[i].EscalationLevel = verify.DetermineEscalation(input).String()
+			}
 		}
 
 		// Gap analysis from spawn events
@@ -338,6 +352,15 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 					DeltaSummary:   summarizeDelta(synthesis.Delta),
 					NextActions:    synthesis.NextActions,
 				}
+				// Compute escalation for workspace-only completed agents
+				input := verify.EscalationInput{
+					VerificationPassed: true,
+					SkillName:          agent.Skill,
+					Outcome:            strings.ToLower(synthesis.Outcome),
+					Recommendation:     strings.ToLower(synthesis.Recommendation),
+					NextActions:        synthesis.NextActions,
+				}
+				agent.EscalationLevel = verify.DetermineEscalation(input).String()
 			}
 			if content, err := os.ReadFile(synthesisPath); err == nil {
 				agent.SynthesisContent = string(content)

@@ -67,6 +67,7 @@ export interface Agent {
 	close_reason?: string; // Beads close reason, fallback for completed agents without synthesis
 	gap_analysis?: GapAnalysis; // Context gap analysis from spawn time
 	context_risk?: ContextRisk; // Context exhaustion risk (AT-RISK, CRITICAL)
+	escalation_level?: string; // Server-computed escalation: none, info, review, block, failed
 	investigation_path?: string; // Path to investigation file from beads comments
 	synthesis_content?: string; // Raw SYNTHESIS.md content for inline rendering
 	investigation_content?: string; // Raw investigation file content for inline rendering
