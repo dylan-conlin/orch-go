@@ -232,17 +232,57 @@ func TestDaemonReconcileWithActiveCountFunc(t *testing.T) {
 	}
 }
 
-func TestDaemonReconcileDefaultCountIncludesTmux(t *testing.T) {
+func TestDaemonReconcileDefaultCountUsesBeads(t *testing.T) {
 	// Test that when no custom activeCountFunc is set, the daemon uses
-	// CombinedActiveCount which includes both OpenCode and tmux sources.
-	// Since CombinedActiveCount makes real HTTP/tmux calls, we verify
-	// the function reference is set correctly.
+	// BeadsActiveCount (via defaultActiveCounter) as the capacity source.
 	config := DefaultConfig()
 	config.MaxAgents = 3
 	d := NewWithConfig(config)
 
 	if d.ActiveCounter == nil {
 		t.Fatal("ActiveCounter should be set to defaultActiveCounter by default")
+	}
+
+	// Verify defaultActiveCounter calls BeadsActiveCount (not CombinedActiveCount).
+	// We can't easily mock BeadsActiveCount itself, but we verify the type is correct.
+	_, isDefault := d.ActiveCounter.(*defaultActiveCounter)
+	if !isDefault {
+		t.Fatalf("ActiveCounter should be *defaultActiveCounter, got %T", d.ActiveCounter)
+	}
+}
+
+func TestIsBeadsIssueDone(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels []string
+		want   bool
+	}{
+		{"no labels", nil, false},
+		{"empty labels", []string{}, false},
+		{"unrelated labels", []string{"triage:ready", "orch:agent"}, false},
+		{"verification-failed", []string{"daemon:verification-failed"}, true},
+		{"ready-review", []string{"daemon:ready-review"}, true},
+		{"verification-failed among others", []string{"orch:agent", "daemon:verification-failed"}, true},
+		{"ready-review among others", []string{"triage:ready", "daemon:ready-review"}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isBeadsIssueDone(tt.labels)
+			if got != tt.want {
+				t.Errorf("isBeadsIssueDone(%v) = %v, want %v", tt.labels, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBeadsActiveCountIntegration(t *testing.T) {
+	// Integration test: BeadsActiveCount queries real beads.
+	// If beads daemon is not running, it falls back to CLI.
+	// Either way, it should return a non-negative count without panicking.
+	count := BeadsActiveCount()
+	if count < 0 {
+		t.Errorf("BeadsActiveCount() = %d, want >= 0", count)
 	}
 }
 

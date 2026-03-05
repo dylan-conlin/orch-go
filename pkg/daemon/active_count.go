@@ -241,6 +241,72 @@ func CountActiveTmuxAgents(projectName string) map[string]bool {
 	return activeBeadsIDs
 }
 
+// BeadsActiveCount returns the number of active orch-managed agents by querying
+// beads for in_progress issues with the orch:agent label. This replaces
+// CombinedActiveCount as the capacity source — beads is the authoritative state
+// machine for agent lifecycle, so querying it directly eliminates ghost slot bugs
+// caused by tmux window scanning (dead panes, child windows, cross-project inflation).
+//
+// Issues with daemon:verification-failed or daemon:ready-review labels are excluded
+// (they represent completed agents awaiting review, not active capacity consumers).
+//
+// Uses RPC client first, falls back to bd CLI.
+func BeadsActiveCount() int {
+	const orchAgentLabel = "orch:agent"
+
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(2))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			issues, err := client.List(&beads.ListArgs{
+				Status:    "in_progress",
+				LabelsAny: []string{orchAgentLabel},
+				Limit:     0,
+			})
+			if err == nil {
+				count := 0
+				for _, issue := range issues {
+					if !isIssueDone(issue.Status, issue.Labels) {
+						count++
+					}
+				}
+				return count
+			}
+		}
+	}
+
+	// Fallback: bd CLI
+	issues, err := beads.FallbackListWithLabel(orchAgentLabel, "")
+	if err != nil {
+		return 0 // Fail-open: if beads is unreachable, report 0 (matches CombinedActiveCount behavior)
+	}
+
+	count := 0
+	for _, issue := range issues {
+		if issue.Status != "in_progress" {
+			continue
+		}
+		if !isBeadsIssueDone(issue.Labels) {
+			count++
+		}
+	}
+	return count
+}
+
+// isBeadsIssueDone checks if a beads issue's labels indicate it should not count
+// as active capacity. Used by BeadsActiveCount for the CLI fallback path where
+// we have beads.Issue (not daemon.Issue).
+func isBeadsIssueDone(labels []string) bool {
+	for _, label := range labels {
+		if label == LabelVerificationFailed || label == LabelReadyReview {
+			return true
+		}
+	}
+	return false
+}
+
 // CombinedActiveCount returns the total number of active agents across
 // both OpenCode sessions and tmux windows, deduplicated by beads ID.
 // This prevents the daemon from resetting its pool to 0 when agents
@@ -252,6 +318,9 @@ func CountActiveTmuxAgents(projectName string) map[string]bool {
 //
 // Tmux scanning is scoped to the current project (derived from cwd)
 // to prevent cross-project agents from inflating the count.
+//
+// Deprecated: Use BeadsActiveCount() for capacity decisions. This function
+// remains for liveness/orphan detection (future: DiscoverLiveAgents).
 func CombinedActiveCount() int {
 	activeBeadsIDs := make(map[string]bool)
 

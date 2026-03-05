@@ -76,9 +76,9 @@ func (d *Daemon) RateLimitMessage() string {
 // ReconcileActiveAgents synchronizes the worker pool with actual running agents
 // across ALL backends (OpenCode sessions AND tmux windows).
 //
-// Uses the configurable activeCountFunc which defaults to CombinedActiveCount().
-// This ensures tmux-based agents (Claude CLI backend) are counted toward capacity,
-// preventing the pool from resetting to 0 every poll cycle and allowing unlimited spawns.
+// Uses the configurable activeCountFunc which defaults to BeadsActiveCount().
+// Beads is the authoritative source for agent lifecycle, eliminating ghost slot
+// bugs caused by tmux window scanning.
 //
 // Also cleans up stale entries from the spawned issue tracker.
 //
@@ -107,7 +107,7 @@ func (d *Daemon) ReconcileActiveAgents() ReconcileResult {
 
 // ReconcileWithOpenCode is the legacy name for ReconcileActiveAgents.
 // Kept for backward compatibility with cmd/orch/daemon.go caller.
-// Now uses CombinedActiveCount (OpenCode + tmux) instead of just DefaultActiveCount.
+// Now uses BeadsActiveCount (authoritative) instead of CombinedActiveCount (scan-based).
 func (d *Daemon) ReconcileWithOpenCode() ReconcileResult {
 	return d.ReconcileActiveAgents()
 }

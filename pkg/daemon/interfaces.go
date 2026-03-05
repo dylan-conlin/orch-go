@@ -170,7 +170,7 @@ func (c *defaultSessionCleaner) Cleanup(config Config) (int, string, error) {
 type defaultActiveCounter struct{}
 
 func (c *defaultActiveCounter) Count() int {
-	return CombinedActiveCount()
+	return BeadsActiveCount()
 }
 
 // defaultAgentDiscoverer is the production AgentDiscoverer.
