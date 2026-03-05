@@ -858,6 +858,13 @@ func ListWindows(sessionName string) ([]WindowInfo, error) {
 	return windows, nil
 }
 
+// WindowMatch pairs a window with the session it was found in.
+// Used by FindAll* functions that search across multiple sessions.
+type WindowMatch struct {
+	Window      WindowInfo
+	SessionName string
+}
+
 // FindWindowByBeadsID finds a window by searching for beads ID in window name.
 // Returns nil if not found (no error).
 func FindWindowByBeadsID(sessionName, beadsID string) (*WindowInfo, error) {
@@ -957,6 +964,101 @@ func FindWindowByBeadsIDAllSessions(beadsID string) (*WindowInfo, string, error)
 		}
 	}
 	return nil, "", nil
+}
+
+// FindAllWindowsByBeadsID finds ALL windows matching a beads ID in a single session.
+// Unlike FindWindowByBeadsID which returns only the first match, this returns all matches.
+func FindAllWindowsByBeadsID(sessionName, beadsID string) ([]WindowInfo, error) {
+	windows, err := ListWindows(sessionName)
+	if err != nil {
+		return nil, err
+	}
+
+	searchPattern := fmt.Sprintf("[%s]", beadsID)
+	var matches []WindowInfo
+	for _, w := range windows {
+		if strings.Contains(w.Name, searchPattern) {
+			matches = append(matches, w)
+		}
+	}
+	return matches, nil
+}
+
+// FindAllWindowsByWorkspaceName finds ALL windows matching a workspace name in a single session.
+// Unlike FindWindowByWorkspaceName which returns only the first match, this returns all matches.
+func FindAllWindowsByWorkspaceName(sessionName, workspaceName string) ([]WindowInfo, error) {
+	windows, err := ListWindows(sessionName)
+	if err != nil {
+		return nil, err
+	}
+
+	var matches []WindowInfo
+	for _, w := range windows {
+		if strings.Contains(w.Name, workspaceName) {
+			matches = append(matches, w)
+		}
+	}
+	return matches, nil
+}
+
+// FindAllWindowsByBeadsIDAllSessions searches all workers sessions, the orchestrator session,
+// and the meta-orchestrator session for ALL windows with the given beads ID.
+// Unlike FindWindowByBeadsIDAllSessions which returns only the first match,
+// this returns every matching window across all sessions.
+func FindAllWindowsByBeadsIDAllSessions(beadsID string) ([]WindowMatch, error) {
+	sessions, err := ListWorkersSessions()
+	if err != nil {
+		return nil, err
+	}
+
+	if SessionExists(OrchestratorSessionName) {
+		sessions = append(sessions, OrchestratorSessionName)
+	}
+	if SessionExists(MetaOrchestratorSessionName) {
+		sessions = append(sessions, MetaOrchestratorSessionName)
+	}
+
+	var allMatches []WindowMatch
+	for _, sessionName := range sessions {
+		windows, err := FindAllWindowsByBeadsID(sessionName, beadsID)
+		if err != nil {
+			continue // Skip sessions that fail
+		}
+		for _, w := range windows {
+			allMatches = append(allMatches, WindowMatch{Window: w, SessionName: sessionName})
+		}
+	}
+	return allMatches, nil
+}
+
+// FindAllWindowsByWorkspaceNameAllSessions searches all workers sessions, the orchestrator session,
+// and the meta-orchestrator session for ALL windows with the given workspace name.
+// Unlike FindWindowByWorkspaceNameAllSessions which returns only the first match,
+// this returns every matching window across all sessions.
+func FindAllWindowsByWorkspaceNameAllSessions(workspaceName string) ([]WindowMatch, error) {
+	sessions, err := ListWorkersSessions()
+	if err != nil {
+		return nil, err
+	}
+
+	if SessionExists(OrchestratorSessionName) {
+		sessions = append(sessions, OrchestratorSessionName)
+	}
+	if SessionExists(MetaOrchestratorSessionName) {
+		sessions = append(sessions, MetaOrchestratorSessionName)
+	}
+
+	var allMatches []WindowMatch
+	for _, sessionName := range sessions {
+		windows, err := FindAllWindowsByWorkspaceName(sessionName, workspaceName)
+		if err != nil {
+			continue // Skip sessions that fail
+		}
+		for _, w := range windows {
+			allMatches = append(allMatches, WindowMatch{Window: w, SessionName: sessionName})
+		}
+	}
+	return allMatches, nil
 }
 
 // WindowExistsByID checks if a tmux window exists by its unique ID (e.g., "@1234").

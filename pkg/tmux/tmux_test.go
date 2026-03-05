@@ -877,6 +877,197 @@ func TestHasChildProcesses(t *testing.T) {
 	}
 }
 
+// TestFindAllWindowsByBeadsID verifies that FindAllWindowsByBeadsID returns
+// ALL matching windows, not just the first one.
+func TestFindAllWindowsByBeadsID(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	project := "orch-go-test-find-all-beads"
+	projectDir := "/tmp/orch-go-test-find-all-beads"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	beadsID := "test-beads-dup-123"
+
+	// Create TWO windows with the same beads ID (simulating respawn/duplicate)
+	windowName1 := BuildWindowName("og-feat-first-05mar", "feature-impl", beadsID)
+	_, windowID1, err := CreateWindow(sessionName, windowName1, projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window 1: %v", err)
+	}
+
+	windowName2 := BuildWindowName("og-feat-second-05mar", "feature-impl", beadsID)
+	_, windowID2, err := CreateWindow(sessionName, windowName2, projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window 2: %v", err)
+	}
+
+	// FindAllWindowsByBeadsID should return BOTH windows
+	found, err := FindAllWindowsByBeadsID(sessionName, beadsID)
+	if err != nil {
+		t.Fatalf("FindAllWindowsByBeadsID failed: %v", err)
+	}
+
+	if len(found) != 2 {
+		t.Errorf("FindAllWindowsByBeadsID returned %d windows, want 2", len(found))
+	}
+
+	// Verify both window IDs are present
+	foundIDs := map[string]bool{}
+	for _, w := range found {
+		foundIDs[w.ID] = true
+	}
+	if !foundIDs[windowID1] {
+		t.Errorf("FindAllWindowsByBeadsID missing window ID %s", windowID1)
+	}
+	if !foundIDs[windowID2] {
+		t.Errorf("FindAllWindowsByBeadsID missing window ID %s", windowID2)
+	}
+}
+
+// TestFindAllWindowsByBeadsIDAllSessions verifies that FindAllWindowsByBeadsIDAllSessions
+// returns matching windows across multiple tmux sessions.
+func TestFindAllWindowsByBeadsIDAllSessions(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	projectDir := "/tmp/orch-go-test-find-all-beads-sessions"
+
+	session1, err := EnsureWorkersSession("orch-go-test-fab-1", projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session 1: %v", err)
+	}
+	defer func() { _ = KillSession(session1) }()
+
+	session2, err := EnsureWorkersSession("orch-go-test-fab-2", projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session 2: %v", err)
+	}
+	defer func() { _ = KillSession(session2) }()
+
+	beadsID := "test-beads-cross-sess-456"
+
+	// Create one window in each session with the same beads ID
+	windowName1 := BuildWindowName("og-feat-sess1-05mar", "feature-impl", beadsID)
+	_, windowID1, err := CreateWindow(session1, windowName1, projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window in session 1: %v", err)
+	}
+
+	windowName2 := BuildWindowName("og-feat-sess2-05mar", "feature-impl", beadsID)
+	_, windowID2, err := CreateWindow(session2, windowName2, projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window in session 2: %v", err)
+	}
+
+	// FindAllWindowsByBeadsIDAllSessions should return BOTH
+	matches, err := FindAllWindowsByBeadsIDAllSessions(beadsID)
+	if err != nil {
+		t.Fatalf("FindAllWindowsByBeadsIDAllSessions failed: %v", err)
+	}
+
+	if len(matches) != 2 {
+		t.Errorf("FindAllWindowsByBeadsIDAllSessions returned %d matches, want 2", len(matches))
+	}
+
+	// Verify both window IDs are present
+	foundIDs := map[string]bool{}
+	for _, m := range matches {
+		foundIDs[m.Window.ID] = true
+	}
+	if !foundIDs[windowID1] {
+		t.Errorf("FindAllWindowsByBeadsIDAllSessions missing window ID %s from session 1", windowID1)
+	}
+	if !foundIDs[windowID2] {
+		t.Errorf("FindAllWindowsByBeadsIDAllSessions missing window ID %s from session 2", windowID2)
+	}
+}
+
+// TestFindAllWindowsByWorkspaceName verifies that FindAllWindowsByWorkspaceName
+// returns ALL matching windows in a session.
+func TestFindAllWindowsByWorkspaceName(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	project := "orch-go-test-find-all-ws"
+	projectDir := "/tmp/orch-go-test-find-all-ws"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	workspaceName := "og-feat-dupws-05mar"
+
+	// Create two windows with the same workspace name (different beads IDs)
+	windowName1 := BuildWindowName(workspaceName, "feature-impl", "beads-a")
+	_, windowID1, err := CreateWindow(sessionName, windowName1, projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window 1: %v", err)
+	}
+
+	windowName2 := BuildWindowName(workspaceName, "feature-impl", "beads-b")
+	_, windowID2, err := CreateWindow(sessionName, windowName2, projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window 2: %v", err)
+	}
+
+	found, err := FindAllWindowsByWorkspaceName(sessionName, workspaceName)
+	if err != nil {
+		t.Fatalf("FindAllWindowsByWorkspaceName failed: %v", err)
+	}
+
+	if len(found) != 2 {
+		t.Errorf("FindAllWindowsByWorkspaceName returned %d windows, want 2", len(found))
+	}
+
+	foundIDs := map[string]bool{}
+	for _, w := range found {
+		foundIDs[w.ID] = true
+	}
+	if !foundIDs[windowID1] {
+		t.Errorf("FindAllWindowsByWorkspaceName missing window ID %s", windowID1)
+	}
+	if !foundIDs[windowID2] {
+		t.Errorf("FindAllWindowsByWorkspaceName missing window ID %s", windowID2)
+	}
+}
+
+// TestFindAllWindowsByBeadsIDNoMatch verifies FindAllWindowsByBeadsID returns
+// empty slice (not nil) when no windows match.
+func TestFindAllWindowsByBeadsIDNoMatch(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	project := "orch-go-test-find-all-none"
+	projectDir := "/tmp/orch-go-test-find-all-none"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	found, err := FindAllWindowsByBeadsID(sessionName, "nonexistent-beads-id")
+	if err != nil {
+		t.Fatalf("FindAllWindowsByBeadsID failed: %v", err)
+	}
+
+	if len(found) != 0 {
+		t.Errorf("FindAllWindowsByBeadsID returned %d windows for nonexistent ID, want 0", len(found))
+	}
+}
+
 func TestIsPaneActive_ConservativeOnError(t *testing.T) {
 	// IsPaneActive should return true (conservative) for invalid window IDs
 	// to avoid false negatives that would miscount active agents.
