@@ -236,6 +236,17 @@ Three-Layer Reconnection is per-agent. Session synthesis applies the same patter
 
 The debrief's "What We Learned" section is where this lives. If it reads like an event log, it's a summary. If it reads like a paragraph you'd tell someone to explain why the session mattered, it's comprehension.
 
+### Thread Capture (Mid-Session)
+
+When insight crystallizes during conversation — not at session close:
+
+- `orch thread new "Thread title"` — name the forming thought
+- `orch thread append slug "entry"` — capture the insight while it's fresh
+- `orch thread list` — see active threads
+
+Threads are for thinking that's too important to lose but too young to formalize.
+Don't wait for the debrief. Capture it now.
+
 ### Completion Workflow by Work Type
 
 | Work Type | Review Tier | Verification | Synthesis | Sync with Dylan? |
