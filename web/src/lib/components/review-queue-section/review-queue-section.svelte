@@ -1,8 +1,16 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import { reviewQueue, type ReviewQueueIssue } from '$lib/stores/beads';
+	import { agents, type Agent } from '$lib/stores/agents';
 
 	export let expanded: boolean = true;
+
+	// Join review queue items with agent data for synthesis enrichment
+	$: agentByBeadsId = new Map<string, Agent>(
+		$agents
+			.filter((a): a is Agent & { beads_id: string } => !!a.beads_id)
+			.map(a => [a.beads_id, a])
+	);
 
 	function toggle() {
 		expanded = !expanded;
@@ -12,8 +20,10 @@
 		if (issues.length === 0) return '';
 
 		const titles = issues.slice(0, 2).map((i) => {
-			const title = i.title;
-			return title.length > 30 ? title.substring(0, 30) + '...' : title;
+			// Use synthesis TLDR if available, otherwise issue title
+			const agent = agentByBeadsId.get(i.id);
+			const text = agent?.synthesis?.tldr || i.title;
+			return text.length > 30 ? text.substring(0, 30) + '...' : text;
 		});
 
 		if (issues.length <= 2) {
@@ -90,13 +100,30 @@
 			<div class="border-t p-2" data-testid="review-queue-content">
 				<div class="space-y-1">
 					{#each sortedIssues as issue (issue.id)}
+						{@const synthesis = agentByBeadsId.get(issue.id)?.synthesis}
 						<div class="flex items-center gap-1 sm:gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50" data-testid="review-issue-{issue.id}">
 							<span class="flex-shrink-0 text-xs font-medium {getTierClass(issue.tier)}">
 								{getTierLabel(issue.tier)}
 							</span>
-							<span class="flex-1 truncate min-w-0" title={issue.title}>
-								{issue.title}
-							</span>
+							{#if synthesis?.outcome}
+								<Badge variant={synthesis.outcome === 'success' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px] flex-shrink-0">
+									{synthesis.outcome.split(/\s*\(/)[0].trim()}
+								</Badge>
+							{/if}
+							{#if synthesis?.tldr}
+								<span class="flex-1 truncate min-w-0" title={synthesis.tldr}>
+									{synthesis.tldr.length > 60 ? synthesis.tldr.substring(0, 57) + '...' : synthesis.tldr}
+								</span>
+							{:else}
+								<span class="flex-1 truncate min-w-0 italic text-muted-foreground" title={issue.title}>
+									{issue.title}
+								</span>
+							{/if}
+							{#if !synthesis}
+								<Badge variant="outline" class="h-4 px-1 text-[10px] flex-shrink-0 text-muted-foreground/70 border-dashed">
+									no synthesis
+								</Badge>
+							{/if}
 							<Badge variant="outline" class="h-5 px-1.5 text-xs flex-shrink-0">
 								{issue.issue_type}
 							</Badge>

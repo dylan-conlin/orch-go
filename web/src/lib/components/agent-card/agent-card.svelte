@@ -628,7 +628,7 @@
 	<Tooltip.Root>
 		<Tooltip.Trigger>
 			{#snippet child({ props })}
-				<span {...props} class="mt-1 block w-full truncate text-left text-xs font-medium cursor-default">
+				<span {...props} class="mt-1 block w-full truncate text-left text-xs cursor-default {agent.status === 'completed' && !agent.synthesis?.tldr ? 'italic text-muted-foreground font-normal' : 'font-medium'}">
 					{getDisplayTitle(agent)}
 				</span>
 			{/snippet}
@@ -830,28 +830,33 @@
 		</div>
 	{/if}
 
-	<!-- Synthesis outcome badge for completed agents (only if outcome exists) -->
-	<!-- Note: TLDR/close_reason already shown in title - no need to duplicate -->
-	{#if agent.status === 'completed' && agent.synthesis?.outcome}
+	<!-- Synthesis outcome badge or no-synthesis indicator for completed agents -->
+	{#if agent.status === 'completed'}
 		<div class="mt-1.5 border-t border-border/50 pt-1.5">
-			{#if hasOutcomeDetails(agent.synthesis.outcome)}
-				<Tooltip.Root>
-					<Tooltip.Trigger>
-						{#snippet child({ props })}
-							<span {...props}>
-								<Badge variant={getShortOutcome(agent.synthesis?.outcome ?? '') === 'success' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px]">
-									{getShortOutcome(agent.synthesis?.outcome ?? "")}
-								</Badge>
-							</span>
-						{/snippet}
-					</Tooltip.Trigger>
-					<Tooltip.Content class="max-w-xs">
-						<p>{agent.synthesis.outcome}</p>
-					</Tooltip.Content>
-				</Tooltip.Root>
+			{#if agent.synthesis?.outcome}
+				{#if hasOutcomeDetails(agent.synthesis.outcome)}
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<span {...props}>
+									<Badge variant={getShortOutcome(agent.synthesis?.outcome ?? '') === 'success' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px]">
+										{getShortOutcome(agent.synthesis?.outcome ?? "")}
+									</Badge>
+								</span>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content class="max-w-xs">
+							<p>{agent.synthesis.outcome}</p>
+						</Tooltip.Content>
+					</Tooltip.Root>
+				{:else}
+					<Badge variant={agent.synthesis.outcome === 'success' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px]">
+						{agent.synthesis.outcome}
+					</Badge>
+				{/if}
 			{:else}
-				<Badge variant={agent.synthesis.outcome === 'success' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px]">
-					{agent.synthesis.outcome}
+				<Badge variant="outline" class="h-4 px-1 text-[10px] text-muted-foreground/60 border-dashed">
+					no synthesis
 				</Badge>
 			{/if}
 		</div>
