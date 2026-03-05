@@ -88,6 +88,68 @@ func TestDaemonLogger_FallbackToStdout(t *testing.T) {
 	logger.Stamp("test stamp")
 }
 
+func TestRotateIfNeeded_RotatesLargeFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "daemon.log")
+
+	// Create a file larger than maxLogSize (10 MB)
+	f, err := os.Create(logPath)
+	if err != nil {
+		t.Fatalf("Failed to create log file: %v", err)
+	}
+	// Write 11 MB of data
+	data := make([]byte, 11*1024*1024)
+	f.Write(data)
+	f.Close()
+
+	rotateIfNeeded(logPath)
+
+	// Original should be gone
+	if _, err := os.Stat(logPath); err == nil {
+		t.Error("Expected original log file to be renamed")
+	}
+
+	// Backup should exist with the original size
+	backupPath := logPath + ".1"
+	info, err := os.Stat(backupPath)
+	if err != nil {
+		t.Fatalf("Expected backup file to exist: %v", err)
+	}
+	if info.Size() != int64(11*1024*1024) {
+		t.Errorf("Backup size = %d, want %d", info.Size(), 11*1024*1024)
+	}
+}
+
+func TestRotateIfNeeded_SkipsSmallFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "daemon.log")
+
+	// Create a small file (1 KB)
+	if err := os.WriteFile(logPath, make([]byte, 1024), 0644); err != nil {
+		t.Fatalf("Failed to create log file: %v", err)
+	}
+
+	rotateIfNeeded(logPath)
+
+	// Original should still exist
+	if _, err := os.Stat(logPath); err != nil {
+		t.Error("Small log file should not be rotated")
+	}
+
+	// No backup should exist
+	if _, err := os.Stat(logPath + ".1"); err == nil {
+		t.Error("No backup should exist for small file")
+	}
+}
+
+func TestRotateIfNeeded_NoFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "daemon.log")
+
+	// Should not panic when file doesn't exist
+	rotateIfNeeded(logPath)
+}
+
 func TestDaemonLogPath(t *testing.T) {
 	path := DaemonLogPath()
 	if path == "" {

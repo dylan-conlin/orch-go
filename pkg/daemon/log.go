@@ -26,8 +26,26 @@ func DaemonLogPath() string {
 	return filepath.Join(home, ".orch", "daemon.log")
 }
 
+// maxLogSize is the threshold above which the daemon log is rotated on startup.
+const maxLogSize = 10 * 1024 * 1024 // 10 MB
+
+// rotateIfNeeded checks the log file size and rotates it if above maxLogSize.
+// Rotation renames daemon.log → daemon.log.1 (overwriting any previous backup).
+func rotateIfNeeded(logPath string) {
+	info, err := os.Stat(logPath)
+	if err != nil {
+		return // file doesn't exist or can't stat — nothing to rotate
+	}
+	if info.Size() < maxLogSize {
+		return
+	}
+	// Rename current log to .1 (os.Rename overwrites destination on Unix)
+	_ = os.Rename(logPath, logPath+".1")
+}
+
 // NewDaemonLogger creates a logger that writes to both stdout and ~/.orch/daemon.log.
 // If the log file cannot be opened, falls back to stdout only.
+// Rotates the log file on startup if it exceeds 10 MB.
 func NewDaemonLogger() *DaemonLogger {
 	logPath := DaemonLogPath()
 	if logPath == "" {
@@ -38,6 +56,9 @@ func NewDaemonLogger() *DaemonLogger {
 	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
 		return &DaemonLogger{out: os.Stdout}
 	}
+
+	// Rotate before opening
+	rotateIfNeeded(logPath)
 
 	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
