@@ -56,6 +56,7 @@ categories:
       - understanding-through-engagement
       - premise-before-solution
       - strategic-first-orchestration
+      - deploy-or-delete
 
 # Provenance is compiled separately at the end
 # See: src/provenance.md (to be created)

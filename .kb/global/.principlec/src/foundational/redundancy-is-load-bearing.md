@@ -20,6 +20,10 @@ Apparent redundancy in LLM skill documents serves a structural function. Each in
 
 **Why distinct from Infrastructure Over Instruction:** IoI says enforce via tools, not documents. This principle says *when you must use documents*, redundancy is the mechanism that makes them work. IoI is about choosing the right layer. This is about designing effectively within the document layer.
 
-**Evidence:** Feb 6 2026 skill compression (2,185 → 619 lines) immediately degraded delegation compliance. Mar 1 behavioral testing: compressed and original versions scored nearly identically against bare (39% vs 38%), but the original's redundant constraint statements showed measurably higher compliance in multi-turn interactive sessions where different phases activated different instances.
+**Boundary condition — dilution at scale:** Redundancy is load-bearing *per constraint* (multiple instances of the same rule across phases). But *across constraints*, dilution is load-bearing too. At ≤4 co-resident behavioral norms, each gets adequate attention. At 5+, dilution begins. At 10+, all constraints approach bare-parity (zero behavioral return). The orchestrator skill at 50+ constraints scored 22/56 vs bare 17/56 — the 5-point lift came entirely from knowledge items, not from any of the redundantly-stated behavioral constraints.
 
-**Provenance:** Grammar Design Discipline synthesis (Mar 1 2026), corroborated by behavioral testing baseline and grammar recovery validation.
+**The crossover:** Redundancy helps when you have few constraints stated multiple times. Redundancy hurts when you have many constraints, because each additional constraint dilutes all others — including the redundant ones. The ≤4 norm threshold is the crossover point.
+
+**Evidence:** Feb 6 2026 skill compression (2,185 → 619 lines) immediately degraded delegation compliance. Mar 1 behavioral testing: compressed and original versions scored nearly identically against bare (39% vs 38%), but the original's redundant constraint statements showed measurably higher compliance in multi-turn interactive sessions where different phases activated different instances. Mar 4 2026: skill at 50+ constraints showed 5/7 scenarios at bare parity — dilution overwhelmed phase-coverage benefit at scale.
+
+**Provenance:** Grammar Design Discipline synthesis (Mar 1 2026), corroborated by behavioral testing baseline and grammar recovery validation. Boundary condition from orchestrator-skill model synthesis (Mar 5 2026).
