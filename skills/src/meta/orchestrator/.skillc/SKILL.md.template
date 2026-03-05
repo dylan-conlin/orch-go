@@ -40,6 +40,7 @@ description: Always-loaded runtime policy for orchestrator agents. Routes decisi
 | **Release bug fix** | `bd create "fix X" --type bug -l triage:ready` | Typed issue → daemon infers skill |
 | **Release feature** | `bd create "add X" --type feature -l triage:ready` | Typed issue → daemon infers skill |
 | **Spawn directly (exception)** | `orch spawn SKILL "task"` + justification | Needs immediate attention OR custom context |
+| **Daemon down, need to spawn** | `orch spawn` directly (not Agent tool) | "Manual spawn" = CLI, not built-in tools |
 | **Agent at Phase: Complete** | `orch complete <id>` | Don't ask, just verify and close |
 | **Multiple agents complete** | `orch review` then synthesize | Batch review workflow |
 | **Investigation cluster (15+)** | Spawn architect to create model | Synthesis into queryable understanding |
@@ -146,6 +147,18 @@ Before labeling, verify: type is clear (skill inference will work), no blocking 
 
 ## Spawning Essentials
 
+### Agent Tool Is NOT a Spawn Mechanism
+
+Never use the Claude Code Agent tool to create worker agents. Always use `orch spawn`. The Agent tool bypasses all spawn infrastructure: hooks, skill loading, workspace creation, beads tracking, and completion pipeline. Agents spawned via Agent tool have no SKILL.md, no SPAWN_CONTEXT.md, no phase reporting, and no completion path.
+
+**"Manual spawn" = `orch spawn` CLI.** When the daemon is down, "spawn manually" means run `orch spawn` by hand — not use built-in tools as a spawn workaround.
+
+**Legitimate Agent tool uses:** Explore (codebase search), research subagents for context gathering. These are NOT spawn — they don't create workers with lifecycle tracking.
+
+### Worktree Isolation Constraint
+
+Never use worktree isolation (`isolation: "worktree"`) for Docker-dependent projects. Docker bind mounts resolve from the main repo, not worktrees — edits in worktrees are invisible to containers.
+
 ### Model Selection
 
 | Flag | Result |
@@ -184,6 +197,20 @@ Parallelize ONLY IF tasks are independent AND parallelization shortens critical 
 ### Infrastructure Auto-Detection
 
 Keywords like `opencode`, `spawn`, `daemon`, `orch serve` auto-apply `--backend claude` + opus. Claude CLI survives OpenCode server crashes.
+
+### Spawn Command Template
+
+```
+orch spawn --bypass-triage --issue <ID> --intent <TYPE> --reason "<why>" SKILL "task"
+```
+
+| Flag | Required | Notes |
+|------|----------|-------|
+| `--issue <ID>` | Yes (unless `--no-track`) | Beads issue ID for tracking |
+| `--intent <TYPE>` | Yes | `build\|fix\|investigate\|explore\|produce\|compare\|experience` |
+| `--bypass-triage` | When skipping daemon | Direct spawn without `triage:ready` label |
+| `--reason "<why>"` | With `--bypass-triage` | Min 10 chars explaining why bypassing daemon |
+| `--model opus` | Optional | Default: sonnet. Use opus for complex work |
 
 ---
 
