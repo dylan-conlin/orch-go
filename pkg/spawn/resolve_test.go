@@ -1468,6 +1468,133 @@ func TestResolve_AccountHeuristic_FiveHourTieBreaksByWeekly(t *testing.T) {
 	}
 }
 
+func TestResolve_AccountHeuristic_WeeklyExhaustedLosesToAlternative(t *testing.T) {
+	// THE BUG: work at 93% 5h / 0% weekly was picked over personal at 85% both.
+	// Anthropic blocks at 100% weekly regardless of 5h headroom.
+	// Fix: effective_headroom = min(fiveHourAbs, weeklyAbs) so exhausted weekly
+	// zeroes the effective score.
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
+			// 93% 5h headroom but 0% weekly — Anthropic blocks this account
+			return &account.CapacityInfo{FiveHourRemaining: 93, SevenDayRemaining: 0}
+		case "personal":
+			// 85% on both — healthy account
+			return &account.CapacityInfo{FiveHourRemaining: 85, SevenDayRemaining: 85}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	// Personal must win: work's weekly is exhausted (0%), Anthropic blocks it
+	if settings.Account.Value != "personal" {
+		t.Fatalf("Account.Value = %q, want %q (work weekly exhausted, must not be picked)", settings.Account.Value, "personal")
+	}
+}
+
+func TestResolve_AccountHeuristic_WeeklyExhaustedTiered(t *testing.T) {
+	// Even with high tier, 0% weekly should lose
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude", tier: "20x"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal", tier: "5x"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
+			// 20x tier, 93% 5h = 1860 absolute... but 0% weekly = 0 absolute weekly
+			return &account.CapacityInfo{FiveHourRemaining: 93, SevenDayRemaining: 0}
+		case "personal":
+			// 5x tier, 85% both = 425 absolute each
+			return &account.CapacityInfo{FiveHourRemaining: 85, SevenDayRemaining: 85}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	// Personal must win: work has 0% weekly, effective headroom should be 0
+	if settings.Account.Value != "personal" {
+		t.Fatalf("Account.Value = %q, want %q (work weekly exhausted even with 20x tier)", settings.Account.Value, "personal")
+	}
+}
+
+func TestResolve_AccountHeuristic_LowWeeklyReducesEffectiveHeadroom(t *testing.T) {
+	// Account with low weekly (5%) should have reduced effective headroom
+	// compared to account with balanced capacity
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
+			// High 5h but very low weekly — near exhaustion
+			return &account.CapacityInfo{FiveHourRemaining: 90, SevenDayRemaining: 5}
+		case "personal":
+			// Moderate both
+			return &account.CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 50}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	// Personal wins: work effective = min(90,5)=5, personal effective = min(50,50)=50
+	if settings.Account.Value != "personal" {
+		t.Fatalf("Account.Value = %q, want %q (work has low weekly, personal is balanced)", settings.Account.Value, "personal")
+	}
+}
+
+func TestResolve_AccountHeuristic_BothWeeklyExhaustedPicksHigher5h(t *testing.T) {
+	// Edge case: both accounts have very low weekly. Pick the one with more effective headroom.
+	input := baseResolveInput()
+	input.AccountConfig = &mockAccountConfig{
+		accounts: map[string]mockAccount{
+			"work":     {role: "primary", configDir: "~/.claude"},
+			"personal": {role: "spillover", configDir: "~/.claude-personal"},
+		},
+	}
+	input.CapacityFetcher = func(name string) *account.CapacityInfo {
+		switch name {
+		case "work":
+			return &account.CapacityInfo{FiveHourRemaining: 90, SevenDayRemaining: 3}
+		case "personal":
+			return &account.CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 8}
+		}
+		return nil
+	}
+
+	settings, err := Resolve(input)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	// Both low weekly: work effective = min(90,3)=3, personal effective = min(50,8)=8
+	// Personal wins with higher effective headroom
+	if settings.Account.Value != "personal" {
+		t.Fatalf("Account.Value = %q, want %q (personal has higher effective headroom)", settings.Account.Value, "personal")
+	}
+}
+
 // --- Effort resolution tests ---
 
 func TestResolve_EffortCLIOverride(t *testing.T) {

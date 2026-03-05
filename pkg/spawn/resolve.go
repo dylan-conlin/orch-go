@@ -2,6 +2,7 @@ package spawn
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -524,27 +525,32 @@ func resolveAccount(input ResolveInput) ResolvedSetting {
 		return ResolvedSetting{Value: allNames[0], Source: SourceDefault, Detail: "first-account"}
 	}
 
-	// Heuristic routing: tier-weighted 5-hour headroom.
-	// The 5-hour window is what actually blocks agents, not weekly.
-	// Absolute headroom = (remaining %) * tier_multiplier.
+	// Heuristic routing: tier-weighted effective headroom.
+	// Both 5-hour AND weekly limits block agents — Anthropic enforces both.
+	// Effective headroom = min(fiveHourAbs, weeklyAbs) so that exhaustion
+	// of either limit zeroes the candidate's score.
 	type candidate struct {
-		name           string
-		capacity       *account.CapacityInfo
-		tierMultiplier float64
-		fiveHourAbs    float64 // FiveHourRemaining * tierMultiplier
-		weeklyAbs      float64 // SevenDayRemaining * tierMultiplier
+		name              string
+		capacity          *account.CapacityInfo
+		tierMultiplier    float64
+		fiveHourAbs       float64 // FiveHourRemaining * tierMultiplier
+		weeklyAbs         float64 // SevenDayRemaining * tierMultiplier
+		effectiveHeadroom float64 // min(fiveHourAbs, weeklyAbs)
 	}
 	var candidates []candidate
 	for _, name := range allNames {
 		cap := input.CapacityFetcher(name)
 		if cap != nil {
 			tier := account.ParseTierMultiplier(accounts[name].Tier)
+			fiveHourAbs := cap.FiveHourRemaining * tier
+			weeklyAbs := cap.SevenDayRemaining * tier
 			candidates = append(candidates, candidate{
-				name:           name,
-				capacity:       cap,
-				tierMultiplier: tier,
-				fiveHourAbs:    cap.FiveHourRemaining * tier,
-				weeklyAbs:      cap.SevenDayRemaining * tier,
+				name:              name,
+				capacity:          cap,
+				tierMultiplier:    tier,
+				fiveHourAbs:       fiveHourAbs,
+				weeklyAbs:         weeklyAbs,
+				effectiveHeadroom: math.Min(fiveHourAbs, weeklyAbs),
 			})
 		}
 	}
@@ -554,14 +560,15 @@ func resolveAccount(input ResolveInput) ResolvedSetting {
 		return ResolvedSetting{Value: allNames[0], Source: SourceHeuristic, Detail: "all-capacity-unknown"}
 	}
 
-	// Sort: highest absolute 5h headroom first, then absolute weekly, then name
+	// Sort: highest effective headroom first (min of 5h, weekly),
+	// then 5h headroom as tiebreaker, then name for determinism.
 	sort.Slice(candidates, func(i, j int) bool {
 		ci, cj := candidates[i], candidates[j]
+		if ci.effectiveHeadroom != cj.effectiveHeadroom {
+			return ci.effectiveHeadroom > cj.effectiveHeadroom
+		}
 		if ci.fiveHourAbs != cj.fiveHourAbs {
 			return ci.fiveHourAbs > cj.fiveHourAbs
-		}
-		if ci.weeklyAbs != cj.weeklyAbs {
-			return ci.weeklyAbs > cj.weeklyAbs
 		}
 		return ci.name < cj.name
 	})

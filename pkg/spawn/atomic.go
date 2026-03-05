@@ -32,12 +32,19 @@ func AtomicSpawnPhase1(opts *AtomicSpawnOpts) (rollback func(), err error) {
 	}
 
 	// Step 1: Tag beads issue with orch:agent
+	// Use Config.ProjectDir to find the correct .beads/ database.
+	// For cross-project spawns (e.g., daemon spawning pw-* issues from orch-go CWD),
+	// CWD would find the wrong database. ProjectDir always points to the issue's project.
 	if !opts.NoTrack && opts.BeadsID != "" {
-		if err := tagBeadsAgent(opts.BeadsID); err != nil {
+		projectDir := ""
+		if opts.Config != nil {
+			projectDir = opts.Config.ProjectDir
+		}
+		if err := tagBeadsAgent(opts.BeadsID, projectDir); err != nil {
 			return rollback, fmt.Errorf("beads tag failed: %w", err)
 		}
 		cleanups = append(cleanups, func() {
-			untagBeadsAgent(opts.BeadsID)
+			untagBeadsAgent(opts.BeadsID, projectDir)
 		})
 	}
 
@@ -83,8 +90,11 @@ func AtomicSpawnPhase2(opts *AtomicSpawnOpts, sessionID string) error {
 }
 
 // tagBeadsAgent adds the orch:agent label to a beads issue.
-func tagBeadsAgent(beadsID string) error {
-	socketPath, err := beads.FindSocketPath("")
+// projectDir specifies which project's .beads/ database to use.
+// For cross-project spawns, this must be the issue's project directory,
+// not the daemon's CWD.
+func tagBeadsAgent(beadsID, projectDir string) error {
+	socketPath, err := beads.FindSocketPath(projectDir)
 	if err == nil {
 		client := beads.NewClient(socketPath)
 		if connErr := client.Connect(); connErr == nil {
@@ -93,13 +103,14 @@ func tagBeadsAgent(beadsID string) error {
 		}
 	}
 	// Fallback to CLI
-	return beads.FallbackAddLabel(beadsID, "orch:agent", "")
+	return beads.FallbackAddLabel(beadsID, "orch:agent", projectDir)
 }
 
 // untagBeadsAgent removes the orch:agent label from a beads issue.
 // Used during rollback when spawn fails after tagging.
-func untagBeadsAgent(beadsID string) {
-	socketPath, err := beads.FindSocketPath("")
+// projectDir specifies which project's .beads/ database to use.
+func untagBeadsAgent(beadsID, projectDir string) {
+	socketPath, err := beads.FindSocketPath(projectDir)
 	if err == nil {
 		client := beads.NewClient(socketPath)
 		if connErr := client.Connect(); connErr == nil {
@@ -109,5 +120,5 @@ func untagBeadsAgent(beadsID string) {
 		}
 	}
 	// Fallback to CLI
-	_ = beads.FallbackRemoveLabel(beadsID, "orch:agent", "")
+	_ = beads.FallbackRemoveLabel(beadsID, "orch:agent", projectDir)
 }
