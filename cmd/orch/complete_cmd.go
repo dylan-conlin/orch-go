@@ -284,6 +284,36 @@ func runComplete(identifier, workdir string) error {
 		fmt.Printf("Review tier: %s (default)\n", target.ReviewTier)
 	}
 
+	// Review tier escalation: check if completion signals warrant a higher review tier.
+	// Only run for non-orchestrator sessions with a workspace and no explicit --review-tier override.
+	if completeReviewTier == "" && target.WorkspacePath != "" && !target.IsOrchestratorSession {
+		signals := verify.BuildEscalationSignals(target.WorkspacePath, target.BeadsProjectDir)
+		// Add hotspot match count (hotspot analysis lives in cmd/orch, not pkg/verify)
+		if target.BeadsProjectDir != "" {
+			signals.HotspotMatchCount = countHotspotAdvisoryMatches(target.BeadsProjectDir)
+		}
+		escalation := verify.CheckReviewTierEscalation(signals, target.ReviewTier)
+		if escalation.Escalated {
+			fmt.Printf("Review tier escalated: %s → %s\n", escalation.OriginalTier, escalation.EscalatedTier)
+			for _, reason := range escalation.Reasons {
+				fmt.Printf("  - %s\n", reason)
+			}
+			target.ReviewTier = escalation.EscalatedTier
+
+			// Log escalation event
+			logger := events.NewLogger(events.DefaultLogPath())
+			if err := logger.LogReviewTierEscalated(events.ReviewTierEscalatedData{
+				BeadsID:      target.BeadsID,
+				Workspace:    target.AgentName,
+				OriginalTier: escalation.OriginalTier,
+				EscalatedTo:  escalation.EscalatedTier,
+				Reasons:      escalation.Reasons,
+			}); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to log tier escalation event: %v\n", err)
+			}
+		}
+	}
+
 	// Phase 2: Execute verification gates
 	outcome, err := executeVerificationGates(target, skipConfig)
 	if err != nil {

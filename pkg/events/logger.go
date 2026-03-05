@@ -49,6 +49,8 @@ const (
 	EventTypeAccretionDelta = "accretion.delta"
 	// EventTypeHotspotBypassed indicates a CRITICAL hotspot blocking gate was bypassed via --force-hotspot.
 	EventTypeHotspotBypassed = "spawn.hotspot_bypassed"
+	// EventTypeReviewTierEscalated indicates a review tier was automatically escalated based on completion signals.
+	EventTypeReviewTierEscalated = "review_tier.escalated"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -490,6 +492,41 @@ func (l *Logger) LogVerificationAutoSkipped(data VerificationBypassedData) error
 
 	return l.Log(Event{
 		Type:      EventTypeVerificationAutoSkipped,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// ReviewTierEscalatedData contains the data for a review_tier.escalated event.
+type ReviewTierEscalatedData struct {
+	BeadsID      string   `json:"beads_id,omitempty"`
+	Workspace    string   `json:"workspace,omitempty"`
+	Skill        string   `json:"skill,omitempty"`
+	OriginalTier string   `json:"original_tier"`
+	EscalatedTo  string   `json:"escalated_to"`
+	Reasons      []string `json:"reasons"`
+}
+
+// LogReviewTierEscalated logs a review tier escalation event.
+func (l *Logger) LogReviewTierEscalated(data ReviewTierEscalatedData) error {
+	eventData := map[string]interface{}{
+		"original_tier": data.OriginalTier,
+		"escalated_to":  data.EscalatedTo,
+		"reasons":       data.Reasons,
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if data.Workspace != "" {
+		eventData["workspace"] = data.Workspace
+	}
+	if data.Skill != "" {
+		eventData["skill"] = data.Skill
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeReviewTierEscalated,
 		SessionID: data.BeadsID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,

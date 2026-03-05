@@ -136,6 +136,42 @@ func getModifiedFilesFromRecentCommits(projectDir string, commitCount int) ([]st
 	return files, nil
 }
 
+// countHotspotAdvisoryMatches returns the number of hotspot matches for modified files.
+// Used by review tier escalation to determine if the tier should be bumped.
+func countHotspotAdvisoryMatches(projectDir string) int {
+	if projectDir == "" {
+		return 0
+	}
+
+	modifiedFiles, err := getModifiedFilesFromRecentCommits(projectDir, 5)
+	if err != nil || len(modifiedFiles) == 0 {
+		return 0
+	}
+
+	var allHotspots []Hotspot
+
+	fixHotspots, _, err := analyzeFixCommits(projectDir, 28, 5)
+	if err == nil {
+		allHotspots = append(allHotspots, fixHotspots...)
+	}
+
+	invHotspots, _, _ := analyzeInvestigationClusters(projectDir, 3)
+	allHotspots = append(allHotspots, invHotspots...)
+
+	couplingHotspots, _, _ := analyzeCouplingClusters(projectDir, 28)
+	allHotspots = append(allHotspots, couplingHotspots...)
+
+	bloatHotspots, _, _ := analyzeBloatFiles(projectDir, 800)
+	allHotspots = append(allHotspots, bloatHotspots...)
+
+	if len(allHotspots) == 0 {
+		return 0
+	}
+
+	matches := matchModifiedFilesToHotspots(modifiedFiles, allHotspots)
+	return len(matches)
+}
+
 // RunHotspotAdvisoryForCompletion checks if the agent modified files in hotspot areas.
 // Runs the full hotspot analysis and cross-references against recently modified files.
 // Returns formatted advisory text or empty string if no matches.

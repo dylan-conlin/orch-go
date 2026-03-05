@@ -2,6 +2,7 @@
 package verify
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 )
@@ -309,6 +310,182 @@ func ExplainEscalation(input EscalationInput) EscalationReason {
 	}
 
 	return reason
+}
+
+// ReviewTierEscalationSignals contains signals that may trigger review tier escalation.
+// Each triggered signal bumps the review tier up by one level (auto→scan→review→deep).
+type ReviewTierEscalationSignals struct {
+	HotspotMatchCount int  // Number of modified files that match hotspot areas
+	HasArchChoices    bool // Whether SYNTHESIS.md has populated Architectural Choices section
+	DiffLineCount     int  // Total lines changed in git diff (added + removed)
+}
+
+// ReviewTierEscalationResult contains the outcome of a review tier escalation check.
+type ReviewTierEscalationResult struct {
+	OriginalTier  string   // Tier before escalation
+	EscalatedTier string   // Tier after escalation (same if no escalation)
+	Escalated     bool     // Whether tier was bumped up
+	Reasons       []string // Human-readable reasons for escalation
+}
+
+// DiffLineThreshold is the number of changed lines that triggers tier escalation.
+const DiffLineThreshold = 500
+
+// CheckReviewTierEscalation checks if the current review tier should be escalated
+// based on completion signals. Each triggered signal bumps the tier up by one level.
+// The tier cannot exceed "deep".
+//
+// Signals (each bumps tier up by one):
+//   - Modified files in hotspot areas (HotspotMatchCount > 0)
+//   - SYNTHESIS.md has populated Architectural Choices section
+//   - Git diff exceeds DiffLineThreshold lines
+func CheckReviewTierEscalation(signals ReviewTierEscalationSignals, currentTier string) ReviewTierEscalationResult {
+	result := ReviewTierEscalationResult{
+		OriginalTier:  currentTier,
+		EscalatedTier: currentTier,
+	}
+
+	bumps := 0
+
+	if signals.HotspotMatchCount > 0 {
+		bumps++
+		result.Reasons = append(result.Reasons,
+			fmt.Sprintf("modified %d file(s) in hotspot areas", signals.HotspotMatchCount))
+	}
+
+	if signals.HasArchChoices {
+		bumps++
+		result.Reasons = append(result.Reasons,
+			"SYNTHESIS.md has populated Architectural Choices section")
+	}
+
+	if signals.DiffLineCount > DiffLineThreshold {
+		bumps++
+		result.Reasons = append(result.Reasons,
+			fmt.Sprintf("git diff exceeds threshold (%d lines > %d)", signals.DiffLineCount, DiffLineThreshold))
+	}
+
+	if bumps == 0 {
+		return result
+	}
+
+	// Apply bumps using the tier ordering
+	tiers := []string{"auto", "scan", "review", "deep"}
+	currentIdx := -1
+	for i, t := range tiers {
+		if t == currentTier {
+			currentIdx = i
+			break
+		}
+	}
+	if currentIdx == -1 {
+		// Unknown tier, treat as review (conservative)
+		currentIdx = 2
+	}
+
+	newIdx := currentIdx + bumps
+	if newIdx >= len(tiers) {
+		newIdx = len(tiers) - 1
+	}
+
+	result.EscalatedTier = tiers[newIdx]
+	result.Escalated = result.EscalatedTier != currentTier
+
+	return result
+}
+
+// BuildEscalationSignals builds escalation signals from workspace and project dir.
+// This computes the architectural choices and git diff line count signals.
+// Hotspot match count must be set by the caller (hotspot analysis lives in cmd/orch).
+func BuildEscalationSignals(workspacePath, projectDir string) ReviewTierEscalationSignals {
+	var signals ReviewTierEscalationSignals
+
+	// Check if SYNTHESIS.md has architectural choices
+	if workspacePath != "" {
+		synthesis, err := ParseSynthesis(workspacePath)
+		if err == nil && synthesis != nil {
+			choices := strings.TrimSpace(synthesis.ArchitecturalChoices)
+			if choices != "" && !strings.HasPrefix(strings.ToLower(choices), "no architectural choices") {
+				signals.HasArchChoices = true
+			}
+		}
+	}
+
+	// Count git diff lines
+	if projectDir != "" {
+		signals.DiffLineCount = countGitDiffLines(projectDir)
+	}
+
+	return signals
+}
+
+// countGitDiffLines counts the total number of added + removed lines in recent commits.
+func countGitDiffLines(projectDir string) int {
+	cmd := exec.Command("git", "diff", "--shortstat", "HEAD~5..HEAD")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		// Try with fewer commits
+		cmd = exec.Command("git", "diff", "--shortstat", "HEAD~1..HEAD")
+		cmd.Dir = projectDir
+		output, err = cmd.Output()
+		if err != nil {
+			return 0
+		}
+	}
+
+	return parseShortstatLines(string(output))
+}
+
+// parseShortstatLines extracts total lines changed from git diff --shortstat output.
+// Format: " N files changed, X insertions(+), Y deletions(-)"
+func parseShortstatLines(output string) int {
+	total := 0
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return 0
+	}
+
+	// Parse insertions
+	if idx := strings.Index(output, "insertion"); idx > 0 {
+		// Walk backward from "insertion" to find the number
+		numStr := extractNumberBefore(output[:idx])
+		if n := parsePositiveInt(numStr); n > 0 {
+			total += n
+		}
+	}
+
+	// Parse deletions
+	if idx := strings.Index(output, "deletion"); idx > 0 {
+		numStr := extractNumberBefore(output[:idx])
+		if n := parsePositiveInt(numStr); n > 0 {
+			total += n
+		}
+	}
+
+	return total
+}
+
+// extractNumberBefore extracts the last number from a string (before some keyword).
+func extractNumberBefore(s string) string {
+	s = strings.TrimSpace(s)
+	// Find last space-separated token that is numeric
+	parts := strings.Fields(s)
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
+// parsePositiveInt parses a string as a positive integer, returning 0 on failure.
+func parsePositiveInt(s string) int {
+	n := 0
+	for _, c := range s {
+		if c >= '0' && c <= '9' {
+			n = n*10 + int(c-'0')
+		}
+	}
+	return n
 }
 
 // formatRecommendations formats recommendation data for display.

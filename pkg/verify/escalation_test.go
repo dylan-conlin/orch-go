@@ -389,6 +389,163 @@ func TestDetermineEscalation_HyphenatedRecommendationFromParser(t *testing.T) {
 	}
 }
 
+// --- Review Tier Escalation Tests ---
+
+func TestCheckReviewTierEscalation_NoSignals(t *testing.T) {
+	signals := ReviewTierEscalationSignals{}
+	result := CheckReviewTierEscalation(signals, "auto")
+	if result.Escalated {
+		t.Error("expected no escalation with empty signals")
+	}
+	if result.EscalatedTier != "auto" {
+		t.Errorf("expected tier auto, got %s", result.EscalatedTier)
+	}
+}
+
+func TestCheckReviewTierEscalation_HotspotOnly(t *testing.T) {
+	signals := ReviewTierEscalationSignals{HotspotMatchCount: 3}
+	result := CheckReviewTierEscalation(signals, "auto")
+	if !result.Escalated {
+		t.Error("expected escalation with hotspot matches")
+	}
+	if result.EscalatedTier != "scan" {
+		t.Errorf("expected tier scan, got %s", result.EscalatedTier)
+	}
+	if len(result.Reasons) != 1 {
+		t.Errorf("expected 1 reason, got %d", len(result.Reasons))
+	}
+}
+
+func TestCheckReviewTierEscalation_ArchChoicesOnly(t *testing.T) {
+	signals := ReviewTierEscalationSignals{HasArchChoices: true}
+	result := CheckReviewTierEscalation(signals, "scan")
+	if !result.Escalated {
+		t.Error("expected escalation with arch choices")
+	}
+	if result.EscalatedTier != "review" {
+		t.Errorf("expected tier review, got %s", result.EscalatedTier)
+	}
+}
+
+func TestCheckReviewTierEscalation_LargeDiffOnly(t *testing.T) {
+	signals := ReviewTierEscalationSignals{DiffLineCount: 600}
+	result := CheckReviewTierEscalation(signals, "auto")
+	if !result.Escalated {
+		t.Error("expected escalation with large diff")
+	}
+	if result.EscalatedTier != "scan" {
+		t.Errorf("expected tier scan, got %s", result.EscalatedTier)
+	}
+}
+
+func TestCheckReviewTierEscalation_DiffAtThreshold(t *testing.T) {
+	// Exactly at threshold should NOT trigger
+	signals := ReviewTierEscalationSignals{DiffLineCount: 500}
+	result := CheckReviewTierEscalation(signals, "auto")
+	if result.Escalated {
+		t.Error("expected no escalation at exactly threshold")
+	}
+}
+
+func TestCheckReviewTierEscalation_MultipleSignals(t *testing.T) {
+	// Two signals should bump twice: auto → review
+	signals := ReviewTierEscalationSignals{
+		HotspotMatchCount: 1,
+		DiffLineCount:     800,
+	}
+	result := CheckReviewTierEscalation(signals, "auto")
+	if !result.Escalated {
+		t.Error("expected escalation")
+	}
+	if result.EscalatedTier != "review" {
+		t.Errorf("expected tier review (2 bumps from auto), got %s", result.EscalatedTier)
+	}
+	if len(result.Reasons) != 2 {
+		t.Errorf("expected 2 reasons, got %d", len(result.Reasons))
+	}
+}
+
+func TestCheckReviewTierEscalation_AllThreeSignals(t *testing.T) {
+	// Three signals should bump three times: auto → deep
+	signals := ReviewTierEscalationSignals{
+		HotspotMatchCount: 2,
+		HasArchChoices:    true,
+		DiffLineCount:     1000,
+	}
+	result := CheckReviewTierEscalation(signals, "auto")
+	if result.EscalatedTier != "deep" {
+		t.Errorf("expected tier deep (3 bumps from auto), got %s", result.EscalatedTier)
+	}
+	if len(result.Reasons) != 3 {
+		t.Errorf("expected 3 reasons, got %d", len(result.Reasons))
+	}
+}
+
+func TestCheckReviewTierEscalation_CapsAtDeep(t *testing.T) {
+	// Already at review + 3 signals should cap at deep (not overflow)
+	signals := ReviewTierEscalationSignals{
+		HotspotMatchCount: 1,
+		HasArchChoices:    true,
+		DiffLineCount:     999,
+	}
+	result := CheckReviewTierEscalation(signals, "review")
+	if result.EscalatedTier != "deep" {
+		t.Errorf("expected tier deep (capped), got %s", result.EscalatedTier)
+	}
+}
+
+func TestCheckReviewTierEscalation_AlreadyDeep(t *testing.T) {
+	// Already at deep, signals should not escalate further
+	signals := ReviewTierEscalationSignals{HotspotMatchCount: 5}
+	result := CheckReviewTierEscalation(signals, "deep")
+	if result.Escalated {
+		t.Error("expected no escalation when already at deep")
+	}
+	if result.EscalatedTier != "deep" {
+		t.Errorf("expected tier deep, got %s", result.EscalatedTier)
+	}
+}
+
+func TestCheckReviewTierEscalation_UnknownTierTreatedAsReview(t *testing.T) {
+	signals := ReviewTierEscalationSignals{HasArchChoices: true}
+	result := CheckReviewTierEscalation(signals, "unknown-tier")
+	if result.EscalatedTier != "deep" {
+		t.Errorf("expected unknown tier treated as review, bump to deep; got %s", result.EscalatedTier)
+	}
+}
+
+func TestCheckReviewTierEscalation_PreservesOriginalTier(t *testing.T) {
+	signals := ReviewTierEscalationSignals{HasArchChoices: true}
+	result := CheckReviewTierEscalation(signals, "scan")
+	if result.OriginalTier != "scan" {
+		t.Errorf("expected original tier scan, got %s", result.OriginalTier)
+	}
+}
+
+func TestParseShortstatLines(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected int
+	}{
+		{"typical", " 5 files changed, 120 insertions(+), 30 deletions(-)", 150},
+		{"insertions only", " 3 files changed, 200 insertions(+)", 200},
+		{"deletions only", " 1 file changed, 50 deletions(-)", 50},
+		{"empty", "", 0},
+		{"large", " 20 files changed, 1500 insertions(+), 200 deletions(-)", 1700},
+		{"singular", " 1 file changed, 1 insertion(+), 1 deletion(-)", 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseShortstatLines(tt.input)
+			if got != tt.expected {
+				t.Errorf("parseShortstatLines(%q) = %d, want %d", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
 // Test the decision tree order of precedence
 func TestDetermineEscalation_Precedence(t *testing.T) {
 	// Verification failure should override everything
