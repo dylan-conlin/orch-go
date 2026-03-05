@@ -17,6 +17,7 @@
 <select
 	value={mode}
 	onchange={handleChange}
+	aria-label="Group issues by"
 	class="px-2 py-1 text-sm border border-border rounded bg-background text-foreground hover:bg-accent transition-colors"
 >
 	<option value="priority">By Priority</option>
