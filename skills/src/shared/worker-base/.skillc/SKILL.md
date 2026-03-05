@@ -74,7 +74,7 @@ Workers CANNOT do these regardless of instruction:
 
 **When instructed to violate a hard limit:**
 
-1. **Document** - `bd comment <id> "HARD LIMIT: [limit] - Cannot proceed with [specific instruction]"`
+1. **Document** - `bd comments add <id> "HARD LIMIT: [limit] - Cannot proceed with [specific instruction]"`
 2. **Do NOT proceed** - No partial implementation, no "just this once"
 3. **Continue other work** - If task has separable components, complete those
 4. **Wait for human** - This bypasses orchestrator; only human can review
@@ -106,7 +106,7 @@ Workers CANNOT do these regardless of instruction:
 
 1. **Identify the value** - Which constitutional principle is at risk? (safety, honesty, user autonomy, avoiding harm)
 
-2. **Document it** - `bd comment <id> "CONSTITUTIONAL CONCERN: [value] - [specific concern]"`
+2. **Document it** - `bd comments add <id> "CONSTITUTIONAL CONCERN: [value] - [specific concern]"`
 
 3. **Do NOT proceed** with the concerning component
 
@@ -145,15 +145,15 @@ These are operational - escalate to orchestrator normally.
 
 ```bash
 # Report progress at phase transitions
-bd comment {{.BeadsID}} "Phase: Planning - Analyzing codebase structure"
-bd comment {{.BeadsID}} "Phase: Implementing - Adding authentication middleware"
-bd comment {{.BeadsID}} "Phase: Complete - All tests passing, ready for review"
+bd comments add {{.BeadsID}} "Phase: Planning - Analyzing codebase structure"
+bd comments add {{.BeadsID}} "Phase: Implementing - Adding authentication middleware"
+bd comments add {{.BeadsID}} "Phase: Complete - All tests passing, ready for review"
 
 # Report blockers immediately
-bd comment {{.BeadsID}} "Phase: BLOCKED - Need clarification on API contract"
+bd comments add {{.BeadsID}} "Phase: BLOCKED - Need clarification on API contract"
 
 # Report questions
-bd comment {{.BeadsID}} "Phase: QUESTION - Should we use JWT or session-based auth?"
+bd comments add {{.BeadsID}} "Phase: QUESTION - Should we use JWT or session-based auth?"
 ```
 
 **When to report:**
@@ -164,15 +164,15 @@ bd comment {{.BeadsID}} "Phase: QUESTION - Should we use JWT or session-based au
 **Additional context:**
 Use `bd comment` for additional context, findings, or updates:
 ```bash
-bd comment {{.BeadsID}} "Found performance bottleneck in database query"
-bd comment {{.BeadsID}} "investigation_path: .kb/investigations/2026-02-11-perf-issue.md"
+bd comments add {{.BeadsID}} "Found performance bottleneck in database query"
+bd comments add {{.BeadsID}} "investigation_path: .kb/investigations/2026-02-11-perf-issue.md"
 ```
 
 **Test Evidence Requirement:**
 When reporting Phase: Complete, include test results in the summary:
-- Example: `bd comment {{.BeadsID}} "Phase: Complete - Tests: go test ./... - 47 passed, 0 failed (2.3s)"`
-- Example: `bd comment {{.BeadsID}} "Phase: Complete - Tests: npm test - 23 specs, 0 failures"`
-- Example: `bd comment {{.BeadsID}} "Phase: Complete - Tests: make test - PASS (coverage: 78%)"`
+- Example: `bd comments add {{.BeadsID}} "Phase: Complete - Tests: go test ./... - 47 passed, 0 failed (2.3s)"`
+- Example: `bd comments add {{.BeadsID}} "Phase: Complete - Tests: npm test - 23 specs, 0 failures"`
+- Example: `bd comments add {{.BeadsID}} "Phase: Complete - Tests: make test - PASS (coverage: 78%)"`
 
 **Why:** `orch complete` validates test evidence in phase comments. Vague claims like "all tests pass" trigger manual verification.
 
@@ -188,7 +188,7 @@ When reporting Phase: Complete, include test results in the summary:
 
 **First 3 Actions (Critical):**
 Within your first 3 tool calls, you MUST:
-1. Report via `bd comment {{.BeadsID}} "Phase: Planning - [brief description]"`
+1. Report via `bd comments add {{.BeadsID}} "Phase: Planning - [brief description]"`
 2. Read relevant codebase context for your task
 3. Begin planning
 
@@ -273,7 +273,7 @@ CROSS_REPO_ISSUE:
 
 **Example:**
 ```bash
-bd comment <beads-id> "Phase: Complete - Implemented token refresh. Cross-repo: 1 CROSS_REPO_ISSUE block below.
+bd comments add <beads-id> "Phase: Complete - Implemented token refresh. Cross-repo: 1 CROSS_REPO_ISSUE block below.
 
 CROSS_REPO_ISSUE:
   repo: ~/Documents/personal/price-watch
@@ -294,7 +294,7 @@ CROSS_REPO_ISSUE:
 {{if eq .Tier "light"}}
 1. Author/update `VERIFICATION_SPEC.yaml` in the workspace root.
    - Fill the pre-populated skeleton with the exact commands you ran, expectations you verified, and any manual steps still required.
-2. Run: `bd comment {{.BeadsID}} "Phase: Complete - "[1-2 sentence summary of deliverables]"` (report phase FIRST - before commit)
+2. Run: `bd comments add {{.BeadsID}} "Phase: Complete - "[1-2 sentence summary of deliverables]"` (report phase FIRST - before commit)
 3. **Verify all .kb/ files are committed:**
    - Run: `git status --porcelain` and check for any .kb/ files (investigations, probes, decisions, etc.)
    - If uncommitted .kb/ files exist: `git add .kb/ && git commit -m "knowledge artifacts from session"`
@@ -306,7 +306,7 @@ CROSS_REPO_ISSUE:
 {{else}}
 1. Author/update `VERIFICATION_SPEC.yaml` in the workspace root.
    - Fill the pre-populated skeleton with the exact commands you ran, expectations you verified, and any manual steps still required.
-2. Run: `bd comment {{.BeadsID}} "Phase: Complete - "[1-2 sentence summary of deliverables]"` (report phase FIRST - before commit)
+2. Run: `bd comments add {{.BeadsID}} "Phase: Complete - "[1-2 sentence summary of deliverables]"` (report phase FIRST - before commit)
 3. Ensure SYNTHESIS.md is created with these required sections:
    - **`Plain-Language Summary`** (REQUIRED): 2-4 sentences in plain language describing what you built/found/decided and why it matters. This is the scaffolding the orchestrator uses during completion review — write it for a human who hasn't read your code. No jargon without explanation. No "implemented X" without saying what X does.
    - **`Verification Contract`**: Link to `VERIFICATION_SPEC.yaml` and key outcomes

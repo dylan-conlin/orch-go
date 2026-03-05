@@ -106,7 +106,7 @@ kb context "user authentication"
 
 ```bash
 # Find related beads issues
-bd list --labels "<area>" 2>/dev/null | head -20
+bd list -l "<area>" 2>/dev/null | head -20
 bd ready | grep -i "<keyword>" | head -10
 
 # Find blocked work that might be related
@@ -145,7 +145,7 @@ Create a structured summary of what you found:
 - [existing implementations]
 ```
 
-**Report:** `bd comment <beads-id> "Phase: Context Gathering - Found [N] related items"`
+**Report:** `bd comments add <beads-id> "Phase: Context Gathering - Found [N] related items"`
 
 ---
 
@@ -250,7 +250,7 @@ Can we list the specific tasks needed?
     └── NO → Investigation (to discover tasks)
 ```
 
-**Report:** `bd comment <beads-id> "Phase: Design Synthesis - Determined output: [type]"`
+**Report:** `bd comments add <beads-id> "Phase: Design Synthesis - Determined output: [type]"`
 
 ---
 
@@ -313,8 +313,8 @@ Part of [epic-id]: [epic title]
 #### A.3 Set Up Dependencies (If Needed)
 
 ```bash
-# If task B depends on task A
-bd dep add <task-b-id> --blocks <task-a-id>
+# If task B depends on task A (B depends-on A)
+bd dep add <task-b-id> <task-a-id>
 
 # Common patterns:
 # - Design → Implementation
@@ -621,8 +621,8 @@ bd create "Add tests" --type task --parent orch-abc123
 ### Setting Up Dependencies
 
 ```bash
-# Task B is blocked by Task A (A must finish first)
-bd dep add <task-b> --blocks <task-a>
+# Task B depends on Task A (A must finish first)
+bd dep add <task-b> <task-a>
 
 # Check dependency tree
 bd dep tree <epic-id>
@@ -732,7 +732,7 @@ Before marking complete:
 - [ ] **Verification spec** (if applicable) - Created for multi-agent handoff scenarios
 - [ ] **Leave it Better completed** - At least one `kb quick` command run OR noted as not applicable
 - [ ] All changes committed to git
-- [ ] Report via beads: `bd comment <beads-id> "Phase: Complete - Created [output type]: [summary]"`
+- [ ] Report via beads: `bd comments add <beads-id> "Phase: Complete - Created [output type]: [summary]"`
 - [ ] Call `/exit` to close agent session
 
 ---
@@ -741,7 +741,6 @@ Before marking complete:
 
 - **architect** - Use for strategic decisions with trade-off analysis
 - **investigation** - Use when "how does X work?" (understand, not scope)
-- **issue-creation** - Use for single issues from symptoms
 - **feature-impl** - Use after design-session produces actionable epic/tasks
 
 ---

@@ -7,7 +7,7 @@ Like orchestrators complete workers, you complete orchestrator sessions. And lik
 ## Completing an Orchestrator Session
 
 ```bash
-orch complete --orchestrator <session-id>
+orch complete <workspace-name>
 ```
 
 **What this checks:**

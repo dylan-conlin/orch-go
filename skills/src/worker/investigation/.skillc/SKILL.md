@@ -251,7 +251,7 @@ If you found bugs, tech debt, or enhancement ideas during investigation:
 2. **Prior-Work acknowledged** - Table present with entries OR "N/A - novel investigation"
 3. Leave it Better completed (or noted why N/A)
 4. D.E.K.N. summary filled (with **Authority** classification)
-5. Report: `bd comment <beads-id> "Phase: Complete - [conclusion summary]"` (FIRST - before commit)
+5. Report: `bd comments add <beads-id> "Phase: Complete - [conclusion summary]"` (FIRST - before commit)
 6. Commit: `git add && git commit`
 7. Exit: `/exit`
 

@@ -74,7 +74,7 @@ Test complete user flows across all phases:
 
 Report via beads:
 ```bash
-bd comment <beads-id> "Integration results: Phases [A,B,C] integrated. Integration tests: [X passing]. E2E: [verified]. Performance: [metrics if applicable]"
+bd comments add <beads-id> "Integration results: Phases [A,B,C] integrated. Integration tests: [X passing]. E2E: [verified]. Performance: [metrics if applicable]"
 ```
 
 ### 8. Final Smoke Test
@@ -88,7 +88,7 @@ Perform manual verification of complete feature:
 
 ### 9. Move to Validation
 
-Report via `bd comment <beads-id> "Phase: Validation - Integration complete"`
+Report via `bd comments add <beads-id> "Phase: Validation - Integration complete"`
 
 ---
 
@@ -102,7 +102,7 @@ Report via `bd comment <beads-id> "Phase: Validation - Integration complete"`
 - [ ] No regressions (full test suite passing)
 - [ ] Final smoke test passed
 - [ ] Integration results reported via beads
-- [ ] Reported via beads: `bd comment <beads-id> "Phase: Validation"`
+- [ ] Reported via beads: `bd comments add <beads-id> "Phase: Validation"`
 
 ---
 

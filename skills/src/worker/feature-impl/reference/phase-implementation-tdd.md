@@ -39,7 +39,7 @@ Task(
 After exploration, report via beads:
 
 ```bash
-bd comment <beads-id> "Pre-impl exploration complete: [N] files to modify, [M] callers identified, [K] existing tests. Key integration points: [list]. Edge cases to handle: [list]"
+bd comments add <beads-id> "Pre-impl exploration complete: [N] files to modify, [M] callers identified, [K] existing tests. Key integration points: [list]. Edge cases to handle: [list]"
 ```
 
 ### Step 3: Verify Readiness
@@ -123,7 +123,7 @@ git diff --name-only | grep "^web/"
 
 3. **Document evidence in beads:**
    ```bash
-   bd comment <beads-id> "Visual verification: [describe what screenshot shows, key UI elements visible, state verified]"
+   bd comments add <beads-id> "Visual verification: [describe what screenshot shows, key UI elements visible, state verified]"
    ```
 
 ### What to Verify Visually
@@ -136,7 +136,7 @@ git diff --name-only | grep "^web/"
 
 **⛔ If `playwright-cli` is not available:**
 ```bash
-bd comment <beads-id> "BLOCKED: UI changes require visual verification but playwright-cli is not available"
+bd comments add <beads-id> "BLOCKED: UI changes require visual verification but playwright-cli is not available"
 ```
 
 **Reference:** See `~/.claude/skills/worker/feature-impl/reference/tdd-best-practices.md` for:
@@ -166,7 +166,7 @@ Before moving to Validation phase, verify:
 - [ ] All tests pass (green)
 - [ ] UI smoke test complete (if UI feature)
 - [ ] Test/impl commits separate
-- [ ] Reported via beads with **actual test output**: `bd comment <beads-id> "Phase: Validation - Tests: <command> - <actual output>"`
+- [ ] Reported via beads with **actual test output**: `bd comments add <beads-id> "Phase: Validation - Tests: <command> - <actual output>"`
 
 **Test Evidence Requirement:**
 - Format: `Tests: <command> - <actual output summary>`
@@ -179,4 +179,4 @@ Before moving to Validation phase, verify:
 
 ## When to Move to Validation Phase
 
-Once completion criteria met → Report via `bd comment <beads-id> "Phase: Validation"` → Proceed to Validation phase
+Once completion criteria met → Report via `bd comments add <beads-id> "Phase: Validation"` → Proceed to Validation phase

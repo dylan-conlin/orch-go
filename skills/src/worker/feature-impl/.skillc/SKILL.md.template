@@ -61,8 +61,8 @@ Validation: smoke-test
 | mode=tdd | Tests (write first) |
 | mode=verification-first | Verification spec consumed + tests with AC-xxx traceability + evidence per spec |
 | validation=tests | Tests |
-| validation=smoke-test | Validation evidence via bd comment |
-| validation=multi-phase | Phase checkpoints via bd comment |
+| validation=smoke-test | Validation evidence via bd comments add |
+| validation=multi-phase | Phase checkpoints via bd comments add |
 
 ---
 
@@ -72,7 +72,7 @@ Proceed through phases sequentially per your configuration.
 
 **Phases:** Investigation → Clarifying Questions → Design → Implementation (TDD/direct) → Validation → Self-Review → Integration
 
-Track progress via `bd comment <beads-id> "Phase: <Phase> - <details>"`.
+Track progress via `bd comments add <beads-id> "Phase: <Phase> - <details>"`.
 
 ---
 
@@ -86,7 +86,7 @@ Track progress via `bd comment <beads-id> "Phase: <Phase> - <details>"`.
 2. **Enumerate ALL Requirements** - List every deliverable from ALL sections
 3. **Report Scope:**
    ```bash
-   bd comment <beads-id> "Phase: Planning - Scope: 1. [requirement] 2. [requirement] 3. [requirement] ..."
+   bd comments add <beads-id> "Phase: Planning - Scope: 1. [requirement] 2. [requirement] 3. [requirement] ..."
    ```
 4. **Flag Uncertainty** - If unclear what's in scope, ask before proceeding
 
@@ -120,7 +120,7 @@ Track progress via `bd comment <beads-id> "Phase: <Phase> - <details>"`.
 3. Update synthesis every 3-5 findings
 4. Document uncertainty honestly (tested vs untested)
 
-**Completion:** Investigation committed, reported via `bd comment <beads-id> "Phase: Clarifying Questions - Investigation complete"`
+**Completion:** Investigation committed, reported via `bd comments add <beads-id> "Phase: Clarifying Questions - Investigation complete"`
 
 **Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-investigation.md` for detailed workflow, templates, and examples.
 <!-- @/section -->
@@ -143,7 +143,7 @@ Track progress via `bd comment <beads-id> "Phase: <Phase> - <details>"`.
 3. Ask using directive-guidance pattern (state recommendation, ask if matches intent)
 4. Block until answers received
 
-**Completion:** All questions answered, reported via `bd comment <beads-id> "Phase: Design - Questions resolved"`
+**Completion:** All questions answered, reported via `bd comments add <beads-id> "Phase: Design - Questions resolved"`
 
 **Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-clarifying-questions.md` for question categories and patterns.
 <!-- @/section -->
@@ -166,7 +166,7 @@ Track progress via `bd comment <beads-id> "Phase: <Phase> - <details>"`.
 3. Create design document using template
 4. Get orchestrator approval before implementation
 
-**Completion:** Design approved, committed, reported via `bd comment <beads-id> "Phase: Implementation - Design approved"`
+**Completion:** Design approved, committed, reported via `bd comments add <beads-id> "Phase: Implementation - Design approved"`
 
 **Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-design.md` for detailed workflow and template.
 <!-- @/section -->
@@ -191,7 +191,7 @@ Track progress via `bd comment <beads-id> "Phase: <Phase> - <details>"`.
 | Disproportionate impact on vulnerable populations? | Document concern |
 
 **If concerns identified:**
-1. Document: `bd comment <beads-id> "HARM ASSESSMENT: [concern]"`
+1. Document: `bd comments add <beads-id> "HARM ASSESSMENT: [concern]"`
 2. Check if SPAWN_CONTEXT addresses with safeguards
 3. If addressed → Proceed with documented safeguards
 4. If NOT addressed → Escalate via Constitutional Objection Protocol (see worker-base)
@@ -229,7 +229,7 @@ Track progress via `bd comment <beads-id> "Phase: <Phase> - <details>"`.
 - Test passes immediately
 - Rationalizing "just this once"
 
-**Completion:** All tests pass, reported via `bd comment <beads-id> "Phase: Validation - All tests pass"`
+**Completion:** All tests pass, reported via `bd comments add <beads-id> "Phase: Validation - All tests pass"`
 
 **Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-implementation-tdd.md` and `reference/tdd-best-practices.md`.
 <!-- @/section -->
@@ -259,7 +259,7 @@ Before any implementation, locate and parse the verification spec:
 1. Check spawn context for attached verification-spec.md
 2. Enumerate: Behaviors, Acceptance Criteria (AC-xxx), Failure Modes (FM-xxx), Evidence Requirements
 3. Create traceability matrix: Behavior → Criterion → Test → Evidence
-4. Report: `bd comment <beads-id> "Spec consumed: [N] behaviors, [M] criteria, [K] failure modes"`
+4. Report: `bd comments add <beads-id> "Spec consumed: [N] behaviors, [M] criteria, [K] failure modes"`
 
 **Minimum Viable Spec (for simple work):**
 
@@ -277,7 +277,7 @@ If no formal spec exists, create inline:
 - Implementing features not in spec (scope creep)
 - Behavior doesn't match spec but tests pass (bad tests)
 
-**Completion:** All criteria verified with evidence, reported via `bd comment <beads-id> "Phase: Validation - Spec criteria: AC-001 ✅, AC-002 ✅"`
+**Completion:** All criteria verified with evidence, reported via `bd comments add <beads-id> "Phase: Validation - Spec criteria: AC-001 ✅, AC-002 ✅"`
 
 **Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-implementation-verification-first.md` for detailed workflow.
 <!-- @/section -->
@@ -299,7 +299,7 @@ If no formal spec exists, create inline:
 3. Make focused changes (≤2 files, ≤1 hour)
 4. Verify no regressions
 
-**Completion:** Tests pass, reported via `bd comment <beads-id> "Phase: Validation - Tests pass"`
+**Completion:** Tests pass, reported via `bd comments add <beads-id> "Phase: Validation - Tests pass"`
 
 **Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-implementation-direct.md`.
 <!-- @/section -->
@@ -327,7 +327,7 @@ Before completing, run: `git diff --name-only | grep "^web/"`
 If ANY files returned → Visual verification is REQUIRED:
 1. Rebuild server: `make install` then restart via `orch servers`
 2. Capture screenshot via `playwright-cli screenshot`
-3. Document evidence: `bd comment <beads-id> "Visual verification: [description]"`
+3. Document evidence: `bd comments add <beads-id> "Visual verification: [description]"`
 
 **⛔ Cannot mark Phase: Complete without visual evidence for web/ changes.**
 
@@ -357,7 +357,7 @@ If ANY files returned → Visual verification is REQUIRED:
 4. E2E verification + regression testing
 5. Final smoke test of complete feature
 
-**Completion:** Integration tests pass, reported via `bd comment <beads-id> "Phase: Validation - Integration tests pass"`
+**Completion:** Integration tests pass, reported via `bd comments add <beads-id> "Phase: Validation - Integration tests pass"`
 
 **Reference:** See `~/.claude/skills/worker/feature-impl/reference/phase-integration.md`.
 <!-- @/section -->
@@ -440,7 +440,7 @@ If ANY files returned → Visual verification is REQUIRED:
    - Example: If issue shows `time orch status # 1:25.67`, run `time orch status` (not `time orch status --json`)
 2. **Document the actual result** in a beads comment:
    ```bash
-   bd comment <beads-id> "Original symptom validation: [command] → [result]"
+   bd comments add <beads-id> "Original symptom validation: [command] → [result]"
    ```
 3. **Compare against original evidence** - is the symptom resolved?
 
@@ -467,7 +467,7 @@ This is a RED FLAG. Either:
 
 **If issues found:** Fix immediately, commit, re-verify.
 
-**When passed:** `bd comment <beads-id> "Self-review passed - ready for completion"`
+**When passed:** `bd comments add <beads-id> "Self-review passed - ready for completion"`
 
 ---
 
@@ -505,7 +505,7 @@ This is a RED FLAG. Either:
 ## Phase Transitions
 
 **After completing each phase:**
-1. Report progress: `bd comment <beads-id> "Phase: <new-phase> - <brief summary>"`
+1. Report progress: `bd comments add <beads-id> "Phase: <new-phase> - <brief summary>"`
 2. Output: "Phase complete, moving to next phase"
 3. Continue to next phase guidance
 
@@ -520,14 +520,14 @@ This is a RED FLAG. Either:
 - [ ] All deliverables created
 - [ ] All changes committed: `git status` shows "nothing to commit"
 - [ ] **If web/ modified:** Visual verification completed with evidence in phase report
-- [ ] Final status: `bd comment <beads-id> "Phase: Complete - [summary]"`
+- [ ] Final status: `bd comments add <beads-id> "Phase: Complete - [summary]"`
 
 **⚠️ If web/ files modified without visual verification → completion will be REJECTED.**
 
 **If ANY unchecked, work is NOT complete.**
 
 **Final step:** After all criteria met:
-1. `bd comment <beads-id> "Phase: Complete - [summary]"` (report FIRST)
+1. `bd comments add <beads-id> "Phase: Complete - [summary]"` (report FIRST)
 2. Commit any final changes
 3. Call `/exit` to close the agent session
 
@@ -537,9 +537,9 @@ This is a RED FLAG. Either:
 
 ## Troubleshooting
 
-**Stuck:** Re-read phase guidance, check SPAWN_CONTEXT. If blocked: `bd comment <beads-id> "BLOCKED: [reason]"`
+**Stuck:** Re-read phase guidance, check SPAWN_CONTEXT. If blocked: `bd comments add <beads-id> "BLOCKED: [reason]"`
 
-**Unclear requirements:** `bd comment <beads-id> "QUESTION: [question]"` and wait
+**Unclear requirements:** `bd comments add <beads-id> "QUESTION: [question]"` and wait
 
 **Scope changes:** Document change, ask orchestrator via beads comment
 

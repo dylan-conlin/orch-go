@@ -216,7 +216,7 @@ For connecting to an existing authenticated browser tab:
 3. Verify auth state via snapshot
 
 **If auth fails:**
-- Report: `bd comment <beads-id> "BLOCKED: Auth failed - [method] - [error details]"`
+- Report: `bd comments add <beads-id> "BLOCKED: Auth failed - [method] - [error details]"`
 - Do NOT proceed — audit results without auth are meaningless for authenticated pages
 
 ---
@@ -308,7 +308,7 @@ playwright-cli resize → width: 1280, height: 800
 
 ## Phase 1 Completion
 
-**Report:** `bd comment <beads-id> "Phase: Dimension Audit - Setup complete, baseline captured at 5 viewports"`
+**Report:** `bd comments add <beads-id> "Phase: Dimension Audit - Setup complete, baseline captured at 5 viewports"`
 
 **Verify before proceeding:**
 - [ ] Page loaded and authenticated
@@ -1134,7 +1134,7 @@ async () => {
    - Document: "axe-core CDN blocked by CSP — using structural review only"
    - Rely on Stage 1 (structural review) for accessibility findings
    - Note in investigation: "Automated WCAG scan not available; manual structural review only"
-3. Report: `bd comment <beads-id> "CONSTRAINT: axe-core CDN blocked by CSP - structural review only"`
+3. Report: `bd comments add <beads-id> "CONSTRAINT: axe-core CDN blocked by CSP - structural review only"`
 
 ---
 
@@ -2713,10 +2713,10 @@ Before completing the audit, verify quality of findings and documentation.
 
 **If self-review finds issues:**
 1. Fix them before proceeding
-2. Report: `bd comment <beads-id> "Self-review: Fixed [issue summary]"`
+2. Report: `bd comments add <beads-id> "Self-review: Fixed [issue summary]"`
 
 **If self-review passes:**
-- Report: `bd comment <beads-id> "Self-review passed - ready for completion"`
+- Report: `bd comments add <beads-id> "Self-review passed - ready for completion"`
 
 ---
 
@@ -2731,7 +2731,7 @@ Before marking complete:
 - [ ] Screenshots captured and indexed
 - [ ] Discovered work reviewed and tracked
 - [ ] All changes committed: `git status` shows "nothing to commit"
-- [ ] Reported: `bd comment <beads-id> "Phase: Complete - UX audit: {N} findings ({blocker}B/{major}M/{minor}m/{cosmetic}C), axe-core: {N} violations"`
+- [ ] Reported: `bd comments add <beads-id> "Phase: Complete - UX audit: {N} findings ({blocker}B/{major}M/{minor}m/{cosmetic}C), axe-core: {N} violations"`
 
 **If ANY box unchecked, audit is NOT complete.**
 
@@ -2740,7 +2740,7 @@ Before marking complete:
 **After completing all criteria:**
 
 1. Verify all checkboxes marked
-2. Report completion: `bd comment <beads-id> "Phase: Complete - UX audit: [summary]"`
+2. Report completion: `bd comments add <beads-id> "Phase: Complete - UX audit: [summary]"`
 3. Call /exit to close agent session
 
 <!-- /SKILL-TEMPLATE -->

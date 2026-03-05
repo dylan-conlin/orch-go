@@ -19,7 +19,7 @@
 
 2. Commit immediately: `git add .kb/investigations/*.md && git commit -m "investigation: {slug} - error encountered"`
 
-3. Report via beads: `bd comment <beads-id> "ERROR: [error summary] - see investigation file"`
+3. Report via beads: `bd comments add <beads-id> "ERROR: [error summary] - see investigation file"`
 
 4. If error is recoverable, continue. If fatal, the investigation file now has a record of what happened.
 

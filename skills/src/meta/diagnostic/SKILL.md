@@ -88,8 +88,8 @@ description: Loadable skill for system stabilization when orchestration is degra
 ## When to Load This Skill
 
 **Automatic nudge (system suggests it):**
-- Crash-free streak < 4 hours (`orch stability`)
-- 2+ CRITICAL health cards (`orch health`)
+- Crash-free streak < 4 hours (check flight recorder timestamps)
+- 2+ CRITICAL issues from `orch doctor`
 - Task completion rate < 50% (`orch stats`)
 
 **Manual activation:**
@@ -104,8 +104,7 @@ description: Loadable skill for system stabilization when orchestration is degra
 When this skill is loaded, run these commands and read the output:
 
 ```bash
-orch doctor          # What services are up/down?
-orch health          # What health cards are critical?
+orch doctor          # What services are up/down? What needs attention?
 orch status          # What's running right now?
 orch reconcile       # Any zombie issues?
 git status           # Clean working tree?
@@ -179,10 +178,10 @@ Work through in priority order. Fix the highest-priority problem before moving t
 **Source:** `orch reconcile`, `git status`
 - Zombie in_progress issues with no active agent → `orch reconcile --fix`
 - Dirty working tree from crashed agents → clean up (`git checkout`, `git stash drop`)
-- Stale agent processes → `orch reap`
+- Stale agent processes → `orch clean --orphans`
 
 ### Priority 3: Recurring Crash Pattern
-**Source:** `orch stability` (intervention log)
+**Source:** Flight recorder (`.orch/HANDOFF.md`)
 - Look at the last 5-10 interventions
 - Is there a pattern? (same agent crashing, same service dying, same error)
 - **Document the pattern as a beads issue** — don't fix it now
@@ -197,7 +196,6 @@ Work through in priority order. Fix the highest-priority problem before moving t
 ### What to Ignore in Diagnostic Mode
 - `orch patterns` output (273 items of noise — not actionable in crisis)
 - Feature backlog (`bd ready` for features — they wait)
-- `orch friction` (capture tool, not triage tool)
 - Optimization opportunities (stability first, optimization later)
 
 ---
@@ -238,7 +236,7 @@ Each item must pass before moving to the next. If something regresses, go back t
 ### Phase A: Environment Clean (no spawn needed)
 ```
 [ ] Runtime context identified (TUI / HTTP API / Claude Code)
-[ ] No zombie agents or processes (orch reconcile clean, orch reap clean)
+[ ] No zombie agents or processes (orch reconcile --fix, orch clean --orphans)
 [ ] Clean working tree (git status — nothing unexpected)
 [ ] Crash-free streak > 30 minutes
 ```
@@ -253,7 +251,7 @@ Each item must pass before moving to the next. If something regresses, go back t
 
 ### Phase C: Exit Readiness
 ```
-[ ] All CRITICAL health cards resolved (orch health — no red)
+[ ] All CRITICAL issues resolved (orch doctor — no red)
 [ ] orch doctor — all relevant services green
 [ ] Both exit gates pass (see Exit Criteria)
 ```
@@ -290,7 +288,7 @@ Hypothesis: [what the real fix probably is]"
 
 ### Gate 1: Quantitative (Full Exit — Phase C complete)
 - Crash-free streak ≥ 4 hours
-- Zero CRITICAL health cards (`orch health`)
+- Zero CRITICAL issues (`orch doctor`)
 - `orch doctor` all relevant services green
 - No zombie agents or contaminated state
 
@@ -317,12 +315,10 @@ Hypothesis: [what the real fix probably is]"
 
 | Tool | Role in Diagnostic Mode |
 |------|------------------------|
-| `orch doctor` | Primary liveness check — run first, run often |
-| `orch health` | Health cards — track CRITICAL count toward exit |
-| `orch stability` | Intervention log — pattern detection |
+| `orch doctor` | Primary liveness + health check — run first, run often |
 | `orch status` | Active agent awareness |
 | `orch reconcile` | Zombie cleanup |
-| `orch reap` | Orphaned process cleanup |
+| `orch clean --orphans` | Orphaned agent GC |
 | `bd create` | Issue capture (primary output of diagnostic mode) |
 | `.orch/HANDOFF.md` | Flight recorder (survives crashes) |
 
@@ -330,7 +326,6 @@ Hypothesis: [what the real fix probably is]"
 |------|----------------------------|
 | `orch daemon run` | Suspended — no autonomous spawning |
 | `orch patterns` | Too noisy for crisis triage |
-| `orch friction` | Capture tool, not triage tool |
 | `bd ready` (features) | Features wait |
 
 ---
@@ -344,7 +339,7 @@ Hypothesis: [what the real fix probably is]"
 | Skipping the flight recorder | "I'll remember what I did" — you won't after a crash | Log every state change |
 | Jumping to feature work after 1 hour stable | 1 hour isn't enough signal. You've seen 15-minute recurrence cycles. | Wait for 4 hours + both exit gates |
 | Ignoring the stabilization checklist order | Earlier items are prerequisites for later ones | Work in order, go back if regression |
-| "The system seems fine now" without checking | Vibes are not metrics | Run `orch health` + `orch doctor` |
+| "The system seems fine now" without checking | Vibes are not metrics | Run `orch doctor` |
 
 
 

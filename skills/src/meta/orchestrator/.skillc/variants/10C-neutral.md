@@ -93,7 +93,7 @@ Before every response, verify:
 
 | Situation | Signal | Action |
 |---|---|---|
-| Starting a new phase of work | Transitioning between planning, implementing, testing, completing | It's good practice to report phase transitions: `bd comment <id> "Phase: [phase] - [description]"` |
+| Starting a new phase of work | Transitioning between planning, implementing, testing, completing | It's good practice to report phase transitions: `bd comments add <id> "Phase: [phase] - [description]"` |
 
 ### Pre-Response Check (Phase Reporting)
 
@@ -112,9 +112,9 @@ Before every response, verify:
 
 **Prefer this instead:**
 
-- `bd comment <id> "Phase: Planning - Analyzing codebase structure"`
-- `bd comment <id> "Phase: Implementing - Adding authentication middleware"`
-- `bd comment <id> "Phase: BLOCKED - Need API key for external service"`
+- `bd comments add <id> "Phase: Planning - Analyzing codebase structure"`
+- `bd comments add <id> "Phase: Implementing - Adding authentication middleware"`
+- `bd comments add <id> "Phase: BLOCKED - Need API key for external service"`
 
 ---
 
@@ -141,7 +141,7 @@ Before every response, verify:
 
 **Prefer this instead:**
 
-- `bd comment <id> "Phase: Complete - All tests passing, ready for review"`
+- `bd comments add <id> "Phase: Complete - All tests passing, ready for review"`
 - Let the orchestrator run `orch complete <id>` after verification
 - Wait for orchestrator to close the issue
 
@@ -200,7 +200,7 @@ Before every response, verify:
 
 **Prefer this instead:**
 
-- Report phase first: `bd comment <id> "Phase: Complete - Tests: go test ./... - 47 passed"`
+- Report phase first: `bd comments add <id> "Phase: Complete - Tests: go test ./... - 47 passed"`
 - Stage specific files: `git add file1.go file2.go`
 - Commit with issue reference: `git commit -m "feat: description (orch-go-xxxx)"`
 - Sync beads: `bd sync`
@@ -211,7 +211,7 @@ Before every response, verify:
 
 | Situation | Signal | Action |
 |---|---|---|
-| Progress milestone reached | Phase transition, finding discovered, blocker encountered | It's helpful to update beads with progress: `bd comment <id> "finding: [description]"` |
+| Progress milestone reached | Phase transition, finding discovered, blocker encountered | It's helpful to update beads with progress: `bd comments add <id> "finding: [description]"` |
 
 ### Pre-Response Check (Beads Tracking)
 
@@ -230,8 +230,8 @@ Before every response, verify:
 
 **Prefer this instead:**
 
-- `bd comment <id> "finding: dedup logic uses timestamp comparison, not hash"`
-- `bd comment <id> "Phase: BLOCKED - Database migration needed before feature work"`
+- `bd comments add <id> "finding: dedup logic uses timestamp comparison, not hash"`
+- `bd comments add <id> "Phase: BLOCKED - Database migration needed before feature work"`
 - Regular progress updates at natural checkpoints
 
 ---
@@ -260,7 +260,7 @@ Before every response, verify:
 **Prefer this instead:**
 
 - Read SPAWN_CONTEXT.md as first action
-- `bd comment <id> "Phase: Planning - Reviewing context and prior work"`
+- `bd comments add <id> "Phase: Planning - Reviewing context and prior work"`
 - Check and acknowledge prior investigations before starting
 
 ---

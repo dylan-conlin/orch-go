@@ -34,7 +34,7 @@ deliverables:
 verification:
   requirements:
     - "All configured phases completed (investigation findings, design docs, implementation, validation evidence as applicable)"
-    - "Tests pass OR validation evidence documented via bd comment (automated tests, smoke test, or multi-phase validation)"
+    - "Tests pass OR validation evidence documented via bd comments add (automated tests, smoke test, or multi-phase validation)"
     - "Implementation matches design (if design phase used)"
     - "No regressions introduced (existing functionality still works)"
     - "All deliverables committed and reported via bd comment"

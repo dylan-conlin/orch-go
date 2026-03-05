@@ -62,14 +62,12 @@ description: Always-loaded runtime policy for orchestrator agents. Routes decisi
 ```
 BUILD something    → feature-impl
 DESIGN decisions   → architect (trade-offs, recommendations)
-FIX broken thing   → systematic-debugging (cause clear) | reliability-testing (flaky)
-TRIAGE symptom     → issue-creation (unknown cause → rich beads issue)
+FIX broken thing   → systematic-debugging (cause clear or flaky)
+TRIAGE symptom     → investigation (unknown cause → explore, then route to fix)
 UNDERSTAND         → probe (model exists) | investigation (no model) | research (external)
 TRY/EXPERIENCE     → experiential-eval (agent uses the tool, reports qualitatively)
 COMPARE approaches → head-to-head (same task both ways, qualitative comparison)
 EVALUATE UI/UX     → ux-audit (requires --mcp playwright)
-DELEGATE to human  → delegating-to-team
-META (skill system)→ writing-skills
 ```
 
 **Probe vs Investigation:** If model exists in `.kb/models/{name}/` → probe (tests specific claim). No model → investigation (exploratory).
@@ -91,7 +89,7 @@ Areas with 5+ bug fixes, 3+ investigations, or 2+ abandonments = systemic, not i
 ### Feature vs Bug Quick Rules
 
 - **Feature:** Scope clear → `feature-impl`. Design needed → `architect`.
-- **Bug:** Cause clear → `systematic-debugging`. Symptom only → `issue-creation`. Intermittent → `reliability-testing`.
+- **Bug:** Cause clear → `systematic-debugging`. Symptom only → `investigation`. Intermittent → `systematic-debugging`.
 
 ### Stall Triage (Before Abandoning Any Agent)
 
@@ -142,7 +140,7 @@ Before labeling, verify: type is clear (skill inference will work), no blocking 
 ### Beads Tracking
 
 - **Self-tracking:** investigation, architect, research, codebase-audit (artifact IS discoverable)
-- **Needs tracking:** feature-impl, reliability-testing (create beads issue first)
+- **Needs tracking:** feature-impl, systematic-debugging (create beads issue first)
 
 ---
 
@@ -168,7 +166,7 @@ Never use worktree isolation (`isolation: "worktree"`) for Docker-dependent proj
 | `--model opus` | Opus + claude backend (tmux) |
 | `--backend opencode` | Sonnet + headless (HTTP API) |
 
-**Use opus for:** systematic-debugging, investigation, architect, codebase-audit, reliability-testing, research, issue-creation.
+**Use opus for:** systematic-debugging, investigation, architect, codebase-audit, research.
 
 **Sonnet sufficient for:** single-file fixes, known simple edits, config changes, well-scoped implementation.
 

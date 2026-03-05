@@ -129,7 +129,7 @@ Work independently through all 4 phases, produce investigation with recommendati
 4. Identify constraints (technical, business, time)
 5. Clarify scope boundaries (what's in/out)
 
-**Output:** Problem statement documented. Report via `bd comment <beads-id> "Phase: Problem Framing - [design question]"`.
+**Output:** Problem statement documented. Report via `bd comments add <beads-id> "Phase: Problem Framing - [design question]"`.
 
 **Problem Framing Structure:**
 - Design Question: What specific design problem are we solving?
@@ -152,7 +152,7 @@ Work independently through all 4 phases, produce investigation with recommendati
 3. Research external patterns if relevant (web search, docs)
 4. Gather evidence from codebase (grep, read existing code)
 
-**Output:** Forks documented with substrate consultation. Report via `bd comment <beads-id> "Phase: Exploration - [N] forks identified"`.
+**Output:** Forks documented with substrate consultation. Report via `bd comments add <beads-id> "Phase: Exploration - [N] forks identified"`.
 
 **Fork Documentation Format:**
 
@@ -226,7 +226,7 @@ bd create --type question "[question text]" -l authority:X -l subtype:Y
 
 **Note:** An architect artifact can be `Status: Complete` even with unresolved questions. Your job is to surface questions clearly; resolution is orchestrator/Dylan's job.
 
-**Output:** Questions documented and created as beads entities. Report via `bd comment <beads-id> "Phase: Question Generation - [N] blocking questions surfaced"`.
+**Output:** Questions documented and created as beads entities. Report via `bd comments add <beads-id> "Phase: Question Generation - [N] blocking questions surfaced"`.
 
 ---
 
@@ -240,7 +240,7 @@ bd create --type question "[question text]" -l authority:X -l subtype:Y
 3. Document what you're sacrificing with each choice
 4. Note any spikes done and what they revealed
 
-**Output:** All navigable forks resolved with clear recommendations. Report via `bd comment <beads-id> "Phase: Synthesis - [N] forks navigated, recommend [summary]"`.
+**Output:** All navigable forks resolved with clear recommendations. Report via `bd comments add <beads-id> "Phase: Synthesis - [N] forks navigated, recommend [summary]"`.
 
 **Synthesis Format (for each fork):**
 
@@ -355,7 +355,7 @@ This checklist ensures the design is actionable for feature-impl agents who will
 2. **Link related issues:**
    ```bash
    # If this design enables other work
-   bd update <new-id> --blocks <dependent-id>
+   bd dep add <dependent-id> <new-id>
    ```
 
 3. **Review existing related issues:**
@@ -652,7 +652,7 @@ Before marking complete:
 - [ ] Investigation file has `**Phase:** Complete` (required for orch complete verification)
 - [ ] Discovered work tracked via beads (mandatory for every session)
 - [ ] All changes committed to git
-- [ ] Reported via beads: `bd comment <beads-id> "Phase: Complete - [recommendation summary]"`
+- [ ] Reported via beads: `bd comments add <beads-id> "Phase: Complete - [recommendation summary]"`
 - [ ] Call /exit to close agent session
 
 **If ANY unchecked, architect work is NOT complete.**

@@ -76,7 +76,7 @@ When an artifact says "X is not implemented," that's a hypothesis—not a findin
 
 2. Commit immediately: `git add .kb/investigations/*.md && git commit -m "investigation: {slug} - error encountered"`
 
-3. Report via beads: `bd comment <beads-id> "ERROR: [error summary] - see investigation file"`
+3. Report via beads: `bd comments add <beads-id> "ERROR: [error summary] - see investigation file"`
 
 4. If error is recoverable, continue. If fatal, the investigation file now has a record of what happened.
 
@@ -312,7 +312,7 @@ Before marking complete:
 5. D.E.K.N. summary filled (Delta, Evidence, Knowledge, Next, **Promote to Decision**)
 6. **Decision promotion flag:** Set to `recommend-yes`, `recommend-no`, or `unclear` - orchestrator/human makes final call
 7. Link artifact to beads issue: `kb link <investigation-file> --issue <beads-id>`
-8. Report via beads: `bd comment <beads-id> "Phase: Complete - [conclusion summary]"` (report phase FIRST - before commit)
+8. Report via beads: `bd comments add <beads-id> "Phase: Complete - [conclusion summary]"` (report phase FIRST - before commit)
 9. `git add` and `git commit` the investigation file
 10. Run `/exit` to close session
 

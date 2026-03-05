@@ -98,8 +98,8 @@ Like SPAWN_CONTEXT.md for workers, this provides session context:
 **Started:** [Timestamp]
 **Prior Handoff:** [Link to previous SESSION_HANDOFF.md if resuming]
 
-## Frontier State
-[Current orch frontier output - ready, blocked, active, stuck]
+## Current State
+[Current `orch status` + `bd ready` output - active, stuck, ready]
 
 ## Session Scope
 [Expected duration, checkpoint strategy]

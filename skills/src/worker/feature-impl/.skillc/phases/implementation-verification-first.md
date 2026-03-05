@@ -47,24 +47,24 @@ Extract and enumerate:
 1. **Observable Behaviors:** What can be seen when working?
 
    ```
-   bd comment <beads-id> "Behaviors to implement: 1. [primary] 2. [secondary]..."
+   bd comments add <beads-id> "Behaviors to implement: 1. [primary] 2. [secondary]..."
    ```
 
 2. **Acceptance Criteria:** What proves each behavior works?
 
    ```
-   bd comment <beads-id> "Acceptance criteria: AC-001: [condition], AC-002: [condition]..."
+   bd comments add <beads-id> "Acceptance criteria: AC-001: [condition], AC-002: [condition]..."
    ```
 
 3. **Failure Modes:** What breaks it and how to diagnose?
 
    ```
-   bd comment <beads-id> "Failure modes to handle: FM-001: [symptom → fix]..."
+   bd comments add <beads-id> "Failure modes to handle: FM-001: [symptom → fix]..."
    ```
 
 4. **Evidence Requirements:** What artifacts prove verification?
    ```
-   bd comment <beads-id> "Evidence required: [test output / screenshot / log / etc.]"
+   bd comments add <beads-id> "Evidence required: [test output / screenshot / log / etc.]"
    ```
 
 ### Create Traceability Matrix
@@ -81,7 +81,7 @@ Map behaviors → criteria → tests → evidence:
 **Report readiness:**
 
 ```bash
-bd comment <beads-id> "Spec consumed: [N] behaviors, [M] acceptance criteria, [K] failure modes. Ready to instrument verification."
+bd comments add <beads-id> "Spec consumed: [N] behaviors, [M] acceptance criteria, [K] failure modes. Ready to instrument verification."
 ```
 
 ---
@@ -238,7 +238,7 @@ The spec defines what evidence is required. Capture it:
 ### Report Verification
 
 ```bash
-bd comment <beads-id> "Verification complete: AC-001 ✅ (test + behavior + evidence), AC-002 ✅ (test + behavior + evidence). All behaviors match spec."
+bd comments add <beads-id> "Verification complete: AC-001 ✅ (test + behavior + evidence), AC-002 ✅ (test + behavior + evidence). All behaviors match spec."
 ```
 
 ---
@@ -261,7 +261,7 @@ If you modified ANY file in `web/` directory:
 
 4. **Document via beads:**
    ```bash
-   bd comment <beads-id> "Visual verification: [behavior observed matches spec]"
+   bd comments add <beads-id> "Visual verification: [behavior observed matches spec]"
    ```
 
 ---
@@ -288,10 +288,10 @@ Before moving to Validation phase:
 - [ ] Behavior cross-referenced against spec
 - [ ] Evidence captured per spec requirements
 - [ ] UI smoke test complete (if web/ changes)
-- [ ] Reported via beads with traceability: `bd comment <beads-id> "Phase: Validation "All [N] acceptance criteria verified with evidence"`
+- [ ] Reported via beads with traceability: `bd comments add <beads-id> "Phase: Validation "All [N] acceptance criteria verified with evidence"`
 
 ---
 
 ## When to Move to Validation Phase
 
-Once completion criteria met → Report via `bd comment <beads-id> "Phase: Validation "Tests: <command> - <output>. Spec criteria: AC-001 ✅, AC-002 ✅"` → Proceed to Validation phase
+Once completion criteria met → Report via `bd comments add <beads-id> "Phase: Validation "Tests: <command> - <output>. Spec criteria: AC-001 ✅, AC-002 ✅"` → Proceed to Validation phase

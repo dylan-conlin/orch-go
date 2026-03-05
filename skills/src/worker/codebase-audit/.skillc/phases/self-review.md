@@ -88,10 +88,10 @@ bd label <issue-id> triage:ready  # Critical severity, clear fix
 
 **If self-review finds issues:**
 1. Fix them before proceeding
-2. Report: `bd comment <beads-id> "Self-review: Fixed [issue summary]"`
+2. Report: `bd comments add <beads-id> "Self-review: Fixed [issue summary]"`
 
 **If self-review passes:**
-- Report: `bd comment <beads-id> "Self-review passed - ready for completion"`
+- Report: `bd comments add <beads-id> "Self-review passed - ready for completion"`
 
 **Checklist summary (verify mentally, report issues only):**
 - Findings: Evidence with file:line, pattern searches documented, false positives filtered, severity assessed
@@ -115,7 +115,7 @@ Before marking complete:
 - [ ] Pattern search commands documented (reproducibility)
 - [ ] Discovered work reviewed and tracked (or noted "No actionable items")
 - [ ] All changes committed: `git status` shows "nothing to commit"
-- [ ] Reported via beads: `bd comment <beads-id> "Phase: Complete - [findings summary]"`
+- [ ] Reported via beads: `bd comments add <beads-id> "Phase: Complete - [findings summary]"`
 
 **If ANY box unchecked, audit is NOT complete.**
 
@@ -124,5 +124,5 @@ Before marking complete:
 **After completing all criteria:**
 
 1. Verify all checkboxes marked
-2. Report completion: `bd comment <beads-id> "Phase: Complete - Audit findings: [count], Recommendations: [count]"`
+2. Report completion: `bd comments add <beads-id> "Phase: Complete - Audit findings: [count], Recommendations: [count]"`
 3. Call /exit to close agent session

@@ -327,7 +327,7 @@ If you found bugs, tech debt, or enhancement ideas during investigation:
    - Probe Mode: probe file exists in `.kb/models/{model-name}/probes/` with all 4 mandatory sections
    - Investigation Mode: Prior-Work acknowledged and D.E.K.N. summary filled
 3. Leave it Better completed (or noted why N/A)
-4. Report: `bd comment <beads-id> "Phase: Complete - [conclusion summary]"` (FIRST - before commit)
+4. Report: `bd comments add <beads-id> "Phase: Complete - [conclusion summary]"` (FIRST - before commit)
 5. Commit: `git add && git commit`
 6. Exit: `/exit`
 

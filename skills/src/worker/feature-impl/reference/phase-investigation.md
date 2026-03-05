@@ -151,7 +151,7 @@ When investigation answers your question:
 
 3. Report phase transition:
    ```bash
-   bd comment <beads-id> "Phase: Clarifying Questions - Investigation complete, findings in [investigation file path]"
+   bd comments add <beads-id> "Phase: Clarifying Questions - Investigation complete, findings in [investigation file path]"
    ```
 
 4. Output: "Investigation complete, moving to Clarifying Questions phase"

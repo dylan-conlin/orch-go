@@ -42,7 +42,7 @@ If investigation phase preceded design:
 
 Report via beads that you need design exploration:
 ```bash
-bd comment <beads-id> "Status: BLOCKED - Multiple viable approaches, need design exploration before proceeding"
+bd comments add <beads-id> "Status: BLOCKED - Multiple viable approaches, need design exploration before proceeding"
 ```
 
 The orchestrator may spawn an interactive architect session (`orch spawn architect -i`) for collaborative design exploration. Wait for orchestrator response before proceeding.
@@ -79,12 +79,12 @@ Full template available at: `~/.claude/skills/worker/feature-impl/reference/desi
 **Report design summary via beads:**
 
 ```bash
-bd comment <beads-id> "Design ready for review: docs/designs/YYYY-MM-DD-{slug}.md - [chosen approach]. Key decisions: [1-2 sentences]. Awaiting approval."
+bd comments add <beads-id> "Design ready for review: docs/designs/YYYY-MM-DD-{slug}.md - [chosen approach]. Key decisions: [1-2 sentences]. Awaiting approval."
 ```
 
 If design exploration was done (via architect session):
 ```bash
-bd comment <beads-id> "Design ready: Evaluated 3 approaches, recommending [A] because [reasoning]. See docs/designs/... for details."
+bd comments add <beads-id> "Design ready: Evaluated 3 approaches, recommending [A] because [reasoning]. See docs/designs/... for details."
 ```
 
 ### 5. Get Orchestrator Approval
@@ -112,7 +112,7 @@ Once approved:
    git commit -m "design: ${SLUG}"
    ```
 
-3. Report phase transition: `bd comment <beads-id> "Phase: Implementation "Design approved, beginning implementation"`
+3. Report phase transition: `bd comments add <beads-id> "Phase: Implementation "Design approved, beginning implementation"`
 
 4. Output: "✅ Design approved, moving to Implementation phase"
 
@@ -144,6 +144,6 @@ Before moving to Implementation phase, verify:
 - [ ] Alternatives considered (if design exploration was done)
 - [ ] Orchestrator reviewed and approved design
 - [ ] Design document committed to git
-- [ ] Reported via beads: `bd comment <beads-id> "Phase: Implementation "Design approved"`
+- [ ] Reported via beads: `bd comments add <beads-id> "Phase: Implementation "Design approved"`
 
 **If ANY box unchecked, design is NOT complete.**

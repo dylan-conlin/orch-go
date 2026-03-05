@@ -65,7 +65,7 @@ CROSS_REPO_ISSUE:
 
 **Example:**
 ```bash
-bd comment <beads-id> "Phase: Complete - Implemented token refresh. Cross-repo: 1 CROSS_REPO_ISSUE block below.
+bd comments add <beads-id> "Phase: Complete - Implemented token refresh. Cross-repo: 1 CROSS_REPO_ISSUE block below.
 
 CROSS_REPO_ISSUE:
   repo: ~/Documents/personal/price-watch

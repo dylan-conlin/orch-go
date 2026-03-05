@@ -51,12 +51,12 @@ You CANNOT mark Phase: Complete without:
 
 **Example completion with UI evidence:**
 ```bash
-bd comment <beads-id> "Phase: Complete - Added stats bar component. Screenshot captured showing new stats bar with 3 agents active, 2 completed. UI renders correctly at localhost:5188."
+bd comments add <beads-id> "Phase: Complete - Added stats bar component. Screenshot captured showing new stats bar with 3 agents active, 2 completed. UI renders correctly at localhost:5188."
 ```
 
 **Critical:** If `playwright-cli` is not available, you MUST report this as a blocker:
 ```bash
-bd comment <beads-id> "BLOCKED: UI changes require visual verification but playwright-cli is not available"
+bd comments add <beads-id> "BLOCKED: UI changes require visual verification but playwright-cli is not available"
 ```
 
 ---
@@ -70,7 +70,7 @@ bd comment <beads-id> "BLOCKED: UI changes require visual verification but playw
 1. Confirm changes are complete
 2. **Commit all changes** - `git add -A && git commit -m "[type]: [description]"`
 3. **Verify commit** - `git status` shows "nothing to commit"
-4. Report completion: `bd comment <beads-id> "Phase: Complete - [brief summary]"`
+4. Report completion: `bd comments add <beads-id> "Phase: Complete - [brief summary]"`
 5. Call /exit to close agent session
 
 **That's it - no validation required.**
@@ -87,7 +87,7 @@ bd comment <beads-id> "BLOCKED: UI changes require visual verification but playw
 2. **Verify all tests pass** - All green, no errors/warnings, adequate coverage
 3. **Commit all changes** - `git add -A && git commit -m "[type]: [description]"`
 4. **Verify commit** - `git status` shows "nothing to commit"
-5. **Report completion with test evidence** - `bd comment <beads-id> "Phase: Complete - Tests: <command> - <actual output>"`
+5. **Report completion with test evidence** - `bd comments add <beads-id> "Phase: Complete - Tests: <command> - <actual output>"`
 6. **Call /exit** - Close agent session
 
 **Test Evidence Requirement:**
@@ -117,7 +117,7 @@ Your completion comment MUST include actual test output, not just "tests passing
 4. **Capture evidence** - Screenshot for UI, request/response for API/CLI
 5. **Commit all changes** - `git add -A && git commit -m "[type]: [description]"`
 6. **Verify commit** - `git status` shows "nothing to commit"
-7. **Report completion with evidence** - `bd comment <beads-id> "Phase: Complete - Tests: <command> - <output>. Smoke test: [verification summary]"`
+7. **Report completion with evidence** - `bd comments add <beads-id> "Phase: Complete - Tests: <command> - <output>. Smoke test: [verification summary]"`
 8. **Call /exit** - Close agent session
 
 **Critical:** Tests passing ≠ feature working. Always perform manual verification for user-facing features.
@@ -142,9 +142,9 @@ Your completion comment MUST include actual test output, not just "tests passing
 2. **Smoke test (if UI)** - Perform manual verification if feature includes UI
 3. **Commit all changes** - `git add -A && git commit -m "[type]: [description]"`
 4. **Verify commit** - `git status` shows "nothing to commit"
-5. **Report awaiting validation** - `bd comment <beads-id> "AWAITING_VALIDATION - [phase details, evidence summary]"`
+5. **Report awaiting validation** - `bd comments add <beads-id> "AWAITING_VALIDATION - [phase details, evidence summary]"`
 6. **STOP** - Wait for orchestrator approval. DO NOT proceed to next phase
-7. **After approval** - Report: `bd comment <beads-id> "Phase: Complete - [summary]"`
+7. **After approval** - Report: `bd comments add <beads-id> "Phase: Complete - [summary]"`
 8. **Call /exit** - Close agent session
 
 **Critical:** STOP and wait for explicit orchestrator approval. Do not proceed or mark complete without approval.
@@ -214,7 +214,7 @@ Your completion comment MUST include actual test output, not just "tests passing
 - [ ] Server restarted (`orch servers stop/start`)
 - [ ] Screenshot captured via `playwright-cli screenshot`
 - [ ] Screenshot evidence described in completion comment
-- [ ] `bd comment <beads-id> "Visual verification: [description of what screenshot shows]"`
+- [ ] `bd comments add <beads-id> "Visual verification: [description of what screenshot shows]"`
 
 **CRITICAL: If web/ files were modified and visual verification is missing, orchestrator WILL reject the completion.**
 

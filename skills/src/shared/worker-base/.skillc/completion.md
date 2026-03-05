@@ -7,7 +7,7 @@
 {{if eq .Tier "light"}}
 1. Author/update `VERIFICATION_SPEC.yaml` in the workspace root.
    - Fill the pre-populated skeleton with the exact commands you ran, expectations you verified, and any manual steps still required.
-2. Run: `bd comment {{.BeadsID}} "Phase: Complete - "[1-2 sentence summary of deliverables]"` (report phase FIRST - before commit)
+2. Run: `bd comments add {{.BeadsID}} "Phase: Complete - "[1-2 sentence summary of deliverables]"` (report phase FIRST - before commit)
 3. **Verify all .kb/ files are committed:**
    - Run: `git status --porcelain` and check for any .kb/ files (investigations, probes, decisions, etc.)
    - If uncommitted .kb/ files exist: `git add .kb/ && git commit -m "knowledge artifacts from session"`
@@ -19,7 +19,7 @@
 {{else}}
 1. Author/update `VERIFICATION_SPEC.yaml` in the workspace root.
    - Fill the pre-populated skeleton with the exact commands you ran, expectations you verified, and any manual steps still required.
-2. Run: `bd comment {{.BeadsID}} "Phase: Complete - "[1-2 sentence summary of deliverables]"` (report phase FIRST - before commit)
+2. Run: `bd comments add {{.BeadsID}} "Phase: Complete - "[1-2 sentence summary of deliverables]"` (report phase FIRST - before commit)
 3. Ensure SYNTHESIS.md is created with these required sections:
    - **`Plain-Language Summary`** (REQUIRED): 2-4 sentences in plain language describing what you built/found/decided and why it matters. This is the scaffolding the orchestrator uses during completion review — write it for a human who hasn't read your code. No jargon without explanation. No "implemented X" without saying what X does.
    - **`Verification Contract`**: Link to `VERIFICATION_SPEC.yaml` and key outcomes

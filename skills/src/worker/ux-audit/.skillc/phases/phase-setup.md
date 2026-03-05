@@ -36,7 +36,7 @@ For connecting to an existing authenticated browser tab:
 3. Verify auth state via snapshot
 
 **If auth fails:**
-- Report: `bd comment <beads-id> "BLOCKED: Auth failed - [method] - [error details]"`
+- Report: `bd comments add <beads-id> "BLOCKED: Auth failed - [method] - [error details]"`
 - Do NOT proceed — audit results without auth are meaningless for authenticated pages
 
 ---
@@ -128,7 +128,7 @@ playwright-cli resize → width: 1280, height: 800
 
 ## Phase 1 Completion
 
-**Report:** `bd comment <beads-id> "Phase: Dimension Audit - Setup complete, baseline captured at 5 viewports"`
+**Report:** `bd comments add <beads-id> "Phase: Dimension Audit - Setup complete, baseline captured at 5 viewports"`
 
 **Verify before proceeding:**
 - [ ] Page loaded and authenticated

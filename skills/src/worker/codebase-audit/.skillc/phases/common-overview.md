@@ -28,7 +28,7 @@ This skill performs systematic codebase audits with configurable dimensions. Eac
 
 **Key deliverables:**
 - Investigation file at `.kb/investigations/YYYY-MM-DD-audit-{dimension}.md`
-- Progress tracked via `bd comment <beads-id> "Phase: [current phase] - [progress details]"`
+- Progress tracked via `bd comments add <beads-id> "Phase: [current phase] - [progress details]"`
 
 ---
 

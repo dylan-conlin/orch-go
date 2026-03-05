@@ -4,15 +4,15 @@
 
 ```bash
 # Report progress at phase transitions
-bd comment {{.BeadsID}} "Phase: Planning - Analyzing codebase structure"
-bd comment {{.BeadsID}} "Phase: Implementing - Adding authentication middleware"
-bd comment {{.BeadsID}} "Phase: Complete - All tests passing, ready for review"
+bd comments add {{.BeadsID}} "Phase: Planning - Analyzing codebase structure"
+bd comments add {{.BeadsID}} "Phase: Implementing - Adding authentication middleware"
+bd comments add {{.BeadsID}} "Phase: Complete - All tests passing, ready for review"
 
 # Report blockers immediately
-bd comment {{.BeadsID}} "Phase: BLOCKED - Need clarification on API contract"
+bd comments add {{.BeadsID}} "Phase: BLOCKED - Need clarification on API contract"
 
 # Report questions
-bd comment {{.BeadsID}} "Phase: QUESTION - Should we use JWT or session-based auth?"
+bd comments add {{.BeadsID}} "Phase: QUESTION - Should we use JWT or session-based auth?"
 ```
 
 **When to report:**
@@ -23,15 +23,15 @@ bd comment {{.BeadsID}} "Phase: QUESTION - Should we use JWT or session-based au
 **Additional context:**
 Use `bd comment` for additional context, findings, or updates:
 ```bash
-bd comment {{.BeadsID}} "Found performance bottleneck in database query"
-bd comment {{.BeadsID}} "investigation_path: .kb/investigations/2026-02-11-perf-issue.md"
+bd comments add {{.BeadsID}} "Found performance bottleneck in database query"
+bd comments add {{.BeadsID}} "investigation_path: .kb/investigations/2026-02-11-perf-issue.md"
 ```
 
 **Test Evidence Requirement:**
 When reporting Phase: Complete, include test results in the summary:
-- Example: `bd comment {{.BeadsID}} "Phase: Complete - Tests: go test ./... - 47 passed, 0 failed (2.3s)"`
-- Example: `bd comment {{.BeadsID}} "Phase: Complete - Tests: npm test - 23 specs, 0 failures"`
-- Example: `bd comment {{.BeadsID}} "Phase: Complete - Tests: make test - PASS (coverage: 78%)"`
+- Example: `bd comments add {{.BeadsID}} "Phase: Complete - Tests: go test ./... - 47 passed, 0 failed (2.3s)"`
+- Example: `bd comments add {{.BeadsID}} "Phase: Complete - Tests: npm test - 23 specs, 0 failures"`
+- Example: `bd comments add {{.BeadsID}} "Phase: Complete - Tests: make test - PASS (coverage: 78%)"`
 
 **Why:** `orch complete` validates test evidence in phase comments. Vague claims like "all tests pass" trigger manual verification.
 

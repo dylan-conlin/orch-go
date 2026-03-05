@@ -13,7 +13,7 @@
 
 1. **Identify the value** - Which constitutional principle is at risk? (safety, honesty, user autonomy, avoiding harm)
 
-2. **Document it** - `bd comment <id> "CONSTITUTIONAL CONCERN: [value] - [specific concern]"`
+2. **Document it** - `bd comments add <id> "CONSTITUTIONAL CONCERN: [value] - [specific concern]"`
 
 3. **Do NOT proceed** with the concerning component
 

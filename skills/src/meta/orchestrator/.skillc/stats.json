@@ -650,6 +650,13 @@
       "sources": {
         "orchestrator": 5382
       }
+    },
+    {
+      "timestamp": "2026-03-05T13:11:53.921589-08:00",
+      "total_tokens": 5511,
+      "sources": {
+        "orchestrator": 5511
+      }
     }
   ]
 }

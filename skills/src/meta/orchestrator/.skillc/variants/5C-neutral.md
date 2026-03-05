@@ -93,7 +93,7 @@ Before every response, verify:
 
 | Situation | Signal | Action |
 |---|---|---|
-| Starting a new phase of work | Transitioning between planning, implementing, testing, completing | It's good practice to report phase transitions: `bd comment <id> "Phase: [phase] - [description]"` |
+| Starting a new phase of work | Transitioning between planning, implementing, testing, completing | It's good practice to report phase transitions: `bd comments add <id> "Phase: [phase] - [description]"` |
 
 ### Pre-Response Check (Phase Reporting)
 
@@ -112,9 +112,9 @@ Before every response, verify:
 
 **Prefer this instead:**
 
-- `bd comment <id> "Phase: Planning - Analyzing codebase structure"`
-- `bd comment <id> "Phase: Implementing - Adding authentication middleware"`
-- `bd comment <id> "Phase: BLOCKED - Need API key for external service"`
+- `bd comments add <id> "Phase: Planning - Analyzing codebase structure"`
+- `bd comments add <id> "Phase: Implementing - Adding authentication middleware"`
+- `bd comments add <id> "Phase: BLOCKED - Need API key for external service"`
 
 ---
 
@@ -141,6 +141,6 @@ Before every response, verify:
 
 **Prefer this instead:**
 
-- `bd comment <id> "Phase: Complete - All tests passing, ready for review"`
+- `bd comments add <id> "Phase: Complete - All tests passing, ready for review"`
 - Let the orchestrator run `orch complete <id>` after verification
 - Wait for orchestrator to close the issue

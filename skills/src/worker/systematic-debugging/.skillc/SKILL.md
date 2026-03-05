@@ -638,10 +638,10 @@ bd label <id> triage:review           # default label for review
 
 ```bash
 # If issues found and fixed:
-bd comment <beads-id> "Self-review: Fixed [issue summary]"
+bd comments add <beads-id> "Self-review: Fixed [issue summary]"
 
 # If passed:
-bd comment <beads-id> "Self-review passed - ready for completion"
+bd comments add <beads-id> "Self-review passed - ready for completion"
 ```
 
 
@@ -672,10 +672,10 @@ DO:
 ### Reporting During Iteration
 
 ```bash
-bd comment <beads-id> "Fix attempt 1: [what tried] - Result: [pass/fail + why]"
-bd comment <beads-id> "Fix attempt 2: [refined approach] - Result: [pass/fail]"
+bd comments add <beads-id> "Fix attempt 1: [what tried] - Result: [pass/fail + why]"
+bd comments add <beads-id> "Fix attempt 2: [refined approach] - Result: [pass/fail]"
 # Only when actually working:
-bd comment <beads-id> "Phase: Complete - Fix verified via [smoke-test description]"
+bd comments add <beads-id> "Phase: Complete - Fix verified via [smoke-test description]"
 ```
 
 ---
@@ -703,7 +703,7 @@ Before marking complete, verify ALL:
 - [ ] **Smoke-test passed** - Actual failing scenario now works
 - [ ] **Self-review passed** - Pattern scope, no debug code, no workarounds
 - [ ] **Discovered work reviewed** - Tracked or noted "No discoveries"
-- [ ] **Phase reported with test evidence** - `bd comment <beads-id> "Phase: Complete - Tests: <cmd> - <output>"` (BEFORE final commit)
+- [ ] **Phase reported with test evidence** - `bd comments add <beads-id> "Phase: Complete - Tests: <cmd> - <output>"` (BEFORE final commit)
 - [ ] **Git clean** - `git status` shows "nothing to commit"
 
 **If ANY unchecked, work is NOT complete.**
@@ -713,7 +713,7 @@ Before marking complete, verify ALL:
 ```bash
 # 1. Report phase FIRST (before commit) - prevents agent death race condition
 # Include ACTUAL test output, not just "tests passing"
-bd comment <beads-id> "Phase: Complete - Root cause: [X], Fix: [Y], Tests: go test ./... - 23 passed, 0 failed"
+bd comments add <beads-id> "Phase: Complete - Root cause: [X], Fix: [Y], Tests: go test ./... - 23 passed, 0 failed"
 
 # 2. Commit any final changes
 git add . && git commit -m "fix: [description]"

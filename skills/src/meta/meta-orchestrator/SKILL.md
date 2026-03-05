@@ -330,7 +330,7 @@ Like SPAWN_CONTEXT.md for workers, this provides session context:
 **Prior Handoff:** [Link to previous SESSION_HANDOFF.md if resuming]
 
 ## Frontier State
-[Current orch frontier output - ready, blocked, active, stuck]
+[Current orch status output - ready, blocked, active, stuck]
 
 ## Session Scope
 [Expected duration, checkpoint strategy]
@@ -391,8 +391,8 @@ SESSION_HANDOFF.md is to orchestrators what SYNTHESIS.md is to workers. You revi
 ## The Review Workflow
 
 ```bash
-# See completed orchestrator sessions
-orch review --orchestrators
+# See completed agent sessions ready for review
+orch review
 
 # Review specific handoff
 cat ~/.orch/SESSION_HANDOFF.md
@@ -464,7 +464,7 @@ Over time, look for:
 - **Abandoned sessions** - Started but no handoff → investigate cause
 - **Context exhaustion** - Sessions ending with degraded output → session scope too long
 
-Use `kb reflect --type orchestrator` to automate pattern detection (when implemented).
+Use `kb reflect` to automate pattern detection.
 
 ---
 
@@ -547,7 +547,7 @@ Meta-orchestrator makes WHICH decisions. Orchestrator makes HOW decisions.
 - When to shift focus vs stay the course?
 
 **Inputs:**
-- Cross-project backlog state (`orch frontier` across repos)
+- Cross-project backlog state (`orch status` across repos)
 - Strategic goals (what matters most right now)
 - Resource constraints (rate limits, time available)
 
@@ -772,7 +772,7 @@ Like orchestrators complete workers, you complete orchestrator sessions. And lik
 ## Completing an Orchestrator Session
 
 ```bash
-orch complete --orchestrator <session-id>
+orch complete <workspace-name>
 ```
 
 **What this checks:**

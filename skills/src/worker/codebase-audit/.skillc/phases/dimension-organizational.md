@@ -43,17 +43,13 @@ Investigation file at `.kb/investigations/YYYY-MM-DD-audit-organizational-drift.
 #### ROADMAP Drift Patterns
 
 ```bash
-# Compare ROADMAP entries against recent git commits
-cd ~/meta-orchestration
+# Compare recent work against backlog
 git log --oneline --since="30 days ago" | rg "feat:|fix:" | head -20
-# Manually compare against docs/ROADMAP.org TODO items
 
-# Find DONE items without completion metadata
-rg "^\*\* DONE" docs/ROADMAP.org -A 5 | rg -v "CLOSED:|:Completed:"
-
-# Find completed agents not in ROADMAP
+# Find completed agents not reflected in backlog
 orch history | rg "Completed" | head -10
-# Check if these appear in ROADMAP
+# Check if these appear in beads
+bd list --status=closed | head -10
 ```
 
 #### Template Drift Patterns
@@ -73,11 +69,10 @@ diff -u ~/.orch/templates/workspace/WORKSPACE.md \
 #### Documentation Drift Patterns
 
 ```bash
-# Find orch commands in code but not in operational templates
-rg "def (spawn|check|status|complete|resume|send)" tools/orch/cli.py -o | \
-  cut -d' ' -f2 | while read cmd; do
-    grep -q "$cmd" ~/.orch/templates/orchestrator/orch-commands.md || \
-      echo "MISSING IN TEMPLATE: $cmd"
+# Find orch commands in code but not in skill docs
+orch --help 2>&1 | rg "^\s+\w+" | awk '{print $1}' | while read cmd; do
+    grep -rq "$cmd" ~/.claude/skills/meta/orchestrator/ || \
+      echo "MISSING IN SKILL: $cmd"
   done
 
 # Find features documented but not in reference docs
@@ -204,7 +199,7 @@ rg "completed_at|completion_time|finished_at" --type py --type json
 
 ## System Amnesia Analysis
 
-**See:** `~/meta-orchestration/docs/amnesia-compensation-checklist.md#system-level-amnesia-resilience`
+**See:** `.kb/guides/resilient-infrastructure-patterns.md`
 
 **Coherence principles violated:**
 - [ ] Single Source of Truth - [Example showing duplication]
@@ -283,7 +278,7 @@ rg "completed_at|completion_time|finished_at" --type py --type json
 ## Related Work
 
 - Decision: `.kb/decisions/2025-11-15-system-amnesia-as-design-constraint.md`
-- Checklist: `~/meta-orchestration/docs/amnesia-compensation-checklist.md#system-level-amnesia-resilience`
+- Checklist: `.kb/guides/resilient-infrastructure-patterns.md`
 - Investigation: [Link to related organizational investigations]
 
 ---
@@ -374,7 +369,7 @@ rg "completed_at|completion_time|finished_at" --type py --type json
 
 ## Related Documentation
 
-- **System amnesia patterns:** `~/meta-orchestration/docs/amnesia-compensation-checklist.md#system-level-amnesia-resilience`
+- **System amnesia patterns:** `.kb/guides/resilient-infrastructure-patterns.md`
 - **Investigation template:** `.orch/templates/INVESTIGATION.md`
 - **ROADMAP management:** `docs/work-prioritization.md`
 - **Template build system:** `.kb/decisions/2025-11-14-orchestrator-restructuring-template-build-system.md`

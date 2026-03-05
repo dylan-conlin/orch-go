@@ -82,10 +82,10 @@ Before completing the audit, verify quality of findings and documentation.
 
 **If self-review finds issues:**
 1. Fix them before proceeding
-2. Report: `bd comment <beads-id> "Self-review: Fixed [issue summary]"`
+2. Report: `bd comments add <beads-id> "Self-review: Fixed [issue summary]"`
 
 **If self-review passes:**
-- Report: `bd comment <beads-id> "Self-review passed - ready for completion"`
+- Report: `bd comments add <beads-id> "Self-review passed - ready for completion"`
 
 ---
 
@@ -100,7 +100,7 @@ Before marking complete:
 - [ ] Screenshots captured and indexed
 - [ ] Discovered work reviewed and tracked
 - [ ] All changes committed: `git status` shows "nothing to commit"
-- [ ] Reported: `bd comment <beads-id> "Phase: Complete - UX audit: {N} findings ({blocker}B/{major}M/{minor}m/{cosmetic}C), axe-core: {N} violations"`
+- [ ] Reported: `bd comments add <beads-id> "Phase: Complete - UX audit: {N} findings ({blocker}B/{major}M/{minor}m/{cosmetic}C), axe-core: {N} violations"`
 
 **If ANY box unchecked, audit is NOT complete.**
 
@@ -109,5 +109,5 @@ Before marking complete:
 **After completing all criteria:**
 
 1. Verify all checkboxes marked
-2. Report completion: `bd comment <beads-id> "Phase: Complete - UX audit: [summary]"`
+2. Report completion: `bd comments add <beads-id> "Phase: Complete - UX audit: [summary]"`
 3. Call /exit to close agent session

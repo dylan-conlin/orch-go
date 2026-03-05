@@ -58,7 +58,7 @@ This skill performs systematic codebase audits with configurable dimensions. Eac
 
 **Key deliverables:**
 - Investigation file at `.kb/investigations/YYYY-MM-DD-audit-{dimension}.md`
-- Progress tracked via `bd comment <beads-id> "Phase: [current phase] - [progress details]"`
+- Progress tracked via `bd comments add <beads-id> "Phase: [current phase] - [progress details]"`
 
 ---
 
@@ -718,17 +718,13 @@ Investigation file at `.kb/investigations/YYYY-MM-DD-audit-organizational-drift.
 #### ROADMAP Drift Patterns
 
 ```bash
-# Compare ROADMAP entries against recent git commits
-cd ~/meta-orchestration
+# Compare recent work against backlog
 git log --oneline --since="30 days ago" | rg "feat:|fix:" | head -20
-# Manually compare against docs/ROADMAP.org TODO items
 
-# Find DONE items without completion metadata
-rg "^\*\* DONE" docs/ROADMAP.org -A 5 | rg -v "CLOSED:|:Completed:"
-
-# Find completed agents not in ROADMAP
+# Find completed agents not reflected in backlog
 orch history | rg "Completed" | head -10
-# Check if these appear in ROADMAP
+# Check if these appear in beads
+bd list --status=closed | head -10
 ```
 
 #### Template Drift Patterns
@@ -749,16 +745,10 @@ diff -u ~/.orch/templates/workspace/WORKSPACE.md \
 
 ```bash
 # Find orch commands in code but not in operational templates
-rg "def (spawn|check|status|complete|resume|send)" tools/orch/cli.py -o | \
-  cut -d' ' -f2 | while read cmd; do
-    grep -q "$cmd" ~/.orch/templates/orchestrator/orch-commands.md || \
-      echo "MISSING IN TEMPLATE: $cmd"
+orch --help 2>&1 | rg "^\s+\w+" | awk '{print $1}' | while read cmd; do
+    grep -rq "$cmd" ~/.claude/skills/meta/orchestrator/ || \
+      echo "MISSING IN SKILL: $cmd"
   done
-
-# Find features documented but not in reference docs
-rg "orch \w+" ~/.orch/templates/orchestrator/ -o | sort -u > /tmp/template_cmds
-rg "^###? orch" tools/README.md -o | sort -u > /tmp/readme_cmds
-comm -23 /tmp/template_cmds /tmp/readme_cmds
 ```
 
 #### Manual Sync Points (Fragile Patterns)
@@ -879,7 +869,7 @@ rg "completed_at|completion_time|finished_at" --type py --type json
 
 ## System Amnesia Analysis
 
-**See:** `~/meta-orchestration/docs/amnesia-compensation-checklist.md#system-level-amnesia-resilience`
+**See:** `.kb/guides/resilient-infrastructure-patterns.md`
 
 **Coherence principles violated:**
 - [ ] Single Source of Truth - [Example showing duplication]
@@ -958,7 +948,7 @@ rg "completed_at|completion_time|finished_at" --type py --type json
 ## Related Work
 
 - Decision: `.kb/decisions/2025-11-15-system-amnesia-as-design-constraint.md`
-- Checklist: `~/meta-orchestration/docs/amnesia-compensation-checklist.md#system-level-amnesia-resilience`
+- Checklist: `.kb/guides/resilient-infrastructure-patterns.md`
 - Investigation: [Link to related organizational investigations]
 
 ---
@@ -1049,7 +1039,7 @@ rg "completed_at|completion_time|finished_at" --type py --type json
 
 ## Related Documentation
 
-- **System amnesia patterns:** `~/meta-orchestration/docs/amnesia-compensation-checklist.md#system-level-amnesia-resilience`
+- **System amnesia patterns:** `.kb/guides/resilient-infrastructure-patterns.md`
 - **Investigation template:** `.orch/templates/INVESTIGATION.md`
 - **ROADMAP management:** `docs/work-prioritization.md`
 - **Template build system:** `.kb/decisions/2025-11-14-orchestrator-restructuring-template-build-system.md`
@@ -1400,10 +1390,10 @@ bd label <issue-id> triage:ready  # Critical severity, clear fix
 
 **If self-review finds issues:**
 1. Fix them before proceeding
-2. Report: `bd comment <beads-id> "Self-review: Fixed [issue summary]"`
+2. Report: `bd comments add <beads-id> "Self-review: Fixed [issue summary]"`
 
 **If self-review passes:**
-- Report: `bd comment <beads-id> "Self-review passed - ready for completion"`
+- Report: `bd comments add <beads-id> "Self-review passed - ready for completion"`
 
 **Checklist summary (verify mentally, report issues only):**
 - Findings: Evidence with file:line, pattern searches documented, false positives filtered, severity assessed
@@ -1427,7 +1417,7 @@ Before marking complete:
 - [ ] Pattern search commands documented (reproducibility)
 - [ ] Discovered work reviewed and tracked (or noted "No actionable items")
 - [ ] All changes committed: `git status` shows "nothing to commit"
-- [ ] Reported via beads: `bd comment <beads-id> "Phase: Complete - [findings summary]"`
+- [ ] Reported via beads: `bd comments add <beads-id> "Phase: Complete - [findings summary]"`
 
 **If ANY box unchecked, audit is NOT complete.**
 
@@ -1436,7 +1426,7 @@ Before marking complete:
 **After completing all criteria:**
 
 1. Verify all checkboxes marked
-2. Report completion: `bd comment <beads-id> "Phase: Complete - Audit findings: [count], Recommendations: [count]"`
+2. Report completion: `bd comments add <beads-id> "Phase: Complete - Audit findings: [count], Recommendations: [count]"`
 3. Call /exit to close agent session
 
 <!-- /SKILL-TEMPLATE -->

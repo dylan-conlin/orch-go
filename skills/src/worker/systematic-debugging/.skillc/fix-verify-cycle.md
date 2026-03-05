@@ -25,10 +25,10 @@ DO:
 ### Reporting During Iteration
 
 ```bash
-bd comment <beads-id> "Fix attempt 1: [what tried] - Result: [pass/fail + why]"
-bd comment <beads-id> "Fix attempt 2: [refined approach] - Result: [pass/fail]"
+bd comments add <beads-id> "Fix attempt 1: [what tried] - Result: [pass/fail + why]"
+bd comments add <beads-id> "Fix attempt 2: [refined approach] - Result: [pass/fail]"
 # Only when actually working:
-bd comment <beads-id> "Phase: Complete - Fix verified via [smoke-test description]"
+bd comments add <beads-id> "Phase: Complete - Fix verified via [smoke-test description]"
 ```
 
 ---

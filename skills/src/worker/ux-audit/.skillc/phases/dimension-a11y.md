@@ -189,7 +189,7 @@ async () => {
    - Document: "axe-core CDN blocked by CSP — using structural review only"
    - Rely on Stage 1 (structural review) for accessibility findings
    - Note in investigation: "Automated WCAG scan not available; manual structural review only"
-3. Report: `bd comment <beads-id> "CONSTRAINT: axe-core CDN blocked by CSP - structural review only"`
+3. Report: `bd comments add <beads-id> "CONSTRAINT: axe-core CDN blocked by CSP - structural review only"`
 
 ---
 

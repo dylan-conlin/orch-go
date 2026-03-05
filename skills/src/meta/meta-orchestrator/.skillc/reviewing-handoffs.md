@@ -7,8 +7,8 @@ SESSION_HANDOFF.md is to orchestrators what SYNTHESIS.md is to workers. You revi
 ## The Review Workflow
 
 ```bash
-# See completed orchestrator sessions
-orch review --orchestrators
+# See completed agent sessions ready for review
+orch review
 
 # Review specific handoff
 cat ~/.orch/SESSION_HANDOFF.md
@@ -80,7 +80,7 @@ Over time, look for:
 - **Abandoned sessions** - Started but no handoff → investigate cause
 - **Context exhaustion** - Sessions ending with degraded output → session scope too long
 
-Use `kb reflect --type orchestrator` to automate pattern detection (when implemented).
+Use `kb reflect` to automate pattern detection.
 
 ---
 

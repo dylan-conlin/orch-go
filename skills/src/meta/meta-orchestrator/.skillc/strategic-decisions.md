@@ -26,7 +26,7 @@ Meta-orchestrator makes WHICH decisions. Orchestrator makes HOW decisions.
 - When to shift focus vs stay the course?
 
 **Inputs:**
-- Cross-project backlog state (`orch frontier` across repos)
+- Cross-project backlog state (`orch status` + `bd ready` across repos)
 - Strategic goals (what matters most right now)
 - Resource constraints (rate limits, time available)
 

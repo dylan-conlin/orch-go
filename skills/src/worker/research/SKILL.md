@@ -253,7 +253,7 @@ This decision is based on research documented in:
 
 **Report completion via beads:**
 ```bash
-bd comment <beads-id> "Phase: Complete - Research complete. See investigation file for findings."
+bd comments add <beads-id> "Phase: Complete - Research complete. See investigation file for findings."
 ```
 
 ## Key Principles
@@ -474,7 +474,7 @@ Before marking complete:
 - [ ] Clear recommendation with reasoning
 - [ ] Structured uncertainty complete (tested/untested/would change)
 - [ ] Research file committed to `.kb/investigations/` (with `research-` prefix)
-- [ ] Reported via beads: `bd comment <beads-id> "Phase: Complete - [recommendation summary]"`
+- [ ] Reported via beads: `bd comments add <beads-id> "Phase: Complete - [recommendation summary]"`
 - [ ] Call /exit to close agent session
 
 **If ANY unchecked, research is NOT complete.**

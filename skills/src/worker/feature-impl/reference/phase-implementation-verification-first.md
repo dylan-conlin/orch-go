@@ -62,7 +62,7 @@ SPECIFY → INSTRUMENT → IMPLEMENT → VERIFY
 
 **Report enumeration:**
 ```bash
-bd comment <beads-id> "Spec consumed: 3 behaviors, 5 acceptance criteria, 2 failure modes. Traceability matrix created."
+bd comments add <beads-id> "Spec consumed: 3 behaviors, 5 acceptance criteria, 2 failure modes. Traceability matrix created."
 ```
 
 ---
@@ -174,7 +174,7 @@ For each acceptance criterion, verify three things:
 
 **Report verification:**
 ```bash
-bd comment <beads-id> "Verification complete: AC-001 ✅ (test + behavior + evidence), AC-002 ✅ (test + behavior + evidence). All behaviors match spec."
+bd comments add <beads-id> "Verification complete: AC-001 ✅ (test + behavior + evidence), AC-002 ✅ (test + behavior + evidence). All behaviors match spec."
 ```
 
 ---
@@ -243,7 +243,7 @@ If you modified ANY file in `web/`:
 
 4. **Document:**
    ```bash
-   bd comment <beads-id> "Visual verification: [AC-001: username visible in header, AC-002: error shows on invalid login]. Screenshots: auth-success.png, auth-error.png"
+   bd comments add <beads-id> "Visual verification: [AC-001: username visible in header, AC-002: error shows on invalid login]. Screenshots: auth-success.png, auth-error.png"
    ```
 
 ---
@@ -275,7 +275,7 @@ Before moving to Validation phase:
 
 **Report format:**
 ```bash
-bd comment <beads-id> "Phase: Validation - Tests: [command] - [output]. Spec criteria: AC-001 ✅, AC-002 ✅, AC-003 ✅"
+bd comments add <beads-id> "Phase: Validation - Tests: [command] - [output]. Spec criteria: AC-001 ✅, AC-002 ✅, AC-003 ✅"
 ```
 
 ---

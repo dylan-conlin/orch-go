@@ -38,7 +38,7 @@ opencode    → agent execution        (Claude frontend, session management)
 - **Idle sessions auto-expire from capacity gates:** stale idle agents age out of active-count filters (1h in spawn concurrency checks), so ghosts stop blocking new work.
 - **Concurrency cap 5, round-robin fairness:** daemon spawns max 5 agents, alternating between projects at same priority level. Focus-aware: focused project gets priority boost.
 - **Self-check invariants:** daemon pauses spawning when invariant violations exceed threshold (e.g., agents > cap, active count unreachable). Resumes after violations clear.
-- **Auto-complete for auto-tier agents:** capture-knowledge and issue-creation agents are auto-completed by daemon when they report Phase: Complete. No `orch complete` needed.
+- **Auto-complete for auto-tier agents:** capture-knowledge agents are auto-completed by daemon when they report Phase: Complete. No `orch complete` needed.
 - **Stuck detection with notifications:** agents running >2h with no phase updates trigger desktop notification. Orchestrator receives STUCK signal.
 
 ## Attention Signals To Act On

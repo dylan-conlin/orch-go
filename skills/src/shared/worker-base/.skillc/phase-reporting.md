@@ -2,7 +2,7 @@
 
 **First 3 Actions (Critical):**
 Within your first 3 tool calls, you MUST:
-1. Report via `bd comment {{.BeadsID}} "Phase: Planning - [brief description]"`
+1. Report via `bd comments add {{.BeadsID}} "Phase: Planning - [brief description]"`
 2. Read relevant codebase context for your task
 3. Begin planning
 

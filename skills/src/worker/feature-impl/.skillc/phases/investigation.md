@@ -81,7 +81,7 @@ Template structure:
 
 3. Report checkpoint:
    ```bash
-   bd comment <beads-id> "Phase: Investigation "checkpoint committed, exploring: [first approach]"
+   bd comments add <beads-id> "Phase: Investigation "checkpoint committed, exploring: [first approach]"
    ```
 
 **Why commit before exploring?** Agents can die from API errors, context limits, or crashes. Without a checkpoint commit, you leave only an empty template with no record of what was attempted.
@@ -173,7 +173,7 @@ As investigation progresses, update uncertainty assessment honestly:
 
 3. Report via beads:
    ```bash
-   bd comment <beads-id> "ERROR: [error summary] - see investigation file"
+   bd comments add <beads-id> "ERROR: [error summary] - see investigation file"
    ```
 
 4. If error is recoverable, continue. If fatal, the investigation file now has a record of what happened.
@@ -196,7 +196,7 @@ When investigation answers your question:
 
 3. Report phase transition:
    ```bash
-   bd comment <beads-id> "Phase: "Clarifying Questions" "Investigation complete, findings in [investigation file path]"
+   bd comments add <beads-id> "Phase: "Clarifying Questions" "Investigation complete, findings in [investigation file path]"
    ```
 
 4. Output: "Investigation complete, moving to Clarifying Questions phase"

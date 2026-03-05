@@ -41,7 +41,7 @@ After exploration, verify this is truly non-behavioral:
 ### Step 3: Report Findings
 
 ```bash
-bd comment <beads-id> "Pre-impl exploration complete: [N] files to modify, [M] callers found. Confirmed non-behavioral: [reasoning]. Tests to verify: [list]"
+bd comments add <beads-id> "Pre-impl exploration complete: [N] files to modify, [M] callers found. Confirmed non-behavioral: [reasoning]. Tests to verify: [list]"
 ```
 
 **If exploration reveals behavioral impact:** STOP. Switch to TDD mode.
@@ -89,7 +89,7 @@ git commit -m "[type]: [description]"
 
 ### 6. Move to Validation
 
-Report via `bd comment <beads-id> "Phase: Validation - Tests: <command> - <actual output>"`
+Report via `bd comments add <beads-id> "Phase: Validation - Tests: <command> - <actual output>"`
 
 **Test Evidence Requirement:**
 - Include actual test command and output summary
@@ -114,4 +114,4 @@ Report via `bd comment <beads-id> "Phase: Validation - Tests: <command> - <actua
 - [ ] Existing tests still pass
 - [ ] Scope ≤ 2 files and ≤ 1 hour
 - [ ] Conventional commit format
-- [ ] Reported via beads with **actual test output**: `bd comment <beads-id> "Phase: Validation - Tests: <cmd> - <output>"`
+- [ ] Reported via beads with **actual test output**: `bd comments add <beads-id> "Phase: Validation - Tests: <cmd> - <output>"`

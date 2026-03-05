@@ -284,10 +284,10 @@ bd label <issue-id> triage:review  # Lower confidence - human reviews first
 
 **If self-review finds issues:**
 1. Fix them before proceeding
-2. Report via `bd comment <beads-id> "Self-review: Fixed [issue summary]"`
+2. Report via `bd comments add <beads-id> "Self-review: Fixed [issue summary]"`
 
 **If self-review passes:**
-- Report via `bd comment <beads-id> "Self-review passed - ready for completion"`
+- Report via `bd comments add <beads-id> "Self-review passed - ready for completion"`
 
 **Checklist summary (verify mentally, report issues only):**
 - **Original symptom validation (bug fixes): Re-ran original failing command/scenario, documented result**
@@ -336,10 +336,10 @@ Before proceeding to mark work complete:
 
 1. Report self-review status:
    ```bash
-   bd comment <beads-id> "Self-review passed - ready for completion"
+   bd comments add <beads-id> "Self-review passed - ready for completion"
    ```
 
 2. Proceed to mark complete:
-   - Report: `bd comment <beads-id> "Phase: Complete "[deliverables summary]"`
+   - Report: `bd comments add <beads-id> "Phase: Complete "[deliverables summary]"`
    - Output: "✅ Self-review passed, work complete"
    - Call /exit to close agent session

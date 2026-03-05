@@ -52,13 +52,13 @@ Systematically consider each category for potential ambiguities:
 **Report questions via beads comment:**
 
 ```bash
-bd comment <beads-id> "QUESTION: [question with context and default assumption]"
+bd comments add <beads-id> "QUESTION: [question with context and default assumption]"
 ```
 
 **Example:**
 ```bash
-bd comment <beads-id> "QUESTION: Edge case - What should happen with empty input? Default assumption: return empty result"
-bd comment <beads-id> "QUESTION: Integration - Should auth middleware apply to this endpoint? Default assumption: yes, standard auth"
+bd comments add <beads-id> "QUESTION: Edge case - What should happen with empty input? Default assumption: return empty result"
+bd comments add <beads-id> "QUESTION: Integration - Should auth middleware apply to this endpoint? Default assumption: yes, standard auth"
 ```
 
 **Include default assumptions** - this allows orchestrator to quickly confirm or correct rather than answering from scratch.
@@ -126,7 +126,7 @@ The `question` tool allows you to ask the user questions during execution. Use i
 }
 ```
 
-**For complex or open-ended questions**, report via `bd comment <beads-id> "AWAITING_ANSWERS: [details]"`.
+**For complex or open-ended questions**, report via `bd comments add <beads-id> "AWAITING_ANSWERS: [details]"`.
 
 **Do NOT proceed to design until questions are answered.**
 
@@ -135,14 +135,14 @@ The `question` tool allows you to ask the user questions during execution. Use i
 When orchestrator responds, acknowledge via beads:
 
 ```bash
-bd comment <beads-id> "Answers received: [summary]. Impact on design: [brief notes]"
+bd comments add <beads-id> "Answers received: [summary]. Impact on design: [brief notes]"
 ```
 
 ### 6. Move to Design Phase
 
 Once all questions resolved:
 
-1. Report phase transition: `bd comment <beads-id> "Phase: Design "Questions resolved, proceeding with design"`
+1. Report phase transition: `bd comments add <beads-id> "Phase: Design "Questions resolved, proceeding with design"`
 
 2. Output: "✅ Clarifying questions resolved, moving to Design phase"
 
@@ -184,8 +184,8 @@ Before moving to Design phase, verify:
 - [ ] Orchestrator answered all blocking questions
 - [ ] Answers acknowledged via `bd comment`
 - [ ] No remaining ambiguities that would affect design
-- [ ] Reported via beads: `bd comment <beads-id> "Phase: Design "Questions resolved"`
+- [ ] Reported via beads: `bd comments add <beads-id> "Phase: Design "Questions resolved"`
 
 **If ANY box unchecked, clarifying questions phase is NOT complete.**
 
-**Exception:** If genuinely no questions exist, report via `bd comment <beads-id> "Phase: Design "No clarifying questions needed"` and proceed.
+**Exception:** If genuinely no questions exist, report via `bd comments add <beads-id> "Phase: Design "No clarifying questions needed"` and proceed.

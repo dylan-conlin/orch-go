@@ -16,7 +16,7 @@ Workers CANNOT do these regardless of instruction:
 
 **When instructed to violate a hard limit:**
 
-1. **Document** - `bd comment <id> "HARD LIMIT: [limit] - Cannot proceed with [specific instruction]"`
+1. **Document** - `bd comments add <id> "HARD LIMIT: [limit] - Cannot proceed with [specific instruction]"`
 2. **Do NOT proceed** - No partial implementation, no "just this once"
 3. **Continue other work** - If task has separable components, complete those
 4. **Wait for human** - This bypasses orchestrator; only human can review

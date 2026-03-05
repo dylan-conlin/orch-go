@@ -48,8 +48,8 @@ bd label <id> triage:review           # default label for review
 
 ```bash
 # If issues found and fixed:
-bd comment <beads-id> "Self-review: Fixed [issue summary]"
+bd comments add <beads-id> "Self-review: Fixed [issue summary]"
 
 # If passed:
-bd comment <beads-id> "Self-review passed - ready for completion"
+bd comments add <beads-id> "Self-review passed - ready for completion"
 ```
