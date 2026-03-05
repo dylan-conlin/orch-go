@@ -1,51 +1,44 @@
-task: "Design living threads system for mid-session comprehension capture"
-beads_id: orch-go-kgxtt
+task: "Design dual-authority detection scan for orch doctor"
+beads_id: orch-go-71830
 type: architect
 tier: light
 
 deliverables:
-  - path: ".kb/investigations/2026-03-05-design-living-threads-mid-session-comprehension.md"
-    description: "Design document with 5 findings, 5-phase implementation plan"
+  - path: ".kb/investigations/2026-03-05-inv-design-dual-authority-detection-scan.md"
+    description: "Architecture design for orch doctor --migration-scan"
     status: complete
 
 design_decisions:
-  - decision: "New orch thread command vs extending debrief"
-    choice: "New orch thread command group"
-    rationale: "Threads are mid-session; debrief is terminal"
+  - decision: "Scan mechanism"
+    choice: "Regex-based pattern matching (no AST parsing)"
+    rationale: "Patterns cross file types (Go, Markdown, YAML) — AST is overkill and type-specific"
 
-  - decision: "Thread file format"
-    choice: "YAML frontmatter + dated H2 sections"
-    rationale: "Supports accumulation, consistent with .kb/ conventions"
+  - decision: "Rule definition approach"
+    choice: "Data-driven MigrationRule structs"
+    rationale: "New rules = data declarations, no code changes. Matches extensibility goal."
 
-  - decision: "Thread lifecycle"
-    choice: "forming → active → resolved (with promotes-to)"
-    rationale: "Natural insight maturation with promotion path"
+  - decision: "File placement"
+    choice: "Single file doctor_migration_scan.go (~250 lines)"
+    rationale: "Follows doctor_defect_scan.go pattern exactly"
 
-  - decision: "Debrief content source"
-    choice: "Agent completion reasons → What Happened; threads → What We Learned"
-    rationale: "Agent explain-back is reporting, not comprehension"
+  - decision: "Default behavior"
+    choice: "Opt-in via --migration-scan flag (not in default orch doctor)"
+    rationale: "Scans many files, takes longer than service health checks"
 
-  - decision: "Relationship to synthesis-as-comprehension"
-    choice: "Extends as Phase 4 (mid-session capture)"
-    rationale: "Phases 1-3 are boundary; Phase 4 is mid-session"
+  - decision: "Relationship to --defect-scan"
+    choice: "Complementary, not overlapping"
+    rationale: "Defect scan = code-level bugs in Go. Migration scan = systemic incompleteness across all file types."
 
-implementation_phases:
-  - phase: 1
-    name: "Thread Artifact + CLI"
-    self_contained: true
-  - phase: 2
-    name: "Debrief Integration"
-    depends_on: [1]
-  - phase: 3
-    name: "Orient Integration"
-    depends_on: [1]
-  - phase: 4
-    name: "Knowledge Placement + Skill Update"
-    depends_on: [1]
-  - phase: 5
-    name: "Lifecycle Automation (Optional)"
-    depends_on: [1]
+implementation_routing:
+  skill: feature-impl
+  estimated_lines: 400
+  phases: "implementation, validation"
+  mode: tdd
+
+open_questions:
+  - "Should --migration-scan run as part of default orch doctor?"
+  - "Should high-severity findings set exit code 1 for hook gating?"
 
 manual_verification:
-  - "Review design for alignment with synthesis-as-comprehension plan"
-  - "Validate thread format consistency with .kb/ conventions"
+  - "Review 7 migration rules against decision doc inventory"
+  - "Decide open questions before implementation spawn"
