@@ -81,6 +81,12 @@ var (
 		"checkTmuxWindowAlive",
 		"CountActiveTmuxAgents",
 		"joinWithReasonCodes",
+		// pkg/discovery canonical interface
+		"discovery.QueryTrackedAgents",
+		"discovery.JoinWithReasonCodes",
+		"discovery.ListTrackedIssues",
+		"discovery.CheckTmuxWindowAlive",
+		"discovery.FilterActiveIssues",
 	}
 
 	// Class 5: Phase comment signals
@@ -149,6 +155,18 @@ var (
 		"joinWithReasonCodes":    true,
 		"CountActiveTmuxAgents":  true,
 		"checkTmuxWindowAlive":   true,
+		// pkg/discovery canonical interface (backend-aware by design)
+		"QueryTrackedAgents":         true,
+		"JoinWithReasonCodes":        true,
+		"ListTrackedIssues":          true,
+		"CheckTmuxWindowAlive":       true,
+		"FilterActiveIssues":         true,
+		"ExtractSessionIDs":          true,
+		"ExtractLatestPhases":        true,
+		"LatestPhaseFromComments":    true,
+		"LatestPhaseWithTimestamp":   true,
+		"UnknownLiveness":            true,
+		"LookupManifestsAcrossProjects": true,
 		"determineAgentStatus":   true,
 		"runQuestion":            true, // has fallback chain
 		"runTail":                true, // has fallback chain
@@ -258,7 +276,7 @@ func runDefectScan() error {
 
 	fmt.Println("Prevention:")
 	if len(class2) > 0 {
-		fmt.Println("  Class 2: Use CombinedActiveCount() or queryTrackedAgents() for agent discovery")
+		fmt.Println("  Class 2: Use pkg/discovery.QueryTrackedAgents() or CombinedActiveCount() for agent discovery")
 	}
 	if len(class5) > 0 {
 		fmt.Println("  Class 5: Use determineAgentStatus() as canonical status derivation")

@@ -1,35 +1,27 @@
-feature: TTL-based archived workspace expiry (30-day default)
-beads_id: orch-go-g7id
+feature: "Structural fix: backend-aware query interface (Class 2)"
+beads_id: orch-go-gf33
 
 verification:
   automated:
-    - command: "go test ./cmd/orch/ -run TestCleanExpiredArchives -count=1 -v"
-      expects: "4 tests pass (basic, dry-run, no-dir, fallback-modtime)"
-    - command: "go test ./pkg/daemon/ -run TestExpireArchived -count=1 -v"
-      expects: "2 tests pass (basic, no-dir)"
-    - command: "go build ./cmd/orch/"
-      expects: "builds cleanly"
-    - command: "go vet ./cmd/orch/ ./pkg/daemon/ ./pkg/daemonconfig/"
-      expects: "no warnings"
-
-  manual:
-    - step: "Run orch clean --workspaces --dry-run in orch-go project"
-      expects: "Shows expired archived workspaces (if any >30 days old)"
-    - step: "Run orch clean --workspaces --archived-ttl 7 --dry-run"
-      expects: "Shows archived workspaces older than 7 days"
+    - command: "go test ./pkg/discovery/... -count=1 -v"
+      expects: "19 tests pass (all backend routing paths)"
+    - command: "go test ./cmd/orch/... -count=1"
+      expects: "All existing cmd/orch tests pass (backward compatibility)"
+    - command: "go build ./cmd/orch/..."
+      expects: "Build succeeds"
 
 changes:
-  - file: cmd/orch/clean_cmd.go
-    what: "Added cleanExpiredArchives() function, --archived-ttl flag (default 30), wired into --workspaces flow"
-  - file: cmd/orch/clean_test.go
-    what: "Added 4 tests for cleanExpiredArchives (basic, dry-run, no-dir, modtime-fallback)"
-  - file: pkg/daemon/cleanup.go
-    what: "Extended defaultCleanup() to also expire archived workspaces, added expireArchivedWorkspaces()"
-  - file: pkg/daemon/cleanup_test.go
-    what: "Added 2 tests for expireArchivedWorkspaces"
-  - file: pkg/daemonconfig/config.go
-    what: "Added CleanupArchivedTTLDays field (default 30)"
+  - file: pkg/discovery/discovery.go
+    what: "Canonical backend-aware query interface — AgentStatus type, QueryTrackedAgents, JoinWithReasonCodes, and helpers extracted from cmd/orch/query_tracked.go"
+  - file: pkg/discovery/discovery_test.go
+    what: "19 tests covering: both backends, missing binding, missing session, dead session, Claude CLI phase routing, tmux fallback, recently spawned, phase timestamps, retrying, OpenCode down"
+  - file: cmd/orch/query_tracked.go
+    what: "Thin delegation layer using type alias (AgentStatus = discovery.AgentStatus) for backward compat"
+  - file: cmd/orch/query_tracked_test.go
+    what: "Updated 3 tmux mock patterns to use discovery.CheckTmuxWindowAlive"
+  - file: cmd/orch/doctor_defect_scan.go
+    what: "Updated dual-backend patterns, allowlist, and prevention message to reference pkg/discovery"
 
 tests:
-  command: "go test ./cmd/orch/ -run TestCleanExpiredArchives -count=1 -v && go test ./pkg/daemon/ -run TestExpireArchived -count=1 -v"
-  result: "6/6 pass"
+  command: "go test ./pkg/discovery/... ./cmd/orch/... -count=1"
+  result: "All pass"
