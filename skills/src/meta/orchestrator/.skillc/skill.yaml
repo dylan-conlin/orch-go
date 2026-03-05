@@ -42,3 +42,9 @@ load_bearing:
     provenance: "2026-01-06 Dylan couldn't distinguish orchestrator context-gathering from frame collapse (doing worker work); external signals required"
     evidence: '.kb/investigations/2026-01-06-inv-detect-orchestrator-frame-collapse-doing.md'
     severity: warn
+
+  # Agent tool spawn prohibition - must NOT be used as spawn mechanism
+  - pattern: 'Agent tool'
+    provenance: '2026-03-05 Orchestrator used Agent tool with worktree isolation to spawn workers, bypassing all spawn infrastructure (hooks, skills, tracking). 20min wasted, 2 failed agents.'
+    evidence: '.kb/investigations/2026-03-05-inv-post-mortem-price-watch-orchestration.md'
+    severity: error
