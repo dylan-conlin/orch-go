@@ -1,44 +1,30 @@
-task: "Design dual-authority detection scan for orch doctor"
-beads_id: orch-go-71830
-type: architect
+issue: orch-go-8bfwz
+title: "Implement core thread package (pkg/thread/) and orch thread CLI commands"
 tier: light
 
+automated:
+  - command: "go test ./pkg/thread/ -v"
+    expects: "11 tests pass (CreateOrAppend new/append/same-day, List, Show, Show_NotFound, Resolve, TodaysEntries, ActiveThreads, Slugify, ParseThread)"
+    result: "PASS - all 11 tests pass"
+
+  - command: "go build ./cmd/orch/"
+    expects: "Clean compilation with no errors"
+    result: "PASS - builds cleanly"
+
+manual:
+  - step: "orch thread new 'Test' 'entry' creates .kb/threads/YYYY-MM-DD-test.md"
+    result: "PASS - verified"
+  - step: "orch thread append test 'more' appends to today's section"
+    result: "PASS - verified"
+  - step: "orch thread list shows thread with status/date/preview"
+    result: "PASS - verified"
+  - step: "orch thread show test displays full content"
+    result: "PASS - verified"
+  - step: "orch thread resolve test --to path marks resolved"
+    result: "PASS - verified"
+
 deliverables:
-  - path: ".kb/investigations/2026-03-05-inv-design-dual-authority-detection-scan.md"
-    description: "Architecture design for orch doctor --migration-scan"
-    status: complete
-
-design_decisions:
-  - decision: "Scan mechanism"
-    choice: "Regex-based pattern matching (no AST parsing)"
-    rationale: "Patterns cross file types (Go, Markdown, YAML) — AST is overkill and type-specific"
-
-  - decision: "Rule definition approach"
-    choice: "Data-driven MigrationRule structs"
-    rationale: "New rules = data declarations, no code changes. Matches extensibility goal."
-
-  - decision: "File placement"
-    choice: "Single file doctor_migration_scan.go (~250 lines)"
-    rationale: "Follows doctor_defect_scan.go pattern exactly"
-
-  - decision: "Default behavior"
-    choice: "Opt-in via --migration-scan flag (not in default orch doctor)"
-    rationale: "Scans many files, takes longer than service health checks"
-
-  - decision: "Relationship to --defect-scan"
-    choice: "Complementary, not overlapping"
-    rationale: "Defect scan = code-level bugs in Go. Migration scan = systemic incompleteness across all file types."
-
-implementation_routing:
-  skill: feature-impl
-  estimated_lines: 400
-  phases: "implementation, validation"
-  mode: tdd
-
-open_questions:
-  - "Should --migration-scan run as part of default orch doctor?"
-  - "Should high-severity findings set exit code 1 for hook gating?"
-
-manual_verification:
-  - "Review 7 migration rules against decision doc inventory"
-  - "Decide open questions before implementation spawn"
+  - pkg/thread/thread.go       # Core operations (~300 lines)
+  - pkg/thread/thread_test.go  # 11 unit tests (~330 lines)
+  - cmd/orch/thread_cmd.go     # CLI commands (~190 lines)
+  - cmd/orch/main.go           # Added threadCmd registration (1 line)

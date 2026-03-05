@@ -78,6 +78,7 @@ func init() {
 	rootCmd.AddCommand(automationCmd)
 	rootCmd.AddCommand(auditCmd)
 	rootCmd.AddCommand(planCmd)
+	rootCmd.AddCommand(threadCmd)
 }
 
 var (
