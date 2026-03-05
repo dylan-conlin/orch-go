@@ -500,6 +500,11 @@ func runDaemonLoop() error {
 	} else {
 		dlog.Printf("  Verify threshold:  disabled\n")
 	}
+	if config.InvariantCheckEnabled && config.InvariantViolationThreshold > 0 {
+		dlog.Printf("  Invariant check:   enabled (pause after %d consecutive violation cycles)\n", config.InvariantViolationThreshold)
+	} else {
+		dlog.Printf("  Invariant check:   disabled\n")
+	}
 	dlog.Printf("\n")
 
 	// Main polling loop
@@ -542,12 +547,18 @@ func runDaemonLoop() error {
 
 		// Check for resume signal (manual resume command)
 		// This allows Dylan to resume the daemon without running orch complete.
-		if d.VerificationTracker != nil {
+		// Also clears invariant checker pause state.
+		{
 			if resumed, err := daemon.CheckAndClearResumeSignal(); err != nil {
 				dlog.Errorf("[%s] Warning: failed to check resume signal: %v\n", timestamp, err)
 			} else if resumed {
-				d.VerificationTracker.Resume()
-				dlog.Printf("[%s] Daemon resumed manually - verification counter reset\n", timestamp)
+				if d.VerificationTracker != nil {
+					d.VerificationTracker.Resume()
+				}
+				if d.InvariantChecker != nil {
+					d.InvariantChecker.Resume()
+				}
+				dlog.Printf("[%s] Daemon resumed manually - verification counter and invariant checker reset\n", timestamp)
 			}
 		}
 
@@ -694,6 +705,82 @@ func runDaemonLoop() error {
 			}
 			if completedThisCycle > 0 && daemonVerbose {
 				dlog.Printf("[%s] Marked %d agent(s) ready for review this cycle\n", timestamp, completedThisCycle)
+			}
+		}
+
+		// Run self-check invariants to catch scope-expansion bugs at runtime.
+		// Checks: active count range, verification counter bounds, completion agent validity.
+		// Pauses daemon after configurable threshold of consecutive violation cycles.
+		if d.InvariantChecker != nil {
+			var completedAgents []daemon.CompletedAgent
+			if completionResult != nil {
+				for _, cr := range completionResult.Processed {
+					if cr.Processed {
+						// Build a CompletedAgent from the completion result for checking.
+						// The actual CompletedAgent list comes from the completion finder.
+						completedAgents = append(completedAgents, daemon.CompletedAgent{
+							BeadsID: cr.BeadsID,
+						})
+					}
+				}
+			}
+			// Also get full completed agents list if available (has WorkspacePath/ProjectDir)
+			if d.Completions != nil {
+				fullAgents, err := d.Completions.ListCompletedAgents(completionConfig)
+				if err == nil {
+					completedAgents = fullAgents
+				}
+				// Fail-open: if listing fails, use the partial list from completion results
+			}
+
+			verifyStatus := daemon.VerificationStatus{}
+			if d.VerificationTracker != nil {
+				verifyStatus = d.VerificationTracker.Status()
+			}
+
+			invariantInput := &daemon.InvariantInput{
+				ActiveCount:           d.ActiveCount(),
+				MaxAgents:             config.MaxAgents,
+				VerificationCount:     verifyStatus.CompletionsSinceVerification,
+				VerificationThreshold: verifyStatus.Threshold,
+				CompletedAgents:       completedAgents,
+			}
+
+			checkResult := d.InvariantChecker.Check(invariantInput)
+
+			if checkResult.Error != nil {
+				dlog.Errorf("[%s] Invariant check error (fail-open): %v\n", timestamp, checkResult.Error)
+			} else if checkResult.HasViolations() {
+				for _, v := range checkResult.Violations {
+					dlog.Errorf("[%s] INVARIANT VIOLATION [%s/%s]: %s\n", timestamp, v.Severity, v.Name, v.Message)
+				}
+				dlog.Printf("[%s] Invariant violations: %d this cycle, %d consecutive cycles (threshold: %d)\n",
+					timestamp, len(checkResult.Violations), d.InvariantChecker.ViolationCount(), config.InvariantViolationThreshold)
+			}
+
+			if d.InvariantChecker.IsPaused() {
+				dlog.Printf("[%s] DAEMON PAUSED: invariant violations exceeded threshold (%d consecutive cycles)\n",
+					timestamp, d.InvariantChecker.ViolationCount())
+				dlog.Printf("[%s]    Run 'orch daemon resume' to clear and continue\n", timestamp)
+
+				// Write paused status file
+				pauseStatus := daemon.DaemonStatus{
+					PID: os.Getpid(),
+					Capacity: daemon.CapacityStatus{
+						Max:       config.MaxAgents,
+						Active:    d.ActiveCount(),
+						Available: d.AvailableSlots(),
+					},
+					LastPoll:  time.Now(),
+					LastSpawn: lastSpawn,
+					Status:    "paused",
+				}
+				if err := daemon.WriteStatusFile(pauseStatus); err != nil && daemonVerbose {
+					dlog.Errorf("Warning: failed to write status file: %v\n", err)
+				}
+
+				time.Sleep(config.PollInterval)
+				continue
 			}
 		}
 

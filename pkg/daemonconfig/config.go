@@ -147,6 +147,14 @@ type Config struct {
 	// Default is 30 minutes.
 	AgreementCheckInterval time.Duration
 
+	// InvariantCheckEnabled controls whether daemon self-check invariants run each poll cycle.
+	// When enabled, the daemon validates assumptions about its state (active count range,
+	// verification counter bounds, completion agent validity) and pauses after repeated violations.
+	InvariantCheckEnabled bool
+
+	// InvariantViolationThreshold is the number of consecutive poll cycles with invariant
+	// violations before the daemon pauses. Default is 3. Set to 0 to disable.
+	InvariantViolationThreshold int
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -187,5 +195,7 @@ func DefaultConfig() Config {
 		PhaseTimeoutThreshold:       30 * time.Minute, // Flag after 30 minutes without phase update
 		AgreementCheckEnabled:       true,
 		AgreementCheckInterval:      30 * time.Minute, // Check every 30 minutes
+		InvariantCheckEnabled:       true,
+		InvariantViolationThreshold: 3, // Pause after 3 consecutive violation cycles
 	}
 }

@@ -153,6 +153,11 @@ type Daemon struct {
 	// BeadsCircuitBreaker tracks consecutive bd command failures and provides
 	// exponential backoff to prevent lock cascade when beads is unhealthy.
 	BeadsCircuitBreaker *BeadsCircuitBreaker
+
+	// InvariantChecker runs self-check invariants each poll cycle to catch
+	// scope-expansion bugs (e.g., ghost agents, counter overflow, missing ProjectDir).
+	// Pauses daemon after configurable threshold of consecutive violation cycles.
+	InvariantChecker *InvariantChecker
 }
 
 // New creates a new Daemon instance with default configuration.
@@ -191,6 +196,10 @@ func NewWithConfig(config Config) *Daemon {
 	// Initialize worker pool if MaxAgents is set
 	if config.MaxAgents > 0 {
 		d.Pool = NewWorkerPool(config.MaxAgents)
+	}
+	// Initialize invariant checker if enabled
+	if config.InvariantCheckEnabled && config.InvariantViolationThreshold > 0 {
+		d.InvariantChecker = NewInvariantChecker(config.InvariantViolationThreshold, config.MaxAgents)
 	}
 	// Initialize rate limiter if MaxSpawnsPerHour is set
 	if config.MaxSpawnsPerHour > 0 {
