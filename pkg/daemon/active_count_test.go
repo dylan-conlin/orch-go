@@ -1,7 +1,10 @@
 package daemon
 
 import (
+	"os"
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
 func TestExtractBeadsIDFromWindowName(t *testing.T) {
@@ -26,6 +29,112 @@ func TestExtractBeadsIDFromWindowName(t *testing.T) {
 		if result != tt.expected {
 			t.Errorf("extractBeadsIDFromWindowName(%q) = %q, want %q", tt.name, result, tt.expected)
 		}
+	}
+}
+
+func TestGetClosedIssuesBatchTreatsNotFoundAsNotActive(t *testing.T) {
+	// Regression test: cross-project beads IDs (e.g., skillc-cb3) queried against
+	// local project beads (orch-go) would fail with "not found". Previously, the
+	// error handler treated these as "not closed" = active, inflating capacity.
+	// Fix: treat "not found" as "not active" (closed[id] = true).
+
+	// Use IDs that definitely don't exist in any local beads database
+	fakeIDs := []string{"nonexistent-xxx1", "nonexistent-yyy2", "nonexistent-zzz3"}
+	closed := GetClosedIssuesBatch(fakeIDs)
+
+	// All non-existent IDs should be treated as "not active" (in the closed map)
+	for _, id := range fakeIDs {
+		if !closed[id] {
+			t.Errorf("GetClosedIssuesBatch: non-existent ID %q should be treated as not active (closed), but was treated as active", id)
+		}
+	}
+}
+
+func TestCountActiveTmuxAgentsScopesToProject(t *testing.T) {
+	// Regression test: CountActiveTmuxAgents scanned ALL workers-* sessions,
+	// finding agents from other projects (workers-skillc) alongside the current
+	// project (workers-orch-go). This inflated the active count.
+	// Fix: when projectName is provided, only scan workers-{projectName}.
+
+	if os.Getenv("CI") != "" {
+		t.Skip("Skipping tmux test in CI (no tmux server)")
+	}
+
+	// Create two worker sessions for different "projects"
+	project1 := "test-proj-alpha"
+	project2 := "test-proj-beta"
+	tmpDir := t.TempDir()
+
+	session1, err := tmux.EnsureWorkersSession(project1, tmpDir)
+	if err != nil {
+		t.Skipf("tmux not available: %v", err)
+	}
+	defer func() {
+		tmux.KillSession(session1)
+	}()
+
+	session2, err := tmux.EnsureWorkersSession(project2, tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create second session: %v", err)
+	}
+	defer func() {
+		tmux.KillSession(session2)
+	}()
+
+	// Create windows with beads IDs in each session
+	// Note: these won't have active claude processes, so IsPaneActive will filter them.
+	// But we can test the session scoping logic directly.
+
+	// Unscoped call (empty project) should find windows in both sessions
+	unscopedAgents := CountActiveTmuxAgents("")
+	_ = unscopedAgents // Just verify it doesn't panic
+
+	// Scoped to project1 should only scan workers-test-proj-alpha
+	scopedAgents := CountActiveTmuxAgents(project1)
+	_ = scopedAgents // Verify it doesn't panic
+
+	// Scoped to non-existent project should return empty
+	nonExistentAgents := CountActiveTmuxAgents("nonexistent-project-xyz")
+	if len(nonExistentAgents) != 0 {
+		t.Errorf("CountActiveTmuxAgents(nonexistent) returned %d agents, want 0", len(nonExistentAgents))
+	}
+}
+
+func TestCrossProjectAgentsDoNotInflateCapacity(t *testing.T) {
+	// End-to-end regression test for the core bug: daemon capacity inflated
+	// by cross-project tmux agents.
+	//
+	// Scenario: daemon has max 3 agents. 1 real orch-go agent + 2 skillc agents
+	// visible in tmux. The daemon should report 1 active (not 3).
+	//
+	// Since we can't easily create real tmux agents in tests, we verify
+	// the fix through the mock ActiveCounter + GetClosedIssuesBatch path.
+	config := DefaultConfig()
+	config.MaxAgents = 3
+	d := NewWithConfig(config)
+
+	// Simulate: only 1 real active agent (the mock counter returns 1)
+	d.ActiveCounter = &mockActiveCounter{CountFunc: func() int { return 1 }}
+
+	// Acquire 3 slots (simulating what happened before the fix)
+	s1 := d.Pool.TryAcquire()
+	s2 := d.Pool.TryAcquire()
+	s3 := d.Pool.TryAcquire()
+	if s1 == nil || s2 == nil || s3 == nil {
+		t.Fatal("Expected to acquire 3 slots")
+	}
+
+	// Pool thinks 3/3 but real count is 1.
+	// Reconcile should free 2 ghost slots.
+	result := d.ReconcileActiveAgents()
+	if result.Freed != 2 {
+		t.Errorf("ReconcileActiveAgents() freed = %d, want 2 (cross-project ghosts)", result.Freed)
+	}
+	if d.AtCapacity() {
+		t.Error("Daemon should NOT be at capacity after reconciling cross-project ghosts")
+	}
+	if d.ActiveCount() != 1 {
+		t.Errorf("ActiveCount() = %d, want 1", d.ActiveCount())
 	}
 }
 

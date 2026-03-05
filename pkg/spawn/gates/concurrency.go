@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -109,11 +110,16 @@ func CheckConcurrency(serverURL string, maxAgentsFlag int, extractBeadsID func(s
 	// Phase 2: Add tmux-based agents (Claude CLI backend)
 	// These agents run in tmux windows WITHOUT OpenCode sessions.
 	// Without this, tmux agents are invisible to the concurrency check.
+	// Scoped to current project to prevent cross-project inflation.
 	seenBeadsIDs := make(map[string]bool)
 	for _, sd := range sessionList {
 		seenBeadsIDs[sd.beadsID] = true
 	}
-	tmuxAgents := daemon.CountActiveTmuxAgents()
+	projectName := ""
+	if wd, err := os.Getwd(); err == nil {
+		projectName = filepath.Base(wd)
+	}
+	tmuxAgents := daemon.CountActiveTmuxAgents(projectName)
 	for beadsID := range tmuxAgents {
 		if seenBeadsIDs[beadsID] {
 			continue // Already counted from OpenCode session

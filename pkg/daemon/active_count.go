@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -116,8 +117,10 @@ func GetClosedIssuesBatch(beadsIDs []string) map[string]bool {
 			for _, id := range beadsIDs {
 				issue, err := client.Show(id)
 				if err != nil {
-					// If we can't find the issue, assume it's not running
-					// (might have been deleted or never existed)
+					// Issue not found in local project beads — treat as not active.
+					// This handles cross-project beads IDs (e.g., skillc-cb3 queried
+					// against orch-go beads) and deleted issues.
+					closed[id] = true
 					continue
 				}
 				if isIssueDone(issue.Status, issue.Labels) {
@@ -132,6 +135,8 @@ func GetClosedIssuesBatch(beadsIDs []string) map[string]bool {
 	for _, id := range beadsIDs {
 		issue, err := beads.FallbackShow(id, "")
 		if err != nil {
+			// Issue not found — treat as not active (same as RPC path above).
+			closed[id] = true
 			continue
 		}
 		if isIssueDone(issue.Status, issue.Labels) {
@@ -177,18 +182,33 @@ func extractBeadsIDFromSessionTitle(title string) string {
 // Windows where the agent process has exited (leaving only an idle shell) are
 // excluded to prevent ghost slots in the worker pool.
 //
-// Scans all worker sessions, the orchestrator session, and meta-orchestrator session.
-func CountActiveTmuxAgents() map[string]bool {
+// If projectName is non-empty, only scans the workers-{projectName} session
+// to avoid cross-project inflation (e.g., skillc agents inflating orch-go count).
+// If empty, scans all workers-* sessions (legacy behavior).
+//
+// Always scans orchestrator and meta-orchestrator sessions (they are global).
+func CountActiveTmuxAgents(projectName string) map[string]bool {
 	activeBeadsIDs := make(map[string]bool)
 
-	// Gather all tmux sessions to search
-	sessions, err := tmux.ListWorkersSessions()
-	if err != nil {
-		// Fail-open: if tmux isn't running, return empty
-		return activeBeadsIDs
+	// Gather tmux sessions to search
+	var sessions []string
+	if projectName != "" {
+		// Scoped mode: only scan this project's worker session
+		projectSession := tmux.GetWorkersSessionName(projectName)
+		if tmux.SessionExists(projectSession) {
+			sessions = append(sessions, projectSession)
+		}
+	} else {
+		// Legacy mode: scan all worker sessions
+		var err error
+		sessions, err = tmux.ListWorkersSessions()
+		if err != nil {
+			// Fail-open: if tmux isn't running, return empty
+			return activeBeadsIDs
+		}
 	}
 
-	// Also search orchestrator and meta-orchestrator sessions
+	// Also search orchestrator and meta-orchestrator sessions (global)
 	if tmux.SessionExists(tmux.OrchestratorSessionName) {
 		sessions = append(sessions, tmux.OrchestratorSessionName)
 	}
@@ -229,8 +249,18 @@ func CountActiveTmuxAgents() map[string]bool {
 // Without this, the pool reconciliation only sees OpenCode sessions,
 // reports 0 active agents, and frees all pool slots every poll cycle,
 // allowing unlimited spawns past the concurrency cap.
+//
+// Tmux scanning is scoped to the current project (derived from cwd)
+// to prevent cross-project agents from inflating the count.
 func CombinedActiveCount() int {
 	activeBeadsIDs := make(map[string]bool)
+
+	// Derive project name from cwd for scoped tmux scanning.
+	// The daemon and spawn commands always run from the project directory.
+	projectName := ""
+	if wd, err := os.Getwd(); err == nil {
+		projectName = filepath.Base(wd)
+	}
 
 	// Source 1: OpenCode sessions (headless backend)
 	serverURL := os.Getenv("OPENCODE_URL")
@@ -265,7 +295,8 @@ func CombinedActiveCount() int {
 	}
 
 	// Source 2: Tmux windows (Claude CLI backend)
-	tmuxAgents := CountActiveTmuxAgents()
+	// Scoped to current project to prevent cross-project inflation.
+	tmuxAgents := CountActiveTmuxAgents(projectName)
 	for beadsID := range tmuxAgents {
 		activeBeadsIDs[beadsID] = true // Deduplicated by map key
 	}
