@@ -1007,9 +1007,11 @@
 											>
 												<!-- Line 1: Outcome badge + TLDR -->
 												<div class="flex items-start gap-2">
-													<span class="flex-shrink-0 mt-0.5 {item.outcome === 'failed' ? 'text-red-400' : item.outcome === 'partial' || item.outcome === 'blocked' ? 'text-amber-400' : 'text-gray-400'} text-xs font-medium">
-														{#if item.outcome === 'failed'}✗ failed{:else if item.outcome === 'partial'}~ partial{:else if item.outcome === 'blocked'}⊘ blocked{:else}? unknown{/if}
-													</span>
+													{#if item.outcome}
+														<span class="flex-shrink-0 mt-0.5 {item.outcome === 'failed' ? 'text-red-400' : item.outcome === 'partial' || item.outcome === 'blocked' ? 'text-amber-400' : 'text-green-400'} text-xs font-medium">
+															{#if item.outcome === 'failed'}✗ failed{:else if item.outcome === 'partial'}~ partial{:else if item.outcome === 'blocked'}⊘ blocked{:else}✓ {item.outcome}{/if}
+														</span>
+													{/if}
 													<span class="text-sm text-foreground flex-1">{item.tldr || item.title}</span>
 													<button
 														type="button"
