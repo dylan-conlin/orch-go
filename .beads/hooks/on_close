@@ -25,8 +25,12 @@ if [ -z "$ISSUE_ID" ]; then
     exit 0
 fi
 
-# Read close_reason from stdin JSON if available
-CLOSE_REASON=$(cat | jq -r '.close_reason // empty' 2>/dev/null)
+# Read stdin once, reuse for multiple checks
+ISSUE_JSON=$(cat 2>/dev/null)
+
+# Extract fields from issue JSON
+CLOSE_REASON=$(echo "$ISSUE_JSON" | jq -r '.close_reason // empty' 2>/dev/null)
+ISSUE_TYPE=$(echo "$ISSUE_JSON" | jq -r '.issue_type // empty' 2>/dev/null)
 
 # Remove orch:agent label so bd list -l orch:agent returns only active agents
 bd label remove "$ISSUE_ID" orch:agent 2>/dev/null
@@ -37,6 +41,20 @@ if [ -n "$CLOSE_REASON" ]; then
     orch emit agent.completed --beads-id "$ISSUE_ID" --reason "$CLOSE_REASON" 2>/dev/null
 else
     orch emit agent.completed --beads-id "$ISSUE_ID" --reason "Closed via bd close" 2>/dev/null
+fi
+
+# Warn if closing an investigation whose parent question is still open
+if [ "$ISSUE_TYPE" = "investigation" ]; then
+    OPEN_QUESTIONS=$(bd dep list "$ISSUE_ID" --direction=down --json 2>/dev/null \
+        | jq -r '[.[] | select(.issue_type == "question" and .status == "open")] | .[] | "\(.id): \(.title)"' 2>/dev/null)
+    if [ -n "$OPEN_QUESTIONS" ]; then
+        echo "" >&2
+        echo "⚠️  Investigation $ISSUE_ID closed but parent question(s) still open:" >&2
+        echo "$OPEN_QUESTIONS" | while IFS= read -r line; do
+            echo "   → $line" >&2
+        done
+        echo "   Consider closing or updating the question if this investigation answered it." >&2
+    fi
 fi
 
 # Exit successfully even if orch emit fails (hooks should not block bd close)
