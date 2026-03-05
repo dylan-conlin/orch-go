@@ -307,11 +307,18 @@ func AddAccount(name string, setDefault bool, cfg *OAuthConfig) (string, error) 
 		return "", &OAuthError{Message: "failed to load accounts config", Cause: err}
 	}
 
-	// Create account entry
+	// Create account entry, preserving existing metadata (tier/role/config_dir)
+	// if the account already exists. This allows re-auth via `orch account add`
+	// without losing metadata.
 	acc := Account{
 		Email:        result.Email,
 		RefreshToken: result.RefreshToken,
 		Source:       "saved",
+	}
+	if existing, ok := config.Accounts[name]; ok {
+		acc.Tier = existing.Tier
+		acc.Role = existing.Role
+		acc.ConfigDir = existing.ConfigDir
 	}
 
 	// Save account

@@ -501,14 +501,14 @@ func TestTokenRefreshError(t *testing.T) {
 
 	// Test ActionableGuidance with account name
 	guidance := errWithAccount.ActionableGuidance()
-	expected := "To re-authorize: orch account remove personal && orch account add personal"
+	expected := "To re-authorize: orch account add personal"
 	if guidance != expected {
 		t.Errorf("ActionableGuidance() = %q, want %q", guidance, expected)
 	}
 
 	// Test ActionableGuidance without account name
 	guidanceNoAccount := err.ActionableGuidance()
-	expectedNoAccount := "To re-authorize: orch account remove <name> && orch account add <name>"
+	expectedNoAccount := "To re-authorize: orch account add <name>"
 	if guidanceNoAccount != expectedNoAccount {
 		t.Errorf("ActionableGuidance() without account = %q, want %q", guidanceNoAccount, expectedNoAccount)
 	}
@@ -1193,6 +1193,196 @@ func TestParseTierMultiplier(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("ParseTierMultiplier(%q) = %v, want %v", tt.input, got, tt.want)
 		}
+	}
+}
+
+// ============================================================================
+// AddAccount Metadata Preservation Tests
+// ============================================================================
+
+func TestAddAccountPreservesMetadata_ExistingAccount(t *testing.T) {
+	// Simulates the re-auth flow: account exists with metadata, re-add preserves it
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	orchDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("Failed to create .orch dir: %v", err)
+	}
+
+	// Pre-populate config with metadata
+	cfg := &Config{
+		Accounts: map[string]Account{
+			"work": {
+				Email:        "old@example.com",
+				RefreshToken: "old-token",
+				Source:       "saved",
+				Tier:         "20x",
+				Role:         "primary",
+				ConfigDir:    "~/.claude",
+			},
+		},
+		Default: "work",
+	}
+	if err := SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+
+	// Simulate what AddAccount does internally (without the actual OAuth flow):
+	// Load config, create new account, merge existing metadata, save
+	config, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	acc := Account{
+		Email:        "new@example.com",
+		RefreshToken: "new-token",
+		Source:       "saved",
+	}
+	// This is the fix: merge existing metadata
+	if existing, ok := config.Accounts["work"]; ok {
+		acc.Tier = existing.Tier
+		acc.Role = existing.Role
+		acc.ConfigDir = existing.ConfigDir
+	}
+	config.Save("work", acc, false)
+
+	if err := SaveConfig(config); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+
+	// Verify metadata survived
+	loaded, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	work := loaded.Accounts["work"]
+	if work.Email != "new@example.com" {
+		t.Errorf("work.Email = %q, want %q (should be updated)", work.Email, "new@example.com")
+	}
+	if work.RefreshToken != "new-token" {
+		t.Errorf("work.RefreshToken = %q, want %q (should be updated)", work.RefreshToken, "new-token")
+	}
+	if work.Tier != "20x" {
+		t.Errorf("work.Tier = %q, want %q (should be preserved)", work.Tier, "20x")
+	}
+	if work.Role != "primary" {
+		t.Errorf("work.Role = %q, want %q (should be preserved)", work.Role, "primary")
+	}
+	if work.ConfigDir != "~/.claude" {
+		t.Errorf("work.ConfigDir = %q, want %q (should be preserved)", work.ConfigDir, "~/.claude")
+	}
+}
+
+func TestAddAccountNoMetadata_NewAccount(t *testing.T) {
+	// When account doesn't exist yet, no metadata to merge
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	orchDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("Failed to create .orch dir: %v", err)
+	}
+
+	config, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	acc := Account{
+		Email:        "new@example.com",
+		RefreshToken: "new-token",
+		Source:       "saved",
+	}
+	// No existing account — merge is a no-op
+	if existing, ok := config.Accounts["work"]; ok {
+		acc.Tier = existing.Tier
+		acc.Role = existing.Role
+		acc.ConfigDir = existing.ConfigDir
+	}
+	config.Save("work", acc, true)
+
+	if err := SaveConfig(config); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+
+	loaded, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	work := loaded.Accounts["work"]
+	if work.Tier != "" {
+		t.Errorf("work.Tier = %q, want empty (new account)", work.Tier)
+	}
+	if work.Role != "" {
+		t.Errorf("work.Role = %q, want empty (new account)", work.Role)
+	}
+	if work.ConfigDir != "" {
+		t.Errorf("work.ConfigDir = %q, want empty (new account)", work.ConfigDir)
+	}
+}
+
+// ============================================================================
+// LoadAndSaveConfig Tests
+// ============================================================================
+
+func TestLoadAndSaveConfig_AtomicModify(t *testing.T) {
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	orchDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("Failed to create .orch dir: %v", err)
+	}
+
+	// Pre-populate
+	cfg := &Config{
+		Accounts: map[string]Account{
+			"work": {
+				Email:        "work@example.com",
+				RefreshToken: "old-token",
+				Source:       "saved",
+				Tier:         "20x",
+			},
+		},
+		Default: "work",
+	}
+	if err := SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+
+	// Use LoadAndSaveConfig to atomically update token
+	err := LoadAndSaveConfig(func(cfg *Config) error {
+		acc := cfg.Accounts["work"]
+		acc.RefreshToken = "new-token"
+		cfg.Accounts["work"] = acc
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("LoadAndSaveConfig() error = %v", err)
+	}
+
+	// Verify update
+	loaded, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	work := loaded.Accounts["work"]
+	if work.RefreshToken != "new-token" {
+		t.Errorf("work.RefreshToken = %q, want %q", work.RefreshToken, "new-token")
+	}
+	if work.Tier != "20x" {
+		t.Errorf("work.Tier = %q, want %q (should be preserved)", work.Tier, "20x")
 	}
 }
 

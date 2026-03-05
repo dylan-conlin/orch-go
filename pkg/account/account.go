@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -65,9 +66,9 @@ func (e *TokenRefreshError) WithAccount(name string) *TokenRefreshError {
 // ActionableGuidance returns a string with actionable guidance for resolving the error.
 func (e *TokenRefreshError) ActionableGuidance() string {
 	if e.AccountName != "" {
-		return fmt.Sprintf("To re-authorize: orch account remove %s && orch account add %s", e.AccountName, e.AccountName)
+		return fmt.Sprintf("To re-authorize: orch account add %s", e.AccountName)
 	}
-	return "To re-authorize: orch account remove <name> && orch account add <name>"
+	return "To re-authorize: orch account add <name>"
 }
 
 // Account represents a saved account configuration.
@@ -126,7 +127,13 @@ func LoadConfig() (*Config, error) {
 	return &cfg, nil
 }
 
-// SaveConfig saves accounts to ~/.orch/accounts.yaml.
+// configLockPath returns the path to the lock file for accounts.yaml.
+func configLockPath() string {
+	return ConfigPath() + ".lock"
+}
+
+// SaveConfig saves accounts to ~/.orch/accounts.yaml with file locking
+// to prevent concurrent load-modify-save cycles from clobbering each other.
 func SaveConfig(cfg *Config) error {
 	// Ensure directory exists
 	dir := filepath.Dir(ConfigPath())
@@ -134,12 +141,72 @@ func SaveConfig(cfg *Config) error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
+	// Acquire exclusive file lock
+	lockFile, err := os.OpenFile(configLockPath(), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open lock file: %w", err)
+	}
+	defer lockFile.Close()
+	defer os.Remove(configLockPath())
+
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("failed to acquire config lock: %w", err)
+	}
+	defer syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal accounts.yaml: %w", err)
 	}
 
 	// Write with restrictive permissions (contains tokens)
+	if err := os.WriteFile(ConfigPath(), data, 0600); err != nil {
+		return fmt.Errorf("failed to write accounts.yaml: %w", err)
+	}
+
+	return nil
+}
+
+// LoadAndSaveConfig atomically loads, modifies, and saves accounts.yaml
+// while holding an exclusive file lock. Use this instead of separate
+// LoadConfig + SaveConfig calls for concurrent-safe modifications.
+func LoadAndSaveConfig(modify func(cfg *Config) error) error {
+	// Ensure directory exists
+	dir := filepath.Dir(ConfigPath())
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	// Acquire exclusive file lock
+	lockFile, err := os.OpenFile(configLockPath(), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open lock file: %w", err)
+	}
+	defer lockFile.Close()
+	defer os.Remove(configLockPath())
+
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("failed to acquire config lock: %w", err)
+	}
+	defer syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+
+	// Load config while holding lock
+	cfg, err := LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	// Apply modification
+	if err := modify(cfg); err != nil {
+		return err
+	}
+
+	// Save while still holding lock
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal accounts.yaml: %w", err)
+	}
+
 	if err := os.WriteFile(ConfigPath(), data, 0600); err != nil {
 		return fmt.Errorf("failed to write accounts.yaml: %w", err)
 	}
