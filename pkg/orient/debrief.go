@@ -135,6 +135,23 @@ func extractSection(content, header string, maxItems int) []string {
 	return items
 }
 
+// FormatLastSessionInsight renders the "What We Learned" section as a standalone
+// "Last session insight" block for orient output. Surfaces the comprehension thread
+// from the prior session at session start. Returns empty string if no learnings.
+func FormatLastSessionInsight(summary *DebriefSummary) string {
+	if summary == nil || len(summary.WhatWeLearned) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Last session insight (%s):\n", summary.Date))
+	for _, insight := range summary.WhatWeLearned {
+		b.WriteString(fmt.Sprintf("   - %s\n", insight))
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
 // FormatPreviousSession renders a DebriefSummary as the "Previous session:" section
 // for orient output. Returns empty string if summary is nil or has no content.
 func FormatPreviousSession(summary *DebriefSummary) string {

@@ -233,6 +233,44 @@ func TestFormatPreviousSession_Nil(t *testing.T) {
 	}
 }
 
+func TestFormatLastSessionInsight(t *testing.T) {
+	summary := &DebriefSummary{
+		Date: "2026-03-04",
+		WhatWeLearned: []string{
+			"Discovered that injection level matters less than density for skill effectiveness",
+			"System injection 71% vs append 58% vs user 56%",
+		},
+	}
+
+	result := FormatLastSessionInsight(summary)
+
+	if !strings.Contains(result, "Last session insight (2026-03-04):") {
+		t.Errorf("expected 'Last session insight (2026-03-04):' header, got:\n%s", result)
+	}
+	if !strings.Contains(result, "injection level matters less") {
+		t.Errorf("expected insight content, got:\n%s", result)
+	}
+}
+
+func TestFormatLastSessionInsight_Nil(t *testing.T) {
+	result := FormatLastSessionInsight(nil)
+	if result != "" {
+		t.Errorf("expected empty string for nil summary, got %q", result)
+	}
+}
+
+func TestFormatLastSessionInsight_NoLearnings(t *testing.T) {
+	summary := &DebriefSummary{
+		Date:         "2026-03-04",
+		WhatHappened: []string{"Spawned 5 agents"},
+	}
+
+	result := FormatLastSessionInsight(summary)
+	if result != "" {
+		t.Errorf("expected empty string when no learnings, got %q", result)
+	}
+}
+
 func TestFormatPreviousSession_AllEmpty(t *testing.T) {
 	summary := &DebriefSummary{
 		Date: "2026-02-28",
@@ -248,10 +286,10 @@ func TestFormatOrientation_WithDebrief(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1, Completions: 2},
 		PreviousSession: &DebriefSummary{
-			Date:         "2026-02-27",
-			WhatHappened: []string{"Completed 2: orch-go-abc1, orch-go-def2"},
-			WhatWeLearned:  []string{"decided to use JWT for auth"},
-			WhatsNext:    []string{"fix auth", "ship snap"},
+			Date:          "2026-02-27",
+			WhatHappened:  []string{"Completed 2: orch-go-abc1, orch-go-def2"},
+			WhatWeLearned: []string{"decided to use JWT for auth"},
+			WhatsNext:     []string{"fix auth", "ship snap"},
 		},
 	}
 
@@ -268,6 +306,43 @@ func TestFormatOrientation_WithDebrief(t *testing.T) {
 	}
 	if !strings.Contains(output, "Next:") {
 		t.Errorf("expected 'Next:' in output, got:\n%s", output)
+	}
+}
+
+func TestFormatOrientation_WithLastSessionInsight(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1, Completions: 2},
+		PreviousSession: &DebriefSummary{
+			Date:          "2026-03-04",
+			WhatHappened:  []string{"Spawned 5 agents"},
+			WhatWeLearned: []string{"Density matters 2x more than injection level"},
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	// Last session insight should appear as its own section
+	if !strings.Contains(output, "Last session insight") {
+		t.Errorf("expected 'Last session insight' section in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Density matters 2x more") {
+		t.Errorf("expected insight content in output, got:\n%s", output)
+	}
+}
+
+func TestFormatOrientation_NoInsightWhenNoLearnings(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1, Completions: 2},
+		PreviousSession: &DebriefSummary{
+			Date:         "2026-03-04",
+			WhatHappened: []string{"Spawned 5 agents"},
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	if strings.Contains(output, "Last session insight") {
+		t.Errorf("should not show 'Last session insight' when no learnings, got:\n%s", output)
 	}
 }
 

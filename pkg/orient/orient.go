@@ -96,6 +96,9 @@ func FormatOrientation(data *OrientationData) string {
 	// Throughput section
 	formatThroughput(&b, &data.Throughput)
 
+	// Last session insight — prominent comprehension thread from prior session
+	b.WriteString(FormatLastSessionInsight(data.PreviousSession))
+
 	// Previous session section (from debrief)
 	b.WriteString(FormatPreviousSession(data.PreviousSession))
 
