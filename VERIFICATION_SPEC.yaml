@@ -1,23 +1,27 @@
-task: "Complete daemon config FromUserConfig — config.yaml backing for all hardcoded defaults"
-beads_id: orch-go-4vjx9
+task: "Fix 69 stale CLI references across 28 deployed skills"
+beads_id: orch-go-5lfmp
 
 verification:
   automated:
-    - command: "go test ./pkg/userconfig/ -v -count=1"
-      expects: "all tests pass including 27 new accessor method tests"
-      result: "PASS"
-    - command: "go test ./pkg/daemonconfig/ -v -count=1"
-      expects: "all tests pass including TestFromUserConfig_AllFieldsCustom"
-      result: "PASS"
-    - command: "go build ./..."
-      expects: "clean build"
-      result: "PASS"
-    - command: "go vet ./pkg/daemonconfig/ ./pkg/userconfig/"
-      expects: "no vet errors"
-      result: "PASS"
+    - command: "grep -rl 'bd comment ' skills/src/ --include='*.md' | grep -v backup | wc -l"
+      expected: "0"
+      description: "No deprecated bd comment references in skill sources"
+    - command: "grep -rEl 'orch (frontier|reap|health|stability|friction)' skills/src/ --include='*.md' | wc -l"
+      expected: "0"
+      description: "No removed orch command references in skill sources"
+    - command: "grep -rl -- '--blocks' skills/src/ --include='*.md' | wc -l"
+      expected: "0"
+      description: "No --blocks flag references"
+    - command: "grep -rl '~/meta-orchestration' skills/src/ --include='*.md' | wc -l"
+      expected: "0"
+      description: "No stale meta-orchestration paths"
+  manual:
+    - step: "skillc deploy --target ~/.claude/skills/"
+      result: "15/15 deployed successfully"
 
 deliverables:
-  - pkg/userconfig/userconfig.go (25 new DaemonConfig fields + 25 accessor methods)
-  - pkg/daemonconfig/convert.go (FromUserConfig now uses accessors for all fields)
-  - pkg/userconfig/userconfig_test.go (27 new accessor tests)
-  - pkg/daemonconfig/convert_test.go (TestFromUserConfig_AllFieldsCustom + expanded defaults test)
+  - "71 files changed in skills/src/ (397 insertions, 429 deletions)"
+  - "15 skills redeployed via skillc deploy"
+
+known_issues:
+  - "skillc deploy --cleanup removed standalone ~/.claude/skills/reference/ directory (~15 files from Jan 29 2026). These were the most stale files and need recreation. Separate task recommended."
