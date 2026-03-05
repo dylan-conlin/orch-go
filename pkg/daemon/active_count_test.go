@@ -136,3 +136,52 @@ func TestDaemonReconcileDefaultCountIncludesTmux(t *testing.T) {
 		t.Fatal("ActiveCounter should be set to defaultActiveCounter by default")
 	}
 }
+
+func TestReconcileFreesGhostSlots(t *testing.T) {
+	// Regression test for ghost slot bug: daemon-status.json shows active:3
+	// but orch status shows only 1 real agent. The pool was not freeing slots
+	// because CombinedActiveCount() was counting dead tmux windows as active.
+	//
+	// With the fix, CountActiveTmuxAgents() checks pane process liveness,
+	// dead windows return a lower count, and Reconcile frees the ghost slots.
+	config := DefaultConfig()
+	config.MaxAgents = 5
+	d := NewWithConfig(config)
+
+	// Simulate 3 agents spawned by daemon
+	s1 := d.Pool.TryAcquire()
+	s2 := d.Pool.TryAcquire()
+	s3 := d.Pool.TryAcquire()
+	if s1 == nil || s2 == nil || s3 == nil {
+		t.Fatal("Expected to acquire 3 slots")
+	}
+	s1.BeadsID = "proj-aaa1"
+	s2.BeadsID = "proj-bbb2"
+	s3.BeadsID = "proj-ccc3"
+
+	// Pool at 3/5
+	if d.ActiveCount() != 3 {
+		t.Fatalf("ActiveCount() = %d, want 3", d.ActiveCount())
+	}
+
+	// Simulate: 2 agents completed (tmux windows exist but processes exited).
+	// With pane liveness filtering, CombinedActiveCount returns 1.
+	d.ActiveCounter = &mockActiveCounter{CountFunc: func() int { return 1 }}
+
+	result := d.ReconcileActiveAgents()
+	if result.Freed != 2 {
+		t.Errorf("ReconcileActiveAgents() freed = %d, want 2 (ghost slots)", result.Freed)
+	}
+	if d.ActiveCount() != 1 {
+		t.Errorf("ActiveCount() after reconcile = %d, want 1", d.ActiveCount())
+	}
+	if d.AvailableSlots() != 4 {
+		t.Errorf("AvailableSlots() after reconcile = %d, want 4", d.AvailableSlots())
+	}
+
+	// New agent can now be spawned (previously blocked by ghost slots)
+	s4 := d.Pool.TryAcquire()
+	if s4 == nil {
+		t.Fatal("Should be able to acquire slot after ghost slots freed")
+	}
+}

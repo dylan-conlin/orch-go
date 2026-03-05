@@ -234,20 +234,5 @@ func TestClassifyTmuxWindows(t *testing.T) {
 	}
 }
 
-func TestIdleShellCommands(t *testing.T) {
-	// Verify that common shells are recognized as idle
-	shells := []string{"zsh", "bash", "sh", "fish", "-zsh", "-bash", "-sh", "login"}
-	for _, s := range shells {
-		if !idleShellCommands[s] {
-			t.Errorf("expected %q to be an idle shell command", s)
-		}
-	}
-
-	// Verify that agent processes are NOT idle
-	agents := []string{"claude", "opencode", "node", "python", "go"}
-	for _, a := range agents {
-		if idleShellCommands[a] {
-			t.Errorf("expected %q to NOT be an idle shell command", a)
-		}
-	}
-}
+// TestIdleShellCommands moved to pkg/tmux/tmux_test.go
+// since idleShellCommands is now defined in pkg/tmux (used by IsPaneActive).

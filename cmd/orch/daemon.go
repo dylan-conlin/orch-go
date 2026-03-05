@@ -432,6 +432,11 @@ func runDaemonLoop() error {
 		cancel()
 	}()
 
+	// Initialize daemon logger — writes to both stdout and ~/.orch/daemon.log.
+	// The log file survives process detachment and orphaned stdout file descriptors.
+	dlog := daemon.NewDaemonLogger()
+	defer dlog.Close()
+
 	logger := events.NewLogger(events.DefaultLogPath())
 	processed := 0
 	completed := 0 // Track agents marked ready-for-review
@@ -449,59 +454,59 @@ func runDaemonLoop() error {
 	// Clean up status file on shutdown
 	defer daemon.RemoveStatusFile()
 
-	fmt.Println("Starting daemon...")
-	fmt.Printf("  Poll interval:    %s\n", formatDaemonDuration(config.PollInterval))
-	fmt.Printf("  Concurrency:      %d (worker pool)\n", config.MaxAgents)
-	fmt.Printf("  Required label:   %s\n", config.Label)
-	fmt.Printf("  Spawn delay:      %s\n", formatDaemonDuration(config.SpawnDelay))
+	dlog.Printf("Starting daemon...\n")
+	dlog.Printf("  Poll interval:    %s\n", formatDaemonDuration(config.PollInterval))
+	dlog.Printf("  Concurrency:      %d (worker pool)\n", config.MaxAgents)
+	dlog.Printf("  Required label:   %s\n", config.Label)
+	dlog.Printf("  Spawn delay:      %s\n", formatDaemonDuration(config.SpawnDelay))
 	if config.ReflectEnabled {
-		fmt.Printf("  Reflect interval:  %s\n", formatDaemonDuration(config.ReflectInterval))
-		fmt.Printf("  Reflect issues:    %v\n", config.ReflectCreateIssues)
-		fmt.Printf("  Reflect open:      %v\n", config.ReflectOpenEnabled)
+		dlog.Printf("  Reflect interval:  %s\n", formatDaemonDuration(config.ReflectInterval))
+		dlog.Printf("  Reflect issues:    %v\n", config.ReflectCreateIssues)
+		dlog.Printf("  Reflect open:      %v\n", config.ReflectOpenEnabled)
 	} else {
-		fmt.Println("  Reflect interval:  disabled")
+		dlog.Printf("  Reflect interval:  disabled\n")
 	}
 	if config.ReflectModelDriftEnabled {
-		fmt.Printf("  Model drift:       %s\n", formatDaemonDuration(config.ReflectModelDriftInterval))
+		dlog.Printf("  Model drift:       %s\n", formatDaemonDuration(config.ReflectModelDriftInterval))
 	} else {
-		fmt.Println("  Model drift:       disabled")
+		dlog.Printf("  Model drift:       disabled\n")
 	}
 	if config.KnowledgeHealthEnabled {
-		fmt.Printf("  Knowledge health:  %s (threshold: %d entries)\n", formatDaemonDuration(config.KnowledgeHealthInterval), config.KnowledgeHealthThreshold)
+		dlog.Printf("  Knowledge health:  %s (threshold: %d entries)\n", formatDaemonDuration(config.KnowledgeHealthInterval), config.KnowledgeHealthThreshold)
 	} else {
-		fmt.Println("  Knowledge health:  disabled")
+		dlog.Printf("  Knowledge health:  disabled\n")
 	}
 	if config.CleanupEnabled {
-		fmt.Printf("  Cleanup interval:  %s\n", formatDaemonDuration(config.CleanupInterval))
-		fmt.Printf("  Cleanup age:       %d days\n", config.CleanupAgeDays)
-		fmt.Printf("  Cleanup preserve:  %v (orchestrator sessions)\n", config.CleanupPreserveOrchestrator)
+		dlog.Printf("  Cleanup interval:  %s\n", formatDaemonDuration(config.CleanupInterval))
+		dlog.Printf("  Cleanup age:       %d days\n", config.CleanupAgeDays)
+		dlog.Printf("  Cleanup preserve:  %v (orchestrator sessions)\n", config.CleanupPreserveOrchestrator)
 	} else {
-		fmt.Println("  Cleanup interval:  disabled")
+		dlog.Printf("  Cleanup interval:  disabled\n")
 	}
 	if config.RecoveryEnabled {
-		fmt.Printf("  Recovery interval: %s\n", formatDaemonDuration(config.RecoveryInterval))
-		fmt.Printf("  Recovery idle:     %s\n", formatDaemonDuration(config.RecoveryIdleThreshold))
-		fmt.Printf("  Recovery rate:     %s (per agent)\n", formatDaemonDuration(config.RecoveryRateLimit))
+		dlog.Printf("  Recovery interval: %s\n", formatDaemonDuration(config.RecoveryInterval))
+		dlog.Printf("  Recovery idle:     %s\n", formatDaemonDuration(config.RecoveryIdleThreshold))
+		dlog.Printf("  Recovery rate:     %s (per agent)\n", formatDaemonDuration(config.RecoveryRateLimit))
 	} else {
-		fmt.Println("  Recovery interval: disabled")
+		dlog.Printf("  Recovery interval: disabled\n")
 	}
 	if config.OrphanDetectionEnabled {
-		fmt.Printf("  Orphan detection:  %s (age threshold: %s)\n", formatDaemonDuration(config.OrphanDetectionInterval), formatDaemonDuration(config.OrphanAgeThreshold))
+		dlog.Printf("  Orphan detection:  %s (age threshold: %s)\n", formatDaemonDuration(config.OrphanDetectionInterval), formatDaemonDuration(config.OrphanAgeThreshold))
 	} else {
-		fmt.Println("  Orphan detection:  disabled")
+		dlog.Printf("  Orphan detection:  disabled\n")
 	}
 	if config.VerificationPauseThreshold > 0 {
-		fmt.Printf("  Verify threshold:  %d (pause after N unverified completions)\n", config.VerificationPauseThreshold)
+		dlog.Printf("  Verify threshold:  %d (pause after N unverified completions)\n", config.VerificationPauseThreshold)
 	} else {
-		fmt.Println("  Verify threshold:  disabled")
+		dlog.Printf("  Verify threshold:  disabled\n")
 	}
-	fmt.Println()
+	dlog.Printf("\n")
 
 	// Main polling loop
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
+			dlog.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
 			return nil
 		default:
 		}
@@ -517,21 +522,21 @@ func runDaemonLoop() error {
 		//    slots to prevent over-spawning past the concurrency cap
 		// Must happen before status write so status shows accurate counts.
 		reconcileResult := d.ReconcileWithOpenCode()
-		if reconcileResult.Freed > 0 && daemonVerbose {
-			fmt.Printf("[%s] Reconciled: freed %d stale slots\n", timestamp, reconcileResult.Freed)
+		if reconcileResult.Freed > 0 {
+			dlog.Printf("[%s] Reconciled: freed %d stale slots\n", timestamp, reconcileResult.Freed)
 		}
 		if reconcileResult.Added > 0 {
-			fmt.Printf("[%s] Reconciled: seeded %d agents from prior run (pool was under-counting)\n", timestamp, reconcileResult.Added)
+			dlog.Printf("[%s] Reconciled: seeded %d agents from prior run (pool was under-counting)\n", timestamp, reconcileResult.Added)
 		}
 
 		// Check for verification signal (human ran `orch complete`)
 		// This resets the counter and unpauses the daemon.
 		if d.VerificationTracker != nil {
 			if verified, err := daemon.CheckAndClearVerificationSignal(); err != nil {
-				fmt.Fprintf(os.Stderr, "[%s] Warning: failed to check verification signal: %v\n", timestamp, err)
+				dlog.Errorf("[%s] Warning: failed to check verification signal: %v\n", timestamp, err)
 			} else if verified {
 				d.VerificationTracker.RecordHumanVerification()
-				fmt.Printf("[%s] ✅ Human verification detected - verification counter reset\n", timestamp)
+				dlog.Printf("[%s] Human verification detected - verification counter reset\n", timestamp)
 			}
 		}
 
@@ -539,10 +544,10 @@ func runDaemonLoop() error {
 		// This allows Dylan to resume the daemon without running orch complete.
 		if d.VerificationTracker != nil {
 			if resumed, err := daemon.CheckAndClearResumeSignal(); err != nil {
-				fmt.Fprintf(os.Stderr, "[%s] Warning: failed to check resume signal: %v\n", timestamp, err)
+				dlog.Errorf("[%s] Warning: failed to check resume signal: %v\n", timestamp, err)
 			} else if resumed {
 				d.VerificationTracker.Resume()
-				fmt.Printf("[%s] ✅ Daemon resumed manually - verification counter reset\n", timestamp)
+				dlog.Printf("[%s] Daemon resumed manually - verification counter reset\n", timestamp)
 			}
 		}
 
@@ -553,9 +558,9 @@ func runDaemonLoop() error {
 			verifyStatus := d.VerificationTracker.Status()
 			if d.VerificationTracker.IsPaused() {
 				breakdown := verificationBreakdown()
-				fmt.Printf("[%s] Verification pause: %d unverified completions, threshold is %d%s\n",
+				dlog.Printf("[%s] Verification pause: %d unverified completions, threshold is %d%s\n",
 					timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
-				fmt.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work to continue\n", timestamp)
+				dlog.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work to continue\n", timestamp)
 
 				// Write status file during pause so last_poll stays fresh
 				// and status correctly shows "paused" instead of going stale.
@@ -579,14 +584,14 @@ func runDaemonLoop() error {
 					},
 				}
 				if err := daemon.WriteStatusFile(pauseStatus); err != nil && daemonVerbose {
-					fmt.Fprintf(os.Stderr, "Warning: failed to write status file: %v\n", err)
+					dlog.Errorf("Warning: failed to write status file: %v\n", err)
 				}
 
 				time.Sleep(config.PollInterval)
 				continue
 			}
 			if verifyStatus.IsEnabled() {
-				fmt.Printf("[%s] Verification check: %d/%d unverified completions, proceeding\n",
+				dlog.Printf("[%s] Verification check: %d/%d unverified completions, proceeding\n",
 					timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold)
 			}
 		}
@@ -616,7 +621,7 @@ func runDaemonLoop() error {
 			}
 
 			// Always log completion errors (not just in verbose mode)
-			fmt.Fprintf(os.Stderr, "[%s] ⚠️  Completion processing error: %v\n", timestamp, err)
+			dlog.Errorf("[%s] Completion processing error: %v\n", timestamp, err)
 
 			// Log the error event
 			event := events.Event{
@@ -628,7 +633,7 @@ func runDaemonLoop() error {
 				},
 			}
 			if logErr := logger.Log(event); logErr != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to log completion error event: %v\n", logErr)
+				dlog.Errorf("Warning: failed to log completion error event: %v\n", logErr)
 			}
 		} else {
 			// Record successful completion processing
@@ -645,10 +650,10 @@ func runDaemonLoop() error {
 					completed++
 					lastCompletion = time.Now()
 					if cr.AutoCompleted {
-						fmt.Printf("[%s] Auto-completed: %s (tier=auto)\n",
+						dlog.Printf("[%s] Auto-completed: %s (tier=auto)\n",
 							timestamp, cr.BeadsID)
 					} else {
-						fmt.Printf("[%s] Ready for review: %s (escalation=%s)\n",
+						dlog.Printf("[%s] Ready for review: %s (escalation=%s)\n",
 							timestamp, cr.BeadsID, cr.Escalation)
 					}
 
@@ -662,10 +667,10 @@ func runDaemonLoop() error {
 					if d.VerificationTracker != nil && d.VerificationTracker.IsPaused() {
 						verifyStatus := d.VerificationTracker.Status()
 						breakdown := verificationBreakdown()
-						fmt.Printf("[%s] ⚠️  Verification threshold reached: %d/%d agents ready for review%s\n",
+						dlog.Printf("[%s] Verification threshold reached: %d/%d agents ready for review%s\n",
 							timestamp, verifyStatus.CompletionsSinceVerification, verifyStatus.Threshold, breakdown)
-						fmt.Printf("[%s]    Daemon will pause spawning on next cycle\n", timestamp)
-						fmt.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work\n", timestamp)
+						dlog.Printf("[%s]    Daemon will pause spawning on next cycle\n", timestamp)
+						dlog.Printf("[%s]    Run 'orch daemon resume' after reviewing completed work\n", timestamp)
 					}
 
 					// Log the completion
@@ -680,15 +685,15 @@ func runDaemonLoop() error {
 						},
 					}
 					if err := logger.Log(event); err != nil {
-						fmt.Fprintf(os.Stderr, "Warning: failed to log completion event: %v\n", err)
+						dlog.Errorf("Warning: failed to log completion event: %v\n", err)
 					}
 				} else if cr.Error != nil && daemonVerbose {
-					fmt.Printf("[%s] Review required: %s - %v (escalation=%s)\n",
+					dlog.Printf("[%s] Review required: %s - %v (escalation=%s)\n",
 						timestamp, cr.BeadsID, cr.Error, cr.Escalation)
 				}
 			}
 			if completedThisCycle > 0 && daemonVerbose {
-				fmt.Printf("[%s] Marked %d agent(s) ready for review this cycle\n", timestamp, completedThisCycle)
+				dlog.Printf("[%s] Marked %d agent(s) ready for review this cycle\n", timestamp, completedThisCycle)
 			}
 		}
 
@@ -698,11 +703,11 @@ func runDaemonLoop() error {
 		if d.BeadsCircuitBreaker != nil && d.BeadsCircuitBreaker.IsOpen() {
 			backoff := d.BeadsCircuitBreaker.BackoffDuration()
 			failures := d.BeadsCircuitBreaker.ConsecutiveFailures()
-			fmt.Printf("[%s] ⚠️  Beads circuit breaker open: %d consecutive failures, backing off %s\n",
+			dlog.Printf("[%s] Beads circuit breaker open: %d consecutive failures, backing off %s\n",
 				timestamp, failures, formatDaemonDuration(backoff))
 			select {
 			case <-ctx.Done():
-				fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
+				dlog.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
 				return nil
 			case <-time.After(backoff):
 				continue
@@ -715,7 +720,7 @@ func runDaemonLoop() error {
 			if d.BeadsCircuitBreaker != nil {
 				d.BeadsCircuitBreaker.RecordFailure()
 			}
-			fmt.Fprintf(os.Stderr, "[%s] ⚠️  Failed to list ready issues: %v\n", timestamp, readyErr)
+			dlog.Errorf("[%s] Failed to list ready issues: %v\n", timestamp, readyErr)
 		} else {
 			if d.BeadsCircuitBreaker != nil {
 				d.BeadsCircuitBreaker.RecordSuccess()
@@ -776,14 +781,14 @@ func runDaemonLoop() error {
 			AgreementCheck:     agreementCheckSnapshot,
 		}
 		if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
-			fmt.Fprintf(os.Stderr, "Warning: failed to write status file: %v\n", err)
+			dlog.Errorf("Warning: failed to write status file: %v\n", err)
 		}
 
 		// Check capacity before polling
 		if d.AtCapacity() {
 			activeCount := d.ActiveCount()
 			if daemonVerbose {
-				fmt.Printf("[%s] At capacity (%d/%d agents active), waiting...\n",
+				dlog.Printf("[%s] At capacity (%d/%d agents active), waiting...\n",
 					timestamp, activeCount, daemonMaxAgents)
 			}
 
@@ -791,10 +796,10 @@ func runDaemonLoop() error {
 			stuckThreshold := 10 * time.Minute
 			stuckCooldown := 30 * time.Minute
 			if checkDaemonStuck(lastSpawn, lastCompletion, lastStuckNotification, stuckThreshold, stuckCooldown) {
-				fmt.Printf("[%s] ⚠ Daemon stuck: capacity full, no spawns or completions in %s\n",
+				dlog.Printf("[%s] Daemon stuck: capacity full, no spawns or completions in %s\n",
 					timestamp, stuckThreshold)
 				if err := stuckNotifier.DaemonStuck(activeCount, daemonMaxAgents); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: stuck notification failed: %v\n", err)
+					dlog.Errorf("Warning: stuck notification failed: %v\n", err)
 				}
 				lastStuckNotification = time.Now()
 			}
@@ -802,7 +807,7 @@ func runDaemonLoop() error {
 			// Wait for poll interval before checking again
 			select {
 			case <-ctx.Done():
-				fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
+				dlog.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
 				return nil
 			case <-time.After(config.PollInterval):
 				continue
@@ -810,7 +815,7 @@ func runDaemonLoop() error {
 		}
 
 		if daemonVerbose {
-			fmt.Printf("[%s] Polling for issues...\n", timestamp)
+			dlog.Printf("[%s] Polling for issues...\n", timestamp)
 		}
 
 		// Process issues until queue is empty or at capacity
@@ -822,7 +827,7 @@ func runDaemonLoop() error {
 			// Check for interrupt
 			select {
 			case <-ctx.Done():
-				fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
+				dlog.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
 				return nil
 			default:
 			}
@@ -830,14 +835,14 @@ func runDaemonLoop() error {
 			// Check capacity
 			if d.AtCapacity() {
 				if daemonVerbose {
-					fmt.Printf("[%s] At capacity, stopping this cycle\n", timestamp)
+					dlog.Printf("[%s] At capacity, stopping this cycle\n", timestamp)
 				}
 				break
 			}
 
 			result, err := d.OnceExcluding(skippedThisCycle)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				dlog.Errorf("Error: %v\n", err)
 				break
 			}
 
@@ -850,10 +855,10 @@ func runDaemonLoop() error {
 				if result.Issue != nil {
 					skippedThisCycle[result.Issue.ID] = true
 					if result.Error != nil {
-						fmt.Fprintf(os.Stderr, "[%s] Skipping %s: %v\n",
+						dlog.Errorf("[%s] Skipping %s: %v\n",
 							timestamp, result.Issue.ID, result.Error)
 					} else if daemonVerbose {
-						fmt.Printf("[%s] Skipping %s: %s\n",
+						dlog.Printf("[%s] Skipping %s: %s\n",
 							timestamp, result.Issue.ID, result.Message)
 					}
 					// Continue to try the next issue
@@ -863,7 +868,7 @@ func runDaemonLoop() error {
 				// No more issues or non-issue-specific condition (rate limit, paused, etc.)
 				if daemonVerbose && spawnedThisCycle == 0 {
 					// Use the message from Once() which indicates why processing stopped
-					fmt.Printf("[%s] %s\n", timestamp, result.Message)
+					dlog.Printf("[%s] %s\n", timestamp, result.Message)
 				}
 				break
 			}
@@ -872,14 +877,14 @@ func runDaemonLoop() error {
 			spawnedThisCycle++
 			lastSpawn = time.Now()
 			if result.ExtractionSpawned {
-				fmt.Printf("[%s] Auto-extraction: %s (blocking %s) - %s\n",
+				dlog.Printf("[%s] Auto-extraction: %s (blocking %s) - %s\n",
 					timestamp,
 					result.Issue.ID,
 					result.OriginalIssueID,
 					result.Issue.Title,
 				)
 			} else if result.ArchitectEscalated {
-				fmt.Printf("[%s] Architect escalation: %s (%s, %s) - %s\n",
+				dlog.Printf("[%s] Architect escalation: %s (%s, %s) - %s\n",
 					timestamp,
 					result.Issue.ID,
 					result.Skill,
@@ -887,7 +892,7 @@ func runDaemonLoop() error {
 					result.Issue.Title,
 				)
 			} else {
-				fmt.Printf("[%s] Spawned: %s (%s, %s) - %s\n",
+				dlog.Printf("[%s] Spawned: %s (%s, %s) - %s\n",
 					timestamp,
 					result.Issue.ID,
 					result.Skill,
@@ -917,13 +922,13 @@ func runDaemonLoop() error {
 				Data:      eventData,
 			}
 			if err := logger.Log(event); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+				dlog.Errorf("Warning: failed to log event: %v\n", err)
 			}
 
 			// Delay before next spawn to avoid rate limits
 			select {
 			case <-ctx.Done():
-				fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
+				dlog.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
 				return nil
 			case <-time.After(config.SpawnDelay):
 			}
@@ -931,18 +936,18 @@ func runDaemonLoop() error {
 
 		// If poll interval is 0, run once and exit
 		if config.PollInterval == 0 {
-			fmt.Printf("Run-once mode. Spawned %d, completed %d.\n", processed, completed)
+			dlog.Printf("Run-once mode. Spawned %d, completed %d.\n", processed, completed)
 			return nil
 		}
 
 		// Wait for next poll cycle
 		if daemonVerbose {
-			fmt.Printf("[%s] Spawned %d this cycle, waiting %s before next poll...\n",
+			dlog.Printf("[%s] Spawned %d this cycle, waiting %s before next poll...\n",
 				timestamp, spawnedThisCycle, formatDaemonDuration(config.PollInterval))
 		}
 		select {
 		case <-ctx.Done():
-			fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
+			dlog.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
 			return nil
 		case <-time.After(config.PollInterval):
 		}

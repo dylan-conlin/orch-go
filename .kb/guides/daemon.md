@@ -269,37 +269,31 @@ Would spawn:
 
 ### Background (launchd)
 
-For persistent overnight operation:
+For persistent overnight operation with auto-restart on crash and auto-start on login.
+
+**Install/uninstall:**
+```bash
+# Install: generates plist from ~/.orch/config.yaml and loads into launchd
+orch daemon install
+
+# Reinstall (after config changes):
+orch daemon install --force
+
+# Uninstall (stop daemon, keep plist):
+orch daemon uninstall
+
+# Uninstall and remove plist file:
+orch daemon uninstall --remove-plist
+```
 
 **Plist location:** `~/Library/LaunchAgents/com.orch.daemon.plist`
 
-**Configuration options:**
-```xml
-<key>ProgramArguments</key>
-<array>
-    <string>/Users/dylanconlin/bin/orch</string>
-    <string>daemon</string>
-    <string>run</string>
-    <string>--poll-interval</string>
-    <string>60</string>
-    <string>--max-agents</string>
-    <string>3</string>
-    <string>--label</string>
-    <string>triage:ready</string>
-    <string>--verbose</string>
-</array>
-<key>WorkingDirectory</key>
-<string>/Users/dylanconlin/Documents/personal/orch-go</string>
-<key>EnvironmentVariables</key>
-<dict>
-    <key>BEADS_NO_DAEMON</key>
-    <string>1</string>
-</dict>
-```
+**Plist is generated from:** `~/.orch/config.yaml` via `orch config generate plist`
 
 **Control commands:**
 ```bash
 # Check status
+orch daemon status
 launchctl list | grep orch
 
 # Restart (after make install)
@@ -317,6 +311,8 @@ make install && launchctl kickstart -k gui/$(id -u)/com.orch.daemon
 # OR (foreground daemon)
 make install && orch daemon run --replace  # Graceful takeover with new binary
 ```
+
+**Interaction with orch-dashboard:** launchd and orch-dashboard are independent lifecycles. If both try to run the daemon (dashboard with `ORCH_DASHBOARD_START_DAEMON=1`), the PID lock prevents dual instances.
 
 ---
 

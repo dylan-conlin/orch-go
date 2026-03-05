@@ -173,6 +173,10 @@ func extractBeadsIDFromSessionTitle(title string) string {
 // Claude CLI backend agents run in tmux windows WITHOUT OpenCode sessions,
 // making them invisible to DefaultActiveCount().
 //
+// Only counts windows where the pane has an active (non-shell) process.
+// Windows where the agent process has exited (leaving only an idle shell) are
+// excluded to prevent ghost slots in the worker pool.
+//
 // Scans all worker sessions, the orchestrator session, and meta-orchestrator session.
 func CountActiveTmuxAgents() map[string]bool {
 	activeBeadsIDs := make(map[string]bool)
@@ -201,6 +205,13 @@ func CountActiveTmuxAgents() map[string]bool {
 		for _, w := range windows {
 			beadsID := extractBeadsIDFromWindowName(w.Name)
 			if beadsID == "" {
+				continue
+			}
+			// Only count windows with active processes.
+			// Tmux windows persist after agent process exits, leaving an idle shell.
+			// Without this check, dead windows inflate the active count and create
+			// ghost slots that block all spawning.
+			if !tmux.IsPaneActive(w.ID) {
 				continue
 			}
 			activeBeadsIDs[beadsID] = true

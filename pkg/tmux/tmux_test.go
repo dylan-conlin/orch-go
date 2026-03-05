@@ -846,3 +846,44 @@ func TestGetCurrentWindowName(t *testing.T) {
 		})
 	}
 }
+
+func TestIdleShellCommands(t *testing.T) {
+	// Verify all common shell names are in the idle list
+	expectedIdle := []string{"zsh", "bash", "sh", "fish", "-zsh", "-bash", "-sh", "login"}
+	for _, shell := range expectedIdle {
+		if !idleShellCommands[shell] {
+			t.Errorf("idleShellCommands missing %q", shell)
+		}
+	}
+
+	// Verify agent processes are NOT idle
+	expectedActive := []string{"claude", "opencode", "node", "python", "go"}
+	for _, proc := range expectedActive {
+		if idleShellCommands[proc] {
+			t.Errorf("idleShellCommands should not contain %q", proc)
+		}
+	}
+}
+
+func TestHasChildProcesses(t *testing.T) {
+	// PID 1 (launchd/init) always has children
+	if !hasChildProcesses("1") {
+		t.Error("PID 1 should have child processes")
+	}
+
+	// A very large PID should not exist
+	if hasChildProcesses("999999999") {
+		t.Error("PID 999999999 should not have child processes")
+	}
+}
+
+func TestIsPaneActive_ConservativeOnError(t *testing.T) {
+	// IsPaneActive should return true (conservative) for invalid window IDs
+	// to avoid false negatives that would miscount active agents.
+	result := IsPaneActive("@999999")
+	// On most systems, this window doesn't exist, so GetPaneCurrentCommand fails.
+	// Conservative behavior: treat as active.
+	if !result {
+		t.Error("IsPaneActive should return true (conservative) for invalid window ID")
+	}
+}

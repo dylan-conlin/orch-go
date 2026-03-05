@@ -5,7 +5,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -477,52 +476,15 @@ type PaneProcessChecker interface {
 	HasActiveProcess(windowID string) bool
 }
 
-// DefaultPaneProcessChecker checks process liveness via two signals:
-// 1. tmux pane_current_command — if a non-shell process is in the foreground, the pane is active
-// 2. child process detection — if the pane's shell has child processes, an agent is running
-//
-// The dual approach is needed because macOS tmux may report "zsh" for pane_current_command
-// even when a child process (like claude) is actively running in the foreground.
+// DefaultPaneProcessChecker delegates to tmux.IsPaneActive for process liveness detection.
+// Uses two signals: pane_current_command and child process detection.
+// See tmux.IsPaneActive for implementation details.
 type DefaultPaneProcessChecker struct{}
 
-// idleShellCommands are process names that indicate a pane is idle (no agent running).
-// These are shells that remain after an agent process exits.
-var idleShellCommands = map[string]bool{
-	"zsh": true, "bash": true, "sh": true, "fish": true,
-	"-zsh": true, "-bash": true, "-sh": true, "login": true,
-}
-
 // HasActiveProcess checks if a tmux window has an active agent process.
-// Uses two signals: pane_current_command and child process detection.
-// Returns true (conservative) if the check fails, to avoid killing active agents.
+// Delegates to tmux.IsPaneActive which uses pane_current_command + child process detection.
 func (c *DefaultPaneProcessChecker) HasActiveProcess(windowID string) bool {
-	// Signal 1: Check pane_current_command — if it's not a shell, something is running.
-	cmd, err := tmux.GetPaneCurrentCommand(windowID)
-	if err != nil {
-		// Can't determine — be conservative, assume alive
-		return true
-	}
-	if !idleShellCommands[cmd] {
-		return true
-	}
-
-	// Signal 2: pane_current_command shows a shell, but on macOS this can be
-	// unreliable when child processes (claude, opencode) are running.
-	// Check if the pane's shell PID has any child processes.
-	pid, err := tmux.GetPanePID(windowID)
-	if err != nil {
-		// Can't determine — be conservative, assume alive
-		return true
-	}
-	return hasChildProcesses(pid)
-}
-
-// hasChildProcesses checks if a process has any child processes.
-// Uses pgrep -P which returns exit 0 if children found, 1 if not.
-func hasChildProcesses(pid string) bool {
-	cmd := exec.Command("pgrep", "-P", pid)
-	err := cmd.Run()
-	return err == nil // exit 0 = children found
+	return tmux.IsPaneActive(windowID)
 }
 
 // staleTmuxWindow represents a tmux window identified as stale.
