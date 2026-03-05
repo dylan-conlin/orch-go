@@ -11,7 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"encoding/json"
+
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -109,19 +112,21 @@ func init() {
 
 // CompletionInfo holds information about a completed agent for review.
 type CompletionInfo struct {
-	WorkspaceID   string // Workspace directory name
-	WorkspacePath string // Full path to workspace directory
-	BeadsID       string // Beads issue ID
-	Project       string
-	VerifyOK      bool
-	VerifyError   string
-	Phase         string
-	Summary       string
-	Skill         string
-	Synthesis     *verify.Synthesis
-	ModTime       time.Time // Workspace modification time
-	IsStale       bool      // True if agent is in non-Complete phase for >24h
-	IsLightTier   bool      // True if agent was spawned as light tier (no SYNTHESIS.md by design)
+	WorkspaceID     string // Workspace directory name
+	WorkspacePath   string // Full path to workspace directory
+	BeadsID         string // Beads issue ID
+	Project         string
+	VerifyOK        bool
+	VerifyError     string
+	Phase           string
+	Summary         string
+	Skill           string
+	Synthesis       *verify.Synthesis
+	ModTime         time.Time // Workspace modification time
+	IsStale         bool      // True if agent is in non-Complete phase for >24h
+	IsLightTier     bool      // True if agent was spawned as light tier (no SYNTHESIS.md by design)
+	ReviewTier      string    // Review tier from manifest (auto/scan/review/deep)
+	IsAutoCompleted bool      // True if this was auto-completed by daemon (from events.jsonl)
 }
 
 // getCompletionsForReview retrieves completed agents with verification status.
@@ -153,6 +158,7 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 		lightBeadsID string
 		beadsID      string
 		skill        string
+		reviewTier   string
 		modTime      time.Time
 	}
 
@@ -197,10 +203,14 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 				hasSynthesis = true
 			}
 
-			// Check if this is a light-tier workspace (tier in manifest, fallback to dotfiles)
-			// Note: We check isLightTierWorkspace here, NOT isLightTierComplete
-			// The Phase: Complete check is deferred until after batch fetching
-			isLightTier := isLightTierWorkspace(dirPath)
+			// Read manifest once to extract tier info (avoids double-read)
+			manifest := spawn.ReadAgentManifestWithFallback(dirPath)
+			isLightTier := strings.TrimSpace(manifest.Tier) == spawn.TierLight
+			reviewTier := manifest.ReviewTier
+			if reviewTier == "" {
+				// Infer from skill if not set in manifest
+				reviewTier = spawn.DefaultReviewTier(extractSkillFromTitle(dirName), "")
+			}
 
 			// Skip workspaces that are neither full-tier with synthesis nor light-tier
 			if !hasSynthesis && !isLightTier {
@@ -240,6 +250,7 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 				lightBeadsID: beadsID,     // Store beads ID for light-tier workspaces
 				beadsID:      beadsID,
 				skill:        skill,
+				reviewTier:   reviewTier,
 				modTime:      modTime,
 			})
 
@@ -287,6 +298,7 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 			BeadsID:       ws.beadsID,
 			Project:       extractProject(ws.projectDir),
 			Skill:         ws.skill,
+			ReviewTier:    ws.reviewTier,
 			ModTime:       ws.modTime,
 			IsLightTier:   isLightComplete, // Now reflects actual completion status, not just tier
 		}
@@ -563,6 +575,41 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 		return err
 	}
 
+	// Merge recent auto-completed events (last 24h) so they appear in the review output.
+	// These are agents the daemon closed automatically — shown for awareness.
+	autoCompleted := getRecentAutoCompletions(24 * time.Hour)
+	existingBeadsIDs := make(map[string]bool)
+	for _, c := range completions {
+		if c.BeadsID != "" {
+			existingBeadsIDs[c.BeadsID] = true
+		}
+	}
+	for _, ac := range autoCompleted {
+		// Skip if this beads ID is already in the pending completions list
+		if ac.BeadsID != "" && existingBeadsIDs[ac.BeadsID] {
+			continue
+		}
+		project := "unknown"
+		if ac.ProjectDir != "" {
+			project = extractProject(ac.ProjectDir)
+		}
+		workspaceID := ac.Workspace
+		if workspaceID == "" && ac.BeadsID != "" {
+			workspaceID = ac.BeadsID
+		}
+		completions = append(completions, CompletionInfo{
+			WorkspaceID:     workspaceID,
+			BeadsID:         ac.BeadsID,
+			Project:         project,
+			VerifyOK:        true,
+			Phase:           "Complete",
+			Summary:         ac.Summary,
+			ReviewTier:      ac.ReviewTier,
+			ModTime:         ac.Timestamp,
+			IsAutoCompleted: true,
+		})
+	}
+
 	// Track counts before filtering for summary
 	totalCount := len(completions)
 	staleCount := 0
@@ -667,12 +714,19 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 				status = "NEEDS_REVIEW"
 			}
 
-			// Add stale/untracked/light-tier indicators
-			if c.IsStale {
+			// Add stale/untracked/light-tier/auto-completed indicators
+			if c.IsAutoCompleted {
+				status = "auto-completed"
+			} else if c.IsStale {
 				status = "STALE"
-			}
-			if c.IsLightTier {
+			} else if c.IsLightTier {
 				status = "LIGHT"
+			}
+
+			// Build tier badge
+			tierBadge := ""
+			if c.ReviewTier != "" {
+				tierBadge = fmt.Sprintf(" {%s}", c.ReviewTier)
 			}
 
 			beadsInfo := ""
@@ -680,14 +734,30 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 				beadsInfo = fmt.Sprintf(" (%s)", c.BeadsID)
 			}
 
-			fmt.Printf("  [%s] %s%s\n", status, c.WorkspaceID, beadsInfo)
+			fmt.Printf("  [%s]%s %s%s\n", status, tierBadge, c.WorkspaceID, beadsInfo)
+
+			// Auto-completed: show one-line summary only
+			if c.IsAutoCompleted {
+				if c.Summary != "" {
+					fmt.Printf("         %s\n", c.Summary)
+				}
+				continue
+			}
 
 			if c.VerifyOK && c.Summary != "" {
 				fmt.Printf("         Phase: %s - %s\n", c.Phase, c.Summary)
 			}
 
-			// Display Synthesis Card if available (full-tier only)
-			if c.Synthesis != nil {
+			// Scan-tier items: show SYNTHESIS TLDR inline (compact view)
+			if c.ReviewTier == spawn.ReviewScan && c.Synthesis != nil && c.Synthesis.TLDR != "" {
+				tldr := c.Synthesis.TLDR
+				if len(tldr) > 120 {
+					tldr = tldr[:117] + "..."
+				}
+				tldr = strings.ReplaceAll(tldr, "\n", " ")
+				fmt.Printf("         TLDR: %s\n", tldr)
+			} else if c.Synthesis != nil {
+				// Display full Synthesis Card for review/deep tier
 				printSynthesisCard(c.Synthesis)
 			}
 
@@ -707,9 +777,21 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 		}
 	}
 
+	// Count auto-completed for summary
+	autoCompletedCount := 0
+	for _, c := range completions {
+		if c.IsAutoCompleted {
+			autoCompletedCount++
+		}
+	}
+
 	// Print summary
 	fmt.Printf("\n---\n")
-	fmt.Printf("Total: %d completions (%d OK, %d need review)\n", totalOK+totalFailed, totalOK, totalFailed)
+	if autoCompletedCount > 0 {
+		fmt.Printf("Total: %d completions (%d OK, %d need review, %d auto-completed)\n", totalOK+totalFailed, totalOK, totalFailed, autoCompletedCount)
+	} else {
+		fmt.Printf("Total: %d completions (%d OK, %d need review)\n", totalOK+totalFailed, totalOK, totalFailed)
+	}
 
 	// Show truncation notice if limit was applied
 	if limit > 0 && totalAfterFilters > limit {
@@ -1014,6 +1096,82 @@ func runReviewDone(project string) error {
 	}
 
 	return nil
+}
+
+// AutoCompletedInfo holds information about an auto-completed agent from events.jsonl.
+type AutoCompletedInfo struct {
+	BeadsID     string
+	Summary     string
+	Timestamp   time.Time
+	Workspace   string
+	ReviewTier  string
+	ProjectDir  string
+}
+
+// getRecentAutoCompletions reads recent auto-completed events from events.jsonl.
+// Returns events within the given duration (e.g., 24h).
+func getRecentAutoCompletions(since time.Duration) []AutoCompletedInfo {
+	eventsPath := events.DefaultLogPath()
+	file, err := os.Open(eventsPath)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	cutoff := time.Now().Add(-since)
+	var results []AutoCompletedInfo
+
+	scanner := bufio.NewScanner(file)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		var event struct {
+			Type      string                 `json:"type"`
+			Timestamp int64                  `json:"timestamp"`
+			Data      map[string]interface{} `json:"data,omitempty"`
+		}
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+
+		if event.Type != events.EventTypeAutoCompleted {
+			continue
+		}
+
+		eventTime := time.Unix(event.Timestamp, 0)
+		if eventTime.Before(cutoff) {
+			continue
+		}
+
+		info := AutoCompletedInfo{
+			Timestamp: eventTime,
+		}
+		if v, ok := event.Data["beads_id"].(string); ok {
+			info.BeadsID = v
+		}
+		if v, ok := event.Data["close_reason"].(string); ok {
+			info.Summary = v
+		}
+		if v, ok := event.Data["workspace"].(string); ok {
+			info.Workspace = v
+		}
+		if v, ok := event.Data["review_tier"].(string); ok {
+			info.ReviewTier = v
+		}
+		if v, ok := event.Data["project_dir"].(string); ok {
+			info.ProjectDir = v
+		}
+
+		results = append(results, info)
+	}
+
+	return results
 }
 
 // printSynthesisCard displays a condensed Synthesis Card for an agent.

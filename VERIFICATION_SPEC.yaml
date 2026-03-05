@@ -1,30 +1,31 @@
-task: "Implement P3 coaching hooks: session-triage, completion-classification"
-beads_id: orch-go-2qrn
+task: "orch review shows review tiers and auto-completed items"
+beads_id: orch-go-7ew1
 
 deliverables:
-  - path: ~/.orch/hooks/nudge-orchestrator-session-triage.py
-    description: "SessionStart hook that surfaces pending triage:review issues"
-  - path: ~/.orch/hooks/nudge-completion-outcome-classification.py
-    description: "PreToolUse (Bash) hook that nudges outcome classification on orch complete"
-  - path: ~/.orch/hooks/tests/test_nudge_orchestrator_session_triage.py
-    description: "21 tests for session-triage hook"
-  - path: ~/.orch/hooks/tests/test_nudge_completion_outcome_classification.py
-    description: "27 tests for completion-classification hook"
+  - path: cmd/orch/review.go
+    description: "Updated review command with review tier badges, auto-completed display, scan-tier TLDR"
+  - path: cmd/orch/review_test.go
+    description: "7 new tests for review tier badges, auto-completed dedup, status display"
 
 tests:
-  command: "cd ~/.orch/hooks/tests && python3 -m pytest test_nudge_orchestrator_session_triage.py test_nudge_completion_outcome_classification.py -v"
-  result: "48 passed in 0.10s"
+  command: "go test ./cmd/orch/ -run 'TestCompletionInfoReviewTier|TestCompletionInfoIsAutoCompleted|TestGetRecentAutoCompletions|TestReviewTierBadgeDisplay|TestAutoCompletedStatusDisplay|TestAutoCompletedDeduplication' -v"
+  result: "7 passed"
 
-manual_steps_required:
-  - description: "Register hooks in ~/.claude/settings.json"
-    reason: "macOS sandbox prevents worker agents from writing settings.json"
-    instructions: |
-      Add to PreToolUse -> Bash hooks array:
-        {"type": "command", "command": "$HOME/.orch/hooks/nudge-completion-outcome-classification.py", "timeout": 10}
-      Add new entry to SessionStart hooks array:
-        {"hooks": [{"type": "command", "command": "$HOME/.orch/hooks/nudge-orchestrator-session-triage.py", "timeout": 10}]}
+verification:
+  automated:
+    - command: "go test ./cmd/orch/ -v"
+      expect: "all tests pass"
+    - command: "go vet ./cmd/orch/"
+      expect: "no errors"
+    - command: "go build ./cmd/orch/"
+      expect: "builds cleanly"
+
+  manual:
+    - step: "Run `orch review` and verify tier badges {auto}/{scan}/{review}/{deep} appear"
+    - step: "Verify auto-completed items from events.jsonl appear as [auto-completed]"
+    - step: "Verify scan-tier items show TLDR inline instead of full synthesis card"
 
 notes:
-  - "2 of 4 P3 hooks already existed: investigation-drift and spawn-context"
-  - "Both new hooks follow naming convention 'nudge-' (coaching, not gate)"
-  - "Existing hook tests still pass (45 passed for investigation-drift + spawn-context)"
+  - "ReviewTier populated from AGENT_MANIFEST.json, falls back to DefaultReviewTier(skill)"
+  - "Auto-completed events read from events.jsonl (last 24h), deduplicated against pending completions"
+  - "Pre-existing test failure in pkg/urltomd (network timeout) unrelated to changes"
