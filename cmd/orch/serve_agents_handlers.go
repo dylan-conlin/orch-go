@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/discovery"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -473,8 +474,13 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 }
 
 // agentStatusToAPIResponse converts a queryTrackedAgents result to the dashboard API type.
-// Maps reason codes to status and surfaces them for the dashboard.
-func agentStatusToAPIResponse(tracked AgentStatus) AgentAPIResponse {
+// Preserves the raw status from the query engine — status mapping is handled by
+// determineAgentStatus which is the single canonical status derivation point.
+//
+// This separation prevents Class 5 (Contradictory Authority Signals) defects by
+// ensuring status is only mapped once, by determineAgentStatus, with full context
+// (beads issue closed, phase complete, synthesis artifact, session status).
+func agentStatusToAPIResponse(tracked discovery.AgentStatus) AgentAPIResponse {
 	resp := AgentAPIResponse{
 		BeadsID:    tracked.BeadsID,
 		BeadsTitle: tracked.Title,
@@ -491,30 +497,20 @@ func agentStatusToAPIResponse(tracked AgentStatus) AgentAPIResponse {
 		resp.ID = tracked.WorkspaceName
 	}
 
-	// Map query engine status to dashboard status
+	// Pass raw status through — determineAgentStatus handles all mapping.
+	// Exception: when the discovery layer has flagged SessionDead, override
+	// to "dead" so determineAgentStatus sees the correct session state.
+	// This is not status mapping — it's resolving a contradiction between
+	// Status (which may be stale) and SessionDead (the ground truth signal).
+	resp.Status = tracked.Status
+	if tracked.SessionDead && tracked.Status != "dead" {
+		resp.Status = "dead"
+	}
 	switch tracked.Status {
 	case "active":
-		resp.Status = "active"
 		resp.IsProcessing = true
-	case "idle":
-		resp.Status = "dead" // idle sessions are considered dead in dashboard terminology
 	case "retrying":
-		resp.Status = "active"
 		resp.IsProcessing = true
-	case "completed":
-		resp.Status = "completed"
-	case "dead":
-		resp.Status = "dead"
-	case "unknown":
-		if tracked.MissingBinding {
-			resp.Status = "dead"
-		} else if tracked.MissingSession {
-			resp.Status = "dead"
-		} else {
-			resp.Status = "dead"
-		}
-	default:
-		resp.Status = "dead"
 	}
 
 	// Surface reason code for partial metadata

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/discovery"
 	"github.com/dylan-conlin/orch-go/pkg/graph"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -1031,7 +1032,7 @@ func buildActiveAgentMap() map[string]*ActiveAgentInfo {
 	// Run steps 1 (tracked agents) and 2 (OpenCode sessions) in parallel
 	// since they are independent data sources.
 	type trackedResult struct {
-		agents []AgentStatus
+		agents []discovery.AgentStatus
 		err    error
 	}
 	type sessionsResult struct {

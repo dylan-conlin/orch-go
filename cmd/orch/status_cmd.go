@@ -15,6 +15,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
+	"github.com/dylan-conlin/orch-go/pkg/discovery"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -442,7 +443,7 @@ func runStatus(serverURL string) error {
 
 // agentStatusToAgentInfo converts a queryTrackedAgents result to the CLI display type.
 // Maps reason codes to status annotations for human-readable output.
-func agentStatusToAgentInfo(tracked AgentStatus, now time.Time) AgentInfo {
+func agentStatusToAgentInfo(tracked discovery.AgentStatus, now time.Time) AgentInfo {
 	info := AgentInfo{
 		SessionID:  tracked.SessionID,
 		BeadsID:    tracked.BeadsID,

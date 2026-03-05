@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/discovery"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -282,7 +283,7 @@ func runDrift() error {
 }
 
 // buildDriftAnalysis creates a rich analysis from tracked agents and drift result.
-func buildDriftAnalysis(driftResult focus.DriftResult, agents []AgentStatus, untrackedCount int) DriftAnalysis {
+func buildDriftAnalysis(driftResult focus.DriftResult, agents []discovery.AgentStatus, untrackedCount int) DriftAnalysis {
 	analysis := DriftAnalysis{
 		Goal:           driftResult.Goal,
 		FocusedIssue:   driftResult.FocusedIssue,

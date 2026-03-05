@@ -51,56 +51,89 @@ func checkWorkspaceSynthesis(workspacePath string) bool {
 }
 
 // determineAgentStatus implements the Priority Cascade model for agent status.
-// This is the single source of truth for determining agent status.
+// This is the SINGLE CANONICAL source of truth for determining agent status.
+// All consumers (dashboard API, CLI status, work-graph) must use this function.
+//
+// This function receives the RAW status from pkg/discovery.JoinWithReasonCodes
+// (active, idle, retrying, completed, dead, unknown) and maps it to the final
+// dashboard status vocabulary. No other function should perform status mapping.
 //
 // Priority order (highest to lowest):
-//  1. Beads issue closed  "completed" (orchestrator verified completion)
-//  2. Phase: Complete reported AND session dead  "awaiting-cleanup" (agent done, needs orch complete)
-//  3. Phase: Complete reported  "completed" (agent declared done, still has active session)
-//  4. SYNTHESIS.md exists AND session dead  "awaiting-cleanup" (artifact proves completion, needs cleanup)
-//  5. SYNTHESIS.md exists  "completed" (artifact proves completion)
-//  6. Session activity  sessionStatus ("active", "idle", or "dead")
+//  1. Beads issue closed -> "completed" (orchestrator verified completion)
+//  2. Phase: Complete AND session not alive -> "awaiting-cleanup" (agent done, needs orch complete)
+//  3. Phase: Complete -> "completed" (agent declared done, still has active session)
+//  4. SYNTHESIS.md exists AND session not alive -> "awaiting-cleanup" (artifact proves completion)
+//  5. SYNTHESIS.md exists -> "completed" (artifact proves completion)
+//  6. Raw status mapping (final fallback):
+//     - "active" -> "active"
+//     - "retrying" -> "active"
+//     - "idle" -> "idle" (session running but not busy, can still be interacted with)
+//     - "unknown" -> "dead" (unreachable/unresolvable agents shown as dead)
+//     - "completed" -> "completed"
+//     - "dead" -> "dead"
 //
 // The "awaiting-cleanup" status distinguishes completed-but-orphaned agents from crashed agents.
 // This helps orchestrators prioritize: awaiting-cleanup needs orch complete, dead needs investigation.
+//
 // See .kb/investigations/2026-01-04-design-dashboard-agent-status-model.md for design rationale.
 // See .kb/investigations/2026-01-08-inv-handle-multiple-agents-same-beads.md for awaiting-cleanup addition.
 func determineAgentStatus(issueClosed bool, phaseComplete bool, workspacePath string, sessionStatus string) string {
-	// Priority 1: Beads issue closed  completed (orchestrator verified completion)
+	// Priority 1: Beads issue closed -> completed (orchestrator verified completion)
 	if issueClosed {
 		return "completed"
 	}
 
 	hasSynthesis := checkWorkspaceSynthesis(workspacePath)
-	isDead := sessionStatus == "dead"
+	// Session is "not alive" if it's dead or unknown -- the session process
+	// is gone or unreachable. "idle" is NOT included: idle sessions are still
+	// running and can be interacted with (e.g., orch send).
+	isNotAlive := sessionStatus == "dead" || sessionStatus == "unknown"
 
-	// Priority 2: Phase: Complete reported AND session dead  awaiting-cleanup
+	// Priority 2: Phase: Complete reported AND session not alive -> awaiting-cleanup
 	// Agent finished work and reported completion, but orchestrator hasn't run orch complete.
 	// This is NOT an error state - the agent did its job, just needs cleanup.
-	if phaseComplete && isDead {
+	if phaseComplete && isNotAlive {
 		return "awaiting-cleanup"
 	}
 
-	// Priority 3: Phase: Complete reported (session still active/idle)  completed
+	// Priority 3: Phase: Complete reported (session still active) -> completed
 	if phaseComplete {
 		return "completed"
 	}
 
-	// Priority 4: SYNTHESIS.md exists AND session dead  awaiting-cleanup
-	// Agent wrote synthesis artifact (proof of completion) but session is dead.
+	// Priority 4: SYNTHESIS.md exists AND session not alive -> awaiting-cleanup
+	// Agent wrote synthesis artifact (proof of completion) but session is not alive.
 	// Similar to Phase: Complete case - needs cleanup, not investigation.
-	if hasSynthesis && isDead {
+	if hasSynthesis && isNotAlive {
 		return "awaiting-cleanup"
 	}
 
-	// Priority 5: SYNTHESIS.md exists (session still active/idle)  completed
+	// Priority 5: SYNTHESIS.md exists (session still active) -> completed
 	if hasSynthesis {
 		return "completed"
 	}
 
-	// Priority 6: Session activity (fallback)
-	// "dead" agents without completion signals truly need attention (crashed/stuck)
-	return sessionStatus
+	// Priority 6: Raw status mapping (canonical mapping from query engine vocabulary
+	// to dashboard vocabulary). This is the ONLY place this mapping happens.
+	switch sessionStatus {
+	case "active":
+		return "active"
+	case "retrying":
+		return "active"
+	case "completed":
+		return "completed"
+	case "idle":
+		// Idle sessions are still running but not busy. Keep as "idle"
+		// so dashboard can distinguish between idle (reachable) and dead (gone).
+		return "idle"
+	case "unknown":
+		// Unreachable or unresolvable sessions shown as dead.
+		return "dead"
+	case "dead":
+		return "dead"
+	default:
+		return "dead"
+	}
 }
 
 // extractLastActivityFromMessages extracts the last meaningful activity from messages.

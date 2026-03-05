@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/discovery"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
@@ -166,7 +167,7 @@ var queryTrackedAgentsFn = queryTrackedAgents
 // TTL of 3 seconds balances freshness with performance.
 type trackedAgentsCache struct {
 	mu          sync.RWMutex
-	agents      []AgentStatus
+	agents      []discovery.AgentStatus
 	fetchedAt   time.Time
 	ttl         time.Duration
 	projectDirs []string // Track which project dirs the cache was built with
@@ -184,7 +185,7 @@ var globalTrackedAgentsCache = &trackedAgentsCache{
 
 // get returns cached tracked agents or queries fresh if cache is stale.
 // Rebuilds if TTL expired or project dirs changed.
-func (c *trackedAgentsCache) get(projectDirs []string) ([]AgentStatus, error) {
+func (c *trackedAgentsCache) get(projectDirs []string) ([]discovery.AgentStatus, error) {
 	c.mu.RLock()
 	cacheValid := c.agents != nil && time.Since(c.fetchedAt) < c.ttl
 	dirsMatch := projectDirsMatch(c.projectDirs, projectDirs)

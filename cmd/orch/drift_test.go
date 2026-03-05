@@ -3,11 +3,12 @@ package main
 import (
 	"testing"
 
+	"github.com/dylan-conlin/orch-go/pkg/discovery"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 )
 
 func TestBuildDriftAnalysis_GroupsBySkill(t *testing.T) {
-	agents := []AgentStatus{
+	agents := []discovery.AgentStatus{
 		{BeadsID: "proj-1", Title: "Add auth", Skill: "feature-impl", Status: "active", Phase: "Implementing"},
 		{BeadsID: "proj-2", Title: "Fix login bug", Skill: "systematic-debugging", Status: "active", Phase: "Planning"},
 		{BeadsID: "proj-3", Title: "Add dashboard", Skill: "feature-impl", Status: "idle", Phase: "Complete"},
@@ -46,7 +47,7 @@ func TestBuildDriftAnalysis_GroupsBySkill(t *testing.T) {
 }
 
 func TestBuildDriftAnalysis_UnknownSkill(t *testing.T) {
-	agents := []AgentStatus{
+	agents := []discovery.AgentStatus{
 		{BeadsID: "proj-1", Title: "Mystery work", Skill: "", Status: "active"},
 	}
 
@@ -94,7 +95,7 @@ func TestBuildDriftAnalysis_NoAgents(t *testing.T) {
 }
 
 func TestBuildDriftAnalysis_NoFocus(t *testing.T) {
-	agents := []AgentStatus{
+	agents := []discovery.AgentStatus{
 		{BeadsID: "proj-1", Title: "Some work", Skill: "feature-impl", Status: "active"},
 	}
 
@@ -114,7 +115,7 @@ func TestBuildDriftAnalysis_NoFocus(t *testing.T) {
 }
 
 func TestBuildDriftAnalysis_GroupsSortedByCount(t *testing.T) {
-	agents := []AgentStatus{
+	agents := []discovery.AgentStatus{
 		{BeadsID: "a1", Title: "A", Skill: "architect", Status: "active"},
 		{BeadsID: "d1", Title: "D1", Skill: "systematic-debugging", Status: "active"},
 		{BeadsID: "d2", Title: "D2", Skill: "systematic-debugging", Status: "active"},

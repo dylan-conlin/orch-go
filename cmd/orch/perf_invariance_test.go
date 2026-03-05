@@ -5,9 +5,9 @@
 // that invariant holds: query time must not grow with historical agent count.
 //
 // Regression scenarios caught:
-//   - filterActiveIssues removed or bypassed → closed agents leak into pipeline
+//   - FilterActiveIssues removed or bypassed → closed agents leak into pipeline
 //   - orch:agent label not removed on close → bd list returns all historical agents
-//   - joinWithReasonCodes becomes super-linear (e.g., nested loops)
+//   - JoinWithReasonCodes becomes super-linear (e.g., nested loops)
 package main
 
 import (
@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/discovery"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
@@ -43,7 +44,7 @@ func generateMixedIssues(activeCount, closedCount int) []beads.Issue {
 	return issues
 }
 
-// buildJoinData creates test data for joinWithReasonCodes at a given scale.
+// buildJoinData creates test data for JoinWithReasonCodes at a given scale.
 func buildJoinData(n int) ([]beads.Issue, map[string]*spawn.AgentManifest, map[string]opencode.SessionStatusInfo, map[string]string) {
 	issues := make([]beads.Issue, n)
 	manifests := make(map[string]*spawn.AgentManifest, n)
@@ -66,7 +67,7 @@ func buildJoinData(n int) ([]beads.Issue, map[string]*spawn.AgentManifest, map[s
 	return issues, manifests, liveness, phases
 }
 
-// TestPerfInvariance_FilterBlocksClosedAgents verifies that filterActiveIssues
+// TestPerfInvariance_FilterBlocksClosedAgents verifies that FilterActiveIssues
 // returns only active issues regardless of how many closed issues exist.
 // This is the primary structural gate: if this filter is removed or bypassed,
 // downstream processing becomes O(historical).
@@ -77,7 +78,7 @@ func TestPerfInvariance_FilterBlocksClosedAgents(t *testing.T) {
 	for _, closed := range closedCounts {
 		t.Run(fmt.Sprintf("closed=%d", closed), func(t *testing.T) {
 			issues := generateMixedIssues(activeCount, closed)
-			active := filterActiveIssues(issues)
+			active := discovery.FilterActiveIssues(issues)
 
 			if len(active) != activeCount {
 				t.Errorf("with %d closed issues: expected %d active, got %d",
@@ -95,44 +96,9 @@ func TestPerfInvariance_FilterBlocksClosedAgents(t *testing.T) {
 	}
 }
 
-// TestPerfInvariance_CLIPipelineFilters verifies that listTrackedIssuesCLI
-// returns only active issues via the fallback path, regardless of how many
-// closed issues the beads layer returns. This catches regressions where
-// the orch:agent label is not removed on close.
-func TestPerfInvariance_CLIPipelineFilters(t *testing.T) {
-	const activeCount = 5
-	closedCounts := []int{0, 50, 100, 200}
-
-	for _, closed := range closedCounts {
-		t.Run(fmt.Sprintf("closed=%d", closed), func(t *testing.T) {
-			oldFn := fallbackListWithLabelFn
-			defer func() { fallbackListWithLabelFn = oldFn }()
-
-			allIssues := generateMixedIssues(activeCount, closed)
-			fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
-				return allIssues, nil
-			}
-
-			issues, err := listTrackedIssuesCLI()
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if len(issues) != activeCount {
-				t.Errorf("with %d closed issues: expected %d active results, got %d",
-					closed, activeCount, len(issues))
-			}
-		})
-	}
-}
-
-// TestPerfInvariance_PipelineTiming verifies that the full mock pipeline
-// (filter + join) maintains constant time regardless of closed agent count.
-// Uses mock beads layer to isolate from real I/O.
-//
-// The invariant: with a constant number of active agents, adding closed
-// agents should only add filterActiveIssues overhead (scanning strings),
-// not downstream processing overhead (manifest lookup, phase extraction, join).
-func TestPerfInvariance_PipelineTiming(t *testing.T) {
+// TestPerfInvariance_FilterPipelineTiming verifies that the filter + join pipeline
+// maintains constant downstream time regardless of closed agent count.
+func TestPerfInvariance_FilterPipelineTiming(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping timing test in short mode")
 	}
@@ -142,20 +108,11 @@ func TestPerfInvariance_PipelineTiming(t *testing.T) {
 
 	// Helper to time the pipeline with a given closed count.
 	timePipeline := func(closedCount int) time.Duration {
-		oldFn := fallbackListWithLabelFn
-		defer func() { fallbackListWithLabelFn = oldFn }()
-
 		allIssues := generateMixedIssues(activeCount, closedCount)
-		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
-			return allIssues, nil
-		}
 
 		start := time.Now()
 		for i := 0; i < iterations; i++ {
-			issues, err := listTrackedIssuesCLI()
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			issues := discovery.FilterActiveIssues(allIssues)
 			// Simulate downstream: build join data for active issues only
 			manifests := make(map[string]*spawn.AgentManifest, len(issues))
 			liveness := make(map[string]opencode.SessionStatusInfo, len(issues))
@@ -169,7 +126,7 @@ func TestPerfInvariance_PipelineTiming(t *testing.T) {
 				liveness[sessID] = opencode.SessionStatusInfo{Type: "busy"}
 				phases[issue.ID] = "Implementing"
 			}
-			joinWithReasonCodes(issues, manifests, liveness, phases)
+			discovery.JoinWithReasonCodes(issues, manifests, liveness, phases)
 		}
 		return time.Since(start)
 	}
@@ -186,7 +143,7 @@ func TestPerfInvariance_PipelineTiming(t *testing.T) {
 	t.Logf("Ratio: %.2fx", ratio)
 
 	// With proper filtering, adding 200 closed issues should only add
-	// filterActiveIssues overhead (scanning 200 more status strings).
+	// FilterActiveIssues overhead (scanning 200 more status strings).
 	// The downstream join work is identical (5 active agents both times).
 	// Threshold of 3x is generous to avoid flakiness — a real regression
 	// (closed agents leaking into join) would show 40x+ ratio.
@@ -196,7 +153,7 @@ func TestPerfInvariance_PipelineTiming(t *testing.T) {
 	}
 }
 
-// TestPerfInvariance_JoinLinearScaling verifies that joinWithReasonCodes
+// TestPerfInvariance_JoinLinearScaling verifies that JoinWithReasonCodes
 // scales linearly with input size, not super-linearly.
 // Catches regressions like nested loops in the join logic.
 func TestPerfInvariance_JoinLinearScaling(t *testing.T) {
@@ -208,13 +165,13 @@ func TestPerfInvariance_JoinLinearScaling(t *testing.T) {
 
 	// Warm up
 	issues, manifests, liveness, phases := buildJoinData(5)
-	joinWithReasonCodes(issues, manifests, liveness, phases)
+	discovery.JoinWithReasonCodes(issues, manifests, liveness, phases)
 
 	// Time with 5 agents (baseline)
 	issues5, m5, l5, p5 := buildJoinData(5)
 	start := time.Now()
 	for i := 0; i < iterations; i++ {
-		joinWithReasonCodes(issues5, m5, l5, p5)
+		discovery.JoinWithReasonCodes(issues5, m5, l5, p5)
 	}
 	baseline := time.Since(start)
 
@@ -222,7 +179,7 @@ func TestPerfInvariance_JoinLinearScaling(t *testing.T) {
 	issues200, m200, l200, p200 := buildJoinData(200)
 	start = time.Now()
 	for i := 0; i < iterations; i++ {
-		joinWithReasonCodes(issues200, m200, l200, p200)
+		discovery.JoinWithReasonCodes(issues200, m200, l200, p200)
 	}
 	scaled := time.Since(start)
 
@@ -234,7 +191,7 @@ func TestPerfInvariance_JoinLinearScaling(t *testing.T) {
 	// Linear scaling: 200/5 = 40x. Allow up to 80x for GC/cache effects.
 	// Super-linear (O(N^2)) would show ~1600x ratio.
 	if ratio > 80 {
-		t.Errorf("joinWithReasonCodes appears super-linear: ratio=%.1fx (threshold: 80x). "+
+		t.Errorf("JoinWithReasonCodes appears super-linear: ratio=%.1fx (threshold: 80x). "+
 			"Expected ~40x for O(N) scaling from 5→200 agents.", ratio)
 	}
 }
@@ -247,7 +204,7 @@ func BenchmarkJoinWithReasonCodes(b *testing.B) {
 			issues, manifests, liveness, phases := buildJoinData(n)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				joinWithReasonCodes(issues, manifests, liveness, phases)
+				discovery.JoinWithReasonCodes(issues, manifests, liveness, phases)
 			}
 		})
 	}
@@ -264,7 +221,7 @@ func BenchmarkFilterActiveIssues(b *testing.B) {
 			issues := generateMixedIssues(5, closed)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				filterActiveIssues(issues)
+				discovery.FilterActiveIssues(issues)
 			}
 		})
 	}

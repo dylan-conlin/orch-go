@@ -2,8 +2,8 @@
 //
 // Key contract: tracked agents appear in status queries, completed agents do not.
 //
-// These tests exercise the full pipeline (listTrackedIssuesCLI → filterActiveIssues →
-// joinWithReasonCodes → determineAgentStatus) across lifecycle transitions:
+// These tests exercise the full pipeline (FilterActiveIssues →
+// JoinWithReasonCodes → determineAgentStatus) across lifecycle transitions:
 //   spawn → active → phase transitions → complete → closed/gone
 //
 // All tests use mock data — no real beads daemon or OpenCode server required.
@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/discovery"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
@@ -25,21 +26,13 @@ func TestE2ELifecycle_SingleAgent(t *testing.T) {
 
 	// === Phase 1: Issue created, agent spawned ===
 	// After spawn, beads has an in_progress issue with orch:agent label.
-	// listTrackedIssuesCLI should return it.
+	// FilterActiveIssues should keep it.
 	t.Run("spawn_visible_in_pipeline", func(t *testing.T) {
-		oldFn := fallbackListWithLabelFn
-		defer func() { fallbackListWithLabelFn = oldFn }()
-
-		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
-			return []beads.Issue{
-				{ID: beadsID, Title: "E2E test agent", Status: "in_progress", Labels: []string{"orch:agent"}},
-			}, nil
+		allIssues := []beads.Issue{
+			{ID: beadsID, Title: "E2E test agent", Status: "in_progress", Labels: []string{"orch:agent"}},
 		}
 
-		issues, err := listTrackedIssuesCLI()
-		if err != nil {
-			t.Fatalf("listTrackedIssuesCLI: %v", err)
-		}
+		issues := discovery.FilterActiveIssues(allIssues)
 		if len(issues) != 1 {
 			t.Fatalf("expected 1 tracked issue, got %d", len(issues))
 		}
@@ -72,7 +65,7 @@ func TestE2ELifecycle_SingleAgent(t *testing.T) {
 			beadsID: "Planning - Reading codebase",
 		}
 
-		results := joinWithReasonCodes(issues, manifests, liveness, phases)
+		results := discovery.JoinWithReasonCodes(issues, manifests, liveness, phases)
 		if len(results) != 1 {
 			t.Fatalf("expected 1 result, got %d", len(results))
 		}
@@ -115,7 +108,7 @@ func TestE2ELifecycle_SingleAgent(t *testing.T) {
 				beadsID: phase,
 			}
 
-			results := joinWithReasonCodes(issues, manifests, liveness, phaseMap)
+			results := discovery.JoinWithReasonCodes(issues, manifests, liveness, phaseMap)
 			if len(results) != 1 {
 				t.Fatalf("phase %q: expected 1 result, got %d", phase, len(results))
 			}
@@ -136,19 +129,11 @@ func TestE2ELifecycle_SingleAgent(t *testing.T) {
 
 	// === Phase 5: Issue closed → agent disappears from pipeline ===
 	t.Run("closed_issue_filtered_out", func(t *testing.T) {
-		oldFn := fallbackListWithLabelFn
-		defer func() { fallbackListWithLabelFn = oldFn }()
-
-		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
-			return []beads.Issue{
-				{ID: beadsID, Title: "E2E test agent", Status: "closed", Labels: []string{"orch:agent"}},
-			}, nil
+		allIssues := []beads.Issue{
+			{ID: beadsID, Title: "E2E test agent", Status: "closed", Labels: []string{"orch:agent"}},
 		}
 
-		issues, err := listTrackedIssuesCLI()
-		if err != nil {
-			t.Fatalf("listTrackedIssuesCLI: %v", err)
-		}
+		issues := discovery.FilterActiveIssues(allIssues)
 		if len(issues) != 0 {
 			t.Errorf("closed agent should not appear in tracked issues, got %d", len(issues))
 		}
@@ -181,17 +166,7 @@ func TestE2ELifecycle_MultipleAgents(t *testing.T) {
 
 	// Step 1: Verify filter removes only closed
 	t.Run("filter_keeps_active_removes_closed", func(t *testing.T) {
-		oldFn := fallbackListWithLabelFn
-		defer func() { fallbackListWithLabelFn = oldFn }()
-
-		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
-			return allIssues, nil
-		}
-
-		tracked, err := listTrackedIssuesCLI()
-		if err != nil {
-			t.Fatalf("listTrackedIssuesCLI: %v", err)
-		}
+		tracked := discovery.FilterActiveIssues(allIssues)
 
 		if len(tracked) != 3 {
 			t.Fatalf("expected 3 active issues (open + in_progress), got %d", len(tracked))
@@ -218,7 +193,7 @@ func TestE2ELifecycle_MultipleAgents(t *testing.T) {
 
 	// Step 2: Join gives correct status for each active agent
 	t.Run("join_differentiates_agent_states", func(t *testing.T) {
-		activeIssues := filterActiveIssues(allIssues)
+		activeIssues := discovery.FilterActiveIssues(allIssues)
 
 		manifests := map[string]*spawn.AgentManifest{
 			"orch-go-multi-1": {BeadsID: "orch-go-multi-1", SessionID: "sess-m1", ProjectDir: "/tmp/p1", Skill: "feature-impl"},
@@ -236,12 +211,12 @@ func TestE2ELifecycle_MultipleAgents(t *testing.T) {
 			"orch-go-multi-3": "Complete - All tests passing",
 		}
 
-		results := joinWithReasonCodes(activeIssues, manifests, liveness, phases)
+		results := discovery.JoinWithReasonCodes(activeIssues, manifests, liveness, phases)
 		if len(results) != 3 {
 			t.Fatalf("expected 3 results, got %d", len(results))
 		}
 
-		resultMap := make(map[string]AgentStatus)
+		resultMap := make(map[string]discovery.AgentStatus)
 		for _, r := range results {
 			resultMap[r.BeadsID] = r
 		}
@@ -298,14 +273,8 @@ func TestE2ELifecycle_MultipleAgents(t *testing.T) {
 
 	// Step 4: Progressive closure - as agents complete, they disappear
 	t.Run("progressive_closure", func(t *testing.T) {
-		oldFn := fallbackListWithLabelFn
-		defer func() { fallbackListWithLabelFn = oldFn }()
-
 		// Start: 3 active, 1 closed
-		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
-			return allIssues, nil
-		}
-		tracked, _ := listTrackedIssuesCLI()
+		tracked := discovery.FilterActiveIssues(allIssues)
 		if len(tracked) != 3 {
 			t.Fatalf("start: expected 3, got %d", len(tracked))
 		}
@@ -317,10 +286,7 @@ func TestE2ELifecycle_MultipleAgents(t *testing.T) {
 			{ID: "orch-go-multi-3", Title: "Phase complete", Status: "closed", Labels: []string{"orch:agent"}},
 			{ID: "orch-go-multi-4", Title: "Fully closed", Status: "closed", Labels: []string{"orch:agent"}},
 		}
-		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
-			return updatedIssues, nil
-		}
-		tracked, _ = listTrackedIssuesCLI()
+		tracked = discovery.FilterActiveIssues(updatedIssues)
 		if len(tracked) != 2 {
 			t.Fatalf("after closing agent 3: expected 2, got %d", len(tracked))
 		}
@@ -332,10 +298,7 @@ func TestE2ELifecycle_MultipleAgents(t *testing.T) {
 			{ID: "orch-go-multi-3", Status: "closed", Labels: []string{"orch:agent"}},
 			{ID: "orch-go-multi-4", Status: "closed", Labels: []string{"orch:agent"}},
 		}
-		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
-			return allClosed, nil
-		}
-		tracked, _ = listTrackedIssuesCLI()
+		tracked = discovery.FilterActiveIssues(allClosed)
 		if len(tracked) != 0 {
 			t.Fatalf("after all closed: expected 0, got %d", len(tracked))
 		}
@@ -348,23 +311,17 @@ func TestE2ELifecycle_MultipleAgents(t *testing.T) {
 func TestE2ELifecycle_DegradedModes(t *testing.T) {
 	// Agent exists in beads but workspace is missing (manifest not found)
 	t.Run("missing_workspace_still_visible", func(t *testing.T) {
-		oldFn := fallbackListWithLabelFn
-		defer func() { fallbackListWithLabelFn = oldFn }()
-
-		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
-			return []beads.Issue{
-				{ID: "orch-go-deg-1", Title: "Missing workspace", Status: "in_progress", Labels: []string{"orch:agent"}},
-			}, nil
+		issues := []beads.Issue{
+			{ID: "orch-go-deg-1", Title: "Missing workspace", Status: "in_progress", Labels: []string{"orch:agent"}},
 		}
 
-		// Pipeline: issue exists, but no manifest
-		issues, _ := listTrackedIssuesCLI()
-		if len(issues) != 1 {
-			t.Fatalf("expected 1 issue from pipeline, got %d", len(issues))
+		active := discovery.FilterActiveIssues(issues)
+		if len(active) != 1 {
+			t.Fatalf("expected 1 issue from pipeline, got %d", len(active))
 		}
 
 		// Join with empty manifests
-		results := joinWithReasonCodes(issues, map[string]*spawn.AgentManifest{}, nil, nil)
+		results := discovery.JoinWithReasonCodes(active, map[string]*spawn.AgentManifest{}, nil, nil)
 		if len(results) != 1 {
 			t.Fatalf("expected 1 result, got %d", len(results))
 		}
@@ -389,9 +346,9 @@ func TestE2ELifecycle_DegradedModes(t *testing.T) {
 			"orch-go-deg-2": {BeadsID: "orch-go-deg-2", SessionID: "sess-oc-down", ProjectDir: "/tmp"},
 		}
 		// Simulate OpenCode unreachable
-		liveness := unknownLiveness([]string{"sess-oc-down"})
+		liveness := discovery.UnknownLiveness([]string{"sess-oc-down"})
 
-		results := joinWithReasonCodes(issues, manifests, liveness, nil)
+		results := discovery.JoinWithReasonCodes(issues, manifests, liveness, nil)
 		if len(results) != 1 {
 			t.Fatalf("expected 1 result, got %d", len(results))
 		}
@@ -405,27 +362,20 @@ func TestE2ELifecycle_DegradedModes(t *testing.T) {
 
 	// Degraded agent still disappears when closed
 	t.Run("degraded_agent_still_disappears_on_close", func(t *testing.T) {
-		oldFn := fallbackListWithLabelFn
-		defer func() { fallbackListWithLabelFn = oldFn }()
-
 		// Agent was degraded (missing workspace) but still visible
-		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
-			return []beads.Issue{
-				{ID: "orch-go-deg-3", Title: "Degraded then closed", Status: "in_progress", Labels: []string{"orch:agent"}},
-			}, nil
+		openIssues := []beads.Issue{
+			{ID: "orch-go-deg-3", Title: "Degraded then closed", Status: "in_progress", Labels: []string{"orch:agent"}},
 		}
-		issues, _ := listTrackedIssuesCLI()
+		issues := discovery.FilterActiveIssues(openIssues)
 		if len(issues) != 1 {
 			t.Fatalf("degraded agent should be visible: got %d", len(issues))
 		}
 
 		// Now close it - should disappear regardless of degraded state
-		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
-			return []beads.Issue{
-				{ID: "orch-go-deg-3", Title: "Degraded then closed", Status: "closed", Labels: []string{"orch:agent"}},
-			}, nil
+		closedIssues := []beads.Issue{
+			{ID: "orch-go-deg-3", Title: "Degraded then closed", Status: "closed", Labels: []string{"orch:agent"}},
 		}
-		issues, _ = listTrackedIssuesCLI()
+		issues = discovery.FilterActiveIssues(closedIssues)
 		if len(issues) != 0 {
 			t.Errorf("closed agent should disappear even if previously degraded, got %d", len(issues))
 		}
@@ -444,7 +394,7 @@ func TestE2ELifecycle_LatestPhaseExtraction(t *testing.T) {
 			{Text: "Phase: Complete - All tests passing, 3 files changed"},
 		}
 
-		phase := latestPhaseFromComments(comments)
+		phase := discovery.LatestPhaseFromComments(comments)
 		if phase != "Complete - All tests passing, 3 files changed" {
 			t.Errorf("phase = %q, want 'Complete - All tests passing, 3 files changed'", phase)
 		}
@@ -456,7 +406,7 @@ func TestE2ELifecycle_LatestPhaseExtraction(t *testing.T) {
 			{Text: "Found a bug in adjacent code"},
 		}
 
-		phase := latestPhaseFromComments(comments)
+		phase := discovery.LatestPhaseFromComments(comments)
 		if phase != "" {
 			t.Errorf("phase = %q, want empty for no phase comments", phase)
 		}

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/discovery"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -132,7 +133,7 @@ type testHandlerSetup struct {
 	oldServerURL                    string
 	oldGetKBProjectsFn              func() []string
 	oldBeadsCache                   *beadsCache
-	oldQueryTrackedAgentsFn         func([]string) ([]AgentStatus, error)
+	oldQueryTrackedAgentsFn         func([]string) ([]discovery.AgentStatus, error)
 	oldGetIssuesBatch               func([]string, map[string]string) (map[string]*verify.Issue, error)
 	oldGetCommentsBatchWithProjDirs func([]string, map[string]string) map[string][]verify.Comment
 }
@@ -178,7 +179,7 @@ func TestHandleAgents(t *testing.T) {
 	// Mock queryTrackedAgentsFn to return empty (no beads/workspace in test env)
 	oldFn := queryTrackedAgentsFn
 	defer func() { queryTrackedAgentsFn = oldFn }()
-	queryTrackedAgentsFn = func(dirs []string) ([]AgentStatus, error) {
+	queryTrackedAgentsFn = func(dirs []string) ([]discovery.AgentStatus, error) {
 		return nil, nil
 	}
 	globalTrackedAgentsCache.invalidate()
@@ -263,8 +264,8 @@ PROJECT_DIR: %s
 
 	// Mock queryTrackedAgentsFn - the core discovery path
 	// Status "active" so determineAgentStatus sees Phase Complete + active session → "completed"
-	queryTrackedAgentsFn = func(dirs []string) ([]AgentStatus, error) {
-		return []AgentStatus{
+	queryTrackedAgentsFn = func(dirs []string) ([]discovery.AgentStatus, error) {
+		return []discovery.AgentStatus{
 			{
 				BeadsID:       "orch-go-aaa1",
 				Title:         "Primary",
@@ -363,8 +364,8 @@ PROJECT_DIR: /tmp/active
 	defer server.Close()
 
 	// Mock queryTrackedAgentsFn - agent is active
-	queryTrackedAgentsFn = func(dirs []string) ([]AgentStatus, error) {
-		return []AgentStatus{
+	queryTrackedAgentsFn = func(dirs []string) ([]discovery.AgentStatus, error) {
+		return []discovery.AgentStatus{
 			{
 				BeadsID:       "orch-go-active",
 				Title:         "Active",
@@ -443,8 +444,8 @@ PROJECT_DIR: %s
 	defer server.Close()
 
 	// Mock queryTrackedAgentsFn - agent with "open" status issue
-	queryTrackedAgentsFn = func(dirs []string) ([]AgentStatus, error) {
-		return []AgentStatus{
+	queryTrackedAgentsFn = func(dirs []string) ([]discovery.AgentStatus, error) {
+		return []discovery.AgentStatus{
 			{
 				BeadsID:       "orch-go-open1",
 				Title:         "Auto-created task",
@@ -516,8 +517,8 @@ PROJECT_DIR: /tmp/dead
 	defer server.Close()
 
 	// Mock queryTrackedAgentsFn - agent has session ID but session is idle/dead
-	queryTrackedAgentsFn = func(dirs []string) ([]AgentStatus, error) {
-		return []AgentStatus{
+	queryTrackedAgentsFn = func(dirs []string) ([]discovery.AgentStatus, error) {
+		return []discovery.AgentStatus{
 			{
 				BeadsID:       "orch-go-dead",
 				Title:         "Dead",
@@ -568,8 +569,8 @@ func TestHandleAgentsReviewLabelWithoutWorkspace(t *testing.T) {
 	defer server.Close()
 
 	// Mock queryTrackedAgentsFn - issue with no workspace binding (missing_binding)
-	queryTrackedAgentsFn = func(dirs []string) ([]AgentStatus, error) {
-		return []AgentStatus{
+	queryTrackedAgentsFn = func(dirs []string) ([]discovery.AgentStatus, error) {
+		return []discovery.AgentStatus{
 			{
 				BeadsID:        "orch-go-review",
 				Title:          "Needs review",

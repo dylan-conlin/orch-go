@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/discovery"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
@@ -42,7 +43,7 @@ func TestContract_TrackedAgent_VisibleInStatus(t *testing.T) {
 		"orch-go-c01": "Implementing - Adding tests",
 	}
 
-	results := joinWithReasonCodes(issues, manifests, liveness, phases)
+	results := discovery.JoinWithReasonCodes(issues, manifests, liveness, phases)
 
 	if len(results) != 1 {
 		t.Fatalf("Contract: tracked agent must be visible; got %d results, want 1", len(results))
@@ -109,7 +110,7 @@ func TestContract_TrackedAgent_CompletedGoneFromStatus(t *testing.T) {
 		{ID: "orch-go-c02c", Status: "open", Labels: []string{"orch:agent"}},
 	}
 
-	active := filterActiveIssues(issues)
+	active := discovery.FilterActiveIssues(issues)
 
 	// Closed issue must not appear
 	for _, issue := range active {
@@ -159,7 +160,7 @@ func TestContract_E2ELifecycle_SpawnVisibleCompleteGone(t *testing.T) {
 		beadsID: "Implementing - Running lifecycle",
 	}
 
-	results := joinWithReasonCodes(issues, manifests, liveness, phases)
+	results := discovery.JoinWithReasonCodes(issues, manifests, liveness, phases)
 	if len(results) != 1 {
 		t.Fatalf("Contract: expected 1 agent after spawn, got %d", len(results))
 	}
@@ -174,7 +175,7 @@ func TestContract_E2ELifecycle_SpawnVisibleCompleteGone(t *testing.T) {
 	}
 
 	// Gone (issue closed → filtered out)
-	closed := filterActiveIssues([]beads.Issue{
+	closed := discovery.FilterActiveIssues([]beads.Issue{
 		{ID: beadsID, Status: "closed", Labels: []string{"orch:agent"}},
 	})
 	if len(closed) != 0 {
@@ -200,7 +201,7 @@ func TestContract_NoTrack_NotInOrcheStatus(t *testing.T) {
 		"sess-tracked": {Type: "busy"},
 	}
 
-	results := joinWithReasonCodes(issues, manifests, liveness, nil)
+	results := discovery.JoinWithReasonCodes(issues, manifests, liveness, nil)
 
 	// Only tracked agent appears; no-track agent is structurally excluded
 	// because it has no beads issue to start from
@@ -322,9 +323,9 @@ func TestContract_OpenCodeDown_StatusUnknown(t *testing.T) {
 	}
 
 	// Simulate OpenCode unreachable: unknownLiveness is used by queryTrackedAgents
-	liveness := unknownLiveness([]string{"sess-a", "sess-b"})
+	liveness := discovery.UnknownLiveness([]string{"sess-a", "sess-b"})
 
-	results := joinWithReasonCodes(issues, manifests, liveness, nil)
+	results := discovery.JoinWithReasonCodes(issues, manifests, liveness, nil)
 
 	if len(results) != 2 {
 		t.Fatalf("Contract: all agents must be shown even when OpenCode is down; got %d", len(results))
@@ -354,7 +355,7 @@ func TestContract_WorkspaceMissing_ReasonCode(t *testing.T) {
 	manifests := map[string]*spawn.AgentManifest{}
 	liveness := map[string]opencode.SessionStatusInfo{}
 
-	results := joinWithReasonCodes(issues, manifests, liveness, nil)
+	results := discovery.JoinWithReasonCodes(issues, manifests, liveness, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("Contract: agent must still appear even without workspace; got %d", len(results))
@@ -399,7 +400,7 @@ func TestContract_CrossProject_CorrectProjectDir(t *testing.T) {
 		"sess-cross": {Type: "busy"},
 	}
 
-	results := joinWithReasonCodes(issues, manifests, liveness, nil)
+	results := discovery.JoinWithReasonCodes(issues, manifests, liveness, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("Contract: cross-project agent must be visible; got %d", len(results))
@@ -477,7 +478,7 @@ func TestContract_ConcurrentSpawns_NoDuplicates(t *testing.T) {
 		liveness[sessID] = opencode.SessionStatusInfo{Type: "busy"}
 	}
 
-	results := joinWithReasonCodes(issues, manifests, liveness, nil)
+	results := discovery.JoinWithReasonCodes(issues, manifests, liveness, nil)
 
 	if len(results) != 5 {
 		t.Fatalf("Contract: 5 concurrent spawns must produce 5 results; got %d", len(results))
@@ -525,14 +526,14 @@ func TestContract_ServerRestart_NoGhosts(t *testing.T) {
 		// sess-dead not in liveness → idle
 	}
 
-	results := joinWithReasonCodes(issues, manifests, liveness, nil)
+	results := discovery.JoinWithReasonCodes(issues, manifests, liveness, nil)
 
 	// All 3 must appear (no ghosts, no missing)
 	if len(results) != 3 {
 		t.Fatalf("Contract: all beads-tracked agents must appear after restart; got %d", len(results))
 	}
 
-	resultMap := make(map[string]AgentStatus)
+	resultMap := make(map[string]discovery.AgentStatus)
 	for _, r := range results {
 		resultMap[r.BeadsID] = r
 	}
