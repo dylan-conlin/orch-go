@@ -1,34 +1,23 @@
-task: "Enhance orch debrief with comprehension support"
-beads_id: orch-go-d5rdt
+task: "Complete daemon config FromUserConfig — config.yaml backing for all hardcoded defaults"
+beads_id: orch-go-4vjx9
 
 verification:
   automated:
-    - command: "go test ./pkg/debrief/ -v"
-      expects: "22 tests pass including 9 new quality heuristic tests"
-      result: "PASS — all 22 tests pass (0.004s)"
-
-  smoke:
-    - command: 'orch debrief --dry-run --learned "X because Y"'
-      expects: "What We Learned section contains the learned item"
+    - command: "go test ./pkg/userconfig/ -v -count=1"
+      expects: "all tests pass including 27 new accessor method tests"
       result: "PASS"
-
-    - command: "orch debrief --dry-run --quality"
-      expects: "ADVISORY warnings for missing_connectives"
-      result: "PASS — missing_connectives warning emitted"
-
-    - command: 'orch debrief --dry-run --quality --learned "X because Y"'
-      expects: "Quality: PASS"
+    - command: "go test ./pkg/daemonconfig/ -v -count=1"
+      expects: "all tests pass including TestFromUserConfig_AllFieldsCustom"
       result: "PASS"
-
-    - command: 'orch debrief --learned "test"'
-      expects: "Thread/Insight/Position comprehension prompt printed after summary"
+    - command: "go build ./..."
+      expects: "clean build"
       result: "PASS"
-
-  build:
-    command: "go build ./cmd/orch/"
-    result: "PASS — compiles cleanly"
+    - command: "go vet ./pkg/daemonconfig/ ./pkg/userconfig/"
+      expects: "no vet errors"
+      result: "PASS"
 
 deliverables:
-  - pkg/debrief/quality.go
-  - pkg/debrief/quality_test.go
-  - cmd/orch/debrief_cmd.go
+  - pkg/userconfig/userconfig.go (25 new DaemonConfig fields + 25 accessor methods)
+  - pkg/daemonconfig/convert.go (FromUserConfig now uses accessors for all fields)
+  - pkg/userconfig/userconfig_test.go (27 new accessor tests)
+  - pkg/daemonconfig/convert_test.go (TestFromUserConfig_AllFieldsCustom + expanded defaults test)

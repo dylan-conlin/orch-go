@@ -1287,6 +1287,307 @@ session:
 	}
 }
 
+// =============================================================================
+// Tests for new DaemonConfig accessor methods
+// =============================================================================
+
+func TestDaemonMaxSpawnsPerHour(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonMaxSpawnsPerHour(); got != 20 {
+		t.Errorf("DaemonMaxSpawnsPerHour() default = %d, want 20", got)
+	}
+	cfg.Daemon.MaxSpawnsPerHour = intPtr(10)
+	if got := cfg.DaemonMaxSpawnsPerHour(); got != 10 {
+		t.Errorf("DaemonMaxSpawnsPerHour() explicit = %d, want 10", got)
+	}
+}
+
+func TestDaemonSpawnDelaySeconds(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonSpawnDelaySeconds(); got != 3 {
+		t.Errorf("DaemonSpawnDelaySeconds() default = %d, want 3", got)
+	}
+	cfg.Daemon.SpawnDelaySeconds = intPtr(10)
+	if got := cfg.DaemonSpawnDelaySeconds(); got != 10 {
+		t.Errorf("DaemonSpawnDelaySeconds() explicit = %d, want 10", got)
+	}
+}
+
+func TestDaemonReflectModelDriftEnabled(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonReflectModelDriftEnabled(); got != true {
+		t.Errorf("DaemonReflectModelDriftEnabled() default = %v, want true", got)
+	}
+	cfg.Daemon.ReflectModelDriftEnabled = boolPtr(false)
+	if got := cfg.DaemonReflectModelDriftEnabled(); got != false {
+		t.Errorf("DaemonReflectModelDriftEnabled() explicit = %v, want false", got)
+	}
+}
+
+func TestDaemonReflectModelDriftIntervalHours(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonReflectModelDriftIntervalHours(); got != 4 {
+		t.Errorf("DaemonReflectModelDriftIntervalHours() default = %d, want 4", got)
+	}
+	cfg.Daemon.ReflectModelDriftIntervalHours = intPtr(8)
+	if got := cfg.DaemonReflectModelDriftIntervalHours(); got != 8 {
+		t.Errorf("DaemonReflectModelDriftIntervalHours() explicit = %d, want 8", got)
+	}
+}
+
+func TestDaemonCleanupEnabled(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonCleanupEnabled(); got != true {
+		t.Errorf("DaemonCleanupEnabled() default = %v, want true", got)
+	}
+	cfg.Daemon.CleanupEnabled = boolPtr(false)
+	if got := cfg.DaemonCleanupEnabled(); got != false {
+		t.Errorf("DaemonCleanupEnabled() explicit = %v, want false", got)
+	}
+}
+
+func TestDaemonCleanupIntervalHours(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonCleanupIntervalHours(); got != 6 {
+		t.Errorf("DaemonCleanupIntervalHours() default = %d, want 6", got)
+	}
+	cfg.Daemon.CleanupIntervalHours = intPtr(12)
+	if got := cfg.DaemonCleanupIntervalHours(); got != 12 {
+		t.Errorf("DaemonCleanupIntervalHours() explicit = %d, want 12", got)
+	}
+}
+
+func TestDaemonCleanupAgeDays(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonCleanupAgeDays(); got != 7 {
+		t.Errorf("DaemonCleanupAgeDays() default = %d, want 7", got)
+	}
+	cfg.Daemon.CleanupAgeDays = intPtr(14)
+	if got := cfg.DaemonCleanupAgeDays(); got != 14 {
+		t.Errorf("DaemonCleanupAgeDays() explicit = %d, want 14", got)
+	}
+}
+
+func TestDaemonCleanupPreserveOrchestrator(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonCleanupPreserveOrchestrator(); got != true {
+		t.Errorf("DaemonCleanupPreserveOrchestrator() default = %v, want true", got)
+	}
+	cfg.Daemon.CleanupPreserveOrchestrator = boolPtr(false)
+	if got := cfg.DaemonCleanupPreserveOrchestrator(); got != false {
+		t.Errorf("DaemonCleanupPreserveOrchestrator() explicit = %v, want false", got)
+	}
+}
+
+func TestDaemonCleanupServerURL(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonCleanupServerURL(); got != "http://127.0.0.1:4096" {
+		t.Errorf("DaemonCleanupServerURL() default = %q, want %q", got, "http://127.0.0.1:4096")
+	}
+	cfg.Daemon.CleanupServerURL = "http://custom:9999"
+	if got := cfg.DaemonCleanupServerURL(); got != "http://custom:9999" {
+		t.Errorf("DaemonCleanupServerURL() explicit = %q, want %q", got, "http://custom:9999")
+	}
+}
+
+func TestDaemonCleanupArchivedTTLDays(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonCleanupArchivedTTLDays(); got != 30 {
+		t.Errorf("DaemonCleanupArchivedTTLDays() default = %d, want 30", got)
+	}
+	cfg.Daemon.CleanupArchivedTTLDays = intPtr(60)
+	if got := cfg.DaemonCleanupArchivedTTLDays(); got != 60 {
+		t.Errorf("DaemonCleanupArchivedTTLDays() explicit = %d, want 60", got)
+	}
+}
+
+func TestDaemonRecoveryEnabled(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonRecoveryEnabled(); got != true {
+		t.Errorf("DaemonRecoveryEnabled() default = %v, want true", got)
+	}
+	cfg.Daemon.RecoveryEnabled = boolPtr(false)
+	if got := cfg.DaemonRecoveryEnabled(); got != false {
+		t.Errorf("DaemonRecoveryEnabled() explicit = %v, want false", got)
+	}
+}
+
+func TestDaemonRecoveryIntervalMinutes(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonRecoveryIntervalMinutes(); got != 5 {
+		t.Errorf("DaemonRecoveryIntervalMinutes() default = %d, want 5", got)
+	}
+	cfg.Daemon.RecoveryIntervalMinutes = intPtr(15)
+	if got := cfg.DaemonRecoveryIntervalMinutes(); got != 15 {
+		t.Errorf("DaemonRecoveryIntervalMinutes() explicit = %d, want 15", got)
+	}
+}
+
+func TestDaemonRecoveryIdleThresholdMinutes(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonRecoveryIdleThresholdMinutes(); got != 10 {
+		t.Errorf("DaemonRecoveryIdleThresholdMinutes() default = %d, want 10", got)
+	}
+	cfg.Daemon.RecoveryIdleThresholdMinutes = intPtr(20)
+	if got := cfg.DaemonRecoveryIdleThresholdMinutes(); got != 20 {
+		t.Errorf("DaemonRecoveryIdleThresholdMinutes() explicit = %d, want 20", got)
+	}
+}
+
+func TestDaemonRecoveryRateLimitMinutes(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonRecoveryRateLimitMinutes(); got != 60 {
+		t.Errorf("DaemonRecoveryRateLimitMinutes() default = %d, want 60", got)
+	}
+	cfg.Daemon.RecoveryRateLimitMinutes = intPtr(120)
+	if got := cfg.DaemonRecoveryRateLimitMinutes(); got != 120 {
+		t.Errorf("DaemonRecoveryRateLimitMinutes() explicit = %d, want 120", got)
+	}
+}
+
+func TestDaemonKnowledgeHealthEnabled(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonKnowledgeHealthEnabled(); got != true {
+		t.Errorf("DaemonKnowledgeHealthEnabled() default = %v, want true", got)
+	}
+	cfg.Daemon.KnowledgeHealthEnabled = boolPtr(false)
+	if got := cfg.DaemonKnowledgeHealthEnabled(); got != false {
+		t.Errorf("DaemonKnowledgeHealthEnabled() explicit = %v, want false", got)
+	}
+}
+
+func TestDaemonKnowledgeHealthIntervalHours(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonKnowledgeHealthIntervalHours(); got != 2 {
+		t.Errorf("DaemonKnowledgeHealthIntervalHours() default = %d, want 2", got)
+	}
+	cfg.Daemon.KnowledgeHealthIntervalHours = intPtr(4)
+	if got := cfg.DaemonKnowledgeHealthIntervalHours(); got != 4 {
+		t.Errorf("DaemonKnowledgeHealthIntervalHours() explicit = %d, want 4", got)
+	}
+}
+
+func TestDaemonKnowledgeHealthThreshold(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonKnowledgeHealthThreshold(); got != 50 {
+		t.Errorf("DaemonKnowledgeHealthThreshold() default = %d, want 50", got)
+	}
+	cfg.Daemon.KnowledgeHealthThreshold = intPtr(100)
+	if got := cfg.DaemonKnowledgeHealthThreshold(); got != 100 {
+		t.Errorf("DaemonKnowledgeHealthThreshold() explicit = %d, want 100", got)
+	}
+}
+
+func TestDaemonOrphanDetectionEnabled(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonOrphanDetectionEnabled(); got != true {
+		t.Errorf("DaemonOrphanDetectionEnabled() default = %v, want true", got)
+	}
+	cfg.Daemon.OrphanDetectionEnabled = boolPtr(false)
+	if got := cfg.DaemonOrphanDetectionEnabled(); got != false {
+		t.Errorf("DaemonOrphanDetectionEnabled() explicit = %v, want false", got)
+	}
+}
+
+func TestDaemonOrphanDetectionIntervalMinutes(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonOrphanDetectionIntervalMinutes(); got != 30 {
+		t.Errorf("DaemonOrphanDetectionIntervalMinutes() default = %d, want 30", got)
+	}
+	cfg.Daemon.OrphanDetectionIntervalMinutes = intPtr(60)
+	if got := cfg.DaemonOrphanDetectionIntervalMinutes(); got != 60 {
+		t.Errorf("DaemonOrphanDetectionIntervalMinutes() explicit = %d, want 60", got)
+	}
+}
+
+func TestDaemonOrphanAgeThresholdMinutes(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonOrphanAgeThresholdMinutes(); got != 60 {
+		t.Errorf("DaemonOrphanAgeThresholdMinutes() default = %d, want 60", got)
+	}
+	cfg.Daemon.OrphanAgeThresholdMinutes = intPtr(120)
+	if got := cfg.DaemonOrphanAgeThresholdMinutes(); got != 120 {
+		t.Errorf("DaemonOrphanAgeThresholdMinutes() explicit = %d, want 120", got)
+	}
+}
+
+func TestDaemonPhaseTimeoutEnabled(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonPhaseTimeoutEnabled(); got != true {
+		t.Errorf("DaemonPhaseTimeoutEnabled() default = %v, want true", got)
+	}
+	cfg.Daemon.PhaseTimeoutEnabled = boolPtr(false)
+	if got := cfg.DaemonPhaseTimeoutEnabled(); got != false {
+		t.Errorf("DaemonPhaseTimeoutEnabled() explicit = %v, want false", got)
+	}
+}
+
+func TestDaemonPhaseTimeoutIntervalMinutes(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonPhaseTimeoutIntervalMinutes(); got != 5 {
+		t.Errorf("DaemonPhaseTimeoutIntervalMinutes() default = %d, want 5", got)
+	}
+	cfg.Daemon.PhaseTimeoutIntervalMinutes = intPtr(10)
+	if got := cfg.DaemonPhaseTimeoutIntervalMinutes(); got != 10 {
+		t.Errorf("DaemonPhaseTimeoutIntervalMinutes() explicit = %d, want 10", got)
+	}
+}
+
+func TestDaemonPhaseTimeoutThresholdMinutes(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonPhaseTimeoutThresholdMinutes(); got != 30 {
+		t.Errorf("DaemonPhaseTimeoutThresholdMinutes() default = %d, want 30", got)
+	}
+	cfg.Daemon.PhaseTimeoutThresholdMinutes = intPtr(60)
+	if got := cfg.DaemonPhaseTimeoutThresholdMinutes(); got != 60 {
+		t.Errorf("DaemonPhaseTimeoutThresholdMinutes() explicit = %d, want 60", got)
+	}
+}
+
+func TestDaemonAgreementCheckEnabled(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonAgreementCheckEnabled(); got != true {
+		t.Errorf("DaemonAgreementCheckEnabled() default = %v, want true", got)
+	}
+	cfg.Daemon.AgreementCheckEnabled = boolPtr(false)
+	if got := cfg.DaemonAgreementCheckEnabled(); got != false {
+		t.Errorf("DaemonAgreementCheckEnabled() explicit = %v, want false", got)
+	}
+}
+
+func TestDaemonAgreementCheckIntervalMinutes(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonAgreementCheckIntervalMinutes(); got != 30 {
+		t.Errorf("DaemonAgreementCheckIntervalMinutes() default = %d, want 30", got)
+	}
+	cfg.Daemon.AgreementCheckIntervalMinutes = intPtr(60)
+	if got := cfg.DaemonAgreementCheckIntervalMinutes(); got != 60 {
+		t.Errorf("DaemonAgreementCheckIntervalMinutes() explicit = %d, want 60", got)
+	}
+}
+
+func TestDaemonInvariantCheckEnabled(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonInvariantCheckEnabled(); got != true {
+		t.Errorf("DaemonInvariantCheckEnabled() default = %v, want true", got)
+	}
+	cfg.Daemon.InvariantCheckEnabled = boolPtr(false)
+	if got := cfg.DaemonInvariantCheckEnabled(); got != false {
+		t.Errorf("DaemonInvariantCheckEnabled() explicit = %v, want false", got)
+	}
+}
+
+func TestDaemonInvariantViolationThreshold(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.DaemonInvariantViolationThreshold(); got != 3 {
+		t.Errorf("DaemonInvariantViolationThreshold() default = %d, want 3", got)
+	}
+	cfg.Daemon.InvariantViolationThreshold = intPtr(5)
+	if got := cfg.DaemonInvariantViolationThreshold(); got != 5 {
+		t.Errorf("DaemonInvariantViolationThreshold() explicit = %d, want 5", got)
+	}
+}
+
 func TestLoadMissingSessionSection(t *testing.T) {
 	// Save original home and restore after test
 	originalHome := os.Getenv("HOME")

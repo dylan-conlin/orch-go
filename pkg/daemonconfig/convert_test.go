@@ -40,7 +40,7 @@ func TestFromUserConfig_Defaults(t *testing.T) {
 		t.Errorf("DryRun = %v, want false", result.DryRun)
 	}
 
-	// Fields from DefaultConfig (no userconfig backing)
+	// All fields should now be backed by userconfig accessors with matching defaults
 	defaults := DefaultConfig()
 	if result.MaxSpawnsPerHour != defaults.MaxSpawnsPerHour {
 		t.Errorf("MaxSpawnsPerHour = %d, want %d", result.MaxSpawnsPerHour, defaults.MaxSpawnsPerHour)
@@ -56,6 +56,56 @@ func TestFromUserConfig_Defaults(t *testing.T) {
 	}
 	if result.VerificationPauseThreshold != defaults.VerificationPauseThreshold {
 		t.Errorf("VerificationPauseThreshold = %d, want %d", result.VerificationPauseThreshold, defaults.VerificationPauseThreshold)
+	}
+
+	// Verify previously-missing fields are now present and match defaults
+	if result.OrphanDetectionEnabled != defaults.OrphanDetectionEnabled {
+		t.Errorf("OrphanDetectionEnabled = %v, want %v", result.OrphanDetectionEnabled, defaults.OrphanDetectionEnabled)
+	}
+	if result.OrphanDetectionInterval != defaults.OrphanDetectionInterval {
+		t.Errorf("OrphanDetectionInterval = %v, want %v", result.OrphanDetectionInterval, defaults.OrphanDetectionInterval)
+	}
+	if result.OrphanAgeThreshold != defaults.OrphanAgeThreshold {
+		t.Errorf("OrphanAgeThreshold = %v, want %v", result.OrphanAgeThreshold, defaults.OrphanAgeThreshold)
+	}
+	if result.PhaseTimeoutEnabled != defaults.PhaseTimeoutEnabled {
+		t.Errorf("PhaseTimeoutEnabled = %v, want %v", result.PhaseTimeoutEnabled, defaults.PhaseTimeoutEnabled)
+	}
+	if result.PhaseTimeoutInterval != defaults.PhaseTimeoutInterval {
+		t.Errorf("PhaseTimeoutInterval = %v, want %v", result.PhaseTimeoutInterval, defaults.PhaseTimeoutInterval)
+	}
+	if result.PhaseTimeoutThreshold != defaults.PhaseTimeoutThreshold {
+		t.Errorf("PhaseTimeoutThreshold = %v, want %v", result.PhaseTimeoutThreshold, defaults.PhaseTimeoutThreshold)
+	}
+	if result.AgreementCheckEnabled != defaults.AgreementCheckEnabled {
+		t.Errorf("AgreementCheckEnabled = %v, want %v", result.AgreementCheckEnabled, defaults.AgreementCheckEnabled)
+	}
+	if result.AgreementCheckInterval != defaults.AgreementCheckInterval {
+		t.Errorf("AgreementCheckInterval = %v, want %v", result.AgreementCheckInterval, defaults.AgreementCheckInterval)
+	}
+	if result.InvariantCheckEnabled != defaults.InvariantCheckEnabled {
+		t.Errorf("InvariantCheckEnabled = %v, want %v", result.InvariantCheckEnabled, defaults.InvariantCheckEnabled)
+	}
+	if result.InvariantViolationThreshold != defaults.InvariantViolationThreshold {
+		t.Errorf("InvariantViolationThreshold = %d, want %d", result.InvariantViolationThreshold, defaults.InvariantViolationThreshold)
+	}
+	if result.ReflectModelDriftEnabled != defaults.ReflectModelDriftEnabled {
+		t.Errorf("ReflectModelDriftEnabled = %v, want %v", result.ReflectModelDriftEnabled, defaults.ReflectModelDriftEnabled)
+	}
+	if result.ReflectModelDriftInterval != defaults.ReflectModelDriftInterval {
+		t.Errorf("ReflectModelDriftInterval = %v, want %v", result.ReflectModelDriftInterval, defaults.ReflectModelDriftInterval)
+	}
+	if result.KnowledgeHealthEnabled != defaults.KnowledgeHealthEnabled {
+		t.Errorf("KnowledgeHealthEnabled = %v, want %v", result.KnowledgeHealthEnabled, defaults.KnowledgeHealthEnabled)
+	}
+	if result.KnowledgeHealthInterval != defaults.KnowledgeHealthInterval {
+		t.Errorf("KnowledgeHealthInterval = %v, want %v", result.KnowledgeHealthInterval, defaults.KnowledgeHealthInterval)
+	}
+	if result.KnowledgeHealthThreshold != defaults.KnowledgeHealthThreshold {
+		t.Errorf("KnowledgeHealthThreshold = %d, want %d", result.KnowledgeHealthThreshold, defaults.KnowledgeHealthThreshold)
+	}
+	if result.CleanupArchivedTTLDays != defaults.CleanupArchivedTTLDays {
+		t.Errorf("CleanupArchivedTTLDays = %d, want %d", result.CleanupArchivedTTLDays, defaults.CleanupArchivedTTLDays)
 	}
 }
 
@@ -96,6 +146,152 @@ func TestFromUserConfig_CustomValues(t *testing.T) {
 	}
 	if result.ReflectOpenEnabled != true {
 		t.Errorf("ReflectOpenEnabled = %v, want true", result.ReflectOpenEnabled)
+	}
+}
+
+func TestFromUserConfig_AllFieldsCustom(t *testing.T) {
+	// Verify all fields can be overridden via userconfig
+	maxSpawns := 10
+	spawnDelay := 5
+	modelDriftEnabled := false
+	modelDriftHours := 8
+	cleanupEnabled := false
+	cleanupHours := 12
+	cleanupDays := 14
+	cleanupPreserve := false
+	cleanupTTL := 60
+	recoveryEnabled := false
+	recoveryInterval := 15
+	recoveryIdle := 20
+	recoveryRate := 120
+	khEnabled := false
+	khHours := 4
+	khThreshold := 100
+	orphanEnabled := false
+	orphanInterval := 60
+	orphanAge := 120
+	ptEnabled := false
+	ptInterval := 10
+	ptThreshold := 60
+	agreeEnabled := false
+	agreeInterval := 60
+	invEnabled := false
+	invThreshold := 5
+
+	cfg := &userconfig.Config{
+		Daemon: userconfig.DaemonConfig{
+			MaxSpawnsPerHour:               &maxSpawns,
+			SpawnDelaySeconds:              &spawnDelay,
+			ReflectModelDriftEnabled:       &modelDriftEnabled,
+			ReflectModelDriftIntervalHours: &modelDriftHours,
+			CleanupEnabled:                 &cleanupEnabled,
+			CleanupIntervalHours:           &cleanupHours,
+			CleanupAgeDays:                 &cleanupDays,
+			CleanupPreserveOrchestrator:    &cleanupPreserve,
+			CleanupServerURL:               "http://custom:9999",
+			CleanupArchivedTTLDays:         &cleanupTTL,
+			RecoveryEnabled:                &recoveryEnabled,
+			RecoveryIntervalMinutes:        &recoveryInterval,
+			RecoveryIdleThresholdMinutes:   &recoveryIdle,
+			RecoveryRateLimitMinutes:       &recoveryRate,
+			KnowledgeHealthEnabled:         &khEnabled,
+			KnowledgeHealthIntervalHours:   &khHours,
+			KnowledgeHealthThreshold:       &khThreshold,
+			OrphanDetectionEnabled:         &orphanEnabled,
+			OrphanDetectionIntervalMinutes: &orphanInterval,
+			OrphanAgeThresholdMinutes:      &orphanAge,
+			PhaseTimeoutEnabled:            &ptEnabled,
+			PhaseTimeoutIntervalMinutes:    &ptInterval,
+			PhaseTimeoutThresholdMinutes:   &ptThreshold,
+			AgreementCheckEnabled:          &agreeEnabled,
+			AgreementCheckIntervalMinutes:  &agreeInterval,
+			InvariantCheckEnabled:          &invEnabled,
+			InvariantViolationThreshold:    &invThreshold,
+		},
+	}
+
+	result := FromUserConfig(cfg)
+
+	if result.MaxSpawnsPerHour != 10 {
+		t.Errorf("MaxSpawnsPerHour = %d, want 10", result.MaxSpawnsPerHour)
+	}
+	if result.SpawnDelay != 5*time.Second {
+		t.Errorf("SpawnDelay = %v, want 5s", result.SpawnDelay)
+	}
+	if result.ReflectModelDriftEnabled != false {
+		t.Errorf("ReflectModelDriftEnabled = %v, want false", result.ReflectModelDriftEnabled)
+	}
+	if result.ReflectModelDriftInterval != 8*time.Hour {
+		t.Errorf("ReflectModelDriftInterval = %v, want 8h", result.ReflectModelDriftInterval)
+	}
+	if result.CleanupEnabled != false {
+		t.Errorf("CleanupEnabled = %v, want false", result.CleanupEnabled)
+	}
+	if result.CleanupInterval != 12*time.Hour {
+		t.Errorf("CleanupInterval = %v, want 12h", result.CleanupInterval)
+	}
+	if result.CleanupAgeDays != 14 {
+		t.Errorf("CleanupAgeDays = %d, want 14", result.CleanupAgeDays)
+	}
+	if result.CleanupPreserveOrchestrator != false {
+		t.Errorf("CleanupPreserveOrchestrator = %v, want false", result.CleanupPreserveOrchestrator)
+	}
+	if result.CleanupServerURL != "http://custom:9999" {
+		t.Errorf("CleanupServerURL = %q, want %q", result.CleanupServerURL, "http://custom:9999")
+	}
+	if result.CleanupArchivedTTLDays != 60 {
+		t.Errorf("CleanupArchivedTTLDays = %d, want 60", result.CleanupArchivedTTLDays)
+	}
+	if result.RecoveryEnabled != false {
+		t.Errorf("RecoveryEnabled = %v, want false", result.RecoveryEnabled)
+	}
+	if result.RecoveryInterval != 15*time.Minute {
+		t.Errorf("RecoveryInterval = %v, want 15m", result.RecoveryInterval)
+	}
+	if result.RecoveryIdleThreshold != 20*time.Minute {
+		t.Errorf("RecoveryIdleThreshold = %v, want 20m", result.RecoveryIdleThreshold)
+	}
+	if result.RecoveryRateLimit != 120*time.Minute {
+		t.Errorf("RecoveryRateLimit = %v, want 120m", result.RecoveryRateLimit)
+	}
+	if result.KnowledgeHealthEnabled != false {
+		t.Errorf("KnowledgeHealthEnabled = %v, want false", result.KnowledgeHealthEnabled)
+	}
+	if result.KnowledgeHealthInterval != 4*time.Hour {
+		t.Errorf("KnowledgeHealthInterval = %v, want 4h", result.KnowledgeHealthInterval)
+	}
+	if result.KnowledgeHealthThreshold != 100 {
+		t.Errorf("KnowledgeHealthThreshold = %d, want 100", result.KnowledgeHealthThreshold)
+	}
+	if result.OrphanDetectionEnabled != false {
+		t.Errorf("OrphanDetectionEnabled = %v, want false", result.OrphanDetectionEnabled)
+	}
+	if result.OrphanDetectionInterval != 60*time.Minute {
+		t.Errorf("OrphanDetectionInterval = %v, want 60m", result.OrphanDetectionInterval)
+	}
+	if result.OrphanAgeThreshold != 120*time.Minute {
+		t.Errorf("OrphanAgeThreshold = %v, want 120m", result.OrphanAgeThreshold)
+	}
+	if result.PhaseTimeoutEnabled != false {
+		t.Errorf("PhaseTimeoutEnabled = %v, want false", result.PhaseTimeoutEnabled)
+	}
+	if result.PhaseTimeoutInterval != 10*time.Minute {
+		t.Errorf("PhaseTimeoutInterval = %v, want 10m", result.PhaseTimeoutInterval)
+	}
+	if result.PhaseTimeoutThreshold != 60*time.Minute {
+		t.Errorf("PhaseTimeoutThreshold = %v, want 60m", result.PhaseTimeoutThreshold)
+	}
+	if result.AgreementCheckEnabled != false {
+		t.Errorf("AgreementCheckEnabled = %v, want false", result.AgreementCheckEnabled)
+	}
+	if result.AgreementCheckInterval != 60*time.Minute {
+		t.Errorf("AgreementCheckInterval = %v, want 60m", result.AgreementCheckInterval)
+	}
+	if result.InvariantCheckEnabled != false {
+		t.Errorf("InvariantCheckEnabled = %v, want false", result.InvariantCheckEnabled)
+	}
+	if result.InvariantViolationThreshold != 5 {
+		t.Errorf("InvariantViolationThreshold = %d, want 5", result.InvariantViolationThreshold)
 	}
 }
 

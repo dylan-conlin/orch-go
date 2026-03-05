@@ -7,18 +7,15 @@ import (
 )
 
 // FromUserConfig converts a userconfig.Config into a runtime daemon Config.
-// Fields with userconfig backing are mapped from the config's accessor methods
-// (which apply defaults for unset values). Fields without userconfig backing
-// use DefaultConfig() values.
+// All fields are mapped from userconfig accessor methods, which apply defaults
+// for unset values. No field uses DefaultConfig() directly.
 func FromUserConfig(cfg *userconfig.Config) Config {
-	defaults := DefaultConfig()
-
 	return Config{
 		PollInterval:     time.Duration(cfg.DaemonPollInterval()) * time.Second,
 		MaxAgents:        cfg.DaemonMaxAgents(),
-		MaxSpawnsPerHour: defaults.MaxSpawnsPerHour,
+		MaxSpawnsPerHour: cfg.DaemonMaxSpawnsPerHour(),
 		Label:            cfg.DaemonLabel(),
-		SpawnDelay:       defaults.SpawnDelay,
+		SpawnDelay:       time.Duration(cfg.DaemonSpawnDelaySeconds()) * time.Second,
 		DryRun:           false,
 		Verbose:          cfg.DaemonVerbose(),
 
@@ -27,24 +24,39 @@ func FromUserConfig(cfg *userconfig.Config) Config {
 		ReflectCreateIssues: cfg.DaemonReflectIssues(),
 		ReflectOpenEnabled:  cfg.DaemonReflectOpen(),
 
-		ReflectModelDriftEnabled:  defaults.ReflectModelDriftEnabled,
-		ReflectModelDriftInterval: defaults.ReflectModelDriftInterval,
+		ReflectModelDriftEnabled:  cfg.DaemonReflectModelDriftEnabled(),
+		ReflectModelDriftInterval: time.Duration(cfg.DaemonReflectModelDriftIntervalHours()) * time.Hour,
 
-		CleanupEnabled:              defaults.CleanupEnabled,
-		CleanupInterval:             defaults.CleanupInterval,
-		CleanupAgeDays:              defaults.CleanupAgeDays,
-		CleanupPreserveOrchestrator: defaults.CleanupPreserveOrchestrator,
-		CleanupServerURL:            defaults.CleanupServerURL,
+		CleanupEnabled:              cfg.DaemonCleanupEnabled(),
+		CleanupInterval:             time.Duration(cfg.DaemonCleanupIntervalHours()) * time.Hour,
+		CleanupAgeDays:              cfg.DaemonCleanupAgeDays(),
+		CleanupPreserveOrchestrator: cfg.DaemonCleanupPreserveOrchestrator(),
+		CleanupServerURL:            cfg.DaemonCleanupServerURL(),
+		CleanupArchivedTTLDays:      cfg.DaemonCleanupArchivedTTLDays(),
 
-		RecoveryEnabled:       defaults.RecoveryEnabled,
-		RecoveryInterval:      defaults.RecoveryInterval,
-		RecoveryIdleThreshold: defaults.RecoveryIdleThreshold,
-		RecoveryRateLimit:     defaults.RecoveryRateLimit,
+		RecoveryEnabled:       cfg.DaemonRecoveryEnabled(),
+		RecoveryInterval:      time.Duration(cfg.DaemonRecoveryIntervalMinutes()) * time.Minute,
+		RecoveryIdleThreshold: time.Duration(cfg.DaemonRecoveryIdleThresholdMinutes()) * time.Minute,
+		RecoveryRateLimit:     time.Duration(cfg.DaemonRecoveryRateLimitMinutes()) * time.Minute,
 
 		VerificationPauseThreshold: cfg.DaemonVerificationPauseThreshold(),
 
-		KnowledgeHealthEnabled:   defaults.KnowledgeHealthEnabled,
-		KnowledgeHealthInterval:  defaults.KnowledgeHealthInterval,
-		KnowledgeHealthThreshold: defaults.KnowledgeHealthThreshold,
+		KnowledgeHealthEnabled:   cfg.DaemonKnowledgeHealthEnabled(),
+		KnowledgeHealthInterval:  time.Duration(cfg.DaemonKnowledgeHealthIntervalHours()) * time.Hour,
+		KnowledgeHealthThreshold: cfg.DaemonKnowledgeHealthThreshold(),
+
+		OrphanDetectionEnabled:  cfg.DaemonOrphanDetectionEnabled(),
+		OrphanDetectionInterval: time.Duration(cfg.DaemonOrphanDetectionIntervalMinutes()) * time.Minute,
+		OrphanAgeThreshold:      time.Duration(cfg.DaemonOrphanAgeThresholdMinutes()) * time.Minute,
+
+		PhaseTimeoutEnabled:   cfg.DaemonPhaseTimeoutEnabled(),
+		PhaseTimeoutInterval:  time.Duration(cfg.DaemonPhaseTimeoutIntervalMinutes()) * time.Minute,
+		PhaseTimeoutThreshold: time.Duration(cfg.DaemonPhaseTimeoutThresholdMinutes()) * time.Minute,
+
+		AgreementCheckEnabled:  cfg.DaemonAgreementCheckEnabled(),
+		AgreementCheckInterval: time.Duration(cfg.DaemonAgreementCheckIntervalMinutes()) * time.Minute,
+
+		InvariantCheckEnabled:       cfg.DaemonInvariantCheckEnabled(),
+		InvariantViolationThreshold: cfg.DaemonInvariantViolationThreshold(),
 	}
 }
