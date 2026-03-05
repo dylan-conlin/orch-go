@@ -10,6 +10,7 @@ type SpawnInput struct {
 	ServerURL    string
 	SkillName    string
 	Task         string
+	IssueID      string // Beads issue ID (if spawning with --issue)
 	Inline       bool
 	Headless     bool
 	Tmux         bool

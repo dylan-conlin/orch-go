@@ -15,6 +15,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
@@ -530,4 +531,48 @@ func buildCapacityFetcher() func(string) *account.CapacityInfo {
 		processCapacityCache.Set(name, capacity)
 		return capacity
 	}
+}
+
+// buildOpenQuestionChecker creates an OpenQuestionChecker backed by the beads client.
+// Returns nil if beads is not available (graceful degradation).
+func buildOpenQuestionChecker() gates.OpenQuestionChecker {
+	fetcher := func(issueID string) (*gates.IssueSummary, error) {
+		// Try RPC client first
+		socketPath, err := beads.FindSocketPath("")
+		if err == nil {
+			client := beads.NewClient(socketPath, beads.WithAutoReconnect(2))
+			defer client.Close()
+			issue, showErr := client.Show(issueID)
+			if showErr == nil {
+				return issueToSummary(issue), nil
+			}
+		}
+
+		// Fallback to CLI
+		issue, err := beads.FallbackShow(issueID, "")
+		if err != nil {
+			return nil, err
+		}
+		return issueToSummary(issue), nil
+	}
+	return gates.BuildOpenQuestionChecker(fetcher)
+}
+
+// issueToSummary converts a beads Issue to a gates.IssueSummary.
+func issueToSummary(issue *beads.Issue) *gates.IssueSummary {
+	summary := &gates.IssueSummary{
+		ID:        issue.ID,
+		IssueType: issue.IssueType,
+		Status:    issue.Status,
+		Title:     issue.Title,
+	}
+	deps := issue.ParseDependencies()
+	for _, dep := range deps {
+		summary.Deps = append(summary.Deps, gates.DepSummary{
+			ID:     dep.EffectiveID(),
+			Type:   dep.EffectiveType(),
+			Status: dep.Status,
+		})
+	}
+	return summary
 }

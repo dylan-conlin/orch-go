@@ -10,22 +10,22 @@ import (
 )
 
 // RunPreFlightChecks performs all pre-spawn validation checks.
-func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, architectRef, bypassReason, overrideReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error)) (*gates.UsageCheckResult, *gates.HotspotResult, *gates.AgreementsResult, error) {
+func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, architectRef, bypassReason, overrideReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker) (*gates.UsageCheckResult, *gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
 	if err := gates.CheckTriageBypass(input.DaemonDriven, bypassTriage, input.SkillName, input.Task); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	if !input.DaemonDriven && bypassTriage {
 		gates.LogTriageBypass(input.SkillName, input.Task, overrideReason)
 	}
 	if err := gates.CheckVerificationGate(bypassVerification, bypassReason); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	if err := gates.CheckConcurrency(input.ServerURL, maxAgents, extractBeadsIDFunc); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	usageCheckResult, usageErr := gates.CheckRateLimit()
 	if usageErr != nil {
-		return nil, nil, nil, usageErr
+		return nil, nil, nil, nil, usageErr
 	}
 
 	var hotspotResult *gates.HotspotResult
@@ -35,7 +35,7 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 		var err error
 		hotspotResult, err = gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, forceHotspot, architectRef, overrideReason, hotspotCheckFunc, architectVerifier, architectFinder)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	}
 
@@ -44,7 +44,13 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 		agreementsResult, _ = gates.CheckAgreements(preCheckDir, input.DaemonDriven, agreementsCheckFunc)
 	}
 
-	return usageCheckResult, hotspotResult, agreementsResult, nil
+	// Check for open questions in transitive dependency chain (warning only)
+	var openQuestionResult *gates.OpenQuestionResult
+	if openQuestionCheckFunc != nil && input.IssueID != "" {
+		openQuestionResult, _ = gates.CheckOpenQuestions(input.IssueID, input.DaemonDriven, openQuestionCheckFunc)
+	}
+
+	return usageCheckResult, hotspotResult, agreementsResult, openQuestionResult, nil
 }
 
 func buildArchitectVerifier() gates.ArchitectVerifier {

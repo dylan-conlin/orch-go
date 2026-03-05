@@ -123,6 +123,7 @@ func runRework(beadsID, feedback string) error {
 		ServerURL:    serverURL,
 		SkillName:    skillName,
 		Task:         task,
+		IssueID:      beadsID,
 		Inline:       false,
 		Headless:     false,
 		Tmux:         reworkTmux,
@@ -149,7 +150,8 @@ func runRework(beadsID, feedback string) error {
 	}
 
 	agreementsCheckFunc := buildAgreementsChecker()
-	usageCheckResult, hotspotResult, _, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, false, false, "", "", "", 0, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc)
+	openQuestionCheckFunc := buildOpenQuestionChecker()
+	usageCheckResult, hotspotResult, _, _, err := orch.RunPreFlightChecks(input, projectDir, reworkBypassTriage, false, false, "", "", "", 0, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc)
 	if err != nil {
 		return err
 	}

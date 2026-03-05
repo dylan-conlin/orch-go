@@ -556,6 +556,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		ServerURL:    serverURL,
 		SkillName:    skillName,
 		Task:         task,
+		IssueID:      spawnIssue,
 		Inline:       inline,
 		Headless:     headless,
 		Tmux:         tmux,
@@ -594,7 +595,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		}, nil
 	}
 	agreementsCheckFunc := buildAgreementsChecker()
-	usageCheckResult, hotspotResult, _, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnBypassVerification, spawnForceHotspot, spawnArchitectRef, spawnBypassReason, spawnReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc)
+	openQuestionCheckFunc := buildOpenQuestionChecker()
+	usageCheckResult, hotspotResult, _, _, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnBypassVerification, spawnForceHotspot, spawnArchitectRef, spawnBypassReason, spawnReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc)
 	if err != nil {
 		return err
 	}
