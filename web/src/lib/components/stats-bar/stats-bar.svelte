@@ -315,9 +315,13 @@
 							<span class="inline-flex items-baseline gap-1">
 								{#if $daemon.running}
 									<span class="text-xl font-bold" class:text-green-500={$daemon.capacity_free > 0} class:text-red-500={$daemon.capacity_free === 0}>{getDaemonCapacity($daemon)}</span>
-									<span class="text-xs text-muted-foreground hidden sm:inline">slots</span>
+									<span class="text-xs text-muted-foreground hidden sm:inline">agents</span>
+									{#if $daemon.ready_count > 0}
+										<span class="text-xs text-muted-foreground hidden sm:inline">·</span>
+										<span class="text-xs font-medium" class:text-amber-500={$daemon.capacity_free === 0} class:text-muted-foreground={$daemon.capacity_free > 0}>{$daemon.ready_count} queued</span>
+									{/if}
 								{:else}
-									<span class="text-xs text-muted-foreground hidden sm:inline">daemon</span>
+									<span class="text-xs text-muted-foreground hidden sm:inline">daemon off</span>
 								{/if}
 							</span>
 						</button>

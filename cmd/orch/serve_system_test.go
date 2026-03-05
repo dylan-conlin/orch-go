@@ -90,6 +90,86 @@ func TestUsageAPIResponseJSONFormat(t *testing.T) {
 	}
 }
 
+func TestHandleDaemonReturnsCapacityFields(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/daemon", nil)
+	w := httptest.NewRecorder()
+
+	handleDaemon(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		t.Errorf("Expected Content-Type application/json, got %s", contentType)
+	}
+
+	var daemonResp DaemonAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&daemonResp); err != nil {
+		t.Fatalf("Failed to decode daemon response: %v", err)
+	}
+
+	// Verify capacity fields are present in the JSON (even when daemon isn't running)
+	data, _ := json.Marshal(daemonResp)
+	var raw map[string]interface{}
+	json.Unmarshal(data, &raw)
+
+	requiredFields := []string{"running", "capacity_max", "capacity_used", "capacity_free", "ready_count"}
+	for _, field := range requiredFields {
+		if _, ok := raw[field]; !ok {
+			t.Errorf("Missing required field %q in daemon API response", field)
+		}
+	}
+}
+
+func TestHandleDaemonMethodNotAllowed(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/daemon", nil)
+	w := httptest.NewRecorder()
+
+	handleDaemon(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status 405, got %d", w.Code)
+	}
+}
+
+func TestDaemonAPIResponseCapacityJSON(t *testing.T) {
+	// Test that DaemonAPIResponse correctly serializes capacity fields
+	resp := DaemonAPIResponse{
+		Running:      true,
+		Status:       "running",
+		ReadyCount:   72,
+		CapacityMax:  3,
+		CapacityUsed: 2,
+		CapacityFree: 1,
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("Failed to marshal DaemonAPIResponse: %v", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("Failed to unmarshal JSON: %v", err)
+	}
+
+	if result["capacity_max"] != float64(3) {
+		t.Errorf("Expected capacity_max 3, got %v", result["capacity_max"])
+	}
+	if result["capacity_used"] != float64(2) {
+		t.Errorf("Expected capacity_used 2, got %v", result["capacity_used"])
+	}
+	if result["capacity_free"] != float64(1) {
+		t.Errorf("Expected capacity_free 1, got %v", result["capacity_free"])
+	}
+	if result["ready_count"] != float64(72) {
+		t.Errorf("Expected ready_count 72, got %v", result["ready_count"])
+	}
+}
+
 func TestFormatDurationAgo(t *testing.T) {
 	tests := []struct {
 		name     string
