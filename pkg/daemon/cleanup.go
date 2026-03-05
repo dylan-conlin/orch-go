@@ -1,12 +1,14 @@
 package daemon
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -144,12 +146,73 @@ func isWindowStale(beadsID string, activeBeadsIDs map[string]bool, getStatus bea
 	return true
 }
 
+// isWindowStaleBatch determines whether a tmux window should be cleaned up
+// using pre-fetched sets of active IDs. This avoids per-window beads queries.
+// A window is stale if its beads ID is not in activeOpenCodeIDs AND not in openBeadsIDs.
+// If openBeadsIDs is nil (batch fetch failed), falls back to fail-safe (not stale).
+func isWindowStaleBatch(beadsID string, activeOpenCodeIDs map[string]bool, openBeadsIDs map[string]bool) bool {
+	if activeOpenCodeIDs[beadsID] {
+		return false
+	}
+	if openBeadsIDs == nil {
+		// Batch fetch failed — fail-safe: keep window alive
+		return false
+	}
+	if openBeadsIDs[beadsID] {
+		return false
+	}
+	return true
+}
+
+// listOpenBeadsIDs batch-fetches all open/in_progress beads issue IDs.
+// Returns a set of IDs that should NOT be cleaned up.
+// Uses beads RPC if available, falls back to CLI.
+func listOpenBeadsIDs() (map[string]bool, error) {
+	result := make(map[string]bool)
+
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			for _, status := range []string{"open", "in_progress"} {
+				issues, err := client.List(&beads.ListArgs{Status: status, Limit: 0})
+				if err == nil {
+					for _, issue := range issues {
+						result[issue.ID] = true
+					}
+				}
+			}
+			return result, nil
+		}
+	}
+
+	// Fallback to CLI: bd list --json --limit 0 --status open
+	for _, status := range []string{"open", "in_progress"} {
+		output, err := runBdCommand("list", "--json", "--limit", "0", "--status", status)
+		if err != nil {
+			continue
+		}
+		var issues []struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(output, &issues); err != nil {
+			continue
+		}
+		for _, issue := range issues {
+			result[issue.ID] = true
+		}
+	}
+
+	return result, nil
+}
+
 func cleanStaleTmuxWindows(serverURL string, preserveOrchestrator bool) (int, error) {
 	client := opencode.NewClient(serverURL)
 	now := time.Now()
 
 	// Source 1: OpenCode sessions (headless/tmux backend)
-	activeBeadsIDs := make(map[string]bool)
+	activeOpenCodeIDs := make(map[string]bool)
 	sessions, err := client.ListSessions("")
 	if err == nil {
 		for _, s := range sessions {
@@ -157,13 +220,18 @@ func cleanStaleTmuxWindows(serverURL string, preserveOrchestrator bool) (int, er
 			if now.Sub(updatedAt) <= cleanupMaxIdleTime {
 				beadsID := extractBeadsIDFromTitle(s.Title)
 				if beadsID != "" {
-					activeBeadsIDs[beadsID] = true
+					activeOpenCodeIDs[beadsID] = true
 				}
 			}
 		}
 	}
-	// If OpenCode is unavailable, activeBeadsIDs is empty — that's OK because
-	// isWindowStale also checks beads issue status (protects Claude CLI workers).
+
+	// Source 2: Batch-fetch all open/in_progress beads IDs (one call instead of per-window)
+	openBeadsIDs, err := listOpenBeadsIDs()
+	if err != nil {
+		// Can't determine open issues — set to nil so isWindowStaleBatch fails safe
+		openBeadsIDs = nil
+	}
 
 	workersSessions, _ := tmux.ListWorkersSessions()
 	var staleWindows []tmux.WindowInfo
@@ -187,7 +255,7 @@ func cleanStaleTmuxWindows(serverURL string, preserveOrchestrator bool) (int, er
 				continue
 			}
 
-			if isWindowStale(beadsID, activeBeadsIDs, GetBeadsIssueStatus) {
+			if isWindowStaleBatch(beadsID, activeOpenCodeIDs, openBeadsIDs) {
 				staleWindows = append(staleWindows, w)
 			}
 		}

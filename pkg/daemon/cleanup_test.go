@@ -186,6 +186,65 @@ func TestExpireArchivedWorkspaces(t *testing.T) {
 	}
 }
 
+// --- isWindowStaleBatch tests ---
+
+func TestIsWindowStaleBatch_ActiveInOpenCode(t *testing.T) {
+	openCodeIDs := map[string]bool{"proj-123": true}
+	openBeadsIDs := map[string]bool{}
+	if isWindowStaleBatch("proj-123", openCodeIDs, openBeadsIDs) {
+		t.Error("window should not be stale when active in OpenCode")
+	}
+}
+
+func TestIsWindowStaleBatch_OpenIssue(t *testing.T) {
+	openCodeIDs := map[string]bool{}
+	openBeadsIDs := map[string]bool{"proj-456": true}
+	if isWindowStaleBatch("proj-456", openCodeIDs, openBeadsIDs) {
+		t.Error("window with open beads issue should NOT be stale")
+	}
+}
+
+func TestIsWindowStaleBatch_ClosedIssue(t *testing.T) {
+	openCodeIDs := map[string]bool{}
+	openBeadsIDs := map[string]bool{"proj-other": true} // proj-done not in set
+	if !isWindowStaleBatch("proj-done", openCodeIDs, openBeadsIDs) {
+		t.Error("window with closed issue (not in open set) should be stale")
+	}
+}
+
+func TestIsWindowStaleBatch_NilBeadsFailSafe(t *testing.T) {
+	openCodeIDs := map[string]bool{}
+	// nil openBeadsIDs means batch fetch failed — fail-safe should keep window alive
+	if isWindowStaleBatch("proj-unknown", openCodeIDs, nil) {
+		t.Error("window should NOT be stale when beads batch fetch failed (fail-safe)")
+	}
+}
+
+func TestIsWindowStaleBatch_EmptyBeadsSet(t *testing.T) {
+	openCodeIDs := map[string]bool{}
+	openBeadsIDs := map[string]bool{} // empty = no open issues
+	if !isWindowStaleBatch("proj-done", openCodeIDs, openBeadsIDs) {
+		t.Error("window should be stale when no open issues exist")
+	}
+}
+
+func TestIsWindowStaleBatch_BothSources(t *testing.T) {
+	openCodeIDs := map[string]bool{"proj-oc": true}
+	openBeadsIDs := map[string]bool{"proj-beads": true}
+	// proj-oc protected by OpenCode
+	if isWindowStaleBatch("proj-oc", openCodeIDs, openBeadsIDs) {
+		t.Error("proj-oc should be protected by OpenCode")
+	}
+	// proj-beads protected by beads
+	if isWindowStaleBatch("proj-beads", openCodeIDs, openBeadsIDs) {
+		t.Error("proj-beads should be protected by open beads issue")
+	}
+	// proj-neither in neither set
+	if !isWindowStaleBatch("proj-neither", openCodeIDs, openBeadsIDs) {
+		t.Error("proj-neither should be stale (not in either set)")
+	}
+}
+
 // TestExpireArchivedWorkspaces_NoDir tests graceful handling when no archived dir exists.
 func TestExpireArchivedWorkspaces_NoDir(t *testing.T) {
 	tmpDir := t.TempDir()
