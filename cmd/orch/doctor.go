@@ -16,7 +16,8 @@ var (
 	doctorDocs       bool // Check for undocumented CLI commands (doc debt)
 	doctorWatch      bool // Continuous monitoring with desktop notifications
 	doctorDaemon     bool // Run as self-healing background daemon
-	doctorDefectScan bool // Scan for Class 2 and Class 5 defect patterns
+	doctorDefectScan    bool // Scan for Class 2 and Class 5 defect patterns
+	doctorMigrationScan bool // Scan for dual-authority patterns (incomplete migrations)
 )
 
 const (
@@ -43,6 +44,7 @@ Use --config to detect drift between config.yaml and external config (plist).
 Use --docs to check for undocumented CLI commands (doc debt).
 Use --watch to continuously monitor services and send desktop notifications on failures.
 Use --defect-scan to scan codebase for Class 2 (Multi-Backend Blindness) and Class 5 (Contradictory Authority Signals) patterns.
+Use --migration-scan to scan for dual-authority patterns from incomplete migrations.
 Use --health to track system health invariants over time with trend analysis.
 Use --health-json for machine-readable health output.
 
@@ -55,9 +57,10 @@ Examples:
   orch doctor --config     # Check for config drift
   orch doctor --docs       # Check for undocumented CLI commands
   orch doctor --watch      # Continuous monitoring with notifications
-  orch doctor --defect-scan # Scan for Class 2 and Class 5 defect patterns
-  orch doctor --health     # Track health invariants with trends and alerts
-  orch doctor --health-json # Health report as JSON`,
+  orch doctor --defect-scan    # Scan for Class 2 and Class 5 defect patterns
+  orch doctor --migration-scan # Scan for dual-authority patterns (incomplete migrations)
+  orch doctor --health         # Track health invariants with trends and alerts
+  orch doctor --health-json    # Health report as JSON`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDoctor()
 	},
@@ -73,6 +76,7 @@ func init() {
 	doctorCmd.Flags().BoolVarP(&doctorWatch, "watch", "w", false, "Continuous monitoring with desktop notifications")
 	doctorCmd.Flags().BoolVar(&doctorDaemon, "daemon", false, "Run as self-healing background daemon")
 	doctorCmd.Flags().BoolVar(&doctorDefectScan, "defect-scan", false, "Scan for Class 2 and Class 5 defect patterns")
+	doctorCmd.Flags().BoolVar(&doctorMigrationScan, "migration-scan", false, "Scan for dual-authority patterns (incomplete migrations)")
 	doctorCmd.AddCommand(doctorInstallCmd)
 	doctorCmd.AddCommand(doctorUninstallCmd)
 	rootCmd.AddCommand(doctorCmd)
@@ -139,6 +143,11 @@ func runDoctor() error {
 	// Handle --defect-scan flag for static analysis
 	if doctorDefectScan {
 		return runDefectScan()
+	}
+
+	// Handle --migration-scan flag for dual-authority detection
+	if doctorMigrationScan {
+		return runMigrationScan()
 	}
 
 	// Handle --health or --health-json flag for time-series health monitoring
