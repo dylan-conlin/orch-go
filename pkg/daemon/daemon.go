@@ -297,6 +297,11 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 		return issues[i].Priority < issues[j].Priority
 	})
 
+	// Round-robin across projects within each priority level.
+	// This prevents one project from monopolizing all slots when
+	// multiple projects have issues at the same priority.
+	issues = interleaveByProject(issues)
+
 	for _, issue := range issues {
 		// Skip issues in the skip set (failed to spawn this cycle)
 		if skip != nil && skip[issue.ID] {

@@ -222,6 +222,172 @@ func TestNextIssueExcluding_NilSkipWorksLikeNextIssue(t *testing.T) {
 	}
 }
 
+func TestNextIssue_RoundRobinAcrossProjects(t *testing.T) {
+	// When multiple projects have issues at the same priority,
+	// daemon should alternate between projects (round-robin).
+	d := &Daemon{
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "orch-go-1", Title: "Orch 1", Priority: 2, IssueType: "feature"},
+				{ID: "orch-go-2", Title: "Orch 2", Priority: 2, IssueType: "feature"},
+				{ID: "orch-go-3", Title: "Orch 3", Priority: 2, IssueType: "feature"},
+				{ID: "pw-1", Title: "PW 1", Priority: 2, IssueType: "feature"},
+				{ID: "pw-2", Title: "PW 2", Priority: 2, IssueType: "feature"},
+			}, nil
+		}},
+	}
+
+	// Collect all issues in order using NextIssueExcluding with skip sets
+	var order []string
+	skip := map[string]bool{}
+	for i := 0; i < 5; i++ {
+		issue, err := d.NextIssueExcluding(skip)
+		if err != nil {
+			t.Fatalf("iteration %d: unexpected error: %v", i, err)
+		}
+		if issue == nil {
+			break
+		}
+		order = append(order, issue.ID)
+		skip[issue.ID] = true
+	}
+
+	if len(order) != 5 {
+		t.Fatalf("expected 5 issues, got %d: %v", len(order), order)
+	}
+
+	// Verify round-robin: projects should alternate, not drain one first.
+	// Expected interleaved: orch-go, pw, orch-go, pw, orch-go
+	// (or pw, orch-go, pw, orch-go, orch-go - order of first project doesn't matter)
+	// Key assertion: the first two issues should be from different projects.
+	proj0 := projectFromIssueID(order[0])
+	proj1 := projectFromIssueID(order[1])
+	if proj0 == proj1 {
+		t.Errorf("first two issues are from same project %q: %v (expected round-robin)", proj0, order)
+	}
+}
+
+func TestNextIssue_HigherPriorityBeatsRoundRobin(t *testing.T) {
+	// Higher priority issues should still come first regardless of project.
+	d := &Daemon{
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "orch-go-1", Title: "Orch P2", Priority: 2, IssueType: "feature"},
+				{ID: "pw-1", Title: "PW P1", Priority: 1, IssueType: "feature"},
+				{ID: "pw-2", Title: "PW P2", Priority: 2, IssueType: "feature"},
+			}, nil
+		}},
+	}
+
+	issue, err := d.NextIssue()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if issue == nil {
+		t.Fatal("expected issue, got nil")
+	}
+	// P1 should beat P2 regardless of project
+	if issue.ID != "pw-1" {
+		t.Errorf("expected pw-1 (P1), got %s", issue.ID)
+	}
+}
+
+func TestNextIssue_SingleProjectUnaffected(t *testing.T) {
+	// Single-project case should work exactly as before.
+	d := &Daemon{
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "orch-go-1", Title: "First", Priority: 2, IssueType: "feature"},
+				{ID: "orch-go-2", Title: "Second", Priority: 2, IssueType: "feature"},
+				{ID: "orch-go-3", Title: "Third", Priority: 2, IssueType: "feature"},
+			}, nil
+		}},
+	}
+
+	issue, err := d.NextIssue()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if issue == nil {
+		t.Fatal("expected issue, got nil")
+	}
+	// Should return first issue (stable ordering within single project)
+	if issue.ID != "orch-go-1" {
+		t.Errorf("expected orch-go-1, got %s", issue.ID)
+	}
+}
+
+func TestProjectFromIssueID(t *testing.T) {
+	tests := []struct {
+		id   string
+		want string
+	}{
+		{"orch-go-1234", "orch-go"},
+		{"pw-5678", "pw"},
+		{"bd-123", "bd"},
+		{"scs-special-abc", "scs-special"},
+		{"single", "single"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			got := projectFromIssueID(tt.id)
+			if got != tt.want {
+				t.Errorf("projectFromIssueID(%q) = %q, want %q", tt.id, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestInterleaveByProject(t *testing.T) {
+	issues := []Issue{
+		{ID: "a-1", Priority: 2},
+		{ID: "a-2", Priority: 2},
+		{ID: "a-3", Priority: 2},
+		{ID: "b-1", Priority: 2},
+		{ID: "b-2", Priority: 2},
+	}
+	result := interleaveByProject(issues)
+
+	if len(result) != 5 {
+		t.Fatalf("expected 5 issues, got %d", len(result))
+	}
+
+	// First two should be from different projects
+	proj0 := projectFromIssueID(result[0].ID)
+	proj1 := projectFromIssueID(result[1].ID)
+	if proj0 == proj1 {
+		t.Errorf("first two issues from same project: %v", idsOf(result))
+	}
+}
+
+func TestInterleaveByProject_PreservesPriorityGroups(t *testing.T) {
+	issues := []Issue{
+		{ID: "a-1", Priority: 1},
+		{ID: "b-1", Priority: 1},
+		{ID: "a-2", Priority: 2},
+		{ID: "b-2", Priority: 2},
+		{ID: "a-3", Priority: 2},
+	}
+	result := interleaveByProject(issues)
+
+	// All P1 issues should come before P2 issues
+	for i, iss := range result {
+		if i > 0 && result[i-1].Priority > iss.Priority {
+			t.Errorf("priority order violated at index %d: %v", i, idsOf(result))
+		}
+	}
+}
+
+func idsOf(issues []Issue) []string {
+	ids := make([]string, len(issues))
+	for i, iss := range issues {
+		ids[i] = iss.ID
+	}
+	return ids
+}
+
 func TestIsSpawnableType(t *testing.T) {
 	tests := []struct {
 		issueType string
