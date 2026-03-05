@@ -755,9 +755,9 @@ func TestDaemonMaxAgents(t *testing.T) {
 		expected  int
 	}{
 		{
-			name:      "nil defaults to 3",
+			name:      "nil defaults to 5",
 			maxAgents: nil,
-			expected:  3,
+			expected:  5,
 		},
 		{
 			name:      "explicit value",
@@ -1120,8 +1120,8 @@ func TestLoadMissingDaemonSection(t *testing.T) {
 		t.Errorf("Load() without daemon section should default poll_interval to 60, got %d", cfg.DaemonPollInterval())
 	}
 
-	if cfg.DaemonMaxAgents() != 3 {
-		t.Errorf("Load() without daemon section should default max_agents to 3, got %d", cfg.DaemonMaxAgents())
+	if cfg.DaemonMaxAgents() != 5 {
+		t.Errorf("Load() without daemon section should default max_agents to 5, got %d", cfg.DaemonMaxAgents())
 	}
 
 	if cfg.DaemonLabel() != "triage:ready" {

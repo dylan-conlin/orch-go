@@ -15,8 +15,8 @@ func TestFromUserConfig_Defaults(t *testing.T) {
 	if result.PollInterval != 60*time.Second {
 		t.Errorf("PollInterval = %v, want 60s", result.PollInterval)
 	}
-	if result.MaxAgents != 3 {
-		t.Errorf("MaxAgents = %d, want 3", result.MaxAgents)
+	if result.MaxAgents != 5 {
+		t.Errorf("MaxAgents = %d, want 5", result.MaxAgents)
 	}
 	if result.Label != "triage:ready" {
 		t.Errorf("Label = %q, want %q", result.Label, "triage:ready")

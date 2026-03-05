@@ -306,10 +306,10 @@ func (c *Config) DaemonPollInterval() int {
 }
 
 // DaemonMaxAgents returns the maximum number of concurrent agents.
-// Defaults to 3 if not configured.
+// Defaults to 5 if not configured.
 func (c *Config) DaemonMaxAgents() int {
 	if c.Daemon.MaxAgents == nil {
-		return 3 // Default to 3 agents
+		return 5 // Default to 5 agents
 	}
 	return *c.Daemon.MaxAgents
 }

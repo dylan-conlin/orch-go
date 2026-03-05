@@ -161,7 +161,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		PollInterval:                15 * time.Second, // Faster polling for responsive dashboard updates
-		MaxAgents:                   3,
+		MaxAgents:                   5,
 		MaxSpawnsPerHour:            20, // Prevents runaway spawning
 		Label:                       "triage:ready",
 		SpawnDelay:                  3 * time.Second, // Reduced from 10s - dedup cache prevents duplicates
