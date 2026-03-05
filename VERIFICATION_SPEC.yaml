@@ -1,31 +1,33 @@
-task: "orch review shows review tiers and auto-completed items"
-beads_id: orch-go-7ew1
+task: "Add focus-aware priority boost to daemon issue selection"
+beads_id: orch-go-2np1g
 
 deliverables:
-  - path: cmd/orch/review.go
-    description: "Updated review command with review tier badges, auto-completed display, scan-tier TLDR"
-  - path: cmd/orch/review_test.go
-    description: "7 new tests for review tier badges, auto-completed dedup, status display"
+  - path: pkg/daemon/focus_boost.go
+    description: "Focus boost logic: matchFocusToProject, applyFocusBoost, BuildProjectDirNames"
+  - path: pkg/daemon/focus_boost_test.go
+    description: "11 tests covering matching, boosting, integration with NextIssue/Preview"
 
 tests:
-  command: "go test ./cmd/orch/ -run 'TestCompletionInfoReviewTier|TestCompletionInfoIsAutoCompleted|TestGetRecentAutoCompletions|TestReviewTierBadgeDisplay|TestAutoCompletedStatusDisplay|TestAutoCompletedDeduplication' -v"
-  result: "7 passed"
+  command: "go test ./pkg/daemon/ -run 'Focus|Boost' -v"
+  result: "11 passed"
 
 verification:
   automated:
-    - command: "go test ./cmd/orch/ -v"
-      expect: "all tests pass"
-    - command: "go vet ./cmd/orch/"
-      expect: "no errors"
-    - command: "go build ./cmd/orch/"
+    - command: "go test ./pkg/daemon/ -run 'Focus|Boost' -v"
+      expect: "PASS"
+    - command: "go test ./pkg/daemon/"
+      expect: "ok (no regressions)"
+    - command: "go build ./..."
       expect: "builds cleanly"
 
   manual:
-    - step: "Run `orch review` and verify tier badges {auto}/{scan}/{review}/{deep} appear"
-    - step: "Verify auto-completed items from events.jsonl appear as [auto-completed]"
-    - step: "Verify scan-tier items show TLDR inline instead of full synthesis card"
+    - step: "Set focus: orch focus 'price-watch', run orch daemon preview"
+      expect: "PW issues show boosted priority, preview shows focus line"
+    - step: "Clear focus: orch focus clear, run orch daemon preview"
+      expect: "No boost applied (backward compatible)"
 
 notes:
-  - "ReviewTier populated from AGENT_MANIFEST.json, falls back to DefaultReviewTier(skill)"
-  - "Auto-completed events read from events.jsonl (last 24h), deduplicated against pending completions"
-  - "Pre-existing test failure in pkg/urltomd (network timeout) unrelated to changes"
+  - "Focus matching works via: (1) issue prefix directly in goal text, (2) project dir basename via ProjectRegistry"
+  - "Boost default is 1 level (P2 → effective P1), clamped at P0"
+  - "applyFocusBoost copies issue slice to avoid mutating callers"
+  - "Wired into: daemon run loop, once, dry-run, and preview commands"

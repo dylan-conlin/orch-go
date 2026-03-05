@@ -26,6 +26,8 @@ type PreviewResult struct {
 	HotspotWarnings    []HotspotWarning // Warnings about hotspot areas this issue may touch
 	RejectedIssues     []RejectedIssue  // Issues that were rejected with reasons
 	ArchitectEscalated bool             // True if skill would be escalated from impl to architect
+	FocusBoosted       bool             // True if selected issue was boosted by focus
+	FocusGoal          string           // Current focus goal (if any)
 }
 
 // HasHotspotWarnings returns true if there are any hotspot warnings.
@@ -73,6 +75,12 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 		return nil, fmt.Errorf("failed to expand epics: %w", err)
 	}
 
+	// Apply focus boost before sorting
+	if d.FocusGoal != "" && d.FocusBoostAmount > 0 {
+		issues = applyFocusBoost(issues, d.FocusGoal, d.FocusBoostAmount, d.ProjectDirNames)
+		result.FocusGoal = d.FocusGoal
+	}
+
 	// Sort by priority (lower number = higher priority)
 	sort.Slice(issues, func(i, j int) bool {
 		return issues[i].Priority < issues[j].Priority
@@ -115,6 +123,12 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 	result.Issue = spawnable
 	result.Skill = skill
 	result.Model = InferModelFromSkill(skill)
+
+	// Check if selected issue was focus-boosted
+	if d.FocusGoal != "" && d.FocusBoostAmount > 0 {
+		prefix := projectFromIssueID(spawnable.ID)
+		result.FocusBoosted = matchFocusToProject(d.FocusGoal, prefix, d.ProjectDirNames)
+	}
 
 	// Check for hotspot warnings if checker is configured
 	if d.HotspotChecker != nil {

@@ -158,6 +158,16 @@ type Daemon struct {
 	// scope-expansion bugs (e.g., ghost agents, counter overflow, missing ProjectDir).
 	// Pauses daemon after configurable threshold of consecutive violation cycles.
 	InvariantChecker *InvariantChecker
+
+	// FocusGoal is the current focus goal text (from ~/.orch/focus.json).
+	// When set, issues from projects matching this goal get a priority boost.
+	FocusGoal string
+	// FocusBoostAmount is how many priority levels to boost (default: 1).
+	// E.g., with boost=1, a P2 issue becomes effectively P1.
+	FocusBoostAmount int
+	// ProjectDirNames maps project prefixes to directory basenames for focus matching.
+	// Built from ProjectRegistry at daemon startup.
+	ProjectDirNames map[string]string
 }
 
 // New creates a new Daemon instance with default configuration.
@@ -290,6 +300,11 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 	issues, epicChildIDs, err := d.expandTriageReadyEpics(issues)
 	if err != nil {
 		return nil, fmt.Errorf("failed to expand epics: %w", err)
+	}
+
+	// Apply focus boost: issues from focused projects get priority boost
+	if d.FocusGoal != "" && d.FocusBoostAmount > 0 {
+		issues = applyFocusBoost(issues, d.FocusGoal, d.FocusBoostAmount, d.ProjectDirNames)
 	}
 
 	// Sort by priority (lower number = higher priority)

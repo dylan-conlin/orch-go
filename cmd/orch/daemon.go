@@ -13,6 +13,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/control"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -323,6 +324,22 @@ func verificationBreakdown() string {
 
 // seedVerificationTracker seeds the tracker with the backlog IDs.
 // Called after daemon construction, before entering the main loop.
+// wireFocusBoost loads the current focus and wires it into the daemon for
+// priority boosting. Gracefully degrades if focus can't be loaded.
+func wireFocusBoost(d *daemon.Daemon) {
+	store, err := focus.New("")
+	if err != nil {
+		return
+	}
+	f := store.Get()
+	if f == nil {
+		return
+	}
+	d.FocusGoal = f.Goal
+	d.FocusBoostAmount = 1 // default: boost by 1 priority level
+	d.ProjectDirNames = daemon.BuildProjectDirNames(d.ProjectRegistry)
+}
+
 func seedVerificationTracker(d *daemon.Daemon) {
 	if d.VerificationTracker == nil {
 		return
@@ -410,6 +427,9 @@ func runDaemonLoop() error {
 	// extraction gate in Once() and hotspot warnings in Preview() are skipped.
 	// The daemon goes straight from polling bd ready to spawning issues.
 	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
+
+	// Wire focus-aware priority boost
+	wireFocusBoost(d)
 
 	// Wire auto-completer for auto-tier agents.
 	// When review tier is "auto", daemon runs `orch complete` directly
@@ -1079,6 +1099,9 @@ func runDaemonDryRun() error {
 	// NOTE: Extraction system disabled. Hotspot checking not configured.
 	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
 
+	// Wire focus-aware priority boost
+	wireFocusBoost(d)
+
 	// Seed verification tracker with unverified backlog
 	seedVerificationTracker(d)
 
@@ -1152,6 +1175,9 @@ func runDaemonOnce() error {
 		d.ProjectRegistry = registry
 	}
 
+	// Wire focus-aware priority boost
+	wireFocusBoost(d)
+
 	// Seed verification tracker with unverified backlog
 	seedVerificationTracker(d)
 
@@ -1215,6 +1241,9 @@ func runDaemonPreview() error {
 	// NOTE: Extraction system disabled. Hotspot checking not configured.
 	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
 
+	// Wire focus-aware priority boost
+	wireFocusBoost(d)
+
 	// Seed verification tracker with unverified backlog
 	seedVerificationTracker(d)
 
@@ -1234,6 +1263,15 @@ func runDaemonPreview() error {
 	}
 	rejectedCount := len(result.RejectedIssues)
 	fmt.Printf("Queue: %d spawnable, %d rejected\n\n", spawnableCount, rejectedCount)
+
+	// Display focus status
+	if result.FocusGoal != "" {
+		fmt.Printf("Focus: %s\n", result.FocusGoal)
+		if result.FocusBoosted {
+			fmt.Println("  (priority boost applied to next issue)")
+		}
+		fmt.Println()
+	}
 
 	// Display spawnable issue if available
 	if result.Issue != nil {
