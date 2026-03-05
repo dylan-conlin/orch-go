@@ -6,16 +6,11 @@
 
 ---
 
-## What Happened
+## What We Learned
 
-<!-- Summarize threads worked — completions, spawns, decisions made. One sentence per thread. -->
-
--
-
-## What Changed
-
-<!-- Durable changes — new constraints, decisions, model updates, knowledge captured.
-     "We now know X" or "We decided Y" framing.
+<!-- Thread: what were you working on? Insight: what did you learn?
+     Position: how does this change your approach going forward?
+     "We now know X because Y" or "We decided Y which means Z" framing.
      If nothing durable was captured, note that explicitly. -->
 
 -
@@ -29,15 +24,14 @@
 
 ## What's Next
 
-<!-- 1-3 proposed threads for next session.
-     Strategic framing of where energy should go, not a to-do list. -->
+<!-- Strategic direction, not a task backlog.
+     Each item should answer: "where is this headed?" not "what's the next task?" -->
 
-1.
+-
 
-## Session Health
+## What Happened
 
-<!-- Scale to session weight. A 20-minute session gets a line. A 4-hour session gets the full picture. -->
+<!-- Event log for reference — completions, spawns, abandonments.
+     One line per event. This is reference, not the lead. -->
 
-- **Checkpoint discipline:** [ok / warning / exceeded]
-- **Frame collapse:** [none / detected — describe]
-- **Discovered work:** [issues created or "none"]
+-
