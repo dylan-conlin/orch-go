@@ -83,15 +83,15 @@ func (d *Daemon) RateLimitMessage() string {
 // Also cleans up stale entries from the spawned issue tracker.
 //
 // Should be called at the start of each poll cycle.
-// Returns the number of slots freed due to reconciliation, or 0 if no pool.
-func (d *Daemon) ReconcileActiveAgents() int {
+// Returns the reconciliation result (slots freed and/or added).
+func (d *Daemon) ReconcileActiveAgents() ReconcileResult {
 	// Clean up stale spawned issue entries (older than TTL)
 	if d.SpawnedIssues != nil {
 		d.SpawnedIssues.CleanStale()
 	}
 
 	if d.Pool == nil {
-		return 0
+		return ReconcileResult{}
 	}
 
 	// Get actual count from all backends (OpenCode + tmux)
@@ -108,6 +108,6 @@ func (d *Daemon) ReconcileActiveAgents() int {
 // ReconcileWithOpenCode is the legacy name for ReconcileActiveAgents.
 // Kept for backward compatibility with cmd/orch/daemon.go caller.
 // Now uses CombinedActiveCount (OpenCode + tmux) instead of just DefaultActiveCount.
-func (d *Daemon) ReconcileWithOpenCode() int {
+func (d *Daemon) ReconcileWithOpenCode() ReconcileResult {
 	return d.ReconcileActiveAgents()
 }

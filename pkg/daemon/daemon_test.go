@@ -587,31 +587,31 @@ func TestDaemon_ReleaseSlot_NoPool(t *testing.T) {
 func TestDaemon_ReconcileWithOpenCode_NoPool(t *testing.T) {
 	d := &Daemon{Pool: nil}
 
-	freed := d.ReconcileWithOpenCode()
-	if freed != 0 {
-		t.Errorf("ReconcileWithOpenCode() = %d, want 0 (no pool)", freed)
+	result := d.ReconcileWithOpenCode()
+	if result.Freed != 0 || result.Added != 0 {
+		t.Errorf("ReconcileWithOpenCode() = {Freed:%d, Added:%d}, want {0, 0} (no pool)", result.Freed, result.Added)
 	}
 }
 
 func TestDaemon_ReconcileWithOpenCode_WithPool(t *testing.T) {
-	pool := NewWorkerPool(3)
+	pool := NewWorkerPool(5)
 	pool.TryAcquire()
 	pool.TryAcquire()
 	pool.TryAcquire()
 
 	d := &Daemon{
-		Pool: pool,
+		Pool:          pool,
+		ActiveCounter: &mockActiveCounter{CountFunc: func() int { return 1 }},
 	}
 
-	freed := d.ReconcileWithOpenCode()
+	// Pool at 3, actual at 1 → should free 2
+	result := d.ReconcileWithOpenCode()
 
-	if freed < 0 || freed > 3 {
-		t.Errorf("ReconcileWithOpenCode() freed = %d, want 0-3", freed)
+	if result.Freed != 2 {
+		t.Errorf("ReconcileWithOpenCode() freed = %d, want 2", result.Freed)
 	}
-
-	if pool.Active()+freed != 3 {
-		t.Errorf("Pool.Active() + freed = %d + %d = %d, want 3",
-			pool.Active(), freed, pool.Active()+freed)
+	if pool.Active() != 1 {
+		t.Errorf("Pool.Active() = %d, want 1", pool.Active())
 	}
 }
 

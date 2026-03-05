@@ -209,45 +209,66 @@ func (p *WorkerPool) Status() PoolStatus {
 	}
 }
 
+// ReconcileResult contains the outcome of a pool reconciliation.
+type ReconcileResult struct {
+	// Freed is the number of slots released (agents completed without daemon knowing).
+	Freed int
+	// Added is the number of slots created to account for agents the pool didn't track
+	// (e.g., agents from a prior daemon run, or manually spawned agents).
+	Added int
+}
+
 // Reconcile synchronizes the pool's internal count with the actual number of
-// active sessions. This is necessary because the pool tracks slots internally
-// but agents may complete without the daemon knowing (e.g., overnight runs,
-// crashes, manual kills). By periodically reconciling with the actual OpenCode
-// session count, we prevent the pool from becoming permanently stuck at capacity.
+// active agents. This is necessary because the pool tracks slots internally
+// but reality can diverge:
 //
-// If actualCount < internal activeCount, the pool releases the difference
-// by clearing stale slots (oldest first) and reducing activeCount.
-// If actualCount > internal activeCount, no action is taken (slots will be
-// acquired naturally as spawns occur).
+//   - Agents may complete without the daemon knowing (overnight runs, crashes,
+//     manual kills) → actualCount < pool.activeCount → free stale slots.
+//   - After daemon restart, agents from the prior run are still active but the
+//     pool starts at 0 → actualCount > pool.activeCount → add synthetic slots
+//     to prevent over-spawning past the concurrency cap.
 //
-// Returns the number of slots that were released due to reconciliation.
-func (p *WorkerPool) Reconcile(actualCount int) int {
+// Returns a ReconcileResult with the number of slots freed and added.
+func (p *WorkerPool) Reconcile(actualCount int) ReconcileResult {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// If actual is same or more, nothing to reconcile
-	if actualCount >= p.activeCount {
-		return 0
+	result := ReconcileResult{}
+
+	if actualCount == p.activeCount {
+		return result
 	}
 
-	// Calculate how many slots to release
-	toRelease := p.activeCount - actualCount
+	if actualCount > p.activeCount {
+		// More agents running than pool tracks. This happens after daemon restart
+		// when agents from the prior run are still active, or when agents are
+		// spawned externally (manual orch spawn). Create synthetic slots to
+		// account for them so the pool correctly limits total concurrency.
+		toAdd := actualCount - p.activeCount
+		for i := 0; i < toAdd; i++ {
+			p.slots = append(p.slots, &Slot{
+				ID:         p.activeCount + i + 1,
+				AcquiredAt: time.Now(),
+			})
+		}
+		p.activeCount = actualCount
+		result.Added = toAdd
+		return result
+	}
 
-	// Clear stale slots (they represent sessions that have completed)
-	// We remove from the front (oldest slots first)
-	released := 0
+	// actualCount < p.activeCount: agents completed without daemon knowing.
+	// Clear stale slots (oldest first) and reduce activeCount.
+	toRelease := p.activeCount - actualCount
 	for i := 0; i < toRelease && len(p.slots) > 0; i++ {
 		p.slots = p.slots[1:] // Remove oldest slot
-		released++
+		result.Freed++
 	}
-
-	// Update active count to match actual
 	p.activeCount = actualCount
 
 	// Wake up any waiters since capacity freed up
-	if released > 0 {
+	if result.Freed > 0 {
 		p.cond.Broadcast()
 	}
 
-	return released
+	return result
 }

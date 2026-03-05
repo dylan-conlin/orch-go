@@ -55,9 +55,9 @@ func TestPoolReconcileDoesNotResetWhenTmuxAgentsExist(t *testing.T) {
 	// it resets the pool to 0, allowing unlimited further spawns.
 	// With the fix, if there are 3 tmux agents, the combined count is 3,
 	// and Reconcile(3) is a no-op.
-	freed := pool.Reconcile(3) // Combined count = 3 tmux agents
-	if freed != 0 {
-		t.Errorf("Reconcile(3) should free 0 slots when pool has 3 active, freed %d", freed)
+	result := pool.Reconcile(3) // Combined count = 3 tmux agents
+	if result.Freed != 0 {
+		t.Errorf("Reconcile(3) should free 0 slots when pool has 3 active, freed %d", result.Freed)
 	}
 	if !pool.AtCapacity() {
 		t.Fatal("Pool should still be at capacity after Reconcile(3)")
@@ -70,9 +70,9 @@ func TestPoolReconcileDoesNotResetWhenTmuxAgentsExist(t *testing.T) {
 	}
 
 	// Now simulate one agent completing (tmux window closed)
-	freed = pool.Reconcile(2) // Combined count drops to 2
-	if freed != 1 {
-		t.Errorf("Reconcile(2) should free 1 slot, freed %d", freed)
+	result = pool.Reconcile(2) // Combined count drops to 2
+	if result.Freed != 1 {
+		t.Errorf("Reconcile(2) should free 1 slot, freed %d", result.Freed)
 	}
 	if pool.AtCapacity() {
 		t.Fatal("Pool should not be at capacity after freeing 1 slot")
@@ -103,9 +103,9 @@ func TestDaemonReconcileWithActiveCountFunc(t *testing.T) {
 	// Set custom active counter that reports 3 active (simulating tmux agents)
 	d.ActiveCounter = &mockActiveCounter{CountFunc: func() int { return 3 }}
 
-	freed := d.ReconcileActiveAgents()
-	if freed != 0 {
-		t.Errorf("Should free 0 slots when 3 active reported, freed %d", freed)
+	result := d.ReconcileActiveAgents()
+	if result.Freed != 0 {
+		t.Errorf("Should free 0 slots when 3 active reported, freed %d", result.Freed)
 	}
 	if !d.AtCapacity() {
 		t.Fatal("Should still be at capacity")
@@ -114,9 +114,9 @@ func TestDaemonReconcileWithActiveCountFunc(t *testing.T) {
 	// Now simulate the old bug: active count returns 0 (only checking OpenCode)
 	d.ActiveCounter = &mockActiveCounter{CountFunc: func() int { return 0 }}
 
-	freed = d.ReconcileActiveAgents()
-	if freed != 3 {
-		t.Errorf("Should free 3 slots when 0 active reported, freed %d", freed)
+	result = d.ReconcileActiveAgents()
+	if result.Freed != 3 {
+		t.Errorf("Should free 3 slots when 0 active reported, freed %d", result.Freed)
 	}
 	if d.AtCapacity() {
 		t.Fatal("Should not be at capacity after freeing all slots")

@@ -323,10 +323,13 @@ func TestWorkerPool_Reconcile_FreesStaleSlots(t *testing.T) {
 	}
 
 	// Simulate: 2 agents actually running (1 completed without daemon knowing)
-	freed := p.Reconcile(2)
+	result := p.Reconcile(2)
 
-	if freed != 1 {
-		t.Errorf("Reconcile(2) freed = %d, want 1", freed)
+	if result.Freed != 1 {
+		t.Errorf("Reconcile(2) freed = %d, want 1", result.Freed)
+	}
+	if result.Added != 0 {
+		t.Errorf("Reconcile(2) added = %d, want 0", result.Added)
 	}
 	if p.Active() != 2 {
 		t.Errorf("Active() after reconcile = %d, want 2", p.Active())
@@ -353,10 +356,10 @@ func TestWorkerPool_Reconcile_AllSessionsGone(t *testing.T) {
 	p.TryAcquire()
 
 	// Simulate: all agents completed (none running)
-	freed := p.Reconcile(0)
+	result := p.Reconcile(0)
 
-	if freed != 3 {
-		t.Errorf("Reconcile(0) freed = %d, want 3", freed)
+	if result.Freed != 3 {
+		t.Errorf("Reconcile(0) freed = %d, want 3", result.Freed)
 	}
 	if p.Active() != 0 {
 		t.Errorf("Active() after reconcile = %d, want 0", p.Active())
@@ -367,19 +370,26 @@ func TestWorkerPool_Reconcile_AllSessionsGone(t *testing.T) {
 }
 
 func TestWorkerPool_Reconcile_MoreActualThanTracked(t *testing.T) {
-	p := NewWorkerPool(3)
+	p := NewWorkerPool(5)
 
 	// Acquire 1 slot
 	p.TryAcquire()
 
-	// Simulate: more agents running than tracked (shouldn't happen, but handle gracefully)
-	freed := p.Reconcile(5)
+	// More agents running than tracked (happens after daemon restart
+	// when agents from prior run are still active)
+	result := p.Reconcile(3)
 
-	if freed != 0 {
-		t.Errorf("Reconcile(5) freed = %d, want 0 (no action when actual >= tracked)", freed)
+	if result.Freed != 0 {
+		t.Errorf("Reconcile(3) freed = %d, want 0", result.Freed)
 	}
-	if p.Active() != 1 {
-		t.Errorf("Active() after reconcile = %d, want 1 (unchanged)", p.Active())
+	if result.Added != 2 {
+		t.Errorf("Reconcile(3) added = %d, want 2 (3 actual - 1 tracked)", result.Added)
+	}
+	if p.Active() != 3 {
+		t.Errorf("Active() after reconcile = %d, want 3", p.Active())
+	}
+	if p.Available() != 2 {
+		t.Errorf("Available() after reconcile = %d, want 2 (5 max - 3 active)", p.Available())
 	}
 }
 
@@ -391,10 +401,13 @@ func TestWorkerPool_Reconcile_SameCount(t *testing.T) {
 	p.TryAcquire()
 
 	// Simulate: exact match
-	freed := p.Reconcile(2)
+	result := p.Reconcile(2)
 
-	if freed != 0 {
-		t.Errorf("Reconcile(2) freed = %d, want 0 (no action when counts match)", freed)
+	if result.Freed != 0 {
+		t.Errorf("Reconcile(2) freed = %d, want 0 (no action when counts match)", result.Freed)
+	}
+	if result.Added != 0 {
+		t.Errorf("Reconcile(2) added = %d, want 0 (no action when counts match)", result.Added)
 	}
 	if p.Active() != 2 {
 		t.Errorf("Active() after reconcile = %d, want 2 (unchanged)", p.Active())
@@ -405,10 +418,13 @@ func TestWorkerPool_Reconcile_EmptyPool(t *testing.T) {
 	p := NewWorkerPool(3)
 
 	// Pool is empty
-	freed := p.Reconcile(0)
+	result := p.Reconcile(0)
 
-	if freed != 0 {
-		t.Errorf("Reconcile(0) on empty pool freed = %d, want 0", freed)
+	if result.Freed != 0 {
+		t.Errorf("Reconcile(0) on empty pool freed = %d, want 0", result.Freed)
+	}
+	if result.Added != 0 {
+		t.Errorf("Reconcile(0) on empty pool added = %d, want 0", result.Added)
 	}
 	if p.Active() != 0 {
 		t.Errorf("Active() = %d, want 0", p.Active())
@@ -438,9 +454,9 @@ func TestWorkerPool_Reconcile_WakesWaiters(t *testing.T) {
 	testutil.YieldForGoroutine()
 
 	// Reconcile to free the slot (simulating agent completed)
-	freed := p.Reconcile(0)
-	if freed != 1 {
-		t.Errorf("Reconcile(0) freed = %d, want 1", freed)
+	result := p.Reconcile(0)
+	if result.Freed != 1 {
+		t.Errorf("Reconcile(0) freed = %d, want 1", result.Freed)
 	}
 
 	// Wait for goroutine
@@ -451,5 +467,155 @@ func TestWorkerPool_Reconcile_WakesWaiters(t *testing.T) {
 	}
 	if slot != nil {
 		p.Release(slot)
+	}
+}
+
+// =============================================================================
+// Tests for restart reconciliation (upward seeding)
+// =============================================================================
+
+func TestWorkerPool_Reconcile_RestartSeedsFromRunningAgents(t *testing.T) {
+	// After daemon restart, pool starts fresh at 0 but agents from the prior run
+	// are still active. Reconcile must raise the pool count to match reality,
+	// otherwise the daemon can over-spawn past the concurrency cap.
+	p := NewWorkerPool(5)
+
+	// Pool starts fresh (activeCount=0) — simulates daemon restart
+	if p.Active() != 0 {
+		t.Fatalf("Fresh pool Active() = %d, want 0", p.Active())
+	}
+	if p.Available() != 5 {
+		t.Fatalf("Fresh pool Available() = %d, want 5", p.Available())
+	}
+
+	// Reality: 3 agents running from prior daemon
+	result := p.Reconcile(3)
+
+	if result.Added != 3 {
+		t.Errorf("Reconcile(3) added = %d, want 3", result.Added)
+	}
+	if result.Freed != 0 {
+		t.Errorf("Reconcile(3) freed = %d, want 0", result.Freed)
+	}
+	if p.Active() != 3 {
+		t.Errorf("Active() after seed = %d, want 3", p.Active())
+	}
+	if p.Available() != 2 {
+		t.Errorf("Available() after seed = %d, want 2 (5 max - 3 active)", p.Available())
+	}
+
+	// Verify pool correctly limits: can spawn 2 more but not 3
+	s1 := p.TryAcquire()
+	s2 := p.TryAcquire()
+	s3 := p.TryAcquire()
+	if s1 == nil || s2 == nil {
+		t.Error("Should be able to acquire 2 more slots after seeding 3/5")
+	}
+	if s3 != nil {
+		t.Error("Should NOT be able to acquire 6th slot (5 max)")
+	}
+
+	// Cleanup
+	if s1 != nil {
+		p.Release(s1)
+	}
+	if s2 != nil {
+		p.Release(s2)
+	}
+}
+
+func TestWorkerPool_Reconcile_RestartAtCapacity(t *testing.T) {
+	// Edge case: after restart, all slots are already occupied by prior agents
+	p := NewWorkerPool(3)
+
+	// Reconcile with 3 actual = max workers
+	result := p.Reconcile(3)
+
+	if result.Added != 3 {
+		t.Errorf("Reconcile(3) added = %d, want 3", result.Added)
+	}
+	if !p.AtCapacity() {
+		t.Error("Pool should be at capacity when seeded to max")
+	}
+
+	// Cannot acquire any new slots
+	s := p.TryAcquire()
+	if s != nil {
+		t.Error("Should NOT be able to acquire slot when at capacity from seeding")
+	}
+}
+
+func TestWorkerPool_Reconcile_SeedThenFree(t *testing.T) {
+	// Simulate: daemon restarts, seeds from 3 running agents,
+	// then one completes on the next cycle.
+	p := NewWorkerPool(5)
+
+	// Cycle 1: seed from reality
+	result := p.Reconcile(3)
+	if result.Added != 3 {
+		t.Errorf("Cycle 1: added = %d, want 3", result.Added)
+	}
+	if p.Active() != 3 {
+		t.Errorf("Cycle 1: Active() = %d, want 3", p.Active())
+	}
+
+	// Daemon spawns 1 new agent
+	s := p.TryAcquire()
+	if s == nil {
+		t.Fatal("Should be able to acquire after seeding 3/5")
+	}
+	if p.Active() != 4 {
+		t.Errorf("After spawn: Active() = %d, want 4", p.Active())
+	}
+
+	// Cycle 2: one of the prior agents completes
+	result = p.Reconcile(3)
+	if result.Freed != 1 {
+		t.Errorf("Cycle 2: freed = %d, want 1 (one agent completed)", result.Freed)
+	}
+	if p.Active() != 3 {
+		t.Errorf("Cycle 2: Active() = %d, want 3", p.Active())
+	}
+	if p.Available() != 2 {
+		t.Errorf("Cycle 2: Available() = %d, want 2", p.Available())
+	}
+
+	p.Release(s)
+}
+
+func TestDaemon_ReconcileActiveAgents_SeedsOnRestart(t *testing.T) {
+	// End-to-end test: daemon with fresh pool seeds from running agent count
+	config := DefaultConfig()
+	config.MaxAgents = 5
+	d := NewWithConfig(config)
+
+	// Mock active counter to simulate 3 running agents from prior daemon
+	d.ActiveCounter = &mockActiveCounter{CountFunc: func() int { return 3 }}
+
+	// Pool should start fresh
+	if d.ActiveCount() != 0 {
+		t.Fatalf("Fresh daemon ActiveCount() = %d, want 0", d.ActiveCount())
+	}
+
+	// First reconciliation should seed the pool
+	result := d.ReconcileActiveAgents()
+
+	if result.Added != 3 {
+		t.Errorf("ReconcileActiveAgents() added = %d, want 3", result.Added)
+	}
+	if d.ActiveCount() != 3 {
+		t.Errorf("ActiveCount() after seed = %d, want 3", d.ActiveCount())
+	}
+	if d.AvailableSlots() != 2 {
+		t.Errorf("AvailableSlots() after seed = %d, want 2", d.AvailableSlots())
+	}
+	if d.AtCapacity() {
+		t.Error("Should not be at capacity (3/5)")
+	}
+
+	// Subsequent reconciliation with same count should be no-op
+	result = d.ReconcileActiveAgents()
+	if result.Added != 0 || result.Freed != 0 {
+		t.Errorf("Second reconcile: added=%d freed=%d, want both 0", result.Added, result.Freed)
 	}
 }

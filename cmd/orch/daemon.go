@@ -507,12 +507,18 @@ func runDaemonLoop() error {
 		timestamp := time.Now().Format("15:04:05")
 		pollTime := time.Now()
 
-		// Reconcile pool with actual OpenCode sessions FIRST.
-		// This prevents stale capacity counts when agents complete without
-		// the daemon knowing (overnight runs, crashes, manual kills).
+		// Reconcile pool with actual running agents FIRST.
+		// This handles two cases:
+		// 1. Agents completed without daemon knowing → free stale slots
+		// 2. After daemon restart, agents from prior run still active → add synthetic
+		//    slots to prevent over-spawning past the concurrency cap
 		// Must happen before status write so status shows accurate counts.
-		if freed := d.ReconcileWithOpenCode(); freed > 0 && daemonVerbose {
-			fmt.Printf("[%s] Reconciled: freed %d stale slots\n", timestamp, freed)
+		reconcileResult := d.ReconcileWithOpenCode()
+		if reconcileResult.Freed > 0 && daemonVerbose {
+			fmt.Printf("[%s] Reconciled: freed %d stale slots\n", timestamp, reconcileResult.Freed)
+		}
+		if reconcileResult.Added > 0 {
+			fmt.Printf("[%s] Reconciled: seeded %d agents from prior run (pool was under-counting)\n", timestamp, reconcileResult.Added)
 		}
 
 		// Check for verification signal (human ran `orch complete`)
