@@ -246,6 +246,60 @@ func TestFormatOrientation_NoStaleModels(t *testing.T) {
 	}
 }
 
+func TestFormatOrientation_ActivePlans(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		ActivePlans: []PlanSummary{
+			{
+				Title:    "Ship Dashboard V2",
+				Projects: []string{"orch-go", "price-watch"},
+				TLDR:     "Multi-project dashboard rewrite.",
+				Phases: []PlanPhase{
+					{Name: "Phase 1: Foundation", Status: "complete"},
+					{Name: "Phase 2: Agent Cards", Status: "in-progress"},
+					{Name: "Phase 3: Plan Panel", Status: "ready"},
+				},
+			},
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	if !strings.Contains(output, "Active plans:") {
+		t.Error("missing 'Active plans:' section header")
+	}
+	if !strings.Contains(output, "Ship Dashboard V2") {
+		t.Error("missing plan title")
+	}
+	if !strings.Contains(output, "[orch-go, price-watch]") {
+		t.Error("missing projects list")
+	}
+	if !strings.Contains(output, "Multi-project dashboard rewrite.") {
+		t.Error("missing TLDR")
+	}
+	if !strings.Contains(output, "[x] Phase 1: Foundation") {
+		t.Error("missing completed phase marker")
+	}
+	if !strings.Contains(output, "[>] Phase 2: Agent Cards") {
+		t.Error("missing in-progress phase marker")
+	}
+	if !strings.Contains(output, "[ ] Phase 3: Plan Panel") {
+		t.Error("missing ready phase marker")
+	}
+}
+
+func TestFormatOrientation_NoPlans(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+	}
+
+	output := FormatOrientation(data)
+
+	if strings.Contains(output, "Active plans") {
+		t.Error("plans section should not appear when no active plans")
+	}
+}
+
 func TestOrientationDataJSON(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{

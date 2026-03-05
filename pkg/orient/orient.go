@@ -36,6 +36,7 @@ type OrientationData struct {
 	Throughput      Throughput       `json:"throughput"`
 	PreviousSession *DebriefSummary  `json:"previous_session,omitempty"`
 	ReadyIssues     []ReadyIssue     `json:"ready_issues,omitempty"`
+	ActivePlans     []PlanSummary    `json:"active_plans,omitempty"`
 	RelevantModels  []ModelFreshness `json:"relevant_models,omitempty"`
 	StaleModels     []ModelFreshness `json:"stale_models,omitempty"`
 	FocusGoal       string           `json:"focus_goal,omitempty"`
@@ -101,6 +102,9 @@ func FormatOrientation(data *OrientationData) string {
 	// Ready work section
 	formatReadyIssues(&b, data.ReadyIssues)
 
+	// Active plans section
+	formatActivePlans(&b, data.ActivePlans)
+
 	// Relevant models section
 	formatRelevantModels(&b, data.RelevantModels)
 
@@ -138,6 +142,37 @@ func formatReadyIssues(b *strings.Builder, issues []ReadyIssue) {
 				content := truncateSummary(entry.Content, 80)
 				b.WriteString(fmt.Sprintf("      %s: %s\n", entry.Type, content))
 			}
+		}
+	}
+	b.WriteString("\n")
+}
+
+func formatActivePlans(b *strings.Builder, plans []PlanSummary) {
+	if len(plans) == 0 {
+		return
+	}
+	b.WriteString("Active plans:\n")
+	for _, plan := range plans {
+		b.WriteString(fmt.Sprintf("   - %s", plan.Title))
+		if len(plan.Projects) > 0 {
+			b.WriteString(fmt.Sprintf(" [%s]", strings.Join(plan.Projects, ", ")))
+		}
+		b.WriteString("\n")
+		if plan.TLDR != "" {
+			tldr := truncateSummary(plan.TLDR, 100)
+			b.WriteString(fmt.Sprintf("     %s\n", tldr))
+		}
+		for _, phase := range plan.Phases {
+			marker := " "
+			switch phase.Status {
+			case "complete":
+				marker = "x"
+			case "in-progress":
+				marker = ">"
+			case "blocked":
+				marker = "!"
+			}
+			b.WriteString(fmt.Sprintf("     [%s] %s\n", marker, phase.Name))
 		}
 	}
 	b.WriteString("\n")

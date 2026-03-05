@@ -32,6 +32,7 @@ conversationally at session start. Surfaces:
   - Recent throughput (completions, abandonments, avg duration)
   - Previous session summary (from latest debrief in .kb/sessions/)
   - Ready work from beads (bd ready)
+  - Active coordination plans from .kb/plans/
   - Relevant models matching ready work
   - Stale model warnings (>14 days without probes)
   - Current focus (if set)
@@ -75,7 +76,14 @@ func runOrient() error {
 		enrichIssuesWithKBContext(data.ReadyIssues)
 	}
 
-	// 4. Model freshness from .kb/models/
+	// 4. Active plans from .kb/plans/
+	plansDir := filepath.Join(projectDir, ".kb", "plans")
+	activePlans, err := orient.ScanActivePlans(plansDir)
+	if err == nil && len(activePlans) > 0 {
+		data.ActivePlans = activePlans
+	}
+
+	// 5. Model freshness from .kb/models/
 	modelsDir := filepath.Join(projectDir, ".kb", "models")
 	allModels, err := orient.ScanModelFreshness(modelsDir)
 	if err == nil {
@@ -86,10 +94,10 @@ func runOrient() error {
 		data.StaleModels = orient.FilterStaleModels(allModels, 2)
 	}
 
-	// 5. Focus
+	// 6. Focus
 	data.FocusGoal = collectFocus()
 
-	// 6. In-progress count from bd
+	// 7. In-progress count from bd
 	data.Throughput.InProgress = collectInProgressCount()
 
 	if orientJSON {
