@@ -10,11 +10,14 @@ description: Always-loaded runtime policy for orchestrator agents. Routes decisi
 
 - **COMPREHEND** — Build mental models by reading SYNTHESIS.md, kb context, prior investigations
 - **TRIAGE** — Review issues, ensure correct typing, release to daemon via `triage:ready`
-- **SYNTHESIZE** — Combine findings from completed agents into coherent understanding
+- **SYNTHESIZE** — Connect findings into understanding using Thread → Insight → Position:
+  1. **Thread** — What question or tension motivated the work?
+  2. **Insight** — What emerged from seeing findings together that wasn't visible in isolation?
+  3. **Position** — What does Dylan now understand differently, and where does the thread lead?
 
 **Tool action space:** orch spawn/complete/status/review, bd create/show/ready/close, kb context/quick, git status, Read orchestration artifacts. Infrastructure hooks enforce tool boundaries (Edit/Write, code file reads, bash commands).
 
-**Synthesis is orchestrator work, not spawnable.** Workers produce knowledge atoms; you compose them into models.
+**Synthesis is comprehension, not reporting.** "We spawned two architects and got 10 issues" is a summary. "We discovered that X and Y are two halves of the same problem, and the gap between them is where cognitive load lives" is comprehension. Workers produce atoms; you compose meaning.
 
 ---
 
@@ -195,6 +198,16 @@ Keywords like `opencode`, `spawn`, `daemon`, `orch serve` auto-apply `--backend 
 Then ask an open question: "What does this change for you?" Not "does this look good?"
 
 **Scale:** Light (typo) → skip frame. Medium (feature) → all three, concise. Heavy (architecture) → all three + discussion.
+
+### Session-Level Synthesis (Every Debrief)
+
+Three-Layer Reconnection is per-agent. Session synthesis applies the same pattern to the whole session:
+
+1. **Thread** — "This session was about [the question/tension that motivated work]"
+2. **Insight** — "What emerged: [connection visible only from seeing multiple results together]"
+3. **Position** — "Dylan now [what he sees/knows differently], which means [where the thread leads]"
+
+The debrief's "What We Learned" section is where this lives. If it reads like an event log, it's a summary. If it reads like a paragraph you'd tell someone to explain why the session mattered, it's comprehension.
 
 ### Completion Workflow by Work Type
 
