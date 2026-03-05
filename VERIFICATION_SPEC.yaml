@@ -1,37 +1,129 @@
-task: "PreToolUse bash filter for git add -A/git add . in worker sessions"
-beads_id: orch-go-zs9oc
+task: "Audit FindSocketPath(\"\") calls for cross-project correctness"
+beads_id: orch-go-77n2r
+type: audit
 
-deliverables:
-  - path: ~/.orch/hooks/gate-worker-git-add-all.py
-    description: "PreToolUse hook blocking blanket git add in worker sessions"
+methodology:
+  - Grepped all FindSocketPath calls across codebase (excluding .claude/worktrees/)
+  - For each FindSocketPath("") call, checked if projectDir was available in scope
+  - Categorized as BUG (projectDir available but not passed) or CORRECT (cwd is intentional)
+  - Used 3 parallel subagents covering daemon/, pkg/orch+spawn+discovery/, cmd/orch/
 
-tests:
-  command: "inline python3 test harness (10 cases)"
-  result: "10 passed, 0 failed"
-  cases:
-    - "git add -A in worker → deny"
-    - "git add --all in worker → deny"
-    - "git add . in worker → deny"
-    - "git add -A in chain in worker → deny"
-    - "git add file.go in worker → allow"
-    - "git add multiple files in worker → allow"
-    - "git add -p in worker → allow"
-    - "git add -A in orchestrator → allow"
-    - "git add . with no context → allow"
-    - "escape hatch SKIP_GIT_ADD_ALL_GATE=1 → allow"
+total_call_sites: 38  # non-worktree, non-test
+empty_string_calls: 28
+with_projectDir_calls: 10  # already correct
 
-manual_steps_required:
-  - step: "Remove uchg flag: chflags nouchg ~/.claude/settings.json"
-  - step: "Add hook entry to PreToolUse -> Bash hooks array in settings.json"
-    snippet: |
-      {
-        "type": "command",
-        "command": "$HOME/.orch/hooks/gate-worker-git-add-all.py",
-        "timeout": 10
-      }
-  - step: "Re-apply uchg if desired: chflags uchg ~/.claude/settings.json"
+findings:
+  severity_p1_bugs:
+    description: "projectDir is available in scope but FindSocketPath(\"\") used instead"
+    count: 5
+    items:
+      - file: pkg/spawn/context.go
+        line: 1417
+        function: DetectAreaFromTask
+        reason: "projectDir is a function parameter but \"\" passed instead"
+        fix: "FindSocketPath(projectDir)"
 
-notes:
-  - "Worker-only gate (CLAUDE_CONTEXT=worker). Orchestrator and interactive sessions unaffected."
-  - "Escape hatch: SKIP_GIT_ADD_ALL_GATE=1"
-  - "~/.claude/settings.json has uchg flag — requires manual registration"
+      - file: cmd/orch/reconcile.go
+        line: 217
+        function: findZombieIssues
+        reason: "projectDir is a function parameter but \"\" passed"
+        fix: "FindSocketPath(projectDir)"
+
+      - file: cmd/orch/reconcile.go
+        line: 236
+        function: findPhantomIssues
+        reason: "projectDir is a function parameter but \"\" passed"
+        fix: "FindSocketPath(projectDir)"
+
+      - file: pkg/daemon/active_count.go
+        line: 111
+        function: GetClosedIssuesBatch
+        reason: >
+          Cross-project beadsIDs query wrong socket. Line 123 acknowledges this
+          by treating not-found as closed - heuristic, not correct behavior.
+          Should group IDs by project prefix and query each socket.
+        fix: "Group beadsIDs by project prefix, FindSocketPath per project"
+
+      - file: pkg/daemon/active_count.go
+        line: 258
+        function: BeadsActiveCount
+        reason: >
+          Only counts in_progress agents in cwd project. Cross-project agents
+          invisible, causing undercounting and potential over-spawning.
+        fix: "Iterate registered projects, sum counts"
+
+  severity_p2_bugs:
+    description: "No projectDir in scope, but caller has it - needs signature threading"
+    count: 10
+    items:
+      - file: pkg/orch/spawn_beads.go
+        line: 98
+        function: CreateBeadsIssue
+        reason: "Caller should pass projectDir through"
+
+      - file: pkg/orch/spawn_preflight.go
+        line: 84
+        function: FindPriorArchitectReview
+        reason: "Searches architect issues via cwd socket only"
+
+      - file: pkg/orch/completion.go
+        line: 79
+        function: addBeadsComment
+        reason: "Called from RunExplainBackGate which has target.BeadsProjectDir"
+
+      - file: pkg/orch/completion.go
+        line: 103
+        function: getOrientationFrame
+        reason: "Needs projectDir threaded from caller"
+
+      - file: pkg/opencode/service.go
+        line: 151
+        function: updateBeadsPhase
+        reason: "SessionCompletionInfo has Directory field, not used"
+
+      - file: pkg/spawn/skill_requires.go
+        lines: [299, 338]
+        functions: [getBeadsIssue, getBeadsComments]
+        reason: "Called from GatherRequiredContext which has projectDir"
+
+      - file: pkg/daemon/issue_adapter.go
+        lines: [34, 95, 125, 284, 316, 530]
+        functions: [ListReadyIssues, ListEpicChildren, ListIssuesWithLabel, GetBeadsIssueStatus, FindInProgressByTitle, UpdateBeadsStatus]
+        reason: >
+          All are fallback paths when ProjectRegistry is nil or projectDir empty.
+          When daemon is cross-project, these silently hit cwd socket.
+
+      - file: pkg/daemon/cleanup.go
+        line: 173
+        function: listOpenBeadsIDs
+        reason: "Only queries cwd project - may mark cross-project windows as stale"
+
+      - file: pkg/beads/client.go
+        line: 1072
+        function: CheckBlockingDependencies
+        reason: "Package-level function, no projectDir - callers should pass it"
+
+      - file: pkg/discovery/discovery.go
+        line: 240
+        function: ExtractLatestPhases
+        reason: "Called from QueryTrackedAgents which has projectDirs"
+
+  correct_uses:
+    description: "FindSocketPath(\"\") is intentionally cwd-scoped"
+    count: 13
+    items:
+      - "cmd/orch/review_triage.go:147,349 - global triage review, cwd intentional"
+      - "cmd/orch/reconcile.go:398 - getLastPhase helper, no projectDir available"
+      - "cmd/orch/focus.go:540 - getReadyIssues, global context"
+      - "cmd/orch/shared.go:443 - resolveShortBeadsID, cwd-local lookup"
+      - "cmd/orch/handoff.go:407,441,485 - handoff doc generation, global"
+      - "cmd/orch/complete_postlifecycle.go:30 - addApprovalComment"
+      - "cmd/orch/swarm.go:234 - getSwarmReadyIssues, cross-project by design"
+      - "pkg/discovery/discovery.go:150 - listTrackedIssuesLocal, name says it"
+      - "pkg/beads/integration_test.go:25,288,322 - tests, cwd fine"
+
+recommendation: >
+  The 5 P1 bugs are direct fixes (projectDir already in scope).
+  The P2 bugs require signature changes to thread projectDir from callers.
+  Recommend: architect review for daemon/ and active_count threading
+  since it touches concurrency cap logic (critical path).
