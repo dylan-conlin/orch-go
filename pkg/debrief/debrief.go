@@ -202,6 +202,28 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
+// ThreadEntryItem is a simplified thread entry for debrief formatting.
+// Decouples debrief package from thread package's types.
+type ThreadEntryItem struct {
+	ThreadTitle string
+	Text        string
+}
+
+// FormatThreadEntries formats thread entries for the What We Learned section.
+// Each entry is prefixed with the thread title for context.
+func FormatThreadEntries(entries []ThreadEntryItem) []string {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	var lines []string
+	for _, e := range entries {
+		line := fmt.Sprintf("**%s:** %s", e.ThreadTitle, truncate(e.Text, 200))
+		lines = append(lines, line)
+	}
+	return lines
+}
+
 // CollectWhatWeLearned extracts the reason/explain-back text from agent.completed
 // events. These describe what each agent actually accomplished and learned.
 // Deduplicates by beads_id.

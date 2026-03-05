@@ -272,6 +272,38 @@ func TestDebriefFilePath(t *testing.T) {
 	}
 }
 
+func TestFormatThreadEntries(t *testing.T) {
+	entries := []ThreadEntryItem{
+		{ThreadTitle: "When does detection become prevention?", Text: "Deploy or Delete has a named principle and detection mechanism. The real question: when does detection become prevention?"},
+		{ThreadTitle: "How enforcement relates to comprehension", Text: "Enforcement without comprehension is just compliance theater."},
+	}
+
+	lines := FormatThreadEntries(entries)
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(lines))
+	}
+
+	// Should include thread title as context
+	if !strings.Contains(lines[0], "detection become prevention") {
+		t.Errorf("expected thread title context, got: %s", lines[0])
+	}
+	if !strings.Contains(lines[0], "Deploy or Delete") {
+		t.Errorf("expected entry text, got: %s", lines[0])
+	}
+
+	// Second entry
+	if !strings.Contains(lines[1], "enforcement") {
+		t.Errorf("expected thread title context in second line, got: %s", lines[1])
+	}
+}
+
+func TestFormatThreadEntriesEmpty(t *testing.T) {
+	lines := FormatThreadEntries(nil)
+	if len(lines) != 0 {
+		t.Errorf("expected empty lines for nil entries, got %d", len(lines))
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		name     string

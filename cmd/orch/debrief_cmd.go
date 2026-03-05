@@ -15,6 +15,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/session"
+	"github.com/dylan-conlin/orch-go/pkg/thread"
 	"github.com/spf13/cobra"
 )
 
@@ -106,8 +107,8 @@ func runDebrief(focusOverride string) error {
 	events := loadDebriefEvents(now)
 	data.WhatHappened = debrief.CollectWhatHappened(events)
 
-	// 4. What We Learned: --learned flag + --changed flag + completion reasons from events
-	data.WhatWeLearned = collectDebriefLearned(events)
+	// 4. What We Learned: --learned flag + --changed flag + thread entries + completion reasons from events
+	data.WhatWeLearned = collectDebriefLearned(events, dateStr)
 
 	// 5. What's In Flight from bd list --status=in_progress
 	data.InFlight = collectDebriefInFlight()
@@ -140,10 +141,17 @@ func runDebrief(focusOverride string) error {
 		return fmt.Errorf("failed to write debrief: %w", err)
 	}
 
+	// Count thread entries in learned items
+	threadCount := countThreadEntries(data.WhatWeLearned)
+
 	fmt.Printf("Debrief written: %s\n", debriefPath)
 	fmt.Printf("  Date:     %s\n", data.Date)
 	fmt.Printf("  Focus:    %s\n", data.Focus)
-	fmt.Printf("  Learned:  %d item(s)\n", len(data.WhatWeLearned))
+	fmt.Printf("  Learned:  %d item(s)", len(data.WhatWeLearned))
+	if threadCount > 0 {
+		fmt.Printf(" (%d from threads)", threadCount)
+	}
+	fmt.Println()
 	fmt.Printf("  Happened: %d item(s)\n", len(data.WhatHappened))
 	fmt.Printf("  In flight: %d item(s)\n", len(data.InFlight))
 	fmt.Printf("  Next:     %d item(s)\n", len(data.WhatsNext))
@@ -230,8 +238,8 @@ func loadDebriefEvents(now time.Time) []debrief.SessionEvent {
 	return debrief.FilterEventsToday(events, now)
 }
 
-// collectDebriefLearned merges --learned flag, --changed flag, and completion reasons from events.
-func collectDebriefLearned(events []debrief.SessionEvent) []string {
+// collectDebriefLearned merges --learned flag, --changed flag, thread entries, and completion reasons from events.
+func collectDebriefLearned(evts []debrief.SessionEvent, dateStr string) []string {
 	var items []string
 
 	// User-provided via --learned flag (preferred — explicit insights)
@@ -244,10 +252,38 @@ func collectDebriefLearned(events []debrief.SessionEvent) []string {
 		items = append(items, debrief.ParseMultiValue(debriefChanged)...)
 	}
 
+	// Thread entries from today's open threads
+	items = append(items, collectThreadEntries(dateStr)...)
+
 	// Auto-detect: completion reasons from agent.completed events
-	items = append(items, debrief.CollectWhatWeLearned(events)...)
+	items = append(items, debrief.CollectWhatWeLearned(evts)...)
 
 	return items
+}
+
+// collectThreadEntries gets today's thread entries and formats them for What We Learned.
+func collectThreadEntries(dateStr string) []string {
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return nil
+	}
+
+	threadsDir := filepath.Join(projectDir, ".kb", "threads")
+	entries, err := thread.TodaysEntries(threadsDir, dateStr)
+	if err != nil {
+		return nil
+	}
+
+	// Convert thread.ThreadEntry to debrief.ThreadEntryItem
+	var items []debrief.ThreadEntryItem
+	for _, e := range entries {
+		items = append(items, debrief.ThreadEntryItem{
+			ThreadTitle: e.ThreadTitle,
+			Text:        e.Text,
+		})
+	}
+
+	return debrief.FormatThreadEntries(items)
 }
 
 // printQualityCheck runs the advisory quality heuristic and prints results.
@@ -321,6 +357,18 @@ func collectDebriefInFlight() []string {
 	}
 
 	return debrief.CollectInFlight(issues)
+}
+
+// countThreadEntries counts how many learned items came from threads.
+// Thread entries are formatted with bold title prefix: **Title:** text
+func countThreadEntries(items []string) int {
+	count := 0
+	for _, item := range items {
+		if strings.HasPrefix(item, "**") && strings.Contains(item, ":**") {
+			count++
+		}
+	}
+	return count
 }
 
 // collectDebriefNext merges --next flag with auto-detected ready issues.
