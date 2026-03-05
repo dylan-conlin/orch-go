@@ -31,12 +31,22 @@ type ReadyIssue struct {
 	KBContext []KBEntry `json:"kb_context,omitempty"` // Relevant decisions, constraints, and failed attempts
 }
 
+// ActiveThread represents a living thread surfaced during orientation.
+type ActiveThread struct {
+	Name        string `json:"name"`
+	Title       string `json:"title"`
+	Updated     string `json:"updated"`
+	EntryCount  int    `json:"entry_count"`
+	LatestEntry string `json:"latest_entry"`
+}
+
 // OrientationData holds all data needed to render session orientation.
 type OrientationData struct {
 	Throughput      Throughput       `json:"throughput"`
 	PreviousSession *DebriefSummary  `json:"previous_session,omitempty"`
 	ReadyIssues     []ReadyIssue     `json:"ready_issues,omitempty"`
 	ActivePlans     []PlanSummary    `json:"active_plans,omitempty"`
+	ActiveThreads   []ActiveThread   `json:"active_threads,omitempty"`
 	RelevantModels  []ModelFreshness `json:"relevant_models,omitempty"`
 	StaleModels     []ModelFreshness `json:"stale_models,omitempty"`
 	FocusGoal       string           `json:"focus_goal,omitempty"`
@@ -108,6 +118,9 @@ func FormatOrientation(data *OrientationData) string {
 	// Active plans section
 	formatActivePlans(&b, data.ActivePlans)
 
+	// Active threads section
+	formatActiveThreads(&b, data.ActiveThreads)
+
 	// Relevant models section
 	formatRelevantModels(&b, data.RelevantModels)
 
@@ -176,6 +189,21 @@ func formatActivePlans(b *strings.Builder, plans []PlanSummary) {
 				marker = "!"
 			}
 			b.WriteString(fmt.Sprintf("     [%s] %s\n", marker, phase.Name))
+		}
+	}
+	b.WriteString("\n")
+}
+
+func formatActiveThreads(b *strings.Builder, threads []ActiveThread) {
+	if len(threads) == 0 {
+		return
+	}
+	b.WriteString("Active threads:\n")
+	for _, t := range threads {
+		b.WriteString(fmt.Sprintf("   - %s (updated %s, %d entries)\n", t.Title, t.Updated, t.EntryCount))
+		if t.LatestEntry != "" {
+			preview := truncateSummary(t.LatestEntry, 100)
+			b.WriteString(fmt.Sprintf("     > %s\n", preview))
 		}
 	}
 	b.WriteString("\n")

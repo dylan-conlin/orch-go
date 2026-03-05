@@ -398,3 +398,87 @@ func TestTruncateSummary(t *testing.T) {
 		t.Error("truncated summary should end with ...")
 	}
 }
+
+func TestFormatOrientation_ActiveThreads(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		ActiveThreads: []ActiveThread{
+			{
+				Name:        "enforcement-comprehension",
+				Title:       "How enforcement and comprehension relate",
+				Updated:     "2026-03-05",
+				EntryCount:  3,
+				LatestEntry: "The distinction is clearer now — enforcement gates vs comprehension probes",
+			},
+			{
+				Name:        "daemon-capacity",
+				Title:       "Daemon capacity planning",
+				Updated:     "2026-03-04",
+				EntryCount:  1,
+				LatestEntry: "Initial thoughts on scaling",
+			},
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	if !strings.Contains(output, "Active threads:") {
+		t.Error("missing 'Active threads:' section header")
+	}
+	if !strings.Contains(output, "How enforcement and comprehension relate") {
+		t.Error("missing thread title")
+	}
+	if !strings.Contains(output, "updated 2026-03-05") {
+		t.Error("missing thread updated date")
+	}
+	if !strings.Contains(output, "3 entries") {
+		t.Error("missing thread entry count")
+	}
+	if !strings.Contains(output, "The distinction is clearer now") {
+		t.Error("missing thread latest entry preview")
+	}
+	if !strings.Contains(output, "Daemon capacity planning") {
+		t.Error("missing second thread title")
+	}
+}
+
+func TestFormatOrientation_NoThreads(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+	}
+
+	output := FormatOrientation(data)
+
+	if strings.Contains(output, "Active threads") {
+		t.Error("threads section should not appear when no active threads")
+	}
+}
+
+func TestActiveThreadJSON(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		ActiveThreads: []ActiveThread{
+			{Name: "test-thread", Title: "Test", Updated: "2026-03-05", EntryCount: 2, LatestEntry: "latest"},
+		},
+	}
+
+	b, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	jsonStr := string(b)
+	if !strings.Contains(jsonStr, `"active_threads"`) {
+		t.Error("JSON missing active_threads field")
+	}
+	if !strings.Contains(jsonStr, `"name":"test-thread"`) {
+		t.Error("JSON missing thread name")
+	}
+
+	// Verify omitempty works
+	data2 := &OrientationData{Throughput: Throughput{Days: 1}}
+	b2, _ := json.Marshal(data2)
+	if strings.Contains(string(b2), "active_threads") {
+		t.Error("active_threads should be omitted when nil")
+	}
+}

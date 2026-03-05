@@ -14,6 +14,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/orient"
+	"github.com/dylan-conlin/orch-go/pkg/thread"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +34,7 @@ conversationally at session start. Surfaces:
   - Previous session summary (from latest debrief in .kb/sessions/)
   - Ready work from beads (bd ready)
   - Active coordination plans from .kb/plans/
+  - Active living threads from .kb/threads/ (open, updated within 7 days)
   - Relevant models matching ready work
   - Stale model warnings (>14 days without probes)
   - Current focus (if set)
@@ -83,7 +85,10 @@ func runOrient() error {
 		data.ActivePlans = activePlans
 	}
 
-	// 5. Model freshness from .kb/models/
+	// 5. Active threads from .kb/threads/
+	data.ActiveThreads = collectActiveThreads(projectDir)
+
+	// 6. Model freshness from .kb/models/
 	modelsDir := filepath.Join(projectDir, ".kb", "models")
 	allModels, err := orient.ScanModelFreshness(modelsDir)
 	if err == nil {
@@ -94,10 +99,10 @@ func runOrient() error {
 		data.StaleModels = orient.FilterStaleModels(allModels, 2)
 	}
 
-	// 6. Focus
+	// 7. Focus
 	data.FocusGoal = collectFocus()
 
-	// 7. In-progress count from bd
+	// 8. In-progress count from bd
 	data.Throughput.InProgress = collectInProgressCount()
 
 	if orientJSON {
@@ -286,6 +291,33 @@ func queryKBContextForIssue(title string) []orient.KBEntry {
 	}
 
 	return orient.ParseKBContext(output, 1)
+}
+
+// collectActiveThreads returns open threads updated within the last 7 days.
+func collectActiveThreads(projectDir string) []orient.ActiveThread {
+	threadsDir := filepath.Join(projectDir, ".kb", "threads")
+	summaries, err := thread.ActiveThreads(threadsDir, 7)
+	if err != nil || len(summaries) == 0 {
+		return nil
+	}
+
+	// Limit to top 5 most recently updated
+	limit := 5
+	if len(summaries) < limit {
+		limit = len(summaries)
+	}
+
+	result := make([]orient.ActiveThread, limit)
+	for i := 0; i < limit; i++ {
+		result[i] = orient.ActiveThread{
+			Name:        summaries[i].Name,
+			Title:       summaries[i].Title,
+			Updated:     summaries[i].Updated,
+			EntryCount:  summaries[i].EntryCount,
+			LatestEntry: summaries[i].LatestEntry,
+		}
+	}
+	return result
 }
 
 // collectInProgressCount runs `bd list --status=in_progress` and counts issue lines.
