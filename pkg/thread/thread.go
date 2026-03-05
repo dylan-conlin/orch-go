@@ -127,6 +127,19 @@ func CreateOrAppend(threadsDir, nameOrTitle, entry string) (*Result, error) {
 	return createThread(threadsDir, nameOrTitle, slug, today, entry)
 }
 
+// Append adds an entry to an existing thread identified by slug.
+// Returns an error if the thread does not exist.
+func Append(threadsDir, slug, entry string) (*Result, error) {
+	today := time.Now().Format("2006-01-02")
+
+	existingPath, existingFilename := findThreadBySlug(threadsDir, slug)
+	if existingPath == "" {
+		return nil, fmt.Errorf("thread %q not found", slug)
+	}
+
+	return appendToThread(existingPath, existingFilename, today, entry)
+}
+
 // createThread creates a new thread file.
 func createThread(dir, title, slug, today, entry string) (*Result, error) {
 	filename := today + "-" + slug + ".md"

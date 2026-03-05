@@ -443,6 +443,63 @@ Resolved.
 	}
 }
 
+func TestAppend_NonexistentSlug(t *testing.T) {
+	dir := tempThreadsDir(t)
+
+	_, err := Append(dir, "nonexistent-thread", "some text")
+	if err == nil {
+		t.Fatal("expected error for nonexistent thread, got nil")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' error, got %q", err.Error())
+	}
+
+	// Verify no file was created
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 0 {
+		t.Errorf("expected no files created, got %d", len(entries))
+	}
+}
+
+func TestAppend_ExistingThread(t *testing.T) {
+	dir := tempThreadsDir(t)
+
+	// Create a thread first
+	threadContent := `---
+title: "Append target"
+status: open
+created: 2026-03-01
+updated: 2026-03-01
+resolved_to: ""
+---
+
+# Append target
+
+## 2026-03-01
+
+Original entry.
+`
+	os.WriteFile(filepath.Join(dir, "2026-03-01-append-target.md"), []byte(threadContent), 0644)
+
+	result, err := Append(dir, "append-target", "New appended content")
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+
+	if result.Created {
+		t.Error("expected Created=false for append")
+	}
+
+	content, _ := os.ReadFile(filepath.Join(dir, "2026-03-01-append-target.md"))
+	s := string(content)
+	if !strings.Contains(s, "New appended content") {
+		t.Error("appended content missing")
+	}
+	if !strings.Contains(s, "Original entry") {
+		t.Error("original entry was lost")
+	}
+}
+
 func TestSlugify(t *testing.T) {
 	tests := []struct {
 		input string

@@ -82,7 +82,7 @@ Examples:
 		slug := args[0]
 		entry := args[1]
 
-		result, err := thread.CreateOrAppend(threadsDir(), slug, entry)
+		result, err := thread.Append(threadsDir(), slug, entry)
 		if err != nil {
 			return err
 		}
