@@ -6,14 +6,14 @@
 
 **Knowledge:** Comprehension requires three cognitive moves (Thread→Insight→Position) that parallel Three-Layer Reconnection at session scope. The debrief template is the highest-leverage change — it shapes behavior more than skill text.
 
-**Next:** Release Phase 1 (orch-go-7ldp4) to daemon — skill text changes, no code dependencies.
+**Next:** All phases implemented. Observe over 5+ sessions whether debriefs produce comprehension vs event logs. Check `debrief.quality` events in `orch stats` for longitudinal signal.
 
 ---
 
 # Plan: Synthesis As Comprehension
 
 **Date:** 2026-03-05
-**Status:** Active
+**Status:** Implemented (all 3 phases delivered 2026-03-05, observing for behavioral effect)
 **Owner:** dylanconlin
 
 **Extracted-From:** `.kb/investigations/2026-03-05-inv-design-orchestrator-synthesis-comprehension.md`
@@ -67,7 +67,8 @@ Orchestrator sessions end with comprehension artifacts — insights connecting a
 **Goal:** Make `orch debrief` actively prompt for comprehension and detect summary patterns
 **Deliverables:**
 - orch-go-d5rdt: Add `--learned` flag for "What We Learned" section, add `--quality` advisory heuristic (flags event-log patterns, missing connectives), print comprehension prompt after auto-populating facts
-**Exit criteria:** `orch debrief --quality` correctly flags pure event logs and passes comprehension paragraphs
+**Measurement:** `--quality` emits `debrief.quality` event to `events.jsonl` (pass/fail + triggered patterns). Enables `orch stats` to show comprehension rate over time.
+**Exit criteria:** `orch debrief --quality` correctly flags pure event logs and passes comprehension paragraphs; events emitted to events.jsonl
 **Depends on:** Phase 1 (template structure must match code expectations)
 
 ### Phase 3: Close the loop — orch orient feedback
@@ -112,7 +113,8 @@ Orchestrator sessions end with comprehension artifacts — insights connecting a
 
 ## Success Criteria
 
-- [ ] Debrief "What We Learned" sections contain connective language ≥50% of the time across 5+ sessions
-- [ ] Advisory gate correctly flags pure event logs as summaries
-- [ ] `orch orient` surfaces prior session's insight
-- [ ] skillc test scores for orchestrator skill don't degrade after Phase 1 edits
+- [x] skillc test scores for orchestrator skill don't degrade after Phase 1 edits (7ldp4: 41/56 vs 38/56 baseline, +3)
+- [x] Advisory gate correctly flags pure event logs as summaries (d5rdt: --quality detects empty_learned, action_verb_only, missing_connectives)
+- [x] `debrief.quality` events tracked in events.jsonl (d5rdt: emits debrief.quality event)
+- [x] `orch orient` surfaces prior session's insight (o79iw: FormatLastSessionInsight reads WhatWeLearned)
+- [ ] Debrief "What We Learned" sections contain connective language ≥50% of the time across 5+ sessions (OBSERVING)
