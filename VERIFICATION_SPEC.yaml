@@ -1,29 +1,41 @@
-task: "Integrate active plans into orch orient"
-beads_id: orch-go-4ezmg
+task: "Hook: Phase reporting timer - enforce first-3-actions phase comment"
+beads_id: orch-go-k1y28
 
 verification:
   automated:
-    - command: "go test ./pkg/orient/ -v -count=1"
-      expects: "PASS (49 tests)"
+    - command: "cd ~/.orch/hooks && python3 -m pytest test_enforce_phase_startup.py -v"
+      expects: "19 passed"
       covers:
-        - Plan file parsing (active, completed, superseded status filtering)
-        - Phase extraction with status markers
-        - TLDR extraction
-        - Projects list parsing
-        - Empty/nonexistent directory handling
-        - Format output with active plans section
-        - Format output without plans (no section shown)
-
-    - command: "go build ./cmd/orch/"
-      expects: "exit 0"
-      covers:
-        - orient_cmd.go compiles with plan collection wired in
+        - is_spawned_worker detection (worker, non-spawned, orchestrator)
+        - is_phase_comment detection (bd comment, bd comments add, non-phase, non-bash, single quotes)
+        - State file save/load round-trip
+        - Grace period (first 3 calls silent)
+        - Phase comment auto-detection and caching
+        - Nudge at call 4-5 (allow + additionalContext)
+        - Block at call 6+ (deny)
+        - Beads fallback check with caching
+        - Short-circuit when phase already cached
+        - Non-worker and no-beads-id pass-through
 
   manual:
-    - step: "Create an active plan in .kb/plans/ and run 'orch orient'"
-      expects: "Active plans section appears with title, projects, TLDR, and phase checklist"
-      result: "VERIFIED - plan showed with [>] marker for in-progress phase"
+    - step: "Register hook in ~/.claude/settings.json PreToolUse array (no matcher)"
+      expects: "Hook fires on all tool calls for spawned workers"
+      instruction: |
+        Add to hooks.PreToolUse:
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "$HOME/.orch/hooks/enforce-phase-startup.py",
+              "timeout": 10
+            }
+          ]
+        }
 
-    - step: "Run 'orch orient --json' with active plan"
-      expects: "active_plans array in JSON output with name, title, status, tldr, projects, phases"
-      result: "VERIFIED - full JSON structure present"
+behavior:
+  grace_period: "First 3 tool calls allowed unconditionally"
+  nudge: "Calls 4-5: allow + PHASE REPORTING OVERDUE warning"
+  block: "Calls 6+: deny until Phase: reported via bd comment"
+  auto_allow: "bd comment with Phase: always allowed and sets phase_found=true"
+  caching: "Once phase found, no further bd show checks (O(1) short-circuit)"
+  scope: "CLAUDE_CONTEXT=worker AND ORCH_SPAWNED=1 AND ORCH_BEADS_ID set"
