@@ -47,6 +47,7 @@ description: Always-loaded runtime policy for orchestrator agents. Routes decisi
 | **Dylan says "let's step back"** | Surface the perspective gap | Perspective is Structural |
 | **Dylan voices frustration** | STOP tactical fixes → enter 🔴 Probing mode | Frustration is Signal |
 | **Strategic question raised** | `bd create --type question` → block dependent work | Premise Before Solution |
+| **Multi-phase coordination** | `orch plan create <slug>` or `kb create plan <slug>` | Plans persist phasing rationale alongside beads graph |
 | **System didn't surface knowledge** | Note the gap → create pressure for system fix | Pressure Over Compensation |
 | **Session starting** | `orch orient` → Hygiene Checkpoint | Review before work |
 | **Session ending** | `orch debrief` → commit → `bd sync` | Triage created issues before leaving |
@@ -206,11 +207,12 @@ orch spawn --bypass-triage --issue <ID> --intent <TYPE> --reason "<why>" SKILL "
 
 | Flag | Required | Notes |
 |------|----------|-------|
-| `--issue <ID>` | Yes (unless `--no-track`) | Beads issue ID for tracking |
+| `--issue <ID>` | Yes (auto-created for `--no-track`) | Beads issue ID for tracking |
 | `--intent <TYPE>` | Yes | `build\|fix\|investigate\|explore\|produce\|compare\|experience` |
 | `--bypass-triage` | When skipping daemon | Direct spawn without `triage:ready` label |
 | `--reason "<why>"` | With `--bypass-triage` | Min 10 chars explaining why bypassing daemon |
 | `--model opus` | Optional | Default: sonnet. Use opus for complex work |
+| `--dry-run` | No | Validate spawn plan without executing (skill, context, settings) |
 
 ---
 
@@ -238,13 +240,15 @@ The debrief's "What We Learned" section is where this lives. If it reads like an
 
 ### Completion Workflow by Work Type
 
-| Work Type | Verification | Synthesis Depth | Sync with Dylan? |
-|-----------|-------------|-----------------|-------------------|
-| Bug Fix | Tests pass | TLDR only | Skip |
-| UI Feature | Browser smoke test | Full SYNTHESIS | Visual confirmation |
-| Investigation | Conclusions in artifact | Full SYNTHESIS | Present findings |
-| Architecture | Decision produced | Full SYNTHESIS + Discussion | Present trade-offs |
-| Refactor | Tests, no behavior change | TLDR only | Skip |
+| Work Type | Review Tier | Verification | Synthesis | Sync with Dylan? |
+|-----------|------------|-------------|-----------|-------------------|
+| Bug Fix | review | Tests pass | TLDR only | Skip |
+| UI Feature | review | Browser smoke | Full | Visual confirmation |
+| Investigation | scan | Artifact done | Full | Present findings |
+| Architecture | review | Decision produced | Full + Discussion | Present trade-offs |
+| Refactor | review | Tests, no Δ | TLDR only | Skip |
+| Knowledge capture | auto | — | — | Daemon auto-completes |
+| Issue creation | auto | — | — | Daemon auto-completes |
 
 ### Investigation & Probe Outcomes (Before `orch complete`)
 
@@ -275,7 +279,7 @@ Completion includes at least one `kb quick` command (`decide/tried/constrain/que
 
 Dylan's ONLY observability layer is the dashboard at localhost:5188. Dylan does not use CLI directly. Orchestrator surfaces state, proposes actions, executes on approval.
 
-**When dashboard fails:** Immediately surface state via `orch frontier`. Spawn fix. Keep surfacing until restored.
+**When dashboard fails:** Immediately surface state via `orch status`. Spawn fix. Keep surfacing until restored.
 
 ### Signal Prefixes
 
@@ -323,10 +327,11 @@ Priority emerges through interaction: Dylan mentions symptoms → orchestrator s
 ### Session End Protocol
 
 1. `orch debrief` — structured session reflection
-2. `orch frontier` — check ready/blocked/active/stuck
-3. Triage all issues created this session
-4. `git status` → commit → `bd sync`
-5. Confirm with Dylan before push (git-remote hook also gates this)
+2. `orch status` — check active/completed/stuck agents
+3. `orch plan status` — review plan progress (if active plans)
+4. Triage all issues created this session
+5. `git status` → commit → `bd sync`
+6. Confirm with Dylan before push (git-remote hook also gates this)
 
 ---
 
@@ -354,6 +359,7 @@ Orchestrators capture coordination-level knowledge, not implementation details.
 | Coordination constraint discovered | `kb quick constrain "X" --reason "Y"` |
 | Routing decision made | `kb quick decide "X" --reason "Y"` |
 | Open coordination question | `kb quick question "X"` |
+| Multi-phase strategy to externalize | `orch plan create <slug>` |
 
 **When system fails to surface knowledge:** Don't compensate by pasting. Note the gap. Let the system failure create pressure to improve. The system can't learn from gaps it never experiences.
 
@@ -406,9 +412,9 @@ opencode    → agent execution        (Claude frontend, session management)
 
 ## Commands Quick Reference
 
-**Lifecycle:** `orch spawn SKILL "task"` | `orch frontier` | `orch complete <id>` | `orch review`
+**Lifecycle:** `orch spawn SKILL "task"` | `orch status` | `orch complete <id>` | `orch review`
 
-**Monitoring:** `orch frontier` | `orch wait <id>` | `orch monitor` | `orch serve` (dashboard localhost:5188)
+**Monitoring:** `orch status` | `orch wait <id>` | `orch monitor` | `orch serve` (dashboard localhost:5188)
 
 **Agent:** `orch send <id> "msg"` | `orch resume <id>` | `orch abandon <id>` | `orch clean`
 
@@ -416,7 +422,7 @@ opencode    → agent execution        (Claude frontend, session management)
 
 **Triage:** `orch backlog cull --dry-run` | `orch review triage`
 
-**Strategic:** `orch focus "goal"` | `orch drift` | `orch next`
+**Strategic:** `orch focus "goal"` | `orch drift` | `orch next` | `orch plan show`
 
 **Beads:** `bd ready` | `bd create "title"` | `bd close <id>` | `bd sync`
 
