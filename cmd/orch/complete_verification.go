@@ -242,7 +242,7 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 	if !completeForce && target.BeadsID != "" {
 		phaseComplete := false
 		if !target.IsOrchestratorSession && target.BeadsID != "" {
-			phaseComplete, _ = verify.IsPhaseComplete(target.BeadsID)
+			phaseComplete, _ = verify.IsPhaseComplete(target.BeadsID, target.BeadsProjectDir)
 		}
 
 		if !phaseComplete {

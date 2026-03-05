@@ -182,12 +182,6 @@ func runServeStatus(portNum int) error {
 }
 
 func runServe(portNum int) error {
-	// Set default directory for beads socket discovery
-	// This is needed because serve may run from any working directory
-	if sourceDir != "" && sourceDir != "unknown" {
-		beads.DefaultDir = sourceDir
-	}
-
 	// Resolve bd executable path at startup.
 	// This is critical for launchd environments where PATH is minimal.
 	// The resolved path is stored in beads.BdPath for use by Fallback* functions.

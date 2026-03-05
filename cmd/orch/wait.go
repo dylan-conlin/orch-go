@@ -144,7 +144,7 @@ func resolveBeadsID(serverURL, identifier string) (string, error) {
 	// Strategy 1: If it looks like a beads ID (contains hyphen but not a session ID), verify it exists
 	if strings.Contains(identifier, "-") && !strings.HasPrefix(identifier, "ses_") {
 		// Try to verify it exists
-		_, err := verify.GetIssue(identifier)
+		_, err := verify.GetIssue(identifier, "")
 		if err == nil {
 			// It's a valid beads ID
 			return identifier, nil
@@ -265,7 +265,7 @@ func runWait(identifier string) error {
 	}
 
 	// Verify issue exists
-	_, err = verify.GetIssue(beadsID)
+	_, err = verify.GetIssue(beadsID, "")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
@@ -281,7 +281,7 @@ func runWait(identifier string) error {
 	var lastPhase string
 	for {
 		// Check phase status
-		status, err := verify.GetPhaseStatus(beadsID)
+		status, err := verify.GetPhaseStatus(beadsID, "")
 		if err != nil {
 			// Non-fatal: issue might not have comments yet
 			if !waitQuiet {

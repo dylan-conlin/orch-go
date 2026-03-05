@@ -212,7 +212,7 @@ func collectSwarmIssues() ([]daemon.Issue, error) {
 	issues := make([]daemon.Issue, 0, len(swarmIssues))
 	for _, id := range swarmIssues {
 		// Get issue details from beads
-		issue, err := verify.GetIssue(id)
+		issue, err := verify.GetIssue(id, "")
 		if err != nil {
 			return nil, fmt.Errorf("failed to get issue %s: %w", id, err)
 		}
@@ -259,7 +259,7 @@ func getSwarmReadyIssues() ([]daemon.Issue, error) {
 	}
 
 	// Fallback to CLI - need to fetch and filter
-	issues, err := beads.FallbackList("open")
+	issues, err := beads.FallbackList("open", "")
 	if err != nil {
 		return nil, err
 	}
@@ -568,7 +568,7 @@ func monitorSwarmAgents(ctx context.Context, agents []swarmAgentTracker, progres
 
 		// Check each pending agent
 		for issueID, agent := range pendingAgents {
-			status, err := verify.GetPhaseStatus(issueID)
+			status, err := verify.GetPhaseStatus(issueID, "")
 			if err != nil {
 				// Can't get status - might be transient error, continue
 				if swarmVerbose {

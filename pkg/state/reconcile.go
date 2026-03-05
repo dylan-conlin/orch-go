@@ -90,7 +90,7 @@ func GetLiveness(beadsID, serverURL, projectDir string) LivenessResult {
 	}
 
 	// 2. Check beads issue status (shells out to bd)
-	issue, err := verify.GetIssue(beadsID)
+	issue, err := verify.GetIssue(beadsID, "")
 	if err == nil && issue != nil {
 		result.BeadsOpen = issue.Status != "closed"
 	}

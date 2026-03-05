@@ -85,7 +85,7 @@ func handleCloseIssue(w http.ResponseWriter, r *http.Request) {
 		reason = "Acknowledged via dashboard review"
 	}
 
-	if err := verify.CloseIssue(req.BeadsID, reason); err != nil {
+	if err := verify.CloseIssue(req.BeadsID, reason, sourceDir); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(CloseIssueResponse{
 			Success: false,
@@ -164,7 +164,7 @@ func handleCloseIssueBatch(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		if err := verify.CloseIssue(beadsID, reason); err != nil {
+		if err := verify.CloseIssue(beadsID, reason, sourceDir); err != nil {
 			results = append(results, CloseIssueBatchResult{
 				BeadsID: beadsID,
 				Success: false,

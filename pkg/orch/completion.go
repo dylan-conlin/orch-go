@@ -88,7 +88,7 @@ func addBeadsComment(beadsID, comment string) error {
 	}
 
 	// Fallback to CLI
-	return beads.FallbackAddComment(beadsID, comment)
+	return beads.FallbackAddComment(beadsID, comment, "")
 }
 
 // getOrientationFrame retrieves the most recent FRAME annotation from beads comments.
@@ -112,7 +112,7 @@ func getOrientationFrame(beadsID string) string {
 
 	// Fallback to CLI if RPC failed or returned nothing
 	if comments == nil {
-		if result, err := beads.FallbackComments(beadsID); err == nil {
+		if result, err := beads.FallbackComments(beadsID, ""); err == nil {
 			comments = result
 		}
 	}

@@ -30,7 +30,7 @@ func TestE2ELifecycle_SingleAgent(t *testing.T) {
 		oldFn := fallbackListWithLabelFn
 		defer func() { fallbackListWithLabelFn = oldFn }()
 
-		fallbackListWithLabelFn = func(label string) ([]beads.Issue, error) {
+		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
 			return []beads.Issue{
 				{ID: beadsID, Title: "E2E test agent", Status: "in_progress", Labels: []string{"orch:agent"}},
 			}, nil
@@ -139,7 +139,7 @@ func TestE2ELifecycle_SingleAgent(t *testing.T) {
 		oldFn := fallbackListWithLabelFn
 		defer func() { fallbackListWithLabelFn = oldFn }()
 
-		fallbackListWithLabelFn = func(label string) ([]beads.Issue, error) {
+		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
 			return []beads.Issue{
 				{ID: beadsID, Title: "E2E test agent", Status: "closed", Labels: []string{"orch:agent"}},
 			}, nil
@@ -184,7 +184,7 @@ func TestE2ELifecycle_MultipleAgents(t *testing.T) {
 		oldFn := fallbackListWithLabelFn
 		defer func() { fallbackListWithLabelFn = oldFn }()
 
-		fallbackListWithLabelFn = func(label string) ([]beads.Issue, error) {
+		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
 			return allIssues, nil
 		}
 
@@ -302,7 +302,7 @@ func TestE2ELifecycle_MultipleAgents(t *testing.T) {
 		defer func() { fallbackListWithLabelFn = oldFn }()
 
 		// Start: 3 active, 1 closed
-		fallbackListWithLabelFn = func(label string) ([]beads.Issue, error) {
+		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
 			return allIssues, nil
 		}
 		tracked, _ := listTrackedIssuesCLI()
@@ -317,7 +317,7 @@ func TestE2ELifecycle_MultipleAgents(t *testing.T) {
 			{ID: "orch-go-multi-3", Title: "Phase complete", Status: "closed", Labels: []string{"orch:agent"}},
 			{ID: "orch-go-multi-4", Title: "Fully closed", Status: "closed", Labels: []string{"orch:agent"}},
 		}
-		fallbackListWithLabelFn = func(label string) ([]beads.Issue, error) {
+		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
 			return updatedIssues, nil
 		}
 		tracked, _ = listTrackedIssuesCLI()
@@ -332,7 +332,7 @@ func TestE2ELifecycle_MultipleAgents(t *testing.T) {
 			{ID: "orch-go-multi-3", Status: "closed", Labels: []string{"orch:agent"}},
 			{ID: "orch-go-multi-4", Status: "closed", Labels: []string{"orch:agent"}},
 		}
-		fallbackListWithLabelFn = func(label string) ([]beads.Issue, error) {
+		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
 			return allClosed, nil
 		}
 		tracked, _ = listTrackedIssuesCLI()
@@ -351,7 +351,7 @@ func TestE2ELifecycle_DegradedModes(t *testing.T) {
 		oldFn := fallbackListWithLabelFn
 		defer func() { fallbackListWithLabelFn = oldFn }()
 
-		fallbackListWithLabelFn = func(label string) ([]beads.Issue, error) {
+		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
 			return []beads.Issue{
 				{ID: "orch-go-deg-1", Title: "Missing workspace", Status: "in_progress", Labels: []string{"orch:agent"}},
 			}, nil
@@ -409,7 +409,7 @@ func TestE2ELifecycle_DegradedModes(t *testing.T) {
 		defer func() { fallbackListWithLabelFn = oldFn }()
 
 		// Agent was degraded (missing workspace) but still visible
-		fallbackListWithLabelFn = func(label string) ([]beads.Issue, error) {
+		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
 			return []beads.Issue{
 				{ID: "orch-go-deg-3", Title: "Degraded then closed", Status: "in_progress", Labels: []string{"orch:agent"}},
 			}, nil
@@ -420,7 +420,7 @@ func TestE2ELifecycle_DegradedModes(t *testing.T) {
 		}
 
 		// Now close it - should disappear regardless of degraded state
-		fallbackListWithLabelFn = func(label string) ([]beads.Issue, error) {
+		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
 			return []beads.Issue{
 				{ID: "orch-go-deg-3", Title: "Degraded then closed", Status: "closed", Labels: []string{"orch:agent"}},
 			}, nil

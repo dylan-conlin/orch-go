@@ -157,13 +157,13 @@ func (s *CompletionService) updateBeadsPhase(beadsID string) error {
 			comments, err = client.Comments(beadsID)
 			if err != nil {
 				// Fall through to CLI fallback on RPC error
-				comments, err = beads.FallbackComments(beadsID)
+				comments, err = beads.FallbackComments(beadsID, "")
 			}
 		} else {
-			comments, err = beads.FallbackComments(beadsID)
+			comments, err = beads.FallbackComments(beadsID, "")
 		}
 	} else {
-		comments, err = beads.FallbackComments(beadsID)
+		comments, err = beads.FallbackComments(beadsID, "")
 	}
 
 	if err != nil {
@@ -194,7 +194,7 @@ func (s *CompletionService) updateBeadsPhase(beadsID string) error {
 	}
 
 	// Fallback to CLI
-	return beads.FallbackAddComment(beadsID, comment)
+	return beads.FallbackAddComment(beadsID, comment, "")
 }
 
 // containsPhaseComplete checks if the comments JSON contains "Phase: Complete".

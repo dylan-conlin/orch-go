@@ -83,7 +83,7 @@ func GetAgentReview(beadsID, workspacePath, projectDir string) (*AgentReview, er
 	}
 
 	// Get phase status from beads comments
-	comments, err := GetComments(beadsID)
+	comments, err := GetComments(beadsID, "")
 	if err == nil {
 		review.Comments = comments
 		phaseStatus := ParsePhaseFromComments(comments)

@@ -74,13 +74,7 @@ func runRework(beadsID, feedback string) error {
 	if err != nil {
 		return err
 	}
-	// Save and defer-restore beads.DefaultDir so error paths don't leave it
-	// pointing at the wrong project. Matches spawn_cmd.go:419-421 pattern.
-	prevDefaultDir := beads.DefaultDir
-	beads.DefaultDir = projectDir
-	defer func() { beads.DefaultDir = prevDefaultDir }()
-
-	issue, err := verify.GetIssue(beadsID)
+	issue, err := verify.GetIssue(beadsID, projectDir)
 	if err != nil {
 		projectHint := formatProjectMismatchHint(projectDir, beadsID)
 		if projectHint != "" {
@@ -182,7 +176,7 @@ func runRework(beadsID, feedback string) error {
 		userCfg = nil
 		userMeta = nil
 	}
-	beadsLabels := loadBeadsLabels(beadsID)
+	beadsLabels := loadBeadsLabels(beadsID, projectDir)
 	manifestTier := strings.TrimSpace(manifest.Tier)
 	resolveInput := spawn.ResolveInput{
 		CLI: spawn.CLISettings{
@@ -239,7 +233,7 @@ func runRework(beadsID, feedback string) error {
 		priorSynthesis = fmt.Sprintf("No prior SYNTHESIS.md summary available (%v)", err)
 	}
 
-	if err := verify.UpdateIssueStatus(beadsID, "open"); err != nil {
+	if err := verify.UpdateIssueStatus(beadsID, "open", projectDir); err != nil {
 		return fmt.Errorf("failed to reopen issue: %w", err)
 	}
 
@@ -248,11 +242,11 @@ func runRework(beadsID, feedback string) error {
 		return fmt.Errorf("failed to add rework comment: %w", err)
 	}
 
-	if err := verify.AddLabel(beadsID, fmt.Sprintf("rework:%d", reworkNumber)); err != nil {
+	if err := verify.AddLabel(beadsID, fmt.Sprintf("rework:%d", reworkNumber), projectDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to add rework label: %v\n", err)
 	}
 
-	if err := verify.UpdateIssueStatus(beadsID, "in_progress"); err != nil {
+	if err := verify.UpdateIssueStatus(beadsID, "in_progress", projectDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to set issue status to in_progress: %v\n", err)
 	}
 
@@ -330,7 +324,7 @@ func addReworkComment(beadsID, comment, projectDir string) error {
 		}
 	}
 
-	return beads.FallbackAddComment(beadsID, comment)
+	return beads.FallbackAddComment(beadsID, comment, projectDir)
 }
 
 func formatProjectMismatchHint(projectDir, beadsID string) string {

@@ -154,7 +154,7 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 
 	// Phase 2: Batch fetch all comments for light-tier workspaces
 	// This single batch call replaces O(n) individual GetComments calls
-	lightTierCommentsMap := verify.GetCommentsBatch(lightTierBeadsIDs)
+	lightTierCommentsMap := verify.GetCommentsBatch(lightTierBeadsIDs, nil)
 
 	// Phase 3: Process each candidate using pre-fetched comments
 	var agents []PendingReviewAgent
@@ -323,7 +323,7 @@ func isLightTierComplete(workspacePath string) (isComplete bool, beadsID string)
 	}
 
 	// Get comments for this beads ID
-	comments, err := verify.GetComments(beadsID)
+	comments, err := verify.GetComments(beadsID, "")
 	if err != nil {
 		return false, beadsID
 	}

@@ -109,7 +109,7 @@ func TestPerfInvariance_CLIPipelineFilters(t *testing.T) {
 			defer func() { fallbackListWithLabelFn = oldFn }()
 
 			allIssues := generateMixedIssues(activeCount, closed)
-			fallbackListWithLabelFn = func(label string) ([]beads.Issue, error) {
+			fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
 				return allIssues, nil
 			}
 
@@ -146,7 +146,7 @@ func TestPerfInvariance_PipelineTiming(t *testing.T) {
 		defer func() { fallbackListWithLabelFn = oldFn }()
 
 		allIssues := generateMixedIssues(activeCount, closedCount)
-		fallbackListWithLabelFn = func(label string) ([]beads.Issue, error) {
+		fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
 			return allIssues, nil
 		}
 

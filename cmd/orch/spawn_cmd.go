@@ -317,11 +317,11 @@ func inferBrowserToolFromBeadsIssue(issue *beads.Issue) string {
 	return ""
 }
 
-func loadBeadsLabels(beadsID string) []string {
+func loadBeadsLabels(beadsID, projectDir string) []string {
 	if beadsID == "" {
 		return nil
 	}
-	socketPath, connErr := beads.FindSocketPath("")
+	socketPath, connErr := beads.FindSocketPath(projectDir)
 	if connErr != nil {
 		return nil
 	}
@@ -411,22 +411,19 @@ func applyResolvedSpawnMode(input *orch.SpawnInput, spawnMode string) {
 }
 
 func runWork(serverURL, beadsID string, inline bool) error {
-	// For cross-project work (--workdir set), redirect beads lookups to the target
-	// project directory. Without this, verify.GetIssue() and beads.FindSocketPath("")
-	// use the current directory's .beads/ database, which doesn't contain the
-	// cross-project issue — causing silent spawn failures (orch-go-1230).
+	// For cross-project work (--workdir set), resolve the target project directory
+	// so verify/beads operations use the correct .beads/ database.
+	var workProjectDir string
 	if spawnWorkdir != "" {
 		absWorkdir, err := filepath.Abs(spawnWorkdir)
 		if err != nil {
 			return fmt.Errorf("failed to resolve workdir: %w", err)
 		}
-		prevDefaultDir := beads.DefaultDir
-		beads.DefaultDir = absWorkdir
-		defer func() { beads.DefaultDir = prevDefaultDir }()
+		workProjectDir = absWorkdir
 	}
 
 	// Get issue details from verify (for description)
-	issue, err := verify.GetIssue(beadsID)
+	issue, err := verify.GetIssue(beadsID, workProjectDir)
 	if err != nil {
 		return fmt.Errorf("failed to get beads issue: %w", err)
 	}
@@ -435,7 +432,7 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	// Use beads.Issue which has Labels for full skill/browser tool inference
 	var skillName string
 	var browserTool string
-	socketPath, connErr := beads.FindSocketPath("")
+	socketPath, connErr := beads.FindSocketPath(workProjectDir)
 	if connErr == nil {
 		beadsClient := beads.NewClient(socketPath)
 		if connErr := beadsClient.Connect(); connErr == nil {
@@ -603,16 +600,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		return err
 	}
 
-	// Set beads.DefaultDir so loadBeadsLabels and other beads operations
-	// use the correct project directory for cross-project spawns.
-	// Without this, FindSocketPath("") falls back to CWD which may be a
-	// different project than where the beads issue lives (e.g., spawning
-	// pw-r6hk from orch-go with --workdir pointing to price-watch).
-	if spawnWorkdir != "" {
-		prevDefaultDir := beads.DefaultDir
-		beads.DefaultDir = projectDir
-		defer func() { beads.DefaultDir = prevDefaultDir }()
-	}
+	// Note: projectDir is threaded through all beads/verify calls below.
+	// No global state mutation needed for cross-project spawns.
 
 	// 3. Load skill and generate workspace
 	skillContent, workspaceName, isOrchestrator, isMetaOrchestrator, err := orch.LoadSkillAndGenerateWorkspace(skillName, projectName, task, projectDir, spawnAutoInit, spawnNoTrack, ensureOrchScaffolding)
@@ -621,7 +610,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 
 	// 4. Setup beads tracking
-	beadsID, err := orch.SetupBeadsTracking(skillName, task, projectName, spawnIssue, isOrchestrator, isMetaOrchestrator, serverURL, spawnNoTrack, workspaceName, orch.CreateBeadsIssue)
+	beadsID, err := orch.SetupBeadsTracking(skillName, task, projectName, spawnIssue, isOrchestrator, isMetaOrchestrator, serverURL, spawnNoTrack, workspaceName, orch.CreateBeadsIssue, projectDir)
 	if err != nil {
 		return err
 	}
@@ -639,7 +628,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 
 	// 4b. Detect cross-repo beads: when --workdir is set AND --issue references the
 	// source project, the agent needs BEADS_DIR to report back to the source beads.
-	// Use CWD (not beads.DefaultDir which was already changed to target) as the source.
+	// Use CWD (not target projectDir) as the source.
 	var crossRepoBeadsDir string
 	if spawnWorkdir != "" && beadsID != "" && spawnIssue != "" {
 		cwd, _ := os.Getwd()
@@ -662,7 +651,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		userCfg = nil
 		userMeta = nil
 	}
-	beadsLabels := loadBeadsLabels(beadsID)
+	beadsLabels := loadBeadsLabels(beadsID, projectDir)
 	resolveInput := spawn.ResolveInput{
 		CLI: spawn.CLISettings{
 			Backend:       spawnBackendFlag,

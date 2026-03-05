@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/agent"
-	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -62,11 +61,6 @@ func init() {
 func runAbandon(beadsID, reason, workdir string) error {
 	// --- Phase 1: Resolve project directory ---
 
-	// Save and defer-restore beads.DefaultDir so error paths don't leave it
-	// pointing at the wrong project. Matches spawn_cmd.go:419-421 pattern.
-	prevDefaultDir := beads.DefaultDir
-	defer func() { beads.DefaultDir = prevDefaultDir }()
-
 	var projectDir string
 	var err error
 	if workdir != "" {
@@ -79,7 +73,6 @@ func runAbandon(beadsID, reason, workdir string) error {
 		} else if !stat.IsDir() {
 			return fmt.Errorf("workdir is not a directory: %s", projectDir)
 		}
-		beads.DefaultDir = projectDir
 	} else {
 		projectDir, err = os.Getwd()
 		if err != nil {
@@ -90,7 +83,7 @@ func runAbandon(beadsID, reason, workdir string) error {
 	// --- Phase 2: Validate beads issue ---
 
 	var issue *verify.Issue
-	issue, err = verify.GetIssue(beadsID)
+	issue, err = verify.GetIssue(beadsID, projectDir)
 	if err != nil && workdir == "" {
 		// Local lookup failed and no --workdir specified.
 		// Auto-resolve by searching registered kb projects.
@@ -98,7 +91,6 @@ func runAbandon(beadsID, reason, workdir string) error {
 		if resolvedDir != "" && beadsIssue != nil {
 			fmt.Printf("Auto-resolved cross-project issue: %s in %s\n", beadsID, resolvedDir)
 			projectDir = resolvedDir
-			beads.DefaultDir = resolvedDir
 			issue = &verify.Issue{
 				ID:        beadsIssue.ID,
 				Title:     beadsIssue.Title,

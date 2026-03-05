@@ -445,7 +445,7 @@ func createBeadsIssue(title, description, issueType string, p int, labels []stri
 		}
 	}
 
-	return beads.FallbackCreateInDir(title, description, issueType, p, labels, dir)
+	return beads.FallbackCreate(title, description, issueType, p, labels, dir)
 }
 
 // --- Helper functions ---

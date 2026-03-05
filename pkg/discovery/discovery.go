@@ -161,7 +161,7 @@ func listTrackedIssuesLocal() ([]beads.Issue, error) {
 			}
 		}
 	}
-	return beads.FallbackListWithLabel("orch:agent")
+	return beads.FallbackListWithLabel("orch:agent", "")
 }
 
 func listTrackedIssuesForDir(dir string) ([]beads.Issue, error) {
@@ -179,7 +179,7 @@ func listTrackedIssuesForDir(dir string) ([]beads.Issue, error) {
 			}
 		}
 	}
-	return beads.FallbackListWithLabelInDir("orch:agent", dir)
+	return beads.FallbackListWithLabel("orch:agent", dir)
 }
 
 // FilterActiveIssues returns only issues with active statuses (open, in_progress).
@@ -260,7 +260,7 @@ func ExtractLatestPhases(beadsIDs []string) (map[string]string, map[string]time.
 	}
 
 	for _, id := range beadsIDs {
-		comments, err := beads.FallbackComments(id)
+		comments, err := beads.FallbackComments(id, "")
 		if err != nil {
 			continue
 		}

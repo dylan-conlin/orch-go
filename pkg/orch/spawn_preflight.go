@@ -49,7 +49,7 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 
 func buildArchitectVerifier() gates.ArchitectVerifier {
 	return func(issueID string) error {
-		issue, err := verify.GetIssue(issueID)
+		issue, err := verify.GetIssue(issueID, "")
 		if err != nil {
 			return fmt.Errorf("--architect-ref %s: issue not found", issueID)
 		}

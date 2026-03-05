@@ -200,7 +200,7 @@ func TestListActiveIssuesSingleProject(t *testing.T) {
 		listOpenIssuesWithDir = oldListOpenIssuesWithDir
 	}()
 
-	listOpenIssues = func() (map[string]*verify.Issue, error) {
+	listOpenIssues = func(projectDir string) (map[string]*verify.Issue, error) {
 		return nil, fmt.Errorf("unexpected call")
 	}
 	listOpenIssuesWithDir = func(projectDir string) (map[string]*verify.Issue, error) {
@@ -238,7 +238,7 @@ func TestListActiveIssuesCrossProjectDedup(t *testing.T) {
 		listOpenIssuesWithDir = oldListOpenIssuesWithDir
 	}()
 
-	listOpenIssues = func() (map[string]*verify.Issue, error) {
+	listOpenIssues = func(projectDir string) (map[string]*verify.Issue, error) {
 		return nil, fmt.Errorf("unexpected call")
 	}
 	listOpenIssuesWithDir = func(projectDir string) (map[string]*verify.Issue, error) {
@@ -275,7 +275,7 @@ func TestListActiveIssuesEmptyProjectDirs(t *testing.T) {
 		listOpenIssuesWithDir = oldListOpenIssuesWithDir
 	}()
 
-	listOpenIssues = func() (map[string]*verify.Issue, error) {
+	listOpenIssues = func(projectDir string) (map[string]*verify.Issue, error) {
 		return map[string]*verify.Issue{
 			"orch-go-active":  {ID: "orch-go-active", Status: "in_progress"},
 			"orch-go-blocked": {ID: "orch-go-blocked", Status: "blocked"},
@@ -309,7 +309,7 @@ func TestListActiveIssuesErrorHandling(t *testing.T) {
 		listOpenIssuesWithDir = oldListOpenIssuesWithDir
 	}()
 
-	listOpenIssues = func() (map[string]*verify.Issue, error) {
+	listOpenIssues = func(projectDir string) (map[string]*verify.Issue, error) {
 		return nil, fmt.Errorf("unexpected call")
 	}
 	listOpenIssuesWithDir = func(projectDir string) (map[string]*verify.Issue, error) {

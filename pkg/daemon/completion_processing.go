@@ -117,7 +117,7 @@ func listCompletedAgentsSingleProject(config CompletionConfig, projectDir, works
 	if projectDir != "" {
 		openIssues, err = verify.ListOpenIssuesWithDir(projectDir)
 	} else {
-		openIssues, err = verify.ListOpenIssues()
+		openIssues, err = verify.ListOpenIssues("")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to list open issues: %w", err)
@@ -161,7 +161,7 @@ func listCompletedAgentsSingleProject(config CompletionConfig, projectDir, works
 		}
 		commentMap = verify.GetCommentsBatchWithProjectDirs(beadsIDs, projectDirs)
 	} else {
-		commentMap = verify.GetCommentsBatch(beadsIDs)
+		commentMap = verify.GetCommentsBatch(beadsIDs, nil)
 	}
 
 	// Resolve workspace dir for finding agent workspaces
@@ -376,7 +376,7 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 	// Pre-fetch comments using the correct project directory.
 	// This avoids VerifyCompletionFullWithComments re-fetching from the wrong dir
 	// for cross-project agents (the daemon's cwd != the agent's project).
-	comments, err := verify.GetCommentsWithDir(agent.BeadsID, effectiveProjectDir)
+	comments, err := verify.GetComments(agent.BeadsID, effectiveProjectDir)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to fetch comments for %s (dir=%s): %w", agent.BeadsID, effectiveProjectDir, err)
 		result.Escalation = verify.EscalationFailed
@@ -476,7 +476,7 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 	// Mark issue as ready for review (unless dry run)
 	// Non-auto tiers: add a label so Dylan can review via orchestrator
 	if !config.DryRun {
-		if err := verify.AddLabelWithDir(agent.BeadsID, LabelReadyReview, effectiveProjectDir); err != nil {
+		if err := verify.AddLabel(agent.BeadsID, LabelReadyReview, effectiveProjectDir); err != nil {
 			result.Error = fmt.Errorf("failed to mark ready for review: %w", err)
 			return result
 		}
@@ -597,7 +597,7 @@ func (d *Daemon) handleVerificationFailure(agent CompletedAgent, compResult Comp
 			effectiveProjectDir = config.ProjectDir
 		}
 
-		if err := verify.AddLabelWithDir(agent.BeadsID, LabelVerificationFailed, effectiveProjectDir); err != nil {
+		if err := verify.AddLabel(agent.BeadsID, LabelVerificationFailed, effectiveProjectDir); err != nil {
 			// Log but don't fail — worst case, the in-memory tracker still prevents retries
 			fmt.Fprintf(os.Stderr, "    Warning: failed to label %s as %s: %v\n",
 				agent.BeadsID, LabelVerificationFailed, err)

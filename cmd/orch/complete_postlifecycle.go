@@ -38,7 +38,7 @@ func addApprovalComment(beadsID, comment string) error {
 	}
 
 	// Fallback to CLI
-	return beads.FallbackAddComment(beadsID, comment)
+	return beads.FallbackAddComment(beadsID, comment, "")
 }
 
 // invalidateServeCache sends a request to orch serve to invalidate its caches.

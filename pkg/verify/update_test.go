@@ -13,13 +13,13 @@ func TestUpdateIssueStatus(t *testing.T) {
 	}
 
 	// Test updating to in_progress
-	err := UpdateIssueStatus(issueID, "in_progress")
+	err := UpdateIssueStatus(issueID, "in_progress", "")
 	if err != nil {
 		t.Errorf("UpdateIssueStatus to in_progress failed: %v", err)
 	}
 
 	// Verify status changed
-	issue, err := GetIssue(issueID)
+	issue, err := GetIssue(issueID, "")
 	if err != nil {
 		t.Errorf("GetIssue failed: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestUpdateIssueStatus(t *testing.T) {
 	}
 
 	// Clean up: revert to open
-	err = UpdateIssueStatus(issueID, "open")
+	err = UpdateIssueStatus(issueID, "open", "")
 	if err != nil {
 		t.Errorf("UpdateIssueStatus to open failed: %v", err)
 	}

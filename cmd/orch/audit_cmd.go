@@ -70,7 +70,7 @@ func init() {
 
 // recentClosedIssues returns issues closed within the given duration.
 func recentClosedIssues(window time.Duration) ([]beads.Issue, error) {
-	issues, err := beads.FallbackList("closed")
+	issues, err := beads.FallbackList("closed", "")
 	if err != nil {
 		return nil, fmt.Errorf("listing closed issues: %w", err)
 	}
@@ -155,7 +155,7 @@ func runAuditSelect(cmd *cobra.Command, args []string) error {
 	var ids []string
 	for _, issue := range selected {
 		// Label the issue
-		if err := beads.FallbackAddLabel(issue.ID, auditLabel); err != nil {
+		if err := beads.FallbackAddLabel(issue.ID, auditLabel, ""); err != nil {
 			fmt.Printf("  WARNING: failed to label %s: %v\n", issue.ID, err)
 			continue
 		}
@@ -275,7 +275,7 @@ func runAuditUninstall(cmd *cobra.Command, args []string) error {
 }
 
 func runAuditList(cmd *cobra.Command, args []string) error {
-	issues, err := beads.FallbackListWithLabel(auditLabel)
+	issues, err := beads.FallbackListWithLabel(auditLabel, "")
 	if err != nil {
 		return fmt.Errorf("listing audit issues: %w", err)
 	}

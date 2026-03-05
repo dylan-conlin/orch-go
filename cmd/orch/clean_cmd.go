@@ -127,7 +127,7 @@ func NewDefaultBeadsStatusChecker() *DefaultBeadsStatusChecker {
 
 // IsIssueClosed checks if a beads issue is closed.
 func (c *DefaultBeadsStatusChecker) IsIssueClosed(beadsID string) bool {
-	issue, err := verify.GetIssue(beadsID)
+	issue, err := verify.GetIssue(beadsID, "")
 	if err != nil {
 		// If we can't get the issue, assume it's not closed
 		// (could be network error, issue not found, etc.)
@@ -157,7 +157,7 @@ func (c *DefaultCompletionIndicatorChecker) SynthesisExists(workspacePath string
 
 // IsPhaseComplete checks if beads shows Phase: Complete for the agent.
 func (c *DefaultCompletionIndicatorChecker) IsPhaseComplete(beadsID string) bool {
-	complete, err := verify.IsPhaseComplete(beadsID)
+	complete, err := verify.IsPhaseComplete(beadsID, "")
 	if err != nil {
 		// If we can't check (e.g., beads error), assume not complete
 		return false
@@ -249,7 +249,7 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 	// Use ListOpenIssues to get all open issues in a single API call
 	// If a beads ID is NOT in the open issues map, it's closed
 	if len(needsBeadsCheck) > 0 {
-		openIssues, err := verify.ListOpenIssues()
+		openIssues, err := verify.ListOpenIssues("")
 		if err != nil {
 			// Fallback to sequential check if batch fails
 			for _, ws := range needsBeadsCheck {
@@ -1221,7 +1221,7 @@ func cleanGhostAgents(currentProjectDir string, dryRun bool) (int, error) {
 	// Phase 1: Clean stale orch:agent labels on closed issues in the local project.
 	// These are missed by --orphans (which only looks at open/in_progress issues)
 	// and by the cross-project loop below (which skips the current project).
-	localIssues, err := beads.FallbackListWithLabel("orch:agent")
+	localIssues, err := beads.FallbackListWithLabel("orch:agent", "")
 	if err == nil {
 		for _, issue := range localIssues {
 			if strings.EqualFold(issue.Status, "closed") {
@@ -1230,7 +1230,7 @@ func cleanGhostAgents(currentProjectDir string, dryRun bool) (int, error) {
 					cleaned++
 					continue
 				}
-				if err := beads.FallbackRemoveLabel(issue.ID, "orch:agent"); err != nil {
+				if err := beads.FallbackRemoveLabel(issue.ID, "orch:agent", ""); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to remove orch:agent from %s: %v\n", issue.ID, err)
 				} else {
 					fmt.Printf("  Cleaned stale label: %s (closed)\n", issue.ID)
@@ -1253,7 +1253,7 @@ func cleanGhostAgents(currentProjectDir string, dryRun bool) (int, error) {
 		}
 
 		// Find orch:agent labeled issues in this project
-		issues, err := beads.FallbackListWithLabelInDir("orch:agent", dir)
+		issues, err := beads.FallbackListWithLabel("orch:agent", dir)
 		if err != nil {
 			continue
 		}
@@ -1293,7 +1293,7 @@ func cleanGhostAgents(currentProjectDir string, dryRun bool) (int, error) {
 					continue
 				}
 
-				removeLabelErr := beads.FallbackRemoveLabelInDir(issue.ID, "orch:agent", dir)
+				removeLabelErr := beads.FallbackRemoveLabel(issue.ID, "orch:agent", dir)
 				if removeLabelErr != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to remove orch:agent from %s: %v\n", issue.ID, removeLabelErr)
 					continue

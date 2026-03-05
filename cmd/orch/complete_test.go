@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -337,7 +336,7 @@ func TestExtractProjectFromBeadsID(t *testing.T) {
 // This verifies that agents from other projects can be completed by:
 // 1. Extracting project name from beads ID
 // 2. Finding the project directory
-// 3. Setting beads.DefaultDir before resolution
+// 3. Resolving the correct project directory for beads operations
 func TestCrossProjectCompletion(t *testing.T) {
 	// Create a fake "other project" directory structure
 	tmpDir := t.TempDir()
@@ -612,53 +611,5 @@ func TestSkipPhaseCompleteTriggersForceClose(t *testing.T) {
 	// Verify ShouldSkipGate returns true for phase_complete
 	if !skipConfig.ShouldSkipGate("phase_complete") {
 		t.Error("Expected ShouldSkipGate('phase_complete') to return true")
-	}
-}
-
-// TestRunCompleteRestoresDefaultDirOnError verifies that runComplete restores
-// beads.DefaultDir on error paths. Without the defer-restore, cross-project
-// detection in resolveCompletionTarget (line 103) can leave DefaultDir pointing
-// at the wrong project when subsequent operations fail.
-// This matches the defer-restore pattern in spawn_cmd.go:419-421.
-func TestRunCompleteRestoresDefaultDirOnError(t *testing.T) {
-	original := beads.DefaultDir
-	t.Cleanup(func() { beads.DefaultDir = original })
-
-	sentinel := "/tmp/test-sentinel-default-dir"
-	beads.DefaultDir = sentinel
-
-	// runComplete with a nonexistent identifier will error (no workspace,
-	// no beads daemon). The defer-restore should preserve DefaultDir.
-	err := runComplete("nonexistent-xxxx", "")
-	if err == nil {
-		t.Fatal("expected error from runComplete with invalid identifier")
-	}
-
-	if beads.DefaultDir != sentinel {
-		t.Errorf("beads.DefaultDir not restored after error:\n  got:  %q\n  want: %q",
-			beads.DefaultDir, sentinel)
-	}
-}
-
-// TestRunCompleteRestoresDefaultDirOnWorkdirError verifies the defer-restore
-// when the error comes from an invalid --workdir flag. This exercises the path
-// where resolveCompletionTarget may have already mutated DefaultDir at line 103
-// (cross-project detection) before hitting the workdir validation error.
-func TestRunCompleteRestoresDefaultDirOnWorkdirError(t *testing.T) {
-	original := beads.DefaultDir
-	t.Cleanup(func() { beads.DefaultDir = original })
-
-	sentinel := "/tmp/test-sentinel-workdir-error"
-	beads.DefaultDir = sentinel
-
-	// Invalid workdir triggers os.Stat error inside resolveCompletionTarget
-	err := runComplete("some-proj-xxxx", "/nonexistent/workdir/path")
-	if err == nil {
-		t.Fatal("expected error from runComplete with invalid workdir")
-	}
-
-	if beads.DefaultDir != sentinel {
-		t.Errorf("beads.DefaultDir not restored after workdir error:\n  got:  %q\n  want: %q",
-			beads.DefaultDir, sentinel)
 	}
 }

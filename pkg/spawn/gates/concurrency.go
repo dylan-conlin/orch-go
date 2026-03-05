@@ -142,7 +142,7 @@ func CheckConcurrency(serverURL string, maxAgentsFlag int, extractBeadsID func(s
 
 		// Get phase from beads comments
 		phase := ""
-		if isComplete, _ := verify.IsPhaseComplete(sd.beadsID); isComplete {
+		if isComplete, _ := verify.IsPhaseComplete(sd.beadsID, ""); isComplete {
 			phase = "Complete"
 		}
 

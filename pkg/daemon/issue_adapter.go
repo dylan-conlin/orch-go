@@ -107,7 +107,7 @@ func ListEpicChildren(epicID string) ([]Issue, error) {
 	}
 
 	// Fallback to CLI if daemon unavailable
-	beadsIssues, err := beads.FallbackListByParent(epicID)
+	beadsIssues, err := beads.FallbackListByParent(epicID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +295,7 @@ func GetBeadsIssueStatus(beadsID string) (string, error) {
 	}
 
 	// Fallback to CLI
-	issue, err := beads.FallbackShow(beadsID)
+	issue, err := beads.FallbackShow(beadsID, "")
 	if err != nil {
 		return "", fmt.Errorf("failed to get issue status: %w", err)
 	}
@@ -332,7 +332,7 @@ func FindInProgressByTitle(title string) *Issue {
 	}
 
 	// Fallback to CLI
-	beadsIssues, err := beads.FallbackList("in_progress")
+	beadsIssues, err := beads.FallbackList("in_progress", "")
 	if err != nil {
 		return nil // fail-open
 	}
@@ -546,7 +546,7 @@ func UpdateBeadsStatus(beadsID, status string) error {
 	}
 
 	// Fallback to CLI if daemon unavailable
-	return beads.FallbackUpdate(beadsID, status)
+	return beads.FallbackUpdate(beadsID, status, "")
 }
 
 // ListIssuesWithLabelForProject lists open/in_progress issues with a label in a specific project.

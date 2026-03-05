@@ -296,7 +296,7 @@ func listActiveIssues(projectDirs []string) (map[string]*verify.Issue, map[strin
 	projectDirsByID := make(map[string]string)
 
 	if len(projectDirs) == 0 {
-		openIssues, err := listOpenIssues()
+		openIssues, err := listOpenIssues("")
 		if err != nil {
 			log.Printf("Warning: failed to list open issues: %v", err)
 			return issues, projectDirsByID

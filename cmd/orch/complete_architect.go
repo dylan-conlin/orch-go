@@ -51,7 +51,7 @@ func maybeAutoCreateImplementationIssue(skillName, beadsID, workspacePath string
 	}
 
 	// Create the issue
-	issue, err := beads.FallbackCreate(title, description, "task", 2, labels)
+	issue, err := beads.FallbackCreate(title, description, "task", 2, labels, "")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to auto-create implementation issue: %v\n", err)
 		return ""

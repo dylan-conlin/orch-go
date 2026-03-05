@@ -251,7 +251,7 @@ func findPhantomIssues(projectDir string) ([]PhantomIssue, error) {
 }
 
 func findPhantomIssuesFallback(projectDir string) ([]PhantomIssue, error) {
-	issues, err := beads.FallbackList("open")
+	issues, err := beads.FallbackList("open", "")
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +259,7 @@ func findPhantomIssuesFallback(projectDir string) ([]PhantomIssue, error) {
 }
 
 func findZombieIssuesFallback(projectDir string) ([]ZombieIssue, error) {
-	issues, err := beads.FallbackList("in_progress")
+	issues, err := beads.FallbackList("in_progress", "")
 	if err != nil {
 		return nil, err
 	}
@@ -489,7 +489,7 @@ func applyFix(z ZombieIssue, mode, reason string) error {
 func applyFixFallback(z ZombieIssue, mode, reason string) error {
 	switch mode {
 	case "reset":
-		return beads.FallbackUpdate(z.ID, "open")
+		return beads.FallbackUpdate(z.ID, "open", "")
 	case "close":
 		// Use --force for zombie reconciliation since zombies typically
 		// don't have "Phase: Complete" comments (they were abandoned)

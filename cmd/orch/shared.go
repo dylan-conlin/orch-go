@@ -104,7 +104,7 @@ func extractSkillFromWindowName(name string) string {
 // This enables cross-project operations (abandon, clean) without requiring --workdir.
 func resolveProjectDirForBeadsID(beadsID string) (string, *beads.Issue) {
 	for _, dir := range getKBProjectsFn() {
-		issue, err := beads.FallbackShowWithDir(beadsID, dir)
+		issue, err := beads.FallbackShow(beadsID, dir)
 		if err == nil && issue != nil {
 			return dir, issue
 		}
@@ -456,7 +456,7 @@ func resolveShortBeadsID(id string) (string, error) {
 
 	// Fallback: Use bd show to resolve the ID
 	// bd show handles short ID resolution and returns the full ID
-	issue, err := beads.FallbackShow(id)
+	issue, err := beads.FallbackShow(id, "")
 	if err != nil {
 		// Issue doesn't exist - return error with helpful hint for cross-project issues
 		// Extract project prefix from ID if present (e.g., "kb-cli" from "kb-cli-xyz123")

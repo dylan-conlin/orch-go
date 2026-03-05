@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -236,13 +235,6 @@ func logSkipEvents(skipConfig verify.SkipConfig, beadsID, workspace, skill strin
 // 3. runCompletionAdvisories — discovered work, probes, explain-back, checklist
 // 4. executeLifecycleTransition — close issue, archive, post-lifecycle operations
 func runComplete(identifier, workdir string) error {
-	// Save and defer-restore beads.DefaultDir. Cross-project detection in
-	// resolveCompletionTarget sets this as a side effect; without restore,
-	// error paths leave it pointing at the wrong project.
-	// Matches defer-restore pattern in spawn_cmd.go:419-421.
-	prevDefaultDir := beads.DefaultDir
-	defer func() { beads.DefaultDir = prevDefaultDir }()
-
 	// Validate skip flags before doing anything else
 	skipConfig := getSkipConfig()
 	if err := verify.ValidateSkipFlags(skipConfig); err != nil {

@@ -1457,16 +1457,16 @@ func findSubstring(s, substr string) bool {
 // to the bd CLI to avoid the default limit of 50 issues.
 // Uses a mock shell script as the bd executable to capture and verify arguments.
 func TestFallbackList_IncludesLimitFlag(t *testing.T) {
-	// Save and restore original BdPath and DefaultDir
+	// Save and restore original BdPath
 	originalBdPath := BdPath
-	originalDefaultDir := DefaultDir
+	
 	defer func() {
 		BdPath = originalBdPath
-		DefaultDir = originalDefaultDir
+		
 	}()
 
 	tmpDir := t.TempDir()
-	DefaultDir = tmpDir
+	
 
 	// Create a mock bd script that records args and returns valid JSON
 	argsFile := filepath.Join(tmpDir, "bd_args")
@@ -1481,7 +1481,7 @@ echo '[{"id":"test-1","title":"Test Issue","status":"open","priority":0,"issue_t
 	BdPath = mockBd
 
 	t.Run("no status filter includes --limit 0", func(t *testing.T) {
-		issues, err := FallbackList("")
+		issues, err := FallbackList("", tmpDir)
 		if err != nil {
 			t.Fatalf("FallbackList failed: %v", err)
 		}
@@ -1501,7 +1501,7 @@ echo '[{"id":"test-1","title":"Test Issue","status":"open","priority":0,"issue_t
 	})
 
 	t.Run("with status filter includes --limit 0", func(t *testing.T) {
-		issues, err := FallbackList("open")
+		issues, err := FallbackList("open", tmpDir)
 		if err != nil {
 			t.Fatalf("FallbackList failed: %v", err)
 		}

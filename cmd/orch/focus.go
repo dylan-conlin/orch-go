@@ -554,7 +554,7 @@ func getReadyIssues() []string {
 	}
 
 	// Fallback to CLI
-	readyIssues, err := beads.FallbackReady()
+	readyIssues, err := beads.FallbackReady("")
 	if err != nil {
 		return nil
 	}

@@ -25,7 +25,7 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 	reason := completeReason
 	if reason == "" {
 		if target.BeadsID != "" {
-			status, _ := verify.GetPhaseStatus(target.BeadsID)
+			status, _ := verify.GetPhaseStatus(target.BeadsID, target.BeadsProjectDir)
 			if status.Summary != "" {
 				reason = status.Summary
 			}
@@ -151,7 +151,7 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 	//    failed silently
 	// Removing a non-existent label is a no-op in beads.
 	if target.BeadsID != "" && !target.IsOrchestratorSession {
-		if err := verify.RemoveOrchAgentLabel(target.BeadsID); err != nil {
+		if err := verify.RemoveOrchAgentLabel(target.BeadsID, target.BeadsProjectDir); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to remove orch:agent label: %v\n", err)
 		}
 	}
@@ -165,7 +165,7 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 
 	// Remove triage:ready label on successful completion
 	if !target.IsClosed && target.BeadsID != "" {
-		if err := verify.RemoveTriageReadyLabel(target.BeadsID); err != nil {
+		if err := verify.RemoveTriageReadyLabel(target.BeadsID, target.BeadsProjectDir); err != nil {
 			// Non-critical
 		}
 

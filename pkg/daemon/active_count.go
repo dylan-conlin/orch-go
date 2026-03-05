@@ -130,7 +130,7 @@ func GetClosedIssuesBatch(beadsIDs []string) map[string]bool {
 
 	// Fallback to CLI for each issue
 	for _, id := range beadsIDs {
-		issue, err := beads.FallbackShow(id)
+		issue, err := beads.FallbackShow(id, "")
 		if err != nil {
 			continue
 		}

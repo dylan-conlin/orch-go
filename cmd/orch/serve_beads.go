@@ -93,7 +93,7 @@ func (c *beadsStatsCache) getStats(projectDir string) (*beads.Stats, error) {
 	// Determine the directory to use
 	workDir := projectDir
 	if workDir == "" {
-		workDir = beads.DefaultDir
+		workDir = sourceDir
 	}
 
 	// Fetch fresh stats
@@ -133,17 +133,17 @@ func (c *beadsStatsCache) getStats(projectDir string) (*beads.Stats, error) {
 	beadsClientMu.Unlock()
 
 	// For non-default projects, always use CLI client with project dir
-	if projectDir != "" && projectDir != beads.DefaultDir {
+	if projectDir != "" && projectDir != sourceDir {
 		cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
 		stats, err = cliClient.Stats()
 	} else if currentClient != nil && socketExists {
 		stats, err = currentClient.Stats()
 		if err != nil {
 			// Fallback to CLI on RPC error
-			stats, err = beads.FallbackStats()
+			stats, err = beads.FallbackStats(workDir)
 		}
 	} else {
-		stats, err = beads.FallbackStats()
+		stats, err = beads.FallbackStats(workDir)
 	}
 
 	if err != nil {
@@ -174,7 +174,7 @@ func (c *beadsStatsCache) getReadyIssues(projectDir string) ([]beads.Issue, erro
 	// Determine the directory to use
 	workDir := projectDir
 	if workDir == "" {
-		workDir = beads.DefaultDir
+		workDir = sourceDir
 	}
 
 	// Fetch fresh ready issues
@@ -214,17 +214,17 @@ func (c *beadsStatsCache) getReadyIssues(projectDir string) ([]beads.Issue, erro
 	beadsClientMu.Unlock()
 
 	// For non-default projects, always use CLI client with project dir
-	if projectDir != "" && projectDir != beads.DefaultDir {
+	if projectDir != "" && projectDir != sourceDir {
 		cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
 		issues, err = cliClient.Ready(nil)
 	} else if currentClient != nil && socketExists {
 		issues, err = currentClient.Ready(nil)
 		if err != nil {
 			// Fallback to CLI on RPC error
-			issues, err = beads.FallbackReady()
+			issues, err = beads.FallbackReady(workDir)
 		}
 	} else {
-		issues, err = beads.FallbackReady()
+		issues, err = beads.FallbackReady(workDir)
 	}
 
 	if err != nil {
@@ -287,7 +287,7 @@ func (c *beadsStatsCache) getGraphIssues(projectDir string) ([]beads.Issue, erro
 	// Determine the directory to use
 	workDir := projectDir
 	if workDir == "" {
-		workDir = beads.DefaultDir
+		workDir = sourceDir
 	}
 
 	// Fetch fresh graph issues (open + in_progress)
@@ -324,7 +324,7 @@ func (c *beadsStatsCache) getGraphIssues(projectDir string) ([]beads.Issue, erro
 	beadsClientMu.Unlock()
 
 	// For non-default projects, always use CLI client with project dir
-	if projectDir != "" && projectDir != beads.DefaultDir {
+	if projectDir != "" && projectDir != sourceDir {
 		cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
 		// List open and in_progress issues
 		var openIssues, inProgressIssues []beads.Issue
@@ -342,7 +342,7 @@ func (c *beadsStatsCache) getGraphIssues(projectDir string) ([]beads.Issue, erro
 		openIssues, err := currentClient.List(&beads.ListArgs{Status: "open"})
 		if err != nil {
 			// Fallback to CLI on RPC error
-			openIssues, err = beads.FallbackList("open")
+			openIssues, err = beads.FallbackList("open", workDir)
 			if err != nil {
 				return nil, err
 			}
@@ -350,7 +350,7 @@ func (c *beadsStatsCache) getGraphIssues(projectDir string) ([]beads.Issue, erro
 		inProgressIssues, err := currentClient.List(&beads.ListArgs{Status: "in_progress"})
 		if err != nil {
 			// Fallback to CLI on RPC error
-			inProgressIssues, err = beads.FallbackList("in_progress")
+			inProgressIssues, err = beads.FallbackList("in_progress", workDir)
 			if err != nil {
 				return nil, err
 			}
@@ -358,11 +358,11 @@ func (c *beadsStatsCache) getGraphIssues(projectDir string) ([]beads.Issue, erro
 		issues = append(openIssues, inProgressIssues...)
 	} else {
 		// CLI fallback
-		openIssues, err := beads.FallbackList("open")
+		openIssues, err := beads.FallbackList("open", workDir)
 		if err != nil {
 			return nil, err
 		}
-		inProgressIssues, err := beads.FallbackList("in_progress")
+		inProgressIssues, err := beads.FallbackList("in_progress", workDir)
 		if err != nil {
 			return nil, err
 		}
@@ -655,10 +655,10 @@ func handleIssues(w http.ResponseWriter, r *http.Request) {
 		})
 		if err != nil {
 			// Fall through to CLI fallback on RPC error
-			issue, err = beads.FallbackCreate(req.Title, req.Description, req.IssueType, req.Priority, req.Labels)
+			issue, err = beads.FallbackCreate(req.Title, req.Description, req.IssueType, req.Priority, req.Labels, sourceDir)
 		}
 	} else {
-		issue, err = beads.FallbackCreate(req.Title, req.Description, req.IssueType, req.Priority, req.Labels)
+		issue, err = beads.FallbackCreate(req.Title, req.Description, req.IssueType, req.Priority, req.Labels, sourceDir)
 	}
 
 	if err != nil {

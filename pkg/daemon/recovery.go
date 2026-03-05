@@ -27,7 +27,7 @@ type ActiveAgent struct {
 // It queries beads for in_progress issues and parses their phase from comments.
 func GetActiveAgents() ([]ActiveAgent, error) {
 	// Get open/in_progress issues
-	openIssues, err := verify.ListOpenIssues()
+	openIssues, err := verify.ListOpenIssues("")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list open issues: %w", err)
 	}
@@ -51,7 +51,7 @@ func GetActiveAgents() ([]ActiveAgent, error) {
 	}
 
 	// Fetch comments in batch
-	commentMap := verify.GetCommentsBatch(inProgressIDs)
+	commentMap := verify.GetCommentsBatch(inProgressIDs, nil)
 
 	var agents []ActiveAgent
 	for id, issue := range inProgressIssues {

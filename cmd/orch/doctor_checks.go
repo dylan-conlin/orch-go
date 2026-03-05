@@ -472,7 +472,7 @@ func checkStalledSessions() ServiceStatus {
 		}
 
 		// Check if this session has any beads comments
-		hasComments, err := verify.HasBeadsComment(beadsID)
+		hasComments, err := verify.HasBeadsComment(beadsID, "")
 		if err != nil {
 			// Skip on error (daemon might be down)
 			continue

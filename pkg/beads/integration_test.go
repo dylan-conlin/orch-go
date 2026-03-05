@@ -306,7 +306,7 @@ func TestIntegration_Fallback_Show(t *testing.T) {
 	t.Logf("Testing FallbackShow with ID: %s", testID)
 
 	// Test the fallback
-	issue, err := FallbackShow(testID)
+	issue, err := FallbackShow(testID, "")
 	if err != nil {
 		t.Fatalf("FallbackShow failed: %v", err)
 	}
@@ -359,7 +359,7 @@ func TestIntegration_Fallback_Show_ChildID(t *testing.T) {
 	t.Logf("Testing FallbackShow with child ID: %s", childID)
 
 	// This is the critical fallback test for child IDs
-	issue, err := FallbackShow(childID)
+	issue, err := FallbackShow(childID, "")
 	if err != nil {
 		t.Fatalf("FallbackShow failed for child ID %q: %v", childID, err)
 	}

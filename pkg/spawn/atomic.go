@@ -93,7 +93,7 @@ func tagBeadsAgent(beadsID string) error {
 		}
 	}
 	// Fallback to CLI
-	return beads.FallbackAddLabel(beadsID, "orch:agent")
+	return beads.FallbackAddLabel(beadsID, "orch:agent", "")
 }
 
 // untagBeadsAgent removes the orch:agent label from a beads issue.
@@ -109,5 +109,5 @@ func untagBeadsAgent(beadsID string) {
 		}
 	}
 	// Fallback to CLI
-	_ = beads.FallbackRemoveLabel(beadsID, "orch:agent")
+	_ = beads.FallbackRemoveLabel(beadsID, "orch:agent", "")
 }

@@ -183,7 +183,7 @@ func VerifyPhaseGatesForCompletionWithComments(workspacePath, beadsID string, co
 
 	// Get beads comments if not pre-fetched
 	if comments == nil {
-		comments, err = GetComments(beadsID)
+		comments, err = GetComments(beadsID, "")
 		if err != nil {
 			return PhaseGateResult{}, fmt.Errorf("failed to get comments: %w", err)
 		}

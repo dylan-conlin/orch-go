@@ -93,7 +93,7 @@ func isInfrastructureWork(task string, beadsID string) bool {
 		}
 	}
 	if beadsID != "" {
-		issue, err := verify.GetIssue(beadsID)
+		issue, err := verify.GetIssue(beadsID, "")
 		if err == nil {
 			titleLower := strings.ToLower(issue.Title)
 			for _, keyword := range infrastructureKeywords {

@@ -75,7 +75,7 @@ func GetReproForCompletion(beadsID string) (*ReproVerificationResult, error) {
 	result := &ReproVerificationResult{}
 
 	// Get issue details
-	issue, err := GetIssue(beadsID)
+	issue, err := GetIssue(beadsID, "")
 	if err != nil {
 		return nil, err
 	}

@@ -422,7 +422,7 @@ func getInProgressBeadsIDs() map[string]bool {
 	}
 
 	// Fallback to CLI
-	issues, err := beads.FallbackList("in_progress")
+	issues, err := beads.FallbackList("in_progress", "")
 	if err != nil {
 		return result
 	}
@@ -461,7 +461,7 @@ func gatherPendingIssues() []PendingIssue {
 	}
 
 	// Fallback to CLI
-	readyIssues, err := beads.FallbackReady()
+	readyIssues, err := beads.FallbackReady("")
 	if err != nil {
 		return issues
 	}
@@ -510,7 +510,7 @@ func gatherRecentWork() []RecentWorkItem {
 	}
 
 	// Fallback to CLI
-	issues, err := beads.FallbackList("closed")
+	issues, err := beads.FallbackList("closed", "")
 	if err != nil {
 		return work
 	}

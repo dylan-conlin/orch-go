@@ -242,7 +242,7 @@ func (c *beadsCache) getOpenIssues() (map[string]*verify.Issue, error) {
 	c.mu.RUnlock()
 
 	// Fetch fresh data
-	issues, err := verify.ListOpenIssues()
+	issues, err := verify.ListOpenIssues(sourceDir)
 	if err != nil {
 		return nil, err
 	}

@@ -12,7 +12,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
-func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isOrchestrator, isMetaOrchestrator bool, serverURL string, noTrack bool, workspaceName string, createBeadsFn func(string, string, string) (string, error)) (string, error) {
+func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isOrchestrator, isMetaOrchestrator bool, serverURL string, noTrack bool, workspaceName string, createBeadsFn func(string, string, string) (string, error), projectDir string) (string, error) {
 	skipBeadsForOrchestrator := isOrchestrator || isMetaOrchestrator
 	beadsID, err := determineBeadsID(projectName, skillName, task, beadsIssueFlag, noTrack || skipBeadsForOrchestrator, createBeadsFn)
 	if err != nil {
@@ -34,7 +34,7 @@ func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isO
 		}
 	}
 	if !noTrack && !skipBeadsForOrchestrator && beadsIssueFlag != "" {
-		if issue, err := verify.GetIssue(beadsID); err == nil {
+		if issue, err := verify.GetIssue(beadsID, projectDir); err == nil {
 			if issue.Status == "closed" {
 				return "", fmt.Errorf("issue %s is already closed", beadsID)
 			}
@@ -49,7 +49,7 @@ func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isO
 						fmt.Fprintf(os.Stderr, "Note: found stale session %s for issue %s (no activity in 30m)\n", shortID(s.ID), beadsID)
 					}
 				}
-				if complete, err := verify.IsPhaseComplete(beadsID); err == nil && complete {
+				if complete, err := verify.IsPhaseComplete(beadsID, projectDir); err == nil && complete {
 					return "", fmt.Errorf("issue %s has Phase: Complete but is not closed. Run 'orch complete %s' first", beadsID, beadsID)
 				}
 				fmt.Fprintf(os.Stderr, "Warning: issue %s is in_progress but no active agent found. Respawning.\n", beadsID)
@@ -57,11 +57,11 @@ func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isO
 		}
 	}
 	if !skipBeadsForOrchestrator && beadsID != "" {
-		if err := verify.UpdateIssueStatus(beadsID, "in_progress"); err != nil {
+		if err := verify.UpdateIssueStatus(beadsID, "in_progress", projectDir); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to update beads issue status: %v\n", err)
 		}
 		if workspaceName != "" {
-			if err := verify.UpdateIssueAssignee(beadsID, workspaceName); err != nil {
+			if err := verify.UpdateIssueAssignee(beadsID, workspaceName, projectDir); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to set assignee on beads issue: %v\n", err)
 			}
 		}
@@ -81,7 +81,7 @@ func determineBeadsID(projectName, skillName, task, spawnIssue string, spawnNoTr
 			return "", fmt.Errorf("failed to create lightweight beads issue: %w", err)
 		}
 		// Add tier:lightweight label to distinguish from fully-tracked issues
-		if err := beads.FallbackAddLabel(beadsID, "tier:lightweight"); err != nil {
+		if err := beads.FallbackAddLabel(beadsID, "tier:lightweight", ""); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to add tier:lightweight label to %s: %v\n", beadsID, err)
 		}
 		return beadsID, nil
@@ -106,7 +106,7 @@ func CreateBeadsIssue(projectName, skillName, task string) (string, error) {
 			}
 		}
 	}
-	issue, err := beads.FallbackCreate(title, "", "task", 2, nil)
+	issue, err := beads.FallbackCreate(title, "", "task", 2, nil, "")
 	if err != nil {
 		return "", err
 	}
@@ -131,13 +131,13 @@ func DetectCrossRepo(cwd, projectDir string) string {
 // ApplyCrossRepoLabels adds cross-repo traceability metadata to a beads issue.
 // Adds tier:light label, cross-repo:<source> label, and a back-reference comment.
 func ApplyCrossRepoLabels(beadsID, sourceProject string) {
-	if err := beads.FallbackAddLabel(beadsID, "tier:light"); err != nil {
+	if err := beads.FallbackAddLabel(beadsID, "tier:light", ""); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to add tier:light label: %v\n", err)
 	}
-	if err := beads.FallbackAddLabel(beadsID, "cross-repo:"+sourceProject); err != nil {
+	if err := beads.FallbackAddLabel(beadsID, "cross-repo:"+sourceProject, ""); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to add cross-repo label: %v\n", err)
 	}
-	if err := beads.FallbackAddComment(beadsID, fmt.Sprintf("Cross-repo spawn from %s", sourceProject)); err != nil {
+	if err := beads.FallbackAddComment(beadsID, fmt.Sprintf("Cross-repo spawn from %s", sourceProject), ""); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to add cross-repo comment: %v\n", err)
 	}
 }

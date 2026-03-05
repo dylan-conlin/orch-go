@@ -527,7 +527,7 @@ func verifyCompletionWithLevelAndComments(beadsID, workspacePath, tier, verifyLe
 	if comments != nil {
 		status = ParsePhaseFromComments(comments)
 	} else {
-		status, err = GetPhaseStatus(beadsID)
+		status, err = GetPhaseStatus(beadsID, "")
 		if err != nil {
 			result.Passed = false
 			result.Errors = append(result.Errors, fmt.Sprintf("failed to get phase status: %v", err))

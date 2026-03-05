@@ -99,7 +99,6 @@ func resolveCompletionTarget(identifier, workdir string) (CompletionTarget, erro
 			if projectName != "" && projectName != filepath.Base(currentDir) {
 				if foundDir := findProjectDirByName(projectName); foundDir != "" {
 					crossProjectDir = foundDir
-					beads.DefaultDir = crossProjectDir
 					fmt.Printf("Auto-detected cross-project from beads ID: %s\n", filepath.Base(crossProjectDir))
 				}
 			}
@@ -158,10 +157,6 @@ func resolveCompletionTarget(identifier, workdir string) (CompletionTarget, erro
 		target.BeadsProjectDir = currentDir
 	}
 
-	// Set beads.DefaultDir for cross-project operations BEFORE any beads operations
-	if target.BeadsProjectDir != currentDir {
-		beads.DefaultDir = target.BeadsProjectDir
-	}
 
 	// Verify the beads issue exists (orchestrator sessions and agents without beads ID skip this)
 	if target.IsOrchestratorSession {
@@ -171,7 +166,7 @@ func resolveCompletionTarget(identifier, workdir string) (CompletionTarget, erro
 		fmt.Printf("Note: %s has no beads ID\n", identifier)
 		target.IsClosed = false
 	} else {
-		issue, err := verify.GetIssue(target.BeadsID)
+		issue, err := verify.GetIssue(target.BeadsID, target.BeadsProjectDir)
 		if err != nil {
 			projectName := filepath.Base(target.BeadsProjectDir)
 			issuePrefix := strings.Split(target.BeadsID, "-")[0]
@@ -231,7 +226,7 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 					createdCount := 0
 					for _, item := range items {
 						title := cleanDiscoveredWorkTitle(item.Description)
-						issue, err := beads.FallbackCreate(title, "", "task", 2, []string{"triage:ready"})
+						issue, err := beads.FallbackCreate(title, "", "task", 2, []string{"triage:ready"}, target.BeadsProjectDir)
 						if err != nil {
 							fmt.Fprintf(os.Stderr, "  Failed to create issue: %v\n", err)
 						} else {
@@ -272,7 +267,7 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 						for _, item := range filedItems {
 							title := cleanDiscoveredWorkTitle(item.Description)
 
-							issue, err := beads.FallbackCreate(title, "", "task", 2, []string{"triage:ready"})
+							issue, err := beads.FallbackCreate(title, "", "task", 2, []string{"triage:ready"}, target.BeadsProjectDir)
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "  Failed to create issue: %v\n", err)
 							} else {

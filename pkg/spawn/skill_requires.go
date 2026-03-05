@@ -317,7 +317,7 @@ func getBeadsIssue(beadsID string) (*beadsIssue, error) {
 	}
 
 	// Fallback to CLI
-	issue, err := beads.FallbackShow(beadsID)
+	issue, err := beads.FallbackShow(beadsID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -354,7 +354,7 @@ func getBeadsComments(beadsID string) ([]beadsComment, error) {
 	}
 
 	// Fallback to CLI
-	comments, err := beads.FallbackComments(beadsID)
+	comments, err := beads.FallbackComments(beadsID, "")
 	if err != nil {
 		return nil, err
 	}

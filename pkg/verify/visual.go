@@ -785,7 +785,7 @@ func VerifyVisualVerificationWithComments(beadsID, workspacePath, projectDir str
 	// Check beads comments for evidence and approval (use pre-fetched if available)
 	if comments == nil {
 		var err error
-		comments, err = GetComments(beadsID)
+		comments, err = GetComments(beadsID, "")
 		if err != nil {
 			result.Warnings = append(result.Warnings, "failed to get beads comments: "+err.Error())
 			comments = nil // Reset to indicate we couldn't fetch

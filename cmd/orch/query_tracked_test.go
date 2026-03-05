@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
-	"github.com/dylan-conlin/orch-go/pkg/discovery"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
@@ -704,9 +703,9 @@ func TestJoinWithReasonCodes_ClaudeBackendRecentlySpawned(t *testing.T) {
 func TestJoinWithReasonCodes_ClaudeBackendNoPhaseStale(t *testing.T) {
 	// Claude-backend agent with no phase, old spawn time, and no tmux window should be "dead"
 	// Mock tmux check to return false (window not alive)
-	oldCheck := discovery.CheckTmuxWindowAlive
-	discovery.CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool { return false }
-	defer func() { discovery.CheckTmuxWindowAlive = oldCheck }()
+	oldCheck := checkTmuxWindowAlive
+	checkTmuxWindowAlive = func(workspaceName, projectDir string) bool { return false }
+	defer func() { checkTmuxWindowAlive = oldCheck }()
 
 	issues := []beads.Issue{
 		{ID: "orch-go-1200", Title: "Dead claude agent", Status: "in_progress"},
@@ -744,8 +743,8 @@ func TestJoinWithReasonCodes_ClaudeBackendNoPhaseStale(t *testing.T) {
 func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
 	// Claude-backend agent with no phase, old spawn time, but tmux window IS alive
 	// should be "active" with reason "tmux_window_alive" — prevents false-idle detection.
-	oldCheck := discovery.CheckTmuxWindowAlive
-	discovery.CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool {
+	oldCheck := checkTmuxWindowAlive
+	checkTmuxWindowAlive = func(workspaceName, projectDir string) bool {
 		// Verify correct arguments are passed
 		if workspaceName != "og-debug-browser-02mar-abcd" {
 			t.Errorf("unexpected workspaceName: %s", workspaceName)
@@ -755,7 +754,7 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
 		}
 		return true // tmux window exists
 	}
-	defer func() { discovery.CheckTmuxWindowAlive = oldCheck }()
+	defer func() { checkTmuxWindowAlive = oldCheck }()
 
 	issues := []beads.Issue{
 		{ID: "orch-go-1250", Title: "Working but no phase", Status: "in_progress"},
@@ -793,13 +792,13 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
 func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackNotCheckedWhenPhaseExists(t *testing.T) {
 	// When a Claude-backend agent HAS a phase, the tmux fallback should NOT be called.
 	// This verifies that tmux is only a fallback, not the primary signal.
-	oldCheck := discovery.CheckTmuxWindowAlive
+	oldCheck := checkTmuxWindowAlive
 	tmuxCalled := false
-	discovery.CheckTmuxWindowAlive = func(workspaceName, projectDir string) bool {
+	checkTmuxWindowAlive = func(workspaceName, projectDir string) bool {
 		tmuxCalled = true
 		return true
 	}
-	defer func() { discovery.CheckTmuxWindowAlive = oldCheck }()
+	defer func() { checkTmuxWindowAlive = oldCheck }()
 
 	issues := []beads.Issue{
 		{ID: "orch-go-1260", Title: "Agent with phase", Status: "in_progress"},
@@ -930,7 +929,7 @@ func TestListTrackedIssuesCLIFiltersClosed(t *testing.T) {
 	oldFn := fallbackListWithLabelFn
 	defer func() { fallbackListWithLabelFn = oldFn }()
 
-	fallbackListWithLabelFn = func(label string) ([]beads.Issue, error) {
+	fallbackListWithLabelFn = func(label string, dir string) ([]beads.Issue, error) {
 		if label != "orch:agent" {
 			t.Fatalf("expected label orch:agent, got %s", label)
 		}

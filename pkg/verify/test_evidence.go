@@ -468,7 +468,7 @@ func VerifyTestEvidenceWithComments(beadsID, workspacePath, projectDir string, c
 	// Use pre-fetched comments if available
 	if comments == nil {
 		var err error
-		comments, err = GetComments(beadsID)
+		comments, err = GetComments(beadsID, "")
 		if err != nil {
 			result.Warnings = append(result.Warnings,
 				"failed to get beads comments: "+err.Error())

@@ -18,11 +18,6 @@ import (
 // Should match the bd CLI version for compatibility.
 var ClientVersion = "0.1.0"
 
-// DefaultDir is the default directory to search for .beads/bd.sock
-// when FindSocketPath is called with an empty string. Set this at
-// startup if the process may run from a different working directory.
-var DefaultDir string
-
 // BdPath is the resolved absolute path to the bd executable.
 // Set this at startup via ResolveBdPath() to ensure Fallback* functions
 // work correctly when running under launchd with minimal PATH.
@@ -142,17 +137,13 @@ func NewClient(socketPath string, opts ...Option) *Client {
 
 // FindSocketPath finds the beads socket path for a directory.
 // It looks for .beads/bd.sock in the given directory or walks up to find it.
-// If dir is empty, uses DefaultDir if set, otherwise uses current working directory.
+// If dir is empty, uses current working directory.
 func FindSocketPath(dir string) (string, error) {
 	if dir == "" {
-		if DefaultDir != "" {
-			dir = DefaultDir
-		} else {
-			var err error
-			dir, err = os.Getwd()
-			if err != nil {
-				return "", fmt.Errorf("failed to get working directory: %w", err)
-			}
+		var err error
+		dir, err = os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("failed to get working directory: %w", err)
 		}
 	}
 
@@ -720,37 +711,24 @@ func setupFallbackEnv(cmd *exec.Cmd) {
 }
 
 // fallbackCmd creates a bd CLI command with timeout for fallback operations.
+// If dir is non-empty, runs in that directory; otherwise uses the process CWD.
 // The returned cancel function MUST be called by the caller (typically via defer).
 // This prevents unkillable lock pileups when bd hangs on JSONL lock.
-func fallbackCmd(args ...string) (*exec.Cmd, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	cmd := exec.CommandContext(ctx, getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	return cmd, cancel
-}
-
-// fallbackCmdInDir creates a bd CLI command with timeout in a specific directory.
-func fallbackCmdInDir(dir string, args ...string) (*exec.Cmd, context.CancelFunc) {
+func fallbackCmd(dir string, args ...string) (*exec.Cmd, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
 	cmd := exec.CommandContext(ctx, getBdPath(), args...)
 	setupFallbackEnv(cmd)
 	if dir != "" {
 		cmd.Dir = dir
-	} else if DefaultDir != "" {
-		cmd.Dir = DefaultDir
 	}
 	return cmd, cancel
 }
 
 // FallbackReady retrieves ready issues via bd CLI.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackReady() ([]Issue, error) {
+// If dir is non-empty, runs in that directory.
+func FallbackReady(dir string) ([]Issue, error) {
 	// Use --limit 0 to get ALL ready issues (bd ready defaults to limit 10)
-	cmd, cancel := fallbackCmd("ready", "--json", "--limit", "0")
+	cmd, cancel := fallbackCmd(dir, "ready", "--json", "--limit", "0")
 	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
@@ -771,39 +749,9 @@ func FallbackReady() ([]Issue, error) {
 // FallbackShow retrieves an issue via bd CLI.
 // Note: bd show --json always returns an array, even for a single issue.
 // We unmarshal the array and return the first element.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackShow(id string) (*Issue, error) {
-	cmd, cancel := fallbackCmd("show", id, "--json")
-	defer cancel()
-	output, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("bd show failed: %w: %s", err, string(exitErr.Stderr))
-		}
-		return nil, fmt.Errorf("bd show failed: %w", err)
-	}
-
-	// bd show returns an array even for a single issue
-	var issues []Issue
-	if err := json.Unmarshal(output, &issues); err != nil {
-		return nil, fmt.Errorf("failed to parse bd show output: %w", err)
-	}
-
-	if len(issues) == 0 {
-		return nil, fmt.Errorf("bd show returned empty array for id: %s", id)
-	}
-
-	return &issues[0], nil
-}
-
-// FallbackShowWithDir retrieves an issue via bd CLI from a specific directory.
-// This is used for cross-project agent visibility where the beads issue is in a different
-// project than the current working directory.
-// If dir is empty, uses DefaultDir if set, otherwise the current working directory.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackShowWithDir(id, dir string) (*Issue, error) {
-	cmd, cancel := fallbackCmdInDir(dir, "show", id, "--json")
+// If dir is non-empty, runs in that directory.
+func FallbackShow(id, dir string) (*Issue, error) {
+	cmd, cancel := fallbackCmd(dir, "show", id, "--json")
 	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
@@ -827,15 +775,14 @@ func FallbackShowWithDir(id, dir string) (*Issue, error) {
 }
 
 // FallbackList retrieves issues via bd CLI.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackList(status string) ([]Issue, error) {
+// If dir is non-empty, runs in that directory.
+func FallbackList(status, dir string) ([]Issue, error) {
 	args := []string{"list", "--json", "--limit", "0"}
 	if status != "" {
 		args = append(args, "--status", status)
 	}
 
-	cmd, cancel := fallbackCmd(args...)
+	cmd, cancel := fallbackCmd(dir, args...)
 	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
@@ -854,16 +801,15 @@ func FallbackList(status string) ([]Issue, error) {
 }
 
 // FallbackListWithLabel retrieves issues with a specific label via bd CLI.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackListWithLabel(label string) ([]Issue, error) {
+// If dir is non-empty, runs in that directory.
+func FallbackListWithLabel(label, dir string) ([]Issue, error) {
 	if label == "" {
 		return []Issue{}, nil
 	}
 
 	args := []string{"list", "--json", "--limit", "0", "-l", label}
 
-	cmd, cancel := fallbackCmd(args...)
+	cmd, cancel := fallbackCmd(dir, args...)
 	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
@@ -881,38 +827,10 @@ func FallbackListWithLabel(label string) ([]Issue, error) {
 	return issues, nil
 }
 
-// FallbackListWithLabelInDir retrieves issues with a specific label via bd CLI,
-// running in the specified directory. This enables querying beads in other projects.
-func FallbackListWithLabelInDir(label, dir string) ([]Issue, error) {
-	if label == "" {
-		return []Issue{}, nil
-	}
-
-	args := []string{"list", "--json", "--limit", "0", "-l", label}
-
-	cmd, cancel := fallbackCmdInDir(dir, args...)
-	defer cancel()
-	output, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("bd list -l %s in %s failed: %w: %s", label, dir, err, string(exitErr.Stderr))
-		}
-		return nil, fmt.Errorf("bd list -l %s in %s failed: %w", label, dir, err)
-	}
-
-	var issues []Issue
-	if err := json.Unmarshal(output, &issues); err != nil {
-		return nil, fmt.Errorf("failed to parse bd list output: %w", err)
-	}
-
-	return issues, nil
-}
-
 // FallbackListByIDs retrieves specific issues by ID via bd CLI.
 // Uses --id and --all flags to fetch issues regardless of status.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackListByIDs(ids []string) ([]Issue, error) {
+// If dir is non-empty, runs in that directory.
+func FallbackListByIDs(ids []string, dir string) ([]Issue, error) {
 	if len(ids) == 0 {
 		return []Issue{}, nil
 	}
@@ -920,7 +838,7 @@ func FallbackListByIDs(ids []string) ([]Issue, error) {
 	// Use --id with comma-separated IDs and --all to include closed issues
 	args := []string{"list", "--json", "--all", "--id", strings.Join(ids, ",")}
 
-	cmd, cancel := fallbackCmd(args...)
+	cmd, cancel := fallbackCmd(dir, args...)
 	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
@@ -939,9 +857,8 @@ func FallbackListByIDs(ids []string) ([]Issue, error) {
 }
 
 // FallbackListByParent retrieves children of a parent issue via bd CLI.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackListByParent(parentID string) ([]Issue, error) {
+// If dir is non-empty, runs in that directory.
+func FallbackListByParent(parentID, dir string) ([]Issue, error) {
 	if parentID == "" {
 		return []Issue{}, nil
 	}
@@ -950,7 +867,7 @@ func FallbackListByParent(parentID string) ([]Issue, error) {
 	// Use --limit 0 to get all children
 	args := []string{"list", "--json", "--limit", "0", "--parent", parentID}
 
-	cmd, cancel := fallbackCmd(args...)
+	cmd, cancel := fallbackCmd(dir, args...)
 	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
@@ -969,10 +886,9 @@ func FallbackListByParent(parentID string) ([]Issue, error) {
 }
 
 // FallbackStats retrieves stats via bd CLI.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackStats() (*Stats, error) {
-	cmd, cancel := fallbackCmd("stats", "--json")
+// If dir is non-empty, runs in that directory.
+func FallbackStats(dir string) (*Stats, error) {
+	cmd, cancel := fallbackCmd(dir, "stats", "--json")
 	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
@@ -991,10 +907,9 @@ func FallbackStats() (*Stats, error) {
 }
 
 // FallbackComments retrieves comments via bd CLI.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackComments(id string) ([]Comment, error) {
-	cmd, cancel := fallbackCmd("comments", id, "--json")
+// If dir is non-empty, runs in that directory.
+func FallbackComments(id, dir string) ([]Comment, error) {
+	cmd, cancel := fallbackCmd(dir, "comments", id, "--json")
 	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
@@ -1013,15 +928,14 @@ func FallbackComments(id string) ([]Comment, error) {
 }
 
 // FallbackClose closes an issue via bd CLI.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackClose(id, reason string) error {
+// If dir is non-empty, runs in that directory.
+func FallbackClose(id, reason, dir string) error {
 	args := []string{"close", id}
 	if reason != "" {
 		args = append(args, "--reason", reason)
 	}
 
-	cmd, cancel := fallbackCmd(args...)
+	cmd, cancel := fallbackCmd(dir, args...)
 	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -1033,14 +947,14 @@ func FallbackClose(id, reason string) error {
 // FallbackForceClose closes an issue via bd CLI with --force flag.
 // This bypasses bd's Phase: Complete and pinned checks, used when orch complete
 // has already verified (or explicitly skipped) those gates.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-func FallbackForceClose(id, reason string) error {
+// If dir is non-empty, runs in that directory.
+func FallbackForceClose(id, reason, dir string) error {
 	args := []string{"close", id, "--force"}
 	if reason != "" {
 		args = append(args, "--reason", reason)
 	}
 
-	cmd, cancel := fallbackCmd(args...)
+	cmd, cancel := fallbackCmd(dir, args...)
 	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -1050,9 +964,8 @@ func FallbackForceClose(id, reason string) error {
 }
 
 // FallbackCreate creates an issue via bd CLI.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackCreate(title, description, issueType string, priority int, labels []string) (*Issue, error) {
+// If dir is non-empty, runs in that directory.
+func FallbackCreate(title, description, issueType string, priority int, labels []string, dir string) (*Issue, error) {
 	args := []string{"create", title, "--json"}
 	if description != "" {
 		args = append(args, "--description", description)
@@ -1067,43 +980,7 @@ func FallbackCreate(title, description, issueType string, priority int, labels [
 		args = append(args, "--label", label)
 	}
 
-	cmd, cancel := fallbackCmd(args...)
-	defer cancel()
-	output, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("bd create failed: %w: %s", err, string(exitErr.Stderr))
-		}
-		return nil, fmt.Errorf("bd create failed: %w", err)
-	}
-
-	var issue Issue
-	if err := json.Unmarshal(output, &issue); err != nil {
-		return nil, fmt.Errorf("failed to parse bd create output: %w", err)
-	}
-
-	return &issue, nil
-}
-
-// FallbackCreateInDir creates an issue via bd CLI in a specific directory.
-// If dir is non-empty, it overrides both DefaultDir and the process cwd.
-// If dir is empty, falls back to DefaultDir then process cwd (same as FallbackCreate).
-func FallbackCreateInDir(title, description, issueType string, priority int, labels []string, dir string) (*Issue, error) {
-	args := []string{"create", title, "--json"}
-	if description != "" {
-		args = append(args, "--description", description)
-	}
-	if issueType != "" {
-		args = append(args, "--type", issueType)
-	}
-	if priority > 0 {
-		args = append(args, "--priority", fmt.Sprintf("%d", priority))
-	}
-	for _, label := range labels {
-		args = append(args, "--label", label)
-	}
-
-	cmd, cancel := fallbackCmdInDir(dir, args...)
+	cmd, cancel := fallbackCmd(dir, args...)
 	defer cancel()
 	output, err := cmd.Output()
 	if err != nil {
@@ -1122,10 +999,9 @@ func FallbackCreateInDir(title, description, issueType string, priority int, lab
 }
 
 // FallbackAddComment adds a comment via bd CLI.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackAddComment(id, text string) error {
-	cmd, cancel := fallbackCmd("comments", "add", id, text)
+// If dir is non-empty, runs in that directory.
+func FallbackAddComment(id, text, dir string) error {
+	cmd, cancel := fallbackCmd(dir, "comments", "add", id, text)
 	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -1136,14 +1012,13 @@ func FallbackAddComment(id, text string) error {
 
 // FallbackUpdate updates an issue via bd CLI.
 // Currently supports updating the status field.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackUpdate(id, status string) error {
+// If dir is non-empty, runs in that directory.
+func FallbackUpdate(id, status, dir string) error {
 	args := []string{"update", id}
 	if status != "" {
 		args = append(args, "--status", status)
 	}
-	cmd, cancel := fallbackCmd(args...)
+	cmd, cancel := fallbackCmd(dir, args...)
 	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -1153,11 +1028,10 @@ func FallbackUpdate(id, status string) error {
 }
 
 // FallbackUpdateAssignee updates the assignee of an issue via bd CLI.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackUpdateAssignee(id, assignee string) error {
+// If dir is non-empty, runs in that directory.
+func FallbackUpdateAssignee(id, assignee, dir string) error {
 	args := []string{"update", id, "--assignee", assignee}
-	cmd, cancel := fallbackCmd(args...)
+	cmd, cancel := fallbackCmd(dir, args...)
 	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -1167,10 +1041,9 @@ func FallbackUpdateAssignee(id, assignee string) error {
 }
 
 // FallbackAddLabel adds a label to an issue via bd CLI.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackAddLabel(id, label string) error {
-	cmd, cancel := fallbackCmd("update", id, "--add-label", label)
+// If dir is non-empty, runs in that directory.
+func FallbackAddLabel(id, label, dir string) error {
+	cmd, cancel := fallbackCmd(dir, "update", id, "--add-label", label)
 	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -1180,22 +1053,9 @@ func FallbackAddLabel(id, label string) error {
 }
 
 // FallbackRemoveLabel removes a label from an issue via bd CLI.
-// Uses DefaultDir if set to ensure cross-project operations work correctly.
-// Uses getBdPath() to resolve the bd executable location.
-func FallbackRemoveLabel(id, label string) error {
-	cmd, cancel := fallbackCmd("update", id, "--remove-label", label)
-	defer cancel()
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("bd remove-label failed: %w: %s", err, string(output))
-	}
-	return nil
-}
-
-// FallbackRemoveLabelInDir removes a label from an issue via bd CLI,
-// running in the specified directory. This enables cross-project label operations.
-func FallbackRemoveLabelInDir(id, label, dir string) error {
-	cmd, cancel := fallbackCmdInDir(dir, "update", id, "--remove-label", label)
+// If dir is non-empty, runs in that directory.
+func FallbackRemoveLabel(id, label, dir string) error {
+	cmd, cancel := fallbackCmd(dir, "update", id, "--remove-label", label)
 	defer cancel()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -1223,7 +1083,7 @@ func CheckBlockingDependencies(issueID string) ([]BlockingDependency, error) {
 	}
 
 	// Fallback to CLI
-	issue, err := FallbackShow(issueID)
+	issue, err := FallbackShow(issueID, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get issue %s: %w", issueID, err)
 	}

@@ -359,7 +359,7 @@ func filterClosedIssues(candidates []CompletionInfo) []CompletionInfo {
 
 	// Use ListOpenIssues to get all open issues in a single call
 	// This is much faster than individual Show() calls for each beads ID
-	openIssueMap, err := verify.ListOpenIssues()
+	openIssueMap, err := verify.ListOpenIssues("")
 	if err != nil {
 		// If beads is unavailable, return all candidates
 		return candidates
@@ -940,7 +940,7 @@ func runReviewDone(project string) error {
 		}
 
 		// Check if already closed
-		issue, err := verify.GetIssue(c.BeadsID)
+		issue, err := verify.GetIssue(c.BeadsID, "")
 		if err != nil {
 			completionErrors = append(completionErrors, fmt.Sprintf("%s: failed to get issue: %v", c.BeadsID, err))
 			continue
@@ -955,7 +955,7 @@ func runReviewDone(project string) error {
 			}
 
 			// Close the beads issue
-			if err := verify.CloseIssue(c.BeadsID, reason); err != nil {
+			if err := verify.CloseIssue(c.BeadsID, reason, ""); err != nil {
 				completionErrors = append(completionErrors, fmt.Sprintf("%s: failed to close: %v", c.BeadsID, err))
 				continue
 			}

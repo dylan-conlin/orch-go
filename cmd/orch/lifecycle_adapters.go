@@ -29,7 +29,8 @@ var (
 
 // beadsAdapter wraps beads.CLIClient to implement agent.BeadsClient.
 type beadsAdapter struct {
-	client *beads.CLIClient
+	client  *beads.CLIClient
+	workDir string
 }
 
 func newBeadsAdapter(workDir string) *beadsAdapter {
@@ -37,7 +38,7 @@ func newBeadsAdapter(workDir string) *beadsAdapter {
 	if workDir != "" {
 		opts = append(opts, beads.WithWorkDir(workDir))
 	}
-	return &beadsAdapter{client: beads.NewCLIClient(opts...)}
+	return &beadsAdapter{client: beads.NewCLIClient(opts...), workDir: workDir}
 }
 
 func (a *beadsAdapter) AddLabel(beadsID, label string) error {
@@ -54,18 +55,18 @@ func (a *beadsAdapter) UpdateStatus(beadsID, status string) error {
 }
 
 func (a *beadsAdapter) SetAssignee(beadsID, assignee string) error {
-	return beads.FallbackUpdateAssignee(beadsID, assignee)
+	return beads.FallbackUpdateAssignee(beadsID, assignee, a.workDir)
 }
 
 func (a *beadsAdapter) ClearAssignee(beadsID string) error {
-	return beads.FallbackUpdateAssignee(beadsID, "")
+	return beads.FallbackUpdateAssignee(beadsID, "", a.workDir)
 }
 
 func (a *beadsAdapter) CloseIssue(beadsID, reason string) error {
 	// Use force-close to avoid double-gate: LifecycleManager.Complete is called AFTER
 	// orch complete's verification gates have passed, so bd's own Phase: Complete check
 	// is redundant and would fail when --skip-phase-complete was used.
-	return beads.FallbackForceClose(beadsID, reason)
+	return beads.FallbackForceClose(beadsID, reason, a.workDir)
 }
 
 func (a *beadsAdapter) GetComments(beadsID string) ([]string, error) {

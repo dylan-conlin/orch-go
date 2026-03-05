@@ -572,13 +572,13 @@ func phaseName(phase string) string {
 // getPhaseAndTask retrieves the current phase and task description from beads.
 func getPhaseAndTask(beadsID string) (phase, task string) {
 	// Get issue for task description
-	issue, err := verify.GetIssue(beadsID)
+	issue, err := verify.GetIssue(beadsID, "")
 	if err == nil {
 		task = truncate(issue.Title, 40)
 	}
 
 	// Get phase from comments
-	status, err := verify.GetPhaseStatus(beadsID)
+	status, err := verify.GetPhaseStatus(beadsID, "")
 	if err == nil && status.Found {
 		phase = status.Phase
 	}
