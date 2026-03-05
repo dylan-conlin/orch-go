@@ -1041,3 +1041,147 @@ func TestOnceExcluding_SpawnFailure_RetriedWithFreshSkipMap(t *testing.T) {
 		t.Errorf("expected 2 spawn calls (fail + retry), got %d", callCount)
 	}
 }
+
+// TestSpawnIssue_PhaseCompleteError_AttemptsAutoComplete verifies that when
+// SpawnWork returns a "Phase: Complete but is not closed" error, the daemon
+// attempts auto-completion instead of just rolling back and retrying every cycle.
+func TestSpawnIssue_PhaseCompleteError_AttemptsAutoComplete(t *testing.T) {
+	autoCompleteCalled := false
+	autoCompleteBeadsID := ""
+	autoCompleteWorkdir := ""
+
+	d := &Daemon{
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "toolshed-a8m", Title: "Cross-repo task", Priority: 0, IssueType: "task", Status: "open", ProjectDir: "/tmp/toolshed"},
+				}, nil
+			},
+		},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+			return fmt.Errorf("failed to spawn work: exit status 1: issue %s has Phase: Complete but is not closed. Run 'orch complete %s' first", beadsID, beadsID)
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
+		AutoCompleter: &mockAutoCompleter{
+			CompleteFunc: func(beadsID, workdir string) error {
+				autoCompleteCalled = true
+				autoCompleteBeadsID = beadsID
+				autoCompleteWorkdir = workdir
+				return nil
+			},
+		},
+	}
+
+	result, err := d.OnceExcluding(nil)
+	if err != nil {
+		t.Fatalf("OnceExcluding() error: %v", err)
+	}
+
+	if !autoCompleteCalled {
+		t.Fatal("AutoCompleter.Complete should be called when SpawnWork returns Phase: Complete error")
+	}
+	if autoCompleteBeadsID != "toolshed-a8m" {
+		t.Errorf("AutoCompleter.Complete beadsID = %q, want %q", autoCompleteBeadsID, "toolshed-a8m")
+	}
+	if autoCompleteWorkdir != "/tmp/toolshed" {
+		t.Errorf("AutoCompleter.Complete workdir = %q, want %q", autoCompleteWorkdir, "/tmp/toolshed")
+	}
+
+	// Should not be marked as processed (it wasn't spawned, it was auto-completed)
+	if result.Processed {
+		t.Error("result.Processed should be false (issue was auto-completed, not spawned)")
+	}
+	// Error should be nil since auto-complete succeeded
+	if result.Error != nil {
+		t.Errorf("result.Error should be nil after successful auto-complete, got: %v", result.Error)
+	}
+	// Message should indicate auto-completion
+	if result.Message == "" {
+		t.Error("result.Message should describe auto-completion")
+	}
+}
+
+// TestSpawnIssue_PhaseCompleteError_AutoCompleteFails_FallsBack verifies that
+// when auto-completion fails, the daemon falls back to normal error handling
+// (rollback + skip).
+func TestSpawnIssue_PhaseCompleteError_AutoCompleteFails_FallsBack(t *testing.T) {
+	autoCompleteCalled := false
+	statusUpdates := map[string]string{}
+
+	d := &Daemon{
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "toolshed-b2c", Title: "Cross-repo task", Priority: 0, IssueType: "task", Status: "open", ProjectDir: "/tmp/toolshed"},
+				}, nil
+			},
+		},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+			return fmt.Errorf("failed to spawn work: exit status 1: issue %s has Phase: Complete but is not closed", beadsID)
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			statusUpdates[beadsID] = status
+			return nil
+		}},
+		AutoCompleter: &mockAutoCompleter{
+			CompleteFunc: func(beadsID, workdir string) error {
+				autoCompleteCalled = true
+				return fmt.Errorf("orch complete failed: gate failure")
+			},
+		},
+	}
+
+	result, err := d.OnceExcluding(nil)
+	if err != nil {
+		t.Fatalf("OnceExcluding() error: %v", err)
+	}
+
+	if !autoCompleteCalled {
+		t.Fatal("AutoCompleter.Complete should be called even when it will fail")
+	}
+
+	// Should fall back to normal error handling
+	if result.Processed {
+		t.Error("result.Processed should be false")
+	}
+	if result.Error == nil {
+		t.Error("result.Error should be set after auto-complete failure")
+	}
+}
+
+// TestSpawnIssue_PhaseCompleteError_NoAutoCompleter_SkipsGracefully verifies
+// that when AutoCompleter is nil, the daemon handles the Phase: Complete error
+// gracefully without panicking.
+func TestSpawnIssue_PhaseCompleteError_NoAutoCompleter_SkipsGracefully(t *testing.T) {
+	d := &Daemon{
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "toolshed-c3d", Title: "Cross-repo task", Priority: 0, IssueType: "task", Status: "open", ProjectDir: "/tmp/toolshed"},
+				}, nil
+			},
+		},
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+			return fmt.Errorf("failed to spawn work: exit status 1: issue %s has Phase: Complete but is not closed", beadsID)
+		}},
+		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
+			return nil
+		}},
+		// AutoCompleter intentionally nil
+	}
+
+	result, err := d.OnceExcluding(nil)
+	if err != nil {
+		t.Fatalf("OnceExcluding() error: %v", err)
+	}
+
+	// Should skip gracefully with error
+	if result.Processed {
+		t.Error("result.Processed should be false")
+	}
+	if result.Error == nil {
+		t.Error("result.Error should be set")
+	}
+}

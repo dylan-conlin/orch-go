@@ -806,6 +806,36 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 		spawner = &defaultSpawner{}
 	}
 	if err := spawner.SpawnWork(issue.ID, inferredModel, workdir); err != nil {
+		// Check if this is a "Phase: Complete but not closed" error.
+		// This happens with cross-repo issues where the agent completed work
+		// but the issue was never closed (e.g., orphaned cross-project issues).
+		// Instead of rolling back to "open" and retrying every cycle, attempt
+		// auto-completion to close the issue permanently.
+		if strings.Contains(err.Error(), "Phase: Complete but is not closed") {
+			if d.AutoCompleter != nil {
+				completeErr := d.AutoCompleter.Complete(issue.ID, workdir)
+				if completeErr == nil {
+					// Auto-completion succeeded — issue is now closed.
+					// Clean up spawn tracking state.
+					if d.SpawnedIssues != nil {
+						d.SpawnedIssues.Unmark(issue.ID)
+					}
+					if d.Pool != nil && slot != nil {
+						d.Pool.Release(slot)
+					}
+					return &OnceResult{
+						Processed: false,
+						Issue:     issue,
+						Skill:     skill,
+						Model:     inferredModel,
+						Message:   fmt.Sprintf("Auto-completed %s (Phase: Complete but not closed)", issue.ID),
+					}, nil, nil
+				}
+				// Auto-completion failed — fall through to normal error handling
+				fmt.Fprintf(os.Stderr, "Warning: auto-complete failed for Phase:Complete issue %s, skipping: %v\n", issue.ID, completeErr)
+			}
+		}
+
 		// On spawn failure, roll back beads status to open
 		// CRITICAL: If rollback fails, return immediately. Rollback failure indicates
 		// database issues (connectivity, beads daemon unavailability, etc.) that need
