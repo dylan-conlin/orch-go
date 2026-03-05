@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/debrief"
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/spf13/cobra"
@@ -19,9 +20,11 @@ import (
 
 var (
 	debriefChanged string
+	debriefLearned string
 	debriefNext    string
 	debriefJSON    bool
 	debriefDryRun  bool
+	debriefQuality bool
 )
 
 var debriefCmd = &cobra.Command{
@@ -37,17 +40,23 @@ Auto-populates from:
 
 Override or supplement sections with flags:
   --changed "we decided X because Y"
+  --learned "X matters because Y;Z implies W"
   --next "integrate debrief into orient;ship snap MVP"
 
-Semicolons separate multiple items in --changed and --next.
+Semicolons separate multiple items in --changed, --learned, and --next.
+
+Use --quality to run advisory heuristics that detect event-log patterns
+in the "What We Learned" section (empty, action-verb-only, missing connectives).
 
 If a debrief already exists for today, it will be overwritten.
 
 Examples:
   orch debrief                              # Auto-populate everything
   orch debrief "Ship snap MVP"              # Set focus explicitly
+  orch debrief --learned "X because Y"      # Add insight to What We Learned
   orch debrief --changed "decided to use JWT"
   orch debrief --next "fix auth;ship snap"
+  orch debrief --quality                    # Run advisory quality check
   orch debrief --dry-run                    # Preview without writing
   orch debrief --json                       # Output data as JSON`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -61,9 +70,11 @@ Examples:
 
 func init() {
 	debriefCmd.Flags().StringVar(&debriefChanged, "changed", "", "What changed this session (semicolon-separated)")
+	debriefCmd.Flags().StringVar(&debriefLearned, "learned", "", "What we learned — insights with connective language (semicolon-separated)")
 	debriefCmd.Flags().StringVar(&debriefNext, "next", "", "What's next (semicolon-separated)")
 	debriefCmd.Flags().BoolVar(&debriefJSON, "json", false, "Output as JSON")
 	debriefCmd.Flags().BoolVar(&debriefDryRun, "dry-run", false, "Preview output without writing file")
+	debriefCmd.Flags().BoolVar(&debriefQuality, "quality", false, "Run advisory quality heuristic on debrief content")
 }
 
 func runDebrief(focusOverride string) error {
@@ -95,8 +106,8 @@ func runDebrief(focusOverride string) error {
 	events := loadDebriefEvents(now)
 	data.WhatHappened = debrief.CollectWhatHappened(events)
 
-	// 4. What We Learned: --changed flag + completion reasons from events
-	data.WhatWeLearned = collectDebriefChanged(events)
+	// 4. What We Learned: --learned flag + --changed flag + completion reasons from events
+	data.WhatWeLearned = collectDebriefLearned(events)
 
 	// 5. What's In Flight from bd list --status=in_progress
 	data.InFlight = collectDebriefInFlight()
@@ -117,6 +128,9 @@ func runDebrief(focusOverride string) error {
 	// Dry-run: print and exit
 	if debriefDryRun {
 		fmt.Print(output)
+		if debriefQuality {
+			printQualityCheck(data)
+		}
 		return nil
 	}
 
@@ -133,6 +147,14 @@ func runDebrief(focusOverride string) error {
 	fmt.Printf("  Happened: %d item(s)\n", len(data.WhatHappened))
 	fmt.Printf("  In flight: %d item(s)\n", len(data.InFlight))
 	fmt.Printf("  Next:     %d item(s)\n", len(data.WhatsNext))
+
+	// Print comprehension prompt after auto-populating facts
+	fmt.Print(debrief.ComprehensionPrompt())
+
+	// Run quality check if requested
+	if debriefQuality {
+		printQualityCheck(data)
+	}
 
 	return nil
 }
@@ -208,11 +230,16 @@ func loadDebriefEvents(now time.Time) []debrief.SessionEvent {
 	return debrief.FilterEventsToday(events, now)
 }
 
-// collectDebriefChanged merges --changed flag with completion reasons from events.
-func collectDebriefChanged(events []debrief.SessionEvent) []string {
+// collectDebriefLearned merges --learned flag, --changed flag, and completion reasons from events.
+func collectDebriefLearned(events []debrief.SessionEvent) []string {
 	var items []string
 
-	// User-provided via --changed flag
+	// User-provided via --learned flag (preferred — explicit insights)
+	if debriefLearned != "" {
+		items = append(items, debrief.ParseMultiValue(debriefLearned)...)
+	}
+
+	// User-provided via --changed flag (backward compat)
 	if debriefChanged != "" {
 		items = append(items, debrief.ParseMultiValue(debriefChanged)...)
 	}
@@ -221,6 +248,40 @@ func collectDebriefChanged(events []debrief.SessionEvent) []string {
 	items = append(items, debrief.CollectWhatWeLearned(events)...)
 
 	return items
+}
+
+// printQualityCheck runs the advisory quality heuristic and prints results.
+// Also emits a debrief.quality event to events.jsonl for tracking.
+func printQualityCheck(data *debrief.DebriefData) {
+	result := debrief.CheckQuality(data)
+
+	// Print warnings
+	formatted := debrief.FormatQualityWarnings(result)
+	if formatted != "" {
+		fmt.Printf("\n%s", formatted)
+	} else {
+		fmt.Println("\nQuality: PASS — comprehension signals detected")
+	}
+
+	// Emit debrief.quality event
+	logger := events.NewDefaultLogger()
+	var patterns []string
+	for _, w := range result.Warnings {
+		patterns = append(patterns, w.Pattern)
+	}
+	outcome := "pass"
+	if !result.Pass {
+		outcome = "fail"
+	}
+	_ = logger.Log(events.Event{
+		Type:      "debrief.quality",
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"outcome":     outcome,
+			"patterns":    patterns,
+			"learned_count": len(data.WhatWeLearned),
+		},
+	})
 }
 
 // collectDebriefInFlight gets in-progress issues from beads.
