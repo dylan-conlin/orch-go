@@ -1885,3 +1885,266 @@ func TestFlagLandedArtifacts_AddsLabelAndLogsEvent(t *testing.T) {
 		t.Errorf("expected beads_id 'orch-go-crashed1', got %q", el.events[0]["beads_id"])
 	}
 }
+
+// --- Unified Lifecycle Cleanup Discipline Tests ---
+// These tests verify the core invariant: every transition through the same
+// terminal state produces identical cleanup effects, regardless of entry path.
+
+// collectEffectOps returns a sorted list of subsystem/operation pairs from a TransitionEvent.
+func collectEffectOps(event *TransitionEvent) []string {
+	var ops []string
+	for _, e := range event.Effects {
+		ops = append(ops, e.Subsystem+"/"+e.Operation)
+	}
+	return ops
+}
+
+func TestCleanupParity_CompleteAndForceComplete_SameEffects(t *testing.T) {
+	// Complete (from PhaseComplete) and ForceComplete (from Orphaned) must
+	// produce identical cleanup effects. Only the from-state and event type differ.
+	agent := testAgent()
+
+	// Run Complete
+	mgr1, _, oc1, tc1, _, _ := testManager()
+	oc1.sessions[agent.SessionID] = true
+	tc1.windows[agent.WorkspaceName] = true
+	completeEvent, err := mgr1.Complete(agent, "test reason")
+	if err != nil {
+		t.Fatalf("Complete() error: %v", err)
+	}
+
+	// Run ForceComplete
+	mgr2, _, oc2, tc2, _, _ := testManager()
+	oc2.sessions[agent.SessionID] = true
+	tc2.windows[agent.WorkspaceName] = true
+	forceCompleteEvent, err := mgr2.ForceComplete(agent, "test reason")
+	if err != nil {
+		t.Fatalf("ForceComplete() error: %v", err)
+	}
+
+	// Compare effect operations (ignoring event log type which intentionally differs)
+	completeOps := collectEffectOps(completeEvent)
+	forceOps := collectEffectOps(forceCompleteEvent)
+
+	if len(completeOps) != len(forceOps) {
+		t.Fatalf("effect count mismatch: Complete has %d, ForceComplete has %d\n  Complete: %v\n  ForceComplete: %v",
+			len(completeOps), len(forceOps), completeOps, forceOps)
+	}
+
+	// Compare all effects except the event log operation name (which differs by design)
+	for i := range completeOps {
+		if completeOps[i] != forceOps[i] {
+			// Allow the log event type to differ
+			if completeOps[i] == "events/log_completed" && forceOps[i] == "events/log_completed" {
+				continue
+			}
+			t.Errorf("effect %d differs: Complete=%q, ForceComplete=%q", i, completeOps[i], forceOps[i])
+		}
+	}
+
+	// Both should have the same criticality pattern
+	for i := range completeEvent.Effects {
+		if completeEvent.Effects[i].Critical != forceCompleteEvent.Effects[i].Critical {
+			t.Errorf("effect %d (%s) criticality differs: Complete=%v, ForceComplete=%v",
+				i, completeOps[i], completeEvent.Effects[i].Critical, forceCompleteEvent.Effects[i].Critical)
+		}
+	}
+}
+
+func TestCleanupParity_AbandonAndForceAbandon_SameEffects(t *testing.T) {
+	// Abandon (from Active) and ForceAbandon (from Orphaned) must
+	// produce identical cleanup effects. Only the from-state and reason differ.
+	agent := testAgent()
+
+	// Run Abandon
+	mgr1, _, oc1, tc1, _, wm1 := testManager()
+	oc1.sessions[agent.SessionID] = true
+	tc1.windows[agent.WorkspaceName] = true
+	wm1.existing[agent.WorkspacePath] = true
+	abandonEvent, err := mgr1.Abandon(agent, "test reason")
+	if err != nil {
+		t.Fatalf("Abandon() error: %v", err)
+	}
+
+	// Run ForceAbandon (uses its own reason)
+	mgr2, _, oc2, tc2, _, wm2 := testManager()
+	oc2.sessions[agent.SessionID] = true
+	tc2.windows[agent.WorkspaceName] = true
+	wm2.existing[agent.WorkspacePath] = true
+	forceAbandonEvent, err := mgr2.ForceAbandon(agent)
+	if err != nil {
+		t.Fatalf("ForceAbandon() error: %v", err)
+	}
+
+	// Compare effect operations
+	abandonOps := collectEffectOps(abandonEvent)
+	forceOps := collectEffectOps(forceAbandonEvent)
+
+	if len(abandonOps) != len(forceOps) {
+		t.Fatalf("effect count mismatch: Abandon has %d, ForceAbandon has %d\n  Abandon: %v\n  ForceAbandon: %v",
+			len(abandonOps), len(forceOps), abandonOps, forceOps)
+	}
+
+	for i := range abandonOps {
+		if abandonOps[i] != forceOps[i] {
+			t.Errorf("effect %d differs: Abandon=%q, ForceAbandon=%q", i, abandonOps[i], forceOps[i])
+		}
+	}
+
+	// Both should have the same criticality pattern
+	for i := range abandonEvent.Effects {
+		if abandonEvent.Effects[i].Critical != forceAbandonEvent.Effects[i].Critical {
+			t.Errorf("effect %d (%s) criticality differs: Abandon=%v, ForceAbandon=%v",
+				i, abandonOps[i], abandonEvent.Effects[i].Critical, forceAbandonEvent.Effects[i].Critical)
+		}
+	}
+}
+
+func TestCleanupParity_AllCompletionPaths_CleanInfrastructure(t *testing.T) {
+	// Every path to Completed state must kill tmux and delete opencode session.
+	// This is the infrastructure cleanup invariant.
+	agent := testAgent()
+
+	transitions := []struct {
+		name string
+		run  func(*lifecycleManager) (*TransitionEvent, error)
+	}{
+		{"Complete", func(mgr *lifecycleManager) (*TransitionEvent, error) {
+			return mgr.Complete(agent, "done")
+		}},
+		{"ForceComplete", func(mgr *lifecycleManager) (*TransitionEvent, error) {
+			return mgr.ForceComplete(agent, "gc done")
+		}},
+	}
+
+	for _, tc := range transitions {
+		t.Run(tc.name, func(t *testing.T) {
+			mgr, _, oc, tmux, _, _ := testManager()
+			oc.sessions[agent.SessionID] = true
+			tmux.windows[agent.WorkspaceName] = true
+
+			event, err := tc.run(mgr)
+			if err != nil {
+				t.Fatalf("%s error: %v", tc.name, err)
+			}
+
+			// Check tmux cleanup
+			hasTmuxKill := false
+			hasSessionDelete := false
+			for _, e := range event.Effects {
+				if e.Subsystem == "tmux" && e.Operation == "kill_window" && e.Success {
+					hasTmuxKill = true
+				}
+				if e.Subsystem == "opencode" && e.Operation == "delete_session" && e.Success {
+					hasSessionDelete = true
+				}
+			}
+			if !hasTmuxKill {
+				t.Errorf("%s: tmux window not killed", tc.name)
+			}
+			if !hasSessionDelete {
+				t.Errorf("%s: opencode session not deleted", tc.name)
+			}
+		})
+	}
+}
+
+func TestCleanupParity_AllAbandonmentPaths_CleanInfrastructure(t *testing.T) {
+	// Every path to Abandoned state must also kill tmux and delete opencode session.
+	agent := testAgent()
+
+	transitions := []struct {
+		name string
+		run  func(*lifecycleManager) (*TransitionEvent, error)
+	}{
+		{"Abandon", func(mgr *lifecycleManager) (*TransitionEvent, error) {
+			return mgr.Abandon(agent, "stuck")
+		}},
+		{"ForceAbandon", func(mgr *lifecycleManager) (*TransitionEvent, error) {
+			return mgr.ForceAbandon(agent)
+		}},
+	}
+
+	for _, tc := range transitions {
+		t.Run(tc.name, func(t *testing.T) {
+			mgr, _, oc, tmux, _, wm := testManager()
+			oc.sessions[agent.SessionID] = true
+			tmux.windows[agent.WorkspaceName] = true
+			wm.existing[agent.WorkspacePath] = true
+
+			event, err := tc.run(mgr)
+			if err != nil {
+				t.Fatalf("%s error: %v", tc.name, err)
+			}
+
+			hasTmuxKill := false
+			hasSessionDelete := false
+			for _, e := range event.Effects {
+				if e.Subsystem == "tmux" && e.Operation == "kill_window" && e.Success {
+					hasTmuxKill = true
+				}
+				if e.Subsystem == "opencode" && e.Operation == "delete_session" && e.Success {
+					hasSessionDelete = true
+				}
+			}
+			if !hasTmuxKill {
+				t.Errorf("%s: tmux window not killed", tc.name)
+			}
+			if !hasSessionDelete {
+				t.Errorf("%s: opencode session not deleted", tc.name)
+			}
+		})
+	}
+}
+
+func TestBeginSpawn_Rollback_RemovesWorkspace(t *testing.T) {
+	// Spawn rollback must clean workspace directory (matches AtomicSpawnPhase1).
+	// Without this, failed spawns leave orphan directories.
+	mgr, _, _, _, _, wm := testManager()
+
+	input := SpawnInput{
+		BeadsID:       "proj-123",
+		WorkspaceName: "og-feat-test-27feb-abc1",
+		WorkspacePath: "/tmp/.orch/workspace/og-feat-test-27feb-abc1",
+		ProjectDir:    "/tmp/proj",
+		SpawnMode:     "opencode",
+	}
+
+	handle, err := mgr.BeginSpawn(input)
+	if err != nil {
+		t.Fatalf("BeginSpawn() error: %v", err)
+	}
+
+	// Simulate spawn failure — caller invokes rollback
+	handle.SafeRollback()
+
+	// Workspace should be cleaned up
+	if len(wm.removed) != 1 || wm.removed[0] != input.WorkspacePath {
+		t.Errorf("rollback did not remove workspace: removed=%v", wm.removed)
+	}
+}
+
+func TestBeginSpawn_Rollback_NoTrack_StillRemovesWorkspace(t *testing.T) {
+	// Even no-track spawns should clean workspace on rollback.
+	mgr, _, _, _, _, wm := testManager()
+
+	input := SpawnInput{
+		BeadsID:       "",
+		WorkspaceName: "og-feat-test-27feb-abc1",
+		WorkspacePath: "/tmp/.orch/workspace/og-feat-test-27feb-abc1",
+		ProjectDir:    "/tmp/proj",
+		SpawnMode:     "opencode",
+		NoTrack:       true,
+	}
+
+	handle, err := mgr.BeginSpawn(input)
+	if err != nil {
+		t.Fatalf("BeginSpawn() error: %v", err)
+	}
+
+	handle.SafeRollback()
+
+	if len(wm.removed) != 1 || wm.removed[0] != input.WorkspacePath {
+		t.Errorf("rollback did not remove workspace for no-track spawn: removed=%v", wm.removed)
+	}
+}

@@ -233,6 +233,22 @@ func runRework(beadsID, feedback string) error {
 		priorSynthesis = fmt.Sprintf("No prior SYNTHESIS.md summary available (%v)", err)
 	}
 
+	// Archive prior workspace before starting new work.
+	// Unified lifecycle cleanup discipline: rework is a state transition that must
+	// clean prior artifacts. Without this, old workspaces accumulate until orch clean.
+	if priorWorkspace != "" {
+		isArchived := strings.Contains(priorWorkspace, "/archived/")
+		if !isArchived {
+			if archivedPath, err := archiveWorkspace(priorWorkspace, projectDir); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to archive prior workspace: %v\n", err)
+			} else {
+				fmt.Printf("Archived prior workspace: %s\n", filepath.Base(archivedPath))
+				// Update priorWorkspace to archived location for rework context below
+				priorWorkspace = archivedPath
+			}
+		}
+	}
+
 	if err := verify.UpdateIssueStatus(beadsID, "open", projectDir); err != nil {
 		return fmt.Errorf("failed to reopen issue: %w", err)
 	}
