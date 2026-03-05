@@ -13,6 +13,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/control"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/notify"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -435,8 +436,10 @@ func runDaemonLoop() error {
 	processed := 0
 	completed := 0 // Track agents marked ready-for-review
 	cycles := 0
-	var lastSpawn time.Time      // Track last successful spawn
-	var lastCompletion time.Time // Track last auto-completion
+	var lastSpawn time.Time              // Track last successful spawn
+	var lastCompletion time.Time         // Track last auto-completion
+	var lastStuckNotification time.Time  // Cooldown for stuck notifications
+	stuckNotifier := notify.Default()
 
 	// Ensure reflection runs on exit if enabled
 	if daemonReflect {
@@ -783,6 +786,19 @@ func runDaemonLoop() error {
 				fmt.Printf("[%s] At capacity (%d/%d agents active), waiting...\n",
 					timestamp, activeCount, daemonMaxAgents)
 			}
+
+			// Stuck detection: all slots full with no activity for 10+ min
+			stuckThreshold := 10 * time.Minute
+			stuckCooldown := 30 * time.Minute
+			if checkDaemonStuck(lastSpawn, lastCompletion, lastStuckNotification, stuckThreshold, stuckCooldown) {
+				fmt.Printf("[%s] ⚠ Daemon stuck: capacity full, no spawns or completions in %s\n",
+					timestamp, stuckThreshold)
+				if err := stuckNotifier.DaemonStuck(activeCount, daemonMaxAgents); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: stuck notification failed: %v\n", err)
+				}
+				lastStuckNotification = time.Now()
+			}
+
 			// Wait for poll interval before checking again
 			select {
 			case <-ctx.Done():
@@ -931,6 +947,18 @@ func runDaemonLoop() error {
 		case <-time.After(config.PollInterval):
 		}
 	}
+}
+
+// checkDaemonStuck returns true if the daemon appears stuck:
+// all slots full with no spawns or completions for stuckThreshold,
+// and last notification was more than cooldown ago.
+func checkDaemonStuck(lastSpawn, lastCompletion, lastNotification time.Time, stuckThreshold, cooldown time.Duration) bool {
+	if lastSpawn.IsZero() || lastCompletion.IsZero() {
+		return false
+	}
+	return time.Since(lastSpawn) > stuckThreshold &&
+		time.Since(lastCompletion) > stuckThreshold &&
+		time.Since(lastNotification) > cooldown
 }
 
 // formatDaemonDuration formats a duration for daemon display.

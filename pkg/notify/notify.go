@@ -99,6 +99,18 @@ func (n *Notifier) QuestionPending(beadsID, questionText string) error {
 	return n.backend.Notify(title, message, "")
 }
 
+// DaemonStuck sends a notification that the daemon has all slots full
+// with no recent spawns or completions, suggesting agents may be stuck.
+// Returns nil immediately if notifications are disabled.
+func (n *Notifier) DaemonStuck(activeCount, maxAgents int) error {
+	if !n.enabled {
+		return nil
+	}
+	title := "Daemon Stuck"
+	message := fmt.Sprintf("All %d/%d slots full — no spawns or completions in 10+ min", activeCount, maxAgents)
+	return n.backend.Notify(title, message, "")
+}
+
 // Send sends a notification with the given title and message.
 // Returns nil immediately if notifications are disabled.
 func (n *Notifier) Send(title, message string) error {

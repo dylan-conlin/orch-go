@@ -134,6 +134,42 @@ func TestNewNotifierEnabledByDefault(t *testing.T) {
 	}
 }
 
+// TestDaemonStuck tests the DaemonStuck notification.
+func TestDaemonStuck(t *testing.T) {
+	mock := &MockNotifier{}
+	notifier := &Notifier{backend: mock, enabled: true}
+
+	err := notifier.DaemonStuck(5, 5)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if mock.callCount != 1 {
+		t.Errorf("expected 1 call, got %d", mock.callCount)
+	}
+	if mock.lastTitle != "Daemon Stuck" {
+		t.Errorf("expected title 'Daemon Stuck', got '%s'", mock.lastTitle)
+	}
+	expected := "All 5/5 slots full — no spawns or completions in 10+ min"
+	if mock.lastMessage != expected {
+		t.Errorf("expected message %q, got %q", expected, mock.lastMessage)
+	}
+}
+
+// TestDaemonStuckDisabled tests DaemonStuck is skipped when disabled.
+func TestDaemonStuckDisabled(t *testing.T) {
+	mock := &MockNotifier{}
+	notifier := &Notifier{backend: mock, enabled: false}
+
+	err := notifier.DaemonStuck(5, 5)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mock.callCount != 0 {
+		t.Errorf("expected 0 calls when disabled, got %d", mock.callCount)
+	}
+}
+
 // MockNotifier is a mock implementation for testing.
 type MockNotifier struct {
 	callCount   int
