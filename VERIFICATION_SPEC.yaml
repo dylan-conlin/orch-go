@@ -1,33 +1,37 @@
-task: "Add focus-aware priority boost to daemon issue selection"
-beads_id: orch-go-2np1g
+task: "PreToolUse bash filter for git add -A/git add . in worker sessions"
+beads_id: orch-go-zs9oc
 
 deliverables:
-  - path: pkg/daemon/focus_boost.go
-    description: "Focus boost logic: matchFocusToProject, applyFocusBoost, BuildProjectDirNames"
-  - path: pkg/daemon/focus_boost_test.go
-    description: "11 tests covering matching, boosting, integration with NextIssue/Preview"
+  - path: ~/.orch/hooks/gate-worker-git-add-all.py
+    description: "PreToolUse hook blocking blanket git add in worker sessions"
 
 tests:
-  command: "go test ./pkg/daemon/ -run 'Focus|Boost' -v"
-  result: "11 passed"
+  command: "inline python3 test harness (10 cases)"
+  result: "10 passed, 0 failed"
+  cases:
+    - "git add -A in worker → deny"
+    - "git add --all in worker → deny"
+    - "git add . in worker → deny"
+    - "git add -A in chain in worker → deny"
+    - "git add file.go in worker → allow"
+    - "git add multiple files in worker → allow"
+    - "git add -p in worker → allow"
+    - "git add -A in orchestrator → allow"
+    - "git add . with no context → allow"
+    - "escape hatch SKIP_GIT_ADD_ALL_GATE=1 → allow"
 
-verification:
-  automated:
-    - command: "go test ./pkg/daemon/ -run 'Focus|Boost' -v"
-      expect: "PASS"
-    - command: "go test ./pkg/daemon/"
-      expect: "ok (no regressions)"
-    - command: "go build ./..."
-      expect: "builds cleanly"
-
-  manual:
-    - step: "Set focus: orch focus 'price-watch', run orch daemon preview"
-      expect: "PW issues show boosted priority, preview shows focus line"
-    - step: "Clear focus: orch focus clear, run orch daemon preview"
-      expect: "No boost applied (backward compatible)"
+manual_steps_required:
+  - step: "Remove uchg flag: chflags nouchg ~/.claude/settings.json"
+  - step: "Add hook entry to PreToolUse -> Bash hooks array in settings.json"
+    snippet: |
+      {
+        "type": "command",
+        "command": "$HOME/.orch/hooks/gate-worker-git-add-all.py",
+        "timeout": 10
+      }
+  - step: "Re-apply uchg if desired: chflags uchg ~/.claude/settings.json"
 
 notes:
-  - "Focus matching works via: (1) issue prefix directly in goal text, (2) project dir basename via ProjectRegistry"
-  - "Boost default is 1 level (P2 → effective P1), clamped at P0"
-  - "applyFocusBoost copies issue slice to avoid mutating callers"
-  - "Wired into: daemon run loop, once, dry-run, and preview commands"
+  - "Worker-only gate (CLAUDE_CONTEXT=worker). Orchestrator and interactive sessions unaffected."
+  - "Escape hatch: SKIP_GIT_ADD_ALL_GATE=1"
+  - "~/.claude/settings.json has uchg flag — requires manual registration"
