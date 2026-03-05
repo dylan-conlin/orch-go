@@ -17,7 +17,7 @@ const (
 type DebriefSummary struct {
 	Date         string   `json:"date"`
 	WhatHappened []string `json:"what_happened,omitempty"`
-	WhatChanged  []string `json:"what_changed,omitempty"`
+	WhatWeLearned []string `json:"what_we_learned,omitempty"`
 	InFlight     []string `json:"in_flight,omitempty"`
 	WhatsNext    []string `json:"whats_next,omitempty"`
 }
@@ -71,7 +71,7 @@ func ParseDebriefSummary(content string) *DebriefSummary {
 
 	// Extract sections
 	summary.WhatHappened = extractSection(content, "## What Happened", maxDebriefItems)
-	summary.WhatChanged = extractSection(content, "## What Changed", maxDebriefItems)
+	summary.WhatWeLearned = extractSection(content, "## What We Learned", maxDebriefItems)
 	summary.InFlight = extractSection(content, "## What's In Flight", maxDebriefItems)
 	summary.WhatsNext = extractSection(content, "## What's Next", maxDebriefItems)
 
@@ -143,7 +143,7 @@ func FormatPreviousSession(summary *DebriefSummary) string {
 	}
 
 	// Check if there's any content worth showing
-	if len(summary.WhatHappened) == 0 && len(summary.WhatChanged) == 0 &&
+	if len(summary.WhatHappened) == 0 && len(summary.WhatWeLearned) == 0 &&
 		len(summary.InFlight) == 0 && len(summary.WhatsNext) == 0 {
 		return ""
 	}
@@ -155,8 +155,8 @@ func FormatPreviousSession(summary *DebriefSummary) string {
 	if len(summary.WhatHappened) > 0 {
 		b.WriteString(fmt.Sprintf("   Happened: %s\n", strings.Join(summary.WhatHappened, "; ")))
 	}
-	if len(summary.WhatChanged) > 0 {
-		b.WriteString(fmt.Sprintf("   Changed: %s\n", strings.Join(summary.WhatChanged, "; ")))
+	if len(summary.WhatWeLearned) > 0 {
+		b.WriteString(fmt.Sprintf("   Learned: %s\n", strings.Join(summary.WhatWeLearned, "; ")))
 	}
 	if len(summary.InFlight) > 0 {
 		b.WriteString(fmt.Sprintf("   In flight: %s\n", strings.Join(summary.InFlight, "; ")))

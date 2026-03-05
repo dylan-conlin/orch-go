@@ -30,13 +30,13 @@ type InFlightIssue struct {
 
 // DebriefData holds all data needed to render a session debrief.
 type DebriefData struct {
-	Date         string   `json:"date"`
-	Duration     string   `json:"duration,omitempty"`
-	Focus        string   `json:"focus"`
-	WhatHappened []string `json:"what_happened,omitempty"`
-	WhatChanged  []string `json:"what_changed,omitempty"`
-	InFlight     []string `json:"in_flight,omitempty"`
-	WhatsNext    []string `json:"whats_next,omitempty"`
+	Date           string   `json:"date"`
+	Duration       string   `json:"duration,omitempty"`
+	Focus          string   `json:"focus"`
+	WhatWeLearned  []string `json:"what_we_learned,omitempty"`
+	WhatHappened   []string `json:"what_happened,omitempty"`
+	InFlight       []string `json:"in_flight,omitempty"`
+	WhatsNext      []string `json:"whats_next,omitempty"`
 }
 
 // DebriefFilePath returns the file path for a debrief on the given date.
@@ -45,6 +45,12 @@ func DebriefFilePath(projectDir, date string) string {
 }
 
 // RenderDebrief renders a DebriefData into markdown matching the template format.
+//
+// Section order is designed for comprehension, not chronology:
+//   1. What We Learned (insights first — the durable value of the session)
+//   2. What's In Flight (current state awareness)
+//   3. What's Next (strategic direction, not task list)
+//   4. What Happened (event log — reference, not lead)
 func RenderDebrief(data *DebriefData) string {
 	var b strings.Builder
 
@@ -57,21 +63,24 @@ func RenderDebrief(data *DebriefData) string {
 	b.WriteString(fmt.Sprintf("**Focus:** %s\n", data.Focus))
 	b.WriteString("\n---\n\n")
 
-	// What Happened
-	b.WriteString("## What Happened\n\n")
-	writeList(&b, data.WhatHappened)
-
-	// What Changed
-	b.WriteString("## What Changed\n\n")
-	writeList(&b, data.WhatChanged)
+	// What We Learned — insights, decisions, constraints discovered
+	// Thread: what were you working on? Insight: what did you learn?
+	// Position: how does this change your approach going forward?
+	b.WriteString("## What We Learned\n\n")
+	writeList(&b, data.WhatWeLearned)
 
 	// What's In Flight
 	b.WriteString("## What's In Flight\n\n")
 	writeList(&b, data.InFlight)
 
-	// What's Next
+	// What's Next — strategic direction, not a task backlog
+	// Each item should answer: "where is this headed?" not "what's the next task?"
 	b.WriteString("## What's Next\n\n")
-	writeListNumbered(&b, data.WhatsNext)
+	writeList(&b, data.WhatsNext)
+
+	// What Happened — event log for reference
+	b.WriteString("## What Happened\n\n")
+	writeList(&b, data.WhatHappened)
 
 	return b.String()
 }
@@ -82,17 +91,6 @@ func writeList(b *strings.Builder, items []string) {
 	} else {
 		for _, item := range items {
 			b.WriteString(fmt.Sprintf("- %s\n", item))
-		}
-	}
-	b.WriteString("\n")
-}
-
-func writeListNumbered(b *strings.Builder, items []string) {
-	if len(items) == 0 {
-		b.WriteString("- (none)\n")
-	} else {
-		for i, item := range items {
-			b.WriteString(fmt.Sprintf("%d. %s\n", i+1, item))
 		}
 	}
 	b.WriteString("\n")
@@ -204,10 +202,10 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-// CollectWhatChanged extracts the reason/explain-back text from agent.completed
-// events. These describe what each agent actually accomplished.
+// CollectWhatWeLearned extracts the reason/explain-back text from agent.completed
+// events. These describe what each agent actually accomplished and learned.
 // Deduplicates by beads_id.
-func CollectWhatChanged(events []SessionEvent) []string {
+func CollectWhatWeLearned(events []SessionEvent) []string {
 	if len(events) == 0 {
 		return nil
 	}

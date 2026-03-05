@@ -91,12 +91,12 @@ func TestRenderDebrief(t *testing.T) {
 		Date:     "2026-02-28",
 		Duration: "~3h",
 		Focus:    "Ship debrief command",
+		WhatWeLearned: []string{
+			"Added JWT auth middleware with refresh tokens",
+		},
 		WhatHappened: []string{
 			"Completed: `feature-impl` (orch-go-abc1) — Added JWT auth",
 			"Spawned: `investigation` — investigate auth patterns",
-		},
-		WhatChanged: []string{
-			"Added JWT auth middleware with refresh tokens",
 		},
 		InFlight: []string{
 			"orch-go-def2: fix bug Y (in_progress)",
@@ -116,16 +116,9 @@ func TestRenderDebrief(t *testing.T) {
 		t.Error("expected focus line")
 	}
 
-	// Check sections present
-	if !strings.Contains(output, "## What Happened") {
-		t.Error("expected What Happened section")
-	}
-	if !strings.Contains(output, "feature-impl") {
-		t.Error("expected skill in output")
-	}
-
-	if !strings.Contains(output, "## What Changed") {
-		t.Error("expected What Changed section")
+	// Check sections present in comprehension order
+	if !strings.Contains(output, "## What We Learned") {
+		t.Error("expected What We Learned section")
 	}
 
 	if !strings.Contains(output, "## What's In Flight") {
@@ -134,6 +127,27 @@ func TestRenderDebrief(t *testing.T) {
 
 	if !strings.Contains(output, "## What's Next") {
 		t.Error("expected What's Next section")
+	}
+
+	if !strings.Contains(output, "## What Happened") {
+		t.Error("expected What Happened section")
+	}
+	if !strings.Contains(output, "feature-impl") {
+		t.Error("expected skill in output")
+	}
+
+	// Verify section order: Learned before Happened (comprehension order)
+	learnedIdx := strings.Index(output, "## What We Learned")
+	happenedIdx := strings.Index(output, "## What Happened")
+	if learnedIdx >= happenedIdx {
+		t.Error("What We Learned should appear before What Happened")
+	}
+
+	// What's Next should use bullet list, not numbered
+	nextIdx := strings.Index(output, "## What's Next")
+	nextSection := output[nextIdx:]
+	if strings.Contains(nextSection, "1. ") {
+		t.Error("What's Next should use bullet list, not numbered list")
 	}
 
 	// Health section should NOT be present
@@ -156,7 +170,7 @@ func TestRenderDebriefEmptySections(t *testing.T) {
 	}
 }
 
-func TestCollectWhatChangedFromEvents(t *testing.T) {
+func TestCollectWhatWeLearnedFromEvents(t *testing.T) {
 	events := []SessionEvent{
 		{Type: "agent.completed", Timestamp: time.Now().Unix(), Data: map[string]interface{}{
 			"beads_id": "orch-go-abc1",
@@ -173,7 +187,7 @@ func TestCollectWhatChangedFromEvents(t *testing.T) {
 		}},
 	}
 
-	lines := CollectWhatChanged(events)
+	lines := CollectWhatWeLearned(events)
 	if len(lines) != 2 {
 		t.Fatalf("expected 2 lines (one per completion), got %d: %v", len(lines), lines)
 	}
@@ -185,14 +199,14 @@ func TestCollectWhatChangedFromEvents(t *testing.T) {
 	}
 }
 
-func TestCollectWhatChangedEmpty(t *testing.T) {
-	lines := CollectWhatChanged(nil)
+func TestCollectWhatWeLearnedEmpty(t *testing.T) {
+	lines := CollectWhatWeLearned(nil)
 	if len(lines) != 0 {
 		t.Errorf("expected empty lines, got %d", len(lines))
 	}
 }
 
-func TestCollectWhatChangedSkipsDuplicateBeadsID(t *testing.T) {
+func TestCollectWhatWeLearnedSkipsDuplicateBeadsID(t *testing.T) {
 	events := []SessionEvent{
 		{Type: "agent.completed", Timestamp: time.Now().Unix(), Data: map[string]interface{}{
 			"beads_id": "orch-go-abc1",
@@ -204,7 +218,7 @@ func TestCollectWhatChangedSkipsDuplicateBeadsID(t *testing.T) {
 		}},
 	}
 
-	lines := CollectWhatChanged(events)
+	lines := CollectWhatWeLearned(events)
 	if len(lines) != 1 {
 		t.Fatalf("expected 1 line (deduped), got %d: %v", len(lines), lines)
 	}

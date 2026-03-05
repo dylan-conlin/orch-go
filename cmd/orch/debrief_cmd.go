@@ -95,8 +95,8 @@ func runDebrief(focusOverride string) error {
 	events := loadDebriefEvents(now)
 	data.WhatHappened = debrief.CollectWhatHappened(events)
 
-	// 4. What Changed: --changed flag + completion reasons from events
-	data.WhatChanged = collectDebriefChanged(events)
+	// 4. What We Learned: --changed flag + completion reasons from events
+	data.WhatWeLearned = collectDebriefChanged(events)
 
 	// 5. What's In Flight from bd list --status=in_progress
 	data.InFlight = collectDebriefInFlight()
@@ -129,8 +129,8 @@ func runDebrief(focusOverride string) error {
 	fmt.Printf("Debrief written: %s\n", debriefPath)
 	fmt.Printf("  Date:     %s\n", data.Date)
 	fmt.Printf("  Focus:    %s\n", data.Focus)
+	fmt.Printf("  Learned:  %d item(s)\n", len(data.WhatWeLearned))
 	fmt.Printf("  Happened: %d item(s)\n", len(data.WhatHappened))
-	fmt.Printf("  Changed:  %d item(s)\n", len(data.WhatChanged))
 	fmt.Printf("  In flight: %d item(s)\n", len(data.InFlight))
 	fmt.Printf("  Next:     %d item(s)\n", len(data.WhatsNext))
 
@@ -218,7 +218,7 @@ func collectDebriefChanged(events []debrief.SessionEvent) []string {
 	}
 
 	// Auto-detect: completion reasons from agent.completed events
-	items = append(items, debrief.CollectWhatChanged(events)...)
+	items = append(items, debrief.CollectWhatWeLearned(events)...)
 
 	return items
 }

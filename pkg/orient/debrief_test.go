@@ -16,12 +16,7 @@ func TestParseDebriefSummary_BasicDebrief(t *testing.T) {
 
 ---
 
-## What Happened
-
-- Completed 2: orch-go-abc1 (feature-impl), orch-go-def2 (investigation)
-- Spawned 5 agent(s)
-
-## What Changed
+## What We Learned
 
 - decided to use JWT for auth
 - new constraint on debriefs
@@ -33,15 +28,14 @@ func TestParseDebriefSummary_BasicDebrief(t *testing.T) {
 
 ## What's Next
 
-1. fix auth
-2. ship snap MVP
-3. review hotspot results
+- fix auth
+- ship snap MVP
+- review hotspot results
 
-## Session Health
+## What Happened
 
-- **Checkpoint discipline:** ok
-- **Frame collapse:** none
-- **Discovered work:** none
+- Completed 2: orch-go-abc1 (feature-impl), orch-go-def2 (investigation)
+- Spawned 5 agent(s)
 `
 
 	summary := ParseDebriefSummary(content)
@@ -53,12 +47,8 @@ func TestParseDebriefSummary_BasicDebrief(t *testing.T) {
 		t.Errorf("expected date '2026-02-28', got %q", summary.Date)
 	}
 
-	if len(summary.WhatHappened) != 2 {
-		t.Errorf("expected 2 WhatHappened items, got %d", len(summary.WhatHappened))
-	}
-
-	if len(summary.WhatChanged) != 2 {
-		t.Errorf("expected 2 WhatChanged items, got %d", len(summary.WhatChanged))
+	if len(summary.WhatWeLearned) != 2 {
+		t.Errorf("expected 2 WhatWeLearned items, got %d", len(summary.WhatWeLearned))
 	}
 
 	if len(summary.InFlight) != 2 {
@@ -69,12 +59,16 @@ func TestParseDebriefSummary_BasicDebrief(t *testing.T) {
 		t.Errorf("expected 3 WhatsNext items, got %d", len(summary.WhatsNext))
 	}
 
-	// Verify content parsing strips list markers
-	if summary.WhatChanged[0] != "decided to use JWT for auth" {
-		t.Errorf("expected 'decided to use JWT for auth', got %q", summary.WhatChanged[0])
+	if len(summary.WhatHappened) != 2 {
+		t.Errorf("expected 2 WhatHappened items, got %d", len(summary.WhatHappened))
 	}
 
-	// Verify numbered list items are parsed correctly
+	// Verify content parsing strips list markers
+	if summary.WhatWeLearned[0] != "decided to use JWT for auth" {
+		t.Errorf("expected 'decided to use JWT for auth', got %q", summary.WhatWeLearned[0])
+	}
+
+	// Verify bullet list items are parsed correctly
 	if summary.WhatsNext[0] != "fix auth" {
 		t.Errorf("expected 'fix auth', got %q", summary.WhatsNext[0])
 	}
@@ -110,7 +104,7 @@ func TestParseDebriefSummary_TruncatesLongLists(t *testing.T) {
 
 **Date:** 2026-02-28
 
-## What Changed
+## What We Learned
 
 - change 1
 - change 2
@@ -123,8 +117,8 @@ func TestParseDebriefSummary_TruncatesLongLists(t *testing.T) {
 		t.Fatal("expected non-nil summary")
 	}
 
-	if len(summary.WhatChanged) != maxDebriefItems {
-		t.Errorf("expected %d WhatChanged items (max), got %d", maxDebriefItems, len(summary.WhatChanged))
+	if len(summary.WhatWeLearned) != maxDebriefItems {
+		t.Errorf("expected %d WhatWeLearned items (max), got %d", maxDebriefItems, len(summary.WhatWeLearned))
 	}
 }
 
@@ -137,7 +131,7 @@ func TestParseDebriefSummary_NoneItems(t *testing.T) {
 
 - (none)
 
-## What Changed
+## What We Learned
 
 - (none)
 `
@@ -149,8 +143,8 @@ func TestParseDebriefSummary_NoneItems(t *testing.T) {
 	if len(summary.WhatHappened) != 0 {
 		t.Errorf("expected 0 WhatHappened (none items filtered), got %d", len(summary.WhatHappened))
 	}
-	if len(summary.WhatChanged) != 0 {
-		t.Errorf("expected 0 WhatChanged (none items filtered), got %d", len(summary.WhatChanged))
+	if len(summary.WhatWeLearned) != 0 {
+		t.Errorf("expected 0 WhatWeLearned (none items filtered), got %d", len(summary.WhatWeLearned))
 	}
 }
 
@@ -198,7 +192,7 @@ func TestFormatPreviousSession(t *testing.T) {
 			"Completed 2: orch-go-abc1 (feature-impl), orch-go-def2 (investigation)",
 			"Spawned 5 agent(s)",
 		},
-		WhatChanged: []string{
+		WhatWeLearned: []string{
 			"decided to use JWT for auth",
 		},
 		InFlight: []string{
@@ -221,7 +215,7 @@ func TestFormatPreviousSession(t *testing.T) {
 	if !contains(result, "Happened:") {
 		t.Errorf("expected 'Happened:' section, got:\n%s", result)
 	}
-	if !contains(result, "Changed:") {
+	if !contains(result, "Learned:") {
 		t.Errorf("expected 'Changed:' section, got:\n%s", result)
 	}
 	if !contains(result, "In flight:") {
@@ -256,7 +250,7 @@ func TestFormatOrientation_WithDebrief(t *testing.T) {
 		PreviousSession: &DebriefSummary{
 			Date:         "2026-02-27",
 			WhatHappened: []string{"Completed 2: orch-go-abc1, orch-go-def2"},
-			WhatChanged:  []string{"decided to use JWT for auth"},
+			WhatWeLearned:  []string{"decided to use JWT for auth"},
 			WhatsNext:    []string{"fix auth", "ship snap"},
 		},
 	}
@@ -269,7 +263,7 @@ func TestFormatOrientation_WithDebrief(t *testing.T) {
 	if !strings.Contains(output, "Happened:") {
 		t.Errorf("expected 'Happened:' in output, got:\n%s", output)
 	}
-	if !strings.Contains(output, "Changed:") {
+	if !strings.Contains(output, "Learned:") {
 		t.Errorf("expected 'Changed:' in output, got:\n%s", output)
 	}
 	if !strings.Contains(output, "Next:") {
