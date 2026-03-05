@@ -79,6 +79,7 @@
 						onchange={handleTimeFilterChange}
 						class="h-6 rounded border border-input bg-background px-1.5 text-xs cursor-pointer"
 						data-testid="time-filter"
+						aria-label="Time filter"
 					>
 						{#each timeFilterOptions as option}
 							<option value={option.value}>{option.label}</option>
