@@ -79,7 +79,7 @@ orch daemon run
 
 - Tmux window (visible progress)
 - Independent of OpenCode server (crash-resistant)
-- Claude Max subscription ($200/mo flat, unlimited)
+- Claude Max 20x subscription (flat rate, unlimited)
 - Daemon-managed or manual lifecycle
 
 **History:** Was originally the "escape hatch" (Jan 2026). Became the default backend on Feb 19, 2026 when Anthropic banned subscription OAuth in third-party tools, making Claude CLI the only path for Anthropic models.
