@@ -83,10 +83,10 @@ Two enforcement mechanisms cover different granularities:
 
 | Mechanism | What It Blocks | How |
 |-----------|---------------|-----|
-| `--disallowedTools` (spawn-time) | Task, Edit, Write, NotebookEdit | Tools removed from toolset entirely |
+| `--disallowedTools` (spawn-time) | Agent, Edit, Write, NotebookEdit | Tools removed from toolset entirely |
 | PreToolUse hook (runtime) | `bd close` within Bash | Hook inspects command, denies with redirect to `orch complete` |
 
-**Tools blocked for orchestrators:** Task, Edit, Write, NotebookEdit
+**Tools blocked for orchestrators:** Agent, Edit, Write, NotebookEdit
 **Tools remaining:** Bash, Read, Glob, Grep, WebFetch, WebSearch
 
 **Session detection:** `CLAUDE_CONTEXT` env var (already implemented — "worker", "orchestrator", "meta-orchestrator")

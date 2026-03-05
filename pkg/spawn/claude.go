@@ -102,7 +102,7 @@ func BuildClaudeLaunchCommand(contextPath, claudeContext, mcp, configDir, beadsD
 	// Orchestrator tool restrictions: remove worker-level tools that orchestrators should not use
 	disallowFlag := ""
 	if claudeContext == "orchestrator" || claudeContext == "meta-orchestrator" {
-		disallowFlag = " --disallowedTools 'Task,Edit,Write,NotebookEdit'"
+		disallowFlag = " --disallowedTools 'Agent,Edit,Write,NotebookEdit'"
 	}
 
 	// Beads ID prefix: when beadsID is set, export ORCH_BEADS_ID so Stop hooks

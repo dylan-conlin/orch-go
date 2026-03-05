@@ -235,7 +235,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 				"export CLAUDE_CONTEXT=orchestrator",
 				"ORCHESTRATOR_CONTEXT.md",
 				"--disallowedTools",
-				"Task",
+				"Agent",
 				"Edit",
 				"Write",
 				"NotebookEdit",
@@ -250,7 +250,7 @@ func TestBuildClaudeLaunchCommand(t *testing.T) {
 			wantContains: []string{
 				"export CLAUDE_CONTEXT=meta-orchestrator",
 				"--disallowedTools",
-				"Task",
+				"Agent",
 			},
 		},
 		{
