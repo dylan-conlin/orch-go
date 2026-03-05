@@ -124,6 +124,11 @@ type Daemon struct {
 	// When set, the daemon passes --workdir to orch work for cross-project issues.
 	ProjectRegistry *ProjectRegistry
 
+	// AutoCompleter runs the full orch complete pipeline for auto-tier agents.
+	// When set and review tier is "auto", the daemon shells out to orch complete
+	// instead of just labeling the issue for orchestrator review.
+	AutoCompleter AutoCompleter
+
 	// Spawner spawns agent work.
 	Spawner Spawner
 	// Completions finds completed agents.

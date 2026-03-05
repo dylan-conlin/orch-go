@@ -66,12 +66,13 @@ type CompletedAgent struct {
 
 // CompletionResult contains the result of processing a completion.
 type CompletionResult struct {
-	BeadsID      string
-	Processed    bool
-	CloseReason  string
-	Error        error
-	Verification verify.VerificationResult
-	Escalation   verify.EscalationLevel // Escalation level for this completion
+	BeadsID       string
+	Processed     bool
+	AutoCompleted bool // True when daemon ran orch complete (auto-tier)
+	CloseReason   string
+	Error         error
+	Verification  verify.VerificationResult
+	Escalation    verify.EscalationLevel // Escalation level for this completion
 }
 
 // CompletionLoopResult contains the results of a completion loop iteration.
@@ -439,8 +440,41 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 		completionSummary = fmt.Sprintf("Phase: Complete - %s", agent.PhaseSummary)
 	}
 
+	// Determine review tier from workspace manifest
+	reviewTier := ""
+	if agent.WorkspacePath != "" {
+		reviewTier = verify.ReadReviewTierFromWorkspace(agent.WorkspacePath)
+	}
+
+	// Auto-tier: run orch complete directly instead of labeling for review.
+	// This closes the issue, archives workspace, and frees the slot automatically.
+	// If orch complete fails (gate failure, escalation), fall back to orchestrator review.
+	if reviewTier == "auto" && d.AutoCompleter != nil && !config.DryRun {
+		if err := d.AutoCompleter.Complete(agent.BeadsID, effectiveProjectDir); err != nil {
+			// Auto-complete failed — leave for orchestrator review
+			result.Error = fmt.Errorf("auto-complete failed for auto-tier agent: %w", err)
+			return result
+		}
+
+		result.Processed = true
+		result.AutoCompleted = true
+		result.CloseReason = completionSummary
+
+		// Record auto-completion for verification tracking
+		if d.VerificationTracker != nil {
+			shouldPause := d.VerificationTracker.RecordCompletion(agent.BeadsID)
+			if shouldPause && config.Verbose {
+				status := d.VerificationTracker.Status()
+				fmt.Printf("    Verification pause triggered: %d/%d auto-completions. Resume with: orch daemon resume\n",
+					status.CompletionsSinceVerification, status.Threshold)
+			}
+		}
+
+		return result
+	}
+
 	// Mark issue as ready for review (unless dry run)
-	// Instead of auto-closing, add a label so Dylan can review via orchestrator
+	// Non-auto tiers: add a label so Dylan can review via orchestrator
 	if !config.DryRun {
 		if err := verify.AddLabelWithDir(agent.BeadsID, LabelReadyReview, effectiveProjectDir); err != nil {
 			result.Error = fmt.Errorf("failed to mark ready for review: %w", err)
@@ -519,12 +553,22 @@ func (d *Daemon) CompletionOnce(config CompletionConfig) (*CompletionLoopResult,
 				d.VerificationRetryTracker.Clear(agent.BeadsID)
 			}
 
-			// Log successful auto-completion with escalation level
-			if err := logger.LogAutoCompletedWithEscalation(agent.BeadsID, compResult.CloseReason, compResult.Escalation.String()); err != nil && config.Verbose {
-				fmt.Printf("    Warning: failed to log completion event: %v\n", err)
-			}
-			if config.Verbose {
-				fmt.Printf("    Closed: %s (escalation=%s)\n", compResult.CloseReason, compResult.Escalation)
+			// Log completion event — differentiate auto-completed (closed by daemon)
+			// from labeled (waiting for orchestrator review)
+			if compResult.AutoCompleted {
+				if err := logger.LogAutoCompletedWithEscalation(agent.BeadsID, compResult.CloseReason, "auto-completed"); err != nil && config.Verbose {
+					fmt.Printf("    Warning: failed to log auto-completion event: %v\n", err)
+				}
+				if config.Verbose {
+					fmt.Printf("    Auto-completed: %s (tier=auto)\n", compResult.CloseReason)
+				}
+			} else {
+				if err := logger.LogAutoCompletedWithEscalation(agent.BeadsID, compResult.CloseReason, compResult.Escalation.String()); err != nil && config.Verbose {
+					fmt.Printf("    Warning: failed to log completion event: %v\n", err)
+				}
+				if config.Verbose {
+					fmt.Printf("    Labeled ready-review: %s (escalation=%s)\n", compResult.CloseReason, compResult.Escalation)
+				}
 			}
 		}
 	}

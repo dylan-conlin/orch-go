@@ -410,6 +410,11 @@ func runDaemonLoop() error {
 	// The daemon goes straight from polling bd ready to spawning issues.
 	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
 
+	// Wire auto-completer for auto-tier agents.
+	// When review tier is "auto", daemon runs `orch complete` directly
+	// instead of labeling for orchestrator review.
+	d.AutoCompleter = &daemon.OrcCompleter{}
+
 	// Seed verification tracker with unverified backlog from previous sessions
 	seedVerificationTracker(d)
 
@@ -630,8 +635,13 @@ func runDaemonLoop() error {
 					completedThisCycle++
 					completed++
 					lastCompletion = time.Now()
-					fmt.Printf("[%s] Ready for review: %s (escalation=%s)\n",
-						timestamp, cr.BeadsID, cr.Escalation)
+					if cr.AutoCompleted {
+						fmt.Printf("[%s] Auto-completed: %s (tier=auto)\n",
+							timestamp, cr.BeadsID)
+					} else {
+						fmt.Printf("[%s] Ready for review: %s (escalation=%s)\n",
+							timestamp, cr.BeadsID, cr.Escalation)
+					}
 
 					// NOTE: RecordCompletion() is called inside ProcessCompletion()
 					// (completion_processing.go). Do NOT call it again here — that
