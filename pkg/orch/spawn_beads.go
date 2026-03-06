@@ -142,6 +142,46 @@ func ApplyCrossRepoLabels(beadsID, sourceProject string) {
 	}
 }
 
+// IssueExistsInProject checks if a beads issue exists in a specific project's beads.
+// Tries socket client first (fast), falls back to CLI (reliable).
+func IssueExistsInProject(beadsID, projectDir string) bool {
+	socketPath, err := beads.FindSocketPath(projectDir)
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			_, err = client.Show(beadsID)
+			return err == nil
+		}
+	}
+	_, err = beads.FallbackShow(beadsID, projectDir)
+	return err == nil
+}
+
+// ResolveCrossRepoBeadsDir determines if BEADS_DIR injection is needed for a
+// cross-repo spawn. Returns the .beads/ path to inject, or "" if no override needed.
+//
+// When an agent spawns in a different project (via --workdir), bd commands default
+// to the agent's CWD. If the issue lives in the target project's beads, that works
+// naturally. If the issue lives in the source (CWD) project, BEADS_DIR must be set
+// so bd can find it.
+//
+// The issueExists parameter allows injection of a test double.
+func ResolveCrossRepoBeadsDir(beadsID, cwd, projectDir string, issueExists func(string, string) bool) string {
+	cwdBeadsDir := filepath.Join(cwd, ".beads")
+	targetBeadsDir := filepath.Join(projectDir, ".beads")
+	if cwdBeadsDir == targetBeadsDir {
+		return "" // Same project, no override needed
+	}
+	// If the issue exists in the target project's beads, no BEADS_DIR needed.
+	// The agent's CWD will be the target, so bd's CWD fallback handles it.
+	if issueExists(beadsID, projectDir) {
+		return ""
+	}
+	// Issue must be in CWD's project — inject BEADS_DIR so agent can reach it.
+	return cwdBeadsDir
+}
+
 func resolveShortBeadsID(id string) (string, error) {
 	if strings.Contains(id, "-") {
 		return id, nil

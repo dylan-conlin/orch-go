@@ -633,17 +633,15 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		}
 	}
 
-	// 4b. Detect cross-repo beads: when --workdir is set AND --issue references the
-	// source project, the agent needs BEADS_DIR to report back to the source beads.
-	// Use CWD (not target projectDir) as the source.
+	// 4b. Detect cross-repo beads: when --workdir targets a different project,
+	// determine which .beads/ directory owns the issue. Only inject BEADS_DIR
+	// when the issue lives in CWD's beads (not the target's). Without this check,
+	// daemon spawns for target-project issues get the wrong BEADS_DIR and bd
+	// fails with "no issue found matching".
 	var crossRepoBeadsDir string
 	if spawnWorkdir != "" && beadsID != "" && spawnIssue != "" {
 		cwd, _ := os.Getwd()
-		cwdBeadsDir := filepath.Join(cwd, ".beads")
-		targetBeadsDir := filepath.Join(projectDir, ".beads")
-		if cwdBeadsDir != targetBeadsDir {
-			crossRepoBeadsDir = cwdBeadsDir
-		}
+		crossRepoBeadsDir = orch.ResolveCrossRepoBeadsDir(beadsID, cwd, projectDir, orch.IssueExistsInProject)
 	}
 
 	// 5. Resolve spawn settings (centralized resolver)
