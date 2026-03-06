@@ -70,15 +70,17 @@ Human calibration experiment: 24 responses across 4 scenarios × 3 variants, bli
 
 ### Three Content Types Across Skills
 
-| Skill | Knowledge | Stance | Behavioral |
-|---|---|---|---|
-| **Orchestrator** | Routing tables, command reference, skill selection tree | "Synthesis is comprehension, not reporting" | ≤4 norms (delegation, filter, act-by-default, answer-asked) |
-| **Investigation** | D.E.K.N. template, prior-work table, evidence hierarchy | "Answer a question by testing, not by reasoning" | Self-review checklist (10 items), prior-work gate, leave-it-better |
-| **Systematic-debugging** | Four-phase names, pattern table, technique references | "Understand before fixing" | Iron Law, phase gates |
-| **Architect** | Fork documentation format, decision navigation, principles | "Decide what should exist" | Mode detection, escalation rules |
-| **Worker-base** | Phase reporting format, bd comment syntax, authority table | (none — foundation layer) | Hard limits, completion protocol, discovered work mandate |
+| Skill | Lines | Knowledge | Stance | Behavioral | B Count |
+|---|---|---|---|---|---|
+| **Orchestrator** | 422 | Routing tables, command reference, skill selection tree | "Synthesis is comprehension, not reporting" | ≤4 norms (delegation, filter, act-by-default, answer-asked) | ~4 ✅ |
+| **Feature-impl** | 599 | Config routing, deliverables table, phase workflows, templates | Harm Assessment only (1 line) | Scope enum, TDD iron law, visual verification, self-review (15 items), leave-it-better, completion gates | 8+ ❌ |
+| **Investigation** | 266 | D.E.K.N. template, prior-work table, evidence hierarchy, routing | "Answer by testing not reasoning", "Artifacts are claims", "Test before concluding" (4 lines) | Self-review (11 items), prior-work gate, leave-it-better, checkpoint mandate | 6+ ❌ |
+| **Systematic-debugging** | 802 | Four-phase procedures, pattern table, techniques, layer bias, visual tools | "Understand before fixing", "Symptom ≠ root cause", scientific method, rationalizations table (6 lines) | Iron Law gate, failing test mandate, 3-fix escalation, fix-verify coupling, STOP triggers | 5-6 ❌ |
+| **Experiment** | 294 | Variant structure, YAML format, skillc commands, analysis tables, failure modes | "Science not exploration", "Hypothesis before tools", "Inspect when surprised" (4 lines) | 11-item Boundaries DO/DO NOT, bare baseline mandate, commit-immediately, no-modification mandates | 8+ ❌ |
+| **Architect** | 673 | Fork format, decision navigation, verification spec template, spawn threshold | "Premise before solution", "Evolve by distinction", "Coherence over patches" (5 lines) | Question cap (3-7), self-review, completion gates | ~4 ✅ |
+| **Worker-base** | — | Phase reporting format, bd comment syntax, authority table | (none — foundation layer) | Hard limits, completion protocol, discovered work mandate | — |
 
-**Implication:** Worker skills likely have the same structural problem the orchestrator had — behavioral weight crowding out knowledge and stance. Investigation has 6+ behavioral mandates (dilution territory). The 82% reduction that worked for the orchestrator (2,368 → 422 lines) is the playbook for all skills.
+**Implication:** Worker skills have the same structural problem the orchestrator had — behavioral weight crowding out knowledge and stance. Section-by-section audit (Mar 6) confirms: all 4 audited skills exceed ≤4 behavioral norms. Self-review sections are the single largest behavioral block (~10-15 checklist items each). Feature-impl is the most stance-poor skill (1 line). Experiment has the worst behavioral density (18 MUST/NEVER in 294 lines). Only architect is near-compliant (~4 mandates). The 82% reduction that worked for the orchestrator (2,368 → 422 lines) is the playbook for all skills.
 
 ### Implementation: Two Delivery Channels
 
@@ -166,6 +168,8 @@ The skill drifts from infrastructure quickly. 72 commits in 3 days introduced 10
 **2026-03-06 (morning):** Higher-N trials (N=6, 36 trials) decisively confirmed stance as a third content type distinct from knowledge. Scenario 09: bare 0/6, without-stance 1/6, with-stance 5/6. Model expanded from orchestrator-specific to universal taxonomy — the knowledge/behavioral/stance decomposition applies to all skills. Worker skill analysis shows investigation, systematic-debugging, and architect all have the same structural problem the orchestrator had: behavioral weight crowding out knowledge and stance.
 
 **2026-03-06 (afternoon):** Generalization experiment (36 more trials, 3 new scenarios). Stance confirmed as cross-source reasoning primer: +5 on relationship tracing (S12), +4 on information freshness (S13), -2 on single-source absence detection (S11). The mechanism is specific — stance helps when defects hide between information sources, not when they're visible within one source. Detection-to-action gap discovered: agents notice problems but still approve completion. Action indicators at 0/6 across all variants.
+
+**2026-03-06 (section audit):** Full section-by-section taxonomy audit of 4 worker skills (feature-impl, investigation, systematic-debugging, experiment, architect). All exceed ≤4 behavioral threshold except architect. Self-review is the largest behavioral block across all skills. Feature-impl needs stance injection. Model table expanded from summary to include line counts and behavioral compliance status.
 
 **2026-03-06 (calibration):** Human calibration experiment validates measurement program. 24 blind-rated responses across 4 scenarios × 3 variants. Overall Spearman rho=0.637 passes r>0.6 gate. Per-scenario analysis reveals S11 indicators are broken (rho=0.141) — need vocabulary redesign. S09 (0.980) and S13 (0.894) indicators are near-perfect proxies for human judgment. Scorer vocabulary bias toward skill-enhanced responses confirmed: 3/4 biggest disagreements on bare variants. Stance lift washes out in aggregate (without-stance 4.2 vs with-stance 4.1) — confirms stance is scenario-specific, not universal.
 
