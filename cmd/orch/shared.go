@@ -99,20 +99,6 @@ func extractSkillFromWindowName(name string) string {
 	return extractSkillFromTitle(name)
 }
 
-// resolveProjectDirForBeadsID attempts to find the project directory that contains
-// a beads issue by trying each registered kb project. Returns the project directory
-// and issue if found, or empty string and nil if not found in any project.
-// This enables cross-project operations (abandon, clean) without requiring --workdir.
-func resolveProjectDirForBeadsID(beadsID string) (string, *beads.Issue) {
-	for _, dir := range getKBProjectsFn() {
-		issue, err := beads.FallbackShow(beadsID, dir)
-		if err == nil && issue != nil {
-			return dir, issue
-		}
-	}
-	return "", nil
-}
-
 // extractProjectFromBeadsID extracts the project name from a beads ID.
 // Beads IDs follow the format: project-xxxx (e.g., orch-go-3anf)
 func extractProjectFromBeadsID(beadsID string) string {

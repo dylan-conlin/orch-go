@@ -234,6 +234,95 @@ func TestResolveProjectDirectory_NonexistentWorkdir(t *testing.T) {
 	}
 }
 
+func TestResolveProjectFrom_WorkdirOverride(t *testing.T) {
+	tmpDir := t.TempDir()
+	r := &ProjectRegistry{
+		prefixToDir: map[string]string{
+			"orch-go": "/home/user/orch-go",
+		},
+		currentDir: "/home/user/orch-go",
+	}
+
+	// Workdir override takes highest priority, even when registry would match
+	got, err := ResolveProjectFrom(r, "orch-go-123", tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != tmpDir {
+		t.Errorf("ResolveProjectFrom with workdir = %q, want %q", got, tmpDir)
+	}
+}
+
+func TestResolveProjectFrom_RegistryLookup(t *testing.T) {
+	r := &ProjectRegistry{
+		prefixToDir: map[string]string{
+			"orch-go": "/home/user/orch-go",
+			"pw":      "/home/user/price-watch",
+		},
+		currentDir: "/home/user/orch-go",
+	}
+
+	// Cross-project: pw prefix should resolve to price-watch dir
+	got, err := ResolveProjectFrom(r, "pw-abc123", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "/home/user/price-watch" {
+		t.Errorf("ResolveProjectFrom(pw-abc123) = %q, want '/home/user/price-watch'", got)
+	}
+}
+
+func TestResolveProjectFrom_SameProjectFallsToCWD(t *testing.T) {
+	r := &ProjectRegistry{
+		prefixToDir: map[string]string{
+			"orch-go": "/home/user/orch-go",
+		},
+		currentDir: "/home/user/orch-go",
+	}
+
+	// Same project: Resolve returns "" → falls through to CWD
+	got, err := ResolveProjectFrom(r, "orch-go-123", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Should fall back to CWD since Resolve returns "" for same project
+	cwd, _ := os.Getwd()
+	if got != cwd {
+		t.Errorf("ResolveProjectFrom(same project) = %q, want CWD %q", got, cwd)
+	}
+}
+
+func TestResolveProjectFrom_NilRegistry(t *testing.T) {
+	// Nil registry: falls through to CWD
+	got, err := ResolveProjectFrom(nil, "pw-abc123", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cwd, _ := os.Getwd()
+	if got != cwd {
+		t.Errorf("ResolveProjectFrom(nil registry) = %q, want CWD %q", got, cwd)
+	}
+}
+
+func TestResolveProjectFrom_EmptyBeadsID(t *testing.T) {
+	r := &ProjectRegistry{
+		prefixToDir: map[string]string{
+			"orch-go": "/home/user/orch-go",
+		},
+		currentDir: "/home/user/orch-go",
+	}
+
+	// Empty beads ID: falls through to CWD
+	got, err := ResolveProjectFrom(r, "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cwd, _ := os.Getwd()
+	if got != cwd {
+		t.Errorf("ResolveProjectFrom(empty beadsID) = %q, want CWD %q", got, cwd)
+	}
+}
+
 func TestBuildProjectDirNames(t *testing.T) {
 	names := BuildProjectDirNames(nil)
 	if len(names) != 0 {

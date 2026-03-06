@@ -9,14 +9,17 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/identity"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/spf13/cobra"
 )
 
 var (
 	// Send command flags
-	sendAsync bool
+	sendAsync   bool
+	sendWorkdir string
 )
 
 var sendCmd = &cobra.Command{
@@ -46,31 +49,42 @@ Examples:
 
 func init() {
 	sendCmd.Flags().BoolVar(&sendAsync, "async", true, "Send message asynchronously (non-blocking)")
+	sendCmd.Flags().StringVar(&sendWorkdir, "workdir", "", "Target project directory (for cross-project sends)")
 }
 
 func runSend(serverURL, identifier, message string) error {
-	// First, try to resolve identifier to OpenCode session ID
-	sessionID, resolveErr := resolveSessionID(serverURL, identifier)
+	// Resolve project directory for cross-project workspace lookups
+	projectDir, err := identity.ResolveProject(identifier, sendWorkdir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve project directory: %w", err)
+	}
 
 	client := opencode.NewClient(serverURL)
 
-	// If resolution succeeded, use OpenCode API
+	// Strategy 1: Workspace lookup by beads ID (uses resolved project dir)
+	workspacePath, _ := findWorkspaceByBeadsID(projectDir, identifier)
+	if workspacePath != "" {
+		sessionID := spawn.ReadSessionID(workspacePath)
+		if sessionID != "" && isOpenCodeSessionID(sessionID) {
+			return sendViaOpenCodeAPI(client, sessionID, identifier, message)
+		}
+	}
+
+	// Strategy 2: Try resolveSessionID (covers ses_xxx, workspace name, API lookup)
+	sessionID, resolveErr := resolveSessionID(serverURL, identifier)
 	if resolveErr == nil && sessionID != "" {
 		return sendViaOpenCodeAPI(client, sessionID, identifier, message)
 	}
 
-	// OpenCode session not found - try tmux send-keys fallback
-	// This handles tmux agents where session ID wasn't captured or title doesn't match
+	// Strategy 3: tmux send-keys fallback
 	windowInfo, err := findTmuxWindowByIdentifier(identifier)
 	if err != nil || windowInfo == nil {
-		// Neither OpenCode session nor tmux window found
 		if resolveErr != nil {
 			return fmt.Errorf("failed to resolve session and no tmux window found: %w", resolveErr)
 		}
 		return fmt.Errorf("no session or tmux window found for identifier: %s", identifier)
 	}
 
-	// Found tmux window - send via send-keys
 	return sendViaTmux(windowInfo, identifier, message)
 }
 

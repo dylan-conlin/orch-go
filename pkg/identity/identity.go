@@ -202,6 +202,60 @@ func ResolveProjectDirectory(workdir string) (projectDir, projectName string, er
 	return projectDir, projectName, nil
 }
 
+// ResolveProject determines the project directory for a beads ID.
+// Three-layer fallback:
+//  1. Explicit workdirOverride (highest priority)
+//  2. ProjectRegistry prefix → directory mapping (O(1), fast)
+//  3. Fall back to current working directory
+//
+// Returns the absolute project directory path. If the beads ID resolves
+// to the current directory (same project), returns the current directory.
+func ResolveProject(beadsID, workdirOverride string) (string, error) {
+	// Layer 1: Explicit workdir override
+	if workdirOverride != "" {
+		dir, _, err := ResolveProjectDirectory(workdirOverride)
+		return dir, err
+	}
+
+	// Layer 2: ProjectRegistry prefix → directory mapping
+	if beadsID != "" {
+		registry, err := NewProjectRegistry()
+		if err == nil {
+			dir := registry.Resolve(beadsID)
+			if dir != "" {
+				return dir, nil
+			}
+		}
+		// Registry construction or lookup failed — fall through to CWD
+	}
+
+	// Layer 3: Current working directory
+	dir, _, err := ResolveProjectDirectory("")
+	return dir, err
+}
+
+// ResolveProjectFrom is like ResolveProject but accepts a pre-built registry
+// to avoid repeated kb projects list calls in commands that resolve multiple IDs.
+func ResolveProjectFrom(registry *ProjectRegistry, beadsID, workdirOverride string) (string, error) {
+	// Layer 1: Explicit workdir override
+	if workdirOverride != "" {
+		dir, _, err := ResolveProjectDirectory(workdirOverride)
+		return dir, err
+	}
+
+	// Layer 2: Registry lookup
+	if beadsID != "" && registry != nil {
+		dir := registry.Resolve(beadsID)
+		if dir != "" {
+			return dir, nil
+		}
+	}
+
+	// Layer 3: Current working directory
+	dir, _, err := ResolveProjectDirectory("")
+	return dir, err
+}
+
 // BuildProjectDirNames builds a map from project prefix to directory basename
 // using the ProjectRegistry. Returns empty map if registry is nil.
 func BuildProjectDirNames(registry *ProjectRegistry) map[string]string {

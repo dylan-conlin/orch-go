@@ -1,35 +1,34 @@
-issue: orch-go-fi3db
-title: "Add composed liveness guard (VerifyLiveness) for destructive commands"
+issue: orch-go-ds0ag
+title: "Wire identity.ResolveProject into abandon, complete, thread, send, tail commands"
 tier: light
 
 automated:
-  - command: "go test ./pkg/verify/ -run TestVerifyLiveness -count=1 -v"
-    expects: "PASS (11 liveness state tests)"
+  - command: "go test ./pkg/identity/ -count=1"
+    expects: "All tests pass including 5 new ResolveProjectFrom tests"
     result: "PASS"
-  - command: "go test ./pkg/verify/ -run TestLivenessResult_Warning -count=1 -v"
-    expects: "PASS (warning message tests)"
+  - command: "go test ./cmd/orch/ -count=1"
+    expects: "All existing tests pass"
     result: "PASS"
-  - command: "go test ./pkg/verify/ -run TestVerifyLivenessGracePeriod -count=1 -v"
-    expects: "PASS (grace period boundary)"
-    result: "PASS"
-  - command: "go test ./cmd/orch/ -run TestCheckPhaseRecency -count=1 -v"
-    expects: "PASS (no regression in existing abandon tests)"
-    result: "PASS"
-  - command: "go build ./cmd/orch/"
-    expects: "clean build"
+  - command: "go build ./..."
+    expects: "Clean build across all packages"
     result: "PASS"
   - command: "go vet ./..."
-    expects: "no warnings"
+    expects: "No vet issues"
     result: "PASS"
 
 deliverables:
-  - pkg/verify/liveness.go           # VerifyLiveness pure function, LivenessInput/LivenessResult types
-  - pkg/verify/liveness_test.go      # 13 tests: all 4 states + edge cases + grace period boundary
-  - cmd/orch/complete_verification.go # Refactored: state.GetLiveness → verify.VerifyLiveness
-  - cmd/orch/abandon_cmd.go          # Enhanced: grace period check via VerifyLiveness
+  - pkg/identity/identity.go       # ResolveProject + ResolveProjectFrom functions
+  - pkg/identity/identity_test.go  # 5 new tests for ResolveProjectFrom
+  - cmd/orch/abandon_cmd.go        # Wired identity.ResolveProject, removed manual resolution
+  - cmd/orch/complete_pipeline.go  # Wired identity.ResolveProject for no-workspace fallback
+  - cmd/orch/thread_cmd.go         # Wired identity.ResolveProjectDirectory
+  - cmd/orch/send_cmd.go           # Added --workdir flag + identity.ResolveProject
+  - cmd/orch/tail_cmd.go           # Added --workdir flag + identity.ResolveProject
+  - cmd/orch/shared.go             # Removed dead resolveProjectDirForBeadsID
 
 notes: |
-  VerifyLiveness implements the 4-state model from the phase-based liveness decision.
-  Pure function (no I/O) - all data pre-fetched via LivenessInput.
-  Replaces state.GetLiveness (tmux+OpenCode) with phase-based checks in complete command.
-  Adds grace period awareness to abandon command (previously only had recency check).
+  Phase 2 of cross-project identity layer design (orch-go-jpsun).
+  ResolveProject provides 3-layer fallback: workdir override > registry prefix > CWD.
+  ResolveProjectFrom accepts pre-built registry to avoid repeated kb projects list calls.
+  Removed O(n) resolveProjectDirForBeadsID from abandon (superseded by O(1) registry).
+  send and tail commands now support --workdir for explicit cross-project operations.

@@ -4,9 +4,9 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
+	"github.com/dylan-conlin/orch-go/pkg/identity"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -15,7 +15,8 @@ import (
 
 var (
 	// Tail command flags
-	tailLines int
+	tailLines   int
+	tailWorkdir string
 )
 
 var tailCmd = &cobra.Command{
@@ -38,11 +39,15 @@ Examples:
 
 func init() {
 	tailCmd.Flags().IntVarP(&tailLines, "lines", "n", 50, "Number of lines to capture")
+	tailCmd.Flags().StringVar(&tailWorkdir, "workdir", "", "Target project directory (for cross-project tail)")
 }
 
 func runTail(beadsID string, lines int) error {
 	client := opencode.NewClient(serverURL)
-	projectDir, _ := os.Getwd()
+	projectDir, err := identity.ResolveProject(beadsID, tailWorkdir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve project directory: %w", err)
+	}
 
 	// Strategy: Workspace file first (fast path), then derived lookups
 	//

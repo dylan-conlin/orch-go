@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/identity"
 	"github.com/dylan-conlin/orch-go/pkg/thread"
 	"github.com/spf13/cobra"
 )
@@ -14,22 +15,9 @@ import (
 var threadWorkdir string
 
 func threadsDir() (string, error) {
-	projectDir := ""
-	if threadWorkdir != "" {
-		abs, err := filepath.Abs(threadWorkdir)
-		if err != nil {
-			return "", fmt.Errorf("failed to resolve workdir path: %w", err)
-		}
-		info, err := os.Stat(abs)
-		if err != nil {
-			return "", fmt.Errorf("workdir does not exist: %s", abs)
-		}
-		if !info.IsDir() {
-			return "", fmt.Errorf("workdir is not a directory: %s", abs)
-		}
-		projectDir = abs
-	} else {
-		projectDir, _ = os.Getwd()
+	projectDir, _, err := identity.ResolveProjectDirectory(threadWorkdir)
+	if err != nil {
+		return "", err
 	}
 	return filepath.Join(projectDir, ".kb", "threads"), nil
 }

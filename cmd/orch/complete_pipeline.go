@@ -17,6 +17,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/checkpoint"
+	"github.com/dylan-conlin/orch-go/pkg/identity"
 	"github.com/dylan-conlin/orch-go/pkg/orch"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -119,36 +120,41 @@ func resolveCompletionTarget(identifier, workdir string) (CompletionTarget, erro
 		target.WorkspacePath, target.AgentName = findWorkspaceByBeadsID(searchDir, target.BeadsID)
 	}
 
-	// Determine beads project directory:
-	// 1. If --workdir provided, use that
-	// 2. Otherwise, try to auto-detect from workspace SPAWN_CONTEXT.md
-	// 3. Fall back to current directory
+	// Determine beads project directory using identity layer.
+	// Priority: workdir override > workspace manifest > registry prefix > CWD
 	if workdir != "" {
-		target.BeadsProjectDir, err = filepath.Abs(workdir)
+		target.BeadsProjectDir, err = identity.ResolveProject(target.BeadsID, workdir)
 		if err != nil {
-			return target, fmt.Errorf("failed to resolve workdir path: %w", err)
-		}
-		if stat, err := os.Stat(target.BeadsProjectDir); err != nil {
-			return target, fmt.Errorf("workdir does not exist: %s", target.BeadsProjectDir)
-		} else if !stat.IsDir() {
-			return target, fmt.Errorf("workdir is not a directory: %s", target.BeadsProjectDir)
+			return target, fmt.Errorf("failed to resolve workdir: %w", err)
 		}
 		fmt.Printf("Using explicit workdir: %s\n", target.BeadsProjectDir)
 	} else if target.WorkspacePath != "" {
-		projectDirFromWorkspace := extractProjectDirFromWorkspace(target.WorkspacePath)
-		if projectDirFromWorkspace != "" && projectDirFromWorkspace != currentDir {
-			target.BeadsProjectDir = projectDirFromWorkspace
-			fmt.Printf("Auto-detected cross-project: %s\n", filepath.Base(target.BeadsProjectDir))
-		} else if manifest, err := spawn.ReadAgentManifest(target.WorkspacePath); err == nil && manifest.ProjectDir != "" {
-			// Fallback: try AGENT_MANIFEST.json ProjectDir when SPAWN_CONTEXT.md
-			// extraction fails or returns current dir. Handles cases where
-			// SPAWN_CONTEXT.md is missing/corrupted but manifest is intact.
+		// Try workspace manifest first (ground truth for spawned agents)
+		if manifest, mErr := spawn.ReadAgentManifest(target.WorkspacePath); mErr == nil && manifest.ProjectDir != "" {
 			cleanManifestDir := filepath.Clean(manifest.ProjectDir)
 			if cleanManifestDir != currentDir {
 				target.BeadsProjectDir = cleanManifestDir
 				fmt.Printf("Auto-detected cross-project (from manifest): %s\n", filepath.Base(target.BeadsProjectDir))
 			} else {
 				target.BeadsProjectDir = currentDir
+			}
+		} else {
+			// Fallback: extract from SPAWN_CONTEXT.md
+			projectDirFromWorkspace := extractProjectDirFromWorkspace(target.WorkspacePath)
+			if projectDirFromWorkspace != "" && projectDirFromWorkspace != currentDir {
+				target.BeadsProjectDir = projectDirFromWorkspace
+				fmt.Printf("Auto-detected cross-project: %s\n", filepath.Base(target.BeadsProjectDir))
+			} else {
+				target.BeadsProjectDir = currentDir
+			}
+		}
+	} else if target.BeadsID != "" {
+		// No workspace — try identity registry for cross-project resolution
+		resolved, rErr := identity.ResolveProject(target.BeadsID, "")
+		if rErr == nil {
+			target.BeadsProjectDir = resolved
+			if resolved != currentDir {
+				fmt.Printf("Auto-resolved cross-project: %s\n", filepath.Base(resolved))
 			}
 		} else {
 			target.BeadsProjectDir = currentDir
