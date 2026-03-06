@@ -304,6 +304,16 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 		}
 	}
 
+	// Surface friction reports for orchestrator review
+	if target.BeadsID != "" && !target.IsOrchestratorSession {
+		frictionItems := verify.FetchAndParseFriction(target.BeadsID, target.BeadsProjectDir)
+		if len(frictionItems) > 0 {
+			fmt.Print(verify.FormatFrictionAdvisory(frictionItems))
+		} else if !isLightReview {
+			fmt.Println("\n\u26A0\uFE0F  No friction reported (expected Friction: comment)")
+		}
+	}
+
 	// Surface architectural choices for orchestrator review
 	if target.WorkspacePath != "" && !target.IsOrchestratorSession {
 		if choicesOutput := verify.FormatArchitecturalChoicesForCompletion(target.WorkspacePath); choicesOutput != "" {
