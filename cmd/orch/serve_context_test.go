@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"testing"
 	"time"
 )
@@ -144,4 +145,116 @@ func TestBuildContextResponse(t *testing.T) {
 	if len(resp.IncludedProjects) < 2 {
 		t.Errorf("expected multiple included projects for orch-go, got %d", len(resp.IncludedProjects))
 	}
+}
+
+func TestBuildContextResponse_BeadsPrefixDiffersFromDirName(t *testing.T) {
+	// Create a temp dir simulating scs-special-projects with issue-prefix: scs-sp
+	tmpDir := t.TempDir()
+	projectDir := tmpDir + "/scs-special-projects"
+	beadsDir := projectDir + "/.beads"
+
+	if err := os.MkdirAll(beadsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(beadsDir+"/config.yaml", []byte("issue-prefix: \"scs-sp\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := buildContextResponse(projectDir, projectDir)
+
+	if resp.Project != "scs-special-projects" {
+		t.Errorf("expected project 'scs-special-projects', got %q", resp.Project)
+	}
+
+	// IncludedProjects should contain both the dir name and the beads prefix
+	found := false
+	for _, p := range resp.IncludedProjects {
+		if p == "scs-sp" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'scs-sp' in included_projects, got %v", resp.IncludedProjects)
+	}
+
+	// Should also contain the dir name itself
+	foundDir := false
+	for _, p := range resp.IncludedProjects {
+		if p == "scs-special-projects" {
+			foundDir = true
+			break
+		}
+	}
+	if !foundDir {
+		t.Errorf("expected 'scs-special-projects' in included_projects, got %v", resp.IncludedProjects)
+	}
+}
+
+func TestBuildContextResponse_BeadsPrefixSameAsDirName(t *testing.T) {
+	// When beads prefix matches dir name, no extra entry should be added
+	tmpDir := t.TempDir()
+	projectDir := tmpDir + "/my-project"
+	beadsDir := projectDir + "/.beads"
+
+	if err := os.MkdirAll(beadsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(beadsDir+"/config.yaml", []byte("issue-prefix: \"my-project\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := buildContextResponse(projectDir, projectDir)
+
+	if resp.Project != "my-project" {
+		t.Errorf("expected project 'my-project', got %q", resp.Project)
+	}
+
+	// Should only have "my-project" (no duplicate)
+	if len(resp.IncludedProjects) != 1 {
+		t.Errorf("expected 1 included project, got %d: %v", len(resp.IncludedProjects), resp.IncludedProjects)
+	}
+}
+
+func TestReadBeadsIssuePrefix(t *testing.T) {
+	t.Run("reads prefix from config", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		beadsDir := tmpDir + "/.beads"
+		os.MkdirAll(beadsDir, 0o755)
+		os.WriteFile(beadsDir+"/config.yaml", []byte("issue-prefix: \"scs-sp\"\n"), 0o644)
+
+		prefix := readBeadsIssuePrefix(tmpDir)
+		if prefix != "scs-sp" {
+			t.Errorf("expected 'scs-sp', got %q", prefix)
+		}
+	})
+
+	t.Run("returns empty for no beads dir", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		prefix := readBeadsIssuePrefix(tmpDir)
+		if prefix != "" {
+			t.Errorf("expected empty, got %q", prefix)
+		}
+	})
+
+	t.Run("returns empty for no config", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		os.MkdirAll(tmpDir+"/.beads", 0o755)
+		prefix := readBeadsIssuePrefix(tmpDir)
+		if prefix != "" {
+			t.Errorf("expected empty, got %q", prefix)
+		}
+	})
+
+	t.Run("handles unquoted prefix", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		beadsDir := tmpDir + "/.beads"
+		os.MkdirAll(beadsDir, 0o755)
+		os.WriteFile(beadsDir+"/config.yaml", []byte("issue-prefix: pw\n"), 0o644)
+
+		prefix := readBeadsIssuePrefix(tmpDir)
+		if prefix != "pw" {
+			t.Errorf("expected 'pw', got %q", prefix)
+		}
+	})
 }

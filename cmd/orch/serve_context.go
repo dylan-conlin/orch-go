@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -163,8 +164,36 @@ func buildContextResponse(cwd, projectDir string) ContextAPIResponse {
 		resp.Project = filepath.Base(projectDir)
 		configs := tmux.DefaultMultiProjectConfigs()
 		resp.IncludedProjects = tmux.GetIncludedProjects(resp.Project, configs)
+
+		// If the beads issue prefix differs from the directory name,
+		// include it so dashboard filtering matches agents whose Project
+		// field comes from extractProjectFromBeadsID (e.g., "scs-sp" vs "scs-special-projects").
+		if prefix := readBeadsIssuePrefix(projectDir); prefix != "" && prefix != resp.Project {
+			resp.IncludedProjects = append(resp.IncludedProjects, prefix)
+		}
 	}
 	return resp
+}
+
+// readBeadsIssuePrefix reads the issue-prefix from .beads/config.yaml.
+// Returns empty string if the file doesn't exist or has no prefix configured.
+func readBeadsIssuePrefix(projectDir string) string {
+	configPath := filepath.Join(projectDir, ".beads", "config.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "issue-prefix:") {
+			prefix := strings.TrimSpace(strings.TrimPrefix(line, "issue-prefix:"))
+			prefix = strings.Trim(prefix, `"'`)
+			if prefix != "" {
+				return prefix
+			}
+		}
+	}
+	return ""
 }
 
 // --- HTTP Handlers ---
@@ -178,31 +207,20 @@ func handleContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := ContextAPIResponse{}
-
 	// Get tmux cwd (cached to reduce command overhead)
 	cwd, err := globalContextCache.getCachedCwd()
 	if err != nil {
 		// Tmux not available or orchestrator session not found
 		// Return empty response rather than error - dashboard can handle this gracefully
-		resp.Error = err.Error()
+		resp := ContextAPIResponse{Error: err.Error()}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
 
-	resp.Cwd = cwd
-
-	// Find project directory (contains .beads/ or .orch/)
+	// Build response using shared function (includes beads prefix resolution)
 	projectDir := findProjectDir(cwd)
-	if projectDir != "" {
-		resp.ProjectDir = projectDir
-		resp.Project = filepath.Base(projectDir)
-
-		// Get included projects (handles multi-project config like orch-go)
-		configs := tmux.DefaultMultiProjectConfigs()
-		resp.IncludedProjects = tmux.GetIncludedProjects(resp.Project, configs)
-	}
+	resp := buildContextResponse(cwd, projectDir)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
