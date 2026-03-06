@@ -1,24 +1,32 @@
-task: Add security impact assessment to systematic-debugging Phase 1
-beads_id: orch-go-igswd
+task: Add NFR fork to design-session Phase 2
+beads_id: orch-go-zmce9
 tier: light
 
 automated:
-  - command: "grep -c 'Security Impact Assessment' skills/src/worker/systematic-debugging/phases/phase1-root-cause.md"
-    expects: "Section exists in phase1-root-cause.md"
+  - command: "grep -c '### 2.3 NFR Fork' skills/src/worker/design-session/.skillc/SKILL.md.template"
+    expects: "NFR fork section exists as step 2.3"
     result: "1"
-  - command: "grep -c 'security impact' skills/src/worker/systematic-debugging/.skillc/phases-overview.md"
-    expects: "Security check mentioned in phases-overview.md"
+  - command: "grep -c '### 2.4 Determine Output Type' skills/src/worker/design-session/.skillc/SKILL.md.template"
+    expects: "Old 2.3 renumbered to 2.4"
     result: "1"
-  - command: "skillc build skills/src/worker/systematic-debugging/.skillc 2>&1 | grep -c 'Compiled'"
-    expects: "Skill builds successfully"
+  - command: "grep -c '| **NFR**' skills/src/worker/design-session/.skillc/SKILL.md.template"
+    expects: "NFR row in fork patterns table"
+    result: "1"
+  - command: "grep -c 'NFR fork assessed' skills/src/worker/design-session/.skillc/SKILL.md.template"
+    expects: "NFR check in self-review checklist"
+    result: "1"
+  - command: "cd skills/src/worker/design-session && skillc build 2>&1 | grep -c 'Compiled'"
+    expects: "Skill compiles successfully"
     result: "1"
 
 deliverables:
-  - skills/src/worker/systematic-debugging/phases/phase1-root-cause.md  # New section 7: Security Impact Assessment
-  - skills/src/worker/systematic-debugging/.skillc/phases-overview.md   # Added security check to key activities
+  - skills/src/worker/design-session/.skillc/SKILL.md.template  # Source: new 2.3 NFR Fork section
+  - skills/src/worker/design-session/SKILL.md                   # Compiled output
 
 notes: |
-  Added security impact assessment as step 7 in Phase 1 (root cause investigation).
-  Includes a 4-question assessment table (exploitation, data exposure, auth bypass, injection)
-  with bd comment escalation pattern using SECURITY prefix.
-  Addresses Finding 6 from investigation orch-go-9b6do.
+  Added NFR (Non-Functional Requirements) fork as step 2.3 in Phase 2 (Design Synthesis).
+  Covers three categories: accessibility, performance, security.
+  Each category has trigger questions and example constraints.
+  Rules enforce: a11y mandatory for UI, security mandatory for user input,
+  perf must have "good enough" threshold. Quick-skip path for internal tooling.
+  Updated fork patterns table, self-review checklist, and phase completion table.
