@@ -19,16 +19,26 @@
 {{else}}
 1. Author/update `VERIFICATION_SPEC.yaml` in the workspace root.
    - Fill the pre-populated skeleton with the exact commands you ran, expectations you verified, and any manual steps still required.
-2. Run: `bd comments add {{.BeadsID}} "Phase: Complete - "[1-2 sentence summary of deliverables]"` (report phase FIRST - before commit)
-3. Ensure SYNTHESIS.md is created with these required sections:
+2. **Report friction** experienced during this session:
+   ```bash
+   # For each friction item (one comment per item):
+   bd comments add {{.BeadsID}} "Friction: bug: beads dir resolution fails from nested repos"
+   bd comments add {{.BeadsID}} "Friction: ceremony: 12 line fix took 30min due to process overhead"
+
+   # If no friction experienced:
+   bd comments add {{.BeadsID}} "Friction: none"
+   ```
+   Categories: `bug` (broken behavior), `gap` (missing capability), `ceremony` (disproportionate process), `tooling` (tool UX issues), `none`
+3. Run: `bd comments add {{.BeadsID}} "Phase: Complete - "[1-2 sentence summary of deliverables]"` (report phase FIRST - before commit)
+4. Ensure SYNTHESIS.md is created with these required sections:
    - **`Plain-Language Summary`** (REQUIRED): 2-4 sentences in plain language describing what you built/found/decided and why it matters. This is the scaffolding the orchestrator uses during completion review — write it for a human who hasn't read your code. No jargon without explanation. No "implemented X" without saying what X does.
    - **`Verification Contract`**: Link to `VERIFICATION_SPEC.yaml` and key outcomes
-4. **Verify all .kb/ files are committed:**
+5. **Verify all .kb/ files are committed:**
    - Run: `git status --porcelain` and check for any .kb/ files (investigations, probes, decisions, etc.)
    - If uncommitted .kb/ files exist: `git add .kb/ && git commit -m "knowledge artifacts from session"`
    - This ensures probe files in .kb/models/{name}/probes/ are not left behind
-5. Commit all remaining changes (including SYNTHESIS.md and `VERIFICATION_SPEC.yaml`)
-6. Run: `/exit` to close the agent session
+6. Commit all remaining changes (including SYNTHESIS.md and `VERIFICATION_SPEC.yaml`)
+7. Run: `/exit` to close the agent session
 {{end}}
 
 **Why this order matters:** If the agent dies after commit but before reporting Phase: Complete, the orchestrator cannot detect completion. Reporting phase first ensures visibility even if the agent dies before committing.

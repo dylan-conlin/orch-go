@@ -15,6 +15,11 @@ Before completing your session:
 - [ ] Reviewed for discovered work (bugs, tech debt, enhancements, questions)
 - [ ] Created issues via `bd create` OR noted "No discovered work" in completion comment
 
+**Friction vs. Discovered Work:**
+- **Discovered work** = "I found a bug/debt in the code" → Create issue via `bd create`
+- **Friction** = "The system made my work harder" → Report via `Friction:` comment (see Session Complete Protocol)
+- Overlap is fine — report both if applicable
+
 **Do NOT create empty investigation files as discovered work.** Empty investigation templates accumulate rapidly (~13/week) and create noise in the knowledge base. For discovered work, create beads issues — only create investigation files when you are actively investigating.
 
 ### Creating Issues

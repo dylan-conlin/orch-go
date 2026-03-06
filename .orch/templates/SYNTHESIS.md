@@ -162,6 +162,15 @@ If no architectural choices were made, write:
 
 ---
 
+## Friction
+
+**System friction experienced during this session:**
+- [Category]: [Description] — [Impact: time cost, tool calls wasted, workaround used]
+
+*(If no friction, write: "No friction — smooth session")*
+
+---
+
 ## Session Metadata
 
 **Skill:** {skill-name}
