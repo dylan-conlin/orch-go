@@ -1,14 +1,16 @@
 # Model: Follow Orchestrator Mechanism
 
 **Domain:** Dashboard / Tmux / Context Switching
-**Last Updated:** 2026-01-15
+**Last Updated:** 2026-03-06
 **Synthesized From:** Investigations on dashboard context following, Ghostty window switching, tmux socket detection, and lsof fallback implementation
 
 ---
 
 ## Summary (30 seconds)
 
-The "follow orchestrator" mechanism keeps the dashboard and workers Ghostty window synchronized with the orchestrator's current project context. Two independent systems work together: the **dashboard polls `/api/context`** to filter agents by project, and the **tmux `after-select-window` hook** switches the workers Ghostty to the matching `workers-{project}` session. Both rely on detecting the orchestrator pane's working directory, with an lsof fallback for when `#{pane_current_path}` is empty (e.g., running Claude Code).
+The "follow orchestrator" mechanism keeps the dashboard and workers Ghostty window synchronized with the orchestrator's current project context. Two independent systems work together: the **dashboard receives SSE push events from `/api/events/context`** (primary, ~50ms) with polling fallback, and the **tmux `after-select-window` hook** switches the workers Ghostty to the matching `workers-{project}` session. Both rely on detecting the orchestrator pane's working directory, with an lsof fallback for when `#{pane_current_path}` is empty (e.g., running Claude Code).
+
+**Warning — two reliability bugs in sync script** (see Failure Modes 6 and 7): `tmux display-message -p` inside `run-shell -b` scripts resolves to an arbitrary client (not the orchestrator), and directory basename may not match the workers session name for monorepos.
 
 ---
 
@@ -116,13 +118,24 @@ The `/api/context` response includes `included_projects` for dashboard filtering
 
 ## Dashboard Follow Mechanism
 
-### How It Works
+### How It Works (post-Feb 27, 2026: SSE push primary, polling fallback)
 
-1. Dashboard polls `GET /api/context` every ~2 seconds
-2. API calls `GetTmuxCwd("orchestrator")` (with lsof fallback)
-3. API walks up to find project directory
-4. API returns `{project, project_dir, cwd, included_projects}`
-5. Dashboard filters agent list to show only matching projects
+1. User switches orchestrator window
+2. Tmux `after-select-window` hook fires: calls `curl POST /api/context/notify`
+3. orch serve invalidates cache and fetches fresh tmux CWD
+4. SSE broadcast to `/api/events/context` clients (~50ms total)
+5. Dashboard updates immediately via `EventSource`
+
+**Fallback path** (when hook doesn't fire or SSE disconnects):
+- Backend follower polls tmux at 500ms with stability threshold of 1 (worst case ~500ms)
+- Frontend falls back to 30s polling if SSE connection fails
+
+**Old architecture** (pre-Feb 27): Dashboard polled `GET /api/context` every 2 seconds. Combined with 1s cache TTL and 500ms stability threshold, worst case latency was ~4 seconds. This is now the fallback path only.
+
+### New Endpoints
+
+- `GET /api/events/context` — SSE stream of context changes (primary dashboard feed)
+- `POST /api/context/notify` — Webhook called by tmux hook for instant notification
 
 ### API Endpoint
 
@@ -260,6 +273,26 @@ orch spawn --tmux investigation "create workers session" --workdir /path/to/proj
 
 **This is expected behavior.** Dashboard will update after cache expires.
 
+### Failure 6: `run-shell -b` Context Loss (NEW — previously undocumented)
+
+**Symptom:** `tmux display-message -p '#{session_name}'` inside sync script returns wrong session (sometimes "workers-X" instead of "orchestrator")
+
+**Root cause:** `run-shell -b` executes asynchronously. The background process has no inherent client context. When it calls `tmux display-message -p`, tmux picks an arbitrary client — non-deterministic, depends on which client was most recently active.
+
+**Correct approach:** Expand tmux format variables in the hook definition itself, BEFORE the shell spawns:
+```bash
+set-hook -g after-select-window 'run-shell -b "~/.local/bin/sync-workers-session.sh #{session_name} #{pane_current_path} #{pane_pid} #{client_tty}"'
+```
+`#{...}` formats expand at hook definition evaluation time (in tmux context), not when the background script runs.
+
+### Failure 7: Directory Basename ≠ Workers Session Name (monorepo case)
+
+**Symptom:** Orchestrator window switches but Ghostty doesn't follow (wrong session targeted)
+
+**Root cause:** For monorepos or projects with nested `.orch/` directories, `basename(project_root)` (e.g., `scs-special-projects`) doesn't match the actual workers session name (e.g., `workers-toolshed`).
+
+**Fix:** Add `tmux_session:` field to `.orch/config.yaml` for projects where directory basename ≠ workers session name. Script reads config-based override before falling back to basename.
+
 ### Failure 5: Tmux Hook Disabled
 
 **Symptom:** Ghostty never follows orchestrator
@@ -351,10 +384,30 @@ tmux source-file ~/.tmux.conf.local  # Reload
 - Ghostty sync script created
 - Basic `#{pane_current_path}` detection
 
+### 2026-02-25: `run-shell -b` context loss discovered
+- `tmux display-message -p` inside background scripts is racy — resolves to arbitrary client
+- Fix: pass tmux formats as args from hook definition (expanded at hook evaluation, not in script)
+- Also found: directory basename ≠ workers session name in monorepo case; needs `.orch/config.yaml` `tmux_session:` override
+
+### 2026-02-27: SSE push replaces dashboard polling
+- Added `POST /api/context/notify` webhook + `GET /api/events/context` SSE stream
+- `sync-workers-session.sh` now also calls notify endpoint after switching Ghostty
+- Dashboard `context.ts` store uses `EventSource` instead of `setInterval`
+- Latency: 2-3s avg → ~50ms (hook path), ~500ms (follower fallback)
+- Cache is now invalidated on push; TTL only matters for fallback GET requests
+- Failure 4 (stale cache) is no longer typical — only occurs if SSE disconnects or hook doesn't fire
+
 ### 2026-01-15: lsof Fallback + Socket Detection
 - Added lsof fallback for Claude Code panes (empty pane_current_path)
 - Added socket detection for overmind context (wrong tmux server)
 - Both fixes applied to shell script and Go code
+
+### Merged Probes
+
+| Probe | Date | Key Finding |
+|-------|------|-------------|
+| `2026-02-25-probe-run-shell-background-context-loss.md` | 2026-02-25 | `tmux display-message -p` inside `run-shell -b` is racy (returns arbitrary client); fix: expand `#{session_name}` in hook definition, not in script; secondary: basename ≠ session name for monorepos |
+| `2026-02-27-probe-follow-mode-latency-sse-push.md` | 2026-02-27 | Polling layers compound to 2-4s worst-case; fix: SSE push via `POST /api/context/notify` → `GET /api/events/context` reduces to ~50ms; fallback follower poll ~500ms; old polling is now fallback only |
 
 ---
 

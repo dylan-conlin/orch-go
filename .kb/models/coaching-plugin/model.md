@@ -1,8 +1,8 @@
 # Model: Coaching Plugin
 
 **Domain:** OpenCode Plugins / Behavioral Monitoring
-**Last Updated:** 2026-02-14 (worker detection fix verified)
-**Synthesized From:** 15 investigations (Jan 10-18, 2026) exploring coaching plugin implementation, worker detection failures, and injection architecture
+**Last Updated:** 2026-03-06 (4 probes merged: metrics redesign validation, header implementation, stress test, worker health injection)
+**Synthesized From:** 15 investigations (Jan 10-18, 2026) + 4 probes (Feb 14-20, 2026)
 
 ---
 
@@ -10,7 +10,7 @@
 
 The Coaching Plugin is an OpenCode plugin that provides real-time behavioral feedback to orchestrators and workers through tool usage pattern detection. It implements the "Pain as Signal" architectural pattern: agents should feel friction in real-time rather than learning about it post-hoc.
 
-The plugin hooks `tool.execute.after` to observe tool usage patterns (it cannot see LLM response text—fundamental constraint), detects 8 behavioral patterns using behavioral proxies (action ratio, analysis paralysis, frame collapse, etc.), and injects coaching messages via `client.session.prompt({ noReply: true })`. Metrics persist to `~/.orch/coaching-metrics.jsonl` and are exposed via `/api/coaching` for dashboard visualization.
+The plugin hooks `tool.execute.after` to observe tool usage patterns (it cannot see LLM response text—fundamental constraint), detects behavioral patterns using behavioral proxies (action ratio, analysis paralysis, frame collapse, etc.), and injects coaching messages via three mechanisms: `config.instructions` (static file references), `client.session.prompt({ noReply: true })` (runtime injection), and session-start one-time injection via the `event` hook on `session.created`. Metrics persist to `~/.orch/coaching-metrics.jsonl` (written by both the plugin and the Go backend) and are exposed via `/api/coaching` for dashboard visualization.
 
 **Current status (Feb 2026):** Both orchestrator and worker coaching operational. Orchestrator coaching: 1000+ metrics collected. Worker health tracking: verified working Feb 14 — stress test (50+ tool calls) emitted `context_usage` worker metric with zero orchestrator metric leakage. Fix required two opencode fork commits (459a1bfba, 0922edfe7) to: (1) read `x-opencode-env-ORCH_WORKER` header and set `session.metadata.role='worker'`, (2) pass `session.metadata` through `tool.execute.after` plugin hooks. **Note:** Worker detection only works for headless (OpenCode HTTP API) spawns — Claude CLI/tmux spawns bypass the HTTP session creation endpoint and don't get metadata set.
 
@@ -22,10 +22,11 @@ The plugin hooks `tool.execute.after` to observe tool usage patterns (it cannot 
 
 ```
 OpenCode Plugin Layer
-    ↓ tool.execute.after hook
-Behavioral Detection (8 patterns)
+    ↓ tool.execute.after hook         ↓ event hook (session.created)
+Behavioral Detection                 One-time session-start injection
+(5 orch + 5 worker patterns)
     ↓ threshold crossing
-Metrics Calculation & Persistence (JSONL)
+Metrics Calculation & Persistence (JSONL) ← also written by Go backend
     ↓ flushMetrics trigger
 Pain Signal Transformation
     ↓ client.session.prompt({ noReply: true })
@@ -34,24 +35,29 @@ Agent Sensory Stream (tool-layer injection)
 Dashboard Visualization (/api/coaching)
 ```
 
-### Detection Patterns (8 Behavioral Proxies)
+### Detection Patterns
+
+**Orchestrator patterns (5 behavioral proxies):**
 
 | Pattern | What It Detects | Trigger Condition | Action |
 |---------|-----------------|-------------------|--------|
-| `action_ratio` | Low actions vs reads (option theater) | ratio < 0.5, reads >= 6 | Inject coaching message |
-| `analysis_paralysis` | Tool repetition sequences | 3+ same tool consecutive | Inject warning |
-| `behavioral_variation` | Semantic group thrashing | 3+ variations without 30s pause | Write to JSONL |
 | `frame_collapse` | Orchestrator editing code | edit/write on code file | Tiered injection (1st warning, 3+ strong) |
 | `circular_pattern` | Contradicting prior investigations | Decision keywords vs investigation Next | Stream to coach session |
-| `dylan_signal_prefix` | User explicit signals | `frame-collapse:`/`compensation:`/`focus:`/`step-back:` | Stream to coach |
-| `compensation_pattern` | Repeated keyword overlap | >30% keyword overlap | Stream to coach |
-| `premise_skipping` | "How to X" without "Should we X" | Strategic verb in how-to pattern | Inject coaching |
+| `behavioral_variation` | Semantic group thrashing | 3+ variations without 30s pause | Write to JSONL |
+| `spawn_without_context` | Spawning without sufficient task framing | Tool call sequence proxy | Inject coaching |
+| `completion_backlog` | Phase state accumulation proxy | Phase state as proxy | Write to JSONL (Go backend) |
 
-**Worker health metrics (implemented but not firing):**
-- `tool_failure_rate` - consecutive tool failures (threshold: 3+)
-- `context_usage` - estimated token consumption (threshold: 80%+)
-- `time_in_phase` - minutes since phase change (threshold: 15+ min)
-- `commit_gap` - time since last commit (threshold: 30+ min)
+**Note on removed patterns:** `action_ratio` and `analysis_paralysis` were found to account for 72% of all real-world events (736 of 1022 metrics), indicating noise rather than signal. `compensation_pattern`, `dylan_signal_prefix`, and `premise_skipping` were also removed in the metrics redesign (Feb 2026) to reduce false-positive noise.
+
+**Worker health metrics (operational as of Feb 14, 2026):**
+
+| Metric | What It Detects | Trigger Condition | Action |
+|--------|-----------------|-------------------|--------|
+| `tool_failure_rate` | Consecutive tool failures | 3+ consecutive failures | Inject health signal |
+| `context_usage` | Estimated token consumption | Every 50 tool calls OR over threshold | Inject health signal |
+| `time_in_phase` | Time since last phase change | Every 30 tools when >5 min, warnings at 15+ min | Inject health signal |
+| `commit_gap` | Time since last commit | Every 30 tools when >10 min, warnings at 30+ min | Inject health signal |
+| `accretion_warning` | Large file edits | edit/write on files >800 lines | Inject `accretion_warning` or `accretion_strong` coaching |
 
 ### Data Flow
 
@@ -105,7 +111,8 @@ Dashboard Visualization (/api/coaching)
 3. **Metrics persist, session state doesn't** - JSONL file survives restarts, in-memory Map is ephemeral.
 4. **Observation coupled to intervention** - Injection only fires from `flushMetrics` within `tool.execute.after` hook.
 5. **Worker detection caching is one-way** - Only cache `true` results (confirmed worker), never cache `false`.
-6. **Two injection mechanisms serve different purposes** - `config.instructions` adds file references at config time (static context like skills), `client.session.prompt(noReply: true)` injects content at runtime (immediate coaching).
+6. **Three injection mechanisms serve different purposes** - `config.instructions` adds file references at config time (static context like skills); `client.session.prompt(noReply: true)` injects content at runtime (immediate coaching); `event` hook on `session.created` injects a one-time health summary at session start. The third is not "observation coupled to intervention" — it fires once at creation, not continuously.
+7. **JSONL has two writers** - The plugin appends orchestrator/worker metrics; the Go backend (`serve_coaching.go`) appends `completion_backlog` metrics. Pruning to 1000 lines is plugin-only responsibility — Go backend must not prune.
 
 ---
 
@@ -247,13 +254,14 @@ if (args?.filePath && typeof args.filePath === "string") {
 
 ### Why Observation Coupled to Intervention?
 
-**Constraint:** Injection logic is triggered from `flushMetrics` within `tool.execute.after` hook
+**Constraint:** Runtime injection logic is triggered from `flushMetrics` within `tool.execute.after` hook
 
-**Implication:** Coaching can only happen when plugin is actively observing tool calls
+**Implication:** Continuous coaching can only happen when plugin is actively observing tool calls
 
 **Current design:**
 ```
 tool call → hook fires → update state → check thresholds → inject if needed
+session.created event → one-time health summary injection (NOT coupled to observation)
 ```
 
 **Proposed design (not implemented):**
@@ -263,7 +271,9 @@ Intervention: daemon polls metrics file → threshold check → inject via API
 ```
 
 **This enables:** Simple implementation, low latency
-**This constrains:** Restart brittleness, can't inject independently of observation
+**This constrains:** Restart brittleness for continuous coaching, can't inject independently of observation
+
+**Note:** The `session.created` injection path is exempt from this constraint — it fires once at session creation via the `event` hook and is not coupled to continuous tool observation.
 
 ---
 
@@ -417,3 +427,14 @@ Intervention: daemon polls metrics file → threshold check → inject via API
 - `orch-go-hflo3` - Fix detectWorkerSession caching bug
 - `orch-go-v3v8z` - Update to session.metadata.role detection
 - `orch-go-rcah9` - Abandoned debugging attempts (2x)
+
+---
+
+### Merged Probes
+
+| Probe | Date | Status | Summary |
+|-------|------|--------|---------|
+| `2026-02-14-worker-detection-header-implementation.md` | 2026-02-14 | Complete | Confirms root cause of Failure Mode 5 — server never read the `x-opencode-env-ORCH_WORKER` header; documents the fix code added to routes/session.ts |
+| `2026-02-14-worker-detection-stress-test.md` | 2026-02-14 | Complete | Confirms stress test execution (55 tool calls) that validated worker detection and context_usage metric firing; final result already incorporated in model Summary |
+| `2026-02-14-metrics-redesign-architecture-validation.md` | 2026-02-14 | Complete | Extends model: documents session-start injection as a 3rd injection mechanism; dual JSONL writers; and validates that removing action_ratio/analysis_paralysis (72% of noise events) doesn't break behavioral proxy coverage |
+| `2026-02-20-probe-worker-health-injection.md` | 2026-02-20 | Complete | Extends model: confirms worker detection caches only true; documents accurate thresholds for all 5 worker health metrics including accretion_warning for large file edits (>800 lines) |

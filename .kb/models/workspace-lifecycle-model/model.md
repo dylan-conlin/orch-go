@@ -1,7 +1,7 @@
 # Model: Workspace Lifecycle & Hierarchy
 
 **Domain:** Workspaces / Persistence / Cleanup
-**Last Updated:** 2026-01-17
+**Last Updated:** 2026-03-06
 **Synthesized From:** 13 investigations (Dec 2025 - Jan 2026) on orphaned workspaces, cleanup strategies, name collisions, and interactive session workspaces.
 
 ---
@@ -63,14 +63,25 @@ For high-performance bulk operations (like `orch clean`), completion is inferred
     *   `orch clean --stale` moves completed workspaces older than 7 days to `{project}/.orch/workspace/archived/`.
     *   Zombie sessions are detected via `orch doctor --sessions`.
 
+5.  **Expire (TTL-based deletion of archived workspaces):**
+    *   No mechanism currently exists. Archived workspaces accumulate unboundedly.
+    *   As of 2026-02-28: 1,708 archived dirs, 149MB. All appear as untracked entries in `git status`.
+    *   The binding constraint is `orch rework` — `FindArchivedWorkspaceByBeadsID()` in `pkg/spawn/rework.go` needs archived workspaces. Rework typically happens within days, not months, so a TTL of 30-90 days preserves the use case.
+    *   The "two-tier cleanup" pattern (event-based archival on complete + periodic TTL-based expiry) should be extended here.
+
 ---
 
 ## Why This Fails
 
-### 1. The Archival Gap
+### 1. The Archival Gap (Resolved)
 **Symptom:** Hundreds of active workspaces accumulate (340+ observed).
-**Root Cause:** `orch complete` closes the issue but leaves the directory. Archival is an opt-in manual step (`orch clean --stale`).
-**Solution:** Automated archival in the daemon poll loop or as a post-completion hook.
+**Root Cause:** `orch complete` closes the issue but leaves the directory. Archival was an opt-in manual step (`orch clean --stale`).
+**Status:** Fixed — automated archival now runs as part of `orch complete`.
+
+### 1b. The Archived Workspace Accumulation Gap (New — Feb 2026)
+**Symptom:** 1,708 archived dirs, 149MB; every `git status` shows hundreds of untracked entries obscuring real code changes. 10,448 workspace files already historically committed to git.
+**Root Cause:** Model treated Archive as the terminal state. No TTL or cleanup mechanism for archived workspaces. `.gitignore` had no `.orch` entries.
+**Solution:** Two steps — (1) Add `.orch/workspace/` to `.gitignore` immediately. (2) Add TTL-based expiry for archived workspaces (30-90 day window preserves `orch rework` use case). The git tracking of 10,448 historical files requires a separate `git rm --cached` cleanup pass.
 
 ### 2. Name Collisions (Fixed)
 **Symptom:** New sessions overwriting previous handoffs on the same day.
@@ -93,7 +104,7 @@ For high-performance bulk operations (like `orch clean`), completion is inferred
 
 ### Why local `.orch/` for workers?
 **Constraint:** Worker workspaces are inside the project they are modifying.
-**Implication:** Workspaces are visible to `git status` (unless ignored).
+**Implication:** Workspaces are visible to `git status` (unless ignored). **As of 2026-02-28:** they were NOT ignored — 10,448 workspace files had been committed historically, and 1,708 archived dirs were untracked noise. Mitigation: add `.orch/workspace/` to `.gitignore`.
 **Rationale:** Keeps evidence close to the code; allows `orch complete` to run project-local tests easily.
 
 ---
@@ -121,6 +132,7 @@ For high-performance bulk operations (like `orch clean`), completion is inferred
 * `pkg/spawn/config.go` - Name generation and uniqueness
 * `cmd/orch/clean_cmd.go` - Archival logic
 * `cmd/orch/session.go` - Interactive workspace creation
+* `pkg/spawn/rework.go:19-66` - `FindArchivedWorkspaceByBeadsID()` — binding constraint on archived workspace TTL
 
 **Primary Evidence (Verify These):**
 * `pkg/spawn/config.go` - Workspace naming with 4-char hex suffix generation
@@ -129,3 +141,9 @@ For high-performance bulk operations (like `orch clean`), completion is inferred
 * `pkg/verify/check.go` - Tier-aware verification using .tier file
 * `.orch/workspace/` - Worker workspace directory structure
 * `~/.orch/session/` - Interactive orchestrator session directory structure
+
+### Merged Probes
+
+| Probe | Date | Verdict | Key Finding |
+|-------|------|---------|-------------|
+| `probes/2026-02-28-probe-archived-workspace-accumulation-git-clutter.md` | 2026-02-28 | Extends | Archival was fixed but created a new gap — 1,708 archived dirs (149MB) accumulate without TTL. 10,448 workspace files historically committed to git; `.gitignore` had no `.orch` entries. `orch rework` is the binding constraint (needs archived workspaces within days of completion). Lifecycle needs a 5th stage: Expire. |

@@ -1,7 +1,7 @@
 # Model: Model Access and Spawn Paths
 
 **Domain:** Agent Spawning / Model Selection
-**Last Updated:** 2026-03-02
+**Last Updated:** 2026-03-06
 **Synthesized From:** 5 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations) spanning Jan 8-12, 2026. Updated Feb-Mar 2026 via drift probes, model drift agent, and token lifecycle probe.
 
 ---
@@ -48,8 +48,20 @@ User → orch spawn → Claude CLI (tmux) → Anthropic API (Max subscription fi
 - **Default since Feb 19, 2026** (Anthropic banned subscription OAuth in third-party tools)
 - **Independence:** Does not depend on OpenCode server
 - Dashboard visibility limited (tmux-only agents need reconciliation)
+- **Visibility gap:** `runSpawnClaude` does NOT call `AtomicSpawnPhase2` — no `.session_id` file written. Workspaces exist but lack session tracking. Spawn success ≠ agent health (fire-and-forget).
 
-**Pattern 2: OpenCode API (For Non-Anthropic Models)**
+**Pattern 2: Claude CLI (Print Mode — Headless Claude)**
+```
+User → orch spawn --print-mode → claude -p --output-format stream-json → Anthropic API
+```
+
+**Characteristics:**
+- Headless (no tmux window), structured JSON output
+- **Unlocks:** `--fallback-model`, `--json-schema`, `--max-budget-usd`, `--max-turns` (print-mode-only flags)
+- Backend independence (does not depend on OpenCode server)
+- **Status:** Not yet implemented in orch; identified as available third spawn path (Feb 2026)
+
+**Pattern 3: OpenCode API (For Non-Anthropic Models)**
 ```
 User → orch spawn --model gpt-5 → OpenCode HTTP API (localhost:4096) → OpenAI/Google/DeepSeek API
 ```
@@ -62,6 +74,8 @@ User → orch spawn --model gpt-5 → OpenCode HTTP API (localhost:4096) → Ope
 - **Required for:** Google, OpenAI, DeepSeek models (Claude CLI can only run Anthropic)
 - **Dependency:** OpenCode server must be running
 - **Anthropic models blocked** unless `allow_anthropic_opencode: true` in user config
+- **Tmux+model flag broken:** `opencode attach` has no `--model` flag; tmux+opencode spawns with non-default models silently fail after 15s TUI ready timeout. Only headless mode correctly passes models via HTTP API.
+- **MCP support:** `DispatchSpawn` injects `opencode.json` MCP config before mode routing (Feb 2026), closing the gap where `--mcp` was silently dropped for OpenCode paths.
 
 ### Key Components
 
@@ -106,6 +120,22 @@ This is the primary routing mechanism since the Anthropic OAuth ban.
 - Keywords (22): "opencode", "orch-go", "pkg/spawn", "pkg/opencode", "pkg/verify", "pkg/state", "cmd/orch", "spawn_cmd.go", "serve.go", "status.go", "main.go", "dashboard", "agent-card", "agents.ts", "daemon.ts", "skillc", "skill.yaml", "SPAWN_CONTEXT", "spawn system", "spawn logic", "spawn template", "orchestration infrastructure", "orchestration system"
 - Auto-applies `--backend claude` (which implies tmux) when no higher-priority setting overrides
 - Prevents agents from killing themselves (e.g., restarting OpenCode during spawn)
+
+### Claude CLI Capability Controls (Available, Not All Used)
+
+Claude CLI v2.1.63 has flags that extend spawn path control. Current usage in `BuildClaudeLaunchCommand` uses a subset:
+
+| Flag | Effect | Currently Used? |
+|------|--------|-----------------|
+| `--effort low/medium/high` | Reasoning depth (affects throughput, not billing) | No |
+| `--permission-mode plan` | Read-only agents (investigation/architect) | No |
+| `--max-turns N` | Runaway prevention | No |
+| `--settings <file>` | Per-spawn hook/settings customization | No |
+| `-p --output-format stream-json` | Headless print mode (third spawn path) | No |
+| `--fallback-model` | Auto-fallback on model unavailability (print-mode only) | No |
+| `--max-budget-usd` | Hard cost cap (print-mode only) | No |
+
+**Hooks gap:** 16 Claude hook events exist; orch uses 6. Unused: `SubagentStart`, `SubagentStop`, `TaskCompleted`, `WorktreeCreate/Remove` — these could provide visibility into Claude's internal agent delegation.
 
 ### Token Lifecycle
 
@@ -280,7 +310,53 @@ Tmux session, highest quality
 
 **Prevention:** Never share refresh tokens between orch (accounts.yaml) and Claude CLI (keychain). They must maintain independent chains.
 
-### Failure Mode 5: Infrastructure Work Kills Itself
+### Failure Mode 5: Tmux+OpenCode with Non-Default Model (Feb 2026)
+
+**Symptom:** `orch spawn --tmux --model codex ...` exits with "timeout waiting for OpenCode TUI to be ready after 15s"
+
+**Root Cause:** `BuildOpencodeAttachCommand()` appends `--model "openai/gpt-5.2-codex"` to `opencode attach`, but `opencode attach` has no `--model` flag. Command shows usage and exits immediately.
+
+**Impact:** ALL tmux+opencode spawns with any non-default model are broken. Only `--headless` mode correctly passes the model via HTTP API session creation.
+
+**Workaround:** Never use `--tmux` with opencode backend and a model flag. Use `--headless` (or default) for non-default model spawns on opencode backend.
+
+**Fix path:** Either add `--model` flag to `opencode attach` (fork change) or pre-create session via HTTP API and attach with `--session <id>`.
+
+### Failure Mode 6: Silent Zombie from Unconfigured Model Alias (Feb 2026)
+
+**Symptom:** `orch spawn --model gpt-5 ...` returns success but agent never produces output
+
+**Root Cause:** The `gpt-5` alias resolves to `openai/gpt-5`, but OpenCode's provider config only has `gpt-5.1`, `gpt-5.1-codex*`, `gpt-5.2`, `gpt-5.2-codex`. Session creation via API succeeds (API doesn't validate model existence), but no response is ever generated.
+
+**Impact:** Spawn pipeline returns success; workspace created; session exists; zero work done. Indistinguishable from a running agent from the outside.
+
+**Fix:** `gpt-5` alias should map to `openai/gpt-5.2` (remapped Feb 2026 per Evolution section). Additionally, model existence validation against OpenCode provider config would catch this class of bug.
+
+### Failure Mode 7: Daemon Bypasses User Config default_model (Feb 2026)
+
+**Symptom:** User has `default_model: opus` in `~/.orch/config.yaml` but daemon-driven spawns use sonnet
+
+**Root Cause:** `pkg/daemon/issue_adapter.go:SpawnWork()` unconditionally passes `--model <inferredModel>` to `orch work`. CLI model flags have highest precedence in `resolveBackend`. The `skillModelMapping` only has explicit entries for investigation/architect/debugging/audit — everything else (feature-impl, etc.) falls to `DefaultSkillModel = "sonnet"`, which overrides user config.
+
+**Precedence short-circuit:**
+```
+CLI.Model ("sonnet" from --model flag)   ← daemon always sets this
+  > user config default_model ("opus")   ← NEVER reached
+```
+
+**Fix path:** `SpawnWork()` should NOT pass `--model` when inferred model equals `DefaultSkillModel`. Only pass `--model` for skills with explicit overrides (opus for investigation/architect/etc.).
+
+### Failure Mode 8: Claude Spawn Visibility Gap (Feb 2026)
+
+**Symptom:** Claude-backend workspace exists, spawn shows success, but agent lifecycle is untrackable
+
+**Root Cause:** `runSpawnClaude` in `pkg/orch/spawn_modes.go` is the ONLY spawn backend that doesn't call `AtomicSpawnPhase2`. All other backends (headless:191, tmux:385, inline:110) write a `.session_id` file. Without it, `orch status` cannot do session lookup. Spawn is fire-and-forget — tmux window death is invisible to orch.
+
+**Impact:** Cannot distinguish "spawn failed" from "spawn succeeded, then process died." Workspace shows healthy Phase 1 artifacts regardless of agent outcome.
+
+**Fix path:** Have `runSpawnClaude` write tmux window ID to a tracking dotfile, providing a lifecycle breadcrumb even without an OpenCode session ID.
+
+### Failure Mode 9: Infrastructure Work Kills Itself
 
 **Symptom:** Agent fixing OpenCode server crashes mid-execution
 
@@ -570,6 +646,26 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - Agreements gate added to spawn pipeline (non-blocking warning-only)
 - GatherSpawnContext signature extended with `orientationFrame` parameter
 
+**Feb 19, 2026:** MCP wiring closed across both backends
+- `DispatchSpawn` injects `opencode.json` MCP config before mode routing (non-blocking)
+- Claude backend already handled via `--mcp-config` CLI flag
+- Closes gap where `--mcp` was silently dropped for OpenCode inline/headless/tmux paths
+
+**Feb 21, 2026:** GPT model spawn bugs identified
+- `opencode attach` has no `--model` flag → tmux+opencode with non-default model silently fails
+- `gpt-5` alias mapped to unconfigured `openai/gpt-5` → zombie sessions; remapped to `gpt-5.2`
+- Only headless mode correctly passes model selection via HTTP API session creation
+
+**Feb 24, 2026:** Daemon model bypass and Claude visibility gap documented
+- Daemon `SpawnWork()` always passes `--model` at CLI precedence, bypassing user `default_model` config
+- `runSpawnClaude` is only backend that doesn't call `AtomicSpawnPhase2`; no `.session_id` written
+- Fire-and-forget tmux spawns create workspace but lose lifecycle visibility on process death
+
+**Feb 28, 2026:** Third spawn path identified
+- `claude -p --output-format stream-json` is a headless Claude CLI path (print mode)
+- Unlocks print-mode-only flags: `--fallback-model`, `--json-schema`, `--max-budget-usd`, `--max-turns`
+- Not yet implemented in orch; identified as available capability
+
 **Mar 2, 2026:** Token lifecycle documented
 - Three independent auth systems mapped (accounts.yaml, auth.json, macOS Keychain)
 - Access token lifetime: 8 hours, refresh tokens rotate on every use, no grace period
@@ -641,3 +737,20 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - Header injection broke Gemini spawns (Jan 8, reverted)
 - OpenCode crash killed infrastructure agent (Jan 11, before auto-detection)
 - GPT-5 alias zombie sessions (Feb 2026, fixed by remapping to gpt-5.2)
+
+---
+
+### Merged Probes
+
+All probes in `.kb/models/model-access-spawn-paths/probes/` merged as of 2026-03-06:
+
+| Probe | Date | Verdict | Summary |
+|-------|------|---------|---------|
+| `2026-02-19-probe-opencode-mcp-wiring.md` | Feb 19 | EXTENDS | `--mcp` now works on OpenCode backend via `opencode.json` injection in `DispatchSpawn`; was silently dropped before |
+| `2026-02-20-backend-resolution-architecture-drift.md` | Feb 20 | CONTRADICTS/EXTENDS | Major drift: `selectBackend` → `resolveBackend`, 4-level → 6-level priority, infra detection advisory, 8 → 22 keywords, flash blocked; model updated accordingly |
+| `2026-02-20-probe-default-backend-anthropic-incompatibility.md` | Feb 20 | CONFIRMS | Default backend changed to `claude` to match default Anthropic model; all 27 resolve tests pass |
+| `2026-02-20-model-aware-backend-routing.md` | Feb 20 | EXTENDS | Model-aware routing generalized from project-config-only to all non-CLI sources; daemon headless path bug fixed; `--backend claude` + `--headless` overrides to tmux |
+| `2026-02-21-probe-gpt-model-spawn-e2e-verification.md` | Feb 21 | EXTENDS | tmux+opencode with model flag is broken (`opencode attach` no `--model`); `gpt-5` alias creates zombie sessions; only headless works for non-default GPT models |
+| `2026-02-24-probe-daemon-spawn-model-bypass-and-claude-visibility.md` | Feb 24 | EXTENDS | Daemon always passes `--model` bypassing user `default_model` config; `runSpawnClaude` is only backend missing `AtomicSpawnPhase2`, creating lifecycle visibility gap |
+| `2026-02-28-probe-claude-code-feature-gap-analysis.md` | Feb 28 | EXTENDS | Third spawn path: `claude -p --output-format stream-json` (headless print mode); untapped Claude CLI capabilities: `--effort`, `--permission-mode`, `--max-turns`, `--settings` |
+| `2026-03-02-probe-oauth-token-auto-refresh.md` | Mar 2 | EXTENDS | Full token lifecycle: 8h access tokens, rotate-on-use refresh tokens, no grace period, two failure modes (chain death + chain divergence), `orch usage` as implicit keepalive |

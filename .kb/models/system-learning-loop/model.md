@@ -1,7 +1,7 @@
 # Model: System Learning Loop
 
 **Domain:** Observability / Learning System / Gap Management
-**Last Updated:** 2026-02-14
+**Last Updated:** 2026-03-06
 **Synthesized From:** 6 investigations (Dec 2025 - Dec 2026) into learning loop implementation, gap tracking, command generation, and validation
 
 ---
@@ -389,6 +389,25 @@ Gap excluded from future FindRecurringGaps calls
 
 ---
 
+## References
+
+**Literature (legibility/human factors — incorporated 2026-03-01):**
+- Bainbridge (1983) — "Ironies of Automation" — skill degradation, passive monitoring risk
+- Endsley (1995) — SA-1/2/3 framework — the three levels the loop must support
+- Parasuraman, Sheridan & Wickens (2000) — filtering information before presenting to operators
+- Hollnagel & Woods (2005-2006) — joint cognitive systems, adaptation at boundaries
+- Chen et al. (2014/2018) — SAT/DSAT agent transparency model
+- ISA-101.01-2015 — High-Performance HMI: grayscale default, color for abnormality
+- Scott (1998) via Rao — legibility trap: oversimplification produces false confidence
+
+### Merged Probes
+
+| Probe | Date | Verdict | Key Finding |
+|-------|------|---------|-------------|
+| `probes/2026-03-01-probe-legibility-literature-review-bainbridge-forward.md` | 2026-03-01 | Confirms + Extends | Core architecture confirmed by 40 years of human factors research. Three gaps identified: SA-3 projection absent, honest legibility risk (Scott's trap), joint cognitive system framing neglected. Pace-layered transparency needed. Bainbridge Irony #3 is live — autonomous daemon degrades Dylan's intervention readiness. |
+
+---
+
 ## Observability
 
 **What you can observe:**
@@ -436,3 +455,31 @@ cat ~/.orch/gap-tracker.json | jq '.Events | group_by(.Query) | map({query: .[0]
 **Intentionally deferred:**
 - Semantic query matching (kb context uses keyword matching; semantic would require LLM-based RAG)
 - Natural language suggestion generation (current format is structured/actionable, not prose)
+
+---
+
+## Legibility & Human Factors Assessment (2026-03-01)
+
+A literature review against 40 years of human factors research (Bainbridge 1983 → Chen SAT/DSAT 2018) produced the following alignment assessment:
+
+### What the literature confirms
+
+- **Gaps → patterns → suggestions → improvements maps to a continuous SA-2 mechanism** (Endsley situation awareness level 2: comprehension, not just perception). The 40-year literature strongly supports closed feedback loops for maintaining supervisory awareness in automated systems.
+- **RecurrenceThreshold=3 is sound.** Parasuraman et al.'s taxonomy validates information filtering before surfacing to operators — showing every gap (threshold=1) creates alarm fatigue, a well-documented SCADA/HMI failure mode.
+- **"Pain as signal" architectural principle is validated.** Bainbridge's core finding — automation that hides problems creates worse outcomes — directly validates injecting friction into agent streams rather than silently logging.
+
+### Extensions identified by the literature
+
+1. **SA-3 gap (projection is absent).** The learning loop provides SA-1 (what gaps exist) and SA-2 (why they recur), but has no SA-3 capability — it cannot project which gaps are likely to emerge before they occur. The "Future Directions" gap prediction item is not optional per the literature; it's the third leg of situation awareness. Without projection, the supervisor can only react, not anticipate.
+
+2. **"Honest legibility" risk.** The model doesn't address Scott's legibility trap (James C. Scott, *Seeing Like a State*). Learning loop metrics (gap rates by skill, improvement effectiveness) could create false confidence if gap recording is inconsistent or metrics are gamed. Legibility tools become dangerous when the simplified view diverges from reality.
+
+3. **Joint cognitive system framing.** The current architecture puts Dylan in a reactive position (gaps accumulate → patterns surface → human acts). The human factors literature frames the interesting unit as the *human + system together*, with the human as an active participant, not just a consumer of automated suggestions. `orch learn resolve` partially addresses this but the overall architecture privileges automated detection.
+
+4. **Pace-layered transparency gap.** All suggestions surface at the same urgency level. ISA-101 / High-Performance HMI strongly recommends tiered presentation: normal gaps quiet, critical/blocking gaps loud, detail on demand. Current `orch learn` output is flat.
+
+### Broader system implications (from the literature review)
+
+- Dashboard should follow High-Performance HMI: quiet for normal progress, color/alerts for anomalies and blocked work.
+- Agent spawn visibility should answer all three SA levels: what agents are running (SA-1), why they were spawned and what they depend on (SA-2), what's likely to complete/block next (SA-3).
+- **Bainbridge's Irony #3 is live in this system:** when the daemon handles everything autonomously, Dylan's manual intervention skill degrades. The daemon's autonomous spawning amplifies this risk. The design should ensure Dylan periodically engages with raw system behavior, not just orchestrator-mediated summaries.

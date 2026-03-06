@@ -1,7 +1,7 @@
 # Model: Entropy Spiral
 
 **Domain:** Agentic Systems / Failure Modes / Control Theory
-**Last Updated:** 2026-02-25
+**Last Updated:** 2026-03-06
 **Synthesized From:** 3 investigations (Feb 12-14, 2026), 3 post-mortems (Dec 21, Jan 2, Feb 12), git-verified evidence from 3 spirals totaling 1,625 lost commits.
 
 ---
@@ -85,9 +85,30 @@ During Dec 27-Jan 2, agents improved observability (added dead/stalled agent det
 
 ---
 
-## Current Defenses (48 gates, 4 layers)
+## Current Defenses (48 gates, 4 layers) — All Mutable
+
+**As of Mar 1, 2026:** Claude Code hooks represent a genuinely new defense layer (tool-invocation-level gating via PreToolUse deny) not available during the 3 spirals. However, ALL defenses remain agent-modifiable:
+
+| Layer | Mechanism | Hard Gate? | Agent-Modifiable? |
+|-------|-----------|------------|-------------------|
+| Spawn gates | `pkg/spawn/gates/*.go` (6 files) | YES (block spawn) | YES (source in repo) |
+| Verify gates | `pkg/verify/check.go` V0-V3 (18 failure paths) | YES (block completion) | YES (source in repo) |
+| Architecture lint | `architecture_lint_test.go` (4 tests) | NO (no auto enforcement) | YES (can delete file) |
+| Claude Code hooks | `~/.orch/hooks/*.py` (12 scripts, 5 denials) | YES (PreToolUse deny) | YES (`Edit(*/.claude/*)`, `Bash(rm:*)` allowed) |
+| Control plane circuit breaker | `control-plane-post-commit.sh` | — | **DISABLED** (`.disabled` suffix) |
+
+**Critical permissions enabling modification** (from `~/.claude/settings.json`):
+- `Edit(*/.claude/*)` — agents can edit settings.json itself, removing all hook definitions
+- `Bash(rm:*)` — agents can delete any hook file
+- `sandbox.enabled: false` — no filesystem sandboxing
+- No CI, no pre-commit `go test` — architecture lint has no automatic enforcement
+
+**One partial defense:** Compiled `orch` binary at `~/bin/orch → build/orch` provides a temporal buffer — source modifications don't immediately affect behavior. But agents can run `make install` to rebuild.
+
+
 
 **Prevention:** Accretion boundaries (>1,500 lines), spawn gates (concurrency, rate limiting, hotspot blocking), infrastructure change gates.
+
 
 **Detection:** Coaching plugin (real-time agent sensing), hotspot analysis (fix density, investigation clusters, bloat), completion gates (14 verification checks), fix:feat ratio visibility.
 
@@ -103,9 +124,30 @@ All defenses live inside the system they protect (mutable control plane). The fo
 3. Infrastructure change gate — lives in orch-go code agents can modify
 4. Fix:feat ratio monitor — lives in orch-go code agents can modify
 
-**Resolution path:** Extract control plane into an immutable layer. This is an engineering problem with known patterns (control/data plane separation, immutable infrastructure, circuit breakers).
+**Resolution path:** Extract control plane into an immutable layer. This is an engineering problem with known patterns (control/data plane separation, immutable infrastructure, circuit breakers). Minimum changes for genuine immutability: (1) `chflags uchg ~/.claude/settings.json` and `~/.orch/hooks/*.py`, (2) remove `Edit(*/.claude/*)` and `Bash(rm:*)` from allow list, (3) re-enable circuit breaker, (4) add `go test -run TestArchitectureLint` to pre-commit hook.
 
 ---
+
+## Fix:Feat Ratio as Spiral Signal — Interpretation Notes
+
+**Post-rollback measurement (Feb 12 - Mar 1, 2026):**
+
+| Week | Fix:Feat | Notes |
+|------|----------|-------|
+| W07 (Feb 12-15) | 0.43:1 | Post-rollback honeymoon — proves healthy operation is achievable |
+| W08 (Feb 16-22) | 0.73:1 | Degrading |
+| W09 (Feb 24-Mar 1) | 1.33:1 | Worse than spiral era (0.98:1) |
+
+**Velocity:** 60.4 commits/day average (37% above spiral-era 44/day). The Verification Bottleneck constraint is violated on 11/16 days (69%).
+
+**Critical interpretation:** The raw fix:feat ratio conflates three distinct fix categories:
+1. **Spiral-mode fixes** — agents fixing other agents' mistakes (the spiral signal, ~0% if healthy)
+2. **Infrastructure maintenance** — gate upkeep and churn (42% of current fixes — gates fix themselves)
+3. **Application fixes** — actual bug fixes in features (40% of current fixes)
+
+Only category 1 indicates a spiral. The current ratio (0.88:1 overall) is a noisy signal — it measures maintenance overhead of the 48 gates, not just spiral behavior. **Gates prevent catastrophic rollbacks** (no rollback needed in 3 weeks despite poor ratios) **but introduce their own fix churn** proportional to their count.
+
+**Implication:** More mutable gates increase maintenance-mode fix:feat overhead without improving immutability. Coverage (48 gates) doesn't substitute for immutability (0 immutable defenses). The value of the gates may be converting catastrophic spirals into gradual degradation that can be caught and corrected.
 
 ## The Seven Implications
 
@@ -120,6 +162,13 @@ All defenses live inside the system they protect (mutable control plane). The fo
 ---
 
 ## References
+
+### Merged Probes
+
+| Probe | Date | Key Finding |
+|-------|------|-------------|
+| `2026-03-01-probe-self-stabilization-current-gates.md` | 2026-03-01 | All 48 gates across 4 layers remain agent-modifiable; circuit breaker disabled; Claude Code hooks are new defense class (tool-invocation-level) but still mutable; compiled binary provides temporal buffer only — mutable control plane gap CONFIRMED unchanged |
+| `2026-03-01-probe-fix-feat-ratio-gate-effectiveness.md` | 2026-03-01 | Fix:feat ratio 0.88:1 (target 0.3:1, barely improved from 0.98:1 spiral); velocity 60.4/day (37% above spiral); 42% of fixes are infrastructure fixes (gates fixing gates); no rollback needed in 3 weeks — gates convert catastrophic to gradual degradation |
 
 **Primary Evidence:**
 - `.kb/investigations/2026-02-12-inv-entropy-spiral-postmortem.md` — Raw data: 1163 commits, 5.4M LOC, 0 human commits

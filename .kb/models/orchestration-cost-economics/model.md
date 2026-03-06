@@ -1,8 +1,8 @@
 # Model: Orchestration Cost Economics
 
 **Domain:** Agent Orchestration / Model Selection / Cost Management
-**Last Updated:** 2026-02-27
-**Synthesized From:** 15 investigations, 25+ kb quick entries, decisions spanning Nov 2025 - Feb 2026, probes 2026-02-20 (stale references audit) and 2026-02-24 (account distribution design), drift update 2026-02-27 (alias counts, cross-repo BEADS_DIR injection, Gemini 3 Flash)
+**Last Updated:** 2026-03-06
+**Synthesized From:** 15 investigations, 25+ kb quick entries, decisions spanning Nov 2025 - Feb 2026, probes 2026-02-20 through 2026-02-28 (stale references audit, account distribution design, wiring trace, staleness detection)
 
 ---
 
@@ -280,6 +280,10 @@ Per-spawn account selection enables capacity-aware routing across multiple Max a
 4. `BuildClaudeLaunchCommand()` in `pkg/spawn/claude.go` injects `CLAUDE_CONFIG_DIR` and unsets `CLAUDE_CODE_OAUTH_TOKEN` when using a non-default account. Also injects `BEADS_DIR` for cross-repo spawns so `bd comment` reaches the source project's beads database.
 5. Two independent auth mechanisms: OpenCode OAuth (`~/.local/share/opencode/auth.json`, global) vs Claude CLI config dir (`CLAUDE_CONFIG_DIR`, per-spawn)
 
+**Important:** `~/.claude` (the work/primary account's configDir) is treated as the default — it is never injected. Only the personal/spillover account (`~/.claude-personal`) gets explicit `CLAUDE_CONFIG_DIR` injection. Single-account setups have zero overhead: `buildCapacityFetcher()` returns nil when <2 accounts or no roles are configured, bypassing the heuristic entirely.
+
+**OpenCode backend does NOT participate in account distribution.** OpenCode has its own auth mechanism (`~/.local/share/opencode/auth.json`). The two auth systems are intentionally independent — CLAUDE_CONFIG_DIR injection is a Claude CLI concept only.
+
 **Routing strategy:** Work-first (primary accounts), personal-spillover (fallback when primary exhausted).
 
 **Source:** `pkg/spawn/resolve.go` (account resolution), `pkg/spawn/claude.go` (env var injection), `pkg/account/account.go` (capacity checking)
@@ -435,9 +439,11 @@ Originally blocked by 2,000 req/min TPM limit. Now **explicitly banned** in code
 ### Test Evidence
 - `.orch/workspace/og-inv-test-deepseek-v3-19jan-25d3/SYNTHESIS.md` - DeepSeek V3 function calling test
 
-### Probes
-- `.kb/models/orchestration-cost-economics/probes/2026-02-20-model-drift-stale-references-audit.md` — Identified 3 deleted references, stale spawn path economics, expanded provider ecosystem
-- `.kb/models/orchestration-cost-economics/probes/2026-02-24-probe-automatic-account-distribution-design.md` — Verified per-spawn account infrastructure gaps, designed CLAUDE_CONFIG_DIR injection
+### Merged Probes
+- `.kb/models/orchestration-cost-economics/probes/2026-02-20-model-drift-stale-references-audit.md` — Identified 3 deleted references, stale spawn path economics, expanded provider ecosystem (CONTRADICTS + EXTENDS)
+- `.kb/models/orchestration-cost-economics/probes/2026-02-24-probe-automatic-account-distribution-design.md` — Found zero account distribution wiring at spawn level; designed CLAUDE_CONFIG_DIR injection pattern (CONTRADICTS prior model claim + EXTENDS)
+- `.kb/models/orchestration-cost-economics/probes/2026-02-26-probe-account-distribution-wiring-trace.md` — Confirmed full end-to-end wiring of account distribution (22 tests passing); clarified OpenCode backend correctly does not participate (CONFIRMS + EXTENDS)
+- `.kb/models/orchestration-cost-economics/probes/2026-02-28-probe-staleness-detection-false-positives.md` — Confirmed model content is current; identified tilde path expansion bug in staleness detector (now fixed) as source of false positives (CONFIRMS, no content changes needed)
 
 **Primary Evidence (Verify These):**
 - Anthropic billing dashboard - Actual spend history showing $402 in ~2 weeks

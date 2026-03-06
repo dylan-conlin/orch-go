@@ -1,16 +1,21 @@
 # Model: Dashboard Architecture
 
 **Domain:** Dashboard / Web UI
-**Last Updated:** 2026-01-14
-**Synthesized From:** 62 investigations (Dec 21, 2025 - Jan 8, 2026) into dashboard performance, UX, and architectural issues
+**Last Updated:** 2026-03-06
+**Synthesized From:** 62 investigations (Dec 21, 2025 - Jan 8, 2026) + 14 probes (Feb 2026)
 
 ---
 
 ## Summary (30 seconds)
 
-The Swarm Dashboard is a Svelte 5 web UI served by `orch serve` (Go backend) that provides real-time monitoring of agent status, daemon health, and operational metrics.
+The dashboard is a **3-page SPA** (Svelte 5 + SvelteKit, adapter-static) served by `orch serve` (Go backend on port 3348) with a Vite dev server on port 5188 proxying to the backend.
 
-**Critical context (Option A+):** The dashboard is Dylan's (meta-orchestrator's) ONLY observability layer. He does not use CLI tools directly. Dashboard failure = Dylan is blind. This makes dashboard reliability tier-0 infrastructure. See orchestrator skill "Observability Architecture (Option A+)" section.
+**Three views, three distinct purposes:**
+- `/` (Dashboard) — Agent monitoring: real-time swarm status, health coaching, performance
+- `/work-graph` — Work tracking: beads issue tree with dependencies, attention signals, verification gates
+- `/knowledge-tree` — Knowledge browsing: .kb/ artifact tree, session timeline (3 tabs: Knowledge/Work/Timeline)
+
+**Critical context (Option A+):** The Dashboard (`/`) is Dylan's primary agent monitoring layer. Dylan also uses the Knowledge Tree Work tab daily for issue tracking. The Work Graph is the intended primary work-tracking layer (once stable). Dashboard failure = Dylan is blind to agent health. This makes dashboard reliability tier-0 infrastructure.
 
 The architecture uses a **two-mode design** (Operational/Historical) to separate daily coordination from deep analysis. SSE connections enable real-time updates but are constrained by HTTP/1.1's 6-connection limit. Progressive disclosure and stable sorting prevent information overload while maintaining scan-ability.
 
@@ -56,15 +61,33 @@ The architecture uses a **two-mode design** (Operational/Historical) to separate
 
 ### Key Components
 
-**Frontend (Svelte 5):**
-- `web/src/routes/+page.svelte` - Main dashboard page with mode-conditional rendering
-- `web/src/lib/stores/` - Reactive state management (agents, beads, daemon, etc.)
-- `web/src/lib/components/` - UI components (SwarmMap, StatsBar, EventPanels)
+**Frontend (Svelte 5 + SvelteKit):**
+- `web/src/routes/+page.svelte` - Main dashboard page (~1043 lines, predominantly Svelte 4 patterns)
+- `web/src/routes/work-graph/+page.svelte` - Work graph page (~1043 lines)
+- `web/src/routes/knowledge-tree/+page.svelte` - Knowledge tree page (~371 lines, Svelte 5 runes)
+- `web/src/lib/stores/` - 25+ reactive stores (agents, beads, daemon, wip, attention, work-graph, etc.)
+- `web/src/lib/components/` - 40+ components in 6 categories (UI primitives, agent display, section containers, work/knowledge, data panels, controls)
+
+**CSS/Theming:**
+- Tailwind CSS v3 + shadcn-svelte (slate base) + HSL CSS variables
+- 28 JSON theme files (`web/src/lib/themes/`) — catppuccin, dracula, tokyonight, etc.
+- Dark mode via `dark` class on `<html>`
+- Agent-specific colors: `swarm.active` (green), `swarm.completed` (blue), `swarm.abandoned` (red), `swarm.idle` (yellow)
+
+**Responsive breakpoints (Tailwind):**
+- `sm:` 640px — 2-col grids, show/hide text labels (primary structural shift)
+- `md:` 768px — 3-col grids
+- `lg:` 1024px — 4-col grids, 2-col event panels, side panel sizing
+- `xl:` 1280px — 5-col agent grids
+- `2xl:` 1400px — container max-width only
+- Primary agent grid pattern: `grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5`
 
 **Backend (Go):**
 - `cmd/orch/serve_agents.go` - Agent status calculation (~1400 lines)
+- `cmd/orch/serve_beads.go` - Beads graph API including `buildActiveAgentMap()`
 - `cmd/orch/serve.go` - HTTP server setup, routing
-- `pkg/dashboard/` - Data aggregation, caching
+- `cmd/orch/serve_tree.go` - Knowledge tree API + `/api/events/tree` SSE endpoint (polls filesystem every 2s)
+- `pkg/attention/` - 11 signal collectors feeding `/api/attention`
 
 ### State Transitions
 
@@ -108,6 +131,9 @@ Remaining 4-5 slots for API fetches
 4. **Progressive disclosure via collapsed panels** - Event panels start collapsed, expand on click
 5. **Stable sort maintains scan-ability** - Agent order doesn't change unless status changes
 6. **Early filtering reduces payload size** - Backend filters before sending to frontend
+7. **buildActiveAgentMap() is local-project-scoped** - Cross-project graph requests get nodes but NOT active agent enrichment. Any cross-project in_progress issue shows 'unassigned' as a result.
+8. **Promoted sections must participate in pinnedTreeIds deduplication** - Any section that pulls items out of the work-graph tree must register IDs in `pinnedTreeIds` to prevent double-rendering. Currently only the WIP section does this; Ready to Complete does not.
+9. **State persistence: localStorage primary, URL hash for deep-linking** - UI state (expansion, tab selection, view mode) persists in localStorage; URL hash used additionally for bookmarkable views (knowledge-tree tabs).
 
 ---
 
@@ -174,6 +200,89 @@ Plugin error → OpenCode internal 500 → orch status fails → API can't get a
 **Fix (Jan 14):** Disable plugins, restart OpenCode, re-enable one-by-one. Root cause was session-resume.js using v1 API (object export) instead of v2 (function export).
 
 **Key insight:** Dashboard can appear "down" while all processes are technically "running". Health checks must verify data flow, not just port availability.
+
+### Failure Mode 5: Attention Badge False Positives (75% Noise Rate)
+
+**Symptom:** Work-graph tree shows amber "Awaiting verification" badges on ~75% of open issues
+
+**Root cause:** `mapSignalToBadge()` in `attention.ts` had `default: return 'verify'` — any unmapped signal produced a false badge
+
+**Why it happens:**
+- 11 backend collectors emit signals; `mapSignalToBadge()` only has explicit cases for 6
+- `issue-ready` (BeadsCollector) is the dominant unmapped signal — hits default → `'verify'`
+- With 34/45 open issues having `issue-ready` signals, 75% got false "Awaiting verification" badges
+
+**Fix (Feb 16):** Three-layer defense — changed default to `return null`; added null filter in attention store before `signals.set()`; added null guard in `work-graph-tree-helpers.ts`.
+
+**Additional gap:** 3 of 9 badge types (`decide`, `escalate`, `crashed`) have no backend collector — they exist only in the frontend type system and can never fire.
+
+### Failure Mode 6: Stub Store Crashes Page Permanently
+
+**Symptom:** Work-graph page shows "Loading work graph..." indefinitely, never renders
+
+**Root cause:** `wip.fetchQueued()` method did not exist on the stub `wip` store. Calling `undefined()` in `onMount` throws a `TypeError` that propagates through the async function, preventing `loading = false` from executing.
+
+**Why it happens:**
+- The `wip` store was scaffolded as a 68-line stub with TODO comments
+- Page code calls methods on the stub that were never implemented
+- `TypeError: wip.fetchQueued is not a function` thrown synchronously before `.catch()` can intercept it
+- `loading` stays `true` → page never exits loading state
+
+**Fix (Feb 16):** Added 4 stub methods (`wip.fetchQueued`, `wip.setRunningAgents`, `focus.clearFocus`, `focus.setFocus`) with minimal no-op implementations that satisfy the call sites without crashing.
+
+### Failure Mode 7: Unguarded Browser APIs in Lifecycle Hooks (SSR 500)
+
+**Symptom:** 500 error during initial page load on the knowledge-tree route
+
+**Root cause:** `window.removeEventListener()` called in `onDestroy` without an SSR guard
+
+**Why it happens:**
+- SvelteKit runs component code both server-side and client-side
+- Lifecycle hooks (`onDestroy`) run during SSR hydration
+- `window` doesn't exist in Node.js context → `ReferenceError` → 500
+
+**Fix (Feb 16):** Wrap all browser API access in lifecycle hooks with `typeof window !== 'undefined'` guard. The knowledge-tree page already used this pattern for localStorage access — the `onDestroy` cleanup missed it.
+
+### Failure Mode 8: Knowledge Tree SSE Cycling (Expansion State Reset)
+
+**Symptom:** Knowledge-tree tree view visually resets all nodes to collapsed state on each SSE update (every ~2 seconds when files change)
+
+**Root cause:** SSE `tree-update` events send full tree replacements via `set({ tree })`, wiping client-side `expanded` properties on all nodes
+
+**Why it happens:**
+- `/api/events/tree` backend polls filesystem every 2 seconds
+- Each change sends complete tree structure (not a diff)
+- Store handler does `set({ tree })` replacing entire tree object
+- Tree node `expanded?: boolean` properties set by user are lost
+- UI re-renders with all nodes in default (collapsed) state
+
+**Fix:** Preserve expansion state across SSE updates by merging localStorage-tracked expanded IDs back into incoming tree, or making expansion state purely local (not stored on tree nodes).
+
+### Failure Mode 9: Cross-Project In-Progress Issues Show 'unassigned'
+
+**Symptom:** Work-graph in_progress issues from non-local projects (e.g., `toolshed-*`) always show 'unassigned' instead of agent info
+
+**Root cause:** `buildActiveAgentMap()` (`serve_beads.go:1047`) is scoped to local project only
+
+**Why it happens:**
+1. `listTrackedIssues()` uses `beads.FindSocketPath("")` (local beads only); cross-project IDs never enter the map
+2. `client.ListSessions("")` queries OpenCode for default project scope only
+3. Frontend `getInProgressSubline()` correctly falls through to `'unassigned'` when `active_agent` is null
+
+**Fix available but not applied:** `listSessionsAcrossProjects()` exists in `serve_agents_cache.go:396` and was created for exactly this purpose; it needs to be used in `buildActiveAgentMap()`. `listTrackedIssues()` also needs to accept `projectDirs` and query each project's beads.
+
+### Failure Mode 10: Missing `phase_reported_at` in API Response
+
+**Symptom:** "Ready to Complete" section in work-graph never populated despite agents reaching phase=complete
+
+**Root cause:** `PhaseReportedAt` timestamp was tracked internally in a map in `serve_agents.go` but never added to `AgentAPIResponse` struct
+
+**Why it happens:**
+- Frontend line 352: `if (!completionAt) continue;` — skips items without completion timestamp
+- `completionAt` derived from `agent.phase_reported_at`
+- Field not in JSON response → always undefined → all complete agents filtered out
+
+**Fix (Feb 16):** Added `PhaseReportedAt string json:"phase_reported_at,omitempty"` to `AgentAPIResponse` struct and populate it when parsing phase from beads comments.
 
 ---
 
@@ -262,6 +371,16 @@ Plugin error → OpenCode internal 500 → orch status fails → API can't get a
 - Documented ONE process manager rule (overmind exclusive)
 - Created infrastructure complexity decision (keep architecture, fix gaps)
 
+**Feb 2026: Three-View Architecture + Attention System + Work Graph**
+- Evolved from single dashboard to 3-page SPA: `/`, `/work-graph`, `/knowledge-tree`
+- Work-graph added: issue tree with dependencies, attention badges, ready-to-complete queue; broken on creation (stub store crash)
+- Knowledge-tree added: .kb/ artifact browsing, session timeline, SSE-driven live updates
+- Discovered and fixed 6 new failure modes (see "Why This Fails" sections 5-10)
+- Attention system audit: 11 real collectors, only 2 firing; fixed false-badge cascade (default→null)
+- `phase_reported_at` field added to agents API; ready-to-complete section now functional
+- Knowledge-tree: SSR guard fix, tab persistence (URL hash + localStorage), duplicate deduplication (`cloneNodeRecursiveWithDedup`, first-parent-wins)
+- `buildActiveAgentMap()` identified as local-only; cross-project active-agent gap documented (fix available: `listSessionsAcrossProjects`)
+
 ---
 
 ## References
@@ -294,7 +413,35 @@ Plugin error → OpenCode internal 500 → orch status fails → API can't get a
 
 **Primary Evidence (Verify These):**
 - `cmd/orch/serve_agents.go` - Agent status calculation and API endpoint (~1400 lines)
+- `cmd/orch/serve_beads.go` - Beads graph API, `buildActiveAgentMap()` (local-scoped)
 - `cmd/orch/serve.go` - HTTP server setup (~600 lines)
-- `web/src/routes/+page.svelte` - Main dashboard page (~800 lines)
-- `web/src/lib/stores/dashboard-mode.ts` - Mode state management
-- `web/src/lib/stores/agents.ts` - Agent data store with SSE updates
+- `web/src/routes/+page.svelte` - Main dashboard page (~1043 lines)
+- `web/src/routes/work-graph/+page.svelte` - Work graph page (~1043 lines)
+- `web/src/routes/knowledge-tree/+page.svelte` - Knowledge tree page (~371 lines)
+- `web/src/lib/stores/attention.ts` - Attention store; `mapSignalToBadge()` default fixed to `null`
+- `web/src/lib/stores/wip.ts` - WIP store (still mostly stub, 4 methods added Feb 16)
+- `pkg/attention/` - 11 signal collectors
+- `pkg/tree/tree.go` - Knowledge tree building; `cloneNodeRecursiveWithDedup()` for deduplication
+
+---
+
+### Merged Probes
+
+All 14 probes merged into this model on 2026-03-06:
+
+| Probe | Verdict | Summary |
+|-------|---------|---------|
+| `2026-02-15-knowledge-tree-sse-cycling-fix` | EXTENDS | SSE full-tree replacements wipe client expand/collapse state; fix: merge expansion state on update |
+| `2026-02-16-agents-api-phase-field-missing` | EXTENDS | `phase_reported_at` missing from API struct; added to fix Ready-to-Complete section |
+| `2026-02-16-attention-badge-verify-noise` | EXTENDS | `default: return 'verify'` in `mapSignalToBadge()` caused 75% false-positive badges |
+| `2026-02-16-attention-badge-verify-noise-fix` | CONFIRMS | Three-layer fix implemented: null default + store filter + tree-helpers guard |
+| `2026-02-16-attention-pipeline-full-audit` | EXTENDS | 11 real collectors, only 2 firing; 3 badge types (`decide`, `escalate`, `crashed`) have no collector |
+| `2026-02-16-knowledge-tree-duplicate-items-across-phase-groups` | EXTENDS | Multi-parent Prior-Work references create duplicate tree nodes (root cause identified) |
+| `2026-02-16-knowledge-tree-ssr-window-check` | EXTENDS | Unguarded `window` in `onDestroy` caused SSR 500; fixed with `typeof window` guard |
+| `2026-02-16-knowledge-tree-tab-persistence` | EXTENDS | Tab state now persisted via URL hash (primary) + localStorage (fallback) |
+| `2026-02-16-three-view-consolidation-assessment` | EXTENDS + CONTRADICTS | Architecture evolved to 3-page SPA; contradicts "dashboard is ONLY observability layer" |
+| `2026-02-16-work-graph-issues-view-section-design` | EXTENDS | Ready-to-Complete section outside `pinnedTreeIds` mechanism causes double-rendering |
+| `2026-02-16-work-graph-missing-store-methods` | CONFIRMS | Confirms stub-store crash diagnosis; 4 missing methods added to unblock rendering |
+| `2026-02-17-knowledge-tree-duplicate-fix` | CONFIRMS | Deduplication already fixed via `cloneNodeRecursiveWithDedup()`; first-parent-wins strategy |
+| `2026-02-25-probe-work-graph-unassigned-cross-project` | EXTENDS | `buildActiveAgentMap()` local-only; cross-project in_progress issues always show 'unassigned' |
+| `2026-02-25-probe-dashboard-web-ui-framework-and-responsive-patterns` | EXTENDS | Full tech stack: shadcn-svelte + Tailwind v3 + 28 themes + 25 stores + 5-tier responsive grid |

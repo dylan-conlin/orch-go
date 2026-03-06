@@ -1,7 +1,7 @@
 # Model: OpenCode Session Lifecycle
 
 **Domain:** OpenCode Integration / Session Management
-**Last Updated:** 2026-01-12
+**Last Updated:** 2026-03-06
 **Synthesized From:** 24 investigations (2025-12-19 to 2026-01-08) into OpenCode HTTP API, session persistence, SSE monitoring, and plugin system
 
 ---
@@ -16,16 +16,19 @@ OpenCode sessions persist across server restarts via disk storage at `~/.local/s
 
 ### How Sessions Work
 
-**Storage architecture:**
+**Storage architecture (post-Feb 13, 2026 SQLite migration):**
 
 ```
 OpenCode Server (localhost:4096)
-    ├── In-memory: Currently running sessions (2-3 active)
-    └── Disk: ~/.local/share/opencode/storage/
-             └── All historical sessions (238+)
+    ├── In-memory: Instance cache (Map<directory, Context>), MAX_INSTANCES=20, IDLE_TTL=30min
+    └── SQLite: ~/.local/share/opencode/opencode.db (WAL mode, foreign keys ON)
+             └── SessionTable, MessageTable, PartTable (all historical sessions)
+    [Legacy: ~/.local/share/opencode/storage/ — JSON files, pre-Feb 13 migration]
 ```
 
-**Key insight:** Two types of queries, controlled by HTTP headers:
+**Note:** This model predates the Feb 13, 2026 SQLite migration. The JSON disk storage description below is superseded. See the `session-deletion-vectors` model for the current SQLite architecture. Key difference: `x-opencode-directory` header filtering behavior may have changed with SQLite migration.
+
+**Key insight (pre-migration):** Two types of queries, controlled by HTTP headers:
 
 | Query Type | Header | Returns |
 |------------|--------|---------|
@@ -39,7 +42,7 @@ OpenCode Server (localhost:4096)
 ```
 spawn (orch spawn creates session)
     ↓
-session created (POST /api/sessions)
+session created (POST /session)   ← NOT /api/sessions — orch-go client has used /session since initial commit
     ↓
 busy (agent working, SSE: session.status "busy")
     ↓
@@ -129,7 +132,17 @@ session.status { status: "idle" }    ← Agent finished
 
 **Fix (Jan 6):** `orch clean --sessions --days N` command to delete old sessions
 
-### Failure Mode 3: Deprecated session.idle Event
+### Failure Mode 4: Plugin Context Injection Mechanism
+
+**Symptom:** Assuming plugins inject context via system prompt mutation
+
+**Root cause:** Plugin context injection uses `client.session.prompt({ sessionID, prompt, noReply: true })` — a new message with parts inserted into the session, not `experimental.chat.system.transform`. `tool.execute.after` fires for gpt-5.2-codex worker sessions (confirmed via event-test.jsonl `tool.executed.bash` entries).
+
+**Why it matters:**
+- Coaching plugin also writes metrics to `~/.orch/coaching-metrics.jsonl`
+- Plugin logging to console requires `ORCH_PLUGIN_DEBUG=1`
+
+### Failure Mode 3 (Original): Deprecated session.idle Event
 
 **Symptom:** Plugin code using `session.idle` event fails to detect completion
 
@@ -203,6 +216,19 @@ session.status { status: "idle" }    ← Agent finished
 - Event reliability tested
 - `session.idle` deprecation handled
 
+**Feb 13, 2026: SQLite Migration (major architecture change)**
+- OpenCode migrated from JSON file storage to SQLite (`opencode.db`)
+- This model's storage section is largely superseded; see `session-deletion-vectors` model
+
+**Feb 18, 2026: API prefix history confirmed**
+- orch-go client has ALWAYS used `/session` (not `/api/sessions`) since initial commit `26f9acba`
+- OpenCode server routes have no committed `/api` prefix in git history (uncommitted local change adds `/api` mount alongside existing direct routes)
+- No SPA proxy stripping of `/api` in Vite configs
+
+**Feb 20, 2026: Plugin context injection mechanism confirmed**
+- Context injection uses `client.session.prompt` with `noReply: true` (message insertion, not system prompt mutation)
+- `tool.execute.after` confirmed firing for gpt-5.2-codex sessions
+
 ---
 
 ## References
@@ -227,6 +253,13 @@ session.status { status: "idle" }    ← Agent finished
 **Related Guides:**
 - `.kb/guides/opencode.md` - How to use OpenCode integration (procedural)
 - `.kb/guides/opencode-plugins.md` - How to write plugins (procedural)
+
+### Merged Probes
+
+| Probe | Date | Key Finding |
+|-------|------|-------------|
+| `2026-02-18-probe-api-prefix-history.md` | 2026-02-18 | orch-go always used `/session` (never `/api/sessions`); no committed `/api` prefix in OpenCode server history; no SPA proxy stripping — contradicts model's "POST /api/sessions" claim |
+| `2026-02-20-probe-coaching-plugin-injection.md` | 2026-02-20 | Plugin injection uses `client.session.prompt` with `noReply: true` (message insertion, not system prompt mutation); `tool.execute.after` fires for gpt-5.2-codex sessions |
 
 **Primary Evidence (Verify These):**
 - `pkg/opencode/client.go` - HTTP REST client (~728 lines)

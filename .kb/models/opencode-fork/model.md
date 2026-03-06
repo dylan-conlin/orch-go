@@ -2,6 +2,7 @@
 
 **Domain:** Dylan's OpenCode fork at `~/Documents/personal/opencode`
 **Created:** 2026-02-13
+**Last Updated:** 2026-03-06
 **Source:** Investigation `2026-02-13-inv-build-model-opencode-fork.md` + fork's own `2026-02-11-inv-opencode-fork-resource-audit-investigate.md`
 
 ---
@@ -72,6 +73,22 @@ Sessions are stored in SQLite database at `~/.local/share/opencode/opencode.db`:
 - Instance has TTL/eviction (30min idle); Session can optionally have TTL (configurable per-session)
 - Sessions without TTL persist forever until explicitly deleted
 - Multiple sessions can share one Instance (same project directory)
+
+### Instance.state Async Init Semantics
+`Instance.state(asyncFn)` returns a lazy singleton factory. Key behaviors:
+- Calling the factory triggers init; the returned Promise is cached (keyed by directory + init function reference)
+- **Rejected Promises are cached with no retry** — a transient failure permanently disables that state for the directory until Instance eviction (30min TTL, >20 LRU) or server restart
+- If the factory result is not awaited at the call site, initialization runs in background and code proceeds before state is ready (fire-and-forget risk)
+- **Fix applied (2026-02-18):** Cache is now cleared on rejection, enabling retry on next call (validated empirically: `attempts=1, samePromise=true` before fix; `attempts=2, samePromise=false` after fix)
+
+### Provider and Auth Scoping
+- **Auth** (`~/.local/share/opencode/auth.json`) is **GLOBAL** — same OAuth tokens used for all project directories
+- **Provider.state** is scoped per-directory via `Instance.state`, but because all inputs (auth, models.dev cache, server process.env) are global, provider initialization is deterministically identical across projects
+- **`.env` files are NOT loaded** — `Env.state` copies `process.env` at instance creation time; project-level `.env` has zero effect on provider initialization
+- **CodexAuthPlugin** is in `INTERNAL_PLUGINS` array, loaded unconditionally for every directory — Codex either works for all projects or none
+
+### MCP Watcher Initialization (Race Condition — Fixed)
+A fire-and-forget race existed in MCP hot-reload: `InstanceBootstrap` called `MCP.watchConfig()` without awaiting, and `watchConfig()` itself didn't await `configWatcherState()`. Result: the file watcher wasn't ready until after `readProjectMcpConfig()` completed (10-100ms I/O), so config changes during that window were missed. Tests passed accidentally because `MCP.status()` provided implicit delay. **Fix (2026-02-20):** `watchConfig()` made async and awaited in bootstrap. All 1116 tests pass after fix.
 
 ---
 
@@ -292,6 +309,13 @@ server.instance.disposed
 - Server restart = all status lost = all sessions appear idle
 - No persistence of busy/idle transitions
 - SSE `session.status` events are the only way to track transitions in real-time
+- `GET /session/status` returns liveness status only (`idle | busy | retry`) — does NOT include session metadata
+
+### Rejected Promise Caching (Now Fixed)
+- Prior to the fix, `State.create` cached rejected Promises with no retry — a transient failure (e.g., auth.json being written during `orch account switch`, or `ModelsDev.get()` timeout) would permanently disable a provider for a directory until Instance eviction (30min TTL, >20 LRU) or server restart
+- This explained "all agents at time T fail, agents at time T+42min work" — the Instance was evicted (TTL) clearing the rejected Promise cache
+- **Fix applied 2026-02-18:** Cache is cleared on rejection, enabling retry on next call
+- If encountering provider failures, check if `Provider.state` is returning cached rejection before assuming auth/network issue
 
 ### Schema Changes Require Migrations
 - Modifying `*.sql.ts` schema files without running `bun drizzle-kit generate` causes runtime crashes
@@ -353,3 +377,16 @@ server.instance.disposed
 - `~/Documents/personal/opencode/packages/sdk/js/src/v2/client.ts` - ORCH_WORKER header forwarding
 - `~/Documents/personal/opencode/.git/` - Git history showing 16 custom commits ahead of upstream
 - `~/.local/share/opencode/opencode.db` - SQLite database (WAL mode)
+- `~/Documents/personal/opencode/packages/opencode/src/project/state.ts` - State.create caching logic (rejected Promise fix applied)
+- `~/Documents/personal/opencode/packages/opencode/src/mcp/index.ts` - MCP watcher initialization (race condition fix applied)
+- `~/Documents/personal/opencode/packages/opencode/src/project/bootstrap.ts` - InstanceBootstrap sequence (MCP.watchConfig now awaited)
+
+### Merged Probes
+
+| Probe | Date | Verdict | Summary |
+|-------|------|---------|---------|
+| `probes/2026-02-18-probe-headless-codex-provider-init.md` | 2026-02-18 | EXTENDS | Auth is global not per-project; no .env loading; CodexAuthPlugin is internal plugin unconditionally loaded; rejected Promise caching explains intermittent provider failures |
+| `probes/2026-02-18-probe-repro-headless-codex-spawn.md` | 2026-02-18 | NO IMPACT | Blocked by concurrency limit (9/5 agents), headless Codex path not exercised |
+| `probes/2026-02-18-probe-state-create-rejected-promise-cache.md` | 2026-02-18 | CONFIRMS + EXTENDS | Empirically confirmed rejected Promise caching (`attempts=1, samePromise=true`); fix validated enabling retry after rejection |
+| `probes/2026-02-18-probe-verify-session-metadata-api.md` | 2026-02-18 | CONFIRMS | Metadata persists via `Session.setMetadata`; TTL cleanup guards busy sessions; `GET /session/status` returns liveness only, not metadata |
+| `probes/2026-02-20-probe-mcp-hot-reload-production-failure.md` | 2026-02-20 | EXTENDS | Documented MCP watcher fire-and-forget race condition (double unawaited async init); fix applied and verified with regression test |

@@ -1,7 +1,7 @@
 # Model: Architectural Enforcement
 
 **Domain:** Quality gates / Accretion prevention / Architect routing
-**Last Updated:** 2026-02-26
+**Last Updated:** 2026-03-06
 **Synthesized From:**
 - `.kb/investigations/2026-02-14-inv-architect-design-accretion-gravity-enforcement.md` — Four-layer enforcement design
 - `.kb/investigations/2026-02-14-inv-soften-strategic-first-hotspot-gate.md` — Gate severity calibration
@@ -78,6 +78,10 @@ Not all skills accrete. Knowledge-producing skills need to READ hotspot files to
 
 4. **Toolchain reliability underlies all enforcement.** If `skillc deploy` exits 0 on partial failure, agents run with stale skills that may not contain enforcement guidance. Silent toolchain failures propagate through the entire system.
 
+5. **Shared configuration must have a single source of truth.** Parallel config directory copies (`~/.claude/` vs `~/.claude-personal/`) are the config-level equivalent of the code-level "instruction-based enforcement fails under pressure" invariant. Agents running from `cc personal` were silently missing hooks, skills, and global instructions — indistinguishable from correct operation. Symlinks structurally eliminated this. (Source: probe `2026-02-27-probe-config-dir-drift-scope.md`)
+
+6. **Constraint type determines enforcement mechanism.** Behavioral constraints in prompt dilute at 5+ co-resident items and become inert at 10+. Mapping by type: hard behavioral (31 items) → infrastructure deny hooks; soft behavioral (~28 items) → infrastructure coaching hooks; judgment behavioral (~28 items) → prompt-budgeted ≤4 per section, or reformulated as knowledge; knowledge (~64 items) → prompt (survives dilution at 10+). The orchestrator skill had 87 behavioral constraints in prompt — ~83 were non-functional. (Source: probe `2026-03-02-probe-layered-constraint-enforcement-design.md`; evidence: `.kb/investigations/2026-03-01-inv-test-constraint-dilution-threshold.md`)
+
 ---
 
 ## Why This Fails
@@ -119,6 +123,18 @@ Not all skills accrete. Knowledge-producing skills need to READ hotspot files to
 **Evidence:** Orchestrator uses `bd close` despite skill saying to use `orch complete` because `bd close` is shorter and more frequently documented in system prompt. 17:1 signal ratio advantage.
 
 **Fix:** Infrastructure enforcement — `--disallowedTools` removes tools at spawn time, PreToolUse hooks block forbidden commands. Code removes the option; prompts describe it.
+
+### 5. Constraint Dilution at Scale (Extended: Mar 2026)
+
+**What happens:** Orchestrator skill has 87 behavioral constraints in prompt. Empirical test (`.kb/investigations/2026-03-01-inv-test-constraint-dilution-threshold.md`) showed bare parity at 10 competing constraints. At 87, ~83 of the behavioral constraints are non-functional — agents comply with them at the same rate as unconstrained.
+
+**Root cause:** System prompt > user prompt hierarchy, and concentration of behavioral signals past 10 causes mutual dilution. Each constraint competes with every other.
+
+**Evidence:** Delegation prohibition scored 1/8 (= bare), anti-sycophancy scored 3/8 (= bare), reconnection framing scored 0-1/8 (= bare) on v3 skill with 50+ constraints.
+
+**Fix:** (1) Hard behavioral constraints → hooks (deny). (2) Soft behavioral constraints → coaching hooks (allow + context). (3) Judgment behavioral constraints → prompt-budgeted ≤4 per section, or reformulated as knowledge ("the pattern is Y" instead of "don't do X"). Knowledge constraints survive dilution at 10+ and have no effective budget limit until ~50+.
+
+**Behavioral → Knowledge reformulation:** Some constraints phrased as prohibitions can be rewritten as norms, moving them from the dilution-prone behavioral bucket to the resilient knowledge bucket. Example: "Don't ask 'want me to complete them?'" → "Orchestrators auto-complete agents at Phase: Complete." Same intent, different transfer mechanism.
 
 ### 4. Post-Facto Rejection Waste (Design Flaw)
 
@@ -184,6 +200,10 @@ Not all skills accrete. Knowledge-producing skills need to READ hotspot files to
 
 **Feb 26, 2026:** Model created synthesizing all investigations into coherent architectural enforcement understanding.
 
+**Mar 2026 (probe merge):** Two probes incorporated.
+- `2026-02-27-probe-config-dir-drift-scope.md` — Identified config drift as an enforcement gap: personal sessions (`cc personal`) were silently running without global CLAUDE.md, skills, and hooks. Parallel config directories are duplicated state with no enforcement mechanism. Structural elimination (symlinks) applied. New invariant added (Invariant 5).
+- `2026-03-02-probe-layered-constraint-enforcement-design.md` — Audited all 151 orchestrator skill constraints (87 behavioral, 64 knowledge). Existing hooks cover ~7 of 31 hard-enforceable behavioral constraints; 24 need new hooks. Hook API is sufficient (no new mechanism types needed). ~28 judgment constraints cannot move to infrastructure. ~20 behavioral constraints can be reformulated as knowledge. New invariant added (Invariant 6), new failure mode §5 added.
+
 ---
 
 ## References
@@ -211,3 +231,10 @@ Not all skills accrete. Knowledge-producing skills need to READ hotspot files to
 - CLAUDE.md "Accretion Boundaries" section — Files >1,500 lines require extraction before feature additions
 - Three-layer hotspot enforcement (--architect-ref + daemon escalation + spawn context injection)
 - `.kb/decisions/2026-02-26-two-layer-action-compliance.md` — Infrastructure + prompt enforcement for orchestrator action constraints
+
+### Merged Probes
+
+| Probe | Date | Verdict | Key Finding |
+|-------|------|---------|-------------|
+| `probes/2026-02-27-probe-config-dir-drift-scope.md` | 2026-02-27 | Extends | Config drift between parallel Claude config dirs is the same enforcement gap as silent toolchain failures. Personal sessions ran without hooks/skills/CLAUDE.md. Symlinks structurally eliminated it. New invariant: shared config must have a single source of truth. |
+| `probes/2026-03-02-probe-layered-constraint-enforcement-design.md` | 2026-03-02 | Confirms + Extends | 87 behavioral constraints in orchestrator skill prompt; dilution evidence shows ~83 are non-functional. Hook API is sufficient for all enforcement types. Constraint taxonomy: hard behavioral → deny hooks; soft → coaching hooks; judgment → prompt-budgeted ≤4; knowledge → prompt (resilient). Behavioral → knowledge reformulation technique identified. |

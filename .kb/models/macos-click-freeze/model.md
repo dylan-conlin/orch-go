@@ -1,7 +1,7 @@
 # Model: macOS Click Freeze
 
 **Domain:** macOS input subsystem — trackpad click events stop registering while cursor movement continues
-**Last Updated:** 2026-02-14
+**Last Updated:** 2026-03-06
 **Synthesized From:** Session 11 (systematic elimination), Session 14 (recurrence + 3 research probes + OpenCode fork resource audit), Session 15 (nuclear elimination — Karabiner uninstalled, 23+ services disabled), Session 16 (freeze recurrence — service state probe), Session 17 (stability observation + reactive capture tooling)
 
 ---
@@ -52,7 +52,7 @@ Click events and move events travel the same path but are **different event type
 | Karabiner DriverKit | Kernel-level input interception | ✅ **Eliminated** — uninstalled (freeze persisted), reinstalled 15.9.0 (no freeze) |
 | WindowServer | Routes events to apps | Partially — it's WHERE the problem manifests (HUP fixes it) |
 | yabai | Window management, event interception | ⚠️ Previously eliminated (Session 14) but freeze recurred with it running (Session 16). Re-testing needed. |
-| skhd | Hotkey daemon, event interception | ❌ Disabled since Session 15 — not running, not a current suspect |
+| skhd | Hotkey daemon, event interception | ⚠️ Disabled since Session 15 — not running, but see H7: architectural analysis shows tap corruption mechanism |
 | borders | Window border drawing | ⚠️ Disabled in batch — not individually tested |
 | sketchybar | Status bar | ⚠️ Disabled in batch — not individually tested |
 | NI HardwareAgent | Native Instruments audio HID service (root) | ✅ **Fully uninstalled** — top suspect, IOKit HID layer, ran as root |
@@ -145,6 +145,38 @@ Not a single culprit but the combination of services creating enough IOKit/Windo
 6. **Karabiner** (15.9.0) — running, but already eliminated as sole cause
 
 **Next approach:** Reactive capture (`scripts/click-freeze-capture.sh`) to collect system snapshots during actual freeze occurrences for correlation analysis. Will bind to Karabiner hotkey after manual validation. Binary search (stop yabai → colima → Phase 1) remains fallback if correlation data is inconclusive.
+
+### Hypothesis 7: skhd CGEventTap pipeline corruption — ACTIVE (architectural analysis, not reproduction)
+
+skhd registers an **active CGEventTap at HEAD position** (`kCGHeadInsertEventTap`, `kCGEventTapOptionDefault`) in the session event pipeline. This means all events flow past this tap point, even though skhd only registers a keyboard-only mask (`kCGEventKeyDown | NX_SYSDEFINED`).
+
+**The corruption mechanism:**
+1. macOS can disable any active tap that exceeds its callback timeout
+2. skhd handles `kCGEventTapDisabledByTimeout` by immediately re-enabling via `CGEventTapEnable` — a rapid disable/re-enable at HEAD position
+3. During the disable→re-enable cycle, WindowServer reconfigures event routing twice in quick succession
+4. This pipeline reconfiguration can leave routing state for **non-masked event types** (mouse clicks) in an inconsistent state
+5. The corruption persists after skhd is killed — only HUP (which triggers full WindowServer reconfiguration) clears it
+
+**Why click events specifically, not move events:**
+Move events (`kCGEventMouseMoved`) are high-frequency and processed on a fast path. Click events (`kCGEventLeftMouseDown/Up`) have additional window-targeting logic in WindowServer's routing table — the part most susceptible to inconsistent state.
+
+**Amplifying factor:** 78 skhd bindings invoke `yabai -m window --focus`, and yabai has `focus_follows_mouse autofocus`. This creates a chain: skhd callback → fork → yabai focus change → WindowServer focus move → autofocus reacts → more events. This amplifies pipeline load during skhd-triggered actions, increasing tap callback timeout frequency.
+
+**Apple bug FB12113281** (macOS 13.4+, unresolved): CGEvent taps can stop receiving events permanently under heavy app activity. skhd's HEAD position + active tap type + timeout cycling could trigger the same underlying WindowServer state corruption.
+
+**Evidence for:**
+- Architectural analysis of skhd source (`src/event_tap.c`, `src/skhd.c`) confirms HEAD-position active tap
+- Explains all symptoms: click-specific freeze, cursor still works, HUP fixes it, killing skhd alone doesn't fix it (pipeline state already corrupted), skhd disabled since Session 15 and freeze has been less frequent/intermittent
+- No community reports of click freeze — consistent with a configuration-specific trigger (requires skhd's specific tap + timeout cycling + heavy workload)
+
+**Evidence against / limitations:**
+- Not reproduced — architectural reasoning only
+- skhd disabled since Session 15 but freeze still recurred (2026-02-13) — skhd alone is not sufficient; aggregate factors (yabai, colima, Phase 1 services) were running during that recurrence
+- Definitive confirmation requires: (a) sustained freeze-free period with skhd disabled and same other services running, or (b) reproducing freeze by running `skhd -V` and correlating "restarting event-tap" messages with freeze onset
+
+**Suggested next step:** Run `skhd -V` (verbose mode) in a test session and grep for "restarting event-tap" — frequency of timeout/re-enable cycles would confirm the corruption trigger rate.
+
+**Interaction with H6:** H7 and H6 are compatible. skhd's tap cycling could be the specific mechanism through which aggregate service load crosses the contention threshold — heavy I/O from yabai/colima/emacs increases skhd callback latency, triggering timeout cycles, which corrupt the pipeline.
 
 ---
 
@@ -266,12 +298,12 @@ Services disabled in Session 15:
 - Session 11 handoff in `.orch/HANDOFF.md` — detailed elimination record
 - `~/Documents/personal/opencode/.kb/investigations/2026-02-11-inv-opencode-fork-resource-audit-investigate.md` — OpenCode fork resource audit (eliminated H4, found optimization opportunities)
 
-**Probes:**
-- `.kb/models/macos-click-freeze/probes/2026-02-13-service-state-freeze-recurrence.md` — Full service state capture during freeze recurrence; corrected model Phase 2 states, weakened H5, eliminated H4
-- `.kb/models/macos-click-freeze/probes/2026-02-12-skhd-event-tap-source-analysis.md` — skhd CGEventTap analysis
-- `.kb/models/macos-click-freeze/probes/2026-02-11-github-apple-support-search.md` — Broad search: zero matching reports
-- `.kb/models/macos-click-freeze/probes/2026-02-11-karabiner-github-search.md` — Karabiner: mouse lag (#2566) but no click freeze
-- `.kb/models/macos-click-freeze/probes/2026-02-11-yabai-github-issues-search.md` — yabai: drag freeze (#2715) closest match, no click freeze
+**Probes (merged 2026-03-06):**
+- `.kb/models/macos-click-freeze/probes/2026-02-13-service-state-freeze-recurrence.md` — CONTRADICTS: corrected Phase 2 service states (skhd/yabai inverted); WEAKENS H5 (NI uninstalled, freeze recurred); ELIMINATES H4 (78% memory free, zero swap during freeze); STRENGTHENS H6 (aggregate theory)
+- `.kb/models/macos-click-freeze/probes/2026-02-12-skhd-event-tap-source-analysis.md` — EXTENDS: adds H7 (skhd HEAD-position active CGEventTap with timeout/re-enable cycling corrupts WindowServer routing state for non-masked event types including mouse clicks); architectural source analysis, not yet reproduced
+- `.kb/models/macos-click-freeze/probes/2026-02-11-github-apple-support-search.md` — CONFIRMS: zero matching reports across GitHub and Reddit; strengthens case that H3 (macOS bug) is unlikely and issue is configuration-specific
+- `.kb/models/macos-click-freeze/probes/2026-02-11-karabiner-github-search.md` — CONFIRMS: no click freeze reports in Karabiner repo (4000+ issues, 11 query terms); documents mouse lag (#2566, #4043) as distinct symptom; no DriverKit click corruption reports
+- `.kb/models/macos-click-freeze/probes/2026-02-11-yabai-github-issues-search.md` — CONFIRMS: no click freeze reports in yabai repo; EXTENDS with WindowServer crash via scripting additions + Sidecar (#2573) and window drag freeze (#2715) as distinct related symptoms
 
 **Tooling:**
 - `scripts/click-freeze-capture.sh` — Reactive capture script (run during freeze, before HUP). Outputs to `~/.orch/click-freeze-captures/capture-YYYYMMDD-HHMMSS.log`. Next: bind to Karabiner hotkey in dotfiles.

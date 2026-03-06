@@ -1,7 +1,7 @@
 # Model: Code Extraction Patterns
 
 **Domain:** Architecture / Refactoring / Context Management
-**Last Updated:** 2026-01-17
+**Last Updated:** 2026-03-06
 **Synthesized From:** 13 investigations (Jan 3-8, 2026) into Go (main.go, serve.go) and Svelte component extraction
 
 ---
@@ -30,6 +30,12 @@ In an AI system, file size is a proxy for **Context Noise**. Extraction isn't ju
 | **2. Domain** | `{name}_cmd.go` | Isolate CLI commands | One command per file |
 | **3. Handler** | `serve_{name}.go` | Isolate HTTP logic | Domain-specific handlers only |
 | **4. Sub-Domain** | `serve_{name}_cache.go` | Isolate infrastructure | Infrastructure vs Logic |
+
+**Note — `pkg/` package extraction** (simpler than `cmd/orch/`): Within a flat package like `pkg/orch`, file splitting requires no import changes and has no circular dependency risk. Extraction domains can be parallelized after types are extracted first. However, when moving functions from `cmd/orch` to `pkg/orch`, leftover copies create silent divergent duplicates — always grep the source package for copies after extraction.
+
+**Pipeline phase extraction pattern** (distinct from monolithic file extraction): When a file contains sequentially-composed pipeline phases (e.g., resolve → verify → advise → transition), extract by phase into separate files. Shared utilities aren't the first priority here — the phases themselves are the cohesive units. Advisory dispatcher functions in this pattern will have inherently high coupling cluster scores; this is structural, not pathological.
+
+**Extraction emergency threshold:** High churn rate + high line count = extraction emergency, not just either alone. A 2.5x over-limit file (2011 lines) with 22 commits/28 days showing fix-on-fix patterns (fix→revert→fix→fix in git log) signals severe degradation. Partial extraction of 1-2 domains from a 9-domain monolith is insufficient — most domains must be extracted to get below the gate.
 
 ---
 
@@ -80,6 +86,17 @@ Smaller, cohesive files are more resilient to **Session Amnesia**. A new agent c
 - Applied extraction to `agent-detail-panel.svelte`.
 - Proved that tab-based component splitting reduces Svelte file size while maintaining reactivity.
 
+### Feb 19, 2026: `pkg/orch/extraction.go` hotspot analysis
+- At 2011 lines (2.5x gate), 9 cohesive extraction domains identified
+- 22 commits/28 days with fix-on-fix pattern confirmed degradation signal
+- Established: `pkg/` package extraction is simpler (no circular import risk) than `cmd/orch/` extraction
+
+### Mar 1, 2026: Partial extraction insufficient; pipeline phase pattern established
+- After extracting `spawn_modes.go` (530 lines) and `spawn_helpers.go` (148 lines), `extraction.go` remained at 1632 lines (2x gate)
+- 7 remaining extraction domains mapped; complete extraction plan documented (spawn_types, spawn_inference, spawn_preflight, spawn_kb_context, spawn_backend, spawn_beads, spawn_design)
+- `complete_pipeline.go` (970 lines) probe established "pipeline phase extraction" as a distinct pattern
+- Advisory dispatcher fan-out (10+ callsites across 6+ files) is inherently high-coupling — structural, not pathological
+
 ---
 
 ## Integration Points
@@ -97,6 +114,14 @@ Smaller, cohesive files are more resilient to **Session Amnesia**. A new agent c
 - `2026-01-03-inv-extract-shared-go-utility-functions.md` (Shared utilities first)
 - `2026-01-04-inv-phase-extract-serve-agents-cache.md` (Infrastructure separation)
 - `2026-01-06-inv-extract-synthesistab-component-part-orch.md` (Svelte tab pattern)
+
+### Merged Probes
+
+| Probe | Date | Key Finding |
+|-------|------|-------------|
+| `2026-02-19-probe-extraction-go-hotspot-analysis.md` | 2026-02-19 | extraction.go at 2.5x gate (2011 lines), 9 domains, 22 commits/28 days; pkg/ extraction simpler than cmd/orch/ (no circular import risk); high churn + high line count = extraction emergency |
+| `2026-03-01-probe-extraction-go-self-hotspot.md` | 2026-03-01 | After partial extraction still at 1632 lines; 7 domains remain; complete 4-phase plan with target files; duplicate `isInfrastructureWork` in cmd/orch/spawn_cmd.go and pkg/orch (tech debt) |
+| `2026-03-01-probe-complete-pipeline-extraction-boundaries.md` | 2026-03-01 | Pipeline phase extraction pattern established; `complete_pipeline.go` (970 lines) extracts to complete_verification.go + complete_lifecycle.go; advisory dispatcher inherently high-coupling |
 
 **Primary Evidence (Verify These):**
 - `cmd/orch/shared.go` - Shared utilities extraction (extracted first to break cross-dependencies)

@@ -1,7 +1,7 @@
 # Model: Decidability Graph
 
 **Domain:** Work Coordination / Authority Boundaries / Daemon Operation
-**Last Updated:** 2026-03-01
+**Last Updated:** 2026-03-06
 **Synthesized From:** Strategic Orchestrator Model, Questions as First-Class Entities decision, daemon overnight run observations, Petri net / HTN / Active Learning analogies
 
 ---
@@ -496,6 +496,10 @@ orch frontier --json    # Output as JSON for scripting
 
 **2026-03-01:** Probe confirmed context-scoping claim with strong empirical evidence (8 cases, 800+ workspaces, zero capability-limited failures). Extended model: "context-scoping" decomposed into three functions — knowledge loading (delegatable), scope authorization (structural), aggregation position (emergent). The first is what workers lack; the latter two are why orchestrators remain irreducible even when workers have full knowledge context. See `probes/2026-03-01-probe-context-scoping-irreducibility.md`.
 
+**2026-03-06 (probe merge):** Two additional probes merged.
+- `probes/2026-02-09-context-scoping-reducibility-daemon-vs-manual.md` — Quantified the routing split across 1,015 spawns: daemon-driven is 42% (not a 90%+ deterministic majority), and explicit manual skill selections diverge from type-based inference ~49% of the time. This extends the model: the daemon path (Work→Work traversal) is largely deterministic, but the majority manual path exercises high-judgment context-scoping. Confirms that context-scoping is non-trivial, not reducible to a pipeline. Medium confidence (source classification inferred from event timing; `beads/issues.jsonl` lacks a `source` field).
+- `probes/2026-03-01-probe-context-scoping-irreducibility.md` — 8 strong worker cases (800+ workspaces) confirming workers handle framing-adjacent questions well given adequate context. Zero capability-limited failures found. Orchestrator synthesis is qualitatively different due to aggregation position and scope authorization, not reasoning capability. Confirmed and extended the three-function decomposition of context-scoping already in the model.
+
 ---
 
 ## Empirical Validation (Dogfooding 2026-01-19)
@@ -577,3 +581,10 @@ The Question lifecycle (Open → Investigating → Answered → Closed) isn't fu
 - Active Learning (query strategies for ML)
 - Saga pattern (distributed transactions)
 - OODA loops (John Boyd)
+
+### Merged Probes
+
+| Probe | Date | Verdict | Key Finding |
+|-------|------|---------|-------------|
+| `probes/2026-02-09-context-scoping-reducibility-daemon-vs-manual.md` | 2026-02-09 | Extends | Daemon routing is only 42% of spawns; manual skill selection diverges from type inference 49% of the time — scoping is high-judgment on the majority path, not mostly deterministic. Beads issues lack a `source` field (instrumentation gap). |
+| `probes/2026-03-01-probe-context-scoping-irreducibility.md` | 2026-03-01 | Confirms + Extends | 8 concrete cases confirm workers handle framing questions given adequate context; zero capability-limited failures across 800+ workspaces. Orchestrator irreducibility is structural (aggregation position, scope authorization), not capability-based. |

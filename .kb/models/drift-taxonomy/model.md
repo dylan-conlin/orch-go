@@ -1,7 +1,7 @@
 # Model: Drift Taxonomy
 
 **Domain:** System coherence / Cross-boundary state management
-**Last Updated:** 2026-02-28
+**Last Updated:** 2026-03-06
 **Synthesized From:**
 - `.kb/investigations/2026-02-27-design-claude-config-dir-drift-elimination.md` — Config drift analysis and symlink solution
 - `.kb/decisions/2026-02-14-model-staleness-detection.md` — Detect-Annotate-Queue design for model drift
@@ -56,6 +56,8 @@ Three detection strategies exist, in order of effectiveness:
 
 **The consumption principle:** Detection should happen as close to the point of harm as possible. Spawn-time detection > periodic reflection > commit-time hooks.
 
+**Awareness ≠ action (extended 2026-03-06):** Consumption-time detection creates awareness, but awareness without action is noise. Empirical study of 1,343 staleness events across 546 spawns (Feb 18–Mar 1) found: zero observed cases of agents spontaneously changing behavior due to a staleness warning. Warnings were irrelevant to the assigned task. The practical value is in the event log feeding the remediation pipeline (daemon creating model-drift issues), not in the inline SPAWN_CONTEXT.md annotation. The annotation produces ~30% of spawn contexts containing warnings with no observed behavioral benefit. (Source: probe `2026-03-01-probe-staleness-detection-effectiveness.md`)
+
 ### Prevention Strategies (Ranked)
 
 Four prevention strategies, in order of strength:
@@ -78,7 +80,11 @@ Four prevention strategies, in order of strength:
 
 3. **Prevention strength must match failure cost.** Config drift (wrong hooks → security gap) got structural elimination. Model drift (outdated context → suboptimal agent behavior) got annotate-and-surface. Work alignment drift (misallocated effort) got manual review. The stronger the prevention, the more it constrains; match to actual risk.
 
-4. **Cross-boundary drift requires explicit contracts.** Within a single project, the compiler, tests, and linters catch inconsistencies. Across project boundaries, nothing enforces coherence unless you build it. This is why agreements exist — they're the only mechanism for cross-project drift.
+4. **Detection creates awareness; only the remediation pipeline creates action.** Spawn-time staleness annotations reach agents but don't change agent behavior — staleness remediation is orthogonal to assigned tasks. The event log (`model-staleness-events.jsonl`) is the value, because it feeds the daemon's model-drift reflection pipeline, which creates actionable issues. Inline annotations add noise without behavioral benefit. This reframes the Detect-Annotate-Queue pattern: Queue (daemon creating issues) is the productive step; Annotate may be unnecessary overhead.
+
+5. **False positives degrade trust across all detections.** `.beads/issues.jsonl` changes on every beads operation — any model listing it in `code_refs` is perpetually "stale" (21% of all staleness events). Frequent false positives train operators/agents to ignore all warnings. Volatile files (`issues.jsonl`, `CLAUDE.md`) should be excluded or tagged in `code_refs` blocks to preserve signal quality.
+
+6. **Cross-boundary drift requires explicit contracts.** Within a single project, the compiler, tests, and linters catch inconsistencies. Across project boundaries, nothing enforces coherence unless you build it. This is why agreements exist — they're the only mechanism for cross-project drift.
 
 ---
 
@@ -175,6 +181,10 @@ Four prevention strategies, in order of strength:
 
 **Feb 28, 2026:** `orch drift` command fixed — Replaced raw ID dump with skill-grouped alignment analysis. Work alignment drift now has real detection.
 
+**Mar 1, 2026 (probe merge):** Staleness detection effectiveness probe incorporated.
+- 1,343 events across 546 spawns validated that the detection mechanism works correctly (71.7% are true positives — genuinely deleted files). However, zero observed cases of agents changing behavior because of a warning. The inline SPAWN_CONTEXT.md annotation has no observed behavioral benefit; the event log feeding daemon reflection is the actual value. Two false positive patterns identified: `.beads/issues.jsonl` (21% noise) and `CLAUDE.md` (7.5% noise) should be excluded from `code_refs` tracking.
+- New invariants 4 and 5 added: awareness ≠ action, and false positives degrade trust.
+
 ---
 
 ## References
@@ -203,3 +213,9 @@ Four prevention strategies, in order of strength:
 **Cross-project evidence:**
 - `kb-cli/.kb/agreements/*.yaml` — Five seeded cross-boundary contracts
 - `kb-cli/cmd/kb/agreements.go` — Agreements check/list implementation
+
+### Merged Probes
+
+| Probe | Date | Verdict | Key Finding |
+|-------|------|---------|-------------|
+| `probes/2026-03-01-probe-staleness-detection-effectiveness.md` | 2026-03-01 | Extends | Detection mechanism is mechanically correct (71.7% true positives, 546 spawns, 1,343 events). But awareness ≠ action — zero observed behavioral changes from staleness warnings. Inline SPAWN_CONTEXT.md annotations are noise; event log feeding daemon reflection is the value. Two noise patterns identified: `.beads/issues.jsonl` (21%) and `CLAUDE.md` (7.5%) should be filtered from `code_refs`. |

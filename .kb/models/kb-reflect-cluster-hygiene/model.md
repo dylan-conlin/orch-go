@@ -1,7 +1,7 @@
 # Model: kb reflect Cluster Hygiene
 
 **Domain:** Knowledge system maintenance / synthesis triage
-**Last Updated:** 2026-02-28
+**Last Updated:** 2026-03-06
 **Synthesized From:** Top synthesis clusters (`feature`, `agents`, `quick`) and 10 synthesis investigations (Jan-Feb 2026)
 
 ---
@@ -14,11 +14,11 @@
 
 ## Core Mechanism
 
-### 1) Reflect emits lexical cluster signal
+### 1) Reflect emits lexical cluster signal (and defect-class metadata signal)
 
 Input: investigation titles and metadata.
 
-Output: topic buckets like `feature (5)` or `quick (4)`.
+Output: lexical topic buckets like `feature (5)` or `quick (4)`, plus a parallel metadata-based signal: `--type defect-class` emits clusters by `Defect-Class:` frontmatter tag (e.g., `configuration-drift (5)` with escalation suggestion). These are two distinct clustering dimensions — lexical (filename-derived) and semantic/manual (frontmatter tag).
 
 ### 2) Orchestrator performs semantic triage
 
@@ -73,6 +73,34 @@ Quick fact lookups become full investigations, increasing maintenance burden wit
 
 ### Failure Mode 4: Incomplete closure metadata
 
+### Failure Mode 6: Cross-repo visibility gap
+
+When `kb reflect` runs in default mode (single project), 59.5% of all knowledge artifacts are invisible. Specifically:
+
+| Tier | Artifacts | Visibility |
+|------|-----------|------------|
+| orch-go/.kb/ (default) | 1,331 (40.5%) | Always scanned |
+| Other project .kb/ directories | 1,867 (56.8%) | Only with `--global` |
+| ~/.kb/ (global store) | 89 (2.7%) | Never scanned — structurally invisible |
+
+The global `~/.kb/` store (which is a symlink to `~/orch-knowledge/kb/`, NOT `~/orch-knowledge/.kb/`) contains the master `principles.md`, 6 global models, and 8 global guides. `discoverProjects()` finds repos with `.kb/` directories — `~/.kb/` is not inside any project, so no code path reads it.
+
+The daemon never uses `--global` (runs single-project mode only), so even the 56.8% of cross-project artifacts are invisible to automatic reflection.
+
+**Practical impact:** Synthesis clustering misses related investigations across repos (same "opencode" topic spans orch-go, orch-cli, orch-knowledge, opencode repos). Staleness detection misses cross-repo citations. The `kb reflect --type stale` check for uncited decisions can't see citations to `~/.kb/decisions/`.
+
+**Fix design (validated):** `Reflect()` cleanly separates into `reflectKBDir(kbDir, projectDir, opts)`. Adding global store is one extra `reflectKBDir()` call after the project loop. For `kb context`, a new `GetGlobalStoreContext()` function is needed (the existing `GetContext()` cannot be called with `~` because `findKBDir()` expects `{projectDir}/.kb/`). The spawn system benefits automatically from kb-cli-level changes — no orch-go code changes needed.
+
+### Failure Mode 7: Producer-consumer drift (reflect emits data consumer doesn't parse)
+
+`kb reflect --type defect-class` emits valid data, but the orch-go pipeline silently drops it:
+- `kbReflectOutput` struct lacks a `DefectClass` field → `json.Unmarshal` ignores it
+- `createIssues=true` path narrows to `--type synthesis` → defect-class issue creation never happens
+- `HasSuggestions()`, `TotalCount()`, `Summary()` exclude defect-class → never shown at session start
+- `reflect-suggestions.json` never includes defect-class → dashboard API can't serve it
+
+This is a clean example of configuration drift between kb-cli capabilities and orch-go consumption — kb-cli gained defect-class support but orch-go never added Go structs for it. **Fix:** Add `DefectClass` field to `kbReflectOutput` and `ReflectSuggestions`; remove `--type synthesis` restriction from `createIssues` path; update `HasSuggestions`/`TotalCount`/`Summary`.
+
 Archived files without clear `Superseded-By` pointers remain discoverable but ambiguous, causing repeated re-triage.
 
 ### Failure Mode 5: Scans archived/synthesized directories (FIXED 2026-02-25)
@@ -119,6 +147,12 @@ Archived files without clear `Superseded-By` pointers remain discoverable but am
 
 ---
 
+## Evolution
+
+**2026-02-26:** Added Failure Modes 6 (cross-repo visibility gap) and 7 (producer-consumer drift). Core Mechanism updated to acknowledge defect-class as a parallel metadata-based clustering signal alongside lexical synthesis clusters. Three-tier visibility model established: project (default), cross-project (--global), global ~/.kb/ (never scanned).
+
+---
+
 ## References
 
 **Investigations:**
@@ -144,6 +178,14 @@ Archived files without clear `Superseded-By` pointers remain discoverable but am
 - `cmd/orch/spawn_validation.go` - decision-gate fail-closed behavior
 - `cmd/orch/status_statedb.go` - fallback status discovery over `workers-*` tmux sessions
 - `cmd/orch/serve.go` - default serve port constant
+
+### Merged Probes
+
+| Probe | Date | Key Finding |
+|-------|------|-------------|
+| `2026-02-26-probe-defect-class-pipeline-gap.md` | 2026-02-26 | orch-go pipeline has complete blind spot for defect-class: missing Go struct field, `createIssues` narrows to synthesis only, `HasSuggestions` excludes it — silent data drop |
+| `2026-02-26-probe-cross-repo-knowledge-visibility-inventory.md` | 2026-02-26 | 59.5% of 3,287 total artifacts invisible in default mode; `~/.kb/` (2.7%, global store) permanently invisible even with `--global`; daemon never uses `--global` |
+| `2026-02-26-probe-cross-repo-global-store-design-validation.md` | 2026-02-26 | Option A (virtual project) for kb reflect feasible; `kb context` needs new `GetGlobalStoreContext()` function; `~/.kb/` symlink structure confirmed, no double-counting risk with orch-knowledge/.kb/ |
 
 **Primary Evidence (Verify These):**
 - `~/Documents/personal/kb-cli/` - kb reflect implementation (cluster algorithm)

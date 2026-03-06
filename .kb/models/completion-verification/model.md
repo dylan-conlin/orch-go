@@ -1,14 +1,14 @@
 # Model: Completion Verification Architecture
 
 **Domain:** Completion / Verification / Quality Gates
-**Last Updated:** 2026-02-26
-**Synthesized From:** 31 investigations, 15 probes, completion.md guide, end-to-end infrastructure audit (Feb 20, 2026), code review gate design (Feb 25, 2026)
+**Last Updated:** 2026-03-06
+**Synthesized From:** 31 investigations, 25 probes, completion.md guide, end-to-end infrastructure audit (Feb 20, 2026), code review gate design (Feb 25, 2026)
 
 ---
 
 ## Summary (30 seconds)
 
-Completion verification operates through **14 gates** organized into **4 verification levels** (V0–V3) and classified by **3 gate types** (execution, evidence, judgment). Each level is a strict superset of the one below: V0 (Acknowledge) checks only that the agent reported completion; V1 (Artifacts) adds deliverable and constraint checks; V2 (Evidence) adds test evidence, build, and git diff checks; V3 (Behavioral) adds visual verification and human observation gates. The three gate types define what kind of verification each gate provides: **execution-based** gates produce provenance (binary pass/fail from running code), **evidence-based** gates check claims against patterns (anti-theater detection), and **judgment-based** gates require human comprehension. The verification level is determined at spawn time from skill type and issue type, stored in AGENT_MANIFEST.json, and flows through to `orch complete`. **Targeted bypasses** (`--skip-{gate} "reason"`) remain as an escape hatch for edge cases, but well-configured spawns should require zero skip flags. The daemon runs the same `VerifyCompletionFull()` pipeline with threshold-based pause to prevent unchecked auto-completion.
+Completion verification operates through **14 gates** organized into **4 verification levels** (V0–V3) and classified by **3 gate types** (execution, evidence, judgment). Each level is a strict superset of the one below: V0 (Acknowledge) checks only that the agent reported completion; V1 (Artifacts) adds deliverable and constraint checks; V2 (Evidence) adds test evidence, build, and git diff checks; V3 (Behavioral) adds visual verification and human observation gates. The three gate types define what kind of verification each gate provides: **execution-based** gates produce provenance (binary pass/fail from running code), **evidence-based** gates check claims against patterns (anti-theater detection), and **judgment-based** gates require human comprehension. The verification level is determined at spawn time from skill type and issue type, stored in AGENT_MANIFEST.json, and flows through to `orch complete`. **Targeted bypasses** (`--skip-{gate} "reason"`) remain as an escape hatch for edge cases, but well-configured spawns should require zero skip flags — this invariant is currently violated by a known conflict between light tier and V2 level (see "Why This Fails" §5). The daemon runs the same `VerifyCompletionFull()` pipeline with threshold-based pause to prevent unchecked auto-completion.
 
 ---
 
@@ -28,7 +28,7 @@ Completion verification operates through **14 gates** organized into **4 verific
 | 8 | Test Evidence | `test_evidence` | Evidence | Evidence of actual test execution in beads comments (anti-theater detection) |
 | 9 | Git Diff | `git_diff` | Evidence | Git changes match SYNTHESIS.md claims |
 | 10 | Build | `build` | Execution | Project compiles (`go build ./...`) — the only unfakeable gate |
-| 11 | Accretion | `accretion` | Evidence | File size growth within limits (accretion boundary enforcement) |
+| 11 | Accretion | `accretion` | Evidence | File size growth within limits; pre-existing bloat (file was already >1500 before agent) downgrades to WARNING; agent-caused threshold crossing blocks |
 | 12 | Visual Verification | `visual_verification` | Evidence | Screenshot/Playwright evidence for web/ changes, with risk assessment |
 | 13 | Explain-Back | `explain_back` | Judgment | Orchestrator explains what was built and why (gate1/comprehension) |
 | 14 | Behavioral | `behavioral` | Judgment | Human confirms behavior was observed working (gate2, V3 only) |
@@ -179,18 +179,44 @@ Each gate can be individually bypassed with a required reason (min 10 characters
 
 **Constraint:** Bypass events are logged to `~/.orch/events.jsonl` with gate name, reason, beads ID, and skill for observability. `orch stats` shows pass/fail/bypass rates per gate.
 
-**Source:** `cmd/orch/complete_cmd.go:SkipConfig`, `getSkipConfig()`, `logSkipEvents()`
+**Pipeline propagation:** Skip flags must propagate to ALL downstream systems that independently enforce the same check. `--skip-phase-complete` bypasses orch's gate but also triggers `bd close --force` — because `bd close` has its own Phase: Complete check. Without propagation, the skip is ineffective (orch proceeds, `bd close` fails anyway). Fixed via `verify.ForceCloseIssue()`.
+
+**Bypass statistics (post targeted-skip rollout, as of Feb 2026):**
+- `--force` dropped from 72.8% (pre-rollout) to 1.8% (instrumented post-rollout)
+- Remaining bypass noise concentrated in `test_evidence` (5.5:1 bypass:fail) and `synthesis` (5.9:1) — mostly docs-only and knowledge work where gates are structurally inapplicable
+- `build` is the healthiest gate: 0.7:1 ratio (more failures than bypasses)
+- Three "pure noise" gates removed in Phase 7: `agent_running` (∞:1), `model_connection` (71:1), `commit_evidence` (11.8:1)
+
+**Source:** `cmd/orch/complete_cmd.go:SkipConfig`, `getSkipConfig()`, `logSkipEvents()`, `pkg/verify/beads_api.go:ForceCloseIssue()`
 
 ### Daemon Verification Integration
 
-The daemon runs the same verification pipeline as manual `orch complete`:
+The daemon implements a **two-phase design**: it triages (automated gates) but does NOT close issues. Closing still requires `orch complete`.
 
-1. `ProcessCompletion()` calls `VerifyCompletionFull()` before marking anything
-2. `VerificationTracker.IsPaused()` checks threshold-based pause (default: 3 failures before pause)
-3. `SeedFromBacklog()` persists tracker state across daemon restarts
-4. Signal file `~/.orch/daemon-verification.signal` bridges human verification to daemon awareness
+**Daemon phase (automated):**
+1. `ProcessCompletion()` calls `VerifyCompletionFull()` — same 14-gate pipeline as `orch complete`
+2. `DetermineEscalationFromCompletion()` — prevents labeling when human approval needed (`EscalationBlock`, `EscalationFailed`)
+3. If escalation allows → labels issue `daemon:ready-review` (does NOT close)
+4. `VerificationTracker.RecordCompletion()` — increments counter, may trigger pause
 
-**Source:** `pkg/daemon/daemon.go` (ProcessCompletion, line ~342-380), `pkg/daemon/verification_tracker.go`
+**Human phase (manual, via `orch complete`):**
+- Explain-back (gate1), behavioral verification (gate2), discovered work disposition, checkpoint enforcement, and liveness check are **CLI-only** — they require interactive/human involvement and cannot be automated
+- The full gate pipeline including human gates fires during `orch complete`
+
+**VerificationTracker (review pace governor):**
+- `IsPaused()` checked before each spawn — blocks new work when review backlog exceeds threshold (default: 3)
+- `SeedFromBacklog()` persists tracker state across daemon restarts
+- **Dual signal mechanism:**
+  - `~/.orch/daemon-verification.signal` — written by `orch complete`, triggers `RecordHumanVerification()` (resets counter)
+  - `~/.orch/daemon-resume.signal` — written by `orch daemon resume`, triggers manual unpause
+
+**Checkpoint source-of-truth:**
+- Checkpoint file (`~/.orch/verification-checkpoints.jsonl`) is the source of truth for verification state
+- `daemon:ready-review` label is the **view layer** only — closed issues lose the label, but their checkpoints persist
+- `CountUnverifiedCompletions()` MUST read checkpoint file AND filter to open issues via `verify.ListOpenIssues()`
+- All consumers of verification state MUST use `verify.ListUnverifiedWork()` or `verify.CountUnverifiedWork()` — divergent counting logic caused three code paths to disagree on "unverified" (spawn gate checked closed issues, daemon/review checked open issues)
+
+**Source:** `pkg/daemon/daemon.go` (ProcessCompletion, line ~342-380), `pkg/daemon/verification_tracker.go`, `pkg/daemon/issue_adapter.go` (CountUnverifiedCompletions), `pkg/verify/unverified.go`
 
 ### Escalation Model
 
@@ -265,6 +291,42 @@ Completed agent activity remains viewable via hybrid persistent layer:
 
 **Implication:** Critical infrastructure work — exactly when monitoring matters most — runs unmonitored.
 
+### 5. Light Tier / V2 Verification Level Conflict (Active)
+
+**What happens:** `feature-impl` defaults to `TierLight` (spawn context says "SYNTHESIS.md NOT required") but also to `VerifyV2` (which includes GateSynthesis). Every `feature-impl` completion fails the synthesis gate because the agent was instructed not to produce the file that verification demands.
+
+**Empirical data:** 3/3 feature-impl completions on Feb 28, 2026 failed the synthesis gate. 100% failure rate for the most common spawn type. Agents followed instructions correctly — the contradiction is in the system.
+
+**Root cause:** The V0-V3 level system was designed to replace the tier system, but the migration was incomplete. SPAWN_CONTEXT template still uses tier for SYNTHESIS.md instructions; `pkg/verify/check.go:550` skips tier-check for synthesis (the legacy path checked `tier != "light"`, the modern level-based path does not). The `GateArchitecturalChoices` gate at line 388 already has `&& tier != "light"` suppression — showing someone hit this class of problem before but didn't generalize the fix.
+
+**Workaround:** Orchestrator must use `--skip-synthesis` for all feature-impl completions. This violates the "zero skip flags for well-configured spawns" design goal.
+
+**Fix options:** (1) Add `tier != "light"` suppression to synthesis gate in level-based path. (2) Align feature-impl default tier to `TierFull` since V2 requires synthesis.
+
+### 6. Hotspot System Blind Spots (Known)
+
+**What happens:** The hotspot system (bloat-size, fix-density, investigation-cluster, coupling-cluster) misses five categories of structural problems. Three are causing real pain today:
+
+1. **Implicit coupling** (CRITICAL): String-literal protocols spanning packages without shared constants — 10 independent skill-name maps across 7 packages; status string filtering gap causing blocked agents to be invisible on dashboard; `synthesis_parser.go` regex `\w+` silently drops "spawn-follow-up" recommendations because hyphens break word-character matching.
+
+2. **Semantic complexity** (HIGH): Files under 800 lines with high goroutine/channel/mutex density (`swarm.go`, `capacity/manager.go`, `serve_agents_cache.go`, `spawn/resolve.go`). Hotspot sees these as small, well-factored files.
+
+3. **Dead features** (HIGH): ~7,900 lines confirmed dead code including `pkg/capacity/` (717 lines), `pkg/shell/` (972 lines), `pkg/certs/` (private key in source control), a 21MB compiled binary tracked in git, and `.bak2` backup files.
+
+4. **Cold spots** (MEDIUM): Frozen infrastructure that may silently degrade (opencode SSE subsystem, `pkg/state/reconcile.go`).
+
+5. **Scattered duplication** (MEDIUM): Beads RPC/CLI fallback pattern hand-written 58 times across 24 files with subtle behavioral inconsistencies.
+
+**Existing bugs found through this analysis:** Blocked agents invisible on dashboard (serve_agents_discovery.go filters missing "blocked"); spawn-follow-up recommendations silently dropped (synthesis_parser.go regex); `beads.DefaultDir` not defer-restored in complete_pipeline.go; private key tracked in source control.
+
+### 7. Rework Path Gap
+
+**What happens:** When escalation is `EscalationBlock` or `EscalationFailed`, `orch complete` refuses to close — but the only options are `--force` to override or manual intervention (spawning a new agent). There is no automated rework path.
+
+**Implication:** The orchestrator must manually read SYNTHESIS.md, craft a new spawn with rework instructions, and lose the connection between the original and rework attempt. Rework count is not tracked, no `agent.reworked` event exists, beads history doesn't show the rework relationship.
+
+**Missing:** An `EscalationRework` level that reopens the issue, spawns a new agent with prior SYNTHESIS.md as context, and tracks the rework lineage.
+
 ---
 
 ## Constraints
@@ -296,16 +358,28 @@ Completed agent activity remains viewable via hybrid persistent layer:
 **This enables:** The only unfakeable verification signal (actually executes `go build ./...`)
 **This constrains:** Cannot skip Build via verification levels, only via explicit `--skip-build`
 
+### Why Accretion Thresholds Are Language-Agnostic?
+
+**Constraint:** The accretion gate uses uniform 800/1500 line thresholds across all language types.
+
+**Implication:** Both Go and TypeScript files follow similar size distributions — the thresholds correctly flag structural bloat in both languages. Language-specific thresholds are over-engineering for a portfolio that is 95%+ Go/TypeScript.
+
+**Exception:** Generated files (e.g., `*.gen.ts`, `*.pb.go`) must be excluded via pattern matching, not language-specific thresholds. The bloat scanner excludes 13 build output directories (`skipBloatDirs`: `.git`, `node_modules`, `vendor`, `.svelte-kit`, `dist`, `build`, `.opencode`, `.orch`, `.beads`, etc.) and 12 path prefixes. False positives from build artifacts (e.g., `.opencode/plugin/coaching.ts` appearing as CRITICAL) were fixed by expanding this exclusion list.
+
+**Source:** `cmd/orch/hotspot.go:skipBloatDirs`, probe `probes/2026-02-14-language-agnostic-accretion-metrics.md`
+
 ### Why No Agent-Judgment Gates?
 
 **Constraint:** The pipeline contains execution, evidence, and judgment gates — but no agent-judgment gates (e.g., AI code review).
 
-**Implication:** Agent reviewing agent code is a closed loop. Same model family, same blind spots, no provenance chain. The output is opinion, not evidence.
+**Implication:** Agent reviewing agent code is a closed loop — same model family, same blind spots, no provenance chain. The output is opinion, not evidence.
+
+**Cross-model nuance (Mar 2026):** Cross-model review demonstrably escapes the blind spot loop — a 6-model benchmark showed Codex/DeepSeek found a backend root cause that Opus/Sonnet/GPT-5.2/Gemini missed. However, the provenance objection still applies: cross-model opinions are still opinions, not executable evidence. The correct application is cross-model review as advisory signal (like hotspot warnings), not as a blocking gate. Skill-frame divergence within the same model family also matters: investigation-framed Opus finds bugs that debugging-framed Opus misses, suggesting `orch spawn investigation "review X"` captures some cross-frame value today.
 
 **This enables:** Clean separation between machine verification (execution), structural checks (evidence), and human responsibility (judgment)
 **This constrains:** Cannot add AI code review or similar agent-opinion gates without violating provenance. The fix for "nobody reads the diff" is expanding execution-based gates (go vet, staticcheck), not adding agent judgment.
 
-**Source:** Decision `.kb/decisions/2026-02-25-no-code-review-gate-expand-execution-verification.md`
+**Source:** Decision `.kb/decisions/2026-02-25-no-code-review-gate-expand-execution-verification.md`, probe `probes/2026-03-01-probe-cross-model-blind-spots.md`
 
 ### Why Knowledge Work Surfaces, Not Auto-Closes?
 
@@ -332,6 +406,8 @@ Completed agent activity remains viewable via hybrid persistent layer:
 | Adversarial | Missing | No verification against intentionally deceptive agents |
 
 **Key insight:** The system is strong at "does it exist?" verification (evidence-based gates) but weak at "did it actually execute?" verification. Only 1 of 14 gates is execution-based (`go build`). Expanding execution-based gates (go vet, staticcheck, actually running tests) would increase the unfakeable verification surface without adding agent-judgment complexity.
+
+**Visual evidence:** The visual verification gate detects Playwright-based browser tool patterns only. Glass browser automation patterns were removed (Feb 2026) — they were dead code with no functional impact. `visualEvidencePatterns` in `visual.go` now contains Playwright patterns plus generic patterns ("verified in browser", "screenshot", etc.).
 
 ---
 
@@ -367,6 +443,12 @@ Unified three implicit level systems (spawn tier, checkpoint tier, skill-based a
 ### Phase 9: Gate Type Taxonomy (Feb 25, 2026)
 Classified all 14 gates into three types (execution/evidence/judgment) based on what kind of verification they provide. Established that agent-judgment gates are excluded by design — the fix for verification gaps is expanding execution-based gates, not adding agent opinion. **Key insight:** The "sharp boundary at execution" (only Build actually runs code) is real and is the right place to expand.
 
+### Phase 10: Accretion Gate Nuance (Feb 24, 2026)
+Added pre-existing bloat awareness to accretion gate: when a file was already over threshold before the agent's changes, gate downgrades from ERROR to WARNING. Agents are not penalized for pre-existing code debt they didn't create. Also added `--skip-accretion` flag. Also fixed skip propagation gap: `--skip-phase-complete` now triggers `bd close --force` to bypass `bd`'s independent Phase: Complete check.
+
+### Phase 11: Light Tier / V2 Conflict Identified (Feb 27-28, 2026)
+Empirically confirmed that `feature-impl` spawned with V2 + TierLight creates contradictory instructions: agent told SYNTHESIS.md "NOT required" at spawn time, then blocked at completion because V2 includes GateSynthesis. 100% failure rate on Feb 28 (3/3 completions). Root cause: incomplete migration from tier system to level system. Unresolved — fix decision pending.
+
 ---
 
 ## References
@@ -383,8 +465,40 @@ Classified all 14 gates into three types (execution/evidence/judgment) based on 
 - `.kb/decisions/2026-02-25-no-code-review-gate-expand-execution-verification.md` — No agent-judgment gates, expand execution instead
 
 **Probes:**
-- `probes/2026-02-20-probe-verification-infrastructure-audit.md` — Full infrastructure audit
-- `probes/2026-02-20-probe-verification-levels-design.md` — Levels design probe
+
+*Previously referenced:*
+- `probes/2026-02-20-probe-verification-infrastructure-audit.md` — Full infrastructure audit (source of 14-gate model)
+- `probes/2026-02-20-probe-verification-levels-design.md` — Levels design probe (source of V0-V3 model)
+
+*Merged 2026-03-06 — all 25 probes:*
+
+| Probe | Verdict | 1-Line Summary |
+|-------|---------|----------------|
+| `2026-02-09-friction-bypass-analysis-post-targeted-skips.md` | extends | `--force` dropped 72.8% → 16.7%; bypass noise concentrated in test_evidence/synthesis (docs-only friction) |
+| `2026-02-13-friction-gate-inventory-all-subsystems.md` | extends | 48 gates across 3 subsystems; only build/git_diff have healthy bypass:fail ratio; three noise gates removed |
+| `2026-02-14-language-agnostic-accretion-metrics.md` | confirms | 800/1500 thresholds are language-agnostic; generated file exclusion needed; cross-project aggregation requires project_dir field |
+| `2026-02-15-daemon-verification-tracker-checkpoint-enforcement.md` | contradicts (fixed) | Daemon was reading labels instead of checkpoints — closed issues lost label, never counted as unverified; fixed via checkpoint-first counting |
+| `2026-02-15-verifiability-first-closure-audit.md` | confirms | All 4 verifiability-first issues have functional work in codebase; enforcement theater resolves via iterative fixing |
+| `2026-02-15-verification-tracker-wiring.md` | extends | VerificationTracker was unwired (zero calls); fixed with dual signal mechanism (verification signal + resume signal) |
+| `2026-02-15-verificationtracker-backlog-count-mismatch.md` | extends | Daemon counted closed-issue checkpoints; orch review filtered to open-only; fixed by using ListOpenIssues() for filtering |
+| `2026-02-16-daemon-completion-loop-bypasses-verification-gates.md` | extends | Daemon is a two-phase triage layer, not a closing layer; 6 gates are CLI-only by design; VerificationTracker governs review pace, not gate bypass |
+| `2026-02-16-probe-three-code-paths-verification-state.md` | extends | Three code paths (spawn gate, daemon, review) used incompatible definitions of "unverified"; canonical source `verify.ListUnverifiedWork()` created |
+| `2026-02-17-rework-loop-design-for-verification-gaps.md` | extends | No EscalationRework path exists; Block/Failed is a dead-end requiring manual re-spawn with lost context |
+| `2026-02-18-probe-entropy-spiral-fix-commit-relevance.md` | extends | 161 fix commits in entropy-spiral branch; 3 still apply cleanly to master; 158 irrelevant due to code divergence |
+| `2026-02-19-probe-coupling-hotspot-detection-gap.md` | extends | Accretion enforcement is size-only, blind to coupling; coupling-cluster is orthogonal failure mode (25-file daemon cluster scores 180, CRITICAL) |
+| `2026-02-19-probe-accretion-enforcement-gap-analysis.md` | contradicts+extends | Spawn gate blocking is NOT implemented (warning-only, result discarded); CLAUDE.md claim "Spawn gates block feature-impl on CRITICAL files" was aspirational; layers 2-4 fully shipped |
+| `2026-02-19-probe-glass-removal-verification.md` | confirms | Glass visual evidence patterns removed; Playwright patterns are sole visual detection mechanism; no functional gap |
+| `2026-02-20-probe-verification-infrastructure-audit.md` | contradicts+extends | Prior "3-gate" model contradicted; 14 gates fully wired; coaching plugin only works for OpenCode spawns (not tmux) |
+| `2026-02-20-probe-verification-levels-design.md` | contradicts+extends | "All gates fire" claim wrong; gates are level-selective; auto-skip logic scattered across 6 files; build is the only truly unconditional gate |
+| `2026-02-24-probe-double-gate-skip-phase-complete-propagation.md` | extends | --skip-phase-complete must propagate to bd close --force; pipeline leak fixed via ForceCloseIssue() |
+| `2026-02-24-probe-accretion-gate-preexisting-bloat-skip.md` | extends | Pre-existing bloat (file already >1500 before agent) downgrades to WARNING; agent-caused threshold crossing keeps ERROR |
+| `2026-02-25-probe-coupling-cluster-implementation-review.md` | confirms | Coupling-cluster implementation stays within accretion bounds; spawn gates get coupling awareness for free via existing Hotspot type |
+| `2026-02-25-probe-hotspot-bloat-scanner-build-output-exclusions.md` | extends | Bloat scanner had only 3 directory exclusions; expanded to 13 directories + 12 path prefixes; false positives from .opencode/plugin and .svelte-kit eliminated |
+| `2026-02-25-probe-code-review-gate-design.md` | confirms | Agent code review is a closed loop (same blind spots, no provenance); correct fix is expanding execution gates (go vet, staticcheck); code review would be judgment-based, not execution-based |
+| `2026-02-27-probe-light-tier-v2-verification-conflict.md` | contradicts | "Zero skip flags for well-configured spawns" invariant violated; feature-impl=TierLight + V2 creates contradictory synthesis instructions; incomplete tier→level migration |
+| `2026-02-28-probe-synthesis-gate-light-tier-empirical-failures.md` | extends | 100% feature-impl failure rate on Feb 28 (3/3); agents correctly followed instructions but verification demanded missing SYNTHESIS.md |
+| `2026-03-01-probe-hotspot-blind-spot-analysis.md` | extends | 5 blind spot categories with codebase evidence; 4 existing bugs found including private key in git and blocked agents invisible on dashboard |
+| `2026-03-01-probe-cross-model-blind-spots.md` | extends | Cross-model review escapes blind spot loop (6-model benchmark: Codex/DeepSeek found backend root cause that Opus/Sonnet missed); skill-frame divergence within same model also produces different blind spots; provenance objection still applies |
 
 **Models:**
 - `.kb/models/completion-lifecycle.md` — Where completion fits in agent lifecycle
@@ -403,3 +517,9 @@ Classified all 14 gates into three types (execution/evidence/judgment) based on 
 - `cmd/orch/complete_verify.go` — SkipConfig integration
 - `pkg/daemon/daemon.go` — Daemon verification integration (`ProcessCompletion()`)
 - `pkg/daemon/verification_tracker.go` — Threshold-based pause for daemon auto-completion
+- `pkg/daemon/issue_adapter.go` — `CountUnverifiedCompletions()`, checkpoint-first counting with open-issue filter
+- `pkg/verify/unverified.go` — Canonical `ListUnverifiedWork()` / `CountUnverifiedWork()` — all consumers must use this
+- `pkg/verify/beads_api.go` — `CloseIssue()`, `ForceCloseIssue()` — propagates phase skip to bd close --force
+- `pkg/verify/accretion.go` — Accretion gate with pre-existing bloat detection and net-negative bypass
+- `cmd/orch/hotspot.go` — Bloat scanner with 13-directory exclusion list; `skipBloatDirs`, `buildOutputPrefixes`
+- `cmd/orch/hotspot_coupling.go` — Coupling-cluster analysis (4th hotspot type, 389 lines, standalone file)

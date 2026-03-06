@@ -1,7 +1,7 @@
 # Model: Agent Lifecycle State Model
 
 **Domain:** Agent Lifecycle / State Management
-**Last Updated:** 2026-02-28
+**Last Updated:** 2026-03-06
 **Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display. Updated Feb 2026 after major restructuring (registry elimination, two-lane architecture, single-pass query engine). Updated Feb 25 after phase-based liveness, cross-project querying, and verification gate additions. Updated Feb 27 after V0-V3 verification levels, all-at-once gate failure reporting, architectural choices gate, auto-implementation issue creation, and `pkg/agent/` formal types package. Updated Feb 28 after full LifecycleManager implementation, lifecycle adapter wiring (complete, abandon, orphan GC), model impact advisory, and daemon orphan recovery. Updated late Feb 28 for model drift correction: rework lifecycle path (`orch rework` bypasses LifecycleManager), phase timeout detection, `TrackedIssue`/`WorkspaceInfo` types, completion pipeline extraction (architect/cleanup/hotspot), daemon periodic task expansion, status_cmd.go extraction, and new commands (rework, review orphans, orient).
 
 ---
@@ -27,6 +27,8 @@ Agent state is distributed across four independent systems:
 | **Tmux windows**       | **Infrastructure** | Runtime (volatile)                 | Until window closed | Agent visible, window ID        | Low (UI only)          |
 
 **Key insight:** A registry (`~/.orch/registry.json`) was historically a fifth layer attempting to cache all four, which caused drift. It was **eliminated entirely** in Feb 2026 (see two-lane ADR). The solution is to query authoritative sources directly via a single-pass query engine with explicit reason codes for any missing data. Architecture lint tests structurally prevent registry recreation.
+
+**AGENT_MANIFEST.json is the canonical workspace state artifact.** Written by ALL backends (OpenCode headless, OpenCode+tmux, and Claude CLI) via `spawn.WriteAgentManifest()`, it consolidates all spawn-time state (beads_id, tier, spawn_mode, spawn_time, project_dir, skill, model, git_baseline) into a single self-describing JSON file. Individual dotfiles (`.beads_id`, `.tier`, `.spawn_time`, `.spawn_mode`) are legacy duplication — read AGENT_MANIFEST.json first, fall back to dotfiles for backward compatibility. Infrastructure handles (session_id for OpenCode, tmux window target for Claude CLI) are NOT in AGENT_MANIFEST.json — they are mutable/discoverable references, not immutable spawn-time state.
 
 ### Formal State Machine (`pkg/agent/`)
 
@@ -253,6 +255,8 @@ Orchestrator investigates (may abandon or send message)
 6. **Tmux windows are UI layer only** - Not authoritative for state
 7. **No persistent lifecycle caches** - Only in-memory, process-local caches with short TTLs allowed. Disk-backed state (registry, sessions.json, state.db) is structurally prohibited by architecture lint tests
 8. **Silent failures must be visible** - Every missing field gets an explicit reason code, never empty metadata
+9. **Claude-backend agents use phase comments as liveness proxy, NOT tmux window checks** - Tmux liveness check violates Invariant 6 and causes dashboard oscillation (structural, not fixable). Phase comments come from beads (authoritative), require zero additional data fetching, and are already queried. A tmux window existence check was tried (orch-go-1182/1183) and reverted.
+10. **Tmux window mutating operations must use stable `@ID`, not `session:index`** - Window indices shift when `renumber-windows` is on or concurrent completions run. All four kill/cleanup code paths in `complete_cleanup.go`, `clean_cmd.go`, `abandon_cmd.go`, `review.go` should use `KillWindowByID(window.ID)`. The `WindowInfo.Target` field is for display/logs only.
 
 ---
 
@@ -327,6 +331,56 @@ Orchestrator investigates (may abandon or send message)
 
 **Fix (Jan 6, updated Feb 25):** `queryTrackedAgents()` accepts `projectDirs []string` and queries beads + workspace manifests across all known project directories. No cache — direct queries with graceful degradation per directory.
 
+### Failure Mode 5: Scan Ordering Pre-empts Tmux Discovery (Historical)
+
+**Symptom:** Dashboard shows Claude CLI tmux agent as "completed" with no phase, no window.
+
+**Root cause (pre-two-lane architecture):** Completed workspace scan ran before tmux scan. Both found the same agent by beads_id, but workspace scan claimed it first as "completed" without beads enrichment. Tmux scan then skipped the agent as a duplicate.
+
+**Why it happened:**
+- Claude CLI agent creates workspace (SPAWN_CONTEXT.md) AND tmux window
+- Workspace scan found SPAWN_CONTEXT.md → marked agent "completed"
+- Workspace scan optimization: did NOT add beads_id to enrichment queue
+- Tmux scan found window → duplicate check matched beads_id → skipped
+- Beads enrichment never ran → Phase: Planning comment invisible
+
+**Resolution:** Superseded by two-lane architecture (Feb 2026) and phase-based liveness for claude-backend agents. In the current architecture, phase comments are the authoritative liveness signal for claude-backend agents, not scan ordering.
+
+### Failure Mode 6: QUESTION Deadlock (Structural Gap)
+
+**Symptom:** Agent reports Phase: QUESTION, waits indefinitely — no mechanism delivers the answer.
+
+**Root cause:** Headless agents have no channel to receive answers. Daemon monitors bd comments for phase transitions, but there's no inbox or delivery path from orchestrator to a running headless session.
+
+**Why it happens:**
+- Agent discovers ambiguity, reports `bd comment "Phase: QUESTION - ..."` as instructed
+- Orchestrator may not be monitoring or may answer too late
+- Agent context exhausts while waiting
+
+**Scale (Feb 2026 audit):** 5 confirmed stalls from QUESTION deadlock, all GPT-5.2-codex, all same issue (orch-go-fq5).
+
+**Fix:** Use `orch send <session-id> "answer"` to inject answers into running sessions. For daemon-spawned agents, the daemon should detect Phase: QUESTION and pause/notify the orchestrator rather than continuing to schedule work.
+
+### Failure Mode 7: SYNTHESIS Compliance Gap (Protocol Gap)
+
+**Symptom:** Agent completes work (Phase: Complete comment written) but no SYNTHESIS.md exists. Dashboard shows agent as awaiting-cleanup or stalled rather than completed.
+
+**Root cause:** Agent follows the phase protocol but doesn't write the synthesis artifact. This is a prompt compliance failure, not a lifecycle failure.
+
+**Scale (Feb 2026 audit):** 194 agents (out of 441 manifested archived agents without SYNTHESIS.md) reported Phase: Complete but created no SYNTHESIS.md. This is NOT a stall — the agent finished; it just skipped the artifact.
+
+**Fix:** V1 gate (`GateSynthesis`) in `pkg/verify/check.go` rejects completion without SYNTHESIS.md. This surfaces the gap at `orch complete` time rather than silently accepting it.
+
+### Failure Mode 8: Duplicate Spawn Storm (Daemon Restart Race)
+
+**Symptom:** Same beads issue spawned 5-10x in rapid succession, creating N-1 wasted agent sessions and workspace pollution.
+
+**Root cause:** Daemon in-memory dedup cache doesn't survive restarts. If the daemon restarts while issues are in the `triage:ready` queue, the same issues appear fresh and spawn again.
+
+**Scale (Feb 2026 audit):** 5 agents spawned for orch-go-dr0u within 2 minutes; 10 retries on another slug.
+
+**Fix:** Dedup at the beads layer (check for existing `orch:agent` label + open workspace) rather than relying on in-memory cache. An existing `orch:agent` label on an open issue means it's already been spawned.
+
 ---
 
 ## Constraints
@@ -362,6 +416,23 @@ Orchestrator investigates (may abandon or send message)
 **This enables:** Agents can pause/wait without being marked complete
 **This constrains:** Agents that crash without reporting phase look "incomplete"
 
+### Why Non-Anthropic Models Have High Stall Rates
+
+**Constraint:** Non-Anthropic models have structurally higher failure-to-complete rates due to protocol instruction-following fidelity, not capability.
+
+**Observed stall rates (Feb 2026 audit, archived agents):**
+
+| Model | Stall Rate | Notes |
+|-------|-----------|-------|
+| Opus | 44.6% | Inflated by pre-protocol era |
+| Sonnet | 68.3% | Inflated by pre-protocol era (133 pre-phase-reporting agents) |
+| GPT-5.2-codex | 67.5% | Protocol compliance failures dominate |
+| GPT-4o | 87.5% | Highest failure rate |
+
+**Root cause:** Worker-base skill protocol (phase reporting, SYNTHESIS creation, bd comment discipline) is a multi-step protocol that requires consistent instruction-following across many tool calls. Non-Anthropic models fail to maintain protocol fidelity at significantly higher rates.
+
+**Implication:** For protocol-heavy skills (architect, investigation, feature-impl), use Anthropic models. Non-Anthropic models are appropriate for simpler, bounded tasks where stall recovery cost is low.
+
 ### Why Registry Was Eliminated (Historical)
 
 **Background:** A registry (`~/.orch/registry.json`) attempted to cache all four layers, but updates were async and incomplete. This caused 6 weeks of drift bugs (Dec 21 - Feb 18, 2026).
@@ -392,6 +463,9 @@ Common feature requests or operational changes that would violate this model's i
 | Skip reason codes for missing data | Silent failures accumulate; operators can't distinguish "not found" from "not checked" | #8: Silent failures must be visible |
 | Let workers close their own beads issues | Bypasses verification gates; breaks the orchestrator-reviews-worker hierarchy | #2: Beads issue closed = canonical completion |
 | Route rework through LifecycleManager | Currently bypassed intentionally — rework is a terminal→active transition not in the 6-transition model; formalizing would add complexity for a low-frequency operation | State machine completeness |
+| Add Claude Code plan mode to feature-impl Planning phase | Plan mode creates a "dark period" (bash blocked → no bd comments possible), hangs headless/daemon-spawned agents at approval gate, and defaults to clearing SPAWN_CONTEXT. Feature-impl's Investigation/Design phases are superior: observable, headless-compatible, produce durable artifacts. | Continuous observability assumption |
+| Kill tmux windows by session:index (unstable) | Window indices shift when `renumber-windows` is enabled or concurrent completions race. TOCTOU bug can kill wrong window. Use `KillWindowByID(window.ID)` for all mutating operations. | #10: Stable @ID for tmux mutations |
+| Rely on CLI fallback path for closed-issue filtering | The CLI fallback (`bd list -l orch:agent`) includes closed issues without status filtering. If the RPC path is unavailable, `/api/agents` may surface completed work as "tracked". | #2: Beads issue closed = canonical completion |
 
 ---
 
@@ -532,6 +606,17 @@ Common feature requests or operational changes that would violate this model's i
   - `serve_agents_types.go` — shared types for serve layer
   - `serve_agents_cache_handler.go` — cache invalidation handler
 
+**2026-03-06: Probe Merge (13 probes)**
+
+- AGENT_MANIFEST.json named explicitly as canonical backend-agnostic workspace state artifact
+- Invariant 9 added: phase comments as liveness proxy for claude-backend agents (not tmux windows)
+- Invariant 10 added: tmux window mutating operations must use stable @ID
+- New Failure Modes 5-8 added: scan ordering pre-emption (historical), QUESTION deadlock, SYNTHESIS compliance gap, duplicate spawn storm
+- Pressure Points expanded: plan mode incompatibility, tmux index instability, CLI fallback closed-issue filter bug
+- Non-Anthropic model stall rates documented (67-87% vs 44.6% for Opus)
+- Stall rate clarification: true stall rate is 4.3%, not 56.6% headline number
+- CLI fallback path bug: `bd list -l orch:agent` surfaces closed issues when RPC unavailable
+
 ---
 
 ## References
@@ -566,6 +651,24 @@ Common feature requests or operational changes that would violate this model's i
 - `.kb/guides/agent-lifecycle.md` - How to use agent lifecycle commands (procedural)
 - `.kb/guides/completion.md` - How to complete agents (procedural)
 - `.kb/guides/status.md` - How to use orch status (procedural)
+
+**Merged Probes (2026-03-06):**
+
+| Probe | Date | Verdict | Summary |
+|-------|------|---------|---------|
+| `2026-02-14-backend-agnostic-session-contract.md` | 2026-02-14 | CONFIRMS + EXTENDS | State/infrastructure distinction holds across backends; AGENT_MANIFEST.json is canonical backend-agnostic contract; individual dotfiles are legacy duplication |
+| `2026-02-17-dashboard-blind-to-tmux-agents.md` | 2026-02-17 | CONFIRMS + EXTENDS | Scan ordering pre-empted tmux discovery in old architecture (historical); Priority Cascade never ran for tmux agents; adds Failure Mode 5 |
+| `2026-02-18-session-status-empty-phantoms.md` | 2026-02-18 | CONTRADICTS assumption | `/session/status` is NOT always empty; phantom accumulation comes from other lifecycle gaps, not empty status map |
+| `2026-02-18-cross-project-visibility-cache-context.md` | 2026-02-18 | EXTENDS | Cross-project project discovery has registry fallback (`~/.kb/projects.json`) when `kb` CLI is unavailable |
+| `2026-02-18-filter-unspawned-issues.md` | 2026-02-18 | CONFIRMS | Filtering by agent evidence (workspace/session/daemon labels) reduces dashboard noise dramatically (283→25 agents) |
+| `2026-02-19-agents-api-closed-issues-filter.md` | 2026-02-19 | EXTENDS | CLI fallback path (`bd list -l orch:agent`) surfaces closed issues without status filtering; `/api/agents` may include completed work when RPC unavailable |
+| `2026-02-20-model-drift-major-restructuring.md` | 2026-02-20 | CONTRADICTS stale content | Registry references were stale (registry fully eliminated); confirmed all core principles (4-layer, beads canonical, Priority Cascade) still hold after major restructuring |
+| `2026-02-20-tradeoff-visibility-gap-analysis.md` | 2026-02-20 | EXTENDS | Architectural tradeoffs made by workers are invisible to orchestrator until damage occurs; "Pressure Points" section format addresses this |
+| `2026-02-24-probe-claude-spawn-dashboard-visibility-gap.md` | 2026-02-24 | EXTENDS | Claude-backend agents have no session_id → query engine marks them dead; tmux liveness (Option A) was the proposed fix and was immediately superseded by probe below |
+| `2026-02-24-probe-tmux-liveness-two-lane-violation.md` | 2026-02-24 | CONFIRMS + EXTENDS | Tmux liveness check (orch-go-1182) violated Invariant 6; phase comments are the correct authoritative liveness proxy for claude-backend agents; adds Invariant 9 |
+| `2026-02-24-probe-claude-code-plan-mode-feature-impl-alignment.md` | 2026-02-24 | EXTENDS | Claude Code plan mode is incompatible with orchestrated headless agents (dark period, daemon incompatibility, context clearing); feature-impl's Investigation/Design phases are superior |
+| `2026-02-24-probe-orch-complete-kills-wrong-tmux-window.md` | 2026-02-24 | EXTENDS | All 4 tmux kill paths use unstable `session:index` instead of stable `@ID`; TOCTOU race can kill wrong window; adds Invariant 10 |
+| `2026-02-28-probe-stalled-agent-failure-pattern-audit.md` | 2026-02-28 | EXTENDS | Audit of 1655 archived workspaces reveals 5 new failure modes (QUESTION deadlock, prior art confusion, concurrency ceiling stall, duplicate spawn storm, SYNTHESIS compliance gap); true stall rate is 4.3%, not 56.6%; non-Anthropic models have 67-87% stall rates vs 44.6% for Opus |
 
 **Primary Evidence (Verify These):**
 

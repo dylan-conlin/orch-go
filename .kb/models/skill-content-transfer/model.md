@@ -2,7 +2,7 @@
 
 **Domain:** How Claude processes skill content — applies to ALL skills, not just orchestrator
 **Last Updated:** 2026-03-06
-**Synthesized From:** 7 investigations (Jan 18 - Mar 6, 2026), 90 trials across 3 variants
+**Synthesized From:** 7 investigations (Jan 18 - Mar 6, 2026), 90 trials across 3 variants + worker skill industry practice audit
 
 ---
 
@@ -77,6 +77,8 @@ Behavioral content in skill documents is probabilistic suggestion. Only hooks pr
 3. **Knowledge framing, not prohibition** — "Here's how routing works" beats "NEVER route incorrectly"
 4. **Hook-enforced behaviors must NOT appear in skill text** — Dual authority creates confusion about what's enforced vs advisory
 5. **Stance is a cross-source reasoning primer** — One line of epistemic orientation ("test before concluding") produces larger discrimination than entire knowledge sections, but specifically on scenarios requiring cross-source reasoning (connecting information from multiple sources). Single-source defects (visible within one code block) don't benefit from stance and may slightly degrade. Stance improves detection but not action — behavioral constraints still needed to close the detection-to-action gap.
+
+6. **Knowledge gaps include missing domain practices, not just missing routing tables.** Agents building features won't infer standard industry practices (accessibility, performance regression, observability, error boundaries, dependency security) from bare capabilities. These are knowledge items — when framed as compact checklists rather than behavioral prohibitions, they fit within the token budget and transfer reliably. (Source: probe `2026-03-06-probe-worker-skill-industry-practice-gaps.md`)
 
 ---
 
@@ -172,6 +174,20 @@ The skill drifts from infrastructure quickly. 72 commits in 3 days introduced 10
 - **Worker skill simplification** — apply the orchestrator playbook (strip behavioral → hooks, keep knowledge + stance) to investigation (266 lines, 6+ behavioral mandates), systematic-debugging (752 lines), architect (673 lines), codebase-audit (1,490 lines).
 - **Measurement infrastructure** — extend skillc test scenarios to worker skills. Single-turn stance scenarios are portable; multi-turn procedure testing remains an open design problem.
 
+### Industry practice gaps by skill (from probe 2026-03-06)
+
+| Skill | Critical Gap | Token Budget Status |
+|-------|-------------|---------------------|
+| feature-impl | **Accessibility (a11y) — completely absent.** Also missing: performance regression, error boundaries, observability, dependency audit. | 5,105 tokens (at budget) — add as concise checklist items or reference docs |
+| systematic-debugging | Security impact assessment of discovered bugs — no check for whether the bug found is also a CVE/security escalation. | Within budget |
+| ux-audit | Performance dimension absent (no Lighthouse, no Web Vitals). | Comprehensive otherwise |
+| codebase-audit | Accessibility dimension absent. Dependency health dimension absent. | Within budget |
+| design-session | Non-functional requirements prompting absent — a11y/performance/security specified in design, not retrofitted in implementation. | Within budget |
+
+**The a11y gap is systemic:** missing in feature-impl (where code is written), codebase-audit (where issues are caught), and design-session (where requirements are specified). Only ux-audit has comprehensive a11y coverage — but it runs after features are built. Retrofitting a11y costs 5-10x more than building it in.
+
+**Token budget tension resolution:** Add domain practice gaps as compact knowledge-framed checklist items (like the feature-gate addition), not MUST/NEVER constraints. Concise references fit within ~200 additional tokens. Detailed methodology goes in reference docs (progressive disclosure, already used by investigation skill).
+
 ---
 
 ## References
@@ -196,3 +212,9 @@ The skill drifts from infrastructure quickly. 72 commits in 3 days introduced 10
 
 **Threads:**
 - `throughput-completions-vs-comprehension-completions` - Where the stance measurement program originated
+
+### Merged Probes
+
+| Probe | Date | Verdict | Key Finding |
+|-------|------|---------|-------------|
+| `probes/2026-03-06-probe-worker-skill-industry-practice-gaps.md` | 2026-03-06 | Extends | Knowledge gaps in skills extend beyond routing tables to missing domain practices. Systemic a11y absence across feature-impl, codebase-audit, design-session. Performance, observability, error boundary, dependency audit gaps in feature-impl. Feature-impl is at token budget (5,105) — concise checklist framing is the resolution. Confirms Invariant 3: knowledge framing (not prohibition) is the right format. |

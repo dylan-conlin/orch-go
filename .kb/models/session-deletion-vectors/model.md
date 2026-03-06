@@ -1,7 +1,7 @@
 # Model: Session Deletion Vectors
 
 **Domain:** OpenCode Integration / Session Reliability
-**Last Updated:** 2026-02-14
+**Last Updated:** 2026-03-06
 **Synthesized From:** 3 investigations (2026-02-13 to 2026-02-14), opencode source analysis (session/index.ts, project/instance.ts, project/state.ts, config.ts), orch-go cleanup code (clean_cmd.go, cleanup/sessions.go, daemon/cleanup.go)
 
 ---
@@ -57,7 +57,7 @@ This is the critical architectural insight: **instance eviction does NOT cause N
 
 ### Critical Invariants
 
-1. **Sessions exist in SQLite or they don't** - There is no "evicted but recoverable" state
+1. **Sessions exist in SQLite or they don't** - There is no "evicted but recoverable" state. For Claude CLI agents (no OpenCode session), beads issue status is the authoritative liveness signal — `cleanStaleTmuxWindows` uses dual-authority checking (OpenCode sessions + beads issue status) via `classifyTmuxWindows()`.
 2. **NotFoundError = row deleted from DB** - Not a caching issue
 3. **Multiple processes share one SQLite DB** - No coordination protocol
 4. **Cascade deletes propagate silently** - Deleting a session kills all messages and parts
@@ -71,7 +71,7 @@ This is the critical architectural insight: **instance eviction does NOT cause N
 | # | Vector | Trigger | Protection | Gap | Risk | Status |
 |---|--------|---------|------------|-----|------|--------|
 | 1 | **disk-cleanup.sh** | Hourly launchd (`com.dylan.disk-cleanup`) | Lines now commented out (Feb 2026) | None (fixed) | N/A | **FIXED** |
-| 2 | **`orch clean --sessions` (untracked)** | `cleanUntrackedDiskSessions()` | 3-layer: workspace tracking → 5min recency → IsSessionProcessing() | Sessions idle >5min WITHOUT `.session_id` workspace file bypass Layer 2+3 and get DELETED. TUI/interactive sessions have no workspace. | **HIGH** | **OPEN** |
+| 2 | **`orch clean --sessions` (untracked)** | `cleanUntrackedDiskSessions()` | — | Function removed entirely (commit `715241c4`). Responsibility moved to OpenCode TTL backend. OpenCode TTL infrastructure exists (cleanup.ts, 5-min interval, assertNotBusy) but TTL is never set on sessions — 0/201 sessions have `time_ttl` set as of Feb 2026 probe. Attack surface eliminated; underlying vulnerability (idle TUI sessions) could return if TTL is enabled without idle-session detection. | N/A | **ELIMINATED** |
 | 3 | **Ctrl+D keybind conflict** | User presses Ctrl+D in TUI session list dialog | Double-press confirmation (`Press ctrl+d again to confirm`) | Triple-bound: `app_exit`, `session_delete`, `input_delete` all default to `ctrl+d`. Muscle memory for "exit" triggers delete when session list is focused. | **HIGH** | **OPEN** |
 | 4 | **DELETE /session/:id API** | Any HTTP client calls `DELETE /session/:id` | None - unauthenticated on localhost | Any local process (orch, scripts, curl) can delete any session | **MEDIUM** | **OPEN** (by design) |
 | 5 | **Daemon periodic cleanup** | Every 6 hours via `RunPeriodicCleanup()` | 7-day age threshold, `IsSessionProcessing()` check, `PreserveOrchestrator: true` | Safe for active sessions (7-day threshold far exceeds any active session age). Orchestrator title detection is heuristic-based. | **LOW** | **SAFE** |
@@ -82,7 +82,15 @@ This is the critical architectural insight: **instance eviction does NOT cause N
 
 ## Why This Fails
 
-### Failure Mode 1: Untracked Session Deletion (Vector #2)
+### Failure Mode 1: Untracked Session Deletion (Vector #2) — ELIMINATED
+
+**Status (2026-02-14):** `cleanUntrackedDiskSessions()` was first fixed (commit `b6a48213`: call `IsSessionProcessing()` for ALL untracked sessions), then removed entirely (commit `715241c4`, ~8 hours later). The comment in the code states "OpenCode now handles session cleanup via TTL (see opencode-fork commit f3c3865)." The OpenCode TTL cleanup runs every 5 minutes and calls `assertNotBusy()` before deletion — but TTL is never set on any sessions, so it has no effect. This attack surface is eliminated; the underlying vulnerability would return if TTL activation happens without idle-TUI-session detection.
+
+**Daemon-spawned Claude CLI windows protected (2026-02-24):** `cleanStaleTmuxWindows` was extended with dual-authority checking. Previously it only checked OpenCode session existence; daemon-spawned Claude CLI agents have no OpenCode session (they run in tmux, not via OpenCode). Fix: `classifyTmuxWindows()` now uses three layers: (1) active OpenCode session → not stale, (2) open beads issue (via `ListOpenIssuesWithDir` with `--limit 0`) → protected, (3) neither → stale. Uses `ListOpenIssuesWithDir` (not `ListOpenIssues`) to avoid hidden 50-issue limit.
+
+---
+
+### Failure Mode 1 (Original): Untracked Session Deletion (Vector #2) — FOR REFERENCE
 
 **Symptom:** Interactive TUI session disappears mid-conversation with NotFoundError
 
@@ -203,6 +211,16 @@ The confirmation ("Press ctrl+d again to confirm") is displayed as red-highlight
 - `Session.get()` hits DB directly, not affected by eviction
 - This was the least investigated hypothesis - now confirmed as NOT a deletion vector
 
+**Feb 14, 2026: Vector #2 eliminated**
+- `cleanUntrackedDiskSessions()` fixed (all untracked sessions checked via `IsSessionProcessing()`), then removed entirely
+- Responsibility moved to OpenCode TTL backend; TTL infrastructure exists but is inactive (no sessions have `time_ttl` set)
+- Attack surface gone; underlying idle-TUI vulnerability latent until TTL activated
+
+**Feb 24, 2026: Daemon-spawned Claude CLI tmux window protection added**
+- `cleanStaleTmuxWindows` extended with dual-authority checking (OpenCode session OR open beads issue)
+- `classifyTmuxWindows()` pure function extracted for testability (8 test cases)
+- `ListOpenIssuesWithDir` used instead of `ListOpenIssues` to avoid hidden 50-issue limit
+
 **Feb 14, 2026: Vector #7 probed — migration gate bug confirmed**
 - JSON→SQLite migration never ran: `opencode.db` existed since Jan 27 from earlier schema migrations
 - 188 JSON session files permanently orphaned (exist on disk, invisible to current SQLite code)
@@ -221,6 +239,13 @@ The confirmation ("Press ctrl+d again to confirm") is displayed as red-highlight
 
 **Probes:**
 - `.kb/models/session-deletion-vectors/probes/2026-02-14-probe-vector7-sqlite-migration-json-fallback.md` - Vector #7 confirmed: migration gate bug, 188 orphaned sessions
+
+### Merged Probes
+
+| Probe | Date | Key Finding |
+|-------|------|-------------|
+| `2026-02-14-probe-vector2-cleanuntrackedsessions-removal.md` | 2026-02-14 | Vector #2 ELIMINATED: function removed (commit `715241c4`); OpenCode TTL infrastructure exists but inactive (0/201 sessions have TTL set) |
+| `2026-02-24-probe-orch-clean-sessions-daemon-window-protection.md` | 2026-02-24 | `cleanStaleTmuxWindows` now has dual-authority (OpenCode + beads); `ListOpenIssuesWithDir` avoids hidden 50-issue limit; 8 test cases confirm protection |
 
 **Upstream Issues:**
 - https://github.com/anomalyco/opencode/issues/13654 - JSON→SQLite migration gate bug
