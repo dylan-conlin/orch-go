@@ -40,6 +40,22 @@ type ActiveThread struct {
 	LatestEntry string `json:"latest_entry"`
 }
 
+// HealthAlert represents a health threshold crossing surfaced during orientation.
+type HealthAlert struct {
+	Message string `json:"message"`
+	Level   string `json:"level"` // "warn" or "critical"
+}
+
+// HealthSummary holds a lightweight health snapshot for orientation.
+type HealthSummary struct {
+	OpenIssues    int           `json:"open_issues"`
+	BlockedIssues int           `json:"blocked_issues"`
+	StaleIssues   int           `json:"stale_issues"`
+	BloatedFiles  int           `json:"bloated_files"`
+	FixFeatRatio  float64       `json:"fix_feat_ratio"`
+	Alerts        []HealthAlert `json:"alerts,omitempty"`
+}
+
 // OrientationData holds all data needed to render session orientation.
 type OrientationData struct {
 	Throughput      Throughput       `json:"throughput"`
@@ -49,6 +65,7 @@ type OrientationData struct {
 	ActiveThreads   []ActiveThread   `json:"active_threads,omitempty"`
 	RelevantModels  []ModelFreshness `json:"relevant_models,omitempty"`
 	StaleModels     []ModelFreshness `json:"stale_models,omitempty"`
+	HealthSummary   *HealthSummary   `json:"health_summary,omitempty"`
 	FocusGoal       string           `json:"focus_goal,omitempty"`
 }
 
@@ -126,6 +143,9 @@ func FormatOrientation(data *OrientationData) string {
 
 	// Stale models section
 	formatStaleModels(&b, data.StaleModels)
+
+	// Health summary section
+	formatHealthSummary(&b, data.HealthSummary)
 
 	// Focus section
 	formatFocus(&b, data.FocusGoal)
@@ -234,6 +254,24 @@ func formatStaleModels(b *strings.Builder, models []ModelFreshness) {
 			probeNote = "has recent probes"
 		}
 		b.WriteString(fmt.Sprintf("   - %s (updated %s, %s)\n", m.Name, age, probeNote))
+	}
+	b.WriteString("\n")
+}
+
+func formatHealthSummary(b *strings.Builder, h *HealthSummary) {
+	if h == nil {
+		return
+	}
+	b.WriteString("Health:\n")
+	b.WriteString(fmt.Sprintf("   Open: %d | Blocked: %d | Stale: %d | Bloated files: %d\n",
+		h.OpenIssues, h.BlockedIssues, h.StaleIssues, h.BloatedFiles))
+	b.WriteString(fmt.Sprintf("   Fix:feat %.1f (28d)\n", h.FixFeatRatio))
+	for _, alert := range h.Alerts {
+		icon := "!"
+		if alert.Level == "critical" {
+			icon = "!!!"
+		}
+		b.WriteString(fmt.Sprintf("   [%s] %s\n", icon, alert.Message))
 	}
 	b.WriteString("\n")
 }

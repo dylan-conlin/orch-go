@@ -454,6 +454,120 @@ func TestFormatOrientation_NoThreads(t *testing.T) {
 	}
 }
 
+func TestFormatOrientation_HealthSummary(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		HealthSummary: &HealthSummary{
+			OpenIssues:    45,
+			BlockedIssues: 12,
+			StaleIssues:   3,
+			BloatedFiles:  5,
+			FixFeatRatio:  1.2,
+			Alerts: []HealthAlert{
+				{Message: "Fix:feat ratio is 1.2 — approaching maintenance mode", Level: "warn"},
+			},
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	if !strings.Contains(output, "Health:") {
+		t.Error("missing 'Health:' section header")
+	}
+	if !strings.Contains(output, "Open: 45") {
+		t.Error("missing open issues count")
+	}
+	if !strings.Contains(output, "Blocked: 12") {
+		t.Error("missing blocked issues count")
+	}
+	if !strings.Contains(output, "Stale: 3") {
+		t.Error("missing stale issues count")
+	}
+	if !strings.Contains(output, "Bloated files: 5") {
+		t.Error("missing bloated files count")
+	}
+	if !strings.Contains(output, "Fix:feat 1.2") {
+		t.Error("missing fix:feat ratio")
+	}
+	if !strings.Contains(output, "approaching maintenance mode") {
+		t.Error("missing health alert message")
+	}
+}
+
+func TestFormatOrientation_HealthSummaryNoAlerts(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		HealthSummary: &HealthSummary{
+			OpenIssues:    10,
+			BlockedIssues: 2,
+			StaleIssues:   0,
+			BloatedFiles:  1,
+			FixFeatRatio:  0.5,
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	if !strings.Contains(output, "Health:") {
+		t.Error("missing 'Health:' section header")
+	}
+	// No alerts - should not have warning markers
+	if strings.Contains(output, "warn") || strings.Contains(output, "critical") {
+		t.Error("should not show alert levels when no alerts")
+	}
+}
+
+func TestFormatOrientation_NoHealthSummary(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+	}
+
+	output := FormatOrientation(data)
+
+	if strings.Contains(output, "Health:") {
+		t.Error("health section should not appear when nil")
+	}
+}
+
+func TestHealthSummaryJSON(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		HealthSummary: &HealthSummary{
+			OpenIssues:    45,
+			BlockedIssues: 12,
+			StaleIssues:   3,
+			BloatedFiles:  5,
+			FixFeatRatio:  1.2,
+			Alerts: []HealthAlert{
+				{Message: "test alert", Level: "warn"},
+			},
+		},
+	}
+
+	b, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	jsonStr := string(b)
+	if !strings.Contains(jsonStr, `"health_summary"`) {
+		t.Error("JSON missing health_summary field")
+	}
+	if !strings.Contains(jsonStr, `"open_issues":45`) {
+		t.Error("JSON missing open_issues")
+	}
+	if !strings.Contains(jsonStr, `"alerts"`) {
+		t.Error("JSON missing alerts")
+	}
+
+	// Verify omitempty works when nil
+	data2 := &OrientationData{Throughput: Throughput{Days: 1}}
+	b2, _ := json.Marshal(data2)
+	if strings.Contains(string(b2), "health_summary") {
+		t.Error("health_summary should be omitted when nil")
+	}
+}
+
 func TestActiveThreadJSON(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/focus"
+	"github.com/dylan-conlin/orch-go/pkg/health"
 	"github.com/dylan-conlin/orch-go/pkg/orient"
 	"github.com/dylan-conlin/orch-go/pkg/thread"
 	"github.com/spf13/cobra"
@@ -101,6 +102,9 @@ func runOrient() error {
 
 	// 7. Focus
 	data.FocusGoal = collectFocus()
+
+	// 9. Health summary from latest snapshot
+	data.HealthSummary = collectHealthSummary()
 
 	// 8. In-progress count from bd
 	data.Throughput.InProgress = collectInProgressCount()
@@ -328,6 +332,35 @@ func collectInProgressCount() int {
 		return 0
 	}
 	return parseInProgressCount(string(output))
+}
+
+// collectHealthSummary reads the most recent health snapshot and generates alerts.
+func collectHealthSummary() *orient.HealthSummary {
+	store := getHealthStore()
+	recent, err := store.ReadRecent(30)
+	if err != nil || len(recent) == 0 {
+		return nil
+	}
+
+	report := health.GenerateReport(recent)
+	c := report.Current
+
+	summary := &orient.HealthSummary{
+		OpenIssues:    c.OpenIssues,
+		BlockedIssues: c.BlockedIssues,
+		StaleIssues:   c.StaleIssues,
+		BloatedFiles:  c.BloatedFiles,
+		FixFeatRatio:  c.FixFeatRatio,
+	}
+
+	for _, a := range report.Alerts {
+		summary.Alerts = append(summary.Alerts, orient.HealthAlert{
+			Message: a.Message,
+			Level:   a.Level,
+		})
+	}
+
+	return summary
 }
 
 // parseInProgressCount counts issue lines from `bd list --status=in_progress` output.
