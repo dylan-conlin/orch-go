@@ -1,24 +1,21 @@
-issue: orch-go-jxpe7
-title: "Gate skillc deploy on behavioral test baseline"
+issue: orch-go-nrlt1
+title: "Extract periodic task scheduler from Daemon struct"
 tier: light
 
 automated:
-  - command: "cd ~/Documents/personal/skillc && go test ./cmd/skillc/ -run TestHasBaselinedSkills -v"
-    expects: "4/4 PASS — baseline detection logic"
+  - command: "go build ./..."
+    expects: "clean build"
     result: "PASS"
-  - command: "cd ~/Documents/personal/skillc && go test ./cmd/skillc/ -run 'TestDeploy|TestFind|TestClean|TestDetect' -v"
-    expects: "12/12 PASS — all existing deploy tests"
-    result: "PASS"
+  - command: "go test ./pkg/daemon/... -count=1"
+    expects: "all daemon tests pass"
+    result: "ok github.com/dylan-conlin/orch-go/pkg/daemon 11.643s"
 
 deliverables:
-  # In skillc repo (~/Documents/personal/skillc)
-  - cmd/skillc/deploy.go        # hasBaselinedSkills() + auto-detect + --skip-behavioral
-  - cmd/skillc/deploy_test.go   # 4 new tests for baseline detection
-  - cmd/skillc/main.go          # Help text update
+  - pkg/daemon/scheduler.go        # PeriodicScheduler + task constants
+  - pkg/daemon/scheduler_test.go   # 14 unit tests
 
 notes: |
-  skillc deploy now auto-runs behavioral gate when any skill has scenarios + baseline.json.
-  Previously opt-in via --behavioral. Now default-on to prevent untested skill changes.
-
-  Flags: --skip-behavioral (opt out), --force-behavioral (override regressions).
-  Cross-repo: code in skillc repo, binary rebuilt to ~/bin/skillc.
+  Replaced 11 individual lastX time.Time fields on the Daemon struct with a
+  unified PeriodicScheduler. Each periodic task now delegates to
+  d.Scheduler.IsDue/MarkRun/LastRunTime/NextRunTime instead of reimplementing
+  the same interval-check pattern. Net: ~200 lines of boilerplate eliminated.
