@@ -681,109 +681,28 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 }
 
 func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*OnceResult, *Slot, error) {
-	// DEFENSE-IN-DEPTH: Check spawn tracker by issue ID.
-	// NextIssueExcluding() already checks IsSpawned(), but this catch-all ensures
-	// no code path can bypass the spawn cache check. This was added after duplicate
-	// spawn incidents where the spawn cache should have prevented respawn (orch-go-ahif).
-	if d.SpawnedIssues != nil && d.SpawnedIssues.IsSpawned(issue.ID) {
+	// Run the dedup pipeline: all pre-spawn gates and advisory checks.
+	pipeline := d.buildSpawnPipeline()
+	pipelineResult := pipeline.Run(issue)
+
+	if !pipelineResult.Allowed {
 		if d.Config.Verbose {
-			fmt.Printf("  DEBUG: Skipping %s (spawn tracker: recently spawned, within TTL)\n", issue.ID)
+			fmt.Printf("  DEBUG: Skipping %s (rejected by %s: %s)\n", issue.ID, pipelineResult.RejectedBy, pipelineResult.RejectionMessage)
 		}
 		return &OnceResult{
 			Processed: false,
 			Issue:     issue,
 			Skill:     skill,
 			Model:     inferredModel,
-			Message:   fmt.Sprintf("Issue %s recently spawned (in spawn cache) - skipping to prevent duplicate", issue.ID),
+			Message:   fmt.Sprintf("%s - skipping to prevent duplicate", pipelineResult.RejectionMessage),
 		}, nil, nil
 	}
 
-	// Session-level dedup: Check if there's an existing OpenCode session OR tmux window.
-	// This prevents duplicate spawns when:
-	// 1. SpawnedIssueTracker TTL expires (5min/6h) but agent is still running
-	// 2. Status update to "in_progress" failed silently
-	// 3. Multiple daemon instances try to spawn the same issue
-	// 4. Claude CLI backend: agent runs in tmux without OpenCode session
-	if HasExistingSessionForBeadsID(issue.ID) {
+	// Log advisory warnings
+	for _, advisory := range pipelineResult.Advisories {
 		if d.Config.Verbose {
-			fmt.Printf("  DEBUG: Skipping %s (existing session or tmux window found)\n", issue.ID)
+			fmt.Printf("  ADVISORY [%s]: %s\n", advisory.Name, advisory.Warning)
 		}
-		return &OnceResult{
-			Processed: false,
-			Issue:     issue,
-			Skill:     skill,
-			Model:     inferredModel,
-			Message:   fmt.Sprintf("Existing session/window found for %s - skipping to prevent duplicate", issue.ID),
-		}, nil, nil
-	}
-
-	// CONTENT-AWARE DEDUP: Check if another issue with the same title is already in_progress.
-	// This catches the case where multiple beads issues are created with identical content
-	// (different IDs, same title). Without this, the daemon would spawn each one because
-	// all other dedup layers are keyed on issue ID.
-	//
-	// Layer 1 (in-memory): Check SpawnedIssueTracker title index for recently-spawned titles.
-	// This is fast and catches duplicates within the same daemon instance.
-	if d.SpawnedIssues != nil {
-		if spawned, dupID := d.SpawnedIssues.IsTitleSpawned(issue.Title); spawned && dupID != issue.ID {
-			if d.Config.Verbose {
-				fmt.Printf("  DEBUG: Skipping %s (title matches recently spawned %s)\n", issue.ID, dupID)
-			}
-			return &OnceResult{
-				Processed: false,
-				Issue:     issue,
-				Skill:     skill,
-				Model:     inferredModel,
-				Message:   fmt.Sprintf("Skipping %s - title matches recently spawned %s", issue.ID, dupID),
-			}, nil, nil
-		}
-	}
-	// Layer 2 (persistent): Check beads database for in_progress issues with same title.
-	// This survives daemon restarts and catches duplicates across daemon instances.
-	if dup := FindInProgressByTitle(issue.Title); dup != nil && dup.ID != issue.ID {
-		if d.Config.Verbose {
-			fmt.Printf("  DEBUG: Skipping %s (content duplicate of in_progress %s)\n", issue.ID, dup.ID)
-		}
-		return &OnceResult{
-			Processed: false,
-			Issue:     issue,
-			Skill:     skill,
-			Model:     inferredModel,
-			Message:   fmt.Sprintf("Skipping %s - duplicate of in_progress issue %s with same title", issue.ID, dup.ID),
-		}, nil, nil
-	}
-
-	// FRESH STATUS CHECK: Re-fetch the issue's current status from beads.
-	// This catches the TOCTOU race where another daemon process marked this issue
-	// as in_progress between our ListReadyIssues() call and now. Without this check,
-	// UpdateBeadsStatus is idempotent (setting in_progress when already in_progress
-	// succeeds), so two concurrent daemon processes can both spawn the same issue.
-	// This was the root cause of the Feb 15 2026 orch-go-09cc duplicate spawn incident.
-	if d.Issues != nil {
-		var currentStatus string
-		var statusErr error
-		if issue.ProjectDir != "" {
-			// Cross-project issue: check status in the target project
-			currentStatus, statusErr = GetBeadsIssueStatusForProject(issue.ID, issue.ProjectDir)
-		} else {
-			currentStatus, statusErr = d.Issues.GetIssueStatus(issue.ID)
-		}
-		if statusErr == nil {
-			if currentStatus != "open" {
-				if d.Config.Verbose {
-					fmt.Printf("  DEBUG: Skipping %s (status is %s, expected open)\n", issue.ID, currentStatus)
-				}
-				return &OnceResult{
-					Processed: false,
-					Issue:     issue,
-					Skill:     skill,
-					Model:     inferredModel,
-					Message:   fmt.Sprintf("Issue %s is already %s - skipping to prevent duplicate", issue.ID, currentStatus),
-				}, nil, nil
-			}
-		}
-		// On error, continue to spawn (fail-open to avoid blocking work).
-		// The UpdateBeadsStatus call below provides the persistent dedup gate.
 	}
 
 	// If pool is configured, acquire a slot first
@@ -937,6 +856,32 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 		Model:     inferredModel,
 		Message:   fmt.Sprintf("Spawned work on %s", issue.ID),
 	}, slot, nil
+}
+
+// buildSpawnPipeline constructs the dedup pipeline from the daemon's current state.
+// This replaces the inline 6-layer dedup gauntlet that was previously in spawnIssue().
+// Gate order matches the original execution order for behavioral equivalence.
+func (d *Daemon) buildSpawnPipeline() *SpawnPipeline {
+	// Build fresh status gate with appropriate status functions
+	freshStatusGate := &FreshStatusGate{}
+	if d.Issues != nil {
+		freshStatusGate.GetStatusFunc = d.Issues.GetIssueStatus
+		freshStatusGate.GetStatusForProjectFunc = GetBeadsIssueStatusForProject
+	}
+
+	return &SpawnPipeline{
+		Gates: []SpawnGate{
+			&SpawnTrackerGate{Tracker: d.SpawnedIssues},          // L1: Spawn cache (ID)
+			&SessionDedupGate{},                                   // L2: Session/tmux existence
+			&TitleDedupMemoryGate{Tracker: d.SpawnedIssues},      // L3: Title dedup (in-memory)
+			&TitleDedupBeadsGate{},                                // L4: Title dedup (beads DB)
+			freshStatusGate,                                       // L5: Fresh status re-check
+		},
+		AdvisoryChecks: []AdvisoryCheck{
+			&SpawnCountAdvisory{Tracker: d.SpawnedIssues, Threshold: 3},
+		},
+		Verbose: d.Config.Verbose,
+	}
 }
 
 // issueUpdaterFunc adapts a function to the IssueUpdater interface.
