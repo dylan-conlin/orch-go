@@ -1,34 +1,30 @@
-issue: orch-go-ds0ag
-title: "Wire identity.ResolveProject into abandon, complete, thread, send, tail commands"
+issue: orch-go-zjbyr
+title: "Enrich orch debrief with focus alignment and friction summary sections"
 tier: light
 
 automated:
-  - command: "go test ./pkg/identity/ -count=1"
-    expects: "All tests pass including 5 new ResolveProjectFrom tests"
+  - command: "go test ./pkg/debrief/ -count=1"
+    expects: "All tests pass including 9 new focus alignment tests"
     result: "PASS"
-  - command: "go test ./cmd/orch/ -count=1"
-    expects: "All existing tests pass"
+  - command: "go test ./... -count=1"
+    expects: "Full test suite passes"
     result: "PASS"
   - command: "go build ./..."
-    expects: "Clean build across all packages"
-    result: "PASS"
-  - command: "go vet ./..."
-    expects: "No vet issues"
+    expects: "Clean build"
     result: "PASS"
 
 deliverables:
-  - pkg/identity/identity.go       # ResolveProject + ResolveProjectFrom functions
-  - pkg/identity/identity_test.go  # 5 new tests for ResolveProjectFrom
-  - cmd/orch/abandon_cmd.go        # Wired identity.ResolveProject, removed manual resolution
-  - cmd/orch/complete_pipeline.go  # Wired identity.ResolveProject for no-workspace fallback
-  - cmd/orch/thread_cmd.go         # Wired identity.ResolveProjectDirectory
-  - cmd/orch/send_cmd.go           # Added --workdir flag + identity.ResolveProject
-  - cmd/orch/tail_cmd.go           # Added --workdir flag + identity.ResolveProject
-  - cmd/orch/shared.go             # Removed dead resolveProjectDirForBeadsID
+  - pkg/debrief/focus_alignment.go       # FocusAlignmentData, CollectFocusAlignment, FormatFocusAlignment
+  - pkg/debrief/focus_alignment_test.go  # 9 tests covering all verdicts and formatting
+  - pkg/debrief/debrief.go              # Added FocusAlignment field to DebriefData + rendering
+  - pkg/debrief/debrief_test.go         # 2 new render tests for focus alignment
+  - cmd/orch/debrief_cmd.go            # Wired collectDebriefFocusAlignment + enriched friction
 
 notes: |
-  Phase 2 of cross-project identity layer design (orch-go-jpsun).
-  ResolveProject provides 3-layer fallback: workdir override > registry prefix > CWD.
-  ResolveProjectFrom accepts pre-built registry to avoid repeated kb projects list calls.
-  Removed O(n) resolveProjectDirForBeadsID from abandon (superseded by O(1) registry).
-  send and tail commands now support --workdir for explicit cross-project operations.
+  Focus Alignment: New section showing drift verdict (ON TRACK/DRIFTING/UNVERIFIED)
+  with active work items. Reads focus store + active beads issues via focus.CheckDrift().
+  Appears before What We Learned when focus is set, omitted when no focus.
+
+  Friction Enrichment: Extended friction collection to include in-progress agents
+  (session.spawned events) in addition to completed agents. Previously only agent.completed
+  events were used, missing friction reported by agents still running at debrief time.

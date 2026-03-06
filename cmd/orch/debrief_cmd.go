@@ -105,23 +105,26 @@ func runDebrief(focusOverride string) error {
 	// 2. Duration from session
 	data.Duration = collectDebriefDuration()
 
-	// 3. What Happened from events.jsonl
+	// 3. Focus Alignment from focus store + active work
+	data.FocusAlignment = collectDebriefFocusAlignment()
+
+	// 4. What Happened from events.jsonl
 	events := loadDebriefEvents(now)
 	data.WhatHappened = debrief.CollectWhatHappened(events)
 
-	// 4. What We Learned: --learned flag + --changed flag + thread entries + completion reasons from events
+	// 5. What We Learned: --learned flag + --changed flag + thread entries + completion reasons from events
 	data.WhatWeLearned = collectDebriefLearned(events, dateStr)
 
-	// 5. Drift Summary from model staleness events
+	// 6. Drift Summary from model staleness events
 	data.DriftSummary = collectDebriefDrift(now)
 
-	// 6. Friction Summary from completed agents' beads comments
+	// 7. Friction Summary from completed and in-progress agents' beads comments
 	data.FrictionSummary = collectDebriefFriction(events, projectDir)
 
-	// 7. What's In Flight from bd list --status=in_progress
+	// 8. What's In Flight from bd list --status=in_progress
 	data.InFlight = collectDebriefInFlight()
 
-	// 8. What's Next: --next flag + auto-detected from bd ready
+	// 9. What's Next: --next flag + auto-detected from bd ready
 	data.WhatsNext = collectDebriefNext()
 
 	// JSON output mode
@@ -155,6 +158,9 @@ func runDebrief(focusOverride string) error {
 	fmt.Printf("Debrief written: %s\n", debriefPath)
 	fmt.Printf("  Date:     %s\n", data.Date)
 	fmt.Printf("  Focus:    %s\n", data.Focus)
+	if data.FocusAlignment != nil {
+		fmt.Printf("  Alignment: %s\n", strings.ToUpper(data.FocusAlignment.Verdict))
+	}
 	fmt.Printf("  Learned:  %d item(s)", len(data.WhatWeLearned))
 	if threadCount > 0 {
 		fmt.Printf(" (%d from threads)", threadCount)
@@ -444,13 +450,15 @@ func collectDebriefDrift(now time.Time) []string {
 	return debrief.FormatDriftSummary(items)
 }
 
-// collectDebriefFriction fetches friction comments from today's completed agents.
+// collectDebriefFriction fetches friction comments from today's completed and
+// in-progress agents. Including in-progress agents captures friction that was
+// reported before completion, giving a more complete picture of session friction.
 func collectDebriefFriction(events []debrief.SessionEvent, projectDir string) []string {
-	// Extract beads IDs from completed events
+	// Extract beads IDs from completed and spawned events
 	var beadsIDs []string
 	seen := make(map[string]bool)
 	for _, e := range events {
-		if e.Type != "agent.completed" {
+		if e.Type != "agent.completed" && e.Type != "session.spawned" {
 			continue
 		}
 		beadsID, _ := e.Data["beads_id"].(string)
@@ -465,7 +473,7 @@ func collectDebriefFriction(events []debrief.SessionEvent, projectDir string) []
 		return nil
 	}
 
-	// Fetch friction comments for each completed agent
+	// Fetch friction comments for each agent (completed and in-progress)
 	var inputs []debrief.FrictionSummaryInput
 	for _, beadsID := range beadsIDs {
 		frictionItems := verify.FetchAndParseFriction(beadsID, projectDir)
@@ -480,4 +488,73 @@ func collectDebriefFriction(events []debrief.SessionEvent, projectDir string) []
 
 	categories := debrief.CollectFrictionSummary(inputs)
 	return debrief.FormatFrictionSummary(categories)
+}
+
+// collectDebriefFocusAlignment gets focus alignment data from focus store and active work.
+func collectDebriefFocusAlignment() *debrief.FocusAlignmentData {
+	focusStore, err := focus.New("")
+	if err != nil {
+		return nil
+	}
+
+	f := focusStore.Get()
+	if f == nil {
+		return nil
+	}
+
+	// Get active work from bd list --status=in_progress
+	activeWork := collectActiveWorkForFocus()
+
+	// Check drift
+	result := focusStore.CheckDrift(activeWork)
+
+	// Format active work items for display
+	var activeLines []string
+	for _, w := range activeWork {
+		if w.Title != "" {
+			activeLines = append(activeLines, fmt.Sprintf("%s: %s", w.BeadsID, w.Title))
+		} else {
+			activeLines = append(activeLines, w.BeadsID)
+		}
+	}
+
+	return debrief.CollectFocusAlignment(
+		result.Verdict,
+		result.Goal,
+		result.FocusedIssue,
+		result.Reason,
+		activeLines,
+	)
+}
+
+// collectActiveWorkForFocus parses bd list --status=in_progress into focus.ActiveWork.
+func collectActiveWorkForFocus() []focus.ActiveWork {
+	cmd := exec.Command("bd", "list", "--status=in_progress")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	var work []focus.ActiveWork
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.Contains(line, " in_progress ") {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) < 5 {
+			continue
+		}
+		id := parts[0]
+		title := ""
+		idx := strings.Index(line, "in_progress ")
+		if idx >= 0 {
+			title = strings.TrimSpace(line[idx+len("in_progress "):])
+		}
+		work = append(work, focus.ActiveWork{
+			BeadsID: id,
+			Title:   title,
+		})
+	}
+	return work
 }

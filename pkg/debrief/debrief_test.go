@@ -156,6 +156,57 @@ func TestRenderDebrief(t *testing.T) {
 	}
 }
 
+func TestRenderDebriefWithFocusAlignment(t *testing.T) {
+	data := &DebriefData{
+		Date:  "2026-03-05",
+		Focus: "Ship snap MVP",
+		FocusAlignment: &FocusAlignmentData{
+			Verdict:      "drifting",
+			Goal:         "Ship snap MVP",
+			FocusedIssue: "orch-go-abc1",
+			Reason:       "Active work does not include focused issue",
+			ActiveWork:   []string{"orch-go-def2: Fix bug Y"},
+		},
+		WhatWeLearned: []string{
+			"Focus drift is common because agents respond to urgency not priority",
+		},
+		WhatHappened: []string{
+			"Spawned: `feature-impl` — fix bug Y",
+		},
+	}
+
+	output := RenderDebrief(data)
+
+	if !strings.Contains(output, "## Focus Alignment") {
+		t.Error("expected Focus Alignment section")
+	}
+	if !strings.Contains(output, "DRIFTING") {
+		t.Error("expected DRIFTING indicator")
+	}
+	if !strings.Contains(output, "orch-go-abc1") {
+		t.Error("expected focused issue in output")
+	}
+
+	// Focus Alignment should appear before What We Learned
+	alignIdx := strings.Index(output, "## Focus Alignment")
+	learnedIdx := strings.Index(output, "## What We Learned")
+	if alignIdx >= learnedIdx {
+		t.Error("Focus Alignment should appear before What We Learned")
+	}
+}
+
+func TestRenderDebriefOmitsFocusAlignmentWhenNil(t *testing.T) {
+	data := &DebriefData{
+		Date:  "2026-03-05",
+		Focus: "testing",
+	}
+
+	output := RenderDebrief(data)
+	if strings.Contains(output, "Focus Alignment") {
+		t.Error("Focus Alignment should not appear when nil")
+	}
+}
+
 func TestRenderDebriefWithDriftAndFriction(t *testing.T) {
 	data := &DebriefData{
 		Date:  "2026-03-05",

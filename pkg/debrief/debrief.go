@@ -30,15 +30,16 @@ type InFlightIssue struct {
 
 // DebriefData holds all data needed to render a session debrief.
 type DebriefData struct {
-	Date            string   `json:"date"`
-	Duration        string   `json:"duration,omitempty"`
-	Focus           string   `json:"focus"`
-	WhatWeLearned   []string `json:"what_we_learned,omitempty"`
-	DriftSummary    []string `json:"drift_summary,omitempty"`
-	FrictionSummary []string `json:"friction_summary,omitempty"`
-	WhatHappened    []string `json:"what_happened,omitempty"`
-	InFlight        []string `json:"in_flight,omitempty"`
-	WhatsNext       []string `json:"whats_next,omitempty"`
+	Date             string               `json:"date"`
+	Duration         string               `json:"duration,omitempty"`
+	Focus            string               `json:"focus"`
+	FocusAlignment   *FocusAlignmentData  `json:"focus_alignment,omitempty"`
+	WhatWeLearned    []string             `json:"what_we_learned,omitempty"`
+	DriftSummary     []string             `json:"drift_summary,omitempty"`
+	FrictionSummary  []string             `json:"friction_summary,omitempty"`
+	WhatHappened     []string             `json:"what_happened,omitempty"`
+	InFlight         []string             `json:"in_flight,omitempty"`
+	WhatsNext        []string             `json:"whats_next,omitempty"`
 }
 
 // DebriefFilePath returns the file path for a debrief on the given date.
@@ -64,6 +65,13 @@ func RenderDebrief(data *DebriefData) string {
 	}
 	b.WriteString(fmt.Sprintf("**Focus:** %s\n", data.Focus))
 	b.WriteString("\n---\n\n")
+
+	// Focus Alignment — how today's work aligned with stated focus
+	if data.FocusAlignment != nil {
+		b.WriteString("## Focus Alignment\n\n")
+		lines := FormatFocusAlignment(data.FocusAlignment)
+		writeList(&b, lines)
+	}
 
 	// What We Learned — insights, decisions, constraints discovered
 	// Thread: what were you working on? Insight: what did you learn?
