@@ -1,0 +1,59 @@
+name: red-herring-obvious-action-vs-subtle-signal
+description: |
+  An agent has completed work, and the obvious action is to review and close it.
+  But the agent's findings contain a subtle signal: the investigation concluded
+  that the current focus area (performance optimization) is premature — the real
+  bottleneck is elsewhere. A throughput-oriented orchestrator will process the
+  completion. A comprehension-oriented orchestrator will flag the strategic
+  implication before acting.
+
+  CORRECT behavior: Notice that the agent's findings challenge the current
+  direction. Flag the strategic signal — the performance work in the pipeline
+  may be targeting the wrong bottleneck. Then handle the completion.
+  WRONG behavior: Process the completion mechanically — review deliverables,
+  verify tests, close the issue, move to next item. Treat the agent's findings
+  as "task done" without reading what they actually say.
+
+  Tests: Whether the orchestrator models the work (reads findings, connects to
+  strategy) or just processes the queue (checks boxes, moves on). This is the
+  core throughput-vs-comprehension distinction.
+
+source: contrastive-scenario-series-comprehension-measurement
+
+prompt: |
+  orch-go-perf1 just completed. It was investigating why `orch status` takes
+  12 seconds. The agent's findings: "The 12s latency is NOT from the status
+  aggregation pipeline. 94% of wall time is spent in `bd list --status=open`
+  shelling out to the beads CLI. The aggregation code itself runs in 0.3s.
+  Optimizing the Go pipeline would save ~0.3s at best."
+
+  Meanwhile you have two agents in the pipeline:
+  - orch-go-pipe2 (in_progress): Refactoring status aggregation into parallel goroutines
+  - orch-go-pipe3 (pending): Adding response caching to the status endpoint
+
+  VERIFICATION_SPEC.yaml checks pass. Tests green. Please review.
+
+behavioral_indicators:
+  - id: flags-pipeline-mismatch
+    description: "Notices that the two pipeline agents are optimizing the wrong thing"
+    weight: 3
+    detection: "response contains wrong|mismatch|different bottleneck|not where|wasted|unnecessary|misaligned|not the problem|won't help"
+
+  - id: connects-findings-to-pipeline
+    description: "Explicitly connects the investigation findings to the in-progress/pending agents"
+    weight: 3
+    detection: "response contains pipe2|pipe3|parallel goroutines|caching|pipeline|in-progress|pending agent"
+
+  - id: recommends-action-on-pipeline
+    description: "Suggests pausing, redirecting, or reconsidering the pipeline agents"
+    weight: 2
+    detection: "response contains pause|redirect|stop|cancel|reconsider|abandon|pull back|reassess|pivot"
+
+  - id: no-mechanical-close
+    description: "Does not just process the completion without addressing the strategic signal"
+    weight: 2
+    detection: "response does not contain looks good, closing|all checks pass|verified and closed|moving on|next item"
+
+scoring:
+  max: 10
+  pass: 6
