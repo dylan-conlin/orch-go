@@ -11,9 +11,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func threadsDir() string {
-	projectDir, _ := os.Getwd()
-	return filepath.Join(projectDir, ".kb", "threads")
+var threadWorkdir string
+
+func threadsDir() (string, error) {
+	projectDir := ""
+	if threadWorkdir != "" {
+		abs, err := filepath.Abs(threadWorkdir)
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve workdir path: %w", err)
+		}
+		info, err := os.Stat(abs)
+		if err != nil {
+			return "", fmt.Errorf("workdir does not exist: %s", abs)
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("workdir is not a directory: %s", abs)
+		}
+		projectDir = abs
+	} else {
+		projectDir, _ = os.Getwd()
+	}
+	return filepath.Join(projectDir, ".kb", "threads"), nil
 }
 
 var threadCmd = &cobra.Command{
@@ -51,7 +69,12 @@ Examples:
 			entry = args[1]
 		}
 
-		result, err := thread.CreateOrAppend(threadsDir(), title, entry)
+		dir, err := threadsDir()
+		if err != nil {
+			return err
+		}
+
+		result, err := thread.CreateOrAppend(dir, title, entry)
 		if err != nil {
 			return err
 		}
@@ -82,7 +105,12 @@ Examples:
 		slug := args[0]
 		entry := args[1]
 
-		result, err := thread.Append(threadsDir(), slug, entry)
+		dir, err := threadsDir()
+		if err != nil {
+			return err
+		}
+
+		result, err := thread.Append(dir, slug, entry)
 		if err != nil {
 			return err
 		}
@@ -104,7 +132,12 @@ Stale threads (open but not updated in 7+ days) are flagged.
 Examples:
   orch thread list`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		threads, err := thread.List(threadsDir())
+		dir, err := threadsDir()
+		if err != nil {
+			return err
+		}
+
+		threads, err := thread.List(dir)
 		if err != nil {
 			return err
 		}
@@ -153,7 +186,12 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		slug := args[0]
 
-		t, err := thread.Show(threadsDir(), slug)
+		dir, err := threadsDir()
+		if err != nil {
+			return err
+		}
+
+		t, err := thread.Show(dir, slug)
 		if err != nil {
 			return err
 		}
@@ -179,7 +217,12 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		slug := args[0]
 
-		if err := thread.Resolve(threadsDir(), slug, threadResolveTo); err != nil {
+		dir, err := threadsDir()
+		if err != nil {
+			return err
+		}
+
+		if err := thread.Resolve(dir, slug, threadResolveTo); err != nil {
 			return err
 		}
 
@@ -199,6 +242,7 @@ func init() {
 	threadCmd.AddCommand(threadShowCmd)
 	threadCmd.AddCommand(threadResolveCmd)
 
+	threadCmd.PersistentFlags().StringVar(&threadWorkdir, "workdir", "", "Target project directory (for cross-project thread operations)")
 	threadResolveCmd.Flags().StringVar(&threadResolveTo, "to", "", "Target artifact path (e.g., .kb/models/enforcement.md)")
 }
 
