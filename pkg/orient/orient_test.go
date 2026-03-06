@@ -904,3 +904,101 @@ func TestFormatOrientation_SectionOrder(t *testing.T) {
 		t.Error("reflection suggestions should appear after focus")
 	}
 }
+
+func TestFormatOrientation_DaemonHealthNonGreen(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		DaemonHealth: &DaemonHealthView{
+			Signals: []DaemonHealthSignalView{
+				{Name: "Daemon Liveness", Level: "green", Detail: "polling normally"},
+				{Name: "Capacity", Level: "red", Detail: "3/3 slots used, 10 queued"},
+				{Name: "Queue Depth", Level: "yellow", Detail: "30 issues ready"},
+				{Name: "Verification", Level: "green", Detail: "4 completions before pause"},
+				{Name: "Unresponsive", Level: "green", Detail: "all agents responsive"},
+				{Name: "Questions", Level: "yellow", Detail: "2 agent(s) waiting for input"},
+			},
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	if !strings.Contains(output, "Daemon health:") {
+		t.Error("missing 'Daemon health:' section header")
+	}
+	if !strings.Contains(output, "[!!!] Capacity: 3/3 slots used, 10 queued") {
+		t.Error("missing red capacity signal")
+	}
+	if !strings.Contains(output, "[!] Queue Depth: 30 issues ready") {
+		t.Error("missing yellow queue depth signal")
+	}
+	if !strings.Contains(output, "[!] Questions: 2 agent(s) waiting for input") {
+		t.Error("missing yellow questions signal")
+	}
+	// Green signals should not appear
+	if strings.Contains(output, "Daemon Liveness") {
+		t.Error("green Daemon Liveness should not appear")
+	}
+	if strings.Contains(output, "Verification") {
+		t.Error("green Verification should not appear")
+	}
+}
+
+func TestFormatOrientation_DaemonHealthAllGreen(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		DaemonHealth: &DaemonHealthView{
+			Signals: []DaemonHealthSignalView{
+				{Name: "Daemon Liveness", Level: "green", Detail: "polling normally"},
+				{Name: "Capacity", Level: "green", Detail: "0/3 slots used"},
+				{Name: "Queue Depth", Level: "green", Detail: "5 issues ready"},
+				{Name: "Verification", Level: "green", Detail: "4 completions before pause"},
+				{Name: "Unresponsive", Level: "green", Detail: "all agents responsive"},
+				{Name: "Questions", Level: "green", Detail: "no pending questions"},
+			},
+		},
+	}
+
+	output := FormatOrientation(data)
+	if strings.Contains(output, "Daemon health:") {
+		t.Error("daemon health section should not appear when all signals are green")
+	}
+}
+
+func TestFormatOrientation_DaemonHealthNil(t *testing.T) {
+	data := &OrientationData{Throughput: Throughput{Days: 1}}
+	output := FormatOrientation(data)
+	if strings.Contains(output, "Daemon health") {
+		t.Error("daemon health section should not appear when nil")
+	}
+}
+
+func TestDaemonHealthJSON(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		DaemonHealth: &DaemonHealthView{
+			Signals: []DaemonHealthSignalView{
+				{Name: "Daemon Liveness", Level: "green", Detail: "polling normally"},
+			},
+		},
+	}
+
+	b, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	jsonStr := string(b)
+	if !strings.Contains(jsonStr, `"daemon_health"`) {
+		t.Error("JSON missing daemon_health field")
+	}
+	if !strings.Contains(jsonStr, `"Daemon Liveness"`) {
+		t.Error("JSON missing signal name")
+	}
+
+	// Verify omitempty
+	data2 := &OrientationData{Throughput: Throughput{Days: 1}}
+	b2, _ := json.Marshal(data2)
+	if strings.Contains(string(b2), "daemon_health") {
+		t.Error("daemon_health should be omitted when nil")
+	}
+}

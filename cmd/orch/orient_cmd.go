@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/health"
 	"github.com/dylan-conlin/orch-go/pkg/orient"
@@ -110,6 +111,9 @@ func runOrient() error {
 
 	// 9. Health summary from latest snapshot
 	data.HealthSummary = collectHealthSummary()
+
+	// 9b. Daemon health signals from daemon-status.json
+	data.DaemonHealth = collectDaemonHealth(now)
 
 	// 8. In-progress count from bd
 	data.Throughput.InProgress = collectInProgressCount()
@@ -389,6 +393,29 @@ func collectHealthSummary() *orient.HealthSummary {
 	}
 
 	return summary
+}
+
+// collectDaemonHealth reads daemon-status.json and computes 6 health signals.
+func collectDaemonHealth(now time.Time) *orient.DaemonHealthView {
+	status, err := daemon.ReadValidatedStatusFile()
+	if err != nil || status == nil {
+		return nil
+	}
+
+	summary := daemon.ComputeDaemonHealth(status, now)
+	if summary == nil {
+		return nil
+	}
+
+	view := &orient.DaemonHealthView{}
+	for _, sig := range summary.Signals {
+		view.Signals = append(view.Signals, orient.DaemonHealthSignalView{
+			Name:   sig.Name,
+			Level:  sig.Level,
+			Detail: sig.Detail,
+		})
+	}
+	return view
 }
 
 // collectChangelog runs `git log` since the last session date and returns changelog entries.

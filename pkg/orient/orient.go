@@ -88,6 +88,18 @@ type ConfigDriftItem struct {
 	Reason string `json:"reason"`
 }
 
+// DaemonHealthSignalView represents a single health signal for orient display.
+type DaemonHealthSignalView struct {
+	Name   string `json:"name"`
+	Level  string `json:"level"`  // "green", "yellow", "red"
+	Detail string `json:"detail"`
+}
+
+// DaemonHealthView holds daemon health signals for orient display.
+type DaemonHealthView struct {
+	Signals []DaemonHealthSignalView `json:"signals"`
+}
+
 // SessionResume holds session handoff context for resume injection.
 type SessionResume struct {
 	Content string `json:"content"`
@@ -104,6 +116,7 @@ type OrientationData struct {
 	RelevantModels  []ModelFreshness `json:"relevant_models,omitempty"`
 	StaleModels     []ModelFreshness `json:"stale_models,omitempty"`
 	HealthSummary   *HealthSummary   `json:"health_summary,omitempty"`
+	DaemonHealth    *DaemonHealthView `json:"daemon_health,omitempty"`
 	Changelog       []ChangelogEntry `json:"changelog,omitempty"`
 	FocusGoal       string           `json:"focus_goal,omitempty"`
 	ReflectSummary  *ReflectSummary  `json:"reflect_summary,omitempty"`
@@ -205,6 +218,9 @@ func FormatOrientation(data *OrientationData) string {
 
 	// Health summary section
 	formatHealthSummary(&b, data.HealthSummary)
+
+	// Daemon health signals
+	formatDaemonHealth(&b, data.DaemonHealth)
 
 	// Focus section
 	formatFocus(&b, data.FocusGoal)
@@ -336,6 +352,46 @@ func formatHealthSummary(b *strings.Builder, h *HealthSummary) {
 		b.WriteString(fmt.Sprintf("   [%s] %s\n", icon, alert.Message))
 	}
 	b.WriteString("\n")
+}
+
+func formatDaemonHealth(b *strings.Builder, dh *DaemonHealthView) {
+	if dh == nil || len(dh.Signals) == 0 {
+		return
+	}
+
+	// Only show section if there are non-green signals
+	hasNonGreen := false
+	for _, sig := range dh.Signals {
+		if sig.Level != "green" {
+			hasNonGreen = true
+			break
+		}
+	}
+
+	if !hasNonGreen {
+		return
+	}
+
+	b.WriteString("Daemon health:\n")
+	for _, sig := range dh.Signals {
+		if sig.Level == "green" {
+			continue
+		}
+		icon := levelIcon(sig.Level)
+		b.WriteString(fmt.Sprintf("   %s %s: %s\n", icon, sig.Name, sig.Detail))
+	}
+	b.WriteString("\n")
+}
+
+func levelIcon(level string) string {
+	switch level {
+	case "red":
+		return "[!!!]"
+	case "yellow":
+		return "[!]"
+	default:
+		return ""
+	}
 }
 
 func formatFocus(b *strings.Builder, goal string) {
