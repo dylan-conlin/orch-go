@@ -37,7 +37,7 @@ type funcInfo struct {
 	// Class 2: backend call tracking
 	hasOpenCodeCall bool
 	hasTmuxCall     bool
-	hasDualPattern  bool // uses CombinedActiveCount, queryTrackedAgents, etc.
+	hasDualPattern  bool // uses DiscoverLiveAgents, queryTrackedAgents, etc.
 	// Class 5: authority signal tracking
 	hasPhaseCheck     bool
 	hasSynthesisCheck bool
@@ -76,7 +76,7 @@ var (
 
 	// Class 2: Dual-backend patterns (exempt from single-backend warnings)
 	dualBackendPatterns = []string{
-		"CombinedActiveCount",
+		"DiscoverLiveAgents",
 		"queryTrackedAgents",
 		"checkTmuxWindowAlive",
 		"CountActiveTmuxAgents",
@@ -150,7 +150,7 @@ var (
 
 	// Functions known to correctly handle both backends (allowlist)
 	class2Allowlist = map[string]bool{
-		"CombinedActiveCount":    true,
+		"DiscoverLiveAgents":    true,
 		"queryTrackedAgents":     true,
 		"joinWithReasonCodes":    true,
 		"CountActiveTmuxAgents":  true,
@@ -276,7 +276,7 @@ func runDefectScan() error {
 
 	fmt.Println("Prevention:")
 	if len(class2) > 0 {
-		fmt.Println("  Class 2: Use pkg/discovery.QueryTrackedAgents() or CombinedActiveCount() for agent discovery")
+		fmt.Println("  Class 2: Use pkg/discovery.QueryTrackedAgents() or DiscoverLiveAgents() for agent discovery")
 	}
 	if len(class5) > 0 {
 		fmt.Println("  Class 5: Use determineAgentStatus() as canonical status derivation")

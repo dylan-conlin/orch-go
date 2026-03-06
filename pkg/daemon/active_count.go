@@ -242,8 +242,8 @@ func CountActiveTmuxAgents(projectName string) map[string]bool {
 }
 
 // BeadsActiveCount returns the number of active orch-managed agents by querying
-// beads for in_progress issues with the orch:agent label. This replaces
-// CombinedActiveCount as the capacity source — beads is the authoritative state
+// beads for in_progress issues with the orch:agent label. This is the capacity
+// source (replacing infrastructure scanning) — beads is the authoritative state
 // machine for agent lifecycle, so querying it directly eliminates ghost slot bugs
 // caused by tmux window scanning (dead panes, child windows, cross-project inflation).
 //
@@ -280,7 +280,7 @@ func BeadsActiveCount() int {
 	// Fallback: bd CLI
 	issues, err := beads.FallbackListWithLabel(orchAgentLabel, "")
 	if err != nil {
-		return 0 // Fail-open: if beads is unreachable, report 0 (matches CombinedActiveCount behavior)
+		return 0 // Fail-open: if beads is unreachable, report 0
 	}
 
 	count := 0
@@ -307,21 +307,19 @@ func isBeadsIssueDone(labels []string) bool {
 	return false
 }
 
-// CombinedActiveCount returns the total number of active agents across
-// both OpenCode sessions and tmux windows, deduplicated by beads ID.
-// This prevents the daemon from resetting its pool to 0 when agents
-// use Claude CLI backend (tmux) instead of OpenCode (headless).
+// DiscoverLiveAgents returns the set of beads IDs with live infrastructure
+// (OpenCode sessions or tmux windows with active processes), deduplicated.
+// This is NOT a capacity source — use BeadsActiveCount() for capacity decisions.
 //
-// Without this, the pool reconciliation only sees OpenCode sessions,
-// reports 0 active agents, and frees all pool slots every poll cycle,
-// allowing unlimited spawns past the concurrency cap.
+// Use this for liveness checks and orphan detection: comparing live infrastructure
+// against beads state to find agents that are running but shouldn't be (orphans)
+// or should be running but aren't (stalled).
 //
 // Tmux scanning is scoped to the current project (derived from cwd)
-// to prevent cross-project agents from inflating the count.
+// to prevent cross-project agents from appearing.
 //
-// Deprecated: Use BeadsActiveCount() for capacity decisions. This function
-// remains for liveness/orphan detection (future: DiscoverLiveAgents).
-func CombinedActiveCount() int {
+// Agents whose beads issues are closed are excluded from results.
+func DiscoverLiveAgents() map[string]bool {
 	activeBeadsIDs := make(map[string]bool)
 
 	// Derive project name from cwd for scoped tmux scanning.
@@ -370,9 +368,9 @@ func CombinedActiveCount() int {
 		activeBeadsIDs[beadsID] = true // Deduplicated by map key
 	}
 
-	// If no agents found from either source, return 0
+	// If no agents found from either source, return empty
 	if len(activeBeadsIDs) == 0 {
-		return 0
+		return activeBeadsIDs
 	}
 
 	// Exclude agents whose beads issues are closed
@@ -382,12 +380,11 @@ func CombinedActiveCount() int {
 	}
 	closedIssues := GetClosedIssuesBatch(allIDs)
 
-	count := 0
 	for id := range activeBeadsIDs {
-		if !closedIssues[id] {
-			count++
+		if closedIssues[id] {
+			delete(activeBeadsIDs, id)
 		}
 	}
 
-	return count
+	return activeBeadsIDs
 }

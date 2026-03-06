@@ -70,7 +70,7 @@ func TestCheckClass2_DualPattern(t *testing.T) {
 		startLine:       40,
 		hasOpenCodeCall: true,
 		hasTmuxCall:     false,
-		hasDualPattern:  true, // calls CombinedActiveCount
+		hasDualPattern:  true, // calls DiscoverLiveAgents
 		isAgentRelated:  true,
 	}
 
@@ -82,7 +82,7 @@ func TestCheckClass2_DualPattern(t *testing.T) {
 
 func TestCheckClass2_Allowlist(t *testing.T) {
 	fn := funcInfo{
-		name:            "CombinedActiveCount",
+		name:            "DiscoverLiveAgents",
 		startLine:       50,
 		hasOpenCodeCall: true,
 		hasTmuxCall:     false,

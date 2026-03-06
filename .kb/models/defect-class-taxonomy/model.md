@@ -101,7 +101,7 @@ Code is written and tested against one spawn backend (OpenCode API or Claude CLI
 - Session dedup only checked OpenCode API → Claude CLI agents bypassed dedup, 10 duplicates in 20 min
 - Agent metadata read from OpenCode session → Claude CLI agents use AGENT_MANIFEST.json, wrong source prioritized
 
-**Structural prevention:** Backend-aware query interface: `AgentDiscovery.ListActive()` that dispatches to both backends and merges results. The `CombinedActiveCount()` function is the embryo of this pattern. Test requirement: any new agent query must have test cases for both backends.
+**Structural prevention:** Backend-aware query interface: `AgentDiscovery.ListActive()` that dispatches to both backends and merges results. The `DiscoverLiveAgents()` function (formerly `CombinedActiveCount`) is the embryo of this pattern. Test requirement: any new agent query must have test cases for both backends.
 
 **Historical context:** Claude CLI became the default backend on Feb 19, 2026 (Anthropic OAuth ban). Before that, most agents were OpenCode-only, so OpenCode-only code was correct. The transition exposed every OpenCode-only code path as a bug. This class is a **migration defect** — it will recur if a third backend is added unless the backend-aware interface is built.
 

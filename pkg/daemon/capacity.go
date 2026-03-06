@@ -107,7 +107,7 @@ func (d *Daemon) ReconcileActiveAgents() ReconcileResult {
 
 // ReconcileWithOpenCode is the legacy name for ReconcileActiveAgents.
 // Kept for backward compatibility with cmd/orch/daemon.go caller.
-// Now uses BeadsActiveCount (authoritative) instead of CombinedActiveCount (scan-based).
+// Now uses BeadsActiveCount (authoritative) instead of infrastructure scanning (DiscoverLiveAgents).
 func (d *Daemon) ReconcileWithOpenCode() ReconcileResult {
 	return d.ReconcileActiveAgents()
 }

@@ -144,7 +144,7 @@ func TestPoolReconcileDoesNotResetWhenTmuxAgentsExist(t *testing.T) {
 	//
 	// Before fix: ReconcileWithOpenCode() calls DefaultActiveCount() which
 	// returns 0 for tmux-only agents, causing pool.Reconcile(0) to free all slots.
-	// After fix: Uses CombinedActiveCount() which counts both OpenCode and tmux agents.
+	// After fix: Uses DiscoverLiveAgents() which counts both OpenCode and tmux agents.
 
 	pool := NewWorkerPool(3)
 
@@ -243,7 +243,7 @@ func TestDaemonReconcileDefaultCountUsesBeads(t *testing.T) {
 		t.Fatal("ActiveCounter should be set to defaultActiveCounter by default")
 	}
 
-	// Verify defaultActiveCounter calls BeadsActiveCount (not CombinedActiveCount).
+	// Verify defaultActiveCounter calls BeadsActiveCount (not DiscoverLiveAgents).
 	// We can't easily mock BeadsActiveCount itself, but we verify the type is correct.
 	_, isDefault := d.ActiveCounter.(*defaultActiveCounter)
 	if !isDefault {
@@ -289,7 +289,7 @@ func TestBeadsActiveCountIntegration(t *testing.T) {
 func TestReconcileFreesGhostSlots(t *testing.T) {
 	// Regression test for ghost slot bug: daemon-status.json shows active:3
 	// but orch status shows only 1 real agent. The pool was not freeing slots
-	// because CombinedActiveCount() was counting dead tmux windows as active.
+	// because DiscoverLiveAgents() was counting dead tmux windows as active.
 	//
 	// With the fix, CountActiveTmuxAgents() checks pane process liveness,
 	// dead windows return a lower count, and Reconcile frees the ghost slots.
@@ -314,7 +314,7 @@ func TestReconcileFreesGhostSlots(t *testing.T) {
 	}
 
 	// Simulate: 2 agents completed (tmux windows exist but processes exited).
-	// With pane liveness filtering, CombinedActiveCount returns 1.
+	// With pane liveness filtering, DiscoverLiveAgents returns 1.
 	d.ActiveCounter = &mockActiveCounter{CountFunc: func() int { return 1 }}
 
 	result := d.ReconcileActiveAgents()
