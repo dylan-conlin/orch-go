@@ -8,6 +8,7 @@
 - Constitutional objection protocol (how to raise ethical concerns)
 - Beads progress tracking (how to report via bd comment)
 - Phase reporting (how to signal transitions)
+- Probe-to-model merge (probes must update parent model before completion)
 - Exit/completion protocol (how to properly end a session)
 
 ---

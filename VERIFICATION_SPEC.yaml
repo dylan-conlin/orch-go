@@ -1,24 +1,30 @@
-task: "Add a11y/performance/error-resilience checklist to feature-impl self-review"
-beads_id: orch-go-qxrgb
+task: "Add probe-merge-into-model requirement to worker-base skill"
+beads_id: orch-go-co83y
 tier: light
 
 automated:
-  - command: "grep -c 'Accessibility\\|Performance Impact\\|Error Resilience' skills/src/worker/feature-impl/.skillc/phases/self-review.md"
-    expects: "New sections present in self-review source"
-    result: "6"
-  - command: "grep -c 'Accessibility\\|Performance Impact\\|Error Resilience' ~/.claude/skills/worker/feature-impl/SKILL.md"
-    expects: "Compact sections in deployed skill"
+  - command: "skillc build skills/src/shared/worker-base/.skillc/"
+    expects: "Compiled successfully"
+    result: "4389 tokens"
+  - command: "skillc build --recursive skills/src/"
+    expects: "All skills build without error"
+    result: "Built 14/14 .skillc directories"
+  - command: "grep -c 'Probe-to-Model Merge' skills/src/shared/worker-base/.skillc/SKILL.md"
+    expects: "3 (section header + 2 completion checkpoints)"
+    result: "3"
+  - command: "grep -c 'Probe-to-Model Merge' ~/.claude/skills/shared/worker-base/SKILL.md"
+    expects: "3 (deployed matches source)"
     result: "3"
 
 deliverables:
-  - skills/src/worker/feature-impl/.skillc/phases/self-review.md  # Sections 10-12 added
-  - skills/src/worker/feature-impl/.skillc/SKILL.md.template      # Compact versions added
+  - skills/src/shared/worker-base/.skillc/probe-merge.md          # New section
+  - skills/src/shared/worker-base/.skillc/skill.yaml              # Added probe-merge.md to sources
+  - skills/src/shared/worker-base/.skillc/completion.md           # Added checkpoint in both tiers
+  - skills/src/shared/worker-base/.skillc/intro.md                # Listed new capability
 
 notes: |
-  Added 3 new self-review checklist sections addressing gaps identified by probe
-  2026-03-06-worker-skill-industry-practice-gaps:
-  - 10. Accessibility (a11y) Check: semantic HTML, keyboard nav, labels, alt text, contrast
-  - 11. Performance Impact Check: N+1 queries, lazy loading, bundle size, loading states
-  - 12. Error Resilience Check: graceful API failures, helpful errors, defensive rendering
-  All sections have "Skip if" conditions for non-UI work.
-  Token budget at 107% (5,346/5,000) — acceptable for high-value domain practice additions.
+  Added Probe-to-Model Merge as a REQUIRED section in worker-base skill.
+  - Standalone section with workflow (check→read→merge→reference→commit)
+  - Completion checkpoint in both light and standard tier protocols
+  - Addresses ~80 unmerged probes across 16 models (knowledge loop breakage)
+  - All 14 skills rebuilt and deployed successfully.
