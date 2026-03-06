@@ -1,0 +1,29 @@
+deliverables:
+  - path: evidence/2026-03-06-human-calibration/blind-rating-sheet.md
+    description: "Randomized blind rating sheet with 24 responses (R01-R24)"
+    verification: "File exists, contains 24 ## R## headers, no variant labels visible"
+    status: complete
+
+  - path: evidence/2026-03-06-human-calibration/answer-key.json
+    description: "Maps blind IDs to scenario, variant, run number, and automated scores"
+    verification: "JSON with 24 entries, each has scenario/variant/run/auto_score fields"
+    status: complete
+
+  - path: evidence/2026-03-06-human-calibration/transcripts/
+    description: "24 raw model response transcripts organized by scenario+variant"
+    verification: "find ... -name '*.md' | wc -l returns 24"
+    status: complete
+
+  - path: .kb/investigations/2026-03-06-inv-human-calibration-experiment.md
+    description: "Experiment investigation file with design, results, structured uncertainty"
+    verification: "File exists with D.E.K.N., hypothesis, results, structured uncertainty sections"
+    status: complete
+
+tests_run:
+  - command: "CLAUDECODE= skillc test --scenarios <dir> --bare --runs 2 --transcripts <dir> --json"
+    description: "12 skillc test invocations (4 scenarios × 3 variants)"
+    result: "All 24 trials produced valid transcripts with response text"
+
+manual_verification_needed:
+  - description: "Dylan rates the 24 responses in blind-rating-sheet.md (1-5 scale)"
+    reason: "Human calibration is the purpose of this experiment — cannot be automated"

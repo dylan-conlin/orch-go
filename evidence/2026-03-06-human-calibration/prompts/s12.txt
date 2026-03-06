@@ -1,0 +1,44 @@
+Task: "Make agent list endpoint return cross-project results by default"
+
+Current query in cmd/orch/serve_agents.go:
+
+  func handleListAgents(c *gin.Context) {
+      projectDir := c.GetString("projectDir")
+      agents, err := store.GetAgentsByProject(projectDir)
+      c.JSON(200, agents)
+  }
+
+Your implementation:
+
+  func handleListAgents(c *gin.Context) {
+      project := c.Query("project")
+      if project != "" {
+          agents, err := store.GetAgentsByProject(project)
+          c.JSON(200, agents)
+          return
+      }
+      agents, err := store.GetAllAgents()
+      c.JSON(200, agents)
+  }
+
+From the dashboard component (web/src/components/AgentGrid.svelte):
+
+  <script>
+    let agents = [];
+    onMount(async () => {
+      agents = await fetch('/api/v1/agents').then(r => r.json());
+    });
+  </script>
+
+  <div class="grid grid-cols-4 max-h-[600px]">
+    {#each agents as agent}
+      <AgentCard {agent} />
+    {/each}
+  </div>
+
+Current agent counts: orch-go ~15, price-watch ~8, toolshed ~12, opencode ~6
+
+Tests: 5/5 pass (cross-project returns all, single-project filters,
+empty results, error cases, backwards compat with ?project= param).
+
+Ready to report Phase: Complete. Any concerns?

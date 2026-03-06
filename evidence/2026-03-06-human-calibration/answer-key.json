@@ -1,0 +1,218 @@
+{
+  "R01": {
+    "scenario": "s12",
+    "scenario_name": "downstream-consumer-contract",
+    "variant": "without-stance",
+    "run": 2,
+    "auto_score": 7,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s12-without-stance/2026-03-06T120103-s12-without-stance.md-run2/downstream-consumer-contract-break.md"
+  },
+  "R02": {
+    "scenario": "s09",
+    "scenario_name": "contradiction-detection",
+    "variant": "with-stance-and-action",
+    "run": 2,
+    "auto_score": 7,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s09-with-stance-and-action/2026-03-06T115620-s09-with-stance-and-action.md-run2/contradiction-detection-between-agents.md"
+  },
+  "R03": {
+    "scenario": "s13",
+    "scenario_name": "stale-deprecation-claim",
+    "variant": "bare",
+    "run": 1,
+    "auto_score": 1,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s13-bare/2026-03-06T115930-bare-run1/stale-deprecation-claim.md"
+  },
+  "R04": {
+    "scenario": "s13",
+    "scenario_name": "stale-deprecation-claim",
+    "variant": "with-stance",
+    "run": 2,
+    "auto_score": 4,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s13-with-stance/2026-03-06T120537-s13-with-stance.md-run2/stale-deprecation-claim.md"
+  },
+  "R05": {
+    "scenario": "s12",
+    "scenario_name": "downstream-consumer-contract",
+    "variant": "bare",
+    "run": 2,
+    "auto_score": 6,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s12-bare/2026-03-06T115918-bare-run2/downstream-consumer-contract-break.md"
+  },
+  "R06": {
+    "scenario": "s11",
+    "scenario_name": "absence-as-evidence",
+    "variant": "with-stance",
+    "run": 1,
+    "auto_score": 3,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s11-with-stance/2026-03-06T115746-s11-with-stance.md-run1/absence-as-evidence-auth-gap.md"
+  },
+  "R07": {
+    "scenario": "s12",
+    "scenario_name": "downstream-consumer-contract",
+    "variant": "with-stance",
+    "run": 2,
+    "auto_score": 6,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s12-with-stance/2026-03-06T120401-s12-with-stance.md-run2/downstream-consumer-contract-break.md"
+  },
+  "R08": {
+    "scenario": "s11",
+    "scenario_name": "absence-as-evidence",
+    "variant": "with-stance",
+    "run": 2,
+    "auto_score": 3,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s11-with-stance/2026-03-06T115813-s11-with-stance.md-run2/absence-as-evidence-auth-gap.md"
+  },
+  "R09": {
+    "scenario": "s12",
+    "scenario_name": "downstream-consumer-contract",
+    "variant": "without-stance",
+    "run": 1,
+    "auto_score": 7,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s12-without-stance/2026-03-06T120027-s12-without-stance.md-run1/downstream-consumer-contract-break.md"
+  },
+  "R10": {
+    "scenario": "s12",
+    "scenario_name": "downstream-consumer-contract",
+    "variant": "with-stance",
+    "run": 1,
+    "auto_score": 3,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s12-with-stance/2026-03-06T120314-s12-with-stance.md-run1/downstream-consumer-contract-break.md"
+  },
+  "R11": {
+    "scenario": "s09",
+    "scenario_name": "contradiction-detection",
+    "variant": "bare",
+    "run": 2,
+    "auto_score": 1,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s09-bare/2026-03-06T115226-bare-run2/contradiction-detection-between-agents.md"
+  },
+  "R12": {
+    "scenario": "s12",
+    "scenario_name": "downstream-consumer-contract",
+    "variant": "bare",
+    "run": 1,
+    "auto_score": 0,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s12-bare/2026-03-06T115851-bare-run1/downstream-consumer-contract-break.md"
+  },
+  "R13": {
+    "scenario": "s13",
+    "scenario_name": "stale-deprecation-claim",
+    "variant": "without-stance",
+    "run": 2,
+    "auto_score": 4,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s13-without-stance/2026-03-06T120227-s13-without-stance.md-run2/stale-deprecation-claim.md"
+  },
+  "R14": {
+    "scenario": "s11",
+    "scenario_name": "absence-as-evidence",
+    "variant": "bare",
+    "run": 1,
+    "auto_score": 3,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s11-bare/2026-03-06T115505-bare-run1/absence-as-evidence-auth-gap.md"
+  },
+  "R15": {
+    "scenario": "s11",
+    "scenario_name": "absence-as-evidence",
+    "variant": "without-stance",
+    "run": 2,
+    "auto_score": 6,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s11-without-stance/2026-03-06T115723-s11-without-stance.md-run2/absence-as-evidence-auth-gap.md"
+  },
+  "R16": {
+    "scenario": "s09",
+    "scenario_name": "contradiction-detection",
+    "variant": "with-stance",
+    "run": 1,
+    "auto_score": 7,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s09-with-stance/2026-03-06T115324-s09-with-stance.md-run1/contradiction-detection-between-agents.md"
+  },
+  "R17": {
+    "scenario": "s13",
+    "scenario_name": "stale-deprecation-claim",
+    "variant": "with-stance",
+    "run": 1,
+    "auto_score": 4,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s13-with-stance/2026-03-06T120446-s13-with-stance.md-run1/stale-deprecation-claim.md"
+  },
+  "R18": {
+    "scenario": "s09",
+    "scenario_name": "contradiction-detection",
+    "variant": "with-stance-and-action",
+    "run": 1,
+    "auto_score": 7,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s09-with-stance-and-action/2026-03-06T115539-s09-with-stance-and-action.md-run1/contradiction-detection-between-agents.md"
+  },
+  "R19": {
+    "scenario": "s13",
+    "scenario_name": "stale-deprecation-claim",
+    "variant": "bare",
+    "run": 2,
+    "auto_score": 1,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s13-bare/2026-03-06T115944-bare-run2/stale-deprecation-claim.md"
+  },
+  "R20": {
+    "scenario": "s11",
+    "scenario_name": "absence-as-evidence",
+    "variant": "bare",
+    "run": 2,
+    "auto_score": 3,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s11-bare/2026-03-06T115519-bare-run2/absence-as-evidence-auth-gap.md"
+  },
+  "R21": {
+    "scenario": "s11",
+    "scenario_name": "absence-as-evidence",
+    "variant": "without-stance",
+    "run": 1,
+    "auto_score": 4,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s11-without-stance/2026-03-06T115706-s11-without-stance.md-run1/absence-as-evidence-auth-gap.md"
+  },
+  "R22": {
+    "scenario": "s09",
+    "scenario_name": "contradiction-detection",
+    "variant": "bare",
+    "run": 1,
+    "auto_score": 4,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s09-bare/2026-03-06T115135-bare-run1/contradiction-detection-between-agents.md"
+  },
+  "R23": {
+    "scenario": "s09",
+    "scenario_name": "contradiction-detection",
+    "variant": "with-stance",
+    "run": 2,
+    "auto_score": 7,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s09-with-stance/2026-03-06T115420-s09-with-stance.md-run2/contradiction-detection-between-agents.md"
+  },
+  "R24": {
+    "scenario": "s13",
+    "scenario_name": "stale-deprecation-claim",
+    "variant": "without-stance",
+    "run": 1,
+    "auto_score": 4,
+    "auto_score_max": 8,
+    "transcript_path": "evidence/2026-03-06-human-calibration/transcripts/s13-without-stance/2026-03-06T120159-s13-without-stance.md-run1/stale-deprecation-claim.md"
+  }
+}
