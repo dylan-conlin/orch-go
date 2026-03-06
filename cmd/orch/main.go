@@ -79,6 +79,7 @@ func init() {
 	rootCmd.AddCommand(auditCmd)
 	rootCmd.AddCommand(planCmd)
 	rootCmd.AddCommand(threadCmd)
+	rootCmd.AddCommand(settingsCmd)
 }
 
 var (

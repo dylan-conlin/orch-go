@@ -1,30 +1,28 @@
-issue: orch-go-8bfwz
-title: "Implement core thread package (pkg/thread/) and orch thread CLI commands"
+issue: orch-go-n8zpd
+title: "orch settings command to modify ~/.claude/settings.json from agents"
 tier: light
 
 automated:
-  - command: "go test ./pkg/thread/ -v"
-    expects: "11 tests pass (CreateOrAppend new/append/same-day, List, Show, Show_NotFound, Resolve, TodaysEntries, ActiveThreads, Slugify, ParseThread)"
-    result: "PASS - all 11 tests pass"
+  - command: "go test ./pkg/hook/ -run 'TestAddHook|TestRemoveHook|TestListHooks' -v"
+    expects: "9 tests pass"
+    result: "PASS - all 9 tests pass"
 
   - command: "go build ./cmd/orch/"
-    expects: "Clean compilation with no errors"
-    result: "PASS - builds cleanly"
+    expects: "Clean compilation"
+    result: "PASS"
 
 manual:
-  - step: "orch thread new 'Test' 'entry' creates .kb/threads/YYYY-MM-DD-test.md"
+  - step: "orch settings list-hooks shows hooks grouped by event"
     result: "PASS - verified"
-  - step: "orch thread append test 'more' appends to today's section"
+  - step: "orch settings add-hook + remove-hook round-trip on temp file"
     result: "PASS - verified"
-  - step: "orch thread list shows thread with status/date/preview"
+  - step: "Duplicate detection returns error"
     result: "PASS - verified"
-  - step: "orch thread show test displays full content"
-    result: "PASS - verified"
-  - step: "orch thread resolve test --to path marks resolved"
-    result: "PASS - verified"
+  - step: "Non-hook fields preserved after modification"
+    result: "PASS - verified (env, permissions, statusLine all intact)"
 
 deliverables:
-  - pkg/thread/thread.go       # Core operations (~300 lines)
-  - pkg/thread/thread_test.go  # 11 unit tests (~330 lines)
-  - cmd/orch/thread_cmd.go     # CLI commands (~190 lines)
-  - cmd/orch/main.go           # Added threadCmd registration (1 line)
+  - pkg/hook/settings_modify.go       # AddHook, RemoveHook, ListHooks (~165 lines)
+  - pkg/hook/settings_modify_test.go  # 9 unit tests (~230 lines)
+  - cmd/orch/settings_cmd.go          # CLI with add-hook, remove-hook, list-hooks (~170 lines)
+  - cmd/orch/main.go                  # Added settingsCmd registration (1 line)
