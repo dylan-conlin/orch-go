@@ -1,32 +1,24 @@
-task: Add NFR fork to design-session Phase 2
-beads_id: orch-go-zmce9
+task: "Add a11y/performance/error-resilience checklist to feature-impl self-review"
+beads_id: orch-go-qxrgb
 tier: light
 
 automated:
-  - command: "grep -c '### 2.3 NFR Fork' skills/src/worker/design-session/.skillc/SKILL.md.template"
-    expects: "NFR fork section exists as step 2.3"
-    result: "1"
-  - command: "grep -c '### 2.4 Determine Output Type' skills/src/worker/design-session/.skillc/SKILL.md.template"
-    expects: "Old 2.3 renumbered to 2.4"
-    result: "1"
-  - command: "grep -c '| **NFR**' skills/src/worker/design-session/.skillc/SKILL.md.template"
-    expects: "NFR row in fork patterns table"
-    result: "1"
-  - command: "grep -c 'NFR fork assessed' skills/src/worker/design-session/.skillc/SKILL.md.template"
-    expects: "NFR check in self-review checklist"
-    result: "1"
-  - command: "cd skills/src/worker/design-session && skillc build 2>&1 | grep -c 'Compiled'"
-    expects: "Skill compiles successfully"
-    result: "1"
+  - command: "grep -c 'Accessibility\\|Performance Impact\\|Error Resilience' skills/src/worker/feature-impl/.skillc/phases/self-review.md"
+    expects: "New sections present in self-review source"
+    result: "6"
+  - command: "grep -c 'Accessibility\\|Performance Impact\\|Error Resilience' ~/.claude/skills/worker/feature-impl/SKILL.md"
+    expects: "Compact sections in deployed skill"
+    result: "3"
 
 deliverables:
-  - skills/src/worker/design-session/.skillc/SKILL.md.template  # Source: new 2.3 NFR Fork section
-  - skills/src/worker/design-session/SKILL.md                   # Compiled output
+  - skills/src/worker/feature-impl/.skillc/phases/self-review.md  # Sections 10-12 added
+  - skills/src/worker/feature-impl/.skillc/SKILL.md.template      # Compact versions added
 
 notes: |
-  Added NFR (Non-Functional Requirements) fork as step 2.3 in Phase 2 (Design Synthesis).
-  Covers three categories: accessibility, performance, security.
-  Each category has trigger questions and example constraints.
-  Rules enforce: a11y mandatory for UI, security mandatory for user input,
-  perf must have "good enough" threshold. Quick-skip path for internal tooling.
-  Updated fork patterns table, self-review checklist, and phase completion table.
+  Added 3 new self-review checklist sections addressing gaps identified by probe
+  2026-03-06-worker-skill-industry-practice-gaps:
+  - 10. Accessibility (a11y) Check: semantic HTML, keyboard nav, labels, alt text, contrast
+  - 11. Performance Impact Check: N+1 queries, lazy loading, bundle size, loading states
+  - 12. Error Resilience Check: graceful API failures, helpful errors, defensive rendering
+  All sections have "Skip if" conditions for non-UI work.
+  Token budget at 107% (5,346/5,000) — acceptable for high-value domain practice additions.

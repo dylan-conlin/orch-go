@@ -236,7 +236,56 @@ rg "555-|123-456|test@|placeholder" --type-add 'code:*.{ts,tsx,js,jsx,py,rb,go}'
 
 **Work containing demo data in production paths is NOT complete.**
 
-### 10. Discovered Work Check
+### 10. Accessibility (a11y) Check
+
+**Skip if:** No UI/web changes (pure backend, CLI, or infrastructure work).
+
+**If you modified files in `web/` or added user-facing UI:**
+
+- [ ] Semantic HTML used (buttons for actions, links for navigation, headings in order)
+- [ ] Interactive elements keyboard-accessible (focusable, operable via Enter/Space)
+- [ ] Form inputs have associated labels (`<label for="">` or `aria-label`)
+- [ ] Images have `alt` text (decorative images use `alt=""`)
+- [ ] Color is not the sole indicator of state (add icons, text, or patterns)
+- [ ] Sufficient color contrast (4.5:1 for text, 3:1 for large text / UI components)
+
+**Quick verification:** Run axe-core or Lighthouse accessibility audit if available.
+
+**Why this matters:** Retrofitting accessibility costs 5-10x more than building it in. WCAG AA is the industry baseline for new features.
+
+### 11. Performance Impact Check
+
+**Skip if:** No user-facing changes or pure documentation/config work.
+
+**For web/UI changes:**
+
+- [ ] No unnecessary re-renders (check reactive dependencies in Svelte)
+- [ ] New routes/components use lazy loading where appropriate
+- [ ] No large dependencies added without justification (check bundle size impact)
+- [ ] Async operations show loading state (no frozen UI during fetches)
+
+**For backend/API changes:**
+
+- [ ] No N+1 query patterns introduced
+- [ ] New endpoints handle reasonable input sizes (pagination, limits)
+- [ ] No unbounded loops or recursive operations on user-controlled input
+
+**If adding a dependency:** Check bundle size impact (`npm info <pkg> | grep size` or bundlephobia).
+
+### 12. Error Resilience Check
+
+**Skip if:** No user-facing UI or API changes.
+
+- [ ] API failures handled gracefully (error states shown to user, not raw stack traces)
+- [ ] User-facing error messages are helpful ("Failed to save — try again" not "TypeError: undefined")
+- [ ] New components handle missing/null data without crashing (defensive rendering)
+- [ ] Network-dependent features degrade gracefully when offline or slow
+
+**For Svelte components:** Wrap risky operations in try/catch or use `{#if}` guards for nullable data.
+
+**Why this matters:** Users encounter errors in production. The difference between "app crashes" and "app shows helpful error" is a few lines of defensive code.
+
+### 13. Discovered Work Check
 
 *During this implementation, did you discover any of the following?*
 
@@ -299,6 +348,9 @@ bd label <issue-id> triage:review  # Lower confidence - human reviews first
 - Deliverables: All required deliverables exist and complete
 - **Integration wiring: New code imported/called/rendered somewhere (not orphaned)**
 - **Demo data ban: No placeholder data in production code paths**
+- **Accessibility: Semantic HTML, keyboard nav, labels, alt text, contrast (if UI changed)**
+- **Performance: No N+1 queries, lazy loading, bundle size checked (if applicable)**
+- **Error resilience: Graceful failures, helpful error messages, defensive rendering (if UI/API changed)**
 - Discovered work: Reviewed for discoveries, tracked or noted "No discoveries"
 
 ---
@@ -325,6 +377,9 @@ Before proceeding to mark work complete:
 - [ ] All deliverables verified
 - [ ] **Integration wiring verified (new code connected to system, not orphaned)**
 - [ ] **No demo/placeholder data in production code paths**
+- [ ] **Accessibility checked (if UI changes)** — semantic HTML, keyboard nav, labels, contrast
+- [ ] **Performance impact checked** — no N+1 queries, lazy loading, bundle size
+- [ ] **Error resilience checked (if UI/API changes)** — graceful failures, helpful messages
 - [ ] Discovered work reviewed and tracked (or noted "No discoveries")
 - [ ] Self-review passed and reported via bd comment
 

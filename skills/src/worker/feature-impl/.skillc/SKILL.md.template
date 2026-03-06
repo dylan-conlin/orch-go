@@ -419,6 +419,22 @@ If ANY files returned → Visual verification is REQUIRED:
 - [ ] No placeholder domains (use env vars)
 - [ ] No lorem ipsum or magic numbers as data
 
+### Accessibility (if UI changed)
+- [ ] Semantic HTML (buttons for actions, links for navigation, headings in order)
+- [ ] Interactive elements keyboard-accessible
+- [ ] Form inputs have labels, images have alt text
+- [ ] Color contrast sufficient (4.5:1 text, 3:1 UI components)
+
+### Performance Impact
+- [ ] No N+1 queries, no unbounded loops on user input
+- [ ] New routes/components lazy-loaded where appropriate
+- [ ] No large dependencies added without justification
+
+### Error Resilience (if UI/API changed)
+- [ ] API failures show helpful error states (not raw stack traces)
+- [ ] Components handle missing/null data without crashing
+- [ ] Network-dependent features degrade gracefully
+
 ### Scope Verification (For refactoring/migration)
 - [ ] Ran `rg "old_pattern"` - should return 0
 - [ ] Ran `rg "new_pattern"` - should match expected count
