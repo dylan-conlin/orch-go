@@ -1,27 +1,35 @@
-issue: orch-go-ooaut
-title: "Add orient sections for reflect, usage, config-check, session-resume and --hook flag"
+issue: orch-go-fi3db
+title: "Add composed liveness guard (VerifyLiveness) for destructive commands"
 tier: light
 
 automated:
-  - command: "go test ./pkg/orient/ -run 'Reflect|Usage|Config|Drift|Resume|SectionOrder' -v"
-    expects: "PASS (11 new format/JSON tests)"
+  - command: "go test ./pkg/verify/ -run TestVerifyLiveness -count=1 -v"
+    expects: "PASS (11 liveness state tests)"
     result: "PASS"
-  - command: "go test ./cmd/orch/ -run 'ParseReflect|ComputeReflect' -v"
-    expects: "PASS (5 parser tests)"
+  - command: "go test ./pkg/verify/ -run TestLivenessResult_Warning -count=1 -v"
+    expects: "PASS (warning message tests)"
+    result: "PASS"
+  - command: "go test ./pkg/verify/ -run TestVerifyLivenessGracePeriod -count=1 -v"
+    expects: "PASS (grace period boundary)"
+    result: "PASS"
+  - command: "go test ./cmd/orch/ -run TestCheckPhaseRecency -count=1 -v"
+    expects: "PASS (no regression in existing abandon tests)"
     result: "PASS"
   - command: "go build ./cmd/orch/"
-    expects: "clean compilation"
+    expects: "clean build"
     result: "PASS"
-  - command: "orch orient --hook | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d[\"hookSpecificOutput\"][\"hookEventName\"]==\"SessionStart\"'"
-    expects: "valid JSON envelope with SessionStart event"
+  - command: "go vet ./..."
+    expects: "no warnings"
     result: "PASS"
 
 deliverables:
-  - cmd/orch/orient_cmd.go         # 4 collectors, --hook flag, parser functions (+217 lines)
-  - cmd/orch/orient_cmd_test.go    # parser tests, age tests (+94 lines)
-  - pkg/orient/orient.go           # 4 new types, 4 format functions, section ordering (+126 lines)
-  - pkg/orient/orient_test.go      # format, JSON, section order tests (+219 lines)
+  - pkg/verify/liveness.go           # VerifyLiveness pure function, LivenessInput/LivenessResult types
+  - pkg/verify/liveness_test.go      # 13 tests: all 4 states + edge cases + grace period boundary
+  - cmd/orch/complete_verification.go # Refactored: state.GetLiveness → verify.VerifyLiveness
+  - cmd/orch/abandon_cmd.go          # Enhanced: grace period check via VerifyLiveness
 
 notes: |
-  UsageWarning collector is a struct placeholder — orch usage --json doesn't exist yet.
-  Session resume skips spawned agents and worker/orchestrator contexts.
+  VerifyLiveness implements the 4-state model from the phase-based liveness decision.
+  Pure function (no I/O) - all data pre-fetched via LivenessInput.
+  Replaces state.GetLiveness (tmux+OpenCode) with phase-based checks in complete command.
+  Adds grace period awareness to abandon command (previously only had recency check).

@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/checkpoint"
 	"github.com/dylan-conlin/orch-go/pkg/events"
-	"github.com/dylan-conlin/orch-go/pkg/state"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"golang.org/x/term"
 )
@@ -238,52 +239,38 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 		fmt.Println("Skipping all verification (--force) - DEPRECATED: use targeted --skip-* flags")
 	}
 
-	// Check liveness before closing - warn if agent appears still running
-	if !completeForce && target.BeadsID != "" {
-		phaseComplete := false
-		if !target.IsOrchestratorSession && target.BeadsID != "" {
-			phaseComplete, _ = verify.IsPhaseComplete(target.BeadsID, target.BeadsProjectDir)
-		}
+	// Check liveness before closing - warn if agent appears still running.
+	// Uses phase-based liveness (decision: .kb/decisions/2026-02-26-phase-based-liveness-over-tmux-as-state.md)
+	if !completeForce && target.BeadsID != "" && !target.IsOrchestratorSession {
+		comments, _ := verify.GetComments(target.BeadsID, target.BeadsProjectDir)
+		spawnTime := readSpawnTimeFromWorkspace(target.WorkspacePath)
 
-		if !phaseComplete {
-			liveness := state.GetLiveness(target.BeadsID, serverURL, target.BeadsProjectDir)
-			if liveness.IsAlive() {
-				var runningDetails []string
-				if liveness.TmuxLive {
-					detail := "tmux window"
-					if liveness.WindowID != "" {
-						detail += " (" + liveness.WindowID + ")"
-					}
-					runningDetails = append(runningDetails, detail)
-				}
-				if liveness.OpencodeLive {
-					detail := "OpenCode session"
-					if liveness.SessionID != "" {
-						detail += " (" + shortID(liveness.SessionID) + ")"
-					}
-					runningDetails = append(runningDetails, detail)
-				}
+		liveness := verify.VerifyLiveness(verify.LivenessInput{
+			Comments:  comments,
+			SpawnTime: spawnTime,
+			Now:       time.Now(),
+		})
 
-				fmt.Fprintf(os.Stderr, "⚠️  Agent appears still running: %s\n", strings.Join(runningDetails, ", "))
+		if liveness.IsAlive() {
+			fmt.Fprintf(os.Stderr, "⚠️  %s\n", liveness.Warning())
 
-				if !term.IsTerminal(int(os.Stdin.Fd())) {
-					return outcome, fmt.Errorf("agent still running and stdin is not a terminal; use --force to complete anyway")
-				}
-
-				fmt.Fprint(os.Stderr, "Proceed anyway? [y/N]: ")
-				reader := bufio.NewReader(os.Stdin)
-				response, err := reader.ReadString('\n')
-				if err != nil {
-					return outcome, fmt.Errorf("failed to read response: %w", err)
-				}
-
-				response = strings.TrimSpace(strings.ToLower(response))
-				if response != "y" && response != "yes" {
-					return outcome, fmt.Errorf("aborted: agent still running")
-				}
-
-				fmt.Println("Proceeding with completion despite liveness warning...")
+			if !term.IsTerminal(int(os.Stdin.Fd())) {
+				return outcome, fmt.Errorf("agent still running and stdin is not a terminal; use --force to complete anyway")
 			}
+
+			fmt.Fprint(os.Stderr, "Proceed anyway? [y/N]: ")
+			reader := bufio.NewReader(os.Stdin)
+			response, err := reader.ReadString('\n')
+			if err != nil {
+				return outcome, fmt.Errorf("failed to read response: %w", err)
+			}
+
+			response = strings.TrimSpace(strings.ToLower(response))
+			if response != "y" && response != "yes" {
+				return outcome, fmt.Errorf("aborted: agent still running")
+			}
+
+			fmt.Println("Proceeding with completion despite liveness warning...")
 		}
 	}
 
@@ -336,4 +323,14 @@ func applySkipFilters(result *verify.VerificationResult, skipConfig verify.SkipC
 	result.GatesFailed = filteredGates
 	result.Errors = filteredErrors
 	result.Passed = len(filteredGates) == 0
+}
+
+// readSpawnTimeFromWorkspace reads the spawn time from the agent manifest.
+// Returns zero time if workspace is empty or manifest is unreadable.
+func readSpawnTimeFromWorkspace(workspacePath string) time.Time {
+	if workspacePath == "" {
+		return time.Time{}
+	}
+	manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+	return manifest.ParseSpawnTime()
 }

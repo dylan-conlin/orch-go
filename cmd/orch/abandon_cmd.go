@@ -11,6 +11,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/agent"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/identity"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -73,56 +74,16 @@ func init() {
 func runAbandon(beadsID, reason, workdir string, force bool) error {
 	// --- Phase 1: Resolve project directory ---
 
-	var projectDir string
-	var err error
-	if workdir != "" {
-		projectDir, err = filepath.Abs(workdir)
-		if err != nil {
-			return fmt.Errorf("failed to resolve workdir path: %w", err)
-		}
-		if stat, err := os.Stat(projectDir); err != nil {
-			return fmt.Errorf("workdir does not exist: %s", projectDir)
-		} else if !stat.IsDir() {
-			return fmt.Errorf("workdir is not a directory: %s", projectDir)
-		}
-	} else {
-		projectDir, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
-		}
+	projectDir, err := identity.ResolveProject(beadsID, workdir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve project directory: %w", err)
 	}
 
 	// --- Phase 2: Validate beads issue ---
 
-	var issue *verify.Issue
-	issue, err = verify.GetIssue(beadsID, projectDir)
-	if err != nil && workdir == "" {
-		// Local lookup failed and no --workdir specified.
-		// Auto-resolve by searching registered kb projects.
-		resolvedDir, beadsIssue := resolveProjectDirForBeadsID(beadsID)
-		if resolvedDir != "" && beadsIssue != nil {
-			fmt.Printf("Auto-resolved cross-project issue: %s in %s\n", beadsID, resolvedDir)
-			projectDir = resolvedDir
-			issue = &verify.Issue{
-				ID:        beadsIssue.ID,
-				Title:     beadsIssue.Title,
-				Status:    beadsIssue.Status,
-				IssueType: beadsIssue.IssueType,
-				Labels:    beadsIssue.Labels,
-			}
-			err = nil
-		}
-	}
+	issue, err := verify.GetIssue(beadsID, projectDir)
 	if err != nil {
-		projectName := filepath.Base(projectDir)
-		issuePrefix := strings.Split(beadsID, "-")[0]
-		if len(strings.Split(beadsID, "-")) > 1 {
-			issuePrefix = strings.Join(strings.Split(beadsID, "-")[:len(strings.Split(beadsID, "-"))-1], "-")
-		}
-		if issuePrefix != projectName {
-			return fmt.Errorf("failed to get beads issue %s: %w\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: orch abandon %s --workdir ~/path/to/%s", beadsID, err, issuePrefix, projectName, beadsID, issuePrefix)
-		}
-		return fmt.Errorf("failed to get beads issue: %w", err)
+		return fmt.Errorf("failed to get beads issue %s in %s: %w", beadsID, filepath.Base(projectDir), err)
 	}
 
 	if issue.Status == "closed" {
@@ -279,9 +240,10 @@ func runAbandon(beadsID, reason, workdir string, force bool) error {
 	return nil
 }
 
-// checkRecentActivity checks if the agent has reported a phase comment recently.
-// Returns an error (blocking abandon) if the latest phase comment is non-Complete
-// and was reported within activeAgentThreshold. Returns nil if safe to proceed.
+// checkRecentActivity checks if the agent appears alive using phase-based liveness.
+// Returns an error (blocking abandon) if the agent is actively running.
+// Uses VerifyLiveness for grace period + phase checks, then falls back to
+// checkPhaseRecency for the 30-minute recency window specific to abandon.
 // Comment fetch failures are non-blocking (best effort).
 func checkRecentActivity(beadsID, projectDir string) error {
 	comments, err := verify.GetComments(beadsID, projectDir)
@@ -291,6 +253,20 @@ func checkRecentActivity(beadsID, projectDir string) error {
 		return nil
 	}
 
+	// Phase-based liveness catches recently-spawned agents (grace period)
+	liveness := verify.VerifyLiveness(verify.LivenessInput{
+		Comments: comments,
+		Now:      time.Now(),
+	})
+	if liveness.IsAlive() && liveness.Reason == verify.ReasonRecentlySpawned {
+		return fmt.Errorf(
+			"agent %s was recently spawned and may not have reported its first phase yet\n\n"+
+				"Use --force to abandon anyway: orch abandon %s --force",
+			beadsID, beadsID,
+		)
+	}
+
+	// Fall back to recency check for the 30-minute activity window
 	phase := verify.ParsePhaseFromComments(comments)
 	return checkPhaseRecency(beadsID, phase, time.Now())
 }
