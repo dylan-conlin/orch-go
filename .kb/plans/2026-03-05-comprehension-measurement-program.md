@@ -13,7 +13,7 @@
 # Plan: Comprehension Measurement Program
 
 **Date:** 2026-03-05
-**Status:** Phase 1 complete, Phase 2 pending
+**Status:** Phase 2 complete, Phase 3 pending
 **Owner:** Dylan
 
 **Extracted-From:** Session analysis of orchestrator skill throughput-vs-comprehension problem (Mar 5, 2026)
@@ -49,7 +49,9 @@ Build a measurement system that can detect whether an orchestrator agent is thin
 
 **Recommendation:** A first, gate on calibration results. If keyword proxies show r < 0.4 with human ratings, escalate to B. C is a last resort — only if the fundamental premise (contrastive scenarios make comprehension visible through keywords) is falsified.
 
-**Status:** Open — decided after Phase 2 calibration
+**Status:** Partially resolved by Phase 2 calibration
+
+**Phase 2 update (Mar 6):** Calibration shows the bottleneck is indicator vocabulary per-scenario, not grammar expressiveness. Overall rho=0.637 passes gate — the keyword proxy approach works. But S11 (rho=0.141) shows indicators are broken for absence-detection scenarios. The problem isn't that we need AND logic or length checks (Option A) or structural analysis (Option B) — it's that S11's indicator vocabulary doesn't capture what humans judge as comprehension for that scenario type. **Priority shifts from scorer extensions to per-scenario indicator redesign.** S09/S13 indicators are validated and need no changes. S11 indicators need complete vocabulary redesign before any scorer extensions would matter.
 
 ### Decision 2: Multi-turn testing approach
 
@@ -104,6 +106,8 @@ Build a measurement system that can detect whether an orchestrator agent is thin
 
 **Beads:** orch-go-54y23
 
+**Result:** Phase 2 complete. 24 blind-rated responses across 4 scenarios × 3 variants. Overall Spearman rho=0.637 (p=0.0001) passes r>0.6 gate — automated proxies correlate with human judgment. Per-scenario: S09=0.980, S13=0.894, S12=0.747 (all validated), S11=0.141 (broken — indicators uncorrelated with human judgment, need vocabulary redesign). Scorer vocabulary bias toward skill-enhanced responses: 3/4 biggest disagreements on bare variants. Variant means: bare=2.0, without-stance=4.2, with-stance=4.1 — stance lift is scenario-specific, not universal. Evidence: `evidence/2026-03-06-human-calibration/`
+
 ### Phase 3: Scorer Extensions (conditional)
 
 **Goal:** Extend detection grammar based on calibration findings.
@@ -143,10 +147,10 @@ Build a measurement system that can detect whether an orchestrator agent is thin
 
 | Decision Point | Substrate Available | Navigable? |
 |----------------|---------------------|------------|
-| Scorer extension scope | Calibration data (not yet collected) | Needs Phase 2 |
-| Multi-turn approach | Contrastive scenario validation (not yet done) | Needs Phase 1-2 |
+| Scorer extension scope | Calibration data collected (Phase 2 complete) | Partially resolved — bottleneck is indicator vocabulary, not grammar |
+| Multi-turn approach | Contrastive scenario validation complete (Phase 1-2 done) | Ready to decide |
 
-**Overall readiness:** Phase 1 is ready to execute. Phases 2-4 gate on Phase 1 results.
+**Overall readiness:** Phases 1-2 complete. Phase 3 (scorer extensions) re-scoped: priority is S11 indicator vocabulary redesign, not grammar extensions. Phase 4 (multi-turn) ready to plan.
 
 ---
 
@@ -156,12 +160,15 @@ Build a measurement system that can detect whether an orchestrator agent is thin
 - Keyword detection measures behavioral compliance (extensive evidence from injection-level, fabrication experiments)
 - Stance items affect agent orientation (throughput-vs-comprehension observed Mar 5, restored to v4 baseline)
 - Single-turn `--print` measures intent, not action (identity-action gap, Feb 24 probe)
+- Automated proxies correlate with human comprehension ratings at rho=0.637 overall (Phase 2, Mar 6, N=24)
+- Per-scenario indicator validity varies dramatically: S09=0.980, S13=0.894, S12=0.747, S11=0.141
+- Scorer vocabulary bias toward skill-enhanced responses (3/4 biggest disagreements on bare variants)
+- Stance lift is scenario-specific, not universal (aggregate without-stance=4.2, with-stance=4.1)
 
 **What's untested:**
-- Whether contrastive scenarios actually discriminate comprehension from throughput with current detection grammar
-- Whether any automated proxy correlates with human comprehension ratings
+- Whether redesigned S11 indicators can achieve acceptable correlation with human judgment
 - Whether comprehension degrades across turns or is stable once primed
-- Whether scorer extensions improve discrimination beyond better scenario design
+- Whether scorer extensions improve discrimination beyond better scenario design (Phase 2 suggests bottleneck is indicator vocabulary, not grammar)
 
 **What would change this plan:**
 - If contrastive scenarios show bare = skill on comprehension indicators → the detection grammar fundamentally can't measure this, need LLM-as-judge or structural analysis

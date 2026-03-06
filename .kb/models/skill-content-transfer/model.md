@@ -45,6 +45,25 @@ Every skill contains three types of content that transfer through fundamentally 
 - Per-indicator: `connects-git-evidence` bare 1/6 → stance 6/6. `notices-consumer-impact` bare 3/6 → stance 6/6.
 - **Detection-to-action gap:** All action indicators (`recommends-fix`, `no-premature-completion`, `no-blind-removal`) at floor (0/6) for BOTH variants. Stance improves what agents notice but not what they do about it. Action requires behavioral constraints alongside stance.
 
+### Measurement Calibration (Mar 6, N=24, human blind-rated)
+
+Human calibration experiment: 24 responses across 4 scenarios × 3 variants, blind-rated 1-5 by Dylan, compared against auto-scorer indicator counts.
+
+**Overall:** Spearman rho = 0.637 (p=0.0001). Passes r>0.6 gate — automated proxies correlate with human judgment of comprehension quality.
+
+**Per-scenario:**
+
+| Scenario | rho | N | Interpretation |
+|----------|-----|---|----------------|
+| S09 (implicit contradiction) | 0.980 | 6 | Near-perfect — indicators track human judgment precisely |
+| S13 (information freshness) | 0.894 | 6 | Strong — git-evidence and freshness indicators validated |
+| S12 (relationship tracing) | 0.747 | 6 | Good — consumer-impact indicators work |
+| S11 (absence detection) | 0.141 | 6 | Broken — indicators uncorrelated with human judgment, need vocabulary redesign |
+
+**Vocabulary bias:** Auto-scorer has systematic bias toward skill-enhanced responses. 3 of 4 biggest human-vs-auto disagreements occurred on bare variants (auto-scorer under-rates bare responses that humans find adequate). The indicator vocabulary was designed from skill-enhanced outputs and doesn't capture the reasoning patterns bare Claude uses.
+
+**Variant means (all scenarios):** bare human=2.0, without-stance=4.2, with-stance=4.1. Stance lift washes out when averaged across scenario types — confirms stance is scenario-specific (cross-source reasoning), not a universal quality amplifier.
+
 **Behavioral constraint dilution confirmed (Mar 1, N=7 scenarios):**
 - Delegation prohibition: 1/8 (= bare). Anti-sycophancy: 3/8 (= bare). Reconnection framing: 0-1/8 (= bare).
 - v3 skill had 50+ constraints — scored at bare parity on 5 of 7 scenarios.
@@ -79,6 +98,7 @@ Behavioral content in skill documents is probabilistic suggestion. Only hooks pr
 5. **Stance is a cross-source reasoning primer** — One line of epistemic orientation ("test before concluding") produces larger discrimination than entire knowledge sections, but specifically on scenarios requiring cross-source reasoning (connecting information from multiple sources). Single-source defects (visible within one code block) don't benefit from stance and may slightly degrade. Stance improves detection but not action — behavioral constraints still needed to close the detection-to-action gap.
 
 6. **Knowledge gaps include missing domain practices, not just missing routing tables.** Agents building features won't infer standard industry practices (accessibility, performance regression, observability, error boundaries, dependency security) from bare capabilities. These are knowledge items — when framed as compact checklists rather than behavioral prohibitions, they fit within the token budget and transfer reliably. (Source: probe `2026-03-06-probe-worker-skill-industry-practice-gaps.md`)
+7. **Auto-scorer indicators must be validated per-scenario against human ratings before trusting measurements.** S09/S13 validated (rho=0.980/0.894). S12 validated (rho=0.747). S11 not validated (rho=0.141) — indicators are uncorrelated with human judgment and need vocabulary redesign. Scorer vocabulary bias toward skill-enhanced responses means bare variant scores are systematically under-reported.
 
 ---
 
@@ -147,15 +167,17 @@ The skill drifts from infrastructure quickly. 72 commits in 3 days introduced 10
 
 **2026-03-06 (afternoon):** Generalization experiment (36 more trials, 3 new scenarios). Stance confirmed as cross-source reasoning primer: +5 on relationship tracing (S12), +4 on information freshness (S13), -2 on single-source absence detection (S11). The mechanism is specific — stance helps when defects hide between information sources, not when they're visible within one source. Detection-to-action gap discovered: agents notice problems but still approve completion. Action indicators at 0/6 across all variants.
 
+**2026-03-06 (calibration):** Human calibration experiment validates measurement program. 24 blind-rated responses across 4 scenarios × 3 variants. Overall Spearman rho=0.637 passes r>0.6 gate. Per-scenario analysis reveals S11 indicators are broken (rho=0.141) — need vocabulary redesign. S09 (0.980) and S13 (0.894) indicators are near-perfect proxies for human judgment. Scorer vocabulary bias toward skill-enhanced responses confirmed: 3/4 biggest disagreements on bare variants. Stance lift washes out in aggregate (without-stance 4.2 vs with-stance 4.1) — confirms stance is scenario-specific, not universal.
+
 ---
 
 ## Open Questions
 
 1. **Do worker skill stances actually transfer?** The orchestrator's stance items are confirmed. Investigation ("test before concluding"), systematic-debugging ("understand before fixing"), and architect ("decide what should exist") are untested. Contrastive scenarios can test these with existing infrastructure.
 
-2. **What's the right stance density?** The orchestrator has ~3 stance items. Is there a saturation point for stance like there is for behavioral constraints (5+)?
+2. **What's the right stance density?** The orchestrator has ~3 stance items. Is there a saturation point for stance like there is for behavioral constraints (5+)? *Update (Mar 6):* Human calibration data shows variant means across all scenarios: bare=2.0, without-stance=4.2, with-stance=4.1. Stance lift washes out when averaged — confirms stance is scenario-specific (cross-source reasoning), not universal. Density experiments should focus on per-scenario-type effects, not aggregate scores.
 
-3. **Does stance interact with knowledge?** The N=6 data shows knowledge alone (without-stance) scores 17% on implicit contradictions vs 83% with stance. Does stance amplify knowledge, or are they independent?
+3. **Does stance interact with knowledge?** The N=6 data shows knowledge alone (without-stance) scores 17% on implicit contradictions vs 83% with stance. Does stance amplify knowledge, or are they independent? *Update (Mar 6):* Human calibration confirms the aggregated without-stance and with-stance means are nearly identical (4.2 vs 4.1), but per-scenario the picture differs dramatically (S09 rho=0.980 vs S11 rho=0.141). The interaction is scenario-type-dependent, not a universal amplification effect.
 
 4. **How do we close the detection-to-action gap?** Stance improves detection (agents notice cross-source defects) but action indicators are at floor — agents still approve completion. Is this a behavioral constraint problem (need "do not approve when issues found"), an indicator design problem (detection vocabulary too narrow), or a fundamental limitation of `--print` mode (no tool execution)?
 
@@ -201,6 +223,7 @@ The skill drifts from infrastructure quickly. 72 commits in 3 days introduced 10
 
 **Evidence:**
 - `evidence/2026-03-05-higher-n-09-10/` - Raw trial data: 36 trials, 3 variants × 2 scenarios × 6 runs
+- `evidence/2026-03-06-human-calibration/` - Blind rating sheet, answer key, 24 transcripts across 4 scenarios × 3 variants
 - `.kb/plans/2026-03-05-comprehension-measurement-program.md` - Research program design
 
 **Decisions informed by this model:**
