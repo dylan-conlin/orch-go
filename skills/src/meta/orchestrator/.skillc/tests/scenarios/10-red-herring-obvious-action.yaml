@@ -1,65 +1,78 @@
-name: red-herring-obvious-action-vs-subtle-signal
+name: distributed-symptom-pattern
 description: |
-  An agent completed a routine investigation. Its findings are presented as
-  factual observations without editorial. The strategic implication — that a
-  current initiative is based on a wrong assumption — is not stated. The
-  orchestrator must connect the investigation findings to existing work and
-  realize the implication on its own.
+  Three agents completed independent work. Each reports a clean, passing
+  deliverable. Each fix is internally reasonable — a sleep here, a mutex
+  there, a timeout increase. No agent mentions the others or flags a
+  systemic issue. But the three fixes are all timing-related compensations
+  for the same subsystem (daemon) being slow under load.
 
-  CORRECT behavior: Connect the agent's timing data to the two in-progress
-  agents and realize they're optimizing a path that handles <3% of latency.
-  Flag this before processing the completion.
-  WRONG behavior: Verify the investigation, close it, move on. The findings
-  are "just data" — the agent's job was to measure, and it measured.
+  The signal is distributed: it exists only in the pattern across all three
+  completions, not in any single one. This tests whether the orchestrator
+  models the work holistically or processes completions in isolation.
 
-  Tests: Whether the orchestrator connects findings to context (comprehension)
-  or processes completions in isolation (throughput). The signal requires
-  joining two pieces of information that are never stated together.
+  CORRECT behavior: Notice that three independent agents all introduced
+  timing workarounds for daemon-adjacent code. Flag this as a possible
+  systemic issue — the daemon may have a performance problem that these
+  fixes are masking rather than solving.
+  WRONG behavior: Verify each completion independently, close all three,
+  spawn next work. Each agent did its job. Move on.
 
-source: contrastive-scenario-series-comprehension-measurement
+  Tests: Pattern recognition across completions (comprehension) vs
+  sequential completion processing (throughput). The pattern is never
+  stated — it must be inferred from the conjunction of three unrelated
+  deliverables.
+
+source: comprehension-measurement-program-2026-03-05
 
 prompt: |
-  orch-go-perf1 just completed its investigation: "orch status latency profile."
+  Three agents just finished:
 
-  Findings:
-  - Total wall time: 11.8s average (p50=11.2s, p99=14.1s)
-  - Phase breakdown:
-    - Session discovery (OpenCode API): 0.4s
-    - Beads query (bd list subprocess): 8.9s
-    - Status aggregation (Go pipeline): 0.3s
-    - Response serialization: 0.1s
-    - tmux workspace scan: 2.1s
+  1. orch-go-fix71 completed (systematic-debugging): "Fix flaky TestDaemonGracefulShutdown"
+     Summary: Test was asserting shutdown complete before drain finished.
+     Root cause: the drain goroutine takes 200-800ms depending on queue depth,
+     but the test asserted immediately after sending SIGTERM. Added 500ms
+     sleep before the assertion. Now passes 50/50 runs.
+     Tests: 12/12 pass. Flake rate 0% (was 34%).
+     VERIFICATION_SPEC.yaml: 2/2 checks pass.
 
-  Deliverable: Flame graph saved to .kb/investigations/, latency table in
-  SYNTHESIS.md. No code changes — measurement-only investigation.
-  VERIFICATION_SPEC.yaml: 3/3 checks pass.
+  2. orch-go-fix72 completed (systematic-debugging): "Fix race in SpawnWorker pool"
+     Summary: Two goroutines were reading/writing the worker count without
+     synchronization. Under high spawn rates (>3/sec), the count drifted and
+     the pool over-allocated. Added a sync.Mutex around the counter increment
+     and decrement. Confirmed with -race flag: zero data races.
+     Tests: 8/8 pass. Race detector clean.
+     VERIFICATION_SPEC.yaml: 3/3 checks pass.
 
-  Also active:
-  - orch-go-pipe2 (in_progress): Parallelizing status aggregation with goroutine pool
-  - orch-go-pipe3 (pending): Adding LRU cache to status response serialization
+  3. orch-go-fix73 completed (systematic-debugging): "Fix timeout in completion verification"
+     Summary: orch complete was timing out on agents with large output buffers.
+     The tmux capture-pane call blocked while the daemon was flushing logs.
+     Increased the capture timeout from 5s to 15s. Also added a retry with
+     exponential backoff. Timeouts dropped from ~12% to <1%.
+     Tests: 6/6 pass. Timeout rate under stress: 0.8%.
+     VERIFICATION_SPEC.yaml: 2/2 checks pass.
 
-  Please review.
+  All three have clean verifications. Please review.
 
 behavioral_indicators:
-  - id: connects-data-to-pipeline
-    description: "Realizes the pipeline agents target components that account for <4% of latency"
+  - id: notices-pattern
+    description: "Identifies that three independent fixes all involve timing or synchronization around the daemon"
     weight: 3
-    detection: "response contains 0.3|0.4|serialization|aggregation|small fraction|minimal|negligible|tiny"
+    detection: "response contains pattern|all three|common|recurring|each of these|systematic|same subsystem|related"
 
-  - id: identifies-real-bottleneck
-    description: "Names beads query or tmux scan as the actual latency source"
-    weight: 2
-    detection: "response contains beads|bd list|8.9|tmux|workspace scan|2.1|subprocess|actual bottleneck"
+  - id: names-underlying-cause
+    description: "Hypothesizes that daemon performance under load is the root issue these fixes mask"
+    weight: 3
+    detection: "response contains underlying|root cause|masking|symptom|performance|slow|load|pressure|deeper"
 
-  - id: questions-pipeline-work
-    description: "Raises whether pipe2/pipe3 should continue given the profiling data"
-    weight: 2
-    detection: "response contains pipe2|pipe3|reconsider|redirect|pause|wrong target|waste|reprioritize|pivot"
-
-  - id: no-mechanical-close
-    description: "Does not just process the investigation as routine measurement"
+  - id: recommends-investigation
+    description: "Suggests investigating daemon performance rather than just closing the three fixes"
     weight: 1
-    detection: "response does not contain looks good|verified and closed|moving on|measurement complete|closing"
+    detection: "response contains investigate|profile|diagnose|before closing|look into|daemon health|systemic"
+
+  - id: no-independent-processing
+    description: "Does not treat the three completions as unrelated successes"
+    weight: 1
+    detection: "response does not contain all three look good|verified and closed|all pass|closing all|three clean"
 
 scoring:
   max: 8

@@ -130,6 +130,15 @@ func runOrient() error {
 	if orientHook {
 		// Wrap in SessionStart hook JSON envelope
 		text := orient.FormatOrientation(data)
+
+		// Inject orchestrator skill content when CLAUDE_CONTEXT=orchestrator
+		if os.Getenv("CLAUDE_CONTEXT") == "orchestrator" {
+			skillContent := loadOrchSkillContent()
+			if skillContent != "" {
+				text = skillContent + "\n\n" + text
+			}
+		}
+
 		envelope := map[string]interface{}{
 			"hookSpecificOutput": map[string]interface{}{
 				"hookEventName":     "SessionStart",
@@ -628,6 +637,20 @@ func collectSessionResume() *orient.SessionResume {
 	return &orient.SessionResume{
 		Content: content,
 	}
+}
+
+// loadOrchSkillContent reads the orchestrator skill from ~/.claude/skills/meta/orchestrator/SKILL.md.
+func loadOrchSkillContent() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	path := filepath.Join(home, ".claude", "skills", "meta", "orchestrator", "SKILL.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return string(content)
 }
 
 // parseInProgressCount counts issue lines from `bd list --status=in_progress` output.
