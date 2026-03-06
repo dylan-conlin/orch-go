@@ -14,6 +14,7 @@ Key activities:
 - Check recent changes AND pattern recognition (whack-a-mole detection)
 - In multi-component systems: add diagnostic instrumentation before fixing
 - Trace data flow to source
+- Assess security impact (could this bug be exploited?)
 
 **Success criteria:** You understand root cause, not just symptoms
 

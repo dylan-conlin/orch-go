@@ -1,21 +1,24 @@
-issue: orch-go-nrlt1
-title: "Extract periodic task scheduler from Daemon struct"
+task: Add security impact assessment to systematic-debugging Phase 1
+beads_id: orch-go-igswd
 tier: light
 
 automated:
-  - command: "go build ./..."
-    expects: "clean build"
-    result: "PASS"
-  - command: "go test ./pkg/daemon/... -count=1"
-    expects: "all daemon tests pass"
-    result: "ok github.com/dylan-conlin/orch-go/pkg/daemon 11.643s"
+  - command: "grep -c 'Security Impact Assessment' skills/src/worker/systematic-debugging/phases/phase1-root-cause.md"
+    expects: "Section exists in phase1-root-cause.md"
+    result: "1"
+  - command: "grep -c 'security impact' skills/src/worker/systematic-debugging/.skillc/phases-overview.md"
+    expects: "Security check mentioned in phases-overview.md"
+    result: "1"
+  - command: "skillc build skills/src/worker/systematic-debugging/.skillc 2>&1 | grep -c 'Compiled'"
+    expects: "Skill builds successfully"
+    result: "1"
 
 deliverables:
-  - pkg/daemon/scheduler.go        # PeriodicScheduler + task constants
-  - pkg/daemon/scheduler_test.go   # 14 unit tests
+  - skills/src/worker/systematic-debugging/phases/phase1-root-cause.md  # New section 7: Security Impact Assessment
+  - skills/src/worker/systematic-debugging/.skillc/phases-overview.md   # Added security check to key activities
 
 notes: |
-  Replaced 11 individual lastX time.Time fields on the Daemon struct with a
-  unified PeriodicScheduler. Each periodic task now delegates to
-  d.Scheduler.IsDue/MarkRun/LastRunTime/NextRunTime instead of reimplementing
-  the same interval-check pattern. Net: ~200 lines of boilerplate eliminated.
+  Added security impact assessment as step 7 in Phase 1 (root cause investigation).
+  Includes a 4-question assessment table (exploitation, data exposure, auth bypass, injection)
+  with bd comment escalation pattern using SECURITY prefix.
+  Addresses Finding 6 from investigation orch-go-9b6do.

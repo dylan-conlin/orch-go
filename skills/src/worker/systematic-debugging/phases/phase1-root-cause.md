@@ -130,6 +130,26 @@ codesign --sign "$IDENTITY" --verbose=4 "$APP"
 - Keep tracing up until you find the source
 - Fix at source, not at symptom
 
+## 7. Security Impact Assessment
+
+**Once you understand the bug, assess whether it has security implications:**
+
+| Question | If YES → |
+|----------|----------|
+| Could a malicious actor exploit this bug? | Flag as security issue, escalate urgency |
+| Does this expose user data or credentials? | Flag as security issue, note data scope |
+| Does this bypass authentication or authorization? | Flag as security issue, escalate immediately |
+| Could this enable injection (SQL, XSS, command)? | Flag as security issue, document attack vector |
+
+**If security impact identified:**
+1. `bd comments add <beads-id> "SECURITY: [vulnerability type] - [brief description of exposure]"`
+2. Continue fixing (don't wait) — but the escalation ensures visibility
+3. Note security impact in completion comment for orchestrator review
+
+**If no security impact:** Proceed normally.
+
+**Why this matters:** Debugging agents finding "user input passed directly to SQL query" should flag it as a security vulnerability, not just fix it as a regular bug. The fix is the same — the urgency and tracking are different.
+
 ---
 
 ## Success Criteria for Phase 1
