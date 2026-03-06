@@ -15,7 +15,9 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/session"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/thread"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -110,10 +112,16 @@ func runDebrief(focusOverride string) error {
 	// 4. What We Learned: --learned flag + --changed flag + thread entries + completion reasons from events
 	data.WhatWeLearned = collectDebriefLearned(events, dateStr)
 
-	// 5. What's In Flight from bd list --status=in_progress
+	// 5. Drift Summary from model staleness events
+	data.DriftSummary = collectDebriefDrift(now)
+
+	// 6. Friction Summary from completed agents' beads comments
+	data.FrictionSummary = collectDebriefFriction(events, projectDir)
+
+	// 7. What's In Flight from bd list --status=in_progress
 	data.InFlight = collectDebriefInFlight()
 
-	// 6. What's Next: --next flag + auto-detected from bd ready
+	// 8. What's Next: --next flag + auto-detected from bd ready
 	data.WhatsNext = collectDebriefNext()
 
 	// JSON output mode
@@ -153,6 +161,12 @@ func runDebrief(focusOverride string) error {
 	}
 	fmt.Println()
 	fmt.Printf("  Happened: %d item(s)\n", len(data.WhatHappened))
+	if len(data.DriftSummary) > 0 {
+		fmt.Printf("  Drift:    %d model(s)\n", len(data.DriftSummary))
+	}
+	if len(data.FrictionSummary) > 0 {
+		fmt.Printf("  Friction: %d category(s)\n", len(data.FrictionSummary))
+	}
 	fmt.Printf("  In flight: %d item(s)\n", len(data.InFlight))
 	fmt.Printf("  Next:     %d item(s)\n", len(data.WhatsNext))
 
@@ -401,4 +415,69 @@ func collectReadyForNext() []string {
 		items = append(items, fmt.Sprintf("[%s] %s (%s)", issue.Priority, issue.Title, issue.ID))
 	}
 	return items
+}
+
+// collectDebriefDrift reads today's model staleness events and summarizes drift.
+func collectDebriefDrift(now time.Time) []string {
+	eventsPath := spawn.DefaultStalenessEventPath()
+	file, err := os.Open(eventsPath)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	var events []spawn.StalenessEvent
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		var event spawn.StalenessEvent
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+		events = append(events, event)
+	}
+
+	items := debrief.CollectDriftSummary(events, now)
+	return debrief.FormatDriftSummary(items)
+}
+
+// collectDebriefFriction fetches friction comments from today's completed agents.
+func collectDebriefFriction(events []debrief.SessionEvent, projectDir string) []string {
+	// Extract beads IDs from completed events
+	var beadsIDs []string
+	seen := make(map[string]bool)
+	for _, e := range events {
+		if e.Type != "agent.completed" {
+			continue
+		}
+		beadsID, _ := e.Data["beads_id"].(string)
+		if beadsID == "" || seen[beadsID] {
+			continue
+		}
+		seen[beadsID] = true
+		beadsIDs = append(beadsIDs, beadsID)
+	}
+
+	if len(beadsIDs) == 0 {
+		return nil
+	}
+
+	// Fetch friction comments for each completed agent
+	var inputs []debrief.FrictionSummaryInput
+	for _, beadsID := range beadsIDs {
+		frictionItems := verify.FetchAndParseFriction(beadsID, projectDir)
+		for _, item := range frictionItems {
+			inputs = append(inputs, debrief.FrictionSummaryInput{
+				BeadsID:     beadsID,
+				Category:    item.Category,
+				Description: item.Description,
+			})
+		}
+	}
+
+	categories := debrief.CollectFrictionSummary(inputs)
+	return debrief.FormatFrictionSummary(categories)
 }

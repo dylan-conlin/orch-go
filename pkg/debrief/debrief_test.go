@@ -156,6 +156,77 @@ func TestRenderDebrief(t *testing.T) {
 	}
 }
 
+func TestRenderDebriefWithDriftAndFriction(t *testing.T) {
+	data := &DebriefData{
+		Date:  "2026-03-05",
+		Focus: "testing drift/friction",
+		WhatWeLearned: []string{
+			"Template structure matters because agents follow structural cues",
+		},
+		DriftSummary: []string{
+			"**agent-lifecycle:** 3 stale spawn(s), 2 changed",
+		},
+		FrictionSummary: []string{
+			"**bug:** beads dir resolution fails",
+			"**tooling:** bd sync noise",
+		},
+		WhatHappened: []string{
+			"Spawned: `feature-impl` — test",
+		},
+	}
+
+	output := RenderDebrief(data)
+
+	// Check new sections present
+	if !strings.Contains(output, "## Drift Summary") {
+		t.Error("expected Drift Summary section")
+	}
+	if !strings.Contains(output, "## Friction Summary") {
+		t.Error("expected Friction Summary section")
+	}
+
+	// Check section order: Learned < Drift < Friction < In Flight
+	learnedIdx := strings.Index(output, "## What We Learned")
+	driftIdx := strings.Index(output, "## Drift Summary")
+	frictionIdx := strings.Index(output, "## Friction Summary")
+	inFlightIdx := strings.Index(output, "## What's In Flight")
+
+	if learnedIdx >= driftIdx {
+		t.Error("Drift Summary should appear after What We Learned")
+	}
+	if driftIdx >= frictionIdx {
+		t.Error("Friction Summary should appear after Drift Summary")
+	}
+	if frictionIdx >= inFlightIdx {
+		t.Error("What's In Flight should appear after Friction Summary")
+	}
+
+	// Verify content rendered
+	if !strings.Contains(output, "agent-lifecycle") {
+		t.Error("expected drift domain in output")
+	}
+	if !strings.Contains(output, "beads dir resolution") {
+		t.Error("expected friction description in output")
+	}
+}
+
+func TestRenderDebriefOmitsEmptyDriftFriction(t *testing.T) {
+	data := &DebriefData{
+		Date:  "2026-03-05",
+		Focus: "no drift or friction",
+	}
+
+	output := RenderDebrief(data)
+
+	// Empty drift/friction should not appear
+	if strings.Contains(output, "Drift Summary") {
+		t.Error("Drift Summary should not appear when empty")
+	}
+	if strings.Contains(output, "Friction Summary") {
+		t.Error("Friction Summary should not appear when empty")
+	}
+}
+
 func TestRenderDebriefEmptySections(t *testing.T) {
 	data := &DebriefData{
 		Date:  "2026-02-28",

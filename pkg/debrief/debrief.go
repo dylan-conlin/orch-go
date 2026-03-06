@@ -30,13 +30,15 @@ type InFlightIssue struct {
 
 // DebriefData holds all data needed to render a session debrief.
 type DebriefData struct {
-	Date           string   `json:"date"`
-	Duration       string   `json:"duration,omitempty"`
-	Focus          string   `json:"focus"`
-	WhatWeLearned  []string `json:"what_we_learned,omitempty"`
-	WhatHappened   []string `json:"what_happened,omitempty"`
-	InFlight       []string `json:"in_flight,omitempty"`
-	WhatsNext      []string `json:"whats_next,omitempty"`
+	Date            string   `json:"date"`
+	Duration        string   `json:"duration,omitempty"`
+	Focus           string   `json:"focus"`
+	WhatWeLearned   []string `json:"what_we_learned,omitempty"`
+	DriftSummary    []string `json:"drift_summary,omitempty"`
+	FrictionSummary []string `json:"friction_summary,omitempty"`
+	WhatHappened    []string `json:"what_happened,omitempty"`
+	InFlight        []string `json:"in_flight,omitempty"`
+	WhatsNext       []string `json:"whats_next,omitempty"`
 }
 
 // DebriefFilePath returns the file path for a debrief on the given date.
@@ -68,6 +70,18 @@ func RenderDebrief(data *DebriefData) string {
 	// Position: how does this change your approach going forward?
 	b.WriteString("## What We Learned\n\n")
 	writeList(&b, data.WhatWeLearned)
+
+	// Drift Summary — models with stale knowledge detected during today's spawns
+	if len(data.DriftSummary) > 0 {
+		b.WriteString("## Drift Summary\n\n")
+		writeList(&b, data.DriftSummary)
+	}
+
+	// Friction Summary — aggregated friction reports from today's agents
+	if len(data.FrictionSummary) > 0 {
+		b.WriteString("## Friction Summary\n\n")
+		writeList(&b, data.FrictionSummary)
+	}
 
 	// What's In Flight
 	b.WriteString("## What's In Flight\n\n")
