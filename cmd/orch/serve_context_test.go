@@ -216,6 +216,69 @@ func TestBuildContextResponse_BeadsPrefixSameAsDirName(t *testing.T) {
 	}
 }
 
+func TestFindProjectDirInline(t *testing.T) {
+	t.Run("finds project with .beads dir", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		projectDir := tmpDir + "/my-project"
+		os.MkdirAll(projectDir+"/.beads", 0o755)
+
+		got := findProjectDirInline(projectDir + "/src/pkg")
+		if got != projectDir {
+			t.Errorf("expected %q, got %q", projectDir, got)
+		}
+	})
+
+	t.Run("finds project with .orch dir", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		projectDir := tmpDir + "/my-project"
+		os.MkdirAll(projectDir+"/.orch", 0o755)
+
+		got := findProjectDirInline(projectDir + "/deep/nested/path")
+		if got != projectDir {
+			t.Errorf("expected %q, got %q", projectDir, got)
+		}
+	})
+
+	t.Run("monorepo: nested subproject with .beads resolves to subproject", func(t *testing.T) {
+		// Simulates scs-special-projects/toolshed structure
+		tmpDir := t.TempDir()
+		parentProject := tmpDir + "/scs-special-projects"
+		subProject := parentProject + "/toolshed"
+		os.MkdirAll(parentProject+"/.beads", 0o755)
+		os.MkdirAll(parentProject+"/.orch", 0o755)
+		os.MkdirAll(subProject+"/.beads", 0o755)
+		os.MkdirAll(subProject+"/.orch", 0o755)
+
+		// From inside toolshed, should resolve to toolshed (nearest project)
+		got := findProjectDirInline(subProject + "/app/models")
+		if got != subProject {
+			t.Errorf("expected subproject %q, got %q", subProject, got)
+		}
+
+		// From parent project root, should resolve to parent
+		got = findProjectDirInline(parentProject)
+		if got != parentProject {
+			t.Errorf("expected parent %q, got %q", parentProject, got)
+		}
+	})
+
+	t.Run("returns empty for path with no project markers", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		got := findProjectDirInline(tmpDir + "/some/random/path")
+		// Should walk up to tmpDir which has no markers, then to root
+		if got != "" {
+			t.Errorf("expected empty, got %q", got)
+		}
+	})
+
+	t.Run("returns empty for empty cwd", func(t *testing.T) {
+		got := findProjectDirInline("")
+		if got != "" {
+			t.Errorf("expected empty, got %q", got)
+		}
+	})
+}
+
 func TestReadBeadsIssuePrefix(t *testing.T) {
 	t.Run("reads prefix from config", func(t *testing.T) {
 		tmpDir := t.TempDir()

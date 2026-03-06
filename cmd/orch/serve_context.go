@@ -335,6 +335,8 @@ func findProjectDirInline(cwd string) string {
 	}
 
 	current := cwd
+	homeDir := os.Getenv("HOME")
+
 	for {
 		// Check for .beads/ directory (beads-managed project)
 		beadsPath := filepath.Join(current, ".beads")
@@ -346,6 +348,11 @@ func findProjectDirInline(cwd string) string {
 		orchPath := filepath.Join(current, ".orch")
 		if isDir(orchPath) {
 			return current
+		}
+
+		// Don't go above home directory
+		if current == homeDir {
+			return ""
 		}
 
 		parent := filepath.Dir(current)
