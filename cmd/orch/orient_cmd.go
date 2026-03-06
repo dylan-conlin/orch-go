@@ -103,6 +103,9 @@ func runOrient() error {
 	// 7. Focus
 	data.FocusGoal = collectFocus()
 
+	// 10. Changelog since last session
+	data.Changelog = collectChangelog(data.PreviousSession)
+
 	// 9. Health summary from latest snapshot
 	data.HealthSummary = collectHealthSummary()
 
@@ -361,6 +364,25 @@ func collectHealthSummary() *orient.HealthSummary {
 	}
 
 	return summary
+}
+
+// collectChangelog runs `git log` since the last session date and returns changelog entries.
+func collectChangelog(prevSession *orient.DebriefSummary) []orient.ChangelogEntry {
+	var args []string
+	if prevSession != nil && prevSession.Date != "" {
+		args = []string{"log", "--format=%h|%s", "--since=" + prevSession.Date + "T00:00:00", "--no-merges"}
+	} else {
+		// Fallback: last 20 commits
+		args = []string{"log", "--format=%h|%s", "--no-merges", "-20"}
+	}
+
+	cmd := exec.Command("git", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	return orient.ParseGitLog(string(output), 15)
 }
 
 // parseInProgressCount counts issue lines from `bd list --status=in_progress` output.

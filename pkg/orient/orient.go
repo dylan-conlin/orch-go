@@ -66,6 +66,7 @@ type OrientationData struct {
 	RelevantModels  []ModelFreshness `json:"relevant_models,omitempty"`
 	StaleModels     []ModelFreshness `json:"stale_models,omitempty"`
 	HealthSummary   *HealthSummary   `json:"health_summary,omitempty"`
+	Changelog       []ChangelogEntry `json:"changelog,omitempty"`
 	FocusGoal       string           `json:"focus_goal,omitempty"`
 }
 
@@ -128,6 +129,13 @@ func FormatOrientation(data *OrientationData) string {
 
 	// Previous session section (from debrief)
 	b.WriteString(FormatPreviousSession(data.PreviousSession))
+
+	// Changelog since last session
+	sinceDate := ""
+	if data.PreviousSession != nil {
+		sinceDate = data.PreviousSession.Date
+	}
+	b.WriteString(FormatChangelog(data.Changelog, sinceDate))
 
 	// Ready work section
 	formatReadyIssues(&b, data.ReadyIssues)
