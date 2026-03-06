@@ -1,30 +1,21 @@
-task: "Add probe-merge-into-model requirement to worker-base skill"
-beads_id: orch-go-co83y
+task: "Add --transcripts flag to skillc test: save raw model responses to directory"
+beads_id: orch-go-nu966
 tier: light
 
 automated:
-  - command: "skillc build skills/src/shared/worker-base/.skillc/"
-    expects: "Compiled successfully"
-    result: "4389 tokens"
-  - command: "skillc build --recursive skills/src/"
-    expects: "All skills build without error"
-    result: "Built 14/14 .skillc directories"
-  - command: "grep -c 'Probe-to-Model Merge' skills/src/shared/worker-base/.skillc/SKILL.md"
-    expects: "3 (section header + 2 completion checkpoints)"
-    result: "3"
-  - command: "grep -c 'Probe-to-Model Merge' ~/.claude/skills/shared/worker-base/SKILL.md"
-    expects: "3 (deployed matches source)"
-    result: "3"
+  - command: "cd ~/Documents/personal/skillc && go test ./pkg/scenario/ -run TestWriteTranscript -v"
+    expects: "All 8 TestWriteTranscript* tests pass"
+    result: "PASS - 8/8 tests pass including new RawResponseFile and RawResponseMultiTurn"
+  - command: "cd ~/Documents/personal/skillc && go test ./..."
+    expects: "All packages pass"
+    result: "PASS - 9/9 packages"
 
 deliverables:
-  - skills/src/shared/worker-base/.skillc/probe-merge.md          # New section
-  - skills/src/shared/worker-base/.skillc/skill.yaml              # Added probe-merge.md to sources
-  - skills/src/shared/worker-base/.skillc/completion.md           # Added checkpoint in both tiers
-  - skills/src/shared/worker-base/.skillc/intro.md                # Listed new capability
+  - pkg/scenario/transcript.go       # Added raw .response.txt output
+  - pkg/scenario/transcript_test.go  # Added 2 new tests
 
 notes: |
-  Added Probe-to-Model Merge as a REQUIRED section in worker-base skill.
-  - Standalone section with workflow (check→read→merge→reference→commit)
-  - Completion checkpoint in both light and standard tier protocols
-  - Addresses ~80 unmerged probes across 16 models (knowledge loop breakage)
-  - All 14 skills rebuilt and deployed successfully.
+  When --transcripts is used, WriteTranscript now writes both:
+  1. {scenario}.md - existing rich markdown transcript with scoring
+  2. {scenario}.response.txt - plain text raw model response
+  Multi-turn scenarios include "=== Turn N ===" markers between responses.
