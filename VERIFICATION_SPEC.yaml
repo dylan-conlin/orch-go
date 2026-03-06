@@ -1,26 +1,27 @@
-issue: orch-go-d9lhi
-title: "Extract pkg/identity with shared ResolveProject and ProjectRegistry"
+issue: orch-go-ooaut
+title: "Add orient sections for reflect, usage, config-check, session-resume and --hook flag"
 tier: light
 
 automated:
-  - command: "go build ./..."
-    expects: "clean build, no errors"
+  - command: "go test ./pkg/orient/ -run 'Reflect|Usage|Config|Drift|Resume|SectionOrder' -v"
+    expects: "PASS (11 new format/JSON tests)"
     result: "PASS"
-  - command: "go vet ./..."
-    expects: "no warnings"
+  - command: "go test ./cmd/orch/ -run 'ParseReflect|ComputeReflect' -v"
+    expects: "PASS (5 parser tests)"
     result: "PASS"
-  - command: "go test ./pkg/identity/ -v"
-    expects: "17 tests pass"
-    result: "PASS - 17/17"
-  - command: "go test ./pkg/daemon/"
-    expects: "all tests pass"
+  - command: "go build ./cmd/orch/"
+    expects: "clean compilation"
     result: "PASS"
-  - command: "go test ./pkg/orch/"
-    expects: "all tests pass"
+  - command: "orch orient --hook | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d[\"hookSpecificOutput\"][\"hookEventName\"]==\"SessionStart\"'"
+    expects: "valid JSON envelope with SessionStart event"
     result: "PASS"
 
 deliverables:
-  - pkg/identity/identity.go         # ProjectRegistry, ProjectEntry, NewProjectRegistry, NewProjectRegistryFromMap, ResolveProjectDirectory, BuildProjectDirNames
-  - pkg/identity/identity_test.go    # 17 tests covering all extracted functionality
-  - pkg/daemon/project_resolution.go # Thin re-export layer via type aliases
-  - pkg/orch/spawn_pipeline.go       # ResolveProjectDirectory delegates to identity
+  - cmd/orch/orient_cmd.go         # 4 collectors, --hook flag, parser functions (+217 lines)
+  - cmd/orch/orient_cmd_test.go    # parser tests, age tests (+94 lines)
+  - pkg/orient/orient.go           # 4 new types, 4 format functions, section ordering (+126 lines)
+  - pkg/orient/orient_test.go      # format, JSON, section order tests (+219 lines)
+
+notes: |
+  UsageWarning collector is a struct placeholder — orch usage --json doesn't exist yet.
+  Session resume skips spawned agents and worker/orchestrator contexts.
