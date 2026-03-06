@@ -85,13 +85,14 @@ BUILD something    → feature-impl
 DESIGN decisions   → architect (trade-offs, recommendations)
 FIX broken thing   → systematic-debugging (cause clear or flaky)
 TRIAGE symptom     → investigation (unknown cause → explore, then route to fix)
-UNDERSTAND         → probe (model exists) | investigation (no model) | research (external)
+UNDERSTAND         → investigation (no model) | research (external sources)
 TRY/EXPERIENCE     → experiential-eval (agent uses the tool, reports qualitatively)
-COMPARE approaches → head-to-head (same task both ways, qualitative comparison)
-EVALUATE UI/UX     → ux-audit (requires --mcp playwright)
+TEST hypothesis    → experiment (controlled trials via skillc test, quantitative)
+AUDIT codebase     → codebase-audit (health, drift, inventory)
+EVALUATE UI/UX     → ux-audit (requires playwright-cli)
 ```
 
-**Probe vs Investigation:** If model exists in `.kb/models/{name}/` → probe (tests specific claim). No model → investigation (exploratory).
+**Probe vs Investigation:** If model exists in `.kb/models/{name}/` → probe (a type of investigation that tests a specific claim). No model → investigation (exploratory).
 
 ### Intent Clarification (Skill Gravity)
 
@@ -101,7 +102,7 @@ Skills are gravitational — a structured skill dominates agent behavior regardl
 |--------|----------------|----------------------|-------|
 | **Experiential** | "Try X", "Evaluate X", "What's X like?" | Agent USES the thing, reports experience | `experiential-eval` |
 | **Production** | "Build X", "Add X", "Fix X" | Agent produces an artifact | skill by work type |
-| **Comparative** | "Compare X and Y", "Which is better?" | Same task two ways, report tradeoffs | `head-to-head` |
+| **Experimental** | "Does X cause Y?", "Test whether..." | Controlled trials with baseline | `experiment` |
 
 ### Strategic-First for Hotspots
 
