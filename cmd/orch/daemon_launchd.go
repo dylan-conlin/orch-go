@@ -131,11 +131,25 @@ func runDaemonInstall(force bool) error {
 	}
 
 	fmt.Println("Daemon installed and started via launchd.")
+
+	// Install newsyslog log rotation
+	newsyslogPath := daemonconfig.GetNewsyslogPath()
+	home, _ := os.UserHomeDir()
+	logPath := filepath.Join(home, ".orch", "daemon.log")
+	newsyslogContent := daemonconfig.GenerateNewsyslogConf(logPath)
+
+	if err := os.WriteFile(newsyslogPath, []byte(newsyslogContent), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to write newsyslog config (may need sudo): %s\n", err)
+		fmt.Fprintf(os.Stderr, "  To install manually: sudo tee %s <<< '%s'\n", newsyslogPath, newsyslogContent)
+	} else {
+		fmt.Printf("Wrote log rotation config: %s\n", newsyslogPath)
+	}
+
 	fmt.Println()
 	fmt.Println("The daemon will:")
 	fmt.Println("  - Start automatically on login (RunAtLoad)")
-	fmt.Println("  - Auto-restart on crash (KeepAlive)")
-	fmt.Println("  - Log to ~/.orch/daemon.log")
+	fmt.Println("  - Auto-restart on crash (KeepAlive, ThrottleInterval=10s)")
+	fmt.Println("  - Log to ~/.orch/daemon.log (rotated at 1MB, 5 archives)")
 	fmt.Println()
 	fmt.Println("Useful commands:")
 	fmt.Println("  orch daemon status                    # Check daemon status")
@@ -177,6 +191,14 @@ func runDaemonUninstall(removePlist bool) error {
 			return fmt.Errorf("failed to remove plist: %w", err)
 		}
 		fmt.Printf("Removed: %s\n", plistPath)
+
+		// Also remove newsyslog config
+		newsyslogPath := daemonconfig.GetNewsyslogPath()
+		if err := os.Remove(newsyslogPath); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "Warning: failed to remove newsyslog config (may need sudo): %s\n", err)
+		} else if err == nil {
+			fmt.Printf("Removed: %s\n", newsyslogPath)
+		}
 	} else {
 		fmt.Printf("Plist retained at: %s\n", plistPath)
 		fmt.Println("Use --remove-plist to also delete the plist file.")

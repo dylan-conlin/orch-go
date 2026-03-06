@@ -58,6 +58,9 @@ const PlistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
     <key>KeepAlive</key>
     <true/>
 
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
     <key>StandardOutPath</key>
     <string>{{.LogPath}}</string>
 
@@ -71,6 +74,8 @@ const PlistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
     <dict>
         <key>PATH</key>
         <string>{{.PATH}}</string>
+        <key>HOME</key>
+        <string>{{.Home}}</string>
         <key>BEADS_NO_DAEMON</key>
         <string>1</string>
     </dict>
@@ -160,6 +165,19 @@ func GeneratePlist(cfg *userconfig.Config) ([]byte, error) {
 		return nil, fmt.Errorf("failed to build plist data: %w", err)
 	}
 	return GeneratePlistXML(data)
+}
+
+// GetNewsyslogPath returns the path to the daemon's newsyslog rotation config.
+func GetNewsyslogPath() string {
+	return "/etc/newsyslog.d/orch-daemon.conf"
+}
+
+// GenerateNewsyslogConf returns a newsyslog.d config entry for daemon log rotation.
+// Rotates at 1MB, keeps 5 compressed archives, no signal needed.
+func GenerateNewsyslogConf(logPath string) string {
+	// Format: logfilename [owner:group] mode count size when flags
+	// 644 = permissions, 5 = keep 5 files, 1024 = 1MB, * = any time, JN = compress + no signal
+	return fmt.Sprintf("# orch daemon log rotation\n%s\t\t644  5     1024 *     JN\n", logPath)
 }
 
 // ParsePlistValues extracts key values from the daemon plist content.

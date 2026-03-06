@@ -326,6 +326,104 @@ func TestGeneratePlist(t *testing.T) {
 	}
 }
 
+func TestGeneratePlistXMLHasThrottleInterval(t *testing.T) {
+	data := &PlistData{
+		Label:            "com.orch.daemon",
+		OrchPath:         "/Users/test/bin/orch",
+		PollInterval:     15,
+		MaxAgents:        3,
+		IssueLabel:       "triage:ready",
+		Verbose:          false,
+		ReflectIssues:    true,
+		ReflectOpen:      true,
+		LogPath:          "/Users/test/.orch/daemon.log",
+		WorkingDirectory: "/Users/test/Documents/personal/orch-go",
+		PATH:             "/Users/test/bin:/usr/bin:/bin",
+		Home:             "/Users/test",
+	}
+
+	result, err := GeneratePlistXML(data)
+	if err != nil {
+		t.Fatalf("GeneratePlistXML() error = %v", err)
+	}
+
+	content := string(result)
+
+	// ThrottleInterval prevents rapid restart loops
+	if !strings.Contains(content, "<key>ThrottleInterval</key>") {
+		t.Error("Expected ThrottleInterval key in plist")
+	}
+	if !strings.Contains(content, "<integer>10</integer>") {
+		t.Error("Expected ThrottleInterval value of 10 seconds")
+	}
+}
+
+func TestGeneratePlistXMLHasHomeEnvVar(t *testing.T) {
+	data := &PlistData{
+		Label:            "com.orch.daemon",
+		OrchPath:         "/Users/test/bin/orch",
+		PollInterval:     15,
+		MaxAgents:        3,
+		IssueLabel:       "triage:ready",
+		Verbose:          false,
+		ReflectIssues:    true,
+		ReflectOpen:      true,
+		LogPath:          "/Users/test/.orch/daemon.log",
+		WorkingDirectory: "/Users/test/Documents/personal/orch-go",
+		PATH:             "/Users/test/bin:/usr/bin:/bin",
+		Home:             "/Users/test",
+	}
+
+	result, err := GeneratePlistXML(data)
+	if err != nil {
+		t.Fatalf("GeneratePlistXML() error = %v", err)
+	}
+
+	content := string(result)
+
+	// HOME env var is required for tools that rely on $HOME
+	if !strings.Contains(content, "<key>HOME</key>") {
+		t.Error("Expected HOME env var in plist")
+	}
+	if !strings.Contains(content, "<string>/Users/test</string>") {
+		t.Error("Expected HOME value matching Home field")
+	}
+}
+
+func TestGetNewsyslogPath(t *testing.T) {
+	path := GetNewsyslogPath()
+	if path == "" {
+		t.Error("Expected non-empty newsyslog path")
+	}
+	if !strings.Contains(path, "newsyslog.d") {
+		t.Errorf("Expected path containing newsyslog.d, got %s", path)
+	}
+	if !strings.HasSuffix(path, "orch-daemon.conf") {
+		t.Errorf("Expected path ending with orch-daemon.conf, got %s", path)
+	}
+}
+
+func TestGenerateNewsyslogConf(t *testing.T) {
+	logPath := "/Users/test/.orch/daemon.log"
+	content := GenerateNewsyslogConf(logPath)
+
+	// Should contain the log path
+	if !strings.Contains(content, logPath) {
+		t.Errorf("Expected log path %q in newsyslog conf", logPath)
+	}
+
+	// Should have rotation settings: mode, count, size
+	// 644 = permissions, 5 = keep 5 rotated files, 1024 = rotate at 1MB
+	if !strings.Contains(content, "644") {
+		t.Error("Expected file mode 644 in newsyslog conf")
+	}
+
+	// Should use N flag (no signal needed - not syslog)
+	if !strings.Contains(content, "JN") {
+		t.Error("Expected JN flags (compress + no signal) in newsyslog conf")
+	}
+}
+
 func TestBuildPATH(t *testing.T) {
 	configPaths := []string{"/Users/test/bin", "/Users/test/.bun/bin"}
 	result := BuildPATH(configPaths)
