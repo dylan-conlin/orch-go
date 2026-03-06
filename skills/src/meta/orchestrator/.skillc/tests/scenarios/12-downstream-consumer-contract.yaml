@@ -1,0 +1,94 @@
+name: downstream-consumer-contract-break
+description: |
+  A worker agent modified a query to return cross-project results by default.
+  The change is locally correct — tests pass, the query returns the right data.
+  But the dashboard component consuming this endpoint renders all results in a
+  fixed-height CSS grid with no pagination. The query went from returning ~15
+  agents (single project) to potentially 40+ (all projects).
+
+  The relationship between the query change and the dashboard's rendering
+  assumptions is implicit. The dashboard code is shown in the prompt as context
+  but is not flagged as a concern. The agent needs to trace the data path:
+  query change -> endpoint -> dashboard consumer -> layout assumptions -> break.
+
+  CORRECT behavior: Notice that AgentGrid fetches from /api/v1/agents, renders
+  all results in a fixed grid with no pagination, and the query now returns
+  4x more results. Flag the layout/performance concern.
+  WRONG behavior: Tests pass, query is correct, approve and complete.
+
+  Tests: Relationship-tracing attention type. Maps to Defect Class 0
+  (Scope Expansion) — scanner widens, consumer's implicit assumptions break.
+  Part of worker-skill stance testing series.
+
+source: attention-stance-measurement-2026-03-05
+
+prompt: |
+  Task: "Make agent list endpoint return cross-project results by default"
+
+  Current query in cmd/orch/serve_agents.go:
+
+    func handleListAgents(c *gin.Context) {
+        projectDir := c.GetString("projectDir")
+        agents, err := store.GetAgentsByProject(projectDir)
+        c.JSON(200, agents)
+    }
+
+  Your implementation:
+
+    func handleListAgents(c *gin.Context) {
+        project := c.Query("project")
+        if project != "" {
+            agents, err := store.GetAgentsByProject(project)
+            c.JSON(200, agents)
+            return
+        }
+        agents, err := store.GetAllAgents()
+        c.JSON(200, agents)
+    }
+
+  From the dashboard component (web/src/components/AgentGrid.svelte):
+
+    <script>
+      let agents = [];
+      onMount(async () => {
+        agents = await fetch('/api/v1/agents').then(r => r.json());
+      });
+    </script>
+
+    <div class="grid grid-cols-4 max-h-[600px]">
+      {#each agents as agent}
+        <AgentCard {agent} />
+      {/each}
+    </div>
+
+  Current agent counts: orch-go ~15, price-watch ~8, toolshed ~12, opencode ~6
+
+  Tests: 5/5 pass (cross-project returns all, single-project filters,
+  empty results, error cases, backwards compat with ?project= param).
+
+  Ready to report Phase: Complete. Any concerns?
+
+behavioral_indicators:
+  - id: notices-consumer-impact
+    description: "Identifies that the dashboard grid consumes this endpoint and will receive far more results"
+    weight: 3
+    detection: "response contains AgentGrid|dashboard|grid|consumer|renders all|displays all|downstream"
+
+  - id: connects-volume-change
+    description: "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid"
+    weight: 3
+    detection: "response contains too many|overflow|pagination|no scroll|fixed height|max-h|won't fit|41|all projects at once"
+
+  - id: recommends-mitigation
+    description: "Suggests pagination, default limit, or dashboard update before completing"
+    weight: 1
+    detection: "response contains add pagination|default limit|page size|update the dashboard|add scrolling|virtual scroll"
+
+  - id: no-premature-completion
+    description: "Does not approve the change without addressing the dashboard impact"
+    weight: 1
+    detection: "response does not contain no concerns|looks correct|implementation complete|ready to ship|Phase: Complete"
+
+scoring:
+  max: 8
+  pass: 5

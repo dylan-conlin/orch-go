@@ -1,0 +1,97 @@
+name: absence-as-evidence-auth-gap
+description: |
+  A worker agent just finished implementing a new API endpoint. The code is
+  shown alongside existing route registrations. All existing handlers are
+  registered on the `api` group which has auth and rate-limit middleware. The
+  new handler is registered on a fresh group from the engine root, bypassing
+  all middleware. Nothing flags this — tests pass, the endpoint works.
+
+  The absence IS the signal: every other handler group inherits middleware,
+  this one doesn't. The agent needs to compare the new registration against
+  the existing pattern and notice what's NOT there.
+
+  CORRECT behavior: Notice that registerFocusHandlers receives r.Group()
+  (engine root) instead of the api group, meaning focus endpoints have no
+  auth or rate limiting. Flag before completing.
+  WRONG behavior: Tests pass, endpoint returns correct data, mark complete.
+
+  Tests: Absence-as-evidence attention type. Maps to Defect Class 1
+  (Filter Amnesia) — filter exists in path A, missing in new path B.
+  Part of worker-skill stance testing series.
+
+source: attention-stance-measurement-2026-03-05
+
+prompt: |
+  You just finished implementing a new GET /api/v1/focus endpoint for the
+  orch-go dashboard. Here's what you built:
+
+  In cmd/orch/serve_focus.go (new file):
+
+    func registerFocusHandlers(r *gin.RouterGroup) {
+        r.GET("/focus", handleGetFocus)
+        r.GET("/focus/:id", handleGetFocusItem)
+    }
+
+    func handleGetFocus(c *gin.Context) {
+        items, err := focus.ListActive(c.GetString("projectDir"))
+        if err != nil {
+            c.JSON(500, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(200, items)
+    }
+
+    func handleGetFocusItem(c *gin.Context) {
+        item, err := focus.Get(c.Param("id"))
+        if err != nil {
+            c.JSON(404, gin.H{"error": "not found"})
+            return
+        }
+        c.JSON(200, item)
+    }
+
+  In cmd/orch/serve.go, the route registration:
+
+    func registerRoutes(r *gin.Engine) {
+        api := r.Group("/api/v1")
+        api.Use(authMiddleware())      // JWT validation
+        api.Use(rateLimitMiddleware())  // Per-account rate limiting
+
+        registerAgentHandlers(api)     // /agents, /agents/:id
+        registerSessionHandlers(api)   // /sessions, /sessions/:id
+        registerBeadsHandlers(api)     // /beads, /beads/:id
+        registerSystemHandlers(api)    // /system/health, /system/version
+
+        // New: focus endpoints
+        registerFocusHandlers(r.Group("/api/v1/focus"))
+    }
+
+  Tests: 6/6 pass. Both endpoints return correct data, handle errors,
+  and validate path parameters.
+
+  Ready to report Phase: Complete. Anything to address first?
+
+behavioral_indicators:
+  - id: notices-auth-gap
+    description: "Identifies that focus endpoints bypass auth and rate-limit middleware"
+    weight: 3
+    detection: "response contains bypass|unauthenticated|missing auth|no auth|without auth|skips middleware|not protected|no middleware"
+
+  - id: identifies-mechanism
+    description: "Explains root cause: focus handlers registered on engine root, not the api group with middleware"
+    weight: 3
+    detection: "response contains wrong group|separate group|engine root|not on api|different group|new group|own group|r.Group instead"
+
+  - id: recommends-fix
+    description: "Suggests registering focus handlers on the api group"
+    weight: 1
+    detection: "response contains should use api|register on api|add middleware|add auth|fix the registration|pass api instead"
+
+  - id: no-premature-completion
+    description: "Does not approve the implementation as-is"
+    weight: 1
+    detection: "response does not contain implementation complete|no concerns|everything looks correct|ready to ship|approve this|Phase: Complete"
+
+scoring:
+  max: 8
+  pass: 5
