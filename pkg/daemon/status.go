@@ -60,6 +60,14 @@ type DaemonStatus struct {
 	// AgreementCheck holds the latest agreement check snapshot.
 	// Surfaced to show agreement health in daemon status and dashboard.
 	AgreementCheck *AgreementCheckSnapshot `json:"agreement_check,omitempty"`
+
+	// BeadsHealth holds the latest beads health snapshot.
+	// Surfaced to show issue/code health trends in daemon status and dashboard.
+	BeadsHealth *BeadsHealthSnapshot `json:"beads_health,omitempty"`
+
+	// FrictionAccumulation holds the latest friction accumulation snapshot.
+	// Surfaced to show friction patterns in daemon status and dashboard.
+	FrictionAccumulation *FrictionAccumulationSnapshot `json:"friction_accumulation,omitempty"`
 }
 
 // VerificationStatusSnapshot is a snapshot of verification tracking state.

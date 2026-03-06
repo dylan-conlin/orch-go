@@ -155,6 +155,24 @@ type Config struct {
 	// InvariantViolationThreshold is the number of consecutive poll cycles with invariant
 	// violations before the daemon pauses. Default is 3. Set to 0 to disable.
 	InvariantViolationThreshold int
+
+	// BeadsHealthEnabled controls whether periodic beads health snapshot collection is enabled.
+	// When enabled, the daemon collects health metrics (open/blocked/stale issues, bloated files,
+	// fix:feat ratio) and appends them to the health snapshot store for trend analysis.
+	BeadsHealthEnabled bool
+
+	// BeadsHealthInterval is how often to collect beads health snapshots (0 = disabled).
+	// Default is 1 hour.
+	BeadsHealthInterval time.Duration
+
+	// FrictionAccumulationEnabled controls whether periodic friction accumulation is enabled.
+	// When enabled, the daemon scans recently-closed agents' beads comments for friction
+	// reports and stores them in ~/.orch/friction.jsonl for pattern analysis.
+	FrictionAccumulationEnabled bool
+
+	// FrictionAccumulationInterval is how often to scan for friction items (0 = disabled).
+	// Default is 1 hour.
+	FrictionAccumulationInterval time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -195,7 +213,11 @@ func DefaultConfig() Config {
 		PhaseTimeoutThreshold:       30 * time.Minute, // Flag after 30 minutes without phase update
 		AgreementCheckEnabled:       true,
 		AgreementCheckInterval:      30 * time.Minute, // Check every 30 minutes
-		InvariantCheckEnabled:       true,
-		InvariantViolationThreshold: 3, // Pause after 3 consecutive violation cycles
+		InvariantCheckEnabled:        true,
+		InvariantViolationThreshold:  3, // Pause after 3 consecutive violation cycles
+		BeadsHealthEnabled:           true,
+		BeadsHealthInterval:          time.Hour, // Every hour
+		FrictionAccumulationEnabled:  true,
+		FrictionAccumulationInterval: time.Hour, // Every hour
 	}
 }

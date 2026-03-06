@@ -222,7 +222,9 @@ var (
 	daemonOrphanAgeThreshold      int // Orphan age threshold in minutes
 	daemonPhaseTimeoutInterval    int // Phase timeout check interval in minutes (0 = disabled)
 	daemonPhaseTimeoutThreshold   int // Phase timeout threshold in minutes
-	daemonAgreementCheckInterval  int // Agreement check interval in minutes (0 = disabled)
+	daemonAgreementCheckInterval     int // Agreement check interval in minutes (0 = disabled)
+	daemonBeadsHealthInterval        int // Beads health snapshot interval in minutes (0 = disabled)
+	daemonFrictionAccumInterval      int // Friction accumulation interval in minutes (0 = disabled)
 	daemonReplace                 bool // Stop existing daemon before starting (graceful takeover)
 )
 
@@ -266,6 +268,8 @@ func init() {
 		cmd.Flags().IntVar(&daemonPhaseTimeoutInterval, "phase-timeout-interval", 5, "Phase timeout check interval in minutes (0 = disabled, default: 5)")
 		cmd.Flags().IntVar(&daemonPhaseTimeoutThreshold, "phase-timeout-threshold", 30, "Minutes without phase update before flagging as unresponsive (default: 30)")
 		cmd.Flags().IntVar(&daemonAgreementCheckInterval, "agreement-check-interval", 30, "Agreement check interval in minutes (0 = disabled, default: 30)")
+		cmd.Flags().IntVar(&daemonBeadsHealthInterval, "beads-health-interval", 60, "Beads health snapshot interval in minutes (0 = disabled, default: 60)")
+		cmd.Flags().IntVar(&daemonFrictionAccumInterval, "friction-accumulation-interval", 60, "Friction accumulation interval in minutes (0 = disabled, default: 60)")
 		cmd.Flags().MarkHidden("max-agents")
 	}
 
@@ -308,6 +312,10 @@ func daemonConfigFromFlags() daemon.Config {
 	config.PhaseTimeoutThreshold = time.Duration(daemonPhaseTimeoutThreshold) * time.Minute
 	config.AgreementCheckEnabled = daemonAgreementCheckInterval > 0
 	config.AgreementCheckInterval = time.Duration(daemonAgreementCheckInterval) * time.Minute
+	config.BeadsHealthEnabled = daemonBeadsHealthInterval > 0
+	config.BeadsHealthInterval = time.Duration(daemonBeadsHealthInterval) * time.Minute
+	config.FrictionAccumulationEnabled = daemonFrictionAccumInterval > 0
+	config.FrictionAccumulationInterval = time.Duration(daemonFrictionAccumInterval) * time.Minute
 
 	return config
 }
@@ -427,6 +435,9 @@ func runDaemonLoop() error {
 	// extraction gate in Once() and hotspot warnings in Preview() are skipped.
 	// The daemon goes straight from polling bd ready to spawning issues.
 	// To re-enable, uncomment: d.HotspotChecker = daemon.NewGitHotspotChecker()
+
+	// Wire beads health service (reuses collectHealthSnapshot from doctor_health.go)
+	d.BeadsHealth = daemon.NewDefaultBeadsHealthService(collectHealthSnapshot, getHealthStore())
 
 	// Wire focus-aware priority boost
 	wireFocusBoost(d)
@@ -633,6 +644,8 @@ func runDaemonLoop() error {
 		phaseTimeoutSnapshot := periodicResult.PhaseTimeoutSnapshot
 		questionDetectionSnapshot := periodicResult.QuestionDetectionSnapshot
 		agreementCheckSnapshot := periodicResult.AgreementCheckSnapshot
+		beadsHealthSnapshot := periodicResult.BeadsHealthSnapshot
+		frictionAccumulationSnapshot := periodicResult.FrictionAccumulationSnapshot
 
 		// Process completions: mark Phase: Complete agents as ready-for-review
 		// This signals they're waiting for orchestrator review. Uses the escalation model:
@@ -882,10 +895,12 @@ func runDaemonLoop() error {
 			Status:             daemon.DetermineStatus(pollTime, config.PollInterval, isPaused),
 			Verification:       verificationSnapshot,
 			CompletionFailures: completionFailureSnapshot,
-			KnowledgeHealth:    knowledgeHealthSnapshot,
-			PhaseTimeout:       phaseTimeoutSnapshot,
-			QuestionDetection:  questionDetectionSnapshot,
-			AgreementCheck:     agreementCheckSnapshot,
+			KnowledgeHealth:      knowledgeHealthSnapshot,
+			PhaseTimeout:         phaseTimeoutSnapshot,
+			QuestionDetection:    questionDetectionSnapshot,
+			AgreementCheck:       agreementCheckSnapshot,
+			BeadsHealth:          beadsHealthSnapshot,
+			FrictionAccumulation: frictionAccumulationSnapshot,
 		}
 		if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
 			dlog.Errorf("Warning: failed to write status file: %v\n", err)

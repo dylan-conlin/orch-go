@@ -16,10 +16,12 @@ import (
 
 // periodicTasksResult holds outputs from periodic tasks needed downstream.
 type periodicTasksResult struct {
-	KnowledgeHealthSnapshot   *daemon.KnowledgeHealthSnapshot
-	PhaseTimeoutSnapshot      *daemon.PhaseTimeoutSnapshot
-	QuestionDetectionSnapshot *daemon.QuestionDetectionSnapshot
-	AgreementCheckSnapshot    *daemon.AgreementCheckSnapshot
+	KnowledgeHealthSnapshot        *daemon.KnowledgeHealthSnapshot
+	PhaseTimeoutSnapshot           *daemon.PhaseTimeoutSnapshot
+	QuestionDetectionSnapshot      *daemon.QuestionDetectionSnapshot
+	AgreementCheckSnapshot         *daemon.AgreementCheckSnapshot
+	BeadsHealthSnapshot            *daemon.BeadsHealthSnapshot
+	FrictionAccumulationSnapshot   *daemon.FrictionAccumulationSnapshot
 }
 
 // runPeriodicTasks runs all periodic maintenance tasks and handles their output.
@@ -85,6 +87,24 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		if r.Error == nil {
 			snapshot := r.Snapshot()
 			result.AgreementCheckSnapshot = &snapshot
+		}
+	}
+
+	// Beads health snapshot collection
+	if r := d.RunPeriodicBeadsHealth(); r != nil {
+		handleBeadsHealthResult(r, timestamp, verbose, logger)
+		if r.Error == nil {
+			snapshot := r.Snapshot()
+			result.BeadsHealthSnapshot = &snapshot
+		}
+	}
+
+	// Friction accumulation
+	if r := d.RunPeriodicFrictionAccumulation(); r != nil {
+		handleFrictionAccumulationResult(r, timestamp, verbose, logger)
+		if r.Error == nil {
+			snapshot := r.Snapshot()
+			result.FrictionAccumulationSnapshot = &snapshot
 		}
 	}
 
@@ -267,6 +287,48 @@ func handleAgreementCheckResult(r *daemon.AgreementCheckResult, timestamp string
 			"issues_created": r.IssuesCreated,
 			"skipped":        r.Skipped,
 			"message":        r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+	}
+}
+
+func handleBeadsHealthResult(r *daemon.BeadsHealthResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Beads health error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.beads_health", map[string]interface{}{
+			"error":   r.Error.Error(),
+			"message": r.Message,
+		})
+	} else {
+		if verbose {
+			fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		}
+		logDaemonEvent(logger, "daemon.beads_health", map[string]interface{}{
+			"open_issues":    r.OpenIssues,
+			"blocked_issues": r.BlockedIssues,
+			"stale_issues":   r.StaleIssues,
+			"bloated_files":  r.BloatedFiles,
+			"fix_feat_ratio": r.FixFeatRatio,
+			"message":        r.Message,
+		})
+	}
+}
+
+func handleFrictionAccumulationResult(r *daemon.FrictionAccumulationResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Friction accumulation error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.friction_accumulation", map[string]interface{}{
+			"new_items": 0,
+			"error":     r.Error.Error(),
+			"message":   r.Message,
+		})
+	} else if r.NewItems > 0 {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		logDaemonEvent(logger, "daemon.friction_accumulation", map[string]interface{}{
+			"new_items":         r.NewItems,
+			"by_category_count": r.ByCategoryCount,
+			"message":           r.Message,
 		})
 	} else if verbose {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)

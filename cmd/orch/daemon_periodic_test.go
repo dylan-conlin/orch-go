@@ -98,6 +98,8 @@ func TestRunPeriodicTasks_NothingDue(t *testing.T) {
 	config.OrphanDetectionEnabled = false
 	config.PhaseTimeoutEnabled = false
 	config.AgreementCheckEnabled = false
+	config.BeadsHealthEnabled = false
+	config.FrictionAccumulationEnabled = false
 
 	d := daemon.NewWithConfig(config)
 	tmpDir := t.TempDir()
@@ -121,6 +123,8 @@ func TestRunPeriodicTasks_ReflectionError(t *testing.T) {
 	config.OrphanDetectionEnabled = false
 	config.PhaseTimeoutEnabled = false
 	config.AgreementCheckEnabled = false
+	config.BeadsHealthEnabled = false
+	config.FrictionAccumulationEnabled = false
 
 	d := daemon.NewWithConfig(config)
 	d.Reflector = &testReflector{
@@ -161,6 +165,8 @@ func TestRunPeriodicTasks_CleanupLogsEvent(t *testing.T) {
 	config.OrphanDetectionEnabled = false
 	config.PhaseTimeoutEnabled = false
 	config.AgreementCheckEnabled = false
+	config.BeadsHealthEnabled = false
+	config.FrictionAccumulationEnabled = false
 
 	d := daemon.NewWithConfig(config)
 	d.Cleaner = &testSessionCleaner{
@@ -208,6 +214,8 @@ func TestRunPeriodicTasks_KnowledgeHealthSnapshot(t *testing.T) {
 	config.OrphanDetectionEnabled = false
 	config.PhaseTimeoutEnabled = false
 	config.AgreementCheckEnabled = false
+	config.BeadsHealthEnabled = false
+	config.FrictionAccumulationEnabled = false
 
 	d := daemon.NewWithConfig(config)
 	d.KnowledgeHealth = &testKnowledgeHealthService{
@@ -250,6 +258,8 @@ func TestRunPeriodicTasks_RecoveryErrorLogsEvent(t *testing.T) {
 	config.OrphanDetectionEnabled = false
 	config.PhaseTimeoutEnabled = false
 	config.AgreementCheckEnabled = false
+	config.BeadsHealthEnabled = false
+	config.FrictionAccumulationEnabled = false
 
 	d := daemon.NewWithConfig(config)
 
@@ -300,6 +310,8 @@ func TestRunPeriodicTasks_OrphanDetectionLogsEvent(t *testing.T) {
 	config.OrphanAgeThreshold = 1 * time.Hour
 	config.PhaseTimeoutEnabled = false
 	config.AgreementCheckEnabled = false
+	config.BeadsHealthEnabled = false
+	config.FrictionAccumulationEnabled = false
 
 	d := daemon.NewWithConfig(config)
 	// Mock GetActiveAgents to return no agents

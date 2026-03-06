@@ -95,6 +95,12 @@ type Daemon struct {
 	// lastAgreementCheck tracks when agreement checking was last run.
 	lastAgreementCheck time.Time
 
+	// lastBeadsHealth tracks when beads health snapshot collection was last run.
+	lastBeadsHealth time.Time
+
+	// lastFrictionAccumulation tracks when friction accumulation was last run.
+	lastFrictionAccumulation time.Time
+
 	// questionNotified tracks which agents have been notified about QUESTION phase.
 	// Prevents duplicate notifications. Cleaned when agent leaves QUESTION phase.
 	questionNotified map[string]time.Time
@@ -149,6 +155,12 @@ type Daemon struct {
 	Agents AgentDiscoverer
 	// StatusUpdater updates beads issue status.
 	StatusUpdater IssueUpdater
+
+	// BeadsHealth provides beads health snapshot collection and storage.
+	BeadsHealth BeadsHealthService
+
+	// FrictionAccumulator scans completed agents for friction and stores results.
+	FrictionAccumulator FrictionAccumulatorService
 
 	// BeadsCircuitBreaker tracks consecutive bd command failures and provides
 	// exponential backoff to prevent lock cascade when beads is unhealthy.
