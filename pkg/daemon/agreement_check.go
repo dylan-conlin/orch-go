@@ -195,13 +195,7 @@ func DefaultCreateAgreementIssue(failure AgreementFailureDetail) error {
 
 // ShouldRunAgreementCheck returns true if periodic agreement check should run.
 func (d *Daemon) ShouldRunAgreementCheck() bool {
-	if !d.Config.AgreementCheckEnabled || d.Config.AgreementCheckInterval <= 0 {
-		return false
-	}
-	if d.lastAgreementCheck.IsZero() {
-		return true
-	}
-	return time.Since(d.lastAgreementCheck) >= d.Config.AgreementCheckInterval
+	return d.Scheduler.IsDue(TaskAgreementCheck)
 }
 
 // RunPeriodicAgreementCheck runs agreement checks if due.
@@ -268,12 +262,12 @@ func (d *Daemon) RunPeriodicAgreementCheck() *AgreementCheckResult {
 			result.Passed, result.Total, result.Failed, result.IssuesCreated, result.Skipped)
 	}
 
-	d.lastAgreementCheck = time.Now()
+	d.Scheduler.MarkRun(TaskAgreementCheck)
 
 	return result
 }
 
 // LastAgreementCheckTime returns when agreement check was last run.
 func (d *Daemon) LastAgreementCheckTime() time.Time {
-	return d.lastAgreementCheck
+	return d.Scheduler.LastRunTime(TaskAgreementCheck)
 }

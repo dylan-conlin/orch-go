@@ -9,11 +9,13 @@ import (
 // --- ShouldRunOrphanDetection tests ---
 
 func TestDaemon_ShouldRunOrphanDetection_Disabled(t *testing.T) {
+	cfg := Config{
+		OrphanDetectionEnabled:  false,
+		OrphanDetectionInterval: 30 * time.Minute,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  false,
-			OrphanDetectionInterval: 30 * time.Minute,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 	}
 	if d.ShouldRunOrphanDetection() {
 		t.Error("ShouldRunOrphanDetection() should return false when disabled")
@@ -21,11 +23,13 @@ func TestDaemon_ShouldRunOrphanDetection_Disabled(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunOrphanDetection_ZeroInterval(t *testing.T) {
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 0,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 0,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 	}
 	if d.ShouldRunOrphanDetection() {
 		t.Error("ShouldRunOrphanDetection() should return false when interval is 0")
@@ -33,11 +37,13 @@ func TestDaemon_ShouldRunOrphanDetection_ZeroInterval(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunOrphanDetection_NeverRun(t *testing.T) {
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 	}
 	if !d.ShouldRunOrphanDetection() {
 		t.Error("ShouldRunOrphanDetection() should return true when never run before")
@@ -45,26 +51,30 @@ func TestDaemon_ShouldRunOrphanDetection_NeverRun(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunOrphanDetection_IntervalElapsed(t *testing.T) {
-	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-		},
-		lastOrphanDetection: time.Now().Add(-45 * time.Minute),
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
 	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+	}
+	d.Scheduler.SetLastRun(TaskOrphanDetection, time.Now().Add(-45*time.Minute))
 	if !d.ShouldRunOrphanDetection() {
 		t.Error("ShouldRunOrphanDetection() should return true when interval has elapsed")
 	}
 }
 
 func TestDaemon_ShouldRunOrphanDetection_IntervalNotElapsed(t *testing.T) {
-	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-		},
-		lastOrphanDetection: time.Now().Add(-15 * time.Minute),
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
 	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+	}
+	d.Scheduler.SetLastRun(TaskOrphanDetection, time.Now().Add(-15*time.Minute))
 	if d.ShouldRunOrphanDetection() {
 		t.Error("ShouldRunOrphanDetection() should return false when interval has not elapsed")
 	}
@@ -73,13 +83,15 @@ func TestDaemon_ShouldRunOrphanDetection_IntervalNotElapsed(t *testing.T) {
 // --- RunPeriodicOrphanDetection tests ---
 
 func TestDaemon_RunPeriodicOrphanDetection_NotDue(t *testing.T) {
-	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-		},
-		lastOrphanDetection: time.Now(),
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
 	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+	}
+	d.Scheduler.SetLastRun(TaskOrphanDetection, time.Now())
 	result := d.RunPeriodicOrphanDetection()
 	if result != nil {
 		t.Error("RunPeriodicOrphanDetection() should return nil when not due")
@@ -87,12 +99,14 @@ func TestDaemon_RunPeriodicOrphanDetection_NotDue(t *testing.T) {
 }
 
 func TestDaemon_RunPeriodicOrphanDetection_GetAgentsError(t *testing.T) {
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
+		OrphanAgeThreshold:      time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-			OrphanAgeThreshold:      time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Agents: &mockAgentDiscoverer{
 			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
 				return nil, fmt.Errorf("beads unavailable")
@@ -110,12 +124,14 @@ func TestDaemon_RunPeriodicOrphanDetection_GetAgentsError(t *testing.T) {
 
 func TestDaemon_RunPeriodicOrphanDetection_DetectsOrphan(t *testing.T) {
 	resetCalled := map[string]bool{}
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
+		OrphanAgeThreshold:      time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-			OrphanAgeThreshold:      time.Hour,
-		},
+		Config:        cfg,
+		Scheduler:     NewSchedulerFromConfig(cfg),
 		SpawnedIssues: NewSpawnedIssueTracker(),
 		Agents: &mockAgentDiscoverer{
 			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
@@ -123,13 +139,13 @@ func TestDaemon_RunPeriodicOrphanDetection_DetectsOrphan(t *testing.T) {
 					{
 						BeadsID:   "orphan-001",
 						Phase:     "Planning",
-						UpdatedAt: time.Now().Add(-2 * time.Hour), // 2h idle
+						UpdatedAt: time.Now().Add(-2 * time.Hour),
 						Title:     "Orphaned task",
 					},
 				}, nil
 			},
 			HasExistingSessionFunc: func(beadsID string) bool {
-				return false // No session exists - orphan
+				return false
 			},
 		},
 		StatusUpdater: &mockIssueUpdater{
@@ -162,26 +178,21 @@ func TestDaemon_RunPeriodicOrphanDetection_DetectsOrphan(t *testing.T) {
 }
 
 func TestDaemon_RunPeriodicOrphanDetection_SkipsActiveAgent(t *testing.T) {
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
+		OrphanAgeThreshold:      time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-			OrphanAgeThreshold:      time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Agents: &mockAgentDiscoverer{
 			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
 				return []ActiveAgent{
-					{
-						BeadsID:   "active-001",
-						Phase:     "Implementing",
-						UpdatedAt: time.Now().Add(-2 * time.Hour),
-						Title:     "Active task",
-					},
+					{BeadsID: "active-001", Phase: "Implementing", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "Active task"},
 				}, nil
 			},
-			HasExistingSessionFunc: func(beadsID string) bool {
-				return true // Has active session - NOT an orphan
-			},
+			HasExistingSessionFunc: func(beadsID string) bool { return true },
 		},
 	}
 
@@ -198,26 +209,21 @@ func TestDaemon_RunPeriodicOrphanDetection_SkipsActiveAgent(t *testing.T) {
 }
 
 func TestDaemon_RunPeriodicOrphanDetection_SkipsTooNew(t *testing.T) {
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
+		OrphanAgeThreshold:      time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-			OrphanAgeThreshold:      time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Agents: &mockAgentDiscoverer{
 			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
 				return []ActiveAgent{
-					{
-						BeadsID:   "new-001",
-						Phase:     "Planning",
-						UpdatedAt: time.Now().Add(-30 * time.Minute), // Only 30m old
-						Title:     "New task",
-					},
+					{BeadsID: "new-001", Phase: "Planning", UpdatedAt: time.Now().Add(-30 * time.Minute), Title: "New task"},
 				}, nil
 			},
-			HasExistingSessionFunc: func(beadsID string) bool {
-				return false
-			},
+			HasExistingSessionFunc: func(beadsID string) bool { return false },
 		},
 	}
 
@@ -231,26 +237,21 @@ func TestDaemon_RunPeriodicOrphanDetection_SkipsTooNew(t *testing.T) {
 }
 
 func TestDaemon_RunPeriodicOrphanDetection_SkipsPhaseComplete(t *testing.T) {
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
+		OrphanAgeThreshold:      time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-			OrphanAgeThreshold:      time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Agents: &mockAgentDiscoverer{
 			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
 				return []ActiveAgent{
-					{
-						BeadsID:   "complete-001",
-						Phase:     "Complete",
-						UpdatedAt: time.Now().Add(-2 * time.Hour),
-						Title:     "Completed task",
-					},
+					{BeadsID: "complete-001", Phase: "Complete", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "Completed task"},
 				}, nil
 			},
-			HasExistingSessionFunc: func(beadsID string) bool {
-				return false
-			},
+			HasExistingSessionFunc: func(beadsID string) bool { return false },
 		},
 	}
 
@@ -264,26 +265,21 @@ func TestDaemon_RunPeriodicOrphanDetection_SkipsPhaseComplete(t *testing.T) {
 }
 
 func TestDaemon_RunPeriodicOrphanDetection_UpdateStatusError(t *testing.T) {
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
+		OrphanAgeThreshold:      time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-			OrphanAgeThreshold:      time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Agents: &mockAgentDiscoverer{
 			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
 				return []ActiveAgent{
-					{
-						BeadsID:   "orphan-001",
-						Phase:     "Planning",
-						UpdatedAt: time.Now().Add(-2 * time.Hour),
-						Title:     "Orphaned task",
-					},
+					{BeadsID: "orphan-001", Phase: "Planning", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "Orphaned task"},
 				}, nil
 			},
-			HasExistingSessionFunc: func(beadsID string) bool {
-				return false
-			},
+			HasExistingSessionFunc: func(beadsID string) bool { return false },
 		},
 		StatusUpdater: &mockIssueUpdater{
 			UpdateStatusFunc: func(beadsID, status string) error {
@@ -305,12 +301,14 @@ func TestDaemon_RunPeriodicOrphanDetection_UpdateStatusError(t *testing.T) {
 }
 
 func TestDaemon_RunPeriodicOrphanDetection_MultipleAgentsMixed(t *testing.T) {
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
+		OrphanAgeThreshold:      time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-			OrphanAgeThreshold:      time.Hour,
-		},
+		Config:        cfg,
+		Scheduler:     NewSchedulerFromConfig(cfg),
 		SpawnedIssues: NewSpawnedIssueTracker(),
 		Agents: &mockAgentDiscoverer{
 			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
@@ -322,14 +320,10 @@ func TestDaemon_RunPeriodicOrphanDetection_MultipleAgentsMixed(t *testing.T) {
 					{BeadsID: "complete-1", Phase: "Complete", UpdatedAt: time.Now().Add(-5 * time.Hour), Title: "Complete 1"},
 				}, nil
 			},
-			HasExistingSessionFunc: func(beadsID string) bool {
-				return beadsID == "active-1" // Only active-1 has a session
-			},
+			HasExistingSessionFunc: func(beadsID string) bool { return beadsID == "active-1" },
 		},
 		StatusUpdater: &mockIssueUpdater{
-			UpdateStatusFunc: func(beadsID, status string) error {
-				return nil
-			},
+			UpdateStatusFunc: func(beadsID, status string) error { return nil },
 		},
 	}
 
@@ -346,12 +340,14 @@ func TestDaemon_RunPeriodicOrphanDetection_MultipleAgentsMixed(t *testing.T) {
 }
 
 func TestDaemon_RunPeriodicOrphanDetection_EmptyBeadsID(t *testing.T) {
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
+		OrphanAgeThreshold:      time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-			OrphanAgeThreshold:      time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Agents: &mockAgentDiscoverer{
 			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
 				return []ActiveAgent{
@@ -374,16 +370,16 @@ func TestDaemon_RunPeriodicOrphanDetection_EmptyBeadsID(t *testing.T) {
 }
 
 func TestDaemon_RunPeriodicOrphanDetection_NoAgents(t *testing.T) {
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
+		OrphanAgeThreshold:      time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-			OrphanAgeThreshold:      time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Agents: &mockAgentDiscoverer{
-			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
-				return nil, nil
-			},
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) { return nil, nil },
 		},
 	}
 
@@ -400,22 +396,20 @@ func TestDaemon_RunPeriodicOrphanDetection_NoAgents(t *testing.T) {
 }
 
 func TestDaemon_RunPeriodicOrphanDetection_RetainsSpawnCacheEntry(t *testing.T) {
-	// After fix orch-go-ahif: orphan detection resets beads status to "open"
-	// but does NOT call Unmark(). The spawn cache entry provides a natural cooldown
-	// (6h TTL) that prevents thrash loops where agents die and are immediately respawned.
 	tracker := NewSpawnedIssueTracker()
 	tracker.MarkSpawned("orphan-001")
-
 	if !tracker.IsSpawned("orphan-001") {
 		t.Fatal("Issue should be in tracker before orphan detection")
 	}
 
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
+		OrphanAgeThreshold:      time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-			OrphanAgeThreshold:      time.Hour,
-		},
+		Config:        cfg,
+		Scheduler:     NewSchedulerFromConfig(cfg),
 		SpawnedIssues: tracker,
 		Agents: &mockAgentDiscoverer{
 			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
@@ -423,14 +417,10 @@ func TestDaemon_RunPeriodicOrphanDetection_RetainsSpawnCacheEntry(t *testing.T) 
 					{BeadsID: "orphan-001", Phase: "Planning", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "Orphan"},
 				}, nil
 			},
-			HasExistingSessionFunc: func(beadsID string) bool {
-				return false
-			},
+			HasExistingSessionFunc: func(beadsID string) bool { return false },
 		},
 		StatusUpdater: &mockIssueUpdater{
-			UpdateStatusFunc: func(beadsID, status string) error {
-				return nil
-			},
+			UpdateStatusFunc: func(beadsID, status string) error { return nil },
 		},
 	}
 
@@ -438,46 +428,27 @@ func TestDaemon_RunPeriodicOrphanDetection_RetainsSpawnCacheEntry(t *testing.T) 
 	if result == nil || result.ResetCount != 1 {
 		t.Fatal("Should have reset 1 orphan")
 	}
-
-	// Key assertion: spawn cache entry should be RETAINED (not unmarked).
-	// This prevents the daemon from immediately respawning the orphaned issue.
-	// The TTL will eventually allow respawn after the cooldown period.
 	if !tracker.IsSpawned("orphan-001") {
 		t.Error("Orphan-001 should STILL be in SpawnedIssues tracker (cooldown prevents immediate respawn)")
 	}
 }
 
-// --- Fail-closed on session check error (orch-go-n20j) ---
-
 func TestDaemon_RunPeriodicOrphanDetection_FailClosedOnSessionCheckError(t *testing.T) {
-	// Regression test for orch-go-n20j: Daemon spawns duplicate workers overnight.
-	//
-	// Root cause: When OpenCode API and tmux are both down (overnight infrastructure
-	// instability), HasExistingSession returned false (fail-open), causing the orphan
-	// detector to incorrectly mark running agents as orphaned. After spawn cache TTL
-	// expired, the daemon would respawn the issue while the original agent was still running.
-	//
-	// Fix: The orphan detector now uses HasExistingSessionOrError which returns the error.
-	// On error, the orphan detector skips the issue (fail-closed) instead of resetting it.
 	resetCalled := false
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
+		OrphanAgeThreshold:      time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-			OrphanAgeThreshold:      time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Agents: &mockAgentDiscoverer{
 			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
 				return []ActiveAgent{
-					{
-						BeadsID:   "running-agent-001",
-						Phase:     "Implementing",
-						UpdatedAt: time.Now().Add(-2 * time.Hour), // Old enough to be orphan candidate
-						Title:     "Running task with infrastructure down",
-					},
+					{BeadsID: "running-agent-001", Phase: "Implementing", UpdatedAt: time.Now().Add(-2 * time.Hour), Title: "Running task with infrastructure down"},
 				}, nil
 			},
-			// Simulate infrastructure failure: session check returns error
 			HasExistingSessionOrErrorFunc: func(beadsID string) (bool, error) {
 				return false, fmt.Errorf("opencode session check failed: connection refused")
 			},
@@ -506,15 +477,15 @@ func TestDaemon_RunPeriodicOrphanDetection_FailClosedOnSessionCheckError(t *test
 }
 
 func TestDaemon_RunPeriodicOrphanDetection_MixedErrorAndOrphan(t *testing.T) {
-	// When some session checks error and others succeed, only the confirmed
-	// orphans (no session AND no error) should be reset. Errored ones are skipped.
 	resetIDs := map[string]bool{}
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
+		OrphanAgeThreshold:      time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-			OrphanAgeThreshold:      time.Hour,
-		},
+		Config:        cfg,
+		Scheduler:     NewSchedulerFromConfig(cfg),
 		SpawnedIssues: NewSpawnedIssueTracker(),
 		Agents: &mockAgentDiscoverer{
 			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
@@ -529,9 +500,9 @@ func TestDaemon_RunPeriodicOrphanDetection_MixedErrorAndOrphan(t *testing.T) {
 				case "errored-001":
 					return false, fmt.Errorf("tmux session check failed: command not found")
 				case "orphan-001":
-					return false, nil // No session, no error — real orphan
+					return false, nil
 				case "active-001":
-					return true, nil // Has a session
+					return true, nil
 				}
 				return false, nil
 			},
@@ -565,8 +536,6 @@ func TestDaemon_RunPeriodicOrphanDetection_MixedErrorAndOrphan(t *testing.T) {
 	}
 }
 
-// --- Config defaults test ---
-
 func TestDefaultConfig_IncludesOrphanDetection(t *testing.T) {
 	config := DefaultConfig()
 	if !config.OrphanDetectionEnabled {
@@ -580,8 +549,6 @@ func TestDefaultConfig_IncludesOrphanDetection(t *testing.T) {
 	}
 }
 
-// --- Time accessor tests ---
-
 func TestLastOrphanDetectionTime_InitiallyZero(t *testing.T) {
 	d := New()
 	if !d.LastOrphanDetectionTime().IsZero() {
@@ -590,24 +557,24 @@ func TestLastOrphanDetectionTime_InitiallyZero(t *testing.T) {
 }
 
 func TestNextOrphanDetectionTime_DisabledWhenOff(t *testing.T) {
-	d := &Daemon{Config: Config{OrphanDetectionEnabled: false}}
+	cfg := Config{OrphanDetectionEnabled: false}
+	d := &Daemon{Config: cfg, Scheduler: NewSchedulerFromConfig(cfg)}
 	if !d.NextOrphanDetectionTime().IsZero() {
 		t.Error("NextOrphanDetectionTime should be zero when disabled")
 	}
 }
 
 func TestNextOrphanDetectionTime_ImmediateWhenNeverRun(t *testing.T) {
-	d := &Daemon{Config: Config{
+	cfg := Config{
 		OrphanDetectionEnabled:  true,
 		OrphanDetectionInterval: 30 * time.Minute,
-	}}
+	}
+	d := &Daemon{Config: cfg, Scheduler: NewSchedulerFromConfig(cfg)}
 	next := d.NextOrphanDetectionTime()
 	if time.Until(next) > 5*time.Second {
 		t.Error("NextOrphanDetectionTime should be immediate when never run")
 	}
 }
-
-// --- Snapshot test ---
 
 func TestOrphanDetectionResult_Snapshot(t *testing.T) {
 	result := &OrphanDetectionResult{
@@ -623,29 +590,27 @@ func TestOrphanDetectionResult_Snapshot(t *testing.T) {
 	}
 }
 
-// --- Updates lastOrphanDetection timestamp ---
-
 func TestDaemon_RunPeriodicOrphanDetection_UpdatesTimestamp(t *testing.T) {
+	cfg := Config{
+		OrphanDetectionEnabled:  true,
+		OrphanDetectionInterval: 30 * time.Minute,
+		OrphanAgeThreshold:      time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			OrphanDetectionEnabled:  true,
-			OrphanDetectionInterval: 30 * time.Minute,
-			OrphanAgeThreshold:      time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Agents: &mockAgentDiscoverer{
-			GetActiveAgentsFunc: func() ([]ActiveAgent, error) {
-				return nil, nil
-			},
+			GetActiveAgentsFunc: func() ([]ActiveAgent, error) { return nil, nil },
 		},
 	}
 
-	if !d.lastOrphanDetection.IsZero() {
+	if !d.Scheduler.LastRunTime(TaskOrphanDetection).IsZero() {
 		t.Error("lastOrphanDetection should be zero initially")
 	}
 
 	d.RunPeriodicOrphanDetection()
 
-	if d.lastOrphanDetection.IsZero() {
+	if d.Scheduler.LastRunTime(TaskOrphanDetection).IsZero() {
 		t.Error("lastOrphanDetection should be updated after running")
 	}
 }

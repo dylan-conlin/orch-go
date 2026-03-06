@@ -34,7 +34,7 @@ func TestShouldRunQuestionDetection_IntervalElapsed(t *testing.T) {
 		PhaseTimeoutEnabled:  true,
 		PhaseTimeoutInterval: 5 * time.Minute,
 	})
-	d.lastQuestionDetection = time.Now().Add(-10 * time.Minute)
+	d.Scheduler.SetLastRun(TaskQuestionDetection, time.Now().Add(-10 * time.Minute))
 	if !d.ShouldRunQuestionDetection() {
 		t.Error("Should run when interval elapsed")
 	}
@@ -45,7 +45,7 @@ func TestShouldRunQuestionDetection_IntervalNotElapsed(t *testing.T) {
 		PhaseTimeoutEnabled:  true,
 		PhaseTimeoutInterval: 5 * time.Minute,
 	})
-	d.lastQuestionDetection = time.Now().Add(-1 * time.Minute)
+	d.Scheduler.SetLastRun(TaskQuestionDetection, time.Now().Add(-1 * time.Minute))
 	if d.ShouldRunQuestionDetection() {
 		t.Error("Should not run when interval not elapsed")
 	}
@@ -56,7 +56,7 @@ func TestRunPeriodicQuestionDetection_NotDue(t *testing.T) {
 		PhaseTimeoutEnabled:  true,
 		PhaseTimeoutInterval: 5 * time.Minute,
 	})
-	d.lastQuestionDetection = time.Now()
+	d.Scheduler.SetLastRun(TaskQuestionDetection, time.Now())
 	result := d.RunPeriodicQuestionDetection()
 	if result != nil {
 		t.Error("Should return nil when not due")
@@ -118,7 +118,7 @@ func TestRunPeriodicQuestionDetection_NoDuplicateNotification(t *testing.T) {
 	}
 
 	// Reset timer so it runs again
-	d.lastQuestionDetection = time.Time{}
+	d.Scheduler.SetLastRun(TaskQuestionDetection, time.Time{})
 
 	// Second run: same agent still in QUESTION, should NOT be new
 	result2 := d.RunPeriodicQuestionDetection()
@@ -149,7 +149,7 @@ func TestRunPeriodicQuestionDetection_RenotifiesAfterLeaving(t *testing.T) {
 	}
 
 	// Agent leaves QUESTION phase
-	d.lastQuestionDetection = time.Time{}
+	d.Scheduler.SetLastRun(TaskQuestionDetection, time.Time{})
 	d.Agents = newMockDiscovererWithAgents([]ActiveAgent{
 		{BeadsID: "test-123", Phase: "Implementing - Resumed work", Title: "Add auth", UpdatedAt: time.Now()},
 	})
@@ -159,7 +159,7 @@ func TestRunPeriodicQuestionDetection_RenotifiesAfterLeaving(t *testing.T) {
 	}
 
 	// Agent re-enters QUESTION phase
-	d.lastQuestionDetection = time.Time{}
+	d.Scheduler.SetLastRun(TaskQuestionDetection, time.Time{})
 	d.Agents = newMockDiscovererWithAgents([]ActiveAgent{
 		{BeadsID: "test-123", Phase: "QUESTION - Different question now?", Title: "Add auth", UpdatedAt: time.Now()},
 	})

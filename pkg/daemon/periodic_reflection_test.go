@@ -7,11 +7,13 @@ import (
 )
 
 func TestDaemon_ShouldRunReflection_Disabled(t *testing.T) {
+	cfg := Config{
+		ReflectEnabled:  false,
+		ReflectInterval: time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			ReflectEnabled:  false,
-			ReflectInterval: time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 	}
 
 	if d.ShouldRunReflection() {
@@ -20,11 +22,13 @@ func TestDaemon_ShouldRunReflection_Disabled(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunReflection_ZeroInterval(t *testing.T) {
+	cfg := Config{
+		ReflectEnabled:  true,
+		ReflectInterval: 0,
+	}
 	d := &Daemon{
-		Config: Config{
-			ReflectEnabled:  true,
-			ReflectInterval: 0,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 	}
 
 	if d.ShouldRunReflection() {
@@ -33,11 +37,13 @@ func TestDaemon_ShouldRunReflection_ZeroInterval(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunReflection_NeverRun(t *testing.T) {
+	cfg := Config{
+		ReflectEnabled:  true,
+		ReflectInterval: time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			ReflectEnabled:  true,
-			ReflectInterval: time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 	}
 
 	// lastReflect is zero time (never run)
@@ -47,13 +53,15 @@ func TestDaemon_ShouldRunReflection_NeverRun(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunReflection_IntervalElapsed(t *testing.T) {
-	d := &Daemon{
-		Config: Config{
-			ReflectEnabled:  true,
-			ReflectInterval: time.Hour,
-		},
-		lastReflect: time.Now().Add(-2 * time.Hour), // 2 hours ago
+	cfg := Config{
+		ReflectEnabled:  true,
+		ReflectInterval: time.Hour,
 	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+	}
+	d.Scheduler.SetLastRun(TaskReflect, time.Now().Add(-2*time.Hour))
 
 	if !d.ShouldRunReflection() {
 		t.Error("ShouldRunReflection() should return true when interval has elapsed")
@@ -61,13 +69,15 @@ func TestDaemon_ShouldRunReflection_IntervalElapsed(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunReflection_IntervalNotElapsed(t *testing.T) {
-	d := &Daemon{
-		Config: Config{
-			ReflectEnabled:  true,
-			ReflectInterval: time.Hour,
-		},
-		lastReflect: time.Now().Add(-30 * time.Minute), // 30 minutes ago
+	cfg := Config{
+		ReflectEnabled:  true,
+		ReflectInterval: time.Hour,
 	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+	}
+	d.Scheduler.SetLastRun(TaskReflect, time.Now().Add(-30*time.Minute))
 
 	if d.ShouldRunReflection() {
 		t.Error("ShouldRunReflection() should return false when interval has not elapsed")
@@ -76,13 +86,14 @@ func TestDaemon_ShouldRunReflection_IntervalNotElapsed(t *testing.T) {
 
 func TestDaemon_RunPeriodicReflection_NotDue(t *testing.T) {
 	reflectCalled := false
+	cfg := Config{
+		ReflectEnabled:      true,
+		ReflectInterval:     time.Hour,
+		ReflectCreateIssues: true,
+	}
 	d := &Daemon{
-		Config: Config{
-			ReflectEnabled:      true,
-			ReflectInterval:     time.Hour,
-			ReflectCreateIssues: true,
-		},
-		lastReflect: time.Now(), // Just ran
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Reflector: &mockReflector{
 			ReflectFunc: func(createIssues bool) (*ReflectResult, error) {
 				reflectCalled = true
@@ -90,6 +101,7 @@ func TestDaemon_RunPeriodicReflection_NotDue(t *testing.T) {
 			},
 		},
 	}
+	d.Scheduler.SetLastRun(TaskReflect, time.Now())
 
 	result := d.RunPeriodicReflection()
 	if result != nil {
@@ -103,13 +115,14 @@ func TestDaemon_RunPeriodicReflection_NotDue(t *testing.T) {
 func TestDaemon_RunPeriodicReflection_Due(t *testing.T) {
 	reflectCalled := false
 	createIssuesValue := false
+	cfg := Config{
+		ReflectEnabled:      true,
+		ReflectInterval:     time.Hour,
+		ReflectCreateIssues: true,
+	}
 	d := &Daemon{
-		Config: Config{
-			ReflectEnabled:      true,
-			ReflectInterval:     time.Hour,
-			ReflectCreateIssues: true,
-		},
-		lastReflect: time.Now().Add(-2 * time.Hour), // 2 hours ago (due)
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Reflector: &mockReflector{
 			ReflectFunc: func(createIssues bool) (*ReflectResult, error) {
 				reflectCalled = true
@@ -124,6 +137,7 @@ func TestDaemon_RunPeriodicReflection_Due(t *testing.T) {
 			},
 		},
 	}
+	d.Scheduler.SetLastRun(TaskReflect, time.Now().Add(-2*time.Hour))
 
 	result := d.RunPeriodicReflection()
 	if result == nil {
@@ -135,20 +149,21 @@ func TestDaemon_RunPeriodicReflection_Due(t *testing.T) {
 	if !createIssuesValue {
 		t.Error("createIssues should be true based on config")
 	}
-	if d.lastReflect.IsZero() {
+	if d.Scheduler.LastRunTime(TaskReflect).IsZero() {
 		t.Error("lastReflect should be updated after running")
 	}
 }
 
 func TestDaemon_RunPeriodicReflection_OpenEnabled(t *testing.T) {
 	openCalled := false
+	cfg := Config{
+		ReflectEnabled:     true,
+		ReflectInterval:    time.Hour,
+		ReflectOpenEnabled: true,
+	}
 	d := &Daemon{
-		Config: Config{
-			ReflectEnabled:     true,
-			ReflectInterval:    time.Hour,
-			ReflectOpenEnabled: true,
-		},
-		lastReflect: time.Now().Add(-2 * time.Hour),
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Reflector: &mockReflector{
 			ReflectFunc: func(createIssues bool) (*ReflectResult, error) {
 				return &ReflectResult{}, nil
@@ -159,6 +174,7 @@ func TestDaemon_RunPeriodicReflection_OpenEnabled(t *testing.T) {
 			},
 		},
 	}
+	d.Scheduler.SetLastRun(TaskReflect, time.Now().Add(-2*time.Hour))
 
 	result := d.RunPeriodicReflection()
 	if result == nil {
@@ -170,13 +186,14 @@ func TestDaemon_RunPeriodicReflection_OpenEnabled(t *testing.T) {
 }
 
 func TestDaemon_RunPeriodicReflection_Error(t *testing.T) {
+	cfg := Config{
+		ReflectEnabled:      true,
+		ReflectInterval:     time.Hour,
+		ReflectCreateIssues: false,
+	}
 	d := &Daemon{
-		Config: Config{
-			ReflectEnabled:      true,
-			ReflectInterval:     time.Hour,
-			ReflectCreateIssues: false,
-		},
-		lastReflect: time.Time{}, // Never run
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Reflector: &mockReflector{
 			ReflectFunc: func(createIssues bool) (*ReflectResult, error) {
 				return nil, fmt.Errorf("kb reflect failed")
@@ -195,9 +212,15 @@ func TestDaemon_RunPeriodicReflection_Error(t *testing.T) {
 
 func TestDaemon_LastReflectTime(t *testing.T) {
 	now := time.Now()
-	d := &Daemon{
-		lastReflect: now,
+	cfg := Config{
+		ReflectEnabled:  true,
+		ReflectInterval: time.Hour,
 	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+	}
+	d.Scheduler.SetLastRun(TaskReflect, now)
 
 	if !d.LastReflectTime().Equal(now) {
 		t.Errorf("LastReflectTime() = %v, want %v", d.LastReflectTime(), now)
@@ -205,11 +228,13 @@ func TestDaemon_LastReflectTime(t *testing.T) {
 }
 
 func TestDaemon_NextReflectTime_Disabled(t *testing.T) {
+	cfg := Config{
+		ReflectEnabled:  false,
+		ReflectInterval: time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			ReflectEnabled:  false,
-			ReflectInterval: time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 	}
 
 	next := d.NextReflectTime()
@@ -219,12 +244,13 @@ func TestDaemon_NextReflectTime_Disabled(t *testing.T) {
 }
 
 func TestDaemon_NextReflectTime_NeverRun(t *testing.T) {
+	cfg := Config{
+		ReflectEnabled:  true,
+		ReflectInterval: time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			ReflectEnabled:  true,
-			ReflectInterval: time.Hour,
-		},
-		lastReflect: time.Time{}, // Never run
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 	}
 
 	next := d.NextReflectTime()
@@ -236,13 +262,15 @@ func TestDaemon_NextReflectTime_NeverRun(t *testing.T) {
 
 func TestDaemon_NextReflectTime_AfterRun(t *testing.T) {
 	now := time.Now()
-	d := &Daemon{
-		Config: Config{
-			ReflectEnabled:  true,
-			ReflectInterval: time.Hour,
-		},
-		lastReflect: now,
+	cfg := Config{
+		ReflectEnabled:  true,
+		ReflectInterval: time.Hour,
 	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+	}
+	d.Scheduler.SetLastRun(TaskReflect, now)
 
 	next := d.NextReflectTime()
 	expectedNext := now.Add(time.Hour)

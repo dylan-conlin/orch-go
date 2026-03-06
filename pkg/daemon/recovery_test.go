@@ -53,7 +53,7 @@ func TestRunPeriodicRecovery_RespectsInterval(t *testing.T) {
 	d := NewWithConfig(config)
 
 	// Simulate having run recently
-	d.lastRecovery = time.Now()
+	d.Scheduler.SetLastRun(TaskRecovery, time.Now())
 
 	// Should not run again immediately
 	if d.ShouldRunRecovery() {
@@ -61,7 +61,7 @@ func TestRunPeriodicRecovery_RespectsInterval(t *testing.T) {
 	}
 
 	// Simulate time passing
-	d.lastRecovery = time.Now().Add(-2 * time.Minute)
+	d.Scheduler.SetLastRun(TaskRecovery, time.Now().Add(-2*time.Minute))
 
 	// Should run now
 	if !d.ShouldRunRecovery() {
@@ -116,8 +116,7 @@ func TestShouldRunRecovery_TimingCalculations(t *testing.T) {
 		expectedResult bool
 	}{
 		{
-			name:           "never run before",
-			lastRecovery:   time.Time{}, // Zero time
+			name:           "never run before", // Zero time
 			expectedResult: true,
 		},
 		{
@@ -139,7 +138,7 @@ func TestShouldRunRecovery_TimingCalculations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d.lastRecovery = tt.lastRecovery
+			d.Scheduler.SetLastRun(TaskRecovery, tt.lastRecovery)
 			result := d.ShouldRunRecovery()
 			if result != tt.expectedResult {
 				t.Errorf("Expected %v, got %v", tt.expectedResult, result)
@@ -283,10 +282,11 @@ func TestNextRecoveryTime_ScheduledAfterInterval(t *testing.T) {
 	d := NewWithConfig(config)
 
 	// Simulate having run 30 minutes ago
-	d.lastRecovery = time.Now().Add(-30 * time.Minute)
+	lastRun := time.Now().Add(-30 * time.Minute)
+	d.Scheduler.SetLastRun(TaskRecovery, lastRun)
 
 	nextTime := d.NextRecoveryTime()
-	expectedNext := d.lastRecovery.Add(time.Hour)
+	expectedNext := lastRun.Add(time.Hour)
 
 	// Should be scheduled 30 minutes from now (within tolerance)
 	diff := nextTime.Sub(expectedNext)

@@ -90,13 +90,7 @@ func (s *defaultBeadsHealthService) Store(result *BeadsHealthResult) error {
 
 // ShouldRunBeadsHealth returns true if periodic beads health collection should run.
 func (d *Daemon) ShouldRunBeadsHealth() bool {
-	if !d.Config.BeadsHealthEnabled || d.Config.BeadsHealthInterval <= 0 {
-		return false
-	}
-	if d.lastBeadsHealth.IsZero() {
-		return true
-	}
-	return time.Since(d.lastBeadsHealth) >= d.Config.BeadsHealthInterval
+	return d.Scheduler.IsDue(TaskBeadsHealth)
 }
 
 // RunPeriodicBeadsHealth collects beads health metrics and stores a snapshot.
@@ -131,12 +125,12 @@ func (d *Daemon) RunPeriodicBeadsHealth() *BeadsHealthResult {
 			result.OpenIssues, result.BlockedIssues, result.StaleIssues, result.BloatedFiles, result.FixFeatRatio)
 	}
 
-	d.lastBeadsHealth = time.Now()
+	d.Scheduler.MarkRun(TaskBeadsHealth)
 
 	return result
 }
 
 // LastBeadsHealthTime returns when beads health was last checked.
 func (d *Daemon) LastBeadsHealthTime() time.Time {
-	return d.lastBeadsHealth
+	return d.Scheduler.LastRunTime(TaskBeadsHealth)
 }

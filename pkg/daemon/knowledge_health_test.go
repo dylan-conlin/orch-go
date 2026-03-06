@@ -7,11 +7,13 @@ import (
 )
 
 func TestDaemon_ShouldRunKnowledgeHealth_Disabled(t *testing.T) {
+	cfg := Config{
+		KnowledgeHealthEnabled:  false,
+		KnowledgeHealthInterval: 2 * time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			KnowledgeHealthEnabled:  false,
-			KnowledgeHealthInterval: 2 * time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 	}
 
 	if d.ShouldRunKnowledgeHealth() {
@@ -20,11 +22,13 @@ func TestDaemon_ShouldRunKnowledgeHealth_Disabled(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunKnowledgeHealth_ZeroInterval(t *testing.T) {
+	cfg := Config{
+		KnowledgeHealthEnabled:  true,
+		KnowledgeHealthInterval: 0,
+	}
 	d := &Daemon{
-		Config: Config{
-			KnowledgeHealthEnabled:  true,
-			KnowledgeHealthInterval: 0,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 	}
 
 	if d.ShouldRunKnowledgeHealth() {
@@ -33,11 +37,13 @@ func TestDaemon_ShouldRunKnowledgeHealth_ZeroInterval(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunKnowledgeHealth_NeverRun(t *testing.T) {
+	cfg := Config{
+		KnowledgeHealthEnabled:  true,
+		KnowledgeHealthInterval: 2 * time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			KnowledgeHealthEnabled:  true,
-			KnowledgeHealthInterval: 2 * time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 	}
 
 	if !d.ShouldRunKnowledgeHealth() {
@@ -46,13 +52,15 @@ func TestDaemon_ShouldRunKnowledgeHealth_NeverRun(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunKnowledgeHealth_IntervalElapsed(t *testing.T) {
-	d := &Daemon{
-		Config: Config{
-			KnowledgeHealthEnabled:  true,
-			KnowledgeHealthInterval: 2 * time.Hour,
-		},
-		lastKnowledgeHealth: time.Now().Add(-3 * time.Hour),
+	cfg := Config{
+		KnowledgeHealthEnabled:  true,
+		KnowledgeHealthInterval: 2 * time.Hour,
 	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+	}
+	d.Scheduler.SetLastRun(TaskKnowledgeHealth, time.Now().Add(-3*time.Hour))
 
 	if !d.ShouldRunKnowledgeHealth() {
 		t.Error("ShouldRunKnowledgeHealth() should return true when interval has elapsed")
@@ -60,13 +68,15 @@ func TestDaemon_ShouldRunKnowledgeHealth_IntervalElapsed(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunKnowledgeHealth_IntervalNotElapsed(t *testing.T) {
-	d := &Daemon{
-		Config: Config{
-			KnowledgeHealthEnabled:  true,
-			KnowledgeHealthInterval: 2 * time.Hour,
-		},
-		lastKnowledgeHealth: time.Now().Add(-1 * time.Hour),
+	cfg := Config{
+		KnowledgeHealthEnabled:  true,
+		KnowledgeHealthInterval: 2 * time.Hour,
 	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+	}
+	d.Scheduler.SetLastRun(TaskKnowledgeHealth, time.Now().Add(-1*time.Hour))
 
 	if d.ShouldRunKnowledgeHealth() {
 		t.Error("ShouldRunKnowledgeHealth() should return false when interval has not elapsed")
@@ -75,17 +85,19 @@ func TestDaemon_ShouldRunKnowledgeHealth_IntervalNotElapsed(t *testing.T) {
 
 func TestDaemon_RunPeriodicKnowledgeHealth_NotDue(t *testing.T) {
 	called := false
+	cfg := Config{
+		KnowledgeHealthEnabled:  true,
+		KnowledgeHealthInterval: 2 * time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			KnowledgeHealthEnabled:  true,
-			KnowledgeHealthInterval: 2 * time.Hour,
-		},
-		lastKnowledgeHealth: time.Now(),
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		KnowledgeHealth: &mockKnowledgeHealthService{CheckFunc: func() (*KnowledgeHealthResult, error) {
 			called = true
 			return &KnowledgeHealthResult{}, nil
 		}},
 	}
+	d.Scheduler.SetLastRun(TaskKnowledgeHealth, time.Now())
 
 	result := d.RunPeriodicKnowledgeHealth()
 	if result != nil {
@@ -98,13 +110,14 @@ func TestDaemon_RunPeriodicKnowledgeHealth_NotDue(t *testing.T) {
 
 func TestDaemon_RunPeriodicKnowledgeHealth_Due(t *testing.T) {
 	called := false
+	cfg := Config{
+		KnowledgeHealthEnabled:   true,
+		KnowledgeHealthInterval:  2 * time.Hour,
+		KnowledgeHealthThreshold: 20,
+	}
 	d := &Daemon{
-		Config: Config{
-			KnowledgeHealthEnabled:   true,
-			KnowledgeHealthInterval:  2 * time.Hour,
-			KnowledgeHealthThreshold: 20,
-		},
-		lastKnowledgeHealth: time.Now().Add(-3 * time.Hour),
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		KnowledgeHealth: &mockKnowledgeHealthService{CheckFunc: func() (*KnowledgeHealthResult, error) {
 			called = true
 			return &KnowledgeHealthResult{
@@ -116,6 +129,7 @@ func TestDaemon_RunPeriodicKnowledgeHealth_Due(t *testing.T) {
 			}, nil
 		}},
 	}
+	d.Scheduler.SetLastRun(TaskKnowledgeHealth, time.Now().Add(-3*time.Hour))
 
 	result := d.RunPeriodicKnowledgeHealth()
 	if result == nil {
@@ -127,17 +141,19 @@ func TestDaemon_RunPeriodicKnowledgeHealth_Due(t *testing.T) {
 	if result.TotalActive != 15 {
 		t.Errorf("TotalActive = %d, want 15", result.TotalActive)
 	}
-	if d.lastKnowledgeHealth.IsZero() {
+	if d.Scheduler.LastRunTime(TaskKnowledgeHealth).IsZero() {
 		t.Error("lastKnowledgeHealth should be updated after running")
 	}
 }
 
 func TestDaemon_RunPeriodicKnowledgeHealth_Error(t *testing.T) {
+	cfg := Config{
+		KnowledgeHealthEnabled:  true,
+		KnowledgeHealthInterval: 2 * time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			KnowledgeHealthEnabled:  true,
-			KnowledgeHealthInterval: 2 * time.Hour,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		KnowledgeHealth: &mockKnowledgeHealthService{CheckFunc: func() (*KnowledgeHealthResult, error) {
 			return nil, fmt.Errorf("kb quick list failed")
 		}},
@@ -154,12 +170,14 @@ func TestDaemon_RunPeriodicKnowledgeHealth_Error(t *testing.T) {
 
 func TestDaemon_RunPeriodicKnowledgeHealth_ThresholdExceeded(t *testing.T) {
 	issueCalled := false
+	cfg := Config{
+		KnowledgeHealthEnabled:   true,
+		KnowledgeHealthInterval:  2 * time.Hour,
+		KnowledgeHealthThreshold: 20,
+	}
 	d := &Daemon{
-		Config: Config{
-			KnowledgeHealthEnabled:   true,
-			KnowledgeHealthInterval:  2 * time.Hour,
-			KnowledgeHealthThreshold: 20,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		KnowledgeHealth: &mockKnowledgeHealthService{
 			CheckFunc: func() (*KnowledgeHealthResult, error) {
 				return &KnowledgeHealthResult{
@@ -191,12 +209,14 @@ func TestDaemon_RunPeriodicKnowledgeHealth_ThresholdExceeded(t *testing.T) {
 
 func TestDaemon_RunPeriodicKnowledgeHealth_ThresholdNotExceeded(t *testing.T) {
 	issueCalled := false
+	cfg := Config{
+		KnowledgeHealthEnabled:   true,
+		KnowledgeHealthInterval:  2 * time.Hour,
+		KnowledgeHealthThreshold: 50,
+	}
 	d := &Daemon{
-		Config: Config{
-			KnowledgeHealthEnabled:   true,
-			KnowledgeHealthInterval:  2 * time.Hour,
-			KnowledgeHealthThreshold: 50,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		KnowledgeHealth: &mockKnowledgeHealthService{
 			CheckFunc: func() (*KnowledgeHealthResult, error) {
 				return &KnowledgeHealthResult{

@@ -722,6 +722,7 @@ func TestDaemon_OrphanDetectionPreservesSpawnCache(t *testing.T) {
 			},
 		},
 	}
+	d.Scheduler = NewSchedulerFromConfig(d.Config)
 
 	// First spawn succeeds
 	result, _ := d.Once()

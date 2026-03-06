@@ -228,13 +228,7 @@ func (s *defaultFrictionAccumulatorService) saveProcessed(ids map[string]bool) {
 
 // ShouldRunFrictionAccumulation returns true if periodic friction scanning should run.
 func (d *Daemon) ShouldRunFrictionAccumulation() bool {
-	if !d.Config.FrictionAccumulationEnabled || d.Config.FrictionAccumulationInterval <= 0 {
-		return false
-	}
-	if d.lastFrictionAccumulation.IsZero() {
-		return true
-	}
-	return time.Since(d.lastFrictionAccumulation) >= d.Config.FrictionAccumulationInterval
+	return d.Scheduler.IsDue(TaskFrictionAccumulation)
 }
 
 // RunPeriodicFrictionAccumulation scans completed agents for friction and accumulates results.
@@ -284,12 +278,12 @@ func (d *Daemon) RunPeriodicFrictionAccumulation() *FrictionAccumulationResult {
 		result.Message = "Friction: no new items"
 	}
 
-	d.lastFrictionAccumulation = time.Now()
+	d.Scheduler.MarkRun(TaskFrictionAccumulation)
 
 	return result
 }
 
 // LastFrictionAccumulationTime returns when friction accumulation was last run.
 func (d *Daemon) LastFrictionAccumulationTime() time.Time {
-	return d.lastFrictionAccumulation
+	return d.Scheduler.LastRunTime(TaskFrictionAccumulation)
 }

@@ -53,13 +53,7 @@ func (r *PhaseTimeoutResult) Snapshot() PhaseTimeoutSnapshot {
 
 // ShouldRunPhaseTimeout returns true if periodic phase timeout detection should run.
 func (d *Daemon) ShouldRunPhaseTimeout() bool {
-	if !d.Config.PhaseTimeoutEnabled || d.Config.PhaseTimeoutInterval <= 0 {
-		return false
-	}
-	if d.lastPhaseTimeout.IsZero() {
-		return true
-	}
-	return time.Since(d.lastPhaseTimeout) >= d.Config.PhaseTimeoutInterval
+	return d.Scheduler.IsDue(TaskPhaseTimeout)
 }
 
 // RunPeriodicPhaseTimeout runs phase timeout detection if due.
@@ -137,7 +131,7 @@ func (d *Daemon) RunPeriodicPhaseTimeout() *PhaseTimeoutResult {
 		unresponsiveCount++
 	}
 
-	d.lastPhaseTimeout = time.Now()
+	d.Scheduler.MarkRun(TaskPhaseTimeout)
 
 	return &PhaseTimeoutResult{
 		UnresponsiveCount: unresponsiveCount,
@@ -150,17 +144,11 @@ func (d *Daemon) RunPeriodicPhaseTimeout() *PhaseTimeoutResult {
 // LastPhaseTimeoutTime returns when phase timeout detection was last run.
 // Returns zero time if it has never run.
 func (d *Daemon) LastPhaseTimeoutTime() time.Time {
-	return d.lastPhaseTimeout
+	return d.Scheduler.LastRunTime(TaskPhaseTimeout)
 }
 
 // NextPhaseTimeoutTime returns when the next phase timeout detection is scheduled.
 // Returns zero time if disabled.
 func (d *Daemon) NextPhaseTimeoutTime() time.Time {
-	if !d.Config.PhaseTimeoutEnabled || d.Config.PhaseTimeoutInterval <= 0 {
-		return time.Time{}
-	}
-	if d.lastPhaseTimeout.IsZero() {
-		return time.Now()
-	}
-	return d.lastPhaseTimeout.Add(d.Config.PhaseTimeoutInterval)
+	return d.Scheduler.NextRunTime(TaskPhaseTimeout)
 }

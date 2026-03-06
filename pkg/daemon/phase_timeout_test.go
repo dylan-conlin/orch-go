@@ -36,7 +36,7 @@ func TestShouldRunPhaseTimeout(t *testing.T) {
 			PhaseTimeoutEnabled:  true,
 			PhaseTimeoutInterval: 5 * time.Minute,
 		})
-		d.lastPhaseTimeout = time.Now().Add(-2 * time.Minute)
+		d.Scheduler.SetLastRun(TaskPhaseTimeout, time.Now().Add(-2 * time.Minute))
 		if d.ShouldRunPhaseTimeout() {
 			t.Error("expected false when last check was 2min ago (interval 5min)")
 		}
@@ -47,7 +47,7 @@ func TestShouldRunPhaseTimeout(t *testing.T) {
 			PhaseTimeoutEnabled:  true,
 			PhaseTimeoutInterval: 5 * time.Minute,
 		})
-		d.lastPhaseTimeout = time.Now().Add(-6 * time.Minute)
+		d.Scheduler.SetLastRun(TaskPhaseTimeout, time.Now().Add(-6 * time.Minute))
 		if !d.ShouldRunPhaseTimeout() {
 			t.Error("expected true when last check was 6min ago (interval 5min)")
 		}
@@ -193,9 +193,9 @@ func TestRunPeriodicPhaseTimeout(t *testing.T) {
 		d.RunPeriodicPhaseTimeout()
 		after := time.Now()
 
-		if d.lastPhaseTimeout.Before(before) || d.lastPhaseTimeout.After(after) {
+		if d.Scheduler.LastRunTime(TaskPhaseTimeout).Before(before) || d.Scheduler.LastRunTime(TaskPhaseTimeout).After(after) {
 			t.Errorf("lastPhaseTimeout not updated correctly: got %v, expected between %v and %v",
-				d.lastPhaseTimeout, before, after)
+				d.Scheduler.LastRunTime(TaskPhaseTimeout), before, after)
 		}
 	})
 }

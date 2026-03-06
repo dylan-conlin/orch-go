@@ -10,41 +10,48 @@ var errTestFailure = errors.New("test failure")
 
 func TestShouldRunFrictionAccumulation(t *testing.T) {
 	t.Run("disabled returns false", func(t *testing.T) {
-		d := &Daemon{Config: Config{FrictionAccumulationEnabled: false, FrictionAccumulationInterval: time.Hour}}
+		cfg := Config{FrictionAccumulationEnabled: false, FrictionAccumulationInterval: time.Hour}
+		d := &Daemon{Config: cfg, Scheduler: NewSchedulerFromConfig(cfg)}
 		if d.ShouldRunFrictionAccumulation() {
 			t.Error("expected false when disabled")
 		}
 	})
 
 	t.Run("zero interval returns false", func(t *testing.T) {
-		d := &Daemon{Config: Config{FrictionAccumulationEnabled: true, FrictionAccumulationInterval: 0}}
+		cfg := Config{FrictionAccumulationEnabled: true, FrictionAccumulationInterval: 0}
+		d := &Daemon{Config: cfg, Scheduler: NewSchedulerFromConfig(cfg)}
 		if d.ShouldRunFrictionAccumulation() {
 			t.Error("expected false when interval is zero")
 		}
 	})
 
 	t.Run("first run returns true", func(t *testing.T) {
-		d := &Daemon{Config: Config{FrictionAccumulationEnabled: true, FrictionAccumulationInterval: time.Hour}}
+		cfg := Config{FrictionAccumulationEnabled: true, FrictionAccumulationInterval: time.Hour}
+		d := &Daemon{Config: cfg, Scheduler: NewSchedulerFromConfig(cfg)}
 		if !d.ShouldRunFrictionAccumulation() {
 			t.Error("expected true on first run")
 		}
 	})
 
 	t.Run("not due returns false", func(t *testing.T) {
+		cfg := Config{FrictionAccumulationEnabled: true, FrictionAccumulationInterval: time.Hour}
 		d := &Daemon{
-			Config:                    Config{FrictionAccumulationEnabled: true, FrictionAccumulationInterval: time.Hour},
-			lastFrictionAccumulation: time.Now(),
+			Config:    cfg,
+			Scheduler: NewSchedulerFromConfig(cfg),
 		}
+		d.Scheduler.SetLastRun(TaskFrictionAccumulation, time.Now())
 		if d.ShouldRunFrictionAccumulation() {
 			t.Error("expected false when not due")
 		}
 	})
 
 	t.Run("past interval returns true", func(t *testing.T) {
+		cfg := Config{FrictionAccumulationEnabled: true, FrictionAccumulationInterval: time.Hour}
 		d := &Daemon{
-			Config:                    Config{FrictionAccumulationEnabled: true, FrictionAccumulationInterval: time.Hour},
-			lastFrictionAccumulation: time.Now().Add(-2 * time.Hour),
+			Config:    cfg,
+			Scheduler: NewSchedulerFromConfig(cfg),
 		}
+		d.Scheduler.SetLastRun(TaskFrictionAccumulation, time.Now().Add(-2*time.Hour))
 		if !d.ShouldRunFrictionAccumulation() {
 			t.Error("expected true when past interval")
 		}
@@ -53,7 +60,8 @@ func TestShouldRunFrictionAccumulation(t *testing.T) {
 
 func TestRunPeriodicFrictionAccumulation(t *testing.T) {
 	t.Run("returns nil when not due", func(t *testing.T) {
-		d := &Daemon{Config: Config{FrictionAccumulationEnabled: false}}
+		cfg := Config{FrictionAccumulationEnabled: false}
+		d := &Daemon{Config: cfg, Scheduler: NewSchedulerFromConfig(cfg)}
 		result := d.RunPeriodicFrictionAccumulation()
 		if result != nil {
 			t.Error("expected nil when not due")
@@ -64,8 +72,10 @@ func TestRunPeriodicFrictionAccumulation(t *testing.T) {
 		scanned := false
 		stored := false
 
+		cfg := Config{FrictionAccumulationEnabled: true, FrictionAccumulationInterval: time.Hour}
 		d := &Daemon{
-			Config: Config{FrictionAccumulationEnabled: true, FrictionAccumulationInterval: time.Hour},
+			Config:    cfg,
+			Scheduler: NewSchedulerFromConfig(cfg),
 			FrictionAccumulator: &mockFrictionAccumulatorService{
 				scanFn: func() ([]FrictionEntry, error) {
 					scanned = true
@@ -104,14 +114,16 @@ func TestRunPeriodicFrictionAccumulation(t *testing.T) {
 		if result.ByCategoryCount["bug"] != 1 {
 			t.Errorf("bug count = %d, want 1", result.ByCategoryCount["bug"])
 		}
-		if d.lastFrictionAccumulation.IsZero() {
+		if d.Scheduler.LastRunTime(TaskFrictionAccumulation).IsZero() {
 			t.Error("lastFrictionAccumulation was not updated")
 		}
 	})
 
 	t.Run("no items found", func(t *testing.T) {
+		cfg := Config{FrictionAccumulationEnabled: true, FrictionAccumulationInterval: time.Hour}
 		d := &Daemon{
-			Config: Config{FrictionAccumulationEnabled: true, FrictionAccumulationInterval: time.Hour},
+			Config:    cfg,
+			Scheduler: NewSchedulerFromConfig(cfg),
 			FrictionAccumulator: &mockFrictionAccumulatorService{
 				scanFn: func() ([]FrictionEntry, error) {
 					return nil, nil
@@ -129,8 +141,10 @@ func TestRunPeriodicFrictionAccumulation(t *testing.T) {
 	})
 
 	t.Run("handles scan error", func(t *testing.T) {
+		cfg := Config{FrictionAccumulationEnabled: true, FrictionAccumulationInterval: time.Hour}
 		d := &Daemon{
-			Config: Config{FrictionAccumulationEnabled: true, FrictionAccumulationInterval: time.Hour},
+			Config:    cfg,
+			Scheduler: NewSchedulerFromConfig(cfg),
 			FrictionAccumulator: &mockFrictionAccumulatorService{
 				scanFn: func() ([]FrictionEntry, error) {
 					return nil, errTestFailure

@@ -52,13 +52,7 @@ func (r *OrphanDetectionResult) Snapshot() OrphanDetectionSnapshot {
 
 // ShouldRunOrphanDetection returns true if periodic orphan detection should run.
 func (d *Daemon) ShouldRunOrphanDetection() bool {
-	if !d.Config.OrphanDetectionEnabled || d.Config.OrphanDetectionInterval <= 0 {
-		return false
-	}
-	if d.lastOrphanDetection.IsZero() {
-		return true
-	}
-	return time.Since(d.lastOrphanDetection) >= d.Config.OrphanDetectionInterval
+	return d.Scheduler.IsDue(TaskOrphanDetection)
 }
 
 // RunPeriodicOrphanDetection runs orphan detection if due.
@@ -169,7 +163,7 @@ func (d *Daemon) RunPeriodicOrphanDetection() *OrphanDetectionResult {
 		reset++
 	}
 
-	d.lastOrphanDetection = time.Now()
+	d.Scheduler.MarkRun(TaskOrphanDetection)
 
 	return &OrphanDetectionResult{
 		ResetCount:   reset,
@@ -182,17 +176,11 @@ func (d *Daemon) RunPeriodicOrphanDetection() *OrphanDetectionResult {
 // LastOrphanDetectionTime returns when orphan detection was last run.
 // Returns zero time if orphan detection has never run.
 func (d *Daemon) LastOrphanDetectionTime() time.Time {
-	return d.lastOrphanDetection
+	return d.Scheduler.LastRunTime(TaskOrphanDetection)
 }
 
 // NextOrphanDetectionTime returns when the next orphan detection is scheduled.
 // Returns zero time if orphan detection is disabled.
 func (d *Daemon) NextOrphanDetectionTime() time.Time {
-	if !d.Config.OrphanDetectionEnabled || d.Config.OrphanDetectionInterval <= 0 {
-		return time.Time{}
-	}
-	if d.lastOrphanDetection.IsZero() {
-		return time.Now()
-	}
-	return d.lastOrphanDetection.Add(d.Config.OrphanDetectionInterval)
+	return d.Scheduler.NextRunTime(TaskOrphanDetection)
 }

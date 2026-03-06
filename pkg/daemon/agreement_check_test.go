@@ -7,11 +7,13 @@ import (
 )
 
 func TestDaemon_ShouldRunAgreementCheck_Disabled(t *testing.T) {
+	cfg := Config{
+		AgreementCheckEnabled:  false,
+		AgreementCheckInterval: 30 * time.Minute,
+	}
 	d := &Daemon{
-		Config: Config{
-			AgreementCheckEnabled:  false,
-			AgreementCheckInterval: 30 * time.Minute,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 	}
 
 	if d.ShouldRunAgreementCheck() {
@@ -20,11 +22,13 @@ func TestDaemon_ShouldRunAgreementCheck_Disabled(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunAgreementCheck_ZeroInterval(t *testing.T) {
+	cfg := Config{
+		AgreementCheckEnabled:  true,
+		AgreementCheckInterval: 0,
+	}
 	d := &Daemon{
-		Config: Config{
-			AgreementCheckEnabled:  true,
-			AgreementCheckInterval: 0,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 	}
 
 	if d.ShouldRunAgreementCheck() {
@@ -33,11 +37,13 @@ func TestDaemon_ShouldRunAgreementCheck_ZeroInterval(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunAgreementCheck_NeverRun(t *testing.T) {
+	cfg := Config{
+		AgreementCheckEnabled:  true,
+		AgreementCheckInterval: 30 * time.Minute,
+	}
 	d := &Daemon{
-		Config: Config{
-			AgreementCheckEnabled:  true,
-			AgreementCheckInterval: 30 * time.Minute,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 	}
 
 	if !d.ShouldRunAgreementCheck() {
@@ -46,13 +52,15 @@ func TestDaemon_ShouldRunAgreementCheck_NeverRun(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunAgreementCheck_IntervalElapsed(t *testing.T) {
-	d := &Daemon{
-		Config: Config{
-			AgreementCheckEnabled:  true,
-			AgreementCheckInterval: 30 * time.Minute,
-		},
-		lastAgreementCheck: time.Now().Add(-1 * time.Hour),
+	cfg := Config{
+		AgreementCheckEnabled:  true,
+		AgreementCheckInterval: 30 * time.Minute,
 	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+	}
+	d.Scheduler.SetLastRun(TaskAgreementCheck, time.Now().Add(-1*time.Hour))
 
 	if !d.ShouldRunAgreementCheck() {
 		t.Error("ShouldRunAgreementCheck() should return true when interval has elapsed")
@@ -60,13 +68,15 @@ func TestDaemon_ShouldRunAgreementCheck_IntervalElapsed(t *testing.T) {
 }
 
 func TestDaemon_ShouldRunAgreementCheck_IntervalNotElapsed(t *testing.T) {
-	d := &Daemon{
-		Config: Config{
-			AgreementCheckEnabled:  true,
-			AgreementCheckInterval: 30 * time.Minute,
-		},
-		lastAgreementCheck: time.Now().Add(-10 * time.Minute),
+	cfg := Config{
+		AgreementCheckEnabled:  true,
+		AgreementCheckInterval: 30 * time.Minute,
 	}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+	}
+	d.Scheduler.SetLastRun(TaskAgreementCheck, time.Now().Add(-10*time.Minute))
 
 	if d.ShouldRunAgreementCheck() {
 		t.Error("ShouldRunAgreementCheck() should return false when interval has not elapsed")
@@ -75,17 +85,19 @@ func TestDaemon_ShouldRunAgreementCheck_IntervalNotElapsed(t *testing.T) {
 
 func TestDaemon_RunPeriodicAgreementCheck_NotDue(t *testing.T) {
 	called := false
+	cfg := Config{
+		AgreementCheckEnabled:  true,
+		AgreementCheckInterval: 30 * time.Minute,
+	}
 	d := &Daemon{
-		Config: Config{
-			AgreementCheckEnabled:  true,
-			AgreementCheckInterval: 30 * time.Minute,
-		},
-		lastAgreementCheck: time.Now(),
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		AgreementCheck: &mockAgreementCheckService{CheckFunc: func() (*AgreementCheckResult, error) {
 			called = true
 			return &AgreementCheckResult{}, nil
 		}},
 	}
+	d.Scheduler.SetLastRun(TaskAgreementCheck, time.Now())
 
 	result := d.RunPeriodicAgreementCheck()
 	if result != nil {
@@ -97,11 +109,13 @@ func TestDaemon_RunPeriodicAgreementCheck_NotDue(t *testing.T) {
 }
 
 func TestDaemon_RunPeriodicAgreementCheck_AllPassing(t *testing.T) {
+	cfg := Config{
+		AgreementCheckEnabled:  true,
+		AgreementCheckInterval: 30 * time.Minute,
+	}
 	d := &Daemon{
-		Config: Config{
-			AgreementCheckEnabled:  true,
-			AgreementCheckInterval: 30 * time.Minute,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		AgreementCheck: &mockAgreementCheckService{CheckFunc: func() (*AgreementCheckResult, error) {
 			return &AgreementCheckResult{
 				Total:  3,
@@ -124,17 +138,19 @@ func TestDaemon_RunPeriodicAgreementCheck_AllPassing(t *testing.T) {
 	if result.IssuesCreated != 0 {
 		t.Errorf("IssuesCreated = %d, want 0", result.IssuesCreated)
 	}
-	if d.lastAgreementCheck.IsZero() {
+	if d.Scheduler.LastRunTime(TaskAgreementCheck).IsZero() {
 		t.Error("lastAgreementCheck should be updated after running")
 	}
 }
 
 func TestDaemon_RunPeriodicAgreementCheck_Error(t *testing.T) {
+	cfg := Config{
+		AgreementCheckEnabled:  true,
+		AgreementCheckInterval: 30 * time.Minute,
+	}
 	d := &Daemon{
-		Config: Config{
-			AgreementCheckEnabled:  true,
-			AgreementCheckInterval: 30 * time.Minute,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		AgreementCheck: &mockAgreementCheckService{CheckFunc: func() (*AgreementCheckResult, error) {
 			return nil, fmt.Errorf("kb agreements check failed")
 		}},
@@ -151,11 +167,13 @@ func TestDaemon_RunPeriodicAgreementCheck_Error(t *testing.T) {
 
 func TestDaemon_RunPeriodicAgreementCheck_ErrorSeverityCreatesIssue(t *testing.T) {
 	issueCalled := false
+	cfg := Config{
+		AgreementCheckEnabled:  true,
+		AgreementCheckInterval: 30 * time.Minute,
+	}
 	d := &Daemon{
-		Config: Config{
-			AgreementCheckEnabled:  true,
-			AgreementCheckInterval: 30 * time.Minute,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		AgreementCheck: &mockAgreementCheckService{
 			CheckFunc: func() (*AgreementCheckResult, error) {
 				return &AgreementCheckResult{
@@ -199,11 +217,13 @@ func TestDaemon_RunPeriodicAgreementCheck_ErrorSeverityCreatesIssue(t *testing.T
 
 func TestDaemon_RunPeriodicAgreementCheck_WarningSeveritySkipped(t *testing.T) {
 	issueCalled := false
+	cfg := Config{
+		AgreementCheckEnabled:  true,
+		AgreementCheckInterval: 30 * time.Minute,
+	}
 	d := &Daemon{
-		Config: Config{
-			AgreementCheckEnabled:  true,
-			AgreementCheckInterval: 30 * time.Minute,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		AgreementCheck: &mockAgreementCheckService{
 			CheckFunc: func() (*AgreementCheckResult, error) {
 				return &AgreementCheckResult{
@@ -244,11 +264,13 @@ func TestDaemon_RunPeriodicAgreementCheck_WarningSeveritySkipped(t *testing.T) {
 
 func TestDaemon_RunPeriodicAgreementCheck_DedupSkips(t *testing.T) {
 	issueCalled := false
+	cfg := Config{
+		AgreementCheckEnabled:  true,
+		AgreementCheckInterval: 30 * time.Minute,
+	}
 	d := &Daemon{
-		Config: Config{
-			AgreementCheckEnabled:  true,
-			AgreementCheckInterval: 30 * time.Minute,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		AgreementCheck: &mockAgreementCheckService{
 			CheckFunc: func() (*AgreementCheckResult, error) {
 				return &AgreementCheckResult{
@@ -290,11 +312,13 @@ func TestDaemon_RunPeriodicAgreementCheck_DedupSkips(t *testing.T) {
 func TestDaemon_RunPeriodicAgreementCheck_AutoFixOverride(t *testing.T) {
 	issueCalled := false
 	autoFixTrue := true
+	cfg := Config{
+		AgreementCheckEnabled:  true,
+		AgreementCheckInterval: 30 * time.Minute,
+	}
 	d := &Daemon{
-		Config: Config{
-			AgreementCheckEnabled:  true,
-			AgreementCheckInterval: 30 * time.Minute,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		AgreementCheck: &mockAgreementCheckService{
 			CheckFunc: func() (*AgreementCheckResult, error) {
 				return &AgreementCheckResult{
@@ -337,11 +361,13 @@ func TestDaemon_RunPeriodicAgreementCheck_AutoFixOverride(t *testing.T) {
 func TestDaemon_RunPeriodicAgreementCheck_AutoFixFalseOverridesError(t *testing.T) {
 	issueCalled := false
 	autoFixFalse := false
+	cfg := Config{
+		AgreementCheckEnabled:  true,
+		AgreementCheckInterval: 30 * time.Minute,
+	}
 	d := &Daemon{
-		Config: Config{
-			AgreementCheckEnabled:  true,
-			AgreementCheckInterval: 30 * time.Minute,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		AgreementCheck: &mockAgreementCheckService{
 			CheckFunc: func() (*AgreementCheckResult, error) {
 				return &AgreementCheckResult{

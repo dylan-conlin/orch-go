@@ -118,13 +118,7 @@ func DefaultCreateKnowledgeHealthIssue(result *KnowledgeHealthResult) error {
 
 // ShouldRunKnowledgeHealth returns true if periodic knowledge health check should run.
 func (d *Daemon) ShouldRunKnowledgeHealth() bool {
-	if !d.Config.KnowledgeHealthEnabled || d.Config.KnowledgeHealthInterval <= 0 {
-		return false
-	}
-	if d.lastKnowledgeHealth.IsZero() {
-		return true
-	}
-	return time.Since(d.lastKnowledgeHealth) >= d.Config.KnowledgeHealthInterval
+	return d.Scheduler.IsDue(TaskKnowledgeHealth)
 }
 
 // RunPeriodicKnowledgeHealth runs the knowledge health check if due.
@@ -161,12 +155,12 @@ func (d *Daemon) RunPeriodicKnowledgeHealth() *KnowledgeHealthResult {
 		result.Message = fmt.Sprintf("Knowledge health: %d active entries", result.TotalActive)
 	}
 
-	d.lastKnowledgeHealth = time.Now()
+	d.Scheduler.MarkRun(TaskKnowledgeHealth)
 
 	return result
 }
 
 // LastKnowledgeHealthTime returns when knowledge health was last checked.
 func (d *Daemon) LastKnowledgeHealthTime() time.Time {
-	return d.lastKnowledgeHealth
+	return d.Scheduler.LastRunTime(TaskKnowledgeHealth)
 }

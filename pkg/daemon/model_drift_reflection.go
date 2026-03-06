@@ -3,7 +3,6 @@ package daemon
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/modeldrift"
 )
@@ -19,13 +18,7 @@ type ModelDriftMetadata = modeldrift.Metadata
 
 // ShouldRunModelDriftReflection returns true if model drift reflection should run.
 func (d *Daemon) ShouldRunModelDriftReflection() bool {
-	if !d.Config.ReflectModelDriftEnabled || d.Config.ReflectModelDriftInterval <= 0 {
-		return false
-	}
-	if d.lastModelDriftReflect.IsZero() {
-		return true
-	}
-	return time.Since(d.lastModelDriftReflect) >= d.Config.ReflectModelDriftInterval
+	return d.Scheduler.IsDue(TaskModelDriftReflect)
 }
 
 // RunPeriodicModelDriftReflection runs model drift reflection analysis if due.
@@ -47,7 +40,7 @@ func (d *Daemon) RunPeriodicModelDriftReflection() *ModelDriftResult {
 	}
 
 	if result != nil && result.Error == nil {
-		d.lastModelDriftReflect = time.Now()
+		d.Scheduler.MarkRun(TaskModelDriftReflect)
 	}
 
 	return result

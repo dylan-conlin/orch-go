@@ -7,41 +7,48 @@ import (
 
 func TestShouldRunBeadsHealth(t *testing.T) {
 	t.Run("disabled returns false", func(t *testing.T) {
-		d := &Daemon{Config: Config{BeadsHealthEnabled: false, BeadsHealthInterval: time.Hour}}
+		cfg := Config{BeadsHealthEnabled: false, BeadsHealthInterval: time.Hour}
+		d := &Daemon{Config: cfg, Scheduler: NewSchedulerFromConfig(cfg)}
 		if d.ShouldRunBeadsHealth() {
 			t.Error("expected false when disabled")
 		}
 	})
 
 	t.Run("zero interval returns false", func(t *testing.T) {
-		d := &Daemon{Config: Config{BeadsHealthEnabled: true, BeadsHealthInterval: 0}}
+		cfg := Config{BeadsHealthEnabled: true, BeadsHealthInterval: 0}
+		d := &Daemon{Config: cfg, Scheduler: NewSchedulerFromConfig(cfg)}
 		if d.ShouldRunBeadsHealth() {
 			t.Error("expected false when interval is zero")
 		}
 	})
 
 	t.Run("first run returns true", func(t *testing.T) {
-		d := &Daemon{Config: Config{BeadsHealthEnabled: true, BeadsHealthInterval: time.Hour}}
+		cfg := Config{BeadsHealthEnabled: true, BeadsHealthInterval: time.Hour}
+		d := &Daemon{Config: cfg, Scheduler: NewSchedulerFromConfig(cfg)}
 		if !d.ShouldRunBeadsHealth() {
 			t.Error("expected true on first run")
 		}
 	})
 
 	t.Run("not due returns false", func(t *testing.T) {
+		cfg := Config{BeadsHealthEnabled: true, BeadsHealthInterval: time.Hour}
 		d := &Daemon{
-			Config:          Config{BeadsHealthEnabled: true, BeadsHealthInterval: time.Hour},
-			lastBeadsHealth: time.Now(),
+			Config:    cfg,
+			Scheduler: NewSchedulerFromConfig(cfg),
 		}
+		d.Scheduler.SetLastRun(TaskBeadsHealth, time.Now())
 		if d.ShouldRunBeadsHealth() {
 			t.Error("expected false when not due")
 		}
 	})
 
 	t.Run("past interval returns true", func(t *testing.T) {
+		cfg := Config{BeadsHealthEnabled: true, BeadsHealthInterval: time.Hour}
 		d := &Daemon{
-			Config:          Config{BeadsHealthEnabled: true, BeadsHealthInterval: time.Hour},
-			lastBeadsHealth: time.Now().Add(-2 * time.Hour),
+			Config:    cfg,
+			Scheduler: NewSchedulerFromConfig(cfg),
 		}
+		d.Scheduler.SetLastRun(TaskBeadsHealth, time.Now().Add(-2*time.Hour))
 		if !d.ShouldRunBeadsHealth() {
 			t.Error("expected true when past interval")
 		}
@@ -50,7 +57,8 @@ func TestShouldRunBeadsHealth(t *testing.T) {
 
 func TestRunPeriodicBeadsHealth(t *testing.T) {
 	t.Run("returns nil when not due", func(t *testing.T) {
-		d := &Daemon{Config: Config{BeadsHealthEnabled: false}}
+		cfg := Config{BeadsHealthEnabled: false}
+		d := &Daemon{Config: cfg, Scheduler: NewSchedulerFromConfig(cfg)}
 		result := d.RunPeriodicBeadsHealth()
 		if result != nil {
 			t.Error("expected nil when not due")
@@ -61,8 +69,10 @@ func TestRunPeriodicBeadsHealth(t *testing.T) {
 		collected := false
 		stored := false
 
+		cfg := Config{BeadsHealthEnabled: true, BeadsHealthInterval: time.Hour}
 		d := &Daemon{
-			Config: Config{BeadsHealthEnabled: true, BeadsHealthInterval: time.Hour},
+			Config:    cfg,
+			Scheduler: NewSchedulerFromConfig(cfg),
 			BeadsHealth: &mockBeadsHealthService{
 				collectFn: func() (*BeadsHealthResult, error) {
 					collected = true
@@ -97,14 +107,16 @@ func TestRunPeriodicBeadsHealth(t *testing.T) {
 		if result.OpenIssues != 10 {
 			t.Errorf("OpenIssues = %d, want 10", result.OpenIssues)
 		}
-		if d.lastBeadsHealth.IsZero() {
+		if d.Scheduler.LastRunTime(TaskBeadsHealth).IsZero() {
 			t.Error("lastBeadsHealth was not updated")
 		}
 	})
 
 	t.Run("handles collector error", func(t *testing.T) {
+		cfg := Config{BeadsHealthEnabled: true, BeadsHealthInterval: time.Hour}
 		d := &Daemon{
-			Config: Config{BeadsHealthEnabled: true, BeadsHealthInterval: time.Hour},
+			Config:    cfg,
+			Scheduler: NewSchedulerFromConfig(cfg),
 			BeadsHealth: &mockBeadsHealthService{
 				collectFn: func() (*BeadsHealthResult, error) {
 					return nil, errTestFailure

@@ -88,11 +88,13 @@ func TestIsWindowStale_CrossProjectWorker(t *testing.T) {
 
 func TestRunPeriodicCleanupRunsWhenDue(t *testing.T) {
 	called := 0
+	cfg := Config{
+		CleanupEnabled:  true,
+		CleanupInterval: time.Minute,
+	}
 	d := &Daemon{
-		Config: Config{
-			CleanupEnabled:  true,
-			CleanupInterval: time.Minute,
-		},
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Cleaner: &mockSessionCleaner{CleanupFunc: func(config Config) (int, string, error) {
 			called++
 			return 2, "Closed 2 stale tmux windows", nil
@@ -112,24 +114,26 @@ func TestRunPeriodicCleanupRunsWhenDue(t *testing.T) {
 	if result.Message == "" {
 		t.Fatal("CleanupResult.Message should not be empty")
 	}
-	if d.lastCleanup.IsZero() {
+	if d.Scheduler.LastRunTime(TaskCleanup).IsZero() {
 		t.Fatal("lastCleanup should be updated after successful cleanup")
 	}
 }
 
 func TestRunPeriodicCleanupSkipsWhenNotDue(t *testing.T) {
 	called := 0
+	cfg := Config{
+		CleanupEnabled:  true,
+		CleanupInterval: time.Hour,
+	}
 	d := &Daemon{
-		Config: Config{
-			CleanupEnabled:  true,
-			CleanupInterval: time.Hour,
-		},
-		lastCleanup: time.Now(),
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
 		Cleaner: &mockSessionCleaner{CleanupFunc: func(config Config) (int, string, error) {
 			called++
 			return 1, "Closed 1 stale tmux window", nil
 		}},
 	}
+	d.Scheduler.SetLastRun(TaskCleanup, time.Now())
 
 	result := d.RunPeriodicCleanup()
 	if result != nil {

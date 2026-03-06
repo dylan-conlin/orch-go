@@ -68,38 +68,9 @@ type Daemon struct {
 	// because the status update hasn't propagated yet.
 	SpawnedIssues *SpawnedIssueTracker
 
-	// lastReflect tracks when reflection was last run for periodic reflection.
-	lastReflect time.Time
-
-	// lastModelDriftReflect tracks when model drift reflection was last run.
-	lastModelDriftReflect time.Time
-
-	// lastKnowledgeHealth tracks when knowledge health was last checked.
-	lastKnowledgeHealth time.Time
-
-	// lastCleanup tracks when session cleanup was last run for periodic cleanup.
-	lastCleanup time.Time
-
-	// lastRecovery tracks when recovery was last run for periodic recovery.
-	lastRecovery time.Time
-
-	// lastOrphanDetection tracks when orphan detection was last run.
-	lastOrphanDetection time.Time
-
-	// lastPhaseTimeout tracks when phase timeout detection was last run.
-	lastPhaseTimeout time.Time
-
-	// lastQuestionDetection tracks when QUESTION phase detection was last run.
-	lastQuestionDetection time.Time
-
-	// lastAgreementCheck tracks when agreement checking was last run.
-	lastAgreementCheck time.Time
-
-	// lastBeadsHealth tracks when beads health snapshot collection was last run.
-	lastBeadsHealth time.Time
-
-	// lastFrictionAccumulation tracks when friction accumulation was last run.
-	lastFrictionAccumulation time.Time
+	// Scheduler manages timing for all periodic maintenance tasks.
+	// Replaces individual last* fields with a unified scheduler.
+	Scheduler *PeriodicScheduler
 
 	// questionNotified tracks which agents have been notified about QUESTION phase.
 	// Prevents duplicate notifications. Cleaned when agent leaves QUESTION phase.
@@ -197,6 +168,7 @@ func NewWithConfig(config Config) *Daemon {
 	}
 	d := &Daemon{
 		Config:                  config,
+		Scheduler:               NewSchedulerFromConfig(config),
 		SpawnedIssues:           spawnTracker,
 		resumeAttempts:          make(map[string]time.Time),
 		VerificationTracker:      NewVerificationTracker(config.VerificationPauseThreshold),
@@ -240,6 +212,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 	d := &Daemon{
 		Config:              config,
 		Pool:                pool,
+		Scheduler:           NewSchedulerFromConfig(config),
 		SpawnedIssues:       spawnTracker,
 		resumeAttempts:      make(map[string]time.Time),
 		VerificationTracker: NewVerificationTracker(config.VerificationPauseThreshold),

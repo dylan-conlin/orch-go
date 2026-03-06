@@ -10,14 +10,7 @@ import (
 // ShouldRunReflection returns true if periodic reflection should run.
 // This checks if reflection is enabled and enough time has elapsed since the last run.
 func (d *Daemon) ShouldRunReflection() bool {
-	if !d.Config.ReflectEnabled || d.Config.ReflectInterval <= 0 {
-		return false
-	}
-	// Run immediately if we've never run before
-	if d.lastReflect.IsZero() {
-		return true
-	}
-	return time.Since(d.lastReflect) >= d.Config.ReflectInterval
+	return d.Scheduler.IsDue(TaskReflect)
 }
 
 // RunPeriodicReflection runs the periodic reflection analysis if due.
@@ -51,7 +44,7 @@ func (d *Daemon) RunPeriodicReflection() *ReflectResult {
 	}
 
 	// Update last reflect time on success
-	d.lastReflect = time.Now()
+	d.Scheduler.MarkRun(TaskReflect)
 
 	return result
 }
@@ -59,32 +52,19 @@ func (d *Daemon) RunPeriodicReflection() *ReflectResult {
 // LastReflectTime returns when reflection was last run.
 // Returns zero time if reflection has never run.
 func (d *Daemon) LastReflectTime() time.Time {
-	return d.lastReflect
+	return d.Scheduler.LastRunTime(TaskReflect)
 }
 
 // NextReflectTime returns when the next reflection is scheduled.
 // Returns zero time if reflection is disabled.
 func (d *Daemon) NextReflectTime() time.Time {
-	if !d.Config.ReflectEnabled || d.Config.ReflectInterval <= 0 {
-		return time.Time{}
-	}
-	if d.lastReflect.IsZero() {
-		return time.Now() // Due immediately
-	}
-	return d.lastReflect.Add(d.Config.ReflectInterval)
+	return d.Scheduler.NextRunTime(TaskReflect)
 }
 
 // ShouldRunCleanup returns true if periodic session cleanup should run.
 // This checks if cleanup is enabled and enough time has elapsed since the last run.
 func (d *Daemon) ShouldRunCleanup() bool {
-	if !d.Config.CleanupEnabled || d.Config.CleanupInterval <= 0 {
-		return false
-	}
-	// Run immediately if we've never run before
-	if d.lastCleanup.IsZero() {
-		return true
-	}
-	return time.Since(d.lastCleanup) >= d.Config.CleanupInterval
+	return d.Scheduler.IsDue(TaskCleanup)
 }
 
 // CleanupResult contains the result of a cleanup operation.
@@ -115,7 +95,7 @@ func (d *Daemon) RunPeriodicCleanup() *CleanupResult {
 		}
 	}
 
-	d.lastCleanup = time.Now()
+	d.Scheduler.MarkRun(TaskCleanup)
 
 	return &CleanupResult{
 		Deleted: deleted,
@@ -126,32 +106,19 @@ func (d *Daemon) RunPeriodicCleanup() *CleanupResult {
 // LastCleanupTime returns when cleanup was last run.
 // Returns zero time if cleanup has never run.
 func (d *Daemon) LastCleanupTime() time.Time {
-	return d.lastCleanup
+	return d.Scheduler.LastRunTime(TaskCleanup)
 }
 
 // NextCleanupTime returns when the next cleanup is scheduled.
 // Returns zero time if cleanup is disabled.
 func (d *Daemon) NextCleanupTime() time.Time {
-	if !d.Config.CleanupEnabled || d.Config.CleanupInterval <= 0 {
-		return time.Time{}
-	}
-	if d.lastCleanup.IsZero() {
-		return time.Now() // Due immediately
-	}
-	return d.lastCleanup.Add(d.Config.CleanupInterval)
+	return d.Scheduler.NextRunTime(TaskCleanup)
 }
 
 // ShouldRunRecovery returns true if periodic recovery should run.
 // This checks if recovery is enabled and enough time has elapsed since the last run.
 func (d *Daemon) ShouldRunRecovery() bool {
-	if !d.Config.RecoveryEnabled || d.Config.RecoveryInterval <= 0 {
-		return false
-	}
-	// Run immediately if we've never run before
-	if d.lastRecovery.IsZero() {
-		return true
-	}
-	return time.Since(d.lastRecovery) >= d.Config.RecoveryInterval
+	return d.Scheduler.IsDue(TaskRecovery)
 }
 
 // RecoveryResult contains the result of a recovery operation.
@@ -244,7 +211,7 @@ func (d *Daemon) RunPeriodicRecovery() *RecoveryResult {
 	}
 
 	// Update last recovery time on success
-	d.lastRecovery = time.Now()
+	d.Scheduler.MarkRun(TaskRecovery)
 
 	return &RecoveryResult{
 		ResumedCount: resumed,
@@ -257,17 +224,11 @@ func (d *Daemon) RunPeriodicRecovery() *RecoveryResult {
 // LastRecoveryTime returns when recovery was last run.
 // Returns zero time if recovery has never run.
 func (d *Daemon) LastRecoveryTime() time.Time {
-	return d.lastRecovery
+	return d.Scheduler.LastRunTime(TaskRecovery)
 }
 
 // NextRecoveryTime returns when the next recovery is scheduled.
 // Returns zero time if recovery is disabled.
 func (d *Daemon) NextRecoveryTime() time.Time {
-	if !d.Config.RecoveryEnabled || d.Config.RecoveryInterval <= 0 {
-		return time.Time{}
-	}
-	if d.lastRecovery.IsZero() {
-		return time.Now() // Due immediately
-	}
-	return d.lastRecovery.Add(d.Config.RecoveryInterval)
+	return d.Scheduler.NextRunTime(TaskRecovery)
 }

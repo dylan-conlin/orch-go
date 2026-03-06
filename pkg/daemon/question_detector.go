@@ -51,13 +51,7 @@ func (r *QuestionDetectionResult) Snapshot() QuestionDetectionSnapshot {
 // Piggybacks on PhaseTimeout config — runs on the same interval since it uses
 // the same agent discovery infrastructure.
 func (d *Daemon) ShouldRunQuestionDetection() bool {
-	if !d.Config.PhaseTimeoutEnabled || d.Config.PhaseTimeoutInterval <= 0 {
-		return false
-	}
-	if d.lastQuestionDetection.IsZero() {
-		return true
-	}
-	return time.Since(d.lastQuestionDetection) >= d.Config.PhaseTimeoutInterval
+	return d.Scheduler.IsDue(TaskQuestionDetection)
 }
 
 // RunPeriodicQuestionDetection detects agents in QUESTION phase.
@@ -129,7 +123,7 @@ func (d *Daemon) RunPeriodicQuestionDetection() *QuestionDetectionResult {
 	// Clean up stale entries (agents no longer in QUESTION phase)
 	d.cleanQuestionNotified(agents)
 
-	d.lastQuestionDetection = time.Now()
+	d.Scheduler.MarkRun(TaskQuestionDetection)
 
 	msg := fmt.Sprintf("Question detection: %d total, %d new", totalQuestions, len(newQuestions))
 	return &QuestionDetectionResult{
