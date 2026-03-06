@@ -166,11 +166,25 @@ Behavioral grammars are subject to a recurring cycle (documented in revert spira
 
 7. **REOPENED:** Is emphasis language cosmetic or functional? Directional signal: emphasis > neutral at high density. Specific effect size (2/6 vs 0/3) is unreliable at N=3 and was measured under non-production conditions. Needs re-measurement.
 
+## Refinement: Three Content Types (Mar 6, 2026)
+
+The Skill Content Transfer model (`.kb/models/skill-content-transfer/`) refines this model's vocabulary. What behavioral-grammars calls "constraints" is actually three distinct content types with different transfer properties:
+
+- **Knowledge** — transfers reliably (+5 points). This model's "knowledge compliance" monotonic curve.
+- **Stance** — transfers indirectly via epistemic orientation. Confirmed at N=6: 0%→17%→83% on implicit contradictions. Not previously distinguished from knowledge in this model.
+- **Behavioral** — dilutes at 5+, U-shaped calibration curve. This model's core finding on constraint competition.
+
+The key addition: **stance is not knowledge and not behavioral.** Knowledge tells the agent what exists; stance orients how it approaches. "Evidence hierarchy" (knowledge) is different from "test before concluding" (stance). Stance produced larger discrimination on hard scenarios than knowledge sections, through a different mechanism (attention shifting, not information transfer).
+
+This resolves Open Question 5 (grammar-first authoring): the constraint taxonomy should be knowledge / stance / behavioral, not hard/soft/judgment/knowledge. Skill authoring means identifying the stance (1-3 lines), curating knowledge, and moving behavioral weight to hooks.
+
 ## Related
 
+- **Models:** `.kb/models/skill-content-transfer/` — Practical taxonomy of skill content types, confirmed by 90 trials
 - **Principles:** Redundancy is Load-Bearing, Legibility Over Compliance, Identity is Not Behavior, Infrastructure Over Instruction
 - **Investigations:** Revert spiral pattern, behavioral testing baseline, intent spiral, grammar recovery validation, behavioral compliance (Feb 24), human-agent grammar coupling (Mar 3), injection-level dilution experiment (Mar 4), fabrication detection U-curve (Mar 4)
 - **Testing:** skillc test infrastructure (orch-go-4t8e, orch-go-0w6s, orch-go-oz1j, orch-go-pkp2)
+- **Evidence:** `evidence/2026-03-05-higher-n-09-10/` — Raw stance confirmation trials
 - **Probes (in `probes/`):**
   - `2026-02-24-probe-orchestrator-skill-behavioral-compliance.md` — Identity vs action compliance gap
   - `2026-03-01-probe-constraint-dilution-threshold.md` — Dilution curve: 3-form vs constraint count

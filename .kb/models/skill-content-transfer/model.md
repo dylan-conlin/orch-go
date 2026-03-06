@@ -1,0 +1,182 @@
+# Model: Skill Content Transfer
+
+**Domain:** How Claude processes skill content — applies to ALL skills, not just orchestrator
+**Last Updated:** 2026-03-06
+**Synthesized From:** 7 investigations (Jan 18 - Mar 6, 2026), 90 trials across 3 variants
+
+---
+
+## Summary (30 seconds)
+
+Skills contain three types of content — knowledge, behavioral constraints, and stance — that transfer through fundamentally different mechanisms. Knowledge (routing tables, templates, vocabulary) produces measurable lift (+5 points). Stance (epistemic orientation like "test before concluding") produces the largest discrimination on hard scenarios (0% → 83% on implicit contradictions at N=6). Behavioral constraints (NEVER/MUST prohibitions) dilute at 5+ co-resident items and become inert at 10+. This taxonomy is universal: every skill (orchestrator, investigation, systematic-debugging, architect) has all three types interleaved, and the same transfer properties apply. The design playbook: strip behavioral weight to hooks, keep knowledge and stance in the skill document.
+
+---
+
+## Core Mechanism
+
+### Three Content Types (Universal Taxonomy)
+
+Every skill contains three types of content that transfer through fundamentally different mechanisms. This was discovered on the orchestrator skill and confirmed as universal across worker skills.
+
+| Content Type | What It Does | Transfer Mechanism | Measurability |
+|---|---|---|---|
+| **Knowledge** | Tells the agent what exists (information it wouldn't otherwise have) | Direct — agent reads and applies | Single-turn: does agent use the right vocabulary/format? |
+| **Stance** | Orients how the agent approaches problems (epistemic posture) | Indirect — shifts attention and framing | Contrastive scenarios: does orientation change on ambiguous inputs? |
+| **Behavioral** | Tells the agent what to do/not do (prohibitions, mandates) | Unreliable — dilutes at 5+, inert at 10+ | Compliance rate under competing system-prompt signals |
+
+### Evidence
+
+**Knowledge transfer confirmed (Mar 1, N=7 scenarios):**
+- Bare Claude: 17/56. With knowledge items: 22/56. Lift: +5 points.
+- Concentrated in: routing tables (+4/8), framing vocabulary (+2/8), intent clarification (+2/8).
+
+**Stance transfer confirmed (Mar 5-6, N=6, 36 trials):**
+- Scenario 09 (implicit contradiction): bare 0/6, without-stance 1/6, with-stance 5/6.
+- 0% → 17% → 83%. Stance items don't teach agents what contradictions look like — they orient agents to *look for meaning*.
+- Key design insight: discriminating scenarios require implicit signals (incompatible assumptions, not opposite conclusions). Explicit signals (data tables, opposite findings) hit ceiling on Sonnet.
+
+**Behavioral constraint dilution confirmed (Mar 1, N=7 scenarios):**
+- Delegation prohibition: 1/8 (= bare). Anti-sycophancy: 3/8 (= bare). Reconnection framing: 0-1/8 (= bare).
+- v3 skill had 50+ constraints — scored at bare parity on 5 of 7 scenarios.
+
+### Three Content Types Across Skills
+
+| Skill | Knowledge | Stance | Behavioral |
+|---|---|---|---|
+| **Orchestrator** | Routing tables, command reference, skill selection tree | "Synthesis is comprehension, not reporting" | ≤4 norms (delegation, filter, act-by-default, answer-asked) |
+| **Investigation** | D.E.K.N. template, prior-work table, evidence hierarchy | "Answer a question by testing, not by reasoning" | Self-review checklist (10 items), prior-work gate, leave-it-better |
+| **Systematic-debugging** | Four-phase names, pattern table, technique references | "Understand before fixing" | Iron Law, phase gates |
+| **Architect** | Fork documentation format, decision navigation, principles | "Decide what should exist" | Mode detection, escalation rules |
+| **Worker-base** | Phase reporting format, bd comment syntax, authority table | (none — foundation layer) | Hard limits, completion protocol, discovered work mandate |
+
+**Implication:** Worker skills likely have the same structural problem the orchestrator had — behavioral weight crowding out knowledge and stance. Investigation has 6+ behavioral mandates (dilution territory). The 82% reduction that worked for the orchestrator (2,368 → 422 lines) is the playbook for all skills.
+
+### Implementation: Two Delivery Channels
+
+The three content types map to two delivery channels:
+
+1. **Skill document** — Knowledge + Stance (what transfers reliably)
+2. **Hook infrastructure** — Behavioral enforcement (what requires deterministic gates)
+
+Behavioral content in skill documents is probabilistic suggestion. Only hooks provide deterministic enforcement. Dual authority (both hook AND skill text covering same behavior) creates ambiguity and degrades trust in the skill overall.
+
+### Critical Invariants
+
+1. **Skill length ≤ 500 lines / 5,000 tokens** — Beyond this, constraint dilution makes additional content inert
+2. **≤ 4 behavioral norms** — Research shows dilution begins at 5 co-resident constraints
+3. **Knowledge framing, not prohibition** — "Here's how routing works" beats "NEVER route incorrectly"
+4. **Hook-enforced behaviors must NOT appear in skill text** — Dual authority creates confusion about what's enforced vs advisory
+5. **Stance is the highest-leverage content type** — One line of epistemic orientation ("test before concluding") can produce larger discrimination than entire knowledge sections on hard scenarios
+
+---
+
+## Why This Fails
+
+### Failure Mode 1: Constraint Dilution
+At 10+ MUST/NEVER statements, agents treat ALL constraints as advisory. The 2,368-line v3 skill had 50+ constraints — effectively equivalent to bare Claude on 5 of 7 test scenarios.
+
+### Failure Mode 2: Instruction Hierarchy Inversion
+Claude Code's system prompt has ~500 words promoting Task tool; a skill's ~30 words constraining it face a 17:1 signal disadvantage. System prompt > user prompt by design. Prompt-level constraints cannot reliably override system-level defaults.
+
+### Failure Mode 3: Dual Authority
+When both a hook AND skill text prohibit the same action, agents receive conflicting signal types (infrastructure block vs prose guidance). This creates ambiguity about enforcement level and degrades trust in the skill overall.
+
+### Failure Mode 4: Mechanical Staleness
+The skill drifts from infrastructure quickly. 72 commits in 3 days introduced 10 changes, 6 requiring skill edits. Without a sync mechanism, the skill describes a system that no longer exists.
+
+---
+
+## Constraints
+
+### Why can't we enforce behavior through skill text alone?
+
+**Constraint:** Instruction hierarchy (system > user) means user-level skill content is structurally subordinate to system prompt defaults.
+
+**Implication:** Behavioral constraints in skills are probabilistic suggestions, not deterministic rules. Only infrastructure hooks provide deterministic enforcement.
+
+**This enables:** Dramatically simpler skill documents focused on knowledge transfer
+**This constrains:** All behavioral enforcement must be implemented as hooks, not prose
+
+### Why ≤ 4 behavioral norms?
+
+**Constraint:** Empirically validated dilution threshold. At 5+ co-resident behavioral constraints, compliance drops toward bare baseline.
+
+**Implication:** Every behavioral norm competes with every other. Adding a 5th doesn't add — it degrades the existing 4.
+
+**This enables:** Ruthless prioritization of which behaviors matter most
+**This constrains:** Cannot add "just one more" constraint without removing one
+
+### Why must behavioral testing use pattern-match scoring, not LLM-as-judge?
+
+**Constraint:** LLM-as-judge creates a closed evaluation loop — same model family evaluating same model family. Behavioral proxies (what the agent actually does) are more honest than self-assessment.
+
+**Implication:** Test scenarios must define observable action patterns (contains/doesn't-contain), not qualitative rubrics.
+
+**This enables:** Reproducible measurement of skill impact across versions
+**This constrains:** Some subtle behaviors (tone, framing quality) are harder to test
+
+---
+
+## Evolution
+
+**2026-01-18:** Skill is evolvable — added frustration trigger protocol as mode-shift gate. Skill operates as monolith (identity + constraints + knowledge all interleaved).
+
+**2026-02-24:** Discovered structural problem. Identity compliance is additive (layers on defaults), but action constraints are subtractive (fight defaults). The skill was trying to do both, succeeding at identity, failing at constraints. Recommended two-layer fix: prompt restructuring + infrastructure enforcement.
+
+**2026-02-28:** Intent spiral case study revealed skill's routing table is its most valuable section — caught ambiguous "evaluate Playwright CLI vs MCP" intent that bare Claude would route incorrectly.
+
+**2026-03-01:** Behavioral testing infrastructure built. Measured: v3 skill scores 22/56 vs bare 17/56. 5-point lift concentrated in knowledge transfer (routing, vocabulary, framing). 5 of 7 scenarios at bare parity = dead-weight constraint text.
+
+**2026-03-04:** Simplified v4 deployed: 2,368→422 lines (82% reduction). Removed all hook-enforced constraint text. Kept ≤4 behavioral norms as knowledge framing. Behavioral gate pending.
+
+**2026-03-05:** 72-commit infrastructure delta created 6 mechanical mismatches. Skill drifts faster than anticipated — sync mechanism needed.
+
+**2026-03-06:** Higher-N trials (N=6, 36 trials) decisively confirmed stance as a third content type distinct from knowledge. Scenario 09: bare 0/6, without-stance 1/6, with-stance 5/6. Model expanded from orchestrator-specific to universal taxonomy — the knowledge/behavioral/stance decomposition applies to all skills. Worker skill analysis shows investigation, systematic-debugging, and architect all have the same structural problem the orchestrator had: behavioral weight crowding out knowledge and stance.
+
+---
+
+## Open Questions
+
+1. **Do worker skill stances actually transfer?** The orchestrator's stance items are confirmed. Investigation ("test before concluding"), systematic-debugging ("understand before fixing"), and architect ("decide what should exist") are untested. Contrastive scenarios can test these with existing infrastructure.
+
+2. **What's the right stance density?** The orchestrator has ~3 stance items. Is there a saturation point for stance like there is for behavioral constraints (5+)?
+
+3. **Does stance interact with knowledge?** The N=6 data shows knowledge alone (without-stance) scores 17% on implicit contradictions vs 83% with stance. Does stance amplify knowledge, or are they independent?
+
+---
+
+## Actionable Implications
+
+### For skill authors
+- **Identify the stance** — every skill should have 1-3 lines of epistemic orientation. If you can't name it, the skill doesn't know what it's for.
+- **Audit behavioral weight** — count MUST/NEVER/checklist items. If >4, move excess to hooks.
+- **Test stance transfer** — write one contrastive scenario where stance and non-stance produce observably different responses.
+
+### For the skill system
+- **Worker skill simplification** — apply the orchestrator playbook (strip behavioral → hooks, keep knowledge + stance) to investigation (266 lines, 6+ behavioral mandates), systematic-debugging (752 lines), architect (673 lines), codebase-audit (1,490 lines).
+- **Measurement infrastructure** — extend skillc test scenarios to worker skills. Single-turn stance scenarios are portable; multi-turn procedure testing remains an open design problem.
+
+---
+
+## References
+
+**Investigations:**
+- `.kb/investigations/2026-01-18-inv-update-orchestrator-skill-add-frustration.md` - Added frustration trigger protocol
+- `.kb/investigations/2026-02-24-design-orchestrator-skill-behavioral-compliance.md` - Discovered instruction hierarchy problem, 17:1 signal disadvantage
+- `.kb/investigations/2026-03-01-design-infrastructure-systematic-orchestrator-skill.md` - Built behavioral testing infrastructure, 3-layer measurement
+- `.kb/investigations/2026-03-04-design-simplify-orchestrator-skill.md` - Validated knowledge-only approach, deployed v4
+- `.kb/investigations/2026-03-05-inv-design-orchestrator-skill-update-incorporating.md` - 72-commit delta sync, 6 surgical edits
+
+**Evidence:**
+- `evidence/2026-03-05-higher-n-09-10/` - Raw trial data: 36 trials, 3 variants × 2 scenarios × 6 runs
+- `.kb/plans/2026-03-05-comprehension-measurement-program.md` - Research program design
+
+**Decisions informed by this model:**
+- `.kb/decisions/2026-02-24-design-orchestrator-skill-behavioral-compliance.md` - Two-layer enforcement architecture
+
+**Related models:**
+- `.kb/models/architectural-enforcement/` - How hook infrastructure works
+- `.kb/models/coaching-plugin/` - Agent behavioral coaching layer
+
+**Threads:**
+- `throughput-completions-vs-comprehension-completions` - Where the stance measurement program originated
