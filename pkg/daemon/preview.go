@@ -167,7 +167,7 @@ func (d *Daemon) checkRejectionReasonWithEpicChildren(issue Issue, epicChildIDs 
 	// Note: Epics with triage:ready are not spawnable themselves, but their children are.
 	// The message is informative to explain why epics are rejected.
 	if !IsSpawnableType(issue.IssueType) {
-		if issue.IssueType == "epic" && issue.HasLabel(d.Config.Label) {
+		if issue.IssueType == "epic" && d.issueMatchesLabel(issue) {
 			return fmt.Sprintf("type 'epic' not spawnable (children will be processed instead)")
 		}
 		return fmt.Sprintf("type '%s' not spawnable (must be bug/feature/task/investigation)", issue.IssueType)
@@ -184,8 +184,9 @@ func (d *Daemon) checkRejectionReasonWithEpicChildren(issue Issue, epicChildIDs 
 	}
 
 	// Check for missing required label
+	// Recognizes equivalent labels (e.g., triage:approved ≈ triage:ready).
 	// Epic children are exempt from this check - they inherit triage status from parent
-	if d.Config.Label != "" && !issue.HasLabel(d.Config.Label) {
+	if !d.issueMatchesLabel(issue) {
 		if epicChildIDs == nil || !epicChildIDs[issue.ID] {
 			return fmt.Sprintf("missing label '%s'", d.Config.Label)
 		}

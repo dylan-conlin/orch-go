@@ -27,6 +27,27 @@ func (i *Issue) HasLabel(label string) bool {
 	return false
 }
 
+// HasAnyLabel checks if an issue has any of the given labels.
+func (i *Issue) HasAnyLabel(labels ...string) bool {
+	for _, label := range labels {
+		if i.HasLabel(label) {
+			return true
+		}
+	}
+	return false
+}
+
+// SpawnableLabelsFor returns the set of labels that should be treated as
+// equivalent for daemon spawning purposes. For example, "triage:approved"
+// is treated as equivalent to "triage:ready" — both indicate human-reviewed
+// issues that the daemon should spawn.
+func SpawnableLabelsFor(label string) []string {
+	if strings.EqualFold(label, "triage:ready") {
+		return []string{"triage:ready", "triage:approved"}
+	}
+	return []string{label}
+}
+
 // projectFromIssueID extracts the project prefix from a beads issue ID.
 // Issue IDs follow the format "prefix-hash" (e.g., "orch-go-1169", "pw-5678").
 // Returns the text before the last hyphen segment.

@@ -315,6 +315,63 @@ func TestDaemon_Preview_RateLimited(t *testing.T) {
 	}
 }
 
+func TestPreview_TriageApprovedIsSpawnable(t *testing.T) {
+	d := &Daemon{
+		Config: Config{Label: "triage:ready"},
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "proj-1", Title: "Approved item", IssueType: "feature", Status: "open", Labels: []string{"triage:approved"}},
+				}, nil
+			},
+		},
+	}
+
+	result, err := d.Preview()
+	if err != nil {
+		t.Fatalf("Preview() unexpected error: %v", err)
+	}
+
+	if result.Issue == nil {
+		t.Fatal("Preview() expected triage:approved issue to be spawnable, got nil")
+	}
+	if result.Issue.ID != "proj-1" {
+		t.Errorf("Preview() issue ID = %q, want 'proj-1'", result.Issue.ID)
+	}
+}
+
+func TestPreview_EpicWithTriageApprovedShowsHelpfulMessage(t *testing.T) {
+	d := &Daemon{
+		Config: Config{Label: "triage:ready"},
+		Issues: &mockIssueQuerier{
+			ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "proj-epic", Title: "Epic", IssueType: "epic", Status: "open", Labels: []string{"triage:approved"}},
+				}, nil
+			},
+			ListEpicChildrenFunc: func(epicID string) ([]Issue, error) {
+				return []Issue{}, nil
+			},
+		},
+	}
+
+	result, err := d.Preview()
+	if err != nil {
+		t.Fatalf("Preview() unexpected error: %v", err)
+	}
+
+	if result.Issue != nil {
+		t.Errorf("Preview() expected nil issue (epic not spawnable), got %v", result.Issue)
+	}
+
+	if len(result.RejectedIssues) != 1 {
+		t.Fatalf("Preview() rejected count = %d, want 1", len(result.RejectedIssues))
+	}
+	if !strings.Contains(result.RejectedIssues[0].Reason, "children will be processed") {
+		t.Errorf("Preview() rejection reason = %q, want 'children will be processed'", result.RejectedIssues[0].Reason)
+	}
+}
+
 func TestPreview_EpicWithTriageReadyShowsHelpfulMessage(t *testing.T) {
 	d := &Daemon{
 		Config: Config{Label: "triage:ready"},

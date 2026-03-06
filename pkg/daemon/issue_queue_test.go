@@ -462,3 +462,107 @@ func TestNextIssue_NoLabelFilter(t *testing.T) {
 		t.Errorf("NextIssue() = %q, want 'proj-1' (no label filter)", issue.ID)
 	}
 }
+
+func TestNextIssue_TriageApprovedEquivalent(t *testing.T) {
+	// triage:approved should be treated as equivalent to triage:ready
+	config := Config{Label: "triage:ready"}
+	d := &Daemon{
+		Config: config,
+		Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "No label", Priority: 0, IssueType: "feature", Labels: []string{}},
+				{ID: "proj-2", Title: "Approved", Priority: 1, IssueType: "feature", Labels: []string{"triage:approved"}},
+			}, nil
+		}},
+	}
+
+	issue, err := d.NextIssue()
+	if err != nil {
+		t.Fatalf("NextIssue() unexpected error: %v", err)
+	}
+	if issue == nil {
+		t.Fatal("NextIssue() expected issue with triage:approved to be spawnable, got nil")
+	}
+	if issue.ID != "proj-2" {
+		t.Errorf("NextIssue() = %q, want 'proj-2' (triage:approved should be equivalent to triage:ready)", issue.ID)
+	}
+}
+
+func TestHasAnyLabel(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels []string
+		query  []string
+		want   bool
+	}{
+		{"matches first", []string{"triage:ready"}, []string{"triage:ready", "triage:approved"}, true},
+		{"matches second", []string{"triage:approved"}, []string{"triage:ready", "triage:approved"}, true},
+		{"no match", []string{"P1"}, []string{"triage:ready", "triage:approved"}, false},
+		{"empty labels", []string{}, []string{"triage:ready"}, false},
+		{"nil labels", nil, []string{"triage:ready"}, false},
+		{"empty query", []string{"triage:ready"}, []string{}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issue := &Issue{Labels: tt.labels}
+			got := issue.HasAnyLabel(tt.query...)
+			if got != tt.want {
+				t.Errorf("HasAnyLabel(%v) = %v, want %v", tt.query, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSpawnableLabelsFor(t *testing.T) {
+	tests := []struct {
+		label string
+		want  []string
+	}{
+		{"triage:ready", []string{"triage:ready", "triage:approved"}},
+		{"TRIAGE:READY", []string{"triage:ready", "triage:approved"}},
+		{"custom:label", []string{"custom:label"}},
+		{"", []string{""}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.label, func(t *testing.T) {
+			got := SpawnableLabelsFor(tt.label)
+			if len(got) != len(tt.want) {
+				t.Fatalf("SpawnableLabelsFor(%q) returned %d labels, want %d", tt.label, len(got), len(tt.want))
+			}
+			for i, g := range got {
+				if g != tt.want[i] {
+					t.Errorf("SpawnableLabelsFor(%q)[%d] = %q, want %q", tt.label, i, g, tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestIssueMatchesLabel(t *testing.T) {
+	tests := []struct {
+		name       string
+		label      string
+		issueLabel []string
+		want       bool
+	}{
+		{"exact match triage:ready", "triage:ready", []string{"triage:ready"}, true},
+		{"equivalent triage:approved", "triage:ready", []string{"triage:approved"}, true},
+		{"no match", "triage:ready", []string{"P1"}, false},
+		{"empty config label matches all", "", []string{"anything"}, true},
+		{"custom label exact match", "custom:label", []string{"custom:label"}, true},
+		{"custom label no equivalent", "custom:label", []string{"triage:approved"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &Daemon{Config: Config{Label: tt.label}}
+			issue := Issue{Labels: tt.issueLabel}
+			got := d.issueMatchesLabel(issue)
+			if got != tt.want {
+				t.Errorf("issueMatchesLabel(label=%q, issue=%v) = %v, want %v", tt.label, tt.issueLabel, got, tt.want)
+			}
+		})
+	}
+}

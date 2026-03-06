@@ -276,6 +276,16 @@ func (d *Daemon) resolveIssueQuerier() IssueQuerier {
 	return &defaultIssueQuerier{registry: d.ProjectRegistry}
 }
 
+// issueMatchesLabel checks if an issue matches the daemon's configured label filter.
+// Recognizes equivalent labels (e.g., triage:approved is equivalent to triage:ready)
+// so that human-approved items are also spawnable by the daemon.
+func (d *Daemon) issueMatchesLabel(issue Issue) bool {
+	if d.Config.Label == "" {
+		return true
+	}
+	return issue.HasAnyLabel(SpawnableLabelsFor(d.Config.Label)...)
+}
+
 // NextIssue returns the next spawnable issue from the queue.
 // Returns nil if no spawnable issues are available.
 // Issues are sorted by priority (0 = highest priority).
@@ -368,9 +378,10 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 			continue
 		}
 		// Skip issues without required label (if filter is set)
+		// Recognizes equivalent labels (e.g., triage:approved ≈ triage:ready).
 		// BUT: Children of triage:ready epics are exempt from this check
 		// (they inherit triage-ready status from their parent)
-		if d.Config.Label != "" && !issue.HasLabel(d.Config.Label) {
+		if !d.issueMatchesLabel(issue) {
 			// Check if this issue is a child of a triage:ready epic
 			if _, isEpicChild := epicChildIDs[issue.ID]; !isEpicChild {
 				if d.Config.Verbose {
@@ -425,7 +436,7 @@ func (d *Daemon) expandTriageReadyEpics(issues []Issue) ([]Issue, map[string]boo
 	existingIDs := make(map[string]bool)
 	for _, issue := range issues {
 		existingIDs[issue.ID] = true
-		if issue.IssueType == "epic" && issue.HasLabel(d.Config.Label) {
+		if issue.IssueType == "epic" && d.issueMatchesLabel(issue) {
 			epicsToExpand = append(epicsToExpand, issue.ID)
 			if d.Config.Verbose {
 				fmt.Printf("  DEBUG: Found triage:ready epic %s, will include children\n", issue.ID)
