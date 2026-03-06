@@ -97,6 +97,7 @@ Track progress via `bd comments add <beads-id> "Phase: <Phase> - <details>"`.
 - [ ] Enumerated ALL requirements
 - [ ] Reported scope via `bd comment`
 - [ ] Flagged any uncertainty
+- [ ] **Feature gate status declared** (if adding user-facing UI): Is this feature gated? Default: yes. Report in scope comment: `Feature gate: gated|ungated|N/A`
 
 **Once Step 0 complete → Proceed to first configured phase.**
 
