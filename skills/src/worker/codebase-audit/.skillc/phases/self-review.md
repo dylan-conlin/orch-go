@@ -2,6 +2,8 @@
 
 Before completing the audit, verify quality of findings and recommendations.
 
+> **Automated checks** (debug statements, commit format, placeholder data, orphaned files) run at `orch complete` time — no manual check needed.
+
 ---
 
 ## Audit-Specific Checks
@@ -39,12 +41,7 @@ Before completing the audit, verify quality of findings and recommendations.
 - [ ] **Reproduction commands** - Someone can re-run the audit
 - [ ] **NOT DONE claims verified** - For each 'NOT DONE' or 'NOT IMPLEMENTED' finding, confirmed with file/code search (not just artifact reading)
 
-### 4. Commit Hygiene
-
-- [ ] Conventional format (`audit:` or `chore:`)
-- [ ] Investigation file committed
-
-### 5. Discovered Work Check
+### 4. Discovered Work Check
 
 *Audits typically discover actionable work. Track it in beads so it doesn't get lost.*
 

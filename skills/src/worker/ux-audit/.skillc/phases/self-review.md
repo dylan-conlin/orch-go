@@ -2,6 +2,8 @@
 
 Before completing the audit, verify quality of findings and documentation.
 
+> **Automated checks** (debug statements, commit format, placeholder data, orphaned files) run at `orch complete` time — no manual check needed.
+
 ---
 
 ## Audit-Specific Checks
@@ -46,13 +48,7 @@ Before completing the audit, verify quality of findings and documentation.
 - [ ] **Comparison section** — Prior audit comparison OR "First audit of this page"
 - [ ] **Reproducibility section** — Auth method and re-audit schedule documented
 
-### 5. Commit Hygiene
-
-- [ ] Conventional format: `audit: UX audit — {page name} ({beads-id})`
-- [ ] Investigation file committed
-- [ ] Screenshots committed (or noted as excluded per policy)
-
-### 6. Discovered Work Check
+### 5. Discovered Work Check
 
 *UX audits typically discover actionable work. Track it in beads.*
 

@@ -367,7 +367,7 @@ If ANY files returned → Visual verification is REQUIRED:
 
 ## Self-Review Phase (REQUIRED)
 
-**Purpose:** Quality gate before completion.
+**Purpose:** Quality gate before completion. Automated checks (debug statements, commit format, placeholder data, orphaned files) run at `orch complete` time — focus on judgment-based checks here.
 
 **Perform these checks before marking complete:**
 
@@ -376,113 +376,38 @@ If ANY files returned → Visual verification is REQUIRED:
 - [ ] Documented actual result (not an estimate) via `bd comment`
 - [ ] If testing different mode/flag than original, explicitly justified why
 
-**⚠️ Scope Redefinition Warning:** Agents can claim "fix complete" by testing a different scenario (e.g., `--json` flag when issue showed bare command). The fix is only verified when the original failing scenario passes.
+**⚠️ Scope Redefinition Warning:** Agents can claim "fix complete" by testing a different scenario. The fix is only verified when the original failing scenario passes.
 
 ### Anti-Pattern Detection
 - [ ] No god objects (files >300 lines or multiple concerns)
-- [ ] No tight coupling (use dependency injection)
-- [ ] No magic values (use named constants)
-- [ ] No deep nesting (>3 levels → extract to helpers)
-- [ ] No incomplete work (TODOs, placeholders)
+- [ ] No tight coupling, magic values, deep nesting (>3 levels), incomplete work
 
 ### Security Review
-- [ ] No hardcoded secrets
-- [ ] No injection vulnerabilities (SQL, XSS, command, path traversal)
-
-### Commit Hygiene
-- [ ] Conventional format: `type: description`
-- [ ] Atomic commits (one logical change each)
-- [ ] No WIP commits
+- [ ] No hardcoded secrets, no injection vulnerabilities (SQL, XSS, command, path traversal)
 
 ### Test Coverage
-- [ ] Happy path tested
-- [ ] Edge cases covered
-- [ ] Error paths tested
-
-### Documentation
-- [ ] Public APIs documented
-- [ ] No commented-out code or debug statements
+- [ ] Happy path, edge cases, and error paths tested
 
 ### Deliverables
-- [ ] All required deliverables exist and complete
-- [ ] Deliverables reported via `bd comment`
+- [ ] All required deliverables exist, complete, and reported via `bd comment`
 
 ### Integration Wiring (CRITICAL)
-- [ ] New modules imported somewhere
-- [ ] New functions called somewhere
-- [ ] New routes registered
-- [ ] New components rendered
-- [ ] No orphaned code
-
-### Demo Data Ban (CRITICAL)
-- [ ] No fake identities in production code
-- [ ] No placeholder domains (use env vars)
-- [ ] No lorem ipsum or magic numbers as data
+- [ ] New modules imported, functions called, routes registered, components rendered
+- [ ] No orphaned code (new file with 0 imports = red flag)
 
 ### Accessibility (if UI changed)
-- [ ] Semantic HTML (buttons for actions, links for navigation, headings in order)
-- [ ] Interactive elements keyboard-accessible
-- [ ] Form inputs have labels, images have alt text
-- [ ] Color contrast sufficient (4.5:1 text, 3:1 UI components)
+- [ ] Semantic HTML, keyboard-accessible, form labels, alt text, color contrast
 
-### Performance Impact
-- [ ] No N+1 queries, no unbounded loops on user input
-- [ ] New routes/components lazy-loaded where appropriate
-- [ ] No large dependencies added without justification
-
-### Error Resilience (if UI/API changed)
-- [ ] API failures show helpful error states (not raw stack traces)
-- [ ] Components handle missing/null data without crashing
-- [ ] Network-dependent features degrade gracefully
+### Performance / Error Resilience (if applicable)
+- [ ] No N+1 queries, lazy loading where appropriate
+- [ ] API failures show helpful error states, components handle null data
 
 ### Scope Verification (For refactoring/migration)
-- [ ] Ran `rg "old_pattern"` - should return 0
-- [ ] Ran `rg "new_pattern"` - should match expected count
+- [ ] `rg "old_pattern"` returns 0; `rg "new_pattern"` matches expected count
 
 ### Discovered Work
-- [ ] Reviewed for discoveries (bugs, tech debt, enhancement ideas, strategic questions)
-- [ ] Created beads issues with `triage:review` label (default - lets orchestrator review before daemon spawns)
-      - Known cause/task: `--type task` or `--type bug`
-      - Unknown premise/strategic unknown: `--type question`
-
-### Original Symptom Validation (For Bug Fixes)
-
-⚠️ **This gate is MANDATORY for bug fixes.** Skip only for pure features/refactoring.
-
-**Purpose:** Prevent "scope redefinition" - fixing a different problem than the original symptom.
-
-**Before marking complete:**
-1. **Re-run the original failing command** from the issue
-   - Not a similar command - the EXACT command (same flags, same mode)
-   - Example: If issue shows `time orch status # 1:25.67`, run `time orch status` (not `time orch status --json`)
-2. **Document the actual result** in a beads comment:
-   ```bash
-   bd comments add <beads-id> "Original symptom validation: [command] → [result]"
-   ```
-3. **Compare against original evidence** - is the symptom resolved?
-
-**⚠️ Scope Redefinition Warning:**
-If your fix validates against a DIFFERENT command/mode than the original issue:
-- Example: Original issue shows text mode slow, you're testing JSON mode
-- Example: Original issue shows `--verbose` flag, you're testing without it
-
-This is a RED FLAG. Either:
-- Re-test with the original command and document result
-- OR explicitly justify why the different command is a valid proxy (with beads comment)
-
-**Checklist:**
-- [ ] Re-ran exact original command from issue
-- [ ] Documented actual timing/behavior via `bd comment`
-- [ ] Result matches expected fix (not an estimate like "~10s")
-- [ ] If testing different mode/flags: justified why via `bd comment`
-
-**If issues found:** Fix immediately, commit, re-verify.
-
-**If validation skipped:** Document why in completion comment (e.g., "Original symptom validation: N/A - pure refactoring, no bug fix")
-
-**Reference:** `.kb/investigations/2025-12-29-inv-root-cause-analysis-agent-orch.md` - Root cause analysis showing why this gate matters.
-
-**If issues found:** Fix immediately, commit, re-verify.
+- [ ] Reviewed for discoveries, created beads issues with `triage:review` (or `triage:ready`)
+- [ ] Or noted "No discovered work" in completion comment
 
 **When passed:** `bd comments add <beads-id> "Self-review passed - ready for completion"`
 

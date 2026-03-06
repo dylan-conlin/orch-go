@@ -18,7 +18,7 @@ func TestGatesForLevel_V0(t *testing.T) {
 
 func TestGatesForLevel_V1(t *testing.T) {
 	gates := GatesForLevel(spawn.VerifyV1)
-	// V1 (Artifacts): V0 + Handoff Content, Skill Output, Phase Gates, Constraint, Decision Patch Limit, Architectural Choices
+	// V1 (Artifacts): V0 + Handoff Content, Skill Output, Phase Gates, Constraint, Decision Patch Limit, Architectural Choices, Self-Review
 	expected := map[string]bool{
 		GatePhaseComplete:        true,
 		GateHandoffContent:       true,
@@ -27,6 +27,7 @@ func TestGatesForLevel_V1(t *testing.T) {
 		GateConstraint:           true,
 		GateDecisionPatchLimit:   true,
 		GateArchitecturalChoices: true,
+		GateSelfReview:           true,
 	}
 	assertGateSet(t, "V1", gates, expected)
 }
@@ -35,19 +36,20 @@ func TestGatesForLevel_V2(t *testing.T) {
 	gates := GatesForLevel(spawn.VerifyV2)
 	// V2 (Evidence): V1 + Test Evidence, Git Diff, Build, Vet, Accretion
 	expected := map[string]bool{
-		GatePhaseComplete:       true,
-		GateSynthesis:           true,
-		GateHandoffContent:      true,
-		GateSkillOutput:         true,
-		GatePhaseGate:           true,
-		GateConstraint:          true,
-		GateDecisionPatchLimit:  true,
+		GatePhaseComplete:        true,
+		GateSynthesis:            true,
+		GateHandoffContent:       true,
+		GateSkillOutput:          true,
+		GatePhaseGate:            true,
+		GateConstraint:           true,
+		GateDecisionPatchLimit:   true,
 		GateArchitecturalChoices: true,
-		GateTestEvidence:        true,
-		GateGitDiff:             true,
-		GateBuild:               true,
-		GateVet:                 true,
-		GateAccretion:           true,
+		GateSelfReview:           true,
+		GateTestEvidence:         true,
+		GateGitDiff:              true,
+		GateBuild:                true,
+		GateVet:                  true,
+		GateAccretion:            true,
 	}
 	assertGateSet(t, "V2", gates, expected)
 }
@@ -56,21 +58,22 @@ func TestGatesForLevel_V3(t *testing.T) {
 	gates := GatesForLevel(spawn.VerifyV3)
 	// V3 (Behavioral): V2 + Visual Verification, Explain-Back
 	expected := map[string]bool{
-		GatePhaseComplete:       true,
-		GateSynthesis:           true,
-		GateHandoffContent:      true,
-		GateSkillOutput:         true,
-		GatePhaseGate:           true,
-		GateConstraint:          true,
-		GateDecisionPatchLimit:  true,
+		GatePhaseComplete:        true,
+		GateSynthesis:            true,
+		GateHandoffContent:       true,
+		GateSkillOutput:          true,
+		GatePhaseGate:            true,
+		GateConstraint:           true,
+		GateDecisionPatchLimit:   true,
 		GateArchitecturalChoices: true,
-		GateTestEvidence:        true,
-		GateGitDiff:             true,
-		GateBuild:               true,
-		GateVet:                 true,
-		GateAccretion:           true,
-		GateVisualVerify:        true,
-		GateExplainBack:         true,
+		GateSelfReview:           true,
+		GateTestEvidence:         true,
+		GateGitDiff:              true,
+		GateBuild:                true,
+		GateVet:                  true,
+		GateAccretion:            true,
+		GateVisualVerify:         true,
+		GateExplainBack:          true,
 	}
 	assertGateSet(t, "V3", gates, expected)
 }
@@ -143,6 +146,7 @@ func TestShouldRunGate(t *testing.T) {
 		{spawn.VerifyV1, GatePhaseComplete, true},
 		{spawn.VerifyV1, GateSynthesis, false},
 		{spawn.VerifyV1, GateConstraint, true},
+		{spawn.VerifyV1, GateSelfReview, true},
 		{spawn.VerifyV1, GateTestEvidence, false},
 		{spawn.VerifyV1, GateBuild, false},
 		{spawn.VerifyV1, GateVisualVerify, false},

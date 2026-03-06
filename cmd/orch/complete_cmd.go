@@ -44,6 +44,7 @@ var (
 	completeSkipExplainBack    bool
 	completeSkipAccretion           bool
 	completeSkipArchitecturalChoices bool
+	completeSkipSelfReview          bool
 	completeSkipReason              string // Required for all --skip-* flags (min 10 chars)
 
 	// Explain-back flag: orchestrator provides explanation text
@@ -180,6 +181,7 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipExplainBack, "skip-explain-back", false, "Skip explain-back verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipAccretion, "skip-accretion", false, "Skip accretion (file size growth) verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipArchitecturalChoices, "skip-architectural-choices", false, "Skip architectural choices verification gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipSelfReview, "skip-self-review", false, "Skip automated self-review gate (requires --skip-reason)")
 	completeCmd.Flags().StringVar(&completeSkipReason, "skip-reason", "", "Reason for skip (required for all --skip-* flags, min 10 chars)")
 
 	// Explain-back flag
@@ -209,6 +211,7 @@ func getSkipConfig() verify.SkipConfig {
 		ExplainBack:          completeSkipExplainBack,
 		Accretion:            completeSkipAccretion,
 		ArchitecturalChoices: completeSkipArchitecturalChoices,
+		SelfReview:           completeSkipSelfReview,
 		Reason:               completeSkipReason,
 	}
 }

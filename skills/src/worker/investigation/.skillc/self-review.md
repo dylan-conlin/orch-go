@@ -1,6 +1,8 @@
 ## Self-Review (Mandatory)
 
-Before completing, verify quality for the mode you used:
+Before completing, verify quality for the mode you used.
+
+> **Automated checks** (debug statements, commit format, placeholder data, orphaned files) run at `orch complete` time — no manual check needed.
 
 ### Probe Mode Checklist
 
@@ -43,11 +45,8 @@ Before completing, verify quality for the mode you used:
 
 If you found bugs, tech debt, or enhancement ideas during investigation:
 
-- Create beads issues: `bd create "description" --type bug|task|feature`
-- Apply label: `bd label <id> triage:ready` or `triage:review`
+- Create beads issues: `bd create "description" --type bug|task|feature -l triage:review`
 
 **If no discoveries:** Note "No discovered work items" in completion comment.
-
-**Reference:** See `~/.claude/skills/worker/investigation/reference/self-review-guide.md` for scope verification examples and discovered work procedures.
 
 **Only proceed to commit after self-review passes.**

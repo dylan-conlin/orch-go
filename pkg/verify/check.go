@@ -28,6 +28,7 @@ const (
 	GateVet                = "vet"                  // Go vet failed
 	GateDecisionPatchLimit = "decision_patch_limit" // Decision patch limit exceeded
 	GateExplainBack        = "explain_back"         // Human explanation of what was built required
+	GateSelfReview         = "self_review"          // Automated self-review checks (debug stmts, placeholders, etc.)
 )
 
 // VerificationResult represents the result of a completion verification.
@@ -396,6 +397,19 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 			result.Passed = false
 			result.Errors = append(result.Errors, archChoicesResult.Errors...)
 			result.GatesFailed = append(result.GatesFailed, GateArchitecturalChoices)
+		}
+	}
+
+	// Self-review gate (V1+)
+	// Automated checks extracted from skill self-review phases:
+	// debug statements, commit format, placeholder data, orphaned files
+	if !isOrch && ShouldRunGate(verifyLevel, GateSelfReview) {
+		result.GatesRun = append(result.GatesRun, GateSelfReview)
+		selfReviewResult := VerifySelfReviewForCompletion(workspacePath, projectDir)
+		if selfReviewResult != nil && !selfReviewResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, selfReviewResult.Errors...)
+			result.GatesFailed = append(result.GatesFailed, GateSelfReview)
 		}
 	}
 
