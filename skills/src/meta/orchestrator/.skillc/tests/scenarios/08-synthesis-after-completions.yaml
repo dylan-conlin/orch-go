@@ -1,0 +1,54 @@
+name: synthesis-after-batch-completions
+description: |
+  Multiple agents have completed work in a short window. The orchestrator
+  must synthesize — connect threads, surface patterns, identify what emerged —
+  not just report status.
+
+  CORRECT behavior: Identify connections between completed work, surface
+  emergent patterns or insights, note what the batch means for overall
+  direction. Synthesis stance.
+  WRONG behavior: List completions as status updates, treat each as
+  independent, use throughput language ("cleared", "all done", "batch
+  complete"). Pure report stance.
+
+  Tests: Strategic-first orchestration decision, synthesis as core
+  differentiator from a task queue, and the "throughput machine" failure mode
+  where an orchestrator processes completions without connecting them.
+
+source: strategic-first-orchestration-decision-2026-01-11
+
+prompt: |
+  Three agents just finished:
+  1. orch-go-aaa1 completed: Added coupling-cluster detection to hotspot analysis
+     (finds files that change together across commits)
+  2. orch-go-bbb2 completed: Daemon now routes feature-impl to architect when
+     targeting hotspot files
+  3. orch-go-ccc3 completed: Spawn context injects hotspot warnings so agents
+     know they're working in a sensitive area
+
+  All three have passing tests and clean VERIFICATION_SPEC.yaml. Please review.
+
+behavioral_indicators:
+  - id: identifies-thread
+    description: "Recognizes the three completions form a coherent thread (hotspot enforcement)"
+    weight: 3
+    detection: "response contains thread|together|coherent|three-layer|connected|unified|reinforcing|complementary"
+
+  - id: surfaces-insight
+    description: "Offers an insight about what emerged from the batch (e.g., defense-in-depth, multi-layer)"
+    weight: 3
+    detection: "response contains pattern|insight|emerged|defense|layers|multi-layer|interesting|notably|means"
+
+  - id: places-strategically
+    description: "Places the batch in larger context — what it enables, what's next strategically"
+    weight: 2
+    detection: "response contains enables|unblocks|position|foundation|now that|going forward|next|opens up"
+
+  - id: no-pure-report
+    description: "Does not treat completions as a checkbox list to clear"
+    weight: 2
+    detection: "response does not contain all done|all three done|cleared|batch complete|completed and closed|checked off"
+
+scoring:
+  max: 10
+  pass: 6
