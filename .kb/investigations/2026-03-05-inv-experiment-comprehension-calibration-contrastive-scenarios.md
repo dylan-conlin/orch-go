@@ -1,12 +1,12 @@
 ## Summary (D.E.K.N.)
 
-**Delta:** Stance items are measurably functional — they change what agents *notice*, not just what they *say*. Scenario 09 (implicit contradiction) discriminates stance from knowledge: with-stance passes 5/6, without-stance 1/6, bare 0/6. Confirmed at N=6 (was 2/3 vs 0/3 vs 0/3 at N=3).
+**Delta:** Stance does NOT generalize to all attention types. Of 3 new scenarios testing absence, relationship-tracing, and information-freshness, NONE showed three-way separation (bare < without-stance < with-stance). Scenario 12 (downstream consumer) showed strong knowledge lift (bare 17% → skill 83%) but no stance advantage. Scenario 11 (auth gap) hit ceiling on all variants at 3/8. Scenario 13 (stale deprecation) showed knowledge lift but with-stance scored WORSE than without-stance.
 
-**Evidence:** 90 total trials. Initial round: 54 trials (N=3 x 3 scenarios x 3 variants x 2 rounds). Higher-N confirmation: 36 trials (N=6 x 2 scenarios x 3 variants). Scenario 09 stance gap confirmed: 83% vs 17% vs 0% pass rate.
+**Evidence:** 144 total trials. Initial round: 54 (N=3 x 3 scenarios x 3 variants x 2 rounds). Higher-N: 36 (N=6 x 2 scenarios x 3 variants for 09+10). Generalization: 54 (N=6 x 3 scenarios x 3 variants for 11-13). Scenario 09 stance gap confirmed: 83% vs 17% vs 0%. Scenarios 11-13: 0 of 3 show stance advantage.
 
-**Knowledge:** Contrastive scenarios make comprehension measurable with keyword detection — but only when the contradiction is *implicit* (incompatible assumptions, not opposite conclusions). Redesigned scenario 10 (distributed-symptom-pattern) is too hard for all variants — no stance advantage. Scenario 09 remains the primary stance discriminator.
+**Knowledge:** Stance as attention priming is scenario-09-specific, not a general mechanism. It works for implicit contradiction (two agents with incompatible assumptions) but not for: (1) absence detection — Sonnet already notices missing auth without stance, (2) relationship tracing — knowledge provides the lift, not stance orientation, (3) information freshness — temporal reasoning is hard and stance doesn't help. The distinction may be that scenario 09 requires *holding two things in mind simultaneously*, while the other attention types require different cognitive operations.
 
-**Next:** Run human calibration on scenarios 08+09. Investigate why scenario 10 (distributed symptom) is uniformly hard — may need different indicator design or an intermediate difficulty level.
+**Next:** Revise skill-content-transfer model to narrow stance claims. Scenario 09 remains the primary stance discriminator. Investigate what makes implicit contradiction uniquely responsive to stance. Consider whether scenarios 11/13 have indicator design issues vs genuine stance-irrelevance.
 
 **Authority:** architectural — Establishes measurement methodology for skill authoring across the system
 
@@ -17,9 +17,9 @@
 **Question:** Can contrastive scenario design make comprehension measurable with the current `contains X|Y|Z` detection grammar, and do stance items produce measurably different scores than knowledge-only skill content?
 
 **Started:** 2026-03-05
-**Updated:** 2026-03-05 (higher-N confirmation round added)
+**Updated:** 2026-03-06 (generalization round: scenarios 11-13, 54 trials)
 **Phase:** Complete
-**Next Step:** Human calibration on scenarios 08+09; investigate scenario 10 indicator design
+**Next Step:** Narrow stance claims in skill-content-transfer model; investigate scenario 11/13 indicator design; human calibration on 08+09
 **Status:** Complete
 
 **Extracted-From:** `.kb/plans/2026-03-05-comprehension-measurement-program.md` (Phase 1-2)
@@ -121,6 +121,56 @@ Combined N=3+N=6 for scenario 09: bare 0/9 (0%), without-stance 1/9 (11%), with-
 
 ---
 
+### Finding 6: Stance does NOT generalize to absence, relationship-tracing, or freshness attention types
+
+**Evidence:** N=6 contrastive trials across 3 new scenarios (54 total runs):
+
+Scenario 11 (absence-as-evidence / auth gap):
+
+| Variant | Scores | Median | Pass Rate |
+|---------|--------|--------|-----------|
+| bare | [3, 3, 4, 3, 3, 3] | 3/8 | 0/6 (0%) |
+| without-stance | [3, 4, 1, 3, 3, 3] | 3/8 | 0/6 (0%) |
+| with-stance | [3, 3, 3, 4, 3, 3] | 3/8 | 0/6 (0%) |
+
+Per-indicator: `notices-auth-gap` 6/6 on bare (already caught), `identifies-mechanism` 0/6 on ALL variants. The auth gap is too obvious for the "notice" indicator but too implicit for the "mechanism" indicator. Sonnet always says "there's a security issue" but never pinpoints "registered on wrong group." Neither knowledge nor stance helps with this specific gap.
+
+Scenario 12 (downstream-consumer-contract):
+
+| Variant | Scores | Median | Pass Rate |
+|---------|--------|--------|-----------|
+| bare | [0, 3, 0, 3, 6, 0] | 1/8 | 1/6 (17%) |
+| without-stance | [6, 3, 7, 7, 7, 6] | 6/8 | 5/6 (83%) |
+| with-stance | [6, 6, 7, 6, 3, 7] | 6/8 | 5/6 (83%) |
+
+Per-indicator: Knowledge drives the entire lift. `notices-consumer-impact` goes from variable (bare) to 6/6 (both skill variants). `connects-volume-change` goes from ~50% (bare) to ~83% (both). With-stance adds zero incremental value over without-stance.
+
+Scenario 13 (stale-deprecation-claim):
+
+| Variant | Scores | Median | Pass Rate |
+|---------|--------|--------|-----------|
+| bare | [4, 1, 0, 0, 1, 4] | 1/8 | 0/6 (0%) |
+| without-stance | [4, 3, 7, 4, 4, 7] | 4/8 | 2/6 (33%) |
+| with-stance | [4, 4, 1, 4, 4, 4] | 4/8 | 0/6 (0%) |
+
+Per-indicator: `notices-stale-claim` 0/6 for bare AND with-stance, 2/6 for without-stance. The stance ("Information decays... verify against current evidence") paradoxically performs WORSE than knowledge-only. `connects-git-evidence` and `recommends-verification` are strong across skill variants but the crucial stale-claim detection doesn't benefit from stance.
+
+**Source:** `evidence/2026-03-05-contrastive-11-13-N6/scenario-{11,12,13}/{bare,without-stance,with-stance}.json`
+
+**Significance:**
+
+The three-way separation (bare < without-stance < with-stance) does NOT replicate outside scenario 09. Key findings:
+
+1. **Scenario 11:** All variants hit the same ceiling (3/8). The auth gap is simultaneously too obvious (Sonnet catches it bare) and too specific (detection patterns don't match how Sonnet describes the mechanism). This is likely an indicator design issue rather than a genuine stance test.
+
+2. **Scenario 12:** Knowledge provides massive lift (17% → 83%), but stance adds nothing. The information about AgentGrid's layout constraints and volume characteristics is sufficient — the agent just needs to KNOW about the consumer, not be oriented to look for consumers. This contradicts the hypothesis that relationship-tracing requires stance.
+
+3. **Scenario 13:** With-stance scores WORSE than without-stance (0/6 vs 2/6 pass). The `notices-stale-claim` indicator (which detects "stale|outdated|old comment|months ago") fires for without-stance but not with-stance. Possible explanation: the stance framing ("information decays") may prime the agent to recommend verification as a general practice without explicitly calling the deprecation "stale" — the agent verifies but uses different vocabulary than the detector expects.
+
+**Implication for skill-content-transfer model:** Stance's measured effect is specific to implicit contradiction detection (scenario 09), not a general attention-priming mechanism. The model's claim that "stance is the highest-leverage content type" needs narrowing: stance is high-leverage for *holding two competing models simultaneously*, not for all attention types.
+
+---
+
 ### Finding 4: Stance enables but doesn't guarantee comprehension
 
 **Evidence:** With-stance on scenario 09v2: [7, 0, 8]. One run scored 0 — completely missed the implicit contradiction despite having the stance items.
@@ -163,14 +213,18 @@ Yes, contrastive scenarios can make comprehension measurable with keyword detect
 - ⚠️ Human ratings correlation with automated scores (Phase 2 still pending)
 - ✅ N=6 confirms scenario 09 stance gap: 0% → 17% → 83% pass rate (bare → without-stance → with-stance)
 - ✅ Scenario 10 redesigned as distributed-symptom-pattern: too hard for all variants, no stance advantage
+- ✅ Scenarios 11-13 generalization: stance does NOT generalize beyond implicit contradiction
+- ⚠️ Whether scenario 11/13 indicator design is masking real stance effects (agents may use different vocabulary)
 - ⚠️ Cross-model generalization (only tested Sonnet; Opus may not need stance)
 - ⚠️ Multi-turn comprehension decay
 
 **What would change this:**
 
 - ~~If N=10 shows without-stance occasionally catching implicit contradictions (>0/10), the stance effect may be noise~~ → N=6 shows without-stance at 1/6 (17%) vs with-stance 5/6 (83%). Gap is real, not noise.
+- ~~If stance generalizes to absence/relationship/freshness, it's a universal attention mechanism~~ → N=6 on scenarios 11-13 shows NO generalization. Stance is specific to implicit contradiction.
 - If human ratings don't correlate with scenario 09 scores, keyword detection is measuring keyword presence not comprehension
 - If Opus catches implicit contradictions without stance, this is a Sonnet-specific finding
+- If scenario 11/13 with revised indicators show stance effects, the current indicators are masking real effects
 
 ---
 
@@ -206,6 +260,9 @@ Use scenarios 08 (synthesis) and 09v2 (implicit contradiction) as the behavioral
 - `evidence/2026-03-05-higher-n-09-10/bare.json` — Higher-N bare (N=6, scenarios 09+10)
 - `evidence/2026-03-05-higher-n-09-10/without-stance.json` — Higher-N without-stance (N=6, scenarios 09+10)
 - `evidence/2026-03-05-higher-n-09-10/with-stance.json` — Higher-N with-stance (N=6, scenarios 09+10)
+- `evidence/2026-03-05-contrastive-11-13-N6/scenario-11/{bare,without-stance,with-stance}.json` — Scenario 11 generalization (N=6 x 3 variants)
+- `evidence/2026-03-05-contrastive-11-13-N6/scenario-12/{bare,without-stance,with-stance}.json` — Scenario 12 generalization (N=6 x 3 variants)
+- `evidence/2026-03-05-contrastive-11-13-N6/scenario-13/{bare,without-stance,with-stance}.json` — Scenario 13 generalization (N=6 x 3 variants)
 
 **Artifacts:**
 - **Variants:** `skills/src/meta/orchestrator/.skillc/tests/variants/with-stance.md`, `without-stance.md`

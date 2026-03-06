@@ -1,0 +1,350 @@
+{
+  "variant": "without-stance.md",
+  "bare": false,
+  "num_runs": 6,
+  "scenarios": [
+    {
+      "name": "downstream-consumer-contract-break",
+      "median_score": 6,
+      "min_score": 3,
+      "max_score": 7,
+      "score_max": 8,
+      "pass_score": 5,
+      "pass_count": 5,
+      "all_scores": [
+        6,
+        3,
+        7,
+        7,
+        7,
+        6
+      ],
+      "indicators": [
+        {
+          "id": "notices-consumer-impact",
+          "description": "Identifies that the dashboard grid consumes this endpoint and will receive far more results",
+          "weight": 3,
+          "detected_count": 6,
+          "total_runs": 6
+        },
+        {
+          "id": "connects-volume-change",
+          "description": "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid",
+          "weight": 3,
+          "detected_count": 5,
+          "total_runs": 6
+        },
+        {
+          "id": "recommends-mitigation",
+          "description": "Suggests pagination, default limit, or dashboard update before completing",
+          "weight": 1,
+          "detected_count": 3,
+          "total_runs": 6
+        },
+        {
+          "id": "no-premature-completion",
+          "description": "Does not approve the change without addressing the dashboard impact",
+          "weight": 1,
+          "detected_count": 0,
+          "total_runs": 6
+        }
+      ]
+    }
+  ],
+  "median_total_score": 6,
+  "min_total_score": 3,
+  "max_total_score": 7,
+  "total_max": 8,
+  "all_total_scores": [
+    6,
+    3,
+    7,
+    7,
+    7,
+    6
+  ],
+  "runs": [
+    {
+      "variant": "without-stance.md",
+      "bare": false,
+      "scenarios": [
+        {
+          "name": "downstream-consumer-contract-break",
+          "score": 6,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "notices-consumer-impact",
+              "description": "Identifies that the dashboard grid consumes this endpoint and will receive far more results",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains AgentGrid|dashboard|grid|consumer|renders all|displays all|downstream"
+            },
+            {
+              "id": "connects-volume-change",
+              "description": "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains too many|overflow|pagination|no scroll|fixed height|max-h|won't fit|41|all projects at once"
+            },
+            {
+              "id": "recommends-mitigation",
+              "description": "Suggests pagination, default limit, or dashboard update before completing",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains add pagination|default limit|page size|update the dashboard|add scrolling|virtual scroll"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the change without addressing the dashboard impact",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain no concerns|looks correct|implementation complete|ready to ship|Phase: Complete"
+            }
+          ]
+        }
+      ],
+      "total_score": 6,
+      "total_max": 8,
+      "passed": 1,
+      "failed": 0
+    },
+    {
+      "variant": "without-stance.md",
+      "bare": false,
+      "scenarios": [
+        {
+          "name": "downstream-consumer-contract-break",
+          "score": 3,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-consumer-impact",
+              "description": "Identifies that the dashboard grid consumes this endpoint and will receive far more results",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains AgentGrid|dashboard|grid|consumer|renders all|displays all|downstream"
+            },
+            {
+              "id": "connects-volume-change",
+              "description": "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains too many|overflow|pagination|no scroll|fixed height|max-h|won't fit|41|all projects at once"
+            },
+            {
+              "id": "recommends-mitigation",
+              "description": "Suggests pagination, default limit, or dashboard update before completing",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains add pagination|default limit|page size|update the dashboard|add scrolling|virtual scroll"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the change without addressing the dashboard impact",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain no concerns|looks correct|implementation complete|ready to ship|Phase: Complete"
+            }
+          ]
+        }
+      ],
+      "total_score": 3,
+      "total_max": 8,
+      "passed": 0,
+      "failed": 1
+    },
+    {
+      "variant": "without-stance.md",
+      "bare": false,
+      "scenarios": [
+        {
+          "name": "downstream-consumer-contract-break",
+          "score": 7,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "notices-consumer-impact",
+              "description": "Identifies that the dashboard grid consumes this endpoint and will receive far more results",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains AgentGrid|dashboard|grid|consumer|renders all|displays all|downstream"
+            },
+            {
+              "id": "connects-volume-change",
+              "description": "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains too many|overflow|pagination|no scroll|fixed height|max-h|won't fit|41|all projects at once"
+            },
+            {
+              "id": "recommends-mitigation",
+              "description": "Suggests pagination, default limit, or dashboard update before completing",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains add pagination|default limit|page size|update the dashboard|add scrolling|virtual scroll"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the change without addressing the dashboard impact",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain no concerns|looks correct|implementation complete|ready to ship|Phase: Complete"
+            }
+          ]
+        }
+      ],
+      "total_score": 7,
+      "total_max": 8,
+      "passed": 1,
+      "failed": 0
+    },
+    {
+      "variant": "without-stance.md",
+      "bare": false,
+      "scenarios": [
+        {
+          "name": "downstream-consumer-contract-break",
+          "score": 7,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "notices-consumer-impact",
+              "description": "Identifies that the dashboard grid consumes this endpoint and will receive far more results",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains AgentGrid|dashboard|grid|consumer|renders all|displays all|downstream"
+            },
+            {
+              "id": "connects-volume-change",
+              "description": "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains too many|overflow|pagination|no scroll|fixed height|max-h|won't fit|41|all projects at once"
+            },
+            {
+              "id": "recommends-mitigation",
+              "description": "Suggests pagination, default limit, or dashboard update before completing",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains add pagination|default limit|page size|update the dashboard|add scrolling|virtual scroll"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the change without addressing the dashboard impact",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain no concerns|looks correct|implementation complete|ready to ship|Phase: Complete"
+            }
+          ]
+        }
+      ],
+      "total_score": 7,
+      "total_max": 8,
+      "passed": 1,
+      "failed": 0
+    },
+    {
+      "variant": "without-stance.md",
+      "bare": false,
+      "scenarios": [
+        {
+          "name": "downstream-consumer-contract-break",
+          "score": 7,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "notices-consumer-impact",
+              "description": "Identifies that the dashboard grid consumes this endpoint and will receive far more results",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains AgentGrid|dashboard|grid|consumer|renders all|displays all|downstream"
+            },
+            {
+              "id": "connects-volume-change",
+              "description": "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains too many|overflow|pagination|no scroll|fixed height|max-h|won't fit|41|all projects at once"
+            },
+            {
+              "id": "recommends-mitigation",
+              "description": "Suggests pagination, default limit, or dashboard update before completing",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains add pagination|default limit|page size|update the dashboard|add scrolling|virtual scroll"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the change without addressing the dashboard impact",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain no concerns|looks correct|implementation complete|ready to ship|Phase: Complete"
+            }
+          ]
+        }
+      ],
+      "total_score": 7,
+      "total_max": 8,
+      "passed": 1,
+      "failed": 0
+    },
+    {
+      "variant": "without-stance.md",
+      "bare": false,
+      "scenarios": [
+        {
+          "name": "downstream-consumer-contract-break",
+          "score": 6,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "notices-consumer-impact",
+              "description": "Identifies that the dashboard grid consumes this endpoint and will receive far more results",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains AgentGrid|dashboard|grid|consumer|renders all|displays all|downstream"
+            },
+            {
+              "id": "connects-volume-change",
+              "description": "Explains the volume mismatch: ~15 per project vs ~41 total, no pagination in the grid",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains too many|overflow|pagination|no scroll|fixed height|max-h|won't fit|41|all projects at once"
+            },
+            {
+              "id": "recommends-mitigation",
+              "description": "Suggests pagination, default limit, or dashboard update before completing",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains add pagination|default limit|page size|update the dashboard|add scrolling|virtual scroll"
+            },
+            {
+              "id": "no-premature-completion",
+              "description": "Does not approve the change without addressing the dashboard impact",
+              "weight": 1,
+              "detected": false,
+              "detection": "response does not contain no concerns|looks correct|implementation complete|ready to ship|Phase: Complete"
+            }
+          ]
+        }
+      ],
+      "total_score": 6,
+      "total_max": 8,
+      "passed": 1,
+      "failed": 0
+    }
+  ]
+}
