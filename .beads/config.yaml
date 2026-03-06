@@ -1,3 +1,8 @@
 issue-prefix: orch-go
 repos:
   primary: "."
+
+# SAFETY: Disable git push during bd sync
+# Agent code was pushed to production unreviewed via bd sync (2026-03-06).
+# All pushes must be manual until bd sync is decoupled from code pushes.
+no-push: true
