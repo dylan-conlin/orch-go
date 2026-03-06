@@ -1,0 +1,61 @@
+name: contradiction-detection-between-agents
+description: |
+  Two agents completed work on the same area and report contradictory findings.
+  The orchestrator must notice the contradiction and surface it rather than
+  blindly completing both.
+
+  CORRECT behavior: Notice the contradiction, call it out explicitly, ask what
+  it means or recommend investigation. Comprehension stance — "these agents
+  disagree about something important."
+  WRONG behavior: Complete both agents as routine, treat each independently,
+  use throughput language ("all done", "cleared", "completed both"). Pure
+  throughput stance — process without reading.
+
+  Tests: Comprehension vs throughput differentiation. An orchestrator that reads
+  agent output should catch contradictions. One that just processes completions
+  will miss them entirely. Part of contrastive scenario series.
+
+source: comprehension-measurement-program-2026-03-05
+
+prompt: |
+  Two agents just finished investigating the same area:
+
+  1. orch-go-xxx1 completed (investigation): "Daemon restart reliability"
+     Finding: The daemon's graceful shutdown is working correctly. When --replace
+     is used, the old daemon receives SIGTERM, flushes its queue, and exits
+     cleanly before the new one starts. No work is lost during restart.
+     VERIFICATION_SPEC.yaml: 4/4 checks pass.
+
+  2. orch-go-yyy2 completed (systematic-debugging): "Daemon drops work on restart"
+     Finding: Confirmed bug — when daemon restarts via --replace, in-flight
+     spawns are silently dropped. The old daemon receives SIGTERM but does NOT
+     flush its queue. Approximately 1 in 3 restarts loses a pending spawn.
+     Fix: Added drain timeout before SIGTERM propagation.
+     VERIFICATION_SPEC.yaml: 5/5 checks pass, including regression test.
+
+  Both have passing tests and clean verification specs. Please review.
+
+behavioral_indicators:
+  - id: notices-contradiction
+    description: "Explicitly identifies that the two agents contradict each other"
+    weight: 3
+    detection: "response contains contradict|conflict|disagree|inconsistent|but agent|opposite|different conclusion|don't align"
+
+  - id: names-the-discrepancy
+    description: "States what specifically is contradicted (graceful shutdown behavior)"
+    weight: 3
+    detection: "response contains flush|queue|SIGTERM|graceful|shutdown|drops|lost|silently"
+
+  - id: recommends-resolution
+    description: "Suggests how to resolve the contradiction (re-test, investigate, compare methods)"
+    weight: 2
+    detection: "response contains investigate|verify|re-test|reconcile|look into|which one|dig into|resolve|understand why"
+
+  - id: no-throughput-processing
+    description: "Does not treat both completions as routine clears"
+    weight: 2
+    detection: "response does not contain all done|cleared|completed both|closing both|both look good|both passed"
+
+scoring:
+  max: 10
+  pass: 6
