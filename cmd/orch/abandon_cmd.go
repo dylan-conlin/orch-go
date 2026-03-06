@@ -17,10 +17,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// activeAgentThreshold is the duration within which a phase comment is considered
+// "recent" — indicating the agent may still be actively running. Agents that reported
+// a non-Complete phase within this window trigger a warning before abandon.
+const activeAgentThreshold = 30 * time.Minute
+
 var (
 	// Abandon command flags
 	abandonReason  string
 	abandonWorkdir string
+	abandonForce   bool
 )
 
 var abandonCmd = &cobra.Command{
@@ -41,24 +47,30 @@ documenting what went wrong and recommendations for retry.
 For cross-project abandonment, use --workdir to specify the target project directory
 where the beads issue lives.
 
+If the agent has recent phase activity (within 30 minutes), a warning is shown
+and --force is required to proceed. This prevents accidentally killing cross-project
+agents that appear as 'phantom' locally but are actively running elsewhere.
+
 Examples:
   orch-go abandon proj-123                                      # Abandon agent in current project
   orch-go abandon proj-123 --reason "Out of context"            # Abandon with failure report
   orch-go abandon proj-123 --reason "Stuck in loop"             # Document the failure
-  orch-go abandon kb-cli-123 --workdir ~/projects/kb-cli        # Abandon agent in another project`,
+  orch-go abandon kb-cli-123 --workdir ~/projects/kb-cli        # Abandon agent in another project
+  orch-go abandon proj-123 --force                              # Force abandon despite recent activity`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
-		return runAbandon(beadsID, abandonReason, abandonWorkdir)
+		return runAbandon(beadsID, abandonReason, abandonWorkdir, abandonForce)
 	},
 }
 
 func init() {
 	abandonCmd.Flags().StringVar(&abandonReason, "reason", "", "Reason for abandonment (generates FAILURE_REPORT.md)")
 	abandonCmd.Flags().StringVar(&abandonWorkdir, "workdir", "", "Target project directory (for cross-project abandonment)")
+	abandonCmd.Flags().BoolVar(&abandonForce, "force", false, "Force abandon even if agent has recent activity")
 }
 
-func runAbandon(beadsID, reason, workdir string) error {
+func runAbandon(beadsID, reason, workdir string, force bool) error {
 	// --- Phase 1: Resolve project directory ---
 
 	var projectDir string
@@ -115,6 +127,16 @@ func runAbandon(beadsID, reason, workdir string) error {
 
 	if issue.Status == "closed" {
 		return fmt.Errorf("issue %s is already closed - nothing to abandon", beadsID)
+	}
+
+	// --- Phase 2b: Activity check (protect recently-active agents) ---
+	// Cross-project agents may appear as "phantom" locally but be actively running
+	// in another tmux session. Check for recent phase comments before killing.
+
+	if !force {
+		if err := checkRecentActivity(beadsID, projectDir); err != nil {
+			return err
+		}
 	}
 
 	// --- Phase 3: Discover agent resources ---
@@ -253,6 +275,59 @@ func runAbandon(beadsID, reason, workdir string) error {
 		fmt.Printf("  Reason: %s\n", reason)
 	}
 	fmt.Printf("  Use 'orch work %s' to restart work on this issue\n", beadsID)
+
+	return nil
+}
+
+// checkRecentActivity checks if the agent has reported a phase comment recently.
+// Returns an error (blocking abandon) if the latest phase comment is non-Complete
+// and was reported within activeAgentThreshold. Returns nil if safe to proceed.
+// Comment fetch failures are non-blocking (best effort).
+func checkRecentActivity(beadsID, projectDir string) error {
+	comments, err := verify.GetComments(beadsID, projectDir)
+	if err != nil {
+		// Can't fetch comments — don't block the abandon.
+		// This is best-effort protection, not a hard gate.
+		return nil
+	}
+
+	phase := verify.ParsePhaseFromComments(comments)
+	return checkPhaseRecency(beadsID, phase, time.Now())
+}
+
+// checkPhaseRecency determines if a parsed phase status indicates recent activity.
+// Returns an error if the phase is non-Complete and was reported within activeAgentThreshold.
+// Pure function for testability — no I/O.
+func checkPhaseRecency(beadsID string, phase verify.PhaseStatus, now time.Time) error {
+	if !phase.Found {
+		return nil
+	}
+
+	// Phase: Complete means the agent finished — safe to abandon (cleanup)
+	if strings.EqualFold(phase.Phase, "Complete") {
+		return nil
+	}
+
+	// No timestamp means we can't determine recency — allow abandon
+	if phase.PhaseReportedAt == nil {
+		return nil
+	}
+
+	elapsed := now.Sub(*phase.PhaseReportedAt)
+	if elapsed < activeAgentThreshold {
+		return fmt.Errorf(
+			"agent %s appears to be actively running\n"+
+				"  Last phase: %s (reported %s ago)\n"+
+				"  Summary: %s\n\n"+
+				"This agent may be running in another tmux session (cross-project phantom).\n"+
+				"Use --force to abandon anyway: orch abandon %s --force",
+			beadsID,
+			phase.Phase,
+			formatDuration(elapsed),
+			phase.Summary,
+			beadsID,
+		)
+	}
 
 	return nil
 }

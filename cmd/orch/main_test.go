@@ -216,7 +216,7 @@ func TestAbandonNonExistentAgent(t *testing.T) {
 	beadsID := "nonexistent-agent-xyz"
 
 	// runAbandon first verifies the beads issue exists
-	err := runAbandon(beadsID, "", "")
+	err := runAbandon(beadsID, "", "", false)
 	if err == nil {
 		t.Error("Expected error for non-existent agent")
 	}
