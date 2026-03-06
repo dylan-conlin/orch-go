@@ -1,4 +1,4 @@
-package daemon
+package identity
 
 import (
 	"os"
@@ -34,7 +34,6 @@ func TestExtractPrefix_MultiSegment(t *testing.T) {
 }
 
 func TestExtractPrefix_LongestMatch(t *testing.T) {
-	// "orch-go" should match over "orch" when both are registered
 	r := &ProjectRegistry{
 		prefixToDir: map[string]string{
 			"orch":    "/home/user/orch-cli",
@@ -70,19 +69,16 @@ func TestResolve_CrossProject(t *testing.T) {
 		currentDir: "/home/user/orch-go",
 	}
 
-	// Same project -> empty string (no workdir needed)
 	got := r.Resolve("orch-go-1169")
 	if got != "" {
 		t.Errorf("Resolve(orch-go-1169) = %q, want empty (same project)", got)
 	}
 
-	// Different project -> return the project directory
 	got = r.Resolve("bd-85487068")
 	if got != "/home/user/beads" {
 		t.Errorf("Resolve(bd-85487068) = %q, want '/home/user/beads'", got)
 	}
 
-	// Unknown prefix -> empty string
 	got = r.Resolve("unknown-123")
 	if got != "" {
 		t.Errorf("Resolve(unknown-123) = %q, want empty (unknown prefix)", got)
@@ -98,7 +94,6 @@ func TestResolve_NilRegistry(t *testing.T) {
 }
 
 func TestResolvePrefix_FromBeadsConfig(t *testing.T) {
-	// Create a temp directory structure with .beads/config.yaml
 	tmpDir := t.TempDir()
 	beadsDir := filepath.Join(tmpDir, ".beads")
 	if err := os.MkdirAll(beadsDir, 0755); err != nil {
@@ -116,7 +111,6 @@ func TestResolvePrefix_FromBeadsConfig(t *testing.T) {
 }
 
 func TestResolvePrefix_FallbackToBasename(t *testing.T) {
-	// Directory without .beads/config.yaml
 	tmpDir := t.TempDir()
 	got := resolvePrefix(tmpDir)
 	want := filepath.Base(tmpDir)
@@ -139,7 +133,6 @@ func TestProjects_ReturnsAllEntries(t *testing.T) {
 		t.Fatalf("Projects() returned %d entries, want 2", len(projects))
 	}
 
-	// Check both entries exist (order is non-deterministic from map iteration)
 	found := make(map[string]string)
 	for _, p := range projects {
 		found[p.Prefix] = p.Dir
@@ -189,7 +182,6 @@ func TestCurrentDir_NilRegistry(t *testing.T) {
 }
 
 func TestResolvePrefix_EmptyPrefixFallsBack(t *testing.T) {
-	// .beads/config.yaml with empty issue-prefix
 	tmpDir := t.TempDir()
 	beadsDir := filepath.Join(tmpDir, ".beads")
 	if err := os.MkdirAll(beadsDir, 0755); err != nil {
@@ -204,5 +196,61 @@ func TestResolvePrefix_EmptyPrefixFallsBack(t *testing.T) {
 	want := filepath.Base(tmpDir)
 	if got != want {
 		t.Errorf("resolvePrefix(%q) = %q, want %q (basename fallback for empty prefix)", tmpDir, got, want)
+	}
+}
+
+func TestResolveProjectDirectory_WithWorkdir(t *testing.T) {
+	tmpDir := t.TempDir()
+	dir, name, err := ResolveProjectDirectory(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dir != tmpDir {
+		t.Errorf("dir = %q, want %q", dir, tmpDir)
+	}
+	if name != filepath.Base(tmpDir) {
+		t.Errorf("name = %q, want %q", name, filepath.Base(tmpDir))
+	}
+}
+
+func TestResolveProjectDirectory_WithoutWorkdir(t *testing.T) {
+	dir, name, err := ResolveProjectDirectory("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cwd, _ := os.Getwd()
+	if dir != cwd {
+		t.Errorf("dir = %q, want %q", dir, cwd)
+	}
+	if name != filepath.Base(cwd) {
+		t.Errorf("name = %q, want %q", name, filepath.Base(cwd))
+	}
+}
+
+func TestResolveProjectDirectory_NonexistentWorkdir(t *testing.T) {
+	_, _, err := ResolveProjectDirectory("/nonexistent/path/xyz")
+	if err == nil {
+		t.Error("expected error for nonexistent workdir")
+	}
+}
+
+func TestBuildProjectDirNames(t *testing.T) {
+	names := BuildProjectDirNames(nil)
+	if len(names) != 0 {
+		t.Errorf("nil registry should return empty map, got %v", names)
+	}
+
+	r := &ProjectRegistry{
+		prefixToDir: map[string]string{
+			"orch-go": "/home/user/orch-go",
+			"pw":      "/home/user/price-watch",
+		},
+	}
+	names = BuildProjectDirNames(r)
+	if names["orch-go"] != "orch-go" {
+		t.Errorf("names[orch-go] = %q, want 'orch-go'", names["orch-go"])
+	}
+	if names["pw"] != "price-watch" {
+		t.Errorf("names[pw] = %q, want 'price-watch'", names["pw"])
 	}
 }

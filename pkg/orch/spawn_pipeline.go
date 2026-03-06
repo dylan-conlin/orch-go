@@ -21,6 +21,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/identity"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
@@ -103,30 +104,9 @@ func CheckAndAutoSwitchAccount() error {
 
 // ResolveProjectDirectory determines the project directory and name.
 // Uses workdir if provided, otherwise current working directory.
+// Delegates to identity.ResolveProjectDirectory.
 func ResolveProjectDirectory(workdir string) (projectDir, projectName string, err error) {
-	if workdir != "" {
-		// User specified target directory via --workdir
-		projectDir, err = filepath.Abs(workdir)
-		if err != nil {
-			return "", "", fmt.Errorf("failed to resolve workdir path: %w", err)
-		}
-		// Verify directory exists
-		if stat, err := os.Stat(projectDir); err != nil {
-			return "", "", fmt.Errorf("workdir does not exist: %s", projectDir)
-		} else if !stat.IsDir() {
-			return "", "", fmt.Errorf("workdir is not a directory: %s", projectDir)
-		}
-	} else {
-		// Default: use current working directory
-		projectDir, err = os.Getwd()
-		if err != nil {
-			return "", "", fmt.Errorf("failed to get current directory: %w", err)
-		}
-	}
-
-	// Get project name from directory
-	projectName = filepath.Base(projectDir)
-	return projectDir, projectName, nil
+	return identity.ResolveProjectDirectory(workdir)
 }
 
 // LoadSkillAndGenerateWorkspace loads skill content and generates workspace name.

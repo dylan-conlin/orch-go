@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"path/filepath"
 	"strings"
 )
 
@@ -58,17 +57,3 @@ func applyFocusBoost(issues []Issue, goal string, boostAmount int, projectDirNam
 	return result
 }
 
-// BuildProjectDirNames builds a map from project prefix to directory basename
-// using the ProjectRegistry. Returns empty map if registry is nil.
-func BuildProjectDirNames(registry *ProjectRegistry) map[string]string {
-	if registry == nil {
-		return map[string]string{}
-	}
-
-	names := make(map[string]string)
-	for _, proj := range registry.Projects() {
-		basename := filepath.Base(proj.Dir)
-		names[proj.Prefix] = basename
-	}
-	return names
-}

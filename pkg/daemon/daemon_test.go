@@ -898,10 +898,10 @@ func TestDaemon_resolveIssueQuerier_MockTakesPrecedence(t *testing.T) {
 			mockCalled = true
 			return []Issue{}, nil
 		}},
-		ProjectRegistry: &ProjectRegistry{
-			prefixToDir: map[string]string{"bd": "/home/user/beads"},
-			currentDir:  "/home/user/orch-go",
-		},
+		ProjectRegistry: NewProjectRegistryFromMap(
+			map[string]string{"bd": "/home/user/beads"},
+			"/home/user/orch-go",
+		),
 	}
 
 	q := d.resolveIssueQuerier()

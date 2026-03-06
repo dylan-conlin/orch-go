@@ -220,12 +220,10 @@ func TestDefaultCompletionFinder_PopulatesProjectDirsFromRegistry(t *testing.T) 
 	}
 
 	// Create a registry with test projects
-	registry := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"proj-a": "/path/to/proj-a",
-			"proj-b": "/path/to/proj-b",
-		},
-	}
+	registry := NewProjectRegistryFromMap(map[string]string{
+		"proj-a": "/path/to/proj-a",
+		"proj-b": "/path/to/proj-b",
+	}, "")
 
 	// Test that defaultCompletionFinder populates ProjectDirs
 	dcf := &defaultCompletionFinder{registry: registry}
@@ -256,11 +254,9 @@ func TestDaemon_ListCompletedAgents_LazyRegistryWiring(t *testing.T) {
 	// Use a real defaultCompletionFinder but override its behavior via Daemon.Completions
 	dcf := &defaultCompletionFinder{}
 
-	registry := &ProjectRegistry{
-		prefixToDir: map[string]string{
-			"proj-a": "/path/to/proj-a",
-		},
-	}
+	registry := NewProjectRegistryFromMap(map[string]string{
+		"proj-a": "/path/to/proj-a",
+	}, "")
 
 	d := &Daemon{
 		Completions:     dcf,

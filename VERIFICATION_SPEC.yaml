@@ -1,28 +1,26 @@
-issue: orch-go-n8zpd
-title: "orch settings command to modify ~/.claude/settings.json from agents"
+issue: orch-go-d9lhi
+title: "Extract pkg/identity with shared ResolveProject and ProjectRegistry"
 tier: light
 
 automated:
-  - command: "go test ./pkg/hook/ -run 'TestAddHook|TestRemoveHook|TestListHooks' -v"
-    expects: "9 tests pass"
-    result: "PASS - all 9 tests pass"
-
-  - command: "go build ./cmd/orch/"
-    expects: "Clean compilation"
+  - command: "go build ./..."
+    expects: "clean build, no errors"
+    result: "PASS"
+  - command: "go vet ./..."
+    expects: "no warnings"
+    result: "PASS"
+  - command: "go test ./pkg/identity/ -v"
+    expects: "17 tests pass"
+    result: "PASS - 17/17"
+  - command: "go test ./pkg/daemon/"
+    expects: "all tests pass"
+    result: "PASS"
+  - command: "go test ./pkg/orch/"
+    expects: "all tests pass"
     result: "PASS"
 
-manual:
-  - step: "orch settings list-hooks shows hooks grouped by event"
-    result: "PASS - verified"
-  - step: "orch settings add-hook + remove-hook round-trip on temp file"
-    result: "PASS - verified"
-  - step: "Duplicate detection returns error"
-    result: "PASS - verified"
-  - step: "Non-hook fields preserved after modification"
-    result: "PASS - verified (env, permissions, statusLine all intact)"
-
 deliverables:
-  - pkg/hook/settings_modify.go       # AddHook, RemoveHook, ListHooks (~165 lines)
-  - pkg/hook/settings_modify_test.go  # 9 unit tests (~230 lines)
-  - cmd/orch/settings_cmd.go          # CLI with add-hook, remove-hook, list-hooks (~170 lines)
-  - cmd/orch/main.go                  # Added settingsCmd registration (1 line)
+  - pkg/identity/identity.go         # ProjectRegistry, ProjectEntry, NewProjectRegistry, NewProjectRegistryFromMap, ResolveProjectDirectory, BuildProjectDirNames
+  - pkg/identity/identity_test.go    # 17 tests covering all extracted functionality
+  - pkg/daemon/project_resolution.go # Thin re-export layer via type aliases
+  - pkg/orch/spawn_pipeline.go       # ResolveProjectDirectory delegates to identity
