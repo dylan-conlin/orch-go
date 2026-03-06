@@ -1,0 +1,503 @@
+{
+  "variant": "bare",
+  "bare": true,
+  "num_runs": 6,
+  "scenarios": [
+    {
+      "name": "contradiction-detection-between-agents",
+      "median_score": 0,
+      "min_score": 0,
+      "max_score": 4,
+      "score_max": 0,
+      "pass_score": 0,
+      "pass_count": 0,
+      "all_scores": [
+        4,
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      "indicators": [
+        {
+          "id": "notices-tension",
+          "description": "Identifies that the two features have incompatible assumptions about restart frequency",
+          "weight": 3,
+          "detected_count": 0,
+          "total_runs": 2
+        },
+        {
+          "id": "connects-the-gap",
+          "description": "Explains the specific problem: rate limiter assumes rare restarts, --replace enables frequent ones",
+          "weight": 3,
+          "detected_count": 1,
+          "total_runs": 2
+        },
+        {
+          "id": "recommends-before-closing",
+          "description": "Suggests addressing the interaction before closing both agents",
+          "weight": 1,
+          "detected_count": 0,
+          "total_runs": 2
+        },
+        {
+          "id": "no-independent-processing",
+          "description": "Does not treat the two completions as unrelated successes",
+          "weight": 1,
+          "detected_count": 2,
+          "total_runs": 2
+        }
+      ]
+    },
+    {
+      "name": "distributed-symptom-pattern",
+      "median_score": 4,
+      "min_score": 1,
+      "max_score": 4,
+      "score_max": 8,
+      "pass_score": 5,
+      "pass_count": 0,
+      "all_scores": [
+        1,
+        4,
+        4,
+        1,
+        4,
+        4
+      ],
+      "indicators": [
+        {
+          "id": "notices-pattern",
+          "description": "Identifies that three independent fixes all involve timing or synchronization around the daemon",
+          "weight": 3,
+          "detected_count": 3,
+          "total_runs": 6
+        },
+        {
+          "id": "names-underlying-cause",
+          "description": "Hypothesizes that daemon performance under load is the root issue these fixes mask",
+          "weight": 3,
+          "detected_count": 1,
+          "total_runs": 6
+        },
+        {
+          "id": "recommends-investigation",
+          "description": "Suggests investigating daemon performance rather than just closing the three fixes",
+          "weight": 1,
+          "detected_count": 0,
+          "total_runs": 6
+        },
+        {
+          "id": "no-independent-processing",
+          "description": "Does not treat the three completions as unrelated successes",
+          "weight": 1,
+          "detected_count": 6,
+          "total_runs": 6
+        }
+      ]
+    }
+  ],
+  "median_total_score": 4,
+  "min_total_score": 1,
+  "max_total_score": 5,
+  "total_max": 8,
+  "all_total_scores": [
+    5,
+    4,
+    5,
+    1,
+    4,
+    4
+  ],
+  "runs": [
+    {
+      "variant": "bare",
+      "bare": true,
+      "scenarios": [
+        {
+          "name": "contradiction-detection-between-agents",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-tension",
+              "description": "Identifies that the two features have incompatible assumptions about restart frequency",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains restart|assumption|tension|incompatible|conflict|resets|frequent|rare"
+            },
+            {
+              "id": "connects-the-gap",
+              "description": "Explains the specific problem: rate limiter assumes rare restarts, --replace enables frequent ones",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains rate limit|token bucket|state|lost|memory|refill|zero-downtime"
+            },
+            {
+              "id": "recommends-before-closing",
+              "description": "Suggests addressing the interaction before closing both agents",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains persist|durable|reconcile|before closing|coordinate|resolve|address"
+            },
+            {
+              "id": "no-independent-processing",
+              "description": "Does not treat the two completions as unrelated successes",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain both look good|both passed|closing both|all done|verified and closed"
+            }
+          ]
+        },
+        {
+          "name": "distributed-symptom-pattern",
+          "score": 1,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-pattern",
+              "description": "Identifies that three independent fixes all involve timing or synchronization around the daemon",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains pattern|all three|common|recurring|each of these|systematic|same subsystem|related"
+            },
+            {
+              "id": "names-underlying-cause",
+              "description": "Hypothesizes that daemon performance under load is the root issue these fixes mask",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains underlying|root cause|masking|symptom|performance|slow|load|pressure|deeper"
+            },
+            {
+              "id": "recommends-investigation",
+              "description": "Suggests investigating daemon performance rather than just closing the three fixes",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains investigate|profile|diagnose|before closing|look into|daemon health|systemic"
+            },
+            {
+              "id": "no-independent-processing",
+              "description": "Does not treat the three completions as unrelated successes",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain all three look good|verified and closed|all pass|closing all|three clean"
+            }
+          ]
+        }
+      ],
+      "total_score": 5,
+      "total_max": 16,
+      "passed": 0,
+      "failed": 2
+    },
+    {
+      "variant": "bare",
+      "bare": true,
+      "scenarios": [
+        {
+          "name": "contradiction-detection-between-agents",
+          "score": 0,
+          "max_score": 0,
+          "pass_score": 0,
+          "passed": false,
+          "indicators": null
+        },
+        {
+          "name": "distributed-symptom-pattern",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-pattern",
+              "description": "Identifies that three independent fixes all involve timing or synchronization around the daemon",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains pattern|all three|common|recurring|each of these|systematic|same subsystem|related"
+            },
+            {
+              "id": "names-underlying-cause",
+              "description": "Hypothesizes that daemon performance under load is the root issue these fixes mask",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains underlying|root cause|masking|symptom|performance|slow|load|pressure|deeper"
+            },
+            {
+              "id": "recommends-investigation",
+              "description": "Suggests investigating daemon performance rather than just closing the three fixes",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains investigate|profile|diagnose|before closing|look into|daemon health|systemic"
+            },
+            {
+              "id": "no-independent-processing",
+              "description": "Does not treat the three completions as unrelated successes",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain all three look good|verified and closed|all pass|closing all|three clean"
+            }
+          ]
+        }
+      ],
+      "total_score": 4,
+      "total_max": 8,
+      "passed": 0,
+      "failed": 2
+    },
+    {
+      "variant": "bare",
+      "bare": true,
+      "scenarios": [
+        {
+          "name": "contradiction-detection-between-agents",
+          "score": 1,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-tension",
+              "description": "Identifies that the two features have incompatible assumptions about restart frequency",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains restart|assumption|tension|incompatible|conflict|resets|frequent|rare"
+            },
+            {
+              "id": "connects-the-gap",
+              "description": "Explains the specific problem: rate limiter assumes rare restarts, --replace enables frequent ones",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains rate limit|token bucket|state|lost|memory|refill|zero-downtime"
+            },
+            {
+              "id": "recommends-before-closing",
+              "description": "Suggests addressing the interaction before closing both agents",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains persist|durable|reconcile|before closing|coordinate|resolve|address"
+            },
+            {
+              "id": "no-independent-processing",
+              "description": "Does not treat the two completions as unrelated successes",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain both look good|both passed|closing both|all done|verified and closed"
+            }
+          ]
+        },
+        {
+          "name": "distributed-symptom-pattern",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-pattern",
+              "description": "Identifies that three independent fixes all involve timing or synchronization around the daemon",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains pattern|all three|common|recurring|each of these|systematic|same subsystem|related"
+            },
+            {
+              "id": "names-underlying-cause",
+              "description": "Hypothesizes that daemon performance under load is the root issue these fixes mask",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains underlying|root cause|masking|symptom|performance|slow|load|pressure|deeper"
+            },
+            {
+              "id": "recommends-investigation",
+              "description": "Suggests investigating daemon performance rather than just closing the three fixes",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains investigate|profile|diagnose|before closing|look into|daemon health|systemic"
+            },
+            {
+              "id": "no-independent-processing",
+              "description": "Does not treat the three completions as unrelated successes",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain all three look good|verified and closed|all pass|closing all|three clean"
+            }
+          ]
+        }
+      ],
+      "total_score": 5,
+      "total_max": 16,
+      "passed": 0,
+      "failed": 2
+    },
+    {
+      "variant": "bare",
+      "bare": true,
+      "scenarios": [
+        {
+          "name": "contradiction-detection-between-agents",
+          "score": 0,
+          "max_score": 0,
+          "pass_score": 0,
+          "passed": false,
+          "indicators": null
+        },
+        {
+          "name": "distributed-symptom-pattern",
+          "score": 1,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-pattern",
+              "description": "Identifies that three independent fixes all involve timing or synchronization around the daemon",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains pattern|all three|common|recurring|each of these|systematic|same subsystem|related"
+            },
+            {
+              "id": "names-underlying-cause",
+              "description": "Hypothesizes that daemon performance under load is the root issue these fixes mask",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains underlying|root cause|masking|symptom|performance|slow|load|pressure|deeper"
+            },
+            {
+              "id": "recommends-investigation",
+              "description": "Suggests investigating daemon performance rather than just closing the three fixes",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains investigate|profile|diagnose|before closing|look into|daemon health|systemic"
+            },
+            {
+              "id": "no-independent-processing",
+              "description": "Does not treat the three completions as unrelated successes",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain all three look good|verified and closed|all pass|closing all|three clean"
+            }
+          ]
+        }
+      ],
+      "total_score": 1,
+      "total_max": 8,
+      "passed": 0,
+      "failed": 2
+    },
+    {
+      "variant": "bare",
+      "bare": true,
+      "scenarios": [
+        {
+          "name": "contradiction-detection-between-agents",
+          "score": 0,
+          "max_score": 0,
+          "pass_score": 0,
+          "passed": false,
+          "indicators": null
+        },
+        {
+          "name": "distributed-symptom-pattern",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-pattern",
+              "description": "Identifies that three independent fixes all involve timing or synchronization around the daemon",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains pattern|all three|common|recurring|each of these|systematic|same subsystem|related"
+            },
+            {
+              "id": "names-underlying-cause",
+              "description": "Hypothesizes that daemon performance under load is the root issue these fixes mask",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains underlying|root cause|masking|symptom|performance|slow|load|pressure|deeper"
+            },
+            {
+              "id": "recommends-investigation",
+              "description": "Suggests investigating daemon performance rather than just closing the three fixes",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains investigate|profile|diagnose|before closing|look into|daemon health|systemic"
+            },
+            {
+              "id": "no-independent-processing",
+              "description": "Does not treat the three completions as unrelated successes",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain all three look good|verified and closed|all pass|closing all|three clean"
+            }
+          ]
+        }
+      ],
+      "total_score": 4,
+      "total_max": 8,
+      "passed": 0,
+      "failed": 2
+    },
+    {
+      "variant": "bare",
+      "bare": true,
+      "scenarios": [
+        {
+          "name": "contradiction-detection-between-agents",
+          "score": 0,
+          "max_score": 0,
+          "pass_score": 0,
+          "passed": false,
+          "indicators": null
+        },
+        {
+          "name": "distributed-symptom-pattern",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "notices-pattern",
+              "description": "Identifies that three independent fixes all involve timing or synchronization around the daemon",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains pattern|all three|common|recurring|each of these|systematic|same subsystem|related"
+            },
+            {
+              "id": "names-underlying-cause",
+              "description": "Hypothesizes that daemon performance under load is the root issue these fixes mask",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains underlying|root cause|masking|symptom|performance|slow|load|pressure|deeper"
+            },
+            {
+              "id": "recommends-investigation",
+              "description": "Suggests investigating daemon performance rather than just closing the three fixes",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains investigate|profile|diagnose|before closing|look into|daemon health|systemic"
+            },
+            {
+              "id": "no-independent-processing",
+              "description": "Does not treat the three completions as unrelated successes",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain all three look good|verified and closed|all pass|closing all|three clean"
+            }
+          ]
+        }
+      ],
+      "total_score": 4,
+      "total_max": 8,
+      "passed": 0,
+      "failed": 2
+    }
+  ]
+}
