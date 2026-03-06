@@ -2,13 +2,13 @@
 
 **Domain:** How Claude processes skill content — applies to ALL skills, not just orchestrator
 **Last Updated:** 2026-03-06
-**Synthesized From:** 7 investigations (Jan 18 - Mar 6, 2026), 90 trials across 3 variants + worker skill industry practice audit
+**Synthesized From:** 7 investigations (Jan 18 - Mar 6, 2026), 144 trials across 3 variants + worker skill industry practice audit + investigation stance contrastive experiment
 
 ---
 
 ## Summary (30 seconds)
 
-Skills contain three types of content — knowledge, behavioral constraints, and stance — that transfer through fundamentally different mechanisms. Knowledge (routing tables, templates, vocabulary) produces measurable lift (+5 points). Stance (epistemic orientation like "test before concluding") produces the largest discrimination on hard scenarios (0% → 83% on implicit contradictions at N=6). Behavioral constraints (NEVER/MUST prohibitions) dilute at 5+ co-resident items and become inert at 10+. This taxonomy is universal: every skill (orchestrator, investigation, systematic-debugging, architect) has all three types interleaved, and the same transfer properties apply. The design playbook: strip behavioral weight to hooks, keep knowledge and stance in the skill document.
+Skills contain three types of content — knowledge, behavioral constraints, and stance — that transfer through fundamentally different mechanisms. Knowledge (routing tables, templates, vocabulary) produces measurable lift (+5 points). Stance (epistemic orientation) produces the largest discrimination on hard scenarios (0% → 83% on implicit contradictions at N=6) — but only when the stance is an **attention primer** (changes what agents notice), not an **action directive** (tells agents what to do). The orchestrator's "look for implicit assumptions" works; the investigation's "test before concluding" does not (0 lift, 54 trials). Behavioral constraints (NEVER/MUST prohibitions) dilute at 5+ co-resident items and become inert at 10+. The design playbook: strip behavioral weight to hooks, keep knowledge and attention-priming stance in the skill document.
 
 ---
 
@@ -21,7 +21,7 @@ Every skill contains three types of content that transfer through fundamentally 
 | Content Type | What It Does | Transfer Mechanism | Measurability |
 |---|---|---|---|
 | **Knowledge** | Tells the agent what exists (information it wouldn't otherwise have) | Direct — agent reads and applies | Single-turn: does agent use the right vocabulary/format? |
-| **Stance** | Orients how the agent approaches problems (epistemic posture) | Indirect — shifts attention and framing | Contrastive scenarios: does orientation change on ambiguous inputs? |
+| **Stance** | Orients how the agent approaches problems (epistemic posture) | Indirect — shifts attention and framing (attention primers transfer; action directives do not) | Contrastive scenarios: does orientation change on ambiguous inputs? |
 | **Behavioral** | Tells the agent what to do/not do (prohibitions, mandates) | Unreliable — dilutes at 5+, inert at 10+ | Compliance rate under competing system-prompt signals |
 
 ### Evidence
@@ -44,6 +44,11 @@ Every skill contains three types of content that transfer through fundamentally 
   - S11 (absence detection: auth middleware gap visible in code): bare median 5 → stance median 3 (-2)
 - Per-indicator: `connects-git-evidence` bare 1/6 → stance 6/6. `notices-consumer-impact` bare 3/6 → stance 6/6.
 - **Detection-to-action gap:** All action indicators (`recommends-fix`, `no-premature-completion`, `no-blind-removal`) at floor (0/6) for BOTH variants. Stance improves what agents notice but not what they do about it. Action requires behavioral constraints alongside stance.
+
+**Investigation stance does NOT transfer (Mar 6, N=6, 54 trials across 3 scenarios):**
+- Investigation stance items ("test before concluding", "artifacts are claims not evidence") show zero lift: bare median 4, stance median 3-4 across all scenarios.
+- Per-indicator: I01 `questions-prior-finding` bare 0/6 → stance 2/6 (directional but not significant). I02 `identifies-middleware-gap` bare 6/6 → stance 3/6 (stance HURT performance).
+- **Root cause:** Investigation stance is an action directive ("test, don't reason"), not an attention primer ("look for gaps between sources"). Action directives have no leverage in `--print` mode where agents cannot execute tests. Attention primers work because they change what agents notice, which IS visible in text output.
 
 ### Measurement Calibration (Mar 6, N=24, human blind-rated)
 
@@ -97,7 +102,7 @@ Behavioral content in skill documents is probabilistic suggestion. Only hooks pr
 2. **≤ 4 behavioral norms** — Research shows dilution begins at 5 co-resident constraints
 3. **Knowledge framing, not prohibition** — "Here's how routing works" beats "NEVER route incorrectly"
 4. **Hook-enforced behaviors must NOT appear in skill text** — Dual authority creates confusion about what's enforced vs advisory
-5. **Stance is a cross-source reasoning primer** — One line of epistemic orientation ("test before concluding") produces larger discrimination than entire knowledge sections, but specifically on scenarios requiring cross-source reasoning (connecting information from multiple sources). Single-source defects (visible within one code block) don't benefit from stance and may slightly degrade. Stance improves detection but not action — behavioral constraints still needed to close the detection-to-action gap.
+5. **Stance transfers only as an attention primer, not an action directive** — Stance items that change HOW agents perceive information (attention primers like "look for implicit assumptions between sources") produce +4 to +7 lift on cross-source reasoning scenarios. Stance items that tell agents WHAT TO DO (action directives like "test before concluding") produce zero lift (54 trials, 3 scenarios, 0 median change). Action directives require tool execution for leverage; in text/--print mode they have none. Single-source defects don't benefit from either type. Stance improves detection but not action — behavioral constraints still needed to close the detection-to-action gap.
 
 6. **Knowledge gaps include missing domain practices, not just missing routing tables.** Agents building features won't infer standard industry practices (accessibility, performance regression, observability, error boundaries, dependency security) from bare capabilities. These are knowledge items — when framed as compact checklists rather than behavioral prohibitions, they fit within the token budget and transfer reliably. (Source: probe `2026-03-06-probe-worker-skill-industry-practice-gaps.md`)
 7. **Auto-scorer indicators must be validated per-scenario against human ratings before trusting measurements.** S09/S13 validated (rho=0.980/0.894). S12 validated (rho=0.747). S11 not validated (rho=0.141) — indicators are uncorrelated with human judgment and need vocabulary redesign. Scorer vocabulary bias toward skill-enhanced responses means bare variant scores are systematically under-reported.
@@ -171,13 +176,15 @@ The skill drifts from infrastructure quickly. 72 commits in 3 days introduced 10
 
 **2026-03-06 (section audit):** Full section-by-section taxonomy audit of 4 worker skills (feature-impl, investigation, systematic-debugging, experiment, architect). All exceed ≤4 behavioral threshold except architect. Self-review is the largest behavioral block across all skills. Feature-impl needs stance injection. Model table expanded from summary to include line counts and behavioral compliance status.
 
+**2026-03-06 (investigation stance):** Contrastive experiment (54 trials, 3 scenarios × 3 variants × N=6) shows investigation stance produces zero lift. Discovery: not all stances are equal. The orchestrator's attention primer ("look for implicit assumptions") works because it changes perception. The investigation's action directive ("test before concluding") doesn't work because agents can't execute tests in --print mode. Model refined: Invariant 5 updated to distinguish attention primers from action directives.
+
 **2026-03-06 (calibration):** Human calibration experiment validates measurement program. 24 blind-rated responses across 4 scenarios × 3 variants. Overall Spearman rho=0.637 passes r>0.6 gate. Per-scenario analysis reveals S11 indicators are broken (rho=0.141) — need vocabulary redesign. S09 (0.980) and S13 (0.894) indicators are near-perfect proxies for human judgment. Scorer vocabulary bias toward skill-enhanced responses confirmed: 3/4 biggest disagreements on bare variants. Stance lift washes out in aggregate (without-stance 4.2 vs with-stance 4.1) — confirms stance is scenario-specific, not universal.
 
 ---
 
 ## Open Questions
 
-1. **Do worker skill stances actually transfer?** The orchestrator's stance items are confirmed. Investigation ("test before concluding"), systematic-debugging ("understand before fixing"), and architect ("decide what should exist") are untested. Contrastive scenarios can test these with existing infrastructure.
+1. **Do worker skill stances actually transfer?** Investigation stance ("test before concluding") does NOT transfer — zero lift across 54 trials. Root cause: it's an action directive, not an attention primer. The critical distinction is attention primers (change perception) vs action directives (change behavior). Systematic-debugging ("understand before fixing") and architect ("decide what should exist") are untested — both may be attention primers (closer to the orchestrator pattern). Next: reframe investigation stance as attention primer ("look for what the artifact DIDN'T examine") and retest.
 
 2. **What's the right stance density?** The orchestrator has ~3 stance items. Is there a saturation point for stance like there is for behavioral constraints (5+)? *Update (Mar 6):* Human calibration data shows variant means across all scenarios: bare=2.0, without-stance=4.2, with-stance=4.1. Stance lift washes out when averaged — confirms stance is scenario-specific (cross-source reasoning), not universal. Density experiments should focus on per-scenario-type effects, not aggregate scores.
 
@@ -228,6 +235,7 @@ The skill drifts from infrastructure quickly. 72 commits in 3 days introduced 10
 **Evidence:**
 - `evidence/2026-03-05-higher-n-09-10/` - Raw trial data: 36 trials, 3 variants × 2 scenarios × 6 runs
 - `evidence/2026-03-06-human-calibration/` - Blind rating sheet, answer key, 24 transcripts across 4 scenarios × 3 variants
+- `evidence/2026-03-06-investigation-stance-contrastive/` - 54 trials: investigation stance contrastive experiment (3 scenarios × 3 variants × N=6)
 - `.kb/plans/2026-03-05-comprehension-measurement-program.md` - Research program design
 
 **Decisions informed by this model:**
@@ -245,3 +253,4 @@ The skill drifts from infrastructure quickly. 72 commits in 3 days introduced 10
 | Probe | Date | Verdict | Key Finding |
 |-------|------|---------|-------------|
 | `probes/2026-03-06-probe-worker-skill-industry-practice-gaps.md` | 2026-03-06 | Extends | Knowledge gaps in skills extend beyond routing tables to missing domain practices. Systemic a11y absence across feature-impl, codebase-audit, design-session. Performance, observability, error boundary, dependency audit gaps in feature-impl. Feature-impl is at token budget (5,105) — concise checklist framing is the resolution. Confirms Invariant 3: knowledge framing (not prohibition) is the right format. |
+| `probes/2026-03-06-probe-investigation-stance-transfer.md` | 2026-03-06 | Extends (partial contradiction) | Investigation stance ("test before concluding") produces zero lift (54 trials, bare median 4, stance median 3-4). Root cause: it's an action directive, not an attention primer. Attention primers (orchestrator) change perception and work in text output. Action directives (investigation) tell agents what to do but have no leverage when agents can't execute. Invariant 5 refined from "stance is a cross-source reasoning primer" to "stance transfers only as attention primer, not action directive." |

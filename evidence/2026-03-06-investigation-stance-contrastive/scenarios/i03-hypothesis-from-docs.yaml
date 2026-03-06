@@ -1,0 +1,137 @@
+name: hypothesis-from-docs
+description: |
+  Investigation question: "Why does the daemon sometimes process 0 items?"
+  README says max 3 per cycle. Code shows const maxPerCycle = 3. But an
+  env var override DAEMON_BATCH_SIZE was added recently, and some environments
+  set it to 0 (disable). The documentation and constant are both stale claims.
+  An agent with investigation stance should flag that documentation/constants
+  are hypotheses and recommend checking actual runtime behavior.
+
+  Hypothesis: Investigation stance prevents agents from treating documentation
+  and code constants as ground truth when runtime behavior may differ.
+
+  Maps to: Skill-content-transfer model Open Question 1 (worker stance transfer)
+
+source: investigation-stance-contrastive-experiment-2026-03-06
+
+prompt: |
+  You're investigating why the orch-go daemon sometimes processes 0 items in
+  a cycle even when `bd ready` shows available work.
+
+  README.md says:
+  > The daemon polls `bd ready` every 30 seconds and processes up to 3 items
+  > per cycle. Items are spawned sequentially to avoid overwhelming the system.
+
+  Here's the daemon code:
+
+  ```go
+  // pkg/daemon/daemon.go
+  const maxPerCycle = 3
+
+  func (d *Daemon) runCycle() (int, error) {
+      batchSize := maxPerCycle
+      if envSize := os.Getenv("DAEMON_BATCH_SIZE"); envSize != "" {
+          n, err := strconv.Atoi(envSize)
+          if err == nil && n >= 0 {
+              batchSize = n
+          }
+      }
+
+      items, err := d.getReadyItems()
+      if err != nil {
+          return 0, err
+      }
+
+      processed := 0
+      for i := 0; i < len(items) && processed < batchSize; i++ {
+          if err := d.spawnItem(items[i]); err != nil {
+              d.logger.Warn("spawn failed", "item", items[i].ID, "err", err)
+              continue
+          }
+          processed++
+      }
+      return processed, nil
+  }
+  ```
+
+  A user reported: "Running orch daemon, bd ready shows 5 items, but the log
+  says 'cycle complete: processed 0 items'. This happens consistently."
+
+  The daemon log shows:
+  ```
+  2026-03-05 14:00:01 INFO  cycle start items_ready=5
+  2026-03-05 14:00:01 INFO  cycle complete processed=0 items_ready=5
+  2026-03-05 14:00:31 INFO  cycle start items_ready=5
+  2026-03-05 14:00:31 INFO  cycle complete processed=0 items_ready=5
+  ```
+
+  What's causing this and how should we fix it?
+
+behavioral_indicators:
+  - id: identifies-env-override
+    description: "Identifies DAEMON_BATCH_SIZE env var as the likely cause"
+    weight: 3
+    detection: "response contains DAEMON_BATCH_SIZE|batch.?size|environment.*variable|env.*var|env.*override|os.Getenv|envSize"
+
+  - id: questions-documentation
+    description: "Notes that README/constant don't reflect actual runtime behavior"
+    weight: 3
+    detection: "response contains README.*wrong|README.*stale|documentation.*stale|doc.*outdated|constant.*overridden|override|not.*actually.*3|doesn't.*reflect|misleading"
+
+  - id: recommends-checking-env
+    description: "Suggests checking the actual env var value in the running environment"
+    weight: 1
+    detection: "response contains check.*env|print.*env|echo.*DAEMON|inspect.*environment|what.*DAEMON_BATCH|value.*set.*to|env.*set.*0"
+
+  - id: no-blame-bd-ready
+    description: "Does NOT conclude that bd ready is wrong or that the daemon polling is broken"
+    weight: 1
+    detection: "response does not contain bd ready.*wrong|bd ready.*broken|polling.*broken|bd ready.*bug|bd.*returning.*stale"
+
+scoring:
+  max: 8
+  pass: 5
+
+variants:
+  bare:
+    description: "No skill context. Model receives only the prompt."
+    skill_context: null
+
+  without-stance:
+    description: |
+      Knowledge about investigation methodology, but no epistemic stance.
+    skill_context: |
+      ## Knowledge
+
+      - Investigations produce findings organized as D.E.K.N. (Delta, Evidence,
+        Knowledge, Next steps).
+      - Evidence hierarchy: Primary evidence (code, test output, observed behavior)
+        is authoritative. Secondary evidence (workspaces, prior investigations,
+        documentation) are claims that may need verification.
+      - When investigating daemon behavior, check both code constants and runtime
+        configuration (env vars, config files, flags) as behavior may be overridden.
+      - The daemon processes items from bd ready in configurable batch sizes.
+
+  with-stance:
+    description: |
+      Knowledge plus investigation epistemic stance.
+    skill_context: |
+      ## Knowledge
+
+      - Investigations produce findings organized as D.E.K.N. (Delta, Evidence,
+        Knowledge, Next steps).
+      - Evidence hierarchy: Primary evidence (code, test output, observed behavior)
+        is authoritative. Secondary evidence (workspaces, prior investigations,
+        documentation) are claims that may need verification.
+      - When investigating daemon behavior, check both code constants and runtime
+        configuration (env vars, config files, flags) as behavior may be overridden.
+      - The daemon processes items from bd ready in configurable batch sizes.
+
+      ## Stance
+
+      Answer a question by testing, not by reasoning. You cannot conclude without
+      testing. Artifacts are claims, not evidence — when the README says "up to
+      3 items per cycle," that's what was WRITTEN, not necessarily what HAPPENS.
+      Constants in code are defaults, not guarantees. The only way to know what
+      the daemon does is to observe its actual behavior with the actual
+      configuration.

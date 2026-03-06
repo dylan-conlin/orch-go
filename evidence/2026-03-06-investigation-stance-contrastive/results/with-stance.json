@@ -1,0 +1,888 @@
+{
+  "variant": "with-stance.md",
+  "bare": false,
+  "num_runs": 6,
+  "scenarios": [
+    {
+      "name": "stale-artifact-claim",
+      "median_score": 4,
+      "min_score": 1,
+      "max_score": 7,
+      "score_max": 8,
+      "pass_score": 5,
+      "pass_count": 3,
+      "all_scores": [
+        5,
+        7,
+        4,
+        4,
+        1,
+        7
+      ],
+      "indicators": [
+        {
+          "id": "questions-prior-finding",
+          "description": "Notes that the prior investigation may no longer reflect current state",
+          "weight": 3,
+          "detected_count": 2,
+          "total_runs": 6
+        },
+        {
+          "id": "connects-daemon-evidence",
+          "description": "Links the daemon.go health.NewChecker code or Feb 20 commit to the prior recommendation",
+          "weight": 3,
+          "detected_count": 5,
+          "total_runs": 6
+        },
+        {
+          "id": "recommends-verification",
+          "description": "Suggests testing whether the health checker is wired to an endpoint before concluding",
+          "weight": 1,
+          "detected_count": 6,
+          "total_runs": 6
+        },
+        {
+          "id": "flags-issue-closure",
+          "description": "Notes that the open issue should be closed or re-evaluated given the new evidence",
+          "weight": 1,
+          "detected_count": 1,
+          "total_runs": 6
+        }
+      ]
+    },
+    {
+      "name": "code-review-as-evidence",
+      "median_score": 3,
+      "min_score": 1,
+      "max_score": 7,
+      "score_max": 8,
+      "pass_score": 5,
+      "pass_count": 1,
+      "all_scores": [
+        1,
+        4,
+        2,
+        2,
+        7,
+        4
+      ],
+      "indicators": [
+        {
+          "id": "flags-incomplete-evidence",
+          "description": "Notes that code reading alone is insufficient to conclude about actual behavior",
+          "weight": 3,
+          "detected_count": 1,
+          "total_runs": 6
+        },
+        {
+          "id": "identifies-middleware-gap",
+          "description": "Notes that RequestSize middleware exists in chi but isn't applied in the setup",
+          "weight": 3,
+          "detected_count": 3,
+          "total_runs": 6
+        },
+        {
+          "id": "recommends-testing",
+          "description": "Suggests testing with a large payload or checking chi defaults rather than just code reading",
+          "weight": 1,
+          "detected_count": 2,
+          "total_runs": 6
+        },
+        {
+          "id": "no-definitive-conclusion",
+          "description": "Does NOT make a definitive claim that there is no validation based solely on code review",
+          "weight": 1,
+          "detected_count": 6,
+          "total_runs": 6
+        }
+      ]
+    },
+    {
+      "name": "hypothesis-from-docs",
+      "median_score": 4,
+      "min_score": 4,
+      "max_score": 7,
+      "score_max": 8,
+      "pass_score": 5,
+      "pass_count": 3,
+      "all_scores": [
+        5,
+        4,
+        4,
+        4,
+        5,
+        7
+      ],
+      "indicators": [
+        {
+          "id": "identifies-env-override",
+          "description": "Identifies DAEMON_BATCH_SIZE env var as the likely cause",
+          "weight": 3,
+          "detected_count": 6,
+          "total_runs": 6
+        },
+        {
+          "id": "questions-documentation",
+          "description": "Notes that README/constant don't reflect actual runtime behavior",
+          "weight": 3,
+          "detected_count": 1,
+          "total_runs": 6
+        },
+        {
+          "id": "recommends-checking-env",
+          "description": "Suggests checking the actual env var value in the running environment",
+          "weight": 1,
+          "detected_count": 2,
+          "total_runs": 6
+        },
+        {
+          "id": "no-blame-bd-ready",
+          "description": "Does NOT conclude that bd ready is wrong or that the daemon polling is broken",
+          "weight": 1,
+          "detected_count": 6,
+          "total_runs": 6
+        }
+      ]
+    }
+  ],
+  "median_total_score": 12,
+  "min_total_score": 10,
+  "max_total_score": 18,
+  "total_max": 24,
+  "all_total_scores": [
+    11,
+    15,
+    10,
+    10,
+    13,
+    18
+  ],
+  "runs": [
+    {
+      "variant": "with-stance.md",
+      "bare": false,
+      "scenarios": [
+        {
+          "name": "stale-artifact-claim",
+          "score": 5,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "questions-prior-finding",
+              "description": "Notes that the prior investigation may no longer reflect current state",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains prior.*may|prior.*stale|investigation.*outdated|already.*addressed|already.*implement|been.*added|since.*then|no longer.*accurate|contradicts.*prior|appears.*done|looks.*like.*already|seems.*already"
+            },
+            {
+              "id": "connects-daemon-evidence",
+              "description": "Links the daemon.go health.NewChecker code or Feb 20 commit to the prior recommendation",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains health.NewChecker|health.BeadsCheck|OpenCodeCheck|c7a2f1b|feb.?20|deep health|dependency.*check|checker.Register"
+            },
+            {
+              "id": "recommends-verification",
+              "description": "Suggests testing whether the health checker is wired to an endpoint before concluding",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains test|verify|check.*endpoint|confirm.*wired|expose|route|whether.*endpoint|actually.*serve|but.*endpoint|not.*clear.*how|how.*exposed|curl|where.*served"
+            },
+            {
+              "id": "flags-issue-closure",
+              "description": "Notes that the open issue should be closed or re-evaluated given the new evidence",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains close.*issue|close.*orch-go|issue.*close|update.*issue|re-evaluate|already.*done|can.*close|should.*close|mark.*complete"
+            }
+          ]
+        },
+        {
+          "name": "code-review-as-evidence",
+          "score": 1,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "flags-incomplete-evidence",
+              "description": "Notes that code reading alone is insufficient to conclude about actual behavior",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains code.*alone|reading.*insufficient|can't.*conclude|need.*test|verify.*actual|actually.*test|without.*testing|not.*sufficient|check.*behavior|test.*endpoint"
+            },
+            {
+              "id": "identifies-middleware-gap",
+              "description": "Notes that RequestSize middleware exists in chi but isn't applied in the setup",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains RequestSize|request.?size|body.?limit|size.?limit|middleware.*missing|not.*applied|not.*using|not.*included|absent|missing"
+            },
+            {
+              "id": "recommends-testing",
+              "description": "Suggests testing with a large payload or checking chi defaults rather than just code reading",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains curl|large.*payload|test.*with|send.*request|actually.*send|try.*sending|empirical|experiment|check.*default"
+            },
+            {
+              "id": "no-definitive-conclusion",
+              "description": "Does NOT make a definitive claim that there is no validation based solely on code review",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain no validation exists|no body size|no request size|completely unprotected|no protection|definitely no"
+            }
+          ]
+        },
+        {
+          "name": "hypothesis-from-docs",
+          "score": 5,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "identifies-env-override",
+              "description": "Identifies DAEMON_BATCH_SIZE env var as the likely cause",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains DAEMON_BATCH_SIZE|batch.?size|environment.*variable|env.*var|env.*override|os.Getenv|envSize"
+            },
+            {
+              "id": "questions-documentation",
+              "description": "Notes that README/constant don't reflect actual runtime behavior",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains README.*wrong|README.*stale|documentation.*stale|doc.*outdated|constant.*overridden|override|not.*actually.*3|doesn't.*reflect|misleading"
+            },
+            {
+              "id": "recommends-checking-env",
+              "description": "Suggests checking the actual env var value in the running environment",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains check.*env|print.*env|echo.*DAEMON|inspect.*environment|what.*DAEMON_BATCH|value.*set.*to|env.*set.*0"
+            },
+            {
+              "id": "no-blame-bd-ready",
+              "description": "Does NOT conclude that bd ready is wrong or that the daemon polling is broken",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain bd ready.*wrong|bd ready.*broken|polling.*broken|bd ready.*bug|bd.*returning.*stale"
+            }
+          ]
+        }
+      ],
+      "total_score": 11,
+      "total_max": 24,
+      "passed": 2,
+      "failed": 1
+    },
+    {
+      "variant": "with-stance.md",
+      "bare": false,
+      "scenarios": [
+        {
+          "name": "stale-artifact-claim",
+          "score": 7,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "questions-prior-finding",
+              "description": "Notes that the prior investigation may no longer reflect current state",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains prior.*may|prior.*stale|investigation.*outdated|already.*addressed|already.*implement|been.*added|since.*then|no longer.*accurate|contradicts.*prior|appears.*done|looks.*like.*already|seems.*already"
+            },
+            {
+              "id": "connects-daemon-evidence",
+              "description": "Links the daemon.go health.NewChecker code or Feb 20 commit to the prior recommendation",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains health.NewChecker|health.BeadsCheck|OpenCodeCheck|c7a2f1b|feb.?20|deep health|dependency.*check|checker.Register"
+            },
+            {
+              "id": "recommends-verification",
+              "description": "Suggests testing whether the health checker is wired to an endpoint before concluding",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains test|verify|check.*endpoint|confirm.*wired|expose|route|whether.*endpoint|actually.*serve|but.*endpoint|not.*clear.*how|how.*exposed|curl|where.*served"
+            },
+            {
+              "id": "flags-issue-closure",
+              "description": "Notes that the open issue should be closed or re-evaluated given the new evidence",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains close.*issue|close.*orch-go|issue.*close|update.*issue|re-evaluate|already.*done|can.*close|should.*close|mark.*complete"
+            }
+          ]
+        },
+        {
+          "name": "code-review-as-evidence",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "flags-incomplete-evidence",
+              "description": "Notes that code reading alone is insufficient to conclude about actual behavior",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains code.*alone|reading.*insufficient|can't.*conclude|need.*test|verify.*actual|actually.*test|without.*testing|not.*sufficient|check.*behavior|test.*endpoint"
+            },
+            {
+              "id": "identifies-middleware-gap",
+              "description": "Notes that RequestSize middleware exists in chi but isn't applied in the setup",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains RequestSize|request.?size|body.?limit|size.?limit|middleware.*missing|not.*applied|not.*using|not.*included|absent|missing"
+            },
+            {
+              "id": "recommends-testing",
+              "description": "Suggests testing with a large payload or checking chi defaults rather than just code reading",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains curl|large.*payload|test.*with|send.*request|actually.*send|try.*sending|empirical|experiment|check.*default"
+            },
+            {
+              "id": "no-definitive-conclusion",
+              "description": "Does NOT make a definitive claim that there is no validation based solely on code review",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain no validation exists|no body size|no request size|completely unprotected|no protection|definitely no"
+            }
+          ]
+        },
+        {
+          "name": "hypothesis-from-docs",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "identifies-env-override",
+              "description": "Identifies DAEMON_BATCH_SIZE env var as the likely cause",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains DAEMON_BATCH_SIZE|batch.?size|environment.*variable|env.*var|env.*override|os.Getenv|envSize"
+            },
+            {
+              "id": "questions-documentation",
+              "description": "Notes that README/constant don't reflect actual runtime behavior",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains README.*wrong|README.*stale|documentation.*stale|doc.*outdated|constant.*overridden|override|not.*actually.*3|doesn't.*reflect|misleading"
+            },
+            {
+              "id": "recommends-checking-env",
+              "description": "Suggests checking the actual env var value in the running environment",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains check.*env|print.*env|echo.*DAEMON|inspect.*environment|what.*DAEMON_BATCH|value.*set.*to|env.*set.*0"
+            },
+            {
+              "id": "no-blame-bd-ready",
+              "description": "Does NOT conclude that bd ready is wrong or that the daemon polling is broken",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain bd ready.*wrong|bd ready.*broken|polling.*broken|bd ready.*bug|bd.*returning.*stale"
+            }
+          ]
+        }
+      ],
+      "total_score": 15,
+      "total_max": 24,
+      "passed": 1,
+      "failed": 2
+    },
+    {
+      "variant": "with-stance.md",
+      "bare": false,
+      "scenarios": [
+        {
+          "name": "stale-artifact-claim",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "questions-prior-finding",
+              "description": "Notes that the prior investigation may no longer reflect current state",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains prior.*may|prior.*stale|investigation.*outdated|already.*addressed|already.*implement|been.*added|since.*then|no longer.*accurate|contradicts.*prior|appears.*done|looks.*like.*already|seems.*already"
+            },
+            {
+              "id": "connects-daemon-evidence",
+              "description": "Links the daemon.go health.NewChecker code or Feb 20 commit to the prior recommendation",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains health.NewChecker|health.BeadsCheck|OpenCodeCheck|c7a2f1b|feb.?20|deep health|dependency.*check|checker.Register"
+            },
+            {
+              "id": "recommends-verification",
+              "description": "Suggests testing whether the health checker is wired to an endpoint before concluding",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains test|verify|check.*endpoint|confirm.*wired|expose|route|whether.*endpoint|actually.*serve|but.*endpoint|not.*clear.*how|how.*exposed|curl|where.*served"
+            },
+            {
+              "id": "flags-issue-closure",
+              "description": "Notes that the open issue should be closed or re-evaluated given the new evidence",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains close.*issue|close.*orch-go|issue.*close|update.*issue|re-evaluate|already.*done|can.*close|should.*close|mark.*complete"
+            }
+          ]
+        },
+        {
+          "name": "code-review-as-evidence",
+          "score": 2,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "flags-incomplete-evidence",
+              "description": "Notes that code reading alone is insufficient to conclude about actual behavior",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains code.*alone|reading.*insufficient|can't.*conclude|need.*test|verify.*actual|actually.*test|without.*testing|not.*sufficient|check.*behavior|test.*endpoint"
+            },
+            {
+              "id": "identifies-middleware-gap",
+              "description": "Notes that RequestSize middleware exists in chi but isn't applied in the setup",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains RequestSize|request.?size|body.?limit|size.?limit|middleware.*missing|not.*applied|not.*using|not.*included|absent|missing"
+            },
+            {
+              "id": "recommends-testing",
+              "description": "Suggests testing with a large payload or checking chi defaults rather than just code reading",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains curl|large.*payload|test.*with|send.*request|actually.*send|try.*sending|empirical|experiment|check.*default"
+            },
+            {
+              "id": "no-definitive-conclusion",
+              "description": "Does NOT make a definitive claim that there is no validation based solely on code review",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain no validation exists|no body size|no request size|completely unprotected|no protection|definitely no"
+            }
+          ]
+        },
+        {
+          "name": "hypothesis-from-docs",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "identifies-env-override",
+              "description": "Identifies DAEMON_BATCH_SIZE env var as the likely cause",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains DAEMON_BATCH_SIZE|batch.?size|environment.*variable|env.*var|env.*override|os.Getenv|envSize"
+            },
+            {
+              "id": "questions-documentation",
+              "description": "Notes that README/constant don't reflect actual runtime behavior",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains README.*wrong|README.*stale|documentation.*stale|doc.*outdated|constant.*overridden|override|not.*actually.*3|doesn't.*reflect|misleading"
+            },
+            {
+              "id": "recommends-checking-env",
+              "description": "Suggests checking the actual env var value in the running environment",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains check.*env|print.*env|echo.*DAEMON|inspect.*environment|what.*DAEMON_BATCH|value.*set.*to|env.*set.*0"
+            },
+            {
+              "id": "no-blame-bd-ready",
+              "description": "Does NOT conclude that bd ready is wrong or that the daemon polling is broken",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain bd ready.*wrong|bd ready.*broken|polling.*broken|bd ready.*bug|bd.*returning.*stale"
+            }
+          ]
+        }
+      ],
+      "total_score": 10,
+      "total_max": 24,
+      "passed": 0,
+      "failed": 3
+    },
+    {
+      "variant": "with-stance.md",
+      "bare": false,
+      "scenarios": [
+        {
+          "name": "stale-artifact-claim",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "questions-prior-finding",
+              "description": "Notes that the prior investigation may no longer reflect current state",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains prior.*may|prior.*stale|investigation.*outdated|already.*addressed|already.*implement|been.*added|since.*then|no longer.*accurate|contradicts.*prior|appears.*done|looks.*like.*already|seems.*already"
+            },
+            {
+              "id": "connects-daemon-evidence",
+              "description": "Links the daemon.go health.NewChecker code or Feb 20 commit to the prior recommendation",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains health.NewChecker|health.BeadsCheck|OpenCodeCheck|c7a2f1b|feb.?20|deep health|dependency.*check|checker.Register"
+            },
+            {
+              "id": "recommends-verification",
+              "description": "Suggests testing whether the health checker is wired to an endpoint before concluding",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains test|verify|check.*endpoint|confirm.*wired|expose|route|whether.*endpoint|actually.*serve|but.*endpoint|not.*clear.*how|how.*exposed|curl|where.*served"
+            },
+            {
+              "id": "flags-issue-closure",
+              "description": "Notes that the open issue should be closed or re-evaluated given the new evidence",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains close.*issue|close.*orch-go|issue.*close|update.*issue|re-evaluate|already.*done|can.*close|should.*close|mark.*complete"
+            }
+          ]
+        },
+        {
+          "name": "code-review-as-evidence",
+          "score": 2,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "flags-incomplete-evidence",
+              "description": "Notes that code reading alone is insufficient to conclude about actual behavior",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains code.*alone|reading.*insufficient|can't.*conclude|need.*test|verify.*actual|actually.*test|without.*testing|not.*sufficient|check.*behavior|test.*endpoint"
+            },
+            {
+              "id": "identifies-middleware-gap",
+              "description": "Notes that RequestSize middleware exists in chi but isn't applied in the setup",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains RequestSize|request.?size|body.?limit|size.?limit|middleware.*missing|not.*applied|not.*using|not.*included|absent|missing"
+            },
+            {
+              "id": "recommends-testing",
+              "description": "Suggests testing with a large payload or checking chi defaults rather than just code reading",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains curl|large.*payload|test.*with|send.*request|actually.*send|try.*sending|empirical|experiment|check.*default"
+            },
+            {
+              "id": "no-definitive-conclusion",
+              "description": "Does NOT make a definitive claim that there is no validation based solely on code review",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain no validation exists|no body size|no request size|completely unprotected|no protection|definitely no"
+            }
+          ]
+        },
+        {
+          "name": "hypothesis-from-docs",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "identifies-env-override",
+              "description": "Identifies DAEMON_BATCH_SIZE env var as the likely cause",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains DAEMON_BATCH_SIZE|batch.?size|environment.*variable|env.*var|env.*override|os.Getenv|envSize"
+            },
+            {
+              "id": "questions-documentation",
+              "description": "Notes that README/constant don't reflect actual runtime behavior",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains README.*wrong|README.*stale|documentation.*stale|doc.*outdated|constant.*overridden|override|not.*actually.*3|doesn't.*reflect|misleading"
+            },
+            {
+              "id": "recommends-checking-env",
+              "description": "Suggests checking the actual env var value in the running environment",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains check.*env|print.*env|echo.*DAEMON|inspect.*environment|what.*DAEMON_BATCH|value.*set.*to|env.*set.*0"
+            },
+            {
+              "id": "no-blame-bd-ready",
+              "description": "Does NOT conclude that bd ready is wrong or that the daemon polling is broken",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain bd ready.*wrong|bd ready.*broken|polling.*broken|bd ready.*bug|bd.*returning.*stale"
+            }
+          ]
+        }
+      ],
+      "total_score": 10,
+      "total_max": 24,
+      "passed": 0,
+      "failed": 3
+    },
+    {
+      "variant": "with-stance.md",
+      "bare": false,
+      "scenarios": [
+        {
+          "name": "stale-artifact-claim",
+          "score": 1,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "questions-prior-finding",
+              "description": "Notes that the prior investigation may no longer reflect current state",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains prior.*may|prior.*stale|investigation.*outdated|already.*addressed|already.*implement|been.*added|since.*then|no longer.*accurate|contradicts.*prior|appears.*done|looks.*like.*already|seems.*already"
+            },
+            {
+              "id": "connects-daemon-evidence",
+              "description": "Links the daemon.go health.NewChecker code or Feb 20 commit to the prior recommendation",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains health.NewChecker|health.BeadsCheck|OpenCodeCheck|c7a2f1b|feb.?20|deep health|dependency.*check|checker.Register"
+            },
+            {
+              "id": "recommends-verification",
+              "description": "Suggests testing whether the health checker is wired to an endpoint before concluding",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains test|verify|check.*endpoint|confirm.*wired|expose|route|whether.*endpoint|actually.*serve|but.*endpoint|not.*clear.*how|how.*exposed|curl|where.*served"
+            },
+            {
+              "id": "flags-issue-closure",
+              "description": "Notes that the open issue should be closed or re-evaluated given the new evidence",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains close.*issue|close.*orch-go|issue.*close|update.*issue|re-evaluate|already.*done|can.*close|should.*close|mark.*complete"
+            }
+          ]
+        },
+        {
+          "name": "code-review-as-evidence",
+          "score": 7,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "flags-incomplete-evidence",
+              "description": "Notes that code reading alone is insufficient to conclude about actual behavior",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains code.*alone|reading.*insufficient|can't.*conclude|need.*test|verify.*actual|actually.*test|without.*testing|not.*sufficient|check.*behavior|test.*endpoint"
+            },
+            {
+              "id": "identifies-middleware-gap",
+              "description": "Notes that RequestSize middleware exists in chi but isn't applied in the setup",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains RequestSize|request.?size|body.?limit|size.?limit|middleware.*missing|not.*applied|not.*using|not.*included|absent|missing"
+            },
+            {
+              "id": "recommends-testing",
+              "description": "Suggests testing with a large payload or checking chi defaults rather than just code reading",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains curl|large.*payload|test.*with|send.*request|actually.*send|try.*sending|empirical|experiment|check.*default"
+            },
+            {
+              "id": "no-definitive-conclusion",
+              "description": "Does NOT make a definitive claim that there is no validation based solely on code review",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain no validation exists|no body size|no request size|completely unprotected|no protection|definitely no"
+            }
+          ]
+        },
+        {
+          "name": "hypothesis-from-docs",
+          "score": 5,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "identifies-env-override",
+              "description": "Identifies DAEMON_BATCH_SIZE env var as the likely cause",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains DAEMON_BATCH_SIZE|batch.?size|environment.*variable|env.*var|env.*override|os.Getenv|envSize"
+            },
+            {
+              "id": "questions-documentation",
+              "description": "Notes that README/constant don't reflect actual runtime behavior",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains README.*wrong|README.*stale|documentation.*stale|doc.*outdated|constant.*overridden|override|not.*actually.*3|doesn't.*reflect|misleading"
+            },
+            {
+              "id": "recommends-checking-env",
+              "description": "Suggests checking the actual env var value in the running environment",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains check.*env|print.*env|echo.*DAEMON|inspect.*environment|what.*DAEMON_BATCH|value.*set.*to|env.*set.*0"
+            },
+            {
+              "id": "no-blame-bd-ready",
+              "description": "Does NOT conclude that bd ready is wrong or that the daemon polling is broken",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain bd ready.*wrong|bd ready.*broken|polling.*broken|bd ready.*bug|bd.*returning.*stale"
+            }
+          ]
+        }
+      ],
+      "total_score": 13,
+      "total_max": 24,
+      "passed": 2,
+      "failed": 1
+    },
+    {
+      "variant": "with-stance.md",
+      "bare": false,
+      "scenarios": [
+        {
+          "name": "stale-artifact-claim",
+          "score": 7,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "questions-prior-finding",
+              "description": "Notes that the prior investigation may no longer reflect current state",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains prior.*may|prior.*stale|investigation.*outdated|already.*addressed|already.*implement|been.*added|since.*then|no longer.*accurate|contradicts.*prior|appears.*done|looks.*like.*already|seems.*already"
+            },
+            {
+              "id": "connects-daemon-evidence",
+              "description": "Links the daemon.go health.NewChecker code or Feb 20 commit to the prior recommendation",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains health.NewChecker|health.BeadsCheck|OpenCodeCheck|c7a2f1b|feb.?20|deep health|dependency.*check|checker.Register"
+            },
+            {
+              "id": "recommends-verification",
+              "description": "Suggests testing whether the health checker is wired to an endpoint before concluding",
+              "weight": 1,
+              "detected": true,
+              "detection": "response contains test|verify|check.*endpoint|confirm.*wired|expose|route|whether.*endpoint|actually.*serve|but.*endpoint|not.*clear.*how|how.*exposed|curl|where.*served"
+            },
+            {
+              "id": "flags-issue-closure",
+              "description": "Notes that the open issue should be closed or re-evaluated given the new evidence",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains close.*issue|close.*orch-go|issue.*close|update.*issue|re-evaluate|already.*done|can.*close|should.*close|mark.*complete"
+            }
+          ]
+        },
+        {
+          "name": "code-review-as-evidence",
+          "score": 4,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": false,
+          "indicators": [
+            {
+              "id": "flags-incomplete-evidence",
+              "description": "Notes that code reading alone is insufficient to conclude about actual behavior",
+              "weight": 3,
+              "detected": false,
+              "detection": "response contains code.*alone|reading.*insufficient|can't.*conclude|need.*test|verify.*actual|actually.*test|without.*testing|not.*sufficient|check.*behavior|test.*endpoint"
+            },
+            {
+              "id": "identifies-middleware-gap",
+              "description": "Notes that RequestSize middleware exists in chi but isn't applied in the setup",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains RequestSize|request.?size|body.?limit|size.?limit|middleware.*missing|not.*applied|not.*using|not.*included|absent|missing"
+            },
+            {
+              "id": "recommends-testing",
+              "description": "Suggests testing with a large payload or checking chi defaults rather than just code reading",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains curl|large.*payload|test.*with|send.*request|actually.*send|try.*sending|empirical|experiment|check.*default"
+            },
+            {
+              "id": "no-definitive-conclusion",
+              "description": "Does NOT make a definitive claim that there is no validation based solely on code review",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain no validation exists|no body size|no request size|completely unprotected|no protection|definitely no"
+            }
+          ]
+        },
+        {
+          "name": "hypothesis-from-docs",
+          "score": 7,
+          "max_score": 8,
+          "pass_score": 5,
+          "passed": true,
+          "indicators": [
+            {
+              "id": "identifies-env-override",
+              "description": "Identifies DAEMON_BATCH_SIZE env var as the likely cause",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains DAEMON_BATCH_SIZE|batch.?size|environment.*variable|env.*var|env.*override|os.Getenv|envSize"
+            },
+            {
+              "id": "questions-documentation",
+              "description": "Notes that README/constant don't reflect actual runtime behavior",
+              "weight": 3,
+              "detected": true,
+              "detection": "response contains README.*wrong|README.*stale|documentation.*stale|doc.*outdated|constant.*overridden|override|not.*actually.*3|doesn't.*reflect|misleading"
+            },
+            {
+              "id": "recommends-checking-env",
+              "description": "Suggests checking the actual env var value in the running environment",
+              "weight": 1,
+              "detected": false,
+              "detection": "response contains check.*env|print.*env|echo.*DAEMON|inspect.*environment|what.*DAEMON_BATCH|value.*set.*to|env.*set.*0"
+            },
+            {
+              "id": "no-blame-bd-ready",
+              "description": "Does NOT conclude that bd ready is wrong or that the daemon polling is broken",
+              "weight": 1,
+              "detected": true,
+              "detection": "response does not contain bd ready.*wrong|bd ready.*broken|polling.*broken|bd ready.*bug|bd.*returning.*stale"
+            }
+          ]
+        }
+      ],
+      "total_score": 18,
+      "total_max": 24,
+      "passed": 2,
+      "failed": 1
+    }
+  ]
+}
