@@ -2,7 +2,7 @@
 title: "Stance as attention priming — what agents don't see"
 status: open
 created: 2026-03-05
-updated: 2026-03-05
+updated: 2026-03-06
 resolved_to: ""
 ---
 
@@ -19,3 +19,7 @@ Proposed attention stances mapped to failure modes: (1) 'Every data path has imp
 Broader blind spots beyond defect classes: trajectory vs state (agents see what is, not what's changing), the question behind the question (intent behind content), what's not being said (absence in prompts/codebases). These are structurally hard for LLMs — trained on pattern matching over present tokens, so absence/trajectory/relationships require explicit orientation.
 
 Testable: each attention type maps to a contrastive scenario. Same infrastructure as scenario 09. Unvalidated — thread becomes model when experiments confirm stances shift attention on these specific blind spots.
+
+## 2026-03-06
+
+Generalization confirmed: stance is cross-source reasoning primer, not generic amplifier. Lifts S12 (+5 relationship tracing) and S13 (+4 information freshness) but not S11 (-2 single-source absence). Detection-to-action gap discovered: agents see problems but still approve completion — stance improves input processing, behavioral constraints needed for output decisions. 72 total trials across 5 scenarios now.

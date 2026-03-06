@@ -30,10 +30,20 @@ Every skill contains three types of content that transfer through fundamentally 
 - Bare Claude: 17/56. With knowledge items: 22/56. Lift: +5 points.
 - Concentrated in: routing tables (+4/8), framing vocabulary (+2/8), intent clarification (+2/8).
 
-**Stance transfer confirmed (Mar 5-6, N=6, 36 trials):**
+**Stance transfer confirmed (Mar 5-6, N=6, 72 trials across 5 scenarios):**
 - Scenario 09 (implicit contradiction): bare 0/6, without-stance 1/6, with-stance 5/6.
 - 0% → 17% → 83%. Stance items don't teach agents what contradictions look like — they orient agents to *look for meaning*.
 - Key design insight: discriminating scenarios require implicit signals (incompatible assumptions, not opposite conclusions). Explicit signals (data tables, opposite findings) hit ceiling on Sonnet.
+
+**Stance generalization confirmed (Mar 6, N=6, 36 trials across 3 new scenarios):**
+- Stance is a **cross-source reasoning primer**, not a generic attention amplifier.
+- Lifts performance when defects hide in gaps BETWEEN information sources:
+  - S12 (relationship tracing: query change → dashboard consumer): bare median 1 → stance median 6 (+5)
+  - S13 (information freshness: git log contradicts deprecation comment): bare median 0 → stance median 4 (+4)
+- No lift when defects are visible within a single source:
+  - S11 (absence detection: auth middleware gap visible in code): bare median 5 → stance median 3 (-2)
+- Per-indicator: `connects-git-evidence` bare 1/6 → stance 6/6. `notices-consumer-impact` bare 3/6 → stance 6/6.
+- **Detection-to-action gap:** All action indicators (`recommends-fix`, `no-premature-completion`, `no-blind-removal`) at floor (0/6) for BOTH variants. Stance improves what agents notice but not what they do about it. Action requires behavioral constraints alongside stance.
 
 **Behavioral constraint dilution confirmed (Mar 1, N=7 scenarios):**
 - Delegation prohibition: 1/8 (= bare). Anti-sycophancy: 3/8 (= bare). Reconnection framing: 0-1/8 (= bare).
@@ -66,7 +76,7 @@ Behavioral content in skill documents is probabilistic suggestion. Only hooks pr
 2. **≤ 4 behavioral norms** — Research shows dilution begins at 5 co-resident constraints
 3. **Knowledge framing, not prohibition** — "Here's how routing works" beats "NEVER route incorrectly"
 4. **Hook-enforced behaviors must NOT appear in skill text** — Dual authority creates confusion about what's enforced vs advisory
-5. **Stance is the highest-leverage content type** — One line of epistemic orientation ("test before concluding") can produce larger discrimination than entire knowledge sections on hard scenarios
+5. **Stance is a cross-source reasoning primer** — One line of epistemic orientation ("test before concluding") produces larger discrimination than entire knowledge sections, but specifically on scenarios requiring cross-source reasoning (connecting information from multiple sources). Single-source defects (visible within one code block) don't benefit from stance and may slightly degrade. Stance improves detection but not action — behavioral constraints still needed to close the detection-to-action gap.
 
 ---
 
@@ -131,7 +141,9 @@ The skill drifts from infrastructure quickly. 72 commits in 3 days introduced 10
 
 **2026-03-05:** 72-commit infrastructure delta created 6 mechanical mismatches. Skill drifts faster than anticipated — sync mechanism needed.
 
-**2026-03-06:** Higher-N trials (N=6, 36 trials) decisively confirmed stance as a third content type distinct from knowledge. Scenario 09: bare 0/6, without-stance 1/6, with-stance 5/6. Model expanded from orchestrator-specific to universal taxonomy — the knowledge/behavioral/stance decomposition applies to all skills. Worker skill analysis shows investigation, systematic-debugging, and architect all have the same structural problem the orchestrator had: behavioral weight crowding out knowledge and stance.
+**2026-03-06 (morning):** Higher-N trials (N=6, 36 trials) decisively confirmed stance as a third content type distinct from knowledge. Scenario 09: bare 0/6, without-stance 1/6, with-stance 5/6. Model expanded from orchestrator-specific to universal taxonomy — the knowledge/behavioral/stance decomposition applies to all skills. Worker skill analysis shows investigation, systematic-debugging, and architect all have the same structural problem the orchestrator had: behavioral weight crowding out knowledge and stance.
+
+**2026-03-06 (afternoon):** Generalization experiment (36 more trials, 3 new scenarios). Stance confirmed as cross-source reasoning primer: +5 on relationship tracing (S12), +4 on information freshness (S13), -2 on single-source absence detection (S11). The mechanism is specific — stance helps when defects hide between information sources, not when they're visible within one source. Detection-to-action gap discovered: agents notice problems but still approve completion. Action indicators at 0/6 across all variants.
 
 ---
 
@@ -142,6 +154,10 @@ The skill drifts from infrastructure quickly. 72 commits in 3 days introduced 10
 2. **What's the right stance density?** The orchestrator has ~3 stance items. Is there a saturation point for stance like there is for behavioral constraints (5+)?
 
 3. **Does stance interact with knowledge?** The N=6 data shows knowledge alone (without-stance) scores 17% on implicit contradictions vs 83% with stance. Does stance amplify knowledge, or are they independent?
+
+4. **How do we close the detection-to-action gap?** Stance improves detection (agents notice cross-source defects) but action indicators are at floor — agents still approve completion. Is this a behavioral constraint problem (need "do not approve when issues found"), an indicator design problem (detection vocabulary too narrow), or a fundamental limitation of `--print` mode (no tool execution)?
+
+5. **Does stance hurt single-source scenarios?** S11 showed bare median 5 → stance median 3. Is this noise (N=6), or does cross-source priming actively distract from structurally visible defects?
 
 ---
 
