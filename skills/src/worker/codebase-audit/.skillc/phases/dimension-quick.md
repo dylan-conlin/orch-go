@@ -17,6 +17,7 @@
 3. **Tests** - Missing tests, coverage gaps, flaky indicators
 4. **Architecture** - God objects, tight coupling, missing abstractions
 5. **Organizational** - ROADMAP drift, template drift, doc drift
+6. **Accessibility** - Missing labels, keyboard traps, contrast issues, semantic HTML
 
 ### Process (30-60 minutes)
 
@@ -64,6 +65,12 @@ rg "^from|^import" --type py | cut -d' ' -f2 | sort | uniq -c | sort -rn | head 
 echo "=== ORGANIZATIONAL ===" >> /tmp/audit.txt
 git log --since="30 days ago" --oneline | grep -E "feat:|fix:" | wc -l >> /tmp/audit.txt
 rg "remember to|don't forget" docs/ -i | wc -l >> /tmp/audit.txt
+
+# Accessibility patterns
+echo "=== ACCESSIBILITY ===" >> /tmp/audit.txt
+rg "<img " --glob "*.{svelte,jsx,tsx,html}" | rg -v "alt=" | wc -l >> /tmp/audit.txt
+rg "onClick|on:click" --glob "*.{svelte,jsx,tsx}" -C 1 | rg "<(div|span)" | wc -l >> /tmp/audit.txt
+rg "tabIndex=\"[1-9]|tabindex=\"[1-9]" --glob "*.{svelte,jsx,tsx,html}" | wc -l >> /tmp/audit.txt
 ```
 
 **Review `/tmp/audit.txt` for high counts indicating issues**
@@ -145,6 +152,7 @@ rg "remember to|don't forget" docs/ -i | wc -l >> /tmp/audit.txt
 - Tests: [count] potential issues
 - Architecture: [count] potential issues
 - Organizational: [count] potential issues
+- Accessibility: [count] potential issues
 
 **Baseline metrics:**
 - Total files: [count]

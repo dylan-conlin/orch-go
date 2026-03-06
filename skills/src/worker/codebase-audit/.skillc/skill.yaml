@@ -3,7 +3,7 @@ skill-type: procedure
 audience: worker
 spawnable: true
 category: analysis
-description: Systematic codebase audit with configurable dimension (security/performance/tests/architecture/organizational/quick)
+description: Systematic codebase audit with configurable dimension (security/performance/tests/architecture/organizational/accessibility/quick)
 token_budget: 15000  # Complex worker skill with multiple dimensions
 # Dependencies are resolved at spawn time by orch-go's LoadSkillWithDependencies.
 # Note: skillc doesn't support cross-directory deps yet, so compilation fails.
@@ -43,6 +43,7 @@ template_sources:
   dimension-tests: phases/dimension-tests.md
   dimension-architecture: phases/dimension-architecture.md
   dimension-organizational: phases/dimension-organizational.md
+  dimension-accessibility: phases/dimension-accessibility.md
   dimension-quick: phases/dimension-quick.md
   self-review: phases/self-review.md
   leave-it-better: phases/leave-it-better.md

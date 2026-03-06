@@ -1,7 +1,7 @@
 ## When to Use This Skill
 
 **Use when the user says:**
-- "Audit [focus area]" (security, performance, tests, architecture, organizational)
+- "Audit [focus area]" (security, performance, tests, architecture, organizational, accessibility)
 - "Run codebase health check"
 - "Find [category] issues in the codebase"
 - "Quick scan the codebase"
@@ -12,6 +12,7 @@
 - "Test coverage" → tests dimension
 - "God objects" / "tight coupling" → architecture dimension
 - "ROADMAP drift" / "template drift" → organizational dimension
+- "Accessibility" / "a11y" / "WCAG" / "screen reader" → accessibility dimension
 - "Quick health check" → quick dimension
 
 ---
@@ -126,6 +127,10 @@ kb create investigation "audit/dimension-audit-description"
 **organizational** - ROADMAP drift, template drift, documentation sync, process violations
 - When: Docs out of date, ROADMAP showing completed work as TODO, templates inconsistent
 - Output: Organizational drift findings with system amnesia analysis
+
+**accessibility** - WCAG violations, semantic HTML gaps, keyboard traps, screen reader issues, color contrast
+- When: Accessibility review needed, WCAG compliance check, after significant UI changes, pre-launch a11y audit
+- Output: Accessibility findings mapped to WCAG success criteria with severity ratings and remediation steps
 
 ### Quick Scan (1 hour)
 
