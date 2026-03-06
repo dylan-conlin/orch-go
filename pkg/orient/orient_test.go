@@ -596,3 +596,311 @@ func TestActiveThreadJSON(t *testing.T) {
 		t.Error("active_threads should be omitted when nil")
 	}
 }
+
+func TestFormatOrientation_ReflectSummary(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		ReflectSummary: &ReflectSummary{
+			Total:      112,
+			Synthesis:  46,
+			Stale:      66,
+			Agreements: 0,
+			TopClusters: []ReflectCluster{
+				{Topic: "context", Count: 7},
+				{Topic: "reflect", Count: 4},
+				{Topic: "config", Count: 3},
+			},
+			Age: "2h ago",
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	if !strings.Contains(output, "Reflection suggestions:") {
+		t.Error("missing 'Reflection suggestions:' section header")
+	}
+	if !strings.Contains(output, "112 items need attention") {
+		t.Error("missing total count")
+	}
+	if !strings.Contains(output, "from 2h ago") {
+		t.Error("missing age")
+	}
+	if !strings.Contains(output, "46 synthesis opportunities") {
+		t.Error("missing synthesis count")
+	}
+	if !strings.Contains(output, "66 stale decisions") {
+		t.Error("missing stale count")
+	}
+	if !strings.Contains(output, "context(7)") {
+		t.Error("missing top cluster")
+	}
+}
+
+func TestFormatOrientation_ReflectSummaryNil(t *testing.T) {
+	data := &OrientationData{Throughput: Throughput{Days: 1}}
+	output := FormatOrientation(data)
+	if strings.Contains(output, "Reflection suggestions") {
+		t.Error("reflect section should not appear when nil")
+	}
+}
+
+func TestFormatOrientation_ReflectSummaryEmpty(t *testing.T) {
+	data := &OrientationData{
+		Throughput:     Throughput{Days: 1},
+		ReflectSummary: &ReflectSummary{Total: 0},
+	}
+	output := FormatOrientation(data)
+	if strings.Contains(output, "Reflection suggestions") {
+		t.Error("reflect section should not appear when total is 0")
+	}
+}
+
+func TestFormatOrientation_UsageWarning(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		UsageWarning: &UsageWarning{
+			Utilization: 92,
+			Remaining:   "8%",
+			ResetTime:   "2d 4h",
+			Level:       "HIGH",
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	if !strings.Contains(output, "Usage HIGH: 92%") {
+		t.Error("missing usage warning header")
+	}
+	if !strings.Contains(output, "8% remaining") {
+		t.Error("missing remaining percentage")
+	}
+	if !strings.Contains(output, "Resets in: 2d 4h") {
+		t.Error("missing reset time")
+	}
+}
+
+func TestFormatOrientation_UsageWarningNil(t *testing.T) {
+	data := &OrientationData{Throughput: Throughput{Days: 1}}
+	output := FormatOrientation(data)
+	if strings.Contains(output, "Usage") && strings.Contains(output, "weekly limit") {
+		t.Error("usage section should not appear when nil")
+	}
+}
+
+func TestFormatOrientation_ConfigDrift(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		ConfigDrift: []ConfigDriftItem{
+			{File: "settings.json", Reason: "not a symlink"},
+			{File: "CLAUDE.md", Reason: "points to /tmp/other"},
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	if !strings.Contains(output, "Config drift detected:") {
+		t.Error("missing 'Config drift detected:' section header")
+	}
+	if !strings.Contains(output, "settings.json (not a symlink)") {
+		t.Error("missing drift item")
+	}
+	if !strings.Contains(output, "CLAUDE.md (points to /tmp/other)") {
+		t.Error("missing second drift item")
+	}
+	if !strings.Contains(output, "Fix: ln -sf") {
+		t.Error("missing fix instructions")
+	}
+}
+
+func TestFormatOrientation_ConfigDriftEmpty(t *testing.T) {
+	data := &OrientationData{Throughput: Throughput{Days: 1}}
+	output := FormatOrientation(data)
+	if strings.Contains(output, "Config drift") {
+		t.Error("config drift section should not appear when empty")
+	}
+}
+
+func TestFormatOrientation_SessionResume(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		SessionResume: &SessionResume{
+			Content: "# Session Handoff\n\nLast session worked on X.\nNext: do Y.",
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	if !strings.Contains(output, "Session resumed:") {
+		t.Error("missing 'Session resumed:' section header")
+	}
+	if !strings.Contains(output, "Session Handoff") {
+		t.Error("missing handoff content")
+	}
+	if !strings.Contains(output, "Next: do Y") {
+		t.Error("missing handoff continuation")
+	}
+}
+
+func TestFormatOrientation_SessionResumeNil(t *testing.T) {
+	data := &OrientationData{Throughput: Throughput{Days: 1}}
+	output := FormatOrientation(data)
+	if strings.Contains(output, "Session resumed") {
+		t.Error("session resume section should not appear when nil")
+	}
+}
+
+func TestReflectSummaryJSON(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		ReflectSummary: &ReflectSummary{
+			Total:     10,
+			Synthesis: 5,
+			Stale:     5,
+		},
+	}
+
+	b, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	jsonStr := string(b)
+	if !strings.Contains(jsonStr, `"reflect_summary"`) {
+		t.Error("JSON missing reflect_summary field")
+	}
+	if !strings.Contains(jsonStr, `"total":10`) {
+		t.Error("JSON missing total")
+	}
+
+	// Verify omitempty
+	data2 := &OrientationData{Throughput: Throughput{Days: 1}}
+	b2, _ := json.Marshal(data2)
+	if strings.Contains(string(b2), "reflect_summary") {
+		t.Error("reflect_summary should be omitted when nil")
+	}
+}
+
+func TestConfigDriftJSON(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		ConfigDrift: []ConfigDriftItem{
+			{File: "settings.json", Reason: "not a symlink"},
+		},
+	}
+
+	b, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	jsonStr := string(b)
+	if !strings.Contains(jsonStr, `"config_drift"`) {
+		t.Error("JSON missing config_drift field")
+	}
+	if !strings.Contains(jsonStr, `"file":"settings.json"`) {
+		t.Error("JSON missing file field")
+	}
+
+	// Verify omitempty
+	data2 := &OrientationData{Throughput: Throughput{Days: 1}}
+	b2, _ := json.Marshal(data2)
+	if strings.Contains(string(b2), "config_drift") {
+		t.Error("config_drift should be omitted when nil")
+	}
+}
+
+func TestSessionResumeJSON(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		SessionResume: &SessionResume{
+			Content: "handoff content",
+			Source:  "/path/to/handoff.md",
+		},
+	}
+
+	b, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	jsonStr := string(b)
+	if !strings.Contains(jsonStr, `"session_resume"`) {
+		t.Error("JSON missing session_resume field")
+	}
+	if !strings.Contains(jsonStr, `"content":"handoff content"`) {
+		t.Error("JSON missing content field")
+	}
+
+	// Verify omitempty
+	data2 := &OrientationData{Throughput: Throughput{Days: 1}}
+	b2, _ := json.Marshal(data2)
+	if strings.Contains(string(b2), "session_resume") {
+		t.Error("session_resume should be omitted when nil")
+	}
+}
+
+func TestUsageWarningJSON(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		UsageWarning: &UsageWarning{
+			Utilization: 85,
+			Level:       "WARNING",
+		},
+	}
+
+	b, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	jsonStr := string(b)
+	if !strings.Contains(jsonStr, `"usage_warning"`) {
+		t.Error("JSON missing usage_warning field")
+	}
+
+	// Verify omitempty
+	data2 := &OrientationData{Throughput: Throughput{Days: 1}}
+	b2, _ := json.Marshal(data2)
+	if strings.Contains(string(b2), "usage_warning") {
+		t.Error("usage_warning should be omitted when nil")
+	}
+}
+
+func TestFormatOrientation_SectionOrder(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1, Completions: 1},
+		SessionResume: &SessionResume{Content: "resume content"},
+		ConfigDrift:   []ConfigDriftItem{{File: "test", Reason: "drift"}},
+		UsageWarning:  &UsageWarning{Utilization: 90, Remaining: "10%", Level: "HIGH"},
+		ReflectSummary: &ReflectSummary{Total: 5, Synthesis: 5},
+		FocusGoal:     "Test focus",
+	}
+
+	output := FormatOrientation(data)
+
+	// Session resume should come before throughput
+	resumeIdx := strings.Index(output, "Session resumed:")
+	throughputIdx := strings.Index(output, "Last 24h:")
+	if resumeIdx > throughputIdx {
+		t.Error("session resume should appear before throughput")
+	}
+
+	// Config drift before throughput
+	driftIdx := strings.Index(output, "Config drift detected:")
+	if driftIdx > throughputIdx {
+		t.Error("config drift should appear before throughput")
+	}
+
+	// Usage warning before throughput
+	usageIdx := strings.Index(output, "Usage HIGH:")
+	if usageIdx > throughputIdx {
+		t.Error("usage warning should appear before throughput")
+	}
+
+	// Reflect summary should come after focus
+	reflectIdx := strings.Index(output, "Reflection suggestions:")
+	focusIdx := strings.Index(output, "Focus:")
+	if reflectIdx < focusIdx {
+		t.Error("reflection suggestions should appear after focus")
+	}
+}

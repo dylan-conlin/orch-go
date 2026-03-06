@@ -23,6 +23,7 @@ var (
 	orientDays      int
 	orientJSON      bool
 	orientSkipReady bool
+	orientHook      bool
 )
 
 var orientCmd = &cobra.Command{
@@ -56,6 +57,7 @@ func init() {
 	orientCmd.Flags().IntVar(&orientDays, "days", 1, "Number of days for throughput analysis")
 	orientCmd.Flags().BoolVar(&orientJSON, "json", false, "Output as JSON for programmatic consumption")
 	orientCmd.Flags().BoolVar(&orientSkipReady, "skip-ready", false, "Skip ready issues collection (use when frontier provides them)")
+	orientCmd.Flags().BoolVar(&orientHook, "hook", false, "Wrap output in SessionStart hook JSON envelope")
 }
 
 func runOrient() error {
@@ -111,6 +113,29 @@ func runOrient() error {
 
 	// 8. In-progress count from bd
 	data.Throughput.InProgress = collectInProgressCount()
+
+	// 11. Reflect suggestions
+	data.ReflectSummary = collectReflectSuggestions()
+
+	// 12. Config drift check
+	data.ConfigDrift = collectConfigDrift()
+
+	// 13. Session resume handoff
+	data.SessionResume = collectSessionResume()
+
+	if orientHook {
+		// Wrap in SessionStart hook JSON envelope
+		text := orient.FormatOrientation(data)
+		envelope := map[string]interface{}{
+			"hookSpecificOutput": map[string]interface{}{
+				"hookEventName":     "SessionStart",
+				"additionalContext": text,
+			},
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(envelope)
+	}
 
 	if orientJSON {
 		enc := json.NewEncoder(os.Stdout)
@@ -383,6 +408,199 @@ func collectChangelog(prevSession *orient.DebriefSummary) []orient.ChangelogEntr
 	}
 
 	return orient.ParseGitLog(string(output), 15)
+}
+
+// collectReflectSuggestions reads ~/.orch/reflect-suggestions.json.
+func collectReflectSuggestions() *orient.ReflectSummary {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	path := filepath.Join(home, ".orch", "reflect-suggestions.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+
+	return parseReflectSuggestions(data)
+}
+
+// parseReflectSuggestions parses reflect-suggestions.json into ReflectSummary.
+func parseReflectSuggestions(data []byte) *orient.ReflectSummary {
+	var raw struct {
+		Timestamp  string `json:"timestamp"`
+		Synthesis  []struct {
+			Topic string `json:"topic"`
+			Count int    `json:"count"`
+		} `json:"synthesis"`
+		Promote    []json.RawMessage `json:"promote"`
+		Stale      []json.RawMessage `json:"stale"`
+		Drift      []json.RawMessage `json:"drift"`
+		Agreements []json.RawMessage `json:"agreements"`
+	}
+
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+
+	synthCount := len(raw.Synthesis)
+	promoteCount := len(raw.Promote)
+	staleCount := len(raw.Stale)
+	driftCount := len(raw.Drift)
+	agreeCount := len(raw.Agreements)
+	total := synthCount + promoteCount + staleCount + driftCount + agreeCount
+
+	if total == 0 {
+		return nil
+	}
+
+	summary := &orient.ReflectSummary{
+		Total:      total,
+		Synthesis:  synthCount,
+		Stale:      staleCount,
+		Promote:    promoteCount,
+		Drift:      driftCount,
+		Agreements: agreeCount,
+	}
+
+	// Top 3 synthesis clusters
+	limit := 3
+	if len(raw.Synthesis) < limit {
+		limit = len(raw.Synthesis)
+	}
+	for i := 0; i < limit; i++ {
+		summary.TopClusters = append(summary.TopClusters, orient.ReflectCluster{
+			Topic: raw.Synthesis[i].Topic,
+			Count: raw.Synthesis[i].Count,
+		})
+	}
+
+	// Compute age from timestamp
+	if raw.Timestamp != "" {
+		summary.Age = computeReflectAge(raw.Timestamp)
+	}
+
+	return summary
+}
+
+// computeReflectAge computes a human-readable age from an ISO timestamp.
+func computeReflectAge(timestamp string) string {
+	t, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		// Try alternate format
+		t, err = time.Parse("2006-01-02T15:04:05.999999Z", timestamp)
+		if err != nil {
+			return ""
+		}
+	}
+
+	age := time.Since(t)
+	hours := int(age.Hours())
+	if hours < 1 {
+		return "just now"
+	}
+	if hours < 24 {
+		return fmt.Sprintf("%dh ago", hours)
+	}
+	days := hours / 24
+	return fmt.Sprintf("%dd ago", days)
+}
+
+// collectConfigDrift checks expected symlinks in ~/.claude-personal/.
+func collectConfigDrift() []orient.ConfigDriftItem {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	personalDir := filepath.Join(home, ".claude-personal")
+	primaryDir := filepath.Join(home, ".claude")
+
+	// Skip if personal config dir doesn't exist
+	if _, err := os.Stat(personalDir); err != nil {
+		return nil
+	}
+
+	expectedSymlinks := []string{
+		"settings.json",
+		"CLAUDE.md",
+		"skills",
+		"hooks",
+		"statusline.sh",
+	}
+
+	var drifted []orient.ConfigDriftItem
+	for _, file := range expectedSymlinks {
+		target := filepath.Join(primaryDir, file)
+		link := filepath.Join(personalDir, file)
+
+		// Skip if source doesn't exist in primary
+		if _, err := os.Stat(target); err != nil {
+			continue
+		}
+
+		info, err := os.Lstat(link)
+		if err != nil {
+			continue
+		}
+
+		if info.Mode()&os.ModeSymlink == 0 {
+			drifted = append(drifted, orient.ConfigDriftItem{
+				File:   file,
+				Reason: "not a symlink",
+			})
+		} else {
+			linkTarget, err := os.Readlink(link)
+			if err != nil {
+				continue
+			}
+			if linkTarget != filepath.Join(primaryDir, file) && linkTarget != target {
+				drifted = append(drifted, orient.ConfigDriftItem{
+					File:   file,
+					Reason: fmt.Sprintf("points to %s", linkTarget),
+				})
+			}
+		}
+	}
+
+	return drifted
+}
+
+// collectSessionResume runs `orch session resume --for-injection` and captures output.
+func collectSessionResume() *orient.SessionResume {
+	// Skip for spawned agents (they have SPAWN_CONTEXT.md)
+	if os.Getenv("ORCH_SPAWNED") == "1" {
+		return nil
+	}
+	// Skip for non-interactive contexts
+	ctx := os.Getenv("CLAUDE_CONTEXT")
+	switch ctx {
+	case "bare", "worker", "orchestrator", "meta-orchestrator":
+		return nil
+	}
+
+	// Check if handoff exists
+	checkCmd := exec.Command("orch", "session", "resume", "--check")
+	if err := checkCmd.Run(); err != nil {
+		return nil
+	}
+
+	// Get the handoff content
+	contentCmd := exec.Command("orch", "session", "resume", "--for-injection")
+	output, err := contentCmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	content := strings.TrimSpace(string(output))
+	if content == "" {
+		return nil
+	}
+
+	return &orient.SessionResume{
+		Content: content,
+	}
 }
 
 // parseInProgressCount counts issue lines from `bd list --status=in_progress` output.

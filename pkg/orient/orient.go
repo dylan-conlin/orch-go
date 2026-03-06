@@ -56,6 +56,44 @@ type HealthSummary struct {
 	Alerts        []HealthAlert `json:"alerts,omitempty"`
 }
 
+// ReflectSummary holds reflection suggestions from kb reflect daemon output.
+type ReflectSummary struct {
+	Total       int              `json:"total"`
+	Synthesis   int              `json:"synthesis"`
+	Stale       int              `json:"stale"`
+	Promote     int              `json:"promote"`
+	Drift       int              `json:"drift"`
+	Agreements  int              `json:"agreements"`
+	TopClusters []ReflectCluster `json:"top_clusters,omitempty"`
+	Age         string           `json:"age,omitempty"` // human-readable age like "2h ago"
+}
+
+// ReflectCluster represents a synthesis opportunity cluster.
+type ReflectCluster struct {
+	Topic string `json:"topic"`
+	Count int    `json:"count"`
+}
+
+// UsageWarning holds Claude Max usage information when above threshold.
+type UsageWarning struct {
+	Utilization float64 `json:"utilization"` // percentage 0-100
+	Remaining   string  `json:"remaining"`
+	ResetTime   string  `json:"reset_time"`
+	Level       string  `json:"level"` // "WARNING", "HIGH", "CRITICAL"
+}
+
+// ConfigDriftItem represents a single config symlink that has drifted.
+type ConfigDriftItem struct {
+	File   string `json:"file"`
+	Reason string `json:"reason"`
+}
+
+// SessionResume holds session handoff context for resume injection.
+type SessionResume struct {
+	Content string `json:"content"`
+	Source  string `json:"source,omitempty"` // path to handoff file
+}
+
 // OrientationData holds all data needed to render session orientation.
 type OrientationData struct {
 	Throughput      Throughput       `json:"throughput"`
@@ -68,6 +106,10 @@ type OrientationData struct {
 	HealthSummary   *HealthSummary   `json:"health_summary,omitempty"`
 	Changelog       []ChangelogEntry `json:"changelog,omitempty"`
 	FocusGoal       string           `json:"focus_goal,omitempty"`
+	ReflectSummary  *ReflectSummary  `json:"reflect_summary,omitempty"`
+	UsageWarning    *UsageWarning    `json:"usage_warning,omitempty"`
+	ConfigDrift     []ConfigDriftItem `json:"config_drift,omitempty"`
+	SessionResume   *SessionResume   `json:"session_resume,omitempty"`
 }
 
 // ComputeThroughput aggregates events within the given day window.
@@ -121,6 +163,15 @@ func FormatOrientation(data *OrientationData) string {
 
 	b.WriteString("== SESSION ORIENTATION ==\n\n")
 
+	// Session resume (first — sets context for everything else)
+	formatSessionResume(&b, data.SessionResume)
+
+	// Config drift (surface problems early)
+	formatConfigDrift(&b, data.ConfigDrift)
+
+	// Usage warning (surface before work planning)
+	formatUsageWarning(&b, data.UsageWarning)
+
 	// Throughput section
 	formatThroughput(&b, &data.Throughput)
 
@@ -157,6 +208,9 @@ func FormatOrientation(data *OrientationData) string {
 
 	// Focus section
 	formatFocus(&b, data.FocusGoal)
+
+	// Reflection suggestions (last — informational, not urgent)
+	formatReflectSummary(&b, data.ReflectSummary)
 
 	return b.String()
 }
@@ -289,6 +343,79 @@ func formatFocus(b *strings.Builder, goal string) {
 		return
 	}
 	b.WriteString(fmt.Sprintf("Focus: %s\n", goal))
+}
+
+func formatReflectSummary(b *strings.Builder, r *ReflectSummary) {
+	if r == nil || r.Total == 0 {
+		return
+	}
+	b.WriteString("Reflection suggestions:\n")
+	b.WriteString(fmt.Sprintf("   %d items need attention", r.Total))
+	if r.Age != "" {
+		b.WriteString(fmt.Sprintf(" (from %s)", r.Age))
+	}
+	b.WriteString("\n")
+
+	if r.Agreements > 0 {
+		b.WriteString(fmt.Sprintf("   - %d broken agreements\n", r.Agreements))
+	}
+	if r.Synthesis > 0 {
+		b.WriteString(fmt.Sprintf("   - %d synthesis opportunities\n", r.Synthesis))
+	}
+	if r.Stale > 0 {
+		b.WriteString(fmt.Sprintf("   - %d stale decisions\n", r.Stale))
+	}
+	if r.Promote > 0 {
+		b.WriteString(fmt.Sprintf("   - %d promotion candidates\n", r.Promote))
+	}
+	if r.Drift > 0 {
+		b.WriteString(fmt.Sprintf("   - %d potential drifts\n", r.Drift))
+	}
+
+	if len(r.TopClusters) > 0 {
+		b.WriteString("   Top clusters:")
+		for _, c := range r.TopClusters {
+			b.WriteString(fmt.Sprintf(" %s(%d)", c.Topic, c.Count))
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+}
+
+func formatUsageWarning(b *strings.Builder, u *UsageWarning) {
+	if u == nil {
+		return
+	}
+	b.WriteString(fmt.Sprintf("Usage %s: %.0f%% of weekly limit used (%s remaining)\n",
+		u.Level, u.Utilization, u.Remaining))
+	if u.ResetTime != "" {
+		b.WriteString(fmt.Sprintf("   Resets in: %s\n", u.ResetTime))
+	}
+	b.WriteString("\n")
+}
+
+func formatConfigDrift(b *strings.Builder, items []ConfigDriftItem) {
+	if len(items) == 0 {
+		return
+	}
+	b.WriteString("Config drift detected:\n")
+	for _, item := range items {
+		b.WriteString(fmt.Sprintf("   - %s (%s)\n", item.File, item.Reason))
+	}
+	b.WriteString("   Fix: ln -sf ~/.claude/<file> ~/.claude-personal/<file>\n")
+	b.WriteString("\n")
+}
+
+func formatSessionResume(b *strings.Builder, r *SessionResume) {
+	if r == nil || r.Content == "" {
+		return
+	}
+	b.WriteString("Session resumed:\n")
+	// Indent each line of the handoff content
+	for _, line := range strings.Split(strings.TrimSpace(r.Content), "\n") {
+		b.WriteString(fmt.Sprintf("   %s\n", line))
+	}
+	b.WriteString("\n")
 }
 
 // truncateSummary truncates a summary to maxLen characters, adding "..." if truncated.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 )
 
 func TestParseBdReadyForOrient(t *testing.T) {
@@ -129,4 +130,103 @@ type orientModelFreshnessInput struct {
 	Summary         string
 	AgeDays         int
 	HasRecentProbes bool
+}
+
+func TestParseReflectSuggestions(t *testing.T) {
+	input := `{
+		"timestamp": "2026-03-06T02:41:18.511681Z",
+		"synthesis": [
+			{"topic": "context", "count": 7},
+			{"topic": "reflect", "count": 4},
+			{"topic": "config", "count": 3},
+			{"topic": "agent", "count": 2}
+		],
+		"promote": [{"id": "1"}, {"id": "2"}],
+		"stale": [{"id": "3"}],
+		"drift": [],
+		"agreements": [{"id": "4"}, {"id": "5"}, {"id": "6"}]
+	}`
+
+	result := parseReflectSuggestions([]byte(input))
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	if result.Total != 10 {
+		t.Errorf("expected total 10, got %d", result.Total)
+	}
+	if result.Synthesis != 4 {
+		t.Errorf("expected synthesis 4, got %d", result.Synthesis)
+	}
+	if result.Promote != 2 {
+		t.Errorf("expected promote 2, got %d", result.Promote)
+	}
+	if result.Stale != 1 {
+		t.Errorf("expected stale 1, got %d", result.Stale)
+	}
+	if result.Agreements != 3 {
+		t.Errorf("expected agreements 3, got %d", result.Agreements)
+	}
+
+	// Top clusters limited to 3
+	if len(result.TopClusters) != 3 {
+		t.Fatalf("expected 3 top clusters, got %d", len(result.TopClusters))
+	}
+	if result.TopClusters[0].Topic != "context" {
+		t.Errorf("expected first cluster topic 'context', got %q", result.TopClusters[0].Topic)
+	}
+	if result.TopClusters[0].Count != 7 {
+		t.Errorf("expected first cluster count 7, got %d", result.TopClusters[0].Count)
+	}
+}
+
+func TestParseReflectSuggestions_Empty(t *testing.T) {
+	input := `{"timestamp": "2026-03-06T00:00:00Z", "synthesis": [], "promote": [], "stale": [], "drift": [], "agreements": []}`
+	result := parseReflectSuggestions([]byte(input))
+	if result != nil {
+		t.Error("expected nil for empty suggestions")
+	}
+}
+
+func TestParseReflectSuggestions_InvalidJSON(t *testing.T) {
+	result := parseReflectSuggestions([]byte("not json"))
+	if result != nil {
+		t.Error("expected nil for invalid JSON")
+	}
+}
+
+func TestComputeReflectAge(t *testing.T) {
+	// Test with RFC3339 format
+	recent := time.Now().Add(-30 * time.Minute).Format(time.RFC3339)
+	age := computeReflectAge(recent)
+	if age != "just now" {
+		t.Errorf("expected 'just now' for 30min ago, got %q", age)
+	}
+
+	twoHoursAgo := time.Now().Add(-2 * time.Hour).Format(time.RFC3339)
+	age = computeReflectAge(twoHoursAgo)
+	if age != "2h ago" {
+		t.Errorf("expected '2h ago', got %q", age)
+	}
+
+	twoDaysAgo := time.Now().Add(-48 * time.Hour).Format(time.RFC3339)
+	age = computeReflectAge(twoDaysAgo)
+	if age != "2d ago" {
+		t.Errorf("expected '2d ago', got %q", age)
+	}
+
+	// Invalid timestamp
+	age = computeReflectAge("not a timestamp")
+	if age != "" {
+		t.Errorf("expected empty string for invalid timestamp, got %q", age)
+	}
+}
+
+func TestComputeReflectAge_MicrosecondFormat(t *testing.T) {
+	// Test with the microsecond format used by reflect-suggestions.json
+	ts := time.Now().Add(-3 * time.Hour).UTC().Format("2006-01-02T15:04:05.999999Z")
+	age := computeReflectAge(ts)
+	if age != "3h ago" {
+		t.Errorf("expected '3h ago', got %q", age)
+	}
 }
