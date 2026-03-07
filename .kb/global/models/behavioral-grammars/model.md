@@ -3,7 +3,7 @@
 **Created:** 2026-03-01
 **Status:** Active — quantitative claims downgraded to directional hypotheses (Mar 4, 2026). See Measurement Validity section.
 **Source:** Grammar Design Discipline synthesis (Dylan, Claude web session, Mar 1 2026)
-**Corroborated by:** Revert spiral investigation, behavioral testing baseline, grammar recovery validation, intent spiral investigation, constraint dilution threshold (Mar 1), emphasis language compliance (Mar 2), behavioral compliance identity/action gap (Feb 24), agent framework landscape survey (Mar 1), layered constraint enforcement design (Mar 2), fabrication detection U-curve (Mar 4), injection-level dilution experiment (Mar 4)
+**Corroborated by:** Revert spiral investigation, behavioral testing baseline, grammar recovery validation, intent spiral investigation, constraint dilution threshold (Mar 1), emphasis language compliance (Mar 2), behavioral compliance identity/action gap (Feb 24), agent framework landscape survey (Mar 1), layered constraint enforcement design (Mar 2), fabrication detection U-curve (Mar 4), injection-level dilution experiment (Mar 4), density vs count dilution (Mar 6)
 
 ## ⚠️ Measurement Validity (Mar 4, 2026)
 
@@ -23,8 +23,9 @@
 - System prompt (replaces base): 71.4% avg pass rate — confirmed as isolated ceiling
 - Appended system prompt: 58.3% — statistically equivalent to user-level, NOT an improvement
 - User message (current production): 56.0% — the actual production baseline
-- Density matters ~2x more than injection level (+29pp for 1C→5C vs -15pp for system→user)
-- Decision: `--append-system-prompt` not worth deploying. Invest in constraint density instead.
+- Constraint count matters ~2x more than injection level (+29pp for 1C→5C vs -15pp for system→user)
+- Decision: `--append-system-prompt` not worth deploying. Invest in constraint count instead.
+- **Clarification (Mar 6):** "Density" in these findings means constraint COUNT, not constraints-per-word ratio. The density-vs-count probe confirmed non-constraint text does not dilute — 2 constraints in 442 words ≈ 2 constraints in 1816 words (9/21 pass both). Only the number of discrete constraint rules matters.
 - Full data: `.kb/investigations/2026-03-04-inv-injection-level-dilution-experiment.md`
 
 **Remaining gap:** All measurements to date are intent-only (--print quick mode). The `--test-mode full` tier now enables action-based measurement but no claims have been re-measured with it yet.
@@ -133,10 +134,10 @@ When designing or evaluating a behavioral grammar:
 | **Prior strength** | How hard does this constraint fight trained behavior? | Is this counter-instinctual, arbitrary-alternative, or subtle-reframe? |
 | **Phase coverage** | At which cognitive phases does this constraint fire? | Situation recognition? Planning? Tool selection? Generation? Self-monitoring? |
 | **Reinforcement form** | What structural form is the constraint in? | Declarative, procedural, table, anti-pattern exemplar, structural absence? |
-| **Context budget** | How many tokens does this constraint cost? | Is reinforcement density proportional to risk? |
+| **Context budget** | How many tokens does this constraint cost? | Non-constraint tokens are free (don't dilute). Constraint rule tokens compete. Is reinforcement proportional to risk? |
 | **Deliberate incompleteness** | Does the grammar force-route novel inputs? | Are there explicit gaps with "stop and ask" instructions? |
 | **Legibility** | Does this make behavior readable or just correct? | Does the human see what's happening, or just whether it passed a gate? |
-| **Constraint density** | How many constraints compete for attention in this document? | Behavioral constraints have a lower budget than knowledge constraints. Overall pass rates improve with density (5C 57% → 10C 67%), but **situational judgment follows a U-curve**: 5-10C is the worst zone for process over-application. Process constraints need calibration constraints alongside them. Density is the dominant variable (~2x impact vs injection level). |
+| **Constraint count** | How many constraint RULES compete for attention in this document? | Behavioral constraints have a lower budget than knowledge constraints. Overall pass rates improve with count (5C 57% → 10C 67%), but **situational judgment follows a U-curve**: 5-10C is the worst zone for process over-application. Process constraints need calibration constraints alongside them. Count is the dominant variable (~2x impact vs injection level). **Non-constraint text (knowledge, architecture docs, tool references) does NOT dilute** — 2 constraints in 442 words ≈ 2 constraints in 1816 words (Mar 6 probe). The budget is about constraint rules, not document size. |
 | **Emphasis framing** | Does the constraint use salience signals (MUST/NEVER/CRITICAL)? | Directional: emphasis > neutral at high density. Exact effect size TBD. |
 | **Constraint type** | Is this behavioral (suppress default) or knowledge (add information)? | Behavioral constraints degrade faster under competition than knowledge constraints. Exact budget TBD. |
 
@@ -152,7 +153,7 @@ Behavioral grammars are subject to a recurring cycle (documented in revert spira
 
 ## Open Questions
 
-1. **PARTIALLY ANSWERED:** What is the minimum reinforcement density for counter-instinctual constraints? The injection-level experiment (orch-go-pkp2) showed density is the dominant variable: 1C→5C gains +29pp pass rate, dwarfing injection-level effects. At user level (production): 1C=38%, 2C=62%, 5C=57%, 10C=67%. No cliff — gradual improvement with diminishing returns. But these are intent-only measurements (--print mode). Interactive testing still needed.
+1. **PARTIALLY ANSWERED:** What is the minimum reinforcement density for counter-instinctual constraints? The injection-level experiment (orch-go-pkp2) showed constraint count is the dominant variable: 1C→5C gains +29pp pass rate, dwarfing injection-level effects. At user level (production): 1C=38%, 2C=62%, 5C=57%, 10C=67%. No cliff — gradual improvement with diminishing returns. **Clarification (Mar 6):** "Density" means constraint count, not constraints-per-word. The density-vs-count probe confirmed adding 1374 words of non-constraint padding to a 2C document had ZERO effect on compliance (both 43% pass rate). The attention budget is divided among constraint rules only — knowledge text is free. This means skill documents can include extensive architecture docs, tool references, and context without degrading behavioral constraints. But these are still intent-only measurements (--print mode). Interactive testing still needed.
 
 2. **PARTIALLY ANSWERED:** Is weight the right mechanism for situational pull, or is something structurally different needed? **Answer:** Infrastructure enforcement (hooks, gates) is structurally different and necessary. This conclusion is robust — supported by the agent framework landscape survey (8/8 frameworks converge on infrastructure) and direct observation of identity-action gap. The injection-level experiment confirmed: appending to system prompt provides no improvement over user-level (58.3% vs 56.0%). Only full system prompt replacement helps (71.4%), which isn't viable for production. **Remaining:** Interactive testing to validate whether intent-level patterns hold for actual tool-call behavior.
 
@@ -191,3 +192,4 @@ This resolves Open Question 5 (grammar-first authoring): the constraint taxonomy
   - `2026-03-01-probe-agent-framework-behavioral-constraints-landscape.md` — Industry landscape survey
   - `2026-03-02-probe-emphasis-language-constraint-compliance.md` — Emphasis vs neutral language
   - `2026-03-02-probe-layered-constraint-enforcement-design.md` — Constraint taxonomy and enforcement mapping
+  - `2026-03-06-probe-density-vs-count-dilution.md` — Non-constraint text doesn't dilute; COUNT drives the budget, not document size
