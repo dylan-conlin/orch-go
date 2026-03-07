@@ -2,51 +2,9 @@
 
 **Applies to Investigation Mode only.** In Probe Mode, use the probe template and skip the Prior-Work table.
 
-**Why this matters:** 701 existing investigations lack the Prior-Work table. The skill must handle both old and new investigations gracefully.
+701 existing investigations lack the Prior-Work table. The skill handles both old and new investigations gracefully.
 
-### Creating New Investigations
-
-When creating a new investigation via `kb create investigation`, your file MUST include a Prior-Work table:
-
-```markdown
-## Prior Work
-
-| Investigation   | Relationship | Verified | Conflicts     |
-| --------------- | ------------ | -------- | ------------- |
-| [path or "N/A"] | [type]       | [yes/no] | [description] |
-
-**Relationship types:** extends, confirms, contradicts, deepens
-```
-
-**If no prior investigations exist:** Use explicit acknowledgment:
-
-```markdown
-## Prior Work
-
-| Investigation             | Relationship | Verified | Conflicts |
-| ------------------------- | ------------ | -------- | --------- |
-| N/A - novel investigation | -            | -        | -         |
-```
-
-### Extending Old Investigations (Graceful Degradation)
-
-If SPAWN_CONTEXT references prior investigations that lack Prior-Work tables:
-
-1. **Do NOT backfill old investigations** - Never modify their structure
-2. **Create a new investigation file** with full Prior-Work table
-3. **Reference the old investigation** in your Prior-Work table:
-
-```markdown
-## Prior Work
-
-| Investigation                                  | Relationship | Verified | Conflicts                                  |
-| ---------------------------------------------- | ------------ | -------- | ------------------------------------------ |
-| .kb/investigations/2025-11-15-inv-old-topic.md | extends      | yes      | [describe any conflicts with prior claims] |
-```
-
-**Verification happens naturally:** As you explore, you'll encounter claims from prior investigations. Verify them against primary sources (code, test output) when relevant to your question - not all upfront.
-
-### Key Rules
+### Rules
 
 | Situation                       | Action                                                    |
 | ------------------------------- | --------------------------------------------------------- |
@@ -54,5 +12,7 @@ If SPAWN_CONTEXT references prior investigations that lack Prior-Work tables:
 | New investigation (has priors)  | Add Prior-Work table, cite prior investigations           |
 | Extending old investigation     | Create NEW file with Prior-Work table referencing the old |
 | Old investigation without table | Leave it alone, don't modify                              |
+
+Verification happens naturally: verify cited claims against primary sources (code, test output) as you encounter them during investigation — not all upfront.
 
 **Reference:** See `~/.claude/skills/worker/investigation/reference/prior-work-examples.md` for relationship type guidance.

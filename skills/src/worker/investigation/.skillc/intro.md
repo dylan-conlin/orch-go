@@ -30,9 +30,9 @@
 
 ## The One Rule
 
-**You cannot conclude without testing.**
+**What code does is not what artifacts say it does.**
 
-If you didn't run a test, you don't get to fill the Conclusion section.
+Documentation, investigations, and decisions describe intent. Only observed behavior — test output, runtime logs, actual code paths — is evidence. When they conflict, behavior wins.
 
 ## Evidence Hierarchy
 

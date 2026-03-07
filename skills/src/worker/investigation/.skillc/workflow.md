@@ -28,8 +28,8 @@ Before creating your investigation file, review prior work from SPAWN_CONTEXT.
 3. **If markers not found -> Investigation Mode**
    - Acknowledge prior work: SPAWN_CONTEXT -> "Related Investigations"
    - Create file: `kb create investigation {slug}`
-   - IMMEDIATE CHECKPOINT: Fill Question, add Prior-Work table, add Finding 1 ("Starting approach"), commit immediately
-4. **TEST-FIRST GATE:** "What's the simplest test I can run right now?" (60-second rule)
+   - Checkpoint: Fill Question, add Prior-Work table, add Finding 1 ("Starting approach"), commit
+4. **Ask:** "What's the simplest thing I can observe right now?" (60-second rule)
 5. Try things, observe what happens (add findings/probe evidence progressively)
 6. Verify relevant claims as encountered
 7. Run a real test to validate your hypothesis
