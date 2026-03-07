@@ -35,6 +35,5 @@ sources:
   - phases-overview.md
   - visual-debugging.md
   - investigation-file.md
-  - self-review.md
-  - fix-verify-cycle.md
-  - completion.md
+# Self-review, fix-verify-cycle, completion: behavioral content handled by worker-base dependency
+# Detailed phase guidance in reference/ docs (progressive disclosure)

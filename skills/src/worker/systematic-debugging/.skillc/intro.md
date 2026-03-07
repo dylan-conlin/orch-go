@@ -6,13 +6,9 @@ Four-phase debugging framework: Root Cause → Pattern Analysis → Hypothesis T
 
 ---
 
-## The Iron Law
+## Stance
 
-```
-NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
-```
-
-If you haven't completed Phase 1, you cannot propose fixes.
+**Understand before fixing.** Where symptoms appear is often NOT where root cause lives. 95% of "no root cause" cases are incomplete investigation. If you've tried 3+ fixes, you're fighting the wrong architecture — stop and question fundamentals.
 
 ---
 
@@ -22,20 +18,18 @@ Use for ANY technical issue: test failures, production bugs, unexpected behavior
 
 **Use ESPECIALLY when:**
 - Under time pressure (emergencies make guessing tempting)
-- "Just one quick fix" seems obvious
 - Previous fixes didn't work
 - You don't fully understand the issue
+
+**Fast-path alternative:** For clearly localized, trivial failures (import path error, undefined name, obvious single-file fix), use `quick-debugging` skill instead. Escalates back here if first attempt fails.
 
 ---
 
 ## Quick Reference
 
-1. Check if specialized technique applies (see patterns section)
-2. Check console/logs for errors - error may already be captured
-3. Phase 1: Root cause investigation (understand WHAT and WHY)
-4. Phase 2: Pattern analysis (working vs broken differences)
-5. Phase 3: Hypothesis testing (form and test specific theory)
-6. Phase 4: Implementation (failing test, fix root cause, verify)
-7. Document and complete
-
-**Red flag:** If thinking "quick fix for now" → STOP, return to Phase 1.
+1. Check console/logs for errors — error may already be captured
+2. Phase 1: Root cause investigation (understand WHAT and WHY)
+3. Phase 2: Pattern analysis (working vs broken differences)
+4. Phase 3: Hypothesis testing (form and test specific theory)
+5. Phase 4: Implementation (failing test, fix root cause, verify)
+6. Smoke-test the original failing scenario
