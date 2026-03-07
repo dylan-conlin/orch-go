@@ -6,6 +6,20 @@
       "sources": {
         "experiment": 2771
       }
+    },
+    {
+      "timestamp": "2026-03-06T11:59:28.427441-08:00",
+      "total_tokens": 2836,
+      "sources": {
+        "experiment": 2836
+      }
+    },
+    {
+      "timestamp": "2026-03-06T16:44:36.020471-08:00",
+      "total_tokens": 1677,
+      "sources": {
+        "experiment": 1677
+      }
     }
   ]
 }

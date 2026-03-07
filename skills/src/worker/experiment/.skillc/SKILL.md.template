@@ -8,15 +8,13 @@ dependencies:
 
 # Experiment
 
-## What This Is
-
-You are running a **controlled experiment** on agent behavior. You have a hypothesis to test, you will design variants, run trials, and analyze results quantitatively. This is science, not exploration.
+**Stance:** *This is science, not exploration.* You have a hypothesis to test. You will design variants, run controlled trials, and analyze results quantitatively. Every experiment produces the structured uncertainty that seeds the next one.
 
 **Key distinction from investigation:** Investigation answers "how does X work?" through exploration. Experiment answers "does X cause Y?" through controlled trials with a bare baseline.
 
 ## Prerequisites
 
-- `skillc test` must be available (run `which skillc` to verify)
+- `skillc test` handles trial execution, scoring, transcripts, JSON output, and bare baselines
 - Scenarios directory with YAML scenario files defining probes and indicators
 - Variant files (markdown) defining the constraint/document under test
 
@@ -24,19 +22,14 @@ You are running a **controlled experiment** on agent behavior. You have a hypoth
 
 ### Phase 1: Hypothesis
 
-**Before touching any tool, write down your hypothesis.**
+Read SPAWN_CONTEXT for the hypothesis, prior work, and constraint under measurement.
 
-Read SPAWN_CONTEXT for:
-- The hypothesis to test
-- Prior work motivating this experiment
-- The constraint or behavior under measurement
-
-Create your experiment file immediately:
+Create your experiment file and commit immediately (if you die, there's a record):
 ```bash
 kb create investigation "experiment-{slug}"
 ```
 
-Fill the hypothesis section FIRST. A hypothesis must be:
+A hypothesis must be:
 - **Falsifiable** — state what result would disprove it
 - **Specific** — name the variable, the expected direction, and the measurement
 - **Grounded** — cite the prior finding or structured uncertainty that generated it
@@ -54,45 +47,15 @@ but degrades below ceiling when 5+ constraints compete in the same document.
 **Source:** Structured uncertainty from redundancy-saturation-point investigation
 ```
 
-Commit immediately after writing the hypothesis. If you die, there's a record.
-
 ### Phase 2: Experimental Design
 
-Design your experiment with these requirements:
+**Bare baseline:** Every experiment needs a bare run (no constraint/variant). Without it, you cannot distinguish "the constraint caused X" from "the model does X anyway."
 
-**1. Bare baseline is mandatory.** Every experiment needs a bare run (no constraint/variant). This establishes what the model does without any instruction. Without it, you cannot distinguish "the constraint caused X" from "the model does X anyway."
+**Single variable:** Vary one dimension at a time. Multi-variable experiments produce uninterpretable results.
 
-**2. Vary one dimension at a time.** If testing constraint density, hold structural form constant. If testing structural forms, hold density at 1. Multi-variable experiments produce uninterpretable results.
+**Variants** are markdown files in `variants/`, named descriptively. **Scenarios** are YAML probes with specific indicators (see `skillc test --help` for format).
 
-**3. Define variants explicitly.** Each variant is a markdown file in `variants/`. Name them descriptively:
-
-```
-variants/
-  bare.md           # Empty (or omit — skillc test --bare handles this)
-  1-form.md         # Single structural form
-  3-form.md         # Three structural forms
-  5-form.md         # Five structural forms
-```
-
-**4. Define scenarios as YAML probes.** Each scenario tests one behavior with specific indicators:
-
-```yaml
-# scenarios/delegation-probe.yaml
-name: delegation-probe
-prompt: "The daemon is spawning agents that immediately stall..."
-indicators:
-  - id: proposes-delegation
-    description: Suggests using orch spawn or bd create
-    detect: "spawn|delegate|bd create|orch spawn"
-  - id: no-direct-code-reading
-    description: Does not read code files directly
-    detect_absence: "Read tool|let me look at|examining the code"
-scoring:
-  pass_threshold: 6
-  max_score: 8
-```
-
-**5. Document the design in your experiment file** before running any trials:
+Document the design before running trials:
 
 ```markdown
 ## Experimental Design
@@ -101,119 +64,59 @@ scoring:
 |---------|-------------|----------------|
 | bare | No constraint | 0 |
 | 1C | 1 constraint, 3 forms | 1 |
-| 2C | 2 constraints, 3 forms each | 2 |
 | 5C | 5 constraints, 3 forms each | 5 |
 
 **Scenarios:** delegation-probe, intent-clarification-probe
 **Model:** sonnet (held constant)
 **Runs per variant:** 3
-**Total trials:** variants × scenarios × runs = 4 × 2 × 3 = 24
+**Total trials:** variants × scenarios × runs = 3 × 2 × 3 = 18
 ```
 
 ### Phase 3: Run Trials
 
-Execute trials using `skillc test`. Run ALL trials — do not stop early based on preliminary results.
+Execute all trials using `skillc test`. Run bare baseline first, then each variant.
 
 ```bash
-# Bare baseline first
 skillc test --scenarios scenarios/ --bare --model sonnet --runs 3 --json --transcripts transcripts/
-
-# Each variant
 skillc test --scenarios scenarios/ --variant variants/1C.md --model sonnet --runs 3 --json --transcripts transcripts/
-skillc test --scenarios scenarios/ --variant variants/2C.md --model sonnet --runs 3 --json --transcripts transcripts/
 skillc test --scenarios scenarios/ --variant variants/5C.md --model sonnet --runs 3 --json --transcripts transcripts/
 ```
 
-**Rules during trial execution:**
-- Do NOT modify variants or scenarios between runs
-- Do NOT discard outlier runs — report all data
-- Save all JSON output to `evidence/{date}-{experiment-name}/`
-- Save all transcripts for qualitative analysis
-- If a run errors out (API failure, timeout), note it and re-run — do not count error runs
+Save JSON output to `evidence/{date}-{experiment-name}/`. If a run errors out (API failure, timeout), note it and re-run — error runs don't count.
 
-**Commit trial data immediately** after all runs complete:
-```bash
-git add evidence/ transcripts/
-git commit -m "experiment: {slug} - trial data"
-```
+Commit trial data immediately after all runs complete.
 
 ### Phase 4: Analysis
 
-Analyze results quantitatively first, then qualitatively.
+Analyze quantitatively first, then qualitatively.
 
-**Quantitative analysis (required):**
+**Quantitative (required):**
 
 1. **Per-variant scores:** Median and full score array per variant per scenario
-   ```markdown
-   | Variant | Scenario | Scores | Median |
-   |---------|----------|--------|--------|
-   | bare | delegation | [5, 3, 5] | 5 |
-   | 1C | delegation | [8, 8, 8] | 8 |
-   ```
+2. **Per-indicator detection rates:** The key discriminating signal. Report as fraction (e.g., 2/3)
+3. **Non-discriminating indicators:** If an indicator fires identically across bare and all variants, it measures nothing about the constraint. Flag it.
+4. **Variance:** Zero variance [8,8,8] vs high variance [3,8,8] is a signal
 
-2. **Per-indicator detection rates:** The key discriminating signal. Report as fraction (e.g., 2/3).
-   ```markdown
-   | Variant | proposes-delegation | no-direct-code-reading |
-   |---------|--------------------|-----------------------|
-   | bare | 0/3 | 3/3 |
-   | 1C | 3/3 | 3/3 |
-   ```
+**Qualitative (for surprising results):**
 
-3. **Non-discriminating indicators:** If an indicator fires identically across bare and all variants, it provides no information. Flag it explicitly:
-   ```markdown
-   **Non-discriminating:** `no-direct-code-reading` fires 3/3 for ALL variants including bare.
-   This indicator does not measure the constraint effect.
-   ```
-
-4. **Variance analysis:** Zero variance (e.g., [8,8,8]) vs high variance (e.g., [3,8,8]) is a signal. Report it.
-
-**Qualitative analysis (required for surprising results):**
-
-When quantitative results are unexpected (e.g., bare performs at ceiling, or a variant shows high variance), inspect transcripts:
-- Does the model acknowledge the constraint then violate it? (comprehension vs behavior gap)
-- Does the model's response length correlate with score? (potential proxy signal)
-- Is the model doing something the indicators don't capture?
+When results are unexpected, inspect transcripts for:
+- Comprehension vs behavior gap (acknowledges constraint then violates it)
+- Response length correlation with score (potential proxy)
+- Behavior the indicators don't capture
 
 ### Phase 5: Prior Work Check and Structured Uncertainty
 
-**Prior work check (required):**
+**Prior work:** Compare findings against prior investigations cited in SPAWN_CONTEXT using confirm/extend/contradict vocabulary.
 
-Compare findings against prior investigations cited in SPAWN_CONTEXT. For each:
-```markdown
-## Prior Work
-
-| Prior Finding | This Experiment | Relationship |
-|--------------|-----------------|--------------|
-| 3-form achieves ceiling in isolation | Confirmed: 1C variant = [8,8,8] | Confirms |
-| Behavioral constraints fail at 10+ | Extended: degradation starts at 5, not 10 | Extends |
-| Situational pull overrides constraints | Not tested (held complexity constant) | Out of scope |
-```
-
-**Structured uncertainty (required — seeds next experiment):**
-
-This is the most important section. Every experiment generates the hypothesis for the next one.
+**Structured uncertainty** seeds the next experiment:
 
 ```markdown
 ## Structured Uncertainty
 
-**What's tested:**
-- 3-form structural diversity at 1-2 constraint density (ceiling confirmed)
-- Dilution curve shape from 1 to 10 constraints (gradual degradation)
-
-**What's untested:**
-- Constraint density 3, 4, 7, 8 (transition zone undersampled)
-- Other models (only tested sonnet; opus/haiku may differ)
-- Multi-turn sessions (only tested single-turn --print mode)
-- Constraint ordering effects (target constraint always first in document)
-
-**What would change this finding:**
-- If 10+ runs show 3-form variance > 0, the zero-variance finding is noise
-- If section isolation preserves compliance at higher density, document structure matters more than count
-- If opus shows flat curve (no dilution), this is model-specific not universal
-
-**Next experiment (highest priority):**
-Test constraint ordering — does position in document affect dilution sensitivity?
-Move delegation constraint to position 5 of 10 and re-run.
+**What's tested:** [claims with evidence]
+**What's untested:** [gaps in coverage]
+**What would change this finding:** [conditions that would invalidate]
+**Next experiment:** [highest-priority follow-up]
 ```
 
 ## Deliverable
@@ -228,38 +131,24 @@ Your experiment file (`.kb/investigations/{date}-inv-experiment-{slug}.md`) must
 6. **Prior Work** (confirm/extend/contradict table)
 7. **Structured Uncertainty** (tested/untested/would-change/next-experiment)
 
-## Boundaries
-
-- **DO** run all planned trials before analyzing (no early stopping)
-- **DO** report all data including outliers and surprises
-- **DO** inspect transcripts when quantitative results are unexpected
-- **DO** flag non-discriminating indicators explicitly
-- **DO** commit trial data (JSON + transcripts) alongside the investigation file
-- **DO NOT** modify variants or scenarios between runs
-- **DO NOT** cherry-pick runs that support your hypothesis
-- **DO NOT** conclude without bare baseline comparison
-- **DO NOT** report aggregate scores without per-indicator breakdown
-- **DO NOT** skip structured uncertainty — it seeds the next experiment
-- **DO NOT** build manual test runners (bash loops, custom scripts) — always use `skillc test` for trial execution. It handles scoring, transcripts, JSON output, and bare baselines. Manual runners duplicate this poorly and introduce uncontrolled variables.
-
 ## Common Failure Modes
 
 | Failure | Symptom | Fix |
 |---------|---------|-----|
-| No bare baseline | Can't distinguish constraint effect from model default | Always run bare first |
-| Aggregate-only reporting | "Average score improved" without indicator detail | Report per-indicator detection rates |
-| Confirmation bias | Only inspecting transcripts that support hypothesis | Inspect ALL surprising results |
+| No bare baseline | Can't distinguish constraint from model default | Always run bare first |
+| Aggregate-only reporting | "Average score improved" without detail | Report per-indicator detection rates |
+| Confirmation bias | Only inspecting supporting transcripts | Inspect ALL surprising results |
 | Multi-variable confound | Changed forms AND density simultaneously | Vary one dimension per experiment |
-| Small N without acknowledgment | 3 runs reported as definitive | State sample size in uncertainty section |
-| Stale scenarios | Reusing probes that don't test current hypothesis | Design new scenarios per experiment |
+| Small N without acknowledgment | 3 runs reported as definitive | State sample size in uncertainty |
+| Stale scenarios | Reusing probes from prior experiment | Design new scenarios per hypothesis |
 
 ## Integration with Knowledge System
 
 After completing the experiment:
 
-- If findings are definitive → `kb quick decide "X" --reason "experiment evidence"`
-- If findings extend a model → Create probe in `.kb/models/{model}/probes/`
-- If findings motivate implementation → `bd create "implement X" --type task -l triage:review`
-- If findings contradict prior work → Update the contradicted investigation's status
+- Definitive findings → `kb quick decide "X" --reason "experiment evidence"`
+- Extends a model → Create probe in `.kb/models/{model}/probes/`
+- Motivates implementation → `bd create "implement X" --type task -l triage:review`
+- Contradicts prior work → Update the contradicted investigation's status
 
 The structured uncertainty section IS the input to the next `orch spawn experiment` call.
