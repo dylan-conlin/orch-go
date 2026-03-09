@@ -426,8 +426,10 @@ func TestCheckSpawnHotspots(t *testing.T) {
 	if !result.HasHotspots {
 		t.Error("Expected HasHotspots=true")
 	}
-	if len(result.MatchedHotspots) != 2 {
-		t.Errorf("Expected 2 matched hotspots, got %d", len(result.MatchedHotspots))
+	// Only fix-density matches via file path; investigation-cluster "status" does NOT
+	// match just because the word "status" appears in task text (false positive fix).
+	if len(result.MatchedHotspots) != 1 {
+		t.Errorf("Expected 1 matched hotspot (fix-density only), got %d", len(result.MatchedHotspots))
 	}
 	if result.MaxScore != 7 {
 		t.Errorf("Expected MaxScore=7, got %d", result.MaxScore)
@@ -541,8 +543,7 @@ func TestCheckSpawnHotspots_CmdOrchMainGo(t *testing.T) {
 }
 
 // TestCheckSpawnHotspots_CouplingClusterMatchInTaskText validates that coupling-cluster
-// hotspots are matched when the concept name appears in the task text, even without
-// an explicit file path.
+// hotspots match only when task references actual file paths, NOT bare keywords in prose.
 func TestCheckSpawnHotspots_CouplingClusterMatchInTaskText(t *testing.T) {
 	hotspots := []Hotspot{
 		{
@@ -560,13 +561,13 @@ func TestCheckSpawnHotspots_CouplingClusterMatchInTaskText(t *testing.T) {
 		expectedScore int
 	}{
 		{
-			name:          "concept name in task text",
+			name:          "bare concept name in task text does NOT match",
 			task:          "refactor the daemon lifecycle management",
-			shouldMatch:   true,
-			expectedScore: 180,
+			shouldMatch:   false,
+			expectedScore: 0,
 		},
 		{
-			name:          "concept name with related file path",
+			name:          "concept name with related file path matches",
 			task:          "fix issue in cmd/orch/daemon.go",
 			shouldMatch:   true,
 			expectedScore: 180,
@@ -578,10 +579,10 @@ func TestCheckSpawnHotspots_CouplingClusterMatchInTaskText(t *testing.T) {
 			expectedScore: 0,
 		},
 		{
-			name:          "case insensitive match",
+			name:          "bare concept name case insensitive does NOT match",
 			task:          "Debug the Daemon spawn logic",
-			shouldMatch:   true,
-			expectedScore: 180,
+			shouldMatch:   false,
+			expectedScore: 0,
 		},
 	}
 
@@ -983,17 +984,17 @@ func TestCheckSpawnHotspots_CouplingClusterViaTaskText(t *testing.T) {
 		shouldMatch bool
 	}{
 		{
-			name:        "topic appears in task text",
+			name:        "bare topic in task text does NOT match",
 			task:        "refactor daemon error handling",
-			shouldMatch: true,
+			shouldMatch: false,
 		},
 		{
-			name:        "topic in task with other words",
+			name:        "bare topic with other words does NOT match",
 			task:        "the daemon module needs retry logic",
-			shouldMatch: true,
+			shouldMatch: false,
 		},
 		{
-			name:        "related file referenced in task",
+			name:        "related file referenced in task still matches",
 			task:        "fix cmd/orch/daemon.go race condition",
 			shouldMatch: true,
 		},
@@ -1602,6 +1603,64 @@ func TestDefectClassesForHotspots_MultipleFiles(t *testing.T) {
 			t.Errorf("classes not sorted: %v", classes)
 			break
 		}
+	}
+}
+
+// TestCheckSpawnHotspots_NoFalsePositiveFromTaskTextKeywords validates that
+// investigation-cluster and coupling-cluster hotspots do NOT match on bare keywords
+// in task text that are only cited as evidence, not as target files.
+// This is the core false-positive bug: a task like "Write about daemon architecture,
+// citing daemon.go" would match investigation-cluster "daemon" via task text keyword,
+// even though the task isn't modifying any daemon files.
+func TestCheckSpawnHotspots_NoFalsePositiveFromTaskTextKeywords(t *testing.T) {
+	hotspots := []Hotspot{
+		{Path: "gate", Type: "investigation-cluster", Score: 5},
+		{Path: "code", Type: "investigation-cluster", Score: 4},
+		{Path: "hotspot", Type: "investigation-cluster", Score: 6},
+		{Path: "daemon", Type: "coupling-cluster", Score: 180, RelatedFiles: []string{"cmd/orch/daemon.go", "pkg/daemon/daemon.go"}},
+		{Path: "model", Type: "investigation-cluster", Score: 3},
+	}
+
+	tests := []struct {
+		name        string
+		task        string
+		shouldMatch bool
+	}{
+		{
+			name:        "writing task citing code evidence should not match",
+			task:        "Write a guide about gate patterns and hotspot detection, citing code evidence from daemon and model analysis",
+			shouldMatch: false,
+		},
+		{
+			name:        "task mentioning keyword in prose should not match",
+			task:        "Document how the hotspot gate prevents code bloat",
+			shouldMatch: false,
+		},
+		{
+			name:        "task with actual file path should still match",
+			task:        "Fix bug in cmd/orch/daemon.go error handling",
+			shouldMatch: true,
+		},
+		{
+			name:        "task mentioning daemon without file path should not match",
+			task:        "Refactor the daemon lifecycle management",
+			shouldMatch: false,
+		},
+		{
+			name:        "task with related file path in coupling cluster should match",
+			task:        "Fix pkg/daemon/daemon.go race condition",
+			shouldMatch: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := checkSpawnHotspots(tt.task, hotspots)
+			if result.HasHotspots != tt.shouldMatch {
+				t.Errorf("checkSpawnHotspots(%q) HasHotspots = %v, want %v",
+					tt.task, result.HasHotspots, tt.shouldMatch)
+			}
+		})
 	}
 }
 

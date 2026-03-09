@@ -867,10 +867,11 @@ func checkSpawnHotspots(task string, hotspots []Hotspot) *SpawnHotspotResult {
 	// Extract paths from task
 	paths := extractPathsFromTask(task)
 
-	// Also check for investigation-cluster topic matches directly in task text
-	taskLower := strings.ToLower(task)
-
-	// Check each hotspot
+	// Check each hotspot against extracted file paths only.
+	// We do NOT match investigation-cluster or coupling-cluster topic keywords
+	// against the raw task text — this causes false positives when tasks merely
+	// cite code evidence (e.g., "daemon.go", "model", "gate") without targeting
+	// those files for modification.
 	for _, h := range hotspots {
 		matched := false
 
@@ -879,13 +880,6 @@ func checkSpawnHotspots(task string, hotspots []Hotspot) *SpawnHotspotResult {
 			if pathMatches, _ := matchPathToHotspots(path, []Hotspot{h}); pathMatches {
 				matched = true
 				break
-			}
-		}
-
-		// For investigation clusters and coupling clusters, also check if topic appears in task text
-		if !matched && (h.Type == "investigation-cluster" || h.Type == "coupling-cluster") {
-			if strings.Contains(taskLower, strings.ToLower(h.Path)) {
-				matched = true
 			}
 		}
 
