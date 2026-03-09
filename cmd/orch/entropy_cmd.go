@@ -16,6 +16,7 @@ var (
 	entropyJSON       bool
 	entropySkipDupdet bool
 	entropySkipLint   bool
+	entropyOutputDir  string
 )
 
 var entropyCmd = &cobra.Command{
@@ -42,7 +43,8 @@ Examples:
   orch entropy                  # Full analysis, 28-day window
   orch entropy --days 7         # Last 7 days
   orch entropy --json           # Machine-readable output
-  orch entropy --skip-dupdetect # Skip expensive AST scan`,
+  orch entropy --skip-dupdetect # Skip expensive AST scan
+  orch entropy --output-dir .kb/entropy  # Save JSON to dated file`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runEntropy()
 	},
@@ -53,6 +55,7 @@ func init() {
 	entropyCmd.Flags().BoolVar(&entropyJSON, "json", false, "Output JSON format")
 	entropyCmd.Flags().BoolVar(&entropySkipDupdet, "skip-dupdetect", false, "Skip duplicate detection (faster)")
 	entropyCmd.Flags().BoolVar(&entropySkipLint, "skip-lint", false, "Skip architecture lint tests (faster)")
+	entropyCmd.Flags().StringVar(&entropyOutputDir, "output-dir", "", "Save JSON report to dated file in this directory")
 	rootCmd.AddCommand(entropyCmd)
 }
 
@@ -111,6 +114,16 @@ func runEntropy() error {
 				Message:  fmt.Sprintf("%d duplicate function pairs detected. Run 'orch dupdetect' for extraction candidates.", report.DuplicatePairCount),
 			})
 		}
+	}
+
+	// Save to file if --output-dir specified
+	if entropyOutputDir != "" {
+		path, err := entropy.SaveReport(report, entropyOutputDir)
+		if err != nil {
+			return fmt.Errorf("save report: %w", err)
+		}
+		fmt.Printf("Report saved to %s\n", path)
+		return nil
 	}
 
 	if entropyJSON {

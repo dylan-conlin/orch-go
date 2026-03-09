@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.orch.entropy</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/dylanconlin/bin/orch</string>
+        <string>entropy</string>
+        <string>--output-dir</string>
+        <string>/Users/dylanconlin/Documents/personal/orch-go/.kb/entropy</string>
+    </array>
+
+    <!-- Weekly: Sunday at 06:00 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>0</integer>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/dylanconlin/Documents/personal/orch-go</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dylanconlin/.orch/entropy.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/dylanconlin/.orch/entropy.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/dylanconlin/.bun/bin:/Users/dylanconlin/bin:/Users/dylanconlin/go/bin:/opt/homebrew/bin:/Users/dylanconlin/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/dylanconlin</string>
+    </dict>
+</dict>
+</plist>
