@@ -316,14 +316,14 @@ func ensureDir(path string, force bool) (bool, error) {
 	return true, nil
 }
 
-// initKB runs 'kb init' to initialize the knowledge base.
+// initKB initializes the knowledge base using the native Go implementation.
 func initKB(projectDir string) error {
-	cmd := exec.Command("kb", "init")
-	cmd.Dir = projectDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	return cmd.Run()
+	result, err := kbInitProject(projectDir)
+	if err != nil {
+		return err
+	}
+	printKBInitResult(result)
+	return nil
 }
 
 // initBeads runs 'bd init' to initialize beads tracking.

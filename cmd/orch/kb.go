@@ -277,6 +277,7 @@ func init() {
 
 	kbCreateCmd.AddCommand(kbCreateModelCmd)
 
+	kbCmd.AddCommand(kbInitCmd)
 	kbCmd.AddCommand(kbAskCmd)
 	kbCmd.AddCommand(kbExtractCmd)
 	kbCmd.AddCommand(kbClaimsCmd)
