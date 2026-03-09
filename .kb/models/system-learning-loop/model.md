@@ -10,6 +10,8 @@
 
 The System Learning Loop is the third layer of the Pressure Visibility System that automatically converts recurring context gaps into actionable improvements. It tracks gaps during spawns, identifies patterns using RecurrenceThreshold=3, and suggests specific actions (kn entries, beads issues, investigations). The system uses shell-aware command parsing to generate runnable commands with proper quoted string handling, and ensures minimum length requirements for downstream tools (kn requires 20+ chars). This creates a closed feedback loop: gaps → patterns → suggestions → improvements → fewer gaps.
 
+**Knowledge Physics Reframe (2026-03-09):** This loop is a specialized instance of knowledge physics — the same accretion/attractor/gate dynamics that govern code. The gap→pattern→suggestion→improvement cycle maps to entropy detection → attractor formation → gate recommendation → entropy reduction. RecurrenceThreshold=3 is an attractor formation criterion (same role as the "3+ investigations trigger model creation" threshold). The learning loop operates on one substrate (context gaps); the same physics apply to all knowledge artifacts (investigations, models, decisions, quick entries) and to any shared mutable substrate where amnesiac agents contribute.
+
 ---
 
 ## Core Mechanism
@@ -405,6 +407,7 @@ Gap excluded from future FindRecurringGaps calls
 | Probe | Date | Verdict | Key Finding |
 |-------|------|---------|-------------|
 | `probes/2026-03-01-probe-legibility-literature-review-bainbridge-forward.md` | 2026-03-01 | Confirms + Extends | Core architecture confirmed by 40 years of human factors research. Three gaps identified: SA-3 projection absent, honest legibility risk (Scott's trap), joint cognitive system framing neglected. Pace-layered transparency needed. Bainbridge Irony #3 is live — autonomous daemon degrades Dylan's intervention readiness. |
+| `probes/2026-03-09-probe-knowledge-physics-accretion-attractor-gate-dynamics.md` | 2026-03-09 | Confirms + Extends | The gap→pattern→suggestion→improvement cycle IS knowledge physics (attractor formation from entropy). Empirical measurement across 1,166 investigations: 85.5% orphan rate, models exhibit three behaviors (attractor/capstone/dormant), all knowledge gates are advisory (zero hard gates). Knowledge physics generalizes to any shared mutable substrate with amnesiac agents. Six entropy metrics proposed. Recommends creating knowledge-physics model. |
 
 ---
 
@@ -455,6 +458,43 @@ cat ~/.orch/gap-tracker.json | jq '.Events | group_by(.Query) | map({query: .[0]
 **Intentionally deferred:**
 - Semantic query matching (kb context uses keyword matching; semantic would require LLM-based RAG)
 - Natural language suggestion generation (current format is structured/actionable, not prose)
+
+---
+
+## Knowledge Physics Assessment (2026-03-09)
+
+The system-learning-loop describes knowledge physics without naming it. Empirical measurement across the full knowledge corpus confirms the hypothesis:
+
+### The Mapping
+
+| System-Learning-Loop Concept | Knowledge Physics | Code Physics |
+|------------------------------|-------------------|--------------|
+| Gap recording | Entropy detection | Hotspot analysis |
+| Pattern detection (threshold=3) | Attractor formation criterion | "3+ investigations → model" threshold |
+| Suggestion generation | Gate recommendation | Pre-commit gate |
+| Resolution tracking | Gate enforcement | Completion verification |
+| 30-day retention | Entropy decay | Stale code pruning |
+
+### Empirical Evidence
+
+**Accretion is real:** 85.5% of 1,166 investigations are orphaned (no model connection). 93.6% of archived investigations. This is the knowledge equivalent of dead code and file bloat.
+
+**Models are attractors:** daemon-autonomous-operation model attracted 34 probes across 21 days (sustained pull). harness-engineering attracted 100% of post-creation investigations. But models also behave as **capstones** — entropy-spiral's reference rate *decreased* after formalization (12.5% → 8.8%), meaning it settled the topic.
+
+**All knowledge gates are advisory:** While code has pre-commit hooks, spawn gates, and completion verification, every knowledge gate is informational. No commit is blocked by knowledge inconsistency. This means the knowledge substrate operates entirely on soft harness, which the harness-engineering model has shown degrades under pressure.
+
+### Proposed Knowledge Entropy Metrics
+
+1. **Orphan rate** — % investigations without model connection (baseline: 85.5%)
+2. **Claims-per-model** — model complexity (like lines-per-file)
+3. **Unprobed claims ratio** — % model claims never tested
+4. **Contradiction backlog** — "contradicts" verdicts sitting unmerged (baseline: 4)
+5. **Synthesis backlog** — investigation clusters awaiting model creation (baseline: 4 clusters)
+6. **Decision enforcement rate** — % decisions with `kb agreements` checks (baseline: 1.8%)
+
+### Substrate Generalization
+
+The physics apply to any shared mutable substrate where: (1) multiple agents contribute, (2) contributions are locally correct, (3) no persistent memory across sessions, (4) composition isn't guaranteed. This includes databases (column bloat, FK constraints as gates), config systems (setting sprawl, schema validation), API surfaces (endpoint bloat, contract testing), and documentation (doc sprawl, link validation).
 
 ---
 
