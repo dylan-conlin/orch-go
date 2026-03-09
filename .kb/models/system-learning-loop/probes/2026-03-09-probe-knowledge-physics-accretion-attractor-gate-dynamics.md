@@ -125,7 +125,7 @@ Every knowledge transition is either ungated or advisory-only:
 | Transition | Status | Gate Mechanism |
 |------------|--------|---------------|
 | Investigation → model | **UNGATED** | No automated model update when investigation contradicts model |
-| Probe → model update | **UNGATED** | Skill template says "merge findings before completion" but no tooling validates. 4 probes contain "contradicts" verdicts with no model update |
+| Probe → model update | **UNGATED** | Skill template says "merge findings before completion" but no tooling validates. 4 probes historically contained "contradicts" verdicts (resolved 2026-03-09; all had been merged into parent models by 2026-03-06) |
 | Quick entry → decision | **UNGATED** | No dedup checking against existing entries or decisions |
 | Decision → implementation | **UNGATED** (1/56 exception) | Only 1 of 56 decisions has an `kb agreements` check |
 | Investigation Prior Work | **SOFT** (52% adoption) | Template includes it, 48% of investigations skip it |
@@ -133,7 +133,7 @@ Every knowledge transition is either ungated or advisory-only:
 
 **The striking parallel to code:** In the code system, the harness-engineering model documented that "every convention without a gate will eventually be violated." The knowledge system proves this claim — every knowledge convention (Prior Work tables, probe-to-model merge, dedup checking) is a convention without a gate, and each is violated at significant rates.
 
-**4 probes contain "contradicts" verdicts** that sit unmerged in the system. These are the knowledge equivalent of known bugs left unfixed.
+**4 probes historically contained "contradicts" verdicts** that were claimed as unmerged. Upon verification (2026-03-09), all 4 had been merged into parent models during a 2026-03-06 batch update. The claim was stale — the probe searched for "contradicts" in verdict lines without checking whether parent models had been updated. This itself demonstrates the ungated transition: the probe-to-model merge happened, but no mechanism tracked that it happened, so downstream claims about the backlog became stale.
 
 ### 4. ENTROPY METRICS: Current Metrics Are Incomplete
 
@@ -159,7 +159,7 @@ Every knowledge transition is either ungated or advisory-only:
 1. **Orphan rate** — % investigations not connected to any model (currently 85.5%, should decrease over time as models absorb findings)
 2. **Claims-per-model** — number of claims in a model.md (like lines-per-file; too many → model needs splitting)
 3. **Unprobed claims ratio** — % of model claims never tested by a probe (like untested code)
-4. **Contradiction backlog** — count of "contradicts" verdicts sitting unmerged (currently 4)
+4. **Contradiction backlog** — count of "contradicts" verdicts sitting unmerged (was 4 at time of writing; verified as 0 on 2026-03-09 — all had been merged 2026-03-06)
 5. **Synthesis backlog** — investigation clusters awaiting model creation (currently 4 clusters, 17 investigations)
 6. **Decision enforcement rate** — % of decisions with `kb agreements` checks (currently 1/56 = 1.8%)
 

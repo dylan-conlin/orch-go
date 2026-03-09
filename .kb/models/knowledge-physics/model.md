@@ -94,7 +94,7 @@ Every knowledge transition is either ungated or advisory-only:
 | Transition | Status | Gate Mechanism |
 |------------|--------|---------------|
 | Investigation → model | **UNGATED** | No automated model update when investigation contradicts model |
-| Probe → model update | **UNGATED** | Skill template says "merge findings before completion" but no tooling validates. 4 probes with "contradicts" verdicts sit unmerged |
+| Probe → model update | **UNGATED** | Skill template says "merge findings before completion" but no tooling validates. Historically 4 probes had unmerged "contradicts" verdicts (resolved 2026-03-09); pattern recurrence expected without hard gates |
 | Quick entry → decision | **UNGATED** | No dedup checking against existing entries or decisions |
 | Decision → implementation | **UNGATED** (1/56 exception) | Only 1 of 56 decisions has a `kb agreements` check |
 | Investigation prior work | **SOFT** (52% adoption) | Template includes it, 48% of investigations skip it |
@@ -102,7 +102,7 @@ Every knowledge transition is either ungated or advisory-only:
 
 **The parallel to code is exact.** The harness-engineering model documented that "every convention without a gate will eventually be violated." The knowledge system proves this claim across every transition:
 
-- Probe-to-model merge is a convention → 4 contradicts verdicts sit unmerged
+- Probe-to-model merge is a convention → contradicts verdicts historically accumulated before resolution (4 at baseline, resolved 2026-03-09)
 - Prior Work tables are a convention → 48% of investigations skip them
 - Quick entry uniqueness is a convention → confirmed duplicates exist
 - Decision enforcement is a convention → 1.8% enforcement rate
@@ -134,7 +134,7 @@ Code has pre-commit hooks, spawn gates, and completion verification. Knowledge h
 
 2. **Model probe freshness** — days since last probe per model. Sustained staleness signals dormancy or completeness. The distinction matters: dormant models may need retirement; complete models need no action.
 
-3. **Contradicts backlog** — count of "contradicts" probe verdicts sitting unmerged (baseline: 4). These are the knowledge equivalent of known bugs left unfixed. Direct measure of model accuracy debt.
+3. **Contradicts backlog** — count of "contradicts" probe verdicts sitting unmerged (baseline was 4, resolved to 0 on 2026-03-09). These are the knowledge equivalent of known bugs left unfixed. Direct measure of model accuracy debt. Expected to recur without hard gates.
 
 4. **Synthesis debt** — investigation clusters without models (baseline: 4 clusters, 17 investigations). Measures how much investigative work product remains unsynthesized.
 
@@ -236,7 +236,7 @@ The key finding from skill-content-transfer applies directly: **attention primer
 
 ### Failure Mode 2: Advisory Gates Are Non-Gates
 
-Every knowledge gate is advisory. The "merge findings before completion" instruction in probe templates is a convention — 4 contradicts verdicts sit unmerged. Prior Work tables are a convention — 48% skip them. Without hard enforcement, conventions degrade under time pressure. This is the same dynamic as daemon.go growing past the stated 1,500-line convention in CLAUDE.md.
+Every knowledge gate is advisory. The "merge findings before completion" instruction in probe templates is a convention — contradicts verdicts historically accumulated (4 at baseline before batch resolution). Prior Work tables are a convention — 48% skip them. Without hard enforcement, conventions degrade under time pressure. This is the same dynamic as daemon.go growing past the stated 1,500-line convention in CLAUDE.md.
 
 ### Failure Mode 3: Attention-Primed Attractors Lose Under Pressure
 
@@ -244,7 +244,7 @@ When kb context injection includes a relevant model, agents are primed to engage
 
 ### Failure Mode 4: No Contradiction Resolution Mechanism
 
-When a probe contradicts a model claim, the finding is recorded in the probe file but no mechanism forces the model to be updated. 4 contradicts verdicts are currently unmerged. Over time, models accumulate stale or contradicted claims that new agents receive as authoritative via kb context injection — creating a knowledge equivalent of stale cache invalidation.
+When a probe contradicts a model claim, the finding is recorded in the probe file but no mechanism forces the model to be updated. Contradicts verdicts historically accumulated (4 at baseline, batch-resolved 2026-03-09) and will recur without hard gates. Over time, models accumulate stale or contradicted claims that new agents receive as authoritative via kb context injection — creating a knowledge equivalent of stale cache invalidation.
 
 ---
 

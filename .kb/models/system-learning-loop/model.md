@@ -488,7 +488,7 @@ The system-learning-loop describes knowledge physics without naming it. Empirica
 1. **Orphan rate** — % investigations without model connection (baseline: 85.5%)
 2. **Claims-per-model** — model complexity (like lines-per-file)
 3. **Unprobed claims ratio** — % model claims never tested
-4. **Contradiction backlog** — "contradicts" verdicts sitting unmerged (baseline: 4)
+4. **Contradiction backlog** — "contradicts" verdicts sitting unmerged (baseline was 4, resolved to 0 on 2026-03-09)
 5. **Synthesis backlog** — investigation clusters awaiting model creation (baseline: 4 clusters)
 6. **Decision enforcement rate** — % decisions with `kb agreements` checks (baseline: 1.8%)
 

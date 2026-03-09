@@ -112,7 +112,7 @@ Agent state is derived at query time from four authoritative sources — no pers
 
 **Architectural constraint:** `pkg/registry/`, `pkg/cache/`, and `sessions.json` are forbidden by architecture lint tests (`architecture_lint_test.go`). If queries are slow, fix the authoritative source — do not build projections.
 
-**Historical note:** A session registry (`~/.orch/sessions.json`, `pkg/registry/`) existed Jan 2026 but was removed Feb 2026 due to false positive completion detection and drift. Replaced by `pkg/session/registry.go` for any remaining session lookup needs. The "no local agent state" constraint was established to prevent recurrence. Note: 40+ .kb/ docs still reference the deleted `pkg/registry/` package.
+**Historical note:** A session registry (`~/.orch/sessions.json`, `pkg/registry/`) existed Jan 2026 but was eliminated entirely Feb 2026 due to false positive completion detection and drift. Replaced by single-pass query engine (`cmd/orch/query_tracked.go`) that queries beads → workspace manifests → OpenCode directly. Architecture lint tests (`architecture_lint_test.go`) structurally prevent registry recreation. The "no local agent state" constraint was established to prevent recurrence.
 
 **Liveness gap — Claude-backend agents:** `queryTrackedAgents` only checks OpenCode sessions for liveness. Claude-backend agents (spawned via `runSpawnClaude`) bypass OpenCode entirely — they have no OpenCode session, so manifest has no `session_id`. The query engine marks `missing_session` as dead, causing ~30%+ of claude-mode agents to appear dead even when running in tmux. Phase comments from beads serve as a liveness proxy for these agents, filling the gap without introducing new state layers.
 
