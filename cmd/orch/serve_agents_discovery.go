@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/verify"
+	"github.com/dylan-conlin/orch-go/pkg/workspace"
 )
 
 var listOpenIssues = verify.ListOpenIssues
@@ -207,60 +208,14 @@ func discoverInvestigationPath(workspaceName, beadsID, projectDir string, cache 
 	return ""
 }
 
-// extractWorkspaceKeywords extracts meaningful keywords from a workspace name for investigation matching.
-// Workspace names follow pattern: {project}-{skill}-{topic}-{date}-{hash}
-// Example: "og-inv-skillc-deploy-06jan-ed96" -> ["skillc", "deploy"]
+// extractWorkspaceKeywords delegates to workspace.ExtractKeywords.
 func extractWorkspaceKeywords(workspaceName string) []string {
-	parts := strings.Split(workspaceName, "-")
-	if len(parts) < 3 {
-		return nil
-	}
-
-	var keywords []string
-
-	// Skip prefix parts that are likely project or skill markers
-	skipPrefixes := []string{"og", "inv", "feat", "fix", "debug", "audit", "impl", "arch", "research"}
-	prefixSet := make(map[string]bool)
-	for _, p := range skipPrefixes {
-		prefixSet[p] = true
-	}
-
-	for _, part := range parts {
-		// Skip short parts (likely hash or date)
-		if len(part) <= 2 {
-			continue
-		}
-		// Skip parts that look like dates (e.g., "06jan", "2026")
-		if len(part) == 5 && strings.Contains(part, "jan") || strings.Contains(part, "feb") ||
-			strings.Contains(part, "mar") || strings.Contains(part, "apr") ||
-			strings.Contains(part, "may") || strings.Contains(part, "jun") ||
-			strings.Contains(part, "jul") || strings.Contains(part, "aug") ||
-			strings.Contains(part, "sep") || strings.Contains(part, "oct") ||
-			strings.Contains(part, "nov") || strings.Contains(part, "dec") {
-			continue
-		}
-		// Skip common prefixes
-		if prefixSet[strings.ToLower(part)] {
-			continue
-		}
-		// Skip parts that look like short hashes (4 hex chars at end)
-		if len(part) == 4 && isHexLike(part) {
-			continue
-		}
-		keywords = append(keywords, part)
-	}
-
-	return keywords
+	return workspace.ExtractKeywords(workspaceName)
 }
 
-// isHexLike returns true if the string looks like a short hex hash (all lowercase letters/digits).
+// isHexLike delegates to workspace.IsHexLike.
 func isHexLike(s string) bool {
-	for _, c := range s {
-		if !((c >= 'a' && c <= 'f') || (c >= '0' && c <= '9')) {
-			return false
-		}
-	}
-	return true
+	return workspace.IsHexLike(s)
 }
 
 // uniqueProjectDirs deduplicates project directories while preserving order.
