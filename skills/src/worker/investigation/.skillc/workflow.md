@@ -27,7 +27,7 @@ Before creating your investigation file, review prior work from SPAWN_CONTEXT.
    - Fill all required sections: Question, What I Tested, What I Observed, Model Impact
 3. **If markers not found -> Investigation Mode**
    - Acknowledge prior work: SPAWN_CONTEXT -> "Related Investigations"
-   - Create file: `kb create investigation {slug}`
+   - Create file: `kb create investigation {slug} --model <model-name>` (or `--orphan` if genuinely exploratory)
    - Checkpoint: Fill Question, add Prior-Work table, add Finding 1 ("Starting approach"), commit
 4. **Ask:** "What's the simplest thing I can observe right now?" (60-second rule)
 5. Try things, observe what happens (add findings/probe evidence progressively)

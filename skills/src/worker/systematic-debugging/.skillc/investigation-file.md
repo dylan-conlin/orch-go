@@ -48,7 +48,7 @@ Investigation files are **recommended** for complex bugs but **optional** for si
 ### Create Template (if needed)
 
 ```bash
-kb create investigation "debug/topic-in-kebab-case"
+kb create investigation "debug/topic-in-kebab-case" --model <model-name>  # or --orphan
 ```
 
 **After creating:**

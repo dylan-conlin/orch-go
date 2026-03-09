@@ -1,29 +1,53 @@
-task: "Control plane immutability: orch harness command"
-beads_id: orch-go-192s8
+task: "First hard knowledge gate — require --model flag on kb create investigation"
+beads_id: orch-go-vfd6v
 tier: light
 
 automated:
-  - command: "go test ./pkg/control/ -v -count=1"
-    expects: "All 14 tests pass including TestSettingsJsonAlwaysIncluded, TestDenyRules, TestExpandPath"
-    result: "PASS - 14/14 tests"
-  - command: "go test ./cmd/orch/ -run TestHarness -v -count=1"
-    expects: "3 harness command tests pass"
-    result: "PASS - 3/3 tests"
-  - command: "go build ./cmd/orch/"
-    expects: "Clean build"
+  - command: "cd ~/Documents/personal/kb-cli && go test ./cmd/kb/ -run TestCreateInvestigationRequiresModelOrOrphan"
+    expects: "Gate blocks creation without --model or --orphan"
+    result: "PASS"
+  - command: "cd ~/Documents/personal/kb-cli && go test ./cmd/kb/ -run TestCreateInvestigationModelGateBypassed"
+    expects: "--orphan bypasses model requirement"
+    result: "PASS"
+  - command: "cd ~/Documents/personal/kb-cli && go test ./cmd/kb/ -run TestCreateInvestigationModelGateSatisfied"
+    expects: "--model satisfies gate"
+    result: "PASS"
+  - command: "go test ./pkg/spawn/"
+    expects: "All spawn tests pass with updated context template"
+    result: "PASS"
+  - command: "go test ./pkg/verify/"
+    expects: "All verify tests pass"
+    result: "PASS"
+
+e2e:
+  - command: "kb create investigation inv/test-no-model"
+    expects: "Error: --model is required"
+    result: "PASS - clear error with guidance"
+  - command: "kb create investigation inv/test --model knowledge-physics"
+    expects: "Created investigation"
+    result: "PASS"
+  - command: "kb create investigation inv/test --orphan"
+    expects: "Created investigation without model"
     result: "PASS"
 
 deliverables:
-  - cmd/orch/harness_cmd.go        # orch harness lock/unlock/status command
-  - cmd/orch/harness_cmd_test.go   # Tests for harness command registration
-  - pkg/control/control_test.go    # TestSettingsJsonAlwaysIncluded added
+  kb-cli:
+    - cmd/kb/create.go         # Hard gate in createInvestigationFromTypeSlug
+    - cmd/kb/create_test.go    # 3 new gate tests + 4 updated existing tests
+  orch-go:
+    - pkg/spawn/context.go                                          # SPAWN_CONTEXT template updated
+    - skills/src/worker/investigation/.skillc/workflow.md            # --model guidance
+    - skills/src/worker/investigation/.skillc/template.md            # --model guidance
+    - skills/src/worker/systematic-debugging/.skillc/investigation-file.md
+    - skills/src/worker/architect/.skillc/SKILL.md.template
+    - skills/src/worker/codebase-audit/.skillc/SKILL.md.template
+    - skills/src/worker/codebase-audit/.skillc/phases/common-overview.md
+    - skills/src/worker/experiment/.skillc/SKILL.md.template
 
-orchestrator_actions_required:
-  - "Add re.compile(r'\\.claude/settings\\.json$') to GOVERNANCE_PATTERNS in ~/.orch/hooks/gate-governance-file-protection.py"
-  - "This closes the recursive vulnerability: agents can currently Edit ~/.claude/settings.json to remove hooks that constrain them"
-
-notes: |
-  orch harness is a parallel entry point to orch control (both kept for compatibility).
-  The pkg/control package already had expandPath, DenyRules, Lock, Unlock, EnsureLocked.
-  Worker correctly blocked from modifying governance hook — surfaced as constraint.
-  orch harness status shows 12/12 files LOCKED on live system.
+orphan_rate_measurement:
+  current_active_investigations: 208
+  with_model_field: 7
+  current_orphan_rate: "96.6%"
+  probe_files_structurally_coupled: 189
+  expected_forward_orphan_rate: "<10% (only explicit --orphan usage)"
+  metric_to_watch: "ratio of --orphan to --model usage post-deployment"

@@ -26,7 +26,7 @@ Read SPAWN_CONTEXT for the hypothesis, prior work, and constraint under measurem
 
 Create your experiment file and commit immediately (if you die, there's a record):
 ```bash
-kb create investigation "experiment-{slug}"
+kb create investigation "experiment-{slug}" --model <model-name>  # or --orphan
 ```
 
 A hypothesis must be:

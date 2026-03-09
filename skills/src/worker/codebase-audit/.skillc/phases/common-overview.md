@@ -87,7 +87,7 @@ Follow standard investigation file setup below.
 # Create investigation using kb CLI command
 # Update SLUG based on your audit dimension and topic
 # Use audit/ prefix for audit investigations
-kb create investigation "audit/dimension-audit-description"
+kb create investigation "audit/dimension-audit-description" --model <model-name>  # or --orphan
 ```
 
 **After creating the template:**

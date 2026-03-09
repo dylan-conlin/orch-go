@@ -271,7 +271,7 @@ DELIVERABLES (REQUIRED):
      ` + "`bd comment {{.BeadsID}} \"probe_path: /path/to/probe.md\"`" + `
 {{end}}
 {{else}}
-2. **SET UP investigation file:** Run ` + "`kb create investigation {{.InvestigationSlug}}`" + ` to create from template
+2. **SET UP investigation file:** Run ` + "`kb create investigation {{.InvestigationSlug}} --model <model-name>`" + ` to create from template (or ` + "`--orphan`" + ` if no model applies)
    - This creates: ` + "`.kb/investigations/simple/YYYY-MM-DD-{{.InvestigationSlug}}.md`" + `
    - This file is your coordination artifact (replaces WORKSPACE.md)
    - If command fails, report to orchestrator immediately

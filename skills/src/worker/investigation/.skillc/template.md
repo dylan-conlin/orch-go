@@ -15,7 +15,7 @@ Required sections:
 
 ### Investigation Mode (fallback when model markers are absent)
 
-Use `kb create investigation {slug}`. Required sections:
+Use `kb create investigation {slug} --model <model-name>` (or `--orphan` if no model applies). Required sections:
 
 - **D.E.K.N. Summary** (Delta, Evidence, Knowledge, Next)
 - **Prior Work** table (entries OR "N/A - novel investigation")

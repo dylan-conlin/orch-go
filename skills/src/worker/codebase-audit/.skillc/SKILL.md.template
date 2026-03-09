@@ -24,7 +24,7 @@ An audit reads a workspace claiming "feature X NOT DONE" and reports that as a f
 
 ## Core Workflow
 
-1. **Create investigation file** — `kb create investigation "audit/dimension-description"`
+1. **Create investigation file** — `kb create investigation "audit/dimension-description" --model <model-name>` (or `--orphan`)
 2. **Pattern search** — Run dimension-specific search commands
 3. **Evidence collection** — Concrete examples with file:line references
 4. **Analysis** — Root cause, severity assessment, ROI prioritization

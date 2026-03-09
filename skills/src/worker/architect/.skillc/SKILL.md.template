@@ -200,7 +200,7 @@ For each unnavigable fork, classify:
 
 Create investigation from template:
 ```bash
-kb create investigation design/{slug}
+kb create investigation design/{slug} --model <model-name>  # or --orphan
 ```
 This creates: `.kb/investigations/YYYY-MM-DD-design-{slug}.md` with correct format.
 
