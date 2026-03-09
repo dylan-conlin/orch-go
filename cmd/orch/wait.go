@@ -111,33 +111,6 @@ func parseTimeout(timeout string) (time.Duration, error) {
 	return total, nil
 }
 
-// formatDuration formats a duration to human-readable string.
-func formatDuration(d time.Duration) string {
-	if d == 0 {
-		return "0s"
-	}
-
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-
-	if d < time.Hour {
-		minutes := int(d.Minutes())
-		secs := int(d.Seconds()) % 60
-		if secs > 0 {
-			return fmt.Sprintf("%dm %ds", minutes, secs)
-		}
-		return fmt.Sprintf("%dm", minutes)
-	}
-
-	hours := int(d.Hours())
-	minutes := int(d.Minutes()) % 60
-	if minutes > 0 {
-		return fmt.Sprintf("%dh %dm", hours, minutes)
-	}
-	return fmt.Sprintf("%dh", hours)
-}
-
 // resolveBeadsID resolves an identifier (session ID, beads ID, or workspace name) to a beads ID.
 // Returns the beads ID and an error if resolution fails.
 func resolveBeadsID(serverURL, identifier string) (string, error) {

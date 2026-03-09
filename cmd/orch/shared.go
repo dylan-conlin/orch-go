@@ -7,34 +7,27 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/display"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
+	"github.com/dylan-conlin/orch-go/pkg/workspace"
 )
 
-// truncate truncates a string to maxLen characters.
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
-}
+// truncate delegates to display.Truncate.
+func truncate(s string, maxLen int) string { return display.Truncate(s, maxLen) }
 
-// shortID returns the first 12 characters of an ID string for display.
-// If the string is shorter than 12 characters, it returns the full string.
-func shortID(s string) string {
-	if len(s) <= 12 {
-		return s
-	}
-	return s[:12]
-}
+// shortID delegates to display.ShortID.
+func shortID(s string) string { return display.ShortID(s) }
+
+// formatDuration delegates to display.FormatDuration.
+func formatDuration(d time.Duration) string { return display.FormatDuration(d) }
 
 // extractBeadsIDFromTitle extracts beads ID from an OpenCode session title.
 // Looks for patterns like "[beads-id]" at the end of the title.
@@ -115,137 +108,14 @@ func extractProjectFromBeadsID(beadsID string) string {
 	return strings.Join(parts[:len(parts)-1], "-")
 }
 
-// findWorkspaceByBeadsID searches for a workspace directory spawned from the beads ID.
-// Looks in .orch/workspace/ for directories that match the beads ID in their name
-// or contain a SPAWN_CONTEXT.md with "spawned from beads issue: **beadsID**".
-// When multiple workspaces match (duplicate spawns), prefers the one with SYNTHESIS.md,
-// then the most recently spawned (by .spawn_time file).
-// Returns the workspace path and agent name (directory name) if found.
+// findWorkspaceByBeadsID delegates to workspace.FindByBeadsID.
 func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentName string) {
-	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
-	entries, err := os.ReadDir(workspaceDir)
-	if err != nil {
-		return "", ""
-	}
-
-	type candidate struct {
-		path string
-		name string
-	}
-	var candidates []candidate
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		// Skip archived directory - only scan active workspaces
-		if entry.Name() == "archived" {
-			continue
-		}
-
-		dirName := entry.Name()
-		dirPath := filepath.Join(workspaceDir, dirName)
-
-		matched := false
-
-		// Check if the beads ID is in the directory name
-		// Workspace names follow format: og-feat-description-21dec
-		// Beads ID format: project-xxxx (e.g., orch-go-3anf)
-		if strings.Contains(dirName, beadsID) {
-			matched = true
-		}
-
-		// Check AGENT_MANIFEST.json for beads_id (primary, falls back to .beads_id dotfile)
-		if !matched {
-			manifest := spawn.ReadAgentManifestWithFallback(dirPath)
-			if manifest.BeadsID == beadsID {
-				matched = true
-			}
-		}
-
-		// Check SPAWN_CONTEXT.md for authoritative "spawned from beads issue" line
-		// This is more precise than just checking if beadsID appears anywhere
-		if !matched {
-			spawnContextPath := filepath.Join(dirPath, "SPAWN_CONTEXT.md")
-			if content, err := os.ReadFile(spawnContextPath); err == nil {
-				contentStr := string(content)
-				// Look for the authoritative beads issue declaration
-				// Pattern: "spawned from beads issue: **orch-go-xxxx**" or similar
-				for _, line := range strings.Split(contentStr, "\n") {
-					lineLower := strings.ToLower(line)
-					if strings.Contains(lineLower, "spawned from beads issue:") {
-						if strings.Contains(line, beadsID) {
-							matched = true
-						}
-						break
-					}
-				}
-			}
-		}
-
-		if matched {
-			candidates = append(candidates, candidate{path: dirPath, name: dirName})
-		}
-	}
-
-	if len(candidates) == 0 {
-		return "", ""
-	}
-	if len(candidates) == 1 {
-		return candidates[0].path, candidates[0].name
-	}
-
-	// Multiple candidates: prefer workspace with SYNTHESIS.md, then most recent spawn time
-	bestIdx := 0
-	bestHasSynthesis := false
-	bestSpawnTime := workspaceSpawnTime(candidates[0].path)
-	if _, err := os.Stat(filepath.Join(candidates[0].path, "SYNTHESIS.md")); err == nil {
-		bestHasSynthesis = true
-	}
-
-	for i := 1; i < len(candidates); i++ {
-		c := candidates[i]
-		hasSynthesis := false
-		if _, err := os.Stat(filepath.Join(c.path, "SYNTHESIS.md")); err == nil {
-			hasSynthesis = true
-		}
-
-		// Prefer SYNTHESIS.md
-		if hasSynthesis && !bestHasSynthesis {
-			bestIdx = i
-			bestHasSynthesis = hasSynthesis
-			bestSpawnTime = workspaceSpawnTime(c.path)
-			continue
-		}
-		if !hasSynthesis && bestHasSynthesis {
-			continue
-		}
-
-		// Tiebreak: most recent spawn time
-		spawnTime := workspaceSpawnTime(c.path)
-		if spawnTime > bestSpawnTime {
-			bestIdx = i
-			bestHasSynthesis = hasSynthesis
-			bestSpawnTime = spawnTime
-		}
-	}
-
-	return candidates[bestIdx].path, candidates[bestIdx].name
+	return workspace.FindByBeadsID(projectDir, beadsID)
 }
 
-// workspaceSpawnTime reads the .spawn_time file from a workspace directory.
-// Returns the Unix nanosecond timestamp, or 0 if not found.
+// workspaceSpawnTime delegates to workspace.SpawnTime.
 func workspaceSpawnTime(wsPath string) int64 {
-	data, err := os.ReadFile(filepath.Join(wsPath, ".spawn_time"))
-	if err != nil {
-		return 0
-	}
-	t, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
-	if err != nil {
-		return 0
-	}
-	return t
+	return workspace.SpawnTime(wsPath)
 }
 
 // resolveSessionID resolves an identifier to an OpenCode session ID.
@@ -384,40 +254,19 @@ func findTmuxWindowByIdentifier(identifier string) (*tmux.WindowInfo, error) {
 	return nil, nil // Not found (no error, just not found)
 }
 
-// findWorkspaceByName searches for a workspace directory by its name.
-// Returns the workspace path if found, or empty string if not found.
+// findWorkspaceByName delegates to workspace.FindByName.
 func findWorkspaceByName(projectDir, workspaceName string) string {
-	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
-	dirPath := filepath.Join(workspaceDir, workspaceName)
-
-	// Check if directory exists
-	if stat, err := os.Stat(dirPath); err == nil && stat.IsDir() {
-		return dirPath
-	}
-
-	return ""
+	return workspace.FindByName(projectDir, workspaceName)
 }
 
-// isOrchestratorWorkspace checks if a workspace is for an orchestrator session.
-// Returns true if .orchestrator or .meta-orchestrator marker file exists.
+// isOrchestratorWorkspace delegates to workspace.IsOrchestrator.
 func isOrchestratorWorkspace(workspacePath string) bool {
-	orchestratorMarker := filepath.Join(workspacePath, ".orchestrator")
-	metaOrchestratorMarker := filepath.Join(workspacePath, ".meta-orchestrator")
-
-	if _, err := os.Stat(orchestratorMarker); err == nil {
-		return true
-	}
-	if _, err := os.Stat(metaOrchestratorMarker); err == nil {
-		return true
-	}
-	return false
+	return workspace.IsOrchestrator(workspacePath)
 }
 
-// hasSessionHandoff checks if SESSION_HANDOFF.md exists in the workspace.
+// hasSessionHandoff delegates to workspace.HasSessionHandoff.
 func hasSessionHandoff(workspacePath string) bool {
-	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
-	_, err := os.Stat(handoffPath)
-	return err == nil
+	return workspace.HasSessionHandoff(workspacePath)
 }
 
 // resolveShortBeadsID resolves a potentially short beads ID to a full ID.

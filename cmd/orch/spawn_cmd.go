@@ -11,10 +11,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
+	"github.com/dylan-conlin/orch-go/pkg/display"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/model"
@@ -1056,12 +1056,7 @@ func formatSessionTitle(workspaceName, beadsID string) string {
 	return fmt.Sprintf("%s [%s]", workspaceName, beadsID)
 }
 
-// ansiRegex matches ANSI escape sequences (colors, formatting, etc.)
-var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-
-func stripANSI(s string) string {
-	return ansiRegex.ReplaceAllString(s, "")
-}
+func stripANSI(s string) string { return display.StripANSI(s) }
 
 func validateModeModelCombo(backend string, resolvedModel model.ModelSpec) error {
 	if backend == "opencode" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "opus") {

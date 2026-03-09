@@ -5,6 +5,8 @@ package daemon
 import (
 	"fmt"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/display"
 )
 
 // StatusInfo contains the daemon status information for display.
@@ -145,21 +147,5 @@ func FormatStatusInfo(info StatusInfo) string {
 	return result
 }
 
-// formatDuration formats a duration for human display.
-func formatDuration(d time.Duration) string {
-	if d < time.Minute {
-		return "just now"
-	}
-	if d < time.Hour {
-		mins := int(d.Minutes())
-		if mins == 1 {
-			return "1m"
-		}
-		return fmt.Sprintf("%dm", mins)
-	}
-	hours := int(d.Hours())
-	if hours == 1 {
-		return "1h"
-	}
-	return fmt.Sprintf("%dh", hours)
-}
+// formatDuration delegates to display.FormatDurationShort.
+func formatDuration(d time.Duration) string { return display.FormatDurationShort(d) }

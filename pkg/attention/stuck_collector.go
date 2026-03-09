@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/display"
 )
 
 // StuckCollector implements the Collector interface for agents that have been running
@@ -219,18 +221,5 @@ func truncateStr(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-// formatDuration formats a duration into a human-readable string.
-func formatDuration(d time.Duration) string {
-	hours := int(d.Hours())
-	minutes := int(d.Minutes()) % 60
-
-	if hours >= 24 {
-		days := hours / 24
-		hours = hours % 24
-		return fmt.Sprintf("%dd %dh", days, hours)
-	}
-	if hours > 0 {
-		return fmt.Sprintf("%dh %dm", hours, minutes)
-	}
-	return fmt.Sprintf("%dm", minutes)
-}
+// formatDuration delegates to display.FormatDuration.
+func formatDuration(d time.Duration) string { return display.FormatDuration(d) }

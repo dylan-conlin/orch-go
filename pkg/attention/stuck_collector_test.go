@@ -273,10 +273,10 @@ func TestFormatDuration(t *testing.T) {
 		expected string
 	}{
 		{30 * time.Minute, "30m"},
-		{1 * time.Hour, "1h 0m"},
+		{1 * time.Hour, "1h"},
 		{2*time.Hour + 30*time.Minute, "2h 30m"},
 		{25 * time.Hour, "1d 1h"},
-		{48 * time.Hour, "2d 0h"},
+		{48 * time.Hour, "2d"},
 	}
 
 	for _, tt := range tests {

@@ -3,27 +3,16 @@ package orch
 import (
 	"fmt"
 	"os"
-	"regexp"
 
+	"github.com/dylan-conlin/orch-go/pkg/display"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
-// shortID returns the first 12 characters of an ID string for display.
-// If the string is shorter than 12 characters, it returns the full string.
-func shortID(s string) string {
-	if len(s) <= 12 {
-		return s
-	}
-	return s[:12]
-}
+// shortID delegates to display.ShortID.
+func shortID(s string) string { return display.ShortID(s) }
 
-// ansiRegex matches ANSI escape sequences (colors, formatting, etc.)
-var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-
-// stripANSI removes ANSI escape codes from a string for cleaner error messages.
-func stripANSI(s string) string {
-	return ansiRegex.ReplaceAllString(s, "")
-}
+// stripANSI delegates to display.StripANSI.
+func stripANSI(s string) string { return display.StripANSI(s) }
 
 // formatSessionTitle formats the session title to include beads ID for matching.
 // Format: "workspace-name [beads-id]" (e.g., "og-debug-orch-status-23dec [orch-go-v4mw]")
