@@ -282,9 +282,31 @@ Every knowledge gate is advisory. The "merge findings before completion" instruc
 
 When kb context injection includes a relevant model, agents are primed to engage with it. But when the task is urgent or the context window is crowded, the attention primer competes with task pressure. Code attractors (package structure) don't compete — they're enforced by the compiler. Knowledge attractors can be ignored.
 
-### Failure Mode 4: No Contradiction Resolution Mechanism
+### Failure Mode 4: Tooling Inverts the Importance Hierarchy
+
+The model's critical invariant #2 states models are "the fundamental unit of knowledge organization." But the tooling inverts this: `kb create investigation` exists, `kb create model` and `kb create probe` do not. `kb init` creates `investigations/`, `decisions/`, `guides/` directories but not `models/`. The most important artifacts have the least tooling support, while the highest-volume artifact (investigations) has the most. This creates a structural bias toward investigation production over model synthesis — contributing to the orphan rate through tooling design, not just agent behavior. For external adoption, this gap is blocking: the first user cannot be expected to manually create directory structures and templates for the system's fundamental unit.
+
+### Failure Mode 5: No Contradiction Resolution Mechanism
 
 When a probe contradicts a model claim, the finding is recorded in the probe file but no mechanism forces the model to be updated. Contradicts verdicts historically accumulated (4 at baseline, batch-resolved 2026-03-09) and will recur without hard gates. Over time, models accumulate stale or contradicted claims that new agents receive as authoritative via kb context injection — creating a knowledge equivalent of stale cache invalidation.
+
+---
+
+## Adoption Sequencing
+
+The ideal domain for the physics (institutional amnesia in regulated/complex organizations) is different from the ideal first user of the system. All three candidate profiles — solo researcher with AI agents, R&D lab, startup with turnover — meet the four conditions for substrate dynamics. The differentiator is adoption friction and time to first value, not whether the physics apply.
+
+**First user: Solo Technical Researcher (STR).** Developer or researcher working alone on a complex project with AI agents (Claude Code, Cursor). Lowest friction: already in Git, already uses CLI, already has amnesiac AI agents. Fastest time to value: personal pain (forgetting own decisions) is immediate, not contingent on team events. No organizational buy-in required. This replicates Dylan's archetype with the system pre-built.
+
+**Adoption sequence (empirically validated across ADRs, Zettelkasten/Obsidian, ELNs):**
+1. Individual practitioner solves their own problem (solo researcher adopts kb)
+2. Nearby collaborators see value through exposure (lab mates, team members see models preventing re-investigation)
+3. Champions carry practice to new contexts (researcher moves to new lab/company)
+4. Institutional endorsement codifies the practice (R&D lab adopts kb as standard)
+
+Evidence: ADRs took 7 years from Nygard's projects (2011) to ThoughtWorks "Adopt" (2018) to UK Government mandate (2025). Benchling gave product free to 200K+ academics who carried it to industry — 1 in 4 biotech IPOs (2020-22) built on Benchling. Obsidian's 1.5M MAU are predominantly individual; team features were added later. ELN adoption requires supervisor support (Southampton study) but initial spark comes from individual practitioners.
+
+**R&D labs are the second user, not the first.** Their pain is strongest (postdoc turnover, unreproduced experiments, lost protocols), but adoption friction is highest (IT policies, non-Git workflows, PI buy-in required, training needed). The path to lab adoption runs through a single researcher champion.
 
 ---
 
@@ -302,6 +324,8 @@ When a probe contradicts a model claim, the finding is recorded in the probe fil
 
 6. **Can knowledge attractors be structurally coupled?** Code attractors work through imports (structural coupling). Could knowledge attractors work through tooling — e.g., `kb create investigation` requiring a `--model` flag? This would convert attention priming into structural coupling without requiring semantic validation.
 
+7. **What is the minimum time/volume before the physics become visible to a new user?** Dylan's system shows the physics after 1,166 investigations over months. A solo researcher generating 3-5 investigations/week might not see the dynamics (orphan accumulation, attractor pull, synthesis opportunities) for weeks. The "magic moment" — when the system's compounding value becomes obvious — may need to be accelerated through seeded examples or guided onboarding for first-time users.
+
 ---
 
 ## Evolution
@@ -315,6 +339,8 @@ When a probe contradicts a model claim, the finding is recorded in the probe fil
 **2026-03-09:** Knowledge physics probe (orch-go-8m7w9) empirically measured knowledge dynamics: 85.5% orphan rate, three model behaviors (attractor/capstone/dormant), zero hard gates, 4 unmerged contradicts. Confirmed substrate independence of the physics. This model created to formalize the framework.
 
 **2026-03-09:** Natural orphan baseline probe (orch-go-80rg8) decomposed the orphan rate into six categories and established natural baseline of 40-50%. Discovered pre-model era (83% of corpus) inflates the aggregate rate; model-era rate is 52%. Probes confirmed as the structural fix converting attention-primed attractors to structurally-coupled attractors. Open question #1 answered.
+
+**2026-03-09:** First external user profile probe (orch-go-j2ziz) established adoption sequencing: Solo Technical Researcher (STR) is the first user, not R&D labs or startups. Bottom-up adoption pattern validated across ADRs (7 years individual→industry), Obsidian (1.5M individual MAU→team features later), Benchling (200K academics→1/4 biotech IPOs). Tooling gap identified: `kb create model`/`kb create probe` don't exist, `kb init` doesn't create models/ directory — the "fundamental unit" has the least tooling support. Added Failure Mode 4 (tooling inverts importance hierarchy), Adoption Sequencing section, and open question #7 (minimum time to visible physics).
 
 ---
 
@@ -358,6 +384,7 @@ kb reflect --type stale
 - `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-physics-accretion-attractor-gate-dynamics.md` — Full empirical measurement (1,166 investigations, 32 models, 187 probes)
 - `.kb/models/knowledge-physics/probes/2026-03-09-probe-natural-orphan-baseline-categorization.md` — Orphan taxonomy, era-adjusted rates, natural baseline (40-50%), probe displacement finding
 - `.kb/models/knowledge-physics/probes/2026-03-09-probe-minimal-kb-substrate-cycle-dependencies.md` — Minimal substrate identification: 5 components (agent + kb + git + .kb/ + skill), substrate/orchestration separation confirmed, context injection gap identified
+- `.kb/models/knowledge-physics/probes/2026-03-09-probe-first-external-user-profile-analysis.md` — First user is Solo Technical Researcher (STR), not R&D lab. Adoption sequencing validated across 4 analogous tools. Tooling gap: `kb create model`/`kb create probe` missing, `kb init` doesn't create models/
 
 **Related Models:**
 - `.kb/models/harness-engineering/model.md` — Code instance of substrate physics, hard/soft harness taxonomy
