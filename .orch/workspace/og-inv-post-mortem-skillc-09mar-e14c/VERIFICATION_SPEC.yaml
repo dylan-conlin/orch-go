@@ -1,0 +1,46 @@
+---
+# Verification Spec for orch-go-7r4l3: Post-mortem skillc ./~/ bug
+verification:
+  type: investigation
+
+  automated:
+    - name: ".gitignore blocks ~ directory"
+      command: "grep '^~$' /Users/dylanconlin/Documents/personal/orch-go/.gitignore"
+      expected: "Line containing just '~' exists in .gitignore"
+      result: PASS
+
+    - name: "Investigation file exists and has Status: Complete"
+      command: "grep 'Status:' /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2026-03-09-inv-post-mortem-skillc-bug-agent.md"
+      expected: "Status: Complete"
+      result: PASS
+
+    - name: "D.E.K.N. summary filled"
+      command: "grep -c 'Delta:\\|Evidence:\\|Knowledge:\\|Next:' /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2026-03-09-inv-post-mortem-skillc-bug-agent.md"
+      expected: "4 or more (all D.E.K.N. sections present)"
+      result: PASS
+
+    - name: "SYNTHESIS.md exists with Plain-Language Summary"
+      command: "grep 'Plain-Language Summary' /Users/dylanconlin/Documents/personal/orch-go/.orch/workspace/og-inv-post-mortem-skillc-09mar-e14c/SYNTHESIS.md"
+      expected: "Section header exists"
+      result: PASS
+
+  manual:
+    - name: "Cross-repo skillc fix"
+      description: "Orchestrator should create issue in skillc repo: add expandHome(configDir) in test_cmd.go"
+      status: PENDING
+
+  root_cause:
+    identified: true
+    description: >
+      Missing expandHome() call on --config-dir flag in skillc/cmd/skillc/test_cmd.go:75.
+      Go treats ~ as literal character, creating ./~/ directory instead of expanding to $HOME.
+      Human then ran 'rm -rf ~/' (shell-expanded) instead of 'rm -rf ./~/' (literal), deleting home dir.
+
+  prevention_gates:
+    implemented:
+      - ".gitignore entry for ~ directory (orch-go)"
+      - "Documented constraint: never rm -rf ~/ (already in kb)"
+    recommended:
+      - "expandHome(configDir) in skillc test_cmd.go (CROSS_REPO_ISSUE)"
+      - "Path validation guard rejecting literal ~ in os.MkdirAll paths (CROSS_REPO_ISSUE)"
+      - "Test case for skillc test --config-dir with unexpanded tilde (CROSS_REPO_ISSUE)"

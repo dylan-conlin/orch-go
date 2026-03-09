@@ -44,3 +44,6 @@ opencode.json
 
 # Playwright CLI runtime artifacts
 .playwright-cli/
+
+# Literal tilde directory (safety — Go tools don't expand ~, creating ./~/*)
+~
