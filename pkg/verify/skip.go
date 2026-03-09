@@ -19,6 +19,7 @@ type SkipConfig struct {
 	Accretion            bool
 	ArchitecturalChoices bool
 	SelfReview           bool
+	ProbeModelMerge      bool
 	Reason               string // Required reason for skips
 }
 
@@ -27,7 +28,8 @@ func (c SkipConfig) HasAnySkip() bool {
 	return c.TestEvidence || c.Visual || c.GitDiff || c.Synthesis ||
 		c.Build || c.Constraint || c.PhaseGate || c.SkillOutput ||
 		c.DecisionPatch || c.PhaseComplete || c.HandoffContent || c.ExplainBack ||
-		c.Accretion || c.ArchitecturalChoices || c.SelfReview
+		c.Accretion || c.ArchitecturalChoices || c.SelfReview ||
+		c.ProbeModelMerge
 }
 
 // SkippedGates returns a list of gate names that are being skipped.
@@ -78,6 +80,9 @@ func (c SkipConfig) SkippedGates() []string {
 	if c.SelfReview {
 		gates = append(gates, GateSelfReview)
 	}
+	if c.ProbeModelMerge {
+		gates = append(gates, GateProbeModelMerge)
+	}
 	return gates
 }
 
@@ -114,6 +119,8 @@ func (c SkipConfig) ShouldSkipGate(gate string) bool {
 		return c.ArchitecturalChoices
 	case GateSelfReview:
 		return c.SelfReview
+	case GateProbeModelMerge:
+		return c.ProbeModelMerge
 	default:
 		return false
 	}

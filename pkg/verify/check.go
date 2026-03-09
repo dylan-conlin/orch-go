@@ -400,6 +400,18 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 		}
 	}
 
+	// Probe-to-model merge gate (V1+)
+	// Probes with "contradicts" or "extends" verdicts must show model.md was updated
+	if !isOrch && ShouldRunGate(verifyLevel, GateProbeModelMerge) {
+		result.GatesRun = append(result.GatesRun, GateProbeModelMerge)
+		probeModelResult := CheckProbeModelMerge(workspacePath, projectDir)
+		if probeModelResult != nil && !probeModelResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, probeModelResult.Errors...)
+			result.GatesFailed = append(result.GatesFailed, GateProbeModelMerge)
+		}
+	}
+
 	// Self-review gate (V1+)
 	// Automated checks extracted from skill self-review phases:
 	// debug statements, commit format, placeholder data, orphaned files
