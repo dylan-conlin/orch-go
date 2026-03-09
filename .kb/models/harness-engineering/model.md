@@ -1,7 +1,7 @@
 # Model: Harness Engineering
 
 **Domain:** Agent-First Structural Enforcement / Architectural Governance / Multi-Agent Code Quality
-**Last Updated:** 2026-03-07
+**Last Updated:** 2026-03-08
 **Synthesized From:**
 - `.kb/investigations/2026-03-07-inv-analyze-accretion-pattern-orch-go.md` — Accretion structural analysis (daemon.go +892 lines, 6 cross-cutting concerns)
 - `.kb/threads/2026-03-07-harness-engineering-structural-enforcement-agent.md` — Framework formulation and implementation sequence
@@ -17,7 +17,7 @@
 
 ## Summary (30 seconds)
 
-Harness engineering is the discipline of making wrong paths mechanically impossible for AI agents, rather than instructing agents to choose right paths. It operates through two fundamentally different enforcement types: **hard harness** (deterministic, mechanically enforced, cannot be ignored — pre-commit hooks, spawn gates, `go build`, Go package structure, structural tests) and **soft harness** (probabilistic, context-dependent, driftable — skills, CLAUDE.md, knowledge bases, SPAWN_CONTEXT.md). Hard harness matters more because agents under pressure drift from soft instructions — contrastive testing (265 trials, 7 skills) showed behavioral constraints dilute to bare parity at 10+ co-resident items, and stance transfers only as attention primers, not action directives. Accretion is entropy: individually correct agent commits compose into structural degradation when shared infrastructure is missing — daemon.go regrew +892 lines past its pre-extraction baseline in 60 days from 30 correct commits. OpenAI arrived at the same framework from greenfield (designed gates before code); we arrived through pain (retrofit after 3 entropy spirals, 1,625 lost commits). The design playbook: shift investment from soft harness (hoping agents follow instructions) to hard harness (making the wrong path structurally unavailable). The governance insight: in multi-agent systems, codebase architecture is governance — package structure is a routing table for agentic contributions, and every convention without a gate will eventually be violated.
+Harness engineering is the discipline of making wrong paths mechanically impossible for AI agents, rather than instructing agents to choose right paths. It operates through two fundamentally different enforcement types: **hard harness** (deterministic, mechanically enforced, cannot be ignored — pre-commit hooks, spawn gates, `go build`, Go package structure, structural tests) and **soft harness** (probabilistic, context-dependent, driftable — skills, CLAUDE.md, knowledge bases, SPAWN_CONTEXT.md). Hard harness matters more because agents under pressure drift from soft instructions — contrastive testing (265 trials, 7 skills) showed behavioral constraints dilute to bare parity at 10+ co-resident items, and stance transfers only as attention primers, not action directives. Accretion is entropy: individually correct agent commits compose into structural degradation when shared infrastructure is missing — daemon.go regrew +892 lines past its pre-extraction baseline in 60 days from 30 correct commits. OpenAI arrived at the same framework from greenfield (designed gates before code); we arrived through pain (retrofit after 3 entropy spirals, 1,625 lost commits). Agent governance addresses two distinct failure modes: **compliance failure** (agent doesn't follow instructions — solved by stronger models) and **coordination failure** (agents each follow instructions correctly but collectively produce entropy — made *worse* by stronger models). This makes harness engineering a permanent discipline, not transitional: compliance gates simplify over time, but coordination gates become the primary investment as agents get more capable. The governance insight: in multi-agent systems, codebase architecture is governance — package structure is a routing table for agentic contributions, and every convention without a gate will eventually be violated.
 
 ---
 
@@ -37,13 +37,15 @@ Every harness component is either hard or soft:
 | **Cost** | Higher upfront (code, infrastructure) | Lower upfront (prose, templates) |
 | **Degradation** | Stable unless code is modified | Dilutes at scale (5+ constraints = inert) |
 
+**Cross-language portability (Mar 8 probe — opencode TypeScript fork):** The framework (taxonomy, invariants, failure modes) is language-independent. The gate inventory is language-specific. 5 of 8 harness patterns translate directly to TypeScript (deny rules, control plane lock, hook registration, beads close hook, pre-commit accretion gate). 3 need adaptation: build gate has no TypeScript equivalent (bun typecheck has `any` escape hatch), architecture lint needs different tooling (ts-morph/eslint vs go/ast), hotspot analysis needs generated-file exclusion (4 of 10 top opencode hotspots are *.gen.ts code-generated files). "Unfakeability" is a property of structural coupling (schema↔migration, source↔binary), not compilation specifically — TypeScript's Drizzle migration gate is equally unfakeable despite not being a compiler.
+
 **Existing hard harness (orch-go, verified):**
 
 | Mechanism | What It Prevents | Source | Status |
 |-----------|-----------------|--------|--------|
 | Pre-commit growth gate | Accretion past 800/600 line thresholds | `pkg/verify/precommit.go`, `scripts/pre-commit-exec-start-cleanup.sh` | **NOT WIRED** — `CheckStagedAccretion` exists in code but pre-commit hook only runs compilation + lint (Mar 8 probe) |
 | Spawn hotspot gate | Feature-impl/debugging on CRITICAL (>1500 line) files | `pkg/spawn/gates/hotspot.go` | Shipped, blocking |
-| Build gate (`go build`) | Broken compilation reaching completion | `pkg/verify/check.go` — the only unfakeable gate | Shipped |
+| Build gate (`go build`) | Broken compilation reaching completion | `pkg/verify/check.go` — unfakeable gate (Go-specific; TypeScript has no equivalent — see cross-language probe) | Shipped |
 | Completion accretion gate | Agent-caused growth past thresholds | `pkg/verify/accretion.go` (800/1500 thresholds, ±50 delta) | Shipped, **exempts pre-existing bloat** — files already over 1500 get warning, not block (Mar 8 probe) |
 | Architecture lint tests | Forbidden lifecycle state packages/imports | `cmd/orch/architecture_lint_test.go` (4 tests) | Shipped, not in CI |
 | Spawn rate limiter | Velocity exceeding verification bandwidth | `pkg/spawn/gates/ratelimit.go` | Shipped |
@@ -196,6 +198,37 @@ This follows from three system properties:
 
 This reframes architecture from "clean code" to "agent governance." The question changes from "is this good code?" to "does this structure produce correct behavior from agents who have no memory of prior decisions?"
 
+### 8. Two Failure Modes: Compliance vs Coordination
+
+Agent governance addresses two fundamentally different failure modes, and they respond oppositely to model capability improvements:
+
+| Property | Compliance Failure | Coordination Failure |
+|----------|-------------------|---------------------|
+| **What breaks** | Agent doesn't follow instructions | Agents each follow instructions correctly but collectively produce entropy |
+| **Example** | Agent ignores 1,500-line convention | 30 agents each add locally-correct code, daemon.go grows +892 lines |
+| **Root cause** | Insufficient capability or context pressure | No shared memory, no structural coordination across agents |
+| **Solved by stronger models?** | Yes — Opus stall rate ~4% vs non-Anthropic 67-87% | No — made *worse* by faster, more confident agents |
+| **Harness layers** | Layer 0-1 (compliance gates) | Layer 2-4 (coordination gates) |
+| **Trajectory** | Simplifies with model improvement | Becomes more important with model improvement |
+
+**The daemon.go evidence is coordination failure, not compliance failure.** Each of the 30 commits followed instructions. Each was locally rational. Each passed review. The problem was the absence of structural coordination — no shared `pkg/workspace/`, no deduplication detection, no cross-agent awareness that workspace scanning was already implemented 4 times.
+
+**The analogy:** A company of 30 brilliant engineers with no architecture review still produces spaghetti — possibly faster than 30 mediocre engineers, because each builds more in less time. Architecture review isn't compensating for incompetence. It's providing the coordination layer that individual competence cannot.
+
+**Implication for harness permanence:** If harness engineering were only about compliance, it would be obsolete when models get good enough. But coordination is an emergent property of multi-agent systems — it doesn't resolve with individual capability. This makes harness engineering a permanent discipline, not a transitional one. The compliance gates (Layer 0-1) may simplify over time. The coordination gates (Layer 2-4) become the primary investment as agents get more capable and autonomous.
+
+**Which gates are which:**
+
+| Gate | Type | Trajectory |
+|------|------|-----------|
+| Pre-commit growth gate | Compliance | Simplifies — smarter agents self-limit |
+| Build gate (`go build`) | Compliance | Permanent — compiler is always needed |
+| Spawn hotspot gate | Coordination | Permanent — prevents uncoordinated work on degraded areas |
+| Architecture lint | Coordination | Grows — more structural invariants as system matures |
+| Duplication detector | Coordination | Grows — catches cross-agent redundancy |
+| Entropy agent | Coordination | Grows — system-level health monitoring |
+| Gates that generate gates (Layer 4) | Coordination | The endgame — coordination infrastructure that extends itself |
+
 ---
 
 ## Critical Invariants
@@ -211,6 +244,8 @@ This reframes architecture from "clean code" to "agent governance." The question
 5. **Prevention > Detection > Rejection.** Each layer further from authoring has higher cost. Pre-commit gate (prevention) < spawn gate (early detection) < completion gate (late detection + wasted work).
 
 6. **Mutable hard harness is soft harness with extra steps.** All current defenses (spawn gates, verify gates, hooks, architecture lint) are source code agents can modify. This is the entropy spiral's core vulnerability. True immutability requires infrastructure that's architecturally unreachable by agents.
+
+7. **Stronger models need more coordination gates, not fewer.** Compliance gates simplify with model capability (smarter agents follow instructions better). But coordination gates — structural tests, duplication detection, entropy management — become more important as agents get faster and more autonomous. A more capable agent accretes more code per session with higher confidence. Harness engineering is permanent infrastructure, not training wheels.
 
 ---
 
@@ -242,7 +277,15 @@ This reframes architecture from "clean code" to "agent governance." The question
 
 **Mitigation (partial):** Compiled binary provides temporal buffer. Full resolution requires `chflags uchg` on hook files, removing `Edit(*/.claude/*)` from allow list, re-enabling circuit breaker.
 
-### 5. Gate Exemptions as Permanent Bypasses
+### 5. Generated Code False Positives
+
+**What happens:** Hotspot analysis, accretion gates, and architect routing treat all files equally. In TypeScript (and Go with protobuf), large generated files trigger false positives — routing architect sessions for files no agent authored.
+
+**Evidence (Mar 8 probe):** `orch hotspot` on opencode found 48 bloated files and 155 hotspots. 4 of the top 10 were `*.gen.ts` code-generated SDK files (5,070, 3,909, 3,318 lines). These would trigger spawn gate blocking and architect routing despite being machine-generated.
+
+**The broader pattern:** Any codebase with code generation (OpenAPI codegen, GraphQL, protobuf, icon component generators) will have inflated hotspot counts. Harness tooling needs a generated-code exclusion mechanism (`.orchignore` or pattern-based filtering) to maintain gate precision.
+
+### 6. Gate Exemptions as Permanent Bypasses
 
 **What happens:** Gate designed to prevent accretion exempts "pre-existing bloat" — files already over the threshold receive warnings instead of blocks. Once a file crosses 1,500 lines, it can never be blocked again. This creates a ratchet: bloat begets exemption begets more bloat.
 
@@ -250,7 +293,7 @@ This reframes architecture from "clean code" to "agent governance." The question
 
 **The broader pattern:** 12 files in cmd/orch/ exceed 800 lines (total: ~14,000 lines). 6 exceed 1,000. The exemption means the completion gate is primarily useful for files approaching the threshold, not files that have already passed it. This is the wrong coverage profile — the already-bloated files are where accretion pressure is strongest (feature gravity).
 
-### 6. Measurement Artifacts in Soft Harness
+### 7. Measurement Artifacts in Soft Harness
 
 **What happens:** Soft harness appears to work based on flawed measurement, creating false confidence.
 
@@ -338,6 +381,10 @@ This reframes architecture from "clean code" to "agent governance." The question
 
 **2026-03-07 (afternoon):** OpenAI parallel discovered. Thread synthesized. This model created, unifying accretion, skill dilution, OpenAI practices, and existing enforcement models into the harness engineering framework.
 
+**2026-03-08:** Harness engineering plan completed — 13/13 issues across 6 phases shipped. Layers 0-5 implemented: structural attractors (pkg/workspace/, pkg/display/, pkg/beadsutil/), structural tests (function size lint, package boundaries), pre-commit hardening (>1500 blocking gate), duplication detector (AST fingerprinting + beads auto-issue), entropy agent (orch entropy + weekly launchd), control plane immutability (chflags uchg + deny rules + orch harness lock/unlock/verify). MVH checklist produced. `orch harness init` automates Day 1 governance.
+
+**2026-03-08 (evening):** Compliance vs coordination failure mode distinction crystallized. daemon.go +892 was coordination failure (30 agents each correct, collectively incoherent), not compliance failure. Stronger models fix compliance but worsen coordination — faster agents accrete more confidently. Harness engineering reframed as permanent discipline (coordination infrastructure) rather than transitional (training wheels). Publication plan created with 4 phases: deepen model → cross-language evidence → publication draft → portable tooling.
+
 ---
 
 ## References
@@ -378,3 +425,4 @@ This reframes architecture from "clean code" to "agent governance." The question
 
 - 2026-03-07: Completion verification through harness lens — Confirms hard/soft taxonomy: 1 of 14 gates is execution-based (hard), 11 evidence-based (structured soft), 2 judgment-based (human soft). Build gate is the only unfakeable gate.
 - 2026-03-08: 30-day accretion trajectory measurement — **Gates have NOT bent the line count curve.** daemon.go hit 1,559 (CRITICAL) despite all deployed gates. Completion accretion gate exempts pre-existing bloat. Pre-commit accretion gate exists in code but is NOT wired into the hook. spawn_cmd.go shrank -1,755 (not -840 as claimed) then regrew +483 in 3 weeks. Total cmd/orch/: 47,605 lines across 125 files, 12 files >800 lines. Fix:feat ratio spike (1.21) was transient, reverted to 0.36. Confirms invariants #2 and #4. Extends model with gate exemption failure mode and dead code enforcement gap.
+- 2026-03-08: Cross-language harness portability (Go → TypeScript) — **Framework is language-independent, gates are not.** 5/8 harness patterns translate directly to TypeScript. Build gate (`go build`) has no TypeScript equivalent — `bun typecheck` has `any` escape hatch and is pre-push only. "Unfakeability" is structural coupling (schema↔migration, source↔binary), not compilation. Generated code creates false positives: 4/10 top opencode hotspots are *.gen.ts files. TypeScript has own domain-specific hard harness (Drizzle migration gate) that Go lacks. Extends model with cross-language portability analysis and generated-code blind spot.
