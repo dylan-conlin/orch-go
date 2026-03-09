@@ -57,8 +57,9 @@ run_trial() {
 
     # Run claude with the task prompt
     # Using claude CLI directly (not orch spawn) for isolation
+    # Unset CLAUDECODE to avoid nested session detection
     cd "$worktree_dir"
-    timeout "${TIMEOUT_MINUTES}m" claude \
+    timeout "${TIMEOUT_MINUTES}m" env -u CLAUDECODE BEADS_NO_DAEMON=1 claude \
         --model "$model" \
         --dangerously-skip-permissions \
         -p "$TASK_PROMPT" \

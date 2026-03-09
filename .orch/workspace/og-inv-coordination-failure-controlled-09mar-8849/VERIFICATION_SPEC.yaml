@@ -1,0 +1,42 @@
+verification:
+  type: investigation
+  issue: orch-go-qrfhe
+
+  automated:
+    - name: "Experiment infrastructure exists"
+      command: "ls experiments/coordination-demo/run.sh experiments/coordination-demo/score.sh experiments/coordination-demo/merge-check.sh experiments/coordination-demo/task-prompt.md"
+      expected: "All 4 files exist"
+      result: "PASS"
+
+    - name: "Pilot results collected"
+      command: "ls experiments/coordination-demo/results/pilot-20260309-134852/trial-1/haiku/display.go experiments/coordination-demo/results/pilot-20260309-134852/trial-1/opus/display.go"
+      expected: "Both model outputs captured"
+      result: "PASS"
+
+    - name: "Both implementations compile"
+      command: "cat experiments/coordination-demo/results/pilot-20260309-134852/trial-1/haiku/build_output.txt experiments/coordination-demo/results/pilot-20260309-134852/trial-1/opus/build_output.txt"
+      expected: "Empty output (successful build)"
+      result: "PASS"
+
+    - name: "Both test suites pass"
+      command: "grep '^ok' experiments/coordination-demo/results/pilot-20260309-134852/trial-1/haiku/test_output.txt experiments/coordination-demo/results/pilot-20260309-134852/trial-1/opus/test_output.txt"
+      expected: "ok lines present for both"
+      result: "PASS"
+
+  behavioral:
+    - name: "Investigation documents findings"
+      description: >
+        Review .kb/investigations/2026-03-09-inv-coordination-failure-controlled-demo-same.md
+        and confirm: (1) experiment methodology is clear and reproducible,
+        (2) scoring rubric covers all 6 dimensions, (3) merge conflict data demonstrates
+        structural coordination failure, (4) D.E.K.N. summary captures key finding.
+      manual: true
+      expected: "Investigation has complete methodology, results, and synthesis"
+
+    - name: "Results demonstrate coordination failure"
+      description: >
+        Verify that the pilot results show: both models score 6/6 individually
+        but produce merge conflicts when combined. Check RESULTS.md in the
+        pilot results directory.
+      manual: true
+      expected: "Clear evidence of structural coordination failure independent of model capability"
