@@ -772,6 +772,17 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// 11. Build spawn config
 	cfg := orch.BuildSpawnConfig(ctx, spawnPhases, resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, resolved.Settings.BrowserTool.Value, spawnNoTrack, spawnSkipArtifactCheck, spawnReason)
 
+	// 12. Record which spawn gates were bypassed (for event tracking & miscalibration detection)
+	if spawnBypassTriage && !daemonDriven {
+		cfg.GatesBypassed = append(cfg.GatesBypassed, "triage")
+	}
+	if spawnForceHotspot {
+		cfg.GatesBypassed = append(cfg.GatesBypassed, "hotspot")
+	}
+	if spawnBypassVerification {
+		cfg.GatesBypassed = append(cfg.GatesBypassed, "verification")
+	}
+
 	// 13. Validate and write context (atomic spawn Phase 1: beads tag + workspace)
 	minimalPrompt, rollback, err := orch.ValidateAndWriteContext(cfg, spawnForce)
 	if err != nil {

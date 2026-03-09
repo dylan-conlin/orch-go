@@ -170,6 +170,11 @@ func LogSpawnEvent(sessionID string, req *SpawnRequest, mode string, extraData m
 		eventData["no_track_reason"] = req.Config.NoTrackReason
 	}
 
+	// Add gates bypassed (for spawn gate miscalibration analysis)
+	if len(req.Config.GatesBypassed) > 0 {
+		eventData["gates_bypassed"] = req.Config.GatesBypassed
+	}
+
 	// Add extra data (e.g., retry_attempts, window info for tmux)
 	for k, v := range extraData {
 		eventData[k] = v

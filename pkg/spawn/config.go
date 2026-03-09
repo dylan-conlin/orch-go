@@ -323,6 +323,11 @@ type Config struct {
 	// SPAWN_CONTEXT.md (prevents double-loading) and --disable-slash-commands
 	// is added to prevent auto-discovery (eliminates triple-loading).
 	SystemPromptFile string
+
+	// GatesBypassed lists spawn gates that were bypassed for this spawn.
+	// Populated from --bypass-triage, --force-hotspot, --bypass-verification flags.
+	// Included in session.spawned events for outcome correlation.
+	GatesBypassed []string
 }
 
 // UsageInfo contains account usage data at spawn time.

@@ -98,6 +98,7 @@ type StatsReport struct {
 	SessionStats      SessionStatsSummary               `json:"session_stats,omitempty"`
 	EscapeHatchStats  EscapeHatchStats                  `json:"escape_hatch_stats,omitempty"`
 	VerificationStats VerificationStats                 `json:"verification_stats,omitempty"`
+	SpawnGateStats    SpawnGateStats                   `json:"spawn_gate_stats,omitempty"`
 	OverrideStats     OverrideStats                    `json:"override_stats,omitempty"`
 	CoachingStats     map[string]coaching.MetricSummary `json:"coaching_stats,omitempty"`
 }
@@ -200,6 +201,31 @@ type SkillVerificationStats struct {
 	PassedFirstTry int     `json:"passed_first_try"`
 	Bypassed       int     `json:"bypassed"`
 	PassRate       float64 `json:"pass_rate"`
+}
+
+// SpawnGateStats tracks bypass frequency across all spawn-level gates.
+// High bypass rate for a gate signals miscalibration (gate too strict → operators routinely bypass).
+type SpawnGateStats struct {
+	TotalBypasses int              `json:"total_bypasses"`   // Total spawn gate bypasses across all gates
+	TotalSpawns   int              `json:"total_spawns"`     // Total spawns in window (for rate calculation)
+	BypassRate    float64          `json:"bypass_rate"`      // % of spawns with at least one gate bypassed
+	ByGate        []SpawnGateEntry `json:"by_gate,omitempty"`
+	TopReasons    []SpawnGateReasonEntry `json:"top_reasons,omitempty"`
+}
+
+// SpawnGateEntry tracks bypass metrics for a single spawn gate.
+type SpawnGateEntry struct {
+	Gate          string  `json:"gate"`           // "triage", "hotspot", "verification"
+	Bypassed      int     `json:"bypassed"`       // Times this gate was bypassed
+	BypassRate    float64 `json:"bypass_rate"`    // % of spawns that bypassed this gate
+	Miscalibrated bool    `json:"miscalibrated"`  // True if bypass rate > 50% (signal for review)
+}
+
+// SpawnGateReasonEntry tracks a reason given for a spawn gate bypass.
+type SpawnGateReasonEntry struct {
+	Gate   string `json:"gate"`
+	Reason string `json:"reason"`
+	Count  int    `json:"count"`
 }
 
 // OverrideStats tracks reasons given for safety-override flags
@@ -356,6 +382,10 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 	gatesAutoSkipped := make(map[string]int)                      // gate -> auto-skip count (from verification.auto_skipped)
 	bypassReasons := make(map[string]int)                         // "gate|reason" -> count (from verification.bypassed)
 	skillVerification := make(map[string]*SkillVerificationStats) // skill -> verification stats
+
+	// Track spawn gate bypasses (triage, hotspot, verification) for unified view
+	spawnGateBypasses := make(map[string]int)                     // gate -> bypass count
+	spawnGateReasons := make(map[string]int)                      // "gate|reason" -> count
 
 	// Track override reasons across all override types
 	// key: "type|reason", value: count
@@ -694,10 +724,12 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 				continue
 			}
 			report.DaemonStats.TriageBypassed++
+			spawnGateBypasses["triage"]++
 			// Track override reason
 			if data := event.Data; data != nil {
 				if reason, ok := data["reason"].(string); ok && reason != "" {
 					overrideReasons["triage_bypassed|"+reason]++
+					spawnGateReasons["triage|"+reason]++
 				}
 			}
 
@@ -706,13 +738,29 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 			if event.Timestamp < cutoffDays {
 				continue
 			}
+			spawnGateBypasses["hotspot"]++
 			// Track override reason
 			if data := event.Data; data != nil {
 				reason, _ := data["reason"].(string)
 				if reason != "" {
 					overrideReasons["hotspot_bypassed|"+reason]++
+					spawnGateReasons["hotspot|"+reason]++
 				} else {
 					overrideReasons["hotspot_bypassed|"]++
+				}
+			}
+
+		case "spawn.verification_bypassed":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
+			spawnGateBypasses["verification"]++
+			// Track override reason
+			if data := event.Data; data != nil {
+				if reason, ok := data["reason"].(string); ok && reason != "" {
+					overrideReasons["verification_bypassed|"+reason]++
+					spawnGateReasons["verification|"+reason]++
 				}
 			}
 
@@ -907,6 +955,51 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 	// Sort by total attempts descending
 	sort.Slice(report.VerificationStats.BySkill, func(i, j int) bool {
 		return report.VerificationStats.BySkill[i].TotalAttempts > report.VerificationStats.BySkill[j].TotalAttempts
+	})
+
+	// Build spawn gate stats from tracked bypasses
+	for _, count := range spawnGateBypasses {
+		report.SpawnGateStats.TotalBypasses += count
+	}
+	report.SpawnGateStats.TotalSpawns = report.Summary.TotalSpawns
+	if report.SpawnGateStats.TotalSpawns > 0 {
+		report.SpawnGateStats.BypassRate = float64(report.SpawnGateStats.TotalBypasses) / float64(report.SpawnGateStats.TotalSpawns) * 100
+	}
+	for gate, count := range spawnGateBypasses {
+		entry := SpawnGateEntry{
+			Gate:     gate,
+			Bypassed: count,
+		}
+		if report.SpawnGateStats.TotalSpawns > 0 {
+			entry.BypassRate = float64(count) / float64(report.SpawnGateStats.TotalSpawns) * 100
+		}
+		// Flag as miscalibrated if >50% of spawns bypass this gate
+		if entry.BypassRate > 50 {
+			entry.Miscalibrated = true
+		}
+		report.SpawnGateStats.ByGate = append(report.SpawnGateStats.ByGate, entry)
+	}
+	sort.Slice(report.SpawnGateStats.ByGate, func(i, j int) bool {
+		return report.SpawnGateStats.ByGate[i].Bypassed > report.SpawnGateStats.ByGate[j].Bypassed
+	})
+	// Build spawn gate top reasons
+	for key, count := range spawnGateReasons {
+		parts := strings.SplitN(key, "|", 2)
+		gate := parts[0]
+		reason := ""
+		if len(parts) > 1 {
+			reason = parts[1]
+		}
+		if reason != "" {
+			report.SpawnGateStats.TopReasons = append(report.SpawnGateStats.TopReasons, SpawnGateReasonEntry{
+				Gate:   gate,
+				Reason: reason,
+				Count:  count,
+			})
+		}
+	}
+	sort.Slice(report.SpawnGateStats.TopReasons, func(i, j int) bool {
+		return report.SpawnGateStats.TopReasons[i].Count > report.SpawnGateStats.TopReasons[j].Count
 	})
 
 	// Build override stats from tracked override reasons
@@ -1214,6 +1307,52 @@ func outputStatsText(report *StatsReport) error {
 					sv.Bypassed,
 					sv.PassRate,
 				)
+			}
+		}
+	}
+
+	// Spawn gate bypasses (unified view of all spawn-level gate bypasses)
+	if report.SpawnGateStats.TotalBypasses > 0 {
+		fmt.Println()
+		fmt.Println("🚧 SPAWN GATE BYPASSES")
+		fmt.Printf("  Total bypasses: %d / %d spawns (%.1f%%)\n",
+			report.SpawnGateStats.TotalBypasses,
+			report.SpawnGateStats.TotalSpawns,
+			report.SpawnGateStats.BypassRate)
+		fmt.Println()
+		fmt.Printf("  %-20s %8s %10s %s\n", "Gate", "Bypassed", "Rate", "Status")
+		fmt.Println("  " + strings.Repeat("-", 55))
+		for _, gate := range report.SpawnGateStats.ByGate {
+			status := "OK"
+			if gate.Miscalibrated {
+				status = "MISCALIBRATED"
+			}
+			fmt.Printf("  %-20s %8d %9.1f%% %s\n",
+				gate.Gate, gate.Bypassed, gate.BypassRate, status)
+		}
+
+		// Top reasons (if any)
+		if len(report.SpawnGateStats.TopReasons) > 0 {
+			fmt.Println()
+			fmt.Println("  Top Bypass Reasons:")
+			limit := 5
+			if len(report.SpawnGateStats.TopReasons) < limit {
+				limit = len(report.SpawnGateStats.TopReasons)
+			}
+			for i := 0; i < limit; i++ {
+				r := report.SpawnGateStats.TopReasons[i]
+				reason := r.Reason
+				if len(reason) > 50 {
+					reason = reason[:47] + "..."
+				}
+				fmt.Printf("    %dx  [%s] %s\n", r.Count, r.Gate, reason)
+			}
+		}
+
+		// Miscalibration warnings
+		for _, gate := range report.SpawnGateStats.ByGate {
+			if gate.Miscalibrated {
+				fmt.Printf("\n  ⚠️  %s gate bypassed >50%% of spawns — review if gate is too strict\n", gate.Gate)
 			}
 		}
 	}

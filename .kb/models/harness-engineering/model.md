@@ -41,10 +41,10 @@ Every harness component is either hard or soft:
 
 | Mechanism | What It Prevents | Source | Status |
 |-----------|-----------------|--------|--------|
-| Pre-commit growth gate | Accretion past 800/600 line thresholds | `pkg/verify/precommit.go`, `scripts/pre-commit-exec-start-cleanup.sh` | Shipped, warning-only |
+| Pre-commit growth gate | Accretion past 800/600 line thresholds | `pkg/verify/precommit.go`, `scripts/pre-commit-exec-start-cleanup.sh` | **NOT WIRED** — `CheckStagedAccretion` exists in code but pre-commit hook only runs compilation + lint (Mar 8 probe) |
 | Spawn hotspot gate | Feature-impl/debugging on CRITICAL (>1500 line) files | `pkg/spawn/gates/hotspot.go` | Shipped, blocking |
 | Build gate (`go build`) | Broken compilation reaching completion | `pkg/verify/check.go` — the only unfakeable gate | Shipped |
-| Completion accretion gate | Agent-caused growth past thresholds | `pkg/verify/accretion.go` (800/1500 thresholds, ±50 delta) | Shipped |
+| Completion accretion gate | Agent-caused growth past thresholds | `pkg/verify/accretion.go` (800/1500 thresholds, ±50 delta) | Shipped, **exempts pre-existing bloat** — files already over 1500 get warning, not block (Mar 8 probe) |
 | Architecture lint tests | Forbidden lifecycle state packages/imports | `cmd/orch/architecture_lint_test.go` (4 tests) | Shipped, not in CI |
 | Spawn rate limiter | Velocity exceeding verification bandwidth | `pkg/spawn/gates/ratelimit.go` | Shipped |
 | Spawn concurrency gate | Too many parallel agents | `pkg/spawn/gates/concurrency.go` | Shipped |
@@ -69,7 +69,7 @@ Accretion is entropy, not a defect. Each agent commit is locally rational; the a
 **Primary evidence:**
 - `daemon.go` grew +892 lines (667→1559) in 60 days from 30 individually-correct commits. Each added a locally-reasonable capability (stuck detection, health checks, auto-complete, agreement checks, phase timeouts, orphan recovery).
 - Extraction is temporary: Jan 2026 extraction reduced main.go by -1058 lines, clean_cmd.go by -670 lines. But daemon.go regrew past its pre-extraction baseline within 2 months.
-- Counter-evidence: `spawn_cmd.go` *shrank* -840 lines after `pkg/spawn/backends/` was created — proving that attractors (destination packages) break the re-accretion cycle.
+- Counter-evidence (partially): `spawn_cmd.go` *shrank* -1,755 lines (2,432→677) after `pkg/spawn/backends/` was created (Feb 13) — proving attractors work for initial extraction. However, spawn_cmd.go regrew to 1,160 lines by Mar 8 (+483 in 3 weeks, ~160 lines/week), demonstrating that attractors break the accretion cycle temporarily but re-accretion follows without blocking gates. (Mar 8 probe corrected from -840 claim)
 - 6 cross-cutting concerns independently reimplemented across 4-9 files (~2,100 lines of duplicated infrastructure): workspace scanning, beads querying, output formatting, project resolution, filtering, ID extraction.
 
 **Two forces drive accretion:**
@@ -165,7 +165,7 @@ Each layer builds on the previous. Lower layers are more immediately actionable:
 | **3** | Periodic entropy agent | Not started | Background agent reviewing growth trends weekly |
 | **4** | Gates that generate gates | Aspirational | Entropy agent drafts structural tests for recurring patterns |
 
-**Layer 0 is shipped and calibrated.** Pre-commit hook calls `orch precommit accretion` via `scripts/pre-commit-exec-start-cleanup.sh`. Warning-only (exits 0 always). Two tiers: >800 lines + ≥30 net additions (approaching CRITICAL); >600 lines + ≥50 net additions (approaching bloat). Thresholds are monotonic — bigger files get stricter limits.
+**Layer 0 status (Mar 8 probe):** The pre-commit hook (`scripts/pre-commit-exec-start-cleanup.sh`) runs compilation + architecture lint but does NOT call `CheckStagedAccretion`. The `CheckStagedAccretion` function exists in `pkg/verify/accretion_precommit.go` (shipped Mar 8) but is not wired into the hook due to governance protection. Layer 0 is therefore **partially shipped** — code exists, enforcement does not. The completion accretion gate (`pkg/verify/accretion.go`) IS active but exempts pre-existing bloated files, making it ineffective against the 12 files already over 800 lines.
 
 **Layer 1 needs extension.** Current structural tests enforce only the no-lifecycle-state constraint (from two-lane architecture decision). Missing: function size limits for cmd/orch/, package boundary enforcement, cross-cutting duplication detection. These 4 tests also aren't in CI — they require manual `go test` execution.
 
@@ -242,7 +242,15 @@ This reframes architecture from "clean code" to "agent governance." The question
 
 **Mitigation (partial):** Compiled binary provides temporal buffer. Full resolution requires `chflags uchg` on hook files, removing `Edit(*/.claude/*)` from allow list, re-enabling circuit breaker.
 
-### 5. Measurement Artifacts in Soft Harness
+### 5. Gate Exemptions as Permanent Bypasses
+
+**What happens:** Gate designed to prevent accretion exempts "pre-existing bloat" — files already over the threshold receive warnings instead of blocks. Once a file crosses 1,500 lines, it can never be blocked again. This creates a ratchet: bloat begets exemption begets more bloat.
+
+**Evidence (Mar 8 probe):** daemon.go at 1,559 lines. The completion accretion gate (`pkg/verify/accretion.go` lines 128-136) downgrades from ERROR to WARNING when `preChangeLines > AccretionCriticalThreshold`. Every future agent adding 50+ lines to daemon.go gets a non-blocking warning. The gate structurally cannot enforce on the files that need enforcement most.
+
+**The broader pattern:** 12 files in cmd/orch/ exceed 800 lines (total: ~14,000 lines). 6 exceed 1,000. The exemption means the completion gate is primarily useful for files approaching the threshold, not files that have already passed it. This is the wrong coverage profile — the already-bloated files are where accretion pressure is strongest (feature gravity).
+
+### 6. Measurement Artifacts in Soft Harness
 
 **What happens:** Soft harness appears to work based on flawed measurement, creating false confidence.
 
@@ -369,3 +377,4 @@ This reframes architecture from "clean code" to "agent governance." The question
 ## Probes
 
 - 2026-03-07: Completion verification through harness lens — Confirms hard/soft taxonomy: 1 of 14 gates is execution-based (hard), 11 evidence-based (structured soft), 2 judgment-based (human soft). Build gate is the only unfakeable gate.
+- 2026-03-08: 30-day accretion trajectory measurement — **Gates have NOT bent the line count curve.** daemon.go hit 1,559 (CRITICAL) despite all deployed gates. Completion accretion gate exempts pre-existing bloat. Pre-commit accretion gate exists in code but is NOT wired into the hook. spawn_cmd.go shrank -1,755 (not -840 as claimed) then regrew +483 in 3 weeks. Total cmd/orch/: 47,605 lines across 125 files, 12 files >800 lines. Fix:feat ratio spike (1.21) was transient, reverted to 0.36. Confirms invariants #2 and #4. Extends model with gate exemption failure mode and dead code enforcement gap.

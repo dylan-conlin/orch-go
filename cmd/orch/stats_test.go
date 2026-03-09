@@ -1033,3 +1033,186 @@ func TestAggregateStatsAbandonmentRetries(t *testing.T) {
 		t.Errorf("expected 1 unique abandonment for retried issue, got %d", report.Summary.TotalAbandonments)
 	}
 }
+
+func TestAggregateStatsSpawnGateBypasses(t *testing.T) {
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// 10 total spawns (to calculate bypass rates)
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 9000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-1",
+		}},
+		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 8000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-2",
+		}},
+		{Type: "session.spawned", SessionID: "ses_3", Timestamp: now - 7000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-3",
+		}},
+		{Type: "session.spawned", SessionID: "ses_4", Timestamp: now - 6000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-4",
+		}},
+		{Type: "session.spawned", SessionID: "ses_5", Timestamp: now - 5000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-5",
+		}},
+		{Type: "session.spawned", SessionID: "ses_6", Timestamp: now - 4000, Data: map[string]interface{}{
+			"skill": "investigation", "beads_id": "test-6",
+		}},
+		{Type: "session.spawned", SessionID: "ses_7", Timestamp: now - 3000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-7",
+		}},
+		{Type: "session.spawned", SessionID: "ses_8", Timestamp: now - 2000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-8",
+		}},
+		{Type: "session.spawned", SessionID: "ses_9", Timestamp: now - 1500, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-9",
+		}},
+		{Type: "session.spawned", SessionID: "ses_10", Timestamp: now - 1000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-10",
+		}},
+
+		// Triage bypasses (3x)
+		{Type: "spawn.triage_bypassed", Timestamp: now - 8500, Data: map[string]interface{}{
+			"skill": "feature-impl", "task": "urgent fix", "reason": "urgent production issue",
+		}},
+		{Type: "spawn.triage_bypassed", Timestamp: now - 7500, Data: map[string]interface{}{
+			"skill": "feature-impl", "task": "quick change", "reason": "small config update",
+		}},
+		{Type: "spawn.triage_bypassed", Timestamp: now - 6500, Data: map[string]interface{}{
+			"skill": "feature-impl", "task": "another fix", "reason": "urgent production issue",
+		}},
+
+		// Hotspot bypasses (2x)
+		{Type: "spawn.hotspot_bypassed", Timestamp: now - 5500, Data: map[string]interface{}{
+			"skill": "feature-impl", "task": "refactor gate", "architect_ref": "orch-go-abc",
+			"reason": "architect approved extraction plan", "critical_files": []interface{}{"cmd/orch/spawn_cmd.go"},
+		}},
+		{Type: "spawn.hotspot_bypassed", Timestamp: now - 4500, Data: map[string]interface{}{
+			"skill": "systematic-debugging", "task": "fix spawn bug", "architect_ref": "orch-go-def",
+			"reason": "architect approved extraction plan", "critical_files": []interface{}{"cmd/orch/stats_cmd.go"},
+		}},
+
+		// Verification gate bypasses at spawn time (1x)
+		{Type: "spawn.verification_bypassed", Timestamp: now - 3500, Data: map[string]interface{}{
+			"reason": "independent parallel work on unrelated feature",
+		}},
+	}
+
+	report := aggregateStats(events, 7)
+
+	// Check SpawnGateStats
+	if report.SpawnGateStats.TotalBypasses != 6 {
+		t.Errorf("expected 6 total spawn gate bypasses, got %d", report.SpawnGateStats.TotalBypasses)
+	}
+
+	if report.SpawnGateStats.TotalSpawns != 10 {
+		t.Errorf("expected 10 total spawns for rate calc, got %d", report.SpawnGateStats.TotalSpawns)
+	}
+
+	expectedRate := 60.0 // 6/10 * 100
+	if report.SpawnGateStats.BypassRate < expectedRate-0.1 || report.SpawnGateStats.BypassRate > expectedRate+0.1 {
+		t.Errorf("expected bypass rate ~%.1f%%, got %.1f%%", expectedRate, report.SpawnGateStats.BypassRate)
+	}
+
+	// Check per-gate breakdown
+	gateMap := make(map[string]*SpawnGateEntry)
+	for i := range report.SpawnGateStats.ByGate {
+		gateMap[report.SpawnGateStats.ByGate[i].Gate] = &report.SpawnGateStats.ByGate[i]
+	}
+
+	triage, ok := gateMap["triage"]
+	if !ok {
+		t.Fatal("triage gate not found in SpawnGateStats.ByGate")
+	}
+	if triage.Bypassed != 3 {
+		t.Errorf("expected triage bypassed=3, got %d", triage.Bypassed)
+	}
+
+	hotspot, ok := gateMap["hotspot"]
+	if !ok {
+		t.Fatal("hotspot gate not found in SpawnGateStats.ByGate")
+	}
+	if hotspot.Bypassed != 2 {
+		t.Errorf("expected hotspot bypassed=2, got %d", hotspot.Bypassed)
+	}
+
+	verification, ok := gateMap["verification"]
+	if !ok {
+		t.Fatal("verification gate not found in SpawnGateStats.ByGate")
+	}
+	if verification.Bypassed != 1 {
+		t.Errorf("expected verification bypassed=1, got %d", verification.Bypassed)
+	}
+
+	// Check top reasons
+	if len(report.SpawnGateStats.TopReasons) == 0 {
+		t.Fatal("expected top reasons to be populated")
+	}
+	// "urgent production issue" should appear 2x, "architect approved extraction plan" 2x
+	reasonMap := make(map[string]int)
+	for _, r := range report.SpawnGateStats.TopReasons {
+		reasonMap[r.Gate+"|"+r.Reason] = r.Count
+	}
+	if reasonMap["triage|urgent production issue"] != 2 {
+		t.Errorf("expected 'urgent production issue' 2x for triage, got %d", reasonMap["triage|urgent production issue"])
+	}
+}
+
+func TestAggregateStatsSpawnGateMiscalibrationWarning(t *testing.T) {
+	now := time.Now().Unix()
+
+	// Scenario: 5 spawns, 4 triage bypasses → 80% bypass rate → miscalibration
+	events := []StatsEvent{
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 5000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-1",
+		}},
+		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 4000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-2",
+		}},
+		{Type: "session.spawned", SessionID: "ses_3", Timestamp: now - 3000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-3",
+		}},
+		{Type: "session.spawned", SessionID: "ses_4", Timestamp: now - 2000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-4",
+		}},
+		{Type: "session.spawned", SessionID: "ses_5", Timestamp: now - 1000, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-5",
+		}},
+		// 4 triage bypasses
+		{Type: "spawn.triage_bypassed", Timestamp: now - 4500, Data: map[string]interface{}{
+			"skill": "feature-impl", "reason": "manual spawn",
+		}},
+		{Type: "spawn.triage_bypassed", Timestamp: now - 3500, Data: map[string]interface{}{
+			"skill": "feature-impl", "reason": "manual spawn",
+		}},
+		{Type: "spawn.triage_bypassed", Timestamp: now - 2500, Data: map[string]interface{}{
+			"skill": "feature-impl", "reason": "manual spawn",
+		}},
+		{Type: "spawn.triage_bypassed", Timestamp: now - 1500, Data: map[string]interface{}{
+			"skill": "feature-impl", "reason": "manual spawn",
+		}},
+	}
+
+	report := aggregateStats(events, 7)
+
+	// Triage gate should be flagged as miscalibrated (>50% bypass rate)
+	var triageEntry *SpawnGateEntry
+	for i := range report.SpawnGateStats.ByGate {
+		if report.SpawnGateStats.ByGate[i].Gate == "triage" {
+			triageEntry = &report.SpawnGateStats.ByGate[i]
+			break
+		}
+	}
+
+	if triageEntry == nil {
+		t.Fatal("triage gate not found")
+	}
+
+	expectedBypassRate := 80.0 // 4/5 * 100
+	if triageEntry.BypassRate < expectedBypassRate-0.1 || triageEntry.BypassRate > expectedBypassRate+0.1 {
+		t.Errorf("expected triage bypass rate ~%.1f%%, got %.1f%%", expectedBypassRate, triageEntry.BypassRate)
+	}
+
+	if !triageEntry.Miscalibrated {
+		t.Error("expected triage gate to be flagged as miscalibrated (>50% bypass rate)")
+	}
+}
