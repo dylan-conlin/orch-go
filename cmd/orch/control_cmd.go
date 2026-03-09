@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -54,10 +55,21 @@ var controlStatusCmd = &cobra.Command{
 	RunE:  runControlStatus,
 }
 
+var controlDenyCmd = &cobra.Command{
+	Use:   "deny",
+	Short: "Check deny rules for control plane files in settings.json",
+	Long: `Verify that settings.json contains deny rules preventing agent edits
+of control plane files. Shows which rules are present and which are missing.
+
+These deny rules provide defense-in-depth on top of chflags uchg.`,
+	RunE: runControlDeny,
+}
+
 func init() {
 	controlCmd.AddCommand(controlLockCmd)
 	controlCmd.AddCommand(controlUnlockCmd)
 	controlCmd.AddCommand(controlStatusCmd)
+	controlCmd.AddCommand(controlDenyCmd)
 }
 
 func settingsPath() string {
@@ -143,6 +155,47 @@ func runControlStatus(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "\nControl plane: PARTIAL (%d/%d locked)\n", locked, total)
 	}
 
+	return nil
+}
+
+func runControlDeny(cmd *cobra.Command, args []string) error {
+	sp := settingsPath()
+	data, err := os.ReadFile(sp)
+	if err != nil {
+		return fmt.Errorf("reading settings: %w", err)
+	}
+
+	var settings struct {
+		Permissions struct {
+			Deny []string `json:"deny"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return fmt.Errorf("parsing settings: %w", err)
+	}
+
+	existing := make(map[string]bool)
+	for _, rule := range settings.Permissions.Deny {
+		existing[rule] = true
+	}
+
+	required := control.DenyRules()
+	allPresent := true
+	for _, rule := range required {
+		if existing[rule] {
+			fmt.Fprintf(os.Stderr, "  OK   %s\n", rule)
+		} else {
+			fmt.Fprintf(os.Stderr, "  MISS %s\n", rule)
+			allPresent = false
+		}
+	}
+
+	if allPresent {
+		fmt.Fprintf(os.Stderr, "\nDeny rules: ALL PRESENT (%d rules)\n", len(required))
+	} else {
+		fmt.Fprintf(os.Stderr, "\nDeny rules: INCOMPLETE — add missing rules to settings.json permissions.deny\n")
+		return fmt.Errorf("missing deny rules")
+	}
 	return nil
 }
 

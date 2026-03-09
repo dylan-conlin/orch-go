@@ -63,8 +63,8 @@ func DiscoverControlPlaneFiles(settingsPath string) ([]string, error) {
 				if cmd == "" {
 					continue
 				}
-				// Expand environment variables
-				path := os.ExpandEnv(cmd)
+				// Expand ~ and environment variables
+				path := expandPath(cmd)
 				// Resolve to absolute path
 				if !filepath.IsAbs(path) {
 					continue
@@ -175,4 +175,31 @@ func Unlock(files []string) error {
 		}
 	}
 	return nil
+}
+
+// expandPath expands ~ prefix and environment variables in a path.
+// Shell tilde expansion (~/) is not handled by os.ExpandEnv, so we
+// handle it explicitly before expanding $VAR references.
+func expandPath(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			path = filepath.Join(home, path[2:])
+		}
+	}
+	return os.ExpandEnv(path)
+}
+
+// DenyRules returns the deny rules that should be present in settings.json
+// to prevent agents from editing control plane files. These provide
+// defense-in-depth on top of chflags uchg.
+func DenyRules() []string {
+	return []string{
+		"Edit(~/.claude/settings.json)",
+		"Edit(~/.claude/settings.local.json)",
+		"Write(~/.claude/settings.json)",
+		"Write(~/.claude/settings.local.json)",
+		"Edit(~/.orch/hooks/**)",
+		"Write(~/.orch/hooks/**)",
+	}
 }
