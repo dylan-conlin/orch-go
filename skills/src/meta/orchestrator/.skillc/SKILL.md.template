@@ -269,7 +269,15 @@ Don't wait for the debrief. Capture it now.
 
 ### Gate: Architect Handoff (HARD)
 
-Before completing architect: verify implementation issues exist from recommendations. If none → BLOCK. Create them, then complete.
+Before completing architect, verify ALL of:
+1. **Implementation issues exist** from recommendations. If none → BLOCK.
+2. **Multi-component check:** If recommendations touch 3+ components or phases:
+   - Plan artifact exists (`.kb/plans/`)
+   - Integration issue exists, scoped as **behavioral verification** (not component existence)
+   - Integration issue depends on all component issues (`bd dep`)
+3. If single-component: one implementation issue is sufficient, no plan required.
+
+If any missing → BLOCK. Create them before completing.
 
 ### Follow-up Extraction (Every Completion)
 
