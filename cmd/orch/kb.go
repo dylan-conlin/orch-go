@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/kbmetrics"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
@@ -25,6 +26,10 @@ var (
 	// kb extract flags
 	kbExtractTo           string // Target project name
 	kbExtractUpdateSource bool   // Add extracted-to reference in original
+
+	// kb claims flags
+	kbClaimsJSON    bool
+	kbClaimsVerbose bool
 )
 
 var kbCmd = &cobra.Command{
@@ -99,6 +104,77 @@ Examples:
 	},
 }
 
+var kbClaimsCmd = &cobra.Command{
+	Use:   "claims",
+	Short: "Analyze claims per model — knowledge equivalent of lines-per-file",
+	Long: `Extract and count claims from .kb/models/*/model.md files.
+
+Claims are the knowledge equivalent of lines of code. Models with too many
+claims become unfocused and hard to probe, similar to bloated source files.
+
+Thresholds:
+  healthy:  < 30 claims
+  warning:  30-49 claims (may need splitting)
+  critical: >= 50 claims (needs splitting)
+
+Claim types extracted:
+  core:       Core claim section assertions
+  invariant:  Numbered items (Critical Invariants)
+  assertion:  Bold-prefixed bullet points
+  data:       Table data rows
+  constraint: Constraint/Implication pairs
+  failure:    Failure mode root causes
+
+Examples:
+  orch kb claims                    # Human-readable report
+  orch kb claims --json             # Machine-readable output
+  orch kb claims --verbose          # Show individual claims`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runKBClaims()
+	},
+}
+
+func runKBClaims() error {
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	modelsDir := filepath.Join(projectDir, ".kb", "models")
+	results, err := kbmetrics.AnalyzeModels(modelsDir)
+	if err != nil {
+		return fmt.Errorf("analyze models: %w", err)
+	}
+
+	if kbClaimsJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(results)
+	}
+
+	fmt.Print(kbmetrics.FormatText(results))
+
+	if kbClaimsVerbose {
+		fmt.Println()
+		for _, r := range results {
+			if r.ClaimCount == 0 {
+				continue
+			}
+			fmt.Printf("--- %s (%d claims) ---\n", r.Name, r.ClaimCount)
+			for _, c := range r.Claims {
+				text := c.Text
+				if len(text) > 100 {
+					text = text[:100] + "..."
+				}
+				fmt.Printf("  L%-4d [%-10s] %s\n", c.Line, c.Type, text)
+			}
+			fmt.Println()
+		}
+	}
+
+	return nil
+}
+
 func init() {
 	kbAskCmd.Flags().BoolVar(&kbAskSave, "save", false, "Save result as investigation artifact")
 	kbAskCmd.Flags().StringVar(&kbAskModel, "model", "", "Model to use (default: sonnet for speed)")
@@ -108,8 +184,12 @@ func init() {
 	kbExtractCmd.Flags().StringVar(&kbExtractTo, "to", "", "Target project name (required)")
 	kbExtractCmd.Flags().BoolVar(&kbExtractUpdateSource, "update-source", false, "Add extracted-to reference in original file")
 
+	kbClaimsCmd.Flags().BoolVar(&kbClaimsJSON, "json", false, "Output as JSON")
+	kbClaimsCmd.Flags().BoolVar(&kbClaimsVerbose, "verbose", false, "Show individual claims")
+
 	kbCmd.AddCommand(kbAskCmd)
 	kbCmd.AddCommand(kbExtractCmd)
+	kbCmd.AddCommand(kbClaimsCmd)
 	rootCmd.AddCommand(kbCmd)
 }
 
