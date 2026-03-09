@@ -182,6 +182,34 @@ The physics hold for any shared mutable substrate where the four conditions are 
 - **Gates** — enforcement that blocks wrong paths (pre-commit, build, migration validation, contract testing)
 - **Entropy measurement** — detection of when composition is failing (bloat, orphans, contradictions, staleness)
 
+### Substrate vs Orchestration Separation (2026-03-09)
+
+The investigation/probe/model cycle separates cleanly into **substrate** (the knowledge system) and **orchestration** (the infrastructure that drives the cycle at scale). Empirically tested by identifying what runs without the orch stack:
+
+**Minimal substrate (5 components):**
+
+| Component | Role | Irreducible? |
+|-----------|------|-------------|
+| Agent runtime (Claude Code) | Asks questions, tests, observes, writes | Yes — the cycle needs an agent |
+| `kb` CLI | Context retrieval, artifact creation | Yes — stores conventions (could be replaced by raw file knowledge) |
+| Git | Version control for `.kb/` artifacts | Yes — audit trail, collaboration |
+| `.kb/` directory | The shared mutable substrate | Yes — where artifacts live |
+| Investigation skill | Cycle conventions (probe mode, templates, merge protocol) | Yes — without it, agent doesn't know the cycle |
+
+**Orchestration additions (valuable but not cycle-required):**
+
+| Component | What It Adds | Why Not Minimal |
+|-----------|-------------|-----------------|
+| `orch spawn` | Pre-computed SPAWN_CONTEXT.md with extracted model sections | Agent can run `kb context` + read model files directly |
+| beads (bd) | Issue tracking, phase reporting | Tracking infrastructure, not knowledge |
+| daemon | Autonomous spawn of triage:ready | Scale mechanism, not cycle mechanism |
+| Completion verification | Quality gates on deliverables | Reliability infrastructure |
+| Dashboard/tmux/OpenCode | Visibility, multi-model, monitoring | Operational infrastructure |
+
+**The single tooling gap:** `kb context` returns model file paths but not extracted model sections (Summary, Critical Invariants, Why This Fails). orch's `extractModelSectionsForSpawn()` (in `kbcontext.go`, ~300 lines of the 1,496-line file) handles this extraction. Without it, the agent reads model files directly — 2-4 extra tool calls, fully functional. A `kb context --extract-models` flag would bridge this gap at the kb CLI level.
+
+**Implication for substrate independence:** The knowledge cycle doesn't depend on the orchestration substrate it was built in. A fresh repo with `kb init` + Claude Code + investigation skill can run the full investigation/probe/model cycle. This strengthens the substrate generalization claim — the physics are about the `.kb/` directory and its conventions, not the `orch` binary.
+
 ---
 
 ## Critical Invariants
@@ -329,6 +357,7 @@ kb reflect --type stale
 **Primary Evidence:**
 - `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-physics-accretion-attractor-gate-dynamics.md` — Full empirical measurement (1,166 investigations, 32 models, 187 probes)
 - `.kb/models/knowledge-physics/probes/2026-03-09-probe-natural-orphan-baseline-categorization.md` — Orphan taxonomy, era-adjusted rates, natural baseline (40-50%), probe displacement finding
+- `.kb/models/knowledge-physics/probes/2026-03-09-probe-minimal-kb-substrate-cycle-dependencies.md` — Minimal substrate identification: 5 components (agent + kb + git + .kb/ + skill), substrate/orchestration separation confirmed, context injection gap identified
 
 **Related Models:**
 - `.kb/models/harness-engineering/model.md` — Code instance of substrate physics, hard/soft harness taxonomy
