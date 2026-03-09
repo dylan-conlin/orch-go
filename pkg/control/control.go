@@ -177,6 +177,67 @@ func Unlock(files []string) error {
 	return nil
 }
 
+// UnlockMarkerPath returns the path to the unlock marker file.
+// When this file exists, the pre-commit hook skips immutability verification.
+func UnlockMarkerPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".orch", "harness-unlocked")
+}
+
+// WriteUnlockMarker creates the unlock marker file to signal intentional unlock.
+func WriteUnlockMarker() error {
+	path := UnlockMarkerPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("creating marker dir: %w", err)
+	}
+	return os.WriteFile(path, []byte("intentional unlock\n"), 0644)
+}
+
+// RemoveUnlockMarker removes the unlock marker file.
+func RemoveUnlockMarker() error {
+	path := UnlockMarkerPath()
+	err := os.Remove(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("removing marker: %w", err)
+	}
+	return nil
+}
+
+// IsUnlockMarkerPresent returns true if the unlock marker file exists.
+func IsUnlockMarkerPresent() bool {
+	_, err := os.Stat(UnlockMarkerPath())
+	return err == nil
+}
+
+// VerifyLocked checks that all control plane files have uchg set.
+// Returns a list of unlocked files. If all files are locked, returns nil.
+// If settings.json doesn't exist, returns nil (control plane is optional).
+func VerifyLocked() (unlocked []string, err error) {
+	sp := DefaultSettingsPath()
+	if _, err := os.Stat(sp); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	files, err := DiscoverControlPlaneFiles(sp)
+	if err != nil {
+		return nil, fmt.Errorf("discovering control plane: %w", err)
+	}
+
+	for _, f := range files {
+		status, err := FileStatus(f)
+		if err != nil {
+			return nil, fmt.Errorf("checking %s: %w", f, err)
+		}
+		if !status.Exists {
+			continue
+		}
+		if !status.Locked {
+			unlocked = append(unlocked, f)
+		}
+	}
+	return unlocked, nil
+}
+
 // expandPath expands ~ prefix and environment variables in a path.
 // Shell tilde expansion (~/) is not handled by os.ExpandEnv, so we
 // handle it explicitly before expanding $VAR references.

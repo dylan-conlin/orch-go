@@ -494,3 +494,180 @@ func TestDenyRules(t *testing.T) {
 		t.Error("deny rules should include Edit(~/.orch/hooks/**)")
 	}
 }
+
+func TestUnlockMarkerLifecycle(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// Marker should not exist initially
+	if IsUnlockMarkerPresent() {
+		t.Error("marker should not exist initially")
+	}
+
+	// Write marker
+	if err := WriteUnlockMarker(); err != nil {
+		t.Fatalf("WriteUnlockMarker failed: %v", err)
+	}
+
+	// Marker should exist now
+	if !IsUnlockMarkerPresent() {
+		t.Error("marker should exist after WriteUnlockMarker")
+	}
+
+	// Remove marker
+	if err := RemoveUnlockMarker(); err != nil {
+		t.Fatalf("RemoveUnlockMarker failed: %v", err)
+	}
+
+	// Marker should be gone
+	if IsUnlockMarkerPresent() {
+		t.Error("marker should not exist after RemoveUnlockMarker")
+	}
+}
+
+func TestRemoveUnlockMarker_Idempotent(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// Removing non-existent marker should not error
+	if err := RemoveUnlockMarker(); err != nil {
+		t.Errorf("RemoveUnlockMarker should be idempotent: %v", err)
+	}
+}
+
+func TestVerifyLocked_AllLocked(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	settingsDir := filepath.Join(tmpDir, ".claude")
+	if err := os.MkdirAll(settingsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	settingsPath := filepath.Join(settingsDir, "settings.json")
+	if err := os.WriteFile(settingsPath, []byte(`{"hooks":{}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Lock the settings file
+	if err := Lock([]string{settingsPath}); err != nil {
+		t.Fatalf("Lock failed: %v", err)
+	}
+	defer Unlock([]string{settingsPath})
+
+	unlocked, err := VerifyLocked()
+	if err != nil {
+		t.Fatalf("VerifyLocked failed: %v", err)
+	}
+	if len(unlocked) != 0 {
+		t.Errorf("expected no unlocked files, got %v", unlocked)
+	}
+}
+
+func TestVerifyLocked_SomeUnlocked(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	settingsDir := filepath.Join(tmpDir, ".claude")
+	if err := os.MkdirAll(settingsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	settingsPath := filepath.Join(settingsDir, "settings.json")
+
+	hooksDir := filepath.Join(tmpDir, "hooks")
+	if err := os.MkdirAll(hooksDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	hookFile := filepath.Join(hooksDir, "gate.py")
+	if err := os.WriteFile(hookFile, []byte("# hook"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	settingsContent := `{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "` + hookFile + `"
+          }
+        ]
+      }
+    ]
+  }
+}`
+	if err := os.WriteFile(settingsPath, []byte(settingsContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Don't lock anything — both files should be reported as unlocked
+	unlocked, err := VerifyLocked()
+	if err != nil {
+		t.Fatalf("VerifyLocked failed: %v", err)
+	}
+	if len(unlocked) != 2 {
+		t.Errorf("expected 2 unlocked files, got %d: %v", len(unlocked), unlocked)
+	}
+}
+
+func TestVerifyLocked_NoSettings(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// No settings.json — should return nil
+	unlocked, err := VerifyLocked()
+	if err != nil {
+		t.Fatalf("VerifyLocked should not error when settings missing: %v", err)
+	}
+	if unlocked != nil {
+		t.Errorf("expected nil, got %v", unlocked)
+	}
+}
+
+func TestFlagsSurviveLockUnlockLockCycle(t *testing.T) {
+	// Verify flags survive: lock → unlock → lock cycle (session persistence)
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.json")
+	if err := os.WriteFile(testFile, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	files := []string{testFile}
+
+	// Lock
+	if err := Lock(files); err != nil {
+		t.Fatalf("first Lock failed: %v", err)
+	}
+	status, _ := FileStatus(testFile)
+	if !status.Locked {
+		t.Fatal("file should be locked after first Lock")
+	}
+
+	// Unlock
+	if err := Unlock(files); err != nil {
+		t.Fatalf("Unlock failed: %v", err)
+	}
+	status, _ = FileStatus(testFile)
+	if status.Locked {
+		t.Fatal("file should be unlocked after Unlock")
+	}
+
+	// Re-lock (simulates re-locking after session)
+	if err := Lock(files); err != nil {
+		t.Fatalf("second Lock failed: %v", err)
+	}
+	status, _ = FileStatus(testFile)
+	if !status.Locked {
+		t.Fatal("file should be locked after second Lock")
+	}
+
+	// Verify write is blocked after re-lock
+	err := os.WriteFile(testFile, []byte(`{"modified":true}`), 0644)
+	if err == nil {
+		t.Error("writing to re-locked file should fail")
+	}
+
+	// Cleanup
+	Unlock(files)
+}

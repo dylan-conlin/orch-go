@@ -16,7 +16,7 @@ func TestHarnessCommandRegistered(t *testing.T) {
 			for _, sub := range cmd.Commands() {
 				subCmds[sub.Use] = true
 			}
-			for _, expected := range []string{"lock", "unlock", "status"} {
+			for _, expected := range []string{"lock", "unlock", "status", "verify"} {
 				if !subCmds[expected] {
 					t.Errorf("harness missing subcommand %q", expected)
 				}

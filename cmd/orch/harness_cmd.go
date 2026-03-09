@@ -60,10 +60,23 @@ var harnessStatusCmd = &cobra.Command{
 	RunE:  runHarnessStatus,
 }
 
+var harnessVerifyCmd = &cobra.Command{
+	Use:   "verify",
+	Short: "Verify all control plane files are locked (for pre-commit hooks)",
+	Long: `Check that all control plane files have chflags uchg set.
+
+Exits 0 if all files are locked or if the unlock marker exists (intentional unlock
+via 'orch harness unlock'). Exits 1 if any files are unlocked without the marker.
+
+Designed for use in pre-commit hooks to catch accidental uchg removal.`,
+	RunE: runHarnessVerify,
+}
+
 func init() {
 	harnessCmd.AddCommand(harnessLockCmd)
 	harnessCmd.AddCommand(harnessUnlockCmd)
 	harnessCmd.AddCommand(harnessStatusCmd)
+	harnessCmd.AddCommand(harnessVerifyCmd)
 }
 
 func runHarnessLock(cmd *cobra.Command, args []string) error {
@@ -75,6 +88,11 @@ func runHarnessLock(cmd *cobra.Command, args []string) error {
 
 	if err := control.Lock(files); err != nil {
 		return err
+	}
+
+	// Remove unlock marker — control plane is locked again
+	if err := control.RemoveUnlockMarker(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not remove unlock marker: %v\n", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "Locked %d control plane files:\n", len(files))
@@ -96,11 +114,17 @@ func runHarnessUnlock(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Write unlock marker so pre-commit hook knows this is intentional
+	if err := control.WriteUnlockMarker(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not write unlock marker: %v\n", err)
+	}
+
 	fmt.Fprintf(os.Stderr, "Unlocked %d control plane files:\n", len(files))
 	home, _ := os.UserHomeDir()
 	for _, f := range files {
 		fmt.Fprintf(os.Stderr, "  ---- %s\n", shortPath(f, home))
 	}
+	fmt.Fprintf(os.Stderr, "\nRemember to re-lock with: orch harness lock\n")
 	return nil
 }
 
@@ -143,4 +167,31 @@ func runHarnessStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func runHarnessVerify(cmd *cobra.Command, args []string) error {
+	// If unlock marker exists, skip verification (intentional unlock)
+	if control.IsUnlockMarkerPresent() {
+		fmt.Fprintf(os.Stderr, "harness verify: SKIP (unlock marker present — intentional unlock)\n")
+		return nil
+	}
+
+	unlocked, err := control.VerifyLocked()
+	if err != nil {
+		return fmt.Errorf("verifying control plane: %w", err)
+	}
+
+	if len(unlocked) == 0 {
+		fmt.Fprintf(os.Stderr, "harness verify: OK (all control plane files locked)\n")
+		return nil
+	}
+
+	home, _ := os.UserHomeDir()
+	fmt.Fprintf(os.Stderr, "BLOCKED: control plane files missing uchg flag:\n")
+	for _, f := range unlocked {
+		fmt.Fprintf(os.Stderr, "  ---- %s\n", shortPath(f, home))
+	}
+	fmt.Fprintf(os.Stderr, "\nFix: orch harness lock\n")
+	fmt.Fprintf(os.Stderr, "Or for intentional edits: orch harness unlock\n")
+	return fmt.Errorf("%d control plane file(s) unlocked without marker", len(unlocked))
 }
