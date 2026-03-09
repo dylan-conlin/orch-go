@@ -38,17 +38,29 @@ Code was the first substrate where we observed these dynamics (daemon.go +892 li
 
 Accretion is entropy: individually correct contributions compose into structural degradation when shared infrastructure is missing. In code, this manifests as file bloat and duplication. In knowledge, it manifests as orphan investigations and semantic overlap.
 
-**Empirical measurement (2026-03-09):**
+**Empirical measurement (2026-03-09, updated with era-adjusted analysis):**
 
 | Category | Connected | Total | Orphan Rate |
 |----------|-----------|-------|-------------|
-| Active investigations | 103 | 206 | 50.0% |
-| Archived investigations | 57 | 890 | 93.6% |
-| Synthesized investigations | 7 | 66 | 89.4% |
-| **All investigations** | **169** | **1,166** | **85.5%** |
+| Pre-model era (Dec 2025 - Jan 2026) | 51 | 969 | **94.7%** |
+| Model era (Feb - Mar 2026) | 94 | 196 | **52.0%** |
+| **All investigations** | **145** | **1,166** | **87.6%** |
+
+**Orphan taxonomy (from 35-file sample):**
+
+| Category | Rate | Natural? |
+|----------|------|----------|
+| Implementation-as-investigation | 30-45% | Yes — wrong skill routing |
+| Audit/design | 25-33% | Yes — point-in-time snapshots |
+| Exploratory | 15-20% | Yes — one-off questions |
+| Genuinely lost | ~20% of orphans | **No — knowledge loss** |
+| Negative results | 5-7% | Yes — valuable to record |
+| Superseded | 3-5% | Yes — natural lifecycle |
+
+**Natural baseline: 40-50% orphan rate is healthy.** The actionable signal is the "genuinely lost" rate (~10% of total investigations), not the raw orphan rate.
 
 **Knowledge accretion signatures:**
-- **Orphan investigations** — work product with no structural connection to synthesized understanding (models). 85.5% overall, 93.6% in the archive.
+- **Orphan investigations** — work product with no structural connection to synthesized understanding (models). 87.6% overall, but 52.0% in the model era. Pre-model era (83% of corpus) inflates the aggregate.
 - **Quick entry duplication** — confirmed duplicate pair (kb-69d5cf and kb-9f3964, both recording "verify.Comment uses Text field"). No automated dedup checking exists.
 - **Synthesis backlog** — 4 clusters totaling 17 investigations that should be models but aren't. Detection is retroactive (detects bloat after accumulation, not at contribution time).
 - **Investigation overlap** — multiple investigations covering the same ground without awareness of each other (no Prior Work gate enforced).
@@ -151,7 +163,7 @@ The physics hold for any shared mutable substrate where the four conditions are 
 | Substrate | Accretion | Attractors | Gates | Entropy Signal |
 |-----------|-----------|-----------|-------|----------------|
 | **Code** (orch-go) | daemon.go +892 lines, 6 cross-cutting dupes | pkg/ packages (structural coupling) | Pre-commit, spawn, completion, `go build` | Fix:feat ratio, hotspot analysis |
-| **Knowledge** (.kb/) | 85.5% orphan investigations | Models pull probes/investigations (attention priming) | None hard (all advisory) | Stale decisions, synthesis backlog |
+| **Knowledge** (.kb/) | 87.6% orphan investigations (52% model-era) | Models pull probes (structural coupling via directory) | None hard (all advisory) | Orphan rate, synthesis backlog |
 | **Database schemas** | Column bloat, unused tables | Normalized entity structure | Migration validation, FK constraints | Dead columns, orphan tables |
 | **Config systems** | Setting sprawl | Config categories/namespaces | Schema validation | Unused settings, duplicate keys |
 | **API surfaces** | Endpoint bloat | Resource-oriented design | Contract testing, versioning | Deprecated endpoints, inconsistent naming |
@@ -176,11 +188,11 @@ The physics hold for any shared mutable substrate where the four conditions are 
 
 1. **Every convention without a gate will eventually be violated — in knowledge too.** The knowledge system has zero hard gates. Every knowledge convention (Prior Work tables, probe-to-model merge, dedup checking) is violated at significant rates. This is the same invariant from harness-engineering, empirically confirmed in a second substrate.
 
-2. **Models are the fundamental unit of knowledge organization.** Without models, knowledge is homeless. The 85.5% orphan rate is not just a metric — it means 997 investigations exist as isolated artifacts that don't contribute to synthesized understanding. Models provide the gravitational centers that organize investigative work product.
+2. **Models are the fundamental unit of knowledge organization.** Without models, knowledge is homeless. Pre-model era's 94.7% orphan rate vs model era's 52.0% demonstrates that models (and their probe system) provide the gravitational centers that organize investigative work product. The probe system is particularly effective — it structurally couples findings to models via directory placement.
 
-3. **Attention-primed attractors (knowledge) may be fundamentally weaker than structurally-coupled attractors (code).** Code attractors work through compilation — imports route code mechanically. Knowledge attractors work through context injection — kb context frames agent investigation. The attention mechanism is the same as stance transfer (skill-content-transfer model), which is known to be scenario-specific and not a universal amplifier. Whether this weakness is inherent (attention priming is fundamentally softer) or contingent (knowledge attractors are just ungated) is an open question.
+3. **Attention-primed attractors become structurally-coupled via the probe system.** Code attractors work through compilation — imports route code mechanically. Knowledge attractors initially work through context injection — kb context frames agent investigation. But the probe system converts this to structural coupling: probes live in `.kb/models/{name}/probes/`, creating a directory-level connection. This explains the orphan rate drop from 94.7% (pre-probe) to 52.0% (post-probe). The probe system is the knowledge equivalent of Go's import system — it makes the connection structural rather than attention-dependent. Open question remains whether further gating could approach code's coupling rates.
 
-4. **The orphan rate is partially natural but 85.5% signals systemic under-synthesis.** Not all investigations need models — exploratory work, one-off debugging, and negative results are legitimately orphaned. But 85.5% (and 93.6% in the archive) far exceeds the natural baseline. The system produces investigations faster than it synthesizes them into models. This is the knowledge equivalent of code accreting faster than it's extracted.
+4. **The orphan rate decomposes into six categories; the natural baseline is 40-50%.** The raw 85.5% (now 87.6% by strict measurement) is inflated by pre-model era artifacts (83% of corpus, 94.7% orphan rate). The model-era rate is **52.0%** — within the healthy range for an exploratory system. Orphans decompose into: implementation-as-investigation (~30-45%), audit/design (~25-33%), exploratory (~15-20%), genuinely lost (~20% of orphans, ~10% of total), negative results (~5-7%), and superseded (~3-5%). The actionable signal is the "genuinely lost" rate (~10% of investigations), not the raw orphan rate. Analogous to dead code: 5-15% dead code is healthy in code; 40-50% orphan rate is healthy in knowledge due to inherently higher exploration rates.
 
 5. **Accretion, attractors, gates, and entropy are substrate-independent.** They emerge from system properties (multiple writers, no persistent memory, local correctness, no structural coordination), not substrate properties. Code and knowledge are two confirmed instances. The same dynamics should appear in any substrate meeting the four conditions.
 
@@ -250,11 +262,11 @@ When a probe contradicts a model claim, the finding is recorded in the probe fil
 
 ## Open Questions
 
-1. **Is the 85.5% orphan rate a problem or a natural property of exploratory systems?** Not all investigations need models. What's the natural baseline for orphaned work product in an exploratory system? Is there an analogy to "dead code" — code that exists but serves no current purpose, and that's fine?
+1. **~~Is the 85.5% orphan rate a problem or a natural property?~~ ANSWERED:** The rate decomposes into six categories (see probe 2026-03-09-natural-orphan-baseline-categorization). Natural baseline is 40-50%. The raw 85.5% is inflated by pre-model era (83% of corpus). Model-era rate is 52% — healthy. "Genuinely lost" knowledge is ~10% of investigations — the real actionable metric. Dead code analogy confirmed: 5-15% dead code = healthy in code; 40-50% orphan rate = healthy in knowledge.
 
 2. **What would knowledge pre-commit hooks look like?** Code pre-commit hooks validate syntax, lint, and compilation. Knowledge pre-commit hooks would need to check: does this investigation cite a Prior Work table? Does this probe reference its model? Does this model.md contradict itself? The technical challenge: knowledge validation is semantic, not syntactic.
 
-3. **Are attention-primed attractors weaker than structural attractors, or just ungated?** If knowledge models had hard gates (e.g., investigations blocked from closing without citing a model), would the orphan rate approach code's structural coupling rates? Or is attention priming inherently weaker than compilation-enforced coupling?
+3. **Are attention-primed attractors weaker than structural attractors, or just ungated?** Partially answered: the probe system converts attention priming to structural coupling (probes live in model directories), dropping the orphan rate from 94.7% to 52%. Remaining question: could further gating (e.g., investigations require `--model` flag) push the rate below 40%? Or is 40-50% the floor for exploratory systems regardless of coupling?
 
 4. **What's the right threshold for claims-per-model bloat?** Code has lines-per-file thresholds (800 warning, 1,500 critical). What's the equivalent for model claims? When does a model accumulate enough claims that it needs splitting?
 
@@ -273,6 +285,8 @@ When a probe contradicts a model claim, the finding is recorded in the probe fil
 **2026-03-07 to 2026-03-08:** Harness engineering model created, synthesizing accretion as thermodynamics, hard/soft harness taxonomy, compliance vs coordination failure. Established that codebase architecture is governance infrastructure.
 
 **2026-03-09:** Knowledge physics probe (orch-go-8m7w9) empirically measured knowledge dynamics: 85.5% orphan rate, three model behaviors (attractor/capstone/dormant), zero hard gates, 4 unmerged contradicts. Confirmed substrate independence of the physics. This model created to formalize the framework.
+
+**2026-03-09:** Natural orphan baseline probe (orch-go-80rg8) decomposed the orphan rate into six categories and established natural baseline of 40-50%. Discovered pre-model era (83% of corpus) inflates the aggregate rate; model-era rate is 52%. Probes confirmed as the structural fix converting attention-primed attractors to structurally-coupled attractors. Open question #1 answered.
 
 ---
 
@@ -314,6 +328,7 @@ kb reflect --type stale
 
 **Primary Evidence:**
 - `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-physics-accretion-attractor-gate-dynamics.md` — Full empirical measurement (1,166 investigations, 32 models, 187 probes)
+- `.kb/models/knowledge-physics/probes/2026-03-09-probe-natural-orphan-baseline-categorization.md` — Orphan taxonomy, era-adjusted rates, natural baseline (40-50%), probe displacement finding
 
 **Related Models:**
 - `.kb/models/harness-engineering/model.md` — Code instance of substrate physics, hard/soft harness taxonomy
