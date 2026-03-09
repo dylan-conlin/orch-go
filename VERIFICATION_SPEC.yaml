@@ -1,21 +1,29 @@
-task: "Add --transcripts flag to skillc test: save raw model responses to directory"
-beads_id: orch-go-nu966
+task: "Control plane immutability: orch harness command"
+beads_id: orch-go-192s8
 tier: light
 
 automated:
-  - command: "cd ~/Documents/personal/skillc && go test ./pkg/scenario/ -run TestWriteTranscript -v"
-    expects: "All 8 TestWriteTranscript* tests pass"
-    result: "PASS - 8/8 tests pass including new RawResponseFile and RawResponseMultiTurn"
-  - command: "cd ~/Documents/personal/skillc && go test ./..."
-    expects: "All packages pass"
-    result: "PASS - 9/9 packages"
+  - command: "go test ./pkg/control/ -v -count=1"
+    expects: "All 14 tests pass including TestSettingsJsonAlwaysIncluded, TestDenyRules, TestExpandPath"
+    result: "PASS - 14/14 tests"
+  - command: "go test ./cmd/orch/ -run TestHarness -v -count=1"
+    expects: "3 harness command tests pass"
+    result: "PASS - 3/3 tests"
+  - command: "go build ./cmd/orch/"
+    expects: "Clean build"
+    result: "PASS"
 
 deliverables:
-  - pkg/scenario/transcript.go       # Added raw .response.txt output
-  - pkg/scenario/transcript_test.go  # Added 2 new tests
+  - cmd/orch/harness_cmd.go        # orch harness lock/unlock/status command
+  - cmd/orch/harness_cmd_test.go   # Tests for harness command registration
+  - pkg/control/control_test.go    # TestSettingsJsonAlwaysIncluded added
+
+orchestrator_actions_required:
+  - "Add re.compile(r'\\.claude/settings\\.json$') to GOVERNANCE_PATTERNS in ~/.orch/hooks/gate-governance-file-protection.py"
+  - "This closes the recursive vulnerability: agents can currently Edit ~/.claude/settings.json to remove hooks that constrain them"
 
 notes: |
-  When --transcripts is used, WriteTranscript now writes both:
-  1. {scenario}.md - existing rich markdown transcript with scoring
-  2. {scenario}.response.txt - plain text raw model response
-  Multi-turn scenarios include "=== Turn N ===" markers between responses.
+  orch harness is a parallel entry point to orch control (both kept for compatibility).
+  The pkg/control package already had expandPath, DenyRules, Lock, Unlock, EnsureLocked.
+  Worker correctly blocked from modifying governance hook — surfaced as constraint.
+  orch harness status shows 12/12 files LOCKED on live system.

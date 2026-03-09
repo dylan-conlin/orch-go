@@ -363,6 +363,29 @@ func TestEnsureLocked_NoSettings(t *testing.T) {
 	}
 }
 
+func TestSettingsJsonAlwaysIncluded(t *testing.T) {
+	// settings.json must always be the first control plane file discovered.
+	// This is critical: it's the root of the control plane — if agents can
+	// modify settings.json, they can remove the hooks that constrain them.
+	tmpDir := t.TempDir()
+	settingsPath := filepath.Join(tmpDir, "settings.json")
+	if err := os.WriteFile(settingsPath, []byte(`{"hooks":{}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := DiscoverControlPlaneFiles(settingsPath)
+	if err != nil {
+		t.Fatalf("failed: %v", err)
+	}
+
+	if len(files) == 0 {
+		t.Fatal("expected at least settings.json")
+	}
+	if files[0] != settingsPath {
+		t.Errorf("settings.json should be first file, got %s", files[0])
+	}
+}
+
 func TestFileStatus_Missing(t *testing.T) {
 	status, err := FileStatus("/nonexistent/file")
 	if err != nil {
@@ -373,5 +396,101 @@ func TestFileStatus_Missing(t *testing.T) {
 	}
 	if status.Locked {
 		t.Error("missing file should not be locked")
+	}
+}
+
+func TestDiscoverControlPlaneFiles_TildeExpansion(t *testing.T) {
+	tmpDir := t.TempDir()
+	hooksDir := filepath.Join(tmpDir, ".orch", "hooks")
+	if err := os.MkdirAll(hooksDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	hookPath := filepath.Join(hooksDir, "gate.py")
+	if err := os.WriteFile(hookPath, []byte("# hook"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("HOME", tmpDir)
+
+	settingsPath := filepath.Join(tmpDir, "settings.json")
+	settingsContent := `{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.orch/hooks/gate.py"
+          }
+        ]
+      }
+    ]
+  }
+}`
+	if err := os.WriteFile(settingsPath, []byte(settingsContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := DiscoverControlPlaneFiles(settingsPath)
+	if err != nil {
+		t.Fatalf("failed: %v", err)
+	}
+
+	found := false
+	for _, f := range files {
+		if f == hookPath {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected tilde-expanded hook path %s in files, got %v", hookPath, files)
+	}
+}
+
+func TestExpandPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"~/.orch/hooks/gate.py", filepath.Join(tmpDir, ".orch/hooks/gate.py")},
+		{"$HOME/.orch/hooks/gate.py", filepath.Join(tmpDir, ".orch/hooks/gate.py")},
+		{"/absolute/path/hook.py", "/absolute/path/hook.py"},
+		{"relative/path", "relative/path"},
+	}
+
+	for _, tt := range tests {
+		got := expandPath(tt.input)
+		if got != tt.expected {
+			t.Errorf("expandPath(%q) = %q, want %q", tt.input, got, tt.expected)
+		}
+	}
+}
+
+func TestDenyRules(t *testing.T) {
+	rules := DenyRules()
+	if len(rules) == 0 {
+		t.Fatal("DenyRules should return non-empty list")
+	}
+
+	hasSettings := false
+	hasHooks := false
+	for _, r := range rules {
+		if r == "Edit(~/.claude/settings.json)" {
+			hasSettings = true
+		}
+		if r == "Edit(~/.orch/hooks/**)" {
+			hasHooks = true
+		}
+	}
+	if !hasSettings {
+		t.Error("deny rules should include Edit(~/.claude/settings.json)")
+	}
+	if !hasHooks {
+		t.Error("deny rules should include Edit(~/.orch/hooks/**)")
 	}
 }
