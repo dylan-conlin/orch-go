@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -34,6 +35,35 @@ var (
 	kbClaimsJSON    bool
 	kbClaimsVerbose bool
 )
+
+var kbCreateCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create knowledge base artifacts",
+}
+
+var kbCreateModelCmd = &cobra.Command{
+	Use:   "model <name>",
+	Short: "Create a new model with directory structure and template",
+	Long: `Create a new model in .kb/models/ with proper directory structure.
+
+Creates:
+  .kb/models/<name>/model.md    (from TEMPLATE.md)
+  .kb/models/<name>/probes/     (empty directory for future probes)
+
+Model names must be lowercase kebab-case (e.g., "spawn-architecture").
+
+Examples:
+  orch kb create model agent-lifecycle
+  orch kb create model dashboard-architecture`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projectDir, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		return runKBCreateModel(args[0], projectDir)
+	},
+}
 
 var kbCmd = &cobra.Command{
 	Use:   "kb",
@@ -245,10 +275,13 @@ func init() {
 
 	kbOrphansCmd.Flags().BoolVar(&kbOrphansJSON, "json", false, "Output as JSON")
 
+	kbCreateCmd.AddCommand(kbCreateModelCmd)
+
 	kbCmd.AddCommand(kbAskCmd)
 	kbCmd.AddCommand(kbExtractCmd)
 	kbCmd.AddCommand(kbClaimsCmd)
 	kbCmd.AddCommand(kbOrphansCmd)
+	kbCmd.AddCommand(kbCreateCmd)
 	rootCmd.AddCommand(kbCmd)
 }
 
@@ -967,6 +1000,52 @@ func addExtractedToReference(sourcePath, targetPath, targetProject string) error
 	newContent := string(content) + extractedToComment
 
 	return os.WriteFile(sourcePath, []byte(newContent), 0644)
+}
+
+// validModelName matches lowercase kebab-case names.
+var validModelName = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+
+// runKBCreateModel creates a new model directory with template and probes subdirectory.
+func runKBCreateModel(name, projectDir string) error {
+	if name == "" {
+		return fmt.Errorf("model name is required")
+	}
+	if !validModelName.MatchString(name) {
+		return fmt.Errorf("invalid model name %q: must be lowercase kebab-case (e.g., \"spawn-architecture\")", name)
+	}
+
+	modelsDir := filepath.Join(projectDir, ".kb", "models")
+	modelDir := filepath.Join(modelsDir, name)
+
+	// Check if model already exists
+	if _, err := os.Stat(modelDir); err == nil {
+		return fmt.Errorf("model %q already exists at %s", name, modelDir)
+	}
+
+	// Read template
+	templatePath := filepath.Join(modelsDir, "TEMPLATE.md")
+	templateContent, err := os.ReadFile(templatePath)
+	if err != nil {
+		return fmt.Errorf("failed to read TEMPLATE.md: %w (expected at %s)", err, templatePath)
+	}
+
+	// Create directory structure
+	probesDir := filepath.Join(modelDir, "probes")
+	if err := os.MkdirAll(probesDir, 0755); err != nil {
+		return fmt.Errorf("failed to create model directory: %w", err)
+	}
+
+	// Write model.md from template
+	modelFile := filepath.Join(modelDir, "model.md")
+	if err := os.WriteFile(modelFile, templateContent, 0644); err != nil {
+		return fmt.Errorf("failed to write model.md: %w", err)
+	}
+
+	fmt.Printf("Created model: %s\n", modelDir)
+	fmt.Printf("  %s/model.md\n", name)
+	fmt.Printf("  %s/probes/\n", name)
+
+	return nil
 }
 
 // generateSlug creates a URL-safe slug from text.
