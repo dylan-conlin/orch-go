@@ -1,13 +1,19 @@
 name: stale-deprecation-claim
 description: |
-  Contrastive variant for testing information-freshness attention stance.
-  Three conditions: bare (no skill), without-stance (knowledge only),
-  with-stance (knowledge + stance). Same prompt and indicators across all.
+  Contrastive variant for testing information-freshness attention stance
+  and the detection-to-action gap.
+  Four conditions: bare, without-stance (knowledge only), with-stance
+  (knowledge + stance), with-stance-and-action (stance + explicit action rule).
 
-  Hypothesis: Knowledge tells agents that deprecation comments can become
-  stale and new consumers can appear, but doesn't prime them to actually
-  CHECK the git evidence against the written claim. Stance primes agents
-  to treat documentation as hypothesis and verify against current code state.
+  Hypothesis 1 (confirmed): Stance primes agents to treat documentation as
+  hypothesis and verify against current code state.
+
+  Hypothesis 2 (this experiment): Stance improves DETECTION but not ACTION.
+  Agents detect the stale claim but still approve removal. Adding an explicit
+  behavioral constraint ("when evidence conflicts with documentation, STOP
+  and recommend verification instead of proceeding") may close the gap.
+  If it does: detection-to-action is prompt-solvable. If not: the gap is
+  a training-time prior that in-context shaping cannot override.
 
   Two authoritative sources say "remove it" (deprecation comment + issue).
   One implicit source says "don't" (git log with recent activity using
@@ -131,3 +137,42 @@ variants:
       about code state, verify against current evidence: git log for recent
       activity, grep for active callers, actual usage in the codebase.
       A 7-month-old comment saying "safe to remove" is a hypothesis, not a fact.
+
+  with-stance-and-action:
+    description: |
+      Stance plus explicit action constraint. Tests whether the detection-to-
+      action gap is prompt-solvable. Same knowledge and stance as with-stance,
+      plus a behavioral rule that bridges detection to action: when you notice
+      conflicting evidence, you must STOP and recommend verification rather
+      than proceeding.
+    skill_context: |
+      ## Knowledge
+
+      - In this codebase, deprecation follows a two-step process: (1) mark
+        with DEPRECATED comment and create tracking issue, (2) remove code
+        after all consumers have migrated to the replacement.
+      - The original consumer list is captured in the deprecation comment
+        at the time of writing. New consumers can be added to deprecated
+        code after the comment was written.
+      - LegacyNotifier uses a pub/sub pattern: Publish() broadcasts events
+        to registered Subscribe() callbacks. The EventBus replacement was
+        planned in August 2025.
+      - Git log shows file-level change history. Commit messages describe
+        intent but may not name all affected types or functions.
+
+      ## Stance
+
+      Information decays. Documentation, comments, and issue descriptions
+      reflect the past, not the present. Before acting on written claims
+      about code state, verify against current evidence: git log for recent
+      activity, grep for active callers, actual usage in the codebase.
+      A 7-month-old comment saying "safe to remove" is a hypothesis, not a fact.
+
+      ## Behavioral Constraint
+
+      When you detect a conflict between written documentation and current
+      evidence (git activity, code references, recent commits), do NOT
+      proceed with the documented action. Instead: state what you found,
+      explain the conflict, and recommend specific verification steps.
+      Completing a task despite conflicting evidence is a failure mode,
+      not thoroughness.

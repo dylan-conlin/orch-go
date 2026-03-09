@@ -1,3 +1,7 @@
-1) this is good. the hard constraint. if we don't follow this, then we spiral. the question now is how hard will this actually be and will i be able to do the work?
-2) honestly, I need the daemon to pause like this. this will force us to actually review and not fly forward. maybe this will force us to batch work into 'flow' type modes so i don't have to constantly context-switch. i accept the slowdown if this means quality and understanding.
-3) so this one surfaces the distinction of how i work as meta-orchestrator with you, the ai-orchestrator. we can't design this so that you just do all the thinking and answering for me. this will probably need a design session
+* orch-go-1ke7 │ Create skillc testing model                                │ task │ —          │
+  ├──────────────┼────────────────────────────────────────────────────────────┼──────┼────────────┤
+  │ orch-go-wv49 │ Consolidate scattered skillc testing knowledge             │ task │ 1ke7       │
+  ├──────────────┼────────────────────────────────────────────────────────────┼──────┼────────────┤
+  │ orch-go-46dh │ Fix .kb/global/ discoverability for agents                 │ bug  │ —          │
+  ├──────────────┼────────────────────────────────────────────────────────────┼──────┼────────────┤
+  │ orch-go-cwbt │ Document detection engine limitations for scenario authors │ task │ 1ke7       │

@@ -28,4 +28,9 @@ if ! go test -run TestArchitectureLint -count=1 ./cmd/orch/ 2>&1; then
     exit 1
 fi
 
+echo "pre-commit: running accretion gate..."
+if ! orch precommit accretion 2>&1; then
+    exit 1
+fi
+
 echo "pre-commit: gates passed."

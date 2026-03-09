@@ -114,13 +114,11 @@ There is no sustained shift. Gate deployment didn't change the steady-state rati
 
 As of March 8, 2026, total lines in `cmd/orch/` grew from 34,977 to 47,605 in 3 weeks (+12,628, ~4,200/week). The aggregate growth rate hasn't slowed since gate deployment.
 
-Why? Three gaps in our deployed gates:
+Why? Two gaps in our deployed gates:
 
 1. **The completion gate exempts pre-existing bloat.** Files already over 1,500 lines receive warnings, not blocks. daemon.go at 1,559 lines will never be blocked by the completion gate. Every agent adding 50+ lines gets a non-blocking warning. The gate structurally cannot enforce on the files that need enforcement most. This is a ratchet — once bloated, always exempted.
 
-2. **The pre-commit accretion gate was dead code.** We wrote `CheckStagedAccretion` on March 8 but didn't wire it into the pre-commit hook because the hook is governance-protected (agents can't modify their own enforcement infrastructure). The function existed in source; the enforcement did not.
-
-3. **Gates without attractors leave agents stuck.** The pre-commit gate warns that status_cmd.go is too large, but no `pkg/display/` or `pkg/workspace/` exists for the extracted code. The agent sees the warning but has nowhere to go.
+2. **Gates without attractors leave agents stuck.** When a gate warns that a file is too large but no destination package exists for extracted code, the agent sees the warning but has nowhere to go. We've since created structural attractors (`pkg/workspace/`, `pkg/display/`, `pkg/beadsutil/`) and wired the pre-commit gate — the 30-day forward measurement will show whether this combination works.
 
 The model is correct in theory. The gates as deployed are too late, too narrow, and self-exempting. Gates haven't been given a fair test yet because the blocking gates for pre-existing bloat literally don't exist.
 
@@ -190,10 +188,10 @@ Each layer builds on the previous. Lower layers are more immediately actionable:
 
 | Layer | What | Status (ours) | Mechanism |
 |-------|------|--------|-----------|
-| **0: Pre-commit** | Growth gate at authoring time | Partially shipped — code exists, wiring blocked by governance protection | Warns when files grow past 800/600 line thresholds |
-| **1: Structural tests** | Package boundary enforcement | Partially shipped — 4 tests, not in CI | Tests asserting architectural invariants (no forbidden imports, function size limits) |
-| **2: Duplication detector** | Cross-agent redundancy detection | Not started | Static analysis finding pattern similarity across files |
-| **3: Entropy agent** | Periodic system-level health monitoring | Not started | Background agent reviewing growth trends weekly |
+| **0: Pre-commit** | Growth gate at authoring time | Shipped — blocking at >1,500 lines | `CheckStagedAccretion` blocks commits adding to files past threshold |
+| **1: Structural tests** | Package boundary enforcement | Shipped — function size lint, package boundaries, 4 architecture tests | Tests asserting architectural invariants (no forbidden imports, function size limits) |
+| **2: Duplication detector** | Cross-agent redundancy detection | Shipped — AST fingerprinting + auto-issue creation | `pkg/dupdetect/` finds function similarity across files, creates beads issues |
+| **3: Entropy agent** | Periodic system-level health monitoring | Shipped — `orch entropy` + weekly launchd scheduling | Analyzes fix:feat ratio, velocity, bloat, override trends; generates recommendations |
 | **4: Self-extending gates** | Gates that generate gates | Aspirational | Entropy agent drafts structural tests for recurring patterns |
 
 The trajectory here is important: Layers 0–1 are **compliance gates** — they simplify with model improvement as smarter agents self-limit. Layers 2–4 are **coordination gates** — they become more important as agents get faster and more autonomous. A more capable agent accretes more code per session with higher confidence.
@@ -306,7 +304,7 @@ Run one full agent lifecycle with human observation. Watch gates fire against re
 
 ## Where We Are
 
-We're 12 weeks and 3 entropy spirals into this. The framework is clear: hard harness for enforcement, soft harness for orientation, attractors and gates together, coordination gates as permanent infrastructure. The evidence is real but incomplete — gates haven't yet been given a fair test because the deployed gates have structural gaps (pre-existing bloat exemption, dead code pre-commit gate).
+We're 12 weeks and 3 entropy spirals into this. The framework is clear: hard harness for enforcement, soft harness for orientation, attractors and gates together, coordination gates as permanent infrastructure. All 5 enforcement layers are now shipped — from pre-commit blocking through AST duplication detection to weekly entropy analysis. The evidence is real but incomplete — the full gate stack has only been deployed for days, not weeks. The 30-day forward measurement is the real test.
 
 The 30-day forward measurement starts from March 8, 2026. The baseline: daemon.go at 1,559 lines, 47,605 total lines across 125 files, 12 files over 800 lines, ~4,200 lines/week growth velocity. What would constitute "bending the curve": daemon.go stabilizes or decreases below 1,500; files over 800 drops below 10; weekly velocity drops below 2,000.
 

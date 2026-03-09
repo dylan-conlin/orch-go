@@ -1,57 +1,245 @@
 # Codebase Audit
 
-<!-- SKILL-TEMPLATE: common-overview --><!-- /SKILL-TEMPLATE -->
+## Stance
+
+**Artifacts are claims, not evidence — verify against primary sources before reporting.**
+
+An audit reads a workspace claiming "feature X NOT DONE" and reports that as a finding without checking if feature X actually exists in the code. This is the core failure mode. Search the codebase before concluding.
 
 ---
 
-<!-- MODE-SPECIFIC CONTENT -->
-<!-- Use --parallel flag for comprehensive multi-agent audits -->
+## When to Use
 
-<!-- SKILL-TEMPLATE: mode-parallel --><!-- /SKILL-TEMPLATE -->
-
----
-
-<!-- DIMENSION-SPECIFIC CONTENT -->
-<!-- The build system will inject the appropriate dimension module here based on spawn configuration -->
-
-<!-- For backward compatibility with old skill names, detect dimension from SPAWN_CONTEXT -->
-<!-- If spawned as codebase-audit-security, auto-set dimension=security -->
-<!-- If spawned as codebase-audit --dimension performance, use that -->
-
-**Dimension-specific guidance below:**
+| User says... | Dimension |
+|-------------|-----------|
+| "Security vulnerabilities" | security |
+| "Performance bottlenecks" | performance |
+| "Test coverage" | tests |
+| "God objects" / "tight coupling" | architecture |
+| "ROADMAP drift" / "template drift" | organizational |
+| "Accessibility" / "a11y" / "WCAG" | accessibility |
+| "Quick health check" | quick |
 
 ---
 
-<!-- SKILL-TEMPLATE: dimension-security --><!-- /SKILL-TEMPLATE -->
+## Core Workflow
+
+1. **Create investigation file** — `kb create investigation "audit/dimension-description"`
+2. **Pattern search** — Run dimension-specific search commands
+3. **Evidence collection** — Concrete examples with file:line references
+4. **Analysis** — Root cause, severity assessment, ROI prioritization
+5. **Documentation** — Investigation file with findings + baseline metrics
+
+**Track progress:** `bd comments add <beads-id> "Phase: [phase] - [details]"`
 
 ---
 
-<!-- SKILL-TEMPLATE: dimension-performance --><!-- /SKILL-TEMPLATE -->
+## Evidence Hierarchy
+
+| Source Type | Examples | Treatment |
+|-------------|----------|-----------|
+| **Primary** (authoritative) | Actual code, test output, observed behavior | This IS the evidence |
+| **Secondary** (claims to verify) | Workspaces, investigations, decisions | Hypotheses to test |
 
 ---
 
-<!-- SKILL-TEMPLATE: dimension-tests --><!-- /SKILL-TEMPLATE -->
+## Model Awareness (Probe vs Investigation Routing)
+
+Check SPAWN_CONTEXT.md for `### Models (synthesized understanding)` section.
+
+**If model markers present** → Your findings likely confirm/contradict/extend a model. Create a probe:
+- `.kb/models/{model-name}/probes/{date}-{slug}.md`
+- Focus on: how findings relate to model's invariants
+
+**If absent** → Standard investigation file.
 
 ---
 
-<!-- SKILL-TEMPLATE: dimension-architecture --><!-- /SKILL-TEMPLATE -->
+## Investigation File Setup
+
+```bash
+kb create investigation "audit/dimension-audit-description"
+```
+
+After creating:
+1. Fill Question field with specific audit focus
+2. Document findings progressively (not at end)
+3. Set Resolution-Status when completing (Resolved/Recurring/Synthesized/Mitigated)
 
 ---
 
-<!-- SKILL-TEMPLATE: dimension-organizational --><!-- /SKILL-TEMPLATE -->
+## Dimensions
+
+### Security
+
+**Focus:** Secrets exposure, injection vulnerabilities, auth/authz gaps, cryptography, dependencies, OWASP Top 10
+
+**Key searches:**
+```bash
+rg "password|secret|api_key|token|private_key" --type py --type js -i
+rg "execute\(.*%|\.format\(|f\".*FROM|f\".*WHERE" --type py
+rg "subprocess\.call|os\.system|eval\(|exec\(" --type py
+rg "innerHTML|dangerouslySetInnerHTML|\.html\(" --type js
+rg "password\s*=\s*['\"]|api_key\s*=\s*['\"]" --type py --type js
+```
+
+**Output:** Findings rated Critical/High/Medium/Low with remediation steps.
 
 ---
 
-<!-- SKILL-TEMPLATE: dimension-accessibility --><!-- /SKILL-TEMPLATE -->
+### Performance
+
+**Focus:** Algorithmic complexity, N+1 queries, resource usage, I/O, caching, concurrency
+
+**Key searches:**
+```bash
+rg "for.*:\s*\n.*for.*:" --type py -U          # Nested loops (O(n²))
+find . -name "*.py" -o -name "*.js" | xargs wc -l | sort -rn | head -20
+rg "TODO.*performance|FIXME.*slow|HACK.*optimize" -i
+```
+
+**Output:** Findings with profiling data and optimization recommendations.
 
 ---
 
-<!-- SKILL-TEMPLATE: dimension-quick --><!-- /SKILL-TEMPLATE -->
+### Tests
+
+**Focus:** Coverage gaps, flaky tests, missing test types, test quality, organization
+
+**Key searches:**
+```bash
+comm -23 <(find . -name "*.py" | grep -v test | sort) \
+         <(find . -name "test_*.py" | sed 's/test_//' | sort)
+rg "sleep|time\.sleep|random\.|datetime\.now" tests/
+rg "def test_" tests/ -l | xargs rg "assert" -L     # Tests without assertions
+rg "Mock|patch|MagicMock" tests/ -c | sort -rn | head -10
+```
+
+**Output:** Testing gaps with risk assessment and coverage metrics.
 
 ---
 
-<!-- SKILL-TEMPLATE: self-review --><!-- /SKILL-TEMPLATE -->
+### Architecture
+
+**Focus:** God objects, tight coupling, missing abstractions, circular dependencies, SOLID violations
+
+**Key searches:**
+```bash
+rg "^\s+def \w+\(self" --type py | uniq -c | sort -rn | head -10  # God classes
+find . -name "*.py" -o -name "*.js" | xargs wc -l | sort -rn | head -20
+rg "^\s{16,}(if|for|while|def)" --type py                          # Deep nesting
+```
+
+**Output:** Architectural issues with refactoring effort estimates.
 
 ---
 
-<!-- SKILL-TEMPLATE: leave-it-better --><!-- /SKILL-TEMPLATE -->
+### Organizational
+
+**Focus:** ROADMAP drift, documentation drift, template drift, state duplication, manual sync points
+
+**Process (4 phases, 90-150 min):**
+1. Pattern search — automated drift detection
+2. Evidence collection — validate patterns, gather concrete examples
+3. System amnesia analysis — identify violated coherence principles
+4. Documentation — investigation with recommendations
+
+**Key searches:**
+```bash
+git log --oneline --since="30 days ago" | rg "feat:|fix:" | head -20
+rg "remember to|don't forget|make sure to update" docs/ --type md -i
+rg "TODO.*update|FIXME.*sync" --type py --type md -C 2
+```
+
+**Root cause categories:** Return trip tax, context switching, no single source of truth, manual sync points, no observability.
+
+**Detailed workflow:** See [reference/dimension-organizational-detail.md](reference/dimension-organizational-detail.md)
+
+---
+
+### Accessibility
+
+**Focus:** Semantic HTML, keyboard navigation, screen reader support, color/contrast, forms, dynamic content, media
+
+**Key searches:**
+```bash
+rg "onClick|on:click" --glob "*.{svelte,jsx,tsx}" -C 1 | rg "<(div|span|li)"
+rg "<img " --glob "*.{svelte,jsx,tsx,html}" | rg -v "alt="
+rg "<input|<select|<textarea" --glob "*.{svelte,jsx,tsx,html}" -C 2 | rg -v "label|aria-label"
+rg "tabIndex=\"[1-9]|tabindex=\"[1-9]" --glob "*.{svelte,jsx,tsx,html}"
+```
+
+**Severity:** Critical (blocks AT users) → High (major a11y gap) → Medium (degraded) → Low (minor)
+
+**Anti-pattern:** Adding `role="button"` to a `<div>` instead of using `<button>`. Recommend semantic HTML first, ARIA only when native elements can't express the semantics.
+
+**Detailed workflow + WCAG mapping:** See [reference/dimension-accessibility-detail.md](reference/dimension-accessibility-detail.md)
+
+---
+
+### Quick
+
+**Process (30-60 min):** Automated scan across all categories → Triage to top 10 by ROI → Document findings.
+
+**Output:** Top 10 findings sorted by ROI with recommended next steps (which focused audit to run).
+
+**When to use:** Monthly health monitoring, before major work, onboarding, deciding which focused audit to run.
+
+**When NOT to use:** Known problem area (use focused audit), need deep analysis.
+
+**Detailed scan commands + templates:** See [reference/dimension-quick-detail.md](reference/dimension-quick-detail.md)
+
+---
+
+## Parallel Mode
+
+For comprehensive multi-dimension audits: spawn 5 parallel Haiku agents (one per dimension), synthesize results.
+
+**When to use:** Full health check needed, time-constrained, comprehensive coverage.
+
+**Detailed workflow:** See [reference/parallel-mode.md](reference/parallel-mode.md)
+
+---
+
+## Available Dimensions Summary
+
+| Dimension | Time | Output |
+|-----------|------|--------|
+| security | 30-90 min | Security findings with severity + remediation |
+| performance | 30-90 min | Bottlenecks with profiling + optimization recs |
+| tests | 30-90 min | Coverage gaps with risk assessment |
+| architecture | 30-90 min | Structural issues with refactoring estimates |
+| organizational | 90-150 min | Drift patterns with system amnesia analysis |
+| accessibility | 60-90 min | WCAG-mapped findings with remediation |
+| quick | 30-60 min | Top 10 across all categories |
+
+---
+
+## Anti-Patterns
+
+| Anti-Pattern | Fix |
+|-------------|-----|
+| Vague findings ("has drift issues") | Concrete evidence: file:line, commit sha, count |
+| No reproducibility | Document all search commands + baseline metrics |
+| Recommendations too vague ("fix drift") | Specific: "Add auto-update to orch complete" |
+| No prioritization | ROI framework: impact vs effort matrix |
+| Reporting artifact claims as findings | Verify against primary sources (actual code) |
+| "Add ARIA" without context | Specify file:line, what label should convey, which WCAG criterion |
+
+---
+
+## Completion
+
+**Deliverables:**
+- Investigation file with findings, evidence, recommendations
+- Pattern search commands documented (reproducibility)
+- Baseline metrics captured for re-audit
+- Recommendations prioritized by ROI
+
+**Report:** `bd comments add <beads-id> "Phase: Complete - Audit findings: [count], Recommendations: [count]"`
+
+**Discovered work:** Create beads issues for high-priority findings:
+```bash
+bd create "SECURITY: description" --type bug -l triage:ready     # Critical/High
+bd create "ARCHITECTURE: description" --type task -l triage:review  # Medium/Low
+```

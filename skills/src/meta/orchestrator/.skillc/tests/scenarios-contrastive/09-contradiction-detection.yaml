@@ -13,9 +13,13 @@ description: |
 
   Tests: Comprehension vs throughput. The contradiction is implicit — it lives
   in the gap between two agents' assumptions, not in their stated conclusions.
-  Part of contrastive scenario series.
 
-source: comprehension-measurement-program-2026-03-05
+  Detection-to-action gap test: with-stance achieves high detection (notices-tension,
+  connects-the-gap) but prior data shows action indicators (recommends-before-closing,
+  no-independent-processing) may stay at floor. The with-stance-and-action variant
+  tests whether an explicit behavioral constraint closes the gap.
+
+source: detection-to-action-gap-experiment-2026-03-06
 
 prompt: |
   Two agents just finished:
@@ -60,3 +64,67 @@ behavioral_indicators:
 scoring:
   max: 8
   pass: 5
+
+variants:
+  bare:
+    description: "No skill context. Model receives only the prompt above."
+    skill_context: null
+
+  with-stance:
+    description: |
+      Knowledge plus stance orientation. Facts about agent completion review
+      plus attention primer for cross-agent contradiction detection.
+    skill_context: |
+      ## Knowledge
+
+      - Agent completions should be reviewed together when they touched related
+        subsystems. Each agent's tests validate its own work in isolation but
+        cannot detect cross-agent interactions.
+      - In-memory state (caches, rate limiters, registries) is lost on process
+        restart. Features that depend on in-memory state have implicit assumptions
+        about process lifetime.
+      - The --replace flag enables zero-downtime restarts. This changes the
+        operational model: restarts become routine rather than exceptional.
+
+      ## Stance
+
+      Agent completions are not independent events. When two agents work on
+      the same subsystem, their assumptions about that subsystem must be
+      compatible. Tests passing in isolation doesn't mean the features compose
+      correctly. Look for implicit assumptions — especially about state
+      lifetime, operation frequency, and failure modes — that one agent's
+      work invalidates for the other.
+
+  with-stance-and-action:
+    description: |
+      Stance plus explicit action constraint. Tests whether the detection-to-
+      action gap is prompt-solvable. Same knowledge and stance as with-stance,
+      plus a behavioral rule bridging detection to action.
+    skill_context: |
+      ## Knowledge
+
+      - Agent completions should be reviewed together when they touched related
+        subsystems. Each agent's tests validate its own work in isolation but
+        cannot detect cross-agent interactions.
+      - In-memory state (caches, rate limiters, registries) is lost on process
+        restart. Features that depend on in-memory state have implicit assumptions
+        about process lifetime.
+      - The --replace flag enables zero-downtime restarts. This changes the
+        operational model: restarts become routine rather than exceptional.
+
+      ## Stance
+
+      Agent completions are not independent events. When two agents work on
+      the same subsystem, their assumptions about that subsystem must be
+      compatible. Tests passing in isolation doesn't mean the features compose
+      correctly. Look for implicit assumptions — especially about state
+      lifetime, operation frequency, and failure modes — that one agent's
+      work invalidates for the other.
+
+      ## Behavioral Constraint
+
+      When you detect incompatible assumptions between agent completions,
+      do NOT close both agents. Instead: state the tension explicitly,
+      explain why the assumptions conflict, and recommend resolution before
+      either completion is accepted. Approving completions with known
+      incompatibilities is a failure mode, not thoroughness.

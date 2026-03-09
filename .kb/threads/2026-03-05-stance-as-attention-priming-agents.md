@@ -23,3 +23,5 @@ Testable: each attention type maps to a contrastive scenario. Same infrastructur
 ## 2026-03-06
 
 Generalization confirmed: stance is cross-source reasoning primer, not generic amplifier. Lifts S12 (+5 relationship tracing) and S13 (+4 information freshness) but not S11 (-2 single-source absence). Detection-to-action gap discovered: agents see problems but still approve completion — stance improves input processing, behavioral constraints needed for output decisions. 72 total trials across 5 scenarios now.
+
+Investigation stance experiment (54 trials): 'test before concluding' produces ZERO lift. The distinction is attention primer vs action directive. Attention primers change perception and transfer in --print mode (+4-7 on orchestrator). Action directives tell agents what to do and have no leverage without tool execution. Each worker skill stance must be classified: systematic-debugging and architect stances look like attention primers ('understand before fixing', 'decide what should exist'). Investigation needs reframing from action to attention.
