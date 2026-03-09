@@ -27,6 +27,9 @@ var (
 	kbExtractTo           string // Target project name
 	kbExtractUpdateSource bool   // Add extracted-to reference in original
 
+	// kb orphans flags
+	kbOrphansJSON bool
+
 	// kb claims flags
 	kbClaimsJSON    bool
 	kbClaimsVerbose bool
@@ -134,6 +137,59 @@ Examples:
 	},
 }
 
+var kbOrphansCmd = &cobra.Command{
+	Use:   "orphans",
+	Short: "Show investigation orphan rate — percentage unconnected to models/decisions/guides",
+	Long: `Compute the orphan rate for .kb/investigations/ files.
+
+An investigation is "orphaned" if no other .kb/ file (model, decision, guide,
+probe, or other investigation) references it. High orphan rates signal
+under-synthesis — investigations producing findings that never get integrated.
+
+The orphan rate was first measured at 85.5% during the knowledge-physics probe
+(Mar 2026). The model-era rate (after probe system existed) was 52.0%.
+
+Examples:
+  orch kb orphans          # Human-readable report
+  orch kb orphans --json   # Machine-readable output`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runKBOrphans()
+	},
+}
+
+func runKBOrphans() error {
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	kbDir := filepath.Join(projectDir, ".kb")
+	report, err := kbmetrics.ComputeOrphanRate(kbDir)
+	if err != nil {
+		return fmt.Errorf("compute orphan rate: %w", err)
+	}
+
+	if kbOrphansJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(report)
+	}
+
+	if report.Total == 0 {
+		fmt.Println("No investigations found in .kb/investigations/")
+		return nil
+	}
+
+	fmt.Printf("Investigation Orphan Rate\n")
+	fmt.Printf("=========================\n\n")
+	fmt.Printf("Total investigations:  %d\n", report.Total)
+	fmt.Printf("Connected:             %d\n", report.Connected)
+	fmt.Printf("Orphaned:              %d\n", report.Orphaned)
+	fmt.Printf("Orphan rate:           %.1f%%\n", report.OrphanRate)
+
+	return nil
+}
+
 func runKBClaims() error {
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -187,9 +243,12 @@ func init() {
 	kbClaimsCmd.Flags().BoolVar(&kbClaimsJSON, "json", false, "Output as JSON")
 	kbClaimsCmd.Flags().BoolVar(&kbClaimsVerbose, "verbose", false, "Show individual claims")
 
+	kbOrphansCmd.Flags().BoolVar(&kbOrphansJSON, "json", false, "Output as JSON")
+
 	kbCmd.AddCommand(kbAskCmd)
 	kbCmd.AddCommand(kbExtractCmd)
 	kbCmd.AddCommand(kbClaimsCmd)
+	kbCmd.AddCommand(kbOrphansCmd)
 	rootCmd.AddCommand(kbCmd)
 }
 

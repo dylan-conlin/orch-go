@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/kbmetrics"
 )
 
 // ReflectSuggestions holds the output of kb reflect analysis.
@@ -35,6 +37,9 @@ type ReflectSuggestions struct {
 
 	// DefectClass patterns detected across investigations.
 	DefectClass []DefectClassSuggestion `json:"defect_class,omitempty"`
+
+	// OrphanRate tracks what percentage of investigations are unconnected to models/decisions/guides.
+	OrphanRate *kbmetrics.OrphanReport `json:"orphan_rate,omitempty"`
 }
 
 // SynthesisSuggestion represents a topic with multiple investigations.
@@ -161,6 +166,15 @@ func RunReflectionWithOptions(createIssues bool) (*ReflectSuggestions, error) {
 		})
 	}
 
+	// Compute orphan rate from local .kb/ directory
+	var orphanReport *kbmetrics.OrphanReport
+	if projectDir, err := os.Getwd(); err == nil {
+		kbDir := filepath.Join(projectDir, ".kb")
+		if report, err := kbmetrics.ComputeOrphanRate(kbDir); err == nil && report.Total > 0 {
+			orphanReport = report
+		}
+	}
+
 	suggestions := &ReflectSuggestions{
 		Timestamp:   time.Now().UTC(),
 		Synthesis:   rawOutput.Synthesis,
@@ -170,6 +184,7 @@ func RunReflectionWithOptions(createIssues bool) (*ReflectSuggestions, error) {
 		ModelDrift:  rawOutput.ModelDrift,
 		Refine:      refine,
 		DefectClass: rawOutput.DefectClass,
+		OrphanRate:  orphanReport,
 	}
 
 	return suggestions, nil
@@ -271,6 +286,9 @@ func (s *ReflectSuggestions) Summary() string {
 			noun = "pattern"
 		}
 		parts = append(parts, fmt.Sprintf("%d defect-class %s", len(s.DefectClass), noun))
+	}
+	if s.OrphanRate != nil && s.OrphanRate.Total > 0 {
+		parts = append(parts, s.OrphanRate.Summary())
 	}
 
 	result := ""

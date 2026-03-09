@@ -655,6 +655,25 @@ func TestFormatOrientation_ReflectSummaryEmpty(t *testing.T) {
 	}
 }
 
+func TestFormatOrientation_ReflectSummaryOrphanRate(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		ReflectSummary: &ReflectSummary{
+			Total:       5,
+			Synthesis:   5,
+			OrphanRate:  52.0,
+			OrphanTotal: 196,
+		},
+	}
+	output := FormatOrientation(data)
+	if !strings.Contains(output, "Orphan rate: 52.0%") {
+		t.Errorf("missing orphan rate, got:\n%s", output)
+	}
+	if !strings.Contains(output, "196 investigations") {
+		t.Errorf("missing orphan total, got:\n%s", output)
+	}
+}
+
 func TestFormatOrientation_UsageWarning(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{Days: 1},

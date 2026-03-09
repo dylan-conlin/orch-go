@@ -474,6 +474,10 @@ func parseReflectSuggestions(data []byte) *orient.ReflectSummary {
 		Stale      []json.RawMessage `json:"stale"`
 		Drift      []json.RawMessage `json:"drift"`
 		Agreements []json.RawMessage `json:"agreements"`
+		OrphanRate *struct {
+			Total      int     `json:"total"`
+			OrphanRate float64 `json:"orphan_rate"`
+		} `json:"orphan_rate"`
 	}
 
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -515,6 +519,12 @@ func parseReflectSuggestions(data []byte) *orient.ReflectSummary {
 	// Compute age from timestamp
 	if raw.Timestamp != "" {
 		summary.Age = computeReflectAge(raw.Timestamp)
+	}
+
+	// Orphan rate
+	if raw.OrphanRate != nil && raw.OrphanRate.Total > 0 {
+		summary.OrphanRate = raw.OrphanRate.OrphanRate
+		summary.OrphanTotal = raw.OrphanRate.Total
 	}
 
 	return summary

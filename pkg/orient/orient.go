@@ -66,6 +66,8 @@ type ReflectSummary struct {
 	Agreements  int              `json:"agreements"`
 	TopClusters []ReflectCluster `json:"top_clusters,omitempty"`
 	Age         string           `json:"age,omitempty"` // human-readable age like "2h ago"
+	OrphanRate  float64          `json:"orphan_rate,omitempty"`  // percentage 0-100
+	OrphanTotal int              `json:"orphan_total,omitempty"` // total investigations counted
 }
 
 // ReflectCluster represents a synthesis opportunity cluster.
@@ -434,6 +436,9 @@ func formatReflectSummary(b *strings.Builder, r *ReflectSummary) {
 			b.WriteString(fmt.Sprintf(" %s(%d)", c.Topic, c.Count))
 		}
 		b.WriteString("\n")
+	}
+	if r.OrphanTotal > 0 {
+		b.WriteString(fmt.Sprintf("   Orphan rate: %.1f%% (%d investigations)\n", r.OrphanRate, r.OrphanTotal))
 	}
 	b.WriteString("\n")
 }

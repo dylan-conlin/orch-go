@@ -195,6 +195,33 @@ func TestParseReflectSuggestions_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestParseReflectSuggestions_OrphanRate(t *testing.T) {
+	input := `{
+		"timestamp": "2026-03-09T00:00:00Z",
+		"synthesis": [{"topic": "test", "count": 3}],
+		"promote": [],
+		"stale": [],
+		"drift": [],
+		"agreements": [],
+		"orphan_rate": {
+			"total": 196,
+			"connected": 94,
+			"orphaned": 102,
+			"orphan_rate": 52.0
+		}
+	}`
+	result := parseReflectSuggestions([]byte(input))
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.OrphanRate != 52.0 {
+		t.Errorf("OrphanRate = %f, want 52.0", result.OrphanRate)
+	}
+	if result.OrphanTotal != 196 {
+		t.Errorf("OrphanTotal = %d, want 196", result.OrphanTotal)
+	}
+}
+
 func TestComputeReflectAge(t *testing.T) {
 	// Test with RFC3339 format
 	recent := time.Now().Add(-30 * time.Minute).Format(time.RFC3339)
