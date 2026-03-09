@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/beadsutil"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
@@ -182,14 +183,7 @@ func ResolveCrossRepoBeadsDir(beadsID, cwd, projectDir string, issueExists func(
 	return cwdBeadsDir
 }
 
+// resolveShortBeadsID delegates to beadsutil.ResolveShortIDSimple.
 func resolveShortBeadsID(id string) (string, error) {
-	if strings.Contains(id, "-") {
-		return id, nil
-	}
-	projectDir, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("failed to get current directory: %w", err)
-	}
-	projectName := filepath.Base(projectDir)
-	return fmt.Sprintf("%s-%s", projectName, id), nil
+	return beadsutil.ResolveShortIDSimple(id)
 }
