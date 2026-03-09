@@ -1,0 +1,371 @@
+# Model: Harness Engineering
+
+**Domain:** Agent-First Structural Enforcement / Architectural Governance / Multi-Agent Code Quality
+**Last Updated:** 2026-03-07
+**Synthesized From:**
+- `.kb/investigations/2026-03-07-inv-analyze-accretion-pattern-orch-go.md` — Accretion structural analysis (daemon.go +892 lines, 6 cross-cutting concerns)
+- `.kb/threads/2026-03-07-harness-engineering-structural-enforcement-agent.md` — Framework formulation and implementation sequence
+- `.kb/models/skill-content-transfer/model.md` — Three-type vocabulary (knowledge/stance/behavioral), 265 contrastive trials
+- `.kb/models/architectural-enforcement/model.md` — Four-layer gate mechanisms, threshold calibration
+- `.kb/models/entropy-spiral/model.md` — Feedback loops, control plane immutability, 1,625 lost commits
+- `.kb/models/extract-patterns/model.md` — Extraction as temporary entropy reduction
+- `.kb/models/completion-verification/model.md` — 14-gate pipeline, gate type taxonomy (execution/evidence/judgment)
+- OpenAI: "Harness Engineering" (https://openai.com/index/harness-engineering/) — Codex team, ~1M lines, zero manual code
+- Fowler/Bockeler: "Harness Engineering" (https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html) — Verification gap, relocating rigor
+
+---
+
+## Summary (30 seconds)
+
+Harness engineering is the discipline of making wrong paths mechanically impossible for AI agents, rather than instructing agents to choose right paths. It operates through two fundamentally different enforcement types: **hard harness** (deterministic, mechanically enforced, cannot be ignored — pre-commit hooks, spawn gates, `go build`, Go package structure, structural tests) and **soft harness** (probabilistic, context-dependent, driftable — skills, CLAUDE.md, knowledge bases, SPAWN_CONTEXT.md). Hard harness matters more because agents under pressure drift from soft instructions — contrastive testing (265 trials, 7 skills) showed behavioral constraints dilute to bare parity at 10+ co-resident items, and stance transfers only as attention primers, not action directives. Accretion is entropy: individually correct agent commits compose into structural degradation when shared infrastructure is missing — daemon.go regrew +892 lines past its pre-extraction baseline in 60 days from 30 correct commits. OpenAI arrived at the same framework from greenfield (designed gates before code); we arrived through pain (retrofit after 3 entropy spirals, 1,625 lost commits). The design playbook: shift investment from soft harness (hoping agents follow instructions) to hard harness (making the wrong path structurally unavailable). The governance insight: in multi-agent systems, codebase architecture is governance — package structure is a routing table for agentic contributions, and every convention without a gate will eventually be violated.
+
+---
+
+## Core Mechanism
+
+### 1. The Harness Taxonomy (Hard vs Soft)
+
+A harness is everything in the development environment that constrains and guides agent behavior. The term comes from OpenAI's Codex team, who built ~1M lines of code with zero manually-written source over 5 months by investing primarily in the harness. The key reframing: **agent failure is a harness bug, not an agent bug.** When daemon.go independently reimplements workspace scanning for the 5th time, the architecture is missing — not the agent.
+
+Every harness component is either hard or soft:
+
+| Property | Hard Harness | Soft Harness |
+|----------|-------------|--------------|
+| **Enforcement** | Deterministic — passes or fails | Probabilistic — influences via context |
+| **Bypass** | Cannot be ignored without escape hatch | Can be drifted from under pressure |
+| **Measurement** | Unnecessary — outcome is binary | Requires contrastive testing to validate |
+| **Cost** | Higher upfront (code, infrastructure) | Lower upfront (prose, templates) |
+| **Degradation** | Stable unless code is modified | Dilutes at scale (5+ constraints = inert) |
+
+**Existing hard harness (orch-go, verified):**
+
+| Mechanism | What It Prevents | Source | Status |
+|-----------|-----------------|--------|--------|
+| Pre-commit growth gate | Accretion past 800/600 line thresholds | `pkg/verify/precommit.go`, `scripts/pre-commit-exec-start-cleanup.sh` | Shipped, warning-only |
+| Spawn hotspot gate | Feature-impl/debugging on CRITICAL (>1500 line) files | `pkg/spawn/gates/hotspot.go` | Shipped, blocking |
+| Build gate (`go build`) | Broken compilation reaching completion | `pkg/verify/check.go` — the only unfakeable gate | Shipped |
+| Completion accretion gate | Agent-caused growth past thresholds | `pkg/verify/accretion.go` (800/1500 thresholds, ±50 delta) | Shipped |
+| Architecture lint tests | Forbidden lifecycle state packages/imports | `cmd/orch/architecture_lint_test.go` (4 tests) | Shipped, not in CI |
+| Spawn rate limiter | Velocity exceeding verification bandwidth | `pkg/spawn/gates/ratelimit.go` | Shipped |
+| Spawn concurrency gate | Too many parallel agents | `pkg/spawn/gates/concurrency.go` | Shipped |
+| Claude Code deny hooks | Forbidden tool usage at spawn time | `~/.orch/hooks/*.py` (12 scripts, 5 denials) | Shipped, mutable |
+
+**Existing soft harness (orch-go):**
+
+| Mechanism | What It Influences | Measured? | Measured Effectiveness |
+|-----------|-------------------|-----------|-----------------------|
+| SKILL.md content | Agent procedure, vocabulary, routing | Yes — 265 contrastive trials | Knowledge: +5 lift. Stance (attention primers): +2 to +7. Behavioral: inert at 10+ |
+| CLAUDE.md | Codebase conventions, constraints | No | Unknown — daemon.go grew past stated 1500-line convention |
+| .kb/ knowledge | Prior findings, decisions, models | No | Unknown |
+| SPAWN_CONTEXT.md | Hotspot awareness, skill context | No | Advisory injection, no compliance gate |
+| Coaching plugin | Mid-session correction | Partial | Only works for OpenCode spawns, not Claude CLI/tmux |
+
+**The critical asymmetry:** Hard harness doesn't need measurement — a build passes or fails. Soft harness needs contrastive testing to know whether it works at all. The default assumption for soft harness should be "probably doesn't work" until proven otherwise.
+
+### 2. Accretion as Thermodynamics
+
+Accretion is entropy, not a defect. Each agent commit is locally rational; the aggregate effect is structural degradation. This is a thermodynamic property of multi-agent systems, not a quality problem.
+
+**Primary evidence:**
+- `daemon.go` grew +892 lines (667→1559) in 60 days from 30 individually-correct commits. Each added a locally-reasonable capability (stuck detection, health checks, auto-complete, agreement checks, phase timeouts, orphan recovery).
+- Extraction is temporary: Jan 2026 extraction reduced main.go by -1058 lines, clean_cmd.go by -670 lines. But daemon.go regrew past its pre-extraction baseline within 2 months.
+- Counter-evidence: `spawn_cmd.go` *shrank* -840 lines after `pkg/spawn/backends/` was created — proving that attractors (destination packages) break the re-accretion cycle.
+- 6 cross-cutting concerns independently reimplemented across 4-9 files (~2,100 lines of duplicated infrastructure): workspace scanning, beads querying, output formatting, project resolution, filtering, ID extraction.
+
+**Two forces drive accretion:**
+
+1. **Feature gravity** — New capabilities land in run functions because that's where the Cobra command lives. `runDaemonLoop()` at 702 lines is the gravitational center for anything daemon-related. There's no friction pushing code elsewhere.
+
+2. **Missing shared infrastructure** — Without `pkg/workspace/`, `pkg/display/`, or shared beads querying, each command file must be self-contained. This isn't agent laziness — the shared packages don't exist. Self-containment is the only option.
+
+**Prevention requires both:**
+- **Structural attractors** — packages that pull code toward them (e.g., `pkg/spawn/backends/` caused spawn_cmd.go to shrink)
+- **Gates** — enforcement that blocks the old path (pre-commit growth gate catches accretion during authoring)
+
+Attractors without gates → agents still put code in the old location by habit.
+Gates without attractors → agents are blocked with nowhere to put code.
+
+**The thermodynamic analogy:** Attractors are low-energy states that code naturally flows toward. Gates are activation energy barriers preventing code from accumulating in high-entropy states. Extraction without attractors/gates is cooling a room without insulation — it heats right back up.
+
+### 3. Three-Type Vocabulary Transfer
+
+The skill content transfer model (265 trials, 7 skills) discovered three content types that transfer through fundamentally different mechanisms. These map directly to harness components:
+
+| Skill Content Type | Transfer Mechanism | Harness Equivalent | Harness Function |
+|---|---|---|---|
+| **Knowledge** (facts, routing tables, templates) | Direct — agent reads and applies (+5 lift) | **Context** | What agents see |
+| **Stance** (attention primers, not action directives) | Indirect — shifts what agents notice (+2 to +7 on cross-source scenarios) | **Attractors** | Where agents naturally route |
+| **Behavioral** (MUST/NEVER prohibitions) | Unreliable — dilutes at 5+, inert at 10+ | **Constraints/Gates** | What agents can't do |
+
+**The mapping reveals the design error:** We put constraint-type content (behavioral prohibitions) in context-type containers (skill documents). Constraints dilute in context. The correct mapping:
+- Knowledge → keep in skill/context (resilient, no dilution limit until ~50+)
+- Stance → keep in skill/context (only attention primers — "look for X" — not action directives — "do X")
+- Behavioral → move to hard harness (every MUST/NEVER should be a hook, gate, or structural test)
+
+**The why behind attractor-as-stance:** When `pkg/spawn/backends/` exists, agents put spawn code there — not because a skill says to, but because the package name primes their attention. Package structure is an attention primer at the architectural level. This is why attractors work: they're persistent, always-visible stance that doesn't compete with system prompt.
+
+### 4. The OpenAI Parallel
+
+OpenAI's Codex team (~1M lines, 1,500 PRs, 3-7 engineers, 5 months, zero manual code) and our accretion discovery are the same insight from opposite directions:
+
+| Dimension | OpenAI (Greenfield) | orch-go (Retrofit) |
+|-----------|--------------------|--------------------|
+| **Discovery path** | Designed harness before code | Discovered need through pain (3 spirals, 1,625 lost commits) |
+| **Scale** | ~1M lines, ~1,500 PRs | ~80K lines, ~6,000 commits |
+| **Structural tests** | Custom linters enforcing layered deps (Types→Config→Repo→Service→Runtime→UI) at CI | `architecture_lint_test.go` (4 tests, not in CI) |
+| **Entropy management** | "Automated garbage collection" — background agents weekly | Aspirational Layer 3 — not implemented |
+| **Documentation** | AGENTS.md as progressive disclosure (~100-line TOC, 88 files) | CLAUDE.md as monolith + .kb/ knowledge system |
+| **Agent failure model** | "Agent failure = harness bug — fix the environment" | Same: 5th workspace scanner = missing `pkg/workspace/` |
+| **Verification gap** | Noted by Fowler: architectural verification but not behavioral | 14-gate completion pipeline addresses this |
+
+**Three transferable practices:**
+
+1. **Structural tests as first-class artifacts.** OpenAI enforces dependency direction at CI level. Our `architecture_lint_test.go` tests one constraint (no lifecycle state packages). Gap: no tests for function size limits, package boundary violations, or cross-cutting duplication.
+
+2. **Agent failure = harness bug.** Every duplication is a bug report against the architecture, not the agent. The 5th workspace scanner means `pkg/workspace/` is missing.
+
+3. **Entropy management as continuous practice.** OpenAI runs periodic agents scanning for constraint violations. We have detection (hotspot analysis) but not proactive management.
+
+**What OpenAI doesn't address:** How to know WHEN to add new gates. They designed gates before code (greenfield advantage). For retrofit systems, accretion signals (duplication count, regrowth rate, detection-without-prevention) must feed an automated gate discovery system.
+
+**Fowler/Bockeler's critical addition:** The harness approach requires "constraining the solution space" — the opposite of what most expect from AI coding. "Relocating rigor" — rigor doesn't disappear when you stop writing code manually; it migrates to environment design and constraint specification. Also identifies the verification gap: OpenAI doesn't describe functional verification. Our completion pipeline (14 gates, 3 types) addresses this.
+
+### 5. The Measurement Layer
+
+Hard and soft harness require fundamentally different measurement:
+
+| Harness Type | Measurement Need | Method |
+|---|---|---|
+| Hard | None — outcome is deterministic | Build passes or fails |
+| Soft (knowledge) | Moderate — verify agents use facts | Single-turn contrastive tests (+5 point lift) |
+| Soft (stance) | High — verify attention priming | Multi-scenario contrastive tests (bare 0% → stance 83% on S09, but only cross-source scenarios) |
+| Soft (behavioral) | Critical — verify not diluted | Compliance rate (87 constraints → bare parity 5/7 scenarios) |
+
+**The completion verification pipeline through harness lens:**
+
+| Gate Type | Count | Harness Category | Provenance |
+|-----------|-------|-------------------|------------|
+| Execution-based (Build, Vet, Staticcheck) | 3 | **Hard** | Deterministic — cannot be faked |
+| Evidence-based (Phase, Synthesis, Test Evidence, etc.) | 10 | **Structured soft** | Pattern matching — detects theater, not correctness |
+| Judgment-based (Explain-back, Behavioral) | 2 | **Human soft** | Human comprehension — valid because human takes responsibility |
+
+As of Mar 2026, 3 of 15 completion gates run code (up from 1). Vet and staticcheck were added as independent hard gates. Further expansion (actually running tests) would continue increasing hard harness surface.
+
+**The measurement design principle:** Every soft harness component should be contrastively validated before deployment. If adding content to a skill doesn't measurably change behavior, it's dead weight crowding out effective content.
+
+### 6. Implementation Layers
+
+Each layer builds on the previous. Lower layers are more immediately actionable:
+
+| Layer | What | Status | Mechanism |
+|-------|------|--------|-----------|
+| **0** | Pre-commit growth gate | **Shipped** (orch-go-hhq9a, corrected orch-go-34vn0) | `orch precommit accretion`, warning-only, >800→≥30 net lines, >600→≥50 net lines |
+| **1** | Structural tests for package boundaries | **Partially shipped** | `architecture_lint_test.go` (4 tests for lifecycle state), not in CI |
+| **2** | Duplication detector | Not started | Static analysis finding pattern similarity across files |
+| **3** | Periodic entropy agent | Not started | Background agent reviewing growth trends weekly |
+| **4** | Gates that generate gates | Aspirational | Entropy agent drafts structural tests for recurring patterns |
+
+**Layer 0 is shipped and calibrated.** Pre-commit hook calls `orch precommit accretion` via `scripts/pre-commit-exec-start-cleanup.sh`. Warning-only (exits 0 always). Two tiers: >800 lines + ≥30 net additions (approaching CRITICAL); >600 lines + ≥50 net additions (approaching bloat). Thresholds are monotonic — bigger files get stricter limits.
+
+**Layer 1 needs extension.** Current structural tests enforce only the no-lifecycle-state constraint (from two-lane architecture decision). Missing: function size limits for cmd/orch/, package boundary enforcement, cross-cutting duplication detection. These 4 tests also aren't in CI — they require manual `go test` execution.
+
+**Layer 2 would convert the "agent failure = harness bug" principle into automation.** When function similarity > threshold across files, create a beads issue: "shared infrastructure missing for workspace scanning." The detector is hard harness (deterministic); the response is initially soft (recommendation).
+
+**Layer 3 is OpenAI's "garbage collection" pattern.** A periodic agent reviewing duplication detector output, growth trends, and structural test results. Produces recommendations: "pkg/workspace/ needed," "daemon.go periodic tasks should extract."
+
+**Layer 4 is the meta-layer.** When the entropy agent identifies a pattern 3+ times, it drafts the structural test that would prevent it. The harness extending itself. This is aspirational.
+
+### 7. The Governance Insight
+
+In multi-agent systems, every convention that isn't a gate will eventually be violated.
+
+This follows from three system properties:
+
+1. **No persistent memory.** Each agent session starts fresh. Conventions documented in context compete with system prompt (17:1 signal disadvantage) and task pressure.
+
+2. **Volume overwhelms vigilance.** At 45+ commits/day, no human can verify convention compliance. Unverified conventions are unenforced conventions.
+
+3. **Locally rational violations compound.** Each violation is small and justifiable. "I added workspace scanning inline because the task was urgent." Multiply by 30 agents and 60 days: +2,100 lines of duplicated infrastructure.
+
+**Codebase architecture is governance infrastructure for autonomous agents:**
+- Package structure is a routing table for agentic contributions
+- Import boundaries are jurisdiction lines
+- Structural tests are constitutional constraints
+- Pre-commit hooks are procedural rules
+- Escape hatches (`--force-hotspot --architect-ref`) are due process — they allow bypass but require proof of prior review
+
+This reframes architecture from "clean code" to "agent governance." The question changes from "is this good code?" to "does this structure produce correct behavior from agents who have no memory of prior decisions?"
+
+---
+
+## Critical Invariants
+
+1. **Hard harness for enforcement, soft harness for orientation.** Behavioral prohibitions in skill documents produce the worst of both — unreliable enforcement that dilutes reliable knowledge transfer. The orchestrator skill had 87 behavioral constraints; ~83 were non-functional.
+
+2. **Every convention without a gate will eventually be violated.** A convention in CLAUDE.md without infrastructure enforcement is a suggestion with a half-life proportional to context window pressure. daemon.go grew past the stated 1,500-line convention.
+
+3. **Agent failure is harness failure.** The first question for any wrong agent outcome is "what's missing from the harness?" not "what's wrong with the agent?" This is not morale — it's engineering methodology. The harness is the modifiable variable.
+
+4. **Extraction without routing is a pump.** Moving code out of a file without creating an attractor (destination package) results in re-accretion. The gravitational center must be relocated, not just temporarily emptied. daemon.go +892 lines post-extraction proves this.
+
+5. **Prevention > Detection > Rejection.** Each layer further from authoring has higher cost. Pre-commit gate (prevention) < spawn gate (early detection) < completion gate (late detection + wasted work).
+
+6. **Mutable hard harness is soft harness with extra steps.** All current defenses (spawn gates, verify gates, hooks, architecture lint) are source code agents can modify. This is the entropy spiral's core vulnerability. True immutability requires infrastructure that's architecturally unreachable by agents.
+
+---
+
+## Why This Fails
+
+### 1. Soft Harness Masquerading as Hard
+
+**What happens:** Documentation says "files >1,500 lines require extraction." Agent reads this, understands it, adds 200 lines to an 1,800-line file anyway because the task is urgent and no gate blocks it.
+
+**Evidence:** daemon.go grew 667→1559 lines while the >1,500 convention existed in CLAUDE.md. Only after the spawn hotspot gate was implemented did blocking actually occur.
+
+### 2. Gate Calibration Death Spiral
+
+**What happens:** Gate too strict → high false positive rate → `--force` reflex → gate becomes noise → no enforcement.
+
+**Evidence:** Original strategic-first hotspot gate blocked ALL non-architect spawns. Build fixes, investigations, and low-risk work all blocked.
+
+**Fix:** "The fix for an ignored gate is never 'make it louder' — it's 'make it more precise.'" Tiered enforcement (warning at 800, hard gate at 1,500) with skill-based exemptions.
+
+### 3. Attractors Without Gates (and Vice Versa)
+
+**What happens (attractors without gates):** `pkg/daemon/` exists (896 lines) but new features still land in `cmd/orch/daemon.go` because the Cobra command lives there. Attractor exists but no gate prevents the old path.
+
+**What happens (gates without attractors):** Pre-commit warns status_cmd.go is too large, but no `pkg/display/` or `pkg/workspace/` exists for extracted code. Agent sees warning but has nowhere to go.
+
+### 4. Mutable Control Plane
+
+**What happens:** All defenses live inside the system agents can modify. Three entropy spirals (1,625 lost commits) occurred with mutable infrastructure. Circuit breaker is currently disabled.
+
+**Mitigation (partial):** Compiled binary provides temporal buffer. Full resolution requires `chflags uchg` on hook files, removing `Edit(*/.claude/*)` from allow list, re-enabling circuit breaker.
+
+### 5. Measurement Artifacts in Soft Harness
+
+**What happens:** Soft harness appears to work based on flawed measurement, creating false confidence.
+
+**Evidence:** The "detection-to-action gap" (agents detect but still approve completion) was a measurement artifact — negation indicators failed when agents refused by naming what they refused. Re-scoring with positive refusal detection showed 0/6 → 6/6. Even the measurement infrastructure for soft harness is itself soft.
+
+---
+
+## Constraints
+
+### Why Hard Over Soft?
+
+**Constraint:** Instruction hierarchy (system > user) means skill content is structurally subordinate to system prompt defaults. Behavioral constraints compete at 17:1 disadvantage.
+
+**This enables:** Simple skill documents focused on knowledge and stance
+**This constrains:** All enforcement must be infrastructure, not prose
+
+### Why Both Attractors and Gates?
+
+**Constraint:** Gates without attractors block agents with nowhere to go. Attractors without gates are optional.
+
+**This enables:** Agents blocked from wrong paths AND guided toward right paths
+**This constrains:** Cannot ship a gate without ensuring the alternative path exists
+
+### Why Entropy Management Is Continuous?
+
+**Constraint:** Extraction is temporary entropy reduction. daemon.go regrew past pre-extraction baseline in 60 days.
+
+**This enables:** Proactive detection before CRITICAL thresholds
+**This constrains:** Cannot treat extraction as "done" — must monitor for re-accretion
+
+### Why Package Structure Matters More Than Instructions?
+
+**Constraint:** Package structure is persistent across all agent sessions — always visible, always enforced (by the compiler). Instructions compete with system prompt and degrade under pressure.
+
+**This enables:** Architecture-as-communication design philosophy
+**This constrains:** Cannot compensate for bad architecture with good instructions
+
+---
+
+## Relationship to Other Models
+
+```
+                    Harness Engineering
+                   (this model — the frame)
+                          │
+           ┌──────────────┼──────────────────┐
+           │              │                  │
+    Architectural    Entropy Spiral    Skill Content
+    Enforcement      (why soft          Transfer
+    (hard harness     harness fails    (vocabulary for
+     mechanisms)      under pressure)   classifying
+           │              │             harness content)
+           │              │                  │
+           └──────────────┼──────────────────┘
+                          │
+              ┌───────────┴───────────┐
+              │                       │
+       Extract Patterns       Completion Verification
+       (temporary entropy     (14-gate pipeline:
+        reduction)             1 hard, 11 evidence,
+                               2 judgment)
+```
+
+- **Architectural Enforcement** details how hard harness mechanisms work (spawn gates, completion gates, coaching, CLAUDE.md).
+- **Entropy Spiral** explains what happens when soft harness fails at scale — locally correct changes compose into globally incoherent systems.
+- **Skill Content Transfer** provides the vocabulary (knowledge/stance/behavioral → context/attractors/constraints) for classifying harness content.
+- **Extract Patterns** describes extraction mechanics — necessary but not sufficient without attractors and gates.
+- **Completion Verification** shows the gate type taxonomy: 1 execution-based (hard), 11 evidence-based (structured soft), 2 judgment-based (human soft). The sharp boundary at execution is the harness engineering frontier.
+
+---
+
+## Evolution
+
+**2025-12-21 to 2026-02-12:** Three entropy spirals (1,625 lost commits). System learned intellectually (post-mortems) but not structurally (no gates implemented between spirals). Origin story — pain as discovery mechanism.
+
+**2026-01-03 to 2026-01-08:** Code extraction round. main.go -1058, clean_cmd.go -670. Redistribution without deduplication. Moved the problem.
+
+**2026-02-14:** Four-layer architectural enforcement designed. First structural thinking about hard harness.
+
+**2026-02-26:** Three-layer hotspot enforcement decision. `--force-hotspot` + `--architect-ref`. Investigation→architect→implementation sequence infrastructure-enforced.
+
+**2026-03-01 to 2026-03-06:** Skill content transfer experiments (265 trials, 7 skills). Behavioral dilution empirically confirmed. Three-type vocabulary crystallized the hard/soft distinction.
+
+**2026-03-07 (morning):** Accretion structural analysis. daemon.go +892 lines, 6 cross-cutting concerns. "Extraction without routing is a pump." Pre-commit growth gate thresholds corrected.
+
+**2026-03-07 (afternoon):** OpenAI parallel discovered. Thread synthesized. This model created, unifying accretion, skill dilution, OpenAI practices, and existing enforcement models into the harness engineering framework.
+
+---
+
+## References
+
+**Investigations:**
+- `.kb/investigations/2026-03-07-inv-analyze-accretion-pattern-orch-go.md` — Primary accretion evidence
+- `.kb/investigations/2026-03-07-inv-add-pre-commit-growth-gate.md` — Layer 0 implementation
+- `.kb/investigations/2026-02-14-inv-architect-design-accretion-gravity-enforcement.md` — Four-layer enforcement design
+- `.kb/investigations/2026-02-24-synthesis-enforcement-accretion-verification-design-burst.md` — Cross-investigation synthesis
+
+**Thread:**
+- `.kb/threads/2026-03-07-harness-engineering-structural-enforcement-agent.md`
+
+**Related Models:**
+- `.kb/models/architectural-enforcement/model.md` — Hard harness mechanisms
+- `.kb/models/entropy-spiral/model.md` — Soft harness failure at scale
+- `.kb/models/skill-content-transfer/model.md` — Three-type vocabulary, contrastive measurement
+- `.kb/models/extract-patterns/model.md` — Extraction mechanics
+- `.kb/models/completion-verification/model.md` — 14-gate pipeline, gate type taxonomy
+
+**Decisions:**
+- `.kb/decisions/2026-02-26-three-layer-hotspot-enforcement.md`
+- `.kb/decisions/2026-02-25-no-code-review-gate-expand-execution-verification.md`
+
+**External:**
+- OpenAI: https://openai.com/index/harness-engineering/
+- Fowler/Bockeler: https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html
+
+**Primary Evidence (Verify These):**
+- `cmd/orch/daemon.go` — +892 lines in 60 days (feature gravity evidence)
+- `cmd/orch/spawn_cmd.go` — shrank -840 lines after `pkg/spawn/backends/` (attractor evidence)
+- `pkg/spawn/gates/hotspot.go` — Spawn gate with `--architect-ref` verification
+- `pkg/verify/accretion.go` — Completion accretion gate (800/1500 thresholds, ±50 delta)
+- `pkg/verify/precommit.go` — Pre-commit growth gate (Layer 0)
+- `cmd/orch/architecture_lint_test.go` — Structural tests (Layer 1, partial)
+
+## Probes
+
+- 2026-03-07: Completion verification through harness lens — Confirms hard/soft taxonomy: 1 of 14 gates is execution-based (hard), 11 evidence-based (structured soft), 2 judgment-based (human soft). Build gate is the only unfakeable gate.
