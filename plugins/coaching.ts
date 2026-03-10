@@ -8,8 +8,6 @@
  * - Behavioral variation (3+ debugging attempts without strategic pause)
  * - Circular patterns (contradicting prior investigation recommendations)
  *
- * Hypothesis: Do quantified metrics drive orchestrator behavior change?
- *
  * Architecture:
  * - Track tool usage patterns via tool.execute.after
  * - Calculate behavioral metrics (ratios, sequences, variations)
@@ -17,1083 +15,29 @@
  * - Exposed via /api/coaching endpoint
  * - Displayed in dashboard
  *
- * Phase 1 (Behavioral Variation Detection):
- * - Semantic tool grouping: bash commands grouped by domain (process_mgmt, git, etc.)
- * - Variation counter: track consecutive attempts in same semantic group
- * - Strategic pause heuristic: 30s no tools = pause (resets variation counter)
- * - Emit behavioral_variation metric when 5+ variations detected
- *
- * Phase 2 (Cross-Document Circular Detection):
- * - Parse investigation D.E.K.N. summaries from .kb/investigations/*.md
- * - Extract "Next:" field recommendations (architectural guidance)
- * - Track architectural decisions in session (git commits, bd create, file edits)
- * - Emit circular_pattern metric when decisions contradict prior recommendations
- * - Example: "Next: Use overmind" → session creates launchd plists
- *
  * Reference: docs/designs/2026-01-10-orchestrator-coaching-plugin.md
- * Reference: .kb/investigations/2026-01-10-inv-probe-pattern-retrospective-validate-detection.md
- * Reference: .kb/investigations/2026-01-10-inv-phase-cross-document-parsing-circular.md
  */
 
 import type { Plugin } from "@opencode-ai/plugin"
-import {
-  appendFileSync,
-  mkdirSync,
-  existsSync,
-  readFileSync,
-  writeFileSync,
-  readdirSync,
-  statSync,
-} from "fs"
-import { homedir } from "os"
-import { join, dirname } from "path"
 import { exec } from "child_process"
 
-const LOG_PREFIX = "[coaching]"
-const DEBUG = process.env.ORCH_PLUGIN_DEBUG === "1"
-const METRICS_PATH = join(homedir(), ".orch", "coaching-metrics.jsonl")
-const MAX_LINES = 1000 // Keep last 1000 lines
-const STRATEGIC_PAUSE_MS = 30 * 1000 // 30 seconds = strategic pause
-const VARIATION_THRESHOLD = 5 // 5+ variations triggers behavioral_variation metric
-const COACH_SESSION_ID = process.env.ORCH_COACH_SESSION_ID || "" // Coach session to stream metrics to
-
-// Accretion thresholds (matches pkg/verify/accretion.go)
-const AccretionWarningThreshold = 800   // Files >800 lines trigger warnings
-const AccretionCriticalThreshold = 1500 // Files >1500 lines are CRITICAL
-
-function log(...args: any[]) {
-  if (DEBUG) console.log(LOG_PREFIX, ...args)
-}
-
-/**
- * NOTE: Worker detection moved to per-session detection in tool hooks.
- * Plugin-level detection (checking process.env.ORCH_WORKER) doesn't work because
- * the plugin runs in the OpenCode server process, not in spawned agent processes.
- * See detectWorkerSession() function below for the correct implementation.
- */
-
-interface CoachingMetric {
-  timestamp: string
-  session_id?: string
-  metric_type: string
-  value: number
-  details?: any
-}
-
-/**
- * Phase 2: Investigation recommendation for circular pattern detection.
- */
-interface InvestigationRecommendation {
-  filePath: string // Path to investigation file
-  fileName: string // Just the filename for display
-  date: string // From filename YYYY-MM-DD
-  next: string // Content of **Next:** field
-  keywords: string[] // Extracted keywords for matching (launchd, overmind, etc.)
-}
-
-
-
-/**
- * Semantic groups for bash commands.
- * Commands in the same group are considered "similar" for variation detection.
- * Example: overmind start, overmind status, overmind restart = all "process_mgmt"
- */
-type SemanticGroup =
-  | "process_mgmt" // overmind, tmux, launchd, launchctl, systemctl
-  | "git" // git commands
-  | "build" // make, go build, npm, bun
-  | "test" // go test, npm test, jest, pytest
-  | "knowledge" // kb, bd commands
-  | "orch" // orch spawn, orch status, etc.
-  | "file_ops" // ls, cat, mkdir, cp, mv, rm
-  | "network" // curl, wget, nc, ssh
-  | "other" // fallback
-
-/**
- * Patterns for semantic command classification.
- * Order matters - first match wins.
- * More specific patterns should come before general ones.
- */
-const SEMANTIC_PATTERNS: Array<{ group: SemanticGroup; patterns: RegExp[] }> = [
-  {
-    group: "process_mgmt",
-    patterns: [
-      /\bovermind\b/,
-      /\btmux\b/,
-      /\blaunchd\b/,
-      /\blaunchctl\b/,
-      /\bsystemctl\b/,
-      /\bservice\b/,
-      /\bkill\b/,
-      /\bpkill\b/,
-      /\bps\b.*aux/,
-      /\bpgrep\b/,
-      /\blsof\b/,
-    ],
-  },
-  {
-    group: "git",
-    patterns: [/\bgit\b/],
-  },
-  // Test patterns must come BEFORE build patterns (npm test vs npm install)
-  {
-    group: "test",
-    patterns: [/\bgo test\b/, /\bnpm test\b/, /\bjest\b/, /\bpytest\b/, /\bvitest\b/],
-  },
-  {
-    group: "build",
-    patterns: [/\bmake\b/, /\bgo build\b/, /\bgo install\b/, /\bnpm\b/, /\bbun\b/, /\bcargo\b/],
-  },
-  {
-    group: "knowledge",
-    patterns: [/\bkb\b/, /\bbd\b/],
-  },
-  // Orch pattern: must be command start, not part of a path like ~/.orch/
-  {
-    group: "orch",
-    patterns: [/^orch\b/, /\borch spawn\b/, /\borch status\b/, /\borch complete\b/],
-  },
-  {
-    group: "file_ops",
-    patterns: [/\bls\b/, /\bcat\b/, /\bmkdir\b/, /\bcp\b/, /\bmv\b/, /\brm\b/, /\bfind\b/, /\brg\b/],
-  },
-  {
-    group: "network",
-    patterns: [/\bcurl\b/, /\bwget\b/, /\bnc\b/, /\bssh\b/, /\bhttp\b/],
-  },
-]
-
-/**
- * Classify a bash command into a semantic group.
- */
-function classifyBashCommand(command: string): SemanticGroup {
-  if (!command) return "other"
-
-  for (const { group, patterns } of SEMANTIC_PATTERNS) {
-    for (const pattern of patterns) {
-      if (pattern.test(command)) {
-        return group
-      }
-    }
-  }
-
-  return "other"
-}
-
-
-
-/**
- * Detect if a bash command is a spawn.
- */
-function isSpawn(command: string): boolean {
-  if (!command) return false
-  return command.includes("orch spawn")
-}
-
-/**
- * Phase 2: Parse D.E.K.N. Summary from investigation markdown.
- * Extracts the **Next:** field which contains architectural recommendations.
- */
-function parseDEKNSummary(content: string): string | null {
-  // Look for ## Summary (D.E.K.N.) section
-  const deknMatch = content.match(/## Summary \(D\.E\.K\.N\.\)([\s\S]*?)(?=\n##|$)/i)
-  if (!deknMatch) {
-    return null
-  }
-
-  const deknSection = deknMatch[1]
-
-  // Extract **Next:** field
-  const nextMatch = deknSection.match(/\*\*Next:\*\*\s+(.+?)(?=\n\*\*|$)/s)
-  if (!nextMatch) {
-    return null
-  }
-
-  return nextMatch[1].trim()
-}
-
-/**
- * Phase 2: Extract architectural keywords from recommendation text.
- * Keywords are used for contradiction detection.
- */
-function extractKeywords(text: string): string[] {
-  const lowerText = text.toLowerCase()
-  const keywords: string[] = []
-
-  // Architecture patterns
-  const patterns = [
-    "launchd",
-    "overmind",
-    "tmux",
-    "systemd",
-    "docker",
-    "kubernetes",
-    "procfile",
-    "plist",
-    "daemon",
-    "supervisor",
-  ]
-
-  for (const pattern of patterns) {
-    if (lowerText.includes(pattern)) {
-      keywords.push(pattern)
-    }
-  }
-
-  return keywords
-}
-
-/**
- * Phase 2: Load all investigation recommendations from .kb/investigations/.
- * Returns array of parsed recommendations with Next field and keywords.
- */
-function loadInvestigationRecommendations(directory: string): InvestigationRecommendation[] {
-  const recommendations: InvestigationRecommendation[] = []
-  const invDir = join(directory, ".kb", "investigations")
-
-  if (!existsSync(invDir)) {
-    log("Investigation directory not found:", invDir)
-    return recommendations
-  }
-
-  try {
-    const files = readdirSync(invDir)
-
-    for (const file of files) {
-      if (!file.endsWith(".md")) continue
-
-      const filePath = join(invDir, file)
-      const stat = statSync(filePath)
-      if (!stat.isFile()) continue
-
-      // Extract date from filename (YYYY-MM-DD-...)
-      const dateMatch = file.match(/^(\d{4}-\d{2}-\d{2})/)
-      if (!dateMatch) continue
-
-      const content = readFileSync(filePath, "utf-8")
-      const next = parseDEKNSummary(content)
-
-      if (next) {
-        const keywords = extractKeywords(next)
-        recommendations.push({
-          filePath,
-          fileName: file,
-          date: dateMatch[1],
-          next,
-          keywords,
-        })
-
-        log(`Loaded recommendation from ${file}: ${keywords.join(", ")}`)
-      }
-    }
-
-    log(`Loaded ${recommendations.length} investigation recommendations`)
-  } catch (err) {
-    if (DEBUG) console.error(LOG_PREFIX, "Failed to load investigation recommendations:", err)
-  }
-
-  return recommendations
-}
-
-/**
- * Phase 2: Detect if command represents an architectural decision.
- * Returns extracted keywords if it's a decision, null otherwise.
- */
-function detectArchitecturalDecision(command: string): string[] | null {
-  if (!command) return null
-
-  const lowerCommand = command.toLowerCase()
-
-  // Git commit messages often contain architectural choices
-  if (command.includes("git commit")) {
-    // Extract commit message after -m flag
-    const messageMatch = command.match(/-m\s+["']([^"']+)["']/i)
-    if (messageMatch) {
-      return extractKeywords(messageMatch[1])
-    }
-  }
-
-  // File edits to architecture files (plist, Procfile, etc.)
-  if (
-    command.includes(".plist") ||
-    command.includes("Procfile") ||
-    command.includes("launchd") ||
-    command.includes("overmind")
-  ) {
-    return extractKeywords(command)
-  }
-
-  // bd create for architectural issues
-  if (command.includes("bd create") && (command.includes("--type") || command.includes("-t"))) {
-    return extractKeywords(command)
-  }
-
-  return null
-}
-
-/**
- * Phase 2: Check if decision keywords contradict recommendation keywords.
- * Returns contradicting recommendation if found, null otherwise.
- */
-function findContradiction(
-  decisionKeywords: string[],
-  recommendations: InvestigationRecommendation[]
-): InvestigationRecommendation | null {
-  if (!decisionKeywords.length) return null
-
-  // Look for recommendations with different keywords in same domain
-  // Example: decision has "launchd", recommendation has "overmind"
-  const architectureGroups = {
-    process_supervision: ["launchd", "overmind", "systemd", "supervisor", "daemon"],
-    containerization: ["docker", "kubernetes"],
-  }
-
-  for (const group of Object.values(architectureGroups)) {
-    const decisionInGroup = decisionKeywords.filter((k) => group.includes(k))
-    if (!decisionInGroup.length) continue
-
-    // Find recommendations with DIFFERENT keywords in same group
-    for (const rec of recommendations) {
-      const recInGroup = rec.keywords.filter((k) => group.includes(k))
-      if (!recInGroup.length) continue
-
-      // Check for contradiction: different keywords in same domain
-      const hasContradiction = recInGroup.some((rk) => !decisionKeywords.includes(rk))
-
-      if (hasContradiction) {
-        log(
-          `Potential circular pattern: Decision uses ${decisionInGroup.join(", ")} but ${rec.fileName} recommended ${recInGroup.join(", ")}`
-        )
-        return rec
-      }
-    }
-  }
-
-  return null
-}
-
-/**
- * Write metric to JSONL file.
- */
-function writeMetric(metric: CoachingMetric): void {
-  try {
-    mkdirSync(dirname(METRICS_PATH), { recursive: true })
-    appendFileSync(METRICS_PATH, JSON.stringify(metric) + "\n")
-    log("Wrote metric:", metric.metric_type, "=", metric.value)
-  } catch (err) {
-    if (DEBUG) console.error(LOG_PREFIX, "Failed to write metric:", err)
-  }
-}
-
-/**
- * Prune old metrics to keep file size manageable.
- */
-function pruneMetrics(): void {
-  try {
-    if (!existsSync(METRICS_PATH)) return
-
-    const content = readFileSync(METRICS_PATH, "utf-8")
-    const lines = content.split("\n").filter((line) => line.trim() !== "")
-
-    if (lines.length > MAX_LINES) {
-      const keep = lines.slice(-MAX_LINES)
-      writeFileSync(METRICS_PATH, keep.join("\n") + "\n")
-      log(`Pruned metrics file: ${lines.length} → ${keep.length} lines`)
-    }
-  } catch (err) {
-    if (DEBUG) console.error(LOG_PREFIX, "Failed to prune metrics:", err)
-  }
-}
-
-/**
- * Variation tracking state for behavioral variation detection.
- */
-interface VariationState {
-  currentGroup: SemanticGroup | null // Current semantic group being worked on
-  variationCount: number // Consecutive variations in same group
-  lastToolTimestamp: number // When last tool was called (for pause detection)
-  variationHistory: Array<{ group: SemanticGroup; command: string; timestamp: number }> // Recent commands
-}
-
-/**
- * Phase 3.5: Dylan pattern tracking state for Phase 3.5.
- */
-interface DylanPatternState {
-  premiseSkippingCount: number // Count of "how to X" questions that skip premise validation
-  premiseSkippingWarningInjected: boolean // Have we warned about premise-skipping yet?
-  premiseSkippingStrongWarningInjected: boolean // Have we warned strongly (2nd+ occurrence)?
-  recentQuestions: string[] // Last 5 user questions for pattern tracking
-}
-
-/**
- * Frame collapse tracking state for orchestrator code edit detection.
- * Frame collapse = orchestrator editing code files instead of delegating to workers.
- */
-interface FrameCollapseState {
-  codeEditCount: number // Cumulative code file edits
-  lastCodeEditPath: string | null // Most recent code file edited
-  warningInjected: boolean // Have we warned yet?
-  strongWarningInjected: boolean // Have we strongly warned yet?
-}
-
-/**
- * Accretion tracking state for file size growth detection.
- * Accretion = agents adding significant lines to already-large files (>800 lines).
- */
-interface AccretionState {
-  fileEditCounts: Map<string, number> // Per-file edit counters (path -> count)
-  fileWarningInjected: Map<string, boolean> // Per-file first warning tracking
-  fileStrongWarningInjected: Map<string, boolean> // Per-file strong warning tracking
-}
-
-/**
- * Worker health state for worker-specific metric tracking.
- * Workers need different signals than orchestrators (context budget, tool failures, etc.)
- */
-interface WorkerHealthState {
-  sessionId: string
-  sessionStartTime: number          // When session started (for time_in_phase)
-  consecutiveToolFailures: number   // For tool_failure_rate
-  estimatedTokensUsed: number       // For context_usage
-  lastPhaseUpdate: number           // Timestamp of last "Phase:" comment
-  lastCommitTime: number            // Timestamp of last git commit
-  totalToolCalls: number            // For token estimation
-  totalReadBytes: number            // For token estimation
-  lastWarningType?: string          // Type of last health signal injected
-  lastWarningValue?: number         // Value of last health signal injected
-}
-
-
-/**
- * Get line count for a file.
- * Returns the number of lines in the file, or null if the file cannot be read.
- * Used for accretion detection to warn when editing large files.
- */
-function getFileLineCount(filePath: string): number | null {
-  if (!filePath || !existsSync(filePath)) {
-    return null
-  }
-
-  try {
-    const content = readFileSync(filePath, "utf-8")
-    const lines = content.split("\n")
-    return lines.length
-  } catch (err) {
-    if (DEBUG) console.error(LOG_PREFIX, `Failed to read file for line count: ${filePath}`, err)
-    return null
-  }
-}
-
-/**
- * Determine if a file path represents code (vs orchestration artifact).
- * Returns true if editing this file indicates frame collapse.
- */
-function isCodeFile(filePath: string): boolean {
-  if (!filePath) return false
-
-  const lowerPath = filePath.toLowerCase()
-
-  // Orchestration directories - ALLOWED for orchestrators
-  const orchestrationPaths = [
-    "/.orch/",
-    "/.kb/",
-    "/.beads/",
-    "/skills/",
-    "/plugins/",
-    "claude.md",
-    "skill.md",
-    "readme.md",
-    "spawn_context.md",
-    "synthesis.md",
-    "session_handoff.md",
-    "workspace.md",
-    "agents.md",
-  ]
-
-  for (const orchPath of orchestrationPaths) {
-    if (lowerPath.includes(orchPath)) {
-      return false // Orchestration artifact, not code
-    }
-  }
-
-  // Code file extensions - frame collapse indicators
-  const codeExtensions = [
-    ".go",
-    ".ts",
-    ".tsx",
-    ".js",
-    ".jsx",
-    ".css",
-    ".scss",
-    ".less",
-    ".sass",
-    ".py",
-    ".rb",
-    ".java",
-    ".rs",
-    ".c",
-    ".cpp",
-    ".h",
-    ".html",
-    ".vue",
-    ".svelte",
-  ]
-
-  for (const ext of codeExtensions) {
-    if (lowerPath.endsWith(ext)) {
-      return true // Code file
-    }
-  }
-
-  return false // Unknown file type, not flagged
-}
-
-/**
- * Session state tracker.
- */
-interface SessionState {
-  sessionId: string
-  spawns: number
-  lastFlush: number
-  // Phase 1: Behavioral variation detection
-  variation: VariationState
-  // Phase 3.5: Dylan pattern detection
-  dylan: DylanPatternState
-  // Frame collapse detection: orchestrator editing code files
-  frameCollapse: FrameCollapseState
-  // Accretion detection: workers editing large files
-  accretion: AccretionState
-}
-
-
-
-/**
- * Calculate and flush metrics for a session.
- * Now also injects coaching messages into the session when patterns detected.
- */
-async function flushMetrics(state: SessionState, client: any): Promise<void> {
-  state.lastFlush = Date.now()
-  log("Flushed metrics for session:", state.sessionId)
-}
-
-/**
- * Frame 1: Inject coaching message directly into orchestrator session.
- * Uses noReply:true pattern from agentlog-inject.ts to avoid blocking.
- */
-async function injectCoachingMessage(
-  client: any,
-  sessionId: string,
-  patternType: "frame_collapse" | "frame_collapse_strong" | "premise_skipping" | "premise_skipping_strong" | "accretion_warning" | "accretion_strong",
-  details: any
-): Promise<void> {
-  try {
-    let message = ""
-
-    if (patternType === "frame_collapse") {
-      message = `## ⚠️ Frame Collapse Warning
-
-You've edited a code file: \`${details.filePath}\`
-
-**Observation:** Orchestrators delegate implementation to workers. Editing code files directly indicates potential frame collapse.
-
-**Consider:**
-1. Is this work you should have spawned to a worker?
-2. If an agent already failed, try different parameters (skill, model, --mcp)`
-    } else if (patternType === "frame_collapse_strong") {
-      message = `## 🚨 Frame Collapse - Multiple Code Edits
-
-You've now made **${details.count} code file edits** in this session.
-
-**Last edited:** \`${details.filePath}\`
-
-**This is a clear frame collapse pattern.** Orchestrators should delegate, not implement.
-
-**Required Action:**
-1. **STOP** editing code files
-2. Spawn a worker with \`orch spawn feature-impl "your task" --issue BEADS-ID\`
-3. If struggling with spawn strategy, consider \`--mcp playwright\` for UI work
-
-**Why this matters:** Frame collapse wastes orchestrator capacity and bypasses quality gates (worker verification, beads tracking).`
-    } else if (patternType === "premise_skipping") {
-      message = `## 💭 Premise Validation Reminder
-
-Your question: "${details.question.substring(0, 150)}${details.question.length > 150 ? "..." : ""}"
-
-**Observation:** This question assumes a strategic direction ("${details.verb}") without first validating the premise.
-
-**Consider:** Before asking "How do we ${details.verb}?", ask "**Should** we ${details.verb}?"
-
-**Why this matters:** Strategic questions benefit from premise validation first. The Dec 2025 "evolve skills" epic was created from an unvalidated premise and had to be paused when architect review found the premise was wrong. Validating direction before designing solutions avoids wasted work.
-
-**Suggested next step:** Spawn an investigation or architect session to validate the premise first.`
-    } else if (patternType === "premise_skipping_strong") {
-      message = `## ⚠️ Repeated Premise-Skipping Pattern
-
-You've now asked **${details.count} "how to" questions** without premise validation.
-
-**Recent questions:**
-${details.recentQuestions.slice(-3).map((q: string) => `- "${q.substring(0, 100)}..."`).join("\n")}
-
-**Pattern:** Jumping to implementation ("how to ${details.verb}") before validating strategic direction ("should we?").
-
-**Required Action:**
-1. **PAUSE** - Before proceeding with implementation questions
-2. **VALIDATE** - Ask "Should we do this?" or spawn architect/investigation
-3. **THEN PROCEED** - After premise is validated, ask "how to" questions
-
-**Why this matters:** From CLAUDE.md constraint: "Ask 'should we' before 'how do we' for strategic direction changes." The orch-go-erdw epic failure demonstrates the cost of skipping this step.`
-    } else if (patternType === "accretion_warning") {
-      message = `## 📏 File Size Warning
-
-You're editing: \`${details.filePath}\` (${details.lineCount} lines)
-
-**Observation:** This file is ${details.lineCount > 1500 ? "CRITICAL" : "large"} (threshold: ${details.lineCount > 1500 ? "1,500" : "800"} lines). Adding features to large files contributes to "accretion gravity" - the pattern where files grow from manageable to unmaintainable through repeated small additions.
-
-**Consider:**
-1. Extract logic to a new file/package before adding features
-2. See \`.kb/guides/code-extraction-patterns.md\` for extraction workflow
-3. Run \`orch hotspot\` to see all files in accretion risk zones
-
-**Why this matters:** Files over ${details.lineCount > 1500 ? "1,500" : "800"} lines are harder to understand, modify, and test. Extraction before addition prevents technical debt accumulation.`
-    } else if (patternType === "accretion_strong") {
-      message = `## 🚨 Accretion Alert - Multiple Edits to Large File
-
-You've now made **${details.count} edits** to \`${details.filePath}\` (${details.lineCount} lines).
-
-**Pattern detected:** Repeatedly modifying a ${details.lineCount > 1500 ? "CRITICAL" : "large"} file instead of extracting.
-
-**Required Action:**
-1. **STOP** adding to this file
-2. **EXTRACT** logic to pkg/ or a new module BEFORE adding features
-3. **REFERENCE** \`.kb/guides/code-extraction-patterns.md\` for extraction workflow
-4. **CHECK** completion gates will ${details.lineCount > 1500 ? "BLOCK" : "WARN"} if you add +50 lines without extraction
-
-**Why this matters:** Accretion gravity is how spawn_cmd.go grew from 200 to 2,332 lines. Each agent added "just one feature" without extracting. Prevention through extraction is cheaper than cleanup later.
-
-**Suggested approach:** Create a new package for this feature's logic, import it from the existing file.`
-    }
-
-    // Inject using noReply:true pattern
-    if (client?.session?.prompt) {
-      await client.session.prompt({
-        sessionID: sessionId,
-        prompt: message,
-        noReply: true,
-      })
-      log(`✅ Injected ${patternType} coaching into session ${sessionId}`)
-    } else {
-      log(`⚠️ Cannot inject coaching: client.session.prompt unavailable`)
-    }
-  } catch (err) {
-    if (DEBUG) console.error(LOG_PREFIX, "Failed to inject coaching:", err)
-  }
-}
-
-/**
- * Phase 3: Stream metric to coach session for investigation.
- * Coach receives metric + context and decides whether to intervene.
- */
-async function streamToCoach(
-  client: any,
-  sessionId: string,
-  metric: CoachingMetric,
-  context: { recentCommands?: string[]; recommendation?: string }
-): Promise<void> {
-  if (!COACH_SESSION_ID) {
-    return // Coach streaming disabled
-  }
-
-  // Avoid infinite loop - don't stream if this IS the coach session
-  if (sessionId === COACH_SESSION_ID) {
-    log("Skipping coach stream - current session is coach")
-    return
-  }
-
-  try {
-    // Format message for coach investigation
-    const message = formatMetricForCoach(metric, context)
-
-    // Stream to coach session asynchronously
-    await client.session.promptAsync({
-      sessionID: COACH_SESSION_ID,
-      parts: [
-        {
-          type: "text",
-          text: message,
-        },
-      ],
-    })
-
-    log(`✓ Streamed ${metric.metric_type} metric to coach session ${COACH_SESSION_ID}`)
-  } catch (err) {
-    if (DEBUG) console.error(LOG_PREFIX, "Failed to stream to coach:", err)
-  }
-}
-
-/**
- * Format coaching metric into readable message for coach investigation.
- */
-function formatMetricForCoach(metric: CoachingMetric, context: any): string {
-  const lines = [
-    `## Orchestrator Pattern Detected`,
-    ``,
-    `**Metric:** ${metric.metric_type}`,
-    `**Timestamp:** ${metric.timestamp}`,
-    `**Session:** ${metric.session_id}`,
-    `**Value:** ${metric.value}`,
-    ``,
-  ]
-
-  // Add metric-specific details
-  if (metric.metric_type === "behavioral_variation") {
-    lines.push(
-      `**Pattern:** ${metric.value} consecutive variations in ${metric.details.group} without strategic pause`,
-      ``,
-      `**Recent Commands:**`,
-      ...metric.details.commands.map((cmd: string) => `- \`${cmd}\``),
-      ``,
-      `**Threshold:** ${metric.details.threshold} variations`,
-      ``
-    )
-  } else if (metric.metric_type === "circular_pattern") {
-    lines.push(
-      `**Pattern:** Decision contradicts prior investigation recommendation`,
-      ``,
-      `**Decision Command:** \`${metric.details.decision_command}\``,
-      `**Decision Keywords:** ${metric.details.decision_keywords.join(", ")}`,
-      ``,
-      `**Contradicts Investigation:** ${metric.details.contradicts_investigation}`,
-      `**Recommendation:** ${metric.details.recommendation}`,
-      `**Recommendation Keywords:** ${metric.details.recommendation_keywords.join(", ")}`,
-      `**Recommendation Date:** ${metric.details.recommendation_date}`,
-      ``
-    )
-  }
-
-  // Add context if provided
-  if (context.recentCommands) {
-    lines.push(`**Recent Transcript Context:**`, ...context.recentCommands.map((cmd) => `- ${cmd}`), ``)
-  }
-
-  if (context.recommendation) {
-    lines.push(`**Investigation Recommendation:** ${context.recommendation}`, ``)
-  }
-
-  lines.push(
-    `---`,
-    ``,
-    `**Your Task:** Investigate whether this pattern is a real concern or false positive. Use Read tool to examine .kb/investigations/ for context. Provide observations if intervention needed.`
-  )
-
-  return lines.join("\n")
-}
-
-/**
- * Phase 3.5: Extract user messages from messages array.
- * Returns array of text content from user messages (role='user').
- */
-function extractUserMessages(
-  messages: Array<{ info: any; parts: any[] }>
-): Array<{ text: string; messageId: string }> {
-  const userMessages: Array<{ text: string; messageId: string }> = []
-
-  for (const msg of messages) {
-    if (msg.info.role !== "user") continue
-
-    for (const part of msg.parts) {
-      if (part.type !== "text" || part.ignored || part.synthetic) continue
-      if (part.text && part.text.trim()) {
-        userMessages.push({
-          text: part.text.trim(),
-          messageId: msg.info.id || "unknown",
-        })
-      }
-    }
-  }
-
-  return userMessages
-}
-
-
-
-
-
-/**
- * Detect premise-skipping question patterns.
- * Returns {matched: true, verb, extracted} if question assumes strategic direction without premise validation.
- * Example: "How do we migrate to X?" → suggests asking "Should we migrate to X?" first
- */
-function detectPremiseSkipping(text: string): { matched: boolean; verb?: string; extracted?: string } | null {
-  const lowerText = text.toLowerCase()
-
-  // Red-flag strategic verbs that indicate direction changes
-  const strategicVerbs = [
-    "migrate",
-    "evolve",
-    "fix",
-    "centralize",
-    "transition",
-    "implement",
-    "solve",
-    "change",
-    "shift",
-    "move",
-    "refactor",
-    "rewrite",
-    "rebuild",
-  ]
-
-  // Implementation-focused phrasing patterns
-  // Match "how to X", "how do we X", "how should we X", "how can we X"
-  const howPatterns = [
-    /how\s+(?:to|do\s+we|should\s+we|can\s+we)\s+(\w+)/gi,
-  ]
-
-  for (const pattern of howPatterns) {
-    const matches = lowerText.matchAll(pattern)
-    for (const match of matches) {
-      const verb = match[1]
-      
-      // Check if verb is a strategic direction verb
-      if (strategicVerbs.includes(verb)) {
-        // Additional check: Skip if this is a tactical "I" question (personal pronoun)
-        // "How do I migrate this database?" (tactical) vs "How do we migrate to microservices?" (strategic)
-        if (lowerText.includes(" i ") || lowerText.includes("my ")) {
-          continue // Skip tactical questions
-        }
-
-        return {
-          matched: true,
-          verb,
-          extracted: match[0],
-        }
-      }
-    }
-  }
-
-  return null
-}
-
-
-
-
-
-/**
- * Estimate token usage for a worker session.
- * Rough approximation: 1 token ≈ 4 chars average
- * Based on: tool calls (~500 tokens each) + read bytes (~1 token / 4 chars)
- * This is intentionally approximate - see architect investigation for rationale.
- */
-function estimateWorkerTokenUsage(state: WorkerHealthState): number {
-  const TOKENS_PER_TOOL_CALL = 500   // Average tool call overhead
-  const CHARS_PER_TOKEN = 4          // Average chars per token
-
-  const toolCallTokens = state.totalToolCalls * TOKENS_PER_TOOL_CALL
-  const readTokens = Math.round(state.totalReadBytes / CHARS_PER_TOKEN)
-
-  return toolCallTokens + readTokens
-}
-
-/**
- * Inject a health signal (warning) into the agent's context using noReply: true.
- * This provides immediate feedback ("Pain") to the agent when metrics cross thresholds.
- *
- * @param client OpenCode client
- * @param state Worker health state
- * @param metricType Type of metric triggering the signal
- * @param value Current value of the metric
- */
-async function injectHealthSignal(
-  client: any,
-  state: WorkerHealthState,
-  metricType: string,
-  value: number
-): Promise<void> {
-  if (!client?.session?.prompt) {
-    log("Cannot inject health signal: client.session.prompt unavailable")
-    return
-  }
-
-  // Avoid duplicate warnings for same type/value
-  if (state.lastWarningType === metricType && state.lastWarningValue === value) {
-    return
-  }
-
-  let prompt = ""
-  switch (metricType) {
-    case "tool_failure_rate":
-      if (value >= 5) {
-        prompt = `CRITICAL: You have had ${value} consecutive tool failures. Please STOP and analyze why your tool calls are failing. Check parameters, file paths, and environment state before continuing.`
-      } else if (value >= 3) {
-        prompt = `Warning: You have had ${value} consecutive tool failures. Consider verifying your assumptions or searching for more context.`
-      }
-      break
-    case "context_usage":
-      prompt = `Warning: Your context usage is at ${value}%. You are approaching the token limit. Consider summarizing your findings and focusing on the most relevant files to avoid context exhaustion.`
-      break
-    case "time_in_phase":
-      prompt = `Notice: You have been in the current phase for ${value} minutes. If you are stuck or experiencing analysis paralysis, consider taking a strategic pause or breaking the task into smaller steps.`
-      break
-    case "commit_gap":
-      prompt = `Notice: It has been ${value} minutes since your last commit. If you have made stable changes, consider committing them now to provide a safety net.`
-      break
-  }
-
-  if (prompt) {
-    try {
-      await client.session.prompt({
-        sessionID: state.sessionId,
-        prompt,
-        noReply: true,
-      })
-      log(`Injected health signal for ${metricType}: ${value}`)
-
-      // Update state to prevent repeat
-      state.lastWarningType = metricType
-      state.lastWarningValue = value
-    } catch (err) {
-      log(`Failed to inject health signal for ${metricType}:`, err)
-    }
-  }
-}
-
-/**
- * Track worker health metrics and record to coaching-metrics.jsonl.
- * This is called for worker sessions instead of orchestrator metrics.
- */
-async function trackWorkerHealth(
-  client: any,
-  state: WorkerHealthState,
-  tool: string,
-  success: boolean,
-  args: any,
-  output: any
-): Promise<void> {
-  const now = Date.now()
-  const timestamp = new Date().toISOString()
-
-  // Update tool call count (for token estimation)
-  state.totalToolCalls++
-
-  // Track read bytes for token estimation
-  if (tool === "read" && output?.text) {
-    state.totalReadBytes += output.text.length
-  }
-
-  // 1. tool_failure_rate: Track consecutive failures
-  if (!success) {
-    state.consecutiveToolFailures++
-    if (state.consecutiveToolFailures >= 3) {
-      writeMetric({
-        timestamp,
-        session_id: state.sessionId,
-        metric_type: "tool_failure_rate",
-        value: state.consecutiveToolFailures,
-        details: {
-          last_tool: tool,
-          consecutive_failures: state.consecutiveToolFailures,
-        },
-      })
-      log(`Worker metric: tool_failure_rate = ${state.consecutiveToolFailures}`)
-
-      // Inject "Pain" signal into agent context
-      await injectHealthSignal(client, state, "tool_failure_rate", state.consecutiveToolFailures)
-    }
-  } else {
-    // Reset on success
-    state.consecutiveToolFailures = 0
-  }
-
-  // 2. context_usage: Estimate tokens and emit metric periodically
-  state.estimatedTokensUsed = estimateWorkerTokenUsage(state)
-  // Emit every 50 tool calls or when over threshold
-  const CONTEXT_WARNING_THRESHOLD = 80000 // ~80% of 100k typical limit
-  if (state.totalToolCalls % 50 === 0 || state.estimatedTokensUsed > CONTEXT_WARNING_THRESHOLD) {
-    const percentUsed = Math.round((state.estimatedTokensUsed / 100000) * 100)
-    writeMetric({
-      timestamp,
-      session_id: state.sessionId,
-      metric_type: "context_usage",
-      value: percentUsed,
-      details: {
-        estimated_tokens: state.estimatedTokensUsed,
-        total_tool_calls: state.totalToolCalls,
-        total_read_bytes: state.totalReadBytes,
-        threshold_percent: 80,
-      },
-    })
-    log(`Worker metric: context_usage = ${percentUsed}% (~${Math.round(state.estimatedTokensUsed / 1000)}k tokens)`)
-
-    // Inject signal if over threshold
-    if (percentUsed >= 80) {
-      await injectHealthSignal(client, state, "context_usage", percentUsed)
-    }
-  }
-
-  // 3. time_in_phase: Track time since last phase change
-  const minutesInPhase = Math.round((now - state.lastPhaseUpdate) / 60000)
-  // Emit every 5 minutes or when over threshold
-  const TIME_IN_PHASE_WARNING_MINUTES = 15
-  if (state.totalToolCalls % 30 === 0 && minutesInPhase > 5) {
-    writeMetric({
-      timestamp,
-      session_id: state.sessionId,
-      metric_type: "time_in_phase",
-      value: minutesInPhase,
-      details: {
-        minutes_in_phase: minutesInPhase,
-        threshold_minutes: TIME_IN_PHASE_WARNING_MINUTES,
-        session_start: new Date(state.sessionStartTime).toISOString(),
-        last_phase_update: new Date(state.lastPhaseUpdate).toISOString(),
-      },
-    })
-    log(`Worker metric: time_in_phase = ${minutesInPhase} minutes`)
-
-    // Inject signal if over threshold
-    if (minutesInPhase >= TIME_IN_PHASE_WARNING_MINUTES) {
-      await injectHealthSignal(client, state, "time_in_phase", minutesInPhase)
-    }
-  }
-
-  // 4. commit_gap: Track time since last commit (detect via git commands in bash)
-  if (tool === "bash" && args?.command) {
-    const command = args.command as string
-    // Detect successful git commit
-    if (command.includes("git commit") && success) {
-      state.lastCommitTime = now
-      log(`Worker: git commit detected, updating lastCommitTime`)
-    }
-  }
-
-  // Emit commit_gap metric periodically if there have been changes
-  const minutesSinceCommit = state.lastCommitTime > 0
-    ? Math.round((now - state.lastCommitTime) / 60000)
-    : Math.round((now - state.sessionStartTime) / 60000)
-  const COMMIT_GAP_WARNING_MINUTES = 30
-
-  if (state.totalToolCalls % 30 === 0 && minutesSinceCommit > 10) {
-    writeMetric({
-      timestamp,
-      session_id: state.sessionId,
-      metric_type: "commit_gap",
-      value: minutesSinceCommit,
-      details: {
-        minutes_since_commit: minutesSinceCommit,
-        threshold_minutes: COMMIT_GAP_WARNING_MINUTES,
-        last_commit_time: state.lastCommitTime > 0
-          ? new Date(state.lastCommitTime).toISOString()
-          : "never",
-        session_start: new Date(state.sessionStartTime).toISOString(),
-      },
-    })
-    log(`Worker metric: commit_gap = ${minutesSinceCommit} minutes`)
-
-    // Inject signal if over threshold
-    if (minutesSinceCommit >= COMMIT_GAP_WARNING_MINUTES) {
-      await injectHealthSignal(client, state, "commit_gap", minutesSinceCommit)
-    }
-  }
-}
+import type { SessionState, WorkerHealthState } from "./coaching-types"
+import {
+  log,
+  DEBUG,
+  LOG_PREFIX,
+  STRATEGIC_PAUSE_MS,
+  VARIATION_THRESHOLD,
+  AccretionWarningThreshold,
+  pruneMetrics,
+  writeMetric,
+  createSessionState,
+} from "./coaching-types"
+import { classifyBashCommand, isSpawn } from "./coaching-classification"
+import { loadInvestigationRecommendations, detectArchitecturalDecision, findContradiction } from "./coaching-investigation"
+import { injectCoachingMessage, streamToCoach } from "./coaching-injection"
+import { getFileLineCount, isCodeFile, extractUserMessages, detectPremiseSkipping } from "./coaching-detection"
+import { trackWorkerHealth } from "./coaching-worker-health"
 
 /**
  * Promisified exec for async shell commands.
@@ -1128,7 +72,6 @@ function formatHealthSummary(stats: any): string {
     `**Throughput:** ${s.total_spawns} spawned, ${s.task_completions} complete (${Math.round(s.task_completion_rate)}%), ${s.total_abandonments} abandoned | avg ${Math.round(s.avg_duration_minutes)}m`,
   ]
 
-  // Top skills
   if (stats.skill_stats?.length > 0) {
     const topSkills = stats.skill_stats.slice(0, 3).map((sk: any) =>
       `${sk.skill} ${sk.spawns}→${sk.completions}`
@@ -1136,19 +79,16 @@ function formatHealthSummary(stats: any): string {
     lines.push(`**Skills:** ${topSkills}`)
   }
 
-  // Verification
   if (stats.verification_stats) {
     const v = stats.verification_stats
     lines.push(`**Verification:** ${Math.round(v.pass_rate)}% first-try pass (${v.total_attempts} attempts)`)
 
-    // Gate failures
     if (v.failures_by_gate?.length > 0) {
       const gates = v.failures_by_gate.map((g: any) => `${g.gate}:${g.fail_count}`).join(", ")
       lines.push(`**Gate failures:** ${gates}`)
     }
   }
 
-  // Coaching highlights (only non-zero)
   if (stats.coaching_stats) {
     const c = stats.coaching_stats
     const highlights: string[] = []
@@ -1165,11 +105,18 @@ function formatHealthSummary(stats: any): string {
 }
 
 /**
+ * Calculate and flush metrics for a session.
+ */
+async function flushMetrics(state: SessionState, client: any): Promise<void> {
+  state.lastFlush = Date.now()
+  log("Flushed metrics for session:", state.sessionId)
+}
+
+/**
  * OpenCode plugin that tracks orchestrator behavioral patterns.
  */
 export const CoachingPlugin: Plugin = async ({ directory, client }) => {
   log("Plugin initialized, directory:", directory)
-  log("Coach session ID:", COACH_SESSION_ID || "not set (coach streaming disabled)")
 
   // Prune old metrics on startup
   pruneMetrics()
@@ -1179,23 +126,16 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
   log(`Loaded ${investigationRecommendations.length} investigation recommendations for circular detection`)
 
   // Worker session tracking (per-session detection, not plugin-level)
-  // Plugin runs in server process, can't see ORCH_WORKER env from spawned agents
-  const workerSessions = new Map<string, boolean>() // sessionID -> isWorker
-
-  // Worker health state tracking (for worker-specific metrics)
+  const workerSessions = new Map<string, boolean>()
   const workerHealthStates = new Map<string, WorkerHealthState>()
 
   /**
    * Detect if a session is a worker by checking session.metadata.role.
-   * OpenCode sets session.metadata.role = 'worker' when the session is created
-   * with the x-opencode-env-ORCH_WORKER=1 header (set by orch spawn).
    */
   function detectWorkerSession(sessionId: string, session?: { metadata?: { role?: string } }): boolean {
-    // Check cache first
     const cached = workerSessions.get(sessionId)
     if (cached === true) return true
 
-    // Use session metadata role (set by OpenCode from x-opencode-env-ORCH_WORKER header)
     if (session?.metadata?.role === 'worker') {
       workerSessions.set(sessionId, true)
       log(`Worker detected (session.metadata.role): session ${sessionId}`)
@@ -1205,16 +145,13 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
     return false
   }
 
-  // Session state (Map<sessionID, SessionState>)
+  // Session state
   const sessions = new Map<string, SessionState>()
-
-  // Tool call counter for periodic flush
   let toolCallCounter = 0
 
   return {
     /**
      * Auto-surface orch stats health summary on orchestrator session start.
-     * Fires on session.created, skips workers, injects compact summary via noReply.
      */
     event: async ({ event }) => {
       if (event.type !== "session.created") return
@@ -1222,7 +159,6 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       const sessionId = (event as any).properties?.sessionID
       if (!sessionId) return
 
-      // Skip workers: check session metadata from event
       const sessionInfo = (event as any).properties?.info
       if (sessionInfo?.metadata?.role === "worker") {
         workerSessions.set(sessionId, true)
@@ -1230,12 +166,9 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         return
       }
 
-      // Fire-and-forget: fetch stats and inject health summary
       ;(async () => {
-        // Brief delay for progressive worker detection via tool hooks
         await delay(3000)
 
-        // Re-check worker status after delay
         if (workerSessions.get(sessionId) === true) {
           log(`Health summary: Skipping late-detected worker ${sessionId}`)
           return
@@ -1264,67 +197,28 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
 
     /**
      * Phase 3.5: Track Dylan's behavioral patterns via message monitoring.
-     * Detects: explicit prefixes, priority uncertainty, compensation patterns.
      */
     "experimental.chat.messages.transform": async (input: {}, output: { messages: Array<{ info: any; parts: any[] }> }) => {
-      // Extract user messages
       const userMessages = extractUserMessages(output.messages)
       if (userMessages.length === 0) return
 
-      // Get most recent user message
       const latestMessage = userMessages[userMessages.length - 1]
       const text = latestMessage.text
-
-      // Infer session ID from messages (use first message's info if available)
       const sessionId = output.messages[0]?.info?.sessionID || "unknown"
 
-      // Check if this is a worker session
-      const cachedWorkerStatus = workerSessions.get(sessionId)
-      if (cachedWorkerStatus === true) {
-        // Skip Dylan pattern detection for worker sessions
-        return
-      }
+      if (workerSessions.get(sessionId) === true) return
 
-      // Get or create session state
       let state = sessions.get(sessionId)
       if (!state) {
-        state = {
-          sessionId,
-          spawns: 0,
-          lastFlush: Date.now(),
-          variation: {
-            currentGroup: null,
-            variationCount: 0,
-            lastToolTimestamp: Date.now(),
-            variationHistory: [],
-          },
-          dylan: {
-            premiseSkippingCount: 0,
-            premiseSkippingWarningInjected: false,
-            premiseSkippingStrongWarningInjected: false,
-            recentQuestions: [],
-          },
-          frameCollapse: {
-            codeEditCount: 0,
-            lastCodeEditPath: null,
-            warningInjected: false,
-            strongWarningInjected: false,
-          },
-          accretion: {
-            fileEditCounts: new Map(),
-            fileWarningInjected: new Map(),
-            fileStrongWarningInjected: new Map(),
-          },
-        }
+        state = createSessionState(sessionId)
         sessions.set(sessionId, state)
         log("Created session state for Dylan patterns:", sessionId)
       }
 
       // Premise-Skipping Detection
-      // Track recent questions for pattern analysis
       state.dylan.recentQuestions.push(text)
       if (state.dylan.recentQuestions.length > 5) {
-        state.dylan.recentQuestions.shift() // Keep last 5
+        state.dylan.recentQuestions.shift()
       }
 
       const premiseSkipResult = detectPremiseSkipping(text)
@@ -1345,11 +239,9 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         }
 
         writeMetric(metric)
-        log(`⚠️ PREMISE-SKIPPING DETECTED: "${premiseSkipResult.extracted}" (verb: ${premiseSkipResult.verb})`)
+        log(`PREMISE-SKIPPING DETECTED: "${premiseSkipResult.extracted}" (verb: ${premiseSkipResult.verb})`)
 
-        // Graduated coaching: first detection → suggestion, 2nd+ → stronger reminder
         if (!state.dylan.premiseSkippingWarningInjected) {
-          // First detection - gentle suggestion
           await injectCoachingMessage(client, sessionId, "premise_skipping", {
             question: text.substring(0, 200),
             verb: premiseSkipResult.verb,
@@ -1360,7 +252,6 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
           state.dylan.premiseSkippingCount >= 2 &&
           !state.dylan.premiseSkippingStrongWarningInjected
         ) {
-          // 2nd+ detection - stronger reminder
           await injectCoachingMessage(client, sessionId, "premise_skipping_strong", {
             question: text.substring(0, 200),
             verb: premiseSkipResult.verb,
@@ -1370,7 +261,6 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
           state.dylan.premiseSkippingStrongWarningInjected = true
         }
 
-        // Stream to coach
         streamToCoach(client, sessionId, metric, {
           recentCommands: state.dylan.recentQuestions,
         })
@@ -1386,10 +276,9 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
 
       if (!tool || !sessionId) return
 
-      // Check if this is a worker session (uses session.metadata.role set by OpenCode)
+      // Worker session handling
       const isWorker = detectWorkerSession(sessionId, input.session)
       if (isWorker) {
-        // Track worker-specific health metrics instead of orchestrator metrics
         let workerState = workerHealthStates.get(sessionId)
         if (!workerState) {
           const now = Date.now()
@@ -1398,8 +287,8 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
             sessionStartTime: now,
             consecutiveToolFailures: 0,
             estimatedTokensUsed: 0,
-            lastPhaseUpdate: now,        // Assume phase started at session start
-            lastCommitTime: 0,           // 0 means no commit yet
+            lastPhaseUpdate: now,
+            lastCommitTime: 0,
             totalToolCalls: 0,
             totalReadBytes: 0,
           }
@@ -1407,68 +296,29 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
           log(`Created worker health state for session ${sessionId}`)
         }
 
-        // Determine if tool succeeded (check for error in output)
         const success = !output?.error && !output?.isError
-
-        // Track worker health metrics
         await trackWorkerHealth(client, workerState, tool, success, input.args, output)
 
-        // Accretion Detection: Track edit/write on large files (>800 lines)
-        // Only triggers for worker sessions (NOT orchestrator sessions)
+        // Accretion Detection for workers
         if (tool === "edit" || tool === "write") {
           const filePath = (input as any).args?.file_path || (input as any).args?.filePath || ""
 
           if (filePath) {
-            // Get file line count
             const lineCount = getFileLineCount(filePath)
 
-            // Check if file is in accretion risk zone (>800 lines)
             if (lineCount && lineCount > AccretionWarningThreshold) {
-              // Get or create session state for accretion tracking
-              // (Separate from orchestrator session state - this is worker-specific accretion)
               let workerSessionState = sessions.get(sessionId)
               if (!workerSessionState) {
-                workerSessionState = {
-                  sessionId,
-                  spawns: 0,
-                  lastFlush: Date.now(),
-                  variation: {
-                    currentGroup: null,
-                    variationCount: 0,
-                    lastToolTimestamp: Date.now(),
-                    variationHistory: [],
-                  },
-                  dylan: {
-                    premiseSkippingCount: 0,
-                    premiseSkippingWarningInjected: false,
-                    premiseSkippingStrongWarningInjected: false,
-                    recentQuestions: [],
-                  },
-                  frameCollapse: {
-                    codeEditCount: 0,
-                    lastCodeEditPath: null,
-                    warningInjected: false,
-                    strongWarningInjected: false,
-                  },
-                  accretion: {
-                    fileEditCounts: new Map(),
-                    fileWarningInjected: new Map(),
-                    fileStrongWarningInjected: new Map(),
-                  },
-                }
+                workerSessionState = createSessionState(sessionId)
                 sessions.set(sessionId, workerSessionState)
                 log(`Created worker session state for accretion tracking: ${sessionId}`)
               }
 
-              // Track per-file edit count
               const currentCount = workerSessionState.accretion.fileEditCounts.get(filePath) || 0
               workerSessionState.accretion.fileEditCounts.set(filePath, currentCount + 1)
 
-              log(
-                `⚠️ ACCRETION: Large file edit detected: ${filePath} (${lineCount} lines, edit ${currentCount + 1})`
-              )
+              log(`ACCRETION: Large file edit detected: ${filePath} (${lineCount} lines, edit ${currentCount + 1})`)
 
-              // Write metric for tracking
               const metric = {
                 timestamp: new Date().toISOString(),
                 session_id: sessionId,
@@ -1478,25 +328,22 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
                   filePath,
                   lineCount,
                   editCount: currentCount + 1,
-                  severity: lineCount > AccretionCriticalThreshold ? "critical" : "warning",
-                  threshold: lineCount > AccretionCriticalThreshold ? AccretionCriticalThreshold : AccretionWarningThreshold,
+                  severity: lineCount > 1500 ? "critical" : "warning",
+                  threshold: lineCount > 1500 ? 1500 : 800,
                 },
               }
               writeMetric(metric)
 
-              // Tiered injection: first warning, then strong warning at 3+ edits to same file
               const hasWarned = workerSessionState.accretion.fileWarningInjected.get(filePath)
               const hasStrongWarned = workerSessionState.accretion.fileStrongWarningInjected.get(filePath)
 
               if (!hasWarned) {
-                // First edit to this large file - warning
                 await injectCoachingMessage(client, sessionId, "accretion_warning", {
                   filePath,
                   lineCount,
                 })
                 workerSessionState.accretion.fileWarningInjected.set(filePath, true)
               } else if (currentCount + 1 >= 3 && !hasStrongWarned) {
-                // 3+ edits to same large file - strong warning
                 await injectCoachingMessage(client, sessionId, "accretion_strong", {
                   filePath,
                   lineCount,
@@ -1505,53 +352,23 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
                 workerSessionState.accretion.fileStrongWarningInjected.set(filePath, true)
               }
 
-              // Stream to coach session for investigation
               streamToCoach(client, sessionId, metric, {})
             }
           }
         }
 
-        // Skip orchestrator metrics for workers
-        return
+        return // Skip orchestrator metrics for workers
       }
 
-      // Get or create session state
+      // Orchestrator session handling
       let state = sessions.get(sessionId)
       if (!state) {
-        state = {
-          sessionId,
-          spawns: 0,
-          lastFlush: Date.now(),
-          variation: {
-            currentGroup: null,
-            variationCount: 0,
-            lastToolTimestamp: Date.now(),
-            variationHistory: [],
-          },
-          dylan: {
-            premiseSkippingCount: 0,
-            premiseSkippingWarningInjected: false,
-            premiseSkippingStrongWarningInjected: false,
-            recentQuestions: [],
-          },
-          frameCollapse: {
-            codeEditCount: 0,
-            lastCodeEditPath: null,
-            warningInjected: false,
-            strongWarningInjected: false,
-          },
-          accretion: {
-            fileEditCounts: new Map(),
-            fileWarningInjected: new Map(),
-            fileStrongWarningInjected: new Map(),
-          },
-        }
+        state = createSessionState(sessionId)
         sessions.set(sessionId, state)
         log("Created session state:", sessionId)
       }
 
-      // Frame Collapse Detection: Track edit/write on code files
-      // Only triggers for orchestrator sessions (NOT worker sessions - already filtered above)
+      // Frame Collapse Detection
       if (tool === "edit" || tool === "write") {
         const filePath = (input as any).args?.file_path || (input as any).args?.filePath || ""
 
@@ -1559,9 +376,8 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
           state.frameCollapse.codeEditCount++
           state.frameCollapse.lastCodeEditPath = filePath
 
-          log(`⚠️ FRAME COLLAPSE: Code file edit detected: ${filePath} (count: ${state.frameCollapse.codeEditCount})`)
+          log(`FRAME COLLAPSE: Code file edit detected: ${filePath} (count: ${state.frameCollapse.codeEditCount})`)
 
-          // Write metric for tracking
           const metric = {
             timestamp: new Date().toISOString(),
             session_id: state.sessionId,
@@ -1574,16 +390,13 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
           }
           writeMetric(metric)
 
-          // Tiered injection: first warning, then strong warning at 3+
           if (state.frameCollapse.codeEditCount === 1 && !state.frameCollapse.warningInjected) {
-            // First code edit - warning
             injectCoachingMessage(client, state.sessionId, "frame_collapse", { filePath })
             state.frameCollapse.warningInjected = true
           } else if (
             state.frameCollapse.codeEditCount >= 3 &&
             !state.frameCollapse.strongWarningInjected
           ) {
-            // 3+ code edits - strong warning
             injectCoachingMessage(client, state.sessionId, "frame_collapse_strong", {
               filePath,
               count: state.frameCollapse.codeEditCount,
@@ -1591,12 +404,11 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
             state.frameCollapse.strongWarningInjected = true
           }
 
-          // Stream to coach session for investigation
           streamToCoach(client, sessionId, metric, {})
         }
       }
 
-      // Special handling for bash commands
+      // Bash command handling
       if (tool === "bash") {
         const command = (input as any).args?.command || ""
 
@@ -1609,7 +421,6 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         const now = Date.now()
         const timeSinceLastTool = now - state.variation.lastToolTimestamp
 
-        // Strategic pause detection: 30s+ without tools resets variation counter
         if (timeSinceLastTool >= STRATEGIC_PAUSE_MS) {
           if (state.variation.variationCount > 0) {
             log(
@@ -1623,26 +434,21 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
           state.variation.variationCount = 0
         }
 
-        // Classify command into semantic group
         const group = classifyBashCommand(command)
         state.variation.lastToolTimestamp = now
 
-        // Track variation history (keep last 20 commands)
         state.variation.variationHistory.push({ group, command, timestamp: now })
         if (state.variation.variationHistory.length > 20) {
           state.variation.variationHistory.shift()
         }
 
-        // Update variation counter
         if (group !== "other") {
           if (state.variation.currentGroup === group) {
-            // Same group - increment variation counter
             state.variation.variationCount++
             log(
               `Variation ${state.variation.variationCount} in ${group}: ${command.substring(0, 60)}`
             )
 
-            // Emit behavioral_variation metric when threshold reached
             if (state.variation.variationCount >= VARIATION_THRESHOLD) {
               const recentHistory = state.variation.variationHistory
                 .filter((h) => h.group === group)
@@ -1663,16 +469,14 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
               writeMetric(metric)
 
               log(
-                `⚠️ BEHAVIORAL VARIATION DETECTED: ${state.variation.variationCount} variations in ${group} without strategic pause`
+                `BEHAVIORAL VARIATION DETECTED: ${state.variation.variationCount} variations in ${group} without strategic pause`
               )
 
-              // Phase 3: Stream to coach session for investigation
               streamToCoach(client, sessionId, metric, {
                 recentCommands: recentHistory.map((h) => h.command),
               })
             }
           } else {
-            // Different group - reset counter
             if (state.variation.currentGroup !== null) {
               log(
                 `Group switch: ${state.variation.currentGroup} → ${group}, resetting variation counter`
@@ -1707,10 +511,9 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
             writeMetric(metric)
 
             log(
-              `⚠️ CIRCULAR PATTERN DETECTED: Command uses ${decisionKeywords.join(", ")} but ${contradiction.fileName} recommended ${contradiction.keywords.join(", ")}`
+              `CIRCULAR PATTERN DETECTED: Command uses ${decisionKeywords.join(", ")} but ${contradiction.fileName} recommended ${contradiction.keywords.join(", ")}`
             )
 
-            // Phase 3: Stream to coach session for investigation
             streamToCoach(client, sessionId, metric, {
               recommendation: contradiction.next,
             })
@@ -1721,9 +524,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       // Periodic flush: every 10 tool calls
       toolCallCounter++
       if (toolCallCounter >= 10) {
-        // Flush all active sessions
         for (const [sid, s] of sessions.entries()) {
-          // Only flush if there's activity to report
           if (s.spawns > 0) {
             flushMetrics(s, client)
           }
