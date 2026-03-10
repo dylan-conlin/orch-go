@@ -1,24 +1,21 @@
-task: "Package orch harness init for external use"
-beads_id: orch-go-ba4wu
+task: "Coordination failure demo blog post"
+beads_id: orch-go-orlcp
+skill: feature-impl
 tier: light
 
-automated:
-  - command: "go test ./cmd/orch/ -run 'TestHarness|TestStandalone|TestEnsureStandalone|TestControlAndHarness' -count=1"
-    expects: "All harness tests pass (original + 7 new standalone tests)"
-    result: "PASS"
-  - command: "go test ./pkg/control/ -count=1"
-    expects: "Control package tests pass"
-    result: "PASS"
-
-manual:
-  - step: "Run orch harness init --dry-run in a temp dir without ~/.orch/hooks/"
-    expects: "Shows 'Mode: standalone' and 5 steps without beads"
-  - step: "Run orch harness init (apply) in same setup"
-    expects: "Generates .claude/hooks/gate-git-add-all.py with explanatory comments"
-  - step: "Verify generated pre-commit has standalone accretion gate (no orch dependency)"
-    expects: "Pre-commit script contains inline bash accretion check, not 'orch precommit'"
-
 deliverables:
-  modified_files:
-    - cmd/orch/harness_init.go       # Standalone mode + generated scripts
-    - cmd/orch/harness_init_test.go  # 7 new standalone tests
+  - path: .kb/publications/coordination-failure-demo-post.md
+    description: "Blog post with N=10 data, compliance/coordination distinction, reproducible steps, Path A to B bridge"
+    exists: true
+
+verification:
+  automated: []
+  manual:
+    - step: "Review post accuracy against investigation data"
+      evidence: "N=10 data matches .kb/investigations/2026-03-09-inv-coordination-demo-n10-formatbytes.md"
+    - step: "Verify compliance vs coordination framing"
+      evidence: "Table distinguishes the two failure modes with examples from the experiment"
+    - step: "Verify reproducible steps included"
+      evidence: "5-step reproduce section with exact bash commands"
+    - step: "Verify Path A to B bridge in closing"
+      evidence: "References harness engineering and points to substrate-independent dynamics"
