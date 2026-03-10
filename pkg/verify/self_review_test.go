@@ -401,6 +401,172 @@ func TestSelfReview_AgentAddedDebugIsFlagged(t *testing.T) {
 	}
 }
 
+// TestSelfReview_CmdOutputFileNotFlagged verifies that fmt.Print in cmd/ files
+// (CLI output rendering) is NOT flagged as a debug statement.
+// This is the reproduction test for the debug_statements false-positive bug:
+// files like stats_output.go whose purpose is CLI output rendering should not
+// trigger the fmt.Print debug pattern.
+func TestSelfReview_CmdOutputFileNotFlagged(t *testing.T) {
+	repoDir := t.TempDir()
+	workspaceDir := t.TempDir()
+
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("command %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	// Initialize repo
+	run("git", "init")
+	os.MkdirAll(filepath.Join(repoDir, "cmd", "orch"), 0755)
+	os.WriteFile(filepath.Join(repoDir, "cmd", "orch", "main.go"), []byte(
+		"package main\n\nfunc main() {}\n",
+	), 0644)
+	run("git", "add", "-A")
+	run("git", "commit", "-m", "feat: initial commit")
+
+	// Record baseline
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = repoDir
+	baselineOut, _ := cmd.Output()
+	baseline := strings.TrimSpace(string(baselineOut))
+
+	manifest := spawn.AgentManifest{
+		GitBaseline:   baseline,
+		WorkspaceName: "test-agent",
+	}
+	data, _ := json.Marshal(manifest)
+	os.WriteFile(filepath.Join(workspaceDir, "AGENT_MANIFEST.json"), data, 0644)
+
+	// Agent adds a CLI output file in cmd/ with fmt.Print (legitimate output)
+	os.WriteFile(filepath.Join(repoDir, "cmd", "orch", "stats_output.go"), []byte(
+		`package main
+
+import "fmt"
+
+func outputStats() {
+	fmt.Println("=== Stats ===")
+	fmt.Printf("  Spawns: %d\n", 42)
+	fmt.Println("  Done")
+}
+`,
+	), 0644)
+	run("git", "add", "-A")
+	run("git", "commit", "-m", "feat: add stats output")
+
+	// Run self-review — should pass because cmd/ files use fmt.Print for CLI output
+	result := VerifySelfReviewForCompletion(workspaceDir, repoDir)
+	if result != nil && !result.Passed {
+		t.Errorf("self-review should pass for fmt.Print in cmd/ files (CLI output), but got errors: %v", result.Errors)
+	}
+}
+
+// TestSelfReview_PkgDebugStillFlagged verifies that fmt.Print in pkg/ files
+// IS still flagged as a debug statement (libraries shouldn't print to stdout).
+func TestSelfReview_PkgDebugStillFlagged(t *testing.T) {
+	repoDir := t.TempDir()
+	workspaceDir := t.TempDir()
+
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("command %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	// Initialize repo
+	run("git", "init")
+	os.MkdirAll(filepath.Join(repoDir, "pkg", "verify"), 0755)
+	os.WriteFile(filepath.Join(repoDir, "pkg", "verify", "check.go"), []byte(
+		"package verify\n\nfunc Check() {}\n",
+	), 0644)
+	run("git", "add", "-A")
+	run("git", "commit", "-m", "feat: initial commit")
+
+	// Record baseline
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = repoDir
+	baselineOut, _ := cmd.Output()
+	baseline := strings.TrimSpace(string(baselineOut))
+
+	manifest := spawn.AgentManifest{
+		GitBaseline:   baseline,
+		WorkspaceName: "test-agent",
+	}
+	data, _ := json.Marshal(manifest)
+	os.WriteFile(filepath.Join(workspaceDir, "AGENT_MANIFEST.json"), data, 0644)
+
+	// Agent adds fmt.Print to a pkg/ file (this IS a debug statement)
+	os.WriteFile(filepath.Join(repoDir, "pkg", "verify", "helper.go"), []byte(
+		`package verify
+
+import "fmt"
+
+func debug() {
+	fmt.Println("debug output")
+}
+`,
+	), 0644)
+	run("git", "add", "-A")
+	run("git", "commit", "-m", "feat: add helper with debug")
+
+	// Run self-review — should FAIL because pkg/ files shouldn't use fmt.Print
+	result := VerifySelfReviewForCompletion(workspaceDir, repoDir)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.Passed {
+		t.Error("self-review should fail for fmt.Print in pkg/ files, but it passed")
+	}
+}
+
+// TestIsCLIOutputFile verifies the CLI output file detection logic.
+func TestIsCLIOutputFile(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		// CLI files (should be excluded from fmt.Print check)
+		{"cmd/orch/stats_output.go", true},
+		{"cmd/orch/main.go", true},
+		{"cmd/orch/daemon.go", true},
+		{"cmd/server/serve.go", true},
+		// Non-CLI files (should still be checked)
+		{"pkg/verify/check.go", false},
+		{"pkg/opencode/client.go", false},
+		{"internal/util/helper.go", false},
+		{"main.go", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := isCLIOutputFile(tt.path)
+			if got != tt.want {
+				t.Errorf("isCLIOutputFile(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseHunkNewStart(t *testing.T) {
 	tests := []struct {
 		header string

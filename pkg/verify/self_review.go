@@ -112,9 +112,10 @@ func getChangedFilesSinceBaseline(projectDir, baseline string) []string {
 // debugPatterns are patterns that indicate leftover debug statements.
 // Each entry has a pattern and the file extensions it applies to.
 var debugPatterns = []struct {
-	Pattern    *regexp.Regexp
-	Extensions []string // Empty means all files
-	Label      string   // Human-readable description
+	Pattern      *regexp.Regexp
+	Extensions   []string // Empty means all files
+	Label        string   // Human-readable description
+	SkipCLIFiles bool     // If true, skip files in cmd/ directories (CLI output, not debug)
 }{
 	{
 		Pattern:    regexp.MustCompile(`\bconsole\.(log|debug|warn|error|info|trace)\b`),
@@ -127,9 +128,10 @@ var debugPatterns = []struct {
 		Label:      "debugger statement",
 	},
 	{
-		Pattern:    regexp.MustCompile(`\bfmt\.Print(ln|f)?\b`),
-		Extensions: []string{".go"},
-		Label:      "fmt.Print debug statement",
+		Pattern:      regexp.MustCompile(`\bfmt\.Print(ln|f)?\b`),
+		Extensions:   []string{".go"},
+		Label:        "fmt.Print debug statement",
+		SkipCLIFiles: true,
 	},
 	{
 		Pattern:    regexp.MustCompile(`\bprint\s*\(`),
@@ -143,9 +145,16 @@ var debugPatterns = []struct {
 	},
 }
 
+// isCLIOutputFile returns true if the file is in a cmd/ directory.
+// CLI entry points use fmt.Print for user-facing output, not debugging.
+func isCLIOutputFile(path string) bool {
+	return strings.HasPrefix(path, "cmd/") || strings.HasPrefix(path, "cmd\\")
+}
+
 // checkDebugStatements scans added lines in changed production files for leftover debug statements.
 // Only checks lines added by the agent (diff since baseline), not pre-existing code.
 // Skips test files and known non-production paths.
+// Skips fmt.Print checks in cmd/ directories where printing is CLI output, not debugging.
 func checkDebugStatements(projectDir string, changedFiles []string, baseline string) SelfReviewCheckResult {
 	result := SelfReviewCheckResult{Name: "debug_statements", Passed: true}
 
@@ -156,8 +165,14 @@ func checkDebugStatements(projectDir string, changedFiles []string, baseline str
 
 	for _, file := range prodFiles {
 		ext := filepath.Ext(file)
+		cliFile := isCLIOutputFile(file)
 		for _, dp := range debugPatterns {
 			if !matchesExtension(ext, dp.Extensions) {
+				continue
+			}
+
+			// Skip fmt.Print pattern for CLI files (cmd/) — it's output, not debug
+			if dp.SkipCLIFiles && cliFile {
 				continue
 			}
 
