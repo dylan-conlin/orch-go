@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // EscalationLevel represents the level of human attention required for completion.
@@ -210,26 +212,41 @@ func DetermineEscalationFromCompletion(
 		input.NeedsVisualApproval = visualResult.NeedsApproval
 	}
 
-	// Get file count from git
+	// Get file count from git, scoped to agent baseline
 	if projectDir != "" {
-		input.FileCount = countRecentFileChanges(projectDir)
+		baseline := readBaselineFromManifest(workspacePath)
+		input.FileCount = countRecentFileChanges(projectDir, baseline)
 	}
 
 	return DetermineEscalation(input)
 }
 
-// countRecentFileChanges counts the number of files changed in recent commits.
-func countRecentFileChanges(projectDir string) int {
-	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
+// countRecentFileChanges counts the number of files changed since the baseline commit.
+// If baseline is empty, falls back to HEAD~5..HEAD for backward compatibility.
+func countRecentFileChanges(projectDir, baseline string) int {
+	ref := "HEAD~5..HEAD"
+	if baseline != "" {
+		ref = baseline + "..HEAD"
+	}
+
+	cmd := exec.Command("git", "diff", "--name-only", ref)
 	cmd.Dir = projectDir
 	output, err := cmd.Output()
 	if err != nil {
-		// If git command fails (e.g., not enough commits), try last 1 commit
-		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
-		cmd.Dir = projectDir
-		output, err = cmd.Output()
+		if baseline != "" {
+			// Baseline commit may have been garbage-collected or rebased away; fall back
+			cmd = exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
+			cmd.Dir = projectDir
+			output, err = cmd.Output()
+		}
 		if err != nil {
-			return 0
+			// Last resort: try single commit
+			cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
+			cmd.Dir = projectDir
+			output, err = cmd.Output()
+			if err != nil {
+				return 0
+			}
 		}
 	}
 
@@ -411,26 +428,56 @@ func BuildEscalationSignals(workspacePath, projectDir string) ReviewTierEscalati
 		}
 	}
 
-	// Count git diff lines
+	// Read baseline from agent manifest for accurate diff scoping
+	baseline := readBaselineFromManifest(workspacePath)
+
+	// Count git diff lines scoped to agent baseline
 	if projectDir != "" {
-		signals.DiffLineCount = countGitDiffLines(projectDir)
+		signals.DiffLineCount = countGitDiffLines(projectDir, baseline)
 	}
 
 	return signals
 }
 
-// countGitDiffLines counts the total number of added + removed lines in recent commits.
-func countGitDiffLines(projectDir string) int {
-	cmd := exec.Command("git", "diff", "--shortstat", "HEAD~5..HEAD")
+// readBaselineFromManifest reads the GitBaseline from the agent manifest.
+// Returns empty string if workspace is empty or manifest is unreadable.
+func readBaselineFromManifest(workspacePath string) string {
+	if workspacePath == "" {
+		return ""
+	}
+	manifest, err := spawn.ReadAgentManifest(workspacePath)
+	if err != nil {
+		return ""
+	}
+	return manifest.GitBaseline
+}
+
+// countGitDiffLines counts the total number of added + removed lines since the baseline commit.
+// If baseline is empty, falls back to HEAD~5..HEAD for backward compatibility.
+func countGitDiffLines(projectDir, baseline string) int {
+	ref := "HEAD~5..HEAD"
+	if baseline != "" {
+		ref = baseline + "..HEAD"
+	}
+
+	cmd := exec.Command("git", "diff", "--shortstat", ref)
 	cmd.Dir = projectDir
 	output, err := cmd.Output()
 	if err != nil {
-		// Try with fewer commits
-		cmd = exec.Command("git", "diff", "--shortstat", "HEAD~1..HEAD")
-		cmd.Dir = projectDir
-		output, err = cmd.Output()
+		if baseline != "" {
+			// Baseline commit may have been garbage-collected or rebased away; fall back
+			cmd = exec.Command("git", "diff", "--shortstat", "HEAD~5..HEAD")
+			cmd.Dir = projectDir
+			output, err = cmd.Output()
+		}
 		if err != nil {
-			return 0
+			// Last resort: try single commit
+			cmd = exec.Command("git", "diff", "--shortstat", "HEAD~1..HEAD")
+			cmd.Dir = projectDir
+			output, err = cmd.Output()
+			if err != nil {
+				return 0
+			}
 		}
 	}
 

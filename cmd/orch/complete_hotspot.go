@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // HotspotAdvisoryMatch pairs a modified file with its matching hotspot.
@@ -110,19 +112,33 @@ func hotspotTypeIcon(hotspotType string) string {
 	}
 }
 
-// getModifiedFilesFromRecentCommits returns a list of files modified in the last N commits.
-func getModifiedFilesFromRecentCommits(projectDir string, commitCount int) ([]string, error) {
+// getModifiedFilesSinceBaseline returns a list of files modified since the baseline commit.
+// If baseline is empty, falls back to HEAD~commitCount..HEAD for backward compatibility.
+func getModifiedFilesSinceBaseline(projectDir, baseline string, commitCount int) ([]string, error) {
 	ref := fmt.Sprintf("HEAD~%d..HEAD", commitCount)
+	if baseline != "" {
+		ref = baseline + "..HEAD"
+	}
+
 	cmd := exec.Command("git", "diff", "--name-only", ref)
 	cmd.Dir = projectDir
 	output, err := cmd.Output()
 	if err != nil {
-		// Fewer commits than requested - try last commit
-		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
-		cmd.Dir = projectDir
-		output, err = cmd.Output()
+		if baseline != "" {
+			// Baseline commit may have been garbage-collected or rebased away; fall back
+			ref = fmt.Sprintf("HEAD~%d..HEAD", commitCount)
+			cmd = exec.Command("git", "diff", "--name-only", ref)
+			cmd.Dir = projectDir
+			output, err = cmd.Output()
+		}
 		if err != nil {
-			return nil, fmt.Errorf("git diff failed: %w", err)
+			// Last resort: try single commit
+			cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
+			cmd.Dir = projectDir
+			output, err = cmd.Output()
+			if err != nil {
+				return nil, fmt.Errorf("git diff failed: %w", err)
+			}
 		}
 	}
 
@@ -138,12 +154,14 @@ func getModifiedFilesFromRecentCommits(projectDir string, commitCount int) ([]st
 
 // countHotspotAdvisoryMatches returns the number of hotspot matches for modified files.
 // Used by review tier escalation to determine if the tier should be bumped.
-func countHotspotAdvisoryMatches(projectDir string) int {
+// Reads GitBaseline from AGENT_MANIFEST.json to scope diff to agent's actual changes.
+func countHotspotAdvisoryMatches(projectDir, workspacePath string) int {
 	if projectDir == "" {
 		return 0
 	}
 
-	modifiedFiles, err := getModifiedFilesFromRecentCommits(projectDir, 5)
+	baseline := readHotspotBaseline(workspacePath)
+	modifiedFiles, err := getModifiedFilesSinceBaseline(projectDir, baseline, 5)
 	if err != nil || len(modifiedFiles) == 0 {
 		return 0
 	}
@@ -177,13 +195,15 @@ func countHotspotAdvisoryMatches(projectDir string) int {
 // Returns formatted advisory text or empty string if no matches.
 //
 // This is informational only - it does not block completion.
-func RunHotspotAdvisoryForCompletion(projectDir string) string {
+// Reads GitBaseline from AGENT_MANIFEST.json to scope diff to agent's actual changes.
+func RunHotspotAdvisoryForCompletion(projectDir, workspacePath string) string {
 	if projectDir == "" {
 		return ""
 	}
 
-	// Get files modified in recent commits (agent's work)
-	modifiedFiles, err := getModifiedFilesFromRecentCommits(projectDir, 5)
+	// Get files modified since agent baseline (not recent commits from other agents)
+	baseline := readHotspotBaseline(workspacePath)
+	modifiedFiles, err := getModifiedFilesSinceBaseline(projectDir, baseline, 5)
 	if err != nil || len(modifiedFiles) == 0 {
 		return ""
 	}
@@ -217,4 +237,18 @@ func RunHotspotAdvisoryForCompletion(projectDir string) string {
 	matches := matchModifiedFilesToHotspots(modifiedFiles, allHotspots)
 
 	return formatHotspotAdvisory(matches)
+}
+
+// readHotspotBaseline reads the GitBaseline from the agent manifest.
+// Returns empty string if workspace is empty or manifest is unreadable,
+// which causes diff functions to fall back to HEAD~N..HEAD.
+func readHotspotBaseline(workspacePath string) string {
+	if workspacePath == "" {
+		return ""
+	}
+	manifest, err := spawn.ReadAgentManifest(workspacePath)
+	if err != nil {
+		return ""
+	}
+	return manifest.GitBaseline
 }

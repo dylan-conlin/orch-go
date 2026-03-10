@@ -411,7 +411,7 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 
 	// Surface hotspot advisory for modified files (informational, not a gate)
 	if target.BeadsProjectDir != "" && !target.IsOrchestratorSession {
-		if advisory := RunHotspotAdvisoryForCompletion(target.BeadsProjectDir); advisory != "" {
+		if advisory := RunHotspotAdvisoryForCompletion(target.BeadsProjectDir, target.WorkspacePath); advisory != "" {
 			fmt.Print(advisory)
 		}
 	}

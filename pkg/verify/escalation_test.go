@@ -1,7 +1,13 @@
 package verify
 
 import (
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 func TestEscalationLevel_String(t *testing.T) {
@@ -567,5 +573,174 @@ func TestDetermineEscalation_Precedence(t *testing.T) {
 	}
 	if got := DetermineEscalation(input); got != EscalationReview {
 		t.Errorf("Knowledge skill with recommendations should be Review: got %v", got)
+	}
+}
+
+// --- Baseline-scoped diff tests ---
+
+// setupTestGitRepo creates a temp dir with a git repo, makes N commits with unique files,
+// and returns the repo dir plus the SHA of the commit at position `baselineAt` (0-indexed).
+// Commits are named "commit-0", "commit-1", etc. Each adds a file "file-N.txt".
+func setupTestGitRepo(t *testing.T, commitCount int, baselineAt int) (repoDir, baselineSHA string) {
+	t.Helper()
+	repoDir = t.TempDir()
+
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("command %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	run("git", "init")
+
+	for i := 0; i < commitCount; i++ {
+		filePath := filepath.Join(repoDir, "file-"+string(rune('A'+i))+".txt")
+		// Write multiple lines so shortstat shows insertions
+		content := ""
+		for j := 0; j < 50; j++ {
+			content += "line " + string(rune('0'+j%10)) + "\n"
+		}
+		os.WriteFile(filePath, []byte(content), 0644)
+		run("git", "add", "-A")
+		run("git", "commit", "-m", "commit-"+string(rune('0'+i)))
+
+		if i == baselineAt {
+			cmd := exec.Command("git", "rev-parse", "HEAD")
+			cmd.Dir = repoDir
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("git rev-parse failed: %v", err)
+			}
+			baselineSHA = string(out[:len(out)-1]) // trim newline
+		}
+	}
+
+	return repoDir, baselineSHA
+}
+
+func TestCountGitDiffLines_WithBaseline(t *testing.T) {
+	// Create 8 commits, baseline at commit 5 (0-indexed).
+	// Only commits 6 and 7 should be counted with baseline (2 files × 50 lines = 100 insertions).
+	// Without baseline: HEAD~5..HEAD sees commits 3-7 (5 files × 50 lines = 250 insertions).
+	repoDir, baseline := setupTestGitRepo(t, 8, 5)
+
+	// With baseline: should only see changes after commit 5
+	withBaseline := countGitDiffLines(repoDir, baseline)
+
+	// Without baseline: falls back to HEAD~5..HEAD, sees 5 commits
+	withoutBaseline := countGitDiffLines(repoDir, "")
+
+	if withBaseline >= withoutBaseline {
+		t.Errorf("baseline-scoped diff (%d lines) should be less than unscoped (%d lines)",
+			withBaseline, withoutBaseline)
+	}
+
+	if withBaseline == 0 {
+		t.Error("baseline-scoped diff should show some changes (commits after baseline)")
+	}
+}
+
+func TestCountRecentFileChanges_WithBaseline(t *testing.T) {
+	// Create 8 commits, baseline at commit 5.
+	// Only 2 files should show up (commits 6 and 7).
+	// Without baseline: HEAD~5..HEAD sees 5 files.
+	repoDir, baseline := setupTestGitRepo(t, 8, 5)
+
+	withBaseline := countRecentFileChanges(repoDir, baseline)
+	withoutBaseline := countRecentFileChanges(repoDir, "")
+
+	if withBaseline >= withoutBaseline {
+		t.Errorf("baseline-scoped file count (%d) should be less than unscoped (%d)",
+			withBaseline, withoutBaseline)
+	}
+
+	// Should see exactly 2 files (commits 6 and 7 each add one file)
+	if withBaseline != 2 {
+		t.Errorf("expected 2 files changed since baseline, got %d", withBaseline)
+	}
+}
+
+func TestCountGitDiffLines_EmptyBaseline_FallsBack(t *testing.T) {
+	repoDir, _ := setupTestGitRepo(t, 3, 0)
+
+	// Empty baseline should fall back to HEAD~5..HEAD (which works for 3 commits too)
+	result := countGitDiffLines(repoDir, "")
+	if result == 0 {
+		t.Error("expected non-zero diff lines with fallback")
+	}
+}
+
+func TestCountGitDiffLines_InvalidBaseline_FallsBack(t *testing.T) {
+	repoDir, _ := setupTestGitRepo(t, 3, 0)
+
+	// Invalid baseline should fall back gracefully
+	result := countGitDiffLines(repoDir, "deadbeef00000000000000000000000000000000")
+	if result == 0 {
+		t.Error("expected non-zero diff lines after fallback from invalid baseline")
+	}
+}
+
+func TestReadBaselineFromManifest(t *testing.T) {
+	// Test with valid manifest
+	tmpDir := t.TempDir()
+	manifest := spawn.AgentManifest{
+		GitBaseline: "abc123def456",
+	}
+	data, _ := json.Marshal(manifest)
+	os.WriteFile(filepath.Join(tmpDir, "AGENT_MANIFEST.json"), data, 0644)
+
+	baseline := readBaselineFromManifest(tmpDir)
+	if baseline != "abc123def456" {
+		t.Errorf("expected baseline abc123def456, got %q", baseline)
+	}
+
+	// Test with empty workspace path
+	baseline = readBaselineFromManifest("")
+	if baseline != "" {
+		t.Errorf("expected empty baseline for empty workspace, got %q", baseline)
+	}
+
+	// Test with missing manifest
+	baseline = readBaselineFromManifest(t.TempDir())
+	if baseline != "" {
+		t.Errorf("expected empty baseline for missing manifest, got %q", baseline)
+	}
+}
+
+func TestBuildEscalationSignals_UsesBaseline(t *testing.T) {
+	// Create a git repo with 8 commits, baseline at commit 5.
+	// Commits 6-7 are "this agent's" work. HEAD~5 sees commits 3-7.
+	// With baseline, should see fewer lines than without.
+	repoDir, baseline := setupTestGitRepo(t, 8, 5)
+
+	// Create workspace with manifest containing the baseline
+	workspaceDir := t.TempDir()
+	manifest := spawn.AgentManifest{
+		GitBaseline: baseline,
+	}
+	data, _ := json.Marshal(manifest)
+	os.WriteFile(filepath.Join(workspaceDir, "AGENT_MANIFEST.json"), data, 0644)
+
+	// Build signals with workspace (should use baseline)
+	signalsWithBaseline := BuildEscalationSignals(workspaceDir, repoDir)
+
+	// Build signals without workspace (should fall back to HEAD~5)
+	signalsWithout := BuildEscalationSignals("", repoDir)
+
+	// Baseline-scoped: commits 6-7 = 2 files × 50 lines = 100 lines
+	// Unscoped HEAD~5: commits 3-7 = 5 files × 50 lines = 250 lines
+	if signalsWithBaseline.DiffLineCount >= signalsWithout.DiffLineCount {
+		t.Errorf("baseline-scoped DiffLineCount (%d) should be less than unscoped (%d)",
+			signalsWithBaseline.DiffLineCount, signalsWithout.DiffLineCount)
 	}
 }

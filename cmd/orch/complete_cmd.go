@@ -288,7 +288,7 @@ func runComplete(identifier, workdir string) error {
 		signals := verify.BuildEscalationSignals(target.WorkspacePath, target.BeadsProjectDir)
 		// Add hotspot match count (hotspot analysis lives in cmd/orch, not pkg/verify)
 		if target.BeadsProjectDir != "" {
-			signals.HotspotMatchCount = countHotspotAdvisoryMatches(target.BeadsProjectDir)
+			signals.HotspotMatchCount = countHotspotAdvisoryMatches(target.BeadsProjectDir, target.WorkspacePath)
 		}
 		escalation := verify.CheckReviewTierEscalation(signals, target.ReviewTier)
 		if escalation.Escalated {
