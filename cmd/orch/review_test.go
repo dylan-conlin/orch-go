@@ -327,14 +327,14 @@ func TestCountBulletPoints(t *testing.T) {
 }
 
 // TestReviewDoneCategorizesCompletions verifies that runReviewDone correctly
-// categorizes completions into canComplete (VerifyOK && has beads ID) and
-// needsReview (no beads ID or verification failed).
+// categorizes completions into canComplete (VerifyOK && has beads ID),
+// canArchive (VerifyOK && no beads ID), and needsReview (verification failed).
 func TestReviewDoneCategorizesCompletions(t *testing.T) {
 	completions := []CompletionInfo{
 		// Should be in canComplete
 		{WorkspaceID: "ws-1", BeadsID: "project-abc1", VerifyOK: true, Project: "project"},
 		{WorkspaceID: "ws-2", BeadsID: "project-abc2", VerifyOK: true, Project: "project"},
-		// Should be in needsReview (no beads ID)
+		// Should be in canArchive (no beads ID but verified OK = untracked)
 		{WorkspaceID: "ws-3", BeadsID: "", VerifyOK: true, Project: "project"},
 		// Should be in needsReview (verification failed)
 		{WorkspaceID: "ws-4", BeadsID: "project-abc4", VerifyOK: false, Project: "project"},
@@ -344,10 +344,13 @@ func TestReviewDoneCategorizesCompletions(t *testing.T) {
 
 	// Categorize using the same logic as runReviewDone
 	var canComplete []CompletionInfo
+	var canArchive []CompletionInfo
 	var needsReview []CompletionInfo
 	for _, c := range completions {
 		if c.VerifyOK && c.BeadsID != "" {
 			canComplete = append(canComplete, c)
+		} else if c.VerifyOK && c.BeadsID == "" {
+			canArchive = append(canArchive, c)
 		} else {
 			needsReview = append(needsReview, c)
 		}
@@ -356,8 +359,11 @@ func TestReviewDoneCategorizesCompletions(t *testing.T) {
 	if len(canComplete) != 2 {
 		t.Errorf("Expected 2 completions in canComplete, got %d", len(canComplete))
 	}
-	if len(needsReview) != 3 {
-		t.Errorf("Expected 3 completions in needsReview, got %d", len(needsReview))
+	if len(canArchive) != 1 {
+		t.Errorf("Expected 1 completion in canArchive, got %d", len(canArchive))
+	}
+	if len(needsReview) != 2 {
+		t.Errorf("Expected 2 completions in needsReview, got %d", len(needsReview))
 	}
 
 	// Verify canComplete contains the right items
@@ -370,10 +376,20 @@ func TestReviewDoneCategorizesCompletions(t *testing.T) {
 		}
 	}
 
+	// Verify canArchive contains untracked items
+	for _, c := range canArchive {
+		if c.BeadsID != "" {
+			t.Errorf("canArchive item should have empty beads ID: %s", c.WorkspaceID)
+		}
+		if !c.VerifyOK {
+			t.Errorf("canArchive item has VerifyOK=false: %s", c.WorkspaceID)
+		}
+	}
+
 	// Verify needsReview items are correct
 	for _, c := range needsReview {
-		if c.VerifyOK && c.BeadsID != "" {
-			t.Errorf("needsReview item should not have both VerifyOK=true and beads ID: %s", c.WorkspaceID)
+		if c.VerifyOK {
+			t.Errorf("needsReview item should have VerifyOK=false: %s", c.WorkspaceID)
 		}
 	}
 }
@@ -700,5 +716,125 @@ func TestAutoCompletedDeduplication(t *testing.T) {
 
 	if addedCount != 1 {
 		t.Errorf("Expected 1 new auto-completed item (after dedup), got %d", addedCount)
+	}
+}
+
+// TestUntrackedStatusDisplay verifies that beadless completed workspaces show UNTRACKED status.
+func TestUntrackedStatusDisplay(t *testing.T) {
+	tests := []struct {
+		name       string
+		completion CompletionInfo
+		wantStatus string
+	}{
+		{
+			name: "beadless completed workspace shows UNTRACKED",
+			completion: CompletionInfo{
+				WorkspaceID: "og-debug-blog-fix-10mar",
+				BeadsID:     "",
+				VerifyOK:    true,
+				Phase:       "Complete",
+			},
+			wantStatus: "UNTRACKED",
+		},
+		{
+			name: "tracked completed workspace shows OK",
+			completion: CompletionInfo{
+				WorkspaceID: "og-feat-thing-10mar",
+				BeadsID:     "orch-go-abc1",
+				VerifyOK:    true,
+				Phase:       "Complete",
+			},
+			wantStatus: "OK",
+		},
+		{
+			name: "auto-completed overrides untracked",
+			completion: CompletionInfo{
+				WorkspaceID:     "og-capture-test",
+				BeadsID:         "",
+				VerifyOK:        true,
+				IsAutoCompleted: true,
+			},
+			wantStatus: "auto-completed",
+		},
+		{
+			name: "stale overrides untracked",
+			completion: CompletionInfo{
+				WorkspaceID: "og-old-workspace",
+				BeadsID:     "",
+				VerifyOK:    true,
+				IsStale:     true,
+			},
+			wantStatus: "STALE",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := tt.completion
+
+			// Apply status logic from runReview
+			status := "OK"
+			if c.VerifyOK {
+				status = "OK"
+			} else {
+				status = "NEEDS_REVIEW"
+			}
+			if c.IsAutoCompleted {
+				status = "auto-completed"
+			} else if c.IsStale {
+				status = "STALE"
+			} else if c.BeadsID == "" {
+				status = "UNTRACKED"
+			} else if c.IsLightTier {
+				status = "LIGHT"
+			}
+
+			if status != tt.wantStatus {
+				t.Errorf("Expected status %q, got %q", tt.wantStatus, status)
+			}
+		})
+	}
+}
+
+// TestReviewDoneArchivesUntrackedWorkspaces verifies that review done
+// archives beadless completed workspaces instead of leaving them in needsReview.
+func TestReviewDoneArchivesUntrackedWorkspaces(t *testing.T) {
+	// Create temp project with workspace
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	wsName := "og-debug-blog-fix-10mar-a1b2"
+	wsPath := filepath.Join(workspaceDir, wsName)
+	if err := os.MkdirAll(wsPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write SYNTHESIS.md (marks it as completed)
+	if err := os.WriteFile(filepath.Join(wsPath, "SYNTHESIS.md"), []byte("# Synthesis\n\n## TLDR\nFixed blog debugging issue."), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Archive the workspace using archiveWorkspace (same function review done uses)
+	archivedPath, err := archiveWorkspace(wsPath, tmpDir)
+	if err != nil {
+		t.Fatalf("archiveWorkspace failed: %v", err)
+	}
+
+	// Verify workspace was moved to archived/
+	if _, err := os.Stat(wsPath); !os.IsNotExist(err) {
+		t.Error("Original workspace should not exist after archival")
+	}
+
+	if _, err := os.Stat(archivedPath); os.IsNotExist(err) {
+		t.Error("Archived workspace should exist")
+	}
+
+	// Verify it's in the archived directory
+	archivedDir := filepath.Join(tmpDir, ".orch", "workspace", "archived")
+	if filepath.Dir(archivedPath) != archivedDir {
+		t.Errorf("Archived path %q should be in %q", archivedPath, archivedDir)
 	}
 }

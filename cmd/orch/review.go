@@ -529,6 +529,8 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 				status = "auto-completed"
 			} else if c.IsStale {
 				status = "STALE"
+			} else if c.BeadsID == "" {
+				status = "UNTRACKED"
 			} else if c.IsLightTier {
 				status = "LIGHT"
 			}
@@ -587,21 +589,27 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 		}
 	}
 
-	// Count auto-completed for summary
+	// Count auto-completed and untracked for summary
 	autoCompletedCount := 0
+	untrackedCount := 0
 	for _, c := range completions {
 		if c.IsAutoCompleted {
 			autoCompletedCount++
+		} else if c.BeadsID == "" && !c.IsStale {
+			untrackedCount++
 		}
 	}
 
 	// Print summary
 	fmt.Printf("\n---\n")
-	if autoCompletedCount > 0 {
-		fmt.Printf("Total: %d completions (%d OK, %d need review, %d auto-completed)\n", totalOK+totalFailed, totalOK, totalFailed, autoCompletedCount)
-	} else {
-		fmt.Printf("Total: %d completions (%d OK, %d need review)\n", totalOK+totalFailed, totalOK, totalFailed)
+	summaryParts := []string{fmt.Sprintf("%d OK", totalOK), fmt.Sprintf("%d need review", totalFailed)}
+	if untrackedCount > 0 {
+		summaryParts = append(summaryParts, fmt.Sprintf("%d untracked", untrackedCount))
 	}
+	if autoCompletedCount > 0 {
+		summaryParts = append(summaryParts, fmt.Sprintf("%d auto-completed", autoCompletedCount))
+	}
+	fmt.Printf("Total: %d completions (%s)\n", totalOK+totalFailed, strings.Join(summaryParts, ", "))
 
 	// Show truncation notice if limit was applied
 	if limit > 0 && totalAfterFilters > limit {

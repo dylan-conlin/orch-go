@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -74,11 +75,14 @@ func runReviewDone(project string) error {
 	}
 
 	// Count by verification status
-	var canComplete []CompletionInfo
+	var canComplete []CompletionInfo   // Has beads ID + verified OK
+	var canArchive []CompletionInfo    // No beads ID but completed (untracked)
 	var needsReview []CompletionInfo
 	for _, c := range projectCompletions {
 		if c.VerifyOK && c.BeadsID != "" {
 			canComplete = append(canComplete, c)
+		} else if c.VerifyOK && c.BeadsID == "" {
+			canArchive = append(canArchive, c)
 		} else {
 			needsReview = append(needsReview, c)
 		}
@@ -87,19 +91,19 @@ func runReviewDone(project string) error {
 	// Show summary before proceeding
 	fmt.Printf("Project: %s\n", project)
 	fmt.Printf("  Ready to complete: %d\n", len(canComplete))
+	if len(canArchive) > 0 {
+		fmt.Printf("  Untracked (will archive): %d\n", len(canArchive))
+	}
 	fmt.Printf("  Needs manual review: %d\n", len(needsReview))
 
-	if len(canComplete) == 0 {
-		fmt.Println("\nNo agents ready to complete (need Phase: Complete and valid beads ID)")
+	if len(canComplete) == 0 && len(canArchive) == 0 {
+		fmt.Println("\nNo agents ready to complete")
 		if len(needsReview) > 0 {
 			fmt.Println("\nAgents needing manual review:")
 			for _, c := range needsReview {
-				reason := "missing beads ID"
-				if c.BeadsID != "" {
-					reason = "verification failed"
-					if c.VerifyError != "" {
-						reason = c.VerifyError
-					}
+				reason := "verification failed"
+				if c.VerifyError != "" {
+					reason = c.VerifyError
 				}
 				fmt.Printf("  - %s: %s\n", c.WorkspaceID, reason)
 			}
@@ -109,12 +113,17 @@ func runReviewDone(project string) error {
 
 	// Confirmation prompt unless --yes flag is set or stdin is not a terminal
 	if !reviewDoneYes {
+		actionSummary := fmt.Sprintf("close %d beads issues", len(canComplete))
+		if len(canArchive) > 0 {
+			actionSummary += fmt.Sprintf(" and archive %d untracked workspaces", len(canArchive))
+		}
+
 		// Auto-skip confirmation when stdin is not a terminal (e.g., daemon, scripts)
 		if !term.IsTerminal(int(os.Stdin.Fd())) {
-			fmt.Printf("\nThis will close %d beads issues and clean up resources.\n", len(canComplete))
+			fmt.Printf("\nThis will %s.\n", actionSummary)
 			fmt.Println("(Skipping confirmation - stdin is not a terminal)")
 		} else {
-			fmt.Printf("\nThis will close %d beads issues and clean up resources.\n", len(canComplete))
+			fmt.Printf("\nThis will %s.\n", actionSummary)
 			fmt.Print("Continue? [y/N]: ")
 			reader := bufio.NewReader(os.Stdin)
 			response, err := reader.ReadString('\n')
@@ -292,9 +301,48 @@ func runReviewDone(project string) error {
 		completed++
 	}
 
+	// Archive untracked workspaces (no beads ID, completed with SYNTHESIS.md)
+	archived := 0
+	for _, c := range canArchive {
+		fmt.Printf("\nArchiving untracked: %s\n", c.WorkspaceID)
+
+		if c.WorkspacePath != "" {
+			archivedPath, err := archiveWorkspace(c.WorkspacePath, projectDir)
+			if err != nil {
+				completionErrors = append(completionErrors, fmt.Sprintf("%s: failed to archive: %v", c.WorkspaceID, err))
+				continue
+			}
+			fmt.Printf("  Archived to: %s\n", filepath.Base(archivedPath))
+		}
+
+		// Log the archival event
+		event := events.Event{
+			Type:      "agent.completed",
+			Timestamp: time.Now().Unix(),
+			Data: map[string]interface{}{
+				"workspace":   c.WorkspaceID,
+				"reason":      "Archived untracked workspace via review done",
+				"batch":       true,
+				"source":      "review_done",
+				"untracked":   true,
+				"project_dir": projectDir,
+			},
+		}
+		if err := logger.Log(event); err != nil {
+			fmt.Printf("  Warning: failed to log event: %v\n", err)
+		}
+
+		archived++
+	}
+
 	// Summary
 	fmt.Printf("\n---\n")
-	fmt.Printf("Completed: %d/%d agents\n", completed, len(canComplete))
+	if len(canComplete) > 0 {
+		fmt.Printf("Completed: %d/%d agents\n", completed, len(canComplete))
+	}
+	if len(canArchive) > 0 {
+		fmt.Printf("Archived: %d/%d untracked workspaces\n", archived, len(canArchive))
+	}
 
 	if len(completionErrors) > 0 {
 		fmt.Fprintf(os.Stderr, "\nErrors (%d):\n", len(completionErrors))
@@ -306,9 +354,9 @@ func runReviewDone(project string) error {
 	if len(needsReview) > 0 {
 		fmt.Printf("\nAgents needing manual review (%d):\n", len(needsReview))
 		for _, c := range needsReview {
-			reason := "missing beads ID"
-			if c.BeadsID != "" {
-				reason = "verification failed"
+			reason := "verification failed"
+			if c.VerifyError != "" {
+				reason = c.VerifyError
 			}
 			fmt.Printf("  - %s: %s\n", c.WorkspaceID, reason)
 		}
