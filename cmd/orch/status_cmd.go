@@ -223,8 +223,12 @@ func runStatus(serverURL string) error {
 			updatedAt := time.Unix(s.Time.Updated/1000, 0)
 			agent.Runtime = formatDuration(now.Sub(createdAt))
 			agent.LastActivity = updatedAt
-			if statusInfo, ok := sessionStatusMap[s.ID]; ok {
-				agent.IsProcessing = statusInfo.IsBusy() || statusInfo.IsRetrying()
+			// Don't override processing status for completed agents — their session
+			// may still be technically alive, but the agent has reported Phase: Complete.
+			if !agent.IsCompleted {
+				if statusInfo, ok := sessionStatusMap[s.ID]; ok {
+					agent.IsProcessing = statusInfo.IsBusy() || statusInfo.IsRetrying()
+				}
 			}
 		}
 		if agent.Runtime == "" {

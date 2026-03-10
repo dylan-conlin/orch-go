@@ -234,9 +234,10 @@ func TestE2ELifecycle_MultipleAgents(t *testing.T) {
 			t.Errorf("working agent status = %q, want 'active'", resultMap["orch-go-multi-2"].Status)
 		}
 
-		// Agent 3: Phase complete, session idle
-		if resultMap["orch-go-multi-3"].Status != "idle" {
-			t.Errorf("phase-complete idle agent status = %q, want 'idle'", resultMap["orch-go-multi-3"].Status)
+		// Agent 3: Phase complete, session idle — should be "completed" not "idle"
+		// Phase: Complete overrides session liveness for all backends.
+		if resultMap["orch-go-multi-3"].Status != "completed" {
+			t.Errorf("phase-complete idle agent status = %q, want 'completed'", resultMap["orch-go-multi-3"].Status)
 		}
 		if resultMap["orch-go-multi-3"].Phase != "Complete - All tests passing" {
 			t.Errorf("phase-complete agent phase = %q, want 'Complete - All tests passing'", resultMap["orch-go-multi-3"].Phase)

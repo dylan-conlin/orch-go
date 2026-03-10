@@ -376,15 +376,22 @@ func JoinWithReasonCodes(
 		agent.Model = manifest.Model
 		agent.SpawnMode = manifest.SpawnMode
 
+		// Phase: Complete overrides all backend-specific liveness checks.
+		// An agent that reported Phase: Complete is done regardless of whether
+		// its underlying session (OpenCode or tmux) is still technically alive.
+		if agent.Phase != "" && strings.HasPrefix(agent.Phase, "Complete") {
+			agent.Status = "completed"
+			agent.Reason = "phase_complete"
+			results = append(results, agent)
+			continue
+		}
+
 		// Step 2: Route by spawn backend
 		// Claude-backend agents use phase comments + tmux fallback for liveness.
 		if manifest.SpawnMode == "claude" && manifest.WorkspaceName != "" {
 			spawnTime := manifest.ParseSpawnTime()
 
-			if agent.Phase != "" && strings.HasPrefix(agent.Phase, "Complete") {
-				agent.Status = "completed"
-				agent.Reason = "phase_complete"
-			} else if agent.Phase != "" {
+			if agent.Phase != "" {
 				agent.Status = "active"
 				agent.Reason = "phase_reported"
 			} else if !spawnTime.IsZero() && time.Since(spawnTime) < 5*time.Minute {

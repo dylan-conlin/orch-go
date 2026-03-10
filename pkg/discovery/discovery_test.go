@@ -299,6 +299,108 @@ func TestJoinWithReasonCodes_ClaudeBackendTmuxFallbackAlive(t *testing.T) {
 	}
 }
 
+func TestJoinWithReasonCodes_OpenCodePhaseComplete(t *testing.T) {
+	// Bug: OpenCode agents with Phase: Complete but active session showed as "running".
+	// Phase: Complete must override OpenCode session liveness for all backends.
+	issues := []beads.Issue{
+		{ID: "orch-go-500", Title: "Auto-completed OpenCode agent", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-500": {
+			BeadsID:   "orch-go-500",
+			SessionID: "sess-still-busy",
+			ProjectDir: "/tmp/project",
+			Skill:     "feature-impl",
+		},
+	}
+	// Session is still busy in OpenCode, but agent reported Phase: Complete
+	liveness := map[string]opencode.SessionStatusInfo{
+		"sess-still-busy": {Type: "busy"},
+	}
+	phases := map[string]string{
+		"orch-go-500": "Complete - All tests passing, ready for review",
+	}
+
+	results := JoinWithReasonCodes(issues, manifests, liveness, phases)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "completed" {
+		t.Errorf("expected Status completed, got %s (Reason: %s)", r.Status, r.Reason)
+	}
+	if r.Reason != "phase_complete" {
+		t.Errorf("expected Reason phase_complete, got %q", r.Reason)
+	}
+}
+
+func TestJoinWithReasonCodes_ClaudePhaseCompleteUniversal(t *testing.T) {
+	// Verify that Phase: Complete works for Claude agents via the universal check
+	// (not just the Claude-specific code path).
+	issues := []beads.Issue{
+		{ID: "orch-go-510", Title: "Claude agent auto-completed", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-510": {
+			BeadsID:       "orch-go-510",
+			ProjectDir:    "/tmp/project",
+			SpawnMode:     "claude",
+			WorkspaceName: "og-feat-done-10mar-abcd",
+			SpawnTime:     "2026-03-10T08:00:00Z",
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{}
+	phases := map[string]string{
+		"orch-go-510": "Complete - Implemented and tested",
+	}
+
+	results := JoinWithReasonCodes(issues, manifests, liveness, phases)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "completed" {
+		t.Errorf("expected Status completed, got %s", r.Status)
+	}
+	if r.Reason != "phase_complete" {
+		t.Errorf("expected Reason phase_complete, got %q", r.Reason)
+	}
+}
+
+func TestJoinWithReasonCodes_NoSpawnModePhaseComplete(t *testing.T) {
+	// Agents with missing SpawnMode (old manifests) that have Phase: Complete
+	// should also be detected as completed.
+	issues := []beads.Issue{
+		{ID: "orch-go-520", Title: "Old manifest agent", Status: "in_progress"},
+	}
+	manifests := map[string]*spawn.AgentManifest{
+		"orch-go-520": {
+			BeadsID:   "orch-go-520",
+			SessionID: "sess-old",
+			ProjectDir: "/tmp/project",
+			// SpawnMode intentionally empty — old manifest format
+		},
+	}
+	liveness := map[string]opencode.SessionStatusInfo{
+		"sess-old": {Type: "busy"},
+	}
+	phases := map[string]string{
+		"orch-go-520": "Complete - Done",
+	}
+
+	results := JoinWithReasonCodes(issues, manifests, liveness, phases)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Status != "completed" {
+		t.Errorf("expected Status completed, got %s (Reason: %s)", r.Status, r.Reason)
+	}
+}
+
 func TestJoinWithReasonCodes_EmptyInputs(t *testing.T) {
 	results := JoinWithReasonCodes(nil, nil, nil, nil)
 	if len(results) != 0 {
