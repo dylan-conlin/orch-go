@@ -223,7 +223,7 @@ func validateUserPromptSubmitOutput(result *ValidationResult, raw map[string]int
 
 // validateStopOutput validates output for Stop hooks.
 // Expected format: {"decision": "block", "reason": "..."} or exit 0 with no output to allow.
-// Same as PostToolUse format but with "allow" also being a valid decision.
+// Claude Code only recognizes "block" for Stop hooks. To allow stopping, exit 0 with no output.
 func validateStopOutput(result *ValidationResult, raw map[string]interface{}) {
 	// Check for top-level decision
 	if decision, has := raw["decision"]; has {
@@ -231,12 +231,10 @@ func validateStopOutput(result *ValidationResult, raw map[string]interface{}) {
 		switch strings.ToLower(dStr) {
 		case "block":
 			result.Decision = DecisionBlock
-		case "allow":
-			result.Decision = DecisionAllow
 		default:
 			result.Decision = DecisionAllow
 			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("unrecognized decision value: '%s' (Stop supports 'block' or 'allow')", dStr))
+				fmt.Sprintf("unrecognized decision value: '%s' (Stop only supports 'block'; to allow stopping, exit 0 with no output)", dStr))
 		}
 	} else {
 		result.Decision = DecisionAllow

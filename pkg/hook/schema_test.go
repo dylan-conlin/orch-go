@@ -150,11 +150,16 @@ func TestValidateOutput_Stop_ValidBlock(t *testing.T) {
 	}
 }
 
-func TestValidateOutput_Stop_ValidAllow(t *testing.T) {
+func TestValidateOutput_Stop_AllowWarns(t *testing.T) {
+	// "allow" is not a valid Stop decision — Claude Code only recognizes "block".
+	// To allow stopping, exit 0 with no output.
 	output := `{"decision": "allow", "reason": "Phase: Complete found"}`
 	result := ValidateOutput("Stop", []byte(output), 0)
 	if result.Decision != DecisionAllow {
-		t.Errorf("expected ALLOW, got %s", result.Decision)
+		t.Errorf("expected ALLOW (graceful fallback), got %s", result.Decision)
+	}
+	if len(result.Warnings) == 0 {
+		t.Error("expected warning about unrecognized 'allow' decision for Stop")
 	}
 }
 
