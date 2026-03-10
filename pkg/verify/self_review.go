@@ -12,11 +12,11 @@
 package verify
 
 import (
-	"bytes"
 	"fmt"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -35,13 +35,18 @@ type SelfReviewCheckResult struct {
 }
 
 // VerifySelfReviewForCompletion runs automated self-review checks on changed files.
+// Uses the agent's GitBaseline from the workspace manifest to scope checks to only
+// the agent's own changes, avoiding false positives from pre-existing code.
 // Returns nil if no checks are applicable (no recent changes).
 func VerifySelfReviewForCompletion(workspacePath, projectDir string) *SelfReviewResult {
 	if projectDir == "" {
 		return nil
 	}
 
-	changedFiles := getRecentlyChangedFiles(projectDir)
+	// Read baseline commit from agent manifest — scopes checks to agent's work only
+	baseline := readBaselineFromManifest(workspacePath)
+
+	changedFiles := getChangedFilesSinceBaseline(projectDir, baseline)
 	if len(changedFiles) == 0 {
 		return nil
 	}
@@ -50,10 +55,10 @@ func VerifySelfReviewForCompletion(workspacePath, projectDir string) *SelfReview
 
 	// Run each check and collect results
 	checks := []SelfReviewCheckResult{
-		checkDebugStatements(projectDir, changedFiles),
-		checkCommitMessages(projectDir),
-		checkPlaceholderData(projectDir, changedFiles),
-		checkOrphanedGoFiles(projectDir, changedFiles),
+		checkDebugStatements(projectDir, changedFiles, baseline),
+		checkCommitMessages(projectDir, baseline),
+		checkPlaceholderData(projectDir, changedFiles, baseline),
+		checkOrphanedGoFiles(projectDir, changedFiles, baseline),
 	}
 
 	for _, check := range checks {
@@ -69,12 +74,20 @@ func VerifySelfReviewForCompletion(workspacePath, projectDir string) *SelfReview
 	return result
 }
 
-// getRecentlyChangedFiles returns files changed in recent commits (last 5).
-func getRecentlyChangedFiles(projectDir string) []string {
-	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
+// getChangedFilesSinceBaseline returns files changed since the baseline commit.
+// If baseline is empty, falls back to HEAD~5..HEAD for pre-manifest workspaces.
+func getChangedFilesSinceBaseline(projectDir, baseline string) []string {
+	var diffRange string
+	if baseline != "" {
+		diffRange = baseline + "..HEAD"
+	} else {
+		diffRange = "HEAD~5..HEAD"
+	}
+
+	cmd := exec.Command("git", "diff", "--name-only", diffRange)
 	cmd.Dir = projectDir
 	output, err := cmd.Output()
-	if err != nil {
+	if err != nil && baseline == "" {
 		// Fewer commits available — try HEAD~1
 		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
 		cmd.Dir = projectDir
@@ -82,6 +95,8 @@ func getRecentlyChangedFiles(projectDir string) []string {
 		if err != nil {
 			return nil
 		}
+	} else if err != nil {
+		return nil
 	}
 
 	var files []string
@@ -128,9 +143,10 @@ var debugPatterns = []struct {
 	},
 }
 
-// checkDebugStatements scans changed production files for leftover debug statements.
+// checkDebugStatements scans added lines in changed production files for leftover debug statements.
+// Only checks lines added by the agent (diff since baseline), not pre-existing code.
 // Skips test files and known non-production paths.
-func checkDebugStatements(projectDir string, changedFiles []string) SelfReviewCheckResult {
+func checkDebugStatements(projectDir string, changedFiles []string, baseline string) SelfReviewCheckResult {
 	result := SelfReviewCheckResult{Name: "debug_statements", Passed: true}
 
 	prodFiles := filterProductionFiles(changedFiles)
@@ -145,8 +161,8 @@ func checkDebugStatements(projectDir string, changedFiles []string) SelfReviewCh
 				continue
 			}
 
-			// Use git show to get the file content at HEAD
-			findings := grepFileAtHEAD(projectDir, file, dp.Pattern)
+			// Only check lines added by the agent
+			findings := grepAddedLines(projectDir, file, dp.Pattern, baseline)
 			for _, lineNum := range findings {
 				result.Passed = false
 				result.Findings = append(result.Findings,
@@ -166,11 +182,17 @@ var conventionalCommitPattern = regexp.MustCompile(
 // wipCommitPattern matches WIP/temp/placeholder commit messages.
 var wipCommitPattern = regexp.MustCompile(`(?i)^(wip|temp|tmp|fixup|squash|xxx|todo)\b`)
 
-// checkCommitMessages verifies recent commits follow conventional format.
-func checkCommitMessages(projectDir string) SelfReviewCheckResult {
+// checkCommitMessages verifies agent commits follow conventional format.
+// Scopes to commits since baseline to avoid flagging pre-existing messages.
+func checkCommitMessages(projectDir, baseline string) SelfReviewCheckResult {
 	result := SelfReviewCheckResult{Name: "commit_format", Passed: true}
 
-	cmd := exec.Command("git", "log", "--oneline", "--format=%s", "-5")
+	var cmd *exec.Cmd
+	if baseline != "" {
+		cmd = exec.Command("git", "log", "--format=%s", baseline+"..HEAD")
+	} else {
+		cmd = exec.Command("git", "log", "--oneline", "--format=%s", "-5")
+	}
 	cmd.Dir = projectDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -211,8 +233,9 @@ var placeholderPatterns = []struct {
 	{regexp.MustCompile(`\b555-\d{4}\b`), "placeholder phone number"},
 }
 
-// checkPlaceholderData scans changed production files for demo/placeholder data.
-func checkPlaceholderData(projectDir string, changedFiles []string) SelfReviewCheckResult {
+// checkPlaceholderData scans added lines in changed production files for demo/placeholder data.
+// Only checks lines added by the agent (diff since baseline), not pre-existing code.
+func checkPlaceholderData(projectDir string, changedFiles []string, baseline string) SelfReviewCheckResult {
 	result := SelfReviewCheckResult{Name: "placeholder_data", Passed: true}
 
 	prodFiles := filterProductionFiles(changedFiles)
@@ -222,7 +245,7 @@ func checkPlaceholderData(projectDir string, changedFiles []string) SelfReviewCh
 
 	for _, file := range prodFiles {
 		for _, pp := range placeholderPatterns {
-			findings := grepFileAtHEAD(projectDir, file, pp.Pattern)
+			findings := grepAddedLines(projectDir, file, pp.Pattern, baseline)
 			for _, lineNum := range findings {
 				result.Passed = false
 				result.Findings = append(result.Findings,
@@ -236,11 +259,11 @@ func checkPlaceholderData(projectDir string, changedFiles []string) SelfReviewCh
 
 // checkOrphanedGoFiles checks if newly added .go files are imported somewhere.
 // Only checks Go files because Go has a reliable import mechanism to verify.
-func checkOrphanedGoFiles(projectDir string, changedFiles []string) SelfReviewCheckResult {
+func checkOrphanedGoFiles(projectDir string, changedFiles []string, baseline string) SelfReviewCheckResult {
 	result := SelfReviewCheckResult{Name: "orphaned_files", Passed: true}
 
 	// Get newly added files (not just modified)
-	newFiles := getNewlyAddedFiles(projectDir)
+	newFiles := getNewlyAddedFilesSinceBaseline(projectDir, baseline)
 	if len(newFiles) == 0 {
 		return result
 	}
@@ -284,18 +307,28 @@ func checkOrphanedGoFiles(projectDir string, changedFiles []string) SelfReviewCh
 	return result
 }
 
-// getNewlyAddedFiles returns files that were added (not just modified) in recent commits.
-func getNewlyAddedFiles(projectDir string) []string {
-	cmd := exec.Command("git", "diff", "--name-only", "--diff-filter=A", "HEAD~5..HEAD")
+// getNewlyAddedFilesSinceBaseline returns files added (not just modified) since the baseline.
+// If baseline is empty, falls back to HEAD~5..HEAD for pre-manifest workspaces.
+func getNewlyAddedFilesSinceBaseline(projectDir, baseline string) []string {
+	var diffRange string
+	if baseline != "" {
+		diffRange = baseline + "..HEAD"
+	} else {
+		diffRange = "HEAD~5..HEAD"
+	}
+
+	cmd := exec.Command("git", "diff", "--name-only", "--diff-filter=A", diffRange)
 	cmd.Dir = projectDir
 	output, err := cmd.Output()
-	if err != nil {
+	if err != nil && baseline == "" {
 		cmd = exec.Command("git", "diff", "--name-only", "--diff-filter=A", "HEAD~1..HEAD")
 		cmd.Dir = projectDir
 		output, err = cmd.Output()
 		if err != nil {
 			return nil
 		}
+	} else if err != nil {
+		return nil
 	}
 
 	var files []string
@@ -401,18 +434,95 @@ func matchesExtension(ext string, extensions []string) bool {
 	return false
 }
 
-// grepFileAtHEAD searches a file at HEAD for a pattern and returns matching line numbers.
-func grepFileAtHEAD(projectDir, file string, pattern *regexp.Regexp) []int {
+// grepAddedLines searches only lines added by the agent (in the diff since baseline)
+// for a pattern. Returns line numbers in the new file where matches occur.
+// If baseline is empty, falls back to scanning the entire file at HEAD (legacy behavior).
+func grepAddedLines(projectDir, file string, pattern *regexp.Regexp, baseline string) []int {
+	if baseline == "" {
+		// Legacy fallback: scan entire file at HEAD
+		return grepEntireFileAtHEAD(projectDir, file, pattern)
+	}
+
+	// Parse unified diff to find only added lines
+	cmd := exec.Command("git", "diff", "-U0", baseline+"..HEAD", "--", file)
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil || len(output) == 0 {
+		return nil
+	}
+
+	return parseAddedLinesFromDiff(string(output), pattern)
+}
+
+// parseAddedLinesFromDiff extracts added line numbers matching a pattern from unified diff output.
+// Parses @@ hunk headers to track line numbers, then checks only "+" lines.
+func parseAddedLinesFromDiff(diff string, pattern *regexp.Regexp) []int {
+	var lineNums []int
+	var currentLine int
+
+	for _, line := range strings.Split(diff, "\n") {
+		// Parse @@ hunk header: @@ -old,count +new,count @@
+		if strings.HasPrefix(line, "@@") {
+			if newStart := parseHunkNewStart(line); newStart > 0 {
+				currentLine = newStart
+			}
+			continue
+		}
+
+		// Added line — check for pattern match
+		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+			content := line[1:] // Strip the leading "+"
+			if pattern.MatchString(content) {
+				lineNums = append(lineNums, currentLine)
+			}
+			currentLine++
+			continue
+		}
+
+		// Context line (no prefix) — advance line counter
+		if !strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "\\") &&
+			!strings.HasPrefix(line, "diff") && !strings.HasPrefix(line, "index") &&
+			!strings.HasPrefix(line, "---") && !strings.HasPrefix(line, "+++") {
+			currentLine++
+		}
+	}
+
+	return lineNums
+}
+
+// parseHunkNewStart extracts the new-file start line from a @@ hunk header.
+// Format: @@ -old[,count] +new[,count] @@
+func parseHunkNewStart(hunkHeader string) int {
+	// Find +N in the hunk header
+	plusIdx := strings.Index(hunkHeader, "+")
+	if plusIdx < 0 {
+		return 0
+	}
+	rest := hunkHeader[plusIdx+1:]
+	// Extract the number before , or space
+	end := strings.IndexAny(rest, ", @")
+	if end < 0 {
+		end = len(rest)
+	}
+	n, err := strconv.Atoi(rest[:end])
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// grepEntireFileAtHEAD is the legacy fallback that scans the entire file at HEAD.
+// Used only when no baseline commit is available (pre-manifest workspaces).
+func grepEntireFileAtHEAD(projectDir, file string, pattern *regexp.Regexp) []int {
 	cmd := exec.Command("git", "show", fmt.Sprintf("HEAD:%s", file))
 	cmd.Dir = projectDir
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
+	output, err := cmd.Output()
+	if err != nil {
 		return nil
 	}
 
 	var lineNums []int
-	for i, line := range strings.Split(out.String(), "\n") {
+	for i, line := range strings.Split(string(output), "\n") {
 		if pattern.MatchString(line) {
 			lineNums = append(lineNums, i+1)
 		}
