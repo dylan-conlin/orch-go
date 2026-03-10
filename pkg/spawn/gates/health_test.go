@@ -17,10 +17,10 @@ func mockProviderError() HealthScoreProvider {
 	}
 }
 
-func TestCheckHealthScore_BlocksBelowFloor(t *testing.T) {
+func TestCheckHealthScore_AdvisoryBelowFloor(t *testing.T) {
 	err := CheckHealthScore("feature-impl", false, false, mockProvider(40, "F"))
-	if err == nil {
-		t.Fatal("expected error for score below floor")
+	if err != nil {
+		t.Fatalf("below-floor should warn not block, got error: %v", err)
 	}
 }
 
@@ -75,9 +75,9 @@ func TestCheckHealthScore_ProviderError(t *testing.T) {
 	}
 }
 
-func TestCheckHealthScore_SystematicDebuggingBlocked(t *testing.T) {
+func TestCheckHealthScore_SystematicDebuggingAdvisory(t *testing.T) {
 	err := CheckHealthScore("systematic-debugging", false, false, mockProvider(40, "F"))
-	if err == nil {
-		t.Fatal("expected error for systematic-debugging below floor")
+	if err != nil {
+		t.Fatalf("below-floor should warn not block, got error: %v", err)
 	}
 }

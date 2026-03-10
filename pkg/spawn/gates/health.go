@@ -23,41 +23,35 @@ var healthBlockedSkills = map[string]bool{
 // Injected to keep the gates package decoupled from snapshot collection.
 type HealthScoreProvider func() (float64, string, error)
 
-// CheckHealthScore blocks feature-impl spawns when the harness health score
-// is below the floor (65/C). Extraction and architect skills are exempt.
-// Returns nil if the check passes or is not applicable.
+// CheckHealthScore warns when the harness health score is below the floor (65/C).
+// Advisory only — does not block spawns. Pre-commit accretion gate and hotspot
+// blocking are the real enforcement.
+// Decision ref: kb-3e651d (downgraded from blocking after Phase 4 probe found
+// score improvement was 89% calibration artifact).
 func CheckHealthScore(skillName string, daemonDriven, skipHealthGate bool, provider HealthScoreProvider) error {
 	if provider == nil {
 		return nil
 	}
 
-	// Only block tactical skills
+	// Only warn for tactical skills
 	if !healthBlockedSkills[skillName] {
 		return nil
 	}
 
-	// Daemon-driven spawns bypass (triage already approved)
+	// Daemon-driven spawns skip the advisory
 	if daemonDriven {
-		return nil
-	}
-
-	if skipHealthGate {
-		fmt.Fprintln(os.Stderr, "⚠️  --skip-health-gate: Bypassing health score floor check")
 		return nil
 	}
 
 	score, grade, err := provider()
 	if err != nil {
-		// If we can't compute the score, don't block
 		fmt.Fprintf(os.Stderr, "⚠️  Could not compute health score: %v (proceeding)\n", err)
 		return nil
 	}
 
 	if score < HealthScoreFloor {
-		return fmt.Errorf("health score %.0f (%s) is below floor %.0f (C) — extract bloated files before adding features.\n"+
-			"Run: orch health\n"+
-			"Override: --skip-health-gate --reason \"...\"",
-			score, grade, HealthScoreFloor)
+		fmt.Fprintf(os.Stderr, "⚠️  Health score %.0f (%s) — below %.0f threshold\n", score, grade, HealthScoreFloor)
+		return nil
 	}
 
 	fmt.Fprintf(os.Stderr, "✓ Health score: %.0f (%s)\n", score, grade)
