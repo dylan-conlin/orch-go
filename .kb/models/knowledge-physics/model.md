@@ -206,9 +206,11 @@ The investigation/probe/model cycle separates cleanly into **substrate** (the kn
 | Completion verification | Quality gates on deliverables | Reliability infrastructure |
 | Dashboard/tmux/OpenCode | Visibility, multi-model, monitoring | Operational infrastructure |
 
-**The single tooling gap:** `kb context` returns model file paths but not extracted model sections (Summary, Critical Invariants, Why This Fails). orch's `extractModelSectionsForSpawn()` (in `kbcontext.go`, ~300 lines of the 1,496-line file) handles this extraction. Without it, the agent reads model files directly — 2-4 extra tool calls, fully functional. A `kb context --extract-models` flag would bridge this gap at the kb CLI level.
+**The context injection gap:** `kb context` returns model file paths but not extracted model sections (Summary, Critical Invariants, Why This Fails). orch's `extractModelSectionsForSpawn()` (in `kbcontext.go`, ~300 lines of the 1,496-line file) handles this extraction. Without it, the agent reads model files directly — 2-4 extra tool calls, fully functional. A `kb context --extract-models` flag would bridge this gap at the kb CLI level.
 
-**Implication for substrate independence:** The knowledge cycle doesn't depend on the orchestration substrate it was built in. A fresh repo with `kb init` + Claude Code + investigation skill can run the full investigation/probe/model cycle. This strengthens the substrate generalization claim — the physics are about the `.kb/` directory and its conventions, not the `orch` binary.
+**Additional gaps for standalone use (2026-03-09 audit):** The context injection gap is necessary but not sufficient. A public-release audit of kb-cli found 6 additional gaps beyond `--extract-models`: (1) `kb ask` hard-depends on opencode binary with no fallback, (2) no LICENSE file despite MIT claim, (3) README documents <40% of commands, (4) CLAUDE.md is template-only with no project context, (5) 3 failing tests, (6) `groups.yaml` hardcoded to `~/.orch/` path. The coupling is tiered: hard-coupled commands (ask, link) break without orch infrastructure; soft-coupled commands (reflect --create-issue, context --siblings) degrade gracefully; core cycle commands (init, create, search, context local) are fully standalone.
+
+**Implication for substrate independence:** The knowledge cycle doesn't depend on the orchestration substrate it was built in. A fresh repo with `kb init` + Claude Code + investigation skill can run the full investigation/probe/model cycle. This strengthens the substrate generalization claim — the physics are about the `.kb/` directory and its conventions, not the `orch` binary. However, the current kb-cli binary is not yet release-ready for external users — it requires ~7 focused changes to decouple from orch infrastructure.
 
 ---
 
@@ -342,6 +344,8 @@ Evidence: ADRs took 7 years from Nygard's projects (2011) to ThoughtWorks "Adopt
 
 **2026-03-09:** First external user profile probe (orch-go-j2ziz) established adoption sequencing: Solo Technical Researcher (STR) is the first user, not R&D labs or startups. Bottom-up adoption pattern validated across ADRs (7 years individual→industry), Obsidian (1.5M individual MAU→team features later), Benchling (200K academics→1/4 biotech IPOs). Tooling gap identified: `kb create model`/`kb create probe` don't exist, `kb init` doesn't create models/ directory — the "fundamental unit" has the least tooling support. Added Failure Mode 4 (tooling inverts importance hierarchy), Adoption Sequencing section, and open question #7 (minimum time to visible physics).
 
+**2026-03-09:** Public release readiness audit (orch-go-8zp45) of kb-cli codebase. **Contradicted** the "single tooling gap" claim from minimal-substrate probe — found 6 additional gaps beyond `--extract-models`. **Confirmed** core cycle commands are fully standalone. **Extended** substrate/orchestration separation with three-tier coupling taxonomy: hard (ask, link — break without orch), soft (reflect --create-issue, context --siblings — degrade gracefully), none (init, create, search, list — fully standalone). Code health: 57.6% test coverage, 3 failing tests, 3 direct dependencies, no go vet errors. Key blockers: missing LICENSE file, incomplete README, hardcoded orch paths.
+
 ---
 
 ## Observability
@@ -385,6 +389,7 @@ kb reflect --type stale
 - `.kb/models/knowledge-physics/probes/2026-03-09-probe-natural-orphan-baseline-categorization.md` — Orphan taxonomy, era-adjusted rates, natural baseline (40-50%), probe displacement finding
 - `.kb/models/knowledge-physics/probes/2026-03-09-probe-minimal-kb-substrate-cycle-dependencies.md` — Minimal substrate identification: 5 components (agent + kb + git + .kb/ + skill), substrate/orchestration separation confirmed, context injection gap identified
 - `.kb/models/knowledge-physics/probes/2026-03-09-probe-first-external-user-profile-analysis.md` — First user is Solo Technical Researcher (STR), not R&D lab. Adoption sequencing validated across 4 analogous tools. Tooling gap: `kb create model`/`kb create probe` missing, `kb init` doesn't create models/
+- `.kb/models/knowledge-physics/probes/2026-03-09-probe-kb-cli-public-release-readiness-audit.md` — kb-cli public release audit: core cycle standalone, 6 gaps beyond --extract-models, three-tier coupling taxonomy (hard/soft/none), 7 blocking changes for v0.1
 
 **Related Models:**
 - `.kb/models/harness-engineering/model.md` — Code instance of substrate physics, hard/soft harness taxonomy
