@@ -3,6 +3,7 @@
 **Model:** knowledge-physics
 **Date:** 2026-03-10
 **Status:** Complete
+**Methodology:** Confirmatory — conducted by the same AI system that built the model. Cannot constitute independent validation.
 
 ---
 

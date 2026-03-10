@@ -1,9 +1,9 @@
 ---
 title: "Knowledge physics — does knowledge have the same accretion/attractor/gate dynamics as code?"
-status: open
+status: resolved
 created: 2026-03-09
-updated: 2026-03-09
-resolved_to: ""
+updated: 2026-03-10
+resolved_to: ".kb/models/knowledge-physics/model.md"
 ---
 
 # Knowledge physics — does knowledge have the same accretion/attractor/gate dynamics as code?

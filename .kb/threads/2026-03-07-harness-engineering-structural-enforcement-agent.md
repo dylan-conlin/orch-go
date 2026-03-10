@@ -1,9 +1,9 @@
 ---
 title: "Harness engineering — structural enforcement for multi-agent systems"
-status: open
+status: resolved
 created: 2026-03-07
-updated: 2026-03-08
-resolved_to: ".kb/models/harness-engineering/model.md"
+updated: 2026-03-10
+resolved_to: "https://dylanconlin.com/blog/harness-engineering"
 ---
 
 # Harness engineering — structural enforcement for multi-agent systems

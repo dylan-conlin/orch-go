@@ -66,37 +66,40 @@ Publish the knowledge physics essay to dylanconlin.com, announce kb-cli in the s
 
 ## Phases
 
-### Phase 1: Essay preparation
-**Goal:** Resolve framing decisions, produce publishable essay draft
+### Phase 1: External validation (validate-then-publish)
+**Goal:** Get independent data points before theorizing in public
 **Deliverables:**
-- Ostrom framing resolved (orch-go-3hdyt)
+- Coordination failure demo post — reproducible experiment, no theory required, include exact steps so anyone can run it (orch-go-orlcp)
+- One external kb-cli user — tool feedback, not theory validation. Their observations are independent data (orch-go-3occh)
+**Exit criteria:** At least one person reproduces the coordination demo OR reports kb-cli observations
+**Depends on:** Nothing — this is the root
+
+**Why this goes first:** The theory was built by one person with AI agents that reinforce coherent framing. Internal consistency is not external validation. The formula-shaped claims (accretion_risk = f(...)) emerged from the closed loop, not from measurement. Ship the reproducible observation first, see if it holds.
+
+### Phase 2: Essay (only after external data)
+**Goal:** Publish knowledge physics essay grounded in externally-confirmed observations
+**Deliverables:**
+- Ostrom framing resolved (orch-go-3hdyt) — DONE
 - Knowledge physics essay draft on blog (orch-go-lnve9)
 - Distribution-as-substrate paragraph folded in (orch-go-ightw)
 - Abiogenesis as Future Directions section (orch-go-dm79z)
-**Exit criteria:** Essay published to dylanconlin.com
-**Depends on:** Nothing — this is the root
+**Exit criteria:** Essay published to dylanconlin.com, grounded in at least one external data point
+**Depends on:** Phase 1 (external validation)
 
-### Phase 2: Tooling announcement
+### Phase 3: Tooling announcement
 **Goal:** Give readers a "try it" button
 **Deliverables:**
 - kb-cli announcement post (orch-go-knmq8)
 **Exit criteria:** Post published, links to repo, shows investigation/probe/model cycle
-**Depends on:** Phase 1 (essay creates demand)
+**Depends on:** Phase 2 (essay creates demand)
 
-### Phase 3: Empirical hook
-**Goal:** Strongest shareable piece — the coordination failure demo
+### Phase 4: Ongoing validation
+**Goal:** External confirmation at scale
 **Deliverables:**
-- Coordination failure demo post (orch-go-orlcp)
-**Exit criteria:** Post published with N=10 demo, compliance/coordination distinction
-**Depends on:** Phase 1 (essay provides theoretical frame for the demo)
-
-### Phase 4: Validation
-**Goal:** External confirmation
-**Deliverables:**
-- First external kb-cli user report (orch-go-ymd06)
+- Additional external kb-cli users (orch-go-ymd06)
 - Conference talk or practitioner pushback
-**Exit criteria:** Someone else applies five-condition diagnostic to their system
-**Depends on:** Phases 1-3 published
+**Exit criteria:** Multiple independent confirmations or a clean counterexample
+**Depends on:** Phases 1-3
 
 ---
 
@@ -109,7 +112,7 @@ Publish the knowledge physics essay to dylanconlin.com, announce kb-cli in the s
 | Coordination demo scope | N=10 data, compliance/coordination distinction | Yes |
 | Validation path | No external users yet | Blocked on publication |
 
-**Overall readiness:** Ready to execute Phase 1.
+**Overall readiness:** Ready to execute Phase 1 (external validation).
 
 ---
 
