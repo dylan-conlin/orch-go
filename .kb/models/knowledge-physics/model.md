@@ -13,7 +13,29 @@
 
 ## Summary (30 seconds)
 
-Knowledge exhibits the same physics as code when multiple amnesiac agents contribute to a shared mutable substrate. Accretion, attractors, gates, and entropy are substrate-independent dynamics — they emerge from system properties (multiple writers, no persistent memory, local correctness, non-trivial compositional requirements, absent coordination), not from properties of the substrate itself. Empirical measurement across orch-go's knowledge corpus: 85.5% orphan rate (997/1,166 investigations unconnected to any model), three model behaviors (attractor/capstone/dormant), zero hard knowledge gates (all transitions advisory), and 4 unmerged contradiction verdicts. Code, knowledge, and OPSEC are three confirmed instances of the same physics. Hypothesized additional substrates include database schemas, config systems, API surfaces, and documentation. The generalization: harness engineering is not code governance — it is substrate governance. Any shared mutable substrate where amnesiac agents contribute requires attractors (structural destinations), gates (enforcement blocking wrong paths), and entropy measurement (detection of compositional failure). OPSEC extends the theory to adversarial substrates, revealing that entropy can be invisible to internal measurement (only the adversary observes it), failure can be binary/catastrophic (no gradual degradation), and signal composition can be multiplicative rather than linear or additive.
+Knowledge exhibits the same accretion dynamics as code when multiple amnesiac agents contribute to a shared mutable substrate. This is a **diagnostic framework** — like Ostrom's institutional analysis of commons governance — that identifies structural conditions predicting whether a shared resource degrades or thrives. Accretion, attractors, gates, and entropy are substrate-independent dynamics that emerge from system properties (multiple writers, no persistent memory, local correctness, non-trivial compositional requirements, absent coordination), not from properties of the substrate itself. Empirical measurement across orch-go's knowledge corpus: 85.5% orphan rate (997/1,166 investigations unconnected to any model), three model behaviors (attractor/capstone/dormant), zero hard knowledge gates (all transitions advisory), and 4 unmerged contradiction verdicts. Code, knowledge, and OPSEC are three confirmed instances. Hypothesized additional substrates include database schemas, config systems, API surfaces, and documentation. The generalization: harness engineering is not code governance — it is substrate governance. Any shared mutable substrate where amnesiac agents contribute requires attractors (structural destinations), gates (enforcement blocking wrong paths), and entropy measurement (detection of compositional failure). OPSEC extends the framework to adversarial substrates, revealing that entropy can be invisible to internal measurement (only the adversary observes it), failure can be binary/catastrophic (no gradual degradation), and signal composition can be multiplicative rather than linear or additive.
+
+---
+
+## Theory Type
+
+Knowledge physics is a **diagnostic framework**, not a natural law. The closest comparison is Ostrom's institutional analysis of commons governance — structural conditions that predict whether a shared resource degrades or thrives. Also Conway's Law territory (systems mirror coordination structures).
+
+These are "soft" theories: not mathematically provable but empirically predictive. They predict the **shape** of outcomes (accretion concentrates at coordination gaps, gates reduce it, removing coordination introduces it), not exact values (how fast, how much, when).
+
+**What this means for claims and tone:**
+
+| Framing | Claims | Tone |
+|---------|--------|------|
+| Natural law (physics) | "Knowledge *obeys* these laws" | Assertive, universal |
+| Diagnostic framework (Ostrom) | "These conditions predict whether your system degrades" | Empirical, actionable |
+
+The framework is publishable as "here's a predictive pattern I found and tried to break across 15+ counterexamples" — not "here's a new field of science." The name "knowledge physics" is a memorable shorthand; the body earns it through empirical evidence and honest scoping.
+
+**Analogues:**
+- Ostrom's eight design principles for commons governance (1990) — structural conditions, empirically derived, not mathematically proven
+- Conway's Law (1967) — "organizations design systems that mirror their communication structures" — descriptive, predictive, not a physical law
+- Brooks's Law (1975) — "adding people to a late project makes it later" — diagnostic, not universal
 
 ---
 
@@ -246,7 +268,7 @@ The investigation/probe/model cycle separates cleanly into **substrate** (the kn
 
 5. **Accretion, attractors, gates, and entropy are substrate-independent.** They emerge from system properties (multiple writers, no persistent memory, local correctness, non-trivial composition, no structural coordination), not substrate properties. Code, knowledge, and OPSEC are three confirmed instances. OPSEC extends the evidence to adversarial substrates where entropy is invisible to internal metrics and failure is binary/catastrophic. The same dynamics should appear in any substrate meeting the five conditions.
 
-6. **The theory is falsifiable and conditionally predictive.** Systematic search across 15+ candidate counterexamples (natural systems: ant colonies, coral reefs, immune systems; engineered: CRDTs, blockchains, event stores; human: Wikipedia, scientific literature, shared drives) found no clean counterexamples. Every system that resists accretion does so through coordination (explicit, substrate-embedded, or environmental). The theory makes testable predictions: (a) where accretion will concentrate (at coordination gaps), (b) what interventions will reduce it (gates at compositional boundaries), (c) that removing coordination will introduce accretion. It does NOT predict accretion form, rate, or threshold — these are substrate-specific. The theory is a qualitative causal framework with quantitative evidence, not a quantitative physical law.
+6. **The framework is falsifiable and conditionally predictive — diagnostic, not legislative.** Systematic search across 15+ candidate counterexamples (natural systems: ant colonies, coral reefs, immune systems; engineered: CRDTs, blockchains, event stores; human: Wikipedia, scientific literature, shared drives) found no clean counterexamples. Every system that resists accretion does so through coordination (explicit, substrate-embedded, or environmental). The framework makes testable predictions: (a) where accretion will concentrate (at coordination gaps), (b) what interventions will reduce it (gates at compositional boundaries), (c) that removing coordination will introduce accretion. It does NOT predict accretion form, rate, or threshold — these are substrate-specific. This is an Ostrom-scale diagnostic framework — structural conditions empirically derived from one system and stress-tested against 15+ — not a quantitative physical law. The name "knowledge physics" is shorthand for the substrate-independent dynamics; the framing is institutional analysis, not natural science.
 
 ---
 
@@ -384,6 +406,8 @@ Evidence: ADRs took 7 years from Nygard's projects (2011) to ThoughtWorks "Adopt
 
 **2026-03-09:** Public release readiness audit (orch-go-8zp45) of kb-cli codebase. **Contradicted** the "single tooling gap" claim from minimal-substrate probe — found 6 additional gaps beyond `--extract-models`. **Confirmed** core cycle commands are fully standalone. **Extended** substrate/orchestration separation with three-tier coupling taxonomy: hard (ask, link — break without orch), soft (reflect --create-issue, context --siblings — degrade gracefully), none (init, create, search, list — fully standalone). Code health: 57.6% test coverage, 3 failing tests, 3 direct dependencies, no go vet errors. Key blockers: missing LICENSE file, incomplete README, hardcoded orch paths.
 
+**2026-03-10:** Ostrom framing thread resolved (orch-go-3hdyt). Added Theory Type section establishing knowledge physics as a diagnostic framework (Ostrom-scale institutional analysis), not a natural law. Updated Summary and Critical Invariant #6 to reflect diagnostic framing. Analogues: Ostrom's commons governance design principles, Conway's Law, Brooks's Law. This shapes publication tone: "here's a predictive pattern I found and tried to break" rather than "here's a new field of science."
+
 **2026-03-10:** Falsifiability probe (orch-go-dqv2o). Systematic counterexample search across 15+ systems in three domains (natural, engineered, human). No clean counterexamples found. Three key extensions: (1) Added condition 5 — "non-trivial composition" — to prevent over-prediction in additive substrates (logs, sensor data, coral reefs) that meet conditions 1-4 but don't degrade because composition is trivial. (2) Coordination taxonomy: explicit (type systems), substrate-embedded (CRDTs), environmental (stigmergy). Digital substrates lack environmental coordination, explaining why they require engineered gates. (3) Continuous risk formulation: `accretion_risk = f(amnesia × complexity / coordination)` — more precise than binary conditions. Theory verdict: conditionally predictive, publishable with composition refinement.
 
 ---
@@ -442,5 +466,6 @@ kb reflect --type stale
 **Knowledge Physics Assessment (in system-learning-loop model):**
 - Section "Knowledge Physics Assessment (2026-03-09)" in system-learning-loop/model.md documents the mapping and empirical evidence that prompted this model's creation.
 
-**Thread:**
+**Threads:**
 - `.kb/threads/2026-03-09-knowledge-physics-does-knowledge-have.md` — Initial question formulation
+- `.kb/threads/2026-03-10-kind-theory-this-ostrom-scale.md` — Theory type resolved: diagnostic framework (Ostrom-scale), not natural law
