@@ -1,53 +1,27 @@
-task: "First hard knowledge gate — require --model flag on kb create investigation"
-beads_id: orch-go-vfd6v
+task: "Update stale skill docs: kb create investigation missing --model flag"
+beads_id: orch-go-cmnsu
 tier: light
 
 automated:
-  - command: "cd ~/Documents/personal/kb-cli && go test ./cmd/kb/ -run TestCreateInvestigationRequiresModelOrOrphan"
-    expects: "Gate blocks creation without --model or --orphan"
-    result: "PASS"
-  - command: "cd ~/Documents/personal/kb-cli && go test ./cmd/kb/ -run TestCreateInvestigationModelGateBypassed"
-    expects: "--orphan bypasses model requirement"
-    result: "PASS"
-  - command: "cd ~/Documents/personal/kb-cli && go test ./cmd/kb/ -run TestCreateInvestigationModelGateSatisfied"
-    expects: "--model satisfies gate"
-    result: "PASS"
-  - command: "go test ./pkg/spawn/"
-    expects: "All spawn tests pass with updated context template"
-    result: "PASS"
-  - command: "go test ./pkg/verify/"
-    expects: "All verify tests pass"
-    result: "PASS"
-
-e2e:
-  - command: "kb create investigation inv/test-no-model"
-    expects: "Error: --model is required"
-    result: "PASS - clear error with guidance"
-  - command: "kb create investigation inv/test --model knowledge-physics"
-    expects: "Created investigation"
-    result: "PASS"
-  - command: "kb create investigation inv/test --orphan"
-    expects: "Created investigation without model"
-    result: "PASS"
+  - command: "grep -rn 'kb create investigation' skills/src/ | grep -v -- '--model\\|--orphan' | grep -v 'auto-detects\\|Resolution-Status'"
+    expects: "Zero stale references in skill source/template files"
+    result: "PASS — no output (all refs include --model or --orphan)"
+  - command: "skillc deploy --target ~/.claude/skills/"
+    expects: "All 14 skills deploy successfully"
+    result: "PASS — 14/14 deployed"
 
 deliverables:
-  kb-cli:
-    - cmd/kb/create.go         # Hard gate in createInvestigationFromTypeSlug
-    - cmd/kb/create_test.go    # 3 new gate tests + 4 updated existing tests
-  orch-go:
-    - pkg/spawn/context.go                                          # SPAWN_CONTEXT template updated
-    - skills/src/worker/investigation/.skillc/workflow.md            # --model guidance
-    - skills/src/worker/investigation/.skillc/template.md            # --model guidance
-    - skills/src/worker/systematic-debugging/.skillc/investigation-file.md
-    - skills/src/worker/architect/.skillc/SKILL.md.template
+  templates_fixed:
     - skills/src/worker/codebase-audit/.skillc/SKILL.md.template
-    - skills/src/worker/codebase-audit/.skillc/phases/common-overview.md
-    - skills/src/worker/experiment/.skillc/SKILL.md.template
-
-orphan_rate_measurement:
-  current_active_investigations: 208
-  with_model_field: 7
-  current_orphan_rate: "96.6%"
-  probe_files_structurally_coupled: 189
-  expected_forward_orphan_rate: "<10% (only explicit --orphan usage)"
-  metric_to_watch: "ratio of --orphan to --model usage post-deployment"
+    - skills/src/worker/ux-audit/.skillc/phases/overview.md
+    - skills/src/worker/design-session/.skillc/SKILL.md.template
+    - skills/src/worker/investigation/.skillc/SKILL.md.template
+    - skills/src/worker/research/.skillc/SKILL.md.template
+    - skills/src/worker/investigation/.skillc/reference/template.md
+    - skills/src/worker/investigation/reference/template.md
+    - skills/src/meta/orchestrator/.skillc/reference/tools-and-commands.md
+    - skills/src/meta/orchestrator/reference/tools-and-commands.md
+  docs_fixed:
+    - .kb/guides/kb-getting-started.md
+    - .kb/global/guides/orch-ecosystem.md
+  compiled_outputs: "All SKILL.md files regenerated via skillc build + deploy"

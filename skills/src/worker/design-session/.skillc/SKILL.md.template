@@ -363,7 +363,7 @@ bd label <issue-id> area:auth     # Area label
 #### B.1 Create Investigation
 
 ```bash
-kb create investigation design/<slug>
+kb create investigation design/<slug> --model <model-name>  # or --orphan
 ```
 
 #### B.2 Document What's Known and Unknown

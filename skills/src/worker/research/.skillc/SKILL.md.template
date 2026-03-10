@@ -77,7 +77,7 @@ Follow standard research workflow below (create investigation file with `researc
 # Create investigation using kb CLI command
 # Update SLUG based on your research topic
 # Use research/ prefix for research investigations
-kb create investigation "research/topic-in-kebab-case"
+kb create investigation "research/topic-in-kebab-case" --model <model-name>  # or --orphan
 ```
 
 **Important:**

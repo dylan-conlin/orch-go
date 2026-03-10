@@ -1,6 +1,6 @@
 # Investigation Template
 
-**When to use:** Reference when creating investigation file structure. Use `kb create investigation {slug}` to auto-generate.
+**When to use:** Reference when creating investigation file structure. Use `kb create investigation {slug} --model <model-name>` (or `--orphan`) to auto-generate.
 
 ## Full Template Structure
 

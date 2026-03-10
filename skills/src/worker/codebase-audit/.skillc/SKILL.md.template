@@ -58,7 +58,7 @@ Check SPAWN_CONTEXT.md for `### Models (synthesized understanding)` section.
 ## Investigation File Setup
 
 ```bash
-kb create investigation "audit/dimension-audit-description"
+kb create investigation "audit/dimension-audit-description" --model <model-name>  # or --orphan
 ```
 
 After creating:

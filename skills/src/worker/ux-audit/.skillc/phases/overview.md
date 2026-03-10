@@ -69,7 +69,7 @@ When a prior audit says "spacing is wrong," verify it in the current page before
 **CRITICAL:** Create investigation file BEFORE starting the audit. Document findings progressively.
 
 ```bash
-kb create investigation "audit/ux-{page-slug}"
+kb create investigation "audit/ux-{page-slug}" --model <model-name>  # or --orphan
 ```
 
 **After creating the template:**

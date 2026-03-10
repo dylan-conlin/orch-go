@@ -122,7 +122,7 @@ See `~/.kb/principles.md` for the full philosophy.
 **Purpose:** Knowledge base management for investigations and decisions.
 
 **What it does:**
-- **Create artifacts:** `kb create investigation auth-flow`, `kb create decision session-arch`
+- **Create artifacts:** `kb create investigation auth-flow --model <name>`, `kb create decision session-arch`
 - **Search:** `kb context "<topic>"` returns all knowledge (decisions + investigations)
 - **Link:** `kb link <artifact> --issue <beads-id>` connects artifacts to issues
 - **Publish:** `kb publish <artifact>` copies to global `~/.kb/`
@@ -356,7 +356,7 @@ Quick Learning (kn):
 Principle candidate → ~/.kb/principles.md
 
 Deep Documentation (kb):
-  Create investigation → kb create investigation "topic"
+  Create investigation → kb create investigation "topic" --model <name>  # or --orphan
   Promote to decision → kb create decision "topic" (when accepting recommendation)
   
 Session Start:

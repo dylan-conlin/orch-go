@@ -55,7 +55,7 @@ git commit -m "Initialize knowledge base"
 Pick a real question about your project — something you'd normally ask an AI agent and forget the answer to.
 
 ```bash
-kb create investigation "how-auth-tokens-refresh"
+kb create investigation "how-auth-tokens-refresh" --model auth-system  # or --orphan if no model
 ```
 
 This creates `.kb/investigations/YYYY-MM-DD-inv-how-auth-tokens-refresh.md` with a template. Open it and fill in:
@@ -105,8 +105,8 @@ git commit -m "investigation: how auth tokens refresh"
 Run 2-3 more investigations on related topics. For the auth example:
 
 ```bash
-kb create investigation "token-storage-locations"
-kb create investigation "auth-failure-modes"
+kb create investigation "token-storage-locations" --model auth-system
+kb create investigation "auth-failure-modes" --model auth-system
 ```
 
 Each investigation stands alone. But after three investigations on auth, you'll notice patterns — recurring findings, shared failure modes, consistent behavior. That's the signal to create a model.
@@ -340,7 +340,7 @@ Tell your agent at the start of a session:
 > Before investigating, run `kb context "your topic"` to find existing models.
 > If a model exists, create a probe in `.kb/models/{name}/probes/` testing
 > a specific claim. If no model exists, create an investigation with
-> `kb create investigation "slug"`. Always merge probe findings back into
+> `kb create investigation "slug" --model <model-name>`. Always merge probe findings back into
 > the parent model before finishing.
 
 ### With Claude Code
@@ -422,7 +422,7 @@ A healthy knowledge base has:
 | Command | Purpose |
 |---------|---------|
 | `kb init` | Initialize `.kb/` in current project |
-| `kb create investigation "slug"` | Create investigation file |
+| `kb create investigation "slug" --model <name>` | Create investigation file |
 | `kb context "query"` | Find relevant existing knowledge |
 | `kb reflect` | Surface synthesis opportunities |
 | `kb list` | List artifacts by type |

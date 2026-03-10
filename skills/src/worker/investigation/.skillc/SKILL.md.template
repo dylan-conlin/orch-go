@@ -46,7 +46,7 @@ When an artifact says "X is not implemented," that's a hypothesis—not a findin
 
 ## Workflow
 
-1. Create investigation file: `kb create investigation {slug}`
+1. Create investigation file: `kb create investigation {slug} --model <model-name>` (or `--orphan`)
 2. **IMMEDIATE CHECKPOINT (before ANY exploration):**
    - Fill in your **Question** from SPAWN_CONTEXT
    - Add first finding: `### Finding 1: Starting approach` with your planned first step
@@ -102,7 +102,7 @@ When an artifact says "X is not implemented," that's a hypothesis—not a findin
 
 ## Template
 
-The template enforces the discipline. Use `kb create investigation {slug}` to create.
+The template enforces the discipline. Use `kb create investigation {slug} --model <model-name>` (or `--orphan`) to create.
 
 ```markdown
 ## Summary (D.E.K.N.)

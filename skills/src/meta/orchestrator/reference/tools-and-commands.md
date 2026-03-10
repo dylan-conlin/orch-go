@@ -423,7 +423,7 @@ kb quick supersede <id>                # Supersede an entry
 Create knowledge artifacts from templates.
 
 ```bash
-kb create investigation --title "topic"
+kb create investigation "topic" --model <model-name>  # or --orphan
 kb create decision --title "choice"
 kb create guide --title "pattern"
 kb create plan --title "strategy"
