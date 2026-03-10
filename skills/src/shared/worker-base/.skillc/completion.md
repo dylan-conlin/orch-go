@@ -35,7 +35,7 @@ Examples of friction worth logging:
    - If uncommitted .kb/ files exist: `git add .kb/ && git commit -m "knowledge artifacts from session"`
    - This ensures probe files in .kb/models/{name}/probes/ are not left behind
 6. Commit any remaining changes (including `VERIFICATION_SPEC.yaml`)
-7. Run: `/exit` to close the agent session
+7. **Session complete** — no further actions needed.
 
 **Light Tier:** SYNTHESIS.md is NOT required for this spawn.
 {{else}}
@@ -52,7 +52,7 @@ Examples of friction worth logging:
    - If uncommitted .kb/ files exist: `git add .kb/ && git commit -m "knowledge artifacts from session"`
    - This ensures probe files in .kb/models/{name}/probes/ are not left behind
 7. Commit all remaining changes (including SYNTHESIS.md and `VERIFICATION_SPEC.yaml`)
-8. Run: `/exit` to close the agent session
+8. **Session complete** — no further actions needed.
 {{end}}
 
 **Why this order matters:** If the agent dies after commit but before reporting Phase: Complete, the orchestrator cannot detect completion. Reporting phase first ensures visibility even if the agent dies before committing.

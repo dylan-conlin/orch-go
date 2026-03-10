@@ -180,7 +180,7 @@ Before every response, verify:
 
 | Situation | Signal | Action |
 |---|---|---|
-| Session work is complete | All deliverables ready, tests passing | It's recommended to follow this order: Phase: Complete → git add → git commit → bd sync → /exit |
+| Session work is complete | All deliverables ready, tests passing | It's recommended to follow this order: Phase: Complete → git add → git commit → bd sync → session complete |
 
 ### Pre-Response Check (Session Close)
 

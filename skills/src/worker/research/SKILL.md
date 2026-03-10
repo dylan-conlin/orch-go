@@ -237,7 +237,7 @@ Edit the research file:
    # Do NOT git push - orchestrator decides when to push/deploy
    ```
 
-4. Call /exit to close agent session
+4. **Session complete** — no further actions needed.
 
 ### 7. Link from Decision (If Applicable)
 
@@ -475,7 +475,7 @@ Before marking complete:
 - [ ] Structured uncertainty complete (tested/untested/would change)
 - [ ] Research file committed to `.kb/investigations/` (with `research-` prefix)
 - [ ] Reported via beads: `bd comments add <beads-id> "Phase: Complete - [recommendation summary]"`
-- [ ] Call /exit to close agent session
+- [ ] **Session complete** — no further actions needed.
 
 **If ANY unchecked, research is NOT complete.**
 

@@ -227,7 +227,7 @@ Quality checks run automatically at `orch complete` time (debug statements, comm
    - Investigation Mode: Prior-Work acknowledged and D.E.K.N. summary filled
 3. Report: `bd comments add <beads-id> "Phase: Complete - [conclusion summary]"` (FIRST - before commit)
 4. Commit: `git add && git commit`
-5. Exit: `/exit`
+5. **Session complete** — no further actions needed.
 
 ---
 

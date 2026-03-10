@@ -1207,7 +1207,7 @@ bd comment <beads-id> "Phase: Complete - Root cause: [X], Fix: [Y], Tests passin
 bd close <beads-id> --reason "Root cause: [X], Fix: [Y]"
 ` + "```" + `
 
-Then call ` + "`/exit`" + ` to close agent session.
+Then **Session complete** — no further actions needed.
 `
 		result := StripBeadsInstructions(content)
 
@@ -1216,9 +1216,9 @@ Then call ` + "`/exit`" + ` to close agent session.
 			t.Error("should remove bd close command")
 		}
 
-		// Should keep the /exit instruction
-		if !strings.Contains(result, "/exit") {
-			t.Error("should keep /exit instruction")
+		// Should keep the session complete instruction
+		if !strings.Contains(result, "Session complete") {
+			t.Error("should keep session complete instruction")
 		}
 	})
 
@@ -1318,7 +1318,7 @@ bd comment <beads-id> "Phase: Complete - Root cause: [X], Fix: [Y], Tests passin
 bd close <beads-id> --reason "Root cause: [X], Fix: [Y]"
 ` + "```" + `
 
-Then call ` + "`/exit`" + ` to close agent session.
+Then **Session complete** — no further actions needed.
 `
 
 	cfg := &Config{
@@ -1361,9 +1361,9 @@ Then call ` + "`/exit`" + ` to close agent session.
 		t.Error("expected content to still contain Completion Criteria section")
 	}
 
-	// Should keep /exit instruction
-	if !strings.Contains(content, "/exit") {
-		t.Error("expected content to keep /exit instruction")
+	// Should keep session complete instruction (replaces old /exit)
+	if !strings.Contains(content, "Session complete") {
+		t.Error("expected content to keep session complete instruction")
 	}
 
 	// Should keep non-beads completion criteria
@@ -1693,9 +1693,9 @@ func TestGenerateContext_NoTrack(t *testing.T) {
 			t.Error("expected content to NOT contain bd close warning for --no-track spawn")
 		}
 
-		// Should still contain /exit instruction
-		if !strings.Contains(content, "/exit") {
-			t.Error("expected content to contain /exit instruction")
+		// Should still contain session complete instruction (replaces old /exit)
+		if !strings.Contains(content, "Session complete") {
+			t.Error("expected content to contain session complete instruction")
 		}
 
 		// Should still contain SYNTHESIS.md requirement for full tier
@@ -1758,7 +1758,7 @@ func TestGenerateContext_NoTrack(t *testing.T) {
 			t.Error("expected content to indicate SYNTHESIS.md is not required for light tier")
 		}
 
-		// Final protocol should only have /exit
+		// Final protocol should only have session complete (no bd comment for --no-track)
 		// Check that the final protocol section doesn't mention bd comment
 		finalIdx := strings.LastIndex(content, "FINAL STEP - SESSION COMPLETE PROTOCOL")
 		if finalIdx == -1 {

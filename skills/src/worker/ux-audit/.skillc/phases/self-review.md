@@ -106,4 +106,4 @@ Before marking complete:
 
 1. Verify all checkboxes marked
 2. Report completion: `bd comments add <beads-id> "Phase: Complete - UX audit: [summary]"`
-3. Call /exit to close agent session
+3. **Session complete** — no further actions needed.

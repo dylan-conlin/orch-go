@@ -758,7 +758,7 @@ Before marking complete:
 - [ ] **Leave it Better completed** - At least one `kb quick` command run OR noted as not applicable
 - [ ] All changes committed to git
 - [ ] Report via beads: `bd comments add <beads-id> "Phase: Complete - Created [output type]: [summary]"`
-- [ ] Call `/exit` to close agent session
+- [ ] Session complete — no further actions needed
 
 ---
 

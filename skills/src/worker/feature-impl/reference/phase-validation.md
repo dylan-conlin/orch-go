@@ -71,7 +71,7 @@ bd comments add <beads-id> "BLOCKED: UI changes require visual verification but 
 2. **Commit all changes** - `git add -A && git commit -m "[type]: [description]"`
 3. **Verify commit** - `git status` shows "nothing to commit"
 4. Report completion: `bd comments add <beads-id> "Phase: Complete - [brief summary]"`
-5. Call /exit to close agent session
+5. **Session complete** — no further actions needed.
 
 **That's it - no validation required.**
 
@@ -88,7 +88,7 @@ bd comments add <beads-id> "BLOCKED: UI changes require visual verification but 
 3. **Commit all changes** - `git add -A && git commit -m "[type]: [description]"`
 4. **Verify commit** - `git status` shows "nothing to commit"
 5. **Report completion with test evidence** - `bd comments add <beads-id> "Phase: Complete - Tests: <command> - <actual output>"`
-6. **Call /exit** - Close agent session
+6. **Session complete** — no further actions needed.
 
 **Test Evidence Requirement:**
 Your completion comment MUST include actual test output, not just "tests passing":
@@ -118,7 +118,7 @@ Your completion comment MUST include actual test output, not just "tests passing
 5. **Commit all changes** - `git add -A && git commit -m "[type]: [description]"`
 6. **Verify commit** - `git status` shows "nothing to commit"
 7. **Report completion with evidence** - `bd comments add <beads-id> "Phase: Complete - Tests: <command> - <output>. Smoke test: [verification summary]"`
-8. **Call /exit** - Close agent session
+8. **Session complete** — no further actions needed.
 
 **Critical:** Tests passing ≠ feature working. Always perform manual verification for user-facing features.
 
@@ -145,7 +145,7 @@ Your completion comment MUST include actual test output, not just "tests passing
 5. **Report awaiting validation** - `bd comments add <beads-id> "AWAITING_VALIDATION - [phase details, evidence summary]"`
 6. **STOP** - Wait for orchestrator approval. DO NOT proceed to next phase
 7. **After approval** - Report: `bd comments add <beads-id> "Phase: Complete - [summary]"`
-8. **Call /exit** - Close agent session
+8. **Session complete** — no further actions needed.
 
 **Critical:** STOP and wait for explicit orchestrator approval. Do not proceed or mark complete without approval.
 

@@ -314,7 +314,7 @@ Before marking complete:
 7. Link artifact to beads issue: `kb link <investigation-file> --issue <beads-id>`
 8. Report via beads: `bd comments add <beads-id> "Phase: Complete - [conclusion summary]"` (report phase FIRST - before commit)
 9. `git add` and `git commit` the investigation file
-10. Run `/exit` to close session
+10. **Session complete** — no further actions needed.
 
 **Why this order matters:** If the agent dies after commit but before reporting Phase: Complete, the orchestrator cannot detect completion. Reporting phase first ensures visibility even if the agent dies before committing.
 

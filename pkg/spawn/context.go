@@ -309,19 +309,19 @@ DELIVERABLES (REQUIRED):
 STATUS UPDATES:
 {{if .ProducesInvestigation}}{{if .HasInjectedModels}}Update Status: field in your probe file:
 - Status: Active (while working)
-- Status: Complete (when done and committed) → then call /exit to close agent session
+- Status: Complete (when done and committed)
 
 Signal orchestrator when blocked:
 - Add '**Status:** BLOCKED - [reason]' to probe file
 - Add '**Status:** QUESTION - [question]' when needing input
 {{else}}Update Status: field in your investigation file:
 - Status: Active (while working)
-- Status: Complete (when done and committed) → then call /exit to close agent session
+- Status: Complete (when done and committed)
 
 Signal orchestrator when blocked:
 - Add '**Status:** BLOCKED - [reason]' to investigation file
 - Add '**Status:** QUESTION - [question]' when needing input
-{{end}}{{else}}Track progress via beads comments. Call /exit to close agent session when done.
+{{end}}{{else}}Track progress via beads comments.
 {{end}}
 
 {{if .SkillContent}}
@@ -396,32 +396,32 @@ Complete your session in this EXACT order:
 {{if .NoTrack}}
 {{if eq .Tier "light"}}
 1. **COMMIT YOUR WORK:** ` + "`git add <files you changed> && git commit -m \"feat: [description]\"`" + `
-2. ` + "`/exit`" + `
+2. **Session complete** — no further actions needed.
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
 {{else}}
 1. Create SYNTHESIS.md in your workspace
 2. **COMMIT YOUR WORK:** ` + "`git add <files you changed> && git commit -m \"feat: [description]\"`" + `
-3. ` + "`/exit`" + `
+3. **Session complete** — no further actions needed.
 {{end}}
 {{else}}
 {{if eq .Tier "light"}}
 1. **COMMIT YOUR WORK:** ` + "`git add <files you changed> && git commit -m \"feat: [description] ({{.BeadsID}})\"`" + `
 2. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
-3. ` + "`/exit`" + `
+3. **Session complete** — no further actions needed.
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
 {{else}}
 1. Create SYNTHESIS.md in your workspace
 2. **COMMIT YOUR WORK:** ` + "`git add <files you changed> && git commit -m \"feat: [description] ({{.BeadsID}})\"`" + `
 3. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
-4. ` + "`/exit`" + `
+4. **Session complete** — no further actions needed.
 {{end}}
 {{end}}
 
 ⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
 {{if not .NoTrack}}⛔ **NEVER run ` + "`bd close`" + `** - Only the orchestrator closes issues via ` + "`orch complete`" + `.
-{{end}}⚠️ Your work is NOT complete until Phase: Complete is reported (or /exit for --no-track).
+{{end}}⚠️ Your work is NOT complete until Phase: Complete is reported (or all steps above are done for --no-track).
 `
 
 // skillContentData holds the data context for processing skill content templates.

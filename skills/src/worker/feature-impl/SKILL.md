@@ -256,7 +256,7 @@ Quality checks (debug statements, commit format, placeholder data, orphaned file
 3. All deliverables created and reported via `bd comment`
 4. If web/ modified: visual verification completed with evidence
 5. Report: `bd comments add <beads-id> "Phase: Complete - [summary]"` (FIRST — before commit)
-6. Commit, then `/exit`
+6. Commit. **Session complete** — no further actions needed.
 
 ---
 
