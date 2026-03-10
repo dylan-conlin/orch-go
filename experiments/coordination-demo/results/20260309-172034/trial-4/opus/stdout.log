@@ -1,0 +1,4 @@
+Phase reported. Summary:
+
+- **`pkg/display/display.go`**: Added `FormatBytes(int64) string` after `FormatDurationShort`, using binary units (B, KiB, MiB, GiB, TiB) with 1 decimal place and negative support.
+- **`pkg/display/display_test.go`**: Added 16 test cases covering zero, small bytes, exact boundaries, between-boundary values, large values, and negatives. All pass.

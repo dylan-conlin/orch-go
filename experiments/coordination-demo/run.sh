@@ -38,7 +38,7 @@ run_trial() {
     local trial_num="$1"
     local model="$2"
     local trial_dir="$RESULTS_DIR/trial-${trial_num}/${model}"
-    local worktree_dir="/tmp/coord-demo-${model}-$$"
+    local worktree_dir="/tmp/coord-demo-${model}-t${trial_num}-$$"
     local branch_name="experiment/coord-demo-${model}-trial${trial_num}-$$"
 
     mkdir -p "$trial_dir"
@@ -98,11 +98,20 @@ run_trial() {
     echo "[Trial $trial_num/$model] Results saved to $trial_dir"
 }
 
-# Run trials
+# Run trials (haiku and opus in parallel per trial)
 for trial in $(seq 1 "$TRIALS"); do
+    echo ""
+    echo "--- Trial $trial of $TRIALS ---"
+    pids=()
     for model in "${MODELS[@]}"; do
-        run_trial "$trial" "$model"
+        (run_trial "$trial" "$model") &
+        pids+=($!)
     done
+    # Wait for both models to finish before starting next trial
+    for pid in "${pids[@]}"; do
+        wait "$pid" || true
+    done
+    echo "--- Trial $trial complete ---"
 done
 
 # Run scoring

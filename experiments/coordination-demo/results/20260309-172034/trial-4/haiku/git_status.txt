@@ -1,0 +1,3 @@
+ M .beads/issues.jsonl
+ M pkg/display/display.go
+ M pkg/display/display_test.go

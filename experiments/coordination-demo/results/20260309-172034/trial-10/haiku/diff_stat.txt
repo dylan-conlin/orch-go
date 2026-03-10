@@ -1,0 +1,4 @@
+ .beads/issues.jsonl         |  4 ++--
+ pkg/display/display.go      | 43 +++++++++++++++++++++++++++++++++++++++++++
+ pkg/display/display_test.go | 44 ++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 89 insertions(+), 2 deletions(-)

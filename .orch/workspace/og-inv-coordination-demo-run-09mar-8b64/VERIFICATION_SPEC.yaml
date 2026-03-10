@@ -1,0 +1,44 @@
+verification:
+  type: experiment
+  description: "N=10 coordination demo — FormatBytes task for Haiku and Opus"
+
+  automated_checks:
+    - name: "Experiment results exist"
+      command: "ls experiments/coordination-demo/results/20260309-172034/scores.csv experiments/coordination-demo/results/20260309-172034/merge_results.csv"
+      expected: "Both files exist"
+      result: "PASS"
+
+    - name: "All 20 agent runs completed"
+      command: "wc -l < experiments/coordination-demo/results/20260309-172034/scores.csv"
+      expected: "21 (header + 20 data lines)"
+      result: "PASS — 21 lines"
+
+    - name: "All runs scored 5/6 (6/6 adjusted)"
+      command: "awk -F, 'NR>1{print $10}' experiments/coordination-demo/results/20260309-172034/scores.csv | sort -u"
+      expected: "Only '5' (F4=0 is beads side-effect)"
+      result: "PASS — all scores are 5"
+
+    - name: "All 10 merge pairs produce CONFLICT"
+      command: "grep -c ',conflict,' experiments/coordination-demo/results/20260309-172034/merge_results.csv"
+      expected: "10"
+      result: "PASS — 10 conflicts"
+
+  manual_verification:
+    - "Review RESULTS.md in experiment directory for human-readable summary"
+    - "Verify investigation file has D.E.K.N. filled and Status: Complete"
+    - "Check that statistical claims match raw data (scores.csv, merge_results.csv)"
+
+  key_metrics:
+    haiku_individual_success: "10/10 (100%)"
+    opus_individual_success: "10/10 (100%)"
+    merge_conflict_rate: "10/10 (100%)"
+    haiku_mean_duration: "39.1s (SD=13.4s)"
+    opus_mean_duration: "44.0s (SD=4.2s)"
+    welch_t_statistic: "1.103 (not significant at p<0.05)"
+    fisher_exact_p_value: "1.0 (no difference in coordination failure rate)"
+
+  artifacts:
+    scores: "experiments/coordination-demo/results/20260309-172034/scores.csv"
+    merge_results: "experiments/coordination-demo/results/20260309-172034/merge_results.csv"
+    results_summary: "experiments/coordination-demo/results/20260309-172034/RESULTS.md"
+    investigation: ".kb/investigations/2026-03-09-inv-coordination-demo-n10-formatbytes.md"

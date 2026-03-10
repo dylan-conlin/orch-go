@@ -1,0 +1,100 @@
+diff --git a/.beads/issues.jsonl b/.beads/issues.jsonl
+index d74cfdbb8..42c5df26c 100644
+--- a/.beads/issues.jsonl
++++ b/.beads/issues.jsonl
+@@ -676,7 +676,7 @@
+ {"id":"orch-go-e9z","title":"Daemon observability: surface spawn failures visibly (health card / dashboard metric)","description":"After the fail-fast fix (orch-go-2ma), if UpdateBeadsStatus persistently fails, the daemon silently stops spawning. No alerting, no health card. Neither Dylan nor the orchestrator would notice. Need: a health card or dashboard metric for 'daemon tried to spawn but failed N times in a row.' This was identified during two-gate verification of the duplicate spawn fix.","status":"closed","priority":2,"issue_type":"feature","created_at":"2026-02-14T22:57:29.9227-08:00","created_by":"Test User","updated_at":"2026-02-15T10:31:32.474825-08:00","closed_at":"2026-02-15T10:31:32.474825-08:00"}
+ {"id":"orch-go-edcu","title":"Bug: recommendation regex drops spawn-follow-up","description":"Spawn-follow-up recommendations are silently dropped because the regex can't match hyphens.","status":"closed","priority":1,"issue_type":"bug","created_at":"2026-03-01T15:10:46.868798-08:00","created_by":"dylanconlin","updated_at":"2026-03-01T15:32:16.648398-08:00","closed_at":"2026-03-01T15:32:16.648398-08:00"}
+ {"id":"orch-go-egwt","title":"Investigate beads CAS support for atomic status transitions (daemon dedup redesign prerequisite)","status":"closed","priority":2,"issue_type":"investigation","created_at":"2026-03-01T12:40:25.485385-08:00","created_by":"dylanconlin","updated_at":"2026-03-01T13:50:35.027517-08:00","closed_at":"2026-03-01T13:50:35.027517-08:00"}
+-{"id":"orch-go-ei2q2","title":"Coordination demo: run simple FormatBytes task at N=10 for both Haiku and Opus to establish statistical significance on coordination failure rate independence from model capability","status":"in_progress","priority":2,"issue_type":"investigation","assignee":"og-inv-coordination-demo-run-09mar-8b64","created_at":"2026-03-09T17:17:28.098407-07:00","created_by":"dylanconlin","updated_at":"2026-03-09T17:18:09.707787-07:00","labels":["triage:ready","area:kb","effort:medium","orch:agent"],"comments":[{"id":1,"issue_id":"orch-go-ei2q2","author":"dylanconlin","text":"FRAME: Coordination demo: run simple FormatBytes task at N=10 for both Haiku and Opus to establish statistical significance on coordination failure rate independence from model capability","created_at":"2026-03-09T17:18:13.91309-07:00"},{"id":2,"issue_id":"orch-go-ei2q2","author":"dylanconlin","text":"Phase: Planning - Reading coordination demo code and prior trial results","created_at":"2026-03-09T17:18:23.373262-07:00"},{"id":3,"issue_id":"orch-go-ei2q2","author":"dylanconlin","text":"investigation_path: .kb/investigations/2026-03-09-inv-coordination-demo-n10-formatbytes.md","created_at":"2026-03-09T17:19:03.956192-07:00"}]}
++{"id":"orch-go-ei2q2","title":"Coordination demo: run simple FormatBytes task at N=10 for both Haiku and Opus to establish statistical significance on coordination failure rate independence from model capability","status":"in_progress","priority":2,"issue_type":"investigation","assignee":"og-inv-coordination-demo-run-09mar-8b64","created_at":"2026-03-09T17:17:28.098407-07:00","created_by":"dylanconlin","updated_at":"2026-03-09T17:18:09.707787-07:00","labels":["triage:ready","area:kb","effort:medium","orch:agent"],"comments":[{"id":1,"issue_id":"orch-go-ei2q2","author":"dylanconlin","text":"FRAME: Coordination demo: run simple FormatBytes task at N=10 for both Haiku and Opus to establish statistical significance on coordination failure rate independence from model capability","created_at":"2026-03-09T17:18:13.91309-07:00"},{"id":2,"issue_id":"orch-go-ei2q2","author":"dylanconlin","text":"Phase: Planning - Reading coordination demo code and prior trial results","created_at":"2026-03-09T17:18:23.373262-07:00"},{"id":3,"issue_id":"orch-go-ei2q2","author":"dylanconlin","text":"investigation_path: .kb/investigations/2026-03-09-inv-coordination-demo-n10-formatbytes.md","created_at":"2026-03-09T17:19:03.956192-07:00"},{"id":4,"issue_id":"orch-go-ei2q2","author":"dylanconlin","text":"Phase: Implementing - Running N=10 experiment (20 agent invocations, ~10min estimated)","created_at":"2026-03-09T17:20:30.312342-07:00"},{"id":5,"issue_id":"orch-go-ei2q2","author":"dylanconlin","text":"Phase: Complete - Added FormatBytes function to pkg/display/display.go with 16 comprehensive test cases in display_test.go, all passing. Function formats byte counts into human-readable strings using binary units (B, KiB, MiB, GiB, TiB) with 1 decimal place and negative value support.","created_at":"2026-03-09T17:22:40.996004-07:00"}]}
+ {"id":"orch-go-ei9r","title":"Audit daemon code for health issues, bugs, and defects","status":"closed","priority":2,"issue_type":"task","created_at":"2026-03-04T11:42:08.372065-08:00","created_by":"dylanconlin","updated_at":"2026-03-04T12:16:35.268672-08:00","closed_at":"2026-03-04T12:16:35.268672-08:00"}
+ {"id":"orch-go-ejn4","title":"Test: pause trigger 3 (delete after)","status":"closed","priority":2,"issue_type":"task","created_at":"2026-02-15T12:35:19.19214-08:00","created_by":"Test User","updated_at":"2026-02-15T12:35:27.946323-08:00","closed_at":"2026-02-15T12:35:27.946323-08:00"}
+ {"id":"orch-go-ek0b","title":"Phase 3: Daemon open reflection with auto-issue creation","description":"Phase 3 of knowledge maintenance automation loop (.kb/decisions/2026-02-15-knowledge-maintenance-automation-loop.md). Add open type auto-issue creation to daemon reflection cycle. Per Jan 6 investigation (.kb/investigations/2026-01-06-inv-automated-reflection-daemon-kb-reflect.md), open type detects investigations with unimplemented Next: actions \u003e3 days old — self-declared actionable items, not inferred patterns. 1) If not already in kb-cli: add kb reflect --type open --create-issue support. 2) Add ReflectOpenEnabled config to daemon. 3) Wire into daemon reflection cycle alongside existing synthesis. Cadence: hourly (same as synthesis). Issue format: 'Complete investigation: {title} - {age} days without action'. Label: triage:review. Acceptance: daemon creates issues for investigations \u003e3 days without action.","status":"closed","priority":2,"issue_type":"feature","created_at":"2026-02-15T21:23:41.320059-08:00","created_by":"Test User","updated_at":"2026-02-19T12:07:15.383226-08:00","closed_at":"2026-02-19T12:07:15.383226-08:00","dependencies":[{"issue_id":"orch-go-ek0b","depends_on_id":"orch-go-9b26","type":"blocks","created_at":"2026-02-15T21:24:00.042512-08:00","created_by":"Test User"}]}
+diff --git a/pkg/display/display.go b/pkg/display/display.go
+index 1a699243d..aff3ac904 100644
+--- a/pkg/display/display.go
++++ b/pkg/display/display.go
+@@ -92,3 +92,41 @@ func FormatDurationShort(d time.Duration) string {
+ 	}
+ 	return fmt.Sprintf("%dh", int(d.Hours()))
+ }
++
++// FormatBytes formats a byte count as a human-readable string using binary
++// units (B, KiB, MiB, GiB, TiB). Non-byte units show 1 decimal place.
++func FormatBytes(bytes int64) string {
++	if bytes == 0 {
++		return "0 B"
++	}
++
++	negative := bytes < 0
++	if negative {
++		bytes = -bytes
++	}
++
++	prefix := ""
++	if negative {
++		prefix = "-"
++	}
++
++	const (
++		kib = 1024
++		mib = 1024 * kib
++		gib = 1024 * mib
++		tib = 1024 * gib
++	)
++
++	switch {
++	case bytes >= tib:
++		return fmt.Sprintf("%s%.1f TiB", prefix, float64(bytes)/float64(tib))
++	case bytes >= gib:
++		return fmt.Sprintf("%s%.1f GiB", prefix, float64(bytes)/float64(gib))
++	case bytes >= mib:
++		return fmt.Sprintf("%s%.1f MiB", prefix, float64(bytes)/float64(mib))
++	case bytes >= kib:
++		return fmt.Sprintf("%s%.1f KiB", prefix, float64(bytes)/float64(kib))
++	default:
++		return fmt.Sprintf("%s%d B", prefix, bytes)
++	}
++}
+diff --git a/pkg/display/display_test.go b/pkg/display/display_test.go
+index fcd3fa61c..705350459 100644
+--- a/pkg/display/display_test.go
++++ b/pkg/display/display_test.go
+@@ -113,6 +113,36 @@ func TestFormatDuration(t *testing.T) {
+ 	}
+ }
+ 
++func TestFormatBytes(t *testing.T) {
++	tests := []struct {
++		input int64
++		want  string
++	}{
++		{0, "0 B"},
++		{1, "1 B"},
++		{512, "512 B"},
++		{1023, "1023 B"},
++		{1024, "1.0 KiB"},
++		{1536, "1.5 KiB"},
++		{10240, "10.0 KiB"},
++		{1048576, "1.0 MiB"},
++		{1572864, "1.5 MiB"},
++		{1073741824, "1.0 GiB"},
++		{1610612736, "1.5 GiB"},
++		{1099511627776, "1.0 TiB"},
++		{1649267441664, "1.5 TiB"},
++		{-1024, "-1.0 KiB"},
++		{-512, "-512 B"},
++		{-1048576, "-1.0 MiB"},
++	}
++	for _, tt := range tests {
++		got := FormatBytes(tt.input)
++		if got != tt.want {
++			t.Errorf("FormatBytes(%d) = %q, want %q", tt.input, got, tt.want)
++		}
++	}
++}
++
+ func TestFormatDurationShort(t *testing.T) {
+ 	tests := []struct {
+ 		input time.Duration
