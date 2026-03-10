@@ -71,7 +71,7 @@ func collectHealthSnapshot() health.Snapshot {
 	snap.OrphanedIssues = countOrphanedIssues()
 
 	// Collect code metrics
-	snap.BloatedFiles = countBloatedFiles()
+	snap.BloatedFiles, snap.TotalSourceFiles = countBloatedFilesAndTotal()
 
 	// Collect git commit metrics
 	snap.FixCommits, snap.FeatCommits = countCommitTypes()
@@ -114,19 +114,81 @@ func countOrphanedIssues() int {
 	return bdCount("--status", "open", "--updated-before", cutoff)
 }
 
-// countBloatedFiles counts source files exceeding 800 lines.
-func countBloatedFiles() int {
+// isTestFile returns true if the file is a test file.
+func isTestFile(path string) bool {
+	return strings.HasSuffix(path, "_test.go") ||
+		strings.HasSuffix(path, ".test.ts") ||
+		strings.HasSuffix(path, ".test.js") ||
+		strings.HasSuffix(path, ".spec.ts") ||
+		strings.HasSuffix(path, ".spec.js")
+}
+
+// countBloatedFilesAndTotal counts bloated files using separate thresholds
+// for source (800 lines) and test (2000 lines) files. Also returns total
+// source file count for threshold scaling.
+func countBloatedFilesAndTotal() (bloated int, totalSource int) {
 	projectDir, err := os.Getwd()
 	if err != nil {
-		return 0
+		return 0, 0
 	}
 
-	// Reuse existing hotspot bloat analysis
-	_, count, err := analyzeBloatFiles(projectDir, 800)
+	const sourceThreshold = 800
+	const testThreshold = 2000
+
+	err = filepath.Walk(projectDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			if skipBloatDirs[info.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		relPath, err := filepath.Rel(projectDir, path)
+		if err != nil {
+			return nil
+		}
+
+		if !isSourceFile(relPath) {
+			return nil
+		}
+
+		// Skip generated files and build output directories
+		if strings.Contains(relPath, "/generated/") || containsSkippedDir(relPath) {
+			return nil
+		}
+		for _, prefix := range additionalSkipPrefixes {
+			if strings.HasPrefix(relPath, prefix) {
+				return nil
+			}
+		}
+
+		totalSource++
+
+		lineCount, err := countLines(path)
+		if err != nil {
+			return nil
+		}
+
+		if isTestFile(relPath) {
+			if lineCount >= testThreshold {
+				bloated++
+			}
+		} else {
+			if lineCount >= sourceThreshold {
+				bloated++
+			}
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		return 0
+		return 0, 0
 	}
-	return count
+	return bloated, totalSource
 }
 
 // countHotspots runs a lightweight hotspot analysis and returns the count.
@@ -255,7 +317,11 @@ func outputHealthText(report health.Report) error {
 	fmt.Println("  ──────────────────  ───────  ─────")
 	fmt.Printf("  Gate coverage       %-6.0f%%  %s\n", c.GateCoverage*100, trendLabel(t.GateCoverage, false))
 	fmt.Printf("  Hotspot count       %-7d  %s\n", c.HotspotCount, trendLabel(t.HotspotCount, false))
-	fmt.Printf("  Bloated files       %-7d  %s\n", c.BloatedFiles, trendLabel(t.BloatedFiles, false))
+	if c.TotalSourceFiles > 0 {
+		fmt.Printf("  Bloated files       %-4d/%-3d %s\n", c.BloatedFiles, c.TotalSourceFiles, trendLabel(t.BloatedFiles, false))
+	} else {
+		fmt.Printf("  Bloated files       %-7d  %s\n", c.BloatedFiles, trendLabel(t.BloatedFiles, false))
+	}
 	fmt.Printf("  Fix:feat ratio      %-7.1f  %s\n", c.FixFeatRatio, trendLabel(t.FixFeatRatio, false))
 	fmt.Printf("  Fix commits (28d)   %-7d\n", c.FixCommits)
 	fmt.Printf("  Feat commits (28d)  %-7d\n", c.FeatCommits)

@@ -62,6 +62,62 @@ func TestCollectHealthSnapshot(t *testing.T) {
 	if snap.BloatedFiles < 0 {
 		t.Errorf("Expected non-negative BloatedFiles, got %d", snap.BloatedFiles)
 	}
+	// TotalSourceFiles should be populated
+	if snap.TotalSourceFiles <= 0 {
+		t.Errorf("Expected positive TotalSourceFiles, got %d", snap.TotalSourceFiles)
+	}
+}
+
+func TestIsTestFile(t *testing.T) {
+	tests := []struct {
+		path     string
+		expected bool
+	}{
+		{"pkg/health/health_test.go", true},
+		{"pkg/health/health.go", false},
+		{"web/src/App.test.ts", true},
+		{"web/src/App.test.js", true},
+		{"web/src/App.spec.ts", true},
+		{"web/src/App.spec.js", true},
+		{"web/src/App.ts", false},
+		{"cmd/orch/main.go", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			result := isTestFile(tt.path)
+			if result != tt.expected {
+				t.Errorf("isTestFile(%q) = %v, want %v", tt.path, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestCountBloatedFilesAndTotal(t *testing.T) {
+	// Integration test - runs against real codebase
+	bloated, totalSource := countBloatedFilesAndTotal()
+
+	// Should find some source files
+	if totalSource <= 0 {
+		t.Errorf("Expected positive total source files, got %d", totalSource)
+	}
+
+	// Bloated count should be non-negative and less than total
+	if bloated < 0 {
+		t.Errorf("Expected non-negative bloated count, got %d", bloated)
+	}
+	if bloated > totalSource {
+		t.Errorf("Bloated (%d) should not exceed total source files (%d)", bloated, totalSource)
+	}
+
+	// Separate-threshold count should be LESS than old count of all files >800
+	// because test files now use 2000 threshold instead of 800
+	// (Old behavior: analyzeBloatFiles excluded test files entirely)
+	// New behavior: test files >2000 are counted, so count may be >= old count
+	// but bloated count should be reasonable (not all source files)
+	if float64(bloated) > float64(totalSource)*0.5 {
+		t.Errorf("More than 50%% of source files bloated seems wrong: %d/%d", bloated, totalSource)
+	}
 }
 
 func TestOutputHealthText(t *testing.T) {

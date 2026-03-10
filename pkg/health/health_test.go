@@ -322,6 +322,92 @@ func TestHealthScoreNewFieldsBackcompat(t *testing.T) {
 	}
 }
 
+func TestHealthScoreScaledThresholds(t *testing.T) {
+	// With 300 source files, saturation thresholds should scale:
+	// accretion: max(20, 0.10*300) = 30
+	// hotspot: max(15, 0.05*300) = 15
+
+	snap := Snapshot{
+		BloatedFiles:     26,
+		HotspotCount:     12,
+		FixFeatRatio:     0.7,
+		GateCoverage:     1.0,
+		TotalSourceFiles: 300,
+	}
+	score := ComputeHealthScore(snap)
+
+	// Without scaling (old behavior): accretion = 20*max(0,1-26/20) = 0
+	// With scaling: accretion = 20*max(0,1-26/30) = 20*0.133 = 2.7
+	// Hotspot threshold stays 15: hotspot = 20*max(0,1-12/15) = 4.0
+	// Score should be meaningfully above the old saturated value
+	if score < 40 {
+		t.Errorf("Scaled thresholds should give score >40 with 300 source files, got %.1f", score)
+	}
+}
+
+func TestHealthScoreScaledThresholdsLargeCodebase(t *testing.T) {
+	// With 500 source files, thresholds scale up more:
+	// accretion: max(20, 0.10*500) = 50
+	// hotspot: max(15, 0.05*500) = 25
+
+	snap := Snapshot{
+		BloatedFiles:     26,
+		HotspotCount:     20,
+		FixFeatRatio:     0.7,
+		GateCoverage:     1.0,
+		TotalSourceFiles: 500,
+	}
+	score := ComputeHealthScore(snap)
+
+	// accretion: 20*max(0,1-26/50) = 20*0.48 = 9.6
+	// hotspot: 20*max(0,1-20/25) = 20*0.2 = 4.0
+	// These shouldn't zero out anymore
+	if score < 50 {
+		t.Errorf("Large codebase should score >50 with scaled thresholds, got %.1f", score)
+	}
+}
+
+func TestHealthScoreSmallCodebaseUsesFloor(t *testing.T) {
+	// With 100 source files, floor thresholds apply:
+	// accretion: max(20, 0.10*100) = 20 (floor)
+	// hotspot: max(15, 0.05*100) = 15 (floor)
+	// bloat%: 25/100 = 25% ratio
+
+	snap := Snapshot{
+		BloatedFiles:     25,
+		HotspotCount:     20,
+		FixFeatRatio:     4.0,
+		GateCoverage:     0.0,
+		TotalSourceFiles: 100,
+	}
+	score := ComputeHealthScore(snap)
+
+	// accretion: 20*max(0, 1-25/20) = 0 (saturated at floor)
+	// hotspot: 20*max(0, 1-20/15) = 0 (saturated at floor)
+	// fixfeat: 20*max(0, 1-4/3) = 0
+	// gate: 0
+	// bloat%: 20*max(0, 1-0.25) = 15
+	// Total should be 15
+	if score != 15.0 {
+		t.Errorf("Small codebase with floor thresholds: expected 15.0, got %.1f", score)
+	}
+}
+
+func TestHealthScoreBackcompatZeroTotalSourceFiles(t *testing.T) {
+	// Old snapshots without TotalSourceFiles should use fixed thresholds
+	snap := Snapshot{
+		BloatedFiles: 10,
+		HotspotCount: 8,
+		FixFeatRatio: 1.0,
+		GateCoverage: 0.8,
+	}
+	score := ComputeHealthScore(snap)
+	// Should be a reasonable score with fixed thresholds (20 bloated, 15 hotspot)
+	if score <= 0 || score > 100 {
+		t.Errorf("Score out of range: %.1f", score)
+	}
+}
+
 func TestStoreFileCreation(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subdir", "snapshots.jsonl")

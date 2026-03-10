@@ -23,8 +23,9 @@ type Snapshot struct {
 	FixFeatRatio   float64   `json:"fix_feat_ratio"`  // Ratio of fix: to feat: commits (28-day window)
 	FixCommits     int       `json:"fix_commits"`
 	FeatCommits    int       `json:"feat_commits"`
-	HotspotCount   int       `json:"hotspot_count"`   // Active hotspots (fix-density + investigation-cluster + coupling)
-	GateCoverage   float64   `json:"gate_coverage"`   // Fraction of enforcement gates active (0.0-1.0)
+	HotspotCount     int       `json:"hotspot_count"`      // Active hotspots (fix-density + investigation-cluster + coupling)
+	GateCoverage     float64   `json:"gate_coverage"`      // Fraction of enforcement gates active (0.0-1.0)
+	TotalSourceFiles int       `json:"total_source_files"` // Total source files in codebase (for threshold scaling)
 }
 
 // Trend represents the direction of a metric over time.
@@ -219,23 +220,46 @@ func ComputeHealthScore(snap Snapshot) float64 {
 	// Gate coverage: direct fraction, scaled to 20
 	gatePts := 20.0 * snap.GateCoverage
 
+	// Scale saturation thresholds to codebase size when TotalSourceFiles is available.
+	// Floor values match legacy fixed thresholds for backward compatibility.
+	accretionThreshold := 20.0 // floor: 20 bloated files saturates dimension
+	hotspotThreshold := 15.0   // floor: 15 hotspots saturates dimension
+	if snap.TotalSourceFiles > 0 {
+		// max(20, 10% of source files) for accretion
+		scaled := float64(snap.TotalSourceFiles) * 0.10
+		if scaled > accretionThreshold {
+			accretionThreshold = scaled
+		}
+		// max(15, 5% of source files) for hotspots
+		scaled = float64(snap.TotalSourceFiles) * 0.05
+		if scaled > hotspotThreshold {
+			hotspotThreshold = scaled
+		}
+	}
+
 	// Accretion control: fewer bloated files = higher score
-	// 0 bloated = 20pts, 20+ bloated = 0pts
-	accretionPts := 20.0 * math.Max(0, 1.0-float64(snap.BloatedFiles)/20.0)
+	// 0 bloated = 20pts, threshold+ = 0pts
+	accretionPts := 20.0 * math.Max(0, 1.0-float64(snap.BloatedFiles)/accretionThreshold)
 
 	// Fix:feat balance: lower ratio = healthier
 	// 0.0 = 20pts, 3.0+ = 0pts
 	fixFeatPts := 20.0 * math.Max(0, 1.0-snap.FixFeatRatio/3.0)
 
 	// Hotspot control: fewer hotspots = healthier
-	// 0 = 20pts, 15+ = 0pts
-	hotspotPts := 20.0 * math.Max(0, 1.0-float64(snap.HotspotCount)/15.0)
+	// 0 = 20pts, threshold+ = 0pts
+	hotspotPts := 20.0 * math.Max(0, 1.0-float64(snap.HotspotCount)/hotspotThreshold)
 
 	// Bloat percentage: uses bloated files as proxy for structural health
-	// Score penalizes concentration — many bloated files relative to total is worse
-	// Without total file count in snapshot, use diminishing returns curve
-	// 0 = 20pts, exponential decay
-	bloatPctPts := 20.0 * math.Exp(-float64(snap.BloatedFiles)/10.0)
+	// When TotalSourceFiles is available, use ratio; otherwise exponential decay.
+	var bloatPctPts float64
+	if snap.TotalSourceFiles > 0 {
+		bloatRatio := float64(snap.BloatedFiles) / float64(snap.TotalSourceFiles)
+		// 0% bloat = 20pts, 100% = 0pts
+		bloatPctPts = 20.0 * math.Max(0, 1.0-bloatRatio)
+	} else {
+		// Legacy: exponential decay without total file count
+		bloatPctPts = 20.0 * math.Exp(-float64(snap.BloatedFiles)/10.0)
+	}
 
 	score := gatePts + accretionPts + fixFeatPts + hotspotPts + bloatPctPts
 	return math.Round(score*10) / 10 // Round to 1 decimal
