@@ -15,9 +15,12 @@ var precommitCmd = &cobra.Command{
 
 var precommitAccretionCmd = &cobra.Command{
 	Use:   "accretion",
-	Short: "Check staged files for accretion violations (>1500 lines)",
-	Long: `Checks all staged source files against the CRITICAL threshold (1500 lines).
-Blocks the commit if any file exceeds the threshold.
+	Short: "Check staged files for accretion violations",
+	Long: `Checks all staged source files against accretion thresholds.
+
+Hard block (exit 1):  >1500 lines
+Warning (non-blocking): >800 lines with ≥30 net lines added
+Warning (non-blocking): >600 lines with ≥50 net lines added
 
 Override: FORCE_ACCRETION=1 git commit ...`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -42,14 +45,13 @@ Override: FORCE_ACCRETION=1 git commit ...`,
 			os.Exit(1)
 		}
 
-		fmt.Printf("pre-commit: accretion gate passed (%d staged source files checked)\n", countCheckedFiles(result))
-	},
-}
+		// Print warnings (non-blocking) for 800/600 thresholds
+		if warnings := verify.FormatStagedAccretionWarnings(result); warnings != "" {
+			fmt.Fprintln(os.Stderr, warnings)
+		}
 
-func countCheckedFiles(result *verify.StagedAccretionResult) int {
-	// BlockedFiles only has failures; we don't track pass count in the struct.
-	// Just report 0 blocked as the success signal.
-	return 0
+		fmt.Println("pre-commit: accretion gate passed")
+	},
 }
 
 var precommitKnowledgeCmd = &cobra.Command{

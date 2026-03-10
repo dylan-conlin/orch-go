@@ -43,7 +43,7 @@ Every harness component is either hard or soft:
 
 | Mechanism | What It Prevents | Source | Status |
 |-----------|-----------------|--------|--------|
-| Pre-commit growth gate | Accretion past 800/600 line thresholds | `pkg/verify/precommit.go`, `scripts/pre-commit-exec-start-cleanup.sh` | **NOT WIRED** — `CheckStagedAccretion` exists in code but pre-commit hook only runs compilation + lint (Mar 8 probe) |
+| Pre-commit growth gate | Accretion past 800/600 line thresholds | `pkg/verify/accretion_precommit.go`, `scripts/pre-commit-exec-start-cleanup.sh` | **Shipped** — hard block >1500, warning-only >800 (+30 net) / >600 (+50 net). Wired via `orch precommit accretion` (orch-go-t7te8) |
 | Spawn hotspot gate | Feature-impl/debugging on CRITICAL (>1500 line) files | `pkg/spawn/gates/hotspot.go` | Shipped, blocking |
 | Build gate (`go build`) | Broken compilation reaching completion | `pkg/verify/check.go` — unfakeable gate (Go-specific; TypeScript has no equivalent — see cross-language probe) | Shipped |
 | Completion accretion gate | Agent-caused growth past thresholds | `pkg/verify/accretion.go` (800/1500 thresholds, ±50 delta) | Shipped, **exempts pre-existing bloat** — files already over 1500 get warning, not block (Mar 8 probe) |
@@ -167,7 +167,7 @@ Each layer builds on the previous. Lower layers are more immediately actionable:
 | **3** | Periodic entropy agent | Not started | Background agent reviewing growth trends weekly |
 | **4** | Gates that generate gates | Aspirational | Entropy agent drafts structural tests for recurring patterns |
 
-**Layer 0 status (Mar 8 probe):** The pre-commit hook (`scripts/pre-commit-exec-start-cleanup.sh`) runs compilation + architecture lint but does NOT call `CheckStagedAccretion`. The `CheckStagedAccretion` function exists in `pkg/verify/accretion_precommit.go` (shipped Mar 8) but is not wired into the hook due to governance protection. Layer 0 is therefore **partially shipped** — code exists, enforcement does not. The completion accretion gate (`pkg/verify/accretion.go`) IS active but exempts pre-existing bloated files, making it ineffective against the 12 files already over 800 lines.
+**Layer 0 status (Mar 10):** Fully shipped. The pre-commit hook calls `orch precommit accretion` which runs `CheckStagedAccretion`. Hard block at >1500 lines. Warning-only at >800 lines (+30 net delta) and >600 lines (+50 net delta). Override: `FORCE_ACCRETION=1 git commit ...`. The completion accretion gate (`pkg/verify/accretion.go`) IS also active but exempts pre-existing bloated files.
 
 **Layer 1 needs extension.** Current structural tests enforce only the no-lifecycle-state constraint (from two-lane architecture decision). Missing: function size limits for cmd/orch/, package boundary enforcement, cross-cutting duplication detection. These 4 tests also aren't in CI — they require manual `go test` execution.
 

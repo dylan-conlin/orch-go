@@ -161,6 +161,200 @@ func TestCheckStagedAccretion(t *testing.T) {
 	}
 }
 
+func TestCheckStagedAccretion_Warning800Threshold(t *testing.T) {
+	tmpDir := setupGitRepoForStaged(t)
+
+	tests := []struct {
+		name           string
+		initialLines   int
+		stagedLines    int
+		expectWarnings int
+	}{
+		{
+			name:           "801 lines with +30 net delta triggers warning",
+			initialLines:   770,
+			stagedLines:    801,
+			expectWarnings: 1,
+		},
+		{
+			name:           "850 lines with +29 net delta no warning",
+			initialLines:   821,
+			stagedLines:    850,
+			expectWarnings: 0,
+		},
+		{
+			name:           "900 lines with +50 net delta triggers warning",
+			initialLines:   850,
+			stagedLines:    900,
+			expectWarnings: 1,
+		},
+		{
+			name:           "800 lines exactly does not trigger (must be >800)",
+			initialLines:   770,
+			stagedLines:    800,
+			expectWarnings: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanGitRepo(t, tmpDir)
+
+			createFileWithLines(t, tmpDir, "growing.go", tt.initialLines)
+			commitFiles(t, tmpDir, "Initial commit")
+
+			createFileWithLines(t, tmpDir, "growing.go", tt.stagedLines)
+			stageAllFiles(t, tmpDir)
+
+			result := CheckStagedAccretion(tmpDir)
+			if result == nil {
+				t.Fatal("expected non-nil result")
+			}
+			if !result.Passed {
+				t.Error("800-threshold warnings should not block the commit")
+			}
+			if len(result.WarningFiles) != tt.expectWarnings {
+				t.Errorf("expected %d warnings, got %d: %v", tt.expectWarnings, len(result.WarningFiles), result.WarningFiles)
+			}
+		})
+	}
+}
+
+func TestCheckStagedAccretion_Warning600Threshold(t *testing.T) {
+	tmpDir := setupGitRepoForStaged(t)
+
+	tests := []struct {
+		name           string
+		initialLines   int
+		stagedLines    int
+		expectWarnings int
+	}{
+		{
+			name:           "650 lines with +50 net delta triggers warning",
+			initialLines:   600,
+			stagedLines:    650,
+			expectWarnings: 1,
+		},
+		{
+			name:           "650 lines with +49 net delta no warning",
+			initialLines:   601,
+			stagedLines:    650,
+			expectWarnings: 0,
+		},
+		{
+			name:           "700 lines with +80 net delta triggers warning",
+			initialLines:   620,
+			stagedLines:    700,
+			expectWarnings: 1,
+		},
+		{
+			name:           "600 lines exactly does not trigger (must be >600)",
+			initialLines:   550,
+			stagedLines:    600,
+			expectWarnings: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanGitRepo(t, tmpDir)
+
+			createFileWithLines(t, tmpDir, "medium.go", tt.initialLines)
+			commitFiles(t, tmpDir, "Initial commit")
+
+			createFileWithLines(t, tmpDir, "medium.go", tt.stagedLines)
+			stageAllFiles(t, tmpDir)
+
+			result := CheckStagedAccretion(tmpDir)
+			if result == nil {
+				t.Fatal("expected non-nil result")
+			}
+			if !result.Passed {
+				t.Error("600-threshold warnings should not block the commit")
+			}
+			if len(result.WarningFiles) != tt.expectWarnings {
+				t.Errorf("expected %d warnings, got %d: %v", tt.expectWarnings, len(result.WarningFiles), result.WarningFiles)
+			}
+		})
+	}
+}
+
+func TestCheckStagedAccretion_NewFileWarnings(t *testing.T) {
+	tmpDir := setupGitRepoForStaged(t)
+
+	// New file at 850 lines (all net new) should trigger 800-threshold warning
+	cleanGitRepo(t, tmpDir)
+	createFileWithLines(t, tmpDir, "newbig.go", 850)
+	stageAllFiles(t, tmpDir)
+
+	result := CheckStagedAccretion(tmpDir)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if !result.Passed {
+		t.Error("850-line new file should warn, not block")
+	}
+	if len(result.WarningFiles) != 1 {
+		t.Errorf("expected 1 warning for new 850-line file, got %d", len(result.WarningFiles))
+	}
+}
+
+func TestCheckStagedAccretion_BlockTakesPrecedenceOverWarning(t *testing.T) {
+	tmpDir := setupGitRepoForStaged(t)
+
+	// File at 1600 lines should be in BlockedFiles, not WarningFiles
+	createFileWithLines(t, tmpDir, "huge.go", 100)
+	commitFiles(t, tmpDir, "Initial commit")
+
+	createFileWithLines(t, tmpDir, "huge.go", 1600)
+	stageAllFiles(t, tmpDir)
+
+	result := CheckStagedAccretion(tmpDir)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.Passed {
+		t.Error("1600-line file should block")
+	}
+	if len(result.BlockedFiles) != 1 {
+		t.Errorf("expected 1 blocked file, got %d", len(result.BlockedFiles))
+	}
+	if len(result.WarningFiles) != 0 {
+		t.Errorf("expected 0 warnings (blocked takes precedence), got %d", len(result.WarningFiles))
+	}
+}
+
+func TestFormatStagedAccretionWarnings(t *testing.T) {
+	// nil result
+	if msg := FormatStagedAccretionWarnings(nil); msg != "" {
+		t.Errorf("expected empty for nil, got %q", msg)
+	}
+
+	// No warnings
+	result := &StagedAccretionResult{Passed: true}
+	if msg := FormatStagedAccretionWarnings(result); msg != "" {
+		t.Errorf("expected empty for no warnings, got %q", msg)
+	}
+
+	// With warnings
+	result = &StagedAccretionResult{
+		Passed: true,
+		WarningFiles: []StagedFileInfo{
+			{Path: "big.go", Lines: 850, NetDelta: 40, Threshold: 800},
+		},
+	}
+	msg := FormatStagedAccretionWarnings(result)
+	if msg == "" {
+		t.Fatal("expected non-empty warning message")
+	}
+	if !strings.Contains(msg, "big.go") {
+		t.Errorf("warning should contain filename, got: %s", msg)
+	}
+	if !strings.Contains(msg, "850") {
+		t.Errorf("warning should contain line count, got: %s", msg)
+	}
+}
+
 func TestCheckStagedAccretion_EmptyStaging(t *testing.T) {
 	tmpDir := setupGitRepoForStaged(t)
 
