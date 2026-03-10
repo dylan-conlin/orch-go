@@ -273,7 +273,12 @@ func RunKBContextCheckForDir(query string, projectDir string) (*KBContextResult,
 	if result != nil && len(result.Matches) > 0 {
 		result.Matches = applyPerCategoryLimits(result.Matches, MaxMatchesPerCategory)
 		result.HasMatches = len(result.Matches) > 0
-		// Regenerate RawOutput to reflect filtered results
+	}
+
+	// Step 4: Normalize ~/.kb/ symlink paths to .kb/global/ project-relative paths
+	if result != nil && len(result.Matches) > 0 {
+		result.Matches = normalizeGlobalKBPaths(result.Matches, projectDir)
+		// Regenerate RawOutput to reflect filtered and normalized results
 		result.RawOutput = formatMatchesForDisplay(result.Matches, result.Query)
 	}
 
@@ -1011,4 +1016,57 @@ func filterByType(matches []KBContextMatch, matchType string) []KBContextMatch {
 		}
 	}
 	return filtered
+}
+
+// normalizeGlobalKBPaths resolves ~/.kb/ symlink paths to project-relative .kb/global/ paths.
+// kb context returns paths like /Users/user/.kb/models/foo/model.md which is a symlink to
+// {projectDir}/.kb/global/models/foo/model.md. Normalizing makes paths agent-friendly and
+// prevents DetectCrossRepoModel from misclassifying global models as cross-repo.
+func normalizeGlobalKBPaths(matches []KBContextMatch, projectDir string) []KBContextMatch {
+	if projectDir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return matches
+		}
+		projectDir = cwd
+	}
+
+	// Resolve ~/.kb to its real path (follows symlinks)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return matches
+	}
+	homeKB := filepath.Join(homeDir, ".kb")
+	resolvedHomeKB, err := filepath.EvalSymlinks(homeKB)
+	if err != nil {
+		return matches // ~/.kb doesn't exist or can't resolve
+	}
+
+	// Check if ~/.kb resolves to {projectDir}/.kb/global/
+	globalKB := filepath.Join(projectDir, ".kb", "global")
+	// Use EvalSymlinks on globalKB too to get canonical path (handles macOS /var → /private/var)
+	resolvedGlobalKB, err := filepath.EvalSymlinks(globalKB)
+	if err != nil {
+		// .kb/global/ might not exist — try Abs as fallback
+		resolvedGlobalKB, err = filepath.Abs(globalKB)
+		if err != nil {
+			return matches
+		}
+	}
+
+	if resolvedHomeKB != resolvedGlobalKB {
+		return matches // ~/.kb doesn't point to this project's .kb/global/
+	}
+
+	// Replace ~/.kb/ prefix with .kb/global/ (using resolved project path)
+	homeKBPrefix := homeKB + string(filepath.Separator)
+	globalKBPrefix := resolvedGlobalKB + string(filepath.Separator)
+
+	for i := range matches {
+		if strings.HasPrefix(matches[i].Path, homeKBPrefix) {
+			matches[i].Path = globalKBPrefix + matches[i].Path[len(homeKBPrefix):]
+		}
+	}
+
+	return matches
 }

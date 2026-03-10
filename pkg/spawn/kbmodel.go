@@ -64,15 +64,12 @@ func DetectCrossRepoModel(primaryModelPath, projectDir string) string {
 		return ""
 	}
 
-	// Normalize paths
-	absModelPath, err := filepath.Abs(primaryModelPath)
-	if err != nil {
-		return ""
-	}
-	absProjectDir, err := filepath.Abs(projectDir)
-	if err != nil {
-		return ""
-	}
+	// Normalize paths — resolve symlinks so ~/.kb/ (symlink to .kb/global/)
+	// is correctly detected as within the project directory.
+	// Use evalSymlinksWithFallback to handle non-existent files by resolving
+	// the deepest existing parent directory.
+	absModelPath := evalSymlinksWithFallback(primaryModelPath)
+	absProjectDir := evalSymlinksWithFallback(projectDir)
 
 	// Check if model path is under project directory
 	if strings.HasPrefix(absModelPath, absProjectDir+string(filepath.Separator)) {
@@ -313,6 +310,46 @@ func indentBlock(content, indent string) string {
 	}
 
 	return strings.Join(lines, "\n") + "\n"
+}
+
+// evalSymlinksWithFallback resolves symlinks in a path, falling back to resolving
+// the deepest existing parent directory when the full path doesn't exist.
+// On macOS, /var is a symlink to /private/var, so EvalSymlinks on temp dirs
+// resolves to /private/var/... while Abs keeps /var/... — this mismatch breaks
+// path prefix comparison. By resolving the existing parent, both paths use
+// the same canonical form.
+func evalSymlinksWithFallback(path string) string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return resolved
+	}
+
+	// File doesn't exist — resolve the deepest existing parent directory
+	// and append the remaining path components
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+
+	// Walk up until we find an existing directory
+	remaining := ""
+	dir := absPath
+	for {
+		resolved, err := filepath.EvalSymlinks(dir)
+		if err == nil {
+			if remaining == "" {
+				return resolved
+			}
+			return filepath.Join(resolved, remaining)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached root, can't resolve
+			return absPath
+		}
+		remaining = filepath.Join(filepath.Base(dir), remaining)
+		dir = parent
+	}
 }
 
 // extractCodeRefs parses file paths from Primary Evidence sections in model content.

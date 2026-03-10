@@ -134,6 +134,24 @@ orch spawn --bypass-triage --model gpt-5 feature-impl "task" --issue ID
 orch-go must not maintain local agent state (registries, projection DBs, SSE materializers, caches for agent discovery).
 Query beads and OpenCode directly. If queries are slow, fix the authoritative source; do not build a projection.
 
+## Knowledge Base Structure
+
+This project has two knowledge directories:
+
+- **`.kb/`** — Project-level knowledge (models, guides, decisions, investigations specific to orch-go)
+- **`.kb/global/`** — Cross-project knowledge (models, guides, decisions shared across all projects)
+
+`~/.kb` is a symlink to `.kb/global/`. The `kb context` CLI searches both automatically.
+
+**When searching for models, guides, or investigations, always check BOTH paths:**
+- `.kb/models/` — project models (e.g., spawn-architecture, daemon-autonomous-operation)
+- `.kb/global/models/` — cross-project models (e.g., behavioral-grammars, skillc-testing)
+- `.kb/guides/` — project guides
+- `.kb/global/guides/` — cross-project guides (e.g., meta-orchestrator-mental-models)
+- `.kb/decisions/` + `.kb/global/decisions/` — same pattern
+
+**When creating probes for global models:** write to `.kb/global/models/{name}/probes/`, not `.kb/models/`.
+
 ## Key References
 
 **Before debugging, check the relevant guide in `.kb/guides/`:**
