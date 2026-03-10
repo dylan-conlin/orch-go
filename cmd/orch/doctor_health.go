@@ -81,6 +81,12 @@ func collectHealthSnapshot() health.Snapshot {
 		snap.FixFeatRatio = float64(snap.FixCommits) // All fixes, no features
 	}
 
+	// Collect hotspot count
+	snap.HotspotCount = countHotspots()
+
+	// Collect gate coverage
+	snap.GateCoverage = measureGateCoverage()
+
 	return snap
 }
 
@@ -121,6 +127,79 @@ func countBloatedFiles() int {
 		return 0
 	}
 	return count
+}
+
+// countHotspots runs a lightweight hotspot analysis and returns the count.
+func countHotspots() int {
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return 0
+	}
+
+	count := 0
+
+	// Count fix-density hotspots
+	fixHotspots, _, err := analyzeFixCommits(projectDir, 28, 5)
+	if err == nil {
+		count += len(fixHotspots)
+	}
+
+	// Count bloat hotspots (files >800 lines)
+	bloatHotspots, _, err := analyzeBloatFiles(projectDir, 800)
+	if err == nil {
+		count += len(bloatHotspots)
+	}
+
+	return count
+}
+
+// measureGateCoverage checks which enforcement gates are active and returns
+// the fraction that are operational (0.0 to 1.0).
+//
+// Gate inventory (from harness-engineering model):
+//   1. Pre-commit hook (bd hooks run pre-commit)
+//   2. Spawn hotspot gate (blocks feature-impl on CRITICAL files)
+//   3. Completion accretion gate (V2+ verification)
+//   4. Completion phase gate (V0+ verification)
+//   5. Pre-push hook
+//   6. Build gate (go build / go vet at completion)
+func measureGateCoverage() float64 {
+	total := 6
+	active := 0
+
+	// 1. Pre-commit hook exists and is executable
+	projectDir, err := os.Getwd()
+	if err == nil {
+		hookPath := filepath.Join(projectDir, ".git", "hooks", "pre-commit")
+		if info, err := os.Stat(hookPath); err == nil && info.Mode()&0111 != 0 {
+			active++
+		}
+	}
+
+	// 2. Spawn hotspot gate — check if the hotspot check function exists in spawn gates
+	// The gate is compiled into the binary, so it's always present if we're running
+	active++ // Spawn hotspot gate is compiled in
+
+	// 3. Completion accretion gate — compiled in via verify package
+	active++ // Accretion gate is compiled in
+
+	// 4. Completion phase gate — compiled in via verify package
+	active++ // Phase gate is compiled in
+
+	// 5. Pre-push hook exists and is executable
+	if projectDir != "" {
+		hookPath := filepath.Join(projectDir, ".git", "hooks", "pre-push")
+		if info, err := os.Stat(hookPath); err == nil && info.Mode()&0111 != 0 {
+			active++
+		}
+	}
+
+	// 6. Build gate — check if go compiler is available
+	if _, err := exec.LookPath("go"); err == nil {
+		active++
+	}
+
+	return float64(active) / float64(total)
 }
 
 // countCommitTypes counts fix: and feat: commits in the last 28 days.
@@ -164,20 +243,26 @@ func outputHealthText(report health.Report) error {
 	fmt.Printf("Snapshots: %d | Generated: %s\n", report.SnapshotCount, report.GeneratedAt.Format("2006-01-02 15:04"))
 	fmt.Println()
 
+	// Health score headline
+	fmt.Printf("  Health Score: %.0f/100 (%s) %s\n", report.HealthScore, report.ScoreGrade, trendLabel(report.Trends.HealthScore, false))
+	fmt.Println()
+
 	c := report.Current
 	t := report.Trends
 
 	// Metric table
 	fmt.Println("  Metric              Value    Trend")
 	fmt.Println("  ──────────────────  ───────  ─────")
-	fmt.Printf("  Open issues         %-7d  %s\n", c.OpenIssues, trendLabel(t.OpenIssues, false))
-	fmt.Printf("  Blocked issues      %-7d  %s\n", c.BlockedIssues, trendLabel(t.BlockedIssues, false))
-	fmt.Printf("  Stale issues (14d)  %-7d  %s\n", c.StaleIssues, trendLabel(t.StaleIssues, false))
-	fmt.Printf("  Orphaned (7d)       %-7d  %s\n", c.OrphanedIssues, trendLabel(t.OrphanedIssues, false))
+	fmt.Printf("  Gate coverage       %-6.0f%%  %s\n", c.GateCoverage*100, trendLabel(t.GateCoverage, false))
+	fmt.Printf("  Hotspot count       %-7d  %s\n", c.HotspotCount, trendLabel(t.HotspotCount, false))
 	fmt.Printf("  Bloated files       %-7d  %s\n", c.BloatedFiles, trendLabel(t.BloatedFiles, false))
 	fmt.Printf("  Fix:feat ratio      %-7.1f  %s\n", c.FixFeatRatio, trendLabel(t.FixFeatRatio, false))
 	fmt.Printf("  Fix commits (28d)   %-7d\n", c.FixCommits)
 	fmt.Printf("  Feat commits (28d)  %-7d\n", c.FeatCommits)
+	fmt.Printf("  Open issues         %-7d  %s\n", c.OpenIssues, trendLabel(t.OpenIssues, false))
+	fmt.Printf("  Blocked issues      %-7d  %s\n", c.BlockedIssues, trendLabel(t.BlockedIssues, false))
+	fmt.Printf("  Stale issues (14d)  %-7d  %s\n", c.StaleIssues, trendLabel(t.StaleIssues, false))
+	fmt.Printf("  Orphaned (7d)       %-7d  %s\n", c.OrphanedIssues, trendLabel(t.OrphanedIssues, false))
 	fmt.Println()
 
 	// Alerts

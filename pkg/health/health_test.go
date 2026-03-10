@@ -205,6 +205,123 @@ func TestAlertGeneration(t *testing.T) {
 	}
 }
 
+func TestHealthScorePerfect(t *testing.T) {
+	snap := Snapshot{
+		BloatedFiles: 0,
+		FixFeatRatio: 0,
+		HotspotCount: 0,
+		GateCoverage: 1.0,
+	}
+	score := ComputeHealthScore(snap)
+	if score != 100.0 {
+		t.Errorf("Perfect snapshot should score 100, got %.1f", score)
+	}
+}
+
+func TestHealthScoreZeroGates(t *testing.T) {
+	snap := Snapshot{
+		BloatedFiles: 0,
+		FixFeatRatio: 0,
+		HotspotCount: 0,
+		GateCoverage: 0.0,
+	}
+	score := ComputeHealthScore(snap)
+	// Gate coverage = 0, everything else perfect = 80
+	if score != 80.0 {
+		t.Errorf("Zero gate coverage should score 80, got %.1f", score)
+	}
+}
+
+func TestHealthScoreDegraded(t *testing.T) {
+	snap := Snapshot{
+		BloatedFiles: 10,
+		FixFeatRatio: 1.5,
+		HotspotCount: 8,
+		GateCoverage: 0.6,
+	}
+	score := ComputeHealthScore(snap)
+	// Should be somewhere in the middle
+	if score < 20 || score > 80 {
+		t.Errorf("Degraded snapshot should be 20-80, got %.1f", score)
+	}
+}
+
+func TestHealthScoreSeverelyDegraded(t *testing.T) {
+	snap := Snapshot{
+		BloatedFiles: 25,
+		FixFeatRatio: 4.0,
+		HotspotCount: 20,
+		GateCoverage: 0.0,
+	}
+	score := ComputeHealthScore(snap)
+	// All dimensions at worst
+	if score > 20 {
+		t.Errorf("Severely degraded should score <20, got %.1f", score)
+	}
+}
+
+func TestScoreToGrade(t *testing.T) {
+	tests := []struct {
+		score float64
+		grade string
+	}{
+		{100, "A"},
+		{90, "A"},
+		{89, "B"},
+		{80, "B"},
+		{79, "C"},
+		{65, "C"},
+		{64, "D"},
+		{50, "D"},
+		{49, "F"},
+		{0, "F"},
+	}
+
+	for _, tt := range tests {
+		grade := ScoreToGrade(tt.score)
+		if grade != tt.grade {
+			t.Errorf("ScoreToGrade(%.0f) = %s, want %s", tt.score, grade, tt.grade)
+		}
+	}
+}
+
+func TestHealthScoreInReport(t *testing.T) {
+	snapshots := []Snapshot{
+		{Timestamp: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), BloatedFiles: 2, FixFeatRatio: 0.3, HotspotCount: 1, GateCoverage: 0.8},
+		{Timestamp: time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC), BloatedFiles: 3, FixFeatRatio: 0.5, HotspotCount: 2, GateCoverage: 0.8},
+		{Timestamp: time.Date(2026, 3, 3, 0, 0, 0, 0, time.UTC), BloatedFiles: 5, FixFeatRatio: 0.8, HotspotCount: 4, GateCoverage: 0.7},
+	}
+
+	report := GenerateReport(snapshots)
+
+	if report.HealthScore <= 0 {
+		t.Error("Expected positive health score in report")
+	}
+	if report.ScoreGrade == "" {
+		t.Error("Expected non-empty score grade")
+	}
+	// Score should be trending down since metrics are degrading
+	if report.Trends.HealthScore != TrendDown {
+		t.Errorf("Expected health score trending down, got %v", report.Trends.HealthScore)
+	}
+}
+
+func TestHealthScoreNewFieldsBackcompat(t *testing.T) {
+	// Old snapshots without HotspotCount/GateCoverage should still work
+	snap := Snapshot{
+		Timestamp:    time.Now(),
+		OpenIssues:   10,
+		BloatedFiles: 3,
+		FixFeatRatio: 0.5,
+		// HotspotCount and GateCoverage default to 0
+	}
+	score := ComputeHealthScore(snap)
+	// GateCoverage=0 loses 20pts, but other metrics are decent
+	if score <= 0 || score > 100 {
+		t.Errorf("Score out of range: %.1f", score)
+	}
+}
+
 func TestStoreFileCreation(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subdir", "snapshots.jsonl")

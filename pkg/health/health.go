@@ -23,6 +23,8 @@ type Snapshot struct {
 	FixFeatRatio   float64   `json:"fix_feat_ratio"`  // Ratio of fix: to feat: commits (28-day window)
 	FixCommits     int       `json:"fix_commits"`
 	FeatCommits    int       `json:"feat_commits"`
+	HotspotCount   int       `json:"hotspot_count"`   // Active hotspots (fix-density + investigation-cluster + coupling)
+	GateCoverage   float64   `json:"gate_coverage"`   // Fraction of enforcement gates active (0.0-1.0)
 }
 
 // Trend represents the direction of a metric over time.
@@ -54,6 +56,9 @@ type TrendSet struct {
 	OrphanedIssues Trend
 	BloatedFiles   Trend
 	FixFeatRatio   Trend
+	HotspotCount   Trend
+	GateCoverage   Trend
+	HealthScore    Trend
 }
 
 // Alert represents a threshold crossing that needs attention.
@@ -69,6 +74,8 @@ type Report struct {
 	SnapshotCount int       `json:"snapshot_count"`
 	Trends        TrendSet  `json:"trends"`
 	Alerts        []Alert   `json:"alerts"`
+	HealthScore   float64   `json:"health_score"`   // Composite 0-100 score
+	ScoreGrade    string    `json:"score_grade"`     // A/B/C/D/F letter grade
 	GeneratedAt   time.Time `json:"generated_at"`
 }
 
@@ -196,6 +203,60 @@ func ComputeTrend(values []float64) Trend {
 	return TrendStable
 }
 
+// ComputeHealthScore calculates a composite 0-100 score from a snapshot.
+//
+// Components (5 dimensions, each 0-20 points):
+//   - Gate coverage: 20 * gateCoverage (1.0 = all gates active)
+//   - Accretion control: 20 * max(0, 1 - bloatedFiles/20) — 0 bloated = perfect
+//   - Fix:feat balance: 20 * max(0, 1 - fixFeatRatio/3) — 0.0 ratio = perfect
+//   - Hotspot control: 20 * max(0, 1 - hotspotCount/15) — 0 hotspots = perfect
+//   - Bloat percentage: 20 * max(0, 1 - bloatedFiles/totalSourceFiles) if data available,
+//     otherwise derived from absolute bloated count
+//
+// Higher is better. Score degrades gracefully — each dimension saturates
+// at its worst rather than going negative.
+func ComputeHealthScore(snap Snapshot) float64 {
+	// Gate coverage: direct fraction, scaled to 20
+	gatePts := 20.0 * snap.GateCoverage
+
+	// Accretion control: fewer bloated files = higher score
+	// 0 bloated = 20pts, 20+ bloated = 0pts
+	accretionPts := 20.0 * math.Max(0, 1.0-float64(snap.BloatedFiles)/20.0)
+
+	// Fix:feat balance: lower ratio = healthier
+	// 0.0 = 20pts, 3.0+ = 0pts
+	fixFeatPts := 20.0 * math.Max(0, 1.0-snap.FixFeatRatio/3.0)
+
+	// Hotspot control: fewer hotspots = healthier
+	// 0 = 20pts, 15+ = 0pts
+	hotspotPts := 20.0 * math.Max(0, 1.0-float64(snap.HotspotCount)/15.0)
+
+	// Bloat percentage: uses bloated files as proxy for structural health
+	// Score penalizes concentration — many bloated files relative to total is worse
+	// Without total file count in snapshot, use diminishing returns curve
+	// 0 = 20pts, exponential decay
+	bloatPctPts := 20.0 * math.Exp(-float64(snap.BloatedFiles)/10.0)
+
+	score := gatePts + accretionPts + fixFeatPts + hotspotPts + bloatPctPts
+	return math.Round(score*10) / 10 // Round to 1 decimal
+}
+
+// ScoreToGrade converts a 0-100 health score to a letter grade.
+func ScoreToGrade(score float64) string {
+	switch {
+	case score >= 90:
+		return "A"
+	case score >= 80:
+		return "B"
+	case score >= 65:
+		return "C"
+	case score >= 50:
+		return "D"
+	default:
+		return "F"
+	}
+}
+
 // GenerateReport creates a health report from a series of snapshots.
 func GenerateReport(snapshots []Snapshot) Report {
 	report := Report{
@@ -211,6 +272,10 @@ func GenerateReport(snapshots []Snapshot) Report {
 	// Current = most recent snapshot
 	report.Current = snapshots[len(snapshots)-1]
 
+	// Compute health score for current snapshot
+	report.HealthScore = ComputeHealthScore(report.Current)
+	report.ScoreGrade = ScoreToGrade(report.HealthScore)
+
 	// Extract value series for trend analysis
 	openIssues := make([]float64, len(snapshots))
 	blockedIssues := make([]float64, len(snapshots))
@@ -218,6 +283,9 @@ func GenerateReport(snapshots []Snapshot) Report {
 	orphanedIssues := make([]float64, len(snapshots))
 	bloatedFiles := make([]float64, len(snapshots))
 	fixFeatRatio := make([]float64, len(snapshots))
+	hotspotCount := make([]float64, len(snapshots))
+	gateCoverage := make([]float64, len(snapshots))
+	healthScores := make([]float64, len(snapshots))
 
 	for i, s := range snapshots {
 		openIssues[i] = float64(s.OpenIssues)
@@ -226,6 +294,9 @@ func GenerateReport(snapshots []Snapshot) Report {
 		orphanedIssues[i] = float64(s.OrphanedIssues)
 		bloatedFiles[i] = float64(s.BloatedFiles)
 		fixFeatRatio[i] = s.FixFeatRatio
+		hotspotCount[i] = float64(s.HotspotCount)
+		gateCoverage[i] = s.GateCoverage
+		healthScores[i] = ComputeHealthScore(s)
 	}
 
 	report.Trends = TrendSet{
@@ -235,6 +306,9 @@ func GenerateReport(snapshots []Snapshot) Report {
 		OrphanedIssues: ComputeTrend(orphanedIssues),
 		BloatedFiles:   ComputeTrend(bloatedFiles),
 		FixFeatRatio:   ComputeTrend(fixFeatRatio),
+		HotspotCount:   ComputeTrend(hotspotCount),
+		GateCoverage:   ComputeTrend(gateCoverage),
+		HealthScore:    ComputeTrend(healthScores),
 	}
 
 	// Generate alerts based on current values and trends
@@ -290,6 +364,39 @@ func GenerateReport(snapshots []Snapshot) Report {
 		report.Alerts = append(report.Alerts, Alert{
 			Metric:  "orphaned_issues",
 			Message: fmt.Sprintf("%d orphaned issues (no activity in 7+ days) — need triage", current.OrphanedIssues),
+			Level:   "warn",
+		})
+	}
+
+	// Health score declining
+	if report.Trends.HealthScore == TrendDown && report.HealthScore < 65 {
+		report.Alerts = append(report.Alerts, Alert{
+			Metric:  "health_score",
+			Message: fmt.Sprintf("Health score %.0f (%s) and declining — harness degradation", report.HealthScore, report.ScoreGrade),
+			Level:   "critical",
+		})
+	} else if report.Trends.HealthScore == TrendDown {
+		report.Alerts = append(report.Alerts, Alert{
+			Metric:  "health_score",
+			Message: fmt.Sprintf("Health score %.0f (%s) trending down", report.HealthScore, report.ScoreGrade),
+			Level:   "warn",
+		})
+	}
+
+	// Gate coverage dropping
+	if current.GateCoverage < 0.5 && current.GateCoverage > 0 {
+		report.Alerts = append(report.Alerts, Alert{
+			Metric:  "gate_coverage",
+			Message: fmt.Sprintf("Gate coverage %.0f%% — less than half of enforcement gates active", current.GateCoverage*100),
+			Level:   "critical",
+		})
+	}
+
+	// Hotspot count high
+	if current.HotspotCount >= 10 {
+		report.Alerts = append(report.Alerts, Alert{
+			Metric:  "hotspot_count",
+			Message: fmt.Sprintf("%d active hotspots — architect intervention needed", current.HotspotCount),
 			Level:   "warn",
 		})
 	}
