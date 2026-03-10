@@ -82,6 +82,12 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 	}
 	fmt.Println()
 
+	// Print review queue count (between swarm status and accounts)
+	if output.ReviewQueue != nil && output.ReviewQueue.Ready > 0 {
+		fmt.Printf("REVIEW QUEUE: %d ready\n", output.ReviewQueue.Ready)
+		fmt.Println()
+	}
+
 	// Print account usage
 	if len(output.Accounts) > 0 {
 		fmt.Println("ACCOUNTS")

@@ -137,11 +137,17 @@ type SessionMetrics struct {
 	FileReadsSinceLastSpawn int `json:"file_reads_since_last_spawn,omitempty"`
 }
 
+// ReviewQueueStatus holds the count of completions awaiting human review.
+type ReviewQueueStatus struct {
+	Ready int `json:"ready"` // Non-stale completions ready for orch review/complete
+}
+
 // StatusOutput represents the full status output for JSON serialization.
 type StatusOutput struct {
 	Infrastructure         *InfrastructureHealth          `json:"infrastructure,omitempty"`
 	SessionMetrics         *SessionMetrics                `json:"session_metrics,omitempty"`
 	Swarm                  SwarmStatus                    `json:"swarm"`
+	ReviewQueue            *ReviewQueueStatus             `json:"review_queue,omitempty"`
 	Accounts               []AccountUsage                 `json:"accounts"`
 	Agents                 []AgentInfo                    `json:"agents"`
 	SynthesisOpportunities *verify.SynthesisOpportunities `json:"synthesis_opportunities,omitempty"`
@@ -385,11 +391,26 @@ func runStatus(serverURL string) error {
 	// Get session metrics for drift detection
 	sessionMetrics := getSessionMetrics()
 
+	// Get review queue count (completions awaiting human review)
+	var reviewQueue *ReviewQueueStatus
+	if completions, err := getCompletionsForReview(); err == nil {
+		readyCount := 0
+		for _, c := range completions {
+			if !c.IsStale {
+				readyCount++
+			}
+		}
+		if readyCount > 0 {
+			reviewQueue = &ReviewQueueStatus{Ready: readyCount}
+		}
+	}
+
 	// Build output
 	output := StatusOutput{
 		Infrastructure:         infraHealth,
 		SessionMetrics:         sessionMetrics,
 		Swarm:                  swarm,
+		ReviewQueue:            reviewQueue,
 		Accounts:               accounts,
 		Agents:                 filteredAgents,
 		SynthesisOpportunities: synthesisOpps,

@@ -744,3 +744,86 @@ func TestCompactModeShowsBlockedAgents(t *testing.T) {
 		t.Error("Agent with 'BLOCKED - detail' phase should pass needsAttention filter")
 	}
 }
+
+// TestReviewQueueDisplayed tests that review queue count appears between SWARM STATUS and ACCOUNTS.
+func TestReviewQueueDisplayed(t *testing.T) {
+	testOutput := StatusOutput{
+		Swarm: SwarmStatus{
+			Active:     1,
+			Processing: 1,
+		},
+		ReviewQueue: &ReviewQueueStatus{Ready: 4},
+		Accounts: []AccountUsage{
+			{Name: "personal", UsedPercent: 50, IsActive: true},
+		},
+		Agents: []AgentInfo{
+			{
+				BeadsID:      "orch-go-abcd",
+				Skill:        "feature-impl",
+				Phase:        "Implementing",
+				Runtime:      "15m",
+				IsProcessing: true,
+			},
+		},
+	}
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printSwarmStatusWithWidth(testOutput, false, 150)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	// Verify REVIEW QUEUE appears
+	if !strings.Contains(output, "REVIEW QUEUE: 4 ready") {
+		t.Errorf("Expected 'REVIEW QUEUE: 4 ready' in output, got:\n%s", output)
+	}
+
+	// Verify ordering: SWARM STATUS before REVIEW QUEUE before ACCOUNTS
+	swarmIdx := strings.Index(output, "SWARM STATUS")
+	reviewIdx := strings.Index(output, "REVIEW QUEUE")
+	accountsIdx := strings.Index(output, "ACCOUNTS")
+
+	if swarmIdx == -1 || reviewIdx == -1 || accountsIdx == -1 {
+		t.Fatalf("Missing expected sections. swarm=%d, review=%d, accounts=%d\nOutput:\n%s",
+			swarmIdx, reviewIdx, accountsIdx, output)
+	}
+
+	if swarmIdx >= reviewIdx {
+		t.Errorf("SWARM STATUS (idx %d) should appear before REVIEW QUEUE (idx %d)", swarmIdx, reviewIdx)
+	}
+	if reviewIdx >= accountsIdx {
+		t.Errorf("REVIEW QUEUE (idx %d) should appear before ACCOUNTS (idx %d)", reviewIdx, accountsIdx)
+	}
+}
+
+// TestReviewQueueHiddenWhenZero tests that review queue section is omitted when count is zero.
+func TestReviewQueueHiddenWhenZero(t *testing.T) {
+	testOutput := StatusOutput{
+		Swarm: SwarmStatus{Active: 0},
+	}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printSwarmStatusWithWidth(testOutput, false, 150)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if strings.Contains(output, "REVIEW QUEUE") {
+		t.Errorf("REVIEW QUEUE should not appear when nil, got:\n%s", output)
+	}
+}
