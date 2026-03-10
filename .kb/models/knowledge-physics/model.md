@@ -1,7 +1,7 @@
 # Model: Knowledge Physics
 
 **Domain:** Multi-Agent Knowledge Systems / Substrate Governance / Entropy Management
-**Last Updated:** 2026-03-09
+**Last Updated:** 2026-03-10
 **Synthesized From:**
 - `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-physics-accretion-attractor-gate-dynamics.md` — Empirical measurement across 1,166 investigations, 32 models, 187 probes
 - `.kb/models/harness-engineering/model.md` — Hard/soft harness taxonomy, accretion as thermodynamics, compliance vs coordination failure
@@ -13,7 +13,7 @@
 
 ## Summary (30 seconds)
 
-Knowledge exhibits the same physics as code when multiple amnesiac agents contribute to a shared mutable substrate. Accretion, attractors, gates, and entropy are substrate-independent dynamics — they emerge from system properties (multiple writers, no persistent memory, local correctness without global coordination), not from properties of the substrate itself. Empirical measurement across orch-go's knowledge corpus: 85.5% orphan rate (997/1,166 investigations unconnected to any model), three model behaviors (attractor/capstone/dormant), zero hard knowledge gates (all transitions advisory), and 4 unmerged contradiction verdicts. Code and knowledge are two instances of the same physics. Others include database schemas, config systems, API surfaces, and documentation. The generalization: harness engineering is not code governance — it is substrate governance. Any shared mutable substrate where amnesiac agents contribute requires attractors (structural destinations), gates (enforcement blocking wrong paths), and entropy measurement (detection of compositional failure).
+Knowledge exhibits the same physics as code when multiple amnesiac agents contribute to a shared mutable substrate. Accretion, attractors, gates, and entropy are substrate-independent dynamics — they emerge from system properties (multiple writers, no persistent memory, local correctness without global coordination), not from properties of the substrate itself. Empirical measurement across orch-go's knowledge corpus: 85.5% orphan rate (997/1,166 investigations unconnected to any model), three model behaviors (attractor/capstone/dormant), zero hard knowledge gates (all transitions advisory), and 4 unmerged contradiction verdicts. Code, knowledge, and OPSEC are three confirmed instances of the same physics. Hypothesized additional substrates include database schemas, config systems, API surfaces, and documentation. The generalization: harness engineering is not code governance — it is substrate governance. Any shared mutable substrate where amnesiac agents contribute requires attractors (structural destinations), gates (enforcement blocking wrong paths), and entropy measurement (detection of compositional failure). OPSEC extends the theory to adversarial substrates, revealing that entropy can be invisible to internal measurement (only the adversary observes it), failure can be binary/catastrophic (no gradual degradation), and signal composition can be multiplicative rather than linear or additive.
 
 ---
 
@@ -154,20 +154,23 @@ Code has pre-commit hooks, spawn gates, and completion verification. Knowledge h
 
 6. **Quick entry duplication rate** — duplicate entries in entries.jsonl. Measures whether the "quick capture" path is creating noise instead of signal. No automated dedup exists.
 
+7. **Composite health score** — `orch health` implements a 5-dimension 0-100 score: gate coverage, accretion control, fix:feat balance, hotspot control, bloat percentage. First concrete implementation of entropy measurement for code substrate. Current score: 73/100 (C). Key finding: **measurement-improvement bias** — when a broken metric is fixed, the improvement in the metric appears as improvement in the thing being measured. The health score jumped 37→69 in a single snapshot when `total_source_files` tracking was added (a pure measurement fix, not structural change). Systems tracking their own health need to distinguish "we got healthier" from "we got better at measuring." This has a knowledge-physics analogue: if we track orphan rate but change the counting method, an apparent rate drop could be measurement improvement rather than actual synthesis.
+
 ---
 
 ## Substrate Generalization
 
 The physics hold for any shared mutable substrate where the four conditions are met (multiple agents, amnesiac, locally correct, no structural coordination).
 
-| Substrate | Accretion | Attractors | Gates | Entropy Signal |
-|-----------|-----------|-----------|-------|----------------|
-| **Code** (orch-go) | daemon.go +892 lines, 6 cross-cutting dupes | pkg/ packages (structural coupling) | Pre-commit, spawn, completion, `go build` | Fix:feat ratio, hotspot analysis |
-| **Knowledge** (.kb/) | 87.6% orphan investigations (52% model-era) | Models pull probes (structural coupling via directory) | None hard (all advisory) | Orphan rate, synthesis backlog |
-| **Database schemas** | Column bloat, unused tables | Normalized entity structure | Migration validation, FK constraints | Dead columns, orphan tables |
-| **Config systems** | Setting sprawl | Config categories/namespaces | Schema validation | Unused settings, duplicate keys |
-| **API surfaces** | Endpoint bloat | Resource-oriented design | Contract testing, versioning | Deprecated endpoints, inconsistent naming |
-| **Documentation** | Doc sprawl, contradictions | Doc hierarchy/taxonomy | Link validation, freshness checks | Stale pages, orphaned docs |
+| Substrate | Accretion | Attractors | Gates | Entropy Signal | Status |
+|-----------|-----------|-----------|-------|----------------|--------|
+| **Code** (orch-go) | daemon.go +892 lines, 6 cross-cutting dupes | pkg/ packages (structural coupling) | Pre-commit, spawn, completion, `go build` | Fix:feat ratio, hotspot analysis | **Confirmed** |
+| **Knowledge** (.kb/) | 87.6% orphan investigations (52% model-era) | Models pull probes (structural coupling via directory) | None hard (all advisory) | Orphan rate, synthesis backlog | **Confirmed** |
+| **OPSEC** (price-watch) | 5 detection signals over 5 months, invisible until catastrophic failure | Safe patterns contaminate unsafe contexts; middleware routes to proxy | Convention → middleware → startup → network isolation | **None pre-detection** — adversary IS the measurement | **Confirmed** — see `price-watch/.kb/models/opsec-substrate/model.md` |
+| **Database schemas** | Column bloat, unused tables | Normalized entity structure | Migration validation, FK constraints | Dead columns, orphan tables | Hypothesized |
+| **Config systems** | Setting sprawl | Config categories/namespaces | Schema validation | Unused settings, duplicate keys | Hypothesized |
+| **API surfaces** | Endpoint bloat | Resource-oriented design | Contract testing, versioning | Deprecated endpoints, inconsistent naming | Hypothesized |
+| **Documentation** | Doc sprawl, contradictions | Doc hierarchy/taxonomy | Link validation, freshness checks | Stale pages, orphaned docs | Hypothesized |
 
 **Minimal substrate properties:**
 
@@ -224,7 +227,7 @@ The investigation/probe/model cycle separates cleanly into **substrate** (the kn
 
 4. **The orphan rate decomposes into six categories; the natural baseline is 40-50%.** The raw 85.5% (now 87.6% by strict measurement) is inflated by pre-model era artifacts (83% of corpus, 94.7% orphan rate). The model-era rate is **52.0%** — within the healthy range for an exploratory system. Orphans decompose into: implementation-as-investigation (~30-45%), audit/design (~25-33%), exploratory (~15-20%), genuinely lost (~20% of orphans, ~10% of total), negative results (~5-7%), and superseded (~3-5%). The actionable signal is the "genuinely lost" rate (~10% of investigations), not the raw orphan rate. Analogous to dead code: 5-15% dead code is healthy in code; 40-50% orphan rate is healthy in knowledge due to inherently higher exploration rates.
 
-5. **Accretion, attractors, gates, and entropy are substrate-independent.** They emerge from system properties (multiple writers, no persistent memory, local correctness, no structural coordination), not substrate properties. Code and knowledge are two confirmed instances. The same dynamics should appear in any substrate meeting the four conditions.
+5. **Accretion, attractors, gates, and entropy are substrate-independent.** They emerge from system properties (multiple writers, no persistent memory, local correctness, no structural coordination), not substrate properties. Code, knowledge, and OPSEC are three confirmed instances. OPSEC extends the evidence to adversarial substrates where entropy is invisible to internal metrics and failure is binary/catastrophic. The same dynamics should appear in any substrate meeting the four conditions.
 
 ---
 
@@ -344,6 +347,10 @@ Evidence: ADRs took 7 years from Nygard's projects (2011) to ThoughtWorks "Adopt
 
 **2026-03-09:** First external user profile probe (orch-go-j2ziz) established adoption sequencing: Solo Technical Researcher (STR) is the first user, not R&D labs or startups. Bottom-up adoption pattern validated across ADRs (7 years individual→industry), Obsidian (1.5M individual MAU→team features later), Benchling (200K academics→1/4 biotech IPOs). Tooling gap identified: `kb create model`/`kb create probe` don't exist, `kb init` doesn't create models/ directory — the "fundamental unit" has the least tooling support. Added Failure Mode 4 (tooling inverts importance hierarchy), Adoption Sequencing section, and open question #7 (minimum time to visible physics).
 
+**2026-03-10:** OPSEC substrate model created (`price-watch/.kb/models/opsec-substrate/model.md`). Third confirmed substrate instance. Extends the theory to adversarial substrates with three distinctive properties: binary catastrophic failure (vs gradual degradation in code/knowledge), adversarial entropy (external actor exploits signals, making "clean up later" impossible), and multiplicative signal composition (weak signals confirm each other, unlike linear code accretion or additive knowledge accretion). Evidence: OshCut detection incident — 5 signals accumulated over 5 months while all engineering metrics were green, composed into definitive attribution in one day. Gate escalation followed the same soft → hard → structural sequence as code. Updated substrate generalization table from 2 confirmed + 4 hypothesized to 3 confirmed + 4 hypothesized.
+
+**2026-03-10:** Health score structural improvement validation (orch-go-y642j). Decomposed the 37→73 score improvement: 90% from calibration (tracking gates, scaling thresholds, adding total_source_files), 10% from actual extractions. The 10 target files were extracted (avg 1139→410 lines, 64% reduction), but the old formula was too broken to register this. New finding: **measurement-improvement bias** — fixing a broken metric appears as improvement in the measured thing. Score jumped 37→69 in one snapshot when total_source_files was added. Added entropy metric #7 (composite health score) with this caveat. Hotspot dimension (1.9/20) identified as the honest remaining structural debt signal.
+
 **2026-03-09:** Public release readiness audit (orch-go-8zp45) of kb-cli codebase. **Contradicted** the "single tooling gap" claim from minimal-substrate probe — found 6 additional gaps beyond `--extract-models`. **Confirmed** core cycle commands are fully standalone. **Extended** substrate/orchestration separation with three-tier coupling taxonomy: hard (ask, link — break without orch), soft (reflect --create-issue, context --siblings — degrade gracefully), none (init, create, search, list — fully standalone). Code health: 57.6% test coverage, 3 failing tests, 3 direct dependencies, no go vet errors. Key blockers: missing LICENSE file, incomplete README, hardcoded orch paths.
 
 ---
@@ -390,6 +397,7 @@ kb reflect --type stale
 - `.kb/models/knowledge-physics/probes/2026-03-09-probe-minimal-kb-substrate-cycle-dependencies.md` — Minimal substrate identification: 5 components (agent + kb + git + .kb/ + skill), substrate/orchestration separation confirmed, context injection gap identified
 - `.kb/models/knowledge-physics/probes/2026-03-09-probe-first-external-user-profile-analysis.md` — First user is Solo Technical Researcher (STR), not R&D lab. Adoption sequencing validated across 4 analogous tools. Tooling gap: `kb create model`/`kb create probe` missing, `kb init` doesn't create models/
 - `.kb/models/knowledge-physics/probes/2026-03-09-probe-kb-cli-public-release-readiness-audit.md` — kb-cli public release audit: core cycle standalone, 6 gaps beyond --extract-models, three-tier coupling taxonomy (hard/soft/none), 7 blocking changes for v0.1
+- `.kb/models/knowledge-physics/probes/2026-03-10-probe-health-score-structural-improvement-validation.md` — Health score 37→73 decomposition: 90% calibration, 10% extraction. Measurement-improvement bias finding. Hotspot dimension (1.9/20) is honest remaining signal.
 
 **Related Models:**
 - `.kb/models/harness-engineering/model.md` — Code instance of substrate physics, hard/soft harness taxonomy

@@ -1,0 +1,56 @@
+verification:
+  type: investigation-probe
+  issue: orch-go-y642j
+  skill: investigation
+
+  commands_run:
+    - command: "orch doctor --health"
+      expected: "Health score displayed with all 5 dimensions"
+      actual: "Health Score: 73/100 (C), 42 hotspots, 20 bloated files, 928 total source"
+    - command: "orch doctor --health-json | python3 decomposition"
+      expected: "Score decomposes into 5 dimensions summing to ~73"
+      actual: "gate(20) + accretion(15.7) + fixfeat(15.6) + hotspot(1.9) + bloat%(19.6) = 72.7"
+    - command: "python3 baseline reconstruction from snapshot [0]"
+      expected: "Baseline score reconstructable from formula"
+      actual: "gate(0) + accretion(0) + fixfeat(15.3) + hotspot(20) + bloat%(0.1) = 35.3"
+    - command: "python3 contribution analysis (4 scenarios)"
+      expected: "Isolation of calibration vs extraction contributions"
+      actual: "Calibration: +33.8 (90%), Extraction: +0.4 (1%), Interaction: +3.3 (9%)"
+    - command: "wc -l on 10 target files"
+      expected: "Files below 800 lines after extraction"
+      actual: "All 10 files extracted: avg 1139→410 lines (64% reduction)"
+    - command: "find >1500 lines"
+      expected: "No source files above CRITICAL threshold"
+      actual: "Only node_modules and test files >1500. Zero CRITICAL source files."
+
+  plan_criteria:
+    - criterion: "Score >= 65"
+      target: 65
+      actual: 73
+      met: true
+    - criterion: "Bloated source files <= 16"
+      target: 16
+      actual: 20
+      met: false
+      note: "4 files short of target"
+    - criterion: "No CRITICAL hotspots (>1500 lines)"
+      target: 0
+      actual: 0
+      met: true
+    - criterion: "Orphaned issues < 5"
+      target: 5
+      actual: 0
+      met: true
+    - criterion: "Score honestly reflects health"
+      met: partial
+      note: "NEW formula is honest. But improvement is 90% calibration, not structural change."
+
+  probe_deliverables:
+    - path: ".kb/models/knowledge-physics/probes/2026-03-10-probe-health-score-structural-improvement-validation.md"
+      sections: [Question, "What I Tested", "What I Observed", "Model Impact"]
+      status: complete
+    - path: ".kb/models/knowledge-physics/model.md"
+      changes: "Added entropy metric #7, measurement-improvement bias, evolution entry, probe reference"
+      status: updated
+
+  manual_verification: []
