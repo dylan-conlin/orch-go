@@ -67,11 +67,22 @@ Smaller, cohesive files are more resilient to **Session Amnesia**. A new agent c
 - Simplifies "Strategic Dogfooding" (agents can move code between files without updating 50 call sites).
 - Minimizes "Boilerplate Noise" (no `Exported` vs `private` visibility hurdles).
 
-### The 800-Line Gate
+### The Three-Number Framework (200 / 400 / 800)
 
-**Constraint:** Files should not exceed 800 lines.
+**Constraint:** Three thresholds govern file size:
+- **200 lines:** Ideal satellite size. Extraction should produce satellites of 100-300 lines.
+- **400 lines:** Target maximum for residual files post-extraction. This is the POST-EXTRACTION goal.
+- **800 lines:** Extraction trigger. Files crossing this threshold must be extracted to reach the 400-line target.
 
-**Reasoning:** 800 lines is the heuristic limit where "Context Noise" begins to degrade agent reasoning. When a file hits this limit, it triggers a **Sub-domain Extraction** (e.g., moving cache logic to `_cache.go`).
+**Reasoning:** 800 lines is the heuristic limit where "Context Noise" begins to degrade agent reasoning. But empirical data (Mar 2026 probe, n=12 files) shows that extracting to "just under 800" fails — residuals left at 600-700 re-cross 800 within weeks. Residuals extracted to <400 lines resist re-accretion:
+- Residuals at <400: doctor.go (269), extraction.go (280), session.go (121) — stable
+- Residuals at 600-700: daemon.go (715→896), context.go (~600→895) — re-accreted past 800
+
+**Key evidence:** Extracted satellite files (100-300 lines) show zero post-extraction commits across 9 files sampled. All new feature work lands in the residual parent, never satellites. This means: the more code moved to satellites, the more code resists re-accretion.
+
+**Cross-cutting concern correlation:** Files <300 lines average 2.8 concerns; files >800 average 5.9 concerns. The concern accumulation threshold is ~300 lines — files below this maintain single responsibility.
+
+**Previous formulation (superseded):** "Files should not exceed 800 lines." This remains true as a trigger but is insufficient as a target. The 800 line gate now triggers extraction TO 200-400, not just extraction BELOW 800.
 
 ---
 
@@ -96,6 +107,14 @@ Smaller, cohesive files are more resilient to **Session Amnesia**. A new agent c
 - 7 remaining extraction domains mapped; complete extraction plan documented (spawn_types, spawn_inference, spawn_preflight, spawn_kb_context, spawn_backend, spawn_beads, spawn_design)
 - `complete_pipeline.go` (970 lines) probe established "pipeline phase extraction" as a distinct pattern
 - Advisory dispatcher fan-out (10+ callsites across 6+ files) is inherently high-coupling — structural, not pathological
+
+### Mar 10, 2026: Three-Number Framework established (200/400/800)
+- Empirical analysis of 13 extraction commits: residuals under 400 lines stay stable, residuals over 600 re-accrete
+- Satellite files (100-300 lines) have zero post-extraction commits — all accretion hits the residual parent
+- Cross-cutting concerns jump from 2.8 (files <300 lines) to 5.9 (files >800 lines)
+- 76% of source files naturally cluster at 100-400 lines
+- Phase 2 extraction target reframed: not "under 800" but "land at 200-400"
+- See: `.kb/investigations/2026-03-10-design-determine-optimal-file-size-targets.md`
 
 ---
 

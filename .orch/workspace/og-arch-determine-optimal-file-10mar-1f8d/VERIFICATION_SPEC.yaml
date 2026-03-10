@@ -1,0 +1,34 @@
+verification_spec:
+  version: 1
+  type: investigation
+
+  assertions:
+    - name: "Investigation file complete"
+      check: "test -f .kb/investigations/2026-03-10-design-determine-optimal-file-size-targets.md"
+      expected: "File exists with Status: Complete"
+
+    - name: "Extract-patterns model updated"
+      check: "grep -c 'Three-Number Framework' .kb/models/extract-patterns/model.md"
+      expected: "At least 1 match — model updated with new framework"
+
+    - name: "Phase 2 targets specified"
+      check: "grep -c 'Target Residual' .kb/investigations/2026-03-10-design-determine-optimal-file-size-targets.md"
+      expected: "At least 1 — extraction targets table present"
+
+    - name: "Satellite stability verified"
+      check: "Verified via git log --oneline for 9 satellite files — all show exactly 1 commit (creation only)"
+      expected: "0 post-extraction commits across all 9 satellite files"
+
+    - name: "Cross-cutting concern data collected"
+      check: "20 files sampled across 3 size bands with concern counts documented"
+      expected: "Finding 1 in investigation shows correlation data"
+
+  manual_verification:
+    - "Review three-number framework (200/400/800) in extract-patterns model for accuracy"
+    - "Verify Phase 2 extraction targets table reflects current file sizes (may drift)"
+
+  evidence:
+    satellite_stability: "9 satellite files × 0 post-extraction commits = complete re-accretion resistance"
+    concern_correlation: "<200 lines: 2.8 avg concerns; 300-600: 5.8; 800+: 5.9"
+    residual_threshold: "Residuals <400 stable; residuals >600 re-accrete past 800 within weeks"
+    file_distribution: "76% of 356 source files cluster at 100-400 lines"
