@@ -1,0 +1,242 @@
+// spawn_opencode.go contains spawn configuration types, OpenCode command builders,
+// and TUI readiness detection for agent spawning via tmux.
+
+package tmux
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+// SKILL_EMOJIS maps skill names to their display emojis.
+var SKILL_EMOJIS = map[string]string{
+	"investigation":        "🔬",
+	"feature-impl":         "🏗️",
+	"systematic-debugging": "🐛",
+	"architect":            "📐",
+	"codebase-audit":       "📋",
+	"research":             "🔍",
+}
+
+// SpawnConfig holds configuration for spawning an agent in tmux (attach mode).
+type SpawnConfig struct {
+	ServerURL     string
+	Prompt        string
+	Title         string
+	ProjectDir    string
+	WorkspaceName string
+	Model         string
+}
+
+// OpencodeAttachConfig holds configuration for spawning an agent in attach mode.
+// This is the preferred approach for TUI spawning - it connects to a shared
+// server, making sessions visible via API while still showing the TUI.
+//
+// Note: Model is not included here because opencode attach doesn't support --model.
+// When a non-default model is needed, pre-create the session via the HTTP API
+// (which accepts model) and pass the resulting session ID here.
+type OpencodeAttachConfig struct {
+	ServerURL     string // http://127.0.0.1:4096
+	ProjectDir    string
+	SessionID     string // optional: attach to pre-created or existing session
+	ClaudeContext string // "worker", "orchestrator", or "meta-orchestrator"
+}
+
+// BuildOpencodeAttachCommand creates the opencode command string for tmux spawning.
+// Uses "opencode attach <url> --dir <project>" to connect to shared server, making
+// sessions visible via API (enabling session ID capture, orch status, resume).
+// OpenCode commit 18b26856a fixed Session.create to respect the directory parameter.
+// Sets ORCH_WORKER=1 and CLAUDE_CONTEXT so agents know they are orch-managed
+// and hooks can distinguish worker vs orchestrator sessions.
+//
+// Note: Model is NOT passed to opencode attach (it doesn't support --model).
+// When a non-default model is needed, the caller should pre-create the session
+// via the HTTP API (which accepts model) and pass the session ID here.
+func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
+	opencodeBin := resolveOpencodeBin()
+
+	// Determine CLAUDE_CONTEXT value (default to "worker" if not set)
+	claudeContext := cfg.ClaudeContext
+	if claudeContext == "" {
+		claudeContext = "worker"
+	}
+
+	// Use attach mode with --dir to connect to shared server
+	// This makes sessions visible via API for session ID capture
+	// CLAUDE_CONTEXT is set explicitly to prevent inheriting orchestrator context from parent
+	cmd := fmt.Sprintf("ORCH_WORKER=1 CLAUDE_CONTEXT=%s %s attach %q --dir %q", claudeContext, opencodeBin, cfg.ServerURL, cfg.ProjectDir)
+
+	// Continue existing session if provided (used for pre-created sessions with model)
+	if cfg.SessionID != "" {
+		cmd += fmt.Sprintf(" --session %q", cfg.SessionID)
+	}
+	return cmd
+}
+
+func resolveOpencodeBin() string {
+	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
+		return bin
+	}
+
+	if path, err := exec.LookPath("opencode"); err == nil {
+		return path
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		candidate := filepath.Join(homeDir, ".bun", "bin", "opencode")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+
+	return "opencode"
+}
+
+// WaitConfig holds configuration for waiting for OpenCode to be ready.
+type WaitConfig struct {
+	Timeout      time.Duration // Maximum time to wait for TUI to be ready
+	PollInterval time.Duration // How often to check pane content
+}
+
+// DefaultWaitConfig returns the default wait configuration.
+// Timeout: 15s, PollInterval: 200ms (matching Python behavior)
+func DefaultWaitConfig() WaitConfig {
+	return WaitConfig{
+		Timeout:      15 * time.Second,
+		PollInterval: 200 * time.Millisecond,
+	}
+}
+
+// SendPromptConfig holds configuration for sending a prompt after TUI is ready.
+type SendPromptConfig struct {
+	PostReadyDelay time.Duration // How long to wait after TUI ready before typing
+}
+
+// DefaultSendPromptConfig returns the default send prompt configuration.
+// PostReadyDelay: 1s (matching Python behavior - TUI needs time for input focus)
+func DefaultSendPromptConfig() SendPromptConfig {
+	return SendPromptConfig{
+		PostReadyDelay: 1 * time.Second,
+	}
+}
+
+// SpawnResult holds the result of spawning an agent.
+type SpawnResult struct {
+	SessionID     string
+	Window        string // e.g., "workers-orch-go:5"
+	WindowID      string // e.g., "@1234"
+	WindowName    string // e.g., "🔬 og-inv-test-19dec"
+	WorkspaceName string
+}
+
+// BuildWindowName creates a window name with emoji and optional beads ID.
+func BuildWindowName(workspaceName, skillName, beadsID string) string {
+	// Get emoji for skill
+	emoji := "⚙️" // Default
+	if e, ok := SKILL_EMOJIS[skillName]; ok {
+		emoji = e
+	}
+
+	// Build window name
+	name := fmt.Sprintf("%s %s", emoji, workspaceName)
+
+	// Append beads ID if present
+	if beadsID != "" {
+		name = fmt.Sprintf("%s [%s]", name, beadsID)
+	}
+
+	return name
+}
+
+// BuildSpawnCommand creates the opencode command for spawning (attach mode).
+// Note: Does NOT include --format json because tmux spawn should show the TUI.
+// Inline spawn uses --format json separately to parse session ID.
+func BuildSpawnCommand(cfg *SpawnConfig) *exec.Cmd {
+	args := []string{
+		"run",
+		"--attach", cfg.ServerURL,
+		"--title", cfg.Title,
+		cfg.Prompt,
+	}
+	cmd := exec.Command("opencode", args...)
+	cmd.Dir = cfg.ProjectDir
+	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
+	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
+	return cmd
+}
+
+// IsOpenCodeReady checks if OpenCode TUI is ready based on pane content.
+// Returns true when the TUI displays the prompt box AND either agent selector or command hints.
+func IsOpenCodeReady(content string) bool {
+	contentLower := strings.ToLower(content)
+
+	// OpenCode TUI indicators - need BOTH visual box AND agent selector
+	// The agent selector (showing "Build" or agent name) indicates the
+	// TUI is fully initialized and ready for input
+	hasPromptBox := strings.Contains(content, "┃") // Thick vertical bar used by OpenCode
+	hasAgentSelector := strings.Contains(contentLower, "build") || strings.Contains(contentLower, "agent")
+	hasCommandHint := strings.Contains(contentLower, "alt+x") || strings.Contains(contentLower, "commands")
+
+	// TUI is ready when we see the prompt box AND either agent selector or command hints
+	return hasPromptBox && (hasAgentSelector || hasCommandHint)
+}
+
+// WaitForOpenCodeReady waits for OpenCode TUI to be ready in the tmux window.
+// Polls the pane content until TUI indicators are present or timeout is reached.
+func WaitForOpenCodeReady(windowTarget string, cfg WaitConfig) error {
+	start := time.Now()
+
+	for time.Since(start) < cfg.Timeout {
+		content, err := GetPaneContent(windowTarget)
+		if err != nil {
+			// Pane capture failed - window may have closed
+			return fmt.Errorf("failed to capture pane content: %w", err)
+		}
+
+		contentLower := strings.ToLower(content)
+		if strings.Contains(contentLower, "command not found") && strings.Contains(contentLower, "opencode") {
+			return fmt.Errorf("opencode command not found in tmux pane")
+		}
+
+		if IsOpenCodeReady(content) {
+			return nil
+		}
+
+		time.Sleep(cfg.PollInterval)
+	}
+
+	return fmt.Errorf("timeout waiting for OpenCode TUI to be ready after %v", cfg.Timeout)
+}
+
+// SendPromptAfterReady waits for OpenCode to be ready, then types the prompt.
+// This is the high-level function that orchestrates:
+// 1. Wait for TUI ready
+// 2. Sleep for post-ready delay (letting input focus settle)
+// 3. Send prompt via send-keys -l (literal mode)
+// 4. Send Enter to submit
+func SendPromptAfterReady(windowTarget, prompt string, waitCfg WaitConfig, sendCfg SendPromptConfig) error {
+	// Wait for TUI to be ready
+	if err := WaitForOpenCodeReady(windowTarget, waitCfg); err != nil {
+		return err
+	}
+
+	// Wait for input focus to settle (TUI needs time after visual render)
+	time.Sleep(sendCfg.PostReadyDelay)
+
+	// Type the prompt in literal mode (handles special characters)
+	if err := SendKeysLiteral(windowTarget, prompt); err != nil {
+		return fmt.Errorf("failed to send prompt: %w", err)
+	}
+
+	// Send Enter to submit
+	if err := SendEnter(windowTarget); err != nil {
+		return fmt.Errorf("failed to send enter: %w", err)
+	}
+
+	return nil
+}
