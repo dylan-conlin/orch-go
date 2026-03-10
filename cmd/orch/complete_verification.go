@@ -126,7 +126,7 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 				fmt.Printf("Workspace: %s\n", target.AgentName)
 			}
 
-			result, err := verify.VerifyCompletionFull(target.BeadsID, target.WorkspacePath, target.BeadsProjectDir, "", serverURL)
+			result, err := verify.VerifyCompletionFull(target.BeadsID, target.WorkspacePath, target.WorkProjectDir, "", serverURL)
 			if err != nil {
 				return outcome, fmt.Errorf("verification failed: %w", err)
 			}
@@ -140,8 +140,8 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 			}
 
 			// Surface model references for modified files (informational only)
-			if target.WorkspacePath != "" && target.BeadsProjectDir != "" {
-				matches, err := verify.FindModelReferencesForModifiedFiles(target.WorkspacePath, target.BeadsProjectDir)
+			if target.WorkspacePath != "" && target.WorkProjectDir != "" {
+				matches, err := verify.FindModelReferencesForModifiedFiles(target.WorkspacePath, target.WorkProjectDir)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to check model code references: %v\n", err)
 				} else if note := verify.FormatModelReferenceNote(matches); note != "" {
@@ -216,7 +216,7 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 	} else {
 		// --force was used, run verification anyway to capture which gates would have failed
 		if !target.IsOrchestratorSession && target.BeadsID != "" {
-			result, err := verify.VerifyCompletionFull(target.BeadsID, target.WorkspacePath, target.BeadsProjectDir, "", serverURL)
+			result, err := verify.VerifyCompletionFull(target.BeadsID, target.WorkspacePath, target.WorkProjectDir, "", serverURL)
 			if err == nil {
 				outcome.SkillName = result.Skill
 				outcome.Result = result

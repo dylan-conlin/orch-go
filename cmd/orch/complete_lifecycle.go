@@ -57,8 +57,8 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 
 	// Collect accretion delta before archival (same reason as telemetry above)
 	var accretionData *events.AccretionDeltaData
-	if target.WorkspacePath != "" && target.BeadsProjectDir != "" {
-		accretionData = collectAccretionDelta(target.BeadsProjectDir, target.WorkspacePath)
+	if target.WorkspacePath != "" && target.WorkProjectDir != "" {
+		accretionData = collectAccretionDelta(target.WorkProjectDir, target.WorkspacePath)
 	}
 
 	// Export activity to ACTIVITY.json for archival
@@ -75,7 +75,7 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 
 	// For orchestrator sessions, export transcript before lifecycle transition
 	if target.WorkspacePath != "" && target.IsOrchestratorSession {
-		if err := exportOrchestratorTranscript(target.WorkspacePath, target.BeadsProjectDir, target.AgentName); err != nil {
+		if err := exportOrchestratorTranscript(target.WorkspacePath, target.WorkProjectDir, target.AgentName); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to export orchestrator transcript: %v\n", err)
 		}
 	}
@@ -180,13 +180,13 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 	}
 
 	// Auto-rebuild if agent committed Go changes
-	if hasGoChangesInRecentCommits(target.BeadsProjectDir) {
+	if hasGoChangesInRecentCommits(target.WorkProjectDir) {
 		fmt.Println("Detected Go file changes in recent commits")
-		if err := runAutoRebuild(target.BeadsProjectDir); err != nil {
+		if err := runAutoRebuild(target.WorkProjectDir); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: auto-rebuild failed: %v\n", err)
 		} else {
 			fmt.Println("Auto-rebuild completed: make install")
-			if restarted, err := restartOrchServe(target.BeadsProjectDir); err != nil {
+			if restarted, err := restartOrchServe(target.WorkProjectDir); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to restart orch serve: %v\n", err)
 			} else if restarted {
 				fmt.Println("Restarted orch serve")
@@ -194,7 +194,7 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 		}
 
 		// Check for new CLI commands that may need skill documentation
-		newCommands := detectNewCLICommands(target.BeadsProjectDir)
+		newCommands := detectNewCLICommands(target.WorkProjectDir)
 		if len(newCommands) > 0 {
 			newlyTracked := trackDocDebt(newCommands)
 
@@ -225,7 +225,7 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 			agentSkill, _ = verify.ExtractSkillNameFromSpawnContext(target.WorkspacePath)
 		}
 
-		notableEntries := detectNotableChangelogEntries(target.BeadsProjectDir, agentSkill)
+		notableEntries := detectNotableChangelogEntries(target.WorkProjectDir, agentSkill)
 		if len(notableEntries) > 0 {
 			fmt.Println()
 			fmt.Println("┌─────────────────────────────────────────────────────────────┐")

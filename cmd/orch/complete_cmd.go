@@ -132,9 +132,11 @@ For agents that modified web/ files (UI tasks), --approve is required to explici
 confirm human review of the visual changes. This prevents agents from self-certifying
 UI correctness.
 
-For cross-project completion (agents spawned with --workdir in another project),
-the command auto-detects the project from the workspace's SPAWN_CONTEXT.md.
-Use --workdir as explicit override when auto-detection fails.
+For cross-project completion, the beads project (where the issue lives) is derived
+from the beads ID prefix, and the work project (where the agent worked) is derived
+from the workspace manifest. These are resolved independently, so completion works
+even when the issue and workspace live in different repos.
+Use --workdir to explicitly override the work project directory.
 
 Examples:
   orch-go complete proj-123 --explain 'Reworked auth to use JWT tokens' --verified
@@ -285,10 +287,10 @@ func runComplete(identifier, workdir string) error {
 	// Review tier escalation: check if completion signals warrant a higher review tier.
 	// Only run for non-orchestrator sessions with a workspace and no explicit --review-tier override.
 	if completeReviewTier == "" && target.WorkspacePath != "" && !target.IsOrchestratorSession {
-		signals := verify.BuildEscalationSignals(target.WorkspacePath, target.BeadsProjectDir)
+		signals := verify.BuildEscalationSignals(target.WorkspacePath, target.WorkProjectDir)
 		// Add hotspot match count (hotspot analysis lives in cmd/orch, not pkg/verify)
-		if target.BeadsProjectDir != "" {
-			signals.HotspotMatchCount = countHotspotAdvisoryMatches(target.BeadsProjectDir, target.WorkspacePath)
+		if target.WorkProjectDir != "" {
+			signals.HotspotMatchCount = countHotspotAdvisoryMatches(target.WorkProjectDir, target.WorkspacePath)
 		}
 		escalation := verify.CheckReviewTierEscalation(signals, target.ReviewTier)
 		if escalation.Escalated {

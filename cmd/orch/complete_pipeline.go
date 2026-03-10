@@ -30,7 +30,8 @@ type CompletionTarget struct {
 	WorkspacePath         string
 	AgentName             string
 	BeadsID               string
-	BeadsProjectDir       string
+	BeadsProjectDir       string // Where the beads issue lives (for bd show/close/comments)
+	WorkProjectDir        string // Where the agent did its work (for build, verification, hotspot)
 	IsOrchestratorSession bool
 	Issue                 *verify.Issue
 	IsClosed              bool
@@ -133,41 +134,20 @@ func resolveCompletionTarget(identifier, workdir string) (CompletionTarget, erro
 		}
 	}
 
-	// Determine beads project directory using identity layer.
-	// Priority: workdir override > workspace manifest > registry prefix > CWD
-	if workdir != "" {
-		target.BeadsProjectDir, err = identity.ResolveProject(target.BeadsID, workdir)
-		if err != nil {
-			return target, fmt.Errorf("failed to resolve workdir: %w", err)
-		}
-		fmt.Printf("Using explicit workdir: %s\n", target.BeadsProjectDir)
-	} else if target.WorkspacePath != "" {
-		// Try workspace manifest first (ground truth for spawned agents)
-		if manifest, mErr := spawn.ReadAgentManifest(target.WorkspacePath); mErr == nil && manifest.ProjectDir != "" {
-			cleanManifestDir := filepath.Clean(manifest.ProjectDir)
-			if cleanManifestDir != currentDir {
-				target.BeadsProjectDir = cleanManifestDir
-				fmt.Printf("Auto-detected cross-project (from manifest): %s\n", filepath.Base(target.BeadsProjectDir))
+	// Determine BeadsProjectDir — where the beads issue lives.
+	// Derived from beads ID prefix, independent of workspace location.
+	// This fixes cross-project completion where issue and workspace live in different repos.
+	if target.BeadsID != "" {
+		projectName := extractProjectFromBeadsID(target.BeadsID)
+		if projectName != "" {
+			if foundDir := findProjectDirByName(projectName); foundDir != "" {
+				target.BeadsProjectDir = foundDir
+				if foundDir != currentDir {
+					fmt.Printf("Beads project (from ID prefix): %s\n", filepath.Base(foundDir))
+				}
 			} else {
+				// ID prefix doesn't resolve to a known project, fall back to CWD
 				target.BeadsProjectDir = currentDir
-			}
-		} else {
-			// Fallback: extract from SPAWN_CONTEXT.md
-			projectDirFromWorkspace := extractProjectDirFromWorkspace(target.WorkspacePath)
-			if projectDirFromWorkspace != "" && projectDirFromWorkspace != currentDir {
-				target.BeadsProjectDir = projectDirFromWorkspace
-				fmt.Printf("Auto-detected cross-project: %s\n", filepath.Base(target.BeadsProjectDir))
-			} else {
-				target.BeadsProjectDir = currentDir
-			}
-		}
-	} else if target.BeadsID != "" {
-		// No workspace — try identity registry for cross-project resolution
-		resolved, rErr := identity.ResolveProject(target.BeadsID, "")
-		if rErr == nil {
-			target.BeadsProjectDir = resolved
-			if resolved != currentDir {
-				fmt.Printf("Auto-resolved cross-project: %s\n", filepath.Base(resolved))
 			}
 		} else {
 			target.BeadsProjectDir = currentDir
@@ -176,6 +156,50 @@ func resolveCompletionTarget(identifier, workdir string) (CompletionTarget, erro
 		target.BeadsProjectDir = currentDir
 	}
 
+	// Determine WorkProjectDir — where the agent did its work.
+	// Priority: --workdir override > workspace manifest > SPAWN_CONTEXT.md > identity registry > BeadsProjectDir
+	if workdir != "" {
+		target.WorkProjectDir, err = identity.ResolveProject(target.BeadsID, workdir)
+		if err != nil {
+			return target, fmt.Errorf("failed to resolve workdir: %w", err)
+		}
+		fmt.Printf("Using explicit workdir: %s\n", target.WorkProjectDir)
+	} else if target.WorkspacePath != "" {
+		// Try workspace manifest first (ground truth for spawned agents)
+		if manifest, mErr := spawn.ReadAgentManifest(target.WorkspacePath); mErr == nil && manifest.ProjectDir != "" {
+			target.WorkProjectDir = filepath.Clean(manifest.ProjectDir)
+			if target.WorkProjectDir != currentDir {
+				fmt.Printf("Work project (from manifest): %s\n", filepath.Base(target.WorkProjectDir))
+			}
+		} else {
+			// Fallback: extract from SPAWN_CONTEXT.md
+			projectDirFromWorkspace := extractProjectDirFromWorkspace(target.WorkspacePath)
+			if projectDirFromWorkspace != "" {
+				target.WorkProjectDir = projectDirFromWorkspace
+				if target.WorkProjectDir != currentDir {
+					fmt.Printf("Work project (from SPAWN_CONTEXT): %s\n", filepath.Base(target.WorkProjectDir))
+				}
+			}
+		}
+	} else if target.BeadsID != "" {
+		// No workspace and no --workdir — try identity registry
+		resolved, rErr := identity.ResolveProject(target.BeadsID, "")
+		if rErr == nil && resolved != currentDir {
+			target.WorkProjectDir = resolved
+			fmt.Printf("Auto-resolved work project: %s\n", filepath.Base(resolved))
+		}
+	}
+
+	// Default: WorkProjectDir falls back to BeadsProjectDir (same-project case)
+	if target.WorkProjectDir == "" {
+		target.WorkProjectDir = target.BeadsProjectDir
+	}
+
+	// Log cross-project split when beads and work dirs differ
+	if target.BeadsProjectDir != target.WorkProjectDir {
+		fmt.Printf("Cross-project: beads in %s, work in %s\n",
+			filepath.Base(target.BeadsProjectDir), filepath.Base(target.WorkProjectDir))
+	}
 
 	// Verify the beads issue exists (orchestrator sessions and agents without beads ID skip this)
 	if target.IsOrchestratorSession {
@@ -317,7 +341,7 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 
 	// Surface probe verdicts for orchestrator review
 	if target.WorkspacePath != "" {
-		probeVerdicts := verify.FindProbesForWorkspace(target.WorkspacePath, target.BeadsProjectDir)
+		probeVerdicts := verify.FindProbesForWorkspace(target.WorkspacePath, target.WorkProjectDir)
 		if len(probeVerdicts) > 0 {
 			fmt.Print(verify.FormatProbeVerdicts(probeVerdicts))
 		}
@@ -410,15 +434,15 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 	}
 
 	// Surface hotspot advisory for modified files (informational, not a gate)
-	if target.BeadsProjectDir != "" && !target.IsOrchestratorSession {
-		if advisory := RunHotspotAdvisoryForCompletion(target.BeadsProjectDir, target.WorkspacePath); advisory != "" {
+	if target.WorkProjectDir != "" && !target.IsOrchestratorSession {
+		if advisory := RunHotspotAdvisoryForCompletion(target.WorkProjectDir, target.WorkspacePath); advisory != "" {
 			fmt.Print(advisory)
 		}
 	}
 
 	// Surface model-impact advisory (informational, not a gate)
-	if target.BeadsProjectDir != "" && target.WorkspacePath != "" && !target.IsOrchestratorSession {
-		if advisory := RunModelImpactAdvisory(target.BeadsProjectDir, target.WorkspacePath); advisory != "" {
+	if target.WorkProjectDir != "" && target.WorkspacePath != "" && !target.IsOrchestratorSession {
+		if advisory := RunModelImpactAdvisory(target.WorkProjectDir, target.WorkspacePath); advisory != "" {
 			fmt.Print(advisory)
 		}
 	}
@@ -440,7 +464,7 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 
 	// Update session handoff with spawn completion info
 	if !target.IsOrchestratorSession && target.AgentName != "" && target.BeadsID != "" {
-		if err := UpdateHandoffAfterComplete(target.BeadsProjectDir, target.AgentName, target.BeadsID, outcome.SkillName); err != nil {
+		if err := UpdateHandoffAfterComplete(target.WorkProjectDir, target.AgentName, target.BeadsID, outcome.SkillName); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to update session handoff: %v\n", err)
 		}
 	}
