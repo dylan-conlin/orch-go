@@ -2,6 +2,8 @@ import { ATTENTION_BADGE_CONFIG } from '$lib/stores/attention'
 import type { AttentionBadgeType, TreeNode } from '$lib/stores/work-graph'
 import { computeAgentHealth, type WIPItem } from '$lib/stores/wip'
 
+export const INDEPENDENT_PREVIEW_LIMIT = 8
+
 export interface GroupHeader {
   _groupHeader: true
   key: string
@@ -469,4 +471,50 @@ export function getAgentBadge(agent: {
   }
 
   return null
+}
+
+export function parseCreatedAt(value?: string): number {
+  if (!value) return 0
+  const ms = new Date(value).getTime()
+  return Number.isNaN(ms) ? 0 : ms
+}
+
+export function sortNodesByPriorityAndRecency(nodes: TreeNode[]): TreeNode[] {
+  return [...nodes].sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority
+    const dateDiff = parseCreatedAt(b.created_at) - parseCreatedAt(a.created_at)
+    if (dateDiff !== 0) return dateDiff
+    return a.id.localeCompare(b.id)
+  })
+}
+
+export function getIndependentPreview(nodes: TreeNode[]): { visible: TreeNode[]; hidden: number } {
+  const inProgress = nodes.filter((node) => node.status.toLowerCase() === 'in_progress')
+  const rest = nodes.filter((node) => node.status.toLowerCase() !== 'in_progress')
+  const sortedInProgress = sortNodesByPriorityAndRecency(inProgress)
+  const sortedRest = sortNodesByPriorityAndRecency(rest)
+  const visible = [...sortedInProgress]
+  for (const node of sortedRest) {
+    if (visible.length >= sortedInProgress.length + INDEPENDENT_PREVIEW_LIMIT) break
+    visible.push(node)
+  }
+  const hidden = Math.max(0, nodes.length - visible.length)
+  return { visible, hidden }
+}
+
+export function getPanelIssue(
+  item: TreeNode | WIPItem | GroupHeader,
+  treeNodeIndex: Map<string, TreeNode>,
+): TreeNode | null {
+  if (isGroupHeader(item)) return null
+  if (!isWIPItem(item)) return item
+
+  const relatedIssueId = item.type === 'running' ? item.agent.beads_id : item.issue.id
+  if (!relatedIssueId) return null
+
+  return treeNodeIndex.get(relatedIssueId) || null
+}
+
+export function getAge(id: string): string {
+  return '' // TODO: Add created_at to GraphNode
 }

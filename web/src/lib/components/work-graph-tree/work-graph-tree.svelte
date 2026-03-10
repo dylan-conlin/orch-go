@@ -1,12 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Badge } from '$lib/components/ui/badge';
 	import type { TreeNode, GroupSection, GroupByMode, GraphEdge } from '$lib/stores/work-graph';
 	import { closeIssue, updateIssue, buildDependencyView, flattenDepChain } from '$lib/stores/work-graph';
 	import type { WIPItem } from '$lib/stores/wip';
-	import { computeAgentHealth, getContextPercent, getContextColor, getExpressiveStatus } from '$lib/stores/wip';
-	import { DeliverableChecklist } from '$lib/components/deliverable-checklist';
-	import { getExpectedDeliverables } from '$lib/stores/deliverables';
 	import { IssueSidePanel } from '$lib/components/issue-side-panel';
 	import { CloseIssueModal } from '$lib/components/close-issue-modal';
 	import { orchestratorContext } from '$lib/stores/context';
@@ -17,28 +13,18 @@
 		type RunningAgentDetails,
 		flattenVisibleTree,
 		findNodeById,
-		formatRelatedIssueList,
-		formatStatusLabel,
-		getAgentBadge,
-		getAgentStatusIcon,
-		getAttentionBadge,
-		getDependencyExplanation,
-		getInProgressSubline,
-		getIssueSummary,
+		getIndependentPreview,
 		getItemId,
 		getItemKey,
-		getPriorityVariant,
-		getProgressSnapshot,
-		getRelatedIssueLabel,
+		getPanelIssue,
 		getRowTestId,
-		getStatusColor,
-		getStatusIcon,
-		getTypeBadge,
 		isGroupHeader,
 		isDepSectionHeader,
 		isWIPItem,
-		shortenModel,
+		sortNodesByPriorityAndRecency,
 	} from './work-graph-tree-helpers';
+	import WipRow from './wip-row.svelte';
+	import TreeNodeRow from './tree-node-row.svelte';
 
 	export let tree: TreeNode[] = [];
 	export let groups: GroupSection[] = [];
@@ -64,7 +50,6 @@
 	let showAllIndependent = false;
 	let independentHiddenCount = 0;
 	let independentHasOverflow = false;
-	const INDEPENDENT_PREVIEW_LIMIT = 8;
 
 	function toggleGroup(key: string) {
 		if (collapsedGroups.has(key)) {
@@ -96,19 +81,19 @@
 
 	// Track expanded details separately (fixes reactivity issues)
 	let expandedDetails = new Set<string>();
-	
+
 	// Track copied ID for visual feedback
 	let copiedId: string | null = null;
 	let copiedTimeout: ReturnType<typeof setTimeout> | null = null;
-	
+
 	// Track priority mode (p key pressed, waiting for 0-4)
 	let priorityMode = false;
 	let priorityModeTimeout: ReturnType<typeof setTimeout> | null = null;
-	
+
 	// Track action feedback (flash on successful update)
 	let actionFeedback = new Map<string, 'priority' | 'queue'>(); // itemId -> action type
 	let actionFeedbackTimeout: ReturnType<typeof setTimeout> | null = null;
-	
+
 	// Copy ID to clipboard with visual feedback
 	async function copyToClipboard(id: string) {
 		try {
@@ -128,7 +113,7 @@
 			console.error('Failed to copy to clipboard:', err);
 		}
 	}
-	
+
 	// Enter priority mode (waiting for 0-4 key)
 	function enterPriorityMode() {
 		priorityMode = true;
@@ -141,7 +126,7 @@
 			priorityModeTimeout = null;
 		}, 3000);
 	}
-	
+
 	// Exit priority mode
 	function exitPriorityMode() {
 		priorityMode = false;
@@ -150,52 +135,50 @@
 			priorityModeTimeout = null;
 		}
 	}
-	
+
 	// Set priority for a tree node
 	async function setPriority(node: TreeNode, priority: number) {
 		const projectDir = $orchestratorContext?.project_dir;
 		const result = await updateIssue(node.id, { priority, project_dir: projectDir });
-		
+
 		if (result.success) {
 			// Show success feedback
 			showActionFeedback(node.id, 'priority');
 		} else {
 			console.error('Failed to update priority:', result.error);
-			// TODO: Show error toast
 		}
 	}
-	
+
 	// Toggle triage:ready label for a tree node
 	async function toggleTriageReady(node: TreeNode) {
 		const projectDir = $orchestratorContext?.project_dir;
 		const hasLabel = (node.labels || []).includes('triage:ready');
-		
+
 		const result = await updateIssue(node.id, {
 			add_labels: hasLabel ? undefined : ['triage:ready'],
 			remove_labels: hasLabel ? ['triage:ready'] : undefined,
 			project_dir: projectDir,
 		});
-		
+
 		if (result.success) {
 			// Show success feedback
 			showActionFeedback(node.id, 'queue');
 		} else {
 			console.error('Failed to toggle triage:ready:', result.error);
-			// TODO: Show error toast
 		}
 	}
-	
+
 	// Show action feedback (brief flash)
 	function showActionFeedback(itemId: string, action: 'priority' | 'queue') {
 		// Clear any existing timeout
 		if (actionFeedbackTimeout) {
 			clearTimeout(actionFeedbackTimeout);
 		}
-		
+
 		// Set feedback
 		actionFeedback.set(itemId, action);
 		actionFeedback = actionFeedback; // Trigger reactivity
-		
+
 		// Clear after 1 second
 		actionFeedbackTimeout = setTimeout(() => {
 			actionFeedback.delete(itemId);
@@ -203,7 +186,7 @@
 			actionFeedbackTimeout = null;
 		}, 1000);
 	}
-	
+
 	// Track selected issue for side panel
 	let selectedIssueForPanel: TreeNode | null = null;
 	// Track issue for close modal
@@ -223,35 +206,6 @@
 		};
 		walk(tree);
 		treeNodeIndex = index;
-	}
-
-	function parseCreatedAt(value?: string): number {
-		if (!value) return 0;
-		const ms = new Date(value).getTime();
-		return Number.isNaN(ms) ? 0 : ms;
-	}
-
-	function sortNodesByPriorityAndRecency(nodes: TreeNode[]): TreeNode[] {
-		return [...nodes].sort((a, b) => {
-			if (a.priority !== b.priority) return a.priority - b.priority;
-			const dateDiff = parseCreatedAt(b.created_at) - parseCreatedAt(a.created_at);
-			if (dateDiff !== 0) return dateDiff;
-			return a.id.localeCompare(b.id);
-		});
-	}
-
-	function getIndependentPreview(nodes: TreeNode[]): { visible: TreeNode[]; hidden: number } {
-		const inProgress = nodes.filter((node) => node.status.toLowerCase() === 'in_progress');
-		const rest = nodes.filter((node) => node.status.toLowerCase() !== 'in_progress');
-		const sortedInProgress = sortNodesByPriorityAndRecency(inProgress);
-		const sortedRest = sortNodesByPriorityAndRecency(rest);
-		const visible = [...sortedInProgress];
-		for (const node of sortedRest) {
-			if (visible.length >= sortedInProgress.length + INDEPENDENT_PREVIEW_LIMIT) break;
-			visible.push(node);
-		}
-		const hidden = Math.max(0, nodes.length - visible.length);
-		return { visible, hidden };
 	}
 
 	function buildFlattenedItems(): (TreeNode | WIPItem | GroupHeader | DepSectionHeader)[] {
@@ -410,23 +364,6 @@
 		}
 	}
 
-	function getPanelIssue(item: TreeNode | WIPItem | GroupHeader): TreeNode | null {
-		if (isGroupHeader(item)) return null;
-		if (!isWIPItem(item)) return item;
-
-		const relatedIssueId = item.type === 'running' ? item.agent.beads_id : item.issue.id;
-		if (!relatedIssueId) return null;
-
-		return treeNodeIndex.get(relatedIssueId) || null;
-	}
-
-	// Get age from ID (creation timestamp encoded in beads IDs)
-	function getAge(id: string): string {
-		// Beads IDs have timestamp - could parse it, but for now just return placeholder
-		// This would need actual created_at from API
-		return ''; // TODO: Add created_at to GraphNode
-	}
-
 	// Keyboard navigation handlers
 	async function handleKeyDown(event: KeyboardEvent) {
 		const current = flattenedNodes[selectedIndex];
@@ -552,7 +489,7 @@
 			case 'i':
 			case 'o':
 				event.preventDefault();
-				const panelIssue = getPanelIssue(current);
+				const panelIssue = getPanelIssue(current, treeNodeIndex);
 				if (panelIssue) {
 					// Toggle: close if same issue is already open
 					if (selectedIssueForPanel?.id === panelIssue.id) {
@@ -588,11 +525,11 @@
 				// Jump from WIP section item to its tree position
 				if (isWIP) {
 					const wipItem = current as WIPItem;
-					const beadsId = wipItem.type === 'running' 
-						? (wipItem.agent.beads_id || wipItem.agent.id) 
+					const beadsId = wipItem.type === 'running'
+						? (wipItem.agent.beads_id || wipItem.agent.id)
 						: wipItem.issue.id;
 					// Find matching tree node in flattenedNodes
-					const treeIdx = flattenedNodes.findIndex((n) => 
+					const treeIdx = flattenedNodes.findIndex((n) =>
 						!isWIPItem(n) && (n as TreeNode).id === beadsId
 					);
 					if (treeIdx !== -1) {
@@ -625,14 +562,14 @@
 					}
 				}
 				break;
-			
+
 			case 'c':
 				event.preventDefault();
 				// Copy selected item's ID to clipboard
 				const id = getItemId(current);
 				copyToClipboard(id);
 				break;
-			
+
 			case 'p':
 				event.preventDefault();
 				// Enter priority mode (only for TreeNode, not WIP)
@@ -640,7 +577,7 @@
 					enterPriorityMode();
 				}
 				break;
-			
+
 			case '0':
 			case '1':
 			case '2':
@@ -654,7 +591,7 @@
 					exitPriorityMode();
 				}
 				break;
-			
+
 			case 'q':
 				event.preventDefault();
 				// Toggle triage:ready label (only for TreeNode, not WIP)
@@ -700,12 +637,12 @@
 	function selectNode(index: number) {
 		selectedIndex = index;
 	}
-	
+
 	// Close side panel
 	function closeSidePanel() {
 		selectedIssueForPanel = null;
 	}
-	
+
 	// Open side panel for a node
 	function openSidePanel(node: TreeNode) {
 		if (selectedIssueForPanel?.id === node.id) {
@@ -732,7 +669,6 @@
 
 		if (!result.success) {
 			console.error('Failed to close issue:', result.error);
-			// TODO: Show error toast
 		}
 
 		issueToClose = null;
@@ -842,471 +778,44 @@
 			class="node-row cursor-pointer select-none focus:outline-none"
 			class:selected={index === selectedIndex}
 			class:focused={index === selectedIndex}
-	
+
 			role="treeitem"
 			aria-selected={index === selectedIndex}
 			tabindex="-1"
 			onclick={() => selectNode(index)}
 		>
 		{#if isWIP}
-			{#if item.type === 'running'}
-				{@const agent = item.agent}
-				{@const displayId = agent.beads_id || agent.id.slice(0, 15)}
-				{@const relatedNodeId = agent.beads_id && pinnedTreeIds.has(agent.beads_id) ? agent.beads_id : null}
-				{@const relatedNode = relatedNodeId ? treeNodeIndex.get(relatedNodeId) : null}
-				{@const statusIcon = getAgentStatusIcon(agent)}
-				{@const health = computeAgentHealth(agent)}
-				{@const contextPct = getContextPercent(agent)}
-				{@const inProgressSubline = relatedNode
-					? getInProgressSubline(relatedNode, runningAgentDetailsByIssueId)
-					: (agent.phase || agent.runtime || agent.model
-						? { text: `${agent.phase || 'active'} · ${agent.runtime || 'runtime unknown'} · ${shortenModel(agent.model)}`, tone: 'text-blue-500/90' }
-						: null)}
-				<!-- Running Agent - WIP Item -->
-			<div
-				class="flex items-start gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}"
-				style="padding-left: 0"
-				role="button"
-				tabindex="-1"
-				onclick={() => {
-					selectNode(index);
-					const panelIssue = getPanelIssue(item);
-					if (panelIssue) {
-						openSidePanel(panelIssue);
-					}
-				}}
-				onkeydown={(event) => {
-					if (event.key === 'Enter' || event.key === ' ') {
-						event.preventDefault();
-						selectNode(index);
-						const panelIssue = getPanelIssue(item);
-						if (panelIssue) {
-							openSidePanel(panelIssue);
-						}
-					}
-				}}
-			>
-				<!-- Expansion indicator placeholder (matches tree nodes) -->
-				<span class="w-4"></span>
-
-				<!-- Status icon with health indication -->
-				<span class="{statusIcon.color} w-5 text-center">{statusIcon.icon}</span>
-
-				<!-- Priority badge -->
-				{#if relatedNode}
-					<Badge variant={getPriorityVariant(relatedNode.priority)} class="w-8 justify-center text-xs">
-						P{relatedNode.priority}
-					</Badge>
-				{:else}
-					<span class="w-8"></span>
-				{/if}
-
-				<!-- ID (min-w-[120px] matches tree) -->
-				<span
-					class="text-xs font-mono min-w-[120px] cursor-pointer hover:text-foreground transition-colors {copiedId === displayId ? 'text-green-500' : 'text-muted-foreground'}"
-					onclick={(e) => { e.stopPropagation(); copyToClipboard(displayId); }}
-					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyToClipboard(displayId); }}}
-					role="button"
-					tabindex="-1"
-					title="Click to copy"
-				>
-					{copiedId === displayId ? 'Copied!' : displayId}
-				</span>
-
-				<!-- Title + in-progress details -->
-				<div class="flex-1 min-w-0">
-					<span class="block text-sm font-medium text-foreground truncate">
-						{relatedNode?.title || agent.task || agent.skill || 'Unknown task'}
-					</span>
-					{#if inProgressSubline}
-						<span class="block text-[11px] leading-4 truncate {inProgressSubline.tone}">
-							{inProgressSubline.text}
-						</span>
-					{/if}
-					<span class="block text-[11px] leading-4 truncate text-muted-foreground">
-						{getExpressiveStatus(agent)}
-					</span>
-				</div>
-
-				<!-- Attention badge (if any) -->
-				{#if relatedNode?.attentionBadge}
-					{@const badgeConfig = getAttentionBadge(relatedNode.attentionBadge)}
-					{#if badgeConfig}
-						<Badge variant={badgeConfig.variant} class="shrink-0">
-							{badgeConfig.label}
-						</Badge>
-					{/if}
-				{/if}
-
-				<!-- Type badge -->
-				{#if relatedNode}
-					<Badge variant="outline" class="{getTypeBadge(relatedNode.type)} text-xs shrink-0">
-						{relatedNode.type}
-					</Badge>
-				{/if}
-					
-					<!-- Health warning tooltip -->
-					{#if health.status !== 'healthy'}
-						<span class="text-xs {health.status === 'critical' ? 'text-red-500' : 'text-yellow-500'}" title={health.reasons.join(', ')}>
-							{health.status === 'critical' ? '!' : '?'}
-						</span>
-					{/if}
-				</div>
-				
-				<!-- L1: Expanded details for running agents -->
-				{#if expandedDetails.has(itemId)}
-					<div class="expanded-details ml-14 pb-2 px-3 text-xs text-muted-foreground bg-muted/30 rounded mt-1 mb-2 p-3 space-y-2">
-						<!-- Agent metadata row -->
-						<div class="flex items-center gap-4">
-							<!-- Phase -->
-							{#if agent.phase}
-								<span class="flex items-center gap-1">
-									<span class="text-foreground/60">Phase:</span>
-									<span class="text-foreground">{agent.phase}</span>
-								</span>
-							{/if}
-							
-							<!-- Context % -->
-							{#if contextPct !== null}
-								<span class="flex items-center gap-1">
-									<span class="text-foreground/60">Context:</span>
-									<span class="{getContextColor(contextPct)}">{contextPct}%</span>
-								</span>
-							{/if}
-							
-							<!-- Skill -->
-							{#if agent.skill}
-								<span class="flex items-center gap-1">
-									<span class="text-foreground/60">Skill:</span>
-									<span>{agent.skill}</span>
-								</span>
-							{/if}
-							
-							<!-- Model (short form) -->
-							{#if agent.model}
-								<span class="flex items-center gap-1">
-									<span class="text-foreground/60">Model:</span>
-									<span>{agent.model.split('/').pop()?.split('-').slice(0, 2).join('-') || agent.model}</span>
-								</span>
-							{/if}
-						</div>
-						
-						<!-- Deliverables checklist (compact L1 view) -->
-						<DeliverableChecklist 
-							deliverables={getExpectedDeliverables('bug', agent.skill || 'feature-impl')} 
-							mode="compact" 
-						/>
-					</div>
-				{/if}
-			{:else}
-				{@const issue = item.issue}
-				<!-- Queued Issue - WIP Item (NO opacity-60) -->
-				<div
-					class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}"
-					style="padding-left: 0"
-					role="button"
-					tabindex="-1"
-					onclick={() => {
-						selectNode(index);
-						const panelIssue = getPanelIssue(item);
-						if (panelIssue) {
-							openSidePanel(panelIssue);
-						}
-					}}
-					onkeydown={(event) => {
-						if (event.key === 'Enter' || event.key === ' ') {
-							event.preventDefault();
-							selectNode(index);
-							const panelIssue = getPanelIssue(item);
-							if (panelIssue) {
-								openSidePanel(panelIssue);
-							}
-						}
-					}}
-				>
-					<!-- Expansion indicator placeholder (matches tree nodes) -->
-					<span class="w-4"></span>
-					
-					<!-- Status icon -->
-					<span class="text-muted-foreground w-5">○</span>
-					
-					<!-- Priority badge -->
-					<Badge variant={getPriorityVariant(issue.priority)} class="w-8 justify-center text-xs">
-						P{issue.priority}
-					</Badge>
-					{#if issue.effective_priority !== undefined && issue.effective_priority !== issue.priority}
-						<Badge variant="outline" class="text-xs">
-							Eff P{issue.effective_priority}
-						</Badge>
-					{/if}
-					
-					<!-- ID -->
-					<span 
-						class="text-xs font-mono min-w-[120px] cursor-pointer hover:text-foreground transition-colors {copiedId === issue.id ? 'text-green-500' : 'text-muted-foreground'}"
-						onclick={(e) => { e.stopPropagation(); copyToClipboard(issue.id); }}
-						onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyToClipboard(issue.id); }}}
-						role="button"
-						tabindex="-1"
-						title="Click to copy"
-					>
-						{copiedId === issue.id ? 'Copied!' : issue.id}
-					</span>
-					
-					<!-- Title -->
-					<span class="flex-1 text-sm font-medium text-foreground truncate">
-						{issue.title}
-					</span>
-					
-					<!-- Queue reason -->
-					<span class="text-xs text-muted-foreground italic min-w-[80px]">
-						queued
-					</span>
-					
-					<!-- Type badge -->
-					<Badge variant="outline" class="{getTypeBadge(issue.issue_type)} text-xs">
-						{issue.issue_type}
-					</Badge>
-				</div>
-				
-				<!-- L1: Expanded details for queued issues -->
-				{#if expandedDetails.has(itemId)}
-					<div class="expanded-details ml-14 mt-1 mb-2 p-3 bg-muted/30 rounded text-sm">
-						<div class="text-xs text-muted-foreground">
-							Queued for daemon processing
-						</div>
-					</div>
-				{/if}
-			{/if}
+			<WipRow
+				{item}
+				{index}
+				{selectedIndex}
+				{itemId}
+				{copiedId}
+				{expandedDetails}
+				{pinnedTreeIds}
+				{treeNodeIndex}
+				{runningAgentDetailsByIssueId}
+				onSelectNode={selectNode}
+				onCopyToClipboard={copyToClipboard}
+				onOpenSidePanel={openSidePanel}
+			/>
 		{:else}
-			{@const node = item as TreeNode}
-			{@const feedback = actionFeedback.get(node.id)}
-			{@const inProgressSubline = getInProgressSubline(node, runningAgentDetailsByIssueId)}
-			{@const progressSnapshot = getProgressSnapshot(node)}
-			{@const depPrefix = depPrefixMap.get(node.id)}
-			{@const nodeAgent = agentsByBeadsId.get(node.id)}
-			{@const agentBadge = nodeAgent ? getAgentBadge(nodeAgent) : null}
-			<!-- Tree Node - L0: Row -->
-			<div
-				class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.status.toLowerCase() === 'in_progress' ? 'border-l-2 border-blue-500/60 bg-blue-500/5' : 'border-l border-transparent'} {node.absorbed_by ? 'opacity-50' : ''} {feedback === 'priority' ? 'action-feedback-priority' : ''} {feedback === 'queue' ? 'action-feedback-queue' : ''}"
-				style="padding-left: {depPrefix !== undefined ? '8px' : node.depth * 24 + 'px'}"
-				role="button"
-				tabindex="-1"
-				onclick={() => {
-					selectNode(index);
-					openSidePanel(node);
-				}}
-				onkeydown={(event) => {
-					if (event.key === 'Enter' || event.key === ' ') {
-						event.preventDefault();
-						selectNode(index);
-						openSidePanel(node);
-					}
-				}}
-			>
-					{#if depPrefix !== undefined}
-						{#if depPrefix === ''}
-							<!-- Flow origin: unblocked root of dependency chain -->
-							<span class="text-blue-400 font-mono text-sm select-none w-4 text-center" title="Flow origin (unblocked)">◆</span>
-						{:else}
-							<!-- Flow connector: directional arrow shows dependency flow -->
-							<span class="text-zinc-600 font-mono text-xs whitespace-pre select-none leading-none">{depPrefix}</span>
-						{/if}
-					{:else}
-						<!-- Expansion indicator (non-dep mode) -->
-						<span class="w-4 text-muted-foreground text-xs">
-							{#if node.children.length > 0}
-								{node.expanded ? '▼' : '▶'}
-							{:else}
-								<span class="opacity-0">•</span>
-							{/if}
-						</span>
-					{/if}
-
-					<!-- Status icon -->
-					<span data-testid="status-icon" class="w-5 {getStatusColor(node.status)}">
-						{getStatusIcon(node.status)}
-					</span>
-
-					<!-- Priority badge -->
-					<Badge data-testid="priority-badge" variant={getPriorityVariant(node.priority)} class="w-8 justify-center text-xs">
-						P{node.priority}
-					</Badge>
-					{#if node.effective_priority !== undefined && node.effective_priority !== node.priority}
-						<Badge variant="outline" class="text-xs">
-							Eff P{node.effective_priority}
-						</Badge>
-					{/if}
-
-					<!-- ID -->
-					<span 
-						class="text-xs font-mono min-w-[120px] cursor-pointer hover:text-foreground transition-colors {copiedId === node.id ? 'text-green-500' : 'text-muted-foreground'}"
-						onclick={(e) => { e.stopPropagation(); copyToClipboard(node.id); }}
-						onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyToClipboard(node.id); }}}
-						role="button"
-						tabindex="-1"
-						title="Click to copy"
-					>
-						{copiedId === node.id ? 'Copied!' : node.id}
-					</span>
-
-					<!-- Title + in_progress details -->
-					<div class="flex-1 min-w-0">
-						<span class="block text-sm font-medium text-foreground truncate">
-							{node.title}
-						</span>
-						{#if inProgressSubline}
-							<span class="block text-[11px] leading-4 truncate {inProgressSubline.tone}">
-								{inProgressSubline.text}
-							</span>
-						{/if}
-					</div>
-
-					{#if progressSnapshot}
-						<div class="hidden xl:flex items-center gap-2 min-w-[120px]">
-							<div class="w-14 h-1.5 bg-muted rounded-full overflow-hidden">
-								<div class="h-full bg-blue-500 transition-all" style="width: {progressSnapshot.percent}%"></div>
-							</div>
-							<span class="text-[11px] text-muted-foreground tabular-nums">
-								{progressSnapshot.done}/{progressSnapshot.total}
-							</span>
-						</div>
-					{/if}
-
-					<!-- Agent badge (if any) -->
-					{#if agentBadge}
-						<span
-							class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded border shrink-0 {agentBadge.color}"
-							title="Agent: {nodeAgent?.skill || nodeAgent?.status || 'unknown'}"
-						>
-							<span class={nodeAgent?.is_processing ? 'animate-pulse' : ''}>{agentBadge.icon}</span>
-							{agentBadge.label}
-						</span>
-					{/if}
-
-					<!-- Attention badge (if any) -->
-					{#if node.attentionBadge}
-						{@const badgeConfig = getAttentionBadge(node.attentionBadge)}
-						{#if badgeConfig}
-							<Badge variant={badgeConfig.variant} class="shrink-0">
-								{badgeConfig.label}
-							</Badge>
-						{/if}
-					{/if}
-
-					<!-- Type badge -->
-					<Badge data-testid="type-badge" variant="outline" class="{getTypeBadge(node.type)} text-xs shrink-0">
-						{node.type}
-					</Badge>
-
-						<!-- Set as Focus button for epics -->
-						{#if node.type === 'epic'}
-						<button
-							type="button"
-							class="text-xs text-blue-500 hover:text-blue-600 hover:underline px-1"
-							onclick={(event) => {
-								event.stopPropagation();
-								onSetFocus(node.id, node.title);
-							}}
-							title="Set this epic as your current focus"
-						>
-								Set Focus
-							</button>
-						{/if}
-
-					<!-- Age (placeholder) -->
-					{#if getAge(node.id)}
-						<span class="text-xs text-muted-foreground min-w-[40px] text-right">
-							{getAge(node.id)}
-						</span>
-					{/if}
-				</div>
-
-				<!-- L1: Expanded details -->
-				{#if expandedDetails.has(node.id)}
-					{@const dependencyExplanation = getDependencyExplanation(node, treeNodeIndex)}
-					{@const progressInDetails = getProgressSnapshot(node)}
-					{@const parentLabel = node.parent_id ? getRelatedIssueLabel(node.parent_id, treeNodeIndex) : null}
-					{@const directChildLabels = node.children.map((child) => getRelatedIssueLabel(child.id, treeNodeIndex))}
-					<div
-						data-testid={`issue-details-${node.id}`}
-						class="expanded-details ml-12 mt-1 mb-2 p-3 bg-muted/30 rounded text-sm"
-						style="margin-left: {depPrefix !== undefined ? '48px' : node.depth * 24 + 48 + 'px'}"
-					>
-						<div class="mb-3">
-							<span class="text-xs font-semibold uppercase text-foreground">Issue summary:</span>
-							<p class="mt-1 text-xs text-muted-foreground">{getIssueSummary(node)}</p>
-						</div>
-
-						<div class="mb-3">
-							<span class="text-xs font-semibold uppercase text-foreground">Dependency context:</span>
-							<p class="mt-1 text-xs {dependencyExplanation.tone}">{dependencyExplanation.headline}</p>
-							<p class="mt-1 text-[11px] text-muted-foreground">{dependencyExplanation.detail}</p>
-						</div>
-
-						{#if progressInDetails}
-							<div class="mb-3">
-								<div class="flex items-center justify-between gap-2">
-									<span class="text-xs font-semibold uppercase text-foreground">Progress & completeness:</span>
-									<span class="text-xs text-muted-foreground tabular-nums">{progressInDetails.done}/{progressInDetails.total} done ({progressInDetails.percent}%)</span>
-								</div>
-								<div class="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
-									<div class="h-full bg-blue-500 transition-all" style="width: {progressInDetails.percent}%"></div>
-								</div>
-								<p class="mt-1 text-[11px] text-muted-foreground">
-									{#if progressInDetails.visible === progressInDetails.total}
-										All {progressInDetails.total} related issues are visible in this branch.
-									{:else}
-										{progressInDetails.visible} of {progressInDetails.total} related issues are visible (expand children to inspect all).
-									{/if}
-								</p>
-							</div>
-						{/if}
-
-						<div class="mb-2">
-							<span class="text-xs font-semibold uppercase text-foreground">Related issues:</span>
-							<div class="mt-1 space-y-1 text-xs text-muted-foreground">
-								{#if parentLabel}
-									<div>Parent: {parentLabel}</div>
-								{/if}
-								{#if directChildLabels.length > 0}
-									<div>Children ({directChildLabels.length}): {formatRelatedIssueList(node.children.map((child) => child.id), treeNodeIndex)}</div>
-								{/if}
-								{#if node.blocked_by.length > 0}
-									<div>Upstream blockers: {formatRelatedIssueList(node.blocked_by, treeNodeIndex)}</div>
-								{/if}
-								{#if node.blocks.length > 0}
-									<div>Downstream dependents: {formatRelatedIssueList(node.blocks, treeNodeIndex)}</div>
-								{/if}
-								{#if node.absorbed_by}
-									<div>Absorbed by: {getRelatedIssueLabel(node.absorbed_by, treeNodeIndex)}</div>
-								{/if}
-								{#if !parentLabel && directChildLabels.length === 0 && node.blocked_by.length === 0 && node.blocks.length === 0 && !node.absorbed_by}
-									<div>No directly related issues in the current scope.</div>
-								{/if}
-							</div>
-						</div>
-
-						<!-- Status details -->
-						<div class="flex flex-wrap items-center gap-4 text-xs border-t border-border pt-2 mt-2">
-							<span class="flex items-center gap-1">
-								<span class="text-foreground/60">Status:</span>
-								<span class={getStatusColor(node.status)}>{formatStatusLabel(node.status)}</span>
-							</span>
-							<span class="flex items-center gap-1">
-								<span class="text-foreground/60">Priority:</span>
-								<span class="text-muted-foreground">P{node.priority}</span>
-							</span>
-							<span class="flex items-center gap-1">
-								<span class="text-foreground/60">Type:</span>
-								<span class="text-muted-foreground">{node.type}</span>
-							</span>
-							<span class="flex items-center gap-1">
-								<span class="text-foreground/60">Source:</span>
-								<span class="text-muted-foreground">{node.source}</span>
-							</span>
-						</div>
-					</div>
-				{/if}
+			<TreeNodeRow
+				node={item as TreeNode}
+				{index}
+				{selectedIndex}
+				{copiedId}
+				{expandedDetails}
+				depPrefix={depPrefixMap.get((item as TreeNode).id)}
+				{treeNodeIndex}
+				{runningAgentDetailsByIssueId}
+				{actionFeedback}
+				{agentsByBeadsId}
+				onSelectNode={selectNode}
+				onCopyToClipboard={copyToClipboard}
+				onOpenSidePanel={openSidePanel}
+				{onSetFocus}
+			/>
 		{/if}
 		</div>
 		{/if}
@@ -1332,35 +841,5 @@
 	.work-graph-tree {
 		/* Ensure keyboard focus works */
 		min-height: 100%;
-	}
-	
-	.action-feedback-priority {
-		animation: priority-flash 1s ease-out;
-	}
-	
-	.action-feedback-queue {
-		animation: queue-flash 1s ease-out;
-	}
-	
-	@keyframes priority-flash {
-		0% {
-			background-color: rgba(168, 85, 247, 0.4); /* purple-500 with opacity */
-			box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.6);
-		}
-		100% {
-			background-color: transparent;
-			box-shadow: 0 0 0 0 transparent;
-		}
-	}
-	
-	@keyframes queue-flash {
-		0% {
-			background-color: rgba(34, 197, 94, 0.4); /* green-500 with opacity */
-			box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.6);
-		}
-		100% {
-			background-color: transparent;
-			box-shadow: 0 0 0 0 transparent;
-		}
 	}
 </style>
