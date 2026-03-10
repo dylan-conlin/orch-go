@@ -3,6 +3,19 @@ package daemon
 import (
 	"fmt"
 	"os/exec"
+	"strings"
+)
+
+const (
+	// LabelEffortSmall marks light-tier work eligible for auto-completion
+	// without explain-back or verified gates.
+	LabelEffortSmall = "effort:small"
+
+	// LabelEffortMedium marks medium-tier work (default behavior — tag ready-review).
+	LabelEffortMedium = "effort:medium"
+
+	// LabelEffortLarge marks heavy-tier work requiring full gates.
+	LabelEffortLarge = "effort:large"
 )
 
 // AutoCompleter runs the full completion pipeline for an agent.
@@ -13,6 +26,14 @@ type AutoCompleter interface {
 	// workdir is the project directory for cross-project operations.
 	// Returns an error if the completion pipeline fails (gate failure, escalation, etc.).
 	Complete(beadsID, workdir string) error
+}
+
+// LightAutoCompleter extends AutoCompleter with light-tier completion support.
+// Light-tier completion skips explain-back and verified gates, used for effort:small work.
+type LightAutoCompleter interface {
+	AutoCompleter
+	// CompleteLight runs the completion pipeline with explain-back and verified gates skipped.
+	CompleteLight(beadsID, workdir string) error
 }
 
 // OrcCompleter is the production AutoCompleter that shells out to `orch complete`.
@@ -33,4 +54,39 @@ func (c *OrcCompleter) Complete(beadsID, workdir string) error {
 		return fmt.Errorf("orch complete failed: %w\nOutput: %s", err, string(output))
 	}
 	return nil
+}
+
+// CompleteLight shells out to `orch complete` with targeted skip flags for light-tier work.
+// Skips explain-back and verified gates while preserving other verification.
+func (c *OrcCompleter) CompleteLight(beadsID, workdir string) error {
+	args := []string{
+		"complete", beadsID,
+		"--skip-explain-back",
+		"--skip-reason", "light-tier auto-complete (effort:small)",
+	}
+	if workdir != "" {
+		args = append(args, "--workdir", workdir)
+	}
+
+	cmd := exec.Command("orch", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("orch complete (light) failed: %w\nOutput: %s", err, string(output))
+	}
+	return nil
+}
+
+// HasEffortLabel checks if a set of labels contains a specific effort label.
+func HasEffortLabel(labels []string, target string) bool {
+	for _, l := range labels {
+		if strings.EqualFold(l, target) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsEffortSmall returns true if the labels indicate light-tier work.
+func IsEffortSmall(labels []string) bool {
+	return HasEffortLabel(labels, LabelEffortSmall)
 }

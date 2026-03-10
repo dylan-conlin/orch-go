@@ -58,10 +58,11 @@ func DefaultCompletionConfig() CompletionConfig {
 type CompletedAgent struct {
 	BeadsID       string
 	Title         string
-	Status        string // open or in_progress
-	PhaseSummary  string // Summary from "Phase: Complete - <summary>"
-	WorkspacePath string // Path to agent workspace (if found)
-	ProjectDir    string // Source project directory (for cross-project operations)
+	Status        string   // open or in_progress
+	PhaseSummary  string   // Summary from "Phase: Complete - <summary>"
+	WorkspacePath string   // Path to agent workspace (if found)
+	ProjectDir    string   // Source project directory (for cross-project operations)
+	Labels        []string // Issue labels (for effort-based completion routing)
 }
 
 // CompletionResult contains the result of processing a completion.
@@ -203,6 +204,7 @@ func listCompletedAgentsSingleProject(config CompletionConfig, projectDir, works
 			PhaseSummary:  phaseStatus.Summary,
 			WorkspacePath: workspacePath,
 			ProjectDir:    projectDir,
+			Labels:        issue.Labels,
 		})
 	}
 
@@ -446,6 +448,41 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 		reviewTier = verify.ReadReviewTierFromWorkspace(agent.WorkspacePath)
 	}
 
+	// Effort-based auto-complete: effort:small issues skip explain-back and verified gates.
+	// Uses LightAutoCompleter (targeted skips) rather than full --force.
+	// effort:medium and effort:large follow the normal path (tag ready-review).
+	if IsEffortSmall(agent.Labels) && d.AutoCompleter != nil && !config.DryRun {
+		var completeErr error
+		if lightCompleter, ok := d.AutoCompleter.(LightAutoCompleter); ok {
+			completeErr = lightCompleter.CompleteLight(agent.BeadsID, effectiveProjectDir)
+		} else {
+			// Fallback to full auto-complete if LightAutoCompleter not available
+			completeErr = d.AutoCompleter.Complete(agent.BeadsID, effectiveProjectDir)
+		}
+
+		if completeErr != nil {
+			// Light auto-complete failed — fall back to orchestrator review
+			result.Error = fmt.Errorf("light auto-complete failed for effort:small agent: %w", completeErr)
+			return result
+		}
+
+		result.Processed = true
+		result.AutoCompleted = true
+		result.CloseReason = completionSummary
+
+		// Record auto-completion for verification tracking
+		if d.VerificationTracker != nil {
+			shouldPause := d.VerificationTracker.RecordCompletion(agent.BeadsID)
+			if shouldPause && config.Verbose {
+				status := d.VerificationTracker.Status()
+				fmt.Printf("    Verification pause triggered: %d/%d auto-completions. Resume with: orch daemon resume\n",
+					status.CompletionsSinceVerification, status.Threshold)
+			}
+		}
+
+		return result
+	}
+
 	// Auto-tier: run orch complete directly instead of labeling for review.
 	// This closes the issue, archives workspace, and frees the slot automatically.
 	// If orch complete fails (gate failure, escalation), fall back to orchestrator review.
@@ -556,11 +593,17 @@ func (d *Daemon) CompletionOnce(config CompletionConfig) (*CompletionLoopResult,
 			// Log completion event — differentiate auto-completed (closed by daemon)
 			// from labeled (waiting for orchestrator review)
 			if compResult.AutoCompleted {
-				if err := logger.LogAutoCompletedWithEscalation(agent.BeadsID, compResult.CloseReason, "auto-completed"); err != nil && config.Verbose {
+				logReason := "auto-completed"
+				tierLabel := "tier=auto"
+				if IsEffortSmall(agent.Labels) {
+					logReason = "light-auto-completed"
+					tierLabel = "effort=small"
+				}
+				if err := logger.LogAutoCompletedWithEscalation(agent.BeadsID, compResult.CloseReason, logReason); err != nil && config.Verbose {
 					fmt.Printf("    Warning: failed to log auto-completion event: %v\n", err)
 				}
 				if config.Verbose {
-					fmt.Printf("    Auto-completed: %s (tier=auto)\n", compResult.CloseReason)
+					fmt.Printf("    Auto-completed: %s (%s)\n", compResult.CloseReason, tierLabel)
 				}
 			} else {
 				if err := logger.LogAutoCompletedWithEscalation(agent.BeadsID, compResult.CloseReason, compResult.Escalation.String()); err != nil && config.Verbose {

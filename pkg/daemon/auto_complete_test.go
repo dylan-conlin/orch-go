@@ -79,6 +79,12 @@ func TestAutoCompleter_Interface(t *testing.T) {
 	var _ AutoCompleter = (*mockAutoCompleter)(nil)
 }
 
+func TestLightAutoCompleter_Interface(t *testing.T) {
+	// Verify OrcCompleter implements LightAutoCompleter
+	var _ LightAutoCompleter = (*OrcCompleter)(nil)
+	var _ LightAutoCompleter = (*mockLightAutoCompleter)(nil)
+}
+
 func TestAutoCompleteResult_Fields(t *testing.T) {
 	result := CompletionResult{
 		BeadsID:       "test-123",
@@ -148,6 +154,184 @@ func TestMockAutoCompleter_ReturnsError(t *testing.T) {
 	}
 }
 
+// --- Effort label tests ---
+
+func TestIsEffortSmall(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels []string
+		want   bool
+	}{
+		{"effort:small present", []string{"triage:ready", "effort:small"}, true},
+		{"effort:small only", []string{"effort:small"}, true},
+		{"effort:medium present", []string{"effort:medium"}, false},
+		{"effort:large present", []string{"effort:large"}, false},
+		{"no effort label", []string{"triage:ready"}, false},
+		{"empty labels", []string{}, false},
+		{"nil labels", nil, false},
+		{"case insensitive", []string{"Effort:Small"}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsEffortSmall(tt.labels)
+			if got != tt.want {
+				t.Errorf("IsEffortSmall(%v) = %v, want %v", tt.labels, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHasEffortLabel(t *testing.T) {
+	labels := []string{"effort:small", "triage:ready"}
+	if !HasEffortLabel(labels, LabelEffortSmall) {
+		t.Error("expected HasEffortLabel to find effort:small")
+	}
+	if HasEffortLabel(labels, LabelEffortMedium) {
+		t.Error("expected HasEffortLabel not to find effort:medium")
+	}
+}
+
+func TestEffortLabelConstants(t *testing.T) {
+	if LabelEffortSmall != "effort:small" {
+		t.Errorf("LabelEffortSmall = %q, want 'effort:small'", LabelEffortSmall)
+	}
+	if LabelEffortMedium != "effort:medium" {
+		t.Errorf("LabelEffortMedium = %q, want 'effort:medium'", LabelEffortMedium)
+	}
+	if LabelEffortLarge != "effort:large" {
+		t.Errorf("LabelEffortLarge = %q, want 'effort:large'", LabelEffortLarge)
+	}
+}
+
+func TestProcessCompletion_EffortSmall_DoesNotCallAutoCompleterWhenVerificationFails(t *testing.T) {
+	// effort:small agent in nonexistent project dir — verification will fail.
+	// AutoCompleter should NOT be called when verification fails.
+	orchCompleteCalled := false
+	d := &Daemon{
+		AutoCompleter: &mockLightAutoCompleter{
+			CompleteFunc: func(beadsID, workdir string) error {
+				orchCompleteCalled = true
+				return nil
+			},
+			CompleteLightFunc: func(beadsID, workdir string) error {
+				orchCompleteCalled = true
+				return nil
+			},
+		},
+	}
+
+	agent := CompletedAgent{
+		BeadsID:    "orch-go-test-small1",
+		Title:      "Test effort:small auto-complete",
+		ProjectDir: "/nonexistent/dir",
+		Labels:     []string{"effort:small"},
+	}
+
+	config := CompletionConfig{
+		ProjectDir: "/nonexistent/dir",
+	}
+
+	result := d.ProcessCompletion(agent, config)
+
+	if orchCompleteCalled {
+		t.Error("AutoCompleter should NOT be called when verification fails (effort:small)")
+	}
+	if result.AutoCompleted {
+		t.Error("result.AutoCompleted should be false when verification fails")
+	}
+	if result.Error == nil {
+		t.Error("expected error from failed verification")
+	}
+}
+
+func TestProcessCompletion_EffortMedium_GetsReadyReviewLabel(t *testing.T) {
+	// effort:medium should NOT auto-complete — should follow normal ready-review path.
+	orchCompleteCalled := false
+	d := &Daemon{
+		AutoCompleter: &mockLightAutoCompleter{
+			CompleteFunc: func(beadsID, workdir string) error {
+				orchCompleteCalled = true
+				return nil
+			},
+			CompleteLightFunc: func(beadsID, workdir string) error {
+				orchCompleteCalled = true
+				return nil
+			},
+		},
+	}
+
+	agent := CompletedAgent{
+		BeadsID:    "orch-go-test-medium1",
+		Title:      "Test effort:medium",
+		ProjectDir: "/nonexistent",
+		Labels:     []string{"effort:medium"},
+	}
+
+	config := CompletionConfig{
+		ProjectDir: "/nonexistent",
+	}
+
+	// Will fail at verification (nonexistent dir), but AutoCompleter
+	// should not be called for effort:medium
+	_ = d.ProcessCompletion(agent, config)
+
+	if orchCompleteCalled {
+		t.Error("AutoCompleter should NOT be called for effort:medium agent")
+	}
+}
+
+func TestProcessCompletion_NoEffortLabel_GetsReadyReviewLabel(t *testing.T) {
+	// No effort label should NOT auto-complete — should follow normal ready-review path.
+	orchCompleteCalled := false
+	d := &Daemon{
+		AutoCompleter: &mockLightAutoCompleter{
+			CompleteFunc: func(beadsID, workdir string) error {
+				orchCompleteCalled = true
+				return nil
+			},
+			CompleteLightFunc: func(beadsID, workdir string) error {
+				orchCompleteCalled = true
+				return nil
+			},
+		},
+	}
+
+	agent := CompletedAgent{
+		BeadsID:    "orch-go-test-noeffort",
+		Title:      "Test no effort label",
+		ProjectDir: "/nonexistent",
+		Labels:     []string{"triage:ready"},
+	}
+
+	config := CompletionConfig{
+		ProjectDir: "/nonexistent",
+	}
+
+	_ = d.ProcessCompletion(agent, config)
+
+	if orchCompleteCalled {
+		t.Error("AutoCompleter should NOT be called for agent without effort:small label")
+	}
+}
+
+func TestCompletedAgent_LabelsField(t *testing.T) {
+	agent := CompletedAgent{
+		BeadsID: "orch-go-123",
+		Title:   "Test",
+		Labels:  []string{"effort:small", "triage:ready"},
+	}
+
+	if len(agent.Labels) != 2 {
+		t.Errorf("expected 2 labels, got %d", len(agent.Labels))
+	}
+	if !IsEffortSmall(agent.Labels) {
+		t.Error("expected agent labels to contain effort:small")
+	}
+}
+
+// --- Mocks ---
+
 // mockAutoCompleter implements AutoCompleter for tests.
 type mockAutoCompleter struct {
 	CompleteFunc func(beadsID, workdir string) error
@@ -160,5 +344,26 @@ func (m *mockAutoCompleter) Complete(beadsID, workdir string) error {
 	return nil
 }
 
+// mockLightAutoCompleter implements LightAutoCompleter for tests.
+type mockLightAutoCompleter struct {
+	CompleteFunc      func(beadsID, workdir string) error
+	CompleteLightFunc func(beadsID, workdir string) error
+}
+
+func (m *mockLightAutoCompleter) Complete(beadsID, workdir string) error {
+	if m.CompleteFunc != nil {
+		return m.CompleteFunc(beadsID, workdir)
+	}
+	return nil
+}
+
+func (m *mockLightAutoCompleter) CompleteLight(beadsID, workdir string) error {
+	if m.CompleteLightFunc != nil {
+		return m.CompleteLightFunc(beadsID, workdir)
+	}
+	return nil
+}
+
 // Verify interface compliance.
 var _ AutoCompleter = (*mockAutoCompleter)(nil)
+var _ LightAutoCompleter = (*mockLightAutoCompleter)(nil)
