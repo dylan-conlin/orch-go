@@ -33,6 +33,9 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 		return nil, nil, nil, nil, err
 	}
 
+	// Governance file detection — warn if task targets protected paths (advisory only)
+	CheckGovernance(input.Task, input.SkillName, input.DaemonDriven)
+
 	var hotspotResult *gates.HotspotResult
 	if hotspotCheckFunc != nil {
 		architectVerifier := buildArchitectVerifier()

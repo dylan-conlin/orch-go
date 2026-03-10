@@ -1,27 +1,24 @@
-task: "Update stale skill docs: kb create investigation missing --model flag"
-beads_id: orch-go-cmnsu
+task: "Detect governance-protected files at spawn routing time"
+beads_id: orch-go-enwt2
 tier: light
 
 automated:
-  - command: "grep -rn 'kb create investigation' skills/src/ | grep -v -- '--model\\|--orphan' | grep -v 'auto-detects\\|Resolution-Status'"
-    expects: "Zero stale references in skill source/template files"
-    result: "PASS — no output (all refs include --model or --orphan)"
-  - command: "skillc deploy --target ~/.claude/skills/"
-    expects: "All 14 skills deploy successfully"
-    result: "PASS — 14/14 deployed"
+  - command: "go test ./pkg/orch/ -run 'TestCheckGovernance|TestGovernanceProtectedPaths' -count=1"
+    expects: "All 11 governance detection tests pass"
+    result: "PASS — 11/11 tests pass"
+  - command: "go build ./..."
+    expects: "Full project builds cleanly"
+    result: "PASS — exit 0"
+
+manual:
+  - step: "Run: orch spawn --bypass-triage --reason 'testing governance' feature-impl 'edit pkg/spawn/gates/hotspot.go'"
+    expects: "Governance warning appears in stderr before spawn proceeds"
+  - step: "Run: orch spawn --bypass-triage --reason 'testing no match' feature-impl 'add new dashboard feature'"
+    expects: "No governance warning appears"
 
 deliverables:
-  templates_fixed:
-    - skills/src/worker/codebase-audit/.skillc/SKILL.md.template
-    - skills/src/worker/ux-audit/.skillc/phases/overview.md
-    - skills/src/worker/design-session/.skillc/SKILL.md.template
-    - skills/src/worker/investigation/.skillc/SKILL.md.template
-    - skills/src/worker/research/.skillc/SKILL.md.template
-    - skills/src/worker/investigation/.skillc/reference/template.md
-    - skills/src/worker/investigation/reference/template.md
-    - skills/src/meta/orchestrator/.skillc/reference/tools-and-commands.md
-    - skills/src/meta/orchestrator/reference/tools-and-commands.md
-  docs_fixed:
-    - .kb/guides/kb-getting-started.md
-    - .kb/global/guides/orch-ecosystem.md
-  compiled_outputs: "All SKILL.md files regenerated via skillc build + deploy"
+  new_files:
+    - pkg/orch/governance.go       # Governance detection logic + protected paths list
+    - pkg/orch/governance_test.go  # 11 test cases covering all protected paths
+  modified_files:
+    - pkg/orch/spawn_preflight.go  # Wired CheckGovernance into RunPreFlightChecks
