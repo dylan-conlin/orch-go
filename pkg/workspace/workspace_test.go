@@ -103,6 +103,42 @@ func TestFindByBeadsID(t *testing.T) {
 	}
 }
 
+func TestFindByBeadsID_CrossRepoWorkspace(t *testing.T) {
+	// Simulate cross-repo scenario: beads issue is orch-go-XXXX but workspace is in kb-cli
+	// This verifies the building block that findWorkspaceByBeadsIDAcrossProjects uses.
+	sourceProject := t.TempDir() // e.g. orch-go
+	targetProject := t.TempDir() // e.g. kb-cli
+
+	// Create workspace dirs
+	os.MkdirAll(filepath.Join(sourceProject, ".orch", "workspace"), 0755)
+	os.MkdirAll(filepath.Join(targetProject, ".orch", "workspace"), 0755)
+
+	// Workspace is in TARGET project (created by --workdir spawn)
+	wsDir := filepath.Join(targetProject, ".orch", "workspace", "kc-feat-add-model-09mar-ab12")
+	os.MkdirAll(wsDir, 0755)
+	os.WriteFile(filepath.Join(wsDir, "AGENT_MANIFEST.json"),
+		[]byte(`{"beads_id":"orch-go-x1y2","skill":"feature-impl","project_dir":"`+targetProject+`"}`), 0644)
+	os.WriteFile(filepath.Join(wsDir, "SYNTHESIS.md"), []byte("# Synthesis\nDone."), 0644)
+
+	// Search SOURCE project → should NOT find it
+	path, agent := FindByBeadsID(sourceProject, "orch-go-x1y2")
+	if path != "" {
+		t.Errorf("FindByBeadsID(sourceProject) should return empty, got %q", path)
+	}
+	if agent != "" {
+		t.Errorf("FindByBeadsID(sourceProject) agent should be empty, got %q", agent)
+	}
+
+	// Search TARGET project → should find it
+	path, agent = FindByBeadsID(targetProject, "orch-go-x1y2")
+	if path == "" {
+		t.Error("FindByBeadsID(targetProject) should find workspace")
+	}
+	if agent != "kc-feat-add-model-09mar-ab12" {
+		t.Errorf("FindByBeadsID(targetProject) agent = %q, want kc-feat-add-model-09mar-ab12", agent)
+	}
+}
+
 func TestFindByName(t *testing.T) {
 	tempDir := t.TempDir()
 	wsDir := filepath.Join(tempDir, ".orch", "workspace", "og-feat-test-05jan")

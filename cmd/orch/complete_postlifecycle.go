@@ -287,6 +287,48 @@ func findWorkspaceByNameAcrossProjects(workspaceName string) string {
 	return ""
 }
 
+// findWorkspaceByBeadsIDAcrossProjects searches all known projects for a workspace
+// matching the given beads ID. This handles cross-repo spawns where the workspace
+// is created in the target project (via --workdir) but the beads issue belongs to
+// the source project. Without this fallback, orch complete fails to find the workspace
+// when the beads ID prefix matches the CWD project.
+func findWorkspaceByBeadsIDAcrossProjects(beadsID string) (workspacePath, agentName string) {
+	for _, project := range getKBProjectsWithNames() {
+		if wsPath, name := findWorkspaceByBeadsID(project.Path, beadsID); wsPath != "" {
+			return wsPath, name
+		}
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", ""
+	}
+
+	rootCandidates := []string{
+		filepath.Join(homeDir, "Documents", "personal"),
+		filepath.Join(homeDir, "projects"),
+		filepath.Join(homeDir, "src"),
+	}
+
+	for _, root := range rootCandidates {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			projectDir := filepath.Join(root, entry.Name())
+			if wsPath, name := findWorkspaceByBeadsID(projectDir, beadsID); wsPath != "" {
+				return wsPath, name
+			}
+		}
+	}
+
+	return "", ""
+}
+
 // exportOrchestratorTranscript exports the session transcript for orchestrator sessions.
 func exportOrchestratorTranscript(workspacePath, projectDir, beadsID string) error {
 	orchestratorMarker := filepath.Join(workspacePath, ".orchestrator")

@@ -118,6 +118,19 @@ func resolveCompletionTarget(identifier, workdir string) (CompletionTarget, erro
 			searchDir = crossProjectDir
 		}
 		target.WorkspacePath, target.AgentName = findWorkspaceByBeadsID(searchDir, target.BeadsID)
+
+		// Fallback: search across all known projects for cross-repo workspaces.
+		// This handles the case where an agent was spawned with --workdir targeting
+		// a different project (e.g., orch-go issue but workspace in kb-cli).
+		// The beads ID prefix matches CWD so crossProjectDir isn't set above,
+		// but the workspace lives in the target project.
+		if target.WorkspacePath == "" {
+			if wsPath, name := findWorkspaceByBeadsIDAcrossProjects(target.BeadsID); wsPath != "" {
+				target.WorkspacePath = wsPath
+				target.AgentName = name
+				fmt.Printf("Found cross-repo workspace in %s\n", filepath.Dir(filepath.Dir(filepath.Dir(wsPath))))
+			}
+		}
 	}
 
 	// Determine beads project directory using identity layer.
