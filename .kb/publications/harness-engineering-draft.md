@@ -104,12 +104,6 @@ The critical finding: behavioral constraints — the things you'd most want to e
 
 A convention in documentation without mechanical enforcement is a suggestion with a half-life proportional to context window pressure. daemon.go grew past the stated 1,500-line convention while that convention existed in CLAUDE.md. The agents read it. They understood it. They added 200 lines to an 1,800-line file anyway because the task was urgent and no gate blocked them.
 
-### Experiment 4: fix:feat ratio is transient
-
-We tracked the ratio of fix commits to feature commits as a proxy for system health. During the week we deployed most of our gates (Feb 23), the ratio spiked to 1.21 — more fixes than features, expected during infrastructure work. The following week it reverted to 0.36.
-
-There is no sustained shift. Gate deployment didn't change the steady-state ratio. This tells us gates are enforcement mechanisms, not culture changers. They prevent specific violations; they don't make agents more architecturally aware.
-
 ### The honest assessment: gates haven't bent the curve yet
 
 As of March 8, 2026, total lines in `cmd/orch/` grew from 34,977 to 47,605 in 3 weeks (+12,628, ~4,200/week). The aggregate growth rate hasn't slowed since gate deployment.
@@ -198,23 +192,7 @@ The trajectory here is important: Layers 0–1 are **compliance gates** — they
 
 This is why harness engineering is permanent infrastructure. The compliance gates may simplify. The coordination gates are the endgame.
 
-### Cross-language portability
-
-We tested the framework against a TypeScript codebase (our OpenCode fork, ~48 bloated files, 155 hotspots) to see what translates.
-
-**The framework is language-independent. The gates are not.**
-
-5 of 8 harness patterns translate directly to TypeScript with zero adaptation: deny rules, control plane lock, Claude Code hook registration, beads close hook, pre-commit accretion gate. These operate at the OS level, tool level, or git level — none examine language-specific constructs.
-
-3 patterns need adaptation:
-
-- **Build gate:** Go's `go build` is unfakeable — the binary won't exist if it fails. TypeScript's `bun typecheck` has escape hatches (`any`, `@ts-ignore`) and runs at pre-push, not pre-commit. No TypeScript mechanism has equivalent enforcement strength.
-
-- **Architecture lint:** Go's `go/ast` package provides direct AST access. TypeScript needs ts-morph or eslint with custom rules.
-
-- **Hotspot analysis:** Generated code creates false positives. 4 of the top 10 hotspot files in the TypeScript project were `*.gen.ts` code-generated SDK files (5,070, 3,909, 3,318 lines). These would trigger spawn gate blocking and architect routing despite being machine-generated. Any codebase with code generation (OpenAPI, GraphQL, protobuf) needs a generated-file exclusion mechanism.
-
-**The deeper insight:** "Unfakeability" is a property of structural coupling, not compilation specifically. Go's `go build` is unfakeable because source → binary is tightly coupled. TypeScript's Drizzle migration gate (schema change without migration = blocked commit) is equally unfakeable because schema → migration is tightly coupled. Each ecosystem has its own structurally coupled hard gates — the framework should catalog these per language rather than assuming Go's inventory is universal.
+We've tested the framework against a TypeScript codebase and found it language-independent — 5 of 8 harness patterns translate directly. The 3 that don't (build gate, architecture lint, hotspot analysis) are language-specific in implementation but not in concept. The deeper insight: "unfakeability" is a property of structural coupling (schema↔migration, source↔binary), not compilation specifically. Each ecosystem has its own structurally coupled hard gates.
 
 ---
 
@@ -237,58 +215,6 @@ But MAST frames the solution as requiring "deeper social reasoning abilities" fr
 What no existing work distinguishes: compliance failure (agent doesn't follow instructions — fixed by better models) versus coordination failure (agents each follow instructions but collectively produce entropy — made *worse* by better models). MAST's FC1 (system design, ~44% of failures) maps roughly to compliance. Their FC2 (~32%) maps to coordination. Their FC3 (task verification, ~24%) maps to Fowler's verification gap. But MAST taxonomizes by symptom, not by response to model improvement. The result: they prescribe model-level solutions for what is actually an architectural problem. "Deeper social reasoning" is a compliance answer to a coordination question.
 
 This distinction — that compliance and coordination failures have *opposite* trajectories as models improve — is the core contribution of our framework and, as far as we can tell, absent from the published literature.
-
----
-
-## What's Working / What Isn't
-
-### Working
-
-**Spawn hotspot gate** blocks feature-impl and systematic-debugging skills from spawning on CRITICAL files (>1,500 lines). This prevents new work from landing on already-degraded files. It routes through architect review first: `--force-hotspot --architect-ref <closed-architect-issue>` provides due process — bypass requires proof of prior review.
-
-**`orch harness init`** automates Day 1 governance for new projects: deny rules, hook registration, beads close hook, pre-commit gate wiring, and control plane lock. A new project goes from zero enforcement to minimum viable harness in under an hour.
-
-**Control plane immutability** via OS-level file locking (`chflags uchg`). Agents cannot modify the files that define their own constraints. Before this, three entropy spirals occurred with mutable infrastructure.
-
-**The hard/soft taxonomy as a design tool.** Once you can classify each harness component, the design conversation changes from "should we add this rule?" to "is this a hard or soft component, and are we putting it in the right container?"
-
-### Not working
-
-**Gates haven't bent the accretion curve.** Total lines, individual file sizes, and weekly velocity all show no deceleration after gate deployment. The deployed gates are too late (completion, not pre-commit), too narrow (block new crossing of 1,500 but exempt files already there), and self-exempting (pre-existing bloat skip creates a ratchet).
-
-**Completion gate exempts pre-existing bloat.** Files already over 1,500 lines get warnings, not blocks. This means the gate primarily protects files approaching the threshold, not files that already crossed it. That's exactly backwards — the already-bloated files are where accretion pressure is strongest.
-
-**Soft harness budget is unknown.** We know 10+ behavioral constraints are inert. We know knowledge transfers at +5 per item with no observed dilution limit. We don't know the exact curve — is it 5 effective behavioral slots? 7? How do constraints from multiple sources interact?
-
-**Generated code creates hotspot false positives.** Any codebase with code generation (OpenAPI codegen, GraphQL schemas, protobuf, icon component generators) will have inflated hotspot counts. Harness tooling needs a generated-code exclusion mechanism.
-
----
-
-## Open Questions
-
-These are the things we don't know yet. We're listing them because honest gaps are more useful than confident claims without evidence.
-
-### Governance health metric
-
-We've designed but not implemented a composite 0–100 score for harness effectiveness. The components would include: escape hatch frequency (how often agents use `--force` bypasses), accretion velocity (line count growth rate), gate firing rate (how often gates block vs warn), and structural test coverage. We don't know yet whether this collapses into a single useful number or whether the components should be tracked independently.
-
-### Soft harness budget curve
-
-We know the extremes: 0 behavioral constraints = no guidance; 10+ = inert. Where's the useful range? Is it 3 constraints? 5? Does it depend on the constraint's semantic distance from the system prompt? Does it vary by model capability? We need more contrastive experiments with controlled constraint counts to find the curve.
-
-### Layer 4: gates that generate gates
-
-The aspiration is a system that extends its own enforcement. When the entropy agent identifies a pattern 3+ times — the same cross-cutting concern reimplemented independently — it drafts the structural test that would prevent it. The harness extending itself. We haven't built this, and we're not sure it's achievable without creating a gate calibration death spiral (gate too strict → high false positive rate → `--force` reflex → gate becomes noise).
-
-The fix for an ignored gate is never "make it louder" — it's "make it more precise." That principle may apply to auto-generated gates too.
-
-### Cross-language portability depth
-
-We've shown 5 of 8 patterns translate between Go and TypeScript. But we haven't tested: whether accretion thresholds (800/1,500 lines) are appropriate for TypeScript (files may naturally be larger); whether Python has worse or better hard harness than either; whether completion verification can be made language-agnostic beyond Go's build/vet/staticcheck; or whether the full framework works in practice on a non-Go project running agents for 30+ days.
-
-### The mutable control plane problem
-
-All our defenses live inside the system agents can modify. OS-level file locking provides a temporal buffer, but it's not architecturally immutable — any process with sufficient privileges can unlock it. True immutability would require infrastructure that's architecturally unreachable by agents. We don't know what that looks like yet. It may require enforcement at a level above the codebase entirely — CI/CD pipelines, pre-merge hooks on remote repositories, or organizational infrastructure.
 
 ---
 
@@ -324,6 +250,38 @@ Run one full agent lifecycle with human observation. Watch gates fire against re
 
 ---
 
+## The Honest Assessment
+
+### What's working
+
+**Spawn hotspot gate** blocks agents from spawning on degraded files (>1,500 lines), routing through architect review first. Bypass requires proof of prior review — due process, not bureaucracy.
+
+**Control plane immutability** via OS-level file locking. Agents cannot modify the files that define their own constraints. Before this, three entropy spirals occurred with mutable infrastructure.
+
+**The hard/soft taxonomy as a design tool.** Once you can classify each harness component, the conversation changes from "should we add this rule?" to "is this a hard or soft component, and are we putting it in the right container?"
+
+### What isn't
+
+**Gates haven't bent the accretion curve.** Total lines, individual file sizes, and weekly velocity all show no deceleration after gate deployment. The deployed gates were too late (completion, not pre-commit), too narrow (exempt files already over threshold), and self-exempting. We've since wired blocking pre-commit gates and created structural attractors — the 30-day forward measurement will show whether the combination works.
+
+**Completion gate exempts pre-existing bloat.** Files already over 1,500 lines get warnings, not blocks. That's exactly backwards — the already-bloated files are where accretion pressure is strongest.
+
+---
+
+## Open Questions
+
+These are the things we don't know yet. We're listing them because honest gaps are more useful than confident claims without evidence.
+
+### Governance health metric
+
+We've designed but not yet validated a composite 0–100 score for harness effectiveness: escape hatch frequency, accretion velocity, gate firing rate, structural test coverage. We don't know yet whether this collapses into a single useful number or whether the components should be tracked independently.
+
+### The mutable control plane problem
+
+All our defenses live inside the system agents can modify. OS-level file locking provides a temporal buffer, but it's not architecturally immutable — any process with sufficient privileges can unlock it. True immutability would require infrastructure that's architecturally unreachable by agents. We don't know what that looks like yet. It may require enforcement at a level above the codebase entirely — CI/CD pipelines, pre-merge hooks on remote repositories, or organizational infrastructure.
+
+---
+
 ## Where We Are
 
 We're 12 weeks and 3 entropy spirals into this. The framework is clear: hard harness for enforcement, soft harness for orientation, attractors and gates together, coordination gates as permanent infrastructure. All 5 enforcement layers are now shipped — from pre-commit blocking through AST duplication detection to weekly entropy analysis. The evidence is real but incomplete — the full gate stack has only been deployed for days, not weeks. The 30-day forward measurement is the real test.
@@ -335,6 +293,8 @@ We're publishing now — before the 30-day results — because the framework, th
 The field is converging on "harness" as a concept but hasn't yet grappled with the coordination problem. Most harness work assumes the challenge is making individual agents effective — better prompts, better tools, better verification. Our experience says the harder problem is what happens *after* you make them effective. Fifty capable agents with no coordination infrastructure produce entropy faster than five mediocre agents ever could.
 
 The deepest insight from this work: in multi-agent systems, codebase architecture is governance. Package structure is a routing table for agentic contributions. Import boundaries are jurisdiction lines. Structural tests are constitutional constraints. And every convention without a gate will eventually be violated.
+
+Accretion isn't unique to code. We've observed the same dynamics — attractors, gates, entropy spirals, the compliance/coordination split — in knowledge systems where amnesiac agents contribute to a shared understanding rather than a shared codebase. The physics appear to be substrate-independent. That's the subject of our next piece.
 
 ---
 
