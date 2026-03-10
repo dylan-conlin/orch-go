@@ -1,6 +1,6 @@
 # Harness Engineering: Structural Governance for Multi-Agent Codebases
 
-*What happens when 50 AI agents/day commit to the same codebase — and what we built to survive it.*
+*What happens when 50 AI agents/day commit to the same codebase — and why stronger models make it worse.*
 
 ---
 
@@ -12,7 +12,7 @@ We run 50+ autonomous AI agents per day on a single Go codebase (orch-go, ~47,60
 
 Our clearest example: `daemon.go` grew from 667 lines to 1,559 lines in 60 days. Not from one bad commit — from 30 individually correct ones. Each agent added a locally reasonable capability: stuck detection, health checks, auto-complete, agreement verification, phase timeouts, orphan recovery. No single commit was wrong. The aggregate was structural degradation.
 
-We call this **accretion** — the thermodynamic tendency of multi-agent codebases toward entropy. It's not a quality problem. It's a coordination problem. And it doesn't go away with better agents. In fact, it gets worse.
+We call this **accretion** — the thermodynamic tendency of multi-agent codebases toward entropy. It's not a quality problem. It's a coordination problem. And it doesn't go away with better agents. In fact, it gets worse: faster, more capable agents accrete more code per session with higher confidence. The 30 agents that grew daemon.go weren't struggling. They were excelling — each one individually. The problem is that individual excellence doesn't compose into collective coherence without structural coordination. No amount of model improvement fixes this, because coordination failure is an emergent property of the system, not a deficiency of its parts.
 
 ### The anatomy of accretion
 
@@ -218,6 +218,28 @@ We tested the framework against a TypeScript codebase (our OpenCode fork, ~48 bl
 
 ---
 
+## Related Work: Three Meanings of "Harness"
+
+The term "harness" has gained currency in AI engineering, but different groups mean fundamentally different things by it. Untangling these usages clarifies what our work adds.
+
+**Harness as environment setup.** OpenAI's Codex team used "harness" to describe the test infrastructure and constraint scaffolding that enabled their zero-manual-code approach (~1M lines, 1,500 PRs, 3–7 engineers, 5 months). Their reframing — "agent failure is a harness bug, not an agent bug" — is foundational to our work. Anthropic's "Effective Harnesses for Long-Running Agents" extends this to multi-session continuity: progress files, mandatory commits, structured feature lists, incremental completion. Both are primarily single-agent approaches. They solve the problem of making *one agent* effective across sessions. They don't address what happens when 50 agents are effective simultaneously on the same codebase.
+
+**Harness as verification.** Fowler and Böckeler's analysis of the OpenAI approach identifies what they call the "verification gap" — architectural quality without behavioral verification — and the concept of "relocating rigor." Rigor doesn't disappear when you stop writing code manually; it migrates to environment design and constraint specification. This framing is precisely correct and influenced our work directly. But it stops at the single-agent boundary. "Does the harness verify the right things?" is a different question from "how do multiple agents coordinate *through* the harness?"
+
+**Harness as governance.** Our usage is distinct: architecture-as-governance for concurrent multi-agent systems. Package structure as a routing table for agentic contributions. Import boundaries as jurisdiction lines. Structural tests as constitutional constraints. The harness isn't just the environment an agent runs in — it's the coordination infrastructure that prevents *N* individually-correct agents from producing collectively-incoherent output.
+
+### The coordination gap in the literature
+
+The closest academic work to our coordination concern is Cemri et al.'s MAST taxonomy, which analyzed 1,600+ traces of multi-agent LLM systems and identified 14 failure modes across three categories. Their FC2 category — inter-agent misalignment — accounts for roughly 32% of all failures, including conversation resets, task derailment, ignored inputs, and reasoning-action mismatches. This maps directly to what we call coordination failure.
+
+But MAST frames the solution as requiring "deeper social reasoning abilities" from agents — essentially, better models. They don't consider the possibility that the coordination failures they observe are *architectural*, not cognitive. Their own finding — "a well-designed MAS can result in performance gain when using the same underlying model" — supports the architectural interpretation, but they don't develop it.
+
+What no existing work distinguishes: compliance failure (agent doesn't follow instructions — fixed by better models) versus coordination failure (agents each follow instructions but collectively produce entropy — made *worse* by better models). MAST's FC1 (system design, ~44% of failures) maps roughly to compliance. Their FC2 (~32%) maps to coordination. Their FC3 (task verification, ~24%) maps to Fowler's verification gap. But MAST taxonomizes by symptom, not by response to model improvement. The result: they prescribe model-level solutions for what is actually an architectural problem. "Deeper social reasoning" is a compliance answer to a coordination question.
+
+This distinction — that compliance and coordination failures have *opposite* trajectories as models improve — is the core contribution of our framework and, as far as we can tell, absent from the published literature.
+
+---
+
 ## What's Working / What Isn't
 
 ### Working
@@ -310,8 +332,17 @@ The 30-day forward measurement starts from March 8, 2026. The baseline: daemon.g
 
 We're publishing now — before the 30-day results — because the framework, the taxonomy, and the failure modes are already useful to teams running into the same problems. The evidence supports the diagnosis (accretion as coordination failure) even if the treatment (gates + attractors) is still proving itself.
 
+The field is converging on "harness" as a concept but hasn't yet grappled with the coordination problem. Most harness work assumes the challenge is making individual agents effective — better prompts, better tools, better verification. Our experience says the harder problem is what happens *after* you make them effective. Fifty capable agents with no coordination infrastructure produce entropy faster than five mediocre agents ever could.
+
 The deepest insight from this work: in multi-agent systems, codebase architecture is governance. Package structure is a routing table for agentic contributions. Import boundaries are jurisdiction lines. Structural tests are constitutional constraints. And every convention without a gate will eventually be violated.
 
 ---
 
 *This is based on 12 weeks of operating orch-go: ~47,600 lines of Go, 125 files, 50+ autonomous AI agent sessions/day, 3 entropy spirals, 1,625 lost commits, 265 contrastive trials across 7 skills, and cross-language validation against a TypeScript fork. The harness engineering model, evidence probes, and minimum viable harness checklist are open at [repo link].*
+
+### References
+
+- OpenAI, "Harness Engineering" (2025). https://openai.com/index/harness-engineering/
+- Fowler, M. & Böckeler, B., "Harness Engineering" (2025). https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html
+- Anthropic, "Effective Harnesses for Long-Running Agents" (2026). https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
+- Cemri, M. et al., "Why Do Multi-Agent LLM Systems Fail?" (2025). arXiv:2503.13657

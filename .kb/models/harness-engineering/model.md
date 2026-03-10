@@ -1,7 +1,7 @@
 # Model: Harness Engineering
 
 **Domain:** Agent-First Structural Enforcement / Architectural Governance / Multi-Agent Code Quality
-**Last Updated:** 2026-03-08
+**Last Updated:** 2026-03-10
 **Synthesized From:**
 - `.kb/investigations/2026-03-07-inv-analyze-accretion-pattern-orch-go.md` — Accretion structural analysis (daemon.go +892 lines, 6 cross-cutting concerns)
 - `.kb/threads/2026-03-07-harness-engineering-structural-enforcement-agent.md` — Framework formulation and implementation sequence
@@ -133,6 +133,12 @@ OpenAI's Codex team (~1M lines, 1,500 PRs, 3-7 engineers, 5 months, zero manual 
 **What OpenAI doesn't address:** How to know WHEN to add new gates. They designed gates before code (greenfield advantage). For retrofit systems, accretion signals (duplication count, regrowth rate, detection-without-prevention) must feed an automated gate discovery system.
 
 **Fowler/Bockeler's critical addition:** The harness approach requires "constraining the solution space" — the opposite of what most expect from AI coding. "Relocating rigor" — rigor doesn't disappear when you stop writing code manually; it migrates to environment design and constraint specification. Also identifies the verification gap: OpenAI doesn't describe functional verification. Our completion pipeline (14 gates, 3 types) addresses this.
+
+**Anthropic's "Effective Harnesses for Long-Running Agents":** Extends OpenAI's framing to multi-session continuity — progress files, mandatory commits, structured feature lists. Single-agent only. Does not address concurrent multi-agent coordination.
+
+**MAST taxonomy (Cemri et al., arXiv:2503.13657):** Closest academic work to our coordination concern. 1,600+ traces, 14 failure modes in 3 categories: FC1 (system design, ~44%) ≈ compliance, FC2 (inter-agent misalignment, ~32%) ≈ coordination, FC3 (task verification, ~24%) ≈ Fowler's verification gap. However, MAST prescribes "deeper social reasoning abilities" — model improvement — for coordination failures that are actually architectural. Their own finding ("a well-designed MAS can result in performance gain when using the same underlying model") supports the architectural interpretation without developing it.
+
+**Field positioning (Mar 10 probe):** The term "harness" is used with 3 distinct meanings: environment setup (OpenAI/Anthropic), verification (Fowler), governance (ours). Only our usage addresses concurrent multi-agent coordination as a structural problem. The compliance/coordination distinction — and the claim that these have opposite trajectories with model improvement — is absent from published literature as of March 2026.
 
 ### 5. The Measurement Layer
 
@@ -422,6 +428,8 @@ Agent governance addresses two fundamentally different failure modes, and they r
 **External:**
 - OpenAI: https://openai.com/index/harness-engineering/
 - Fowler/Bockeler: https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html
+- Anthropic: https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents — Single-agent, multi-session. "Harness" = orchestration framework for context continuity. Does NOT address multi-agent coordination.
+- Cemri et al., "Why Do Multi-Agent LLM Systems Fail?" arXiv:2503.13657 — MAST taxonomy: 1,600+ traces, 14 failure modes, 3 categories. FC2 (inter-agent misalignment) = ~32% of failures. Frames solution as "deeper social reasoning" (model improvement), not architecture. Their FC1/FC2/FC3 maps to our compliance/coordination/verification but they don't recognize opposite model-improvement trajectories.
 
 **Primary Evidence (Verify These):**
 - `cmd/orch/daemon.go` — +892 lines in 60 days (feature gravity evidence)
@@ -437,4 +445,5 @@ Agent governance addresses two fundamentally different failure modes, and they r
 - 2026-03-08: 30-day accretion trajectory measurement — **Gates have NOT bent the line count curve.** daemon.go hit 1,559 (CRITICAL) despite all deployed gates. Completion accretion gate exempts pre-existing bloat. Pre-commit accretion gate exists in code but is NOT wired into the hook. spawn_cmd.go shrank -1,755 (not -840 as claimed) then regrew +483 in 3 weeks. Total cmd/orch/: 47,605 lines across 125 files, 12 files >800 lines. Fix:feat ratio spike (1.21) was transient, reverted to 0.36. Confirms invariants #2 and #4. Extends model with gate exemption failure mode and dead code enforcement gap.
 - 2026-03-08: Cross-language harness portability (Go → TypeScript) — **Framework is language-independent, gates are not.** 5/8 harness patterns translate directly to TypeScript. Build gate (`go build`) has no TypeScript equivalent — `bun typecheck` has `any` escape hatch and is pre-push only. "Unfakeability" is structural coupling (schema↔migration, source↔binary), not compilation. Generated code creates false positives: 4/10 top opencode hotspots are *.gen.ts files. TypeScript has own domain-specific hard harness (Drizzle migration gate) that Go lacks. Extends model with cross-language portability analysis and generated-code blind spot.
 - 2026-03-08: Publication draft model synthesis — **All core claims survived synthesis into publication format.** Compliance vs coordination failure distinction is the strongest novel claim for external audiences. Three claims need more evidence before strong external assertion: "stronger models need more coordination gates" (no controlled experiment), soft harness budget curve (shape unknown), cross-language portability (dry-run only, not 30-day operation). Honest negative evidence (gates haven't bent the curve) strengthens credibility. spawn_cmd.go correction (-1,755, not -840) confirmed.
+- 2026-03-10: Publication polish — related work positioning — **Compliance/coordination distinction is novel in published literature.** Positioned against 4 sources: OpenAI (harness = environment setup), Anthropic (harness = session orchestration), Fowler (harness = verification), MAST/Cemri et al. (observes coordination failures but prescribes model solutions). MAST's FC1/FC2/FC3 maps to compliance/coordination/verification but they don't recognize opposite model-improvement trajectories. "Deeper social reasoning" is a compliance answer to a coordination question. The field uses "harness" with 3 distinct meanings; ours (architecture-as-governance) is the only one addressing concurrent multi-agent coordination structurally.
 - 2026-03-10: Health score calibration vs structural improvement — **89% of score improvement (37→73) is calibration artifact, not structural.** Threshold scaling (accretion 20→92.8, hotspot 15→46.4) and bloat% formula change account for +32.2 of +36 points. Baseline values under new formula would score 69.2 — already above the 65 gate. Accretion velocity increasing (370→6,131 lines/week). New bloated files emerging as fast as old ones extracted. Extraction is net-positive on lines (5/6 commits added lines). Pre-commit gate wired today, zero post-gate data. Extends model with score-calibration-as-soft-harness failure mode.
