@@ -1,24 +1,24 @@
-task: "Detect governance-protected files at spawn routing time"
-beads_id: orch-go-enwt2
+task: "Package orch harness init for external use"
+beads_id: orch-go-ba4wu
 tier: light
 
 automated:
-  - command: "go test ./pkg/orch/ -run 'TestCheckGovernance|TestGovernanceProtectedPaths' -count=1"
-    expects: "All 11 governance detection tests pass"
-    result: "PASS — 11/11 tests pass"
-  - command: "go build ./..."
-    expects: "Full project builds cleanly"
-    result: "PASS — exit 0"
+  - command: "go test ./cmd/orch/ -run 'TestHarness|TestStandalone|TestEnsureStandalone|TestControlAndHarness' -count=1"
+    expects: "All harness tests pass (original + 7 new standalone tests)"
+    result: "PASS"
+  - command: "go test ./pkg/control/ -count=1"
+    expects: "Control package tests pass"
+    result: "PASS"
 
 manual:
-  - step: "Run: orch spawn --bypass-triage --reason 'testing governance' feature-impl 'edit pkg/spawn/gates/hotspot.go'"
-    expects: "Governance warning appears in stderr before spawn proceeds"
-  - step: "Run: orch spawn --bypass-triage --reason 'testing no match' feature-impl 'add new dashboard feature'"
-    expects: "No governance warning appears"
+  - step: "Run orch harness init --dry-run in a temp dir without ~/.orch/hooks/"
+    expects: "Shows 'Mode: standalone' and 5 steps without beads"
+  - step: "Run orch harness init (apply) in same setup"
+    expects: "Generates .claude/hooks/gate-git-add-all.py with explanatory comments"
+  - step: "Verify generated pre-commit has standalone accretion gate (no orch dependency)"
+    expects: "Pre-commit script contains inline bash accretion check, not 'orch precommit'"
 
 deliverables:
-  new_files:
-    - pkg/orch/governance.go       # Governance detection logic + protected paths list
-    - pkg/orch/governance_test.go  # 11 test cases covering all protected paths
   modified_files:
-    - pkg/orch/spawn_preflight.go  # Wired CheckGovernance into RunPreFlightChecks
+    - cmd/orch/harness_init.go       # Standalone mode + generated scripts
+    - cmd/orch/harness_init_test.go  # 7 new standalone tests

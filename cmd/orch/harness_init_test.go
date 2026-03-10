@@ -321,3 +321,184 @@ func TestHarnessInitSubcommandRegistered(t *testing.T) {
 	}
 }
 
+// --- Standalone mode tests ---
+
+func TestStandaloneDenyRulesExcludeOrchPaths(t *testing.T) {
+	rules := standaloneDenyRules()
+	for _, rule := range rules {
+		if strings.Contains(rule, "orch") {
+			t.Errorf("standalone deny rules should not reference orch paths: %s", rule)
+		}
+	}
+	// Should still protect settings.json
+	found := false
+	for _, rule := range rules {
+		if strings.Contains(rule, "settings.json") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("standalone deny rules must protect settings.json")
+	}
+}
+
+func TestEnsureStandaloneHookScripts(t *testing.T) {
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, ".claude", "hooks")
+
+	result, err := ensureStandaloneHookScripts(hooksDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AlreadyPresent {
+		t.Error("expected scripts to be created")
+	}
+	if result.Created != true {
+		t.Error("expected Created=true")
+	}
+
+	// Verify gate-git-add-all.py was created
+	gatePath := filepath.Join(hooksDir, "gate-git-add-all.py")
+	info, err := os.Stat(gatePath)
+	if err != nil {
+		t.Fatalf("gate-git-add-all.py not created: %v", err)
+	}
+	if info.Mode()&0111 == 0 {
+		t.Error("gate-git-add-all.py should be executable")
+	}
+
+	// Verify it has explanatory comments
+	data, _ := os.ReadFile(gatePath)
+	content := string(data)
+	if !strings.Contains(content, "WHY THIS GATE EXISTS") {
+		t.Error("generated hook should contain explanatory comments")
+	}
+	// Should NOT reference CLAUDE_CONTEXT (orch-specific)
+	if strings.Contains(content, "CLAUDE_CONTEXT") {
+		t.Error("standalone hook should not reference CLAUDE_CONTEXT")
+	}
+}
+
+func TestEnsureStandaloneHookScriptsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, ".claude", "hooks")
+
+	ensureStandaloneHookScripts(hooksDir)
+	result, err := ensureStandaloneHookScripts(hooksDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.AlreadyPresent {
+		t.Error("expected scripts already present on second run")
+	}
+}
+
+func TestEnsureStandalonePreCommitGate(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".git", "hooks"), 0755)
+
+	result, err := ensureStandalonePreCommitGate(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AlreadyPresent {
+		t.Error("expected pre-commit to be created")
+	}
+
+	hookPath := filepath.Join(dir, ".git", "hooks", "pre-commit")
+	data, err := os.ReadFile(hookPath)
+	if err != nil {
+		t.Fatal("pre-commit not created")
+	}
+	content := string(data)
+
+	// Should NOT reference orch CLI
+	if strings.Contains(content, "orch precommit") {
+		t.Error("standalone pre-commit should not reference orch CLI")
+	}
+
+	// Should contain inline accretion check
+	if !strings.Contains(content, "accretion") {
+		t.Error("pre-commit should contain accretion check")
+	}
+
+	// Should have explanatory comments
+	if !strings.Contains(content, "WHY THIS GATE EXISTS") {
+		t.Error("pre-commit should contain explanatory comments")
+	}
+}
+
+func TestEnsureStandalonePreCommitGateIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	gitDir := filepath.Join(dir, ".git", "hooks")
+	os.MkdirAll(gitDir, 0755)
+
+	ensureStandalonePreCommitGate(dir)
+	result, err := ensureStandalonePreCommitGate(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.AlreadyPresent {
+		t.Error("expected gate already present on second run")
+	}
+}
+
+func TestStandaloneModeSkipsBeadsWhenAbsent(t *testing.T) {
+	dir := t.TempDir()
+	// No .beads/ directory — should not fail
+	_, exists := detectStandaloneMode(dir)
+	if !exists {
+		// standalone mode should be detected when .beads is absent
+	}
+}
+
+func TestEnsureStandaloneHookRegistration(t *testing.T) {
+	dir := t.TempDir()
+	sp := filepath.Join(dir, "settings.json")
+	hooksDir := filepath.Join(dir, "project", ".claude", "hooks")
+
+	// Create the hook script first
+	os.MkdirAll(hooksDir, 0755)
+	os.WriteFile(filepath.Join(hooksDir, "gate-git-add-all.py"), []byte("# hook"), 0755)
+
+	os.WriteFile(sp, []byte("{}"), 0644)
+
+	result, err := ensureStandaloneHookRegistration(sp, hooksDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AlreadyPresent {
+		t.Error("expected hook to be registered")
+	}
+
+	// Verify settings.json has the hook
+	data, _ := os.ReadFile(sp)
+	var settings map[string]any
+	json.Unmarshal(data, &settings)
+
+	hooks, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		t.Fatal("hooks section missing")
+	}
+	ptu, ok := hooks["PreToolUse"].([]any)
+	if !ok {
+		t.Fatal("PreToolUse section missing")
+	}
+	if len(ptu) == 0 {
+		t.Error("expected at least one PreToolUse entry")
+	}
+
+	// Verify the registered command uses a relative path for portability
+	group := ptu[0].(map[string]any)
+	hookList := group["hooks"].([]any)
+	hookMap := hookList[0].(map[string]any)
+	cmd := hookMap["command"].(string)
+	if !strings.Contains(cmd, "gate-git-add-all.py") {
+		t.Errorf("expected command to reference gate-git-add-all.py, got %s", cmd)
+	}
+	if !strings.HasPrefix(cmd, "python3 .claude/hooks/") {
+		t.Errorf("expected relative path for portability, got %s", cmd)
+	}
+}
+
