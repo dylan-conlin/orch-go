@@ -426,3 +426,80 @@ func verdictCodes(result GateResult) []string {
 	}
 	return codes
 }
+
+func TestCheckPublish_ClaimUpgradeSignals(t *testing.T) {
+	dir := t.TempDir()
+	kbDir := filepath.Join(dir, ".kb")
+	challengesDir := filepath.Join(kbDir, "challenges")
+	invDir := filepath.Join(kbDir, "investigations")
+	pubDir := filepath.Join(kbDir, "publications")
+	modDir := filepath.Join(kbDir, "models", "test-model")
+	probeDir := filepath.Join(modDir, "probes")
+	os.MkdirAll(challengesDir, 0755)
+	os.MkdirAll(invDir, 0755)
+	os.MkdirAll(pubDir, 0755)
+	os.MkdirAll(probeDir, 0755)
+
+	os.WriteFile(filepath.Join(challengesDir, "2026-03-10-test.md"), []byte("# Challenge"), 0644)
+	os.WriteFile(filepath.Join(invDir, "2026-03-10-inv-data.md"), []byte("# Investigation"), 0644)
+
+	// Publication with novelty language
+	os.WriteFile(filepath.Join(pubDir, "draft.md"), []byte(`# Draft
+This is a novel framework.
+`), 0644)
+
+	// Probe with self-validating conclusion
+	os.WriteFile(filepath.Join(probeDir, "probe.md"), []byte(`# Probe
+## Model Impact
+- **Confirms** the model claim.
+`), 0644)
+
+	pub := filepath.Join(dir, "pub.md")
+	content := `---
+challenge_refs:
+  - .kb/challenges/2026-03-10-test.md
+claim_refs:
+  - C1
+claims:
+  - claim_id: C1
+    claim_text: "Decay observed"
+    claim_type: mechanism
+    novelty_level: synthesis
+    evidence_refs:
+      - .kb/investigations/2026-03-10-inv-data.md
+---
+
+# Working Model
+
+This is a working model for coordination.
+`
+	os.WriteFile(pub, []byte(content), 0644)
+
+	t.Run("fails with claim-upgrade signals", func(t *testing.T) {
+		result := CheckPublish(pub)
+		if result.Pass {
+			t.Error("expected failure for claim-upgrade signals")
+		}
+		assertHasVerdict(t, result, "CLAIM_UPGRADE_SIGNALS")
+	})
+
+	t.Run("passes with acknowledge-claims", func(t *testing.T) {
+		result := CheckPublishWithOpts(pub, CheckPublishOpts{AcknowledgeClaims: true})
+		if !result.Pass {
+			t.Errorf("expected pass with --acknowledge-claims, got: %v", verdictCodes(result))
+		}
+		// Should still have the verdict but as warn
+		found := false
+		for _, v := range result.Verdicts {
+			if v.Code == "CLAIM_UPGRADE_SIGNALS" {
+				found = true
+				if v.Status != "warn" {
+					t.Errorf("expected status warn, got %s", v.Status)
+				}
+			}
+		}
+		if !found {
+			t.Error("expected CLAIM_UPGRADE_SIGNALS verdict even with acknowledge-claims")
+		}
+	})
+}

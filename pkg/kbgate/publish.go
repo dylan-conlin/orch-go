@@ -93,7 +93,62 @@ func CheckPublish(pubPath string) GateResult {
 	// Gate 4: Banned novelty language
 	checkBannedLanguage(body, &result)
 
+	// Gate 5: Claim-upgrade boundary detection
+	kbDir := filepath.Join(projectDir, ".kb")
+	checkClaimUpgrades(kbDir, &result)
+
 	return result
+}
+
+// CheckPublishOpts holds options for the publish gate.
+type CheckPublishOpts struct {
+	AcknowledgeClaims bool
+}
+
+// CheckPublishWithOpts runs all gate checks with configurable options.
+// When AcknowledgeClaims is true, claim-upgrade signals are reported as warnings
+// instead of failures.
+func CheckPublishWithOpts(pubPath string, opts CheckPublishOpts) GateResult {
+	result := CheckPublish(pubPath)
+
+	if opts.AcknowledgeClaims {
+		// Downgrade CLAIM_UPGRADE_SIGNALS from fail to warn
+		for i := range result.Verdicts {
+			if result.Verdicts[i].Code == "CLAIM_UPGRADE_SIGNALS" {
+				result.Verdicts[i].Status = "warn"
+			}
+		}
+		// Recalculate pass — only fail if non-claim verdicts failed
+		result.Pass = true
+		for _, v := range result.Verdicts {
+			if v.Status == "fail" {
+				result.Pass = false
+				break
+			}
+		}
+	}
+
+	return result
+}
+
+// checkClaimUpgrades runs the claim scanner and adds a verdict if signals found.
+func checkClaimUpgrades(kbDir string, result *GateResult) {
+	if _, err := os.Stat(kbDir); os.IsNotExist(err) {
+		return
+	}
+
+	scanResult := ScanAllClaims(kbDir)
+	if scanResult.Total() == 0 {
+		return
+	}
+
+	result.Pass = false
+	result.Verdicts = append(result.Verdicts, Verdict{
+		Code:      "CLAIM_UPGRADE_SIGNALS",
+		Status:    "fail",
+		AppliesTo: "knowledge-base",
+		Note:      fmt.Sprintf("%d claim-upgrade signal(s) detected — use --acknowledge-claims or reference external review artifact to proceed", scanResult.Total()),
+	})
 }
 
 // checkContract verifies required publication contract fields.
