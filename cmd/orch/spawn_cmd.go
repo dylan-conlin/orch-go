@@ -1,10 +1,12 @@
-// Package main provides spawn and work commands for the orch CLI.
-// This file contains all spawn-related functionality including:
-// - spawn command with all flags and modes (headless, tmux)
-// - work command for daemon-driven spawns
-// - beads issue creation and tracking
-// - gap analysis and context gathering
-// - concurrency limiting and account switching
+// Package main provides the spawn command for the orch CLI.
+// This file contains:
+// - spawn command definition with all flags
+// - runSpawnWithSkill and runSpawnWithSkillInternal (main spawn pipeline)
+//
+// Related files:
+// - work_cmd.go: work command, skill inference, runWork
+// - spawn_dryrun.go: dry-run validation, formatting helpers
+// - spawn_helpers.go: config loading, scaffolding, misc utilities
 package main
 
 import (
@@ -14,16 +16,11 @@ import (
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
-	"github.com/dylan-conlin/orch-go/pkg/display"
-	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/config"
-	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/orch"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
-	"github.com/dylan-conlin/orch-go/pkg/userconfig"
-	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -87,7 +84,7 @@ This creates friction to encourage the preferred daemon-driven workflow.
 Backend Modes (--backend):
   claude:   Uses Claude Code CLI in tmux (Max subscription, unlimited Opus) (default)
   opencode: Uses OpenCode HTTP API
-  
+
   Config can set default mode (orch config set spawn_mode claude|opencode).
   The --backend flag overrides the config setting for this spawn only.
 
@@ -98,9 +95,9 @@ Spawn Modes:
 Spawn Tiers:
   --light: Skip SYNTHESIS.md requirement (for code-focused work)
   --full:  Require SYNTHESIS.md for knowledge externalization
-  
+
   Default tier is determined by skill:
-    Full tier (require SYNTHESIS.md): investigation, architect, research, 
+    Full tier (require SYNTHESIS.md): investigation, architect, research,
       codebase-audit, design-session, systematic-debugging
     Light tier (skip SYNTHESIS.md): feature-impl, reliability-testing, issue-creation
 
@@ -108,7 +105,7 @@ Gap Gating (Gate Over Remind):
   --gate-on-gap:      Block spawn if context quality is too low (score < 20)
   --skip-gap-gate:    Explicitly bypass gating (documents conscious decision)
   --gap-threshold N:  Custom quality threshold (default 20)
-  
+
   When gating is enabled and context quality is below threshold, spawn is blocked
   with a prominent message explaining the gap and how to fix it. This enforces
   the principle: 'gaps should be harder to ignore than to fix'.
@@ -117,7 +114,7 @@ Dependency Checking (--issue spawns only):
   When spawning with --issue, orch checks if the issue has blocking dependencies.
   If any dependent issues are still open, the spawn is blocked with an error
   showing which issues are blocking. Use --force to override this check.
-  
+
   Example error:
     Error: orch-go-xyz is blocked by orch-go-abc (open)
     Use --force to override
@@ -138,18 +135,18 @@ Examples:
   # Preferred workflow: create issue and let daemon spawn
   bd create "investigate auth" --type investigation -l triage:ready
   orch daemon run  # Daemon picks up triage:ready issues
-  
+
   # Manual spawn (requires --bypass-triage)
   orch spawn --bypass-triage investigation "explore the codebase"
   orch spawn --bypass-triage feature-impl "add feature" --phases implementation,validation
   orch spawn --bypass-triage --issue proj-123 feature-impl "implement the feature"
-  
+
   # Tmux mode (opt-in) - visible, interruptible
   orch spawn --bypass-triage --tmux investigation "explore codebase"
-  
+
   # Gap gating - block spawn on poor context quality
   orch spawn --bypass-triage --gate-on-gap investigation "important task"
-  
+
   # Other options
   orch spawn --bypass-triage --model opus investigation "analyze code"
   orch spawn --bypass-triage --no-track investigation "exploratory work"
@@ -206,299 +203,6 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnSettings, "settings", "", "Path to settings.json for Claude CLI (enables worker hook isolation)")
 	spawnCmd.Flags().StringVar(&spawnIntentType, "intent", "", "Declared outcome type: experience, produce, compare, investigate, fix, build, explore")
 	spawnCmd.Flags().BoolVar(&spawnDryRun, "dry-run", false, "Show spawn plan without executing (validates skill loading, context generation, and resolved settings)")
-}
-
-var (
-	// Work command flags
-	workInline bool // Run inline (blocking) with TUI
-
-	// spawnOrientationFrame holds separate context from the task title.
-	// Set by runWork from the beads issue description, rendered as
-	// ORIENTATION_FRAME: section in SPAWN_CONTEXT.md (separate from TASK:).
-	spawnOrientationFrame string
-
-	// spawnIssueType holds the beads issue type (feature, bug, task, etc.).
-	// Set by runWork from the beads issue, used for review tier inference.
-	spawnIssueType string
-)
-
-var workCmd = &cobra.Command{
-	Use:   "work [beads-id]",
-	Short: "Start work on a beads issue with skill inference",
-	Long: `Start work on a beads issue by inferring the skill from the issue type.
-
-The skill is automatically determined from the issue type:
-  - bug         → systematic-debugging
-  - feature     → feature-impl
-  - task        → feature-impl
-  - investigation → investigation
-
-The issue description becomes the task prompt for the spawned agent.
-
-By default, spawns in a tmux window (visible, interruptible).
-Use --inline to run in the current terminal (blocking with TUI).
-
-Examples:
-  orch-go work proj-123           # Start work in tmux window (default)
-  orch-go work proj-123 --inline  # Start work inline (blocking TUI)`,
-	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		beadsID := args[0]
-		spawnModeSet = false
-		spawnValidationSet = false
-		return runWork(serverURL, beadsID, workInline)
-	},
-}
-
-func init() {
-	workCmd.Flags().BoolVar(&workInline, "inline", false, "Run inline (blocking) with TUI")
-	workCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet) or provider/model format")
-	workCmd.Flags().StringVar(&spawnWorkdir, "workdir", "", "Target project directory (for cross-project work)")
-}
-
-// InferSkillFromIssueType maps issue types to appropriate skills.
-// Returns an error for types that cannot be spawned (e.g., epic) or unknown types.
-//
-// Bug handling: Defaults to "architect" (understand before fixing) rather than
-// "systematic-debugging". This implements the "Premise Before Solution" principle -
-// most bugs reported as vague symptoms need understanding before patching.
-// Use explicit skill:systematic-debugging label for isolated bugs with clear cause.
-func InferSkillFromIssueType(issueType string) (string, error) {
-	switch issueType {
-	case "bug":
-		return "systematic-debugging", nil
-	case "feature":
-		return "feature-impl", nil
-	case "task":
-		return "feature-impl", nil
-	case "investigation":
-		return "investigation", nil
-	case "epic":
-		return "", fmt.Errorf("cannot spawn work on epic issues - epics are decomposed into sub-issues")
-	case "":
-		return "", fmt.Errorf("issue type is empty")
-	default:
-		return "", fmt.Errorf("unknown issue type: %s", issueType)
-	}
-}
-
-// inferSkillFromBeadsIssue infers skill from a beads issue using labels, title, then type.
-func inferSkillFromBeadsIssue(issue *beads.Issue) string {
-	// Check for skill:* labels first
-	for _, label := range issue.Labels {
-		if strings.HasPrefix(label, "skill:") {
-			return strings.TrimPrefix(label, "skill:")
-		}
-	}
-
-	// Check for title patterns (e.g., synthesis issues)
-	if strings.HasPrefix(issue.Title, "Synthesize ") && strings.Contains(issue.Title, " investigations") {
-		return "kb-reflect"
-	}
-
-	// Fall back to type-based inference
-	skill, err := InferSkillFromIssueType(issue.IssueType)
-	if err != nil {
-		return "feature-impl" // Default fallback
-	}
-	return skill
-}
-
-// inferBrowserToolFromBeadsIssue extracts browser tool requirements from issue labels.
-// Returns "playwright-cli" if needs:playwright label is found, or empty string otherwise.
-//
-// This allows daemon-spawned agents to automatically get browser automation context
-// (playwright-cli) when working on UI/CSS fixes that require visual verification.
-func inferBrowserToolFromBeadsIssue(issue *beads.Issue) string {
-	for _, label := range issue.Labels {
-		if strings.HasPrefix(label, "needs:") {
-			need := strings.TrimPrefix(label, "needs:")
-			switch need {
-			case "playwright":
-				return "playwright-cli" // Triggers playwright-cli context injection
-			}
-		}
-	}
-	return ""
-}
-
-func loadBeadsLabels(beadsID, projectDir string) []string {
-	if beadsID == "" {
-		return nil
-	}
-	socketPath, connErr := beads.FindSocketPath(projectDir)
-	if connErr != nil {
-		return nil
-	}
-	beadsClient := beads.NewClient(socketPath)
-	if err := beadsClient.Connect(); err != nil {
-		return nil
-	}
-	defer beadsClient.Close()
-	beadsIssue, showErr := beadsClient.Show(beadsID)
-	if showErr != nil {
-		return nil
-	}
-	return beadsIssue.Labels
-}
-
-func projectMetaFromConfig(meta *config.ConfigMeta) spawn.ProjectConfigMeta {
-	if meta == nil {
-		return spawn.ProjectConfigMeta{}
-	}
-	return spawn.ProjectConfigMeta{
-		SpawnMode:     meta.Explicit["spawn_mode"],
-		ClaudeModel:   meta.ExplicitClaude["model"],
-		OpenCodeModel: meta.ExplicitOpenCode["model"],
-		Models:        meta.Explicit["models"],
-	}
-}
-
-func userMetaFromConfig(meta *userconfig.ConfigMeta) spawn.UserConfigMeta {
-	if meta == nil {
-		return spawn.UserConfigMeta{}
-	}
-	return spawn.UserConfigMeta{
-		Backend:                meta.Explicit["backend"],
-		DefaultModel:           meta.Explicit["default_model"],
-		DefaultTier:            meta.Explicit["default_tier"],
-		Models:                 meta.Explicit["models"],
-		AllowAnthropicOpenCode: meta.Explicit["allow_anthropic_opencode"],
-	}
-}
-
-func formatUserConfigLoadWarning(err error) string {
-	if err == nil {
-		return ""
-	}
-	return fmt.Sprintf(
-		"Warning: failed to load user config %s: %v\n"+
-			"         Using defaults; user config preferences (backend/default_model) will be ignored.\n",
-		userconfig.ConfigPath(),
-		err,
-	)
-}
-
-func loadUserConfigAndWarning() (*userconfig.Config, string) {
-	cfg, err := userconfig.Load()
-	if err != nil {
-		return nil, formatUserConfigLoadWarning(err)
-	}
-	return cfg, ""
-}
-
-func loadUserConfigWithMetaAndWarning() (*userconfig.Config, *userconfig.ConfigMeta, string) {
-	cfg, meta, err := userconfig.LoadWithMeta()
-	if err != nil {
-		return nil, nil, formatUserConfigLoadWarning(err)
-	}
-	return cfg, meta, ""
-}
-
-func applyResolvedSpawnMode(input *orch.SpawnInput, spawnMode string) {
-	if input == nil || input.Attach {
-		return
-	}
-	switch spawnMode {
-	case spawn.SpawnModeInline:
-		input.Inline = true
-		input.Headless = false
-		input.Tmux = false
-	case spawn.SpawnModeTmux:
-		input.Tmux = true
-		input.Inline = false
-		input.Headless = false
-	case spawn.SpawnModeHeadless:
-		input.Headless = true
-		input.Inline = false
-		input.Tmux = false
-	}
-}
-
-func runWork(serverURL, beadsID string, inline bool) error {
-	// For cross-project work (--workdir set), resolve the target project directory
-	// so verify/beads operations use the correct .beads/ database.
-	var workProjectDir string
-	if spawnWorkdir != "" {
-		absWorkdir, err := filepath.Abs(spawnWorkdir)
-		if err != nil {
-			return fmt.Errorf("failed to resolve workdir: %w", err)
-		}
-		workProjectDir = absWorkdir
-	}
-
-	// Get issue details from verify (for description)
-	issue, err := verify.GetIssue(beadsID, workProjectDir)
-	if err != nil {
-		return fmt.Errorf("failed to get beads issue: %w", err)
-	}
-
-	// Infer skill and browser tool from issue (labels, title pattern, then type)
-	// Use beads.Issue which has Labels for full skill/browser tool inference
-	var skillName string
-	var browserTool string
-	socketPath, connErr := beads.FindSocketPath(workProjectDir)
-	if connErr == nil {
-		beadsClient := beads.NewClient(socketPath)
-		if connErr := beadsClient.Connect(); connErr == nil {
-			defer beadsClient.Close()
-			beadsIssue, showErr := beadsClient.Show(beadsID)
-			if showErr == nil {
-				skillName = inferSkillFromBeadsIssue(beadsIssue)
-				browserTool = inferBrowserToolFromBeadsIssue(beadsIssue)
-			}
-		}
-	}
-	// Fall back to type-only inference if beads fails
-	if skillName == "" {
-		skillName, err = InferSkillFromIssueType(issue.IssueType)
-		if err != nil {
-			return fmt.Errorf("cannot work on issue %s: %w", beadsID, err)
-		}
-	}
-
-	// Use issue title as the TASK (concise, drives workspace name slug).
-	// Issue description goes into a separate ORIENTATION_FRAME section in SPAWN_CONTEXT.md.
-	// This prevents long descriptions from polluting workspace names (e.g., "orientation-frame-...").
-	task := issue.Title
-	spawnOrientationFrame = issue.Description
-
-	// Also check for FRAME beads comments — these contain strategic context added by the
-	// orchestrator after issue creation. If the issue description is empty but a FRAME
-	// comment exists, use it as the orientation frame. If both exist, append the FRAME
-	// comment for richer context.
-	if frame := spawn.ExtractFrameFromBeadsComments(beadsID); frame != "" {
-		if spawnOrientationFrame == "" {
-			spawnOrientationFrame = frame
-		} else if !strings.Contains(spawnOrientationFrame, frame) {
-			// Append FRAME comment if it adds new information beyond the description
-			spawnOrientationFrame = spawnOrientationFrame + "\n\n**Orchestrator Frame:** " + frame
-		}
-	}
-
-	// Set the spawnIssue flag so runSpawnWithSkillInternal uses the existing issue
-	spawnIssue = beadsID
-	spawnIssueType = issue.IssueType
-
-	// NOTE: Do NOT load user config default_model into spawnModel here.
-	// spawnModel maps to CLI.Model in the resolve pipeline (highest priority).
-	// User config default_model is already handled at correct precedence in
-	// pkg/spawn/resolve.go:resolveModel() via ResolveInput.UserConfig.
-
-	fmt.Printf("Starting work on: %s\n", beadsID)
-	fmt.Printf("  Title:  %s\n", issue.Title)
-	fmt.Printf("  Type:   %s\n", issue.IssueType)
-	fmt.Printf("  Skill:  %s\n", skillName)
-	if spawnModel != "" {
-		fmt.Printf("  Model:  %s\n", spawnModel)
-	}
-	if browserTool != "" {
-		fmt.Printf("  Browser: %s\n", browserTool)
-	}
-
-	// Work command is daemon-driven (issue already created and triaged)
-	// Pass daemonDriven=true to skip triage bypass check
-	return runSpawnWithSkillInternal(serverURL, skillName, task, inline, true, false, false, true)
 }
 
 func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless bool, tmux bool, attach bool) error {
@@ -798,374 +502,4 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		return err
 	}
 	return nil
-}
-
-// runSpawnDryRun validates skill loading, context generation, and resolved settings
-// without creating beads issues, writing workspace files, or dispatching the spawn.
-func runSpawnDryRun(serverURL, skillName, task string) error {
-	// Validate --mode flag early
-	if err := orch.ValidateMode(orch.Mode); err != nil {
-		return err
-	}
-
-	// Validate flags
-	if spawnVerifyLevel != "" && !spawn.IsValidVerifyLevel(spawnVerifyLevel) {
-		return fmt.Errorf("invalid --verify-level %q: must be V0, V1, V2, or V3", spawnVerifyLevel)
-	}
-	if spawnReviewTier != "" && !spawn.IsValidReviewTier(spawnReviewTier) {
-		return fmt.Errorf("invalid --review-tier %q: must be auto, scan, review, or deep", spawnReviewTier)
-	}
-	if spawnEffort != "" && !spawn.IsValidEffort(spawnEffort) {
-		return fmt.Errorf("invalid --effort %q: must be low, medium, or high", spawnEffort)
-	}
-
-	// Resolve project directory
-	projectDir, projectName, err := orch.ResolveProjectDirectory(spawnWorkdir)
-	if err != nil {
-		return err
-	}
-
-	// Load skill
-	loader := skills.DefaultLoader()
-	skillContent, err := loader.LoadSkillWithDependencies(skillName)
-	if err != nil {
-		return fmt.Errorf("skill loading failed: %w", err)
-	}
-	rawSkillContent, _ := loader.LoadSkillContent(skillName)
-	var isOrchestrator, isMetaOrchestrator bool
-	if rawSkillContent != "" {
-		if metadata, parseErr := skills.ParseSkillMetadata(rawSkillContent); parseErr == nil {
-			isOrchestrator = metadata.SkillType == "policy" || metadata.SkillType == "orchestrator"
-		}
-	}
-	isMetaOrchestrator = skillName == "meta-orchestrator"
-
-	// Generate workspace name (for display only, not created)
-	workspaceName := spawn.GenerateWorkspaceName(projectName, skillName, task, spawn.WorkspaceNameOptions{
-		IsMetaOrchestrator: isMetaOrchestrator,
-		IsOrchestrator:     isOrchestrator,
-	})
-
-	// Apply section filtering
-	skillContent = skills.FilterSkillSections(skillContent, buildSectionFilter(spawnPhases, orch.Mode))
-
-	// Resolve spawn settings
-	projectCfg, projectMeta, err := config.LoadWithMeta(projectDir)
-	if err != nil {
-		projectCfg = nil
-		projectMeta = nil
-	}
-	userCfg, userMeta, warning := loadUserConfigWithMetaAndWarning()
-	if warning != "" {
-		fmt.Fprint(os.Stderr, warning)
-		userCfg = nil
-		userMeta = nil
-	}
-
-	beadsLabels := loadBeadsLabels(spawnIssue, projectDir)
-	resolveInput := spawn.ResolveInput{
-		CLI: spawn.CLISettings{
-			Backend:       spawnBackendFlag,
-			Model:         spawnModel,
-			Mode:          orch.Mode,
-			ModeSet:       spawnModeSet,
-			Validation:    spawnValidation,
-			ValidationSet: spawnValidationSet,
-			MCP:           spawnMCP,
-			Account:       spawnAccount,
-			Effort:        spawnEffort,
-			Light:         spawnLight,
-			Full:          spawnFull,
-			Headless:      spawnHeadless,
-			Tmux:          spawnTmux,
-		},
-		BeadsLabels:            beadsLabels,
-		ProjectConfig:          projectCfg,
-		ProjectConfigMeta:      projectMetaFromConfig(projectMeta),
-		UserConfig:             userCfg,
-		UserConfigMeta:         userMetaFromConfig(userMeta),
-		Task:                   task,
-		BeadsID:                spawnIssue,
-		SkillName:              skillName,
-		IsOrchestrator:         isOrchestrator,
-		InfrastructureDetected: orch.IsInfrastructureWork(task, spawnIssue),
-		CapacityFetcher:        buildCapacityFetcher(),
-	}
-	resolved, err := orch.ResolveSpawnSettings(resolveInput)
-	if err != nil {
-		return err
-	}
-
-	// Gather KB context (read-only, no side effects)
-	kbContext, gapAnalysis, _, _, _, err := orch.GatherSpawnContext(skillContent, task, spawnOrientationFrame, spawnIssue, projectDir, workspaceName, skillName, spawnSkipArtifactCheck, spawnGateOnGap, spawnSkipGapGate, spawnGapThreshold)
-	if err != nil {
-		return err
-	}
-
-	// Estimate token size
-	cfg := orch.BuildSpawnConfig(&orch.SpawnContext{
-		Task:               task,
-		SkillName:          skillName,
-		ProjectDir:         projectDir,
-		ProjectName:        projectName,
-		WorkspaceName:      workspaceName,
-		SkillContent:       skillContent,
-		BeadsID:            spawnIssue,
-		IsOrchestrator:     isOrchestrator,
-		IsMetaOrchestrator: isMetaOrchestrator,
-		ResolvedModel:      resolved.Model,
-		ResolvedSettings:   resolved.Settings,
-		KBContext:          kbContext,
-		GapAnalysis:        gapAnalysis,
-		Tier:               resolved.Settings.Tier.Value,
-	}, spawnPhases, resolved.Settings.Mode.Value, resolved.Settings.Validation.Value, resolved.Settings.MCP.Value, resolved.Settings.BrowserTool.Value, spawnNoTrack, spawnSkipArtifactCheck, spawnReason)
-
-	tokenEstimate := spawn.EstimateContextTokens(cfg)
-
-	// Print spawn plan
-	fmt.Println("=== SPAWN PLAN (dry-run) ===")
-	fmt.Println()
-	fmt.Printf("  Task:       %s\n", task)
-	fmt.Printf("  Skill:      %s\n", skillName)
-	fmt.Printf("  Project:    %s (%s)\n", projectName, projectDir)
-	fmt.Printf("  Workspace:  %s\n", workspaceName)
-	fmt.Println()
-	fmt.Println("--- Resolved Settings ---")
-	printSetting("Backend", resolved.Settings.Backend)
-	printSetting("Model", resolved.Settings.Model)
-	printSetting("Tier", resolved.Settings.Tier)
-	printSetting("Spawn Mode", resolved.Settings.SpawnMode)
-	printSetting("Mode", resolved.Settings.Mode)
-	printSetting("Validation", resolved.Settings.Validation)
-	printSetting("Account", resolved.Settings.Account)
-	printSetting("Effort", resolved.Settings.Effort)
-	if resolved.Settings.MCP.Value != "" {
-		printSetting("MCP", resolved.Settings.MCP)
-	}
-	if resolved.Settings.BrowserTool.Value != "" {
-		printSetting("Browser", resolved.Settings.BrowserTool)
-	}
-	fmt.Println()
-	fmt.Println("--- Context ---")
-	fmt.Printf("  Skill content:  %d chars\n", len(skillContent))
-	fmt.Printf("  KB context:     %d chars\n", len(kbContext))
-	fmt.Printf("  Context quality: %s\n", formatContextQualitySummary(gapAnalysis))
-	fmt.Printf("  Token estimate: ~%d tokens\n", tokenEstimate.EstimatedTokens)
-	if tokenEstimate.ExceedsWarning() {
-		fmt.Printf("  ⚠️  Exceeds warning threshold (%d tokens)\n", tokenEstimate.WarningThreshold)
-	}
-	if tokenEstimate.ExceedsError() {
-		fmt.Printf("  🚨 Exceeds error threshold (%d tokens) — spawn would be BLOCKED\n", tokenEstimate.ErrorThreshold)
-	}
-	fmt.Println()
-	fmt.Println("--- Flags ---")
-	fmt.Printf("  --no-track:     %v\n", spawnNoTrack)
-	fmt.Printf("  --issue:        %s\n", valueOrNone(spawnIssue))
-	fmt.Printf("  --phases:       %s\n", valueOrNone(spawnPhases))
-	if spawnMaxTurns > 0 {
-		fmt.Printf("  --max-turns:    %d\n", spawnMaxTurns)
-	}
-
-	if len(resolved.Settings.Warnings) > 0 {
-		fmt.Println()
-		fmt.Println("--- Warnings ---")
-		for _, w := range resolved.Settings.Warnings {
-			fmt.Printf("  ⚠️  %s\n", w)
-		}
-	}
-
-	fmt.Println()
-	fmt.Println("Dry run complete. No spawn executed, no issues created, no files written.")
-	return nil
-}
-
-// printSetting formats a resolved setting with its source for dry-run output.
-func printSetting(label string, s spawn.ResolvedSetting) {
-	source := string(s.Source)
-	if s.Detail != "" {
-		source += " (" + s.Detail + ")"
-	}
-	fmt.Printf("  %-14s %s (source: %s)\n", label+":", s.Value, source)
-}
-
-// valueOrNone returns the value or "(none)" if empty.
-func valueOrNone(s string) string {
-	if s == "" {
-		return "(none)"
-	}
-	return s
-}
-
-// hotspotFilesFromResult extracts all matched file paths from a hotspot result.
-// Returns nil if result is nil or has no matched hotspots.
-func hotspotFilesFromResult(result *gates.HotspotResult) []string {
-	if result == nil {
-		return nil
-	}
-	return result.MatchedFiles
-}
-
-// dirExists returns true if the path exists and is a directory.
-func dirExists(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
-}
-
-// ensureOrchScaffolding checks for required scaffolding (.orch, .beads) and optionally auto-initializes.
-// Returns nil if scaffolding exists or was successfully created.
-// Returns an error with guidance if scaffolding is missing and auto-init is not enabled.
-func ensureOrchScaffolding(projectDir string, autoInit bool, noTrack bool) error {
-	beadsDir := filepath.Join(projectDir, ".beads")
-	beadsExists := dirExists(beadsDir)
-
-	// If beads exists or tracking is disabled, we're good
-	if beadsExists || noTrack {
-		return nil
-	}
-
-	// Beads is missing and tracking is enabled
-	// If auto-init is enabled, run initialization
-	if autoInit {
-		fmt.Println("Auto-initializing orch scaffolding...")
-
-		// Run init with appropriate flags (skip CLAUDE.md and tmuxinator for minimal init)
-		result, err := initProject(projectDir, false, false, false, true, true, "", "")
-		if err != nil {
-			return fmt.Errorf("auto-init failed: %w", err)
-		}
-
-		// Print minimal summary
-		if len(result.DirsCreated) > 0 {
-			fmt.Printf("Created: %s\n", strings.Join(result.DirsCreated, ", "))
-		}
-		if result.BeadsInitiated {
-			fmt.Println("Beads initialized (.beads/)")
-		}
-		if result.KBInitiated {
-			fmt.Println("KB initialized (.kb/)")
-		}
-
-		return nil
-	}
-
-	// Not auto-init, provide helpful error message
-	return fmt.Errorf("missing beads tracking (.beads/ not initialized)\n\nTo fix, run one of:\n  orch init           # Full initialization (recommended)\n  orch spawn --auto-init ...  # Auto-init during spawn\n  orch spawn --no-track ...   # Skip beads tracking (ad-hoc work)")
-}
-
-// dirExists returns true if the path exists and is a directory.
-
-// Test-only wrapper functions that call pkg/orch versions.
-// These exist only to support existing tests.
-
-func formatSessionTitle(workspaceName, beadsID string) string {
-	if beadsID == "" {
-		return workspaceName
-	}
-	return fmt.Sprintf("%s [%s]", workspaceName, beadsID)
-}
-
-func stripANSI(s string) string { return display.StripANSI(s) }
-
-func validateModeModelCombo(backend string, resolvedModel model.ModelSpec) error {
-	if backend == "opencode" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "opus") {
-		return fmt.Errorf(`Warning: opencode backend with opus model may fail (auth blocked).
-  Recommendation: Use --model sonnet (default) or let auto-selection use claude backend`)
-	}
-	return nil
-}
-
-func determineBeadsID(projectName, skillName, task, spawnIssueFlag string, noTrack bool, createBeadsFn func(string, string, string) (string, error)) (string, error) {
-	if spawnIssueFlag != "" {
-		return resolveShortBeadsID(spawnIssueFlag)
-	}
-	if noTrack {
-		// Create a real beads issue with tier:lightweight label instead of synthetic ID.
-		beadsID, err := createBeadsFn(projectName, skillName, task)
-		if err != nil {
-			return "", fmt.Errorf("failed to create lightweight beads issue: %w", err)
-		}
-		return beadsID, nil
-	}
-	beadsID, err := createBeadsFn(projectName, skillName, task)
-	if err != nil {
-		return "", fmt.Errorf("failed to create beads issue: %w", err)
-	}
-	return beadsID, nil
-}
-
-func formatContextQualitySummary(gapAnalysis *spawn.GapAnalysis) string {
-	if gapAnalysis == nil {
-		return "not checked"
-	}
-	quality := gapAnalysis.ContextQuality
-	var indicator, label string
-	switch {
-	case quality == 0:
-		indicator = "🚨"
-		label = "CRITICAL - No context"
-	case quality < 20:
-		indicator = "⚠️"
-		label = "poor"
-	case quality < 40:
-		indicator = "⚠️"
-		label = "limited"
-	case quality < 60:
-		indicator = "📊"
-		label = "moderate"
-	case quality < 80:
-		indicator = "✓"
-		label = "good"
-	default:
-		indicator = "✓"
-		label = "excellent"
-	}
-	summary := fmt.Sprintf("%s %d/100 (%s)", indicator, quality, label)
-	if gapAnalysis.MatchStats.TotalMatches > 0 {
-		summary += fmt.Sprintf(" - %d matches", gapAnalysis.MatchStats.TotalMatches)
-		if gapAnalysis.MatchStats.ConstraintCount > 0 {
-			summary += fmt.Sprintf(" (%d constraints)", gapAnalysis.MatchStats.ConstraintCount)
-		}
-	}
-	return summary
-}
-
-func addUsageInfoToEventData(eventData map[string]interface{}, usageInfo *spawn.UsageInfo) {
-	if usageInfo == nil {
-		return
-	}
-	eventData["usage_5h_used"] = usageInfo.FiveHourUsed
-	eventData["usage_weekly_used"] = usageInfo.SevenDayUsed
-	if usageInfo.AccountEmail != "" {
-		eventData["usage_account"] = usageInfo.AccountEmail
-	}
-	if usageInfo.AutoSwitched {
-		eventData["usage_auto_switched"] = true
-		eventData["usage_switch_reason"] = usageInfo.SwitchReason
-	}
-}
-
-// buildSectionFilter creates a SectionFilter from spawn flags.
-// Returns nil when no filtering is needed (backward compatible).
-func buildSectionFilter(phases, mode string) *skills.SectionFilter {
-	var phasesList []string
-	if phases != "" {
-		for _, p := range strings.Split(phases, ",") {
-			p = strings.TrimSpace(p)
-			if p != "" {
-				phasesList = append(phasesList, p)
-			}
-		}
-	}
-
-	filter := &skills.SectionFilter{
-		Phases: phasesList,
-		Mode:   mode,
-	}
-	if filter.IsEmpty() {
-		return nil
-	}
-	return filter
 }
