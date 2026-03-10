@@ -1,21 +1,26 @@
-task: "Coordination failure demo blog post"
-beads_id: orch-go-orlcp
+task: "Implement publish-time adversarial gate (orch kb gate publish)"
+beads_id: orch-go-hkkid
 skill: feature-impl
 tier: light
 
 deliverables:
-  - path: .kb/publications/coordination-failure-demo-post.md
-    description: "Blog post with N=10 data, compliance/coordination distinction, reproducible steps, Path A to B bridge"
-    exists: true
+  - path: pkg/kbgate/publish.go
+    description: "Core gate logic: contract validation, challenge lookup, lineage check, banned language"
+  - path: pkg/kbgate/publish_test.go
+    description: "Unit tests covering all gate verdicts (8 test functions)"
+  - path: cmd/orch/kb_gate.go
+    description: "Cobra command wiring for orch kb gate publish"
+  - path: cmd/orch/kb_gate_test.go
+    description: "CLI-level tests (3 test functions)"
 
 verification:
-  automated: []
+  automated:
+    - command: "go test ./pkg/kbgate/ -v -count=1"
+      expected: "PASS - 8 tests covering all verdict codes"
+    - command: "go test ./cmd/orch/ -run TestKBGatePublish -v -count=1"
+      expected: "PASS - 3 tests"
+    - command: "go build ./cmd/orch/"
+      expected: "clean build"
   manual:
-    - step: "Review post accuracy against investigation data"
-      evidence: "N=10 data matches .kb/investigations/2026-03-09-inv-coordination-demo-n10-formatbytes.md"
-    - step: "Verify compliance vs coordination framing"
-      evidence: "Table distinguishes the two failure modes with examples from the experiment"
-    - step: "Verify reproducible steps included"
-      evidence: "5-step reproduce section with exact bash commands"
-    - step: "Verify Path A to B bridge in closing"
-      evidence: "References harness engineering and points to substrate-independent dynamics"
+    - step: "orch kb gate publish <failing-file>"
+      evidence: "Exit 1 with structured verdicts for CHALLENGE_ARTIFACT_MISSING, ENDOGENOUS_EVIDENCE, BANNED_LANGUAGE"
