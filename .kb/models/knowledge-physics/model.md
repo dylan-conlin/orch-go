@@ -1,7 +1,8 @@
 # Model: Knowledge Physics
 
-**Domain:** Multi-Agent Knowledge Systems / Substrate Governance / Entropy Management
+**Domain:** Multi-Agent Knowledge Systems
 **Last Updated:** 2026-03-10
+**Validation Status:** WORKING HYPOTHESIS — not externally validated. Built by one person with AI agents that optimize for coherence. Independent external review (Codex, Mar 10) identified core claims as restatements of existing governance/coordination concepts (Ostrom, Conway, Brooks) with agent vocabulary. Observations are real; theoretical framing is overclaimed. See `.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md`.
 **Synthesized From:**
 - `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-physics-accretion-attractor-gate-dynamics.md` — Empirical measurement across 1,166 investigations, 32 models, 187 probes
 - `.kb/models/harness-engineering/model.md` — Hard/soft harness taxonomy, accretion as thermodynamics, compliance vs coordination failure
@@ -13,37 +14,24 @@
 
 ## Summary (30 seconds)
 
-Knowledge exhibits the same accretion dynamics as code when multiple amnesiac agents contribute to a shared mutable substrate. This is a **diagnostic framework** — like Ostrom's institutional analysis of commons governance — that identifies structural conditions predicting whether a shared resource degrades or thrives. Accretion, attractors, gates, and entropy are substrate-independent dynamics that emerge from system properties (multiple writers, no persistent memory, local correctness, non-trivial compositional requirements, absent coordination), not from properties of the substrate itself. Empirical measurement across orch-go's knowledge corpus: 85.5% orphan rate (997/1,166 investigations unconnected to any model), three model behaviors (attractor/capstone/dormant), zero hard knowledge gates (all transitions advisory), and 4 unmerged contradiction verdicts. Code, knowledge, and OPSEC are three confirmed instances. Hypothesized additional substrates include database schemas, config systems, API surfaces, and documentation. The generalization: harness engineering is not code governance — it is substrate governance. Any shared mutable substrate where amnesiac agents contribute requires attractors (structural destinations), gates (enforcement blocking wrong paths), and entropy measurement (detection of compositional failure). OPSEC extends the framework to adversarial substrates, revealing that entropy can be invisible to internal measurement (only the adversary observes it), failure can be binary/catastrophic (no gradual degradation), and signal composition can be multiplicative rather than linear or additive.
+**Observed pattern (one system, 3 months):** When multiple amnesiac AI agents contribute to shared files and knowledge artifacts, those artifacts grow and degrade even though individual contributions are correct. Measured in orch-go: 85.5% orphan rate (997/1,166 investigations unconnected to any model), daemon.go grew +892 lines from 30 correct commits, 100% merge conflict rate in coordination demo (N=10). These observations are consistent with known coordination cost and governance concepts (Ostrom, Conway, Brooks). Whether the pattern generalizes beyond this one system is untested. The "five conditions" framing is a working hypothesis for organizing these observations, not a validated diagnostic framework.
 
 ---
 
 ## Theory Type
 
-Knowledge physics is a **diagnostic framework**, not a natural law. The closest comparison is Ostrom's institutional analysis of commons governance — structural conditions that predict whether a shared resource degrades or thrives. Also Conway's Law territory (systems mirror coordination structures).
+**Status: overclaimed.** The name "knowledge physics" implies a level of generality and novelty that independent review did not support. The observations it contains (file growth, orphan rates, coordination failures) are real but well-described by existing concepts: Ostrom's commons governance, Conway's Law, coordination costs, institutional drift, tech debt dynamics. The vocabulary ("accretion dynamics," "substrate-independent," "entropy") adds no predictive power beyond these existing concepts.
 
-These are "soft" theories: not mathematically provable but empirically predictive. They predict the **shape** of outcomes (accretion concentrates at coordination gaps, gates reduce it, removing coordination introduces it), not exact values (how fast, how much, when).
-
-**What this means for claims and tone:**
-
-| Framing | Claims | Tone |
-|---------|--------|------|
-| Natural law (physics) | "Knowledge *obeys* these laws" | Assertive, universal |
-| Diagnostic framework (Ostrom) | "These conditions predict whether your system degrades" | Empirical, actionable |
-
-The framework is publishable as "here's a predictive pattern I found and tried to break across 15+ counterexamples" — not "here's a new field of science." The name "knowledge physics" is a memorable shorthand; the body earns it through empirical evidence and honest scoping.
-
-**Analogues:**
-- Ostrom's eight design principles for commons governance (1990) — structural conditions, empirically derived, not mathematically proven
-- Conway's Law (1967) — "organizations design systems that mirror their communication structures" — descriptive, predictive, not a physical law
-- Brooks's Law (1975) — "adding people to a late project makes it later" — diagnostic, not universal
+**What to keep:** The observations, the measurements, the five conditions as an organizing checklist for this system.
+**What to stop claiming:** That this is a novel framework, that it's "substrate-independent," that it constitutes a new diagnostic discipline.
 
 ---
 
 ## Core Claim
 
-Knowledge exhibits the same physics as code when multiple amnesiac agents contribute to a shared mutable substrate.
+**Working hypothesis:** Shared artifacts degrade from correct contributions when agents lack coordination. This is a restatement of known coordination cost dynamics applied to AI agent workflows.
 
-The dynamics — accretion, attractors, gates, entropy — are properties of the system configuration, not the substrate. They emerge whenever five conditions hold:
+Five conditions appear to correlate with degradation in orch-go (untested elsewhere):
 
 1. **Multiple agents write** to the substrate
 2. **Agents are amnesiac** — no cross-session memory
@@ -53,9 +41,9 @@ The dynamics — accretion, attractors, gates, entropy — are properties of the
 
 Conditions 1-3 are context-setters (common in most modern systems). Condition 4 distinguishes compositional substrates (code, knowledge bases, schemas) from additive substrates (append-only logs, sensor data, votes) where contributions are independent and cannot compose incorrectly. Condition 5 is the lever — the presence or absence of coordination mechanisms determines whether accretion occurs or is managed.
 
-**Continuous formulation:** These conditions exist on spectrums, not as binary values. The theory is most precisely expressed as a risk model: `accretion_risk = f(amnesia_level × compositional_complexity / coordination_strength)`. This explains partial accretion in partially-coordinated systems and avoids debates about where binary thresholds fall.
+**Note:** A previous version of this model included a formula (`accretion_risk = f(amnesia_level × compositional_complexity / coordination_strength)`). This was removed — none of the variables have units or measured values. It was a formula-shaped sentence, not a measurement.
 
-Code was the first substrate where we observed these dynamics (daemon.go +892 lines from 30 correct commits). Knowledge is the second (85.5% orphan rate, 997 unconnected investigations). OPSEC is the third (5 detection signals accumulating invisibly over 5 months). The physics are identical; only the substrate-specific manifestations differ.
+**Observed in:** Code (daemon.go +892 lines from 30 correct commits), knowledge artifacts (85.5% orphan rate). Whether the pattern holds in other contexts is unknown — no external validation exists.
 
 ---
 
@@ -410,6 +398,49 @@ Evidence: ADRs took 7 years from Nygard's projects (2011) to ThoughtWorks "Adopt
 
 **2026-03-10:** Falsifiability probe (orch-go-dqv2o). Systematic counterexample search across 15+ systems in three domains (natural, engineered, human). No clean counterexamples found. Three key extensions: (1) Added condition 5 — "non-trivial composition" — to prevent over-prediction in additive substrates (logs, sensor data, coral reefs) that meet conditions 1-4 but don't degrade because composition is trivial. (2) Coordination taxonomy: explicit (type systems), substrate-embedded (CRDTs), environmental (stigmergy). Digital substrates lack environmental coordination, explaining why they require engineered gates. (3) Continuous risk formulation: `accretion_risk = f(amnesia × complexity / coordination)` — more precise than binary conditions. Theory verdict: conditionally predictive, publishable with composition refinement.
 
+**2026-03-10:** Blog post uncontaminated claim review (orch-go-2bdvb). Read all three blog drafts (harness engineering, knowledge physics, coordination demo) as an external reader with no model framing. Found systematic gap between the model's self-assessment (already corrected to "WORKING HYPOTHESIS" / "overclaimed") and the publication language (still claims universality, novelty, and validated theory). 8 validation assumptions, 4 novelty assumptions, 12 overclaimed language instances identified with specific line references and recommended corrections. Key finding: hedging exists but is structurally misplaced (buried at end, not inline with claims). Publication gate assessment: 2 of 3 required artifacts exist (red-team memo + this claim-label pass); claim ledger still needed. Added Publication Readiness section to model.
+
+---
+
+## Publication Readiness (Blog Post Claim Audit)
+
+**Status: NOT READY.** Uncontaminated review of all three blog drafts (harness engineering, knowledge physics, coordination demo) found overclaimed language that contradicts the model-level corrections already applied. The model says "WORKING HYPOTHESIS" and "Status: overclaimed" — but the publications still use language that assumes validation and novelty.
+
+**Key gaps between model self-assessment and publication language:**
+
+1. **"Physics" in title and body.** The model's Theory Type section says "the name implies a level of generality and novelty that independent review did not support." The knowledge-physics draft still uses the title "Knowledge Physics" and the phrase "the physics appear to be substrate-independent" (appears in 2 of 3 posts).
+
+2. **Universality claims from N=2.** The model's Core Claim says "Whether the pattern generalizes beyond this one system is untested." The publications say "any substrate," "regardless of what the substrate is made of," and "applicable to any substrate where amnesiac agents contribute."
+
+3. **Internal validation presented as external.** The model says "not externally validated" and flags closed-loop risk. The knowledge-physics draft says "kept surviving every attempt to break it" and "No clean counterexample survived" without disclosing that all testing was by agents inside the framework.
+
+4. **The 265-trial methodology gap.** The harness engineering post cites "265 contrastive trials across 7 agent skills" as evidence for soft instruction failure. No methodology is provided — what constitutes a "trial," what was measured, how controls were defined. The number is unverifiable by readers.
+
+5. **"Better models make it worse" is under-evidenced.** The merge experiment shows equal conflict rates for Haiku and Opus (both 100%), not worse ones. The daemon.go data doesn't isolate model capability as a variable. The claim should be "model improvement doesn't fix coordination" not "model improvement makes coordination worse."
+
+6. **Ostrom comparison without evidence-base acknowledgment.** Ostrom studied hundreds of commons across dozens of countries over decades. This is one system, one operator, three months. The comparison is apt in type but the evidence gap is not acknowledged.
+
+7. **Hedging is structurally misplaced.** The knowledge-physics post buries "One system, one operator" in an "Honest Gaps" section at the end. Readers absorb confident claims in the body and skim caveats at the end.
+
+**Specific language requiring change (by post):**
+
+| Post | Current Language | Recommended Change |
+|------|-----------------|-------------------|
+| Knowledge Physics (title) | "Knowledge Physics" | Consider "Coordination Patterns" or scope the name explicitly |
+| Knowledge Physics (L3) | "applicable to any substrate" | "observed in two substrates in one system" |
+| Knowledge Physics (L31) | "kept surviving every attempt to break it" | "survived internal testing; not yet externally validated" |
+| Knowledge Physics (L71) | "any shared mutable substrate" | "the substrates we've tested" |
+| Knowledge Physics (L89) | "No clean counterexample survived" | Add: "though all testing was by agents within the same framework" |
+| Knowledge Physics (L143) | "Greater capability created greater divergence" | "In this trial, ..." (N=1) |
+| Harness Engineering (L15) | "faster, more capable agents accrete more code per session" | "model improvement doesn't reduce accretion" |
+| Harness Engineering (L195) | "language-independent" | "tested in one additional language" |
+| Harness Engineering (L217) | "absent from the published literature" | "not prominent in the AI agent literature we've reviewed" |
+| Harness Engineering (L297) | "The physics appear to be substrate-independent" | "We observe similar patterns in both code and knowledge substrates" |
+| Coordination Demo (L214) | "The physics appear to be substrate-independent" | Same change |
+| Both posts | "thermodynamic tendency" | "tendency" (remove physics metaphor or explicitly label as metaphor) |
+
+**Publication gate assessment:** The publication gate requires claim ledger, red-team memo, and claim-label pass. This probe serves as the claim-label pass. The red-team memo exists in the Codex review (`.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md`). A claim ledger has not been created. **2 of 3 gate artifacts exist; publications require language corrections above before gate is satisfied.**
+
 ---
 
 ## Observability
@@ -456,6 +487,7 @@ kb reflect --type stale
 - `.kb/models/knowledge-physics/probes/2026-03-09-probe-kb-cli-public-release-readiness-audit.md` — kb-cli public release audit: core cycle standalone, 6 gaps beyond --extract-models, three-tier coupling taxonomy (hard/soft/none), 7 blocking changes for v0.1
 - `.kb/models/knowledge-physics/probes/2026-03-10-probe-health-score-structural-improvement-validation.md` — Health score 37→73 decomposition: 90% calibration, 10% extraction. Measurement-improvement bias finding. Hotspot dimension (1.9/20) is honest remaining signal.
 - `.kb/models/knowledge-physics/probes/2026-03-10-probe-falsifiability-counterexamples.md` — Falsifiability probe: 15+ counterexamples tested, none survive. Fifth condition (non-trivial composition) identified. Coordination taxonomy (explicit/substrate-embedded/environmental). Theory is conditionally predictive.
+- `.kb/models/knowledge-physics/probes/2026-03-10-probe-blog-post-uncontaminated-claim-review.md` — Publication claim audit: 8 validation assumptions, 4 novelty assumptions, 12 overclaimed language instances across 3 blog drafts. Publications still use language the model has already corrected internally.
 
 **Related Models:**
 - `.kb/models/harness-engineering/model.md` — Code instance of substrate physics, hard/soft harness taxonomy

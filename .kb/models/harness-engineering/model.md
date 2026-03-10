@@ -1,7 +1,8 @@
 # Model: Harness Engineering
 
-**Domain:** Agent-First Structural Enforcement / Architectural Governance / Multi-Agent Code Quality
+**Domain:** Multi-Agent Code Quality Practices
 **Last Updated:** 2026-03-10
+**Validation Status:** WORKING HYPOTHESIS — practices are grounded in one system (orch-go, 3 months). Independent external review (Codex, Mar 10) identified the framework as "software architecture + CI/policy enforcement + tech debt management with agent vocabulary" — strongest as internal operating model, weakest when claiming to be a new discipline. The practices (hard/soft distinction, gate layering, attractor + gate pattern) work in this system. The generalizations are untested. See `.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md`.
 **Synthesized From:**
 - `.kb/investigations/2026-03-07-inv-analyze-accretion-pattern-orch-go.md` — Accretion structural analysis (daemon.go +892 lines, 6 cross-cutting concerns)
 - `.kb/threads/2026-03-07-harness-engineering-structural-enforcement-agent.md` — Framework formulation and implementation sequence
@@ -17,7 +18,7 @@
 
 ## Summary (30 seconds)
 
-Harness engineering is the discipline of making wrong paths mechanically impossible for AI agents, rather than instructing agents to choose right paths. It operates through two fundamentally different enforcement types: **hard harness** (deterministic, mechanically enforced, cannot be ignored — pre-commit hooks, spawn gates, `go build`, Go package structure, structural tests) and **soft harness** (probabilistic, context-dependent, driftable — skills, CLAUDE.md, knowledge bases, SPAWN_CONTEXT.md). Hard harness matters more because agents under pressure drift from soft instructions — contrastive testing (265 trials, 7 skills) showed behavioral constraints dilute to bare parity at 10+ co-resident items, and stance transfers only as attention primers, not action directives. Accretion is entropy: individually correct agent commits compose into structural degradation when shared infrastructure is missing — daemon.go regrew +892 lines past its pre-extraction baseline in 60 days from 30 correct commits. OpenAI arrived at the same framework from greenfield (designed gates before code); we arrived through pain (retrofit after 3 entropy spirals, 1,625 lost commits). Agent governance addresses two distinct failure modes: **compliance failure** (agent doesn't follow instructions — solved by stronger models) and **coordination failure** (agents each follow instructions correctly but collectively produce entropy — made *worse* by stronger models). This makes harness engineering a permanent discipline, not transitional: compliance gates simplify over time, but coordination gates become the primary investment as agents get more capable. The governance insight: in multi-agent systems, codebase architecture is governance — package structure is a routing table for agentic contributions, and every convention without a gate will eventually be violated.
+Harness engineering is a working label for the practice of making wrong paths mechanically impossible for AI agents, rather than instructing agents to choose right paths. It is not a new discipline — it is software architecture, CI/CD enforcement, and tech debt management applied to multi-agent workflows. It operates through two fundamentally different enforcement types: **hard harness** (deterministic, mechanically enforced, cannot be ignored — pre-commit hooks, spawn gates, `go build`, Go package structure, structural tests) and **soft harness** (probabilistic, context-dependent, driftable — skills, CLAUDE.md, knowledge bases, SPAWN_CONTEXT.md). Hard harness matters more because agents under pressure drift from soft instructions — contrastive testing (265 trials, 7 skills) showed behavioral constraints dilute to bare parity at 10+ co-resident items, and stance transfers only as attention primers, not action directives. Accretion is entropy: individually correct agent commits compose into structural degradation when shared infrastructure is missing — daemon.go regrew +892 lines past its pre-extraction baseline in 60 days from 30 correct commits. OpenAI arrived at the same framework from greenfield (designed gates before code); we arrived through pain (retrofit after 3 entropy spirals, 1,625 lost commits). A useful lens for thinking about agent failures: **compliance failure** (agent doesn't follow instructions) vs **coordination failure** (agents each follow instructions correctly but collectively produce problems). In practice these are often mixed — not a clean partition. The claim that stronger models make coordination worse is plausible but uncontrolled (observed in one system, no experiment isolating model capability as the variable).
 
 ---
 
@@ -64,9 +65,9 @@ Every harness component is either hard or soft:
 
 **The critical asymmetry:** Hard harness doesn't need measurement — a build passes or fails. Soft harness needs contrastive testing to know whether it works at all. The default assumption for soft harness should be "probably doesn't work" until proven otherwise.
 
-### 2. Accretion as Thermodynamics
+### 2. File Growth from Uncoordinated Agents
 
-Accretion is entropy, not a defect. Each agent commit is locally rational; the aggregate effect is structural degradation. This is a thermodynamic property of multi-agent systems, not a quality problem.
+Files grow when multiple agents add code without shared awareness of prior additions. Each commit is locally rational; the aggregate effect is structural degradation. (Previously labeled "accretion as thermodynamics" — the thermodynamic analogy adds no predictive value beyond "things grow when agents don't coordinate.")
 
 **Primary evidence:**
 - `daemon.go` grew +892 lines (667→1559) in 60 days from 30 individually-correct commits. Each added a locally-reasonable capability (stuck detection, health checks, auto-complete, agreement checks, phase timeouts, orphan recovery).
@@ -138,7 +139,7 @@ OpenAI's Codex team (~1M lines, 1,500 PRs, 3-7 engineers, 5 months, zero manual 
 
 **MAST taxonomy (Cemri et al., arXiv:2503.13657):** Closest academic work to our coordination concern. 1,600+ traces, 14 failure modes in 3 categories: FC1 (system design, ~44%) ≈ compliance, FC2 (inter-agent misalignment, ~32%) ≈ coordination, FC3 (task verification, ~24%) ≈ Fowler's verification gap. However, MAST prescribes "deeper social reasoning abilities" — model improvement — for coordination failures that are actually architectural. Their own finding ("a well-designed MAS can result in performance gain when using the same underlying model") supports the architectural interpretation without developing it.
 
-**Field positioning (Mar 10 probe):** The term "harness" is used with 3 distinct meanings: environment setup (OpenAI/Anthropic), verification (Fowler), governance (ours). Only our usage addresses concurrent multi-agent coordination as a structural problem. The compliance/coordination distinction — and the claim that these have opposite trajectories with model improvement — is absent from published literature as of March 2026.
+**Context in existing literature (Mar 10 probes):** The term "harness" is used with different emphases: environment setup (OpenAI/Anthropic), verification (Fowler). Our usage focuses on multi-agent coordination. Whether the compliance/coordination distinction adds something beyond existing coordination cost literature is an open question — the claim of novelty was identified as overclaim by independent review. Blog claim review (Mar 10) identified that key concepts map to established literature: "structural attractors" = affordances (Norman, 1988) + nudge theory (Thaler/Sunstein, 2008) + Conway's Law (1967); "dilution curve" = known prompt-length vs. instruction-following degradation; "architecture doing the work of instruction" = Christopher Alexander's Pattern Language (1977). The specific APPLICATION to LLM agent orchestration is novel; the underlying concepts are not.
 
 ### 5. The Measurement Layer
 
@@ -185,11 +186,9 @@ Each layer builds on the previous. Lower layers are more immediately actionable:
 
 **Layer 4 is the meta-layer.** When the entropy agent identifies a pattern 3+ times, it drafts the structural test that would prevent it. The harness extending itself. This is aspirational.
 
-### 7. The Governance Insight
+### 7. Conventions Without Gates Tend to Erode
 
-In multi-agent systems, every convention that isn't a gate will eventually be violated.
-
-This follows from three system properties:
+In orch-go, conventions without enforcement have been violated. This is consistent with known principles (unenforced policy decays, adding is cheaper than removing). The following observations are from this system:
 
 1. **No persistent memory.** Each agent session starts fresh. Conventions documented in context compete with system prompt (17:1 signal disadvantage) and task pressure.
 
@@ -197,18 +196,16 @@ This follows from three system properties:
 
 3. **Locally rational violations compound.** Each violation is small and justifiable. "I added workspace scanning inline because the task was urgent." Multiply by 30 agents and 60 days: +2,100 lines of duplicated infrastructure.
 
-**Codebase architecture is governance infrastructure for autonomous agents:**
-- Package structure is a routing table for agentic contributions
-- Import boundaries are jurisdiction lines
-- Structural tests are constitutional constraints
-- Pre-commit hooks are procedural rules
-- Escape hatches (`--force-hotspot --architect-ref`) are due process — they allow bypass but require proof of prior review
+**Useful mappings (not novel — this is standard software architecture applied to agents):**
+- Package structure routes where agents put code
+- Import boundaries constrain dependencies
+- Structural tests enforce invariants
+- Pre-commit hooks prevent known-bad patterns
+- Escape hatches (`--force-hotspot --architect-ref`) allow bypass with justification
 
-This reframes architecture from "clean code" to "agent governance." The question changes from "is this good code?" to "does this structure produce correct behavior from agents who have no memory of prior decisions?"
+### 8. Two Failure Modes: Compliance vs Coordination (a lens, not a partition)
 
-### 8. Two Failure Modes: Compliance vs Coordination
-
-Agent governance addresses two fundamentally different failure modes, and they respond oppositely to model capability improvements:
+A useful way to think about agent failures, though in practice most failures are hybrid:
 
 | Property | Compliance Failure | Coordination Failure |
 |----------|-------------------|---------------------|
@@ -223,7 +220,7 @@ Agent governance addresses two fundamentally different failure modes, and they r
 
 **The analogy:** A company of 30 brilliant engineers with no architecture review still produces spaghetti — possibly faster than 30 mediocre engineers, because each builds more in less time. Architecture review isn't compensating for incompetence. It's providing the coordination layer that individual competence cannot.
 
-**Implication for harness permanence:** If harness engineering were only about compliance, it would be obsolete when models get good enough. But coordination is an emergent property of multi-agent systems — it doesn't resolve with individual capability. This makes harness engineering a permanent discipline, not a transitional one. The compliance gates (Layer 0-1) may simplify over time. The coordination gates (Layer 2-4) become the primary investment as agents get more capable and autonomous.
+**Note on permanence claims:** A previous version of this model claimed harness engineering is "a permanent discipline, not transitional." This is plausible but unvalidated — it's a prediction about the future trajectory of model capabilities vs coordination needs, based on 3 months of observation in one system. The practices are useful now; whether they remain necessary as models improve is an open question.
 
 **Which gates are which:**
 
@@ -245,7 +242,7 @@ Agent governance addresses two fundamentally different failure modes, and they r
 
 2. **Every convention without a gate will eventually be violated.** A convention in CLAUDE.md without infrastructure enforcement is a suggestion with a half-life proportional to context window pressure. daemon.go grew past the stated 1,500-line convention.
 
-3. **Agent failure is harness failure.** The first question for any wrong agent outcome is "what's missing from the harness?" not "what's wrong with the agent?" This is not morale — it's engineering methodology. The harness is the modifiable variable.
+3. **"Agent failure is harness failure" — useful heuristic, not universal truth.** Asking "what's missing from the harness?" before "what's wrong with the agent?" is a productive default. But as stated universally, this is unfalsifiable — if every bad outcome is reclassified as a harness bug, the framework absorbs any result. Some failures are genuinely agent-level (model limitations, context window issues). Use as a design heuristic, not an axiom.
 
 4. **Extraction without routing is a pump.** Moving code out of a file without creating an attractor (destination package) results in re-accretion. The gravitational center must be relocated, not just temporarily emptied. daemon.go +892 lines post-extraction proves this.
 
@@ -253,7 +250,7 @@ Agent governance addresses two fundamentally different failure modes, and they r
 
 6. **Mutable hard harness is soft harness with extra steps.** All current defenses (spawn gates, verify gates, hooks, architecture lint) are source code agents can modify. This is the entropy spiral's core vulnerability. True immutability requires infrastructure that's architecturally unreachable by agents.
 
-7. **Stronger models need more coordination gates, not fewer.** Compliance gates simplify with model capability (smarter agents follow instructions better). But coordination gates — structural tests, duplication detection, entropy management — become more important as agents get faster and more autonomous. A more capable agent accretes more code per session with higher confidence. Harness engineering is permanent infrastructure, not training wheels.
+7. **Stronger models may need more coordination gates, not fewer.** Hypothesis: compliance gates simplify with model capability, but coordination gates grow in importance as agents get faster. Observed in one system (faster agents produced more code per session). Not experimentally controlled — this is a plausible claim, not a validated one.
 
 ---
 
@@ -447,3 +444,4 @@ Agent governance addresses two fundamentally different failure modes, and they r
 - 2026-03-08: Publication draft model synthesis — **All core claims survived synthesis into publication format.** Compliance vs coordination failure distinction is the strongest novel claim for external audiences. Three claims need more evidence before strong external assertion: "stronger models need more coordination gates" (no controlled experiment), soft harness budget curve (shape unknown), cross-language portability (dry-run only, not 30-day operation). Honest negative evidence (gates haven't bent the curve) strengthens credibility. spawn_cmd.go correction (-1,755, not -840) confirmed.
 - 2026-03-10: Publication polish — related work positioning — **Compliance/coordination distinction is novel in published literature.** Positioned against 4 sources: OpenAI (harness = environment setup), Anthropic (harness = session orchestration), Fowler (harness = verification), MAST/Cemri et al. (observes coordination failures but prescribes model solutions). MAST's FC1/FC2/FC3 maps to compliance/coordination/verification but they don't recognize opposite model-improvement trajectories. "Deeper social reasoning" is a compliance answer to a coordination question. The field uses "harness" with 3 distinct meanings; ours (architecture-as-governance) is the only one addressing concurrent multi-agent coordination structurally.
 - 2026-03-10: Health score calibration vs structural improvement — **89% of score improvement (37→73) is calibration artifact, not structural.** Threshold scaling (accretion 20→92.8, hotspot 15→46.4) and bloat% formula change account for +32.2 of +36 points. Baseline values under new formula would score 69.2 — already above the 65 gate. Accretion velocity increasing (370→6,131 lines/week). New bloated files emerging as fast as old ones extracted. Extraction is net-positive on lines (5/6 commits added lines). Pre-commit gate wired today, zero post-gate data. Extends model with score-calibration-as-soft-harness failure mode.
+- 2026-03-10: Blog post uncontaminated claim review — **Both published posts ("Soft Harness Doesn't Work," "Building Blind") have mild-to-moderate overclaiming, primarily implicit novelty.** 6 overclaimed, 3 unsupported, 5 fine, 2 fine-but-citable instances across both posts. Main issue: well-established concepts (affordances/Norman, PDCA/Deming, falsificationism/Popper, Conway's Law, nudge theory) described without citation, creating impression of original discovery. Threshold claims (5+ constraints, 10+ inert) stated as general findings from N=7 skills — insufficient for precise inflection points. Recommended: inline acknowledgments ("essentially Conway's Law for LLM agents"), soften thresholds to "in my system," add methodology footnote for 265-trial claim. Posts stay in first-person experiential framing which mitigates risk. Self-critical honesty ("I was wrong") is a strength. The specific context (AI agent orchestration) is genuinely novel even when the conceptual frameworks are not.
