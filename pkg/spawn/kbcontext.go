@@ -16,7 +16,7 @@ import (
 )
 
 // OrchEcosystemRepos defines the allowlist of repos that are relevant for orchestration work.
-// Used as fallback when ~/.orch/groups.yaml doesn't exist.
+// Used as fallback when groups.yaml doesn't exist (~/.kb/ or ~/.orch/).
 // When groups.yaml exists, project group membership replaces this hardcode.
 var OrchEcosystemRepos = map[string]bool{
 	"orch-go":        true,
@@ -384,7 +384,7 @@ func resolveProjectAllowlist() map[string]bool {
 
 // resolveProjectAllowlistForDir builds an allowlist of project names for global search filtering.
 // projectDir controls which project's groups are used. When empty, falls back to os.Getwd().
-// Tries group-based resolution from ~/.orch/groups.yaml first.
+// Tries group-based resolution from groups.yaml first (~/.kb/ primary, ~/.orch/ fallback).
 // Falls back to OrchEcosystemRepos if groups.yaml doesn't exist or the current project is ungrouped.
 func resolveProjectAllowlistForDir(projectDir string) map[string]bool {
 	cfg, err := group.Load()

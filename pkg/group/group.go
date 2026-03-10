@@ -20,21 +20,30 @@ type Group struct {
 	Projects []string `yaml:"projects,omitempty"`    // Explicit member project names
 }
 
-// Config holds the groups configuration from ~/.orch/groups.yaml.
+// Config holds the groups configuration from groups.yaml.
 type Config struct {
 	Groups map[string]Group `yaml:"groups"`
 }
 
 // DefaultConfigPath returns the default path to groups.yaml.
+// Prefers ~/.kb/groups.yaml; falls back to ~/.orch/groups.yaml for backward compat.
 func DefaultConfigPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".orch", "groups.yaml")
+	primary := filepath.Join(home, ".kb", "groups.yaml")
+	if _, err := os.Stat(primary); err == nil {
+		return primary
+	}
+	fallback := filepath.Join(home, ".orch", "groups.yaml")
+	if _, err := os.Stat(fallback); err == nil {
+		return fallback
+	}
+	return primary // default to primary even if neither exists
 }
 
-// Load reads ~/.orch/groups.yaml and returns the config.
+// Load reads groups.yaml and returns the config.
 // Returns an error if the file doesn't exist or can't be parsed.
 func Load() (*Config, error) {
 	return LoadFromFile(DefaultConfigPath())

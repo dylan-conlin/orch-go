@@ -58,6 +58,82 @@ func TestLoadFromFile_NotExists(t *testing.T) {
 	}
 }
 
+func TestDefaultConfigPath_PrefersKbDir(t *testing.T) {
+	// Create temp home with both ~/.kb/ and ~/.orch/ groups.yaml
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	kbDir := filepath.Join(home, ".kb")
+	orchDir := filepath.Join(home, ".orch")
+	os.MkdirAll(kbDir, 0755)
+	os.MkdirAll(orchDir, 0755)
+
+	kbContent := `groups:
+  kb-group:
+    projects:
+      - from-kb
+`
+	orchContent := `groups:
+  orch-group:
+    projects:
+      - from-orch
+`
+	os.WriteFile(filepath.Join(kbDir, "groups.yaml"), []byte(kbContent), 0644)
+	os.WriteFile(filepath.Join(orchDir, "groups.yaml"), []byte(orchContent), 0644)
+
+	// Should prefer ~/.kb/groups.yaml
+	path := DefaultConfigPath()
+	if !filepath.IsAbs(path) {
+		t.Fatalf("expected absolute path, got %q", path)
+	}
+	cfg, err := LoadFromFile(path)
+	if err != nil {
+		t.Fatalf("LoadFromFile() error = %v", err)
+	}
+	if _, ok := cfg.Groups["kb-group"]; !ok {
+		t.Error("expected kb-group from ~/.kb/groups.yaml, got groups from wrong file")
+	}
+}
+
+func TestDefaultConfigPath_FallsBackToOrch(t *testing.T) {
+	// Create temp home with only ~/.orch/groups.yaml (no ~/.kb/)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	orchDir := filepath.Join(home, ".orch")
+	os.MkdirAll(orchDir, 0755)
+
+	orchContent := `groups:
+  orch-group:
+    projects:
+      - from-orch
+`
+	os.WriteFile(filepath.Join(orchDir, "groups.yaml"), []byte(orchContent), 0644)
+
+	// Should fall back to ~/.orch/groups.yaml
+	path := DefaultConfigPath()
+	cfg, err := LoadFromFile(path)
+	if err != nil {
+		t.Fatalf("LoadFromFile() error = %v", err)
+	}
+	if _, ok := cfg.Groups["orch-group"]; !ok {
+		t.Error("expected orch-group from ~/.orch/groups.yaml fallback")
+	}
+}
+
+func TestDefaultConfigPath_NeitherExists(t *testing.T) {
+	// Create temp home with no groups.yaml anywhere
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Should return ~/.kb/groups.yaml (primary) even if it doesn't exist
+	path := DefaultConfigPath()
+	expected := filepath.Join(home, ".kb", "groups.yaml")
+	if path != expected {
+		t.Errorf("DefaultConfigPath() = %q, want %q", path, expected)
+	}
+}
+
 func TestGroupsForProject_ExplicitMembership(t *testing.T) {
 	cfg := &Config{
 		Groups: map[string]Group{
