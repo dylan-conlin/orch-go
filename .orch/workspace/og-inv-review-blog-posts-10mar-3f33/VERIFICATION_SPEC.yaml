@@ -1,0 +1,28 @@
+verification:
+  type: investigation
+  issue: orch-go-2bdvb
+
+  what_was_tested:
+    - Read both published blog posts ("Soft Harness Doesn't Work", "Building Blind") without reading internal models first
+    - Evaluated each post against 4 criteria (validated-theory assumption, novelty language, known-concept restatement, specific revision needs)
+    - Mapped post concepts to established literature (Norman, Popper, Deming, Conway, Thaler/Sunstein, Alexander)
+    - Classified 16 specific claims across both posts by severity (overclaimed/unsupported/fine/fine-but-citable)
+
+  key_findings:
+    - Neither post commits the most dangerous error (presenting theory as validated)
+    - Primary issue is implicit novelty — known concepts described without citation
+    - 6 overclaimed, 3 unsupported, 5 fine, 2 fine-but-citable instances
+    - Threshold claims (5+, 10+ constraints) stated as general findings from N=7 skills
+    - "Structural attractors" maps to affordances + nudges + Conway's Law
+    - "Building Blind" presents PDCA/scientific method as personal discovery
+    - Both posts' first-person experiential framing mitigates overclaiming risk
+    - Self-critical honesty is a genuine strength
+
+  artifacts_produced:
+    - probe: .kb/models/harness-engineering/probes/2026-03-10-probe-blog-post-uncontaminated-claim-review.md
+    - model_update: .kb/models/harness-engineering/model.md (probes section + literature context section updated)
+    - synthesis: .orch/workspace/og-inv-review-blog-posts-10mar-3f33/SYNTHESIS.md
+
+  manual_verification:
+    - Review flagged claims in probe file for agreement with severity ratings
+    - Decide which revisions to apply (inline citations vs. threshold softening vs. methodology footnote)
