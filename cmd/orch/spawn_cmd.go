@@ -51,6 +51,7 @@ var (
 	spawnBypassVerification bool   // Bypass verification gate for independent parallel work
 	spawnBypassReason       string // Justification for bypassing verification gate
 	spawnForceHotspot       bool   // Bypass CRITICAL hotspot blocking gate
+	spawnSkipHealthGate     bool   // Bypass health score floor gate
 	spawnArchitectRef       string // Architect issue reference (required with --force-hotspot)
 	spawnAccount            string // Account name for Claude CLI spawns (overrides auto-selection)
 	spawnVerifyLevel        string // Verification level override (V0-V3)
@@ -193,6 +194,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnBypassReason, "bypass-reason", "", "Justification for bypassing verification gate (required with --bypass-verification)")
 	spawnCmd.Flags().BoolVar(&spawnForceHotspot, "force-hotspot", false, "Bypass CRITICAL hotspot blocking gate (requires --architect-ref)")
 	spawnCmd.Flags().StringVar(&spawnArchitectRef, "architect-ref", "", "Architect issue ID proving area was reviewed (required with --force-hotspot)")
+	spawnCmd.Flags().BoolVar(&spawnSkipHealthGate, "skip-health-gate", false, "Bypass health score floor gate (requires --reason)")
 	spawnCmd.Flags().StringVar(&spawnScope, "scope", "", "Session scope: small, medium, large (parsed from task if not set)")
 	spawnCmd.Flags().StringVar(&spawnAccount, "account", "", "Account name for Claude CLI spawns (e.g., 'work', 'personal')")
 	spawnCmd.Flags().StringVar(&spawnVerifyLevel, "verify-level", "", "Verification level override (V0=acknowledge, V1=artifacts, V2=evidence, V3=behavioral)")
@@ -300,7 +302,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 	agreementsCheckFunc := buildAgreementsChecker()
 	openQuestionCheckFunc := buildOpenQuestionChecker()
-	usageCheckResult, hotspotResult, _, _, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnBypassVerification, spawnForceHotspot, spawnArchitectRef, spawnBypassReason, spawnReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc)
+	healthScoreProvider := buildHealthScoreProvider()
+	usageCheckResult, hotspotResult, _, _, err := orch.RunPreFlightChecks(input, preCheckDir, spawnBypassTriage, spawnBypassVerification, spawnForceHotspot, spawnSkipHealthGate, spawnArchitectRef, spawnBypassReason, spawnReason, spawnMaxAgents, extractBeadsIDFromTitle, hotspotCheckFunc, agreementsCheckFunc, openQuestionCheckFunc, healthScoreProvider)
 	if err != nil {
 		return err
 	}

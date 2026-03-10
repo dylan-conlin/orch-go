@@ -10,7 +10,7 @@ import (
 )
 
 // RunPreFlightChecks performs all pre-spawn validation checks.
-func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, architectRef, bypassReason, overrideReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker) (*gates.UsageCheckResult, *gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
+func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot, skipHealthGate bool, architectRef, bypassReason, overrideReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker, healthScoreProvider gates.HealthScoreProvider) (*gates.UsageCheckResult, *gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
 	if err := gates.CheckTriageBypass(input.DaemonDriven, bypassTriage, input.SkillName, input.Task); err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -26,6 +26,11 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 	usageCheckResult, usageErr := gates.CheckRateLimit()
 	if usageErr != nil {
 		return nil, nil, nil, nil, usageErr
+	}
+
+	// Health score floor gate — blocks feature-impl when score < 65
+	if err := gates.CheckHealthScore(input.SkillName, input.DaemonDriven, skipHealthGate, healthScoreProvider); err != nil {
+		return nil, nil, nil, nil, err
 	}
 
 	var hotspotResult *gates.HotspotResult
