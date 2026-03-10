@@ -13,7 +13,7 @@
 
 ## Summary (30 seconds)
 
-Knowledge exhibits the same physics as code when multiple amnesiac agents contribute to a shared mutable substrate. Accretion, attractors, gates, and entropy are substrate-independent dynamics — they emerge from system properties (multiple writers, no persistent memory, local correctness without global coordination), not from properties of the substrate itself. Empirical measurement across orch-go's knowledge corpus: 85.5% orphan rate (997/1,166 investigations unconnected to any model), three model behaviors (attractor/capstone/dormant), zero hard knowledge gates (all transitions advisory), and 4 unmerged contradiction verdicts. Code, knowledge, and OPSEC are three confirmed instances of the same physics. Hypothesized additional substrates include database schemas, config systems, API surfaces, and documentation. The generalization: harness engineering is not code governance — it is substrate governance. Any shared mutable substrate where amnesiac agents contribute requires attractors (structural destinations), gates (enforcement blocking wrong paths), and entropy measurement (detection of compositional failure). OPSEC extends the theory to adversarial substrates, revealing that entropy can be invisible to internal measurement (only the adversary observes it), failure can be binary/catastrophic (no gradual degradation), and signal composition can be multiplicative rather than linear or additive.
+Knowledge exhibits the same physics as code when multiple amnesiac agents contribute to a shared mutable substrate. Accretion, attractors, gates, and entropy are substrate-independent dynamics — they emerge from system properties (multiple writers, no persistent memory, local correctness, non-trivial compositional requirements, absent coordination), not from properties of the substrate itself. Empirical measurement across orch-go's knowledge corpus: 85.5% orphan rate (997/1,166 investigations unconnected to any model), three model behaviors (attractor/capstone/dormant), zero hard knowledge gates (all transitions advisory), and 4 unmerged contradiction verdicts. Code, knowledge, and OPSEC are three confirmed instances of the same physics. Hypothesized additional substrates include database schemas, config systems, API surfaces, and documentation. The generalization: harness engineering is not code governance — it is substrate governance. Any shared mutable substrate where amnesiac agents contribute requires attractors (structural destinations), gates (enforcement blocking wrong paths), and entropy measurement (detection of compositional failure). OPSEC extends the theory to adversarial substrates, revealing that entropy can be invisible to internal measurement (only the adversary observes it), failure can be binary/catastrophic (no gradual degradation), and signal composition can be multiplicative rather than linear or additive.
 
 ---
 
@@ -21,14 +21,19 @@ Knowledge exhibits the same physics as code when multiple amnesiac agents contri
 
 Knowledge exhibits the same physics as code when multiple amnesiac agents contribute to a shared mutable substrate.
 
-The dynamics — accretion, attractors, gates, entropy — are properties of the system configuration, not the substrate. They emerge whenever four conditions hold:
+The dynamics — accretion, attractors, gates, entropy — are properties of the system configuration, not the substrate. They emerge whenever five conditions hold:
 
 1. **Multiple agents write** to the substrate
 2. **Agents are amnesiac** — no cross-session memory
 3. **Contributions are locally correct** — each passes local validation
-4. **No structural coordination mechanism exists** — locally correct + locally correct ≠ globally correct
+4. **Contributions must compose non-trivially** — coherence between contributions is required and not automatic
+5. **No structural coordination mechanism exists** — locally correct + locally correct ≠ globally correct
 
-Code was the first substrate where we observed these dynamics (daemon.go +892 lines from 30 correct commits). Knowledge is the second (85.5% orphan rate, 997 unconnected investigations). The physics are identical; only the substrate-specific manifestations differ.
+Conditions 1-3 are context-setters (common in most modern systems). Condition 4 distinguishes compositional substrates (code, knowledge bases, schemas) from additive substrates (append-only logs, sensor data, votes) where contributions are independent and cannot compose incorrectly. Condition 5 is the lever — the presence or absence of coordination mechanisms determines whether accretion occurs or is managed.
+
+**Continuous formulation:** These conditions exist on spectrums, not as binary values. The theory is most precisely expressed as a risk model: `accretion_risk = f(amnesia_level × compositional_complexity / coordination_strength)`. This explains partial accretion in partially-coordinated systems and avoids debates about where binary thresholds fall.
+
+Code was the first substrate where we observed these dynamics (daemon.go +892 lines from 30 correct commits). Knowledge is the second (85.5% orphan rate, 997 unconnected investigations). OPSEC is the third (5 detection signals accumulating invisibly over 5 months). The physics are identical; only the substrate-specific manifestations differ.
 
 ---
 
@@ -98,6 +103,18 @@ In code, a package attractor pulls code mechanically — imports, function calls
 In knowledge, a model attractor pulls attention — agents spawned in the model's domain receive model claims via kb context injection, which frames their investigation. The mechanism is **attention priming** (same as stance transfer from the skill-content-transfer model), not structural routing.
 
 This is a key asymmetry: code attractors are structurally coupled (compiler enforces), knowledge attractors are attention-primed (context injection influences). Attention-primed attractors may be fundamentally weaker than structurally-coupled attractors — or they may just be ungated.
+
+### Coordination Taxonomy
+
+Coordination mechanisms come from three sources. Accretion occurs when ALL sources are absent for a given substrate:
+
+| Source | Mechanism | Examples | Digital Substrates? |
+|--------|-----------|----------|-------------------|
+| **Explicit** | Engineered rules and enforcement | Type systems, schemas, CI, code review, pre-commit hooks | Yes — primary source |
+| **Substrate-embedded** | Mathematical/physical properties of the substrate guarantee coherence | CRDTs (convergence by construction), strongly-typed languages (type safety) | Rare — must be engineered |
+| **Environmental** | The environment mediates between agents | Stigmergy (pheromone trails), physical constraints, chemical gradients | No — biological substrates only |
+
+**Why digital substrates require engineered coordination:** A `.go` file doesn't resist bloat through physics. A `.kb/` directory doesn't resist orphan investigations through chemistry. Unlike biological substrates (where environmental coordination emerges naturally), digital substrates lack implicit coordination — requiring explicit engineering of gates and attractors. CRDTs are the notable exception: a digital substrate with coordination embedded in its mathematical structure.
 
 ### 3. Gate Deficit
 
@@ -172,11 +189,11 @@ The physics hold for any shared mutable substrate where the four conditions are 
 | **API surfaces** | Endpoint bloat | Resource-oriented design | Contract testing, versioning | Deprecated endpoints, inconsistent naming | Hypothesized |
 | **Documentation** | Doc sprawl, contradictions | Doc hierarchy/taxonomy | Link validation, freshness checks | Stale pages, orphaned docs | Hypothesized |
 
-**Minimal substrate properties:**
+**Minimal substrate properties (for accretion to produce degradation):**
 
 1. **Mutable** — agents can add/modify content
 2. **Shared** — multiple agents read/write
-3. **Compositional** — individual contributions must compose into a coherent whole
+3. **Compositional** — individual contributions must compose non-trivially into a coherent whole (this is condition 4 in the five-condition formulation; additive/self-similar substrates like logs, sensor data, and coral reefs don't degrade because composition is trivial)
 4. **Amnesiac** — no single agent has full context of all prior contributions
 
 **The generalization of harness engineering:** Governing any shared mutable substrate where amnesiac agents contribute requires the same three mechanisms:
@@ -227,7 +244,9 @@ The investigation/probe/model cycle separates cleanly into **substrate** (the kn
 
 4. **The orphan rate decomposes into six categories; the natural baseline is 40-50%.** The raw 85.5% (now 87.6% by strict measurement) is inflated by pre-model era artifacts (83% of corpus, 94.7% orphan rate). The model-era rate is **52.0%** — within the healthy range for an exploratory system. Orphans decompose into: implementation-as-investigation (~30-45%), audit/design (~25-33%), exploratory (~15-20%), genuinely lost (~20% of orphans, ~10% of total), negative results (~5-7%), and superseded (~3-5%). The actionable signal is the "genuinely lost" rate (~10% of investigations), not the raw orphan rate. Analogous to dead code: 5-15% dead code is healthy in code; 40-50% orphan rate is healthy in knowledge due to inherently higher exploration rates.
 
-5. **Accretion, attractors, gates, and entropy are substrate-independent.** They emerge from system properties (multiple writers, no persistent memory, local correctness, no structural coordination), not substrate properties. Code, knowledge, and OPSEC are three confirmed instances. OPSEC extends the evidence to adversarial substrates where entropy is invisible to internal metrics and failure is binary/catastrophic. The same dynamics should appear in any substrate meeting the four conditions.
+5. **Accretion, attractors, gates, and entropy are substrate-independent.** They emerge from system properties (multiple writers, no persistent memory, local correctness, non-trivial composition, no structural coordination), not substrate properties. Code, knowledge, and OPSEC are three confirmed instances. OPSEC extends the evidence to adversarial substrates where entropy is invisible to internal metrics and failure is binary/catastrophic. The same dynamics should appear in any substrate meeting the five conditions.
+
+6. **The theory is falsifiable and conditionally predictive.** Systematic search across 15+ candidate counterexamples (natural systems: ant colonies, coral reefs, immune systems; engineered: CRDTs, blockchains, event stores; human: Wikipedia, scientific literature, shared drives) found no clean counterexamples. Every system that resists accretion does so through coordination (explicit, substrate-embedded, or environmental). The theory makes testable predictions: (a) where accretion will concentrate (at coordination gaps), (b) what interventions will reduce it (gates at compositional boundaries), (c) that removing coordination will introduce accretion. It does NOT predict accretion form, rate, or threshold — these are substrate-specific. The theory is a qualitative causal framework with quantitative evidence, not a quantitative physical law.
 
 ---
 
@@ -291,7 +310,15 @@ When kb context injection includes a relevant model, agents are primed to engage
 
 The model's critical invariant #2 states models are "the fundamental unit of knowledge organization." But the tooling inverts this: `kb create investigation` exists, `kb create model` and `kb create probe` do not. `kb init` creates `investigations/`, `decisions/`, `guides/` directories but not `models/`. The most important artifacts have the least tooling support, while the highest-volume artifact (investigations) has the most. This creates a structural bias toward investigation production over model synthesis — contributing to the orphan rate through tooling design, not just agent behavior. For external adoption, this gap is blocking: the first user cannot be expected to manually create directory structures and templates for the system's fundamental unit.
 
-### Failure Mode 5: No Contradiction Resolution Mechanism
+### Failure Mode 5: Creation/Removal Cost Asymmetry (Universal Ratchet)
+
+Across every substrate studied, adding is cheaper than removing. Adding a file, column, flag, API endpoint, or investigation is a single-agent action. Removing one requires coordinating with unknown dependents. This asymmetry produces a ratchet: growth is easy, shrinkage requires coordination that amnesiac agents cannot provide. Empirically confirmed: 73% of feature flags never removed (FlagShark), 85% of shared drive data is dark/ROT (Veritas), 39% of organizations cannot inventory their APIs (APIsec). Even when coordination mechanisms exist, the ratchet persists because removal coordination is always more expensive than creation.
+
+### Failure Mode 6: Anti-Accretion Mechanisms Create Second-Order Pathologies
+
+Gates and coordination mechanisms can themselves accrete or create new problems: Wikipedia bots conflict with each other ("behave and interact unpredictably" — PLOS ONE). Stack Overflow's aggressive moderation drove away contributors. Scientific peer review creates publication bias. The cure for accretion, if applied without meta-coordination, can shift accretion to a different dimension (e.g., preventing spatial duplication while enabling temporal decay). This suggests a hierarchy: substrate coordination → meta-coordination of coordination mechanisms.
+
+### Failure Mode 7: No Contradiction Resolution Mechanism
 
 When a probe contradicts a model claim, the finding is recorded in the probe file but no mechanism forces the model to be updated. Contradicts verdicts historically accumulated (4 at baseline, batch-resolved 2026-03-09) and will recur without hard gates. Over time, models accumulate stale or contradicted claims that new agents receive as authoritative via kb context injection — creating a knowledge equivalent of stale cache invalidation.
 
@@ -331,6 +358,10 @@ Evidence: ADRs took 7 years from Nygard's projects (2011) to ThoughtWorks "Adopt
 
 7. **What is the minimum time/volume before the physics become visible to a new user?** Dylan's system shows the physics after 1,166 investigations over months. A solo researcher generating 3-5 investigations/week might not see the dynamics (orphan accumulation, attractor pull, synthesis opportunities) for weeks. The "magic moment" — when the system's compounding value becomes obvious — may need to be accelerated through seeded examples or guided onboarding for first-time users.
 
+8. **Can strongly-typed languages be modeled as substrate-embedded coordination?** If type systems are coordination embedded in the substrate (like CRDTs for data), then strongly-typed languages should exhibit less accretion than weakly-typed ones — a testable prediction. This would connect the coordination taxonomy to practical programming language design.
+
+9. **~~Is the theory falsifiable?~~ ANSWERED (2026-03-10):** Yes. Systematic search across 15+ counterexamples found none that survive rigorous condition checking. The theory makes testable predictions about where accretion concentrates and what interventions reduce it. Refinement: the four conditions were expanded to five with "non-trivial composition" made explicit (preventing over-prediction in additive substrates). The theory is conditionally predictive — a qualitative causal framework, not a quantitative law.
+
 ---
 
 ## Evolution
@@ -352,6 +383,8 @@ Evidence: ADRs took 7 years from Nygard's projects (2011) to ThoughtWorks "Adopt
 **2026-03-10:** Health score structural improvement validation (orch-go-y642j). Decomposed the 37→73 score improvement: 90% from calibration (tracking gates, scaling thresholds, adding total_source_files), 10% from actual extractions. The 10 target files were extracted (avg 1139→410 lines, 64% reduction), but the old formula was too broken to register this. New finding: **measurement-improvement bias** — fixing a broken metric appears as improvement in the measured thing. Score jumped 37→69 in one snapshot when total_source_files was added. Added entropy metric #7 (composite health score) with this caveat. Hotspot dimension (1.9/20) identified as the honest remaining structural debt signal.
 
 **2026-03-09:** Public release readiness audit (orch-go-8zp45) of kb-cli codebase. **Contradicted** the "single tooling gap" claim from minimal-substrate probe — found 6 additional gaps beyond `--extract-models`. **Confirmed** core cycle commands are fully standalone. **Extended** substrate/orchestration separation with three-tier coupling taxonomy: hard (ask, link — break without orch), soft (reflect --create-issue, context --siblings — degrade gracefully), none (init, create, search, list — fully standalone). Code health: 57.6% test coverage, 3 failing tests, 3 direct dependencies, no go vet errors. Key blockers: missing LICENSE file, incomplete README, hardcoded orch paths.
+
+**2026-03-10:** Falsifiability probe (orch-go-dqv2o). Systematic counterexample search across 15+ systems in three domains (natural, engineered, human). No clean counterexamples found. Three key extensions: (1) Added condition 5 — "non-trivial composition" — to prevent over-prediction in additive substrates (logs, sensor data, coral reefs) that meet conditions 1-4 but don't degrade because composition is trivial. (2) Coordination taxonomy: explicit (type systems), substrate-embedded (CRDTs), environmental (stigmergy). Digital substrates lack environmental coordination, explaining why they require engineered gates. (3) Continuous risk formulation: `accretion_risk = f(amnesia × complexity / coordination)` — more precise than binary conditions. Theory verdict: conditionally predictive, publishable with composition refinement.
 
 ---
 
@@ -398,6 +431,7 @@ kb reflect --type stale
 - `.kb/models/knowledge-physics/probes/2026-03-09-probe-first-external-user-profile-analysis.md` — First user is Solo Technical Researcher (STR), not R&D lab. Adoption sequencing validated across 4 analogous tools. Tooling gap: `kb create model`/`kb create probe` missing, `kb init` doesn't create models/
 - `.kb/models/knowledge-physics/probes/2026-03-09-probe-kb-cli-public-release-readiness-audit.md` — kb-cli public release audit: core cycle standalone, 6 gaps beyond --extract-models, three-tier coupling taxonomy (hard/soft/none), 7 blocking changes for v0.1
 - `.kb/models/knowledge-physics/probes/2026-03-10-probe-health-score-structural-improvement-validation.md` — Health score 37→73 decomposition: 90% calibration, 10% extraction. Measurement-improvement bias finding. Hotspot dimension (1.9/20) is honest remaining signal.
+- `.kb/models/knowledge-physics/probes/2026-03-10-probe-falsifiability-counterexamples.md` — Falsifiability probe: 15+ counterexamples tested, none survive. Fifth condition (non-trivial composition) identified. Coordination taxonomy (explicit/substrate-embedded/environmental). Theory is conditionally predictive.
 
 **Related Models:**
 - `.kb/models/harness-engineering/model.md` — Code instance of substrate physics, hard/soft harness taxonomy
