@@ -419,6 +419,19 @@ func FallbackUpdateAssignee(id, assignee, dir string) error {
 	return nil
 }
 
+// FallbackDepAdd adds a blocking dependency via bd CLI.
+// fromID blocks on toID (toID must complete before fromID can start).
+// If dir is non-empty, runs in that directory.
+func FallbackDepAdd(fromID, toID, dir string) error {
+	cmd, cancel := fallbackCmd(dir, "dep", "add", fromID, toID)
+	defer cancel()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd dep add failed: %w: %s", err, string(output))
+	}
+	return nil
+}
+
 // FallbackAddLabel adds a label to an issue via bd CLI.
 // If dir is non-empty, runs in that directory.
 func FallbackAddLabel(id, label, dir string) error {
