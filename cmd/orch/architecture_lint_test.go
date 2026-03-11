@@ -179,7 +179,7 @@ const (
 // threshold, remove it from this list.
 var knownFuncSizeViolations = map[string]bool{
 	"daemon.go:runDaemonLoop":                  true, // 698 lines — extraction target
-	"stats_cmd.go:aggregateStats":              true, // 724 lines — extraction target
+	"stats_cmd.go:aggregateStats":              true, // 791 lines — extraction target
 	"serve_agents_handlers.go:handleAgents":    true, // 471 lines — extraction target
 }
 
