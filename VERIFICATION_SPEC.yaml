@@ -1,26 +1,38 @@
-verification:
-  automated:
-    - command: "go build ./cmd/orch/"
-      expectation: "Compiles cleanly"
-    - command: "go test ./pkg/events/ -run TestLogGateDecision -v"
-      expectation: "3 tests pass: Block, Bypass, AccretionPrecommit"
-    - command: "go test ./cmd/orch/ -run TestGateDecision -v"
-      expectation: "2 tests pass: TestGateDecisionStats, TestGateDecisionStats_Empty"
-    - command: "go test ./pkg/events/ ./cmd/orch/ -count=1"
-      expectation: "All existing tests still pass (no regressions)"
+task: Update harness-engineering model — measurement as first-class layer
+beads_id: orch-go-jq7jt
+skill: feature-impl
+mode: direct
+validation: none
 
-  manual:
-    - step: "Run orch spawn without --bypass-triage"
-      expectation: "Spawn blocked, events.jsonl gets spawn.gate_decision with gate_name=triage, decision=block"
-    - step: "Run orch stats after gate events exist"
-      expectation: "GATE DECISIONS section appears showing blocks/bypasses by gate"
+deliverables:
+  - path: .kb/models/harness-engineering/model.md
+    description: Updated model with enforcement+measurement pairing as core concept
 
-  files_changed:
-    - pkg/events/logger.go: "Added EventTypeSpawnGateDecision, GateDecisionData, LogGateDecision"
-    - pkg/events/logger_test.go: "Added 3 tests for LogGateDecision"
-    - pkg/orch/spawn_preflight.go: "Added logGateDecision calls at triage/verification/hotspot block/bypass points"
-    - cmd/orch/precommit_cmd.go: "Added logPrecommitGateDecision calls at accretion block/bypass points"
-    - cmd/orch/stats_types.go: "Added GateDecisionStats, GateDecisionEntry, GateSkillEntry types"
-    - cmd/orch/stats_cmd.go: "Added spawn.gate_decision aggregation in event processing loop"
-    - cmd/orch/stats_output.go: "Added GATE DECISIONS text output section"
-    - cmd/orch/stats_test.go: "Added TestGateDecisionStats and TestGateDecisionStats_Empty"
+changes_made:
+  - section: Summary
+    change: Added enforcement+measurement pairing claim with evidence
+  - section: Hard/Soft taxonomy table
+    change: Updated Measurement row — hard harness cost/coverage are NOT binary
+  - section: Hard harness inventory
+    change: Added duplication detector row
+  - section: "5. The Measurement Surface"
+    change: Rewrote as paired enforcement+measurement. Added evidence table, survivorship bias, design principles, instrumentation status.
+  - section: "6. Implementation Layers"
+    change: Split into enforcement + measurement surface columns
+  - section: Critical Invariants
+    change: Added invariant #7 (enforcement without measurement is theological)
+  - section: Why This Fails
+    change: Added failure mode #7 (Enforcement Without Measurement)
+  - section: Constraints
+    change: Added "Why Enforcement Needs Measurement?" constraint
+  - section: Evolution
+    change: Added 2026-03-11 entry
+  - section: Synthesized From
+    change: Added measurement plan and thread references
+
+evidence:
+  - "Dupdetect: 111s per completion, invisible (orch-go-ia0b0)"
+  - "52% of agent.completed events lacked skill/outcome fields"
+  - "0 gate_decision events logged"
+  - "Accretion.delta: 4.7% coverage (orch-go-3w5dz)"
+  - "Health score: 89% calibration artifact (Mar 10 probe)"

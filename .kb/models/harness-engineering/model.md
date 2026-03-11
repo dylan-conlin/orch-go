@@ -1,7 +1,7 @@
 # Model: Harness Engineering
 
 **Domain:** Multi-Agent Code Quality Practices
-**Last Updated:** 2026-03-10
+**Last Updated:** 2026-03-11
 **Validation Status:** WORKING HYPOTHESIS — practices are grounded in one system (orch-go, 3 months). Independent external review (Codex, Mar 10) identified the framework as "software architecture + CI/policy enforcement + tech debt management with agent vocabulary" — strongest as internal operating model, weakest when claiming to be a new discipline. The practices (hard/soft distinction, gate layering, attractor + gate pattern) work in this system. The generalizations are untested. See `.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md`.
 **Synthesized From:**
 - `.kb/investigations/2026-03-07-inv-analyze-accretion-pattern-orch-go.md` — Accretion structural analysis (daemon.go +892 lines, 6 cross-cutting concerns)
@@ -12,13 +12,15 @@
 - `.kb/models/extract-patterns/model.md` — Extraction as temporary entropy reduction
 - `.kb/models/completion-verification/model.md` — 14-gate pipeline, gate type taxonomy (execution/evidence/judgment)
 - OpenAI: "Harness Engineering" (https://openai.com/index/harness-engineering/) — Codex team, ~1M lines, zero manual code
+- `.kb/plans/2026-03-11-measurement-instrumentation.md` — Measurement audit: 52% field gaps, 0 gate events, survivorship bias architecture
+- `.kb/threads/2026-03-11-measurement-as-first-class-harness.md` — Thread: enforcement without measurement is theological
 - Fowler/Bockeler: "Harness Engineering" (https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html) — Verification gap, relocating rigor
 
 ---
 
 ## Summary (30 seconds)
 
-Harness engineering is a working label for the practice of making wrong paths mechanically impossible for AI agents, rather than instructing agents to choose right paths. It is not a new discipline — it is software architecture, CI/CD enforcement, and tech debt management applied to multi-agent workflows. It operates through two fundamentally different enforcement types: **hard harness** (deterministic, mechanically enforced, cannot be ignored — pre-commit hooks, spawn gates, `go build`, Go package structure, structural tests) and **soft harness** (probabilistic, context-dependent, driftable — skills, CLAUDE.md, knowledge bases, SPAWN_CONTEXT.md). Hard harness matters more because agents under pressure drift from soft instructions — contrastive testing (265 trials, 7 skills) showed behavioral constraints dilute to bare parity at 10+ co-resident items, and stance transfers only as attention primers, not action directives. Accretion is entropy: individually correct agent commits compose into structural degradation when shared infrastructure is missing — daemon.go regrew +892 lines past its pre-extraction baseline in 60 days from 30 correct commits. OpenAI arrived at the same framework from greenfield (designed gates before code); we arrived through pain (retrofit after 3 entropy spirals, 1,625 lost commits). A useful lens for thinking about agent failures: **compliance failure** (agent doesn't follow instructions) vs **coordination failure** (agents each follow instructions correctly but collectively produce problems). In practice these are often mixed — not a clean partition. The claim that stronger models make coordination worse is plausible but uncontrolled (observed in one system, no experiment isolating model capability as the variable).
+Harness engineering is a working label for the practice of making wrong paths mechanically impossible for AI agents, rather than instructing agents to choose right paths. It is not a new discipline — it is software architecture, CI/CD enforcement, and tech debt management applied to multi-agent workflows. It operates through two fundamentally different enforcement types: **hard harness** (deterministic, mechanically enforced, cannot be ignored — pre-commit hooks, spawn gates, `go build`, Go package structure, structural tests) and **soft harness** (probabilistic, context-dependent, driftable — skills, CLAUDE.md, knowledge bases, SPAWN_CONTEXT.md). Hard harness matters more because agents under pressure drift from soft instructions — contrastive testing (265 trials, 7 skills) showed behavioral constraints dilute to bare parity at 10+ co-resident items, and stance transfers only as attention primers, not action directives. **Every harness layer requires both an enforcement surface and a measurement surface** — enforcement without measurement is theological (you believe the gate works), measurement without enforcement is observational (you see problems but can't intervene). Evidence: dupdetect cost 111s invisibly (no measurement), 52% of completions lacked fields for analysis (survivorship bias), accretion.delta covered 4.7% of cases (silently broken). Accretion is entropy: individually correct agent commits compose into structural degradation when shared infrastructure is missing — daemon.go regrew +892 lines past its pre-extraction baseline in 60 days from 30 correct commits. OpenAI arrived at the same framework from greenfield (designed gates before code); we arrived through pain (retrofit after 3 entropy spirals, 1,625 lost commits). A useful lens for thinking about agent failures: **compliance failure** (agent doesn't follow instructions) vs **coordination failure** (agents each follow instructions correctly but collectively produce problems). In practice these are often mixed — not a clean partition. The claim that stronger models make coordination worse is plausible but uncontrolled (observed in one system, no experiment isolating model capability as the variable).
 
 ---
 
@@ -34,7 +36,7 @@ Every harness component is either hard or soft:
 |----------|-------------|--------------|
 | **Enforcement** | Deterministic — passes or fails | Probabilistic — influences via context |
 | **Bypass** | Cannot be ignored without escape hatch | Can be drifted from under pressure |
-| **Measurement** | Unnecessary — outcome is binary | Requires contrastive testing to validate |
+| **Measurement** | Outcome is binary, but cost/coverage are not (dupdetect: 111s invisible, accretion.delta: 4.7% coverage) | Requires contrastive testing to validate effectiveness |
 | **Cost** | Higher upfront (code, infrastructure) | Lower upfront (prose, templates) |
 | **Degradation** | Stable unless code is modified | Dilutes at scale (5+ constraints = inert) |
 
@@ -51,6 +53,7 @@ Every harness component is either hard or soft:
 | Architecture lint tests | Forbidden lifecycle state packages/imports | `cmd/orch/architecture_lint_test.go` (4 tests) | Shipped, not in CI |
 | Spawn rate limiter | Velocity exceeding verification bandwidth | `pkg/spawn/gates/ratelimit.go` | Shipped |
 | Spawn concurrency gate | Too many parallel agents | `pkg/spawn/gates/concurrency.go` | Shipped |
+| Duplication detector | Cross-file function similarity at completion | `pkg/dupdetect/`, `pkg/verify/duplication.go` | **Shipped** — AST fingerprinting, completion advisory, pre-commit check. O(n²)→O(M×N) after measurement revealed 111s cost |
 | Claude Code deny hooks | Forbidden tool usage at spawn time | `~/.orch/hooks/*.py` (12 scripts, 5 denials) | Shipped, mutable |
 
 **Existing soft harness (orch-go):**
@@ -141,16 +144,32 @@ OpenAI's Codex team (~1M lines, 1,500 PRs, 3-7 engineers, 5 months, zero manual 
 
 **Context in existing literature (Mar 10 probes):** The term "harness" is used with different emphases: environment setup (OpenAI/Anthropic), verification (Fowler). Our usage focuses on multi-agent coordination. Whether the compliance/coordination distinction adds something beyond existing coordination cost literature is an open question — the claim of novelty was identified as overclaim by independent review. Blog claim review (Mar 10) identified that key concepts map to established literature: "structural attractors" = affordances (Norman, 1988) + nudge theory (Thaler/Sunstein, 2008) + Conway's Law (1967); "dilution curve" = known prompt-length vs. instruction-following degradation; "architecture doing the work of instruction" = Christopher Alexander's Pattern Language (1977). The specific APPLICATION to LLM agent orchestration is novel; the underlying concepts are not.
 
-### 5. The Measurement Layer
+### 5. The Measurement Surface (Paired with Enforcement)
 
-Hard and soft harness require fundamentally different measurement:
+**Core claim (Mar 11):** Every harness layer needs BOTH an enforcement surface and a measurement surface. Enforcement without measurement is theological — you believe the gate works but can't prove it. Measurement without enforcement is observational — you can see what's happening but can't intervene. The harness engineering model was previously framed as "build enforcement layers." The correct framing is: each layer is a pair of enforcement + measurement, and one without the other is incomplete.
 
-| Harness Type | Measurement Need | Method |
+**Evidence that enforcement alone is insufficient:**
+
+| Enforcement Layer | Measurement Gap Found | Consequence |
 |---|---|---|
-| Hard | None — outcome is deterministic | Build passes or fails |
-| Soft (knowledge) | Moderate — verify agents use facts | Single-turn contrastive tests (+5 point lift) |
-| Soft (stance) | High — verify attention priming | Multi-scenario contrastive tests (bare 0% → stance 83% on S09, but only cross-source scenarios) |
-| Soft (behavioral) | Critical — verify not diluted | Compliance rate (87 constraints → bare parity 5/7 scenarios) |
+| Duplication detector (hard, deterministic) | No timing telemetry | 111s per completion — invisible until manually profiled. O(n²) cost was architectural, not a bug. |
+| Completion pipeline (hard+soft, 15 gates) | 52% of agent.completed events lacked skill/outcome fields | Cannot calculate gate accuracy — no denominator data. Measured survivors, not decisions. |
+| Spawn gates (hard, blocking) | 0 gate_decision events emitted | Knew gates existed but not how often they fired, what they blocked, or whether blocks were correct |
+| Accretion delta (hard, per-completion) | 4.7% coverage (path filter bug) | 95% of completions silently skipped — gate appeared active but was nearly blind |
+| Health score gate (soft masquerading as hard) | Score formula calibrated to pass existing state | 89% of 37→73 improvement was recalibration, not structural. Gate that never fires = false assurance |
+
+**The survivorship bias architecture:** Before Mar 11 instrumentation, the system measured outcomes (completions) but not decisions (gate evaluations, blocks, bypasses). This created survivorship bias — you see what got through, not what was filtered or why. You cannot evaluate gate precision (false positive rate) without logging both blocked and passed cases.
+
+**What each harness type needs measured:**
+
+| Harness Type | Enforcement Surface | Measurement Surface |
+|---|---|---|
+| Hard (build, gates) | Deterministic pass/fail | **Cost** (pipeline timing), **coverage** (% of events with data), **precision** (false positive rate from gate_decision events) |
+| Soft (knowledge) | Context injection | **Effectiveness** (single-turn contrastive tests, +5 lift) |
+| Soft (stance) | Attention priming | **Reach** (multi-scenario contrastive tests, bare 0% → stance 83% on cross-source) |
+| Soft (behavioral) | MUST/NEVER prohibitions | **Compliance rate** (87 constraints → bare parity at 5/7 scenarios — confirming dilution) |
+
+**The previous claim "hard harness doesn't need measurement" was wrong.** Hard harness outcome is binary (pass/fail), but its operational properties are not: cost (111s dupdetect), coverage (4.7% accretion.delta), precision (unknown false positive rate), and volume (0 gate_decision events logged). A gate that passes/fails deterministically but costs 111s per run, covers 4.7% of cases, and logs nothing about its decisions is not well-understood — it's merely deterministic.
 
 **The completion verification pipeline through harness lens:**
 
@@ -162,25 +181,38 @@ Hard and soft harness require fundamentally different measurement:
 
 As of Mar 2026, 3 of 15 completion gates run code (up from 1). Vet and staticcheck were added as independent hard gates. Further expansion (actually running tests) would continue increasing hard harness surface.
 
-**The measurement design principle:** Every soft harness component should be contrastively validated before deployment. If adding content to a skill doesn't measurably change behavior, it's dead weight crowding out effective content.
+**Measurement instrumentation status (Mar 11):** Phase 1-3 of measurement plan shipped:
+- agent.completed field coverage: 52% → ~100% (bare duplicate events eliminated, all 5 emission paths enriched)
+- spawn.gate_decision events: now logged at all gate block/bypass points
+- daemon.architect_escalation events: now logged with hotspot match details
+- duplication.detected events: now logged with file pairs and similarity scores
+- accretion.delta coverage: 4.7% → ~100% (git baseline fix)
+- Completion pipeline timing: per-step duration and skip-reason instrumented
+
+Phase 4 (correlation — "do gates improve quality?") blocked on 2-4 weeks of data accumulation. Checkpoint: Mar 24.
+
+**Design principles:**
+1. Every enforcement component should have a corresponding measurement surface before being treated as "working."
+2. Every soft harness component should be contrastively validated before deployment. If adding content to a skill doesn't measurably change behavior, it's dead weight.
+3. Measurement infrastructure is itself subject to the hard/soft taxonomy — a measurement that can be gamed or miscalibrated is soft measurement (health score formula). A measurement that reads from deterministic sources (git diff, event logs) is hard measurement.
 
 ### 6. Implementation Layers
 
-Each layer builds on the previous. Lower layers are more immediately actionable:
+Each layer builds on the previous. Lower layers are more immediately actionable. Each layer now tracked as enforcement+measurement pair:
 
-| Layer | What | Status | Mechanism |
-|-------|------|--------|-----------|
-| **0** | Pre-commit growth gate | **Shipped** (orch-go-hhq9a, corrected orch-go-34vn0) | `orch precommit accretion`, warning-only, >800→≥30 net lines, >600→≥50 net lines |
-| **1** | Structural tests for package boundaries | **Partially shipped** | `architecture_lint_test.go` (4 tests for lifecycle state), not in CI |
-| **2** | Duplication detector | Not started | Static analysis finding pattern similarity across files |
-| **3** | Periodic entropy agent | Not started | Background agent reviewing growth trends weekly |
-| **4** | Gates that generate gates | Aspirational | Entropy agent drafts structural tests for recurring patterns |
+| Layer | Enforcement Surface | Status | Measurement Surface | Status |
+|-------|-------------------|--------|-------------------|--------|
+| **0** | Pre-commit growth gate | **Shipped** | accretion.delta events, pipeline timing | **Shipped** (Mar 11) |
+| **1** | Structural tests (arch lint) | **Partial** (4 tests, not in CI) | Test pass/fail in pre-commit | Not started |
+| **2** | Duplication detector | **Shipped** (Mar 11) | duplication.detected events, pipeline timing | **Shipped** (Mar 11) |
+| **3** | Periodic entropy agent | Not started | Growth trend tracking (orch stats) | **Partial** |
+| **4** | Gates that generate gates | Aspirational | Gate accuracy correlation (Phase 4) | Blocked on data |
 
-**Layer 0 status (Mar 10):** Fully shipped. The pre-commit hook calls `orch precommit accretion` which runs `CheckStagedAccretion`. Hard block at >1500 lines. Warning-only at >800 lines (+30 net delta) and >600 lines (+50 net delta). Override: `FORCE_ACCRETION=1 git commit ...`. The completion accretion gate (`pkg/verify/accretion.go`) IS also active but exempts pre-existing bloated files. **However, pre-commit gate was only wired on Mar 10 — zero post-gate velocity data exists.** Weekly cmd/orch/ growth was accelerating prior to wiring: 370 → 1,473 → 6,264 → 6,131 lines/week (Feb 10–Mar 10).
+**Layer 0 status (Mar 11):** Enforcement fully shipped. Measurement now paired: accretion.delta coverage fixed from 4.7% → ~100% (git baseline bug), pipeline timing instrumented. The pre-commit hook calls `orch precommit accretion` which runs `CheckStagedAccretion`. Hard block at >1500 lines. Warning-only at >800 lines (+30 net delta) and >600 lines (+50 net delta). Override: `FORCE_ACCRETION=1 git commit ...`. **Pre-commit gate wired Mar 10, measurement surface added Mar 11 — checkpoint Mar 24 will be the first data-backed evaluation of whether this layer works.** Weekly cmd/orch/ growth was accelerating prior to wiring: 370 → 1,473 → 6,264 → 6,131 lines/week (Feb 10–Mar 10).
 
 **Layer 1 needs extension.** Current structural tests enforce only the no-lifecycle-state constraint (from two-lane architecture decision). Missing: function size limits for cmd/orch/, package boundary enforcement, cross-cutting duplication detection. These 4 tests also aren't in CI — they require manual `go test` execution.
 
-**Layer 2 would convert the "agent failure = harness bug" principle into automation.** When function similarity > threshold across files, create a beads issue: "shared infrastructure missing for workspace scanning." The detector is hard harness (deterministic); the response is initially soft (recommendation).
+**Layer 2 status (Mar 11):** Enforcement shipped (AST fingerprinting, completion advisory, pre-commit check). Measurement shipped (duplication.detected events with file pairs and similarity scores). Original O(n²) implementation cost 111s per completion — invisible until measurement surface (pipeline timing) was added. Fixed to O(M×N) scoped comparison (43x speedup). This is the canonical example of why enforcement needs measurement: a deterministic gate that silently costs 2 minutes per agent completion is worse than no gate.
 
 **Layer 3 is OpenAI's "garbage collection" pattern.** A periodic agent reviewing duplication detector output, growth trends, and structural test results. Produces recommendations: "pkg/workspace/ needed," "daemon.go periodic tasks should extract."
 
@@ -250,7 +282,9 @@ A useful way to think about agent failures, though in practice most failures are
 
 6. **Mutable hard harness is soft harness with extra steps.** All current defenses (spawn gates, verify gates, hooks, architecture lint) are source code agents can modify. This is the entropy spiral's core vulnerability. True immutability requires infrastructure that's architecturally unreachable by agents.
 
-7. **Stronger models may need more coordination gates, not fewer.** Hypothesis: compliance gates simplify with model capability, but coordination gates grow in importance as agents get faster. Observed in one system (faster agents produced more code per session). Not experimentally controlled — this is a plausible claim, not a validated one.
+7. **Enforcement without measurement is theological; enforcement with measurement is empirical.** A gate you can't measure is an assertion you can't test. The dupdetect gate (111s invisible cost, 4.7% accretion coverage) demonstrates that even hard, deterministic enforcement can be operationally broken without a measurement surface. Every harness layer must be a pair: enforcement surface + measurement surface. One without the other is incomplete. (Evidence: Mar 11 instrumentation audit — 52% field gaps, 0 gate_decision events, survivorship bias architecture.)
+
+8. **Stronger models may need more coordination gates, not fewer.** Hypothesis: compliance gates simplify with model capability, but coordination gates grow in importance as agents get faster. Observed in one system (faster agents produced more code per session). Not experimentally controlled — this is a plausible claim, not a validated one.
 
 ---
 
@@ -306,7 +340,19 @@ A useful way to think about agent failures, though in practice most failures are
 
 **The broader pattern:** 12 files in cmd/orch/ exceed 800 lines (total: ~14,000 lines). 6 exceed 1,000. The exemption means the completion gate is primarily useful for files approaching the threshold, not files that have already passed it. This is the wrong coverage profile — the already-bloated files are where accretion pressure is strongest (feature gravity).
 
-### 7. Measurement Artifacts in Soft Harness
+### 7. Enforcement Without Measurement (Invisible Cost)
+
+**What happens:** Hard harness is shipped and assumed to work because its outcome is deterministic. But cost, coverage, and precision go unmeasured, creating invisible operational burdens.
+
+**Evidence:**
+- Duplication detector: deterministic (finds duplicates or doesn't), but cost 111s per completion. O(n²) function comparison across entire project. No timing telemetry existed to surface this — discovered only by manual profiling after agents started timing out.
+- Accretion delta: deterministic (computes line changes), but path filter bug restricted it to workspace dir. 95.3% of completions silently skipped. The gate appeared active in code but was nearly blind operationally.
+- Spawn gates: deterministic (block or allow), but 0 events logged about decisions. Could not answer "how many spawns did the hotspot gate block this week?" — the denominator for gate accuracy was unrecorded.
+- Agent.completed: 52% of events lacked skill/outcome fields. Survivorship bias: measured completions but not the decisions that led to them.
+
+**Fix:** Pair every enforcement layer with measurement from day one. The measurement plan (Mar 11) shipped instrumentation across all 4 gaps: pipeline timing, gate_decision events, accretion coverage fix, field enrichment.
+
+### 8. Measurement Artifacts in Soft Harness
 
 **What happens:** Soft harness appears to work based on flawed measurement, creating false confidence.
 
@@ -336,6 +382,13 @@ A useful way to think about agent failures, though in practice most failures are
 
 **This enables:** Proactive detection before CRITICAL thresholds
 **This constrains:** Cannot treat extraction as "done" — must monitor for re-accretion
+
+### Why Enforcement Needs Measurement?
+
+**Constraint:** Hard harness outcome is binary but its operational properties (cost, coverage, precision) are continuous and can silently degrade.
+
+**This enables:** Data-backed evaluation of gate effectiveness (Mar 24 checkpoint)
+**This constrains:** Cannot ship enforcement without corresponding measurement surface — must instrument before declaring "shipped"
 
 ### Why Package Structure Matters More Than Instructions?
 
@@ -395,6 +448,8 @@ A useful way to think about agent failures, though in practice most failures are
 **2026-03-07 (afternoon):** OpenAI parallel discovered. Thread synthesized. This model created, unifying accretion, skill dilution, OpenAI practices, and existing enforcement models into the harness engineering framework.
 
 **2026-03-08:** Harness engineering plan completed — 13/13 issues across 6 phases shipped. Layers 0-5 implemented: structural attractors (pkg/workspace/, pkg/display/, pkg/beadsutil/), structural tests (function size lint, package boundaries), pre-commit hardening (>1500 blocking gate), duplication detector (AST fingerprinting + beads auto-issue), entropy agent (orch entropy + weekly launchd), control plane immutability (chflags uchg + deny rules + orch harness lock/unlock/verify). MVH checklist produced. `orch harness init` automates Day 1 governance.
+
+**2026-03-11:** Measurement reframed as first-class paired surface. Instrumentation audit (52% field gaps, 0 gate events, 111s invisible dupdetect cost, 4.7% accretion coverage) proved enforcement without measurement is operationally broken. Model updated from "3-layer enforcement stack" to "paired enforcement+measurement surfaces." Invariant #7 added. New failure mode (#7: Enforcement Without Measurement) added. Phase 1-3 of measurement plan shipped: field enrichment, gate_decision events, duplication.detected events, pipeline timing, accretion coverage fix.
 
 **2026-03-08 (evening):** Compliance vs coordination failure mode distinction crystallized. daemon.go +892 was coordination failure (30 agents each correct, collectively incoherent), not compliance failure. Stronger models fix compliance but worsen coordination — faster agents accrete more confidently. Harness engineering reframed as permanent discipline (coordination infrastructure) rather than transitional (training wheels). Publication plan created with 4 phases: deepen model → cross-language evidence → publication draft → portable tooling.
 
