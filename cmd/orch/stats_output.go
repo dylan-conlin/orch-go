@@ -248,6 +248,38 @@ func outputStatsText(report *StatsReport) error {
 		}
 	}
 
+	// Gate decision stats (blocks and bypasses from spawn.gate_decision events)
+	if report.GateDecisionStats.TotalDecisions > 0 {
+		fmt.Println()
+		fmt.Println("🚦 GATE DECISIONS (blocks & bypasses)")
+		fmt.Printf("  Total: %d  |  Blocks: %d  |  Bypasses: %d\n",
+			report.GateDecisionStats.TotalDecisions,
+			report.GateDecisionStats.TotalBlocks,
+			report.GateDecisionStats.TotalBypasses)
+
+		if len(report.GateDecisionStats.ByGate) > 0 {
+			fmt.Println()
+			fmt.Printf("  %-25s %8s %8s\n", "Gate", "Blocks", "Bypasses")
+			fmt.Println("  " + strings.Repeat("-", 44))
+			for _, gate := range report.GateDecisionStats.ByGate {
+				fmt.Printf("  %-25s %8d %8d\n", gate.Gate, gate.Blocks, gate.Bypasses)
+			}
+		}
+
+		if statsVerbose && len(report.GateDecisionStats.TopBlockedSkills) > 0 {
+			fmt.Println()
+			fmt.Println("  Top Blocked Skills:")
+			limit := 5
+			if len(report.GateDecisionStats.TopBlockedSkills) < limit {
+				limit = len(report.GateDecisionStats.TopBlockedSkills)
+			}
+			for i := 0; i < limit; i++ {
+				entry := report.GateDecisionStats.TopBlockedSkills[i]
+				fmt.Printf("    %dx  [%s] %s\n", entry.Count, entry.Gate, entry.Skill)
+			}
+		}
+	}
+
 	// Override reasons (if any override events with reasons exist)
 	if report.OverrideStats.TotalOverrides > 0 {
 		fmt.Println()

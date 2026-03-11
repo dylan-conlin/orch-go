@@ -185,6 +185,12 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 	// key: "type|reason", value: count
 	overrideReasons := make(map[string]int)
 
+	// Track gate decision events (spawn.gate_decision)
+	// key: "gate_name|decision", value: count
+	gateDecisionCounts := make(map[string]int)
+	// key: "gate_name|skill", value: count (blocks only)
+	gateBlockedSkills := make(map[string]int)
+
 	// Count events within analysis window for EventsAnalyzed
 	eventsInWindow := 0
 
@@ -637,6 +643,23 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 					gatesAutoSkipped[gate]++
 				}
 			}
+
+		case "spawn.gate_decision":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
+			if data := event.Data; data != nil {
+				gateName, _ := data["gate_name"].(string)
+				decision, _ := data["decision"].(string)
+				skill, _ := data["skill"].(string)
+				if gateName != "" && decision != "" {
+					gateDecisionCounts[gateName+"|"+decision]++
+					if decision == "block" && skill != "" {
+						gateBlockedSkills[gateName+"|"+skill]++
+					}
+				}
+			}
 		}
 	}
 
@@ -895,6 +918,63 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 	// Sort skills by spawn count descending
 	sort.Slice(report.SkillStats, func(i, j int) bool {
 		return report.SkillStats[i].Spawns > report.SkillStats[j].Spawns
+	})
+
+	// Build gate decision stats from tracked gate_decision events
+	gateBlocks := make(map[string]int)
+	gateBypasses := make(map[string]int)
+	for key, count := range gateDecisionCounts {
+		parts := strings.SplitN(key, "|", 2)
+		gateName := parts[0]
+		decision := ""
+		if len(parts) > 1 {
+			decision = parts[1]
+		}
+		report.GateDecisionStats.TotalDecisions += count
+		if decision == "block" {
+			report.GateDecisionStats.TotalBlocks += count
+			gateBlocks[gateName] += count
+		} else if decision == "bypass" {
+			report.GateDecisionStats.TotalBypasses += count
+			gateBypasses[gateName] += count
+		}
+	}
+	// Build per-gate entries
+	allGateNames := make(map[string]bool)
+	for g := range gateBlocks {
+		allGateNames[g] = true
+	}
+	for g := range gateBypasses {
+		allGateNames[g] = true
+	}
+	for g := range allGateNames {
+		report.GateDecisionStats.ByGate = append(report.GateDecisionStats.ByGate, GateDecisionEntry{
+			Gate:     g,
+			Blocks:   gateBlocks[g],
+			Bypasses: gateBypasses[g],
+		})
+	}
+	sort.Slice(report.GateDecisionStats.ByGate, func(i, j int) bool {
+		totalI := report.GateDecisionStats.ByGate[i].Blocks + report.GateDecisionStats.ByGate[i].Bypasses
+		totalJ := report.GateDecisionStats.ByGate[j].Blocks + report.GateDecisionStats.ByGate[j].Bypasses
+		return totalI > totalJ
+	})
+	// Build top blocked skills
+	for key, count := range gateBlockedSkills {
+		parts := strings.SplitN(key, "|", 2)
+		gateName := parts[0]
+		skill := ""
+		if len(parts) > 1 {
+			skill = parts[1]
+		}
+		report.GateDecisionStats.TopBlockedSkills = append(report.GateDecisionStats.TopBlockedSkills, GateSkillEntry{
+			Gate:  gateName,
+			Skill: skill,
+			Count: count,
+		})
+	}
+	sort.Slice(report.GateDecisionStats.TopBlockedSkills, func(i, j int) bool {
+		return report.GateDecisionStats.TopBlockedSkills[i].Count > report.GateDecisionStats.TopBlockedSkills[j].Count
 	})
 
 	// Read coaching metrics

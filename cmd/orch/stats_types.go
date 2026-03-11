@@ -52,6 +52,7 @@ type StatsReport struct {
 	VerificationStats VerificationStats                 `json:"verification_stats,omitempty"`
 	SpawnGateStats    SpawnGateStats                   `json:"spawn_gate_stats,omitempty"`
 	OverrideStats     OverrideStats                    `json:"override_stats,omitempty"`
+	GateDecisionStats GateDecisionStats               `json:"gate_decision_stats,omitempty"`
 	CoachingStats     map[string]coaching.MetricSummary `json:"coaching_stats,omitempty"`
 }
 
@@ -207,4 +208,27 @@ type AccountSpawnBreakdown struct {
 	TotalSpawns int    `json:"total_spawns"`
 	Last7Days   int    `json:"last_7d"`
 	Last30Days  int    `json:"last_30d"`
+}
+
+// GateDecisionStats tracks spawn.gate_decision events aggregated by gate and decision.
+type GateDecisionStats struct {
+	TotalDecisions int                    `json:"total_decisions"`
+	TotalBlocks    int                    `json:"total_blocks"`
+	TotalBypasses  int                    `json:"total_bypasses"`
+	ByGate         []GateDecisionEntry    `json:"by_gate,omitempty"`
+	TopBlockedSkills []GateSkillEntry     `json:"top_blocked_skills,omitempty"`
+}
+
+// GateDecisionEntry tracks block/bypass counts for a single gate.
+type GateDecisionEntry struct {
+	Gate     string `json:"gate"`
+	Blocks   int    `json:"blocks"`
+	Bypasses int    `json:"bypasses"`
+}
+
+// GateSkillEntry tracks how often a skill was blocked by a specific gate.
+type GateSkillEntry struct {
+	Gate  string `json:"gate"`
+	Skill string `json:"skill"`
+	Count int    `json:"count"`
 }

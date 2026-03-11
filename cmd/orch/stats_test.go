@@ -1216,3 +1216,107 @@ func TestAggregateStatsSpawnGateMiscalibrationWarning(t *testing.T) {
 		t.Error("expected triage gate to be flagged as miscalibrated (>50% bypass rate)")
 	}
 }
+
+func TestGateDecisionStats(t *testing.T) {
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// Triage gate block
+		{Type: "spawn.gate_decision", Timestamp: now - 100, Data: map[string]interface{}{
+			"gate_name": "triage", "decision": "block", "skill": "feature-impl",
+		}},
+		// Triage gate bypass
+		{Type: "spawn.gate_decision", Timestamp: now - 90, Data: map[string]interface{}{
+			"gate_name": "triage", "decision": "bypass", "skill": "feature-impl",
+		}},
+		// Hotspot gate block
+		{Type: "spawn.gate_decision", Timestamp: now - 80, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "block", "skill": "feature-impl",
+			"target_files": []interface{}{"cmd/orch/spawn_cmd.go"},
+		}},
+		// Hotspot gate block (different skill)
+		{Type: "spawn.gate_decision", Timestamp: now - 70, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "block", "skill": "systematic-debugging",
+		}},
+		// Verification gate block
+		{Type: "spawn.gate_decision", Timestamp: now - 60, Data: map[string]interface{}{
+			"gate_name": "verification", "decision": "block", "skill": "feature-impl",
+		}},
+		// Accretion precommit block (no skill — precommit context)
+		{Type: "spawn.gate_decision", Timestamp: now - 50, Data: map[string]interface{}{
+			"gate_name": "accretion_precommit", "decision": "block",
+			"target_files": []interface{}{"cmd/orch/stats_cmd.go"},
+		}},
+		// Accretion precommit bypass
+		{Type: "spawn.gate_decision", Timestamp: now - 40, Data: map[string]interface{}{
+			"gate_name": "accretion_precommit", "decision": "bypass",
+		}},
+	}
+
+	report := aggregateStats(events, 7)
+
+	// Verify totals
+	if report.GateDecisionStats.TotalDecisions != 7 {
+		t.Errorf("TotalDecisions = %d, want 7", report.GateDecisionStats.TotalDecisions)
+	}
+	if report.GateDecisionStats.TotalBlocks != 5 {
+		t.Errorf("TotalBlocks = %d, want 5", report.GateDecisionStats.TotalBlocks)
+	}
+	if report.GateDecisionStats.TotalBypasses != 2 {
+		t.Errorf("TotalBypasses = %d, want 2", report.GateDecisionStats.TotalBypasses)
+	}
+
+	// Verify per-gate breakdown
+	if len(report.GateDecisionStats.ByGate) != 4 {
+		t.Fatalf("ByGate length = %d, want 4", len(report.GateDecisionStats.ByGate))
+	}
+
+	// Find hotspot entry (should have 2 blocks, 0 bypasses)
+	var hotspotEntry *GateDecisionEntry
+	for i := range report.GateDecisionStats.ByGate {
+		if report.GateDecisionStats.ByGate[i].Gate == "hotspot" {
+			hotspotEntry = &report.GateDecisionStats.ByGate[i]
+			break
+		}
+	}
+	if hotspotEntry == nil {
+		t.Fatal("hotspot gate entry not found in ByGate")
+	}
+	if hotspotEntry.Blocks != 2 {
+		t.Errorf("hotspot.Blocks = %d, want 2", hotspotEntry.Blocks)
+	}
+	if hotspotEntry.Bypasses != 0 {
+		t.Errorf("hotspot.Bypasses = %d, want 0", hotspotEntry.Bypasses)
+	}
+
+	// Verify top blocked skills (each gate|skill combo is a separate entry)
+	// feature-impl blocked by: triage(1), hotspot(1), verification(1) = 3 entries
+	// systematic-debugging blocked by: hotspot(1) = 1 entry
+	if len(report.GateDecisionStats.TopBlockedSkills) != 4 {
+		t.Errorf("TopBlockedSkills length = %d, want 4", len(report.GateDecisionStats.TopBlockedSkills))
+	}
+	// All entries should have count=1 (each gate|skill combo appears once)
+	for _, entry := range report.GateDecisionStats.TopBlockedSkills {
+		if entry.Count != 1 {
+			t.Errorf("TopBlockedSkills entry %s|%s count = %d, want 1", entry.Gate, entry.Skill, entry.Count)
+		}
+	}
+}
+
+func TestGateDecisionStats_Empty(t *testing.T) {
+	events := []StatsEvent{
+		// Only a spawn event, no gate decisions
+		{Type: "session.spawned", Timestamp: time.Now().Unix(), Data: map[string]interface{}{
+			"skill": "feature-impl",
+		}},
+	}
+
+	report := aggregateStats(events, 7)
+
+	if report.GateDecisionStats.TotalDecisions != 0 {
+		t.Errorf("TotalDecisions = %d, want 0", report.GateDecisionStats.TotalDecisions)
+	}
+	if len(report.GateDecisionStats.ByGate) != 0 {
+		t.Errorf("ByGate should be empty, got %d entries", len(report.GateDecisionStats.ByGate))
+	}
+}

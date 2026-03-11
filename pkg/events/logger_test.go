@@ -805,3 +805,122 @@ func TestLogArchitectEscalation_SkippedWithPriorRef(t *testing.T) {
 		t.Errorf("data.prior_architect_ref = %v, want %q", event.Data["prior_architect_ref"], "orch-go-1119")
 	}
 }
+
+func TestLogGateDecision_Block(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogGateDecision(GateDecisionData{
+		GateName:    "hotspot",
+		Decision:    "block",
+		Skill:       "feature-impl",
+		BeadsID:     "orch-go-abc1",
+		TargetFiles: []string{"cmd/orch/spawn_cmd.go", "cmd/orch/daemon.go"},
+		Reason:      "CRITICAL hotspot: cmd/orch/spawn_cmd.go exceeds 1500 lines",
+	})
+	if err != nil {
+		t.Fatalf("LogGateDecision() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	if event.Type != EventTypeSpawnGateDecision {
+		t.Errorf("event.Type = %q, want %q", event.Type, EventTypeSpawnGateDecision)
+	}
+	if event.Data["gate_name"] != "hotspot" {
+		t.Errorf("data.gate_name = %v, want %q", event.Data["gate_name"], "hotspot")
+	}
+	if event.Data["decision"] != "block" {
+		t.Errorf("data.decision = %v, want %q", event.Data["decision"], "block")
+	}
+	if event.Data["skill"] != "feature-impl" {
+		t.Errorf("data.skill = %v, want %q", event.Data["skill"], "feature-impl")
+	}
+	if event.SessionID != "orch-go-abc1" {
+		t.Errorf("event.SessionID = %q, want %q", event.SessionID, "orch-go-abc1")
+	}
+}
+
+func TestLogGateDecision_Bypass(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogGateDecision(GateDecisionData{
+		GateName: "triage",
+		Decision: "bypass",
+		Skill:    "investigation",
+		Reason:   "urgent one-off exploration",
+	})
+	if err != nil {
+		t.Fatalf("LogGateDecision() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	if event.Data["gate_name"] != "triage" {
+		t.Errorf("data.gate_name = %v, want %q", event.Data["gate_name"], "triage")
+	}
+	if event.Data["decision"] != "bypass" {
+		t.Errorf("data.decision = %v, want %q", event.Data["decision"], "bypass")
+	}
+	// beads_id should be omitted when empty
+	if _, ok := event.Data["beads_id"]; ok {
+		t.Error("data.beads_id should be omitted when empty")
+	}
+	// target_files should be omitted when empty
+	if _, ok := event.Data["target_files"]; ok {
+		t.Error("data.target_files should be omitted when empty")
+	}
+}
+
+func TestLogGateDecision_AccretionPrecommit(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogGateDecision(GateDecisionData{
+		GateName:    "accretion_precommit",
+		Decision:    "block",
+		TargetFiles: []string{"cmd/orch/stats_cmd.go"},
+		Reason:      "file exceeds accretion threshold",
+	})
+	if err != nil {
+		t.Fatalf("LogGateDecision() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	if event.Data["gate_name"] != "accretion_precommit" {
+		t.Errorf("data.gate_name = %v, want %q", event.Data["gate_name"], "accretion_precommit")
+	}
+	// skill should be omitted for precommit (no spawn context)
+	if _, ok := event.Data["skill"]; ok {
+		t.Error("data.skill should be omitted when empty")
+	}
+}

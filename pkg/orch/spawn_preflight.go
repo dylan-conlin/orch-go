@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
@@ -12,13 +13,19 @@ import (
 // RunPreFlightChecks performs all pre-spawn validation checks.
 func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, architectRef, bypassReason, overrideReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker) (*gates.UsageCheckResult, *gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
 	if err := gates.CheckTriageBypass(input.DaemonDriven, bypassTriage, input.SkillName, input.Task); err != nil {
+		logGateDecision("triage", "block", input.SkillName, "manual spawn without --bypass-triage", nil)
 		return nil, nil, nil, nil, err
 	}
 	if !input.DaemonDriven && bypassTriage {
 		gates.LogTriageBypass(input.SkillName, input.Task, overrideReason)
+		logGateDecision("triage", "bypass", input.SkillName, overrideReason, nil)
 	}
 	if err := gates.CheckVerificationGate(bypassVerification, bypassReason); err != nil {
+		logGateDecision("verification", "block", input.SkillName, "unverified Tier 1 work exists", nil)
 		return nil, nil, nil, nil, err
+	}
+	if bypassVerification {
+		logGateDecision("verification", "bypass", input.SkillName, bypassReason, nil)
 	}
 	if err := gates.CheckConcurrency(input.ServerURL, maxAgents, extractBeadsIDFunc); err != nil {
 		return nil, nil, nil, nil, err
@@ -38,7 +45,16 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 		var err error
 		hotspotResult, err = gates.CheckHotspot(preCheckDir, input.Task, input.SkillName, input.DaemonDriven, forceHotspot, architectRef, overrideReason, hotspotCheckFunc, architectVerifier, architectFinder)
 		if err != nil {
+			// Hotspot gate blocked the spawn
+			var targetFiles []string
+			if hotspotResult != nil {
+				targetFiles = hotspotResult.CriticalFiles
+			}
+			logGateDecision("hotspot", "block", input.SkillName, err.Error(), targetFiles)
 			return nil, nil, nil, nil, err
+		}
+		if forceHotspot && hotspotResult != nil && hotspotResult.HasCriticalHotspot {
+			logGateDecision("hotspot", "bypass", input.SkillName, overrideReason, hotspotResult.CriticalFiles)
 		}
 	}
 
@@ -168,4 +184,16 @@ func isArchitectIssue(issue *verify.Issue) bool {
 		return true
 	}
 	return false
+}
+
+// logGateDecision logs a spawn.gate_decision event for block or bypass decisions.
+func logGateDecision(gateName, decision, skill, reason string, targetFiles []string) {
+	logger := events.NewLogger(events.DefaultLogPath())
+	_ = logger.LogGateDecision(events.GateDecisionData{
+		GateName:    gateName,
+		Decision:    decision,
+		Skill:       skill,
+		TargetFiles: targetFiles,
+		Reason:      reason,
+	})
 }

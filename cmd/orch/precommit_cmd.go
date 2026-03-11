@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -27,6 +28,7 @@ Override: FORCE_ACCRETION=1 git commit ...`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if os.Getenv("FORCE_ACCRETION") == "1" {
 			fmt.Println("pre-commit: accretion gate bypassed (FORCE_ACCRETION=1)")
+			logPrecommitGateDecision("accretion_precommit", "bypass", "FORCE_ACCRETION=1", nil)
 			return
 		}
 
@@ -42,6 +44,12 @@ Override: FORCE_ACCRETION=1 git commit ...`,
 		}
 
 		if !result.Passed {
+			// Log gate block with target files
+			var targetFiles []string
+			for _, bf := range result.BlockedFiles {
+				targetFiles = append(targetFiles, bf.Path)
+			}
+			logPrecommitGateDecision("accretion_precommit", "block", "file exceeds accretion threshold", targetFiles)
 			fmt.Fprintln(os.Stderr, verify.FormatStagedAccretionError(result))
 			os.Exit(1)
 		}
@@ -167,4 +175,15 @@ func init() {
 	precommitCmd.AddCommand(precommitModelStubCmd)
 	precommitCmd.AddCommand(precommitDuplicationCmd)
 	rootCmd.AddCommand(precommitCmd)
+}
+
+// logPrecommitGateDecision logs a spawn.gate_decision event for pre-commit gate evaluations.
+func logPrecommitGateDecision(gateName, decision, reason string, targetFiles []string) {
+	logger := events.NewLogger(events.DefaultLogPath())
+	_ = logger.LogGateDecision(events.GateDecisionData{
+		GateName:    gateName,
+		Decision:    decision,
+		TargetFiles: targetFiles,
+		Reason:      reason,
+	})
 }

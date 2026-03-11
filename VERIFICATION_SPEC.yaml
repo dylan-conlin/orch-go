@@ -1,18 +1,26 @@
-task: "Add duplication.detected event to events.jsonl"
-beads_id: orch-go-x71hy
-
 verification:
   automated:
-    - command: "go test ./pkg/events/ -run TestLogDuplicationDetected -v"
-      expectation: "Both TestLogDuplicationDetected and TestLogDuplicationDetected_Minimal pass"
     - command: "go build ./cmd/orch/"
-      expectation: "Builds without errors"
+      expectation: "Compiles cleanly"
+    - command: "go test ./pkg/events/ -run TestLogGateDecision -v"
+      expectation: "3 tests pass: Block, Bypass, AccretionPrecommit"
+    - command: "go test ./cmd/orch/ -run TestGateDecision -v"
+      expectation: "2 tests pass: TestGateDecisionStats, TestGateDecisionStats_Empty"
+    - command: "go test ./pkg/events/ ./cmd/orch/ -count=1"
+      expectation: "All existing tests still pass (no regressions)"
 
   manual:
-    - step: "Run orch complete on an agent with Go code changes that have duplicate functions"
-      expectation: "events.jsonl contains duplication.detected event with file_pairs, similarity scores, function names"
+    - step: "Run orch spawn without --bypass-triage"
+      expectation: "Spawn blocked, events.jsonl gets spawn.gate_decision with gate_name=triage, decision=block"
+    - step: "Run orch stats after gate events exist"
+      expectation: "GATE DECISIONS section appears showing blocks/bypasses by gate"
 
-files_changed:
-  - pkg/events/logger.go  # Added EventTypeDuplicationDetected, DuplicationMatch, DuplicationDetectedData, LogDuplicationDetected
-  - pkg/events/logger_test.go  # Added TestLogDuplicationDetected and TestLogDuplicationDetected_Minimal
-  - cmd/orch/complete_pipeline.go  # Modified duplication advisory section to log event
+  files_changed:
+    - pkg/events/logger.go: "Added EventTypeSpawnGateDecision, GateDecisionData, LogGateDecision"
+    - pkg/events/logger_test.go: "Added 3 tests for LogGateDecision"
+    - pkg/orch/spawn_preflight.go: "Added logGateDecision calls at triage/verification/hotspot block/bypass points"
+    - cmd/orch/precommit_cmd.go: "Added logPrecommitGateDecision calls at accretion block/bypass points"
+    - cmd/orch/stats_types.go: "Added GateDecisionStats, GateDecisionEntry, GateSkillEntry types"
+    - cmd/orch/stats_cmd.go: "Added spawn.gate_decision aggregation in event processing loop"
+    - cmd/orch/stats_output.go: "Added GATE DECISIONS text output section"
+    - cmd/orch/stats_test.go: "Added TestGateDecisionStats and TestGateDecisionStats_Empty"
