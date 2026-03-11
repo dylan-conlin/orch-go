@@ -1,26 +1,18 @@
-task: "Implement publish-time adversarial gate (orch kb gate publish)"
-beads_id: orch-go-hkkid
-skill: feature-impl
-tier: light
-
-deliverables:
-  - path: pkg/kbgate/publish.go
-    description: "Core gate logic: contract validation, challenge lookup, lineage check, banned language"
-  - path: pkg/kbgate/publish_test.go
-    description: "Unit tests covering all gate verdicts (8 test functions)"
-  - path: cmd/orch/kb_gate.go
-    description: "Cobra command wiring for orch kb gate publish"
-  - path: cmd/orch/kb_gate_test.go
-    description: "CLI-level tests (3 test functions)"
+task: "Add duplication.detected event to events.jsonl"
+beads_id: orch-go-x71hy
 
 verification:
   automated:
-    - command: "go test ./pkg/kbgate/ -v -count=1"
-      expected: "PASS - 8 tests covering all verdict codes"
-    - command: "go test ./cmd/orch/ -run TestKBGatePublish -v -count=1"
-      expected: "PASS - 3 tests"
+    - command: "go test ./pkg/events/ -run TestLogDuplicationDetected -v"
+      expectation: "Both TestLogDuplicationDetected and TestLogDuplicationDetected_Minimal pass"
     - command: "go build ./cmd/orch/"
-      expected: "clean build"
+      expectation: "Builds without errors"
+
   manual:
-    - step: "orch kb gate publish <failing-file>"
-      evidence: "Exit 1 with structured verdicts for CHALLENGE_ARTIFACT_MISSING, ENDOGENOUS_EVIDENCE, BANNED_LANGUAGE"
+    - step: "Run orch complete on an agent with Go code changes that have duplicate functions"
+      expectation: "events.jsonl contains duplication.detected event with file_pairs, similarity scores, function names"
+
+files_changed:
+  - pkg/events/logger.go  # Added EventTypeDuplicationDetected, DuplicationMatch, DuplicationDetectedData, LogDuplicationDetected
+  - pkg/events/logger_test.go  # Added TestLogDuplicationDetected and TestLogDuplicationDetected_Minimal
+  - cmd/orch/complete_pipeline.go  # Modified duplication advisory section to log event

@@ -18,6 +18,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/checkpoint"
+	"github.com/dylan-conlin/orch-go/pkg/dupdetect"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/identity"
 	"github.com/dylan-conlin/orch-go/pkg/orch"
@@ -470,8 +471,30 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 			}
 		} else {
 			t0 := time.Now()
-			if advisory := RunDuplicationAdvisoryForCompletion(target.WorkProjectDir, target.WorkspacePath); advisory != "" {
-				fmt.Print(advisory)
+			pairs := findDuplicationInModifiedFiles(target.WorkProjectDir, target.WorkspacePath)
+			if len(pairs) > 0 {
+				fmt.Print(dupdetect.FormatDuplicationAdvisory(pairs))
+
+				// Log duplication.detected event for queryability
+				matches := make([]events.DuplicationMatch, len(pairs))
+				for i, p := range pairs {
+					matches[i] = events.DuplicationMatch{
+						FileA:      p.FuncA.File,
+						FuncA:      p.FuncA.Name,
+						FileB:      p.FuncB.File,
+						FuncB:      p.FuncB.Name,
+						Similarity: p.Similarity,
+					}
+				}
+				logger := events.NewDefaultLogger()
+				if err := logger.LogDuplicationDetected(events.DuplicationDetectedData{
+					BeadsID:   target.BeadsID,
+					Workspace: target.AgentName,
+					Matches:   matches,
+					Count:     len(pairs),
+				}); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log duplication event: %v\n", err)
+				}
 			}
 			step.DurationMs = int(time.Since(t0).Milliseconds())
 		}

@@ -575,6 +575,126 @@ func TestLogAgentCompleted_PipelineTiming(t *testing.T) {
 	}
 }
 
+// Test LogDuplicationDetected logs event with match details
+func TestLogDuplicationDetected(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogDuplicationDetected(DuplicationDetectedData{
+		BeadsID:   "orch-go-abc1",
+		Workspace: "og-feat-test",
+		Count:     2,
+		Matches: []DuplicationMatch{
+			{
+				FileA:      "cmd/orch/spawn.go",
+				FuncA:      "spawnAgent",
+				FileB:      "cmd/orch/work.go",
+				FuncB:      "workAgent",
+				Similarity: 0.92,
+			},
+			{
+				FileA:      "pkg/verify/check.go",
+				FuncA:      "validatePhase",
+				FileB:      "pkg/verify/update.go",
+				FuncB:      "checkPhase",
+				Similarity: 0.87,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("LogDuplicationDetected() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	raw := string(data)
+
+	// Verify event type
+	if !strings.Contains(raw, EventTypeDuplicationDetected) {
+		t.Error("Expected event type 'duplication.detected'")
+	}
+
+	// Verify match data
+	if !strings.Contains(raw, "spawnAgent") {
+		t.Error("Expected function name 'spawnAgent' in matches")
+	}
+	if !strings.Contains(raw, "workAgent") {
+		t.Error("Expected function name 'workAgent' in matches")
+	}
+	if !strings.Contains(raw, "0.92") {
+		t.Error("Expected similarity score 0.92 in matches")
+	}
+	if !strings.Contains(raw, "cmd/orch/spawn.go") {
+		t.Error("Expected file path in matches")
+	}
+
+	// Verify beads_id and workspace
+	if !strings.Contains(raw, "orch-go-abc1") {
+		t.Error("Expected beads_id in event")
+	}
+	if !strings.Contains(raw, "og-feat-test") {
+		t.Error("Expected workspace in event")
+	}
+
+	// Parse and verify structure
+	var event Event
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &event); err != nil {
+		t.Fatalf("Failed to parse event JSON: %v", err)
+	}
+	if event.Type != EventTypeDuplicationDetected {
+		t.Errorf("Event type = %v, want %v", event.Type, EventTypeDuplicationDetected)
+	}
+	count, ok := event.Data["count"].(float64)
+	if !ok || int(count) != 2 {
+		t.Errorf("Expected count=2, got %v", event.Data["count"])
+	}
+}
+
+// Test LogDuplicationDetected with minimal data (no beads/workspace)
+func TestLogDuplicationDetected_Minimal(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogDuplicationDetected(DuplicationDetectedData{
+		Count: 1,
+		Matches: []DuplicationMatch{
+			{
+				FileA:      "a.go",
+				FuncA:      "foo",
+				FileB:      "b.go",
+				FuncB:      "bar",
+				Similarity: 0.95,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("LogDuplicationDetected() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	raw := string(data)
+	// beads_id and workspace should be omitted
+	if strings.Contains(raw, "beads_id") {
+		t.Error("Expected beads_id to be omitted when empty")
+	}
+	if strings.Contains(raw, "workspace") {
+		t.Error("Expected workspace to be omitted when empty")
+	}
+	// matches should be present
+	if !strings.Contains(raw, "foo") {
+		t.Error("Expected function name in matches")
+	}
+}
+
 // Test LogAgentCompleted omits pipeline timing when empty
 func TestLogAgentCompleted_NoPipelineTiming(t *testing.T) {
 	tmpDir := t.TempDir()

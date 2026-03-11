@@ -51,6 +51,8 @@ const (
 	EventTypeHotspotBypassed = "spawn.hotspot_bypassed"
 	// EventTypeReviewTierEscalated indicates a review tier was automatically escalated based on completion signals.
 	EventTypeReviewTierEscalated = "review_tier.escalated"
+	// EventTypeDuplicationDetected indicates the duplication detector found similar function pairs.
+	EventTypeDuplicationDetected = "duplication.detected"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -543,6 +545,44 @@ func (l *Logger) LogReviewTierEscalated(data ReviewTierEscalatedData) error {
 
 	return l.Log(Event{
 		Type:      EventTypeReviewTierEscalated,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// DuplicationMatch represents a single duplicate function pair for event logging.
+type DuplicationMatch struct {
+	FileA       string  `json:"file_a"`
+	FuncA       string  `json:"func_a"`
+	FileB       string  `json:"file_b"`
+	FuncB       string  `json:"func_b"`
+	Similarity  float64 `json:"similarity"`
+}
+
+// DuplicationDetectedData contains the data for a duplication.detected event.
+type DuplicationDetectedData struct {
+	BeadsID   string               `json:"beads_id,omitempty"`
+	Workspace string               `json:"workspace,omitempty"`
+	Matches   []DuplicationMatch   `json:"matches"`
+	Count     int                  `json:"count"`
+}
+
+// LogDuplicationDetected logs a duplication detection event with match details.
+func (l *Logger) LogDuplicationDetected(data DuplicationDetectedData) error {
+	eventData := map[string]interface{}{
+		"matches": data.Matches,
+		"count":   data.Count,
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if data.Workspace != "" {
+		eventData["workspace"] = data.Workspace
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeDuplicationDetected,
 		SessionID: data.BeadsID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,
