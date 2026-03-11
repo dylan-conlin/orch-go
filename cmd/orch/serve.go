@@ -432,6 +432,9 @@ func runServe(portNum int) error {
 	// POST /api/attention/verify-failed/reset-status - reset issue status to open
 	mux.HandleFunc("/api/attention/verify-failed/reset-status", corsHandler(handleVerifyFailedResetStatus))
 
+	// GET /api/harness - harness pipeline visualization data (gate deflection, measurement status, falsification verdicts)
+	mux.HandleFunc("/api/harness", corsHandler(handleHarnessReport))
+
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

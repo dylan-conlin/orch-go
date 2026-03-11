@@ -1,26 +1,32 @@
-task: Add accretion.snapshot periodic event for velocity tracking
-beads_id: orch-go-iq657
+task: Add dashboard harness page with pipeline visualization
+beads_id: orch-go-nwwj1
 skill: feature-impl
 mode: tdd
 validation: tests
 
 deliverables:
-  - path: pkg/events/logger.go
-    description: EventTypeAccretionSnapshot constant, DirectorySnapshot/AccretionSnapshotData types, LogAccretionSnapshot method
-  - path: cmd/orch/harness_snapshot.go
-    description: "orch harness snapshot" command, collectDirectorySnapshot, collectAllSnapshots, shouldEmitSnapshot, emitDaemonSnapshot
-  - path: cmd/orch/harness_snapshot_test.go
-    description: 6 tests covering directory snapshots, code file filtering, subdirs, all-snapshots collection, emission threshold, event logging
-  - path: cmd/orch/daemon.go
-    description: Call emitDaemonSnapshot at daemon startup
+  - path: cmd/orch/serve_harness.go
+    description: GET /api/harness endpoint — pipeline stages, gate deflection, accretion velocity, falsification verdicts, measurement coverage
+  - path: cmd/orch/serve_harness_test.go
+    description: 5 tests covering method guard, empty events, event aggregation, verdict logic, status helper
+  - path: web/src/lib/stores/harness.ts
+    description: Svelte store with types, 60s polling, display helpers
+  - path: web/src/routes/harness/+page.svelte
+    description: Pipeline visualization page — 4 stage columns, component cards, verdict cards, coverage metrics
+  - path: web/src/routes/+layout.svelte
+    description: Added Harness nav link to header
+  - path: cmd/orch/serve.go
+    description: Registered /api/harness endpoint
 
 tests:
-  - command: "go test ./cmd/orch/ -run 'TestCollectDirectory|TestCollectAll|TestShouldEmit|TestLogAccretion' -count=1 -v"
-    result: "6 tests pass"
+  - command: "go test ./cmd/orch/ -run 'Harness|BuildHarness|BuildVerdicts|StatusFromCount' -count=1"
+    result: "19 tests pass (including pre-existing integration tests)"
   - command: "go build ./cmd/orch/"
+    result: "Build succeeds"
+  - command: "cd web && bun run build"
     result: "Build succeeds"
 
 evidence:
-  - "go test — 6/6 PASS (TestCollectDirectorySnapshot, TestCollectDirectorySnapshotSkipsNonCode, TestCollectDirectorySnapshotSubdirs, TestCollectAllSnapshots, TestShouldEmitSnapshot, TestLogAccretionSnapshot)"
+  - "go test — 19/19 PASS"
   - "go build ./cmd/orch/ — ok"
-  - "orch harness snapshot --baseline — emitted baseline: 57 dirs, 876 files, 257740 lines, 41 >800, 10 >1500"
+  - "bun run build — built to web/build/"

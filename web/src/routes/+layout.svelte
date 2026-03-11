@@ -73,6 +73,11 @@
 							class="px-1.5 sm:px-2 py-1 text-xs font-medium transition-colors {$page.url.pathname === '/knowledge-tree' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}"
 							aria-current={$page.url.pathname === '/knowledge-tree' ? 'page' : undefined}
 						><span class="sm:hidden">KB</span><span class="hidden sm:inline">Knowledge Tree</span></a>
+						<a
+							href="/harness"
+							class="px-1.5 sm:px-2 py-1 text-xs font-medium transition-colors {$page.url.pathname === '/harness' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+							aria-current={$page.url.pathname === '/harness' ? 'page' : undefined}
+						><span class="sm:hidden">H</span><span class="hidden sm:inline">Harness</span></a>
 					</nav>
 				</div>
 				<div class="flex flex-1 items-center justify-end gap-1.5 sm:gap-3 min-w-0">

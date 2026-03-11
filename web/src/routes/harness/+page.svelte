@@ -1,0 +1,254 @@
+<script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
+	import {
+		harness,
+		stageLabel,
+		componentLabel,
+		typeColor,
+		measurementIcon,
+		measurementColor,
+		verdictIcon,
+		verdictColor,
+		verdictLabel,
+		formatRate,
+		type PipelineComponent
+	} from '$lib/stores/harness';
+
+	let pollInterval: ReturnType<typeof setInterval> | null = null;
+	let expandedCard: string | null = null;
+	let days = 7;
+
+	function toggleCard(name: string) {
+		expandedCard = expandedCard === name ? null : name;
+	}
+
+	function rateBar(rate: number | undefined | null): string {
+		if (rate === undefined || rate === null) return 'w-0';
+		const pct = Math.min(rate * 100, 100);
+		if (pct < 5) return 'w-1';
+		if (pct < 15) return 'w-3';
+		if (pct < 30) return 'w-6';
+		if (pct < 50) return 'w-10';
+		if (pct < 75) return 'w-16';
+		return 'w-20';
+	}
+
+	function coverageColor(pct: number): string {
+		if (pct >= 95) return 'text-green-400';
+		if (pct >= 80) return 'text-yellow-400';
+		return 'text-red-400';
+	}
+
+	onMount(async () => {
+		await harness.fetch(days);
+		pollInterval = setInterval(() => harness.fetch(days), 60_000);
+	});
+
+	onDestroy(() => {
+		if (pollInterval) clearInterval(pollInterval);
+	});
+</script>
+
+<div class="space-y-4">
+	<!-- Header -->
+	<div class="flex items-center justify-between">
+		<div>
+			<h1 class="text-lg font-semibold">Harness Pipeline</h1>
+			<p class="text-xs text-muted-foreground">
+				{$harness.analysis_period} · {$harness.total_spawns} spawns
+			</p>
+		</div>
+		<div class="flex items-center gap-2">
+			<select
+				class="text-xs bg-background border rounded px-2 py-1"
+				bind:value={days}
+				on:change={() => harness.fetch(days)}
+			>
+				<option value={7}>7 days</option>
+				<option value={14}>14 days</option>
+				<option value={30}>30 days</option>
+			</select>
+			<div class="flex items-center gap-3 text-xs text-muted-foreground">
+				<span class="inline-flex items-center gap-1"><span class="text-green-400">●</span> flowing</span>
+				<span class="inline-flex items-center gap-1"><span class="text-yellow-400">◐</span> proxy</span>
+				<span class="inline-flex items-center gap-1"><span class="text-muted-foreground">○</span> unmeasured</span>
+			</div>
+		</div>
+	</div>
+
+	<!-- Pipeline Visualization -->
+	<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+		{#each $harness.pipeline as stage}
+			<div class="space-y-2">
+				<div class="flex items-center gap-2">
+					<h2 class="text-sm font-medium">{stageLabel(stage.stage)}</h2>
+					<span class="text-xs text-muted-foreground">
+						{stage.components.length}
+					</span>
+				</div>
+				<div class="space-y-1.5">
+					{#each stage.components as comp}
+						<button
+							class="w-full text-left rounded-md border p-2 transition-colors hover:bg-accent/50 {typeColor(comp.type)} {expandedCard === comp.name ? 'ring-1 ring-foreground/20' : ''}"
+							on:click={() => toggleCard(comp.name)}
+						>
+							<div class="flex items-center justify-between">
+								<div class="flex items-center gap-1.5">
+									<span class="{measurementColor(comp.measurement_status)} text-xs">{measurementIcon(comp.measurement_status)}</span>
+									<span class="text-xs font-medium">{componentLabel(comp.name)}</span>
+								</div>
+								<span class="text-[10px] uppercase opacity-60">{comp.type}</span>
+							</div>
+
+							<!-- Rate bar -->
+							{#if comp.fire_rate !== undefined && comp.fire_rate !== null}
+								<div class="mt-1.5 flex items-center gap-2">
+									<div class="flex-1 h-1 rounded-full bg-foreground/10 overflow-hidden">
+										<div class="h-full rounded-full bg-current {rateBar(comp.fire_rate)}" style="width: {Math.min((comp.fire_rate || 0) * 100, 100)}%"></div>
+									</div>
+									<span class="text-[10px] tabular-nums">{formatRate(comp.fire_rate)}</span>
+								</div>
+							{/if}
+
+							<!-- Expanded details -->
+							{#if expandedCard === comp.name}
+								<div class="mt-2 pt-2 border-t border-current/20 space-y-1 text-[11px]">
+									{#if comp.fire_rate !== undefined}
+										<div class="flex justify-between">
+											<span class="opacity-70">Fire rate</span>
+											<span class="tabular-nums">{formatRate(comp.fire_rate)}</span>
+										</div>
+									{/if}
+									{#if comp.block_rate !== undefined}
+										<div class="flex justify-between">
+											<span class="opacity-70">Block rate</span>
+											<span class="tabular-nums">{formatRate(comp.block_rate)}</span>
+										</div>
+									{/if}
+									{#if comp.bypass_rate !== undefined}
+										<div class="flex justify-between">
+											<span class="opacity-70">Bypass rate</span>
+											<span class="tabular-nums">{formatRate(comp.bypass_rate)}</span>
+										</div>
+									{/if}
+									{#if comp.bypassed}
+										<div class="flex justify-between">
+											<span class="opacity-70">Bypassed</span>
+											<span class="tabular-nums">{comp.bypassed}</span>
+										</div>
+									{/if}
+									{#if comp.blocked}
+										<div class="flex justify-between">
+											<span class="opacity-70">Blocked</span>
+											<span class="tabular-nums">{comp.blocked}</span>
+										</div>
+									{/if}
+									{#if comp.last_fired}
+										<div class="flex justify-between">
+											<span class="opacity-70">Last fired</span>
+											<span class="tabular-nums">{new Date(comp.last_fired).toLocaleDateString()}</span>
+										</div>
+									{/if}
+									{#if comp.proxy_metric}
+										<div class="pt-1 opacity-70 italic">{comp.proxy_metric}</div>
+									{/if}
+								</div>
+							{/if}
+						</button>
+					{/each}
+				</div>
+			</div>
+		{/each}
+	</div>
+
+	<!-- Bottom sections: Verdicts + Coverage -->
+	<div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+		<!-- Falsification Verdicts -->
+		<div class="space-y-2">
+			<h2 class="text-sm font-medium">Falsification Verdicts</h2>
+			<div class="space-y-1.5">
+				{#each Object.entries($harness.falsification_verdicts) as [key, verdict]}
+					<div class="rounded-md border p-2 {verdictColor(verdict.status)}">
+						<div class="flex items-center justify-between">
+							<div class="flex items-center gap-1.5">
+								<span class="text-sm">{verdictIcon(verdict.status)}</span>
+								<span class="text-xs font-medium">{verdict.criterion}</span>
+							</div>
+							<span class="text-[10px] font-medium uppercase">{verdictLabel(verdict.status)}</span>
+						</div>
+						<p class="mt-1 text-[11px] opacity-70">{verdict.evidence}</p>
+						<p class="mt-0.5 text-[10px] opacity-50">Threshold: {verdict.threshold}</p>
+					</div>
+				{/each}
+			</div>
+		</div>
+
+		<!-- Measurement Coverage + Completion Coverage -->
+		<div class="space-y-3">
+			<!-- Measurement Coverage -->
+			<div class="space-y-2">
+				<h2 class="text-sm font-medium">Measurement Coverage</h2>
+				<div class="rounded-md border p-3 bg-card">
+					<div class="grid grid-cols-4 gap-2 text-center">
+						<div>
+							<div class="text-lg font-semibold">{$harness.measurement_coverage.total_components}</div>
+							<div class="text-[10px] text-muted-foreground">Total</div>
+						</div>
+						<div>
+							<div class="text-lg font-semibold text-green-400">{$harness.measurement_coverage.with_measurement}</div>
+							<div class="text-[10px] text-muted-foreground">Measured</div>
+						</div>
+						<div>
+							<div class="text-lg font-semibold text-yellow-400">{$harness.measurement_coverage.proxy_only}</div>
+							<div class="text-[10px] text-muted-foreground">Proxy</div>
+						</div>
+						<div>
+							<div class="text-lg font-semibold text-muted-foreground">{$harness.measurement_coverage.unmeasured}</div>
+							<div class="text-[10px] text-muted-foreground">Unmeasured</div>
+						</div>
+					</div>
+					<!-- Coverage bar -->
+					<div class="mt-2 h-2 rounded-full bg-foreground/10 overflow-hidden flex">
+						{#if $harness.measurement_coverage.total_components > 0}
+							<div
+								class="h-full bg-green-500"
+								style="width: {($harness.measurement_coverage.with_measurement / $harness.measurement_coverage.total_components) * 100}%"
+							></div>
+							<div
+								class="h-full bg-yellow-500"
+								style="width: {($harness.measurement_coverage.proxy_only / $harness.measurement_coverage.total_components) * 100}%"
+							></div>
+						{/if}
+					</div>
+				</div>
+			</div>
+
+			<!-- Completion Coverage -->
+			<div class="space-y-2">
+				<h2 class="text-sm font-medium">Completion Coverage</h2>
+				<div class="rounded-md border p-3 bg-card">
+					<div class="flex items-center justify-between mb-2">
+						<span class="text-xs text-muted-foreground">{$harness.completion_coverage.total_completions} completions</span>
+						<span class="text-sm font-semibold {coverageColor($harness.completion_coverage.coverage_pct)}">
+							{$harness.completion_coverage.coverage_pct.toFixed(1)}%
+						</span>
+					</div>
+					<div class="space-y-1 text-[11px]">
+						<div class="flex justify-between">
+							<span class="text-muted-foreground">With skill</span>
+							<span class="tabular-nums">{$harness.completion_coverage.with_skill}/{$harness.completion_coverage.total_completions}</span>
+						</div>
+						<div class="flex justify-between">
+							<span class="text-muted-foreground">With outcome</span>
+							<span class="tabular-nums">{$harness.completion_coverage.with_outcome}/{$harness.completion_coverage.total_completions}</span>
+						</div>
+						<div class="flex justify-between">
+							<span class="text-muted-foreground">With duration</span>
+							<span class="tabular-nums">{$harness.completion_coverage.with_duration}/{$harness.completion_coverage.total_completions}</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>

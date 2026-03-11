@@ -4,20 +4,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 )
 
 // HarnessResponse is the top-level response for GET /api/harness.
 type HarnessResponse struct {
-	GeneratedAt    string              `json:"generated_at"`
-	AnalysisPeriod string             `json:"analysis_period"`
-	TotalSpawns    int                `json:"total_spawns"`
-	Pipeline       []PipelineStage    `json:"pipeline"`
-	AccretionVelocity *AccretionVelocity `json:"accretion_velocity,omitempty"`
-	CompletionCoverage CompletionCoverage `json:"completion_coverage"`
+	GeneratedAt           string                          `json:"generated_at"`
+	AnalysisPeriod        string                          `json:"analysis_period"`
+	TotalSpawns           int                             `json:"total_spawns"`
+	Pipeline              []PipelineStage                 `json:"pipeline"`
+	AccretionVelocity     *AccretionVelocity              `json:"accretion_velocity,omitempty"`
+	CompletionCoverage    CompletionCoverage              `json:"completion_coverage"`
 	FalsificationVerdicts map[string]FalsificationVerdict `json:"falsification_verdicts"`
-	MeasurementCoverage MeasurementCoverage `json:"measurement_coverage"`
+	MeasurementCoverage   MeasurementCoverage             `json:"measurement_coverage"`
 }
 
 // PipelineStage represents one stage in the harness pipeline.
@@ -29,7 +30,7 @@ type PipelineStage struct {
 // PipelineComponent represents a single harness component within a stage.
 type PipelineComponent struct {
 	Name              string   `json:"name"`
-	Type              string   `json:"type"` // "hard", "soft", "human"
+	Type              string   `json:"type"`               // "hard", "soft", "human"
 	MeasurementStatus string   `json:"measurement_status"` // "flowing", "proxy_only", "unmeasured"
 	FireRate          *float64 `json:"fire_rate,omitempty"`
 	BlockRate         *float64 `json:"block_rate,omitempty"`
@@ -75,6 +76,13 @@ type MeasurementCoverage struct {
 	Unmeasured      int `json:"unmeasured"`
 }
 
+// accretionSnapshot is an internal type for tracking code size over time.
+type accretionSnapshot struct {
+	Timestamp  int64
+	TotalLines int
+	Directory  string
+}
+
 // handleHarnessReport serves GET /api/harness with harness pipeline data.
 func handleHarnessReport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -94,7 +102,6 @@ func handleHarnessReport(w http.ResponseWriter, r *http.Request) {
 	eventsPath := getEventsPath()
 	events, err := parseEvents(eventsPath)
 	if err != nil {
-		// Return empty report if no events
 		resp := buildEmptyHarnessResponse(days)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -111,9 +118,9 @@ func handleHarnessReport(w http.ResponseWriter, r *http.Request) {
 
 func buildEmptyHarnessResponse(days int) *HarnessResponse {
 	return &HarnessResponse{
-		GeneratedAt:    time.Now().Format(time.RFC3339),
-		AnalysisPeriod: fmt.Sprintf("Last %d days", days),
-		Pipeline:       buildDefaultPipeline(0, nil),
+		GeneratedAt:           time.Now().Format(time.RFC3339),
+		AnalysisPeriod:        fmt.Sprintf("Last %d days", days),
+		Pipeline:              buildDefaultPipeline(0, nil),
 		FalsificationVerdicts: buildDefaultVerdicts(),
 		MeasurementCoverage: MeasurementCoverage{
 			TotalComponents: 13,
@@ -128,51 +135,42 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 	now := time.Now().Unix()
 	cutoff := now - int64(days*86400)
 
-	// Counters for gate activity
 	var totalSpawns int
 	triageBypassed := 0
 	hotspotBypassed := 0
 	verificationBypassed := 0
 
-	// Gate decision events (new system)
-	gateDecisions := make(map[string]map[string]int) // gate -> decision -> count
-	lastGateFired := make(map[string]int64)           // gate -> timestamp
+	gateDecisions := make(map[string]map[string]int)
+	lastGateFired := make(map[string]int64)
 
-	// Completion tracking
 	var totalCompletions int
 	var withSkill, withOutcome, withDuration int
 
-	// Accretion snapshot tracking (read all snapshots, not just in-window)
-	type accretionSnapshot struct {
-		Timestamp  int64
-		TotalLines int
-		Directory  string
-	}
+	// Accretion snapshots collected from ALL events (not just in-window)
 	var snapshots []accretionSnapshot
 
 	for _, event := range events {
-		// Accretion snapshots are read regardless of cutoff (need baseline history)
-		if event.Type == "accretion.snapshot" {
-			if event.Data != nil {
-				totalLines := 0
-				dir := ""
-				if tl, ok := event.Data["total_lines"].(float64); ok {
-					totalLines = int(tl)
-				}
-				if d, ok := event.Data["directory"].(string); ok {
-					dir = d
-				}
-				if totalLines > 0 {
-					snapshots = append(snapshots, accretionSnapshot{
-						Timestamp:  event.Timestamp,
-						TotalLines: totalLines,
-						Directory:  dir,
-					})
-				}
+		// Accretion snapshots need full history for baseline comparison
+		if event.Type == "accretion.snapshot" && event.Data != nil {
+			totalLines := 0
+			dir := ""
+			if tl, ok := event.Data["total_lines"].(float64); ok {
+				totalLines = int(tl)
+			}
+			if d, ok := event.Data["directory"].(string); ok {
+				dir = d
+			}
+			if totalLines > 0 {
+				snapshots = append(snapshots, accretionSnapshot{
+					Timestamp:  event.Timestamp,
+					TotalLines: totalLines,
+					Directory:  dir,
+				})
 			}
 			continue
 		}
 
+		// Other events filtered by time window
 		if event.Timestamp < cutoff {
 			continue
 		}
@@ -217,16 +215,19 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 				if _, ok := event.Data["duration_seconds"]; ok {
 					withDuration++
 				} else if _, ok := event.Data["duration_minutes"]; ok {
-					withDuration++ // legacy field name
+					withDuration++
 				}
 			}
 		}
 	}
 
-	// TODO: compute AccretionVelocity from snapshots once accretion.snapshot events are emitted
-	_ = snapshots
-
 	pipeline := buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, verificationBypassed, gateDecisions, lastGateFired, totalCompletions)
+
+	// Compute accretion velocity from snapshots
+	var accVelocity *AccretionVelocity
+	if len(snapshots) >= 2 {
+		accVelocity = computeAccretionVelocity(snapshots)
+	}
 
 	// Completion coverage
 	coveragePct := 0.0
@@ -241,10 +242,8 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 		coveragePct = float64(minField) / float64(totalCompletions) * 100
 	}
 
-	// Falsification verdicts
 	verdicts := buildVerdicts(totalSpawns, triageBypassed, hotspotBypassed, verificationBypassed, gateDecisions)
 
-	// Measurement coverage
 	measured := 0
 	for _, stage := range pipeline {
 		for _, comp := range stage.Components {
@@ -254,61 +253,12 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 		}
 	}
 
-	// Compute accretion velocity from snapshots
-	var accretionVelocity *AccretionVelocity
-	if len(snapshots) >= 2 {
-		// Sort by timestamp
-		for i := 0; i < len(snapshots)-1; i++ {
-			for j := i + 1; j < len(snapshots); j++ {
-				if snapshots[j].Timestamp < snapshots[i].Timestamp {
-					snapshots[i], snapshots[j] = snapshots[j], snapshots[i]
-				}
-			}
-		}
-
-		// Baseline = first interval velocity
-		baselineDelta := snapshots[1].TotalLines - snapshots[0].TotalLines
-		baselineDays := float64(snapshots[1].Timestamp-snapshots[0].Timestamp) / 86400
-		baselineWeekly := 0
-		if baselineDays > 0 {
-			baselineWeekly = int(float64(baselineDelta) / baselineDays * 7)
-		}
-
-		// Current = last interval velocity
-		last := len(snapshots) - 1
-		currentDelta := snapshots[last].TotalLines - snapshots[last-1].TotalLines
-		currentDays := float64(snapshots[last].Timestamp-snapshots[last-1].Timestamp) / 86400
-		currentWeekly := 0
-		if currentDays > 0 {
-			currentWeekly = int(float64(currentDelta) / currentDays * 7)
-		}
-
-		changePct := 0.0
-		if baselineWeekly > 0 {
-			changePct = (float64(currentWeekly) - float64(baselineWeekly)) / float64(baselineWeekly) * 100
-		}
-
-		trend := "stable"
-		if changePct < -10 {
-			trend = "declining"
-		} else if changePct > 10 {
-			trend = "increasing"
-		}
-
-		accretionVelocity = &AccretionVelocity{
-			CurrentWeeklyLines:  currentWeekly,
-			BaselineWeeklyLines: baselineWeekly,
-			VelocityChangePct:   changePct,
-			Trend:               trend,
-		}
-	}
-
 	return &HarnessResponse{
 		GeneratedAt:       time.Now().Format(time.RFC3339),
 		AnalysisPeriod:    fmt.Sprintf("Last %d days", days),
 		TotalSpawns:       totalSpawns,
 		Pipeline:          pipeline,
-		AccretionVelocity: accretionVelocity,
+		AccretionVelocity: accVelocity,
 		CompletionCoverage: CompletionCoverage{
 			TotalCompletions: totalCompletions,
 			WithSkill:        withSkill,
@@ -326,12 +276,58 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 	}
 }
 
+// computeAccretionVelocity calculates weekly velocity from snapshots.
+func computeAccretionVelocity(snapshots []accretionSnapshot) *AccretionVelocity {
+	sort.Slice(snapshots, func(i, j int) bool {
+		return snapshots[i].Timestamp < snapshots[j].Timestamp
+	})
+
+	n := len(snapshots)
+	if n < 2 {
+		return nil
+	}
+
+	// Baseline: first two snapshots
+	baselineDelta := snapshots[1].TotalLines - snapshots[0].TotalLines
+	baselineDays := float64(snapshots[1].Timestamp-snapshots[0].Timestamp) / 86400.0
+	baselineWeekly := 0
+	if baselineDays > 0 {
+		baselineWeekly = int(float64(baselineDelta) / baselineDays * 7)
+	}
+
+	// Current: last two snapshots
+	currentDelta := snapshots[n-1].TotalLines - snapshots[n-2].TotalLines
+	currentDays := float64(snapshots[n-1].Timestamp-snapshots[n-2].Timestamp) / 86400.0
+	currentWeekly := 0
+	if currentDays > 0 {
+		currentWeekly = int(float64(currentDelta) / currentDays * 7)
+	}
+
+	changePct := 0.0
+	if baselineWeekly > 0 {
+		changePct = (float64(currentWeekly) - float64(baselineWeekly)) / float64(baselineWeekly) * 100
+	}
+
+	trend := "stable"
+	if changePct < -20 {
+		trend = "declining"
+	} else if changePct > 20 {
+		trend = "increasing"
+	}
+
+	return &AccretionVelocity{
+		CurrentWeeklyLines:  currentWeekly,
+		BaselineWeeklyLines: baselineWeekly,
+		VelocityChangePct:   changePct,
+		Trend:               trend,
+	}
+}
+
 func buildDefaultPipeline(totalSpawns int, lastGateFired map[string]int64) []PipelineStage {
 	return buildPipeline(totalSpawns, 0, 0, 0, nil, lastGateFired, 0)
 }
 
 func buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, verificationBypassed int, gateDecisions map[string]map[string]int, lastGateFired map[string]int64, totalCompletions int) []PipelineStage {
-	// Helper to compute rates
 	ptrFloat := func(f float64) *float64 { return &f }
 	safeRate := func(count, total int) *float64 {
 		if total == 0 {
@@ -339,7 +335,6 @@ func buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, verificationByp
 		}
 		return ptrFloat(float64(count) / float64(total))
 	}
-
 	formatTimestamp := func(ts int64) string {
 		if ts == 0 {
 			return ""
@@ -347,7 +342,6 @@ func buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, verificationByp
 		return time.Unix(ts, 0).Format(time.RFC3339)
 	}
 
-	// Combine legacy + new gate decision counts
 	triageTotal := triageBypassed
 	hotspotTotal := hotspotBypassed
 	verificationTotal := verificationBypassed
@@ -482,7 +476,6 @@ func buildVerdicts(totalSpawns, triageBypassed, hotspotBypassed, verificationByp
 		}
 	}
 
-	// Gates are irrelevant: falsified if fire rate > 5%
 	gatesIrrelevantStatus := "insufficient_data"
 	gatesIrrelevantEvidence := "No spawn data available."
 	if totalSpawns > 0 {
