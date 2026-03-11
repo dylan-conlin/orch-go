@@ -36,9 +36,9 @@ func TestExploreContextGeneration(t *testing.T) {
 		{"breadth", "Breadth:** 3", true},
 		{"decompose step", "DECOMPOSE", true},
 		{"spawn command", "orch spawn --bypass-triage --no-track", true},
-		{"judge criteria", "Grounding", true},
-		{"judge criteria consistency", "Consistency", true},
-		{"judge criteria coverage", "Coverage", true},
+		{"judge skill", "exploration-judge", true},
+		{"judge verdict", "judge-verdict.yaml", true},
+		{"judge verdicts", "accepted/contested/rejected", true},
 		{"synthesis output", "Synthesis Output", true},
 		{"cost bounding", "Cost Bounding", true},
 	}

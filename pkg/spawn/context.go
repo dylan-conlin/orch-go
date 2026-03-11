@@ -345,8 +345,8 @@ Simply follow the guidance provided below.
 2. **SPAWN** workers for each subproblem using ` + "`orch spawn --bypass-triage --no-track --reason \"exploration worker\" {{.ExploreParentSkill}} \"subproblem\"`" + `
 3. **WAIT** for all workers using ` + "`orch wait <beads-id> --timeout 30m`" + ` (or check tmux windows)
 4. **COLLECT** findings from each worker's investigation/probe files
-5. **JUDGE** findings for grounding, consistency, coverage, relevance, actionability
-6. **SYNTHESIZE** a unified analysis that composes understanding (not concatenates findings)
+5. **JUDGE** — spawn a judge agent: ` + "`orch spawn --bypass-triage --no-track --reason \"exploration judge\" exploration-judge \"Evaluate sub-findings for: [question]\"`" + `
+6. **SYNTHESIZE** using judge verdicts to weight findings (not concatenate)
 
 **Decomposition Rules:**
 - Each subproblem MUST be independently answerable (no cross-dependencies)
@@ -354,19 +354,19 @@ Simply follow the guidance provided below.
 - Include the original question context in each worker's task
 - Workers use the ` + "`{{.ExploreParentSkill}}`" + ` skill (they get the domain expertise)
 
-**Judge Criteria (evaluate each sub-finding):**
-| Dimension | Question |
-|-----------|----------|
-| Grounding | Does this claim cite specific code/docs/evidence? |
-| Consistency | Do sub-findings contradict each other? |
-| Coverage | Does the set cover the original question? |
-| Relevance | Does this finding address its subproblem? |
-| Actionability | Could someone act on this finding? |
+**Judge Phase:**
+Spawn a dedicated judge agent using the ` + "`exploration-judge`" + ` skill. Pass it:
+- The original question
+- Your decomposition plan
+- All worker sub-findings (full text or file references)
+The judge produces a ` + "`judge-verdict.yaml`" + ` with per-finding verdicts (accepted/contested/rejected),
+contested findings analysis, and coverage gaps. Wait for judge completion before synthesizing.
 
 **Synthesis Output:**
 Write your synthesis to the investigation file (.kb/investigations/) or SYNTHESIS.md.
+- **Weight by verdict:** accepted findings anchor synthesis, contested get dedicated discussion, rejected are noted but downweighted
 - Contested findings (where workers disagree) are the most valuable — highlight them
-- Gaps (aspects not covered by any worker) should be explicitly noted
+- Gaps (from judge's coverage_gaps) should be explicitly noted
 - Do NOT just concatenate — compose understanding from the parts
 
 **Cost Bounding:**

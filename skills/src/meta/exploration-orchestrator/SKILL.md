@@ -18,8 +18,8 @@ description: Exploration mode orchestrator — decomposes questions into paralle
 1. Decompose the question into independent subproblems
 2. Spawn parallel workers (one per subproblem)
 3. Wait for all workers to complete
-4. Read and judge all findings
-5. Synthesize a unified analysis
+4. Collect findings and spawn a judge agent
+5. Read judge verdicts and synthesize a unified analysis
 
 **Constraint:** No code writes. Analysis only.
 
@@ -70,15 +70,27 @@ Monitor worker progress via tmux. Once all workers complete:
 
 ## Phase 4: Judge
 
-Evaluate each sub-finding on:
+Spawn a judge agent to evaluate all sub-findings:
 
-| Dimension | Question | Rating |
-|-----------|----------|--------|
-| Grounding | Does it cite specific code/docs/evidence? | high/medium/low |
-| Consistency | Does it contradict other findings? | consistent/contested |
-| Coverage | Does the finding set cover the original question? | covered/gap |
-| Relevance | Does it address its assigned subproblem? | on-target/drifted |
-| Actionability | Could someone act on this? | actionable/vague |
+```bash
+orch spawn --bypass-triage --no-track --reason "exploration judge" exploration-judge "Evaluate sub-findings for: [original question]
+
+ORIGINAL QUESTION: [the question]
+
+DECOMPOSITION PLAN:
+[your decomposition from Phase 1]
+
+SUB-FINDINGS:
+[paste or reference each worker's output with worker ID labels]
+"
+```
+
+The judge uses the `exploration-judge` skill and produces a structured `judge-verdict.yaml` with:
+- Per-finding verdicts (accepted/contested/rejected) across 5 dimensions
+- Contested findings with specific claims in tension
+- Coverage gaps in the decomposition
+
+**Wait for the judge to complete, then read `judge-verdict.yaml` from its output.**
 
 **Contested findings are the most valuable output.** They reveal genuine complexity.
 
@@ -86,12 +98,12 @@ Evaluate each sub-finding on:
 
 ## Phase 5: Synthesize
 
-Write a unified analysis that:
-- Composes understanding from the parts (NOT concatenation)
+Using the judge verdicts, write a unified analysis that:
+- **Weights findings by verdict** — accepted findings anchor the synthesis, contested findings get dedicated discussion, rejected findings are noted but downweighted
 - Highlights contested findings and explains why they disagree
-- Notes coverage gaps explicitly
+- Notes coverage gaps explicitly (from judge's `coverage_gaps`)
 - Provides a clear answer to the original question
-- Includes a confidence assessment
+- Includes a confidence assessment informed by judge ratings
 
 **Output:** Write synthesis to your workspace SYNTHESIS.md.
 
