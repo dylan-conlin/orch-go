@@ -25,7 +25,7 @@ func (d *Detector) CheckModifiedFiles(dir string, modifiedFiles []string) ([]Dup
 		return nil, fmt.Errorf("read dir: %w", err)
 	}
 
-	var allFuncs []FuncInfo
+	var modified, corpus []FuncInfo
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -45,17 +45,28 @@ func (d *Detector) CheckModifiedFiles(dir string, modifiedFiles []string) ([]Dup
 		if err != nil {
 			continue
 		}
-		allFuncs = append(allFuncs, funcs...)
+
+		if modifiedSet[name] {
+			modified = append(modified, funcs...)
+		} else {
+			corpus = append(corpus, funcs...)
+		}
 	}
 
-	// Find all pairs, then filter to only those involving modified files
-	allPairs := d.FindDuplicates(allFuncs)
-	return filterModifiedPairs(allPairs, modifiedSet), nil
+	if len(modified) == 0 {
+		return nil, nil
+	}
+
+	return d.FindDuplicatesAgainst(modified, corpus), nil
 }
 
 // CheckModifiedFilesProject scans the entire project tree and returns duplicate
 // pairs where at least one function is from a modified file.
 // modifiedFiles should be paths relative to projectDir (e.g., "pkg2/handle.go").
+//
+// Performance: uses scoped M×N comparison (modified vs corpus) instead of
+// N² all-vs-all. For typical completions (5-10 modified files, ~30 functions)
+// against a 4500-function project, this is ~50x faster.
 func (d *Detector) CheckModifiedFilesProject(projectDir string, modifiedFiles []string) ([]DupPair, error) {
 	if len(modifiedFiles) == 0 {
 		return nil, nil
@@ -66,26 +77,30 @@ func (d *Detector) CheckModifiedFilesProject(projectDir string, modifiedFiles []
 		modifiedSet[f] = true
 	}
 
-	// Reuse ScanProject to get all functions with relative paths
-	allPairs, err := d.ScanProject(projectDir)
+	// Parse all functions in the project
+	allFuncs, err := d.ScanProjectFuncs(projectDir)
 	if err != nil {
 		return nil, err
 	}
 
-	return filterModifiedPairs(allPairs, modifiedSet), nil
-}
-
-// filterModifiedPairs returns only pairs where at least one function is in
-// a modified file.
-func filterModifiedPairs(pairs []DupPair, modifiedSet map[string]bool) []DupPair {
-	var filtered []DupPair
-	for _, pair := range pairs {
-		if modifiedSet[pair.FuncA.File] || modifiedSet[pair.FuncB.File] {
-			filtered = append(filtered, pair)
+	// Partition into modified and corpus
+	var modified, corpus []FuncInfo
+	for _, fn := range allFuncs {
+		if modifiedSet[fn.File] {
+			modified = append(modified, fn)
+		} else {
+			corpus = append(corpus, fn)
 		}
 	}
-	return filtered
+
+	if len(modified) == 0 {
+		return nil, nil
+	}
+
+	// Scoped comparison: modified vs corpus + modified vs modified
+	return d.FindDuplicatesAgainst(modified, corpus), nil
 }
+
 
 // FormatDuplicationAdvisory formats duplicate pairs into a readable advisory
 // block for completion output. Returns empty string if no pairs.

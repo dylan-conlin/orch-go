@@ -124,6 +124,9 @@ func (d *Detector) FindDuplicates(funcs []FuncInfo) []DupPair {
 
 	for i := 0; i < len(funcs); i++ {
 		for j := i + 1; j < len(funcs); j++ {
+			if !canMeetThreshold(funcs[i].Fingerprint, funcs[j].Fingerprint, d.Threshold) {
+				continue
+			}
 			sim := similarity(funcs[i].Fingerprint, funcs[j].Fingerprint)
 			if sim >= d.Threshold {
 				if len(d.Allowlist) > 0 && isAllowlisted(funcs[i].Name, funcs[j].Name, d.Allowlist) {
@@ -132,6 +135,59 @@ func (d *Detector) FindDuplicates(funcs []FuncInfo) []DupPair {
 				pairs = append(pairs, DupPair{
 					FuncA:      funcs[i],
 					FuncB:      funcs[j],
+					Similarity: sim,
+				})
+			}
+		}
+	}
+
+	sort.Slice(pairs, func(i, j int) bool {
+		return pairs[i].Similarity > pairs[j].Similarity
+	})
+	return pairs
+}
+
+// FindDuplicatesAgainst compares each function in "modified" against all
+// functions in "corpus" (plus modified-vs-modified). This is O(M×N) where
+// M=len(modified) instead of O(N²) for the full corpus.
+// Functions in modified should NOT also appear in corpus — deduplicate before calling.
+func (d *Detector) FindDuplicatesAgainst(modified, corpus []FuncInfo) []DupPair {
+	var pairs []DupPair
+
+	// modified vs corpus (M × N)
+	for i := range modified {
+		for j := range corpus {
+			if !canMeetThreshold(modified[i].Fingerprint, corpus[j].Fingerprint, d.Threshold) {
+				continue
+			}
+			sim := similarity(modified[i].Fingerprint, corpus[j].Fingerprint)
+			if sim >= d.Threshold {
+				if len(d.Allowlist) > 0 && isAllowlisted(modified[i].Name, corpus[j].Name, d.Allowlist) {
+					continue
+				}
+				pairs = append(pairs, DupPair{
+					FuncA:      modified[i],
+					FuncB:      corpus[j],
+					Similarity: sim,
+				})
+			}
+		}
+	}
+
+	// modified vs modified (M × M, typically tiny)
+	for i := 0; i < len(modified); i++ {
+		for j := i + 1; j < len(modified); j++ {
+			if !canMeetThreshold(modified[i].Fingerprint, modified[j].Fingerprint, d.Threshold) {
+				continue
+			}
+			sim := similarity(modified[i].Fingerprint, modified[j].Fingerprint)
+			if sim >= d.Threshold {
+				if len(d.Allowlist) > 0 && isAllowlisted(modified[i].Name, modified[j].Name, d.Allowlist) {
+					continue
+				}
+				pairs = append(pairs, DupPair{
+					FuncA:      modified[i],
+					FuncB:      modified[j],
 					Similarity: sim,
 				})
 			}
@@ -229,6 +285,24 @@ func fingerprint(body *ast.BlockStmt) []string {
 		return true
 	})
 	return tokens
+}
+
+// canMeetThreshold is a cheap O(1) pre-filter. The LCS-based similarity
+// can never exceed min(len(a),len(b))/max(len(a),len(b)), so if that
+// ratio is already below threshold we skip the expensive LCS computation.
+func canMeetThreshold(a, b []string, threshold float64) bool {
+	la, lb := len(a), len(b)
+	if la == 0 && lb == 0 {
+		return true
+	}
+	if la == 0 || lb == 0 {
+		return false
+	}
+	minLen, maxLen := la, lb
+	if minLen > maxLen {
+		minLen, maxLen = maxLen, minLen
+	}
+	return float64(minLen)/float64(maxLen) >= threshold
 }
 
 // similarity computes the similarity between two fingerprints using

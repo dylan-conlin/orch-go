@@ -89,6 +89,17 @@ func dupPairDescription(pair DupPair, cfg ReportConfig) string {
 
 // ScanProject walks all Go packages under projectDir and returns duplicate pairs.
 func (d *Detector) ScanProject(projectDir string) ([]DupPair, error) {
+	allFuncs, err := d.ScanProjectFuncs(projectDir)
+	if err != nil {
+		return nil, err
+	}
+	return d.FindDuplicates(allFuncs), nil
+}
+
+// ScanProjectFuncs walks all Go packages under projectDir and returns parsed
+// function info without performing comparison. Callers can partition the result
+// and use FindDuplicatesAgainst for scoped comparison.
+func (d *Detector) ScanProjectFuncs(projectDir string) ([]FuncInfo, error) {
 	var allFuncs []FuncInfo
 
 	err := filepath.Walk(projectDir, func(path string, info os.FileInfo, err error) error {
@@ -134,5 +145,5 @@ func (d *Detector) ScanProject(projectDir string) ([]DupPair, error) {
 		return nil, fmt.Errorf("walk project: %w", err)
 	}
 
-	return d.FindDuplicates(allFuncs), nil
+	return allFuncs, nil
 }
