@@ -41,10 +41,13 @@ func TestKBGatePublish_PassesValidPublication(t *testing.T) {
 	kbDir := filepath.Join(dir, ".kb")
 	challengesDir := filepath.Join(kbDir, "challenges")
 	invDir := filepath.Join(kbDir, "investigations")
+	pubDir := filepath.Join(kbDir, "publications")
 	os.MkdirAll(challengesDir, 0755)
 	os.MkdirAll(invDir, 0755)
+	os.MkdirAll(pubDir, 0755)
 	os.WriteFile(filepath.Join(challengesDir, "2026-03-10-test.md"), []byte("# Challenge"), 0644)
 	os.WriteFile(filepath.Join(invDir, "2026-01-01-data.md"), []byte("# Inv"), 0644)
+	os.WriteFile(filepath.Join(pubDir, "claim-ledger.yaml"), []byte("claims:\n  - id: C1\n    text: \"Decay observed\"\n    type: observation\n    scope: local\n    evidence: \"Direct measurement\"\n    strength: strong\n"), 0644)
 
 	pub := filepath.Join(dir, "pub.md")
 	content := `---
@@ -52,6 +55,7 @@ challenge_refs:
   - .kb/challenges/2026-03-10-test.md
 claim_refs:
   - C1
+ledger_ref: .kb/publications/claim-ledger.yaml
 claims:
   - claim_id: C1
     claim_text: "Decay observed"
@@ -90,6 +94,7 @@ func TestKBGatePublish_ClaimUpgradesScopedToTargetFile(t *testing.T) {
 	os.MkdirAll(modDir, 0755)
 	os.WriteFile(filepath.Join(challengesDir, "2026-03-10-test.md"), []byte("# Challenge"), 0644)
 	os.WriteFile(filepath.Join(invDir, "2026-01-01-data.md"), []byte("# Inv"), 0644)
+	os.WriteFile(filepath.Join(pubDir, "claim-ledger.yaml"), []byte("claims:\n  - id: C1\n    text: \"Decay observed\"\n    type: observation\n    scope: local\n    evidence: \"Direct measurement\"\n    strength: strong\n"), 0644)
 
 	// OTHER publication with novelty language — should NOT affect our target
 	os.WriteFile(filepath.Join(pubDir, "other.md"), []byte("# Other\nThis is a novel discovery.\n"), 0644)
@@ -109,6 +114,7 @@ challenge_refs:
   - .kb/challenges/2026-03-10-test.md
 claim_refs:
   - C1
+ledger_ref: .kb/publications/claim-ledger.yaml
 claims:
   - claim_id: C1
     claim_text: "Decay observed"

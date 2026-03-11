@@ -1,0 +1,307 @@
+# Claim Ledger: Harness Engineering Blog Post
+# Artifact 1 of 3 (claim ledger, red-team memo, claim-label pass)
+# Publication: .kb/publications/harness-engineering-draft.md
+# Date: 2026-03-10
+#
+# Each claim is classified by:
+#   type: observation | mechanism | generalization | recommendation
+#   scope: local (this system) | bounded (scoped generalization) | universal
+#   evidence: description of supporting evidence
+#   strength: strong (directly measured) | moderate (inferred from data) | weak (asserted without evidence)
+#   lines: approximate line range in the publication draft
+
+claims:
+
+  # --- Section: The Problem: Accretion ---
+
+  - id: HE-01
+    text: "Every agent does the right thing. The codebase degrades anyway."
+    type: observation
+    scope: local
+    evidence: "daemon.go growth from 667 to 1,559 lines across 30 individually-correct commits over 60 days"
+    strength: strong
+    lines: "9"
+
+  - id: HE-02
+    text: "daemon.go grew from 667 lines to 1,559 lines in 60 days from 30 individually correct commits"
+    type: observation
+    scope: local
+    evidence: "Direct measurement of file size over time, commit history"
+    strength: strong
+    lines: "13"
+
+  - id: HE-03
+    text: "Accretion is the thermodynamic tendency of multi-agent codebases toward entropy"
+    type: mechanism
+    scope: universal
+    evidence: "Metaphor applied to daemon.go growth pattern. No formal entropy measure defined."
+    strength: weak
+    lines: "15"
+    notes: "Overclaimed. 'Thermodynamic tendency' uses physics language for a software pattern. No formal entropy metric."
+
+  - id: HE-04
+    text: "Faster, more capable agents accrete more code per session with higher confidence"
+    type: generalization
+    scope: universal
+    evidence: "Asserted. daemon.go data doesn't isolate model capability as a variable. Merge experiment shows equal conflict rates."
+    strength: weak
+    lines: "15"
+    notes: "Stated as fact but evidence doesn't support the directional claim about capability → worse coordination."
+
+  - id: HE-05
+    text: "Individual excellence doesn't compose into collective coherence without structural coordination"
+    type: generalization
+    scope: bounded
+    evidence: "daemon.go as illustrative example; consistent with multi-agent systems literature"
+    strength: moderate
+    lines: "15"
+
+  - id: HE-06
+    text: "Feature gravity — new code lands in existing run functions because that's where the Cobra command lives"
+    type: mechanism
+    scope: local
+    evidence: "runDaemonLoop() grew to 702 lines as gravitational center for daemon features"
+    strength: strong
+    lines: "21"
+
+  - id: HE-07
+    text: "6 cross-cutting concerns independently reimplemented across 4-9 files each (~2,100 lines of duplicated infrastructure)"
+    type: observation
+    scope: local
+    evidence: "Direct measurement via AST fingerprinting (pkg/dupdetect/)"
+    strength: strong
+    lines: "24"
+
+  - id: HE-08
+    text: "Three entropy spirals over 12 weeks. 1,625 commits lost in a single crash."
+    type: observation
+    scope: local
+    evidence: "Event logs, git history, crash records"
+    strength: strong
+    lines: "27"
+
+  # --- Section: The Evidence: What We Measured ---
+
+  - id: HE-09
+    text: "daemon.go growth velocity is accelerating (65/week → 54/week → 176/week → 345/week)"
+    type: observation
+    scope: local
+    evidence: "Direct line count measurements at four time points"
+    strength: strong
+    lines: "72-80"
+
+  - id: HE-10
+    text: "spawn_cmd.go shrank from 2,432 to 677 lines (-1,755) via structural attractor, then regrew to 1,160 lines"
+    type: observation
+    scope: local
+    evidence: "Direct line count measurements, git history of pkg/spawn/backends/ creation"
+    strength: strong
+    lines: "83-88"
+
+  - id: HE-11
+    text: "Attractors break the accretion cycle for initial extraction but don't prevent re-accretion"
+    type: mechanism
+    scope: local
+    evidence: "spawn_cmd.go regrowth from 677 to 1,160 lines after extraction"
+    strength: moderate
+    lines: "89"
+
+  - id: HE-12
+    text: "265 contrastive trials across 7 agent skills measured three content types with different transfer effects"
+    type: observation
+    scope: local
+    evidence: "Number cited but methodology never explained. Reader cannot evaluate what constitutes a 'trial.'"
+    strength: weak
+    lines: "95-101"
+    notes: "Most concerning methodological gap. Control conditions, measurement criteria, and trial definition are all missing."
+
+  - id: HE-13
+    text: "Knowledge content produces +5 point lift"
+    type: observation
+    scope: local
+    evidence: "From 265-trial study. No methodology provided."
+    strength: weak
+    lines: "99"
+    notes: "Dependent on HE-12 methodology gap."
+
+  - id: HE-14
+    text: "Stance content produces +2 to +7 on cross-source scenarios"
+    type: observation
+    scope: local
+    evidence: "From 265-trial study. No methodology provided."
+    strength: weak
+    lines: "100"
+    notes: "Dependent on HE-12 methodology gap."
+
+  - id: HE-15
+    text: "Behavioral constraints are inert at 10+ co-resident rules"
+    type: observation
+    scope: local
+    evidence: "From 265-trial study. Orchestrator skill had 87 constraints, ~83 non-functional."
+    strength: weak
+    lines: "101-103"
+    notes: "'Approximately 83 non-functional' — specific number with no measurement methodology."
+
+  - id: HE-16
+    text: "A convention in documentation without mechanical enforcement is a suggestion with a half-life proportional to context window pressure"
+    type: generalization
+    scope: bounded
+    evidence: "daemon.go grew past 1,500-line convention while convention existed in CLAUDE.md"
+    strength: moderate
+    lines: "105"
+
+  - id: HE-17
+    text: "Gates haven't bent the accretion curve (total lines grew +12,628 in 3 weeks post-deployment)"
+    type: observation
+    scope: local
+    evidence: "Direct measurement: 34,977 → 47,605 lines, ~4,200/week velocity"
+    strength: strong
+    lines: "109"
+
+  - id: HE-18
+    text: "Completion gate exempts pre-existing bloat (ratchet effect)"
+    type: observation
+    scope: local
+    evidence: "Gate design inspection — files over 1,500 get warnings, not blocks"
+    strength: strong
+    lines: "113"
+
+  # --- Section: The Framework: Harness Engineering ---
+
+  - id: HE-19
+    text: "Agent failure is a harness bug, not an agent bug (attributed to OpenAI Codex team)"
+    type: mechanism
+    scope: universal
+    evidence: "Attributed to external source (OpenAI). Applied here as design principle."
+    strength: moderate
+    lines: "123"
+    notes: "Probe review flagged this as potentially unfalsifiable — any agent failure can be attributed to harness."
+
+  - id: HE-20
+    text: "Hard harness for enforcement, soft harness for orientation (hard/soft taxonomy)"
+    type: recommendation
+    scope: bounded
+    evidence: "Consistent with observed behavior across experiments 1-3"
+    strength: moderate
+    lines: "129-144"
+
+  - id: HE-21
+    text: "Behavioral constraints dilute in context — worst content type for enforcement"
+    type: mechanism
+    scope: bounded
+    evidence: "87 constraints → ~83 non-functional in orchestrator skill (dependent on HE-12 methodology)"
+    strength: weak
+    lines: "147-151"
+    notes: "Key design claim rests on the unvalidated 265-trial methodology."
+
+  - id: HE-22
+    text: "Neither attractors nor gates work alone — both required together"
+    type: mechanism
+    scope: local
+    evidence: "spawn_cmd.go extraction (-1,755) succeeded with both; re-accretion when only attractor present"
+    strength: moderate
+    lines: "153-163"
+
+  - id: HE-23
+    text: "Compliance failure is fixed by better models; coordination failure is made worse by better models"
+    type: generalization
+    scope: universal
+    evidence: "Conceptual argument. daemon.go data cited but doesn't isolate model capability as variable."
+    strength: weak
+    lines: "52-64"
+    notes: "Core theoretical claim. The 'opposite trajectories' assertion lacks direct empirical evidence."
+
+  - id: HE-24
+    text: "Harness engineering is a permanent discipline, not a transitional one"
+    type: generalization
+    scope: universal
+    evidence: "Follows from HE-23 (coordination worsens with capability). Under-evidenced."
+    strength: weak
+    lines: "64"
+    notes: "Dependent on the unproven directional claim about model improvement."
+
+  - id: HE-25
+    text: "Five invariants — hard/soft enforcement, every convention violated, agent failure is harness failure, extraction without routing is pump, prevention > detection > rejection"
+    type: recommendation
+    scope: bounded
+    evidence: "Inferred from 12 weeks of operation. 'Invariant' is strong language for 1-system observations."
+    strength: moderate
+    lines: "167-177"
+
+  - id: HE-26
+    text: "Five enforcement layers (pre-commit, structural tests, duplication detector, entropy agent, self-extending gates)"
+    type: observation
+    scope: local
+    evidence: "Direct description of implemented infrastructure. Layers 0-3 shipped, Layer 4 aspirational."
+    strength: strong
+    lines: "179-193"
+
+  - id: HE-27
+    text: "Compliance gates simplify with model improvement; coordination gates become more important"
+    type: generalization
+    scope: universal
+    evidence: "Conceptual argument dependent on HE-23"
+    strength: weak
+    lines: "191-193"
+    notes: "Same dependency chain as HE-24."
+
+  - id: HE-28
+    text: "Framework is language-independent — 5 of 8 harness patterns translate to TypeScript"
+    type: observation
+    scope: bounded
+    evidence: "N=2 (Go + TypeScript). 'Language-independent' from 2 languages."
+    strength: weak
+    lines: "195"
+    notes: "Overclaimed scope. 'Tested against one additional language' would be proportionate."
+
+  # --- Section: Related Work ---
+
+  - id: HE-29
+    text: "The compliance/coordination distinction is absent from published literature"
+    type: generalization
+    scope: universal
+    evidence: "Post cites 4 references. No systematic literature review. Conway's Law, Brooks's Law, multi-agent systems, and game theory may address this."
+    strength: weak
+    lines: "217"
+    notes: "Novelty claim requires systematic literature review to support."
+
+  - id: HE-30
+    text: "MAST prescribes model-level solutions for what is actually an architectural problem"
+    type: mechanism
+    scope: bounded
+    evidence: "MAST paper analysis (Cemri et al., 2025). MAST's own finding supports architectural interpretation."
+    strength: moderate
+    lines: "213-216"
+
+  # --- Section: Getting Started (MVH) ---
+
+  - id: HE-31
+    text: "Seven Day-1 items are the minimum viable harness (deny rules, self-close gate, staging gate, event emission, pre-commit gate, control plane lock, governance sections)"
+    type: recommendation
+    scope: bounded
+    evidence: "Derived from operational experience. Not validated by external teams."
+    strength: moderate
+    lines: "229-246"
+
+  # --- Section: Honest Assessment / Where We Are ---
+
+  - id: HE-32
+    text: "Accretion dynamics appear in knowledge systems too (substrate-independent)"
+    type: generalization
+    scope: universal
+    evidence: "N=2 substrates (code + knowledge) in 1 system operated by 1 person"
+    strength: weak
+    lines: "297"
+    notes: "'The physics appear to be substrate-independent' — physics language for pattern observations across 2 substrates."
+
+# --- Summary Statistics ---
+# Total claims: 32
+# By type: observation=14, mechanism=7, generalization=7, recommendation=4
+# By strength: strong=10, moderate=8, weak=14
+# By scope: local=16, bounded=9, universal=7
+#
+# Key risk areas:
+# - 7 universal-scope claims, 5 of which are weak-strength (HE-03, HE-04, HE-23, HE-24, HE-27, HE-29, HE-32)
+# - The 265-trial methodology gap (HE-12) cascades to 4 dependent claims (HE-13, HE-14, HE-15, HE-21)
+# - Core theoretical claim (HE-23: compliance vs coordination trajectories) is weak-strength
+# - "Substrate-independent" / "physics" language appears in 3 claims without proportionate evidence

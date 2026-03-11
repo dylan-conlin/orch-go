@@ -39,6 +39,7 @@ type PublicationFrontmatter struct {
 	ChallengeRefs []string `yaml:"challenge_refs"`
 	ClaimRefs     []string `yaml:"claim_refs"`
 	Claims        []Claim  `yaml:"claims"`
+	LedgerRef     string   `yaml:"ledger_ref"`
 }
 
 // bannedTerms are novelty-bearing phrases that require earned evidence class.
@@ -95,6 +96,9 @@ func CheckPublish(pubPath string) GateResult {
 
 	// Gate 5: Claim-upgrade boundary detection (scoped to target file)
 	checkClaimUpgrades(pubPath, &result)
+
+	// Gate 6: Claim ledger artifact
+	checkClaimLedger(fm, projectDir, &result)
 
 	return result
 }
@@ -256,6 +260,127 @@ func checkBannedLanguage(body string, result *GateResult) {
 			Status:    "fail",
 			AppliesTo: "publication",
 			Note:      fmt.Sprintf("banned novelty terms found: %s", strings.Join(found, ", ")),
+		})
+	}
+}
+
+// LedgerEntry represents a single claim entry in the claim ledger artifact.
+type LedgerEntry struct {
+	ID       string `yaml:"id"`
+	Text     string `yaml:"text"`
+	Type     string `yaml:"type"`     // observation, mechanism, generalization, recommendation
+	Scope    string `yaml:"scope"`    // local, bounded, universal
+	Evidence string `yaml:"evidence"`
+	Strength string `yaml:"strength"` // strong, moderate, weak
+}
+
+// ClaimLedger is the top-level structure of a claim ledger YAML file.
+type ClaimLedger struct {
+	Claims []LedgerEntry `yaml:"claims"`
+}
+
+// validClaimTypes for ledger entries.
+var validClaimTypes = map[string]bool{
+	"observation":    true,
+	"mechanism":      true,
+	"generalization": true,
+	"recommendation": true,
+}
+
+// validStrengths for ledger entries.
+var validStrengths = map[string]bool{
+	"strong":   true,
+	"moderate": true,
+	"weak":     true,
+}
+
+// validScopes for ledger entries.
+var validScopes = map[string]bool{
+	"local":     true,
+	"bounded":   true,
+	"universal": true,
+}
+
+// checkClaimLedger verifies that the claim ledger artifact exists and is valid.
+func checkClaimLedger(fm PublicationFrontmatter, projectDir string, result *GateResult) {
+	if fm.LedgerRef == "" {
+		result.Pass = false
+		result.Verdicts = append(result.Verdicts, Verdict{
+			Code:      "MISSING_LEDGER_REF",
+			Status:    "fail",
+			AppliesTo: "publication",
+			Note:      "publication must include ledger_ref in frontmatter",
+		})
+		return
+	}
+
+	fullPath := filepath.Join(projectDir, fm.LedgerRef)
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		result.Pass = false
+		result.Verdicts = append(result.Verdicts, Verdict{
+			Code:      "LEDGER_ARTIFACT_MISSING",
+			Status:    "fail",
+			AppliesTo: fm.LedgerRef,
+			Note:      fmt.Sprintf("claim ledger not found: %s", fm.LedgerRef),
+		})
+		return
+	}
+
+	var ledger ClaimLedger
+	if err := yaml.Unmarshal(data, &ledger); err != nil {
+		result.Pass = false
+		result.Verdicts = append(result.Verdicts, Verdict{
+			Code:      "LEDGER_INVALID",
+			Status:    "fail",
+			AppliesTo: fm.LedgerRef,
+			Note:      fmt.Sprintf("claim ledger is not valid YAML: %v", err),
+		})
+		return
+	}
+
+	if len(ledger.Claims) == 0 {
+		result.Pass = false
+		result.Verdicts = append(result.Verdicts, Verdict{
+			Code:      "LEDGER_EMPTY",
+			Status:    "fail",
+			AppliesTo: fm.LedgerRef,
+			Note:      "claim ledger has no claims",
+		})
+		return
+	}
+
+	// Validate each entry has required fields and valid values
+	var errors []string
+	for _, c := range ledger.Claims {
+		if c.ID == "" {
+			errors = append(errors, "claim missing id")
+		}
+		if c.Text == "" {
+			errors = append(errors, fmt.Sprintf("%s: missing text", c.ID))
+		}
+		if !validClaimTypes[c.Type] {
+			errors = append(errors, fmt.Sprintf("%s: invalid type %q", c.ID, c.Type))
+		}
+		if !validScopes[c.Scope] {
+			errors = append(errors, fmt.Sprintf("%s: invalid scope %q", c.ID, c.Scope))
+		}
+		if !validStrengths[c.Strength] {
+			errors = append(errors, fmt.Sprintf("%s: invalid strength %q", c.ID, c.Strength))
+		}
+		if c.Evidence == "" {
+			errors = append(errors, fmt.Sprintf("%s: missing evidence", c.ID))
+		}
+	}
+
+	if len(errors) > 0 {
+		result.Pass = false
+		note := fmt.Sprintf("%d validation error(s): %s", len(errors), strings.Join(errors, "; "))
+		result.Verdicts = append(result.Verdicts, Verdict{
+			Code:      "LEDGER_INVALID",
+			Status:    "fail",
+			AppliesTo: fm.LedgerRef,
+			Note:      note,
 		})
 	}
 }

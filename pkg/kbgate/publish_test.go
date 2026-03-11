@@ -368,11 +368,21 @@ func TestCheckPublish_FullPass(t *testing.T) {
 	kbDir := filepath.Join(dir, ".kb")
 	challengesDir := filepath.Join(kbDir, "challenges")
 	invDir := filepath.Join(kbDir, "investigations")
+	pubDir := filepath.Join(kbDir, "publications")
 	os.MkdirAll(challengesDir, 0755)
 	os.MkdirAll(invDir, 0755)
+	os.MkdirAll(pubDir, 0755)
 
 	os.WriteFile(filepath.Join(challengesDir, "2026-03-10-test.md"), []byte("# Challenge"), 0644)
 	os.WriteFile(filepath.Join(invDir, "2026-03-10-inv-data.md"), []byte("# Investigation"), 0644)
+	os.WriteFile(filepath.Join(pubDir, "claim-ledger.yaml"), []byte(`claims:
+  - id: C1
+    text: "Conventions decay under agent throughput"
+    type: mechanism
+    scope: local
+    evidence: "Direct observation over 60 days"
+    strength: strong
+`), 0644)
 
 	pub := filepath.Join(dir, "pub.md")
 	content := `---
@@ -380,6 +390,7 @@ challenge_refs:
   - .kb/challenges/2026-03-10-test.md
 claim_refs:
   - C1
+ledger_ref: .kb/publications/claim-ledger.yaml
 claims:
   - claim_id: C1
     claim_text: "Conventions decay under agent throughput"
@@ -427,6 +438,196 @@ func verdictCodes(result GateResult) []string {
 	return codes
 }
 
+func TestCheckPublish_MissingLedgerRef(t *testing.T) {
+	dir := t.TempDir()
+	kbDir := filepath.Join(dir, ".kb")
+	challengesDir := filepath.Join(kbDir, "challenges")
+	invDir := filepath.Join(kbDir, "investigations")
+	os.MkdirAll(challengesDir, 0755)
+	os.MkdirAll(invDir, 0755)
+	os.WriteFile(filepath.Join(challengesDir, "2026-03-10-test.md"), []byte("# Challenge"), 0644)
+	os.WriteFile(filepath.Join(invDir, "2026-01-01-data.md"), []byte("# Inv"), 0644)
+
+	pub := filepath.Join(dir, "pub.md")
+	content := `---
+challenge_refs:
+  - .kb/challenges/2026-03-10-test.md
+claim_refs:
+  - C1
+claims:
+  - claim_id: C1
+    claim_text: "Decay observed"
+    claim_type: observation
+    novelty_level: restatement
+    evidence_refs:
+      - .kb/investigations/2026-01-01-data.md
+---
+
+# Working Model
+`
+	os.WriteFile(pub, []byte(content), 0644)
+
+	result := CheckPublish(pub)
+	if result.Pass {
+		t.Error("expected failure for missing ledger_ref")
+	}
+	assertHasVerdict(t, result, "MISSING_LEDGER_REF")
+}
+
+func TestCheckPublish_LedgerArtifactMissing(t *testing.T) {
+	dir := t.TempDir()
+	kbDir := filepath.Join(dir, ".kb")
+	challengesDir := filepath.Join(kbDir, "challenges")
+	invDir := filepath.Join(kbDir, "investigations")
+	os.MkdirAll(challengesDir, 0755)
+	os.MkdirAll(invDir, 0755)
+	os.WriteFile(filepath.Join(challengesDir, "2026-03-10-test.md"), []byte("# Challenge"), 0644)
+	os.WriteFile(filepath.Join(invDir, "2026-01-01-data.md"), []byte("# Inv"), 0644)
+
+	pub := filepath.Join(dir, "pub.md")
+	content := `---
+challenge_refs:
+  - .kb/challenges/2026-03-10-test.md
+claim_refs:
+  - C1
+ledger_ref: .kb/publications/nonexistent-ledger.yaml
+claims:
+  - claim_id: C1
+    claim_text: "Decay observed"
+    claim_type: observation
+    novelty_level: restatement
+    evidence_refs:
+      - .kb/investigations/2026-01-01-data.md
+---
+
+# Working Model
+`
+	os.WriteFile(pub, []byte(content), 0644)
+
+	result := CheckPublish(pub)
+	if result.Pass {
+		t.Error("expected failure for missing ledger artifact")
+	}
+	assertHasVerdict(t, result, "LEDGER_ARTIFACT_MISSING")
+}
+
+func TestCheckPublish_LedgerValid(t *testing.T) {
+	dir := t.TempDir()
+	kbDir := filepath.Join(dir, ".kb")
+	challengesDir := filepath.Join(kbDir, "challenges")
+	invDir := filepath.Join(kbDir, "investigations")
+	pubDir := filepath.Join(kbDir, "publications")
+	os.MkdirAll(challengesDir, 0755)
+	os.MkdirAll(invDir, 0755)
+	os.MkdirAll(pubDir, 0755)
+	os.WriteFile(filepath.Join(challengesDir, "2026-03-10-test.md"), []byte("# Challenge"), 0644)
+	os.WriteFile(filepath.Join(invDir, "2026-01-01-data.md"), []byte("# Inv"), 0644)
+
+	// Create valid ledger
+	ledger := `claims:
+  - id: C1
+    text: "Decay observed in daemon.go"
+    type: observation
+    scope: local
+    evidence: "Direct measurement of file size"
+    strength: strong
+`
+	os.WriteFile(filepath.Join(pubDir, "claim-ledger.yaml"), []byte(ledger), 0644)
+
+	pub := filepath.Join(dir, "pub.md")
+	content := `---
+challenge_refs:
+  - .kb/challenges/2026-03-10-test.md
+claim_refs:
+  - C1
+ledger_ref: .kb/publications/claim-ledger.yaml
+claims:
+  - claim_id: C1
+    claim_text: "Decay observed"
+    claim_type: observation
+    novelty_level: restatement
+    evidence_refs:
+      - .kb/investigations/2026-01-01-data.md
+---
+
+# Working Model
+
+This describes coordination patterns as a working model.
+`
+	os.WriteFile(pub, []byte(content), 0644)
+
+	result := CheckPublish(pub)
+	if hasVerdict(result, "MISSING_LEDGER_REF") || hasVerdict(result, "LEDGER_ARTIFACT_MISSING") || hasVerdict(result, "LEDGER_EMPTY") || hasVerdict(result, "LEDGER_INVALID") {
+		t.Errorf("unexpected ledger verdicts: %v", verdictCodes(result))
+	}
+}
+
+func TestCheckPublish_LedgerEmptyClaims(t *testing.T) {
+	dir := t.TempDir()
+	kbDir := filepath.Join(dir, ".kb")
+	pubDir := filepath.Join(kbDir, "publications")
+	os.MkdirAll(pubDir, 0755)
+
+	// Create ledger with no claims
+	os.WriteFile(filepath.Join(pubDir, "claim-ledger.yaml"), []byte("claims: []\n"), 0644)
+
+	pub := filepath.Join(dir, "pub.md")
+	content := `---
+challenge_refs:
+  - x
+claim_refs:
+  - x
+ledger_ref: .kb/publications/claim-ledger.yaml
+---
+
+# Pub
+`
+	os.WriteFile(pub, []byte(content), 0644)
+
+	result := CheckPublish(pub)
+	assertHasVerdict(t, result, "LEDGER_EMPTY")
+}
+
+func TestCheckPublish_LedgerInvalidEntries(t *testing.T) {
+	dir := t.TempDir()
+	kbDir := filepath.Join(dir, ".kb")
+	pubDir := filepath.Join(kbDir, "publications")
+	os.MkdirAll(pubDir, 0755)
+
+	// Create ledger with invalid fields
+	ledger := `claims:
+  - id: C1
+    text: "Some claim"
+    type: invalid_type
+    scope: local
+    evidence: "some evidence"
+    strength: strong
+  - id: C2
+    text: ""
+    type: observation
+    scope: cosmic
+    evidence: ""
+    strength: mega
+`
+	os.WriteFile(filepath.Join(pubDir, "claim-ledger.yaml"), []byte(ledger), 0644)
+
+	pub := filepath.Join(dir, "pub.md")
+	content := `---
+challenge_refs:
+  - x
+claim_refs:
+  - x
+ledger_ref: .kb/publications/claim-ledger.yaml
+---
+
+# Pub
+`
+	os.WriteFile(pub, []byte(content), 0644)
+
+	result := CheckPublish(pub)
+	assertHasVerdict(t, result, "LEDGER_INVALID")
+}
+
 func TestCheckPublish_ClaimUpgradeSignals(t *testing.T) {
 	dir := t.TempDir()
 	kbDir := filepath.Join(dir, ".kb")
@@ -442,6 +643,7 @@ func TestCheckPublish_ClaimUpgradeSignals(t *testing.T) {
 
 	os.WriteFile(filepath.Join(challengesDir, "2026-03-10-test.md"), []byte("# Challenge"), 0644)
 	os.WriteFile(filepath.Join(invDir, "2026-03-10-inv-data.md"), []byte("# Investigation"), 0644)
+	os.WriteFile(filepath.Join(pubDir, "claim-ledger.yaml"), []byte("claims:\n  - id: C1\n    text: \"Decay observed\"\n    type: observation\n    scope: local\n    evidence: \"Direct measurement\"\n    strength: strong\n"), 0644)
 
 	// Publication with novelty language
 	os.WriteFile(filepath.Join(pubDir, "draft.md"), []byte(`# Draft
@@ -460,6 +662,7 @@ challenge_refs:
   - .kb/challenges/2026-03-10-test.md
 claim_refs:
   - C1
+ledger_ref: .kb/publications/claim-ledger.yaml
 claims:
   - claim_id: C1
     claim_text: "Decay observed"

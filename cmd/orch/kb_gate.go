@@ -26,7 +26,7 @@ var kbGatePublishCmd = &cobra.Command{
 	Long: `Run Phase 1 adversarial gate checks on a publication file.
 
 Checks:
-  1. Publication contract: challenge_refs and claim_refs must exist in frontmatter
+  1. Publication contract: challenge_refs, claim_refs, and ledger_ref must exist in frontmatter
   2. Challenge artifact: referenced challenge files must exist on disk
   3. Lineage: generalization/novel claims must have exogenous evidence
      (not just model/probe self-references)
@@ -34,6 +34,8 @@ Checks:
      substrate-independent, proves, validated theory) block publication
   5. Claim-upgrade signals: novelty language, self-validating probes,
      and causal language in model summaries
+  6. Claim ledger: ledger_ref must point to a valid YAML file with structured
+     claims (id, text, type, scope, evidence, strength)
 
 Exit code 1 if any check fails.
 
