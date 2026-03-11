@@ -1,31 +1,26 @@
-task: Add spawn.gate_decision 'allow' events for hotspot and verification gates
-beads_id: orch-go-4m6is
+task: Add accretion.snapshot periodic event for velocity tracking
+beads_id: orch-go-iq657
 skill: feature-impl
 mode: tdd
 validation: tests
 
 deliverables:
-  - path: pkg/orch/spawn_preflight.go
-    description: Emit 'allow' gate decisions for triage, verification, and hotspot gates
-  - path: cmd/orch/stats_types.go
-    description: Added TotalAllows to GateDecisionStats, Allows to GateDecisionEntry
-  - path: cmd/orch/stats_cmd.go
-    description: Count 'allow' decisions in aggregateStats
-  - path: cmd/orch/stats_output.go
-    description: Display allow counts in gate decisions text output
-  - path: cmd/orch/stats_test.go
-    description: TestGateDecisionStats_AllowEvents test
+  - path: pkg/events/logger.go
+    description: EventTypeAccretionSnapshot constant, DirectorySnapshot/AccretionSnapshotData types, LogAccretionSnapshot method
+  - path: cmd/orch/harness_snapshot.go
+    description: "orch harness snapshot" command, collectDirectorySnapshot, collectAllSnapshots, shouldEmitSnapshot, emitDaemonSnapshot
+  - path: cmd/orch/harness_snapshot_test.go
+    description: 6 tests covering directory snapshots, code file filtering, subdirs, all-snapshots collection, emission threshold, event logging
+  - path: cmd/orch/daemon.go
+    description: Call emitDaemonSnapshot at daemon startup
 
 tests:
-  - command: "go test ./cmd/orch/ -run TestGateDecisionStats -count=1 -v"
-    result: "3 tests pass (TestGateDecisionStats, TestGateDecisionStats_AllowEvents, TestGateDecisionStats_Empty)"
-  - command: "go test ./cmd/orch/ -count=1"
-    result: "All cmd/orch tests pass"
-  - command: "go test ./pkg/orch/ -count=1"
-    result: "All pkg/orch tests pass"
+  - command: "go test ./cmd/orch/ -run 'TestCollectDirectory|TestCollectAll|TestShouldEmit|TestLogAccretion' -count=1 -v"
+    result: "6 tests pass"
+  - command: "go build ./cmd/orch/"
+    result: "Build succeeds"
 
 evidence:
-  - "go test ./cmd/orch/ -run TestGateDecisionStats -count=1 -v — 3/3 PASS"
-  - "go test ./cmd/orch/ -count=1 — ok"
-  - "go test ./pkg/orch/ -count=1 — ok"
-  - "go build ./cmd/orch/ — clean build"
+  - "go test — 6/6 PASS (TestCollectDirectorySnapshot, TestCollectDirectorySnapshotSkipsNonCode, TestCollectDirectorySnapshotSubdirs, TestCollectAllSnapshots, TestShouldEmitSnapshot, TestLogAccretionSnapshot)"
+  - "go build ./cmd/orch/ — ok"
+  - "orch harness snapshot --baseline — emitted baseline: 57 dirs, 876 files, 257740 lines, 41 >800, 10 >1500"

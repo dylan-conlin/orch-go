@@ -53,9 +53,10 @@ const (
 	EventTypeReviewTierEscalated = "review_tier.escalated"
 	// EventTypeDuplicationDetected indicates the duplication detector found similar function pairs.
 	EventTypeDuplicationDetected = "duplication.detected"
-	// EventTypeSpawnGateDecision logs every gate evaluation that results in a block or bypass.
-	// Allow decisions are omitted to manage volume.
+	// EventTypeSpawnGateDecision logs every gate evaluation (block, bypass, or allow).
 	EventTypeSpawnGateDecision = "spawn.gate_decision"
+	// EventTypeAccretionSnapshot logs periodic directory-level line count snapshots for velocity tracking.
+	EventTypeAccretionSnapshot = "accretion.snapshot"
 	// EventTypeDaemonArchitectEscalation logs daemon routing decisions for hotspot-targeting issues.
 	EventTypeDaemonArchitectEscalation = "daemon.architect_escalation"
 )
@@ -705,11 +706,40 @@ func (l *Logger) LogArchitectEscalation(data ArchitectEscalationData) error {
 	})
 }
 
+// DirectorySnapshot represents line count metrics for a single directory.
+type DirectorySnapshot struct {
+	Directory     string `json:"directory"`
+	TotalLines    int    `json:"total_lines"`
+	FileCount     int    `json:"file_count"`
+	FilesOver800  int    `json:"files_over_800"`
+	FilesOver1500 int    `json:"files_over_1500"`
+	LargestFile   string `json:"largest_file,omitempty"`
+	LargestLines  int    `json:"largest_lines,omitempty"`
+}
+
+// AccretionSnapshotData contains the data for an accretion.snapshot event.
+type AccretionSnapshotData struct {
+	Directories  []DirectorySnapshot `json:"directories"`
+	SnapshotType string              `json:"snapshot_type"` // "weekly", "manual", "baseline"
+}
+
+// LogAccretionSnapshot logs a periodic directory-level line count snapshot.
+func (l *Logger) LogAccretionSnapshot(data AccretionSnapshotData) error {
+	return l.Log(Event{
+		Type:      EventTypeAccretionSnapshot,
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"directories":   data.Directories,
+			"snapshot_type": data.SnapshotType,
+		},
+	})
+}
+
 // GateDecisionData contains the data for a spawn.gate_decision event.
-// Only block and bypass decisions are logged (allow is omitted for volume management).
+// Block, bypass, and allow decisions are all logged for true fire rate calculation.
 type GateDecisionData struct {
 	GateName    string   `json:"gate_name"`              // hotspot, triage, verification, accretion_precommit
-	Decision    string   `json:"decision"`               // block, bypass
+	Decision    string   `json:"decision"`               // block, bypass, allow
 	Skill       string   `json:"skill,omitempty"`        // Skill being spawned
 	BeadsID     string   `json:"beads_id,omitempty"`     // Issue ID if available
 	TargetFiles []string `json:"target_files,omitempty"` // Files that triggered the gate

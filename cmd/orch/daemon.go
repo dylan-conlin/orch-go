@@ -176,6 +176,11 @@ func runDaemonLoop() error {
 	}
 	dlog.Printf("\n")
 
+	// Emit accretion snapshot at startup if last snapshot >6 days old
+	if emitDaemonSnapshot(logger, projectDir) {
+		dlog.Printf("Emitted accretion snapshot (>6d since last)\n")
+	}
+
 	// Main polling loop
 	for {
 		select {
