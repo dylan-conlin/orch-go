@@ -47,6 +47,17 @@ export interface MeasurementCoverage {
 	unmeasured: number;
 }
 
+export interface ExplorationMetrics {
+	total_runs: number;
+	completed_runs: number;
+	total_findings: number;
+	total_accepted: number;
+	total_contested: number;
+	total_rejected: number;
+	total_gaps: number;
+	avg_workers_per_run: number;
+}
+
 export interface HarnessData {
 	generated_at: string;
 	analysis_period: string;
@@ -55,6 +66,7 @@ export interface HarnessData {
 	completion_coverage: CompletionCoverage;
 	falsification_verdicts: Record<string, FalsificationVerdict>;
 	measurement_coverage: MeasurementCoverage;
+	exploration_metrics?: ExplorationMetrics;
 }
 
 const emptyData: HarnessData = {

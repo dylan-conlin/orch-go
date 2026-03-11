@@ -891,6 +891,128 @@ func TestLogGateDecision_Bypass(t *testing.T) {
 	}
 }
 
+func TestLogExplorationDecomposed(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogExplorationDecomposed(ExplorationDecomposedData{
+		BeadsID:       "orch-go-abc1",
+		ParentSkill:   "investigation",
+		Question:      "How does daemon handle concurrent spawns?",
+		Subproblems:   []string{"mutex locking", "queue ordering", "rate limiting"},
+		Breadth:       3,
+	})
+	if err != nil {
+		t.Fatalf("LogExplorationDecomposed() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	if event.Type != EventTypeExplorationDecomposed {
+		t.Errorf("event.Type = %q, want %q", event.Type, EventTypeExplorationDecomposed)
+	}
+	if event.SessionID != "orch-go-abc1" {
+		t.Errorf("event.SessionID = %q, want %q", event.SessionID, "orch-go-abc1")
+	}
+	if event.Data["parent_skill"] != "investigation" {
+		t.Errorf("data.parent_skill = %v, want %q", event.Data["parent_skill"], "investigation")
+	}
+	if event.Data["breadth"] != float64(3) {
+		t.Errorf("data.breadth = %v, want 3", event.Data["breadth"])
+	}
+}
+
+func TestLogExplorationJudged(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogExplorationJudged(ExplorationJudgedData{
+		BeadsID:           "orch-go-abc1",
+		ParentSkill:       "investigation",
+		TotalFindings:     8,
+		Accepted:          5,
+		Contested:         2,
+		Rejected:          1,
+		CoverageGaps:      1,
+	})
+	if err != nil {
+		t.Fatalf("LogExplorationJudged() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	if event.Type != EventTypeExplorationJudged {
+		t.Errorf("event.Type = %q, want %q", event.Type, EventTypeExplorationJudged)
+	}
+	if event.Data["total_findings"] != float64(8) {
+		t.Errorf("data.total_findings = %v, want 8", event.Data["total_findings"])
+	}
+	if event.Data["accepted"] != float64(5) {
+		t.Errorf("data.accepted = %v, want 5", event.Data["accepted"])
+	}
+	if event.Data["contested"] != float64(2) {
+		t.Errorf("data.contested = %v, want 2", event.Data["contested"])
+	}
+	if event.Data["rejected"] != float64(1) {
+		t.Errorf("data.rejected = %v, want 1", event.Data["rejected"])
+	}
+}
+
+func TestLogExplorationSynthesized(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogExplorationSynthesized(ExplorationSynthesizedData{
+		BeadsID:          "orch-go-abc1",
+		ParentSkill:      "investigation",
+		WorkerCount:      3,
+		DurationSeconds:  450,
+		SynthesisPath:    ".orch/workspace/test/SYNTHESIS.md",
+	})
+	if err != nil {
+		t.Fatalf("LogExplorationSynthesized() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	if event.Type != EventTypeExplorationSynthesized {
+		t.Errorf("event.Type = %q, want %q", event.Type, EventTypeExplorationSynthesized)
+	}
+	if event.Data["worker_count"] != float64(3) {
+		t.Errorf("data.worker_count = %v, want 3", event.Data["worker_count"])
+	}
+	if event.Data["duration_seconds"] != float64(450) {
+		t.Errorf("data.duration_seconds = %v, want 450", event.Data["duration_seconds"])
+	}
+}
+
 func TestLogGateDecision_AccretionPrecommit(t *testing.T) {
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "events.jsonl")

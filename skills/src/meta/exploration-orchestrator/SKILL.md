@@ -44,6 +44,11 @@ Break the question into N independent subproblems (N = breadth from config).
 
 Write your decomposition plan as a beads comment before spawning.
 
+**Emit event:**
+```bash
+orch emit exploration.decomposed --beads-id BEADS_ID --data '{"parent_skill":"SKILL","question":"QUESTION","subproblems":["sub1","sub2","sub3"],"breadth":N}'
+```
+
 ---
 
 ## Phase 2: Spawn Workers
@@ -94,6 +99,11 @@ The judge uses the `exploration-judge` skill and produces a structured `judge-ve
 
 **Contested findings are the most valuable output.** They reveal genuine complexity.
 
+**Emit event after reading judge verdicts:**
+```bash
+orch emit exploration.judged --beads-id BEADS_ID --data '{"parent_skill":"SKILL","total_findings":N,"accepted":A,"contested":C,"rejected":R,"coverage_gaps":G}'
+```
+
 ---
 
 ## Phase 5: Synthesize
@@ -106,6 +116,11 @@ Using the judge verdicts, write a unified analysis that:
 - Includes a confidence assessment informed by judge ratings
 
 **Output:** Write synthesis to your workspace SYNTHESIS.md.
+
+**Emit event after writing synthesis:**
+```bash
+orch emit exploration.synthesized --beads-id BEADS_ID --data '{"parent_skill":"SKILL","worker_count":N,"duration_seconds":S,"synthesis_path":"path/to/SYNTHESIS.md"}'
+```
 
 ---
 

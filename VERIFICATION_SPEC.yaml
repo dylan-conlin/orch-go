@@ -1,29 +1,34 @@
 type: feature
 deliverables:
-  - path: skills/src/meta/exploration-judge/SKILL.md
-    description: Exploration judge skill with 5-dimension evaluation and structured YAML verdict output
-    verification: skill loads via loader, contains all 5 dimensions and verdict format markers
+  - path: pkg/events/logger.go
+    description: 3 new exploration event types (decomposed, judged, synthesized) with typed data structs and log methods
+    verification: go test ./pkg/events/ -run TestLogExploration -count=1 -v
+  - path: cmd/orch/emit_cmd.go
+    description: Extended orch emit to support exploration.decomposed, exploration.judged, exploration.synthesized
+    verification: go build ./cmd/orch/ compiles; orch emit exploration.decomposed --help
+  - path: cmd/orch/serve_harness.go
+    description: ExplorationMetrics aggregation in harness API response
+    verification: go test ./cmd/orch/ -run TestBuildHarnessResponse_Exploration -count=1 -v
+  - path: web/src/lib/stores/harness.ts
+    description: ExplorationMetrics TypeScript interface added to HarnessData
+    verification: npx svelte-check shows no harness-related errors
+  - path: web/src/routes/harness/+page.svelte
+    description: Exploration Runs dashboard section with metrics and judge verdict bar
+    verification: Visual check at http://localhost:5188/harness
   - path: skills/src/meta/exploration-orchestrator/SKILL.md
-    description: Updated orchestrator to delegate judging to exploration-judge skill
-    verification: Phase 4 references exploration-judge spawn command
-  - path: pkg/spawn/context.go
-    description: Updated SPAWN_CONTEXT template to reference judge skill instead of inline criteria
-    verification: Template mentions exploration-judge, judge-verdict.yaml, verdict types
-  - path: pkg/spawn/explore_judge_skill_test.go
-    description: Tests for judge skill loading and verdict schema completeness
-    verification: go test ./pkg/spawn/ -run TestExplorationJudge
-  - path: pkg/spawn/explore_test.go
-    description: Updated context generation tests to verify judge skill references
-    verification: go test ./pkg/spawn/ -run TestExploreContextGeneration
+    description: Added orch emit instructions for all 3 exploration lifecycle events
+    verification: Skill contains orch emit exploration.decomposed/judged/synthesized commands
 tests:
-  command: go test ./pkg/spawn/ -count=1
-  result: PASS (0.416s)
+  commands:
+    - go test ./pkg/events/ -run TestLogExploration -count=1
+    - go test ./cmd/orch/ -run TestBuildHarnessResponse_Exploration -count=1
+  result: All PASS
 evidence:
-  - claim: "Judge skill evaluates on 5 dimensions: grounding, consistency, coverage, relevance, actionability"
-    basis: "All 5 dimensions defined in SKILL.md with rating scales and criteria"
-  - claim: "Structured YAML verdict output"
-    basis: "Complete YAML schema in SKILL.md with sub_findings, contested_findings, coverage_gaps, overall sections"
-  - claim: "Contested findings surfaced as most valuable output"
-    basis: "Dedicated contested_findings section in verdict, anti-pattern guidance, bias toward contested over rejected"
-  - claim: "Judge is spawnable by exploration orchestrator"
-    basis: "Orchestrator Phase 4 and SPAWN_CONTEXT template both reference 'orch spawn ... exploration-judge' command"
+  - claim: "3 exploration events flow through events.jsonl"
+    basis: "Event types EventTypeExplorationDecomposed/Judged/Synthesized defined, typed log methods tested"
+  - claim: "Harness API aggregates exploration metrics"
+    basis: "ExplorationMetrics computed from exploration.* events, tested with 2 runs (1 complete, 1 partial)"
+  - claim: "Dashboard shows exploration quality metrics"
+    basis: "Svelte page renders total_runs, completed_runs, findings, avg_workers, judge verdict bar"
+  - claim: "Exploration orchestrator skill emits events"
+    basis: "SKILL.md updated with orch emit commands at each lifecycle phase"

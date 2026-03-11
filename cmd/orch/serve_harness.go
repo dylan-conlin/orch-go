@@ -19,6 +19,19 @@ type HarnessResponse struct {
 	CompletionCoverage    CompletionCoverage              `json:"completion_coverage"`
 	FalsificationVerdicts map[string]FalsificationVerdict `json:"falsification_verdicts"`
 	MeasurementCoverage   MeasurementCoverage             `json:"measurement_coverage"`
+	ExplorationMetrics    *ExplorationMetrics             `json:"exploration_metrics,omitempty"`
+}
+
+// ExplorationMetrics aggregates exploration mode run data.
+type ExplorationMetrics struct {
+	TotalRuns        int     `json:"total_runs"`
+	CompletedRuns    int     `json:"completed_runs"`
+	TotalFindings    int     `json:"total_findings"`
+	TotalAccepted    int     `json:"total_accepted"`
+	TotalContested   int     `json:"total_contested"`
+	TotalRejected    int     `json:"total_rejected"`
+	TotalGaps        int     `json:"total_gaps"`
+	AvgWorkersPerRun float64 `json:"avg_workers_per_run"`
 }
 
 // PipelineStage represents one stage in the harness pipeline.
@@ -147,6 +160,12 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 	var totalCompletions int
 	var withSkill, withOutcome, withDuration int
 
+	// Exploration metrics
+	explorationDecomposed := make(map[string]float64) // beads_id -> breadth
+	explorationJudged := make(map[string]struct{})
+	var explorationTotalFindings, explorationAccepted, explorationContested, explorationRejected, explorationGaps int
+	explorationSynthesized := make(map[string]struct{})
+
 	// Accretion snapshots collected from ALL events (not just in-window)
 	var snapshots []accretionSnapshot
 	var firstAccretionEvent int64
@@ -158,18 +177,24 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 				firstAccretionEvent = event.Timestamp
 			}
 			totalLines := 0
-			dir := ""
+			// Support both formats:
+			// 1. Flat: {"total_lines": N, "directory": "pkg/foo/"}
+			// 2. Directories array: {"directories": [{"total_lines": N, ...}, ...]}
 			if tl, ok := event.Data["total_lines"].(float64); ok {
 				totalLines = int(tl)
-			}
-			if d, ok := event.Data["directory"].(string); ok {
-				dir = d
+			} else if dirs, ok := event.Data["directories"].([]interface{}); ok {
+				for _, d := range dirs {
+					if dm, ok := d.(map[string]interface{}); ok {
+						if tl, ok := dm["total_lines"].(float64); ok {
+							totalLines += int(tl)
+						}
+					}
+				}
 			}
 			if totalLines > 0 {
 				snapshots = append(snapshots, accretionSnapshot{
 					Timestamp:  event.Timestamp,
 					TotalLines: totalLines,
-					Directory:  dir,
 				})
 			}
 			continue
@@ -230,6 +255,46 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 					withDuration++
 				}
 			}
+
+		case "exploration.decomposed":
+			if event.Data != nil {
+				bid, _ := event.Data["beads_id"].(string)
+				breadth, _ := event.Data["breadth"].(float64)
+				if bid != "" {
+					explorationDecomposed[bid] = breadth
+				}
+			}
+
+		case "exploration.judged":
+			if event.Data != nil {
+				bid, _ := event.Data["beads_id"].(string)
+				if bid != "" {
+					explorationJudged[bid] = struct{}{}
+				}
+				if tf, ok := event.Data["total_findings"].(float64); ok {
+					explorationTotalFindings += int(tf)
+				}
+				if a, ok := event.Data["accepted"].(float64); ok {
+					explorationAccepted += int(a)
+				}
+				if c, ok := event.Data["contested"].(float64); ok {
+					explorationContested += int(c)
+				}
+				if r, ok := event.Data["rejected"].(float64); ok {
+					explorationRejected += int(r)
+				}
+				if g, ok := event.Data["coverage_gaps"].(float64); ok {
+					explorationGaps += int(g)
+				}
+			}
+
+		case "exploration.synthesized":
+			if event.Data != nil {
+				bid, _ := event.Data["beads_id"].(string)
+				if bid != "" {
+					explorationSynthesized[bid] = struct{}{}
+				}
+			}
 		}
 	}
 
@@ -268,6 +333,25 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 		}
 	}
 
+	// Build exploration metrics if any exploration events exist
+	var explMetrics *ExplorationMetrics
+	if len(explorationDecomposed) > 0 {
+		totalBreadth := 0.0
+		for _, b := range explorationDecomposed {
+			totalBreadth += b
+		}
+		explMetrics = &ExplorationMetrics{
+			TotalRuns:        len(explorationDecomposed),
+			CompletedRuns:    len(explorationSynthesized),
+			TotalFindings:    explorationTotalFindings,
+			TotalAccepted:    explorationAccepted,
+			TotalContested:   explorationContested,
+			TotalRejected:    explorationRejected,
+			TotalGaps:        explorationGaps,
+			AvgWorkersPerRun: totalBreadth / float64(len(explorationDecomposed)),
+		}
+	}
+
 	return &HarnessResponse{
 		GeneratedAt:       time.Now().Format(time.RFC3339),
 		AnalysisPeriod:    fmt.Sprintf("Last %d days", days),
@@ -288,6 +372,7 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 			ProxyOnly:       3,
 			Unmeasured:      13 - measured - collecting - 3,
 		},
+		ExplorationMetrics: explMetrics,
 	}
 }
 

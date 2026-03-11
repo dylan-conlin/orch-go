@@ -32,6 +32,9 @@ when issues are closed directly via 'bd close', bypassing 'orch complete'.
 
 Supported event types:
   - agent.completed: Agent finished work (requires --beads-id)
+  - exploration.decomposed: Exploration orchestrator decomposed question into subproblems
+  - exploration.judged: Exploration judge produced verdicts on sub-findings
+  - exploration.synthesized: Exploration run produced final synthesis
 
 The event is appended to ~/.orch/events.jsonl in JSONL format.
 
@@ -60,30 +63,40 @@ func init() {
 }
 
 func runEmit(eventType, beadsID, reason, dataStr string, jsonOutput bool) error {
-	// Validate event type
+	// Parse additional data
+	var additionalData map[string]interface{}
+	if dataStr != "" {
+		if err := json.Unmarshal([]byte(dataStr), &additionalData); err != nil {
+			return fmt.Errorf("invalid --data JSON: %w", err)
+		}
+	}
+
+	logger := events.NewLogger(events.DefaultLogPath())
+
+	// Validate and handle event type
 	switch eventType {
 	case "agent.completed":
 		if beadsID == "" {
 			return fmt.Errorf("--beads-id is required for agent.completed events")
 		}
-	default:
-		return fmt.Errorf("unsupported event type: %s (supported: agent.completed)", eventType)
-	}
+		return emitAgentCompleted(logger, beadsID, reason, additionalData, jsonOutput)
 
-	// Build enriched completion event
+	case "exploration.decomposed", "exploration.judged", "exploration.synthesized":
+		return emitExplorationEvent(logger, eventType, beadsID, reason, additionalData, jsonOutput)
+
+	default:
+		return fmt.Errorf("unsupported event type: %s (supported: agent.completed, exploration.decomposed, exploration.judged, exploration.synthesized)", eventType)
+	}
+}
+
+func emitAgentCompleted(logger *events.Logger, beadsID, reason string, additionalData map[string]interface{}, jsonOutput bool) error {
 	completedData := events.AgentCompletedData{
 		BeadsID: beadsID,
 		Reason:  reason,
-		Outcome: "success", // Default for hook-closed issues
+		Outcome: "success",
 	}
 
-	// Parse additional data for overrides
-	if dataStr != "" {
-		var additionalData map[string]interface{}
-		if err := json.Unmarshal([]byte(dataStr), &additionalData); err != nil {
-			return fmt.Errorf("invalid --data JSON: %w", err)
-		}
-		// Apply overrides from --data
+	if additionalData != nil {
 		if v, ok := additionalData["skill"].(string); ok {
 			completedData.Skill = v
 		}
@@ -93,7 +106,6 @@ func runEmit(eventType, beadsID, reason, dataStr string, jsonOutput bool) error 
 	}
 
 	// Auto-enrich from workspace manifest if available
-	// Try current directory first, then cross-project search
 	projectDir, _ := os.Getwd()
 	wsPath, wsName := findWorkspaceByBeadsID(projectDir, beadsID)
 	if wsPath == "" {
@@ -110,21 +122,89 @@ func runEmit(eventType, beadsID, reason, dataStr string, jsonOutput bool) error 
 		}
 	}
 
-	// Log to events.jsonl
-	logger := events.NewLogger(events.DefaultLogPath())
 	if err := logger.LogAgentCompleted(completedData); err != nil {
 		return fmt.Errorf("failed to log event: %w", err)
 	}
 
-	// Output
+	return emitOutput("agent.completed", beadsID, reason, completedData.Skill, jsonOutput)
+}
+
+func emitExplorationEvent(logger *events.Logger, eventType, beadsID, reason string, additionalData map[string]interface{}, jsonOutput bool) error {
+	getStr := func(key string) string {
+		if additionalData == nil {
+			return ""
+		}
+		v, _ := additionalData[key].(string)
+		return v
+	}
+	getInt := func(key string) int {
+		if additionalData == nil {
+			return 0
+		}
+		v, _ := additionalData[key].(float64)
+		return int(v)
+	}
+	getStrSlice := func(key string) []string {
+		if additionalData == nil {
+			return nil
+		}
+		raw, ok := additionalData[key].([]interface{})
+		if !ok {
+			return nil
+		}
+		var result []string
+		for _, item := range raw {
+			if s, ok := item.(string); ok {
+				result = append(result, s)
+			}
+		}
+		return result
+	}
+
+	var err error
+	switch eventType {
+	case "exploration.decomposed":
+		err = logger.LogExplorationDecomposed(events.ExplorationDecomposedData{
+			BeadsID:     beadsID,
+			ParentSkill: getStr("parent_skill"),
+			Question:    getStr("question"),
+			Subproblems: getStrSlice("subproblems"),
+			Breadth:     getInt("breadth"),
+		})
+	case "exploration.judged":
+		err = logger.LogExplorationJudged(events.ExplorationJudgedData{
+			BeadsID:       beadsID,
+			ParentSkill:   getStr("parent_skill"),
+			TotalFindings: getInt("total_findings"),
+			Accepted:      getInt("accepted"),
+			Contested:     getInt("contested"),
+			Rejected:      getInt("rejected"),
+			CoverageGaps:  getInt("coverage_gaps"),
+		})
+	case "exploration.synthesized":
+		err = logger.LogExplorationSynthesized(events.ExplorationSynthesizedData{
+			BeadsID:         beadsID,
+			ParentSkill:     getStr("parent_skill"),
+			WorkerCount:     getInt("worker_count"),
+			DurationSeconds: getInt("duration_seconds"),
+			SynthesisPath:   getStr("synthesis_path"),
+		})
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to log event: %w", err)
+	}
+
+	return emitOutput(eventType, beadsID, reason, "", jsonOutput)
+}
+
+func emitOutput(eventType, beadsID, reason, skill string, jsonOutput bool) error {
 	if jsonOutput {
-		// Build a raw event for JSON output compatibility
 		event := events.Event{
 			Type:      eventType,
 			Timestamp: time.Now().Unix(),
 			Data: map[string]interface{}{
 				"beads_id": beadsID,
-				"source":   "bd_close_hook",
 			},
 		}
 		if reason != "" {
@@ -136,31 +216,30 @@ func runEmit(eventType, beadsID, reason, dataStr string, jsonOutput bool) error 
 		}
 		fmt.Println(string(output))
 	} else {
-		fmt.Printf("✓ Emitted %s event for %s\n", eventType, beadsID)
+		fmt.Printf("✓ Emitted %s event", eventType)
+		if beadsID != "" {
+			fmt.Printf(" for %s", beadsID)
+		}
+		fmt.Println()
 		if reason != "" {
 			fmt.Printf("  Reason: %s\n", reason)
 		}
-		if completedData.Skill != "" {
-			fmt.Printf("  Skill: %s\n", completedData.Skill)
+		if skill != "" {
+			fmt.Printf("  Skill: %s\n", skill)
 		}
 	}
 
-	// Invalidate serve cache to ensure dashboard shows updated status immediately.
-	// This is non-critical so we just call it and ignore errors.
 	invalidateServeCache()
-
 	return nil
 }
 
 // emitAgentCompletedFromHook is a helper function that can be called from Go code
 // to emit an agent.completed event from a hook context.
-// This is exported for potential use by other packages.
 func emitAgentCompletedFromHook(beadsID, reason string) error {
 	return runEmit("agent.completed", beadsID, reason, "", false)
 }
 
 // EmitResult is the structured output when --json is used.
-// Not currently used but defined for future API stability.
 type EmitResult struct {
 	Type      string                 `json:"type"`
 	Timestamp int64                  `json:"timestamp"`
@@ -169,7 +248,6 @@ type EmitResult struct {
 }
 
 // printEmitHelp prints additional usage information.
-// Called when the user runs `orch emit --help`.
 func printEmitHelp(cmd *cobra.Command) {
 	fmt.Fprintf(os.Stderr, `
 Beads Hook Integration:
@@ -180,7 +258,7 @@ create an executable script at .beads/hooks/on_close:
     #!/bin/bash
     # .beads/hooks/on_close
     # Emit agent.completed event when issues are closed via bd close
-    
+
     # BD_ISSUE_ID is set by beads when the hook runs
     if [ -n "$BD_ISSUE_ID" ]; then
         orch emit agent.completed --beads-id "$BD_ISSUE_ID" --reason "Closed via bd close"

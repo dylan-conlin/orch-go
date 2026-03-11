@@ -59,6 +59,12 @@ const (
 	EventTypeAccretionSnapshot = "accretion.snapshot"
 	// EventTypeDaemonArchitectEscalation logs daemon routing decisions for hotspot-targeting issues.
 	EventTypeDaemonArchitectEscalation = "daemon.architect_escalation"
+	// EventTypeExplorationDecomposed logs when an exploration orchestrator decomposes a question into subproblems.
+	EventTypeExplorationDecomposed = "exploration.decomposed"
+	// EventTypeExplorationJudged logs when an exploration judge produces verdicts on sub-findings.
+	EventTypeExplorationJudged = "exploration.judged"
+	// EventTypeExplorationSynthesized logs when an exploration run produces a final synthesis.
+	EventTypeExplorationSynthesized = "exploration.synthesized"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -732,6 +738,109 @@ func (l *Logger) LogAccretionSnapshot(data AccretionSnapshotData) error {
 			"directories":   data.Directories,
 			"snapshot_type": data.SnapshotType,
 		},
+	})
+}
+
+// ExplorationDecomposedData contains the data for an exploration.decomposed event.
+type ExplorationDecomposedData struct {
+	BeadsID     string   `json:"beads_id,omitempty"`
+	ParentSkill string   `json:"parent_skill,omitempty"` // investigation or architect
+	Question    string   `json:"question,omitempty"`     // Original question being explored
+	Subproblems []string `json:"subproblems"`            // List of decomposed subproblem descriptions
+	Breadth     int      `json:"breadth"`                // Number of parallel workers
+}
+
+// LogExplorationDecomposed logs when an exploration orchestrator decomposes a question into subproblems.
+func (l *Logger) LogExplorationDecomposed(data ExplorationDecomposedData) error {
+	eventData := map[string]interface{}{
+		"subproblems": data.Subproblems,
+		"breadth":     data.Breadth,
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if data.ParentSkill != "" {
+		eventData["parent_skill"] = data.ParentSkill
+	}
+	if data.Question != "" {
+		eventData["question"] = data.Question
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeExplorationDecomposed,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// ExplorationJudgedData contains the data for an exploration.judged event.
+type ExplorationJudgedData struct {
+	BeadsID       string `json:"beads_id,omitempty"`
+	ParentSkill   string `json:"parent_skill,omitempty"`
+	TotalFindings int    `json:"total_findings"`
+	Accepted      int    `json:"accepted"`
+	Contested     int    `json:"contested"`
+	Rejected      int    `json:"rejected"`
+	CoverageGaps  int    `json:"coverage_gaps"`
+}
+
+// LogExplorationJudged logs when an exploration judge produces verdicts on sub-findings.
+func (l *Logger) LogExplorationJudged(data ExplorationJudgedData) error {
+	eventData := map[string]interface{}{
+		"total_findings": data.TotalFindings,
+		"accepted":       data.Accepted,
+		"contested":      data.Contested,
+		"rejected":       data.Rejected,
+		"coverage_gaps":  data.CoverageGaps,
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if data.ParentSkill != "" {
+		eventData["parent_skill"] = data.ParentSkill
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeExplorationJudged,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// ExplorationSynthesizedData contains the data for an exploration.synthesized event.
+type ExplorationSynthesizedData struct {
+	BeadsID         string `json:"beads_id,omitempty"`
+	ParentSkill     string `json:"parent_skill,omitempty"`
+	WorkerCount     int    `json:"worker_count"`
+	DurationSeconds int    `json:"duration_seconds,omitempty"` // Total exploration wall-clock time
+	SynthesisPath   string `json:"synthesis_path,omitempty"`   // Path to synthesis output file
+}
+
+// LogExplorationSynthesized logs when an exploration run produces a final synthesis.
+func (l *Logger) LogExplorationSynthesized(data ExplorationSynthesizedData) error {
+	eventData := map[string]interface{}{
+		"worker_count": data.WorkerCount,
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if data.ParentSkill != "" {
+		eventData["parent_skill"] = data.ParentSkill
+	}
+	if data.DurationSeconds > 0 {
+		eventData["duration_seconds"] = data.DurationSeconds
+	}
+	if data.SynthesisPath != "" {
+		eventData["synthesis_path"] = data.SynthesisPath
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeExplorationSynthesized,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
 	})
 }
 

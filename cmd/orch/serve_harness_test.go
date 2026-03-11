@@ -184,6 +184,65 @@ func TestAccretionGate_UnmeasuredWithoutEvents(t *testing.T) {
 	}
 }
 
+func TestAccretionSnapshot_DirectoriesArrayFormat(t *testing.T) {
+	// Two snapshots with directories array format (actual event format)
+	// spaced 7 days apart to compute velocity
+	now := time.Now().Unix()
+	events := []StatsEvent{
+		{Type: "session.spawned", Timestamp: now - 3600},
+		{Type: "accretion.snapshot", Timestamp: now - 7*86400, Data: map[string]interface{}{
+			"directories": []interface{}{
+				map[string]interface{}{"directory": "cmd/orch/", "total_lines": 50000.0, "file_count": 100.0},
+				map[string]interface{}{"directory": "pkg/spawn/", "total_lines": 20000.0, "file_count": 50.0},
+			},
+			"snapshot_type": "baseline",
+		}},
+		{Type: "accretion.snapshot", Timestamp: now, Data: map[string]interface{}{
+			"directories": []interface{}{
+				map[string]interface{}{"directory": "cmd/orch/", "total_lines": 52000.0, "file_count": 105.0},
+				map[string]interface{}{"directory": "pkg/spawn/", "total_lines": 21000.0, "file_count": 52.0},
+			},
+			"snapshot_type": "periodic",
+		}},
+	}
+
+	resp := buildHarnessResponse(events, 30)
+
+	if resp.AccretionVelocity == nil {
+		t.Fatal("expected AccretionVelocity to be computed from directories-array snapshots")
+	}
+
+	// First snapshot: 70000 lines, second: 73000 lines = +3000 over 7 days = 3000/week
+	if resp.AccretionVelocity.CurrentWeeklyLines != 3000 {
+		t.Errorf("expected 3000 weekly lines, got %d", resp.AccretionVelocity.CurrentWeeklyLines)
+	}
+}
+
+func TestAccretionSnapshot_FlatFormat(t *testing.T) {
+	// Legacy flat format still works
+	now := time.Now().Unix()
+	events := []StatsEvent{
+		{Type: "session.spawned", Timestamp: now - 3600},
+		{Type: "accretion.snapshot", Timestamp: now - 7*86400, Data: map[string]interface{}{
+			"total_lines": 70000.0,
+			"directory":   "cmd/orch/",
+		}},
+		{Type: "accretion.snapshot", Timestamp: now, Data: map[string]interface{}{
+			"total_lines": 73000.0,
+			"directory":   "cmd/orch/",
+		}},
+	}
+
+	resp := buildHarnessResponse(events, 30)
+
+	if resp.AccretionVelocity == nil {
+		t.Fatal("expected AccretionVelocity from flat-format snapshots")
+	}
+	if resp.AccretionVelocity.CurrentWeeklyLines != 3000 {
+		t.Errorf("expected 3000 weekly lines, got %d", resp.AccretionVelocity.CurrentWeeklyLines)
+	}
+}
+
 func TestBuildVerdicts_LowFireRate(t *testing.T) {
 	// 100 spawns, 2 bypasses total = 2% fire rate < 5% threshold
 	verdicts := buildVerdicts(100, 1, 1, 0, nil)
@@ -198,6 +257,75 @@ func TestBuildVerdicts_NoSpawns(t *testing.T) {
 	v := verdicts["gates_are_irrelevant"]
 	if v.Status != "insufficient_data" {
 		t.Errorf("expected 'insufficient_data' with no spawns, got '%s'", v.Status)
+	}
+}
+
+func TestBuildHarnessResponse_ExplorationMetrics(t *testing.T) {
+	now := time.Now().Unix() - 3600
+	events := []StatsEvent{
+		{Type: "session.spawned", Timestamp: now},
+		{Type: "exploration.decomposed", Timestamp: now, Data: map[string]interface{}{
+			"beads_id": "orch-go-abc1", "parent_skill": "investigation",
+			"breadth": 3.0, "subproblems": []interface{}{"sub1", "sub2", "sub3"},
+		}},
+		{Type: "exploration.judged", Timestamp: now, Data: map[string]interface{}{
+			"beads_id": "orch-go-abc1", "total_findings": 8.0,
+			"accepted": 5.0, "contested": 2.0, "rejected": 1.0, "coverage_gaps": 1.0,
+		}},
+		{Type: "exploration.synthesized", Timestamp: now, Data: map[string]interface{}{
+			"beads_id": "orch-go-abc1", "worker_count": 3.0, "duration_seconds": 450.0,
+		}},
+		// Second exploration run (partial - no synthesis yet)
+		{Type: "exploration.decomposed", Timestamp: now, Data: map[string]interface{}{
+			"beads_id": "orch-go-def2", "parent_skill": "architect",
+			"breadth": 2.0,
+		}},
+		{Type: "exploration.judged", Timestamp: now, Data: map[string]interface{}{
+			"beads_id": "orch-go-def2", "total_findings": 4.0,
+			"accepted": 3.0, "contested": 1.0, "rejected": 0.0, "coverage_gaps": 0.0,
+		}},
+	}
+
+	resp := buildHarnessResponse(events, 30)
+
+	if resp.ExplorationMetrics == nil {
+		t.Fatal("expected ExplorationMetrics to be present")
+	}
+
+	em := resp.ExplorationMetrics
+	if em.TotalRuns != 2 {
+		t.Errorf("expected 2 total runs, got %d", em.TotalRuns)
+	}
+	if em.CompletedRuns != 1 {
+		t.Errorf("expected 1 completed run, got %d", em.CompletedRuns)
+	}
+	if em.TotalFindings != 12 {
+		t.Errorf("expected 12 total findings, got %d", em.TotalFindings)
+	}
+	if em.TotalAccepted != 8 {
+		t.Errorf("expected 8 accepted, got %d", em.TotalAccepted)
+	}
+	if em.TotalContested != 3 {
+		t.Errorf("expected 3 contested, got %d", em.TotalContested)
+	}
+	if em.TotalRejected != 1 {
+		t.Errorf("expected 1 rejected, got %d", em.TotalRejected)
+	}
+	if em.AvgWorkersPerRun != 2.5 {
+		t.Errorf("expected 2.5 avg workers, got %f", em.AvgWorkersPerRun)
+	}
+}
+
+func TestBuildHarnessResponse_NoExplorationEvents(t *testing.T) {
+	now := time.Now().Unix() - 3600
+	events := []StatsEvent{
+		{Type: "session.spawned", Timestamp: now},
+	}
+
+	resp := buildHarnessResponse(events, 30)
+
+	if resp.ExplorationMetrics != nil {
+		t.Error("expected ExplorationMetrics to be nil when no exploration events")
 	}
 }
 

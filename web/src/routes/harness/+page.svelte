@@ -14,7 +14,8 @@
 		formatRate,
 		harnessSummary,
 		coverageFraming,
-		type PipelineComponent
+		type PipelineComponent,
+		type ExplorationMetrics
 	} from '$lib/stores/harness';
 
 	let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -187,6 +188,68 @@
 			</div>
 		{/each}
 	</div>
+
+	<!-- Exploration Metrics (only shown when exploration events exist) -->
+	{#if $harness.exploration_metrics}
+		{@const em = $harness.exploration_metrics}
+		<div class="space-y-2">
+			<div>
+				<h2 class="text-sm font-medium">Exploration Runs</h2>
+				<p class="text-[10px] text-muted-foreground mt-0.5">Parallel decomposition with judge synthesis — analysis quality metrics</p>
+			</div>
+			<div class="rounded-md border p-3 bg-card">
+				<div class="grid grid-cols-4 gap-3 text-center mb-3">
+					<div>
+						<div class="text-lg font-semibold">{em.total_runs}</div>
+						<div class="text-[10px] text-muted-foreground">Runs</div>
+					</div>
+					<div>
+						<div class="text-lg font-semibold text-green-400">{em.completed_runs}</div>
+						<div class="text-[10px] text-muted-foreground">Completed</div>
+					</div>
+					<div>
+						<div class="text-lg font-semibold">{em.total_findings}</div>
+						<div class="text-[10px] text-muted-foreground">Findings</div>
+					</div>
+					<div>
+						<div class="text-lg font-semibold">{em.avg_workers_per_run.toFixed(1)}</div>
+						<div class="text-[10px] text-muted-foreground">Avg Workers</div>
+					</div>
+				</div>
+				<!-- Judge verdict breakdown -->
+				{#if em.total_findings > 0}
+					<div class="space-y-1">
+						<div class="text-[10px] text-muted-foreground mb-1">Judge Verdicts</div>
+						<div class="h-3 rounded-full bg-foreground/10 overflow-hidden flex">
+							<div
+								class="h-full bg-green-500"
+								title="{em.total_accepted} accepted"
+								style="width: {(em.total_accepted / em.total_findings) * 100}%"
+							></div>
+							<div
+								class="h-full bg-yellow-500"
+								title="{em.total_contested} contested"
+								style="width: {(em.total_contested / em.total_findings) * 100}%"
+							></div>
+							<div
+								class="h-full bg-red-500"
+								title="{em.total_rejected} rejected"
+								style="width: {(em.total_rejected / em.total_findings) * 100}%"
+							></div>
+						</div>
+						<div class="flex justify-between text-[10px] text-muted-foreground">
+							<span class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-green-500"></span> {em.total_accepted} accepted</span>
+							<span class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-yellow-500"></span> {em.total_contested} contested</span>
+							<span class="flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full bg-red-500"></span> {em.total_rejected} rejected</span>
+						</div>
+					</div>
+					{#if em.total_gaps > 0}
+						<p class="mt-2 text-[10px] text-yellow-400/70">{em.total_gaps} coverage gap{em.total_gaps > 1 ? 's' : ''} identified by judges</p>
+					{/if}
+				{/if}
+			</div>
+		</div>
+	{/if}
 
 	<!-- Bottom sections: Verdicts + Coverage -->
 	<div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
