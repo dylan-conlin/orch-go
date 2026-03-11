@@ -477,16 +477,43 @@ func VerifyGitDiff(workspacePath, projectDir string) GitDiffResult {
 		}
 	}
 
-	// Fail if local claimed files are missing from diff
+	// Check missing files: separate into truly-missing (exist in project but not in diff)
+	// vs cross-repo references (don't exist in project at all — likely from another repo)
 	if len(result.MissingFromDiff) > 0 {
-		result.Passed = false
-		result.Errors = append(result.Errors,
-			fmt.Sprintf("SYNTHESIS.md claims %d local file(s) not in git diff:", len(result.MissingFromDiff)))
+		var trulyMissing []string
+		var crossRepoFiles []string
 		for _, f := range result.MissingFromDiff {
-			result.Errors = append(result.Errors, fmt.Sprintf("  - %s", f))
+			fullPath := filepath.Join(projectDir, f)
+			if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+				crossRepoFiles = append(crossRepoFiles, f)
+			} else {
+				trulyMissing = append(trulyMissing, f)
+			}
 		}
-		result.Errors = append(result.Errors,
-			"Agent claimed to modify files that have no git changes - possible false positive")
+
+		// Cross-repo files: downgrade to warning (not the agent's fault — the file is from another repo)
+		if len(crossRepoFiles) > 0 {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("%d claimed file(s) not found in project — likely cross-repo references (downgraded from error):", len(crossRepoFiles)))
+			for _, f := range crossRepoFiles {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("  - %s", f))
+			}
+		}
+
+		// Truly missing files: still an error (file exists in project but not in diff)
+		if len(trulyMissing) > 0 {
+			result.Passed = false
+			result.Errors = append(result.Errors,
+				fmt.Sprintf("SYNTHESIS.md claims %d local file(s) not in git diff:", len(trulyMissing)))
+			for _, f := range trulyMissing {
+				result.Errors = append(result.Errors, fmt.Sprintf("  - %s", f))
+			}
+			result.Errors = append(result.Errors,
+				"Agent claimed to modify files that have no git changes - possible false positive")
+		}
+
+		// Update MissingFromDiff to only contain truly missing files
+		result.MissingFromDiff = trulyMissing
 	}
 
 	// Fail if external files failed verification

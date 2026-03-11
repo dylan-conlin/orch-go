@@ -11,15 +11,36 @@ import (
 // GateArchitecturalChoices is the gate name for architectural choices verification.
 const GateArchitecturalChoices = "architectural_choices"
 
+// skillsRequiringArchitecturalChoices are skills that modify code and should declare
+// tradeoffs. Non-implementation skills (investigation, probe, etc.) are exempt because
+// they don't make architectural choices — they produce knowledge, not code changes.
+var skillsRequiringArchitecturalChoices = map[string]bool{
+	"feature-impl":          true,
+	"systematic-debugging":  true,
+	"architect":             true,
+	"debug-with-playwright": true,
+	"reliability-testing":   true,
+}
+
+// requiresArchitecturalChoices returns true if the skill should declare architectural choices.
+func requiresArchitecturalChoices(skill string) bool {
+	return skillsRequiringArchitecturalChoices[skill]
+}
+
 // VerifyArchitecturalChoices checks if SYNTHESIS.md contains an "Architectural Choices"
 // section for skills that require tradeoff declaration. Returns a passing result for
-// skills not subject to this gate.
+// skills not subject to this gate (investigation, probe, codebase-audit, etc.).
 //
 // The section must contain actual content — either:
 // - Structured choices with "What I chose" / "What I rejected" / "Why" / "Risk accepted"
 // - Or the explicit no-choices declaration: "No architectural choices — task was within existing patterns."
 func VerifyArchitecturalChoices(workspacePath, skill string) *VerificationResult {
 	result := &VerificationResult{Passed: true}
+
+	// Skip for non-implementation skills that don't make architectural choices
+	if !requiresArchitecturalChoices(skill) {
+		return result
+	}
 
 	// Gate selection is handled by the verify level system (V0-V3) in check.go.
 	// This function runs unconditionally when called — the caller decides whether to invoke it.

@@ -145,10 +145,20 @@ var debugPatterns = []struct {
 	},
 }
 
-// isCLIOutputFile returns true if the file is in a cmd/ directory.
-// CLI entry points use fmt.Print for user-facing output, not debugging.
+// isCLIOutputFile returns true if the file is a CLI/output-rendering file.
+// These files use fmt.Print for user-facing output, not debugging:
+// - cmd/ directories: CLI entry points
+// - *_output.go files: output rendering modules (e.g., stats_output.go)
 func isCLIOutputFile(path string) bool {
-	return strings.HasPrefix(path, "cmd/") || strings.HasPrefix(path, "cmd\\")
+	if strings.HasPrefix(path, "cmd/") || strings.HasPrefix(path, "cmd\\") {
+		return true
+	}
+	// Files named *_output.go are output rendering files (e.g., stats_output.go, harness_output.go)
+	base := filepath.Base(path)
+	if strings.HasSuffix(base, "_output.go") {
+		return true
+	}
+	return false
 }
 
 // checkDebugStatements scans added lines in changed production files for leftover debug statements.

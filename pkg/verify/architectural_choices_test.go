@@ -123,6 +123,67 @@ Found root cause.
 			wantPassed: false,
 			wantError:  true,
 		},
+		{
+			name:  "investigation skips architectural choices gate",
+			skill: "investigation",
+			content: `# Session Synthesis
+
+## TLDR
+
+Investigated something.
+
+---
+
+## Knowledge (What Was Learned)
+
+Found things.
+`,
+			wantPassed: true,
+		},
+		{
+			name:  "probe skips architectural choices gate",
+			skill: "probe",
+			content: `# Session Synthesis
+
+## TLDR
+
+Probed something.
+`,
+			wantPassed: true,
+		},
+		{
+			name:  "codebase-audit skips architectural choices gate",
+			skill: "codebase-audit",
+			content: `# Session Synthesis
+
+## TLDR
+
+Audited the codebase.
+`,
+			wantPassed: true,
+		},
+		{
+			name:  "capture-knowledge skips architectural choices gate",
+			skill: "capture-knowledge",
+			content: `# Session Synthesis
+
+## TLDR
+
+Captured knowledge.
+`,
+			wantPassed: true,
+		},
+		{
+			name:  "research skips architectural choices gate",
+			skill: "research",
+			content: `# Session Synthesis
+
+## TLDR
+
+Researched topic.
+`,
+			wantPassed: true,
+		},
 	}
 
 	for _, tt := range tests {

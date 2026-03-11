@@ -550,6 +550,10 @@ func TestIsCLIOutputFile(t *testing.T) {
 		{"cmd/orch/main.go", true},
 		{"cmd/orch/daemon.go", true},
 		{"cmd/server/serve.go", true},
+		// Output-rendering files in pkg/ (should be excluded from fmt.Print check)
+		{"cmd/orch/stats_output.go", true},
+		{"pkg/orch/stats_output.go", true},
+		{"pkg/verify/harness_output.go", true},
 		// Non-CLI files (should still be checked)
 		{"pkg/verify/check.go", false},
 		{"pkg/opencode/client.go", false},
@@ -564,6 +568,79 @@ func TestIsCLIOutputFile(t *testing.T) {
 				t.Errorf("isCLIOutputFile(%q) = %v, want %v", tt.path, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestSelfReview_PkgOutputFileNotFlagged verifies that fmt.Print in pkg/ output
+// rendering files (e.g., stats_output.go) is NOT flagged as a debug statement.
+// This is the reproduction test for the noise gate census finding: self_review
+// had 33 bypasses, dominant pattern being fmt.Print in output-rendering files.
+func TestSelfReview_PkgOutputFileNotFlagged(t *testing.T) {
+	repoDir := t.TempDir()
+	workspaceDir := t.TempDir()
+
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("command %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	// Initialize repo with cmd/ that imports the pkg
+	run("git", "init")
+	os.MkdirAll(filepath.Join(repoDir, "cmd", "app"), 0755)
+	os.MkdirAll(filepath.Join(repoDir, "pkg", "orch"), 0755)
+	os.WriteFile(filepath.Join(repoDir, "cmd", "app", "main.go"), []byte(
+		"package main\n\nimport \"example/pkg/orch\"\n\nfunc main() { orch.Main() }\n",
+	), 0644)
+	os.WriteFile(filepath.Join(repoDir, "pkg", "orch", "main.go"), []byte(
+		"package orch\n\nfunc Main() {}\n",
+	), 0644)
+	run("git", "add", "-A")
+	run("git", "commit", "-m", "feat: initial commit")
+
+	// Record baseline
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = repoDir
+	baselineOut, _ := cmd.Output()
+	baseline := strings.TrimSpace(string(baselineOut))
+
+	manifest := spawn.AgentManifest{
+		GitBaseline:   baseline,
+		WorkspaceName: "test-agent",
+	}
+	data, _ := json.Marshal(manifest)
+	os.WriteFile(filepath.Join(workspaceDir, "AGENT_MANIFEST.json"), data, 0644)
+
+	// Agent adds a stats_output.go file in pkg/ with fmt.Print (legitimate output rendering)
+	os.WriteFile(filepath.Join(repoDir, "pkg", "orch", "stats_output.go"), []byte(
+		`package orch
+
+import "fmt"
+
+func OutputStats() {
+	fmt.Println("=== Stats ===")
+	fmt.Printf("  Spawns: %d\n", 42)
+	fmt.Println("  Done")
+}
+`,
+	), 0644)
+	run("git", "add", "-A")
+	run("git", "commit", "-m", "feat: add stats output rendering")
+
+	// Run self-review — should pass because *_output.go files use fmt.Print for rendering
+	result := VerifySelfReviewForCompletion(workspaceDir, repoDir)
+	if result != nil && !result.Passed {
+		t.Errorf("self-review should pass for fmt.Print in pkg/*_output.go files (output rendering), but got errors: %v", result.Errors)
 	}
 }
 

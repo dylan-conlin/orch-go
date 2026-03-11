@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -395,31 +396,49 @@ func TestVerifyGitDiff_ClaimsFilesNotInDiff(t *testing.T) {
 	cmd.Dir = tmpDir
 	cmd.Run()
 
-	// Create initial commit
+	// Create initial commit with pre-existing files
 	initialFile := filepath.Join(tmpDir, "README.md")
 	if err := os.WriteFile(initialFile, []byte("# Test"), 0644); err != nil {
 		t.Fatalf("failed to write initial file: %v", err)
 	}
-	cmd = exec.Command("git", "add", "README.md")
+	// Also create pkg files that exist in the project before agent spawns
+	os.MkdirAll(filepath.Join(tmpDir, "pkg"), 0755)
+	os.WriteFile(filepath.Join(tmpDir, "pkg", "unchanged.go"), []byte("package pkg\n"), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "pkg", "also_unchanged.go"), []byte("package pkg\n"), 0644)
+	cmd = exec.Command("git", "add", "-A")
 	cmd.Dir = tmpDir
 	cmd.Run()
-	cmd = exec.Command("git", "commit", "-m", "initial commit")
+	cmd = exec.Command("git", "commit", "-m", "initial commit with pkg files")
 	cmd.Dir = tmpDir
 	cmd.Run()
 
-	// Create workspace
+	// Record baseline (agent spawns here — files already exist)
+	baselineCmd := exec.Command("git", "rev-parse", "HEAD")
+	baselineCmd.Dir = tmpDir
+	baselineOut, _ := baselineCmd.Output()
+	baseline := strings.TrimSpace(string(baselineOut))
+
+	// Create workspace with baseline
 	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace", "test-agent")
 	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
 		t.Fatalf("failed to create workspace: %v", err)
 	}
 
-	// Write spawn time
-	spawnTime := time.Now()
-	if err := spawn.WriteSpawnTime(workspaceDir, spawnTime); err != nil {
-		t.Fatalf("failed to write spawn time: %v", err)
-	}
+	// Write manifest with baseline
+	manifest := spawn.AgentManifest{GitBaseline: baseline, WorkspaceName: "test-agent", ProjectDir: tmpDir}
+	manifestData, _ := json.Marshal(manifest)
+	os.WriteFile(filepath.Join(workspaceDir, "AGENT_MANIFEST.json"), manifestData, 0644)
 
-	// Create SYNTHESIS.md that claims files that don't exist in git diff
+	// Agent makes some other commit (so there IS a diff, just not for the claimed files)
+	os.WriteFile(filepath.Join(tmpDir, "new_file.go"), []byte("package main\n"), 0644)
+	cmd = exec.Command("git", "add", "new_file.go")
+	cmd.Dir = tmpDir
+	cmd.Run()
+	cmd = exec.Command("git", "commit", "-m", "agent adds new file")
+	cmd.Dir = tmpDir
+	cmd.Run()
+
+	// Create SYNTHESIS.md that claims files that exist but aren't in the diff
 	synthesisContent := `# Session Synthesis
 
 ## TLDR
@@ -428,14 +447,14 @@ Made changes
 ## Delta (What Changed)
 
 ### Files Modified
-- ` + "`pkg/nonexistent.go`" + ` - This file was never modified
-- ` + "`pkg/another.go`" + ` - This one too
+- ` + "`pkg/unchanged.go`" + ` - This file was never modified by agent
+- ` + "`pkg/also_unchanged.go`" + ` - This one too
 `
 	if err := os.WriteFile(filepath.Join(workspaceDir, "SYNTHESIS.md"), []byte(synthesisContent), 0644); err != nil {
 		t.Fatalf("failed to write SYNTHESIS.md: %v", err)
 	}
 
-	// Test: should fail - claiming files that aren't in diff
+	// Test: should fail - claiming files that exist in project but aren't in diff
 	result := VerifyGitDiff(workspaceDir, tmpDir)
 	if result.Passed {
 		t.Error("VerifyGitDiff() should fail when claims don't match diff")
@@ -1067,5 +1086,83 @@ func TestVerifyGitDiff_CrossRepoBaselineDiscarded(t *testing.T) {
 	}
 	if len(result.ActualFiles) == 0 {
 		t.Errorf("VerifyGitDiff() should find skill.go in actual diff, actualFiles: %v", result.ActualFiles)
+	}
+}
+
+// TestVerifyGitDiff_NonexistentLocalFilesDowngradedToWarning verifies that when
+// SYNTHESIS claims local-looking files that don't exist in the project, they're
+// downgraded to warnings instead of errors. This handles the cross-repo false positive:
+// agents working across repos may claim files from another repo that look like local paths.
+func TestVerifyGitDiff_NonexistentLocalFilesDowngradedToWarning(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not found in PATH")
+	}
+
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = tmpDir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("command %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	run("git", "init")
+	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main"), 0644)
+	run("git", "add", "main.go")
+	run("git", "commit", "-m", "initial")
+
+	// Create workspace
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace", "test-agent")
+	os.MkdirAll(workspaceDir, 0755)
+	spawnTime := time.Now()
+	spawn.WriteSpawnTime(workspaceDir, spawnTime)
+
+	time.Sleep(gitTimestampGranularity)
+
+	// Agent modifies local file
+	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\nfunc main() {}"), 0644)
+	run("git", "add", "main.go")
+	run("git", "commit", "-m", "feat: update main")
+
+	// SYNTHESIS claims local file AND a file from another repo (that doesn't exist here)
+	synthesisContent := `# Session Synthesis
+
+## TLDR
+Cross-repo work
+
+## Delta (What Changed)
+
+### Files Modified
+- ` + "`main.go`" + ` - Updated main
+- ` + "`packages/opencode/src/session.ts`" + ` - Fixed session handling in opencode fork
+`
+	os.WriteFile(filepath.Join(workspaceDir, "SYNTHESIS.md"), []byte(synthesisContent), 0644)
+
+	result := VerifyGitDiff(workspaceDir, tmpDir)
+	// Should pass — the nonexistent claimed file should be downgraded to warning
+	if !result.Passed {
+		t.Errorf("VerifyGitDiff() should pass when missing files don't exist in project (cross-repo), errors: %v", result.Errors)
+	}
+	// Should have a warning about the nonexistent file
+	hasWarning := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "packages/opencode/src/session.ts") || strings.Contains(w, "not found in project") {
+			hasWarning = true
+			break
+		}
+	}
+	if !hasWarning {
+		t.Errorf("expected warning about cross-repo file, got warnings: %v", result.Warnings)
 	}
 }
