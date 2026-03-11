@@ -14,7 +14,6 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/display"
-	"github.com/dylan-conlin/orch-go/pkg/health"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/orch"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -208,16 +207,3 @@ func addUsageInfoToEventData(eventData map[string]interface{}, usageInfo *spawn.
 	}
 }
 
-// buildHealthScoreProvider returns a function that computes the current health score
-// from recent snapshots. Used by the health floor gate.
-func buildHealthScoreProvider() gates.HealthScoreProvider {
-	return func() (float64, string, error) {
-		store := getHealthStore()
-		recent, err := store.ReadRecent(30)
-		if err != nil || len(recent) == 0 {
-			return 0, "?", fmt.Errorf("no health snapshots available")
-		}
-		report := health.GenerateReport(recent)
-		return report.HealthScore, report.ScoreGrade, nil
-	}
-}

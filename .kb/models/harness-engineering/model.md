@@ -290,13 +290,13 @@ A useful way to think about agent failures, though in practice most failures are
 
 **The broader pattern:** Any codebase with code generation (OpenAPI codegen, GraphQL, protobuf, icon component generators) will have inflated hotspot counts. Harness tooling needs a generated-code exclusion mechanism (`.orchignore` or pattern-based filtering) to maintain gate precision.
 
-### 6. Score Calibration as Soft Harness in Disguise
+### 6. Score Calibration as Soft Harness in Disguise (RESOLVED)
 
-**What happens:** Health score gate (blocks feature-impl when score < 65) uses a formula that was calibrated to produce passing scores for the current codebase. The score improved 37→73, but 89% of the improvement (+32.2 of +36 points) came from formula changes (threshold scaling, bloat percentage dimension), not structural improvement. Only +3.5 points came from actual extractions (26→20 bloated files, 52→42 hotspots).
+**What happened:** Health score gate (blocked feature-impl when score < 65) used a formula calibrated to produce passing scores. 89% of the 37→73 improvement was formula changes, not structural improvement. At baseline values the new formula scored 69.2 — above the gate threshold — with zero extractions.
 
-**Evidence (Mar 10 probe):** At baseline values (26 bloated, 52 hotspots) the new formula scores 69.2 — already above the 65 gate threshold — with zero extractions. The two largest formula changes: (1) accretion saturation threshold moved from fixed 20 to 10% of source files (92.8), turning a 0/20 score into 15.7/20; (2) bloat percentage changed from exp(-bloated/10) to linear ratio (1-bloated/total), swinging from 2.7/20 to 19.6/20. The gate structurally cannot trigger for the current codebase regardless of structural health.
+**Resolution (Mar 11):** Gate removed entirely from spawn path. Health score remains as diagnostic metric (`orch health` / `orch doctor`) but no longer pretends to gate spawns. Real enforcement comes from pre-commit accretion gate and hotspot blocking. The principle: a gate whose trigger condition is recalibrated to pass existing state is functionally equivalent to removing the gate — so remove it honestly rather than leaving a false signal.
 
-**The broader pattern:** A gate whose trigger condition is recalibrated to pass existing state is functionally equivalent to removing the gate. This is the health score version of the gate exemption problem (§6b below) — instead of exempting individual files, it exempts the entire codebase by adjusting the ruler.
+**The broader pattern:** Honesty over ceremony. An advisory gate that never fires provides false assurance. Better to have fewer gates that actually enforce than more gates that create the appearance of enforcement.
 
 ### 6b. Gate Exemptions as Permanent Bypasses
 
