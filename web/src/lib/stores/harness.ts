@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 
 // API configuration
-const API_BASE = 'https://localhost:3348';
+const API_BASE = 'http://localhost:3348';
 
 // Types matching the Go HarnessResponse
 export interface PipelineComponent {

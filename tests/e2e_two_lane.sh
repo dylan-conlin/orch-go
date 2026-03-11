@@ -26,10 +26,10 @@
 set -uo pipefail
 
 # --- Configuration ---
-ORCH_API="${ORCH_API:-https://localhost:3348}"
+ORCH_API="${ORCH_API:-http://localhost:3348}"
 OPENCODE_URL="${OPENCODE_URL:-http://localhost:4096}"
-# curl flags: -s silent, -f fail on HTTP errors, -k skip TLS verification (self-signed cert)
-CURL_FLAGS="-sfk"
+# curl flags: -s silent, -f fail on HTTP errors
+CURL_FLAGS="-sf"
 QUICK_MODE=false
 
 if [[ "${1:-}" == "--quick" ]]; then

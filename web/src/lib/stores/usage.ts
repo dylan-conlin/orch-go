@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 
 // API configuration - HTTPS for HTTP/2 multiplexing
-const API_BASE = 'https://localhost:3348';
+const API_BASE = 'http://localhost:3348';
 
 // Usage response from /api/usage
 // Note: Percentage fields can be null when Anthropic API returns unavailable data

@@ -2,7 +2,7 @@ import { writable, type Readable } from 'svelte/store';
 import { createSSEConnection, type SSEConnection, type ConnectionStatus } from '../services/sse-connection';
 
 // API configuration
-const API_BASE = 'https://localhost:3348';
+const API_BASE = 'http://localhost:3348';
 
 // Action types (from pkg/timeline/types.go)
 export type ActionType =

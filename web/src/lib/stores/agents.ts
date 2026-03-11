@@ -175,7 +175,7 @@ function extractEventId(data: any): string | null {
 }
 
 // API configuration - HTTPS for HTTP/2 multiplexing (fixes connection pool exhaustion)
-const API_BASE = 'https://localhost:3348';
+const API_BASE = 'http://localhost:3348';
 
 // Fetch state management - prevents race conditions during rapid reloads
 let currentFetchController: AbortController | null = null;

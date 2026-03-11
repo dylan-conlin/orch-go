@@ -135,8 +135,8 @@ func TestCheckOrchServeServiceStatus(t *testing.T) {
 	if status.Port != DefaultServePort {
 		t.Errorf("Expected port %d, got %d", DefaultServePort, status.Port)
 	}
-	if status.URL != "https://localhost:3348" {
-		t.Errorf("Expected URL 'https://localhost:3348', got %s", status.URL)
+	if status.URL != "http://localhost:3348" {
+		t.Errorf("Expected URL 'http://localhost:3348', got %s", status.URL)
 	}
 	if !status.CanFix {
 		t.Error("Expected CanFix to be true")

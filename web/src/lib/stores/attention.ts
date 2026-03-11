@@ -2,7 +2,7 @@ import { writable } from 'svelte/store';
 import type { AttentionBadgeType } from './work-graph';
 
 // API configuration - HTTPS for HTTP/2 multiplexing
-const API_BASE = 'https://localhost:3348';
+const API_BASE = 'http://localhost:3348';
 
 export interface CompletedIssue {
 	id: string;

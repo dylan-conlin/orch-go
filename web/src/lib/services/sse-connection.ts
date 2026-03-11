@@ -38,7 +38,7 @@ export interface SSEConnection {
  * - Reactive connection status via Svelte store
  * 
  * @example
- * const connection = createSSEConnection('https://localhost:3348/api/events', {
+ * const connection = createSSEConnection('http://localhost:3348/api/events', {
  *   onOpen: () => agents.fetch(),
  *   onMessage: (event) => handleSSEEvent(JSON.parse(event.data)),
  *   eventListeners: {

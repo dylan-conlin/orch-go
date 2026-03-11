@@ -313,7 +313,7 @@ tmux source-file ~/.tmux.conf.local  # Reload
 
 1. **Check API response:**
    ```bash
-   curl -sk https://localhost:3348/api/context | jq .
+   curl -s http://localhost:3348/api/context | jq .
    ```
 
 2. **If empty/wrong project:**

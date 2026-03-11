@@ -47,7 +47,7 @@ let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
 export async function fetchCoaching() {
 	try {
-		const response = await fetch('https://localhost:3348/api/coaching');
+		const response = await fetch('http://localhost:3348/api/coaching');
 		if (!response.ok) {
 			console.error('Failed to fetch coaching metrics:', response.statusText);
 			return;

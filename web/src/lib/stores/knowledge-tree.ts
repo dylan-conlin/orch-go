@@ -6,7 +6,7 @@ import {
 } from '../services/sse-connection'
 
 // API configuration
-const API_BASE = 'https://localhost:3348'
+const API_BASE = 'http://localhost:3348'
 
 // Tree node type from pkg/tree/types.go
 export type NodeType =

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -74,12 +73,12 @@ func checkOrchServe() ServiceStatus {
 	status := ServiceStatus{
 		Name:      "orch serve",
 		Port:      DefaultServePort,
-		URL:       fmt.Sprintf("https://localhost:%d", DefaultServePort),
+		URL:       fmt.Sprintf("http://localhost:%d", DefaultServePort),
 		CanFix:    true,
 		FixAction: "Run: orch serve &",
 	}
 
-	// Simple TCP connect check - more reliable than HTTP since server uses HTTPS
+	// Simple TCP connect check
 	addr := fmt.Sprintf("localhost:%d", DefaultServePort)
 	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
 	if err != nil {
@@ -92,20 +91,15 @@ func checkOrchServe() ServiceStatus {
 	}
 	conn.Close()
 
-	// TCP connect succeeded, try HTTPS health check for more details
-	healthURL := fmt.Sprintf("https://localhost:%d/health", DefaultServePort)
+	// TCP connect succeeded, try HTTP health check for more details
+	healthURL := fmt.Sprintf("http://localhost:%d/health", DefaultServePort)
 	httpClient := &http.Client{
 		Timeout: 5 * time.Second, // Increased timeout for /api/agents which may be slower
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, //nolint:gosec // Self-signed localhost cert
-			},
-		},
 	}
 
 	resp, err := httpClient.Get(healthURL)
 	if err != nil {
-		// TCP worked but HTTPS failed - server might still be starting
+		// TCP worked but HTTP failed - server might still be starting
 		status.Running = true
 		status.Details = "Port listening (health check pending)"
 		if doctorVerbose {
@@ -116,7 +110,7 @@ func checkOrchServe() ServiceStatus {
 	resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// TCP works, HTTPS works, but health endpoint returns non-200
+		// TCP works, HTTP works, but health endpoint returns non-200
 		status.Running = true
 		status.Details = fmt.Sprintf("Running (health status %d)", resp.StatusCode)
 		return status
@@ -124,7 +118,7 @@ func checkOrchServe() ServiceStatus {
 
 	// Health endpoint OK, now verify /api/agents endpoint (critical for dashboard)
 	// The dashboard fetches agent data from this endpoint - if it fails, dashboard is non-functional
-	agentsURL := fmt.Sprintf("https://localhost:%d/api/agents?since=1h", DefaultServePort)
+	agentsURL := fmt.Sprintf("http://localhost:%d/api/agents?since=1h", DefaultServePort)
 	agentsResp, err := httpClient.Get(agentsURL)
 	if err != nil {
 		status.Running = true
@@ -315,7 +309,7 @@ func startOrchServe() error {
 	}
 
 	// Wait for it to be ready (poll for up to 5 seconds)
-	// First check TCP, then HTTPS health endpoint
+	// First check TCP, then HTTP health endpoint
 	addr := fmt.Sprintf("localhost:%d", DefaultServePort)
 
 	for i := 0; i < 10; i++ {
@@ -328,15 +322,10 @@ func startOrchServe() error {
 		}
 		conn.Close()
 
-		// TCP succeeded, now verify HTTPS health
-		healthURL := fmt.Sprintf("https://localhost:%d/health", DefaultServePort)
+		// TCP succeeded, now verify HTTP health
+		healthURL := fmt.Sprintf("http://localhost:%d/health", DefaultServePort)
 		httpClient := &http.Client{
 			Timeout: 2 * time.Second,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true, //nolint:gosec // Self-signed localhost cert
-				},
-			},
 		}
 
 		resp, err := httpClient.Get(healthURL)

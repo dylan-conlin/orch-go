@@ -24,7 +24,7 @@
 
 		try {
 			const response = await fetch(
-				`https://localhost:3348/api/screenshots?agent_id=${encodeURIComponent(agent.id)}&project_dir=${encodeURIComponent(agent.project_dir)}`
+				`http://localhost:3348/api/screenshots?agent_id=${encodeURIComponent(agent.id)}&project_dir=${encodeURIComponent(agent.project_dir)}`
 			);
 
 			if (!response.ok) {
@@ -47,7 +47,7 @@
 
 	// Build full path for screenshot image
 	function getScreenshotPath(filename: string): string {
-		return `https://localhost:3348/api/file?path=${encodeURIComponent(
+		return `http://localhost:3348/api/file?path=${encodeURIComponent(
 			`${agent.project_dir}/.orch/workspace/${agent.id}/screenshots/${filename}`
 		)}`;
 	}

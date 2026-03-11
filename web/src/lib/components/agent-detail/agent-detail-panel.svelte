@@ -72,7 +72,7 @@
 	// Load approval status from review state
 	async function loadApprovalStatus(workspacePath: string) {
 		try {
-			const response = await fetch(`https://localhost:3348/api/file?path=${encodeURIComponent(workspacePath + '/.review-state.json')}`);
+			const response = await fetch(`http://localhost:3348/api/file?path=${encodeURIComponent(workspacePath + '/.review-state.json')}`);
 			if (!response.ok) {
 				// File doesn't exist or error - no approval yet
 				return;
@@ -143,7 +143,7 @@
 		isApproving = true;
 
 		try {
-			const response = await fetch('https://localhost:3348/api/approve', {
+			const response = await fetch('http://localhost:3348/api/approve', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',

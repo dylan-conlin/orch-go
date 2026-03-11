@@ -59,7 +59,7 @@ const mockGraphResponse = {
 };
 
 async function stubWorkGraphApis(page: import('@playwright/test').Page) {
-	await page.route('https://localhost:3348/api/context', async (route) => {
+	await page.route('http://localhost:3348/api/context', async (route) => {
 		await route.fulfill({
 			status: 200,
 			contentType: 'application/json',
@@ -70,7 +70,7 @@ async function stubWorkGraphApis(page: import('@playwright/test').Page) {
 		});
 	});
 
-	await page.route('https://localhost:3348/api/beads/graph**', async (route) => {
+	await page.route('http://localhost:3348/api/beads/graph**', async (route) => {
 		await route.fulfill({
 			status: 200,
 			contentType: 'application/json',
@@ -78,7 +78,7 @@ async function stubWorkGraphApis(page: import('@playwright/test').Page) {
 		});
 	});
 
-	await page.route('https://localhost:3348/api/agents**', async (route) => {
+	await page.route('http://localhost:3348/api/agents**', async (route) => {
 		await route.fulfill({
 			status: 200,
 			contentType: 'application/json',
@@ -86,7 +86,7 @@ async function stubWorkGraphApis(page: import('@playwright/test').Page) {
 		});
 	});
 
-	await page.route('https://localhost:3348/api/attention**', async (route) => {
+	await page.route('http://localhost:3348/api/attention**', async (route) => {
 		await route.fulfill({
 			status: 200,
 			contentType: 'application/json',
@@ -100,7 +100,7 @@ async function stubWorkGraphApis(page: import('@playwright/test').Page) {
 		});
 	});
 
-	await page.route('https://localhost:3348/api/focus', async (route) => {
+	await page.route('http://localhost:3348/api/focus', async (route) => {
 		await route.fulfill({
 			status: 200,
 			contentType: 'application/json',
@@ -108,7 +108,7 @@ async function stubWorkGraphApis(page: import('@playwright/test').Page) {
 		});
 	});
 
-	await page.route('https://localhost:3348/api/daemon', async (route) => {
+	await page.route('http://localhost:3348/api/daemon', async (route) => {
 		await route.fulfill({
 			status: 200,
 			contentType: 'application/json',
@@ -122,7 +122,7 @@ async function stubWorkGraphApis(page: import('@playwright/test').Page) {
 		});
 	});
 
-	await page.route('https://localhost:3348/api/events', async (route) => {
+	await page.route('http://localhost:3348/api/events', async (route) => {
 		await route.fulfill({
 			status: 200,
 			headers: {

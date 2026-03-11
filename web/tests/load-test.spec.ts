@@ -313,7 +313,7 @@ test.describe('Load Test - 50+ Agents', () => {
 			for (let i = 0; i < 5; i++) {
 				const startTime = Date.now();
 				const response = await page.evaluate(async () => {
-					const res = await fetch('https://localhost:3348/api/agents');
+					const res = await fetch('http://localhost:3348/api/agents');
 					return { status: res.status, count: (await res.json()).length };
 				});
 				responseTimes.push(Date.now() - startTime);
