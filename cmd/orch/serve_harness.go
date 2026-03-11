@@ -31,7 +31,7 @@ type PipelineStage struct {
 type PipelineComponent struct {
 	Name              string   `json:"name"`
 	Type              string   `json:"type"`               // "hard", "soft", "human"
-	MeasurementStatus string   `json:"measurement_status"` // "flowing", "proxy_only", "unmeasured"
+	MeasurementStatus string   `json:"measurement_status"` // "flowing", "proxy_only", "unmeasured", "collecting"
 	FireRate          *float64 `json:"fire_rate,omitempty"`
 	BlockRate         *float64 `json:"block_rate,omitempty"`
 	BypassRate        *float64 `json:"bypass_rate,omitempty"`
@@ -41,6 +41,7 @@ type PipelineComponent struct {
 	Blocked           int      `json:"blocked,omitempty"`
 	LastFired         string   `json:"last_fired,omitempty"`
 	ProxyMetric       string   `json:"proxy_metric,omitempty"`
+	CollectingSince   string   `json:"collecting_since,omitempty"`
 }
 
 // AccretionVelocity tracks code growth rate over time.
@@ -148,10 +149,14 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 
 	// Accretion snapshots collected from ALL events (not just in-window)
 	var snapshots []accretionSnapshot
+	var firstAccretionEvent int64
 
 	for _, event := range events {
 		// Accretion snapshots need full history for baseline comparison
 		if event.Type == "accretion.snapshot" && event.Data != nil {
+			if firstAccretionEvent == 0 || event.Timestamp < firstAccretionEvent {
+				firstAccretionEvent = event.Timestamp
+			}
 			totalLines := 0
 			dir := ""
 			if tl, ok := event.Data["total_lines"].(float64); ok {
@@ -168,6 +173,13 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 				})
 			}
 			continue
+		}
+
+		// Track accretion delta events for collection status
+		if event.Type == "accretion.delta" {
+			if firstAccretionEvent == 0 || event.Timestamp < firstAccretionEvent {
+				firstAccretionEvent = event.Timestamp
+			}
 		}
 
 		// Other events filtered by time window
@@ -221,7 +233,7 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 		}
 	}
 
-	pipeline := buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, verificationBypassed, gateDecisions, lastGateFired, totalCompletions)
+	pipeline := buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, verificationBypassed, gateDecisions, lastGateFired, totalCompletions, firstAccretionEvent)
 
 	// Compute accretion velocity from snapshots
 	var accVelocity *AccretionVelocity
@@ -245,10 +257,13 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 	verdicts := buildVerdicts(totalSpawns, triageBypassed, hotspotBypassed, verificationBypassed, gateDecisions)
 
 	measured := 0
+	collecting := 0
 	for _, stage := range pipeline {
 		for _, comp := range stage.Components {
 			if comp.MeasurementStatus == "flowing" {
 				measured++
+			} else if comp.MeasurementStatus == "collecting" {
+				collecting++
 			}
 		}
 	}
@@ -269,9 +284,9 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 		FalsificationVerdicts: verdicts,
 		MeasurementCoverage: MeasurementCoverage{
 			TotalComponents: 13,
-			WithMeasurement: measured,
+			WithMeasurement: measured + collecting,
 			ProxyOnly:       3,
-			Unmeasured:      13 - measured - 3,
+			Unmeasured:      13 - measured - collecting - 3,
 		},
 	}
 }
@@ -324,10 +339,10 @@ func computeAccretionVelocity(snapshots []accretionSnapshot) *AccretionVelocity 
 }
 
 func buildDefaultPipeline(totalSpawns int, lastGateFired map[string]int64) []PipelineStage {
-	return buildPipeline(totalSpawns, 0, 0, 0, nil, lastGateFired, 0)
+	return buildPipeline(totalSpawns, 0, 0, 0, nil, lastGateFired, 0, 0)
 }
 
-func buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, verificationBypassed int, gateDecisions map[string]map[string]int, lastGateFired map[string]int64, totalCompletions int) []PipelineStage {
+func buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, verificationBypassed int, gateDecisions map[string]map[string]int, lastGateFired map[string]int64, totalCompletions int, firstAccretionEvent int64) []PipelineStage {
 	ptrFloat := func(f float64) *float64 { return &f }
 	safeRate := func(count, total int) *float64 {
 		if total == 0 {
@@ -425,11 +440,8 @@ func buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, verificationByp
 		{
 			Stage: "pre_commit",
 			Components: []PipelineComponent{
-				{
-					Name:              "accretion_gate",
-					Type:              "hard",
-					MeasurementStatus: "unmeasured",
-				},
+				accretionGateComponent(firstAccretionEvent, formatTimestamp),
+
 				{
 					Name:              "build_gate",
 					Type:              "hard",
@@ -453,6 +465,20 @@ func buildPipeline(totalSpawns, triageBypassed, hotspotBypassed, verificationByp
 			},
 		},
 	}
+}
+
+func accretionGateComponent(firstAccretionEvent int64, formatTimestamp func(int64) string) PipelineComponent {
+	comp := PipelineComponent{
+		Name: "accretion_gate",
+		Type: "hard",
+	}
+	if firstAccretionEvent > 0 {
+		comp.MeasurementStatus = "collecting"
+		comp.CollectingSince = time.Unix(firstAccretionEvent, 0).Format("Jan 2")
+	} else {
+		comp.MeasurementStatus = "unmeasured"
+	}
+	return comp
 }
 
 func statusFromCount(count int) string {

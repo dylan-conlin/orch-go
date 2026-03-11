@@ -120,6 +120,70 @@ func TestBuildHarnessResponse_WithEvents(t *testing.T) {
 	}
 }
 
+func TestAccretionGate_CollectingStatus(t *testing.T) {
+	now := time.Now().Unix() - 3600
+	events := []StatsEvent{
+		{Type: "session.spawned", Timestamp: now},
+		{Type: "accretion.delta", Timestamp: now, Data: map[string]interface{}{
+			"beads_id": "test-123", "net_delta": 50.0,
+		}},
+	}
+
+	resp := buildHarnessResponse(events, 30)
+
+	// Find accretion gate in pre_commit stage
+	var accretionGate *PipelineComponent
+	for _, stage := range resp.Pipeline {
+		if stage.Stage == "pre_commit" {
+			for i, comp := range stage.Components {
+				if comp.Name == "accretion_gate" {
+					accretionGate = &stage.Components[i]
+					break
+				}
+			}
+		}
+	}
+
+	if accretionGate == nil {
+		t.Fatal("accretion_gate not found in pipeline")
+	}
+
+	if accretionGate.MeasurementStatus != "collecting" {
+		t.Errorf("expected 'collecting' measurement status, got '%s'", accretionGate.MeasurementStatus)
+	}
+	if accretionGate.CollectingSince == "" {
+		t.Error("expected CollectingSince to be set")
+	}
+}
+
+func TestAccretionGate_UnmeasuredWithoutEvents(t *testing.T) {
+	events := []StatsEvent{
+		{Type: "session.spawned", Timestamp: time.Now().Unix() - 3600},
+	}
+
+	resp := buildHarnessResponse(events, 30)
+
+	var accretionGate *PipelineComponent
+	for _, stage := range resp.Pipeline {
+		if stage.Stage == "pre_commit" {
+			for i, comp := range stage.Components {
+				if comp.Name == "accretion_gate" {
+					accretionGate = &stage.Components[i]
+					break
+				}
+			}
+		}
+	}
+
+	if accretionGate == nil {
+		t.Fatal("accretion_gate not found in pipeline")
+	}
+
+	if accretionGate.MeasurementStatus != "unmeasured" {
+		t.Errorf("expected 'unmeasured' without accretion events, got '%s'", accretionGate.MeasurementStatus)
+	}
+}
+
 func TestBuildVerdicts_LowFireRate(t *testing.T) {
 	// 100 spawns, 2 bypasses total = 2% fire rate < 5% threshold
 	verdicts := buildVerdicts(100, 1, 1, 0, nil)

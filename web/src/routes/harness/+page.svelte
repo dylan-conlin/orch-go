@@ -80,6 +80,7 @@
 				</select>
 				<div class="flex items-center gap-3 text-xs text-muted-foreground">
 					<span class="inline-flex items-center gap-1"><span class="text-green-400">●</span> measured</span>
+					<span class="inline-flex items-center gap-1"><span class="text-blue-400">◑</span> collecting</span>
 					<span class="inline-flex items-center gap-1"><span class="text-yellow-400">◐</span> proxy</span>
 					<span class="inline-flex items-center gap-1"><span class="text-muted-foreground">○</span> unmeasured</span>
 				</div>
@@ -130,11 +131,12 @@
 								</div>
 							{/if}
 
-							<!-- Proxy-only / unmeasured explanation -->
+							<!-- Proxy-only / collecting / unmeasured explanation -->
 							{#if comp.measurement_status === 'proxy_only' && comp.proxy_metric}
 								<p class="mt-1.5 text-[10px] opacity-50 italic">Proxy: {comp.proxy_metric}</p>
-							{/if}
-							{#if comp.measurement_status === 'unmeasured' && !comp.fire_rate}
+							{:else if comp.measurement_status === 'collecting'}
+								<p class="mt-1.5 text-[10px] text-blue-400/70 italic">Collecting data{comp.collecting_since ? ` (since ${comp.collecting_since})` : ''}</p>
+							{:else if comp.measurement_status === 'unmeasured' && !comp.fire_rate}
 								<p class="mt-1.5 text-[10px] opacity-50 italic">No measurement data</p>
 							{/if}
 

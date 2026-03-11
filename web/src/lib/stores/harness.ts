@@ -7,7 +7,7 @@ const API_BASE = 'http://localhost:3348';
 export interface PipelineComponent {
 	name: string;
 	type: 'hard' | 'soft' | 'human';
-	measurement_status: 'flowing' | 'proxy_only' | 'unmeasured';
+	measurement_status: 'flowing' | 'proxy_only' | 'unmeasured' | 'collecting';
 	fire_rate?: number;
 	block_rate?: number;
 	bypass_rate?: number;
@@ -17,6 +17,7 @@ export interface PipelineComponent {
 	blocked?: number;
 	last_fired?: string;
 	proxy_metric?: string;
+	collecting_since?: string;
 }
 
 export interface PipelineStage {
@@ -140,6 +141,7 @@ export function typeColor(type: string): string {
 export function measurementIcon(status: string): string {
 	switch (status) {
 		case 'flowing': return '●';
+		case 'collecting': return '◑';
 		case 'proxy_only': return '◐';
 		case 'unmeasured': return '○';
 		default: return '?';
@@ -149,6 +151,7 @@ export function measurementIcon(status: string): string {
 export function measurementColor(status: string): string {
 	switch (status) {
 		case 'flowing': return 'text-green-400';
+		case 'collecting': return 'text-blue-400';
 		case 'proxy_only': return 'text-yellow-400';
 		case 'unmeasured': return 'text-muted-foreground';
 		default: return 'text-muted-foreground';
