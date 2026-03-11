@@ -53,6 +53,11 @@ const (
 	EventTypeReviewTierEscalated = "review_tier.escalated"
 	// EventTypeDuplicationDetected indicates the duplication detector found similar function pairs.
 	EventTypeDuplicationDetected = "duplication.detected"
+	// EventTypeSpawnGateDecision logs every gate evaluation that results in a block or bypass.
+	// Allow decisions are omitted to manage volume.
+	EventTypeSpawnGateDecision = "spawn.gate_decision"
+	// EventTypeDaemonArchitectEscalation logs daemon routing decisions for hotspot-targeting issues.
+	EventTypeDaemonArchitectEscalation = "daemon.architect_escalation"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -665,6 +670,73 @@ func (l *Logger) LogAccretionDelta(data AccretionDeltaData) error {
 
 	return l.Log(Event{
 		Type:      EventTypeAccretionDelta,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// ArchitectEscalationData contains the data for a daemon.architect_escalation event.
+type ArchitectEscalationData struct {
+	IssueID           string `json:"issue_id"`
+	HotspotFile       string `json:"hotspot_file"`
+	HotspotType       string `json:"hotspot_type"`
+	Escalated         bool   `json:"escalated"`
+	PriorArchitectRef string `json:"prior_architect_ref,omitempty"`
+}
+
+// LogArchitectEscalation logs a daemon architect escalation decision.
+func (l *Logger) LogArchitectEscalation(data ArchitectEscalationData) error {
+	eventData := map[string]interface{}{
+		"issue_id":     data.IssueID,
+		"hotspot_file": data.HotspotFile,
+		"hotspot_type": data.HotspotType,
+		"escalated":    data.Escalated,
+	}
+	if data.PriorArchitectRef != "" {
+		eventData["prior_architect_ref"] = data.PriorArchitectRef
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeDaemonArchitectEscalation,
+		SessionID: data.IssueID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// GateDecisionData contains the data for a spawn.gate_decision event.
+// Only block and bypass decisions are logged (allow is omitted for volume management).
+type GateDecisionData struct {
+	GateName    string   `json:"gate_name"`              // hotspot, triage, verification, accretion_precommit
+	Decision    string   `json:"decision"`               // block, bypass
+	Skill       string   `json:"skill,omitempty"`        // Skill being spawned
+	BeadsID     string   `json:"beads_id,omitempty"`     // Issue ID if available
+	TargetFiles []string `json:"target_files,omitempty"` // Files that triggered the gate
+	Reason      string   `json:"reason,omitempty"`       // Why the decision was made
+}
+
+// LogGateDecision logs a spawn gate evaluation event (block or bypass only).
+func (l *Logger) LogGateDecision(data GateDecisionData) error {
+	eventData := map[string]interface{}{
+		"gate_name": data.GateName,
+		"decision":  data.Decision,
+	}
+	if data.Skill != "" {
+		eventData["skill"] = data.Skill
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if len(data.TargetFiles) > 0 {
+		eventData["target_files"] = data.TargetFiles
+	}
+	if data.Reason != "" {
+		eventData["reason"] = data.Reason
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeSpawnGateDecision,
 		SessionID: data.BeadsID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,

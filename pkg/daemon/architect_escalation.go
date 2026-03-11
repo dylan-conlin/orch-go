@@ -17,6 +17,12 @@ type ArchitectEscalation struct {
 	HotspotType string
 	// HotspotScore is the severity score of the matched hotspot.
 	HotspotScore int
+	// Escalated is true when the skill was actually escalated to architect.
+	// False when a prior architect review was found (PriorArchitectRef is set).
+	Escalated bool
+	// PriorArchitectRef is the issue ID of a prior architect review that covers this hotspot.
+	// Set when escalation is skipped due to an existing review.
+	PriorArchitectRef string
 }
 
 // isImplementationSkill returns true if the skill modifies code and should be
@@ -111,7 +117,13 @@ func CheckArchitectEscalation(issue *Issue, skill string, checker HotspotChecker
 	if priorArchitectFinder != nil {
 		foundRef, findErr := priorArchitectFinder([]string{match.Path})
 		if findErr == nil && foundRef != "" {
-			return nil // Prior architect review exists — skip escalation
+			return &ArchitectEscalation{
+				HotspotFile:       match.Path,
+				HotspotType:       match.Type,
+				HotspotScore:      match.Score,
+				Escalated:         false,
+				PriorArchitectRef: foundRef,
+			}
 		}
 	}
 
@@ -119,5 +131,6 @@ func CheckArchitectEscalation(issue *Issue, skill string, checker HotspotChecker
 		HotspotFile:  match.Path,
 		HotspotType:  match.Type,
 		HotspotScore: match.Score,
+		Escalated:    true,
 	}
 }

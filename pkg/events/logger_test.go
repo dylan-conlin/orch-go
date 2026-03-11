@@ -723,3 +723,85 @@ func TestLogAgentCompleted_NoPipelineTiming(t *testing.T) {
 		t.Error("Expected pipeline_total_ms to be omitted when zero")
 	}
 }
+
+func TestLogArchitectEscalation_Escalated(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogArchitectEscalation(ArchitectEscalationData{
+		IssueID:     "proj-123",
+		HotspotFile: "pkg/daemon/daemon.go",
+		HotspotType: "fix-density",
+		Escalated:   true,
+	})
+	if err != nil {
+		t.Fatalf("LogArchitectEscalation() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	if event.Type != EventTypeDaemonArchitectEscalation {
+		t.Errorf("event.Type = %q, want %q", event.Type, EventTypeDaemonArchitectEscalation)
+	}
+	if event.SessionID != "proj-123" {
+		t.Errorf("event.SessionID = %q, want %q", event.SessionID, "proj-123")
+	}
+	if event.Data["issue_id"] != "proj-123" {
+		t.Errorf("data.issue_id = %v, want %q", event.Data["issue_id"], "proj-123")
+	}
+	if event.Data["hotspot_file"] != "pkg/daemon/daemon.go" {
+		t.Errorf("data.hotspot_file = %v, want %q", event.Data["hotspot_file"], "pkg/daemon/daemon.go")
+	}
+	if event.Data["hotspot_type"] != "fix-density" {
+		t.Errorf("data.hotspot_type = %v, want %q", event.Data["hotspot_type"], "fix-density")
+	}
+	if event.Data["escalated"] != true {
+		t.Errorf("data.escalated = %v, want true", event.Data["escalated"])
+	}
+	if _, ok := event.Data["prior_architect_ref"]; ok {
+		t.Error("data.prior_architect_ref should be omitted when empty")
+	}
+}
+
+func TestLogArchitectEscalation_SkippedWithPriorRef(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogArchitectEscalation(ArchitectEscalationData{
+		IssueID:           "proj-456",
+		HotspotFile:       "cmd/orch/spawn_cmd.go",
+		HotspotType:       "bloat-size",
+		Escalated:         false,
+		PriorArchitectRef: "orch-go-1119",
+	})
+	if err != nil {
+		t.Fatalf("LogArchitectEscalation() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	if event.Data["escalated"] != false {
+		t.Errorf("data.escalated = %v, want false", event.Data["escalated"])
+	}
+	if event.Data["prior_architect_ref"] != "orch-go-1119" {
+		t.Errorf("data.prior_architect_ref = %v, want %q", event.Data["prior_architect_ref"], "orch-go-1119")
+	}
+}

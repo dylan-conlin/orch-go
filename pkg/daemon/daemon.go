@@ -41,6 +41,10 @@ type OnceResult struct {
 	// (feature-impl or systematic-debugging) to architect because the issue targets a hotspot area.
 	// This implements Layer 2 of hotspot enforcement (daemon-level skill routing).
 	ArchitectEscalated bool
+	// ArchitectEscalationDetail contains the full escalation decision when a hotspot match was found.
+	// Non-nil whenever an implementation skill targets a hotspot area, regardless of whether
+	// escalation actually happened (PriorArchitectRef may have prevented it).
+	ArchitectEscalationDetail *ArchitectEscalation
 }
 
 // Daemon manages autonomous issue processing.
@@ -598,12 +602,13 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 	// escalate to architect for architectural review before implementation.
 	// This only applies when extraction didn't already happen (extraction handles the most critical case).
 	architectEscalated := false
+	var escalationDetail *ArchitectEscalation
 	if !extractionSpawned && d.HotspotChecker != nil {
-		escalation := CheckArchitectEscalation(issue, skill, d.HotspotChecker, d.PriorArchitectFinder)
-		if escalation != nil {
+		escalationDetail = CheckArchitectEscalation(issue, skill, d.HotspotChecker, d.PriorArchitectFinder)
+		if escalationDetail != nil && escalationDetail.Escalated {
 			if d.Config.Verbose {
 				fmt.Printf("  Architect escalation: %s targets hotspot %s (%s, score=%d)\n",
-					issue.ID, escalation.HotspotFile, escalation.HotspotType, escalation.HotspotScore)
+					issue.ID, escalationDetail.HotspotFile, escalationDetail.HotspotType, escalationDetail.HotspotScore)
 			}
 			skill = "architect"
 			inferredModel = InferModelFromSkill(skill)
@@ -624,6 +629,9 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		}
 		if architectEscalated {
 			result.ArchitectEscalated = true
+		}
+		if escalationDetail != nil {
+			result.ArchitectEscalationDetail = escalationDetail
 		}
 	}
 	return result, err

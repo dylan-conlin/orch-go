@@ -685,6 +685,19 @@ func runDaemonLoop() error {
 				dlog.Errorf("Warning: failed to log event: %v\n", err)
 			}
 
+			// Log architect escalation decision when a hotspot match was evaluated
+			if result.ArchitectEscalationDetail != nil {
+				if err := logger.LogArchitectEscalation(events.ArchitectEscalationData{
+					IssueID:           result.Issue.ID,
+					HotspotFile:       result.ArchitectEscalationDetail.HotspotFile,
+					HotspotType:       result.ArchitectEscalationDetail.HotspotType,
+					Escalated:         result.ArchitectEscalationDetail.Escalated,
+					PriorArchitectRef: result.ArchitectEscalationDetail.PriorArchitectRef,
+				}); err != nil {
+					dlog.Errorf("Warning: failed to log architect escalation event: %v\n", err)
+				}
+			}
+
 			// Delay before next spawn to avoid rate limits
 			select {
 			case <-ctx.Done():

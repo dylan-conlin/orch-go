@@ -136,7 +136,7 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 
 		// Check if architect escalation would apply
 		escalation := CheckArchitectEscalation(spawnable, skill, d.HotspotChecker, d.PriorArchitectFinder)
-		if escalation != nil {
+		if escalation != nil && escalation.Escalated {
 			result.Skill = "architect"
 			result.Model = InferModelFromSkill("architect")
 			result.ArchitectEscalated = true
