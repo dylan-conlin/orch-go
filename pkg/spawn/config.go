@@ -338,10 +338,20 @@ type Config struct {
 	// Controls cost bounding for exploration mode. Only used when Explore is true.
 	ExploreBreadth int
 
+	// ExploreDepth is the maximum iteration depth for judge-triggered re-exploration (default 1).
+	// Depth 1 = single pass (no iteration). Depth N = judge can trigger N-1 re-explorations.
+	// Only used when Explore is true.
+	ExploreDepth int
+
 	// ExploreParentSkill is the original skill requested (e.g., "investigation").
 	// When Explore is true, the SkillName is swapped to "exploration-orchestrator"
 	// and the original skill is preserved here for worker spawns.
 	ExploreParentSkill string
+
+	// ExploreJudgeModel is the model to use for the judge agent (cross-model judging).
+	// When empty, the judge uses the same model as workers. When set, the judge
+	// uses a different model to catch blind spots (e.g., "sonnet" when workers use "opus").
+	ExploreJudgeModel string
 }
 
 // UsageInfo contains account usage data at spawn time.

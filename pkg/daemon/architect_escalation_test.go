@@ -680,8 +680,14 @@ func TestCheckArchitectEscalation_SkipsWhenPriorArchitectExists(t *testing.T) {
 	}
 
 	result := CheckArchitectEscalation(issue, "feature-impl", checker, finder)
-	if result != nil {
-		t.Error("CheckArchitectEscalation() should return nil when prior architect review exists")
+	if result == nil {
+		t.Fatal("CheckArchitectEscalation() should return non-nil decision when hotspot matches")
+	}
+	if result.Escalated {
+		t.Error("result.Escalated should be false when prior architect review exists")
+	}
+	if result.PriorArchitectRef != "orch-go-1119" {
+		t.Errorf("result.PriorArchitectRef = %q, want %q", result.PriorArchitectRef, "orch-go-1119")
 	}
 }
 

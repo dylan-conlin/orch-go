@@ -32,6 +32,8 @@ type ExplorationMetrics struct {
 	TotalRejected    int     `json:"total_rejected"`
 	TotalGaps        int     `json:"total_gaps"`
 	AvgWorkersPerRun float64 `json:"avg_workers_per_run"`
+	TotalIterations  int     `json:"total_iterations"`  // Total re-exploration rounds across all runs
+	IteratedRuns     int     `json:"iterated_runs"`     // Number of runs that used iteration (depth > 1)
 }
 
 // PipelineStage represents one stage in the harness pipeline.
@@ -165,6 +167,8 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 	explorationJudged := make(map[string]struct{})
 	var explorationTotalFindings, explorationAccepted, explorationContested, explorationRejected, explorationGaps int
 	explorationSynthesized := make(map[string]struct{})
+	var explorationTotalIterations int
+	explorationIteratedRuns := make(map[string]struct{}) // beads_ids that used iteration
 
 	// Accretion snapshots collected from ALL events (not just in-window)
 	var snapshots []accretionSnapshot
@@ -295,6 +299,15 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 					explorationSynthesized[bid] = struct{}{}
 				}
 			}
+
+		case "exploration.iterated":
+			if event.Data != nil {
+				bid, _ := event.Data["beads_id"].(string)
+				if bid != "" {
+					explorationIteratedRuns[bid] = struct{}{}
+				}
+				explorationTotalIterations++
+			}
 		}
 	}
 
@@ -349,6 +362,8 @@ func buildHarnessResponse(events []StatsEvent, days int) *HarnessResponse {
 			TotalRejected:    explorationRejected,
 			TotalGaps:        explorationGaps,
 			AvgWorkersPerRun: totalBreadth / float64(len(explorationDecomposed)),
+			TotalIterations:  explorationTotalIterations,
+			IteratedRuns:     len(explorationIteratedRuns),
 		}
 	}
 

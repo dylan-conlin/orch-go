@@ -65,7 +65,9 @@ type SpawnContext struct {
 	Settings           string
 	Explore            bool
 	ExploreBreadth     int
+	ExploreDepth       int
 	ExploreParentSkill string
+	ExploreJudgeModel  string
 }
 
 // ResolvedSpawnResult holds resolved spawn settings and the parsed model spec.

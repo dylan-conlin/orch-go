@@ -81,11 +81,11 @@ func runEmit(eventType, beadsID, reason, dataStr string, jsonOutput bool) error 
 		}
 		return emitAgentCompleted(logger, beadsID, reason, additionalData, jsonOutput)
 
-	case "exploration.decomposed", "exploration.judged", "exploration.synthesized":
+	case "exploration.decomposed", "exploration.judged", "exploration.synthesized", "exploration.iterated":
 		return emitExplorationEvent(logger, eventType, beadsID, reason, additionalData, jsonOutput)
 
 	default:
-		return fmt.Errorf("unsupported event type: %s (supported: agent.completed, exploration.decomposed, exploration.judged, exploration.synthesized)", eventType)
+		return fmt.Errorf("unsupported event type: %s (supported: agent.completed, exploration.decomposed, exploration.judged, exploration.synthesized, exploration.iterated)", eventType)
 	}
 }
 
@@ -188,6 +188,14 @@ func emitExplorationEvent(logger *events.Logger, eventType, beadsID, reason stri
 			WorkerCount:     getInt("worker_count"),
 			DurationSeconds: getInt("duration_seconds"),
 			SynthesisPath:   getStr("synthesis_path"),
+		})
+	case "exploration.iterated":
+		err = logger.LogExplorationIterated(events.ExplorationIteratedData{
+			BeadsID:       beadsID,
+			ParentSkill:   getStr("parent_skill"),
+			Iteration:     getInt("iteration"),
+			GapsAddressed: getInt("gaps_addressed"),
+			NewWorkers:    getInt("new_workers"),
 		})
 	}
 

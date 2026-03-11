@@ -65,6 +65,8 @@ const (
 	EventTypeExplorationJudged = "exploration.judged"
 	// EventTypeExplorationSynthesized logs when an exploration run produces a final synthesis.
 	EventTypeExplorationSynthesized = "exploration.synthesized"
+	// EventTypeExplorationIterated logs when a judge-triggered re-exploration round occurs.
+	EventTypeExplorationIterated = "exploration.iterated"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -838,6 +840,37 @@ func (l *Logger) LogExplorationSynthesized(data ExplorationSynthesizedData) erro
 
 	return l.Log(Event{
 		Type:      EventTypeExplorationSynthesized,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// ExplorationIteratedData contains the data for an exploration.iterated event.
+type ExplorationIteratedData struct {
+	BeadsID       string `json:"beads_id,omitempty"`
+	ParentSkill   string `json:"parent_skill,omitempty"`
+	Iteration     int    `json:"iteration"`      // Current iteration number (2 = first re-exploration)
+	GapsAddressed int    `json:"gaps_addressed"`  // Number of critical gaps being addressed
+	NewWorkers    int    `json:"new_workers"`     // Number of new workers spawned for gap-filling
+}
+
+// LogExplorationIterated logs when a judge-triggered re-exploration round occurs.
+func (l *Logger) LogExplorationIterated(data ExplorationIteratedData) error {
+	eventData := map[string]interface{}{
+		"iteration":      data.Iteration,
+		"gaps_addressed": data.GapsAddressed,
+		"new_workers":    data.NewWorkers,
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if data.ParentSkill != "" {
+		eventData["parent_skill"] = data.ParentSkill
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeExplorationIterated,
 		SessionID: data.BeadsID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,

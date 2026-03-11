@@ -316,6 +316,55 @@ func TestBuildHarnessResponse_ExplorationMetrics(t *testing.T) {
 	}
 }
 
+func TestBuildHarnessResponse_ExplorationWithIteration(t *testing.T) {
+	now := time.Now().Unix() - 3600
+	events := []StatsEvent{
+		{Type: "session.spawned", Timestamp: now},
+		{Type: "exploration.decomposed", Timestamp: now, Data: map[string]interface{}{
+			"beads_id": "orch-go-iter1", "parent_skill": "investigation",
+			"breadth": 3.0,
+		}},
+		{Type: "exploration.judged", Timestamp: now, Data: map[string]interface{}{
+			"beads_id": "orch-go-iter1", "total_findings": 6.0,
+			"accepted": 3.0, "contested": 1.0, "rejected": 0.0, "coverage_gaps": 2.0,
+		}},
+		{Type: "exploration.iterated", Timestamp: now, Data: map[string]interface{}{
+			"beads_id": "orch-go-iter1", "iteration": 2.0, "gaps_addressed": 2.0, "new_workers": 2.0,
+		}},
+		{Type: "exploration.judged", Timestamp: now, Data: map[string]interface{}{
+			"beads_id": "orch-go-iter1", "total_findings": 8.0,
+			"accepted": 6.0, "contested": 1.0, "rejected": 1.0, "coverage_gaps": 0.0,
+		}},
+		{Type: "exploration.synthesized", Timestamp: now, Data: map[string]interface{}{
+			"beads_id": "orch-go-iter1", "worker_count": 5.0,
+		}},
+	}
+
+	resp := buildHarnessResponse(events, 30)
+
+	if resp.ExplorationMetrics == nil {
+		t.Fatal("expected ExplorationMetrics to be present")
+	}
+
+	em := resp.ExplorationMetrics
+	if em.TotalIterations != 1 {
+		t.Errorf("expected 1 total iteration, got %d", em.TotalIterations)
+	}
+	if em.IteratedRuns != 1 {
+		t.Errorf("expected 1 iterated run, got %d", em.IteratedRuns)
+	}
+	if em.TotalRuns != 1 {
+		t.Errorf("expected 1 total run, got %d", em.TotalRuns)
+	}
+	if em.CompletedRuns != 1 {
+		t.Errorf("expected 1 completed run, got %d", em.CompletedRuns)
+	}
+	// Two judge events: 6 + 8 = 14 total findings
+	if em.TotalFindings != 14 {
+		t.Errorf("expected 14 total findings (two judge rounds), got %d", em.TotalFindings)
+	}
+}
+
 func TestBuildHarnessResponse_NoExplorationEvents(t *testing.T) {
 	now := time.Now().Unix() - 3600
 	events := []StatsEvent{

@@ -65,6 +65,8 @@ var (
 	spawnDryRun             bool   // Show spawn plan without executing
 	spawnExplore            bool   // Exploration mode: decompose → parallelize → judge → synthesize
 	spawnExploreBreadth     int    // Max parallel subproblem workers (default 3)
+	spawnExploreDepth       int    // Max iteration depth for judge-triggered re-exploration (default 1)
+	spawnExploreJudgeModel  string // Model for judge agent (cross-model judging experiment)
 	spawnModeSet            bool   // Tracks whether --mode was explicitly set
 	spawnValidationSet      bool   // Tracks whether --validation was explicitly set
 )
@@ -208,6 +210,8 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnDryRun, "dry-run", false, "Show spawn plan without executing (validates skill loading, context generation, and resolved settings)")
 	spawnCmd.Flags().BoolVar(&spawnExplore, "explore", false, "Exploration mode: decompose question into parallel subproblems, judge findings, synthesize (investigation/architect only)")
 	spawnCmd.Flags().IntVar(&spawnExploreBreadth, "explore-breadth", 3, "Max parallel subproblem workers for exploration mode (default 3)")
+	spawnCmd.Flags().IntVar(&spawnExploreDepth, "explore-depth", 1, "Max iteration depth for exploration mode (1=single pass, N=judge triggers up to N-1 re-explorations)")
+	spawnCmd.Flags().StringVar(&spawnExploreJudgeModel, "explore-judge-model", "", "Model for exploration judge agent (cross-model judging, e.g., 'sonnet' when workers use 'opus')")
 }
 
 func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless bool, tmux bool, attach bool) error {
@@ -270,10 +274,17 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		if spawnExploreBreadth < 1 || spawnExploreBreadth > 10 {
 			return fmt.Errorf("--explore-breadth must be between 1 and 10 (got %d)", spawnExploreBreadth)
 		}
+		if spawnExploreDepth < 1 || spawnExploreDepth > 5 {
+			return fmt.Errorf("--explore-depth must be between 1 and 5 (got %d)", spawnExploreDepth)
+		}
 		// Preserve original skill, swap to exploration orchestrator
 		exploreParentSkill = skillName
 		skillName = "exploration-orchestrator"
-		fmt.Printf("🔭 Exploration mode: decomposing %q task into %d parallel subproblems\n", exploreParentSkill, spawnExploreBreadth)
+		if spawnExploreDepth > 1 {
+			fmt.Printf("🔭 Exploration mode: decomposing %q task into %d parallel subproblems (depth %d)\n", exploreParentSkill, spawnExploreBreadth, spawnExploreDepth)
+		} else {
+			fmt.Printf("🔭 Exploration mode: decomposing %q task into %d parallel subproblems\n", exploreParentSkill, spawnExploreBreadth)
+		}
 	}
 
 	// Build input parameter struct
@@ -503,7 +514,9 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		Settings:           spawnSettings,
 		Explore:            spawnExplore,
 		ExploreBreadth:     spawnExploreBreadth,
+		ExploreDepth:       spawnExploreDepth,
 		ExploreParentSkill: exploreParentSkill,
+		ExploreJudgeModel:  spawnExploreJudgeModel,
 	}
 
 	// 11. Build spawn config

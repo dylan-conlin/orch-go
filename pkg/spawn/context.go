@@ -335,18 +335,23 @@ Simply follow the guidance provided below.
 {{if .Explore}}
 ## EXPLORATION MODE CONFIGURATION
 
-**Mode:** Exploration (decompose → parallelize → judge → synthesize)
+**Mode:** Exploration (decompose → parallelize → judge → synthesize{{if gt .ExploreDepth 1}} → iterate{{end}})
 **Parent Skill:** {{.ExploreParentSkill}}
 **Breadth:** {{.ExploreBreadth}} parallel workers
-**Beads ID:** {{.BeadsID}}
-
+{{if gt .ExploreDepth 1}}**Depth:** {{.ExploreDepth}} (judge can trigger up to {{subtract .ExploreDepth 1}} re-exploration rounds)
+{{end}}**Beads ID:** {{.BeadsID}}
+{{if .ExploreJudgeModel}}**Judge Model:** {{.ExploreJudgeModel}} (cross-model judging — workers use default model, judge uses {{.ExploreJudgeModel}})
+{{end}}
 **Your role:** You are an exploration orchestrator. Your job is to:
 1. **DECOMPOSE** the question into {{.ExploreBreadth}} independent subproblems
 2. **SPAWN** workers for each subproblem using ` + "`orch spawn --bypass-triage --no-track --reason \"exploration worker\" {{.ExploreParentSkill}} \"subproblem\"`" + `
 3. **WAIT** for all workers using ` + "`orch wait <beads-id> --timeout 30m`" + ` (or check tmux windows)
 4. **COLLECT** findings from each worker's investigation/probe files
-5. **JUDGE** — spawn a judge agent: ` + "`orch spawn --bypass-triage --no-track --reason \"exploration judge\" exploration-judge \"Evaluate sub-findings for: [question]\"`" + `
+5. **JUDGE** — spawn a judge agent: ` + "`orch spawn --bypass-triage --no-track --reason \"exploration judge\"{{if .ExploreJudgeModel}} --model {{.ExploreJudgeModel}}{{end}} exploration-judge \"Evaluate sub-findings for: [question]\"`" + `
 6. **SYNTHESIZE** using judge verdicts to weight findings (not concatenate)
+{{- if gt .ExploreDepth 1}}
+7. **ITERATE** — if judge found critical coverage gaps and depth budget remains, re-explore (see Iteration Protocol below)
+{{- end}}
 
 **Decomposition Rules:**
 - Each subproblem MUST be independently answerable (no cross-dependencies)
@@ -355,22 +360,48 @@ Simply follow the guidance provided below.
 - Workers use the ` + "`{{.ExploreParentSkill}}`" + ` skill (they get the domain expertise)
 
 **Judge Phase:**
-Spawn a dedicated judge agent using the ` + "`exploration-judge`" + ` skill. Pass it:
+Spawn a dedicated judge agent using the ` + "`exploration-judge`" + ` skill.{{if .ExploreJudgeModel}} Use ` + "`--model {{.ExploreJudgeModel}}`" + ` for cross-model judging.{{end}} Pass it:
 - The original question
 - Your decomposition plan
 - All worker sub-findings (full text or file references)
 The judge produces a ` + "`judge-verdict.yaml`" + ` with per-finding verdicts (accepted/contested/rejected),
 contested findings analysis, and coverage gaps. Wait for judge completion before synthesizing.
+{{if gt .ExploreDepth 1}}
+**Iteration Protocol (Depth {{.ExploreDepth}}):**
+After reading judge verdicts, check for critical coverage gaps. If the judge identified gaps with severity ` + "`critical`" + `:
 
+1. **Check depth budget:** You start at depth 1. Each iteration increments depth. Stop at depth {{.ExploreDepth}}.
+2. **Decompose gaps into subproblems:** Each critical gap from ` + "`coverage_gaps`" + ` becomes a new subproblem.
+   - Only spawn workers for ` + "`critical`" + ` severity gaps (skip ` + "`moderate`" + ` and ` + "`minor`" + `)
+   - Use the judge's ` + "`suggested_subproblem`" + ` text as the worker task
+3. **Spawn gap workers:** Same pattern as initial workers, using ` + "`{{.ExploreParentSkill}}`" + ` skill
+4. **Re-judge:** Spawn a new judge with ALL findings (original + gap-filling workers)
+5. **Emit iteration event:** ` + "`orch emit exploration.iterated --beads-id {{.BeadsID}} --data '{\"iteration\":N,\"gaps_addressed\":G,\"new_workers\":W}'`" + `
+6. **Synthesize:** Only after final iteration (no more critical gaps or depth exhausted)
+
+**Iteration Decision Rules:**
+- **Iterate** when: judge found ` + "`critical`" + ` coverage gaps AND depth < {{.ExploreDepth}}
+- **Stop** when: no critical gaps, OR depth = {{.ExploreDepth}}, OR rate-limited
+- **Never iterate** for: ` + "`moderate`" + ` or ` + "`minor`" + ` gaps (note them in synthesis instead)
+- Each iteration should address fewer gaps (convergent). If gaps increase, stop and synthesize what you have.
+{{end}}
 **Synthesis Output:**
 Write your synthesis to the investigation file (.kb/investigations/) or SYNTHESIS.md.
 - **Weight by verdict:** accepted findings anchor synthesis, contested get dedicated discussion, rejected are noted but downweighted
 - Contested findings (where workers disagree) are the most valuable — highlight them
 - Gaps (from judge's coverage_gaps) should be explicitly noted
 - Do NOT just concatenate — compose understanding from the parts
+{{- if gt .ExploreDepth 1}}
+- Note which findings came from iteration rounds (original vs gap-filling)
+- Include iteration summary: how many rounds, what gaps were addressed
+{{- end}}
 
 **Cost Bounding:**
-- Max {{.ExploreBreadth}} workers (enforced)
+- Max {{.ExploreBreadth}} workers per round (enforced)
+{{- if gt .ExploreDepth 1}}
+- Max {{.ExploreDepth}} iterations (depth limit enforced)
+- Total agent budget: up to {{.ExploreBreadth}} workers × {{.ExploreDepth}} rounds + {{.ExploreDepth}} judges + 1 synthesizer
+{{- end}}
 - Workers use --no-track (lightweight, no beads overhead)
 - If rate-limited, reduce breadth rather than fail
 {{end}}
@@ -679,12 +710,17 @@ type contextData struct {
 	BrowserAutomation     bool     // When true, playwright-cli browser automation is available
 	Explore               bool     // When true, this is an exploration mode spawn
 	ExploreBreadth        int      // Max parallel workers for exploration
+	ExploreDepth          int      // Max iteration depth (1=single pass, N=judge triggers re-exploration)
 	ExploreParentSkill    string   // Original skill (investigation/architect)
+	ExploreJudgeModel     string   // Model override for judge agent (cross-model experiment)
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
 func GenerateContext(cfg *Config) (string, error) {
-	tmpl, err := template.New("spawn_context").Parse(SpawnContextTemplate)
+	funcMap := template.FuncMap{
+		"subtract": func(a, b int) int { return a - b },
+	}
+	tmpl, err := template.New("spawn_context").Funcs(funcMap).Parse(SpawnContextTemplate)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse template: %w", err)
 	}
@@ -764,7 +800,9 @@ func GenerateContext(cfg *Config) (string, error) {
 		BrowserAutomation:     cfg.BrowserTool == "playwright-cli",
 		Explore:               cfg.Explore,
 		ExploreBreadth:        cfg.ExploreBreadth,
+		ExploreDepth:          cfg.ExploreDepth,
 		ExploreParentSkill:    cfg.ExploreParentSkill,
+		ExploreJudgeModel:     cfg.ExploreJudgeModel,
 	}
 
 	var buf bytes.Buffer

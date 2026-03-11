@@ -351,7 +351,9 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp, browserT
 		Settings:           ctx.Settings,
 		Explore:            ctx.Explore,
 		ExploreBreadth:     ctx.ExploreBreadth,
+		ExploreDepth:       ctx.ExploreDepth,
 		ExploreParentSkill: ctx.ExploreParentSkill,
+		ExploreJudgeModel:  ctx.ExploreJudgeModel,
 	}
 }
 

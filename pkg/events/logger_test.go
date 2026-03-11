@@ -1013,6 +1013,49 @@ func TestLogExplorationSynthesized(t *testing.T) {
 	}
 }
 
+func TestLogExplorationIterated(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogExplorationIterated(ExplorationIteratedData{
+		BeadsID:       "orch-go-iter1",
+		ParentSkill:   "investigation",
+		Iteration:     2,
+		GapsAddressed: 2,
+		NewWorkers:    2,
+	})
+	if err != nil {
+		t.Fatalf("LogExplorationIterated() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	if event.Type != EventTypeExplorationIterated {
+		t.Errorf("event.Type = %q, want %q", event.Type, EventTypeExplorationIterated)
+	}
+	if event.Data["iteration"] != float64(2) {
+		t.Errorf("data.iteration = %v, want 2", event.Data["iteration"])
+	}
+	if event.Data["gaps_addressed"] != float64(2) {
+		t.Errorf("data.gaps_addressed = %v, want 2", event.Data["gaps_addressed"])
+	}
+	if event.Data["new_workers"] != float64(2) {
+		t.Errorf("data.new_workers = %v, want 2", event.Data["new_workers"])
+	}
+	if event.Data["beads_id"] != "orch-go-iter1" {
+		t.Errorf("data.beads_id = %v, want orch-go-iter1", event.Data["beads_id"])
+	}
+}
+
 func TestLogGateDecision_AccretionPrecommit(t *testing.T) {
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "events.jsonl")
