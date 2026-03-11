@@ -556,6 +556,10 @@ export const selectedAgent = derived([agents, selectedAgentId], ([$agents, $sele
 // SSE connection manager - uses shared service for connection lifecycle
 let sseConnection: SSEConnection | null = null;
 
+// Completion SSE connection - receives push notifications from daemon
+// when agents complete, enabling real-time completion surfacing without polling.
+let completionSSEConnection: SSEConnection | null = null;
+
 // Build event listeners for the SSE connection
 function buildSSEEventListeners(): Record<string, (event: MessageEvent) => void> {
 	const listeners: Record<string, (event: MessageEvent) => void> = {};
@@ -658,6 +662,37 @@ export function connectSSE(): void {
 	// Mark as connecting and initiate connection
 	connectionStatus.set('connecting');
 	sseConnection.connect();
+
+	// Connect to completion SSE for push-based completion surfacing
+	// Daemon POSTs to serve when agents complete; serve broadcasts via this SSE stream.
+	if (!completionSSEConnection) {
+		completionSSEConnection = createSSEConnection(`${API_BASE}/api/events/completion`, {
+			onOpen: () => {
+				console.log('Completion SSE connected');
+			},
+			onDisconnect: () => {
+				console.log('Completion SSE disconnected');
+			},
+			eventListeners: {
+				'agent.completed': (event: MessageEvent) => {
+					try {
+						const data = JSON.parse(event.data);
+						console.log('Push completion received:', data.beads_id);
+						// Trigger immediate agent refresh to surface the completion
+						agents.fetchDebounced();
+					} catch (e) {
+						console.error('Failed to parse completion event:', e);
+					}
+				},
+				'connected': () => {
+					// Initial connection acknowledgment - no action needed
+				}
+			},
+			reconnectDelayMs: 5000,
+			autoReconnect: true
+		});
+	}
+	completionSSEConnection.connect();
 }
 
 function handleSSEEvent(data: any) {
@@ -831,6 +866,9 @@ export async function createIssue(title: string, description?: string, labels?: 
 export function disconnectSSE(): void {
 	if (sseConnection) {
 		sseConnection.disconnect();
+	}
+	if (completionSSEConnection) {
+		completionSSEConnection.disconnect();
 	}
 	// Cancel any pending fetch operations
 	agents.cancelPending();

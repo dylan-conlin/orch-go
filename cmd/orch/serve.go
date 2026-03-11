@@ -381,6 +381,12 @@ func runServe(portNum int) error {
 	// GET /api/events/context - SSE stream for real-time context changes
 	mux.HandleFunc("/api/events/context", corsHandler(handleContextEvents))
 
+	// POST /api/notify/completion - daemon pushes completion events to dashboard
+	mux.HandleFunc("/api/notify/completion", corsHandler(handleCompletionNotify))
+
+	// GET /api/events/completion - SSE stream for real-time completion notifications
+	mux.HandleFunc("/api/events/completion", corsHandler(handleCompletionEvents))
+
 	// GET /api/coaching - returns orchestrator behavioral coaching metrics
 	mux.HandleFunc("/api/coaching", corsHandler(handleCoaching))
 

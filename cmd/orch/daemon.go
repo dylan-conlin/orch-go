@@ -2,8 +2,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -374,6 +377,9 @@ func runDaemonLoop() error {
 					if err := logger.Log(event); err != nil {
 						dlog.Errorf("Warning: failed to log completion event: %v\n", err)
 					}
+
+					// Push completion notification to dashboard (fire-and-forget)
+					notifyDashboardCompletion(cr.BeadsID, cr.CloseReason, cr.Escalation.String())
 				} else if cr.Error != nil && daemonVerbose {
 					dlog.Printf("[%s] Review required: %s - %v (escalation=%s)\n",
 						timestamp, cr.BeadsID, cr.Error, cr.Escalation)
@@ -730,4 +736,31 @@ func runDaemonLoop() error {
 		case <-time.After(config.PollInterval):
 		}
 	}
+}
+
+// notifyDashboardCompletion sends a fire-and-forget POST to the serve API
+// to push completion events to connected dashboard clients in real-time.
+// This eliminates dashboard polling latency for completion surfacing.
+func notifyDashboardCompletion(beadsID, reason, escalation string) {
+	go func() {
+		event := CompletionEvent{
+			BeadsID:    beadsID,
+			Reason:     reason,
+			Escalation: escalation,
+			Source:     "daemon",
+			Timestamp:  time.Now().Unix(),
+		}
+		data, err := json.Marshal(event)
+		if err != nil {
+			return
+		}
+
+		// Best-effort POST to serve API (may not be running)
+		client := &http.Client{Timeout: 2 * time.Second}
+		resp, err := client.Post("http://localhost:3348/api/notify/completion", "application/json", bytes.NewReader(data))
+		if err != nil {
+			return // Serve not running or unreachable - that's OK
+		}
+		resp.Body.Close()
+	}()
 }
