@@ -1,6 +1,6 @@
 # Knowledge Physics: What Happens When No One Remembers
 
-*Why shared systems degrade from correct contributions — a diagnostic framework derived from 1,166 investigations, tested against 15 counterexamples, and applicable to any substrate where amnesiac agents contribute.*
+*Why shared systems degrade from correct contributions — a diagnostic framework derived from 1,166 investigations, tested against 15 counterexamples, and observed in two substrates (code and knowledge) where amnesiac agents contribute.*
 
 ---
 
@@ -10,7 +10,7 @@ You've seen it. A shared wiki where every page was written correctly but nobody 
 
 The individual contributions are fine. The aggregate is a mess.
 
-This isn't a quality problem. It's a coordination problem. And it follows predictable dynamics — dynamics that I've spent three months measuring, formalizing, and trying to break.
+This isn't a quality problem. It's a coordination problem. And it follows dynamics I've spent three months measuring, formalizing, and trying to break — in one system, operated by one person, across two substrates.
 
 ---
 
@@ -28,15 +28,15 @@ Over three months, I built a system where AI agents do empirical knowledge work.
 
 The cycle: investigate, formalize claims into models, test claims with probes, update models from probe findings. When investigations accumulate without a model (3+ in the same area), the system flags a synthesis opportunity and a model gets created. Future agents receive that model's claims as context. The cycle continues.
 
-The 32nd model the system produced describes the dynamics governing the other 31. It's a model of how shared systems degrade or thrive based on their structural properties — and it kept surviving every attempt to break it.
+The 32nd model the system produced describes the dynamics governing the other 31. It's a model of how shared systems degrade or thrive based on their structural properties — and it survived 15+ falsification attempts, though all those attempts were conducted by agents operating inside the framework itself (a closed-loop limitation I'll address below).
 
 ---
 
 ## Five Conditions
 
-This is a diagnostic framework — structural conditions that predict whether a shared resource degrades or thrives. The closest comparison is Elinor Ostrom's institutional analysis of commons governance. Ostrom didn't discover a law of physics. She identified structural conditions, empirically derived from studying hundreds of commons, that predict whether a fishery collapses or a forest sustains. Her design principles don't guarantee outcomes — they diagnose structural risk.
+This is a diagnostic framework — structural conditions that diagnose whether a shared resource is at risk of degradation. The closest comparison in type (not in evidence base) is Elinor Ostrom's institutional analysis of commons governance. Ostrom identified structural conditions, empirically derived from studying hundreds of commons across dozens of countries over decades, that predict whether a fishery collapses or a forest sustains. Her design principles don't guarantee outcomes — they diagnose structural risk.
 
-Knowledge physics works the same way. Five conditions predict whether a shared system will degrade from individually correct contributions:
+Knowledge physics aspires to work the same way, but from a far narrower evidence base — one system, one operator, three months. Five conditions diagnose whether a shared system is at risk of degrading from individually correct contributions:
 
 1. **Multiple agents write to the substrate.** Not one person, but many contributors making independent changes.
 
@@ -48,9 +48,9 @@ Knowledge physics works the same way. Five conditions predict whether a shared s
 
 5. **No structural coordination mechanism exists.** Nothing enforces that locally correct + locally correct = globally correct. No compiler catching conflicts, no schema enforcing consistency, no review process detecting redundancy.
 
-When all five conditions hold, four dynamics emerge — regardless of what the substrate is made of.
+When all five conditions hold, four dynamics emerge — at least in the two substrates we've measured (code and knowledge).
 
-**Accretion:** individually correct contributions compose into structural degradation. Not a quality problem — a thermodynamic property of uncoordinated systems.
+**Accretion:** individually correct contributions compose into structural degradation. Not a quality problem — a structural property of uncoordinated compositional systems.
 
 **Attractors:** structural destinations that route contributions toward coherent organization. A well-named package pulls code toward it. A well-structured model of understanding pulls findings toward it.
 
@@ -68,7 +68,7 @@ Append-only logs meet conditions 1-3 and 5. Multiple amnesiac agents write entri
 
 The addition of condition 4 prevents this over-prediction. It separates compositional substrates (codebases, knowledge bases, database schemas, API surfaces) from additive substrates (logs, sensor data, event streams) where contributions are independent and can't compose incorrectly.
 
-The refined claim: these conditions produce accretion in any shared mutable substrate where contributions must compose non-trivially. Remove the compositional requirement and the prediction fails — which is exactly what a falsifiable theory should do.
+The refined claim: these conditions produce accretion in shared mutable substrates where contributions must compose non-trivially — confirmed in two substrates so far (code and knowledge), with external evidence from human systems (scientific literature, corporate wikis, shared drives) consistent with the pattern. Remove the compositional requirement and the prediction fails — which is exactly what a falsifiable theory should do.
 
 ---
 
@@ -86,7 +86,7 @@ The same resolution applies to termite mounds (cement pheromones), immune system
 
 **Human systems** that genuinely lack coordination exhibit exactly the predicted dynamics. Scientific literature: exponential paper growth, linear knowledge growth, replication crisis, duplicative systematic reviews (increased 2,728% vs 153% for all publications). Corporate wikis: orphan pages, stale docs, naming drift. Shared file systems: 85% of shared drive data is dark or ROT — Redundant, Obsolete, Trivial (Veritas, 2016). Wikipedia itself, despite extensive coordination mechanisms, still has ~15% orphan articles (~8.8 million pages with no incoming links).
 
-Every candidate falls into one of three buckets: hidden coordination (conditions don't fully hold), trivial composition (additions don't need to cohere), or observed accretion (theory confirmed). No clean counterexample survived.
+Every candidate falls into one of three buckets: hidden coordination (conditions don't fully hold), trivial composition (additions don't need to cohere), or observed accretion (consistent with the theory). No clean counterexample survived — though a framework with categories this broad may be absorbing counterexamples through reclassification rather than genuine resilience. That's a limitation of post-hoc analysis.
 
 This doesn't mean the theory is capital-T True. It means it's conditionally predictive — like Ostrom's commons principles or Conway's Law. It predicts where accretion will concentrate (at coordination gaps), what interventions will reduce it (gates at compositional boundaries), and that removing coordination will introduce it. It does not predict the form, rate, or exact threshold of accretion. Those are substrate-specific.
 
@@ -112,7 +112,7 @@ Separately, 6 cross-cutting concerns were independently reimplemented across 4-9
 
 If the same dynamics appear in a fundamentally different medium, the framework is diagnosing system properties, not substrate properties. Knowledge provides that second confirmation.
 
-**Accretion is measurable.** The system's 1,166 investigations have an 87.6% orphan rate — work product with no structural connection to any model. But this decomposes: the pre-model era (before the probe system existed) has a 94.7% orphan rate across 83% of the corpus. The model era rate is 52.0%.
+**Accretion is measurable in our system.** The system's 1,166 investigations have an 87.6% orphan rate — work product with no structural connection to any model. But this decomposes: the pre-model era (before the probe system existed) has a 94.7% orphan rate across 83% of the corpus. The model era rate is 52.0%.
 
 A 35-file sample revealed that ~80% of orphans are naturally expected — implementation tasks miscategorized as investigations, one-off explorations, negative results. The actionable "genuinely lost" rate is ~10%, comparable to healthy dead code rates in mature codebases.
 
@@ -140,7 +140,7 @@ Agent governance addresses two failure modes that respond oppositely to model im
 
 We tested this directly. Two AI agents, same task, same codebase, no communication. Simple task (add a `FormatBytes` function): 10 trials, 100% merge conflict rate. Both agents wrote correct code. Both appended to the same file location. Both generated near-identical commit messages independently. Fisher's exact test: p=1.0. The conflict rate was identical regardless of model capability.
 
-Complex task (multi-file table renderer): the more capable model made *deeper* semantic conflicts. It anticipated Unicode edge cases and made more sophisticated design choices — producing implementations that were individually superior but collectively incompatible. Greater capability created greater divergence.
+Complex task (multi-file table renderer): the more capable model made *deeper* semantic conflicts. It anticipated Unicode edge cases and made more sophisticated design choices — producing implementations that were individually superior but collectively incompatible. In this single trial, greater capability created greater divergence — though one trial can't establish a general trend.
 
 The `daemon.go` evidence is coordination failure at codebase scale. 30 correct commits, 892 lines of growth, workspace scanning implemented five times. No agent was wrong. The architecture was missing.
 
@@ -164,7 +164,7 @@ The dynamics aren't unique to my system. They're visible at industry scale:
 
 **Wikipedia.** Despite extensive coordination infrastructure (WikiProjects, bots, style guides, deletion processes), ~15% of articles are orphans with no incoming links. Accretion concentrates at the gaps in coordination coverage — exactly where the framework predicts.
 
-Every one of these cases meets the five conditions. Every one exhibits the predicted dynamics.
+Every one of these cases meets the five conditions when classified post-hoc. Every one exhibits dynamics consistent with the framework's predictions — though post-hoc classification is inherently weaker than forward prediction.
 
 ---
 

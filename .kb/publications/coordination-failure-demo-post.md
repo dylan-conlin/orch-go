@@ -125,7 +125,7 @@ This experiment demonstrates a distinction I think is underappreciated in multi-
 | **Fixed by better models?** | Yes | No — made *worse* by faster, more confident agents |
 | **Response to scale** | Decreases (smarter agents comply more) | Increases (more agents = more conflicts) |
 
-Most multi-agent failure taxonomies — including Cemri et al.'s MAST framework analyzing 1,600+ traces — categorize failures by symptom rather than by their response to model improvement. Their prescription for inter-agent misalignment: "deeper social reasoning abilities." That's a compliance answer to a coordination question.
+Most multi-agent failure taxonomies — including Cemri et al.'s MAST framework analyzing 1,600+ traces — categorize failures by symptom rather than by their response to model improvement. Their prescription for inter-agent misalignment: "deeper social reasoning abilities." We'd argue that's a compliance-level answer to a coordination-level question — though it's possible that agents with better social reasoning would avoid the structural conflicts we observed. We haven't tested that.
 
 The experiment makes this concrete. Both agents demonstrated perfect compliance. Zero failures across 20 runs on 6 dimensions. The failure is entirely in coordination — and it's 100% structural.
 
@@ -211,7 +211,7 @@ This experiment is the smallest version of a larger observation. We run 50+ AI a
 
 We've been writing about this under the frame of [harness engineering](https://dylanconlin.com/blog/harness-engineering) — the discipline of building structural governance for multi-agent codebases. The demo here is the foundational claim: coordination failure is structural, not cognitive, and it doesn't resolve with model improvement.
 
-But coordination failure isn't unique to code. We've observed the same dynamics — agents independently producing correct work that conflicts when integrated — in knowledge systems where agents contribute to shared understanding rather than shared files. The physics appear to be substrate-independent. What changes across substrates is the conflict surface (merge conflicts in code, contradictory claims in knowledge, incompatible schemas in databases), not the underlying dynamic.
+But coordination failure isn't unique to code. We've observed similar dynamics — agents independently producing correct work that conflicts when integrated — in knowledge systems where agents contribute to shared understanding rather than shared files. The patterns appear similar across both substrates we've measured, though two data points don't establish universality. What changes across substrates is the conflict surface (merge conflicts in code, contradictory claims in knowledge, incompatible schemas in databases), not the underlying dynamic — at least in the cases we've studied.
 
 That's what we're exploring next. The coordination failure demo is the empirical anchor. The theory is what it points toward.
 
