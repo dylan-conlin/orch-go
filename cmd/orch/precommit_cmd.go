@@ -18,7 +18,8 @@ var precommitAccretionCmd = &cobra.Command{
 	Short: "Check staged files for accretion violations",
 	Long: `Checks all staged source files against accretion thresholds.
 
-Hard block (exit 1):  >1500 lines
+Hard block (exit 1):  >1500 lines (only when agent's changes caused the threshold crossing)
+Warning (non-blocking): >1500 lines (pre-existing bloat — file was already over threshold)
 Warning (non-blocking): >800 lines with ≥30 net lines added
 Warning (non-blocking): >600 lines with ≥50 net lines added
 
@@ -126,9 +127,44 @@ Override: FORCE_MODEL_STUB=1 git commit ...`,
 	},
 }
 
+var precommitDuplicationCmd = &cobra.Command{
+	Use:   "duplication",
+	Short: "Check staged files for function duplication (advisory)",
+	Long: `Scans staged Go files for functions that are near-clones of existing functions.
+
+This is advisory only — it warns but does not block the commit.
+Functions with ≥85% structural similarity (AST fingerprinting) are reported.
+
+Override: SKIP_DUPDETECT=1 git commit ...`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if os.Getenv("SKIP_DUPDETECT") == "1" {
+			fmt.Println("pre-commit: duplication check skipped (SKIP_DUPDETECT=1)")
+			return
+		}
+
+		dir, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "pre-commit: cannot get working directory: %v\n", err)
+			return
+		}
+
+		result := verify.CheckStagedDuplication(dir)
+		if result == nil {
+			return
+		}
+
+		if warnings := verify.FormatStagedDuplicationWarning(result); warnings != "" {
+			fmt.Fprintln(os.Stderr, warnings)
+		} else {
+			fmt.Println("pre-commit: duplication check passed")
+		}
+	},
+}
+
 func init() {
 	precommitCmd.AddCommand(precommitAccretionCmd)
 	precommitCmd.AddCommand(precommitKnowledgeCmd)
 	precommitCmd.AddCommand(precommitModelStubCmd)
+	precommitCmd.AddCommand(precommitDuplicationCmd)
 	rootCmd.AddCommand(precommitCmd)
 }

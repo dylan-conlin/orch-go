@@ -41,7 +41,7 @@ func TestCheckStagedAccretion(t *testing.T) {
 			expectCount:  0,
 		},
 		{
-			name: "staged file at 1501 lines blocks",
+			name: "staged file at 1501 lines blocks when agent caused it",
 			setupFiles: map[string]int{
 				"big.go": 100,
 			},
@@ -52,7 +52,7 @@ func TestCheckStagedAccretion(t *testing.T) {
 			expectCount:  1,
 		},
 		{
-			name: "staged file at 2000 lines blocks",
+			name: "staged file at 2000 lines blocks when agent caused it",
 			setupFiles: map[string]int{
 				"huge.go": 100,
 			},
@@ -61,6 +61,28 @@ func TestCheckStagedAccretion(t *testing.T) {
 			},
 			expectPassed: false,
 			expectCount:  1,
+		},
+		{
+			name: "pre-existing bloat file warns instead of blocking",
+			setupFiles: map[string]int{
+				"legacy.go": 1600,
+			},
+			stageFiles: map[string]int{
+				"legacy.go": 1650,
+			},
+			expectPassed: true,
+			expectCount:  0,
+		},
+		{
+			name: "pre-existing bloat at exactly 1501 warns instead of blocking",
+			setupFiles: map[string]int{
+				"border.go": 1501,
+			},
+			stageFiles: map[string]int{
+				"border.go": 1560,
+			},
+			expectPassed: true,
+			expectCount:  0,
 		},
 		{
 			name: "new file over threshold blocks",
@@ -299,6 +321,33 @@ func TestCheckStagedAccretion_NewFileWarnings(t *testing.T) {
 	}
 }
 
+func TestCheckStagedAccretion_PreExistingBloatWarning(t *testing.T) {
+	tmpDir := setupGitRepoForStaged(t)
+
+	// File already 1700 lines in HEAD — agent adds 50 more
+	createFileWithLines(t, tmpDir, "legacy.go", 1700)
+	commitFiles(t, tmpDir, "Initial commit")
+
+	createFileWithLines(t, tmpDir, "legacy.go", 1750)
+	stageAllFiles(t, tmpDir)
+
+	result := CheckStagedAccretion(tmpDir)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	// Pre-existing bloat: should warn, NOT block
+	if !result.Passed {
+		t.Errorf("expected Passed=true for pre-existing bloat, got blocked: %v", result.BlockedFiles)
+	}
+	if len(result.BlockedFiles) != 0 {
+		t.Errorf("expected 0 blocked files for pre-existing bloat, got %d: %v", len(result.BlockedFiles), result.BlockedFiles)
+	}
+	if len(result.WarningFiles) != 1 {
+		t.Errorf("expected 1 warning for pre-existing bloat, got %d: %v", len(result.WarningFiles), result.WarningFiles)
+	}
+}
+
 func TestCheckStagedAccretion_BlockTakesPrecedenceOverWarning(t *testing.T) {
 	tmpDir := setupGitRepoForStaged(t)
 
@@ -336,7 +385,7 @@ func TestFormatStagedAccretionWarnings(t *testing.T) {
 		t.Errorf("expected empty for no warnings, got %q", msg)
 	}
 
-	// With warnings
+	// With growth warnings (800/600 threshold)
 	result = &StagedAccretionResult{
 		Passed: true,
 		WarningFiles: []StagedFileInfo{
@@ -350,8 +399,26 @@ func TestFormatStagedAccretionWarnings(t *testing.T) {
 	if !strings.Contains(msg, "big.go") {
 		t.Errorf("warning should contain filename, got: %s", msg)
 	}
-	if !strings.Contains(msg, "850") {
-		t.Errorf("warning should contain line count, got: %s", msg)
+	if !strings.Contains(msg, "approaching") {
+		t.Errorf("growth warning should contain 'approaching', got: %s", msg)
+	}
+
+	// With pre-existing bloat warning (1500 threshold)
+	result = &StagedAccretionResult{
+		Passed: true,
+		WarningFiles: []StagedFileInfo{
+			{Path: "legacy.go", Lines: 1700, NetDelta: 50, Threshold: AccretionCriticalThreshold},
+		},
+	}
+	msg = FormatStagedAccretionWarnings(result)
+	if msg == "" {
+		t.Fatal("expected non-empty warning for pre-existing bloat")
+	}
+	if !strings.Contains(msg, "pre-existing bloat") {
+		t.Errorf("pre-existing bloat warning should contain 'pre-existing bloat', got: %s", msg)
+	}
+	if !strings.Contains(msg, "legacy.go") {
+		t.Errorf("warning should contain filename, got: %s", msg)
 	}
 }
 

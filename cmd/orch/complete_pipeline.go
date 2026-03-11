@@ -440,6 +440,13 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 		}
 	}
 
+	// Surface duplication advisory for modified files (informational, not a gate)
+	if target.WorkProjectDir != "" && !target.IsOrchestratorSession {
+		if advisory := RunDuplicationAdvisoryForCompletion(target.WorkProjectDir, target.WorkspacePath); advisory != "" {
+			fmt.Print(advisory)
+		}
+	}
+
 	// Surface model-impact advisory (informational, not a gate)
 	if target.WorkProjectDir != "" && target.WorkspacePath != "" && !target.IsOrchestratorSession {
 		if advisory := RunModelImpactAdvisory(target.WorkProjectDir, target.WorkspacePath); advisory != "" {

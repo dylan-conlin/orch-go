@@ -75,15 +75,27 @@ func CheckStagedAccretion(projectDir string) *StagedAccretionResult {
 		headLines, _ := countHeadFileLines(projectDir, file) // 0 for new files
 		netDelta := stagedLines - headLines
 
-		// Hard block: >1500 lines
+		// Critical threshold: >1500 lines
 		if stagedLines > AccretionCriticalThreshold {
-			result.Passed = false
-			result.BlockedFiles = append(result.BlockedFiles, StagedFileInfo{
-				Path:      file,
-				Lines:     stagedLines,
-				NetDelta:  netDelta,
-				Threshold: AccretionCriticalThreshold,
-			})
+			if headLines > AccretionCriticalThreshold {
+				// Pre-existing bloat: file was already over threshold before this change.
+				// Downgrade to warning — agent didn't cause the bloat.
+				result.WarningFiles = append(result.WarningFiles, StagedFileInfo{
+					Path:      file,
+					Lines:     stagedLines,
+					NetDelta:  netDelta,
+					Threshold: AccretionCriticalThreshold,
+				})
+			} else {
+				// Agent-caused bloat: changes pushed file over threshold — block.
+				result.Passed = false
+				result.BlockedFiles = append(result.BlockedFiles, StagedFileInfo{
+					Path:      file,
+					Lines:     stagedLines,
+					NetDelta:  netDelta,
+					Threshold: AccretionCriticalThreshold,
+				})
+			}
 			continue
 		}
 
@@ -135,9 +147,30 @@ func FormatStagedAccretionWarnings(result *StagedAccretionResult) string {
 	}
 
 	var b strings.Builder
-	b.WriteString("WARNING: accretion approaching — files growing toward thresholds:\n")
+	// Separate pre-existing bloat (threshold=1500) from growth warnings
+	var preExisting, growing []StagedFileInfo
 	for _, f := range result.WarningFiles {
-		fmt.Fprintf(&b, "  %s (%d lines, +%d net, threshold %d)\n", f.Path, f.Lines, f.NetDelta, f.Threshold)
+		if f.Threshold == AccretionCriticalThreshold {
+			preExisting = append(preExisting, f)
+		} else {
+			growing = append(growing, f)
+		}
+	}
+
+	if len(preExisting) > 0 {
+		b.WriteString("WARNING: pre-existing bloat — files already exceed critical threshold:\n")
+		for _, f := range preExisting {
+			fmt.Fprintf(&b, "  %s (%d lines, +%d net). File needs extraction but agent didn't cause the bloat.\n", f.Path, f.Lines, f.NetDelta)
+		}
+	}
+	if len(growing) > 0 {
+		if len(preExisting) > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("WARNING: accretion approaching — files growing toward thresholds:\n")
+		for _, f := range growing {
+			fmt.Fprintf(&b, "  %s (%d lines, +%d net, threshold %d)\n", f.Path, f.Lines, f.NetDelta, f.Threshold)
+		}
 	}
 	b.WriteString("\nConsider extraction before further growth. See: orch hotspot")
 	return b.String()
