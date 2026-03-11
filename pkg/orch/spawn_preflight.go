@@ -19,8 +19,9 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 	if !input.DaemonDriven && bypassTriage {
 		gates.LogTriageBypass(input.SkillName, input.Task, overrideReason)
 		logGateDecision("triage", "bypass", input.SkillName, overrideReason, nil)
-	} else {
-		logGateDecision("triage", "allow", input.SkillName, "", nil)
+	} else if input.DaemonDriven {
+		// Daemon-driven spawns skip triage automatically — log "allow"
+		logGateDecision("triage", "allow", input.SkillName, "daemon-driven spawn", nil)
 	}
 	if err := gates.CheckVerificationGate(bypassVerification, bypassReason); err != nil {
 		logGateDecision("verification", "block", input.SkillName, "unverified Tier 1 work exists", nil)
@@ -29,7 +30,7 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 	if bypassVerification {
 		logGateDecision("verification", "bypass", input.SkillName, bypassReason, nil)
 	} else {
-		logGateDecision("verification", "allow", input.SkillName, "", nil)
+		logGateDecision("verification", "allow", input.SkillName, "no unverified work", nil)
 	}
 	if err := gates.CheckConcurrency(input.ServerURL, maxAgents, extractBeadsIDFunc); err != nil {
 		return nil, nil, nil, nil, err
@@ -59,8 +60,9 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 		}
 		if forceHotspot && hotspotResult != nil && hotspotResult.HasCriticalHotspot {
 			logGateDecision("hotspot", "bypass", input.SkillName, overrideReason, hotspotResult.CriticalFiles)
-		} else {
-			logGateDecision("hotspot", "allow", input.SkillName, "", nil)
+		} else if hotspotResult == nil || !hotspotResult.HasCriticalHotspot {
+			// Gate evaluated, no critical hotspots — log "allow" for true fire rate
+			logGateDecision("hotspot", "allow", input.SkillName, "no critical hotspot files", nil)
 		}
 	}
 
