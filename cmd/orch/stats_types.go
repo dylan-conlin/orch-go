@@ -52,8 +52,9 @@ type StatsReport struct {
 	VerificationStats VerificationStats                 `json:"verification_stats,omitempty"`
 	SpawnGateStats    SpawnGateStats                   `json:"spawn_gate_stats,omitempty"`
 	OverrideStats     OverrideStats                    `json:"override_stats,omitempty"`
-	GateDecisionStats GateDecisionStats               `json:"gate_decision_stats,omitempty"`
-	CoachingStats     map[string]coaching.MetricSummary `json:"coaching_stats,omitempty"`
+	GateDecisionStats      GateDecisionStats               `json:"gate_decision_stats,omitempty"`
+	GateEffectivenessStats GateEffectivenessStats          `json:"gate_effectiveness_stats,omitempty"`
+	CoachingStats          map[string]coaching.MetricSummary `json:"coaching_stats,omitempty"`
 }
 
 // StatsSummary contains core metrics
@@ -217,6 +218,44 @@ type GateDecisionStats struct {
 	TotalBypasses  int                    `json:"total_bypasses"`
 	ByGate         []GateDecisionEntry    `json:"by_gate,omitempty"`
 	TopBlockedSkills []GateSkillEntry     `json:"top_blocked_skills,omitempty"`
+}
+
+// GateEffectivenessStats correlates gate decisions with agent outcomes.
+// Answers: "Do gates improve quality?" by comparing gated vs ungated work.
+type GateEffectivenessStats struct {
+	TotalEvaluations int     `json:"total_evaluations"`
+	TotalBlocks      int     `json:"total_blocks"`
+	TotalBypasses    int     `json:"total_bypasses"`
+	TotalAllows      int     `json:"total_allows"`
+	BlockRate        float64 `json:"block_rate"`
+
+	// Outcome correlation for blocked work
+	BlockedOutcomes BlockedOutcomeStats `json:"blocked_outcomes"`
+
+	// Quality comparison: gated (went through a gate decision) vs ungated (no gate event)
+	GatedCompletion   QualityMetrics `json:"gated_completion"`
+	UngatedCompletion QualityMetrics `json:"ungated_completion"`
+
+	// Architect escalation stats (daemon.architect_escalation)
+	ArchitectEscalations int `json:"architect_escalations"`
+}
+
+// BlockedOutcomeStats tracks what happened to work blocked by gates.
+type BlockedOutcomeStats struct {
+	EscalatedToArchitect int `json:"escalated_to_architect"` // Redirected via architect
+	EventuallyCompleted  int `json:"eventually_completed"`   // Completed after redirect
+	StillPending         int `json:"still_pending"`          // No completion event found
+}
+
+// QualityMetrics tracks completion quality for a cohort of spawns.
+type QualityMetrics struct {
+	TotalSpawns        int     `json:"total_spawns"`
+	Completions        int     `json:"completions"`
+	Abandonments       int     `json:"abandonments"`
+	CompletionRate     float64 `json:"completion_rate"`
+	VerificationPassed int     `json:"verification_passed"`
+	VerificationRate   float64 `json:"verification_rate"` // % of completions that passed verification
+	AvgDurationMinutes float64 `json:"avg_duration_minutes,omitempty"`
 }
 
 // GateDecisionEntry tracks block/bypass counts for a single gate.

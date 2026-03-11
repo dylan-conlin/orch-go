@@ -248,6 +248,8 @@ func outputStatsText(report *StatsReport) error {
 		}
 	}
 
+	outputGateEffectiveness(report)
+
 	// Gate decision stats (blocks and bypasses from spawn.gate_decision events)
 	if report.GateDecisionStats.TotalDecisions > 0 {
 		fmt.Println()
@@ -403,6 +405,55 @@ func outputStatsText(report *StatsReport) error {
 	}
 
 	return nil
+}
+
+func outputGateEffectiveness(report *StatsReport) {
+	if report.GateEffectivenessStats.TotalEvaluations == 0 {
+		return
+	}
+	ge := &report.GateEffectivenessStats
+	fmt.Println()
+	fmt.Println("🎯 GATE EFFECTIVENESS")
+	fmt.Printf("  Evaluations: %d  |  Blocks: %d  |  Bypasses: %d  |  Allows: %d\n",
+		ge.TotalEvaluations, ge.TotalBlocks, ge.TotalBypasses, ge.TotalAllows)
+	fmt.Printf("  Block Rate:  %.1f%%\n", ge.BlockRate)
+
+	// Blocked work outcomes
+	if ge.TotalBlocks > 0 {
+		fmt.Println()
+		fmt.Println("  Blocked Work Outcomes:")
+		fmt.Printf("    Escalated to architect: %d\n", ge.BlockedOutcomes.EscalatedToArchitect)
+		fmt.Printf("    Eventually completed:   %d\n", ge.BlockedOutcomes.EventuallyCompleted)
+		fmt.Printf("    Still pending:          %d\n", ge.BlockedOutcomes.StillPending)
+	}
+
+	if ge.ArchitectEscalations > 0 {
+		fmt.Printf("  Architect escalations:    %d\n", ge.ArchitectEscalations)
+	}
+
+	// Quality comparison
+	fmt.Println()
+	fmt.Println("  Quality Comparison (gated vs ungated):")
+	fmt.Printf("  %-12s %8s %8s %8s %10s %10s %10s\n",
+		"Cohort", "Spawns", "Complete", "Abandon", "Comp Rate", "Verif Rate", "Avg Dur")
+	fmt.Println("  " + strings.Repeat("-", 72))
+
+	for _, entry := range []struct {
+		label   string
+		metrics QualityMetrics
+	}{
+		{"Gated", ge.GatedCompletion},
+		{"Ungated", ge.UngatedCompletion},
+	} {
+		m := entry.metrics
+		durStr := "N/A"
+		if m.AvgDurationMinutes > 0 {
+			durStr = fmt.Sprintf("%.0fm", m.AvgDurationMinutes)
+		}
+		fmt.Printf("  %-12s %8d %8d %8d %9.1f%% %9.1f%% %10s\n",
+			entry.label, m.TotalSpawns, m.Completions, m.Abandonments,
+			m.CompletionRate, m.VerificationRate, durStr)
+	}
 }
 
 func truncateSkill(skill string, maxLen int) string {

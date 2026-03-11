@@ -1320,3 +1320,213 @@ func TestGateDecisionStats_Empty(t *testing.T) {
 		t.Errorf("ByGate should be empty, got %d entries", len(report.GateDecisionStats.ByGate))
 	}
 }
+
+func TestGateEffectivenessStats(t *testing.T) {
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// --- Spawns ---
+		// Gated spawns (have corresponding gate_decision events)
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "gated-1",
+		}},
+		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 6200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "gated-2",
+		}},
+		{Type: "session.spawned", SessionID: "ses_3", Timestamp: now - 5200, Data: map[string]interface{}{
+			"skill": "systematic-debugging", "beads_id": "gated-3",
+		}},
+		// Ungated spawns (no gate_decision events)
+		{Type: "session.spawned", SessionID: "ses_4", Timestamp: now - 4200, Data: map[string]interface{}{
+			"skill": "investigation", "beads_id": "ungated-1",
+		}},
+		{Type: "session.spawned", SessionID: "ses_5", Timestamp: now - 3200, Data: map[string]interface{}{
+			"skill": "architect", "beads_id": "ungated-2",
+		}},
+		// Blocked spawn (gate blocked, then escalated to architect)
+		{Type: "session.spawned", SessionID: "ses_6", Timestamp: now - 2200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "blocked-1",
+		}},
+
+		// --- Gate decisions ---
+		// gated-1: bypass (allowed through)
+		{Type: "spawn.gate_decision", Timestamp: now - 7100, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "bypass", "skill": "feature-impl", "beads_id": "gated-1",
+		}},
+		// gated-2: bypass
+		{Type: "spawn.gate_decision", Timestamp: now - 6100, Data: map[string]interface{}{
+			"gate_name": "triage", "decision": "bypass", "skill": "feature-impl", "beads_id": "gated-2",
+		}},
+		// gated-3: bypass
+		{Type: "spawn.gate_decision", Timestamp: now - 5100, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "bypass", "skill": "systematic-debugging", "beads_id": "gated-3",
+		}},
+		// blocked-1: block
+		{Type: "spawn.gate_decision", Timestamp: now - 2100, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "block", "skill": "feature-impl", "beads_id": "blocked-1",
+		}},
+
+		// --- Architect escalation for blocked work ---
+		{Type: "daemon.architect_escalation", Timestamp: now - 2000, Data: map[string]interface{}{
+			"issue_id": "blocked-1", "hotspot_file": "cmd/orch/stats_cmd.go",
+			"hotspot_type": "CRITICAL", "escalated": true,
+		}},
+
+		// --- Completions ---
+		// gated-1: completed, verification passed
+		{Type: "agent.completed", Timestamp: now - 5000, Data: map[string]interface{}{
+			"beads_id": "gated-1", "verification_passed": true, "skill": "feature-impl",
+		}},
+		// gated-2: completed, verification failed (forced)
+		{Type: "agent.completed", Timestamp: now - 4000, Data: map[string]interface{}{
+			"beads_id": "gated-2", "verification_passed": false, "forced": true, "skill": "feature-impl",
+		}},
+		// gated-3: abandoned
+		{Type: "agent.abandoned", Timestamp: now - 3000, Data: map[string]interface{}{
+			"beads_id": "gated-3",
+		}},
+		// ungated-1: completed, verification passed
+		{Type: "agent.completed", Timestamp: now - 2500, Data: map[string]interface{}{
+			"beads_id": "ungated-1", "verification_passed": true, "skill": "investigation",
+		}},
+		// ungated-2: abandoned
+		{Type: "agent.abandoned", Timestamp: now - 1500, Data: map[string]interface{}{
+			"beads_id": "ungated-2",
+		}},
+		// blocked-1: eventually completed after architect redirect
+		{Type: "agent.completed", Timestamp: now - 1000, Data: map[string]interface{}{
+			"beads_id": "blocked-1", "verification_passed": true, "skill": "feature-impl",
+		}},
+	}
+
+	report := aggregateStats(events, 7)
+	ge := report.GateEffectivenessStats
+
+	// Total evaluations = 4 gate_decision events
+	if ge.TotalEvaluations != 4 {
+		t.Errorf("TotalEvaluations = %d, want 4", ge.TotalEvaluations)
+	}
+
+	// 1 block, 3 bypasses
+	if ge.TotalBlocks != 1 {
+		t.Errorf("TotalBlocks = %d, want 1", ge.TotalBlocks)
+	}
+	if ge.TotalBypasses != 3 {
+		t.Errorf("TotalBypasses = %d, want 3", ge.TotalBypasses)
+	}
+
+	// Block rate = 1/4 = 25%
+	expectedBlockRate := 25.0
+	if ge.BlockRate < expectedBlockRate-0.1 || ge.BlockRate > expectedBlockRate+0.1 {
+		t.Errorf("BlockRate = %.1f%%, want ~%.1f%%", ge.BlockRate, expectedBlockRate)
+	}
+
+	// Blocked outcomes
+	if ge.BlockedOutcomes.EscalatedToArchitect != 1 {
+		t.Errorf("EscalatedToArchitect = %d, want 1", ge.BlockedOutcomes.EscalatedToArchitect)
+	}
+	if ge.BlockedOutcomes.EventuallyCompleted != 1 {
+		t.Errorf("EventuallyCompleted = %d, want 1", ge.BlockedOutcomes.EventuallyCompleted)
+	}
+	if ge.BlockedOutcomes.StillPending != 0 {
+		t.Errorf("StillPending = %d, want 0", ge.BlockedOutcomes.StillPending)
+	}
+
+	// Architect escalations
+	if ge.ArchitectEscalations != 1 {
+		t.Errorf("ArchitectEscalations = %d, want 1", ge.ArchitectEscalations)
+	}
+
+	// Gated quality: 4 spawns with gate decisions (gated-1, gated-2, gated-3, blocked-1)
+	if ge.GatedCompletion.TotalSpawns != 4 {
+		t.Errorf("GatedCompletion.TotalSpawns = %d, want 4", ge.GatedCompletion.TotalSpawns)
+	}
+	// 3 completions (gated-1, gated-2, blocked-1)
+	if ge.GatedCompletion.Completions != 3 {
+		t.Errorf("GatedCompletion.Completions = %d, want 3", ge.GatedCompletion.Completions)
+	}
+	// 1 abandonment (gated-3)
+	if ge.GatedCompletion.Abandonments != 1 {
+		t.Errorf("GatedCompletion.Abandonments = %d, want 1", ge.GatedCompletion.Abandonments)
+	}
+	// Completion rate = 3/4 = 75%
+	expectedGatedRate := 75.0
+	if ge.GatedCompletion.CompletionRate < expectedGatedRate-0.1 || ge.GatedCompletion.CompletionRate > expectedGatedRate+0.1 {
+		t.Errorf("GatedCompletion.CompletionRate = %.1f%%, want ~%.1f%%", ge.GatedCompletion.CompletionRate, expectedGatedRate)
+	}
+	// 2 verification passed (gated-1, blocked-1)
+	if ge.GatedCompletion.VerificationPassed != 2 {
+		t.Errorf("GatedCompletion.VerificationPassed = %d, want 2", ge.GatedCompletion.VerificationPassed)
+	}
+	// Verification rate = 2/3 = 66.7% (of completions)
+	expectedVerifRate := (2.0 / 3.0) * 100
+	if ge.GatedCompletion.VerificationRate < expectedVerifRate-0.1 || ge.GatedCompletion.VerificationRate > expectedVerifRate+0.1 {
+		t.Errorf("GatedCompletion.VerificationRate = %.1f%%, want ~%.1f%%", ge.GatedCompletion.VerificationRate, expectedVerifRate)
+	}
+
+	// Ungated quality: 2 spawns without gate decisions (ungated-1, ungated-2)
+	if ge.UngatedCompletion.TotalSpawns != 2 {
+		t.Errorf("UngatedCompletion.TotalSpawns = %d, want 2", ge.UngatedCompletion.TotalSpawns)
+	}
+	if ge.UngatedCompletion.Completions != 1 {
+		t.Errorf("UngatedCompletion.Completions = %d, want 1", ge.UngatedCompletion.Completions)
+	}
+	if ge.UngatedCompletion.Abandonments != 1 {
+		t.Errorf("UngatedCompletion.Abandonments = %d, want 1", ge.UngatedCompletion.Abandonments)
+	}
+	// Completion rate = 1/2 = 50%
+	expectedUngatedRate := 50.0
+	if ge.UngatedCompletion.CompletionRate < expectedUngatedRate-0.1 || ge.UngatedCompletion.CompletionRate > expectedUngatedRate+0.1 {
+		t.Errorf("UngatedCompletion.CompletionRate = %.1f%%, want ~%.1f%%", ge.UngatedCompletion.CompletionRate, expectedUngatedRate)
+	}
+	// 1 verification passed (ungated-1)
+	if ge.UngatedCompletion.VerificationPassed != 1 {
+		t.Errorf("UngatedCompletion.VerificationPassed = %d, want 1", ge.UngatedCompletion.VerificationPassed)
+	}
+	// Verification rate = 1/1 = 100%
+	if ge.UngatedCompletion.VerificationRate < 99.9 {
+		t.Errorf("UngatedCompletion.VerificationRate = %.1f%%, want 100%%", ge.UngatedCompletion.VerificationRate)
+	}
+}
+
+func TestGateEffectivenessStats_Empty(t *testing.T) {
+	events := []StatsEvent{
+		{Type: "session.spawned", Timestamp: time.Now().Unix(), Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-1",
+		}},
+	}
+
+	report := aggregateStats(events, 7)
+
+	if report.GateEffectivenessStats.TotalEvaluations != 0 {
+		t.Errorf("TotalEvaluations = %d, want 0", report.GateEffectivenessStats.TotalEvaluations)
+	}
+}
+
+func TestGateEffectivenessStats_BlockedStillPending(t *testing.T) {
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// Spawn that gets blocked but never completed
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "blocked-pending",
+		}},
+		{Type: "spawn.gate_decision", Timestamp: now - 7100, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "block", "skill": "feature-impl", "beads_id": "blocked-pending",
+		}},
+		// No completion or abandonment event
+	}
+
+	report := aggregateStats(events, 7)
+	ge := report.GateEffectivenessStats
+
+	if ge.TotalBlocks != 1 {
+		t.Errorf("TotalBlocks = %d, want 1", ge.TotalBlocks)
+	}
+	if ge.BlockedOutcomes.StillPending != 1 {
+		t.Errorf("StillPending = %d, want 1", ge.BlockedOutcomes.StillPending)
+	}
+	if ge.BlockedOutcomes.EventuallyCompleted != 0 {
+		t.Errorf("EventuallyCompleted = %d, want 0", ge.BlockedOutcomes.EventuallyCompleted)
+	}
+}

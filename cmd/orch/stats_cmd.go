@@ -191,6 +191,12 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 	// key: "gate_name|skill", value: count (blocks only)
 	gateBlockedSkills := make(map[string]int)
 
+	// Gate effectiveness: track which beads_ids had gate decisions
+	// Gate effectiveness: track which beads_ids had gate decisions
+	gatedBeadsIDs := make(map[string]bool)        // beads_id -> true if any gate_decision exists
+	blockedBeadsIDs := make(map[string]bool)       // beads_id -> true if blocked by a gate
+	architectEscalatedIDs := make(map[string]bool) // issue_id -> true if escalated to architect
+
 	// Count events within analysis window for EventsAnalyzed
 	eventsInWindow := 0
 
@@ -653,11 +659,32 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 				gateName, _ := data["gate_name"].(string)
 				decision, _ := data["decision"].(string)
 				skill, _ := data["skill"].(string)
+				beadsID, _ := data["beads_id"].(string)
 				if gateName != "" && decision != "" {
 					gateDecisionCounts[gateName+"|"+decision]++
 					if decision == "block" && skill != "" {
 						gateBlockedSkills[gateName+"|"+skill]++
 					}
+					// Track for gate effectiveness
+					if beadsID != "" {
+						gatedBeadsIDs[beadsID] = true
+						if decision == "block" {
+							blockedBeadsIDs[beadsID] = true
+						}
+					}
+				}
+			}
+
+		case "daemon.architect_escalation":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
+			if data := event.Data; data != nil {
+				issueID, _ := data["issue_id"].(string)
+				escalated, _ := data["escalated"].(bool)
+				if issueID != "" && escalated {
+					architectEscalatedIDs[issueID] = true
 				}
 			}
 		}
@@ -976,6 +1003,111 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 	sort.Slice(report.GateDecisionStats.TopBlockedSkills, func(i, j int) bool {
 		return report.GateDecisionStats.TopBlockedSkills[i].Count > report.GateDecisionStats.TopBlockedSkills[j].Count
 	})
+
+	// Build gate effectiveness stats by correlating gate decisions with outcomes
+	if len(gatedBeadsIDs) > 0 || len(architectEscalatedIDs) > 0 {
+		ge := &report.GateEffectivenessStats
+		ge.TotalEvaluations = report.GateDecisionStats.TotalDecisions
+		ge.TotalBlocks = report.GateDecisionStats.TotalBlocks
+		ge.TotalBypasses = report.GateDecisionStats.TotalBypasses
+		ge.TotalAllows = ge.TotalEvaluations - ge.TotalBlocks - ge.TotalBypasses
+		if ge.TotalEvaluations > 0 {
+			ge.BlockRate = float64(ge.TotalBlocks) / float64(ge.TotalEvaluations) * 100
+		}
+
+		// Architect escalation count
+		ge.ArchitectEscalations = len(architectEscalatedIDs)
+
+		// Blocked outcome correlation
+		for beadsID := range blockedBeadsIDs {
+			if architectEscalatedIDs[beadsID] {
+				ge.BlockedOutcomes.EscalatedToArchitect++
+			}
+			if completedBeadsIDs[beadsID] {
+				ge.BlockedOutcomes.EventuallyCompleted++
+			} else if !abandonedBeadsIDs[beadsID] {
+				ge.BlockedOutcomes.StillPending++
+			}
+		}
+
+		// Quality metrics: iterate all spawns and classify as gated vs ungated
+		var gatedDurations, ungatedDurations []float64
+		for sid, spawnTime := range spawnTimes {
+			// Only consider spawns within the analysis window
+			if spawnTime < cutoffDays {
+				continue
+			}
+			beadsID := spawnBeadsIDs[sid]
+			if beadsID == "" {
+				continue
+			}
+
+			isGated := gatedBeadsIDs[beadsID]
+			var metrics *QualityMetrics
+			if isGated {
+				metrics = &ge.GatedCompletion
+			} else {
+				metrics = &ge.UngatedCompletion
+			}
+			metrics.TotalSpawns++
+
+			if completedBeadsIDs[beadsID] {
+				metrics.Completions++
+				// Check verification pass from completion events
+				// We need to find the completion event for this beads_id
+				for _, event := range events {
+					if event.Type != "agent.completed" || event.Timestamp < cutoffDays {
+						continue
+					}
+					if data := event.Data; data != nil {
+						if b, ok := data["beads_id"].(string); ok && b == beadsID {
+							if vp, ok := data["verification_passed"].(bool); ok && vp {
+								metrics.VerificationPassed++
+							}
+							// Calculate duration
+							duration := float64(event.Timestamp-spawnTime) / 60.0
+							if duration > 0 && duration < 480 {
+								if isGated {
+									gatedDurations = append(gatedDurations, duration)
+								} else {
+									ungatedDurations = append(ungatedDurations, duration)
+								}
+							}
+							break // Only count first completion event per beads_id
+						}
+					}
+				}
+			} else if abandonedBeadsIDs[beadsID] {
+				metrics.Abandonments++
+			}
+		}
+
+		// Calculate rates
+		for _, metrics := range []*QualityMetrics{&ge.GatedCompletion, &ge.UngatedCompletion} {
+			if metrics.TotalSpawns > 0 {
+				metrics.CompletionRate = float64(metrics.Completions) / float64(metrics.TotalSpawns) * 100
+			}
+			if metrics.Completions > 0 {
+				metrics.VerificationRate = float64(metrics.VerificationPassed) / float64(metrics.Completions) * 100
+			}
+		}
+
+		// Calculate average durations
+		if len(gatedDurations) > 0 {
+			var total float64
+			for _, d := range gatedDurations {
+				total += d
+			}
+			ge.GatedCompletion.AvgDurationMinutes = total / float64(len(gatedDurations))
+		}
+		if len(ungatedDurations) > 0 {
+			var total float64
+			for _, d := range ungatedDurations {
+				total += d
+			}
+			ge.UngatedCompletion.AvgDurationMinutes = total / float64(len(ungatedDurations))
+		}
+	}
 
 	// Read coaching metrics
 	home, err := os.UserHomeDir()
