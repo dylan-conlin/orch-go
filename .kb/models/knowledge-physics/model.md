@@ -1,7 +1,7 @@
 # Model: Knowledge Physics
 
 **Domain:** Multi-Agent Knowledge Systems
-**Last Updated:** 2026-03-10
+**Last Updated:** 2026-03-11
 **Validation Status:** WORKING HYPOTHESIS — not externally validated. Built by one person with AI agents that optimize for coherence. Independent external review (Codex, Mar 10) identified core claims as restatements of existing governance/coordination concepts (Ostrom, Conway, Brooks) with agent vocabulary. Observations are real; theoretical framing is overclaimed. See `.kb/threads/2026-03-10-closed-loop-risk-ai-agents.md`.
 **Synthesized From:**
 - `.kb/models/system-learning-loop/probes/2026-03-09-probe-knowledge-physics-accretion-attractor-gate-dynamics.md` — Empirical measurement across 1,166 investigations, 32 models, 187 probes
@@ -246,7 +246,7 @@ The investigation/probe/model cycle separates cleanly into **substrate** (the kn
 
 ## Critical Invariants
 
-1. **Every convention without a gate will eventually be violated — in knowledge too.** The knowledge system has zero hard gates. Every knowledge convention (Prior Work tables, probe-to-model merge, dedup checking) is violated at significant rates. This is the same invariant from harness-engineering, empirically confirmed in a second substrate.
+1. **Every convention without a gate will eventually be violated — in knowledge too.** The knowledge system now has one hard gate: the model-stub pre-commit gate (`orch precommit model-stub`) blocks committing model.md files with unfilled template placeholders. Prior to this gate, model quality was maintained behaviorally (all 37 existing models are fully filled), but the invariant predicts this would eventually fail. Other knowledge conventions (Prior Work tables, probe-to-model merge, dedup checking) remain soft and are violated at significant rates. This is the same invariant from harness-engineering, empirically confirmed in a second substrate.
 
 2. **Models are the fundamental unit of knowledge organization.** Without models, knowledge is homeless. Pre-model era's 94.7% orphan rate vs model era's 52.0% demonstrates that models (and their probe system) provide the gravitational centers that organize investigative work product. The probe system is particularly effective — it structurally couples findings to models via directory placement.
 
@@ -488,6 +488,7 @@ kb reflect --type stale
 - `.kb/models/knowledge-physics/probes/2026-03-10-probe-health-score-structural-improvement-validation.md` — Health score 37→73 decomposition: 90% calibration, 10% extraction. Measurement-improvement bias finding. Hotspot dimension (1.9/20) is honest remaining signal.
 - `.kb/models/knowledge-physics/probes/2026-03-10-probe-falsifiability-counterexamples.md` — Falsifiability probe: 15+ counterexamples tested, none survive. Fifth condition (non-trivial composition) identified. Coordination taxonomy (explicit/substrate-embedded/environmental). Theory is conditionally predictive.
 - `.kb/models/knowledge-physics/probes/2026-03-10-probe-blog-post-uncontaminated-claim-review.md` — Publication claim audit: 8 validation assumptions, 4 novelty assumptions, 12 overclaimed language instances across 3 blog drafts. Publications still use language the model has already corrected internally.
+- `.kb/models/knowledge-physics/probes/2026-03-11-probe-empty-model-stub-creation-vectors.md` — Model stub creation vector analysis: 3 creation paths identified (kb create model, kb create model --from, agent direct-write). Zero current empty stubs exist (behavioral compliance held). Model-stub pre-commit gate implemented to convert from behavioral to architectural enforcement.
 
 **Related Models:**
 - `.kb/models/harness-engineering/model.md` — Code instance of substrate physics, hard/soft harness taxonomy

@@ -1,0 +1,45 @@
+verification:
+  type: behavioral
+  issue: orch-go-hxsd1
+
+  tests:
+    - name: "model-stub gate blocks unfilled templates"
+      command: "go test -v -count=1 -run TestCheckStagedModelStubs ./pkg/verify/"
+      expect: "PASS (8 subtests)"
+
+    - name: "placeholder detection works"
+      command: "go test -v -count=1 -run TestFindPlaceholders ./pkg/verify/"
+      expect: "PASS (3 subtests)"
+
+    - name: "path matching correct"
+      command: "go test -v -count=1 -run TestIsModelStubCandidate ./pkg/verify/"
+      expect: "PASS (6 subtests)"
+
+    - name: "error formatting includes file and override"
+      command: "go test -v -count=1 -run TestFormatStagedModelStubError ./pkg/verify/"
+      expect: "PASS"
+
+    - name: "command registers"
+      command: "go run ./cmd/orch/ precommit model-stub --help"
+      expect: "shows usage with FORCE_MODEL_STUB override"
+
+    - name: "full build compiles"
+      command: "go build ./cmd/orch/"
+      expect: "no errors"
+
+  manual_steps:
+    - description: "Wire gate into pre-commit hook"
+      owner: orchestrator
+      status: pending
+      detail: |
+        scripts/pre-commit-exec-start-cleanup.sh needs restructuring:
+        1. Move Go-only gates inside if [ -n "$STAGED_GO" ] guard
+        2. Add: STAGED_KB=$(git diff --cached --name-only --diff-filter=ACM -- '.kb/models/*/model.md' '.kb/global/models/*/model.md')
+        3. Add: if [ -n "$STAGED_KB" ]; then orch precommit model-stub; fi
+
+  outcomes:
+    - "17 tests pass across 4 test functions"
+    - "orch precommit model-stub command functional"
+    - "Detects 7 template placeholder patterns from kb create model"
+    - "Blocks commit with clear error and FORCE_MODEL_STUB=1 override"
+    - "Probe merged into knowledge-physics model (invariant 1 updated)"

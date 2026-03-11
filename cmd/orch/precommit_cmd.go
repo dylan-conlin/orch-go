@@ -91,8 +91,44 @@ Override: FORCE_ORPHAN=1 git commit ...`,
 	},
 }
 
+var precommitModelStubCmd = &cobra.Command{
+	Use:   "model-stub",
+	Short: "Check staged model files for unfilled template placeholders",
+	Long: `Checks staged .kb/models/*/model.md files for template placeholder text.
+
+Models created with 'kb create model' without filling in the content will be blocked.
+Detects bracket-enclosed placeholder patterns like [Concise claim statement].
+
+Override: FORCE_MODEL_STUB=1 git commit ...`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if os.Getenv("FORCE_MODEL_STUB") == "1" {
+			fmt.Println("pre-commit: model-stub gate bypassed (FORCE_MODEL_STUB=1)")
+			return
+		}
+
+		dir, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "pre-commit: cannot get working directory: %v\n", err)
+			os.Exit(1)
+		}
+
+		result := verify.CheckStagedModelStubs(dir)
+		if result == nil {
+			return
+		}
+
+		if !result.Passed {
+			fmt.Fprintln(os.Stderr, verify.FormatStagedModelStubError(result))
+			os.Exit(1)
+		}
+
+		fmt.Println("pre-commit: model-stub gate passed")
+	},
+}
+
 func init() {
 	precommitCmd.AddCommand(precommitAccretionCmd)
 	precommitCmd.AddCommand(precommitKnowledgeCmd)
+	precommitCmd.AddCommand(precommitModelStubCmd)
 	rootCmd.AddCommand(precommitCmd)
 }
