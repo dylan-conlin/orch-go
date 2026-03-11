@@ -639,3 +639,76 @@ func TestNextIssue_TriageLabelRemovedByManualSpawn(t *testing.T) {
 		}
 	})
 }
+
+// TestNextIssue_DaemonCompletionLabelSkipped verifies that issues with
+// daemon:ready-review or daemon:verification-failed labels are skipped
+// by the spawn loop. This prevents completed issues from re-entering
+// the spawn queue when triage:ready label was not removed.
+func TestNextIssue_DaemonCompletionLabelSkipped(t *testing.T) {
+	config := Config{Label: "triage:ready"}
+
+	t.Run("daemon:ready-review skipped", func(t *testing.T) {
+		d := &Daemon{
+			Config: config,
+			Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "proj-1", Title: "Completed work", Priority: 0, IssueType: "task",
+						Labels: []string{"triage:ready", "daemon:ready-review"}, Status: "open"},
+				}, nil
+			}},
+		}
+
+		issue, err := d.NextIssue()
+		if err != nil {
+			t.Fatalf("NextIssue() unexpected error: %v", err)
+		}
+		if issue != nil {
+			t.Errorf("NextIssue() = %q, want nil (daemon:ready-review should be skipped)", issue.ID)
+		}
+	})
+
+	t.Run("daemon:verification-failed skipped", func(t *testing.T) {
+		d := &Daemon{
+			Config: config,
+			Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "proj-1", Title: "Failed verification", Priority: 0, IssueType: "task",
+						Labels: []string{"triage:ready", "daemon:verification-failed"}, Status: "open"},
+				}, nil
+			}},
+		}
+
+		issue, err := d.NextIssue()
+		if err != nil {
+			t.Fatalf("NextIssue() unexpected error: %v", err)
+		}
+		if issue != nil {
+			t.Errorf("NextIssue() = %q, want nil (daemon:verification-failed should be skipped)", issue.ID)
+		}
+	})
+
+	t.Run("selects uncompleted issue over completed", func(t *testing.T) {
+		d := &Daemon{
+			Config: config,
+			Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					{ID: "proj-1", Title: "Completed", Priority: 0, IssueType: "task",
+						Labels: []string{"triage:ready", "daemon:ready-review"}, Status: "open"},
+					{ID: "proj-2", Title: "Ready to spawn", Priority: 1, IssueType: "task",
+						Labels: []string{"triage:ready"}, Status: "open"},
+				}, nil
+			}},
+		}
+
+		issue, err := d.NextIssue()
+		if err != nil {
+			t.Fatalf("NextIssue() unexpected error: %v", err)
+		}
+		if issue == nil {
+			t.Fatal("NextIssue() returned nil, expected proj-2")
+		}
+		if issue.ID != "proj-2" {
+			t.Errorf("NextIssue() = %q, want 'proj-2'", issue.ID)
+		}
+	})
+}

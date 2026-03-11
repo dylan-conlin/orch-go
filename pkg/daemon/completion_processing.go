@@ -518,6 +518,12 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 			return result
 		}
 
+		// Remove triage:ready to prevent the spawn loop from re-picking up
+		// this issue. Without this, completed issues with both triage:ready
+		// and daemon:ready-review re-enter the spawn queue (spawn loop only
+		// checked triage:ready, not daemon:ready-review, before this fix).
+		verify.RemoveTriageLabels(agent.BeadsID, effectiveProjectDir)
+
 		// Record auto-completion for verification tracking.
 		// Only increments if this beads ID hasn't been counted yet (dedup across poll cycles).
 		if d.VerificationTracker != nil {
@@ -572,6 +578,16 @@ func (d *Daemon) CompletionOnce(config CompletionConfig) (*CompletionLoopResult,
 			continue
 		}
 
+		// Completion dedup: skip if this exact Phase: Complete was already
+		// processed. Prevents triple-completion when daemon:ready-review
+		// label fails to persist (beads flakiness, external label removal).
+		if d.CompletionDedupTracker != nil && d.CompletionDedupTracker.IsCompleted(agent.BeadsID, agent.PhaseSummary) {
+			if config.Verbose {
+				fmt.Printf("  Skipping %s (already processed this Phase: Complete)\n", agent.BeadsID)
+			}
+			continue
+		}
+
 		if config.Verbose {
 			fmt.Printf("  Processing completion for %s: %s\n", agent.BeadsID, agent.Title)
 		}
@@ -588,6 +604,12 @@ func (d *Daemon) CompletionOnce(config CompletionConfig) (*CompletionLoopResult,
 			// Successful completion — clear any prior retry tracking
 			if d.VerificationRetryTracker != nil {
 				d.VerificationRetryTracker.Clear(agent.BeadsID)
+			}
+
+			// Mark this completion as processed to prevent reprocessing
+			// if daemon:ready-review label doesn't persist.
+			if d.CompletionDedupTracker != nil {
+				d.CompletionDedupTracker.MarkCompleted(agent.BeadsID, agent.PhaseSummary)
 			}
 
 			// Log completion event — differentiate auto-completed (closed by daemon)

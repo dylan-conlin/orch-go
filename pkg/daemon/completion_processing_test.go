@@ -366,6 +366,64 @@ func TestProcessCompletion_FallsBackToConfigProjectDir(t *testing.T) {
 	}
 }
 
+func TestCompletionOnce_DedupSkipsSamePhaseComplete(t *testing.T) {
+	// Simulate the orlcp bug: daemon processes the same Phase: Complete
+	// multiple times because daemon:ready-review label didn't persist.
+	callCount := 0
+	d := &Daemon{
+		CompletionDedupTracker: NewCompletionDedupTracker(),
+		Completions: &mockCompletionFinder{
+			ListCompletedAgentsFunc: func(config CompletionConfig) ([]CompletedAgent, error) {
+				return []CompletedAgent{
+					{BeadsID: "proj-1", Title: "Blog post", PhaseSummary: "Blog post written", Status: "open"},
+				}, nil
+			},
+		},
+	}
+
+	config := DefaultCompletionConfig()
+	config.DryRun = true // dry run to avoid needing real beads
+
+	// First call: should process
+	result1, err := d.CompletionOnce(config)
+	if err != nil {
+		t.Fatalf("CompletionOnce() #1 unexpected error: %v", err)
+	}
+	if len(result1.Processed) != 1 {
+		t.Fatalf("expected 1 processed, got %d", len(result1.Processed))
+	}
+
+	// Manually mark as completed (in real code, ProcessCompletion does this)
+	d.CompletionDedupTracker.MarkCompleted("proj-1", "Blog post written")
+
+	// Second call: should skip (same Phase: Complete summary)
+	result2, err := d.CompletionOnce(config)
+	if err != nil {
+		t.Fatalf("CompletionOnce() #2 unexpected error: %v", err)
+	}
+	if len(result2.Processed) != 0 {
+		t.Errorf("expected 0 processed on second call (dedup), got %d", len(result2.Processed))
+	}
+
+	// Third call with different summary: should process (issue reused for new task)
+	d.Completions = &mockCompletionFinder{
+		ListCompletedAgentsFunc: func(config CompletionConfig) ([]CompletedAgent, error) {
+			callCount++
+			return []CompletedAgent{
+				{BeadsID: "proj-1", Title: "Experiment", PhaseSummary: "Ran 4-condition experiment", Status: "open"},
+			}, nil
+		},
+	}
+
+	result3, err := d.CompletionOnce(config)
+	if err != nil {
+		t.Fatalf("CompletionOnce() #3 unexpected error: %v", err)
+	}
+	if len(result3.Processed) != 1 {
+		t.Errorf("expected 1 processed on third call (new summary), got %d", len(result3.Processed))
+	}
+}
+
 func TestCompletionConfig_ProjectDirsField(t *testing.T) {
 	config := CompletionConfig{
 		ProjectDirs: []string{"/path/to/proj-a", "/path/to/proj-b"},

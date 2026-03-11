@@ -133,6 +133,11 @@ type Daemon struct {
 	// FrictionAccumulator scans completed agents for friction and stores results.
 	FrictionAccumulator FrictionAccumulatorService
 
+	// CompletionDedupTracker prevents re-processing the same Phase: Complete
+	// across poll cycles. Defense-in-depth for when daemon:ready-review label
+	// fails to persist (beads flakiness, label removed externally).
+	CompletionDedupTracker *CompletionDedupTracker
+
 	// BeadsCircuitBreaker tracks consecutive bd command failures and provides
 	// exponential backoff to prevent lock cascade when beads is unhealthy.
 	BeadsCircuitBreaker *BeadsCircuitBreaker
@@ -184,8 +189,9 @@ func NewWithConfig(config Config) *Daemon {
 		Cleaner:                 &defaultSessionCleaner{},
 		ActiveCounter:           &defaultActiveCounter{},
 		Agents:                  &defaultAgentDiscoverer{},
-		StatusUpdater:           &defaultIssueUpdater{},
-		BeadsCircuitBreaker:    NewBeadsCircuitBreaker(),
+		StatusUpdater:             &defaultIssueUpdater{},
+		CompletionDedupTracker:    NewCompletionDedupTracker(),
+		BeadsCircuitBreaker:      NewBeadsCircuitBreaker(),
 	}
 	// Initialize worker pool if MaxAgents is set
 	if config.MaxAgents > 0 {
@@ -347,6 +353,17 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 		if issue.Status == "in_progress" {
 			if d.Config.Verbose {
 				fmt.Printf("  DEBUG: Skipping %s (already in_progress)\n", issue.ID)
+			}
+			continue
+		}
+		// Skip issues already processed by the completion loop.
+		// daemon:ready-review = waiting for orchestrator review (completion verified)
+		// daemon:verification-failed = exhausted verification retries (deferred for human)
+		// Without this check, completed issues with triage:ready still in their labels
+		// re-enter the spawn queue, causing duplicate spawns on stale Phase: Complete.
+		if issue.HasAnyLabel(LabelReadyReview, LabelVerificationFailed) {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Skipping %s (has daemon completion label)\n", issue.ID)
 			}
 			continue
 		}

@@ -1,8 +1,8 @@
 # Model: Daemon Autonomous Operation
 
 **Domain:** Daemon / Autonomous Spawning / Batch Processing
-**Last Updated:** 2026-03-06
-**Synthesized From:** 39+ investigations + daemon.md guide (verified Mar 1, 2026) + 34 probes (Feb 9 – Mar 1, 2026) on poll loops, skill inference, capacity management, completion tracking, cross-project operation, dedup pipeline, verification threshold, orphan detection
+**Last Updated:** 2026-03-11
+**Synthesized From:** 39+ investigations + daemon.md guide (verified Mar 1, 2026) + 35 probes (Feb 9 – Mar 11, 2026) on poll loops, skill inference, capacity management, completion tracking, cross-project operation, dedup pipeline, verification threshold, orphan detection
 
 ---
 
@@ -310,8 +310,9 @@ The convenience constructor `New()` uses `DefaultConfig()` correctly, but it's n
 - (c) **Correlated service failure:** beads unavailable degrades L4/L5/L6 simultaneously
 - (d) **Fail-open + UpdateBeadsStatus failure:** prior to Feb 14 fix, `UpdateBeadsStatus` failing caused daemon to continue spawning, leaving issue `open` for next poll
 - (e) **Manual spawn race:** orchestrator creates issue with `triage:ready`, then immediately spawns manually with `--bypass-triage`. Daemon picks up the `triage:ready` issue during the spawn pipeline's pre-flight checks (before `SetupBeadsTracking` sets `in_progress`). Result: two agents on same issue.
+- (f) **Completion-spawn loop cycle:** completion loop adds `daemon:ready-review` but does not remove `triage:ready`. Spawn loop only checked `triage:ready` (not daemon labels), so completed issues re-entered the spawn queue. Combined with stale Phase: Complete comments from reused issues, the completion loop would reprocess the same Phase: Complete 3x (Mar 11, 2026 orlcp incident).
 
-**Fix:** 7-layer dedup pipeline (L0 process lock + L1-L6). See "Spawn Dedup Pipeline" section. For (e): manual spawn with `--bypass-triage` removes `triage:ready`/`triage:approved` labels immediately (before pre-flight checks), closing the race window. Added Mar 11, 2026.
+**Fix:** 7-layer dedup pipeline (L0 process lock + L1-L6). See "Spawn Dedup Pipeline" section. For (e): manual spawn with `--bypass-triage` removes `triage:ready`/`triage:approved` labels immediately (before pre-flight checks), closing the race window. For (f): three layers — spawn queue now filters `daemon:ready-review`/`daemon:verification-failed` labels; completion processing removes `triage:ready` after adding `daemon:ready-review`; in-memory `CompletionDedupTracker` prevents same Phase:Complete from being processed twice. Added Mar 11, 2026.
 
 ### 3. Skill Inference Mismatch
 
@@ -517,3 +518,4 @@ All 34 probes merged as of 2026-03-06. Listed chronologically with 1-line summar
 | `2026-02-28-probe-daemon-agreements-integration-design` | Feb 28 | Extends | Agreement checking fits cleanly into periodic task pattern; creates self-healing detect-create-spawn-verify sub-cycle on top of poll-spawn-complete |
 | `2026-03-01-probe-decidability-graph-coherence` | Mar 1 | Extends | `question` type is explicitly non-spawnable; subtype labels (factual/judgment/framing) are unread by daemon; daemon integration is acknowledged optional future work |
 | `2026-03-01-probe-cross-repo-queue-poisoning-circuit-breaker` | Mar 1 | Extends | Queue poisoning (persistently-failing issues retrying every poll cycle) is distinct from capacity starvation; fixed with per-issue circuit breaker in `SpawnFailureTracker` |
+| `2026-03-11-probe-completion-spawn-loop-label-asymmetry` | Mar 11 | Extends | Completion and spawn loops had asymmetric label awareness: completion loop filtered `daemon:ready-review` but spawn loop didn't, causing completed issues to re-enter spawn queue. Fixed with 3 layers: spawn queue label filter, triage label cleanup on completion, in-memory CompletionDedupTracker |
