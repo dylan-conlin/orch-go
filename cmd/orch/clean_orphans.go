@@ -11,6 +11,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/agent"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
@@ -124,6 +125,29 @@ func runOrphanGC(projectDir string, dryRun bool, preserveOrchestrator bool) (for
 			if event.Success {
 				fmt.Printf("    Force-completed: %s (%s)\n", orphan.Agent.BeadsID, detail)
 				forceCompleted++
+
+				// Log enriched completion event (lifecycle manager no longer logs events)
+				logger := events.NewLogger(events.DefaultLogPath())
+				completedData := events.AgentCompletedData{
+					BeadsID:   orphan.Agent.BeadsID,
+					Workspace: orphan.Agent.WorkspaceName,
+					Reason:    reason,
+					Forced:    true,
+					Outcome:   "forced",
+				}
+				// Enrich from workspace manifest if available
+				if orphan.Agent.WorkspacePath != "" {
+					manifest := spawn.ReadAgentManifestWithFallback(orphan.Agent.WorkspacePath)
+					if manifest.Skill != "" {
+						completedData.Skill = manifest.Skill
+					}
+					if spawnTime := manifest.ParseSpawnTime(); !spawnTime.IsZero() {
+						completedData.DurationSeconds = int(time.Since(spawnTime).Seconds())
+					}
+				}
+				if err := logger.LogAgentCompleted(completedData); err != nil {
+					fmt.Fprintf(os.Stderr, "    Warning: failed to log completion event: %v\n", err)
+				}
 			}
 		}
 

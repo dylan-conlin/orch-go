@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -281,20 +282,23 @@ func runReviewDone(project string) error {
 			}
 		}
 
-		// Log the completion
-		event := events.Event{
-			Type:      "agent.completed",
-			Timestamp: time.Now().Unix(),
-			Data: map[string]interface{}{
-				"beads_id":    c.BeadsID,
-				"workspace":   c.WorkspaceID,
-				"reason":      c.Summary,
-				"batch":       true,
-				"source":      "review_done",
-				"project_dir": projectDir,
-			},
+		// Log enriched completion event
+		completedData := events.AgentCompletedData{
+			BeadsID:            c.BeadsID,
+			Workspace:          c.WorkspaceID,
+			Reason:             c.Summary,
+			Outcome:            "success",
+			VerificationPassed: true,
+			Skill:              c.Skill,
 		}
-		if err := logger.Log(event); err != nil {
+		// Compute duration from workspace manifest
+		if c.WorkspacePath != "" {
+			manifest := spawn.ReadAgentManifestWithFallback(c.WorkspacePath)
+			if spawnTime := manifest.ParseSpawnTime(); !spawnTime.IsZero() {
+				completedData.DurationSeconds = int(time.Since(spawnTime).Seconds())
+			}
+		}
+		if err := logger.LogAgentCompleted(completedData); err != nil {
 			fmt.Printf("  Warning: failed to log event: %v\n", err)
 		}
 
@@ -315,20 +319,23 @@ func runReviewDone(project string) error {
 			fmt.Printf("  Archived to: %s\n", filepath.Base(archivedPath))
 		}
 
-		// Log the archival event
-		event := events.Event{
-			Type:      "agent.completed",
-			Timestamp: time.Now().Unix(),
-			Data: map[string]interface{}{
-				"workspace":   c.WorkspaceID,
-				"reason":      "Archived untracked workspace via review done",
-				"batch":       true,
-				"source":      "review_done",
-				"untracked":   true,
-				"project_dir": projectDir,
-			},
+		// Log enriched archival event
+		completedData := events.AgentCompletedData{
+			Workspace:          c.WorkspaceID,
+			Reason:             "Archived untracked workspace via review done",
+			Untracked:          true,
+			Outcome:            "success",
+			VerificationPassed: true,
+			Skill:              c.Skill,
 		}
-		if err := logger.Log(event); err != nil {
+		// Compute duration from workspace manifest
+		if c.WorkspacePath != "" {
+			manifest := spawn.ReadAgentManifestWithFallback(c.WorkspacePath)
+			if spawnTime := manifest.ParseSpawnTime(); !spawnTime.IsZero() {
+				completedData.DurationSeconds = int(time.Since(spawnTime).Seconds())
+			}
+		}
+		if err := logger.LogAgentCompleted(completedData); err != nil {
 			fmt.Printf("  Warning: failed to log event: %v\n", err)
 		}
 

@@ -14,6 +14,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/spf13/cobra"
@@ -450,20 +451,24 @@ func runReconcileFix(zombies []ZombieIssue) error {
 			action := "Reset"
 			if mode == "close" {
 				action = "Closed"
-				// Emit agent.completed event for closed zombies so stats capture these completions
-				event := events.Event{
-					Type:      "agent.completed",
-					Timestamp: time.Now().Unix(),
-					Data: map[string]interface{}{
-						"beads_id":           z.ID,
-						"reason":             "zombie_reconciled",
-						"source":             "reconcile",
-						"project":            z.Project,
-						"last_phase":         z.LastPhase,
-						"hours_since_update": z.HoursSinceUpdate,
-					},
+				// Emit enriched agent.completed event for closed zombies
+				completedData := events.AgentCompletedData{
+					BeadsID: z.ID,
+					Reason:  "zombie_reconciled",
+					Forced:  true,
+					Outcome: "forced",
 				}
-				if err := logger.Log(event); err != nil {
+				// Enrich from workspace manifest if available
+				if z.WorkspacePath != "" {
+					manifest := spawn.ReadAgentManifestWithFallback(z.WorkspacePath)
+					if manifest.Skill != "" {
+						completedData.Skill = manifest.Skill
+					}
+					if spawnTime := manifest.ParseSpawnTime(); !spawnTime.IsZero() {
+						completedData.DurationSeconds = int(time.Since(spawnTime).Seconds())
+					}
+				}
+				if err := logger.LogAgentCompleted(completedData); err != nil {
 					fmt.Fprintf(os.Stderr, "  Warning: failed to log event: %v\n", err)
 				}
 			}

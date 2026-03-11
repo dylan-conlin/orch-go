@@ -550,9 +550,7 @@ func TestAbandon_EffectsOrder(t *testing.T) {
 	if !subsystems["tmux"] {
 		t.Error("missing tmux effects")
 	}
-	if !subsystems["events"] {
-		t.Error("missing events effects")
-	}
+	// Event logging is now the caller's responsibility (callers have richer context)
 	if !subsystems["workspace"] {
 		t.Error("missing workspace effects")
 	}
@@ -954,12 +952,10 @@ func TestComplete_HappyPath(t *testing.T) {
 		t.Errorf("expected workspace archived, got %v", wm.archived)
 	}
 
-	// Verify event logged
-	if len(el.events) != 1 {
-		t.Fatalf("expected 1 event logged, got %d", len(el.events))
-	}
-	if el.events[0]["_type"] != "agent.completed" {
-		t.Errorf("expected event type 'agent.completed', got %q", el.events[0]["_type"])
+	// Event logging is now the caller's responsibility (complete_lifecycle.go),
+	// not the lifecycle manager's. Callers have richer context (skill, duration, etc.).
+	if len(el.events) != 0 {
+		t.Errorf("expected no events logged by lifecycle manager (caller owns observability), got %d", len(el.events))
 	}
 }
 
@@ -1176,9 +1172,7 @@ func TestComplete_EffectsOrder(t *testing.T) {
 	if !subsystems["tmux"] {
 		t.Error("missing tmux effects")
 	}
-	if !subsystems["events"] {
-		t.Error("missing events effects")
-	}
+	// Event logging is now the caller's responsibility (callers have richer context)
 	if !subsystems["workspace"] {
 		t.Error("missing workspace effects")
 	}
@@ -1294,12 +1288,10 @@ func TestForceComplete_HappyPath(t *testing.T) {
 		t.Errorf("expected workspace archived, got %v", wm.archived)
 	}
 
-	// Event logged
-	if len(el.events) != 1 {
-		t.Fatalf("expected 1 event logged, got %d", len(el.events))
-	}
-	if el.events[0]["_type"] != "agent.force_completed" {
-		t.Errorf("expected event type 'agent.force_completed', got %q", el.events[0]["_type"])
+	// Event logging is now the caller's responsibility (clean_orphans.go),
+	// not the lifecycle manager's. Callers have richer context (skill, duration, etc.).
+	if len(el.events) != 0 {
+		t.Errorf("expected no events logged by lifecycle manager (caller owns observability), got %d", len(el.events))
 	}
 }
 
@@ -1931,13 +1923,9 @@ func TestCleanupParity_CompleteAndForceComplete_SameEffects(t *testing.T) {
 			len(completeOps), len(forceOps), completeOps, forceOps)
 	}
 
-	// Compare all effects except the event log operation name (which differs by design)
+	// Compare all effects — event logging has been moved to callers, so these should match exactly
 	for i := range completeOps {
 		if completeOps[i] != forceOps[i] {
-			// Allow the log event type to differ
-			if completeOps[i] == "events/log_completed" && forceOps[i] == "events/log_completed" {
-				continue
-			}
 			t.Errorf("effect %d differs: Complete=%q, ForceComplete=%q", i, completeOps[i], forceOps[i])
 		}
 	}

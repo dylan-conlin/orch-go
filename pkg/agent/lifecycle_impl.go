@@ -274,14 +274,9 @@ func (m *lifecycleManager) runCompletionEffects(event *TransitionEvent, agent Ag
 		})
 	}
 
-	// 6. Log completion event.
-	m.runEffect(event, "events", "log_completed", false, func() error {
-		return m.events.Log(eventType, map[string]interface{}{
-			"beads_id":  agent.BeadsID,
-			"workspace": agent.WorkspaceName,
-			"reason":    reason,
-		})
-	})
+	// Event logging is the caller's responsibility — callers have richer context
+	// (skill, duration, tokens, outcome) that the lifecycle manager doesn't have.
+	// See: complete_lifecycle.go (LogAgentCompleted), clean_orphans.go (ForceComplete).
 
 	// Set overall success based on critical effects
 	event.Success = !event.HasCriticalFailure()

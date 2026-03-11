@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/spf13/cobra"
 )
 
@@ -69,43 +70,66 @@ func runEmit(eventType, beadsID, reason, dataStr string, jsonOutput bool) error 
 		return fmt.Errorf("unsupported event type: %s (supported: agent.completed)", eventType)
 	}
 
-	// Build event data
-	eventData := map[string]interface{}{
-		"beads_id": beadsID,
-		"source":   "bd_close_hook", // Mark that this came from a hook, not orch complete
+	// Build enriched completion event
+	completedData := events.AgentCompletedData{
+		BeadsID: beadsID,
+		Reason:  reason,
+		Outcome: "success", // Default for hook-closed issues
 	}
 
-	if reason != "" {
-		eventData["reason"] = reason
-	}
-
-	// Parse additional data if provided
+	// Parse additional data for overrides
 	if dataStr != "" {
 		var additionalData map[string]interface{}
 		if err := json.Unmarshal([]byte(dataStr), &additionalData); err != nil {
 			return fmt.Errorf("invalid --data JSON: %w", err)
 		}
-		// Merge additional data (additional data takes precedence)
-		for k, v := range additionalData {
-			eventData[k] = v
+		// Apply overrides from --data
+		if v, ok := additionalData["skill"].(string); ok {
+			completedData.Skill = v
+		}
+		if v, ok := additionalData["outcome"].(string); ok {
+			completedData.Outcome = v
 		}
 	}
 
-	// Create the event
-	event := events.Event{
-		Type:      eventType,
-		Timestamp: time.Now().Unix(),
-		Data:      eventData,
+	// Auto-enrich from workspace manifest if available
+	// Try current directory first, then cross-project search
+	projectDir, _ := os.Getwd()
+	wsPath, wsName := findWorkspaceByBeadsID(projectDir, beadsID)
+	if wsPath == "" {
+		wsPath, wsName = findWorkspaceByBeadsIDAcrossProjects(beadsID)
+	}
+	if wsPath != "" {
+		completedData.Workspace = wsName
+		manifest := spawn.ReadAgentManifestWithFallback(wsPath)
+		if completedData.Skill == "" && manifest.Skill != "" {
+			completedData.Skill = manifest.Skill
+		}
+		if spawnTime := manifest.ParseSpawnTime(); !spawnTime.IsZero() {
+			completedData.DurationSeconds = int(time.Since(spawnTime).Seconds())
+		}
 	}
 
 	// Log to events.jsonl
 	logger := events.NewLogger(events.DefaultLogPath())
-	if err := logger.Log(event); err != nil {
+	if err := logger.LogAgentCompleted(completedData); err != nil {
 		return fmt.Errorf("failed to log event: %w", err)
 	}
 
 	// Output
 	if jsonOutput {
+		// Build a raw event for JSON output compatibility
+		event := events.Event{
+			Type:      eventType,
+			Timestamp: time.Now().Unix(),
+			Data: map[string]interface{}{
+				"beads_id": beadsID,
+				"source":   "bd_close_hook",
+			},
+		}
+		if reason != "" {
+			event.Data["reason"] = reason
+		}
 		output, err := json.MarshalIndent(event, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal event: %w", err)
@@ -115,6 +139,9 @@ func runEmit(eventType, beadsID, reason, dataStr string, jsonOutput bool) error 
 		fmt.Printf("✓ Emitted %s event for %s\n", eventType, beadsID)
 		if reason != "" {
 			fmt.Printf("  Reason: %s\n", reason)
+		}
+		if completedData.Skill != "" {
+			fmt.Printf("  Skill: %s\n", completedData.Skill)
 		}
 	}
 
