@@ -21,6 +21,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/spawn/gates"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -278,6 +279,15 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		}
 	} else {
 		preCheckDir, _ = os.Getwd()
+	}
+
+	// Remove triage labels early to prevent daemon race condition.
+	// When manually spawning with --bypass-triage on an existing issue,
+	// the triage:ready/triage:approved labels make the issue visible to the
+	// daemon. Remove them immediately to close the race window between
+	// issue creation and SetupBeadsTracking() setting in_progress status.
+	if spawnBypassTriage && spawnIssue != "" && !daemonDriven {
+		verify.RemoveTriageLabels(spawnIssue, preCheckDir)
 	}
 
 	// 1. Pre-flight checks

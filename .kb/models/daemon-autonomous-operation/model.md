@@ -309,8 +309,9 @@ The convenience constructor `New()` uses `DefaultConfig()` correctly, but it's n
 - (b) **Content duplicates:** different beads IDs with identical titles (L3/L4 address this)
 - (c) **Correlated service failure:** beads unavailable degrades L4/L5/L6 simultaneously
 - (d) **Fail-open + UpdateBeadsStatus failure:** prior to Feb 14 fix, `UpdateBeadsStatus` failing caused daemon to continue spawning, leaving issue `open` for next poll
+- (e) **Manual spawn race:** orchestrator creates issue with `triage:ready`, then immediately spawns manually with `--bypass-triage`. Daemon picks up the `triage:ready` issue during the spawn pipeline's pre-flight checks (before `SetupBeadsTracking` sets `in_progress`). Result: two agents on same issue.
 
-**Fix:** 7-layer dedup pipeline (L0 process lock + L1-L6). See "Spawn Dedup Pipeline" section.
+**Fix:** 7-layer dedup pipeline (L0 process lock + L1-L6). See "Spawn Dedup Pipeline" section. For (e): manual spawn with `--bypass-triage` removes `triage:ready`/`triage:approved` labels immediately (before pre-flight checks), closing the race window. Added Mar 11, 2026.
 
 ### 3. Skill Inference Mismatch
 

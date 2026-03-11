@@ -4,6 +4,8 @@
 package verify
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -307,6 +309,40 @@ func RemoveTriageReadyLabel(beadsID, projectDir string) error {
 
 	// Fallback to CLI
 	return beads.FallbackRemoveLabel(beadsID, triageReadyLabel, projectDir)
+}
+
+// RemoveTriageLabels removes all daemon-spawnable triage labels (triage:ready
+// and triage:approved) from a beads issue. Used during manual spawn to prevent
+// the daemon from picking up the same issue (race condition between manual
+// spawn pipeline and daemon poll).
+func RemoveTriageLabels(beadsID, projectDir string) {
+	if err := RemoveTriageReadyLabel(beadsID, projectDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to remove triage:ready label from %s: %v\n", beadsID, err)
+	}
+	// Also remove triage:approved (daemon treats it as equivalent to triage:ready)
+	if err := removeLabel(beadsID, "triage:approved", projectDir); err != nil {
+		// Silently ignore - label may not exist
+		_ = err
+	}
+}
+
+// removeLabel removes a specific label from a beads issue.
+func removeLabel(beadsID, label, projectDir string) error {
+	socketPath, err := beads.FindSocketPath(projectDir)
+	if err == nil {
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if projectDir != "" {
+			opts = append(opts, beads.WithCwd(projectDir))
+		}
+		client := beads.NewClient(socketPath, opts...)
+		if connErr := client.Connect(); connErr == nil {
+			defer client.Close()
+			if err := client.RemoveLabel(beadsID, label); err == nil {
+				return nil
+			}
+		}
+	}
+	return beads.FallbackRemoveLabel(beadsID, label, projectDir)
 }
 
 // RemoveOrchAgentLabel removes the orch:agent label from a beads issue.

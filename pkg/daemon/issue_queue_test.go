@@ -566,3 +566,76 @@ func TestIssueMatchesLabel(t *testing.T) {
 		})
 	}
 }
+
+// TestNextIssue_TriageLabelRemovedByManualSpawn verifies that when a manual
+// spawn removes triage:ready/triage:approved labels from an issue, the daemon's
+// NextIssue() correctly skips it. This is the fix for the race condition where
+// both manual spawn and daemon pick up the same triage:ready issue.
+func TestNextIssue_TriageLabelRemovedByManualSpawn(t *testing.T) {
+	config := Config{Label: "triage:ready"}
+
+	t.Run("issue without triage labels is skipped by daemon", func(t *testing.T) {
+		d := &Daemon{
+			Config: config,
+			Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					// Simulates issue after manual spawn removed triage:ready label
+					{ID: "proj-1", Title: "Claimed by manual spawn", Priority: 0, IssueType: "feature", Labels: []string{}, Status: "open"},
+				}, nil
+			}},
+		}
+
+		issue, err := d.NextIssue()
+		if err != nil {
+			t.Fatalf("NextIssue() unexpected error: %v", err)
+		}
+		if issue != nil {
+			t.Errorf("NextIssue() = %q, want nil (issue without triage label should be skipped)", issue.ID)
+		}
+	})
+
+	t.Run("daemon picks unclaimed issue over claimed one", func(t *testing.T) {
+		d := &Daemon{
+			Config: config,
+			Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					// Manual spawn claimed this (removed triage:ready)
+					{ID: "proj-1", Title: "Claimed", Priority: 0, IssueType: "feature", Labels: []string{}, Status: "open"},
+					// This one is still available for daemon
+					{ID: "proj-2", Title: "Unclaimed", Priority: 1, IssueType: "feature", Labels: []string{"triage:ready"}, Status: "open"},
+				}, nil
+			}},
+		}
+
+		issue, err := d.NextIssue()
+		if err != nil {
+			t.Fatalf("NextIssue() unexpected error: %v", err)
+		}
+		if issue == nil {
+			t.Fatal("NextIssue() returned nil, expected proj-2")
+		}
+		if issue.ID != "proj-2" {
+			t.Errorf("NextIssue() = %q, want 'proj-2' (should skip claimed proj-1)", issue.ID)
+		}
+	})
+
+	t.Run("in_progress status also prevents daemon pickup", func(t *testing.T) {
+		d := &Daemon{
+			Config: config,
+			Issues: &mockIssueQuerier{ListReadyIssuesFunc: func() ([]Issue, error) {
+				return []Issue{
+					// Manual spawn set this to in_progress (defense in depth)
+					{ID: "proj-1", Title: "In progress", Priority: 0, IssueType: "feature", Labels: []string{"triage:ready"}, Status: "in_progress"},
+				}, nil
+			}},
+		}
+
+		issue, err := d.NextIssue()
+		if err != nil {
+			t.Fatalf("NextIssue() unexpected error: %v", err)
+		}
+		if issue != nil {
+			t.Errorf("NextIssue() = %q, want nil (in_progress issue should be skipped)", issue.ID)
+		}
+	})
+}
