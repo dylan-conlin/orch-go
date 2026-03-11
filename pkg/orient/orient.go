@@ -270,6 +270,9 @@ func formatActivePlans(b *strings.Builder, plans []PlanSummary) {
 	b.WriteString("Active plans:\n")
 	for _, plan := range plans {
 		b.WriteString(fmt.Sprintf("   - %s", plan.Title))
+		if plan.Progress != "" {
+			b.WriteString(fmt.Sprintf(" (%s)", plan.Progress))
+		}
 		if len(plan.Projects) > 0 {
 			b.WriteString(fmt.Sprintf(" [%s]", strings.Join(plan.Projects, ", ")))
 		}

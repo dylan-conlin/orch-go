@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/health"
@@ -82,10 +83,14 @@ func runOrient() error {
 		enrichIssuesWithKBContext(data.ReadyIssues)
 	}
 
-	// 4. Active plans from .kb/plans/
+	// 4. Active plans from .kb/plans/ with beads-derived progress
 	plansDir := filepath.Join(projectDir, ".kb", "plans")
 	activePlans, err := orient.ScanActivePlans(plansDir)
 	if err == nil && len(activePlans) > 0 {
+		// Query beads for hydrated plan issue statuses
+		if statusMap := queryPlanBeadsStatuses(activePlans); len(statusMap) > 0 {
+			orient.ApplyBeadsProgress(activePlans, statusMap)
+		}
 		data.ActivePlans = activePlans
 	}
 
@@ -661,6 +666,26 @@ func loadOrchSkillContent() string {
 		return ""
 	}
 	return string(content)
+}
+
+// queryPlanBeadsStatuses collects all beads IDs from hydrated plans and queries their statuses.
+func queryPlanBeadsStatuses(plans []orient.PlanSummary) map[string]string {
+	ids := orient.CollectPlanBeadsIDs(plans)
+	if len(ids) == 0 {
+		return nil
+	}
+
+	client := beads.NewCLIClient()
+	statusMap := make(map[string]string)
+	for _, id := range ids {
+		issue, err := client.Show(id)
+		if err != nil {
+			statusMap[id] = "unknown"
+			continue
+		}
+		statusMap[id] = issue.Status
+	}
+	return statusMap
 }
 
 // parseInProgressCount counts issue lines from `bd list --status=in_progress` output.

@@ -300,6 +300,71 @@ func TestFormatOrientation_NoPlans(t *testing.T) {
 	}
 }
 
+func TestFormatOrientation_ActivePlansWithBeadsProgress(t *testing.T) {
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		ActivePlans: []PlanSummary{
+			{
+				Title:    "Gate Signal vs Noise",
+				Progress: "1/4 complete",
+				Phases: []PlanPhase{
+					{Name: "Phase 1: Gate census", Status: "complete", BeadsIDs: []string{"orch-go-a1b2"}},
+					{Name: "Phase 2: Fix noise gates", Status: "in-progress", BeadsIDs: []string{"orch-go-c3d4"}},
+					{Name: "Phase 3: Retrospective audit", Status: "ready", BeadsIDs: []string{"orch-go-e5f6"}},
+					{Name: "Phase 4: Prospective measurement", Status: ""},
+				},
+			},
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	if !strings.Contains(output, "Active plans:") {
+		t.Error("missing 'Active plans:' section header")
+	}
+	if !strings.Contains(output, "Gate Signal vs Noise (1/4 complete)") {
+		t.Errorf("missing plan title with progress, got:\n%s", output)
+	}
+	if !strings.Contains(output, "[x] Phase 1: Gate census") {
+		t.Error("missing completed phase marker")
+	}
+	if !strings.Contains(output, "[>] Phase 2: Fix noise gates") {
+		t.Error("missing in-progress phase marker")
+	}
+	if !strings.Contains(output, "[ ] Phase 3: Retrospective audit") {
+		t.Error("missing ready phase marker")
+	}
+	if !strings.Contains(output, "[ ] Phase 4: Prospective measurement") {
+		t.Error("missing unhydrated phase marker")
+	}
+}
+
+func TestFormatOrientation_ActivePlansNoProgress(t *testing.T) {
+	// Plans without beads progress should still work (no progress shown)
+	data := &OrientationData{
+		Throughput: Throughput{Days: 1},
+		ActivePlans: []PlanSummary{
+			{
+				Title: "Unhydrated Plan",
+				Phases: []PlanPhase{
+					{Name: "Phase 1: Setup", Status: ""},
+				},
+			},
+		},
+	}
+
+	output := FormatOrientation(data)
+
+	// Title should appear without progress suffix
+	if !strings.Contains(output, "- Unhydrated Plan") {
+		t.Errorf("missing plan title, got:\n%s", output)
+	}
+	// Should NOT show "()" or "(0/0 complete)"
+	if strings.Contains(output, "( complete)") || strings.Contains(output, "(0/") {
+		t.Error("should not show empty progress")
+	}
+}
+
 func TestOrientationDataJSON(t *testing.T) {
 	data := &OrientationData{
 		Throughput: Throughput{
