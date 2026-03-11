@@ -217,10 +217,10 @@
 
 	// Merge historical and SSE events, deduplicating by ID
 	// Historical events come first, SSE events appended (real-time updates)
-	let mergedEvents = $derived(() => {
+	let agentEvents = $derived.by(() => {
 		const seenIds = new Set<string>();
 		const merged: SSEEvent[] = [];
-		
+
 		// Add historical events first
 		for (const event of historyFilteredEvents) {
 			if (event.id && !seenIds.has(event.id)) {
@@ -228,7 +228,7 @@
 				merged.push(event);
 			}
 		}
-		
+
 		// Add SSE events (real-time), deduplicating against historical
 		for (const event of sseFilteredEvents) {
 			if (event.id && !seenIds.has(event.id)) {
@@ -236,15 +236,12 @@
 				merged.push(event);
 			}
 		}
-		
+
 		// Sort by timestamp if available, then limit
 		merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-		
+
 		return merged.slice(-EVENT_LIMIT);
 	});
-
-	// Use the merged events for display
-	let agentEvents = $derived(mergedEvents());
 
 	// Group related events (tool + step-finish) for nested display
 	// Returns array of groups where each group has:

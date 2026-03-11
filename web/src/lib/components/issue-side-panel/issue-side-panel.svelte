@@ -26,7 +26,7 @@
 	let lastIssueId: string | null = null;
 
 	// Resolve agent for this issue (by beads_id or agent id fallback)
-	let relatedAgent: Agent | null = $derived(() => {
+	let relatedAgent: Agent | null = $derived.by(() => {
 		if (!issue) return null;
 		return $agents.find((agent) => agent.beads_id === issue.id || agent.id === issue.id) || null;
 	});

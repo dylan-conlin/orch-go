@@ -11,17 +11,11 @@ export default defineConfig({
 			'Cache-Control': 'no-store'
 		},
 		proxy: {
-			// Proxy SSE events from OpenCode
-			'/api/events': {
-				target: 'http://localhost:4096',
-				changeOrigin: true,
-				rewrite: (path) => path.replace(/^\/api/, '')
-			},
-			// Proxy API calls to OpenCode
+			// Proxy all API calls to orch serve (Go backend)
+			// Go backend handles OpenCode proxying with proper error handling
 			'/api': {
-				target: 'http://localhost:4096',
-				changeOrigin: true,
-				rewrite: (path) => path.replace(/^\/api/, '')
+				target: 'http://localhost:3348',
+				changeOrigin: true
 			}
 		}
 	}
