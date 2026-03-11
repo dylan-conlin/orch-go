@@ -1,34 +1,47 @@
 type: feature
 deliverables:
+  - path: cmd/orch/spawn_cmd.go
+    description: "--explore-depth and --explore-judge-model flags with validation (depth 1-5)"
+    verification: go build ./cmd/orch/ compiles; flag validation rejects depth 0 and 6
+  - path: pkg/spawn/config.go
+    description: "ExploreDepth and ExploreJudgeModel fields on Config struct"
+    verification: "Fields present, threaded through context generation"
+  - path: pkg/spawn/context.go
+    description: "Iteration protocol and cross-model judge in SPAWN_CONTEXT template (conditional on depth > 1)"
+    verification: go test ./pkg/spawn/ -run TestExplore -count=1
+  - path: pkg/orch/spawn_types.go
+    description: "ExploreDepth and ExploreJudgeModel on SpawnContext"
+    verification: "Fields present, passed through BuildSpawnConfig"
   - path: pkg/events/logger.go
-    description: 3 new exploration event types (decomposed, judged, synthesized) with typed data structs and log methods
-    verification: go test ./pkg/events/ -run TestLogExploration -count=1 -v
+    description: "exploration.iterated event type with ExplorationIteratedData struct and LogExplorationIterated method"
+    verification: go test ./pkg/events/ -run TestLogExplorationIterated -count=1
   - path: cmd/orch/emit_cmd.go
-    description: Extended orch emit to support exploration.decomposed, exploration.judged, exploration.synthesized
-    verification: go build ./cmd/orch/ compiles; orch emit exploration.decomposed --help
+    description: "exploration.iterated event support in orch emit command"
+    verification: "Switch case handles exploration.iterated"
   - path: cmd/orch/serve_harness.go
-    description: ExplorationMetrics aggregation in harness API response
-    verification: go test ./cmd/orch/ -run TestBuildHarnessResponse_Exploration -count=1 -v
-  - path: web/src/lib/stores/harness.ts
-    description: ExplorationMetrics TypeScript interface added to HarnessData
-    verification: npx svelte-check shows no harness-related errors
-  - path: web/src/routes/harness/+page.svelte
-    description: Exploration Runs dashboard section with metrics and judge verdict bar
-    verification: Visual check at http://localhost:5188/harness
+    description: "TotalIterations and IteratedRuns fields in ExplorationMetrics"
+    verification: go test ./cmd/orch/ -run TestBuildHarnessResponse_ExplorationWithIteration -count=1
   - path: skills/src/meta/exploration-orchestrator/SKILL.md
-    description: Added orch emit instructions for all 3 exploration lifecycle events
-    verification: Skill contains orch emit exploration.decomposed/judged/synthesized commands
+    description: "Phase 4b iteration loop instructions, cross-model judge guidance, convergence rules"
+    verification: "Skill includes iteration phase, decision rules, convergence guard"
+  - path: pkg/spawn/explore_test.go
+    description: "Tests for depth bounds, iteration context, judge model context"
+    verification: go test ./pkg/spawn/ -run TestExplore -count=1 -v
 tests:
   commands:
-    - go test ./pkg/events/ -run TestLogExploration -count=1
+    - go test ./pkg/spawn/ -run TestExplore -count=1
+    - go test ./pkg/events/ -run TestLogExplorationIterated -count=1
     - go test ./cmd/orch/ -run TestBuildHarnessResponse_Exploration -count=1
+    - go test ./... (full suite)
   result: All PASS
 evidence:
-  - claim: "3 exploration events flow through events.jsonl"
-    basis: "Event types EventTypeExplorationDecomposed/Judged/Synthesized defined, typed log methods tested"
-  - claim: "Harness API aggregates exploration metrics"
-    basis: "ExplorationMetrics computed from exploration.* events, tested with 2 runs (1 complete, 1 partial)"
-  - claim: "Dashboard shows exploration quality metrics"
-    basis: "Svelte page renders total_runs, completed_runs, findings, avg_workers, judge verdict bar"
-  - claim: "Exploration orchestrator skill emits events"
-    basis: "SKILL.md updated with orch emit commands at each lifecycle phase"
+  - claim: "Depth 1 (default) produces no iteration instructions"
+    basis: "TestExploreContextGeneration checks 'no iteration at depth 1' and 'no depth display at 1'"
+  - claim: "Depth >1 produces full iteration protocol with convergence guards"
+    basis: "TestExploreDepthIterationInContext verifies iteration protocol, decision rules, event emission, budget display"
+  - claim: "Cross-model judge model is injected into judge spawn command"
+    basis: "TestExploreJudgeModelInContext checks '--model sonnet' in spawn command"
+  - claim: "exploration.iterated event logs correctly"
+    basis: "TestLogExplorationIterated verifies event type, iteration count, gaps_addressed, new_workers"
+  - claim: "Harness tracks iteration metrics"
+    basis: "TestBuildHarnessResponse_ExplorationWithIteration verifies TotalIterations=1, IteratedRuns=1"
