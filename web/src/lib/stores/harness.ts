@@ -189,3 +189,79 @@ export function formatRate(rate: number | undefined | null): string {
 	if (rate === undefined || rate === null) return '—';
 	return `${(rate * 100).toFixed(1)}%`;
 }
+
+// Plain-language verdict descriptions (eliminates double negatives)
+export function verdictPlainLanguage(key: string, status: string): string {
+	const plain: Record<string, Record<string, string>> = {
+		gates_are_irrelevant: {
+			falsified: 'Gates are relevant',
+			confirmed: 'Gates rarely fire — may be irrelevant',
+			insufficient_data: 'Not enough data yet'
+		},
+		gates_are_ceremony: {
+			falsified: 'Gates slow accretion',
+			confirmed: 'Gates ship but accretion unchanged',
+			insufficient_data: 'Collecting data (checkpoint Mar 24)'
+		},
+		soft_harness_is_inert: {
+			falsified: 'Soft harness affects behavior',
+			confirmed: 'Soft harness has no measurable effect',
+			not_measurable: 'No controlled experiment yet'
+		},
+		framework_is_anecdotal: {
+			falsified: 'Framework works in a second system',
+			confirmed: 'No benefit in second system',
+			not_measurable: 'No second system instrumented'
+		}
+	};
+	return plain[key]?.[status] || `${key}: ${status}`;
+}
+
+// Generate a top-level summary from harness data
+export function harnessSummary(data: HarnessData): string {
+	if (data.total_spawns === 0) return 'No spawn data yet.';
+
+	const parts: string[] = [];
+
+	// Gates status from verdicts
+	const gatesVerdict = data.falsification_verdicts['gates_are_irrelevant'];
+	if (gatesVerdict?.status === 'falsified') {
+		const spawnStage = data.pipeline.find(s => s.stage === 'spawn');
+		const totalFireRate = spawnStage?.components.reduce((sum, c) => sum + (c.fire_rate || 0), 0) || 0;
+		parts.push(`Gates are active — ${formatRate(totalFireRate / (spawnStage?.components.length || 1))} average fire rate across ${data.total_spawns} spawns`);
+	} else if (gatesVerdict?.status === 'confirmed') {
+		parts.push('Gates are deployed but rarely fire');
+	} else {
+		parts.push('Collecting gate data');
+	}
+
+	// Accretion verdict
+	const accretionVerdict = data.falsification_verdicts['gates_are_ceremony'];
+	if (accretionVerdict?.status === 'insufficient_data') {
+		parts.push('Accretion impact pending (verdict Mar 24)');
+	} else if (accretionVerdict?.status === 'falsified') {
+		parts.push('Accretion is slowing');
+	}
+
+	return parts.join('. ') + '.';
+}
+
+// Stage description for context
+export function stageDescription(stage: string): string {
+	const descriptions: Record<string, string> = {
+		spawn: 'Gates that check work before agents start',
+		authoring: 'Context that shapes agent behavior — no direct measurement',
+		pre_commit: 'Gates that check code before it lands',
+		completion: 'Verification after agent work finishes'
+	};
+	return descriptions[stage] || '';
+}
+
+// Coverage framing text
+export function coverageFraming(coverage: MeasurementCoverage): string {
+	const measuredPct = Math.round(((coverage.with_measurement + coverage.proxy_only) / coverage.total_components) * 100);
+	if (coverage.unmeasured === 0) return 'All components measured.';
+	if (measuredPct < 50) return `Less than half measured — ${coverage.unmeasured} components have no data.`;
+	if (measuredPct < 80) return `${coverage.unmeasured} components still unmeasured.`;
+	return `Most components covered. ${coverage.unmeasured} remaining.`;
+}

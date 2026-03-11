@@ -1,43 +1,23 @@
-task: "Integration: orch harness report produces all 4 falsification verdicts with data, dashboard harness page renders pipeline view with live measurement overlay"
-beads_id: orch-go-2s4xj
-skill: feature-impl
-mode: tdd
-validation: tests
-
-deliverables:
-  - path: cmd/orch/harness_integration_test.go
-    description: 7 integration tests verifying end-to-end harness pipeline
-  - path: cmd/orch/serve_harness.go
-    description: "Fixes: gate_name field parsing, duration_seconds field detection, accretion velocity computation from snapshots"
-  - path: pkg/orch/spawn_preflight.go
-    description: "Added descriptive reasons to gate allow events"
-  - path: pkg/events/logger.go
-    description: "Updated GateDecisionData to document allow decisions"
-
-integration_points_verified:
-  - "Gate deflection rates computable from unified events (legacy spawn.hotspot_bypassed + new spawn.gate_decision)"
-  - "Accretion velocity shows pre/post gate comparison from accretion.snapshot events"
-  - "Coverage heat map identifies blind spots via measurement_status per component"
-  - "All 4 falsification verdicts render correctly with status, evidence, and threshold"
-
-bugs_fixed:
-  - "serve_harness.go: gate_decision events read 'gate' field but schema uses 'gate_name'"
-  - "serve_harness.go: completion duration detected via 'duration_minutes' but events use 'duration_seconds'"
-  - "serve_harness.go: accretion.snapshot events not processed — no velocity computation"
-
-tests:
-  - command: "go test ./cmd/orch/ -run TestHarnessIntegration -count=1"
-    result: "7/7 PASS"
-  - command: "go test ./cmd/orch/ -run 'TestHarness|TestFormatHarness|TestVerdict' -count=1"
-    result: "25/25 PASS"
-  - command: "go build ./..."
-    result: "Build succeeds"
-  - command: "go test ./pkg/events/ -count=1"
-    result: "All pass"
-  - command: "go test ./pkg/orch/ -count=1"
-    result: "All pass"
-
-evidence:
-  - "go test — 25/25 harness tests PASS"
-  - "go test — 7/7 integration tests PASS"
-  - "go build ./... — ok"
+verification:
+  automated:
+    - command: "go test ./cmd/orch/ -run 'Test(Handle|Build|Status)Harness|TestBuildVerdicts|TestStatusFromCount' -v"
+      expect: "PASS"
+    - command: "cd web && npm run build"
+      expect: "exit 0, no harness-related errors"
+  visual:
+    - url: "http://localhost:5188/harness"
+      checks:
+        - "Top-level summary box says 'Gates are active' with fire rate and spawn count"
+        - "Each spawn gate card shows 'fires on X% of spawns' label"
+        - "Authoring cards show 'Proxy: ...' descriptions"
+        - "Stage headers include descriptions (e.g. 'Context that shapes agent behavior')"
+        - "Verdicts section titled 'Can we disprove the harness works?'"
+        - "Verdicts use plain language ('Gates are relevant' not 'FALSIFIED')"
+        - "Measurement Coverage shows framing text ('4 components still unmeasured')"
+        - "Completion Coverage renamed to 'Event Data Quality' with subtitle"
+        - "44% fields filled is NOT red (uses muted color)"
+      evidence: "/tmp/harness-redesign3.png"
+  files_changed:
+    - web/src/routes/harness/+page.svelte
+    - web/src/lib/stores/harness.ts
+    - VERIFICATION_SPEC.yaml

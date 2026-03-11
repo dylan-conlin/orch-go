@@ -3,14 +3,17 @@
 	import {
 		harness,
 		stageLabel,
+		stageDescription,
 		componentLabel,
 		typeColor,
 		measurementIcon,
 		measurementColor,
 		verdictIcon,
 		verdictColor,
-		verdictLabel,
+		verdictPlainLanguage,
 		formatRate,
+		harnessSummary,
+		coverageFraming,
 		type PipelineComponent
 	} from '$lib/stores/harness';
 
@@ -36,7 +39,13 @@
 	function coverageColor(pct: number): string {
 		if (pct >= 95) return 'text-green-400';
 		if (pct >= 80) return 'text-yellow-400';
-		return 'text-red-400';
+		return 'text-muted-foreground';
+	}
+
+	function fireRateLabel(comp: PipelineComponent): string {
+		if (comp.fire_rate === undefined || comp.fire_rate === null) return '';
+		const pct = (comp.fire_rate * 100).toFixed(0);
+		return `fires on ${pct}% of spawns`;
 	}
 
 	onMount(async () => {
@@ -50,29 +59,37 @@
 </script>
 
 <div class="space-y-4">
-	<!-- Header -->
-	<div class="flex items-center justify-between">
-		<div>
-			<h1 class="text-lg font-semibold">Harness Pipeline</h1>
-			<p class="text-xs text-muted-foreground">
-				{$harness.analysis_period} · {$harness.total_spawns} spawns
-			</p>
-		</div>
-		<div class="flex items-center gap-2">
-			<select
-				class="text-xs bg-background border rounded px-2 py-1"
-				bind:value={days}
-				on:change={() => harness.fetch(days)}
-			>
-				<option value={7}>7 days</option>
-				<option value={14}>14 days</option>
-				<option value={30}>30 days</option>
-			</select>
-			<div class="flex items-center gap-3 text-xs text-muted-foreground">
-				<span class="inline-flex items-center gap-1"><span class="text-green-400">●</span> flowing</span>
-				<span class="inline-flex items-center gap-1"><span class="text-yellow-400">◐</span> proxy</span>
-				<span class="inline-flex items-center gap-1"><span class="text-muted-foreground">○</span> unmeasured</span>
+	<!-- Header + Summary -->
+	<div class="space-y-2">
+		<div class="flex items-center justify-between">
+			<div>
+				<h1 class="text-lg font-semibold">Harness Pipeline</h1>
+				<p class="text-xs text-muted-foreground">
+					{$harness.analysis_period} · {$harness.total_spawns} spawns
+				</p>
 			</div>
+			<div class="flex items-center gap-2">
+				<select
+					class="text-xs bg-background border rounded px-2 py-1"
+					bind:value={days}
+					on:change={() => harness.fetch(days)}
+				>
+					<option value={7}>7 days</option>
+					<option value={14}>14 days</option>
+					<option value={30}>30 days</option>
+				</select>
+				<div class="flex items-center gap-3 text-xs text-muted-foreground">
+					<span class="inline-flex items-center gap-1"><span class="text-green-400">●</span> measured</span>
+					<span class="inline-flex items-center gap-1"><span class="text-yellow-400">◐</span> proxy</span>
+					<span class="inline-flex items-center gap-1"><span class="text-muted-foreground">○</span> unmeasured</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- Top-level summary: "Is the harness working?" -->
+		<div class="rounded-md border p-3 bg-card text-xs text-muted-foreground">
+			<p>{harnessSummary($harness)}</p>
+			<p class="mt-1 opacity-70">The harness is a set of gates and context layers that check agent work at each stage. This page shows which parts are measured, what the data says, and where the gaps are.</p>
 		</div>
 	</div>
 
@@ -80,11 +97,14 @@
 	<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
 		{#each $harness.pipeline as stage}
 			<div class="space-y-2">
-				<div class="flex items-center gap-2">
-					<h2 class="text-sm font-medium">{stageLabel(stage.stage)}</h2>
-					<span class="text-xs text-muted-foreground">
-						{stage.components.length}
-					</span>
+				<div>
+					<div class="flex items-center gap-2">
+						<h2 class="text-sm font-medium">{stageLabel(stage.stage)}</h2>
+						<span class="text-xs text-muted-foreground">
+							{stage.components.length}
+						</span>
+					</div>
+					<p class="text-[10px] text-muted-foreground mt-0.5">{stageDescription(stage.stage)}</p>
 				</div>
 				<div class="space-y-1.5">
 					{#each stage.components as comp}
@@ -100,14 +120,22 @@
 								<span class="text-[10px] uppercase opacity-60">{comp.type}</span>
 							</div>
 
-							<!-- Rate bar -->
+							<!-- Fire rate with label -->
 							{#if comp.fire_rate !== undefined && comp.fire_rate !== null}
 								<div class="mt-1.5 flex items-center gap-2">
 									<div class="flex-1 h-1 rounded-full bg-foreground/10 overflow-hidden">
 										<div class="h-full rounded-full bg-current {rateBar(comp.fire_rate)}" style="width: {Math.min((comp.fire_rate || 0) * 100, 100)}%"></div>
 									</div>
-									<span class="text-[10px] tabular-nums">{formatRate(comp.fire_rate)}</span>
+									<span class="text-[10px] tabular-nums opacity-70">{fireRateLabel(comp)}</span>
 								</div>
+							{/if}
+
+							<!-- Proxy-only / unmeasured explanation -->
+							{#if comp.measurement_status === 'proxy_only' && comp.proxy_metric}
+								<p class="mt-1.5 text-[10px] opacity-50 italic">Proxy: {comp.proxy_metric}</p>
+							{/if}
+							{#if comp.measurement_status === 'unmeasured' && !comp.fire_rate}
+								<p class="mt-1.5 text-[10px] opacity-50 italic">No measurement data</p>
 							{/if}
 
 							<!-- Expanded details -->
@@ -149,9 +177,6 @@
 											<span class="tabular-nums">{new Date(comp.last_fired).toLocaleDateString()}</span>
 										</div>
 									{/if}
-									{#if comp.proxy_metric}
-										<div class="pt-1 opacity-70 italic">{comp.proxy_metric}</div>
-									{/if}
 								</div>
 							{/if}
 						</button>
@@ -163,32 +188,34 @@
 
 	<!-- Bottom sections: Verdicts + Coverage -->
 	<div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-		<!-- Falsification Verdicts -->
+		<!-- Falsification Verdicts (plain language) -->
 		<div class="space-y-2">
-			<h2 class="text-sm font-medium">Falsification Verdicts</h2>
+			<div>
+				<h2 class="text-sm font-medium">Can we disprove the harness works?</h2>
+				<p class="text-[10px] text-muted-foreground mt-0.5">Each row tests a way the harness could fail. Green = that failure mode is ruled out.</p>
+			</div>
 			<div class="space-y-1.5">
 				{#each Object.entries($harness.falsification_verdicts) as [key, verdict]}
 					<div class="rounded-md border p-2 {verdictColor(verdict.status)}">
 						<div class="flex items-center justify-between">
 							<div class="flex items-center gap-1.5">
 								<span class="text-sm">{verdictIcon(verdict.status)}</span>
-								<span class="text-xs font-medium">{verdict.criterion}</span>
+								<span class="text-xs font-medium">{verdictPlainLanguage(key, verdict.status)}</span>
 							</div>
-							<span class="text-[10px] font-medium uppercase">{verdictLabel(verdict.status)}</span>
 						</div>
 						<p class="mt-1 text-[11px] opacity-70">{verdict.evidence}</p>
-						<p class="mt-0.5 text-[10px] opacity-50">Threshold: {verdict.threshold}</p>
 					</div>
 				{/each}
 			</div>
 		</div>
 
-		<!-- Measurement Coverage + Completion Coverage -->
+		<!-- Measurement Coverage + Event Data Quality -->
 		<div class="space-y-3">
 			<!-- Measurement Coverage -->
 			<div class="space-y-2">
 				<h2 class="text-sm font-medium">Measurement Coverage</h2>
 				<div class="rounded-md border p-3 bg-card">
+					<p class="text-[10px] text-muted-foreground mb-2">{coverageFraming($harness.measurement_coverage)}</p>
 					<div class="grid grid-cols-4 gap-2 text-center">
 						<div>
 							<div class="text-lg font-semibold">{$harness.measurement_coverage.total_components}</div>
@@ -223,19 +250,22 @@
 				</div>
 			</div>
 
-			<!-- Completion Coverage -->
+			<!-- Event Data Quality (renamed from Completion Coverage) -->
 			<div class="space-y-2">
-				<h2 class="text-sm font-medium">Completion Coverage</h2>
+				<div>
+					<h2 class="text-sm font-medium">Event Data Quality</h2>
+					<p class="text-[10px] text-muted-foreground mt-0.5">How complete are completion event fields — not agent success rate</p>
+				</div>
 				<div class="rounded-md border p-3 bg-card">
 					<div class="flex items-center justify-between mb-2">
-						<span class="text-xs text-muted-foreground">{$harness.completion_coverage.total_completions} completions</span>
+						<span class="text-xs text-muted-foreground">{$harness.completion_coverage.total_completions} completions logged</span>
 						<span class="text-sm font-semibold {coverageColor($harness.completion_coverage.coverage_pct)}">
-							{$harness.completion_coverage.coverage_pct.toFixed(1)}%
+							{$harness.completion_coverage.coverage_pct.toFixed(0)}% fields filled
 						</span>
 					</div>
 					<div class="space-y-1 text-[11px]">
 						<div class="flex justify-between">
-							<span class="text-muted-foreground">With skill</span>
+							<span class="text-muted-foreground">With skill name</span>
 							<span class="tabular-nums">{$harness.completion_coverage.with_skill}/{$harness.completion_coverage.total_completions}</span>
 						</div>
 						<div class="flex justify-between">
