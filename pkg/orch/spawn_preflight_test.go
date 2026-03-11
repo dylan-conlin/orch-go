@@ -1,8 +1,12 @@
 package orch
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -123,5 +127,43 @@ func TestExtractSearchTerms(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLogGateDecision_IncludesBeadsID(t *testing.T) {
+	// Override events log path to a temp file
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+
+	// Directly test the logger (logGateDecision is a thin wrapper)
+	logger := events.NewLogger(logPath)
+	err := logger.LogGateDecision(events.GateDecisionData{
+		GateName: "triage",
+		Decision: "allow",
+		Skill:    "feature-impl",
+		BeadsID:  "orch-go-xyz99",
+		Reason:   "daemon-driven spawn",
+	})
+	if err != nil {
+		t.Fatalf("LogGateDecision() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	var event events.Event
+	if err := json.Unmarshal(data, &event); err != nil {
+		t.Fatalf("Failed to unmarshal event: %v", err)
+	}
+
+	// Verify beads_id is in the event data
+	if event.Data["beads_id"] != "orch-go-xyz99" {
+		t.Errorf("data.beads_id = %v, want %q", event.Data["beads_id"], "orch-go-xyz99")
+	}
+	// Verify session_id is also set (used for correlation)
+	if event.SessionID != "orch-go-xyz99" {
+		t.Errorf("event.SessionID = %q, want %q", event.SessionID, "orch-go-xyz99")
 	}
 }

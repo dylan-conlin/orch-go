@@ -1582,6 +1582,66 @@ func TestGateEffectivenessStats_Empty(t *testing.T) {
 	}
 }
 
+func TestGateEffectivenessStats_AllowWithBeadsID(t *testing.T) {
+	// Verify that "allow" gate decisions with beads_id correctly classify spawns as gated.
+	// This is the most common path — most spawns pass gates without being blocked.
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// Two spawns: one with gate_decision (allow), one without
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "gated-allow-1",
+		}},
+		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 6200, Data: map[string]interface{}{
+			"skill": "investigation", "beads_id": "ungated-1",
+		}},
+		// Gate decisions: all "allow" with beads_id (typical daemon spawn path)
+		{Type: "spawn.gate_decision", Timestamp: now - 7100, Data: map[string]interface{}{
+			"gate_name": "triage", "decision": "allow", "skill": "feature-impl", "beads_id": "gated-allow-1",
+		}},
+		{Type: "spawn.gate_decision", Timestamp: now - 7100, Data: map[string]interface{}{
+			"gate_name": "verification", "decision": "allow", "skill": "feature-impl", "beads_id": "gated-allow-1",
+		}},
+		{Type: "spawn.gate_decision", Timestamp: now - 7100, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "allow", "skill": "feature-impl", "beads_id": "gated-allow-1",
+		}},
+		// Both complete
+		{Type: "agent.completed", Timestamp: now - 3000, Data: map[string]interface{}{
+			"beads_id": "gated-allow-1", "verification_passed": true, "skill": "feature-impl",
+		}},
+		{Type: "agent.completed", Timestamp: now - 2000, Data: map[string]interface{}{
+			"beads_id": "ungated-1", "verification_passed": true, "skill": "investigation",
+		}},
+	}
+
+	report := aggregateStats(events, 7)
+	ge := report.GateEffectivenessStats
+
+	// 3 allows, 0 blocks, 0 bypasses
+	if ge.TotalAllows != 3 {
+		t.Errorf("TotalAllows = %d, want 3", ge.TotalAllows)
+	}
+	if ge.TotalBlocks != 0 {
+		t.Errorf("TotalBlocks = %d, want 0", ge.TotalBlocks)
+	}
+
+	// gated-allow-1 should be classified as gated
+	if ge.GatedCompletion.TotalSpawns != 1 {
+		t.Errorf("GatedCompletion.TotalSpawns = %d, want 1", ge.GatedCompletion.TotalSpawns)
+	}
+	if ge.GatedCompletion.Completions != 1 {
+		t.Errorf("GatedCompletion.Completions = %d, want 1", ge.GatedCompletion.Completions)
+	}
+
+	// ungated-1 should be classified as ungated
+	if ge.UngatedCompletion.TotalSpawns != 1 {
+		t.Errorf("UngatedCompletion.TotalSpawns = %d, want 1", ge.UngatedCompletion.TotalSpawns)
+	}
+	if ge.UngatedCompletion.Completions != 1 {
+		t.Errorf("UngatedCompletion.Completions = %d, want 1", ge.UngatedCompletion.Completions)
+	}
+}
+
 func TestGateEffectivenessStats_BlockedStillPending(t *testing.T) {
 	now := time.Now().Unix()
 

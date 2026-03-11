@@ -13,24 +13,24 @@ import (
 // RunPreFlightChecks performs all pre-spawn validation checks.
 func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, architectRef, bypassReason, overrideReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker) (*gates.UsageCheckResult, *gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
 	if err := gates.CheckTriageBypass(input.DaemonDriven, bypassTriage, input.SkillName, input.Task); err != nil {
-		logGateDecision("triage", "block", input.SkillName, "manual spawn without --bypass-triage", nil)
+		logGateDecision("triage", "block", input.SkillName, input.IssueID, "manual spawn without --bypass-triage", nil)
 		return nil, nil, nil, nil, err
 	}
 	if !input.DaemonDriven && bypassTriage {
 		gates.LogTriageBypass(input.SkillName, input.Task, overrideReason)
-		logGateDecision("triage", "bypass", input.SkillName, overrideReason, nil)
+		logGateDecision("triage", "bypass", input.SkillName, input.IssueID, overrideReason, nil)
 	} else if input.DaemonDriven {
 		// Daemon-driven spawns skip triage automatically — log "allow"
-		logGateDecision("triage", "allow", input.SkillName, "daemon-driven spawn", nil)
+		logGateDecision("triage", "allow", input.SkillName, input.IssueID, "daemon-driven spawn", nil)
 	}
 	if err := gates.CheckVerificationGate(bypassVerification, bypassReason); err != nil {
-		logGateDecision("verification", "block", input.SkillName, "unverified Tier 1 work exists", nil)
+		logGateDecision("verification", "block", input.SkillName, input.IssueID, "unverified Tier 1 work exists", nil)
 		return nil, nil, nil, nil, err
 	}
 	if bypassVerification {
-		logGateDecision("verification", "bypass", input.SkillName, bypassReason, nil)
+		logGateDecision("verification", "bypass", input.SkillName, input.IssueID, bypassReason, nil)
 	} else {
-		logGateDecision("verification", "allow", input.SkillName, "no unverified work", nil)
+		logGateDecision("verification", "allow", input.SkillName, input.IssueID, "no unverified work", nil)
 	}
 	if err := gates.CheckConcurrency(input.ServerURL, maxAgents, extractBeadsIDFunc); err != nil {
 		return nil, nil, nil, nil, err
@@ -55,14 +55,14 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 			if hotspotResult != nil {
 				targetFiles = hotspotResult.CriticalFiles
 			}
-			logGateDecision("hotspot", "block", input.SkillName, err.Error(), targetFiles)
+			logGateDecision("hotspot", "block", input.SkillName, input.IssueID, err.Error(), targetFiles)
 			return nil, nil, nil, nil, err
 		}
 		if forceHotspot && hotspotResult != nil && hotspotResult.HasCriticalHotspot {
-			logGateDecision("hotspot", "bypass", input.SkillName, overrideReason, hotspotResult.CriticalFiles)
+			logGateDecision("hotspot", "bypass", input.SkillName, input.IssueID, overrideReason, hotspotResult.CriticalFiles)
 		} else if hotspotResult == nil || !hotspotResult.HasCriticalHotspot {
 			// Gate evaluated, no critical hotspots — log "allow" for true fire rate
-			logGateDecision("hotspot", "allow", input.SkillName, "no critical hotspot files", nil)
+			logGateDecision("hotspot", "allow", input.SkillName, input.IssueID, "no critical hotspot files", nil)
 		}
 	}
 
@@ -195,12 +195,13 @@ func isArchitectIssue(issue *verify.Issue) bool {
 }
 
 // logGateDecision logs a spawn.gate_decision event for allow, block, or bypass decisions.
-func logGateDecision(gateName, decision, skill, reason string, targetFiles []string) {
+func logGateDecision(gateName, decision, skill, beadsID, reason string, targetFiles []string) {
 	logger := events.NewLogger(events.DefaultLogPath())
 	_ = logger.LogGateDecision(events.GateDecisionData{
 		GateName:    gateName,
 		Decision:    decision,
 		Skill:       skill,
+		BeadsID:     beadsID,
 		TargetFiles: targetFiles,
 		Reason:      reason,
 	})

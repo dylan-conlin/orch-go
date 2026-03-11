@@ -1,22 +1,29 @@
-verification:
-  type: investigation
-  commands_run:
-    - "python3 analysis of ~/.orch/events.jsonl (5,363 events, 216 spawns, 211 completions)"
-    - "grep analysis of 94 verification.failed, 53 triage_bypassed, 30 gate_decision events"
-    - "Manual classification of 173 gate blocks/failures across 8 signal gates"
-    - "Source file inspection of 7 self_review-flagged locations"
-  assertions:
-    - "All 10 signal gates from Phase 1 audited for false positive rate"
-    - "173 total samples classified as TP/FP/AMB"
-    - "Signal gate aggregate FP rate: 0% (0/173)"
-    - "Correctness gates (build, vet, phase_complete, synthesis, accretion_precommit): 0% FP, n=11"
-    - "Discipline gates (explain_back, verified, triage): 0% FP, n=162"
-    - "self_review (NOISE) confirmed: 79% FP rate (15/19)"
-    - "Wilson confidence intervals provided for all gates"
-    - "Model updated with accuracy data and correctness/discipline taxonomy"
-  manual_verification:
-    - "Review .kb/investigations/2026-03-11-inv-gate-retrospective-accuracy-audit.md"
-    - "Verify model update in .kb/models/harness-engineering/model.md (search 'Retrospective accuracy')"
-  deliverables:
-    - ".kb/investigations/2026-03-11-inv-gate-retrospective-accuracy-audit.md"
-    - ".kb/models/harness-engineering/model.md (updated)"
+type: feature
+deliverables:
+  - path: skills/src/meta/exploration-judge/SKILL.md
+    description: Exploration judge skill with 5-dimension evaluation and structured YAML verdict output
+    verification: skill loads via loader, contains all 5 dimensions and verdict format markers
+  - path: skills/src/meta/exploration-orchestrator/SKILL.md
+    description: Updated orchestrator to delegate judging to exploration-judge skill
+    verification: Phase 4 references exploration-judge spawn command
+  - path: pkg/spawn/context.go
+    description: Updated SPAWN_CONTEXT template to reference judge skill instead of inline criteria
+    verification: Template mentions exploration-judge, judge-verdict.yaml, verdict types
+  - path: pkg/spawn/explore_judge_skill_test.go
+    description: Tests for judge skill loading and verdict schema completeness
+    verification: go test ./pkg/spawn/ -run TestExplorationJudge
+  - path: pkg/spawn/explore_test.go
+    description: Updated context generation tests to verify judge skill references
+    verification: go test ./pkg/spawn/ -run TestExploreContextGeneration
+tests:
+  command: go test ./pkg/spawn/ -count=1
+  result: PASS (0.416s)
+evidence:
+  - claim: "Judge skill evaluates on 5 dimensions: grounding, consistency, coverage, relevance, actionability"
+    basis: "All 5 dimensions defined in SKILL.md with rating scales and criteria"
+  - claim: "Structured YAML verdict output"
+    basis: "Complete YAML schema in SKILL.md with sub_findings, contested_findings, coverage_gaps, overall sections"
+  - claim: "Contested findings surfaced as most valuable output"
+    basis: "Dedicated contested_findings section in verdict, anti-pattern guidance, bias toward contested over rejected"
+  - claim: "Judge is spawnable by exploration orchestrator"
+    basis: "Orchestrator Phase 4 and SPAWN_CONTEXT template both reference 'orch spawn ... exploration-judge' command"
