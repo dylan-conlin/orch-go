@@ -950,6 +950,7 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 	// Build gate decision stats from tracked gate_decision events
 	gateBlocks := make(map[string]int)
 	gateBypasses := make(map[string]int)
+	gateAllows := make(map[string]int)
 	for key, count := range gateDecisionCounts {
 		parts := strings.SplitN(key, "|", 2)
 		gateName := parts[0]
@@ -964,6 +965,9 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 		} else if decision == "bypass" {
 			report.GateDecisionStats.TotalBypasses += count
 			gateBypasses[gateName] += count
+		} else if decision == "allow" {
+			report.GateDecisionStats.TotalAllows += count
+			gateAllows[gateName] += count
 		}
 	}
 	// Build per-gate entries
@@ -974,16 +978,20 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 	for g := range gateBypasses {
 		allGateNames[g] = true
 	}
+	for g := range gateAllows {
+		allGateNames[g] = true
+	}
 	for g := range allGateNames {
 		report.GateDecisionStats.ByGate = append(report.GateDecisionStats.ByGate, GateDecisionEntry{
 			Gate:     g,
 			Blocks:   gateBlocks[g],
 			Bypasses: gateBypasses[g],
+			Allows:   gateAllows[g],
 		})
 	}
 	sort.Slice(report.GateDecisionStats.ByGate, func(i, j int) bool {
-		totalI := report.GateDecisionStats.ByGate[i].Blocks + report.GateDecisionStats.ByGate[i].Bypasses
-		totalJ := report.GateDecisionStats.ByGate[j].Blocks + report.GateDecisionStats.ByGate[j].Bypasses
+		totalI := report.GateDecisionStats.ByGate[i].Blocks + report.GateDecisionStats.ByGate[i].Bypasses + report.GateDecisionStats.ByGate[i].Allows
+		totalJ := report.GateDecisionStats.ByGate[j].Blocks + report.GateDecisionStats.ByGate[j].Bypasses + report.GateDecisionStats.ByGate[j].Allows
 		return totalI > totalJ
 	})
 	// Build top blocked skills

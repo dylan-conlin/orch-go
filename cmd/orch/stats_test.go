@@ -1303,6 +1303,85 @@ func TestGateDecisionStats(t *testing.T) {
 	}
 }
 
+func TestGateDecisionStats_AllowEvents(t *testing.T) {
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// Triage gate allow (daemon-driven, no bypass needed)
+		{Type: "spawn.gate_decision", Timestamp: now - 100, Data: map[string]interface{}{
+			"gate_name": "triage", "decision": "allow", "skill": "feature-impl",
+		}},
+		// Hotspot gate allow (no critical hotspot)
+		{Type: "spawn.gate_decision", Timestamp: now - 90, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "allow", "skill": "feature-impl",
+		}},
+		// Verification gate allow (no unverified work)
+		{Type: "spawn.gate_decision", Timestamp: now - 80, Data: map[string]interface{}{
+			"gate_name": "verification", "decision": "allow", "skill": "investigation",
+		}},
+		// Hotspot gate block (for contrast)
+		{Type: "spawn.gate_decision", Timestamp: now - 70, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "block", "skill": "feature-impl",
+		}},
+		// Triage gate bypass (for contrast)
+		{Type: "spawn.gate_decision", Timestamp: now - 60, Data: map[string]interface{}{
+			"gate_name": "triage", "decision": "bypass", "skill": "feature-impl",
+		}},
+	}
+
+	report := aggregateStats(events, 7)
+
+	// Verify totals: 3 allows + 1 block + 1 bypass = 5 decisions
+	if report.GateDecisionStats.TotalDecisions != 5 {
+		t.Errorf("TotalDecisions = %d, want 5", report.GateDecisionStats.TotalDecisions)
+	}
+	if report.GateDecisionStats.TotalAllows != 3 {
+		t.Errorf("TotalAllows = %d, want 3", report.GateDecisionStats.TotalAllows)
+	}
+	if report.GateDecisionStats.TotalBlocks != 1 {
+		t.Errorf("TotalBlocks = %d, want 1", report.GateDecisionStats.TotalBlocks)
+	}
+	if report.GateDecisionStats.TotalBypasses != 1 {
+		t.Errorf("TotalBypasses = %d, want 1", report.GateDecisionStats.TotalBypasses)
+	}
+
+	// Verify per-gate: hotspot should have 1 allow + 1 block
+	var hotspotEntry *GateDecisionEntry
+	for i := range report.GateDecisionStats.ByGate {
+		if report.GateDecisionStats.ByGate[i].Gate == "hotspot" {
+			hotspotEntry = &report.GateDecisionStats.ByGate[i]
+			break
+		}
+	}
+	if hotspotEntry == nil {
+		t.Fatal("hotspot gate entry not found in ByGate")
+	}
+	if hotspotEntry.Allows != 1 {
+		t.Errorf("hotspot.Allows = %d, want 1", hotspotEntry.Allows)
+	}
+	if hotspotEntry.Blocks != 1 {
+		t.Errorf("hotspot.Blocks = %d, want 1", hotspotEntry.Blocks)
+	}
+
+	// Verify triage: 1 allow + 1 bypass
+	var triageEntry *GateDecisionEntry
+	for i := range report.GateDecisionStats.ByGate {
+		if report.GateDecisionStats.ByGate[i].Gate == "triage" {
+			triageEntry = &report.GateDecisionStats.ByGate[i]
+			break
+		}
+	}
+	if triageEntry == nil {
+		t.Fatal("triage gate entry not found in ByGate")
+	}
+	if triageEntry.Allows != 1 {
+		t.Errorf("triage.Allows = %d, want 1", triageEntry.Allows)
+	}
+	if triageEntry.Bypasses != 1 {
+		t.Errorf("triage.Bypasses = %d, want 1", triageEntry.Bypasses)
+	}
+}
+
 func TestGateDecisionStats_Empty(t *testing.T) {
 	events := []StatsEvent{
 		// Only a spawn event, no gate decisions

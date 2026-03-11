@@ -216,6 +216,7 @@ type GateDecisionStats struct {
 	TotalDecisions int                    `json:"total_decisions"`
 	TotalBlocks    int                    `json:"total_blocks"`
 	TotalBypasses  int                    `json:"total_bypasses"`
+	TotalAllows    int                    `json:"total_allows"`
 	ByGate         []GateDecisionEntry    `json:"by_gate,omitempty"`
 	TopBlockedSkills []GateSkillEntry     `json:"top_blocked_skills,omitempty"`
 }
@@ -258,11 +259,12 @@ type QualityMetrics struct {
 	AvgDurationMinutes float64 `json:"avg_duration_minutes,omitempty"`
 }
 
-// GateDecisionEntry tracks block/bypass counts for a single gate.
+// GateDecisionEntry tracks block/bypass/allow counts for a single gate.
 type GateDecisionEntry struct {
 	Gate     string `json:"gate"`
 	Blocks   int    `json:"blocks"`
 	Bypasses int    `json:"bypasses"`
+	Allows   int    `json:"allows"`
 }
 
 // GateSkillEntry tracks how often a skill was blocked by a specific gate.

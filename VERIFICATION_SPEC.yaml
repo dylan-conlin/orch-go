@@ -1,38 +1,31 @@
-task: Update harness-engineering model — measurement as first-class layer
-beads_id: orch-go-jq7jt
+task: Add spawn.gate_decision 'allow' events for hotspot and verification gates
+beads_id: orch-go-4m6is
 skill: feature-impl
-mode: direct
-validation: none
+mode: tdd
+validation: tests
 
 deliverables:
-  - path: .kb/models/harness-engineering/model.md
-    description: Updated model with enforcement+measurement pairing as core concept
+  - path: pkg/orch/spawn_preflight.go
+    description: Emit 'allow' gate decisions for triage, verification, and hotspot gates
+  - path: cmd/orch/stats_types.go
+    description: Added TotalAllows to GateDecisionStats, Allows to GateDecisionEntry
+  - path: cmd/orch/stats_cmd.go
+    description: Count 'allow' decisions in aggregateStats
+  - path: cmd/orch/stats_output.go
+    description: Display allow counts in gate decisions text output
+  - path: cmd/orch/stats_test.go
+    description: TestGateDecisionStats_AllowEvents test
 
-changes_made:
-  - section: Summary
-    change: Added enforcement+measurement pairing claim with evidence
-  - section: Hard/Soft taxonomy table
-    change: Updated Measurement row — hard harness cost/coverage are NOT binary
-  - section: Hard harness inventory
-    change: Added duplication detector row
-  - section: "5. The Measurement Surface"
-    change: Rewrote as paired enforcement+measurement. Added evidence table, survivorship bias, design principles, instrumentation status.
-  - section: "6. Implementation Layers"
-    change: Split into enforcement + measurement surface columns
-  - section: Critical Invariants
-    change: Added invariant #7 (enforcement without measurement is theological)
-  - section: Why This Fails
-    change: Added failure mode #7 (Enforcement Without Measurement)
-  - section: Constraints
-    change: Added "Why Enforcement Needs Measurement?" constraint
-  - section: Evolution
-    change: Added 2026-03-11 entry
-  - section: Synthesized From
-    change: Added measurement plan and thread references
+tests:
+  - command: "go test ./cmd/orch/ -run TestGateDecisionStats -count=1 -v"
+    result: "3 tests pass (TestGateDecisionStats, TestGateDecisionStats_AllowEvents, TestGateDecisionStats_Empty)"
+  - command: "go test ./cmd/orch/ -count=1"
+    result: "All cmd/orch tests pass"
+  - command: "go test ./pkg/orch/ -count=1"
+    result: "All pkg/orch tests pass"
 
 evidence:
-  - "Dupdetect: 111s per completion, invisible (orch-go-ia0b0)"
-  - "52% of agent.completed events lacked skill/outcome fields"
-  - "0 gate_decision events logged"
-  - "Accretion.delta: 4.7% coverage (orch-go-3w5dz)"
-  - "Health score: 89% calibration artifact (Mar 10 probe)"
+  - "go test ./cmd/orch/ -run TestGateDecisionStats -count=1 -v — 3/3 PASS"
+  - "go test ./cmd/orch/ -count=1 — ok"
+  - "go test ./pkg/orch/ -count=1 — ok"
+  - "go build ./cmd/orch/ — clean build"

@@ -250,21 +250,22 @@ func outputStatsText(report *StatsReport) error {
 
 	outputGateEffectiveness(report)
 
-	// Gate decision stats (blocks and bypasses from spawn.gate_decision events)
+	// Gate decision stats (allows, blocks, and bypasses from spawn.gate_decision events)
 	if report.GateDecisionStats.TotalDecisions > 0 {
 		fmt.Println()
-		fmt.Println("🚦 GATE DECISIONS (blocks & bypasses)")
-		fmt.Printf("  Total: %d  |  Blocks: %d  |  Bypasses: %d\n",
+		fmt.Println("🚦 GATE DECISIONS")
+		fmt.Printf("  Total: %d  |  Allows: %d  |  Blocks: %d  |  Bypasses: %d\n",
 			report.GateDecisionStats.TotalDecisions,
+			report.GateDecisionStats.TotalAllows,
 			report.GateDecisionStats.TotalBlocks,
 			report.GateDecisionStats.TotalBypasses)
 
 		if len(report.GateDecisionStats.ByGate) > 0 {
 			fmt.Println()
-			fmt.Printf("  %-25s %8s %8s\n", "Gate", "Blocks", "Bypasses")
-			fmt.Println("  " + strings.Repeat("-", 44))
+			fmt.Printf("  %-25s %8s %8s %8s\n", "Gate", "Allows", "Blocks", "Bypasses")
+			fmt.Println("  " + strings.Repeat("-", 53))
 			for _, gate := range report.GateDecisionStats.ByGate {
-				fmt.Printf("  %-25s %8d %8d\n", gate.Gate, gate.Blocks, gate.Bypasses)
+				fmt.Printf("  %-25s %8d %8d %8d\n", gate.Gate, gate.Allows, gate.Blocks, gate.Bypasses)
 			}
 		}
 
