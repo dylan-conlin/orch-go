@@ -179,8 +179,8 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 		fmt.Println("Skipped workspace archival (--no-archive)")
 	}
 
-	// Auto-rebuild if agent committed Go changes
-	if hasGoChangesInRecentCommits(target.WorkProjectDir) {
+	// Auto-rebuild if agent committed Go changes (scoped to agent baseline)
+	if hasAgentGoChanges(target.WorkspacePath, target.WorkProjectDir) {
 		fmt.Println("Detected Go file changes in recent commits")
 		if err := runAutoRebuild(target.WorkProjectDir); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: auto-rebuild failed: %v\n", err)

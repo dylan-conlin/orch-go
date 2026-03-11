@@ -432,6 +432,147 @@ func setupGitRepo(t *testing.T, dir string) {
 	}
 }
 
+func TestHasGoChangesForAgent_NoWorkspace(t *testing.T) {
+	// No workspace = falls back to HasGoChangesInRecentCommits
+	// Without a git repo, should return false
+	tempDir := t.TempDir()
+	got := HasGoChangesForAgent("", tempDir)
+	if got {
+		t.Error("HasGoChangesForAgent with empty workspace should return false when no git repo")
+	}
+}
+
+func TestHasGoChangesForAgent_NoBaseline(t *testing.T) {
+	// Workspace exists but has no manifest/baseline — falls back to global check
+	tempDir := t.TempDir()
+	workspacePath := filepath.Join(tempDir, "workspace")
+	if err := os.MkdirAll(workspacePath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	projectDir := filepath.Join(tempDir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	got := HasGoChangesForAgent(workspacePath, projectDir)
+	if got {
+		t.Error("HasGoChangesForAgent with no baseline and no git repo should return false")
+	}
+}
+
+func TestHasGoChangesForAgent_WithBaseline_NoGoChanges(t *testing.T) {
+	// Agent has a baseline but only modified non-Go files
+	tempDir := t.TempDir()
+	projectDir := filepath.Join(tempDir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create initial file so setupGitRepo has something to commit
+	if err := os.WriteFile(filepath.Join(projectDir, "go.mod"), []byte("module test\ngo 1.21\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set up git repo with initial commit
+	setupGitRepo(t, projectDir)
+
+	// Get baseline (current HEAD)
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = projectDir
+	baselineBytes, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse failed: %v", err)
+	}
+	baseline := string(baselineBytes[:len(baselineBytes)-1]) // trim newline
+
+	// Create a non-Go file change after baseline
+	if err := os.WriteFile(filepath.Join(projectDir, "README.md"), []byte("# Test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	commitFile(t, projectDir, "README.md", "add readme")
+
+	// Create workspace with manifest containing the baseline
+	workspacePath := filepath.Join(tempDir, "workspace")
+	if err := os.MkdirAll(workspacePath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"skill":"investigation","git_baseline":"` + baseline + `","spawn_time":"2026-01-01T00:00:00Z"}`
+	if err := os.WriteFile(filepath.Join(workspacePath, "AGENT_MANIFEST.json"), []byte(manifest), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := HasGoChangesForAgent(workspacePath, projectDir)
+	if got {
+		t.Error("HasGoChangesForAgent should return false when only non-Go files changed since baseline")
+	}
+}
+
+func TestHasGoChangesForAgent_WithBaseline_GoChanges(t *testing.T) {
+	// Agent has a baseline and modified Go files
+	tempDir := t.TempDir()
+	projectDir := filepath.Join(tempDir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create go.mod and main.go
+	if err := os.WriteFile(filepath.Join(projectDir, "go.mod"), []byte("module test\ngo 1.21\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte("package main\nfunc main() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set up git repo
+	setupGitRepo(t, projectDir)
+
+	// Get baseline (current HEAD)
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = projectDir
+	baselineBytes, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse failed: %v", err)
+	}
+	baseline := string(baselineBytes[:len(baselineBytes)-1])
+
+	// Make a Go file change after baseline
+	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte("package main\nfunc main() { println(\"hello\") }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	commitFile(t, projectDir, "main.go", "update main.go")
+
+	// Create workspace with manifest containing the baseline
+	workspacePath := filepath.Join(tempDir, "workspace")
+	if err := os.MkdirAll(workspacePath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"skill":"feature-impl","git_baseline":"` + baseline + `","spawn_time":"2026-01-01T00:00:00Z"}`
+	if err := os.WriteFile(filepath.Join(workspacePath, "AGENT_MANIFEST.json"), []byte(manifest), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := HasGoChangesForAgent(workspacePath, projectDir)
+	if !got {
+		t.Error("HasGoChangesForAgent should return true when Go files changed since baseline")
+	}
+}
+
+// commitFile stages and commits a specific file.
+func commitFile(t *testing.T, dir, file, msg string) {
+	t.Helper()
+	cmds := [][]string{
+		{"git", "add", file},
+		{"git", "commit", "-m", msg},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("commitFile: %v failed: %v\n%s", args, err, out)
+		}
+	}
+}
+
 func TestVerifyBuildForCompletion_NoGitChanges(t *testing.T) {
 	// Create a Go project without git — no recent Go changes means nil result
 	tempDir := t.TempDir()

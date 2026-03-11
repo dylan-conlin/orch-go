@@ -1366,18 +1366,10 @@ func TestHasGoChangesDetection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Use the same logic as hasGoChangesInRecentCommits
-			line := tt.filePath
-			isGoChange := false
-			if strings.HasPrefix(line, "cmd/orch/") && strings.HasSuffix(line, ".go") {
-				isGoChange = true
-			}
-			if strings.HasPrefix(line, "pkg/") && strings.HasSuffix(line, ".go") {
-				isGoChange = true
-			}
-
-			if isGoChange != tt.wantGo {
-				t.Errorf("Go change detection for %q = %v, want %v", tt.filePath, isGoChange, tt.wantGo)
+			// Use the extracted hasOrchGoChangesInOutput function
+			got := hasOrchGoChangesInOutput(tt.filePath + "\n")
+			if got != tt.wantGo {
+				t.Errorf("hasOrchGoChangesInOutput(%q) = %v, want %v", tt.filePath, got, tt.wantGo)
 			}
 		})
 	}

@@ -155,6 +155,7 @@ func getModifiedFilesSinceBaseline(projectDir, baseline string, commitCount int)
 // countHotspotAdvisoryMatches returns the number of hotspot matches for modified files.
 // Used by review tier escalation to determine if the tier should be bumped.
 // Reads GitBaseline from AGENT_MANIFEST.json to scope diff to agent's actual changes.
+// Skips expensive hotspot analysis when only non-code files were modified.
 func countHotspotAdvisoryMatches(projectDir, workspacePath string) int {
 	if projectDir == "" {
 		return 0
@@ -163,6 +164,12 @@ func countHotspotAdvisoryMatches(projectDir, workspacePath string) int {
 	baseline := readHotspotBaseline(workspacePath)
 	modifiedFiles, err := getModifiedFilesSinceBaseline(projectDir, baseline, 5)
 	if err != nil || len(modifiedFiles) == 0 {
+		return 0
+	}
+
+	// Filter to code files — skip expensive analysis for non-code-only agents
+	codeFiles := filterCodeFiles(modifiedFiles)
+	if len(codeFiles) == 0 {
 		return 0
 	}
 
@@ -186,8 +193,47 @@ func countHotspotAdvisoryMatches(projectDir, workspacePath string) int {
 		return 0
 	}
 
-	matches := matchModifiedFilesToHotspots(modifiedFiles, allHotspots)
+	matches := matchModifiedFilesToHotspots(codeFiles, allHotspots)
 	return len(matches)
+}
+
+// isCodeFile returns true if the path looks like a source code file rather than
+// metadata, documentation, or workspace artifacts. Used to skip expensive analyses
+// (hotspot, build, duplication) when an agent only modified non-code files.
+func isCodeFile(path string) bool {
+	// Non-code directory prefixes
+	nonCodePrefixes := []string{".kb/", ".orch/", ".beads/", ".github/"}
+	for _, p := range nonCodePrefixes {
+		if strings.HasPrefix(path, p) {
+			return false
+		}
+	}
+
+	// Non-code file extensions
+	nonCodeExtensions := []string{
+		".md", ".yaml", ".yml", ".json", ".txt", ".toml",
+		".lock", ".sum", ".log", ".csv",
+	}
+	lower := strings.ToLower(path)
+	for _, ext := range nonCodeExtensions {
+		if strings.HasSuffix(lower, ext) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// filterCodeFiles returns only files that look like source code,
+// excluding .kb/, .orch/, .beads/, .md, .yaml, etc.
+func filterCodeFiles(files []string) []string {
+	var code []string
+	for _, f := range files {
+		if isCodeFile(f) {
+			code = append(code, f)
+		}
+	}
+	return code
 }
 
 // RunHotspotAdvisoryForCompletion checks if the agent modified files in hotspot areas.
@@ -196,6 +242,8 @@ func countHotspotAdvisoryMatches(projectDir, workspacePath string) int {
 //
 // This is informational only - it does not block completion.
 // Reads GitBaseline from AGENT_MANIFEST.json to scope diff to agent's actual changes.
+// Skips expensive hotspot analysis when the agent only modified non-code files
+// (.kb/, .orch/, .beads/, .md, .yaml, etc.).
 func RunHotspotAdvisoryForCompletion(projectDir, workspacePath string) string {
 	if projectDir == "" {
 		return ""
@@ -205,6 +253,13 @@ func RunHotspotAdvisoryForCompletion(projectDir, workspacePath string) string {
 	baseline := readHotspotBaseline(workspacePath)
 	modifiedFiles, err := getModifiedFilesSinceBaseline(projectDir, baseline, 5)
 	if err != nil || len(modifiedFiles) == 0 {
+		return ""
+	}
+
+	// Filter to code files only — skip expensive hotspot analysis when agent
+	// only modified .kb/, .orch/, .beads/, .md, .yaml, etc.
+	codeFiles := filterCodeFiles(modifiedFiles)
+	if len(codeFiles) == 0 {
 		return ""
 	}
 
@@ -233,8 +288,8 @@ func RunHotspotAdvisoryForCompletion(projectDir, workspacePath string) string {
 		return ""
 	}
 
-	// Cross-reference modified files against hotspots
-	matches := matchModifiedFilesToHotspots(modifiedFiles, allHotspots)
+	// Cross-reference code files against hotspots (not .kb/ etc.)
+	matches := matchModifiedFilesToHotspots(codeFiles, allHotspots)
 
 	return formatHotspotAdvisory(matches)
 }

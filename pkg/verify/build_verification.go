@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // BuildVerificationResult represents the result of checking if the project builds and passes vet.
@@ -200,19 +202,52 @@ func truncateOutput(output string, maxLen int) string {
 	return output[:maxLen] + "... (truncated)"
 }
 
+// HasGoChangesForAgent checks if the agent modified any Go files based on
+// the agent's spawn baseline (from AGENT_MANIFEST.json). This is more precise
+// than HasGoChangesInRecentCommits which checks HEAD~5..HEAD globally and may
+// include changes from other agents.
+// Returns false if the workspace is empty, has no manifest, or no baseline.
+func HasGoChangesForAgent(workspacePath, projectDir string) bool {
+	if workspacePath == "" || projectDir == "" {
+		return false
+	}
+
+	manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+	baseline := manifest.GitBaseline
+	if baseline == "" {
+		// No baseline — fall back to global check
+		return HasGoChangesInRecentCommits(projectDir)
+	}
+
+	cmd := exec.Command("git", "diff", "--name-only", baseline+"..HEAD")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		// Baseline may be gc'd — fall back to global check
+		return HasGoChangesInRecentCommits(projectDir)
+	}
+
+	return hasGoChangesInFiles(string(output))
+}
+
 // VerifyBuildForCompletion is a convenience function for use in VerifyCompletionFull.
 // Returns nil if no verification is needed (not a Go project, no Go changes, or non-implementation skill).
 // Returns EscalationBlock level result if build fails.
+// Uses agent-specific baseline to avoid running go build when THIS agent didn't touch Go files.
 func VerifyBuildForCompletion(workspacePath, projectDir string) *BuildVerificationResult {
-	result := VerifyBuild(workspacePath, projectDir)
-
 	// Return nil if not a Go project - no action needed
-	if !result.HasGoFiles {
+	if !IsGoProject(projectDir) {
 		return nil
 	}
 
-	// Return nil if no Go changes
-	if !HasGoChangesInRecentCommits(projectDir) {
+	// Check agent-specific Go changes first (scoped to this agent's baseline).
+	// This avoids running go build/vet for agents that only modified .kb/, .md, etc.
+	if !HasGoChangesForAgent(workspacePath, projectDir) {
+		return nil
+	}
+
+	result := VerifyBuild(workspacePath, projectDir)
+	if !result.HasGoFiles {
 		return nil
 	}
 

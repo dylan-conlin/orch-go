@@ -141,3 +141,103 @@ func TestMatchModifiedFilesToHotspots_Dedup(t *testing.T) {
 		t.Errorf("expected exactly 1 match (deduped), got %d", len(matches))
 	}
 }
+
+func TestIsCodeFile(t *testing.T) {
+	tests := []struct {
+		path     string
+		wantCode bool
+	}{
+		// Code files
+		{"cmd/orch/main.go", true},
+		{"pkg/verify/check.go", true},
+		{"web/src/App.svelte", true},
+		{"internal/handler.ts", true},
+		{"main.py", true},
+		{"Makefile", true},
+
+		// Non-code files: .kb/ directory
+		{".kb/models/foo/model.md", false},
+		{".kb/investigations/2026-01-01-inv-something.md", false},
+		{".kb/guides/spawn.md", false},
+		{".kb/global/models/bar/probes/probe.md", false},
+
+		// Non-code files: .orch/ directory
+		{".orch/workspace/og-foo/SYNTHESIS.md", false},
+		{".orch/templates/SYNTHESIS.md", false},
+		{".orch/config.yaml", false},
+
+		// Non-code files: .beads/ directory
+		{".beads/issues.jsonl", false},
+		{".beads/hooks/on_close", false},
+
+		// Non-code files: .github/ directory
+		{".github/workflows/ci.yml", false},
+
+		// Non-code files: by extension
+		{"README.md", false},
+		{"CHANGELOG.md", false},
+		{"go.sum", false},
+		{"config.yaml", false},
+		{"package.json", false},
+		{"schema.json", false},
+		{"notes.txt", false},
+		{"Cargo.toml", false},
+		{"go.mod.sum", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := isCodeFile(tt.path)
+			if got != tt.wantCode {
+				t.Errorf("isCodeFile(%q) = %v, want %v", tt.path, got, tt.wantCode)
+			}
+		})
+	}
+}
+
+func TestFilterCodeFiles(t *testing.T) {
+	input := []string{
+		"cmd/orch/main.go",
+		".kb/models/foo/model.md",
+		"pkg/verify/check.go",
+		".orch/workspace/foo/SYNTHESIS.md",
+		"README.md",
+		".beads/issues.jsonl",
+		"web/src/App.svelte",
+		"go.sum",
+	}
+
+	got := filterCodeFiles(input)
+
+	want := []string{"cmd/orch/main.go", "pkg/verify/check.go", "web/src/App.svelte"}
+	if len(got) != len(want) {
+		t.Fatalf("filterCodeFiles: got %d files, want %d: %v", len(got), len(want), got)
+	}
+	for i, f := range got {
+		if f != want[i] {
+			t.Errorf("filterCodeFiles[%d] = %q, want %q", i, f, want[i])
+		}
+	}
+}
+
+func TestFilterCodeFiles_AllNonCode(t *testing.T) {
+	input := []string{
+		".kb/models/foo/probes/probe.md",
+		".orch/workspace/bar/SYNTHESIS.md",
+		"README.md",
+		"CHANGELOG.md",
+		"go.sum",
+	}
+
+	got := filterCodeFiles(input)
+	if len(got) != 0 {
+		t.Errorf("expected empty slice for all non-code files, got %v", got)
+	}
+}
+
+func TestFilterCodeFiles_Empty(t *testing.T) {
+	got := filterCodeFiles(nil)
+	if len(got) != 0 {
+		t.Errorf("expected empty slice for nil input, got %v", got)
+	}
+}

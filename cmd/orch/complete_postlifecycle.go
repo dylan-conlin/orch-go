@@ -75,7 +75,37 @@ func hasGoChangesInRecentCommits(projectDir string) bool {
 		}
 	}
 
-	lines := strings.Split(string(output), "\n")
+	return hasOrchGoChangesInOutput(string(output))
+}
+
+// hasAgentGoChanges checks if the agent modified cmd/orch/*.go or pkg/*.go files
+// using the agent's spawn baseline. Falls back to hasGoChangesInRecentCommits
+// if no baseline is available.
+func hasAgentGoChanges(workspacePath, projectDir string) bool {
+	if workspacePath == "" {
+		return hasGoChangesInRecentCommits(projectDir)
+	}
+
+	manifest := spawn.ReadAgentManifestWithFallback(workspacePath)
+	baseline := manifest.GitBaseline
+	if baseline == "" {
+		return hasGoChangesInRecentCommits(projectDir)
+	}
+
+	cmd := exec.Command("git", "diff", "--name-only", baseline+"..HEAD")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		// Baseline may be gc'd — fall back to global check
+		return hasGoChangesInRecentCommits(projectDir)
+	}
+
+	return hasOrchGoChangesInOutput(string(output))
+}
+
+// hasOrchGoChangesInOutput checks if git diff output contains cmd/orch/*.go or pkg/*.go files.
+func hasOrchGoChangesInOutput(output string) bool {
+	lines := strings.Split(output, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
