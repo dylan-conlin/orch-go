@@ -58,7 +58,7 @@ Every harness component is either hard or soft:
 | Mechanism | What It Influences | Measured? | Measured Effectiveness |
 |-----------|-------------------|-----------|-----------------------|
 | SKILL.md content | Agent procedure, vocabulary, routing | Yes — 265 contrastive trials | Knowledge: +5 lift. Stance (attention primers): +2 to +7. Behavioral: inert at 10+ |
-| CLAUDE.md | Codebase conventions, constraints | No | Unknown — daemon.go grew past stated 1500-line convention |
+| CLAUDE.md | Codebase conventions, constraints | No | Unknown — daemon.go grew past stated 1500-line convention. Maintenance investigations (Feb 2026) show CLAUDE.md requires active upkeep: documentation drift (stale pkg/registry/ refs, duplicated sections) and progressive disclosure (accretion boundaries section compressed from 20→4 lines after guarded-file reminder). |
 | .kb/ knowledge | Prior findings, decisions, models | No | Unknown |
 | SPAWN_CONTEXT.md | Hotspot awareness, skill context | No | Advisory injection, no compliance gate |
 | Coaching plugin | Mid-session correction | Partial | Only works for OpenCode spawns, not Claude CLI/tmux |
@@ -407,6 +407,8 @@ A useful way to think about agent failures, though in practice most failures are
 - `.kb/investigations/2026-03-07-inv-add-pre-commit-growth-gate.md` — Layer 0 implementation
 - `.kb/investigations/2026-02-14-inv-architect-design-accretion-gravity-enforcement.md` — Four-layer enforcement design
 - `.kb/investigations/2026-02-24-synthesis-enforcement-accretion-verification-design-burst.md` — Cross-investigation synthesis
+- `.kb/investigations/2026-02-14-inv-add-claude-md-accretion-boundaries.md` — CLAUDE.md as soft harness: progressive disclosure pattern (20→4 lines)
+- `.kb/investigations/2026-02-14-inv-fix-claude-md-remove-deleted.md` — CLAUDE.md documentation drift: stale refs to deleted pkg/registry/, duplicated sections
 
 **Thread:**
 - `.kb/threads/2026-03-07-harness-engineering-structural-enforcement-agent.md`
