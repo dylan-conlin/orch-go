@@ -1,16 +1,22 @@
 verification:
   type: investigation
   commands_run:
-    - "orch stats (full output analyzed — 216 spawns, 211 completions, 5336 events)"
+    - "python3 analysis of ~/.orch/events.jsonl (5,363 events, 216 spawns, 211 completions)"
+    - "grep analysis of 94 verification.failed, 53 triage_bypassed, 30 gate_decision events"
+    - "Manual classification of 173 gate blocks/failures across 8 signal gates"
+    - "Source file inspection of 7 self_review-flagged locations"
   assertions:
-    - "Every gate in the system is enumerated (36 gates across 4 categories)"
-    - "Each gate classified as signal/noise/unknown with evidence from stats data"
-    - "5 noise gates identified with specific false-positive patterns"
-    - "10 signal gates confirmed with evidence"
-    - "22+ unknown gates identified (insufficient data)"
-    - "Aggregate metrics calculated: 69% spawn bypass rate, 11.8% completion first-try pass"
+    - "All 10 signal gates from Phase 1 audited for false positive rate"
+    - "173 total samples classified as TP/FP/AMB"
+    - "Signal gate aggregate FP rate: 0% (0/173)"
+    - "Correctness gates (build, vet, phase_complete, synthesis, accretion_precommit): 0% FP, n=11"
+    - "Discipline gates (explain_back, verified, triage): 0% FP, n=162"
+    - "self_review (NOISE) confirmed: 79% FP rate (15/19)"
+    - "Wilson confidence intervals provided for all gates"
+    - "Model updated with accuracy data and correctness/discipline taxonomy"
   manual_verification:
-    - "Review investigation file for completeness: .kb/investigations/2026-03-11-inv-gate-census-signal-noise-classification.md"
-    - "Verify noise gate patterns match orchestrator experience"
+    - "Review .kb/investigations/2026-03-11-inv-gate-retrospective-accuracy-audit.md"
+    - "Verify model update in .kb/models/harness-engineering/model.md (search 'Retrospective accuracy')"
   deliverables:
-    - ".kb/investigations/2026-03-11-inv-gate-census-signal-noise-classification.md"
+    - ".kb/investigations/2026-03-11-inv-gate-retrospective-accuracy-audit.md"
+    - ".kb/models/harness-engineering/model.md (updated)"
