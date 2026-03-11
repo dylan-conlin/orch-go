@@ -507,6 +507,16 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 	// Note: Explain-back gate (GateExplainBack) is handled at the orch complete command level,
 	// not in the verification pipeline. It requires orchestrator interaction (--explain flag).
 
+	// Plan hydration advisory (informational warning)
+	// Warns when architect completions produce multi-phase plans without hydrating
+	// them into beads issues, suggesting orch plan hydrate.
+	if !isOrch && projectDir != "" {
+		planResult := CheckPlanHydration(result.Skill, workspacePath, projectDir)
+		if planResult != nil {
+			result.Warnings = append(result.Warnings, planResult.Warnings...)
+		}
+	}
+
 	// Cross-repo deliverable check (informational warning)
 	// If probe/investigation path is outside projectDir, the orchestrator needs to know
 	// so they can manually integrate the artifact into the correct repo.
