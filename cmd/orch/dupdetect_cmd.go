@@ -53,6 +53,13 @@ func runDupdetect(args []string) error {
 	d.Threshold = dupdetectThreshold
 	d.MinBodyLines = dupdetectMinLines
 
+	// Load allowlist from .dupdetectignore
+	allowlist, loadErr := dupdetect.LoadAllowlistFile(projectDir)
+	if loadErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to load .dupdetectignore: %v\n", loadErr)
+	}
+	d.Allowlist = allowlist
+
 	var pairs []dupdetect.DupPair
 
 	if len(args) > 0 {

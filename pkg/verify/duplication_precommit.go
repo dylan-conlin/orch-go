@@ -53,6 +53,11 @@ func CheckStagedDuplication(projectDir string) *DuplicationPrecommitResult {
 	d.MinBodyLines = 10
 	d.Threshold = 0.85
 
+	// Load allowlist from .dupdetectignore
+	if allowlist, loadErr := dupdetect.LoadAllowlistFile(projectDir); loadErr == nil {
+		d.Allowlist = allowlist
+	}
+
 	pairs, err := d.CheckModifiedFilesProject(projectDir, goFiles)
 	if err != nil || len(pairs) == 0 {
 		return result

@@ -35,8 +35,9 @@ type DupPair struct {
 
 // Detector configures and runs duplication detection.
 type Detector struct {
-	MinBodyLines int     // skip functions smaller than this (default 10)
-	Threshold    float64 // similarity threshold 0.0-1.0 (default 0.80)
+	MinBodyLines int      // skip functions smaller than this (default 10)
+	Threshold    float64  // similarity threshold 0.0-1.0 (default 0.80)
+	Allowlist    []string // function name patterns — pairs where both match same pattern are suppressed
 }
 
 // NewDetector returns a Detector with sensible defaults.
@@ -125,6 +126,9 @@ func (d *Detector) FindDuplicates(funcs []FuncInfo) []DupPair {
 		for j := i + 1; j < len(funcs); j++ {
 			sim := similarity(funcs[i].Fingerprint, funcs[j].Fingerprint)
 			if sim >= d.Threshold {
+				if len(d.Allowlist) > 0 && isAllowlisted(funcs[i].Name, funcs[j].Name, d.Allowlist) {
+					continue
+				}
 				pairs = append(pairs, DupPair{
 					FuncA:      funcs[i],
 					FuncB:      funcs[j],

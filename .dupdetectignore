@@ -1,0 +1,10 @@
+# Intentionally parallel code — structurally identical by design.
+# A pair is suppressed only when BOTH functions match the SAME pattern.
+# Pattern syntax: filepath.Match globs against function names (e.g., "(Type).Method*").
+
+# Event logger methods — each Log* method wraps l.Log() with event-specific data.
+# They are parallel by design; flagging them as clones buries real findings.
+(Logger).Log*
+
+# Event logger adapter methods — same pattern as Logger.
+(EventLoggerAdapter).Log*

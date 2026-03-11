@@ -55,6 +55,11 @@ func findDuplicationInModifiedFiles(projectDir, workspacePath string) []dupdetec
 	d.MinBodyLines = 10
 	d.Threshold = 0.85 // higher threshold for completion advisory — only flag clear clones
 
+	// Load allowlist from .dupdetectignore
+	if allowlist, loadErr := dupdetect.LoadAllowlistFile(projectDir); loadErr == nil {
+		d.Allowlist = allowlist
+	}
+
 	pairs, err := d.CheckModifiedFilesProject(projectDir, goFiles)
 	if err != nil {
 		return nil
