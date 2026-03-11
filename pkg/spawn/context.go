@@ -332,6 +332,48 @@ Simply follow the guidance provided below.
 
 ---
 {{end}}
+{{if .Explore}}
+## EXPLORATION MODE CONFIGURATION
+
+**Mode:** Exploration (decompose → parallelize → judge → synthesize)
+**Parent Skill:** {{.ExploreParentSkill}}
+**Breadth:** {{.ExploreBreadth}} parallel workers
+**Beads ID:** {{.BeadsID}}
+
+**Your role:** You are an exploration orchestrator. Your job is to:
+1. **DECOMPOSE** the question into {{.ExploreBreadth}} independent subproblems
+2. **SPAWN** workers for each subproblem using ` + "`orch spawn --bypass-triage --no-track --reason \"exploration worker\" {{.ExploreParentSkill}} \"subproblem\"`" + `
+3. **WAIT** for all workers using ` + "`orch wait <beads-id> --timeout 30m`" + ` (or check tmux windows)
+4. **COLLECT** findings from each worker's investigation/probe files
+5. **JUDGE** findings for grounding, consistency, coverage, relevance, actionability
+6. **SYNTHESIZE** a unified analysis that composes understanding (not concatenates findings)
+
+**Decomposition Rules:**
+- Each subproblem MUST be independently answerable (no cross-dependencies)
+- Subproblems should cover different aspects of the question
+- Include the original question context in each worker's task
+- Workers use the ` + "`{{.ExploreParentSkill}}`" + ` skill (they get the domain expertise)
+
+**Judge Criteria (evaluate each sub-finding):**
+| Dimension | Question |
+|-----------|----------|
+| Grounding | Does this claim cite specific code/docs/evidence? |
+| Consistency | Do sub-findings contradict each other? |
+| Coverage | Does the set cover the original question? |
+| Relevance | Does this finding address its subproblem? |
+| Actionability | Could someone act on this finding? |
+
+**Synthesis Output:**
+Write your synthesis to the investigation file (.kb/investigations/) or SYNTHESIS.md.
+- Contested findings (where workers disagree) are the most valuable — highlight them
+- Gaps (aspects not covered by any worker) should be explicitly noted
+- Do NOT just concatenate — compose understanding from the parts
+
+**Cost Bounding:**
+- Max {{.ExploreBreadth}} workers (enforced)
+- Workers use --no-track (lightweight, no beads overhead)
+- If rate-limited, reduce breadth rather than fail
+{{end}}
 {{if .Phases}}
 FEATURE-IMPL CONFIGURATION:
 Phases: {{.Phases}}
@@ -635,6 +677,9 @@ type contextData struct {
 	IntentType            string   // Orchestrator's declared outcome type (experience, produce, compare, etc.)
 	PriorCompletions      string   // Prior completed agent work on same issue
 	BrowserAutomation     bool     // When true, playwright-cli browser automation is available
+	Explore               bool     // When true, this is an exploration mode spawn
+	ExploreBreadth        int      // Max parallel workers for exploration
+	ExploreParentSkill    string   // Original skill (investigation/architect)
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -717,6 +762,9 @@ func GenerateContext(cfg *Config) (string, error) {
 		IntentType:            cfg.IntentType,
 		PriorCompletions:      cfg.PriorCompletions,
 		BrowserAutomation:     cfg.BrowserTool == "playwright-cli",
+		Explore:               cfg.Explore,
+		ExploreBreadth:        cfg.ExploreBreadth,
+		ExploreParentSkill:    cfg.ExploreParentSkill,
 	}
 
 	var buf bytes.Buffer

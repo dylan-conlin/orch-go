@@ -349,6 +349,9 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp, browserT
 		PriorCompletions:   ctx.PriorCompletions,
 		MaxTurns:           ctx.MaxTurns,
 		Settings:           ctx.Settings,
+		Explore:            ctx.Explore,
+		ExploreBreadth:     ctx.ExploreBreadth,
+		ExploreParentSkill: ctx.ExploreParentSkill,
 	}
 }
 

@@ -63,6 +63,9 @@ type SpawnContext struct {
 	PriorCompletions   string
 	MaxTurns           int
 	Settings           string
+	Explore            bool
+	ExploreBreadth     int
+	ExploreParentSkill string
 }
 
 // ResolvedSpawnResult holds resolved spawn settings and the parsed model spec.

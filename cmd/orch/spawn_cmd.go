@@ -63,6 +63,8 @@ var (
 	spawnSettings           string // Path to settings.json for Claude CLI (worker hook isolation)
 	spawnIntentType         string // Orchestrator's declared outcome type (experience, produce, compare, etc.)
 	spawnDryRun             bool   // Show spawn plan without executing
+	spawnExplore            bool   // Exploration mode: decompose → parallelize → judge → synthesize
+	spawnExploreBreadth     int    // Max parallel subproblem workers (default 3)
 	spawnModeSet            bool   // Tracks whether --mode was explicitly set
 	spawnValidationSet      bool   // Tracks whether --validation was explicitly set
 )
@@ -204,6 +206,8 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnSettings, "settings", "", "Path to settings.json for Claude CLI (enables worker hook isolation)")
 	spawnCmd.Flags().StringVar(&spawnIntentType, "intent", "", "Declared outcome type: experience, produce, compare, investigate, fix, build, explore")
 	spawnCmd.Flags().BoolVar(&spawnDryRun, "dry-run", false, "Show spawn plan without executing (validates skill loading, context generation, and resolved settings)")
+	spawnCmd.Flags().BoolVar(&spawnExplore, "explore", false, "Exploration mode: decompose question into parallel subproblems, judge findings, synthesize (investigation/architect only)")
+	spawnCmd.Flags().IntVar(&spawnExploreBreadth, "explore-breadth", 3, "Max parallel subproblem workers for exploration mode (default 3)")
 }
 
 func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless bool, tmux bool, attach bool) error {
@@ -254,6 +258,22 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		if needsReason && len(spawnReason) < 10 {
 			return fmt.Errorf("--reason must be at least 10 characters (got %d)", len(spawnReason))
 		}
+	}
+
+	// Validate --explore flag: only allowed with investigation or architect skills
+	exploreParentSkill := ""
+	if spawnExplore {
+		allowedExploreSkills := map[string]bool{"investigation": true, "architect": true}
+		if !allowedExploreSkills[skillName] {
+			return fmt.Errorf("--explore is only supported with investigation or architect skills (got %q)", skillName)
+		}
+		if spawnExploreBreadth < 1 || spawnExploreBreadth > 10 {
+			return fmt.Errorf("--explore-breadth must be between 1 and 10 (got %d)", spawnExploreBreadth)
+		}
+		// Preserve original skill, swap to exploration orchestrator
+		exploreParentSkill = skillName
+		skillName = "exploration-orchestrator"
+		fmt.Printf("🔭 Exploration mode: decomposing %q task into %d parallel subproblems\n", exploreParentSkill, spawnExploreBreadth)
 	}
 
 	// Build input parameter struct
@@ -481,6 +501,9 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		PriorCompletions:   priorCompletions,
 		MaxTurns:           spawnMaxTurns,
 		Settings:           spawnSettings,
+		Explore:            spawnExplore,
+		ExploreBreadth:     spawnExploreBreadth,
+		ExploreParentSkill: exploreParentSkill,
 	}
 
 	// 11. Build spawn config

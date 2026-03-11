@@ -328,6 +328,20 @@ type Config struct {
 	// Populated from --bypass-triage, --force-hotspot, --bypass-verification flags.
 	// Included in session.spawned events for outcome correlation.
 	GatesBypassed []string
+
+	// Explore indicates this is an exploration mode spawn (--explore flag).
+	// When true, a single investigation/architect is replaced with a spawned
+	// exploration orchestrator that decomposes → fans out → judges → synthesizes.
+	Explore bool
+
+	// ExploreBreadth is the maximum number of parallel subproblem workers (default 3).
+	// Controls cost bounding for exploration mode. Only used when Explore is true.
+	ExploreBreadth int
+
+	// ExploreParentSkill is the original skill requested (e.g., "investigation").
+	// When Explore is true, the SkillName is swapped to "exploration-orchestrator"
+	// and the original skill is preserved here for worker spawns.
+	ExploreParentSkill string
 }
 
 // UsageInfo contains account usage data at spawn time.
