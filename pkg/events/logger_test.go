@@ -474,3 +474,132 @@ func TestVerificationBypassedDataSerialization(t *testing.T) {
 		t.Errorf("BeadsID = %v, want %v", parsed.BeadsID, data.BeadsID)
 	}
 }
+
+// Test PipelineStepTiming serialization
+func TestPipelineStepTimingSerialization(t *testing.T) {
+	steps := []PipelineStepTiming{
+		{Name: "hotspot", DurationMs: 42},
+		{Name: "duplication", Skipped: true, SkipReason: "orchestrator"},
+		{Name: "model_impact", DurationMs: 15},
+		{Name: "auto_rebuild", Skipped: true, SkipReason: "no_go_changes"},
+	}
+
+	jsonData, err := json.Marshal(steps)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+
+	var parsed []PipelineStepTiming
+	if err := json.Unmarshal(jsonData, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	if len(parsed) != 4 {
+		t.Fatalf("Expected 4 steps, got %d", len(parsed))
+	}
+
+	// Verify executed step
+	if parsed[0].Name != "hotspot" || parsed[0].DurationMs != 42 || parsed[0].Skipped {
+		t.Errorf("Step 0: got %+v, want hotspot/42ms/not-skipped", parsed[0])
+	}
+
+	// Verify skipped step has reason and no duration
+	if parsed[1].Name != "duplication" || !parsed[1].Skipped || parsed[1].SkipReason != "orchestrator" {
+		t.Errorf("Step 1: got %+v, want duplication/skipped/orchestrator", parsed[1])
+	}
+
+	// Verify skip_reason is omitted when not skipped
+	raw := string(jsonData)
+	if !strings.Contains(raw, `"skip_reason":"orchestrator"`) {
+		t.Error("Expected skip_reason for skipped step")
+	}
+}
+
+// Test LogAgentCompleted includes pipeline timing in event
+func TestLogAgentCompleted_PipelineTiming(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogAgentCompleted(AgentCompletedData{
+		BeadsID:   "orch-go-test1",
+		Workspace: "og-feat-test",
+		Reason:    "Completed",
+		Outcome:   "success",
+		PipelineTiming: []PipelineStepTiming{
+			{Name: "hotspot", DurationMs: 120},
+			{Name: "duplication", Skipped: true, SkipReason: "no_project_dir"},
+			{Name: "model_impact", DurationMs: 30},
+			{Name: "auto_rebuild", DurationMs: 5400},
+		},
+		PipelineTotalMs: 200,
+	})
+	if err != nil {
+		t.Fatalf("LogAgentCompleted() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	raw := string(data)
+
+	// Verify pipeline_timing is present
+	if !strings.Contains(raw, "pipeline_timing") {
+		t.Error("Expected pipeline_timing in event data")
+	}
+	if !strings.Contains(raw, "pipeline_total_ms") {
+		t.Error("Expected pipeline_total_ms in event data")
+	}
+
+	// Verify step names are present
+	for _, name := range []string{"hotspot", "duplication", "model_impact", "auto_rebuild"} {
+		if !strings.Contains(raw, name) {
+			t.Errorf("Expected step name %q in event data", name)
+		}
+	}
+
+	// Verify skip_reason is present for skipped step
+	if !strings.Contains(raw, "no_project_dir") {
+		t.Error("Expected skip_reason 'no_project_dir' in event data")
+	}
+
+	// Parse and verify structure
+	var event Event
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &event); err != nil {
+		t.Fatalf("Failed to parse event JSON: %v", err)
+	}
+	if event.Type != EventTypeAgentCompleted {
+		t.Errorf("Event type = %v, want %v", event.Type, EventTypeAgentCompleted)
+	}
+}
+
+// Test LogAgentCompleted omits pipeline timing when empty
+func TestLogAgentCompleted_NoPipelineTiming(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogAgentCompleted(AgentCompletedData{
+		BeadsID: "orch-go-test2",
+		Reason:  "Completed",
+		Outcome: "success",
+	})
+	if err != nil {
+		t.Fatalf("LogAgentCompleted() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	raw := string(data)
+	if strings.Contains(raw, "pipeline_timing") {
+		t.Error("Expected pipeline_timing to be omitted when empty")
+	}
+	if strings.Contains(raw, "pipeline_total_ms") {
+		t.Error("Expected pipeline_total_ms to be omitted when zero")
+	}
+}

@@ -14,9 +14,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/checkpoint"
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/identity"
 	"github.com/dylan-conlin/orch-go/pkg/orch"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -48,9 +50,11 @@ type VerificationOutcome struct {
 }
 
 // AdvisoryResults holds the results of running completion advisories.
-// Advisories are primarily side-effects (printing), but this struct exists
-// for pipeline type consistency and future extensibility.
-type AdvisoryResults struct{}
+// Includes pipeline timing for harness measurement.
+type AdvisoryResults struct {
+	PipelineTiming  []events.PipelineStepTiming // Per-step timing
+	PipelineTotalMs int                         // Total advisory pipeline wall-clock ms
+}
 
 // resolveCompletionTarget resolves the identifier to a completion target,
 // finding workspace paths, beads IDs, and project directories.
@@ -434,25 +438,66 @@ func runCompletionAdvisories(target CompletionTarget, outcome VerificationOutcom
 	}
 
 	// Surface hotspot advisory for modified files (informational, not a gate)
-	if target.WorkProjectDir != "" && !target.IsOrchestratorSession {
-		if advisory := RunHotspotAdvisoryForCompletion(target.WorkProjectDir, target.WorkspacePath); advisory != "" {
-			fmt.Print(advisory)
+	pipelineStart := time.Now()
+	{
+		step := events.PipelineStepTiming{Name: "hotspot"}
+		if target.WorkProjectDir == "" || target.IsOrchestratorSession {
+			step.Skipped = true
+			if target.IsOrchestratorSession {
+				step.SkipReason = "orchestrator"
+			} else {
+				step.SkipReason = "no_project_dir"
+			}
+		} else {
+			t0 := time.Now()
+			if advisory := RunHotspotAdvisoryForCompletion(target.WorkProjectDir, target.WorkspacePath); advisory != "" {
+				fmt.Print(advisory)
+			}
+			step.DurationMs = int(time.Since(t0).Milliseconds())
 		}
+		advisories.PipelineTiming = append(advisories.PipelineTiming, step)
 	}
 
 	// Surface duplication advisory for modified files (informational, not a gate)
-	if target.WorkProjectDir != "" && !target.IsOrchestratorSession {
-		if advisory := RunDuplicationAdvisoryForCompletion(target.WorkProjectDir, target.WorkspacePath); advisory != "" {
-			fmt.Print(advisory)
+	{
+		step := events.PipelineStepTiming{Name: "duplication"}
+		if target.WorkProjectDir == "" || target.IsOrchestratorSession {
+			step.Skipped = true
+			if target.IsOrchestratorSession {
+				step.SkipReason = "orchestrator"
+			} else {
+				step.SkipReason = "no_project_dir"
+			}
+		} else {
+			t0 := time.Now()
+			if advisory := RunDuplicationAdvisoryForCompletion(target.WorkProjectDir, target.WorkspacePath); advisory != "" {
+				fmt.Print(advisory)
+			}
+			step.DurationMs = int(time.Since(t0).Milliseconds())
 		}
+		advisories.PipelineTiming = append(advisories.PipelineTiming, step)
 	}
 
 	// Surface model-impact advisory (informational, not a gate)
-	if target.WorkProjectDir != "" && target.WorkspacePath != "" && !target.IsOrchestratorSession {
-		if advisory := RunModelImpactAdvisory(target.WorkProjectDir, target.WorkspacePath); advisory != "" {
-			fmt.Print(advisory)
+	{
+		step := events.PipelineStepTiming{Name: "model_impact"}
+		if target.WorkProjectDir == "" || target.WorkspacePath == "" || target.IsOrchestratorSession {
+			step.Skipped = true
+			if target.IsOrchestratorSession {
+				step.SkipReason = "orchestrator"
+			} else {
+				step.SkipReason = "no_project_dir"
+			}
+		} else {
+			t0 := time.Now()
+			if advisory := RunModelImpactAdvisory(target.WorkProjectDir, target.WorkspacePath); advisory != "" {
+				fmt.Print(advisory)
+			}
+			step.DurationMs = int(time.Since(t0).Milliseconds())
 		}
+		advisories.PipelineTiming = append(advisories.PipelineTiming, step)
 	}
+	advisories.PipelineTotalMs = int(time.Since(pipelineStart).Milliseconds())
 
 	// Surface synthesis checkpoint (informational, not a gate)
 	if !target.IsOrchestratorSession && target.BeadsID != "" {

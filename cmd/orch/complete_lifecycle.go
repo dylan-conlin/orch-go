@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/activity"
 	"github.com/dylan-conlin/orch-go/pkg/agent"
@@ -20,7 +21,7 @@ import (
 // LifecycleManager.Complete execution, and all post-lifecycle operations (triage label,
 // daemon signal, auto-rebuild, changelog, telemetry, event logging, cache invalidation).
 // Returns true if LifecycleManager handled tmux cleanup (so deferred cleanup can be skipped).
-func executeLifecycleTransition(target CompletionTarget, outcome VerificationOutcome, _ AdvisoryResults) (lifecycleCleanedUp bool, err error) {
+func executeLifecycleTransition(target CompletionTarget, outcome VerificationOutcome, advisoryResults AdvisoryResults) (lifecycleCleanedUp bool, err error) {
 	// Determine close reason
 	reason := completeReason
 	if reason == "" {
@@ -180,8 +181,10 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 	}
 
 	// Auto-rebuild if agent committed Go changes (scoped to agent baseline)
+	rebuildStep := events.PipelineStepTiming{Name: "auto_rebuild"}
 	if hasAgentGoChanges(target.WorkspacePath, target.WorkProjectDir) {
 		fmt.Println("Detected Go file changes in recent commits")
+		rebuildStart := time.Now()
 		if err := runAutoRebuild(target.WorkProjectDir); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: auto-rebuild failed: %v\n", err)
 		} else {
@@ -192,6 +195,7 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 				fmt.Println("Restarted orch serve")
 			}
 		}
+		rebuildStep.DurationMs = int(time.Since(rebuildStart).Milliseconds())
 
 		// Check for new CLI commands that may need skill documentation
 		newCommands := detectNewCLICommands(target.WorkProjectDir)
@@ -216,7 +220,11 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 			fmt.Println("│  Run 'orch doctor --docs' to see all undocumented commands  │")
 			fmt.Println("└─────────────────────────────────────────────────────────────┘")
 		}
+	} else {
+		rebuildStep.Skipped = true
+		rebuildStep.SkipReason = "no_go_changes"
 	}
+	advisoryResults.PipelineTiming = append(advisoryResults.PipelineTiming, rebuildStep)
 
 	// Check for notable changelog entries
 	if !completeNoChangelogCheck {
@@ -271,6 +279,10 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 	}
 	if completeForce && completeReason != "" {
 		completedData.ForceReason = completeReason
+	}
+	if len(advisoryResults.PipelineTiming) > 0 {
+		completedData.PipelineTiming = advisoryResults.PipelineTiming
+		completedData.PipelineTotalMs = advisoryResults.PipelineTotalMs
 	}
 	if err := logger.LogAgentCompleted(completedData); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)

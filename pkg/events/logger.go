@@ -215,22 +215,32 @@ func (l *Logger) LogVerificationFailed(data VerificationFailedData) error {
 	})
 }
 
+// PipelineStepTiming records duration and skip status for a completion pipeline step.
+type PipelineStepTiming struct {
+	Name       string `json:"name"`                  // Step name: hotspot, duplication, build, model_impact
+	DurationMs int    `json:"duration_ms"`           // Wall-clock milliseconds (0 if skipped)
+	Skipped    bool   `json:"skipped"`               // Was this step skipped?
+	SkipReason string `json:"skip_reason,omitempty"` // Why skipped: no_code_files, no_go_changes, orchestrator, no_project_dir
+}
+
 // AgentCompletedData contains the data for an agent.completed event.
 type AgentCompletedData struct {
-	BeadsID            string   `json:"beads_id,omitempty"`
-	Workspace          string   `json:"workspace,omitempty"`
-	Reason             string   `json:"reason,omitempty"`
-	Forced             bool     `json:"forced"`
-	ForceReason        string   `json:"force_reason,omitempty"` // Reason for --force override (separate from close reason)
-	Untracked          bool     `json:"untracked"`
-	Orchestrator       bool     `json:"orchestrator"`
-	VerificationPassed bool     `json:"verification_passed"`      // Did verification pass on first try?
-	GatesBypassed      []string `json:"gates_bypassed,omitempty"` // Which gates were skipped (if forced)
-	Skill              string   `json:"skill,omitempty"`
-	DurationSeconds    int      `json:"duration_seconds,omitempty"` // Spawn to completion duration
-	TokensInput        int      `json:"tokens_input,omitempty"`     // Total input tokens
-	TokensOutput       int      `json:"tokens_output,omitempty"`    // Total output tokens
-	Outcome            string   `json:"outcome,omitempty"`          // success|forced|failed
+	BeadsID            string               `json:"beads_id,omitempty"`
+	Workspace          string               `json:"workspace,omitempty"`
+	Reason             string               `json:"reason,omitempty"`
+	Forced             bool                 `json:"forced"`
+	ForceReason        string               `json:"force_reason,omitempty"` // Reason for --force override (separate from close reason)
+	Untracked          bool                 `json:"untracked"`
+	Orchestrator       bool                 `json:"orchestrator"`
+	VerificationPassed bool                 `json:"verification_passed"`      // Did verification pass on first try?
+	GatesBypassed      []string             `json:"gates_bypassed,omitempty"` // Which gates were skipped (if forced)
+	Skill              string               `json:"skill,omitempty"`
+	DurationSeconds    int                  `json:"duration_seconds,omitempty"` // Spawn to completion duration
+	TokensInput        int                  `json:"tokens_input,omitempty"`     // Total input tokens
+	TokensOutput       int                  `json:"tokens_output,omitempty"`    // Total output tokens
+	Outcome            string               `json:"outcome,omitempty"`          // success|forced|failed
+	PipelineTiming     []PipelineStepTiming `json:"pipeline_timing,omitempty"`  // Per-step timing for completion pipeline
+	PipelineTotalMs    int                  `json:"pipeline_total_ms,omitempty"` // Total advisory pipeline wall-clock ms
 }
 
 // LogAgentCompleted logs an agent completion event with verification metadata.
@@ -268,6 +278,12 @@ func (l *Logger) LogAgentCompleted(data AgentCompletedData) error {
 	}
 	if data.Outcome != "" {
 		eventData["outcome"] = data.Outcome
+	}
+	if len(data.PipelineTiming) > 0 {
+		eventData["pipeline_timing"] = data.PipelineTiming
+	}
+	if data.PipelineTotalMs > 0 {
+		eventData["pipeline_total_ms"] = data.PipelineTotalMs
 	}
 
 	return l.Log(Event{
