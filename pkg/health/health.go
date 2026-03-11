@@ -28,6 +28,13 @@ type Snapshot struct {
 	TotalSourceFiles int       `json:"total_source_files"` // Total source files in codebase (for threshold scaling)
 }
 
+// IsComplete returns true if the snapshot has all key measurement fields populated.
+// Partial snapshots (e.g., from daemon BeadsHealth before fix) are missing
+// TotalSourceFiles, GateCoverage, HotspotCount, FixCommits, and FeatCommits.
+func (s Snapshot) IsComplete() bool {
+	return s.TotalSourceFiles > 0
+}
+
 // Trend represents the direction of a metric over time.
 type Trend int
 
@@ -281,7 +288,21 @@ func ScoreToGrade(score float64) string {
 	}
 }
 
+// FilterComplete returns only complete snapshots from the input.
+// Partial snapshots (missing TotalSourceFiles, etc.) are excluded.
+func FilterComplete(snapshots []Snapshot) []Snapshot {
+	var result []Snapshot
+	for _, s := range snapshots {
+		if s.IsComplete() {
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
 // GenerateReport creates a health report from a series of snapshots.
+// Only complete snapshots are used for trend analysis and the current value.
+// Partial snapshots (from daemon BeadsHealth collection) are filtered out.
 func GenerateReport(snapshots []Snapshot) Report {
 	report := Report{
 		SnapshotCount: len(snapshots),
@@ -293,25 +314,37 @@ func GenerateReport(snapshots []Snapshot) Report {
 		return report
 	}
 
-	// Current = most recent snapshot
-	report.Current = snapshots[len(snapshots)-1]
+	// Filter to only complete snapshots for accurate analysis.
+	// Partial snapshots (missing TotalSourceFiles, GateCoverage, etc.)
+	// produce misleading scores and pollute trend analysis.
+	complete := FilterComplete(snapshots)
+
+	// If no complete snapshots exist, fall back to all snapshots
+	// (backward compat for stores with only old-format data).
+	useSnapshots := complete
+	if len(complete) == 0 {
+		useSnapshots = snapshots
+	}
+
+	// Current = most recent complete snapshot
+	report.Current = useSnapshots[len(useSnapshots)-1]
 
 	// Compute health score for current snapshot
 	report.HealthScore = ComputeHealthScore(report.Current)
 	report.ScoreGrade = ScoreToGrade(report.HealthScore)
 
-	// Extract value series for trend analysis
-	openIssues := make([]float64, len(snapshots))
-	blockedIssues := make([]float64, len(snapshots))
-	staleIssues := make([]float64, len(snapshots))
-	orphanedIssues := make([]float64, len(snapshots))
-	bloatedFiles := make([]float64, len(snapshots))
-	fixFeatRatio := make([]float64, len(snapshots))
-	hotspotCount := make([]float64, len(snapshots))
-	gateCoverage := make([]float64, len(snapshots))
-	healthScores := make([]float64, len(snapshots))
+	// Extract value series for trend analysis (complete snapshots only)
+	openIssues := make([]float64, len(useSnapshots))
+	blockedIssues := make([]float64, len(useSnapshots))
+	staleIssues := make([]float64, len(useSnapshots))
+	orphanedIssues := make([]float64, len(useSnapshots))
+	bloatedFiles := make([]float64, len(useSnapshots))
+	fixFeatRatio := make([]float64, len(useSnapshots))
+	hotspotCount := make([]float64, len(useSnapshots))
+	gateCoverage := make([]float64, len(useSnapshots))
+	healthScores := make([]float64, len(useSnapshots))
 
-	for i, s := range snapshots {
+	for i, s := range useSnapshots {
 		openIssues[i] = float64(s.OpenIssues)
 		blockedIssues[i] = float64(s.BlockedIssues)
 		staleIssues[i] = float64(s.StaleIssues)
@@ -333,6 +366,26 @@ func GenerateReport(snapshots []Snapshot) Report {
 		HotspotCount:   ComputeTrend(hotspotCount),
 		GateCoverage:   ComputeTrend(gateCoverage),
 		HealthScore:    ComputeTrend(healthScores),
+	}
+
+	// Alert if most recent snapshot in the store is stale (>2h old)
+	latestTimestamp := snapshots[len(snapshots)-1].Timestamp
+	if time.Since(latestTimestamp) > 2*time.Hour {
+		report.Alerts = append(report.Alerts, Alert{
+			Metric:  "snapshot_staleness",
+			Message: fmt.Sprintf("Latest snapshot is %s old — data may be stale", humanDuration(time.Since(latestTimestamp))),
+			Level:   "warn",
+		})
+	}
+
+	// Alert if partial snapshots were filtered out
+	partialCount := len(snapshots) - len(complete)
+	if partialCount > 0 && len(complete) > 0 {
+		report.Alerts = append(report.Alerts, Alert{
+			Metric:  "snapshot_completeness",
+			Message: fmt.Sprintf("%d of %d snapshots are incomplete (missing fields) — filtered from analysis", partialCount, len(snapshots)),
+			Level:   "warn",
+		})
 	}
 
 	// Generate alerts based on current values and trends
@@ -426,4 +479,17 @@ func GenerateReport(snapshots []Snapshot) Report {
 	}
 
 	return report
+}
+
+// humanDuration formats a duration as a human-readable string.
+func humanDuration(d time.Duration) string {
+	hours := int(d.Hours())
+	if hours >= 24 {
+		days := hours / 24
+		return fmt.Sprintf("%dd%dh", days, hours%24)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%dh%dm", hours, int(d.Minutes())%60)
+	}
+	return fmt.Sprintf("%dm", int(d.Minutes()))
 }

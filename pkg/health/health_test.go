@@ -408,6 +408,157 @@ func TestHealthScoreBackcompatZeroTotalSourceFiles(t *testing.T) {
 	}
 }
 
+func TestIsComplete(t *testing.T) {
+	t.Run("complete snapshot", func(t *testing.T) {
+		snap := Snapshot{TotalSourceFiles: 500, GateCoverage: 1.0, HotspotCount: 10}
+		if !snap.IsComplete() {
+			t.Error("expected complete snapshot to return true")
+		}
+	})
+	t.Run("partial snapshot missing TotalSourceFiles", func(t *testing.T) {
+		snap := Snapshot{BloatedFiles: 10, FixFeatRatio: 0.5}
+		if snap.IsComplete() {
+			t.Error("expected partial snapshot to return false")
+		}
+	})
+	t.Run("zero value snapshot", func(t *testing.T) {
+		snap := Snapshot{}
+		if snap.IsComplete() {
+			t.Error("expected zero-value snapshot to return false")
+		}
+	})
+}
+
+func TestFilterComplete(t *testing.T) {
+	complete1 := Snapshot{Timestamp: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), TotalSourceFiles: 500, BloatedFiles: 10}
+	complete2 := Snapshot{Timestamp: time.Date(2026, 3, 3, 0, 0, 0, 0, time.UTC), TotalSourceFiles: 510, BloatedFiles: 9}
+	partial1 := Snapshot{Timestamp: time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC), BloatedFiles: 10, FixFeatRatio: 0.5}
+	partial2 := Snapshot{Timestamp: time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC), BloatedFiles: 11}
+
+	result := FilterComplete([]Snapshot{complete1, partial1, complete2, partial2})
+	if len(result) != 2 {
+		t.Fatalf("expected 2 complete snapshots, got %d", len(result))
+	}
+	if result[0].TotalSourceFiles != 500 {
+		t.Errorf("first complete snapshot should have TotalSourceFiles=500, got %d", result[0].TotalSourceFiles)
+	}
+	if result[1].TotalSourceFiles != 510 {
+		t.Errorf("second complete snapshot should have TotalSourceFiles=510, got %d", result[1].TotalSourceFiles)
+	}
+}
+
+func TestFilterCompleteEmpty(t *testing.T) {
+	result := FilterComplete([]Snapshot{{BloatedFiles: 5}, {BloatedFiles: 3}})
+	if len(result) != 0 {
+		t.Fatalf("expected 0 complete snapshots from all-partial input, got %d", len(result))
+	}
+}
+
+func TestGenerateReportFiltersPartialSnapshots(t *testing.T) {
+	// Mix of complete and partial snapshots — report should use only complete ones
+	now := time.Now()
+	snapshots := []Snapshot{
+		{Timestamp: now.Add(-4 * time.Hour), BloatedFiles: 10, FixFeatRatio: 0.5, TotalSourceFiles: 500, GateCoverage: 1.0, HotspotCount: 5},
+		{Timestamp: now.Add(-3 * time.Hour), BloatedFiles: 11, FixFeatRatio: 0.6}, // partial
+		{Timestamp: now.Add(-2 * time.Hour), BloatedFiles: 12, FixFeatRatio: 0.7}, // partial
+		{Timestamp: now.Add(-1 * time.Hour), BloatedFiles: 9, FixFeatRatio: 0.4, TotalSourceFiles: 510, GateCoverage: 1.0, HotspotCount: 4},
+		{Timestamp: now, BloatedFiles: 13, FixFeatRatio: 0.8}, // partial — latest but should NOT be used as current
+	}
+
+	report := GenerateReport(snapshots)
+
+	// Current should be the last COMPLETE snapshot, not the last partial one
+	if report.Current.TotalSourceFiles != 510 {
+		t.Errorf("Current should be last complete snapshot (TotalSourceFiles=510), got %d", report.Current.TotalSourceFiles)
+	}
+	if report.Current.BloatedFiles != 9 {
+		t.Errorf("Current should have BloatedFiles=9, got %d", report.Current.BloatedFiles)
+	}
+
+	// Should have completeness alert about partial snapshots
+	hasCompletenessAlert := false
+	for _, a := range report.Alerts {
+		if a.Metric == "snapshot_completeness" {
+			hasCompletenessAlert = true
+		}
+	}
+	if !hasCompletenessAlert {
+		t.Error("expected snapshot_completeness alert for partial snapshots")
+	}
+}
+
+func TestGenerateReportFallbackToAllWhenNoComplete(t *testing.T) {
+	// Old-format data with no TotalSourceFiles — should fall back to all snapshots
+	snapshots := []Snapshot{
+		{Timestamp: time.Now().Add(-2 * time.Hour), BloatedFiles: 5, FixFeatRatio: 0.3, GateCoverage: 0.8},
+		{Timestamp: time.Now().Add(-1 * time.Hour), BloatedFiles: 6, FixFeatRatio: 0.4, GateCoverage: 0.8},
+		{Timestamp: time.Now(), BloatedFiles: 7, FixFeatRatio: 0.5, GateCoverage: 0.7},
+	}
+
+	report := GenerateReport(snapshots)
+
+	// Should use last snapshot as current (backward compat)
+	if report.Current.BloatedFiles != 7 {
+		t.Errorf("Expected current BloatedFiles=7 in fallback mode, got %d", report.Current.BloatedFiles)
+	}
+	if report.HealthScore <= 0 {
+		t.Error("Expected positive health score in fallback mode")
+	}
+}
+
+func TestGenerateReportStalenessAlert(t *testing.T) {
+	// Latest snapshot is old — should trigger staleness alert
+	old := time.Now().Add(-5 * time.Hour)
+	snapshots := []Snapshot{
+		{Timestamp: old, BloatedFiles: 5, TotalSourceFiles: 500, GateCoverage: 1.0},
+	}
+
+	report := GenerateReport(snapshots)
+
+	hasStalenessAlert := false
+	for _, a := range report.Alerts {
+		if a.Metric == "snapshot_staleness" {
+			hasStalenessAlert = true
+		}
+	}
+	if !hasStalenessAlert {
+		t.Error("expected snapshot_staleness alert for 5h old snapshot")
+	}
+}
+
+func TestGenerateReportNoStalenessAlertWhenFresh(t *testing.T) {
+	snapshots := []Snapshot{
+		{Timestamp: time.Now(), BloatedFiles: 5, TotalSourceFiles: 500, GateCoverage: 1.0},
+	}
+
+	report := GenerateReport(snapshots)
+
+	for _, a := range report.Alerts {
+		if a.Metric == "snapshot_staleness" {
+			t.Error("should not have staleness alert for fresh snapshot")
+		}
+	}
+}
+
+func TestHumanDuration(t *testing.T) {
+	tests := []struct {
+		d        time.Duration
+		expected string
+	}{
+		{30 * time.Minute, "30m"},
+		{90 * time.Minute, "1h30m"},
+		{5 * time.Hour, "5h0m"},
+		{25 * time.Hour, "1d1h"},
+		{48 * time.Hour, "2d0h"},
+	}
+	for _, tt := range tests {
+		result := humanDuration(tt.d)
+		if result != tt.expected {
+			t.Errorf("humanDuration(%v) = %q, want %q", tt.d, result, tt.expected)
+		}
+	}
+}
+
 func TestStoreFileCreation(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subdir", "snapshots.jsonl")

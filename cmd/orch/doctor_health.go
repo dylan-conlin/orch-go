@@ -342,8 +342,11 @@ func outputHealthText(report health.Report) error {
 			fmt.Printf("  %s  %s\n", icon, a.Message)
 		}
 		fmt.Println()
-	} else {
+	} else if report.Current.IsComplete() {
 		fmt.Println("  No alerts — system health is nominal.")
+		fmt.Println()
+	} else {
+		fmt.Println("  No alerts — but snapshot data is incomplete (missing fields).")
 		fmt.Println()
 	}
 

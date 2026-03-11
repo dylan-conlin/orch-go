@@ -20,6 +20,12 @@ type BeadsHealthResult struct {
 
 	// Message is a human-readable summary.
 	Message string
+
+	// RawSnapshot preserves the full health snapshot from collection.
+	// When set, Store() uses this instead of reconstructing a partial snapshot.
+	// This prevents field loss (HotspotCount, GateCoverage, TotalSourceFiles, etc.)
+	// that caused 78% of stored snapshots to be incomplete.
+	RawSnapshot *health.Snapshot
 }
 
 // BeadsHealthSnapshot is a point-in-time snapshot for the daemon status file.
@@ -73,10 +79,22 @@ func (s *defaultBeadsHealthService) Collect() (*BeadsHealthResult, error) {
 		StaleIssues:   snap.StaleIssues,
 		BloatedFiles:  snap.BloatedFiles,
 		FixFeatRatio:  snap.FixFeatRatio,
+		RawSnapshot:   &snap,
 	}, nil
 }
 
 func (s *defaultBeadsHealthService) Store(result *BeadsHealthResult) error {
+	// Use the full snapshot from collection when available.
+	// This preserves all fields (HotspotCount, GateCoverage, TotalSourceFiles, etc.)
+	// that were previously lost when reconstructing from BeadsHealthResult's 5 fields.
+	if result.RawSnapshot != nil {
+		snap := *result.RawSnapshot
+		if snap.Timestamp.IsZero() {
+			snap.Timestamp = time.Now()
+		}
+		return s.store.Append(snap)
+	}
+	// Fallback for mock/test scenarios without RawSnapshot.
 	snap := health.Snapshot{
 		Timestamp:     time.Now(),
 		OpenIssues:    result.OpenIssues,

@@ -3,6 +3,8 @@ package daemon
 import (
 	"testing"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/health"
 )
 
 func TestShouldRunBeadsHealth(t *testing.T) {
@@ -161,6 +163,65 @@ func TestBeadsHealthSnapshot(t *testing.T) {
 	}
 	if snap.LastCheck.IsZero() {
 		t.Error("LastCheck should be set")
+	}
+}
+
+func TestBeadsHealthResultRawSnapshotPreserved(t *testing.T) {
+	// Verify that when RawSnapshot is set, Store receives all fields
+	var storedResult *BeadsHealthResult
+
+	cfg := Config{BeadsHealthEnabled: true, BeadsHealthInterval: time.Hour}
+	d := &Daemon{
+		Config:    cfg,
+		Scheduler: NewSchedulerFromConfig(cfg),
+		BeadsHealth: &mockBeadsHealthService{
+			collectFn: func() (*BeadsHealthResult, error) {
+				return &BeadsHealthResult{
+					OpenIssues:    10,
+					BlockedIssues: 2,
+					StaleIssues:   3,
+					BloatedFiles:  5,
+					FixFeatRatio:  0.8,
+					RawSnapshot: &health.Snapshot{
+						Timestamp:        time.Now(),
+						OpenIssues:       10,
+						BlockedIssues:    2,
+						StaleIssues:      3,
+						BloatedFiles:     5,
+						FixFeatRatio:     0.8,
+						FixCommits:       50,
+						FeatCommits:      62,
+						HotspotCount:     42,
+						GateCoverage:     1.0,
+						TotalSourceFiles: 944,
+					},
+				}, nil
+			},
+			storeFn: func(result *BeadsHealthResult) error {
+				storedResult = result
+				return nil
+			},
+		},
+	}
+
+	result := d.RunPeriodicBeadsHealth()
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.RawSnapshot == nil {
+		t.Fatal("expected RawSnapshot to be preserved")
+	}
+	if result.RawSnapshot.TotalSourceFiles != 944 {
+		t.Errorf("RawSnapshot.TotalSourceFiles = %d, want 944", result.RawSnapshot.TotalSourceFiles)
+	}
+	if result.RawSnapshot.HotspotCount != 42 {
+		t.Errorf("RawSnapshot.HotspotCount = %d, want 42", result.RawSnapshot.HotspotCount)
+	}
+	if storedResult == nil {
+		t.Fatal("Store was not called")
+	}
+	if storedResult.RawSnapshot == nil {
+		t.Fatal("Store should receive result with RawSnapshot")
 	}
 }
 
