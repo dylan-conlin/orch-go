@@ -1,23 +1,16 @@
 verification:
-  automated:
-    - command: "go test ./cmd/orch/ -run 'Test(Handle|Build|Status)Harness|TestBuildVerdicts|TestStatusFromCount' -v"
-      expect: "PASS"
-    - command: "cd web && npm run build"
-      expect: "exit 0, no harness-related errors"
-  visual:
-    - url: "http://localhost:5188/harness"
-      checks:
-        - "Top-level summary box says 'Gates are active' with fire rate and spawn count"
-        - "Each spawn gate card shows 'fires on X% of spawns' label"
-        - "Authoring cards show 'Proxy: ...' descriptions"
-        - "Stage headers include descriptions (e.g. 'Context that shapes agent behavior')"
-        - "Verdicts section titled 'Can we disprove the harness works?'"
-        - "Verdicts use plain language ('Gates are relevant' not 'FALSIFIED')"
-        - "Measurement Coverage shows framing text ('4 components still unmeasured')"
-        - "Completion Coverage renamed to 'Event Data Quality' with subtitle"
-        - "44% fields filled is NOT red (uses muted color)"
-      evidence: "/tmp/harness-redesign3.png"
-  files_changed:
-    - web/src/routes/harness/+page.svelte
-    - web/src/lib/stores/harness.ts
-    - VERIFICATION_SPEC.yaml
+  type: investigation
+  commands_run:
+    - "orch stats (full output analyzed — 216 spawns, 211 completions, 5336 events)"
+  assertions:
+    - "Every gate in the system is enumerated (36 gates across 4 categories)"
+    - "Each gate classified as signal/noise/unknown with evidence from stats data"
+    - "5 noise gates identified with specific false-positive patterns"
+    - "10 signal gates confirmed with evidence"
+    - "22+ unknown gates identified (insufficient data)"
+    - "Aggregate metrics calculated: 69% spawn bypass rate, 11.8% completion first-try pass"
+  manual_verification:
+    - "Review investigation file for completeness: .kb/investigations/2026-03-11-inv-gate-census-signal-noise-classification.md"
+    - "Verify noise gate patterns match orchestrator experience"
+  deliverables:
+    - ".kb/investigations/2026-03-11-inv-gate-census-signal-noise-classification.md"
