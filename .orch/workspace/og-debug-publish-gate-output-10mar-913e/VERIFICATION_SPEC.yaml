@@ -1,0 +1,21 @@
+verification:
+  reproduction:
+    command: "go run ./cmd/orch kb scan-claims .kb/"
+    before: "615 lines of output, all 605 signal hits listed individually"
+    after: "~17 lines: count per category + top 3 examples + '... and N more'"
+
+  tests:
+    command: "go test ./pkg/kbgate/ -v -count=1"
+    expected: "26 tests PASS"
+    key_tests:
+      - TestFormatClaimScanResult_SummarizesLargeResults
+      - TestFormatClaimScanResult_ShowsAllWhenFewHits
+      - TestCheckPublish_ClaimUpgradeSignals
+
+  behavioral:
+    - description: "Gate verdicts visible before signal details"
+      check: "Run 'orch kb gate publish <file>' — INVALID_FRONTMATTER/BANNED_LANGUAGE verdicts appear at top, signal summary follows"
+    - description: "Few-hit categories show all examples"
+      check: "Categories with <=3 hits show all hits without truncation marker"
+    - description: "JSON output unchanged"
+      check: "'orch kb scan-claims --json .kb/' still returns full ClaimScanResult with all hits"
