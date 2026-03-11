@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/dylan-conlin/orch-go/pkg/kbgate"
 	"github.com/spf13/cobra"
@@ -59,17 +58,13 @@ Examples:
 		} else {
 			fmt.Print(kbgate.FormatResult(result))
 
-			// If claim-upgrade signals were found, show details
+			// If claim-upgrade signals were found, show details for the target file
 			if !kbAcknowledgeClaims {
 				pubPath := args[0]
-				projectDir := findKBProjectDir(pubPath)
-				kbDir := filepath.Join(projectDir, ".kb")
-				if _, err := os.Stat(kbDir); err == nil {
-					scanResult := kbgate.ScanAllClaims(kbDir)
-					if scanResult.Total() > 0 {
-						fmt.Println()
-						fmt.Print(kbgate.FormatClaimScanResult(scanResult))
-					}
+				scanResult := kbgate.ScanFile(pubPath)
+				if scanResult.Total() > 0 {
+					fmt.Println()
+					fmt.Print(kbgate.FormatClaimScanResult(scanResult))
 				}
 			}
 		}
@@ -125,27 +120,6 @@ Examples:
 		}
 		return nil
 	},
-}
-
-// findKBProjectDir walks up from path to find a directory containing .kb/
-func findKBProjectDir(path string) string {
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return "."
-	}
-
-	dir := filepath.Dir(absPath)
-	for {
-		if _, err := os.Stat(filepath.Join(dir, ".kb")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	return "."
 }
 
 func init() {

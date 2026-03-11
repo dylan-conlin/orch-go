@@ -1,6 +1,7 @@
 package kbgate
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -325,6 +326,116 @@ This always causes degradation.
 	}
 	if result.Total() == 0 {
 		t.Error("expected non-zero total")
+	}
+}
+
+func TestScanFile_ScopesToSingleFile(t *testing.T) {
+	dir := t.TempDir()
+
+	// File with novelty language
+	noveltyFile := filepath.Join(dir, "novelty.md")
+	os.WriteFile(noveltyFile, []byte("# Draft\nThis is a novel finding.\n"), 0644)
+
+	// File with no signals
+	cleanFile := filepath.Join(dir, "clean.md")
+	os.WriteFile(cleanFile, []byte("# Draft\nThis is a clean description.\n"), 0644)
+
+	// ScanFile on the novelty file should find hits
+	result := ScanFile(noveltyFile)
+	if result.Total() == 0 {
+		t.Error("expected signals in novelty file")
+	}
+
+	// ScanFile on the clean file should find nothing
+	result = ScanFile(cleanFile)
+	if result.Total() != 0 {
+		t.Errorf("expected 0 signals in clean file, got %d", result.Total())
+	}
+}
+
+func TestFormatClaimScanResult_SummarizesLargeResults(t *testing.T) {
+	// Create a result with more hits than maxExamplesPerCategory
+	var novelty []ClaimHit
+	for i := 0; i < 10; i++ {
+		novelty = append(novelty, ClaimHit{
+			File:  fmt.Sprintf("file%d.md", i),
+			Line:  i + 1,
+			Match: fmt.Sprintf("novel claim %d", i),
+			Code:  "NOVELTY_LANGUAGE",
+		})
+	}
+	var probes []ClaimHit
+	for i := 0; i < 5; i++ {
+		probes = append(probes, ClaimHit{
+			File:  fmt.Sprintf("probe%d.md", i),
+			Line:  i + 1,
+			Match: fmt.Sprintf("confirms claim %d", i),
+			Code:  "SELF_VALIDATING_PROBE",
+		})
+	}
+
+	result := ClaimScanResult{
+		Novelty:          novelty,
+		ProbeConclusions: probes,
+		CausalLanguage:   nil,
+	}
+
+	output := FormatClaimScanResult(result)
+
+	// Should show total
+	if !strings.Contains(output, "15 claim-upgrade signal(s)") {
+		t.Errorf("expected total count in output, got:\n%s", output)
+	}
+
+	// Should show category counts
+	if !strings.Contains(output, "Novelty Language (10)") {
+		t.Errorf("expected novelty count, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Self-Validating Probes (5)") {
+		t.Errorf("expected probe count, got:\n%s", output)
+	}
+
+	// Should show "... and N more" for categories exceeding maxExamplesPerCategory
+	if !strings.Contains(output, "... and 7 more") {
+		t.Errorf("expected '... and 7 more' for novelty, got:\n%s", output)
+	}
+	if !strings.Contains(output, "... and 2 more") {
+		t.Errorf("expected '... and 2 more' for probes, got:\n%s", output)
+	}
+
+	// Should NOT contain all 10 novelty files
+	if strings.Contains(output, "file9.md") {
+		t.Errorf("expected truncated output, but found file9.md")
+	}
+
+	// Should show first 3 examples
+	if !strings.Contains(output, "file0.md") || !strings.Contains(output, "file2.md") {
+		t.Errorf("expected first 3 examples shown")
+	}
+
+	// Output should be compact — not 615 lines
+	lines := strings.Split(output, "\n")
+	if len(lines) > 25 {
+		t.Errorf("expected compact output (<25 lines), got %d lines", len(lines))
+	}
+}
+
+func TestFormatClaimScanResult_ShowsAllWhenFewHits(t *testing.T) {
+	result := ClaimScanResult{
+		Novelty: []ClaimHit{
+			{File: "a.md", Line: 1, Match: "novel", Code: "NOVELTY_LANGUAGE"},
+			{File: "b.md", Line: 2, Match: "discovered", Code: "NOVELTY_LANGUAGE"},
+		},
+	}
+
+	output := FormatClaimScanResult(result)
+
+	// Should show both without "... and N more"
+	if strings.Contains(output, "... and") {
+		t.Errorf("should not truncate when hits <= maxExamplesPerCategory, got:\n%s", output)
+	}
+	if !strings.Contains(output, "a.md") || !strings.Contains(output, "b.md") {
+		t.Errorf("expected both hits shown")
 	}
 }
 

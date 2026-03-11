@@ -93,9 +93,8 @@ func CheckPublish(pubPath string) GateResult {
 	// Gate 4: Banned novelty language
 	checkBannedLanguage(body, &result)
 
-	// Gate 5: Claim-upgrade boundary detection
-	kbDir := filepath.Join(projectDir, ".kb")
-	checkClaimUpgrades(kbDir, &result)
+	// Gate 5: Claim-upgrade boundary detection (scoped to target file)
+	checkClaimUpgrades(pubPath, &result)
 
 	return result
 }
@@ -131,13 +130,9 @@ func CheckPublishWithOpts(pubPath string, opts CheckPublishOpts) GateResult {
 	return result
 }
 
-// checkClaimUpgrades runs the claim scanner and adds a verdict if signals found.
-func checkClaimUpgrades(kbDir string, result *GateResult) {
-	if _, err := os.Stat(kbDir); os.IsNotExist(err) {
-		return
-	}
-
-	scanResult := ScanAllClaims(kbDir)
+// checkClaimUpgrades runs the claim scanner on the target file and adds a verdict if signals found.
+func checkClaimUpgrades(pubPath string, result *GateResult) {
+	scanResult := ScanFile(pubPath)
 	if scanResult.Total() == 0 {
 		return
 	}
@@ -146,7 +141,7 @@ func checkClaimUpgrades(kbDir string, result *GateResult) {
 	result.Verdicts = append(result.Verdicts, Verdict{
 		Code:      "CLAIM_UPGRADE_SIGNALS",
 		Status:    "fail",
-		AppliesTo: "knowledge-base",
+		AppliesTo: pubPath,
 		Note:      fmt.Sprintf("%d claim-upgrade signal(s) detected — use --acknowledge-claims or reference external review artifact to proceed", scanResult.Total()),
 	})
 }

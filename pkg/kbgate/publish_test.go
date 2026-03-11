@@ -471,7 +471,7 @@ claims:
 
 # Working Model
 
-This is a working model for coordination.
+This is a novel framework for coordination that we discovered through observation.
 `
 	os.WriteFile(pub, []byte(content), 0644)
 

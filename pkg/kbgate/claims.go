@@ -264,7 +264,22 @@ func ScanAllClaims(kbDir string) ClaimScanResult {
 	}
 }
 
+// ScanFile runs all three claim scanners against a single file.
+// Used by the publish gate to scope signals to the target publication.
+func ScanFile(path string) ClaimScanResult {
+	return ClaimScanResult{
+		Novelty:          scanFileForNovelty(path),
+		ProbeConclusions: scanProbeFile(path),
+		CausalLanguage:   scanModelForCausal(path),
+	}
+}
+
+// maxExamplesPerCategory is the number of example hits shown per signal category.
+// Remaining hits are summarized as a count.
+const maxExamplesPerCategory = 3
+
 // FormatClaimScanResult produces a human-readable summary of claim scan results.
+// Shows counts per category with up to maxExamplesPerCategory examples each.
 func FormatClaimScanResult(result ClaimScanResult) string {
 	var sb strings.Builder
 
@@ -276,31 +291,32 @@ func FormatClaimScanResult(result ClaimScanResult) string {
 
 	sb.WriteString(fmt.Sprintf("⚠ Found %d claim-upgrade signal(s)\n\n", total))
 
-	if len(result.Novelty) > 0 {
-		sb.WriteString(fmt.Sprintf("── Novelty Language (%d) ──\n", len(result.Novelty)))
-		for _, h := range result.Novelty {
-			sb.WriteString(fmt.Sprintf("  %s:%d: %s\n", h.File, h.Line, h.Match))
-		}
-		sb.WriteString("\n")
-	}
-
-	if len(result.ProbeConclusions) > 0 {
-		sb.WriteString(fmt.Sprintf("── Self-Validating Probes (%d) ──\n", len(result.ProbeConclusions)))
-		for _, h := range result.ProbeConclusions {
-			sb.WriteString(fmt.Sprintf("  %s:%d: %s\n", h.File, h.Line, h.Match))
-		}
-		sb.WriteString("\n")
-	}
-
-	if len(result.CausalLanguage) > 0 {
-		sb.WriteString(fmt.Sprintf("── Causal Language (%d) ──\n", len(result.CausalLanguage)))
-		for _, h := range result.CausalLanguage {
-			sb.WriteString(fmt.Sprintf("  %s:%d: %s\n", h.File, h.Line, h.Match))
-		}
-		sb.WriteString("\n")
-	}
+	formatCategory(&sb, "Novelty Language", result.Novelty)
+	formatCategory(&sb, "Self-Validating Probes", result.ProbeConclusions)
+	formatCategory(&sb, "Causal Language", result.CausalLanguage)
 
 	sb.WriteString("To proceed with publish, use --acknowledge-claims or reference an external review artifact.\n")
 
 	return sb.String()
+}
+
+// formatCategory writes a summarized category section: count + top N examples.
+func formatCategory(sb *strings.Builder, name string, hits []ClaimHit) {
+	if len(hits) == 0 {
+		return
+	}
+
+	sb.WriteString(fmt.Sprintf("── %s (%d) ──\n", name, len(hits)))
+
+	limit := len(hits)
+	if limit > maxExamplesPerCategory {
+		limit = maxExamplesPerCategory
+	}
+	for _, h := range hits[:limit] {
+		sb.WriteString(fmt.Sprintf("  %s:%d: %s\n", h.File, h.Line, h.Match))
+	}
+	if remaining := len(hits) - limit; remaining > 0 {
+		sb.WriteString(fmt.Sprintf("  ... and %d more\n", remaining))
+	}
+	sb.WriteString("\n")
 }
