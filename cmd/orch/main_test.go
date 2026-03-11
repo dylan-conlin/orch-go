@@ -381,6 +381,11 @@ func TestExtractSkillFromTitle(t *testing.T) {
 			wantSkill: "research",
 		},
 		{
+			name:      "work from -work-",
+			title:     "og-work-write-blog-09mar",
+			wantSkill: "work",
+		},
+		{
 			name:      "no matching pattern",
 			title:     "random-session-name",
 			wantSkill: "",

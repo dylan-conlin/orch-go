@@ -55,6 +55,9 @@ func extractSkillFromTitle(title string) string {
 	if strings.Contains(titleLower, "-research-") {
 		return "research"
 	}
+	if strings.Contains(titleLower, "-work-") {
+		return "work"
+	}
 	return ""
 }
 

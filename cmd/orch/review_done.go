@@ -139,6 +139,10 @@ func runReviewDone(project string) error {
 		}
 	}
 
+	// Suppress on_close hook event emission — review done emits its own enriched events
+	os.Setenv("ORCH_COMPLETING", "1")
+	defer os.Unsetenv("ORCH_COMPLETING")
+
 	// Process each completion
 	completed := 0
 	var completionErrors []string
@@ -283,13 +287,21 @@ func runReviewDone(project string) error {
 		}
 
 		// Log enriched completion event
+		skill := c.Skill
+		// Fallback: if title-based extraction missed skill, try the agent manifest
+		if skill == "" && c.WorkspacePath != "" {
+			manifest := spawn.ReadAgentManifestWithFallback(c.WorkspacePath)
+			if manifest.Skill != "" {
+				skill = manifest.Skill
+			}
+		}
 		completedData := events.AgentCompletedData{
 			BeadsID:            c.BeadsID,
 			Workspace:          c.WorkspaceID,
 			Reason:             c.Summary,
 			Outcome:            "success",
 			VerificationPassed: true,
-			Skill:              c.Skill,
+			Skill:              skill,
 		}
 		// Compute duration from workspace manifest
 		if c.WorkspacePath != "" {
@@ -320,13 +332,20 @@ func runReviewDone(project string) error {
 		}
 
 		// Log enriched archival event
+		archiveSkill := c.Skill
+		if archiveSkill == "" && c.WorkspacePath != "" {
+			manifest := spawn.ReadAgentManifestWithFallback(c.WorkspacePath)
+			if manifest.Skill != "" {
+				archiveSkill = manifest.Skill
+			}
+		}
 		completedData := events.AgentCompletedData{
 			Workspace:          c.WorkspaceID,
 			Reason:             "Archived untracked workspace via review done",
 			Untracked:          true,
 			Outcome:            "success",
 			VerificationPassed: true,
-			Skill:              c.Skill,
+			Skill:              archiveSkill,
 		}
 		// Compute duration from workspace manifest
 		if c.WorkspacePath != "" {

@@ -63,6 +63,12 @@ func (a *beadsAdapter) ClearAssignee(beadsID string) error {
 }
 
 func (a *beadsAdapter) CloseIssue(beadsID, reason string) error {
+	// Suppress on_close hook event emission — the caller (orch complete, clean --orphans)
+	// emits its own enriched agent.completed event with skill/outcome/duration.
+	// Without this, the hook emits a sparse duplicate for every completion.
+	os.Setenv("ORCH_COMPLETING", "1")
+	defer os.Unsetenv("ORCH_COMPLETING")
+
 	// Use force-close to avoid double-gate: LifecycleManager.Complete is called AFTER
 	// orch complete's verification gates have passed, so bd's own Phase: Complete check
 	// is redundant and would fail when --skip-phase-complete was used.

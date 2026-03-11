@@ -47,6 +47,16 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 
 	// --- Pre-lifecycle operations (need session/workspace alive) ---
 
+	// Fallback: if verification didn't extract skill (e.g., missing SKILL GUIDANCE
+	// in SPAWN_CONTEXT.md), try the agent manifest (written at spawn time).
+	// Must happen before lifecycle transition which archives the workspace.
+	if outcome.SkillName == "" && target.WorkspacePath != "" {
+		manifest := spawn.ReadAgentManifestWithFallback(target.WorkspacePath)
+		if manifest.Skill != "" {
+			outcome.SkillName = manifest.Skill
+		}
+	}
+
 	// Collect telemetry BEFORE lifecycle transition, because lm.Complete()
 	// archives the workspace (moves it to archived/), making the manifest
 	// unreadable at the original path.

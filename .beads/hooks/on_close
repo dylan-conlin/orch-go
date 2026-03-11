@@ -35,7 +35,14 @@ ISSUE_TYPE=$(echo "$ISSUE_JSON" | jq -r '.issue_type // empty' 2>/dev/null)
 # Remove orch:agent label so bd list -l orch:agent returns only active agents
 bd label remove "$ISSUE_ID" orch:agent 2>/dev/null
 
-# Emit the agent.completed event
+# Skip event emission when called from orch complete/review done/reconcile/clean.
+# These paths emit their own enriched agent.completed event with skill/outcome/duration.
+# Without this guard, every completion emits two events: one enriched + one sparse duplicate.
+if [ "$ORCH_COMPLETING" = "1" ]; then
+    exit 0
+fi
+
+# Emit the agent.completed event (only for direct bd close, not via orch complete)
 # Use --reason if we have a close reason from the issue
 if [ -n "$CLOSE_REASON" ]; then
     orch emit agent.completed --beads-id "$ISSUE_ID" --reason "$CLOSE_REASON" 2>/dev/null

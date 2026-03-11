@@ -513,7 +513,8 @@ func forceCloseIssue(id, reason string) error {
 
 	// Use "bd" command - ResolveBdPath should be called at startup
 	cmd := exec.Command("bd", args...)
-	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+	// ORCH_COMPLETING=1 suppresses on_close hook event — reconcile emits its own enriched event
+	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1", "ORCH_COMPLETING=1")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd close failed: %w: %s", err, string(output))

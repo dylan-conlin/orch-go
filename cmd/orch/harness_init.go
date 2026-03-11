@@ -664,7 +664,13 @@ fi
 # Remove orch:agent label so bd list -l orch:agent returns only active agents
 bd label remove "$ISSUE_ID" orch:agent 2>/dev/null
 
-# Emit the agent.completed event
+# Skip event emission when called from orch complete/review done/reconcile/clean.
+# These paths emit their own enriched agent.completed event with skill/outcome/duration.
+if [ "$ORCH_COMPLETING" = "1" ]; then
+    exit 0
+fi
+
+# Emit the agent.completed event (only for direct bd close, not via orch complete)
 orch emit agent.completed --beads-id "$ISSUE_ID" --reason "Closed via bd close" 2>/dev/null
 
 # Exit successfully even if orch emit fails (hooks should not block bd close)
