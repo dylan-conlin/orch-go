@@ -18,7 +18,7 @@ func TestGatesForLevel_V0(t *testing.T) {
 
 func TestGatesForLevel_V1(t *testing.T) {
 	gates := GatesForLevel(spawn.VerifyV1)
-	// V1 (Artifacts): V0 + Handoff Content, Skill Output, Phase Gates, Constraint, Decision Patch Limit, Architectural Choices, Self-Review, Probe Model Merge
+	// V1 (Artifacts): V0 + Handoff Content, Skill Output, Phase Gates, Constraint, Decision Patch Limit, Architectural Choices, Self-Review, Probe Model Merge, Architect Handoff
 	expected := map[string]bool{
 		GatePhaseComplete:        true,
 		GateHandoffContent:       true,
@@ -29,6 +29,7 @@ func TestGatesForLevel_V1(t *testing.T) {
 		GateArchitecturalChoices: true,
 		GateSelfReview:           true,
 		GateProbeModelMerge:      true,
+		GateArchitectHandoff:     true,
 	}
 	assertGateSet(t, "V1", gates, expected)
 }
@@ -47,6 +48,7 @@ func TestGatesForLevel_V2(t *testing.T) {
 		GateArchitecturalChoices: true,
 		GateSelfReview:           true,
 		GateProbeModelMerge:      true,
+		GateArchitectHandoff:     true,
 		GateTestEvidence:         true,
 		GateGitDiff:              true,
 		GateBuild:                true,
@@ -70,6 +72,7 @@ func TestGatesForLevel_V3(t *testing.T) {
 		GateArchitecturalChoices: true,
 		GateSelfReview:           true,
 		GateProbeModelMerge:      true,
+		GateArchitectHandoff:     true,
 		GateTestEvidence:         true,
 		GateGitDiff:              true,
 		GateBuild:                true,

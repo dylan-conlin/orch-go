@@ -412,6 +412,19 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 		}
 	}
 
+	// Architect handoff gate (V1+)
+	// Ensures architect agents declare an explicit recommendation before completion.
+	// Without this, the auto-create mechanism silently skips issue creation.
+	if !isOrch && ShouldRunGate(verifyLevel, GateArchitectHandoff) {
+		result.GatesRun = append(result.GatesRun, GateArchitectHandoff)
+		handoffResult := VerifyArchitectHandoff(workspacePath, result.Skill)
+		if handoffResult != nil && !handoffResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, handoffResult.Errors...)
+			result.GatesFailed = append(result.GatesFailed, GateArchitectHandoff)
+		}
+	}
+
 	// Self-review gate (V1+)
 	// Automated checks extracted from skill self-review phases:
 	// debug statements, commit format, placeholder data, orphaned files
