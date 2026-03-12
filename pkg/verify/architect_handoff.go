@@ -21,13 +21,14 @@ const GateArchitectHandoff = "architect_handoff"
 // Actionable ones trigger auto-create in complete_architect.go.
 // "close" is valid but signals no follow-up needed.
 var validArchitectRecommendations = map[string]bool{
-	"close":     true,
-	"implement": true,
-	"escalate":  true,
-	"spawn":     true,
-	"continue":  true,
-	"fix":       true,
-	"refactor":  true,
+	"close":          true,
+	"implement":      true,
+	"escalate":       true,
+	"spawn":          true,
+	"spawn-follow-up": true,
+	"continue":       true,
+	"fix":            true,
+	"refactor":       true,
 }
 
 // IsActionableArchitectRecommendation returns true if the recommendation
@@ -36,7 +37,7 @@ var validArchitectRecommendations = map[string]bool{
 func IsActionableArchitectRecommendation(recommendation string) bool {
 	r := strings.ToLower(strings.TrimSpace(recommendation))
 	switch r {
-	case "implement", "escalate", "spawn", "continue", "fix", "refactor":
+	case "implement", "escalate", "spawn", "spawn-follow-up", "continue", "fix", "refactor":
 		return true
 	default:
 		return false
@@ -116,5 +117,5 @@ func VerifyArchitectHandoff(workspacePath, skill, beadsID, projectDir string) *V
 
 // formatValidRecommendations returns a human-readable list of valid recommendations.
 func formatValidRecommendations() string {
-	return "close, implement, escalate, spawn, continue, fix, refactor"
+	return "close, implement, escalate, spawn, spawn-follow-up, continue, fix, refactor"
 }

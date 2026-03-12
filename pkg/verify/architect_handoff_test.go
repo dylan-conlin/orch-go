@@ -48,7 +48,7 @@ The team should implement this design.
 }
 
 func TestVerifyArchitectHandoff_ValidRecommendations(t *testing.T) {
-	validValues := []string{"close", "implement", "escalate", "spawn", "continue", "fix", "refactor"}
+	validValues := []string{"close", "implement", "escalate", "spawn", "spawn-follow-up", "continue", "fix", "refactor"}
 
 	for _, rec := range validValues {
 		t.Run(rec, func(t *testing.T) {
@@ -197,11 +197,13 @@ func TestIsActionableArchitectRecommendation(t *testing.T) {
 		{"continue", true},
 		{"fix", true},
 		{"refactor", true},
+		{"spawn-follow-up", true},
 		{"close", false},
 		{"", false},
 		{"maybe", false},
-		{"Implement", true},  // case insensitive
-		{"REFACTOR", true},   // case insensitive
+		{"Implement", true},           // case insensitive
+		{"REFACTOR", true},            // case insensitive
+		{"Spawn-Follow-Up", true},     // case insensitive
 	}
 
 	for _, tt := range tests {
