@@ -16,6 +16,7 @@ const (
 	TaskBeadsHealth           = "beads_health"
 	TaskFrictionAccumulation  = "friction_accumulation"
 	TaskArtifactSync          = "artifact_sync"
+	TaskRegistryRefresh       = "registry_refresh"
 )
 
 // periodicTask holds the scheduling state for a single periodic task.
@@ -122,6 +123,7 @@ func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s.Register(TaskBeadsHealth, cfg.BeadsHealthEnabled, cfg.BeadsHealthInterval)
 	s.Register(TaskFrictionAccumulation, cfg.FrictionAccumulationEnabled, cfg.FrictionAccumulationInterval)
 	s.Register(TaskArtifactSync, cfg.ArtifactSyncEnabled, cfg.ArtifactSyncInterval)
+	s.Register(TaskRegistryRefresh, cfg.RegistryRefreshEnabled, cfg.RegistryRefreshInterval)
 	return s
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/control"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/group"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
 )
 
@@ -83,13 +84,27 @@ func daemonSetup() (*daemonLoopState, error) {
 	d := daemon.NewWithConfig(config)
 
 	// Initialize project registry for cross-project issue resolution.
-	// If kb projects list fails (kb not installed, no projects), daemon still works
+	// Uses groups-aware discovery: merges kb projects list with groups.yaml members,
+	// auto-discovering projects from filesystem heuristics.
+	// Falls back to kb-only if groups.yaml is missing.
+	// If both fail (kb not installed, no projects), daemon still works
 	// but spawns everything into the current directory.
-	registry, err := daemon.NewProjectRegistry()
+	registry, err := daemon.NewProjectRegistryWithGroups()
+	if err != nil {
+		// Fall back to kb-only registry
+		registry, err = daemon.NewProjectRegistry()
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: project registry unavailable: %v\n", err)
 	} else {
 		d.ProjectRegistry = registry
+
+		// Wire group-based account routing: load groups.yaml and build
+		// the kbProjects map so the daemon can resolve account per project.
+		if groupCfg, err := group.Load(); err == nil {
+			d.GroupConfig = groupCfg
+			d.KBProjects = daemon.BuildKBProjectsMap(registry)
+		}
 	}
 
 	// NOTE: Extraction system disabled. HotspotChecker is not set, so the
@@ -194,6 +209,14 @@ func (s *daemonLoopState) logDaemonConfig() {
 		s.dlog.Printf("  Invariant check:   enabled (pause after %d consecutive violation cycles)\n", s.config.InvariantViolationThreshold)
 	} else {
 		s.dlog.Printf("  Invariant check:   disabled\n")
+	}
+	if s.config.RegistryRefreshEnabled {
+		s.dlog.Printf("  Registry refresh:  %s\n", formatDaemonDuration(s.config.RegistryRefreshInterval))
+	} else {
+		s.dlog.Printf("  Registry refresh:  disabled\n")
+	}
+	if s.d.ProjectRegistry != nil {
+		s.dlog.Printf("  Projects:          %d registered\n", len(s.d.ProjectRegistry.Projects()))
 	}
 	s.dlog.Printf("\n")
 

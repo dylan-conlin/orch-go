@@ -194,6 +194,15 @@ type Config struct {
 	// ArtifactSyncAutoSpawnThreshold is the minimum number of drifted artifact entries
 	// needed to auto-spawn a sync agent. Default is 3.
 	ArtifactSyncAutoSpawnThreshold int
+
+	// RegistryRefreshEnabled controls whether the daemon periodically refreshes
+	// its project registry. When enabled, new projects added to kb or groups.yaml
+	// are picked up without requiring a daemon restart.
+	RegistryRefreshEnabled bool
+
+	// RegistryRefreshInterval is how often to rebuild the project registry.
+	// Default is 5 minutes.
+	RegistryRefreshInterval time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -244,5 +253,7 @@ func DefaultConfig() Config {
 		ArtifactSyncInterval:             24 * time.Hour, // Daily cadence
 		ArtifactSyncAutoSpawn:            false,          // Issues only by default
 		ArtifactSyncAutoSpawnThreshold:   3,              // 3+ entries triggers auto-spawn
+		RegistryRefreshEnabled:           true,
+		RegistryRefreshInterval:          5 * time.Minute, // Refresh every 5 minutes
 	}
 }

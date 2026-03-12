@@ -323,6 +323,150 @@ func TestResolveProjectFrom_EmptyBeadsID(t *testing.T) {
 	}
 }
 
+func TestEqual_SameRegistries(t *testing.T) {
+	r1 := &ProjectRegistry{
+		prefixToDir: map[string]string{
+			"orch-go": "/home/user/orch-go",
+			"bd":      "/home/user/beads",
+		},
+		currentDir: "/home/user/orch-go",
+	}
+	r2 := &ProjectRegistry{
+		prefixToDir: map[string]string{
+			"orch-go": "/home/user/orch-go",
+			"bd":      "/home/user/beads",
+		},
+		currentDir: "/home/user/orch-go",
+	}
+	if !r1.Equal(r2) {
+		t.Error("Equal should return true for identical registries")
+	}
+}
+
+func TestEqual_DifferentRegistries(t *testing.T) {
+	r1 := &ProjectRegistry{
+		prefixToDir: map[string]string{
+			"orch-go": "/home/user/orch-go",
+		},
+	}
+	r2 := &ProjectRegistry{
+		prefixToDir: map[string]string{
+			"orch-go": "/home/user/orch-go",
+			"bd":      "/home/user/beads",
+		},
+	}
+	if r1.Equal(r2) {
+		t.Error("Equal should return false for different registries")
+	}
+}
+
+func TestEqual_NilRegistries(t *testing.T) {
+	var r1, r2 *ProjectRegistry
+	if !r1.Equal(r2) {
+		t.Error("Equal should return true for two nil registries")
+	}
+
+	r3 := &ProjectRegistry{prefixToDir: map[string]string{}}
+	if r1.Equal(r3) {
+		t.Error("Equal should return false for nil vs non-nil")
+	}
+}
+
+func TestDiff_AddedAndRemoved(t *testing.T) {
+	r1 := &ProjectRegistry{
+		prefixToDir: map[string]string{
+			"orch-go": "/home/user/orch-go",
+			"bd":      "/home/user/beads",
+		},
+	}
+	r2 := &ProjectRegistry{
+		prefixToDir: map[string]string{
+			"orch-go": "/home/user/orch-go",
+			"pw":      "/home/user/price-watch",
+		},
+	}
+	added, removed := r1.Diff(r2)
+	if len(added) != 1 || added[0] != "pw" {
+		t.Errorf("added = %v, want [pw]", added)
+	}
+	if len(removed) != 1 || removed[0] != "bd" {
+		t.Errorf("removed = %v, want [bd]", removed)
+	}
+}
+
+func TestDiff_NilRegistries(t *testing.T) {
+	var r1 *ProjectRegistry
+	r2 := &ProjectRegistry{
+		prefixToDir: map[string]string{
+			"orch-go": "/home/user/orch-go",
+		},
+	}
+	added, removed := r1.Diff(r2)
+	if len(added) != 1 || added[0] != "orch-go" {
+		t.Errorf("added = %v, want [orch-go]", added)
+	}
+	if len(removed) != 0 {
+		t.Errorf("removed = %v, want []", removed)
+	}
+}
+
+func TestHasBeadsDir(t *testing.T) {
+	// Directory with .beads
+	withBeads := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(withBeads, ".beads"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if !hasBeadsDir(withBeads) {
+		t.Error("hasBeadsDir should return true for directory with .beads")
+	}
+
+	// Directory without .beads
+	withoutBeads := t.TempDir()
+	if hasBeadsDir(withoutBeads) {
+		t.Error("hasBeadsDir should return false for directory without .beads")
+	}
+}
+
+func TestDiscoverProjectPath(t *testing.T) {
+	parentDir := t.TempDir()
+
+	// Create a project with .beads
+	projectDir := filepath.Join(parentDir, "my-project")
+	if err := os.MkdirAll(filepath.Join(projectDir, ".beads"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	knownParents := map[string]bool{parentDir: true}
+
+	got := discoverProjectPath("my-project", knownParents)
+	if got != projectDir {
+		t.Errorf("discoverProjectPath = %q, want %q", got, projectDir)
+	}
+
+	// Non-existent project
+	got = discoverProjectPath("nonexistent", knownParents)
+	if got != "" {
+		t.Errorf("discoverProjectPath(nonexistent) = %q, want empty", got)
+	}
+}
+
+func TestDiscoverProjectPath_NoBeadsDir(t *testing.T) {
+	parentDir := t.TempDir()
+
+	// Create a directory WITHOUT .beads
+	projectDir := filepath.Join(parentDir, "no-beads-project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	knownParents := map[string]bool{parentDir: true}
+
+	got := discoverProjectPath("no-beads-project", knownParents)
+	if got != "" {
+		t.Errorf("discoverProjectPath should return empty for project without .beads, got %q", got)
+	}
+}
+
 func TestBuildProjectDirNames(t *testing.T) {
 	names := BuildProjectDirNames(nil)
 	if len(names) != 0 {

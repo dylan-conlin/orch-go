@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
@@ -111,6 +112,11 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 	// Artifact sync
 	if r := d.RunPeriodicArtifactSync(); r != nil {
 		handleArtifactSyncResult(r, timestamp, verbose, logger)
+	}
+
+	// Project registry refresh (picks up new projects without daemon restart)
+	if r := d.RunPeriodicRegistryRefresh(); r != nil {
+		handleRegistryRefreshResult(r, timestamp, verbose, logger)
 	}
 
 	return result
@@ -360,6 +366,32 @@ func handleArtifactSyncResult(r *daemon.ArtifactSyncResult, timestamp string, ve
 		})
 	} else if verbose {
 		fmt.Printf("[%s] Artifact sync: %s\n", timestamp, r.Message)
+	}
+}
+
+func handleRegistryRefreshResult(r *daemon.RegistryRefreshResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Registry refresh error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.registry_refresh", map[string]interface{}{
+			"error":   r.Error.Error(),
+			"message": r.Message,
+		})
+	} else if r.Changed {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		if len(r.Added) > 0 {
+			fmt.Printf("[%s]   Added: %s\n", timestamp, strings.Join(r.Added, ", "))
+		}
+		if len(r.Removed) > 0 {
+			fmt.Printf("[%s]   Removed: %s\n", timestamp, strings.Join(r.Removed, ", "))
+		}
+		logDaemonEvent(logger, "daemon.registry_refresh", map[string]interface{}{
+			"changed": true,
+			"added":   r.Added,
+			"removed": r.Removed,
+			"message": r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] Registry refresh: unchanged\n", timestamp)
 	}
 }
 

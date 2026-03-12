@@ -9,8 +9,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/dylan-conlin/orch-go/pkg/group"
 	"gopkg.in/yaml.v3"
 )
 
@@ -85,6 +87,184 @@ func NewProjectRegistry() (*ProjectRegistry, error) {
 	}
 
 	return registry, nil
+}
+
+// NewProjectRegistryWithGroups builds a registry from both kb projects list and groups.yaml.
+// It merges group members into the registry, using filesystem heuristics for projects
+// not registered with kb. This eliminates the need for manual `kb projects add` for
+// projects that are already listed in groups.yaml.
+//
+// Discovery order:
+//  1. All kb-registered projects (same as NewProjectRegistry)
+//  2. Group members from groups.yaml for the current project's group(s)
+//  3. For group members not in kb, filesystem heuristic: check sibling directories
+//     of known group members
+//
+// Only includes auto-discovered projects that have a .beads/ directory.
+func NewProjectRegistryWithGroups() (*ProjectRegistry, error) {
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Step 1: Get all kb-registered projects
+	kbProjects, kbNameToPath := listKBProjects()
+
+	registry := &ProjectRegistry{
+		prefixToDir: make(map[string]string),
+		currentDir:  currentDir,
+	}
+
+	// Add all kb-registered projects
+	for _, proj := range kbProjects {
+		prefix := resolvePrefix(proj.Path)
+		if prefix != "" {
+			registry.prefixToDir[prefix] = proj.Path
+		}
+	}
+
+	// Step 2: Load groups.yaml and discover additional projects
+	groupsCfg, err := group.Load()
+	if err != nil {
+		// No groups.yaml — return kb-only registry
+		if len(registry.prefixToDir) == 0 {
+			return nil, fmt.Errorf("no projects found (kb projects list empty, no groups.yaml)")
+		}
+		return registry, nil
+	}
+
+	currentName := filepath.Base(currentDir)
+	groups := groupsCfg.GroupsForProject(currentName, kbNameToPath)
+	if len(groups) == 0 {
+		return registry, nil
+	}
+
+	// Step 3: For each group member, ensure it's in the registry
+	// Collect known parent directories from existing group members for sibling heuristic
+	knownParentDirs := make(map[string]bool)
+	for _, g := range groups {
+		members := groupsCfg.ResolveGroupMembers(g.Name, kbNameToPath)
+		for _, memberName := range members {
+			if path, ok := kbNameToPath[memberName]; ok {
+				knownParentDirs[filepath.Dir(path)] = true
+			}
+		}
+	}
+
+	for _, g := range groups {
+		members := groupsCfg.ResolveGroupMembers(g.Name, kbNameToPath)
+		for _, memberName := range members {
+			// Already in kb projects → already added to registry
+			if _, ok := kbNameToPath[memberName]; ok {
+				continue
+			}
+
+			// Not in kb — try filesystem heuristic: check sibling dirs
+			memberPath := discoverProjectPath(memberName, knownParentDirs)
+			if memberPath == "" {
+				continue
+			}
+
+			prefix := resolvePrefix(memberPath)
+			if prefix != "" {
+				registry.prefixToDir[prefix] = memberPath
+			}
+		}
+	}
+
+	return registry, nil
+}
+
+// listKBProjects queries kb projects list and returns both the raw list
+// and a name→path lookup map.
+func listKBProjects() ([]kbProject, map[string]string) {
+	cmd := exec.Command("kb", "projects", "list", "--json")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, map[string]string{}
+	}
+
+	var projects []kbProject
+	if err := json.Unmarshal(output, &projects); err != nil {
+		return nil, map[string]string{}
+	}
+
+	nameToPath := make(map[string]string, len(projects))
+	for _, p := range projects {
+		nameToPath[p.Name] = p.Path
+	}
+
+	return projects, nameToPath
+}
+
+// discoverProjectPath tries to find a project directory on the filesystem.
+// Checks sibling directories of known group member paths.
+// Only returns paths that contain a .beads/ directory (indicating a beads-tracked project).
+func discoverProjectPath(projectName string, knownParentDirs map[string]bool) string {
+	for parentDir := range knownParentDirs {
+		candidate := filepath.Join(parentDir, projectName)
+		if hasBeadsDir(candidate) {
+			return candidate
+		}
+	}
+	return ""
+}
+
+// hasBeadsDir returns true if the given directory contains a .beads/ subdirectory.
+func hasBeadsDir(dir string) bool {
+	info, err := os.Stat(filepath.Join(dir, ".beads"))
+	return err == nil && info.IsDir()
+}
+
+// Equal returns true if two registries have the same prefix-to-directory mappings.
+func (r *ProjectRegistry) Equal(other *ProjectRegistry) bool {
+	if r == nil && other == nil {
+		return true
+	}
+	if r == nil || other == nil {
+		return false
+	}
+	if len(r.prefixToDir) != len(other.prefixToDir) {
+		return false
+	}
+	for k, v := range r.prefixToDir {
+		if other.prefixToDir[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+// Diff returns the prefixes added to and removed from the other registry
+// compared to this one. Useful for logging registry changes.
+func (r *ProjectRegistry) Diff(other *ProjectRegistry) (added, removed []string) {
+	var old, new_ map[string]string
+	if r != nil {
+		old = r.prefixToDir
+	}
+	if old == nil {
+		old = map[string]string{}
+	}
+	if other != nil {
+		new_ = other.prefixToDir
+	}
+	if new_ == nil {
+		new_ = map[string]string{}
+	}
+
+	for k := range new_ {
+		if _, exists := old[k]; !exists {
+			added = append(added, k)
+		}
+	}
+	for k := range old {
+		if _, exists := new_[k]; !exists {
+			removed = append(removed, k)
+		}
+	}
+	sort.Strings(added)
+	sort.Strings(removed)
+	return
 }
 
 // resolvePrefix reads .beads/config.yaml for the issue-prefix field.

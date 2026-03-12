@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/identity"
 )
 
 // ShouldRunReflection returns true if periodic reflection should run.
@@ -219,6 +221,64 @@ func (d *Daemon) RunPeriodicRecovery() *RecoveryResult {
 		Error:        nil,
 		Message:      fmt.Sprintf("Recovery attempted: %d resumed, %d skipped", resumed, skipped),
 	}
+}
+
+// RegistryRefreshResult contains the result of a registry refresh operation.
+type RegistryRefreshResult struct {
+	Changed bool     // Whether the registry was updated
+	Added   []string // Prefixes of newly discovered projects
+	Removed []string // Prefixes of projects no longer found
+	Error   error
+	Message string
+}
+
+// RunPeriodicRegistryRefresh rebuilds the project registry if due.
+// Returns non-nil result if refresh was run (even if no changes found).
+func (d *Daemon) RunPeriodicRegistryRefresh() *RegistryRefreshResult {
+	if !d.Scheduler.IsDue(TaskRegistryRefresh) {
+		return nil
+	}
+
+	newRegistry, err := NewProjectRegistryWithGroups()
+	if err != nil {
+		// Fall back to kb-only registry
+		newRegistry, err = NewProjectRegistry()
+		if err != nil {
+			return &RegistryRefreshResult{
+				Error:   err,
+				Message: fmt.Sprintf("Registry refresh failed: %v", err),
+			}
+		}
+	}
+
+	d.Scheduler.MarkRun(TaskRegistryRefresh)
+
+	// Check if registry changed
+	if d.ProjectRegistry != nil && d.ProjectRegistry.Equal(newRegistry) {
+		return &RegistryRefreshResult{
+			Changed: false,
+			Message: "Registry unchanged",
+		}
+	}
+
+	// Compute diff before updating
+	added, removed := d.ProjectRegistry.Diff(newRegistry)
+
+	// Update the registry and dependent state
+	d.ProjectRegistry = newRegistry
+	d.ProjectDirNames = BuildProjectDirNames(newRegistry)
+
+	return &RegistryRefreshResult{
+		Changed: true,
+		Added:   added,
+		Removed: removed,
+		Message: fmt.Sprintf("Registry updated: +%d -%d projects", len(added), len(removed)),
+	}
+}
+
+// NewProjectRegistryWithGroups delegates to identity.NewProjectRegistryWithGroups.
+func NewProjectRegistryWithGroups() (*ProjectRegistry, error) {
+	return identity.NewProjectRegistryWithGroups()
 }
 
 // LastRecoveryTime returns when recovery was last run.

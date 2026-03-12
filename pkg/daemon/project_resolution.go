@@ -26,5 +26,11 @@ func BuildProjectDirNames(registry *ProjectRegistry) map[string]string {
 	return identity.BuildProjectDirNames(registry)
 }
 
+// NewProjectRegistryWithGroups delegates to identity.NewProjectRegistryWithGroups.
+// Re-exported here for backward compatibility within daemon package callers
+// (the canonical implementation is in periodic.go's RunPeriodicRegistryRefresh).
+// NOTE: The function in periodic.go is the one used by the daemon loop.
+// This re-export exists only for project_resolution.go pattern consistency.
+
 // ListReadyIssuesMultiProject is defined in issue_adapter.go and uses *ProjectRegistry.
 // It stays in daemon because it depends on beads CLI integration.
