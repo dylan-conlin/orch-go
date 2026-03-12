@@ -1,0 +1,132 @@
+# Exploration Judge Verdict
+# Question: Why do 142 active hotspots persist despite three-layer enforcement?
+# Judge: og-work-evaluate-sub-findings-11mar-8b09
+# Date: 2026-03-11
+
+sub_findings:
+  - id: worker-1
+    subproblem: "Are the 84+ investigation-cluster hotspots real architectural signals or noise from broad keyword matching?"
+    verdict: accepted
+    grounding: high
+    consistency: consistent
+    coverage: covers-assigned
+    relevance: on-target
+    actionability: actionable
+    key_claims:
+      - claim: "56% of investigation-cluster keywords (48/85) are noise from single-word frequency matching"
+        evidence: "Classified all 85 keywords against actual investigation filenames; traced algorithm to hotspot_analysis.go:193-247; ran orch hotspot --json"
+        confidence: medium
+        note: "Self-corrected to 35-56% range — acknowledged 'clean', 'complete', 'status', 'graph' are ambiguous domain words. The true noise rate depends on classification criteria."
+      - claim: "Algorithm is single-word frequency on filenames with no content analysis or bigram matching"
+        evidence: "Code trace of analyzeInvestigationClusters at hotspot_analysis.go:193-247"
+        confidence: high
+      - claim: "Stop word list has 33 entries, missing ~40+ generic terms"
+        evidence: "Cross-referenced stop word map (hotspot_analysis.go:300-333) against output; enumerated specific missing words"
+        confidence: high
+      - claim: "Threshold 3→5 reduces hotspots from 85→34, retaining all score>=8 real signals"
+        evidence: "Ran orch hotspot --inv-threshold N for N in {3,4,5,6,7,8,10}"
+        confidence: high
+      - claim: "Noise keywords cascade into spawn gate false positives via strings.Contains path matching"
+        evidence: "Code trace of hotspot_spawn.go:113-120; observed in current spawn context (this very task's HOTSPOT AREA WARNING includes 'md', 'orch', 'kb')"
+        confidence: high
+        note: "Demonstrated in vivo — this task's own hotspot warning contains noise keywords like 'md' and 'kb'"
+    notes: "Strong finding. The self-correction from '56% noise' to '35-56% depending on criteria' shows intellectual honesty. The observation that domain ambiguity is inherent (not just a stop-word gap) is the most valuable insight — it means no amount of stop-word tuning fully solves this."
+
+  - id: worker-2
+    subproblem: "Which enforcement layers target which hotspot types? Are there coverage gaps where hotspot types have no blocking enforcement?"
+    verdict: accepted
+    grounding: high
+    consistency: contested
+    coverage: covers-assigned
+    relevance: on-target
+    actionability: actionable
+    key_claims:
+      - claim: "Layer 1 spawn gate blocks ONLY on bloat-size >1500 — currently dormant (0 files exceed 1500)"
+        evidence: "Code at hotspot_spawn.go:182 showing bloat-size > 1500 condition; orch hotspot --json confirming 0 CRITICAL files"
+        confidence: high
+      - claim: "89% of hotspots (127/143) have advisory-only enforcement for manual spawns"
+        evidence: "Coverage matrix derived from code review of all enforcement layers"
+        confidence: medium
+        note: "This percentage is inflated by investigation-cluster count (85), which Worker 1 shows is 35-56% noise. If ~40 investigation-cluster entries are noise, the real advisory-only count drops to ~87/103 (84%). Still high, but the headline number overstates."
+      - claim: "Layer 2 daemon escalation is the ONLY layer blocking all 4 hotspot types, but only for daemon-driven spawns"
+        evidence: "Code review of architect_escalation.go:43-58,78-136 showing unfiltered type matching; manual spawns bypass daemon entirely"
+        confidence: high
+      - claim: "Actually 4 layers, not 3 (Layer 0 = pre-commit accretion)"
+        evidence: "Code review of accretion_precommit.go:79 and accretion.go:127; these are not in the three-layer decision doc"
+        confidence: high
+      - claim: "Recommends extending Layer 1 to block on fix-density >= 15"
+        evidence: "Structural gap analysis showing fix-density has highest signal-to-noise but no blocking"
+        confidence: medium
+        note: "Contested by Worker 3's trajectory data — see contested_findings section"
+    notes: "Excellent structural analysis. The coverage matrix is the most valuable artifact. The recommendation to add fix-density blocking is well-reasoned but needs calibration against Worker 3's finding that fix-density hotspots are mostly declining."
+
+  - id: worker-3
+    subproblem: "Are fix-density hotspots growing, stable, or declining? Do the same files appear across multiple hotspot dimensions?"
+    verdict: accepted
+    grounding: high
+    consistency: contested
+    coverage: covers-assigned
+    relevance: on-target
+    actionability: actionable
+    key_claims:
+      - claim: "5/7 active fix-density files have declining or burst-then-declining fix rates"
+        evidence: "Week-over-week git log analysis for 4 weeks across all 7 active files; detailed trajectory table"
+        confidence: high
+      - claim: "2 triple hotspots (daemon.go 921 lines, context.go 981 lines) appear in bloat + fix-density + coupling dimensions"
+        evidence: "Cross-referenced orch hotspot bloat data, fix-density counts, and git diff-tree co-change analysis"
+        confidence: high
+      - claim: "800-line bloat threshold empirically validated as predictor of fix churn"
+        evidence: "The 2 files above 800 lines are both in the fix-density top 8 (100% overlap at threshold)"
+        confidence: medium
+        note: "Small sample size (n=2) limits statistical confidence. Directionally correct but 'empirically validated' is a strong claim for 2 data points."
+      - claim: "extraction.go (#1 at 22 fixes) was dissolved by extraction — concentrated hotspot eliminated"
+        evidence: "Git log showing file deletion and fix distribution across 8 successor files"
+        confidence: high
+      - claim: "daemon.go circuit-breaker add/remove/revert cycle signals complexity outpacing comprehension"
+        evidence: "3 commits doing/undoing the same circuit-breaker change"
+        confidence: high
+        note: "This is the strongest qualitative signal in the entire investigation. A revert cycle is direct evidence of cognitive overload."
+      - claim: "Worker corrected fix-density overcounts: daemon.go 13 (not 15), context.go 9 (not 10)"
+        evidence: "Direct git log verification against orch hotspot reported values"
+        confidence: high
+        note: "This self-verification raises confidence in all of Worker 3's git-derived numbers."
+    notes: "The trajectory analysis is the most novel contribution. By adding the time dimension, it transforms the original question from 'why do hotspots persist?' to 'hotspots are declining but two critical ones remain.' The fix-count corrections demonstrate rigor."
+
+contested_findings:
+  - finding_ids: [worker-2, worker-3]
+    claim_in_tension: "Whether fix-density blocking enforcement is needed"
+    worker_2_position: "Fix-density has no blocking enforcement for manual spawns and should get a blocking gate at threshold >=15. This is the highest-impact gap."
+    worker_3_position: "5/7 fix-density hotspots are declining. Post-extraction files (spawn_cmd.go) are self-correcting. The only files that truly need intervention are the 2 triple hotspots, which are already above 800-line bloat threshold (a dimension that already has blocking infrastructure)."
+    stronger_grounding: worker-3
+    resolution_hint: "Worker 3's trajectory data suggests the fix-density gap may be self-correcting through extraction. However, Worker 2's structural analysis is about future protection. The resolution: don't add fix-density blocking as a standalone gate — instead, lower the bloat-size blocking threshold from 1500 to 800 (the validated threshold), which would catch the 2 triple hotspots that actually need intervention. This avoids adding a new enforcement dimension while activating Layer 1 blocking."
+
+  - finding_ids: [worker-1, worker-2]
+    claim_in_tension: "Whether the 89% advisory-only figure accurately reflects enforcement gaps"
+    worker_1_position: "35-56% of investigation-cluster hotspots are noise. The count of 85 investigation-cluster entries inflates all downstream percentages."
+    worker_2_position: "127/143 hotspots (89%) have advisory-only enforcement for manual spawns."
+    stronger_grounding: worker-1
+    resolution_hint: "Worker 2's 89% figure is mathematically correct given current counts, but functionally overstated. If ~40 investigation-cluster entries are noise, the real advisory-only-with-real-signal count is closer to 84% (87/103). The structural gap is real but the headline number should be caveated."
+
+coverage_gaps:
+  - gap: "Manual spawn frequency — how often do manual spawns actually happen vs daemon-driven spawns?"
+    severity: moderate
+    suggested_subproblem: "Analyze orch events.jsonl to determine the ratio of manual (bypass-triage) spawns to daemon-driven spawns. If manual spawns are rare, the enforcement gap affects few sessions."
+
+  - gap: "Defect correlation — do modifications to hotspot files actually produce more bugs than non-hotspot files?"
+    severity: moderate
+    suggested_subproblem: "Correlate fix-density hotspot files with subsequent fix: commits introduced by agent sessions. Does touching a high-fix-density file predict that the agent's work will itself need fixes?"
+
+  - gap: "Coupling-cluster analysis scope — Worker 3 analyzed coupling for fix-density files but no one analyzed the 14 dedicated coupling-cluster hotspots"
+    severity: minor
+    suggested_subproblem: "Are the 14 coupling-cluster hotspots from orch hotspot the same files that Worker 3 found via git diff-tree co-change analysis? If so, coupling-cluster detection is validated. If not, the coupling-cluster algorithm may have its own noise problem."
+
+  - gap: "Stale vs active distinction — original question asks 'are they real or stale?' but no worker defined what 'stale' means for non-investigation hotspot types"
+    severity: minor
+    suggested_subproblem: "Define staleness criteria: a fix-density hotspot is 'stale' if the 28-day window captures a burst that has subsided. Worker 3's trajectory data partially addresses this but doesn't produce a concrete 'stale count' to subtract from 142."
+
+overall:
+  question_answered: partially
+  highest_confidence_findings: [worker-1, worker-3]
+  lowest_confidence_findings: []
+  decomposition_quality: good
+  decomposition_notes: "The three-way split (measurement quality / enforcement structure / temporal trajectory) was well-chosen. Each worker addressed an independent aspect with minimal overlap. The slight overlap on fix-density created useful cross-validation (Worker 3 corrected counts used by Worker 2). The only gap was that no worker was tasked with measuring manual-spawn frequency, which would determine whether the enforcement gap Worker 2 found matters in practice. All three workers grounded their findings in code and data."
