@@ -341,6 +341,7 @@ func BuildSpawnConfig(ctx *SpawnContext, phases, mode, validation, mcp, browserT
 		HotspotArea:          ctx.HotspotArea,
 		HotspotFiles:         ctx.HotspotFiles,
 		HotspotDefectClasses: ctx.HotspotDefectClasses,
+		ArchitectDesign:    ctx.ArchitectDesign,
 		DesignWorkspace:    "", // Will be set by caller if needed
 		DesignMockupPath:   ctx.DesignMockupPath,
 		DesignPromptPath:   ctx.DesignPromptPath,

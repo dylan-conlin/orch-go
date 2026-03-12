@@ -27,6 +27,15 @@ This feature implementation is based on an approved design from: **{{.DesignWork
 Use these design artifacts as the source of truth for UI layout, styling, and user experience.
 
 {{end}}
+{{if .ArchitectDesign}}
+## Architect Design
+
+**This implementation is guided by a prior architect review.** Follow the design below.
+Do NOT re-investigate or redesign — implement according to these specifications.
+
+{{.ArchitectDesign}}
+
+{{end}}
 {{if .Tier}}
 SPAWN TIER: {{.Tier}}
 {{if eq .Tier "light"}}
@@ -443,6 +452,7 @@ type contextData struct {
 	HotspotArea           bool     // Task targets a hotspot area
 	HotspotFiles          []string // Files identified as hotspots
 	HotspotDefectClasses  []string // Defect classes likely for the hotspot area
+	ArchitectDesign       string   // Architect SYNTHESIS.md content (from --architect-ref)
 	DesignWorkspace       string   // Design workspace name for ui-design-session handoff
 	DesignMockupPath      string   // Path to approved mockup
 	DesignPromptPath      string   // Path to design prompt

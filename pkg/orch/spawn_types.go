@@ -56,6 +56,7 @@ type SpawnContext struct {
 	HotspotArea          bool
 	HotspotFiles         []string
 	HotspotDefectClasses []string
+	ArchitectDesign    string
 	DesignMockupPath   string
 	DesignPromptPath   string
 	DesignNotes        string

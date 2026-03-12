@@ -156,6 +156,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		HotspotArea:           cfg.HotspotArea,
 		HotspotFiles:          cfg.HotspotFiles,
 		HotspotDefectClasses:  cfg.HotspotDefectClasses,
+		ArchitectDesign:       cfg.ArchitectDesign,
 		DesignWorkspace:       cfg.DesignWorkspace,
 		DesignMockupPath:      cfg.DesignMockupPath,
 		DesignPromptPath:      cfg.DesignPromptPath,

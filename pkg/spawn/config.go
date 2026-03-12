@@ -298,6 +298,11 @@ type Config struct {
 	// HotspotDefectClasses lists defect class names likely to manifest in the hotspot area
 	HotspotDefectClasses []string
 
+	// ArchitectDesign contains the SYNTHESIS.md content from a referenced architect issue.
+	// Populated when --architect-ref is provided. Injected into SPAWN_CONTEXT.md under
+	// an "## Architect Design" section so feature-impl agents receive the actual design.
+	ArchitectDesign string
+
 	// Design handoff fields (for ui-design-session → feature-impl handoff)
 	// DesignWorkspace is the workspace name from a prior ui-design-session spawn
 	DesignWorkspace string

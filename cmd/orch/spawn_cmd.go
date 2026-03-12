@@ -468,6 +468,17 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	resolvedAccountName := resolved.Settings.Account.Value
 	resolvedAccountConfigDir := account.GetConfigDir(resolvedAccountName)
 
+	// 9c. Fetch architect design if --architect-ref was provided
+	var architectDesign string
+	if spawnArchitectRef != "" {
+		architectDesign = spawn.FetchArchitectDesign(spawnArchitectRef, projectDir)
+		if architectDesign != "" {
+			fmt.Printf("📐 Architect design injected from %s\n", spawnArchitectRef)
+		} else {
+			fmt.Fprintf(os.Stderr, "⚠️  --architect-ref %s: no SYNTHESIS.md found in workspace\n", spawnArchitectRef)
+		}
+	}
+
 	ctx := &orch.SpawnContext{
 		Task:               task,
 		OrientationFrame:   spawnOrientationFrame,
@@ -498,6 +509,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		ReviewTier:         spawnReviewTier,
 		IssueType:          spawnIssueType,
 		Scope:              spawnScope,
+		ArchitectDesign:       architectDesign,
 		HotspotArea:          hotspotResult != nil && hotspotResult.HasHotspots,
 		HotspotFiles:         hotspotFilesFromResult(hotspotResult),
 		HotspotDefectClasses: DefectClassesForHotspots(hotspotFilesFromResult(hotspotResult)),
