@@ -16,7 +16,7 @@ func TestHarnessCommandRegistered(t *testing.T) {
 			for _, sub := range cmd.Commands() {
 				subCmds[sub.Use] = true
 			}
-			for _, expected := range []string{"lock", "unlock", "status", "verify"} {
+			for _, expected := range []string{"init", "check", "lock", "unlock", "status", "verify", "snapshot", "report"} {
 				if !subCmds[expected] {
 					t.Errorf("harness missing subcommand %q", expected)
 				}
@@ -50,5 +50,16 @@ func TestControlAndHarnessBothRegistered(t *testing.T) {
 	}
 	if !cmds["harness"] {
 		t.Error("harness command should be registered")
+	}
+}
+
+func TestFindHarnessBinary(t *testing.T) {
+	// Just verify the function doesn't panic and returns a result
+	path, err := findHarnessBinary()
+	if err != nil {
+		t.Skipf("harness binary not installed: %v", err)
+	}
+	if path == "" {
+		t.Error("findHarnessBinary returned empty path with nil error")
 	}
 }
