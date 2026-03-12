@@ -792,12 +792,12 @@ func TestAgentInfoIsPhantomField(t *testing.T) {
 // TestDetermineBeadsID tests the beads ID determination logic.
 func TestDetermineBeadsID(t *testing.T) {
 	// Mock createBeadsIssue function that always returns an error
-	mockCreateError := func(projectName, skillName, task string) (string, error) {
+	mockCreateError := func(projectName, skillName, task, dir string) (string, error) {
 		return "", &mockError{"mock bd create failure"}
 	}
 
 	// Mock createBeadsIssue function that succeeds
-	mockCreateSuccess := func(projectName, skillName, task string) (string, error) {
+	mockCreateSuccess := func(projectName, skillName, task, dir string) (string, error) {
 		return "test-abc123", nil
 	}
 
@@ -805,7 +805,7 @@ func TestDetermineBeadsID(t *testing.T) {
 		name            string
 		spawnIssue      string
 		spawnNoTrack    bool
-		createBeadsFn   func(string, string, string) (string, error)
+		createBeadsFn   func(string, string, string, string) (string, error)
 		wantID          string
 		wantErr         bool
 		wantErrContains string
@@ -857,7 +857,7 @@ func TestDetermineBeadsID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotID, gotErr := determineBeadsID("test-project", "test-skill", "test task", tt.spawnIssue, tt.spawnNoTrack, tt.createBeadsFn)
+			gotID, gotErr := determineBeadsID("test-project", "test-skill", "test task", tt.spawnIssue, tt.spawnNoTrack, tt.createBeadsFn, "")
 
 			// Check error expectation
 			if (gotErr != nil) != tt.wantErr {

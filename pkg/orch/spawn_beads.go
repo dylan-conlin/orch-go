@@ -13,9 +13,9 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
-func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isOrchestrator, isMetaOrchestrator bool, serverURL string, noTrack bool, workspaceName string, createBeadsFn func(string, string, string) (string, error), projectDir string) (string, error) {
+func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isOrchestrator, isMetaOrchestrator bool, serverURL string, noTrack bool, workspaceName string, createBeadsFn func(string, string, string, string) (string, error), projectDir string) (string, error) {
 	skipBeadsForOrchestrator := isOrchestrator || isMetaOrchestrator
-	beadsID, err := determineBeadsID(projectName, skillName, task, beadsIssueFlag, noTrack || skipBeadsForOrchestrator, createBeadsFn)
+	beadsID, err := determineBeadsID(projectName, skillName, task, beadsIssueFlag, noTrack || skipBeadsForOrchestrator, createBeadsFn, projectDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to determine beads ID: %w", err)
 	}
@@ -70,33 +70,37 @@ func SetupBeadsTracking(skillName, task, projectName, beadsIssueFlag string, isO
 	return beadsID, nil
 }
 
-func determineBeadsID(projectName, skillName, task, spawnIssue string, spawnNoTrack bool, createBeadsFn func(string, string, string) (string, error)) (string, error) {
+func determineBeadsID(projectName, skillName, task, spawnIssue string, spawnNoTrack bool, createBeadsFn func(string, string, string, string) (string, error), projectDir string) (string, error) {
 	if spawnIssue != "" {
 		return resolveShortBeadsID(spawnIssue)
 	}
 	if spawnNoTrack {
 		// Create a real beads issue with tier:lightweight label instead of synthetic ID.
 		// This ensures --no-track agents are visible to orch status/complete/clean.
-		beadsID, err := createBeadsFn(projectName, skillName, task)
+		beadsID, err := createBeadsFn(projectName, skillName, task, projectDir)
 		if err != nil {
 			return "", fmt.Errorf("failed to create lightweight beads issue: %w", err)
 		}
 		// Add tier:lightweight label to distinguish from fully-tracked issues
-		if err := beads.FallbackAddLabel(beadsID, "tier:lightweight", ""); err != nil {
+		if err := beads.FallbackAddLabel(beadsID, "tier:lightweight", projectDir); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to add tier:lightweight label to %s: %v\n", beadsID, err)
 		}
 		return beadsID, nil
 	}
-	beadsID, err := createBeadsFn(projectName, skillName, task)
+	beadsID, err := createBeadsFn(projectName, skillName, task, projectDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to create beads issue: %w", err)
 	}
 	return beadsID, nil
 }
 
-func CreateBeadsIssue(projectName, skillName, task string) (string, error) {
+// CreateBeadsIssue creates a beads issue in the specified project directory.
+// When dir is empty, falls back to CWD (for same-project spawns).
+// For cross-project spawns, pass the target project's directory so the issue
+// is created in the target project's .beads/, not the source project's.
+func CreateBeadsIssue(projectName, skillName, task, dir string) (string, error) {
 	title := fmt.Sprintf("[%s] %s: %s", projectName, skillName, truncate(task, 50))
-	socketPath, err := beads.FindSocketPath("")
+	socketPath, err := beads.FindSocketPath(dir)
 	if err == nil {
 		client := beads.NewClient(socketPath)
 		if err := client.Connect(); err == nil {
@@ -107,7 +111,7 @@ func CreateBeadsIssue(projectName, skillName, task string) (string, error) {
 			}
 		}
 	}
-	issue, err := beads.FallbackCreate(title, "", "task", 2, nil, "")
+	issue, err := beads.FallbackCreate(title, "", "task", 2, nil, dir)
 	if err != nil {
 		return "", err
 	}
@@ -131,14 +135,15 @@ func DetectCrossRepo(cwd, projectDir string) string {
 
 // ApplyCrossRepoLabels adds cross-repo traceability metadata to a beads issue.
 // Adds tier:light label, cross-repo:<source> label, and a back-reference comment.
-func ApplyCrossRepoLabels(beadsID, sourceProject string) {
-	if err := beads.FallbackAddLabel(beadsID, "tier:light", ""); err != nil {
+// The dir parameter specifies the target project directory where the issue lives.
+func ApplyCrossRepoLabels(beadsID, sourceProject, dir string) {
+	if err := beads.FallbackAddLabel(beadsID, "tier:light", dir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to add tier:light label: %v\n", err)
 	}
-	if err := beads.FallbackAddLabel(beadsID, "cross-repo:"+sourceProject, ""); err != nil {
+	if err := beads.FallbackAddLabel(beadsID, "cross-repo:"+sourceProject, dir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to add cross-repo label: %v\n", err)
 	}
-	if err := beads.FallbackAddComment(beadsID, fmt.Sprintf("Cross-repo spawn from %s", sourceProject), ""); err != nil {
+	if err := beads.FallbackAddComment(beadsID, fmt.Sprintf("Cross-repo spawn from %s", sourceProject), dir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to add cross-repo comment: %v\n", err)
 	}
 }

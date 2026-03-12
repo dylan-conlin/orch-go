@@ -69,6 +69,50 @@ func TestResolveCrossRepoBeadsDir(t *testing.T) {
 	}
 }
 
+func TestDetermineBeadsID_PassesProjectDir(t *testing.T) {
+	// Verify that determineBeadsID passes projectDir to createBeadsFn.
+	// This is critical for cross-project spawns: issues must be created
+	// in the target project's .beads/, not the source (CWD) project's.
+	tests := []struct {
+		name       string
+		projectDir string
+		noTrack    bool
+	}{
+		{
+			name:       "normal spawn passes projectDir",
+			projectDir: "/Users/test/Documents/price-watch",
+			noTrack:    false,
+		},
+		{
+			name:       "no-track spawn passes projectDir",
+			projectDir: "/Users/test/Documents/price-watch",
+			noTrack:    true,
+		},
+		{
+			name:       "empty dir falls back to CWD in beads",
+			projectDir: "",
+			noTrack:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedDir string
+			createFn := func(projectName, skillName, task, dir string) (string, error) {
+				capturedDir = dir
+				return "test-abc123", nil
+			}
+			_, err := determineBeadsID("test-project", "test-skill", "test task", "", tt.noTrack, createFn, tt.projectDir)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if capturedDir != tt.projectDir {
+				t.Errorf("createBeadsFn received dir=%q, want %q", capturedDir, tt.projectDir)
+			}
+		})
+	}
+}
+
 func TestDetectCrossRepo(t *testing.T) {
 	tests := []struct {
 		name       string

@@ -150,7 +150,7 @@ func ensureOrchScaffolding(projectDir string, autoInit bool, noTrack bool) error
 	}
 
 	// Not auto-init, provide helpful error message
-	return fmt.Errorf("missing beads tracking (.beads/ not initialized)\n\nTo fix, run one of:\n  orch init           # Full initialization (recommended)\n  orch spawn --auto-init ...  # Auto-init during spawn\n  orch spawn --no-track ...   # Skip beads tracking (ad-hoc work)")
+	return fmt.Errorf("missing beads tracking (.beads/ not initialized)\n\nTo fix, run one of:\n  orch init           # Full initialization (recommended)\n  orch spawn --auto-init ...  # Auto-init during spawn")
 }
 
 // Test-only wrapper functions that call pkg/orch versions.
@@ -173,19 +173,19 @@ func validateModeModelCombo(backend string, resolvedModel model.ModelSpec) error
 	return nil
 }
 
-func determineBeadsID(projectName, skillName, task, spawnIssueFlag string, noTrack bool, createBeadsFn func(string, string, string) (string, error)) (string, error) {
+func determineBeadsID(projectName, skillName, task, spawnIssueFlag string, noTrack bool, createBeadsFn func(string, string, string, string) (string, error), dir string) (string, error) {
 	if spawnIssueFlag != "" {
 		return resolveShortBeadsID(spawnIssueFlag)
 	}
 	if noTrack {
 		// Create a real beads issue with tier:lightweight label instead of synthetic ID.
-		beadsID, err := createBeadsFn(projectName, skillName, task)
+		beadsID, err := createBeadsFn(projectName, skillName, task, dir)
 		if err != nil {
 			return "", fmt.Errorf("failed to create lightweight beads issue: %w", err)
 		}
 		return beadsID, nil
 	}
-	beadsID, err := createBeadsFn(projectName, skillName, task)
+	beadsID, err := createBeadsFn(projectName, skillName, task, dir)
 	if err != nil {
 		return "", fmt.Errorf("failed to create beads issue: %w", err)
 	}

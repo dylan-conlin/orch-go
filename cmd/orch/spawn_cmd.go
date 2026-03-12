@@ -152,7 +152,7 @@ Examples:
 
   # Other options
   orch spawn --bypass-triage --model opus investigation "analyze code"
-  orch spawn --bypass-triage --no-track investigation "exploratory work"
+  orch spawn --bypass-triage --light investigation "exploratory work"
   orch spawn --bypass-triage --mcp playwright feature-impl "add UI feature"  # injects playwright-cli context
   orch spawn --bypass-triage --workdir ~/other-project investigation "task"`,
 	Args: cobra.MinimumNArgs(2),
@@ -178,7 +178,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnHeadless, "headless", false, "Run headless via HTTP API (default behavior, flag is redundant)")
 	spawnCmd.Flags().BoolVar(&spawnTmux, "tmux", false, "Run in tmux window (opt-in for visual monitoring)")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
-	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
+	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Deprecated: creates lightweight beads issue instead (use --light)")
 	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server preset (e.g., 'playwright' for Playwright MCP server). Default browser path is playwright-cli via needs:playwright label")
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
 	spawnCmd.Flags().IntVar(&spawnMaxAgents, "max-agents", -1, "Maximum concurrent agents (default 5, 0 to disable limit, or use ORCH_MAX_AGENTS env var)")
@@ -198,7 +198,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnAccount, "account", "", "Account name for Claude CLI spawns (e.g., 'work', 'personal')")
 	spawnCmd.Flags().StringVar(&spawnVerifyLevel, "verify-level", "", "Verification level override (V0=acknowledge, V1=artifacts, V2=evidence, V3=behavioral)")
 	spawnCmd.Flags().StringVar(&spawnReviewTier, "review-tier", "", "Review tier override (auto=minimal, scan=quick, review=full, deep=behavioral)")
-	spawnCmd.Flags().StringVar(&spawnReason, "reason", "", "Reason for override flags (--bypass-triage, --force-hotspot, --no-track). Min 10 chars.")
+	spawnCmd.Flags().StringVar(&spawnReason, "reason", "", "Reason for override flags (--bypass-triage, --force-hotspot). Min 10 chars.")
 	spawnCmd.Flags().StringVar(&spawnEffort, "effort", "", "Claude CLI effort level (low, medium, high). Default: auto from skill tier.")
 	spawnCmd.Flags().IntVar(&spawnMaxTurns, "max-turns", 0, "Max agentic turns for Claude CLI spawns (0 = unlimited). Prevents runaway agents.")
 	spawnCmd.Flags().StringVar(&spawnSettings, "settings", "", "Path to settings.json for Claude CLI (enables worker hook isolation)")
@@ -241,7 +241,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 
 	// Validate --reason is provided for override flags (min 10 chars)
 	if !daemonDriven {
-		needsReason := spawnBypassTriage || spawnForceHotspot || spawnNoTrack
+		needsReason := spawnBypassTriage || spawnForceHotspot
 		if needsReason && spawnReason == "" {
 			var flags []string
 			if spawnBypassTriage {
@@ -249,9 +249,6 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 			}
 			if spawnForceHotspot {
 				flags = append(flags, "--force-hotspot")
-			}
-			if spawnNoTrack {
-				flags = append(flags, "--no-track")
 			}
 			return fmt.Errorf("--reason is required when using %s (min 10 chars)", strings.Join(flags, ", "))
 		}
@@ -369,7 +366,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	if spawnWorkdir != "" && beadsID != "" && spawnIssue == "" {
 		cwd, _ := os.Getwd()
 		if sourceProject := orch.DetectCrossRepo(cwd, projectDir); sourceProject != "" {
-			orch.ApplyCrossRepoLabels(beadsID, sourceProject)
+			orch.ApplyCrossRepoLabels(beadsID, sourceProject, projectDir)
 			fmt.Printf("🔗 Cross-repo: created local issue %s in %s (from %s)\n", beadsID, projectName, sourceProject)
 		}
 	}
