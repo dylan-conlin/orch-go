@@ -1111,6 +1111,45 @@ else
 fi
 `
 
+// removeTrailingExit removes a trailing 'exit 0' or 'exit $?' from a script
+// so that appended code is reachable. Only removes the final exit statement —
+// exit statements inside conditionals are preserved.
+func removeTrailingExit(content string) string {
+	trimmed := strings.TrimRight(content, " \t\n\r")
+	lines := strings.Split(trimmed, "\n")
+	if len(lines) == 0 {
+		return content
+	}
+	last := strings.TrimSpace(lines[len(lines)-1])
+	if last == "exit 0" || last == "exit $?" {
+		return strings.Join(lines[:len(lines)-1], "\n") + "\n"
+	}
+	return content
+}
+
+// ensureBashShebang upgrades #!/bin/sh to #!/bin/bash.
+// Process substitution (<()) requires bash and fails under sh.
+func ensureBashShebang(content string) string {
+	if strings.HasPrefix(content, "#!/bin/sh\n") {
+		return "#!/bin/bash\n" + content[len("#!/bin/sh\n"):]
+	}
+	if strings.HasPrefix(content, "#!/bin/sh\r\n") {
+		return "#!/bin/bash\r\n" + content[len("#!/bin/sh\r\n"):]
+	}
+	return content
+}
+
+// stripScriptShebang removes the shebang line from a script.
+// Used when appending a script to an existing hook that already has a shebang.
+func stripScriptShebang(content string) string {
+	if strings.HasPrefix(content, "#!") {
+		if idx := strings.Index(content, "\n"); idx >= 0 {
+			return content[idx+1:]
+		}
+	}
+	return content
+}
+
 // ensureStandalonePreCommitGate adds a self-contained accretion gate to .git/hooks/pre-commit.
 // Unlike the full mode, this doesn't require the orch binary.
 func ensureStandalonePreCommitGate(projectDir string) (*StepResult, error) {
@@ -1140,15 +1179,17 @@ func ensureStandalonePreCommitGate(projectDir string) (*StepResult, error) {
 	} else if err != nil {
 		return nil, fmt.Errorf("reading pre-commit: %w", err)
 	} else {
-		// Append a source call to the existing hook
-		gate := fmt.Sprintf("\n# Accretion gate (added by orch harness init)\n%s", standalonePreCommitScript)
-		f, err := os.OpenFile(hookPath, os.O_APPEND|os.O_WRONLY, 0755)
-		if err != nil {
-			return nil, fmt.Errorf("opening pre-commit: %w", err)
-		}
-		defer f.Close()
-		if _, err := f.WriteString(gate); err != nil {
-			return nil, fmt.Errorf("appending to pre-commit: %w", err)
+		// Merge gate into existing hook:
+		// 1. Upgrade shebang from sh to bash (process substitution requires bash)
+		// 2. Remove trailing exit so appended gate code is reachable
+		// 3. Strip shebang from gate script (existing hook already has one)
+		content := ensureBashShebang(string(data))
+		content = removeTrailingExit(content)
+		gateBody := stripScriptShebang(standalonePreCommitScript)
+		newContent := content + "\n# Accretion gate (added by orch harness init)\n" + gateBody
+
+		if err := os.WriteFile(hookPath, []byte(newContent), 0755); err != nil {
+			return nil, fmt.Errorf("writing pre-commit: %w", err)
 		}
 	}
 
@@ -1187,14 +1228,12 @@ func ensurePreCommitGate(projectDir string) (*StepResult, error) {
 	} else if err != nil {
 		return nil, fmt.Errorf("reading pre-commit: %w", err)
 	} else {
-		// Append to existing
-		f, err := os.OpenFile(hookPath, os.O_APPEND|os.O_WRONLY, 0755)
-		if err != nil {
-			return nil, fmt.Errorf("opening pre-commit: %w", err)
-		}
-		defer f.Close()
-		if _, err := f.WriteString(gate); err != nil {
-			return nil, fmt.Errorf("appending to pre-commit: %w", err)
+		// Remove trailing exit so appended gate is reachable
+		content := removeTrailingExit(string(data))
+		newContent := content + gate
+
+		if err := os.WriteFile(hookPath, []byte(newContent), 0755); err != nil {
+			return nil, fmt.Errorf("writing pre-commit: %w", err)
 		}
 	}
 
