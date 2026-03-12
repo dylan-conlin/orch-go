@@ -274,6 +274,12 @@ type GateSkillEntry struct {
 	Count int    `json:"count"`
 }
 
+// escapeHatchSpawn tracks a single escape hatch spawn for multi-window analysis.
+type escapeHatchSpawn struct {
+	timestamp int64
+	account   string
+}
+
 // GateAccuracyBaseline is a point-in-time snapshot of gate accuracy metrics.
 // Used for prospective measurement: compare baselines over time to determine
 // whether gates improve agent quality.
