@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Decision: Reconcile Claude Code Auto-Memory with kb-cli Knowledge Externalization
 
 **Date:** 2026-02-25

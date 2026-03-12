@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Decision: Strategic Orchestrator Model
 
 **Date:** 2026-01-07

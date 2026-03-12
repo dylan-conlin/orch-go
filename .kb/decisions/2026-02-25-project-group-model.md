@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Decision: Project Group Model for orch-go
 
 **Status:** Accepted

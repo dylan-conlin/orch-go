@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Decision: Dev vs Prod Architecture Separation
 
 **Date:** 2026-01-10

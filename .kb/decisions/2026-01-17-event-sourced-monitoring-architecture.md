@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Decision: Event-Sourced Monitoring Architecture
 
 **Status:** Accepted

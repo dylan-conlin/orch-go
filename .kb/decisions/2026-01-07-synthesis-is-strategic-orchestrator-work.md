@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Decision: Synthesis is Strategic Orchestrator Work, Not Spawnable Work
 
 **Date:** 2026-01-07

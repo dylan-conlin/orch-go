@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Continuous Knowledge Maintenance via Orchestration Side Effects
 
 **Date:** 2026-02-25

@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Decision: Phase-Based Liveness Over Tmux-as-State for Claude-Backend Agents
 
 **Date:** 2026-02-26

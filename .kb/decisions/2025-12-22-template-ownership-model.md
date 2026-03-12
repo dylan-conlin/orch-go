@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 ## Summary (D.E.K.N.)
 
 **Delta:** Template ownership is split by domain: kb-cli owns artifact templates (knowledge artifacts), orch-go owns spawn-time templates (agent lifecycle artifacts).

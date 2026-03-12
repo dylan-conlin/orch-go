@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Decision: kb reflect Command Interface
 
 **Date:** 2025-12-21

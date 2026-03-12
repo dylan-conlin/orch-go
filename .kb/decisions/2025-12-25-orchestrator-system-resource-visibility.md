@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 ## Summary (D.E.K.N.)
 
 **Delta:** System resource visibility in the orchestrator provides marginal value - the 125% CPU bug was already diagnosed via external monitoring (sketchybar), and high CPU/memory in the orchestration layer typically indicates bugs rather than normal operation.

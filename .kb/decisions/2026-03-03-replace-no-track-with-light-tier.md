@@ -11,6 +11,7 @@ blocks:
       - "**/spawn_cmd.go"
       - "**/spawn_beads.go"
       - "**/untracked_sessions.go"
+stability: foundational
 ---
 
 ## Summary (D.E.K.N.)

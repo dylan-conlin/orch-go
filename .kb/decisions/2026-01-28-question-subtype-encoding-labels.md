@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 ## Summary (D.E.K.N.)
 
 **Delta:** Question subtypes (factual/judgment/framing) are encoded using labels with convention `subtype:{factual|judgment|framing}` - zero schema changes, leverages existing beads infrastructure.

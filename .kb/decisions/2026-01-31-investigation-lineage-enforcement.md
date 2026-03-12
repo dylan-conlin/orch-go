@@ -1,6 +1,7 @@
 ---
 status: active
 patches: 2025-12-21-minimal-artifact-taxonomy.md
+stability: foundational
 ---
 
 # Decision: Investigation Lineage Enforcement

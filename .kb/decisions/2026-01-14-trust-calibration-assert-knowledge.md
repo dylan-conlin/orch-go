@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Decision: Trust Calibration - Assert Relevant Knowledge
 
 **Date:** 2026-01-14

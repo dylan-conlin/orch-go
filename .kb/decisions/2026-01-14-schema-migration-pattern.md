@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Decision: Schema Migration Pattern
 
 **Date:** 2026-01-14

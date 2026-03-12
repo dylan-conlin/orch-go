@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Decision: Verification Bottleneck Principle
 
 **Date:** 2026-01-14

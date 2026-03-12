@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Decision: Knowledge Maintenance Automation Loop
 
 **Date:** 2026-02-15

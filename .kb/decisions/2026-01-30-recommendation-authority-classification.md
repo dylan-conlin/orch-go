@@ -1,5 +1,6 @@
 ---
 status: active
+stability: foundational
 ---
 
 # Decision: Recommendation Authority Classification and Question Generation

@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Decision: Three-Tier Workspace Hierarchy
 
 **Date:** 2026-01-17

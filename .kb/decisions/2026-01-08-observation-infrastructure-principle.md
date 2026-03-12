@@ -1,3 +1,6 @@
+---
+stability: foundational
+---
 # Decision: Observation Infrastructure Principle
 
 **Date:** 2026-01-08
