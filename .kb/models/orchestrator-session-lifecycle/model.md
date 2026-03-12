@@ -1,8 +1,8 @@
 # Model: Orchestrator Session Lifecycle
 
 **Domain:** Orchestrator / Meta-Orchestration / Session Management
-**Last Updated:** 2026-03-06
-**Synthesized From:** 40 investigations (Dec 21, 2025 - Jan 7, 2026) on orchestrator session boundaries, completion verification, frame collapse, checkpoint discipline, and hierarchical completion model. Updated Feb 2026 per probe findings: removed deleted session registry references, updated hierarchy to strategic comprehender pattern. Updated Mar 2026 (18 probes merged): skill injection path map, behavioral compliance gap, cross-project injection failure, constraint dilution, orientation preservation dimension.
+**Last Updated:** 2026-03-11
+**Synthesized From:** 40 investigations (Dec 21, 2025 - Jan 7, 2026) on orchestrator session boundaries, completion verification, frame collapse, checkpoint discipline, and hierarchical completion model. Updated Feb 2026 per probe findings: removed deleted session registry references, updated hierarchy to strategic comprehender pattern. Updated Mar 2026 (18 probes merged): skill injection path map, behavioral compliance gap, cross-project injection failure, constraint dilution, orientation preservation dimension. Updated 2026-03-11: expanded failure mode taxonomy from 5→12 modes via 6-investigation cross-reference; added intent displacement, error-correction feedback, staleness, injection failure, MUST fatigue, temporal decay, and knowledge surfacing gap.
 
 ---
 
@@ -247,6 +247,98 @@ The COMPREHEND → TRIAGE → SYNTHESIZE frame describes what the orchestrator d
 **Mitigation:** The agent-lifecycle-state-model defines a Priority Cascade for resolving disagreements. Beads issue status is the highest authority.
 
 **Historical note:** This replaced the earlier "Session Registry Drift" failure mode. The registry itself was removed; the underlying problem (state disagreement) persists in distributed form.
+
+### 6. Cascaded Intent Displacement — Intent Spiral (Feb 2026)
+
+**What happens:** Human intent passes through multiple translation layers (human → orchestrator → spawn prompt → skill template → worker) and gets reshaped at each layer by the layer's dominant frame. "Evaluate" (experiential) becomes "audit" (methodology-driven). The output is confident execution of the wrong interpretation.
+
+**Root cause:** (a) Skill routing table lacks paths for experiential/exploratory work — forces into closest match. (b) Heavy compiled skills override weak spawn prompts — as skills grew heavier, spawn prompt influence decreased proportionally. (c) No early verification of agent behavior in first minutes of execution.
+
+**Why it's different from frame collapse:** The orchestrator doesn't drop levels — it stays at orchestrator level but misinterprets the intent. Each layer (orchestrator, spawn prompt, skill, worker) competently optimizes the wrong thing.
+
+**Status:** Open / fundamental. Routing table extended with experiential/production/comparative intent distinction. Core mechanism (frame-dominant variety attenuation across layers) is fundamental to multi-layer delegation.
+
+**Reference:** `.kb/investigations/2026-02-28-investigation-orchestrator-intent-spiral.md`
+
+### 7. Error-Correction Feedback Loop — Defensive Spiraling (Feb 2026)
+
+**What happens:** Each correction from Dylan makes the orchestrator more anxious. Pattern: immediately agree (sycophancy) → over-correct with more elaborate methodology → introduce new complexity → drift further from intent.
+
+**Root cause:** The skill's pre-spawn checklists become amplifiers — an anxious orchestrator leans harder into ceremony, adding process without fixing comprehension. Optimizing for "don't get corrected again" replaces "understand what Dylan wants."
+
+**Status:** Open / fundamental — may be an LLM behavioral pattern. Anti-sycophancy constraint is one of 4 behavioral norms in v4 skill, but baseline testing showed anti-sycophancy at bare parity (3/8).
+
+**Reference:** `.kb/investigations/2026-02-28-investigation-orchestrator-intent-spiral.md` (amplification mechanism section)
+
+### 8. Skill Content Staleness / Deployment Drift (Feb 2026)
+
+**What happens:** Skill references commands, flags, and behaviors that don't exist or have changed. Orchestrators following skill guidance get runtime errors or use wrong defaults.
+
+**Root cause:** CLI evolves faster than skill updates. `skillc deploy` doesn't trigger OpenCode restart (init-time cached version persists). Multiple deployment locations leave stale copies discoverable.
+
+**Status:** Partially mitigated — v4 deployment cleaned 10 orphaned files. 72-commit delta audit (Mar 2026) designed 13 specific edits. Init-time caching bug remains.
+
+**Severity:** 7 harmful references (commands that don't exist), 4 misleading (wrong defaults/syntax). Highest impact: `--opus` flag (doesn't exist, correct: `--model opus`) and `orch frontier` (removed, replacement: `orch status`).
+
+**Reference:** Probe `2026-02-18-orchestrator-skill-cli-staleness-audit.md`, Investigation `2026-03-05-inv-design-orchestrator-skill-update-incorporating.md`
+
+### 9. Skill Injection Failure — Cross-Project (Feb 2026)
+
+**What happens:** Interactive orchestrator sessions in non-orch-go projects receive NO skill content. Claude operates as generic assistant.
+
+**Root cause:** Two-bug chain: (1) `is_spawned_agent()` conflates spawned agents with interactive orchestrators via shared `CLAUDE_CONTEXT=orchestrator` env var. (2) Skill loading gated behind `.orch/` directory existence, but the skill is project-independent.
+
+**Status:** Open — fix designed (add `ORCH_SPAWNED=1`, change detection logic) but not implemented.
+
+**Reference:** Probe `2026-02-25-probe-orchestrator-skill-cross-project-injection-failure.md`
+
+### 10. MUST Fatigue / Constraint Overhead (Mar 2026)
+
+**What happens:** Excessive emphasis language (MUST, NEVER, CRITICAL) creates "cry wolf" effect where all constraints lose salience. Distinct from dilution (#4) — this is about emphasis saturation, not constraint count.
+
+**Root cause:** DSL design anti-pattern: >3 MUST/NEVER/CRITICAL per 100 words triggers warning. Production skill had 20+ NEVER directives.
+
+**Status:** Resolved by simplification — v4 uses knowledge framing ("the system works like Y") instead of prohibition framing ("NEVER do X").
+
+**Reference:** Investigation `2026-03-01-design-infrastructure-systematic-orchestrator-skill.md` (DSL design principles fork)
+
+### 11. Temporal Attention Decay (Feb 2026)
+
+**What happens:** Skill constraints become less salient over session duration while system prompt instructions remain persistent. Longer sessions = higher violation probability.
+
+**Root cause:** Skill injected once at session start. System prompt present every turn. Relative salience of skill instructions decreases over time.
+
+**Status:** Open / fundamental — checkpoint discipline (2h/3h/4h) is an indirect mitigation.
+
+**Reference:** Investigation `2026-02-24-design-orchestrator-skill-behavioral-compliance.md` (Finding 5)
+
+### 12. Knowledge Surfacing Gap — Cross-Session Orientation Loss (Feb-Mar 2026)
+
+**What happens:** Interactive sessions produce debriefs conversationally with no durable artifact. Next session's orchestrator has no comprehension context.
+
+**Root cause:** SESSION_HANDOFF.md works for spawned orchestrators. Interactive sessions (majority pattern) had no equivalent.
+
+**Status:** Partially mitigated — `orch debrief` writes to `.kb/sessions/YYYY-MM-DD-debrief.md`. Comprehension quality depends on orchestrator quality.
+
+**Reference:** Probe `2026-02-28-probe-session-debrief-artifact-design.md`, Probe `2026-02-27-probe-flow-integrated-knowledge-surfacing-architecture.md`
+
+### Failure Mode Interaction Effects
+
+Several failure modes amplify each other:
+
+| Interaction | Mechanism |
+|-------------|-----------|
+| Dilution (#4) amplifies Competing Hierarchy (#3) | More constraints = weaker signal per constraint = less resistance to system prompt |
+| Error-Correction Loop (#7) amplifies Intent Displacement (#6) | Corrections drive deeper into wrong methodology |
+| Temporal Decay (#11) amplifies Competing Hierarchy (#3) | System prompt signal constant while skill signal decays |
+| Injection Failure (#9) makes prompt failures (#1-4) irrelevant | If skill never reaches agent, all prompt-level failures are moot |
+
+### Primary Evolutionary Drivers (Jan→Mar 2026)
+
+Three failure modes drove the majority of the skill's evolution:
+1. **Behavioral Constraint Dilution (#4)** — Drove the 2,368→448 line simplification (82% reduction)
+2. **Competing Instruction Hierarchy (#3)** — Drove hook-based enforcement strategy (6 hooks)
+3. **Cascaded Intent Displacement (#6)** — Drove intent clarification additions and experiential/production distinction
 
 ---
 
@@ -525,6 +617,7 @@ The COMPREHEND → TRIAGE → SYNTHESIZE frame describes what the orchestrator d
 | `2026-03-01-probe-constraint-dilution-threshold.md` | Confirms + Contradicts + Extends | Dilution curve quantified; behavioral budget ~2-4 (directional only — did not replicate cleanly) |
 | `2026-03-02-probe-playwright-cli-cdp-endpoint-compatibility.md` | Confirms + Extends | CDP via config/env var not CLI flag; shared config layer is MCP↔CLI interoperability surface |
 | `2026-03-02-probe-emphasis-language-constraint-compliance.md` | Extends | Emphasis markers (CRITICAL/MUST) provide lift over neutral language at high constraint counts; directional, N=3 |
+| `2026-03-11-probe-orchestrator-skill-failure-mode-taxonomy.md` | Confirms + Extends | Complete 12-mode taxonomy from 6 investigations; 7 new modes added to model; 3 primary evolutionary drivers identified |
 
 **Primary Evidence (Verify These):**
 - `pkg/spawn/orchestrator_context.go` - Orchestrator vs worker context generation logic
