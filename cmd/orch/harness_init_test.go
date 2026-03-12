@@ -690,7 +690,8 @@ func TestEnsureStandaloneHookRegistration(t *testing.T) {
 
 	os.WriteFile(sp, []byte("{}"), 0644)
 
-	result, err := ensureStandaloneHookRegistration(sp, hooksDir)
+	// Pass empty user settings path to avoid detecting real user hooks
+	result, err := ensureStandaloneHookRegistration(sp, hooksDir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -725,6 +726,202 @@ func TestEnsureStandaloneHookRegistration(t *testing.T) {
 	}
 	if !strings.HasPrefix(cmd, "python3 .claude/hooks/") {
 		t.Errorf("expected relative path for portability, got %s", cmd)
+	}
+}
+
+func TestIsEquivalentHookRegistered(t *testing.T) {
+	tests := []struct {
+		name       string
+		commands   map[string]bool
+		scriptName string
+		want       bool
+	}{
+		{
+			name:       "full-mode equivalent exists",
+			commands:   map[string]bool{"~/.orch/hooks/gate-worker-git-add-all.py": true},
+			scriptName: "gate-git-add-all.py",
+			want:       true,
+		},
+		{
+			name:       "full-mode equivalent with python3 prefix",
+			commands:   map[string]bool{"python3 ~/.orch/hooks/gate-worker-git-add-all.py": true},
+			scriptName: "gate-git-add-all.py",
+			want:       true,
+		},
+		{
+			name:       "no equivalent",
+			commands:   map[string]bool{"~/.orch/hooks/gate-bd-close.py": true},
+			scriptName: "gate-git-add-all.py",
+			want:       false,
+		},
+		{
+			name:       "empty commands",
+			commands:   map[string]bool{},
+			scriptName: "gate-git-add-all.py",
+			want:       false,
+		},
+		{
+			name:       "unknown script name",
+			commands:   map[string]bool{"~/.orch/hooks/gate-worker-git-add-all.py": true},
+			scriptName: "gate-unknown.py",
+			want:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isEquivalentHookRegistered(tt.commands, tt.scriptName)
+			if got != tt.want {
+				t.Errorf("isEquivalentHookRegistered() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCollectRegisteredCommands(t *testing.T) {
+	dir := t.TempDir()
+	sp := filepath.Join(dir, "settings.json")
+
+	settings := map[string]any{
+		"hooks": map[string]any{
+			"PreToolUse": []any{
+				map[string]any{
+					"matcher": "Bash",
+					"hooks": []any{
+						map[string]any{
+							"type":    "command",
+							"command": "~/.orch/hooks/gate-worker-git-add-all.py",
+						},
+					},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(settings)
+	os.WriteFile(sp, data, 0644)
+
+	commands := collectRegisteredCommands(sp)
+	if !commands["~/.orch/hooks/gate-worker-git-add-all.py"] {
+		t.Error("expected gate-worker-git-add-all.py command to be collected")
+	}
+}
+
+func TestCollectRegisteredCommandsMissingFile(t *testing.T) {
+	commands := collectRegisteredCommands("/nonexistent/settings.json")
+	if len(commands) != 0 {
+		t.Errorf("expected empty map for missing file, got %d entries", len(commands))
+	}
+}
+
+func TestStandaloneHookSkipsWhenEquivalentInUserSettings(t *testing.T) {
+	dir := t.TempDir()
+
+	// Simulate user-level settings with an equivalent hook already registered
+	userSettingsDir := filepath.Join(dir, "user-home", ".claude")
+	os.MkdirAll(userSettingsDir, 0755)
+	userSP := filepath.Join(userSettingsDir, "settings.json")
+	userSettings := map[string]any{
+		"hooks": map[string]any{
+			"PreToolUse": []any{
+				map[string]any{
+					"matcher": "Bash",
+					"hooks": []any{
+						map[string]any{
+							"type":    "command",
+							"command": "~/.orch/hooks/gate-worker-git-add-all.py",
+						},
+					},
+				},
+			},
+		},
+	}
+	userData, _ := json.Marshal(userSettings)
+	os.WriteFile(userSP, userData, 0644)
+
+	// Project settings (empty)
+	projectSP := filepath.Join(dir, "project", ".claude", "settings.json")
+	hooksDir := filepath.Join(dir, "project", ".claude", "hooks")
+	os.MkdirAll(filepath.Dir(projectSP), 0755)
+	os.MkdirAll(hooksDir, 0755)
+	os.WriteFile(projectSP, []byte("{}"), 0644)
+	os.WriteFile(filepath.Join(hooksDir, "gate-git-add-all.py"), []byte("# hook"), 0755)
+
+	// Override ORCH_SETTINGS_PATH is not relevant here — we test via
+	// passing the user settings path as if it were the default.
+	// The function under test reads user settings via control.DefaultSettingsPath().
+	// Since we can't easily mock that in tests, we test the equivalent detection
+	// directly by pre-populating registeredCommands.
+
+	// Direct test: verify isEquivalentHookRegistered catches it
+	userCommands := collectRegisteredCommands(userSP)
+	if !isEquivalentHookRegistered(userCommands, "gate-git-add-all.py") {
+		t.Error("expected equivalent hook to be detected in user settings")
+	}
+}
+
+func TestStandaloneHookRegistrationIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	sp := filepath.Join(dir, "settings.json")
+	hooksDir := filepath.Join(dir, "project", ".claude", "hooks")
+
+	os.MkdirAll(hooksDir, 0755)
+	os.WriteFile(filepath.Join(hooksDir, "gate-git-add-all.py"), []byte("# hook"), 0755)
+	os.WriteFile(sp, []byte("{}"), 0644)
+
+	// Run twice — pass empty user settings to avoid detecting real user hooks
+	ensureStandaloneHookRegistration(sp, hooksDir, "")
+	result, err := ensureStandaloneHookRegistration(sp, hooksDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.AlreadyPresent {
+		t.Error("expected hooks already registered on second run")
+	}
+}
+
+func TestStandaloneHookSkipsWhenEquivalentInUserSettingsIntegration(t *testing.T) {
+	dir := t.TempDir()
+
+	// Simulate user-level settings with an equivalent hook
+	userSP := filepath.Join(dir, "user-settings.json")
+	userSettings := map[string]any{
+		"hooks": map[string]any{
+			"PreToolUse": []any{
+				map[string]any{
+					"matcher": "Bash",
+					"hooks": []any{
+						map[string]any{
+							"type":    "command",
+							"command": "~/.orch/hooks/gate-worker-git-add-all.py",
+						},
+					},
+				},
+			},
+		},
+	}
+	userData, _ := json.Marshal(userSettings)
+	os.WriteFile(userSP, userData, 0644)
+
+	// Project settings (empty)
+	projectSP := filepath.Join(dir, "project-settings.json")
+	hooksDir := filepath.Join(dir, "project", ".claude", "hooks")
+	os.MkdirAll(hooksDir, 0755)
+	os.WriteFile(projectSP, []byte("{}"), 0644)
+	os.WriteFile(filepath.Join(hooksDir, "gate-git-add-all.py"), []byte("# hook"), 0755)
+
+	// Should skip registration because equivalent hook exists in user settings
+	result, err := ensureStandaloneHookRegistration(projectSP, hooksDir, userSP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.AlreadyPresent {
+		t.Error("expected hook to be detected as already present (equivalent in user settings)")
+	}
+
+	// Verify project settings was NOT modified
+	data, _ := os.ReadFile(projectSP)
+	if string(data) != "{}" {
+		t.Error("project settings should not be modified when equivalent exists")
 	}
 }
 

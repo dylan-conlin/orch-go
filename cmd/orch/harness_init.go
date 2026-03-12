@@ -79,15 +79,32 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("getting home directory: %w", err)
 	}
 
-	sp := settingsPath()
-
-	// Check minimal prerequisite: settings.json must exist
-	if _, err := os.Stat(sp); os.IsNotExist(err) {
-		return fmt.Errorf("settings.json not found at %s\nRun Claude Code first to create it, or create it manually: echo '{}' > %s", sp, sp)
-	}
-
 	standalone, hasBeads := detectStandaloneMode(projectDir)
 	orchHooksDir := filepath.Join(home, ".orch", "hooks")
+
+	// Determine settings path based on mode.
+	// Standalone mode uses project-level settings (.claude/settings.json in project dir)
+	// because hook scripts use relative paths that resolve from the project root.
+	// Writing relative paths to user-level settings would break every other project.
+	var sp string
+	if standalone {
+		sp = filepath.Join(projectDir, ".claude", "settings.json")
+		// Create project settings file if it doesn't exist
+		if _, err := os.Stat(sp); os.IsNotExist(err) {
+			if err := os.MkdirAll(filepath.Dir(sp), 0755); err != nil {
+				return fmt.Errorf("creating .claude directory: %w", err)
+			}
+			if err := os.WriteFile(sp, []byte("{}\n"), 0644); err != nil {
+				return fmt.Errorf("creating project settings: %w", err)
+			}
+		}
+	} else {
+		sp = settingsPath()
+		// Check minimal prerequisite: user-level settings.json must exist
+		if _, err := os.Stat(sp); os.IsNotExist(err) {
+			return fmt.Errorf("settings.json not found at %s\nRun Claude Code first to create it, or create it manually: echo '{}' > %s", sp, sp)
+		}
+	}
 
 	if standalone {
 		fmt.Fprintf(os.Stderr, "Mode: standalone (no ~/.orch/hooks/ detected)\n\n")
@@ -100,7 +117,9 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Step 0: Unlock control plane if locked (needed to modify settings.json)
-	if !harnessInitDryRun {
+	// Skip in standalone mode — project-level settings are git-tracked,
+	// chflags uchg is only used for user-level files.
+	if !harnessInitDryRun && !standalone {
 		files, err := control.DiscoverControlPlaneFiles(sp)
 		if err == nil {
 			control.Unlock(files)
@@ -189,7 +208,7 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 		if harnessInitDryRun {
 			fmt.Fprintf(os.Stderr, "   WOULD REGISTER hooks in settings.json\n")
 		} else {
-			hookResult, err := ensureStandaloneHookRegistration(sp, projectHooksDir)
+			hookResult, err := ensureStandaloneHookRegistration(sp, projectHooksDir, control.DefaultSettingsPath())
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "   FAIL — %v\n", err)
 				hasErrors = true
@@ -297,9 +316,13 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Step: Lock control plane (macOS only)
+	// Skip in standalone mode — project-level settings and hooks are git-tracked,
+	// chflags uchg would break git checkout/pull operations.
 	stepNum++
 	fmt.Fprintf(os.Stderr, "%d. Control plane lock\n", stepNum)
-	if runtime.GOOS != "darwin" {
+	if standalone {
+		fmt.Fprintf(os.Stderr, "   SKIP — standalone mode (project files are git-tracked)\n")
+	} else if runtime.GOOS != "darwin" {
 		fmt.Fprintf(os.Stderr, "   SKIP — chflags uchg is macOS-only (current OS: %s)\n", runtime.GOOS)
 		fmt.Fprintf(os.Stderr, "   TIP: On Linux, use 'chattr +i' manually for equivalent protection\n")
 	} else if harnessInitDryRun {
@@ -927,9 +950,71 @@ var standaloneHookSpecs = []hookSpec{
 	{Matcher: "Bash", Script: "gate-git-add-all.py"},
 }
 
-// ensureStandaloneHookRegistration registers standalone hooks in settings.json.
-// Unlike the full mode, this uses project-local hook paths.
-func ensureStandaloneHookRegistration(settingsPath, hooksDir string) (*StepResult, error) {
+// collectRegisteredCommands reads all hook commands from a settings.json file.
+// Returns empty map on any error (file missing, parse error, etc).
+func collectRegisteredCommands(settingsPath string) map[string]bool {
+	commands := make(map[string]bool)
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return commands
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return commands
+	}
+	hooks, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		return commands
+	}
+	ptu, ok := hooks["PreToolUse"].([]any)
+	if !ok {
+		return commands
+	}
+	for _, entry := range ptu {
+		if group, ok := entry.(map[string]any); ok {
+			if hookList, ok := group["hooks"].([]any); ok {
+				for _, h := range hookList {
+					if hookMap, ok := h.(map[string]any); ok {
+						if cmd, ok := hookMap["command"].(string); ok {
+							commands[cmd] = true
+						}
+					}
+				}
+			}
+		}
+	}
+	return commands
+}
+
+// hookEquivalents maps standalone hook script names to functional identifiers.
+// If any registered command contains the identifier, the hooks are equivalent.
+// For example, gate-worker-git-add-all.py (full mode) and gate-git-add-all.py
+// (standalone) both block blanket git add.
+var hookEquivalents = map[string]string{
+	"gate-git-add-all.py": "git-add-all",
+}
+
+// isEquivalentHookRegistered checks if a functionally equivalent hook is
+// already registered. This prevents double-gating when both standalone and
+// full-mode hooks exist for the same purpose.
+func isEquivalentHookRegistered(registeredCommands map[string]bool, scriptName string) bool {
+	pattern, ok := hookEquivalents[scriptName]
+	if !ok {
+		return false
+	}
+	for cmd := range registeredCommands {
+		if strings.Contains(cmd, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// ensureStandaloneHookRegistration registers standalone hooks in project-level settings.json.
+// Unlike the full mode, this uses project-local hook paths (.claude/hooks/).
+// userSettingsPath is checked for equivalent hooks to avoid double-gating
+// (e.g., gate-worker-git-add-all.py in user settings covers the same gate).
+func ensureStandaloneHookRegistration(settingsPath, hooksDir, userSettingsPath string) (*StepResult, error) {
 	result := &StepResult{}
 
 	data, err := os.ReadFile(settingsPath)
@@ -953,7 +1038,7 @@ func ensureStandaloneHookRegistration(settingsPath, hooksDir string) (*StepResul
 		ptu = existing
 	}
 
-	// Check which hooks are already registered
+	// Collect registered commands from the target (project) settings
 	registeredCommands := make(map[string]bool)
 	for _, entry := range ptu {
 		if group, ok := entry.(map[string]any); ok {
@@ -966,6 +1051,15 @@ func ensureStandaloneHookRegistration(settingsPath, hooksDir string) (*StepResul
 					}
 				}
 			}
+		}
+	}
+
+	// Also check user-level settings for equivalent hooks to avoid double-gating.
+	// In standalone mode, settingsPath points to project settings, but hooks might
+	// already be registered at the user level (e.g., gate-worker-git-add-all.py).
+	if userSettingsPath != "" && userSettingsPath != settingsPath {
+		for cmd := range collectRegisteredCommands(userSettingsPath) {
+			registeredCommands[cmd] = true
 		}
 	}
 
@@ -986,6 +1080,12 @@ func ensureStandaloneHookRegistration(settingsPath, hooksDir string) (*StepResul
 		// Also check if already registered with an absolute path
 		absCommand := fmt.Sprintf("python3 %s", scriptPath)
 		if registeredCommands[absCommand] {
+			continue
+		}
+
+		// Check if a functionally equivalent hook is already registered
+		// (e.g., gate-worker-git-add-all.py in user settings covers the same gate)
+		if isEquivalentHookRegistered(registeredCommands, spec.Script) {
 			continue
 		}
 
