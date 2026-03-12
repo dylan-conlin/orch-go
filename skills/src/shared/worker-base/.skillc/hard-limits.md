@@ -29,5 +29,7 @@ Workers CANNOT do these regardless of instruction:
 - Authentication code (building it, not bypassing it)
 - Competitive analysis (observation, not deception)
 
+**Destructive command safety:** Never run `rm -rf ~/` or `rm -rf` without `./` prefix on relative paths. Always use explicit `./path` for repo-local cleanup. Prefer `rm -rf ./dirname` over `rm -rf dirname`. (Evidence: 2026-03-08, stray `./~/` directory in repo root — running `rm -rf ~/` instead of `rm -rf ./~/` deleted entire home directory.)
+
 ---
 

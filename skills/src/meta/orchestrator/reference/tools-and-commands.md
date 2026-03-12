@@ -493,6 +493,12 @@ skillc lint                               # Static analysis
 - **Auto-complete:** capture-knowledge agents auto-completed on Phase: Complete
 - **Stuck detection:** >2h without phase updates triggers notification
 
+### Known Daemon Pitfalls
+
+- **JSONL lock pileup:** Daemon polling creates new `bd` processes faster than you can kill hung ones. Escape: `pkill -9` + `rm lock file` + pause daemon before restarting beads operations.
+- **Duplicate spawns:** Daemon has no prior-art check — it spawns for `triage:ready` issues even when prior agents already completed the work. Evidence: 2 of 5 harness issues were already done by prior agents; daemon spawned new agents that found existing work and re-did it.
+- **InferSkillFromDescription false positives:** Research keywords ('compare', 'evaluate') are too broad — 100% false-positive rate (1604 inferences, 0 actual research spawns). Keywords match ambient vocabulary in non-research issues.
+
 ## Attention Signals
 
 - **UNBLOCKED:** dependencies resolved; issue is actionable
@@ -502,6 +508,12 @@ skillc lint                               # Static analysis
 ## System Maintenance
 
 **Skill editing:** Edit `.skillc/` source files, then `skillc deploy`. Never edit SKILL.md directly.
+
+**CLI audit requirement:** After any command/flag additions or removals in orch-go, audit the orchestrator skill against `orch --help` output. Prior audit found 13 stale references including 7 harmful (non-existent commands/flags). Skill staleness propagates to every orchestrator session.
+
+**Tool name verification:** Claude Code tool names can be renamed silently between versions — `--disallowedTools` with invalid names fails silently (no warning). After Claude Code updates, verify tool names in `pkg/spawn/claude.go` against current CLI output. (Evidence: Task→Agent rename broke orchestrator Agent tool blocking.)
+
+**Model external validation:** Models and publications must survive external adversarial review (e.g., Codex or equivalent) before being treated as validated or novel. Internal probes and falsifiability checks are necessary but insufficient — two models passed all internal validation but were immediately challenged on external review.
 
 **Daemon operations:**
 ```bash

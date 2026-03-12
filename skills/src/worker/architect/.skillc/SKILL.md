@@ -84,6 +84,12 @@ Cite which principle guides your reasoning when making recommendations.
 
 ---
 
+## Tool Placement (Fork 0)
+
+**Before designing implementation, resolve placement:** "Where should this live?" is the first fork. Default to spawn repo is wrong — evaluate whether the tool belongs in orch-go, skillc, kb-cli, or a new package. Evidence: orch-go-dlw9 placed skill lint/test/compare in orch-go instead of skillc because architect defaulted to spawn repo without questioning placement (5 lines of justification, 0 lines of placement analysis).
+
+---
+
 ## Mode Detection
 
 **Check spawn context for mode:**
