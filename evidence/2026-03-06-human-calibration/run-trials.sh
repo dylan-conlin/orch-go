@@ -4,6 +4,10 @@
 
 set -euo pipefail
 
+# Prevent orch Stop hook from contaminating --print output when run
+# from within a spawned worker session. See: orch-go-ssbwv
+export ORCH_PRINT_MODE=1
+
 BASE="evidence/2026-03-06-human-calibration"
 TRANSCRIPTS="$BASE/transcripts"
 PROMPTS="$BASE/prompts"

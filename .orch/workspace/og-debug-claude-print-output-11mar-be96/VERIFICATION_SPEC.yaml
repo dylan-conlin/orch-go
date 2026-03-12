@@ -1,0 +1,54 @@
+verification:
+  type: behavioral
+  description: "enforce-phase-complete.py Stop hook skips enforcement when ORCH_PRINT_MODE=1 is set"
+
+  preconditions:
+    - "Orchestrator applies the 3-line patch to ~/.orch/hooks/enforce-phase-complete.py"
+    - "ORCH_PRINT_MODE=1 env var is set before claude --print invocations"
+
+  assertions:
+    - name: "Hook skips in print mode"
+      check: "ORCH_PRINT_MODE=1 causes hook to exit 0 with no stdout"
+      test: "go test ./cmd/orch/ -run TestEnforcePhaseCompleteSkipsPrintMode -v"
+      status: "FAILING (demonstrates bug, will pass after hook patch)"
+
+    - name: "Hook still blocks real workers"
+      check: "Without ORCH_PRINT_MODE, spawned workers are still blocked"
+      test: "go test ./cmd/orch/ -run TestEnforcePhaseCompleteStillBlocksWithoutPrintMode -v"
+      status: "PASSING"
+
+    - name: "Hook allows Phase: Complete message"
+      check: "Workers with Phase: Complete in last message can exit"
+      test: "go test ./cmd/orch/ -run TestEnforcePhaseCompleteAllowsPhaseCompleteMessage -v"
+      status: "PASSING"
+
+    - name: "Hook allows non-workers"
+      check: "Sessions without ORCH_SPAWNED=1 are never blocked"
+      test: "go test ./cmd/orch/ -run TestEnforcePhaseCompleteAllowsNonWorker -v"
+      status: "PASSING"
+
+  patch_required:
+    file: "~/.orch/hooks/enforce-phase-complete.py"
+    governance_protected: true
+    description: "Add ORCH_PRINT_MODE=1 skip check after JSON parsing, before is_spawned_worker()"
+    exact_patch: |
+      After line 111 (sys.exit(0)  # Can't parse input, allow exit), add:
+
+          # Skip for non-interactive/print-mode sessions (e.g. claude --print
+          # called from within a spawned worker — inherits ORCH_SPAWNED=1 but
+          # is not the real worker session)
+          if os.environ.get("ORCH_PRINT_MODE") == "1":
+              sys.exit(0)
+
+  reproduction:
+    before_fix: |
+      From within a spawned worker tmux session:
+        echo '{"stop_hook_active":false,"last_assistant_message":"test"}' | \
+          ORCH_SPAWNED=1 CLAUDE_CONTEXT=worker python3 ~/.orch/hooks/enforce-phase-complete.py
+      # Outputs: {"decision": "block", ...}  ← contaminates --print output
+
+    after_fix: |
+      From within a spawned worker tmux session:
+        echo '{"stop_hook_active":false,"last_assistant_message":"test"}' | \
+          ORCH_SPAWNED=1 CLAUDE_CONTEXT=worker ORCH_PRINT_MODE=1 python3 ~/.orch/hooks/enforce-phase-complete.py
+      # Outputs: (nothing) ← clean exit, no contamination
