@@ -66,6 +66,7 @@ At the end of your investigation file, add:
 - [ ] Real test performed (not code review)
 - [ ] Conclusion from evidence (not speculation)
 - [ ] Question answered
+- [ ] Sources use markdown hyperlinks `[text](url)` (if section exists)
 - [ ] File complete
 
 **Self-Review Status:** PASSED / FAILED

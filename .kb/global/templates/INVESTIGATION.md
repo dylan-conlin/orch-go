@@ -228,7 +228,8 @@ Classify each recommendation by authority level to route to the appropriate deci
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+<!-- All URLs must use markdown hyperlinks: [Display Name](https://url) — never bare URLs or plain text -->
+- [Display Name](https://url) - [What it is and relevance]
 
 **Related Artifacts:**
 - **Decision:** [Path to related decision document] - [How it relates]

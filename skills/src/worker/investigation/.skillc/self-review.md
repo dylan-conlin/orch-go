@@ -7,5 +7,6 @@ Quality checks run automatically at `orch complete` time (debug statements, comm
 - Does the conclusion follow from what you observed, or from what you expected?
 - Did you test the claim, or review the code that implements it?
 - If prior work exists, did you verify the claims you cited?
+- If Sources section exists, do all URLs use `[text](url)` markdown hyperlinks (not bare URLs or plain text)?
 
 **Reference:** See `~/.claude/skills/worker/investigation/reference/self-review-guide.md` for scope verification examples.

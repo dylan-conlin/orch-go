@@ -48,6 +48,27 @@ Use `kb create investigation {slug} --model <model-name>` (or `--orphan` if no m
 
 **Reference:** See `~/.claude/skills/worker/investigation/reference/template.md` for full structure and `reference/examples.md` for common failures.
 
+### Sources Section
+
+If your investigation references external URLs (documentation, APIs, articles, papers), add a `## Sources` section at the end. **All URLs must use markdown hyperlink syntax** — never bare URLs or plain-text descriptions.
+
+```markdown
+## Sources
+
+- [Claude Code CLI Reference](https://code.claude.com/docs/en/cli-usage)
+- [IAEA INSAG-10: Defence in Depth](https://www-pub.iaea.org/MTCD/Publications/PDF/Pub1013e_web.pdf)
+```
+
+**Wrong** (plain text, not clickable in exports):
+```
+- claude.ai/pricing — Claude pricing page
+- https://code.claude.com/docs/en/cli-usage
+```
+
+**Why:** Plain-text URLs become dead text in Google Docs and other exports. Markdown hyperlinks convert to clickable links.
+
+---
+
 ## When Not to Use
 
 - **Fixing bugs** → Use `systematic-debugging`

@@ -39,6 +39,16 @@
 [Only fill if you tested]
 ```
 
+## Sources (if external URLs referenced)
+
+```markdown
+## Sources
+
+- [Display Name](https://url) — brief description
+```
+
+**All URLs must use `[text](url)` markdown hyperlinks.** Never bare URLs or plain-text descriptions — they become dead text in exports.
+
 ## Section Guidelines
 
 | Section | When to Fill | Key Rule |
