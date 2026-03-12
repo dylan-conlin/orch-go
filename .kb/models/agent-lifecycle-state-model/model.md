@@ -1,7 +1,7 @@
 # Model: Agent Lifecycle State Model
 
 **Domain:** Agent Lifecycle / State Management
-**Last Updated:** 2026-03-06
+**Last Updated:** 2026-03-12
 **Synthesized From:** 17 investigations (Dec 20, 2025 - Jan 6, 2026) into agent state, completion detection, cross-project visibility, and dashboard status display. Updated Feb 2026 after major restructuring (registry elimination, two-lane architecture, single-pass query engine). Updated Feb 25 after phase-based liveness, cross-project querying, and verification gate additions. Updated Feb 27 after V0-V3 verification levels, all-at-once gate failure reporting, architectural choices gate, auto-implementation issue creation, and `pkg/agent/` formal types package. Updated Feb 28 after full LifecycleManager implementation, lifecycle adapter wiring (complete, abandon, orphan GC), model impact advisory, and daemon orphan recovery. Updated late Feb 28 for model drift correction: rework lifecycle path (`orch rework` bypasses LifecycleManager), phase timeout detection, `TrackedIssue`/`WorkspaceInfo` types, completion pipeline extraction (architect/cleanup/hotspot), daemon periodic task expansion, status_cmd.go extraction, and new commands (rework, review orphans, orient).
 
 ---
@@ -381,6 +381,52 @@ Orchestrator investigates (may abandon or send message)
 
 **Fix:** Dedup at the beads layer (check for existing `orch:agent` label + open workspace) rather than relying on in-memory cache. An existing `orch:agent` label on an open issue means it's already been spawned.
 
+### Failure Mode 9: Model Protocol Incompatibility
+
+**Symptom:** Non-Anthropic model agent stalls in Implementing, Planning, or QUESTION phase at dramatically higher rates than Anthropic models.
+
+**Root cause:** GPT-4o and GPT-5.2-codex cannot reliably follow the multi-step worker protocol (phase reporting → implementation → SYNTHESIS → completion). This is a protocol compliance gap, not a capability gap.
+
+**Scale (Feb 2026 audit):** 15 of 19 true stalls (79%) were non-Anthropic models. GPT-4o: 87.5% stall rate. GPT-5.2-codex: 67.5%. Opus: 44.6% (inflated by pre-protocol agents).
+
+**Fix:** Restrict protocol-heavy skills (architect, investigation) to Anthropic models. The diagnostic classifier (`pkg/daemon/diagnostic.go`) detects this pattern and recommends respawning with an Anthropic model.
+
+### Failure Mode 10: Silent Failure
+
+**Symptom:** Agent has a manifest but never reported any phase. Beads issue has 0 comments from the agent.
+
+**Root cause:** Agent crashed on startup (API error, context exhaustion from large spawn context), or was spawned with a pre-phase-reporting skill version.
+
+**Scale (Feb 2026 audit):** 228 agents. Predominantly Sonnet 4.5 from Feb 14-17 (pre-phase-reporting skill versions).
+
+**Fix:** Phase timeout detection (`pkg/daemon/phase_timeout.go`) catches agents that have sessions but haven't reported. The diagnostic classifier flags agents with no phase and no session as silent failures after 30 minutes.
+
+### Failure Mode 11: Prior Art Confusion
+
+**Symptom:** Agent discovers that prior agents already completed overlapping work mid-task, gets confused about remaining scope, and stalls in Exploration.
+
+**Root cause:** Spawn context doesn't include information about prior agent completions for the same beads issue or similar work.
+
+**Scale (Feb 2026 audit):** 1 confirmed instance (orch-go-nn43), but the pattern is systematic — daemon spawns without checking prior completions.
+
+**Fix:** Prior art check at spawn time — check if prior agents completed overlapping work and inject a "Prior Completions" section into SPAWN_CONTEXT.md. The diagnostic classifier flags agents stalled in Exploration with known prior agents.
+
+### Failure Mode 12: Concurrency Ceiling Stall
+
+**Symptom:** Agent reports Phase: BLOCKED because it needs to spawn sub-tasks but hits concurrency limits. Waits indefinitely for slot availability.
+
+**Root cause:** No escalation path from BLOCKED to orchestrator attention. Agent correctly surfaces the constraint but the system has no automated response.
+
+**Scale (Feb 2026 audit):** 1 confirmed instance (orch-go-1054).
+
+**Fix:** The diagnostic classifier detects BLOCKED phase and recommends waiting for slot or escalating to orchestrator.
+
+### Diagnostic Classifier (`pkg/daemon/diagnostic.go`)
+
+A unified classifier maps agents to failure modes 1-12. Given a `DiagnosticAgent` (populated from beads, workspace, and session data), `ClassifyFailureMode()` returns a `DiagnosticResult` with the failure mode, severity, and recommended actions. `RunDiagnostics()` produces an aggregate report across all agents, grouped by failure mode.
+
+The classifier runs in priority order: QUESTION deadlock → concurrency ceiling → silent failure → prior art confusion → model incompatibility → generic phase stall → synthesis compliance gap.
+
 ---
 
 ## Constraints
@@ -669,6 +715,7 @@ Common feature requests or operational changes that would violate this model's i
 | `2026-02-24-probe-claude-code-plan-mode-feature-impl-alignment.md` | 2026-02-24 | EXTENDS | Claude Code plan mode is incompatible with orchestrated headless agents (dark period, daemon incompatibility, context clearing); feature-impl's Investigation/Design phases are superior |
 | `2026-02-24-probe-orch-complete-kills-wrong-tmux-window.md` | 2026-02-24 | EXTENDS | All 4 tmux kill paths use unstable `session:index` instead of stable `@ID`; TOCTOU race can kill wrong window; adds Invariant 10 |
 | `2026-02-28-probe-stalled-agent-failure-pattern-audit.md` | 2026-02-28 | EXTENDS | Audit of 1655 archived workspaces reveals 5 new failure modes (QUESTION deadlock, prior art confusion, concurrency ceiling stall, duplicate spawn storm, SYNTHESIS compliance gap); true stall rate is 4.3%, not 56.6%; non-Anthropic models have 67-87% stall rates vs 44.6% for Opus |
+| (diagnostic classifier implementation) | 2026-03-12 | EXTENDS | `pkg/daemon/diagnostic.go` implements unified classifier mapping agents to all 12 failure modes with severity levels and recommended actions. Adds Failure Modes 9-12: model protocol incompatibility, silent failure, prior art confusion, concurrency ceiling stall |
 
 **Primary Evidence (Verify These):**
 
