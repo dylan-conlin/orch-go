@@ -96,6 +96,25 @@ func TestDaemon_Preview_HasIssues(t *testing.T) {
 	}
 }
 
+func TestDaemon_CountSpawnable(t *testing.T) {
+	d := &Daemon{
+		Config: Config{Label: "triage:ready"},
+	}
+
+	issues := []Issue{
+		{ID: "proj-1", Title: "No label", Priority: 1, IssueType: "feature", Status: "open"},
+		{ID: "proj-2", Title: "In progress", Priority: 1, IssueType: "bug", Status: "in_progress"},
+		{ID: "proj-3", Title: "Has label", Priority: 1, IssueType: "task", Status: "open", Labels: []string{"triage:ready"}},
+		{ID: "proj-4", Title: "Chore type", Priority: 1, IssueType: "chore", Status: "open", Labels: []string{"triage:ready"}},
+		{ID: "proj-5", Title: "Also spawnable", Priority: 1, IssueType: "investigation", Status: "open", Labels: []string{"triage:ready"}},
+	}
+
+	got := d.CountSpawnable(issues)
+	if got != 2 {
+		t.Errorf("CountSpawnable() = %d, want 2 (proj-3 and proj-5)", got)
+	}
+}
+
 func TestDaemon_Preview_ShowsRejectionReasons(t *testing.T) {
 	// Test that Preview returns rejection reasons for non-spawnable issues
 	d := &Daemon{

@@ -103,7 +103,7 @@ func runDaemonLoop() error {
 				s.d.BeadsCircuitBreaker.RecordSuccess()
 			}
 		}
-		readyCount := len(readyIssues)
+		readyCount := s.d.CountSpawnable(readyIssues)
 
 		// Write daemon status file AFTER reconciliation and completions so counts are accurate
 		s.writeDaemonStatusFile(readyCount, periodicResult)

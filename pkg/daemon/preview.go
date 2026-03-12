@@ -146,6 +146,19 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 	return result, nil
 }
 
+// CountSpawnable returns how many of the given issues would actually be spawned
+// by the daemon (i.e., pass all rejection filters). This is the number that should
+// be shown in status displays — not the raw bd ready count.
+func (d *Daemon) CountSpawnable(issues []Issue) int {
+	count := 0
+	for _, issue := range issues {
+		if d.checkRejectionReason(issue) == "" {
+			count++
+		}
+	}
+	return count
+}
+
 // checkRejectionReason checks if an issue should be rejected and returns the reason.
 // Returns empty string if the issue is spawnable.
 // This is the legacy version that doesn't consider epic children.
