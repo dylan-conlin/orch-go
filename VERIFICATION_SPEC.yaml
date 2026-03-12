@@ -1,31 +1,22 @@
-type: feature
+type: refactoring
 deliverables:
-  - path: cmd/orch/serve_completion_events.go
-    description: "Completion event broadcaster + POST notify handler + SSE stream endpoint"
-    verification: go test ./cmd/orch/ -run TestCompletion -v
-  - path: cmd/orch/serve_completion_events_test.go
-    description: "7 tests for broadcaster, handler, and edge cases"
-    verification: go test ./cmd/orch/ -run "TestCompletion|TestHandleCompletion" -v
-  - path: cmd/orch/serve.go
-    description: "Route registration for /api/notify/completion and /api/events/completion"
-    verification: go build ./cmd/orch/
   - path: cmd/orch/daemon.go
-    description: "notifyDashboardCompletion helper + call site after completion processing"
-    verification: go build ./cmd/orch/
-  - path: web/src/lib/stores/agents.ts
-    description: "Completion SSE connection triggers fetchDebounced on agent.completed events"
-    verification: "No svelte-check errors in agents.ts"
+    description: "Slim runDaemonLoop (~160 lines) + notifyDashboardCompletion"
+    verification: "go vet ./cmd/orch/ | grep daemon.go (no errors)"
+  - path: cmd/orch/daemon_loop.go
+    description: "daemonLoopState struct + 8 extracted methods"
+    verification: "go vet ./cmd/orch/ | grep daemon_loop.go (no errors)"
 tests:
   commands:
-    - go test ./cmd/orch/ -run "TestCompletion|TestHandleCompletion" -v
-    - go test ./... (full suite)
-  result: All PASS
+    - "go vet ./cmd/orch/ | grep -E 'daemon.go|daemon_loop.go' (no errors)"
+    - "gofmt -e cmd/orch/daemon.go cmd/orch/daemon_loop.go (OK)"
+  result: "All pass. Full go test blocked by pre-existing untracked duplicate files in pkg/daemon/"
 evidence:
-  - claim: "Broadcaster fan-out works correctly"
-    basis: "TestCompletionBroadcaster_Broadcast verifies event delivery to subscriber"
-  - claim: "Broadcast is non-blocking on slow consumers"
-    basis: "TestCompletionBroadcaster_NonBlocking fills buffer then verifies broadcast doesn't block"
-  - claim: "POST handler validates input and broadcasts"
-    basis: "TestHandleCompletionNotify posts event and receives via subscriber channel"
-  - claim: "Daemon fires notification after completion processing"
-    basis: "notifyDashboardCompletion call inserted at daemon.go:382, fire-and-forget goroutine"
+  - claim: "daemon.go reduced from 766 to 197 lines"
+    basis: "wc -l cmd/orch/daemon.go = 197"
+  - claim: "runDaemonLoop reduced from ~738 to ~160 lines"
+    basis: "Function body is lines 13-185 in daemon.go"
+  - claim: "8 extracted methods on daemonLoopState struct in daemon_loop.go"
+    basis: "daemonSetup, logDaemonConfig, processDaemonCompletions, runDaemonSpawnCycle, checkDaemonSignals, checkVerificationPause, checkInvariants, writeDaemonStatusFile, stopMessage"
+  - claim: "Pure mechanical extraction — no behavioral changes"
+    basis: "All code moved verbatim, only variable references changed from local to s.field"
