@@ -98,6 +98,10 @@ Spawn a new agent with skill context. Manual spawn requires `--bypass-triage`.
 | `--dry-run` | Show spawn plan without executing |
 | `--intent <type>` | experience, produce, compare, investigate, fix, build, explore |
 | `--account <name>` | Account for Claude CLI spawns |
+| `--explore` | Exploration mode: decompose → fan out → judge → synthesize (investigation/architect only) |
+| `--explore-breadth <n>` | Max parallel subproblem workers (default 3, max 10) |
+| `--explore-depth <n>` | Max judge re-exploration iterations (default 1, max 5) |
+| `--explore-judge-model <alias>` | Model for judge agent (cross-model judging, e.g., sonnet when workers use opus) |
 | `--force-hotspot` | Bypass hotspot gate (requires `--architect-ref`) |
 | `--auto-init` | Auto-initialize .orch/.beads if missing |
 
@@ -112,6 +116,10 @@ orch spawn --bypass-triage --issue proj-123 feature-impl "implement feature"
 orch spawn --bypass-triage --tmux --model opus investigation "deep analysis"
 orch spawn --bypass-triage --no-track investigation "exploratory work"
 orch spawn --bypass-triage --mcp playwright feature-impl "UI feature"
+
+# Exploration mode (multi-angle parallel investigation)
+orch spawn --bypass-triage --explore investigation "how does the spawn pipeline work?"
+orch spawn --bypass-triage --explore --explore-breadth 5 architect "design new completion flow"
 ```
 
 ### orch complete

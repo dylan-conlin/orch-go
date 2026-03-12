@@ -53,6 +53,7 @@ description: Always-loaded runtime policy for orchestrator agents. Routes decisi
 | **System didn't surface knowledge** | Note the gap → create pressure for system fix | Pressure Over Compensation |
 | **Session starting** | `orch orient` → Hygiene Checkpoint | Review before work |
 | **Session ending** | `orch debrief` → commit → `bd sync` | Triage created issues before leaving |
+| **Broad question, multiple angles** | `orch spawn --explore investigation "Q"` | Decompose → parallelize → judge → synthesize |
 | **Agent in non-terminal phase** | Stall Triage: classify failure mode | True stall rate ~4%, classify first |
 
 ---
@@ -67,12 +68,15 @@ DESIGN decisions   → architect (trade-offs, recommendations)
 FIX broken thing   → systematic-debugging (cause clear or flaky)
 TRIAGE symptom     → investigation (unknown cause → explore, then route to fix)
 UNDERSTAND         → probe (model exists) | investigation (no model) | research (external)
+EXPLORE broadly    → investigation --explore (multi-angle parallel exploration)
 TRY/EXPERIENCE     → experiential-eval (agent uses the tool, reports qualitatively)
 COMPARE approaches → head-to-head (same task both ways, qualitative comparison)
 EVALUATE UI/UX     → ux-audit (requires --mcp playwright)
 ```
 
 **Probe vs Investigation:** If model exists in `.kb/models/{name}/` → probe (tests specific claim). No model → investigation (exploratory).
+
+**Investigation vs Exploration:** Single-angle question → `investigation`. Broad question with multiple viable angles → `--explore` (spawns exploration orchestrator that decomposes into parallel subproblems, judges coverage, synthesizes). Only works with `investigation` or `architect` skills.
 
 ### Intent Clarification (Skill Gravity)
 
@@ -83,6 +87,7 @@ Skills are gravitational — a structured skill dominates agent behavior regardl
 | **Experiential** | "Try X", "Evaluate X", "What's X like?" | Agent USES the thing, reports experience | `experiential-eval` |
 | **Production** | "Build X", "Add X", "Fix X" | Agent produces an artifact | skill by work type |
 | **Comparative** | "Compare X and Y", "Which is better?" | Same task two ways, report tradeoffs | `head-to-head` |
+| **Exploratory** | "Map out X", "What are all the ways Y?" | Decompose, parallel investigate, synthesize | `investigation --explore` |
 
 ### Strategic-First for Hotspots
 
@@ -212,6 +217,9 @@ orch spawn --bypass-triage --issue <ID> --intent <TYPE> --reason "<why>" SKILL "
 | `--bypass-triage` | When skipping daemon | Direct spawn without `triage:ready` label |
 | `--reason "<why>"` | With `--bypass-triage` | Min 10 chars explaining why bypassing daemon |
 | `--model opus` | Optional | Default: sonnet. Use opus for complex work |
+| `--explore` | No | Exploration mode: decompose → fan out → judge → synthesize (investigation/architect only) |
+| `--explore-breadth N` | No | Max parallel subproblem workers (default 3, max 10) |
+| `--explore-depth N` | No | Max judge re-exploration iterations (default 1, max 5) |
 | `--dry-run` | No | Validate spawn plan without executing (skill, context, settings) |
 
 ---
