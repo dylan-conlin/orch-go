@@ -10,3 +10,4 @@ Small, focused tools that combine. Each command does one thing well.
 
 - `bd` (work tracking) + `kn` (knowledge) + `kb` (artifacts) + `orch` (coordination)
 - Each tool focused, combined via workflows
+- Skills own domain behavior, spawn owns orchestration infrastructure — skills containing beads/phase logic would reduce portability

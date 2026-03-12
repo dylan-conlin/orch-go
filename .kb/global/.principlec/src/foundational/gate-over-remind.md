@@ -25,3 +25,8 @@ A gate that the agent cannot satisfy by its own work is not a gate - it's a huma
 1. Is this a reminder that can be ignored? → Make it a gate
 2. Can the gated party pass it by their own work? → Valid gate
 3. Does it require someone else to act? → Human checkpoint, not a gate
+
+**Implementation patterns:**
+
+- **Declarative gates:** Phase gates use HTML comment blocks in SPAWN_CONTEXT.md (`SKILL-PHASES`, `SKILL-CONSTRAINTS`) — declarative, backwards compatible, parseable.
+- **Verification gates:** Constraint verification at completion time (`pkg/verify/constraint.go`) parses required/optional patterns from SPAWN_CONTEXT.md and blocks completion until satisfied.

@@ -21,3 +21,5 @@ When artifacts are generated, compiled, or derived from other sources—or when 
 - "Comments are for humans" (for agents, they're load-bearing infrastructure)
 
 **Key distinction:** For humans, discovering modification instructions is **convenient**. For agents, it's **necessary** (no persistent memory means no discovery path).
+
+**Auto-generated file constraint:** When artifacts are compiled from sources (e.g., `principlec build`, `skillc deploy`), direct edits to the output file will be overwritten. The self-describing header must point to the source files. Agents encountering auto-generated files must edit sources and rebuild, never the output.
