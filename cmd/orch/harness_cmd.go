@@ -5,40 +5,53 @@ import (
 	"os"
 
 	"github.com/dylan-conlin/orch-go/pkg/control"
-	"github.com/dylan-conlin/orch-go/pkg/harness"
 	"github.com/spf13/cobra"
 )
 
 var harnessCmd = &cobra.Command{
 	Use:   "harness",
-	Short: "Structural governance for Claude Code projects",
-	Long: `Structural governance for Claude Code projects.
+	Short: "Manage control plane immutability (hard harness)",
+	Long: `Manage OS-level immutability for control plane files.
 
-Manages OS-level immutability, deny rules, hook scripts, and pre-commit
-accretion gates. Works standalone or with full orch orchestration.
+The control plane consists of ~/.claude/settings.json and enforcement hook
+scripts (PreToolUse, Stop events). These files define agent constraints and
+are protected from modification using macOS chflags uchg.
 
-For standalone use without orch, install the 'harness' binary directly:
-  go install github.com/dylan-conlin/orch-go/cmd/harness@latest
+This is the "hard harness" layer — it makes the wrong path structurally
+impossible rather than relying on agent instructions.
 
 Commands:
-  init     Set up governance for this project
-  check    Verify governance is healthy
   lock     Apply chflags uchg to all control plane files
   unlock   Remove chflags uchg to allow intentional modifications
   status   Show lock state of all control plane files
-  verify   Verify all locked (for pre-commit hooks)`,
+
+Workflow:
+  orch harness unlock    # Allow modifications
+  <edit settings.json or hooks>
+  orch harness lock      # Re-protect`,
 }
 
 var harnessLockCmd = &cobra.Command{
 	Use:   "lock",
 	Short: "Lock control plane files (chflags uchg)",
-	RunE:  runHarnessLock,
+	Long: `Apply chflags uchg to all control plane files, making them immutable.
+
+Discovers enforcement hook scripts from settings.json (PreToolUse, Stop events)
+and applies the user immutable flag to each file plus settings.json itself.
+
+After locking, agents cannot modify these files via Edit, Write, rm, or any
+other mechanism — the OS blocks all writes.`,
+	RunE: runHarnessLock,
 }
 
 var harnessUnlockCmd = &cobra.Command{
 	Use:   "unlock",
 	Short: "Unlock control plane files (chflags nouchg)",
-	RunE:  runHarnessUnlock,
+	Long: `Remove chflags uchg from all control plane files, allowing modification.
+
+Use this before modifying settings.json or enforcement hooks, then re-lock
+with 'orch harness lock' when done.`,
+	RunE: runHarnessUnlock,
 }
 
 var harnessStatusCmd = &cobra.Command{
@@ -50,13 +63,13 @@ var harnessStatusCmd = &cobra.Command{
 var harnessVerifyCmd = &cobra.Command{
 	Use:   "verify",
 	Short: "Verify all control plane files are locked (for pre-commit hooks)",
-	RunE:  runHarnessVerify,
-}
+	Long: `Check that all control plane files have chflags uchg set.
 
-var harnessCheckCmd = &cobra.Command{
-	Use:   "check",
-	Short: "Verify governance is healthy",
-	RunE:  runHarnessCheck,
+Exits 0 if all files are locked or if the unlock marker exists (intentional unlock
+via 'orch harness unlock'). Exits 1 if any files are unlocked without the marker.
+
+Designed for use in pre-commit hooks to catch accidental uchg removal.`,
+	RunE: runHarnessVerify,
 }
 
 func init() {
@@ -64,7 +77,6 @@ func init() {
 	harnessCmd.AddCommand(harnessUnlockCmd)
 	harnessCmd.AddCommand(harnessStatusCmd)
 	harnessCmd.AddCommand(harnessVerifyCmd)
-	harnessCmd.AddCommand(harnessCheckCmd)
 }
 
 func runHarnessLock(cmd *cobra.Command, args []string) error {
@@ -78,6 +90,7 @@ func runHarnessLock(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Remove unlock marker — control plane is locked again
 	if err := control.RemoveUnlockMarker(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not remove unlock marker: %v\n", err)
 	}
@@ -85,7 +98,7 @@ func runHarnessLock(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "Locked %d control plane files:\n", len(files))
 	home, _ := os.UserHomeDir()
 	for _, f := range files {
-		fmt.Fprintf(os.Stderr, "  uchg %s\n", harness.ShortPath(f, home))
+		fmt.Fprintf(os.Stderr, "  uchg %s\n", shortPath(f, home))
 	}
 	return nil
 }
@@ -101,6 +114,7 @@ func runHarnessUnlock(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Write unlock marker so pre-commit hook knows this is intentional
 	if err := control.WriteUnlockMarker(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not write unlock marker: %v\n", err)
 	}
@@ -108,7 +122,7 @@ func runHarnessUnlock(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "Unlocked %d control plane files:\n", len(files))
 	home, _ := os.UserHomeDir()
 	for _, f := range files {
-		fmt.Fprintf(os.Stderr, "  ---- %s\n", harness.ShortPath(f, home))
+		fmt.Fprintf(os.Stderr, "  ---- %s\n", shortPath(f, home))
 	}
 	fmt.Fprintf(os.Stderr, "\nRemember to re-lock with: orch harness lock\n")
 	return nil
@@ -127,19 +141,19 @@ func runHarnessStatus(cmd *cobra.Command, args []string) error {
 	for _, f := range files {
 		status, err := control.FileStatus(f)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "  ERR  %s: %v\n", harness.ShortPath(f, home), err)
+			fmt.Fprintf(os.Stderr, "  ERR  %s: %v\n", shortPath(f, home), err)
 			continue
 		}
 		if !status.Exists {
-			fmt.Fprintf(os.Stderr, "  MISS %s\n", harness.ShortPath(f, home))
+			fmt.Fprintf(os.Stderr, "  MISS %s\n", shortPath(f, home))
 			missing++
 			continue
 		}
 		if status.Locked {
-			fmt.Fprintf(os.Stderr, "  uchg %s\n", harness.ShortPath(f, home))
+			fmt.Fprintf(os.Stderr, "  uchg %s\n", shortPath(f, home))
 			locked++
 		} else {
-			fmt.Fprintf(os.Stderr, "  ---- %s\n", harness.ShortPath(f, home))
+			fmt.Fprintf(os.Stderr, "  ---- %s\n", shortPath(f, home))
 		}
 	}
 
@@ -156,6 +170,7 @@ func runHarnessStatus(cmd *cobra.Command, args []string) error {
 }
 
 func runHarnessVerify(cmd *cobra.Command, args []string) error {
+	// If unlock marker exists, skip verification (intentional unlock)
 	if control.IsUnlockMarkerPresent() {
 		fmt.Fprintf(os.Stderr, "harness verify: SKIP (unlock marker present — intentional unlock)\n")
 		return nil
@@ -174,54 +189,9 @@ func runHarnessVerify(cmd *cobra.Command, args []string) error {
 	home, _ := os.UserHomeDir()
 	fmt.Fprintf(os.Stderr, "BLOCKED: control plane files missing uchg flag:\n")
 	for _, f := range unlocked {
-		fmt.Fprintf(os.Stderr, "  ---- %s\n", harness.ShortPath(f, home))
+		fmt.Fprintf(os.Stderr, "  ---- %s\n", shortPath(f, home))
 	}
 	fmt.Fprintf(os.Stderr, "\nFix: orch harness lock\n")
 	fmt.Fprintf(os.Stderr, "Or for intentional edits: orch harness unlock\n")
 	return fmt.Errorf("%d control plane file(s) unlocked without marker", len(unlocked))
-}
-
-func runHarnessCheck(cmd *cobra.Command, args []string) error {
-	projectDir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("getting working directory: %w", err)
-	}
-
-	result, err := harness.Check(projectDir)
-	if err != nil {
-		return err
-	}
-
-	modeStr := "standalone"
-	if result.Mode == harness.ModeFull {
-		modeStr = "full"
-	}
-	fmt.Fprintf(os.Stderr, "Mode: %s\n\n", modeStr)
-
-	check := func(ok bool, label string) {
-		if ok {
-			fmt.Fprintf(os.Stderr, "  OK   %s\n", label)
-		} else {
-			fmt.Fprintf(os.Stderr, "  FAIL %s\n", label)
-		}
-	}
-
-	check(result.DenyRulesOK, "Deny rules")
-	check(result.HooksOK, "Hook scripts")
-	check(result.PreCommitOK, "Pre-commit gate")
-	if result.Mode == harness.ModeFull {
-		check(result.LockOK, "Control plane lock")
-	}
-
-	if len(result.Issues) > 0 {
-		fmt.Fprintf(os.Stderr, "\nIssues:\n")
-		for _, issue := range result.Issues {
-			fmt.Fprintf(os.Stderr, "  - %s\n", issue)
-		}
-		fmt.Fprintf(os.Stderr, "\nFix: orch harness init\n")
-		return fmt.Errorf("%d issue(s) found", len(result.Issues))
-	}
-
-	fmt.Fprintf(os.Stderr, "\nAll checks passed.\n")
-	return nil
 }

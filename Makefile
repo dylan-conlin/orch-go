@@ -16,7 +16,7 @@ SOURCE_DIR ?= $(shell pwd)
 GIT_HASH ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.sourceDir=$(SOURCE_DIR) -X main.gitHash=$(GIT_HASH)"
 
-.PHONY: all build build-harness clean test install install-restart fmt lint docs version
+.PHONY: all build clean test install install-restart fmt lint docs version
 
 # Default target
 all: build
@@ -26,12 +26,6 @@ build:
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
 	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/orch/
-
-# Build standalone harness binary
-build-harness:
-	@echo "Building harness..."
-	@mkdir -p $(BUILD_DIR)
-	go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/harness ./cmd/harness/
 
 # Run tests
 test:
@@ -100,8 +94,7 @@ version: build
 # Show help
 help:
 	@echo "Available targets:"
-	@echo "  build           - Build the orch binary"
-	@echo "  build-harness   - Build standalone harness binary"
+	@echo "  build           - Build the binary"
 	@echo "  test            - Run tests"
 	@echo "  install         - Install to ~/bin (symlink to build output)"
 	@echo "  install-restart - Install and restart daemon"

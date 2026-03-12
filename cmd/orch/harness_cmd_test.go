@@ -16,7 +16,7 @@ func TestHarnessCommandRegistered(t *testing.T) {
 			for _, sub := range cmd.Commands() {
 				subCmds[sub.Use] = true
 			}
-			for _, expected := range []string{"lock", "unlock", "status", "verify", "check"} {
+			for _, expected := range []string{"lock", "unlock", "status", "verify"} {
 				if !subCmds[expected] {
 					t.Errorf("harness missing subcommand %q", expected)
 				}
@@ -30,9 +30,9 @@ func TestHarnessCommandRegistered(t *testing.T) {
 }
 
 func TestHarnessHelpOutput(t *testing.T) {
-	// Verify help mentions key governance concepts and commands
+	// Verify help mentions hard harness and escape hatch workflow
 	long := harnessCmd.Long
-	for _, want := range []string{"governance", "lock", "unlock", "status"} {
+	for _, want := range []string{"hard harness", "lock", "unlock", "status"} {
 		if !bytes.Contains([]byte(long), []byte(want)) {
 			t.Errorf("harness Long description missing %q", want)
 		}

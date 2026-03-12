@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/control"
-	"github.com/dylan-conlin/orch-go/pkg/harness"
 	"github.com/spf13/cobra"
 )
 
@@ -47,14 +47,25 @@ func init() {
 }
 
 // StepResult captures the result of a single harness init step.
-// Kept as alias for backward compatibility with tests.
-type StepResult = harness.StepResult
+type StepResult struct {
+	AlreadyPresent  bool
+	RulesAdded      int
+	HooksRegistered int
+	Created         bool
+	Error           error
+}
 
 // detectStandaloneMode checks whether the project should use standalone mode.
 // Returns (standalone bool, hasBeads bool).
+// Standalone mode is used when ~/.orch/hooks/ doesn't exist (no orch infrastructure).
 func detectStandaloneMode(projectDir string) (standalone bool, hasBeads bool) {
-	mode, beads := harness.DetectMode(projectDir)
-	return mode == harness.ModeStandalone, beads
+	home, _ := os.UserHomeDir()
+	orchHooksDir := filepath.Join(home, ".orch", "hooks")
+	_, orchErr := os.Stat(orchHooksDir)
+	_, beadsErr := os.Stat(filepath.Join(projectDir, ".beads"))
+	hasBeads = beadsErr == nil
+	standalone = os.IsNotExist(orchErr)
+	return
 }
 
 func runHarnessInit(cmd *cobra.Command, args []string) error {
@@ -68,13 +79,17 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("getting home directory: %w", err)
 	}
 
-	mode, hasBeads := harness.DetectMode(projectDir)
-	standalone := mode == harness.ModeStandalone
+	standalone, hasBeads := detectStandaloneMode(projectDir)
 	orchHooksDir := filepath.Join(home, ".orch", "hooks")
-	sp := harness.SettingsPath(mode, projectDir)
 
-	// Create project settings file if standalone and doesn't exist
+	// Determine settings path based on mode.
+	// Standalone mode uses project-level settings (.claude/settings.json in project dir)
+	// because hook scripts use relative paths that resolve from the project root.
+	// Writing relative paths to user-level settings would break every other project.
+	var sp string
 	if standalone {
+		sp = filepath.Join(projectDir, ".claude", "settings.json")
+		// Create project settings file if it doesn't exist
 		if _, err := os.Stat(sp); os.IsNotExist(err) {
 			if err := os.MkdirAll(filepath.Dir(sp), 0755); err != nil {
 				return fmt.Errorf("creating .claude directory: %w", err)
@@ -84,6 +99,8 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 			}
 		}
 	} else {
+		sp = settingsPath()
+		// Check minimal prerequisite: user-level settings.json must exist
 		if _, err := os.Stat(sp); os.IsNotExist(err) {
 			return fmt.Errorf("settings.json not found at %s\nRun Claude Code first to create it, or create it manually: echo '{}' > %s", sp, sp)
 		}
@@ -100,6 +117,8 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Step 0: Unlock control plane if locked (needed to modify settings.json)
+	// Skip in standalone mode — project-level settings are git-tracked,
+	// chflags uchg is only used for user-level files.
 	if !harnessInitDryRun && !standalone {
 		files, err := control.DiscoverControlPlaneFiles(sp)
 		if err == nil {
@@ -114,27 +133,45 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 	// Step 1: Deny rules
 	stepNum++
 	fmt.Fprintf(os.Stderr, "%d. Deny rules\n", stepNum)
-	var denyRules []string
 	if standalone {
-		denyRules = harness.StandaloneDenyRules()
-	}
-	if harnessInitDryRun {
-		denyResult, _ := harness.CheckDenyRules(sp, denyRules)
-		if denyResult != nil && denyResult.AlreadyPresent {
-			fmt.Fprintf(os.Stderr, "   SKIP — all rules present\n")
+		if harnessInitDryRun {
+			denyResult, _ := checkDenyRulesWithRules(sp, standaloneDenyRules())
+			if denyResult.AlreadyPresent {
+				fmt.Fprintf(os.Stderr, "   SKIP — all rules present\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "   WOULD ADD deny rules to settings.json\n")
+			}
 		} else {
-			fmt.Fprintf(os.Stderr, "   WOULD ADD deny rules to settings.json\n")
+			denyResult, err := ensureDenyRulesWithRules(sp, standaloneDenyRules())
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "   FAIL — %v\n", err)
+				hasErrors = true
+			} else if denyResult.AlreadyPresent {
+				fmt.Fprintf(os.Stderr, "   SKIP — all rules present\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "   OK — added %d deny rules\n", denyResult.RulesAdded)
+				steps = append(steps, fmt.Sprintf("Added %d deny rules", denyResult.RulesAdded))
+			}
 		}
 	} else {
-		denyResult, err := harness.EnsureDenyRules(sp, denyRules)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "   FAIL — %v\n", err)
-			hasErrors = true
-		} else if denyResult.AlreadyPresent {
-			fmt.Fprintf(os.Stderr, "   SKIP — all rules present\n")
+		if harnessInitDryRun {
+			denyResult, _ := checkDenyRules(sp)
+			if denyResult.AlreadyPresent {
+				fmt.Fprintf(os.Stderr, "   SKIP — all rules present\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "   WOULD ADD %d deny rules to settings.json\n", 6-denyResult.RulesAdded)
+			}
 		} else {
-			fmt.Fprintf(os.Stderr, "   OK — added %d deny rules\n", denyResult.RulesAdded)
-			steps = append(steps, fmt.Sprintf("Added %d deny rules", denyResult.RulesAdded))
+			denyResult, err := ensureDenyRules(sp)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "   FAIL — %v\n", err)
+				hasErrors = true
+			} else if denyResult.AlreadyPresent {
+				fmt.Fprintf(os.Stderr, "   SKIP — all rules present\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "   OK — added %d deny rules\n", denyResult.RulesAdded)
+				steps = append(steps, fmt.Sprintf("Added %d deny rules", denyResult.RulesAdded))
+			}
 		}
 	}
 
@@ -150,7 +187,7 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(os.Stderr, "   WOULD CREATE .claude/hooks/gate-git-add-all.py\n")
 			}
 		} else {
-			hookResult, err := harness.EnsureHookScripts(projectHooksDir)
+			hookResult, err := ensureStandaloneHookScripts(projectHooksDir)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "   FAIL — %v\n", err)
 				hasErrors = true
@@ -166,24 +203,41 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 	// Step 3: Hook registration
 	stepNum++
 	fmt.Fprintf(os.Stderr, "%d. Hook registration\n", stepNum)
-	if harnessInitDryRun {
-		fmt.Fprintf(os.Stderr, "   WOULD REGISTER hooks in settings.json\n")
-	} else {
-		var hookResult *harness.StepResult
-		if standalone {
-			projectHooksDir := filepath.Join(projectDir, ".claude", "hooks")
-			hookResult, err = harness.EnsureHookRegistration(sp, projectHooksDir, harness.StandaloneHookSpecs, true, control.DefaultSettingsPath())
+	if standalone {
+		projectHooksDir := filepath.Join(projectDir, ".claude", "hooks")
+		if harnessInitDryRun {
+			fmt.Fprintf(os.Stderr, "   WOULD REGISTER hooks in settings.json\n")
 		} else {
-			hookResult, err = harness.EnsureHookRegistration(sp, orchHooksDir, harness.FullModeHookSpecs, false, "")
+			hookResult, err := ensureStandaloneHookRegistration(sp, projectHooksDir, control.DefaultSettingsPath())
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "   FAIL — %v\n", err)
+				hasErrors = true
+			} else if hookResult.AlreadyPresent {
+				fmt.Fprintf(os.Stderr, "   SKIP — hooks already registered\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "   OK — registered %d hooks\n", hookResult.HooksRegistered)
+				steps = append(steps, fmt.Sprintf("Registered %d hooks", hookResult.HooksRegistered))
+			}
 		}
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "   FAIL — %v\n", err)
-			hasErrors = true
-		} else if hookResult.AlreadyPresent {
-			fmt.Fprintf(os.Stderr, "   SKIP — hooks already registered\n")
+	} else {
+		if harnessInitDryRun {
+			hookResult, _ := checkHookRegistration(sp, orchHooksDir)
+			if hookResult.AlreadyPresent {
+				fmt.Fprintf(os.Stderr, "   SKIP — hooks already registered\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "   WOULD REGISTER hooks in settings.json\n")
+			}
 		} else {
-			fmt.Fprintf(os.Stderr, "   OK — registered %d hooks\n", hookResult.HooksRegistered)
-			steps = append(steps, fmt.Sprintf("Registered %d hooks", hookResult.HooksRegistered))
+			hookResult, err := ensureHookRegistration(sp, orchHooksDir)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "   FAIL — %v\n", err)
+				hasErrors = true
+			} else if hookResult.AlreadyPresent {
+				fmt.Fprintf(os.Stderr, "   SKIP — hooks already registered\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "   OK — registered %d hooks\n", hookResult.HooksRegistered)
+				steps = append(steps, fmt.Sprintf("Registered %d hooks", hookResult.HooksRegistered))
+			}
 		}
 	}
 
@@ -199,7 +253,7 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(os.Stderr, "   WOULD CREATE .beads/hooks/on_close\n")
 			}
 		} else {
-			beadsResult, err := harness.EnsureBeadsCloseHook(projectDir)
+			beadsResult, err := ensureBeadsCloseHook(projectDir)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "   FAIL — %v\n", err)
 				hasErrors = true
@@ -217,36 +271,53 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "%d. Pre-commit accretion gate\n", stepNum)
 	if _, err := os.Stat(filepath.Join(projectDir, ".git")); os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "   SKIP — not a git repository\n")
-	} else if harnessInitDryRun {
-		precommitPath := filepath.Join(projectDir, ".git", "hooks", "pre-commit")
-		data, _ := os.ReadFile(precommitPath)
-		content := string(data)
-		if standalone && strings.Contains(content, "Accretion Gate") {
-			fmt.Fprintf(os.Stderr, "   SKIP — already wired\n")
-		} else if !standalone && strings.Contains(content, "orch precommit accretion") {
-			fmt.Fprintf(os.Stderr, "   SKIP — already wired\n")
+	} else if standalone {
+		if harnessInitDryRun {
+			precommitPath := filepath.Join(projectDir, ".git", "hooks", "pre-commit")
+			data, _ := os.ReadFile(precommitPath)
+			if strings.Contains(string(data), "Accretion Gate") {
+				fmt.Fprintf(os.Stderr, "   SKIP — already wired\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "   WOULD ADD accretion gate to .git/hooks/pre-commit\n")
+			}
 		} else {
-			fmt.Fprintf(os.Stderr, "   WOULD ADD accretion gate to .git/hooks/pre-commit\n")
+			pcResult, err := ensureStandalonePreCommitGate(projectDir)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "   FAIL — %v\n", err)
+				hasErrors = true
+			} else if pcResult.AlreadyPresent {
+				fmt.Fprintf(os.Stderr, "   SKIP — already wired\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "   OK — added accretion gate to pre-commit\n")
+				steps = append(steps, "Added pre-commit accretion gate")
+			}
 		}
 	} else {
-		var pcResult *harness.StepResult
-		if standalone {
-			pcResult, err = harness.EnsureStandalonePreCommitGate(projectDir)
+		if harnessInitDryRun {
+			precommitPath := filepath.Join(projectDir, ".git", "hooks", "pre-commit")
+			data, _ := os.ReadFile(precommitPath)
+			if strings.Contains(string(data), "orch precommit accretion") {
+				fmt.Fprintf(os.Stderr, "   SKIP — already wired\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "   WOULD ADD accretion gate to .git/hooks/pre-commit\n")
+			}
 		} else {
-			pcResult, err = harness.EnsureOrchPreCommitGate(projectDir)
-		}
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "   FAIL — %v\n", err)
-			hasErrors = true
-		} else if pcResult.AlreadyPresent {
-			fmt.Fprintf(os.Stderr, "   SKIP — already wired\n")
-		} else {
-			fmt.Fprintf(os.Stderr, "   OK — added accretion gate to pre-commit\n")
-			steps = append(steps, "Added pre-commit accretion gate")
+			pcResult, err := ensurePreCommitGate(projectDir)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "   FAIL — %v\n", err)
+				hasErrors = true
+			} else if pcResult.AlreadyPresent {
+				fmt.Fprintf(os.Stderr, "   SKIP — already wired\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "   OK — added accretion gate to pre-commit\n")
+				steps = append(steps, "Added pre-commit accretion gate")
+			}
 		}
 	}
 
 	// Step: Lock control plane (macOS only)
+	// Skip in standalone mode — project-level settings and hooks are git-tracked,
+	// chflags uchg would break git checkout/pull operations.
 	stepNum++
 	fmt.Fprintf(os.Stderr, "%d. Control plane lock\n", stepNum)
 	if standalone {
@@ -305,95 +376,967 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// --- Standalone mode functions (delegated to pkg/harness) ---
-// These are kept as thin wrappers for backward compatibility with existing tests.
-
-func standaloneDenyRules() []string {
-	return harness.StandaloneDenyRules()
-}
-
+// ensureDenyRules adds missing deny rules to settings.json.
+// Preserves existing content. Returns result with count of rules added.
 func ensureDenyRules(settingsPath string) (*StepResult, error) {
-	return harness.EnsureDenyRules(settingsPath, nil) // nil = full deny rules
+	result := &StepResult{}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading settings: %w", err)
+	}
+
+	// Parse as generic JSON to preserve structure
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("parsing settings: %w", err)
+	}
+
+	// Get or create permissions
+	perms, ok := settings["permissions"].(map[string]any)
+	if !ok {
+		perms = make(map[string]any)
+		settings["permissions"] = perms
+	}
+
+	// Get existing deny rules
+	var existing []string
+	if denyRaw, ok := perms["deny"].([]any); ok {
+		for _, r := range denyRaw {
+			if s, ok := r.(string); ok {
+				existing = append(existing, s)
+			}
+		}
+	}
+
+	existingSet := make(map[string]bool)
+	for _, r := range existing {
+		existingSet[r] = true
+	}
+
+	// Add missing rules
+	required := control.DenyRules()
+	var added []string
+	for _, rule := range required {
+		if !existingSet[rule] {
+			existing = append(existing, rule)
+			added = append(added, rule)
+		}
+	}
+
+	if len(added) == 0 {
+		result.AlreadyPresent = true
+		return result, nil
+	}
+
+	// Convert back to []any for JSON
+	denyAny := make([]any, len(existing))
+	for i, s := range existing {
+		denyAny[i] = s
+	}
+	perms["deny"] = denyAny
+
+	// Write back
+	out, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshaling settings: %w", err)
+	}
+	out = append(out, '\n')
+
+	if err := os.WriteFile(settingsPath, out, 0644); err != nil {
+		return nil, fmt.Errorf("writing settings: %w", err)
+	}
+
+	result.RulesAdded = len(added)
+	return result, nil
 }
 
-func ensureDenyRulesWithRules(settingsPath string, rules []string) (*StepResult, error) {
-	return harness.EnsureDenyRules(settingsPath, rules)
-}
-
+// checkDenyRules checks deny rules without modifying settings.json.
 func checkDenyRules(settingsPath string) (*StepResult, error) {
-	return harness.CheckDenyRules(settingsPath, nil)
+	result := &StepResult{}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, err
+	}
+
+	perms, _ := settings["permissions"].(map[string]any)
+	existingSet := make(map[string]bool)
+	if perms != nil {
+		if denyRaw, ok := perms["deny"].([]any); ok {
+			for _, r := range denyRaw {
+				if s, ok := r.(string); ok {
+					existingSet[s] = true
+				}
+			}
+		}
+	}
+
+	missing := 0
+	for _, rule := range control.DenyRules() {
+		if !existingSet[rule] {
+			missing++
+		}
+	}
+
+	result.AlreadyPresent = missing == 0
+	result.RulesAdded = len(control.DenyRules()) - missing // count of present rules (reused field)
+	return result, nil
 }
 
-func checkDenyRulesWithRules(settingsPath string, rules []string) (*StepResult, error) {
-	return harness.CheckDenyRules(settingsPath, rules)
+// requiredHooks defines the hooks that harness init registers.
+// Each entry: matcher -> command template (with %s for hooks dir).
+type hookSpec struct {
+	Matcher string
+	Script  string // filename in hooksDir
 }
 
-func ensureStandaloneHookScripts(hooksDir string) (*StepResult, error) {
-	return harness.EnsureHookScripts(hooksDir)
+var requiredHooks = []hookSpec{
+	{Matcher: "Bash", Script: "gate-bd-close.py"},
+	{Matcher: "Bash", Script: "gate-worker-git-add-all.py"},
 }
 
-func ensureStandalonePreCommitGate(projectDir string) (*StepResult, error) {
-	return harness.EnsureStandalonePreCommitGate(projectDir)
-}
-
-func ensurePreCommitGate(projectDir string) (*StepResult, error) {
-	return harness.EnsureOrchPreCommitGate(projectDir)
-}
-
-func ensureBeadsCloseHook(projectDir string) (*StepResult, error) {
-	return harness.EnsureBeadsCloseHook(projectDir)
-}
-
+// ensureHookRegistration registers required hooks in settings.json PreToolUse.
 func ensureHookRegistration(settingsPath, hooksDir string) (*StepResult, error) {
-	return harness.EnsureHookRegistration(settingsPath, hooksDir, harness.FullModeHookSpecs, false, "")
-}
+	result := &StepResult{}
 
-func ensureStandaloneHookRegistration(settingsPath, hooksDir, userSettingsPath string) (*StepResult, error) {
-	return harness.EnsureHookRegistration(settingsPath, hooksDir, harness.StandaloneHookSpecs, true, userSettingsPath)
-}
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading settings: %w", err)
+	}
 
-func collectRegisteredCommands(settingsPath string) map[string]bool {
-	return harness.CollectRegisteredCommands(settingsPath)
-}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("parsing settings: %w", err)
+	}
 
-func isEquivalentHookRegistered(registeredCommands map[string]bool, scriptName string) bool {
-	return harness.IsEquivalentHookRegistered(registeredCommands, scriptName)
-}
+	// Get or create hooks section
+	hooks, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		hooks = make(map[string]any)
+		settings["hooks"] = hooks
+	}
 
-// removeTrailingExit delegates to pkg/harness.
-func removeTrailingExit(content string) string {
-	return harness.RemoveTrailingExit(content)
-}
+	// Get existing PreToolUse entries
+	var ptu []any
+	if existing, ok := hooks["PreToolUse"].([]any); ok {
+		ptu = existing
+	}
 
-// ensureBashShebang delegates to pkg/harness.
-func ensureBashShebang(content string) string {
-	return harness.EnsureBashShebang(content)
-}
+	// Check which hooks are already registered by scanning command strings
+	registeredCommands := make(map[string]bool)
+	for _, entry := range ptu {
+		if group, ok := entry.(map[string]any); ok {
+			if hookList, ok := group["hooks"].([]any); ok {
+				for _, h := range hookList {
+					if hookMap, ok := h.(map[string]any); ok {
+						if cmd, ok := hookMap["command"].(string); ok {
+							registeredCommands[cmd] = true
+						}
+					}
+				}
+			}
+		}
+	}
 
-// stripScriptShebang delegates to pkg/harness.
-func stripScriptShebang(content string) string {
-	return harness.StripScriptShebang(content)
+	// Register missing hooks
+	registered := 0
+	for _, spec := range requiredHooks {
+		scriptPath := filepath.Join(hooksDir, spec.Script)
+
+		// Check if this script exists
+		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+			continue // Skip hooks that aren't installed
+		}
+
+		command := fmt.Sprintf("python3 %s", scriptPath)
+		if registeredCommands[command] {
+			continue // Already registered
+		}
+
+		// Add hook registration
+		entry := map[string]any{
+			"matcher": spec.Matcher,
+			"hooks": []any{
+				map[string]any{
+					"type":    "command",
+					"command": command,
+				},
+			},
+		}
+		ptu = append(ptu, entry)
+		registered++
+	}
+
+	if registered == 0 {
+		result.AlreadyPresent = true
+		return result, nil
+	}
+
+	hooks["PreToolUse"] = ptu
+
+	// Write back
+	out, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshaling settings: %w", err)
+	}
+	out = append(out, '\n')
+
+	if err := os.WriteFile(settingsPath, out, 0644); err != nil {
+		return nil, fmt.Errorf("writing settings: %w", err)
+	}
+
+	result.HooksRegistered = registered
+	return result, nil
 }
 
 // checkHookRegistration checks hook registration without modifying settings.json.
 func checkHookRegistration(settingsPath, hooksDir string) (*StepResult, error) {
 	result := &StepResult{}
 
-	commands := harness.CollectRegisteredCommands(settingsPath)
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, err
+	}
+
+	registeredCommands := make(map[string]bool)
+	if hooks, ok := settings["hooks"].(map[string]any); ok {
+		if ptu, ok := hooks["PreToolUse"].([]any); ok {
+			for _, entry := range ptu {
+				if group, ok := entry.(map[string]any); ok {
+					if hookList, ok := group["hooks"].([]any); ok {
+						for _, h := range hookList {
+							if hookMap, ok := h.(map[string]any); ok {
+								if cmd, ok := hookMap["command"].(string); ok {
+									registeredCommands[cmd] = true
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
 	allPresent := true
-	for _, spec := range harness.FullModeHookSpecs {
+	for _, spec := range requiredHooks {
 		scriptPath := filepath.Join(hooksDir, spec.Script)
 		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 			continue
 		}
 		command := fmt.Sprintf("python3 %s", scriptPath)
-		if !commands[command] {
+		if !registeredCommands[command] {
 			allPresent = false
 			break
 		}
 	}
 
 	result.AlreadyPresent = allPresent
+	return result, nil
+}
+
+// ensureBeadsCloseHook creates .beads/hooks/on_close if it doesn't exist.
+func ensureBeadsCloseHook(projectDir string) (*StepResult, error) {
+	result := &StepResult{}
+
+	hookDir := filepath.Join(projectDir, ".beads", "hooks")
+	hookPath := filepath.Join(hookDir, "on_close")
+
+	if _, err := os.Stat(hookPath); err == nil {
+		result.AlreadyPresent = true
+		return result, nil
+	}
+
+	if err := os.MkdirAll(hookDir, 0755); err != nil {
+		return nil, fmt.Errorf("creating hooks dir: %w", err)
+	}
+
+	content := `#!/bin/bash
+# .beads/hooks/on_close
+# Emit agent.completed event when issues are closed via bd close
+#
+# This closes the tracking gap where work completes but bypasses orch complete.
+# The event is logged to ~/.orch/events.jsonl for stats aggregation.
+#
+# Called by beads with:
+#   Args: <issue_id> <event_type>
+
+ISSUE_ID="$1"
+EVENT_TYPE="$2"
+
+# Only emit for close events (safety check)
+if [ "$EVENT_TYPE" != "close" ]; then
+    exit 0
+fi
+
+# Skip if no issue ID provided
+if [ -z "$ISSUE_ID" ]; then
+    exit 0
+fi
+
+# Remove orch:agent label so bd list -l orch:agent returns only active agents
+bd label remove "$ISSUE_ID" orch:agent 2>/dev/null
+
+# Skip event emission when called from orch complete/review done/reconcile/clean.
+# These paths emit their own enriched agent.completed event with skill/outcome/duration.
+if [ "$ORCH_COMPLETING" = "1" ]; then
+    exit 0
+fi
+
+# Emit the agent.completed event (only for direct bd close, not via orch complete)
+orch emit agent.completed --beads-id "$ISSUE_ID" --reason "Closed via bd close" 2>/dev/null
+
+# Exit successfully even if orch emit fails (hooks should not block bd close)
+exit 0
+`
+	if err := os.WriteFile(hookPath, []byte(content), 0755); err != nil {
+		return nil, fmt.Errorf("writing hook: %w", err)
+	}
+
+	result.Created = true
+	return result, nil
+}
+
+// --- Standalone mode functions ---
+// These generate self-contained artifacts that work without orch/beads infrastructure.
+
+// standaloneDenyRules returns deny rules for standalone mode.
+// These protect Claude Code's settings files from agent modification.
+// Unlike the full mode, these don't include ~/.orch/hooks/** paths.
+func standaloneDenyRules() []string {
+	return []string{
+		"Edit(~/.claude/settings.json)",
+		"Edit(~/.claude/settings.local.json)",
+		"Write(~/.claude/settings.json)",
+		"Write(~/.claude/settings.local.json)",
+	}
+}
+
+// ensureDenyRulesWithRules adds the given deny rules to settings.json.
+func ensureDenyRulesWithRules(settingsPath string, rules []string) (*StepResult, error) {
+	result := &StepResult{}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading settings: %w", err)
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("parsing settings: %w", err)
+	}
+
+	perms, ok := settings["permissions"].(map[string]any)
+	if !ok {
+		perms = make(map[string]any)
+		settings["permissions"] = perms
+	}
+
+	var existing []string
+	if denyRaw, ok := perms["deny"].([]any); ok {
+		for _, r := range denyRaw {
+			if s, ok := r.(string); ok {
+				existing = append(existing, s)
+			}
+		}
+	}
+
+	existingSet := make(map[string]bool)
+	for _, r := range existing {
+		existingSet[r] = true
+	}
+
+	var added []string
+	for _, rule := range rules {
+		if !existingSet[rule] {
+			existing = append(existing, rule)
+			added = append(added, rule)
+		}
+	}
+
+	if len(added) == 0 {
+		result.AlreadyPresent = true
+		return result, nil
+	}
+
+	denyAny := make([]any, len(existing))
+	for i, s := range existing {
+		denyAny[i] = s
+	}
+	perms["deny"] = denyAny
+
+	out, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshaling settings: %w", err)
+	}
+	out = append(out, '\n')
+
+	if err := os.WriteFile(settingsPath, out, 0644); err != nil {
+		return nil, fmt.Errorf("writing settings: %w", err)
+	}
+
+	result.RulesAdded = len(added)
+	return result, nil
+}
+
+// checkDenyRulesWithRules checks deny rules without modifying settings.json.
+func checkDenyRulesWithRules(settingsPath string, rules []string) (*StepResult, error) {
+	result := &StepResult{}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, err
+	}
+
+	existingSet := make(map[string]bool)
+	if perms, ok := settings["permissions"].(map[string]any); ok {
+		if denyRaw, ok := perms["deny"].([]any); ok {
+			for _, r := range denyRaw {
+				if s, ok := r.(string); ok {
+					existingSet[s] = true
+				}
+			}
+		}
+	}
+
+	missing := 0
+	for _, rule := range rules {
+		if !existingSet[rule] {
+			missing++
+		}
+	}
+
+	result.AlreadyPresent = missing == 0
+	return result, nil
+}
+
+// standaloneGitAddAllHook is the content of the standalone gate-git-add-all.py hook.
+// It blocks `git add -A`, `git add .`, and `git add --all` to prevent agents from
+// accidentally staging unrelated files in multi-agent projects.
+const standaloneGitAddAllHook = `#!/usr/bin/env python3
+"""
+Gate: Block 'git add -A' and 'git add .' in Claude Code sessions.
+
+Generated by: orch harness init
+
+== WHY THIS GATE EXISTS ==
+
+In multi-agent projects, the working directory often contains changes from
+multiple agents, build artifacts, lock files, and other unrelated modifications.
+When an agent runs 'git add -A' or 'git add .', it stages EVERYTHING — including
+other agents' in-progress work, .env files, and build output.
+
+This gate forces agents to stage files explicitly by name:
+  git add src/feature.go src/feature_test.go    # Good — explicit
+  git add -A                                     # Blocked
+  git add .                                      # Blocked
+
+== HOW IT WORKS ==
+
+This is a Claude Code PreToolUse hook. When an agent tries to run a Bash command,
+Claude Code sends the command to this script via stdin as JSON. If the command
+matches a blanket git-add pattern, the script returns a deny decision that
+prevents the command from executing and shows the agent an error message.
+
+== CONFIGURATION ==
+
+- To disable temporarily: set SKIP_GIT_ADD_ALL_GATE=1 in your environment
+- To remove permanently: delete this file and remove its entry from settings.json
+
+== HOOK PROTOCOL ==
+
+Input (stdin): JSON with tool_name and tool_input.command
+Output (stdout): JSON with hookSpecificOutput.permissionDecision = "deny" to block
+Exit 0 always (hooks should not crash Claude Code)
+"""
+import json
+import os
+import re
+import sys
+
+# Patterns that match blanket git add commands
+BLANKET_GIT_ADD_PATTERNS = [
+    r'\bgit\s+add\s+(-A|--all)\b',
+    r'\bgit\s+add\s+\.(?:\s|$|&&|\||;)',
+]
+
+
+def is_blanket_git_add(command: str) -> bool:
+    """Detect if a Bash command uses blanket git add."""
+    for pattern in BLANKET_GIT_ADD_PATTERNS:
+        if re.search(pattern, command):
+            return True
+    return False
+
+
+def main():
+    # Escape hatch: set this env var to bypass the gate
+    if os.environ.get("SKIP_GIT_ADD_ALL_GATE", "") == "1":
+        sys.exit(0)
+
+    try:
+        input_data = json.load(sys.stdin)
+    except json.JSONDecodeError:
+        sys.exit(0)
+
+    if input_data.get("tool_name") != "Bash":
+        sys.exit(0)
+
+    command = input_data.get("tool_input", {}).get("command", "")
+    if not is_blanket_git_add(command):
+        sys.exit(0)
+
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": (
+                "BLOCKED: Do not use 'git add -A' or 'git add .'\n\n"
+                "In multi-agent projects, the working directory often has unrelated\n"
+                "changes from other agents, build artifacts, or sensitive files.\n\n"
+                "Stage ONLY the specific files you created or modified:\n"
+                "  git add path/to/file1 path/to/file2\n\n"
+                "To bypass: set SKIP_GIT_ADD_ALL_GATE=1"
+            ),
+        }
+    }
+    print(json.dumps(output))
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
+`
+
+// ensureStandaloneHookScripts generates hook scripts in the project's .claude/hooks/ directory.
+func ensureStandaloneHookScripts(hooksDir string) (*StepResult, error) {
+	result := &StepResult{}
+
+	gatePath := filepath.Join(hooksDir, "gate-git-add-all.py")
+	if _, err := os.Stat(gatePath); err == nil {
+		result.AlreadyPresent = true
+		return result, nil
+	}
+
+	if err := os.MkdirAll(hooksDir, 0755); err != nil {
+		return nil, fmt.Errorf("creating hooks dir: %w", err)
+	}
+
+	if err := os.WriteFile(gatePath, []byte(standaloneGitAddAllHook), 0755); err != nil {
+		return nil, fmt.Errorf("writing hook: %w", err)
+	}
+
+	result.Created = true
+	return result, nil
+}
+
+// standaloneHookSpecs defines hooks to register in standalone mode.
+var standaloneHookSpecs = []hookSpec{
+	{Matcher: "Bash", Script: "gate-git-add-all.py"},
+}
+
+// collectRegisteredCommands reads all hook commands from a settings.json file.
+// Returns empty map on any error (file missing, parse error, etc).
+func collectRegisteredCommands(settingsPath string) map[string]bool {
+	commands := make(map[string]bool)
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return commands
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return commands
+	}
+	hooks, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		return commands
+	}
+	ptu, ok := hooks["PreToolUse"].([]any)
+	if !ok {
+		return commands
+	}
+	for _, entry := range ptu {
+		if group, ok := entry.(map[string]any); ok {
+			if hookList, ok := group["hooks"].([]any); ok {
+				for _, h := range hookList {
+					if hookMap, ok := h.(map[string]any); ok {
+						if cmd, ok := hookMap["command"].(string); ok {
+							commands[cmd] = true
+						}
+					}
+				}
+			}
+		}
+	}
+	return commands
+}
+
+// hookEquivalents maps standalone hook script names to functional identifiers.
+// If any registered command contains the identifier, the hooks are equivalent.
+// For example, gate-worker-git-add-all.py (full mode) and gate-git-add-all.py
+// (standalone) both block blanket git add.
+var hookEquivalents = map[string]string{
+	"gate-git-add-all.py": "git-add-all",
+}
+
+// isEquivalentHookRegistered checks if a functionally equivalent hook is
+// already registered. This prevents double-gating when both standalone and
+// full-mode hooks exist for the same purpose.
+func isEquivalentHookRegistered(registeredCommands map[string]bool, scriptName string) bool {
+	pattern, ok := hookEquivalents[scriptName]
+	if !ok {
+		return false
+	}
+	for cmd := range registeredCommands {
+		if strings.Contains(cmd, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// ensureStandaloneHookRegistration registers standalone hooks in project-level settings.json.
+// Unlike the full mode, this uses project-local hook paths (.claude/hooks/).
+// userSettingsPath is checked for equivalent hooks to avoid double-gating
+// (e.g., gate-worker-git-add-all.py in user settings covers the same gate).
+func ensureStandaloneHookRegistration(settingsPath, hooksDir, userSettingsPath string) (*StepResult, error) {
+	result := &StepResult{}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading settings: %w", err)
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("parsing settings: %w", err)
+	}
+
+	hooks, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		hooks = make(map[string]any)
+		settings["hooks"] = hooks
+	}
+
+	var ptu []any
+	if existing, ok := hooks["PreToolUse"].([]any); ok {
+		ptu = existing
+	}
+
+	// Collect registered commands from the target (project) settings
+	registeredCommands := make(map[string]bool)
+	for _, entry := range ptu {
+		if group, ok := entry.(map[string]any); ok {
+			if hookList, ok := group["hooks"].([]any); ok {
+				for _, h := range hookList {
+					if hookMap, ok := h.(map[string]any); ok {
+						if cmd, ok := hookMap["command"].(string); ok {
+							registeredCommands[cmd] = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Also check user-level settings for equivalent hooks to avoid double-gating.
+	// In standalone mode, settingsPath points to project settings, but hooks might
+	// already be registered at the user level (e.g., gate-worker-git-add-all.py).
+	if userSettingsPath != "" && userSettingsPath != settingsPath {
+		for cmd := range collectRegisteredCommands(userSettingsPath) {
+			registeredCommands[cmd] = true
+		}
+	}
+
+	registered := 0
+	for _, spec := range standaloneHookSpecs {
+		scriptPath := filepath.Join(hooksDir, spec.Script)
+		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+			continue
+		}
+
+		// Use relative path (.claude/hooks/...) so it works across clones.
+		// Claude Code runs hooks from the project root, so relative paths resolve correctly.
+		command := fmt.Sprintf("python3 .claude/hooks/%s", spec.Script)
+		if registeredCommands[command] {
+			continue
+		}
+
+		// Also check if already registered with an absolute path
+		absCommand := fmt.Sprintf("python3 %s", scriptPath)
+		if registeredCommands[absCommand] {
+			continue
+		}
+
+		// Check if a functionally equivalent hook is already registered
+		// (e.g., gate-worker-git-add-all.py in user settings covers the same gate)
+		if isEquivalentHookRegistered(registeredCommands, spec.Script) {
+			continue
+		}
+
+		entry := map[string]any{
+			"matcher": spec.Matcher,
+			"hooks": []any{
+				map[string]any{
+					"type":    "command",
+					"command": command,
+				},
+			},
+		}
+		ptu = append(ptu, entry)
+		registered++
+	}
+
+	if registered == 0 {
+		result.AlreadyPresent = true
+		return result, nil
+	}
+
+	hooks["PreToolUse"] = ptu
+
+	out, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshaling settings: %w", err)
+	}
+	out = append(out, '\n')
+
+	if err := os.WriteFile(settingsPath, out, 0644); err != nil {
+		return nil, fmt.Errorf("writing settings: %w", err)
+	}
+
+	result.HooksRegistered = registered
+	return result, nil
+}
+
+// standalonePreCommitScript is the content of the standalone pre-commit accretion gate.
+// It warns when staged files exceed size thresholds, catching unbounded file growth
+// before it becomes a problem.
+const standalonePreCommitScript = `#!/bin/bash
+# =============================================================================
+# Pre-commit: Accretion Gate (standalone)
+# Generated by: orch harness init
+# =============================================================================
+#
+# == WHY THIS GATE EXISTS ==
+#
+# In AI-assisted development, files grow fast. An agent adding 200 lines to an
+# already-large file can push it past the point where other agents (or humans)
+# can effectively reason about it. This gate catches unbounded growth early.
+#
+# == WHAT IT CHECKS ==
+#
+# For each staged file:
+#   - HARD BLOCK: Files exceeding 1500 lines (exit 1, commit blocked)
+#   - WARNING:    Files >800 lines gaining 30+ lines (informational)
+#   - WARNING:    Files >600 lines gaining 50+ lines (informational)
+#
+# == HOW TO BYPASS ==
+#
+#   SKIP_ACCRETION_GATE=1 git commit -m "..."
+#
+# == WHAT TO DO WHEN BLOCKED ==
+#
+# 1. Extract a cohesive subset into a new file (e.g., helpers, types, handlers)
+# 2. Split the file along domain boundaries
+# 3. If the growth is justified, bypass with the env var above
+#
+# =============================================================================
+
+# Escape hatch
+if [ "${SKIP_ACCRETION_GATE}" = "1" ]; then
+    echo "pre-commit: accretion gate bypassed (SKIP_ACCRETION_GATE=1)"
+    exit 0
+fi
+
+HARD_LIMIT=1500
+WARN_THRESHOLD_HIGH=800
+WARN_LINES_HIGH=30
+WARN_THRESHOLD_LOW=600
+WARN_LINES_LOW=50
+
+blocked=0
+warned=0
+
+# Check each staged file
+while IFS=$'\t' read -r added removed file; do
+    # Skip binary files (shown as - - by git)
+    [ "$added" = "-" ] && continue
+    # Skip deleted files
+    [ -z "$file" ] && continue
+    [ ! -f "$file" ] && continue
+
+    total=$(wc -l < "$file" 2>/dev/null || echo 0)
+    total=$(echo "$total" | tr -d ' ')
+    net=$((added - removed))
+
+    if [ "$total" -gt "$HARD_LIMIT" ]; then
+        echo "BLOCKED: $file is $total lines (limit: $HARD_LIMIT)"
+        echo "  Extract code into smaller files before committing."
+        blocked=1
+    elif [ "$total" -gt "$WARN_THRESHOLD_HIGH" ] && [ "$net" -ge "$WARN_LINES_HIGH" ]; then
+        echo "WARNING: $file is $total lines (+$net net lines added)"
+        warned=1
+    elif [ "$total" -gt "$WARN_THRESHOLD_LOW" ] && [ "$net" -ge "$WARN_LINES_LOW" ]; then
+        echo "WARNING: $file is $total lines (+$net net lines added)"
+        warned=1
+    fi
+done < <(git diff --cached --numstat)
+
+if [ "$blocked" -eq 1 ]; then
+    echo ""
+    echo "Commit blocked by accretion gate. Extract large files before committing."
+    echo "Bypass: SKIP_ACCRETION_GATE=1 git commit -m '...'"
+    exit 1
+fi
+
+if [ "$warned" -eq 1 ]; then
+    echo "pre-commit: accretion gate passed (with warnings above)"
+else
+    echo "pre-commit: accretion gate passed"
+fi
+`
+
+// removeTrailingExit removes a trailing 'exit 0' or 'exit $?' from a script
+// so that appended code is reachable. Only removes the final exit statement —
+// exit statements inside conditionals are preserved.
+func removeTrailingExit(content string) string {
+	trimmed := strings.TrimRight(content, " \t\n\r")
+	lines := strings.Split(trimmed, "\n")
+	if len(lines) == 0 {
+		return content
+	}
+	last := strings.TrimSpace(lines[len(lines)-1])
+	if last == "exit 0" || last == "exit $?" {
+		return strings.Join(lines[:len(lines)-1], "\n") + "\n"
+	}
+	return content
+}
+
+// ensureBashShebang upgrades #!/bin/sh to #!/bin/bash.
+// Process substitution (<()) requires bash and fails under sh.
+func ensureBashShebang(content string) string {
+	if strings.HasPrefix(content, "#!/bin/sh\n") {
+		return "#!/bin/bash\n" + content[len("#!/bin/sh\n"):]
+	}
+	if strings.HasPrefix(content, "#!/bin/sh\r\n") {
+		return "#!/bin/bash\r\n" + content[len("#!/bin/sh\r\n"):]
+	}
+	return content
+}
+
+// stripScriptShebang removes the shebang line from a script.
+// Used when appending a script to an existing hook that already has a shebang.
+func stripScriptShebang(content string) string {
+	if strings.HasPrefix(content, "#!") {
+		if idx := strings.Index(content, "\n"); idx >= 0 {
+			return content[idx+1:]
+		}
+	}
+	return content
+}
+
+// ensureStandalonePreCommitGate adds a self-contained accretion gate to .git/hooks/pre-commit.
+// Unlike the full mode, this doesn't require the orch binary.
+func ensureStandalonePreCommitGate(projectDir string) (*StepResult, error) {
+	result := &StepResult{}
+
+	hooksDir := filepath.Join(projectDir, ".git", "hooks")
+	hookPath := filepath.Join(hooksDir, "pre-commit")
+
+	marker := "Accretion Gate"
+
+	// Check if already present
+	data, err := os.ReadFile(hookPath)
+	if err == nil && strings.Contains(string(data), marker) {
+		result.AlreadyPresent = true
+		return result, nil
+	}
+
+	if err := os.MkdirAll(hooksDir, 0755); err != nil {
+		return nil, fmt.Errorf("creating hooks dir: %w", err)
+	}
+
+	if os.IsNotExist(err) {
+		// Create new pre-commit hook with the full standalone script
+		if err := os.WriteFile(hookPath, []byte(standalonePreCommitScript), 0755); err != nil {
+			return nil, fmt.Errorf("writing pre-commit: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("reading pre-commit: %w", err)
+	} else {
+		// Merge gate into existing hook:
+		// 1. Upgrade shebang from sh to bash (process substitution requires bash)
+		// 2. Remove trailing exit so appended gate code is reachable
+		// 3. Strip shebang from gate script (existing hook already has one)
+		content := ensureBashShebang(string(data))
+		content = removeTrailingExit(content)
+		gateBody := stripScriptShebang(standalonePreCommitScript)
+		newContent := content + "\n# Accretion gate (added by orch harness init)\n" + gateBody
+
+		if err := os.WriteFile(hookPath, []byte(newContent), 0755); err != nil {
+			return nil, fmt.Errorf("writing pre-commit: %w", err)
+		}
+	}
+
+	result.Created = true
+	return result, nil
+}
+
+// ensurePreCommitGate adds the accretion gate to .git/hooks/pre-commit.
+func ensurePreCommitGate(projectDir string) (*StepResult, error) {
+	result := &StepResult{}
+
+	hooksDir := filepath.Join(projectDir, ".git", "hooks")
+	hookPath := filepath.Join(hooksDir, "pre-commit")
+
+	accretionLine := "orch precommit accretion"
+
+	// Check if already present
+	data, err := os.ReadFile(hookPath)
+	if err == nil && strings.Contains(string(data), accretionLine) {
+		result.AlreadyPresent = true
+		return result, nil
+	}
+
+	if err := os.MkdirAll(hooksDir, 0755); err != nil {
+		return nil, fmt.Errorf("creating hooks dir: %w", err)
+	}
+
+	gate := "\n# Accretion warning gate (added by orch harness init)\norch precommit accretion 2>/dev/null || true\n"
+
+	if os.IsNotExist(err) {
+		// Create new pre-commit hook
+		content := "#!/bin/bash\n" + gate
+		if err := os.WriteFile(hookPath, []byte(content), 0755); err != nil {
+			return nil, fmt.Errorf("writing pre-commit: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("reading pre-commit: %w", err)
+	} else {
+		// Remove trailing exit so appended gate is reachable
+		content := removeTrailingExit(string(data))
+		newContent := content + gate
+
+		if err := os.WriteFile(hookPath, []byte(newContent), 0755); err != nil {
+			return nil, fmt.Errorf("writing pre-commit: %w", err)
+		}
+	}
+
+	result.Created = true
 	return result, nil
 }
