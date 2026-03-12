@@ -1,0 +1,32 @@
+name: orchestrator-skill-current-state-audit
+type: investigation
+workspace: og-inv-task-orchestrator-skill-11mar-8e8d
+
+verification:
+  automated:
+    - command: "test -f .kb/models/orchestrator-session-lifecycle/probes/2026-03-11-probe-orchestrator-skill-current-state-audit.md"
+      expectation: "Probe file exists"
+    - command: "test -f .orch/workspace/og-inv-task-orchestrator-skill-11mar-8e8d/SYNTHESIS.md"
+      expectation: "SYNTHESIS.md exists with 4 required audit sections"
+    - command: "grep -c '## Investigation' .orch/workspace/og-inv-task-orchestrator-skill-11mar-8e8d/SYNTHESIS.md"
+      expectation: "At least 4 investigation tracking sections"
+
+  manual:
+    - description: "Verify recommendation tracking covers all 6 investigations"
+    - description: "Verify hook coverage matrix matches registered hooks in settings.json"
+    - description: "Verify drift analysis compares Feb 28 snapshot against current deployed skill"
+    - description: "Verify pending items section captures blocked behavioral validation gate"
+
+  commands_run:
+    - "wc -l on snapshot, deployed, and source skill files"
+    - "cat ~/.claude/settings.json to extract hook registrations"
+    - "ls ~/.orch/hooks/ to verify hook implementations exist"
+    - "Read stats.json for token trajectory"
+    - "Read all 6 investigation files"
+    - "Read current deployed skill, source template, skill.yaml, reference docs"
+
+outcomes:
+  - "22 of 25 recommendations from investigations 2-5 are fully implemented"
+  - "6 of 7 hooks from investigation 4 are registered and working"
+  - "Token count reduced 82% from peak (27,200 → 5,995)"
+  - "1 critical gate remains open: behavioral validation via skillc test"
