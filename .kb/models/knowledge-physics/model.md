@@ -350,6 +350,26 @@ Evidence: ADRs took 7 years from Nygard's projects (2011) to ThoughtWorks "Adopt
 
 **R&D labs are the second user, not the first.** Their pain is strongest (postdoc turnover, unreproduced experiments, lost protocols), but adoption friction is highest (IT policies, non-Git workflows, PI buy-in required, training needed). The path to lab adoption runs through a single researcher champion.
 
+### Distribution Channels for First STR User
+
+The STR community is large and discoverable (probe 2026-03-11). ~100k+ users fit the STR profile across concentrated online communities:
+
+| Channel | Size/Reach | Signal Quality | Effort |
+|---------|-----------|----------------|--------|
+| r/ClaudeCode | 96k members, 4.2k weekly contributors | Very high — exact target audience | Low-medium (2-3 weeks value-first engagement) |
+| r/ClaudeAI | ~300k members | High — Claude Code crossover | Same approach |
+| awesome-claude-code (GitHub) | 21.6k stars | Very high — curated, passive exposure | Very low (1 PR) |
+| Show HN | 10k-30k visitors per front page hit | High — right audience | Low (1 post + comment engagement) |
+| Anthropic Discord | 68.5k members | Medium — ephemeral format | Medium (weeks of helping first) |
+
+**Demand signal is active, not latent.** GitHub Issue #28196 on anthropics/claude-code requests "Built-in Personal Knowledge Base with Semantic RAG." Cursor Forum has multiple threads requesting persistent agent memory. Stack Overflow 2025 survey: developers spend 23% of AI interaction time re-providing context. "Stop Claude Code from forgetting everything" (Show HN) got 202 points and 226 comments.
+
+**Positioning principle: pain-point framing >> feature-list framing.** Show HN data shows ~100:1 engagement ratio between pain-point titles ("Stop Claude Code from forgetting") vs. architecture descriptions ("multi-agent orchestrator"). kb-cli should be positioned as "stop re-investigating solved problems" not "structured knowledge management CLI."
+
+**The "orchestrator" space is saturated; "knowledge management methodology" is not.** 10+ Claude Code orchestrator tools posted Jan-Mar 2026, most getting 1-5 HN points. But no tool positions itself as a knowledge management methodology (investigation → probe → model cycle). kb-cli's angle is methodology, not infrastructure — distinct from MCP-based memory solutions.
+
+**Conversion funnel reality:** HN front page → ~5% star rate → <10% install rate → <10% retain rate. ~0.1% of top-of-funnel become regular users. A front-page HN post might produce 5-15 ongoing users. Sustained multi-channel presence over weeks is more reliable than a single viral moment. Aider case study: 3 HN points at launch → 41,600 stars through 2+ years of sustained iteration — persistence beats virality.
+
 ---
 
 ## Open Questions
@@ -397,6 +417,8 @@ Evidence: ADRs took 7 years from Nygard's projects (2011) to ThoughtWorks "Adopt
 **2026-03-10:** Ostrom framing thread resolved (orch-go-3hdyt). Added Theory Type section establishing knowledge physics as a diagnostic framework (Ostrom-scale institutional analysis), not a natural law. Updated Summary and Critical Invariant #6 to reflect diagnostic framing. Analogues: Ostrom's commons governance design principles, Conway's Law, Brooks's Law. This shapes publication tone: "here's a predictive pattern I found and tried to break" rather than "here's a new field of science."
 
 **2026-03-10:** Falsifiability probe (orch-go-dqv2o). Systematic counterexample search across 15+ systems in three domains (natural, engineered, human). No clean counterexamples found. Three key extensions: (1) Added condition 5 — "non-trivial composition" — to prevent over-prediction in additive substrates (logs, sensor data, coral reefs) that meet conditions 1-4 but don't degrade because composition is trivial. (2) Coordination taxonomy: explicit (type systems), substrate-embedded (CRDTs), environmental (stigmergy). Digital substrates lack environmental coordination, explaining why they require engineered gates. (3) Continuous risk formulation: `accretion_risk = f(amnesia × complexity / coordination)` — more precise than binary conditions. Theory verdict: conditionally predictive, publishable with composition refinement.
+
+**2026-03-11:** Distribution channels probe. Extended Adoption Sequencing section with concrete channel data: r/ClaudeCode (96k members, 4.2k weekly contributors), awesome-claude-code lists (21.6k stars), Show HN as top-3 channels for reaching STR users. Active demand confirmed via GitHub Issue #28196 ("Built-in Personal Knowledge Base with Semantic RAG"). Key positioning insight: pain-point framing outperforms feature-list framing by ~100:1 on HN. Claude Code orchestrator space oversaturated (10+ tools, 1-5 HN pts each) but knowledge management methodology is undersaturated. Conversion funnel: ~0.1% top-of-funnel → regular user. Aider case validates persistence over virality (3 HN pts → 41.6k stars over 2 years). Concrete 4-phase launch sequence defined: preparation → community presence → passive distribution → active launch.
 
 **2026-03-10:** Blog post uncontaminated claim review (orch-go-2bdvb). Read all three blog drafts (harness engineering, knowledge physics, coordination demo) as an external reader with no model framing. Found systematic gap between the model's self-assessment (already corrected to "WORKING HYPOTHESIS" / "overclaimed") and the publication language (still claims universality, novelty, and validated theory). 8 validation assumptions, 4 novelty assumptions, 12 overclaimed language instances identified with specific line references and recommended corrections. Key finding: hedging exists but is structurally misplaced (buried at end, not inline with claims). Publication gate assessment: 2 of 3 required artifacts exist (red-team memo + this claim-label pass); claim ledger still needed. Added Publication Readiness section to model.
 
@@ -489,6 +511,7 @@ kb reflect --type stale
 - `.kb/models/knowledge-physics/probes/2026-03-10-probe-falsifiability-counterexamples.md` — Falsifiability probe: 15+ counterexamples tested, none survive. Fifth condition (non-trivial composition) identified. Coordination taxonomy (explicit/substrate-embedded/environmental). Theory is conditionally predictive.
 - `.kb/models/knowledge-physics/probes/2026-03-10-probe-blog-post-uncontaminated-claim-review.md` — Publication claim audit: 8 validation assumptions, 4 novelty assumptions, 12 overclaimed language instances across 3 blog drafts. Publications still use language the model has already corrected internally.
 - `.kb/models/knowledge-physics/probes/2026-03-11-probe-empty-model-stub-creation-vectors.md` — Model stub creation vector analysis: 3 creation paths identified (kb create model, kb create model --from, agent direct-write). Zero current empty stubs exist (behavioral compliance held). Model-stub pre-commit gate implemented to convert from behavioral to architectural enforcement.
+- `.kb/models/knowledge-physics/probes/2026-03-11-probe-distribution-channels-solo-dev-cli-tools.md` — Distribution channel analysis for first STR user: r/ClaudeCode (96k), awesome-claude-code (21.6k stars), Show HN as top channels. Active demand confirmed via GitHub Issue #28196. Pain-point framing >> feature-list framing (100:1). Orchestrator space saturated; knowledge methodology space undersaturated.
 
 **Related Models:**
 - `.kb/models/harness-engineering/model.md` — Code instance of substrate physics, hard/soft harness taxonomy
