@@ -304,6 +304,24 @@ func (r *ProjectRegistry) CurrentDir() string {
 	return r.currentDir
 }
 
+// FilterByDirs returns a new ProjectRegistry containing only projects
+// whose directory is in the allowed set.
+func (r *ProjectRegistry) FilterByDirs(allowedDirs map[string]bool) *ProjectRegistry {
+	if r == nil {
+		return nil
+	}
+	filtered := &ProjectRegistry{
+		prefixToDir: make(map[string]string),
+		currentDir:  r.currentDir,
+	}
+	for prefix, dir := range r.prefixToDir {
+		if allowedDirs[dir] {
+			filtered.prefixToDir[prefix] = dir
+		}
+	}
+	return filtered
+}
+
 // ExtractPrefix returns the prefix portion of an issue ID.
 // Issue IDs follow the format "prefix-hash" (e.g., "orch-go-1169", "bd-85487068").
 // Returns the longest matching registered prefix, or the text before the last hyphen.

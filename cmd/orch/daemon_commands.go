@@ -39,7 +39,8 @@ Examples:
   orch daemon run --concurrency 5   # Allow 5 concurrent agents
   orch daemon run --delay 5          # 5 second delay between spawns
   orch daemon run --dry-run          # Preview mode, no actual spawning
-  orch daemon run --replace          # Stop existing daemon first, then start`,
+  orch daemon run --replace          # Stop existing daemon first, then start
+  orch daemon run --group orch       # Only process issues from orch group projects`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDaemonLoop()
 	},
@@ -171,7 +172,8 @@ var (
 	daemonAgreementCheckInterval     int // Agreement check interval in minutes (0 = disabled)
 	daemonBeadsHealthInterval        int // Beads health snapshot interval in minutes (0 = disabled)
 	daemonFrictionAccumInterval      int // Friction accumulation interval in minutes (0 = disabled)
-	daemonReplace                 bool // Stop existing daemon before starting (graceful takeover)
+	daemonReplace                 bool   // Stop existing daemon before starting (graceful takeover)
+	daemonGroup                   string // Filter to projects in this group (from groups.yaml)
 )
 
 func init() {
@@ -216,10 +218,13 @@ func init() {
 		cmd.Flags().IntVar(&daemonAgreementCheckInterval, "agreement-check-interval", 30, "Agreement check interval in minutes (0 = disabled, default: 30)")
 		cmd.Flags().IntVar(&daemonBeadsHealthInterval, "beads-health-interval", 60, "Beads health snapshot interval in minutes (0 = disabled, default: 60)")
 		cmd.Flags().IntVar(&daemonFrictionAccumInterval, "friction-accumulation-interval", 60, "Friction accumulation interval in minutes (0 = disabled, default: 60)")
+		cmd.Flags().StringVar(&daemonGroup, "group", "", "Filter to projects in this group (from groups.yaml)")
 		cmd.Flags().MarkHidden("max-agents")
 	}
 
-	// Add label filter to preview and once commands (share the same variable)
+	// Add label filter and group to preview and once commands (share the same variable)
 	daemonPreviewCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
+	daemonPreviewCmd.Flags().StringVar(&daemonGroup, "group", "", "Filter to projects in this group (from groups.yaml)")
 	daemonOnceCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
+	daemonOnceCmd.Flags().StringVar(&daemonGroup, "group", "", "Filter to projects in this group (from groups.yaml)")
 }

@@ -467,6 +467,49 @@ func TestDiscoverProjectPath_NoBeadsDir(t *testing.T) {
 	}
 }
 
+func TestFilterByDirs(t *testing.T) {
+	r := &ProjectRegistry{
+		prefixToDir: map[string]string{
+			"orch-go": "/home/user/orch-go",
+			"bd":      "/home/user/beads",
+			"pw":      "/home/user/price-watch",
+		},
+		currentDir: "/home/user/orch-go",
+	}
+
+	allowed := map[string]bool{
+		"/home/user/orch-go": true,
+		"/home/user/beads":   true,
+	}
+	filtered := r.FilterByDirs(allowed)
+
+	if len(filtered.Projects()) != 2 {
+		t.Fatalf("FilterByDirs returned %d entries, want 2", len(filtered.Projects()))
+	}
+	if filtered.CurrentDir() != "/home/user/orch-go" {
+		t.Errorf("FilterByDirs CurrentDir = %q, want '/home/user/orch-go'", filtered.CurrentDir())
+	}
+
+	found := make(map[string]bool)
+	for _, p := range filtered.Projects() {
+		found[p.Prefix] = true
+	}
+	if !found["orch-go"] || !found["bd"] {
+		t.Errorf("FilterByDirs missing expected entries, got %v", found)
+	}
+	if found["pw"] {
+		t.Error("FilterByDirs should have excluded pw")
+	}
+}
+
+func TestFilterByDirs_NilRegistry(t *testing.T) {
+	var r *ProjectRegistry
+	got := r.FilterByDirs(map[string]bool{"/foo": true})
+	if got != nil {
+		t.Error("FilterByDirs on nil registry should return nil")
+	}
+}
+
 func TestBuildProjectDirNames(t *testing.T) {
 	names := BuildProjectDirNames(nil)
 	if len(names) != 0 {

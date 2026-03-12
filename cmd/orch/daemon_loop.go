@@ -97,14 +97,35 @@ func daemonSetup() (*daemonLoopState, error) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: project registry unavailable: %v\n", err)
 	} else {
-		d.ProjectRegistry = registry
-
 		// Wire group-based account routing: load groups.yaml and build
 		// the kbProjects map so the daemon can resolve account per project.
 		if groupCfg, err := group.Load(); err == nil {
 			d.GroupConfig = groupCfg
 			d.KBProjects = daemon.BuildKBProjectsMap(registry)
+
+			// Filter registry to only projects in the specified group
+			if daemonGroup != "" {
+				members := groupCfg.ResolveGroupMembers(daemonGroup, d.KBProjects)
+				if len(members) == 0 {
+					pidLock.Release()
+					return nil, fmt.Errorf("group %q not found or has no members in groups.yaml", daemonGroup)
+				}
+				// Build allowed dirs set from group member names
+				allowedDirs := make(map[string]bool, len(members))
+				for _, name := range members {
+					if path, ok := d.KBProjects[name]; ok {
+						allowedDirs[path] = true
+					}
+				}
+				registry = registry.FilterByDirs(allowedDirs)
+				fmt.Printf("Group %q: scoped to %d projects\n", daemonGroup, len(registry.Projects()))
+			}
+		} else if daemonGroup != "" {
+			pidLock.Release()
+			return nil, fmt.Errorf("--group requires groups.yaml: %w", err)
 		}
+
+		d.ProjectRegistry = registry
 	}
 
 	// NOTE: Extraction system disabled. HotspotChecker is not set, so the
@@ -217,6 +238,9 @@ func (s *daemonLoopState) logDaemonConfig() {
 	}
 	if s.d.ProjectRegistry != nil {
 		s.dlog.Printf("  Projects:          %d registered\n", len(s.d.ProjectRegistry.Projects()))
+	}
+	if daemonGroup != "" {
+		s.dlog.Printf("  Group filter:      %s\n", daemonGroup)
 	}
 	s.dlog.Printf("\n")
 
