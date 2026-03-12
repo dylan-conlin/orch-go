@@ -66,12 +66,12 @@ func (m *mockIssueUpdater) UpdateStatus(beadsID, status string) error {
 
 // mockSpawner implements Spawner for tests.
 type mockSpawner struct {
-	SpawnWorkFunc func(beadsID, model, workdir string) error
+	SpawnWorkFunc func(beadsID, model, workdir, account string) error
 }
 
-func (m *mockSpawner) SpawnWork(beadsID, model, workdir string) error {
+func (m *mockSpawner) SpawnWork(beadsID, model, workdir, account string) error {
 	if m.SpawnWorkFunc != nil {
-		return m.SpawnWorkFunc(beadsID, model, workdir)
+		return m.SpawnWorkFunc(beadsID, model, workdir, account)
 	}
 	return nil
 }

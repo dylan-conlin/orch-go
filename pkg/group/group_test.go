@@ -439,3 +439,73 @@ func TestResolveGroupMembers_ParentGroup(t *testing.T) {
 		t.Error("orch-go should not be in scs members")
 	}
 }
+
+func TestAccountForProjectDir_ExplicitMember(t *testing.T) {
+	cfg := &Config{
+		Groups: map[string]Group{
+			"orch": {Account: "personal", Projects: []string{"orch-go", "beads"}},
+			"scs":  {Account: "work", Projects: []string{"toolshed"}},
+		},
+	}
+	kbProjects := map[string]string{
+		"orch-go":  "/home/user/orch-go",
+		"beads":    "/home/user/beads",
+		"toolshed": "/home/user/work/toolshed",
+	}
+
+	if got := cfg.AccountForProjectDir("/home/user/orch-go", kbProjects); got != "personal" {
+		t.Errorf("expected personal for orch-go, got %q", got)
+	}
+	if got := cfg.AccountForProjectDir("/home/user/work/toolshed", kbProjects); got != "work" {
+		t.Errorf("expected work for toolshed, got %q", got)
+	}
+}
+
+func TestAccountForProjectDir_ParentInferred(t *testing.T) {
+	cfg := &Config{
+		Groups: map[string]Group{
+			"scs": {Account: "work", Parent: "scs-special-projects"},
+		},
+	}
+	kbProjects := map[string]string{
+		"scs-special-projects": "/home/user/work/scs-special-projects",
+		"price-watch":          "/home/user/work/scs-special-projects/price-watch",
+	}
+
+	if got := cfg.AccountForProjectDir("/home/user/work/scs-special-projects/price-watch", kbProjects); got != "work" {
+		t.Errorf("expected work for price-watch (parent-inferred), got %q", got)
+	}
+}
+
+func TestAccountForProjectDir_Ungrouped(t *testing.T) {
+	cfg := &Config{
+		Groups: map[string]Group{
+			"orch": {Account: "personal", Projects: []string{"orch-go"}},
+		},
+	}
+	kbProjects := map[string]string{
+		"dotfiles": "/home/user/dotfiles",
+	}
+
+	if got := cfg.AccountForProjectDir("/home/user/dotfiles", kbProjects); got != "" {
+		t.Errorf("expected empty for ungrouped project, got %q", got)
+	}
+}
+
+func TestAccountForProjectDir_NilConfig(t *testing.T) {
+	var cfg *Config
+	if got := cfg.AccountForProjectDir("/home/user/foo", nil); got != "" {
+		t.Errorf("expected empty for nil config, got %q", got)
+	}
+}
+
+func TestAccountForProjectDir_EmptyDir(t *testing.T) {
+	cfg := &Config{
+		Groups: map[string]Group{
+			"orch": {Account: "personal", Projects: []string{"orch-go"}},
+		},
+	}
+	if got := cfg.AccountForProjectDir("", nil); got != "" {
+		t.Errorf("expected empty for empty dir, got %q", got)
+	}
+}

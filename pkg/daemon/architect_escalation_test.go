@@ -338,7 +338,7 @@ func TestOnceExcluding_ArchitectEscalation_EscalatesFeatureImpl(t *testing.T) {
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 				spawnedID = beadsID
 				spawnedModel = model
 				return nil
@@ -419,7 +419,7 @@ func TestOnceExcluding_ArchitectEscalation_ExtractionTakesPrecedence(t *testing.
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 				spawnedID = beadsID
 				return nil
 			},
@@ -478,7 +478,7 @@ func TestOnceExcluding_ArchitectEscalation_SkipsNonHotspotIssues(t *testing.T) {
 			GetIssueStatusFunc: func(beadsID string) (string, error) { return "open", nil },
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 				spawnedModel = model
 				return nil
 			},
@@ -534,7 +534,7 @@ func TestOnceExcluding_ArchitectEscalation_SkipsWithExplicitSkillLabel(t *testin
 			GetIssueStatusFunc: func(beadsID string) (string, error) { return "open", nil },
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 				return nil
 			},
 		},

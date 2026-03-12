@@ -62,6 +62,7 @@ func init() {
 	workCmd.Flags().BoolVar(&workInline, "inline", false, "Run inline (blocking) with TUI")
 	workCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet) or provider/model format")
 	workCmd.Flags().StringVar(&spawnWorkdir, "workdir", "", "Target project directory (for cross-project work)")
+	workCmd.Flags().StringVar(&spawnAccount, "account", "", "Account name for Claude CLI spawns (e.g., 'work', 'personal')")
 }
 
 // InferSkillFromIssueType maps issue types to appropriate skills.

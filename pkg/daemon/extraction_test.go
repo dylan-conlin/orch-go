@@ -538,7 +538,7 @@ func TestOnceExcluding_AutoExtraction_SpawnsExtractionWhenCriticalHotspot(t *tes
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 				spawnedID = beadsID
 				return nil
 			},
@@ -596,7 +596,7 @@ func TestOnceExcluding_AutoExtraction_SkipsWhenNoCriticalHotspot(t *testing.T) {
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 				spawnedID = beadsID
 				return nil
 			},
@@ -654,7 +654,7 @@ func TestOnceExcluding_AutoExtraction_FailsFastOnExtractionFailure(t *testing.T)
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 				spawnedID = beadsID
 				return nil
 			},
@@ -708,7 +708,7 @@ func TestOnceExcluding_AutoExtraction_SkipsWhenNoHotspotChecker(t *testing.T) {
 			},
 		},
 		Spawner: &mockSpawner{
-			SpawnWorkFunc: func(beadsID, model, workdir string) error {
+			SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 				spawnedID = beadsID
 				return nil
 			},

@@ -33,7 +33,7 @@ func TestDaemon_Once_ProcessesOneIssue(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			spawnCalled = true
 			if beadsID != "proj-1" {
 				t.Errorf("spawnFunc called with %q, want 'proj-1'", beadsID)
@@ -65,7 +65,7 @@ func TestDaemon_SpawnIssue_StatusUpdateFailureReleasesSlot(t *testing.T) {
 	spawnCalled := false
 	d := &Daemon{
 		Pool: pool,
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			spawnCalled = true
 			return nil
 		}},
@@ -131,7 +131,7 @@ func TestDaemon_Run_ProcessesAllIssues(t *testing.T) {
 			remaining := issues[callCount:]
 			return remaining, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			callCount++
 			return nil
 		}},
@@ -160,7 +160,7 @@ func TestDaemon_Run_RespectsMaxIterations(t *testing.T) {
 				{ID: "proj-1", Title: "Infinite", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			callCount++
 			return nil
 		}},
@@ -421,7 +421,7 @@ func TestDaemon_Once_WithPool_AcquiresSlot(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			return nil
 		}},
 		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
@@ -453,7 +453,7 @@ func TestDaemon_Once_WithPool_AtCapacity(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			t.Error("spawnFunc should not be called when at capacity")
 			return nil
 		}},
@@ -480,7 +480,7 @@ func TestDaemon_Once_WithPool_ReleasesSlotOnError(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			return fmt.Errorf("spawn failed")
 		}},
 	}
@@ -508,7 +508,7 @@ func TestDaemon_OnceWithSlot_ReturnsSlot(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			spawnCount++
 			return nil
 		}},
@@ -545,7 +545,7 @@ func TestDaemon_OnceWithSlot_NoPool(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			return nil
 		}},
 		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
@@ -632,7 +632,7 @@ func TestDaemon_Once_FreshStatusCheck_SkipsInProgressIssue(t *testing.T) {
 				return "in_progress", nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			spawnCalled = true
 			return nil
 		}},
@@ -666,7 +666,7 @@ func TestDaemon_Once_FreshStatusCheck_AllowsOpenIssue(t *testing.T) {
 				return "open", nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			spawnCalled = true
 			return nil
 		}},
@@ -700,7 +700,7 @@ func TestDaemon_Once_FreshStatusCheck_FailOpenOnError(t *testing.T) {
 				return "", fmt.Errorf("beads daemon unavailable")
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			spawnCalled = true
 			return nil
 		}},
@@ -729,7 +729,7 @@ func TestDaemon_Once_FreshStatusCheck_NilFunc(t *testing.T) {
 				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
 			}, nil
 		}},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			spawnCalled = true
 			return nil
 		}},
@@ -770,7 +770,7 @@ func TestDaemon_ConcurrentDaemonDedup(t *testing.T) {
 					return issueStatus, nil
 				},
 			},
-			Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+			Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 				spawnCount++
 				return nil
 			}},
@@ -830,7 +830,7 @@ func TestDaemon_Once_CrossProject_UsesProjectDir(t *testing.T) {
 				return "open", nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			capturedWorkdir = workdir
 			return nil
 		}},
@@ -870,7 +870,7 @@ func TestDaemon_Once_LocalProject_NoWorkdir(t *testing.T) {
 				return "open", nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			capturedWorkdir = workdir
 			return nil
 		}},
@@ -946,7 +946,7 @@ func TestOnceExcluding_NonErrorSkip_ContinuesToNextIssue(t *testing.T) {
 				return "open", nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			spawnedIDs = append(spawnedIDs, beadsID)
 			return nil
 		}},
@@ -1003,7 +1003,7 @@ func TestOnceExcluding_SpawnFailure_RetriedWithFreshSkipMap(t *testing.T) {
 				}, nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			callCount++
 			if callCount == 1 {
 				return fmt.Errorf("transient spawn failure")
@@ -1058,7 +1058,7 @@ func TestSpawnIssue_PhaseCompleteError_AttemptsAutoComplete(t *testing.T) {
 				}, nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			return fmt.Errorf("failed to spawn work: exit status 1: issue %s has Phase: Complete but is not closed. Run 'orch complete %s' first", beadsID, beadsID)
 		}},
 		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
@@ -1118,7 +1118,7 @@ func TestSpawnIssue_PhaseCompleteError_AutoCompleteFails_FallsBack(t *testing.T)
 				}, nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			return fmt.Errorf("failed to spawn work: exit status 1: issue %s has Phase: Complete but is not closed", beadsID)
 		}},
 		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {
@@ -1163,7 +1163,7 @@ func TestSpawnIssue_PhaseCompleteError_NoAutoCompleter_SkipsGracefully(t *testin
 				}, nil
 			},
 		},
-		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir string) error {
+		Spawner: &mockSpawner{SpawnWorkFunc: func(beadsID, model, workdir, account string) error {
 			return fmt.Errorf("failed to spawn work: exit status 1: issue %s has Phase: Complete but is not closed", beadsID)
 		}},
 		StatusUpdater: &mockIssueUpdater{UpdateStatusFunc: func(beadsID string, status string) error {

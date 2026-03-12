@@ -357,13 +357,17 @@ func FindInProgressByTitle(title string) *Issue {
 // This is the default implementation that shells out to orch.
 // If model is non-empty, it passes --model to orch work for model-aware routing.
 // If workdir is non-empty, it passes --workdir for cross-project spawning.
-func SpawnWork(beadsID, model, workdir string) error {
+// If account is non-empty, it passes --account for group-based account routing.
+func SpawnWork(beadsID, model, workdir, account string) error {
 	args := []string{"work"}
 	if model != "" {
 		args = append(args, "--model", model)
 	}
 	if workdir != "" {
 		args = append(args, "--workdir", workdir)
+	}
+	if account != "" {
+		args = append(args, "--account", account)
 	}
 	args = append(args, beadsID)
 	cmd := exec.Command("orch", args...)

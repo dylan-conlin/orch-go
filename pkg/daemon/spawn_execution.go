@@ -3,6 +3,7 @@ package daemon
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -101,12 +102,15 @@ func (d *Daemon) spawnIssue(issue *Issue, skill string, inferredModel string) (*
 	// Use project directory from issue (set during multi-project polling)
 	workdir := issue.ProjectDir
 
+	// Resolve account from project group (if groups are configured)
+	account := d.resolveAccountForProject(workdir)
+
 	// Spawn the work with inferred model and optional workdir
 	spawner := d.Spawner
 	if spawner == nil {
 		spawner = &defaultSpawner{}
 	}
-	if err := spawner.SpawnWork(issue.ID, inferredModel, workdir); err != nil {
+	if err := spawner.SpawnWork(issue.ID, inferredModel, workdir, account); err != nil {
 		// Check if this is a "Phase: Complete but not closed" error.
 		// This happens with cross-repo issues where the agent completed work
 		// but the issue was never closed (e.g., orphaned cross-project issues).
@@ -228,4 +232,31 @@ func (d *Daemon) ReleaseSlot(slot *Slot) {
 	if d.Pool != nil && slot != nil {
 		d.Pool.Release(slot)
 	}
+}
+
+// resolveAccountForProject determines the account to use for a project directory
+// based on group configuration. Returns empty string (use default account) when:
+// - No group config is loaded
+// - Project directory is empty (local project)
+// - Project is not in any group
+// - Matching group has no account set
+func (d *Daemon) resolveAccountForProject(projectDir string) string {
+	if d.GroupConfig == nil || projectDir == "" {
+		return ""
+	}
+	return d.GroupConfig.AccountForProjectDir(projectDir, d.KBProjects)
+}
+
+// BuildKBProjectsMap builds a name->path map from the ProjectRegistry,
+// suitable for group membership resolution. Uses filepath.Base(dir) as the name.
+func BuildKBProjectsMap(registry *ProjectRegistry) map[string]string {
+	if registry == nil {
+		return nil
+	}
+	m := make(map[string]string)
+	for _, proj := range registry.Projects() {
+		name := filepath.Base(proj.Dir)
+		m[name] = proj.Dir
+	}
+	return m
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/daemonconfig"
+	"github.com/dylan-conlin/orch-go/pkg/group"
 	"github.com/dylan-conlin/orch-go/pkg/modeldrift"
 )
 
@@ -149,6 +150,14 @@ type Daemon struct {
 	// scope-expansion bugs (e.g., ghost agents, counter overflow, missing ProjectDir).
 	// Pauses daemon after configurable threshold of consecutive violation cycles.
 	InvariantChecker *InvariantChecker
+
+	// GroupConfig holds groups.yaml for account routing per project group.
+	// When set, the daemon resolves the account to use before spawning
+	// based on which group the target project belongs to.
+	GroupConfig *group.Config
+	// KBProjects maps project name -> absolute path for group membership resolution.
+	// Built from ProjectRegistry at daemon startup, used by GroupConfig.AccountForProjectDir.
+	KBProjects map[string]string
 
 	// FocusGoal is the current focus goal text (from ~/.orch/focus.json).
 	// When set, issues from projects matching this goal get a priority boost.

@@ -204,6 +204,22 @@ func AllProjectsInGroups(groups []Group) []string {
 	return projects
 }
 
+// AccountForProjectDir returns the account name for a project given its directory path.
+// Uses filepath.Base(projectDir) as the project name and resolves through group membership.
+// kbProjects maps project name -> absolute path (needed for parent-inferred membership).
+// Returns empty string if no group matches or the matching group has no account set.
+func (c *Config) AccountForProjectDir(projectDir string, kbProjects map[string]string) string {
+	if c == nil || projectDir == "" {
+		return ""
+	}
+	projectName := filepath.Base(projectDir)
+	groups := c.GroupsForProject(projectName, kbProjects)
+	if len(groups) > 0 && groups[0].Account != "" {
+		return groups[0].Account
+	}
+	return ""
+}
+
 // isSubdirectory returns true if child is a subdirectory of parent.
 // Both paths should be absolute.
 func isSubdirectory(child, parent string) bool {
