@@ -243,7 +243,7 @@ func TestHotspotReportJSON(t *testing.T) {
 		GeneratedAt:    "2026-01-04T10:00:00Z",
 		AnalysisPeriod: "Last 28 days",
 		FixThreshold:   5,
-		InvThreshold:   3,
+		InvThreshold:   5,
 		Hotspots: []Hotspot{
 			{
 				Path:           "cmd/orch/spawn.go",
@@ -1401,7 +1401,7 @@ func TestExtractInvestigationKeywords(t *testing.T) {
 		{
 			name:     "standard investigation with date and type prefix",
 			filename: "2026-02-19-design-coupling-hotspot-analysis-system.md",
-			expected: []string{"coupling", "hotspot", "analysis", "system"},
+			expected: []string{"coupling", "hotspot"},
 		},
 		{
 			name:     "investigation with inv prefix",
@@ -1416,12 +1416,12 @@ func TestExtractInvestigationKeywords(t *testing.T) {
 		{
 			name:     "investigation with generic terms filtered",
 			filename: "2026-01-03-inv-document-changelog-pattern-ecosystem-expansion.md",
-			expected: []string{"changelog", "pattern", "ecosystem", "expansion"},
+			expected: []string{"changelog", "ecosystem", "expansion"},
 		},
 		{
 			name:     "spike type prefix",
 			filename: "2026-02-24-spike-claude-code-hooks-orchestrator-guard.md",
-			expected: []string{"claude", "code", "hooks", "orchestrator", "guard"},
+			expected: []string{"claude", "hooks", "orchestrator", "guard"},
 		},
 		{
 			name:     "filters comprehensive, document, integrate",
@@ -1441,7 +1441,7 @@ func TestExtractInvestigationKeywords(t *testing.T) {
 		{
 			name:     "handoff topic preserved",
 			filename: "2025-12-22-inv-orch-handoff-generates-stale-incorrect.md",
-			expected: []string{"handoff", "generates", "stale", "incorrect"},
+			expected: []string{"handoff", "generates", "incorrect"},
 		},
 		{
 			name:     "p0 prefix stripped",
@@ -1476,6 +1476,17 @@ func TestIsInvestigationStopWord(t *testing.T) {
 		"into", "review", "check", "update",
 		"orch", "go", "the", "and", "for",
 		"new", "use", "how", "why", "what",
+		// Newly added stop words
+		"evaluate", "eval", "analyze", "determine", "define",
+		"compare", "collect", "map", "surface", "capture",
+		"full", "optimal", "minimum", "viable",
+		"task", "work", "status", "clean", "complete", "mode",
+		"view", "path", "layer", "gap", "flag", "plan",
+		"code", "system", "analysis", "feature", "default",
+		"cross", "stale", "testing", "project", "section",
+		"pattern", "based",
+		"investigation", "investigations", "probe", "probes",
+		"experiment", "md", "10",
 	}
 	for _, word := range stopWords {
 		if !isInvestigationStopWord(word) {
@@ -1488,7 +1499,7 @@ func TestIsInvestigationStopWord(t *testing.T) {
 		"doctor", "workers", "handoff", "entropy",
 		"daemon", "spawn", "hotspot", "coupling",
 		"auth", "token", "session", "config",
-		"changelog", "dashboard", "status",
+		"changelog", "dashboard",
 	}
 	for _, word := range keepWords {
 		if isInvestigationStopWord(word) {

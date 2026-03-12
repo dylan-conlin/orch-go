@@ -46,9 +46,9 @@ func TestHandleHotspot(t *testing.T) {
 		t.Errorf("expected FixThreshold 5, got %d", report.FixThreshold)
 	}
 
-	// InvThreshold should be the default (3)
-	if report.InvThreshold != 3 {
-		t.Errorf("expected InvThreshold 3, got %d", report.InvThreshold)
+	// InvThreshold should be the default (5)
+	if report.InvThreshold != 5 {
+		t.Errorf("expected InvThreshold 5, got %d", report.InvThreshold)
 	}
 
 	// Hotspots slice should not be nil

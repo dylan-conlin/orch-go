@@ -301,7 +301,7 @@ func RunHotspotCheckForSpawn(projectDir, task string) (*SpawnHotspotResult, erro
 		GeneratedAt:    time.Now().Format(time.RFC3339),
 		AnalysisPeriod: fmt.Sprintf("Last %d days", 28), // Default to 28 days
 		FixThreshold:   5,                               // Default threshold
-		InvThreshold:   3,                               // Default threshold
+		InvThreshold:   5,                               // Default threshold
 		BloatThreshold: 800,                             // Default bloat threshold
 		Hotspots:       []Hotspot{},
 	}

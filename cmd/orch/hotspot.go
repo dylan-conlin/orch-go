@@ -77,7 +77,7 @@ A hotspot is flagged when:
 Use --format json for machine-readable output that can be piped to other tools.
 
 Examples:
-  orch hotspot                       # Analyze with defaults (4 weeks, 5+ fixes, 3+ investigations, 800+ lines)
+  orch hotspot                       # Analyze with defaults (4 weeks, 5+ fixes, 5+ investigations, 800+ lines)
   orch hotspot --days 14             # Analyze last 2 weeks only
   orch hotspot --threshold 3         # Flag files with 3+ fix commits
   orch hotspot --inv-threshold 5     # Flag topics with 5+ investigations
@@ -93,7 +93,7 @@ Examples:
 func init() {
 	hotspotCmd.Flags().BoolVar(&hotspotFormatJSON, "json", false, "Output as JSON")
 	hotspotCmd.Flags().IntVar(&hotspotFixThreshold, "threshold", 5, "Minimum fix commits to flag as hotspot")
-	hotspotCmd.Flags().IntVar(&hotspotInvThreshold, "inv-threshold", 3, "Minimum investigations to flag as hotspot")
+	hotspotCmd.Flags().IntVar(&hotspotInvThreshold, "inv-threshold", 5, "Minimum investigations to flag as hotspot")
 	hotspotCmd.Flags().IntVar(&hotspotBloatThreshold, "bloat-threshold", 800, "Minimum lines to flag file as bloated")
 	hotspotCmd.Flags().IntVar(&hotspotDaysBack, "days", 28, "Days of git history to analyze")
 	hotspotCmd.Flags().StringSliceVar(&hotspotExclude, "exclude", defaultExclusions, "File patterns to exclude (e.g., *.json, go.sum)")

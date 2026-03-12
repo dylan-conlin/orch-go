@@ -26,7 +26,7 @@ func handleHotspot(w http.ResponseWriter, r *http.Request) {
 	// Use default thresholds from hotspot.go
 	daysBack := 28
 	fixThreshold := 5
-	invThreshold := 3
+	invThreshold := 5
 
 	report := HotspotReport{
 		GeneratedAt:    time.Now().Format(time.RFC3339),

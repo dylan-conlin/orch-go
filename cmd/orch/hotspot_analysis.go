@@ -322,11 +322,31 @@ var investigationStopWords = map[string]bool{
 	"enhance": true, "improve": true, "refactor": true, "consider": true,
 	"use": true, "using": true, "used": true, "scope": true,
 	"document": true, "comprehensive": true, "design": true, "audit": true,
+	"evaluate": true, "eval": true, "analyze": true, "determine": true,
+	"define": true, "compare": true, "collect": true, "map": true,
+	"surface": true, "capture": true,
 
 	// Generic descriptors
 	"new": true, "old": true, "current": true, "existing": true,
 	"phase": true, "step": true, "process": true, "approach": true,
 	"into": true, "ready": true, "during": true,
+	"full": true, "optimal": true, "minimum": true, "viable": true,
+
+	// Generic nouns that match filenames rather than topics
+	"task": true, "work": true, "status": true, "clean": true,
+	"complete": true, "mode": true, "view": true, "path": true,
+	"layer": true, "gap": true, "flag": true, "plan": true,
+	"code": true, "system": true, "analysis": true, "feature": true,
+	"default": true, "cross": true, "stale": true, "testing": true,
+	"project": true, "section": true, "pattern": true, "based": true,
+
+	// Meta-investigation terms (self-referential noise)
+	"investigation": true, "investigations": true,
+	"probe": true, "probes": true, "experiment": true,
+	"md": true,
+
+	// Bare numbers from filenames
+	"10": true, "11": true, "12": true, "13": true,
 
 	// Project-specific generics (appear in nearly all investigation filenames)
 	"orch": true, "go": true,
