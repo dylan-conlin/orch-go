@@ -325,7 +325,7 @@ type Config struct {
 	SystemPromptFile string
 
 	// GatesBypassed lists spawn gates that were bypassed for this spawn.
-	// Populated from --bypass-triage, --force-hotspot, --bypass-verification flags.
+	// Populated from --bypass-triage, --force-hotspot flags.
 	// Included in session.spawned events for outcome correlation.
 	GatesBypassed []string
 

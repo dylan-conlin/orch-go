@@ -2,6 +2,7 @@ package orch
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
@@ -11,7 +12,7 @@ import (
 )
 
 // RunPreFlightChecks performs all pre-spawn validation checks.
-func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, bypassVerification, forceHotspot bool, architectRef, bypassReason, overrideReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker) (*gates.UsageCheckResult, *gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
+func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, forceHotspot bool, architectRef, overrideReason string, maxAgents int, extractBeadsIDFunc func(string) string, hotspotCheckFunc func(string, string) (*gates.HotspotResult, error), agreementsCheckFunc func(string) (*gates.AgreementsResult, error), openQuestionCheckFunc gates.OpenQuestionChecker) (*gates.UsageCheckResult, *gates.HotspotResult, *gates.AgreementsResult, *gates.OpenQuestionResult, error) {
 	if err := gates.CheckTriageBypass(input.DaemonDriven, bypassTriage, input.SkillName, input.Task); err != nil {
 		logGateDecision("triage", "block", input.SkillName, input.IssueID, "manual spawn without --bypass-triage", nil)
 		return nil, nil, nil, nil, err
@@ -23,12 +24,16 @@ func RunPreFlightChecks(input *SpawnInput, preCheckDir string, bypassTriage, byp
 		// Daemon-driven spawns skip triage automatically — log "allow"
 		logGateDecision("triage", "allow", input.SkillName, input.IssueID, "daemon-driven spawn", nil)
 	}
-	if err := gates.CheckVerificationGate(bypassVerification, bypassReason); err != nil {
-		logGateDecision("verification", "block", input.SkillName, input.IssueID, "unverified Tier 1 work exists", nil)
-		return nil, nil, nil, nil, err
-	}
-	if bypassVerification {
-		logGateDecision("verification", "bypass", input.SkillName, input.IssueID, bypassReason, nil)
+	// Verification gate is ADVISORY — warns about unverified Tier 1 work but never blocks.
+	// Downgraded from blocking: 24/24 bypasses had identical reason "testing independent parallel work",
+	// indicating the gate was a speed bump for legitimate parallel workflows, not a real filter.
+	if err := gates.CheckVerificationGate(false, ""); err != nil {
+		// Advisory: log warning and continue (don't block spawn)
+		if !input.DaemonDriven {
+			fmt.Fprintf(os.Stderr, "\n⚠️  Advisory: %v\n", err)
+			fmt.Fprintf(os.Stderr, "   Spawning anyway — verification gate is advisory for parallel work.\n\n")
+		}
+		logGateDecision("verification", "advisory", input.SkillName, input.IssueID, "unverified Tier 1 work exists (advisory, not blocking)", nil)
 	} else {
 		logGateDecision("verification", "allow", input.SkillName, input.IssueID, "no unverified work", nil)
 	}
