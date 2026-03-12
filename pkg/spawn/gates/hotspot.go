@@ -80,6 +80,11 @@ func CheckHotspot(projectDir, task, skillName string, daemonDriven, forceHotspot
 				return result, fmt.Errorf("--force-hotspot requires --architect-ref <issue-id> to prove architect reviewed the area.\nSpawn architect first, then reference its closed issue.")
 			}
 
+			// --force-hotspot requires a reason explaining why bypassing is justified
+			if reason == "" {
+				return result, fmt.Errorf("--force-hotspot requires a reason explaining why bypassing the hotspot gate is justified.\nUse --force-hotspot --architect-ref <id> --reason \"...\"")
+			}
+
 			// Verify the architect issue if verifier is available
 			if architectVerifier != nil {
 				if err := architectVerifier(architectRef); err != nil {
@@ -138,9 +143,7 @@ func LogHotspotBypass(skillName, task, architectRef, reason string, criticalFile
 		"skill":         skillName,
 		"task":          task,
 		"architect_ref": architectRef,
-	}
-	if reason != "" {
-		data["reason"] = reason
+		"reason":        reason,
 	}
 	if len(criticalFiles) > 0 {
 		data["critical_files"] = criticalFiles
