@@ -1,8 +1,8 @@
 # Model: Daemon Autonomous Operation
 
 **Domain:** Daemon / Autonomous Spawning / Batch Processing
-**Last Updated:** 2026-03-11
-**Synthesized From:** 39+ investigations + daemon.md guide (verified Mar 1, 2026) + 35 probes (Feb 9 – Mar 11, 2026) on poll loops, skill inference, capacity management, completion tracking, cross-project operation, dedup pipeline, verification threshold, orphan detection
+**Last Updated:** 2026-03-12
+**Synthesized From:** 39+ investigations + daemon.md guide (verified Mar 1, 2026) + 36 probes (Feb 9 – Mar 12, 2026) on poll loops, skill inference, capacity management, completion tracking, cross-project operation, dedup pipeline, verification threshold, orphan detection
 
 ---
 
@@ -220,11 +220,13 @@ The daemon **runs from orch-go** (its orchestration home) but **polls all kb-reg
 
 **Cross-project spawn CWD bug (fixed Feb 25):** `runWork()` called `verify.GetIssue(beadsID)` before consulting `--workdir`. All beads calls defaulted to `FindSocketPath("")` which uses `os.Getwd()` — the daemon's CWD, not the target project. Fix: set `beads.DefaultDir` from `--workdir` at the start of `runWork()`. Prior to this fix, 100% of cross-project spawns failed silently.
 
-**Cross-project completion gap:** Completion processing (`ListCompletedAgentsDefault`) only checks the current project's beads. The daemon can SPAWN cross-project but cannot COMPLETE cross-project. Agents spawned into child repos from parent strategic issues won't be auto-completed.
+**Cross-project completion (implemented Mar 2026):** `listCompletedAgentsMultiProject()` iterates all configured project dirs, calls single-project completion for each, tags results with `agent.ProjectDir`. `ProcessCompletion()` uses `agent.ProjectDir` for beads operations. **Residual gap:** VerificationTracker seeding (`SeedFromBacklog()`) only reads orch-go checkpoints — cross-project completions are counted at runtime but lost on daemon restart.
 
 **Account routing gap:** The daemon uses a single globally-active account for all spawns. No per-group account routing exists. Work-account SCS projects use the same personal account as orch-go.
 
-**Source:** `pkg/daemon/project_resolution.go`, `pkg/daemon/daemon.go`
+**Project group config gap (as of Mar 12, 2026):** The `pkg/group/` package is fully implemented and `kbcontext_filter.go` correctly consumes it, but `~/.kb/groups.yaml` does not exist. All group-based features fall back to hardcoded `OrchEcosystemRepos`. Creating the config file is the single highest-leverage change for cross-project friction — zero code changes required.
+
+**Source:** `pkg/daemon/project_resolution.go`, `pkg/daemon/daemon.go`, `pkg/daemon/completion_processing.go`
 
 ### Triage Workflow
 
@@ -519,3 +521,4 @@ All 34 probes merged as of 2026-03-06. Listed chronologically with 1-line summar
 | `2026-03-01-probe-decidability-graph-coherence` | Mar 1 | Extends | `question` type is explicitly non-spawnable; subtype labels (factual/judgment/framing) are unread by daemon; daemon integration is acknowledged optional future work |
 | `2026-03-01-probe-cross-repo-queue-poisoning-circuit-breaker` | Mar 1 | Extends | Queue poisoning (persistently-failing issues retrying every poll cycle) is distinct from capacity starvation; fixed with per-issue circuit breaker in `SpawnFailureTracker` |
 | `2026-03-11-probe-completion-spawn-loop-label-asymmetry` | Mar 11 | Extends | Completion and spawn loops had asymmetric label awareness: completion loop filtered `daemon:ready-review` but spawn loop didn't, causing completed issues to re-enter spawn queue. Fixed with 3 layers: spawn queue label filter, triage label cleanup on completion, in-memory CompletionDedupTracker |
+| `2026-03-12-probe-cross-project-orchestration-friction-audit` | Mar 12 | Contradicts + Extends | "Cannot COMPLETE cross-project" claim is stale — listCompletedAgentsMultiProject() implemented. Project group model (pkg/group/) fully implemented but groups.yaml doesn't exist — all group features fall back to hardcode. Creating config file is highest-leverage zero-code change. |
