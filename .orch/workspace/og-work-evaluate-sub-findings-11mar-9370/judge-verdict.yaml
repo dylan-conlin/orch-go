@@ -1,0 +1,131 @@
+# Exploration Judge Verdict
+# Question: What is the smallest distributable wedge from what Dylan has built in orch-go?
+# Judge: og-work-evaluate-sub-findings-11mar-9370
+# Date: 2026-03-11
+
+sub_findings:
+  - id: worker-1
+    subproblem: "Wedge candidate inventory — what tools/content could be the first distributable thing?"
+    verdict: accepted
+    grounding: high
+    consistency: contested
+    coverage: covers-assigned
+    relevance: on-target
+    actionability: actionable
+    key_claims:
+      - claim: "A 5,800-word harness engineering blog post draft exists with references to OpenAI, Fowler, Anthropic, and MAST paper"
+        evidence: "Draft verified at .kb/publications/harness-engineering-draft.md (4,248 words / 308 lines). Also referenced at blog/src/content/posts/harness-engineering.md. Contains novel compliance-vs-coordination distinction, 265-trial data, Getting Started section."
+        confidence: high
+      - claim: "skillc is fully standalone on GitHub with zero orch-go dependencies"
+        evidence: "Verified at ~/Documents/personal/skillc, github.com/dylan-conlin/skillc. Dependencies: only fsnotify, uuid, yaml.v3."
+        confidence: high
+      - claim: "The wedge hierarchy is content → templates → tools, with content having zero adoption friction"
+        evidence: "Logical argument supported by distribution friction analysis. No external data cited for this specific claim, but the reasoning is sound — reading a blog post is lower friction than installing a CLI."
+        confidence: medium
+      - claim: "The prior probe identifying kb-cli as wedge was evaluating tools in isolation from distribution"
+        evidence: "References the 2026-03-09 kb-cli readiness audit. That probe evaluated tool readiness, not distribution mechanics. This is a fair characterization."
+        confidence: high
+      - claim: "Blog post word count is approximately 5,800 words"
+        evidence: "Actual measurement: 4,248 words / 308 lines. The 5,800 figure appears inflated — possibly counting a different version or including metadata. Minor discrepancy."
+        confidence: medium
+    notes: "Strong finding. The candidate inventory is comprehensive (6 candidates examined), the ranking is well-reasoned, and the key insight about content-before-tools is sound. The word count discrepancy is minor. The real tension is with Worker 3's recommendation to build an MCP server — Worker 1 says 'blog post first' while Worker 3 says 'position as protocol, build MCP server.' These are sequencing disagreements, not factual contradictions."
+
+  - id: worker-2
+    subproblem: "Distribution channel analysis — where do you find the first user?"
+    verdict: accepted
+    grounding: high
+    consistency: consistent
+    coverage: covers-assigned
+    relevance: on-target
+    actionability: actionable
+    key_claims:
+      - claim: "Show HN is the right primary channel for launch, with pain-point framing critical"
+        evidence: "Cites specific examples: 'Stop Claude Code from forgetting everything' (202 points) vs. feature-description posts (1-5 points). Analyzed 15+ CLI tool launches."
+        confidence: high
+      - claim: "Reddit r/ClaudeCode has 96k members, r/ClaudeAI has 300k, Anthropic Discord has 68.5k"
+        evidence: "Community sizes from web research. These are verifiable external facts. Consistent with the March 2026 timeframe."
+        confidence: high
+      - claim: "GitHub Issue #28196 on claude-code requests built-in personal knowledge base with semantic RAG"
+        evidence: "Specific GitHub issue number cited. Verifiable external reference."
+        confidence: high
+      - claim: "Stars → actual users conversion is approximately 0.1%"
+        evidence: "Cites top-of-funnel conversion analysis across comparable tools. The 0.1% figure is plausible for niche CLI tools but the exact methodology isn't documented."
+        confidence: medium
+      - claim: "Orchestrator space is oversaturated on HN (10+ tools, 1-5 points)"
+        evidence: "Catalogs Claude Code ecosystem tools posted Jan-Mar 2026. Distinguishes orchestrator/multi-agent tools (low engagement) from memory/knowledge tools (higher engagement). This is a key strategic insight."
+        confidence: high
+      - claim: "Stack Overflow 2025: 23% of AI interaction time is re-providing context"
+        evidence: "Cites Stack Overflow survey data. Verifiable external reference."
+        confidence: medium
+    notes: "The strongest of the three findings in terms of concrete external data. The 4-phase launch sequence (preparation → community presence → passive distribution → active launch) is actionable. The key insight — pain-point framing over feature framing — is well-supported by concrete examples. This finding is neutral on the content-vs-protocol tension, providing channel data that supports either approach."
+
+  - id: worker-3
+    subproblem: "Competitive landscape — what's the genuine unique advantage?"
+    verdict: contested
+    grounding: high
+    consistency: contested
+    coverage: covers-assigned
+    relevance: on-target
+    actionability: directional
+    key_claims:
+      - claim: "No existing tool treats knowledge as governance (enforced lifecycle with structural gates)"
+        evidence: "Surveyed 40+ tools across 8 categories. Investigation file at .kb/investigations/2026-03-11-inv-investigation-competitive-landscape-structured-knowledge.md (394 lines). Specifically examined Cursor Rules, CLAUDE.md, mem0/Letta/Zep, Obsidian+AI, ADR tools, developer wikis, agent orchestration frameworks, context management."
+        confidence: high
+      - claim: "6 capabilities exist nowhere: re-investigation prevention, knowledge lifecycle enforcement, failure knowledge capture, decision enforcement, accretion boundaries, cross-project structural knowledge"
+        evidence: "Derived from competitive survey. However, note that the knowledge-physics model itself (model.md) includes self-critical notes acknowledging that these observations may be 'well-described by existing concepts: Ostrom's commons governance, Conway's Law, coordination costs.' The uniqueness is in the implementation/product, not necessarily the conceptual framework."
+        confidence: medium
+      - claim: "ETH Zurich paper shows AGENTS.md can reduce performance by 20%+"
+        evidence: "Cites arxiv 2602.11988 (Feb 2026). Specific paper reference, verifiable."
+        confidence: high
+      - claim: "Codified Context paper proposes architecture mapping to CLAUDE.md → skills → .kb/ but has no product implementation"
+        evidence: "Cites arxiv 2602.20478 (Feb 2026). Specific paper reference with structural claim."
+        confidence: medium
+      - claim: "Acontext is closest competitor — learned skills from executions but success-only, no enforcement"
+        evidence: "Cites memodb-io/Acontext. Specific characterization with distinguishing features noted."
+        confidence: high
+      - claim: "mem0 raised $24M, Cursor at $1B ARR, Claude Code at $2.5B run-rate — demand is validated"
+        evidence: "Market data points from web research. These are verifiable."
+        confidence: high
+      - claim: "Recommendation: Position as 'knowledge governance protocol', build MCP server as first move"
+        evidence: "Strategic recommendation based on competitive analysis. The MCP server recommendation is directional but lacks specificity — what would it expose? Which operations? What's the MVP?"
+        confidence: medium
+    notes: "The competitive survey is thorough and the 'memory as governance' positioning insight is genuinely valuable. However, the strategic recommendation (MCP server first) is in tension with Worker 1's finding that content should come first. Worker 3 is answering 'what is the unique advantage' well but drifts into 'what to build next' territory where its recommendation conflicts with Worker 1's evidence-based sequencing. The 'knowledge governance protocol' framing is strong for positioning but the recommendation to build an MCP server as the FIRST move contradicts the zero-friction principle Worker 1 established. Additionally, the blog post claim review probes (2026-03-10) flag that the knowledge-physics model's theoretical framing may be overclaimed — 'physics' language for pattern observations, universality claims from N=2 substrates. This doesn't invalidate the competitive positioning but suggests the framing needs calibration before public use."
+
+contested_findings:
+  - finding_ids: [worker-1, worker-3]
+    claim_in_tension: "What should the FIRST distributable thing be — content (blog post) or product (MCP server/protocol)?"
+    worker_1_position: "Lead with the harness engineering blog post. Content has zero friction. The prior probe was wrong to evaluate tools in isolation. A blog post someone reads IS usage."
+    worker_3_position: "Position kb-cli as 'knowledge governance protocol'. Build an MCP server as the first concrete move. Framework-agnostic, adoptable by users of any AI coding tool."
+    stronger_grounding: worker-1
+    resolution_hint: "These are complementary, not contradictory — but sequencing matters. Worker 1's content-first wedge can COMMUNICATE Worker 3's governance positioning. The blog post introduces the concept; the MCP server comes later as the first tool wedge. The synthesizer should merge these into: blog post (with governance framing from Worker 3) → CLAUDE.md template → MCP server/protocol. Worker 3's competitive analysis provides the WHY; Worker 1's inventory provides the HOW and WHEN."
+
+  - finding_ids: [worker-1, worker-3]
+    claim_in_tension: "Is the harness engineering blog post or the knowledge governance concept the core message?"
+    worker_1_position: "The harness engineering blog post is the strongest wedge because it already exists as a near-complete draft with novel content and authoritative references."
+    worker_3_position: "The unique positioning is 'memory as governance' — no competitor occupies this space. The harness engineering concept is secondary to the governance insight."
+    stronger_grounding: neither
+    resolution_hint: "This is a genuine strategic question the synthesizer must address. The harness engineering post IS more ready to ship. But if the goal is to build toward kb-cli distribution, the governance positioning is the through-line that connects all the tools. One resolution: the harness engineering post is the VEHICLE but should plant seeds for the governance concept. It already discusses constraint enforcement — that IS governance. The blog post doesn't need to be about kb-cli to advance the governance positioning."
+
+coverage_gaps:
+  - gap: "Definition of 'user' — what counts as a first user? Blog reader? GitHub star? CLI installer? Active user after 7 days?"
+    severity: moderate
+    suggested_subproblem: "Define a measurable success criterion for 'one external user.' Without this, it's impossible to know when the wedge has worked. A blog reader is not the same as a tool user — the question explicitly asks about 'independent usage data' which implies tool usage, not content consumption."
+
+  - gap: "Execution timeline and effort estimation — what's the concrete sequence of actions and how long does each take?"
+    severity: moderate
+    suggested_subproblem: "Map the concrete next-day, next-week actions needed to get from current state to published blog post. The blog draft exists but the claim review probes (2026-03-10) flagged 6 overclaimed items and 3 unsupported claims that need fixing before publication."
+
+  - gap: "Risk analysis — what happens if the blog post gets zero traction?"
+    severity: minor
+    suggested_subproblem: "The workers present a rosy best-case scenario. No finding addresses the base-rate failure of developer blog posts. Most posts get zero readers. What's the fallback if the harness engineering post doesn't land?"
+
+  - gap: "Tension between original question's 'needs independent usage data' and the blog-first recommendation"
+    severity: critical
+    suggested_subproblem: "The original question states 'the system needs independent usage data but has no distribution channel.' Blog readers don't generate usage data — they generate pageviews. If the goal is usage data for the SYSTEM (orch-go, kb-cli, etc.), a blog post is a stepping stone, not the answer. The workers should have addressed how the blog post creates a funnel to actual tool adoption that generates usage data."
+
+overall:
+  question_answered: partially
+  highest_confidence_findings: [worker-1, worker-2]
+  lowest_confidence_findings: [worker-3]
+  decomposition_quality: good
+  decomposition_notes: "The three-way decomposition (inventory, channels, competitive landscape) was well-chosen. Each worker had a distinct, non-overlapping subproblem. The main issue is that no worker was tasked with the SEQUENCING question — how to get from blog post to usage data — which is what creates the tension between findings. Worker 3 was asked about competitive advantage but drifted into product strategy, creating a contested finding with Worker 1. A fourth subproblem — 'What is the concrete funnel from first distributable thing to independent usage data?' — would have addressed the critical coverage gap. Despite this, all three findings are substantive and well-grounded, making synthesis tractable."
