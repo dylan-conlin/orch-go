@@ -1,8 +1,8 @@
 # Model: Orchestrator Session Lifecycle
 
 **Domain:** Orchestrator / Meta-Orchestration / Session Management
-**Last Updated:** 2026-03-11
-**Synthesized From:** 40 investigations (Dec 21, 2025 - Jan 7, 2026) on orchestrator session boundaries, completion verification, frame collapse, checkpoint discipline, and hierarchical completion model. Updated Feb 2026 per probe findings: removed deleted session registry references, updated hierarchy to strategic comprehender pattern. Updated Mar 2026 (18 probes merged): skill injection path map, behavioral compliance gap, cross-project injection failure, constraint dilution, orientation preservation dimension. Updated 2026-03-11: expanded failure mode taxonomy from 5→12 modes via 6-investigation cross-reference; added intent displacement, error-correction feedback, staleness, injection failure, MUST fatigue, temporal decay, and knowledge surfacing gap.
+**Last Updated:** 2026-03-12
+**Synthesized From:** 40 investigations (Dec 21, 2025 - Jan 7, 2026) on orchestrator session boundaries, completion verification, frame collapse, checkpoint discipline, and hierarchical completion model. Updated Feb 2026 per probe findings: removed deleted session registry references, updated hierarchy to strategic comprehender pattern. Updated Mar 2026 (18 probes merged): skill injection path map, behavioral compliance gap, cross-project injection failure, constraint dilution, orientation preservation dimension. Updated 2026-03-11: expanded failure mode taxonomy from 5→12 modes via 6-investigation cross-reference; added intent displacement, error-correction feedback, staleness, injection failure, MUST fatigue, temporal decay, and knowledge surfacing gap. Updated 2026-03-12: added failure mode #13 (architect design bypass via issue framing) — 5-layer failure chain where issue description framing overrides architect design surfaced only as kb context pointer.
 
 ---
 
@@ -324,7 +324,24 @@ The COMPREHEND → TRIAGE → SYNTHESIZE frame describes what the orchestrator d
 
 **Reference:** Probe `2026-02-28-probe-session-debrief-artifact-design.md`, Probe `2026-02-27-probe-flow-integrated-knowledge-surfacing-architecture.md`
 
-### Failure Mode Interaction Effects
+### 13. Architect Design Bypass via Issue Framing (Mar 2026)
+
+**What happens:** A feature-impl agent receives an issue description that contradicts a prior architect design. The issue description's framing (high salience — injected as task context) overrides the architect investigation (low salience — listed as title + path in kb context). The agent builds what the issue describes, not what the architect designed.
+
+**Root cause:** Five-layer failure chain:
+1. Issue description framed work as "consolidation" (in-repo), architect designed "extraction" (new repo)
+2. KB context surfaced architect investigation as pointer only (title + path), not its conclusions
+3. `--architect-ref` flag is access control (hotspot gate), not information injection
+4. Feature-impl skill has no checkpoint to verify architect alignment before implementing
+5. Agent entered implementation within 3 minutes of planning, insufficient exploration time
+
+**Evidence:** orch-go-68gcy built `pkg/harness/` + `cmd/harness/` inside orch-go when architect orch-go-sb13k had designed `github.com/dylan-conlin/harness` as a separate repo. Required immediate revert (b305e6d35).
+
+**Status:** Unmitigated — no spawn pipeline change yet. Same failure can recur whenever an issue description contradicts a prior architect design.
+
+**Reference:** Probe `2026-03-12-probe-68gcy-architect-design-ignored-spawn-context-analysis.md`
+
+
 
 Several failure modes amplify each other:
 
@@ -334,6 +351,7 @@ Several failure modes amplify each other:
 | Error-Correction Loop (#7) amplifies Intent Displacement (#6) | Corrections drive deeper into wrong methodology |
 | Temporal Decay (#11) amplifies Competing Hierarchy (#3) | System prompt signal constant while skill signal decays |
 | Injection Failure (#9) makes prompt failures (#1-4) irrelevant | If skill never reaches agent, all prompt-level failures are moot |
+| Architect Design Bypass (#13) amplifies Knowledge Surfacing Gap (#12) | Architect designs committed to .kb/ but surfaced as low-salience pointers; issue framing wins |
 
 ### Primary Evolutionary Drivers (Jan→Mar 2026)
 
@@ -621,6 +639,7 @@ Three failure modes drove the majority of the skill's evolution:
 | `2026-03-02-probe-emphasis-language-constraint-compliance.md` | Extends | Emphasis markers (CRITICAL/MUST) provide lift over neutral language at high constraint counts; directional, N=3 |
 | `2026-03-11-probe-orchestrator-skill-failure-mode-taxonomy.md` | Confirms + Extends | Complete 12-mode taxonomy from 6 investigations; 7 new modes added to model; 3 primary evolutionary drivers identified |
 | `2026-03-11-probe-orchestrator-skill-current-state-audit.md` | Confirms + Extends | 22/25 recommendations implemented across 6 investigations; 6/7 hooks working; token reduction 82% (27K→6K); behavioral validation gate still open; post-simplification regrowth visible (+24% in 7 days) |
+| `2026-03-12-probe-68gcy-architect-design-ignored-spawn-context-analysis.md` | Extends | New failure mode #13: architect design bypass via issue framing. 5-layer failure chain; kb context surfaced investigation but as low-salience pointer; issue description framing overrode architect's separate-repo design |
 
 **Primary Evidence (Verify These):**
 - `pkg/spawn/orchestrator_context.go` - Orchestrator vs worker context generation logic
