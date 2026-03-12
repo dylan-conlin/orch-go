@@ -59,6 +59,24 @@ Two calibrated thresholds govern enforcement severity:
 
 The +50 line delta captures a typical single-feature addition. Net-negative deltas (extraction work) always pass regardless of file size.
 
+**Empirical validation (Mar 2026 probe):** Files above the 800-line threshold (context.go at 981, daemon.go at 921) have disproportionately high fix density AND coupling. The threshold accurately predicts which files generate the most bug-fix work. Post-extraction fix-density declines: spawn_cmd.go (1171→551 lines) showed declining fix rate; extraction.go (22 fixes) dissolved when extracted into 8 files.
+
+### Hotspot Dimensions
+
+Hotspot severity is determined by three independent dimensions that compound:
+
+| Dimension | What It Measures | Detection |
+|-----------|-----------------|-----------|
+| **Bloat** (line count) | File complexity/size | `wc -l`, `orch hotspot` |
+| **Fix-density** | Bug frequency | `git log --grep fix:` per file |
+| **Coupling** | Co-change frequency | Files that always change together |
+
+**Triple hotspots** (all three dimensions elevated) are the highest-priority targets for architect intervention. As of Mar 2026:
+- **pkg/daemon/daemon.go** — 921 lines, 13 fixes/28d, 26 co-changes with cmd/orch/daemon.go
+- **pkg/spawn/context.go** — 981 lines, 9 fixes/28d, 15 co-changes with spawn_cmd.go
+
+**Trajectory matters:** Most fix-density is burst-driven (concentrated feature pushes over 1-2 weeks), not steady churn. 28-day windows can overstate hotspot severity if a burst has already subsided. A declining hotspot shouldn't receive the same intervention priority as a rising one.
+
 ### Skill-Based Exemptions
 
 Not all skills accrete. Knowledge-producing skills need to READ hotspot files to do their job:
@@ -81,6 +99,8 @@ Not all skills accrete. Knowledge-producing skills need to READ hotspot files to
 5. **Shared configuration must have a single source of truth.** Parallel config directory copies (`~/.claude/` vs `~/.claude-personal/`) are the config-level equivalent of the code-level "instruction-based enforcement fails under pressure" invariant. Agents running from `cc personal` were silently missing hooks, skills, and global instructions — indistinguishable from correct operation. Symlinks structurally eliminated this. (Source: probe `2026-02-27-probe-config-dir-drift-scope.md`)
 
 6. **Constraint type determines enforcement mechanism.** Behavioral constraints in prompt dilute at 5+ co-resident items and become inert at 10+. Mapping by type: hard behavioral (31 items) → infrastructure deny hooks; soft behavioral (~28 items) → infrastructure coaching hooks; judgment behavioral (~28 items) → prompt-budgeted ≤4 per section, or reformulated as knowledge; knowledge (~64 items) → prompt (survives dilution at 10+). The orchestrator skill had 87 behavioral constraints in prompt — ~83 were non-functional. (Source: probe `2026-03-02-probe-layered-constraint-enforcement-design.md`; evidence: `.kb/investigations/2026-03-01-inv-test-constraint-dilution-threshold.md`)
+
+7. **Hotspot severity requires multi-dimensional assessment.** Line count alone underestimates hotspot risk. Files with high bloat + high fix-density + high coupling ("triple hotspots") require highest-priority architect intervention. Coupling clusters (files that always change together) amplify accretion effects — a fix in one cascades to coupled files. Trajectory matters: burst-driven fix-density that's declining shouldn't receive the same priority as steady/rising churn. (Source: probe `2026-03-11-probe-fix-density-hotspot-trajectory-overlap.md`)
 
 ---
 
@@ -200,7 +220,7 @@ Not all skills accrete. Knowledge-producing skills need to READ hotspot files to
 
 **Feb 26, 2026:** Model created synthesizing all investigations into coherent architectural enforcement understanding.
 
-**Mar 2026 (probe merge):** Two probes incorporated.
+**Mar 2026 (probe merges):** Three probes incorporated.
 - `2026-02-27-probe-config-dir-drift-scope.md` — Identified config drift as an enforcement gap: personal sessions (`cc personal`) were silently running without global CLAUDE.md, skills, and hooks. Parallel config directories are duplicated state with no enforcement mechanism. Structural elimination (symlinks) applied. New invariant added (Invariant 5).
 - `2026-03-02-probe-layered-constraint-enforcement-design.md` — Audited all 151 orchestrator skill constraints (87 behavioral, 64 knowledge). Existing hooks cover ~7 of 31 hard-enforceable behavioral constraints; 24 need new hooks. Hook API is sufficient (no new mechanism types needed). ~28 judgment constraints cannot move to infrastructure. ~20 behavioral constraints can be reformulated as knowledge. New invariant added (Invariant 6), new failure mode §5 added.
 
@@ -238,3 +258,4 @@ Not all skills accrete. Knowledge-producing skills need to READ hotspot files to
 |-------|------|---------|-------------|
 | `probes/2026-02-27-probe-config-dir-drift-scope.md` | 2026-02-27 | Extends | Config drift between parallel Claude config dirs is the same enforcement gap as silent toolchain failures. Personal sessions ran without hooks/skills/CLAUDE.md. Symlinks structurally eliminated it. New invariant: shared config must have a single source of truth. |
 | `probes/2026-03-02-probe-layered-constraint-enforcement-design.md` | 2026-03-02 | Confirms + Extends | 87 behavioral constraints in orchestrator skill prompt; dilution evidence shows ~83 are non-functional. Hook API is sufficient for all enforcement types. Constraint taxonomy: hard behavioral → deny hooks; soft → coaching hooks; judgment → prompt-budgeted ≤4; knowledge → prompt (resilient). Behavioral → knowledge reformulation technique identified. |
+| `probes/2026-03-11-probe-fix-density-hotspot-trajectory-overlap.md` | 2026-03-11 | Confirms + Extends | 800-line threshold empirically validated: files above it (context.go 981, daemon.go 921) have disproportionate fix density AND coupling. Post-extraction fix-density declines confirm extraction as effective intervention. New dimension: coupling clusters compound bloat + fix-density into "triple hotspots." Burst vs steady fix patterns affect intervention priority — 28-day windows can overstate post-burst hotspots. |
