@@ -1,0 +1,62 @@
+# ARTIFACT_MANIFEST.yaml
+# Maps artifacts to the code paths they document and the change-scope
+# categories that indicate the artifact may need updating.
+#
+# Used by `orch sync` to detect drift between code changes and documentation.
+# See: .kb/investigations/2026-03-11-design-artifact-sync-mechanism.md
+
+artifacts:
+  - path: CLAUDE.md
+    sections:
+      - name: Commands
+        covers: ["cmd/orch/*_cmd.go"]
+        triggers: [new-command, new-flag]
+      - name: Event Types
+        covers: ["pkg/events/"]
+        triggers: [new-event]
+      - name: Key Packages
+        covers: ["pkg/*/"]
+        triggers: [new-package]
+      - name: Spawn Flow
+        covers: ["pkg/spawn/"]
+        triggers: [new-flag, config-change]
+      - name: Gotchas
+        covers: ["cmd/orch/", "pkg/"]
+        triggers: [new-command, api-change, config-change]
+
+  - path: skills/src/meta/orchestrator
+    sections:
+      - name: Completion Lifecycle
+        covers: ["pkg/verify/", "cmd/orch/complete_*.go"]
+        triggers: [new-command, api-change]
+      - name: Spawn Awareness
+        covers: ["pkg/spawn/", "cmd/orch/spawn_cmd.go"]
+        triggers: [new-flag, new-skill]
+
+  - path: .kb/guides/spawn.md
+    covers: ["pkg/spawn/", "cmd/orch/spawn_cmd.go"]
+    triggers: [new-flag, config-change]
+
+  - path: .kb/guides/completion-gates.md
+    covers: ["pkg/verify/", "cmd/orch/complete_*.go"]
+    triggers: [new-command, api-change]
+
+  - path: .kb/guides/agent-lifecycle.md
+    covers: ["pkg/agent/", "cmd/orch/complete_*.go", "cmd/orch/spawn_cmd.go"]
+    triggers: [new-command, api-change]
+
+  - path: .kb/guides/status-dashboard.md
+    covers: ["cmd/orch/serve*.go", "web/src/"]
+    triggers: [api-change, new-command]
+
+  - path: .kb/guides/beads-integration.md
+    covers: ["pkg/beads/", "cmd/orch/complete_*.go"]
+    triggers: [api-change, config-change]
+
+  - path: .kb/guides/skill-system.md
+    covers: ["pkg/skills/", "skills/src/"]
+    triggers: [new-skill]
+
+  - path: .kb/guides/daemon.md
+    covers: ["pkg/daemon/", "cmd/orch/daemon.go"]
+    triggers: [new-command, config-change]
