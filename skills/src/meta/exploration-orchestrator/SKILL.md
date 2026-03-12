@@ -155,4 +155,4 @@ orch emit exploration.synthesized --beads-id BEADS_ID --data '{"parent_skill":"S
 
 ## Completion
 
-Report: `bd comment <beads-id> "Phase: Complete - Exploration synthesis: [1-2 sentence summary]. Workers: N spawned, M completed. Contested findings: K. Iterations: I/D"`
+Report: `bd comments add <beads-id> "Phase: Complete - Exploration synthesis: [1-2 sentence summary]. Workers: N spawned, M completed. Contested findings: K. Iterations: I/D"`

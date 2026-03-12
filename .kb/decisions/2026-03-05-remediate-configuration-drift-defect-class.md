@@ -1,7 +1,7 @@
 # Decision: Remediate Configuration-Drift Defect Class
 
 **Date:** 2026-03-05
-**Status:** Proposed
+**Status:** Accepted
 **Issue:** orch-go-98m6a
 **Supersedes:** None (extends `.kb/models/drift-taxonomy/model.md`)
 
@@ -116,12 +116,12 @@ Why the partial is never completed:
 
 ## Implementation Routing
 
-| Phase | Skill | Priority | Blocked By |
-|-------|-------|----------|------------|
-| 1a | feature-impl | P1 | nothing |
-| 1b | feature-impl | P1 | nothing |
-| 1c | feature-impl | P2 | nothing |
-| 2a | worker-base skill update | P2 | 1a (needs updated skill template) |
-| 2b | feature-impl | P2 | nothing |
-| 3a | feature-impl | P3 | nothing |
-| 3b | architect | P3 | nothing |
+| Phase | Skill | Priority | Status |
+|-------|-------|----------|--------|
+| 1a | feature-impl | P1 | DONE (orch-go-5lfmp, 1 residual fixed orch-go-5k6xr) |
+| 1b | feature-impl | P1 | NOT_STARTED (no check-config-symlinks.sh script exists) |
+| 1c | feature-impl | P2 | DONE (FromUserConfig fully maps 20+ fields) |
+| 2a | worker-base skill update | P2 | DONE (MIGRATION_STATUS gate added, orch-go-5k6xr) |
+| 2b | feature-impl | P2 | DONE (skillc lint exists with 5 rules) |
+| 3a | feature-impl | P3 | NOT_STARTED |
+| 3b | architect | P3 | NOT_STARTED |

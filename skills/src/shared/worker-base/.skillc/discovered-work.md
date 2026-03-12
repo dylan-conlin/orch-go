@@ -46,6 +46,31 @@ In your `Phase: Complete` comment, include either:
 
 **Why this matters:** Discovered work that isn't tracked gets lost. The next session has no visibility into bugs or opportunities you found. Creating issues ensures nothing falls through the cracks.
 
+### Migration Status (Design/Architect Sessions Only)
+
+**If your session produced a design or architectural recommendation that requires implementation:**
+
+Include a `MIGRATION_STATUS` block in your Phase: Complete comment:
+
+```
+MIGRATION_STATUS:
+  designed: [what was designed]
+  implemented: [what code was written, or "none"]
+  deployed: [what config/hooks/skills were wired, or "none"]
+  remaining: [what's still incomplete, or "none"]
+```
+
+If `remaining` is not `"none"`, create a follow-up issue:
+```bash
+bd create "[remaining work description]" --type task -l triage:ready
+```
+
+**Why:** Configuration drift's #1 root cause is incomplete migrations — designs that are partially implemented but never fully wired. This gate ensures the gap between "designed" and "deployed" is tracked as an issue, not forgotten.
+
+**Skip this if:** Your session was pure implementation (no design recommendations) or pure investigation (no implementation recommendations).
+
+---
+
 ### Cross-Repo Issue Handoff
 
 **When you discover an issue that belongs to a different repo**, you cannot create it directly — `bd create` only works in the current project directory, and shell sandboxing prevents `cd` to other repos.
