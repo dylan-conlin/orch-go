@@ -1669,3 +1669,223 @@ func TestGateEffectivenessStats_BlockedStillPending(t *testing.T) {
 		t.Errorf("EventuallyCompleted = %d, want 0", ge.BlockedOutcomes.EventuallyCompleted)
 	}
 }
+
+func TestGateEffectivenessStats_PrecommitBlocksWithoutBeadsID(t *testing.T) {
+	// Pre-commit gate_decision events lack beads_id (pre-commit hooks don't know
+	// which agent is committing). Verify they're counted in gate decisions but
+	// don't create phantom blocked outcomes.
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// A spawn with a beads_id
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-1",
+		}},
+		// Pre-commit gate_decision: block with no beads_id (structural limitation)
+		{Type: "spawn.gate_decision", Timestamp: now - 3600, Data: map[string]interface{}{
+			"gate_name": "accretion_precommit", "decision": "block",
+			"reason": "file exceeds accretion threshold",
+			"target_files": []interface{}{"cmd/orch/stats_test.go"},
+		}},
+		// Pre-commit gate_decision: bypass with no beads_id
+		{Type: "spawn.gate_decision", Timestamp: now - 3500, Data: map[string]interface{}{
+			"gate_name": "accretion_precommit", "decision": "bypass",
+			"reason": "FORCE_ACCRETION=1",
+		}},
+		// Spawn gate decisions WITH beads_id (normal spawn path)
+		{Type: "spawn.gate_decision", Timestamp: now - 7100, Data: map[string]interface{}{
+			"gate_name": "triage", "decision": "allow", "skill": "feature-impl", "beads_id": "test-1",
+		}},
+		// Completion
+		{Type: "agent.completed", Timestamp: now - 1800, Data: map[string]interface{}{
+			"beads_id": "test-1", "verification_passed": true, "skill": "feature-impl",
+		}},
+	}
+
+	report := aggregateStats(events, 7)
+	ge := report.GateEffectivenessStats
+
+	// Gate decisions should count all events (with and without beads_id)
+	if report.GateDecisionStats.TotalDecisions != 3 {
+		t.Errorf("TotalDecisions = %d, want 3", report.GateDecisionStats.TotalDecisions)
+	}
+
+	// Blocks should include the precommit block
+	if report.GateDecisionStats.TotalBlocks != 1 {
+		t.Errorf("TotalBlocks = %d, want 1", report.GateDecisionStats.TotalBlocks)
+	}
+
+	// But blocked outcomes should be 0 (precommit block has no beads_id to correlate)
+	if ge.BlockedOutcomes.StillPending != 0 {
+		t.Errorf("StillPending = %d, want 0 (precommit blocks can't correlate)", ge.BlockedOutcomes.StillPending)
+	}
+	if ge.BlockedOutcomes.EventuallyCompleted != 0 {
+		t.Errorf("EventuallyCompleted = %d, want 0", ge.BlockedOutcomes.EventuallyCompleted)
+	}
+
+	// Gated cohort should include test-1 (has gate_decision with beads_id)
+	if ge.GatedCompletion.TotalSpawns != 1 {
+		t.Errorf("GatedCompletion.TotalSpawns = %d, want 1", ge.GatedCompletion.TotalSpawns)
+	}
+}
+
+func TestGateEffectivenessStats_ProspectiveBaseline(t *testing.T) {
+	// Simulates the prospective measurement scenario: a mix of daemon-spawned
+	// (gated, with beads_id) and manual spawns (some without beads_id).
+	// Verifies the gated vs ungated comparison produces correct metrics
+	// for the baseline period.
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// --- Daemon spawns (all have beads_id and gate_decision events) ---
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 86400, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "daemon-1",
+		}},
+		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 82800, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "daemon-2",
+		}},
+		{Type: "session.spawned", SessionID: "ses_3", Timestamp: now - 79200, Data: map[string]interface{}{
+			"skill": "systematic-debugging", "beads_id": "daemon-3",
+		}},
+		// Gate decisions for daemon spawns (triage allow + hotspot allow per spawn)
+		{Type: "spawn.gate_decision", Timestamp: now - 86300, Data: map[string]interface{}{
+			"gate_name": "triage", "decision": "allow", "skill": "feature-impl", "beads_id": "daemon-1",
+		}},
+		{Type: "spawn.gate_decision", Timestamp: now - 86300, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "allow", "skill": "feature-impl", "beads_id": "daemon-1",
+		}},
+		{Type: "spawn.gate_decision", Timestamp: now - 82700, Data: map[string]interface{}{
+			"gate_name": "triage", "decision": "allow", "skill": "feature-impl", "beads_id": "daemon-2",
+		}},
+		{Type: "spawn.gate_decision", Timestamp: now - 82700, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "bypass", "skill": "feature-impl", "beads_id": "daemon-2",
+			"reason": "architect reviewed extraction plan",
+		}},
+		{Type: "spawn.gate_decision", Timestamp: now - 79100, Data: map[string]interface{}{
+			"gate_name": "triage", "decision": "allow", "skill": "systematic-debugging", "beads_id": "daemon-3",
+		}},
+		{Type: "spawn.gate_decision", Timestamp: now - 79100, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "allow", "skill": "systematic-debugging", "beads_id": "daemon-3",
+		}},
+
+		// --- Manual spawns (no gate_decision with beads_id) ---
+		{Type: "session.spawned", SessionID: "ses_4", Timestamp: now - 75600, Data: map[string]interface{}{
+			"skill": "investigation", "beads_id": "manual-1",
+		}},
+		{Type: "session.spawned", SessionID: "ses_5", Timestamp: now - 72000, Data: map[string]interface{}{
+			"skill": "architect", "beads_id": "manual-2",
+		}},
+
+		// --- Completions ---
+		{Type: "agent.completed", Timestamp: now - 80000, Data: map[string]interface{}{
+			"beads_id": "daemon-1", "verification_passed": true, "skill": "feature-impl",
+		}},
+		{Type: "agent.completed", Timestamp: now - 77000, Data: map[string]interface{}{
+			"beads_id": "daemon-2", "verification_passed": false, "forced": true, "skill": "feature-impl",
+		}},
+		{Type: "agent.completed", Timestamp: now - 74000, Data: map[string]interface{}{
+			"beads_id": "daemon-3", "verification_passed": true, "skill": "systematic-debugging",
+		}},
+		{Type: "agent.completed", Timestamp: now - 70000, Data: map[string]interface{}{
+			"beads_id": "manual-1", "verification_passed": true, "skill": "investigation",
+		}},
+		{Type: "agent.abandoned", Timestamp: now - 68000, Data: map[string]interface{}{
+			"beads_id": "manual-2",
+		}},
+	}
+
+	report := aggregateStats(events, 7)
+	ge := report.GateEffectivenessStats
+
+	// 6 gate decision events total (2 per daemon spawn)
+	if report.GateDecisionStats.TotalDecisions != 6 {
+		t.Errorf("TotalDecisions = %d, want 6", report.GateDecisionStats.TotalDecisions)
+	}
+
+	// Gated cohort: 3 daemon spawns (all have gate_decision events with beads_id)
+	if ge.GatedCompletion.TotalSpawns != 3 {
+		t.Errorf("GatedCompletion.TotalSpawns = %d, want 3", ge.GatedCompletion.TotalSpawns)
+	}
+	if ge.GatedCompletion.Completions != 3 {
+		t.Errorf("GatedCompletion.Completions = %d, want 3", ge.GatedCompletion.Completions)
+	}
+	if ge.GatedCompletion.VerificationPassed != 2 {
+		t.Errorf("GatedCompletion.VerificationPassed = %d, want 2", ge.GatedCompletion.VerificationPassed)
+	}
+	// Verification rate = 2/3 = 66.7%
+	expectedVerifRate := (2.0 / 3.0) * 100
+	if ge.GatedCompletion.VerificationRate < expectedVerifRate-0.1 || ge.GatedCompletion.VerificationRate > expectedVerifRate+0.1 {
+		t.Errorf("GatedCompletion.VerificationRate = %.1f%%, want ~%.1f%%", ge.GatedCompletion.VerificationRate, expectedVerifRate)
+	}
+
+	// Ungated cohort: 2 manual spawns (no gate_decision events)
+	if ge.UngatedCompletion.TotalSpawns != 2 {
+		t.Errorf("UngatedCompletion.TotalSpawns = %d, want 2", ge.UngatedCompletion.TotalSpawns)
+	}
+	if ge.UngatedCompletion.Completions != 1 {
+		t.Errorf("UngatedCompletion.Completions = %d, want 1", ge.UngatedCompletion.Completions)
+	}
+	if ge.UngatedCompletion.Abandonments != 1 {
+		t.Errorf("UngatedCompletion.Abandonments = %d, want 1", ge.UngatedCompletion.Abandonments)
+	}
+
+	// Duration should be calculable for gated completions
+	if ge.GatedCompletion.AvgDurationMinutes <= 0 {
+		t.Errorf("GatedCompletion.AvgDurationMinutes = %.1f, want > 0", ge.GatedCompletion.AvgDurationMinutes)
+	}
+}
+
+func TestGateAccuracyBaseline(t *testing.T) {
+	// Tests the baseline snapshot generation — the data structure that
+	// records gate accuracy metrics at a point in time for future comparison.
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// Spawns
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "b-1",
+		}},
+		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 6200, Data: map[string]interface{}{
+			"skill": "investigation", "beads_id": "b-2",
+		}},
+		// Gate decisions
+		{Type: "spawn.gate_decision", Timestamp: now - 7100, Data: map[string]interface{}{
+			"gate_name": "triage", "decision": "allow", "beads_id": "b-1",
+		}},
+		{Type: "spawn.gate_decision", Timestamp: now - 7100, Data: map[string]interface{}{
+			"gate_name": "hotspot", "decision": "allow", "beads_id": "b-1",
+		}},
+		// Completions
+		{Type: "agent.completed", Timestamp: now - 3600, Data: map[string]interface{}{
+			"beads_id": "b-1", "verification_passed": true,
+		}},
+		{Type: "agent.completed", Timestamp: now - 3000, Data: map[string]interface{}{
+			"beads_id": "b-2", "verification_passed": true,
+		}},
+	}
+
+	report := aggregateStats(events, 7)
+	baseline := extractGateAccuracyBaseline(report)
+
+	if baseline.TotalSpawns != 2 {
+		t.Errorf("TotalSpawns = %d, want 2", baseline.TotalSpawns)
+	}
+	if baseline.GatedSpawns != 1 {
+		t.Errorf("GatedSpawns = %d, want 1", baseline.GatedSpawns)
+	}
+	if baseline.UngatedSpawns != 1 {
+		t.Errorf("UngatedSpawns = %d, want 1", baseline.UngatedSpawns)
+	}
+	if baseline.GateDecisions != 2 {
+		t.Errorf("GateDecisions = %d, want 2", baseline.GateDecisions)
+	}
+	if baseline.GatedVerificationRate < 99.9 {
+		t.Errorf("GatedVerificationRate = %.1f%%, want 100%%", baseline.GatedVerificationRate)
+	}
+	if baseline.UngatedVerificationRate < 99.9 {
+		t.Errorf("UngatedVerificationRate = %.1f%%, want 100%%", baseline.UngatedVerificationRate)
+	}
+	if baseline.SnapshotTime == "" {
+		t.Error("SnapshotTime should not be empty")
+	}
+}

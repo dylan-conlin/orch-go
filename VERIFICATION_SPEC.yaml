@@ -1,22 +1,29 @@
-type: refactoring
+issue: orch-go-u8owr
+title: "Gate Signal vs Noise — Phase 4: Prospective measurement baseline"
+skill: feature-impl
+tier: light
+
+verification:
+  automated:
+    - command: "go test ./cmd/orch/ -run 'TestGateEffectivenessStats_PrecommitBlocksWithoutBeadsID|TestGateEffectivenessStats_ProspectiveBaseline|TestGateAccuracyBaseline' -v"
+      expected: "3 tests PASS"
+    - command: "go test ./cmd/orch/ -run 'TestGateDecisionStats|TestGateEffectivenessStats' -v"
+      expected: "10 tests PASS (all gate-related tests)"
+    - command: "go build ./cmd/orch/"
+      expected: "clean build, no errors"
+    - command: "go run ./cmd/orch stats --snapshot"
+      expected: "records baseline to ~/.orch/gate-baselines.jsonl with summary output"
+
+  manual:
+    - check: "orch stats output shows GATE EFFECTIVENESS section with real data (gated vs ungated cohort comparison)"
+    - check: "orch stats --snapshot records baseline and shows delta when run twice"
+
 deliverables:
-  - path: cmd/orch/daemon.go
-    description: "Slim runDaemonLoop (~160 lines) + notifyDashboardCompletion"
-    verification: "go vet ./cmd/orch/ | grep daemon.go (no errors)"
-  - path: cmd/orch/daemon_loop.go
-    description: "daemonLoopState struct + 8 extracted methods"
-    verification: "go vet ./cmd/orch/ | grep daemon_loop.go (no errors)"
-tests:
-  commands:
-    - "go vet ./cmd/orch/ | grep -E 'daemon.go|daemon_loop.go' (no errors)"
-    - "gofmt -e cmd/orch/daemon.go cmd/orch/daemon_loop.go (OK)"
-  result: "All pass. Full go test blocked by pre-existing untracked duplicate files in pkg/daemon/"
-evidence:
-  - claim: "daemon.go reduced from 766 to 197 lines"
-    basis: "wc -l cmd/orch/daemon.go = 197"
-  - claim: "runDaemonLoop reduced from ~738 to ~160 lines"
-    basis: "Function body is lines 13-185 in daemon.go"
-  - claim: "8 extracted methods on daemonLoopState struct in daemon_loop.go"
-    basis: "daemonSetup, logDaemonConfig, processDaemonCompletions, runDaemonSpawnCycle, checkDaemonSignals, checkVerificationPause, checkInvariants, writeDaemonStatusFile, stopMessage"
-  - claim: "Pure mechanical extraction — no behavioral changes"
-    basis: "All code moved verbatim, only variable references changed from local to s.field"
+  - path: cmd/orch/stats_cmd.go
+    description: "Added extractGateAccuracyBaseline(), recordGateBaseline(), loadGateBaselines(), printDelta() functions. Added --snapshot flag."
+  - path: cmd/orch/stats_types.go
+    description: "Added GateAccuracyBaseline type for point-in-time accuracy snapshots."
+  - path: cmd/orch/stats_test.go
+    description: "Added 3 new tests: PrecommitBlocksWithoutBeadsID, ProspectiveBaseline, GateAccuracyBaseline."
+  - path: .kb/plans/2026-03-11-gate-signal-vs-noise.md
+    description: "Updated Phase 4 with status, Day 1 baseline data, and Mar 24 check-in note."

@@ -100,12 +100,22 @@ For every gate in the system (spawn gates, completion gates, pre-commit gates), 
 ### Phase 4: Prospective measurement baseline
 
 **Goal:** Establish ongoing gate accuracy tracking using the instrumentation shipped today.
+**Status:** Baseline recorded. Awaiting 2-4 weeks data accumulation.
 **Deliverables:**
-- gate_decision events accumulating for 2+ weeks
-- Gate effectiveness section in `orch stats` populated with real data
-- Correlation query: blocked agents → redirected work → outcome
+- gate_decision events accumulating for 2+ weeks — **232 events accumulated Day 1 (Mar 11). 118 with beads_id, 114 without (expected: precommit hooks + spawns without --issue).**
+- Gate effectiveness section in `orch stats` populated with real data — **Done. Shows gated vs ungated cohort comparison with completion rate, verification rate, avg duration.**
+- Correlation query: blocked agents → redirected work → outcome — **Done. BlockedOutcomes structure tracks escalated_to_architect, eventually_completed, still_pending. Currently shows 0s (only 2 precommit blocks, no spawn gate blocks with beads_id yet).**
+- `orch stats --snapshot` records gate accuracy baseline to `~/.orch/gate-baselines.jsonl` with delta comparison
 **Exit criteria:** Can answer "for agents that hit gate X, was the outcome better than ungated agents?" with statistical confidence.
 **Depends on:** Phases 1-3 + 2-4 weeks of data accumulation. Aligns with Mar 24 accretion probe checkpoint.
+
+**Day 1 Baseline (2026-03-11):**
+- 284 total spawns (37 gated, 247 ungated — skew because gate_decision events started today)
+- Gated: 81.1% completion, 100% verification, 38m avg
+- Ungated: 91.9% completion, 20.7% verification, 30m avg
+- Gated verification 100% vs ungated 20.7% is striking but sample size is small (n=37)
+- Spawn gate bypass rate: 82.4% (high because historical data includes pre-Phase-2 noise gates)
+- **Check-in: Mar 24** — re-run `orch stats --snapshot` and compare delta
 
 ---
 

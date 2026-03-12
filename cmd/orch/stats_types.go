@@ -273,3 +273,26 @@ type GateSkillEntry struct {
 	Skill string `json:"skill"`
 	Count int    `json:"count"`
 }
+
+// GateAccuracyBaseline is a point-in-time snapshot of gate accuracy metrics.
+// Used for prospective measurement: compare baselines over time to determine
+// whether gates improve agent quality.
+type GateAccuracyBaseline struct {
+	SnapshotTime             string  `json:"snapshot_time"`
+	DaysAnalyzed             int     `json:"days_analyzed"`
+	TotalSpawns              int     `json:"total_spawns"`
+	TotalCompletions         int     `json:"total_completions"`
+	GatedSpawns              int     `json:"gated_spawns"`
+	UngatedSpawns            int     `json:"ungated_spawns"`
+	GateDecisions            int     `json:"gate_decisions"`
+	TotalBlocks              int     `json:"total_blocks"`
+	TotalBypasses            int     `json:"total_bypasses"`
+	GatedCompletionRate      float64 `json:"gated_completion_rate"`
+	UngatedCompletionRate    float64 `json:"ungated_completion_rate"`
+	GatedVerificationRate    float64 `json:"gated_verification_rate"`
+	UngatedVerificationRate  float64 `json:"ungated_verification_rate"`
+	GatedAvgDuration         float64 `json:"gated_avg_duration_minutes"`
+	UngatedAvgDuration       float64 `json:"ungated_avg_duration_minutes"`
+	SpawnGateBypassRate      float64 `json:"spawn_gate_bypass_rate"`
+	VerificationFirstTryRate float64 `json:"verification_first_try_rate"`
+}
