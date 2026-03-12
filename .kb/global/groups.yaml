@@ -1,0 +1,16 @@
+groups:
+  orch:
+    account: personal
+    projects:
+      - orch-go
+      - orch-cli
+      - kb-cli
+      - orch-knowledge
+      - beads
+      - kn
+      - opencode
+
+  scs:
+    account: work
+    parent: scs-special-projects
+    # Children auto-discovered: toolshed, price-watch, specs-platform, sendassist, scs-slack
