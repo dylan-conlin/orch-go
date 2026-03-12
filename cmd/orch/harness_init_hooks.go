@@ -1,0 +1,463 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// hookSpec defines a hook that harness init registers.
+// Each entry: matcher -> command template (with script filename in hooksDir).
+type hookSpec struct {
+	Matcher string
+	Script  string // filename in hooksDir
+}
+
+var requiredHooks = []hookSpec{
+	{Matcher: "Bash", Script: "gate-bd-close.py"},
+	{Matcher: "Bash", Script: "gate-worker-git-add-all.py"},
+}
+
+// standaloneHookSpecs defines hooks to register in standalone mode.
+var standaloneHookSpecs = []hookSpec{
+	{Matcher: "Bash", Script: "gate-git-add-all.py"},
+}
+
+// hookEquivalents maps standalone hook script names to functional identifiers.
+// If any registered command contains the identifier, the hooks are equivalent.
+// For example, gate-worker-git-add-all.py (full mode) and gate-git-add-all.py
+// (standalone) both block blanket git add.
+var hookEquivalents = map[string]string{
+	"gate-git-add-all.py": "git-add-all",
+}
+
+// ensureHookRegistration registers required hooks in settings.json PreToolUse.
+func ensureHookRegistration(settingsPath, hooksDir string) (*StepResult, error) {
+	result := &StepResult{}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading settings: %w", err)
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("parsing settings: %w", err)
+	}
+
+	// Get or create hooks section
+	hooks, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		hooks = make(map[string]any)
+		settings["hooks"] = hooks
+	}
+
+	// Get existing PreToolUse entries
+	var ptu []any
+	if existing, ok := hooks["PreToolUse"].([]any); ok {
+		ptu = existing
+	}
+
+	// Check which hooks are already registered by scanning command strings
+	registeredCommands := make(map[string]bool)
+	for _, entry := range ptu {
+		if group, ok := entry.(map[string]any); ok {
+			if hookList, ok := group["hooks"].([]any); ok {
+				for _, h := range hookList {
+					if hookMap, ok := h.(map[string]any); ok {
+						if cmd, ok := hookMap["command"].(string); ok {
+							registeredCommands[cmd] = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Register missing hooks
+	registered := 0
+	for _, spec := range requiredHooks {
+		scriptPath := filepath.Join(hooksDir, spec.Script)
+
+		// Check if this script exists
+		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+			continue // Skip hooks that aren't installed
+		}
+
+		command := fmt.Sprintf("python3 %s", scriptPath)
+		if registeredCommands[command] {
+			continue // Already registered
+		}
+
+		// Add hook registration
+		entry := map[string]any{
+			"matcher": spec.Matcher,
+			"hooks": []any{
+				map[string]any{
+					"type":    "command",
+					"command": command,
+				},
+			},
+		}
+		ptu = append(ptu, entry)
+		registered++
+	}
+
+	if registered == 0 {
+		result.AlreadyPresent = true
+		return result, nil
+	}
+
+	hooks["PreToolUse"] = ptu
+
+	// Write back
+	out, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshaling settings: %w", err)
+	}
+	out = append(out, '\n')
+
+	if err := os.WriteFile(settingsPath, out, 0644); err != nil {
+		return nil, fmt.Errorf("writing settings: %w", err)
+	}
+
+	result.HooksRegistered = registered
+	return result, nil
+}
+
+// checkHookRegistration checks hook registration without modifying settings.json.
+func checkHookRegistration(settingsPath, hooksDir string) (*StepResult, error) {
+	result := &StepResult{}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, err
+	}
+
+	registeredCommands := make(map[string]bool)
+	if hooks, ok := settings["hooks"].(map[string]any); ok {
+		if ptu, ok := hooks["PreToolUse"].([]any); ok {
+			for _, entry := range ptu {
+				if group, ok := entry.(map[string]any); ok {
+					if hookList, ok := group["hooks"].([]any); ok {
+						for _, h := range hookList {
+							if hookMap, ok := h.(map[string]any); ok {
+								if cmd, ok := hookMap["command"].(string); ok {
+									registeredCommands[cmd] = true
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	allPresent := true
+	for _, spec := range requiredHooks {
+		scriptPath := filepath.Join(hooksDir, spec.Script)
+		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+			continue
+		}
+		command := fmt.Sprintf("python3 %s", scriptPath)
+		if !registeredCommands[command] {
+			allPresent = false
+			break
+		}
+	}
+
+	result.AlreadyPresent = allPresent
+	return result, nil
+}
+
+// standaloneGitAddAllHook is the content of the standalone gate-git-add-all.py hook.
+// It blocks `git add -A`, `git add .`, and `git add --all` to prevent agents from
+// accidentally staging unrelated files in multi-agent projects.
+const standaloneGitAddAllHook = `#!/usr/bin/env python3
+"""
+Gate: Block 'git add -A' and 'git add .' in Claude Code sessions.
+
+Generated by: orch harness init
+
+== WHY THIS GATE EXISTS ==
+
+In multi-agent projects, the working directory often contains changes from
+multiple agents, build artifacts, lock files, and other unrelated modifications.
+When an agent runs 'git add -A' or 'git add .', it stages EVERYTHING — including
+other agents' in-progress work, .env files, and build output.
+
+This gate forces agents to stage files explicitly by name:
+  git add src/feature.go src/feature_test.go    # Good — explicit
+  git add -A                                     # Blocked
+  git add .                                      # Blocked
+
+== HOW IT WORKS ==
+
+This is a Claude Code PreToolUse hook. When an agent tries to run a Bash command,
+Claude Code sends the command to this script via stdin as JSON. If the command
+matches a blanket git-add pattern, the script returns a deny decision that
+prevents the command from executing and shows the agent an error message.
+
+== CONFIGURATION ==
+
+- To disable temporarily: set SKIP_GIT_ADD_ALL_GATE=1 in your environment
+- To remove permanently: delete this file and remove its entry from settings.json
+
+== HOOK PROTOCOL ==
+
+Input (stdin): JSON with tool_name and tool_input.command
+Output (stdout): JSON with hookSpecificOutput.permissionDecision = "deny" to block
+Exit 0 always (hooks should not crash Claude Code)
+"""
+import json
+import os
+import re
+import sys
+
+# Patterns that match blanket git add commands
+BLANKET_GIT_ADD_PATTERNS = [
+    r'\bgit\s+add\s+(-A|--all)\b',
+    r'\bgit\s+add\s+\.(?:\s|$|&&|\||;)',
+]
+
+
+def is_blanket_git_add(command: str) -> bool:
+    """Detect if a Bash command uses blanket git add."""
+    for pattern in BLANKET_GIT_ADD_PATTERNS:
+        if re.search(pattern, command):
+            return True
+    return False
+
+
+def main():
+    # Escape hatch: set this env var to bypass the gate
+    if os.environ.get("SKIP_GIT_ADD_ALL_GATE", "") == "1":
+        sys.exit(0)
+
+    try:
+        input_data = json.load(sys.stdin)
+    except json.JSONDecodeError:
+        sys.exit(0)
+
+    if input_data.get("tool_name") != "Bash":
+        sys.exit(0)
+
+    command = input_data.get("tool_input", {}).get("command", "")
+    if not is_blanket_git_add(command):
+        sys.exit(0)
+
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": (
+                "BLOCKED: Do not use 'git add -A' or 'git add .'\n\n"
+                "In multi-agent projects, the working directory often has unrelated\n"
+                "changes from other agents, build artifacts, or sensitive files.\n\n"
+                "Stage ONLY the specific files you created or modified:\n"
+                "  git add path/to/file1 path/to/file2\n\n"
+                "To bypass: set SKIP_GIT_ADD_ALL_GATE=1"
+            ),
+        }
+    }
+    print(json.dumps(output))
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
+`
+
+// ensureStandaloneHookScripts generates hook scripts in the project's .claude/hooks/ directory.
+func ensureStandaloneHookScripts(hooksDir string) (*StepResult, error) {
+	result := &StepResult{}
+
+	gatePath := filepath.Join(hooksDir, "gate-git-add-all.py")
+	if _, err := os.Stat(gatePath); err == nil {
+		result.AlreadyPresent = true
+		return result, nil
+	}
+
+	if err := os.MkdirAll(hooksDir, 0755); err != nil {
+		return nil, fmt.Errorf("creating hooks dir: %w", err)
+	}
+
+	if err := os.WriteFile(gatePath, []byte(standaloneGitAddAllHook), 0755); err != nil {
+		return nil, fmt.Errorf("writing hook: %w", err)
+	}
+
+	result.Created = true
+	return result, nil
+}
+
+// collectRegisteredCommands reads all hook commands from a settings.json file.
+// Returns empty map on any error (file missing, parse error, etc).
+func collectRegisteredCommands(settingsPath string) map[string]bool {
+	commands := make(map[string]bool)
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return commands
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return commands
+	}
+	hooks, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		return commands
+	}
+	ptu, ok := hooks["PreToolUse"].([]any)
+	if !ok {
+		return commands
+	}
+	for _, entry := range ptu {
+		if group, ok := entry.(map[string]any); ok {
+			if hookList, ok := group["hooks"].([]any); ok {
+				for _, h := range hookList {
+					if hookMap, ok := h.(map[string]any); ok {
+						if cmd, ok := hookMap["command"].(string); ok {
+							commands[cmd] = true
+						}
+					}
+				}
+			}
+		}
+	}
+	return commands
+}
+
+// isEquivalentHookRegistered checks if a functionally equivalent hook is
+// already registered. This prevents double-gating when both standalone and
+// full-mode hooks exist for the same purpose.
+func isEquivalentHookRegistered(registeredCommands map[string]bool, scriptName string) bool {
+	pattern, ok := hookEquivalents[scriptName]
+	if !ok {
+		return false
+	}
+	for cmd := range registeredCommands {
+		if strings.Contains(cmd, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// ensureStandaloneHookRegistration registers standalone hooks in project-level settings.json.
+// Unlike the full mode, this uses project-local hook paths (.claude/hooks/).
+// userSettingsPath is checked for equivalent hooks to avoid double-gating
+// (e.g., gate-worker-git-add-all.py in user settings covers the same gate).
+func ensureStandaloneHookRegistration(settingsPath, hooksDir, userSettingsPath string) (*StepResult, error) {
+	result := &StepResult{}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading settings: %w", err)
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("parsing settings: %w", err)
+	}
+
+	hooks, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		hooks = make(map[string]any)
+		settings["hooks"] = hooks
+	}
+
+	var ptu []any
+	if existing, ok := hooks["PreToolUse"].([]any); ok {
+		ptu = existing
+	}
+
+	// Collect registered commands from the target (project) settings
+	registeredCommands := make(map[string]bool)
+	for _, entry := range ptu {
+		if group, ok := entry.(map[string]any); ok {
+			if hookList, ok := group["hooks"].([]any); ok {
+				for _, h := range hookList {
+					if hookMap, ok := h.(map[string]any); ok {
+						if cmd, ok := hookMap["command"].(string); ok {
+							registeredCommands[cmd] = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Also check user-level settings for equivalent hooks to avoid double-gating.
+	// In standalone mode, settingsPath points to project settings, but hooks might
+	// already be registered at the user level (e.g., gate-worker-git-add-all.py).
+	if userSettingsPath != "" && userSettingsPath != settingsPath {
+		for cmd := range collectRegisteredCommands(userSettingsPath) {
+			registeredCommands[cmd] = true
+		}
+	}
+
+	registered := 0
+	for _, spec := range standaloneHookSpecs {
+		scriptPath := filepath.Join(hooksDir, spec.Script)
+		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+			continue
+		}
+
+		// Use relative path (.claude/hooks/...) so it works across clones.
+		// Claude Code runs hooks from the project root, so relative paths resolve correctly.
+		command := fmt.Sprintf("python3 .claude/hooks/%s", spec.Script)
+		if registeredCommands[command] {
+			continue
+		}
+
+		// Also check if already registered with an absolute path
+		absCommand := fmt.Sprintf("python3 %s", scriptPath)
+		if registeredCommands[absCommand] {
+			continue
+		}
+
+		// Check if a functionally equivalent hook is already registered
+		// (e.g., gate-worker-git-add-all.py in user settings covers the same gate)
+		if isEquivalentHookRegistered(registeredCommands, spec.Script) {
+			continue
+		}
+
+		entry := map[string]any{
+			"matcher": spec.Matcher,
+			"hooks": []any{
+				map[string]any{
+					"type":    "command",
+					"command": command,
+				},
+			},
+		}
+		ptu = append(ptu, entry)
+		registered++
+	}
+
+	if registered == 0 {
+		result.AlreadyPresent = true
+		return result, nil
+	}
+
+	hooks["PreToolUse"] = ptu
+
+	out, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshaling settings: %w", err)
+	}
+	out = append(out, '\n')
+
+	if err := os.WriteFile(settingsPath, out, 0644); err != nil {
+		return nil, fmt.Errorf("writing settings: %w", err)
+	}
+
+	result.HooksRegistered = registered
+	return result, nil
+}
