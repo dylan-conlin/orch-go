@@ -1,11 +1,12 @@
 // Package verify provides verification helpers for agent completion.
 // This file implements the Architect Handoff verification gate.
-// Ensures architect agents declare explicit recommendations before completion,
-// enabling the auto-create mechanism in complete_architect.go to function.
+// Ensures architect agents declare explicit recommendations before completion
+// AND verifies that actionable recommendations have corresponding implementation issues.
 //
 // Root cause: architect agents completed with design docs but no implementation
-// issues because the handoff constraint lived in skill prose (soft harness),
-// not in the verification pipeline (hard harness).
+// issues because (1) the handoff constraint lived in skill prose (soft harness),
+// not in the verification pipeline (hard harness), and (2) the auto-create mechanism
+// ran after gates and failed silently.
 package verify
 
 import (
@@ -29,12 +30,30 @@ var validArchitectRecommendations = map[string]bool{
 	"refactor":  true,
 }
 
+// IsActionableArchitectRecommendation returns true if the recommendation
+// indicates follow-up work is needed (not just closing the issue).
+// Exported for use by the auto-create mechanism in complete_architect.go.
+func IsActionableArchitectRecommendation(recommendation string) bool {
+	r := strings.ToLower(strings.TrimSpace(recommendation))
+	switch r {
+	case "implement", "escalate", "spawn", "continue", "fix", "refactor":
+		return true
+	default:
+		return false
+	}
+}
+
 // VerifyArchitectHandoff checks that architect agents have declared an explicit
-// recommendation in their SYNTHESIS.md. Without this field, the auto-create
-// mechanism in complete_architect.go silently skips issue creation.
+// recommendation in their SYNTHESIS.md AND that actionable recommendations have
+// corresponding implementation issues in beads.
+//
+// When beadsID is non-empty and the recommendation is actionable, the gate checks
+// that an implementation issue exists (title containing "from architect <beadsID>").
+// The auto-create mechanism runs before this gate in the completion pipeline,
+// so by the time this check runs, the issue should exist.
 //
 // Returns a passing result for non-architect skills.
-func VerifyArchitectHandoff(workspacePath, skill string) *VerificationResult {
+func VerifyArchitectHandoff(workspacePath, skill, beadsID, projectDir string) *VerificationResult {
 	result := &VerificationResult{Passed: true}
 
 	// Only applies to architect skill
@@ -68,6 +87,28 @@ func VerifyArchitectHandoff(workspacePath, skill string) *VerificationResult {
 				"Valid values: %s", recommendation, formatValidRecommendations()))
 		result.GatesFailed = append(result.GatesFailed, GateArchitectHandoff)
 		return result
+	}
+
+	// For actionable recommendations, verify implementation issue exists.
+	// Skip this check if beadsID is empty (e.g., unit tests without beads context).
+	if IsActionableArchitectRecommendation(recommendation) && beadsID != "" {
+		exists, err := HasImplementationFollowUp(beadsID, projectDir)
+		if err != nil {
+			// Beads query failed — don't block completion on infrastructure issues,
+			// but warn so the orchestrator can investigate.
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Could not verify implementation issue exists for architect %s: %v", beadsID, err))
+		} else if !exists {
+			result.Passed = false
+			result.Errors = append(result.Errors,
+				fmt.Sprintf("Architect recommendation is %q but no implementation issue found for %s. "+
+					"Expected an issue with title containing \"(from architect %s)\". "+
+					"Auto-create may have failed — check stderr output above, or create manually via: "+
+					"bd create \"<title> (from architect %s)\" --type task -l triage:ready",
+					recommendation, beadsID, beadsID, beadsID))
+			result.GatesFailed = append(result.GatesFailed, GateArchitectHandoff)
+			return result
+		}
 	}
 
 	return result

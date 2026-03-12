@@ -59,6 +59,15 @@ func executeVerificationGates(target CompletionTarget, skipConfig verify.SkipCon
 		fmt.Printf("Checkpoint gates skipped (review tier: %s)\n", target.ReviewTier)
 	}
 
+	// Auto-create implementation issue for architect completions BEFORE gates.
+	// This must run before VerifyCompletionFull so the architect_handoff gate
+	// can verify the implementation issue exists. Runs regardless of --force
+	// since implementation issues should always be created for actionable recommendations.
+	if !target.IsOrchestratorSession && target.WorkspacePath != "" && target.BeadsID != "" {
+		skillName, _ := verify.ExtractSkillNameFromSpawnContext(target.WorkspacePath)
+		maybeAutoCreateImplementationIssue(skillName, target.BeadsID, target.WorkspacePath)
+	}
+
 	// If --approve flag is set, add approval comment BEFORE verification
 	if completeApprove && target.BeadsID != "" {
 		approvalComment := "✅ APPROVED - Visual changes reviewed and approved by orchestrator"

@@ -413,15 +413,20 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 	}
 
 	// Architect handoff gate (V1+)
-	// Ensures architect agents declare an explicit recommendation before completion.
-	// Without this, the auto-create mechanism silently skips issue creation.
+	// Ensures architect agents declare an explicit recommendation before completion
+	// AND that actionable recommendations have corresponding implementation issues.
+	// The auto-create mechanism runs before gates in executeVerificationGates,
+	// so by the time this check runs, the issue should exist.
 	if !isOrch && ShouldRunGate(verifyLevel, GateArchitectHandoff) {
 		result.GatesRun = append(result.GatesRun, GateArchitectHandoff)
-		handoffResult := VerifyArchitectHandoff(workspacePath, result.Skill)
-		if handoffResult != nil && !handoffResult.Passed {
-			result.Passed = false
-			result.Errors = append(result.Errors, handoffResult.Errors...)
-			result.GatesFailed = append(result.GatesFailed, GateArchitectHandoff)
+		handoffResult := VerifyArchitectHandoff(workspacePath, result.Skill, beadsID, projectDir)
+		if handoffResult != nil {
+			if !handoffResult.Passed {
+				result.Passed = false
+				result.Errors = append(result.Errors, handoffResult.Errors...)
+				result.GatesFailed = append(result.GatesFailed, GateArchitectHandoff)
+			}
+			result.Warnings = append(result.Warnings, handoffResult.Warnings...)
 		}
 	}
 

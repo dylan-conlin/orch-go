@@ -10,7 +10,7 @@ func TestVerifyArchitectHandoff_NonArchitectSkill(t *testing.T) {
 	// Non-architect skills should always pass
 	skills := []string{"feature-impl", "systematic-debugging", "investigation", ""}
 	for _, skill := range skills {
-		result := VerifyArchitectHandoff("/tmp/nonexistent", skill)
+		result := VerifyArchitectHandoff("/tmp/nonexistent", skill, "", "")
 		if !result.Passed {
 			t.Errorf("VerifyArchitectHandoff(%q) should pass for non-architect skill, got errors: %v", skill, result.Errors)
 		}
@@ -20,7 +20,7 @@ func TestVerifyArchitectHandoff_NonArchitectSkill(t *testing.T) {
 func TestVerifyArchitectHandoff_MissingSynthesis(t *testing.T) {
 	// Missing SYNTHESIS.md should pass (handled by synthesis gate)
 	dir := t.TempDir()
-	result := VerifyArchitectHandoff(dir, "architect")
+	result := VerifyArchitectHandoff(dir, "architect", "", "")
 	if !result.Passed {
 		t.Errorf("should pass when SYNTHESIS.md is missing (synthesis gate handles that)")
 	}
@@ -38,7 +38,7 @@ The team should implement this design.
 		t.Fatal(err)
 	}
 
-	result := VerifyArchitectHandoff(dir, "architect")
+	result := VerifyArchitectHandoff(dir, "architect", "", "")
 	if result.Passed {
 		t.Error("should fail when **Recommendation:** field is missing")
 	}
@@ -65,7 +65,8 @@ Follow-up work needed.
 				t.Fatal(err)
 			}
 
-			result := VerifyArchitectHandoff(dir, "architect")
+			// Without beadsID, skips implementation issue check
+			result := VerifyArchitectHandoff(dir, "architect", "", "")
 			if !result.Passed {
 				t.Errorf("should pass for valid recommendation %q, got errors: %v", rec, result.Errors)
 			}
@@ -87,7 +88,7 @@ Not sure what to do.
 		t.Fatal(err)
 	}
 
-	result := VerifyArchitectHandoff(dir, "architect")
+	result := VerifyArchitectHandoff(dir, "architect", "", "")
 	if result.Passed {
 		t.Error("should fail for unrecognized recommendation 'maybe'")
 	}
@@ -111,7 +112,7 @@ Create the implementation.
 		t.Fatal(err)
 	}
 
-	result := VerifyArchitectHandoff(dir, "architect")
+	result := VerifyArchitectHandoff(dir, "architect", "", "")
 	if !result.Passed {
 		t.Errorf("should pass for capitalized recommendation 'Implement', got errors: %v", result.Errors)
 	}
@@ -148,7 +149,7 @@ The team should implement the exploration mode design. Key steps:
 		t.Fatal(err)
 	}
 
-	result := VerifyArchitectHandoff(dir, "architect")
+	result := VerifyArchitectHandoff(dir, "architect", "", "")
 
 	// This MUST fail — the missing Recommendation field is exactly the bug
 	if result.Passed {
@@ -160,5 +161,55 @@ The team should implement the exploration mode design. Key steps:
 	// Error message should guide the architect to fix it
 	if len(result.Errors) == 0 {
 		t.Fatal("expected error message with valid recommendation values")
+	}
+}
+
+func TestVerifyArchitectHandoff_CloseRecommendation_NoIssueNeeded(t *testing.T) {
+	// "close" recommendation should pass without needing an implementation issue
+	dir := t.TempDir()
+	synthesis := `## TLDR
+Reviewed architecture, no changes needed.
+
+## Next
+**Recommendation:** close
+
+No follow-up required.
+`
+	if err := os.WriteFile(filepath.Join(dir, "SYNTHESIS.md"), []byte(synthesis), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Even with beadsID, "close" doesn't require implementation issue
+	result := VerifyArchitectHandoff(dir, "architect", "orch-go-test1", dir)
+	if !result.Passed {
+		t.Errorf("should pass for 'close' recommendation without implementation issue, got errors: %v", result.Errors)
+	}
+}
+
+func TestIsActionableArchitectRecommendation(t *testing.T) {
+	tests := []struct {
+		recommendation string
+		expected       bool
+	}{
+		{"implement", true},
+		{"escalate", true},
+		{"spawn", true},
+		{"continue", true},
+		{"fix", true},
+		{"refactor", true},
+		{"close", false},
+		{"", false},
+		{"maybe", false},
+		{"Implement", true},  // case insensitive
+		{"REFACTOR", true},   // case insensitive
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.recommendation, func(t *testing.T) {
+			got := IsActionableArchitectRecommendation(tt.recommendation)
+			if got != tt.expected {
+				t.Errorf("IsActionableArchitectRecommendation(%q) = %v, want %v", tt.recommendation, got, tt.expected)
+			}
+		})
 	}
 }

@@ -372,6 +372,26 @@ func RemoveOrchAgentLabel(beadsID, projectDir string) error {
 	return beads.FallbackRemoveLabel(beadsID, orchAgentLabel, projectDir)
 }
 
+// HasImplementationFollowUp checks if any open issue references the given architect beads ID.
+// Searches for the title pattern "(from architect <beadsID>)" which is produced by
+// maybeAutoCreateImplementationIssue in complete_architect.go.
+// Returns true if at least one matching issue is found.
+func HasImplementationFollowUp(architectBeadsID, projectDir string) (bool, error) {
+	issues, err := ListOpenIssues(projectDir)
+	if err != nil {
+		return false, fmt.Errorf("failed to list issues: %w", err)
+	}
+
+	pattern := strings.ToLower(fmt.Sprintf("from architect %s", architectBeadsID))
+	for _, issue := range issues {
+		if strings.Contains(strings.ToLower(issue.Title), pattern) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // GetIssue retrieves issue details from beads.
 // If projectDir is non-empty, uses that directory for beads operations.
 func GetIssue(beadsID, projectDir string) (*Issue, error) {

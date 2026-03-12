@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/activity"
 	"github.com/dylan-conlin/orch-go/pkg/agent"
+	"github.com/dylan-conlin/orch-go/pkg/artifactsync"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -40,10 +42,9 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 		}
 	}
 
-	// Auto-create implementation issue for architect completions
-	if !target.IsOrchestratorSession && target.WorkspacePath != "" {
-		maybeAutoCreateImplementationIssue(outcome.SkillName, target.BeadsID, target.WorkspacePath)
-	}
+	// NOTE: Auto-create of implementation issues for architect completions has
+	// been moved to executeVerificationGates (complete_verification.go) so the
+	// architect_handoff gate can verify the issue exists before completion proceeds.
 
 	// --- Pre-lifecycle operations (need session/workspace alive) ---
 
@@ -70,6 +71,28 @@ func executeLifecycleTransition(target CompletionTarget, outcome VerificationOut
 	var accretionData *events.AccretionDeltaData
 	if target.WorkspacePath != "" && target.WorkProjectDir != "" {
 		accretionData = collectAccretionDelta(target.WorkProjectDir, target.WorkspacePath)
+	}
+
+	// Capture change-scope classification before archival (needs workspace for git baseline)
+	if target.WorkspacePath != "" && target.WorkProjectDir != "" && !target.IsOrchestratorSession {
+		manifest := spawn.ReadAgentManifestWithFallback(target.WorkspacePath)
+		if manifest.GitBaseline != "" {
+			scopes, changedFiles := artifactsync.CaptureChangeScopes(target.WorkProjectDir, manifest.GitBaseline)
+			if len(scopes) > 0 {
+				driftEvent := artifactsync.DriftEvent{
+					BeadsID:      target.BeadsID,
+					Skill:        outcome.SkillName,
+					ChangeScopes: scopes,
+					FilesChanged: changedFiles,
+					CommitRange:  manifest.GitBaseline + "..HEAD",
+				}
+				if err := artifactsync.LogDriftEvent(artifactsync.DefaultDriftLogPath(), driftEvent); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log artifact drift event: %v\n", err)
+				} else {
+					fmt.Printf("Artifact drift: %s\n", strings.Join(scopes, ", "))
+				}
+			}
+		}
 	}
 
 	// Export activity to ACTIVITY.json for archival

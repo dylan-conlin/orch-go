@@ -18,7 +18,9 @@ var regexNumberedPrefix = regexp.MustCompile(`^\d+\.\s+`)
 
 // maybeAutoCreateImplementationIssue checks if a completed architect agent's synthesis
 // recommends action, and if so, creates a triage:ready implementation issue.
-// Returns the created issue ID or empty string if no issue was created.
+// Idempotent: if an implementation issue already exists for this architect, returns
+// the existing issue pattern without creating a duplicate.
+// Returns the created/existing issue ID or empty string if no issue was created.
 func maybeAutoCreateImplementationIssue(skillName, beadsID, workspacePath string) string {
 	// Only for architect skill
 	if skillName != "architect" {
@@ -35,8 +37,14 @@ func maybeAutoCreateImplementationIssue(skillName, beadsID, workspacePath string
 	}
 
 	// Check if recommendation is actionable
-	if !isActionableRecommendation(synthesis.Recommendation) {
+	if !verify.IsActionableArchitectRecommendation(synthesis.Recommendation) {
 		return ""
+	}
+
+	// Check if implementation issue already exists (idempotency)
+	if exists, err := verify.HasImplementationFollowUp(beadsID, ""); err == nil && exists {
+		fmt.Printf("Implementation issue already exists for architect %s (skipping auto-create)\n", beadsID)
+		return beadsID // Return non-empty to signal issue exists
 	}
 
 	// Build the implementation issue
@@ -58,7 +66,7 @@ func maybeAutoCreateImplementationIssue(skillName, beadsID, workspacePath string
 	}
 
 	fmt.Printf("\n┌─────────────────────────────────────────────────────────────┐\n")
-	fmt.Printf("│  🔄 AUTO-CREATED IMPLEMENTATION ISSUE                       │\n")
+	fmt.Printf("│  AUTO-CREATED IMPLEMENTATION ISSUE                          │\n")
 	fmt.Printf("├─────────────────────────────────────────────────────────────┤\n")
 	fmt.Printf("│  Issue: %-50s │\n", issue.ID)
 	fmt.Printf("│  Skill: %-50s │\n", skill)
@@ -68,16 +76,10 @@ func maybeAutoCreateImplementationIssue(skillName, beadsID, workspacePath string
 	return issue.ID
 }
 
-// isActionableRecommendation returns true if the synthesis recommendation
-// indicates follow-up work is needed (not just closing the issue).
+// isActionableRecommendation wraps the exported verify function for local use.
+// Kept for backward compatibility with review_orphans.go and tests.
 func isActionableRecommendation(recommendation string) bool {
-	r := strings.ToLower(strings.TrimSpace(recommendation))
-	switch r {
-	case "implement", "escalate", "spawn", "continue", "fix", "refactor":
-		return true
-	default:
-		return false
-	}
+	return verify.IsActionableArchitectRecommendation(recommendation)
 }
 
 // inferImplementationSkill determines the appropriate skill for the follow-up
