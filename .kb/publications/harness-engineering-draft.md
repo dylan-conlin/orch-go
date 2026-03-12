@@ -1,6 +1,6 @@
 # Harness Engineering: Structural Governance for Multi-Agent Codebases
 
-*What happens when 50 AI agents/day commit to the same codebase — and why stronger models make it worse.*
+*What happens when 50 AI agents/day commit to the same codebase — and why better models don't fix it.*
 
 ---
 
@@ -12,7 +12,7 @@ We run 50+ autonomous AI agents per day on a single Go codebase (orch-go, ~47,60
 
 Our clearest example: `daemon.go` grew from 667 lines to 1,559 lines in 60 days. Not from one bad commit — from 30 individually correct ones. Each agent added a locally reasonable capability: stuck detection, health checks, auto-complete, agreement verification, phase timeouts, orphan recovery. No single commit was wrong. The aggregate was structural degradation.
 
-We call this **accretion** — the tendency of multi-agent codebases toward structural degradation. It's not a quality problem. It's a coordination problem. And it doesn't go away with better agents. In our system, it gets worse: faster agents produce more code per session, and the daemon.go growth accelerated as agent capabilities improved (though we haven't isolated model capability as the sole variable). The 30 agents that grew daemon.go weren't struggling. They were excelling — each one individually. The problem is that individual excellence doesn't compose into collective coherence without structural coordination. No amount of model improvement fixes this, because coordination failure is an emergent property of the system, not a deficiency of its parts.
+We call this **accretion** — the tendency of multi-agent codebases toward structural degradation. It's not a quality problem. It's a coordination problem. And it doesn't go away with better agents. The 30 agents that grew daemon.go weren't struggling. They were excelling — each one individually. The problem is that individual excellence doesn't compose into collective coherence without structural coordination. Model improvement doesn't fix this, because coordination failure is an emergent property of the system, not a deficiency of its parts. (We observed that daemon.go growth accelerated as agent capabilities improved, but we haven't isolated model capability as the variable — faster iteration cycles, more features in flight, and team familiarity are confounds.)
 
 ### The anatomy of accretion
 
@@ -55,13 +55,13 @@ This distinction matters. Two failure modes exist in multi-agent systems, and th
 |---|---|---|
 | **What breaks** | Agent doesn't follow instructions | Agents each follow instructions but collectively produce entropy |
 | **Example** | Agent ignores the 1,500-line convention | 30 agents each add correct code; daemon.go grows +892 lines |
-| **Fixed by better models?** | Yes | No — made *worse* by faster, more confident agents |
+| **Fixed by better models?** | Yes | No — model improvement doesn't help coordination (and faster agents may accelerate accretion, though we haven't isolated this variable) |
 
 The daemon.go evidence is coordination failure. Each of the 30 commits followed instructions. Each was locally rational. Each passed review. The problem was the absence of structural coordination — no shared packages, no deduplication detection, no cross-agent awareness that workspace scanning was already implemented four times.
 
 The analogy: a company of 30 brilliant engineers with no architecture review still produces spaghetti — possibly faster than 30 mediocre engineers, because each builds more in less time.
 
-**Implication:** If governance were only about compliance, it would be obsolete when models get good enough. But coordination is an emergent property of multi-agent systems. It doesn't resolve with individual capability. This suggests harness engineering may be a permanent discipline, not a transitional one — though the evidence base is one system over 12 weeks.
+**Implication:** If governance were only about compliance, it would become easier as models improve. But coordination is an emergent property of multi-agent systems. It doesn't resolve with individual capability. This suggests harness engineering may be a permanent discipline, not a transitional one — though the evidence base is one system over 12 weeks.
 
 ---
 
@@ -92,7 +92,7 @@ Extraction without routing is a pump. You can cool a room without insulation —
 
 ### Experiment 3: soft instructions fail under pressure
 
-We ran 265 contrastive trials across 7 agent skills to measure how well written instructions change agent behavior. Each "trial" compared agent output on the same scenario with and without the skill document loaded, scored by an automated rubric calibrated against human ratings (validated on 3 of 4 scenarios, rho > 0.74). We tested three types of content:
+We ran 265 contrastive trials across 7 agent skills to measure how well written instructions change agent behavior.[^methodology] We tested three types of content:
 
 | Content Type | Transfer Mechanism | Measured Effect |
 |---|---|---|
@@ -160,7 +160,7 @@ Neither attractors nor gates work alone.
 
 **Both together:** `pkg/spawn/backends/` (attractor) plus completion accretion gate (enforcement) caused spawn_cmd.go to shrink -1,755 lines. The attractor provides the low-energy destination state; the gate provides the activation energy barrier preventing the old path.
 
-The analogy to thermodynamics is useful (if imprecise — code complexity isn't entropy in the technical sense): attractors are low-energy states that code naturally flows toward. Gates are activation energy barriers preventing code from accumulating in high-complexity states. Extraction without both is cooling a room without insulation.
+A loose metaphor helps here (it's a metaphor, not a physics claim): attractors are destinations that code naturally flows toward. Gates are barriers preventing code from accumulating in high-complexity files. Extraction without both is cooling a room without insulation.
 
 ### Five invariants
 
@@ -188,11 +188,11 @@ Each layer builds on the previous. Lower layers are more immediately actionable:
 | **3: Entropy agent** | Periodic system-level health monitoring | Shipped — `orch entropy` + weekly launchd scheduling | Analyzes fix:feat ratio, velocity, bloat, override trends; generates recommendations |
 | **4: Self-extending gates** | Gates that generate gates | Aspirational | Entropy agent drafts structural tests for recurring patterns |
 
-The trajectory here is important: Layers 0–1 are **compliance gates** — they simplify with model improvement as smarter agents self-limit. Layers 2–4 are **coordination gates** — they become more important as agents get faster and more autonomous. A more capable agent accretes more code per session with higher confidence.
+The trajectory here is important: Layers 0–1 are **compliance gates** — they may simplify with model improvement as smarter agents self-limit. Layers 2–4 are **coordination gates** — they don't simplify with model improvement because coordination is a system property, not an agent capability. A more capable agent may accrete more code per session, though we haven't measured this directly.
 
 This is why harness engineering is permanent infrastructure. The compliance gates may simplify. The coordination gates are the endgame.
 
-We've tested the framework against a TypeScript codebase (N=2 languages) and found similar patterns — 5 of 8 harness patterns translate directly. The 3 that don't (build gate, architecture lint, hotspot analysis) are language-specific in implementation but not in concept. This is suggestive of language-independence but far from conclusive with only two data points. The deeper insight: "unfakeability" is a property of structural coupling (schema↔migration, source↔binary), not compilation specifically. Each ecosystem has its own structurally coupled hard gates.
+We tested the framework against one TypeScript codebase and found that 5 of 8 harness patterns translated directly. The 3 that didn't (build gate, architecture lint, hotspot analysis) are language-specific in implementation but not in concept. Two languages is not enough to claim language-independence — it's enough to say the patterns aren't Go-specific. The deeper insight: "unfakeability" is a property of structural coupling (schema↔migration, source↔binary), not compilation specifically. Each ecosystem has its own structurally coupled hard gates.
 
 ---
 
@@ -212,9 +212,9 @@ The closest academic work to our coordination concern is Cemri et al.'s MAST tax
 
 But MAST frames the solution as requiring "deeper social reasoning abilities" from agents — essentially, better models. They don't consider the possibility that the coordination failures they observe are *architectural*, not cognitive. Their own finding — "a well-designed MAS can result in performance gain when using the same underlying model" — supports the architectural interpretation, but they don't develop it.
 
-What no existing work distinguishes: compliance failure (agent doesn't follow instructions — fixed by better models) versus coordination failure (agents each follow instructions but collectively produce entropy — made *worse* by better models). MAST's FC1 (system design, ~44% of failures) maps roughly to compliance. Their FC2 (~32%) maps to coordination. Their FC3 (task verification, ~24%) maps to Fowler's verification gap. But MAST taxonomizes by symptom, not by response to model improvement. The result: they prescribe model-level solutions for what is actually an architectural problem. "Deeper social reasoning" is a compliance answer to a coordination question.
+What no existing work distinguishes: compliance failure (agent doesn't follow instructions — fixed by better models) versus coordination failure (agents each follow instructions but collectively produce entropy — not helped by better models). MAST's FC1 (system design, ~44% of failures) maps roughly to compliance. Their FC2 (~32%) maps to coordination. Their FC3 (task verification, ~24%) maps to Fowler's verification gap. But MAST taxonomizes by symptom, not by response to model improvement. The result: they prescribe model-level solutions for what is actually an architectural problem. "Deeper social reasoning" is a compliance answer to a coordination question.
 
-This distinction — that compliance and coordination failures have *opposite* trajectories as models improve — is the core contribution of our framework. We haven't found it in the multi-agent AI literature we've reviewed, though we haven't conducted a systematic literature search. The distinction itself is well-known in other fields: mechanism design, organizational theory, and distributed systems all separate individual compliance from collective coordination. What may be new is applying it to AI coding agents and identifying the opposite response to model improvement.
+This distinction — that compliance and coordination failures respond differently to model improvement — is the core framing of our work. The distinction itself is well-known in other fields: mechanism design, organizational theory, and distributed systems all separate individual compliance from collective coordination. It seems underappreciated in the AI coding agent community, where most harness work focuses on making individual agents more effective. What we're adding is the application to AI coding agents and the observation that coordination failures don't resolve with model improvement.
 
 ---
 
@@ -294,11 +294,13 @@ The field is converging on "harness" as a concept, but the coordination problem 
 
 The deepest insight from this work: in multi-agent systems, codebase architecture is governance. Package structure is a routing table for agentic contributions. Import boundaries are jurisdiction lines. Structural tests are constitutional constraints. And every convention without a gate will eventually be violated.
 
-Accretion isn't unique to code. We've observed similar dynamics — attractors, gates, entropy spirals, the compliance/coordination split — in knowledge systems where amnesiac agents contribute to a shared understanding rather than a shared codebase. The patterns appear similar across both substrates we've measured, though two data points don't establish universality. That's the subject of our next piece.
+Accretion isn't unique to code. We've observed similar dynamics — attractors, gates, entropy spirals, the compliance/coordination split — in knowledge systems where amnesiac agents contribute to a shared understanding rather than a shared codebase. The patterns look similar in both substrates we've measured (Go codebase and knowledge base), though two data points are suggestive, not conclusive. That's the subject of our next piece.
 
 ---
 
 *This is based on 12 weeks of operating orch-go: ~47,600 lines of Go, 125 files, 50+ autonomous AI agent sessions/day, 3 entropy spirals, 1,625 lost commits, 265 contrastive trials across 7 skills, and cross-language validation against a TypeScript fork. The harness engineering model, evidence probes, and minimum viable harness checklist are open at [repo link].*
+
+[^methodology]: Each contrastive trial compared agent output on the same task scenario with and without the skill document loaded. The control condition used a base system prompt with no skill-specific instructions; the treatment condition injected the full skill document. Output was scored by an automated rubric calibrated against human ratings on 3 of 4 validation scenarios (Spearman rho > 0.74). All 7 skills were from our orchestrator system; we did not test skills from other systems. The 265 number reflects total scenario × skill combinations, not independent experiments — many share the same underlying model and task distribution.
 
 ### References
 
