@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -115,13 +116,17 @@ func (c *SessionDedupChecker) listSessions() ([]sessionResponse, error) {
 }
 
 // DefaultSessionDedupChecker is a package-level checker using default config.
-var defaultSessionDedupChecker *SessionDedupChecker
+var (
+	defaultSessionDedupChecker     *SessionDedupChecker
+	defaultSessionDedupCheckerOnce sync.Once
+)
 
 // initDefaultSessionDedupChecker lazily initializes the default checker.
+// Uses sync.Once to prevent data races when called from concurrent goroutines.
 func initDefaultSessionDedupChecker() *SessionDedupChecker {
-	if defaultSessionDedupChecker == nil {
+	defaultSessionDedupCheckerOnce.Do(func() {
 		defaultSessionDedupChecker = NewSessionDedupChecker(DefaultSessionDedupConfig())
-	}
+	})
 	return defaultSessionDedupChecker
 }
 
