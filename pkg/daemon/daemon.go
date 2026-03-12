@@ -137,6 +137,9 @@ type Daemon struct {
 	// FrictionAccumulator scans completed agents for friction and stores results.
 	FrictionAccumulator FrictionAccumulatorService
 
+	// ArtifactSync provides periodic artifact drift analysis and issue creation.
+	ArtifactSync ArtifactSyncService
+
 	// CompletionDedupTracker prevents re-processing the same Phase: Complete
 	// across poll cycles. Defense-in-depth for when daemon:ready-review label
 	// fails to persist (beads flakiness, label removed externally).
@@ -196,6 +199,7 @@ func NewWithConfig(config Config) *Daemon {
 		StatusUpdater:             &defaultIssueUpdater{},
 		CompletionDedupTracker:    NewCompletionDedupTracker(),
 		BeadsCircuitBreaker:      NewBeadsCircuitBreaker(),
+		ArtifactSync:             &defaultArtifactSyncService{},
 	}
 	// Initialize worker pool if MaxAgents is set
 	if config.MaxAgents > 0 {

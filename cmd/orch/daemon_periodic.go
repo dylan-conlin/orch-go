@@ -108,6 +108,11 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		}
 	}
 
+	// Artifact sync
+	if r := d.RunPeriodicArtifactSync(); r != nil {
+		handleArtifactSyncResult(r, timestamp, verbose, logger)
+	}
+
 	return result
 }
 
@@ -332,6 +337,29 @@ func handleFrictionAccumulationResult(r *daemon.FrictionAccumulationResult, time
 		})
 	} else if verbose {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+	}
+}
+
+func handleArtifactSyncResult(r *daemon.ArtifactSyncResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Artifact sync error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.artifact_sync", map[string]interface{}{
+			"error":   r.Error.Error(),
+			"message": r.Message,
+		})
+	} else if r.DriftDetected {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		logDaemonEvent(logger, "daemon.artifact_sync", map[string]interface{}{
+			"drift_detected": true,
+			"entries":        r.EntriesCount,
+			"events":         r.EventsCount,
+			"issue_id":       r.IssueID,
+			"deduped":        r.Deduped,
+			"agent_spawned":  r.AgentSpawned,
+			"message":        r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] Artifact sync: %s\n", timestamp, r.Message)
 	}
 }
 

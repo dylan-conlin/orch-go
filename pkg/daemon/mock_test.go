@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"github.com/dylan-conlin/orch-go/pkg/artifactsync"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
@@ -189,6 +190,42 @@ func (m *mockAgreementCheckService) HasOpenIssue(agreementID string) (bool, erro
 		return m.HasOpenIssueFunc(agreementID)
 	}
 	return false, nil
+}
+
+// mockArtifactSyncService implements ArtifactSyncService for tests.
+type mockArtifactSyncService struct {
+	AnalyzeFunc        func(projectDir string) (*ArtifactSyncResult, error)
+	HasOpenIssueFunc   func() (bool, error)
+	CreateIssueFunc    func(report *artifactsync.DriftReport) (string, error)
+	SpawnSyncAgentFunc func(report *artifactsync.DriftReport) error
+}
+
+func (m *mockArtifactSyncService) Analyze(projectDir string) (*ArtifactSyncResult, error) {
+	if m.AnalyzeFunc != nil {
+		return m.AnalyzeFunc(projectDir)
+	}
+	return &ArtifactSyncResult{}, nil
+}
+
+func (m *mockArtifactSyncService) HasOpenIssue() (bool, error) {
+	if m.HasOpenIssueFunc != nil {
+		return m.HasOpenIssueFunc()
+	}
+	return false, nil
+}
+
+func (m *mockArtifactSyncService) CreateIssue(report *artifactsync.DriftReport) (string, error) {
+	if m.CreateIssueFunc != nil {
+		return m.CreateIssueFunc(report)
+	}
+	return "", nil
+}
+
+func (m *mockArtifactSyncService) SpawnSyncAgent(report *artifactsync.DriftReport) error {
+	if m.SpawnSyncAgentFunc != nil {
+		return m.SpawnSyncAgentFunc(report)
+	}
+	return nil
 }
 
 // mockSessionCleaner implements SessionCleaner for tests.

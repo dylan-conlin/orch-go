@@ -173,6 +173,27 @@ type Config struct {
 	// FrictionAccumulationInterval is how often to scan for friction items (0 = disabled).
 	// Default is 1 hour.
 	FrictionAccumulationInterval time.Duration
+
+	// ArtifactSyncEnabled controls whether periodic artifact sync checking is enabled.
+	// When enabled, the daemon analyzes drift events from ~/.orch/artifact-drift.jsonl
+	// against ARTIFACT_MANIFEST.yaml and creates beads issues for drifted artifacts.
+	ArtifactSyncEnabled bool
+
+	// ArtifactSyncInterval is how often to check for artifact drift (0 = disabled).
+	// Default is 24 hours (daily cadence).
+	ArtifactSyncInterval time.Duration
+
+	// ArtifactSyncProjectDir is the project directory containing ARTIFACT_MANIFEST.yaml.
+	// Defaults to current working directory if empty.
+	ArtifactSyncProjectDir string
+
+	// ArtifactSyncAutoSpawn controls whether the daemon auto-spawns a sync agent
+	// when drift exceeds the threshold. When false, only creates beads issues.
+	ArtifactSyncAutoSpawn bool
+
+	// ArtifactSyncAutoSpawnThreshold is the minimum number of drifted artifact entries
+	// needed to auto-spawn a sync agent. Default is 3.
+	ArtifactSyncAutoSpawnThreshold int
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -219,5 +240,9 @@ func DefaultConfig() Config {
 		BeadsHealthInterval:          time.Hour, // Every hour
 		FrictionAccumulationEnabled:  true,
 		FrictionAccumulationInterval: time.Hour, // Every hour
+		ArtifactSyncEnabled:              true,
+		ArtifactSyncInterval:             24 * time.Hour, // Daily cadence
+		ArtifactSyncAutoSpawn:            false,          // Issues only by default
+		ArtifactSyncAutoSpawnThreshold:   3,              // 3+ entries triggers auto-spawn
 	}
 }
