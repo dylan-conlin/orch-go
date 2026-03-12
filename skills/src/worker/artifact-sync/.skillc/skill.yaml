@@ -1,0 +1,41 @@
+name: artifact-sync
+skill-type: procedure
+audience: worker
+spawnable: true
+category: maintenance
+description: Update drifted artifacts (CLAUDE.md, guides, skills) based on recent code changes. Spawned by `orch sync --fix`. Reads drift report, examines relevant commits, and produces minimal targeted updates to stale artifacts.
+dependencies:
+  - worker-base
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+  - Edit
+
+deliverables:
+  - type: artifact-updates
+    description: Updated artifact files (CLAUDE.md sections, guides, skill docs)
+    required: true
+
+verification:
+  requirements:
+    - "Each drifted artifact listed in task has been examined"
+    - "Updates are minimal and targeted (no unrelated changes)"
+    - "Updated artifacts committed with 'docs: sync artifacts' prefix"
+  test_command: null
+  required: true
+
+version: 1.0.0
+type: skill
+output: SKILL.md
+sources:
+  - SKILL.md.template
+
+spawn_requires:
+  authority_level: worker
+  kb_context: false
+  beads_tracking: true
+  servers: none
+  synthesis: light
+  phase_reporting: true
