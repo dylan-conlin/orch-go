@@ -1,5 +1,11 @@
 # Investigation: ATC Lens Feature Audit
 
+<!-- Lineage (fill only when applicable) -->
+**Extracted-From:** 
+**Supersedes:** 
+**Superseded-By:** Follow-up work tracked in beads issue orch-go-v8u1f
+
+
 **TLDR:** Audited all 33 orch-go commands + 40 packages through the ATC-not-conductor lens. The system is ~70% ATC-shaped (spawn context, gates, daemon sequencing, completion verification), ~20% conductor-shaped (tail, send, question, attention collectors, coaching metrics — real-time observation/direction infrastructure), and ~10% under-invested from ATC perspective (post-flight knowledge capture, handoff quality, separation/deconfliction).
 
 ## D.E.K.N. Summary

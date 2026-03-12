@@ -1,6 +1,6 @@
 # Decision: Probe as Universal Evidence-Gathering Primitive
 
-**Status:** Proposed
+**Status:** Proposed (not implemented as of 2026-03-12) — System still uses investigations. The forcing-function insight (probes require named targets) is valid but the migration hasn't been executed. Investigation skill and .kb/investigations/ remain active.
 **Date:** 2026-02-14
 **Deciders:** Architect agent (proposed), Dylan (approval required)
 **Context:** Meta-orchestrator identified "probe vs investigation?" decision tax as friction. Core insight: probe forces specificity, investigation allows vagueness. Every investigation is a probe without a named target.

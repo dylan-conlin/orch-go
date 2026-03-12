@@ -1,7 +1,7 @@
 # Decision: Registry Contract - Spawn-Cache Only
 
 **Date:** 2026-01-14
-**Status:** Accepted
+**Status:** Superseded (2026-03-12) — pkg/registry/ removed entirely per CLAUDE.md "No Local Agent State" constraint. The principle (query authoritative sources directly) survives as the architectural constraint.
 **Deciders:** Dylan
 
 ## Context

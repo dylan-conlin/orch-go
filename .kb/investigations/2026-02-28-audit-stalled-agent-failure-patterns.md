@@ -1,5 +1,11 @@
 # Audit: Stalled Agent Failure Patterns
 
+<!-- Lineage (fill only when applicable) -->
+**Extracted-From:** 
+**Supersedes:** 
+**Superseded-By:** Follow-up work tracked in beads issue orch-go-dfva4
+
+
 **Date:** 2026-02-28
 **Status:** Active
 **Beads:** orch-go-0jgj

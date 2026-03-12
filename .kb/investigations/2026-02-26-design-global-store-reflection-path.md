@@ -1,5 +1,11 @@
 # Design: ~/.kb/ Global Store Reflection Path for kb reflect
 
+<!-- Lineage (fill only when applicable) -->
+**Extracted-From:** 
+**Supersedes:** 
+**Superseded-By:** kb reflect already searches both .kb/ and .kb/global/; the design was implemented
+
+
 **Date:** 2026-02-26
 **Status:** Active
 **Type:** Architect design

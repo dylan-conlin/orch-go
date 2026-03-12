@@ -71,6 +71,10 @@
     {
       "name": "toolshed",
       "path": "/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/toolshed"
+    },
+    {
+      "name": "harness",
+      "path": "/Users/dylanconlin/Documents/personal/harness"
     }
   ]
 }
