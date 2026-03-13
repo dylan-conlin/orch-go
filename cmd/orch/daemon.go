@@ -105,6 +105,12 @@ func runDaemonLoop() error {
 		}
 		readyCount := s.d.CountSpawnable(readyIssues)
 
+		// Work Graph: per-cycle Orient phase — detect duplicates, overlaps, and chains.
+		// Computed fresh each cycle (no local state). Surfaces removal candidates as questions.
+		if readyErr == nil && len(readyIssues) > 1 {
+			s.runWorkGraphAnalysis(readyIssues, timestamp)
+		}
+
 		// Write daemon status file AFTER reconciliation and completions so counts are accurate
 		s.writeDaemonStatusFile(readyCount, periodicResult)
 

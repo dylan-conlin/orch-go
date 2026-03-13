@@ -221,6 +221,14 @@ type Config struct {
 	// Compliance holds per-spawn compliance level configuration.
 	// When nil/zero-value, defaults to ComplianceStrict (current behavior).
 	Compliance ComplianceConfig
+
+	// LearningRefreshEnabled controls whether the daemon periodically
+	// recomputes learning metrics and auto-adjusts compliance levels.
+	LearningRefreshEnabled bool
+
+	// LearningRefreshInterval is how often to recompute learning metrics
+	// and evaluate compliance auto-downgrades. Default is 1 hour.
+	LearningRefreshInterval time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -276,5 +284,7 @@ func DefaultConfig() Config {
 		SynthesisAutoCreateEnabled:       true,
 		SynthesisAutoCreateInterval:      2 * time.Hour, // Every 2 hours (after reflection)
 		SynthesisAutoCreateThreshold:     5,             // 5+ investigations triggers auto-create
+		LearningRefreshEnabled:           true,
+		LearningRefreshInterval:          time.Hour, // Hourly learning refresh + compliance auto-adjust
 	}
 }

@@ -705,6 +705,31 @@ func (s *daemonLoopState) writeDaemonStatusFile(readyCount int, periodicResult p
 	}
 }
 
+// runWorkGraphAnalysis computes the work graph and surfaces removal candidates.
+// Runs each cycle with the ready queue (no local state — fresh computation).
+func (s *daemonLoopState) runWorkGraphAnalysis(readyIssues []daemon.Issue, timestamp string) {
+	graph := daemon.ComputeWorkGraph(readyIssues, nil)
+
+	candidates := graph.RemovalCandidates()
+	if len(candidates) == 0 {
+		return
+	}
+
+	// Log detected signals
+	for _, c := range candidates {
+		s.dlog.Printf("[%s] Work graph: %s\n", timestamp, c.Detail)
+	}
+
+	// Surface as a question issue (only title duplicates — high confidence).
+	// Rate-limit to avoid creating duplicate question issues on every cycle.
+	for _, dup := range graph.TitleDuplicates {
+		if dup.Similarity >= 0.80 {
+			s.dlog.Printf("[%s] Work graph: high-confidence duplicate detected (%s <-> %s, %.0f%%), consider dedup\n",
+				timestamp, dup.IssueA, dup.IssueB, dup.Similarity*100)
+		}
+	}
+}
+
 // stopMessage returns the standard daemon shutdown summary.
 func (s *daemonLoopState) stopMessage() string {
 	return fmt.Sprintf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", s.processed, s.completed, s.cycles)

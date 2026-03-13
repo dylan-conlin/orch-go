@@ -124,6 +124,11 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		handleSynthesisAutoCreateResult(r, timestamp, verbose, logger)
 	}
 
+	// Learning refresh + compliance auto-adjust
+	if r := d.RunPeriodicLearningRefresh(); r != nil {
+		handleLearningRefreshResult(r, timestamp, verbose, logger)
+	}
+
 	return result
 }
 
@@ -416,6 +421,24 @@ func handleSynthesisAutoCreateResult(r *daemon.SynthesisAutoCreateResult, timest
 			"evaluated":     r.Evaluated,
 			"created_issues": r.CreatedIssues,
 			"message":       r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+	}
+}
+
+func handleLearningRefreshResult(r *daemon.LearningRefreshResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Learning refresh error: %v\n", timestamp, r.Error)
+	} else if r.DowngradesApplied > 0 {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		for _, s := range r.Suggestions {
+			fmt.Printf("[%s]   %s: %s -> %s (success rate=%.0f%%, samples=%d)\n",
+				timestamp, s.Skill, s.CurrentLevel, s.SuggestedLevel, s.SuccessRate*100, s.SampleSize)
+		}
+		logDaemonEvent(logger, "daemon.learning_refresh", map[string]interface{}{
+			"downgrades_applied": r.DowngradesApplied,
+			"message":            r.Message,
 		})
 	} else if verbose {
 		fmt.Printf("[%s] %s\n", timestamp, r.Message)
