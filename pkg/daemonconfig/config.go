@@ -203,6 +203,20 @@ type Config struct {
 	// RegistryRefreshInterval is how often to rebuild the project registry.
 	// Default is 5 minutes.
 	RegistryRefreshInterval time.Duration
+
+	// SynthesisAutoCreateEnabled controls whether the daemon auto-creates beads
+	// issues for investigation clusters that lack a corresponding model directory.
+	// When enabled, clusters detected by kb reflect with 5+ investigations (configurable)
+	// and no .kb/models/{topic}/ directory will get a triage:ready issue created.
+	SynthesisAutoCreateEnabled bool
+
+	// SynthesisAutoCreateInterval is how often to check for synthesis opportunities.
+	// Default is 2 hours. Runs after reflection to use fresh synthesis data.
+	SynthesisAutoCreateInterval time.Duration
+
+	// SynthesisAutoCreateThreshold is the minimum number of investigations in a cluster
+	// before auto-creating a synthesis issue. Default is 5.
+	SynthesisAutoCreateThreshold int
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -255,5 +269,8 @@ func DefaultConfig() Config {
 		ArtifactSyncAutoSpawnThreshold:   3,              // 3+ entries triggers auto-spawn
 		RegistryRefreshEnabled:           true,
 		RegistryRefreshInterval:          5 * time.Minute, // Refresh every 5 minutes
+		SynthesisAutoCreateEnabled:       true,
+		SynthesisAutoCreateInterval:      2 * time.Hour, // Every 2 hours (after reflection)
+		SynthesisAutoCreateThreshold:     5,             // 5+ investigations triggers auto-create
 	}
 }

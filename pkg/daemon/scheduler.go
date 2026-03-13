@@ -17,6 +17,7 @@ const (
 	TaskFrictionAccumulation  = "friction_accumulation"
 	TaskArtifactSync          = "artifact_sync"
 	TaskRegistryRefresh       = "registry_refresh"
+	TaskSynthesisAutoCreate   = "synthesis_auto_create"
 )
 
 // periodicTask holds the scheduling state for a single periodic task.
@@ -124,6 +125,7 @@ func NewSchedulerFromConfig(cfg Config) *PeriodicScheduler {
 	s.Register(TaskFrictionAccumulation, cfg.FrictionAccumulationEnabled, cfg.FrictionAccumulationInterval)
 	s.Register(TaskArtifactSync, cfg.ArtifactSyncEnabled, cfg.ArtifactSyncInterval)
 	s.Register(TaskRegistryRefresh, cfg.RegistryRefreshEnabled, cfg.RegistryRefreshInterval)
+	s.Register(TaskSynthesisAutoCreate, cfg.SynthesisAutoCreateEnabled, cfg.SynthesisAutoCreateInterval)
 	return s
 }
 

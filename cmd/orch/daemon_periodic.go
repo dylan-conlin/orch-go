@@ -119,6 +119,11 @@ func runPeriodicTasks(d *daemon.Daemon, timestamp string, verbose bool, logger *
 		handleRegistryRefreshResult(r, timestamp, verbose, logger)
 	}
 
+	// Synthesis auto-create (creates issues for investigation clusters without models)
+	if r := d.RunPeriodicSynthesisAutoCreate(); r != nil {
+		handleSynthesisAutoCreateResult(r, timestamp, verbose, logger)
+	}
+
 	return result
 }
 
@@ -392,6 +397,28 @@ func handleRegistryRefreshResult(r *daemon.RegistryRefreshResult, timestamp stri
 		})
 	} else if verbose {
 		fmt.Printf("[%s] Registry refresh: unchanged\n", timestamp)
+	}
+}
+
+func handleSynthesisAutoCreateResult(r *daemon.SynthesisAutoCreateResult, timestamp string, verbose bool, logger *events.Logger) {
+	if r.Error != nil {
+		fmt.Fprintf(os.Stderr, "[%s] Synthesis auto-create error: %v\n", timestamp, r.Error)
+		logDaemonEvent(logger, "daemon.synthesis_auto_create", map[string]interface{}{
+			"created": 0,
+			"error":   r.Error.Error(),
+			"message": r.Message,
+		})
+	} else if r.Created > 0 {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
+		logDaemonEvent(logger, "daemon.synthesis_auto_create", map[string]interface{}{
+			"created":       r.Created,
+			"skipped":       r.Skipped,
+			"evaluated":     r.Evaluated,
+			"created_issues": r.CreatedIssues,
+			"message":       r.Message,
+		})
+	} else if verbose {
+		fmt.Printf("[%s] %s\n", timestamp, r.Message)
 	}
 }
 
